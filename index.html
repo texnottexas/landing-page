@@ -501,24 +501,35 @@
     }
     .site-footer a:hover { text-decoration: underline; }
 
-    .rickroll-counter {
-      display: inline-flex;
-      align-items: center;
-      gap: .3rem;
-      font-size: .7rem;
-      color: var(--muted);
-      -webkit-text-fill-color: var(--muted);
-      margin-top: .35rem;
-      opacity: 0;
-      transition: opacity .4s;
-    }
-    .rickroll-counter.loaded { opacity: 1; }
-    .rickroll-counter .rc-icon {
+    .rc-icon {
       display: inline-block;
       animation: egg-pulse 3.4s ease-in-out infinite;
       font-size: .85rem;
       line-height: 1;
+      cursor: pointer;
+      margin-top: .35rem;
+      position: relative;
+      -webkit-text-fill-color: initial;
     }
+    .rc-count {
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      -webkit-text-fill-color: var(--muted);
+      font-size: .65rem;
+      padding: .15rem .4rem;
+      border-radius: 6px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s;
+      margin-bottom: 4px;
+    }
+    .rc-count.visible { opacity: 1; }
 
     /* View toggle button */
     .view-toggle {
@@ -723,7 +734,7 @@
   <footer class="site-footer">
     <span class="footer-text">Brought to you by supporters of the fk boats movement</span><br>
     <a href="https://github.com/texnottexas/landing-page" target="_blank" rel="noopener noreferrer">GitHub</a>
-    <br><span class="rickroll-counter" id="rickroll-counter"><span class="rc-icon">&#127871;</span> <span id="rc-count">0</span> rickrolled</span>
+    <br><span class="rc-icon" id="rc-icon">&#127871;<span class="rc-count" id="rc-count"></span></span>
   </footer>
 
   <script>
@@ -733,28 +744,30 @@
       // Rickroll click counter
       var COUNTER_URL = 'https://rickroll-counter.27tb8s6fct.workers.dev';
       var rcCount = document.getElementById('rc-count');
-      var rcWrap = document.getElementById('rickroll-counter');
-
-      function updateCounter(n) {
-        rcCount.textContent = String(n);
-        rcWrap.classList.add('loaded');
-      }
+      var rcIcon = document.getElementById('rc-icon');
+      var currentCount = 0;
 
       fetch(COUNTER_URL, { mode: 'cors' })
         .then(function(r) { return r.json(); })
-        .then(function(d) { updateCounter(d.count); })
+        .then(function(d) { currentCount = d.count; })
         .catch(function() {});
 
       function trackRickroll() {
         try {
           fetch(COUNTER_URL, { method: 'POST', mode: 'cors' })
             .then(function(r) { return r.json(); })
-            .then(function(d) { updateCounter(d.count); })
+            .then(function(d) { currentCount = d.count; })
             .catch(function() {});
         } catch(e) {}
       }
       document.querySelector('.easter-egg').addEventListener('click', trackRickroll);
       document.querySelector('.wheel-center').addEventListener('click', trackRickroll);
+
+      // Show count on popcorn click
+      rcIcon.addEventListener('click', function() {
+        rcCount.textContent = String(currentCount);
+        rcCount.classList.toggle('visible');
+      });
 
       // Theme toggle with validation
       var VALID_THEMES = ['dark', 'light'];
