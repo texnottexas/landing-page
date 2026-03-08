@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="X-Content-Type-Options" content="nosniff">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://i.ibb.co; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none';">
   <title>TW Server 2864</title>
   <style>
     :root[data-theme="dark"] {
@@ -471,6 +472,7 @@
         padding: .75rem;
         font-size: .85rem;
         margin-bottom: .25rem;
+        animation: center-text-shimmer 6s ease-in-out infinite;
       }
       .wheel-center:hover {
         transform: none !important;
@@ -488,6 +490,16 @@
       }
       .wheel-item:hover { transform: translateY(-2px) !important; }
       .wheel-item .w-icon { font-size: 1.3rem; }
+      .wheel-item, .wheel-center { min-height: 48px; }
+    }
+
+    /* Respect reduced motion preferences */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
     }
   </style>
 </head>
@@ -620,10 +632,13 @@
       new MutationObserver(updateIcons).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
       // Modal open via data attributes (no inline onclick)
+      var VALID_MODALS = ['img-modal', 'rockfield-modal', 'unit-modal'];
       document.querySelectorAll('[data-modal]').forEach(function(el) {
         el.addEventListener('click', function(e) {
           e.preventDefault();
-          var modal = document.getElementById(el.getAttribute('data-modal'));
+          var modalId = el.getAttribute('data-modal');
+          if (VALID_MODALS.indexOf(modalId) === -1) return;
+          var modal = document.getElementById(modalId);
           if (modal) modal.classList.add('active');
         });
       });
