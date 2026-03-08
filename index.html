@@ -5,7 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="X-Content-Type-Options" content="nosniff">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://i.ibb.co; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://i.ibb.co; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; manifest-src 'self';">
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="2864">
+  <link rel="apple-touch-icon" href="https://i.ibb.co/Swq1hRtp/welcome2864.jpg">
+  <meta name="theme-color" content="#0d1117">
   <title>TW Server 2864</title>
   <style>
     :root[data-theme="dark"] {
@@ -411,6 +417,61 @@
       color: var(--accent);
     }
 
+    /* Install prompt */
+    .install-banner {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      padding: 1rem 1.25rem;
+      z-index: 250;
+      box-shadow: 0 -4px 16px var(--shadow);
+      align-items: center;
+      gap: .75rem;
+    }
+    .install-banner.visible { display: flex; }
+    .install-banner-text {
+      flex: 1;
+      font-size: .85rem;
+      line-height: 1.4;
+    }
+    .install-banner-text strong {
+      color: var(--accent);
+    }
+    .install-banner-text .install-steps {
+      font-size: .75rem;
+      color: var(--muted);
+      margin-top: .25rem;
+    }
+    .install-btn {
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      border-radius: 8px;
+      padding: .5rem 1rem;
+      font-size: .8rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity .15s;
+      flex-shrink: 0;
+    }
+    .install-btn:hover { opacity: .85; }
+    .install-dismiss {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 1.1rem;
+      cursor: pointer;
+      padding: .25rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .install-dismiss:hover { color: var(--text); }
+
     /* Footer with shimmer */
     @keyframes footer-shimmer {
       0%   { background-position: -200% center; }
@@ -588,6 +649,16 @@
     </div>
   </div>
 
+  <!-- Install to home screen banner -->
+  <div id="install-banner" class="install-banner" role="banner">
+    <div class="install-banner-text">
+      <strong>Add to Home Screen</strong>
+      <div class="install-steps" id="install-steps"></div>
+    </div>
+    <button class="install-btn" id="install-btn">Install</button>
+    <button class="install-dismiss" id="install-dismiss" aria-label="Dismiss">&#10005;</button>
+  </div>
+
   <footer class="site-footer">
     <span class="footer-text">Brought to you by supporters of the fk boats movement</span><br>
     <a href="https://github.com/texnottexas/landing-page" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -668,6 +739,75 @@
           });
         }
       });
+
+      // Add to Home Screen
+      var installBanner = document.getElementById('install-banner');
+      var installBtn = document.getElementById('install-btn');
+      var installDismiss = document.getElementById('install-dismiss');
+      var installSteps = document.getElementById('install-steps');
+      var deferredPrompt = null;
+
+      // Check if already installed or dismissed
+      function isStandalone() {
+        return window.matchMedia('(display-mode: standalone)').matches ||
+               window.navigator.standalone === true;
+      }
+
+      function wasDismissed() {
+        try { return localStorage.getItem('install-dismissed') === '1'; } catch(e) { return false; }
+      }
+
+      function dismissBanner() {
+        installBanner.classList.remove('visible');
+        try { localStorage.setItem('install-dismissed', '1'); } catch(e) {}
+      }
+
+      installDismiss.addEventListener('click', dismissBanner);
+
+      if (!isStandalone() && !wasDismissed()) {
+        var ua = navigator.userAgent || '';
+        var isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        var isAndroid = /Android/.test(ua);
+
+        // Android / Chrome: intercept beforeinstallprompt
+        window.addEventListener('beforeinstallprompt', function(e) {
+          e.preventDefault();
+          deferredPrompt = e;
+          installSteps.textContent = 'Install this app for quick access';
+          installBanner.classList.add('visible');
+        });
+
+        installBtn.addEventListener('click', function() {
+          if (deferredPrompt) {
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.then(function(result) {
+              deferredPrompt = null;
+              dismissBanner();
+            });
+          } else if (isIOS) {
+            // Can't programmatically install on iOS, just show instructions
+            dismissBanner();
+          }
+        });
+
+        // iOS: show manual instructions
+        if (isIOS && !navigator.standalone) {
+          installSteps.innerHTML = 'Tap <strong>Share</strong> &#9757; then <strong>Add to Home Screen</strong>';
+          installBtn.textContent = 'Got it';
+          installBanner.classList.add('visible');
+        }
+
+        // Android fallback if beforeinstallprompt doesn't fire (e.g. Firefox)
+        if (isAndroid && !deferredPrompt) {
+          setTimeout(function() {
+            if (!deferredPrompt && !isStandalone() && !wasDismissed()) {
+              installSteps.innerHTML = 'Tap <strong>&#8942; Menu</strong> then <strong>Add to Home Screen</strong>';
+              installBtn.textContent = 'Got it';
+              installBanner.classList.add('visible');
+            }
+          }, 3000);
+        }
+      }
     })();
   </script>
 </body>
