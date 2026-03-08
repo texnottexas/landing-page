@@ -501,7 +501,25 @@
     }
     .site-footer a:hover { text-decoration: underline; }
 
-    /* Mobile: fall back to vertical list */
+    /* View toggle button */
+    .view-toggle {
+      display: none;
+      margin: 1rem auto 0;
+      background: var(--tag);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 8px;
+      padding: .45rem 1rem;
+      font-size: .75rem;
+      cursor: pointer;
+      transition: border-color .15s, color .15s;
+    }
+    .view-toggle:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Mobile */
     @media (max-width: 500px) {
       header { padding: .75rem 1rem; }
       .header-title { font-size: .95rem; }
@@ -512,8 +530,32 @@
       .banner img {
         height: 120px;
       }
+      .view-toggle { display: block; }
 
+      /* Mobile radial wheel (default on mobile) */
       .wheel-wrap {
+        width: 300px;
+        height: 300px;
+        margin: 0 auto 0;
+      }
+      .wheel-center {
+        width: 80px;
+        height: 80px;
+        font-size: 1rem;
+      }
+      .wheel-center:hover {
+        transform: translate(-50%, -50%) scale(1.1);
+      }
+      .wheel-item {
+        width: 76px;
+        height: 76px;
+        font-size: .6rem;
+      }
+      .wheel-item .w-icon { font-size: 1.2rem; }
+      .wheel-item .w-icon svg { width: 22px; height: 22px; }
+
+      /* List view (toggled via JS) */
+      .wheel-wrap.list-view {
         position: static;
         width: 100%;
         height: auto;
@@ -522,8 +564,8 @@
         gap: .75rem;
         max-width: 400px;
       }
-      .wheel-wrap::before { display: none; }
-      .wheel-center {
+      .wheel-wrap.list-view::before { display: none; }
+      .wheel-wrap.list-view .wheel-center {
         position: static;
         transform: none !important;
         width: 100%;
@@ -534,10 +576,10 @@
         margin-bottom: .25rem;
         animation: center-text-shimmer 6s ease-in-out infinite;
       }
-      .wheel-center:hover {
+      .wheel-wrap.list-view .wheel-center:hover {
         transform: none !important;
       }
-      .wheel-item {
+      .wheel-wrap.list-view .wheel-item {
         position: static;
         transform: none !important;
         width: 100%;
@@ -548,9 +590,9 @@
         gap: .75rem;
         font-size: .9rem;
       }
-      .wheel-item:hover { transform: translateY(-2px) !important; }
-      .wheel-item .w-icon { font-size: 1.3rem; }
-      .wheel-item, .wheel-center { min-height: 48px; }
+      .wheel-wrap.list-view .wheel-item:hover { transform: translateY(-2px) !important; }
+      .wheel-wrap.list-view .wheel-item .w-icon { font-size: 1.3rem; }
+      .wheel-wrap.list-view .wheel-item, .wheel-wrap.list-view .wheel-center { min-height: 48px; }
     }
 
     /* Respect reduced motion preferences */
@@ -615,6 +657,7 @@
 
       <a href="https://shattereddisk.github.io/rickroll/" target="_blank" rel="noopener noreferrer" class="wheel-center">2864<span class="wheel-sub">fk boats</span></a>
     </div>
+    <button class="view-toggle" id="viewToggle">Switch to List View</button>
   </div>
 
   <!-- Modals -->
@@ -691,6 +734,21 @@
 
       // Theme button
       document.getElementById('themeBtn').addEventListener('click', toggleTheme);
+
+      // View toggle (wheel vs list on mobile)
+      var viewToggle = document.getElementById('viewToggle');
+      var wheelWrap = document.querySelector('.wheel-wrap');
+      try {
+        if (localStorage.getItem('view-mode') === 'list') {
+          wheelWrap.classList.add('list-view');
+          viewToggle.textContent = 'Switch to Wheel View';
+        }
+      } catch(e) {}
+      viewToggle.addEventListener('click', function() {
+        var isList = wheelWrap.classList.toggle('list-view');
+        viewToggle.textContent = isList ? 'Switch to Wheel View' : 'Switch to List View';
+        try { localStorage.setItem('view-mode', isList ? 'list' : 'wheel'); } catch(e) {}
+      });
 
       // Icon visibility
       function updateIcons() {
