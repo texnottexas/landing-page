@@ -1516,8 +1516,6 @@
         { code: 'id', flag: '\u{1F1EE}\u{1F1E9}', name: 'Indonesia' }
       ];
 
-      var currentLang = 'en';
-
       window.getLangData = function(code) {
         var base = code.split('-')[0];
         for (var i = 0; i < LANGUAGES.length; i++) {
@@ -1527,7 +1525,6 @@
       };
 
       window.updateLangBtn = function(code) {
-        currentLang = code;
         var data = window.getLangData(code);
         var flagEl = document.getElementById('langFlag');
         var codeEl = document.getElementById('langCode');
@@ -1545,48 +1542,46 @@
       }
 
       window.detectCurrentLang = function() {
-        var match = document.cookie.match(/googtrans=\/en\/([^;]+)/);
+        var match = document.cookie.match(/googtrans=\/en\/([a-zA-Z-]{2,10})/);
         if (match && match[1]) return match[1];
-        var hm = location.hash.match(/googtrans\(en\|([^)]+)\)/);
+        var hm = location.hash.match(/googtrans\(en\|([a-zA-Z-]{2,10})\)/);
         if (hm && hm[1]) return hm[1];
         return 'en';
       };
 
-      function selectLanguage(code) {
-        if (code === 'en') { restoreEnglish(); return; }
-        try { sessionStorage.setItem('pendingLang', code); } catch(e) {}
+      function applyLangToCombo(code, delay, onSuccess) {
         var attempts = 0;
-        var trySet = setInterval(function() {
+        var poll = setInterval(function() {
           var combo = document.querySelector('.goog-te-combo');
           if (combo) {
             combo.value = code;
             combo.dispatchEvent(new Event('change'));
-            clearInterval(trySet);
+            clearInterval(poll);
             updateLangBtn(code);
-            closeLangModal();
+            if (onSuccess) onSuccess();
           }
-          if (++attempts > 30) clearInterval(trySet);
-        }, 200);
+          if (++attempts > 30) clearInterval(poll);
+        }, delay || 200);
+      }
+
+      function selectLanguage(code) {
+        if (code === 'en') { restoreEnglish(); return; }
+        try { sessionStorage.setItem('pendingLang', code); } catch(e) {}
+        applyLangToCombo(code, 200, closeLangModal);
       }
 
       function restoreEnglish() {
         try { sessionStorage.removeItem('pendingLang'); } catch(e) {}
-        document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-        document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.2864tw.com;';
+        document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax; Secure';
+        document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.2864tw.com; SameSite=Lax; Secure';
         try { localStorage.removeItem('translate-dismissed'); } catch(e) {}
         closeLangModal();
         location.reload();
       }
 
-      function openLangModal() {
-        var modal = document.getElementById('langModal');
-        if (modal) modal.classList.add('active');
-      }
-
-      function closeLangModal() {
-        var modal = document.getElementById('langModal');
-        if (modal) modal.classList.remove('active');
-      }
+      var langModalEl = document.getElementById('langModal');
+      function openLangModal() { if (langModalEl) langModalEl.classList.add('active'); }
+      function closeLangModal() { if (langModalEl) langModalEl.classList.remove('active'); }
 
       // Build language grid using safe DOM methods
       (function buildLangGrid() {
@@ -1619,18 +1614,14 @@
       if (langBtn) langBtn.addEventListener('click', openLangModal);
       var langModalClose = document.getElementById('langModalClose');
       if (langModalClose) langModalClose.addEventListener('click', closeLangModal);
-      var langModal = document.getElementById('langModal');
-      if (langModal) {
-        langModal.addEventListener('click', function(e) {
-          if (e.target === langModal) closeLangModal();
+      if (langModalEl) {
+        langModalEl.addEventListener('click', function(e) {
+          if (e.target === langModalEl) closeLangModal();
         });
       }
-
-      // Close language modal on Escape
       document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-          var lm = document.getElementById('langModal');
-          if (lm && lm.classList.contains('active')) { closeLangModal(); e.stopPropagation(); }
+        if (e.key === 'Escape' && langModalEl && langModalEl.classList.contains('active')) {
+          closeLangModal(); e.stopPropagation();
         }
       });
 
@@ -1661,36 +1652,14 @@
       try { pendingLang = sessionStorage.getItem('pendingLang'); sessionStorage.removeItem('pendingLang'); } catch(e) {}
 
       if (pendingLang) {
-        var attempts = 0;
-        var trySet = setInterval(function() {
-          var combo = document.querySelector('.goog-te-combo');
-          if (combo) {
-            combo.value = pendingLang;
-            combo.dispatchEvent(new Event('change'));
-            clearInterval(trySet);
-            updateLangBtn(pendingLang);
-          }
-          if (++attempts > 30) clearInterval(trySet);
-        }, 250);
+        applyLangToCombo(pendingLang, 250);
       } else {
         // Auto-detect: if browser is non-English and user hasn't dismissed, auto-translate
         try {
           var dismissed = localStorage.getItem('translate-dismissed');
           if (!dismissed) {
             var lang = (navigator.language || navigator.userLanguage || 'en').split('-')[0];
-            if (lang !== 'en') {
-              var attempts2 = 0;
-              var trySet2 = setInterval(function() {
-                var combo = document.querySelector('.goog-te-combo');
-                if (combo) {
-                  combo.value = lang;
-                  combo.dispatchEvent(new Event('change'));
-                  clearInterval(trySet2);
-                  updateLangBtn(lang);
-                }
-                if (++attempts2 > 30) clearInterval(trySet2);
-              }, 250);
-            }
+            if (lang !== 'en') applyLangToCombo(lang, 250);
           }
         } catch(e) {}
 
