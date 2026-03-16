@@ -550,7 +550,11 @@
     }
     @media (max-width: 500px) {
       .cal-modal-content { padding: 1rem; margin: 1rem 0; }
-      .cal-header { flex-direction: column; gap: .75rem; }
+      .cal-header { flex-direction: column; gap: .4rem; margin-bottom: .75rem; }
+      .cal-view-row { margin-bottom: .4rem; }
+      .cal-filter-row { margin-bottom: .5rem; }
+      .cal-tz-banner { padding: .3rem .5rem; margin-bottom: .5rem; }
+      .cal-week-dates { margin-bottom: .5rem; }
       .cal-event-top { flex-direction: column; align-items: flex-start; gap: .25rem; }
       .cal-event-time { font-size: .68rem; }
     }
@@ -2060,26 +2064,39 @@
           sel.value = filterEvent;
         }
 
-        // Build day filter options for the current round's events
-        function buildDayFilterOptions(events, year) {
+        // Build day filter options from ALL rounds, with today listed first
+        function buildDayFilterOptions() {
           var sel = document.getElementById('cal-filter-day');
           sel.textContent = '';
           var allOpt = document.createElement('option');
           allOpt.value = 'all'; allOpt.textContent = 'All Days';
           sel.appendChild(allOpt);
 
+          if (!CAL_DATA) return;
+
           var seen = {};
           var dayKeys = [];
-          events.forEach(function(evt) {
-            var raw = typeof evt.start === 'string' ? evt : evt.evt;
-            var y = year || evt.year;
-            var key = getEventLocalDay(raw.start, y);
-            if (!seen[key]) {
-              seen[key] = true;
-              dayKeys.push(key);
-            }
+          CAL_DATA.rounds.forEach(function(r) {
+            var year = parseInt(r.weekStart.split('-')[0], 10);
+            r.events.forEach(function(evt) {
+              var key = getEventLocalDay(evt.start, year);
+              if (!seen[key]) {
+                seen[key] = true;
+                dayKeys.push(key);
+              }
+            });
           });
           dayKeys.sort();
+
+          // Move today to front (after "All Days")
+          var now = new Date();
+          var todayKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+          var todayIdx = dayKeys.indexOf(todayKey);
+          if (todayIdx > 0) {
+            dayKeys.splice(todayIdx, 1);
+            dayKeys.unshift(todayKey);
+          }
+
           dayKeys.forEach(function(k) {
             var opt = document.createElement('option');
             opt.value = k; opt.textContent = formatDayLabel(k);
@@ -2190,9 +2207,8 @@
 
           updateTZBanner();
 
-          // Build day filter from today's events (before event filter)
           var allToday = getTodayEvents();
-          buildDayFilterOptions(allToday);
+          buildDayFilterOptions();
 
           var container = document.getElementById('cal-events');
           container.textContent = '';
@@ -2230,8 +2246,7 @@
 
           var year = parseInt(round.weekStart.split('-')[0], 10);
 
-          // Build day filter from this round's events (before event filter)
-          buildDayFilterOptions(round.events, year);
+          buildDayFilterOptions();
 
           var container = document.getElementById('cal-events');
           container.textContent = '';
