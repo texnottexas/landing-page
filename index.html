@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://i.ibb.co https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com blob:; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; script-src 'unsafe-inline' 'self' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; connect-src 'self' https://rickroll-counter.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; frame-src https://translate.google.com; object-src 'none'; base-uri 'self'; form-action 'none'; manifest-src 'self'; font-src https://fonts.gstatic.com;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://i.ibb.co https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; script-src 'unsafe-inline' 'self' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; connect-src 'self' https://rickroll-counter.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; frame-src https://translate.google.com; object-src 'none'; base-uri 'self'; form-action 'none'; manifest-src 'self'; font-src https://fonts.gstatic.com;">
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -325,6 +325,7 @@
     }
     .cal-modal.active { display: flex; }
     .cal-modal-content {
+      position: relative;
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 16px;
@@ -452,19 +453,10 @@
       padding: .5rem .75rem;
       margin-bottom: 1rem;
       border-radius: 8px;
-      background: var(--tag);
       border: 1px solid var(--border);
       display: inline-block;
       width: 100%;
-      background-image: linear-gradient(90deg, var(--muted) 0%, var(--accent) 25%,
-                  var(--muted) 50%, var(--accent) 75%, var(--muted) 100%);
-      background-size: 200% auto;
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
-      animation: footer-shimmer 6s linear infinite;
     }
-    .cal-modal-content { position: relative; }
     .cal-close-x {
       position: absolute;
       top: .75rem;
@@ -888,10 +880,19 @@
     }
     .install-dismiss:hover { color: var(--text); }
 
-    /* Footer with shimmer */
+    /* Shimmer text effect */
     @keyframes footer-shimmer {
       0%   { background-position: -200% center; }
       100% { background-position: 200% center; }
+    }
+    .shimmer-text {
+      background-image: linear-gradient(90deg, var(--muted) 0%, var(--accent) 25%,
+                  var(--muted) 50%, var(--accent) 75%, var(--muted) 100%);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: footer-shimmer 6s linear infinite;
     }
 
     .site-footer {
@@ -903,13 +904,6 @@
     }
     .site-footer .footer-text {
       display: inline-block;
-      background: linear-gradient(90deg, var(--muted) 0%, var(--accent) 25%,
-                  var(--muted) 50%, var(--accent) 75%, var(--muted) 100%);
-      background-size: 200% auto;
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
-      animation: footer-shimmer 6s linear infinite;
     }
     .site-footer a {
       color: var(--accent);
@@ -1480,7 +1474,7 @@
           <button class="cal-nav-btn" id="cal-next" aria-label="Next week">&#9654;</button>
         </div>
       </div>
-      <div class="cal-tz-banner" id="cal-tz-banner">Times shown in your local timezone</div>
+      <div class="cal-tz-banner shimmer-text" id="cal-tz-banner">Times shown in your local timezone</div>
       <div class="cal-view-row">
         <span class="cal-view-label">View by:</span>
         <div class="cal-view-toggle">
@@ -1524,7 +1518,7 @@
   </div>
 
   <footer class="site-footer">
-    <span class="footer-text">Brought to you by supporters of the fk boats movement</span><br>
+    <span class="footer-text shimmer-text">Brought to you by supporters of the fk boats movement</span><br>
     <a href="https://github.com/texnottexas/landing-page" target="_blank" rel="noopener noreferrer">GitHub</a>
     <br><span class="rc-wrap" id="rc-wrap"><span class="rc-icon">&#127871;</span><span class="rc-count" id="rc-count"></span></span>
   </footer>
@@ -1963,6 +1957,10 @@
             parseInt(tp[0], 10), parseInt(tp[1], 10), parseInt(tp[2], 10)));
         }
 
+        function getRoundYear(round) {
+          return parseInt(round.weekStart.split('-')[0], 10);
+        }
+
         function getUserTZ() {
           try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch(e) { return 'UTC'; }
         }
@@ -1987,11 +1985,12 @@
           return formatLocalDate(startDT) + ' ' + formatLocalTime(startDT) + ' - ' + formatLocalDate(endDT) + ' ' + formatLocalTime(endDT);
         }
 
-        // Get the local day key for an event (for day filtering)
-        // Returns "YYYY-MM-DD" of the local start date
-        function getEventLocalDay(dateStr, year) {
-          var dt = parseEventDT(dateStr, year);
+        function toDateKey(dt) {
           return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+        }
+
+        function getEventLocalDay(dateStr, year) {
+          return toDateKey(parseEventDT(dateStr, year));
         }
 
         function formatDayLabel(dateKey) {
@@ -2005,6 +2004,10 @@
           return dt.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
         }
 
+        function sanitizeICS(str) {
+          return String(str).replace(/[\r\n]+/g, ' ').replace(/[;,\\]/g, '\\$&');
+        }
+
         function generateICS(event, year) {
           var dtStart = toICSDate(event.start, year);
           var dtEnd = toICSDate(event.end, year);
@@ -2012,8 +2015,8 @@
           return [
             'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//2864TW//UD Calendar//EN',
             'BEGIN:VEVENT', 'DTSTART:' + dtStart, 'DTEND:' + dtEnd,
-            'SUMMARY:' + event.name + ' - Seal Stone',
-            'DESCRIPTION:' + (desc || event.name),
+            'SUMMARY:' + sanitizeICS(event.name + ' - Seal Stone'),
+            'DESCRIPTION:' + sanitizeICS(desc || event.name),
             'END:VEVENT', 'END:VCALENDAR'
           ].join('\r\n');
         }
@@ -2051,7 +2054,7 @@
           CAL_DATA.rounds.forEach(function(r) {
             r.events.forEach(function(e) { names[e.name] = true; });
           });
-          var sel = document.getElementById('cal-filter-event');
+          var sel = $filterEvent;
           sel.textContent = '';
           var allOpt = document.createElement('option');
           allOpt.value = 'all'; allOpt.textContent = 'All Events';
@@ -2064,52 +2067,67 @@
           sel.value = filterEvent;
         }
 
-        // Build day filter options from ALL rounds, with today listed first
+        // Cached day keys (built once after data load)
+        var cachedDayKeys = null;
+        var cachedDaySet = null;
+
+        function buildDayKeyCache() {
+          var seen = {};
+          var keys = [];
+          CAL_DATA.rounds.forEach(function(r) {
+            var year = getRoundYear(r);
+            r.events.forEach(function(evt) {
+              var key = getEventLocalDay(evt.start, year);
+              if (!seen[key]) {
+                seen[key] = true;
+                keys.push(key);
+              }
+            });
+          });
+          keys.sort();
+          // Move today to front (after "All Days")
+          var todayKey = toDateKey(new Date());
+          var todayIdx = keys.indexOf(todayKey);
+          if (todayIdx > 0) {
+            keys.splice(todayIdx, 1);
+            keys.unshift(todayKey);
+          }
+          cachedDayKeys = keys;
+          cachedDaySet = seen;
+        }
+
         function buildDayFilterOptions() {
-          var sel = document.getElementById('cal-filter-day');
+          var sel = $filterDay;
           sel.textContent = '';
           var allOpt = document.createElement('option');
           allOpt.value = 'all'; allOpt.textContent = 'All Days';
           sel.appendChild(allOpt);
 
-          if (!CAL_DATA) return;
+          if (!cachedDayKeys) return;
 
-          var seen = {};
-          var dayKeys = [];
-          CAL_DATA.rounds.forEach(function(r) {
-            var year = parseInt(r.weekStart.split('-')[0], 10);
-            r.events.forEach(function(evt) {
-              var key = getEventLocalDay(evt.start, year);
-              if (!seen[key]) {
-                seen[key] = true;
-                dayKeys.push(key);
-              }
-            });
-          });
-          dayKeys.sort();
-
-          // Move today to front (after "All Days")
-          var now = new Date();
-          var todayKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
-          var todayIdx = dayKeys.indexOf(todayKey);
-          if (todayIdx > 0) {
-            dayKeys.splice(todayIdx, 1);
-            dayKeys.unshift(todayKey);
-          }
-
-          dayKeys.forEach(function(k) {
+          cachedDayKeys.forEach(function(k) {
             var opt = document.createElement('option');
             opt.value = k; opt.textContent = formatDayLabel(k);
             sel.appendChild(opt);
           });
-          // Preserve selection if still valid
-          if (seen[filterDay]) {
+          if (cachedDaySet[filterDay]) {
             sel.value = filterDay;
           } else {
             sel.value = 'all';
             filterDay = 'all';
           }
         }
+
+        // Cache DOM refs used in render loops
+        var $nav = document.getElementById('cal-nav');
+        var $weekLabel = document.getElementById('cal-week-label');
+        var $weekDates = document.getElementById('cal-week-dates');
+        var $prevBtn = document.getElementById('cal-prev');
+        var $nextBtn = document.getElementById('cal-next');
+        var $events = document.getElementById('cal-events');
+        var $tzBanner = document.getElementById('cal-tz-banner');
+        var $filterEvent = document.getElementById('cal-filter-event');
+        var $filterDay = document.getElementById('cal-filter-day');
 
         function matchesFilters(evt, year) {
           if (filterEvent !== 'all' && evt.name !== filterEvent) return false;
@@ -2120,14 +2138,19 @@
           return true;
         }
 
+        var cachedTodayEvents = null;
+        var cachedTodayKey = null;
+
         function getTodayEvents() {
           if (!CAL_DATA) return [];
           var now = new Date();
+          var key = toDateKey(now);
+          if (cachedTodayKey === key) return cachedTodayEvents;
           var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
           var todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
           var results = [];
           CAL_DATA.rounds.forEach(function(r) {
-            var year = parseInt(r.weekStart.split('-')[0], 10);
+            var year = getRoundYear(r);
             r.events.forEach(function(evt) {
               var evtStart = parseEventDT(evt.start, year);
               var evtEnd = parseEventDT(evt.end, year);
@@ -2136,6 +2159,8 @@
               }
             });
           });
+          cachedTodayEvents = results;
+          cachedTodayKey = key;
           return results;
         }
 
@@ -2182,47 +2207,40 @@
 
         function updateTZBanner() {
           var tz = getUserTZ();
-          var banner = document.getElementById('cal-tz-banner');
-          if (banner) banner.textContent = 'Times shown in ' + tz.replace(/_/g, ' ');
+          if ($tzBanner) $tzBanner.textContent = 'Times shown in ' + tz.replace(/_/g, ' ');
         }
 
         function renderNoEvents(container, context) {
           var msg = document.createElement('div');
           msg.className = 'cal-no-events';
-          var parts = [];
-          if (filterEvent !== 'all') parts.push('"' + filterEvent + '"');
-          if (filterDay !== 'all') parts.push(formatDayLabel(filterDay));
-          msg.textContent = parts.length > 0
-            ? 'No ' + parts.join(' events on ') + ' events ' + context + '.'
-            : 'No events scheduled ' + context + '.';
+          var text = 'No events';
+          if (filterEvent !== 'all') text = 'No "' + filterEvent + '" events';
+          if (filterDay !== 'all') text += ' on ' + formatDayLabel(filterDay);
+          msg.textContent = text + ' ' + context + '.';
           container.appendChild(msg);
         }
 
         function renderToday() {
           if (!CAL_DATA) return;
-          document.getElementById('cal-nav').style.display = 'none';
-          var datesEl = document.getElementById('cal-week-dates');
+          $nav.style.display = 'none';
           var now = new Date();
-          datesEl.textContent = DAY_NAMES[now.getDay()] + ', ' + MONTH_NAMES[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
-
-          updateTZBanner();
+          $weekDates.textContent = DAY_NAMES[now.getDay()] + ', ' + MONTH_NAMES[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
 
           var allToday = getTodayEvents();
           buildDayFilterOptions();
 
-          var container = document.getElementById('cal-events');
-          container.textContent = '';
+          $events.textContent = '';
 
           var filtered = allToday.filter(function(item) {
             return matchesFilters(item.evt, item.year);
           });
 
           if (filtered.length === 0) {
-            renderNoEvents(container, 'for today');
+            renderNoEvents($events, 'for today');
             return;
           }
           filtered.forEach(function(item) {
-            renderEventCard(item.evt, item.year, container);
+            renderEventCard(item.evt, item.year, $events);
           });
         }
 
@@ -2233,34 +2251,31 @@
           currentRound = index;
           var round = rounds[index];
 
-          document.getElementById('cal-nav').style.display = '';
+          $nav.style.display = '';
 
           var label = round.round === 'Settlement' ? 'Settlement' : 'Round ' + round.round;
-          document.getElementById('cal-week-label').textContent = label;
-          document.getElementById('cal-week-dates').textContent = round.weekStart + ' to ' + round.weekEnd;
+          $weekLabel.textContent = label;
+          $weekDates.textContent = round.weekStart + ' to ' + round.weekEnd;
 
-          document.getElementById('cal-prev').disabled = (index === 0);
-          document.getElementById('cal-next').disabled = (index === rounds.length - 1);
+          $prevBtn.disabled = (index === 0);
+          $nextBtn.disabled = (index === rounds.length - 1);
 
-          updateTZBanner();
-
-          var year = parseInt(round.weekStart.split('-')[0], 10);
+          var year = getRoundYear(round);
 
           buildDayFilterOptions();
 
-          var container = document.getElementById('cal-events');
-          container.textContent = '';
+          $events.textContent = '';
 
           var events = round.events.filter(function(evt) {
             return matchesFilters(evt, year);
           });
 
           if (events.length === 0) {
-            renderNoEvents(container, 'this round');
+            renderNoEvents($events, 'this round');
             return;
           }
           events.forEach(function(evt) {
-            renderEventCard(evt, year, container);
+            renderEventCard(evt, year, $events);
           });
         }
 
@@ -2289,21 +2304,21 @@
         });
 
         // Filter dropdowns
-        document.getElementById('cal-filter-event').addEventListener('change', function() {
+        $filterEvent.addEventListener('change', function() {
           filterEvent = this.value;
           render();
         });
-        document.getElementById('cal-filter-day').addEventListener('change', function() {
+        $filterDay.addEventListener('change', function() {
           filterDay = this.value;
           render();
         });
 
         // Round navigation
-        document.getElementById('cal-prev').addEventListener('click', function() {
+        $prevBtn.addEventListener('click', function() {
           filterDay = 'all';
           renderRound(currentRound - 1);
         });
-        document.getElementById('cal-next').addEventListener('click', function() {
+        $nextBtn.addEventListener('click', function() {
           filterDay = 'all';
           renderRound(currentRound + 1);
         });
@@ -2318,9 +2333,11 @@
               loadCalData().then(function() {
                 currentRound = findCurrentRound();
                 buildEventFilterOptions();
+                buildDayKeyCache();
+                updateTZBanner();
                 render();
               }).catch(function() {
-                document.getElementById('cal-events').textContent = 'Failed to load calendar data.';
+                $events.textContent = 'Failed to load calendar data.';
               });
             } else if (calModalEl.classList.contains('active') && calLoaded) {
               currentRound = findCurrentRound();
