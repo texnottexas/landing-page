@@ -1543,6 +1543,7 @@
         <span class="cal-view-label">View by:</span>
         <div class="cal-view-toggle">
           <button class="cal-view-btn active" id="cal-view-today">Today</button>
+          <button class="cal-view-btn" id="cal-view-next3">Next 3 Days</button>
           <button class="cal-view-btn" id="cal-view-round">Round</button>
         </div>
       </div>
@@ -2161,21 +2162,25 @@
           cachedDaySet = seen;
         }
 
-        function buildDayFilterOptions() {
+        // scopedKeys: optional array of day keys to show (e.g. for round view)
+        function buildDayFilterOptions(scopedKeys) {
           var sel = $filterDay;
           sel.textContent = '';
           var allOpt = document.createElement('option');
           allOpt.value = 'all'; allOpt.textContent = 'All Days';
           sel.appendChild(allOpt);
 
-          if (!cachedDayKeys) return;
+          var keys = scopedKeys || cachedDayKeys;
+          if (!keys) return;
 
-          cachedDayKeys.forEach(function(k) {
+          var validSet = {};
+          keys.forEach(function(k) {
+            validSet[k] = true;
             var opt = document.createElement('option');
             opt.value = k; opt.textContent = formatDayLabel(k);
             sel.appendChild(opt);
           });
-          if (cachedDaySet[filterDay]) {
+          if (validSet[filterDay]) {
             sel.value = filterDay;
           } else {
             sel.value = 'all';
@@ -2226,6 +2231,25 @@
           });
           cachedTodayEvents = results;
           cachedTodayKey = key;
+          return results;
+        }
+
+        function getNext3DaysEvents() {
+          if (!CAL_DATA) return [];
+          var now = new Date();
+          var rangeStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+          var rangeEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2, 23, 59, 59);
+          var results = [];
+          CAL_DATA.rounds.forEach(function(r) {
+            var year = getRoundYear(r);
+            r.events.forEach(function(evt) {
+              var evtStart = parseEventDT(evt.start, year);
+              var evtEnd = parseEventDT(evt.end, year);
+              if (evtStart <= rangeEnd && evtEnd >= rangeStart) {
+                results.push({ evt: evt, year: year, round: r.round });
+              }
+            });
+          });
           return results;
         }
 
@@ -2322,6 +2346,31 @@
           });
         }
 
+        function renderNext3() {
+          if (!CAL_DATA) return;
+          $nav.style.display = 'none';
+          var now = new Date();
+          var end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);
+          $weekDates.textContent = formatLocalDate(now) + ' - ' + formatLocalDate(end) + ', ' + now.getFullYear();
+
+          var allNext3 = getNext3DaysEvents();
+          buildDayFilterOptions();
+
+          $events.textContent = '';
+
+          var filtered = allNext3.filter(function(item) {
+            return matchesFilters(item.evt, item.year);
+          });
+
+          if (filtered.length === 0) {
+            renderNoEvents($events, 'in the next 3 days');
+            return;
+          }
+          filtered.forEach(function(item) {
+            renderEventCard(item.evt, item.year, $events);
+          });
+        }
+
         function renderRound(index) {
           if (!CAL_DATA) return;
           var rounds = CAL_DATA.rounds;
@@ -2340,7 +2389,18 @@
 
           var year = getRoundYear(round);
 
-          buildDayFilterOptions();
+          // Scope day filter to this round's days only
+          var roundDayKeys = [];
+          var seen = {};
+          round.events.forEach(function(evt) {
+            var key = getEventLocalDay(evt.start, year);
+            if (!seen[key]) {
+              seen[key] = true;
+              roundDayKeys.push(key);
+            }
+          });
+          roundDayKeys.sort();
+          buildDayFilterOptions(roundDayKeys);
 
           $events.textContent = '';
 
@@ -2359,27 +2419,27 @@
 
         function render() {
           if (viewMode === 'today') renderToday();
+          else if (viewMode === 'next3') renderNext3();
           else renderRound(currentRound);
         }
 
         // View toggle
         var viewTodayBtn = document.getElementById('cal-view-today');
+        var viewNext3Btn = document.getElementById('cal-view-next3');
         var viewRoundBtn = document.getElementById('cal-view-round');
+        var viewBtns = [viewTodayBtn, viewNext3Btn, viewRoundBtn];
 
-        viewTodayBtn.addEventListener('click', function() {
-          viewMode = 'today';
-          viewTodayBtn.classList.add('active');
-          viewRoundBtn.classList.remove('active');
+        function setActiveView(mode, activeBtn) {
+          viewMode = mode;
           filterDay = 'all';
+          viewBtns.forEach(function(b) { b.classList.remove('active'); });
+          activeBtn.classList.add('active');
           render();
-        });
-        viewRoundBtn.addEventListener('click', function() {
-          viewMode = 'round';
-          viewRoundBtn.classList.add('active');
-          viewTodayBtn.classList.remove('active');
-          filterDay = 'all';
-          render();
-        });
+        }
+
+        viewTodayBtn.addEventListener('click', function() { setActiveView('today', viewTodayBtn); });
+        viewNext3Btn.addEventListener('click', function() { setActiveView('next3', viewNext3Btn); });
+        viewRoundBtn.addEventListener('click', function() { setActiveView('round', viewRoundBtn); });
 
         // Filter dropdowns
         $filterEvent.addEventListener('change', function() {
