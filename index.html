@@ -464,12 +464,18 @@
       -webkit-text-fill-color: transparent;
       animation: footer-shimmer 6s linear infinite;
     }
-    .cal-controls {
+    .cal-view-row {
       display: flex;
       align-items: center;
+      justify-content: center;
       gap: .5rem;
-      margin-bottom: 1rem;
-      flex-wrap: wrap;
+      margin-bottom: .75rem;
+    }
+    .cal-view-label {
+      font-size: .72rem;
+      font-weight: 600;
+      color: var(--muted);
+      white-space: nowrap;
     }
     .cal-view-toggle {
       display: flex;
@@ -481,7 +487,7 @@
       background: var(--tag);
       border: none;
       color: var(--muted);
-      padding: .35rem .7rem;
+      padding: .35rem .75rem;
       font-size: .72rem;
       cursor: pointer;
       font-family: inherit;
@@ -496,9 +502,14 @@
     .cal-view-btn:not(:last-child) {
       border-right: 1px solid var(--border);
     }
+    .cal-filter-row {
+      display: flex;
+      gap: .5rem;
+      margin-bottom: 1rem;
+    }
     .cal-filter {
       flex: 1;
-      min-width: 140px;
+      min-width: 0;
       background: var(--tag);
       border: 1px solid var(--border);
       color: var(--text);
@@ -526,8 +537,6 @@
       .cal-header { flex-direction: column; gap: .75rem; }
       .cal-event-top { flex-direction: column; align-items: flex-start; gap: .25rem; }
       .cal-event-time { font-size: .68rem; }
-      .cal-controls { flex-direction: column; align-items: stretch; }
-      .cal-filter { min-width: 100%; }
     }
 
     /* Image modal */
@@ -1451,13 +1460,19 @@
         </div>
       </div>
       <div class="cal-tz-banner" id="cal-tz-banner">Times shown in your local timezone</div>
-      <div class="cal-controls">
+      <div class="cal-view-row">
+        <span class="cal-view-label">View by:</span>
         <div class="cal-view-toggle">
           <button class="cal-view-btn active" id="cal-view-today">Today</button>
           <button class="cal-view-btn" id="cal-view-round">Round</button>
         </div>
-        <select class="cal-filter" id="cal-filter" aria-label="Filter events">
+      </div>
+      <div class="cal-filter-row">
+        <select class="cal-filter" id="cal-filter-event" aria-label="Filter by event">
           <option value="all">All Events</option>
+        </select>
+        <select class="cal-filter" id="cal-filter-day" aria-label="Filter by day">
+          <option value="all">All Days</option>
         </select>
       </div>
       <div class="cal-week-dates" id="cal-week-dates"></div>
@@ -1885,8 +1900,12 @@
       (function initCalendar() {
         var CAL_DATA = null;
         var currentRound = 0;
-        var viewMode = 'today'; // 'today' or 'round'
-        var activeFilter = 'all';
+        var viewMode = 'today';
+        var filterEvent = 'all';
+        var filterDay = 'all';
+        var DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+        var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        var SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
         function loadCalData() {
           return fetch('seal-stone-calendar.json')
@@ -1931,23 +1950,33 @@
           var h = dt.getHours();
           var m = String(dt.getMinutes()).padStart(2, '0');
           var ampm = h >= 12 ? 'PM' : 'AM';
-          var h12 = h % 12 || 12;
-          return h12 + ':' + m + ' ' + ampm;
+          return (h % 12 || 12) + ':' + m + ' ' + ampm;
         }
 
         function formatLocalDate(dt) {
-          var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-          return months[dt.getMonth()] + ' ' + dt.getDate();
+          return SHORT_MONTHS[dt.getMonth()] + ' ' + dt.getDate();
         }
 
         function formatDateRange(startStr, endStr, year) {
           var startDT = parseEventDT(startStr, year);
           var endDT = parseEventDT(endStr, year);
-          var sameDay = startDT.getDate() === endDT.getDate() && startDT.getMonth() === endDT.getMonth();
-          if (sameDay) {
+          if (startDT.getDate() === endDT.getDate() && startDT.getMonth() === endDT.getMonth()) {
             return formatLocalTime(startDT) + ' - ' + formatLocalTime(endDT);
           }
           return formatLocalDate(startDT) + ' ' + formatLocalTime(startDT) + ' - ' + formatLocalDate(endDT) + ' ' + formatLocalTime(endDT);
+        }
+
+        // Get the local day key for an event (for day filtering)
+        // Returns "YYYY-MM-DD" of the local start date
+        function getEventLocalDay(dateStr, year) {
+          var dt = parseEventDT(dateStr, year);
+          return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+        }
+
+        function formatDayLabel(dateKey) {
+          var parts = dateKey.split('-');
+          var dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+          return DAY_NAMES[dt.getDay()] + ', ' + SHORT_MONTHS[dt.getMonth()] + ' ' + dt.getDate();
         }
 
         function toICSDate(dateStr, year) {
@@ -1994,14 +2023,14 @@
           return rounds.length - 1;
         }
 
-        // Collect all unique event names across all rounds for the filter dropdown
-        function buildFilterOptions() {
+        // Build event name filter options
+        function buildEventFilterOptions() {
           if (!CAL_DATA) return;
           var names = {};
           CAL_DATA.rounds.forEach(function(r) {
             r.events.forEach(function(e) { names[e.name] = true; });
           });
-          var sel = document.getElementById('cal-filter');
+          var sel = document.getElementById('cal-filter-event');
           sel.textContent = '';
           var allOpt = document.createElement('option');
           allOpt.value = 'all'; allOpt.textContent = 'All Events';
@@ -2011,10 +2040,52 @@
             opt.value = n; opt.textContent = n;
             sel.appendChild(opt);
           });
-          sel.value = activeFilter;
+          sel.value = filterEvent;
         }
 
-        // Get today's events across all rounds
+        // Build day filter options for the current round's events
+        function buildDayFilterOptions(events, year) {
+          var sel = document.getElementById('cal-filter-day');
+          sel.textContent = '';
+          var allOpt = document.createElement('option');
+          allOpt.value = 'all'; allOpt.textContent = 'All Days';
+          sel.appendChild(allOpt);
+
+          var seen = {};
+          var dayKeys = [];
+          events.forEach(function(evt) {
+            var raw = typeof evt.start === 'string' ? evt : evt.evt;
+            var y = year || evt.year;
+            var key = getEventLocalDay(raw.start, y);
+            if (!seen[key]) {
+              seen[key] = true;
+              dayKeys.push(key);
+            }
+          });
+          dayKeys.sort();
+          dayKeys.forEach(function(k) {
+            var opt = document.createElement('option');
+            opt.value = k; opt.textContent = formatDayLabel(k);
+            sel.appendChild(opt);
+          });
+          // Preserve selection if still valid
+          if (seen[filterDay]) {
+            sel.value = filterDay;
+          } else {
+            sel.value = 'all';
+            filterDay = 'all';
+          }
+        }
+
+        function matchesFilters(evt, year) {
+          if (filterEvent !== 'all' && evt.name !== filterEvent) return false;
+          if (filterDay !== 'all') {
+            var key = getEventLocalDay(evt.start, year);
+            if (key !== filterDay) return false;
+          }
+          return true;
+        }
+
         function getTodayEvents() {
           if (!CAL_DATA) return [];
           var now = new Date();
@@ -2026,7 +2097,6 @@
             r.events.forEach(function(evt) {
               var evtStart = parseEventDT(evt.start, year);
               var evtEnd = parseEventDT(evt.end, year);
-              // Event overlaps with today if it starts before today ends AND ends after today starts
               if (evtStart <= todayEnd && evtEnd >= todayStart) {
                 results.push({ evt: evt, year: year, round: r.round });
               }
@@ -2082,34 +2152,42 @@
           if (banner) banner.textContent = 'Times shown in ' + tz.replace(/_/g, ' ');
         }
 
+        function renderNoEvents(container, context) {
+          var msg = document.createElement('div');
+          msg.className = 'cal-no-events';
+          var parts = [];
+          if (filterEvent !== 'all') parts.push('"' + filterEvent + '"');
+          if (filterDay !== 'all') parts.push(formatDayLabel(filterDay));
+          msg.textContent = parts.length > 0
+            ? 'No ' + parts.join(' events on ') + ' events ' + context + '.'
+            : 'No events scheduled ' + context + '.';
+          container.appendChild(msg);
+        }
+
         function renderToday() {
           if (!CAL_DATA) return;
-          var nav = document.getElementById('cal-nav');
-          nav.style.display = 'none';
+          document.getElementById('cal-nav').style.display = 'none';
           var datesEl = document.getElementById('cal-week-dates');
           var now = new Date();
-          var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-          var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-          datesEl.textContent = days[now.getDay()] + ', ' + months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
+          datesEl.textContent = DAY_NAMES[now.getDay()] + ', ' + MONTH_NAMES[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
 
           updateTZBanner();
+
+          // Build day filter from today's events (before event filter)
+          var allToday = getTodayEvents();
+          buildDayFilterOptions(allToday);
 
           var container = document.getElementById('cal-events');
           container.textContent = '';
 
-          var todayEvents = getTodayEvents();
-          var filtered = todayEvents.filter(function(item) {
-            return activeFilter === 'all' || item.evt.name === activeFilter;
+          var filtered = allToday.filter(function(item) {
+            return matchesFilters(item.evt, item.year);
           });
 
           if (filtered.length === 0) {
-            var msg = document.createElement('div');
-            msg.className = 'cal-no-events';
-            msg.textContent = activeFilter === 'all' ? 'No events scheduled for today.' : 'No "' + activeFilter + '" events today.';
-            container.appendChild(msg);
+            renderNoEvents(container, 'for today');
             return;
           }
-
           filtered.forEach(function(item) {
             renderEventCard(item.evt, item.year, container);
           });
@@ -2122,8 +2200,7 @@
           currentRound = index;
           var round = rounds[index];
 
-          var nav = document.getElementById('cal-nav');
-          nav.style.display = '';
+          document.getElementById('cal-nav').style.display = '';
 
           var label = round.round === 'Settlement' ? 'Settlement' : 'Round ' + round.round;
           document.getElementById('cal-week-label').textContent = label;
@@ -2134,37 +2211,33 @@
 
           updateTZBanner();
 
+          var year = parseInt(round.weekStart.split('-')[0], 10);
+
+          // Build day filter from this round's events (before event filter)
+          buildDayFilterOptions(round.events, year);
+
           var container = document.getElementById('cal-events');
           container.textContent = '';
 
-          var year = parseInt(round.weekStart.split('-')[0], 10);
-
           var events = round.events.filter(function(evt) {
-            return activeFilter === 'all' || evt.name === activeFilter;
+            return matchesFilters(evt, year);
           });
 
           if (events.length === 0) {
-            var msg = document.createElement('div');
-            msg.className = 'cal-no-events';
-            msg.textContent = 'No "' + activeFilter + '" events this round.';
-            container.appendChild(msg);
+            renderNoEvents(container, 'this round');
             return;
           }
-
           events.forEach(function(evt) {
             renderEventCard(evt, year, container);
           });
         }
 
         function render() {
-          if (viewMode === 'today') {
-            renderToday();
-          } else {
-            renderRound(currentRound);
-          }
+          if (viewMode === 'today') renderToday();
+          else renderRound(currentRound);
         }
 
-        // View toggle buttons
+        // View toggle
         var viewTodayBtn = document.getElementById('cal-view-today');
         var viewRoundBtn = document.getElementById('cal-view-round');
 
@@ -2172,26 +2245,34 @@
           viewMode = 'today';
           viewTodayBtn.classList.add('active');
           viewRoundBtn.classList.remove('active');
+          filterDay = 'all';
           render();
         });
         viewRoundBtn.addEventListener('click', function() {
           viewMode = 'round';
           viewRoundBtn.classList.add('active');
           viewTodayBtn.classList.remove('active');
+          filterDay = 'all';
           render();
         });
 
-        // Filter dropdown
-        document.getElementById('cal-filter').addEventListener('change', function() {
-          activeFilter = this.value;
+        // Filter dropdowns
+        document.getElementById('cal-filter-event').addEventListener('change', function() {
+          filterEvent = this.value;
+          render();
+        });
+        document.getElementById('cal-filter-day').addEventListener('change', function() {
+          filterDay = this.value;
           render();
         });
 
-        // Navigation (only visible in round view)
+        // Round navigation
         document.getElementById('cal-prev').addEventListener('click', function() {
+          filterDay = 'all';
           renderRound(currentRound - 1);
         });
         document.getElementById('cal-next').addEventListener('click', function() {
+          filterDay = 'all';
           renderRound(currentRound + 1);
         });
 
@@ -2204,7 +2285,7 @@
               calLoaded = true;
               loadCalData().then(function() {
                 currentRound = findCurrentRound();
-                buildFilterOptions();
+                buildEventFilterOptions();
                 render();
               }).catch(function() {
                 document.getElementById('cal-events').textContent = 'Failed to load calendar data.';
