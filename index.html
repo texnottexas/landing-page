@@ -445,6 +445,18 @@
     .cal-dot.realm { background: #3fb950; }
     .cal-dot.treasury { background: #d29922; }
     .cal-dot.storm { background: #f85149; }
+    .cal-today-badge {
+      font-size: .6rem;
+      font-weight: 700;
+      color: var(--bg);
+      background: var(--accent);
+      border-radius: 4px;
+      padding: .1rem .35rem;
+      margin-left: .4rem;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+      flex-shrink: 0;
+    }
     .cal-dot.other { background: var(--accent); }
     .cal-tz-banner {
       text-align: center;
@@ -1979,8 +1991,9 @@
         function formatDateRange(startStr, endStr, year) {
           var startDT = parseEventDT(startStr, year);
           var endDT = parseEventDT(endStr, year);
-          if (startDT.getDate() === endDT.getDate() && startDT.getMonth() === endDT.getMonth()) {
-            return formatLocalTime(startDT) + ' - ' + formatLocalTime(endDT);
+          var sameDay = startDT.getDate() === endDT.getDate() && startDT.getMonth() === endDT.getMonth();
+          if (sameDay) {
+            return formatLocalDate(startDT) + ' ' + formatLocalTime(startDT) + ' - ' + formatLocalTime(endDT);
           }
           return formatLocalDate(startDT) + ' ' + formatLocalTime(startDT) + ' - ' + formatLocalDate(endDT) + ' ' + formatLocalTime(endDT);
         }
@@ -2179,6 +2192,19 @@
           nameEl.className = 'cal-event-name';
           nameEl.appendChild(dot);
           nameEl.appendChild(document.createTextNode(evt.name));
+
+          // Add "Today" badge if event overlaps with today
+          var now = new Date();
+          var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          var todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+          var evtStart = parseEventDT(evt.start, year);
+          var evtEnd = parseEventDT(evt.end, year);
+          if (evtStart <= todayEnd && evtEnd >= todayStart) {
+            var badge = document.createElement('span');
+            badge.className = 'cal-today-badge';
+            badge.textContent = 'Today';
+            nameEl.appendChild(badge);
+          }
 
           var timeEl = document.createElement('span');
           timeEl.className = 'cal-event-time';
