@@ -986,6 +986,139 @@
     }
     .rc-count.visible { opacity: 1; }
 
+    /* Roster button */
+    .roster-btn {
+      display: inline-block;
+      font-size: .7rem;
+      line-height: 1;
+      cursor: pointer;
+      background: none;
+      border: none;
+      color: var(--muted);
+      padding: 0;
+      margin-right: .5rem;
+      opacity: .5;
+      transition: opacity .15s, color .15s;
+    }
+    .roster-btn:hover { opacity: 1; color: var(--accent); }
+
+    /* Roster modal */
+    .roster-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 300;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .roster-modal.active { display: flex; }
+    .roster-modal-content {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.25rem;
+      max-width: 520px;
+      width: 100%;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    .roster-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: .75rem;
+    }
+    .roster-header h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin: 0;
+    }
+    .roster-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 1.2rem;
+      cursor: pointer;
+      padding: .2rem;
+      line-height: 1;
+    }
+    .roster-close:hover { color: var(--text); }
+    .roster-controls {
+      display: flex;
+      gap: .5rem;
+      margin-bottom: .6rem;
+    }
+    .roster-filter {
+      background: var(--tag);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: .3rem .5rem;
+      font-size: .75rem;
+      cursor: pointer;
+    }
+    .roster-filter option { background: var(--card); }
+    .roster-search {
+      flex: 1;
+      background: var(--tag);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: .3rem .5rem;
+      font-size: .75rem;
+      outline: none;
+    }
+    .roster-search::placeholder { color: var(--muted); }
+    .roster-search:focus { border-color: var(--accent); }
+    .roster-table-wrap {
+      overflow-y: auto;
+      flex: 1;
+      min-height: 0;
+    }
+    .roster-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .75rem;
+    }
+    .roster-table th {
+      position: sticky;
+      top: 0;
+      background: var(--card);
+      border-bottom: 2px solid var(--border);
+      padding: .4rem .5rem;
+      text-align: left;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .roster-table th:hover { color: var(--accent); }
+    .roster-table th .sort-arrow { font-size: .6rem; margin-left: .2rem; }
+    .roster-table td {
+      padding: .35rem .5rem;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .roster-table tr:hover td { background: var(--glow); }
+    .roster-table .rank-col { text-align: center; }
+    .roster-table .power-col { text-align: right; font-variant-numeric: tabular-nums; }
+    .roster-count {
+      font-size: .65rem;
+      color: var(--muted);
+      margin-top: .4rem;
+      text-align: right;
+    }
+    @media (max-width: 500px) {
+      .roster-modal-content { padding: .75rem; border-radius: 12px; }
+      .roster-table { font-size: .7rem; }
+      .roster-table th, .roster-table td { padding: .3rem .35rem; }
+    }
+
     /* View toggle button */
     .view-toggle {
       display: none;
@@ -1591,8 +1724,40 @@
   <footer class="site-footer">
     <span class="footer-text shimmer-text">Brought to you by supporters of the fk boats movement</span><br>
     <a href="https://github.com/texnottexas/landing-page" target="_blank" rel="noopener noreferrer">GitHub</a>
-    <br><span class="rc-wrap" id="rc-wrap"><span class="rc-icon">&#127871;</span><span class="rc-count" id="rc-count"></span></span>
+    <br><button class="roster-btn" id="rosterBtn" title="Player Roster">&#129504;</button><span class="rc-wrap" id="rc-wrap"><span class="rc-icon">&#127871;</span><span class="rc-count" id="rc-count"></span></span>
   </footer>
+
+  <!-- Roster Modal -->
+  <div id="roster-modal" class="roster-modal" role="dialog" aria-modal="true" aria-label="Player Roster">
+    <div class="roster-modal-content">
+      <div class="roster-header">
+        <h2>Player Roster</h2>
+        <button class="roster-close" id="roster-close" aria-label="Close">&#10005;</button>
+      </div>
+      <div class="roster-controls">
+        <select class="roster-filter" id="rosterFilter">
+          <option value="">All Players</option>
+          <option value="DOG*">DOG*</option>
+          <option value="MSS">MSS</option>
+        </select>
+        <input type="text" class="roster-search" id="rosterSearch" placeholder="Search name...">
+      </div>
+      <div class="roster-table-wrap">
+        <table class="roster-table">
+          <thead>
+            <tr>
+              <th data-sort="name">Name <span class="sort-arrow"></span></th>
+              <th data-sort="alliance">Alliance <span class="sort-arrow"></span></th>
+              <th data-sort="rank" class="rank-col">Rank <span class="sort-arrow"></span></th>
+              <th data-sort="power" class="power-col">Power <span class="sort-arrow"></span></th>
+            </tr>
+          </thead>
+          <tbody id="rosterBody"></tbody>
+        </table>
+      </div>
+      <div class="roster-count" id="rosterCount"></div>
+    </div>
+  </div>
 
   <script>
     (function() {
@@ -1738,11 +1903,95 @@
       // Close all modals on Escape
       document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
-          document.querySelectorAll('.modal-overlay.active, .unit-modal.active, .tc-modal.active, .defense-modal.active, .rockfield-modal.active, .cal-modal.active').forEach(function(m) {
+          document.querySelectorAll('.modal-overlay.active, .unit-modal.active, .tc-modal.active, .defense-modal.active, .rockfield-modal.active, .cal-modal.active, .roster-modal.active').forEach(function(m) {
             m.classList.remove('active');
           });
         }
       });
+
+      // Roster modal
+      (function() {
+        var RANK_MAP = {5:'R5',4:'R4',3:'R3',2:'R2',1:'R1',6:'Dir',7:'Dir',8:'Dir',9:'Dir'};
+        var RAW = [["siberian","DOG*",3,59665022],["Cappy252","DOG*",2,55360084],["iknowwho","DOG*",2,67251884],["Sizz","DOG*",3,63303517],["Aresu","DOG*",2,73531560],["a1capo","DOG*",2,50682929],["Lone𓊝﹏","DOG*",4,74317855],["dlwlrma","DOG*",2,51688644],["Mesi🥨🍺","DOG*",2,69631114],["Biel","DOG*",2,56881868],["gomas","DOG*",2,51422056],["Link🔗","DOG*",4,69056384],["Darkspy","DOG*",3,70114134],["Karlsson","DOG*",3,59354277],["Schlumpf","DOG*",2,58149962],["GHINX","DOG*",3,50746640],["MrKaplan","DOG*",3,53010409],["AnGeLDuS","DOG*",2,59941831],["Ezadura","DOG*",3,52669234],["Rush","DOG*",2,62970128],["Eggy🍺🌕","DOG*",3,57024471],["Hope","DOG*",3,60832561],["Pattoo","DOG*",2,47810414],["BubbaG","DOG*",3,57508517],["bullitt","DOG*",3,63525092],["JDTog","DOG*",2,63575805],["HenAub","DOG*",2,53845647],["Pr🍑ject","DOG*",2,73343583],["BruceFFS","DOG*",3,68701029],["CwarK","DOG*",3,65620097],["MF_Bluey","DOG*",4,69969307],["MadMaxx","DOG*",4,94860720],["Bucky","DOG*",2,63745330],["Smurfx😼","DOG*",4,81510611],["VIPER","DOG*",3,58685837],["Mаximum","DOG*",4,87100019],["SkEnDoR","DOG*",2,58840961],["Drak🛠️","DOG*",3,69269580],["joske","DOG*",2,64655610],["Gaffer","DOG*",2,64212348],["Dyson","DOG*",3,66339926],["BURB","DOG*",4,67502768],["mootduff","DOG*",2,68798347],["DragonMC","DOG*",2,73112826],["Otts","DOG*",8,91975183],["GA","DOG*",4,96378553],["Action","DOG*",3,74635740],["Abdullah","DOG*",3,57568309],["Kraken","DOG*",3,73777860],["AlexMat","DOG*",2,79645720],["SubZero","DOG*",2,52131721],["MK9","DOG*",2,57582317],["🔥Talion","DOG*",4,76213920],["Dtp20","DOG*",4,86429054],["🩸Rᥲqqᥲ᥉","DOG*",2,67414262],["Swagger","DOG*",3,53987352],["Kurg42","DOG*",2,63903146],["DoubleD","DOG*",2,49262445],["DADA🤠","DOG*",2,71925596],["Bet","DOG*",4,55834749],["Hilly","DOG*",4,76132056],["DevilDog","DOG*",2,76820064],["Sparky","DOG*",4,61478817],["Eggman","DOG*",2,88384601],["Roses","DOG*",3,63031615],["dvibe420","DOG*",4,66505681],["Melo84","DOG*",2,53323993],["Motyer","DOG*",4,67711661],["TacoSlyr","DOG*",3,44123794],["Knckls","DOG*",2,63178744],["Biggie","DOG*",4,84855031],["ɢᴏʀɪʟʟᴀ","DOG*",3,60443320],["🍍Sloth","DOG*",2,71603165],["Vegeta🔥","DOG*",4,85880338],["CptKarl","DOG*",2,90178747],["Mephisto","DOG*",2,106129880],["PACrtR","DOG*",2,79897438],["Heloise","DOG*",3,57827771],["Shorty💋","DOG*",3,56517146],["BlindGuy","DOG*",3,62792990],["SNAKE","DOG*",3,55096513],["Jerky✊🏼","DOG*",9,88721926],["Nizer","DOG*",2,63298663],["Atoto","DOG*",3,65652986],["Ary💩","DOG*",2,88053861],["fkgeorgd","DOG*",2,84344749],["CaptSexy","DOG*",3,59147226],["BadDisya","DOG*",3,43371515],["HotRod","DOG*",3,59578949],["Jopn17tl","DOG*",6,85101349],["Tomas3rd","DOG*",2,70100812],["K5_↑🕊","DOG*",3,42090309],["kiara","DOG*",3,50221097],["Pete","DOG*",3,52026900],["Bchara⚡️","DOG*",2,67178684],["Wonka","DOG*",3,83527744],["AC","DOG*",3,66358144],["Sienna🩸","DOG*",2,40708472],["Widdy","DOG*",3,81713459],["Nembo😈","DOG*",3,52720665],["👑Aurora","DOG*",3,58536994],["It'sMe","DOG*",3,54889429],["🌸Claire","DOG*",3,63036431],["leon","DOG*",2,49308381],["DeathGun","DOG*",2,69165189],["Shay","DOG*",2,68638199],["Bear⚫🍌⚫","DOG*",2,69223058],["InDiCa🔥","DOG*",3,56444859],["Ahsoka❣️","DOG*",7,67272402],["Magicguy","DOG*",3,68855312],["JBouli","DOG*",4,61678655],["Gorilla","DOG*",2,76384869],["Samson","DOG*",4,76088110],["Seva💋","DOG*",3,51815046],["BMS🐼","DOG*",2,69472586],["saint","DOG*",3,62940247],["MONKEY🐒","DOG*",4,77854820],["Brain","DOG*",3,65137119],["TigerMan","DOG*",3,45068317],["Gunner","DOG*",2,55756321],["kom","DOG*",2,61394490],["Mulan⚡️","DOG*",2,70909080],["Brewdog","DOG*",3,66305514],["Maynard","DOG*",2,80283403],["BAL","DOG*",2,68868958],["cardsfan","DOG*",4,70846944],["HELLFIRE","DOG*",2,62610436],["♦️GⓂ️♦️","DOG*",2,65526311],["PeeWee","DOG*",2,133808014],["34OfOtts","DOG*",3,41571393],["J™","DOG*",2,91713635],["agony","DOG*",3,67323814],["Skunky","DOG*",3,66709998],["Sparta🥕","DOG*",2,121954759],["Demon😈™","DOG*",2,84527089],["ChauSui","DOG*",2,94642677],["TheJolly","DOG*",3,57831091],["Thor⚡️","DOG*",2,78264164],["Lady🐞","DOG*",2,83195012],["Rouvinho","DOG*",2,69862457],["Meliodas","DOG*",3,80124049],["HourPa😈","DOG*",2,59210222],["Morvessa","DOG*",2,74621024],["Joey","DOG*",2,67195124],["Faxe🐼","DOG*",2,83214129],["20100","DOG*",3,53460570],["Caleb","DOG*",3,64186845],["Rеx","DOG*",4,59463812],["Eny🖖","DOG*",2,115303653],["nigel","DOG*",3,58323921],["Drewskii","DOG*",2,80002095],["H̷ΣⱠMØ","DOG*",2,73414378],["Smalls","DOG*",3,47495064],["AliG☘️","DOG*",3,52037821],["Calabro","DOG*",2,69689801],["OEL13","DOG*",2,54624543],["JustCuz","DOG*",3,61535995],["Rollô","DOG*",4,57499038],["Tex","DOG*",5,109113117],["AjMaL","DOG*",2,55545637],["🔱Ɖ₳Ɽ₭🔱","DOG*",2,55505732],["wolfie🐺","DOG*",4,82531988],["aristos","DOG*",3,58823139],["Mando","DOG*",3,58790658],["Livv👑","DOG*",3,69686496],["KingSnek","DOG*",2,99452463],["🔱DNA🔱","DOG*",3,75548489],["Quaggy","DOG*",2,72708421],["unkown","DOG*",3,44212371],["Kezakoo","MSS",2,54642169],["4NiKThor","MSS",2,57099413],["Setheee","MSS",2,44600620],["Fenrir","MSS",2,35879353],["morN1Ng⭐","MSS",2,87351490],["SGTOLI","MSS",3,45057354],["MattyP","MSS",4,52743916],["Jb2788","MSS",2,63278220],["Leev","MSS",3,63578981],["Coupe","MSS",2,41712624],["Vik","MSS",3,60326972],["MrP","MSS",3,37821597],["🐯XuLFI༒","MSS",3,47063237],["ErikR™️","MSS",3,53237153],["Thunder","MSS",3,60784192],["spooky","MSS",3,59770639],["BoobMan","MSS",2,62592430],["MJ","MSS",2,94171380],["iGerged","MSS",3,81567428],["Sirjay86","MSS",2,78139172],["Lagonzo","MSS",3,60915913],["philo1","MSS",3,104056599],["Y0da","MSS",3,70198583],["tearaway","MSS",2,38713722],["Vytautas","MSS",3,60007809],["Rudy","MSS",2,59903948],["MM","MSS",2,70815138],["Spinalzo","MSS",3,61982604],["Tessi","MSS",3,62893628],["Fokker","MSS",3,69950795],["ÐRüSE🎱","MSS",3,64338252],["BMW5","MSS",2,66781703],["Kptain","MSS",2,52910336],["DanyMtz","MSS",2,56001464],["L🔵Ki","MSS",3,65039643],["762x39","MSS",3,59366622],["spudgun","MSS",3,45259571],["Bosse","MSS",3,49806565],["JDPV","MSS",3,40767636],["kailin88","MSS",2,41173163],["Ietuce🥬","MSS",4,86408989],["Dread","MSS",2,55066038],["CJ☕️","MSS",3,64045665],["Steve","MSS",2,73268086],["Mousse","MSS",2,58320515],["bianco","MSS",2,48356385],["☣️BEE☣️","MSS",3,64724346],["MustiCC","MSS",2,62020110],["ΉΛЯᄂΣY","MSS",2,100213892],["ⓈⓉⒾⓃⒼⒺⓇ","MSS",3,65156145],["ROM😎","MSS",2,58866635],["RGrimes","MSS",2,44671342],["Ara👹","MSS",2,83967758],["Squishyy","MSS",4,58093782],["ꉓꍏ꒒ꀤꌃꂦꌩꊼ","MSS",2,57333870],["RUTHLESS","MSS",4,84616153],["VENUS❤️","MSS",3,45856187],["KAW510","MSS",3,53329334],["tatie","MSS",4,67630555],["klaten💯","MSS",2,65641353],["TapToEnt","MSS",2,55590309],["IGeorge","MSS",3,61398412],["Armenia","MSS",3,40227363],["BEYO","MSS",2,81992695],["xyz","MSS",2,72998642],["ᗪ尺丨ㄥ","MSS",2,53347840],["Mada","MSS",9,82010141],["Bigears","MSS",3,57311016],["smoke","MSS",2,84042468],["ȶǟʊʀʊֆ♉","MSS",3,38897276],["Wildcat","MSS",3,68709847],["Gary","MSS",5,90039591],["Goku","MSS",2,61607005],["Musashi","MSS",2,66434319],["t0xic","MSS",3,77129536],["Goat","MSS",4,66145743],["diemonde","MSS",2,74412995],["MrMr","MSS",2,66151076],["⭐️Raj⭐️","MSS",3,70075990],["om291258","MSS",2,61826202],["ARR","MSS",4,60765843],["ᎧrᎥꪗαɳα","MSS",3,73582905],["MZ","MSS",3,66243058],["OMeGa","MSS",2,72242637],["MOLRJ","MSS",3,43334062],["Gómez","MSS",2,68948515],["Денис✌️","MSS",2,70811971],["Pepper","MSS",4,82018675],["AlexB","MSS",4,66879971],["TaaraZ🦋","MSS",3,52019922],["iGeorgeD","MSS",2,66478240],["Aoki","MSS",3,59195138],["SprngBok","MSS",2,93624485],["Rookie","MSS",3,69418587],["Itlnstln","MSS",3,43645826],["♻️Piney","MSS",2,76004128],["BeepBoop","MSS",7,70724203],["CaptainO","MSS",3,73307437],["DrNo","MSS",3,67536373],["Likrbttr","MSS",1,71342849],["Hotrods","MSS",3,62233807],["Buckshot","MSS",2,55092043],["AzzMnch","MSS",2,73288389],["Madsey","MSS",2,79129674],["Igeorged","MSS",2,85623384],["ƬΉΣПӨЯƬΉ","MSS",2,64039415],["Stones","MSS",3,55575822],["Iceman","MSS",2,73267708],["Mami_❤️","MSS",4,70525156],["Maximum","MSS",4,59699939],["BRUNO","MSS",2,68375879],["croos❣️","MSS",3,43985175],["Pizza🍕","MSS",3,60365821],["Jocky","MSS",3,68486196],["miniboli","MSS",3,38278819],["Bt","MSS",2,66946087],["IGeorged","MSS",2,82602363],["burt","MSS",3,74271953],["Artur","MSS",2,65201692],["MegaBo","MSS",4,74949643],["JoJo","MSS",3,61309159],["Shaz","MSS",6,92759287],["Howler31","MSS",2,64867298],["Spidy🕷️","MSS",4,71747794],["🍆Wads","MSS",1,66460392],["Rorschac","MSS",3,44959975],["Danno","MSS",3,67071195],["FOCKOFF","MSS",3,46558753],["JDi","MSS",3,57587283],["Yoxina🐚","MSS",2,44119412],["🐰Ruggie","MSS",2,70545473],["Willow","MSS",3,56054652],["FAYEN","MSS",3,36722216],["MFBluey2","MSS",2,71475990],["KBJH","MSS",1,77369307],["REPUFF","MSS",3,61861078],["千ㄥㄩ千千ㄚ","MSS",2,59707702],["JRW","MSS",2,59668254],["BaNe🤪","MSS",2,78290783],["Ray","MSS",3,69819825],["WitcheR","MSS",2,52160659],["Heidi🦄","MSS",2,91905813],["BB😎","MSS",2,67235302],["ANEXO","MSS",1,41998721],["ㄒㄚㄥ乇尺","MSS",2,64595864],["PastaB","MSS",2,80943011],["Dmonpack","MSS",3,47679799],["Forlaugh","MSS",3,58625647],["Obelix🦁","MSS",3,60677983],["Patrolfc","MSS",2,63019774],["Elb🖖","MSS",3,57003964],["Venom","MSS",2,79221690],["BabyM","MSS",3,79991780],["SmknJoe","MSS",2,77650808],["Sweet🌷","MSS",2,68604194],["Տ丅Ꭵᑕᛕ","MSS",3,76337172],["WOOOOOO","MSS",2,105828142],["Pilgrim","MSS",3,42488269],["VMJᴼᵒᵒᵖˢ","MSS",3,88461996],["Yᵒᵘᶻᵃ","MSS",3,63867465],["⚜️SiSss","MSS",3,60964499],["NEMESIS","MSS",3,37671355],["Ghazel","MSS",3,46343551],["KiloBo","MSS",3,66927946],["Roma","MSS",2,66315285],["Eltonv😈","MSS",3,57838158],["Priit🦁","MSS",3,71548266],["Gui73🦁","MSS",3,58416823],["8960mr","MSS",4,123326852]];
+        var players = RAW.map(function(r) { return {name:r[0],alliance:r[1],rank:r[2],power:r[3]}; });
+        var rosterModal = document.getElementById('roster-modal');
+        var rosterBody = document.getElementById('rosterBody');
+        var rosterFilter = document.getElementById('rosterFilter');
+        var rosterSearch = document.getElementById('rosterSearch');
+        var rosterCount = document.getElementById('rosterCount');
+        var sortCol = 'power';
+        var sortDir = -1;
+
+        function fmtPower(p) {
+          return (p / 1e6).toFixed(2) + 'M';
+        }
+
+        function createCell(text, cls) {
+          var td = document.createElement('td');
+          td.textContent = text;
+          if (cls) td.className = cls;
+          return td;
+        }
+
+        function render() {
+          var filter = rosterFilter.value;
+          var search = rosterSearch.value.toLowerCase();
+          var filtered = players.filter(function(p) {
+            if (filter && p.alliance !== filter) return false;
+            if (search && p.name.toLowerCase().indexOf(search) === -1) return false;
+            return true;
+          });
+          filtered.sort(function(a, b) {
+            var va = a[sortCol], vb = b[sortCol];
+            if (typeof va === 'string') va = va.toLowerCase();
+            if (typeof vb === 'string') vb = vb.toLowerCase();
+            if (va < vb) return -1 * sortDir;
+            if (va > vb) return 1 * sortDir;
+            return 0;
+          });
+          while (rosterBody.firstChild) rosterBody.removeChild(rosterBody.firstChild);
+          for (var i = 0; i < filtered.length; i++) {
+            var p = filtered[i];
+            var tr = document.createElement('tr');
+            var nameCell = createCell(p.name, 'notranslate');
+            tr.appendChild(nameCell);
+            tr.appendChild(createCell(p.alliance, ''));
+            tr.appendChild(createCell(RANK_MAP[p.rank] || ('R' + p.rank), 'rank-col'));
+            tr.appendChild(createCell(fmtPower(p.power), 'power-col'));
+            rosterBody.appendChild(tr);
+          }
+          rosterCount.textContent = filtered.length + ' of ' + players.length + ' players';
+          document.querySelectorAll('.roster-table th').forEach(function(th) {
+            var arrow = th.querySelector('.sort-arrow');
+            if (th.dataset.sort === sortCol) {
+              arrow.textContent = sortDir === 1 ? '\u25B2' : '\u25BC';
+            } else {
+              arrow.textContent = '';
+            }
+          });
+        }
+
+        document.getElementById('rosterBtn').addEventListener('click', function() {
+          rosterModal.classList.add('active');
+          render();
+        });
+        document.getElementById('roster-close').addEventListener('click', function() {
+          rosterModal.classList.remove('active');
+        });
+        rosterModal.addEventListener('click', function(e) {
+          if (e.target === rosterModal) rosterModal.classList.remove('active');
+        });
+        rosterFilter.addEventListener('change', render);
+        rosterSearch.addEventListener('input', render);
+        document.querySelectorAll('.roster-table th').forEach(function(th) {
+          th.addEventListener('click', function() {
+            var col = th.dataset.sort;
+            if (sortCol === col) { sortDir *= -1; }
+            else { sortCol = col; sortDir = col === 'power' || col === 'rank' ? -1 : 1; }
+            render();
+          });
+        });
+      })();
 
       // Rockfield modal: text/image toggle
       var rfTextBtn = document.getElementById('rf-text-btn');
