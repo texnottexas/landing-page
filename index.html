@@ -445,18 +445,89 @@
     .cal-dot.treasury { background: #d29922; }
     .cal-dot.storm { background: #f85149; }
     .cal-dot.other { background: var(--accent); }
-    .cal-tz-note {
+    .cal-tz-banner {
       text-align: center;
-      font-size: .65rem;
+      font-size: .75rem;
+      font-weight: 600;
+      padding: .5rem .75rem;
+      margin-bottom: 1rem;
+      border-radius: 8px;
+      background: var(--tag);
+      border: 1px solid var(--border);
+      display: inline-block;
+      width: 100%;
+      background-image: linear-gradient(90deg, var(--muted) 0%, var(--accent) 25%,
+                  var(--muted) 50%, var(--accent) 75%, var(--muted) 100%);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: footer-shimmer 6s linear infinite;
+    }
+    .cal-controls {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .cal-view-toggle {
+      display: flex;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .cal-view-btn {
+      background: var(--tag);
+      border: none;
       color: var(--muted);
-      margin-top: 1rem;
-      opacity: .7;
+      padding: .35rem .7rem;
+      font-size: .72rem;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      transition: background .15s, color .15s;
+      white-space: nowrap;
+    }
+    .cal-view-btn.active {
+      background: var(--accent);
+      color: var(--bg);
+    }
+    .cal-view-btn:not(:last-child) {
+      border-right: 1px solid var(--border);
+    }
+    .cal-filter {
+      flex: 1;
+      min-width: 140px;
+      background: var(--tag);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: .35rem .6rem;
+      font-size: .72rem;
+      font-family: inherit;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238b949e'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right .6rem center;
+      padding-right: 1.8rem;
+    }
+    .cal-filter:focus { outline: none; border-color: var(--accent); }
+    .cal-no-events {
+      text-align: center;
+      color: var(--muted);
+      font-size: .85rem;
+      padding: 2rem 1rem;
     }
     @media (max-width: 500px) {
       .cal-modal-content { padding: 1rem; margin: 1rem 0; }
       .cal-header { flex-direction: column; gap: .75rem; }
       .cal-event-top { flex-direction: column; align-items: flex-start; gap: .25rem; }
       .cal-event-time { font-size: .68rem; }
+      .cal-controls { flex-direction: column; align-items: stretch; }
+      .cal-filter { min-width: 100%; }
     }
 
     /* Image modal */
@@ -1373,15 +1444,24 @@
     <div class="cal-modal-content">
       <div class="cal-header">
         <h2>&#128197; UD Calendar</h2>
-        <div class="cal-nav">
+        <div class="cal-nav" id="cal-nav">
           <button class="cal-nav-btn" id="cal-prev" aria-label="Previous week">&#9664;</button>
           <span class="cal-week-label" id="cal-week-label">Round 1</span>
           <button class="cal-nav-btn" id="cal-next" aria-label="Next week">&#9654;</button>
         </div>
       </div>
+      <div class="cal-tz-banner" id="cal-tz-banner">Times shown in your local timezone</div>
+      <div class="cal-controls">
+        <div class="cal-view-toggle">
+          <button class="cal-view-btn active" id="cal-view-today">Today</button>
+          <button class="cal-view-btn" id="cal-view-round">Round</button>
+        </div>
+        <select class="cal-filter" id="cal-filter" aria-label="Filter events">
+          <option value="all">All Events</option>
+        </select>
+      </div>
       <div class="cal-week-dates" id="cal-week-dates"></div>
       <div class="cal-events" id="cal-events"></div>
-      <div class="cal-tz-note" id="cal-tz-note">All times in your local timezone</div>
       <button class="unit-modal-close" id="cal-modal-close" style="margin-top:1rem">Close</button>
     </div>
   </div>
@@ -1805,6 +1885,8 @@
       (function initCalendar() {
         var CAL_DATA = null;
         var currentRound = 0;
+        var viewMode = 'today'; // 'today' or 'round'
+        var activeFilter = 'all';
 
         function loadCalData() {
           return fetch('seal-stone-calendar.json')
@@ -1834,7 +1916,6 @@
         }
 
         function parseEventDT(dateStr, year) {
-          // Format: "MM/DD HH:MM:SS"
           var parts = dateStr.split(' ');
           var dp = parts[0].split('/');
           var tp = parts[1].split(':');
@@ -1878,19 +1959,13 @@
           var dtStart = toICSDate(event.start, year);
           var dtEnd = toICSDate(event.end, year);
           var desc = getWeeklyDesc(event.name);
-          var lines = [
-            'BEGIN:VCALENDAR',
-            'VERSION:2.0',
-            'PRODID:-//2864TW//UD Calendar//EN',
-            'BEGIN:VEVENT',
-            'DTSTART:' + dtStart,
-            'DTEND:' + dtEnd,
+          return [
+            'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//2864TW//UD Calendar//EN',
+            'BEGIN:VEVENT', 'DTSTART:' + dtStart, 'DTEND:' + dtEnd,
             'SUMMARY:' + event.name + ' - Seal Stone',
             'DESCRIPTION:' + (desc || event.name),
-            'END:VEVENT',
-            'END:VCALENDAR'
-          ];
-          return lines.join('\r\n');
+            'END:VEVENT', 'END:VCALENDAR'
+          ].join('\r\n');
         }
 
         function downloadICS(event, year) {
@@ -1915,9 +1990,129 @@
             var end = new Date(rounds[i].weekEnd + 'T23:59:59Z');
             if (now >= start && now <= end) return i;
           }
-          // If past all rounds, show the last one; if before, show first
           if (now < new Date(rounds[0].weekStart + 'T00:00:00Z')) return 0;
           return rounds.length - 1;
+        }
+
+        // Collect all unique event names across all rounds for the filter dropdown
+        function buildFilterOptions() {
+          if (!CAL_DATA) return;
+          var names = {};
+          CAL_DATA.rounds.forEach(function(r) {
+            r.events.forEach(function(e) { names[e.name] = true; });
+          });
+          var sel = document.getElementById('cal-filter');
+          sel.textContent = '';
+          var allOpt = document.createElement('option');
+          allOpt.value = 'all'; allOpt.textContent = 'All Events';
+          sel.appendChild(allOpt);
+          Object.keys(names).sort().forEach(function(n) {
+            var opt = document.createElement('option');
+            opt.value = n; opt.textContent = n;
+            sel.appendChild(opt);
+          });
+          sel.value = activeFilter;
+        }
+
+        // Get today's events across all rounds
+        function getTodayEvents() {
+          if (!CAL_DATA) return [];
+          var now = new Date();
+          var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+          var todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+          var results = [];
+          CAL_DATA.rounds.forEach(function(r) {
+            var year = parseInt(r.weekStart.split('-')[0], 10);
+            r.events.forEach(function(evt) {
+              var evtStart = parseEventDT(evt.start, year);
+              var evtEnd = parseEventDT(evt.end, year);
+              // Event overlaps with today if it starts before today ends AND ends after today starts
+              if (evtStart <= todayEnd && evtEnd >= todayStart) {
+                results.push({ evt: evt, year: year, round: r.round });
+              }
+            });
+          });
+          return results;
+        }
+
+        function renderEventCard(evt, year, container) {
+          var card = document.createElement('div');
+          card.className = 'cal-event';
+
+          var cat = getEventCategory(evt.name);
+          var dot = document.createElement('span');
+          dot.className = 'cal-dot ' + cat;
+
+          var top = document.createElement('div');
+          top.className = 'cal-event-top';
+
+          var nameEl = document.createElement('span');
+          nameEl.className = 'cal-event-name';
+          nameEl.appendChild(dot);
+          nameEl.appendChild(document.createTextNode(evt.name));
+
+          var timeEl = document.createElement('span');
+          timeEl.className = 'cal-event-time';
+          timeEl.textContent = formatDateRange(evt.start, evt.end, year);
+
+          top.appendChild(nameEl);
+          top.appendChild(timeEl);
+          card.appendChild(top);
+
+          var desc = getWeeklyDesc(evt.name);
+          if (desc) {
+            var descEl = document.createElement('div');
+            descEl.className = 'cal-event-desc';
+            descEl.textContent = desc;
+            card.appendChild(descEl);
+          }
+
+          var addBtn = document.createElement('button');
+          addBtn.className = 'cal-add-btn';
+          addBtn.textContent = '+ Add to Calendar';
+          addBtn.addEventListener('click', function() { downloadICS(evt, year); });
+          card.appendChild(addBtn);
+
+          container.appendChild(card);
+        }
+
+        function updateTZBanner() {
+          var tz = getUserTZ();
+          var banner = document.getElementById('cal-tz-banner');
+          if (banner) banner.textContent = 'Times shown in ' + tz.replace(/_/g, ' ');
+        }
+
+        function renderToday() {
+          if (!CAL_DATA) return;
+          var nav = document.getElementById('cal-nav');
+          nav.style.display = 'none';
+          var datesEl = document.getElementById('cal-week-dates');
+          var now = new Date();
+          var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+          var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+          datesEl.textContent = days[now.getDay()] + ', ' + months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
+
+          updateTZBanner();
+
+          var container = document.getElementById('cal-events');
+          container.textContent = '';
+
+          var todayEvents = getTodayEvents();
+          var filtered = todayEvents.filter(function(item) {
+            return activeFilter === 'all' || item.evt.name === activeFilter;
+          });
+
+          if (filtered.length === 0) {
+            var msg = document.createElement('div');
+            msg.className = 'cal-no-events';
+            msg.textContent = activeFilter === 'all' ? 'No events scheduled for today.' : 'No "' + activeFilter + '" events today.';
+            container.appendChild(msg);
+            return;
+          }
+
+          filtered.forEach(function(item) {
+            renderEventCard(item.evt, item.year, container);
+          });
         }
 
         function renderRound(index) {
@@ -1927,6 +2122,9 @@
           currentRound = index;
           var round = rounds[index];
 
+          var nav = document.getElementById('cal-nav');
+          nav.style.display = '';
+
           var label = round.round === 'Settlement' ? 'Settlement' : 'Round ' + round.round;
           document.getElementById('cal-week-label').textContent = label;
           document.getElementById('cal-week-dates').textContent = round.weekStart + ' to ' + round.weekEnd;
@@ -1934,60 +2132,62 @@
           document.getElementById('cal-prev').disabled = (index === 0);
           document.getElementById('cal-next').disabled = (index === rounds.length - 1);
 
-          var tz = getUserTZ();
-          var tzNote = document.getElementById('cal-tz-note');
-          if (tzNote) tzNote.textContent = 'Times shown in ' + tz.replace(/_/g, ' ');
+          updateTZBanner();
 
           var container = document.getElementById('cal-events');
           container.textContent = '';
 
           var year = parseInt(round.weekStart.split('-')[0], 10);
 
-          round.events.forEach(function(evt) {
-            var card = document.createElement('div');
-            card.className = 'cal-event';
+          var events = round.events.filter(function(evt) {
+            return activeFilter === 'all' || evt.name === activeFilter;
+          });
 
-            var cat = getEventCategory(evt.name);
-            var dot = document.createElement('span');
-            dot.className = 'cal-dot ' + cat;
+          if (events.length === 0) {
+            var msg = document.createElement('div');
+            msg.className = 'cal-no-events';
+            msg.textContent = 'No "' + activeFilter + '" events this round.';
+            container.appendChild(msg);
+            return;
+          }
 
-            var top = document.createElement('div');
-            top.className = 'cal-event-top';
-
-            var nameEl = document.createElement('span');
-            nameEl.className = 'cal-event-name';
-            nameEl.appendChild(dot);
-            nameEl.appendChild(document.createTextNode(evt.name));
-
-            var timeEl = document.createElement('span');
-            timeEl.className = 'cal-event-time';
-            timeEl.textContent = formatDateRange(evt.start, evt.end, year);
-
-            top.appendChild(nameEl);
-            top.appendChild(timeEl);
-            card.appendChild(top);
-
-            var desc = getWeeklyDesc(evt.name);
-            if (desc) {
-              var descEl = document.createElement('div');
-              descEl.className = 'cal-event-desc';
-              descEl.textContent = desc;
-              card.appendChild(descEl);
-            }
-
-            var addBtn = document.createElement('button');
-            addBtn.className = 'cal-add-btn';
-            addBtn.textContent = '+ Add to Calendar';
-            addBtn.addEventListener('click', function() {
-              downloadICS(evt, year);
-            });
-            card.appendChild(addBtn);
-
-            container.appendChild(card);
+          events.forEach(function(evt) {
+            renderEventCard(evt, year, container);
           });
         }
 
-        // Navigation
+        function render() {
+          if (viewMode === 'today') {
+            renderToday();
+          } else {
+            renderRound(currentRound);
+          }
+        }
+
+        // View toggle buttons
+        var viewTodayBtn = document.getElementById('cal-view-today');
+        var viewRoundBtn = document.getElementById('cal-view-round');
+
+        viewTodayBtn.addEventListener('click', function() {
+          viewMode = 'today';
+          viewTodayBtn.classList.add('active');
+          viewRoundBtn.classList.remove('active');
+          render();
+        });
+        viewRoundBtn.addEventListener('click', function() {
+          viewMode = 'round';
+          viewRoundBtn.classList.add('active');
+          viewTodayBtn.classList.remove('active');
+          render();
+        });
+
+        // Filter dropdown
+        document.getElementById('cal-filter').addEventListener('change', function() {
+          activeFilter = this.value;
+          render();
+        });
+
+        // Navigation (only visible in round view)
         document.getElementById('cal-prev').addEventListener('click', function() {
           renderRound(currentRound - 1);
         });
@@ -2004,14 +2204,14 @@
               calLoaded = true;
               loadCalData().then(function() {
                 currentRound = findCurrentRound();
-                renderRound(currentRound);
+                buildFilterOptions();
+                render();
               }).catch(function() {
                 document.getElementById('cal-events').textContent = 'Failed to load calendar data.';
               });
             } else if (calModalEl.classList.contains('active') && calLoaded) {
-              // Re-check current round each time modal opens
               currentRound = findCurrentRound();
-              renderRound(currentRound);
+              render();
             }
           });
         });
