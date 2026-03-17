@@ -457,7 +457,7 @@
       font-size: .72rem;
       color: var(--accent);
       font-weight: 600;
-      white-space: nowrap;
+      white-space: pre-line;
     }
     .cal-event-desc {
       font-size: .75rem;
@@ -1734,7 +1734,7 @@
           <option value="all">All Days</option>
         </select>
       </div>
-      <div class="cal-week-dates" id="cal-week-dates"></div>
+      <div class="cal-week-dates notranslate" id="cal-week-dates" translate="no"></div>
       <div class="cal-events" id="cal-events"></div>
       <button class="unit-modal-close" id="cal-modal-close" style="margin-top:1rem">Close</button>
     </div>
@@ -2332,14 +2332,22 @@
         }
 
         function formatLocalTime(dt) {
-          var h = dt.getHours();
-          var m = String(dt.getMinutes()).padStart(2, '0');
-          var ampm = h >= 12 ? 'PM' : 'AM';
-          return (h % 12 || 12) + ':' + m + ' ' + ampm;
+          try {
+            return dt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+          } catch(e) {
+            var h = dt.getHours();
+            var m = String(dt.getMinutes()).padStart(2, '0');
+            var ampm = h >= 12 ? 'PM' : 'AM';
+            return (h % 12 || 12) + ':' + m + ' ' + ampm;
+          }
         }
 
         function formatLocalDate(dt) {
-          return SHORT_MONTHS[dt.getMonth()] + ' ' + dt.getDate();
+          try {
+            return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+          } catch(e) {
+            return SHORT_MONTHS[dt.getMonth()] + ' ' + dt.getDate();
+          }
         }
 
         function formatDateRange(startStr, endStr, year) {
@@ -2347,9 +2355,9 @@
           var endDT = parseEventDT(endStr, year);
           var sameDay = startDT.getDate() === endDT.getDate() && startDT.getMonth() === endDT.getMonth();
           if (sameDay) {
-            return formatLocalDate(startDT) + ' ' + formatLocalTime(startDT) + ' - ' + formatLocalTime(endDT);
+            return formatLocalDate(startDT) + ' ' + formatLocalTime(startDT) + ' \u2013 ' + formatLocalTime(endDT);
           }
-          return formatLocalDate(startDT) + ' ' + formatLocalTime(startDT) + ' - ' + formatLocalDate(endDT) + ' ' + formatLocalTime(endDT);
+          return formatLocalDate(startDT) + ' ' + formatLocalTime(startDT) + ' \u2013\n' + formatLocalDate(endDT) + ' ' + formatLocalTime(endDT);
         }
 
         function toDateKey(dt) {
@@ -2363,7 +2371,11 @@
         function formatDayLabel(dateKey) {
           var parts = dateKey.split('-');
           var dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-          return DAY_NAMES[dt.getDay()] + ', ' + SHORT_MONTHS[dt.getMonth()] + ' ' + dt.getDate();
+          try {
+            return dt.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+          } catch(e) {
+            return DAY_NAMES[dt.getDay()] + ', ' + SHORT_MONTHS[dt.getMonth()] + ' ' + dt.getDate();
+          }
         }
 
         function toICSDate(dateStr, year) {
@@ -2628,6 +2640,8 @@
 
           var timeEl = document.createElement('span');
           timeEl.className = 'cal-event-time';
+          timeEl.setAttribute('translate', 'no');
+          timeEl.classList.add('notranslate');
           timeEl.textContent = formatDateRange(evt.start, evt.end, year);
 
           top.appendChild(nameEl);
@@ -2670,7 +2684,11 @@
           if (!CAL_DATA) return;
           $nav.style.display = 'none';
           var now = new Date();
-          $weekDates.textContent = DAY_NAMES[now.getDay()] + ', ' + MONTH_NAMES[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
+          try {
+            $weekDates.textContent = now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+          } catch(e) {
+            $weekDates.textContent = DAY_NAMES[now.getDay()] + ', ' + MONTH_NAMES[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
+          }
 
           var allToday = getTodayEvents();
           buildDayFilterOptions();
