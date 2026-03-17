@@ -2369,21 +2369,39 @@
           return String(str).replace(/[\r\n]+/g, ' ').replace(/[;,\\]/g, '\\$&');
         }
 
-        function generateICS(event, year) {
+        function generateICS(event, year, translatedName, translatedDesc) {
           var dtStart = toICSDate(event.start, year);
           var dtEnd = toICSDate(event.end, year);
-          var desc = getWeeklyDesc(event.name);
+          var name = translatedName || event.name;
+          var desc = translatedDesc || getWeeklyDesc(event.name) || event.name;
           return [
             'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//2864TW//UD Calendar//EN',
             'BEGIN:VEVENT', 'DTSTART:' + dtStart, 'DTEND:' + dtEnd,
-            'SUMMARY:' + sanitizeICS(event.name + ' - Seal Stone'),
-            'DESCRIPTION:' + sanitizeICS(desc || event.name),
+            'SUMMARY:' + sanitizeICS(name + ' - Seal Stone'),
+            'DESCRIPTION:' + sanitizeICS(desc),
             'END:VEVENT', 'END:VCALENDAR'
           ].join('\r\n');
         }
 
-        function downloadICS(event, year) {
-          var ics = generateICS(event, year);
+        function downloadICS(event, year, cardEl) {
+          // Read translated text from the DOM if available
+          var translatedName = null;
+          var translatedDesc = null;
+          if (cardEl) {
+            var nameEl = cardEl.querySelector('.cal-event-name');
+            if (nameEl) {
+              // Clone and remove the dot + badge, keep only the event name text
+              var clone = nameEl.cloneNode(true);
+              var dot = clone.querySelector('.cal-dot');
+              if (dot) dot.remove();
+              var badge = clone.querySelector('.cal-today-badge');
+              if (badge) badge.remove();
+              translatedName = clone.textContent.trim();
+            }
+            var descEl = cardEl.querySelector('.cal-event-desc');
+            if (descEl) translatedDesc = descEl.textContent.trim();
+          }
+          var ics = generateICS(event, year, translatedName, translatedDesc);
           var filename = event.name.replace(/[^a-zA-Z0-9]/g, '_') + '.ics';
           var blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
 
@@ -2391,7 +2409,7 @@
           if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: 'text/calendar' })] })) {
             navigator.share({
               files: [new File([blob], filename, { type: 'text/calendar' })],
-              title: event.name + ' - Seal Stone'
+              title: (translatedName || event.name) + ' - Seal Stone'
             }).catch(function() {
               // User cancelled share or it failed — fall back to download
               fallbackDownloadICS(blob, filename);
@@ -2621,7 +2639,7 @@
           var addBtn = document.createElement('button');
           addBtn.className = 'cal-add-btn';
           addBtn.textContent = '+ Add to Calendar';
-          addBtn.addEventListener('click', function() { downloadICS(evt, year); });
+          addBtn.addEventListener('click', function() { downloadICS(evt, year, card); });
           card.appendChild(addBtn);
 
           container.appendChild(card);
@@ -2744,10 +2762,24 @@
           });
         }
 
+        // Nudge Google Translate to re-translate dynamically rendered content
+        function nudgeTranslate() {
+          var gtFrame = document.querySelector('.goog-te-combo');
+          if (gtFrame && gtFrame.value && gtFrame.value !== 'en') {
+            // Briefly toggle the html lang attribute to trigger GT's MutationObserver
+            var html = document.documentElement;
+            var orig = html.getAttribute('class') || '';
+            html.setAttribute('class', orig + ' ');
+            setTimeout(function() { html.setAttribute('class', orig); }, 50);
+          }
+        }
+
         function render() {
           if (viewMode === 'today') renderToday();
           else if (viewMode === 'next3') renderNext3();
           else renderRound(currentRound);
+          // Let GT translate the newly rendered calendar content
+          setTimeout(nudgeTranslate, 200);
         }
 
         // View toggle
