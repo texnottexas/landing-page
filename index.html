@@ -1717,7 +1717,8 @@
         <div class="cal-view-toggle">
           <button class="cal-view-btn active" id="cal-view-today">Today</button>
           <button class="cal-view-btn" id="cal-view-next3">Next 3 Days</button>
-          <button class="cal-view-btn" id="cal-view-round">Round</button>
+          <button class="cal-view-btn" id="cal-view-round">Round (7 Days)</button>
+          <button class="cal-view-btn" id="cal-view-all">All</button>
         </div>
       </div>
       <div class="cal-filter-row">
@@ -2762,21 +2763,47 @@
           });
         }
 
+        function renderAll() {
+          if (!CAL_DATA) return;
+          $nav.style.display = 'none';
+          $weekDates.textContent = 'All Rounds';
+
+          buildDayFilterOptions();
+
+          $events.textContent = '';
+
+          var allEvents = [];
+          CAL_DATA.rounds.forEach(function(r) {
+            var year = getRoundYear(r);
+            r.events.forEach(function(evt) {
+              if (matchesFilters(evt, year)) {
+                allEvents.push({ evt: evt, year: year, round: r.round });
+              }
+            });
+          });
+
+          if (allEvents.length === 0) {
+            renderNoEvents($events, 'in the calendar');
+            return;
+          }
+          allEvents.forEach(function(item) {
+            renderEventCard(item.evt, item.year, $events);
+          });
+        }
+
         // Nudge Google Translate to re-translate dynamically rendered content
         function nudgeTranslate() {
-          var gtFrame = document.querySelector('.goog-te-combo');
-          if (gtFrame && gtFrame.value && gtFrame.value !== 'en') {
-            // Briefly toggle the html lang attribute to trigger GT's MutationObserver
-            var html = document.documentElement;
-            var orig = html.getAttribute('class') || '';
-            html.setAttribute('class', orig + ' ');
-            setTimeout(function() { html.setAttribute('class', orig); }, 50);
+          var combo = document.querySelector('.goog-te-combo');
+          if (combo && combo.value && combo.value !== 'en' && combo.value !== '') {
+            // Re-dispatch change event on the language selector to force GT to re-scan the DOM
+            combo.dispatchEvent(new Event('change'));
           }
         }
 
         function render() {
           if (viewMode === 'today') renderToday();
           else if (viewMode === 'next3') renderNext3();
+          else if (viewMode === 'all') renderAll();
           else renderRound(currentRound);
           // Let GT translate the newly rendered calendar content
           setTimeout(nudgeTranslate, 200);
@@ -2786,7 +2813,8 @@
         var viewTodayBtn = document.getElementById('cal-view-today');
         var viewNext3Btn = document.getElementById('cal-view-next3');
         var viewRoundBtn = document.getElementById('cal-view-round');
-        var viewBtns = [viewTodayBtn, viewNext3Btn, viewRoundBtn];
+        var viewAllBtn = document.getElementById('cal-view-all');
+        var viewBtns = [viewTodayBtn, viewNext3Btn, viewRoundBtn, viewAllBtn];
 
         function setActiveView(mode, activeBtn) {
           viewMode = mode;
@@ -2801,6 +2829,9 @@
         viewRoundBtn.addEventListener('click', function() {
           currentRound = findCurrentRound();
           setActiveView('round', viewRoundBtn);
+        });
+        viewAllBtn.addEventListener('click', function() {
+          setActiveView('all', viewAllBtn);
         });
 
         // Filter dropdowns
