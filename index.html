@@ -481,6 +481,22 @@
       transition: border-color .15s, color .15s;
     }
     .cal-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .cal-add-wrap { position: relative; display: inline-block; }
+    .cal-add-menu {
+      position: absolute; bottom: calc(100% + 6px); left: 0;
+      background: var(--surface, #1a1d30); border: 1px solid var(--border);
+      border-radius: 8px; padding: .35rem 0; min-width: 180px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.35); z-index: 50;
+      display: none; flex-direction: column;
+    }
+    .cal-add-menu.open { display: flex; }
+    .cal-add-menu button {
+      background: none; border: none; color: var(--text, #e0e0e0);
+      padding: .45rem .75rem; font-size: .7rem; font-family: inherit;
+      cursor: pointer; text-align: left; display: flex; align-items: center; gap: .4rem;
+    }
+    .cal-add-menu button:hover { background: rgba(255,255,255,.07); color: var(--accent); }
+    .cal-add-menu .cal-menu-icon { width: 16px; height: 16px; flex-shrink: 0; }
     .cal-dot {
       display: inline-block;
       width: 8px;
@@ -2401,14 +2417,13 @@
           ].join('\r\n');
         }
 
-        function downloadICS(event, year, cardEl) {
-          // Read translated text from the DOM if available
+        // Resolve translated event text from the rendered card DOM
+        function resolveEventText(event, cardEl) {
           var translatedName = null;
           var translatedDesc = null;
           if (cardEl) {
             var nameEl = cardEl.querySelector('.cal-event-name');
             if (nameEl) {
-              // Clone and remove the dot + badge, keep only the event name text
               var clone = nameEl.cloneNode(true);
               var dot = clone.querySelector('.cal-dot');
               if (dot) dot.remove();
@@ -2419,19 +2434,64 @@
             var descEl = cardEl.querySelector('.cal-event-desc');
             if (descEl) translatedDesc = descEl.textContent.trim();
           }
-          var ics = generateICS(event, year, translatedName, translatedDesc);
+          return {
+            name: translatedName || event.name,
+            desc: translatedDesc || getWeeklyDesc(event.name) || event.name
+          };
+        }
+
+        // Build calendar service URLs for an event (used by Android dropdown)
+        function buildCalendarURLs(event, year, text) {
+          var dtStart = toICSDate(event.start, year);
+          var dtEnd = toICSDate(event.end, year);
+          var title = text.name + ' - Seal Stone';
+          // Google Calendar uses compact UTC format: YYYYMMDDTHHmmSSZ
+          var google = 'https://calendar.google.com/calendar/r/eventedit'
+            + '?text=' + encodeURIComponent(title)
+            + '&dates=' + dtStart + '/' + dtEnd
+            + '&details=' + encodeURIComponent(text.desc);
+          // Outlook uses ISO 8601 format
+          var startISO = new Date(parseEventDT(event.start, year)).toISOString();
+          var endISO = new Date(parseEventDT(event.end, year)).toISOString();
+          var outlook = 'https://outlook.live.com/calendar/deeplink/compose'
+            + '?path=/calendar/action/compose&rru=addevent'
+            + '&subject=' + encodeURIComponent(title)
+            + '&startdt=' + encodeURIComponent(startISO)
+            + '&enddt=' + encodeURIComponent(endISO)
+            + '&body=' + encodeURIComponent(text.desc);
+          return { google: google, outlook: outlook };
+        }
+
+        // Close any open calendar dropdown menus
+        function closeCalMenus() {
+          document.querySelectorAll('.cal-add-menu.open').forEach(function(m) {
+            m.classList.remove('open');
+          });
+        }
+
+        // Close menus on outside click
+        document.addEventListener('click', function(e) {
+          if (!e.target.closest('.cal-add-wrap')) closeCalMenus();
+        });
+
+        var IS_ANDROID = /Android/i.test(navigator.userAgent);
+
+        function downloadICS(event, year, cardEl) {
+          var text = resolveEventText(event, cardEl);
+          var ics = generateICS(event, year, text.name, text.desc);
           var filename = event.name.replace(/[^a-zA-Z0-9]/g, '_') + '.ics';
           var blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
 
-          // On mobile, open the blob URL directly so the OS handles
-          // the text/calendar MIME type and opens the native calendar app.
-          // Using a.download or Web Share API causes a file download first.
-          var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-          var url = URL.createObjectURL(blob);
+          var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-          if (isMobile) {
+          if (isIOS) {
+            // iOS Safari handles text/calendar blob URLs natively
+            var url = URL.createObjectURL(blob);
             window.location.href = url;
+            setTimeout(function() { URL.revokeObjectURL(url); }, 10000);
           } else {
+            // Desktop & fallback: download .ics file
+            var url = URL.createObjectURL(blob);
             var a = document.createElement('a');
             a.href = url;
             a.download = filename;
@@ -2439,8 +2499,8 @@
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
+            setTimeout(function() { URL.revokeObjectURL(url); }, 10000);
           }
-          setTimeout(function() { URL.revokeObjectURL(url); }, 10000);
         }
 
         function findCurrentRound() {
@@ -2643,11 +2703,64 @@
             card.appendChild(descEl);
           }
 
-          var addBtn = document.createElement('button');
-          addBtn.className = 'cal-add-btn';
-          addBtn.textContent = '+ Add to Calendar';
-          addBtn.addEventListener('click', function() { downloadICS(evt, year, card); });
-          card.appendChild(addBtn);
+          if (IS_ANDROID) {
+            // Android: show a dropdown with calendar service options
+            // because Android Chrome downloads .ics blobs instead of
+            // opening the native calendar app (no BROWSABLE intent filter).
+            var wrap = document.createElement('div');
+            wrap.className = 'cal-add-wrap';
+
+            var addBtn = document.createElement('button');
+            addBtn.className = 'cal-add-btn';
+            addBtn.textContent = '+ Add to Calendar';
+
+            var menu = document.createElement('div');
+            menu.className = 'cal-add-menu';
+
+            function makeMenuBtn(label, onClick) {
+              var btn = document.createElement('button');
+              btn.textContent = label;
+              btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                onClick();
+                closeCalMenus();
+              });
+              return btn;
+            }
+
+            menu.appendChild(makeMenuBtn('Google Calendar', function() {
+              var text = resolveEventText(evt, card);
+              var urls = buildCalendarURLs(evt, year, text);
+              window.open(urls.google, '_blank');
+            }));
+
+            menu.appendChild(makeMenuBtn('Outlook', function() {
+              var text = resolveEventText(evt, card);
+              var urls = buildCalendarURLs(evt, year, text);
+              window.open(urls.outlook, '_blank');
+            }));
+
+            menu.appendChild(makeMenuBtn('Download .ics', function() {
+              downloadICS(evt, year, card);
+            }));
+
+            addBtn.addEventListener('click', function(e) {
+              e.stopPropagation();
+              closeCalMenus();
+              menu.classList.toggle('open');
+            });
+
+            wrap.appendChild(menu);
+            wrap.appendChild(addBtn);
+            card.appendChild(wrap);
+          } else {
+            // iOS & Desktop: direct action (iOS opens native, desktop downloads .ics)
+            var addBtn = document.createElement('button');
+            addBtn.className = 'cal-add-btn';
+            addBtn.textContent = '+ Add to Calendar';
+            addBtn.addEventListener('click', function() { downloadICS(evt, year, card); });
+            card.appendChild(addBtn);
+          }
 
           container.appendChild(card);
         }
