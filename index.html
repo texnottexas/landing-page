@@ -2731,7 +2731,19 @@
             menu.appendChild(makeMenuBtn('Google Calendar', function() {
               var text = resolveEventText(evt, card);
               var urls = buildCalendarURLs(evt, year, text);
-              window.open(urls.google, '_blank');
+              // Use intent:// to open Google Calendar app directly on Android
+              // This avoids the login-required redirect in incognito/logged-out browsers
+              var intentUrl = 'intent://calendar.google.com/calendar/r/eventedit'
+                + '?text=' + encodeURIComponent(text.name + ' - Seal Stone')
+                + '&dates=' + toICSDate(evt.start, year) + '/' + toICSDate(evt.end, year)
+                + '&details=' + encodeURIComponent(text.desc)
+                + '#Intent;scheme=https;package=com.google.android.calendar;end';
+              try {
+                window.location.href = intentUrl;
+              } catch(e) {
+                // Fallback to web URL if intent fails
+                window.open(urls.google, '_blank');
+              }
             }));
 
             menu.appendChild(makeMenuBtn('Outlook', function() {
