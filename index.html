@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://i.ibb.co https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; script-src 'unsafe-inline' 'self' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; connect-src 'self' https://rickroll-counter.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; frame-src https://translate.google.com; object-src 'none'; base-uri 'self'; form-action 'none'; manifest-src 'self'; font-src https://fonts.gstatic.com;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://i.ibb.co https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com data:; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com https://cdn.jsdelivr.net; script-src 'unsafe-inline' 'self' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com https://cdn.jsdelivr.net; connect-src 'self' https://rickroll-counter.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; frame-src https://translate.google.com; object-src 'none'; base-uri 'self'; form-action 'none'; manifest-src 'self'; font-src https://fonts.gstatic.com;">
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -465,38 +465,7 @@
       margin-top: .35rem;
       line-height: 1.4;
     }
-    .cal-add-btn {
-      margin-top: .5rem;
-      background: none;
-      border: 1px solid var(--border);
-      color: var(--muted);
-      border-radius: 6px;
-      padding: .3rem .7rem;
-      font-size: .7rem;
-      cursor: pointer;
-      font-family: inherit;
-      display: inline-flex;
-      align-items: center;
-      gap: .3rem;
-      transition: border-color .15s, color .15s;
-    }
-    .cal-add-btn:hover { border-color: var(--accent); color: var(--accent); }
-    .cal-add-wrap { position: relative; display: inline-block; }
-    .cal-add-menu {
-      position: absolute; bottom: calc(100% + 6px); left: 0;
-      background: var(--surface, #1a1d30); border: 1px solid var(--border);
-      border-radius: 8px; padding: .35rem 0; min-width: 180px;
-      box-shadow: 0 4px 16px rgba(0,0,0,.35); z-index: 50;
-      display: none; flex-direction: column;
-    }
-    .cal-add-menu.open { display: flex; }
-    .cal-add-menu button {
-      background: none; border: none; color: var(--text, #e0e0e0);
-      padding: .45rem .75rem; font-size: .7rem; font-family: inherit;
-      cursor: pointer; text-align: left; display: flex; align-items: center; gap: .4rem;
-    }
-    .cal-add-menu button:hover { background: rgba(255,255,255,.07); color: var(--accent); }
-    .cal-add-menu .cal-menu-icon { width: 16px; height: 16px; flex-shrink: 0; }
+    .cal-add-wrap { margin-top: .5rem; }
     .cal-dot {
       display: inline-block;
       width: 8px;
@@ -1487,6 +1456,7 @@
     .rf-yes { color: var(--army); font-weight: 600; }
     .rf-no { color: #f85149; font-weight: 600; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/add-to-calendar-button@2" defer></script>
 </head>
 <body>
 
@@ -2394,29 +2364,6 @@
           }
         }
 
-        function toICSDate(dateStr, year) {
-          var dt = parseEventDT(dateStr, year);
-          return dt.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-        }
-
-        function sanitizeICS(str) {
-          return String(str).replace(/[\r\n]+/g, ' ').replace(/[;,\\]/g, '\\$&');
-        }
-
-        function generateICS(event, year, translatedName, translatedDesc) {
-          var dtStart = toICSDate(event.start, year);
-          var dtEnd = toICSDate(event.end, year);
-          var name = translatedName || event.name;
-          var desc = translatedDesc || getWeeklyDesc(event.name) || event.name;
-          return [
-            'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//2864TW//UD Calendar//EN',
-            'BEGIN:VEVENT', 'DTSTART:' + dtStart, 'DTEND:' + dtEnd,
-            'SUMMARY:' + sanitizeICS(name + ' - Seal Stone'),
-            'DESCRIPTION:' + sanitizeICS(desc),
-            'END:VEVENT', 'END:VCALENDAR'
-          ].join('\r\n');
-        }
-
         // Resolve translated event text from the rendered card DOM
         function resolveEventText(event, cardEl) {
           var translatedName = null;
@@ -2438,69 +2385,6 @@
             name: translatedName || event.name,
             desc: translatedDesc || getWeeklyDesc(event.name) || event.name
           };
-        }
-
-        // Build calendar service URLs for an event (used by Android dropdown)
-        function buildCalendarURLs(event, year, text) {
-          var dtStart = toICSDate(event.start, year);
-          var dtEnd = toICSDate(event.end, year);
-          var title = text.name + ' - Seal Stone';
-          // Google Calendar uses compact UTC format: YYYYMMDDTHHmmSSZ
-          var google = 'https://calendar.google.com/calendar/r/eventedit'
-            + '?text=' + encodeURIComponent(title)
-            + '&dates=' + dtStart + '/' + dtEnd
-            + '&details=' + encodeURIComponent(text.desc);
-          // Outlook uses ISO 8601 format
-          var startISO = new Date(parseEventDT(event.start, year)).toISOString();
-          var endISO = new Date(parseEventDT(event.end, year)).toISOString();
-          var outlook = 'https://outlook.live.com/calendar/deeplink/compose'
-            + '?path=/calendar/action/compose&rru=addevent'
-            + '&subject=' + encodeURIComponent(title)
-            + '&startdt=' + encodeURIComponent(startISO)
-            + '&enddt=' + encodeURIComponent(endISO)
-            + '&body=' + encodeURIComponent(text.desc);
-          return { google: google, outlook: outlook };
-        }
-
-        // Close any open calendar dropdown menus
-        function closeCalMenus() {
-          document.querySelectorAll('.cal-add-menu.open').forEach(function(m) {
-            m.classList.remove('open');
-          });
-        }
-
-        // Close menus on outside click
-        document.addEventListener('click', function(e) {
-          if (!e.target.closest('.cal-add-wrap')) closeCalMenus();
-        });
-
-        var IS_ANDROID = /Android/i.test(navigator.userAgent);
-
-        function downloadICS(event, year, cardEl) {
-          var text = resolveEventText(event, cardEl);
-          var ics = generateICS(event, year, text.name, text.desc);
-          var filename = event.name.replace(/[^a-zA-Z0-9]/g, '_') + '.ics';
-          var blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-
-          var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-          if (isIOS) {
-            // iOS Safari handles text/calendar blob URLs natively
-            var url = URL.createObjectURL(blob);
-            window.location.href = url;
-            setTimeout(function() { URL.revokeObjectURL(url); }, 10000);
-          } else {
-            // Desktop & fallback: download .ics file
-            var url = URL.createObjectURL(blob);
-            var a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(function() { URL.revokeObjectURL(url); }, 10000);
-          }
         }
 
         function findCurrentRound() {
@@ -2703,59 +2587,37 @@
             card.appendChild(descEl);
           }
 
-          if (IS_ANDROID) {
-            // Android: show a dropdown with calendar service options
-            // because Android Chrome downloads .ics blobs instead of
-            // opening the native calendar app (no BROWSABLE intent filter).
-            var wrap = document.createElement('div');
-            wrap.className = 'cal-add-wrap';
-
-            var addBtn = document.createElement('button');
-            addBtn.className = 'cal-add-btn';
-            addBtn.textContent = '+ Add to Calendar';
-
-            var menu = document.createElement('div');
-            menu.className = 'cal-add-menu';
-
-            function makeMenuBtn(label, onClick) {
-              var btn = document.createElement('button');
-              btn.textContent = label;
-              btn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                onClick();
-                closeCalMenus();
-              });
-              return btn;
-            }
-
-            menu.appendChild(makeMenuBtn('Open in Calendar App', function() {
-              var text = resolveEventText(evt, card);
-              var ics = generateICS(evt, year, text.name, text.desc);
-              var dataUri = 'data:text/calendar;base64,' + btoa(unescape(encodeURIComponent(ics)));
-              window.location.href = dataUri;
-            }));
-
-            menu.appendChild(makeMenuBtn('Download .ics', function() {
-              downloadICS(evt, year, card);
-            }));
-
-            addBtn.addEventListener('click', function(e) {
-              e.stopPropagation();
-              closeCalMenus();
-              menu.classList.toggle('open');
-            });
-
-            wrap.appendChild(menu);
-            wrap.appendChild(addBtn);
-            card.appendChild(wrap);
-          } else {
-            // iOS & Desktop: direct action (iOS opens native, desktop downloads .ics)
-            var addBtn = document.createElement('button');
-            addBtn.className = 'cal-add-btn';
-            addBtn.textContent = '+ Add to Calendar';
-            addBtn.addEventListener('click', function() { downloadICS(evt, year, card); });
-            card.appendChild(addBtn);
-          }
+          // Add to Calendar button (web component)
+          var wrap = document.createElement('div');
+          wrap.className = 'cal-add-wrap';
+          var atcb = document.createElement('add-to-calendar-button');
+          var text = resolveEventText(evt, card);
+          var title = (text.name || evt.name) + ' - Seal Stone';
+          var description = text.desc || getWeeklyDesc(evt.name) || evt.name;
+          var startDT = parseEventDT(evt.start, year);
+          var endDT = parseEventDT(evt.end, year);
+          var startDate = startDT.getFullYear() + '-' + String(startDT.getMonth()+1).padStart(2,'0') + '-' + String(startDT.getDate()).padStart(2,'0');
+          var startTime = String(startDT.getHours()).padStart(2,'0') + ':' + String(startDT.getMinutes()).padStart(2,'0');
+          var endDate = endDT.getFullYear() + '-' + String(endDT.getMonth()+1).padStart(2,'0') + '-' + String(endDT.getDate()).padStart(2,'0');
+          var endTime = String(endDT.getHours()).padStart(2,'0') + ':' + String(endDT.getMinutes()).padStart(2,'0');
+          atcb.setAttribute('name', title);
+          atcb.setAttribute('description', description);
+          atcb.setAttribute('startDate', startDate);
+          atcb.setAttribute('startTime', startTime);
+          atcb.setAttribute('endDate', endDate);
+          atcb.setAttribute('endTime', endTime);
+          atcb.setAttribute('timeZone', getUserTZ());
+          atcb.setAttribute('options', "'Apple','Google','iCal'");
+          atcb.setAttribute('listStyle', 'dropup');
+          atcb.setAttribute('trigger', 'click');
+          atcb.setAttribute('lightMode', document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
+          atcb.setAttribute('size', '1');
+          atcb.setAttribute('label', '+ Add to Calendar');
+          atcb.setAttribute('hideCheckmark', '');
+          atcb.setAttribute('styleLight', '--btn-background: transparent; --btn-text: ' + 'var(--muted, #8b949e)' + '; --btn-border: var(--border, #30363d); --btn-font-weight: 400; --font: inherit; --btn-shadow: none; --btn-hover-shadow: none; --btn-hover-background: transparent; --btn-hover-text: var(--accent, #79c0ff);');
+          atcb.setAttribute('styleDark', '--btn-background: transparent; --btn-text: ' + 'var(--muted, #8b949e)' + '; --btn-border: var(--border, #30363d); --btn-font-weight: 400; --font: inherit; --btn-shadow: none; --btn-hover-shadow: none; --btn-hover-background: transparent; --btn-hover-text: var(--accent, #79c0ff);');
+          wrap.appendChild(atcb);
+          card.appendChild(wrap);
 
           container.appendChild(card);
         }
