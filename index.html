@@ -2381,12 +2381,28 @@
           ].join('\r\n');
         }
 
+        var IS_ANDROID = /android/i.test(navigator.userAgent);
+        var IS_WEBVIEW = /; ?wv/i.test(navigator.userAgent);
+
         function buildGoogleCalURL(title, description, start, end) {
           var fmt = function(d) { return toICSDate(d).replace('Z', '') + 'Z'; };
-          return 'https://calendar.google.com/calendar/render?action=TEMPLATE' +
-            '&text=' + encodeURIComponent(title) +
-            '&details=' + encodeURIComponent(description) +
-            '&dates=' + fmt(start) + '/' + fmt(end);
+          var useIntent = IS_ANDROID && !IS_WEBVIEW;
+          var url = useIntent
+            ? 'https://calendar.google.com/calendar/render?action=TEMPLATE' +
+              '&text=' + encodeURIComponent(title) +
+              '&details=' + encodeURIComponent(description) +
+              '&dates=' + fmt(start) + '/' + fmt(end)
+            : 'https://calendar.google.com/calendar/r/eventedit?' +
+              'text=' + encodeURIComponent(title) +
+              '&details=' + encodeURIComponent(description) +
+              '&dates=' + fmt(start) + '/' + fmt(end);
+          if (useIntent) {
+            var fallback = encodeURIComponent(url);
+            url = 'intent://' + url.slice(8) +
+              '#Intent;scheme=https;package=com.google.android.calendar;' +
+              'S.browser_fallback_url=' + fallback + ';end';
+          }
+          return url;
         }
 
         function revokeBlobURLs() {
