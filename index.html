@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://i.ibb.co https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com data:; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com https://cdn.jsdelivr.net; script-src 'unsafe-inline' 'self' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com https://cdn.jsdelivr.net; connect-src 'self' https://rickroll-counter.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; frame-src https://translate.google.com; object-src 'none'; base-uri 'self'; form-action 'none'; manifest-src 'self'; font-src https://fonts.gstatic.com;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://i.ibb.co https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com data:; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; script-src 'unsafe-inline' 'self' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; connect-src 'self' https://rickroll-counter.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; frame-src https://translate.google.com; object-src 'none'; base-uri 'self'; form-action 'none'; manifest-src 'self'; font-src https://fonts.gstatic.com;">
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -465,7 +465,47 @@
       margin-top: .35rem;
       line-height: 1.4;
     }
-    .cal-add-wrap { margin-top: .5rem; }
+    .cal-add-wrap { margin-top: .5rem; position: relative; }
+    .cal-add-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font: inherit;
+      font-size: .78rem;
+      font-weight: 400;
+      padding: .3rem .7rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: color .2s, border-color .2s;
+    }
+    .cal-add-btn:hover { color: var(--accent); border-color: var(--accent); }
+    .cal-add-menu {
+      position: absolute;
+      bottom: calc(100% + 4px);
+      left: 0;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 4px 12px var(--shadow);
+      min-width: 160px;
+      padding: .3rem 0;
+      z-index: 50;
+      display: none;
+    }
+    .cal-add-menu.open { display: block; }
+    .cal-add-menu a {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      padding: .45rem .75rem;
+      font-size: .78rem;
+      color: var(--text);
+      text-decoration: none;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .cal-add-menu a:hover { background: var(--tag); }
+    .cal-add-menu a svg { width: 16px; height: 16px; flex-shrink: 0; }
     .cal-dot {
       display: inline-block;
       width: 8px;
@@ -1456,7 +1496,6 @@
     .rf-yes { color: var(--army); font-weight: 600; }
     .rf-no { color: #f85149; font-weight: 600; }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/add-to-calendar-button@2" defer></script>
 </head>
 <body>
 
@@ -2317,6 +2356,45 @@
           try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch(e) { return 'UTC'; }
         }
 
+        function toICSDate(dt) {
+          return dt.getUTCFullYear() +
+            String(dt.getUTCMonth() + 1).padStart(2, '0') +
+            String(dt.getUTCDate()).padStart(2, '0') + 'T' +
+            String(dt.getUTCHours()).padStart(2, '0') +
+            String(dt.getUTCMinutes()).padStart(2, '0') +
+            String(dt.getUTCSeconds()).padStart(2, '0') + 'Z';
+        }
+
+        function buildICS(title, description, start, end) {
+          return [
+            'BEGIN:VCALENDAR',
+            'VERSION:2.0',
+            'PRODID:-//2864tw//Seal Stone Calendar//EN',
+            'BEGIN:VEVENT',
+            'DTSTART:' + toICSDate(start),
+            'DTEND:' + toICSDate(end),
+            'SUMMARY:' + title.replace(/[,;\\]/g, ''),
+            'DESCRIPTION:' + description.replace(/[,;\\]/g, ''),
+            'END:VEVENT',
+            'END:VCALENDAR'
+          ].join('\r\n');
+        }
+
+        function buildGoogleCalURL(title, description, start, end) {
+          var fmt = function(d) { return toICSDate(d).replace('Z', '') + 'Z'; };
+          return 'https://calendar.google.com/calendar/render?action=TEMPLATE' +
+            '&text=' + encodeURIComponent(title) +
+            '&details=' + encodeURIComponent(description) +
+            '&dates=' + fmt(start) + '/' + fmt(end);
+        }
+
+        // Close calendar dropdowns on outside click
+        document.addEventListener('click', function() {
+          document.querySelectorAll('.cal-add-menu.open').forEach(function(m) {
+            m.classList.remove('open');
+          });
+        });
+
         function formatLocalTime(dt) {
           try {
             return dt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -2587,36 +2665,57 @@
             card.appendChild(descEl);
           }
 
-          // Add to Calendar button (web component)
-          var wrap = document.createElement('div');
-          wrap.className = 'cal-add-wrap';
-          var atcb = document.createElement('add-to-calendar-button');
+          // Custom Add to Calendar dropdown
           var text = resolveEventText(evt, card);
           var title = (text.name || evt.name) + ' - Seal Stone';
           var description = text.desc || getWeeklyDesc(evt.name) || evt.name;
           var startDT = parseEventDT(evt.start, year);
           var endDT = parseEventDT(evt.end, year);
-          var startDate = startDT.getFullYear() + '-' + String(startDT.getMonth()+1).padStart(2,'0') + '-' + String(startDT.getDate()).padStart(2,'0');
-          var startTime = String(startDT.getHours()).padStart(2,'0') + ':' + String(startDT.getMinutes()).padStart(2,'0');
-          var endDate = endDT.getFullYear() + '-' + String(endDT.getMonth()+1).padStart(2,'0') + '-' + String(endDT.getDate()).padStart(2,'0');
-          var endTime = String(endDT.getHours()).padStart(2,'0') + ':' + String(endDT.getMinutes()).padStart(2,'0');
-          atcb.setAttribute('name', title);
-          atcb.setAttribute('description', description);
-          atcb.setAttribute('startDate', startDate);
-          atcb.setAttribute('startTime', startTime);
-          atcb.setAttribute('endDate', endDate);
-          atcb.setAttribute('endTime', endTime);
-          atcb.setAttribute('timeZone', getUserTZ());
-          atcb.setAttribute('options', "'Apple','Google','iCal'");
-          atcb.setAttribute('listStyle', 'dropup');
-          atcb.setAttribute('trigger', 'click');
-          atcb.setAttribute('lightMode', document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
-          atcb.setAttribute('size', '1');
-          atcb.setAttribute('label', '+ Add to Calendar');
-          atcb.setAttribute('hideCheckmark', '');
-          atcb.setAttribute('styleLight', '--btn-background: transparent; --btn-text: ' + 'var(--muted, #8b949e)' + '; --btn-border: var(--border, #30363d); --btn-font-weight: 400; --font: inherit; --btn-shadow: none; --btn-hover-shadow: none; --btn-hover-background: transparent; --btn-hover-text: var(--accent, #79c0ff);');
-          atcb.setAttribute('styleDark', '--btn-background: transparent; --btn-text: ' + 'var(--muted, #8b949e)' + '; --btn-border: var(--border, #30363d); --btn-font-weight: 400; --font: inherit; --btn-shadow: none; --btn-hover-shadow: none; --btn-hover-background: transparent; --btn-hover-text: var(--accent, #79c0ff);');
-          wrap.appendChild(atcb);
+
+          var wrap = document.createElement('div');
+          wrap.className = 'cal-add-wrap';
+          var btn = document.createElement('button');
+          btn.className = 'cal-add-btn';
+          btn.textContent = '+ Add to Calendar';
+          var menu = document.createElement('div');
+          menu.className = 'cal-add-menu';
+
+          // Apple / iCal (.ics file)
+          var icsContent = buildICS(title, description, startDT, endDT);
+          var icsBlob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+          var icsUrl = URL.createObjectURL(icsBlob);
+
+          var appleLink = document.createElement('a');
+          appleLink.href = icsUrl;
+          appleLink.download = title.replace(/[^a-zA-Z0-9 -]/g, '') + '.ics';
+          appleLink.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 5-2.55 5-5.73 0-4.08-3.06-6.27-4-6.27-1 0-2.13.76-3 .76s-2-.76-3-.76c-3.47 0-6 3.56-6 6.97 0 2.25 1.2 5.03 3 5.03 1.25 0 2.5-1.06 4-1.06z"/><path d="M14 3.5c0 1.38-1.12 2.5-2.5 2.5S9 4.88 9 3.5 10.12 1 11.5 1 14 2.12 14 3.5z"/></svg> Apple Calendar';
+
+          var googleLink = document.createElement('a');
+          googleLink.href = buildGoogleCalURL(title, description, startDT, endDT);
+          googleLink.target = '_blank';
+          googleLink.rel = 'noopener';
+          googleLink.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> Google Calendar';
+
+          var icalLink = document.createElement('a');
+          icalLink.href = icsUrl;
+          icalLink.download = title.replace(/[^a-zA-Z0-9 -]/g, '') + '.ics';
+          icalLink.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="10" y1="16" x2="14" y2="16"/></svg> iCal File';
+
+          menu.appendChild(appleLink);
+          menu.appendChild(googleLink);
+          menu.appendChild(icalLink);
+
+          btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            // Close any other open menus first
+            document.querySelectorAll('.cal-add-menu.open').forEach(function(m) {
+              if (m !== menu) m.classList.remove('open');
+            });
+            menu.classList.toggle('open');
+          });
+
+          wrap.appendChild(btn);
+          wrap.appendChild(menu);
           card.appendChild(wrap);
 
           container.appendChild(card);
