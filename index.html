@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://i.ibb.co https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com data:; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; script-src 'unsafe-inline' 'self' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; connect-src 'self' https://rickroll-counter.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; frame-src https://translate.google.com; object-src 'none'; base-uri 'self'; form-action 'none'; manifest-src 'self'; font-src https://fonts.gstatic.com;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://i.ibb.co https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com data:; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; script-src 'unsafe-inline' 'self' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; connect-src 'self' https://rickroll-counter.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; frame-src https://translate.google.com; object-src 'none'; base-uri 'self'; form-action 'none'; manifest-src 'self'; font-src https://fonts.gstatic.com; frame-ancestors 'self';">
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -2309,6 +2309,7 @@
         var viewMode = 'today';
         var filterEvent = 'all';
         var filterDay = 'all';
+        var _blobURLs = [];
         var DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
         var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
         var SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -2386,6 +2387,11 @@
             '&text=' + encodeURIComponent(title) +
             '&details=' + encodeURIComponent(description) +
             '&dates=' + fmt(start) + '/' + fmt(end);
+        }
+
+        function revokeBlobURLs() {
+          _blobURLs.forEach(function(u) { URL.revokeObjectURL(u); });
+          _blobURLs = [];
         }
 
         // Close calendar dropdowns on outside click
@@ -2684,22 +2690,50 @@
           var icsContent = buildICS(title, description, startDT, endDT);
           var icsBlob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
           var icsUrl = URL.createObjectURL(icsBlob);
+          _blobURLs.push(icsUrl);
+
+          var SVG_NS = 'http://www.w3.org/2000/svg';
+          function makeSvg(viewBox, attrs, paths) {
+            var s = document.createElementNS(SVG_NS, 'svg');
+            s.setAttribute('viewBox', viewBox);
+            for (var k in attrs) s.setAttribute(k, attrs[k]);
+            paths.forEach(function(p) {
+              var el = document.createElementNS(SVG_NS, p.tag || 'path');
+              for (var a in p) { if (a !== 'tag') el.setAttribute(a, p[a]); }
+              s.appendChild(el);
+            });
+            return s;
+          }
 
           var appleLink = document.createElement('a');
           appleLink.href = icsUrl;
           appleLink.download = title.replace(/[^a-zA-Z0-9 -]/g, '') + '.ics';
-          appleLink.innerHTML = '<svg viewBox="0 0 814 1000" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57.8-155.5-127.4c-58.3-81.5-105.3-208.7-105.3-329.3 0-193.6 125.8-296.5 249.6-296.5 65.9 0 120.9 43.2 162.2 43.2 39.2 0 100.4-45.8 175.1-45.8 28.3 0 130 2.5 197 96.8zm-271.6-88.5c31.4-37.2 53.7-88.9 53.7-140.6 0-7.1-.7-14.3-2-20.8-51.2 1.9-111.5 34.1-148 76-26.4 29.7-54.4 81.5-54.4 134 0 7.8.9 15.6 1.3 18.1 2.2.3 5.8.6 9.3.6 46 .1 103.6-30.7 140.1-67.3z"/></svg> Apple Calendar';
+          appleLink.appendChild(makeSvg('0 0 814 1000', { fill: 'currentColor' }, [
+            { d: 'M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57.8-155.5-127.4c-58.3-81.5-105.3-208.7-105.3-329.3 0-193.6 125.8-296.5 249.6-296.5 65.9 0 120.9 43.2 162.2 43.2 39.2 0 100.4-45.8 175.1-45.8 28.3 0 130 2.5 197 96.8zm-271.6-88.5c31.4-37.2 53.7-88.9 53.7-140.6 0-7.1-.7-14.3-2-20.8-51.2 1.9-111.5 34.1-148 76-26.4 29.7-54.4 81.5-54.4 134 0 7.8.9 15.6 1.3 18.1 2.2.3 5.8.6 9.3.6 46 .1 103.6-30.7 140.1-67.3z' }
+          ]));
+          appleLink.appendChild(document.createTextNode(' Apple Calendar'));
 
           var googleLink = document.createElement('a');
           googleLink.href = buildGoogleCalURL(title, description, startDT, endDT);
           googleLink.target = '_blank';
-          googleLink.rel = 'noopener';
-          googleLink.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M6 18c0 .55.45 1 1 1h1v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h2v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8C2.67 8 2 8.67 2 9.5v7c0 .83.67 1.5 1.5 1.5S5 17.33 5 16.5v-7C5 8.67 4.33 8 3.5 8zm17 0c-.83 0-1.5.67-1.5 1.5v7c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5zm-4.97-5.84l1.3-1.3c.2-.2.2-.51 0-.71-.2-.2-.51-.2-.71 0l-1.48 1.48A5.84 5.84 0 0 0 12 1c-.96 0-1.86.23-2.66.63L7.85.15c-.2-.2-.51-.2-.71 0-.2.2-.2.51 0 .71l1.31 1.31A5.983 5.983 0 0 0 6 7h12c0-2.21-1.2-4.15-2.97-5.18-.03-.02-.05-.04-.08-.06l.08-.06zM10 5H9V4h1v1zm5 0h-1V4h1v1z"/></svg> Google Calendar';
+          googleLink.rel = 'noopener noreferrer';
+          googleLink.appendChild(makeSvg('0 0 24 24', { fill: 'currentColor' }, [
+            { d: 'M6 18c0 .55.45 1 1 1h1v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h2v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8C2.67 8 2 8.67 2 9.5v7c0 .83.67 1.5 1.5 1.5S5 17.33 5 16.5v-7C5 8.67 4.33 8 3.5 8zm17 0c-.83 0-1.5.67-1.5 1.5v7c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5zm-4.97-5.84l1.3-1.3c.2-.2.2-.51 0-.71-.2-.2-.51-.2-.71 0l-1.48 1.48A5.84 5.84 0 0 0 12 1c-.96 0-1.86.23-2.66.63L7.85.15c-.2-.2-.51-.2-.71 0-.2.2-.2.51 0 .71l1.31 1.31A5.983 5.983 0 0 0 6 7h12c0-2.21-1.2-4.15-2.97-5.18-.03-.02-.05-.04-.08-.06l.08-.06zM10 5H9V4h1v1zm5 0h-1V4h1v1z' }
+          ]));
+          googleLink.appendChild(document.createTextNode(' Google Calendar'));
 
           var icalLink = document.createElement('a');
           icalLink.href = icsUrl;
           icalLink.download = title.replace(/[^a-zA-Z0-9 -]/g, '') + '.ics';
-          icalLink.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="10" y1="16" x2="14" y2="16"/></svg> iCal File';
+          icalLink.appendChild(makeSvg('0 0 24 24', { fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [
+            { tag: 'rect', x: '3', y: '4', width: '18', height: '18', rx: '2' },
+            { tag: 'line', x1: '16', y1: '2', x2: '16', y2: '6' },
+            { tag: 'line', x1: '8', y1: '2', x2: '8', y2: '6' },
+            { tag: 'line', x1: '3', y1: '10', x2: '21', y2: '10' },
+            { tag: 'line', x1: '12', y1: '14', x2: '12', y2: '18' },
+            { tag: 'line', x1: '10', y1: '16', x2: '14', y2: '16' }
+          ]));
+          icalLink.appendChild(document.createTextNode(' iCal File'));
 
           menu.appendChild(appleLink);
           menu.appendChild(googleLink);
@@ -2749,7 +2783,7 @@
           var allToday = getTodayEvents();
           buildDayFilterOptions();
 
-          $events.textContent = '';
+          revokeBlobURLs(); $events.textContent = '';
 
           var filtered = allToday.filter(function(item) {
             return matchesFilters(item.evt, item.year);
@@ -2781,7 +2815,7 @@
           }
           buildDayFilterOptions(next3Days);
 
-          $events.textContent = '';
+          revokeBlobURLs(); $events.textContent = '';
 
           var filtered = allNext3.filter(function(item) {
             return matchesFilters(item.evt, item.year);
@@ -2827,7 +2861,7 @@
           roundDayKeys.sort();
           buildDayFilterOptions(roundDayKeys);
 
-          $events.textContent = '';
+          revokeBlobURLs(); $events.textContent = '';
 
           var events = round.events.filter(function(evt) {
             return matchesFilters(evt, year);
@@ -2849,7 +2883,7 @@
 
           buildDayFilterOptions();
 
-          $events.textContent = '';
+          revokeBlobURLs(); $events.textContent = '';
 
           var allEvents = [];
           CAL_DATA.rounds.forEach(function(r) {
