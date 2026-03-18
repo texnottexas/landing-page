@@ -2423,37 +2423,24 @@
           var filename = event.name.replace(/[^a-zA-Z0-9]/g, '_') + '.ics';
           var blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
 
-          // Try Web Share API first (works reliably on Samsung/Android)
-          if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: 'text/calendar' })] })) {
-            navigator.share({
-              files: [new File([blob], filename, { type: 'text/calendar' })],
-              title: (translatedName || event.name) + ' - Seal Stone'
-            }).catch(function() {
-              // User cancelled share or it failed — fall back to download
-              fallbackDownloadICS(blob, filename);
-            });
-            return;
-          }
-
-          fallbackDownloadICS(blob, filename);
-        }
-
-        function fallbackDownloadICS(blob, filename) {
+          // On mobile, open the blob URL directly so the OS handles
+          // the text/calendar MIME type and opens the native calendar app.
+          // Using a.download or Web Share API causes a file download first.
+          var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
           var url = URL.createObjectURL(blob);
-          var a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          a.style.display = 'none';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
 
-          // If the click didn't trigger a download (Samsung Internet),
-          // open the blob URL directly after a short delay
-          setTimeout(function() {
-            try { window.open(url, '_blank'); } catch(e) {}
-          }, 500);
-          setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+          if (isMobile) {
+            window.location.href = url;
+          } else {
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }
+          setTimeout(function() { URL.revokeObjectURL(url); }, 10000);
         }
 
         function findCurrentRound() {
