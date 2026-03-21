@@ -41,6 +41,21 @@
     .result.ok  { background: rgba(63,185,80,.15); border: 1px solid var(--green); color: var(--green); }
     .result.err { background: rgba(248,81,73,.15); border: 1px solid var(--red); color: var(--red); }
     .result.visible { display: block; }
+    .sub-row { display: flex; align-items: center; justify-content: space-between; padding: .35rem .5rem; border-bottom: 1px solid var(--border); font-size: .75rem; }
+    .sub-row:last-child { border-bottom: none; }
+    .sub-row .sub-info { flex: 1; min-width: 0; }
+    .sub-row .sub-name { color: var(--text); }
+    .sub-row .sub-alliance { color: var(--muted); margin-left: .35rem; }
+    .sub-row .sub-remove { background: none; border: 1px solid var(--border); color: var(--red); border-radius: 4px; padding: .15rem .4rem; font-size: .7rem; cursor: pointer; margin: 0; flex-shrink: 0; }
+    .sub-row .sub-remove:hover { border-color: var(--red); background: rgba(248,81,73,.1); }
+    .sub-list { max-height: 260px; overflow-y: auto; }
+    .log-entry { padding: .5rem; border-bottom: 1px solid var(--border); font-size: .75rem; }
+    .log-entry:last-child { border-bottom: none; }
+    .log-time { color: var(--muted); font-size: .65rem; }
+    .log-title { color: var(--accent); font-weight: 600; }
+    .log-body { color: var(--text); margin-top: .15rem; }
+    .log-meta { color: var(--muted); font-size: .65rem; margin-top: .15rem; }
+    .log-list { max-height: 320px; overflow-y: auto; }
   </style>
 </head>
 <body>
@@ -53,6 +68,14 @@
       <div class="stat-label">Active subscribers</div>
       <div style="margin-top:.75rem;font-size:.7rem;color:var(--muted)">Last cron run: <span id="last-cron">—</span></div>
       <button class="secondary" id="refresh-btn" style="margin-top:.75rem;padding:.35rem .75rem;font-size:.75rem">Refresh</button>
+    </div>
+
+    <div class="card" id="subs-card">
+      <h2>Subscribers</h2>
+      <div class="sub-list" id="subs-list"></div>
+      <div style="display:flex;gap:.5rem;margin-top:.5rem">
+        <button class="secondary" id="subs-refresh-btn" style="padding:.35rem .75rem;font-size:.75rem;margin-top:0">Refresh</button>
+      </div>
     </div>
 
     <div class="card">
@@ -86,6 +109,12 @@
       </div>
       <button id="send-btn">Send &#128312;</button>
       <div class="result" id="send-result"></div>
+    </div>
+
+    <div class="card" id="log-card">
+      <h2>Recent Notifications</h2>
+      <div class="log-list" id="log-list"></div>
+      <button class="secondary" id="log-refresh-btn" style="padding:.35rem .75rem;font-size:.75rem">Refresh</button>
     </div>
   </div>
 
@@ -126,9 +155,130 @@
         headers: { 'X-Admin-Password': pw },
       })
         .then(function(r) { return r.json(); })
-        .then(function(list) { subscribers = list; updatePreview(); })
+        .then(function(list) {
+          subscribers = list;
+          updatePreview();
+          renderSubsList(list);
+        })
         .catch(function() {});
     }
+
+    function renderSubsList(list) {
+      var container = document.getElementById('subs-list');
+      while (container.firstChild) container.removeChild(container.firstChild);
+      if (!Array.isArray(list) || list.length === 0) {
+        var empty = document.createElement('div');
+        empty.style.cssText = 'font-size:.75rem;color:var(--muted);padding:.5rem';
+        empty.textContent = 'No subscribers';
+        container.appendChild(empty);
+        return;
+      }
+      list.forEach(function(sub) {
+        var row = document.createElement('div');
+        row.className = 'sub-row';
+        var info = document.createElement('span');
+        info.className = 'sub-info';
+        var nameSpan = document.createElement('span');
+        nameSpan.className = 'sub-name';
+        nameSpan.textContent = sub.name || 'Anonymous';
+        info.appendChild(nameSpan);
+        if (sub.alliance) {
+          var allianceSpan = document.createElement('span');
+          allianceSpan.className = 'sub-alliance';
+          allianceSpan.textContent = '(' + sub.alliance + ')';
+          info.appendChild(allianceSpan);
+        }
+        row.appendChild(info);
+        var removeBtn = document.createElement('button');
+        removeBtn.className = 'sub-remove';
+        removeBtn.textContent = '\u2715';
+        removeBtn.title = 'Remove subscriber';
+        removeBtn.addEventListener('click', function() {
+          removeSubscriber(sub.id);
+        });
+        row.appendChild(removeBtn);
+        container.appendChild(row);
+      });
+    }
+
+    function removeSubscriber(id) {
+      var pw = document.getElementById('secret').value.trim();
+      if (!pw) return;
+      fetch(PUSH_WORKER + '/subscribers', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Password': pw },
+        body: JSON.stringify({ id: id }),
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.ok) {
+            loadSubscribers();
+            loadStatus();
+          }
+        })
+        .catch(function() {});
+    }
+
+    document.getElementById('subs-refresh-btn').addEventListener('click', loadSubscribers);
+
+    function loadNotifyLog() {
+      var pw = document.getElementById('secret').value.trim();
+      if (!pw) return;
+      fetch(PUSH_WORKER + '/notify-log', {
+        headers: { 'X-Admin-Password': pw },
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(entries) { renderNotifyLog(entries); })
+        .catch(function() {});
+    }
+
+    function renderNotifyLog(entries) {
+      var container = document.getElementById('log-list');
+      while (container.firstChild) container.removeChild(container.firstChild);
+      if (!Array.isArray(entries) || entries.length === 0) {
+        var empty = document.createElement('div');
+        empty.style.cssText = 'font-size:.75rem;color:var(--muted);padding:.5rem';
+        empty.textContent = 'No recent notifications';
+        container.appendChild(empty);
+        return;
+      }
+      entries.forEach(function(entry) {
+        var el = document.createElement('div');
+        el.className = 'log-entry';
+        var timeEl = document.createElement('div');
+        timeEl.className = 'log-time';
+        timeEl.textContent = new Date(entry.timestamp).toLocaleString();
+        el.appendChild(timeEl);
+        var titleEl = document.createElement('div');
+        titleEl.className = 'log-title';
+        titleEl.textContent = entry.title;
+        el.appendChild(titleEl);
+        if (entry.body) {
+          var bodyEl = document.createElement('div');
+          bodyEl.className = 'log-body';
+          bodyEl.textContent = entry.body.length > 80 ? entry.body.substring(0, 80) + '...' : entry.body;
+          el.appendChild(bodyEl);
+        }
+        var metaEl = document.createElement('div');
+        metaEl.className = 'log-meta';
+        var metaParts = [];
+        metaParts.push('Sent: ' + entry.sent + ' / Failed: ' + entry.failed + ' / Total: ' + entry.total);
+        if (entry.target) {
+          if (entry.target.players) {
+            metaParts.push('Players: ' + entry.target.players.join(', '));
+          } else if (entry.target.alliances) {
+            metaParts.push('Alliances: ' + entry.target.alliances.join(', '));
+          }
+        } else {
+          metaParts.push('All subscribers');
+        }
+        metaEl.textContent = metaParts.join(' | ');
+        el.appendChild(metaEl);
+        container.appendChild(el);
+      });
+    }
+
+    document.getElementById('log-refresh-btn').addEventListener('click', loadNotifyLog);
 
     document.querySelectorAll('input[name="target-mode"]').forEach(function(r) {
       r.addEventListener('change', function() {
@@ -210,6 +360,7 @@
         .then(function(d) {
           showResult('Sent: ' + d.sent + ' | Failed: ' + d.failed + ' | Total: ' + (d.total || d.sent + d.failed), true);
           loadStatus();
+          loadNotifyLog();
         })
         .catch(function(e) {
           showResult('Request failed: ' + e.message, false);
@@ -223,6 +374,18 @@
     });
 
     loadStatus();
+
+    // Auto-load admin data when password is available
+    secretEl.addEventListener('change', function() {
+      if (this.value.trim()) {
+        loadSubscribers();
+        loadNotifyLog();
+      }
+    });
+    if (secretEl.value.trim()) {
+      loadSubscribers();
+      loadNotifyLog();
+    }
   </script>
 </body>
 </html>
