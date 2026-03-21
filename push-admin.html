@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://push-worker.27tb8s6fct.workers.dev; form-action 'none'; base-uri 'self';">
+  <title>Push Admin — 2864</title>
+  <style>
+    :root {
+      --bg: #0d1117; --bg2: #161b22; --card: #1c2128; --border: #30363d;
+      --text: #e6edf3; --muted: #8b949e; --accent: #79c0ff; --green: #3fb950;
+      --red: #f85149;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: .85rem; padding: 2rem 1rem; min-height: 100vh; }
+    .container { max-width: 520px; margin: 0 auto; }
+    h1 { font-size: 1.1rem; font-weight: 700; margin-bottom: 1.5rem; color: var(--accent); }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
+    .card h2 { font-size: .85rem; font-weight: 600; color: var(--muted); margin-bottom: 1rem; text-transform: uppercase; letter-spacing: .05em; }
+    .stat { font-size: 2rem; font-weight: 700; color: var(--accent); }
+    .stat-label { font-size: .7rem; color: var(--muted); margin-top: .25rem; }
+    label { display: block; font-size: .75rem; color: var(--muted); margin-bottom: .25rem; margin-top: .75rem; }
+    label:first-of-type { margin-top: 0; }
+    input, textarea, select {
+      width: 100%; background: var(--bg2); border: 1px solid var(--border); color: var(--text);
+      border-radius: 6px; padding: .4rem .6rem; font-size: .8rem; outline: none; font-family: inherit;
+    }
+    input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+    textarea { min-height: 80px; resize: vertical; }
+    .secret-row { display: flex; gap: .5rem; }
+    .secret-row input { flex: 1; }
+    button {
+      background: var(--accent); border: none; color: #0d1117; font-weight: 600;
+      border-radius: 8px; padding: .5rem 1.25rem; font-size: .85rem; cursor: pointer;
+      margin-top: .75rem;
+    }
+    button:hover { opacity: .9; }
+    button.secondary { background: var(--card); border: 1px solid var(--border); color: var(--muted); }
+    button.secondary:hover { border-color: var(--accent); color: var(--accent); }
+    .result { margin-top: .75rem; padding: .5rem .75rem; border-radius: 6px; font-size: .75rem; display: none; }
+    .result.ok  { background: rgba(63,185,80,.15); border: 1px solid var(--green); color: var(--green); }
+    .result.err { background: rgba(248,81,73,.15); border: 1px solid var(--red); color: var(--red); }
+    .result.visible { display: block; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>&#128276; Push Admin — 2864tw.com</h1>
+
+    <div class="card" id="status-card">
+      <h2>Status</h2>
+      <div class="stat" id="sub-count">—</div>
+      <div class="stat-label">Active subscribers</div>
+      <div style="margin-top:.75rem;font-size:.7rem;color:var(--muted)">Last cron run: <span id="last-cron">—</span></div>
+      <button class="secondary" id="refresh-btn" style="margin-top:.75rem;padding:.35rem .75rem;font-size:.75rem">Refresh</button>
+    </div>
+
+    <div class="card">
+      <h2>Send Notification</h2>
+      <div class="secret-row">
+        <div style="flex:1">
+          <label for="secret">Notify secret</label>
+          <input type="password" id="secret" placeholder="NOTIFY_SECRET value" autocomplete="off">
+        </div>
+      </div>
+      <label for="notif-title">Title</label>
+      <input type="text" id="notif-title" value="TW Server 2864" maxlength="100">
+      <label for="notif-body">Body</label>
+      <textarea id="notif-body" placeholder="Notification message..." maxlength="300"></textarea>
+      <label for="notif-cat">Category</label>
+      <select id="notif-cat">
+        <option value="all">All subscribers</option>
+        <option value="titan_canyon">Titan Canyon</option>
+        <option value="wasteland">Wasteland</option>
+        <option value="announcements">Announcements</option>
+      </select>
+      <button id="send-btn">Send &#128312;</button>
+      <div class="result" id="send-result"></div>
+    </div>
+  </div>
+
+  <script>
+    'use strict';
+    var PUSH_WORKER = 'https://push-worker.27tb8s6fct.workers.dev';
+
+    function loadStatus() {
+      fetch(PUSH_WORKER + '/status')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          document.getElementById('sub-count').textContent = d.count || 0;
+          document.getElementById('last-cron').textContent = d.lastCron
+            ? new Date(d.lastCron).toLocaleString()
+            : 'Never';
+        })
+        .catch(function() {
+          document.getElementById('sub-count').textContent = '—';
+        });
+    }
+
+    document.getElementById('refresh-btn').addEventListener('click', loadStatus);
+
+    document.getElementById('send-btn').addEventListener('click', function() {
+      var secret  = document.getElementById('secret').value.trim();
+      var title   = document.getElementById('notif-title').value.trim();
+      var body    = document.getElementById('notif-body').value.trim();
+      var cat     = document.getElementById('notif-cat').value;
+      var result  = document.getElementById('send-result');
+
+      if (!secret) { showResult('Enter the notify secret', false); return; }
+      if (!title)  { showResult('Enter a title', false); return; }
+
+      this.disabled = true;
+      var btn = this;
+      fetch(PUSH_WORKER + '/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Notify-Secret': secret },
+        body: JSON.stringify({ title: title, body: body, category: cat }),
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          showResult('Sent: ' + d.sent + ' | Failed: ' + d.failed, true);
+          loadStatus();
+        })
+        .catch(function(e) {
+          showResult('Request failed: ' + e.message, false);
+        })
+        .finally(function() { btn.disabled = false; });
+
+      function showResult(msg, ok) {
+        result.textContent = msg;
+        result.className = 'result visible ' + (ok ? 'ok' : 'err');
+      }
+    });
+
+    loadStatus();
+  </script>
+</body>
+</html>
