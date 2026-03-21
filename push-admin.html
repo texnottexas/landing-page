@@ -17,8 +17,10 @@
     h1 { font-size: 1.1rem; font-weight: 700; margin-bottom: 1.5rem; color: var(--accent); }
     .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
     .card h2 { font-size: .85rem; font-weight: 600; color: var(--muted); margin-bottom: 1rem; text-transform: uppercase; letter-spacing: .05em; }
-    .stat { font-size: 2rem; font-weight: 700; color: var(--accent); }
+    .stat { font-size: 2rem; font-weight: 700; color: var(--accent); cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 4px; }
+    .stat:hover { color: var(--text); }
     .stat-label { font-size: .7rem; color: var(--muted); margin-top: .25rem; }
+    .stat-hint { font-size: .6rem; color: var(--muted); margin-top: .15rem; font-style: italic; }
     label { display: block; font-size: .75rem; color: var(--muted); margin-bottom: .25rem; margin-top: .75rem; }
     label:first-of-type { margin-top: 0; }
     input, textarea, select {
@@ -41,21 +43,53 @@
     .result.ok  { background: rgba(63,185,80,.15); border: 1px solid var(--green); color: var(--green); }
     .result.err { background: rgba(248,81,73,.15); border: 1px solid var(--red); color: var(--red); }
     .result.visible { display: block; }
-    .sub-row { display: flex; align-items: center; justify-content: space-between; padding: .35rem .5rem; border-bottom: 1px solid var(--border); font-size: .75rem; }
+
+    /* Modal */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 100; align-items: center; justify-content: center; padding: 1rem; }
+    .modal-overlay.active { display: flex; }
+    .modal { background: var(--card); border: 1px solid var(--border); border-radius: 12px; max-width: 480px; width: 100%; max-height: 80vh; display: flex; flex-direction: column; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .modal-header h3 { font-size: .85rem; font-weight: 600; }
+    .modal-close { background: none; border: none; color: var(--muted); font-size: 1rem; cursor: pointer; padding: .25rem; margin: 0; }
+    .modal-close:hover { color: var(--text); }
+    .modal-body { overflow-y: auto; flex: 1; }
+
+    /* Subscriber rows */
+    .sub-row { display: flex; align-items: center; justify-content: space-between; padding: .5rem 1.25rem; border-bottom: 1px solid var(--border); font-size: .75rem; }
     .sub-row:last-child { border-bottom: none; }
-    .sub-row .sub-info { flex: 1; min-width: 0; }
-    .sub-row .sub-name { color: var(--text); }
-    .sub-row .sub-alliance { color: var(--muted); margin-left: .35rem; }
-    .sub-row .sub-remove { background: none; border: 1px solid var(--border); color: var(--red); border-radius: 4px; padding: .15rem .4rem; font-size: .7rem; cursor: pointer; margin: 0; flex-shrink: 0; }
-    .sub-row .sub-remove:hover { border-color: var(--red); background: rgba(248,81,73,.1); }
-    .sub-list { max-height: 260px; overflow-y: auto; }
-    .log-entry { padding: .5rem; border-bottom: 1px solid var(--border); font-size: .75rem; }
+    .sub-name { color: var(--text); }
+    .sub-alliance { color: var(--muted); margin-left: .35rem; }
+    .sub-remove { background: none; border: 1px solid var(--border); color: var(--red); border-radius: 4px; padding: .15rem .4rem; font-size: .7rem; cursor: pointer; margin: 0; flex-shrink: 0; }
+    .sub-remove:hover { border-color: var(--red); background: rgba(248,81,73,.1); }
+
+    /* Log entries */
+    .log-entry { border-bottom: 1px solid var(--border); cursor: pointer; }
     .log-entry:last-child { border-bottom: none; }
-    .log-time { color: var(--muted); font-size: .65rem; }
-    .log-title { color: var(--accent); font-weight: 600; }
-    .log-body { color: var(--text); margin-top: .15rem; }
-    .log-meta { color: var(--muted); font-size: .65rem; margin-top: .15rem; }
-    .log-list { max-height: 320px; overflow-y: auto; }
+    .log-summary { display: flex; justify-content: space-between; align-items: center; padding: .6rem 1.25rem; }
+    .log-summary:hover { background: var(--bg2); }
+    .log-left { flex: 1; min-width: 0; }
+    .log-title { color: var(--accent); font-weight: 600; font-size: .75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .log-time { color: var(--muted); font-size: .6rem; margin-top: .1rem; }
+    .log-badge { font-size: .65rem; color: var(--muted); flex-shrink: 0; margin-left: .5rem; }
+    .log-badge .sent { color: var(--green); }
+    .log-badge .failed { color: var(--red); }
+    .log-detail { display: none; padding: .5rem 1.25rem; background: var(--bg2); font-size: .7rem; border-top: 1px solid var(--border); }
+    .log-detail.open { display: block; }
+    .log-detail-body { color: var(--text); margin-bottom: .35rem; white-space: pre-wrap; word-break: break-word; }
+    .log-detail-meta { color: var(--muted); font-size: .65rem; }
+    .empty-state { font-size: .75rem; color: var(--muted); padding: 1rem 1.25rem; text-align: center; }
+
+    /* Toggle pills (radio + checkbox replacement) */
+    .pill-group { display: flex; gap: .4rem; flex-wrap: wrap; }
+    .pill { display: inline-flex; align-items: center; padding: .35rem .75rem; font-size: .75rem;
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 20px;
+      color: var(--muted); cursor: pointer; transition: all .15s; user-select: none; font-family: inherit; }
+    .pill:hover { border-color: var(--accent); color: var(--text); }
+    .pill.active { background: rgba(56,139,253,.15); border-color: var(--accent); color: var(--accent); }
+    .pill input { display: none; }
+
+    /* Bottom actions */
+    .bottom-actions { text-align: center; margin-top: .5rem; }
   </style>
 </head>
 <body>
@@ -64,18 +98,11 @@
 
     <div class="card" id="status-card">
       <h2>Status</h2>
-      <div class="stat" id="sub-count">—</div>
+      <div class="stat" id="sub-count" title="Click to manage subscribers">—</div>
       <div class="stat-label">Active subscribers</div>
+      <div class="stat-hint">Tap count to manage</div>
       <div style="margin-top:.75rem;font-size:.7rem;color:var(--muted)">Last cron run: <span id="last-cron">—</span></div>
       <button class="secondary" id="refresh-btn" style="margin-top:.75rem;padding:.35rem .75rem;font-size:.75rem">Refresh</button>
-    </div>
-
-    <div class="card" id="subs-card">
-      <h2>Subscribers</h2>
-      <div class="sub-list" id="subs-list"></div>
-      <div style="display:flex;gap:.5rem;margin-top:.5rem">
-        <button class="secondary" id="subs-refresh-btn" style="padding:.35rem .75rem;font-size:.75rem;margin-top:0">Refresh</button>
-      </div>
     </div>
 
     <div class="card">
@@ -92,18 +119,18 @@
       <textarea id="notif-body" placeholder="Notification message..." maxlength="300"></textarea>
       <label>Recipients</label>
       <div id="target-section" style="margin-top:.25rem">
-        <div style="display:flex;gap:.75rem;margin-bottom:.5rem">
-          <label style="display:inline;margin:0"><input type="radio" name="target-mode" value="all" checked> All</label>
-          <label style="display:inline;margin:0"><input type="radio" name="target-mode" value="player"> By player</label>
-          <label style="display:inline;margin:0"><input type="radio" name="target-mode" value="alliance"> By alliance</label>
+        <div class="pill-group" style="margin-bottom:.5rem">
+          <label class="pill active" data-mode="all"><input type="radio" name="target-mode" value="all" checked>All</label>
+          <label class="pill" data-mode="player"><input type="radio" name="target-mode" value="player">By player</label>
+          <label class="pill" data-mode="alliance"><input type="radio" name="target-mode" value="alliance">By alliance</label>
         </div>
         <div id="target-player" style="display:none">
           <input type="text" id="player-search" placeholder="Search players..." autocomplete="off">
           <div id="player-list" style="max-height:120px;overflow-y:auto;margin-top:.25rem"></div>
         </div>
-        <div id="target-alliance" style="display:none;gap:.75rem;align-items:center;padding:.35rem 0">
-          <label style="display:inline-flex;align-items:center;gap:.3rem;margin:0;font-size:.8rem;cursor:pointer"><input type="checkbox" value="DOG*" class="alliance-cb"> DOG*</label>
-          <label style="display:inline-flex;align-items:center;gap:.3rem;margin:0;font-size:.8rem;cursor:pointer"><input type="checkbox" value="MSS" class="alliance-cb"> MSS</label>
+        <div id="target-alliance" class="pill-group" style="display:none;margin-top:.35rem">
+          <label class="pill" data-alliance="DOG*"><input type="checkbox" value="DOG*" class="alliance-cb">DOG*</label>
+          <label class="pill" data-alliance="MSS"><input type="checkbox" value="MSS" class="alliance-cb">MSS</label>
         </div>
         <div id="target-preview" style="font-size:.7rem;color:var(--muted);margin-top:.5rem"></div>
       </div>
@@ -111,10 +138,30 @@
       <div class="result" id="send-result"></div>
     </div>
 
-    <div class="card" id="log-card">
-      <h2>Recent Notifications</h2>
-      <div class="log-list" id="log-list"></div>
-      <button class="secondary" id="log-refresh-btn" style="padding:.35rem .75rem;font-size:.75rem">Refresh</button>
+    <div class="bottom-actions">
+      <button class="secondary" id="log-btn" style="font-size:.75rem;padding:.4rem 1rem">Recent Notifications</button>
+    </div>
+  </div>
+
+  <!-- Subscribers Modal -->
+  <div class="modal-overlay" id="subs-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Subscribers</h3>
+        <button class="modal-close" id="subs-modal-close">&#10005;</button>
+      </div>
+      <div class="modal-body" id="subs-list"></div>
+    </div>
+  </div>
+
+  <!-- Notification Log Modal -->
+  <div class="modal-overlay" id="log-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Recent Notifications</h3>
+        <button class="modal-close" id="log-modal-close">&#10005;</button>
+      </div>
+      <div class="modal-body" id="log-list"></div>
     </div>
   </div>
 
@@ -129,6 +176,16 @@
       sessionStorage.setItem('adminPassword', this.value);
     });
 
+    // --- Modals ---
+    function openModal(id) { document.getElementById(id).classList.add('active'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+    document.getElementById('subs-modal-close').addEventListener('click', function() { closeModal('subs-modal'); });
+    document.getElementById('log-modal-close').addEventListener('click', function() { closeModal('log-modal'); });
+    document.getElementById('subs-modal').addEventListener('click', function(e) { if (e.target === this) closeModal('subs-modal'); });
+    document.getElementById('log-modal').addEventListener('click', function(e) { if (e.target === this) closeModal('log-modal'); });
+
+    // --- Status ---
     function loadStatus() {
       fetch(PUSH_WORKER + '/status')
         .then(function(r) { return r.json(); })
@@ -139,17 +196,26 @@
             : 'Never';
         })
         .catch(function() {
-          document.getElementById('sub-count').textContent = '—';
+          document.getElementById('sub-count').textContent = '\u2014';
         });
     }
 
     document.getElementById('refresh-btn').addEventListener('click', loadStatus);
 
+    // --- Subscriber count click → modal ---
+    document.getElementById('sub-count').addEventListener('click', function() {
+      var pw = secretEl.value.trim();
+      if (!pw) { alert('Enter admin password first'); return; }
+      loadSubscribers();
+      openModal('subs-modal');
+    });
+
+    // --- Subscribers ---
     var subscribers = [];
     var selectedPlayers = [];
 
     function loadSubscribers() {
-      var pw = document.getElementById('secret').value.trim();
+      var pw = secretEl.value.trim();
       if (!pw) return;
       fetch(PUSH_WORKER + '/subscribers', {
         headers: { 'X-Admin-Password': pw },
@@ -168,7 +234,7 @@
       while (container.firstChild) container.removeChild(container.firstChild);
       if (!Array.isArray(list) || list.length === 0) {
         var empty = document.createElement('div');
-        empty.style.cssText = 'font-size:.75rem;color:var(--muted);padding:.5rem';
+        empty.className = 'empty-state';
         empty.textContent = 'No subscribers';
         container.appendChild(empty);
         return;
@@ -177,7 +243,7 @@
         var row = document.createElement('div');
         row.className = 'sub-row';
         var info = document.createElement('span');
-        info.className = 'sub-info';
+        info.style.cssText = 'flex:1;min-width:0';
         var nameSpan = document.createElement('span');
         nameSpan.className = 'sub-name';
         nameSpan.textContent = sub.name || 'Anonymous';
@@ -202,7 +268,7 @@
     }
 
     function removeSubscriber(id) {
-      var pw = document.getElementById('secret').value.trim();
+      var pw = secretEl.value.trim();
       if (!pw) return;
       fetch(PUSH_WORKER + '/subscribers', {
         method: 'DELETE',
@@ -219,10 +285,16 @@
         .catch(function() {});
     }
 
-    document.getElementById('subs-refresh-btn').addEventListener('click', loadSubscribers);
+    // --- Notification Log ---
+    document.getElementById('log-btn').addEventListener('click', function() {
+      var pw = secretEl.value.trim();
+      if (!pw) { alert('Enter admin password first'); return; }
+      loadNotifyLog();
+      openModal('log-modal');
+    });
 
     function loadNotifyLog() {
-      var pw = document.getElementById('secret').value.trim();
+      var pw = secretEl.value.trim();
       if (!pw) return;
       fetch(PUSH_WORKER + '/notify-log', {
         headers: { 'X-Admin-Password': pw },
@@ -237,7 +309,7 @@
       while (container.firstChild) container.removeChild(container.firstChild);
       if (!Array.isArray(entries) || entries.length === 0) {
         var empty = document.createElement('div');
-        empty.style.cssText = 'font-size:.75rem;color:var(--muted);padding:.5rem';
+        empty.className = 'empty-state';
         empty.textContent = 'No recent notifications';
         container.appendChild(empty);
         return;
@@ -245,46 +317,92 @@
       entries.forEach(function(entry) {
         var el = document.createElement('div');
         el.className = 'log-entry';
-        var timeEl = document.createElement('div');
-        timeEl.className = 'log-time';
-        timeEl.textContent = new Date(entry.timestamp).toLocaleString();
-        el.appendChild(timeEl);
+
+        // Summary row (always visible, clickable)
+        var summary = document.createElement('div');
+        summary.className = 'log-summary';
+        var left = document.createElement('div');
+        left.className = 'log-left';
         var titleEl = document.createElement('div');
         titleEl.className = 'log-title';
         titleEl.textContent = entry.title;
-        el.appendChild(titleEl);
+        left.appendChild(titleEl);
+        var timeEl = document.createElement('div');
+        timeEl.className = 'log-time';
+        timeEl.textContent = new Date(entry.timestamp).toLocaleString();
+        left.appendChild(timeEl);
+        summary.appendChild(left);
+
+        var badge = document.createElement('div');
+        badge.className = 'log-badge';
+        var sentSpan = document.createElement('span');
+        sentSpan.className = 'sent';
+        sentSpan.textContent = entry.sent;
+        badge.appendChild(sentSpan);
+        badge.appendChild(document.createTextNode(' sent'));
+        if (entry.failed > 0) {
+          badge.appendChild(document.createTextNode(' / '));
+          var failSpan = document.createElement('span');
+          failSpan.className = 'failed';
+          failSpan.textContent = entry.failed;
+          badge.appendChild(failSpan);
+          badge.appendChild(document.createTextNode(' failed'));
+        }
+        summary.appendChild(badge);
+        el.appendChild(summary);
+
+        // Detail section (expandable)
+        var detail = document.createElement('div');
+        detail.className = 'log-detail';
         if (entry.body) {
           var bodyEl = document.createElement('div');
-          bodyEl.className = 'log-body';
-          bodyEl.textContent = entry.body.length > 80 ? entry.body.substring(0, 80) + '...' : entry.body;
-          el.appendChild(bodyEl);
+          bodyEl.className = 'log-detail-body';
+          bodyEl.textContent = entry.body;
+          detail.appendChild(bodyEl);
         }
-        var metaEl = document.createElement('div');
-        metaEl.className = 'log-meta';
-        var metaParts = [];
-        metaParts.push('Sent: ' + entry.sent + ' / Failed: ' + entry.failed + ' / Total: ' + entry.total);
+        var meta = document.createElement('div');
+        meta.className = 'log-detail-meta';
+        var parts = [];
+        parts.push('Delivered: ' + entry.sent + ' of ' + entry.total);
+        if (entry.failed > 0) parts.push('Failed: ' + entry.failed);
         if (entry.target) {
-          if (entry.target.players) {
-            metaParts.push('Players: ' + entry.target.players.join(', '));
-          } else if (entry.target.alliances) {
-            metaParts.push('Alliances: ' + entry.target.alliances.join(', '));
-          }
+          if (entry.target.players) parts.push('Players: ' + entry.target.players.join(', '));
+          else if (entry.target.alliances) parts.push('Alliances: ' + entry.target.alliances.join(', '));
         } else {
-          metaParts.push('All subscribers');
+          parts.push('Target: All subscribers');
         }
-        metaEl.textContent = metaParts.join(' | ');
-        el.appendChild(metaEl);
+        meta.textContent = parts.join(' \u00B7 ');
+        detail.appendChild(meta);
+        el.appendChild(detail);
+
+        // Toggle expand on click
+        summary.addEventListener('click', function() {
+          detail.classList.toggle('open');
+        });
+
         container.appendChild(el);
       });
     }
 
-    document.getElementById('log-refresh-btn').addEventListener('click', loadNotifyLog);
+    // --- Targeting (pill toggle) ---
+    document.querySelectorAll('.pill[data-mode]').forEach(function(pill) {
+      pill.addEventListener('click', function() {
+        document.querySelectorAll('.pill[data-mode]').forEach(function(p) { p.classList.remove('active'); });
+        pill.classList.add('active');
+        pill.querySelector('input').checked = true;
+        var mode = pill.dataset.mode;
+        document.getElementById('target-player').style.display = mode === 'player' ? '' : 'none';
+        document.getElementById('target-alliance').style.display = mode === 'alliance' ? 'flex' : 'none';
+        if (mode !== 'all' && subscribers.length === 0) loadSubscribers();
+        updatePreview();
+      });
+    });
 
-    document.querySelectorAll('input[name="target-mode"]').forEach(function(r) {
-      r.addEventListener('change', function() {
-        document.getElementById('target-player').style.display = this.value === 'player' ? '' : 'none';
-        document.getElementById('target-alliance').style.display = this.value === 'alliance' ? 'flex' : 'none';
-        if (this.value !== 'all' && subscribers.length === 0) loadSubscribers();
+    document.querySelectorAll('.pill[data-alliance]').forEach(function(pill) {
+      pill.addEventListener('click', function() {
+        pill.classList.toggle('active');
+        var cb = pill.querySelector('input');
+        cb.checked = pill.classList.contains('active');
         updatePreview();
       });
     });
@@ -309,10 +427,6 @@
         });
         list.appendChild(el);
       });
-    });
-
-    document.querySelectorAll('.alliance-cb').forEach(function(cb) {
-      cb.addEventListener('change', function() { updatePreview(); });
     });
 
     function getTarget() {
@@ -340,8 +454,9 @@
       el.textContent = 'Sending to ' + count + ' of ' + subscribers.length + ' subscribers';
     }
 
+    // --- Send ---
     document.getElementById('send-btn').addEventListener('click', function() {
-      var secret  = document.getElementById('secret').value.trim();
+      var secret  = secretEl.value.trim();
       var title   = document.getElementById('notif-title').value.trim();
       var body    = document.getElementById('notif-body').value.trim();
       var result  = document.getElementById('send-result');
@@ -360,7 +475,6 @@
         .then(function(d) {
           showResult('Sent: ' + d.sent + ' | Failed: ' + d.failed + ' | Total: ' + (d.total || d.sent + d.failed), true);
           loadStatus();
-          loadNotifyLog();
         })
         .catch(function(e) {
           showResult('Request failed: ' + e.message, false);
@@ -373,19 +487,14 @@
       }
     });
 
+    // --- Init ---
     loadStatus();
-
-    // Auto-load admin data when password is available
-    secretEl.addEventListener('change', function() {
-      if (this.value.trim()) {
-        loadSubscribers();
-        loadNotifyLog();
-      }
-    });
     if (secretEl.value.trim()) {
       loadSubscribers();
-      loadNotifyLog();
     }
+    secretEl.addEventListener('change', function() {
+      if (this.value.trim()) loadSubscribers();
+    });
   </script>
 </body>
 </html>
