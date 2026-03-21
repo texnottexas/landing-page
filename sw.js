@@ -21,6 +21,7 @@ self.addEventListener('push', function(event) {
     icon:    data.icon   || '/icons/icon-192.png',
     badge:   data.badge  || '/icons/icon-192.png',
     tag:     data.tag    || 'tw2864-push',
+    renotify: true,
     data:    { url: data.url || 'https://2864tw.com' },
     requireInteraction: false,
     vibrate: [200, 100, 200],
