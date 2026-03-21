@@ -1220,6 +1220,10 @@
     .identity-greeting-name { color: var(--accent); font-weight: 600; }
     .identity-reset-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: .65rem; padding: 0 .15rem; line-height: 1; }
     .identity-reset-btn:hover { color: var(--text); }
+    @keyframes identity-pulse { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
+    .identity-dot { display: inline-block; width: 6px; height: 6px; background: #388bfd; border-radius: 50%; margin-left: 6px; vertical-align: middle; animation: identity-pulse 2s ease-in-out infinite; box-shadow: 0 0 4px #388bfd; }
+    .identity-anon-link { color: var(--accent); cursor: pointer; text-decoration: none; }
+    .identity-anon-link:hover { text-decoration: underline; }
 
     /* Bell / push button */
     .bell-btn { background: none; border: 1px solid transparent; color: var(--muted); font-size: 1rem; cursor: pointer; padding: .2rem .35rem; border-radius: 6px; line-height: 1; transition: color .15s, border-color .15s; }
@@ -3677,9 +3681,42 @@
       }
 
       function showGreeting(identity) {
+        while (identityGreeting.firstChild) identityGreeting.removeChild(identityGreeting.firstChild);
         if (identity && identity !== 'anonymous' && identity.name) {
-          identityNameEl.textContent = identity.name;
           identityGreeting.style.display = '';
+          identityGreeting.appendChild(document.createTextNode('Hi, '));
+          var nameSpan = document.createElement('span');
+          nameSpan.id = 'identity-name';
+          nameSpan.className = 'identity-greeting-name';
+          nameSpan.textContent = identity.name;
+          identityGreeting.appendChild(nameSpan);
+          identityGreeting.appendChild(document.createTextNode('\u2002'));
+          var resetBtn = document.createElement('button');
+          resetBtn.id = 'identity-reset';
+          resetBtn.className = 'identity-reset-btn';
+          resetBtn.title = 'Not you?';
+          resetBtn.textContent = '\u2715';
+          resetBtn.addEventListener('click', function() {
+            saveIdentity('anonymous');
+            showGreeting('anonymous');
+          });
+          identityGreeting.appendChild(resetBtn);
+        } else if (identity === 'anonymous' || !identity) {
+          identityGreeting.style.display = '';
+          identityGreeting.appendChild(document.createTextNode('\uD83D\uDC4B Hello! '));
+          var link = document.createElement('a');
+          link.className = 'identity-anon-link';
+          link.id = 'identity-set-link';
+          link.textContent = 'Who are you?';
+          link.href = '#';
+          link.addEventListener('click', function(e) {
+            e.preventDefault();
+            openModal();
+          });
+          identityGreeting.appendChild(link);
+          var dot = document.createElement('span');
+          dot.className = 'identity-dot';
+          identityGreeting.appendChild(dot);
         } else {
           identityGreeting.style.display = 'none';
         }
@@ -3743,11 +3780,10 @@
       }
 
       function showModalIfNeeded() {
-        var identity = getIdentity();
-        if (identity === null) {
-          setTimeout(openModal, 2000);
-        } else {
-          showGreeting(identity);
+        var stored = getIdentity();
+        showGreeting(stored);
+        if (!stored) {
+          setTimeout(function() { openModal(); }, 2000);
         }
       }
 
@@ -3763,11 +3799,6 @@
       document.getElementById('identity-skip').addEventListener('click', function() {
         saveIdentity('anonymous');
         closeModal();
-      });
-      document.getElementById('identity-reset').addEventListener('click', function() {
-        try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
-        identityGreeting.style.display = 'none';
-        openModal();
       });
       identitySearch.addEventListener('input', function() { renderList(identitySearch.value); });
       identityModal.addEventListener('click', function(e) {
