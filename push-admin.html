@@ -144,6 +144,9 @@
           <button class="seg-btn" data-mode="player" type="button">Player</button>
           <button class="seg-btn" data-mode="alliance" type="button">Alliance</button>
         </div>
+        <label id="include-guests-wrap" style="display:none;font-size:.7rem;color:var(--muted);margin:.25rem 0 .5rem;cursor:pointer">
+          <input type="checkbox" id="include-guests"> Include guests
+        </label>
         <div id="target-player" style="display:none">
           <input type="text" id="player-search" placeholder="Search players..." autocomplete="off">
           <div id="player-list" style="max-height:120px;overflow-y:auto;margin-top:.25rem"></div>
@@ -266,7 +269,7 @@
         info.style.cssText = 'flex:1;min-width:0';
         var nameSpan = document.createElement('span');
         nameSpan.className = 'sub-name';
-        nameSpan.textContent = sub.name || 'Anonymous';
+        nameSpan.textContent = sub.guest ? (sub.name || 'Guest') + ' (Guest)' : (sub.name || 'Anonymous');
         info.appendChild(nameSpan);
         if (sub.alliance) {
           var allianceSpan = document.createElement('span');
@@ -411,6 +414,7 @@
         document.querySelectorAll('.seg-btn[data-mode]').forEach(function(b) { b.classList.remove('active'); });
         btn.classList.add('active');
         activeMode = btn.dataset.mode;
+        document.getElementById('include-guests-wrap').style.display = activeMode === 'all' ? '' : 'none';
         document.getElementById('target-player').style.display = activeMode === 'player' ? '' : 'none';
         document.getElementById('target-alliance').style.display = activeMode === 'alliance' ? 'flex' : 'none';
         if (activeMode !== 'all' && subscribers.length === 0) loadSubscribers();
@@ -433,7 +437,7 @@
       var q = this.value.toLowerCase();
       var list = document.getElementById('player-list');
       while (list.firstChild) list.removeChild(list.firstChild);
-      var named = subscribers.filter(function(s) { return s.name; });
+      var named = subscribers.filter(function(s) { return s.name && !s.guest; });
       var filtered = named.filter(function(s) { return !q || s.name.toLowerCase().indexOf(q) !== -1; });
       filtered.slice(0, 50).forEach(function(s) {
         var el = document.createElement('div');
@@ -483,10 +487,14 @@
 
       this.disabled = true;
       var btn = this;
+      var payload = { title: title, body: body, target: getTarget() };
+      if (activeMode === 'all' && document.getElementById('include-guests').checked) {
+        payload.includeGuests = true;
+      }
       fetch(PUSH_WORKER + '/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Admin-Password': secret },
-        body: JSON.stringify({ title: title, body: body, target: getTarget() }),
+        body: JSON.stringify(payload),
       })
         .then(function(r) { return r.json(); })
         .then(function(d) {
