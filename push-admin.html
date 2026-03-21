@@ -79,15 +79,23 @@
     .log-detail-meta { color: var(--muted); font-size: .65rem; }
     .empty-state { font-size: .75rem; color: var(--muted); padding: 1rem 1.25rem; text-align: center; }
 
-    /* Toggle pills (radio + checkbox replacement) */
-    .pill-group { display: flex; gap: .4rem; flex-wrap: wrap; }
-    .pill { display: inline-flex; align-items: center; padding: .35rem .75rem; font-size: .75rem;
-      background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
-      color: var(--muted); cursor: pointer; transition: all .15s; user-select: none; font-family: inherit;
-      height: 2rem; line-height: 1; }
-    .pill:hover { border-color: var(--accent); color: var(--text); }
-    .pill.active { background: rgba(56,139,253,.15); border-color: var(--accent); color: var(--accent); }
-    .pill input { display: none; }
+    /* Segmented buttons */
+    .seg-group { display: flex; gap: 0; }
+    .seg-btn { flex: 1; padding: .4rem .5rem; font-size: .75rem; text-align: center;
+      background: var(--bg2); border: 1px solid var(--border); color: var(--muted);
+      cursor: pointer; font-family: inherit; font-weight: 500; transition: all .15s; margin: 0; }
+    .seg-btn:first-child { border-radius: 6px 0 0 6px; }
+    .seg-btn:last-child { border-radius: 0 6px 6px 0; }
+    .seg-btn:not(:first-child) { border-left: none; }
+    .seg-btn:hover { color: var(--text); background: var(--card); }
+    .seg-btn.active { background: rgba(56,139,253,.15); border-color: var(--accent); color: var(--accent); }
+    .seg-btn.active + .seg-btn { border-left-color: var(--accent); }
+    .toggle-group { display: flex; gap: .4rem; margin-top: .35rem; }
+    .toggle-btn { padding: .35rem .75rem; font-size: .75rem; background: var(--bg2);
+      border: 1px solid var(--border); border-radius: 6px; color: var(--muted);
+      cursor: pointer; font-family: inherit; transition: all .15s; margin: 0; }
+    .toggle-btn:hover { border-color: var(--accent); color: var(--text); }
+    .toggle-btn.active { background: rgba(56,139,253,.15); border-color: var(--accent); color: var(--accent); }
 
     /* Password hint */
     .pw-hint-wrap { display: inline; position: relative; }
@@ -127,18 +135,18 @@
       <textarea id="notif-body" placeholder="Notification message..." maxlength="300"></textarea>
       <label>Recipients</label>
       <div id="target-section" style="margin-top:.25rem">
-        <div style="display:flex;gap:.4rem;margin-bottom:.5rem">
-          <label class="pill active" data-mode="all"><input type="radio" name="target-mode" value="all" checked>All</label>
-          <label class="pill" data-mode="player"><input type="radio" name="target-mode" value="player">Player</label>
-          <label class="pill" data-mode="alliance"><input type="radio" name="target-mode" value="alliance">Alliance</label>
+        <div class="seg-group" style="margin-bottom:.5rem">
+          <button class="seg-btn active" data-mode="all" type="button">All</button>
+          <button class="seg-btn" data-mode="player" type="button">Player</button>
+          <button class="seg-btn" data-mode="alliance" type="button">Alliance</button>
         </div>
         <div id="target-player" style="display:none">
           <input type="text" id="player-search" placeholder="Search players..." autocomplete="off">
           <div id="player-list" style="max-height:120px;overflow-y:auto;margin-top:.25rem"></div>
         </div>
-        <div id="target-alliance" class="pill-group" style="display:none;margin-top:.35rem">
-          <label class="pill" data-alliance="DOG*"><input type="checkbox" value="DOG*" class="alliance-cb">DOG*</label>
-          <label class="pill" data-alliance="MSS"><input type="checkbox" value="MSS" class="alliance-cb">MSS</label>
+        <div id="target-alliance" class="toggle-group" style="display:none">
+          <button class="toggle-btn" data-alliance="DOG*" type="button">DOG*</button>
+          <button class="toggle-btn" data-alliance="MSS" type="button">MSS</button>
         </div>
         <div id="target-preview" style="font-size:.7rem;color:var(--muted);margin-top:.5rem"></div>
       </div>
@@ -392,25 +400,27 @@
       });
     }
 
-    // --- Targeting (pill toggle) ---
-    document.querySelectorAll('.pill[data-mode]').forEach(function(pill) {
-      pill.addEventListener('click', function() {
-        document.querySelectorAll('.pill[data-mode]').forEach(function(p) { p.classList.remove('active'); });
-        pill.classList.add('active');
-        pill.querySelector('input').checked = true;
-        var mode = pill.dataset.mode;
-        document.getElementById('target-player').style.display = mode === 'player' ? '' : 'none';
-        document.getElementById('target-alliance').style.display = mode === 'alliance' ? 'flex' : 'none';
-        if (mode !== 'all' && subscribers.length === 0) loadSubscribers();
+    // --- Targeting ---
+    var activeMode = 'all';
+    document.querySelectorAll('.seg-btn[data-mode]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.seg-btn[data-mode]').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        activeMode = btn.dataset.mode;
+        document.getElementById('target-player').style.display = activeMode === 'player' ? '' : 'none';
+        document.getElementById('target-alliance').style.display = activeMode === 'alliance' ? 'flex' : 'none';
+        if (activeMode !== 'all' && subscribers.length === 0) loadSubscribers();
         updatePreview();
       });
     });
 
-    document.querySelectorAll('.pill[data-alliance]').forEach(function(pill) {
-      pill.addEventListener('click', function() {
-        pill.classList.toggle('active');
-        var cb = pill.querySelector('input');
-        cb.checked = pill.classList.contains('active');
+    var selectedAlliances = [];
+    document.querySelectorAll('.toggle-btn[data-alliance]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        btn.classList.toggle('active');
+        var val = btn.dataset.alliance;
+        var idx = selectedAlliances.indexOf(val);
+        if (idx === -1) selectedAlliances.push(val); else selectedAlliances.splice(idx, 1);
         updatePreview();
       });
     });
@@ -438,14 +448,9 @@
     });
 
     function getTarget() {
-      var mode = document.querySelector('input[name="target-mode"]:checked').value;
-      if (mode === 'all') return null;
-      if (mode === 'player') return { players: selectedPlayers.slice() };
-      if (mode === 'alliance') {
-        var alliances = [];
-        document.querySelectorAll('.alliance-cb:checked').forEach(function(cb) { alliances.push(cb.value); });
-        return { alliances: alliances };
-      }
+      if (activeMode === 'all') return null;
+      if (activeMode === 'player') return { players: selectedPlayers.slice() };
+      if (activeMode === 'alliance') return { alliances: selectedAlliances.slice() };
       return null;
     }
 
