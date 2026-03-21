@@ -507,6 +507,34 @@
     }
     .cal-add-menu a:hover { background: var(--tag); }
     .cal-add-menu a svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .cal-remind-wrap { margin-top: .35rem; position: relative; }
+    .cal-remind-btn {
+      display: block; width: 100%; padding: .35rem .5rem; font-size: .7rem;
+      background: none; border: 1px solid rgba(56,139,253,.3); color: var(--accent);
+      border-radius: 6px; cursor: pointer; text-align: left; font-family: inherit;
+    }
+    .cal-remind-btn:hover { border-color: var(--accent); }
+    .cal-remind-btn.set {
+      background: rgba(63,185,80,.08); border-color: rgba(63,185,80,.3); color: var(--green);
+    }
+    .cal-remind-menu {
+      display: none; position: absolute; bottom: calc(100% + 4px); left: 0;
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      padding: .35rem 0; min-width: 200px; z-index: 50;
+      box-shadow: 0 -4px 12px rgba(0,0,0,.4);
+    }
+    .cal-remind-menu.open { display: block; }
+    .cal-remind-menu-item {
+      display: block; width: 100%; padding: .4rem .75rem; font-size: .75rem;
+      background: none; border: none; color: var(--text); cursor: pointer;
+      text-align: left; font-family: inherit;
+    }
+    .cal-remind-menu-item:hover { background: rgba(56,139,253,.1); }
+    .cal-remind-menu-item.active { color: var(--accent); }
+    .cal-remind-menu-item.disabled { color: var(--muted); opacity: .4; cursor: not-allowed; }
+    .cal-remind-menu-item.all-type { border-top: 1px solid var(--border); margin-top: .25rem; padding-top: .5rem; color: var(--yellow); }
+    .cal-remind-menu-item.remove { color: var(--red, #f85149); }
+    .cal-remind-beta { font-size: .6rem; font-style: italic; color: var(--muted); margin-left: .25rem; }
     .cal-dot {
       display: inline-block;
       width: 8px;
@@ -2549,6 +2577,9 @@
           document.querySelectorAll('.cal-add-menu.open').forEach(function(m) {
             m.classList.remove('open');
           });
+          document.querySelectorAll('.cal-remind-menu.open').forEach(function(m) {
+            m.classList.remove('open');
+          });
         });
 
         function formatLocalTime(dt) {
@@ -2902,6 +2933,113 @@
           wrap.appendChild(menu);
           card.appendChild(wrap);
 
+          // Remind me button
+          var remindWrap = document.createElement('div');
+          remindWrap.className = 'cal-remind-wrap';
+
+          var evtStartDT = parseEventDT(evt.start, year);
+          var evtEventId = deriveEventId(evt.name, evtStartDT);
+          var existingReminder = findReminder(evtEventId, evt.name);
+
+          var remindBtn = document.createElement('button');
+          remindBtn.className = 'cal-remind-btn' + (existingReminder ? ' set' : '');
+
+          function updateRemindBtnText(rbtn, reminder) {
+            while (rbtn.firstChild) rbtn.removeChild(rbtn.firstChild);
+            if (reminder) {
+              var label = '\u2713 Reminder set \u2014 ' + reminder.leadMinutes + 'm before';
+              if (reminder.eventPattern) label += ' \u27F3 all';
+              rbtn.appendChild(document.createTextNode(label));
+            } else {
+              rbtn.appendChild(document.createTextNode('\uD83D\uDD14 Remind me '));
+            }
+            var beta = document.createElement('span');
+            beta.className = 'cal-remind-beta';
+            beta.textContent = '(beta)';
+            rbtn.appendChild(beta);
+          }
+
+          updateRemindBtnText(remindBtn, existingReminder);
+
+          var remindMenu = document.createElement('div');
+          remindMenu.className = 'cal-remind-menu';
+
+          function buildRemindMenu(currentReminder) {
+            while (remindMenu.firstChild) remindMenu.removeChild(remindMenu.firstChild);
+            var header = document.createElement('div');
+            header.style.cssText = 'padding:.35rem .75rem;font-size:.6rem;color:var(--muted);text-transform:uppercase';
+            header.textContent = 'Remind me before';
+            remindMenu.appendChild(header);
+
+            [15, 30, 60].forEach(function(mins) {
+              var item = document.createElement('button');
+              item.className = 'cal-remind-menu-item' + (currentReminder && currentReminder.leadMinutes === mins ? ' active' : '');
+              item.textContent = mins + ' minutes' + (currentReminder && currentReminder.leadMinutes === mins ? ' \u2713' : '');
+              item.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (!window._getPushSub || !window._getPushSub()) {
+                  if (window._pushSubscribe) window._pushSubscribe();
+                  remindMenu.classList.remove('open');
+                  return;
+                }
+                addReminder(evtEventId, null, mins);
+                remindBtn.className = 'cal-remind-btn set';
+                updateRemindBtnText(remindBtn, { eventId: evtEventId, leadMinutes: mins });
+                remindMenu.classList.remove('open');
+                buildRemindMenu({ eventId: evtEventId, leadMinutes: mins });
+              });
+              remindMenu.appendChild(item);
+            });
+
+            var allItem = document.createElement('button');
+            var baseName = evt.name.replace(/\s*\(.*\)\s*$/, '');
+            if (currentReminder && currentReminder.leadMinutes) {
+              allItem.className = 'cal-remind-menu-item all-type';
+              allItem.textContent = 'All ' + baseName + ' \u2192 ' + currentReminder.leadMinutes + 'm';
+              allItem.addEventListener('click', function(e) {
+                e.stopPropagation();
+                removeReminder(evtEventId, null);
+                addReminder(null, baseName, currentReminder.leadMinutes);
+                remindBtn.className = 'cal-remind-btn set';
+                updateRemindBtnText(remindBtn, { eventPattern: baseName, leadMinutes: currentReminder.leadMinutes });
+                remindMenu.classList.remove('open');
+              });
+            } else {
+              allItem.className = 'cal-remind-menu-item disabled';
+              allItem.textContent = 'All of this type \u2014 pick a time first';
+            }
+            remindMenu.appendChild(allItem);
+
+            if (currentReminder) {
+              var removeItem = document.createElement('button');
+              removeItem.className = 'cal-remind-menu-item remove';
+              removeItem.textContent = 'Remove reminder';
+              removeItem.addEventListener('click', function(e) {
+                e.stopPropagation();
+                removeReminder(evtEventId, currentReminder.eventPattern || null);
+                remindBtn.className = 'cal-remind-btn';
+                updateRemindBtnText(remindBtn, null);
+                remindMenu.classList.remove('open');
+                buildRemindMenu(null);
+              });
+              remindMenu.appendChild(removeItem);
+            }
+          }
+
+          buildRemindMenu(existingReminder);
+
+          remindBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            document.querySelectorAll('.cal-remind-menu.open').forEach(function(m) {
+              if (m !== remindMenu) m.classList.remove('open');
+            });
+            remindMenu.classList.toggle('open');
+          });
+
+          remindWrap.appendChild(remindBtn);
+          remindWrap.appendChild(remindMenu);
+          card.appendChild(remindWrap);
+
           container.appendChild(card);
         }
 
@@ -3064,6 +3202,7 @@
         }
 
         function render() {
+          pruneExpiredReminders();
           if (viewMode === 'today') renderToday();
           else if (viewMode === 'next3') renderNext3();
           else if (viewMode === 'all') renderAll();
@@ -3161,6 +3300,72 @@
       }, 15000);
     })();
   </script>
+  <!-- Reminder helpers (global, used by calendar + push scripts) -->
+  <script>
+    function deriveEventId(name, startDate) {
+      var slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      var iso = startDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
+      return slug + '-' + iso;
+    }
+
+    function getReminders() {
+      try { return JSON.parse(localStorage.getItem('pushReminders') || '[]'); } catch(e) { return []; }
+    }
+
+    function saveRemindersLocal(reminders) {
+      try { localStorage.setItem('pushReminders', JSON.stringify(reminders)); } catch(e) {}
+    }
+
+    function addReminder(eventId, eventPattern, leadMinutes) {
+      var reminders = getReminders();
+      reminders = reminders.filter(function(r) {
+        if (eventId && r.eventId === eventId) return false;
+        if (eventPattern && r.eventPattern === eventPattern) return false;
+        return true;
+      });
+      var entry = { leadMinutes: leadMinutes };
+      if (eventPattern) entry.eventPattern = eventPattern;
+      else entry.eventId = eventId;
+      reminders.push(entry);
+      saveRemindersLocal(reminders);
+      if (window._syncReminders) window._syncReminders(reminders);
+    }
+
+    function removeReminder(eventId, eventPattern) {
+      var reminders = getReminders();
+      reminders = reminders.filter(function(r) {
+        if (eventId && r.eventId === eventId) return false;
+        if (eventPattern && r.eventPattern === eventPattern) return false;
+        return true;
+      });
+      saveRemindersLocal(reminders);
+      if (window._syncReminders) window._syncReminders(reminders);
+    }
+
+    function findReminder(eventId, eventName) {
+      var reminders = getReminders();
+      for (var i = 0; i < reminders.length; i++) {
+        if (reminders[i].eventId === eventId) return reminders[i];
+        if (reminders[i].eventPattern && eventName.startsWith(reminders[i].eventPattern)) return reminders[i];
+      }
+      return null;
+    }
+
+    function pruneExpiredReminders() {
+      var reminders = getReminders();
+      var now = Date.now();
+      var pruned = reminders.filter(function(r) {
+        if (r.eventPattern) return true;
+        var match = r.eventId && r.eventId.match(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)$/);
+        if (!match) return true;
+        return new Date(match[1]).getTime() > now;
+      });
+      if (pruned.length !== reminders.length) {
+        saveRemindersLocal(pruned);
+        if (window._syncReminders) window._syncReminders(pruned);
+      }
+    }
+  </script>
   <!-- Push notifications -->
   <script>
     (function() {
@@ -3199,7 +3404,7 @@
         else { bellBtn.classList.remove('subscribed'); }
       }
 
-      function saveSubToWorker(sub, prefs, leadMinutes) {
+      function saveSubToWorker(sub) {
         var identity = getStoredIdentity();
         fetch(PUSH_WORKER + '/subscribe', {
           method: 'POST',
@@ -3208,11 +3413,25 @@
             endpoint: sub.endpoint,
             keys: { p256dh: bufToB64u(sub.getKey('p256dh')), auth: bufToB64u(sub.getKey('auth')) },
             player: identity ? { name: identity.name, alliance: identity.alliance } : null,
-            preferences: prefs || ['all'],
-            leadMinutes: leadMinutes || 30,
           }),
         }).catch(function() {});
       }
+
+      var _reminderQueue = Promise.resolve();
+      function syncRemindersToWorker(reminders) {
+        if (!pushSub) return;
+        _reminderQueue = _reminderQueue.then(function() {
+          return fetch(PUSH_WORKER + '/reminders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              endpoint: pushSub.endpoint,
+              reminders: reminders,
+            }),
+          }).catch(function() {});
+        });
+      }
+      window._syncReminders = syncRemindersToWorker;
 
       function subscribe() {
         Notification.requestPermission().then(function(perm) {
@@ -3223,12 +3442,14 @@
           }).then(function(sub) {
             pushSub = sub;
             setBellState(true);
-            saveSubToWorker(sub, ['all'], 30);
+            saveSubToWorker(sub);
           }).catch(function(e) {
             console.warn('Push subscribe failed:', e);
           });
         });
       }
+      window._pushSubscribe = subscribe;
+      window._getPushSub = function() { return pushSub; };
 
       function unsubscribe() {
         if (!pushSub) return;
@@ -3291,7 +3512,7 @@
           });
           if (prefs.length === 0) prefs = ['all'];
         }
-        saveSubToWorker(pushSub, prefs, selectedLead);
+        saveSubToWorker(pushSub);
         closePrefs();
       });
 
