@@ -67,13 +67,23 @@
       <input type="text" id="notif-title" value="TW Server 2864" maxlength="100">
       <label for="notif-body">Body</label>
       <textarea id="notif-body" placeholder="Notification message..." maxlength="300"></textarea>
-      <label for="notif-cat">Category</label>
-      <select id="notif-cat">
-        <option value="all">All subscribers</option>
-        <option value="titan_canyon">Titan Canyon</option>
-        <option value="wasteland">Wasteland</option>
-        <option value="announcements">Announcements</option>
-      </select>
+      <label>Recipients</label>
+      <div id="target-section" style="margin-top:.25rem">
+        <div style="display:flex;gap:.75rem;margin-bottom:.5rem">
+          <label style="display:inline;margin:0"><input type="radio" name="target-mode" value="all" checked> All</label>
+          <label style="display:inline;margin:0"><input type="radio" name="target-mode" value="player"> By player</label>
+          <label style="display:inline;margin:0"><input type="radio" name="target-mode" value="alliance"> By alliance</label>
+        </div>
+        <div id="target-player" style="display:none">
+          <input type="text" id="player-search" placeholder="Search players..." autocomplete="off">
+          <div id="player-list" style="max-height:120px;overflow-y:auto;margin-top:.25rem"></div>
+        </div>
+        <div id="target-alliance" style="display:none">
+          <label style="display:inline;margin:0"><input type="checkbox" value="DOG*" class="alliance-cb"> DOG*</label>
+          <label style="display:inline;margin:0;margin-left:.5rem"><input type="checkbox" value="MSS" class="alliance-cb"> MSS</label>
+        </div>
+        <div id="target-preview" style="font-size:.7rem;color:var(--muted);margin-top:.5rem"></div>
+      </div>
       <button id="send-btn">Send &#128312;</button>
       <div class="result" id="send-result"></div>
     </div>
@@ -106,11 +116,84 @@
 
     document.getElementById('refresh-btn').addEventListener('click', loadStatus);
 
+    var subscribers = [];
+    var selectedPlayers = [];
+
+    function loadSubscribers() {
+      var pw = document.getElementById('secret').value.trim();
+      if (!pw) return;
+      fetch(PUSH_WORKER + '/subscribers', {
+        headers: { 'X-Admin-Password': pw },
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(list) { subscribers = list; updatePreview(); })
+        .catch(function() {});
+    }
+
+    document.querySelectorAll('input[name="target-mode"]').forEach(function(r) {
+      r.addEventListener('change', function() {
+        document.getElementById('target-player').style.display = this.value === 'player' ? '' : 'none';
+        document.getElementById('target-alliance').style.display = this.value === 'alliance' ? '' : 'none';
+        if (this.value !== 'all' && subscribers.length === 0) loadSubscribers();
+        updatePreview();
+      });
+    });
+
+    document.getElementById('player-search').addEventListener('input', function() {
+      var q = this.value.toLowerCase();
+      var list = document.getElementById('player-list');
+      while (list.firstChild) list.removeChild(list.firstChild);
+      var named = subscribers.filter(function(s) { return s.name; });
+      var filtered = named.filter(function(s) { return !q || s.name.toLowerCase().indexOf(q) !== -1; });
+      filtered.slice(0, 50).forEach(function(s) {
+        var el = document.createElement('div');
+        el.style.cssText = 'padding:.2rem .4rem;font-size:.75rem;cursor:pointer;color:var(--text)';
+        var isSelected = selectedPlayers.indexOf(s.name) !== -1;
+        el.textContent = (isSelected ? '\u2713 ' : '') + s.name + ' (' + s.alliance + ')';
+        if (isSelected) el.style.color = 'var(--accent)';
+        el.addEventListener('click', function() {
+          var idx = selectedPlayers.indexOf(s.name);
+          if (idx === -1) selectedPlayers.push(s.name); else selectedPlayers.splice(idx, 1);
+          document.getElementById('player-search').dispatchEvent(new Event('input'));
+          updatePreview();
+        });
+        list.appendChild(el);
+      });
+    });
+
+    document.querySelectorAll('.alliance-cb').forEach(function(cb) {
+      cb.addEventListener('change', function() { updatePreview(); });
+    });
+
+    function getTarget() {
+      var mode = document.querySelector('input[name="target-mode"]:checked').value;
+      if (mode === 'all') return null;
+      if (mode === 'player') return { players: selectedPlayers.slice() };
+      if (mode === 'alliance') {
+        var alliances = [];
+        document.querySelectorAll('.alliance-cb:checked').forEach(function(cb) { alliances.push(cb.value); });
+        return { alliances: alliances };
+      }
+      return null;
+    }
+
+    function updatePreview() {
+      var target = getTarget();
+      var el = document.getElementById('target-preview');
+      if (!target) { el.textContent = 'Sending to all ' + subscribers.length + ' subscribers'; return; }
+      var count = 0;
+      subscribers.forEach(function(s) {
+        if (!s.name) return;
+        if (target.players && target.players.indexOf(s.name) !== -1) count++;
+        else if (target.alliances && target.alliances.indexOf(s.alliance) !== -1) count++;
+      });
+      el.textContent = 'Sending to ' + count + ' of ' + subscribers.length + ' subscribers';
+    }
+
     document.getElementById('send-btn').addEventListener('click', function() {
       var secret  = document.getElementById('secret').value.trim();
       var title   = document.getElementById('notif-title').value.trim();
       var body    = document.getElementById('notif-body').value.trim();
-      var cat     = document.getElementById('notif-cat').value;
       var result  = document.getElementById('send-result');
 
       if (!secret) { showResult('Enter the admin password', false); return; }
@@ -121,11 +204,11 @@
       fetch(PUSH_WORKER + '/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Admin-Password': secret },
-        body: JSON.stringify({ title: title, body: body, category: cat }),
+        body: JSON.stringify({ title: title, body: body, target: getTarget() }),
       })
         .then(function(r) { return r.json(); })
         .then(function(d) {
-          showResult('Sent: ' + d.sent + ' | Failed: ' + d.failed, true);
+          showResult('Sent: ' + d.sent + ' | Failed: ' + d.failed + ' | Total: ' + (d.total || d.sent + d.failed), true);
           loadStatus();
         })
         .catch(function(e) {
