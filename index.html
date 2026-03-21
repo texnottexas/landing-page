@@ -951,6 +951,15 @@
     }
 
     /* Install prompt */
+    .push-toast {
+      position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+      padding: .75rem 1.25rem; border-radius: 10px; font-size: .75rem; z-index: 1200;
+      box-shadow: 0 4px 16px rgba(0,0,0,.4); max-width: 340px; text-align: center;
+      opacity: 0; pointer-events: none; transition: opacity .2s;
+    }
+    .push-toast.visible { opacity: 1; pointer-events: all; }
+    .push-toast strong { color: var(--accent); }
     .install-banner {
       display: none;
       position: fixed;
@@ -1856,6 +1865,7 @@
   </div>
 
   <!-- Install to home screen banner -->
+  <div id="push-toast" class="push-toast"></div>
   <div id="install-banner" class="install-banner" role="banner">
     <div class="install-banner-text">
       <strong>Add to Home Screen</strong>
@@ -2293,7 +2303,7 @@
         window.addEventListener('beforeinstallprompt', function(e) {
           e.preventDefault();
           deferredPrompt = e;
-          installSteps.textContent = 'Install this app for quick access';
+          installSteps.textContent = 'Install this app for quick access and push notifications';
           installBanner.classList.add('visible');
         });
 
@@ -2321,6 +2331,10 @@
           var s2 = document.createElement('strong');
           s2.textContent = 'Add to Home Screen';
           installSteps.appendChild(s2);
+          var note = document.createElement('div');
+          note.style.cssText = 'font-size:.7rem;margin-top:.2rem;color:var(--muted)';
+          note.textContent = 'Enables push notifications and event reminders';
+          installSteps.appendChild(note);
         }
 
         // iOS: show manual instructions
@@ -2987,7 +3001,37 @@
               item.addEventListener('click', function(e) {
                 e.stopPropagation();
                 if (!window._getPushSub || !window._getPushSub()) {
-                  if (window._pushSubscribe) window._pushSubscribe();
+                  if (window._pushSubscribe && 'PushManager' in window) {
+                    window._pushSubscribe();
+                  } else {
+                    var ua = navigator.userAgent || '';
+                    var isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                    var frag = document.createDocumentFragment();
+                    var line1 = document.createElement('div');
+                    line1.textContent = '\uD83D\uDD14 Reminders require push notifications';
+                    frag.appendChild(line1);
+                    var line2 = document.createElement('div');
+                    line2.style.cssText = 'margin-top:.35rem;font-size:.65rem;color:var(--muted)';
+                    if (isIOS) {
+                      line2.appendChild(document.createTextNode('Tap '));
+                      var s1 = document.createElement('strong');
+                      s1.textContent = 'Share';
+                      line2.appendChild(s1);
+                      line2.appendChild(document.createTextNode(' then '));
+                      var s2 = document.createElement('strong');
+                      s2.textContent = 'Add to Home Screen';
+                      line2.appendChild(s2);
+                      line2.appendChild(document.createTextNode(' to enable'));
+                    } else {
+                      line2.appendChild(document.createTextNode('Install this app via '));
+                      var s3 = document.createElement('strong');
+                      s3.textContent = 'Add to Home Screen';
+                      line2.appendChild(s3);
+                      line2.appendChild(document.createTextNode(' to enable'));
+                    }
+                    frag.appendChild(line2);
+                    showPushToast(frag, 6000);
+                  }
                   remindMenu.classList.remove('open');
                   return;
                 }
@@ -3374,6 +3418,18 @@
         if (window._syncReminders) window._syncReminders(pruned);
       }
     }
+    function showPushToast(msg, duration) {
+      var toast = document.getElementById('push-toast');
+      if (!toast) return;
+      while (toast.firstChild) toast.removeChild(toast.firstChild);
+      if (typeof msg === 'string') {
+        toast.textContent = msg;
+      } else {
+        toast.appendChild(msg);
+      }
+      toast.classList.add('visible');
+      setTimeout(function() { toast.classList.remove('visible'); }, duration || 5000);
+    }
   </script>
   <!-- Push notifications -->
   <script>
@@ -3733,10 +3789,17 @@
         identityModal.classList.remove('active');
       }
 
+      function stripLeadingSymbols(s) {
+        return s.replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase();
+      }
+
       function renderList(query) {
         var q = query.toLowerCase();
         var filtered = allPlayers.filter(function(p) {
           return !q || p.name.toLowerCase().indexOf(q) !== -1 || p.alliance.toLowerCase().indexOf(q) !== -1;
+        });
+        filtered.sort(function(a, b) {
+          return stripLeadingSymbols(a.name).localeCompare(stripLeadingSymbols(b.name));
         });
         while (identityList.firstChild) identityList.removeChild(identityList.firstChild);
         if (filtered.length === 0) {
