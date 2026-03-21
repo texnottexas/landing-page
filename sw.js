@@ -36,6 +36,9 @@ self.addEventListener('notificationclick', function(event) {
   var targetUrl = (event.notification.data && event.notification.data.url)
     ? event.notification.data.url
     : 'https://2864tw.com';
+  if (targetUrl.indexOf('https://2864tw.com') !== 0) {
+    targetUrl = 'https://2864tw.com';
+  }
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clients) {
