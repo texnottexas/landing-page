@@ -45,6 +45,9 @@ self.addEventListener('notificationclick', function(event) {
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clients) {
       for (var i = 0; i < clients.length; i++) {
         if (clients[i].url.startsWith('https://2864tw.com') && 'focus' in clients[i]) {
+          if (clients[i].url !== targetUrl && 'navigate' in clients[i]) {
+            return clients[i].navigate(targetUrl).then(function(c) { return c.focus(); });
+          }
           return clients[i].focus();
         }
       }
