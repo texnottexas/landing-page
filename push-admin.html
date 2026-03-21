@@ -59,8 +59,8 @@
       <h2>Send Notification</h2>
       <div class="secret-row">
         <div style="flex:1">
-          <label for="secret">Notify secret</label>
-          <input type="password" id="secret" placeholder="NOTIFY_SECRET value" autocomplete="off">
+          <label for="secret">Admin password</label>
+          <input type="password" id="secret" placeholder="Admin password" autocomplete="off">
         </div>
       </div>
       <label for="notif-title">Title</label>
@@ -82,6 +82,13 @@
   <script>
     'use strict';
     var PUSH_WORKER = 'https://push-worker.27tb8s6fct.workers.dev';
+
+    var secretEl = document.getElementById('secret');
+    var stored = sessionStorage.getItem('adminPassword');
+    if (stored) secretEl.value = stored;
+    secretEl.addEventListener('input', function() {
+      sessionStorage.setItem('adminPassword', this.value);
+    });
 
     function loadStatus() {
       fetch(PUSH_WORKER + '/status')
@@ -106,14 +113,14 @@
       var cat     = document.getElementById('notif-cat').value;
       var result  = document.getElementById('send-result');
 
-      if (!secret) { showResult('Enter the notify secret', false); return; }
+      if (!secret) { showResult('Enter the admin password', false); return; }
       if (!title)  { showResult('Enter a title', false); return; }
 
       this.disabled = true;
       var btn = this;
       fetch(PUSH_WORKER + '/notify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Notify-Secret': secret },
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Password': secret },
         body: JSON.stringify({ title: title, body: body, category: cat }),
       })
         .then(function(r) { return r.json(); })
