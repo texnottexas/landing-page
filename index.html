@@ -2165,12 +2165,6 @@
           return td;
         }
 
-        function resolveAvatar(url) {
-          if (!url) return null;
-          if (url.indexOf('http') === 0) return url;
-          return 'https://h5.topwargame.com/DynRes/images/headpic/' + url + '.png?t=21.jpg';
-        }
-
         function createAvatarCell(url) {
           var resolved = resolveAvatar(url);
           var td = document.createElement('td');
@@ -2302,9 +2296,9 @@
       installDismiss.addEventListener('click', dismissBanner);
 
       if (!isStandalone() && !wasDismissed()) {
-        var ua = navigator.userAgent || '';
-        var isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        var isAndroid = /Android/.test(ua);
+        var platform = detectPlatform();
+        var isIOS = platform.isIOS;
+        var isAndroid = platform.isAndroid;
 
         // Android / Chrome: intercept beforeinstallprompt
         window.addEventListener('beforeinstallprompt', function(e) {
@@ -2576,18 +2570,30 @@
         var IS_ANDROID = /android/i.test(navigator.userAgent);
         var IS_WEBVIEW = /; ?wv/i.test(navigator.userAgent);
 
+        var SVG_NS = 'http://www.w3.org/2000/svg';
+        function makeSvg(viewBox, attrs, paths) {
+          var s = document.createElementNS(SVG_NS, 'svg');
+          s.setAttribute('viewBox', viewBox);
+          for (var k in attrs) s.setAttribute(k, attrs[k]);
+          paths.forEach(function(p) {
+            var el = document.createElementNS(SVG_NS, p.tag || 'path');
+            for (var a in p) { if (a !== 'tag') el.setAttribute(a, p[a]); }
+            s.appendChild(el);
+          });
+          return s;
+        }
+
         function buildGoogleCalURL(title, description, start, end) {
-          var fmt = function(d) { return toICSDate(d).replace('Z', '') + 'Z'; };
           var useIntent = IS_ANDROID && !IS_WEBVIEW;
           var url = useIntent
             ? 'https://calendar.google.com/calendar/render?action=TEMPLATE' +
               '&text=' + encodeURIComponent(title) +
               '&details=' + encodeURIComponent(description) +
-              '&dates=' + fmt(start) + '/' + fmt(end)
+              '&dates=' + toICSDate(start) + '/' + toICSDate(end)
             : 'https://calendar.google.com/calendar/r/eventedit?' +
               'text=' + encodeURIComponent(title) +
               '&details=' + encodeURIComponent(description) +
-              '&dates=' + fmt(start) + '/' + fmt(end);
+              '&dates=' + toICSDate(start) + '/' + toICSDate(end);
           if (useIntent) {
             var fallback = encodeURIComponent(url);
             url = 'intent://' + url.slice(8) +
@@ -2835,7 +2841,10 @@
           return results;
         }
 
-        function renderEventCard(evt, year, container) {
+        function renderEventCard(evt, year, container, cachedReminders) {
+          var evtStartDT = parseEventDT(evt.start, year);
+          var evtEndDT = parseEventDT(evt.end, year);
+
           var card = document.createElement('div');
           card.className = 'cal-event';
 
@@ -2855,9 +2864,7 @@
           var now = new Date();
           var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
           var todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-          var evtStart = parseEventDT(evt.start, year);
-          var evtEnd = parseEventDT(evt.end, year);
-          if (evtStart <= todayEnd && evtEnd >= todayStart) {
+          if (evtStartDT <= todayEnd && evtEndDT >= todayStart) {
             var badge = document.createElement('span');
             badge.className = 'cal-today-badge';
             badge.textContent = 'Today';
@@ -2886,8 +2893,8 @@
           var text = resolveEventText(evt, card);
           var title = (text.name || evt.name) + ' - Seal Stone';
           var description = text.desc || getWeeklyDesc(evt.name) || evt.name;
-          var startDT = parseEventDT(evt.start, year);
-          var endDT = parseEventDT(evt.end, year);
+          var startDT = evtStartDT;
+          var endDT = evtEndDT;
 
           var wrap = document.createElement('div');
           wrap.className = 'cal-add-wrap';
@@ -2902,19 +2909,6 @@
           var icsBlob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
           var icsUrl = URL.createObjectURL(icsBlob);
           _blobURLs.push(icsUrl);
-
-          var SVG_NS = 'http://www.w3.org/2000/svg';
-          function makeSvg(viewBox, attrs, paths) {
-            var s = document.createElementNS(SVG_NS, 'svg');
-            s.setAttribute('viewBox', viewBox);
-            for (var k in attrs) s.setAttribute(k, attrs[k]);
-            paths.forEach(function(p) {
-              var el = document.createElementNS(SVG_NS, p.tag || 'path');
-              for (var a in p) { if (a !== 'tag') el.setAttribute(a, p[a]); }
-              s.appendChild(el);
-            });
-            return s;
-          }
 
           var appleLink = document.createElement('a');
           appleLink.href = icsUrl;
@@ -2967,9 +2961,8 @@
           var remindWrap = document.createElement('div');
           remindWrap.className = 'cal-remind-wrap';
 
-          var evtStartDT = parseEventDT(evt.start, year);
           var evtEventId = deriveEventId(evt.name, evtStartDT);
-          var existingReminder = findReminder(evtEventId, evt.name);
+          var existingReminder = findReminder(evtEventId, evt.name, cachedReminders);
 
           var remindBtn = document.createElement('button');
           remindBtn.className = 'cal-remind-btn' + (existingReminder ? ' set' : '');
@@ -3011,8 +3004,7 @@
                   if (window._pushSubscribe && 'PushManager' in window) {
                     window._pushSubscribe();
                   } else {
-                    var ua = navigator.userAgent || '';
-                    var isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                    var isIOS = detectPlatform().isIOS;
                     var frag = document.createDocumentFragment();
                     var line1 = document.createElement('div');
                     line1.textContent = '\uD83D\uDD14 Reminders require push notifications';
@@ -3118,7 +3110,7 @@
           container.appendChild(msg);
         }
 
-        function renderToday() {
+        function renderToday(cachedReminders) {
           if (!CAL_DATA) return;
           $nav.style.display = 'none';
           var now = new Date();
@@ -3142,11 +3134,11 @@
             return;
           }
           filtered.forEach(function(item) {
-            renderEventCard(item.evt, item.year, $events);
+            renderEventCard(item.evt, item.year, $events, cachedReminders);
           });
         }
 
-        function renderNext3() {
+        function renderNext3(cachedReminders) {
           if (!CAL_DATA) return;
           $nav.style.display = 'none';
           var now = new Date();
@@ -3174,11 +3166,11 @@
             return;
           }
           filtered.forEach(function(item) {
-            renderEventCard(item.evt, item.year, $events);
+            renderEventCard(item.evt, item.year, $events, cachedReminders);
           });
         }
 
-        function renderRound(index) {
+        function renderRound(index, cachedReminders) {
           if (!CAL_DATA) return;
           var rounds = CAL_DATA.rounds;
           if (index < 0 || index >= rounds.length) return;
@@ -3220,11 +3212,11 @@
             return;
           }
           events.forEach(function(evt) {
-            renderEventCard(evt, year, $events);
+            renderEventCard(evt, year, $events, cachedReminders);
           });
         }
 
-        function renderAll() {
+        function renderAll(cachedReminders) {
           if (!CAL_DATA) return;
           $nav.style.display = 'none';
           $weekDates.textContent = 'All Rounds';
@@ -3248,7 +3240,7 @@
             return;
           }
           allEvents.forEach(function(item) {
-            renderEventCard(item.evt, item.year, $events);
+            renderEventCard(item.evt, item.year, $events, cachedReminders);
           });
         }
 
@@ -3263,10 +3255,11 @@
 
         function render() {
           pruneExpiredReminders();
-          if (viewMode === 'today') renderToday();
-          else if (viewMode === 'next3') renderNext3();
-          else if (viewMode === 'all') renderAll();
-          else renderRound(currentRound);
+          var _cachedReminders = getReminders();
+          if (viewMode === 'today') renderToday(_cachedReminders);
+          else if (viewMode === 'next3') renderNext3(_cachedReminders);
+          else if (viewMode === 'all') renderAll(_cachedReminders);
+          else renderRound(currentRound, _cachedReminders);
           // Let GT translate the newly rendered calendar content
           setTimeout(nudgeTranslate, 200);
         }
@@ -3362,10 +3355,25 @@
   </script>
   <!-- Reminder helpers (global, used by calendar + push scripts) -->
   <script>
+    // Keep in sync with push-worker/src/index.js:deriveEventId
     function deriveEventId(name, startDate) {
       var slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
       var iso = startDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
       return slug + '-' + iso;
+    }
+
+    function resolveAvatar(url) {
+      if (!url) return null;
+      if (url.indexOf('http') === 0) return url;
+      return 'https://h5.topwargame.com/DynRes/images/headpic/' + url + '.png?t=21.jpg';
+    }
+
+    function detectPlatform() {
+      var ua = navigator.userAgent || '';
+      return {
+        isIOS: /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+        isAndroid: /Android/.test(ua)
+      };
     }
 
     function getReminders() {
@@ -3402,11 +3410,11 @@
       if (window._syncReminders) window._syncReminders(reminders);
     }
 
-    function findReminder(eventId, eventName) {
-      var reminders = getReminders();
-      for (var i = 0; i < reminders.length; i++) {
-        if (reminders[i].eventId === eventId) return reminders[i];
-        if (reminders[i].eventPattern && eventName.startsWith(reminders[i].eventPattern)) return reminders[i];
+    function findReminder(eventId, eventName, reminders) {
+      var list = reminders || getReminders();
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].eventId === eventId) return list[i];
+        if (list[i].eventPattern && eventName.startsWith(list[i].eventPattern)) return list[i];
       }
       return null;
     }
@@ -3616,11 +3624,7 @@
       function renderIdentityTab() {
         var panel = document.getElementById('prefs-identity');
         while (panel.firstChild) panel.removeChild(panel.firstChild);
-        var identity = null;
-        try {
-          var v = localStorage.getItem('playerIdentity');
-          if (v && v !== 'anonymous') identity = JSON.parse(v);
-        } catch(e) {}
+        var identity = getStoredIdentity();
         if (identity) {
           var row = document.createElement('div');
           row.className = 'prefs-identity-row';
@@ -3727,7 +3731,6 @@
       var identityList = document.getElementById('identity-list');
       var identitySearch = document.getElementById('identity-search');
       var identityGreeting = document.getElementById('identity-greeting');
-      var identityNameEl = document.getElementById('identity-name');
       var allPlayers = [];
 
       function getIdentity() {
@@ -3820,8 +3823,8 @@
           var item = document.createElement('div');
           item.className = 'identity-item';
           item.tabIndex = 0;
-          if (p.avatarurl) {
-            var avatarSrc = p.avatarurl.indexOf('http') === 0 ? p.avatarurl : 'https://h5.topwargame.com/DynRes/images/headpic/' + p.avatarurl + '.png?t=21.jpg';
+          var avatarSrc = resolveAvatar(p.avatarurl);
+          if (avatarSrc) {
             var img = document.createElement('img');
             img.className = 'identity-ava';
             img.src = avatarSrc;
@@ -3871,7 +3874,12 @@
         saveIdentity('anonymous');
         closeModal();
       });
-      identitySearch.addEventListener('input', function() { renderList(identitySearch.value); });
+      var _searchTimer = null;
+      identitySearch.addEventListener('input', function() {
+        clearTimeout(_searchTimer);
+        var q = this.value;
+        _searchTimer = setTimeout(function() { renderList(q); }, 150);
+      });
       identityModal.addEventListener('click', function(e) {
         if (e.target === identityModal) closeModal();
       });
