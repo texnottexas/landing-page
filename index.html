@@ -1231,6 +1231,13 @@
     .identity-footer { margin-top: .75rem; text-align: right; }
     .identity-skip { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: .35rem .75rem; font-size: .75rem; cursor: pointer; }
     .identity-skip:hover { color: var(--text); border-color: var(--accent); }
+    .identity-guest-card {
+      display: flex; align-items: center; gap: .6rem; padding: .75rem 1rem;
+      margin-bottom: .75rem; border: 1px dashed var(--border); border-radius: 10px;
+      color: var(--muted); cursor: pointer; transition: all .15s;
+    }
+    .identity-guest-card:hover, .identity-guest-card:focus { border-color: var(--accent); color: var(--accent); }
+    .identity-guest-icon { font-size: 1.2rem; }
     /* Header identity greeting */
     .identity-greeting { font-size: .7rem; color: var(--muted); display: flex; align-items: center; gap: .25rem; margin-top: .15rem; }
     .identity-greeting-name { color: var(--accent); font-weight: 600; }
@@ -1989,6 +1996,10 @@
         <button class="roster-close" id="identity-close" aria-label="Close">&#10005;</button>
       </div>
       <p class="identity-sub">Select your name to personalize notifications. You can skip or change this later.</p>
+      <div class="identity-guest-card" id="identity-guest" tabindex="0" role="button" aria-label="Select guest identity">
+        <span class="identity-guest-icon">&#128075;</span>
+        <span>Just visiting? <strong>Tap here</strong></span>
+      </div>
       <input type="text" id="identity-search" class="identity-search" placeholder="Search your name..." autocomplete="off" spellcheck="false">
       <div class="identity-list" id="identity-list"></div>
       <div class="identity-footer">
@@ -3631,7 +3642,9 @@
           body: JSON.stringify({
             endpoint: sub.endpoint,
             keys: { p256dh: bufToB64u(sub.getKey('p256dh')), auth: bufToB64u(sub.getKey('auth')) },
-            player: identity ? { name: identity.name, alliance: identity.alliance } : null,
+            player: identity
+              ? (identity.guest ? { name: identity.name, guest: true } : { name: identity.name, alliance: identity.alliance })
+              : null,
           }),
         }).catch(function() {});
       }
@@ -3655,16 +3668,11 @@
       function subscribe() {
         var identity = getStoredIdentity();
         if (!identity) {
-          var frag = document.createDocumentFragment();
-          var line1 = document.createElement('div');
-          line1.textContent = 'Set your identity first';
-          frag.appendChild(line1);
-          var line2 = document.createElement('div');
-          line2.style.cssText = 'margin-top:.35rem;font-size:.65rem;color:var(--muted)';
-          line2.textContent = 'Tap "Who are you?" to pick your name before enabling notifications';
-          frag.appendChild(line2);
-          showPushToast(frag, 5000);
-          return;
+          // Auto-tag as guest instead of blocking
+          var guestObj = { name: 'Dingus', guest: true, alliance: null };
+          try { localStorage.setItem('playerIdentity', JSON.stringify(guestObj)); } catch(e) {}
+          identity = getStoredIdentity();
+          if (window._showGreeting) window._showGreeting(identity);
         }
         Notification.requestPermission().then(function(perm) {
           if (perm !== 'granted') return;
@@ -3682,6 +3690,7 @@
       }
       window._pushSubscribe = subscribe;
       window._getPushSub = function() { return pushSub; };
+      window._saveSubToWorker = saveSubToWorker;
 
       function unsubscribe() {
         if (!pushSub) return;
@@ -4002,6 +4011,8 @@
           identityGreeting.style.display = 'none';
         }
       }
+      window._saveIdentity = saveIdentity;
+      window._showGreeting = showGreeting;
 
       function openModal() {
         identityModal.classList.add('active');
@@ -4060,6 +4071,10 @@
             var identity = { name: p.name, alliance: p.alliance, rank: p.rank, profession: p.profession };
             saveIdentity(identity);
             showGreeting(identity);
+            // Re-sync identity to worker if push is active
+            if (window._getPushSub && window._getPushSub() && window._saveSubToWorker) {
+              window._saveSubToWorker(window._getPushSub());
+            }
             closeModal();
           }
           item.addEventListener('click', selectPlayer);
@@ -4089,6 +4104,14 @@
         saveIdentity('anonymous');
         closeModal();
       });
+      var guestCard = document.getElementById('identity-guest');
+      function selectGuest() {
+        saveIdentity({ name: 'Dingus', guest: true, alliance: null });
+        showGreeting({ name: 'Dingus', guest: true });
+        closeModal();
+      }
+      guestCard.addEventListener('click', selectGuest);
+      guestCard.addEventListener('keydown', function(e) { if (e.key === 'Enter') selectGuest(); });
       var _searchTimer = null;
       identitySearch.addEventListener('input', function() {
         clearTimeout(_searchTimer);
