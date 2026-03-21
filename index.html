@@ -1083,6 +1083,23 @@
       transition: opacity .15s, color .15s;
     }
     .roster-btn:hover { opacity: 1; color: var(--accent); }
+    .feedback-btn { position: absolute; right: .75rem; top: 50%; transform: translateY(-50%); font-size: .7rem; line-height: 1; cursor: pointer; background: none; border: none; color: var(--muted); padding: 0; opacity: .5; transition: opacity .15s, color .15s; }
+    .feedback-btn:hover { opacity: 1; color: var(--accent); }
+
+    /* Feedback modal */
+    .feedback-modal { display: none; position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,.6); align-items: center; justify-content: center; }
+    .feedback-modal.active { display: flex; }
+    .feedback-modal-content { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; width: 90vw; max-width: 420px; max-height: 85vh; overflow-y: auto; position: relative; }
+    .feedback-type-toggle { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-bottom: 1rem; }
+    .feedback-type-btn { flex: 1; padding: .45rem; font-size: .75rem; border: none; background: transparent; color: var(--muted); cursor: pointer; font-family: inherit; transition: all .15s; }
+    .feedback-type-btn.active { background: var(--accent); color: #0d1117; }
+    .feedback-field { width: 100%; margin-bottom: .75rem; padding: .45rem .6rem; background: var(--bg2, #0d1117); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: inherit; font-size: .8rem; box-sizing: border-box; }
+    .feedback-field:focus { outline: none; border-color: var(--accent); }
+    textarea.feedback-field { min-height: 100px; resize: vertical; }
+    .feedback-submit { background: var(--accent); color: #0d1117; border: none; border-radius: 6px; padding: .5rem 1.2rem; font-size: .8rem; cursor: pointer; font-family: inherit; font-weight: 600; }
+    .feedback-submit:disabled { opacity: .5; cursor: not-allowed; }
+    .feedback-success { text-align: center; padding: 1rem 0; }
+    .feedback-success a { color: var(--accent); }
 
     /* Roster modal */
     .roster-modal {
@@ -1931,7 +1948,29 @@
     <a href="https://github.com/texnottexas/landing-page" target="_blank" rel="noopener noreferrer">GitHub</a>
     <br><span class="rc-wrap" id="rc-wrap"><span class="rc-icon">&#127871;</span><span class="rc-count" id="rc-count"></span></span>
     <button class="roster-btn" id="rosterBtn" title="Player Roster">&#129504;</button>
+    <button class="feedback-btn" id="feedbackBtn" title="Submit Feedback">&#128172;</button>
   </footer>
+
+  <!-- Feedback Modal -->
+  <div id="feedback-modal" class="feedback-modal" role="dialog" aria-modal="true" aria-label="Submit Feedback">
+    <div class="feedback-modal-content">
+      <button id="feedback-close" style="position:absolute;top:.5rem;right:.75rem;background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer">&#10005;</button>
+      <h3 style="margin:0 0 .75rem;font-size:1rem;color:var(--text)">&#128172; Submit Feedback</h3>
+      <div class="feedback-type-toggle">
+        <button class="feedback-type-btn active" data-type="bug">&#128027; Bug Report</button>
+        <button class="feedback-type-btn" data-type="feature">&#128161; Feature Request</button>
+      </div>
+      <div id="feedback-form">
+        <input id="feedback-title" class="feedback-field" type="text" placeholder="Brief title..." maxlength="200">
+        <textarea id="feedback-desc" class="feedback-field" placeholder="Describe the bug or feature..." maxlength="2000"></textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span id="feedback-submitter" style="font-size:.65rem;color:var(--muted)"></span>
+          <button id="feedback-send" class="feedback-submit">Submit</button>
+        </div>
+      </div>
+      <div id="feedback-result" class="feedback-success" style="display:none"></div>
+    </div>
+  </div>
 
   <!-- Roster Modal -->
   <div id="roster-modal" class="roster-modal" role="dialog" aria-modal="true" aria-label="Player Roster">
@@ -4031,5 +4070,100 @@
     }
   </script>
   <script src="https://translate.googleapis.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+  <script>
+  // Feedback form
+  (function() {
+    var modal = document.getElementById('feedback-modal');
+    var form = document.getElementById('feedback-form');
+    var result = document.getElementById('feedback-result');
+    var titleInput = document.getElementById('feedback-title');
+    var descInput = document.getElementById('feedback-desc');
+    var sendBtn = document.getElementById('feedback-send');
+    var submitterEl = document.getElementById('feedback-submitter');
+    var feedbackType = 'bug';
+
+    function showResult(emoji, msg, subMsg) {
+      while (result.firstChild) result.removeChild(result.firstChild);
+      var iconDiv = document.createElement('div');
+      iconDiv.style.cssText = 'font-size:2rem;margin-bottom:.5rem';
+      iconDiv.textContent = emoji;
+      var msgDiv = document.createElement('div');
+      msgDiv.style.cssText = 'font-size:.85rem;color:var(--text)';
+      msgDiv.textContent = msg;
+      result.appendChild(iconDiv);
+      result.appendChild(msgDiv);
+      if (subMsg) {
+        var subDiv = document.createElement('div');
+        subDiv.style.cssText = 'font-size:.7rem;color:var(--muted);margin-top:.25rem';
+        if (typeof subMsg === 'string') { subDiv.textContent = subMsg; }
+        else { subDiv.appendChild(subMsg); }
+        result.appendChild(subDiv);
+      }
+    }
+
+    document.getElementById('feedbackBtn').addEventListener('click', function() {
+      modal.classList.add('active');
+      form.style.display = '';
+      result.style.display = 'none';
+      titleInput.value = '';
+      descInput.value = '';
+      var identity = null;
+      try { identity = JSON.parse(localStorage.getItem('playerIdentity')); } catch(e) {}
+      submitterEl.textContent = identity && identity.name ? 'Submitting as ' + identity.name : 'Submitting anonymously';
+    });
+    document.getElementById('feedback-close').addEventListener('click', function() { modal.classList.remove('active'); });
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.classList.remove('active'); });
+
+    document.querySelectorAll('.feedback-type-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.feedback-type-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        feedbackType = btn.dataset.type;
+        descInput.placeholder = feedbackType === 'bug' ? 'Describe the bug \u2014 what happened and what you expected...' : 'Describe the feature you would like to see...';
+      });
+    });
+
+    sendBtn.addEventListener('click', function() {
+      if (!titleInput.value.trim() || !descInput.value.trim()) return;
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'Sending...';
+      var identity = null;
+      try { identity = JSON.parse(localStorage.getItem('playerIdentity')); } catch(e) {}
+      var submitter = identity && identity.name ? identity.name : 'Anonymous';
+      var endpoint = feedbackType === 'bug' ? '/feedback/bug' : '/feedback/feature';
+
+      fetch('https://push-worker.27tb8s6fct.workers.dev' + endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: titleInput.value.trim(), description: descInput.value.trim(), submitter: submitter })
+      }).then(function(r) { return r.json(); }).then(function(d) {
+        form.style.display = 'none';
+        result.style.display = '';
+        if (d.ok) {
+          if (feedbackType === 'bug' && d.url && d.issueNumber) {
+            var link = document.createElement('a');
+            link.href = String(d.url).replace(/[^a-zA-Z0-9:/.#-]/g, '');
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = 'GitHub issue #' + String(d.issueNumber).replace(/\D/g, '');
+            showResult('\u2705', 'Bug report submitted!', link);
+          } else {
+            showResult('\u2705', 'Feature request submitted!', 'Thank you for your feedback!');
+          }
+        } else {
+          showResult('\u274C', d.message || d.error || 'Something went wrong');
+        }
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Submit';
+      }).catch(function() {
+        form.style.display = 'none';
+        result.style.display = '';
+        showResult('\u274C', 'Network error \u2014 please try again.');
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Submit';
+      });
+    });
+  })();
+  </script>
 </body>
 </html>
