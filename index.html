@@ -28,6 +28,9 @@
       --navy: #388bfd;
       --air: #d29922;
       --glow: rgba(121,192,255,0.15);
+      --surface: #161b22;
+      --red: #f85149;
+      --yellow: #d29922;
     }
     :root[data-theme="light"] {
       --bg: #f6f8fa;
@@ -43,6 +46,9 @@
       --navy: #0550ae;
       --air: #9a6700;
       --glow: rgba(31,117,212,0.1);
+      --surface: #ffffff;
+      --red: #cf222e;
+      --yellow: #9a6700;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -465,8 +471,6 @@
     .compact-cal .cal-event-name { font-size: .8rem; }
     .compact-cal .cal-event-time { font-size: .7rem; }
     .compact-cal .cal-event-desc { display: none; }
-    .compact-cal .cal-event-actions { gap: .25rem; }
-    .compact-cal .cal-event-actions button { padding: .2rem .4rem; font-size: .65rem; }
     .cal-add-wrap { margin-top: .5rem; position: relative; }
     .cal-add-btn {
       background: transparent;
@@ -1424,8 +1428,9 @@
     /* Reduced motion — driven by data attribute (synced with OS preference) */
     [data-reduced-motion="true"] .shimmer-text,
     [data-reduced-motion="true"] .wheel-center,
-    [data-reduced-motion="true"] .pulse-dot,
-    [data-reduced-motion="true"] .fk-boats { animation: none !important; transition: none !important; }
+    [data-reduced-motion="true"] .identity-dot,
+    [data-reduced-motion="true"] .easter-egg,
+    [data-reduced-motion="true"] .rc-icon { animation: none !important; transition: none !important; }
     /* Google Translate overrides — hide default widget */
     body { top: 0 !important; }
     body > .skiptranslate { display: none !important; }
@@ -2199,6 +2204,7 @@
         var current = document.documentElement.getAttribute('data-theme');
         setTheme(current === 'dark' ? 'light' : 'dark');
       }
+      window.toggleTheme = toggleTheme;
 
       // Restore saved theme with validation
       try {
@@ -2631,6 +2637,7 @@
           if (++attempts > 30) clearInterval(poll);
         }, delay || 200);
       }
+      window.applyLangToCombo = applyLangToCombo;
 
       function selectLanguage(code) {
         if (code === 'en') { restoreEnglish(); return; }
@@ -2742,10 +2749,6 @@
 
         function getRoundYear(round) {
           return parseInt(round.weekStart.split('-')[0], 10);
-        }
-
-        function getUserTZ() {
-          try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch(e) { return 'UTC'; }
         }
 
         function toICSDate(dt) {
@@ -3996,7 +3999,7 @@
 
       // Theme toggle in Display tab
       document.getElementById('pref-theme-toggle').addEventListener('click', function() {
-        toggleTheme();
+        window.toggleTheme();
       });
 
       // Reduced motion toggle
@@ -4348,14 +4351,14 @@
       try { pendingLang = sessionStorage.getItem('pendingLang'); sessionStorage.removeItem('pendingLang'); } catch(e) {}
 
       if (pendingLang) {
-        applyLangToCombo(pendingLang, 250);
+        window.applyLangToCombo(pendingLang, 250);
       } else {
         // Auto-detect: if browser is non-English and user hasn't dismissed, auto-translate
         try {
           var dismissed = localStorage.getItem('translate-dismissed');
           if (!dismissed) {
             var lang = (navigator.language || navigator.userLanguage || 'en').split('-')[0];
-            if (lang !== 'en') applyLangToCombo(lang, 250);
+            if (lang !== 'en') window.applyLangToCombo(lang, 250);
           }
         } catch(e) {}
 
