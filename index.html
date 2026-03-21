@@ -2112,6 +2112,10 @@
       }
     })();
 
+    function getDisplayTimezone() {
+      return localStorage.getItem('tzOverride') || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    }
+
     function detectPlatform() {
       var ua = navigator.userAgent || '';
       return {
@@ -2821,7 +2825,7 @@
 
         function formatLocalTime(dt) {
           try {
-            return dt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+            return dt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone: getDisplayTimezone() });
           } catch(e) {
             var h = dt.getHours();
             var m = String(dt.getMinutes()).padStart(2, '0');
@@ -2832,7 +2836,7 @@
 
         function formatLocalDate(dt) {
           try {
-            return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: getDisplayTimezone() });
           } catch(e) {
             return SHORT_MONTHS[dt.getMonth()] + ' ' + dt.getDate();
           }
@@ -2841,7 +2845,7 @@
         function formatDateRange(startStr, endStr, year) {
           var startDT = parseEventDT(startStr, year);
           var endDT = parseEventDT(endStr, year);
-          var sameDay = startDT.getDate() === endDT.getDate() && startDT.getMonth() === endDT.getMonth();
+          var sameDay = toDateKey(startDT) === toDateKey(endDT);
           if (sameDay) {
             return formatLocalDate(startDT) + ' ' + formatLocalTime(startDT) + ' \u2013 ' + formatLocalTime(endDT);
           }
@@ -2849,7 +2853,15 @@
         }
 
         function toDateKey(dt) {
-          return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+          var tz = getDisplayTimezone();
+          var parts = new Intl.DateTimeFormat('en', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(dt);
+          var y = '', m = '', d = '';
+          parts.forEach(function(p) {
+            if (p.type === 'year') y = p.value;
+            if (p.type === 'month') m = p.value;
+            if (p.type === 'day') d = p.value;
+          });
+          return y + '-' + m + '-' + d;
         }
 
         function getEventLocalDay(dateStr, year) {
@@ -2860,7 +2872,7 @@
           var parts = dateKey.split('-');
           var dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
           try {
-            return dt.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+            return dt.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', timeZone: getDisplayTimezone() });
           } catch(e) {
             return DAY_NAMES[dt.getDay()] + ', ' + SHORT_MONTHS[dt.getMonth()] + ' ' + dt.getDate();
           }
@@ -3297,8 +3309,9 @@
         }
 
         function updateTZBanner() {
-          var tz = getUserTZ();
-          if ($tzBanner) $tzBanner.textContent = 'Times shown in ' + tz.replace(/_/g, ' ');
+          var tz = getDisplayTimezone();
+          var isOverride = !!localStorage.getItem('tzOverride');
+          if ($tzBanner) $tzBanner.textContent = 'Times shown in ' + tz.replace(/_/g, ' ') + (isOverride ? ' (custom)' : '');
         }
 
         function renderNoEvents(container, context) {
@@ -3316,7 +3329,7 @@
           $nav.style.display = 'none';
           var now = new Date();
           try {
-            $weekDates.textContent = now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+            $weekDates.textContent = now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: getDisplayTimezone() });
           } catch(e) {
             $weekDates.textContent = DAY_NAMES[now.getDay()] + ', ' + MONTH_NAMES[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
           }
@@ -3456,6 +3469,7 @@
 
         function render() {
           pruneExpiredReminders();
+          updateTZBanner();
           var _cachedReminders = getReminders();
           if (viewMode === 'today') renderToday(_cachedReminders);
           else if (viewMode === 'next3') renderNext3(_cachedReminders);
@@ -3515,6 +3529,16 @@
         var calLoaded = false;
         var observer = new MutationObserver(function(mutations) {
           mutations.forEach(function(m) {
+            if (calModalEl.classList.contains('active')) {
+              var calContent = document.querySelector('.cal-modal-content');
+              if (calContent) {
+                if (localStorage.getItem('compactCal') === 'true') {
+                  calContent.classList.add('compact-cal');
+                } else {
+                  calContent.classList.remove('compact-cal');
+                }
+              }
+            }
             if (calModalEl.classList.contains('active') && !calLoaded) {
               calLoaded = true;
               loadCalData().then(function() {
@@ -3538,6 +3562,8 @@
         document.getElementById('cal-close-x').addEventListener('click', function() {
           calModalEl.classList.remove('active');
         });
+
+        window._calRender = render;
       })();
 
       // Fallback: disable button if Google Translate never loads
@@ -3991,6 +4017,101 @@
         if (calContent) {
           if (newVal) calContent.classList.add('compact-cal');
           else calContent.classList.remove('compact-cal');
+        }
+      });
+
+      // --- Timezone override dropdown ---
+      var TZ_LIST = [
+        { label: 'Auto-detect', value: '' },
+        { label: 'US Eastern', value: 'America/New_York' },
+        { label: 'US Central', value: 'America/Chicago' },
+        { label: 'US Mountain', value: 'America/Denver' },
+        { label: 'US Pacific', value: 'America/Los_Angeles' },
+        { label: 'Hawaii', value: 'Pacific/Honolulu' },
+        { label: 'UK (London)', value: 'Europe/London' },
+        { label: 'Central Europe (Berlin)', value: 'Europe/Berlin' },
+        { label: 'Eastern Europe (Bucharest)', value: 'Europe/Bucharest' },
+        { label: 'Turkey (Istanbul)', value: 'Europe/Istanbul' },
+        { label: 'India (Kolkata)', value: 'Asia/Kolkata' },
+        { label: 'Singapore', value: 'Asia/Singapore' },
+        { label: 'Japan (Tokyo)', value: 'Asia/Tokyo' },
+        { label: 'Australia Eastern (Sydney)', value: 'Australia/Sydney' },
+        { label: 'New Zealand (Auckland)', value: 'Pacific/Auckland' },
+      ];
+
+      var tzSelect = document.getElementById('pref-tz-select');
+      TZ_LIST.forEach(function(tz) {
+        var opt = document.createElement('option');
+        opt.value = tz.value;
+        opt.textContent = tz.label;
+        tzSelect.appendChild(opt);
+      });
+
+      var moreOpt = document.createElement('option');
+      moreOpt.value = '__more__';
+      moreOpt.textContent = 'More...';
+      tzSelect.appendChild(moreOpt);
+
+      var currentTz = localStorage.getItem('tzOverride') || '';
+      tzSelect.value = currentTz;
+      if (currentTz && tzSelect.value !== currentTz) {
+        var customOpt = document.createElement('option');
+        customOpt.value = currentTz;
+        customOpt.textContent = currentTz.replace(/_/g, ' ');
+        tzSelect.insertBefore(customOpt, moreOpt);
+        tzSelect.value = currentTz;
+      }
+
+      tzSelect.addEventListener('change', function() {
+        if (this.value === '__more__') {
+          var input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'prefs-select';
+          input.placeholder = 'Type timezone...';
+          input.style.maxWidth = '180px';
+          var allTz = [];
+          try { allTz = Intl.supportedValuesOf('timeZone'); } catch(e) { allTz = TZ_LIST.map(function(t) { return t.value; }).filter(Boolean); }
+          var listId = 'tz-datalist';
+          var datalist = document.createElement('datalist');
+          datalist.id = listId;
+          allTz.forEach(function(tz) {
+            var o = document.createElement('option');
+            o.value = tz;
+            datalist.appendChild(o);
+          });
+          input.setAttribute('list', listId);
+          var backLink = document.createElement('a');
+          backLink.href = '#';
+          backLink.textContent = 'Back to common';
+          backLink.style.cssText = 'display:block;font-size:.65rem;color:var(--accent);margin-top:.25rem';
+          backLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            input.parentNode.replaceChild(tzSelect, input);
+            if (datalist.parentNode) datalist.parentNode.removeChild(datalist);
+            if (backLink.parentNode) backLink.parentNode.removeChild(backLink);
+            tzSelect.value = localStorage.getItem('tzOverride') || '';
+          });
+          tzSelect.parentNode.insertBefore(datalist, tzSelect);
+          tzSelect.parentNode.replaceChild(input, tzSelect);
+          input.parentNode.insertBefore(backLink, input.nextSibling);
+          input.focus();
+          input.addEventListener('change', function() {
+            if (allTz.indexOf(this.value) !== -1) {
+              localStorage.setItem('tzOverride', this.value);
+              if (document.getElementById('cal-modal').classList.contains('active') && window._calRender) {
+                window._calRender();
+              }
+            }
+          });
+          return;
+        }
+        if (this.value) {
+          localStorage.setItem('tzOverride', this.value);
+        } else {
+          localStorage.removeItem('tzOverride');
+        }
+        if (document.getElementById('cal-modal').classList.contains('active') && window._calRender) {
+          window._calRender();
         }
       });
 
