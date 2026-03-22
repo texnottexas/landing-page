@@ -1,0 +1,2048 @@
+{
+  "_definitions": {
+    "description": "Enigma Beast field and beast data from Top War (Server 2864). 5 fields with deployed beasts, field attribute bonuses, and buff ID mappings.",
+    "beastTypes": {
+      "1": "Gleamdeer",
+      "2": "Dreadray",
+      "3": "Tornadeagle",
+      "4": "Grizzroar",
+      "5": "Fluffynx",
+      "6": "Bounceroo",
+      "7": "Swiftsteed",
+      "8": "Dusklion",
+      "9": "Crestegret"
+    },
+    "beastTypeNotes": "Beast names change at 5 stars (e.g., Gleamdeer -> Lumideer). The type name is the base/pre-evolution name as shown in the beast list.",
+    "elements": {
+      "1": "Fire",
+      "2": "Wind",
+      "3": "Water",
+      "4": "Ground"
+    },
+    "quality": {
+      "4": "Purple (SR)",
+      "5": "Gold (SSR/Legendary)"
+    },
+    "fields": {
+      "heroId": "Unique beast instance ID (64-bit)",
+      "cfgId": "Beast species config ID. Pattern: (type * 5) + offset. Quality 5 beasts have cfgId multiples of 5, quality 4 have cfgId ending in 4 or 9.",
+      "type": "Beast type (1-9), determines species name",
+      "faction": "Element (1=Fire, 2=Wind, 3=Water, 4=Ground)",
+      "level": "Current level (max depends on quality: 100 for Gold, 80 for Purple)",
+      "star": "Star level (1-5). Names change at 5 stars.",
+      "potential": "Current potential value. Stats scale as potential / maxPotential.",
+      "potentialRange": "Min|Max potential for this species (e.g., 11200|16000 for Gold, 6400|8000 for Purple)",
+      "mainBuff": "Primary buff ID (520xxx). One per beast, enhanced by star upgrades.",
+      "baseBuff": "Array of 3 random buff IDs (520xxx). Scaled by potential.",
+      "holeLevel": "Enhancement level of the deployment slot (not the beast itself)",
+      "mainBuffResolved": "Resolved main buff with display name and computed value",
+      "baseBuffsResolved": "Array of 3 resolved base buffs with display names and computed values"
+    },
+    "buffIdSystem": {
+      "description": "Buff IDs follow 520xxx pattern. Last digit = branch (0=All, 1=Army, 2=Navy, 3=Air). Middle digits = category. Values are potential-scaled percentages, except 520000 (March Size) which is additive.",
+      "mainBuffs": {
+        "520000": "March Size (additive, e.g., +3)",
+        "520010": "All units DMG Increase",
+        "520011": "Army DMG Increase",
+        "520012": "Navy DMG Increase",
+        "520013": "Air Force DMG Increase",
+        "520020": "All units Decreased DMG Taken",
+        "520021": "Army Decreased DMG Taken",
+        "520022": "Navy Decreased DMG Taken",
+        "520023": "Air Force Decreased DMG Taken",
+        "520030": "Increase DEF of all units",
+        "520031": "Increase DEF of Army",
+        "520032": "Increase DEF of Navy",
+        "520033": "Increase DEF of Air Force",
+        "520040": "Attack of all units (on the offensive)",
+        "520041": "Army units Attack (on the offensive)",
+        "520042": "Naval units Attack (on the offensive)",
+        "520043": "Air Force units Attack (on the offensive)",
+        "520050": "HP Boost of all units (on the offensive)",
+        "520051": "Army units HP Boost (on the offensive)",
+        "520052": "Naval units HP Boost (on the offensive)",
+        "520053": "Air Force units HP Boost (on the offensive)",
+        "520060": "Attack of all units (on the defensive)",
+        "520061": "Army units Attack (on the defensive)",
+        "520062": "Naval units Attack (on the defensive)",
+        "520063": "Air Force units Attack (on the defensive)",
+        "520070": "HP Boost of all units (on the defensive)",
+        "520071": "Army units HP Boost (on the defensive)",
+        "520072": "Naval units HP Boost (on the defensive)",
+        "520073": "Air Force units HP Boost (on the defensive)"
+      },
+      "baseBuffs": {
+        "520100": "All Forces Suppression Defense Bonus",
+        "520101": "Navy DEF against Army",
+        "520102": "Air Force DEF against Navy",
+        "520103": "Army DEF against Air Force",
+        "520110": "All units Attack (on the offensive)",
+        "520111": "Army Attack (on the offensive)",
+        "520112": "Navy Attack (on the offensive)",
+        "520113": "Air Force ATK (on the offensive)",
+        "520120": "All units HP Boost (on the offensive)",
+        "520121": "Army HP Boost (on the offensive)",
+        "520122": "Navy HP Boost (on the offensive)",
+        "520123": "Air Force HP Boost (on the offensive)",
+        "520130": "All units Attack (on the defensive)",
+        "520131": "Army Attack (on the defensive)",
+        "520132": "Navy Attack (on the defensive)",
+        "520133": "Air Force Attack (on the defensive)",
+        "520140": "All units HP Boost (on the defensive)",
+        "520141": "Army HP Boost (on the defensive)",
+        "520142": "Navy HP Boost (on the defensive)",
+        "520143": "Air Force HP Boost (on the defensive)"
+      },
+      "confirmed": "520000, 520010, 520013, 520020, 520021, 520033, 520072, 520100, 520103, 520111, 520112, 520113, 520120, 520121, 520122 confirmed from beast detail popups. 520101, 520102 confirmed by user game knowledge. Rest derived by consistent last-digit=branch pattern."
+    },
+    "fieldAttributeSlots": {
+      "description": "Each field has attribute bonus slots activated by deployment conditions. Buffs include mastery boosts, formation boosts, equipment engine boosts, Titan Gear base/random attribute boosts. Some slots reference the 70% gear refinement threshold from Titan Gear data.",
+      "conditionTypes": [
+        "Fill All Slots",
+        "Deploy N Legendary beasts",
+        "Deploy N beasts of 2+ stars at Legendary",
+        "Deploy N beasts of 3+ stars at Legendary"
+      ]
+    },
+    "buffValueFormula": {
+      "description": "Buff values computed from beast config data. All values scale with potential/16000 (universal max, regardless of beast quality).",
+      "mainBuff": "value = (starMaxValue / 100) * (potential / 16000)",
+      "baseBuff": "value = ((level * lvMaxValue / 100) + (starMaxValue / 100)) * (potential / 16000)",
+      "marchSize": "520000 (March Size) is additive integer, not percentage"
+    }
+  },
+  "extractedAt": "2026-03-22",
+  "totalBeasts": 36,
+  "fields": [
+    {
+      "fid": 1,
+      "cfgName": "enigma_field_name3",
+      "displayName": "CPNT Mastery",
+      "holeCount": 5,
+      "totalLevel": 75,
+      "beasts": [
+        {
+          "hole": 1,
+          "holeLevel": 15,
+          "name": "Gleamdeer",
+          "element": "Water",
+          "cfgId": 15,
+          "type": 1,
+          "faction": 3,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 15165,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520021,
+          "baseBuff": [
+            520020,
+            520100,
+            520010
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520021,
+            "name": "Army Decreased DMG Taken",
+            "value": "+9.478%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520020,
+              "name": "All units Decreased DMG Taken",
+              "value": "+4.739%"
+            },
+            {
+              "id": 520100,
+              "name": "All Forces Suppression Defense Bonus",
+              "value": "+2.085%"
+            },
+            {
+              "id": 520010,
+              "name": "All units DMG Increase",
+              "value": "+4.739%"
+            }
+          ]
+        },
+        {
+          "hole": 2,
+          "holeLevel": 15,
+          "name": "Gleamdeer",
+          "element": "Ground",
+          "cfgId": 20,
+          "type": 1,
+          "faction": 4,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 15626,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520000,
+          "baseBuff": [
+            520111,
+            520120,
+            520112
+          ],
+          "locked": true,
+          "mainBuffResolved": {
+            "id": 520000,
+            "name": "March Size",
+            "value": "+3"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520111,
+              "name": "Army Attack (offensive)",
+              "value": "+14.649%"
+            },
+            {
+              "id": 520120,
+              "name": "All units HP (offensive)",
+              "value": "+14.649%"
+            },
+            {
+              "id": 520112,
+              "name": "Navy Attack (offensive)",
+              "value": "+14.649%"
+            }
+          ]
+        },
+        {
+          "hole": 3,
+          "holeLevel": 15,
+          "name": "Dreadray",
+          "element": "Fire",
+          "cfgId": 25,
+          "type": 2,
+          "faction": 1,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 15349,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520060,
+          "baseBuff": [
+            520012,
+            520011,
+            520111
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520060,
+            "name": "Attack of all units (defensive)",
+            "value": "+28.779%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520012,
+              "name": "Navy DMG Increase",
+              "value": "+4.797%"
+            },
+            {
+              "id": 520011,
+              "name": "Army DMG Increase",
+              "value": "+4.797%"
+            },
+            {
+              "id": 520111,
+              "name": "Army Attack (offensive)",
+              "value": "+14.39%"
+            }
+          ]
+        },
+        {
+          "hole": 4,
+          "holeLevel": 15,
+          "name": "Tornadeagle",
+          "element": "Wind",
+          "cfgId": 50,
+          "type": 3,
+          "faction": 2,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 15217,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520013,
+          "baseBuff": [
+            520011,
+            520111,
+            520120
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520013,
+            "name": "Air Force DMG Increase",
+            "value": "+9.511%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520011,
+              "name": "Army DMG Increase",
+              "value": "+4.755%"
+            },
+            {
+              "id": 520111,
+              "name": "Army Attack (offensive)",
+              "value": "+14.266%"
+            },
+            {
+              "id": 520120,
+              "name": "All units HP (offensive)",
+              "value": "+14.266%"
+            }
+          ]
+        },
+        {
+          "hole": 5,
+          "holeLevel": 15,
+          "name": "Grizzroar",
+          "element": "Water",
+          "cfgId": 75,
+          "type": 4,
+          "faction": 3,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 15010,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520020,
+          "baseBuff": [
+            520141,
+            520021,
+            520110
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520020,
+            "name": "All units Decreased DMG Taken",
+            "value": "+9.381%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520141,
+              "name": "Army HP Boost (defensive)",
+              "value": "+28.144%"
+            },
+            {
+              "id": 520021,
+              "name": "Army Decreased DMG Taken",
+              "value": "+4.691%"
+            },
+            {
+              "id": 520110,
+              "name": "All units ATK (offensive)",
+              "value": "+14.072%"
+            }
+          ]
+        }
+      ],
+      "attributes": [
+        {
+          "slot": 1,
+          "condition": "Fill All Slots",
+          "buff": "All Forces Mastery 5-tier Effect Boost",
+          "value": "+209.376%"
+        },
+        {
+          "slot": 2,
+          "condition": "All slots filled, deploy 1 Legendary beast",
+          "buff": "All Forces Mastery 10-tier Effect Boost",
+          "value": "+104.862%"
+        },
+        {
+          "slot": 3,
+          "condition": "All slots filled, deploy 2 Legendary beasts",
+          "buff": "Navy Mastery 15-tier Effect Boost",
+          "value": "+279.36%"
+        },
+        {
+          "slot": 4,
+          "condition": "All slots filled, deploy 3 Legendary beasts",
+          "buff": "Air Force Mastery 15-tier Effect Boost",
+          "value": "+279.232%"
+        },
+        {
+          "slot": 5,
+          "condition": "All slots filled, deploy 4 Legendary beasts",
+          "buff": "Army Mastery 15-tier Effect Boost",
+          "value": "+279.024%"
+        }
+      ]
+    },
+    {
+      "fid": 2,
+      "cfgName": "enigma_field_name1",
+      "displayName": "Formation",
+      "holeCount": 7,
+      "totalLevel": 75,
+      "beasts": [
+        {
+          "hole": 1,
+          "holeLevel": 15,
+          "name": "Gleamdeer",
+          "element": "Water",
+          "cfgId": 15,
+          "type": 1,
+          "faction": 3,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 15266,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520000,
+          "baseBuff": [
+            520112,
+            520110,
+            520010
+          ],
+          "locked": true,
+          "mainBuffResolved": {
+            "id": 520000,
+            "name": "March Size",
+            "value": "+3"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520112,
+              "name": "Navy Attack (offensive)",
+              "value": "+14.312%"
+            },
+            {
+              "id": 520110,
+              "name": "All units ATK (offensive)",
+              "value": "+14.312%"
+            },
+            {
+              "id": 520010,
+              "name": "All units DMG Increase",
+              "value": "+4.771%"
+            }
+          ]
+        },
+        {
+          "hole": 2,
+          "holeLevel": 10,
+          "name": "Gleamdeer",
+          "element": "Fire",
+          "cfgId": 5,
+          "type": 1,
+          "faction": 1,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 15965,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520021,
+          "baseBuff": [
+            520123,
+            520113,
+            520121
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520021,
+            "name": "Army Decreased DMG Taken",
+            "value": "+9.978%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520123,
+              "name": "Air Force HP Boost (offensive)",
+              "value": "+14.967%"
+            },
+            {
+              "id": 520113,
+              "name": "Air Force ATK (offensive)",
+              "value": "+14.967%"
+            },
+            {
+              "id": 520121,
+              "name": "Army HP Boost (offensive)",
+              "value": "+14.967%"
+            }
+          ]
+        },
+        {
+          "hole": 3,
+          "holeLevel": 10,
+          "name": "Dreadray",
+          "element": "Wind",
+          "cfgId": 30,
+          "type": 2,
+          "faction": 2,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 15410,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520033,
+          "baseBuff": [
+            520111,
+            520120,
+            520130
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520033,
+            "name": "Increase DEF of Air Force",
+            "value": "+3.853%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520111,
+              "name": "Army Attack (offensive)",
+              "value": "+14.447%"
+            },
+            {
+              "id": 520120,
+              "name": "All units HP (offensive)",
+              "value": "+14.447%"
+            },
+            {
+              "id": 520130,
+              "name": "All units ATK (defensive)",
+              "value": "+28.894%"
+            }
+          ]
+        },
+        {
+          "hole": 4,
+          "holeLevel": 10,
+          "name": "Tornadeagle",
+          "element": "Water",
+          "cfgId": 55,
+          "type": 3,
+          "faction": 3,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 15283,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520011,
+          "baseBuff": [
+            520121,
+            520022,
+            520110
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520011,
+            "name": "Army DMG Increase",
+            "value": "+9.552%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520121,
+              "name": "Army HP Boost (offensive)",
+              "value": "+14.328%"
+            },
+            {
+              "id": 520022,
+              "name": "Navy Decreased DMG Taken",
+              "value": "+4.776%"
+            },
+            {
+              "id": 520110,
+              "name": "All units ATK (offensive)",
+              "value": "+14.328%"
+            }
+          ]
+        },
+        {
+          "hole": 5,
+          "holeLevel": 10,
+          "name": "Grizzroar",
+          "element": "Ground",
+          "cfgId": 80,
+          "type": 4,
+          "faction": 4,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 14245,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520041,
+          "baseBuff": [
+            520011,
+            520121,
+            520013
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520041,
+            "name": "Army Attack (offensive)",
+            "value": "+26.709%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520011,
+              "name": "Army DMG Increase",
+              "value": "+4.452%"
+            },
+            {
+              "id": 520121,
+              "name": "Army HP Boost (offensive)",
+              "value": "+13.355%"
+            },
+            {
+              "id": 520013,
+              "name": "Air Force DMG Increase",
+              "value": "+4.452%"
+            }
+          ]
+        },
+        {
+          "hole": 6,
+          "holeLevel": 10,
+          "name": "Gleamdeer",
+          "element": "Wind",
+          "cfgId": 10,
+          "type": 1,
+          "faction": 2,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 14610,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520021,
+          "baseBuff": [
+            520113,
+            520110,
+            520121
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520021,
+            "name": "Army Decreased DMG Taken",
+            "value": "+9.131%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520113,
+              "name": "Air Force ATK (offensive)",
+              "value": "+13.697%"
+            },
+            {
+              "id": 520110,
+              "name": "All units ATK (offensive)",
+              "value": "+13.697%"
+            },
+            {
+              "id": 520121,
+              "name": "Army HP Boost (offensive)",
+              "value": "+13.697%"
+            }
+          ]
+        },
+        {
+          "hole": 7,
+          "holeLevel": 10,
+          "name": "Dreadray",
+          "element": "Water",
+          "cfgId": 35,
+          "type": 2,
+          "faction": 3,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 12658,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520030,
+          "baseBuff": [
+            520022,
+            520130,
+            520110
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520030,
+            "name": "Increase DEF of all units",
+            "value": "+3.165%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520022,
+              "name": "Navy Decreased DMG Taken",
+              "value": "+3.956%"
+            },
+            {
+              "id": 520130,
+              "name": "All units ATK (defensive)",
+              "value": "+23.734%"
+            },
+            {
+              "id": 520110,
+              "name": "All units ATK (offensive)",
+              "value": "+11.867%"
+            }
+          ]
+        }
+      ],
+      "attributes": [
+        {
+          "slot": 1,
+          "condition": "Fill All Slots",
+          "buff": "Formation Tech Defense Formation Attribute Effect Boost",
+          "value": "+104.73%"
+        },
+        {
+          "slot": 2,
+          "condition": "All slots filled, deploy 2 Legendary beasts",
+          "buff": "Formation: Shark Promotion Owned Attribute Effect Boost (Active at 5-tier and Above)",
+          "value": "+87.984%"
+        },
+        {
+          "slot": 3,
+          "condition": "All slots filled, deploy 3 Legendary beasts",
+          "buff": "Formation: Scorpion Promotion Owned Attribute Effect Boost (Active at 5-tier and Above)",
+          "value": "+87.712%"
+        },
+        {
+          "slot": 4,
+          "condition": "All slots filled, deploy 4 Legendary beasts",
+          "buff": "Formation: Eagle Promotion Owned Attribute Effect Boost (Active at 5-tier and Above)",
+          "value": "+87.648%"
+        },
+        {
+          "slot": 5,
+          "condition": "All slots filled, deploy 5 beasts 2+ stars Legendary",
+          "buff": "Formation: Shark Specialization Attributes in slots 1, 2, 3, 5, 8 boosted (Swift Strike not applicable)",
+          "value": "+65.346%"
+        },
+        {
+          "slot": 6,
+          "condition": "All slots filled, deploy 6 beasts 2+ stars Legendary",
+          "buff": "Formation: Scorpion Specialization Attributes in slots 1, 2, 3, 5, 8 boosted (Weakness Exploitation not applicable)",
+          "value": "+65.484%"
+        },
+        {
+          "slot": 7,
+          "condition": "All slots filled, deploy 7 beasts 2+ stars Legendary",
+          "buff": "Formation: Eagle Specialization Attributes in slots 1, 2, 3, 5, 8 boosted (Eagle Strike not applicable)",
+          "value": "+64.752%"
+        }
+      ]
+    },
+    {
+      "fid": 3,
+      "cfgName": "enigma_field_name2",
+      "displayName": "Equip",
+      "holeCount": 6,
+      "totalLevel": 43,
+      "beasts": [
+        {
+          "hole": 1,
+          "holeLevel": 10,
+          "name": "Tornadeagle",
+          "element": "Ground",
+          "cfgId": 60,
+          "type": 3,
+          "faction": 4,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 15566,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520010,
+          "baseBuff": [
+            520120,
+            520121,
+            520113
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520010,
+            "name": "All units DMG Increase",
+            "value": "+9.729%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520120,
+              "name": "All units HP (offensive)",
+              "value": "+14.593%"
+            },
+            {
+              "id": 520121,
+              "name": "Army HP Boost (offensive)",
+              "value": "+14.593%"
+            },
+            {
+              "id": 520113,
+              "name": "Air Force ATK (offensive)",
+              "value": "+14.593%"
+            }
+          ]
+        },
+        {
+          "hole": 2,
+          "holeLevel": 10,
+          "name": "Grizzroar",
+          "element": "Fire",
+          "cfgId": 65,
+          "type": 4,
+          "faction": 1,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 11511,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520021,
+          "baseBuff": [
+            520110,
+            520111,
+            520123
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520021,
+            "name": "Army Decreased DMG Taken",
+            "value": "+7.194%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520110,
+              "name": "All units ATK (offensive)",
+              "value": "+10.792%"
+            },
+            {
+              "id": 520111,
+              "name": "Army Attack (offensive)",
+              "value": "+10.792%"
+            },
+            {
+              "id": 520123,
+              "name": "Air Force HP Boost (offensive)",
+              "value": "+10.792%"
+            }
+          ]
+        },
+        {
+          "hole": 3,
+          "holeLevel": 2,
+          "name": "Gleamdeer",
+          "element": "Water",
+          "cfgId": 15,
+          "type": 1,
+          "faction": 3,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 13954,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520000,
+          "baseBuff": [
+            520123,
+            520120,
+            520111
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520000,
+            "name": "March Size",
+            "value": "+3"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520123,
+              "name": "Air Force HP Boost (offensive)",
+              "value": "+13.082%"
+            },
+            {
+              "id": 520120,
+              "name": "All units HP (offensive)",
+              "value": "+13.082%"
+            },
+            {
+              "id": 520111,
+              "name": "Army Attack (offensive)",
+              "value": "+13.082%"
+            }
+          ]
+        },
+        {
+          "hole": 4,
+          "holeLevel": 10,
+          "name": "Dreadray",
+          "element": "Ground",
+          "cfgId": 40,
+          "type": 2,
+          "faction": 4,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 15974,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520031,
+          "baseBuff": [
+            520133,
+            520123,
+            520122
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520031,
+            "name": "Increase DEF of Army",
+            "value": "+3.994%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520133,
+              "name": "Air Force Attack (defensive)",
+              "value": "+29.951%"
+            },
+            {
+              "id": 520123,
+              "name": "Air Force HP Boost (offensive)",
+              "value": "+14.976%"
+            },
+            {
+              "id": 520122,
+              "name": "Navy HP Boost (offensive)",
+              "value": "+14.976%"
+            }
+          ]
+        },
+        {
+          "hole": 5,
+          "holeLevel": 1,
+          "name": "Tornadeagle",
+          "element": "Fire",
+          "cfgId": 45,
+          "type": 3,
+          "faction": 1,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 12924,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520010,
+          "baseBuff": [
+            520120,
+            520023,
+            520110
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520010,
+            "name": "All units DMG Increase",
+            "value": "+8.078%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520120,
+              "name": "All units HP (offensive)",
+              "value": "+12.116%"
+            },
+            {
+              "id": 520023,
+              "name": "Air Force Decreased DMG Taken",
+              "value": "+4.039%"
+            },
+            {
+              "id": 520110,
+              "name": "All units ATK (offensive)",
+              "value": "+12.116%"
+            }
+          ]
+        },
+        {
+          "hole": 6,
+          "holeLevel": 10,
+          "name": "Grizzroar",
+          "element": "Wind",
+          "cfgId": 70,
+          "type": 4,
+          "faction": 2,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 13373,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520021,
+          "baseBuff": [
+            520011,
+            520112,
+            520111
+          ],
+          "locked": true,
+          "mainBuffResolved": {
+            "id": 520021,
+            "name": "Army Decreased DMG Taken",
+            "value": "+8.358%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520011,
+              "name": "Army DMG Increase",
+              "value": "+4.179%"
+            },
+            {
+              "id": 520112,
+              "name": "Navy Attack (offensive)",
+              "value": "+12.537%"
+            },
+            {
+              "id": 520111,
+              "name": "Army Attack (offensive)",
+              "value": "+12.537%"
+            }
+          ]
+        }
+      ],
+      "attributes": [
+        {
+          "slot": 1,
+          "condition": "Fill All Slots",
+          "buff": "Army Equipment Weapon Slot Equip Attributes boosted (Army crit not applicable)",
+          "value": "+175.568%"
+        },
+        {
+          "slot": 2,
+          "condition": "All slots filled, deploy 1 Legendary beast",
+          "buff": "Air Force Equipment Weapon Slot Equip Attributes boosted (Air Force crit not applicable)",
+          "value": "+171.52%"
+        },
+        {
+          "slot": 3,
+          "condition": "All slots filled, deploy 2 Legendary beasts",
+          "buff": "Navy Equipment Weapon Slot Equip Attributes boosted (Navy crit not applicable)",
+          "value": "+29.968%"
+        },
+        {
+          "slot": 4,
+          "condition": "All slots filled, deploy 5 beasts 2+ stars Legendary",
+          "buff": "Army Equip Remould Set 32-tier Attribute Effect Boost",
+          "value": "+263.976%"
+        },
+        {
+          "slot": 5,
+          "condition": "All slots filled, deploy 5 beasts 2+ stars Legendary",
+          "buff": "Navy Equip Remould Set 32-tier Attribute Effect Boost",
+          "value": "+31.392%"
+        },
+        {
+          "slot": 6,
+          "condition": "All slots filled, deploy 5 beasts 2+ stars Legendary",
+          "buff": "Air Force Equip Remould Set 32-tier Attribute Effect Boost",
+          "value": "+260.064%"
+        },
+        {
+          "slot": 7,
+          "condition": "All slots filled, deploy 7 beasts 3+ stars Legendary",
+          "buff": "Optical Add-on Random Attributes Boost (Activate when Refining Progress reaches 70% or higher)",
+          "value": "+5.888%"
+        },
+        {
+          "slot": 8,
+          "condition": "All slots filled, deploy 8 beasts 3+ stars Legendary",
+          "buff": "Portable GPS Random Attributes Boost (Activate when Refining Progress reaches 70% or higher)",
+          "value": "+9.928%"
+        },
+        {
+          "slot": 9,
+          "condition": "All slots filled, deploy 9 beasts 3+ stars Legendary",
+          "buff": "Assault Pistol Random Attributes Boost (Activate when Refining Progress reaches 70% or higher)",
+          "value": "+5.68%"
+        }
+      ]
+    },
+    {
+      "fid": 4,
+      "cfgName": "enigma_field_name4",
+      "displayName": "Defense",
+      "holeCount": 9,
+      "totalLevel": 29,
+      "beasts": [
+        {
+          "hole": 1,
+          "holeLevel": 5,
+          "name": "Dreadray",
+          "element": "Water",
+          "cfgId": 35,
+          "type": 2,
+          "faction": 3,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 12590,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520033,
+          "baseBuff": [
+            520021,
+            520113,
+            520112
+          ],
+          "locked": true,
+          "mainBuffResolved": {
+            "id": 520033,
+            "name": "Increase DEF of Air Force",
+            "value": "+3.148%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520021,
+              "name": "Army Decreased DMG Taken",
+              "value": "+3.934%"
+            },
+            {
+              "id": 520113,
+              "name": "Air Force ATK (offensive)",
+              "value": "+11.803%"
+            },
+            {
+              "id": 520112,
+              "name": "Navy Attack (offensive)",
+              "value": "+11.803%"
+            }
+          ]
+        },
+        {
+          "hole": 2,
+          "holeLevel": 1,
+          "name": "Gleamdeer",
+          "element": "Fire",
+          "cfgId": 5,
+          "type": 1,
+          "faction": 1,
+          "quality": 5,
+          "level": 85,
+          "maxLevel": 100,
+          "star": 3,
+          "maxStar": 5,
+          "potential": 12607,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520072,
+          "baseBuff": [
+            520010,
+            520113,
+            520020
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520072,
+            "name": "Naval HP Boost (defensive)",
+            "value": "+14.183%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520010,
+              "name": "All units DMG Increase",
+              "value": "+2.521%"
+            },
+            {
+              "id": 520113,
+              "name": "Air Force ATK (offensive)",
+              "value": "+7.564%"
+            },
+            {
+              "id": 520020,
+              "name": "All units Decreased DMG Taken",
+              "value": "+2.521%"
+            }
+          ]
+        },
+        {
+          "hole": 3,
+          "holeLevel": 5,
+          "name": "Tornadeagle",
+          "element": "Wind",
+          "cfgId": 50,
+          "type": 3,
+          "faction": 2,
+          "quality": 5,
+          "level": 50,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 14203,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520013,
+          "baseBuff": [
+            520111,
+            520121,
+            520122
+          ],
+          "locked": true,
+          "mainBuffResolved": {
+            "id": 520013,
+            "name": "Air Force DMG Increase",
+            "value": "+8.877%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520111,
+              "name": "Army Attack (offensive)",
+              "value": "+10.652%"
+            },
+            {
+              "id": 520121,
+              "name": "Army HP Boost (offensive)",
+              "value": "+10.652%"
+            },
+            {
+              "id": 520122,
+              "name": "Navy HP Boost (offensive)",
+              "value": "+10.652%"
+            }
+          ]
+        },
+        {
+          "hole": 4,
+          "holeLevel": 5,
+          "name": "Swiftsteed",
+          "element": "Ground",
+          "cfgId": 140,
+          "type": 7,
+          "faction": 4,
+          "quality": 5,
+          "level": 21,
+          "maxLevel": 100,
+          "star": 1,
+          "maxStar": 5,
+          "potential": 15502,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520052,
+          "baseBuff": [
+            520120,
+            520113,
+            520121
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520052,
+            "name": "Naval HP Boost (offensive)",
+            "value": "+5.813%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520120,
+              "name": "All units HP (offensive)",
+              "value": "+1.221%"
+            },
+            {
+              "id": 520113,
+              "name": "Air Force ATK (offensive)",
+              "value": "+1.221%"
+            },
+            {
+              "id": 520121,
+              "name": "Army HP Boost (offensive)",
+              "value": "+1.221%"
+            }
+          ]
+        },
+        {
+          "hole": 5,
+          "holeLevel": 5,
+          "name": "Dusklion",
+          "element": "Water",
+          "cfgId": 155,
+          "type": 8,
+          "faction": 3,
+          "quality": 5,
+          "level": 1,
+          "maxLevel": 100,
+          "star": 2,
+          "maxStar": 5,
+          "potential": 13092,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520073,
+          "baseBuff": [
+            520143,
+            520130,
+            520110
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520073,
+            "name": "Air Force HP Boost (defensive)",
+            "value": "+9.819%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520143,
+              "name": "Air Force HP Boost (defensive)",
+              "value": "+3.78%"
+            },
+            {
+              "id": 520130,
+              "name": "All units ATK (defensive)",
+              "value": "+3.78%"
+            },
+            {
+              "id": 520110,
+              "name": "All units ATK (offensive)",
+              "value": "+1.89%"
+            }
+          ]
+        },
+        {
+          "hole": 6,
+          "holeLevel": 5,
+          "name": "Crestegret",
+          "element": "Ground",
+          "cfgId": 179,
+          "type": 9,
+          "faction": 4,
+          "quality": 4,
+          "level": 1,
+          "maxLevel": 80,
+          "star": 2,
+          "maxStar": 5,
+          "potential": 7257,
+          "potentialRange": "6400|8000",
+          "mainBuff": 520040,
+          "baseBuff": [
+            520111,
+            520112,
+            520120
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520040,
+            "name": "Attack of all units (offensive)",
+            "value": "+5.443%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520111,
+              "name": "Army Attack (offensive)",
+              "value": "+1.048%"
+            },
+            {
+              "id": 520112,
+              "name": "Navy Attack (offensive)",
+              "value": "+1.048%"
+            },
+            {
+              "id": 520120,
+              "name": "All units HP (offensive)",
+              "value": "+1.048%"
+            }
+          ]
+        },
+        {
+          "hole": 7,
+          "holeLevel": 1,
+          "name": "Bounceroo",
+          "element": "Water",
+          "cfgId": 115,
+          "type": 6,
+          "faction": 3,
+          "quality": 5,
+          "level": 40,
+          "maxLevel": 100,
+          "star": 1,
+          "maxStar": 5,
+          "potential": 14646,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520063,
+          "baseBuff": [
+            520111,
+            520023,
+            520130
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520063,
+            "name": "Air Force Attack (defensive)",
+            "value": "+5.492%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520111,
+              "name": "Army Attack (offensive)",
+              "value": "+2.197%"
+            },
+            {
+              "id": 520023,
+              "name": "Air Force Decreased DMG Taken",
+              "value": "+0.732%"
+            },
+            {
+              "id": 520130,
+              "name": "All units ATK (defensive)",
+              "value": "+4.394%"
+            }
+          ]
+        },
+        {
+          "hole": 8,
+          "holeLevel": 1,
+          "name": "Swiftsteed",
+          "element": "Fire",
+          "cfgId": 125,
+          "type": 7,
+          "faction": 1,
+          "quality": 5,
+          "level": 88,
+          "maxLevel": 100,
+          "star": 2,
+          "maxStar": 5,
+          "potential": 14463,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520013,
+          "baseBuff": [
+            520010,
+            520110,
+            520120
+          ],
+          "locked": true,
+          "mainBuffResolved": {
+            "id": 520013,
+            "name": "Air Force DMG Increase",
+            "value": "+3.616%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520010,
+              "name": "All units DMG Increase",
+              "value": "+2.269%"
+            },
+            {
+              "id": 520110,
+              "name": "All units ATK (offensive)",
+              "value": "+6.807%"
+            },
+            {
+              "id": 520120,
+              "name": "All units HP (offensive)",
+              "value": "+6.807%"
+            }
+          ]
+        },
+        {
+          "hole": 9,
+          "holeLevel": 1,
+          "name": "Dusklion",
+          "element": "Wind",
+          "cfgId": 150,
+          "type": 8,
+          "faction": 2,
+          "quality": 5,
+          "level": 20,
+          "maxLevel": 100,
+          "star": 2,
+          "maxStar": 5,
+          "potential": 12049,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520071,
+          "baseBuff": [
+            520112,
+            520120,
+            520110
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520071,
+            "name": "Army HP Boost (defensive)",
+            "value": "+9.037%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520112,
+              "name": "Navy Attack (offensive)",
+              "value": "+2.598%"
+            },
+            {
+              "id": 520120,
+              "name": "All units HP (offensive)",
+              "value": "+2.598%"
+            },
+            {
+              "id": 520110,
+              "name": "All units ATK (offensive)",
+              "value": "+2.598%"
+            }
+          ]
+        }
+      ],
+      "attributes": [
+        {
+          "slot": 1,
+          "condition": "Fill All Slots",
+          "buff": "Army Equipment Engine Slot Equip Attributes boosted (Army dodge not applicable)",
+          "value": "+30.257%"
+        },
+        {
+          "slot": 2,
+          "condition": "All slots filled, deploy 1 Legendary beast",
+          "buff": "Navy Equipment Engine Slot Equip Attributes boosted (Navy dodge not applicable)",
+          "value": "+11.368%"
+        },
+        {
+          "slot": 3,
+          "condition": "All slots filled, deploy 2 Legendary beasts",
+          "buff": "Air Force Equipment Engine Slot Equip Attributes boosted (Air Force dodge not applicable)",
+          "value": "+31.368%"
+        },
+        {
+          "slot": 4,
+          "condition": "All slots filled, deploy 4 beasts 2+ stars Legendary",
+          "buff": "Raysor Headset Base Attributes Boost (Activate upon activating any Titan Rune)",
+          "value": "+95.808%"
+        },
+        {
+          "slot": 5,
+          "condition": "All slots filled, deploy 5 beasts 2+ stars Legendary",
+          "buff": "Power Boots Base Attributes Boost (Activate upon activating any Titan Rune)",
+          "value": "+91.008%"
+        },
+        {
+          "slot": 6,
+          "condition": "All slots filled, deploy 6 beasts 2+ stars Legendary",
+          "buff": "Tactical Backarmor Base Attributes Boost (Activate upon activating any Titan Rune)",
+          "value": "+53.188%"
+        },
+        {
+          "slot": 7,
+          "condition": "All slots filled, deploy 7 beasts 3+ stars Legendary",
+          "buff": "Raysor Headset Random Attributes Boost (Activate when Refining Progress reaches 70% or higher)",
+          "value": "+6.996%"
+        },
+        {
+          "slot": 8,
+          "condition": "All slots filled, deploy 8 beasts 3+ stars Legendary",
+          "buff": "Power Boots Random Attributes Boost (Activate when Refining Progress reaches 70% or higher)",
+          "value": "+6.924%"
+        },
+        {
+          "slot": 9,
+          "condition": "All slots filled, deploy 9 beasts 3+ stars Legendary",
+          "buff": "Tactical Backarmor Random Attributes Boost (Activate when Refining Progress reaches 70% or higher)",
+          "value": "+4.016%"
+        }
+      ]
+    },
+    {
+      "fid": 5,
+      "cfgName": "enigma_field_name5",
+      "displayName": "Offense",
+      "holeCount": 9,
+      "totalLevel": 29,
+      "beasts": [
+        {
+          "hole": 1,
+          "holeLevel": 5,
+          "name": "Grizzroar",
+          "element": "Water",
+          "cfgId": 75,
+          "type": 4,
+          "faction": 3,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 13143,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520020,
+          "baseBuff": [
+            520113,
+            520103,
+            520120
+          ],
+          "locked": true,
+          "mainBuffResolved": {
+            "id": 520020,
+            "name": "All units Decreased DMG Taken",
+            "value": "+8.214%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520113,
+              "name": "Air Force ATK (offensive)",
+              "value": "+12.322%"
+            },
+            {
+              "id": 520103,
+              "name": "Army DEF against Air Force",
+              "value": "+1.807%"
+            },
+            {
+              "id": 520120,
+              "name": "All units HP (offensive)",
+              "value": "+12.322%"
+            }
+          ]
+        },
+        {
+          "hole": 2,
+          "holeLevel": 1,
+          "name": "Grizzroar",
+          "element": "Ground",
+          "cfgId": 80,
+          "type": 4,
+          "faction": 4,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 13602,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520060,
+          "baseBuff": [
+            520132,
+            520021,
+            520110
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520060,
+            "name": "Attack of all units (defensive)",
+            "value": "+25.504%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520132,
+              "name": "Navy Attack (defensive)",
+              "value": "+25.504%"
+            },
+            {
+              "id": 520021,
+              "name": "Army Decreased DMG Taken",
+              "value": "+4.251%"
+            },
+            {
+              "id": 520110,
+              "name": "All units ATK (offensive)",
+              "value": "+12.752%"
+            }
+          ]
+        },
+        {
+          "hole": 3,
+          "holeLevel": 5,
+          "name": "Gleamdeer",
+          "element": "Water",
+          "cfgId": 15,
+          "type": 1,
+          "faction": 3,
+          "quality": 5,
+          "level": 100,
+          "maxLevel": 100,
+          "star": 5,
+          "maxStar": 5,
+          "potential": 14692,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520013,
+          "baseBuff": [
+            520121,
+            520111,
+            520010
+          ],
+          "locked": true,
+          "mainBuffResolved": {
+            "id": 520013,
+            "name": "Air Force DMG Increase",
+            "value": "+9.183%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520121,
+              "name": "Army HP Boost (offensive)",
+              "value": "+13.774%"
+            },
+            {
+              "id": 520111,
+              "name": "Army Attack (offensive)",
+              "value": "+13.774%"
+            },
+            {
+              "id": 520010,
+              "name": "All units DMG Increase",
+              "value": "+4.591%"
+            }
+          ]
+        },
+        {
+          "hole": 4,
+          "holeLevel": 5,
+          "name": "Crestegret",
+          "element": "Wind",
+          "cfgId": 170,
+          "type": 9,
+          "faction": 2,
+          "quality": 5,
+          "level": 40,
+          "maxLevel": 100,
+          "star": 2,
+          "maxStar": 5,
+          "potential": 13438,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520060,
+          "baseBuff": [
+            520110,
+            520131,
+            520111
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520060,
+            "name": "Attack of all units (defensive)",
+            "value": "+10.079%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520110,
+              "name": "All units ATK (offensive)",
+              "value": "+3.905%"
+            },
+            {
+              "id": 520131,
+              "name": "Army Attack (defensive)",
+              "value": "+7.811%"
+            },
+            {
+              "id": 520111,
+              "name": "Army Attack (offensive)",
+              "value": "+3.905%"
+            }
+          ]
+        },
+        {
+          "hole": 5,
+          "holeLevel": 5,
+          "name": "Bounceroo",
+          "element": "Fire",
+          "cfgId": 105,
+          "type": 6,
+          "faction": 1,
+          "quality": 5,
+          "level": 18,
+          "maxLevel": 100,
+          "star": 2,
+          "maxStar": 5,
+          "potential": 15986,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520051,
+          "baseBuff": [
+            520121,
+            520110,
+            520111
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520051,
+            "name": "Army HP Boost (offensive)",
+            "value": "+11.99%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520121,
+              "name": "Army HP Boost (offensive)",
+              "value": "+3.327%"
+            },
+            {
+              "id": 520110,
+              "name": "All units ATK (offensive)",
+              "value": "+3.327%"
+            },
+            {
+              "id": 520111,
+              "name": "Army Attack (offensive)",
+              "value": "+3.327%"
+            }
+          ]
+        },
+        {
+          "hole": 6,
+          "holeLevel": 5,
+          "name": "Swiftsteed",
+          "element": "Wind",
+          "cfgId": 129,
+          "type": 7,
+          "faction": 2,
+          "quality": 4,
+          "level": 40,
+          "maxLevel": 80,
+          "star": 2,
+          "maxStar": 5,
+          "potential": 7911,
+          "potentialRange": "6400|8000",
+          "mainBuff": 520053,
+          "baseBuff": [
+            520010,
+            520110,
+            520112
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520053,
+            "name": "Air Force HP Boost (offensive)",
+            "value": "+5.933%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520010,
+              "name": "All units DMG Increase",
+              "value": "+0.766%"
+            },
+            {
+              "id": 520110,
+              "name": "All units ATK (offensive)",
+              "value": "+2.299%"
+            },
+            {
+              "id": 520112,
+              "name": "Navy Attack (offensive)",
+              "value": "+2.299%"
+            }
+          ]
+        },
+        {
+          "hole": 7,
+          "holeLevel": 1,
+          "name": "Dusklion",
+          "element": "Fire",
+          "cfgId": 144,
+          "type": 8,
+          "faction": 1,
+          "quality": 4,
+          "level": 20,
+          "maxLevel": 80,
+          "star": 2,
+          "maxStar": 5,
+          "potential": 7767,
+          "potentialRange": "6400|8000",
+          "mainBuff": 520041,
+          "baseBuff": [
+            520122,
+            520121,
+            520113
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520041,
+            "name": "Army Attack (offensive)",
+            "value": "+5.825%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520122,
+              "name": "Navy HP Boost (offensive)",
+              "value": "+1.675%"
+            },
+            {
+              "id": 520121,
+              "name": "Army HP Boost (offensive)",
+              "value": "+1.675%"
+            },
+            {
+              "id": 520113,
+              "name": "Air Force ATK (offensive)",
+              "value": "+1.675%"
+            }
+          ]
+        },
+        {
+          "hole": 8,
+          "holeLevel": 1,
+          "name": "Crestegret",
+          "element": "Water",
+          "cfgId": 175,
+          "type": 9,
+          "faction": 3,
+          "quality": 5,
+          "level": 20,
+          "maxLevel": 100,
+          "star": 2,
+          "maxStar": 5,
+          "potential": 15851,
+          "potentialRange": "11200|16000",
+          "mainBuff": 520041,
+          "baseBuff": [
+            520111,
+            520021,
+            520110
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520041,
+            "name": "Army Attack (offensive)",
+            "value": "+11.888%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520111,
+              "name": "Army Attack (offensive)",
+              "value": "+3.418%"
+            },
+            {
+              "id": 520021,
+              "name": "Army Decreased DMG Taken",
+              "value": "+1.139%"
+            },
+            {
+              "id": 520110,
+              "name": "All units ATK (offensive)",
+              "value": "+3.418%"
+            }
+          ]
+        },
+        {
+          "hole": 9,
+          "holeLevel": 1,
+          "name": "Bounceroo",
+          "element": "Ground",
+          "cfgId": 119,
+          "type": 6,
+          "faction": 4,
+          "quality": 4,
+          "level": 16,
+          "maxLevel": 80,
+          "star": 2,
+          "maxStar": 5,
+          "potential": 7350,
+          "potentialRange": "6400|8000",
+          "mainBuff": 520022,
+          "baseBuff": [
+            520123,
+            520113,
+            520131
+          ],
+          "locked": false,
+          "mainBuffResolved": {
+            "id": 520022,
+            "name": "Navy Decreased DMG Taken",
+            "value": "+1.838%"
+          },
+          "baseBuffsResolved": [
+            {
+              "id": 520123,
+              "name": "Air Force HP Boost (offensive)",
+              "value": "+1.475%"
+            },
+            {
+              "id": 520113,
+              "name": "Air Force ATK (offensive)",
+              "value": "+1.475%"
+            },
+            {
+              "id": 520131,
+              "name": "Army Attack (defensive)",
+              "value": "+2.949%"
+            }
+          ]
+        }
+      ],
+      "attributes": [
+        {
+          "slot": 1,
+          "condition": "Fill All Slots",
+          "buff": "Air Force Equipment Transmission Slot Equip Attributes boosted (Air Force Hit not applicable)",
+          "value": "+40.308%"
+        },
+        {
+          "slot": 2,
+          "condition": "All slots filled, deploy 1 Legendary beast",
+          "buff": "Navy Equipment Transmission Slot Equip Attributes boosted (Navy Hit not applicable)",
+          "value": "+15.514%"
+        },
+        {
+          "slot": 3,
+          "condition": "All slots filled, deploy 2 Legendary beasts",
+          "buff": "Army Equipment Transmission Slot Equip Attributes boosted (Army Hit not applicable)",
+          "value": "+41.666%"
+        },
+        {
+          "slot": 4,
+          "condition": "All slots filled, deploy 4 beasts 2+ stars Legendary",
+          "buff": "Optical Add-on Base Attributes Boost (Activate upon activating any Titan Rune)",
+          "value": "+122.52%"
+        },
+        {
+          "slot": 5,
+          "condition": "All slots filled, deploy 5 beasts 2+ stars Legendary",
+          "buff": "Portable GPS Base Attributes Boost (Activate upon activating any Titan Rune)",
+          "value": "+129.4%"
+        },
+        {
+          "slot": 6,
+          "condition": "All slots filled, deploy 6 beasts 2+ stars Legendary",
+          "buff": "Assault Pistol Base Attributes Boost (Activate upon activating any Titan Rune)",
+          "value": "+71.955%"
+        },
+        {
+          "slot": 7,
+          "condition": "All slots filled, deploy 7 beasts 3+ stars Legendary",
+          "buff": "Optical Add-on Random Attributes Boost (Activate when Refining Progress reaches 70% or higher)",
+          "value": "+5.888%"
+        },
+        {
+          "slot": 8,
+          "condition": "All slots filled, deploy 8 beasts 3+ stars Legendary",
+          "buff": "Portable GPS Random Attributes Boost (Activate when Refining Progress reaches 70% or higher)",
+          "value": "+9.928%"
+        },
+        {
+          "slot": 9,
+          "condition": "All slots filled, deploy 9 beasts 3+ stars Legendary",
+          "buff": "Assault Pistol Random Attributes Boost (Activate when Refining Progress reaches 70% or higher)",
+          "value": "+5.68%"
+        }
+      ]
+    }
+  ],
+  "sharedGearAttributes": {
+    "description": "These Titan Gear attribute boosts appear as the last slots on all fields. They connect to the gear refinement system in all-hero-gear.json.",
+    "slots": [
+      {
+        "buff": "Tactical Backarmor Base Attributes Boost (Activate upon activating any Titan Rune)",
+        "value": "+53.188%"
+      },
+      {
+        "buff": "Raysor Headset Random Attributes Boost (Activate when Refining Progress reaches 70% or higher)",
+        "value": "+6.996%"
+      },
+      {
+        "buff": "Power Boots Random Attributes Boost (Activate when Refining Progress reaches 70% or higher)",
+        "value": "+6.924%"
+      },
+      {
+        "buff": "Tactical Backarmor Random Attributes Boost (Activate when Refining Progress reaches 70% or higher)",
+        "value": "+4.016%"
+      }
+    ]
+  }
+}
