@@ -2008,6 +2008,10 @@
           <select class="prefs-select" id="pref-tz-select"></select>
         </div>
         <div class="prefs-setting-row">
+          <span class="prefs-setting-label">Language</span>
+          <select class="prefs-select" id="pref-lang-select"></select>
+        </div>
+        <div class="prefs-setting-row">
           <span class="prefs-setting-label">Reduced motion</span>
           <button class="prefs-toggle" id="pref-motion-toggle">
             <span class="prefs-toggle-state" id="pref-motion-label">Off</span>
@@ -4127,6 +4131,44 @@
         }
       });
 
+      // --- Language override dropdown ---
+      var langSelect = document.getElementById('pref-lang-select');
+      var autoOpt = document.createElement('option');
+      autoOpt.value = '';
+      autoOpt.textContent = 'Auto-detect';
+      langSelect.appendChild(autoOpt);
+      window.LANGUAGES.forEach(function(l) {
+        var opt = document.createElement('option');
+        opt.value = l.code;
+        opt.textContent = l.flag + ' ' + l.name;
+        langSelect.appendChild(opt);
+      });
+      var currentLangOverride = localStorage.getItem('langOverride') || '';
+      langSelect.value = currentLangOverride;
+
+      langSelect.addEventListener('change', function() {
+        var code = this.value;
+        if (code) {
+          localStorage.setItem('langOverride', code);
+          localStorage.setItem('translate-dismissed', '1');
+          if (code === 'en') {
+            // Clear translation cookie and reload
+            document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax; Secure';
+            document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.2864tw.com; SameSite=Lax; Secure';
+            location.reload();
+          } else {
+            window.applyLangToCombo(code, 200);
+          }
+        } else {
+          localStorage.removeItem('langOverride');
+          localStorage.removeItem('translate-dismissed');
+          // Revert to auto-detect — reload to let init logic re-run
+          document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax; Secure';
+          document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.2864tw.com; SameSite=Lax; Secure';
+          location.reload();
+        }
+      });
+
       // --- Init: register SW and check existing subscription ---
       if ('serviceWorker' in navigator && 'PushManager' in window) {
         bellBtn.style.display = '';
@@ -4360,14 +4402,21 @@
       if (pendingLang) {
         window.applyLangToCombo(pendingLang, 250);
       } else {
-        // Auto-detect: if browser is non-English and user hasn't dismissed, auto-translate
-        try {
-          var dismissed = localStorage.getItem('translate-dismissed');
-          if (!dismissed) {
-            var lang = (navigator.language || navigator.userLanguage || 'en').split('-')[0];
-            if (lang !== 'en') window.applyLangToCombo(lang, 250);
-          }
-        } catch(e) {}
+        // Check for explicit language override from Display preferences
+        var langOverride = null;
+        try { langOverride = localStorage.getItem('langOverride'); } catch(e) {}
+        if (langOverride && langOverride !== 'en') {
+          window.applyLangToCombo(langOverride, 250);
+        } else if (!langOverride) {
+          // Auto-detect: if browser is non-English and user hasn't dismissed, auto-translate
+          try {
+            var dismissed = localStorage.getItem('translate-dismissed');
+            if (!dismissed) {
+              var lang = (navigator.language || navigator.userLanguage || 'en').split('-')[0];
+              if (lang !== 'en') window.applyLangToCombo(lang, 250);
+            }
+          } catch(e) {}
+        }
 
         // Detect language from cookie on reload (e.g. returning visitor)
         var detected = detectCurrentLang();
