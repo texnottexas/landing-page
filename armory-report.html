@@ -102,6 +102,8 @@ a { color: var(--accent); text-decoration: none; }
 .refine-label .pct { font-weight: 700; font-size: 13px; }
 .refine-bar { height: 5px; background: rgba(48,54,61,0.7); border-radius: 3px; overflow: hidden; }
 .refine-fill { height: 100%; border-radius: 3px; }
+.icon-pass { color: var(--good); }
+.icon-fail { color: var(--danger); }
 
 /* Beast tab */
 .field-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -311,9 +313,12 @@ function formatPower(p) {
   if (p >= 1000) return (p / 1000).toFixed(0) + 'K';
   return p.toString();
 }
-function refColor(pct) { return pct >= 70 ? 'var(--good)' : pct >= 50 ? 'var(--warn)' : 'var(--danger)'; }
-function rollColor(pct) { return pct >= 70 ? 'var(--good)' : pct >= 50 ? 'var(--warn)' : 'var(--danger)'; }
-function refIcon(meets) { return meets ? '<span style="color:var(--good)">\u2713</span>' : '<span style="color:var(--danger)">\u2717</span>'; }
+function thresholdColor(pct) {
+  if (pct >= 70) return 'var(--good)';
+  if (pct >= 50) return 'var(--warn)';
+  return 'var(--danger)';
+}
+function refIcon(meets) { return meets ? '<span class="icon-pass">\u2713</span>' : '<span class="icon-fail">\u2717</span>'; }
 function elementEmoji(el) { return { Fire:'\ud83d\udd34', Wind:'\ud83d\udfe2', Water:'\ud83d\udd35', Ground:'\ud83d\udfe1' }[el] || ''; }
 function starStr(n) { return '\u2605'.repeat(n) + '\u2606'.repeat(5 - n); }
 
@@ -331,25 +336,28 @@ function buildDashboard() {
   allBeasts.forEach(b => { totalPot += b.potential; });
   const avgPot = Math.round(totalPot / allBeasts.length);
   const avgPotPct = Math.round(avgPot / 16000 * 100);
+  const gearColor = thresholdColor(gearPct);
+  const deployPct = Math.round(deployedSlots / totalSlots * 100);
+  const avgPotColor = avgPotPct >= 80 ? 'var(--accent)' : avgPotPct >= 60 ? 'var(--warn)' : 'var(--danger)';
 
   document.getElementById('dashboard').innerHTML = `
     <div class="dash-card">
       <div class="label">Gears at 70%+ Refinement</div>
-      <div class="value" style="color:${refColor(gearPct)}">${refinedGear} / ${totalGear}</div>
+      <div class="value" style="color:${gearColor}">${refinedGear} / ${totalGear}</div>
       <div class="sub">${gearPct}% meeting threshold</div>
-      <div class="progress-bar"><div class="progress-fill" style="width:${gearPct}%;background:${refColor(gearPct)}"></div></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${gearPct}%;background:${gearColor}"></div></div>
     </div>
     <div class="dash-card">
       <div class="label">Beast Fields</div>
       <div class="value" style="color:var(--accent)">${deployedSlots} / ${totalSlots}</div>
       <div class="sub">${BEAST_DATA.fields.length} fields, ${deployedSlots} beasts deployed</div>
-      <div class="progress-bar"><div class="progress-fill" style="width:${Math.round(deployedSlots/totalSlots*100)}%;background:var(--accent)"></div></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${deployPct}%;background:var(--accent)"></div></div>
     </div>
     <div class="dash-card">
       <div class="label">Avg Beast Potential</div>
-      <div class="value" style="color:${avgPotPct >= 80 ? 'var(--accent)' : avgPotPct >= 60 ? 'var(--warn)' : 'var(--danger)'}">${avgPot.toLocaleString()} / 16,000</div>
+      <div class="value" style="color:${avgPotColor}">${avgPot.toLocaleString()} / 16,000</div>
       <div class="sub">${avgPotPct}% of maximum</div>
-      <div class="progress-bar"><div class="progress-fill" style="width:${avgPotPct}%;background:${avgPotPct >= 80 ? 'var(--accent)' : avgPotPct >= 60 ? 'var(--warn)' : 'var(--danger)'}"></div></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${avgPotPct}%;background:${avgPotColor}"></div></div>
     </div>`;
 }
 
@@ -410,10 +418,8 @@ function populateMarchFilter() {
 
 function populateMarchHeroSelects() {
   const heroOptions = '<option value="">-- Select Hero --</option>' +
-    GEAR_DATA.map(h => '<option value="' + h.heroId + '">' + h.heroName + '</option>').join('');
-  document.getElementById('march-hero-1').innerHTML = heroOptions;
-  document.getElementById('march-hero-2').innerHTML = heroOptions;
-  document.getElementById('march-hero-3').innerHTML = heroOptions;
+    GEAR_DATA.map(h => `<option value="${h.heroId}">${h.heroName}</option>`).join('');
+  for (let i = 1; i <= 3; i++) document.getElementById('march-hero-' + i).innerHTML = heroOptions;
 }
 
 function renderMarchList() {
@@ -424,11 +430,11 @@ function renderMarchList() {
     return;
   }
   container.innerHTML = marches.map((m, i) =>
-    '<div class="march-row">' +
-    '<span class="march-name">' + m.name + '</span>' +
-    '<span class="march-heroes">' + m.heroIds.map(id => heroNameById(id)).join(', ') + '</span>' +
-    '<button class="march-delete" data-idx="' + i + '" title="Delete march">&times;</button>' +
-    '</div>'
+    `<div class="march-row">` +
+    `<span class="march-name">${m.name}</span>` +
+    `<span class="march-heroes">${m.heroIds.map(id => heroNameById(id)).join(', ')}</span>` +
+    `<button class="march-delete" data-idx="${i}" title="Delete march">&times;</button>` +
+    `</div>`
   ).join('');
   container.querySelectorAll('.march-delete').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -443,14 +449,16 @@ function renderMarchList() {
   });
 }
 
+function resetMarchForm() {
+  document.getElementById('march-name-input').value = '';
+  for (let i = 1; i <= 3; i++) document.getElementById('march-hero-' + i).value = '';
+  document.getElementById('march-form-error').style.display = 'none';
+}
+
 function openMarchModal() {
   populateMarchHeroSelects();
   renderMarchList();
-  document.getElementById('march-name-input').value = '';
-  document.getElementById('march-hero-1').value = '';
-  document.getElementById('march-hero-2').value = '';
-  document.getElementById('march-hero-3').value = '';
-  document.getElementById('march-form-error').style.display = 'none';
+  resetMarchForm();
   document.getElementById('march-modal').classList.add('open');
 }
 
@@ -476,10 +484,7 @@ function addMarch() {
   saveMarches(marches);
   renderMarchList();
   populateMarchFilter();
-  document.getElementById('march-name-input').value = '';
-  document.getElementById('march-hero-1').value = '';
-  document.getElementById('march-hero-2').value = '';
-  document.getElementById('march-hero-3').value = '';
+  resetMarchForm();
 }
 
 document.getElementById('manage-marches-btn').addEventListener('click', openMarchModal);
@@ -492,59 +497,54 @@ populateMarchFilter();
 
 // =================== GEAR TAB ===================
 function buildGearSlotHTML(slot) {
-  const baseNames = slot.buffNames.slice(0, slot.enhanceValues.length);
-  const baseVals = slot.buffValues.slice(0, slot.enhanceValues.length);
-  let baseHTML = '';
-  for (let i = 0; i < baseNames.length; i++) {
-    baseHTML += '<div class="base-stat">' + baseNames[i] + ' ' + baseVals[i] + ' <span class="enhance">' + slot.enhanceValues[i] + '</span></div>';
-  }
+  const baseHTML = slot.buffNames.slice(0, slot.enhanceValues.length)
+    .map((name, i) => `<div class="base-stat">${name} ${slot.buffValues[i]} <span class="enhance">${slot.enhanceValues[i]}</span></div>`)
+    .join('');
 
-  let statsHTML = '';
-  slot.randomStats.forEach(rs => {
-    statsHTML += '<div class="stat-row"><span class="stat-name">' + rs.stat + '</span><span class="stat-val">' + rs.value + '</span><span class="stat-pct" style="color:' + rollColor(rs.rollPercent) + '">' + rs.rollPercent + '%</span></div>';
-  });
+  const statsHTML = slot.randomStats
+    .map(rs => `<div class="stat-row"><span class="stat-name">${rs.stat}</span><span class="stat-val">${rs.value}</span><span class="stat-pct" style="color:${thresholdColor(rs.rollPercent)}">${rs.rollPercent}%</span></div>`)
+    .join('');
 
   const ref = slot.refinement;
-  return '<div class="gear-card"><div class="gear-name">' + slot.name + '</div>' +
-    (slot.effectName ? '<div class="rune-name">' + slot.effectName + '</div>' : '') +
+  const refPct = ref.percent;
+  const barWidth = Math.min(refPct / 70 * 100, 100);
+  const color = thresholdColor(refPct);
+
+  return `<div class="gear-card"><div class="gear-name">${slot.name}</div>` +
+    (slot.effectName ? `<div class="rune-name">${slot.effectName}</div>` : '') +
     baseHTML + statsHTML +
-    '<div class="refine-section"><div class="refine-label"><span>Refinement</span><span class="pct" style="color:' + refColor(ref.percent) + '">' + ref.percent.toFixed(1) + '% ' + refIcon(ref.meetsThreshold) + '</span></div><div class="refine-bar"><div class="refine-fill" style="width:' + Math.min(ref.percent / 100 * (100/0.7), 100) + '%;background:' + refColor(ref.percent) + '"></div></div></div></div>';
+    `<div class="refine-section"><div class="refine-label"><span>Refinement</span><span class="pct" style="color:${color}">${refPct.toFixed(1)}% ${refIcon(ref.meetsThreshold)}</span></div><div class="refine-bar"><div class="refine-fill" style="width:${barWidth}%;background:${color}"></div></div></div></div>`;
 }
+
+const BRANCH_MAP = { 'Navy': 'navy', 'Air Force': 'air' };
 
 function buildHeroCard(hero) {
   const meta = HERO_META[hero.heroId] || {};
-  const typeName = (meta.typeName || 'Army').toLowerCase();
-  const branchClass = typeName === 'navy' ? 'navy' : typeName === 'air force' ? 'air' : 'army';
-  const borderClass = typeName === 'navy' ? 'navy-border' : typeName === 'air force' ? 'air-border' : '';
+  const typeName = meta.typeName || 'Army';
+  const branchClass = BRANCH_MAP[typeName] || 'army';
+  const borderClass = BRANCH_MAP[typeName] ? BRANCH_MAP[typeName] + '-border' : '';
   const power = formatPower(meta.power || 0);
-  const rs = hero.refinementSummary;
-  const refined = rs.refined;
-  const total = rs.totalGearSlots;
-  const slots = Object.keys(hero.slots).sort((a,b) => +a - +b);
+  const { refined, totalGearSlots: total } = hero.refinementSummary;
+  const slots = Object.keys(hero.slots).sort((a, b) => +a - +b);
 
-  let miniBar = '';
-  for (let i = 1; i <= 6; i++) {
-    const s = hero.slots[i];
-    if (s) {
-      const c = refColor(s.refinement.percent);
-      miniBar += '<div class="mini-seg" style="background:' + c + '"></div>';
-    } else {
-      miniBar += '<div class="mini-seg" style="background:var(--border)"></div>';
-    }
-  }
+  const miniBar = Array.from({ length: 6 }, (_, i) => {
+    const s = hero.slots[i + 1];
+    const bg = s ? thresholdColor(s.refinement.percent) : 'var(--border)';
+    return `<div class="mini-seg" style="background:${bg}"></div>`;
+  }).join('');
 
-  let gearHTML = '';
-  slots.forEach(k => { gearHTML += buildGearSlotHTML(hero.slots[k]); });
+  const gearHTML = slots.map(k => buildGearSlotHTML(hero.slots[k])).join('');
+  const exclTag = hero.exclusiveSkill ? ` <span class="excl-tag">Lv ${hero.exclusiveSkill.level} Exclusive</span>` : '';
 
-  return '<div class="hero-card" data-hero-id="' + hero.heroId + '" data-branch="' + (meta.typeName||'Army') + '" data-name="' + hero.heroName + '" data-power="' + (meta.power||0) + '" data-refined="' + refined + '">' +
-    '<div class="hero-header" onclick="toggleHero(this)">' +
-    '<img class="hero-icon ' + borderClass + '" src="' + (meta.iconSmall||'') + '" alt="' + hero.heroName + '" loading="lazy" onerror="this.style.display=\'none\'">' +
-    '<div class="hero-info"><div class="hero-name">' + hero.heroName + (hero.exclusiveSkill ? ' <span class="excl-tag">Lv ' + hero.exclusiveSkill.level + ' Exclusive</span>' : '') + '</div><div class="hero-meta"><span class="branch-badge ' + branchClass + '">' + (meta.typeName||'Army') + '</span><span>' + power + '</span></div></div>' +
-    '<div class="hero-refine-summary" style="color:' + refColor(refined/total*100) + '">' + refined + '/' + total + ' at 70%+</div>' +
-    '<div class="mini-bar">' + miniBar + '</div>' +
-    '<span class="expand-icon">&#9660;</span>' +
-    '</div>' +
-    '<div class="gear-panel"><div class="gear-grid">' + gearHTML + '</div></div></div>';
+  return `<div class="hero-card" data-hero-id="${hero.heroId}" data-branch="${typeName}" data-name="${hero.heroName}" data-power="${meta.power || 0}" data-refined="${refined}">` +
+    `<div class="hero-header" onclick="toggleHero(this)">` +
+    `<img class="hero-icon ${borderClass}" src="${meta.iconSmall || ''}" alt="${hero.heroName}" loading="lazy" onerror="this.style.display='none'">` +
+    `<div class="hero-info"><div class="hero-name">${hero.heroName}${exclTag}</div><div class="hero-meta"><span class="branch-badge ${branchClass}">${typeName}</span><span>${power}</span></div></div>` +
+    `<div class="hero-refine-summary" style="color:${thresholdColor(refined / total * 100)}">${refined}/${total} at 70%+</div>` +
+    `<div class="mini-bar">${miniBar}</div>` +
+    `<span class="expand-icon">&#9660;</span>` +
+    `</div>` +
+    `<div class="gear-panel"><div class="gear-grid">${gearHTML}</div></div></div>`;
 }
 
 function toggleHero(header) {
@@ -642,11 +642,11 @@ function buildRefineHeroList(gearName) {
 let currentField = 'all';
 
 function buildFieldPills() {
-  let html = '<div class="field-pill active" data-field="all">All Fields <span class="count">(' + BEAST_DATA.totalBeasts + ')</span></div>';
-  BEAST_DATA.fields.forEach(f => {
-    html += '<div class="field-pill" data-field="' + f.fid + '">' + f.displayName + ' <span class="count">(' + f.beasts.length + '/' + f.holeCount + ')</span></div>';
-  });
-  document.getElementById('field-pills').innerHTML = html;
+  const fieldItems = BEAST_DATA.fields.map(f =>
+    `<div class="field-pill" data-field="${f.fid}">${f.displayName} <span class="count">(${f.beasts.length}/${f.holeCount})</span></div>`
+  ).join('');
+  document.getElementById('field-pills').innerHTML =
+    `<div class="field-pill active" data-field="all">All Fields <span class="count">(${BEAST_DATA.totalBeasts})</span></div>` + fieldItems;
   document.querySelectorAll('#field-pills .field-pill').forEach(p => {
     p.addEventListener('click', () => {
       document.querySelectorAll('#field-pills .field-pill').forEach(x => x.classList.remove('active'));
@@ -682,31 +682,37 @@ function renderAttrPanel() {
       statusHTML = '<div class="attr-status active">\u2713 Active</div>';
     }
 
-    slotsHTML += '<div class="attr-slot"><div class="slot-num">Slot ' + attr.slot + '</div><div class="attr-buff">' + attr.buff + '</div><div class="attr-val">' + attr.value + '</div><div class="attr-condition">' + attr.condition + '</div>' + statusHTML + '</div>';
+    slotsHTML += `<div class="attr-slot"><div class="slot-num">Slot ${attr.slot}</div><div class="attr-buff">${attr.buff}</div><div class="attr-val">${attr.value}</div><div class="attr-condition">${attr.condition}</div>${statusHTML}</div>`;
   });
 
-  container.innerHTML = '<div class="attr-panel open"><div class="attr-toggle" onclick="this.parentElement.classList.toggle(\'open\')"><h3>Field Attributes — ' + field.displayName + '</h3><span class="chevron">&#9660;</span></div><div class="attr-body"><div class="attr-grid">' + slotsHTML + '</div></div></div>';
+  container.innerHTML = `<div class="attr-panel open"><div class="attr-toggle" onclick="this.parentElement.classList.toggle('open')"><h3>Field Attributes &mdash; ${field.displayName}</h3><span class="chevron">&#9660;</span></div><div class="attr-body"><div class="attr-grid">${slotsHTML}</div></div></div>`;
+}
+
+function potentialColor(pct) {
+  if (pct >= 85) return 'var(--accent)';
+  if (pct >= 65) return 'var(--warn)';
+  return 'var(--danger)';
 }
 
 function buildBeastCard(beast, fieldName) {
   const emoji = elementEmoji(beast.element);
-  const isPurple = beast.quality === 4;
   const stars = starStr(beast.star);
-  const potMax = 16000;
-  const potPct = Math.round(beast.potential / potMax * 100);
-  const potColor = potPct >= 85 ? 'var(--accent)' : potPct >= 65 ? 'var(--warn)' : 'var(--danger)';
+  const potPct = Math.round(beast.potential / 16000 * 100);
+  const potColor = potentialColor(potPct);
 
-  let baseHTML = '';
-  (beast.baseBuffsResolved || []).forEach(b => {
-    baseHTML += '<div class="base-buff"><span class="b-name">' + b.name + '</span><span class="b-val">' + b.value + '</span></div>';
-  });
+  const baseHTML = (beast.baseBuffsResolved || [])
+    .map(b => `<div class="base-buff"><span class="b-name">${b.name}</span><span class="b-val">${b.value}</span></div>`)
+    .join('');
 
   const mb = beast.mainBuffResolved || {};
-  return '<div class="beast-card' + (isPurple ? ' purple-quality' : '') + '" data-element="' + beast.element + '" data-level="' + beast.level + '" data-star="' + beast.star + '" data-potential="' + beast.potential + '" data-name="' + beast.name + '">' +
-    '<div class="beast-head"><span class="beast-emoji">' + emoji + '</span><div class="beast-info"><div class="beast-name">' + beast.name + '</div><div class="beast-meta-row"><span class="beast-stars">' + stars + '</span><span class="beast-level">Lv.' + beast.level + '</span><span>' + beast.element + '</span>' + (fieldName ? '<span style="color:var(--muted)">' + fieldName + '</span>' : '') + '</div></div></div>' +
-    '<div class="main-buff"><div class="buff-label">Main Buff</div><div class="buff-name">' + mb.name + '</div><div class="buff-val">' + mb.value + '</div></div>' +
+  const qualityClass = beast.quality === 4 ? ' purple-quality' : '';
+  const fieldSpan = fieldName ? `<span style="color:var(--muted)">${fieldName}</span>` : '';
+
+  return `<div class="beast-card${qualityClass}" data-element="${beast.element}" data-level="${beast.level}" data-star="${beast.star}" data-potential="${beast.potential}" data-name="${beast.name}">` +
+    `<div class="beast-head"><span class="beast-emoji">${emoji}</span><div class="beast-info"><div class="beast-name">${beast.name}</div><div class="beast-meta-row"><span class="beast-stars">${stars}</span><span class="beast-level">Lv.${beast.level}</span><span>${beast.element}</span>${fieldSpan}</div></div></div>` +
+    `<div class="main-buff"><div class="buff-label">Main Buff</div><div class="buff-name">${mb.name}</div><div class="buff-val">${mb.value}</div></div>` +
     baseHTML +
-    '<div class="potential-section"><div class="potential-label"><span>Potential</span><span style="color:' + potColor + '">' + beast.potential.toLocaleString() + ' / 16,000</span></div><div class="potential-bar"><div class="potential-fill" style="width:' + potPct + '%;background:' + potColor + '"></div></div></div></div>';
+    `<div class="potential-section"><div class="potential-label"><span>Potential</span><span style="color:${potColor}">${beast.potential.toLocaleString()} / 16,000</span></div><div class="potential-bar"><div class="potential-fill" style="width:${potPct}%;background:${potColor}"></div></div></div></div>`;
 }
 
 function renderBeastGrid() {
@@ -740,25 +746,33 @@ function renderBeastGrid() {
 }
 
 // Element pills
+const ELEMENT_COLORS = { Fire: '#f97583', Wind: '#56d364', Water: '#6cb6ff', Ground: '#e3b341' };
+
+function styleElementPill(pill, active) {
+  if (active) {
+    pill.classList.add('active');
+    const color = pill.dataset.element === 'all' ? 'var(--accent)' : ELEMENT_COLORS[pill.dataset.element];
+    pill.style.borderColor = color;
+    pill.style.color = color;
+  } else {
+    pill.classList.remove('active');
+    pill.style.borderColor = '';
+    pill.style.color = '';
+  }
+}
+
 document.querySelectorAll('#element-pills .pill').forEach(p => {
   p.addEventListener('click', () => {
-    const isAll = p.dataset.element === 'all';
-    if (isAll) {
-      document.querySelectorAll('#element-pills .pill').forEach(x => { x.classList.remove('active'); x.style.borderColor = ''; x.style.color = ''; });
-      p.classList.add('active'); p.style.borderColor = 'var(--accent)'; p.style.color = 'var(--accent)';
+    const allPill = document.querySelector('#element-pills .pill[data-element="all"]');
+    if (p.dataset.element === 'all') {
+      document.querySelectorAll('#element-pills .pill').forEach(x => styleElementPill(x, false));
+      styleElementPill(p, true);
     } else {
-      document.querySelector('#element-pills .pill[data-element="all"]').classList.remove('active');
-      document.querySelector('#element-pills .pill[data-element="all"]').style.borderColor = '';
-      document.querySelector('#element-pills .pill[data-element="all"]').style.color = '';
-      p.classList.toggle('active');
-      const elColors = { Fire: '#f97583', Wind: '#56d364', Water: '#6cb6ff', Ground: '#e3b341' };
-      if (p.classList.contains('active')) { p.style.borderColor = elColors[p.dataset.element]; p.style.color = elColors[p.dataset.element]; }
-      else { p.style.borderColor = ''; p.style.color = ''; }
-      // if none active, re-activate all
-      const anyActive = document.querySelectorAll('#element-pills .pill.active');
-      if (anyActive.length === 0) {
-        const allPill = document.querySelector('#element-pills .pill[data-element="all"]');
-        allPill.classList.add('active'); allPill.style.borderColor = 'var(--accent)'; allPill.style.color = 'var(--accent)';
+      styleElementPill(allPill, false);
+      const wasActive = p.classList.contains('active');
+      styleElementPill(p, !wasActive);
+      if (document.querySelectorAll('#element-pills .pill.active').length === 0) {
+        styleElementPill(allPill, true);
       }
     }
     renderBeastGrid();
