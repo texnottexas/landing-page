@@ -26,6 +26,10 @@ a { color: var(--accent); text-decoration: none; }
 .header-badges { display: flex; gap: 8px; flex-wrap: wrap; }
 .badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background: var(--card); border: 1px solid var(--border); color: var(--muted); }
 .badge .num { color: var(--text); }
+.header .refine-mode-toggle { margin-top: 8px; background: transparent; border: none; padding: 0; }
+.header .impact-analysis-btn { display: none; padding: 5px 12px; border-radius: 16px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid var(--accent); background: transparent; color: var(--accent); transition: all 0.2s; margin-left: 8px; }
+.header .impact-analysis-btn:hover { background: rgba(121,192,255,0.12); }
+.header .impact-analysis-btn.visible { display: inline-flex; }
 
 /* Main container */
 .container { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
@@ -213,9 +217,10 @@ a { color: var(--accent); text-decoration: none; }
   .filter-selects .filter-label { display: none; }
   .filter-selects .filter-select { flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px; }
   .filter-selects .march-btn { font-size: 11px; padding: 6px 10px; }
-  .refine-mode-toggle { padding: 6px 12px; margin-bottom: 8px; }
+  .refine-mode-toggle { padding: 0; flex-wrap: wrap; gap: 6px; }
   .refine-mode-label { font-size: 11px; }
   .refine-mode-btn { font-size: 11px; padding: 4px 10px; }
+  .impact-analysis-btn { font-size: 11px !important; padding: 4px 10px !important; margin-left: 0 !important; }
   /* Beast tab */
   .field-pills { gap: 4px; }
   .field-pill { padding: 5px 10px; font-size: 12px; }
@@ -287,6 +292,42 @@ a { color: var(--accent); text-decoration: none; }
 .march-add-btn:hover { opacity: 0.85; }
 .march-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .march-form-error { font-size: 12px; color: var(--danger); margin-top: 4px; display: none; }
+
+/* Impact Analysis Modal */
+#impact-modal .modal { max-width: 800px; }
+.impact-section { margin-bottom: 24px; }
+.impact-section h3 { font-size: 15px; font-weight: 700; color: var(--accent); margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.impact-summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px; }
+.impact-stat { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
+.impact-stat .is-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.impact-stat .is-value { font-size: 20px; font-weight: 700; }
+.impact-stat .is-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.impact-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.impact-table th { text-align: left; padding: 8px 10px; background: var(--card); border-bottom: 1px solid var(--border); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+.impact-table td { padding: 8px 10px; border-bottom: 1px solid rgba(48,54,61,0.4); }
+.impact-table .delta-cell { color: var(--danger); font-weight: 600; }
+.impact-table .lost-slots { font-size: 11px; color: var(--muted); }
+.impact-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
+.impact-bar { height: 18px; border-radius: 3px; min-width: 2px; transition: width 0.3s; }
+.impact-bar.game-desc { background: #6cb6ff; }
+.impact-bar.tw-dev { background: #f0883e; }
+.impact-hero-name { min-width: 80px; color: var(--text); }
+.impact-bar-val { min-width: 24px; font-size: 11px; color: var(--muted); }
+.impact-chart-legend { display: flex; gap: 16px; margin-bottom: 12px; font-size: 12px; color: var(--muted); }
+.impact-chart-legend span { display: flex; align-items: center; gap: 4px; }
+.impact-chart-legend .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; }
+.impact-findings p { font-size: 13px; color: var(--text); line-height: 1.7; margin-bottom: 8px; }
+.impact-findings p strong { color: var(--accent); }
+.impact-recs { list-style: none; padding: 0; }
+.impact-recs li { font-size: 13px; color: var(--text); line-height: 1.7; margin-bottom: 6px; padding-left: 16px; position: relative; }
+.impact-recs li::before { content: '\2192'; position: absolute; left: 0; color: var(--accent); }
+@media (max-width: 768px) {
+  #impact-modal .modal { max-width: 95%; padding: 16px; }
+  .impact-summary-grid { grid-template-columns: 1fr; }
+  .impact-hero-name { min-width: 60px; font-size: 11px; }
+  .impact-table { font-size: 11px; }
+  .impact-table th, .impact-table td { padding: 6px 6px; }
+}
 </style>
 </head>
 <body>
@@ -301,6 +342,12 @@ a { color: var(--accent); text-decoration: none; }
       <span class="badge"><span class="num">16</span> Heroes</span>
       <span class="badge"><span class="num">84</span> Gear Pieces</span>
       <span class="badge"><span class="num">36</span> Beasts</span>
+    </div>
+    <div class="refine-mode-toggle" id="refine-mode-toggle">
+      <span class="refine-mode-label">Refine Mode:</span>
+      <button class="refine-mode-btn active" data-mode="average">Matching game description</button>
+      <button class="refine-mode-btn" data-mode="per-slot">TW Dev logic</button>
+      <button class="impact-analysis-btn" id="impact-analysis-btn" onclick="openImpactModal()">View Impact Analysis</button>
     </div>
   </div>
 </div>
@@ -340,11 +387,6 @@ a { color: var(--accent); text-decoration: none; }
         </select>
         <button class="march-btn" id="manage-marches-btn">Manage Marches</button>
       </div>
-    </div>
-    <div class="refine-mode-toggle" id="refine-mode-toggle">
-      <span class="refine-mode-label">Refine Mode:</span>
-      <button class="refine-mode-btn active" data-mode="average">Matching game description</button>
-      <button class="refine-mode-btn" data-mode="per-slot">TW Dev logic</button>
     </div>
     <div class="hero-grid" id="hero-grid"></div>
   </div>
@@ -404,6 +446,16 @@ a { color: var(--accent); text-decoration: none; }
     <h2 id="hgm-hero-name"></h2>
     <div class="hgm-slot-btns" id="hgm-slot-btns"></div>
     <div id="hgm-gear-content"></div>
+  </div>
+</div>
+
+<!-- Impact Analysis Modal -->
+<div class="modal-overlay" id="impact-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="document.getElementById('impact-modal').classList.remove('open')">&times;</button>
+    <h2>Refinement Definition Impact Analysis</h2>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:20px;">Comparing Game Description vs. TW Developer Logic</div>
+    <div id="impact-content"></div>
   </div>
 </div>
 
@@ -484,6 +536,114 @@ function getSlotRefined(slot) {
 function getHeroRefinedCount(hero) {
   return Object.values(hero.slots).filter(s => getSlotRefined(s)).length;
 }
+
+function slotMiniColor(slot) {
+  if (refineMode === 'average') return thresholdColor(slot.refinement.percent);
+  const passing = slot.randomStats.filter(rs => rs.rollPercent >= 70).length;
+  if (passing === 0) return '#f97583';
+  if (passing >= slot.randomStats.length) return '#56d364';
+  return '#e3b341';
+}
+
+// Impact Analysis
+function buildImpactAnalysis() {
+  let gameDescRefined = 0, twDevRefined = 0, totalGear = 0;
+  let totalSlots = 0, slotsAt70 = 0;
+  const heroImpact = [];
+  const allHeroData = [];
+
+  GEAR_DATA.forEach(h => {
+    const slots = Object.values(h.slots);
+    let gdCount = 0, tdCount = 0;
+    const lostGear = [];
+
+    slots.forEach(s => {
+      totalGear++;
+      const gdPass = s.refinement.meetsThreshold;
+      const tdPass = s.randomStats.every(rs => rs.rollPercent >= 70);
+      if (gdPass) gdCount++;
+      if (tdPass) tdCount++;
+      if (gdPass && !tdPass) lostGear.push(s.name);
+      s.randomStats.forEach(rs => {
+        totalSlots++;
+        if (rs.rollPercent >= 70) slotsAt70++;
+      });
+    });
+
+    gameDescRefined += gdCount;
+    twDevRefined += tdCount;
+    allHeroData.push({ name: h.heroName, gd: gdCount, td: tdCount, total: slots.length });
+    if (gdCount !== tdCount) {
+      heroImpact.push({ name: h.heroName, gd: gdCount, td: tdCount, total: slots.length, lost: lostGear });
+    }
+  });
+
+  const diff = gameDescRefined - twDevRefined;
+  const lostPct = gameDescRefined > 0 ? Math.round(diff / gameDescRefined * 100) : 0;
+  const affectedHeroes = heroImpact.length;
+
+  // Section 1: Summary Statistics
+  let html = '<div class="impact-section"><h3>Summary Statistics</h3>';
+  html += '<div class="impact-summary-grid">';
+  html += `<div class="impact-stat"><div class="is-label">Total Gear Pieces</div><div class="is-value">${totalGear}</div><div class="is-sub">${GEAR_DATA.length} heroes</div></div>`;
+  html += `<div class="impact-stat"><div class="is-label">Total Random Stat Slots</div><div class="is-value">${totalSlots}</div><div class="is-sub">${slotsAt70} at 70%+ (${Math.round(slotsAt70/totalSlots*100)}%)</div></div>`;
+  html += `<div class="impact-stat"><div class="is-label">Game Description Refined</div><div class="is-value" style="color:#6cb6ff">${gameDescRefined} / ${totalGear}</div><div class="is-sub">Average of all random stats >= 70%</div></div>`;
+  html += `<div class="impact-stat"><div class="is-label">TW Dev Logic Refined</div><div class="is-value" style="color:#f0883e">${twDevRefined} / ${totalGear}</div><div class="is-sub">Every random stat individually >= 70%</div></div>`;
+  html += `<div class="impact-stat"><div class="is-label">Pieces Losing Refined Status</div><div class="is-value" style="color:var(--danger)">${diff}</div><div class="is-sub">${affectedHeroes} hero${affectedHeroes !== 1 ? 'es' : ''} affected</div></div>`;
+  html += `<div class="impact-stat"><div class="is-label">Impact Rate</div><div class="is-value" style="color:var(--danger)">${lostPct}%</div><div class="is-sub">of game-refined gear fails per-slot check</div></div>`;
+  html += '</div></div>';
+
+  // Section 2: Per-Hero Impact Table
+  if (heroImpact.length > 0) {
+    html += '<div class="impact-section"><h3>Per-Hero Impact</h3>';
+    html += '<table class="impact-table"><thead><tr><th>Hero</th><th>Game Desc</th><th>TW Dev</th><th>Delta</th><th>Lost Slots</th></tr></thead><tbody>';
+    heroImpact.forEach(h => {
+      html += `<tr><td>${esc(h.name)}</td><td>${h.gd}/${h.total}</td><td>${h.td}/${h.total}</td><td class="delta-cell">-${h.gd - h.td}</td><td class="lost-slots">${h.lost.join(', ')}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+  }
+
+  // Section 3: Chart
+  html += '<div class="impact-section"><h3>Refined Gear Comparison by Hero</h3>';
+  html += '<div class="impact-chart-legend"><span><span class="swatch" style="background:#6cb6ff"></span> Game Description</span><span><span class="swatch" style="background:#f0883e"></span> TW Dev Logic</span></div>';
+  const maxSlots = 6;
+  allHeroData.forEach(h => {
+    const gdWidth = Math.round(h.gd / maxSlots * 100);
+    const tdWidth = Math.round(h.td / maxSlots * 100);
+    html += '<div class="impact-bar-row">';
+    html += `<span class="impact-hero-name">${esc(h.name)}</span>`;
+    html += `<div style="flex:1;display:flex;flex-direction:column;gap:2px">`;
+    html += `<div style="display:flex;align-items:center;gap:6px"><div class="impact-bar game-desc" style="width:${gdWidth}%"></div><span class="impact-bar-val">${h.gd}/${h.total}</span></div>`;
+    html += `<div style="display:flex;align-items:center;gap:6px"><div class="impact-bar tw-dev" style="width:${tdWidth}%"></div><span class="impact-bar-val">${h.td}/${h.total}</span></div>`;
+    html += '</div></div>';
+  });
+  html += '</div>';
+
+  // Section 4: Key Findings
+  html += '<div class="impact-section"><h3>Key Findings</h3><div class="impact-findings">';
+  html += `<p>Under the TW Developer definition, <strong>${diff} fewer gear piece${diff !== 1 ? 's' : ''}</strong> qualify as refined across <strong>${affectedHeroes} hero${affectedHeroes !== 1 ? 'es' : ''}</strong>.</p>`;
+  html += `<p><strong>${lostPct}%</strong> of gear that meets the game's own refinement threshold fails the per-slot check.</p>`;
+  html += '<p>This is because the game description evaluates refinement as an <strong>AVERAGE</strong> across all random slots, while the developer definition requires <strong>EACH</strong> slot individually to reach 70%.</p>';
+  html += '<p>Additionally, the current refinement system allows re-roll attempts to land on already-maxed random stat slots, wasting the input gear. A stat at 6.00% (100% of max) can still be targeted by the refine roll, consuming a gold gear piece with zero benefit.</p>';
+  html += '</div></div>';
+
+  // Section 5: Recommendations
+  html += '<div class="impact-section"><h3>Recommendations</h3><ul class="impact-recs">';
+  html += '<li>The game\'s in-UI refinement description and the enigma field buff activation should use a consistent definition.</li>';
+  html += '<li>Maxed random stats should be excluded from the refine roll pool to prevent wasted gear.</li>';
+  html += '</ul></div>';
+
+  return html;
+}
+
+function openImpactModal() {
+  document.getElementById('impact-content').innerHTML = buildImpactAnalysis();
+  document.getElementById('impact-modal').classList.add('open');
+}
+
+document.getElementById('impact-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) e.target.classList.remove('open');
+});
 
 // Dashboard
 function buildDashboard() {
@@ -752,8 +912,7 @@ function buildHeroCard(hero) {
   const miniBar = Array.from({ length: 6 }, (_, i) => {
     const s = hero.slots[i + 1];
     if (!s) return `<div class="mini-seg" style="background:var(--border)"></div>`;
-    const bg = getSlotRefined(s) ? 'var(--good)' : thresholdColor(s.refinement.percent);
-    return `<div class="mini-seg" style="background:${bg}"></div>`;
+    return `<div class="mini-seg" style="background:${slotMiniColor(s)}"></div>`;
   }).join('');
 
   const gearHTML = slots.map(k => buildGearSlotHTML(hero.slots[k])).join('');
@@ -831,6 +990,9 @@ document.querySelectorAll('#refine-mode-toggle .refine-mode-btn').forEach(btn =>
     refineMode = btn.dataset.mode;
     document.querySelectorAll('#refine-mode-toggle .refine-mode-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
+    const impactBtn = document.getElementById('impact-analysis-btn');
+    if (refineMode === 'per-slot') impactBtn.classList.add('visible');
+    else impactBtn.classList.remove('visible');
     buildDashboard();
     renderGearTab();
     renderAttrPanel();
