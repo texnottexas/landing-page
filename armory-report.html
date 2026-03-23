@@ -832,7 +832,7 @@ function populateMarchFilter() {
 
 function populateMarchHeroSelects() {
   const heroOptions = '<option value="">-- Select Hero --</option>' +
-    GEAR_DATA.map(h => `<option value="${h.heroId}">${h.heroName}</option>`).join('');
+    GEAR_DATA.map(h => `<option value="${h.heroId}">${esc(h.heroName)}</option>`).join('');
   for (let i = 1; i <= 3; i++) document.getElementById('march-hero-' + i).innerHTML = heroOptions;
 }
 
@@ -846,7 +846,7 @@ function renderMarchList() {
   container.innerHTML = marches.map((m, i) =>
     `<div class="march-row">` +
     `<span class="march-name">${esc(m.name)}</span>` +
-    `<span class="march-heroes">${m.heroIds.map(id => heroNameById(id)).join(', ')}</span>` +
+    `<span class="march-heroes">${m.heroIds.map(id => esc(heroNameById(id))).join(', ')}</span>` +
     `<button class="march-delete" data-idx="${i}" title="Delete march">&times;</button>` +
     `</div>`
   ).join('');
@@ -912,11 +912,11 @@ populateMarchFilter();
 // =================== GEAR TAB ===================
 function buildGearSlotHTML(slot) {
   const baseHTML = slot.buffNames.slice(0, slot.enhanceValues.length)
-    .map((name, i) => `<div class="base-stat">${name} ${slot.buffValues[i]} <span class="enhance">${slot.enhanceValues[i]}</span></div>`)
+    .map((name, i) => `<div class="base-stat">${esc(name)} ${esc(slot.buffValues[i])} <span class="enhance">${esc(slot.enhanceValues[i])}</span></div>`)
     .join('');
 
   const statsHTML = slot.randomStats
-    .map(rs => `<div class="stat-row"><span class="stat-name">${rs.stat}</span><span class="stat-val">${rs.value}</span><span class="stat-pct" style="color:${thresholdColor(rs.rollPercent)}">${rs.rollPercent}%</span></div>`)
+    .map(rs => `<div class="stat-row"><span class="stat-name">${esc(rs.stat)}</span><span class="stat-val">${esc(rs.value)}</span><span class="stat-pct" style="color:${thresholdColor(rs.rollPercent)}">${rs.rollPercent}%</span></div>`)
     .join('');
 
   const ref = slot.refinement;
@@ -928,13 +928,13 @@ function buildGearSlotHTML(slot) {
   const iconUrl = RUNE_ICONS[slot.effectName] || '';
   const cleanDesc = (slot.effectDesc || '').replace(/\s+/g, ' ').trim();
   const runeIconHTML = iconUrl ?
-    `<div class="rune-icon-wrap"><img class="rune-icon" src="${iconUrl}" alt="${slot.effectName}" loading="lazy"><div class="rune-tooltip"><strong>${slot.effectName}</strong><br>${cleanDesc}</div></div>` : '';
+    `<div class="rune-icon-wrap"><img class="rune-icon" src="${iconUrl}" alt="${esc(slot.effectName)}" loading="lazy"><div class="rune-tooltip"><strong>${esc(slot.effectName)}</strong><br>${esc(cleanDesc)}</div></div>` : '';
   const starsHTML = runeStarsHTML(slot);
   const runeSection = (runeIconHTML || starsHTML) ?
     `<div class="rune-display">${runeIconHTML}<div class="rune-stars">${starsHTML}</div></div>` : '';
 
-  return `<div class="gear-card"><div class="gear-header"><div><div class="gear-name">${slot.name}</div>` +
-    (slot.effectName ? `<div class="rune-name">${slot.effectName}</div>` : '') +
+  return `<div class="gear-card"><div class="gear-header"><div><div class="gear-name">${esc(slot.name)}</div>` +
+    (slot.effectName ? `<div class="rune-name">${esc(slot.effectName)}</div>` : '') +
     `</div>${runeSection}</div>` +
     baseHTML + statsHTML +
     `<div class="refine-section"><div class="refine-label"><span>Refinement</span><span class="pct" style="color:${color}">${refPct.toFixed(1)}% ${refIcon(meets)}</span></div><div class="refine-bar"><div class="refine-fill" style="width:${barWidth}%;background:${color}"></div></div></div></div>`;
@@ -947,7 +947,7 @@ function openHeroGearModal(heroId, slotNum) {
   const btnsContainer = document.getElementById('hgm-slot-btns');
   btnsContainer.innerHTML = Object.keys(hero.slots).sort((a, b) => +a - +b).map(k => {
     const s = hero.slots[k];
-    return `<button class="hgm-slot-btn ${+k === slotNum ? 'active' : ''}" onclick="showHeroGearSlot(${heroId}, ${k})">${s.name}</button>`;
+    return `<button class="hgm-slot-btn ${+k === slotNum ? 'active' : ''}" onclick="showHeroGearSlot(${heroId}, ${k})">${esc(s.name)}</button>`;
   }).join('');
   showHeroGearSlot(heroId, slotNum);
   document.getElementById('hero-gear-modal').classList.add('open');
@@ -985,10 +985,10 @@ function buildHeroCard(hero) {
   const gearHTML = slots.map(k => buildGearSlotHTML(hero.slots[k])).join('');
   const exclTag = hero.exclusiveSkill ? ` <span class="excl-tag">Lv ${hero.exclusiveSkill.level} Exclusive</span>` : '';
 
-  return `<div class="hero-card" data-hero-id="${hero.heroId}" data-branch="${typeName}" data-name="${hero.heroName}" data-power="${meta.power || 0}" data-refined="${refined}">` +
+  return `<div class="hero-card" data-hero-id="${hero.heroId}" data-branch="${typeName}" data-name="${esc(hero.heroName)}" data-power="${meta.power || 0}" data-refined="${refined}">` +
     `<div class="hero-header" onclick="toggleHero(this)">` +
-    `<img class="hero-icon ${borderClass}" src="${meta.iconSmall || ''}" alt="${hero.heroName}" loading="lazy" onerror="this.style.display='none'">` +
-    `<div class="hero-info"><div class="hero-name">${hero.heroName}${exclTag}</div><div class="hero-meta"><span class="branch-badge ${branchClass}">${typeName}</span><span>${power}</span></div></div>` +
+    `<img class="hero-icon ${borderClass}" src="${meta.iconSmall || ''}" alt="${esc(hero.heroName)}" loading="lazy" onerror="this.style.display='none'">` +
+    `<div class="hero-info"><div class="hero-name">${esc(hero.heroName)}${exclTag}</div><div class="hero-meta"><span class="branch-badge ${branchClass}">${esc(typeName)}</span><span>${power}</span></div></div>` +
     `<div class="hero-refine-summary" style="color:${thresholdColor(refined / total * 100)}">${refined}/${total} at 70%+</div>` +
     `<div class="mini-bar">${miniBar}</div>` +
     `<span class="expand-icon">&#9660;</span>` +
@@ -1110,7 +1110,7 @@ function buildRefineHeroList(gearName) {
     }
   });
   if (greenHeroes.length === 0 && yellowHeroes.length === 0 && redHeroes.length === 0) return '';
-  const heroSpan = (hero, color) => `<span class="refine-hero" style="color:${color};font-weight:600;cursor:pointer" onclick="openHeroGearModal(${hero.id}, ${slotPos})">${hero.name}</span>`;
+  const heroSpan = (hero, color) => `<span class="refine-hero" style="color:${color};font-weight:600;cursor:pointer" onclick="openHeroGearModal(${hero.id}, ${slotPos})">${esc(hero.name)}</span>`;
   const parts = [
     [greenHeroes, 'var(--good)'],
     [yellowHeroes, 'var(--warn)'],
@@ -1173,10 +1173,10 @@ function renderAttrPanel() {
       statusHTML = '<div class="attr-status active">\u2713 Active</div>';
     }
 
-    slotsHTML += `<div class="attr-slot"><div class="slot-num">Slot ${attr.slot}</div><div class="attr-buff">${attr.buff}</div><div class="attr-val">${attr.value}</div><div class="attr-condition">${attr.condition}</div>${statusHTML}</div>`;
+    slotsHTML += `<div class="attr-slot"><div class="slot-num">Slot ${attr.slot}</div><div class="attr-buff">${esc(attr.buff)}</div><div class="attr-val">${esc(attr.value)}</div><div class="attr-condition">${esc(attr.condition)}</div>${statusHTML}</div>`;
   });
 
-  container.innerHTML = `<div class="attr-panel open"><div class="attr-toggle" onclick="this.parentElement.classList.toggle('open')"><h3>Field Attributes &mdash; ${field.displayName}</h3><span class="chevron">&#9660;</span></div><div class="attr-body"><div class="attr-grid">${slotsHTML}</div></div></div>`;
+  container.innerHTML = `<div class="attr-panel open"><div class="attr-toggle" onclick="this.parentElement.classList.toggle('open')"><h3>Field Attributes &mdash; ${esc(field.displayName)}</h3><span class="chevron">&#9660;</span></div><div class="attr-body"><div class="attr-grid">${slotsHTML}</div></div></div>`;
 }
 
 function potentialColor(pct) {
@@ -1192,17 +1192,17 @@ function buildBeastCard(beast, fieldName, showSlot) {
   const potColor = potentialColor(potPct);
 
   const baseHTML = (beast.baseBuffsResolved || [])
-    .map(b => `<div class="base-buff"><span class="b-name">${b.name}</span><span class="b-val">${b.value}</span></div>`)
+    .map(b => `<div class="base-buff"><span class="b-name">${esc(b.name)}</span><span class="b-val">${esc(b.value)}</span></div>`)
     .join('');
 
   const mb = beast.mainBuffResolved || {};
   const qualityClass = beast.quality === 4 ? ' purple-quality' : '';
-  const fieldSpan = fieldName ? `<span style="color:var(--muted)">${fieldName}</span>` : '';
+  const fieldSpan = fieldName ? `<span style="color:var(--muted)">${esc(fieldName)}</span>` : '';
   const slotBadge = showSlot && beast.hole ? `<span class="beast-slot-badge">#${beast.hole}</span>` : '';
 
-  return `<div class="beast-card${qualityClass}" data-element="${beast.element}" data-level="${beast.level}" data-star="${beast.star}" data-potential="${beast.potential}" data-name="${beast.name}">` +
-    `<div class="beast-head"><span class="beast-emoji">${emoji}</span><div class="beast-info"><div class="beast-name">${slotBadge}${beast.name}</div><div class="beast-meta-row"><span class="beast-stars">${stars}</span><span class="beast-level">Lv.${beast.level}</span><span>${beast.element}</span>${fieldSpan}</div></div></div>` +
-    `<div class="main-buff"><div class="buff-label">Main Buff</div><div class="buff-name">${mb.name}</div><div class="buff-val">${mb.value}</div></div>` +
+  return `<div class="beast-card${qualityClass}" data-element="${esc(beast.element)}" data-level="${beast.level}" data-star="${beast.star}" data-potential="${beast.potential}" data-name="${esc(beast.name)}">` +
+    `<div class="beast-head"><span class="beast-emoji">${emoji}</span><div class="beast-info"><div class="beast-name">${slotBadge}${esc(beast.name)}</div><div class="beast-meta-row"><span class="beast-stars">${stars}</span><span class="beast-level">Lv.${beast.level}</span><span>${esc(beast.element)}</span>${fieldSpan}</div></div></div>` +
+    `<div class="main-buff"><div class="buff-label">Main Buff</div><div class="buff-name">${esc(mb.name)}</div><div class="buff-val">${esc(mb.value)}</div></div>` +
     baseHTML +
     `<div class="potential-section"><div class="potential-label"><span>Potential</span><span style="color:${potColor}">${beast.potential.toLocaleString()} / 16,000</span></div><div class="potential-bar"><div class="potential-fill" style="width:${potPct}%;background:${potColor}"></div></div></div></div>`;
 }
