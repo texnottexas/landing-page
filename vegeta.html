@@ -627,125 +627,7 @@ function slotMiniColor(slot) {
   return '#e3b341';
 }
 
-// Impact Analysis
-function buildImpactAnalysis() {
-  let gameDescRefined = 0, twDevRefined = 0, totalGear = 0;
-  let totalSlots = 0, slotsAt70 = 0;
-  const heroImpact = [];
-  const allHeroData = [];
-
-  GEAR_DATA.forEach(h => {
-    const meta = HERO_META[h.heroId] || {};
-    const slots = Object.values(h.slots);
-    let gdCount = 0, tdCount = 0;
-    const lostGear = [];
-    let heroTotalSlots = 0, heroSlotsAt70 = 0, heroSlotsBelow = 0;
-
-    slots.forEach(s => {
-      if (s.equipped === false || !s.refinement) return;
-      totalGear++;
-      const gdPass = s.refinement.meetsThreshold;
-      const tdPass = s.randomStats && s.randomStats.every(rs => rs.rollPercent >= 70);
-      if (gdPass) gdCount++;
-      if (tdPass) tdCount++;
-      if (gdPass && !tdPass) {
-        const failing = (s.randomStats || []).filter(rs => rs.rollPercent < 70).map(rs => `${rs.stat} (${rs.rollPercent}%)`);
-        lostGear.push({ name: s.name, failing });
-      }
-      (s.randomStats || []).forEach(rs => {
-        totalSlots++;
-        heroTotalSlots++;
-        if (rs.rollPercent >= 70) { slotsAt70++; heroSlotsAt70++; }
-        else heroSlotsBelow++;
-      });
-    });
-
-    gameDescRefined += gdCount;
-    twDevRefined += tdCount;
-    allHeroData.push({ name: h.heroName, heroId: h.heroId, gd: gdCount, td: tdCount, total: slots.length, icon: meta.iconSmall || '' });
-    if (gdCount !== tdCount) {
-      heroImpact.push({ name: h.heroName, heroId: h.heroId, gd: gdCount, td: tdCount, total: slots.length, lost: lostGear, slotsNeeded: heroSlotsBelow, slotsTotal: heroTotalSlots, icon: meta.iconSmall || '' });
-    }
-  });
-
-  const diff = gameDescRefined - twDevRefined;
-  const lostPct = gameDescRefined > 0 ? Math.round(diff / gameDescRefined * 100) : 0;
-  const affectedHeroes = heroImpact.length;
-  const totalSlotsBelow = totalSlots - slotsAt70;
-
-  // Section 1: Summary
-  const impactStat = (label, value, color, sub) =>
-    `<div class="impact-stat"><div class="is-label">${label}</div><div class="is-value" style="color:${color}">${value}</div><div class="is-sub">${sub}</div></div>`;
-
-  let html = '<div class="impact-section"><h3>At a Glance</h3>';
-  html += '<div class="impact-summary-grid">';
-  html += impactStat('Gear Refined (Game Description)', `${gameDescRefined} / ${totalGear}`, '#56d364', 'Overall random stat average \u2265 70%');
-  html += impactStat('Gear Refined (TW Dev Logic)', `${twDevRefined} / ${totalGear}`, '#f97583', 'Every individual random stat \u2265 70%');
-  html += impactStat('Gear Pieces Losing Status', diff, 'var(--danger)', `${affectedHeroes} of ${GEAR_DATA.length} heroes affected`);
-  html += impactStat('Random Slots Below 70%', `${totalSlotsBelow} / ${totalSlots}`, '#e3b341', 'Individual stats needing improvement');
-  html += '</div></div>';
-
-  // Section 2: Per-Hero Impact
-  if (heroImpact.length > 0) {
-    html += '<div class="impact-section"><h3>Per-Hero Breakdown</h3>';
-    heroImpact.forEach(h => {
-      const lostNames = h.lost.map(l => l.name).join(', ');
-      html += `<div class="impact-hero-card">`;
-      html += `<div class="impact-hero-header"><img class="impact-hero-icon" src="${esc(h.icon)}" alt="${esc(h.name)}" onerror="this.style.display='none'"><div class="impact-hero-info"><span class="impact-hero-label">${esc(h.name)}</span><span class="impact-hero-delta">Game: <span style="color:#56d364">${h.gd}/${h.total}</span> → Dev: <span style="color:#f97583">${h.td}/${h.total}</span> <span style="color:var(--danger)">(-${h.gd - h.td})</span></span><span class="impact-hero-sub">Random slots below 70%: <span style="color:#e3b341">${h.slotsNeeded}</span> of ${h.slotsTotal} · Affected: ${lostNames}</span></div></div>`;
-      html += `</div>`;
-    });
-    html += '</div>';
-  }
-
-  // Section 3: Chart
-  const SHORT_NAMES = { 'Shikinami Asuka Langley': 'Asuka' };
-  html += '<div class="impact-section"><h3>Refined Gear Comparison</h3>';
-  html += '<div class="impact-chart-legend"><span><span class="swatch" style="background:#56d364"></span> Game Description</span><span><span class="swatch" style="background:#f97583"></span> TW Dev Logic</span></div>';
-  html += '<div class="impact-chart">';
-  const maxSlots = 6;
-  allHeroData.forEach((h, idx) => {
-    const gdWidth = Math.round(h.gd / maxSlots * 100);
-    const tdWidth = Math.round(h.td / maxSlots * 100);
-    const displayName = SHORT_NAMES[h.name] || h.name;
-    if (idx > 0) html += '<div class="impact-bar-sep"></div>';
-    html += '<div class="impact-bar-row">';
-    html += `<img class="impact-bar-icon" src="${esc(h.icon)}" alt="" onerror="this.style.display='none'">`;
-    html += `<span class="impact-hero-name">${esc(displayName)}</span>`;
-    html += `<div class="impact-bar-divider"></div>`;
-    html += `<div class="impact-bar-area">`;
-    html += `<div style="display:flex;align-items:center;gap:6px"><div class="impact-bar game-desc" style="width:${gdWidth}%"></div><span class="impact-bar-val">${h.gd}/${h.total}</span></div>`;
-    html += `<div style="display:flex;align-items:center;gap:6px"><div class="impact-bar tw-dev" style="width:${tdWidth}%"></div><span class="impact-bar-val">${h.td}/${h.total}</span></div>`;
-    html += '</div></div>';
-  });
-  html += '</div></div>';
-
-  // Section 4: Key Findings
-  html += '<div class="impact-section"><h3>Key Findings</h3><div class="impact-findings">';
-  html += `<p>Switching from the game's published refinement definition to the TW Developer per-slot definition causes <strong>${diff} gear piece${diff !== 1 ? 's' : ''}</strong> (${lostPct}% of refined gear) to lose their refined status across <strong>${affectedHeroes}</strong> heroes.</p>`;
-  html += `<p>The game UI describes refinement as reaching <strong>70% of the total random attribute progress</strong> on a gear piece — meaning the <em>average</em> across all random stats. The TW Developer implementation instead requires <strong>each individual random stat</strong> to independently reach 70% of its maximum, a strictly harder threshold.</p>`;
-  html += `<p>Of the ${totalSlots} individual random stat slots across all heroes, <strong>${totalSlotsBelow}</strong> (${Math.round(totalSlotsBelow/totalSlots*100)}%) currently fall below the 70% individual threshold. A gear piece can have 2 out of 3 stats at 80%+ and still fail the per-slot check if the third stat is at 69%.</p>`;
-  html += `<p>The refinement system compounds this problem: when refining, the game randomly selects which stat slot to attempt a re-roll on. <strong>Stats that are already at their maximum value (100%) can still be targeted</strong>, consuming a gold gear piece with zero benefit. This means players pursuing per-slot refinement face increasing waste as more slots reach their caps.</p>`;
-  html += '</div></div>';
-
-  // Section 5: Recommendations
-  html += '<div class="impact-section"><h3>Recommendations</h3><ul class="impact-recs">';
-  html += '<li><strong>Adopt the game description definition:</strong> Titan Gear refinement progress should be evaluated as a whole — the combined random attribute value across all slots on a gear piece, not each sub-slot individually. This is what the in-game UI communicates to players and is the more intuitive definition.</li>';
-  html += '<li><strong>Align enigma field buff activation:</strong> The Defense and Offense enigma field attribute bonuses that gate on "70% Refine" should use the same whole-gear definition, matching what the game displays on the gear screen.</li>';
-  html += '<li><strong>Exclude maxed stats from refine rolls:</strong> When a random stat has reached its maximum value, it should be removed from the re-roll pool. Allowing rolls to land on maxed stats creates a punishing waste loop that disproportionately affects players who are closest to completion.</li>';
-  html += '<li><strong>Consistency builds trust:</strong> When the game UI says "70% refinement progress" and the underlying system uses a different, stricter calculation, it creates confusion and undermines player confidence in investing resources toward refinement goals.</li>';
-  html += '</ul></div>';
-
-  return html;
-}
-
-function openImpactModal() {
-  document.getElementById('impact-content').innerHTML = buildImpactAnalysis();
-  document.getElementById('impact-modal').classList.add('open');
-}
-
-document.getElementById('impact-modal').addEventListener('click', (e) => {
-  if (e.target === e.currentTarget) closeModal('impact-modal');
-});
+// Impact Analysis removed for this report
 
 // Dashboard
 function buildDashboard() {
@@ -1097,8 +979,10 @@ document.querySelectorAll('#refine-mode-toggle .refine-mode-btn').forEach(btn =>
     document.querySelectorAll('#refine-mode-toggle .refine-mode-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const impactBtn = document.getElementById('impact-analysis-btn');
-    if (refineMode === 'per-slot') impactBtn.classList.add('visible');
-    else impactBtn.classList.remove('visible');
+    if (impactBtn) {
+      if (refineMode === 'per-slot') impactBtn.classList.add('visible');
+      else impactBtn.classList.remove('visible');
+    }
     buildDashboard();
     renderGearTab();
     renderAttrPanel();
