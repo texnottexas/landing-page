@@ -778,11 +778,11 @@ function buildDashboard() {
   }
 
   let totalSlots = 0, deployedSlots = 0;
-  BEAST_DATA.fields.forEach(f => { totalSlots += f.holeCount; deployedSlots += f.beasts.length; });
+  BEAST_DATA.fields.forEach(f => { totalSlots += f.holeCount; deployedSlots += f.beasts.filter(b => !b.empty).length; });
 
-  const allBeasts = BEAST_DATA.fields.flatMap(f => f.beasts);
-  const totalPot = allBeasts.reduce((sum, b) => sum + b.potential, 0);
-  const avgPot = Math.round(totalPot / allBeasts.length);
+  const allBeasts = BEAST_DATA.fields.flatMap(f => f.beasts.filter(b => !b.empty));
+  const totalPot = allBeasts.reduce((sum, b) => sum + (b.potential || 0), 0);
+  const avgPot = allBeasts.length ? Math.round(totalPot / allBeasts.length) : 0;
   const avgPotPct = Math.round(avgPot / 16000 * 100);
   const gearColor = thresholdColor(gearPct);
   const deployPct = Math.round(deployedSlots / totalSlots * 100);
@@ -1162,7 +1162,7 @@ let currentField = 'all';
 
 function buildFieldPills() {
   const fieldItems = BEAST_DATA.fields.map(f =>
-    `<div class="field-pill" data-field="${f.fid}">${f.displayName} <span class="count">(${f.beasts.length}/${f.holeCount})</span></div>`
+    `<div class="field-pill" data-field="${f.fid}">${f.displayName} <span class="count">(${f.beasts.filter(b => !b.empty).length}/${f.holeCount})</span></div>`
   ).join('');
   document.getElementById('field-pills').innerHTML =
     `<div class="field-pill active" data-field="all">All Fields <span class="count">(${BEAST_DATA.totalBeasts})</span></div>` + fieldItems;
@@ -1257,10 +1257,10 @@ function renderBeastGrid() {
 
   let beasts;
   if (currentField === 'all') {
-    beasts = BEAST_DATA.fields.flatMap(f => f.beasts.map(b => ({ ...b, fieldName: f.displayName })));
+    beasts = BEAST_DATA.fields.flatMap(f => f.beasts.filter(b => !b.empty).map(b => ({ ...b, fieldName: f.displayName })));
   } else {
     const field = BEAST_DATA.fields.find(f => f.fid === +currentField);
-    beasts = field ? field.beasts.map(b => ({ ...b, fieldName: field.displayName })) : [];
+    beasts = field ? field.beasts.filter(b => !b.empty).map(b => ({ ...b, fieldName: field.displayName })) : [];
   }
 
   if (!activeElements.has('all')) {
