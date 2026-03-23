@@ -367,6 +367,10 @@ function renderRoadmap(data) {
   var adoItems = data.adoItems || [];
   var githubBugs = data.githubBugs || [];
 
+  // Split GitHub bugs into open and closed
+  var openBugs = githubBugs.filter(function(b) { return b.state === 'open'; });
+  var closedBugs = githubBugs.filter(function(b) { return b.state === 'closed'; });
+
   // Categorize ADO items
   var planned = [];
   var completed = [];
@@ -382,6 +386,9 @@ function renderRoadmap(data) {
       planned.push(item);
     }
   });
+
+  // Add closed GitHub bugs to completed
+  closedBugs.forEach(function(bug) { completed.push(bug); });
 
   // Sort completed by closedDate desc
   completed.sort(function(a, b) {
@@ -408,12 +415,12 @@ function renderRoadmap(data) {
   var bugsHdr = makeEl('div', 'col-header orange');
   bugsHdr.textContent = 'Bugs / Issues';
   bugsCol.appendChild(bugsHdr);
-  if (githubBugs.length === 0) {
+  if (openBugs.length === 0) {
     var nobugs = makeEl('div', 'empty-state');
     nobugs.textContent = 'No open bugs at the moment!';
     bugsCol.appendChild(nobugs);
   } else {
-    githubBugs.forEach(function(bug) { bugsCol.appendChild(renderCard(bug, true)); });
+    openBugs.forEach(function(bug) { bugsCol.appendChild(renderCard(bug, true)); });
   }
   userGrid.appendChild(bugsCol);
 
