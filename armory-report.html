@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https://h5.topwargame.com https://raw.githubusercontent.com data:; connect-src 'none'; object-src 'none'; frame-ancestors 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; img-src https://h5.topwargame.com https://raw.githubusercontent.com data: https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com; connect-src https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; object-src 'none'; frame-src https://translate.google.com; frame-ancestors 'none';">
 <title>Tex's Armory — Server 2864</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -229,6 +229,8 @@ a { color: var(--accent); text-decoration: none; }
   .refine-mode-label { font-size: 11px; }
   .refine-mode-btn { font-size: 11px; padding: 4px 10px; }
   .impact-analysis-btn { font-size: 11px !important; padding: 4px 10px !important; margin-left: 0 !important; }
+  .lang-btn #langCode { display: none; }
+  .lang-grid { grid-template-columns: 1fr; }
   /* Beast tab */
   .field-pills { gap: 4px; }
   .field-pill { padding: 5px 10px; font-size: 12px; }
@@ -271,6 +273,27 @@ a { color: var(--accent); text-decoration: none; }
   .hero-name { font-size: 13px; }
   .gear-grid { padding: 0 10px 10px; }
 }
+
+/* Google Translate overrides */
+body { top: 0 !important; }
+body > .skiptranslate { display: none !important; }
+#google_translate_element { position: absolute; left: -9999px; opacity: 0; pointer-events: none; }
+
+.lang-btn { background: var(--surface); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 4px; font-family: inherit; font-weight: 600; white-space: nowrap; transition: border-color .2s; }
+.lang-btn:hover { border-color: var(--accent); color: var(--text); }
+
+.lang-modal-overlay { display: none; position: fixed; inset: 0; z-index: 400; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; padding: 1rem; }
+.lang-modal-overlay.active { display: flex; }
+.lang-modal { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; max-width: 400px; width: 100%; max-height: 80vh; overflow-y: auto; }
+.lang-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+.lang-modal-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.lang-modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.2rem; padding: .2rem; }
+.lang-modal-close:hover { color: var(--text); }
+.lang-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.lang-option { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid transparent; background: var(--surface); cursor: pointer; font-size: 13px; color: var(--text); font-family: inherit; transition: border-color .15s; }
+.lang-option:hover { border-color: var(--accent); }
+.lang-option.active { border-color: var(--accent); background: rgba(121,192,255,.08); }
+.lang-option .lang-flag { font-size: 1.1rem; }
 
 /* No results */
 .no-results { text-align: center; padding: 48px; color: var(--muted); font-size: 15px; }
@@ -372,6 +395,11 @@ a { color: var(--accent); text-decoration: none; }
       <span class="badge"><span class="num">84</span> Gear Pieces</span>
       <span class="badge"><span class="num">36</span> Beasts</span>
     </div>
+    <button class="lang-btn notranslate" id="langBtn" aria-label="Change language">
+      <span id="langFlag">&#127482;&#127480;</span>
+      <span id="langCode">/en</span>
+    </button>
+    <div id="google_translate_element"></div>
     <div class="refine-mode-toggle" id="refine-mode-toggle">
       <span class="refine-mode-label">Refine Mode:</span>
       <button class="refine-mode-btn active" data-mode="average">Matching game description</button>
@@ -483,6 +511,16 @@ a { color: var(--accent); text-decoration: none; }
     <h2>Refinement Definition Impact Analysis</h2>
     <div style="font-size:13px;color:var(--muted);margin-bottom:20px;">Comparing Game Description vs. TW Developer Logic</div>
     <div id="impact-content"></div>
+  </div>
+</div>
+
+<div class="lang-modal-overlay" id="langModal">
+  <div class="lang-modal">
+    <div class="lang-modal-header">
+      <span class="lang-modal-title">Select Language</span>
+      <button class="lang-modal-close" id="langModalClose" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="lang-grid" id="langGrid"></div>
   </div>
 </div>
 
@@ -912,11 +950,11 @@ populateMarchFilter();
 // =================== GEAR TAB ===================
 function buildGearSlotHTML(slot) {
   const baseHTML = slot.buffNames.slice(0, slot.enhanceValues.length)
-    .map((name, i) => `<div class="base-stat">${esc(name)} ${esc(slot.buffValues[i])} <span class="enhance">${esc(slot.enhanceValues[i])}</span></div>`)
+    .map((name, i) => `<div class="base-stat notranslate" translate="no">${esc(name)} ${esc(slot.buffValues[i])} <span class="enhance">${esc(slot.enhanceValues[i])}</span></div>`)
     .join('');
 
   const statsHTML = slot.randomStats
-    .map(rs => `<div class="stat-row"><span class="stat-name">${esc(rs.stat)}</span><span class="stat-val">${esc(rs.value)}</span><span class="stat-pct" style="color:${thresholdColor(rs.rollPercent)}">${rs.rollPercent}%</span></div>`)
+    .map(rs => `<div class="stat-row notranslate" translate="no"><span class="stat-name">${esc(rs.stat)}</span><span class="stat-val">${esc(rs.value)}</span><span class="stat-pct" style="color:${thresholdColor(rs.rollPercent)}">${rs.rollPercent}%</span></div>`)
     .join('');
 
   const ref = slot.refinement;
@@ -933,8 +971,8 @@ function buildGearSlotHTML(slot) {
   const runeSection = (runeIconHTML || starsHTML) ?
     `<div class="rune-display">${runeIconHTML}<div class="rune-stars">${starsHTML}</div></div>` : '';
 
-  return `<div class="gear-card"><div class="gear-header"><div><div class="gear-name">${esc(slot.name)}</div>` +
-    (slot.effectName ? `<div class="rune-name">${esc(slot.effectName)}</div>` : '') +
+  return `<div class="gear-card"><div class="gear-header"><div><div class="gear-name notranslate" translate="no">${esc(slot.name)}</div>` +
+    (slot.effectName ? `<div class="rune-name notranslate" translate="no">${esc(slot.effectName)}</div>` : '') +
     `</div>${runeSection}</div>` +
     baseHTML + statsHTML +
     `<div class="refine-section"><div class="refine-label"><span>Refinement</span><span class="pct" style="color:${color}">${refPct.toFixed(1)}% ${refIcon(meets)}</span></div><div class="refine-bar"><div class="refine-fill" style="width:${barWidth}%;background:${color}"></div></div></div></div>`;
@@ -988,7 +1026,7 @@ function buildHeroCard(hero) {
   return `<div class="hero-card" data-hero-id="${hero.heroId}" data-branch="${typeName}" data-name="${esc(hero.heroName)}" data-power="${meta.power || 0}" data-refined="${refined}">` +
     `<div class="hero-header" onclick="toggleHero(this)">` +
     `<img class="hero-icon ${borderClass}" src="${meta.iconSmall || ''}" alt="${esc(hero.heroName)}" loading="lazy" onerror="this.style.display='none'">` +
-    `<div class="hero-info"><div class="hero-name">${esc(hero.heroName)}${exclTag}</div><div class="hero-meta"><span class="branch-badge ${branchClass}">${esc(typeName)}</span><span>${power}</span></div></div>` +
+    `<div class="hero-info"><div class="hero-name notranslate" translate="no">${esc(hero.heroName)}${exclTag}</div><div class="hero-meta"><span class="branch-badge ${branchClass}">${esc(typeName)}</span><span>${power}</span></div></div>` +
     `<div class="hero-refine-summary" style="color:${thresholdColor(refined / total * 100)}">${refined}/${total} at 70%+</div>` +
     `<div class="mini-bar">${miniBar}</div>` +
     `<span class="expand-icon">&#9660;</span>` +
@@ -1040,6 +1078,7 @@ function renderGearTab() {
   const grid = document.getElementById('hero-grid');
   if (heroes.length === 0) { grid.innerHTML = '<div class="no-results">No heroes match filters</div>'; return; }
   grid.innerHTML = heroes.map(h => buildHeroCard(h)).join('');
+  if (typeof nudgeTranslate === 'function') setTimeout(nudgeTranslate, 200);
 }
 
 // Filter events
@@ -1192,7 +1231,7 @@ function buildBeastCard(beast, fieldName, showSlot) {
   const potColor = potentialColor(potPct);
 
   const baseHTML = (beast.baseBuffsResolved || [])
-    .map(b => `<div class="base-buff"><span class="b-name">${esc(b.name)}</span><span class="b-val">${esc(b.value)}</span></div>`)
+    .map(b => `<div class="base-buff notranslate" translate="no"><span class="b-name">${esc(b.name)}</span><span class="b-val">${esc(b.value)}</span></div>`)
     .join('');
 
   const mb = beast.mainBuffResolved || {};
@@ -1201,8 +1240,8 @@ function buildBeastCard(beast, fieldName, showSlot) {
   const slotBadge = showSlot && beast.hole ? `<span class="beast-slot-badge">#${beast.hole}</span>` : '';
 
   return `<div class="beast-card${qualityClass}" data-element="${esc(beast.element)}" data-level="${beast.level}" data-star="${beast.star}" data-potential="${beast.potential}" data-name="${esc(beast.name)}">` +
-    `<div class="beast-head"><span class="beast-emoji">${emoji}</span><div class="beast-info"><div class="beast-name">${slotBadge}${esc(beast.name)}</div><div class="beast-meta-row"><span class="beast-stars">${stars}</span><span class="beast-level">Lv.${beast.level}</span><span>${esc(beast.element)}</span>${fieldSpan}</div></div></div>` +
-    `<div class="main-buff"><div class="buff-label">Main Buff</div><div class="buff-name">${esc(mb.name)}</div><div class="buff-val">${esc(mb.value)}</div></div>` +
+    `<div class="beast-head"><span class="beast-emoji">${emoji}</span><div class="beast-info"><div class="beast-name notranslate" translate="no">${slotBadge}${esc(beast.name)}</div><div class="beast-meta-row"><span class="beast-stars">${stars}</span><span class="beast-level">Lv.${beast.level}</span><span>${esc(beast.element)}</span>${fieldSpan}</div></div></div>` +
+    `<div class="main-buff notranslate" translate="no"><div class="buff-label">Main Buff</div><div class="buff-name">${esc(mb.name)}</div><div class="buff-val">${esc(mb.value)}</div></div>` +
     baseHTML +
     `<div class="potential-section"><div class="potential-label"><span>Potential</span><span style="color:${potColor}">${beast.potential.toLocaleString()} / 16,000</span></div><div class="potential-bar"><div class="potential-fill" style="width:${potPct}%;background:${potColor}"></div></div></div></div>`;
 }
@@ -1241,6 +1280,7 @@ function renderBeastGrid() {
   if (beasts.length === 0) { grid.innerHTML = '<div class="no-results">No beasts match filters</div>'; return; }
   const showSlot = currentField !== 'all';
   grid.innerHTML = beasts.map(b => buildBeastCard(b, currentField === 'all' ? b.fieldName : null, showSlot)).join('');
+  if (typeof nudgeTranslate === 'function') setTimeout(nudgeTranslate, 200);
 }
 
 // Element pills
@@ -1283,6 +1323,126 @@ buildDashboard();
 renderGearTab();
 buildFieldPills();
 renderBeastGrid();
+
+// =================== GOOGLE TRANSLATE ===================
+const LANGUAGES = [
+  { code: 'en', flag: '\u{1F1FA}\u{1F1F8}', name: 'English' },
+  { code: 'es', flag: '\u{1F1EA}\u{1F1F8}', name: 'Espa\u00f1ol' },
+  { code: 'fr', flag: '\u{1F1EB}\u{1F1F7}', name: 'Fran\u00e7ais' },
+  { code: 'de', flag: '\u{1F1E9}\u{1F1EA}', name: 'Deutsch' },
+  { code: 'pt', flag: '\u{1F1E7}\u{1F1F7}', name: 'Portugu\u00eas' },
+  { code: 'it', flag: '\u{1F1EE}\u{1F1F9}', name: 'Italiano' },
+  { code: 'ru', flag: '\u{1F1F7}\u{1F1FA}', name: '\u0420\u0443\u0441\u0441\u043a\u0438\u0439' },
+  { code: 'ja', flag: '\u{1F1EF}\u{1F1F5}', name: '\u65E5\u672C\u8A9E' },
+  { code: 'ko', flag: '\u{1F1F0}\u{1F1F7}', name: '\uD55C\uAD6D\uC5B4' },
+  { code: 'zh-CN', flag: '\u{1F1E8}\u{1F1F3}', name: '\u4E2D\u6587' },
+  { code: 'ar', flag: '\u{1F1F8}\u{1F1E6}', name: '\u0627\u0644\u0639\u0631\u0628\u064A\u0629' },
+  { code: 'tr', flag: '\u{1F1F9}\u{1F1F7}', name: 'T\u00fcrk\u00e7e' },
+  { code: 'vi', flag: '\u{1F1FB}\u{1F1F3}', name: 'Ti\u1EBFng Vi\u1EC7t' },
+  { code: 'th', flag: '\u{1F1F9}\u{1F1ED}', name: '\u0E44\u0E17\u0E22' },
+  { code: 'hi', flag: '\u{1F1EE}\u{1F1F3}', name: '\u0939\u093F\u0928\u094D\u0926\u0940' },
+  { code: 'pl', flag: '\u{1F1F5}\u{1F1F1}', name: 'Polski' },
+  { code: 'uk', flag: '\u{1F1FA}\u{1F1E6}', name: '\u0423\u043a\u0440\u0430\u0457\u043d\u0441\u044c\u043a\u0430' },
+  { code: 'id', flag: '\u{1F1EE}\u{1F1E9}', name: 'Indonesia' }
+];
+
+function getLangData(code) {
+  const base = code.split('-')[0];
+  return LANGUAGES.find(l => l.code === code || l.code === base) || null;
+}
+
+function detectCurrentLang() {
+  const match = document.cookie.match(/googtrans=\/en\/([a-zA-Z-]{2,10})/);
+  if (match && match[1]) return match[1];
+  return 'en';
+}
+
+function updateLangBtn(code) {
+  const data = getLangData(code);
+  const flagEl = document.getElementById('langFlag');
+  const codeEl = document.getElementById('langCode');
+  if (data && flagEl) { flagEl.textContent = data.flag; codeEl.textContent = '/' + data.code; }
+  else if (flagEl) { flagEl.textContent = '\u{1F310}'; codeEl.textContent = '/' + code; }
+  document.querySelectorAll('.lang-option').forEach(o => o.classList.toggle('active', o.dataset.lang === code));
+}
+
+function applyLangToCombo(code, delay) {
+  let attempts = 0;
+  const poll = setInterval(() => {
+    const combo = document.querySelector('.goog-te-combo');
+    if (combo) { combo.value = code; combo.dispatchEvent(new Event('change')); clearInterval(poll); updateLangBtn(code); }
+    if (++attempts > 30) clearInterval(poll);
+  }, delay || 200);
+}
+
+function nudgeTranslate() {
+  const combo = document.querySelector('.goog-te-combo');
+  if (combo && combo.value && combo.value !== 'en') combo.dispatchEvent(new Event('change'));
+}
+
+function selectLanguage(code) {
+  if (code === 'en') {
+    sessionStorage.removeItem('pendingLang');
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax; Secure';
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.2864tw.com; SameSite=Lax; Secure';
+    closeLangModal();
+    location.reload();
+    return;
+  }
+  sessionStorage.setItem('pendingLang', code);
+  applyLangToCombo(code, 200);
+  closeLangModal();
+}
+
+const langModalEl = document.getElementById('langModal');
+function openLangModal() { if (langModalEl) langModalEl.classList.add('active'); }
+function closeLangModal() { if (langModalEl) langModalEl.classList.remove('active'); }
+
+// Build language grid
+(function() {
+  const grid = document.getElementById('langGrid');
+  if (!grid) return;
+  const detected = detectCurrentLang();
+  LANGUAGES.forEach(l => {
+    const btn = document.createElement('button');
+    btn.className = 'lang-option' + (l.code === detected ? ' active' : '');
+    btn.dataset.lang = l.code;
+    btn.innerHTML = `<span class="lang-flag">${l.flag}</span><span class="lang-name">${esc(l.name)}</span>`;
+    btn.addEventListener('click', () => selectLanguage(l.code));
+    grid.appendChild(btn);
+  });
+  updateLangBtn(detected);
+})();
+
+// Wire up events
+document.getElementById('langBtn').addEventListener('click', openLangModal);
+document.getElementById('langModalClose').addEventListener('click', closeLangModal);
+langModalEl.addEventListener('click', e => { if (e.target === langModalEl) closeLangModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && langModalEl.classList.contains('active')) { closeLangModal(); e.stopPropagation(); } });
+
+// Fallback if GT never loads
+setTimeout(() => {
+  if (!window._gtLoaded) {
+    const btn = document.getElementById('langBtn');
+    if (btn) { btn.style.opacity = '0.5'; btn.style.cursor = 'default'; btn.title = 'Translation unavailable'; }
+  }
+}, 15000);
+
+// GT init
+function googleTranslateElementInit() {
+  window._gtLoaded = true;
+  new google.translate.TranslateElement({ pageLanguage: 'en', autoDisplay: false }, 'google_translate_element');
+  const pending = sessionStorage.getItem('pendingLang');
+  if (pending) { sessionStorage.removeItem('pendingLang'); applyLangToCombo(pending, 250); }
+  else {
+    const langOverride = localStorage.getItem('langOverride');
+    if (langOverride && langOverride !== 'en') applyLangToCombo(langOverride, 250);
+    const detected = detectCurrentLang();
+    if (detected !== 'en') updateLangBtn(detected);
+  }
+}
 </script>
+<script src="https://translate.googleapis.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+
 </body>
 </html>
