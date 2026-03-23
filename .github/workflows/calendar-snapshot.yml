@@ -11,6 +11,8 @@ permissions:
 jobs:
   snapshot:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
 
@@ -20,16 +22,19 @@ jobs:
           curl -sf https://push-worker.27tb8s6fct.workers.dev/calendar-events \
             -o data/custom-events.json || echo "[]" > data/custom-events.json
 
-      - name: Check for changes
-        id: diff
+      - name: Check for changes and commit via API
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git diff --quiet data/custom-events.json && echo "changed=false" >> "$GITHUB_OUTPUT" || echo "changed=true" >> "$GITHUB_OUTPUT"
-
-      - name: Commit snapshot
-        if: steps.diff.outputs.changed == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/custom-events.json
-          git commit -m "chore: snapshot calendar events from KV"
-          git push
+          git diff --quiet data/custom-events.json && exit 0
+          # Get current file SHA (needed for update)
+          FILE_SHA=$(gh api repos/${{ github.repository }}/contents/data/custom-events.json --jq '.sha' 2>/dev/null || echo "")
+          CONTENT=$(base64 -w 0 data/custom-events.json)
+          PAYLOAD=$(jq -n \
+            --arg msg "chore: snapshot calendar events from KV" \
+            --arg content "$CONTENT" \
+            --arg sha "$FILE_SHA" \
+            '{message: $msg, content: $content} + (if $sha != "" then {sha: $sha} else {} end)')
+          gh api repos/${{ github.repository }}/contents/data/custom-events.json \
+            --method PUT --input - <<< "$PAYLOAD"
+          echo "Snapshot committed via API"
