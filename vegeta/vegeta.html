@@ -620,15 +620,17 @@ function runeStarsHTML(slot) {
 let refineMode = 'average';
 
 function getSlotRefined(slot) {
+  if (!slot.refinement || slot.equipped === false) return false;
   if (refineMode === 'average') return slot.refinement.meetsThreshold;
-  return slot.randomStats.every(rs => rs.rollPercent >= 70);
+  return slot.randomStats && slot.randomStats.every(rs => rs.rollPercent >= 70);
 }
 
 function getHeroRefinedCount(hero) {
-  return Object.values(hero.slots).filter(s => getSlotRefined(s)).length;
+  return Object.values(hero.slots).filter(s => s.equipped !== false && s.refinement && getSlotRefined(s)).length;
 }
 
 function slotMiniColor(slot) {
+  if (!slot.refinement || slot.equipped === false) return '#30363d';
   if (refineMode === 'average') return thresholdColor(slot.refinement.percent);
   const passing = slot.randomStats.filter(rs => rs.rollPercent >= 70).length;
   if (passing === 0) return '#f97583';
@@ -651,16 +653,17 @@ function buildImpactAnalysis() {
     let heroTotalSlots = 0, heroSlotsAt70 = 0, heroSlotsBelow = 0;
 
     slots.forEach(s => {
+      if (s.equipped === false || !s.refinement) return;
       totalGear++;
       const gdPass = s.refinement.meetsThreshold;
-      const tdPass = s.randomStats.every(rs => rs.rollPercent >= 70);
+      const tdPass = s.randomStats && s.randomStats.every(rs => rs.rollPercent >= 70);
       if (gdPass) gdCount++;
       if (tdPass) tdCount++;
       if (gdPass && !tdPass) {
-        const failing = s.randomStats.filter(rs => rs.rollPercent < 70).map(rs => `${rs.stat} (${rs.rollPercent}%)`);
+        const failing = (s.randomStats || []).filter(rs => rs.rollPercent < 70).map(rs => `${rs.stat} (${rs.rollPercent}%)`);
         lostGear.push({ name: s.name, failing });
       }
-      s.randomStats.forEach(rs => {
+      (s.randomStats || []).forEach(rs => {
         totalSlots++;
         heroTotalSlots++;
         if (rs.rollPercent >= 70) { slotsAt70++; heroSlotsAt70++; }
@@ -760,6 +763,7 @@ function buildDashboard() {
   let totalGear = 0, refinedGear = 0, totalRandomSlots = 0, refinedRandomSlots = 0;
   GEAR_DATA.forEach(h => {
     Object.values(h.slots).forEach(s => {
+      if (s.equipped === false || !s.refinement) return;
       totalGear++;
       if (getSlotRefined(s)) refinedGear++;
       if (s.randomStats) {
@@ -954,7 +958,8 @@ populateMarchFilter();
 
 // =================== GEAR TAB ===================
 function buildGearSlotHTML(slot) {
-  const baseHTML = slot.buffNames.slice(0, slot.enhanceValues.length)
+  if (slot.equipped === false || !slot.refinement) return `<div class="gear-card" style="opacity:0.3;text-align:center;padding:2rem"><div class="gear-name" style="color:var(--muted)">Empty Slot ${slot.slot || ''}</div></div>`;
+  const baseHTML = (slot.buffNames || []).slice(0, (slot.enhanceValues || []).length)
     .map((name, i) => `<div class="base-stat notranslate" translate="no">${esc(name)} ${esc(slot.buffValues[i])} <span class="enhance">${esc(slot.enhanceValues[i])}</span></div>`)
     .join('');
 
@@ -990,7 +995,7 @@ function openHeroGearModal(heroId, slotNum) {
   const btnsContainer = document.getElementById('hgm-slot-btns');
   btnsContainer.innerHTML = Object.keys(hero.slots).sort((a, b) => +a - +b).map(k => {
     const s = hero.slots[k];
-    return `<button class="hgm-slot-btn ${+k === slotNum ? 'active' : ''}" onclick="showHeroGearSlot(${heroId}, ${k})">${esc(s.name)}</button>`;
+    return `<button class="hgm-slot-btn ${+k === slotNum ? 'active' : ''}" onclick="showHeroGearSlot(${heroId}, ${k})">${esc(s.name || 'Slot ' + k)}</button>`;
   }).join('');
   showHeroGearSlot(heroId, slotNum);
   document.getElementById('hero-gear-modal').classList.add('open');
@@ -1142,7 +1147,7 @@ function buildRefineHeroList(gearName) {
   let greenHeroes = [], yellowHeroes = [], redHeroes = [];
   GEAR_DATA.forEach(h => {
     const s = h.slots[slotPos];
-    if (!s) return;
+    if (!s || s.equipped === false || !s.refinement) return;
     if (refineMode === 'per-slot' && s.randomStats) {
       const passCount = s.randomStats.filter(rs => rs.rollPercent >= 70).length;
       if (passCount === s.randomStats.length) greenHeroes.push({ name: h.heroName, id: h.heroId });
