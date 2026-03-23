@@ -66,6 +66,10 @@ a { color: var(--accent); text-decoration: none; }
 .filter-select { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; color: var(--text); font-size: 13px; outline: none; cursor: pointer; }
 .filter-select:focus { border-color: var(--accent); }
 .filter-label { font-size: 12px; color: var(--muted); margin-right: -8px; }
+.sort-btns { display: flex; gap: 4px; }
+.sort-btn { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; color: var(--muted); font-size: 12px; cursor: pointer; font-family: inherit; }
+.sort-btn:hover { border-color: var(--accent); color: var(--text); }
+.sort-btn.active { background: rgba(121,192,255,.15); border-color: var(--accent); color: var(--accent); }
 
 /* Hero Cards */
 .hero-grid { display: flex; flex-direction: column; gap: 8px; }
@@ -93,7 +97,8 @@ a { color: var(--accent); text-decoration: none; }
 .gear-panel { max-height: 0; overflow: hidden; transition: max-height 0.4s ease; }
 .hero-card.expanded .gear-panel { max-height: 2000px; }
 .gear-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 0 18px 18px; }
-.gear-card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
+.gear-card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 14px; display: flex; flex-direction: column; }
+.gear-card .refine-section { margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border); }
 .gear-card .gear-name { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
 .gear-card .rune-name { font-size: 11px; color: var(--accent); margin-bottom: 8px; }
 .gear-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
@@ -212,11 +217,13 @@ a { color: var(--accent); text-decoration: none; }
   /* Filter bar */
   .filter-bar { gap: 8px; padding: 10px 12px; }
   .search-input { min-width: 100%; }
-  .pill-group { flex-wrap: wrap; }
+  .pill-group { flex-wrap: wrap; gap: 6px; }
+  .pill-group .march-btn { font-size: 11px; padding: 5px 10px; }
   .filter-selects { width: 100%; gap: 6px; }
   .filter-selects .filter-label { display: none; }
+  .filter-selects #refine-filter { display: none; }
   .filter-selects .filter-select { flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px; }
-  .filter-selects .march-btn { font-size: 11px; padding: 6px 10px; }
+  .sort-btn { font-size: 11px; padding: 5px 10px; }
   .refine-mode-toggle { padding: 0; flex-wrap: wrap; gap: 6px; }
   .refine-mode-label { font-size: 11px; }
   .refine-mode-btn { font-size: 11px; padding: 4px 10px; }
@@ -367,6 +374,7 @@ a { color: var(--accent); text-decoration: none; }
         <div class="pill army active" data-branch="Army">Army</div>
         <div class="pill navy active" data-branch="Navy">Navy</div>
         <div class="pill air active" data-branch="Air Force">Air</div>
+        <button class="march-btn" id="manage-marches-btn">Manage Marches</button>
       </div>
       <div class="filter-selects">
         <span class="filter-label">Refine:</span>
@@ -376,16 +384,14 @@ a { color: var(--accent); text-decoration: none; }
           <option value="needs-work">Needs Work</option>
         </select>
         <span class="filter-label">Sort:</span>
-        <select class="filter-select" id="sort-select">
-          <option value="power">Power</option>
-          <option value="name">Name</option>
-          <option value="refined">Refined Count</option>
-        </select>
-        <span class="filter-label">March:</span>
+        <div class="sort-btns" id="sort-btns">
+          <button class="sort-btn active" data-sort="power">Power</button>
+          <button class="sort-btn" data-sort="name">Name</button>
+        </div>
+        <span class="filter-label">Filter:</span>
         <select class="filter-select" id="march-filter">
           <option value="all">All Heroes</option>
         </select>
-        <button class="march-btn" id="manage-marches-btn">Manage Marches</button>
       </div>
     </div>
     <div class="hero-grid" id="hero-grid"></div>
@@ -938,7 +944,8 @@ function renderGearTab() {
   const activeBranches = new Set();
   document.querySelectorAll('#branch-pills .pill.active').forEach(p => activeBranches.add(p.dataset.branch));
   const refFilter = document.getElementById('refine-filter').value;
-  const sortBy = document.getElementById('sort-select').value;
+  const activeSort = document.querySelector('.sort-btn.active');
+  const sortBy = activeSort ? activeSort.dataset.sort : 'power';
   const marchVal = document.getElementById('march-filter').value;
 
   let marchHeroIds = null;
@@ -980,7 +987,13 @@ document.querySelectorAll('#branch-pills .pill').forEach(p => {
   p.addEventListener('click', () => { p.classList.toggle('active'); renderGearTab(); });
 });
 document.getElementById('refine-filter').addEventListener('change', renderGearTab);
-document.getElementById('sort-select').addEventListener('change', renderGearTab);
+document.querySelectorAll('.sort-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderGearTab();
+  });
+});
 document.getElementById('march-filter').addEventListener('change', renderGearTab);
 
 // Refine mode toggle
