@@ -159,6 +159,7 @@ a { color: var(--accent); text-decoration: none; }
 .hgm-slot-btn.active { background: rgba(121,192,255,.15); border-color: var(--accent); color: var(--accent); }
 
 .beast-filter-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.beast-slot-badge { display: inline-block; background: rgba(121,192,255,.15); color: var(--accent); font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-right: 6px; }
 .beast-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .beast-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; transition: border-color 0.2s; }
 .beast-card:hover { border-color: var(--muted); }
@@ -424,13 +425,12 @@ a { color: var(--accent); text-decoration: none; }
         <div class="pill" data-element="Water">Water</div>
         <div class="pill" data-element="Ground">Ground</div>
       </div>
-      <span class="filter-label">Sort:</span>
-      <select class="filter-select" id="beast-sort">
-        <option value="level">Level</option>
-        <option value="star">Stars</option>
-        <option value="potential">Potential</option>
-        <option value="name">Name</option>
-      </select>
+      <div class="sort-btns" id="beast-sort-btns">
+        <button class="sort-btn active" data-sort="slot">Slot</button>
+        <button class="sort-btn" data-sort="level">Level</button>
+        <button class="sort-btn" data-sort="potential">Potential</button>
+        <button class="sort-btn" data-sort="name">Name</button>
+      </div>
     </div>
     <div class="beast-grid" id="beast-grid"></div>
   </div>
@@ -1148,7 +1148,7 @@ function potentialColor(pct) {
   return 'var(--danger)';
 }
 
-function buildBeastCard(beast, fieldName) {
+function buildBeastCard(beast, fieldName, showSlot) {
   const emoji = elementEmoji(beast.element);
   const stars = starStr(beast.star);
   const potPct = Math.round(beast.potential / 16000 * 100);
@@ -1161,18 +1161,24 @@ function buildBeastCard(beast, fieldName) {
   const mb = beast.mainBuffResolved || {};
   const qualityClass = beast.quality === 4 ? ' purple-quality' : '';
   const fieldSpan = fieldName ? `<span style="color:var(--muted)">${fieldName}</span>` : '';
+  const slotBadge = showSlot && beast.hole ? `<span class="beast-slot-badge">#${beast.hole}</span>` : '';
 
   return `<div class="beast-card${qualityClass}" data-element="${beast.element}" data-level="${beast.level}" data-star="${beast.star}" data-potential="${beast.potential}" data-name="${beast.name}">` +
-    `<div class="beast-head"><span class="beast-emoji">${emoji}</span><div class="beast-info"><div class="beast-name">${beast.name}</div><div class="beast-meta-row"><span class="beast-stars">${stars}</span><span class="beast-level">Lv.${beast.level}</span><span>${beast.element}</span>${fieldSpan}</div></div></div>` +
+    `<div class="beast-head"><span class="beast-emoji">${emoji}</span><div class="beast-info"><div class="beast-name">${slotBadge}${beast.name}</div><div class="beast-meta-row"><span class="beast-stars">${stars}</span><span class="beast-level">Lv.${beast.level}</span><span>${beast.element}</span>${fieldSpan}</div></div></div>` +
     `<div class="main-buff"><div class="buff-label">Main Buff</div><div class="buff-name">${mb.name}</div><div class="buff-val">${mb.value}</div></div>` +
     baseHTML +
     `<div class="potential-section"><div class="potential-label"><span>Potential</span><span style="color:${potColor}">${beast.potential.toLocaleString()} / 16,000</span></div><div class="potential-bar"><div class="potential-fill" style="width:${potPct}%;background:${potColor}"></div></div></div></div>`;
 }
 
+function getBeastSortBy() {
+  const active = document.querySelector('#beast-sort-btns .sort-btn.active');
+  return active ? active.dataset.sort : 'slot';
+}
+
 function renderBeastGrid() {
   const activeElements = new Set();
   document.querySelectorAll('#element-pills .pill.active').forEach(p => activeElements.add(p.dataset.element));
-  const sortBy = document.getElementById('beast-sort').value;
+  const sortBy = getBeastSortBy();
 
   let beasts;
   if (currentField === 'all') {
@@ -1187,8 +1193,8 @@ function renderBeastGrid() {
   }
 
   beasts.sort((a, b) => {
+    if (sortBy === 'slot') return (a.hole || 0) - (b.hole || 0);
     if (sortBy === 'level') return b.level - a.level || b.star - a.star;
-    if (sortBy === 'star') return b.star - a.star || b.level - a.level;
     if (sortBy === 'potential') return b.potential - a.potential;
     if (sortBy === 'name') return a.name.localeCompare(b.name);
     return 0;
@@ -1196,7 +1202,8 @@ function renderBeastGrid() {
 
   const grid = document.getElementById('beast-grid');
   if (beasts.length === 0) { grid.innerHTML = '<div class="no-results">No beasts match filters</div>'; return; }
-  grid.innerHTML = beasts.map(b => buildBeastCard(b, currentField === 'all' ? b.fieldName : null)).join('');
+  const showSlot = currentField !== 'all';
+  grid.innerHTML = beasts.map(b => buildBeastCard(b, currentField === 'all' ? b.fieldName : null, showSlot)).join('');
 }
 
 // Element pills
@@ -1232,7 +1239,13 @@ document.querySelectorAll('#element-pills .pill').forEach(p => {
     renderBeastGrid();
   });
 });
-document.getElementById('beast-sort').addEventListener('change', renderBeastGrid);
+document.querySelectorAll('#beast-sort-btns .sort-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#beast-sort-btns .sort-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderBeastGrid();
+  });
+});
 
 // Init
 buildDashboard();
