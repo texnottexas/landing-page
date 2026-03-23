@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; img-src https://h5.topwargame.com https://raw.githubusercontent.com data: https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com; connect-src https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; object-src 'none'; frame-src https://translate.google.com; frame-ancestors 'none';">
+<title>Vegeta's Armory — Server 2864</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0d1117; --surface: #161b22; --card: #1c2128; --border: #30363d;
+  --text: #e6edf3; --muted: #8b949e; --accent: #79c0ff;
+  --army: #56d364; --navy: #6cb6ff; --air: #e3b341;
+  --good: #56d364; --warn: #e3b341; --danger: #f97583; --purple: #6e40c9;
+}
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; line-height: 1.5; min-height: 100vh; }
+a { color: var(--accent); text-decoration: none; }
+
+/* Header */
+.header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 32px 12px; }
+.header-inner { max-width: 1400px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.header-title-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.header h1 { font-size: 24px; font-weight: 700; color: var(--text); }
+.header h1 span { color: var(--accent); }
+.header-sub { color: var(--muted); font-size: 14px; }
+.header-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; border-radius: 12px; font-size: 14px; font-weight: 600; background: var(--card); border: 1px solid var(--border); color: var(--muted); }
+.badge .num { color: var(--text); font-size: 16px; }
+.header .refine-mode-toggle { margin-top: 4px; background: transparent; border: none; padding: 0; }
+.header .impact-analysis-btn { display: none; padding: 5px 12px; border-radius: 16px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid var(--accent); background: transparent; color: var(--accent); transition: all 0.2s; margin-left: 8px; }
+.header .impact-analysis-btn:hover { background: rgba(121,192,255,0.12); }
+.header .impact-analysis-btn.visible { display: inline-flex; }
+
+/* Main container */
+.container { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
+
+/* Dashboard */
+.dashboard { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+.dash-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+.dash-card .label { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.dash-card .value { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+.dash-card .sub { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+.progress-bar { height: 6px; background: var(--card); border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+
+/* Tabs */
+.tabs { display: flex; gap: 0; margin-bottom: 24px; border-bottom: 2px solid var(--border); }
+.tab { padding: 10px 24px; font-size: 15px; font-weight: 600; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s; user-select: none; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Filter bar */
+.filter-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 20px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.search-input { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; color: var(--text); font-size: 14px; outline: none; min-width: 200px; }
+.search-input:focus { border-color: var(--accent); }
+.search-input::placeholder { color: var(--muted); }
+.pill-group { display: flex; gap: 4px; }
+.pill { padding: 5px 12px; border-radius: 16px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--muted); transition: all 0.2s; user-select: none; }
+.pill:hover { border-color: var(--muted); color: var(--text); }
+.pill.active { color: #fff; }
+.pill.army.active { background: var(--army); border-color: var(--army); color: #0d1117; }
+.pill.navy.active { background: var(--navy); border-color: var(--navy); color: #0d1117; }
+.pill.air.active { background: var(--air); border-color: var(--air); color: #0d1117; }
+.filter-select { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; color: var(--text); font-size: 13px; outline: none; cursor: pointer; }
+.filter-select:focus { border-color: var(--accent); }
+.filter-label { font-size: 12px; color: var(--muted); margin-right: 4px; }
+.sort-btns { display: flex; gap: 4px; }
+.sort-btn { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; color: var(--muted); font-size: 12px; cursor: pointer; font-family: inherit; }
+.sort-btn:hover { border-color: var(--accent); color: var(--text); }
+.sort-btn.active { background: rgba(121,192,255,.15); border-color: var(--accent); color: var(--accent); }
+
+/* Hero Cards */
+.hero-grid { display: flex; flex-direction: column; gap: 8px; }
+.hero-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; transition: border-color 0.2s; }
+.hero-card:hover { border-color: var(--muted); }
+.hero-header { display: flex; align-items: center; gap: 16px; padding: 14px 18px; cursor: pointer; user-select: none; }
+.hero-icon { width: 52px; height: 52px; border-radius: 50%; border: 3px solid var(--army); object-fit: cover; flex-shrink: 0; background: var(--card); }
+.hero-icon.navy-border { border-color: var(--navy); }
+.hero-icon.air-border { border-color: var(--air); }
+.hero-info { flex: 1; min-width: 0; }
+.hero-name { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.excl-tag { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: rgba(121,192,255,0.12); color: var(--accent); border: 1px solid rgba(121,192,255,0.25); white-space: nowrap; }
+.hero-meta { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+.branch-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+.branch-badge.army { background: rgba(86,211,100,0.15); color: var(--army); }
+.branch-badge.navy { background: rgba(108,182,255,0.15); color: var(--navy); }
+.branch-badge.air { background: rgba(227,179,65,0.15); color: var(--air); }
+.hero-refine-summary { font-size: 14px; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+.mini-bar { display: flex; gap: 3px; flex-shrink: 0; }
+.mini-seg { width: 18px; height: 10px; border-radius: 2px; }
+.expand-icon { color: var(--muted); font-size: 18px; transition: transform 0.3s; flex-shrink: 0; }
+.hero-card.expanded .expand-icon { transform: rotate(180deg); }
+
+/* Gear grid inside expanded card */
+.gear-panel { max-height: 0; overflow: hidden; transition: max-height 0.4s ease; }
+.hero-card.expanded .gear-panel { max-height: 2000px; }
+.gear-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 0 18px 18px; }
+.gear-card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 14px; display: flex; flex-direction: column; }
+.gear-card .refine-section { margin-top: auto; }
+.gear-card .gear-name { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+.gear-card .rune-name { font-size: 11px; color: var(--accent); margin-bottom: 8px; }
+.gear-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+.rune-display { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.rune-icon { width: 28px; height: 28px; border-radius: 4px; }
+.rune-stars { display: flex; gap: 1px; align-items: center; }
+.rune-icon-wrap { position: relative; cursor: help; }
+.rune-tooltip { display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 11px; color: var(--text); line-height: 1.4; width: 220px; z-index: 10; box-shadow: 0 4px 12px rgba(0,0,0,.4); pointer-events: none; }
+.rune-icon-wrap:hover .rune-tooltip { display: block; }
+.filter-selects { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.refine-mode-toggle { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; }
+.refine-mode-label { font-size: 13px; color: var(--muted); }
+.refine-mode-btn { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 7px 14px; color: var(--muted); font-size: 13px; cursor: pointer; transition: all 0.2s; }
+.refine-mode-btn.active { background: rgba(121,192,255,.15); border-color: var(--accent); color: var(--accent); }
+.gear-card .base-stat { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.gear-card .base-stat .enhance { color: var(--good); }
+.stat-row { display: flex; align-items: center; justify-content: space-between; font-size: 12px; padding: 3px 0; border-bottom: 1px solid rgba(48,54,61,0.5); }
+.stat-row:last-child { border-bottom: none; }
+.stat-name { color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat-val { font-weight: 600; margin: 0 8px; white-space: nowrap; }
+.stat-pct { font-size: 11px; font-weight: 700; min-width: 36px; text-align: right; }
+.refine-section { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+.refine-label { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.refine-label .pct { font-weight: 700; font-size: 13px; }
+.refine-bar { height: 5px; background: rgba(48,54,61,0.7); border-radius: 3px; overflow: hidden; }
+.refine-fill { height: 100%; border-radius: 3px; }
+.icon-pass { color: var(--good); }
+.icon-fail { color: var(--danger); }
+
+/* Beast tab */
+.field-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.field-pill { padding: 6px 14px; border-radius: 16px; font-size: 13px; font-weight: 600; cursor: pointer; border: 2px solid var(--border); background: var(--surface); color: var(--muted); transition: all 0.2s; user-select: none; }
+.field-pill:hover { border-color: var(--muted); color: var(--text); }
+.field-pill.active { border-color: var(--accent); color: var(--accent); background: rgba(121,192,255,0.08); }
+.field-pill .count { font-size: 11px; color: var(--muted); }
+
+.attr-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 20px; overflow: hidden; }
+.attr-toggle { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; cursor: pointer; user-select: none; }
+.attr-toggle h3 { font-size: 14px; font-weight: 600; color: var(--muted); }
+.attr-toggle .chevron { color: var(--muted); transition: transform 0.3s; }
+.attr-panel.open .attr-toggle .chevron { transform: rotate(180deg); }
+.attr-body { max-height: 0; overflow: hidden; transition: max-height 0.4s ease; }
+.attr-panel.open .attr-body { max-height: 2000px; }
+.attr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; padding: 0 16px 16px; }
+.attr-slot { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
+.attr-slot .slot-num { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.attr-slot .attr-buff { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+.attr-slot .attr-val { font-size: 14px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+.attr-slot .attr-condition { font-size: 11px; color: var(--muted); }
+.attr-slot .attr-status { font-size: 12px; font-weight: 600; margin-top: 4px; }
+.attr-slot .attr-status.active { color: var(--good); }
+.attr-slot .attr-status.needs-refine { color: var(--warn); }
+.refine-heroes { margin-top: 6px; font-size: 11px; line-height: 1.6; }
+.refine-heroes .hero-pass { color: var(--good); font-weight: 600; }
+.refine-heroes .hero-fail { color: var(--danger); font-weight: 600; }
+.hgm-slot-btns { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; }
+.hgm-slot-btn { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; color: var(--muted); font-size: 12px; cursor: pointer; transition: all 0.2s; }
+.hgm-slot-btn.active { background: rgba(121,192,255,.15); border-color: var(--accent); color: var(--accent); }
+
+.beast-filter-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.beast-slot-badge { display: inline-block; background: rgba(121,192,255,.15); color: var(--accent); font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-right: 6px; }
+.beast-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.beast-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; transition: border-color 0.2s; }
+.beast-card:hover { border-color: var(--muted); }
+.beast-card.purple-quality { border-color: var(--purple); }
+.beast-card.purple-quality:hover { border-color: #8b5cf6; }
+.beast-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.beast-emoji { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex-shrink: 0; }
+.beast-info { flex: 1; }
+.beast-name { font-size: 15px; font-weight: 700; }
+.beast-meta-row { font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.beast-stars { color: var(--air); letter-spacing: 1px; }
+.beast-level { font-weight: 600; }
+.main-buff { margin-bottom: 10px; padding: 10px 12px; border-left: 3px solid var(--accent); background: rgba(121,192,255,0.06); border-radius: 0 6px 6px 0; }
+.main-buff .buff-label { font-size: 10px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px; }
+.main-buff .buff-name { font-size: 13px; font-weight: 600; }
+.main-buff .buff-val { font-size: 16px; font-weight: 700; color: var(--accent); }
+.base-buff { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 12px; border-bottom: 1px solid rgba(48,54,61,0.4); }
+.base-buff:last-of-type { border-bottom: none; }
+.base-buff .b-name { color: var(--muted); flex: 1; }
+.base-buff .b-val { font-weight: 600; }
+.potential-section { margin-top: 10px; }
+.potential-label { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; margin-bottom: 4px; }
+.potential-bar { height: 5px; background: var(--card); border-radius: 3px; overflow: hidden; }
+.potential-fill { height: 100%; border-radius: 3px; }
+
+/* Responsive */
+@media (max-width: 1100px) { .gear-grid { grid-template-columns: repeat(2, 1fr); } .beast-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 768px) {
+  .dashboard { grid-template-columns: 1fr; gap: 8px; margin-bottom: 16px; }
+  .dash-card { padding: 12px 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .dash-card .label { margin-bottom: 0; font-size: 12px; flex: 1; min-width: 120px; }
+  .dash-card .value { font-size: 20px; margin-bottom: 0; }
+  .dash-card .sub { display: none; }
+  .dash-card .progress-bar { flex-basis: 100%; }
+  .gear-grid { grid-template-columns: 1fr; gap: 8px; padding: 0 12px 12px; }
+  .beast-grid { grid-template-columns: 1fr; }
+  .container { padding: 12px; }
+  .header { padding: 12px 16px; }
+  .header-inner { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .header-title-row { width: 100%; }
+  .header-title-row .lang-btn { padding: 4px 8px; font-size: 16px; }
+  .header h1 { font-size: 20px; }
+  .header-badges { gap: 4px; }
+  .badge { font-size: 11px; padding: 3px 8px; }
+  .tabs { margin-bottom: 16px; }
+  .tab { padding: 8px 16px; font-size: 14px; }
+  /* Hero card: wrap header to 2 rows */
+  .hero-header { flex-wrap: wrap; gap: 10px; padding: 12px; }
+  .hero-icon { width: 40px; height: 40px; border-width: 2px; }
+  .hero-info { min-width: 0; flex: 1 1 calc(100% - 60px); }
+  .hero-name { font-size: 14px; gap: 6px; }
+  .excl-tag { font-size: 9px; padding: 1px 6px; }
+  .hero-meta { font-size: 11px; gap: 6px; }
+  .hero-refine-summary { font-size: 12px; order: 10; }
+  .mini-bar { order: 11; flex: 1; }
+  .mini-seg { flex: 1; height: 8px; width: auto; }
+  .expand-icon { order: 12; }
+  /* Filter bar */
+  .filter-bar { gap: 8px; padding: 10px 12px; }
+  .search-input { min-width: 100%; }
+  .pill-group { flex-wrap: wrap; gap: 6px; }
+  .pill-group .march-btn { font-size: 11px; padding: 5px 10px; }
+  .filter-selects { width: 100%; gap: 6px; }
+  .filter-selects .filter-label { display: none; }
+  .filter-selects #refine-filter { display: none; }
+  .filter-selects .filter-select { flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px; }
+  .sort-btn { font-size: 11px; padding: 5px 10px; }
+  .refine-mode-toggle { padding: 0; flex-wrap: wrap; gap: 6px; }
+  .refine-mode-label { font-size: 11px; }
+  .refine-mode-btn { font-size: 11px; padding: 4px 10px; }
+  .impact-analysis-btn { font-size: 11px !important; padding: 4px 10px !important; margin-left: 0 !important; }
+  .lang-btn #langCode { display: none; }
+  .lang-grid { grid-template-columns: 1fr; }
+  /* Beast tab */
+  .field-pills { gap: 4px; }
+  .field-pill { padding: 5px 10px; font-size: 12px; }
+  .beast-card { padding: 12px; }
+  .beast-emoji { width: 22px; height: 22px; }
+  .beast-emoji svg { width: 22px; height: 22px; }
+  .beast-name { font-size: 14px; }
+  .main-buff { padding: 8px 10px; }
+  .main-buff .buff-name { font-size: 12px; }
+  .main-buff .buff-val { font-size: 14px; }
+  .base-buff { font-size: 11px; }
+  .base-buff .b-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Attr panel */
+  .attr-grid { grid-template-columns: 1fr; }
+  .attr-slot { padding: 10px; }
+  .attr-slot .attr-buff { font-size: 12px; }
+  .refine-heroes { font-size: 10px; }
+  /* Gear card */
+  .gear-card { padding: 10px; }
+  .stat-row { font-size: 11px; }
+  .stat-name { font-size: 11px; }
+  .stat-val { margin: 0 4px; }
+  .stat-pct { min-width: 30px; font-size: 10px; }
+  .gear-card .gear-name { font-size: 12px; }
+  .gear-card .base-stat { font-size: 11px; }
+  /* Beast filter */
+  .beast-filter-bar { flex-direction: column; gap: 8px; padding: 8px 12px; }
+  /* March modal + hero gear modal */
+  .modal { width: 95%; max-width: 95%; padding: 16px; }
+  .modal h2 { font-size: 16px; }
+  .march-form select { font-size: 12px; }
+  .march-row { flex-wrap: wrap; gap: 6px; }
+}
+@media (max-width: 400px) {
+  .container { padding: 8px; }
+  .header { padding: 10px 12px; }
+  .hero-header { padding: 10px; }
+  .dash-card .value { font-size: 18px; }
+  .hero-icon { width: 36px; height: 36px; }
+  .hero-name { font-size: 13px; }
+  .gear-grid { padding: 0 10px 10px; }
+}
+
+/* Google Translate overrides */
+body { top: 0 !important; }
+body > .skiptranslate { display: none !important; }
+#google_translate_element { position: absolute; left: -9999px; opacity: 0; pointer-events: none; }
+
+.lang-btn { background: var(--surface); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 8px 14px; cursor: pointer; font-size: 18px; display: flex; align-items: center; gap: 4px; font-family: inherit; font-weight: 600; white-space: nowrap; transition: border-color .2s; }
+.lang-btn:hover { border-color: var(--accent); color: var(--text); }
+
+.lang-modal-overlay { display: none; position: fixed; inset: 0; z-index: 400; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; padding: 1rem; }
+.lang-modal-overlay.active { display: flex; }
+.lang-modal { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; max-width: 400px; width: 100%; max-height: 80vh; overflow-y: auto; }
+.lang-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+.lang-modal-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.lang-modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.2rem; padding: .2rem; }
+.lang-modal-close:hover { color: var(--text); }
+.lang-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.lang-option { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid transparent; background: var(--surface); cursor: pointer; font-size: 13px; color: var(--text); font-family: inherit; transition: border-color .15s; }
+.lang-option:hover { border-color: var(--accent); }
+.lang-option.active { border-color: var(--accent); background: rgba(121,192,255,.08); }
+.lang-option .lang-flag { font-size: 1.1rem; }
+
+/* No results */
+.no-results { text-align: center; padding: 48px; color: var(--muted); font-size: 15px; }
+
+/* March modal */
+.march-btn { padding: 5px 14px; border-radius: 16px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid var(--accent); background: transparent; color: var(--accent); transition: all 0.2s; }
+.march-btn:hover { background: rgba(121,192,255,0.12); }
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 90%; max-width: 560px; max-height: 80vh; overflow-y: auto; padding: 24px; position: relative; }
+.modal h2 { font-size: 18px; font-weight: 700; margin-bottom: 16px; color: var(--text); }
+.modal-close { position: absolute; top: 14px; right: 16px; background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; line-height: 1; padding: 4px; }
+.modal-close:hover { color: var(--text); }
+.march-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+.march-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+.march-row .march-name { font-size: 14px; font-weight: 600; min-width: 100px; }
+.march-row .march-heroes { font-size: 12px; color: var(--muted); flex: 1; }
+.march-row .march-delete { background: none; border: none; color: var(--danger); font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+.march-row .march-delete:hover { background: rgba(249,117,131,0.12); }
+.march-form { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+.march-form h3 { font-size: 14px; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
+.march-form-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.march-form-row input, .march-form-row select { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; color: var(--text); font-size: 13px; outline: none; }
+.march-form-row input:focus, .march-form-row select:focus { border-color: var(--accent); }
+.march-form-row input { min-width: 140px; flex: 1; }
+.march-form-row select { min-width: 130px; flex: 1; }
+.march-add-btn { padding: 6px 16px; border-radius: 16px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid var(--accent); background: var(--accent); color: #0d1117; transition: all 0.2s; }
+.march-add-btn:hover { opacity: 0.85; }
+.march-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.march-form-error { font-size: 12px; color: var(--danger); margin-top: 4px; display: none; }
+
+/* Impact Analysis Modal */
+#impact-modal .modal { max-width: 800px; }
+.impact-section { margin-bottom: 24px; }
+.impact-section h3 { font-size: 15px; font-weight: 700; color: var(--accent); margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.impact-summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px; }
+.impact-stat { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
+.impact-stat .is-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.impact-stat .is-value { font-size: 20px; font-weight: 700; }
+.impact-stat .is-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.impact-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.impact-table th { text-align: left; padding: 8px 10px; background: var(--card); border-bottom: 1px solid var(--border); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+.impact-table td { padding: 8px 10px; border-bottom: 1px solid rgba(48,54,61,0.4); }
+.impact-table .delta-cell { color: var(--danger); font-weight: 600; }
+.impact-table .lost-slots { font-size: 11px; color: var(--muted); }
+.impact-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
+.impact-bar { height: 18px; border-radius: 3px; min-width: 2px; transition: width 0.3s; }
+.impact-chart { display: flex; flex-direction: column; }
+.impact-bar.game-desc { background: #56d364; }
+.impact-bar.tw-dev { background: #f97583; }
+.impact-hero-name { width: 75px; flex-shrink: 0; color: var(--text); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.impact-bar-val { min-width: 24px; font-size: 11px; color: var(--muted); }
+.impact-bar-icon { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; }
+.impact-bar-divider { width: 1px; background: var(--border); opacity: 0.5; align-self: stretch; flex-shrink: 0; margin: 0 4px; }
+.impact-bar-area { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.impact-bar-sep { height: 1px; background: var(--border); opacity: 0.3; margin: 4px 0; }
+.impact-hero-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 10px; }
+.impact-hero-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.impact-hero-icon { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--border); }
+.impact-hero-info { display: flex; flex-direction: column; gap: 2px; }
+.impact-hero-label { font-size: 14px; font-weight: 700; color: var(--text); }
+.impact-hero-delta { font-size: 13px; }
+.impact-hero-sub { font-size: 11px; color: var(--muted); }
+.impact-detail-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.impact-failing-gear { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 4px; padding: 4px 0; }
+.ifg-name { font-size: 12px; font-weight: 600; color: var(--text); min-width: 120px; }
+.ifg-stat { font-size: 11px; color: #f97583; background: rgba(249,117,131,.1); padding: 2px 8px; border-radius: 4px; }
+.impact-chart-legend { display: flex; gap: 16px; margin-bottom: 12px; font-size: 12px; color: var(--muted); }
+.impact-chart-legend span { display: flex; align-items: center; gap: 4px; }
+.impact-chart-legend .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; }
+.impact-findings p { font-size: 13px; color: var(--text); line-height: 1.7; margin-bottom: 8px; }
+.impact-findings p strong { color: var(--accent); }
+.impact-recs { list-style: none; padding: 0; }
+.impact-recs li { font-size: 13px; color: var(--text); line-height: 1.7; margin-bottom: 6px; padding-left: 16px; position: relative; }
+.impact-recs li::before { content: '\2192'; position: absolute; left: 0; color: var(--accent); }
+@media (max-width: 768px) {
+  #impact-modal .modal { max-width: 95%; padding: 16px; }
+  .impact-summary-grid { grid-template-columns: 1fr; }
+  .impact-hero-name { min-width: 50px; font-size: 11px; }
+  .impact-bar-icon { width: 16px; height: 16px; }
+  .impact-hero-card { padding: 10px; }
+  .impact-hero-details { padding-left: 0; }
+  .ifg-name { min-width: 90px; }
+  .impact-table { font-size: 11px; }
+  .impact-table th, .impact-table td { padding: 6px 6px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <div class="header-title-row">
+      <div>
+        <h1>Vegeta's <span>Armory</span></h1>
+        <div class="header-sub">Server 2864 — Extracted 2026-03-23</div>
+      </div>
+      <button class="lang-btn notranslate" id="langBtn" aria-label="Change language">
+        <span id="langFlag">&#127482;&#127480;</span>
+        <span id="langCode">/en</span>
+      </button>
+    </div>
+    <div id="google_translate_element"></div>
+    <div class="header-badges">
+      <span class="badge"><span class="num">11</span> Heroes</span>
+      <span class="badge"><span class="num">55</span> Gear Pieces</span>
+      <span class="badge"><span class="num">21</span> Beasts</span>
+    </div>
+    <div class="refine-mode-toggle" id="refine-mode-toggle">
+      <span class="refine-mode-label">Refine Mode:</span>
+      <button class="refine-mode-btn active" data-mode="average">Matching game description</button>
+      <button class="refine-mode-btn" data-mode="per-slot">TW Dev logic</button>
+      <button class="impact-analysis-btn" id="impact-analysis-btn" onclick="openImpactModal()">View Impact Analysis</button>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="dashboard" id="dashboard"></div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="gear">Hero Gear</div>
+    <div class="tab" data-tab="beasts">Enigma Beasts</div>
+  </div>
+
+  <div class="tab-content active" id="tab-gear">
+    <div class="filter-bar">
+      <input type="text" class="search-input" id="gear-search" placeholder="Search heroes...">
+      <div class="pill-group" id="branch-pills">
+        <div class="pill army active" data-branch="Army">Army</div>
+        <div class="pill navy active" data-branch="Navy">Navy</div>
+        <div class="pill air active" data-branch="Air Force">Air</div>
+        <button class="march-btn" id="manage-marches-btn">Manage Marches</button>
+      </div>
+      <div class="filter-selects">
+        <span class="filter-label">Refine:</span>
+        <select class="filter-select" id="refine-filter">
+          <option value="all">All</option>
+          <option value="refined">Refined (70%+)</option>
+          <option value="needs-work">Needs Work</option>
+        </select>
+        <span class="filter-label">Sort:</span>
+        <div class="sort-btns" id="sort-btns">
+          <button class="sort-btn active" data-sort="power">Power</button>
+          <button class="sort-btn" data-sort="name">Name</button>
+        </div>
+        <span class="filter-label">Filter:</span>
+        <select class="filter-select" id="march-filter">
+          <option value="all">All Heroes</option>
+        </select>
+      </div>
+    </div>
+    <div class="hero-grid" id="hero-grid"></div>
+  </div>
+
+  <div class="tab-content" id="tab-beasts">
+    <div class="field-pills" id="field-pills"></div>
+    <div id="attr-panel-container"></div>
+    <div class="beast-filter-bar">
+      <div class="pill-group" id="element-pills">
+        <div class="pill active" data-element="all" style="border-color:var(--accent);color:var(--accent);">All</div>
+        <div class="pill" data-element="Fire">Fire</div>
+        <div class="pill" data-element="Wind">Wind</div>
+        <div class="pill" data-element="Water">Water</div>
+        <div class="pill" data-element="Ground">Ground</div>
+      </div>
+      <div class="sort-btns" id="beast-sort-btns">
+        <button class="sort-btn" data-sort="slot" style="display:none">Slot</button>
+        <button class="sort-btn active" data-sort="level">Level</button>
+        <button class="sort-btn" data-sort="potential">Potential</button>
+        <button class="sort-btn" data-sort="name">Name</button>
+      </div>
+    </div>
+    <div class="beast-grid" id="beast-grid"></div>
+  </div>
+</div>
+
+
+<!-- March management modal -->
+<div class="modal-overlay" id="march-modal">
+  <div class="modal">
+    <button class="modal-close" id="march-modal-close">&times;</button>
+    <h2>Manage Marches</h2>
+    <div class="march-list" id="march-list"></div>
+    <div class="march-form">
+      <h3>Add New March</h3>
+      <div class="march-form-row">
+        <input type="text" id="march-name-input" placeholder="March name" maxlength="30">
+      </div>
+      <div class="march-form-row">
+        <select id="march-hero-1"><option value="">Hero 1</option></select>
+        <select id="march-hero-2"><option value="">Hero 2</option></select>
+        <select id="march-hero-3"><option value="">Hero 3</option></select>
+      </div>
+      <div class="march-form-error" id="march-form-error"></div>
+      <div class="march-form-row">
+        <button class="march-add-btn" id="march-add-btn">Add March</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Hero gear detail modal (from beast tab) -->
+<div class="modal-overlay" id="hero-gear-modal">
+  <div class="modal" style="max-width:400px">
+    <button class="modal-close" onclick="closeModal('hero-gear-modal')">&times;</button>
+    <h2 id="hgm-hero-name"></h2>
+    <div class="hgm-slot-btns" id="hgm-slot-btns"></div>
+    <div id="hgm-gear-content"></div>
+  </div>
+</div>
+
+<!-- Impact Analysis Modal -->
+<div class="modal-overlay" id="impact-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('impact-modal')">&times;</button>
+    <h2>Refinement Definition Impact Analysis</h2>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:20px;">Comparing Game Description vs. TW Developer Logic</div>
+    <div id="impact-content"></div>
+  </div>
+</div>
+
+<div class="lang-modal-overlay" id="langModal">
+  <div class="lang-modal">
+    <div class="lang-modal-header">
+      <span class="lang-modal-title">Select Language</span>
+      <button class="lang-modal-close" id="langModalClose" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="lang-grid" id="langGrid"></div>
+  </div>
+</div>
+
+<script>
+const GEAR_DATA = [{"heroId":235,"heroName":"Jill Valentine","slots":{"1":{"slot":1,"equipId":100104,"level":20,"scores":{"land":34000,"navy":47188,"air":34000},"name":"Assault Pistol","buffNames":["All units Attack","Navy DMG Increase","Navy DMG Increase","Navy DMG Increase"],"buffValues":["30%","3.3%","4.56%","1.56%"],"effectName":"Tactical Awareness","effectDesc":"After equipping this  gear, all your units  gain a  20% Damage  Increase attribute.","infos":[{"tid":4,"type":1,"val":330},{"tid":6,"type":1,"val":456},{"tid":5,"type":1,"val":156},{"tid":10203,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy DMG Increase","value":"3.3%","max":"6.0%","rollPercent":55},{"stat":"Navy DMG Increase","value":"4.56%","max":"6.0%","rollPercent":76},{"stat":"Navy DMG Increase","value":"1.56%","max":"6.0%","rollPercent":26}],"refinement":{"totalValue":9.42,"totalMax":18,"threshold70":12.6,"percent":52.33,"meetsThreshold":false},"starLevel":3},"2":{"slot":2,"equipId":100204,"level":20,"scores":{"land":34000,"navy":46012,"air":34000},"name":"Tactical Backarmor","buffNames":["All units HP","Increase DEF of Navy","Increase DEF of Navy","Increase DEF of Navy"],"buffValues":["30%","1.74%","1.05%","1.5%"],"effectName":"Stealth Hologram","effectDesc":"After equipping this  gear, all your units  gain a  20% Decreased Damage Taken  attribute.","infos":[{"tid":86,"type":1,"val":174},{"tid":87,"type":1,"val":105},{"tid":86,"type":1,"val":150},{"tid":20203,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Increase DEF of Navy","value":"1.74%","max":"3.0%","rollPercent":58},{"stat":"Increase DEF of Navy","value":"1.05%","max":"3.0%","rollPercent":35},{"stat":"Increase DEF of Navy","value":"1.5%","max":"3.0%","rollPercent":50}],"refinement":{"totalValue":4.29,"totalMax":9,"threshold70":6.3,"percent":47.67,"meetsThreshold":false},"starLevel":3},"3":{"slot":3,"equipId":100304,"level":20,"scores":{"land":34000,"navy":48280,"air":34000},"name":"Optical Add-on","buffNames":["All units Attack","All units HP","Navy DMG Increase","Navy DMG Increase","Navy DMG Increase"],"buffValues":["15%","5%","4.14%","2.04%","4.02%"],"effectName":"Tactical Awareness","effectDesc":"After equipping this  gear, all your units  gain a  20% Damage  Increase attribute.","infos":[{"tid":141,"type":1,"val":414},{"tid":139,"type":1,"val":204},{"tid":141,"type":1,"val":402},{"tid":30202,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy DMG Increase","value":"4.14%","max":"6.0%","rollPercent":69},{"stat":"Navy DMG Increase","value":"2.04%","max":"6.0%","rollPercent":34},{"stat":"Navy DMG Increase","value":"4.02%","max":"6.0%","rollPercent":67}],"refinement":{"totalValue":10.2,"totalMax":18,"threshold70":12.6,"percent":56.67,"meetsThreshold":false},"starLevel":3},"4":{"slot":4,"equipId":100404,"level":20,"scores":{"land":27000,"navy":41616,"air":27000},"name":"Raysor Headset","buffNames":["All units HP","Navy Decreased DMG Taken","Navy Decreased DMG Taken","Navy Decreased DMG Taken"],"buffValues":["20%","2.76%","2.58%","5.1%"],"effectName":"Debilitate","effectDesc":"If the hero equipped  with this gear has theDebilitation effect,  then this effect is  increased by  22%.","infos":[{"tid":195,"type":1,"val":276},{"tid":195,"type":1,"val":258},{"tid":193,"type":1,"val":510},{"tid":402051,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy Decreased DMG Taken","value":"2.76%","max":"6.0%","rollPercent":46},{"stat":"Navy Decreased DMG Taken","value":"2.58%","max":"6.0%","rollPercent":43},{"stat":"Navy Decreased DMG Taken","value":"5.1%","max":"6.0%","rollPercent":85}],"refinement":{"totalValue":10.44,"totalMax":18,"threshold70":12.6,"percent":58.0,"meetsThreshold":false},"starLevel":1},"5":{"slot":5,"equipId":100504,"level":20,"scores":{"land":34000,"navy":48952,"air":34000},"name":"Portable GPS","buffNames":["All units Attack","Navy DMG Increase","Navy DMG Increase","Navy DMG Increase"],"buffValues":["20%","3.84%","4.86%","1.98%"],"effectName":"Tactical Awareness","effectDesc":"After equipping this  gear, all your units  gain a  20% Damage  Increase attribute.","infos":[{"tid":96,"type":1,"val":384},{"tid":95,"type":1,"val":486},{"tid":95,"type":1,"val":198},{"tid":50202,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy DMG Increase","value":"3.84%","max":"6.0%","rollPercent":64},{"stat":"Navy DMG Increase","value":"4.86%","max":"6.0%","rollPercent":81},{"stat":"Navy DMG Increase","value":"1.98%","max":"6.0%","rollPercent":33}],"refinement":{"totalValue":10.68,"totalMax":18,"threshold70":12.6,"percent":59.33,"meetsThreshold":false},"starLevel":3},"6":{"slot":6,"equipId":100604,"level":20,"scores":{"land":41000,"navy":57716,"air":41000},"name":"Power Boots","buffNames":["All units Attack","All units HP","Navy Decreased DMG Taken","Navy Decreased DMG Taken","Navy Decreased DMG Taken"],"buffValues":["5%","15%","3.06%","4.74%","4.14%"],"effectName":"Stealth Hologram","effectDesc":"After equipping this  gear, all your units  gain a  25% Decreased Damage Taken  attribute.","infos":[{"tid":239,"type":1,"val":306},{"tid":239,"type":1,"val":474},{"tid":240,"type":1,"val":414},{"tid":602013,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy Decreased DMG Taken","value":"3.06%","max":"6.0%","rollPercent":51},{"stat":"Navy Decreased DMG Taken","value":"4.74%","max":"6.0%","rollPercent":79},{"stat":"Navy Decreased DMG Taken","value":"4.14%","max":"6.0%","rollPercent":69}],"refinement":{"totalValue":11.94,"totalMax":18,"threshold70":12.6,"percent":66.33,"meetsThreshold":false},"starLevel":1}},"exclusiveSkill":{"skillId":20748,"level":5},"refinementSummary":{"totalGearSlots":6,"refined":0,"unrefined":6,"unrefinedGear":[{"slot":1,"name":"Assault Pistol","totalValue":9.42,"threshold70":12.6,"percent":52.33,"deficit":3.18},{"slot":2,"name":"Tactical Backarmor","totalValue":4.29,"threshold70":6.3,"percent":47.67,"deficit":2.01},{"slot":3,"name":"Optical Add-on","totalValue":10.2,"threshold70":12.6,"percent":56.67,"deficit":2.4},{"slot":4,"name":"Raysor Headset","totalValue":10.44,"threshold70":12.6,"percent":58.0,"deficit":2.16},{"slot":5,"name":"Portable GPS","totalValue":10.68,"threshold70":12.6,"percent":59.33,"deficit":1.92},{"slot":6,"name":"Power Boots","totalValue":11.94,"threshold70":12.6,"percent":66.33,"deficit":0.66}]}},{"heroId":234,"heroName":"Shen Suyu","slots":{"1":{"slot":1,"equipId":100104,"level":20,"scores":{"land":34000,"navy":46012,"air":34000},"name":"Assault Pistol","buffNames":["All units Attack","Navy DMG Increase","Navy DMG Increase","Navy DMG Increase"],"buffValues":["30%","3.42%","3.24%","1.92%"],"effectName":"Armor-Breaking","effectDesc":"If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  30%  Vulnerable effect to  2 random targets.","infos":[{"tid":6,"type":1,"val":342},{"tid":4,"type":1,"val":324},{"tid":5,"type":1,"val":192},{"tid":10205,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy DMG Increase","value":"3.42%","max":"6.0%","rollPercent":57},{"stat":"Navy DMG Increase","value":"3.24%","max":"6.0%","rollPercent":54},{"stat":"Navy DMG Increase","value":"1.92%","max":"6.0%","rollPercent":32}],"refinement":{"totalValue":8.58,"totalMax":18,"threshold70":12.6,"percent":47.67,"meetsThreshold":false},"starLevel":3},"2":{"slot":2,"equipId":100204,"level":20,"scores":{"land":34000,"navy":48112,"air":34000},"name":"Tactical Backarmor","buffNames":["All units HP","Increase DEF of Navy","Increase DEF of Navy","Increase DEF of Navy"],"buffValues":["30%","2.22%","0.93%","1.89%"],"effectName":"Stealth Hologram","effectDesc":"After equipping this  gear, all your units  gain a  20% Decreased Damage Taken  attribute.","infos":[{"tid":86,"type":1,"val":222},{"tid":87,"type":1,"val":93},{"tid":87,"type":1,"val":189},{"tid":20203,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Increase DEF of Navy","value":"2.22%","max":"3.0%","rollPercent":74},{"stat":"Increase DEF of Navy","value":"0.93%","max":"3.0%","rollPercent":31},{"stat":"Increase DEF of Navy","value":"1.89%","max":"3.0%","rollPercent":63}],"refinement":{"totalValue":5.04,"totalMax":9,"threshold70":6.3,"percent":56.0,"meetsThreshold":false},"starLevel":3},"3":{"slot":3,"equipId":100304,"level":20,"scores":{"land":34000,"navy":47608,"air":34000},"name":"Optical Add-on","buffNames":["All units Attack","All units HP","Navy DMG Increase","Navy DMG Increase","Navy DMG Increase"],"buffValues":["15%","5%","3.06%","3.42%","3.24%"],"effectName":"Armor-Breaking","effectDesc":"If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  30%  Vulnerable effect to  2 random targets.","infos":[{"tid":139,"type":1,"val":306},{"tid":140,"type":1,"val":342},{"tid":139,"type":1,"val":324},{"tid":30204,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy DMG Increase","value":"3.06%","max":"6.0%","rollPercent":51},{"stat":"Navy DMG Increase","value":"3.42%","max":"6.0%","rollPercent":57},{"stat":"Navy DMG Increase","value":"3.24%","max":"6.0%","rollPercent":54}],"refinement":{"totalValue":9.72,"totalMax":18,"threshold70":12.6,"percent":54.0,"meetsThreshold":false},"starLevel":3},"4":{"slot":4,"equipId":100404,"level":20,"scores":{"land":20000,"navy":35120,"air":20000},"name":"Raysor Headset","buffNames":["All units HP","Navy Decreased DMG Taken","Navy Decreased DMG Taken","Navy Decreased DMG Taken"],"buffValues":["20%","3.84%","3.54%","3.42%"],"effectName":"Heavy Blow","effectDesc":"If the hero equipped  with this gear has theVulnerable effect,  then this effect is  increased by  15%.","infos":[{"tid":194,"type":1,"val":384},{"tid":194,"type":1,"val":354},{"tid":195,"type":1,"val":342},{"tid":40208,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy Decreased DMG Taken","value":"3.84%","max":"6.0%","rollPercent":64},{"stat":"Navy Decreased DMG Taken","value":"3.54%","max":"6.0%","rollPercent":59},{"stat":"Navy Decreased DMG Taken","value":"3.42%","max":"6.0%","rollPercent":57}],"refinement":{"totalValue":10.8,"totalMax":18,"threshold70":12.6,"percent":60.0,"meetsThreshold":false},"starLevel":1},"5":{"slot":5,"equipId":100504,"level":20,"scores":{"land":27000,"navy":43464,"air":27000},"name":"Portable GPS","buffNames":["All units Attack","Navy DMG Increase","Navy DMG Increase","Navy DMG Increase"],"buffValues":["20%","2.28%","4.74%","4.74%"],"effectName":"Armor-Breaking","effectDesc":"If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  30%  Vulnerable effect to  1 random targets.","infos":[{"tid":96,"type":1,"val":228},{"tid":95,"type":1,"val":474},{"tid":94,"type":1,"val":474},{"tid":502041,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy DMG Increase","value":"2.28%","max":"6.0%","rollPercent":38},{"stat":"Navy DMG Increase","value":"4.74%","max":"6.0%","rollPercent":79},{"stat":"Navy DMG Increase","value":"4.74%","max":"6.0%","rollPercent":79}],"refinement":{"totalValue":11.76,"totalMax":18,"threshold70":12.6,"percent":65.33,"meetsThreshold":false},"starLevel":1},"6":{"slot":6,"equipId":100604,"level":20,"scores":{"land":20000,"navy":34532,"air":20000},"name":"Power Boots","buffNames":["All units Attack","All units HP","Navy Decreased DMG Taken","Navy Decreased DMG Taken","Navy Decreased DMG Taken"],"buffValues":["5%","15%","3.06%","3.24%","4.08%"],"effectName":"Heavy Blow","effectDesc":"If the hero equipped  with this gear has theVulnerable effect,  then this effect is  increased by  15%.","infos":[{"tid":238,"type":1,"val":306},{"tid":240,"type":1,"val":324},{"tid":239,"type":1,"val":408},{"tid":60208,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy Decreased DMG Taken","value":"3.06%","max":"6.0%","rollPercent":51},{"stat":"Navy Decreased DMG Taken","value":"3.24%","max":"6.0%","rollPercent":54},{"stat":"Navy Decreased DMG Taken","value":"4.08%","max":"6.0%","rollPercent":68}],"refinement":{"totalValue":10.38,"totalMax":18,"threshold70":12.6,"percent":57.67,"meetsThreshold":false},"starLevel":1}},"exclusiveSkill":{"skillId":20745,"level":5},"refinementSummary":{"totalGearSlots":6,"refined":0,"unrefined":6,"unrefinedGear":[{"slot":1,"name":"Assault Pistol","totalValue":8.58,"threshold70":12.6,"percent":47.67,"deficit":4.02},{"slot":2,"name":"Tactical Backarmor","totalValue":5.04,"threshold70":6.3,"percent":56.0,"deficit":1.26},{"slot":3,"name":"Optical Add-on","totalValue":9.72,"threshold70":12.6,"percent":54.0,"deficit":2.88},{"slot":4,"name":"Raysor Headset","totalValue":10.8,"threshold70":12.6,"percent":60.0,"deficit":1.8},{"slot":5,"name":"Portable GPS","totalValue":11.76,"threshold70":12.6,"percent":65.33,"deficit":0.84},{"slot":6,"name":"Power Boots","totalValue":10.38,"threshold70":12.6,"percent":57.67,"deficit":2.22}]}},{"heroId":237,"heroName":"Alvida","slots":{"1":{"slot":1,"equipId":100104,"level":20,"scores":{"land":20000,"navy":33692,"air":20000},"name":"Assault Pistol","buffNames":["All units Attack","Navy DMG Increase","Navy DMG Increase","Navy DMG Increase"],"buffValues":["30%","4.44%","3.78%","1.56%"],"effectName":"All-Out Surge","effectDesc":"In the first round of  battle, after the hero  equipped with this  gear triggers the  active skill, the hero  will trigger it an  additional time. The  damage of the re-triggered skill will be15% of the initial  trigger.","infos":[{"tid":5,"type":1,"val":444},{"tid":6,"type":1,"val":378},{"tid":6,"type":1,"val":156},{"tid":102020,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy DMG Increase","value":"4.44%","max":"6.0%","rollPercent":74},{"stat":"Navy DMG Increase","value":"3.78%","max":"6.0%","rollPercent":63},{"stat":"Navy DMG Increase","value":"1.56%","max":"6.0%","rollPercent":26}],"refinement":{"totalValue":9.78,"totalMax":18,"threshold70":12.6,"percent":54.33,"meetsThreshold":false},"starLevel":1},"2":{"slot":2,"equipId":100204,"level":20,"scores":{"land":34000,"navy":47104,"air":34000},"name":"Tactical Backarmor","buffNames":["All units HP","Increase DEF of Navy","Increase DEF of Navy","Increase DEF of Navy"],"buffValues":["30%","1.71%","1.59%","1.38%"],"effectName":"Stealth Hologram","effectDesc":"After equipping this  gear, all your units  gain a  20% Decreased Damage Taken  attribute.","infos":[{"tid":87,"type":1,"val":171},{"tid":86,"type":1,"val":159},{"tid":87,"type":1,"val":138},{"tid":20203,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Increase DEF of Navy","value":"1.71%","max":"3.0%","rollPercent":57},{"stat":"Increase DEF of Navy","value":"1.59%","max":"3.0%","rollPercent":53},{"stat":"Increase DEF of Navy","value":"1.38%","max":"3.0%","rollPercent":46}],"refinement":{"totalValue":4.68,"totalMax":9,"threshold70":6.3,"percent":52.0,"meetsThreshold":false},"starLevel":3},"3":{"slot":3,"equipId":100304,"level":20,"scores":{"land":20000,"navy":34700,"air":20000},"name":"Optical Add-on","buffNames":["All units Attack","All units HP","Navy DMG Increase","Navy DMG Increase","Navy DMG Increase"],"buffValues":["15%","5%","3.6%","3.24%","3.66%"],"effectName":"Impact","effectDesc":"If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  15%  Debilitation  effect to  1 random  targets.","infos":[{"tid":141,"type":1,"val":360},{"tid":140,"type":1,"val":324},{"tid":141,"type":1,"val":366},{"tid":30210,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy DMG Increase","value":"3.6%","max":"6.0%","rollPercent":60},{"stat":"Navy DMG Increase","value":"3.24%","max":"6.0%","rollPercent":54},{"stat":"Navy DMG Increase","value":"3.66%","max":"6.0%","rollPercent":61}],"refinement":{"totalValue":10.5,"totalMax":18,"threshold70":12.6,"percent":58.33,"meetsThreshold":false},"starLevel":1},"4":{"slot":4,"equipId":100404,"level":20,"scores":{"land":27000,"navy":40356,"air":27000},"name":"Raysor Headset","buffNames":["All units HP","Navy Decreased DMG Taken","Navy Decreased DMG Taken","Navy Decreased DMG Taken"],"buffValues":["20%","3.24%","3.12%","3.18%"],"effectName":"Debilitate","effectDesc":"If the hero equipped  with this gear has theDebilitation effect,  then this effect is  increased by  22%.","infos":[{"tid":193,"type":1,"val":324},{"tid":194,"type":1,"val":312},{"tid":194,"type":1,"val":318},{"tid":402051,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy Decreased DMG Taken","value":"3.24%","max":"6.0%","rollPercent":54},{"stat":"Navy Decreased DMG Taken","value":"3.12%","max":"6.0%","rollPercent":52},{"stat":"Navy Decreased DMG Taken","value":"3.18%","max":"6.0%","rollPercent":53}],"refinement":{"totalValue":9.54,"totalMax":18,"threshold70":12.6,"percent":53.0,"meetsThreshold":false},"starLevel":1},"5":{"slot":5,"equipId":100504,"level":20,"scores":{"land":27000,"navy":39768,"air":27000},"name":"Portable GPS","buffNames":["All units Attack","Navy DMG Increase","Navy DMG Increase","Navy DMG Increase"],"buffValues":["20%","3.48%","2.34%","3.3%"],"effectName":"Impact","effectDesc":"If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  30%  Debilitation  effect to  1 random  targets.","infos":[{"tid":95,"type":1,"val":348},{"tid":94,"type":1,"val":234},{"tid":95,"type":1,"val":330},{"tid":502051,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy DMG Increase","value":"3.48%","max":"6.0%","rollPercent":58},{"stat":"Navy DMG Increase","value":"2.34%","max":"6.0%","rollPercent":39},{"stat":"Navy DMG Increase","value":"3.3%","max":"6.0%","rollPercent":55}],"refinement":{"totalValue":9.12,"totalMax":18,"threshold70":12.6,"percent":50.67,"meetsThreshold":false},"starLevel":1},"6":{"slot":6,"equipId":100604,"level":20,"scores":{"land":27000,"navy":41112,"air":27000},"name":"Power Boots","buffNames":["All units Attack","All units HP","Navy Decreased DMG Taken","Navy Decreased DMG Taken","Navy Decreased DMG Taken"],"buffValues":["5%","15%","3.6%","3.3%","3.18%"],"effectName":"Debilitate","effectDesc":"If the hero equipped  with this gear has theDebilitation effect,  then this effect is  increased by  22%.","infos":[{"tid":240,"type":1,"val":360},{"tid":238,"type":1,"val":330},{"tid":238,"type":1,"val":318},{"tid":602051,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy Decreased DMG Taken","value":"3.6%","max":"6.0%","rollPercent":60},{"stat":"Navy Decreased DMG Taken","value":"3.3%","max":"6.0%","rollPercent":55},{"stat":"Navy Decreased DMG Taken","value":"3.18%","max":"6.0%","rollPercent":53}],"refinement":{"totalValue":10.08,"totalMax":18,"threshold70":12.6,"percent":56.0,"meetsThreshold":false},"starLevel":1}},"exclusiveSkill":{"skillId":20754,"level":5},"refinementSummary":{"totalGearSlots":6,"refined":0,"unrefined":6,"unrefinedGear":[{"slot":1,"name":"Assault Pistol","totalValue":9.78,"threshold70":12.6,"percent":54.33,"deficit":2.82},{"slot":2,"name":"Tactical Backarmor","totalValue":4.68,"threshold70":6.3,"percent":52.0,"deficit":1.62},{"slot":3,"name":"Optical Add-on","totalValue":10.5,"threshold70":12.6,"percent":58.33,"deficit":2.1},{"slot":4,"name":"Raysor Headset","totalValue":9.54,"threshold70":12.6,"percent":53.0,"deficit":3.06},{"slot":5,"name":"Portable GPS","totalValue":9.12,"threshold70":12.6,"percent":50.67,"deficit":3.48},{"slot":6,"name":"Power Boots","totalValue":10.08,"threshold70":12.6,"percent":56.0,"deficit":2.52}]}},{"heroId":171,"heroName":"Astrid","slots":{"1":{"slot":1,"equipId":100104,"level":20,"scores":{"land":32852,"navy":20000,"air":20000},"name":"Assault Pistol","buffNames":["All units Attack","Army DMG Increase","Army DMG Increase","Army DMG Increase"],"buffValues":["30%","2.34%","2.76%","4.08%"],"effectName":"Tactical Awareness","effectDesc":"After equipping this  gear, all your units  gain a  10% Damage  Increase attribute.","infos":[{"tid":2,"type":1,"val":234},{"tid":2,"type":1,"val":276},{"tid":1,"type":1,"val":408},{"tid":10208,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army DMG Increase","value":"2.34%","max":"6.0%","rollPercent":39},{"stat":"Army DMG Increase","value":"2.76%","max":"6.0%","rollPercent":46},{"stat":"Army DMG Increase","value":"4.08%","max":"6.0%","rollPercent":68}],"refinement":{"totalValue":9.18,"totalMax":18,"threshold70":12.6,"percent":51.0,"meetsThreshold":false},"starLevel":1},"2":{"slot":2,"equipId":100204,"level":20,"scores":{"land":41316,"navy":27000,"air":27000},"name":"Tactical Backarmor","buffNames":["All units HP","Army HP Boost","Increase DEF of Army","Increase DEF of Army"],"buffValues":["30%","15.3%","1.86%","2.16%"],"effectName":"Magnetize","effectDesc":"If the hero equipped  with this gear has theMagnetic Pulse effect, then this effect is  increased by  22%.","infos":[{"tid":74,"type":1,"val":1530},{"tid":82,"type":1,"val":186},{"tid":84,"type":1,"val":216},{"tid":202071,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army HP Boost","value":"15.3%","max":"30.0%","rollPercent":51},{"stat":"Increase DEF of Army","value":"1.86%","max":"3.0%","rollPercent":62},{"stat":"Increase DEF of Army","value":"2.16%","max":"3.0%","rollPercent":72}],"refinement":{"totalValue":19.32,"totalMax":36,"threshold70":25.2,"percent":53.67,"meetsThreshold":false},"starLevel":1},"3":{"slot":3,"equipId":100304,"level":20,"scores":{"land":30740,"navy":20000,"air":20000},"name":"Optical Add-on","buffNames":["All units Attack","All units HP","Army DMG Increase","Army Attack","Army DMG Increase"],"buffValues":["15%","5%","3%","11.7%","3%"],"effectName":"Tactical Awareness","effectDesc":"After equipping this  gear, all your units  gain a  10% Damage  Increase attribute.","infos":[{"tid":137,"type":1,"val":300},{"tid":154,"type":1,"val":1170},{"tid":138,"type":1,"val":300},{"tid":30207,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army DMG Increase","value":"3%","max":"6.0%","rollPercent":50},{"stat":"Army Attack","value":"11.7%","max":"30.0%","rollPercent":39},{"stat":"Army DMG Increase","value":"3%","max":"6.0%","rollPercent":50}],"refinement":{"totalValue":17.7,"totalMax":42,"threshold70":29.4,"percent":42.14,"meetsThreshold":false},"starLevel":1},"4":{"slot":4,"equipId":100404,"level":20,"scores":{"land":34896,"navy":27000,"air":27000},"name":"Raysor Headset","buffNames":["All units HP","Army Decreased DMG Taken","Army Decreased DMG Taken"],"buffValues":["20%","2.52%","3.12%"],"effectName":"Magnetize","effectDesc":"If the hero equipped  with this gear has theMagnetic Pulse effect, then this effect is  increased by  22%.","infos":[{"tid":192,"type":1,"val":252},{"tid":191,"type":1,"val":312},{"tid":402061,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army Decreased DMG Taken","value":"2.52%","max":"6.0%","rollPercent":42},{"stat":"Army Decreased DMG Taken","value":"3.12%","max":"6.0%","rollPercent":52}],"refinement":{"totalValue":5.64,"totalMax":12,"threshold70":8.4,"percent":47.0,"meetsThreshold":false},"starLevel":1},"5":{"slot":5,"equipId":100504,"level":20,"scores":{"land":39936,"navy":27000,"air":27000},"name":"Portable GPS","buffNames":["All units Attack","Army DMG Increase","Army DMG Increase","Army DMG Increase"],"buffValues":["20%","3.66%","2.82%","2.76%"],"effectName":"Magnetic Field","effectDesc":"If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  30%  Magnetic Pulse  effect to  1 random  targets.","infos":[{"tid":92,"type":1,"val":366},{"tid":92,"type":1,"val":282},{"tid":92,"type":1,"val":276},{"tid":502061,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army DMG Increase","value":"3.66%","max":"6.0%","rollPercent":61},{"stat":"Army DMG Increase","value":"2.82%","max":"6.0%","rollPercent":47},{"stat":"Army DMG Increase","value":"2.76%","max":"6.0%","rollPercent":46}],"refinement":{"totalValue":9.24,"totalMax":18,"threshold70":12.6,"percent":51.33,"meetsThreshold":false},"starLevel":1},"6":{"slot":6,"equipId":100604,"level":20,"scores":{"land":31172,"navy":20000,"air":22688},"name":"Power Boots","buffNames":["All units Attack","All units HP","Army Decreased DMG Taken","Air Force Decreased DMG Taken","Army Decreased DMG Taken"],"buffValues":["5%","15%","3.12%","1.92%","4.86%"],"effectName":"Magnetize","effectDesc":"If the hero equipped  with this gear has theMagnetic Pulse effect, then this effect is  increased by  15%.","infos":[{"tid":236,"type":1,"val":312},{"tid":242,"type":1,"val":192},{"tid":236,"type":1,"val":486},{"tid":60110,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army Decreased DMG Taken","value":"3.12%","max":"6.0%","rollPercent":52},{"stat":"Air Force Decreased DMG Taken","value":"1.92%","max":"6.0%","rollPercent":32},{"stat":"Army Decreased DMG Taken","value":"4.86%","max":"6.0%","rollPercent":81}],"refinement":{"totalValue":9.9,"totalMax":18,"threshold70":12.6,"percent":55.0,"meetsThreshold":false},"starLevel":1}},"exclusiveSkill":{"skillId":20756,"level":5},"refinementSummary":{"totalGearSlots":6,"refined":0,"unrefined":6,"unrefinedGear":[{"slot":1,"name":"Assault Pistol","totalValue":9.18,"threshold70":12.6,"percent":51.0,"deficit":3.42},{"slot":2,"name":"Tactical Backarmor","totalValue":19.32,"threshold70":25.2,"percent":53.67,"deficit":5.88},{"slot":3,"name":"Optical Add-on","totalValue":17.7,"threshold70":29.4,"percent":42.14,"deficit":11.7},{"slot":4,"name":"Raysor Headset","totalValue":5.64,"threshold70":8.4,"percent":47.0,"deficit":2.76},{"slot":5,"name":"Portable GPS","totalValue":9.24,"threshold70":12.6,"percent":51.33,"deficit":3.36},{"slot":6,"name":"Power Boots","totalValue":9.9,"threshold70":12.6,"percent":55.0,"deficit":2.7}]}},{"heroId":169,"heroName":"Sara","slots":{"1":{"slot":1,"equipId":100104,"level":20,"scores":{"land":29996,"navy":20000,"air":20000},"name":"Assault Pistol","buffNames":["All units Attack","Army DMG Increase","Army DMG Increase","Army DMG Increase"],"buffValues":["30%","2.64%","3.24%","1.26%"],"effectName":"Magnetic Field","effectDesc":"If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  15%  Magnetic Pulse  effect to  1 random  targets.","infos":[{"tid":1,"type":1,"val":264},{"tid":3,"type":1,"val":324},{"tid":1,"type":1,"val":126},{"tid":10212,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army DMG Increase","value":"2.64%","max":"6.0%","rollPercent":44},{"stat":"Army DMG Increase","value":"3.24%","max":"6.0%","rollPercent":54},{"stat":"Army DMG Increase","value":"1.26%","max":"6.0%","rollPercent":21}],"refinement":{"totalValue":7.14,"totalMax":18,"threshold70":12.6,"percent":39.67,"meetsThreshold":false},"starLevel":1},"2":{"slot":2,"equipId":100204,"level":20,"scores":{"land":29744,"navy":20000,"air":20000},"name":"Tactical Backarmor","buffNames":["All units HP","Increase DEF of Army","Increase DEF of Army","Increase DEF of Army"],"buffValues":["30%","1.47%","1.5%","0.51%"],"effectName":"Stealth Hologram","effectDesc":"After equipping this  gear, all your units  gain a  10% Decreased Damage Taken  attribute.","infos":[{"tid":83,"type":1,"val":147},{"tid":83,"type":1,"val":150},{"tid":84,"type":1,"val":51},{"tid":20212,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Increase DEF of Army","value":"1.47%","max":"3.0%","rollPercent":49},{"stat":"Increase DEF of Army","value":"1.5%","max":"3.0%","rollPercent":50},{"stat":"Increase DEF of Army","value":"0.51%","max":"3.0%","rollPercent":17}],"refinement":{"totalValue":3.48,"totalMax":9,"threshold70":6.3,"percent":38.67,"meetsThreshold":false},"starLevel":1},"3":{"slot":3,"equipId":100304,"level":20,"scores":{"land":31340,"navy":20000,"air":20000},"name":"Optical Add-on","buffNames":["All units Attack","All units HP","Army DMG Increase","Army Attack","Army DMG Increase"],"buffValues":["15%","5%","4.2%","10.5%","2.4%"],"effectName":"Magnetic Field","effectDesc":"If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  15%  Magnetic Pulse  effect to  1 random  targets.","infos":[{"tid":138,"type":1,"val":420},{"tid":155,"type":1,"val":1050},{"tid":137,"type":1,"val":240},{"tid":30211,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army DMG Increase","value":"4.2%","max":"6.0%","rollPercent":70},{"stat":"Army Attack","value":"10.5%","max":"30.0%","rollPercent":35},{"stat":"Army DMG Increase","value":"2.4%","max":"6.0%","rollPercent":40}],"refinement":{"totalValue":17.1,"totalMax":42,"threshold70":29.4,"percent":40.71,"meetsThreshold":false},"starLevel":1},"4":{"slot":4,"equipId":100404,"level":20,"scores":{"land":34560,"navy":27000,"air":27960},"name":"Raysor Headset","buffNames":["All units HP","Army Decreased DMG Taken","Air Force HP Boost","Army Decreased DMG Taken"],"buffValues":["20%","4.2%","4.8%","1.2%"],"effectName":"Magnetize","effectDesc":"If the hero equipped  with this gear has theMagnetic Pulse effect, then this effect is  increased by  22%.","infos":[{"tid":192,"type":1,"val":420},{"tid":216,"type":1,"val":480},{"tid":192,"type":1,"val":120},{"tid":401061,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army Decreased DMG Taken","value":"4.2%","max":"6.0%","rollPercent":70},{"stat":"Air Force HP Boost","value":"4.8%","max":"30.0%","rollPercent":16},{"stat":"Army Decreased DMG Taken","value":"1.2%","max":"6.0%","rollPercent":20}],"refinement":{"totalValue":10.2,"totalMax":42,"threshold70":29.4,"percent":24.29,"meetsThreshold":false},"starLevel":1},"5":{"slot":5,"equipId":100504,"level":20,"scores":{"land":28148,"navy":20000,"air":20000},"name":"Portable GPS","buffNames":["All units Attack","Army DMG Increase","Army DMG Increase"],"buffValues":["20%","2.76%","3.06%"],"effectName":"Magnetic Field","effectDesc":"If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  15%  Magnetic Pulse  effect to  1 random  targets.","infos":[{"tid":92,"type":1,"val":276},{"tid":92,"type":1,"val":306},{"tid":50211,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army DMG Increase","value":"2.76%","max":"6.0%","rollPercent":46},{"stat":"Army DMG Increase","value":"3.06%","max":"6.0%","rollPercent":51}],"refinement":{"totalValue":5.82,"totalMax":12,"threshold70":8.4,"percent":48.5,"meetsThreshold":false},"starLevel":1},"6":{"slot":6,"equipId":100604,"level":20,"scores":{"land":35988,"navy":27000,"air":27000},"name":"Power Boots","buffNames":["All units Attack","All units HP","Army Decreased DMG Taken","Army Decreased DMG Taken","Army Decreased DMG Taken"],"buffValues":["5%","15%","2.88%","1.68%","1.86%"],"effectName":"Magnetize","effectDesc":"If the hero equipped  with this gear has theMagnetic Pulse effect, then this effect is  increased by  22%.","infos":[{"tid":235,"type":1,"val":288},{"tid":235,"type":1,"val":168},{"tid":235,"type":1,"val":186},{"tid":601061,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army Decreased DMG Taken","value":"2.88%","max":"6.0%","rollPercent":48},{"stat":"Army Decreased DMG Taken","value":"1.68%","max":"6.0%","rollPercent":28},{"stat":"Army Decreased DMG Taken","value":"1.86%","max":"6.0%","rollPercent":31}],"refinement":{"totalValue":6.42,"totalMax":18,"threshold70":12.6,"percent":35.67,"meetsThreshold":false},"starLevel":1}},"exclusiveSkill":{"skillId":20750,"level":5},"refinementSummary":{"totalGearSlots":6,"refined":0,"unrefined":6,"unrefinedGear":[{"slot":1,"name":"Assault Pistol","totalValue":7.14,"threshold70":12.6,"percent":39.67,"deficit":5.46},{"slot":2,"name":"Tactical Backarmor","totalValue":3.48,"threshold70":6.3,"percent":38.67,"deficit":2.82},{"slot":3,"name":"Optical Add-on","totalValue":17.1,"threshold70":29.4,"percent":40.71,"deficit":12.3},{"slot":4,"name":"Raysor Headset","totalValue":10.2,"threshold70":29.4,"percent":24.29,"deficit":19.2},{"slot":5,"name":"Portable GPS","totalValue":5.82,"threshold70":8.4,"percent":48.5,"deficit":2.58},{"slot":6,"name":"Power Boots","totalValue":6.42,"threshold70":12.6,"percent":35.67,"deficit":6.18}]}},{"heroId":228,"heroName":"Duke","slots":{"1":{"slot":1,"equipId":100104,"level":20,"scores":{"land":31592,"navy":20000,"air":20000},"name":"Assault Pistol","buffNames":["All units Attack","Army DMG Increase","Army DMG Increase","Army DMG Increase"],"buffValues":["30%","2.82%","3.72%","1.74%"],"effectName":"Tactical Awareness","effectDesc":"After equipping this  gear, all your units  gain a  10% Damage  Increase attribute.","infos":[{"tid":3,"type":1,"val":282},{"tid":3,"type":1,"val":372},{"tid":3,"type":1,"val":174},{"tid":10208,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army DMG Increase","value":"2.82%","max":"6.0%","rollPercent":47},{"stat":"Army DMG Increase","value":"3.72%","max":"6.0%","rollPercent":62},{"stat":"Army DMG Increase","value":"1.74%","max":"6.0%","rollPercent":29}],"refinement":{"totalValue":8.28,"totalMax":18,"threshold70":12.6,"percent":46.0,"meetsThreshold":false},"starLevel":1},"2":{"slot":2,"equipId":100204,"level":20,"scores":{"land":29912,"navy":20000,"air":20000},"name":"Tactical Backarmor","buffNames":["All units HP","Increase DEF of Army","Increase DEF of Army","Increase DEF of Army"],"buffValues":["30%","1.44%","1.08%","1.02%"],"effectName":"Stealth Hologram","effectDesc":"After equipping this  gear, all your units  gain a  10% Decreased Damage Taken  attribute.","infos":[{"tid":82,"type":1,"val":144},{"tid":84,"type":1,"val":108},{"tid":83,"type":1,"val":102},{"tid":20212,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Increase DEF of Army","value":"1.44%","max":"3.0%","rollPercent":48},{"stat":"Increase DEF of Army","value":"1.08%","max":"3.0%","rollPercent":36},{"stat":"Increase DEF of Army","value":"1.02%","max":"3.0%","rollPercent":34}],"refinement":{"totalValue":3.54,"totalMax":9,"threshold70":6.3,"percent":39.33,"meetsThreshold":false},"starLevel":1},"3":{"slot":3,"equipId":100304,"level":20,"scores":{"land":39180,"navy":27000,"air":27000},"name":"Optical Add-on","buffNames":["All units Attack","All units HP","Army DMG Increase","Army DMG Increase","Army DMG Increase"],"buffValues":["15%","5%","2.58%","3.12%","3%"],"effectName":"Tactical Awareness","effectDesc":"After equipping this  gear, all your units  gain a  15% Damage  Increase attribute.","infos":[{"tid":138,"type":1,"val":258},{"tid":138,"type":1,"val":312},{"tid":137,"type":1,"val":300},{"tid":302021,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army DMG Increase","value":"2.58%","max":"6.0%","rollPercent":43},{"stat":"Army DMG Increase","value":"3.12%","max":"6.0%","rollPercent":52},{"stat":"Army DMG Increase","value":"3%","max":"6.0%","rollPercent":50}],"refinement":{"totalValue":8.7,"totalMax":18,"threshold70":12.6,"percent":48.33,"meetsThreshold":false},"starLevel":1},"4":{"slot":4,"equipId":100404,"level":20,"scores":{"land":27392,"navy":20000,"air":20000},"name":"Raysor Headset","buffNames":["All units HP","Army Decreased DMG Taken","Army Decreased DMG Taken"],"buffValues":["20%","3.18%","2.1%"],"effectName":"Stealth Hologram","effectDesc":"After equipping this  gear, all your units  gain a  10% Decreased Damage Taken  attribute.","infos":[{"tid":190,"type":1,"val":318},{"tid":192,"type":1,"val":210},{"tid":40211,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army Decreased DMG Taken","value":"3.18%","max":"6.0%","rollPercent":53},{"stat":"Army Decreased DMG Taken","value":"2.1%","max":"6.0%","rollPercent":35}],"refinement":{"totalValue":5.28,"totalMax":12,"threshold70":8.4,"percent":44.0,"meetsThreshold":false},"starLevel":1},"5":{"slot":5,"equipId":100504,"level":20,"scores":{"land":27224,"navy":20000,"air":20000},"name":"Portable GPS","buffNames":["All units Attack","Army DMG Increase","Army DMG Increase"],"buffValues":["20%","3.24%","1.92%"],"effectName":"Tactical Awareness","effectDesc":"After equipping this  gear, all your units  gain a  10% Damage  Increase attribute.","infos":[{"tid":91,"type":1,"val":324},{"tid":91,"type":1,"val":192},{"tid":50207,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army DMG Increase","value":"3.24%","max":"6.0%","rollPercent":54},{"stat":"Army DMG Increase","value":"1.92%","max":"6.0%","rollPercent":32}],"refinement":{"totalValue":5.16,"totalMax":12,"threshold70":8.4,"percent":43.0,"meetsThreshold":false},"starLevel":1},"6":{"slot":6,"equipId":100604,"level":20,"scores":{"land":29324,"navy":20000,"air":20000},"name":"Power Boots","buffNames":["All units Attack","All units HP","Army Decreased DMG Taken","Army Decreased DMG Taken"],"buffValues":["5%","15%","3.48%","3.18%"],"effectName":"Stealth Hologram","effectDesc":"After equipping this  gear, all your units  gain a  10% Decreased Damage Taken  attribute.","infos":[{"tid":237,"type":1,"val":348},{"tid":235,"type":1,"val":318},{"tid":60211,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army Decreased DMG Taken","value":"3.48%","max":"6.0%","rollPercent":58},{"stat":"Army Decreased DMG Taken","value":"3.18%","max":"6.0%","rollPercent":53}],"refinement":{"totalValue":6.66,"totalMax":12,"threshold70":8.4,"percent":55.5,"meetsThreshold":false},"starLevel":1}},"exclusiveSkill":{"skillId":20721,"level":5},"refinementSummary":{"totalGearSlots":6,"refined":0,"unrefined":6,"unrefinedGear":[{"slot":1,"name":"Assault Pistol","totalValue":8.28,"threshold70":12.6,"percent":46.0,"deficit":4.32},{"slot":2,"name":"Tactical Backarmor","totalValue":3.54,"threshold70":6.3,"percent":39.33,"deficit":2.76},{"slot":3,"name":"Optical Add-on","totalValue":8.7,"threshold70":12.6,"percent":48.33,"deficit":3.9},{"slot":4,"name":"Raysor Headset","totalValue":5.28,"threshold70":8.4,"percent":44.0,"deficit":3.12},{"slot":5,"name":"Portable GPS","totalValue":5.16,"threshold70":8.4,"percent":43.0,"deficit":3.24},{"slot":6,"name":"Power Boots","totalValue":6.66,"threshold70":8.4,"percent":55.5,"deficit":1.74}]}},{"heroId":229,"heroName":"Zhen","slots":{"1":{"slot":1,"equipId":100104,"level":10,"scores":{"land":17600,"navy":25832,"air":19520},"name":"Assault Pistol","buffNames":["All units Attack","Navy DMG Increase","Air Force ATK","Navy DMG Increase"],"buffValues":["18%","3%","9.6%","2.88%"],"effectName":"Armor-Breaking","effectDesc":"If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  15%  Vulnerable effect to  1 random targets.","infos":[{"tid":4,"type":1,"val":300},{"tid":26,"type":1,"val":960},{"tid":6,"type":1,"val":288},{"tid":10210,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy DMG Increase","value":"3%","max":"6.0%","rollPercent":50},{"stat":"Air Force ATK","value":"9.6%","max":"30.0%","rollPercent":32},{"stat":"Navy DMG Increase","value":"2.88%","max":"6.0%","rollPercent":48}],"refinement":{"totalValue":15.48,"totalMax":42,"threshold70":29.4,"percent":36.86,"meetsThreshold":false},"starLevel":1},"2":{"slot":2,"equipId":100204,"level":10,"scores":{"land":17600,"navy":23228,"air":17600},"name":"Tactical Backarmor","buffNames":["All units HP","Increase DEF of Navy","Increase DEF of Navy"],"buffValues":["18%","0.93%","1.08%"],"effectName":"Stealth Hologram","effectDesc":"After equipping this  gear, all your units  gain a  10% Decreased Damage Taken  attribute.","infos":[{"tid":85,"type":1,"val":93},{"tid":87,"type":1,"val":108},{"tid":20212,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Increase DEF of Navy","value":"0.93%","max":"3.0%","rollPercent":31},{"stat":"Increase DEF of Navy","value":"1.08%","max":"3.0%","rollPercent":36}],"refinement":{"totalValue":2.01,"totalMax":6,"threshold70":4.2,"percent":33.5,"meetsThreshold":false},"starLevel":1},"3":{"slot":3,"equipId":100304,"level":10,"scores":{"land":20180,"navy":22388,"air":17600},"name":"Optical Add-on","buffNames":["All units Attack","All units HP","Navy DMG Increase","Army Attack","Navy DMG Increase"],"buffValues":["9%","3%","1.98%","12.9%","1.44%"],"effectName":"Tactical Awareness","effectDesc":"After equipping this  gear, all your units  gain a  10% Damage  Increase attribute.","infos":[{"tid":141,"type":1,"val":198},{"tid":156,"type":1,"val":1290},{"tid":140,"type":1,"val":144},{"tid":30207,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy DMG Increase","value":"1.98%","max":"6.0%","rollPercent":33},{"stat":"Army Attack","value":"12.9%","max":"30.0%","rollPercent":43},{"stat":"Navy DMG Increase","value":"1.44%","max":"6.0%","rollPercent":24}],"refinement":{"totalValue":16.32,"totalMax":42,"threshold70":29.4,"percent":38.86,"meetsThreshold":false},"starLevel":1},"4":{"slot":4,"equipId":100404,"level":10,"scores":{"land":24600,"navy":31488,"air":24600},"name":"Raysor Headset","buffNames":["All units HP","Navy Decreased DMG Taken","Navy Decreased DMG Taken"],"buffValues":["12%","2.04%","2.88%"],"effectName":"Stealth Hologram","effectDesc":"After equipping this  gear, all your units  gain a  15% Decreased Damage Taken  attribute.","infos":[{"tid":193,"type":1,"val":204},{"tid":193,"type":1,"val":288},{"tid":402021,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy Decreased DMG Taken","value":"2.04%","max":"6.0%","rollPercent":34},{"stat":"Navy Decreased DMG Taken","value":"2.88%","max":"6.0%","rollPercent":48}],"refinement":{"totalValue":4.92,"totalMax":12,"threshold70":8.4,"percent":41.0,"meetsThreshold":false},"starLevel":1},"5":{"slot":5,"equipId":100504,"level":10,"scores":{"land":24600,"navy":31320,"air":24600},"name":"Portable GPS","buffNames":["All units Attack","Navy DMG Increase","Navy DMG Increase"],"buffValues":["12%","1.86%","2.94%"],"effectName":"Tactical Awareness","effectDesc":"After equipping this  gear, all your units  gain a  15% Damage  Increase attribute.","infos":[{"tid":95,"type":1,"val":186},{"tid":96,"type":1,"val":294},{"tid":502021,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy DMG Increase","value":"1.86%","max":"6.0%","rollPercent":31},{"stat":"Navy DMG Increase","value":"2.94%","max":"6.0%","rollPercent":49}],"refinement":{"totalValue":4.8,"totalMax":12,"threshold70":8.4,"percent":40.0,"meetsThreshold":false},"starLevel":1},"6":{"slot":6,"equipId":100604,"level":10,"scores":{"land":20420,"navy":19868,"air":17600},"name":"Power Boots","buffNames":["All units Attack","All units HP","Army HP Boost","Navy Decreased DMG Taken"],"buffValues":["3%","9%","14.1%","1.62%"],"effectName":"Stealth Hologram","effectDesc":"After equipping this  gear, all your units  gain a  10% Decreased Damage Taken  attribute.","infos":[{"tid":255,"type":1,"val":1410},{"tid":239,"type":1,"val":162},{"tid":60211,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Army HP Boost","value":"14.1%","max":"30.0%","rollPercent":47},{"stat":"Navy Decreased DMG Taken","value":"1.62%","max":"6.0%","rollPercent":27}],"refinement":{"totalValue":15.72,"totalMax":36,"threshold70":25.2,"percent":43.67,"meetsThreshold":false},"starLevel":1}},"exclusiveSkill":{"skillId":20728,"level":5},"refinementSummary":{"totalGearSlots":6,"refined":0,"unrefined":6,"unrefinedGear":[{"slot":1,"name":"Assault Pistol","totalValue":15.48,"threshold70":29.4,"percent":36.86,"deficit":13.92},{"slot":2,"name":"Tactical Backarmor","totalValue":2.01,"threshold70":4.2,"percent":33.5,"deficit":2.19},{"slot":3,"name":"Optical Add-on","totalValue":16.32,"threshold70":29.4,"percent":38.86,"deficit":13.08},{"slot":4,"name":"Raysor Headset","totalValue":4.92,"threshold70":8.4,"percent":41.0,"deficit":3.48},{"slot":5,"name":"Portable GPS","totalValue":4.8,"threshold70":8.4,"percent":40.0,"deficit":3.6},{"slot":6,"name":"Power Boots","totalValue":15.72,"threshold70":25.2,"percent":43.67,"deficit":9.48}]}},{"heroId":318,"heroName":"Maximo","slots":{"1":{"slot":1,"equipId":100104,"level":0,"scores":{"land":1200,"navy":1200,"air":7500},"rawBuffs":[{"tid":8,"type":1,"val":246},{"tid":8,"type":1,"val":204}],"enhanceValue":{},"name":"Assault Pistol","buffNames":["All units Attack","Air Force DMG Increase","Air Force DMG Increase"],"buffValues":["6%","2.46%","2.04%"],"enhanceLabels":[],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","equipped":false},"2":{"slot":2,"equipId":100204,"level":15,"scores":{"land":4800,"navy":4800,"air":14796},"name":"Tactical Backarmor","buffNames":["All units HP","Increase DEF of Air Force","Increase DEF of Air Force","Increase DEF of Air Force"],"buffValues":["24%","0.87%","1.44%","1.26%"],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","infos":[{"tid":89,"type":1,"val":87},{"tid":89,"type":1,"val":144},{"tid":90,"type":1,"val":126}],"enhanceValues":[],"randomStats":[{"stat":"Increase DEF of Air Force","value":"0.87%","max":"3.0%","rollPercent":29},{"stat":"Increase DEF of Air Force","value":"1.44%","max":"3.0%","rollPercent":48},{"stat":"Increase DEF of Air Force","value":"1.26%","max":"3.0%","rollPercent":42}],"refinement":{"totalValue":3.57,"totalMax":9,"threshold70":6.3,"percent":39.67,"meetsThreshold":false},"starLevel":0},"3":{"slot":3,"equipId":100304,"level":15,"scores":{"land":4800,"navy":4800,"air":14208},"name":"Optical Add-on","buffNames":["All units Attack","All units HP","Air Force DMG Increase","Air Force DMG Increase"],"buffValues":["12%","4%","4.32%","2.4%"],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","infos":[{"tid":144,"type":1,"val":432},{"tid":142,"type":1,"val":240}],"enhanceValues":[],"randomStats":[{"stat":"Air Force DMG Increase","value":"4.32%","max":"6.0%","rollPercent":72},{"stat":"Air Force DMG Increase","value":"2.4%","max":"6.0%","rollPercent":40}],"refinement":{"totalValue":6.72,"totalMax":12,"threshold70":8.4,"percent":56.0,"meetsThreshold":false},"starLevel":0},"4":{"slot":4,"equipId":100404,"level":0,"scores":{"land":1200,"navy":1200,"air":11616},"rawBuffs":[{"tid":198,"type":1,"val":258},{"tid":197,"type":1,"val":186},{"tid":196,"type":1,"val":300}],"enhanceValue":{},"name":"Raysor Headset","buffNames":["All units HP","Air Force Decreased DMG Taken","Air Force Decreased DMG Taken","Air Force Decreased DMG Taken"],"buffValues":["4%","2.58%","1.86%","3%"],"enhanceLabels":[],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","equipped":false},"5":{"slot":5,"equipId":100504,"level":0,"scores":{"land":1200,"navy":2820,"air":9012},"rawBuffs":[{"tid":99,"type":1,"val":246},{"tid":114,"type":1,"val":810},{"tid":99,"type":1,"val":312}],"enhanceValue":{},"name":"Portable GPS","buffNames":["All units Attack","Air Force DMG Increase","Navy Attack","Air Force DMG Increase"],"buffValues":["4%","2.46%","8.1%","3.12%"],"enhanceLabels":[],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","equipped":false},"6":{"slot":6,"equipId":100604,"level":10,"scores":{"land":31600,"navy":31600,"air":38740},"name":"Power Boots","buffNames":["All units Attack","All units HP","Air Force Decreased DMG Taken","Air Force Decreased DMG Taken"],"buffValues":["3%","9%","3%","2.1%"],"effectName":"Flammable","effectDesc":"If the hero equipped  with this gear has theIgnition effect, then  this effect is  increased by  30%.","infos":[{"tid":242,"type":1,"val":300},{"tid":243,"type":1,"val":210},{"tid":60203,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Air Force Decreased DMG Taken","value":"3%","max":"6.0%","rollPercent":50},{"stat":"Air Force Decreased DMG Taken","value":"2.1%","max":"6.0%","rollPercent":35}],"refinement":{"totalValue":5.1,"totalMax":12,"threshold70":8.4,"percent":42.5,"meetsThreshold":false},"starLevel":3}},"exclusiveSkill":{"skillId":20653,"level":5},"refinementSummary":{"totalGearSlots":3,"refined":0,"unrefined":3,"unrefinedGear":[{"slot":2,"name":"Tactical Backarmor","totalValue":3.57,"threshold70":6.3,"percent":39.67,"deficit":2.73},{"slot":3,"name":"Optical Add-on","totalValue":6.72,"threshold70":8.4,"percent":56.0,"deficit":1.68},{"slot":6,"name":"Power Boots","totalValue":5.1,"threshold70":8.4,"percent":42.5,"deficit":3.3}]}},{"heroId":231,"heroName":"Jester","slots":{"1":{"slot":1,"equipId":100104,"level":10,"scores":{"land":8040,"navy":7884,"air":3600},"name":"Assault Pistol","buffNames":["All units Attack","Army DMG Increase","Army Attack","Navy DMG Increase"],"buffValues":["18%","1.5%","11.7%","3.06%"],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","infos":[{"tid":1,"type":1,"val":150},{"tid":21,"type":1,"val":1170},{"tid":4,"type":1,"val":306}],"enhanceValues":[],"randomStats":[{"stat":"Army DMG Increase","value":"1.5%","max":"6.0%","rollPercent":25},{"stat":"Army Attack","value":"11.7%","max":"30.0%","rollPercent":39},{"stat":"Navy DMG Increase","value":"3.06%","max":"6.0%","rollPercent":51}],"refinement":{"totalValue":16.26,"totalMax":42,"threshold70":29.4,"percent":38.71,"meetsThreshold":false},"starLevel":0},"2":{"slot":2,"equipId":100203,"level":0,"scores":{"land":720,"navy":3072,"air":720},"rawBuffs":[{"tid":357,"type":1,"val":84}],"enhanceValue":{},"name":"Tactical Backarmor","buffNames":["All units HP","Increase DEF of Navy"],"buffValues":["3.6%","0.84%"],"enhanceLabels":[],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","equipped":false},"3":{"slot":3,"equipId":100304,"level":10,"scores":{"land":3600,"navy":6372,"air":7800},"name":"Optical Add-on","buffNames":["All units Attack","All units HP","Air Force ATK","Air Force ATK","Navy DMG Increase"],"buffValues":["9%","3%","12.9%","8.1%","1.98%"],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","infos":[{"tid":160,"type":1,"val":1290},{"tid":161,"type":1,"val":810},{"tid":139,"type":1,"val":198}],"enhanceValues":[],"randomStats":[{"stat":"Air Force ATK","value":"12.9%","max":"30.0%","rollPercent":43},{"stat":"Air Force ATK","value":"8.1%","max":"30.0%","rollPercent":27},{"stat":"Navy DMG Increase","value":"1.98%","max":"6.0%","rollPercent":33}],"refinement":{"totalValue":22.98,"totalMax":66,"threshold70":46.2,"percent":34.82,"meetsThreshold":false},"starLevel":0},"4":{"slot":4,"equipId":100404,"level":10,"scores":{"land":17600,"navy":24488,"air":17600},"name":"Raysor Headset","buffNames":["All units HP","Navy Decreased DMG Taken","Navy Decreased DMG Taken"],"buffValues":["12%","3.06%","1.86%"],"effectName":"Stealth Hologram","effectDesc":"After equipping this  gear, all your units  gain a  10% Decreased Damage Taken  attribute.","infos":[{"tid":195,"type":1,"val":306},{"tid":194,"type":1,"val":186},{"tid":40211,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy Decreased DMG Taken","value":"3.06%","max":"6.0%","rollPercent":51},{"stat":"Navy Decreased DMG Taken","value":"1.86%","max":"6.0%","rollPercent":31}],"refinement":{"totalValue":4.92,"totalMax":12,"threshold70":8.4,"percent":41.0,"meetsThreshold":false},"starLevel":1},"5":{"slot":5,"equipId":100504,"level":10,"scores":{"land":19460,"navy":22052,"air":17600},"name":"Portable GPS","buffNames":["All units Attack","Navy DMG Increase","Army Attack"],"buffValues":["12%","3.18%","9.3%"],"effectName":"Tactical Awareness","effectDesc":"After equipping this  gear, all your units  gain a  10% Damage  Increase attribute.","infos":[{"tid":96,"type":1,"val":318},{"tid":110,"type":1,"val":930},{"tid":50207,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy DMG Increase","value":"3.18%","max":"6.0%","rollPercent":53},{"stat":"Army Attack","value":"9.3%","max":"30.0%","rollPercent":31}],"refinement":{"totalValue":12.48,"totalMax":36,"threshold70":25.2,"percent":34.67,"meetsThreshold":false},"starLevel":1},"6":{"slot":6,"equipId":100603,"level":0,"scores":{"land":720,"navy":4892,"air":720},"rawBuffs":[{"tid":508,"type":1,"val":144},{"tid":509,"type":1,"val":154}],"enhanceValue":{},"name":"Power Boots","buffNames":["All units Attack","All units HP","Navy Decreased DMG Taken","Navy Decreased DMG Taken"],"buffValues":["0.6%","1.8%","1.44%","1.54%"],"enhanceLabels":[],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","equipped":false}},"exclusiveSkill":{"skillId":20735,"level":5},"refinementSummary":{"totalGearSlots":4,"refined":0,"unrefined":4,"unrefinedGear":[{"slot":1,"name":"Assault Pistol","totalValue":16.26,"threshold70":29.4,"percent":38.71,"deficit":13.14},{"slot":3,"name":"Optical Add-on","totalValue":22.98,"threshold70":46.2,"percent":34.82,"deficit":23.22},{"slot":4,"name":"Raysor Headset","totalValue":4.92,"threshold70":8.4,"percent":41.0,"deficit":3.48},{"slot":5,"name":"Portable GPS","totalValue":12.48,"threshold70":25.2,"percent":34.67,"deficit":12.72}]}},{"heroId":233,"heroName":"Ada Wong","slots":{"1":{"slot":1,"equipId":100104,"level":10,"scores":{"land":24600,"navy":35243,"air":24600},"name":"Assault Pistol","buffNames":["All units Attack","Navy Attack","Navy DMG Increase","Navy DMG Increase"],"buffValues":["18%","17.1%","2.46%","2.7%"],"effectName":"Tactical Awareness","effectDesc":"After equipping this  gear, all your units  gain a  15% Damage  Increase attribute.","infos":[{"tid":24,"type":1,"val":1710},{"tid":5,"type":1,"val":246},{"tid":6,"type":1,"val":270},{"tid":102031,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy Attack","value":"17.1%","max":"30.0%","rollPercent":57},{"stat":"Navy DMG Increase","value":"2.46%","max":"6.0%","rollPercent":41},{"stat":"Navy DMG Increase","value":"2.7%","max":"6.0%","rollPercent":45}],"refinement":{"totalValue":22.26,"totalMax":42,"threshold70":29.4,"percent":53.0,"meetsThreshold":false},"starLevel":1},"2":{"slot":2,"equipId":100203,"level":0,"scores":{"land":720,"navy":3072,"air":720},"rawBuffs":[{"tid":356,"type":1,"val":84}],"enhanceValue":{},"name":"Tactical Backarmor","buffNames":["All units HP","Increase DEF of Navy"],"buffValues":["3.6%","0.84%"],"enhanceLabels":[],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","equipped":false},"3":{"slot":3,"equipId":100304,"level":10,"scores":{"land":3600,"navy":10824,"air":3600},"name":"Optical Add-on","buffNames":["All units Attack","All units HP","Navy DMG Increase","Navy DMG Increase"],"buffValues":["9%","3%","3.3%","1.86%"],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","infos":[{"tid":141,"type":1,"val":330},{"tid":140,"type":1,"val":186}],"enhanceValues":[],"randomStats":[{"stat":"Navy DMG Increase","value":"3.3%","max":"6.0%","rollPercent":55},{"stat":"Navy DMG Increase","value":"1.86%","max":"6.0%","rollPercent":31}],"refinement":{"totalValue":5.16,"totalMax":12,"threshold70":8.4,"percent":43.0,"meetsThreshold":false},"starLevel":0},"4":{"slot":4,"equipId":100404,"level":10,"scores":{"land":17600,"navy":25328,"air":17600},"name":"Raysor Headset","buffNames":["All units HP","Navy Decreased DMG Taken","Navy Decreased DMG Taken"],"buffValues":["12%","3.12%","2.4%"],"effectName":"Stealth Hologram","effectDesc":"After equipping this  gear, all your units  gain a  10% Decreased Damage Taken  attribute.","infos":[{"tid":193,"type":1,"val":312},{"tid":194,"type":1,"val":240},{"tid":40211,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Navy Decreased DMG Taken","value":"3.12%","max":"6.0%","rollPercent":52},{"stat":"Navy Decreased DMG Taken","value":"2.4%","max":"6.0%","rollPercent":40}],"refinement":{"totalValue":5.52,"totalMax":12,"threshold70":8.4,"percent":46.0,"meetsThreshold":false},"starLevel":1},"5":{"slot":5,"equipId":100504,"level":10,"scores":{"land":6120,"navy":9228,"air":3600},"name":"Portable GPS","buffNames":["All units Attack","Army Attack","Navy DMG Increase","Navy DMG Increase"],"buffValues":["12%","12.6%","1.98%","2.04%"],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","infos":[{"tid":109,"type":1,"val":1260},{"tid":94,"type":1,"val":198},{"tid":95,"type":1,"val":204}],"enhanceValues":[],"randomStats":[{"stat":"Army Attack","value":"12.6%","max":"30.0%","rollPercent":42},{"stat":"Navy DMG Increase","value":"1.98%","max":"6.0%","rollPercent":33},{"stat":"Navy DMG Increase","value":"2.04%","max":"6.0%","rollPercent":34}],"refinement":{"totalValue":16.62,"totalMax":42,"threshold70":29.4,"percent":39.57,"meetsThreshold":false},"starLevel":0},"6":{"slot":6,"equipId":100604,"level":10,"scores":{"land":5460,"navy":7632,"air":3600},"name":"Power Boots","buffNames":["All units Attack","All units HP","Navy Decreased DMG Taken","Army HP Boost"],"buffValues":["3%","9%","2.88%","9.3%"],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","infos":[{"tid":239,"type":1,"val":288},{"tid":255,"type":1,"val":930}],"enhanceValues":[],"randomStats":[{"stat":"Navy Decreased DMG Taken","value":"2.88%","max":"6.0%","rollPercent":48},{"stat":"Army HP Boost","value":"9.3%","max":"30.0%","rollPercent":31}],"refinement":{"totalValue":12.18,"totalMax":36,"threshold70":25.2,"percent":33.83,"meetsThreshold":false},"starLevel":0}},"exclusiveSkill":{"skillId":20742,"level":5},"refinementSummary":{"totalGearSlots":5,"refined":0,"unrefined":5,"unrefinedGear":[{"slot":1,"name":"Assault Pistol","totalValue":22.26,"threshold70":29.4,"percent":53.0,"deficit":7.14},{"slot":3,"name":"Optical Add-on","totalValue":5.16,"threshold70":8.4,"percent":43.0,"deficit":3.24},{"slot":4,"name":"Raysor Headset","totalValue":5.52,"threshold70":8.4,"percent":46.0,"deficit":2.88},{"slot":5,"name":"Portable GPS","totalValue":16.62,"threshold70":29.4,"percent":39.57,"deficit":12.78},{"slot":6,"name":"Power Boots","totalValue":12.18,"threshold70":25.2,"percent":33.83,"deficit":13.02}]}},{"heroId":325,"heroName":"Brady","slots":{"1":{"slot":1,"equipId":100104,"level":0,"scores":{"land":1200,"navy":1200,"air":8508},"rawBuffs":[{"tid":27,"type":1,"val":630},{"tid":9,"type":1,"val":102},{"tid":8,"type":1,"val":330}],"enhanceValue":{},"name":"Assault Pistol","buffNames":["All units Attack","Air Force ATK","Air Force DMG Increase","Air Force DMG Increase"],"buffValues":["6%","6.3%","1.02%","3.3%"],"enhanceLabels":[],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","equipped":false},"2":{"slot":2,"equipId":100204,"level":15,"scores":{"land":18800,"navy":18800,"air":29804},"name":"Tactical Backarmor","buffNames":["All units HP","Increase DEF of Air Force","Increase DEF of Air Force","Increase DEF of Air Force"],"buffValues":["24%","1.8%","0.96%","1.17%"],"effectName":"Flammable","effectDesc":"If the hero equipped  with this gear has theIgnition effect, then  this effect is  increased by  15%.","infos":[{"tid":88,"type":1,"val":180},{"tid":90,"type":1,"val":96},{"tid":89,"type":1,"val":117},{"tid":20208,"type":2,"val":0}],"enhanceValues":[],"randomStats":[{"stat":"Increase DEF of Air Force","value":"1.8%","max":"3.0%","rollPercent":60},{"stat":"Increase DEF of Air Force","value":"0.96%","max":"3.0%","rollPercent":32},{"stat":"Increase DEF of Air Force","value":"1.17%","max":"3.0%","rollPercent":39}],"refinement":{"totalValue":3.93,"totalMax":9,"threshold70":6.3,"percent":43.67,"meetsThreshold":false},"starLevel":1},"3":{"slot":3,"equipId":100304,"level":0,"scores":{"land":3180,"navy":1200,"air":10860},"rawBuffs":[{"tid":154,"type":1,"val":990},{"tid":142,"type":1,"val":312},{"tid":142,"type":1,"val":378}],"enhanceValue":{},"name":"Optical Add-on","buffNames":["All units Attack","All units HP","Army Attack","Air Force DMG Increase","Air Force DMG Increase"],"buffValues":["3%","1%","9.9%","3.12%","3.78%"],"enhanceLabels":[],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","equipped":false},"4":{"slot":4,"equipId":100404,"level":0,"scores":{"land":1200,"navy":1200,"air":6408},"rawBuffs":[{"tid":197,"type":1,"val":258},{"tid":198,"type":1,"val":114}],"enhanceValue":{},"name":"Raysor Headset","buffNames":["All units HP","Air Force Decreased DMG Taken","Air Force Decreased DMG Taken"],"buffValues":["4%","2.58%","1.14%"],"enhanceLabels":[],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","equipped":false},"5":{"slot":5,"equipId":100504,"level":0,"scores":{"land":3552,"navy":1200,"air":3888},"rawBuffs":[{"tid":93,"type":1,"val":168},{"tid":97,"type":1,"val":192}],"enhanceValue":{},"name":"Portable GPS","buffNames":["All units Attack","Army DMG Increase","Air Force DMG Increase"],"buffValues":["4%","1.68%","1.92%"],"enhanceLabels":[],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","equipped":false},"6":{"slot":6,"equipId":100604,"level":0,"scores":{"land":2760,"navy":1200,"air":7836},"rawBuffs":[{"tid":242,"type":1,"val":198},{"tid":253,"type":1,"val":780},{"tid":241,"type":1,"val":276}],"enhanceValue":{},"name":"Power Boots","buffNames":["All units Attack","All units HP","Air Force Decreased DMG Taken","Army HP Boost","Air Force Decreased DMG Taken"],"buffValues":["1%","3%","1.98%","7.8%","2.76%"],"enhanceLabels":[],"effectName":null,"effectDesc":"\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c","equipped":false}},"exclusiveSkill":{"skillId":20714,"level":5},"refinementSummary":{"totalGearSlots":1,"refined":0,"unrefined":1,"unrefinedGear":[{"slot":2,"name":"Tactical Backarmor","totalValue":3.93,"threshold70":6.3,"percent":43.67,"deficit":2.37}]}}];
+const BEAST_DATA = {"_definitions":{"description":"Enigma Beast field and beast data from Top War (Server 2864). 5 fields with deployed beasts, field attribute bonuses, and buff ID mappings.","beastTypes":{"1":"Gleamdeer","2":"Dreadray","3":"Tornadeagle","4":"Grizzroar","5":"Fluffynx","6":"Bounceroo","7":"Swiftsteed","8":"Dusklion","9":"Crestegret"},"beastTypeNotes":"Beast names change at 5 stars (e.g., Gleamdeer -> Lumideer). The type name is the base/pre-evolution name as shown in the beast list.","elements":{"1":"Fire","2":"Wind","3":"Water","4":"Ground"},"quality":{"4":"Purple (SR)","5":"Gold (SSR/Legendary)"},"fields":{"heroId":"Unique beast instance ID (64-bit)","cfgId":"Beast species config ID. Pattern: (type * 5) + offset. Quality 5 beasts have cfgId multiples of 5, quality 4 have cfgId ending in 4 or 9.","type":"Beast type (1-9), determines species name","faction":"Element (1=Fire, 2=Wind, 3=Water, 4=Ground)","level":"Current level (max depends on quality: 100 for Gold, 80 for Purple)","star":"Star level (1-5). Names change at 5 stars.","potential":"Current potential value. Stats scale as potential / maxPotential.","potentialRange":"Min|Max potential for this species (e.g., 11200|16000 for Gold, 6400|8000 for Purple)","mainBuff":"Primary buff ID (520xxx). One per beast, enhanced by star upgrades.","baseBuff":"Array of 3 random buff IDs (520xxx). Scaled by potential.","holeLevel":"Enhancement level of the deployment slot (not the beast itself)","mainBuffResolved":"Resolved main buff with display name and computed value","baseBuffsResolved":"Array of 3 resolved base buffs with display names and computed values"},"buffIdSystem":{"description":"Buff IDs follow 520xxx pattern. Last digit = branch (0=All, 1=Army, 2=Navy, 3=Air). Middle digits = category. Values are potential-scaled percentages, except 520000 (March Size) which is additive.","mainBuffs":{"520000":"March Size (additive, e.g., +3)","520010":"All units DMG Increase","520011":"Army DMG Increase","520012":"Navy DMG Increase","520013":"Air Force DMG Increase","520020":"All units Decreased DMG Taken","520021":"Army Decreased DMG Taken","520022":"Navy Decreased DMG Taken","520023":"Air Force Decreased DMG Taken","520030":"Increase DEF of all units","520031":"Increase DEF of Army","520032":"Increase DEF of Navy","520033":"Increase DEF of Air Force","520040":"Attack of all units (on the offensive)","520041":"Army units Attack (on the offensive)","520042":"Naval units Attack (on the offensive)","520043":"Air Force units Attack (on the offensive)","520050":"HP Boost of all units (on the offensive)","520051":"Army units HP Boost (on the offensive)","520052":"Naval units HP Boost (on the offensive)","520053":"Air Force units HP Boost (on the offensive)","520060":"Attack of all units (on the defensive)","520061":"Army units Attack (on the defensive)","520062":"Naval units Attack (on the defensive)","520063":"Air Force units Attack (on the defensive)","520070":"HP Boost of all units (on the defensive)","520071":"Army units HP Boost (on the defensive)","520072":"Naval units HP Boost (on the defensive)","520073":"Air Force units HP Boost (on the defensive)"},"baseBuffs":{"520100":"All Forces Suppression Defense Bonus","520101":"Navy DEF against Army","520102":"Air Force DEF against Navy","520103":"Army DEF against Air Force","520110":"All units Attack (on the offensive)","520111":"Army Attack (on the offensive)","520112":"Navy Attack (on the offensive)","520113":"Air Force ATK (on the offensive)","520120":"All units HP Boost (on the offensive)","520121":"Army HP Boost (on the offensive)","520122":"Navy HP Boost (on the offensive)","520123":"Air Force HP Boost (on the offensive)","520130":"All units Attack (on the defensive)","520131":"Army Attack (on the defensive)","520132":"Navy Attack (on the defensive)","520133":"Air Force Attack (on the defensive)","520140":"All units HP Boost (on the defensive)","520141":"Army HP Boost (on the defensive)","520142":"Navy HP Boost (on the defensive)","520143":"Air Force HP Boost (on the defensive)"},"confirmed":"520000, 520010, 520013, 520020, 520021, 520033, 520072, 520100, 520103, 520111, 520112, 520113, 520120, 520121, 520122 confirmed from beast detail popups. 520101, 520102 confirmed by user game knowledge. Rest derived by consistent last-digit=branch pattern."},"fieldAttributeSlots":{"description":"Each field has attribute bonus slots activated by deployment conditions. Buffs include mastery boosts, formation boosts, equipment engine boosts, Titan Gear base/random attribute boosts. Some slots reference the 70% gear refinement threshold from Titan Gear data.","conditionTypes":["Fill All Slots","Deploy N Legendary beasts","Deploy N beasts of 2+ stars at Legendary","Deploy N beasts of 3+ stars at Legendary"]},"buffValueFormula":{"description":"Buff values computed from beast config data. All values scale with potential/16000 (universal max, regardless of beast quality).","mainBuff":"value = (starMaxValue / 100) * (potential / 16000)","baseBuff":"value = ((level * lvMaxValue / 100) + (starMaxValue / 100)) * (potential / 16000)","marchSize":"520000 (March Size) is additive integer, not percentage"}},"extractedAt":"2026-03-23","totalBeasts":21,"fields":[{"fid":1,"displayName":"CPNT Mastery","holeCount":5,"totalLevel":22,"beasts":[{"hole":1,"holeLevel":3,"name":"Dreadray","element":"Fire","cfgId":24,"type":2,"faction":1,"quality":4,"level":80,"maxLevel":80,"star":5,"maxStar":5,"potential":7671,"potentialRange":"6400|8000","mainBuff":520032,"baseBuff":[520122,520130,520012],"locked":true,"mainBuffResolved":{"id":520032,"name":"Increase DEF of Navy","value":"+47.944%"},"baseBuffsResolved":[{"id":520122,"name":"Navy HP Boost (offensive)"},{"id":520130,"name":"All units Attack (defensive)"},{"id":520012,"name":"Navy DMG Increase"}]},{"hole":2,"holeLevel":5,"name":"Gleamdeer","element":"Ground","cfgId":19,"type":1,"faction":4,"quality":4,"level":80,"maxLevel":80,"star":5,"maxStar":5,"potential":7322,"potentialRange":"6400|8000","mainBuff":520012,"baseBuff":[520020,520010,520113],"locked":true,"mainBuffResolved":{"id":520012,"name":"Navy DMG Increase","value":"+45.763%"},"baseBuffsResolved":[{"id":520020,"name":"All units Decreased DMG Taken"},{"id":520010,"name":"All units DMG Increase"},{"id":520113,"name":"Air Force Attack (offensive)"}]},{"hole":3,"holeLevel":6,"name":"Dreadray","element":"Fire","cfgId":25,"type":2,"faction":1,"quality":5,"level":100,"maxLevel":100,"star":5,"maxStar":5,"potential":13156,"potentialRange":"11200|16000","mainBuff":520032,"baseBuff":[520122,520120,520121],"locked":true,"mainBuffResolved":{"id":520032,"name":"Increase DEF of Navy","value":"+82.225%"},"baseBuffsResolved":[{"id":520122,"name":"Navy HP Boost (offensive)"},{"id":520120,"name":"All units HP Boost (offensive)"},{"id":520121,"name":"Army HP Boost (offensive)"}]},{"hole":4,"holeLevel":5,"name":"Tornadeagle","element":"Wind","cfgId":50,"type":3,"faction":2,"quality":5,"level":80,"maxLevel":100,"star":4,"maxStar":5,"potential":15221,"potentialRange":"11200|16000","mainBuff":520010,"baseBuff":[520023,520123,520130],"locked":true,"mainBuffResolved":{"id":520010,"name":"All units DMG Increase","value":"+95.131%"},"baseBuffsResolved":[{"id":520023,"name":"Air Force Decreased DMG Taken"},{"id":520123,"name":"Air Force HP Boost (offensive)"},{"id":520130,"name":"All units Attack (defensive)"}]},{"hole":5,"holeLevel":3,"name":"Grizzroar","element":"Water","cfgId":75,"type":4,"faction":3,"quality":5,"level":100,"maxLevel":100,"star":5,"maxStar":5,"potential":12407,"potentialRange":"11200|16000","mainBuff":520020,"baseBuff":[520011,520122,520131],"locked":true,"mainBuffResolved":{"id":520020,"name":"All units Decreased DMG Taken","value":"+77.544%"},"baseBuffsResolved":[{"id":520011,"name":"Army DMG Increase"},{"id":520122,"name":"Navy HP Boost (offensive)"},{"id":520131,"name":"Army Attack (defensive)"}]}],"attributes":[{"condition":1,"enhanceid":1,"value":18000000},{"condition":1,"enhanceid":1,"value":5760000},{"condition":2,"enhanceid":2,"value":27000000},{"condition":2,"enhanceid":2,"value":2748000},{"condition":3,"enhanceid":3,"value":84000000},{"condition":3,"enhanceid":3,"value":13168000},{"condition":4,"enhanceid":4,"value":72000000},{"condition":4,"enhanceid":4,"value":15232000},{"condition":5,"enhanceid":5,"value":24000000},{"condition":5,"enhanceid":5,"value":12416000}]},{"fid":2,"displayName":"Formation","holeCount":7,"totalLevel":18,"beasts":[{"hole":1,"holeLevel":7,"name":"Tornadeagle","element":"Fire","cfgId":45,"type":3,"faction":1,"quality":5,"level":100,"maxLevel":100,"star":5,"maxStar":5,"potential":14006,"potentialRange":"11200|16000","mainBuff":520012,"baseBuff":[520111,520122,520123],"locked":true,"mainBuffResolved":{"id":520012,"name":"Navy DMG Increase","value":"+87.537%"},"baseBuffsResolved":[{"id":520111,"name":"Army Attack (offensive)"},{"id":520122,"name":"Navy HP Boost (offensive)"},{"id":520123,"name":"Air Force HP Boost (offensive)"}]},{"hole":2,"holeLevel":6,"name":"Gleamdeer","element":"Fire","cfgId":4,"type":1,"faction":1,"quality":4,"level":80,"maxLevel":80,"star":5,"maxStar":5,"potential":7957,"potentialRange":"6400|8000","mainBuff":520012,"baseBuff":[520020,520123,520141],"locked":true,"mainBuffResolved":{"id":520012,"name":"Navy DMG Increase","value":"+49.731%"},"baseBuffsResolved":[{"id":520020,"name":"All units Decreased DMG Taken"},{"id":520123,"name":"Air Force HP Boost (offensive)"},{"id":520141,"name":"Army HP Boost (defensive)"}]},{"hole":3,"holeLevel":1,"name":"Dreadray","element":"Wind","cfgId":29,"type":2,"faction":2,"quality":4,"level":80,"maxLevel":80,"star":5,"maxStar":5,"potential":7927,"potentialRange":"6400|8000","mainBuff":520032,"baseBuff":[520112,520012,520120],"locked":true,"mainBuffResolved":{"id":520032,"name":"Increase DEF of Navy","value":"+49.544%"},"baseBuffsResolved":[{"id":520112,"name":"Navy Attack (offensive)"},{"id":520012,"name":"Navy DMG Increase"},{"id":520120,"name":"All units HP Boost (offensive)"}]},{"hole":4,"holeLevel":1,"name":"Tornadeagle","element":"Water","cfgId":54,"type":3,"faction":3,"quality":4,"level":80,"maxLevel":80,"star":5,"maxStar":5,"potential":7846,"potentialRange":"6400|8000","mainBuff":520012,"baseBuff":[520011,520022,520141],"locked":true,"mainBuffResolved":{"id":520012,"name":"Navy DMG Increase","value":"+49.038%"},"baseBuffsResolved":[{"id":520011,"name":"Army DMG Increase"},{"id":520022,"name":"Navy Decreased DMG Taken"},{"id":520141,"name":"Army HP Boost (defensive)"}]},{"hole":5,"holeLevel":1,"name":"Grizzroar","element":"Ground","cfgId":80,"type":4,"faction":4,"quality":5,"level":100,"maxLevel":100,"star":5,"maxStar":5,"potential":13459,"potentialRange":"11200|16000","mainBuff":520020,"baseBuff":[520121,520120,520112],"locked":true,"mainBuffResolved":{"id":520020,"name":"All units Decreased DMG Taken","value":"+84.119%"},"baseBuffsResolved":[{"id":520121,"name":"Army HP Boost (offensive)"},{"id":520120,"name":"All units HP Boost (offensive)"},{"id":520112,"name":"Navy Attack (offensive)"}]},{"hole":6,"holeLevel":1,"name":"Gleamdeer","element":"Wind","cfgId":10,"type":1,"faction":2,"quality":5,"level":80,"maxLevel":100,"star":5,"maxStar":5,"potential":15504,"potentialRange":"11200|16000","mainBuff":520000,"baseBuff":[520121,520111,520123],"locked":true,"mainBuffResolved":{"id":520000,"name":"March Size","value":"+0"},"baseBuffsResolved":[{"id":520121,"name":"Army HP Boost (offensive)"},{"id":520111,"name":"Army Attack (offensive)"},{"id":520123,"name":"Air Force HP Boost (offensive)"}]},{"hole":7,"holeLevel":1,"name":"Dreadray","element":"Water","cfgId":34,"type":2,"faction":3,"quality":4,"level":80,"maxLevel":80,"star":5,"maxStar":5,"potential":7506,"potentialRange":"6400|8000","mainBuff":520032,"baseBuff":[520133,520112,520011],"locked":true,"mainBuffResolved":{"id":520032,"name":"Increase DEF of Navy","value":"+46.913%"},"baseBuffsResolved":[{"id":520133,"name":"Air Force Attack (defensive)"},{"id":520112,"name":"Navy Attack (offensive)"},{"id":520011,"name":"Army DMG Increase"}]}],"attributes":[{"condition":6,"enhanceid":6,"value":36000000},{"condition":6,"enhanceid":6,"value":5256000},{"condition":7,"enhanceid":7,"value":42000000},{"condition":7,"enhanceid":7,"value":3984000},{"condition":8,"enhanceid":8,"value":4000000},{"condition":8,"enhanceid":8,"value":3968000},{"condition":9,"enhanceid":9,"value":4000000},{"condition":9,"enhanceid":9,"value":3928000},{"condition":10,"enhanceid":10,"value":3000000},{"condition":10,"enhanceid":10,"value":5052000},{"condition":11,"enhanceid":11,"value":3000000},{"condition":11,"enhanceid":11,"value":5814000},{"condition":12,"enhanceid":12,"value":3000000},{"condition":12,"enhanceid":12,"value":2820000}]},{"fid":3,"displayName":"Equip","holeCount":6,"totalLevel":6,"beasts":[{"hole":1,"holeLevel":1,"name":"Tornadeagle","element":"Ground","cfgId":59,"type":3,"faction":4,"quality":4,"level":80,"maxLevel":80,"star":5,"maxStar":5,"potential":7401,"potentialRange":"6400|8000","mainBuff":520012,"baseBuff":[520113,520012,520123],"locked":true,"mainBuffResolved":{"id":520012,"name":"Navy DMG Increase","value":"+46.256%"},"baseBuffsResolved":[{"id":520113,"name":"Air Force Attack (offensive)"},{"id":520012,"name":"Navy DMG Increase"},{"id":520123,"name":"Air Force HP Boost (offensive)"}]},{"hole":2,"holeLevel":1,"name":"Grizzroar","element":"Fire","cfgId":64,"type":4,"faction":1,"quality":4,"level":80,"maxLevel":80,"star":5,"maxStar":5,"potential":7652,"potentialRange":"6400|8000","mainBuff":520022,"baseBuff":[520023,520011,520110],"locked":true,"mainBuffResolved":{"id":520022,"name":"Navy Decreased DMG Taken","value":"+47.825%"},"baseBuffsResolved":[{"id":520023,"name":"Air Force Decreased DMG Taken"},{"id":520011,"name":"Army DMG Increase"},{"id":520110,"name":"All units Attack (offensive)"}]},{"hole":3,"holeLevel":1,"name":"Gleamdeer","element":"Water","cfgId":15,"type":1,"faction":3,"quality":5,"level":100,"maxLevel":100,"star":5,"maxStar":5,"potential":13048,"potentialRange":"11200|16000","mainBuff":520000,"baseBuff":[520110,520010,520123],"locked":true,"mainBuffResolved":{"id":520000,"name":"March Size","value":"+0"},"baseBuffsResolved":[{"id":520110,"name":"All units Attack (offensive)"},{"id":520010,"name":"All units DMG Increase"},{"id":520123,"name":"Air Force HP Boost (offensive)"}]},{"hole":4,"holeLevel":1,"name":"Dreadray","element":"Ground","cfgId":39,"type":2,"faction":4,"quality":4,"level":80,"maxLevel":80,"star":5,"maxStar":5,"potential":7444,"potentialRange":"6400|8000","mainBuff":520032,"baseBuff":[520012,520141,520110],"locked":true,"mainBuffResolved":{"id":520032,"name":"Increase DEF of Navy","value":"+46.525%"},"baseBuffsResolved":[{"id":520012,"name":"Navy DMG Increase"},{"id":520141,"name":"Army HP Boost (defensive)"},{"id":520110,"name":"All units Attack (offensive)"}]},{"hole":5,"holeLevel":1,"name":"Tornadeagle","element":"Fire","cfgId":44,"type":3,"faction":1,"quality":4,"level":80,"maxLevel":80,"star":5,"maxStar":5,"potential":6744,"potentialRange":"6400|8000","mainBuff":520012,"baseBuff":[520112,520110,520011],"locked":true,"mainBuffResolved":{"id":520012,"name":"Navy DMG Increase","value":"+42.150%"},"baseBuffsResolved":[{"id":520112,"name":"Navy Attack (offensive)"},{"id":520110,"name":"All units Attack (offensive)"},{"id":520011,"name":"Army DMG Increase"}]},{"hole":6,"holeLevel":1,"name":"Grizzroar","element":"Wind","cfgId":69,"type":4,"faction":2,"quality":4,"level":80,"maxLevel":80,"star":5,"maxStar":5,"potential":7688,"potentialRange":"6400|8000","mainBuff":520022,"baseBuff":[520013,520012,520022],"locked":true,"mainBuffResolved":{"id":520022,"name":"Navy Decreased DMG Taken","value":"+48.050%"},"baseBuffsResolved":[{"id":520013,"name":"Air Force DMG Increase"},{"id":520012,"name":"Navy DMG Increase"},{"id":520022,"name":"Navy Decreased DMG Taken"}]}],"attributes":[{"condition":13,"enhanceid":13,"value":8000000},{"condition":13,"enhanceid":13,"value":7408000},{"condition":14,"enhanceid":14,"value":8000000},{"condition":14,"enhanceid":14,"value":7664000},{"condition":15,"enhanceid":15,"value":8000000},{"condition":15,"enhanceid":15,"value":13056000},{"condition":16,"enhanceid":16,"value":12000000},{"condition":16,"enhanceid":16,"value":11184000},{"condition":17,"enhanceid":17,"value":12000000},{"condition":17,"enhanceid":17,"value":10128000},{"condition":18,"enhanceid":18,"value":12000000},{"condition":18,"enhanceid":18,"value":11544000}]},{"fid":4,"displayName":"Defense","holeCount":9,"totalLevel":9,"beasts":[{"hole":1,"holeLevel":1,"name":"Dreadray","element":"Ground","cfgId":39,"type":2,"faction":4,"quality":4,"level":50,"maxLevel":80,"star":5,"maxStar":5,"potential":7933,"potentialRange":"6400|8000","mainBuff":520032,"baseBuff":[520120,520110,520112],"locked":false,"mainBuffResolved":{"id":520032,"name":"Increase DEF of Navy","value":"+49.581%"},"baseBuffsResolved":[{"id":520120,"name":"All units HP Boost (offensive)"},{"id":520110,"name":"All units Attack (offensive)"},{"id":520112,"name":"Navy Attack (offensive)"}]},{"hole":2,"holeLevel":1,"name":"Gleamdeer","element":"Fire","cfgId":4,"type":1,"faction":1,"quality":4,"level":50,"maxLevel":80,"star":5,"maxStar":5,"potential":7967,"potentialRange":"6400|8000","mainBuff":520022,"baseBuff":[520020,520122,520120],"locked":true,"mainBuffResolved":{"id":520022,"name":"Navy Decreased DMG Taken","value":"+49.794%"},"baseBuffsResolved":[{"id":520020,"name":"All units Decreased DMG Taken"},{"id":520122,"name":"Navy HP Boost (offensive)"},{"id":520120,"name":"All units HP Boost (offensive)"}]},{"hole":3,"holeLevel":1,"name":"Grizzroar","element":"Wind","cfgId":69,"type":4,"faction":2,"quality":4,"level":50,"maxLevel":80,"star":5,"maxStar":5,"potential":7940,"potentialRange":"6400|8000","mainBuff":520022,"baseBuff":[520112,520141,520110],"locked":false,"mainBuffResolved":{"id":520022,"name":"Navy Decreased DMG Taken","value":"+49.625%"},"baseBuffsResolved":[{"id":520112,"name":"Navy Attack (offensive)"},{"id":520141,"name":"Army HP Boost (defensive)"},{"id":520110,"name":"All units Attack (offensive)"}]}],"attributes":[{"condition":19,"enhanceid":25,"value":2700000},{"condition":19,"enhanceid":25,"value":5456000},{"condition":20,"enhanceid":26,"value":2700000},{"condition":20,"enhanceid":26,"value":5478000},{"condition":21,"enhanceid":27,"value":2700000},{"condition":21,"enhanceid":27,"value":5467000},{"condition":22,"enhanceid":28,"value":8100000},{"condition":23,"enhanceid":29,"value":8100000},{"condition":24,"enhanceid":30,"value":5400000},{"condition":25,"enhanceid":31,"value":1500000},{"condition":26,"enhanceid":32,"value":1500000},{"condition":27,"enhanceid":33,"value":1000000}]},{"fid":5,"displayName":"Offense","holeCount":9,"totalLevel":0,"beasts":[{"hole":1,"holeLevel":0,"empty":true},{"hole":2,"holeLevel":0,"empty":true},{"hole":3,"holeLevel":0,"empty":true},{"hole":4,"holeLevel":0,"empty":true},{"hole":5,"holeLevel":0,"empty":true},{"hole":6,"holeLevel":0,"empty":true},{"hole":7,"holeLevel":0,"empty":true},{"hole":8,"holeLevel":0,"empty":true},{"hole":9,"holeLevel":0,"empty":true}],"attributes":null,"locked":true,"lockReason":"Requires level 150"}]};
+const HERO_META = {"325":{"id":325,"type":3,"quality":5,"star":5,"level":120,"maxLevel":120,"power":944878,"war":51052,"warBase":36360,"def":20664,"defBase":12120,"command":2500,"commandBase":2000,"heroType":2,"skinId":0,"skinIcon":null,"equipPower":71868,"levelPower":5800,"starPower":52010,"talentPower":4,"skillPower":83200,"owned":true,"displayName":"Brady","iconSmall":"https://h5.topwargame.com/DynRes/images/headpic/hero_icon325_global.png?t=22.jpg","iconLarge":"https://h5.topwargame.com/h5game/assets/resources/native/5f/5fdaac74-5e5c-48e0-b48f-0a56863828fc.16b03.png","typeName":"Air Force","qualityName":"Gold"},"318":{"id":318,"type":3,"quality":5,"star":5,"level":120,"maxLevel":120,"power":67138,"war":49668,"warBase":35207,"def":21723,"defBase":13003,"command":2500,"commandBase":2000,"heroType":2,"skinId":0,"skinIcon":null,"equipPower":0,"levelPower":5800,"starPower":52010,"talentPower":2,"skillPower":9000,"owned":true,"displayName":"Maximo","iconSmall":"https://h5.topwargame.com/DynRes/images/headpic/hero_icon318_global.png?t=22.jpg","iconLarge":"https://h5.topwargame.com/h5game/assets/resources/native/85/85442872-2f42-4994-9287-c4fbc6f39d58.5837d.png","typeName":"Air Force","qualityName":"Gold"},"231":{"id":231,"type":2,"quality":5,"star":5,"level":120,"maxLevel":120,"power":71540,"war":19054,"warBase":9695,"def":52662,"defBase":38785,"command":2500,"commandBase":2000,"heroType":1,"skinId":0,"skinIcon":null,"equipPower":0,"levelPower":5800,"starPower":52010,"talentPower":3,"skillPower":13000,"owned":true,"displayName":"Jester","iconSmall":"https://h5.topwargame.com/DynRes/images/headpic/hero_icon231_global.png?t=22.jpg","iconLarge":"https://h5.topwargame.com/h5game/assets/resources/native/18/18579bbd-e4b0-42df-b77f-6a8226de4b0e.58a53.png","typeName":"Navy","qualityName":"Gold"},"228":{"id":228,"type":2,"quality":5,"star":5,"level":120,"maxLevel":120,"power":89927,"war":49250,"warBase":34859,"def":22465,"defBase":13621,"command":2500,"commandBase":2000,"heroType":1,"skinId":0,"skinIcon":null,"equipPower":0,"levelPower":5800,"starPower":52010,"talentPower":3,"skillPower":30600,"owned":true,"displayName":"Duke","iconSmall":"https://h5.topwargame.com/DynRes/images/headpic/hero_icon228_global.png?t=22.jpg","iconLarge":"https://h5.topwargame.com/h5game/assets/resources/native/36/36c52dc2-1c39-427a-847c-43f918cafeb1.9630f.png","typeName":"Navy","qualityName":"Gold"},"171":{"id":171,"type":1,"quality":5,"star":5,"level":120,"maxLevel":120,"power":1215714,"war":51606,"warBase":36822,"def":20109,"defBase":11658,"command":2500,"commandBase":2000,"heroType":0,"skinId":0,"skinIcon":null,"equipPower":201504,"levelPower":5800,"starPower":52010,"talentPower":4,"skillPower":224400,"owned":true,"displayName":"Astrid","iconSmall":"https://h5.topwargame.com/DynRes/images/headpic/hero_icon171_global.png?t=22.jpg","iconLarge":"https://h5.topwargame.com/h5game/assets/resources/native/a8/a8af5fd8-975c-4725-90e6-3e5ed02691bc.9ec12.png","typeName":"Army","qualityName":"Gold"},"169":{"id":169,"type":1,"quality":5,"star":5,"level":120,"maxLevel":120,"power":1211389,"war":49042,"warBase":34685,"def":22674,"defBase":13795,"command":2500,"commandBase":2000,"heroType":0,"skinId":0,"skinIcon":null,"equipPower":197179,"levelPower":5800,"starPower":52010,"talentPower":4,"skillPower":224400,"owned":true,"displayName":"Sara","iconSmall":"https://h5.topwargame.com/DynRes/images/headpic/hero_icon169_global.png?t=22.jpg","iconLarge":"https://h5.topwargame.com/h5game/assets/resources/native/d2/d2471f3d-016b-4df1-9fd4-1d8ca534b3ec.63166.png","typeName":"Army","qualityName":"Gold"},"229":{"id":229,"type":2,"quality":5,"star":4,"level":120,"maxLevel":120,"power":27510,"war":38170,"warBase":25625,"def":17418,"defBase":9415,"command":2125,"commandBase":1700,"heroType":1,"skinId":0,"skinIcon":null,"equipPower":0,"levelPower":5800,"starPower":20710,"talentPower":0,"skillPower":1000,"owned":true,"displayName":"Zhen","iconSmall":"https://h5.topwargame.com/DynRes/images/headpic/hero_icon229_global.png?t=22.jpg","iconLarge":"https://h5.topwargame.com/h5game/assets/resources/native/c8/c830ea60-195a-4bd7-a966-3212782cbed7.3092e.png","typeName":"Navy","qualityName":"Gold"},"233":{"id":233,"type":2,"quality":5,"star":3,"level":21,"maxLevel":120,"power":8030,"war":19078,"warBase":9715,"def":10158,"defBase":3365,"command":750,"commandBase":600,"heroType":1,"skinId":0,"skinIcon":null,"equipPower":0,"levelPower":420,"starPower":6610,"talentPower":0,"skillPower":1000,"owned":true,"displayName":"Ada Wong","iconSmall":"https://h5.topwargame.com/DynRes/images/headpic/hero_icon233_global.png?t=22.jpg","iconLarge":"https://h5.topwargame.com/h5game/assets/resources/native/21/2130ccf7-59ab-4404-94ba-1d6b207c8131.6cc2e.png","typeName":"Navy","qualityName":"Gold"},"234":{"id":234,"type":2,"quality":5,"star":1,"level":120,"maxLevel":120,"power":7790,"war":11869,"warBase":3708,"def":20102,"defBase":11652,"command":1500,"commandBase":1200,"heroType":1,"skinId":0,"skinIcon":null,"equipPower":0,"levelPower":5800,"starPower":990,"talentPower":0,"skillPower":1000,"owned":true,"displayName":"Shen Suyu","iconSmall":"https://h5.topwargame.com/DynRes/images/headpic/hero_icon234_global.png?t=22.jpg","iconLarge":"https://h5.topwargame.com/h5game/assets/resources/native/f9/f950876f-5f21-4d82-af1b-31e0d8290856.2de6a.png","typeName":"Navy","qualityName":"Gold"},"237":{"id":237,"type":2,"quality":5,"star":1,"level":1,"maxLevel":120,"power":1730,"war":7950,"warBase":442,"def":6669,"defBase":458,"command":250,"commandBase":200,"heroType":1,"skinId":0,"skinIcon":null,"equipPower":0,"levelPower":20,"starPower":710,"talentPower":0,"skillPower":1000,"owned":true,"displayName":"Alvida","iconSmall":"https://h5.topwargame.com/DynRes/images/headpic/hero_icon237_global.png?t=22.jpg","iconLarge":"https://h5.topwargame.com/h5game/assets/resources/native/10/108e5712-5119-485f-8542-57b72d9afe3f.6cf13.png","typeName":"Navy","qualityName":"Gold"},"235":{"id":235,"type":2,"quality":5,"star":1,"level":1,"maxLevel":120,"power":1730,"war":7934,"warBase":429,"def":6325,"defBase":171,"command":250,"commandBase":200,"heroType":1,"skinId":0,"skinIcon":null,"equipPower":0,"levelPower":20,"starPower":710,"talentPower":0,"skillPower":1000,"owned":true,"displayName":"Jill Valentine","iconSmall":"https://h5.topwargame.com/DynRes/images/headpic/hero_icon235_global.png?t=22.jpg","iconLarge":"https://h5.topwargame.com/h5game/assets/resources/native/d6/d6d7eeca-aac4-4319-a7b1-e04dfd9aa599.2eb9a.png","typeName":"Navy","qualityName":"Gold"}};
+
+// Helpers
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function initSortBtns(containerId, renderFn) {
+  document.querySelectorAll('#' + containerId + ' .sort-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#' + containerId + ' .sort-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderFn();
+    });
+  });
+}
+const HERO_BY_ID = {};
+GEAR_DATA.forEach(h => { HERO_BY_ID[h.heroId] = h; });
+function formatPower(p) {
+  if (p >= 1000000) return (p / 1000000).toFixed(2) + 'M';
+  if (p >= 1000) return (p / 1000).toFixed(0) + 'K';
+  return p.toString();
+}
+function thresholdColor(pct) {
+  if (pct >= 70) return 'var(--good)';
+  if (pct >= 50) return 'var(--warn)';
+  return 'var(--danger)';
+}
+function refIcon(meets) { return meets ? '<span class="icon-pass">\u2713</span>' : '<span class="icon-fail">\u2717</span>'; }
+function elementIcon(el) {
+  const svgs = {
+    Fire: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 23c-4.97 0-8-3.03-8-7 0-2.61 1.67-5.31 3.34-7.2.4-.46 1.13-.05.96.53-.47 1.56-.18 3.04.76 4.07.19.2.52.05.52-.23 0-2.94 2.07-6.74 4.86-9.03.42-.35 1.06.01.95.55C14.04 6.46 15.36 8 17.33 9.17c2 1.18 2.67 3.48 2.67 5.33 0 4.97-3.53 8.5-8 8.5z" fill="#f97583"/><path d="M14.5 20c-2.49 0-4-1.52-4-3.5 0-1.31.84-2.66 1.67-3.6.2-.23.56-.02.48.26-.24.78-.09 1.52.38 2.04.1.1.26.02.26-.12 0-1.47 1.04-3.37 2.43-4.51.21-.18.53 0 .48.27-.18.89.48 1.66 1.46 2.25 1 .59 1.34 1.74 1.34 2.66 0 2.49-1.77 4.25-4 4.25z" fill="#e3b341" opacity=".7"/></svg>`,
+    Water: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 2.69l-.66.83C10.7 4.37 7 9.12 7 13.5 7 16.54 9.24 19 12 19s5-2.46 5-5.5c0-4.38-3.7-9.13-4.34-9.98L12 2.69z" fill="#6cb6ff"/><path d="M12 17c-1.93 0-3.5-1.57-3.5-3.5 0-.55.45-1 1-1s1 .45 1 1c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5c0-.55.45-1 1-1s1 .45 1 1c0 1.93-1.57 3.5-3.5 3.5z" fill="rgba(255,255,255,.3)"/></svg>`,
+    Wind: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M3.5 9h9.17C14.51 9 16 7.51 16 5.67s-1.49-3.33-3.33-3.33c-1.28 0-2.4.73-2.96 1.8" stroke="#56d364" stroke-width="2" stroke-linecap="round"/><path d="M3.5 15h12.17c1.84 0 3.33 1.49 3.33 3.33s-1.49 3.33-3.33 3.33c-1.28 0-2.4-.73-2.96-1.8" stroke="#56d364" stroke-width="2" stroke-linecap="round"/><path d="M2 12h17c1.1 0 2-.9 2-2s-.9-2-2-2c-.77 0-1.44.44-1.77 1.08" stroke="#56d364" stroke-width="2" stroke-linecap="round"/></svg>`,
+    Ground: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M14 6l-3.75 5L12 13.5 8.25 20h11.5L14 6z" fill="#e3b341"/><path d="M7 12l-4.75 8h9.5L7 12z" fill="#d29922"/></svg>`
+  };
+  return svgs[el] || '';
+}
+function starStr(n) { return '\u2605'.repeat(n) + '\u2606'.repeat(5 - n); }
+
+// Rune icons
+const RUNE_ICONS = {
+  'Steel Torrent': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/steel-torrent.png',
+  'Artillery Storm': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/artillery-storm.png',
+  'Unbreakable': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/unbreakable.png',
+  'All-Out Surge': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/all-out-surge.png',
+  'Stealth Hologram': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/stealth-hologram.png',
+  'Tactical Awareness': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/tactical-awareness.png',
+  'Searing': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/searing.png',
+  'Armor-Breaking': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/armor-breaking.png',
+  'Impact': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/impact.png',
+  'Magnetic Field': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/magnetic-field.png',
+  'Flammable': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/flammable.png',
+  'Heavy Blow': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/heavy-blow.png',
+  'Debilitate': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/debilitate.png',
+  'Magnetize': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/magnetize.png'
+};
+
+const STAR_PATH = 'M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14 2 9.27l6.91-1.01L12 2z';
+function starSVG(level) {
+  let fill = '#d4a017', stroke = '#b8860b';
+  if (level <= 0) { fill = 'none'; stroke = '#d4a017'; }
+  else if (level < 1) { fill = 'rgba(180,140,20,0.5)'; stroke = '#d4a017'; }
+  return `<svg width="14" height="14" viewBox="0 0 24 24"><path d="${STAR_PATH}" fill="${fill}" stroke="${stroke}" stroke-width="2"/></svg>`;
+}
+
+function runeStarsHTML(slot) {
+  if (!slot.effectName || slot.starLevel === undefined) return '';
+  const threeStarRunes = {
+    1: ['Artillery Storm', 'All-Out Surge'],
+    2: ['Steel Torrent', 'Unbreakable'],
+    3: ['Tactical Awareness'], 5: ['Tactical Awareness'],
+    4: ['Stealth Hologram'], 6: ['Stealth Hologram']
+  };
+  const maxStars = (threeStarRunes[slot.slot] || []).includes(slot.effectName) ? 3 : 1;
+  const starLevel = slot.starLevel || 0;
+  let stars = '';
+  for (let i = 0; i < maxStars; i++) {
+    const remaining = starLevel - i;
+    if (remaining >= 1) stars += starSVG(1);
+    else if (remaining >= 0.5) stars += starSVG(0.5);
+    else stars += starSVG(0);
+  }
+  return stars;
+}
+
+// Refine mode
+let refineMode = 'average';
+
+function getSlotRefined(slot) {
+  if (refineMode === 'average') return slot.refinement.meetsThreshold;
+  return slot.randomStats.every(rs => rs.rollPercent >= 70);
+}
+
+function getHeroRefinedCount(hero) {
+  return Object.values(hero.slots).filter(s => getSlotRefined(s)).length;
+}
+
+function slotMiniColor(slot) {
+  if (refineMode === 'average') return thresholdColor(slot.refinement.percent);
+  const passing = slot.randomStats.filter(rs => rs.rollPercent >= 70).length;
+  if (passing === 0) return '#f97583';
+  if (passing >= slot.randomStats.length) return '#56d364';
+  return '#e3b341';
+}
+
+// Impact Analysis
+function buildImpactAnalysis() {
+  let gameDescRefined = 0, twDevRefined = 0, totalGear = 0;
+  let totalSlots = 0, slotsAt70 = 0;
+  const heroImpact = [];
+  const allHeroData = [];
+
+  GEAR_DATA.forEach(h => {
+    const meta = HERO_META[h.heroId] || {};
+    const slots = Object.values(h.slots);
+    let gdCount = 0, tdCount = 0;
+    const lostGear = [];
+    let heroTotalSlots = 0, heroSlotsAt70 = 0, heroSlotsBelow = 0;
+
+    slots.forEach(s => {
+      totalGear++;
+      const gdPass = s.refinement.meetsThreshold;
+      const tdPass = s.randomStats.every(rs => rs.rollPercent >= 70);
+      if (gdPass) gdCount++;
+      if (tdPass) tdCount++;
+      if (gdPass && !tdPass) {
+        const failing = s.randomStats.filter(rs => rs.rollPercent < 70).map(rs => `${rs.stat} (${rs.rollPercent}%)`);
+        lostGear.push({ name: s.name, failing });
+      }
+      s.randomStats.forEach(rs => {
+        totalSlots++;
+        heroTotalSlots++;
+        if (rs.rollPercent >= 70) { slotsAt70++; heroSlotsAt70++; }
+        else heroSlotsBelow++;
+      });
+    });
+
+    gameDescRefined += gdCount;
+    twDevRefined += tdCount;
+    allHeroData.push({ name: h.heroName, heroId: h.heroId, gd: gdCount, td: tdCount, total: slots.length, icon: meta.iconSmall || '' });
+    if (gdCount !== tdCount) {
+      heroImpact.push({ name: h.heroName, heroId: h.heroId, gd: gdCount, td: tdCount, total: slots.length, lost: lostGear, slotsNeeded: heroSlotsBelow, slotsTotal: heroTotalSlots, icon: meta.iconSmall || '' });
+    }
+  });
+
+  const diff = gameDescRefined - twDevRefined;
+  const lostPct = gameDescRefined > 0 ? Math.round(diff / gameDescRefined * 100) : 0;
+  const affectedHeroes = heroImpact.length;
+  const totalSlotsBelow = totalSlots - slotsAt70;
+
+  // Section 1: Summary
+  const impactStat = (label, value, color, sub) =>
+    `<div class="impact-stat"><div class="is-label">${label}</div><div class="is-value" style="color:${color}">${value}</div><div class="is-sub">${sub}</div></div>`;
+
+  let html = '<div class="impact-section"><h3>At a Glance</h3>';
+  html += '<div class="impact-summary-grid">';
+  html += impactStat('Gear Refined (Game Description)', `${gameDescRefined} / ${totalGear}`, '#56d364', 'Overall random stat average \u2265 70%');
+  html += impactStat('Gear Refined (TW Dev Logic)', `${twDevRefined} / ${totalGear}`, '#f97583', 'Every individual random stat \u2265 70%');
+  html += impactStat('Gear Pieces Losing Status', diff, 'var(--danger)', `${affectedHeroes} of ${GEAR_DATA.length} heroes affected`);
+  html += impactStat('Random Slots Below 70%', `${totalSlotsBelow} / ${totalSlots}`, '#e3b341', 'Individual stats needing improvement');
+  html += '</div></div>';
+
+  // Section 2: Per-Hero Impact
+  if (heroImpact.length > 0) {
+    html += '<div class="impact-section"><h3>Per-Hero Breakdown</h3>';
+    heroImpact.forEach(h => {
+      const lostNames = h.lost.map(l => l.name).join(', ');
+      html += `<div class="impact-hero-card">`;
+      html += `<div class="impact-hero-header"><img class="impact-hero-icon" src="${esc(h.icon)}" alt="${esc(h.name)}" onerror="this.style.display='none'"><div class="impact-hero-info"><span class="impact-hero-label">${esc(h.name)}</span><span class="impact-hero-delta">Game: <span style="color:#56d364">${h.gd}/${h.total}</span> → Dev: <span style="color:#f97583">${h.td}/${h.total}</span> <span style="color:var(--danger)">(-${h.gd - h.td})</span></span><span class="impact-hero-sub">Random slots below 70%: <span style="color:#e3b341">${h.slotsNeeded}</span> of ${h.slotsTotal} · Affected: ${lostNames}</span></div></div>`;
+      html += `</div>`;
+    });
+    html += '</div>';
+  }
+
+  // Section 3: Chart
+  const SHORT_NAMES = { 'Shikinami Asuka Langley': 'Asuka' };
+  html += '<div class="impact-section"><h3>Refined Gear Comparison</h3>';
+  html += '<div class="impact-chart-legend"><span><span class="swatch" style="background:#56d364"></span> Game Description</span><span><span class="swatch" style="background:#f97583"></span> TW Dev Logic</span></div>';
+  html += '<div class="impact-chart">';
+  const maxSlots = 6;
+  allHeroData.forEach((h, idx) => {
+    const gdWidth = Math.round(h.gd / maxSlots * 100);
+    const tdWidth = Math.round(h.td / maxSlots * 100);
+    const displayName = SHORT_NAMES[h.name] || h.name;
+    if (idx > 0) html += '<div class="impact-bar-sep"></div>';
+    html += '<div class="impact-bar-row">';
+    html += `<img class="impact-bar-icon" src="${esc(h.icon)}" alt="" onerror="this.style.display='none'">`;
+    html += `<span class="impact-hero-name">${esc(displayName)}</span>`;
+    html += `<div class="impact-bar-divider"></div>`;
+    html += `<div class="impact-bar-area">`;
+    html += `<div style="display:flex;align-items:center;gap:6px"><div class="impact-bar game-desc" style="width:${gdWidth}%"></div><span class="impact-bar-val">${h.gd}/${h.total}</span></div>`;
+    html += `<div style="display:flex;align-items:center;gap:6px"><div class="impact-bar tw-dev" style="width:${tdWidth}%"></div><span class="impact-bar-val">${h.td}/${h.total}</span></div>`;
+    html += '</div></div>';
+  });
+  html += '</div></div>';
+
+  // Section 4: Key Findings
+  html += '<div class="impact-section"><h3>Key Findings</h3><div class="impact-findings">';
+  html += `<p>Switching from the game's published refinement definition to the TW Developer per-slot definition causes <strong>${diff} gear piece${diff !== 1 ? 's' : ''}</strong> (${lostPct}% of refined gear) to lose their refined status across <strong>${affectedHeroes}</strong> heroes.</p>`;
+  html += `<p>The game UI describes refinement as reaching <strong>70% of the total random attribute progress</strong> on a gear piece — meaning the <em>average</em> across all random stats. The TW Developer implementation instead requires <strong>each individual random stat</strong> to independently reach 70% of its maximum, a strictly harder threshold.</p>`;
+  html += `<p>Of the ${totalSlots} individual random stat slots across all heroes, <strong>${totalSlotsBelow}</strong> (${Math.round(totalSlotsBelow/totalSlots*100)}%) currently fall below the 70% individual threshold. A gear piece can have 2 out of 3 stats at 80%+ and still fail the per-slot check if the third stat is at 69%.</p>`;
+  html += `<p>The refinement system compounds this problem: when refining, the game randomly selects which stat slot to attempt a re-roll on. <strong>Stats that are already at their maximum value (100%) can still be targeted</strong>, consuming a gold gear piece with zero benefit. This means players pursuing per-slot refinement face increasing waste as more slots reach their caps.</p>`;
+  html += '</div></div>';
+
+  // Section 5: Recommendations
+  html += '<div class="impact-section"><h3>Recommendations</h3><ul class="impact-recs">';
+  html += '<li><strong>Adopt the game description definition:</strong> Titan Gear refinement progress should be evaluated as a whole — the combined random attribute value across all slots on a gear piece, not each sub-slot individually. This is what the in-game UI communicates to players and is the more intuitive definition.</li>';
+  html += '<li><strong>Align enigma field buff activation:</strong> The Defense and Offense enigma field attribute bonuses that gate on "70% Refine" should use the same whole-gear definition, matching what the game displays on the gear screen.</li>';
+  html += '<li><strong>Exclude maxed stats from refine rolls:</strong> When a random stat has reached its maximum value, it should be removed from the re-roll pool. Allowing rolls to land on maxed stats creates a punishing waste loop that disproportionately affects players who are closest to completion.</li>';
+  html += '<li><strong>Consistency builds trust:</strong> When the game UI says "70% refinement progress" and the underlying system uses a different, stricter calculation, it creates confusion and undermines player confidence in investing resources toward refinement goals.</li>';
+  html += '</ul></div>';
+
+  return html;
+}
+
+function openImpactModal() {
+  document.getElementById('impact-content').innerHTML = buildImpactAnalysis();
+  document.getElementById('impact-modal').classList.add('open');
+}
+
+document.getElementById('impact-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeModal('impact-modal');
+});
+
+// Dashboard
+function buildDashboard() {
+  let totalGear = 0, refinedGear = 0, totalRandomSlots = 0, refinedRandomSlots = 0;
+  GEAR_DATA.forEach(h => {
+    Object.values(h.slots).forEach(s => {
+      totalGear++;
+      if (getSlotRefined(s)) refinedGear++;
+      if (s.randomStats) {
+        s.randomStats.forEach(rs => {
+          totalRandomSlots++;
+          if (rs.rollPercent >= 70) refinedRandomSlots++;
+        });
+      }
+    });
+  });
+
+  let gearLabel, gearNum, gearDenom, gearPct;
+  if (refineMode === 'per-slot') {
+    gearLabel = 'Gear Random Slots at 70% Refinement';
+    gearNum = refinedRandomSlots;
+    gearDenom = totalRandomSlots;
+    gearPct = totalRandomSlots ? Math.round(refinedRandomSlots / totalRandomSlots * 100) : 0;
+  } else {
+    gearLabel = 'Gears at 70%+ Refinement';
+    gearNum = refinedGear;
+    gearDenom = totalGear;
+    gearPct = totalGear ? Math.round(refinedGear / totalGear * 100) : 0;
+  }
+
+  let totalSlots = 0, deployedSlots = 0;
+  BEAST_DATA.fields.forEach(f => { totalSlots += f.holeCount; deployedSlots += f.beasts.length; });
+
+  const allBeasts = BEAST_DATA.fields.flatMap(f => f.beasts);
+  const totalPot = allBeasts.reduce((sum, b) => sum + b.potential, 0);
+  const avgPot = Math.round(totalPot / allBeasts.length);
+  const avgPotPct = Math.round(avgPot / 16000 * 100);
+  const gearColor = thresholdColor(gearPct);
+  const deployPct = Math.round(deployedSlots / totalSlots * 100);
+  let avgPotColor = 'var(--danger)';
+  if (avgPotPct >= 80) avgPotColor = 'var(--accent)';
+  else if (avgPotPct >= 60) avgPotColor = 'var(--warn)';
+
+  document.getElementById('dashboard').innerHTML = `
+    <div class="dash-card">
+      <div class="label">${gearLabel}</div>
+      <div class="value" style="color:${gearColor}">${gearNum} / ${gearDenom}</div>
+      <div class="sub">${gearPct}% meeting threshold</div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${gearPct}%;background:${gearColor}"></div></div>
+    </div>
+    <div class="dash-card">
+      <div class="label">Beast Fields</div>
+      <div class="value" style="color:var(--accent)">${deployedSlots} / ${totalSlots}</div>
+      <div class="sub">${BEAST_DATA.fields.length} fields, ${deployedSlots} beasts deployed</div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${deployPct}%;background:var(--accent)"></div></div>
+    </div>
+    <div class="dash-card">
+      <div class="label">Avg Beast Potential</div>
+      <div class="value" style="color:${avgPotColor}">${avgPot.toLocaleString()} / 16,000</div>
+      <div class="sub">${avgPotPct}% of maximum</div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${avgPotPct}%;background:${avgPotColor}"></div></div>
+    </div>`;
+}
+
+// Tabs
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('tab-' + t.dataset.tab).classList.add('active');
+  });
+});
+
+// =================== MARCHES ===================
+const DEFAULT_MARCHES = [
+  {"name": "Army Magnetic", "heroIds": [171, 169, 170]},
+  {"name": "Air Flammable", "heroIds": [332, 335, 334]},
+  {"name": "Army Secondary", "heroIds": [151, 160, 166]}
+];
+
+function loadMarches() {
+  const stored = localStorage.getItem('armory-marches');
+  if (stored) {
+    try { return JSON.parse(stored); } catch(e) { /* fall through */ }
+  }
+  saveMarches(DEFAULT_MARCHES);
+  return DEFAULT_MARCHES;
+}
+
+function saveMarches(marches) {
+  localStorage.setItem('armory-marches', JSON.stringify(marches));
+}
+
+function heroNameById(id) {
+  const meta = HERO_META[id];
+  if (meta) return meta.displayName;
+  const hero = HERO_BY_ID[id];
+  return hero ? hero.heroName : 'Unknown';
+}
+
+function populateMarchFilter() {
+  const sel = document.getElementById('march-filter');
+  const currentVal = sel.value;
+  const marches = loadMarches();
+  sel.innerHTML = '<option value="all">All Heroes</option>';
+  marches.forEach((m, i) => {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = m.name;
+    sel.appendChild(opt);
+  });
+  if (currentVal !== 'all' && sel.querySelector('option[value="' + currentVal + '"]')) {
+    sel.value = currentVal;
+  } else {
+    sel.value = 'all';
+  }
+}
+
+function populateMarchHeroSelects() {
+  const heroOptions = '<option value="">-- Select Hero --</option>' +
+    GEAR_DATA.map(h => `<option value="${h.heroId}">${esc(h.heroName)}</option>`).join('');
+  for (let i = 1; i <= 3; i++) document.getElementById('march-hero-' + i).innerHTML = heroOptions;
+}
+
+function renderMarchList() {
+  const marches = loadMarches();
+  const container = document.getElementById('march-list');
+  if (marches.length === 0) {
+    container.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px 0;">No marches saved yet.</div>';
+    return;
+  }
+  container.innerHTML = marches.map((m, i) =>
+    `<div class="march-row">` +
+    `<span class="march-name">${esc(m.name)}</span>` +
+    `<span class="march-heroes">${m.heroIds.map(id => esc(heroNameById(id))).join(', ')}</span>` +
+    `<button class="march-delete" data-idx="${i}" title="Delete march">&times;</button>` +
+    `</div>`
+  ).join('');
+  container.querySelectorAll('.march-delete').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      const marches = loadMarches();
+      marches.splice(idx, 1);
+      saveMarches(marches);
+      renderMarchList();
+      populateMarchFilter();
+      renderGearTab();
+    });
+  });
+}
+
+function resetMarchForm() {
+  document.getElementById('march-name-input').value = '';
+  for (let i = 1; i <= 3; i++) document.getElementById('march-hero-' + i).value = '';
+  document.getElementById('march-form-error').style.display = 'none';
+}
+
+function openMarchModal() {
+  populateMarchHeroSelects();
+  renderMarchList();
+  resetMarchForm();
+  document.getElementById('march-modal').classList.add('open');
+}
+
+function closeMarchModal() {
+  closeModal('march-modal');
+}
+
+function addMarch() {
+  const name = document.getElementById('march-name-input').value.trim();
+  const h1 = document.getElementById('march-hero-1').value;
+  const h2 = document.getElementById('march-hero-2').value;
+  const h3 = document.getElementById('march-hero-3').value;
+  const errEl = document.getElementById('march-form-error');
+
+  if (!name) { errEl.textContent = 'Enter a march name.'; errEl.style.display = 'block'; return; }
+  if (!h1 || !h2 || !h3) { errEl.textContent = 'Select all 3 heroes.'; errEl.style.display = 'block'; return; }
+  const ids = [+h1, +h2, +h3];
+  if (new Set(ids).size < 3) { errEl.textContent = 'Heroes must be different.'; errEl.style.display = 'block'; return; }
+
+  errEl.style.display = 'none';
+  const marches = loadMarches();
+  marches.push({ name, heroIds: ids });
+  saveMarches(marches);
+  renderMarchList();
+  populateMarchFilter();
+  resetMarchForm();
+}
+
+document.getElementById('manage-marches-btn').addEventListener('click', openMarchModal);
+document.getElementById('march-modal-close').addEventListener('click', closeMarchModal);
+document.getElementById('march-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeModal('march-modal');
+});
+document.getElementById('march-add-btn').addEventListener('click', addMarch);
+populateMarchFilter();
+
+// =================== GEAR TAB ===================
+function buildGearSlotHTML(slot) {
+  const baseHTML = slot.buffNames.slice(0, slot.enhanceValues.length)
+    .map((name, i) => `<div class="base-stat notranslate" translate="no">${esc(name)} ${esc(slot.buffValues[i])} <span class="enhance">${esc(slot.enhanceValues[i])}</span></div>`)
+    .join('');
+
+  const statsHTML = slot.randomStats
+    .map(rs => `<div class="stat-row notranslate" translate="no"><span class="stat-name">${esc(rs.stat)}</span><span class="stat-val">${esc(rs.value)}</span><span class="stat-pct" style="color:${thresholdColor(rs.rollPercent)}">${rs.rollPercent}%</span></div>`)
+    .join('');
+
+  const ref = slot.refinement;
+  const refPct = ref.percent;
+  const barWidth = Math.min(refPct / 70 * 100, 100);
+  const color = thresholdColor(refPct);
+  const meets = getSlotRefined(slot);
+
+  const iconUrl = RUNE_ICONS[slot.effectName] || '';
+  const cleanDesc = (slot.effectDesc || '').replace(/\s+/g, ' ').trim();
+  const runeIconHTML = iconUrl ?
+    `<div class="rune-icon-wrap"><img class="rune-icon" src="${iconUrl}" alt="${esc(slot.effectName)}" loading="lazy"><div class="rune-tooltip"><strong>${esc(slot.effectName)}</strong><br>${esc(cleanDesc)}</div></div>` : '';
+  const starsHTML = runeStarsHTML(slot);
+  const runeSection = (runeIconHTML || starsHTML) ?
+    `<div class="rune-display">${runeIconHTML}<div class="rune-stars">${starsHTML}</div></div>` : '';
+
+  return `<div class="gear-card"><div class="gear-header"><div><div class="gear-name notranslate" translate="no">${esc(slot.name)}</div>` +
+    (slot.effectName ? `<div class="rune-name notranslate" translate="no">${esc(slot.effectName)}</div>` : '') +
+    `</div>${runeSection}</div>` +
+    baseHTML + statsHTML +
+    `<div class="refine-section"><div class="refine-label"><span>Refinement</span><span class="pct" style="color:${color}">${refPct.toFixed(1)}% ${refIcon(meets)}</span></div><div class="refine-bar"><div class="refine-fill" style="width:${barWidth}%;background:${color}"></div></div></div></div>`;
+}
+
+function openHeroGearModal(heroId, slotNum) {
+  const hero = HERO_BY_ID[heroId];
+  if (!hero) return;
+  document.getElementById('hgm-hero-name').textContent = hero.heroName;
+  const btnsContainer = document.getElementById('hgm-slot-btns');
+  btnsContainer.innerHTML = Object.keys(hero.slots).sort((a, b) => +a - +b).map(k => {
+    const s = hero.slots[k];
+    return `<button class="hgm-slot-btn ${+k === slotNum ? 'active' : ''}" onclick="showHeroGearSlot(${heroId}, ${k})">${esc(s.name)}</button>`;
+  }).join('');
+  showHeroGearSlot(heroId, slotNum);
+  document.getElementById('hero-gear-modal').classList.add('open');
+}
+
+function showHeroGearSlot(heroId, slotNum) {
+  const hero = HERO_BY_ID[heroId];
+  const slot = hero.slots[slotNum];
+  document.querySelectorAll('.hgm-slot-btn').forEach((b, i) => b.classList.toggle('active', i + 1 === slotNum));
+  document.getElementById('hgm-gear-content').innerHTML = buildGearSlotHTML(slot);
+}
+
+document.getElementById('hero-gear-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeModal('hero-gear-modal');
+});
+
+const BRANCH_MAP = { 'Navy': 'navy', 'Air Force': 'air' };
+
+function buildHeroCard(hero) {
+  const meta = HERO_META[hero.heroId] || {};
+  const typeName = meta.typeName || 'Army';
+  const branchClass = BRANCH_MAP[typeName] || 'army';
+  const borderClass = branchClass !== 'army' ? branchClass + '-border' : '';
+  const power = formatPower(meta.power || 0);
+  const total = hero.refinementSummary.totalGearSlots;
+  const refined = getHeroRefinedCount(hero);
+  const slots = Object.keys(hero.slots).sort((a, b) => +a - +b);
+
+  const miniBar = Array.from({ length: 6 }, (_, i) => {
+    const s = hero.slots[i + 1];
+    if (!s) return `<div class="mini-seg" style="background:var(--border)"></div>`;
+    return `<div class="mini-seg" style="background:${slotMiniColor(s)}"></div>`;
+  }).join('');
+
+  const gearHTML = slots.map(k => buildGearSlotHTML(hero.slots[k])).join('');
+  const exclTag = hero.exclusiveSkill ? ` <span class="excl-tag">Lv ${hero.exclusiveSkill.level} Exclusive</span>` : '';
+
+  return `<div class="hero-card" data-hero-id="${hero.heroId}" data-branch="${typeName}" data-name="${esc(hero.heroName)}" data-power="${meta.power || 0}" data-refined="${refined}">` +
+    `<div class="hero-header" onclick="toggleHero(this)">` +
+    `<img class="hero-icon ${borderClass}" src="${meta.iconSmall || ''}" alt="${esc(hero.heroName)}" loading="lazy" onerror="this.style.display='none'">` +
+    `<div class="hero-info"><div class="hero-name notranslate" translate="no">${esc(hero.heroName)}${exclTag}</div><div class="hero-meta"><span class="branch-badge ${branchClass}">${esc(typeName)}</span><span>${power}</span></div></div>` +
+    `<div class="hero-refine-summary" style="color:${thresholdColor(refined / total * 100)}">${refined}/${total} at 70%+</div>` +
+    `<div class="mini-bar">${miniBar}</div>` +
+    `<span class="expand-icon">&#9660;</span>` +
+    `</div>` +
+    `<div class="gear-panel"><div class="gear-grid">${gearHTML}</div></div></div>`;
+}
+
+function toggleHero(header) {
+  header.parentElement.classList.toggle('expanded');
+}
+
+function renderGearTab() {
+  const search = document.getElementById('gear-search').value.toLowerCase();
+  const activeBranches = new Set();
+  document.querySelectorAll('#branch-pills .pill.active').forEach(p => activeBranches.add(p.dataset.branch));
+  const refFilter = document.getElementById('refine-filter').value;
+  const activeSort = document.querySelector('.sort-btn.active');
+  const sortBy = activeSort ? activeSort.dataset.sort : 'power';
+  const marchVal = document.getElementById('march-filter').value;
+
+  let marchHeroIds = null;
+  if (marchVal !== 'all') {
+    const marches = loadMarches();
+    const idx = parseInt(marchVal);
+    if (marches[idx]) {
+      marchHeroIds = new Set(marches[idx].heroIds);
+    }
+  }
+
+  let heroes = GEAR_DATA.filter(h => {
+    const meta = HERO_META[h.heroId] || {};
+    if (search && !h.heroName.toLowerCase().includes(search)) return false;
+    if (!activeBranches.has(meta.typeName || 'Army')) return false;
+    const rc = getHeroRefinedCount(h);
+    if (refFilter === 'refined' && rc === 0) return false;
+    if (refFilter === 'needs-work' && rc === h.refinementSummary.totalGearSlots) return false;
+    if (marchHeroIds && !marchHeroIds.has(h.heroId)) return false;
+    return true;
+  });
+
+  heroes.sort((a, b) => {
+    const ma = HERO_META[a.heroId] || {}, mb = HERO_META[b.heroId] || {};
+    if (sortBy === 'power') return (mb.power||0) - (ma.power||0);
+    if (sortBy === 'name') return a.heroName.localeCompare(b.heroName);
+    if (sortBy === 'refined') return getHeroRefinedCount(b) - getHeroRefinedCount(a) || (mb.power||0) - (ma.power||0);
+    return 0;
+  });
+
+  const grid = document.getElementById('hero-grid');
+  if (heroes.length === 0) { grid.innerHTML = '<div class="no-results">No heroes match filters</div>'; return; }
+  grid.innerHTML = heroes.map(h => buildHeroCard(h)).join('');
+  if (typeof nudgeTranslate === 'function') setTimeout(nudgeTranslate, 200);
+}
+
+// Filter events
+document.getElementById('gear-search').addEventListener('input', renderGearTab);
+document.querySelectorAll('#branch-pills .pill').forEach(p => {
+  p.addEventListener('click', () => { p.classList.toggle('active'); renderGearTab(); });
+});
+document.getElementById('refine-filter').addEventListener('change', renderGearTab);
+initSortBtns('sort-btns', renderGearTab);
+document.getElementById('march-filter').addEventListener('change', renderGearTab);
+
+// Refine mode toggle
+document.querySelectorAll('#refine-mode-toggle .refine-mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.mode === refineMode) return;
+    refineMode = btn.dataset.mode;
+    document.querySelectorAll('#refine-mode-toggle .refine-mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const impactBtn = document.getElementById('impact-analysis-btn');
+    if (refineMode === 'per-slot') impactBtn.classList.add('visible');
+    else impactBtn.classList.remove('visible');
+    buildDashboard();
+    renderGearTab();
+    renderAttrPanel();
+    renderBeastGrid();
+  });
+});
+
+// =================== BEAST TAB ===================
+const GEAR_NAME_TO_SLOT = { 'Assault Pistol': 1, 'Tactical Backarmor': 2, 'Optical Add-on': 3, 'Raysor Headset': 4, 'Portable GPS': 5, 'Power Boots': 6 };
+const GEAR_SEARCH_TERMS = [
+  ['Raysor', 'Raysor Headset'],
+  ['Power Boots', 'Power Boots'],
+  ['Tactical Backarmor', 'Tactical Backarmor'],
+  ['Assault Pistol', 'Assault Pistol'],
+  ['Optical Add-on', 'Optical Add-on'],
+  ['Portable GPS', 'Portable GPS']
+];
+
+function findGearInBuff(buffText) {
+  for (const [keyword, gearName] of GEAR_SEARCH_TERMS) {
+    if (buffText.includes(keyword)) return gearName;
+  }
+  return null;
+}
+
+function getRefineStatus(attr) {
+  const buff = attr.buff || '';
+  if (buff.includes('70%') || buff.includes('Refining Progress')) return 'refine';
+  return 'active';
+}
+
+function buildRefineHeroList(gearName) {
+  const slotPos = GEAR_NAME_TO_SLOT[gearName];
+  if (!slotPos) return '';
+  let greenHeroes = [], yellowHeroes = [], redHeroes = [];
+  GEAR_DATA.forEach(h => {
+    const s = h.slots[slotPos];
+    if (!s) return;
+    if (refineMode === 'per-slot' && s.randomStats) {
+      const passCount = s.randomStats.filter(rs => rs.rollPercent >= 70).length;
+      if (passCount === s.randomStats.length) greenHeroes.push({ name: h.heroName, id: h.heroId });
+      else if (passCount > 0) yellowHeroes.push({ name: h.heroName, id: h.heroId });
+      else redHeroes.push({ name: h.heroName, id: h.heroId });
+    } else {
+      if (getSlotRefined(s)) greenHeroes.push({ name: h.heroName, id: h.heroId });
+      else redHeroes.push({ name: h.heroName, id: h.heroId });
+    }
+  });
+  if (greenHeroes.length === 0 && yellowHeroes.length === 0 && redHeroes.length === 0) return '';
+  const heroSpan = (hero, color) => `<span class="refine-hero" style="color:${color};font-weight:600;cursor:pointer" onclick="openHeroGearModal(${hero.id}, ${slotPos})">${esc(hero.name)}</span>`;
+  const parts = [
+    [greenHeroes, 'var(--good)'],
+    [yellowHeroes, 'var(--warn)'],
+    [redHeroes, 'var(--danger)']
+  ].filter(([list]) => list.length > 0)
+   .map(([list, color]) => list.map(h => heroSpan(h, color)).join(', '));
+  return '<div class="refine-heroes">' + parts.join(' &mdash; ') + '</div>';
+}
+
+let currentField = 'all';
+
+function buildFieldPills() {
+  const fieldItems = BEAST_DATA.fields.map(f =>
+    `<div class="field-pill" data-field="${f.fid}">${f.displayName} <span class="count">(${f.beasts.length}/${f.holeCount})</span></div>`
+  ).join('');
+  document.getElementById('field-pills').innerHTML =
+    `<div class="field-pill active" data-field="all">All Fields <span class="count">(${BEAST_DATA.totalBeasts})</span></div>` + fieldItems;
+  document.querySelectorAll('#field-pills .field-pill').forEach(p => {
+    p.addEventListener('click', () => {
+      document.querySelectorAll('#field-pills .field-pill').forEach(x => x.classList.remove('active'));
+      p.classList.add('active');
+      currentField = p.dataset.field;
+      const slotBtn = document.querySelector('#beast-sort-btns .sort-btn[data-sort="slot"]');
+      if (currentField === 'all') {
+        slotBtn.style.display = 'none';
+        if (slotBtn.classList.contains('active')) {
+          slotBtn.classList.remove('active');
+          document.querySelector('#beast-sort-btns .sort-btn[data-sort="level"]').classList.add('active');
+        }
+      } else {
+        slotBtn.style.display = '';
+      }
+      renderAttrPanel();
+      renderBeastGrid();
+    });
+  });
+}
+
+function renderAttrPanel() {
+  const container = document.getElementById('attr-panel-container');
+  if (currentField === 'all') { container.innerHTML = ''; return; }
+  const field = BEAST_DATA.fields.find(f => f.fid === +currentField);
+  if (!field || !field.attributes || field.attributes.length <= 1 || (field.attributes.length === 1 && field.attributes[0].value === 'see rawAttrs')) {
+    container.innerHTML = '';
+    return;
+  }
+
+  let slotsHTML = '';
+  field.attributes.forEach(attr => {
+    if (attr.value === 'see rawAttrs') return;
+    const gearName = findGearInBuff(attr.buff);
+    const status = getRefineStatus(attr);
+    const isRefine = status === 'refine';
+
+    let statusHTML = '';
+    if (isRefine) {
+      statusHTML = '<div class="attr-status needs-refine">\u26A0 Needs 70% Refine</div>';
+      if (gearName) statusHTML += buildRefineHeroList(gearName);
+    } else {
+      statusHTML = '<div class="attr-status active">\u2713 Active</div>';
+    }
+
+    slotsHTML += `<div class="attr-slot"><div class="slot-num">Slot ${attr.slot}</div><div class="attr-buff">${esc(attr.buff)}</div><div class="attr-val">${esc(attr.value)}</div><div class="attr-condition">${esc(attr.condition)}</div>${statusHTML}</div>`;
+  });
+
+  container.innerHTML = `<div class="attr-panel open"><div class="attr-toggle" onclick="this.parentElement.classList.toggle('open')"><h3>Field Attributes &mdash; ${esc(field.displayName)}</h3><span class="chevron">&#9660;</span></div><div class="attr-body"><div class="attr-grid">${slotsHTML}</div></div></div>`;
+}
+
+function potentialColor(pct) {
+  if (pct >= 85) return 'var(--accent)';
+  if (pct >= 65) return 'var(--warn)';
+  return 'var(--danger)';
+}
+
+function buildBeastCard(beast, fieldName, showSlot) {
+  const emoji = elementIcon(beast.element);
+  const stars = starStr(beast.star);
+  const potPct = Math.round(beast.potential / 16000 * 100);
+  const potColor = potentialColor(potPct);
+
+  const baseHTML = (beast.baseBuffsResolved || [])
+    .map(b => `<div class="base-buff notranslate" translate="no"><span class="b-name">${esc(b.name)}</span><span class="b-val">${esc(b.value)}</span></div>`)
+    .join('');
+
+  const mb = beast.mainBuffResolved || {};
+  const qualityClass = beast.quality === 4 ? ' purple-quality' : '';
+  const fieldSpan = fieldName ? `<span style="color:var(--muted)">${esc(fieldName)}</span>` : '';
+  const slotBadge = showSlot && beast.hole ? `<span class="beast-slot-badge">#${beast.hole}</span>` : '';
+
+  return `<div class="beast-card${qualityClass}" data-element="${esc(beast.element)}" data-level="${beast.level}" data-star="${beast.star}" data-potential="${beast.potential}" data-name="${esc(beast.name)}">` +
+    `<div class="beast-head"><span class="beast-emoji">${emoji}</span><div class="beast-info"><div class="beast-name notranslate" translate="no">${slotBadge}${esc(beast.name)}</div><div class="beast-meta-row"><span class="beast-stars">${stars}</span><span class="beast-level">Lv.${beast.level}</span><span>${esc(beast.element)}</span>${fieldSpan}</div></div></div>` +
+    `<div class="main-buff notranslate" translate="no"><div class="buff-label">Main Buff</div><div class="buff-name">${esc(mb.name)}</div><div class="buff-val">${esc(mb.value)}</div></div>` +
+    baseHTML +
+    `<div class="potential-section"><div class="potential-label"><span>Potential</span><span style="color:${potColor}">${beast.potential.toLocaleString()} / 16,000</span></div><div class="potential-bar"><div class="potential-fill" style="width:${potPct}%;background:${potColor}"></div></div></div></div>`;
+}
+
+function getBeastSortBy() {
+  const active = document.querySelector('#beast-sort-btns .sort-btn.active');
+  return active ? active.dataset.sort : 'slot';
+}
+
+function renderBeastGrid() {
+  const activeElements = new Set();
+  document.querySelectorAll('#element-pills .pill.active').forEach(p => activeElements.add(p.dataset.element));
+  const sortBy = getBeastSortBy();
+
+  let beasts;
+  if (currentField === 'all') {
+    beasts = BEAST_DATA.fields.flatMap(f => f.beasts.map(b => ({ ...b, fieldName: f.displayName })));
+  } else {
+    const field = BEAST_DATA.fields.find(f => f.fid === +currentField);
+    beasts = field ? field.beasts.map(b => ({ ...b, fieldName: field.displayName })) : [];
+  }
+
+  if (!activeElements.has('all')) {
+    beasts = beasts.filter(b => activeElements.has(b.element));
+  }
+
+  beasts.sort((a, b) => {
+    if (sortBy === 'slot') return (a.hole || 0) - (b.hole || 0);
+    if (sortBy === 'level') return b.level - a.level || b.star - a.star;
+    if (sortBy === 'potential') return b.potential - a.potential;
+    if (sortBy === 'name') return a.name.localeCompare(b.name);
+    return 0;
+  });
+
+  const grid = document.getElementById('beast-grid');
+  if (beasts.length === 0) { grid.innerHTML = '<div class="no-results">No beasts match filters</div>'; return; }
+  const showSlot = currentField !== 'all';
+  grid.innerHTML = beasts.map(b => buildBeastCard(b, currentField === 'all' ? b.fieldName : null, showSlot)).join('');
+  if (typeof nudgeTranslate === 'function') setTimeout(nudgeTranslate, 200);
+}
+
+// Element pills
+const ELEMENT_COLORS = { Fire: '#f97583', Wind: '#56d364', Water: '#6cb6ff', Ground: '#e3b341' };
+
+function styleElementPill(pill, active) {
+  if (active) {
+    pill.classList.add('active');
+    const color = pill.dataset.element === 'all' ? 'var(--accent)' : ELEMENT_COLORS[pill.dataset.element];
+    pill.style.borderColor = color;
+    pill.style.color = color;
+  } else {
+    pill.classList.remove('active');
+    pill.style.borderColor = '';
+    pill.style.color = '';
+  }
+}
+
+document.querySelectorAll('#element-pills .pill').forEach(p => {
+  p.addEventListener('click', () => {
+    const allPill = document.querySelector('#element-pills .pill[data-element="all"]');
+    if (p.dataset.element === 'all') {
+      document.querySelectorAll('#element-pills .pill').forEach(x => styleElementPill(x, false));
+      styleElementPill(p, true);
+    } else {
+      styleElementPill(allPill, false);
+      const wasActive = p.classList.contains('active');
+      styleElementPill(p, !wasActive);
+      if (document.querySelectorAll('#element-pills .pill.active').length === 0) {
+        styleElementPill(allPill, true);
+      }
+    }
+    renderBeastGrid();
+  });
+});
+initSortBtns('beast-sort-btns', renderBeastGrid);
+
+// Init
+buildDashboard();
+renderGearTab();
+buildFieldPills();
+renderBeastGrid();
+
+// =================== GOOGLE TRANSLATE ===================
+const LANGUAGES = [
+  { code: 'en', flag: '\u{1F1FA}\u{1F1F8}', name: 'English' },
+  { code: 'es', flag: '\u{1F1EA}\u{1F1F8}', name: 'Espa\u00f1ol' },
+  { code: 'fr', flag: '\u{1F1EB}\u{1F1F7}', name: 'Fran\u00e7ais' },
+  { code: 'de', flag: '\u{1F1E9}\u{1F1EA}', name: 'Deutsch' },
+  { code: 'pt', flag: '\u{1F1E7}\u{1F1F7}', name: 'Portugu\u00eas' },
+  { code: 'it', flag: '\u{1F1EE}\u{1F1F9}', name: 'Italiano' },
+  { code: 'ru', flag: '\u{1F1F7}\u{1F1FA}', name: '\u0420\u0443\u0441\u0441\u043a\u0438\u0439' },
+  { code: 'ja', flag: '\u{1F1EF}\u{1F1F5}', name: '\u65E5\u672C\u8A9E' },
+  { code: 'ko', flag: '\u{1F1F0}\u{1F1F7}', name: '\uD55C\uAD6D\uC5B4' },
+  { code: 'zh-CN', flag: '\u{1F1E8}\u{1F1F3}', name: '\u4E2D\u6587' },
+  { code: 'ar', flag: '\u{1F1F8}\u{1F1E6}', name: '\u0627\u0644\u0639\u0631\u0628\u064A\u0629' },
+  { code: 'tr', flag: '\u{1F1F9}\u{1F1F7}', name: 'T\u00fcrk\u00e7e' },
+  { code: 'vi', flag: '\u{1F1FB}\u{1F1F3}', name: 'Ti\u1EBFng Vi\u1EC7t' },
+  { code: 'th', flag: '\u{1F1F9}\u{1F1ED}', name: '\u0E44\u0E17\u0E22' },
+  { code: 'hi', flag: '\u{1F1EE}\u{1F1F3}', name: '\u0939\u093F\u0928\u094D\u0926\u0940' },
+  { code: 'pl', flag: '\u{1F1F5}\u{1F1F1}', name: 'Polski' },
+  { code: 'uk', flag: '\u{1F1FA}\u{1F1E6}', name: '\u0423\u043a\u0440\u0430\u0457\u043d\u0441\u044c\u043a\u0430' },
+  { code: 'id', flag: '\u{1F1EE}\u{1F1E9}', name: 'Indonesia' }
+];
+
+function getLangData(code) {
+  const base = code.split('-')[0];
+  return LANGUAGES.find(l => l.code === code || l.code === base) || null;
+}
+
+function detectCurrentLang() {
+  const match = document.cookie.match(/googtrans=\/en\/([a-zA-Z-]{2,10})/);
+  if (match && match[1]) return match[1];
+  return 'en';
+}
+
+function updateLangBtn(code) {
+  const data = getLangData(code);
+  const flagEl = document.getElementById('langFlag');
+  const codeEl = document.getElementById('langCode');
+  if (data && flagEl) { flagEl.textContent = data.flag; codeEl.textContent = '/' + data.code; }
+  else if (flagEl) { flagEl.textContent = '\u{1F310}'; codeEl.textContent = '/' + code; }
+  document.querySelectorAll('.lang-option').forEach(o => o.classList.toggle('active', o.dataset.lang === code));
+}
+
+function applyLangToCombo(code, delay) {
+  let attempts = 0;
+  const poll = setInterval(() => {
+    const combo = document.querySelector('.goog-te-combo');
+    if (combo) { combo.value = code; combo.dispatchEvent(new Event('change')); clearInterval(poll); updateLangBtn(code); }
+    if (++attempts > 30) clearInterval(poll);
+  }, delay || 200);
+}
+
+function nudgeTranslate() {
+  const combo = document.querySelector('.goog-te-combo');
+  if (combo && combo.value && combo.value !== 'en') combo.dispatchEvent(new Event('change'));
+}
+
+function selectLanguage(code) {
+  if (code === 'en') {
+    sessionStorage.removeItem('pendingLang');
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax; Secure';
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.2864tw.com; SameSite=Lax; Secure';
+    closeLangModal();
+    location.reload();
+    return;
+  }
+  sessionStorage.setItem('pendingLang', code);
+  applyLangToCombo(code, 200);
+  closeLangModal();
+}
+
+const langModalEl = document.getElementById('langModal');
+function openLangModal() { if (langModalEl) langModalEl.classList.add('active'); }
+function closeLangModal() { if (langModalEl) langModalEl.classList.remove('active'); }
+
+// Build language grid
+(function() {
+  const grid = document.getElementById('langGrid');
+  if (!grid) return;
+  const detected = detectCurrentLang();
+  LANGUAGES.forEach(l => {
+    const btn = document.createElement('button');
+    btn.className = 'lang-option' + (l.code === detected ? ' active' : '');
+    btn.dataset.lang = l.code;
+    btn.innerHTML = `<span class="lang-flag">${l.flag}</span><span class="lang-name">${esc(l.name)}</span>`;
+    btn.addEventListener('click', () => selectLanguage(l.code));
+    grid.appendChild(btn);
+  });
+  updateLangBtn(detected);
+})();
+
+// Wire up events
+document.getElementById('langBtn').addEventListener('click', openLangModal);
+document.getElementById('langModalClose').addEventListener('click', closeLangModal);
+langModalEl.addEventListener('click', e => { if (e.target === langModalEl) closeLangModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && langModalEl.classList.contains('active')) { closeLangModal(); e.stopPropagation(); } });
+
+// Fallback if GT never loads
+setTimeout(() => {
+  if (!window._gtLoaded) {
+    const btn = document.getElementById('langBtn');
+    if (btn) { btn.style.opacity = '0.5'; btn.style.cursor = 'default'; btn.title = 'Translation unavailable'; }
+  }
+}, 15000);
+
+// GT init
+function googleTranslateElementInit() {
+  window._gtLoaded = true;
+  new google.translate.TranslateElement({ pageLanguage: 'en', autoDisplay: false }, 'google_translate_element');
+  const pending = sessionStorage.getItem('pendingLang');
+  if (pending) { sessionStorage.removeItem('pendingLang'); applyLangToCombo(pending, 250); }
+  else {
+    const langOverride = localStorage.getItem('langOverride');
+    if (langOverride && langOverride !== 'en') applyLangToCombo(langOverride, 250);
+    const detected = detectCurrentLang();
+    if (detected !== 'en') updateLangBtn(detected);
+  }
+}
+</script>
+<script src="https://translate.googleapis.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+
+</body>
+</html>

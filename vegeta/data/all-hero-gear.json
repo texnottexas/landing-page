@@ -1,0 +1,5574 @@
+{
+  "_definitions": {
+    "description": "Field definitions for Titan Gear extraction data from Top War (Server 2864)",
+    "fields": {
+      "heroId": "Unique hero ID in the game",
+      "heroName": "Display name of the hero (from rendered UI labels)",
+      "slots": "Object keyed by slot position (1-6). Each slot is one piece of Titan Gear.",
+      "slots.*.name": "Display name of the gear piece (e.g., Assault Pistol)",
+      "slots.*.equipId": "Gear template ID. Prefix = slot type (1001xx=Weapon, 1002xx=Armor, 1003xx=Accessory, 1004xx=Helmet, 1005xx=Device, 1006xx=Boots). Last 2 digits = quality (02=purple, 03=purple+, 04=gold)",
+      "slots.*.level": "Current enhancement level (max 20)",
+      "slots.*.scores": "Combat power contribution per branch: land (Army), navy (Navy), air (Air Force)",
+      "slots.*.infos": "Raw buff data array from game memory",
+      "slots.*.infos[].tid": "templateId - buff type identifier. Multiple IDs can map to same display name (different tiers/rolls). For type 2 (runes), format is {slotPos}0{runeCode}",
+      "slots.*.infos[].type": "1 = percentage stat buff, 2 = special effect/rune",
+      "slots.*.infos[].val": "For type 1: percentage value x100 (e.g., 330 = 3.3%). For type 2: always 0",
+      "slots.*.buffNames": "Display names for all buffs in order: base stat(s) first, then random stats. Read from rendered UI labels",
+      "slots.*.buffValues": "Display values parallel to buffNames (e.g., 30%, 3.3%)",
+      "slots.*.enhanceValues": "Enhancement bonus values for base stats (e.g., +21.58%). Config IDs: 930100 = All units Attack, 930000 = All units HP",
+      "slots.*.effectName": "Special effect / rune name (e.g., Magnetic Field, Magnetize)",
+      "slots.*.effectDesc": "Special effect description text (concatenated from RichText fragments)",
+      "slots.*.slot": "Slot position (1-6)",
+      "slots.*.randomStats": "Parsed random stats with max value comparison",
+      "slots.*.randomStats[].stat": "Buff name",
+      "slots.*.randomStats[].value": "Rolled value as displayed in game",
+      "slots.*.randomStats[].max": "Maximum possible value for this stat type",
+      "slots.*.randomStats[].rollPercent": "Percentage of max value achieved (0-100)",
+      "slots.*.refinement": "70% refinement check for random stats on this gear piece",
+      "slots.*.refinement.totalValue": "Sum of all random stat values on this gear",
+      "slots.*.refinement.totalMax": "Sum of max possible values for each random stat (varies by stat type)",
+      "slots.*.refinement.threshold70": "70% of totalMax \u2014 the activation threshold",
+      "slots.*.refinement.percent": "Actual percentage of totalMax achieved",
+      "slots.*.refinement.meetsThreshold": "true if totalValue >= threshold70",
+      "heroRefinementSummary": "Per-hero summary: how many gear slots meet the 70% refinement threshold",
+      "exclusiveSkill": "Hero exclusive skill: {skillId, level}. First skill in _extraSkill array. Unique per hero, levels 1-8."
+    },
+    "baseStats": {
+      "description": "Base stats are fixed per gear piece and improved via enhancement. Always All units Attack and/or All units HP.",
+      "examples": [
+        "All units Attack 30%",
+        "All units HP 20%",
+        "All units Attack 15% + All units HP 5%"
+      ]
+    },
+    "randomStatMaxValues": {
+      "description": "Each gear piece has up to 3 random stat rolls. Max values by category:",
+      "damage": {
+        "max": "6%",
+        "stats": [
+          "Army DMG Increase",
+          "Navy DMG Increase",
+          "Air Force DMG Increase",
+          "Army Decreased DMG Taken",
+          "Navy Decreased DMG Taken",
+          "Air Force Decreased DMG Taken"
+        ]
+      },
+      "attackAndHP": {
+        "max": "30%",
+        "stats": [
+          "Army Attack",
+          "Navy Attack",
+          "Air Force ATK",
+          "Army HP Boost",
+          "Navy HP Boost",
+          "Air Force HP Boost"
+        ]
+      },
+      "defense": {
+        "max": "3%",
+        "stats": [
+          "Increase DEF of Army",
+          "Increase DEF of Navy",
+          "Increase DEF of Air Force"
+        ]
+      }
+    },
+    "runeSystem": {
+      "description": "Special effects (runes) on gear slots. Odd slots (1,3,5) = active runes, even slots (2,4,6) = passive runes.",
+      "starGradeSystem": "Each star has 3 sub-levels. StarLevel uses 0/0.5/1/1.5/2/2.5/3 notation. 1\u2605 runes max at 1.0, 3\u2605 runes max at 3.0. Gear without a rune has no starLevel field.",
+      "slot1": {
+        "gearName": "Assault Pistol",
+        "runeCount": 7,
+        "runes": {
+          "Artillery Storm": {
+            "maxStars": 3,
+            "type": "attackEnhancement",
+            "starGradeValues": [
+              4,
+              7,
+              11,
+              15,
+              20,
+              25,
+              30
+            ],
+            "valueUnit": "%",
+            "description": "If the hero equipped with this gear has the Attack Enhancement effect, then this effect is boosted by {value}%.",
+            "pairedWith": "Steel Torrent",
+            "exclusive": true
+          },
+          "All-Out Surge": {
+            "maxStars": 3,
+            "type": "skillRetrigger",
+            "starGradeValues": [
+              15,
+              18,
+              22,
+              27,
+              33,
+              40,
+              50
+            ],
+            "valueUnit": "%",
+            "description": "In the first round of battle, after the hero equipped with this gear triggers the active skill, the hero will trigger it an additional time. The damage of the re-triggered skill will be {value}% of the initial trigger.",
+            "pairedWith": "Unbreakable",
+            "exclusive": true
+          },
+          "Tactical Awareness": {
+            "maxStars": 1,
+            "type": "damageIncrease",
+            "starGradeValues": [
+              10,
+              15,
+              20
+            ],
+            "valueUnit": "%",
+            "description": "After equipping this gear, all your units gain a {value}% Damage Increase attribute.",
+            "pairedWith": "Stealth Hologram"
+          },
+          "Searing": {
+            "maxStars": 1,
+            "type": "statusApplier",
+            "statusEffect": "Ignition",
+            "starGradeValues": [
+              {
+                "v": 15,
+                "t": 1
+              },
+              {
+                "v": 30,
+                "t": 1
+              },
+              {
+                "v": 30,
+                "t": 2
+              }
+            ],
+            "description": "Adds 1 stack of {value}% Ignition effect to {targets} random targets.",
+            "pairedWith": "Flammable"
+          },
+          "Armor-Breaking": {
+            "maxStars": 1,
+            "type": "statusApplier",
+            "statusEffect": "Vulnerable",
+            "starGradeValues": [
+              {
+                "v": 15,
+                "t": 1
+              },
+              {
+                "v": 30,
+                "t": 1
+              },
+              {
+                "v": 30,
+                "t": 2
+              }
+            ],
+            "description": "Adds 1 stack of {value}% Vulnerable effect to {targets} random targets.",
+            "pairedWith": "Heavy Blow"
+          },
+          "Impact": {
+            "maxStars": 1,
+            "type": "statusApplier",
+            "statusEffect": "Debilitation",
+            "starGradeValues": [
+              {
+                "v": 15,
+                "t": 1
+              },
+              {
+                "v": 30,
+                "t": 1
+              },
+              {
+                "v": 30,
+                "t": 2
+              }
+            ],
+            "description": "Adds 1 stack of {value}% Debilitation effect to {targets} random targets.",
+            "pairedWith": "Debilitate"
+          },
+          "Magnetic Field": {
+            "maxStars": 1,
+            "type": "statusApplier",
+            "statusEffect": "Magnetic Pulse",
+            "starGradeValues": [
+              {
+                "v": 15,
+                "t": 1
+              },
+              {
+                "v": 30,
+                "t": 1
+              },
+              {
+                "v": 30,
+                "t": 2
+              }
+            ],
+            "description": "Adds 1 stack of {value}% Magnetic Pulse effect to {targets} random targets.",
+            "pairedWith": "Magnetize"
+          }
+        }
+      },
+      "slot2": {
+        "gearName": "Tactical Backarmor",
+        "runeCount": 7,
+        "runes": {
+          "Steel Torrent": {
+            "maxStars": 3,
+            "type": "hpBoost",
+            "starGradeValues": [
+              4,
+              7,
+              11,
+              15,
+              20,
+              25,
+              30
+            ],
+            "valueUnit": "%",
+            "description": "If the hero equipped with this gear has the HP Boost effect, then this effect is boosted by {value}%.",
+            "pairedWith": "Artillery Storm",
+            "exclusive": true
+          },
+          "Unbreakable": {
+            "maxStars": 3,
+            "type": "indestructibleExtender",
+            "starGradeValues": [
+              15,
+              18,
+              22,
+              27,
+              33,
+              40,
+              50
+            ],
+            "valueUnit": "%",
+            "description": "Indestructible effect extended by 1 round, additional round has {value}% of the original effect.",
+            "pairedWith": "All-Out Surge",
+            "exclusive": true
+          },
+          "Stealth Hologram": {
+            "maxStars": 1,
+            "type": "decreasedDamageTaken",
+            "starGradeValues": [
+              10,
+              15,
+              20
+            ],
+            "valueUnit": "%",
+            "description": "After equipping this gear, all your units gain a {value}% Decreased Damage Taken attribute.",
+            "pairedWith": "Tactical Awareness"
+          },
+          "Flammable": {
+            "maxStars": 1,
+            "type": "statusAmplifier",
+            "statusEffect": "Ignition",
+            "starGradeValues": [
+              15,
+              22,
+              30
+            ],
+            "valueUnit": "%",
+            "description": "If the hero has the Ignition effect, increased by {value}%.",
+            "pairedWith": "Searing"
+          },
+          "Heavy Blow": {
+            "maxStars": 1,
+            "type": "statusAmplifier",
+            "statusEffect": "Vulnerable",
+            "starGradeValues": [
+              15,
+              22,
+              30
+            ],
+            "valueUnit": "%",
+            "description": "If the hero has the Vulnerable effect, increased by {value}%.",
+            "pairedWith": "Armor-Breaking"
+          },
+          "Debilitate": {
+            "maxStars": 1,
+            "type": "statusAmplifier",
+            "statusEffect": "Debilitation",
+            "starGradeValues": [
+              15,
+              22,
+              30
+            ],
+            "valueUnit": "%",
+            "description": "If the hero has the Debilitation effect, increased by {value}%.",
+            "pairedWith": "Impact"
+          },
+          "Magnetize": {
+            "maxStars": 1,
+            "type": "statusAmplifier",
+            "statusEffect": "Magnetic Pulse",
+            "starGradeValues": [
+              15,
+              22,
+              30
+            ],
+            "valueUnit": "%",
+            "description": "If the hero has the Magnetic Pulse effect, increased by {value}%.",
+            "pairedWith": "Magnetic Field"
+          }
+        }
+      },
+      "slots3and5": {
+        "gearNames": [
+          "Optical Add-on",
+          "Portable GPS"
+        ],
+        "runeCount": 5,
+        "note": "Tactical Awareness upgrades to 3\u2605 here (vs 1\u2605 on Slot 1)",
+        "runes": {
+          "Tactical Awareness": {
+            "maxStars": 3,
+            "type": "damageIncrease",
+            "starGradeValues": [
+              10,
+              15,
+              20,
+              25,
+              30,
+              35,
+              40
+            ],
+            "valueUnit": "%",
+            "pairedWith": "Stealth Hologram"
+          },
+          "Searing": {
+            "maxStars": 1,
+            "statusEffect": "Ignition",
+            "starGradeValues": [
+              {
+                "v": 15,
+                "t": 1
+              },
+              {
+                "v": 30,
+                "t": 1
+              },
+              {
+                "v": 30,
+                "t": 2
+              }
+            ],
+            "pairedWith": "Flammable"
+          },
+          "Armor-Breaking": {
+            "maxStars": 1,
+            "statusEffect": "Vulnerable",
+            "starGradeValues": [
+              {
+                "v": 15,
+                "t": 1
+              },
+              {
+                "v": 30,
+                "t": 1
+              },
+              {
+                "v": 30,
+                "t": 2
+              }
+            ],
+            "pairedWith": "Heavy Blow"
+          },
+          "Impact": {
+            "maxStars": 1,
+            "statusEffect": "Debilitation",
+            "starGradeValues": [
+              {
+                "v": 15,
+                "t": 1
+              },
+              {
+                "v": 30,
+                "t": 1
+              },
+              {
+                "v": 30,
+                "t": 2
+              }
+            ],
+            "pairedWith": "Debilitate"
+          },
+          "Magnetic Field": {
+            "maxStars": 1,
+            "statusEffect": "Magnetic Pulse",
+            "starGradeValues": [
+              {
+                "v": 15,
+                "t": 1
+              },
+              {
+                "v": 30,
+                "t": 1
+              },
+              {
+                "v": 30,
+                "t": 2
+              }
+            ],
+            "pairedWith": "Magnetize"
+          }
+        }
+      },
+      "slots4and6": {
+        "gearNames": [
+          "Raysor Headset",
+          "Power Boots"
+        ],
+        "runeCount": 5,
+        "note": "Stealth Hologram upgrades to 3\u2605 here (vs 1\u2605 on Slot 2)",
+        "runes": {
+          "Stealth Hologram": {
+            "maxStars": 3,
+            "type": "decreasedDamageTaken",
+            "starGradeValues": [
+              10,
+              15,
+              20,
+              25,
+              30,
+              35,
+              40
+            ],
+            "valueUnit": "%",
+            "pairedWith": "Tactical Awareness"
+          },
+          "Flammable": {
+            "maxStars": 1,
+            "statusEffect": "Ignition",
+            "starGradeValues": [
+              15,
+              22,
+              30
+            ],
+            "valueUnit": "%",
+            "pairedWith": "Searing"
+          },
+          "Heavy Blow": {
+            "maxStars": 1,
+            "statusEffect": "Vulnerable",
+            "starGradeValues": [
+              15,
+              22,
+              30
+            ],
+            "valueUnit": "%",
+            "pairedWith": "Armor-Breaking"
+          },
+          "Debilitate": {
+            "maxStars": 1,
+            "statusEffect": "Debilitation",
+            "starGradeValues": [
+              15,
+              22,
+              30
+            ],
+            "valueUnit": "%",
+            "pairedWith": "Impact"
+          },
+          "Magnetize": {
+            "maxStars": 1,
+            "statusEffect": "Magnetic Pulse",
+            "starGradeValues": [
+              15,
+              22,
+              30
+            ],
+            "valueUnit": "%",
+            "pairedWith": "Magnetic Field"
+          }
+        }
+      },
+      "runeIcons": {
+        "Steel Torrent": "https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/steel-torrent.png",
+        "Artillery Storm": "https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/artillery-storm.png",
+        "Unbreakable": "https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/unbreakable.png",
+        "All-Out Surge": "https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/all-out-surge.png",
+        "Stealth Hologram": "https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/stealth-hologram.png",
+        "Tactical Awareness": "https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/tactical-awareness.png",
+        "Searing": "https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/searing.png",
+        "Armor-Breaking": "https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/armor-breaking.png",
+        "Impact": "https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/impact.png",
+        "Magnetic Field": "https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/magnetic-field.png",
+        "Flammable": "https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/flammable.png",
+        "Heavy Blow": "https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/heavy-blow.png",
+        "Debilitate": "https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/debilitate.png",
+        "Magnetize": "https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/magnetize.png"
+      }
+    },
+    "slotTypes": {
+      "1": "Weapon (e.g., Assault Pistol)",
+      "2": "Armor (e.g., Tactical Backarmor)",
+      "3": "Accessory (e.g., Optical Add-on)",
+      "4": "Helmet (e.g., Raysor Headset)",
+      "5": "Device (e.g., Portable GPS)",
+      "6": "Boots (e.g., Power Boots)"
+    },
+    "refinementSystem": {
+      "description": "Certain buffs only activate when the combined random stat progress on a single gear piece reaches 70% of the total possible value. The threshold varies per gear because random stat types can be mixed.",
+      "examples": [
+        "3 damage stats: max = 3 x 6% = 18%, threshold = 12.6%",
+        "3 DEF stats: max = 3 x 3% = 9%, threshold = 6.3%",
+        "2 damage + 1 ATK: max = 6 + 6 + 30 = 42%, threshold = 29.4%"
+      ]
+    }
+  },
+  "extractedAt": "2026-03-23",
+  "heroes": [
+    {
+      "heroId": 235,
+      "heroName": "Jill Valentine",
+      "slots": {
+        "1": {
+          "slot": 1,
+          "equipId": 100104,
+          "level": 20,
+          "scores": {
+            "land": 34000,
+            "navy": 47188,
+            "air": 34000
+          },
+          "name": "Assault Pistol",
+          "buffNames": [
+            "All units Attack",
+            "Navy DMG Increase",
+            "Navy DMG Increase",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "30%",
+            "3.3%",
+            "4.56%",
+            "1.56%"
+          ],
+          "effectName": "Tactical Awareness",
+          "effectDesc": "After equipping this  gear, all your units  gain a  20% Damage  Increase attribute.",
+          "infos": [
+            {
+              "tid": 4,
+              "type": 1,
+              "val": 330
+            },
+            {
+              "tid": 6,
+              "type": 1,
+              "val": 456
+            },
+            {
+              "tid": 5,
+              "type": 1,
+              "val": 156
+            },
+            {
+              "tid": 10203,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3.3%",
+              "max": "6.0%",
+              "rollPercent": 55
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "4.56%",
+              "max": "6.0%",
+              "rollPercent": 76
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "1.56%",
+              "max": "6.0%",
+              "rollPercent": 26
+            }
+          ],
+          "refinement": {
+            "totalValue": 9.42,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 52.33,
+            "meetsThreshold": false
+          },
+          "starLevel": 3
+        },
+        "2": {
+          "slot": 2,
+          "equipId": 100204,
+          "level": 20,
+          "scores": {
+            "land": 34000,
+            "navy": 46012,
+            "air": 34000
+          },
+          "name": "Tactical Backarmor",
+          "buffNames": [
+            "All units HP",
+            "Increase DEF of Navy",
+            "Increase DEF of Navy",
+            "Increase DEF of Navy"
+          ],
+          "buffValues": [
+            "30%",
+            "1.74%",
+            "1.05%",
+            "1.5%"
+          ],
+          "effectName": "Stealth Hologram",
+          "effectDesc": "After equipping this  gear, all your units  gain a  20% Decreased Damage Taken  attribute.",
+          "infos": [
+            {
+              "tid": 86,
+              "type": 1,
+              "val": 174
+            },
+            {
+              "tid": 87,
+              "type": 1,
+              "val": 105
+            },
+            {
+              "tid": 86,
+              "type": 1,
+              "val": 150
+            },
+            {
+              "tid": 20203,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Increase DEF of Navy",
+              "value": "1.74%",
+              "max": "3.0%",
+              "rollPercent": 58
+            },
+            {
+              "stat": "Increase DEF of Navy",
+              "value": "1.05%",
+              "max": "3.0%",
+              "rollPercent": 35
+            },
+            {
+              "stat": "Increase DEF of Navy",
+              "value": "1.5%",
+              "max": "3.0%",
+              "rollPercent": 50
+            }
+          ],
+          "refinement": {
+            "totalValue": 4.29,
+            "totalMax": 9,
+            "threshold70": 6.3,
+            "percent": 47.67,
+            "meetsThreshold": false
+          },
+          "starLevel": 3
+        },
+        "3": {
+          "slot": 3,
+          "equipId": 100304,
+          "level": 20,
+          "scores": {
+            "land": 34000,
+            "navy": 48280,
+            "air": 34000
+          },
+          "name": "Optical Add-on",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Navy DMG Increase",
+            "Navy DMG Increase",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "15%",
+            "5%",
+            "4.14%",
+            "2.04%",
+            "4.02%"
+          ],
+          "effectName": "Tactical Awareness",
+          "effectDesc": "After equipping this  gear, all your units  gain a  20% Damage  Increase attribute.",
+          "infos": [
+            {
+              "tid": 141,
+              "type": 1,
+              "val": 414
+            },
+            {
+              "tid": 139,
+              "type": 1,
+              "val": 204
+            },
+            {
+              "tid": 141,
+              "type": 1,
+              "val": 402
+            },
+            {
+              "tid": 30202,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy DMG Increase",
+              "value": "4.14%",
+              "max": "6.0%",
+              "rollPercent": 69
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "2.04%",
+              "max": "6.0%",
+              "rollPercent": 34
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "4.02%",
+              "max": "6.0%",
+              "rollPercent": 67
+            }
+          ],
+          "refinement": {
+            "totalValue": 10.2,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 56.67,
+            "meetsThreshold": false
+          },
+          "starLevel": 3
+        },
+        "4": {
+          "slot": 4,
+          "equipId": 100404,
+          "level": 20,
+          "scores": {
+            "land": 27000,
+            "navy": 41616,
+            "air": 27000
+          },
+          "name": "Raysor Headset",
+          "buffNames": [
+            "All units HP",
+            "Navy Decreased DMG Taken",
+            "Navy Decreased DMG Taken",
+            "Navy Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "20%",
+            "2.76%",
+            "2.58%",
+            "5.1%"
+          ],
+          "effectName": "Debilitate",
+          "effectDesc": "If the hero equipped  with this gear has theDebilitation effect,  then this effect is  increased by  22%.",
+          "infos": [
+            {
+              "tid": 195,
+              "type": 1,
+              "val": 276
+            },
+            {
+              "tid": 195,
+              "type": 1,
+              "val": 258
+            },
+            {
+              "tid": 193,
+              "type": 1,
+              "val": 510
+            },
+            {
+              "tid": 402051,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "2.76%",
+              "max": "6.0%",
+              "rollPercent": 46
+            },
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "2.58%",
+              "max": "6.0%",
+              "rollPercent": 43
+            },
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "5.1%",
+              "max": "6.0%",
+              "rollPercent": 85
+            }
+          ],
+          "refinement": {
+            "totalValue": 10.44,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 58.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "5": {
+          "slot": 5,
+          "equipId": 100504,
+          "level": 20,
+          "scores": {
+            "land": 34000,
+            "navy": 48952,
+            "air": 34000
+          },
+          "name": "Portable GPS",
+          "buffNames": [
+            "All units Attack",
+            "Navy DMG Increase",
+            "Navy DMG Increase",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "20%",
+            "3.84%",
+            "4.86%",
+            "1.98%"
+          ],
+          "effectName": "Tactical Awareness",
+          "effectDesc": "After equipping this  gear, all your units  gain a  20% Damage  Increase attribute.",
+          "infos": [
+            {
+              "tid": 96,
+              "type": 1,
+              "val": 384
+            },
+            {
+              "tid": 95,
+              "type": 1,
+              "val": 486
+            },
+            {
+              "tid": 95,
+              "type": 1,
+              "val": 198
+            },
+            {
+              "tid": 50202,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3.84%",
+              "max": "6.0%",
+              "rollPercent": 64
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "4.86%",
+              "max": "6.0%",
+              "rollPercent": 81
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "1.98%",
+              "max": "6.0%",
+              "rollPercent": 33
+            }
+          ],
+          "refinement": {
+            "totalValue": 10.68,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 59.33,
+            "meetsThreshold": false
+          },
+          "starLevel": 3
+        },
+        "6": {
+          "slot": 6,
+          "equipId": 100604,
+          "level": 20,
+          "scores": {
+            "land": 41000,
+            "navy": 57716,
+            "air": 41000
+          },
+          "name": "Power Boots",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Navy Decreased DMG Taken",
+            "Navy Decreased DMG Taken",
+            "Navy Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "5%",
+            "15%",
+            "3.06%",
+            "4.74%",
+            "4.14%"
+          ],
+          "effectName": "Stealth Hologram",
+          "effectDesc": "After equipping this  gear, all your units  gain a  25% Decreased Damage Taken  attribute.",
+          "infos": [
+            {
+              "tid": 239,
+              "type": 1,
+              "val": 306
+            },
+            {
+              "tid": 239,
+              "type": 1,
+              "val": 474
+            },
+            {
+              "tid": 240,
+              "type": 1,
+              "val": 414
+            },
+            {
+              "tid": 602013,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "3.06%",
+              "max": "6.0%",
+              "rollPercent": 51
+            },
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "4.74%",
+              "max": "6.0%",
+              "rollPercent": 79
+            },
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "4.14%",
+              "max": "6.0%",
+              "rollPercent": 69
+            }
+          ],
+          "refinement": {
+            "totalValue": 11.94,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 66.33,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        }
+      },
+      "exclusiveSkill": {
+        "skillId": 20748,
+        "level": 5
+      },
+      "refinementSummary": {
+        "totalGearSlots": 6,
+        "refined": 0,
+        "unrefined": 6,
+        "unrefinedGear": [
+          {
+            "slot": 1,
+            "name": "Assault Pistol",
+            "totalValue": 9.42,
+            "threshold70": 12.6,
+            "percent": 52.33,
+            "deficit": 3.18
+          },
+          {
+            "slot": 2,
+            "name": "Tactical Backarmor",
+            "totalValue": 4.29,
+            "threshold70": 6.3,
+            "percent": 47.67,
+            "deficit": 2.01
+          },
+          {
+            "slot": 3,
+            "name": "Optical Add-on",
+            "totalValue": 10.2,
+            "threshold70": 12.6,
+            "percent": 56.67,
+            "deficit": 2.4
+          },
+          {
+            "slot": 4,
+            "name": "Raysor Headset",
+            "totalValue": 10.44,
+            "threshold70": 12.6,
+            "percent": 58.0,
+            "deficit": 2.16
+          },
+          {
+            "slot": 5,
+            "name": "Portable GPS",
+            "totalValue": 10.68,
+            "threshold70": 12.6,
+            "percent": 59.33,
+            "deficit": 1.92
+          },
+          {
+            "slot": 6,
+            "name": "Power Boots",
+            "totalValue": 11.94,
+            "threshold70": 12.6,
+            "percent": 66.33,
+            "deficit": 0.66
+          }
+        ]
+      }
+    },
+    {
+      "heroId": 234,
+      "heroName": "Shen Suyu",
+      "slots": {
+        "1": {
+          "slot": 1,
+          "equipId": 100104,
+          "level": 20,
+          "scores": {
+            "land": 34000,
+            "navy": 46012,
+            "air": 34000
+          },
+          "name": "Assault Pistol",
+          "buffNames": [
+            "All units Attack",
+            "Navy DMG Increase",
+            "Navy DMG Increase",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "30%",
+            "3.42%",
+            "3.24%",
+            "1.92%"
+          ],
+          "effectName": "Armor-Breaking",
+          "effectDesc": "If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  30%  Vulnerable effect to  2 random targets.",
+          "infos": [
+            {
+              "tid": 6,
+              "type": 1,
+              "val": 342
+            },
+            {
+              "tid": 4,
+              "type": 1,
+              "val": 324
+            },
+            {
+              "tid": 5,
+              "type": 1,
+              "val": 192
+            },
+            {
+              "tid": 10205,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3.42%",
+              "max": "6.0%",
+              "rollPercent": 57
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3.24%",
+              "max": "6.0%",
+              "rollPercent": 54
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "1.92%",
+              "max": "6.0%",
+              "rollPercent": 32
+            }
+          ],
+          "refinement": {
+            "totalValue": 8.58,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 47.67,
+            "meetsThreshold": false
+          },
+          "starLevel": 3
+        },
+        "2": {
+          "slot": 2,
+          "equipId": 100204,
+          "level": 20,
+          "scores": {
+            "land": 34000,
+            "navy": 48112,
+            "air": 34000
+          },
+          "name": "Tactical Backarmor",
+          "buffNames": [
+            "All units HP",
+            "Increase DEF of Navy",
+            "Increase DEF of Navy",
+            "Increase DEF of Navy"
+          ],
+          "buffValues": [
+            "30%",
+            "2.22%",
+            "0.93%",
+            "1.89%"
+          ],
+          "effectName": "Stealth Hologram",
+          "effectDesc": "After equipping this  gear, all your units  gain a  20% Decreased Damage Taken  attribute.",
+          "infos": [
+            {
+              "tid": 86,
+              "type": 1,
+              "val": 222
+            },
+            {
+              "tid": 87,
+              "type": 1,
+              "val": 93
+            },
+            {
+              "tid": 87,
+              "type": 1,
+              "val": 189
+            },
+            {
+              "tid": 20203,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Increase DEF of Navy",
+              "value": "2.22%",
+              "max": "3.0%",
+              "rollPercent": 74
+            },
+            {
+              "stat": "Increase DEF of Navy",
+              "value": "0.93%",
+              "max": "3.0%",
+              "rollPercent": 31
+            },
+            {
+              "stat": "Increase DEF of Navy",
+              "value": "1.89%",
+              "max": "3.0%",
+              "rollPercent": 63
+            }
+          ],
+          "refinement": {
+            "totalValue": 5.04,
+            "totalMax": 9,
+            "threshold70": 6.3,
+            "percent": 56.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 3
+        },
+        "3": {
+          "slot": 3,
+          "equipId": 100304,
+          "level": 20,
+          "scores": {
+            "land": 34000,
+            "navy": 47608,
+            "air": 34000
+          },
+          "name": "Optical Add-on",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Navy DMG Increase",
+            "Navy DMG Increase",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "15%",
+            "5%",
+            "3.06%",
+            "3.42%",
+            "3.24%"
+          ],
+          "effectName": "Armor-Breaking",
+          "effectDesc": "If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  30%  Vulnerable effect to  2 random targets.",
+          "infos": [
+            {
+              "tid": 139,
+              "type": 1,
+              "val": 306
+            },
+            {
+              "tid": 140,
+              "type": 1,
+              "val": 342
+            },
+            {
+              "tid": 139,
+              "type": 1,
+              "val": 324
+            },
+            {
+              "tid": 30204,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3.06%",
+              "max": "6.0%",
+              "rollPercent": 51
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3.42%",
+              "max": "6.0%",
+              "rollPercent": 57
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3.24%",
+              "max": "6.0%",
+              "rollPercent": 54
+            }
+          ],
+          "refinement": {
+            "totalValue": 9.72,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 54.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 3
+        },
+        "4": {
+          "slot": 4,
+          "equipId": 100404,
+          "level": 20,
+          "scores": {
+            "land": 20000,
+            "navy": 35120,
+            "air": 20000
+          },
+          "name": "Raysor Headset",
+          "buffNames": [
+            "All units HP",
+            "Navy Decreased DMG Taken",
+            "Navy Decreased DMG Taken",
+            "Navy Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "20%",
+            "3.84%",
+            "3.54%",
+            "3.42%"
+          ],
+          "effectName": "Heavy Blow",
+          "effectDesc": "If the hero equipped  with this gear has theVulnerable effect,  then this effect is  increased by  15%.",
+          "infos": [
+            {
+              "tid": 194,
+              "type": 1,
+              "val": 384
+            },
+            {
+              "tid": 194,
+              "type": 1,
+              "val": 354
+            },
+            {
+              "tid": 195,
+              "type": 1,
+              "val": 342
+            },
+            {
+              "tid": 40208,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "3.84%",
+              "max": "6.0%",
+              "rollPercent": 64
+            },
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "3.54%",
+              "max": "6.0%",
+              "rollPercent": 59
+            },
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "3.42%",
+              "max": "6.0%",
+              "rollPercent": 57
+            }
+          ],
+          "refinement": {
+            "totalValue": 10.8,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 60.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "5": {
+          "slot": 5,
+          "equipId": 100504,
+          "level": 20,
+          "scores": {
+            "land": 27000,
+            "navy": 43464,
+            "air": 27000
+          },
+          "name": "Portable GPS",
+          "buffNames": [
+            "All units Attack",
+            "Navy DMG Increase",
+            "Navy DMG Increase",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "20%",
+            "2.28%",
+            "4.74%",
+            "4.74%"
+          ],
+          "effectName": "Armor-Breaking",
+          "effectDesc": "If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  30%  Vulnerable effect to  1 random targets.",
+          "infos": [
+            {
+              "tid": 96,
+              "type": 1,
+              "val": 228
+            },
+            {
+              "tid": 95,
+              "type": 1,
+              "val": 474
+            },
+            {
+              "tid": 94,
+              "type": 1,
+              "val": 474
+            },
+            {
+              "tid": 502041,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy DMG Increase",
+              "value": "2.28%",
+              "max": "6.0%",
+              "rollPercent": 38
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "4.74%",
+              "max": "6.0%",
+              "rollPercent": 79
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "4.74%",
+              "max": "6.0%",
+              "rollPercent": 79
+            }
+          ],
+          "refinement": {
+            "totalValue": 11.76,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 65.33,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "6": {
+          "slot": 6,
+          "equipId": 100604,
+          "level": 20,
+          "scores": {
+            "land": 20000,
+            "navy": 34532,
+            "air": 20000
+          },
+          "name": "Power Boots",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Navy Decreased DMG Taken",
+            "Navy Decreased DMG Taken",
+            "Navy Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "5%",
+            "15%",
+            "3.06%",
+            "3.24%",
+            "4.08%"
+          ],
+          "effectName": "Heavy Blow",
+          "effectDesc": "If the hero equipped  with this gear has theVulnerable effect,  then this effect is  increased by  15%.",
+          "infos": [
+            {
+              "tid": 238,
+              "type": 1,
+              "val": 306
+            },
+            {
+              "tid": 240,
+              "type": 1,
+              "val": 324
+            },
+            {
+              "tid": 239,
+              "type": 1,
+              "val": 408
+            },
+            {
+              "tid": 60208,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "3.06%",
+              "max": "6.0%",
+              "rollPercent": 51
+            },
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "3.24%",
+              "max": "6.0%",
+              "rollPercent": 54
+            },
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "4.08%",
+              "max": "6.0%",
+              "rollPercent": 68
+            }
+          ],
+          "refinement": {
+            "totalValue": 10.38,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 57.67,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        }
+      },
+      "exclusiveSkill": {
+        "skillId": 20745,
+        "level": 5
+      },
+      "refinementSummary": {
+        "totalGearSlots": 6,
+        "refined": 0,
+        "unrefined": 6,
+        "unrefinedGear": [
+          {
+            "slot": 1,
+            "name": "Assault Pistol",
+            "totalValue": 8.58,
+            "threshold70": 12.6,
+            "percent": 47.67,
+            "deficit": 4.02
+          },
+          {
+            "slot": 2,
+            "name": "Tactical Backarmor",
+            "totalValue": 5.04,
+            "threshold70": 6.3,
+            "percent": 56.0,
+            "deficit": 1.26
+          },
+          {
+            "slot": 3,
+            "name": "Optical Add-on",
+            "totalValue": 9.72,
+            "threshold70": 12.6,
+            "percent": 54.0,
+            "deficit": 2.88
+          },
+          {
+            "slot": 4,
+            "name": "Raysor Headset",
+            "totalValue": 10.8,
+            "threshold70": 12.6,
+            "percent": 60.0,
+            "deficit": 1.8
+          },
+          {
+            "slot": 5,
+            "name": "Portable GPS",
+            "totalValue": 11.76,
+            "threshold70": 12.6,
+            "percent": 65.33,
+            "deficit": 0.84
+          },
+          {
+            "slot": 6,
+            "name": "Power Boots",
+            "totalValue": 10.38,
+            "threshold70": 12.6,
+            "percent": 57.67,
+            "deficit": 2.22
+          }
+        ]
+      }
+    },
+    {
+      "heroId": 237,
+      "heroName": "Alvida",
+      "slots": {
+        "1": {
+          "slot": 1,
+          "equipId": 100104,
+          "level": 20,
+          "scores": {
+            "land": 20000,
+            "navy": 33692,
+            "air": 20000
+          },
+          "name": "Assault Pistol",
+          "buffNames": [
+            "All units Attack",
+            "Navy DMG Increase",
+            "Navy DMG Increase",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "30%",
+            "4.44%",
+            "3.78%",
+            "1.56%"
+          ],
+          "effectName": "All-Out Surge",
+          "effectDesc": "In the first round of  battle, after the hero  equipped with this  gear triggers the  active skill, the hero  will trigger it an  additional time. The  damage of the re-triggered skill will be15% of the initial  trigger.",
+          "infos": [
+            {
+              "tid": 5,
+              "type": 1,
+              "val": 444
+            },
+            {
+              "tid": 6,
+              "type": 1,
+              "val": 378
+            },
+            {
+              "tid": 6,
+              "type": 1,
+              "val": 156
+            },
+            {
+              "tid": 102020,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy DMG Increase",
+              "value": "4.44%",
+              "max": "6.0%",
+              "rollPercent": 74
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3.78%",
+              "max": "6.0%",
+              "rollPercent": 63
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "1.56%",
+              "max": "6.0%",
+              "rollPercent": 26
+            }
+          ],
+          "refinement": {
+            "totalValue": 9.78,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 54.33,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "2": {
+          "slot": 2,
+          "equipId": 100204,
+          "level": 20,
+          "scores": {
+            "land": 34000,
+            "navy": 47104,
+            "air": 34000
+          },
+          "name": "Tactical Backarmor",
+          "buffNames": [
+            "All units HP",
+            "Increase DEF of Navy",
+            "Increase DEF of Navy",
+            "Increase DEF of Navy"
+          ],
+          "buffValues": [
+            "30%",
+            "1.71%",
+            "1.59%",
+            "1.38%"
+          ],
+          "effectName": "Stealth Hologram",
+          "effectDesc": "After equipping this  gear, all your units  gain a  20% Decreased Damage Taken  attribute.",
+          "infos": [
+            {
+              "tid": 87,
+              "type": 1,
+              "val": 171
+            },
+            {
+              "tid": 86,
+              "type": 1,
+              "val": 159
+            },
+            {
+              "tid": 87,
+              "type": 1,
+              "val": 138
+            },
+            {
+              "tid": 20203,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Increase DEF of Navy",
+              "value": "1.71%",
+              "max": "3.0%",
+              "rollPercent": 57
+            },
+            {
+              "stat": "Increase DEF of Navy",
+              "value": "1.59%",
+              "max": "3.0%",
+              "rollPercent": 53
+            },
+            {
+              "stat": "Increase DEF of Navy",
+              "value": "1.38%",
+              "max": "3.0%",
+              "rollPercent": 46
+            }
+          ],
+          "refinement": {
+            "totalValue": 4.68,
+            "totalMax": 9,
+            "threshold70": 6.3,
+            "percent": 52.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 3
+        },
+        "3": {
+          "slot": 3,
+          "equipId": 100304,
+          "level": 20,
+          "scores": {
+            "land": 20000,
+            "navy": 34700,
+            "air": 20000
+          },
+          "name": "Optical Add-on",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Navy DMG Increase",
+            "Navy DMG Increase",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "15%",
+            "5%",
+            "3.6%",
+            "3.24%",
+            "3.66%"
+          ],
+          "effectName": "Impact",
+          "effectDesc": "If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  15%  Debilitation  effect to  1 random  targets.",
+          "infos": [
+            {
+              "tid": 141,
+              "type": 1,
+              "val": 360
+            },
+            {
+              "tid": 140,
+              "type": 1,
+              "val": 324
+            },
+            {
+              "tid": 141,
+              "type": 1,
+              "val": 366
+            },
+            {
+              "tid": 30210,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3.6%",
+              "max": "6.0%",
+              "rollPercent": 60
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3.24%",
+              "max": "6.0%",
+              "rollPercent": 54
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3.66%",
+              "max": "6.0%",
+              "rollPercent": 61
+            }
+          ],
+          "refinement": {
+            "totalValue": 10.5,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 58.33,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "4": {
+          "slot": 4,
+          "equipId": 100404,
+          "level": 20,
+          "scores": {
+            "land": 27000,
+            "navy": 40356,
+            "air": 27000
+          },
+          "name": "Raysor Headset",
+          "buffNames": [
+            "All units HP",
+            "Navy Decreased DMG Taken",
+            "Navy Decreased DMG Taken",
+            "Navy Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "20%",
+            "3.24%",
+            "3.12%",
+            "3.18%"
+          ],
+          "effectName": "Debilitate",
+          "effectDesc": "If the hero equipped  with this gear has theDebilitation effect,  then this effect is  increased by  22%.",
+          "infos": [
+            {
+              "tid": 193,
+              "type": 1,
+              "val": 324
+            },
+            {
+              "tid": 194,
+              "type": 1,
+              "val": 312
+            },
+            {
+              "tid": 194,
+              "type": 1,
+              "val": 318
+            },
+            {
+              "tid": 402051,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "3.24%",
+              "max": "6.0%",
+              "rollPercent": 54
+            },
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "3.12%",
+              "max": "6.0%",
+              "rollPercent": 52
+            },
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "3.18%",
+              "max": "6.0%",
+              "rollPercent": 53
+            }
+          ],
+          "refinement": {
+            "totalValue": 9.54,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 53.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "5": {
+          "slot": 5,
+          "equipId": 100504,
+          "level": 20,
+          "scores": {
+            "land": 27000,
+            "navy": 39768,
+            "air": 27000
+          },
+          "name": "Portable GPS",
+          "buffNames": [
+            "All units Attack",
+            "Navy DMG Increase",
+            "Navy DMG Increase",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "20%",
+            "3.48%",
+            "2.34%",
+            "3.3%"
+          ],
+          "effectName": "Impact",
+          "effectDesc": "If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  30%  Debilitation  effect to  1 random  targets.",
+          "infos": [
+            {
+              "tid": 95,
+              "type": 1,
+              "val": 348
+            },
+            {
+              "tid": 94,
+              "type": 1,
+              "val": 234
+            },
+            {
+              "tid": 95,
+              "type": 1,
+              "val": 330
+            },
+            {
+              "tid": 502051,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3.48%",
+              "max": "6.0%",
+              "rollPercent": 58
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "2.34%",
+              "max": "6.0%",
+              "rollPercent": 39
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3.3%",
+              "max": "6.0%",
+              "rollPercent": 55
+            }
+          ],
+          "refinement": {
+            "totalValue": 9.12,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 50.67,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "6": {
+          "slot": 6,
+          "equipId": 100604,
+          "level": 20,
+          "scores": {
+            "land": 27000,
+            "navy": 41112,
+            "air": 27000
+          },
+          "name": "Power Boots",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Navy Decreased DMG Taken",
+            "Navy Decreased DMG Taken",
+            "Navy Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "5%",
+            "15%",
+            "3.6%",
+            "3.3%",
+            "3.18%"
+          ],
+          "effectName": "Debilitate",
+          "effectDesc": "If the hero equipped  with this gear has theDebilitation effect,  then this effect is  increased by  22%.",
+          "infos": [
+            {
+              "tid": 240,
+              "type": 1,
+              "val": 360
+            },
+            {
+              "tid": 238,
+              "type": 1,
+              "val": 330
+            },
+            {
+              "tid": 238,
+              "type": 1,
+              "val": 318
+            },
+            {
+              "tid": 602051,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "3.6%",
+              "max": "6.0%",
+              "rollPercent": 60
+            },
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "3.3%",
+              "max": "6.0%",
+              "rollPercent": 55
+            },
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "3.18%",
+              "max": "6.0%",
+              "rollPercent": 53
+            }
+          ],
+          "refinement": {
+            "totalValue": 10.08,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 56.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        }
+      },
+      "exclusiveSkill": {
+        "skillId": 20754,
+        "level": 5
+      },
+      "refinementSummary": {
+        "totalGearSlots": 6,
+        "refined": 0,
+        "unrefined": 6,
+        "unrefinedGear": [
+          {
+            "slot": 1,
+            "name": "Assault Pistol",
+            "totalValue": 9.78,
+            "threshold70": 12.6,
+            "percent": 54.33,
+            "deficit": 2.82
+          },
+          {
+            "slot": 2,
+            "name": "Tactical Backarmor",
+            "totalValue": 4.68,
+            "threshold70": 6.3,
+            "percent": 52.0,
+            "deficit": 1.62
+          },
+          {
+            "slot": 3,
+            "name": "Optical Add-on",
+            "totalValue": 10.5,
+            "threshold70": 12.6,
+            "percent": 58.33,
+            "deficit": 2.1
+          },
+          {
+            "slot": 4,
+            "name": "Raysor Headset",
+            "totalValue": 9.54,
+            "threshold70": 12.6,
+            "percent": 53.0,
+            "deficit": 3.06
+          },
+          {
+            "slot": 5,
+            "name": "Portable GPS",
+            "totalValue": 9.12,
+            "threshold70": 12.6,
+            "percent": 50.67,
+            "deficit": 3.48
+          },
+          {
+            "slot": 6,
+            "name": "Power Boots",
+            "totalValue": 10.08,
+            "threshold70": 12.6,
+            "percent": 56.0,
+            "deficit": 2.52
+          }
+        ]
+      }
+    },
+    {
+      "heroId": 171,
+      "heroName": "Astrid",
+      "slots": {
+        "1": {
+          "slot": 1,
+          "equipId": 100104,
+          "level": 20,
+          "scores": {
+            "land": 32852,
+            "navy": 20000,
+            "air": 20000
+          },
+          "name": "Assault Pistol",
+          "buffNames": [
+            "All units Attack",
+            "Army DMG Increase",
+            "Army DMG Increase",
+            "Army DMG Increase"
+          ],
+          "buffValues": [
+            "30%",
+            "2.34%",
+            "2.76%",
+            "4.08%"
+          ],
+          "effectName": "Tactical Awareness",
+          "effectDesc": "After equipping this  gear, all your units  gain a  10% Damage  Increase attribute.",
+          "infos": [
+            {
+              "tid": 2,
+              "type": 1,
+              "val": 234
+            },
+            {
+              "tid": 2,
+              "type": 1,
+              "val": 276
+            },
+            {
+              "tid": 1,
+              "type": 1,
+              "val": 408
+            },
+            {
+              "tid": 10208,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army DMG Increase",
+              "value": "2.34%",
+              "max": "6.0%",
+              "rollPercent": 39
+            },
+            {
+              "stat": "Army DMG Increase",
+              "value": "2.76%",
+              "max": "6.0%",
+              "rollPercent": 46
+            },
+            {
+              "stat": "Army DMG Increase",
+              "value": "4.08%",
+              "max": "6.0%",
+              "rollPercent": 68
+            }
+          ],
+          "refinement": {
+            "totalValue": 9.18,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 51.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "2": {
+          "slot": 2,
+          "equipId": 100204,
+          "level": 20,
+          "scores": {
+            "land": 41316,
+            "navy": 27000,
+            "air": 27000
+          },
+          "name": "Tactical Backarmor",
+          "buffNames": [
+            "All units HP",
+            "Army HP Boost",
+            "Increase DEF of Army",
+            "Increase DEF of Army"
+          ],
+          "buffValues": [
+            "30%",
+            "15.3%",
+            "1.86%",
+            "2.16%"
+          ],
+          "effectName": "Magnetize",
+          "effectDesc": "If the hero equipped  with this gear has theMagnetic Pulse effect, then this effect is  increased by  22%.",
+          "infos": [
+            {
+              "tid": 74,
+              "type": 1,
+              "val": 1530
+            },
+            {
+              "tid": 82,
+              "type": 1,
+              "val": 186
+            },
+            {
+              "tid": 84,
+              "type": 1,
+              "val": 216
+            },
+            {
+              "tid": 202071,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army HP Boost",
+              "value": "15.3%",
+              "max": "30.0%",
+              "rollPercent": 51
+            },
+            {
+              "stat": "Increase DEF of Army",
+              "value": "1.86%",
+              "max": "3.0%",
+              "rollPercent": 62
+            },
+            {
+              "stat": "Increase DEF of Army",
+              "value": "2.16%",
+              "max": "3.0%",
+              "rollPercent": 72
+            }
+          ],
+          "refinement": {
+            "totalValue": 19.32,
+            "totalMax": 36,
+            "threshold70": 25.2,
+            "percent": 53.67,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "3": {
+          "slot": 3,
+          "equipId": 100304,
+          "level": 20,
+          "scores": {
+            "land": 30740,
+            "navy": 20000,
+            "air": 20000
+          },
+          "name": "Optical Add-on",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Army DMG Increase",
+            "Army Attack",
+            "Army DMG Increase"
+          ],
+          "buffValues": [
+            "15%",
+            "5%",
+            "3%",
+            "11.7%",
+            "3%"
+          ],
+          "effectName": "Tactical Awareness",
+          "effectDesc": "After equipping this  gear, all your units  gain a  10% Damage  Increase attribute.",
+          "infos": [
+            {
+              "tid": 137,
+              "type": 1,
+              "val": 300
+            },
+            {
+              "tid": 154,
+              "type": 1,
+              "val": 1170
+            },
+            {
+              "tid": 138,
+              "type": 1,
+              "val": 300
+            },
+            {
+              "tid": 30207,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army DMG Increase",
+              "value": "3%",
+              "max": "6.0%",
+              "rollPercent": 50
+            },
+            {
+              "stat": "Army Attack",
+              "value": "11.7%",
+              "max": "30.0%",
+              "rollPercent": 39
+            },
+            {
+              "stat": "Army DMG Increase",
+              "value": "3%",
+              "max": "6.0%",
+              "rollPercent": 50
+            }
+          ],
+          "refinement": {
+            "totalValue": 17.7,
+            "totalMax": 42,
+            "threshold70": 29.4,
+            "percent": 42.14,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "4": {
+          "slot": 4,
+          "equipId": 100404,
+          "level": 20,
+          "scores": {
+            "land": 34896,
+            "navy": 27000,
+            "air": 27000
+          },
+          "name": "Raysor Headset",
+          "buffNames": [
+            "All units HP",
+            "Army Decreased DMG Taken",
+            "Army Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "20%",
+            "2.52%",
+            "3.12%"
+          ],
+          "effectName": "Magnetize",
+          "effectDesc": "If the hero equipped  with this gear has theMagnetic Pulse effect, then this effect is  increased by  22%.",
+          "infos": [
+            {
+              "tid": 192,
+              "type": 1,
+              "val": 252
+            },
+            {
+              "tid": 191,
+              "type": 1,
+              "val": 312
+            },
+            {
+              "tid": 402061,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army Decreased DMG Taken",
+              "value": "2.52%",
+              "max": "6.0%",
+              "rollPercent": 42
+            },
+            {
+              "stat": "Army Decreased DMG Taken",
+              "value": "3.12%",
+              "max": "6.0%",
+              "rollPercent": 52
+            }
+          ],
+          "refinement": {
+            "totalValue": 5.64,
+            "totalMax": 12,
+            "threshold70": 8.4,
+            "percent": 47.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "5": {
+          "slot": 5,
+          "equipId": 100504,
+          "level": 20,
+          "scores": {
+            "land": 39936,
+            "navy": 27000,
+            "air": 27000
+          },
+          "name": "Portable GPS",
+          "buffNames": [
+            "All units Attack",
+            "Army DMG Increase",
+            "Army DMG Increase",
+            "Army DMG Increase"
+          ],
+          "buffValues": [
+            "20%",
+            "3.66%",
+            "2.82%",
+            "2.76%"
+          ],
+          "effectName": "Magnetic Field",
+          "effectDesc": "If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  30%  Magnetic Pulse  effect to  1 random  targets.",
+          "infos": [
+            {
+              "tid": 92,
+              "type": 1,
+              "val": 366
+            },
+            {
+              "tid": 92,
+              "type": 1,
+              "val": 282
+            },
+            {
+              "tid": 92,
+              "type": 1,
+              "val": 276
+            },
+            {
+              "tid": 502061,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army DMG Increase",
+              "value": "3.66%",
+              "max": "6.0%",
+              "rollPercent": 61
+            },
+            {
+              "stat": "Army DMG Increase",
+              "value": "2.82%",
+              "max": "6.0%",
+              "rollPercent": 47
+            },
+            {
+              "stat": "Army DMG Increase",
+              "value": "2.76%",
+              "max": "6.0%",
+              "rollPercent": 46
+            }
+          ],
+          "refinement": {
+            "totalValue": 9.24,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 51.33,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "6": {
+          "slot": 6,
+          "equipId": 100604,
+          "level": 20,
+          "scores": {
+            "land": 31172,
+            "navy": 20000,
+            "air": 22688
+          },
+          "name": "Power Boots",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Army Decreased DMG Taken",
+            "Air Force Decreased DMG Taken",
+            "Army Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "5%",
+            "15%",
+            "3.12%",
+            "1.92%",
+            "4.86%"
+          ],
+          "effectName": "Magnetize",
+          "effectDesc": "If the hero equipped  with this gear has theMagnetic Pulse effect, then this effect is  increased by  15%.",
+          "infos": [
+            {
+              "tid": 236,
+              "type": 1,
+              "val": 312
+            },
+            {
+              "tid": 242,
+              "type": 1,
+              "val": 192
+            },
+            {
+              "tid": 236,
+              "type": 1,
+              "val": 486
+            },
+            {
+              "tid": 60110,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army Decreased DMG Taken",
+              "value": "3.12%",
+              "max": "6.0%",
+              "rollPercent": 52
+            },
+            {
+              "stat": "Air Force Decreased DMG Taken",
+              "value": "1.92%",
+              "max": "6.0%",
+              "rollPercent": 32
+            },
+            {
+              "stat": "Army Decreased DMG Taken",
+              "value": "4.86%",
+              "max": "6.0%",
+              "rollPercent": 81
+            }
+          ],
+          "refinement": {
+            "totalValue": 9.9,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 55.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        }
+      },
+      "exclusiveSkill": {
+        "skillId": 20756,
+        "level": 5
+      },
+      "refinementSummary": {
+        "totalGearSlots": 6,
+        "refined": 0,
+        "unrefined": 6,
+        "unrefinedGear": [
+          {
+            "slot": 1,
+            "name": "Assault Pistol",
+            "totalValue": 9.18,
+            "threshold70": 12.6,
+            "percent": 51.0,
+            "deficit": 3.42
+          },
+          {
+            "slot": 2,
+            "name": "Tactical Backarmor",
+            "totalValue": 19.32,
+            "threshold70": 25.2,
+            "percent": 53.67,
+            "deficit": 5.88
+          },
+          {
+            "slot": 3,
+            "name": "Optical Add-on",
+            "totalValue": 17.7,
+            "threshold70": 29.4,
+            "percent": 42.14,
+            "deficit": 11.7
+          },
+          {
+            "slot": 4,
+            "name": "Raysor Headset",
+            "totalValue": 5.64,
+            "threshold70": 8.4,
+            "percent": 47.0,
+            "deficit": 2.76
+          },
+          {
+            "slot": 5,
+            "name": "Portable GPS",
+            "totalValue": 9.24,
+            "threshold70": 12.6,
+            "percent": 51.33,
+            "deficit": 3.36
+          },
+          {
+            "slot": 6,
+            "name": "Power Boots",
+            "totalValue": 9.9,
+            "threshold70": 12.6,
+            "percent": 55.0,
+            "deficit": 2.7
+          }
+        ]
+      }
+    },
+    {
+      "heroId": 169,
+      "heroName": "Sara",
+      "slots": {
+        "1": {
+          "slot": 1,
+          "equipId": 100104,
+          "level": 20,
+          "scores": {
+            "land": 29996,
+            "navy": 20000,
+            "air": 20000
+          },
+          "name": "Assault Pistol",
+          "buffNames": [
+            "All units Attack",
+            "Army DMG Increase",
+            "Army DMG Increase",
+            "Army DMG Increase"
+          ],
+          "buffValues": [
+            "30%",
+            "2.64%",
+            "3.24%",
+            "1.26%"
+          ],
+          "effectName": "Magnetic Field",
+          "effectDesc": "If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  15%  Magnetic Pulse  effect to  1 random  targets.",
+          "infos": [
+            {
+              "tid": 1,
+              "type": 1,
+              "val": 264
+            },
+            {
+              "tid": 3,
+              "type": 1,
+              "val": 324
+            },
+            {
+              "tid": 1,
+              "type": 1,
+              "val": 126
+            },
+            {
+              "tid": 10212,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army DMG Increase",
+              "value": "2.64%",
+              "max": "6.0%",
+              "rollPercent": 44
+            },
+            {
+              "stat": "Army DMG Increase",
+              "value": "3.24%",
+              "max": "6.0%",
+              "rollPercent": 54
+            },
+            {
+              "stat": "Army DMG Increase",
+              "value": "1.26%",
+              "max": "6.0%",
+              "rollPercent": 21
+            }
+          ],
+          "refinement": {
+            "totalValue": 7.14,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 39.67,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "2": {
+          "slot": 2,
+          "equipId": 100204,
+          "level": 20,
+          "scores": {
+            "land": 29744,
+            "navy": 20000,
+            "air": 20000
+          },
+          "name": "Tactical Backarmor",
+          "buffNames": [
+            "All units HP",
+            "Increase DEF of Army",
+            "Increase DEF of Army",
+            "Increase DEF of Army"
+          ],
+          "buffValues": [
+            "30%",
+            "1.47%",
+            "1.5%",
+            "0.51%"
+          ],
+          "effectName": "Stealth Hologram",
+          "effectDesc": "After equipping this  gear, all your units  gain a  10% Decreased Damage Taken  attribute.",
+          "infos": [
+            {
+              "tid": 83,
+              "type": 1,
+              "val": 147
+            },
+            {
+              "tid": 83,
+              "type": 1,
+              "val": 150
+            },
+            {
+              "tid": 84,
+              "type": 1,
+              "val": 51
+            },
+            {
+              "tid": 20212,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Increase DEF of Army",
+              "value": "1.47%",
+              "max": "3.0%",
+              "rollPercent": 49
+            },
+            {
+              "stat": "Increase DEF of Army",
+              "value": "1.5%",
+              "max": "3.0%",
+              "rollPercent": 50
+            },
+            {
+              "stat": "Increase DEF of Army",
+              "value": "0.51%",
+              "max": "3.0%",
+              "rollPercent": 17
+            }
+          ],
+          "refinement": {
+            "totalValue": 3.48,
+            "totalMax": 9,
+            "threshold70": 6.3,
+            "percent": 38.67,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "3": {
+          "slot": 3,
+          "equipId": 100304,
+          "level": 20,
+          "scores": {
+            "land": 31340,
+            "navy": 20000,
+            "air": 20000
+          },
+          "name": "Optical Add-on",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Army DMG Increase",
+            "Army Attack",
+            "Army DMG Increase"
+          ],
+          "buffValues": [
+            "15%",
+            "5%",
+            "4.2%",
+            "10.5%",
+            "2.4%"
+          ],
+          "effectName": "Magnetic Field",
+          "effectDesc": "If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  15%  Magnetic Pulse  effect to  1 random  targets.",
+          "infos": [
+            {
+              "tid": 138,
+              "type": 1,
+              "val": 420
+            },
+            {
+              "tid": 155,
+              "type": 1,
+              "val": 1050
+            },
+            {
+              "tid": 137,
+              "type": 1,
+              "val": 240
+            },
+            {
+              "tid": 30211,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army DMG Increase",
+              "value": "4.2%",
+              "max": "6.0%",
+              "rollPercent": 70
+            },
+            {
+              "stat": "Army Attack",
+              "value": "10.5%",
+              "max": "30.0%",
+              "rollPercent": 35
+            },
+            {
+              "stat": "Army DMG Increase",
+              "value": "2.4%",
+              "max": "6.0%",
+              "rollPercent": 40
+            }
+          ],
+          "refinement": {
+            "totalValue": 17.1,
+            "totalMax": 42,
+            "threshold70": 29.4,
+            "percent": 40.71,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "4": {
+          "slot": 4,
+          "equipId": 100404,
+          "level": 20,
+          "scores": {
+            "land": 34560,
+            "navy": 27000,
+            "air": 27960
+          },
+          "name": "Raysor Headset",
+          "buffNames": [
+            "All units HP",
+            "Army Decreased DMG Taken",
+            "Air Force HP Boost",
+            "Army Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "20%",
+            "4.2%",
+            "4.8%",
+            "1.2%"
+          ],
+          "effectName": "Magnetize",
+          "effectDesc": "If the hero equipped  with this gear has theMagnetic Pulse effect, then this effect is  increased by  22%.",
+          "infos": [
+            {
+              "tid": 192,
+              "type": 1,
+              "val": 420
+            },
+            {
+              "tid": 216,
+              "type": 1,
+              "val": 480
+            },
+            {
+              "tid": 192,
+              "type": 1,
+              "val": 120
+            },
+            {
+              "tid": 401061,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army Decreased DMG Taken",
+              "value": "4.2%",
+              "max": "6.0%",
+              "rollPercent": 70
+            },
+            {
+              "stat": "Air Force HP Boost",
+              "value": "4.8%",
+              "max": "30.0%",
+              "rollPercent": 16
+            },
+            {
+              "stat": "Army Decreased DMG Taken",
+              "value": "1.2%",
+              "max": "6.0%",
+              "rollPercent": 20
+            }
+          ],
+          "refinement": {
+            "totalValue": 10.2,
+            "totalMax": 42,
+            "threshold70": 29.4,
+            "percent": 24.29,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "5": {
+          "slot": 5,
+          "equipId": 100504,
+          "level": 20,
+          "scores": {
+            "land": 28148,
+            "navy": 20000,
+            "air": 20000
+          },
+          "name": "Portable GPS",
+          "buffNames": [
+            "All units Attack",
+            "Army DMG Increase",
+            "Army DMG Increase"
+          ],
+          "buffValues": [
+            "20%",
+            "2.76%",
+            "3.06%"
+          ],
+          "effectName": "Magnetic Field",
+          "effectDesc": "If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  15%  Magnetic Pulse  effect to  1 random  targets.",
+          "infos": [
+            {
+              "tid": 92,
+              "type": 1,
+              "val": 276
+            },
+            {
+              "tid": 92,
+              "type": 1,
+              "val": 306
+            },
+            {
+              "tid": 50211,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army DMG Increase",
+              "value": "2.76%",
+              "max": "6.0%",
+              "rollPercent": 46
+            },
+            {
+              "stat": "Army DMG Increase",
+              "value": "3.06%",
+              "max": "6.0%",
+              "rollPercent": 51
+            }
+          ],
+          "refinement": {
+            "totalValue": 5.82,
+            "totalMax": 12,
+            "threshold70": 8.4,
+            "percent": 48.5,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "6": {
+          "slot": 6,
+          "equipId": 100604,
+          "level": 20,
+          "scores": {
+            "land": 35988,
+            "navy": 27000,
+            "air": 27000
+          },
+          "name": "Power Boots",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Army Decreased DMG Taken",
+            "Army Decreased DMG Taken",
+            "Army Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "5%",
+            "15%",
+            "2.88%",
+            "1.68%",
+            "1.86%"
+          ],
+          "effectName": "Magnetize",
+          "effectDesc": "If the hero equipped  with this gear has theMagnetic Pulse effect, then this effect is  increased by  22%.",
+          "infos": [
+            {
+              "tid": 235,
+              "type": 1,
+              "val": 288
+            },
+            {
+              "tid": 235,
+              "type": 1,
+              "val": 168
+            },
+            {
+              "tid": 235,
+              "type": 1,
+              "val": 186
+            },
+            {
+              "tid": 601061,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army Decreased DMG Taken",
+              "value": "2.88%",
+              "max": "6.0%",
+              "rollPercent": 48
+            },
+            {
+              "stat": "Army Decreased DMG Taken",
+              "value": "1.68%",
+              "max": "6.0%",
+              "rollPercent": 28
+            },
+            {
+              "stat": "Army Decreased DMG Taken",
+              "value": "1.86%",
+              "max": "6.0%",
+              "rollPercent": 31
+            }
+          ],
+          "refinement": {
+            "totalValue": 6.42,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 35.67,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        }
+      },
+      "exclusiveSkill": {
+        "skillId": 20750,
+        "level": 5
+      },
+      "refinementSummary": {
+        "totalGearSlots": 6,
+        "refined": 0,
+        "unrefined": 6,
+        "unrefinedGear": [
+          {
+            "slot": 1,
+            "name": "Assault Pistol",
+            "totalValue": 7.14,
+            "threshold70": 12.6,
+            "percent": 39.67,
+            "deficit": 5.46
+          },
+          {
+            "slot": 2,
+            "name": "Tactical Backarmor",
+            "totalValue": 3.48,
+            "threshold70": 6.3,
+            "percent": 38.67,
+            "deficit": 2.82
+          },
+          {
+            "slot": 3,
+            "name": "Optical Add-on",
+            "totalValue": 17.1,
+            "threshold70": 29.4,
+            "percent": 40.71,
+            "deficit": 12.3
+          },
+          {
+            "slot": 4,
+            "name": "Raysor Headset",
+            "totalValue": 10.2,
+            "threshold70": 29.4,
+            "percent": 24.29,
+            "deficit": 19.2
+          },
+          {
+            "slot": 5,
+            "name": "Portable GPS",
+            "totalValue": 5.82,
+            "threshold70": 8.4,
+            "percent": 48.5,
+            "deficit": 2.58
+          },
+          {
+            "slot": 6,
+            "name": "Power Boots",
+            "totalValue": 6.42,
+            "threshold70": 12.6,
+            "percent": 35.67,
+            "deficit": 6.18
+          }
+        ]
+      }
+    },
+    {
+      "heroId": 228,
+      "heroName": "Duke",
+      "slots": {
+        "1": {
+          "slot": 1,
+          "equipId": 100104,
+          "level": 20,
+          "scores": {
+            "land": 31592,
+            "navy": 20000,
+            "air": 20000
+          },
+          "name": "Assault Pistol",
+          "buffNames": [
+            "All units Attack",
+            "Army DMG Increase",
+            "Army DMG Increase",
+            "Army DMG Increase"
+          ],
+          "buffValues": [
+            "30%",
+            "2.82%",
+            "3.72%",
+            "1.74%"
+          ],
+          "effectName": "Tactical Awareness",
+          "effectDesc": "After equipping this  gear, all your units  gain a  10% Damage  Increase attribute.",
+          "infos": [
+            {
+              "tid": 3,
+              "type": 1,
+              "val": 282
+            },
+            {
+              "tid": 3,
+              "type": 1,
+              "val": 372
+            },
+            {
+              "tid": 3,
+              "type": 1,
+              "val": 174
+            },
+            {
+              "tid": 10208,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army DMG Increase",
+              "value": "2.82%",
+              "max": "6.0%",
+              "rollPercent": 47
+            },
+            {
+              "stat": "Army DMG Increase",
+              "value": "3.72%",
+              "max": "6.0%",
+              "rollPercent": 62
+            },
+            {
+              "stat": "Army DMG Increase",
+              "value": "1.74%",
+              "max": "6.0%",
+              "rollPercent": 29
+            }
+          ],
+          "refinement": {
+            "totalValue": 8.28,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 46.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "2": {
+          "slot": 2,
+          "equipId": 100204,
+          "level": 20,
+          "scores": {
+            "land": 29912,
+            "navy": 20000,
+            "air": 20000
+          },
+          "name": "Tactical Backarmor",
+          "buffNames": [
+            "All units HP",
+            "Increase DEF of Army",
+            "Increase DEF of Army",
+            "Increase DEF of Army"
+          ],
+          "buffValues": [
+            "30%",
+            "1.44%",
+            "1.08%",
+            "1.02%"
+          ],
+          "effectName": "Stealth Hologram",
+          "effectDesc": "After equipping this  gear, all your units  gain a  10% Decreased Damage Taken  attribute.",
+          "infos": [
+            {
+              "tid": 82,
+              "type": 1,
+              "val": 144
+            },
+            {
+              "tid": 84,
+              "type": 1,
+              "val": 108
+            },
+            {
+              "tid": 83,
+              "type": 1,
+              "val": 102
+            },
+            {
+              "tid": 20212,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Increase DEF of Army",
+              "value": "1.44%",
+              "max": "3.0%",
+              "rollPercent": 48
+            },
+            {
+              "stat": "Increase DEF of Army",
+              "value": "1.08%",
+              "max": "3.0%",
+              "rollPercent": 36
+            },
+            {
+              "stat": "Increase DEF of Army",
+              "value": "1.02%",
+              "max": "3.0%",
+              "rollPercent": 34
+            }
+          ],
+          "refinement": {
+            "totalValue": 3.54,
+            "totalMax": 9,
+            "threshold70": 6.3,
+            "percent": 39.33,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "3": {
+          "slot": 3,
+          "equipId": 100304,
+          "level": 20,
+          "scores": {
+            "land": 39180,
+            "navy": 27000,
+            "air": 27000
+          },
+          "name": "Optical Add-on",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Army DMG Increase",
+            "Army DMG Increase",
+            "Army DMG Increase"
+          ],
+          "buffValues": [
+            "15%",
+            "5%",
+            "2.58%",
+            "3.12%",
+            "3%"
+          ],
+          "effectName": "Tactical Awareness",
+          "effectDesc": "After equipping this  gear, all your units  gain a  15% Damage  Increase attribute.",
+          "infos": [
+            {
+              "tid": 138,
+              "type": 1,
+              "val": 258
+            },
+            {
+              "tid": 138,
+              "type": 1,
+              "val": 312
+            },
+            {
+              "tid": 137,
+              "type": 1,
+              "val": 300
+            },
+            {
+              "tid": 302021,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army DMG Increase",
+              "value": "2.58%",
+              "max": "6.0%",
+              "rollPercent": 43
+            },
+            {
+              "stat": "Army DMG Increase",
+              "value": "3.12%",
+              "max": "6.0%",
+              "rollPercent": 52
+            },
+            {
+              "stat": "Army DMG Increase",
+              "value": "3%",
+              "max": "6.0%",
+              "rollPercent": 50
+            }
+          ],
+          "refinement": {
+            "totalValue": 8.7,
+            "totalMax": 18,
+            "threshold70": 12.6,
+            "percent": 48.33,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "4": {
+          "slot": 4,
+          "equipId": 100404,
+          "level": 20,
+          "scores": {
+            "land": 27392,
+            "navy": 20000,
+            "air": 20000
+          },
+          "name": "Raysor Headset",
+          "buffNames": [
+            "All units HP",
+            "Army Decreased DMG Taken",
+            "Army Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "20%",
+            "3.18%",
+            "2.1%"
+          ],
+          "effectName": "Stealth Hologram",
+          "effectDesc": "After equipping this  gear, all your units  gain a  10% Decreased Damage Taken  attribute.",
+          "infos": [
+            {
+              "tid": 190,
+              "type": 1,
+              "val": 318
+            },
+            {
+              "tid": 192,
+              "type": 1,
+              "val": 210
+            },
+            {
+              "tid": 40211,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army Decreased DMG Taken",
+              "value": "3.18%",
+              "max": "6.0%",
+              "rollPercent": 53
+            },
+            {
+              "stat": "Army Decreased DMG Taken",
+              "value": "2.1%",
+              "max": "6.0%",
+              "rollPercent": 35
+            }
+          ],
+          "refinement": {
+            "totalValue": 5.28,
+            "totalMax": 12,
+            "threshold70": 8.4,
+            "percent": 44.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "5": {
+          "slot": 5,
+          "equipId": 100504,
+          "level": 20,
+          "scores": {
+            "land": 27224,
+            "navy": 20000,
+            "air": 20000
+          },
+          "name": "Portable GPS",
+          "buffNames": [
+            "All units Attack",
+            "Army DMG Increase",
+            "Army DMG Increase"
+          ],
+          "buffValues": [
+            "20%",
+            "3.24%",
+            "1.92%"
+          ],
+          "effectName": "Tactical Awareness",
+          "effectDesc": "After equipping this  gear, all your units  gain a  10% Damage  Increase attribute.",
+          "infos": [
+            {
+              "tid": 91,
+              "type": 1,
+              "val": 324
+            },
+            {
+              "tid": 91,
+              "type": 1,
+              "val": 192
+            },
+            {
+              "tid": 50207,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army DMG Increase",
+              "value": "3.24%",
+              "max": "6.0%",
+              "rollPercent": 54
+            },
+            {
+              "stat": "Army DMG Increase",
+              "value": "1.92%",
+              "max": "6.0%",
+              "rollPercent": 32
+            }
+          ],
+          "refinement": {
+            "totalValue": 5.16,
+            "totalMax": 12,
+            "threshold70": 8.4,
+            "percent": 43.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "6": {
+          "slot": 6,
+          "equipId": 100604,
+          "level": 20,
+          "scores": {
+            "land": 29324,
+            "navy": 20000,
+            "air": 20000
+          },
+          "name": "Power Boots",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Army Decreased DMG Taken",
+            "Army Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "5%",
+            "15%",
+            "3.48%",
+            "3.18%"
+          ],
+          "effectName": "Stealth Hologram",
+          "effectDesc": "After equipping this  gear, all your units  gain a  10% Decreased Damage Taken  attribute.",
+          "infos": [
+            {
+              "tid": 237,
+              "type": 1,
+              "val": 348
+            },
+            {
+              "tid": 235,
+              "type": 1,
+              "val": 318
+            },
+            {
+              "tid": 60211,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army Decreased DMG Taken",
+              "value": "3.48%",
+              "max": "6.0%",
+              "rollPercent": 58
+            },
+            {
+              "stat": "Army Decreased DMG Taken",
+              "value": "3.18%",
+              "max": "6.0%",
+              "rollPercent": 53
+            }
+          ],
+          "refinement": {
+            "totalValue": 6.66,
+            "totalMax": 12,
+            "threshold70": 8.4,
+            "percent": 55.5,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        }
+      },
+      "exclusiveSkill": {
+        "skillId": 20721,
+        "level": 5
+      },
+      "refinementSummary": {
+        "totalGearSlots": 6,
+        "refined": 0,
+        "unrefined": 6,
+        "unrefinedGear": [
+          {
+            "slot": 1,
+            "name": "Assault Pistol",
+            "totalValue": 8.28,
+            "threshold70": 12.6,
+            "percent": 46.0,
+            "deficit": 4.32
+          },
+          {
+            "slot": 2,
+            "name": "Tactical Backarmor",
+            "totalValue": 3.54,
+            "threshold70": 6.3,
+            "percent": 39.33,
+            "deficit": 2.76
+          },
+          {
+            "slot": 3,
+            "name": "Optical Add-on",
+            "totalValue": 8.7,
+            "threshold70": 12.6,
+            "percent": 48.33,
+            "deficit": 3.9
+          },
+          {
+            "slot": 4,
+            "name": "Raysor Headset",
+            "totalValue": 5.28,
+            "threshold70": 8.4,
+            "percent": 44.0,
+            "deficit": 3.12
+          },
+          {
+            "slot": 5,
+            "name": "Portable GPS",
+            "totalValue": 5.16,
+            "threshold70": 8.4,
+            "percent": 43.0,
+            "deficit": 3.24
+          },
+          {
+            "slot": 6,
+            "name": "Power Boots",
+            "totalValue": 6.66,
+            "threshold70": 8.4,
+            "percent": 55.5,
+            "deficit": 1.74
+          }
+        ]
+      }
+    },
+    {
+      "heroId": 229,
+      "heroName": "Zhen",
+      "slots": {
+        "1": {
+          "slot": 1,
+          "equipId": 100104,
+          "level": 10,
+          "scores": {
+            "land": 17600,
+            "navy": 25832,
+            "air": 19520
+          },
+          "name": "Assault Pistol",
+          "buffNames": [
+            "All units Attack",
+            "Navy DMG Increase",
+            "Air Force ATK",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "18%",
+            "3%",
+            "9.6%",
+            "2.88%"
+          ],
+          "effectName": "Armor-Breaking",
+          "effectDesc": "If the hero equipped  with this gear has an  active skill, upon  triggering the skill, itwill add 1 stack of  15%  Vulnerable effect to  1 random targets.",
+          "infos": [
+            {
+              "tid": 4,
+              "type": 1,
+              "val": 300
+            },
+            {
+              "tid": 26,
+              "type": 1,
+              "val": 960
+            },
+            {
+              "tid": 6,
+              "type": 1,
+              "val": 288
+            },
+            {
+              "tid": 10210,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3%",
+              "max": "6.0%",
+              "rollPercent": 50
+            },
+            {
+              "stat": "Air Force ATK",
+              "value": "9.6%",
+              "max": "30.0%",
+              "rollPercent": 32
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "2.88%",
+              "max": "6.0%",
+              "rollPercent": 48
+            }
+          ],
+          "refinement": {
+            "totalValue": 15.48,
+            "totalMax": 42,
+            "threshold70": 29.4,
+            "percent": 36.86,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "2": {
+          "slot": 2,
+          "equipId": 100204,
+          "level": 10,
+          "scores": {
+            "land": 17600,
+            "navy": 23228,
+            "air": 17600
+          },
+          "name": "Tactical Backarmor",
+          "buffNames": [
+            "All units HP",
+            "Increase DEF of Navy",
+            "Increase DEF of Navy"
+          ],
+          "buffValues": [
+            "18%",
+            "0.93%",
+            "1.08%"
+          ],
+          "effectName": "Stealth Hologram",
+          "effectDesc": "After equipping this  gear, all your units  gain a  10% Decreased Damage Taken  attribute.",
+          "infos": [
+            {
+              "tid": 85,
+              "type": 1,
+              "val": 93
+            },
+            {
+              "tid": 87,
+              "type": 1,
+              "val": 108
+            },
+            {
+              "tid": 20212,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Increase DEF of Navy",
+              "value": "0.93%",
+              "max": "3.0%",
+              "rollPercent": 31
+            },
+            {
+              "stat": "Increase DEF of Navy",
+              "value": "1.08%",
+              "max": "3.0%",
+              "rollPercent": 36
+            }
+          ],
+          "refinement": {
+            "totalValue": 2.01,
+            "totalMax": 6,
+            "threshold70": 4.2,
+            "percent": 33.5,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "3": {
+          "slot": 3,
+          "equipId": 100304,
+          "level": 10,
+          "scores": {
+            "land": 20180,
+            "navy": 22388,
+            "air": 17600
+          },
+          "name": "Optical Add-on",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Navy DMG Increase",
+            "Army Attack",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "9%",
+            "3%",
+            "1.98%",
+            "12.9%",
+            "1.44%"
+          ],
+          "effectName": "Tactical Awareness",
+          "effectDesc": "After equipping this  gear, all your units  gain a  10% Damage  Increase attribute.",
+          "infos": [
+            {
+              "tid": 141,
+              "type": 1,
+              "val": 198
+            },
+            {
+              "tid": 156,
+              "type": 1,
+              "val": 1290
+            },
+            {
+              "tid": 140,
+              "type": 1,
+              "val": 144
+            },
+            {
+              "tid": 30207,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy DMG Increase",
+              "value": "1.98%",
+              "max": "6.0%",
+              "rollPercent": 33
+            },
+            {
+              "stat": "Army Attack",
+              "value": "12.9%",
+              "max": "30.0%",
+              "rollPercent": 43
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "1.44%",
+              "max": "6.0%",
+              "rollPercent": 24
+            }
+          ],
+          "refinement": {
+            "totalValue": 16.32,
+            "totalMax": 42,
+            "threshold70": 29.4,
+            "percent": 38.86,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "4": {
+          "slot": 4,
+          "equipId": 100404,
+          "level": 10,
+          "scores": {
+            "land": 24600,
+            "navy": 31488,
+            "air": 24600
+          },
+          "name": "Raysor Headset",
+          "buffNames": [
+            "All units HP",
+            "Navy Decreased DMG Taken",
+            "Navy Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "12%",
+            "2.04%",
+            "2.88%"
+          ],
+          "effectName": "Stealth Hologram",
+          "effectDesc": "After equipping this  gear, all your units  gain a  15% Decreased Damage Taken  attribute.",
+          "infos": [
+            {
+              "tid": 193,
+              "type": 1,
+              "val": 204
+            },
+            {
+              "tid": 193,
+              "type": 1,
+              "val": 288
+            },
+            {
+              "tid": 402021,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "2.04%",
+              "max": "6.0%",
+              "rollPercent": 34
+            },
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "2.88%",
+              "max": "6.0%",
+              "rollPercent": 48
+            }
+          ],
+          "refinement": {
+            "totalValue": 4.92,
+            "totalMax": 12,
+            "threshold70": 8.4,
+            "percent": 41.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "5": {
+          "slot": 5,
+          "equipId": 100504,
+          "level": 10,
+          "scores": {
+            "land": 24600,
+            "navy": 31320,
+            "air": 24600
+          },
+          "name": "Portable GPS",
+          "buffNames": [
+            "All units Attack",
+            "Navy DMG Increase",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "12%",
+            "1.86%",
+            "2.94%"
+          ],
+          "effectName": "Tactical Awareness",
+          "effectDesc": "After equipping this  gear, all your units  gain a  15% Damage  Increase attribute.",
+          "infos": [
+            {
+              "tid": 95,
+              "type": 1,
+              "val": 186
+            },
+            {
+              "tid": 96,
+              "type": 1,
+              "val": 294
+            },
+            {
+              "tid": 502021,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy DMG Increase",
+              "value": "1.86%",
+              "max": "6.0%",
+              "rollPercent": 31
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "2.94%",
+              "max": "6.0%",
+              "rollPercent": 49
+            }
+          ],
+          "refinement": {
+            "totalValue": 4.8,
+            "totalMax": 12,
+            "threshold70": 8.4,
+            "percent": 40.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "6": {
+          "slot": 6,
+          "equipId": 100604,
+          "level": 10,
+          "scores": {
+            "land": 20420,
+            "navy": 19868,
+            "air": 17600
+          },
+          "name": "Power Boots",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Army HP Boost",
+            "Navy Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "3%",
+            "9%",
+            "14.1%",
+            "1.62%"
+          ],
+          "effectName": "Stealth Hologram",
+          "effectDesc": "After equipping this  gear, all your units  gain a  10% Decreased Damage Taken  attribute.",
+          "infos": [
+            {
+              "tid": 255,
+              "type": 1,
+              "val": 1410
+            },
+            {
+              "tid": 239,
+              "type": 1,
+              "val": 162
+            },
+            {
+              "tid": 60211,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army HP Boost",
+              "value": "14.1%",
+              "max": "30.0%",
+              "rollPercent": 47
+            },
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "1.62%",
+              "max": "6.0%",
+              "rollPercent": 27
+            }
+          ],
+          "refinement": {
+            "totalValue": 15.72,
+            "totalMax": 36,
+            "threshold70": 25.2,
+            "percent": 43.67,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        }
+      },
+      "exclusiveSkill": {
+        "skillId": 20728,
+        "level": 5
+      },
+      "refinementSummary": {
+        "totalGearSlots": 6,
+        "refined": 0,
+        "unrefined": 6,
+        "unrefinedGear": [
+          {
+            "slot": 1,
+            "name": "Assault Pistol",
+            "totalValue": 15.48,
+            "threshold70": 29.4,
+            "percent": 36.86,
+            "deficit": 13.92
+          },
+          {
+            "slot": 2,
+            "name": "Tactical Backarmor",
+            "totalValue": 2.01,
+            "threshold70": 4.2,
+            "percent": 33.5,
+            "deficit": 2.19
+          },
+          {
+            "slot": 3,
+            "name": "Optical Add-on",
+            "totalValue": 16.32,
+            "threshold70": 29.4,
+            "percent": 38.86,
+            "deficit": 13.08
+          },
+          {
+            "slot": 4,
+            "name": "Raysor Headset",
+            "totalValue": 4.92,
+            "threshold70": 8.4,
+            "percent": 41.0,
+            "deficit": 3.48
+          },
+          {
+            "slot": 5,
+            "name": "Portable GPS",
+            "totalValue": 4.8,
+            "threshold70": 8.4,
+            "percent": 40.0,
+            "deficit": 3.6
+          },
+          {
+            "slot": 6,
+            "name": "Power Boots",
+            "totalValue": 15.72,
+            "threshold70": 25.2,
+            "percent": 43.67,
+            "deficit": 9.48
+          }
+        ]
+      }
+    },
+    {
+      "heroId": 318,
+      "heroName": "Maximo",
+      "slots": {
+        "1": {
+          "slot": 1,
+          "equipId": 100104,
+          "level": 0,
+          "scores": {
+            "land": 1200,
+            "navy": 1200,
+            "air": 7500
+          },
+          "rawBuffs": [
+            {
+              "tid": 8,
+              "type": 1,
+              "val": 246
+            },
+            {
+              "tid": 8,
+              "type": 1,
+              "val": 204
+            }
+          ],
+          "enhanceValue": {},
+          "name": "Assault Pistol",
+          "buffNames": [
+            "All units Attack",
+            "Air Force DMG Increase",
+            "Air Force DMG Increase"
+          ],
+          "buffValues": [
+            "6%",
+            "2.46%",
+            "2.04%"
+          ],
+          "enhanceLabels": [],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "equipped": false
+        },
+        "2": {
+          "slot": 2,
+          "equipId": 100204,
+          "level": 15,
+          "scores": {
+            "land": 4800,
+            "navy": 4800,
+            "air": 14796
+          },
+          "name": "Tactical Backarmor",
+          "buffNames": [
+            "All units HP",
+            "Increase DEF of Air Force",
+            "Increase DEF of Air Force",
+            "Increase DEF of Air Force"
+          ],
+          "buffValues": [
+            "24%",
+            "0.87%",
+            "1.44%",
+            "1.26%"
+          ],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "infos": [
+            {
+              "tid": 89,
+              "type": 1,
+              "val": 87
+            },
+            {
+              "tid": 89,
+              "type": 1,
+              "val": 144
+            },
+            {
+              "tid": 90,
+              "type": 1,
+              "val": 126
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Increase DEF of Air Force",
+              "value": "0.87%",
+              "max": "3.0%",
+              "rollPercent": 29
+            },
+            {
+              "stat": "Increase DEF of Air Force",
+              "value": "1.44%",
+              "max": "3.0%",
+              "rollPercent": 48
+            },
+            {
+              "stat": "Increase DEF of Air Force",
+              "value": "1.26%",
+              "max": "3.0%",
+              "rollPercent": 42
+            }
+          ],
+          "refinement": {
+            "totalValue": 3.57,
+            "totalMax": 9,
+            "threshold70": 6.3,
+            "percent": 39.67,
+            "meetsThreshold": false
+          },
+          "starLevel": 0
+        },
+        "3": {
+          "slot": 3,
+          "equipId": 100304,
+          "level": 15,
+          "scores": {
+            "land": 4800,
+            "navy": 4800,
+            "air": 14208
+          },
+          "name": "Optical Add-on",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Air Force DMG Increase",
+            "Air Force DMG Increase"
+          ],
+          "buffValues": [
+            "12%",
+            "4%",
+            "4.32%",
+            "2.4%"
+          ],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "infos": [
+            {
+              "tid": 144,
+              "type": 1,
+              "val": 432
+            },
+            {
+              "tid": 142,
+              "type": 1,
+              "val": 240
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Air Force DMG Increase",
+              "value": "4.32%",
+              "max": "6.0%",
+              "rollPercent": 72
+            },
+            {
+              "stat": "Air Force DMG Increase",
+              "value": "2.4%",
+              "max": "6.0%",
+              "rollPercent": 40
+            }
+          ],
+          "refinement": {
+            "totalValue": 6.72,
+            "totalMax": 12,
+            "threshold70": 8.4,
+            "percent": 56.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 0
+        },
+        "4": {
+          "slot": 4,
+          "equipId": 100404,
+          "level": 0,
+          "scores": {
+            "land": 1200,
+            "navy": 1200,
+            "air": 11616
+          },
+          "rawBuffs": [
+            {
+              "tid": 198,
+              "type": 1,
+              "val": 258
+            },
+            {
+              "tid": 197,
+              "type": 1,
+              "val": 186
+            },
+            {
+              "tid": 196,
+              "type": 1,
+              "val": 300
+            }
+          ],
+          "enhanceValue": {},
+          "name": "Raysor Headset",
+          "buffNames": [
+            "All units HP",
+            "Air Force Decreased DMG Taken",
+            "Air Force Decreased DMG Taken",
+            "Air Force Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "4%",
+            "2.58%",
+            "1.86%",
+            "3%"
+          ],
+          "enhanceLabels": [],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "equipped": false
+        },
+        "5": {
+          "slot": 5,
+          "equipId": 100504,
+          "level": 0,
+          "scores": {
+            "land": 1200,
+            "navy": 2820,
+            "air": 9012
+          },
+          "rawBuffs": [
+            {
+              "tid": 99,
+              "type": 1,
+              "val": 246
+            },
+            {
+              "tid": 114,
+              "type": 1,
+              "val": 810
+            },
+            {
+              "tid": 99,
+              "type": 1,
+              "val": 312
+            }
+          ],
+          "enhanceValue": {},
+          "name": "Portable GPS",
+          "buffNames": [
+            "All units Attack",
+            "Air Force DMG Increase",
+            "Navy Attack",
+            "Air Force DMG Increase"
+          ],
+          "buffValues": [
+            "4%",
+            "2.46%",
+            "8.1%",
+            "3.12%"
+          ],
+          "enhanceLabels": [],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "equipped": false
+        },
+        "6": {
+          "slot": 6,
+          "equipId": 100604,
+          "level": 10,
+          "scores": {
+            "land": 31600,
+            "navy": 31600,
+            "air": 38740
+          },
+          "name": "Power Boots",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Air Force Decreased DMG Taken",
+            "Air Force Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "3%",
+            "9%",
+            "3%",
+            "2.1%"
+          ],
+          "effectName": "Flammable",
+          "effectDesc": "If the hero equipped  with this gear has theIgnition effect, then  this effect is  increased by  30%.",
+          "infos": [
+            {
+              "tid": 242,
+              "type": 1,
+              "val": 300
+            },
+            {
+              "tid": 243,
+              "type": 1,
+              "val": 210
+            },
+            {
+              "tid": 60203,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Air Force Decreased DMG Taken",
+              "value": "3%",
+              "max": "6.0%",
+              "rollPercent": 50
+            },
+            {
+              "stat": "Air Force Decreased DMG Taken",
+              "value": "2.1%",
+              "max": "6.0%",
+              "rollPercent": 35
+            }
+          ],
+          "refinement": {
+            "totalValue": 5.1,
+            "totalMax": 12,
+            "threshold70": 8.4,
+            "percent": 42.5,
+            "meetsThreshold": false
+          },
+          "starLevel": 3
+        }
+      },
+      "exclusiveSkill": {
+        "skillId": 20653,
+        "level": 5
+      },
+      "refinementSummary": {
+        "totalGearSlots": 3,
+        "refined": 0,
+        "unrefined": 3,
+        "unrefinedGear": [
+          {
+            "slot": 2,
+            "name": "Tactical Backarmor",
+            "totalValue": 3.57,
+            "threshold70": 6.3,
+            "percent": 39.67,
+            "deficit": 2.73
+          },
+          {
+            "slot": 3,
+            "name": "Optical Add-on",
+            "totalValue": 6.72,
+            "threshold70": 8.4,
+            "percent": 56.0,
+            "deficit": 1.68
+          },
+          {
+            "slot": 6,
+            "name": "Power Boots",
+            "totalValue": 5.1,
+            "threshold70": 8.4,
+            "percent": 42.5,
+            "deficit": 3.3
+          }
+        ]
+      }
+    },
+    {
+      "heroId": 231,
+      "heroName": "Jester",
+      "slots": {
+        "1": {
+          "slot": 1,
+          "equipId": 100104,
+          "level": 10,
+          "scores": {
+            "land": 8040,
+            "navy": 7884,
+            "air": 3600
+          },
+          "name": "Assault Pistol",
+          "buffNames": [
+            "All units Attack",
+            "Army DMG Increase",
+            "Army Attack",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "18%",
+            "1.5%",
+            "11.7%",
+            "3.06%"
+          ],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "infos": [
+            {
+              "tid": 1,
+              "type": 1,
+              "val": 150
+            },
+            {
+              "tid": 21,
+              "type": 1,
+              "val": 1170
+            },
+            {
+              "tid": 4,
+              "type": 1,
+              "val": 306
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army DMG Increase",
+              "value": "1.5%",
+              "max": "6.0%",
+              "rollPercent": 25
+            },
+            {
+              "stat": "Army Attack",
+              "value": "11.7%",
+              "max": "30.0%",
+              "rollPercent": 39
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3.06%",
+              "max": "6.0%",
+              "rollPercent": 51
+            }
+          ],
+          "refinement": {
+            "totalValue": 16.26,
+            "totalMax": 42,
+            "threshold70": 29.4,
+            "percent": 38.71,
+            "meetsThreshold": false
+          },
+          "starLevel": 0
+        },
+        "2": {
+          "slot": 2,
+          "equipId": 100203,
+          "level": 0,
+          "scores": {
+            "land": 720,
+            "navy": 3072,
+            "air": 720
+          },
+          "rawBuffs": [
+            {
+              "tid": 357,
+              "type": 1,
+              "val": 84
+            }
+          ],
+          "enhanceValue": {},
+          "name": "Tactical Backarmor",
+          "buffNames": [
+            "All units HP",
+            "Increase DEF of Navy"
+          ],
+          "buffValues": [
+            "3.6%",
+            "0.84%"
+          ],
+          "enhanceLabels": [],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "equipped": false
+        },
+        "3": {
+          "slot": 3,
+          "equipId": 100304,
+          "level": 10,
+          "scores": {
+            "land": 3600,
+            "navy": 6372,
+            "air": 7800
+          },
+          "name": "Optical Add-on",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Air Force ATK",
+            "Air Force ATK",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "9%",
+            "3%",
+            "12.9%",
+            "8.1%",
+            "1.98%"
+          ],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "infos": [
+            {
+              "tid": 160,
+              "type": 1,
+              "val": 1290
+            },
+            {
+              "tid": 161,
+              "type": 1,
+              "val": 810
+            },
+            {
+              "tid": 139,
+              "type": 1,
+              "val": 198
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Air Force ATK",
+              "value": "12.9%",
+              "max": "30.0%",
+              "rollPercent": 43
+            },
+            {
+              "stat": "Air Force ATK",
+              "value": "8.1%",
+              "max": "30.0%",
+              "rollPercent": 27
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "1.98%",
+              "max": "6.0%",
+              "rollPercent": 33
+            }
+          ],
+          "refinement": {
+            "totalValue": 22.98,
+            "totalMax": 66,
+            "threshold70": 46.2,
+            "percent": 34.82,
+            "meetsThreshold": false
+          },
+          "starLevel": 0
+        },
+        "4": {
+          "slot": 4,
+          "equipId": 100404,
+          "level": 10,
+          "scores": {
+            "land": 17600,
+            "navy": 24488,
+            "air": 17600
+          },
+          "name": "Raysor Headset",
+          "buffNames": [
+            "All units HP",
+            "Navy Decreased DMG Taken",
+            "Navy Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "12%",
+            "3.06%",
+            "1.86%"
+          ],
+          "effectName": "Stealth Hologram",
+          "effectDesc": "After equipping this  gear, all your units  gain a  10% Decreased Damage Taken  attribute.",
+          "infos": [
+            {
+              "tid": 195,
+              "type": 1,
+              "val": 306
+            },
+            {
+              "tid": 194,
+              "type": 1,
+              "val": 186
+            },
+            {
+              "tid": 40211,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "3.06%",
+              "max": "6.0%",
+              "rollPercent": 51
+            },
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "1.86%",
+              "max": "6.0%",
+              "rollPercent": 31
+            }
+          ],
+          "refinement": {
+            "totalValue": 4.92,
+            "totalMax": 12,
+            "threshold70": 8.4,
+            "percent": 41.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "5": {
+          "slot": 5,
+          "equipId": 100504,
+          "level": 10,
+          "scores": {
+            "land": 19460,
+            "navy": 22052,
+            "air": 17600
+          },
+          "name": "Portable GPS",
+          "buffNames": [
+            "All units Attack",
+            "Navy DMG Increase",
+            "Army Attack"
+          ],
+          "buffValues": [
+            "12%",
+            "3.18%",
+            "9.3%"
+          ],
+          "effectName": "Tactical Awareness",
+          "effectDesc": "After equipping this  gear, all your units  gain a  10% Damage  Increase attribute.",
+          "infos": [
+            {
+              "tid": 96,
+              "type": 1,
+              "val": 318
+            },
+            {
+              "tid": 110,
+              "type": 1,
+              "val": 930
+            },
+            {
+              "tid": 50207,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3.18%",
+              "max": "6.0%",
+              "rollPercent": 53
+            },
+            {
+              "stat": "Army Attack",
+              "value": "9.3%",
+              "max": "30.0%",
+              "rollPercent": 31
+            }
+          ],
+          "refinement": {
+            "totalValue": 12.48,
+            "totalMax": 36,
+            "threshold70": 25.2,
+            "percent": 34.67,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "6": {
+          "slot": 6,
+          "equipId": 100603,
+          "level": 0,
+          "scores": {
+            "land": 720,
+            "navy": 4892,
+            "air": 720
+          },
+          "rawBuffs": [
+            {
+              "tid": 508,
+              "type": 1,
+              "val": 144
+            },
+            {
+              "tid": 509,
+              "type": 1,
+              "val": 154
+            }
+          ],
+          "enhanceValue": {},
+          "name": "Power Boots",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Navy Decreased DMG Taken",
+            "Navy Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "0.6%",
+            "1.8%",
+            "1.44%",
+            "1.54%"
+          ],
+          "enhanceLabels": [],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "equipped": false
+        }
+      },
+      "exclusiveSkill": {
+        "skillId": 20735,
+        "level": 5
+      },
+      "refinementSummary": {
+        "totalGearSlots": 4,
+        "refined": 0,
+        "unrefined": 4,
+        "unrefinedGear": [
+          {
+            "slot": 1,
+            "name": "Assault Pistol",
+            "totalValue": 16.26,
+            "threshold70": 29.4,
+            "percent": 38.71,
+            "deficit": 13.14
+          },
+          {
+            "slot": 3,
+            "name": "Optical Add-on",
+            "totalValue": 22.98,
+            "threshold70": 46.2,
+            "percent": 34.82,
+            "deficit": 23.22
+          },
+          {
+            "slot": 4,
+            "name": "Raysor Headset",
+            "totalValue": 4.92,
+            "threshold70": 8.4,
+            "percent": 41.0,
+            "deficit": 3.48
+          },
+          {
+            "slot": 5,
+            "name": "Portable GPS",
+            "totalValue": 12.48,
+            "threshold70": 25.2,
+            "percent": 34.67,
+            "deficit": 12.72
+          }
+        ]
+      }
+    },
+    {
+      "heroId": 233,
+      "heroName": "Ada Wong",
+      "slots": {
+        "1": {
+          "slot": 1,
+          "equipId": 100104,
+          "level": 10,
+          "scores": {
+            "land": 24600,
+            "navy": 35243,
+            "air": 24600
+          },
+          "name": "Assault Pistol",
+          "buffNames": [
+            "All units Attack",
+            "Navy Attack",
+            "Navy DMG Increase",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "18%",
+            "17.1%",
+            "2.46%",
+            "2.7%"
+          ],
+          "effectName": "Tactical Awareness",
+          "effectDesc": "After equipping this  gear, all your units  gain a  15% Damage  Increase attribute.",
+          "infos": [
+            {
+              "tid": 24,
+              "type": 1,
+              "val": 1710
+            },
+            {
+              "tid": 5,
+              "type": 1,
+              "val": 246
+            },
+            {
+              "tid": 6,
+              "type": 1,
+              "val": 270
+            },
+            {
+              "tid": 102031,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy Attack",
+              "value": "17.1%",
+              "max": "30.0%",
+              "rollPercent": 57
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "2.46%",
+              "max": "6.0%",
+              "rollPercent": 41
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "2.7%",
+              "max": "6.0%",
+              "rollPercent": 45
+            }
+          ],
+          "refinement": {
+            "totalValue": 22.26,
+            "totalMax": 42,
+            "threshold70": 29.4,
+            "percent": 53.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "2": {
+          "slot": 2,
+          "equipId": 100203,
+          "level": 0,
+          "scores": {
+            "land": 720,
+            "navy": 3072,
+            "air": 720
+          },
+          "rawBuffs": [
+            {
+              "tid": 356,
+              "type": 1,
+              "val": 84
+            }
+          ],
+          "enhanceValue": {},
+          "name": "Tactical Backarmor",
+          "buffNames": [
+            "All units HP",
+            "Increase DEF of Navy"
+          ],
+          "buffValues": [
+            "3.6%",
+            "0.84%"
+          ],
+          "enhanceLabels": [],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "equipped": false
+        },
+        "3": {
+          "slot": 3,
+          "equipId": 100304,
+          "level": 10,
+          "scores": {
+            "land": 3600,
+            "navy": 10824,
+            "air": 3600
+          },
+          "name": "Optical Add-on",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Navy DMG Increase",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "9%",
+            "3%",
+            "3.3%",
+            "1.86%"
+          ],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "infos": [
+            {
+              "tid": 141,
+              "type": 1,
+              "val": 330
+            },
+            {
+              "tid": 140,
+              "type": 1,
+              "val": 186
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy DMG Increase",
+              "value": "3.3%",
+              "max": "6.0%",
+              "rollPercent": 55
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "1.86%",
+              "max": "6.0%",
+              "rollPercent": 31
+            }
+          ],
+          "refinement": {
+            "totalValue": 5.16,
+            "totalMax": 12,
+            "threshold70": 8.4,
+            "percent": 43.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 0
+        },
+        "4": {
+          "slot": 4,
+          "equipId": 100404,
+          "level": 10,
+          "scores": {
+            "land": 17600,
+            "navy": 25328,
+            "air": 17600
+          },
+          "name": "Raysor Headset",
+          "buffNames": [
+            "All units HP",
+            "Navy Decreased DMG Taken",
+            "Navy Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "12%",
+            "3.12%",
+            "2.4%"
+          ],
+          "effectName": "Stealth Hologram",
+          "effectDesc": "After equipping this  gear, all your units  gain a  10% Decreased Damage Taken  attribute.",
+          "infos": [
+            {
+              "tid": 193,
+              "type": 1,
+              "val": 312
+            },
+            {
+              "tid": 194,
+              "type": 1,
+              "val": 240
+            },
+            {
+              "tid": 40211,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "3.12%",
+              "max": "6.0%",
+              "rollPercent": 52
+            },
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "2.4%",
+              "max": "6.0%",
+              "rollPercent": 40
+            }
+          ],
+          "refinement": {
+            "totalValue": 5.52,
+            "totalMax": 12,
+            "threshold70": 8.4,
+            "percent": 46.0,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "5": {
+          "slot": 5,
+          "equipId": 100504,
+          "level": 10,
+          "scores": {
+            "land": 6120,
+            "navy": 9228,
+            "air": 3600
+          },
+          "name": "Portable GPS",
+          "buffNames": [
+            "All units Attack",
+            "Army Attack",
+            "Navy DMG Increase",
+            "Navy DMG Increase"
+          ],
+          "buffValues": [
+            "12%",
+            "12.6%",
+            "1.98%",
+            "2.04%"
+          ],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "infos": [
+            {
+              "tid": 109,
+              "type": 1,
+              "val": 1260
+            },
+            {
+              "tid": 94,
+              "type": 1,
+              "val": 198
+            },
+            {
+              "tid": 95,
+              "type": 1,
+              "val": 204
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Army Attack",
+              "value": "12.6%",
+              "max": "30.0%",
+              "rollPercent": 42
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "1.98%",
+              "max": "6.0%",
+              "rollPercent": 33
+            },
+            {
+              "stat": "Navy DMG Increase",
+              "value": "2.04%",
+              "max": "6.0%",
+              "rollPercent": 34
+            }
+          ],
+          "refinement": {
+            "totalValue": 16.62,
+            "totalMax": 42,
+            "threshold70": 29.4,
+            "percent": 39.57,
+            "meetsThreshold": false
+          },
+          "starLevel": 0
+        },
+        "6": {
+          "slot": 6,
+          "equipId": 100604,
+          "level": 10,
+          "scores": {
+            "land": 5460,
+            "navy": 7632,
+            "air": 3600
+          },
+          "name": "Power Boots",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Navy Decreased DMG Taken",
+            "Army HP Boost"
+          ],
+          "buffValues": [
+            "3%",
+            "9%",
+            "2.88%",
+            "9.3%"
+          ],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "infos": [
+            {
+              "tid": 239,
+              "type": 1,
+              "val": 288
+            },
+            {
+              "tid": 255,
+              "type": 1,
+              "val": 930
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Navy Decreased DMG Taken",
+              "value": "2.88%",
+              "max": "6.0%",
+              "rollPercent": 48
+            },
+            {
+              "stat": "Army HP Boost",
+              "value": "9.3%",
+              "max": "30.0%",
+              "rollPercent": 31
+            }
+          ],
+          "refinement": {
+            "totalValue": 12.18,
+            "totalMax": 36,
+            "threshold70": 25.2,
+            "percent": 33.83,
+            "meetsThreshold": false
+          },
+          "starLevel": 0
+        }
+      },
+      "exclusiveSkill": {
+        "skillId": 20742,
+        "level": 5
+      },
+      "refinementSummary": {
+        "totalGearSlots": 5,
+        "refined": 0,
+        "unrefined": 5,
+        "unrefinedGear": [
+          {
+            "slot": 1,
+            "name": "Assault Pistol",
+            "totalValue": 22.26,
+            "threshold70": 29.4,
+            "percent": 53.0,
+            "deficit": 7.14
+          },
+          {
+            "slot": 3,
+            "name": "Optical Add-on",
+            "totalValue": 5.16,
+            "threshold70": 8.4,
+            "percent": 43.0,
+            "deficit": 3.24
+          },
+          {
+            "slot": 4,
+            "name": "Raysor Headset",
+            "totalValue": 5.52,
+            "threshold70": 8.4,
+            "percent": 46.0,
+            "deficit": 2.88
+          },
+          {
+            "slot": 5,
+            "name": "Portable GPS",
+            "totalValue": 16.62,
+            "threshold70": 29.4,
+            "percent": 39.57,
+            "deficit": 12.78
+          },
+          {
+            "slot": 6,
+            "name": "Power Boots",
+            "totalValue": 12.18,
+            "threshold70": 25.2,
+            "percent": 33.83,
+            "deficit": 13.02
+          }
+        ]
+      }
+    },
+    {
+      "heroId": 325,
+      "heroName": "Brady",
+      "slots": {
+        "1": {
+          "slot": 1,
+          "equipId": 100104,
+          "level": 0,
+          "scores": {
+            "land": 1200,
+            "navy": 1200,
+            "air": 8508
+          },
+          "rawBuffs": [
+            {
+              "tid": 27,
+              "type": 1,
+              "val": 630
+            },
+            {
+              "tid": 9,
+              "type": 1,
+              "val": 102
+            },
+            {
+              "tid": 8,
+              "type": 1,
+              "val": 330
+            }
+          ],
+          "enhanceValue": {},
+          "name": "Assault Pistol",
+          "buffNames": [
+            "All units Attack",
+            "Air Force ATK",
+            "Air Force DMG Increase",
+            "Air Force DMG Increase"
+          ],
+          "buffValues": [
+            "6%",
+            "6.3%",
+            "1.02%",
+            "3.3%"
+          ],
+          "enhanceLabels": [],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "equipped": false
+        },
+        "2": {
+          "slot": 2,
+          "equipId": 100204,
+          "level": 15,
+          "scores": {
+            "land": 18800,
+            "navy": 18800,
+            "air": 29804
+          },
+          "name": "Tactical Backarmor",
+          "buffNames": [
+            "All units HP",
+            "Increase DEF of Air Force",
+            "Increase DEF of Air Force",
+            "Increase DEF of Air Force"
+          ],
+          "buffValues": [
+            "24%",
+            "1.8%",
+            "0.96%",
+            "1.17%"
+          ],
+          "effectName": "Flammable",
+          "effectDesc": "If the hero equipped  with this gear has theIgnition effect, then  this effect is  increased by  15%.",
+          "infos": [
+            {
+              "tid": 88,
+              "type": 1,
+              "val": 180
+            },
+            {
+              "tid": 90,
+              "type": 1,
+              "val": 96
+            },
+            {
+              "tid": 89,
+              "type": 1,
+              "val": 117
+            },
+            {
+              "tid": 20208,
+              "type": 2,
+              "val": 0
+            }
+          ],
+          "enhanceValues": [],
+          "randomStats": [
+            {
+              "stat": "Increase DEF of Air Force",
+              "value": "1.8%",
+              "max": "3.0%",
+              "rollPercent": 60
+            },
+            {
+              "stat": "Increase DEF of Air Force",
+              "value": "0.96%",
+              "max": "3.0%",
+              "rollPercent": 32
+            },
+            {
+              "stat": "Increase DEF of Air Force",
+              "value": "1.17%",
+              "max": "3.0%",
+              "rollPercent": 39
+            }
+          ],
+          "refinement": {
+            "totalValue": 3.93,
+            "totalMax": 9,
+            "threshold70": 6.3,
+            "percent": 43.67,
+            "meetsThreshold": false
+          },
+          "starLevel": 1
+        },
+        "3": {
+          "slot": 3,
+          "equipId": 100304,
+          "level": 0,
+          "scores": {
+            "land": 3180,
+            "navy": 1200,
+            "air": 10860
+          },
+          "rawBuffs": [
+            {
+              "tid": 154,
+              "type": 1,
+              "val": 990
+            },
+            {
+              "tid": 142,
+              "type": 1,
+              "val": 312
+            },
+            {
+              "tid": 142,
+              "type": 1,
+              "val": 378
+            }
+          ],
+          "enhanceValue": {},
+          "name": "Optical Add-on",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Army Attack",
+            "Air Force DMG Increase",
+            "Air Force DMG Increase"
+          ],
+          "buffValues": [
+            "3%",
+            "1%",
+            "9.9%",
+            "3.12%",
+            "3.78%"
+          ],
+          "enhanceLabels": [],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "equipped": false
+        },
+        "4": {
+          "slot": 4,
+          "equipId": 100404,
+          "level": 0,
+          "scores": {
+            "land": 1200,
+            "navy": 1200,
+            "air": 6408
+          },
+          "rawBuffs": [
+            {
+              "tid": 197,
+              "type": 1,
+              "val": 258
+            },
+            {
+              "tid": 198,
+              "type": 1,
+              "val": 114
+            }
+          ],
+          "enhanceValue": {},
+          "name": "Raysor Headset",
+          "buffNames": [
+            "All units HP",
+            "Air Force Decreased DMG Taken",
+            "Air Force Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "4%",
+            "2.58%",
+            "1.14%"
+          ],
+          "enhanceLabels": [],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "equipped": false
+        },
+        "5": {
+          "slot": 5,
+          "equipId": 100504,
+          "level": 0,
+          "scores": {
+            "land": 3552,
+            "navy": 1200,
+            "air": 3888
+          },
+          "rawBuffs": [
+            {
+              "tid": 93,
+              "type": 1,
+              "val": 168
+            },
+            {
+              "tid": 97,
+              "type": 1,
+              "val": 192
+            }
+          ],
+          "enhanceValue": {},
+          "name": "Portable GPS",
+          "buffNames": [
+            "All units Attack",
+            "Army DMG Increase",
+            "Air Force DMG Increase"
+          ],
+          "buffValues": [
+            "4%",
+            "1.68%",
+            "1.92%"
+          ],
+          "enhanceLabels": [],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "equipped": false
+        },
+        "6": {
+          "slot": 6,
+          "equipId": 100604,
+          "level": 0,
+          "scores": {
+            "land": 2760,
+            "navy": 1200,
+            "air": 7836
+          },
+          "rawBuffs": [
+            {
+              "tid": 242,
+              "type": 1,
+              "val": 198
+            },
+            {
+              "tid": 253,
+              "type": 1,
+              "val": 780
+            },
+            {
+              "tid": 241,
+              "type": 1,
+              "val": 276
+            }
+          ],
+          "enhanceValue": {},
+          "name": "Power Boots",
+          "buffNames": [
+            "All units Attack",
+            "All units HP",
+            "Air Force Decreased DMG Taken",
+            "Army HP Boost",
+            "Air Force Decreased DMG Taken"
+          ],
+          "buffValues": [
+            "1%",
+            "3%",
+            "1.98%",
+            "7.8%",
+            "2.76%"
+          ],
+          "enhanceLabels": [],
+          "effectName": null,
+          "effectDesc": "\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c\u6587\u672c",
+          "equipped": false
+        }
+      },
+      "exclusiveSkill": {
+        "skillId": 20714,
+        "level": 5
+      },
+      "refinementSummary": {
+        "totalGearSlots": 1,
+        "refined": 0,
+        "unrefined": 1,
+        "unrefinedGear": [
+          {
+            "slot": 2,
+            "name": "Tactical Backarmor",
+            "totalValue": 3.93,
+            "threshold70": 6.3,
+            "percent": 43.67,
+            "deficit": 2.37
+          }
+        ]
+      }
+    }
+  ]
+}
