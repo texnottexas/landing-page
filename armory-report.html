@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https://h5.topwargame.com data:; connect-src 'none'; object-src 'none'; frame-ancestors 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https://h5.topwargame.com https://raw.githubusercontent.com data:; connect-src 'none'; object-src 'none'; frame-ancestors 'none';">
 <title>Tex's Armory — Server 2864</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -92,6 +92,15 @@ a { color: var(--accent); text-decoration: none; }
 .gear-card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
 .gear-card .gear-name { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
 .gear-card .rune-name { font-size: 11px; color: var(--accent); margin-bottom: 8px; }
+.gear-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+.rune-display { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.rune-icon { width: 28px; height: 28px; border-radius: 4px; }
+.rune-stars { display: flex; gap: 1px; align-items: center; }
+.filter-selects { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.refine-mode-toggle { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; }
+.refine-mode-label { font-size: 12px; color: var(--muted); }
+.refine-mode-btn { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; color: var(--muted); font-size: 12px; cursor: pointer; transition: all 0.2s; }
+.refine-mode-btn.active { background: rgba(121,192,255,.15); border-color: var(--accent); color: var(--accent); }
 .gear-card .base-stat { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
 .gear-card .base-stat .enhance { color: var(--good); }
 .stat-row { display: flex; align-items: center; justify-content: space-between; font-size: 12px; padding: 3px 0; border-bottom: 1px solid rgba(48,54,61,0.5); }
@@ -190,13 +199,17 @@ a { color: var(--accent); text-decoration: none; }
   .mini-bar { order: 11; flex: 1; }
   .mini-seg { flex: 1; height: 8px; width: auto; }
   .expand-icon { order: 12; }
-  /* Filter bar: stack vertically */
-  .filter-bar { flex-direction: column; gap: 8px; padding: 10px 12px; }
+  /* Filter bar */
+  .filter-bar { gap: 8px; padding: 10px 12px; }
   .search-input { min-width: 100%; }
   .pill-group { flex-wrap: wrap; }
-  .filter-label { display: none; }
-  .filter-select { flex: 1; min-width: 0; }
-  .march-btn { width: 100%; text-align: center; }
+  .filter-selects { width: 100%; gap: 6px; }
+  .filter-selects .filter-label { display: none; }
+  .filter-selects .filter-select { flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px; }
+  .filter-selects .march-btn { font-size: 11px; padding: 6px 10px; }
+  .refine-mode-toggle { padding: 6px 12px; margin-bottom: 8px; }
+  .refine-mode-label { font-size: 11px; }
+  .refine-mode-btn { font-size: 11px; padding: 4px 10px; }
   /* Beast tab */
   .field-pills { gap: 4px; }
   .field-pill { padding: 5px 10px; font-size: 12px; }
@@ -302,23 +315,30 @@ a { color: var(--accent); text-decoration: none; }
         <div class="pill navy active" data-branch="Navy">Navy</div>
         <div class="pill air active" data-branch="Air Force">Air</div>
       </div>
-      <span class="filter-label">Refine:</span>
-      <select class="filter-select" id="refine-filter">
-        <option value="all">All</option>
-        <option value="refined">Refined (70%+)</option>
-        <option value="needs-work">Needs Work</option>
-      </select>
-      <span class="filter-label">Sort:</span>
-      <select class="filter-select" id="sort-select">
-        <option value="power">Power</option>
-        <option value="name">Name</option>
-        <option value="refined">Refined Count</option>
-      </select>
-      <span class="filter-label">March:</span>
-      <select class="filter-select" id="march-filter">
-        <option value="all">All Heroes</option>
-      </select>
-      <button class="march-btn" id="manage-marches-btn">Manage Marches</button>
+      <div class="filter-selects">
+        <span class="filter-label">Refine:</span>
+        <select class="filter-select" id="refine-filter">
+          <option value="all">All</option>
+          <option value="refined">Refined (70%+)</option>
+          <option value="needs-work">Needs Work</option>
+        </select>
+        <span class="filter-label">Sort:</span>
+        <select class="filter-select" id="sort-select">
+          <option value="power">Power</option>
+          <option value="name">Name</option>
+          <option value="refined">Refined Count</option>
+        </select>
+        <span class="filter-label">March:</span>
+        <select class="filter-select" id="march-filter">
+          <option value="all">All Heroes</option>
+        </select>
+        <button class="march-btn" id="manage-marches-btn">Manage Marches</button>
+      </div>
+    </div>
+    <div class="refine-mode-toggle" id="refine-mode-toggle">
+      <span class="refine-mode-label">Refine Mode:</span>
+      <button class="refine-mode-btn active" data-mode="average">Average</button>
+      <button class="refine-mode-btn" data-mode="per-slot">Per Slot</button>
     </div>
     <div class="hero-grid" id="hero-grid"></div>
   </div>
@@ -392,10 +412,67 @@ function refIcon(meets) { return meets ? '<span class="icon-pass">\u2713</span>'
 function elementEmoji(el) { return { Fire:'\ud83d\udd34', Wind:'\ud83d\udfe2', Water:'\ud83d\udd35', Ground:'\ud83d\udfe1' }[el] || ''; }
 function starStr(n) { return '\u2605'.repeat(n) + '\u2606'.repeat(5 - n); }
 
+// Rune icons
+const RUNE_ICONS = {
+  'Steel Torrent': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/steel-torrent.png',
+  'Artillery Storm': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/artillery-storm.png',
+  'Unbreakable': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/unbreakable.png',
+  'All-Out Surge': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/all-out-surge.png',
+  'Stealth Hologram': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/stealth-hologram.png',
+  'Tactical Awareness': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/tactical-awareness.png',
+  'Searing': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/searing.png',
+  'Armor-Breaking': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/armor-breaking.png',
+  'Impact': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/impact.png',
+  'Magnetic Field': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/magnetic-field.png',
+  'Flammable': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/flammable.png',
+  'Heavy Blow': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/heavy-blow.png',
+  'Debilitate': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/debilitate.png',
+  'Magnetize': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/magnetize.png'
+};
+
+function starSVG(level) {
+  const path = 'M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14 2 9.27l6.91-1.01L12 2z';
+  if (level <= 0) return `<svg width="14" height="14" viewBox="0 0 24 24"><path d="${path}" fill="none" stroke="#d4a017" stroke-width="2"/></svg>`;
+  if (level < 1) return `<svg width="14" height="14" viewBox="0 0 24 24"><path d="${path}" fill="rgba(180,140,20,0.5)" stroke="#d4a017" stroke-width="2"/></svg>`;
+  return `<svg width="14" height="14" viewBox="0 0 24 24"><path d="${path}" fill="#d4a017" stroke="#b8860b" stroke-width="2"/></svg>`;
+}
+
+function runeStarsHTML(slot) {
+  if (!slot.effectName || slot.starLevel === undefined) return '';
+  const threeStarRunes = {
+    1: ['Artillery Storm', 'All-Out Surge'],
+    2: ['Steel Torrent', 'Unbreakable'],
+    3: ['Tactical Awareness'], 5: ['Tactical Awareness'],
+    4: ['Stealth Hologram'], 6: ['Stealth Hologram']
+  };
+  const maxStars = (threeStarRunes[slot.slot] || []).includes(slot.effectName) ? 3 : 1;
+  const starLevel = slot.starLevel || 0;
+  let stars = '';
+  for (let i = 0; i < maxStars; i++) {
+    const remaining = starLevel - i;
+    if (remaining >= 1) stars += starSVG(1);
+    else if (remaining >= 0.5) stars += starSVG(0.5);
+    else stars += starSVG(0);
+  }
+  return stars;
+}
+
+// Refine mode
+let refineMode = 'average';
+
+function getSlotRefined(slot) {
+  if (refineMode === 'average') return slot.refinement.meetsThreshold;
+  return slot.randomStats.every(rs => rs.rollPercent >= 70);
+}
+
+function getHeroRefinedCount(hero) {
+  return Object.values(hero.slots).filter(s => getSlotRefined(s)).length;
+}
+
 // Dashboard
 function buildDashboard() {
   let totalGear = 0, refinedGear = 0;
-  GEAR_DATA.forEach(h => { Object.values(h.slots).forEach(s => { totalGear++; if (s.refinement.meetsThreshold) refinedGear++; }); });
+  GEAR_DATA.forEach(h => { Object.values(h.slots).forEach(s => { totalGear++; if (getSlotRefined(s)) refinedGear++; }); });
   const gearPct = Math.round(refinedGear / totalGear * 100);
 
   let totalSlots = 0, deployedSlots = 0;
@@ -579,11 +656,19 @@ function buildGearSlotHTML(slot) {
   const refPct = ref.percent;
   const barWidth = Math.min(refPct / 70 * 100, 100);
   const color = thresholdColor(refPct);
+  const meets = getSlotRefined(slot);
 
-  return `<div class="gear-card"><div class="gear-name">${slot.name}</div>` +
+  const iconUrl = RUNE_ICONS[slot.effectName] || '';
+  const runeIconHTML = iconUrl ? `<img class="rune-icon" src="${iconUrl}" alt="${slot.effectName}" loading="lazy">` : '';
+  const starsHTML = runeStarsHTML(slot);
+  const runeSection = (runeIconHTML || starsHTML) ?
+    `<div class="rune-display">${runeIconHTML}<div class="rune-stars">${starsHTML}</div></div>` : '';
+
+  return `<div class="gear-card"><div class="gear-header"><div><div class="gear-name">${slot.name}</div>` +
     (slot.effectName ? `<div class="rune-name">${slot.effectName}</div>` : '') +
+    `</div>${runeSection}</div>` +
     baseHTML + statsHTML +
-    `<div class="refine-section"><div class="refine-label"><span>Refinement</span><span class="pct" style="color:${color}">${refPct.toFixed(1)}% ${refIcon(ref.meetsThreshold)}</span></div><div class="refine-bar"><div class="refine-fill" style="width:${barWidth}%;background:${color}"></div></div></div></div>`;
+    `<div class="refine-section"><div class="refine-label"><span>Refinement</span><span class="pct" style="color:${color}">${refPct.toFixed(1)}% ${refIcon(meets)}</span></div><div class="refine-bar"><div class="refine-fill" style="width:${barWidth}%;background:${color}"></div></div></div></div>`;
 }
 
 const BRANCH_MAP = { 'Navy': 'navy', 'Air Force': 'air' };
@@ -594,12 +679,14 @@ function buildHeroCard(hero) {
   const branchClass = BRANCH_MAP[typeName] || 'army';
   const borderClass = BRANCH_MAP[typeName] ? BRANCH_MAP[typeName] + '-border' : '';
   const power = formatPower(meta.power || 0);
-  const { refined, totalGearSlots: total } = hero.refinementSummary;
+  const total = hero.refinementSummary.totalGearSlots;
+  const refined = getHeroRefinedCount(hero);
   const slots = Object.keys(hero.slots).sort((a, b) => +a - +b);
 
   const miniBar = Array.from({ length: 6 }, (_, i) => {
     const s = hero.slots[i + 1];
-    const bg = s ? thresholdColor(s.refinement.percent) : 'var(--border)';
+    if (!s) return `<div class="mini-seg" style="background:var(--border)"></div>`;
+    const bg = getSlotRefined(s) ? 'var(--good)' : thresholdColor(s.refinement.percent);
     return `<div class="mini-seg" style="background:${bg}"></div>`;
   }).join('');
 
@@ -642,8 +729,9 @@ function renderGearTab() {
     const meta = HERO_META[h.heroId] || {};
     if (search && !h.heroName.toLowerCase().includes(search)) return false;
     if (!activeBranches.has(meta.typeName || 'Army')) return false;
-    if (refFilter === 'refined' && h.refinementSummary.refined === 0) return false;
-    if (refFilter === 'needs-work' && h.refinementSummary.refined === h.refinementSummary.totalGearSlots) return false;
+    const rc = getHeroRefinedCount(h);
+    if (refFilter === 'refined' && rc === 0) return false;
+    if (refFilter === 'needs-work' && rc === h.refinementSummary.totalGearSlots) return false;
     if (marchHeroIds && !marchHeroIds.has(h.heroId)) return false;
     return true;
   });
@@ -652,7 +740,7 @@ function renderGearTab() {
     const ma = HERO_META[a.heroId] || {}, mb = HERO_META[b.heroId] || {};
     if (sortBy === 'power') return (mb.power||0) - (ma.power||0);
     if (sortBy === 'name') return a.heroName.localeCompare(b.heroName);
-    if (sortBy === 'refined') return b.refinementSummary.refined - a.refinementSummary.refined || (mb.power||0) - (ma.power||0);
+    if (sortBy === 'refined') return getHeroRefinedCount(b) - getHeroRefinedCount(a) || (mb.power||0) - (ma.power||0);
     return 0;
   });
 
@@ -669,6 +757,18 @@ document.querySelectorAll('#branch-pills .pill').forEach(p => {
 document.getElementById('refine-filter').addEventListener('change', renderGearTab);
 document.getElementById('sort-select').addEventListener('change', renderGearTab);
 document.getElementById('march-filter').addEventListener('change', renderGearTab);
+
+// Refine mode toggle
+document.querySelectorAll('#refine-mode-toggle .refine-mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.mode === refineMode) return;
+    refineMode = btn.dataset.mode;
+    document.querySelectorAll('#refine-mode-toggle .refine-mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    buildDashboard();
+    renderGearTab();
+  });
+});
 
 // =================== BEAST TAB ===================
 const GEAR_NAME_TO_SLOT = { 'Assault Pistol': 1, 'Tactical Backarmor': 2, 'Optical Add-on': 3, 'Raysor Headset': 4, 'Portable GPS': 5, 'Power Boots': 6 };
@@ -696,7 +796,7 @@ function buildRefineHeroList(gearName) {
   GEAR_DATA.forEach(h => {
     const s = h.slots[slotPos];
     if (s) {
-      if (s.refinement.meetsThreshold) pass.push(h.heroName);
+      if (getSlotRefined(s)) pass.push(h.heroName);
       else fail.push(h.heroName);
     }
   });
