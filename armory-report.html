@@ -98,7 +98,7 @@ a { color: var(--accent); text-decoration: none; }
 .hero-card.expanded .gear-panel { max-height: 2000px; }
 .gear-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 0 18px 18px; }
 .gear-card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 14px; display: flex; flex-direction: column; }
-.gear-card .refine-section { margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border); }
+.gear-card .refine-section { margin-top: auto; }
 .gear-card .gear-name { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
 .gear-card .rune-name { font-size: 11px; color: var(--accent); margin-bottom: 8px; }
 .gear-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
@@ -469,7 +469,7 @@ a { color: var(--accent); text-decoration: none; }
 <!-- Hero gear detail modal (from beast tab) -->
 <div class="modal-overlay" id="hero-gear-modal">
   <div class="modal" style="max-width:400px">
-    <button class="modal-close" onclick="document.getElementById('hero-gear-modal').classList.remove('open')">&times;</button>
+    <button class="modal-close" onclick="closeModal('hero-gear-modal')">&times;</button>
     <h2 id="hgm-hero-name"></h2>
     <div class="hgm-slot-btns" id="hgm-slot-btns"></div>
     <div id="hgm-gear-content"></div>
@@ -479,7 +479,7 @@ a { color: var(--accent); text-decoration: none; }
 <!-- Impact Analysis Modal -->
 <div class="modal-overlay" id="impact-modal">
   <div class="modal">
-    <button class="modal-close" onclick="document.getElementById('impact-modal').classList.remove('open')">&times;</button>
+    <button class="modal-close" onclick="closeModal('impact-modal')">&times;</button>
     <h2>Refinement Definition Impact Analysis</h2>
     <div style="font-size:13px;color:var(--muted);margin-bottom:20px;">Comparing Game Description vs. TW Developer Logic</div>
     <div id="impact-content"></div>
@@ -493,6 +493,18 @@ const HERO_META = {"145":{"id":145,"displayName":"Shinji Ikari","type":1,"typeNa
 
 // Helpers
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function initSortBtns(containerId, renderFn) {
+  document.querySelectorAll('#' + containerId + ' .sort-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#' + containerId + ' .sort-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderFn();
+    });
+  });
+}
+const HERO_BY_ID = {};
+GEAR_DATA.forEach(h => { HERO_BY_ID[h.heroId] = h; });
 function formatPower(p) {
   if (p >= 1000000) return (p / 1000000).toFixed(2) + 'M';
   if (p >= 1000) return (p / 1000).toFixed(0) + 'K';
@@ -533,11 +545,12 @@ const RUNE_ICONS = {
   'Magnetize': 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/rune-icons/magnetize.png'
 };
 
+const STAR_PATH = 'M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14 2 9.27l6.91-1.01L12 2z';
 function starSVG(level) {
-  const path = 'M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14 2 9.27l6.91-1.01L12 2z';
-  if (level <= 0) return `<svg width="14" height="14" viewBox="0 0 24 24"><path d="${path}" fill="none" stroke="#d4a017" stroke-width="2"/></svg>`;
-  if (level < 1) return `<svg width="14" height="14" viewBox="0 0 24 24"><path d="${path}" fill="rgba(180,140,20,0.5)" stroke="#d4a017" stroke-width="2"/></svg>`;
-  return `<svg width="14" height="14" viewBox="0 0 24 24"><path d="${path}" fill="#d4a017" stroke="#b8860b" stroke-width="2"/></svg>`;
+  let fill = '#d4a017', stroke = '#b8860b';
+  if (level <= 0) { fill = 'none'; stroke = '#d4a017'; }
+  else if (level < 1) { fill = 'rgba(180,140,20,0.5)'; stroke = '#d4a017'; }
+  return `<svg width="14" height="14" viewBox="0 0 24 24"><path d="${STAR_PATH}" fill="${fill}" stroke="${stroke}" stroke-width="2"/></svg>`;
 }
 
 function runeStarsHTML(slot) {
@@ -626,12 +639,15 @@ function buildImpactAnalysis() {
   const totalSlotsBelow = totalSlots - slotsAt70;
 
   // Section 1: Summary
+  const impactStat = (label, value, color, sub) =>
+    `<div class="impact-stat"><div class="is-label">${label}</div><div class="is-value" style="color:${color}">${value}</div><div class="is-sub">${sub}</div></div>`;
+
   let html = '<div class="impact-section"><h3>At a Glance</h3>';
   html += '<div class="impact-summary-grid">';
-  html += `<div class="impact-stat"><div class="is-label">Gear Refined (Game Description)</div><div class="is-value" style="color:#56d364">${gameDescRefined} / ${totalGear}</div><div class="is-sub">Overall random stat average ≥ 70%</div></div>`;
-  html += `<div class="impact-stat"><div class="is-label">Gear Refined (TW Dev Logic)</div><div class="is-value" style="color:#f97583">${twDevRefined} / ${totalGear}</div><div class="is-sub">Every individual random stat ≥ 70%</div></div>`;
-  html += `<div class="impact-stat"><div class="is-label">Gear Pieces Losing Status</div><div class="is-value" style="color:var(--danger)">${diff}</div><div class="is-sub">${affectedHeroes} of ${GEAR_DATA.length} heroes affected</div></div>`;
-  html += `<div class="impact-stat"><div class="is-label">Random Slots Below 70%</div><div class="is-value" style="color:#e3b341">${totalSlotsBelow} / ${totalSlots}</div><div class="is-sub">Individual stats needing improvement</div></div>`;
+  html += impactStat('Gear Refined (Game Description)', `${gameDescRefined} / ${totalGear}`, '#56d364', 'Overall random stat average \u2265 70%');
+  html += impactStat('Gear Refined (TW Dev Logic)', `${twDevRefined} / ${totalGear}`, '#f97583', 'Every individual random stat \u2265 70%');
+  html += impactStat('Gear Pieces Losing Status', diff, 'var(--danger)', `${affectedHeroes} of ${GEAR_DATA.length} heroes affected`);
+  html += impactStat('Random Slots Below 70%', `${totalSlotsBelow} / ${totalSlots}`, '#e3b341', 'Individual stats needing improvement');
   html += '</div></div>';
 
   // Section 2: Per-Hero Impact
@@ -693,17 +709,16 @@ function openImpactModal() {
 }
 
 document.getElementById('impact-modal').addEventListener('click', (e) => {
-  if (e.target === e.currentTarget) e.target.classList.remove('open');
+  if (e.target === e.currentTarget) closeModal('impact-modal');
 });
 
 // Dashboard
 function buildDashboard() {
-  let totalGear = 0, refinedGear = 0;
-  GEAR_DATA.forEach(h => { Object.values(h.slots).forEach(s => { totalGear++; if (getSlotRefined(s)) refinedGear++; }); });
-
-  let totalRandomSlots = 0, refinedRandomSlots = 0;
+  let totalGear = 0, refinedGear = 0, totalRandomSlots = 0, refinedRandomSlots = 0;
   GEAR_DATA.forEach(h => {
     Object.values(h.slots).forEach(s => {
+      totalGear++;
+      if (getSlotRefined(s)) refinedGear++;
       if (s.randomStats) {
         s.randomStats.forEach(rs => {
           totalRandomSlots++;
@@ -729,14 +744,15 @@ function buildDashboard() {
   let totalSlots = 0, deployedSlots = 0;
   BEAST_DATA.fields.forEach(f => { totalSlots += f.holeCount; deployedSlots += f.beasts.length; });
 
-  let totalPot = 0;
   const allBeasts = BEAST_DATA.fields.flatMap(f => f.beasts);
-  allBeasts.forEach(b => { totalPot += b.potential; });
+  const totalPot = allBeasts.reduce((sum, b) => sum + b.potential, 0);
   const avgPot = Math.round(totalPot / allBeasts.length);
   const avgPotPct = Math.round(avgPot / 16000 * 100);
   const gearColor = thresholdColor(gearPct);
   const deployPct = Math.round(deployedSlots / totalSlots * 100);
-  const avgPotColor = avgPotPct >= 80 ? 'var(--accent)' : avgPotPct >= 60 ? 'var(--warn)' : 'var(--danger)';
+  let avgPotColor = 'var(--danger)';
+  if (avgPotPct >= 80) avgPotColor = 'var(--accent)';
+  else if (avgPotPct >= 60) avgPotColor = 'var(--warn)';
 
   document.getElementById('dashboard').innerHTML = `
     <div class="dash-card">
@@ -792,7 +808,7 @@ function saveMarches(marches) {
 function heroNameById(id) {
   const meta = HERO_META[id];
   if (meta) return meta.displayName;
-  const hero = GEAR_DATA.find(h => h.heroId === id);
+  const hero = HERO_BY_ID[id];
   return hero ? hero.heroName : 'Unknown';
 }
 
@@ -861,7 +877,7 @@ function openMarchModal() {
 }
 
 function closeMarchModal() {
-  document.getElementById('march-modal').classList.remove('open');
+  closeModal('march-modal');
 }
 
 function addMarch() {
@@ -888,7 +904,7 @@ function addMarch() {
 document.getElementById('manage-marches-btn').addEventListener('click', openMarchModal);
 document.getElementById('march-modal-close').addEventListener('click', closeMarchModal);
 document.getElementById('march-modal').addEventListener('click', (e) => {
-  if (e.target === e.currentTarget) closeMarchModal();
+  if (e.target === e.currentTarget) closeModal('march-modal');
 });
 document.getElementById('march-add-btn').addEventListener('click', addMarch);
 populateMarchFilter();
@@ -925,7 +941,7 @@ function buildGearSlotHTML(slot) {
 }
 
 function openHeroGearModal(heroId, slotNum) {
-  const hero = GEAR_DATA.find(h => h.heroId === heroId);
+  const hero = HERO_BY_ID[heroId];
   if (!hero) return;
   document.getElementById('hgm-hero-name').textContent = hero.heroName;
   const btnsContainer = document.getElementById('hgm-slot-btns');
@@ -938,14 +954,14 @@ function openHeroGearModal(heroId, slotNum) {
 }
 
 function showHeroGearSlot(heroId, slotNum) {
-  const hero = GEAR_DATA.find(h => h.heroId === heroId);
+  const hero = HERO_BY_ID[heroId];
   const slot = hero.slots[slotNum];
   document.querySelectorAll('.hgm-slot-btn').forEach((b, i) => b.classList.toggle('active', i + 1 === slotNum));
   document.getElementById('hgm-gear-content').innerHTML = buildGearSlotHTML(slot);
 }
 
 document.getElementById('hero-gear-modal').addEventListener('click', (e) => {
-  if (e.target === e.currentTarget) e.target.classList.remove('open');
+  if (e.target === e.currentTarget) closeModal('hero-gear-modal');
 });
 
 const BRANCH_MAP = { 'Navy': 'navy', 'Air Force': 'air' };
@@ -954,7 +970,7 @@ function buildHeroCard(hero) {
   const meta = HERO_META[hero.heroId] || {};
   const typeName = meta.typeName || 'Army';
   const branchClass = BRANCH_MAP[typeName] || 'army';
-  const borderClass = BRANCH_MAP[typeName] ? BRANCH_MAP[typeName] + '-border' : '';
+  const borderClass = branchClass !== 'army' ? branchClass + '-border' : '';
   const power = formatPower(meta.power || 0);
   const total = hero.refinementSummary.totalGearSlots;
   const refined = getHeroRefinedCount(hero);
@@ -1032,13 +1048,7 @@ document.querySelectorAll('#branch-pills .pill').forEach(p => {
   p.addEventListener('click', () => { p.classList.toggle('active'); renderGearTab(); });
 });
 document.getElementById('refine-filter').addEventListener('change', renderGearTab);
-document.querySelectorAll('.sort-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    renderGearTab();
-  });
-});
+initSortBtns('sort-btns', renderGearTab);
 document.getElementById('march-filter').addEventListener('change', renderGearTab);
 
 // Refine mode toggle
@@ -1060,13 +1070,18 @@ document.querySelectorAll('#refine-mode-toggle .refine-mode-btn').forEach(btn =>
 
 // =================== BEAST TAB ===================
 const GEAR_NAME_TO_SLOT = { 'Assault Pistol': 1, 'Tactical Backarmor': 2, 'Optical Add-on': 3, 'Raysor Headset': 4, 'Portable GPS': 5, 'Power Boots': 6 };
-const GEAR_KEYWORDS = { 'Raysor Headset': ['Raysor Headset', 'Raysor'], 'Power Boots': ['Power Boots'], 'Tactical Backarmor': ['Tactical Backarmor'], 'Assault Pistol': ['Assault Pistol'], 'Optical Add-on': ['Optical Add-on'], 'Portable GPS': ['Portable GPS'] };
+const GEAR_SEARCH_TERMS = [
+  ['Raysor', 'Raysor Headset'],
+  ['Power Boots', 'Power Boots'],
+  ['Tactical Backarmor', 'Tactical Backarmor'],
+  ['Assault Pistol', 'Assault Pistol'],
+  ['Optical Add-on', 'Optical Add-on'],
+  ['Portable GPS', 'Portable GPS']
+];
 
 function findGearInBuff(buffText) {
-  for (const [gearName, keywords] of Object.entries(GEAR_KEYWORDS)) {
-    for (const kw of keywords) {
-      if (buffText.includes(kw)) return gearName;
-    }
+  for (const [keyword, gearName] of GEAR_SEARCH_TERMS) {
+    if (buffText.includes(keyword)) return gearName;
   }
   return null;
 }
@@ -1096,10 +1111,12 @@ function buildRefineHeroList(gearName) {
   });
   if (greenHeroes.length === 0 && yellowHeroes.length === 0 && redHeroes.length === 0) return '';
   const heroSpan = (hero, color) => `<span class="refine-hero" style="color:${color};font-weight:600;cursor:pointer" onclick="openHeroGearModal(${hero.id}, ${slotPos})">${hero.name}</span>`;
-  let parts = [];
-  if (greenHeroes.length) parts.push(greenHeroes.map(h => heroSpan(h, 'var(--good)')).join(', '));
-  if (yellowHeroes.length) parts.push(yellowHeroes.map(h => heroSpan(h, 'var(--warn)')).join(', '));
-  if (redHeroes.length) parts.push(redHeroes.map(h => heroSpan(h, 'var(--danger)')).join(', '));
+  const parts = [
+    [greenHeroes, 'var(--good)'],
+    [yellowHeroes, 'var(--warn)'],
+    [redHeroes, 'var(--danger)']
+  ].filter(([list]) => list.length > 0)
+   .map(([list, color]) => list.map(h => heroSpan(h, color)).join(', '));
   return '<div class="refine-heroes">' + parts.join(' &mdash; ') + '</div>';
 }
 
@@ -1259,13 +1276,7 @@ document.querySelectorAll('#element-pills .pill').forEach(p => {
     renderBeastGrid();
   });
 });
-document.querySelectorAll('#beast-sort-btns .sort-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#beast-sort-btns .sort-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    renderBeastGrid();
-  });
-});
+initSortBtns('beast-sort-btns', renderBeastGrid);
 
 // Init
 buildDashboard();
