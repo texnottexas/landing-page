@@ -1,0 +1,35 @@
+name: Snapshot Calendar Events
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch calendar events from worker
+        run: |
+          mkdir -p data
+          curl -sf https://push-worker.27tb8s6fct.workers.dev/calendar-events \
+            -o data/custom-events.json || echo "[]" > data/custom-events.json
+
+      - name: Check for changes
+        id: diff
+        run: |
+          git diff --quiet data/custom-events.json && echo "changed=false" >> "$GITHUB_OUTPUT" || echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Commit snapshot
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/custom-events.json
+          git commit -m "chore: snapshot calendar events from KV"
+          git push
