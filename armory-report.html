@@ -96,6 +96,9 @@ a { color: var(--accent); text-decoration: none; }
 .rune-display { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .rune-icon { width: 28px; height: 28px; border-radius: 4px; }
 .rune-stars { display: flex; gap: 1px; align-items: center; }
+.rune-icon-wrap { position: relative; cursor: help; }
+.rune-tooltip { display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 11px; color: var(--text); line-height: 1.4; width: 220px; z-index: 10; box-shadow: 0 4px 12px rgba(0,0,0,.4); pointer-events: none; }
+.rune-icon-wrap:hover .rune-tooltip { display: block; }
 .filter-selects { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .refine-mode-toggle { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; }
 .refine-mode-label { font-size: 12px; color: var(--muted); }
@@ -142,6 +145,9 @@ a { color: var(--accent); text-decoration: none; }
 .refine-heroes { margin-top: 6px; font-size: 11px; line-height: 1.6; }
 .refine-heroes .hero-pass { color: var(--good); font-weight: 600; }
 .refine-heroes .hero-fail { color: var(--danger); font-weight: 600; }
+.hgm-slot-btns { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; }
+.hgm-slot-btn { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; color: var(--muted); font-size: 12px; cursor: pointer; transition: all 0.2s; }
+.hgm-slot-btn.active { background: rgba(121,192,255,.15); border-color: var(--accent); color: var(--accent); }
 
 .beast-filter-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
 .beast-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
@@ -236,7 +242,7 @@ a { color: var(--accent); text-decoration: none; }
   .gear-card .base-stat { font-size: 11px; }
   /* Beast filter */
   .beast-filter-bar { flex-direction: column; gap: 8px; padding: 8px 12px; }
-  /* March modal */
+  /* March modal + hero gear modal */
   .modal { width: 95%; max-width: 95%; padding: 16px; }
   .modal h2 { font-size: 16px; }
   .march-form select { font-size: 12px; }
@@ -337,8 +343,8 @@ a { color: var(--accent); text-decoration: none; }
     </div>
     <div class="refine-mode-toggle" id="refine-mode-toggle">
       <span class="refine-mode-label">Refine Mode:</span>
-      <button class="refine-mode-btn active" data-mode="average">Average</button>
-      <button class="refine-mode-btn" data-mode="per-slot">Per Slot</button>
+      <button class="refine-mode-btn active" data-mode="average">Matching game description</button>
+      <button class="refine-mode-btn" data-mode="per-slot">TW Dev logic</button>
     </div>
     <div class="hero-grid" id="hero-grid"></div>
   </div>
@@ -388,6 +394,16 @@ a { color: var(--accent); text-decoration: none; }
         <button class="march-add-btn" id="march-add-btn">Add March</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Hero gear detail modal (from beast tab) -->
+<div class="modal-overlay" id="hero-gear-modal">
+  <div class="modal" style="max-width:400px">
+    <button class="modal-close" onclick="document.getElementById('hero-gear-modal').classList.remove('open')">&times;</button>
+    <h2 id="hgm-hero-name"></h2>
+    <div class="hgm-slot-btns" id="hgm-slot-btns"></div>
+    <div id="hgm-gear-content"></div>
   </div>
 </div>
 
@@ -473,7 +489,31 @@ function getHeroRefinedCount(hero) {
 function buildDashboard() {
   let totalGear = 0, refinedGear = 0;
   GEAR_DATA.forEach(h => { Object.values(h.slots).forEach(s => { totalGear++; if (getSlotRefined(s)) refinedGear++; }); });
-  const gearPct = Math.round(refinedGear / totalGear * 100);
+
+  let totalRandomSlots = 0, refinedRandomSlots = 0;
+  GEAR_DATA.forEach(h => {
+    Object.values(h.slots).forEach(s => {
+      if (s.randomStats) {
+        s.randomStats.forEach(rs => {
+          totalRandomSlots++;
+          if (rs.rollPercent >= 70) refinedRandomSlots++;
+        });
+      }
+    });
+  });
+
+  let gearLabel, gearNum, gearDenom, gearPct;
+  if (refineMode === 'per-slot') {
+    gearLabel = 'Gear Random Slots at 70% Refinement';
+    gearNum = refinedRandomSlots;
+    gearDenom = totalRandomSlots;
+    gearPct = totalRandomSlots ? Math.round(refinedRandomSlots / totalRandomSlots * 100) : 0;
+  } else {
+    gearLabel = 'Gears at 70%+ Refinement';
+    gearNum = refinedGear;
+    gearDenom = totalGear;
+    gearPct = totalGear ? Math.round(refinedGear / totalGear * 100) : 0;
+  }
 
   let totalSlots = 0, deployedSlots = 0;
   BEAST_DATA.fields.forEach(f => { totalSlots += f.holeCount; deployedSlots += f.beasts.length; });
@@ -489,8 +529,8 @@ function buildDashboard() {
 
   document.getElementById('dashboard').innerHTML = `
     <div class="dash-card">
-      <div class="label">Gears at 70%+ Refinement</div>
-      <div class="value" style="color:${gearColor}">${refinedGear} / ${totalGear}</div>
+      <div class="label">${gearLabel}</div>
+      <div class="value" style="color:${gearColor}">${gearNum} / ${gearDenom}</div>
       <div class="sub">${gearPct}% meeting threshold</div>
       <div class="progress-bar"><div class="progress-fill" style="width:${gearPct}%;background:${gearColor}"></div></div>
     </div>
@@ -659,7 +699,9 @@ function buildGearSlotHTML(slot) {
   const meets = getSlotRefined(slot);
 
   const iconUrl = RUNE_ICONS[slot.effectName] || '';
-  const runeIconHTML = iconUrl ? `<img class="rune-icon" src="${iconUrl}" alt="${slot.effectName}" loading="lazy">` : '';
+  const cleanDesc = (slot.effectDesc || '').replace(/\s+/g, ' ').trim();
+  const runeIconHTML = iconUrl ?
+    `<div class="rune-icon-wrap"><img class="rune-icon" src="${iconUrl}" alt="${slot.effectName}" loading="lazy"><div class="rune-tooltip"><strong>${slot.effectName}</strong><br>${cleanDesc}</div></div>` : '';
   const starsHTML = runeStarsHTML(slot);
   const runeSection = (runeIconHTML || starsHTML) ?
     `<div class="rune-display">${runeIconHTML}<div class="rune-stars">${starsHTML}</div></div>` : '';
@@ -670,6 +712,30 @@ function buildGearSlotHTML(slot) {
     baseHTML + statsHTML +
     `<div class="refine-section"><div class="refine-label"><span>Refinement</span><span class="pct" style="color:${color}">${refPct.toFixed(1)}% ${refIcon(meets)}</span></div><div class="refine-bar"><div class="refine-fill" style="width:${barWidth}%;background:${color}"></div></div></div></div>`;
 }
+
+function openHeroGearModal(heroId, slotNum) {
+  const hero = GEAR_DATA.find(h => h.heroId === heroId);
+  if (!hero) return;
+  document.getElementById('hgm-hero-name').textContent = hero.heroName;
+  const btnsContainer = document.getElementById('hgm-slot-btns');
+  btnsContainer.innerHTML = Object.keys(hero.slots).sort((a, b) => +a - +b).map(k => {
+    const s = hero.slots[k];
+    return `<button class="hgm-slot-btn ${+k === slotNum ? 'active' : ''}" onclick="showHeroGearSlot(${heroId}, ${k})">${s.name}</button>`;
+  }).join('');
+  showHeroGearSlot(heroId, slotNum);
+  document.getElementById('hero-gear-modal').classList.add('open');
+}
+
+function showHeroGearSlot(heroId, slotNum) {
+  const hero = GEAR_DATA.find(h => h.heroId === heroId);
+  const slot = hero.slots[slotNum];
+  document.querySelectorAll('.hgm-slot-btn').forEach((b, i) => b.classList.toggle('active', i + 1 === slotNum));
+  document.getElementById('hgm-gear-content').innerHTML = buildGearSlotHTML(slot);
+}
+
+document.getElementById('hero-gear-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) e.target.classList.remove('open');
+});
 
 const BRANCH_MAP = { 'Navy': 'navy', 'Air Force': 'air' };
 
@@ -767,6 +833,8 @@ document.querySelectorAll('#refine-mode-toggle .refine-mode-btn').forEach(btn =>
     btn.classList.add('active');
     buildDashboard();
     renderGearTab();
+    renderAttrPanel();
+    renderBeastGrid();
   });
 });
 
@@ -792,21 +860,27 @@ function getRefineStatus(attr) {
 function buildRefineHeroList(gearName) {
   const slotPos = GEAR_NAME_TO_SLOT[gearName];
   if (!slotPos) return '';
-  let pass = [], fail = [];
+  let greenHeroes = [], yellowHeroes = [], redHeroes = [];
   GEAR_DATA.forEach(h => {
     const s = h.slots[slotPos];
-    if (s) {
-      if (getSlotRefined(s)) pass.push(h.heroName);
-      else fail.push(h.heroName);
+    if (!s) return;
+    if (refineMode === 'per-slot' && s.randomStats) {
+      const passCount = s.randomStats.filter(rs => rs.rollPercent >= 70).length;
+      if (passCount === s.randomStats.length) greenHeroes.push({ name: h.heroName, id: h.heroId });
+      else if (passCount > 0) yellowHeroes.push({ name: h.heroName, id: h.heroId });
+      else redHeroes.push({ name: h.heroName, id: h.heroId });
+    } else {
+      if (getSlotRefined(s)) greenHeroes.push({ name: h.heroName, id: h.heroId });
+      else redHeroes.push({ name: h.heroName, id: h.heroId });
     }
   });
-  if (pass.length === 0 && fail.length === 0) return '';
-  let html = '<div class="refine-heroes">';
-  if (pass.length) html += pass.map(n => '<span class="hero-pass">' + n + '</span>').join(', ');
-  if (pass.length && fail.length) html += ' &mdash; ';
-  if (fail.length) html += fail.map(n => '<span class="hero-fail">' + n + '</span>').join(', ');
-  html += '</div>';
-  return html;
+  if (greenHeroes.length === 0 && yellowHeroes.length === 0 && redHeroes.length === 0) return '';
+  const heroSpan = (hero, color) => `<span class="refine-hero" style="color:${color};font-weight:600;cursor:pointer" onclick="openHeroGearModal(${hero.id}, ${slotPos})">${hero.name}</span>`;
+  let parts = [];
+  if (greenHeroes.length) parts.push(greenHeroes.map(h => heroSpan(h, 'var(--good)')).join(', '));
+  if (yellowHeroes.length) parts.push(yellowHeroes.map(h => heroSpan(h, 'var(--warn)')).join(', '));
+  if (redHeroes.length) parts.push(redHeroes.map(h => heroSpan(h, 'var(--danger)')).join(', '));
+  return '<div class="refine-heroes">' + parts.join(' &mdash; ') + '</div>';
 }
 
 let currentField = 'all';
