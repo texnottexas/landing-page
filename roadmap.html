@@ -361,32 +361,6 @@ document.getElementById('detailClose').addEventListener('click', closeDetail);
 detailOverlay.addEventListener('click', function(e) { if (e.target === detailOverlay) closeDetail(); });
 
 // =================== RENDER ROADMAP ===================
-function renderSection(container, title, titleColor, items, isGitHub) {
-  var section = makeEl('div', 'section');
-
-  var hdr = makeEl('div', 'section-header');
-  var titleEl = makeEl('span', 'section-title');
-  titleEl.style.color = titleColor;
-  titleEl.textContent = title;
-  hdr.appendChild(titleEl);
-  var countEl = makeEl('span', 'section-count');
-  countEl.textContent = String(items.length);
-  hdr.appendChild(countEl);
-  section.appendChild(hdr);
-
-  if (items.length === 0) {
-    var empty = makeEl('div', 'empty-state');
-    empty.textContent = 'Nothing here yet.';
-    section.appendChild(empty);
-  } else {
-    items.forEach(function(item) {
-      section.appendChild(renderCard(item, isGitHub));
-    });
-  }
-
-  container.appendChild(section);
-}
-
 function renderRoadmap(data) {
   var adoItems = data.adoItems || [];
   var githubBugs = data.githubBugs || [];
@@ -409,8 +383,8 @@ function renderRoadmap(data) {
 
   // Sort completed by closedDate desc
   completed.sort(function(a, b) {
-    var da = a.closedDate ? new Date(a.closedDate) : new Date(0);
-    var db = b.closedDate ? new Date(b.closedDate) : new Date(0);
+    var da = new Date(a.closedDate || a.createdDate);
+    var db = new Date(b.closedDate || b.createdDate);
     return db - da;
   });
 
@@ -418,7 +392,7 @@ function renderRoadmap(data) {
   planned.sort(function(a, b) {
     if (a.state === 'Doing' && b.state !== 'Doing') return -1;
     if (b.state === 'Doing' && a.state !== 'Doing') return 1;
-    return 0;
+    return new Date(b.createdDate) - new Date(a.createdDate);
   });
 
   var content = document.getElementById('roadmap-content');
@@ -545,7 +519,8 @@ fetch(WORKER_URL)
     document.getElementById('loading-state').style.display = 'none';
     renderRoadmap(data);
   })
-  .catch(function() {
+  .catch(function(err) {
+    console.error('Roadmap fetch failed:', err);
     document.getElementById('loading-state').style.display = 'none';
     document.getElementById('error-state').style.display = '';
   });
