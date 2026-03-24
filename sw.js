@@ -69,7 +69,8 @@ self.addEventListener('push', function(event) {
           url: data.url || '',
           tag: data.tag,
           receivedAt: now,
-          expiresAt: now + INBOX_TTL
+          expiresAt: now + INBOX_TTL,
+          read: false
         });
         tx.oncomplete = resolve;
         tx.onerror = function() { reject(tx.error); };

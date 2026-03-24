@@ -1283,10 +1283,9 @@
     .identity-anon-link:hover { text-decoration: underline; }
 
     /* Bell / push button */
-    .bell-btn { background: none; border: 1px solid transparent; color: var(--muted); font-size: 1rem; cursor: pointer; padding: .2rem .35rem; border-radius: 6px; line-height: 1; transition: color .15s, border-color .15s; }
+    .bell-btn { position: relative; background: none; border: 1px solid transparent; color: var(--muted); font-size: 1rem; cursor: pointer; padding: .2rem .35rem; border-radius: 6px; line-height: 1; transition: color .15s, border-color .15s; }
     .bell-btn:hover { color: var(--accent); border-color: var(--accent); }
     .bell-btn.subscribed { color: var(--accent); }
-    .bell-btn { position: relative; }
     .bell-btn.has-unread::after {
       content: '';
       position: absolute;
@@ -4405,12 +4404,13 @@
             var store = tx.objectStore(INBOX_STORE);
             var now = Date.now();
             var kept = [];
+            var MAX_INBOX = 50;
             var cursorReq = store.openCursor();
             cursorReq.onsuccess = function(e) {
               var cursor = e.target.result;
               if (!cursor) { resolve(kept); return; }
-              if (cursor.value.expiresAt < now) {
-                cursor.delete(); // purge expired
+              if (cursor.value.expiresAt < now || kept.length >= MAX_INBOX) {
+                cursor.delete(); // purge expired or overflow
               } else {
                 kept.push(cursor.value);
               }
@@ -4419,6 +4419,16 @@
             cursorReq.onerror = function() { resolve([]); };
           });
         }).catch(function() { return []; });
+      }
+
+      function deleteInboxItem(id) {
+        return openInboxDB().then(function(db) {
+          return new Promise(function(resolve) {
+            var tx = db.transaction(INBOX_STORE, 'readwrite');
+            tx.objectStore(INBOX_STORE).delete(id);
+            tx.oncomplete = resolve;
+          });
+        }).catch(function() {});
       }
 
       function markInboxRead(id) {
@@ -4571,7 +4581,7 @@
                 renderNotificationsTab();
               });
             }
-            if (item.url) window.open(item.url, '_blank');
+            if (item.url && item.url.indexOf('https://') === 0) window.open(item.url, '_blank');
           });
 
           panel.appendChild(row);
