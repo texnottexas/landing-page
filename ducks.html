@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Code Explained to a Duck 🦆</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
+
+  :root {
+    --claude-orange: #E8845C;
+    --claude-tan: #D4A574;
+    --duck-yellow: #FFD700;
+    --pond-blue: #4FC3F7;
+    --lily-green: #66BB6A;
+    --bg: #0f172a;
+    --card-bg: #1e293b;
+    --text: #e2e8f0;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Nunito', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow-x: hidden;
+  }
+
+  /* Pond ripple background */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background:
+      radial-gradient(ellipse at 20% 80%, rgba(79,195,247,0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(232,132,92,0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 50%, rgba(102,187,106,0.05) 0%, transparent 70%);
+    z-index: -1;
+  }
+
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+  }
+
+  /* ---- HERO ---- */
+  .hero {
+    text-align: center;
+    padding: 3rem 0 2rem;
+    position: relative;
+  }
+
+  .duck-scene {
+    font-size: 5rem;
+    margin-bottom: 1rem;
+    animation: float 3s ease-in-out infinite;
+    position: relative;
+    display: inline-block;
+  }
+
+  .duck-scene::after {
+    content: '〰️〰️〰️';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 1.5rem;
+    opacity: 0.4;
+    animation: ripple 2s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0) rotate(-2deg); }
+    50% { transform: translateY(-12px) rotate(2deg); }
+  }
+
+  @keyframes ripple {
+    0%, 100% { letter-spacing: 0; opacity: 0.3; }
+    50% { letter-spacing: 4px; opacity: 0.6; }
+  }
+
+  h1 {
+    font-size: 2.5rem;
+    font-weight: 900;
+    background: linear-gradient(135deg, var(--claude-orange), var(--duck-yellow));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.5rem;
+  }
+
+  .subtitle {
+    font-size: 1.1rem;
+    color: #94a3b8;
+    font-style: italic;
+  }
+
+  /* ---- QUACK DIALOG ---- */
+  .quack-box {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    color: #78350f;
+    border-radius: 1.5rem;
+    padding: 1.2rem 1.8rem;
+    margin: 2rem auto;
+    max-width: 600px;
+    position: relative;
+    font-weight: 700;
+    font-size: 1.05rem;
+    box-shadow: 0 4px 20px rgba(253,230,138,0.2);
+  }
+
+  .quack-box::before {
+    content: '🦆';
+    position: absolute;
+    left: -2rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.8rem;
+  }
+
+  .quack-box::after {
+    content: '';
+    position: absolute;
+    left: -8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0; height: 0;
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    border-right: 10px solid #fef3c7;
+  }
+
+  /* ---- SECTION CARDS ---- */
+  .section {
+    background: var(--card-bg);
+    border-radius: 1.2rem;
+    padding: 2rem;
+    margin: 2rem 0;
+    border: 1px solid #334155;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.3s, box-shadow 0.3s;
+  }
+
+  .section:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+  }
+
+  .section-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.8rem;
+    display: inline-block;
+  }
+
+  .section h2 {
+    font-size: 1.5rem;
+    font-weight: 900;
+    margin-bottom: 0.8rem;
+    color: var(--claude-orange);
+  }
+
+  .section p {
+    line-height: 1.7;
+    color: #cbd5e1;
+  }
+
+  .section .duck-translation {
+    margin-top: 1rem;
+    padding: 0.8rem 1rem;
+    background: rgba(255,215,0,0.08);
+    border-left: 3px solid var(--duck-yellow);
+    border-radius: 0 0.5rem 0.5rem 0;
+    font-style: italic;
+    color: #fde68a;
+    font-size: 0.95rem;
+  }
+
+  .duck-translation::before {
+    content: '🦆 Duck translation: ';
+    font-style: normal;
+    font-weight: 700;
+  }
+
+  /* ---- VISUAL DIAGRAM ---- */
+  .diagram {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 1.5rem 0;
+    text-align: center;
+  }
+
+  .diagram-box {
+    background: #0f172a;
+    border: 2px solid;
+    border-radius: 1rem;
+    padding: 1rem;
+    font-weight: 700;
+    font-size: 0.95rem;
+  }
+
+  .diagram-arrow {
+    font-size: 1.5rem;
+    color: var(--claude-orange);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.5; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.2); }
+  }
+
+  .box-you { border-color: var(--pond-blue); color: var(--pond-blue); }
+  .box-claude { border-color: var(--claude-orange); color: var(--claude-orange); }
+  .box-code { border-color: var(--lily-green); color: var(--lily-green); }
+
+  /* ---- PLUGIN GRID ---- */
+  .plugin-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 1rem;
+    margin-top: 1.2rem;
+  }
+
+  .plugin-card {
+    background: #0f172a;
+    border-radius: 0.8rem;
+    padding: 1.2rem;
+    border: 1px solid #334155;
+    transition: border-color 0.3s, transform 0.3s;
+  }
+
+  .plugin-card:hover {
+    border-color: var(--claude-orange);
+    transform: scale(1.03);
+  }
+
+  .plugin-card .icon { font-size: 1.8rem; margin-bottom: 0.5rem; }
+  .plugin-card h3 { font-size: 1rem; margin-bottom: 0.3rem; color: #f1f5f9; }
+  .plugin-card p { font-size: 0.85rem; color: #94a3b8; line-height: 1.5; }
+
+  /* ---- FLOW TIMELINE ---- */
+  .flow {
+    position: relative;
+    padding-left: 2.5rem;
+    margin: 1.5rem 0;
+  }
+
+  .flow::before {
+    content: '';
+    position: absolute;
+    left: 0.9rem;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(to bottom, var(--claude-orange), var(--pond-blue), var(--lily-green));
+    border-radius: 2px;
+  }
+
+  .flow-step {
+    position: relative;
+    margin-bottom: 1.5rem;
+    padding: 0.8rem 1rem;
+    background: #0f172a;
+    border-radius: 0.8rem;
+    border: 1px solid #334155;
+  }
+
+  .flow-step::before {
+    content: attr(data-step);
+    position: absolute;
+    left: -2.3rem;
+    top: 0.8rem;
+    width: 1.6rem;
+    height: 1.6rem;
+    background: var(--card-bg);
+    border: 2px solid var(--claude-orange);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 900;
+    color: var(--claude-orange);
+  }
+
+  .flow-step strong { color: var(--claude-orange); }
+
+  /* ---- SUPERPOWERS ANIMATION ---- */
+  .superpower-list {
+    list-style: none;
+    margin: 1rem 0;
+  }
+
+  .superpower-list li {
+    padding: 0.6rem 0;
+    padding-left: 2rem;
+    position: relative;
+    font-size: 1.05rem;
+    opacity: 0;
+    animation: fadeSlide 0.5s ease forwards;
+  }
+
+  .superpower-list li:nth-child(1) { animation-delay: 0.1s; }
+  .superpower-list li:nth-child(2) { animation-delay: 0.3s; }
+  .superpower-list li:nth-child(3) { animation-delay: 0.5s; }
+  .superpower-list li:nth-child(4) { animation-delay: 0.7s; }
+  .superpower-list li:nth-child(5) { animation-delay: 0.9s; }
+  .superpower-list li:nth-child(6) { animation-delay: 1.1s; }
+
+  .superpower-list li::before {
+    content: '⚡';
+    position: absolute;
+    left: 0;
+  }
+
+  @keyframes fadeSlide {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  /* ---- BEFORE / AFTER ---- */
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 1.2rem 0;
+  }
+
+  .compare-side {
+    background: #0f172a;
+    border-radius: 0.8rem;
+    padding: 1.2rem;
+    border: 2px solid;
+  }
+
+  .compare-side.before {
+    border-color: #ef4444;
+  }
+
+  .compare-side.after {
+    border-color: var(--lily-green);
+  }
+
+  .compare-side h3 {
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 0.8rem;
+  }
+
+  .compare-side.before h3 { color: #ef4444; }
+  .compare-side.after h3 { color: var(--lily-green); }
+
+  .compare-side pre {
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    line-height: 1.6;
+    color: #94a3b8;
+    white-space: pre-wrap;
+  }
+
+  /* ---- FOOTER ---- */
+  .footer {
+    text-align: center;
+    padding: 3rem 0 2rem;
+    color: #475569;
+    font-size: 0.9rem;
+  }
+
+  .footer .big-duck {
+    font-size: 4rem;
+    display: block;
+    margin-bottom: 1rem;
+    animation: float 4s ease-in-out infinite;
+  }
+
+  /* ---- RESPONSIVE ---- */
+  @media (max-width: 640px) {
+    h1 { font-size: 1.8rem; }
+    .compare { grid-template-columns: 1fr; }
+    .diagram { grid-template-columns: 1fr; }
+    .diagram-arrow { transform: rotate(90deg); }
+    .quack-box::before { display: none; }
+    .quack-box { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="duck-scene">🦆💻</div>
+    <h1>Claude Code, Explained to a Duck</h1>
+    <p class="subtitle">A visual guide for our rubber debugging friends</p>
+  </div>
+
+  <div class="quack-box">
+    "Quack? What's Claude Code and why is my human so excited about it?"
+  </div>
+
+  <!-- SECTION 1: What is Claude Code? -->
+  <div class="section">
+    <div class="section-icon">🧠</div>
+    <h2>What is Claude Code?</h2>
+    <p>
+      Claude Code is an <strong>AI coding agent</strong> by Anthropic that lives right inside VS Code.
+      It can read your code, write new code, run commands, search the web, manage files,
+      and even create git commits &mdash; all through natural language conversation.
+    </p>
+    <div class="diagram">
+      <div class="diagram-box box-you">🧑‍💻 You<br><small>"Fix the login bug"</small></div>
+      <div class="diagram-arrow">⚡➡️</div>
+      <div class="diagram-box box-claude">🤖 Claude Code<br><small>reads, thinks, edits</small></div>
+    </div>
+    <div class="diagram" style="max-width: 320px; margin: 0 auto;">
+      <div class="diagram-box box-code" style="grid-column: 1/-1;">✅ Working Code<br><small>tested &amp; committed</small></div>
+    </div>
+    <div class="duck-translation">
+      It's like having a very smart duck friend who can type really fast and never forgets syntax.
+    </div>
+  </div>
+
+  <!-- SECTION 2: The VS Code Plugin -->
+  <div class="section">
+    <div class="section-icon">🧩</div>
+    <h2>The VS Code Extension</h2>
+    <p>
+      Claude Code runs as a <strong>native VS Code extension</strong>, meaning it's deeply integrated
+      into your editor &mdash; not a separate app or browser tab. It sees what you see.
+    </p>
+
+    <div class="compare">
+      <div class="compare-side before">
+        <h3>❌ Without Claude Code</h3>
+        <pre>
+1. Read error message
+2. Copy to browser
+3. Search Stack Overflow
+4. Read 15 answers
+5. Try solution #3
+6. It doesn't work
+7. Try solution #7
+8. Forget what you were doing
+9. Quack in frustration</pre>
+      </div>
+      <div class="compare-side after">
+        <h3>✅ With Claude Code</h3>
+        <pre>
+1. Tell Claude the problem
+2. Claude reads your code
+3. Claude finds the bug
+4. Claude fixes it
+5. Claude runs tests
+6. You approve the change
+7. Quack in delight 🎉</pre>
+      </div>
+    </div>
+
+    <div class="duck-translation">
+      Instead of swimming to a different pond for answers, the answers come to your pond.
+    </div>
+  </div>
+
+  <!-- SECTION 3: Superpowers / Tools -->
+  <div class="section">
+    <div class="section-icon">⚡</div>
+    <h2>Claude Code's Superpowers (Tools)</h2>
+    <p>Claude Code has a toolbelt of powerful capabilities it can use autonomously:</p>
+
+    <ul class="superpower-list">
+      <li><strong>Read &amp; Edit files</strong> &mdash; Opens, understands, and modifies any file in your project</li>
+      <li><strong>Run terminal commands</strong> &mdash; Executes builds, tests, installs, git, and more</li>
+      <li><strong>Search &amp; Navigate</strong> &mdash; Finds files by pattern, searches code content with regex</li>
+      <li><strong>Web Search &amp; Fetch</strong> &mdash; Looks up docs, APIs, and references on the internet</li>
+      <li><strong>Multi-agent delegation</strong> &mdash; Spawns sub-agents to research or work in parallel</li>
+      <li><strong>Memory &amp; Context</strong> &mdash; Remembers your preferences and project details across sessions</li>
+    </ul>
+
+    <div class="duck-translation">
+      Imagine having six ducks, each specialized in a different task, and they all work together. That's Claude Code's tool system.
+    </div>
+  </div>
+
+  <!-- SECTION 4: Plugins / MCP -->
+  <div class="section">
+    <div class="section-icon">🔌</div>
+    <h2>Plugins &amp; MCP Servers</h2>
+    <p>
+      Claude Code can connect to <strong>MCP (Model Context Protocol) servers</strong> &mdash; plugins
+      that extend its reach beyond the editor. Think of them as <em>superpowers on top of superpowers</em>.
+    </p>
+
+    <div class="plugin-grid">
+      <div class="plugin-card">
+        <div class="icon">📧</div>
+        <h3>Microsoft 365</h3>
+        <p>Search emails, check calendars, find SharePoint docs &mdash; all from your editor</p>
+      </div>
+      <div class="plugin-card">
+        <div class="icon">🗃️</div>
+        <h3>Database Tools</h3>
+        <p>Query databases, inspect schemas, migrate data without leaving VS Code</p>
+      </div>
+      <div class="plugin-card">
+        <div class="icon">🐙</div>
+        <h3>GitHub</h3>
+        <p>Create PRs, review code, manage issues, check CI status natively</p>
+      </div>
+      <div class="plugin-card">
+        <div class="icon">📊</div>
+        <h3>Custom APIs</h3>
+        <p>Connect any REST/GraphQL API as a tool Claude can call on your behalf</p>
+      </div>
+    </div>
+
+    <div class="duck-translation">
+      It's like your pond connecting to every other pond in the world through underground tunnels. One duck, infinite ponds.
+    </div>
+  </div>
+
+  <!-- SECTION 5: How it flows -->
+  <div class="section">
+    <div class="section-icon">🌊</div>
+    <h2>How a Typical Flow Works</h2>
+
+    <div class="flow">
+      <div class="flow-step" data-step="1">
+        <strong>You describe what you want</strong> in plain English (or Duck): <em>"Add dark mode to the settings page"</em>
+      </div>
+      <div class="flow-step" data-step="2">
+        <strong>Claude reads your codebase</strong> &mdash; finds relevant files, understands the architecture, checks existing patterns
+      </div>
+      <div class="flow-step" data-step="3">
+        <strong>Claude writes a plan</strong> &mdash; proposes what files to change and why, so you can approve before any edits
+      </div>
+      <div class="flow-step" data-step="4">
+        <strong>Claude edits the code</strong> &mdash; makes precise, minimal changes across multiple files simultaneously
+      </div>
+      <div class="flow-step" data-step="5">
+        <strong>Claude runs tests</strong> &mdash; executes your test suite to make sure nothing broke
+      </div>
+      <div class="flow-step" data-step="6">
+        <strong>You review &amp; approve</strong> &mdash; Claude never pushes to production without your say-so. You're always the boss duck. 🦆👑
+      </div>
+    </div>
+
+    <div class="duck-translation">
+      You quack the order, Claude does the swimming. You still steer.
+    </div>
+  </div>
+
+  <!-- SECTION 6: Why it matters -->
+  <div class="section">
+    <div class="section-icon">🌟</div>
+    <h2>Why This Matters</h2>
+    <p>Claude Code isn't just autocomplete. It's an <strong>autonomous agent</strong> that can:</p>
+    <div class="compare">
+      <div class="compare-side before" style="border-color: #94a3b8;">
+        <h3 style="color: #94a3b8;">Traditional Copilots</h3>
+        <pre>
+• Suggest next line
+• Complete functions
+• Single-file context
+• You do all the work
+• No tool access</pre>
+      </div>
+      <div class="compare-side after">
+        <h3>Claude Code Agent</h3>
+        <pre>
+• Understand entire repos
+• Multi-file refactors
+• Run commands & tests
+• Search the web for docs
+• Use plugins (MCP)
+• Remember your preferences
+• Spawn parallel workers
+• Create PRs & commits</pre>
+      </div>
+    </div>
+
+    <div class="duck-translation">
+      Other tools give you breadcrumbs. Claude Code gives you the whole loaf. And toasts it. And adds butter.
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <span class="big-duck">🦆✨</span>
+    <p><em>"I may be a rubber duck, but even I can see this changes everything."</em></p>
+    <p style="margin-top: 1rem; font-size: 0.8rem;">
+      Made with 🧡 by Claude Code &mdash; yes, this entire page was generated by the thing it explains.
+    </p>
+  </div>
+
+</div>
+
+</body>
+</html>
