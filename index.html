@@ -1320,6 +1320,9 @@
     .notif-header { display: flex; justify-content: space-between; align-items: center; padding: .5rem 1rem; border-bottom: 1px solid var(--border); }
     .notif-readall { background: #388bfd22; color: var(--accent); border: 1px solid #388bfd44; border-radius: 6px; padding: 3px 10px; font-size: .75rem; cursor: pointer; }
     .notif-readall:hover { background: #388bfd44; }
+    .notif-delete { background: none; border: none; color: var(--muted); font-size: .75rem; cursor: pointer; padding: 2px 4px; border-radius: 4px; line-height: 1; opacity: 0; transition: opacity .15s, color .15s; }
+    .notif-item:hover .notif-delete { opacity: 1; }
+    .notif-delete:hover { color: #f85149; }
     /* Push preferences modal */
     .prefs-modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1100; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .15s; }
     .prefs-modal.active { opacity: 1; pointer-events: all; }
@@ -4552,8 +4555,22 @@
           right.appendChild(time);
           right.appendChild(expiry);
 
+          var delBtn = document.createElement('button');
+          delBtn.className = 'notif-delete';
+          delBtn.textContent = '\u2715';
+          delBtn.title = 'Delete';
+          delBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            deleteInboxItem(item.id).then(function() {
+              inboxItems = inboxItems.filter(function(n) { return n.id !== item.id; });
+              updateBellBadge();
+              renderNotificationsTab();
+            });
+          });
+
           row.appendChild(left);
           row.appendChild(right);
+          row.appendChild(delBtn);
 
           row.addEventListener('click', function() {
             if (!item.read) {
