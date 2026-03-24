@@ -64,8 +64,8 @@ self.addEventListener('push', function(event) {
         var tx = db.transaction(INBOX_STORE, 'readwrite');
         tx.objectStore(INBOX_STORE).add({
           id: generateId(),
-          title: data.title || 'TW Server 2864',
-          body: data.body || '',
+          title: title,
+          body: options.body,
           url: data.url || '',
           tag: data.tag,
           receivedAt: now,
