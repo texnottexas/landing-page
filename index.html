@@ -1307,6 +1307,8 @@
     .notif-item { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; padding: .75rem 1rem; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .15s, opacity .2s; }
     .notif-item:hover { background: var(--surface); }
     .notif-item:last-child { border-bottom: none; }
+    .notif-item.read { opacity: .5; }
+    .notif-item.read .notif-title { font-weight: 400; }
     .notif-title { color: var(--text); font-size: .85rem; font-weight: 600; margin-bottom: 2px; }
     .notif-body { color: var(--muted); font-size: .75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
     .notif-meta { text-align: right; flex-shrink: 0; }
@@ -2100,7 +2102,7 @@
         <button class="roster-close" id="prefs-close" aria-label="Close">&#10005;</button>
       </div>
       <div class="prefs-tabs">
-        <button class="prefs-tab" data-tab="notifications" id="prefs-tab-notifs" style="display:none">Notifications</button>
+        <button class="prefs-tab" data-tab="notifications" id="prefs-tab-notifs">Notifications</button>
         <button class="prefs-tab active" data-tab="reminders">Reminders</button>
         <button class="prefs-tab" data-tab="identity">Identity</button>
         <button class="prefs-tab" data-tab="display">Display</button>
@@ -4417,11 +4419,38 @@
         }).catch(function() { return []; });
       }
 
-      function deleteInboxItem(id) {
+      function markInboxRead(id) {
+        var item = inboxItems.find(function(n) { return n.id === id; });
+        if (item) item.read = true;
         return openInboxDB().then(function(db) {
           return new Promise(function(resolve) {
             var tx = db.transaction(INBOX_STORE, 'readwrite');
-            tx.objectStore(INBOX_STORE).delete(id);
+            var store = tx.objectStore(INBOX_STORE);
+            var getReq = store.get(id);
+            getReq.onsuccess = function() {
+              var record = getReq.result;
+              if (record) { record.read = true; store.put(record); }
+            };
+            tx.oncomplete = resolve;
+          });
+        }).catch(function() {});
+      }
+
+      function markAllInboxRead() {
+        inboxItems.forEach(function(n) { n.read = true; });
+        return openInboxDB().then(function(db) {
+          return new Promise(function(resolve) {
+            var tx = db.transaction(INBOX_STORE, 'readwrite');
+            var store = tx.objectStore(INBOX_STORE);
+            var cursorReq = store.openCursor();
+            cursorReq.onsuccess = function(e) {
+              var cursor = e.target.result;
+              if (!cursor) return;
+              var record = cursor.value;
+              record.read = true;
+              cursor.update(record);
+              cursor.continue();
+            };
             tx.oncomplete = resolve;
           });
         }).catch(function() {});
@@ -4438,14 +4467,13 @@
       }
 
       function updateBellBadge() {
-        if (inboxItems.length > 0) {
+        var unread = inboxItems.filter(function(n) { return !n.read; }).length;
+        if (unread > 0) {
           bellBtn.classList.add('has-unread');
-          bellBtn.setAttribute('aria-label', 'Notifications \u2014 ' + inboxItems.length + ' unread');
-          document.getElementById('prefs-tab-notifs').style.display = '';
+          bellBtn.setAttribute('aria-label', 'Notifications \u2014 ' + unread + ' unread');
         } else {
           bellBtn.classList.remove('has-unread', 'seen');
           bellBtn.setAttribute('aria-label', pushSub ? 'Notification preferences' : 'Toggle push notifications');
-          document.getElementById('prefs-tab-notifs').style.display = 'none';
         }
       }
 
@@ -4474,8 +4502,9 @@
         // Sort newest first
         inboxItems.sort(function(a, b) { return b.receivedAt - a.receivedAt; });
 
-        // Header with Read All (only if 2+)
-        if (inboxItems.length >= 2) {
+        // Header with Read All (only if 2+ unread)
+        var unreadCount = inboxItems.filter(function(n) { return !n.read; }).length;
+        if (unreadCount >= 2) {
           var header = document.createElement('div');
           header.className = 'notif-header';
           var label = document.createElement('span');
@@ -4485,8 +4514,7 @@
           readAllBtn.className = 'notif-readall';
           readAllBtn.textContent = 'Read All';
           readAllBtn.addEventListener('click', function() {
-            clearInbox().then(function() {
-              inboxItems = [];
+            markAllInboxRead().then(function() {
               updateBellBadge();
               renderNotificationsTab();
             });
@@ -4499,7 +4527,7 @@
         // Notification items
         inboxItems.forEach(function(item) {
           var row = document.createElement('div');
-          row.className = 'notif-item';
+          row.className = 'notif-item' + (item.read ? ' read' : '');
 
           var left = document.createElement('div');
           left.style.cssText = 'flex:1;min-width:0';
@@ -4528,16 +4556,13 @@
           row.appendChild(right);
 
           row.addEventListener('click', function() {
-            // Fade out then remove
-            row.style.opacity = '0';
-            setTimeout(function() {
-              deleteInboxItem(item.id).then(function() {
-                inboxItems = inboxItems.filter(function(n) { return n.id !== item.id; });
+            if (!item.read) {
+              markInboxRead(item.id).then(function() {
                 updateBellBadge();
-                if (item.url) window.open(item.url, '_blank');
                 renderNotificationsTab();
               });
-            }, 200); // matches CSS transition duration
+            }
+            if (item.url) window.open(item.url, '_blank');
           });
 
           panel.appendChild(row);
