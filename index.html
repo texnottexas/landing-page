@@ -4367,6 +4367,82 @@
 
       document.getElementById('prefs-unsub').addEventListener('click', unsubscribe);
 
+      // --- Notification Inbox ---
+      var INBOX_DB = 'tw2864-notifications';
+      var INBOX_STORE = 'inbox';
+      var inboxItems = []; // in-memory cache of unread notifications
+
+      function openInboxDB() {
+        return new Promise(function(resolve, reject) {
+          var req = indexedDB.open(INBOX_DB, 1);
+          req.onupgradeneeded = function(e) {
+            var db = e.target.result;
+            if (!db.objectStoreNames.contains(INBOX_STORE)) {
+              var store = db.createObjectStore(INBOX_STORE, { keyPath: 'id' });
+              store.createIndex('expiresAt', 'expiresAt');
+            }
+          };
+          req.onsuccess = function(e) { resolve(e.target.result); };
+          req.onerror = function(e) { reject(e.target.error); };
+        });
+      }
+
+      function loadInbox() {
+        if (!('indexedDB' in window)) return Promise.resolve([]);
+        return openInboxDB().then(function(db) {
+          return new Promise(function(resolve) {
+            var tx = db.transaction(INBOX_STORE, 'readwrite');
+            var store = tx.objectStore(INBOX_STORE);
+            var now = Date.now();
+            var kept = [];
+            var cursorReq = store.openCursor();
+            cursorReq.onsuccess = function(e) {
+              var cursor = e.target.result;
+              if (!cursor) { resolve(kept); return; }
+              if (cursor.value.expiresAt < now) {
+                cursor.delete(); // purge expired
+              } else {
+                kept.push(cursor.value);
+              }
+              cursor.continue();
+            };
+            cursorReq.onerror = function() { resolve([]); };
+          });
+        }).catch(function() { return []; });
+      }
+
+      function deleteInboxItem(id) {
+        return openInboxDB().then(function(db) {
+          return new Promise(function(resolve) {
+            var tx = db.transaction(INBOX_STORE, 'readwrite');
+            tx.objectStore(INBOX_STORE).delete(id);
+            tx.oncomplete = resolve;
+          });
+        }).catch(function() {});
+      }
+
+      function clearInbox() {
+        return openInboxDB().then(function(db) {
+          return new Promise(function(resolve) {
+            var tx = db.transaction(INBOX_STORE, 'readwrite');
+            tx.objectStore(INBOX_STORE).clear();
+            tx.oncomplete = resolve;
+          });
+        }).catch(function() {});
+      }
+
+      function updateBellBadge() {
+        if (inboxItems.length > 0) {
+          bellBtn.classList.add('has-unread');
+          bellBtn.setAttribute('aria-label', 'Notifications \u2014 ' + inboxItems.length + ' unread');
+          document.getElementById('prefs-tab-notifs').style.display = '';
+        } else {
+          bellBtn.classList.remove('has-unread', 'seen');
+          bellBtn.setAttribute('aria-label', pushSub ? 'Notification preferences' : 'Toggle push notifications');
+          document.getElementById('prefs-tab-notifs').style.display = 'none';
+        }
+      }
+
       // --- Bell button ---
       bellBtn.addEventListener('click', function() {
         if (pushSub) {
@@ -4552,6 +4628,11 @@
           } else {
             setBellState(false);
           }
+          // Load notification inbox after pushSub is set
+          loadInbox().then(function(items) {
+            inboxItems = items;
+            updateBellBadge();
+          });
         }).catch(function() {
           bellBtn.style.display = 'none';
         });
