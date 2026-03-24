@@ -4158,6 +4158,12 @@
         prefsModal.classList.add('active');
         renderRemindersTab();
         renderIdentityTab();
+        renderNotificationsTab();
+        // Auto-activate notifications tab if unread and no explicit tab requested
+        if (!tab && inboxItems.length > 0) {
+          tab = 'notifications';
+          bellBtn.classList.add('seen'); // stop pulse
+        }
         // Initialize Display tab values
         var themeLabel = document.getElementById('pref-theme-label');
         if (themeLabel) themeLabel.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Dark' : 'Light';
@@ -4443,10 +4449,117 @@
         }
       }
 
+      function relativeTime(ts) {
+        var diff = Date.now() - ts;
+        var mins = Math.floor(diff / 60000);
+        if (mins < 1) return 'just now';
+        if (mins < 60) return mins + 'm ago';
+        var hrs = Math.floor(mins / 60);
+        if (hrs < 24) return hrs + 'h ago';
+        var days = Math.floor(hrs / 24);
+        return days + 'd ago';
+      }
+
+      function expiryInfo(expiresAt) {
+        var days = Math.max(0, Math.ceil((expiresAt - Date.now()) / 86400000));
+        var cls = days >= 7 ? 'green' : days >= 3 ? 'yellow' : 'red';
+        return { text: days + 'd left', cls: cls };
+      }
+
+      function renderNotificationsTab() {
+        var panel = document.getElementById('prefs-notifications');
+        while (panel.firstChild) panel.removeChild(panel.firstChild);
+        if (inboxItems.length === 0) return;
+
+        // Sort newest first
+        inboxItems.sort(function(a, b) { return b.receivedAt - a.receivedAt; });
+
+        // Header with Read All (only if 2+)
+        if (inboxItems.length >= 2) {
+          var header = document.createElement('div');
+          header.className = 'notif-header';
+          var label = document.createElement('span');
+          label.style.cssText = 'color:var(--text);font-size:.8rem;font-weight:600';
+          label.textContent = inboxItems.length + ' notifications';
+          var readAllBtn = document.createElement('button');
+          readAllBtn.className = 'notif-readall';
+          readAllBtn.textContent = 'Read All';
+          readAllBtn.addEventListener('click', function() {
+            clearInbox().then(function() {
+              inboxItems = [];
+              updateBellBadge();
+              renderNotificationsTab();
+              // Switch to reminders tab
+              document.querySelectorAll('.prefs-tab').forEach(function(t) { t.classList.remove('active'); });
+              document.querySelectorAll('.prefs-panel').forEach(function(p) { p.classList.remove('active'); });
+              document.querySelector('.prefs-tab[data-tab="reminders"]').classList.add('active');
+              document.getElementById('prefs-reminders').classList.add('active');
+            });
+          });
+          header.appendChild(label);
+          header.appendChild(readAllBtn);
+          panel.appendChild(header);
+        }
+
+        // Notification items
+        inboxItems.forEach(function(item) {
+          var row = document.createElement('div');
+          row.className = 'notif-item';
+
+          var left = document.createElement('div');
+          left.style.cssText = 'flex:1;min-width:0';
+          var title = document.createElement('div');
+          title.className = 'notif-title';
+          title.textContent = item.title;
+          var body = document.createElement('div');
+          body.className = 'notif-body';
+          body.textContent = item.body;
+          left.appendChild(title);
+          left.appendChild(body);
+
+          var right = document.createElement('div');
+          right.className = 'notif-meta';
+          var time = document.createElement('div');
+          time.className = 'notif-time';
+          time.textContent = relativeTime(item.receivedAt);
+          var exp = expiryInfo(item.expiresAt);
+          var expiry = document.createElement('div');
+          expiry.className = 'notif-expiry ' + exp.cls;
+          expiry.textContent = exp.text;
+          right.appendChild(time);
+          right.appendChild(expiry);
+
+          row.appendChild(left);
+          row.appendChild(right);
+
+          row.addEventListener('click', function() {
+            // Fade out then remove
+            row.style.opacity = '0';
+            setTimeout(function() {
+              deleteInboxItem(item.id).then(function() {
+                inboxItems = inboxItems.filter(function(n) { return n.id !== item.id; });
+                updateBellBadge();
+                if (item.url) window.open(item.url, '_blank');
+                if (inboxItems.length === 0) {
+                  // Switch to reminders
+                  document.querySelectorAll('.prefs-tab').forEach(function(t) { t.classList.remove('active'); });
+                  document.querySelectorAll('.prefs-panel').forEach(function(p) { p.classList.remove('active'); });
+                  document.querySelector('.prefs-tab[data-tab="reminders"]').classList.add('active');
+                  document.getElementById('prefs-reminders').classList.add('active');
+                }
+                renderNotificationsTab();
+              });
+            }, 200); // matches CSS transition duration
+          });
+
+          panel.appendChild(row);
+        });
+      }
+
       // --- Bell button ---
       bellBtn.addEventListener('click', function() {
         if (pushSub) {
-          openPrefs();
+          openPrefs(inboxItems.length > 0 ? 'notifications' : undefined);
         } else {
           subscribe();
         }
