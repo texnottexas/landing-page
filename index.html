@@ -1339,6 +1339,8 @@
     .prefs-reminder-info .meta { color: var(--muted); font-size: .65rem; }
     .prefs-reminder-remove { background: none; border: none; color: var(--muted); cursor: pointer; font-size: .8rem; padding: .25rem; }
     .prefs-reminder-remove:hover { color: var(--red, #f85149); }
+    .prefs-reminder-time-btn { background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--accent); cursor: pointer; font-size: .65rem; padding: .1rem .4rem; transition: background .15s; }
+    .prefs-reminder-time-btn:hover { background: var(--surface); }
     .prefs-empty { text-align: center; padding: 1rem; font-size: .75rem; color: var(--muted); }
     .prefs-setting-row { display: flex; justify-content: space-between; align-items: center; padding: .6rem 0; border-bottom: 1px solid var(--border); }
     .prefs-setting-row:last-child { border-bottom: none; }
@@ -4237,10 +4239,25 @@
           }
           var meta = document.createElement('div');
           meta.className = 'meta';
-          meta.textContent = r.leadMinutes <= 2 ? 'at event time' : r.leadMinutes + 'm before';
+          var timeBtn = document.createElement('button');
+          timeBtn.className = 'prefs-reminder-time-btn';
+          timeBtn.textContent = r.leadMinutes <= 2 ? 'at event time' : r.leadMinutes + 'm before';
+          timeBtn.title = 'Change reminder time';
+          var timeOpts = [{m:2,l:'at event time'},{m:5,l:'5m before'},{m:15,l:'15m before'},{m:30,l:'30m before'},{m:60,l:'60m before'}];
+          timeBtn.addEventListener('click', function() {
+            var curIdx = timeOpts.findIndex(function(o) { return o.m === r.leadMinutes; });
+            var nextIdx = (curIdx + 1) % timeOpts.length;
+            var next = timeOpts[nextIdx];
+            r.leadMinutes = next.m;
+            timeBtn.textContent = next.l;
+            addReminder(r.eventId || null, r.eventPattern || null, next.m);
+          });
+          meta.appendChild(timeBtn);
           if (r.eventId) {
             var tsMatch = r.eventId.match(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)$/);
-            if (tsMatch) meta.textContent += ' \u00B7 ' + new Date(tsMatch[1]).toLocaleDateString();
+            if (tsMatch) {
+              meta.appendChild(document.createTextNode(' \u00B7 ' + new Date(tsMatch[1]).toLocaleDateString()));
+            }
           }
           info.appendChild(nameEl);
           info.appendChild(meta);
