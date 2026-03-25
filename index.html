@@ -3437,7 +3437,7 @@
           function updateRemindBtnText(rbtn, reminder) {
             while (rbtn.firstChild) rbtn.removeChild(rbtn.firstChild);
             if (reminder) {
-              var label = '\u2713 Reminder set \u2014 ' + reminder.leadMinutes + 'm before';
+              var label = '\u2713 Reminder set \u2014 ' + (reminder.leadMinutes <= 2 ? 'at event time' : reminder.leadMinutes + 'm before');
               if (reminder.eventPattern) label += ' \u27F3 all';
               rbtn.appendChild(document.createTextNode(label));
             } else {
@@ -3461,10 +3461,11 @@
             header.textContent = 'Remind me before';
             remindMenu.appendChild(header);
 
-            [15, 30, 60].forEach(function(mins) {
+            [{m:2,label:'At time of event'},{m:5,label:'5 minutes'},{m:15,label:'15 minutes'},{m:30,label:'30 minutes'},{m:60,label:'60 minutes'}].forEach(function(opt) {
+              var mins = opt.m;
               var item = document.createElement('button');
               item.className = 'cal-remind-menu-item' + (currentReminder && currentReminder.leadMinutes === mins ? ' active' : '');
-              item.textContent = mins + ' minutes' + (currentReminder && currentReminder.leadMinutes === mins ? ' \u2713' : '');
+              item.textContent = opt.label + (currentReminder && currentReminder.leadMinutes === mins ? ' \u2713' : '');
               item.addEventListener('click', function(e) {
                 e.stopPropagation();
                 if (!window._getPushSub || !window._getPushSub()) {
@@ -3514,7 +3515,7 @@
             var baseName = evt.name.replace(/\s*\(.*\)\s*$/, '');
             if (currentReminder && currentReminder.leadMinutes) {
               allItem.className = 'cal-remind-menu-item all-type';
-              allItem.textContent = 'All ' + baseName + ' \u2192 ' + currentReminder.leadMinutes + 'm';
+              allItem.textContent = 'All ' + baseName + ' \u2192 ' + (currentReminder.leadMinutes <= 2 ? 'at event' : currentReminder.leadMinutes + 'm');
               allItem.addEventListener('click', function(e) {
                 e.stopPropagation();
                 removeReminder(evtEventId, null);
@@ -4236,7 +4237,7 @@
           }
           var meta = document.createElement('div');
           meta.className = 'meta';
-          meta.textContent = r.leadMinutes + 'm before';
+          meta.textContent = r.leadMinutes <= 2 ? 'at event time' : r.leadMinutes + 'm before';
           if (r.eventId) {
             var tsMatch = r.eventId.match(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)$/);
             if (tsMatch) meta.textContent += ' \u00B7 ' + new Date(tsMatch[1]).toLocaleDateString();
