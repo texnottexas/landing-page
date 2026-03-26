@@ -4100,7 +4100,7 @@
             endpoint: sub.endpoint,
             keys: { p256dh: bufToB64u(sub.getKey('p256dh')), auth: bufToB64u(sub.getKey('auth')) },
             player: identity
-              ? (identity.guest ? { name: identity.name, guest: true } : { name: identity.name, alliance: identity.alliance })
+              ? (identity.guest ? { name: identity.name, guest: true } : { name: identity.name, alliance: identity.alliance, siteKey: identity.siteKey || null })
               : null,
           }),
         }).catch(function() {});
@@ -4956,6 +4956,7 @@
           item.appendChild(tagSpan);
           function selectPlayer() {
             var identity = { name: p.name, alliance: p.alliance, rank: p.rank, profession: p.profession };
+            if (p.siteKey) identity.siteKey = p.siteKey;
             saveIdentity(identity);
             showGreeting(identity);
             // Re-sync identity to worker if push is active
@@ -4982,6 +4983,27 @@
         .then(function(r) { return r.json(); })
         .then(function(data) {
           allPlayers = data;
+          // Migrate existing identity: add siteKey if missing
+          var stored = getIdentity();
+          if (stored && stored.name && !stored.siteKey && !stored.guest) {
+            var match = data.find(function(p) { return p.name === stored.name && p.alliance === stored.alliance; });
+            if (match && match.siteKey) {
+              stored.siteKey = match.siteKey;
+              saveIdentity(stored);
+            }
+          }
+          // Update name if siteKey matches but name changed
+          if (stored && stored.siteKey) {
+            var keyMatch = data.find(function(p) { return p.siteKey === stored.siteKey; });
+            if (keyMatch && keyMatch.name !== stored.name) {
+              stored.name = keyMatch.name;
+              stored.alliance = keyMatch.alliance;
+              stored.rank = keyMatch.rank;
+              stored.profession = keyMatch.profession;
+              saveIdentity(stored);
+              showGreeting(stored);
+            }
+          }
           showModalIfNeeded();
         })
         .catch(function() {});
