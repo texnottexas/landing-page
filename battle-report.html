@@ -751,16 +751,28 @@
       var totalPlaced = catCounts[0] + catCounts[1] + catCounts[2] + catCounts[3] + uncategorized.length;
       catFilterBtns[0].textContent = 'All (' + totalPlaced + ')';
 
-      // Sort within each category: by first buff's primary sort value (highest first)
+      // Sort within each category: both have first, attacker only second, defender only third
+      function decorOwnership(d) {
+        var att = !!attPlaced.groups[d.group];
+        var def = !!defPlaced.groups[d.group];
+        if (att && def) return 0; // both
+        if (att) return 1;        // attacker only
+        if (def) return 2;        // defender only
+        return 3;
+      }
       function decorSortVal(d) {
         if (!d.data.b || d.data.b.length === 0) return 0;
         var b = d.data.b[0];
-        return b.t === 1 ? b.v * 10000 : b.v; // flat values sort higher
+        return b.t === 1 ? b.v * 10000 : b.v;
       }
 
       for (var ci = 0; ci < 4; ci++) {
         if (byCat[ci].length === 0) continue;
-        byCat[ci].sort(function(a, b) { return decorSortVal(b) - decorSortVal(a); });
+        byCat[ci].sort(function(a, b) {
+          var oa = decorOwnership(a), ob = decorOwnership(b);
+          if (oa !== ob) return oa - ob;
+          return decorSortVal(b) - decorSortVal(a);
+        });
         placedContent.appendChild(el('div', { className: 'decor-cat-header' }, DECOR_CAT_NAMES[ci] + ' (' + byCat[ci].length + ')'));
 
         for (var di = 0; di < byCat[ci].length; di++) {
