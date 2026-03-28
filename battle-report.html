@@ -363,6 +363,7 @@
   var FIGHT_TYPES = {
     1: 'World Map Attack', 2: 'Base Attack', 3: 'Rally', 4: 'Base Defense',
     5: 'Scout', 6: 'NPC', 7: 'Monster', 8: 'Rebel Camp',
+    21: 'Time Clash Arena',
     100: 'Alliance War', 101: 'Cross-Server', 127: 'Wasteland Conquest',
     128: 'Neutral City', 200: 'Hero Experiment'
   };
@@ -1484,7 +1485,7 @@
     barWrap.appendChild(bar);
 
     var pctEl = el('div', { className: 'survival-pct' + (isAtt ? '' : ' right') });
-    pctEl.textContent = surv.alive + '/' + surv.total + ' survived (' + surv.pct.toFixed(0) + '%)';
+    pctEl.textContent = surv.alive + '/' + surv.total + ' stacks survived (' + surv.pct.toFixed(0) + '%)';
     barWrap.appendChild(pctEl);
 
     sideEl.appendChild(barWrap);
@@ -1499,28 +1500,42 @@
   }
 
   /** Build one side of the army composition row */
-  function buildArmySide(army, mechas, side, playerName) {
+  function buildArmySide(army, mechas, side, playerName, totalArmyNum) {
     var isAtt = (side === 'att');
     var sideEl = buildDetailSide('Unit Composition', !isAtt, playerName);
+
+    // Show total army count if available
+    if (totalArmyNum) {
+      var totalEl = el('div', { style: 'font-size:.75rem;color:var(--accent);font-weight:600;margin-bottom:.25rem;' });
+      totalEl.textContent = formatPower(totalArmyNum) + ' total units';
+      sideEl.appendChild(totalEl);
+    }
+
     var list = el('ul', { className: 'army-list ' + (isAtt ? 'left' : 'right') });
 
     army.forEach(function(a) {
       var li = el('li');
       var resolved = resolveUnitIcon(a.armyId, mechas);
+      var survived = a.s0 || 0;
+      var died = a.s1 || 0;
+      var total = survived + died;
+      // Build count display: survived/total (or just xTotal if no breakdown)
       var numSpan = el('span');
-      numSpan.textContent = 'x' + formatPower(a.s0 || a.s1 || a.num || a.armyNum || 0);
+      if (total > 0 && (survived > 0 || died > 0)) {
+        numSpan.innerHTML = '<span style="color:var(--green)">' + formatPower(survived) + '</span>/<span style="color:var(--muted)">' + formatPower(total) + '</span>';
+      } else {
+        numSpan.textContent = 'x' + formatPower(a.num || a.armyNum || total || 0);
+      }
       var unitInfo = el('span', { className: 'unit-info' });
       var labelSpan = el('span');
       labelSpan.textContent = resolved.label;
 
       if (isAtt) {
-        // Attacker: count, then label + icon
         unitInfo.appendChild(labelSpan);
         if (resolved.icon) unitInfo.appendChild(unitIconImg(resolved.icon, resolved.label));
         li.appendChild(numSpan);
         li.appendChild(unitInfo);
       } else {
-        // Defender: icon + label, then count
         if (resolved.icon) unitInfo.appendChild(unitIconImg(resolved.icon, resolved.label));
         unitInfo.appendChild(labelSpan);
         li.appendChild(unitInfo);
@@ -1649,8 +1664,8 @@
     var defMechas = def.mechas || [];
     if (attArmy.length > 0 || defArmy.length > 0) {
       var row2 = el('div', { className: 'details-row' });
-      row2.appendChild(buildArmySide(attArmy, attMechas, 'att', attPI.username || 'Attacker'));
-      row2.appendChild(buildArmySide(defArmy, defMechas, 'def', defPI.username || 'Defender'));
+      row2.appendChild(buildArmySide(attArmy, attMechas, 'att', attPI.username || 'Attacker', fm.attArmyNum));
+      row2.appendChild(buildArmySide(defArmy, defMechas, 'def', defPI.username || 'Defender', fm.defArmyNum));
       panel.appendChild(row2);
     }
 
