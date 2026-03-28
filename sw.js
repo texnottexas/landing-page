@@ -93,9 +93,11 @@ self.addEventListener('notificationclick', function(event) {
     isExternal
       ? self.clients.openWindow(targetUrl)
       : self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clients) {
+          var norm = function(u) { return u.split('?')[0].split('#')[0].replace(/\/index\.html$/, '').replace(/\/+$/, ''); };
+          var targetNorm = norm(targetUrl);
           for (var i = 0; i < clients.length; i++) {
             if (clients[i].url.startsWith('https://2864tw.com') && 'focus' in clients[i]) {
-              if (clients[i].url !== targetUrl && 'navigate' in clients[i]) {
+              if (norm(clients[i].url) !== targetNorm && 'navigate' in clients[i]) {
                 return clients[i].navigate(targetUrl).then(function(c) { return c.focus(); });
               }
               return clients[i].focus();
