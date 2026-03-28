@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https://knight-cdn.akamaized.net https://h5.topwargame.com https://raw.githubusercontent.com data:; connect-src https://fight-report-va.oss-accelerate.aliyuncs.com; font-src data:">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https://knight-cdn.akamaized.net https://h5.topwargame.com https://raw.githubusercontent.com data:; connect-src https://fight-report-va.oss-accelerate.aliyuncs.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'">
 <title>Battle Report Viewer — 2864</title>
 <style>
   :root {
@@ -83,7 +84,6 @@
 
   /* Skill icon in damage table */
   .skill-icon { width: 32px; height: 32px; border-radius: 4px; object-fit: cover; vertical-align: middle; margin-right: .25rem; background: var(--surface); flex-shrink: 0; }
-  .skill-hero-icon { width: 32px; height: 32px; border-radius: 4px; object-fit: cover; vertical-align: middle; margin-right: .25rem; background: var(--surface); }
   .skill-cell-wrap { display: inline-flex; align-items: center; gap: .25rem; }
 
   /* Army composition */
@@ -149,18 +149,28 @@
   .footer a:hover { text-decoration: underline; }
 
   /* Mobile */
+  /* Mobile badge for attacker/defender sections */
+  .mobile-badge { display: none; font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: .15rem .5rem; border-radius: 4px; margin-bottom: .35rem; width: fit-content; }
+  .mobile-badge.att { background: rgba(63,185,80,.15); color: var(--green); }
+  .mobile-badge.def { background: rgba(248,81,73,.15); color: var(--red); }
+
   @media (max-width: 640px) {
-    .vs-section { grid-template-columns: 1fr; }
-    .vs-badge { padding: .25rem 0; }
+    .vs-section { grid-template-columns: 1fr auto 1fr; gap: .4rem; }
+    .player-card { padding: .6rem; }
+    .player-avatar { width: 40px; height: 40px; }
+    .player-name { font-size: .85rem; }
+    .vs-badge { font-size: 1rem; padding-top: 1rem; }
     .details-row { grid-template-columns: 1fr; gap: .5rem; }
     .detail-side.right { text-align: left; }
-    .army-list.right li { flex-direction: row; }
+    .mobile-badge { display: block; }
+    .army-list.left li { flex-direction: row; justify-content: flex-start; }
+    .army-list.right li { flex-direction: row; justify-content: flex-start; }
     .army-list.right li .unit-info { flex-direction: row; }
-    .army-list.right li span:first-child { text-align: left; }
     .survival-pct.right { text-align: left; }
     .hero-portraits.right { justify-content: flex-start; }
-    .skill-tables-wrap { grid-template-columns: 1fr; gap: 1rem; }
+    .skill-tables-wrap { grid-template-columns: 1fr; gap: .75rem; }
     .skill-divider { display: none; }
+    .skill-table.left, .skill-table.right { width: 100%; }
     .skill-table.right th, .skill-table.right td { text-align: left; }
     .skill-table.right td:nth-child(1), .skill-table.right td:nth-child(2) { text-align: right; }
     .skill-table.right th:nth-child(1), .skill-table.right th:nth-child(2) { text-align: right; }
@@ -380,11 +390,9 @@
       src: heroIconUrl(heroId),
       alt: 'Hero ' + heroId,
       width: String(size),
-      height: String(size)
+      height: String(size),
+      className: borderClass || ''
     });
-    if (borderClass) img.className = borderClass;
-    else img.className = '';
-    img.style.cssText = 'width:' + size + 'px;height:' + size + 'px;border-radius:' + (size > 36 ? '6' : '4') + 'px;object-fit:cover;background:var(--surface);' + (borderClass === 'att-border' ? 'border:2px solid var(--green);' : borderClass === 'def-border' ? 'border:2px solid var(--red);' : '');
     img.onerror = function() { this.style.display = 'none'; };
     return img;
   }
@@ -451,9 +459,7 @@
       // Star indicators
       if (hero.star && hero.star > 0) {
         var stars = el('span', { className: 'hero-stars' });
-        var starStr = '';
-        for (var s = 0; s < hero.star; s++) starStr += '\u2605';
-        stars.textContent = starStr;
+        stars.textContent = '\u2605'.repeat(hero.star);
         portrait.appendChild(stars);
       }
 
@@ -465,23 +471,92 @@
 
   // ---- Build sections ----
 
+  /** Build a detail-side with label and content for a details-row */
+  function buildDetailSide(label, isRight, badgeName) {
+    var side = el('div', { className: 'detail-side' + (isRight ? ' right' : '') });
+    if (badgeName) {
+      var badge = el('div', { className: 'mobile-badge ' + (isRight ? 'def' : 'att') });
+      badge.textContent = badgeName;
+      side.appendChild(badge);
+    }
+    var lbl = el('div', { className: 'detail-label' });
+    lbl.textContent = label;
+    side.appendChild(lbl);
+    return side;
+  }
+
+  /** Build one side of the survival bar row */
+  function buildSurvivalSide(surv, side, playerName) {
+    var isAtt = (side === 'att');
+    var color = isAtt ? 'green' : 'red';
+    var sideEl = buildDetailSide('Survival', !isAtt, playerName);
+
+    var barWrap = el('div', { className: 'survival-bar-wrap' });
+    var bar = el('div', { className: 'survival-bar' });
+    bar.appendChild(el('div', { className: 'fill ' + color, style: 'width:' + surv.pct.toFixed(1) + '%' }));
+    barWrap.appendChild(bar);
+
+    var pctEl = el('div', { className: 'survival-pct' + (isAtt ? '' : ' right') });
+    pctEl.textContent = surv.alive + '/' + surv.total + ' survived (' + surv.pct.toFixed(0) + '%)';
+    barWrap.appendChild(pctEl);
+
+    sideEl.appendChild(barWrap);
+    return sideEl;
+  }
+
+  /** Build a unit icon img with onerror fallback */
+  function unitIconImg(src, alt) {
+    var img = el('img', { src: src, className: 'unit-icon', alt: alt, width: '40', height: '40' });
+    img.onerror = function() { this.style.display = 'none'; };
+    return img;
+  }
+
+  /** Build one side of the army composition row */
+  function buildArmySide(army, mechas, side, playerName) {
+    var isAtt = (side === 'att');
+    var sideEl = buildDetailSide('Unit Composition', !isAtt, playerName);
+    var list = el('ul', { className: 'army-list ' + (isAtt ? 'left' : 'right') });
+
+    army.forEach(function(a) {
+      var li = el('li');
+      var resolved = resolveUnitIcon(a.armyId, mechas);
+      var numSpan = el('span');
+      numSpan.textContent = 'x' + formatPower(a.s0 || a.s1 || a.num || a.armyNum || 0);
+      var unitInfo = el('span', { className: 'unit-info' });
+      var labelSpan = el('span');
+      labelSpan.textContent = resolved.label;
+
+      if (isAtt) {
+        // Attacker: count, then label + icon
+        unitInfo.appendChild(labelSpan);
+        if (resolved.icon) unitInfo.appendChild(unitIconImg(resolved.icon, resolved.label));
+        li.appendChild(numSpan);
+        li.appendChild(unitInfo);
+      } else {
+        // Defender: icon + label, then count
+        if (resolved.icon) unitInfo.appendChild(unitIconImg(resolved.icon, resolved.label));
+        unitInfo.appendChild(labelSpan);
+        li.appendChild(unitInfo);
+        li.appendChild(numSpan);
+      }
+
+      list.appendChild(li);
+    });
+
+    sideEl.appendChild(list);
+    return sideEl;
+  }
+
   function buildReportHeader(data, battle) {
     var fightType = FIGHT_TYPES[battle.fightType] || ('Type ' + battle.fightType);
-    var wrap = el('div', { className: 'report-header' });
-    var typeEl = el('div', { className: 'report-type' });
-    typeEl.textContent = fightType;
-    wrap.appendChild(typeEl);
-
-    var idEl = el('div', { className: 'report-id' });
-    idEl.textContent = 'Report ID: ' + data.reportId;
-    wrap.appendChild(idEl);
-
+    var children = [
+      el('div', { className: 'report-type' }, fightType),
+      el('div', { className: 'report-id' }, 'Report ID: ' + data.reportId)
+    ];
     if (data.logtime) {
-      var timeEl = el('div', { className: 'report-time' });
-      timeEl.textContent = formatDate(data.logtime);
-      wrap.appendChild(timeEl);
+      children.push(el('div', { className: 'report-time' }, formatDate(data.logtime)));
     }
-    return wrap;
+    return el('div', { className: 'report-header' }, children);
   }
 
   function buildPlayerCard(side, pi, isWinner) {
@@ -550,19 +625,13 @@
 
     // Row 1: Names + Battle Power
     var row1 = el('div', { className: 'details-row' });
-    var left1 = el('div', { className: 'detail-side' });
-    var lbl1a = el('div', { className: 'detail-label' });
-    lbl1a.textContent = 'Attacker';
-    left1.appendChild(lbl1a);
+    var left1 = buildDetailSide('Attacker', false);
     var val1a = el('div', { className: 'detail-value green' });
     val1a.textContent = (attPI.username || 'Unknown') + (fm.attBattlePower ? '  —  CP:' + fm.attBattlePower : '');
     left1.appendChild(val1a);
     row1.appendChild(left1);
 
-    var right1 = el('div', { className: 'detail-side right' });
-    var lbl1b = el('div', { className: 'detail-label' });
-    lbl1b.textContent = 'Defender';
-    right1.appendChild(lbl1b);
+    var right1 = buildDetailSide('Defender', true);
     var val1b = el('div', { className: 'detail-value red' });
     val1b.textContent = (defPI.username || 'Unknown') + (fm.defBattlePower ? '  —  CP:' + fm.defBattlePower : '');
     right1.appendChild(val1b);
@@ -573,18 +642,12 @@
     if ((attHeroes && attHeroes.length > 0) || (defHeroes && defHeroes.length > 0)) {
       var heroRow = el('div', { className: 'details-row' });
 
-      var leftHero = el('div', { className: 'detail-side' });
-      var lblHa = el('div', { className: 'detail-label' });
-      lblHa.textContent = 'Heroes';
-      leftHero.appendChild(lblHa);
+      var leftHero = buildDetailSide('Heroes', false, attPI.username || 'Attacker');
       var attPortraits = buildHeroPortraits(attHeroes, 'att');
       if (attPortraits) leftHero.appendChild(attPortraits);
       heroRow.appendChild(leftHero);
 
-      var rightHero = el('div', { className: 'detail-side right' });
-      var lblHb = el('div', { className: 'detail-label' });
-      lblHb.textContent = 'Heroes';
-      rightHero.appendChild(lblHb);
+      var rightHero = buildDetailSide('Heroes', true, defPI.username || 'Defender');
       var defPortraits = buildHeroPortraits(defHeroes, 'def');
       if (defPortraits) rightHero.appendChild(defPortraits);
       heroRow.appendChild(rightHero);
@@ -592,7 +655,7 @@
       panel.appendChild(heroRow);
     }
 
-    // Row 2: Army Composition
+    // Row 2: Unit Composition
     var attArmy = fm.attPutArmyV2 || [];
     var defArmy = fm.defPutArmyV2 || [];
     // Gather mecha data for icon resolution
@@ -600,58 +663,8 @@
     var defMechas = def.mechas || [];
     if (attArmy.length > 0 || defArmy.length > 0) {
       var row2 = el('div', { className: 'details-row' });
-      var left2 = el('div', { className: 'detail-side' });
-      var lbl2a = el('div', { className: 'detail-label' });
-      lbl2a.textContent = 'Army Composition';
-      left2.appendChild(lbl2a);
-      var list2a = el('ul', { className: 'army-list left' });
-      attArmy.forEach(function(a) {
-        var li = el('li');
-        var resolved = resolveUnitIcon(a.armyId, attMechas);
-        // Attacker: count on left, then icon + label
-        var numSpan = el('span');
-        numSpan.textContent = 'x' + formatPower(a.s0 || a.s1 || a.num || a.armyNum || 0);
-        li.appendChild(numSpan);
-        var unitInfo = el('span', { className: 'unit-info' });
-        var labelSpan = el('span');
-        labelSpan.textContent = resolved.label;
-        unitInfo.appendChild(labelSpan);
-        if (resolved.icon) {
-          var uImg = el('img', { src: resolved.icon, className: 'unit-icon', alt: resolved.label, width: '40', height: '40' });
-          uImg.onerror = function() { this.style.display = 'none'; };
-          unitInfo.appendChild(uImg);
-        }
-        li.appendChild(unitInfo);
-        list2a.appendChild(li);
-      });
-      left2.appendChild(list2a);
-      row2.appendChild(left2);
-
-      var right2 = el('div', { className: 'detail-side right' });
-      var lbl2b = el('div', { className: 'detail-label' });
-      lbl2b.textContent = 'Army Composition';
-      right2.appendChild(lbl2b);
-      var list2b = el('ul', { className: 'army-list right' });
-      defArmy.forEach(function(a) {
-        var li = el('li');
-        var resolved = resolveUnitIcon(a.armyId, defMechas);
-        var unitInfo = el('span', { className: 'unit-info' });
-        if (resolved.icon) {
-          var uImg = el('img', { src: resolved.icon, className: 'unit-icon', alt: resolved.label, width: '40', height: '40' });
-          uImg.onerror = function() { this.style.display = 'none'; };
-          unitInfo.appendChild(uImg);
-        }
-        var labelSpan = el('span');
-        labelSpan.textContent = resolved.label;
-        unitInfo.appendChild(labelSpan);
-        var numSpan = el('span');
-        numSpan.textContent = 'x' + formatPower(a.s0 || a.s1 || a.num || a.armyNum || 0);
-        li.appendChild(unitInfo);
-        li.appendChild(numSpan);
-        list2b.appendChild(li);
-      });
-      right2.appendChild(list2b);
-      row2.appendChild(right2);
+      row2.appendChild(buildArmySide(attArmy, attMechas, 'att', attPI.username || 'Attacker'));
+      row2.appendChild(buildArmySide(defArmy, defMechas, 'def', defPI.username || 'Defender'));
       panel.appendChild(row2);
     }
 
@@ -663,34 +676,8 @@
       var defSurv = calcSurvival(defUnits);
 
       var row3 = el('div', { className: 'details-row' });
-
-      var left3 = el('div', { className: 'detail-side' });
-      var lbl3a = el('div', { className: 'detail-label' });
-      lbl3a.textContent = 'Survival';
-      left3.appendChild(lbl3a);
-      var barWrap3a = el('div', { className: 'survival-bar-wrap' });
-      var bar3a = el('div', { className: 'survival-bar' });
-      bar3a.appendChild(el('div', { className: 'fill green', style: 'width:' + attSurv.pct.toFixed(1) + '%' }));
-      barWrap3a.appendChild(bar3a);
-      var pct3a = el('div', { className: 'survival-pct' });
-      pct3a.textContent = attSurv.alive + '/' + attSurv.total + ' survived (' + attSurv.pct.toFixed(0) + '%)';
-      barWrap3a.appendChild(pct3a);
-      left3.appendChild(barWrap3a);
-      row3.appendChild(left3);
-
-      var right3 = el('div', { className: 'detail-side right' });
-      var lbl3b = el('div', { className: 'detail-label' });
-      lbl3b.textContent = 'Survival';
-      right3.appendChild(lbl3b);
-      var barWrap3b = el('div', { className: 'survival-bar-wrap' });
-      var bar3b = el('div', { className: 'survival-bar' });
-      bar3b.appendChild(el('div', { className: 'fill red', style: 'width:' + defSurv.pct.toFixed(1) + '%' }));
-      barWrap3b.appendChild(bar3b);
-      var pct3b = el('div', { className: 'survival-pct right' });
-      pct3b.textContent = defSurv.alive + '/' + defSurv.total + ' survived (' + defSurv.pct.toFixed(0) + '%)';
-      barWrap3b.appendChild(pct3b);
-      right3.appendChild(barWrap3b);
-      row3.appendChild(right3);
+      row3.appendChild(buildSurvivalSide(attSurv, 'att', attPI.username || 'Attacker'));
+      row3.appendChild(buildSurvivalSide(defSurv, 'def', defPI.username || 'Defender'));
       panel.appendChild(row3);
     }
 
@@ -700,7 +687,6 @@
   function buildSkillTable(skillHurts, side, skillToHeroMap, mechas) {
     if (!skillHurts) return null;
 
-    var totalHurt = parseFloat(skillHurts.total_hurt) || 0;
     var commonHurt = parseFloat(skillHurts.common_hurt) || 0;
     var commonCount = parseInt(skillHurts.common_count) || 0;
     var hurts = skillHurts.skill_hurts || {};
@@ -815,7 +801,7 @@
     return table;
   }
 
-  function buildSkillSection(fm, skillToHeroMap, attMechas, defMechas) {
+  function buildSkillSection(fm, skillToHeroMap, attMechas, defMechas, attName, defName) {
     var attSkill = fm.attSkillHurts;
     var defSkill = fm.defSkillHurts;
     if (!attSkill && !defSkill) return null;
@@ -827,16 +813,53 @@
 
     var wrap = el('div', { className: 'skill-tables-wrap' });
 
+    var attWrap = el('div');
+    var attBadge = el('div', { className: 'mobile-badge att' });
+    attBadge.textContent = attName || 'Attacker';
+    attWrap.appendChild(attBadge);
     var attTable = buildSkillTable(attSkill, 'att', skillToHeroMap, attMechas);
-    wrap.appendChild(attTable || el('div'));
+    attWrap.appendChild(attTable || el('div'));
+    wrap.appendChild(attWrap);
 
     wrap.appendChild(el('div', { className: 'skill-divider' }));
 
+    var defWrap = el('div');
+    var defBadge = el('div', { className: 'mobile-badge def' });
+    defBadge.textContent = defName || 'Defender';
+    defWrap.appendChild(defBadge);
     var defTable = buildSkillTable(defSkill, 'def', skillToHeroMap, defMechas);
-    wrap.appendChild(defTable || el('div'));
+    defWrap.appendChild(defTable || el('div'));
+    wrap.appendChild(defWrap);
 
     section.appendChild(wrap);
     return section;
+  }
+
+  /** Build one damage card (attacker or defender) */
+  function buildDamageCard(side, total, pct) {
+    var isAtt = (side === 'att');
+    var color = isAtt ? 'green' : 'red';
+    var card = el('div', { className: 'damage-card ' + side });
+
+    var label = el('div', { className: 'damage-card-label' });
+    label.textContent = (isAtt ? 'Attacker' : 'Defender') + ' Total Damage';
+    card.appendChild(label);
+
+    var val = el('div', { className: 'damage-card-value ' + color });
+    val.textContent = formatPower(total);
+    card.appendChild(val);
+
+    var barWrap = el('div', { className: 'survival-bar-wrap' });
+    var bar = el('div', { className: 'survival-bar' });
+    bar.appendChild(el('div', { className: 'fill ' + color, style: 'width:' + pct + '%' }));
+    barWrap.appendChild(bar);
+    card.appendChild(barWrap);
+
+    var pctEl = el('div', { className: 'survival-pct', style: 'text-align:center' });
+    pctEl.textContent = pct + '%';
+    card.appendChild(pctEl);
+
+    return card;
   }
 
   function buildDamageSummary(fm) {
@@ -852,41 +875,8 @@
     var defPct = ((defTotal / grandTotal) * 100).toFixed(1);
 
     var wrap = el('div', { className: 'damage-summary' });
-
-    var attCard = el('div', { className: 'damage-card att' });
-    var attLabel = el('div', { className: 'damage-card-label' });
-    attLabel.textContent = 'Attacker Total Damage';
-    attCard.appendChild(attLabel);
-    var attVal = el('div', { className: 'damage-card-value green' });
-    attVal.textContent = formatPower(attTotal);
-    attCard.appendChild(attVal);
-    var attBar = el('div', { className: 'survival-bar-wrap' });
-    var attBarInner = el('div', { className: 'survival-bar' });
-    attBarInner.appendChild(el('div', { className: 'fill green', style: 'width:' + attPct + '%' }));
-    attBar.appendChild(attBarInner);
-    attCard.appendChild(attBar);
-    var attPctEl = el('div', { className: 'survival-pct', style: 'text-align:center' });
-    attPctEl.textContent = attPct + '%';
-    attCard.appendChild(attPctEl);
-    wrap.appendChild(attCard);
-
-    var defCard = el('div', { className: 'damage-card def' });
-    var defLabel = el('div', { className: 'damage-card-label' });
-    defLabel.textContent = 'Defender Total Damage';
-    defCard.appendChild(defLabel);
-    var defVal = el('div', { className: 'damage-card-value red' });
-    defVal.textContent = formatPower(defTotal);
-    defCard.appendChild(defVal);
-    var defBar = el('div', { className: 'survival-bar-wrap' });
-    var defBarInner = el('div', { className: 'survival-bar' });
-    defBarInner.appendChild(el('div', { className: 'fill red', style: 'width:' + defPct + '%' }));
-    defBar.appendChild(defBarInner);
-    defCard.appendChild(defBar);
-    var defPctEl = el('div', { className: 'survival-pct', style: 'text-align:center' });
-    defPctEl.textContent = defPct + '%';
-    defCard.appendChild(defPctEl);
-    wrap.appendChild(defCard);
-
+    wrap.appendChild(buildDamageCard('att', attTotal, attPct));
+    wrap.appendChild(buildDamageCard('def', defTotal, defPct));
     return wrap;
   }
 
@@ -895,15 +885,10 @@
     var jsonStr = JSON.stringify(stripped, null, 2);
     var sizeKB = (jsonStr.length / 1024).toFixed(0);
 
-    var details = document.createElement('details');
-    details.className = 'raw-json';
-    var summary = document.createElement('summary');
-    summary.textContent = 'Raw JSON (' + sizeKB + ' KB) — UIDs stripped';
-    details.appendChild(summary);
-    var pre = document.createElement('pre');
+    var summary = el('summary', null, 'Raw JSON (' + sizeKB + ' KB) — UIDs stripped');
+    var pre = el('pre');
     pre.textContent = jsonStr;
-    details.appendChild(pre);
-    return details;
+    return el('details', { className: 'raw-json' }, [summary, pre]);
   }
 
   // ---- Multi-march rendering ----
@@ -918,7 +903,7 @@
     container.appendChild(buildDetailsPanel(fm, att, def, attPI, defPI, attHeroes, defHeroes));
 
     // Skill damage tables (with hero icons + mecha icons)
-    var skillSection = buildSkillSection(fm, skillToHeroMap, att.mechas || [], def.mechas || []);
+    var skillSection = buildSkillSection(fm, skillToHeroMap, att.mechas || [], def.mechas || [], attPI.username || 'Attacker', defPI.username || 'Defender');
     if (skillSection) container.appendChild(skillSection);
 
     // Total damage summary
