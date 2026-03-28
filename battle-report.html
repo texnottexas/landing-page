@@ -996,36 +996,62 @@
         buffRow.appendChild(el('div', { className: bRightCls }, formatBuffVal(dTotal)));
         advContent.appendChild(buffRow);
 
-        // Individual items — use same placed-row layout for consistent alignment
-        var maxItems = Math.max(attData.items.length, defData.items.length);
-        for (var idx = 0; idx < maxItems; idx++) {
+        // Merge items by decoration group/id, sort: both → att only → def only
+        var attByKey = {}, defByKey = {};
+        for (var aii = 0; aii < attData.items.length; aii++) {
+          var ak = attData.items[aii].group || attData.items[aii].id;
+          attByKey[ak] = attData.items[aii];
+        }
+        for (var dii2 = 0; dii2 < defData.items.length; dii2++) {
+          var dk = defData.items[dii2].group || defData.items[dii2].id;
+          defByKey[dk] = defData.items[dii2];
+        }
+        var allAdvKeys = {};
+        for (var aak in attByKey) allAdvKeys[aak] = true;
+        for (var ddk in defByKey) allAdvKeys[ddk] = true;
+        var advEntries = Object.keys(allAdvKeys).map(function(k) {
+          var a = attByKey[k], d = defByKey[k];
+          var both = !!a && !!d;
+          return { key: k, att: a || null, def: d || null, order: both ? 0 : (a ? 1 : 2) };
+        });
+        advEntries.sort(function(x, y) {
+          if (x.order !== y.order) return x.order - y.order;
+          var xv = (x.att ? x.att.value : 0) + (x.def ? x.def.value : 0);
+          var yv = (y.att ? y.att.value : 0) + (y.def ? y.def.value : 0);
+          return yv - xv;
+        });
+
+        for (var idx = 0; idx < advEntries.length; idx++) {
+          var ae = advEntries[idx];
           var advRow = el('div', { className: 'decor-placed-row' });
 
           // Attacker cell
-          var advACell = el('div', { className: 'decor-placed-cell decor-att-tint' });
-          if (idx < attData.items.length) {
-            var ai = attData.items[idx];
-            var aIcon = ai.group ? decorIconImg(ai.group) : null;
+          var advACell = el('div', { className: 'decor-placed-cell' + (ae.att ? ' decor-att-tint' : '') });
+          if (ae.att) {
+            var aIcon = ae.att.group ? decorIconImg(ae.att.group) : null;
             if (aIcon) { aIcon.style.width = '28px'; aIcon.style.height = '28px'; advACell.appendChild(aIcon); }
             var aInfo = el('div', { className: 'decor-placed-info' });
-            aInfo.appendChild(el('div', { className: 'decor-placed-name', title: ai.name }, ai.name));
-            aInfo.appendChild(el('div', { className: 'decor-placed-buffs' }, formatBuffVal(ai.value)));
+            aInfo.appendChild(el('div', { className: 'decor-placed-name', title: ae.att.name }, ae.att.name));
+            aInfo.appendChild(el('div', { className: 'decor-placed-buffs' }, formatBuffVal(ae.att.value)));
             advACell.appendChild(aInfo);
+          } else {
+            advACell.appendChild(el('span', { className: 'decor-placed-dash muted' }, '\u2014'));
           }
           advRow.appendChild(advACell);
 
           advRow.appendChild(el('div', { className: 'decor-label' }, ''));
 
           // Defender cell
-          var advDCell = el('div', { className: 'decor-placed-cell right decor-def-tint' });
-          if (idx < defData.items.length) {
-            var dii = defData.items[idx];
-            var dIcon = dii.group ? decorIconImg(dii.group) : null;
+          var advDCell = el('div', { className: 'decor-placed-cell right' + (ae.def ? ' decor-def-tint' : '') });
+          if (ae.def) {
+            var dIcon = ae.def.group ? decorIconImg(ae.def.group) : null;
             if (dIcon) { dIcon.style.width = '28px'; dIcon.style.height = '28px'; advDCell.appendChild(dIcon); }
             var dInfo = el('div', { className: 'decor-placed-info' });
-            dInfo.appendChild(el('div', { className: 'decor-placed-name', title: dii.name }, dii.name));
-            dInfo.appendChild(el('div', { className: 'decor-placed-buffs' }, formatBuffVal(dii.value)));
+            dInfo.appendChild(el('div', { className: 'decor-placed-name', title: ae.def.name }, ae.def.name));
+            dInfo.appendChild(el('div', { className: 'decor-placed-buffs' }, formatBuffVal(ae.def.value)));
             advDCell.appendChild(dInfo);
+          } else {
+            advDCell.appendChild(el('span', { className: 'decor-placed-dash muted' }, '\u2014'));
           }
           advRow.appendChild(advDCell);
 
