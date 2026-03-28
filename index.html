@@ -1311,7 +1311,8 @@
     .notif-item.read { opacity: .5; }
     .notif-item.read .notif-title { font-weight: 400; }
     .notif-title { color: var(--text); font-size: .85rem; font-weight: 600; margin-bottom: 2px; }
-    .notif-body { color: var(--muted); font-size: .75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+    .notif-body { color: var(--muted); font-size: .75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; transition: all .2s; }
+    .notif-item.expanded .notif-body { white-space: pre-wrap; overflow: visible; text-overflow: unset; max-width: none; }
     .notif-meta { text-align: right; flex-shrink: 0; }
     .notif-time { color: var(--muted); font-size: .7rem; }
     .notif-expiry { font-size: .65rem; margin-top: 2px; }
@@ -4599,10 +4600,25 @@
             if (!item.read) {
               markInboxRead(item.id).then(function() {
                 updateBellBadge();
-                renderNotificationsTab();
+                row.classList.remove('read');
+                void row.offsetWidth;
+                row.classList.add('read');
               });
             }
-            if (item.url && item.url.indexOf('https://') === 0) window.open(item.url, '_blank');
+            // Toggle expand to show full message body
+            var wasExpanded = row.classList.contains('expanded');
+            // Collapse any other expanded items
+            var allItems = row.parentNode.querySelectorAll('.notif-item.expanded');
+            for (var ei = 0; ei < allItems.length; ei++) allItems[ei].classList.remove('expanded');
+            if (!wasExpanded) row.classList.add('expanded');
+            // Only navigate if URL points to a different page
+            if (item.url && item.url.indexOf('https://') === 0) {
+              var currentBase = window.location.origin + window.location.pathname;
+              var targetBase = item.url.split('?')[0].split('#')[0];
+              if (targetBase !== currentBase && targetBase !== window.location.origin + '/') {
+                window.open(item.url, '_blank');
+              }
+            }
           });
 
           panel.appendChild(row);
