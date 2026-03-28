@@ -166,6 +166,8 @@
   .stats-row .s-equal { color: var(--text); opacity: .7; }
   .stats-section-header { padding: .5rem 1rem .25rem; font-size: .7rem; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; border-top: 1px solid var(--border); margin-top: .25rem; }
   .stats-section-header:first-child { border-top: none; margin-top: 0; }
+  .s-clickable { cursor: pointer; transition: color .15s; }
+  .s-clickable:hover { color: var(--accent); }
 
   @media (max-width: 640px) {
     .stats-modal { max-height: 90vh; }
@@ -348,6 +350,116 @@
     return pool;
   }
 
+  // Buff source category names (type_big → display name from fight_report_from_show table)
+  var BUFF_SOURCE_NAMES = {2:"Hero Skills",3:"Hero Perk",4:"CPNT",6:"Alliance Tech",7:"Decoration",8:"VIP privileges",9:"Class Talent",13:"Alliance Badge",16:"Hero Bond",17:"Mastery",25:"Base Effect",26:"Unit Equipment",27:"Heavy Trooper",32:"Formations",33:"Secret Weapon",37:"Titan Gear",95:"Ruin Bonus",98:"Official Position Effect",100:"Loot Quest",106:"Enigma Beast",134:"Wasteland Airship Effect",135:"Wasteland Effect"};
+
+  // type_small → type_big grouping (where they differ; most are 1:1)
+  var SOURCE_GROUP = {41:32,44:100,75:25,76:25,107:106,111:134,112:135,134:25};
+
+  /** Resolve type_small (s field) → type_big (display group) */
+  function resolveSourceGroup(s) { return SOURCE_GROUP[s] || s; }
+
+  /** Check if a raw buff ID resolves to the target display buff ID */
+  function buffMatchesTarget(rawId, targetId) {
+    var redirect = BUFF_GROUP[rawId];
+    if (!redirect) return rawId === targetId;
+    if (Array.isArray(redirect)) {
+      for (var i = 0; i < redirect.length; i++) { if (redirect[i] === targetId) return true; }
+      return false;
+    }
+    return redirect === targetId;
+  }
+
+  /** Compute per-source breakdown for a specific buff from traceEffectBuffs */
+  function computeSourceBreakdown(players, targetBuffId) {
+    if (!players || players.length === 0) return {};
+    var player = players[0];
+    var trace = player.traceEffectBuffs || [];
+    if (typeof trace === 'string') trace = JSON.parse(trace);
+
+    var sources = {};
+    for (var i = 0; i < trace.length; i++) {
+      var b = trace[i];
+      if (!b.id || !b.val || b.s === undefined) continue;
+      if (!buffMatchesTarget(b.id, targetBuffId)) continue;
+      var typeBig = resolveSourceGroup(b.s);
+      if (!sources[typeBig]) sources[typeBig] = 0;
+      sources[typeBig] += b.val;
+    }
+    return sources;
+  }
+
+  /** Build source breakdown sub-modal for a specific buff */
+  function buildSourceModal(att, def, attPI, defPI, buffId, buffName, parentOverlay) {
+    var attSources = computeSourceBreakdown(att.players, buffId);
+    var defSources = computeSourceBreakdown(def.players, buffId);
+
+    // Collect all source type_big values present
+    var allSources = {};
+    for (var s in attSources) allSources[s] = true;
+    for (var s2 in defSources) allSources[s2] = true;
+
+    // Sort by type_big value (matches game's display order roughly)
+    var sortedKeys = Object.keys(allSources).map(Number).sort(function(a, b) { return a - b; });
+
+    var overlay = el('div', { className: 'stats-overlay', onclick: function(e) { if (e.target === overlay) document.body.removeChild(overlay); } });
+    var modal = el('div', { className: 'stats-modal' });
+
+    var header = el('div', { className: 'stats-modal-header' });
+    header.appendChild(el('h2', null, buffName));
+    var closeBtn = el('button', { className: 'stats-close', onclick: function() { document.body.removeChild(overlay); } }, '\u00D7');
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    var body = el('div', { className: 'stats-modal-body' });
+
+    // Player name row
+    var nameRow = el('div', { className: 'stats-row', style: 'padding:.6rem 1rem;border-bottom:1px solid var(--border);' });
+    nameRow.appendChild(el('div', { className: 's-left', style: 'color:var(--green);font-size:.9rem;' }, attPI.username || 'Attacker'));
+    nameRow.appendChild(el('div', { className: 's-name', style: 'color:var(--muted);' }, 'Source'));
+    nameRow.appendChild(el('div', { className: 's-right', style: 'color:var(--red);font-size:.9rem;' }, defPI.username || 'Defender'));
+    body.appendChild(nameRow);
+
+    sortedKeys.forEach(function(typeBig) {
+      var aVal = attSources[typeBig] || 0;
+      var dVal = defSources[typeBig] || 0;
+      if (aVal === 0 && dVal === 0) return;
+
+      var sourceName = BUFF_SOURCE_NAMES[typeBig] || ('Source ' + typeBig);
+      var row = el('div', { className: 'stats-row' });
+
+      var leftCls = 's-left';
+      var rightCls = 's-right';
+      if (aVal > dVal) { leftCls += ' s-green'; rightCls += ' s-red'; }
+      else if (dVal > aVal) { leftCls += ' s-red'; rightCls += ' s-green'; }
+      else { leftCls += ' s-equal'; rightCls += ' s-equal'; }
+
+      row.appendChild(el('div', { className: leftCls }, formatBuffVal(aVal)));
+      row.appendChild(el('div', { className: 's-name' }, sourceName));
+      row.appendChild(el('div', { className: rightCls }, formatBuffVal(dVal)));
+      body.appendChild(row);
+    });
+
+    // Total row
+    var attTotal = 0, defTotal = 0;
+    for (var at in attSources) attTotal += attSources[at];
+    for (var dt in defSources) defTotal += defSources[dt];
+    var totalRow = el('div', { className: 'stats-row', style: 'border-top:1px solid var(--border);padding-top:.5rem;margin-top:.25rem;' });
+    var tLeftCls = 's-left';
+    var tRightCls = 's-right';
+    if (attTotal > defTotal) { tLeftCls += ' s-green'; tRightCls += ' s-red'; }
+    else if (defTotal > attTotal) { tLeftCls += ' s-red'; tRightCls += ' s-green'; }
+    else { tLeftCls += ' s-equal'; tRightCls += ' s-equal'; }
+    totalRow.appendChild(el('div', { className: tLeftCls, style: 'font-weight:700;' }, formatBuffVal(attTotal)));
+    totalRow.appendChild(el('div', { className: 's-name', style: 'font-weight:700;color:var(--text);' }, 'Total'));
+    totalRow.appendChild(el('div', { className: tRightCls, style: 'font-weight:700;' }, formatBuffVal(defTotal)));
+    body.appendChild(totalRow);
+
+    modal.appendChild(body);
+    overlay.appendChild(modal);
+    return overlay;
+  }
+
   /** Format a buff value for display (raw 100 = 1.0%) */
   function formatBuffVal(val) {
     if (!val || val === 0) return '0%';
@@ -420,7 +532,8 @@
         else { leftCls += ' s-equal'; rightCls += ' s-equal'; }
 
         row.appendChild(el('div', { className: leftCls }, formatBuffVal(aVal)));
-        row.appendChild(el('div', { className: 's-name' }, BUFF_NAMES[id] || id));
+        var nameDiv = el('div', { className: 's-name s-clickable', onclick: (function(bid, bname) { return function() { document.body.appendChild(buildSourceModal(att, def, attPI, defPI, bid, bname)); }; })(parseInt(id), BUFF_NAMES[id] || id) }, BUFF_NAMES[id] || id);
+        row.appendChild(nameDiv);
         row.appendChild(el('div', { className: rightCls }, formatBuffVal(dVal)));
         rows.push(row);
       });
@@ -448,7 +561,8 @@
       else { ulCls += ' s-equal'; urCls += ' s-equal'; }
 
       urow.appendChild(el('div', { className: ulCls }, formatBuffVal(aV)));
-      urow.appendChild(el('div', { className: 's-name' }, BUFF_NAMES[uid] || ('Buff ' + uid)));
+      var uNameDiv = el('div', { className: 's-name s-clickable', onclick: (function(bid, bname) { return function() { document.body.appendChild(buildSourceModal(att, def, attPI, defPI, bid, bname)); }; })(parseInt(uid), BUFF_NAMES[uid] || ('Buff ' + uid)) }, BUFF_NAMES[uid] || ('Buff ' + uid));
+      urow.appendChild(uNameDiv);
       urow.appendChild(el('div', { className: urCls }, formatBuffVal(dV)));
       uncatRows.push(urow);
     }
