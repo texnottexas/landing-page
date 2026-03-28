@@ -143,6 +143,36 @@
   .raw-json summary:hover { color: var(--text); }
   .raw-json pre { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .75rem; font-size: .7rem; max-height: 400px; overflow: auto; white-space: pre-wrap; word-break: break-all; color: var(--text); font-family: 'SF Mono', Monaco, monospace; }
 
+  /* Stats Comparison button */
+  .stats-btn-wrap { text-align: center; margin-bottom: 1.5rem; }
+  .stats-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .5rem 1.2rem; color: var(--accent); font-size: .85rem; font-weight: 600; cursor: pointer; transition: all .15s; }
+  .stats-btn:hover { border-color: var(--accent); background: rgba(121,192,255,.08); }
+
+  /* Stats Comparison modal */
+  .stats-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,.7); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+  .stats-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; max-width: 700px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; }
+  .stats-modal-header { display: flex; align-items: center; padding: .75rem 1rem; border-bottom: 1px solid var(--border); }
+  .stats-modal-header h2 { flex: 1; font-size: 1rem; font-weight: 700; }
+  .stats-close { background: none; border: none; color: var(--muted); font-size: 1.4rem; cursor: pointer; padding: .2rem .5rem; line-height: 1; }
+  .stats-close:hover { color: var(--text); }
+  .stats-modal-body { overflow-y: auto; padding: .5rem 0; }
+  .stats-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: .5rem; padding: .4rem 1rem; align-items: center; }
+  .stats-row:nth-child(even) { background: rgba(255,255,255,.02); }
+  .stats-row .s-left { text-align: right; font-size: .85rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stats-row .s-name { text-align: center; font-size: .78rem; color: var(--muted); padding: 0 .25rem; white-space: nowrap; }
+  .stats-row .s-right { text-align: left; font-size: .85rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stats-row .s-green { color: var(--green); }
+  .stats-row .s-red { color: var(--red); }
+  .stats-row .s-equal { color: var(--text); opacity: .7; }
+  .stats-section-header { padding: .5rem 1rem .25rem; font-size: .7rem; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; border-top: 1px solid var(--border); margin-top: .25rem; }
+  .stats-section-header:first-child { border-top: none; margin-top: 0; }
+
+  @media (max-width: 640px) {
+    .stats-modal { max-height: 90vh; }
+    .stats-row .s-name { font-size: .7rem; }
+    .stats-row .s-left, .stats-row .s-right { font-size: .78rem; }
+  }
+
   /* Footer */
   .footer { text-align: center; padding: 2rem 1rem; font-size: .7rem; color: var(--muted); margin-top: auto; }
   .footer a { color: var(--accent); text-decoration: none; }
@@ -155,11 +185,12 @@
   .mobile-badge.def { background: rgba(248,81,73,.15); color: var(--red); }
 
   @media (max-width: 640px) {
-    .vs-section { grid-template-columns: 1fr auto 1fr; gap: .4rem; }
-    .player-card { padding: .6rem; }
+    .vs-section { grid-template-columns: 1fr auto 1fr; gap: .4rem; align-items: stretch; }
+    .player-card { padding: .6rem; display: flex; flex-direction: column; }
     .player-avatar { width: 40px; height: 40px; }
     .player-name { font-size: .85rem; }
     .vs-badge { font-size: 1rem; padding-top: 1rem; }
+    .player-result { margin-top: auto; }
     .details-row { grid-template-columns: 1fr; gap: .5rem; }
     .detail-side.right { text-align: left; }
     .mobile-badge { display: block; }
@@ -171,9 +202,12 @@
     .skill-tables-wrap { grid-template-columns: 1fr; gap: .75rem; }
     .skill-divider { display: none; }
     .skill-table.left, .skill-table.right { width: 100%; }
-    .skill-table.right th, .skill-table.right td { text-align: left; }
-    .skill-table.right td:nth-child(1), .skill-table.right td:nth-child(2) { text-align: right; }
-    .skill-table.right th:nth-child(1), .skill-table.right th:nth-child(2) { text-align: right; }
+    /* On mobile, reorder defender columns to match attacker: Skill | Triggers | Damage */
+    .skill-table.right thead tr, .skill-table.right tbody tr { display: flex; }
+    .skill-table.right th, .skill-table.right td { flex: 1; text-align: left; }
+    .skill-table.right th:nth-child(1), .skill-table.right td:nth-child(1) { order: 3; text-align: right; } /* Damage → last */
+    .skill-table.right th:nth-child(2), .skill-table.right td:nth-child(2) { order: 2; text-align: right; } /* Triggers → middle */
+    .skill-table.right th:nth-child(3), .skill-table.right td:nth-child(3) { order: 1; text-align: left; flex: 2; } /* Skill → first */
     .damage-summary { grid-template-columns: 1fr; }
   }
 </style>
@@ -263,6 +297,167 @@
     100: 'Alliance War', 101: 'Cross-Server', 127: 'Wasteland Conquest',
     128: 'Neutral City', 200: 'Hero Experiment'
   };
+
+  // Buff ID → display name (grouped categories from EFFECTBUFF table)
+  var BUFF_NAMES = {"930001":"Army HP Boost","930002":"Navy HP Boost","930003":"Air Force HP Boost","930101":"Army Attack","930102":"Navy Attack","930103":"Air Force ATK","930107":"Navy - Army DMG Bonus","930108":"Air Force - Navy DMG Bonus","930109":"Army - Air DMG Bonus","930201":"Army Crit. Rate","930202":"Navy Crit. Rate","930203":"Air Force Crit. Rate","930301":"Army Dodge Buff","930302":"Navy Dodge Buff","930303":"Air Force Dodge Buff","930401":"Army ATK Speed Bonus","930402":"Navy ATK Speed Bonus","930403":"Air Force ATK Speed Bonus","930504":"Navy DEF against Army","930505":"Air Force DEF against Navy","930506":"Army DEF against Air Force","980101":"Army DMG Increase","980102":"Navy DMG Increase","980103":"Air Force DMG Increase","980201":"Army Decreased DMG Taken","980202":"Navy Decreased DMG Taken","980203":"Air Force Decreased DMG Taken","980301":"Army Crit. DMG","980302":"Navy Crit. DMG","980303":"Air Force Crit. DMG","980501":"Army Hit","980502":"Navy Hit","980503":"Air Force Hit","960012":"March Size","990202":"Increase DEF of all units","990208":"DEF increase when attacking","990209":"DEF increase when defending","990221":"Decreased DMG Taken (offensive)","1010001":"Army Starting Shield","1010002":"Navy Starting Shield","1010003":"Air Force Starting Shield","1131009":"Starting Shield of All Units","1101064":"Extra Troop Morale","1130010":"All heroes War increase","1201003":"Total battle rounds +1","29901301":"Decreased DMG Taken (defensive)","941300":"Hall Of Valhalla ATK","941301":"Hall Of Valhalla HP","941303":"Hall Of Valhalla Crit Damage","941304":"Hall Of Valhalla INV","990001":"Attack Boost vs World Boss","970003":"Attack Boost vs Dark Forces","990137":"All units DMG Increase (Silence)","921006":"Golden Tank","981021":"Golden Plane","1002001":"Attack inside Fort","1002002":"HP inside Fort","1150":"Ultra Valhalla AF Offense DMG","1156":"Ultra Valhalla AF Offense HP","1162":"Ultra Valhalla AF Offense ATK"};
+
+  // EFFECTBUFF group mapping: raw buff id → display buff id(s)
+  // Extracted from game's EFFECTBUFF table via AddOneBuffToBuffPool oracle
+  // Single value = redirect to one display category; array = splits to multiple
+  var BUFF_GROUP = {230140:990203,230141:990204,230142:990205,230143:930101,230144:930102,230145:930103,400317:[980101,980102,980103],520000:960012,520010:[980101,980102,980103],520011:980101,520012:980102,520013:980103,520020:[980201,980202,980203],520021:980201,520022:980202,520023:980203,520030:990202,520031:990203,520033:990205,520040:[930101,930102,930103],520041:930101,520051:930001,520052:930002,520053:930003,520100:[930504,930505,930506],520103:930506,520110:[930101,930102,930103],520111:930101,520112:930102,520113:930103,520120:[930001,930002,930003],520121:930001,520122:930002,520123:930003,520130:[930001,930002,930003],520131:[930001,930002,930003],520132:[930001,930002,930003],520133:[930001,930002,930003],520141:[930001,930002,930003],520143:[930001,930002,930003],930000:[930001,930002,930003],930100:[930101,930102,930103],930200:[930201,930202,930203],930300:[930301,930302,930303],950005:930001,950006:930002,950007:930003,950008:930101,950009:930102,950010:930103,950011:960012,980204:[980201,980202,980203],990100:[930101,930102,930103],990156:[980201,980202,980203],990171:[980101,980102,980103],990182:1130010,990304:[980201,980202,980203],990405:[980101,980102,980103],990421:[980101,980102,980103],990429:[980201,980202,980203],990433:[930101,930102,930103],990435:[930101,930102,930103],990438:[980201,980202,980203],990443:[930001,930002,930003],990450:[980101,980102,980103],990567:[930001,930002,930003],990648:[930001,930002,930003],990649:[930101,930102,930103],990742:[930101,930102,930103],990791:[930001,930002,930003],990795:[930101,930102,930103],990797:[980201,980202,980203],990872:[930101,930102,930103],990875:[930001,930002,930003],990877:[980101,980102,980103],990906:[930101,930102,930103],990945:[930001,930002,930003],990948:[930101,930102,930103],990951:[980101,980102,980103],992066:[930101,930102,930103],992069:[930001,930002,930003],992071:[980201,980202,980203],992143:[930001,930002,930003],992146:[930101,930102,930103],992148:[980101,980102,980103],992236:[930101,930102,930103],992321:[930101,930102,930103],992353:[980201,980202,980203],992359:[930101,930102,930103],992576:[930001,930002,930003],992577:[980101,980102,980103],992578:[980201,980202,980203],992580:990202,1000021:[930001,930002,930003],1000022:[930101,930102,930103],1000023:[980101,980102,980103],1000024:[980201,980202,980203],1001001:[980101,980102,980103],1001002:[980301,980302,980303],1003001:[930001,930002,930003],1003002:[930101,930102,930103],1003020:980201,1003021:980202,1003022:980203,1101015:980201,1101016:980202,1101017:980203,1101023:970003,1101027:[930201,930202,930203],1101028:[980301,980302,980303],1101040:[980201,980202,980203],1101041:[930001,930002,930003],1101042:[930101,930102,930103],1101053:[980101,980102,980103],1131001:[980101,980102,980103],1131002:[980201,980202,980203],1131005:[980301,980302,980303],1131008:[980501,980502,980503],9301160:[930101,930102,930103],9301161:930101,9301162:930102,9301163:930103,9301164:[930101,930102,930103],9301170:[930001,930002,930003],9301171:930001,9301172:930002,9301173:930003,9301201:930107,9301202:930108,9301203:930109,9990011:980301,9990013:930101,9990014:980103,9990018:930002,9990769:[930001,930002,930003],10030201:980201,20030121:930202,20030201:980201,20030231:980301,20030241:980302,20030251:980303,21010161:980202,29303011:930301,29801011:980101,29801021:980102,29902211:990221,93011601:[930101,930102,930103],93011701:[930001,930002,930003]};
+
+  /** Compute aggregated buff values for one side from effectBuffs.
+   *  Uses BUFF_GROUP to redirect raw buff IDs to their display categories,
+   *  matching the game's EFFECTBUFF table group field + buff_divide logic. */
+  function computeBuffStats(players) {
+    if (!players || players.length === 0) return {};
+    var player = players[0];
+
+    var buffs = player.effectBuffs || [];
+    if (typeof buffs === 'string') buffs = JSON.parse(buffs);
+
+    var pool = {};
+
+    function addToPool(displayId, val) {
+      var did = String(displayId);
+      if (!pool[did]) pool[did] = 0;
+      pool[did] += val;
+    }
+
+    for (var i = 0; i < buffs.length; i++) {
+      var b = buffs[i];
+      var id = b.id || b.bufid;
+      var val = b.val || b.value || 0;
+      if (!id || !val) continue;
+
+      // Check if this raw ID needs group redirect
+      var redirect = BUFF_GROUP[id];
+      if (redirect) {
+        if (Array.isArray(redirect)) {
+          for (var r = 0; r < redirect.length; r++) addToPool(redirect[r], val);
+        } else {
+          addToPool(redirect, val);
+        }
+      } else {
+        addToPool(id, val);
+      }
+    }
+    return pool;
+  }
+
+  /** Format a buff value for display (raw 100 = 1.0%) */
+  function formatBuffVal(val) {
+    if (!val || val === 0) return '0%';
+    var pct = val / 100;
+    if (pct === Math.floor(pct)) return pct.toFixed(0) + '%';
+    return pct.toFixed(1) + '%';
+  }
+
+  /** Build the Stats Comparison modal content */
+  function buildStatsModal(att, def, attPI, defPI) {
+    var attBuffs = computeBuffStats(att.players);
+    var defBuffs = computeBuffStats(def.players);
+
+    // Collect all buff IDs that have a display name and are present in either side
+    var allIds = {};
+    for (var id in attBuffs) { if (BUFF_NAMES[id]) allIds[id] = true; }
+    for (var id2 in defBuffs) { if (BUFF_NAMES[id2]) allIds[id2] = true; }
+
+    // Group by category: HP, ATK, DMG, DEF, Crit, Speed, etc.
+    var categories = [
+      { label: 'HP & Attack', ids: ['930001','930002','930003','930101','930102','930103'] },
+      { label: 'DMG Increase & Decrease', ids: ['980101','980102','980103','980201','980202','980203','990221','29901301','990202','990137'] },
+      { label: 'Type Advantage', ids: ['930107','930108','930109','930504','930505','930506'] },
+      { label: 'Crit & Dodge & Hit', ids: ['930201','930202','930203','980301','980302','980303','930301','930302','930303','980501','980502','980503'] },
+      { label: 'Speed & Shield & Other', ids: ['930401','930402','930403','1010001','1010002','1010003','1131009','1101064','1130010','1201003','960012'] },
+      { label: 'Valhalla', ids: ['941300','941301','941303','941304'] },
+      { label: 'Situational', ids: ['990208','990209','990001','970003','1002001','1002002','921006','981021','1150','1156','1162'] }
+    ];
+
+    // Track which IDs we've placed
+    var placed = {};
+
+    var overlay = el('div', { className: 'stats-overlay', onclick: function(e) { if (e.target === overlay) document.body.removeChild(overlay); } });
+    var modal = el('div', { className: 'stats-modal' });
+
+    // Header
+    var header = el('div', { className: 'stats-modal-header' });
+    header.appendChild(el('h2', null, 'Stats Comparison'));
+    var closeBtn = el('button', { className: 'stats-close', onclick: function() { document.body.removeChild(overlay); } }, '\u00D7');
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    // Body
+    var body = el('div', { className: 'stats-modal-body' });
+
+    // Player name row at top
+    var nameRow = el('div', { className: 'stats-row', style: 'padding:.6rem 1rem;border-bottom:1px solid var(--border);' });
+    nameRow.appendChild(el('div', { className: 's-left', style: 'color:var(--green);font-size:.9rem;' }, attPI.username || 'Attacker'));
+    nameRow.appendChild(el('div', { className: 's-name', style: 'color:var(--muted);' }, 'vs'));
+    nameRow.appendChild(el('div', { className: 's-right', style: 'color:var(--red);font-size:.9rem;' }, defPI.username || 'Defender'));
+    body.appendChild(nameRow);
+
+    categories.forEach(function(cat) {
+      var hasAny = false;
+      var rows = [];
+
+      cat.ids.forEach(function(id) {
+        var aVal = attBuffs[id] || 0;
+        var dVal = defBuffs[id] || 0;
+        if (aVal === 0 && dVal === 0) return;
+        hasAny = true;
+        placed[id] = true;
+
+        var row = el('div', { className: 'stats-row' });
+
+        var leftCls = 's-left';
+        var rightCls = 's-right';
+        if (aVal > dVal) { leftCls += ' s-green'; rightCls += ' s-red'; }
+        else if (dVal > aVal) { leftCls += ' s-red'; rightCls += ' s-green'; }
+        else { leftCls += ' s-equal'; rightCls += ' s-equal'; }
+
+        row.appendChild(el('div', { className: leftCls }, formatBuffVal(aVal)));
+        row.appendChild(el('div', { className: 's-name' }, BUFF_NAMES[id] || id));
+        row.appendChild(el('div', { className: rightCls }, formatBuffVal(dVal)));
+        rows.push(row);
+      });
+
+      if (hasAny) {
+        body.appendChild(el('div', { className: 'stats-section-header' }, cat.label));
+        rows.forEach(function(r) { body.appendChild(r); });
+      }
+    });
+
+    // Uncategorized buffs
+    var uncatRows = [];
+    for (var uid in allIds) {
+      if (placed[uid]) continue;
+      var aV = attBuffs[uid] || 0;
+      var dV = defBuffs[uid] || 0;
+      if (aV === 0 && dV === 0) continue;
+      placed[uid] = true;
+
+      var urow = el('div', { className: 'stats-row' });
+      var ulCls = 's-left';
+      var urCls = 's-right';
+      if (aV > dV) { ulCls += ' s-green'; urCls += ' s-red'; }
+      else if (dV > aV) { ulCls += ' s-red'; urCls += ' s-green'; }
+      else { ulCls += ' s-equal'; urCls += ' s-equal'; }
+
+      urow.appendChild(el('div', { className: ulCls }, formatBuffVal(aV)));
+      urow.appendChild(el('div', { className: 's-name' }, BUFF_NAMES[uid] || ('Buff ' + uid)));
+      urow.appendChild(el('div', { className: urCls }, formatBuffVal(dV)));
+      uncatRows.push(urow);
+    }
+    if (uncatRows.length > 0) {
+      body.appendChild(el('div', { className: 'stats-section-header' }, 'Other'));
+      uncatRows.forEach(function(r) { body.appendChild(r); });
+    }
+
+    modal.appendChild(body);
+    overlay.appendChild(modal);
+    return overlay;
+  }
 
   // ---- Helpers ----
 
@@ -901,6 +1096,23 @@
 
     // Details panel (with hero portraits)
     container.appendChild(buildDetailsPanel(fm, att, def, attPI, defPI, attHeroes, defHeroes));
+
+    // Stats Comparison button
+    var attHasBuffs = att.players && att.players[0] && att.players[0].effectBuffs;
+    var defHasBuffs = def.players && def.players[0] && def.players[0].effectBuffs;
+    if (attHasBuffs || defHasBuffs) {
+      var btnWrap = el('div', { className: 'stats-btn-wrap' });
+      var statsBtn = el('button', { className: 'stats-btn', onclick: function() {
+        var modal = buildStatsModal(att, def, attPI, defPI);
+        document.body.appendChild(modal);
+      }});
+      statsBtn.appendChild(el('span', { style: 'display:inline-flex;vertical-align:middle;margin-right:.35rem;' }, [
+        (function() { var s = document.createElementNS('http://www.w3.org/2000/svg','svg'); s.setAttribute('width','16'); s.setAttribute('height','16'); s.setAttribute('viewBox','0 0 24 24'); s.setAttribute('fill','none'); s.setAttribute('stroke','currentColor'); s.setAttribute('stroke-width','2'); s.setAttribute('stroke-linecap','round'); s.setAttribute('stroke-linejoin','round'); var p1 = document.createElementNS('http://www.w3.org/2000/svg','line'); p1.setAttribute('x1','4'); p1.setAttribute('y1','20'); p1.setAttribute('x2','20'); p1.setAttribute('y2','4'); s.appendChild(p1); var p2 = document.createElementNS('http://www.w3.org/2000/svg','path'); p2.setAttribute('d','M14.5 4L20 4L20 9.5'); s.appendChild(p2); var p3 = document.createElementNS('http://www.w3.org/2000/svg','line'); p3.setAttribute('x1','20'); p3.setAttribute('y1','20'); p3.setAttribute('x2','4'); p3.setAttribute('y2','4'); s.appendChild(p3); var p4 = document.createElementNS('http://www.w3.org/2000/svg','path'); p4.setAttribute('d','M9.5 4L4 4L4 9.5'); s.appendChild(p4); return s; })()
+      ]));
+      statsBtn.appendChild(document.createTextNode('Stats Comparison'));
+      btnWrap.appendChild(statsBtn);
+      container.appendChild(btnWrap);
+    }
 
     // Skill damage tables (with hero icons + mecha icons)
     var skillSection = buildSkillSection(fm, skillToHeroMap, att.mechas || [], def.mechas || [], attPI.username || 'Attacker', defPI.username || 'Defender');
