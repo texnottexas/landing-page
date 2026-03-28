@@ -222,7 +222,8 @@
   .decor-placed-cell.right { justify-content: flex-end; flex-direction: row-reverse; }
   .decor-placed-cell .decor-icon { width: 32px; height: 32px; }
   .decor-placed-info { display: flex; flex-direction: column; min-width: 0; }
-  .decor-placed-name { font-weight: 500; font-size: .75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+  .decor-placed-name { font-weight: 500; font-size: .75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; cursor: default; }
+  .decor-placed-level { font-size: .65rem; color: var(--accent); font-weight: 600; }
   .decor-placed-buffs { font-size: .65rem; color: var(--muted); }
   .decor-placed-check { color: var(--green); font-size: .85rem; }
   .decor-placed-dash { color: var(--muted); font-size: .85rem; }
@@ -233,7 +234,7 @@
     .stats-row .s-left, .stats-row .s-right { font-size: .78rem; }
     .decor-item-name { max-width: 120px; }
     .decor-icon { width: 30px; height: 30px; }
-    .decor-placed-name { max-width: 110px; }
+    .decor-placed-name { max-width: 100px; }
     .decor-placed-cell .decor-icon { width: 28px; height: 28px; }
     .decor-suit-icons img { width: 20px; height: 20px; }
     .decor-filter-bar { flex-wrap: wrap; gap: .25rem; }
@@ -788,40 +789,42 @@
           row.setAttribute('data-name', dName.toLowerCase());
           row.setAttribute('data-cat', String(ci));
 
-          // Attacker cell
-          var aCell = el('div', { className: 'decor-placed-cell' + (attHasIt ? ' decor-att-tint' : '') });
-          if (attHasIt) {
-            var aIcon = decorIconImg(grp);
-            if (aIcon) aCell.appendChild(aIcon);
-            var aInfo = el('div', { className: 'decor-placed-info' });
-            var aLvl = decorLevel(grp, attPlaced.groups[grp]);
-            var aLabel = aLvl > 0 ? dName + ' Lv.' + aLvl : dName;
-            aInfo.appendChild(el('div', { className: 'decor-placed-name', title: aLabel }, aLabel));
-            aInfo.appendChild(el('div', { className: 'decor-placed-buffs' }, buffDesc));
-            aCell.appendChild(aInfo);
-          } else {
-            aCell.appendChild(el('span', { className: 'decor-placed-dash' + (defHasIt ? ' muted' : '') }, '\u2014'));
+          // Helper: build a placed cell with icon, name (truncated+tooltip), level, buffs
+          function buildPlacedCell(side, hasIt, otherHas, grpId, name, bDesc, placedId) {
+            var tintCls = side === 'att' ? ' decor-att-tint' : ' decor-def-tint';
+            var cell = el('div', { className: 'decor-placed-cell' + (side === 'def' ? ' right' : '') + (hasIt ? tintCls : '') });
+            if (hasIt) {
+              var icon = decorIconImg(grpId);
+              if (icon) cell.appendChild(icon);
+              var info = el('div', { className: 'decor-placed-info' });
+              var nameEl = el('div', { className: 'decor-placed-name', title: name }, name);
+              nameEl.onclick = function(e) {
+                e.stopPropagation();
+                var tip = document.querySelector('.decor-tooltip');
+                if (tip) tip.remove();
+                tip = el('div', { className: 'decor-tooltip' });
+                tip.textContent = name;
+                tip.style.position = 'fixed';
+                tip.style.left = Math.min(e.clientX, window.innerWidth - 230) + 'px';
+                tip.style.top = (e.clientY - 40) + 'px';
+                document.body.appendChild(tip);
+                setTimeout(function() { if (tip.parentNode) tip.remove(); }, 3000);
+                document.addEventListener('click', function rm() { if (tip.parentNode) tip.remove(); document.removeEventListener('click', rm); }, { once: true });
+              };
+              info.appendChild(nameEl);
+              var lvl = decorLevel(grpId, placedId);
+              if (lvl > 0) info.appendChild(el('div', { className: 'decor-placed-level' }, 'Lv.' + lvl));
+              info.appendChild(el('div', { className: 'decor-placed-buffs' }, bDesc));
+              cell.appendChild(info);
+            } else {
+              cell.appendChild(el('span', { className: 'decor-placed-dash' + (otherHas ? ' muted' : '') }, '\u2014'));
+            }
+            return cell;
           }
-          row.appendChild(aCell);
 
-          // Center: decoration name (shared reference)
+          row.appendChild(buildPlacedCell('att', attHasIt, defHasIt, grp, dName, buffDesc, attPlaced.groups[grp]));
           row.appendChild(el('div', { className: 'decor-label', style: 'font-size:.65rem;' }, ''));
-
-          // Defender cell
-          var dCell = el('div', { className: 'decor-placed-cell right' + (defHasIt ? ' decor-def-tint' : '') });
-          if (defHasIt) {
-            var dIcon = decorIconImg(grp);
-            if (dIcon) dCell.appendChild(dIcon);
-            var dInfo = el('div', { className: 'decor-placed-info' });
-            var dLvl = decorLevel(grp, defPlaced.groups[grp]);
-            var dLabel = dLvl > 0 ? dName + ' Lv.' + dLvl : dName;
-            dInfo.appendChild(el('div', { className: 'decor-placed-name', title: dLabel }, dLabel));
-            dInfo.appendChild(el('div', { className: 'decor-placed-buffs' }, buffDesc));
-            dCell.appendChild(dInfo);
-          } else {
-            dCell.appendChild(el('span', { className: 'decor-placed-dash' + (attHasIt ? ' muted' : '') }, '\u2014'));
-          }
-          row.appendChild(dCell);
+          row.appendChild(buildPlacedCell('def', defHasIt, attHasIt, grp, dName, buffDesc, defPlaced.groups[grp]));
 
           placedContent.appendChild(row);
           placedRows.push({ el: row, name: dName.toLowerCase(), cat: ci });
@@ -840,29 +843,9 @@
           var uRow = el('div', { className: 'decor-placed-row' });
           uRow.setAttribute('data-name', uName.toLowerCase());
           uRow.setAttribute('data-cat', '-1');
-          var uaCell = el('div', { className: 'decor-placed-cell' + (uAttHas ? ' decor-att-tint' : '') });
-          if (uAttHas) {
-            var uaIcon = decorIconImg(uGrp);
-            if (uaIcon) uaCell.appendChild(uaIcon);
-            var uaLvl = decorLevel(uGrp, attPlaced.groups[uGrp]);
-            var uaLabel = uaLvl > 0 ? uName + ' Lv.' + uaLvl : uName;
-            uaCell.appendChild(el('div', { className: 'decor-placed-name', title: uaLabel }, uaLabel));
-          } else {
-            uaCell.appendChild(el('span', { className: 'decor-placed-dash' + (uDefHas ? ' muted' : '') }, '\u2014'));
-          }
-          uRow.appendChild(uaCell);
+          uRow.appendChild(buildPlacedCell('att', uAttHas, uDefHas, uGrp, uName, '', attPlaced.groups[uGrp]));
           uRow.appendChild(el('div', { className: 'decor-label' }, ''));
-          var udCell = el('div', { className: 'decor-placed-cell right' + (uDefHas ? ' decor-def-tint' : '') });
-          if (uDefHas) {
-            var udIcon = decorIconImg(uGrp);
-            if (udIcon) udCell.appendChild(udIcon);
-            var udLvl = decorLevel(uGrp, defPlaced.groups[uGrp]);
-            var udLabel = udLvl > 0 ? uName + ' Lv.' + udLvl : uName;
-            udCell.appendChild(el('div', { className: 'decor-placed-name', title: udLabel }, udLabel));
-          } else {
-            udCell.appendChild(el('span', { className: 'decor-placed-dash' + (uAttHas ? ' muted' : '') }, '\u2014'));
-          }
-          uRow.appendChild(udCell);
+          uRow.appendChild(buildPlacedCell('def', uDefHas, uAttHas, uGrp, uName, '', defPlaced.groups[uGrp]));
           placedContent.appendChild(uRow);
           placedRows.push({ el: uRow, name: uName.toLowerCase(), cat: -1 });
         }
@@ -1013,42 +996,40 @@
         buffRow.appendChild(el('div', { className: bRightCls }, formatBuffVal(dTotal)));
         advContent.appendChild(buffRow);
 
-        // Individual items under this buff
+        // Individual items — use same placed-row layout for consistent alignment
         var maxItems = Math.max(attData.items.length, defData.items.length);
         for (var idx = 0; idx < maxItems; idx++) {
-          var grid = el('div', { className: 'decor-grid' });
+          var advRow = el('div', { className: 'decor-placed-row' });
 
+          // Attacker cell
+          var advACell = el('div', { className: 'decor-placed-cell decor-att-tint' });
           if (idx < attData.items.length) {
             var ai = attData.items[idx];
-            var aItem = el('div', { className: 'decor-item' });
             var aIcon = ai.group ? decorIconImg(ai.group) : null;
-            if (aIcon) aItem.appendChild(aIcon);
-            var aInfo = el('div', { className: 'decor-item-info' });
-            aInfo.appendChild(el('div', { className: 'decor-item-name', title: ai.name }, ai.name));
-            aInfo.appendChild(el('div', { className: 'decor-item-val' }, formatBuffVal(ai.value)));
-            aItem.appendChild(aInfo);
-            grid.appendChild(aItem);
-          } else {
-            grid.appendChild(el('div'));
+            if (aIcon) { aIcon.style.width = '28px'; aIcon.style.height = '28px'; advACell.appendChild(aIcon); }
+            var aInfo = el('div', { className: 'decor-placed-info' });
+            aInfo.appendChild(el('div', { className: 'decor-placed-name', title: ai.name }, ai.name));
+            aInfo.appendChild(el('div', { className: 'decor-placed-buffs' }, formatBuffVal(ai.value)));
+            advACell.appendChild(aInfo);
           }
+          advRow.appendChild(advACell);
 
-          grid.appendChild(el('div', { className: 'decor-label' }, ''));
+          advRow.appendChild(el('div', { className: 'decor-label' }, ''));
 
+          // Defender cell
+          var advDCell = el('div', { className: 'decor-placed-cell right decor-def-tint' });
           if (idx < defData.items.length) {
             var dii = defData.items[idx];
-            var dItem = el('div', { className: 'decor-item right' });
             var dIcon = dii.group ? decorIconImg(dii.group) : null;
-            if (dIcon) dItem.appendChild(dIcon);
-            var dInfo = el('div', { className: 'decor-item-info' });
-            dInfo.appendChild(el('div', { className: 'decor-item-name', title: dii.name }, dii.name));
-            dInfo.appendChild(el('div', { className: 'decor-item-val' }, formatBuffVal(dii.value)));
-            dItem.appendChild(dInfo);
-            grid.appendChild(dItem);
-          } else {
-            grid.appendChild(el('div'));
+            if (dIcon) { dIcon.style.width = '28px'; dIcon.style.height = '28px'; advDCell.appendChild(dIcon); }
+            var dInfo = el('div', { className: 'decor-placed-info' });
+            dInfo.appendChild(el('div', { className: 'decor-placed-name', title: dii.name }, dii.name));
+            dInfo.appendChild(el('div', { className: 'decor-placed-buffs' }, formatBuffVal(dii.value)));
+            advDCell.appendChild(dInfo);
           }
+          advRow.appendChild(advDCell);
 
-          advContent.appendChild(grid);
+          advContent.appendChild(advRow);
         }
       });
     }
