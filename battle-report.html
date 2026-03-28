@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https://knight-cdn.akamaized.net https://h5.topwargame.com https://raw.githubusercontent.com data:; connect-src https://fight-report-va.oss-accelerate.aliyuncs.com; font-src data:">
+<title>Battle Report Viewer — 2864</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --card: #1c2128; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #79c0ff;
+    --green: #3fb950; --red: #f85149; --yellow: #d29922; --navy: #388bfd;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* Header */
+  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: .75rem 1rem; display: flex; align-items: center; gap: .75rem; }
+  .header h1 { font-size: 1rem; font-weight: 600; flex: 1; }
+  .home-btn { display: flex; align-items: center; justify-content: center; background: var(--card); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: .4rem .6rem; text-decoration: none; transition: all .15s; }
+  .home-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Search */
+  .search-bar { max-width: 700px; margin: 2rem auto; padding: 0 1rem; width: 100%; }
+  .search-row { display: flex; gap: .5rem; }
+  .search-row input { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .6rem .75rem; color: var(--text); font-size: .95rem; outline: none; }
+  .search-row input:focus { border-color: var(--accent); }
+  .search-row input::placeholder { color: var(--muted); }
+  .search-row button { background: var(--accent); color: var(--bg); border: none; border-radius: 6px; padding: .6rem 1.2rem; font-weight: 600; cursor: pointer; font-size: .9rem; white-space: nowrap; }
+  .search-row button:hover { opacity: .9; }
+  .search-row button:disabled { opacity: .5; cursor: not-allowed; }
+  .search-hint { font-size: .75rem; color: var(--muted); margin-top: .4rem; }
+
+  /* Status */
+  .status { text-align: center; padding: 1rem; color: var(--muted); font-size: .9rem; }
+  .status.error { color: var(--red); }
+
+  /* Report container */
+  #report { max-width: 860px; margin: 0 auto 2rem; padding: 0 1rem; width: 100%; }
+
+  /* Report header */
+  .report-header { text-align: center; margin-bottom: 1.5rem; padding: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+  .report-type { font-size: 1.1rem; font-weight: 700; color: var(--accent); margin-bottom: .25rem; }
+  .report-id { font-size: .8rem; color: var(--muted); font-family: 'SF Mono', Monaco, monospace; }
+  .report-time { font-size: .8rem; color: var(--muted); margin-top: .25rem; }
+
+  /* VS Section */
+  .vs-section { display: grid; grid-template-columns: 1fr auto 1fr; gap: .75rem; align-items: start; margin-bottom: 1.5rem; }
+  .vs-badge { align-self: center; font-size: 1.5rem; font-weight: 800; color: var(--muted); text-align: center; padding-top: 2rem; }
+  .player-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; text-align: center; }
+  .player-card.winner { border-color: var(--green); }
+  .player-card.loser { border-color: var(--red); }
+  .player-avatar { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: var(--surface); margin: 0 auto .5rem; display: block; }
+  .player-name { font-weight: 600; font-size: 1rem; word-break: break-all; }
+  .player-alliance { font-size: .8rem; color: var(--accent); margin-top: .15rem; }
+  .player-flag { font-size: 1.3rem; margin-top: .25rem; }
+  .player-result { font-size: .75rem; font-weight: 700; text-transform: uppercase; margin-top: .4rem; padding: .2rem .6rem; border-radius: 4px; display: inline-block; }
+  .player-result.victory { background: rgba(63,185,80,.15); color: var(--green); }
+  .player-result.defeat { background: rgba(248,81,73,.15); color: var(--red); }
+
+  /* Details panel */
+  .details-panel { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
+  .section-title { font-size: .85rem; color: var(--muted); margin-bottom: .75rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+  .details-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+  .details-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .detail-side { font-size: .85rem; }
+  .detail-side.right { text-align: right; }
+  .detail-label { color: var(--muted); font-size: .7rem; text-transform: uppercase; margin-bottom: .15rem; }
+  .detail-value { font-weight: 600; }
+  .detail-value.green { color: var(--green); }
+  .detail-value.red { color: var(--red); }
+
+  /* Hero portraits */
+  .hero-portraits { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .25rem; }
+  .hero-portraits.right { justify-content: flex-end; }
+  .hero-portrait { display: flex; flex-direction: column; align-items: center; gap: .15rem; }
+  .hero-portrait img { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; background: var(--surface); }
+  .hero-portrait img.att-border { border: 2px solid var(--green); }
+  .hero-portrait img.def-border { border: 2px solid var(--red); }
+  .hero-portrait .hero-name { font-size: .6rem; color: var(--text); font-weight: 500; max-width: 56px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hero-portrait .hero-level { font-size: .65rem; color: var(--muted); }
+  .hero-portrait .hero-stars { font-size: .55rem; color: var(--yellow); letter-spacing: 1px; line-height: 1; }
+
+  /* Skill icon in damage table */
+  .skill-icon { width: 32px; height: 32px; border-radius: 4px; object-fit: cover; vertical-align: middle; margin-right: .25rem; background: var(--surface); flex-shrink: 0; }
+  .skill-hero-icon { width: 32px; height: 32px; border-radius: 4px; object-fit: cover; vertical-align: middle; margin-right: .25rem; background: var(--surface); }
+  .skill-cell-wrap { display: inline-flex; align-items: center; gap: .25rem; }
+
+  /* Army composition */
+  .army-list { list-style: none; font-size: .8rem; }
+  .army-list li { display: flex; align-items: center; padding: .2rem 0; gap: .4rem; }
+  .army-list li .unit-info { display: flex; align-items: center; gap: .35rem; }
+  .army-list li .unit-icon { width: 40px; height: 40px; object-fit: contain; border-radius: 4px; background: var(--surface); flex-shrink: 0; }
+  .army-list.left li { justify-content: flex-start; }
+  .army-list.right li { justify-content: flex-end; }
+  .army-list.right li .unit-info { flex-direction: row-reverse; }
+
+  /* Survival bar */
+  .survival-bar-wrap { margin-top: .25rem; }
+  .survival-bar { height: 10px; border-radius: 5px; background: var(--surface); overflow: hidden; position: relative; }
+  .survival-bar .fill { height: 100%; border-radius: 5px; transition: width .6s ease; }
+  .survival-bar .fill.green { background: var(--green); }
+  .survival-bar .fill.red { background: var(--red); }
+  .survival-pct { font-size: .75rem; color: var(--muted); margin-top: .15rem; }
+  .survival-pct.right { text-align: right; }
+
+  /* Skill damage table */
+  .skill-table-section { margin-bottom: 1.5rem; }
+  .skill-tables-wrap { display: grid; grid-template-columns: 1fr auto 1fr; gap: 0; }
+  .skill-table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+  .skill-table th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: .7rem; padding: .4rem .5rem; border-bottom: 1px solid var(--border); }
+  .skill-table td { padding: .35rem .5rem; border-bottom: 1px solid var(--border); }
+  .skill-table.left th, .skill-table.left td { text-align: left; }
+  .skill-table.left td:nth-child(2), .skill-table.left td:nth-child(3) { text-align: right; }
+  .skill-table.left th:nth-child(2), .skill-table.left th:nth-child(3) { text-align: right; }
+  .skill-table.right th, .skill-table.right td { text-align: right; }
+  .skill-table.right td:nth-child(1), .skill-table.right td:nth-child(2) { text-align: left; }
+  .skill-table.right th:nth-child(1), .skill-table.right th:nth-child(2) { text-align: left; }
+  .skill-table tr:last-child td { border-bottom: none; }
+  .skill-table .skill-id { font-family: 'SF Mono', Monaco, monospace; color: var(--accent); font-size: .75rem; }
+  .skill-table .common-label { color: var(--yellow); font-weight: 600; }
+  .skill-divider { width: 1px; background: var(--border); margin: 0 .25rem; }
+
+  /* March tabs (multi-march) */
+  .march-tabs { display: flex; gap: .25rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  .march-tab { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .4rem .8rem; font-size: .8rem; color: var(--muted); cursor: pointer; }
+  .march-tab.active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+  .march-tab:hover:not(.active) { border-color: var(--accent); color: var(--text); }
+
+  /* Total damage summary */
+  .damage-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+  .damage-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; text-align: center; }
+  .damage-card.att { border-left: 3px solid var(--green); }
+  .damage-card.def { border-left: 3px solid var(--red); }
+  .damage-card-label { font-size: .7rem; color: var(--muted); text-transform: uppercase; margin-bottom: .25rem; }
+  .damage-card-value { font-size: 1.3rem; font-weight: 700; }
+  .damage-card-value.green { color: var(--green); }
+  .damage-card-value.red { color: var(--red); }
+
+  /* Raw JSON */
+  .raw-json { margin-bottom: 2rem; }
+  .raw-json summary { color: var(--muted); font-size: .8rem; cursor: pointer; padding: .5rem 0; }
+  .raw-json summary:hover { color: var(--text); }
+  .raw-json pre { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .75rem; font-size: .7rem; max-height: 400px; overflow: auto; white-space: pre-wrap; word-break: break-all; color: var(--text); font-family: 'SF Mono', Monaco, monospace; }
+
+  /* Footer */
+  .footer { text-align: center; padding: 2rem 1rem; font-size: .7rem; color: var(--muted); margin-top: auto; }
+  .footer a { color: var(--accent); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+
+  /* Mobile */
+  @media (max-width: 640px) {
+    .vs-section { grid-template-columns: 1fr; }
+    .vs-badge { padding: .25rem 0; }
+    .details-row { grid-template-columns: 1fr; gap: .5rem; }
+    .detail-side.right { text-align: left; }
+    .army-list.right li { flex-direction: row; }
+    .army-list.right li .unit-info { flex-direction: row; }
+    .army-list.right li span:first-child { text-align: left; }
+    .survival-pct.right { text-align: left; }
+    .hero-portraits.right { justify-content: flex-start; }
+    .skill-tables-wrap { grid-template-columns: 1fr; gap: 1rem; }
+    .skill-divider { display: none; }
+    .skill-table.right th, .skill-table.right td { text-align: left; }
+    .skill-table.right td:nth-child(1), .skill-table.right td:nth-child(2) { text-align: right; }
+    .skill-table.right th:nth-child(1), .skill-table.right th:nth-child(2) { text-align: right; }
+    .damage-summary { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="https://2864tw.com" class="home-btn" title="Back to 2864tw.com"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></a>
+  <h1>Battle Report Viewer</h1>
+</div>
+
+<div class="search-bar">
+  <div class="search-row">
+    <input type="text" id="report-id" placeholder="Enter Battle Report ID..." autocomplete="off">
+    <button id="load-btn">Load</button>
+  </div>
+  <div class="search-hint">Paste a report ID from in-game battle mail</div>
+</div>
+
+<div id="status" class="status"></div>
+<div id="report"></div>
+
+<div class="footer">
+  <a href="https://github.com/texnottexas/landing-page">Brought to you by supporters of the fk boats movement</a>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  var CDN_BASE = 'https://fight-report-va.oss-accelerate.aliyuncs.com/prod/';
+  var ASSET_BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/';
+
+  // 1-indexed, alphabetically sorted ISO 3166-1 alpha-2 codes (249 total)
+  var ISO_CODES = 'AD,AE,AF,AG,AI,AL,AM,AO,AQ,AR,AS,AT,AU,AW,AX,AZ,BA,BB,BD,BE,BF,BG,BH,BI,BJ,BL,BM,BN,BO,BQ,BR,BS,BT,BV,BW,BY,BZ,CA,CC,CD,CF,CG,CH,CI,CK,CL,CM,CN,CO,CR,CU,CV,CW,CX,CY,CZ,DE,DJ,DK,DM,DO,DZ,EC,EE,EG,EH,ER,ES,ET,FI,FJ,FK,FM,FO,FR,GA,GB,GD,GE,GF,GG,GH,GI,GL,GM,GN,GP,GQ,GR,GS,GT,GU,GW,GY,HK,HM,HN,HR,HT,HU,ID,IE,IL,IM,IN,IO,IQ,IR,IS,IT,JE,JM,JO,JP,KE,KG,KH,KI,KM,KN,KP,KR,KW,KY,KZ,LA,LB,LC,LI,LK,LR,LS,LT,LU,LV,LY,MA,MC,MD,ME,MF,MG,MH,MK,ML,MM,MN,MO,MP,MQ,MR,MS,MT,MU,MV,MW,MX,MY,MZ,NA,NC,NE,NF,NG,NI,NL,NO,NP,NR,NU,NZ,OM,PA,PE,PF,PG,PH,PK,PL,PM,PN,PR,PS,PT,PW,PY,QA,RE,RO,RS,RU,RW,SA,SB,SC,SD,SE,SG,SH,SI,SJ,SK,SL,SM,SN,SO,SR,SS,ST,SV,SX,SY,SZ,TC,TD,TF,TG,TH,TJ,TK,TL,TM,TN,TO,TR,TT,TV,TW,TZ,UA,UG,UM,US,UY,UZ,VA,VC,VE,VG,VI,VN,VU,WF,WS,YE,YT,ZA,ZM,ZW'.split(',');
+
+  var HERO_NAMES = {"335":"Hiccup","334":"Jett","332":"Vivian","330":"Tigress","329":"Storm Shadow","328":"Abad","326":"Cranston","325":"Brady","324":"Barbie","323":"Kum & Hazel","321":"Lancaster","318":"Maximo","315":"Villiers","313":"Tsuru","312":"Rockfield","310":"Arthur Harris","309":"Sauvage","308":"Hartman","307":"Tian Mu","306":"Lady Zizak","305":"Edward","304":"Nadia","231":"Jester","228":"Duke","226":"Stromoy","225":"Crimson Typhoon","224":"Layla","214":"Violet","212":"Lee Yewon","208":"Teresa","207":"Chloe","206":"Merida","205":"Ganso","204":"Sid","171":"Astrid","170":"Rohr","169":"Sara","168":"Chris Redfield","167":"Binary","166":"Leon S. Kennedy","165":"Marvingt","163":"Roadblock","162":"Quily","161":"Monkey","160":"Po","159":"Nelle","157":"Scarlett","156":"Snake Eyes","155":"Kaworu Nagisa","154":"Shikinami Asuka Langley","153":"Brynhildr","152":"Pop","151":"Striker Eureka","150":"Cherno Alpha","149":"Coyote Tango","148":"Gipsy Danger","147":"Polik","145":"Shinji Ikari","144":"Rei Ayanami","141":"Cromwell","140":"Ghost","135":"Mei","129":"Preycis","118":"Ben","117":"Amalia","116":"Kuruzo","115":"Diana","114":"Gira","112":"Friedman Hertz","110":"Bradley","109":"Katyusha","108":"Li Hongyu","106":"Sam","105":"Alex","104":"Tywin","1209":"Nimitz","213":"Bassel","164":"Shifu","158":"Mercury","211":"Bellevue","146":"Shaquille O'Neal","229":"Zhen","111":"Bell","322":"Serval","317":"Selina","142":"Springfield","123":"Scaramanga","219":"Nereid","327":"Kai","222":"Erinyes","316":"Aya","233":"Ada Wong","320":"Saker","314":"Dante","234":"Shen Suyu","120":"Fahed","227":"Maplelyn","220":"Nemo","119":"Silence","216":"Akatora","223":"Kotiya","218":"Yuu","217":"Bailos","215":"914","337":"Heid","336":"Joan Mature","333":"Carna","331":"Lin","238":"Valka","237":"Alvida","236":"Stoick","235":"Jill Valentine","232":"Lilia","230":"Meowzilla","210":"Katrina","107":"Wade","302":"Ricardo","113":"Kate Curry","102":"Reichstein","303":"Dr. Gero","203":"Simon","202":"Hammer","122":"Ishi Tarou","121":"Delhuyar","103":"Rambo","201":"Bob","301":"O'Neill","101":"Black Widow","319":"Starscream","221":"Seaspray","143":"Comedy Consortium","137":"Arcee","136":"Megatron","124":"Optimus Prime","125":"Bumblebee"};
+
+  /** Resolve unit icon and label from armyId */
+  function resolveUnitIcon(armyId, unitNewData) {
+    if (!armyId) return { icon: null, label: 'Unknown' };
+    var s = String(armyId);
+
+    // Valhalla merged (6-digit, starts with 90)
+    if (s.length === 6 && s.substring(0, 2) === '90') {
+      var typeCode = s.substring(0, 3);
+      var map = {
+        '901': 'ultra_valhalla_army_offense',
+        '902': 'ultra_valhalla_army_defense',
+        '903': 'ultra_valhalla_nary_defense',
+        '904': 'ultra_valhalla_navy_offense',
+        '905': 'ultra_valhalla_airforce_offense',
+        '906': 'ultra_valhalla_airforce_defense'
+      };
+      if (map[typeCode]) return { icon: ASSET_BASE + 'assets/unit-icons/' + map[typeCode] + '.png', label: map[typeCode].replace('ultra_valhalla_', '').replace(/_/g, ' ').replace('nary', 'navy') };
+      return { icon: null, label: 'Merged' };
+    }
+
+    // Mecha (6-digit, starts with 50)
+    if (s.length === 6 && s.substring(0, 2) === '50') {
+      // Find mechaId from mechas array (passed as unitNewData)
+      var mechaId = null;
+      if (unitNewData) {
+        for (var mi = 0; mi < unitNewData.length; mi++) {
+          if (unitNewData[mi].mechaId) { mechaId = unitNewData[mi].mechaId; break; }
+        }
+      }
+      if (mechaId) return { icon: ASSET_BASE + 'assets/mecha-icons/mecha_' + mechaId + '.png', label: 'HT ' + mechaId };
+      return { icon: ASSET_BASE + 'assets/mecha-icons/mecha_1002.png', label: 'HT' };
+    }
+
+    // Base troops (5-digit)
+    if (s.length === 5) {
+      var firstDigit = s.charAt(0);
+      if (firstDigit === '1') return { icon: ASSET_BASE + 'assets/unit-icons/LuJun_048.png', label: 'Army' };
+      if (firstDigit === '2') return { icon: ASSET_BASE + 'assets/unit-icons/HaiJun_055.png', label: 'Navy' };
+      if (firstDigit === '3') return { icon: ASSET_BASE + 'assets/unit-icons/KongJun_047.png', label: 'Air Force' };
+      return { icon: null, label: 'Troop ' + s };
+    }
+
+    return { icon: null, label: 'Unit ' + armyId };
+  }
+
+  var FIGHT_TYPES = {
+    1: 'World Map Attack', 2: 'Base Attack', 3: 'Rally', 4: 'Base Defense',
+    5: 'Scout', 6: 'NPC', 7: 'Monster', 8: 'Rebel Camp',
+    100: 'Alliance War', 101: 'Cross-Server', 127: 'Wasteland Conquest',
+    128: 'Neutral City', 200: 'Hero Experiment'
+  };
+
+  // ---- Helpers ----
+
+  function flagEmoji(idx) {
+    if (idx === -1) return '\uD83C\uDDFA\uD83C\uDDF3'; // UN flag for -1
+    if (!idx || idx <= 0) return '';
+    var code = (idx > 0 && idx <= ISO_CODES.length) ? ISO_CODES[idx - 1] : null;
+    if (!code || code.length !== 2) return '';
+    return String.fromCodePoint(0x1F1E6 + code.charCodeAt(0) - 65, 0x1F1E6 + code.charCodeAt(1) - 65);
+  }
+
+  function formatPower(p) {
+    if (p == null || p === 0) return '0';
+    if (typeof p === 'string') p = parseFloat(p);
+    if (isNaN(p)) return '0';
+    var abs = Math.abs(p);
+    // Game-style suffixes: K, M, B, T, then aa, bb, cc, dd, ee, ff, gg
+    var tiers = [
+      { thresh: 1e33, suffix: 'gg' },
+      { thresh: 1e30, suffix: 'ff' },
+      { thresh: 1e27, suffix: 'ee' },
+      { thresh: 1e24, suffix: 'dd' },
+      { thresh: 1e21, suffix: 'cc' },
+      { thresh: 1e18, suffix: 'bb' },
+      { thresh: 1e15, suffix: 'aa' },
+      { thresh: 1e12, suffix: 'T' },
+      { thresh: 1e9, suffix: 'B' },
+      { thresh: 1e6, suffix: 'M' },
+      { thresh: 1e3, suffix: 'K' }
+    ];
+    for (var i = 0; i < tiers.length; i++) {
+      if (abs >= tiers[i].thresh) {
+        return (p / tiers[i].thresh).toFixed(2) + tiers[i].suffix;
+      }
+    }
+    return p.toFixed(0);
+  }
+
+  function formatDate(ts) {
+    if (!ts) return '';
+    var d = new Date(ts * 1000);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+           ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  /** Create a DOM element safely */
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    if (attrs) {
+      for (var k in attrs) {
+        if (k === 'className') node.className = attrs[k];
+        else if (k === 'onclick') node.addEventListener('click', attrs[k]);
+        else if (k === 'style') node.style.cssText = attrs[k];
+        else node.setAttribute(k, attrs[k]);
+      }
+    }
+    if (children) {
+      if (!Array.isArray(children)) children = [children];
+      children.forEach(function(c) {
+        if (c == null) return;
+        if (typeof c === 'string') node.appendChild(document.createTextNode(c));
+        else node.appendChild(c);
+      });
+    }
+    return node;
+  }
+
+  /** Parse playerInfo JSON from players array */
+  function getPlayerInfo(side) {
+    var players = side.players || [];
+    if (players.length === 0) return { username: 'Unknown', nationalflag: 0 };
+    try {
+      var pi = JSON.parse(players[0].playerInfo || '{}');
+      return pi;
+    } catch(e) {
+      return { username: 'Unknown', nationalflag: 0 };
+    }
+  }
+
+  /** Get avatar URL from playerInfo */
+  function resolveAvatar(url) {
+    if (!url) return null;
+    if (url.indexOf('http') === 0) return url;
+    return 'https://h5.topwargame.com/DynRes/images/headpic/' + url + '.png?t=21.jpg';
+  }
+
+  function getAvatar(pi) {
+    return resolveAvatar(pi.headimgurl_custom) || resolveAvatar(pi.avatarurl) || null;
+  }
+
+  /** UID stripping for raw JSON display — only strip the 'uid' field */
+  function stripUIDs(obj) {
+    if (obj == null || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) {
+      return obj.map(function(item) { return stripUIDs(item); });
+    }
+    var result = {};
+    for (var key in obj) {
+      if (!obj.hasOwnProperty(key)) continue;
+      if (key === 'uid') { result[key] = 0; continue; }
+      result[key] = stripUIDs(obj[key]);
+    }
+    return result;
+  }
+
+  /** Calculate survival percentage from units array */
+  function calcSurvival(units) {
+    if (!units || units.length === 0) return { pct: 0, alive: 0, total: 0 };
+    var alive = 0;
+    var total = units.length;
+    for (var i = 0; i < units.length; i++) {
+      if (units[i].isDead === 0) alive++;
+    }
+    return { pct: total > 0 ? (alive / total * 100) : 0, alive: alive, total: total };
+  }
+
+  /** Get hero icon URL from hero ID */
+  function heroIconUrl(heroId) {
+    return 'https://h5.topwargame.com/DynRes/images/headpic/hero_icon' + heroId + '_global.png?t=22.jpg';
+  }
+
+  /** Create a hero icon img element with onerror fallback */
+  function heroIconImg(heroId, size, borderClass) {
+    var img = el('img', {
+      src: heroIconUrl(heroId),
+      alt: 'Hero ' + heroId,
+      width: String(size),
+      height: String(size)
+    });
+    if (borderClass) img.className = borderClass;
+    else img.className = '';
+    img.style.cssText = 'width:' + size + 'px;height:' + size + 'px;border-radius:' + (size > 36 ? '6' : '4') + 'px;object-fit:cover;background:var(--surface);' + (borderClass === 'att-border' ? 'border:2px solid var(--green);' : borderClass === 'def-border' ? 'border:2px solid var(--red);' : '');
+    img.onerror = function() { this.style.display = 'none'; };
+    return img;
+  }
+
+  /** Extract heroList from a side's players[0], or return empty array */
+  function getHeroList(side) {
+    var players = side.players || [];
+    if (players.length === 0) return [];
+    return players[0].heroList || [];
+  }
+
+  /** Build skillId -> { heroId, skillId } mapping from both sides' heroLists */
+  function buildSkillToHeroMap(attHeroes, defHeroes) {
+    var map = {};
+    var allHeroes = (attHeroes || []).concat(defHeroes || []);
+    allHeroes.forEach(function(hero) {
+      if (!hero || !hero.nonActiveSkills || hero.nonActiveSkills.length === 0) return;
+      var skillId = String(hero.nonActiveSkills[0].skillId);
+      if (skillId && hero.id) {
+        map[skillId] = { heroId: hero.id, skillId: hero.nonActiveSkills[0].skillId };
+      }
+    });
+    return map;
+  }
+
+  /** Create a skill icon img element with onerror fallback */
+  function skillIconImg(skillId, size) {
+    var img = el('img', {
+      src: ASSET_BASE + 'assets/skill-icons/skill_' + skillId + '.png',
+      alt: 'Skill ' + skillId,
+      width: String(size),
+      height: String(size),
+      className: 'skill-icon'
+    });
+    img.onerror = function() { this.style.display = 'none'; };
+    return img;
+  }
+
+  /** Build hero portrait row for one side */
+  function buildHeroPortraits(heroList, side) {
+    if (!heroList || heroList.length === 0) return null;
+    var isAtt = (side === 'att');
+    var wrap = el('div', { className: 'hero-portraits' + (isAtt ? '' : ' right') });
+
+    heroList.forEach(function(hero) {
+      if (!hero || !hero.id) return;
+      var portrait = el('div', { className: 'hero-portrait' });
+
+      // Icon image
+      var img = heroIconImg(hero.id, 48, isAtt ? 'att-border' : 'def-border');
+      portrait.appendChild(img);
+
+      // Hero name
+      var heroName = HERO_NAMES[String(hero.id)] || ('#' + hero.id);
+      var nameEl = el('span', { className: 'hero-name', title: heroName });
+      nameEl.textContent = heroName;
+      portrait.appendChild(nameEl);
+
+      // Level label
+      var lvl = el('span', { className: 'hero-level' });
+      lvl.textContent = 'Lv.' + (hero.level || '?');
+      portrait.appendChild(lvl);
+
+      // Star indicators
+      if (hero.star && hero.star > 0) {
+        var stars = el('span', { className: 'hero-stars' });
+        var starStr = '';
+        for (var s = 0; s < hero.star; s++) starStr += '\u2605';
+        stars.textContent = starStr;
+        portrait.appendChild(stars);
+      }
+
+      wrap.appendChild(portrait);
+    });
+
+    return wrap;
+  }
+
+  // ---- Build sections ----
+
+  function buildReportHeader(data, battle) {
+    var fightType = FIGHT_TYPES[battle.fightType] || ('Type ' + battle.fightType);
+    var wrap = el('div', { className: 'report-header' });
+    var typeEl = el('div', { className: 'report-type' });
+    typeEl.textContent = fightType;
+    wrap.appendChild(typeEl);
+
+    var idEl = el('div', { className: 'report-id' });
+    idEl.textContent = 'Report ID: ' + data.reportId;
+    wrap.appendChild(idEl);
+
+    if (data.logtime) {
+      var timeEl = el('div', { className: 'report-time' });
+      timeEl.textContent = formatDate(data.logtime);
+      wrap.appendChild(timeEl);
+    }
+    return wrap;
+  }
+
+  function buildPlayerCard(side, pi, isWinner) {
+    var card = el('div', { className: 'player-card ' + (isWinner ? 'winner' : 'loser') });
+
+    // Avatar
+    var avatarUrl = getAvatar(pi);
+    if (avatarUrl && avatarUrl.indexOf('http') === 0) {
+      var img = el('img', { className: 'player-avatar', src: avatarUrl, alt: '' });
+      img.onerror = function() { this.style.display = 'none'; };
+      card.appendChild(img);
+    } else {
+      // Fallback: first character of name as avatar
+      var initial = (pi.username || '?').charAt(0).toUpperCase();
+      var placeholder = el('div', {
+        className: 'player-avatar',
+        style: 'display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:700;color:var(--accent);background:var(--surface);border:1px solid var(--border);'
+      }, initial);
+      card.appendChild(placeholder);
+    }
+
+    // Name
+    var nameEl = el('div', { className: 'player-name' });
+    nameEl.textContent = pi.username || 'Unknown';
+    card.appendChild(nameEl);
+
+    // Alliance tag
+    var alTag = side.alTag || (pi.alTag || '');
+    if (alTag) {
+      var tagEl = el('div', { className: 'player-alliance' });
+      tagEl.textContent = '[' + alTag + ']';
+      card.appendChild(tagEl);
+    }
+
+    // National flag
+    var flag = flagEmoji(pi.nationalflag || 0);
+    if (flag) {
+      var flagEl = el('div', { className: 'player-flag' });
+      flagEl.textContent = flag;
+      card.appendChild(flagEl);
+    }
+
+    // Result label
+    var resultEl = el('div', { className: 'player-result ' + (isWinner ? 'victory' : 'defeat') });
+    resultEl.textContent = isWinner ? 'VICTORY' : 'DEFEAT';
+    card.appendChild(resultEl);
+
+    return card;
+  }
+
+  function buildVSSection(att, def, attPI, defPI, attWins) {
+    var vs = el('div', { className: 'vs-section' });
+    vs.appendChild(buildPlayerCard(att, attPI, attWins));
+    var badge = el('div', { className: 'vs-badge' });
+    badge.textContent = 'VS';
+    vs.appendChild(badge);
+    vs.appendChild(buildPlayerCard(def, defPI, !attWins));
+    return vs;
+  }
+
+  function buildDetailsPanel(fm, att, def, attPI, defPI, attHeroes, defHeroes) {
+    var panel = el('div', { className: 'details-panel' });
+    var title = el('div', { className: 'section-title' });
+    title.textContent = 'Details';
+    panel.appendChild(title);
+
+    // Row 1: Names + Battle Power
+    var row1 = el('div', { className: 'details-row' });
+    var left1 = el('div', { className: 'detail-side' });
+    var lbl1a = el('div', { className: 'detail-label' });
+    lbl1a.textContent = 'Attacker';
+    left1.appendChild(lbl1a);
+    var val1a = el('div', { className: 'detail-value green' });
+    val1a.textContent = (attPI.username || 'Unknown') + (fm.attBattlePower ? '  —  CP:' + fm.attBattlePower : '');
+    left1.appendChild(val1a);
+    row1.appendChild(left1);
+
+    var right1 = el('div', { className: 'detail-side right' });
+    var lbl1b = el('div', { className: 'detail-label' });
+    lbl1b.textContent = 'Defender';
+    right1.appendChild(lbl1b);
+    var val1b = el('div', { className: 'detail-value red' });
+    val1b.textContent = (defPI.username || 'Unknown') + (fm.defBattlePower ? '  —  CP:' + fm.defBattlePower : '');
+    right1.appendChild(val1b);
+    row1.appendChild(right1);
+    panel.appendChild(row1);
+
+    // Row 1.5: Hero Portraits
+    if ((attHeroes && attHeroes.length > 0) || (defHeroes && defHeroes.length > 0)) {
+      var heroRow = el('div', { className: 'details-row' });
+
+      var leftHero = el('div', { className: 'detail-side' });
+      var lblHa = el('div', { className: 'detail-label' });
+      lblHa.textContent = 'Heroes';
+      leftHero.appendChild(lblHa);
+      var attPortraits = buildHeroPortraits(attHeroes, 'att');
+      if (attPortraits) leftHero.appendChild(attPortraits);
+      heroRow.appendChild(leftHero);
+
+      var rightHero = el('div', { className: 'detail-side right' });
+      var lblHb = el('div', { className: 'detail-label' });
+      lblHb.textContent = 'Heroes';
+      rightHero.appendChild(lblHb);
+      var defPortraits = buildHeroPortraits(defHeroes, 'def');
+      if (defPortraits) rightHero.appendChild(defPortraits);
+      heroRow.appendChild(rightHero);
+
+      panel.appendChild(heroRow);
+    }
+
+    // Row 2: Army Composition
+    var attArmy = fm.attPutArmyV2 || [];
+    var defArmy = fm.defPutArmyV2 || [];
+    // Gather mecha data for icon resolution
+    var attMechas = att.mechas || [];
+    var defMechas = def.mechas || [];
+    if (attArmy.length > 0 || defArmy.length > 0) {
+      var row2 = el('div', { className: 'details-row' });
+      var left2 = el('div', { className: 'detail-side' });
+      var lbl2a = el('div', { className: 'detail-label' });
+      lbl2a.textContent = 'Army Composition';
+      left2.appendChild(lbl2a);
+      var list2a = el('ul', { className: 'army-list left' });
+      attArmy.forEach(function(a) {
+        var li = el('li');
+        var resolved = resolveUnitIcon(a.armyId, attMechas);
+        // Attacker: count on left, then icon + label
+        var numSpan = el('span');
+        numSpan.textContent = 'x' + formatPower(a.s0 || a.s1 || a.num || a.armyNum || 0);
+        li.appendChild(numSpan);
+        var unitInfo = el('span', { className: 'unit-info' });
+        var labelSpan = el('span');
+        labelSpan.textContent = resolved.label;
+        unitInfo.appendChild(labelSpan);
+        if (resolved.icon) {
+          var uImg = el('img', { src: resolved.icon, className: 'unit-icon', alt: resolved.label, width: '40', height: '40' });
+          uImg.onerror = function() { this.style.display = 'none'; };
+          unitInfo.appendChild(uImg);
+        }
+        li.appendChild(unitInfo);
+        list2a.appendChild(li);
+      });
+      left2.appendChild(list2a);
+      row2.appendChild(left2);
+
+      var right2 = el('div', { className: 'detail-side right' });
+      var lbl2b = el('div', { className: 'detail-label' });
+      lbl2b.textContent = 'Army Composition';
+      right2.appendChild(lbl2b);
+      var list2b = el('ul', { className: 'army-list right' });
+      defArmy.forEach(function(a) {
+        var li = el('li');
+        var resolved = resolveUnitIcon(a.armyId, defMechas);
+        var unitInfo = el('span', { className: 'unit-info' });
+        if (resolved.icon) {
+          var uImg = el('img', { src: resolved.icon, className: 'unit-icon', alt: resolved.label, width: '40', height: '40' });
+          uImg.onerror = function() { this.style.display = 'none'; };
+          unitInfo.appendChild(uImg);
+        }
+        var labelSpan = el('span');
+        labelSpan.textContent = resolved.label;
+        unitInfo.appendChild(labelSpan);
+        var numSpan = el('span');
+        numSpan.textContent = 'x' + formatPower(a.s0 || a.s1 || a.num || a.armyNum || 0);
+        li.appendChild(unitInfo);
+        li.appendChild(numSpan);
+        list2b.appendChild(li);
+      });
+      right2.appendChild(list2b);
+      row2.appendChild(right2);
+      panel.appendChild(row2);
+    }
+
+    // Row 3: Survival Bar
+    var attUnits = att.units || [];
+    var defUnits = def.units || [];
+    if (attUnits.length > 0 || defUnits.length > 0) {
+      var attSurv = calcSurvival(attUnits);
+      var defSurv = calcSurvival(defUnits);
+
+      var row3 = el('div', { className: 'details-row' });
+
+      var left3 = el('div', { className: 'detail-side' });
+      var lbl3a = el('div', { className: 'detail-label' });
+      lbl3a.textContent = 'Survival';
+      left3.appendChild(lbl3a);
+      var barWrap3a = el('div', { className: 'survival-bar-wrap' });
+      var bar3a = el('div', { className: 'survival-bar' });
+      bar3a.appendChild(el('div', { className: 'fill green', style: 'width:' + attSurv.pct.toFixed(1) + '%' }));
+      barWrap3a.appendChild(bar3a);
+      var pct3a = el('div', { className: 'survival-pct' });
+      pct3a.textContent = attSurv.alive + '/' + attSurv.total + ' survived (' + attSurv.pct.toFixed(0) + '%)';
+      barWrap3a.appendChild(pct3a);
+      left3.appendChild(barWrap3a);
+      row3.appendChild(left3);
+
+      var right3 = el('div', { className: 'detail-side right' });
+      var lbl3b = el('div', { className: 'detail-label' });
+      lbl3b.textContent = 'Survival';
+      right3.appendChild(lbl3b);
+      var barWrap3b = el('div', { className: 'survival-bar-wrap' });
+      var bar3b = el('div', { className: 'survival-bar' });
+      bar3b.appendChild(el('div', { className: 'fill red', style: 'width:' + defSurv.pct.toFixed(1) + '%' }));
+      barWrap3b.appendChild(bar3b);
+      var pct3b = el('div', { className: 'survival-pct right' });
+      pct3b.textContent = defSurv.alive + '/' + defSurv.total + ' survived (' + defSurv.pct.toFixed(0) + '%)';
+      barWrap3b.appendChild(pct3b);
+      right3.appendChild(barWrap3b);
+      row3.appendChild(right3);
+      panel.appendChild(row3);
+    }
+
+    return panel;
+  }
+
+  function buildSkillTable(skillHurts, side, skillToHeroMap, mechas) {
+    if (!skillHurts) return null;
+
+    var totalHurt = parseFloat(skillHurts.total_hurt) || 0;
+    var commonHurt = parseFloat(skillHurts.common_hurt) || 0;
+    var commonCount = parseInt(skillHurts.common_count) || 0;
+    var hurts = skillHurts.skill_hurts || {};
+    var counts = skillHurts.skill_hurt_count || {};
+    var heroMap = skillToHeroMap || {};
+
+    var isLeft = (side === 'att');
+
+    var rows = [];
+    // Skill rows
+    var skillIds = Object.keys(hurts).sort(function(a, b) {
+      return (parseFloat(hurts[b]) || 0) - (parseFloat(hurts[a]) || 0);
+    });
+    skillIds.forEach(function(id) {
+      rows.push({
+        skill: id,
+        triggers: parseInt(counts[id]) || 0,
+        damage: parseFloat(hurts[id]) || 0
+      });
+    });
+    // Common attack row
+    if (commonCount > 0 || commonHurt > 0) {
+      rows.push({ skill: 'Common', triggers: commonCount, damage: commonHurt, isCommon: true });
+    }
+
+    var table = el('table', { className: 'skill-table ' + (isLeft ? 'left' : 'right') });
+
+    // Header
+    var thead = el('thead');
+    var headerRow = el('tr');
+    if (isLeft) {
+      headerRow.appendChild(el('th', null, 'Skill'));
+      headerRow.appendChild(el('th', null, 'Triggers'));
+      headerRow.appendChild(el('th', null, 'Damage'));
+    } else {
+      headerRow.appendChild(el('th', null, 'Damage'));
+      headerRow.appendChild(el('th', null, 'Triggers'));
+      headerRow.appendChild(el('th', null, 'Skill'));
+    }
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    // Body
+    var tbody = el('tbody');
+    rows.forEach(function(r) {
+      var tr = el('tr');
+      var skillTd = el('td');
+      if (r.isCommon) {
+        var commonSpan = el('span', { className: 'common-label' });
+        commonSpan.textContent = 'Common';
+        skillTd.appendChild(commonSpan);
+      } else {
+        var mapped = heroMap[r.skill];
+        if (mapped) {
+          // Show skill icon + hero name
+          var cellWrap = el('span', { className: 'skill-cell-wrap' });
+          var sIcon = skillIconImg(mapped.skillId, 32);
+          cellWrap.appendChild(sIcon);
+          var nameSpan = el('span', { className: 'skill-id' });
+          nameSpan.textContent = HERO_NAMES[String(mapped.heroId)] || ('#' + mapped.heroId);
+          cellWrap.appendChild(nameSpan);
+          skillTd.appendChild(cellWrap);
+        } else if (parseInt(r.skill) > 900000) {
+          // Mecha skill — show mecha icon + label
+          var mechaCellWrap = el('span', { className: 'skill-cell-wrap' });
+          var mechaIconId = mechas && mechas.length > 0 && mechas[0].mechaId ? mechas[0].mechaId : null;
+          if (mechaIconId) {
+            var mechaImg = el('img', { src: ASSET_BASE + 'assets/mecha-icons/mecha_' + mechaIconId + '.png', className: 'skill-icon', alt: 'HT', width: '32', height: '32' });
+            mechaImg.onerror = function() { this.style.display = 'none'; };
+            mechaCellWrap.appendChild(mechaImg);
+          }
+          var mechaSpan = el('span', { className: 'skill-id' });
+          mechaSpan.textContent = 'HT';
+          mechaSpan.style.color = 'var(--yellow)';
+          mechaCellWrap.appendChild(mechaSpan);
+          skillTd.appendChild(mechaCellWrap);
+        } else {
+          var idSpan = el('span', { className: 'skill-id' });
+          idSpan.textContent = '#' + r.skill;
+          skillTd.appendChild(idSpan);
+        }
+      }
+
+      var trigTd = el('td');
+      trigTd.textContent = String(r.triggers);
+
+      var dmgTd = el('td');
+      dmgTd.textContent = formatPower(r.damage);
+
+      if (isLeft) {
+        tr.appendChild(skillTd);
+        tr.appendChild(trigTd);
+        tr.appendChild(dmgTd);
+      } else {
+        tr.appendChild(dmgTd);
+        tr.appendChild(trigTd);
+        tr.appendChild(skillTd);
+      }
+      tbody.appendChild(tr);
+    });
+
+    // If no rows, show empty state
+    if (rows.length === 0) {
+      var emptyTr = el('tr');
+      var emptyTd = el('td', { colspan: '3', style: 'color:var(--muted);text-align:center;' });
+      emptyTd.textContent = 'No skill data';
+      emptyTr.appendChild(emptyTd);
+      tbody.appendChild(emptyTr);
+    }
+
+    table.appendChild(tbody);
+    return table;
+  }
+
+  function buildSkillSection(fm, skillToHeroMap, attMechas, defMechas) {
+    var attSkill = fm.attSkillHurts;
+    var defSkill = fm.defSkillHurts;
+    if (!attSkill && !defSkill) return null;
+
+    var section = el('div', { className: 'skill-table-section' });
+    var title = el('div', { className: 'section-title' });
+    title.textContent = 'Skill Damage';
+    section.appendChild(title);
+
+    var wrap = el('div', { className: 'skill-tables-wrap' });
+
+    var attTable = buildSkillTable(attSkill, 'att', skillToHeroMap, attMechas);
+    wrap.appendChild(attTable || el('div'));
+
+    wrap.appendChild(el('div', { className: 'skill-divider' }));
+
+    var defTable = buildSkillTable(defSkill, 'def', skillToHeroMap, defMechas);
+    wrap.appendChild(defTable || el('div'));
+
+    section.appendChild(wrap);
+    return section;
+  }
+
+  function buildDamageSummary(fm) {
+    var attSkill = fm.attSkillHurts;
+    var defSkill = fm.defSkillHurts;
+    var attTotal = attSkill ? parseFloat(attSkill.total_hurt) || 0 : 0;
+    var defTotal = defSkill ? parseFloat(defSkill.total_hurt) || 0 : 0;
+
+    if (attTotal === 0 && defTotal === 0) return null;
+
+    var grandTotal = attTotal + defTotal || 1;
+    var attPct = ((attTotal / grandTotal) * 100).toFixed(1);
+    var defPct = ((defTotal / grandTotal) * 100).toFixed(1);
+
+    var wrap = el('div', { className: 'damage-summary' });
+
+    var attCard = el('div', { className: 'damage-card att' });
+    var attLabel = el('div', { className: 'damage-card-label' });
+    attLabel.textContent = 'Attacker Total Damage';
+    attCard.appendChild(attLabel);
+    var attVal = el('div', { className: 'damage-card-value green' });
+    attVal.textContent = formatPower(attTotal);
+    attCard.appendChild(attVal);
+    var attBar = el('div', { className: 'survival-bar-wrap' });
+    var attBarInner = el('div', { className: 'survival-bar' });
+    attBarInner.appendChild(el('div', { className: 'fill green', style: 'width:' + attPct + '%' }));
+    attBar.appendChild(attBarInner);
+    attCard.appendChild(attBar);
+    var attPctEl = el('div', { className: 'survival-pct', style: 'text-align:center' });
+    attPctEl.textContent = attPct + '%';
+    attCard.appendChild(attPctEl);
+    wrap.appendChild(attCard);
+
+    var defCard = el('div', { className: 'damage-card def' });
+    var defLabel = el('div', { className: 'damage-card-label' });
+    defLabel.textContent = 'Defender Total Damage';
+    defCard.appendChild(defLabel);
+    var defVal = el('div', { className: 'damage-card-value red' });
+    defVal.textContent = formatPower(defTotal);
+    defCard.appendChild(defVal);
+    var defBar = el('div', { className: 'survival-bar-wrap' });
+    var defBarInner = el('div', { className: 'survival-bar' });
+    defBarInner.appendChild(el('div', { className: 'fill red', style: 'width:' + defPct + '%' }));
+    defBar.appendChild(defBarInner);
+    defCard.appendChild(defBar);
+    var defPctEl = el('div', { className: 'survival-pct', style: 'text-align:center' });
+    defPctEl.textContent = defPct + '%';
+    defCard.appendChild(defPctEl);
+    wrap.appendChild(defCard);
+
+    return wrap;
+  }
+
+  function buildRawJSON(data) {
+    var stripped = stripUIDs(data);
+    var jsonStr = JSON.stringify(stripped, null, 2);
+    var sizeKB = (jsonStr.length / 1024).toFixed(0);
+
+    var details = document.createElement('details');
+    details.className = 'raw-json';
+    var summary = document.createElement('summary');
+    summary.textContent = 'Raw JSON (' + sizeKB + ' KB) — UIDs stripped';
+    details.appendChild(summary);
+    var pre = document.createElement('pre');
+    pre.textContent = jsonStr;
+    details.appendChild(pre);
+    return details;
+  }
+
+  // ---- Multi-march rendering ----
+
+  function renderMarchContent(container, fm, att, def, attPI, defPI) {
+    // Extract heroLists from both sides
+    var attHeroes = getHeroList(att);
+    var defHeroes = getHeroList(def);
+    var skillToHeroMap = buildSkillToHeroMap(attHeroes, defHeroes);
+
+    // Details panel (with hero portraits)
+    container.appendChild(buildDetailsPanel(fm, att, def, attPI, defPI, attHeroes, defHeroes));
+
+    // Skill damage tables (with hero icons + mecha icons)
+    var skillSection = buildSkillSection(fm, skillToHeroMap, att.mechas || [], def.mechas || []);
+    if (skillSection) container.appendChild(skillSection);
+
+    // Total damage summary
+    var dmgSummary = buildDamageSummary(fm);
+    if (dmgSummary) container.appendChild(dmgSummary);
+  }
+
+  // ---- Main render ----
+
+  function renderReport(data) {
+    var container = document.getElementById('report');
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    var battle = data.battle;
+    var att = battle.attacker;
+    var def = battle.defender;
+    var attPI = getPlayerInfo(att);
+    var defPI = getPlayerInfo(def);
+    var attWins = battle.result === 1;
+    var marches = battle.fightMarches || [];
+    var fm = marches[0] || {};
+
+    // 1. Report header
+    container.appendChild(buildReportHeader(data, battle));
+
+    // 2. VS section
+    container.appendChild(buildVSSection(att, def, attPI, defPI, attWins));
+
+    // 3. March content (with tabs if multiple marches)
+    if (marches.length > 1) {
+      var tabsWrap = el('div', { className: 'march-tabs' });
+      var marchContainer = el('div');
+
+      marches.forEach(function(m, idx) {
+        var tab = el('div', {
+          className: 'march-tab' + (idx === 0 ? ' active' : ''),
+          onclick: (function(i) {
+            return function() {
+              // Update tabs
+              var allTabs = tabsWrap.querySelectorAll('.march-tab');
+              for (var t = 0; t < allTabs.length; t++) {
+                allTabs[t].className = 'march-tab' + (t === i ? ' active' : '');
+              }
+              // Render march
+              while (marchContainer.firstChild) marchContainer.removeChild(marchContainer.firstChild);
+              renderMarchContent(marchContainer, marches[i], att, def, attPI, defPI);
+            };
+          })(idx)
+        });
+        tab.textContent = 'March ' + (idx + 1);
+        tabsWrap.appendChild(tab);
+      });
+
+      container.appendChild(tabsWrap);
+      renderMarchContent(marchContainer, marches[0], att, def, attPI, defPI);
+      container.appendChild(marchContainer);
+    } else {
+      renderMarchContent(container, fm, att, def, attPI, defPI);
+    }
+
+    // 4. Raw JSON
+    container.appendChild(buildRawJSON(data));
+  }
+
+  // ---- Load report ----
+
+  function loadReport() {
+    var input = document.getElementById('report-id');
+    var btn = document.getElementById('load-btn');
+    var statusEl = document.getElementById('status');
+    var id = input.value.trim();
+
+    if (!id) {
+      statusEl.textContent = 'Enter a report ID';
+      statusEl.className = 'status error';
+      return;
+    }
+    if (!/^\d{14,22}$/.test(id)) {
+      statusEl.textContent = 'Report ID should be a numeric identifier';
+      statusEl.className = 'status error';
+      return;
+    }
+
+    btn.disabled = true;
+    statusEl.textContent = 'Loading report...';
+    statusEl.className = 'status';
+    var reportEl = document.getElementById('report');
+    while (reportEl.firstChild) reportEl.removeChild(reportEl.firstChild);
+
+    var prefix = id.substring(0, 4);
+    var url = CDN_BASE + prefix + '/' + id + '.json';
+
+    fetch(url)
+      .then(function(r) {
+        if (!r.ok) throw new Error('Report not found (HTTP ' + r.status + ')');
+        return r.json();
+      })
+      .then(function(data) {
+        if (!data.battle) throw new Error('Invalid report format');
+        statusEl.textContent = '';
+        renderReport(data);
+        var params = new URLSearchParams(window.location.search);
+        params.set('id', id);
+        history.replaceState(null, '', '?' + params.toString());
+      })
+      .catch(function(err) {
+        statusEl.textContent = err.message;
+        statusEl.className = 'status error';
+      })
+      .finally(function() { btn.disabled = false; });
+  }
+
+  document.getElementById('load-btn').addEventListener('click', loadReport);
+  document.getElementById('report-id').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') loadReport();
+  });
+
+  // Auto-load from URL param
+  var params = new URLSearchParams(window.location.search);
+  var idParam = params.get('id');
+  if (idParam) {
+    document.getElementById('report-id').value = idParam;
+    loadReport();
+  }
+})();
+</script>
+</body>
+</html>
