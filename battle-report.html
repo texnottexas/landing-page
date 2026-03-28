@@ -171,8 +171,26 @@
 
   /* Decoration modal */
   .decor-section { margin-bottom: .75rem; }
-  .decor-section-title { font-size: .72rem; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; padding: .5rem 1rem .25rem; border-top: 1px solid var(--border); margin-top: .25rem; }
+  .decor-section-title { font-size: .72rem; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; padding: .5rem 1rem .25rem; border-top: 1px solid var(--border); margin-top: .25rem; cursor: pointer; user-select: none; }
   .decor-section-title:first-child { border-top: none; margin-top: 0; }
+  .decor-section-title .decor-toggle { display: inline-block; width: 1em; font-size: .65rem; margin-right: .25rem; transition: transform .15s; }
+  .decor-section-title.collapsed .decor-toggle { transform: rotate(-90deg); }
+  .decor-section-content { overflow: hidden; }
+  .decor-section-content.collapsed { display: none; }
+  .decor-filter-bar { padding: .4rem .75rem; display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; border-bottom: 1px solid var(--border); }
+  .decor-filter-bar input { flex: 1; min-width: 120px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: .3rem .5rem; color: var(--text); font-size: .75rem; outline: none; }
+  .decor-filter-bar input:focus { border-color: var(--accent); }
+  .decor-filter-bar input::placeholder { color: var(--muted); }
+  .decor-filter-pill { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: .15rem .5rem; font-size: .65rem; color: var(--muted); cursor: pointer; white-space: nowrap; transition: all .15s; }
+  .decor-filter-pill:hover { border-color: var(--accent); color: var(--accent); }
+  .decor-filter-pill.active { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+  .decor-att-tint { color: var(--green); }
+  .decor-att-tint .decor-placed-name { color: var(--green); }
+  .decor-att-tint .decor-placed-buffs { color: rgba(63,185,80,.6); }
+  .decor-def-tint { color: var(--red); }
+  .decor-def-tint .decor-placed-name { color: var(--red); }
+  .decor-def-tint .decor-placed-buffs { color: rgba(248,81,73,.6); }
+  .decor-placed-dash.muted { opacity: .4; }
   .decor-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: .25rem; padding: 0 .75rem; }
   .decor-item { display: flex; align-items: center; gap: .35rem; padding: .3rem .25rem; font-size: .8rem; }
   .decor-item.right { justify-content: flex-end; flex-direction: row-reverse; }
@@ -190,6 +208,18 @@
   .decor-suit-val { font-size: .8rem; font-weight: 600; }
   .decor-suit-val.left { text-align: right; }
   .decor-suit-val.right { text-align: left; }
+  .decor-suit-icons { display: flex; gap: .2rem; justify-content: center; padding: .15rem 0 .3rem; flex-wrap: wrap; }
+  .decor-suit-icons img { width: 24px; height: 24px; border-radius: 3px; object-fit: cover; background: var(--card); opacity: .8; }
+  .decor-cat-header { font-size: .7rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: .4rem 1rem .15rem; margin-top: .15rem; }
+  .decor-placed-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: .25rem; padding: .2rem .75rem; align-items: center; }
+  .decor-placed-cell { display: flex; align-items: center; gap: .3rem; font-size: .78rem; }
+  .decor-placed-cell.right { justify-content: flex-end; flex-direction: row-reverse; }
+  .decor-placed-cell .decor-icon { width: 32px; height: 32px; }
+  .decor-placed-info { display: flex; flex-direction: column; min-width: 0; }
+  .decor-placed-name { font-weight: 500; font-size: .75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+  .decor-placed-buffs { font-size: .65rem; color: var(--muted); }
+  .decor-placed-check { color: var(--green); font-size: .85rem; }
+  .decor-placed-dash { color: var(--muted); font-size: .85rem; }
 
   @media (max-width: 640px) {
     .stats-modal { max-height: 90vh; }
@@ -197,6 +227,12 @@
     .stats-row .s-left, .stats-row .s-right { font-size: .78rem; }
     .decor-item-name { max-width: 120px; }
     .decor-icon { width: 30px; height: 30px; }
+    .decor-placed-name { max-width: 110px; }
+    .decor-placed-cell .decor-icon { width: 28px; height: 28px; }
+    .decor-suit-icons img { width: 20px; height: 20px; }
+    .decor-filter-bar { flex-wrap: wrap; gap: .25rem; }
+    .decor-filter-bar input { min-width: 100px; font-size: .7rem; }
+    .decor-filter-pill { font-size: .6rem; padding: .1rem .35rem; }
   }
 
   /* Footer */
@@ -325,7 +361,7 @@
   };
 
   // Buff ID → display name (grouped categories from EFFECTBUFF table)
-  var BUFF_NAMES = {"930001":"Army HP Boost","930002":"Navy HP Boost","930003":"Air Force HP Boost","930101":"Army Attack","930102":"Navy Attack","930103":"Air Force ATK","930107":"Navy - Army DMG Bonus","930108":"Air Force - Navy DMG Bonus","930109":"Army - Air DMG Bonus","930201":"Army Crit. Rate","930202":"Navy Crit. Rate","930203":"Air Force Crit. Rate","930301":"Army Dodge Buff","930302":"Navy Dodge Buff","930303":"Air Force Dodge Buff","930401":"Army ATK Speed Bonus","930402":"Navy ATK Speed Bonus","930403":"Air Force ATK Speed Bonus","930504":"Navy DEF against Army","930505":"Air Force DEF against Navy","930506":"Army DEF against Air Force","980101":"Army DMG Increase","980102":"Navy DMG Increase","980103":"Air Force DMG Increase","980201":"Army Decreased DMG Taken","980202":"Navy Decreased DMG Taken","980203":"Air Force Decreased DMG Taken","980301":"Army Crit. DMG","980302":"Navy Crit. DMG","980303":"Air Force Crit. DMG","980501":"Army Hit","980502":"Navy Hit","980503":"Air Force Hit","960012":"March Size","990202":"Increase DEF of all units","990208":"DEF increase when attacking","990209":"DEF increase when defending","990221":"Decreased DMG Taken (offensive)","1010001":"Army Starting Shield","1010002":"Navy Starting Shield","1010003":"Air Force Starting Shield","1131009":"Starting Shield of All Units","1101064":"Extra Troop Morale","1130010":"All heroes War increase","1201003":"Total battle rounds +1","29901301":"Decreased DMG Taken (defensive)","941300":"Hall Of Valhalla ATK","941301":"Hall Of Valhalla HP","941303":"Hall Of Valhalla Crit Damage","941304":"Hall Of Valhalla INV","990001":"Attack Boost vs World Boss","970003":"Attack Boost vs Dark Forces","990137":"All units DMG Increase (Silence)","921006":"Golden Tank","981021":"Golden Plane","1002001":"Attack inside Fort","1002002":"HP inside Fort","1150":"Ultra Valhalla AF Offense DMG","1156":"Ultra Valhalla AF Offense HP","1162":"Ultra Valhalla AF Offense ATK"};
+  var BUFF_NAMES = {"930001":"Army HP Boost","930002":"Navy HP Boost","930003":"Air Force HP Boost","930101":"Army Attack","930102":"Navy Attack","930103":"Air Force ATK","930107":"Navy - Army DMG Bonus","930108":"Air Force - Navy DMG Bonus","930109":"Army - Air DMG Bonus","930201":"Army Crit. Rate","930202":"Navy Crit. Rate","930203":"Air Force Crit. Rate","930301":"Army Dodge Buff","930302":"Navy Dodge Buff","930303":"Air Force Dodge Buff","930401":"Army ATK Speed Bonus","930402":"Navy ATK Speed Bonus","930403":"Air Force ATK Speed Bonus","930504":"Navy DEF against Army","930505":"Air Force DEF against Navy","930506":"Army DEF against Air Force","980101":"Army DMG Increase","980102":"Navy DMG Increase","980103":"Air Force DMG Increase","980201":"Army Decreased DMG Taken","980202":"Navy Decreased DMG Taken","980203":"Air Force Decreased DMG Taken","980301":"Army Crit. DMG","980302":"Navy Crit. DMG","980303":"Air Force Crit. DMG","980501":"Army Hit","980502":"Navy Hit","980503":"Air Force Hit","960012":"March Size","990202":"Increase DEF of all units","990208":"DEF increase when attacking","990209":"DEF increase when defending","990221":"Decreased DMG Taken (offensive)","1010001":"Army Starting Shield","1010002":"Navy Starting Shield","1010003":"Air Force Starting Shield","1131009":"Starting Shield of All Units","1101064":"Extra Troop Morale","1130010":"All heroes War increase","1201003":"Total battle rounds +1","29901301":"Decreased DMG Taken (defensive)","941300":"Hall Of Valhalla ATK","941301":"Hall Of Valhalla HP","941303":"Hall Of Valhalla Crit Damage","941304":"Hall Of Valhalla INV","990001":"Attack Boost vs World Boss","970003":"Attack Boost vs Dark Forces","990137":"All units DMG Increase (Silence)","921006":"Golden Tank","981021":"Golden Plane","1002001":"Attack inside Fort","1002002":"HP inside Fort","1150":"Ultra Valhalla AF Offense DMG","1156":"Ultra Valhalla AF Offense HP","1162":"Ultra Valhalla AF Offense ATK","930000":"All Units HP","930100":"All Units ATK","980204":"All Units Decreased DMG Taken","1001001":"All Units DMG Increase","990100":"All Units ATK","1003020":"Army Decreased DMG Taken","1003021":"Navy Decreased DMG Taken","1003022":"Air Force Decreased DMG Taken","1131006":"All heroes ATK Speed","960002":"All Units ATK Speed","9301160":"All Units ATK","9301161":"Army Attack","9301162":"Navy Attack","9301163":"Air Force ATK","9301164":"All Units ATK","9301170":"All Units HP","9301171":"Army HP Boost","9301172":"Navy HP Boost","9301173":"Air Force HP Boost","9301174":"All Units HP","93011601":"All Units ATK","93011701":"All Units HP","9990769":"All Units HP","990143":"Decreased DMG Taken (def)","29801011":"Army DMG Increase","29801021":"Navy DMG Increase","29902211":"Decreased DMG Taken (offensive)","10030201":"Army Decreased DMG Taken","20030201":"Army Decreased DMG Taken","21010161":"Navy Decreased DMG Taken","98020501":"Army Decreased DMG Taken"};
 
   // EFFECTBUFF group mapping: raw buff id → display buff id(s)
   // Extracted from game's EFFECTBUFF table via AddOneBuffToBuffPool oracle
@@ -385,6 +421,10 @@
 
   // Filename overrides for decoration icon mismatches (& and - in names cause double underscores)
   var DECOR_ICON_FIX = {};
+
+  // Decoration group → {c: categoryIndex (0=March Size,1=Defense,2=Damage Boost,3=Others), b: [{i:buffId, v:rawValue, t:valueType}]}
+  var DECOR_DATA = {"4170":{"c":2,"b":[{"i":98020501,"v":350,"t":10000}]},"4180":{"c":3,"b":[{"i":93011701,"v":700,"t":10000}]},"4200":{"c":3,"b":[{"i":930100,"v":350,"t":10000}]},"4210":{"c":2,"b":[{"i":10030201,"v":350,"t":10000}]},"4290":{"c":3,"b":[{"i":930001,"v":450,"t":10000}]},"4300":{"c":3,"b":[{"i":930002,"v":200,"t":10000}]},"4310":{"c":3,"b":[{"i":930003,"v":250,"t":10000}]},"4320":{"c":3,"b":[{"i":930102,"v":200,"t":10000}]},"4330":{"c":2,"b":[{"i":1003020,"v":300,"t":10000}]},"4340":{"c":2,"b":[{"i":1003021,"v":300,"t":10000}]},"4350":{"c":2,"b":[{"i":1003022,"v":300,"t":10000}]},"4360":{"c":3,"b":[{"i":930103,"v":450,"t":10000}]},"4370":{"c":2,"b":[{"i":1003020,"v":300,"t":10000}]},"5080":{"c":2,"b":[{"i":29801011,"v":400,"t":10000}]},"5090":{"c":3,"b":[{"i":990001,"v":1500,"t":10000},{"i":930000,"v":100,"t":10000}]},"5321":{"c":2,"b":[{"i":29801021,"v":400,"t":10000}]},"5341":{"c":2,"b":[{"i":21010161,"v":400,"t":10000}]},"5345":{"c":2,"b":[{"i":1001001,"v":400,"t":10000}]},"5347":{"c":3,"b":[{"i":930002,"v":500,"t":10000}]},"5348":{"c":2,"b":[{"i":29901301,"v":300,"t":10000}]},"5351":{"c":3,"b":[{"i":930100,"v":800,"t":10000}]},"5352":{"c":3,"b":[{"i":930001,"v":750,"t":10000}]},"5353":{"c":3,"b":[{"i":990143,"v":9500,"t":10000},{"i":930000,"v":150,"t":10000}]},"5355":{"c":3,"b":[{"i":93011601,"v":400,"t":10000}]},"5356":{"c":3,"b":[{"i":930000,"v":600,"t":10000}]},"5357":{"c":3,"b":[{"i":930100,"v":1100,"t":10000}]},"5370":{"c":2,"b":[{"i":20030201,"v":500,"t":10000}]},"5383":{"c":3,"b":[{"i":930000,"v":500,"t":10000}]},"5385":{"c":2,"b":[{"i":1001001,"v":500,"t":10000}]},"5387":{"c":2,"b":[{"i":29902211,"v":400,"t":10000}]},"5398":{"c":0,"b":[{"i":960012,"v":4,"t":1}]},"5399":{"c":3,"b":[{"i":1131006,"v":40,"t":1}]},"5401":{"c":3,"b":[{"i":930000,"v":600,"t":10000}]},"5425":{"c":3,"b":[{"i":930002,"v":600,"t":10000}]},"5426":{"c":3,"b":[{"i":930101,"v":800,"t":10000}]},"5440":{"c":3,"b":[{"i":930102,"v":600,"t":10000}]},"5441":{"c":3,"b":[{"i":930001,"v":800,"t":10000}]},"5442":{"c":3,"b":[{"i":930100,"v":600,"t":10000}]},"5443":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5444":{"c":0,"b":[{"i":960012,"v":3,"t":1}]},"5446":{"c":0,"b":[{"i":1130010,"v":1500,"t":1},{"i":960012,"v":3,"t":1}]},"5460":{"c":0,"b":[{"i":960012,"v":3,"t":1}]},"5461":{"c":3,"b":[{"i":930000,"v":1000,"t":10000}]},"5462":{"c":0,"b":[{"i":960012,"v":3,"t":1},{"i":930100,"v":300,"t":10000}]},"5463":{"c":3,"b":[{"i":930100,"v":800,"t":10000}]},"5480":{"c":3,"b":[{"i":930101,"v":1000,"t":10000}]},"5481":{"c":3,"b":[{"i":930002,"v":800,"t":10000}]},"5482":{"c":2,"b":[{"i":1001001,"v":600,"t":10000}]},"5484":{"c":3,"b":[{"i":930102,"v":800,"t":10000}]},"5485":{"c":3,"b":[{"i":930101,"v":1000,"t":10000}]},"5486":{"c":2,"b":[{"i":980204,"v":400,"t":10000}]},"5493":{"c":3,"b":[{"i":930103,"v":1000,"t":10000}]},"5494":{"c":3,"b":[{"i":930100,"v":1000,"t":10000}]},"5495":{"c":3,"b":[{"i":930000,"v":1000,"t":10000}]},"5498":{"c":0,"b":[{"i":960012,"v":3,"t":1}]},"5499":{"c":3,"b":[{"i":930001,"v":1200,"t":10000}]},"5500":{"c":2,"b":[{"i":1001001,"v":600,"t":10000}]},"5502":{"c":3,"b":[{"i":930100,"v":800,"t":10000}]},"5503":{"c":3,"b":[{"i":930002,"v":800,"t":10000}]},"5511":{"c":0,"b":[{"i":960012,"v":3,"t":1}]},"5512":{"c":3,"b":[{"i":930100,"v":1000,"t":10000}]},"5513":{"c":3,"b":[{"i":930001,"v":1200,"t":10000}]},"5514":{"c":3,"b":[{"i":930100,"v":600,"t":10000}]},"5515":{"c":2,"b":[{"i":1001001,"v":600,"t":10000}]},"5516":{"c":3,"b":[{"i":930000,"v":600,"t":10000}]},"5519":{"c":2,"b":[{"i":980204,"v":600,"t":10000}]},"5522":{"c":3,"b":[{"i":930101,"v":1200,"t":10000}]},"5523":{"c":3,"b":[{"i":930102,"v":600,"t":10000}]},"5524":{"c":3,"b":[{"i":930103,"v":1500,"t":10000}]},"5526":{"c":3,"b":[{"i":1131006,"v":6,"t":1}]},"5527":{"c":3,"b":[{"i":930000,"v":600,"t":10000}]},"5528":{"c":3,"b":[{"i":930100,"v":1000,"t":10000}]},"5529":{"c":3,"b":[{"i":930100,"v":800,"t":10000}]},"5530":{"c":2,"b":[{"i":980204,"v":600,"t":10000}]},"5541":{"c":2,"b":[{"i":1001001,"v":600,"t":10000},{"i":980204,"v":300,"t":10000}]},"5544":{"c":0,"b":[{"i":960012,"v":4,"t":1}]},"5545":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5546":{"c":2,"b":[{"i":980204,"v":1000,"t":10000}]},"5547":{"c":3,"b":[{"i":930100,"v":800,"t":10000}]},"5548":{"c":3,"b":[{"i":930000,"v":800,"t":10000}]},"5549":{"c":3,"b":[{"i":930101,"v":1600,"t":10000}]},"5550":{"c":3,"b":[{"i":930100,"v":900,"t":10000}]},"5551":{"c":3,"b":[{"i":930002,"v":600,"t":10000}]},"5552":{"c":3,"b":[{"i":930102,"v":800,"t":10000}]},"5553":{"c":3,"b":[{"i":930000,"v":1000,"t":10000}]},"5554":{"c":3,"b":[{"i":930001,"v":1500,"t":10000}]},"5555":{"c":3,"b":[{"i":930003,"v":1500,"t":10000}]},"5556":{"c":2,"b":[{"i":1001001,"v":800,"t":10000},{"i":980204,"v":800,"t":10000},{"i":930100,"v":800,"t":10000}]},"5557":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5558":{"c":3,"b":[{"i":930100,"v":1200,"t":10000}]},"5560":{"c":3,"b":[{"i":930000,"v":1200,"t":10000}]},"5561":{"c":3,"b":[{"i":9990769,"v":2000,"t":10000}]},"5562":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5564":{"c":0,"b":[{"i":960012,"v":3,"t":1}]},"5576":{"c":1,"b":[{"i":1001001,"v":600,"t":10000},{"i":980204,"v":600,"t":10000},{"i":990202,"v":600,"t":10000}]},"5577":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5578":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5579":{"c":2,"b":[{"i":980204,"v":900,"t":10000}]},"5580":{"c":3,"b":[{"i":930100,"v":1200,"t":10000}]},"5581":{"c":2,"b":[{"i":980204,"v":1000,"t":10000}]},"5582":{"c":3,"b":[{"i":930000,"v":600,"t":10000}]},"5583":{"c":3,"b":[{"i":990100,"v":1500,"t":10000}]},"5585":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5586":{"c":3,"b":[{"i":930103,"v":1600,"t":10000}]},"5587":{"c":3,"b":[{"i":9301162,"v":800,"t":10000}]},"5588":{"c":1,"b":[{"i":990202,"v":300,"t":10000}]},"5589":{"c":3,"b":[{"i":930100,"v":900,"t":10000}]},"5590":{"c":2,"b":[{"i":1001001,"v":1200,"t":10000}]},"5591":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5592":{"c":3,"b":[{"i":930000,"v":900,"t":10000}]},"5593":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5595":{"c":0,"b":[{"i":960012,"v":3,"t":1}]},"5597":{"c":3,"b":[{"i":930100,"v":600,"t":10000}]},"5599":{"c":3,"b":[{"i":1131006,"v":15,"t":1}]},"5600":{"c":3,"b":[{"i":930000,"v":600,"t":10000}]},"5603":{"c":3,"b":[{"i":930000,"v":750,"t":10000}]},"5604":{"c":3,"b":[{"i":930100,"v":300,"t":10000}]},"5605":{"c":2,"b":[{"i":980204,"v":600,"t":10000}]},"5606":{"c":0,"b":[{"i":960012,"v":4,"t":1}]},"5607":{"c":3,"b":[{"i":930100,"v":600,"t":10000},{"i":930000,"v":600,"t":10000}]},"5608":{"c":3,"b":[{"i":930000,"v":1200,"t":10000}]},"5609":{"c":3,"b":[{"i":930001,"v":1500,"t":10000}]},"5610":{"c":3,"b":[{"i":9301172,"v":400,"t":10000}]},"5611":{"c":3,"b":[{"i":9301173,"v":1200,"t":10000}]},"5612":{"c":3,"b":[{"i":9301161,"v":1200,"t":10000}]},"5613":{"c":3,"b":[{"i":9301163,"v":1600,"t":10000}]},"5614":{"c":3,"b":[{"i":9301160,"v":600,"t":10000},{"i":9301170,"v":600,"t":10000}]},"5615":{"c":3,"b":[{"i":9301160,"v":900,"t":10000}]},"5616":{"c":3,"b":[{"i":930100,"v":600,"t":10000},{"i":930000,"v":600,"t":10000}]},"5617":{"c":3,"b":[{"i":990100,"v":1500,"t":10000}]},"5618":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5619":{"c":3,"b":[{"i":930000,"v":1500,"t":10000}]},"5620":{"c":2,"b":[{"i":980204,"v":1000,"t":10000}]},"5621":{"c":3,"b":[{"i":930100,"v":1200,"t":10000}]},"5622":{"c":1,"b":[{"i":990202,"v":400,"t":10000}]},"5623":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5624":{"c":3,"b":[{"i":930000,"v":1000,"t":10000}]},"5626":{"c":0,"b":[{"i":960012,"v":3,"t":1}]},"5627":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5629":{"c":3,"b":[{"i":930000,"v":600,"t":10000}]},"5630":{"c":3,"b":[{"i":930100,"v":600,"t":10000}]},"5631":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5642":{"c":2,"b":[{"i":980204,"v":1000,"t":10000}]},"5643":{"c":3,"b":[{"i":9301160,"v":200,"t":10000},{"i":9301170,"v":200,"t":10000}]},"5644":{"c":0,"b":[{"i":960012,"v":3,"t":1}]},"5645":{"c":2,"b":[{"i":980204,"v":1000,"t":10000}]},"5646":{"c":3,"b":[{"i":9301160,"v":1200,"t":10000}]},"5647":{"c":3,"b":[{"i":9301170,"v":1500,"t":10000}]},"5648":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5651":{"c":2,"b":[{"i":980204,"v":1000,"t":10000}]},"5652":{"c":3,"b":[{"i":9301170,"v":1500,"t":10000}]},"5653":{"c":3,"b":[{"i":9301160,"v":1600,"t":10000}]},"5654":{"c":3,"b":[{"i":9301160,"v":1200,"t":10000}]},"5655":{"c":2,"b":[{"i":980204,"v":1000,"t":10000}]},"5656":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5657":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5658":{"c":1,"b":[{"i":990202,"v":300,"t":10000}]},"5659":{"c":3,"b":[{"i":9301160,"v":800,"t":10000}]},"5660":{"c":3,"b":[{"i":9301170,"v":1000,"t":10000}]},"5661":{"c":3,"b":[{"i":9301164,"v":1500,"t":10000}]},"5662":{"c":3,"b":[{"i":9301160,"v":600,"t":10000},{"i":9301170,"v":600,"t":10000}]},"5711":{"c":1,"b":[{"i":990202,"v":300,"t":10000}]},"5712":{"c":0,"b":[{"i":960012,"v":4,"t":1}]},"5716":{"c":3,"b":[{"i":9301164,"v":1500,"t":10000}]},"5717":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5718":{"c":3,"b":[{"i":9301171,"v":1200,"t":10000}]},"5719":{"c":3,"b":[{"i":9301164,"v":1500,"t":10000}]},"5732":{"c":3,"b":[{"i":9301160,"v":2000,"t":10000}]},"5733":{"c":2,"b":[{"i":980204,"v":1000,"t":10000}]},"5734":{"c":3,"b":[{"i":1131006,"v":40,"t":1}]},"5735":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5736":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5737":{"c":2,"b":[{"i":1001001,"v":900,"t":10000},{"i":9301160,"v":900,"t":10000},{"i":9301170,"v":900,"t":10000}]},"5738":{"c":1,"b":[{"i":980204,"v":600,"t":10000},{"i":990202,"v":400,"t":10000}]},"5742":{"c":0,"b":[{"i":960012,"v":4,"t":1}]},"5743":{"c":2,"b":[{"i":980204,"v":1000,"t":10000}]},"5744":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5745":{"c":3,"b":[{"i":9301170,"v":1200,"t":10000}]},"5746":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5747":{"c":3,"b":[{"i":1131006,"v":40,"t":1}]},"5749":{"c":3,"b":[{"i":9301164,"v":1500,"t":10000}]},"5750":{"c":3,"b":[{"i":9301174,"v":1500,"t":10000}]},"5752":{"c":0,"b":[{"i":960012,"v":3,"t":1}]},"5753":{"c":3,"b":[{"i":9301174,"v":1500,"t":10000}]},"5754":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5755":{"c":1,"b":[{"i":990202,"v":400,"t":10000}]},"5756":{"c":0,"b":[{"i":960012,"v":4,"t":1}]},"5761":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5762":{"c":3,"b":[{"i":9301160,"v":1200,"t":10000}]},"5763":{"c":2,"b":[{"i":980204,"v":1000,"t":10000}]},"5764":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5765":{"c":3,"b":[{"i":9301170,"v":900,"t":10000}]},"5766":{"c":1,"b":[{"i":990202,"v":400,"t":10000}]},"5781":{"c":3,"b":[{"i":1131006,"v":45,"t":1}]},"5782":{"c":3,"b":[{"i":9301160,"v":600,"t":10000},{"i":9301170,"v":600,"t":10000}]},"5783":{"c":2,"b":[{"i":980204,"v":1000,"t":10000}]},"5784":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5785":{"c":0,"b":[{"i":960012,"v":3,"t":1}]},"5796":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5797":{"c":3,"b":[{"i":9301164,"v":1500,"t":10000}]},"5798":{"c":2,"b":[{"i":1001001,"v":600,"t":10000},{"i":9301170,"v":900,"t":10000}]},"5799":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5800":{"c":1,"b":[{"i":990202,"v":400,"t":10000}]},"5801":{"c":2,"b":[{"i":1001001,"v":1250,"t":10000}]},"5802":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5803":{"c":1,"b":[{"i":990202,"v":500,"t":10000}]},"5804":{"c":3,"b":[{"i":9301170,"v":1500,"t":10000}]},"5805":{"c":3,"b":[{"i":9301160,"v":1500,"t":10000}]},"5806":{"c":2,"b":[{"i":980204,"v":1250,"t":10000}]},"5807":{"c":2,"b":[{"i":980204,"v":1200,"t":10000}]},"5808":{"c":3,"b":[{"i":9301164,"v":1500,"t":10000}]},"5809":{"c":0,"b":[{"i":960012,"v":3,"t":1}]},"5810":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5811":{"c":1,"b":[{"i":990202,"v":300,"t":10000}]},"5822":{"c":0,"b":[{"i":960012,"v":3,"t":1}]},"5823":{"c":2,"b":[{"i":980204,"v":1000,"t":10000}]},"5824":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5825":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5826":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5827":{"c":1,"b":[{"i":990202,"v":300,"t":10000}]},"5839":{"c":3,"b":[{"i":1131006,"v":40,"t":1}]},"5840":{"c":1,"b":[{"i":990202,"v":300,"t":10000}]},"5841":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5842":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5843":{"c":3,"b":[{"i":1131006,"v":30,"t":1}]},"5844":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5845":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5847":{"c":1,"b":[{"i":990202,"v":500,"t":10000}]},"5848":{"c":3,"b":[{"i":1131006,"v":40,"t":1}]},"5849":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5850":{"c":3,"b":[{"i":9301160,"v":1500,"t":10000}]},"5851":{"c":2,"b":[{"i":980204,"v":1000,"t":10000}]},"5852":{"c":3,"b":[{"i":9301170,"v":1500,"t":10000}]},"5853":{"c":2,"b":[{"i":980204,"v":1000,"t":10000}]},"5854":{"c":0,"b":[{"i":960012,"v":3,"t":1}]},"5855":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5856":{"c":1,"b":[{"i":990202,"v":300,"t":10000}]},"5857":{"c":0,"b":[{"i":960012,"v":2,"t":1},{"i":1001001,"v":800,"t":10000}]},"5858":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5859":{"c":3,"b":[{"i":1131006,"v":30,"t":1}]},"5860":{"c":0,"b":[{"i":960012,"v":2,"t":1},{"i":980204,"v":800,"t":10000}]},"5861":{"c":3,"b":[{"i":9301160,"v":2000,"t":10000}]},"5862":{"c":1,"b":[{"i":990202,"v":400,"t":10000}]},"5863":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5864":{"c":3,"b":[{"i":9301170,"v":1200,"t":10000}]},"5865":{"c":3,"b":[{"i":9301160,"v":1200,"t":10000}]},"5866":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5867":{"c":2,"b":[{"i":1001001,"v":1000,"t":10000}]},"5878":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5879":{"c":1,"b":[{"i":990202,"v":300,"t":10000}]},"5880":{"c":3,"b":[{"i":1131006,"v":30,"t":1}]},"5881":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5882":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5896":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5897":{"c":3,"b":[{"i":1131006,"v":30,"t":1}]},"5898":{"c":1,"b":[{"i":990202,"v":300,"t":10000}]},"5899":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5900":{"c":0,"b":[{"i":960012,"v":3,"t":1}]},"5911":{"c":0,"b":[{"i":960012,"v":3,"t":1}]},"5912":{"c":1,"b":[{"i":1001001,"v":600,"t":10000},{"i":990202,"v":400,"t":10000}]},"5913":{"c":3,"b":[{"i":1131006,"v":30,"t":1}]},"5917":{"c":1,"b":[{"i":990202,"v":300,"t":10000}]},"5918":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5920":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5921":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5922":{"c":1,"b":[{"i":990202,"v":400,"t":10000}]},"5923":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5924":{"c":3,"b":[{"i":1131006,"v":20,"t":1}]},"5925":{"c":3,"b":[{"i":9301160,"v":1200,"t":10000}]},"5926":{"c":3,"b":[{"i":9301170,"v":1200,"t":10000}]},"5927":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5928":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5929":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5940":{"c":0,"b":[{"i":960012,"v":3,"t":1}]},"5941":{"c":1,"b":[{"i":990202,"v":400,"t":10000}]},"5942":{"c":3,"b":[{"i":9301160,"v":1500,"t":10000}]},"5943":{"c":3,"b":[{"i":1131006,"v":20,"t":1}]},"5944":{"c":3,"b":[{"i":9301170,"v":1500,"t":10000}]},"5945":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5946":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5947":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5948":{"c":0,"b":[{"i":960012,"v":4,"t":1}]},"5949":{"c":1,"b":[{"i":990202,"v":300,"t":10000}]},"5950":{"c":1,"b":[{"i":990202,"v":400,"t":10000}]},"5962":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5963":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5964":{"c":3,"b":[{"i":1131006,"v":30,"t":1}]},"5965":{"c":0,"b":[{"i":960012,"v":4,"t":1}]},"5982":{"c":2,"b":[{"i":1001001,"v":750,"t":10000}]},"5983":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"5984":{"c":3,"b":[{"i":1131006,"v":30,"t":1}]},"5985":{"c":1,"b":[{"i":990202,"v":100,"t":10000}]},"5986":{"c":2,"b":[{"i":980204,"v":750,"t":10000}]},"50000":{"c":3,"b":[{"i":930000,"v":1000,"t":10000},{"i":960002,"v":500,"t":10000}]}};
+  var DECOR_CAT_NAMES = ['March Size', 'Defense', 'Damage Boost', 'Others'];
 
   // Buff source category names (type_big → display name from fight_report_from_show table)
   var BUFF_SOURCE_NAMES = {1:"Science",2:"Hero Skills",3:"Hero Perk",4:"CPNT",6:"Alliance Tech",7:"Decoration",8:"VIP privileges",9:"Class Talent",13:"Alliance Badge",16:"Hero Bond",17:"Mastery",18:"Special Effect Upgrade",20:"Alliance Titles",24:"Morale",25:"Base Effect",26:"Unit Equipment",27:"Heavy Trooper",32:"Formations",33:"Secret Weapon",34:"Alliance Monster",37:"Titan Gear",88:"Base Skin Skill",95:"Ruin Bonus",98:"Official Position Effect",100:"Loot Quest",106:"Enigma Beast",134:"Wasteland Airship Effect",135:"Wasteland Effect"};
@@ -561,9 +601,6 @@
     nameRow.appendChild(el('div', { className: 's-right', style: 'color:var(--red);font-size:.9rem;' }, defPI.username || 'Defender'));
     body.appendChild(nameRow);
 
-    // --- Summary counts ---
-    body.appendChild(el('div', { className: 'decor-section-title' }, 'Summary'));
-
     var attIds = (attDecos && attDecos.ids) || [];
     var defIds = (defDecos && defDecos.ids) || [];
     var attSublimes = (attDecos && attDecos.sublimes) || [];
@@ -571,7 +608,61 @@
     var attSuits = (attDecos && attDecos.suit) || [];
     var defSuits = (defDecos && defDecos.suit) || [];
 
-    // Placed decorations count
+    /** Create a collapsible section: returns { title, content } appended to parent */
+    function makeSection(parent, label) {
+      var toggle = el('span', { className: 'decor-toggle' }, '\u25BC');
+      var title = el('div', { className: 'decor-section-title' }, [toggle, label]);
+      var content = el('div', { className: 'decor-section-content' });
+      title.addEventListener('click', function() {
+        var isCollapsed = content.classList.toggle('collapsed');
+        title.classList.toggle('collapsed', isCollapsed);
+      });
+      parent.appendChild(title);
+      parent.appendChild(content);
+      return content;
+    }
+
+    // --- Search / Filter bar ---
+    var filterBar = el('div', { className: 'decor-filter-bar' });
+    var searchInput = el('input', { type: 'text', placeholder: 'Search decorations\u2026' });
+    filterBar.appendChild(searchInput);
+    var activeCatFilter = -1; // -1 = All
+    var catCounts = [0, 0, 0, 0];
+    var catFilterBtns = [];
+    var placedRows = []; // will collect { el, name, cat } for filtering
+
+    function applyFilters() {
+      var q = searchInput.value.toLowerCase();
+      for (var fi = 0; fi < placedRows.length; fi++) {
+        var pr = placedRows[fi];
+        var matchName = !q || pr.name.indexOf(q) !== -1;
+        var matchCat = activeCatFilter === -1 || pr.cat === activeCatFilter;
+        pr.el.style.display = (matchName && matchCat) ? '' : 'none';
+      }
+    }
+
+    searchInput.addEventListener('input', applyFilters);
+
+    var catLabels = ['All', 'March Size', 'Defense', 'Damage Boost', 'Others'];
+    for (var cli = 0; cli < catLabels.length; cli++) {
+      (function(idx) {
+        var pill = el('button', { className: 'decor-filter-pill' + (idx === 0 ? ' active' : '') }, catLabels[idx]);
+        pill.addEventListener('click', function() {
+          activeCatFilter = idx === 0 ? -1 : (idx - 1);
+          for (var pi = 0; pi < catFilterBtns.length; pi++) {
+            catFilterBtns[pi].classList.toggle('active', pi === idx);
+          }
+          applyFilters();
+        });
+        catFilterBtns.push(pill);
+        filterBar.appendChild(pill);
+      })(cli);
+    }
+    body.appendChild(filterBar);
+
+    // --- Summary counts ---
+    var summaryContent = makeSection(body, 'Summary');
+
     var summaryItems = [
       { label: 'Placed', a: attIds.length, d: defIds.length },
       { label: 'Sublimed', a: attSublimes.length, d: defSublimes.length },
@@ -588,107 +679,168 @@
       row.appendChild(el('div', { className: lCls }, String(item.a)));
       row.appendChild(el('div', { className: 's-name' }, item.label));
       row.appendChild(el('div', { className: rCls }, String(item.d)));
-      body.appendChild(row);
+      summaryContent.appendChild(row);
     });
 
-    // --- Sublimes section ---
-    if (attSublimes.length > 0 || defSublimes.length > 0) {
-      body.appendChild(el('div', { className: 'decor-section-title' }, 'Sublimed Decorations'));
-
-      // Group sublimes by buffId for each side, collecting individual items
-      function groupSublimes(sublimes) {
-        var byBuff = {};
-        for (var i = 0; i < sublimes.length; i++) {
-          var sub = sublimes[i];
-          var buffs = sub.buffs || [];
-          for (var j = 0; j < buffs.length; j++) {
-            var b = buffs[j];
-            if (!b.buffId) continue;
-            var key = String(b.buffId);
-            if (!byBuff[key]) byBuff[key] = { total: 0, items: [] };
-            byBuff[key].total += (b.value || 0);
-            var group = decorIdToGroup(sub.id);
-            var name = group ? (DECOR_GROUPS[String(group)] || ('Decor #' + sub.id)) : ('Decor #' + sub.id);
-            byBuff[key].items.push({ id: sub.id, group: group, name: name, value: b.value || 0 });
-          }
-        }
-        return byBuff;
+    // --- Placed Decorations section ---
+    // Deduplicate placed IDs to unique groups for each side
+    function idsToGroups(ids) {
+      var groups = {};
+      var unmapped = 0;
+      for (var i = 0; i < ids.length; i++) {
+        var g = decorIdToGroup(ids[i]);
+        if (g) { groups[g] = true; } else { unmapped++; }
       }
-
-      var attGrouped = groupSublimes(attSublimes);
-      var defGrouped = groupSublimes(defSublimes);
-
-      // Collect all buff IDs across both sides
-      var allBuffIds = {};
-      for (var ab in attGrouped) allBuffIds[ab] = true;
-      for (var db in defGrouped) allBuffIds[db] = true;
-      var sortedBuffIds = Object.keys(allBuffIds).sort(function(a, b) { return parseInt(a) - parseInt(b); });
-
-      sortedBuffIds.forEach(function(buffId) {
-        var attData = attGrouped[buffId] || { total: 0, items: [] };
-        var defData = defGrouped[buffId] || { total: 0, items: [] };
-        var buffName = BUFF_NAMES[buffId] || ('Buff ' + buffId);
-
-        // Buff header row
-        var buffRow = el('div', { className: 'decor-summary-row', style: 'background:rgba(255,255,255,.03);' });
-        var aTotal = attData.total;
-        var dTotal = defData.total;
-        var bLeftCls = 's-left';
-        var bRightCls = 's-right';
-        if (aTotal > dTotal) { bLeftCls += ' s-green'; bRightCls += ' s-red'; }
-        else if (dTotal > aTotal) { bLeftCls += ' s-red'; bRightCls += ' s-green'; }
-        else { bLeftCls += ' s-equal'; bRightCls += ' s-equal'; }
-        buffRow.appendChild(el('div', { className: bLeftCls }, formatBuffVal(aTotal)));
-        buffRow.appendChild(el('div', { className: 's-name', style: 'font-weight:600;color:var(--text);font-size:.75rem;' }, buffName));
-        buffRow.appendChild(el('div', { className: bRightCls }, formatBuffVal(dTotal)));
-        body.appendChild(buffRow);
-
-        // Individual decoration items under this buff (side by side grid)
-        var maxItems = Math.max(attData.items.length, defData.items.length);
-        for (var idx = 0; idx < maxItems; idx++) {
-          var grid = el('div', { className: 'decor-grid' });
-
-          // Attacker item
-          if (idx < attData.items.length) {
-            var ai = attData.items[idx];
-            var aItem = el('div', { className: 'decor-item' });
-            var aIcon = ai.group ? decorIconImg(ai.group) : null;
-            if (aIcon) aItem.appendChild(aIcon);
-            var aInfo = el('div', { className: 'decor-item-info' });
-            aInfo.appendChild(el('div', { className: 'decor-item-name', title: ai.name }, ai.name));
-            aInfo.appendChild(el('div', { className: 'decor-item-val' }, formatBuffVal(ai.value)));
-            aItem.appendChild(aInfo);
-            grid.appendChild(aItem);
-          } else {
-            grid.appendChild(el('div'));
-          }
-
-          // Center spacer
-          grid.appendChild(el('div', { className: 'decor-label' }, idx === 0 ? '' : ''));
-
-          // Defender item
-          if (idx < defData.items.length) {
-            var di = defData.items[idx];
-            var dItem = el('div', { className: 'decor-item right' });
-            var dIcon = di.group ? decorIconImg(di.group) : null;
-            if (dIcon) dItem.appendChild(dIcon);
-            var dInfo = el('div', { className: 'decor-item-info' });
-            dInfo.appendChild(el('div', { className: 'decor-item-name', title: di.name }, di.name));
-            dInfo.appendChild(el('div', { className: 'decor-item-val' }, formatBuffVal(di.value)));
-            dItem.appendChild(dInfo);
-            grid.appendChild(dItem);
-          } else {
-            grid.appendChild(el('div'));
-          }
-
-          body.appendChild(grid);
-        }
-      });
+      return { groups: groups, unmapped: unmapped };
     }
 
-    // --- Suit Sets section ---
+    var attPlaced = idsToGroups(attIds);
+    var defPlaced = idsToGroups(defIds);
+
+    // Collect all unique groups from both sides
+    var allPlacedGroups = {};
+    var gk;
+    for (gk in attPlaced.groups) allPlacedGroups[gk] = true;
+    for (gk in defPlaced.groups) allPlacedGroups[gk] = true;
+
+    if (Object.keys(allPlacedGroups).length === 0) {
+      filterBar.style.display = 'none';
+    }
+
+    if (Object.keys(allPlacedGroups).length > 0) {
+      var placedContent = makeSection(body, 'Placed Decorations');
+
+      // Group by category using DECOR_DATA
+      var byCat = [[], [], [], []]; // 0=March Size, 1=Defense, 2=Damage Boost, 3=Others
+      var uncategorized = [];
+      for (gk in allPlacedGroups) {
+        var dd = DECOR_DATA[String(gk)];
+        if (dd) {
+          byCat[dd.c].push({ group: parseInt(gk), data: dd });
+        } else {
+          uncategorized.push(parseInt(gk));
+        }
+      }
+
+      // Count categories for filter pills
+      for (var cci = 0; cci < 4; cci++) catCounts[cci] = byCat[cci].length;
+      // Update pill labels with counts
+      for (var pli = 1; pli < catFilterBtns.length; pli++) {
+        catFilterBtns[pli].textContent = catLabels[pli] + ' (' + catCounts[pli - 1] + ')';
+      }
+      var totalPlaced = catCounts[0] + catCounts[1] + catCounts[2] + catCounts[3] + uncategorized.length;
+      catFilterBtns[0].textContent = 'All (' + totalPlaced + ')';
+
+      // Sort within each category: by first buff's primary sort value (highest first)
+      function decorSortVal(d) {
+        if (!d.data.b || d.data.b.length === 0) return 0;
+        var b = d.data.b[0];
+        return b.t === 1 ? b.v * 10000 : b.v; // flat values sort higher
+      }
+
+      for (var ci = 0; ci < 4; ci++) {
+        if (byCat[ci].length === 0) continue;
+        byCat[ci].sort(function(a, b) { return decorSortVal(b) - decorSortVal(a); });
+        placedContent.appendChild(el('div', { className: 'decor-cat-header' }, DECOR_CAT_NAMES[ci] + ' (' + byCat[ci].length + ')'));
+
+        for (var di = 0; di < byCat[ci].length; di++) {
+          var entry = byCat[ci][di];
+          var grp = entry.group;
+          var grpStr = String(grp);
+          var dName = DECOR_GROUPS[grpStr] || ('Decor #' + grp);
+          var buffDesc = decorBuffDesc(entry.data.b);
+          var attHasIt = !!attPlaced.groups[grp];
+          var defHasIt = !!defPlaced.groups[grp];
+
+          var row = el('div', { className: 'decor-placed-row' });
+          row.setAttribute('data-name', dName.toLowerCase());
+          row.setAttribute('data-cat', String(ci));
+
+          // Attacker cell
+          var aCell = el('div', { className: 'decor-placed-cell' + (attHasIt ? ' decor-att-tint' : '') });
+          if (attHasIt) {
+            var aIcon = decorIconImg(grp);
+            if (aIcon) aCell.appendChild(aIcon);
+            var aInfo = el('div', { className: 'decor-placed-info' });
+            aInfo.appendChild(el('div', { className: 'decor-placed-name', title: dName }, dName));
+            aInfo.appendChild(el('div', { className: 'decor-placed-buffs' }, buffDesc));
+            aCell.appendChild(aInfo);
+          } else {
+            aCell.appendChild(el('span', { className: 'decor-placed-dash' + (defHasIt ? ' muted' : '') }, '\u2014'));
+          }
+          row.appendChild(aCell);
+
+          // Center: decoration name (shared reference)
+          row.appendChild(el('div', { className: 'decor-label', style: 'font-size:.65rem;' }, ''));
+
+          // Defender cell
+          var dCell = el('div', { className: 'decor-placed-cell right' + (defHasIt ? ' decor-def-tint' : '') });
+          if (defHasIt) {
+            var dIcon = decorIconImg(grp);
+            if (dIcon) dCell.appendChild(dIcon);
+            var dInfo = el('div', { className: 'decor-placed-info' });
+            dInfo.appendChild(el('div', { className: 'decor-placed-name', title: dName }, dName));
+            dInfo.appendChild(el('div', { className: 'decor-placed-buffs' }, buffDesc));
+            dCell.appendChild(dInfo);
+          } else {
+            dCell.appendChild(el('span', { className: 'decor-placed-dash' + (attHasIt ? ' muted' : '') }, '\u2014'));
+          }
+          row.appendChild(dCell);
+
+          placedContent.appendChild(row);
+          placedRows.push({ el: row, name: dName.toLowerCase(), cat: ci });
+        }
+      }
+
+      // Uncategorized decorations (in DECOR_GROUPS but not in DECOR_DATA)
+      if (uncategorized.length > 0) {
+        placedContent.appendChild(el('div', { className: 'decor-cat-header' }, 'Uncategorized (' + uncategorized.length + ')'));
+        for (var ui = 0; ui < uncategorized.length; ui++) {
+          var uGrp = uncategorized[ui];
+          var uName = DECOR_GROUPS[String(uGrp)] || ('Decor #' + uGrp);
+          var uAttHas = !!attPlaced.groups[uGrp];
+          var uDefHas = !!defPlaced.groups[uGrp];
+
+          var uRow = el('div', { className: 'decor-placed-row' });
+          uRow.setAttribute('data-name', uName.toLowerCase());
+          uRow.setAttribute('data-cat', '-1');
+          var uaCell = el('div', { className: 'decor-placed-cell' + (uAttHas ? ' decor-att-tint' : '') });
+          if (uAttHas) {
+            var uaIcon = decorIconImg(uGrp);
+            if (uaIcon) uaCell.appendChild(uaIcon);
+            uaCell.appendChild(el('div', { className: 'decor-placed-name', title: uName }, uName));
+          } else {
+            uaCell.appendChild(el('span', { className: 'decor-placed-dash' + (uDefHas ? ' muted' : '') }, '\u2014'));
+          }
+          uRow.appendChild(uaCell);
+          uRow.appendChild(el('div', { className: 'decor-label' }, ''));
+          var udCell = el('div', { className: 'decor-placed-cell right' + (uDefHas ? ' decor-def-tint' : '') });
+          if (uDefHas) {
+            var udIcon = decorIconImg(uGrp);
+            if (udIcon) udCell.appendChild(udIcon);
+            udCell.appendChild(el('div', { className: 'decor-placed-name', title: uName }, uName));
+          } else {
+            udCell.appendChild(el('span', { className: 'decor-placed-dash' + (uAttHas ? ' muted' : '') }, '\u2014'));
+          }
+          uRow.appendChild(udCell);
+          placedContent.appendChild(uRow);
+          placedRows.push({ el: uRow, name: uName.toLowerCase(), cat: -1 });
+        }
+      }
+
+      // Unknown (unmapped) decoration count
+      if (attPlaced.unmapped > 0 || defPlaced.unmapped > 0) {
+        var unmRow = el('div', { className: 'decor-summary-row', style: 'margin-top:.25rem;' });
+        unmRow.appendChild(el('div', { className: 's-left', style: 'color:var(--muted);font-size:.75rem;' }, attPlaced.unmapped > 0 ? (attPlaced.unmapped + ' unknown') : ''));
+        unmRow.appendChild(el('div', { className: 's-name', style: 'font-size:.7rem;' }, 'Unmapped IDs'));
+        unmRow.appendChild(el('div', { className: 's-right', style: 'color:var(--muted);font-size:.75rem;' }, defPlaced.unmapped > 0 ? (defPlaced.unmapped + ' unknown') : ''));
+        placedContent.appendChild(unmRow);
+      }
+    }
+
+    // --- Decoration Sets section ---
     if (attSuits.length > 0 || defSuits.length > 0) {
-      body.appendChild(el('div', { className: 'decor-section-title' }, 'Decoration Sets'));
+      var setsContent = makeSection(body, 'Decoration Sets');
 
       // Build group sets for each player (to count owned components)
       var attPlayerGroups = {};
@@ -702,7 +854,6 @@
         if (dg) defPlayerGroups[dg] = true;
       }
 
-      // Collect all suit IDs from both sides
       var allSuitIds = {};
       for (var asi = 0; asi < attSuits.length; asi++) allSuitIds[attSuits[asi]] = true;
       for (var dsi = 0; dsi < defSuits.length; dsi++) allSuitIds[defSuits[dsi]] = true;
@@ -746,17 +897,122 @@
         dEl.textContent = dLabel;
         suitRow.appendChild(dEl);
 
-        body.appendChild(suitRow);
+        setsContent.appendChild(suitRow);
+
+        // Component icons row
+        if (suitGroups.length > 0) {
+          var iconsRow = el('div', { className: 'decor-suit-icons' });
+          for (var si = 0; si < suitGroups.length; si++) {
+            var cIcon = decorIconImg(suitGroups[si]);
+            if (cIcon) {
+              cIcon.title = DECOR_GROUPS[String(suitGroups[si])] || '';
+              cIcon.style.width = '24px';
+              cIcon.style.height = '24px';
+              iconsRow.appendChild(cIcon);
+            }
+          }
+          setsContent.appendChild(iconsRow);
+        }
       });
     }
 
-    // --- Sublime Exp section (sublimeExps: additional buffs from sublime upgrade exp) ---
+    // --- Advanced Upgrades section (renamed from Sublimed Decorations) ---
+    if (attSublimes.length > 0 || defSublimes.length > 0) {
+      var advContent = makeSection(body, 'Advanced Upgrades');
+
+      // Group sublimes by buffId for each side
+      function groupSublimes(sublimes) {
+        var byBuff = {};
+        for (var i = 0; i < sublimes.length; i++) {
+          var sub = sublimes[i];
+          var buffs = sub.buffs || [];
+          for (var j = 0; j < buffs.length; j++) {
+            var b = buffs[j];
+            if (!b.buffId) continue;
+            var key = String(b.buffId);
+            if (!byBuff[key]) byBuff[key] = { total: 0, items: [] };
+            byBuff[key].total += (b.value || 0);
+            var group = decorIdToGroup(sub.id);
+            var name = group ? (DECOR_GROUPS[String(group)] || ('Decor #' + sub.id)) : ('Decor #' + sub.id);
+            byBuff[key].items.push({ id: sub.id, group: group, name: name, value: b.value || 0 });
+          }
+        }
+        return byBuff;
+      }
+
+      var attGrouped = groupSublimes(attSublimes);
+      var defGrouped = groupSublimes(defSublimes);
+
+      var allBuffIds = {};
+      for (var ab in attGrouped) allBuffIds[ab] = true;
+      for (var db in defGrouped) allBuffIds[db] = true;
+      var sortedBuffIds = Object.keys(allBuffIds).sort(function(a, b) { return parseInt(a) - parseInt(b); });
+
+      sortedBuffIds.forEach(function(buffId) {
+        var attData = attGrouped[buffId] || { total: 0, items: [] };
+        var defData = defGrouped[buffId] || { total: 0, items: [] };
+        var buffName = BUFF_NAMES[buffId] || ('Buff ' + buffId);
+
+        // Buff header row with totals
+        var buffRow = el('div', { className: 'decor-summary-row', style: 'background:rgba(255,255,255,.03);' });
+        var aTotal = attData.total;
+        var dTotal = defData.total;
+        var bLeftCls = 's-left';
+        var bRightCls = 's-right';
+        if (aTotal > dTotal) { bLeftCls += ' s-green'; bRightCls += ' s-red'; }
+        else if (dTotal > aTotal) { bLeftCls += ' s-red'; bRightCls += ' s-green'; }
+        else { bLeftCls += ' s-equal'; bRightCls += ' s-equal'; }
+        buffRow.appendChild(el('div', { className: bLeftCls }, formatBuffVal(aTotal)));
+        buffRow.appendChild(el('div', { className: 's-name', style: 'font-weight:600;color:var(--text);font-size:.75rem;' }, buffName));
+        buffRow.appendChild(el('div', { className: bRightCls }, formatBuffVal(dTotal)));
+        advContent.appendChild(buffRow);
+
+        // Individual items under this buff
+        var maxItems = Math.max(attData.items.length, defData.items.length);
+        for (var idx = 0; idx < maxItems; idx++) {
+          var grid = el('div', { className: 'decor-grid' });
+
+          if (idx < attData.items.length) {
+            var ai = attData.items[idx];
+            var aItem = el('div', { className: 'decor-item' });
+            var aIcon = ai.group ? decorIconImg(ai.group) : null;
+            if (aIcon) aItem.appendChild(aIcon);
+            var aInfo = el('div', { className: 'decor-item-info' });
+            aInfo.appendChild(el('div', { className: 'decor-item-name', title: ai.name }, ai.name));
+            aInfo.appendChild(el('div', { className: 'decor-item-val' }, formatBuffVal(ai.value)));
+            aItem.appendChild(aInfo);
+            grid.appendChild(aItem);
+          } else {
+            grid.appendChild(el('div'));
+          }
+
+          grid.appendChild(el('div', { className: 'decor-label' }, ''));
+
+          if (idx < defData.items.length) {
+            var dii = defData.items[idx];
+            var dItem = el('div', { className: 'decor-item right' });
+            var dIcon = dii.group ? decorIconImg(dii.group) : null;
+            if (dIcon) dItem.appendChild(dIcon);
+            var dInfo = el('div', { className: 'decor-item-info' });
+            dInfo.appendChild(el('div', { className: 'decor-item-name', title: dii.name }, dii.name));
+            dInfo.appendChild(el('div', { className: 'decor-item-val' }, formatBuffVal(dii.value)));
+            dItem.appendChild(dInfo);
+            grid.appendChild(dItem);
+          } else {
+            grid.appendChild(el('div'));
+          }
+
+          advContent.appendChild(grid);
+        }
+      });
+    }
+
+    // --- Sublime Experience Buffs section ---
     var attSublimeExps = (attDecos && attDecos.sublimeExps) || [];
     var defSublimeExps = (defDecos && defDecos.sublimeExps) || [];
     if (attSublimeExps.length > 0 || defSublimeExps.length > 0) {
-      body.appendChild(el('div', { className: 'decor-section-title' }, 'Sublime Experience Buffs'));
+      var sublimeContent = makeSection(body, 'Sublime Experience Buffs');
 
-      // Group by buff id
       function groupExps(exps) {
         var m = {};
         for (var i = 0; i < exps.length; i++) {
@@ -786,7 +1042,7 @@
         eRow.appendChild(el('div', { className: eLCls }, formatBuffVal(aV)));
         eRow.appendChild(el('div', { className: 's-name' }, eName));
         eRow.appendChild(el('div', { className: eRCls }, formatBuffVal(dV)));
-        body.appendChild(eRow);
+        sublimeContent.appendChild(eRow);
       });
     }
 
@@ -798,6 +1054,30 @@
     modal.appendChild(body);
     overlay.appendChild(modal);
     return overlay;
+  }
+
+  /** Format a decoration buff value using its valueType */
+  function formatDecoVal(value, valueType) {
+    if (valueType === 1) return '+' + value;
+    if (valueType === 10000) {
+      var pct = value / 100;
+      if (pct === Math.floor(pct)) return pct.toFixed(0) + '%';
+      return pct.toFixed(1) + '%';
+    }
+    return formatBuffVal(value);
+  }
+
+  /** Build a compact buff description string from DECOR_DATA buffs array */
+  function decorBuffDesc(buffs) {
+    if (!buffs || buffs.length === 0) return '';
+    var parts = [];
+    for (var i = 0; i < buffs.length; i++) {
+      var b = buffs[i];
+      var name = BUFF_NAMES[String(b.i)] || '';
+      var val = formatDecoVal(b.v, b.t);
+      parts.push(name ? (name + ' ' + val) : val);
+    }
+    return parts.join(', ');
   }
 
   /** Format a buff value for display (raw 100 = 1.0%) */
