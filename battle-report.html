@@ -213,7 +213,9 @@
   .decor-suit-val.left { text-align: right; }
   .decor-suit-val.right { text-align: left; }
   .decor-suit-icons { display: flex; gap: .2rem; justify-content: center; padding: .15rem 0 .3rem; flex-wrap: wrap; }
-  .decor-suit-icons img { width: 24px; height: 24px; border-radius: 3px; object-fit: cover; background: var(--card); opacity: .8; }
+  .decor-suit-icons img { width: 24px; height: 24px; border-radius: 3px; object-fit: cover; background: var(--card); opacity: .8; transition: opacity .15s, transform .15s; }
+  .decor-suit-icons img:hover { opacity: 1; transform: scale(1.2); }
+  .decor-tooltip { background: var(--surface); border: 1px solid var(--accent); border-radius: 6px; padding: .5rem .7rem; z-index: 2000; box-shadow: 0 4px 12px rgba(0,0,0,.5); max-width: 220px; pointer-events: auto; }
   .decor-cat-header { font-size: .7rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: .4rem 1rem .15rem; margin-top: .15rem; }
   .decor-placed-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: .25rem; padding: .2rem .75rem; align-items: center; }
   .decor-placed-cell { display: flex; align-items: center; gap: .3rem; font-size: .78rem; }
@@ -868,18 +870,6 @@
     if (attSuits.length > 0 || defSuits.length > 0) {
       var setsContent = makeSection(body, 'Decoration Sets');
 
-      // Build group sets for each player (to count owned components)
-      var attPlayerGroups = {};
-      var defPlayerGroups = {};
-      for (var ai2 = 0; ai2 < attIds.length; ai2++) {
-        var ag = decorIdToGroup(attIds[ai2]);
-        if (ag) attPlayerGroups[ag] = true;
-      }
-      for (var di2 = 0; di2 < defIds.length; di2++) {
-        var dg = decorIdToGroup(defIds[di2]);
-        if (dg) defPlayerGroups[dg] = true;
-      }
-
       var allSuitIds = {};
       for (var asi = 0; asi < attSuits.length; asi++) allSuitIds[attSuits[asi]] = true;
       for (var dsi = 0; dsi < defSuits.length; dsi++) allSuitIds[defSuits[dsi]] = true;
@@ -898,44 +888,62 @@
         var defHas = defSuits.indexOf(parseInt(suitId)) !== -1;
         var attLevel = attSuitLevel[suitId] || 0;
         var defLevel = defSuitLevel[suitId] || 0;
-        var attOwned = countSuitOwned(suitGroups, attPlayerGroups);
-        var defOwned = countSuitOwned(suitGroups, defPlayerGroups);
-        var totalComp = suitGroups.length;
 
         var suitRow = el('div', { className: 'decor-suit-row' });
 
-        // Attacker side
-        var aLabel = attHas ? ('Lv.' + attLevel + ' (' + attOwned + '/' + totalComp + ')') : '\u2014';
+        // Attacker side — use suit array as ownership indicator (CDN doesn't track unplaced inventory)
+        var aLabel = attHas ? ('\u2713 Lv.' + attLevel) : '\u2014';
         var aEl = el('div', { className: 'decor-suit-val left' });
-        if (attHas) { aEl.style.color = 'var(--green)'; }
-        else { aEl.style.color = 'var(--muted)'; }
+        aEl.style.color = attHas ? 'var(--green)' : 'var(--muted)';
         aEl.textContent = aLabel;
         suitRow.appendChild(aEl);
 
         // Suit name center
-        suitRow.appendChild(el('div', { className: 'decor-suit-name' }, suitName));
+        suitRow.appendChild(el('div', { className: 'decor-suit-name' }, suitName + ' (' + suitGroups.length + ')'));
 
         // Defender side
-        var dLabel = defHas ? ('Lv.' + defLevel + ' (' + defOwned + '/' + totalComp + ')') : '\u2014';
+        var dLabel = defHas ? ('\u2713 Lv.' + defLevel) : '\u2014';
         var dEl = el('div', { className: 'decor-suit-val right' });
-        if (defHas) { dEl.style.color = 'var(--red)'; }
-        else { dEl.style.color = 'var(--muted)'; }
+        dEl.style.color = defHas ? 'var(--red)' : 'var(--muted)';
         dEl.textContent = dLabel;
         suitRow.appendChild(dEl);
 
         setsContent.appendChild(suitRow);
 
-        // Component icons row
+        // Component icons row — clickable to show tooltip with name + buffs
         if (suitGroups.length > 0) {
           var iconsRow = el('div', { className: 'decor-suit-icons' });
           for (var si = 0; si < suitGroups.length; si++) {
-            var cIcon = decorIconImg(suitGroups[si]);
-            if (cIcon) {
-              cIcon.title = DECOR_GROUPS[String(suitGroups[si])] || '';
-              cIcon.style.width = '24px';
-              cIcon.style.height = '24px';
-              iconsRow.appendChild(cIcon);
-            }
+            (function(grp) {
+              var cIcon = decorIconImg(grp);
+              if (cIcon) {
+                var compName = DECOR_GROUPS[String(grp)] || '';
+                var compData = DECOR_DATA[String(grp)];
+                var buffStr = compData ? decorBuffDesc(compData.b) : '';
+                cIcon.title = compName + (buffStr ? ' — ' + buffStr : '');
+                cIcon.style.width = '24px';
+                cIcon.style.height = '24px';
+                cIcon.style.cursor = 'pointer';
+                cIcon.onclick = function(e) {
+                  e.stopPropagation();
+                  // Remove existing tooltip
+                  var existing = document.querySelector('.decor-tooltip');
+                  if (existing) existing.remove();
+                  // Create tooltip
+                  var tip = el('div', { className: 'decor-tooltip' });
+                  tip.appendChild(el('div', { style: 'font-weight:600;font-size:.8rem;margin-bottom:.2rem;' }, compName));
+                  if (buffStr) tip.appendChild(el('div', { style: 'font-size:.72rem;color:var(--accent);' }, buffStr));
+                  // Position near the icon
+                  tip.style.position = 'fixed';
+                  tip.style.left = (e.clientX - 60) + 'px';
+                  tip.style.top = (e.clientY - 60) + 'px';
+                  document.body.appendChild(tip);
+                  setTimeout(function() { if (tip.parentNode) tip.remove(); }, 3000);
+                  document.addEventListener('click', function rmTip() { if (tip.parentNode) tip.remove(); document.removeEventListener('click', rmTip); }, { once: true });
+                };
+                iconsRow.appendChild(cIcon);
+              }
+            })(suitGroups[si]);
           }
           setsContent.appendChild(iconsRow);
         }
