@@ -1514,35 +1514,39 @@
     var list = el('ul', { className: 'army-list ' + (isAtt ? 'left' : 'right') });
 
     army.forEach(function(a) {
-      var li = el('li');
       var resolved = resolveUnitIcon(a.armyId, mechas);
       var survived = a.s0 || 0;
       var died = a.s1 || 0;
-      var total = survived + died;
-      // Build count display: survived/total (or just xTotal if no breakdown)
-      var numSpan = el('span');
-      if (total > 0 && (survived > 0 || died > 0)) {
-        numSpan.innerHTML = '<span style="color:var(--green)">' + formatPower(survived) + '</span>/<span style="color:var(--muted)">' + formatPower(total) + '</span>';
-      } else {
-        numSpan.textContent = 'x' + formatPower(a.num || a.armyNum || total || 0);
-      }
-      var unitInfo = el('span', { className: 'unit-info' });
-      var labelSpan = el('span');
-      labelSpan.textContent = resolved.label;
+      var hasBreakdown = survived > 0 || died > 0;
 
-      if (isAtt) {
-        unitInfo.appendChild(labelSpan);
-        if (resolved.icon) unitInfo.appendChild(unitIconImg(resolved.icon, resolved.label));
-        li.appendChild(numSpan);
-        li.appendChild(unitInfo);
-      } else {
-        if (resolved.icon) unitInfo.appendChild(unitIconImg(resolved.icon, resolved.label));
-        unitInfo.appendChild(labelSpan);
-        li.appendChild(unitInfo);
-        li.appendChild(numSpan);
+      function makeLi(count, color, label, icon) {
+        var li = el('li');
+        if (color) li.style.color = 'var(--' + color + ')';
+        var numSpan = el('span');
+        numSpan.textContent = 'x' + formatPower(count);
+        var unitInfo = el('span', { className: 'unit-info' });
+        var labelSpan = el('span');
+        labelSpan.textContent = label;
+        if (isAtt) {
+          unitInfo.appendChild(labelSpan);
+          if (icon) unitInfo.appendChild(unitIconImg(icon, label));
+          li.appendChild(numSpan);
+          li.appendChild(unitInfo);
+        } else {
+          if (icon) unitInfo.appendChild(unitIconImg(icon, label));
+          unitInfo.appendChild(labelSpan);
+          li.appendChild(unitInfo);
+          li.appendChild(numSpan);
+        }
+        return li;
       }
 
-      list.appendChild(li);
+      if (hasBreakdown) {
+        if (survived > 0) list.appendChild(makeLi(survived, 'green', resolved.label, resolved.icon));
+        if (died > 0) list.appendChild(makeLi(died, 'red', resolved.label, resolved.icon));
+      } else {
+        list.appendChild(makeLi(a.num || a.armyNum || 0, null, resolved.label, resolved.icon));
+      }
     });
 
     sideEl.appendChild(list);
