@@ -23,11 +23,11 @@
 
   /* Search */
   .search-bar { max-width: 700px; margin: 1.5rem auto .75rem; padding: 0 1rem; width: 100%; }
-  .search-row { display: flex; gap: .5rem; }
-  .search-row input { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .6rem .75rem; color: var(--text); font-size: .95rem; outline: none; }
+  .search-row { display: flex; gap: .5rem; flex-wrap: wrap; }
+  .search-row input { flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .6rem .75rem; color: var(--text); font-size: .95rem; outline: none; }
   .search-row input:focus { border-color: var(--accent); }
   .search-row input::placeholder { color: var(--muted); }
-  .search-row button { background: var(--accent); color: var(--bg); border: none; border-radius: 6px; padding: .6rem 1.2rem; font-weight: 600; cursor: pointer; font-size: .9rem; white-space: nowrap; }
+  .search-row button { background: var(--accent); color: var(--bg); border: none; border-radius: 6px; padding: .6rem 1.2rem; font-weight: 600; cursor: pointer; font-size: .9rem; white-space: nowrap; flex-shrink: 0; }
   .search-row button:hover { opacity: .9; }
   .search-row button:disabled { opacity: .5; cursor: not-allowed; }
   .search-hint { font-size: .75rem; color: var(--muted); margin-top: .4rem; }
@@ -273,13 +273,21 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     return (p === Math.floor(p) ? p.toFixed(0) : p.toFixed(1)) + '%';
   }
 
-  /** Build buff description string */
-  function buffDesc(buffs) {
+  /** Compute buff value at a target level given extracted level */
+  function buffValAtLevel(value, extractedLevel, targetLevel) {
+    if (!extractedLevel || extractedLevel <= 0) return value;
+    return Math.round(value / extractedLevel * targetLevel);
+  }
+
+  /** Build buff description string at a given level (defaults to level 1) */
+  function buffDesc(buffs, extractedLevel, targetLevel) {
     if (!buffs || buffs.length === 0) return '';
+    var lvl = targetLevel || 1;
     var parts = [];
     for (var i = 0; i < buffs.length; i++) {
       var name = BN[String(buffs[i][0])] || '';
-      var val = formatVal(buffs[i][1], buffs[i][2]);
+      var rawVal = buffs[i][1];
+      var val = formatVal(buffValAtLevel(rawVal, extractedLevel, lvl), buffs[i][2]);
       parts.push(name ? (name + ' ' + val) : val);
     }
     return parts.join(', ');
@@ -306,7 +314,7 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
 
   // --- State ---
   var activeCategory = -1; // -1 = all
-  var activeStar = 0; // 0 = all, 1-6 = min star
+  var activeLevel = 0; // 0 = all, 1-3 = level range index
   var activeOwn = 0; // 0 = all, 1 = owned, 2 = unowned
   var searchText = '';
   var reportData = null;
@@ -335,14 +343,16 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
       })(i);
     }
 
-    var starPills = document.getElementById('star-pills');
-    for (var s = 1; s <= 5; s++) {
-      (function(star) {
-        var label = '';
-        for (var x = 0; x < star; x++) label += '★';
-        var pill = el('span', { className: 'fpill', onclick: function() { setStar(star); } }, label);
-        starPills.appendChild(pill);
-      })(s);
+    var lvlPills = document.getElementById('star-pills');
+    lvlPills.style.display = 'none';
+    var lvlRanges = [{l:'All',min:0,max:99},{l:'Lv.1-5',min:1,max:5},{l:'Lv.6-10',min:6,max:10},{l:'Lv.11-15',min:11,max:15}];
+    var lvlAll = el('span', { className: 'fpill active', onclick: function() { setLevel(0); } }, 'All');
+    lvlPills.appendChild(lvlAll);
+    for (var li = 1; li < lvlRanges.length; li++) {
+      (function(idx) {
+        var pill = el('span', { className: 'fpill', onclick: function() { setLevel(idx); } }, lvlRanges[idx].l);
+        lvlPills.appendChild(pill);
+      })(li);
     }
 
     var ownPills = document.getElementById('own-pills');
@@ -368,10 +378,10 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     render();
   }
 
-  function setStar(s) {
-    activeStar = activeStar === s ? 0 : s;
+  function setLevel(idx) {
+    activeLevel = activeLevel === idx ? 0 : idx;
     var pills = document.getElementById('star-pills').children;
-    for (var i = 0; i < pills.length; i++) pills[i].className = 'fpill' + (i + 1 === activeStar ? ' active' : '');
+    for (var i = 0; i < pills.length; i++) pills[i].className = 'fpill' + (i === activeLevel ? ' active' : '');
     render();
   }
 
@@ -387,7 +397,12 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     var d = DI[group];
     if (!d) return false;
     if (activeCategory >= 0 && d[1] !== activeCategory) return false;
-    if (activeStar > 0 && d[2] < activeStar) return false;
+    if (activeLevel > 0 && selectedPlayer) {
+      var lvlRanges = [{},{min:1,max:5},{min:6,max:10},{min:11,max:15}];
+      var r = lvlRanges[activeLevel];
+      var pLvl = playerGroups[group] ? (decorLevel(group, playerGroups[group]) || 0) : 0;
+      if (pLvl < r.min || pLvl > r.max) return false;
+    }
     if (searchText && d[0].toLowerCase().indexOf(searchText) === -1) return false;
     if (selectedPlayer) {
       var isOwned = !!playerGroups[group];
@@ -430,13 +445,13 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     // Name
     card.appendChild(el('div', { className: 'dcard-name' }, d[0]));
 
-    // Stars
-    var stars = '';
-    for (var s = 0; s < d[2]; s++) stars += '★';
-    if (stars) card.appendChild(el('div', { className: 'dcard-stars' }, stars));
-
-    // Buff summary
-    var desc = buffDesc(d[6]);
+    // Buff summary (level 1 default, or player's level if report loaded)
+    var showLevel = 1;
+    if (selectedPlayer && playerGroups[group]) {
+      var plvl = decorLevel(group, playerGroups[group]);
+      if (plvl) showLevel = plvl;
+    }
+    var desc = buffDesc(d[6], d[5], showLevel);
     if (desc) card.appendChild(el('div', { className: 'dcard-buff' }, desc));
 
     // Click handler
@@ -462,10 +477,7 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     header.appendChild(decorIconImg(group, 56));
     var info = el('div', { className: 'detail-header-info' });
     info.appendChild(el('div', { className: 'detail-header-name' }, d[0]));
-    var stars = '';
-    for (var s = 0; s < d[2]; s++) stars += '★';
-    info.appendChild(el('div', { className: 'detail-header-stars' }, stars));
-    info.appendChild(el('div', { className: 'detail-header-cat' }, CAT_NAMES[d[1]]));
+    info.appendChild(el('div', { className: 'detail-header-cat' }, CAT_NAMES[d[1]] + '  ·  ' + (QUALITY_NAMES[d[3]] || '')));
     header.appendChild(info);
     var closeBtn = el('button', { className: 'detail-close', onclick: function() { document.body.removeChild(overlay); } }, '×');
     header.appendChild(closeBtn);
@@ -494,19 +506,22 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
 
     // Buffs section
     var buffSec = el('div', { className: 'detail-section' });
-    var buffTitle = selectedPlayer && playerGroups[group]
-      ? 'Buffs (Your Level)'
-      : 'Buffs (at Lv.' + d[5] + ')';
+    var detailLevel = 1;
+    var buffTitle = 'Buffs (Lv.1)';
+    if (selectedPlayer && playerGroups[group]) {
+      var pLvl = decorLevel(group, playerGroups[group]);
+      if (pLvl) { detailLevel = pLvl; buffTitle = 'Buffs (Your Lv.' + pLvl + ')'; }
+    }
     buffSec.appendChild(el('div', { className: 'detail-section-title' }, buffTitle));
     for (var bi = 0; bi < d[6].length; bi++) {
       var b = d[6][bi];
       var brow = el('div', { className: 'detail-buff-row' });
       brow.appendChild(el('span', { className: 'detail-buff-name' }, BN[String(b[0])] || 'Buff #' + b[0]));
-      brow.appendChild(el('span', { className: 'detail-buff-val' }, formatVal(b[1], b[2])));
+      brow.appendChild(el('span', { className: 'detail-buff-val' }, formatVal(buffValAtLevel(b[1], d[5], detailLevel), b[2])));
       buffSec.appendChild(brow);
     }
     if (!selectedPlayer || !playerGroups[group]) {
-      buffSec.appendChild(el('div', { className: 'detail-note' }, 'Values shown at extracted Lv.' + d[5] + '. Load a battle report for your actual level.'));
+      buffSec.appendChild(el('div', { className: 'detail-note' }, 'Load a battle report to see your actual level and values.'));
     }
     body.appendChild(buffSec);
 
@@ -632,17 +647,25 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
       });
   }
 
+  /** Resolve avatar URL (same logic as battle-report) */
+  function resolveAvatar(url) {
+    if (!url) return null;
+    if (url.indexOf('http') === 0) return url;
+    return 'https://h5.topwargame.com/DynRes/images/headpic/' + url + '.png?t=21.jpg';
+  }
+
   /** Extract player info from battle side */
   function extractPlayerInfo(side) {
     if (!side || !side.players || !side.players[0]) return null;
-    var pi = side.players[0].playerInfo;
-    if (!pi) return null;
+    var raw = side.players[0].playerInfo;
+    if (!raw) return null;
+    var pi;
+    try { pi = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch(e) { return null; }
     return {
-      name: pi.name || 'Unknown',
-      alliance: pi.allianceName || '',
-      flag: pi.nationalflag,
-      avatar: pi.headimgurl || pi.avatarUrl || '',
-      uid: pi.uid || 0
+      name: pi.username || 'Unknown',
+      alliance: side.alTag || pi.alTag || '',
+      flag: pi.nationalflag || 0,
+      avatar: resolveAvatar(pi.headimgurl_custom) || resolveAvatar(pi.avatarurl) || ''
     };
   }
 
@@ -722,31 +745,39 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
       }
     }
 
-    // Show own filter
+    // Show own + level filters
     document.getElementById('own-pills').style.display = 'flex';
+    document.getElementById('star-pills').style.display = 'flex';
 
-    // Show player banner
+    // Show player banner (battle-report style card)
     var banner = document.getElementById('player-banner');
     banner.style.display = 'block';
+    while (banner.firstChild) banner.removeChild(banner.firstChild);
     var inner = el('div', { className: 'player-banner-inner' });
     if (pi.avatar) {
       var img = el('img');
       img.src = pi.avatar;
-      img.onerror = function() { this.style.display = 'none'; };
+      img.onerror = function() {
+        var initial = (pi.name || '?').charAt(0).toUpperCase();
+        var ph = el('div', { style: 'width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:var(--accent);background:var(--surface);border:1px solid var(--border);flex-shrink:0;' }, initial);
+        this.replaceWith(ph);
+      };
       inner.appendChild(img);
+    } else {
+      var initial = (pi.name || '?').charAt(0).toUpperCase();
+      inner.appendChild(el('div', { style: 'width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:var(--accent);background:var(--surface);border:1px solid var(--border);flex-shrink:0;' }, initial));
     }
     var infoDiv = el('div', { className: 'player-banner-info' });
-    var nameStr = pi.name + (pi.alliance ? ' [' + pi.alliance + ']' : '');
-    if (pi.flag) nameStr = flagEmoji(pi.flag) + ' ' + nameStr;
-    infoDiv.appendChild(el('div', { className: 'player-banner-name' }, nameStr));
+    var flag = pi.flag ? flagEmoji(pi.flag) + ' ' : '';
+    infoDiv.appendChild(el('div', { className: 'player-banner-name' }, flag + pi.name));
+    if (pi.alliance) infoDiv.appendChild(el('div', { style: 'font-size:.75rem;color:var(--accent);' }, '[' + pi.alliance + ']'));
     var ownedCount = Object.keys(playerGroups).length;
     var indexCount = Object.keys(DI).length;
-    infoDiv.appendChild(el('div', { className: 'player-banner-detail' }, sideLabel + ' — ' + ownedCount + ' placed decorations (' + Math.round(ownedCount/indexCount*100) + '% of index)'));
+    infoDiv.appendChild(el('div', { className: 'player-banner-detail' }, ownedCount + ' placed decorations (' + Math.round(ownedCount/indexCount*100) + '% of index)'));
     inner.appendChild(infoDiv);
     var clearBtn = el('button', { className: 'player-banner-clear' }, 'Clear');
     clearBtn.onclick = function() { clearPlayer(); };
     inner.appendChild(clearBtn);
-    banner.innerHTML = '';
     banner.appendChild(inner);
 
     // Show raw JSON
@@ -763,12 +794,16 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     selectedPlayer = null;
     playerGroups = {};
     activeOwn = 0;
+    activeLevel = 0;
     document.getElementById('player-banner').style.display = 'none';
     document.getElementById('own-pills').style.display = 'none';
-    document.getElementById('raw-section').innerHTML = '';
-    // Reset own pills
+    document.getElementById('star-pills').style.display = 'none';
+    while (document.getElementById('raw-section').firstChild) document.getElementById('raw-section').removeChild(document.getElementById('raw-section').firstChild);
+    // Reset own + level pills
     var pills = document.getElementById('own-pills').children;
     for (var i = 0; i < pills.length; i++) pills[i].className = 'fpill' + (i === 0 ? ' active' : '');
+    var lpills = document.getElementById('star-pills').children;
+    for (var j = 0; j < lpills.length; j++) lpills[j].className = 'fpill' + (j === 0 ? ' active' : '');
     render();
   }
 
@@ -776,7 +811,7 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
   function showRawJSON() {
     if (!selectedPlayer) return;
     var rawSection = document.getElementById('raw-section');
-    rawSection.innerHTML = '';
+    while (rawSection.firstChild) rawSection.removeChild(rawSection.firstChild);
     var details = el('details', { className: 'raw-json' });
     details.appendChild(el('summary', null, 'Raw effectDecorations JSON'));
     // Deep clone and sanitize UIDs
