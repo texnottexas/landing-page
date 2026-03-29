@@ -579,8 +579,22 @@
   }
 
   /** Resolve decoration id to its group */
+  // Build reverse baseId → group lookup for level-agnostic matching
+  var DECOR_BASE_TO_GROUP = {};
+  for (var _gbk in DECOR_GROUP_BASE) {
+    DECOR_BASE_TO_GROUP[DECOR_GROUP_BASE[_gbk]] = parseInt(_gbk);
+  }
+
   function decorIdToGroup(id) {
-    return DECOR_ID_TO_GROUP[id] || null;
+    // Direct lookup first (fastest)
+    var direct = DECOR_ID_TO_GROUP[id];
+    if (direct) return direct;
+    // Try base ID offsets: id could be baseId + (level-1) for levels 1-15
+    for (var off = 0; off < 15; off++) {
+      var candidate = id - off;
+      if (DECOR_BASE_TO_GROUP[candidate]) return DECOR_BASE_TO_GROUP[candidate];
+    }
+    return null;
   }
 
   /** Count how many suit components a player owns based on their placed decoration groups */
