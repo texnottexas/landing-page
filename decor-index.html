@@ -86,8 +86,8 @@
   .dcard-me-item img { width: 36px; height: 36px; border-radius: 5px; object-fit: cover; background: var(--surface); }
   .dcard-me-item .dcard-me-name { font-size: .55rem; color: var(--muted); max-width: 60px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.2; }
   .dcard-me-label { font-size: .55rem; color: var(--accent); font-weight: 600; width: 100%; text-align: center; margin-bottom: .1rem; }
-  .dcard-upgrade { position: absolute; bottom: .3rem; right: .3rem; font-size: .5rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 1px 5px; border-radius: 4px; line-height: 1.3; }
-  .dcard-upgrade.specific { background: rgba(210,153,34,.15); color: var(--yellow); border: 1px solid rgba(210,153,34,.3); }
+  .dcard-upgrade { font-size: .55rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 2px 8px; border-radius: 6px; line-height: 1.3; margin-top: auto; }
+  .dcard-upgrade.no-shard { background: rgba(248,81,73,.1); color: var(--red); border: 1px solid rgba(248,81,73,.25); }
   .dcard-upgrade.no-upgrade { background: rgba(139,148,158,.15); color: var(--muted); border: 1px solid rgba(139,148,158,.3); }
   .dcard-level { position: absolute; top: .35rem; right: .35rem; background: var(--green); color: var(--bg); font-size: .6rem; font-weight: 700; padding: .1rem .35rem; border-radius: 4px; }
   .dcard-quality { position: absolute; top: .35rem; left: .35rem; font-size: .55rem; font-weight: 700; padding: .08rem .3rem; border-radius: 3px; }
@@ -348,6 +348,7 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
   var searchText = '';
   var selectedPlayer = null; // {decos, playerInfo, side}
   var playerGroups = {}; // group -> placedId (for selected player)
+  var meExpanded = {}; // group -> { src: sourceGroup, pid: placedId } for ME-inherited ownership
 
   // --- Sub-category buff ID sets ---
   var DMG_INC_IDS = {1001001:1,980101:1,980102:1,980103:1,29801011:1,29801021:1};
@@ -522,11 +523,10 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     var desc = buffDesc(group, pLvl || 1);
     if (desc) card.appendChild(el('div', { className: 'dcard-buff' }, desc));
 
-    // Upgrade type badge
+    // Upgrade type badge (bottom pill for non-shard decorations)
     var ut = UT[group] || 0;
-    if (ut === 1) card.appendChild(el('span', { className: 'dcard-upgrade specific' }, 'Unique'));
-    else if (ut === 2) card.appendChild(el('span', { className: 'dcard-upgrade specific' }, 'Self'));
-    else if (ut === 3) card.appendChild(el('span', { className: 'dcard-upgrade no-upgrade' }, 'Max'));
+    if (ut === 1 || ut === 2) card.appendChild(el('span', { className: 'dcard-upgrade no-shard' }, 'No shard upgrade'));
+    else if (ut === 3) card.appendChild(el('span', { className: 'dcard-upgrade no-upgrade' }, 'Max level'));
 
     (function(g) {
       card.onclick = function() { showDetail(g); };
@@ -694,6 +694,10 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
   /** Get player's level for a decoration group (0 if not owned) */
   function getPlayerLevel(group) {
     if (!selectedPlayer || !playerGroups[group]) return 0;
+    // For ME-inherited entries, compute level from the source group's base
+    if (meExpanded && meExpanded[group]) {
+      return decorLevel(meExpanded[group].src, meExpanded[group].pid) || 0;
+    }
     return decorLevel(group, playerGroups[group]) || 0;
   }
 
@@ -916,11 +920,18 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
       }
     }
     // Expand ME clusters: if player owns one variant, mark all equivalents as owned
-    for (var pg in playerGroups) {
+    // Store source group so level can be computed from the correct base
+    var meExpanded = {}; // group -> { sourceGroup, placedId }
+    var pgSnapshot = {};
+    for (var pk in playerGroups) pgSnapshot[pk] = playerGroups[pk];
+    for (var pg in pgSnapshot) {
       var meVars = getMEVariants(parseInt(pg));
       if (meVars) {
         for (var mi = 0; mi < meVars.length; mi++) {
-          if (!playerGroups[meVars[mi]]) playerGroups[meVars[mi]] = playerGroups[pg];
+          if (!playerGroups[meVars[mi]]) {
+            playerGroups[meVars[mi]] = pgSnapshot[pg];
+            meExpanded[meVars[mi]] = { src: parseInt(pg), pid: pgSnapshot[pg] };
+          }
         }
       }
     }
@@ -969,6 +980,7 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
   function clearPlayer() {
     selectedPlayer = null;
     playerGroups = {};
+    meExpanded = {};
     activeLevel = 0;
     document.getElementById('player-banner').style.display = 'none';
     document.getElementById('star-pills').style.display = 'none';
