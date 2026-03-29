@@ -80,10 +80,8 @@
   .dcard.unowned { opacity: .5; }
   .dcard-icon { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; background: var(--surface); margin-bottom: .35rem; }
   .dcard-name { font-size: .75rem; font-weight: 600; line-height: 1.2; margin-bottom: .2rem; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-height: 1.8em; }
-  .dcard-stars { font-size: .6rem; color: var(--yellow); letter-spacing: 1px; margin-bottom: .2rem; }
   .dcard-buff { font-size: .68rem; color: var(--muted); line-height: 1.3; }
   .dcard-level { position: absolute; top: .35rem; right: .35rem; background: var(--green); color: var(--bg); font-size: .6rem; font-weight: 700; padding: .1rem .35rem; border-radius: 4px; }
-  .dcard-level.base { background: var(--muted); }
   .dcard-quality { position: absolute; top: .35rem; left: .35rem; font-size: .55rem; font-weight: 700; padding: .08rem .3rem; border-radius: 3px; }
   .dcard-quality.q6 { background: rgba(248,81,73,.15); color: var(--red); }
   .dcard-quality.q5 { background: rgba(210,153,34,.15); color: var(--yellow); }
@@ -98,7 +96,6 @@
   .detail-header img { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; background: var(--card); }
   .detail-header-info { flex: 1; }
   .detail-header-name { font-weight: 700; font-size: .95rem; }
-  .detail-header-stars { font-size: .7rem; color: var(--yellow); letter-spacing: 1px; }
   .detail-header-cat { font-size: .7rem; color: var(--accent); }
   .detail-close { background: none; border: none; color: var(--muted); font-size: 1.4rem; cursor: pointer; padding: .2rem .5rem; line-height: 1; }
   .detail-close:hover { color: var(--text); }
@@ -183,8 +180,6 @@
   <div class="filter-pills" id="cat-pills"></div>
   <div class="filter-sep"></div>
   <div class="filter-pills" id="star-pills"></div>
-  <div class="filter-sep"></div>
-  <div class="filter-pills" id="own-pills"></div>
   <span class="filter-count" id="filter-count"></span>
 </div>
 
@@ -233,7 +228,7 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
   function decorLevel(group, placedId) {
     var base = DB[group];
     if (!base) return null;
-    return placedId - base + 1;
+    return Math.max(1, placedId - base + 1);
   }
 
   /** Get decoration name */
@@ -268,13 +263,8 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
   /** Format buff value */
   function formatVal(value, valueType) {
     if (valueType === 1) return '+' + value;
-    if (valueType === 10000) {
-      var pct = value / 100;
-      return (pct === Math.floor(pct) ? pct.toFixed(0) : pct.toFixed(1)) + '%';
-    }
-    if (!value) return '0%';
-    var p = value / 100;
-    return (p === Math.floor(p) ? p.toFixed(0) : p.toFixed(1)) + '%';
+    var pct = (value || 0) / 100;
+    return (pct === Math.floor(pct) ? pct.toFixed(0) : pct.toFixed(1)) + '%';
   }
 
   /** Compute buff value at a target level given extracted level */
@@ -319,9 +309,7 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
   // --- State ---
   var activeCategory = -1; // -1 = all
   var activeLevel = 0; // 0 = all, 1-3 = level range index
-  var activeOwn = 0; // 0 = all, 1 = owned, 2 = unowned
   var searchText = '';
-  var reportData = null;
   var selectedPlayer = null; // {decos, playerInfo, side}
   var playerGroups = {}; // group -> placedId (for selected player)
 
@@ -384,17 +372,14 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
 
     var lvlPills = document.getElementById('star-pills');
     lvlPills.style.display = 'none';
-    // Level filters: 0=All, 1=Not Owned, 2=Lv.1, 3=Lv.2, 4=Lv.3, 5=Lv.4, 6=Lv.5, 7=Lv.5+
-    var lvlLabels = ['All','Not Owned','Lv.1','Lv.2','Lv.3','Lv.4','Lv.5','Lv.5+'];
+    // Level filters: 0=All, 1=Not Owned, 2=Lv.1, 3=Lv.2, 4=Lv.3, 5=Lv.4, 6=Lv.5+
+    var lvlLabels = ['All','Not Owned','Lv.1','Lv.2','Lv.3','Lv.4','Lv.5+'];
     for (var li = 0; li < lvlLabels.length; li++) {
       (function(idx) {
         var pill = el('span', { className: 'fpill' + (idx === 0 ? ' active' : ''), onclick: function() { setLevel(idx); } }, lvlLabels[idx]);
         lvlPills.appendChild(pill);
       })(li);
     }
-
-    // Own filter hidden — "Not Owned" is in level filter instead
-    document.getElementById('own-pills').style.display = 'none';
 
     document.getElementById('filter-search').oninput = function() {
       searchText = this.value.toLowerCase().trim();
@@ -417,13 +402,6 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     render();
   }
 
-  function setOwn(v) {
-    activeOwn = v;
-    var pills = document.getElementById('own-pills').children;
-    for (var i = 0; i < pills.length; i++) pills[i].className = 'fpill' + (i === v ? ' active' : '');
-    render();
-  }
-
   /** Check if a decoration passes current filters */
   function passesFilter(group) {
     var d = DI[group];
@@ -432,20 +410,15 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     if (activeLevel > 0 && selectedPlayer) {
       var pLvl = playerGroups[group] ? (decorLevel(group, playerGroups[group]) || 0) : 0;
       if (activeLevel === 1 && pLvl > 0) return false; // Not Owned
-      if (activeLevel >= 2 && activeLevel <= 6) { // Lv.1 through Lv.5
+      if (activeLevel >= 2 && activeLevel <= 5) { // Lv.1 through Lv.4
         if (pLvl !== (activeLevel - 1)) return false;
       }
-      if (activeLevel === 7 && pLvl < 5) return false; // Lv.5+
+      if (activeLevel === 6 && pLvl < 5) return false; // Lv.5+
     }
     if (searchText) {
       var nameMatch = d[0].toLowerCase().indexOf(searchText) !== -1;
       var descMatch = buffDesc(d[6], d[5], 1).toLowerCase().indexOf(searchText) !== -1;
       if (!nameMatch && !descMatch) return false;
-    }
-    if (selectedPlayer) {
-      var isOwned = !!playerGroups[group];
-      if (activeOwn === 1 && !isOwned) return false;
-      if (activeOwn === 2 && isOwned) return false;
     }
     return true;
   }
@@ -453,46 +426,22 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
   /** Build a single decoration card */
   function buildCard(group) {
     var d = DI[group];
+    var placed = selectedPlayer ? playerGroups[group] : null;
+    var pLvl = placed ? decorLevel(group, placed) : 0;
+
     var card = el('div', { className: 'dcard' });
     card.setAttribute('data-group', group);
 
-    // Ownership styling
-    if (selectedPlayer) {
-      if (playerGroups[group]) {
-        card.className += ' owned';
-      } else {
-        card.className += ' unowned';
-      }
-    }
+    if (selectedPlayer) card.className += placed ? ' owned' : ' unowned';
 
-    // Quality badge
-    var qBadge = el('span', { className: 'dcard-quality q' + d[3] }, QUALITY_NAMES[d[3]] || '');
-    card.appendChild(qBadge);
-
-    // Level badge (from report or extracted)
-    if (selectedPlayer && playerGroups[group]) {
-      var lvl = decorLevel(group, playerGroups[group]);
-      if (lvl) {
-        card.appendChild(el('span', { className: 'dcard-level' }, 'Lv.' + lvl));
-      }
-    }
-
-    // Icon
+    card.appendChild(el('span', { className: 'dcard-quality q' + d[3] }, QUALITY_NAMES[d[3]] || ''));
+    if (pLvl) card.appendChild(el('span', { className: 'dcard-level' }, 'Lv.' + pLvl));
     card.appendChild(decorIconImg(group, 48));
-
-    // Name
     card.appendChild(el('div', { className: 'dcard-name' }, d[0]));
 
-    // Buff summary (level 1 default, or player's level if report loaded)
-    var showLevel = 1;
-    if (selectedPlayer && playerGroups[group]) {
-      var plvl = decorLevel(group, playerGroups[group]);
-      if (plvl) showLevel = plvl;
-    }
-    var desc = buffDesc(d[6], d[5], showLevel);
+    var desc = buffDesc(d[6], d[5], pLvl || 1);
     if (desc) card.appendChild(el('div', { className: 'dcard-buff' }, desc));
 
-    // Click handler
     (function(g) {
       card.onclick = function() { showDetail(g); };
     })(group);
@@ -504,6 +453,8 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
   function showDetail(group) {
     var d = DI[group];
     if (!d) return;
+    var placed = selectedPlayer ? playerGroups[group] : null;
+    var pLvl = placed ? decorLevel(group, placed) : 0;
 
     var overlay = el('div', { className: 'detail-overlay' });
     overlay.onclick = function(e) { if (e.target === overlay) document.body.removeChild(overlay); };
@@ -530,9 +481,8 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
       ['Quality', QUALITY_NAMES[d[3]] || 'Q' + d[3]],
       ['Max Level', String(d[4])],
     ];
-    if (selectedPlayer && playerGroups[group]) {
-      var lvl = decorLevel(group, playerGroups[group]);
-      rows.push(['Your Level', lvl ? 'Lv.' + lvl + ' / ' + d[4] : 'Unknown']);
+    if (placed) {
+      rows.push(['Your Level', pLvl ? 'Lv.' + pLvl + ' / ' + d[4] : 'Unknown']);
     }
     for (var i = 0; i < rows.length; i++) {
       var row = el('div', { className: 'detail-row' });
@@ -544,12 +494,8 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
 
     // Buffs section
     var buffSec = el('div', { className: 'detail-section' });
-    var detailLevel = 1;
-    var buffTitle = 'Buffs (Lv.1)';
-    if (selectedPlayer && playerGroups[group]) {
-      var pLvl = decorLevel(group, playerGroups[group]);
-      if (pLvl) { detailLevel = pLvl; buffTitle = 'Buffs (Your Lv.' + pLvl + ')'; }
-    }
+    var detailLevel = pLvl || 1;
+    var buffTitle = pLvl ? 'Buffs (Your Lv.' + pLvl + ')' : 'Buffs (Lv.1)';
     buffSec.appendChild(el('div', { className: 'detail-section-title' }, buffTitle));
     for (var bi = 0; bi < d[6].length; bi++) {
       var b = d[6][bi];
@@ -558,7 +504,7 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
       brow.appendChild(el('span', { className: 'detail-buff-val' }, formatVal(buffValAtLevel(b[1], d[5], detailLevel), b[2])));
       buffSec.appendChild(brow);
     }
-    if (!selectedPlayer || !playerGroups[group]) {
+    if (!placed) {
       buffSec.appendChild(el('div', { className: 'detail-note' }, 'Load a battle report to see your actual level and values.'));
     }
     body.appendChild(buffSec);
@@ -574,13 +520,7 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
         var iconsDiv = el('div', { className: 'detail-suit-icons' });
         for (var gi = 0; gi < suit[1].length; gi++) {
           var compIcon = decorIconImg(suit[1][gi], 28);
-          compIcon.className = '';
-          compIcon.style.width = '28px';
-          compIcon.style.height = '28px';
-          compIcon.style.borderRadius = '4px';
-          compIcon.style.objectFit = 'cover';
-          compIcon.style.background = 'var(--surface)';
-          if (selectedPlayer && playerGroups[suit[1][gi]]) compIcon.className = 'owned-comp';
+          compIcon.className = (selectedPlayer && playerGroups[suit[1][gi]]) ? 'owned-comp' : '';
           compIcon.title = decorName(suit[1][gi]);
           iconsDiv.appendChild(compIcon);
         }
@@ -603,8 +543,6 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     document.body.appendChild(overlay);
   }
 
-  /** Render the decoration grid */
-  /** Build a collapsible grid section */
   function buildGridSection(title, items, cssClass, startCollapsed) {
     var wrap = el('div', { className: cssClass || 'cat-section' });
     var header = el('div', { className: 'cat-header' + (startCollapsed ? ' collapsed' : '') });
@@ -675,20 +613,8 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
           hdr.onclick = function() { hdr.classList.toggle('collapsed'); body.classList.toggle('collapsed'); };
         })(header, catBody);
       } else {
-        // Simple category (March Size, Defense) — no sub-categories
-        var header2 = el('div', { className: 'cat-header' });
-        header2.appendChild(el('span', { className: 'toggle' }, '\u25BC'));
-        header2.appendChild(document.createTextNode(CAT_NAMES[catIdx] + ' (' + filtered.length + ')'));
-        section.appendChild(header2);
-
-        var grid = el('div', { className: 'cat-grid' });
-        for (var gi = 0; gi < filtered.length; gi++) grid.appendChild(buildCard(filtered[gi]));
-        section.appendChild(grid);
+        section = buildGridSection(CAT_NAMES[catIdx] + ' (' + filtered.length + ')', filtered, 'cat-section', false);
         totalShown += filtered.length;
-
-        (function(hdr, grd) {
-          hdr.onclick = function() { hdr.classList.toggle('collapsed'); grd.classList.toggle('collapsed'); };
-        })(header2, grid);
       }
 
       content.appendChild(section);
@@ -704,6 +630,7 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     var status = document.getElementById('status');
     var id = input.value.trim();
     if (!id) { status.className = 'status error'; status.textContent = 'Enter a report ID'; return; }
+    if (!/^\d{10,25}$/.test(id)) { status.className = 'status error'; status.textContent = 'Invalid report ID format'; return; }
 
     btn.disabled = true;
     status.className = 'status';
@@ -720,8 +647,6 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
       .then(function(data) {
         btn.disabled = false;
         if (!data || !data.battle) throw new Error('Invalid report format');
-
-        reportData = data;
         status.className = 'status success';
         status.textContent = 'Report loaded. Select your player:';
         showPlayerSelection(data.battle);
@@ -736,8 +661,17 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
   /** Resolve avatar URL (same logic as battle-report) */
   function resolveAvatar(url) {
     if (!url) return null;
-    if (url.indexOf('http') === 0) return url;
+    if (url.indexOf('http') === 0) {
+      if (url.indexOf('https://knight-cdn.akamaized.net/') === 0 || url.indexOf('https://h5.topwargame.com/') === 0) return url;
+      return null;
+    }
     return 'https://h5.topwargame.com/DynRes/images/headpic/' + url + '.png?t=21.jpg';
+  }
+
+  function buildAvatarPlaceholder(name, size) {
+    var s = size || 36;
+    var initial = (name || '?').charAt(0).toUpperCase();
+    return el('div', { style: 'width:'+s+'px;height:'+s+'px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:var(--accent);background:var(--surface);border:1px solid var(--border);flex-shrink:0;' }, initial);
   }
 
   /** Extract player info from battle side */
@@ -823,16 +757,12 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     if (decos.ids) {
       for (var i = 0; i < decos.ids.length; i++) {
         var grp = decorIdToGroup(decos.ids[i]);
-        if (grp && !playerGroups[grp]) {
-          playerGroups[grp] = decos.ids[i]; // store first occurrence (highest ID = highest level from sorted?)
-        } else if (grp && playerGroups[grp] && decos.ids[i] > playerGroups[grp]) {
-          playerGroups[grp] = decos.ids[i]; // keep highest level
+        if (grp && (!playerGroups[grp] || decos.ids[i] > playerGroups[grp])) {
+          playerGroups[grp] = decos.ids[i];
         }
       }
     }
 
-    // Show own + level filters
-    document.getElementById('own-pills').style.display = 'flex';
     document.getElementById('star-pills').style.display = 'flex';
 
     // Show player banner (battle-report style card)
@@ -843,15 +773,10 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     if (pi.avatar) {
       var img = el('img');
       img.src = pi.avatar;
-      img.onerror = function() {
-        var initial = (pi.name || '?').charAt(0).toUpperCase();
-        var ph = el('div', { style: 'width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:var(--accent);background:var(--surface);border:1px solid var(--border);flex-shrink:0;' }, initial);
-        this.replaceWith(ph);
-      };
+      img.onerror = function() { this.replaceWith(buildAvatarPlaceholder(pi.name)); };
       inner.appendChild(img);
     } else {
-      var initial = (pi.name || '?').charAt(0).toUpperCase();
-      inner.appendChild(el('div', { style: 'width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:var(--accent);background:var(--surface);border:1px solid var(--border);flex-shrink:0;' }, initial));
+      inner.appendChild(buildAvatarPlaceholder(pi.name));
     }
     var infoDiv = el('div', { className: 'player-banner-info' });
     var flag = pi.flag ? flagEmoji(pi.flag) + ' ' : '';
@@ -862,7 +787,7 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     infoDiv.appendChild(el('div', { className: 'player-banner-detail' }, ownedCount + ' placed decorations (' + Math.round(ownedCount/indexCount*100) + '% of index)'));
     inner.appendChild(infoDiv);
     var clearBtn = el('button', { className: 'player-banner-clear' }, 'Clear');
-    clearBtn.onclick = function() { clearPlayer(); };
+    clearBtn.onclick = clearPlayer;
     inner.appendChild(clearBtn);
     banner.appendChild(inner);
 
@@ -879,38 +804,29 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
   function clearPlayer() {
     selectedPlayer = null;
     playerGroups = {};
-    activeOwn = 0;
     activeLevel = 0;
     document.getElementById('player-banner').style.display = 'none';
-    document.getElementById('own-pills').style.display = 'none';
     document.getElementById('star-pills').style.display = 'none';
-    while (document.getElementById('raw-section').firstChild) document.getElementById('raw-section').removeChild(document.getElementById('raw-section').firstChild);
-    // Reset own + level pills
-    var pills = document.getElementById('own-pills').children;
-    for (var i = 0; i < pills.length; i++) pills[i].className = 'fpill' + (i === 0 ? ' active' : '');
+    var rawSection = document.getElementById('raw-section');
+    while (rawSection.firstChild) rawSection.removeChild(rawSection.firstChild);
     var lpills = document.getElementById('star-pills').children;
     for (var j = 0; j < lpills.length; j++) lpills[j].className = 'fpill' + (j === 0 ? ' active' : '');
     render();
   }
 
-  /** Show raw JSON (with UID sanitized) */
   function showRawJSON() {
     if (!selectedPlayer) return;
     var rawSection = document.getElementById('raw-section');
     while (rawSection.firstChild) rawSection.removeChild(rawSection.firstChild);
     var details = el('details', { className: 'raw-json' });
     details.appendChild(el('summary', null, 'Raw effectDecorations JSON'));
-    // Deep clone and sanitize UIDs
-    var sanitized = JSON.parse(JSON.stringify(selectedPlayer.decos));
-    var pre = el('pre', null, JSON.stringify(sanitized, null, 2));
-    details.appendChild(pre);
+    details.appendChild(el('pre', null, JSON.stringify(selectedPlayer.decos, null, 2)));
     rawSection.appendChild(details);
   }
 
   // --- URL params ---
   function getParam(name) {
-    var match = location.search.match(new RegExp('[?&]' + name + '=([^&]+)'));
-    return match ? decodeURIComponent(match[1]) : null;
+    return new URLSearchParams(location.search).get(name);
   }
 
   // --- Init ---
