@@ -57,10 +57,12 @@
   .filter-count { font-size: .75rem; color: var(--muted); margin-left: auto; white-space: nowrap; }
 
   /* Sort */
-  .sort-bar { max-width: 860px; margin: 0 auto .5rem; padding: 0 1rem; width: 100%; display: flex; gap: .5rem; align-items: center; }
-  .sort-bar label { font-size: .75rem; color: var(--muted); }
-  .sort-bar select { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .3rem .5rem; color: var(--text); font-size: .8rem; outline: none; }
-  .sort-bar select:focus { border-color: var(--accent); }
+  .sort-bar { max-width: 860px; margin: 0 auto .5rem; padding: 0 1rem; width: 100%; display: flex; gap: .4rem; align-items: center; }
+  .sort-bar label { font-size: .75rem; color: var(--muted); margin-right: .1rem; }
+  .spill { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: .25rem .6rem; font-size: .73rem; color: var(--muted); cursor: pointer; white-space: nowrap; transition: all .15s; user-select: none; display: inline-flex; align-items: center; gap: .25rem; }
+  .spill:hover { border-color: var(--accent); color: var(--accent); }
+  .spill.active { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+  .spill .arrow { font-size: .6rem; }
 
   /* Content */
   #content { max-width: 860px; margin: 0 auto 2rem; padding: 0 1rem; width: 100%; }
@@ -185,14 +187,9 @@
 
 <div class="sort-bar">
   <label>Sort:</label>
-  <select id="sortSelect" onchange="applyFilters()">
-    <option value="name">Name</option>
-    <option value="name-desc">Name (reverse)</option>
-    <option value="power">Power</option>
-    <option value="power-asc">Power (low first)</option>
-    <option value="levels">Levels</option>
-    <option value="order">Game Order</option>
-  </select>
+  <span class="spill active" id="sortName" onclick="toggleSort('name')">Name <span class="arrow" id="sortNameArrow">&uarr;</span></span>
+  <span class="spill" id="sortLevels" onclick="toggleSort('levels')">Levels <span class="arrow" id="sortLevelsArrow">&darr;</span></span>
+  <span class="spill" id="sortPower" onclick="toggleSort('power')">CP <span class="arrow" id="sortPowerArrow">&darr;</span></span>
 </div>
 
 <div id="content"></div>
@@ -308,6 +305,27 @@
   var reportData = null;
   var ownedSkins = {};
   var equippedSkin = 0;
+
+  // Sort state: key + ascending
+  var sortKey = 'name';
+  var sortAsc = true;
+
+  function toggleSort(key) {
+    if (sortKey === key) { sortAsc = !sortAsc; }
+    else { sortKey = key; sortAsc = key === 'name'; } // name defaults asc, others desc
+    // Update pill styles
+    ['name','levels','power'].forEach(function(k) {
+      var pill = document.getElementById('sort' + k.charAt(0).toUpperCase() + k.slice(1));
+      var arrow = document.getElementById('sort' + k.charAt(0).toUpperCase() + k.slice(1) + 'Arrow');
+      if (k === sortKey) {
+        pill.classList.add('active');
+        arrow.textContent = sortAsc ? '\u2191' : '\u2193';
+      } else {
+        pill.classList.remove('active');
+      }
+    });
+    applyFilters();
+  }
 
   // Filter state
   var activeFilter = 'all';
@@ -576,7 +594,6 @@
   /** Apply search, filter, sort */
   function applyFilters() {
     var query = document.getElementById('filterSearch').value.toLowerCase().trim();
-    var sort = document.getElementById('sortSelect').value;
 
     var filtered = cards.filter(function(c) {
       if (query && c.searchText.indexOf(query) < 0) return false;
@@ -588,20 +605,17 @@
     });
 
     // Sort
+    var dir = sortAsc ? 1 : -1;
     filtered.sort(function(a, b) {
-      // Owned/equipped first when report loaded
       if (reportData) {
         var aOwn = ownedSkins[a.id] ? 0 : 1;
         var bOwn = ownedSkins[b.id] ? 0 : 1;
         if (aOwn !== bOwn) return aOwn - bOwn;
       }
-      switch (sort) {
-        case 'name': return (a.name||'').localeCompare(b.name||'');
-        case 'name-desc': return (b.name||'').localeCompare(a.name||'');
-        case 'power': return (b.power || 0) - (a.power || 0);
-        case 'power-asc': return (a.power || 0) - (b.power || 0);
-        case 'levels': return b.levels - a.levels || a.name.localeCompare(b.name);
-        case 'order': return (a.order || 999) - (b.order || 999);
+      switch (sortKey) {
+        case 'name': return dir * (a.name||'').localeCompare(b.name||'');
+        case 'power': return dir * ((a.power||0) - (b.power||0));
+        case 'levels': return dir * (a.levels - b.levels) || (a.name||'').localeCompare(b.name||'');
         default: return 0;
       }
     });
