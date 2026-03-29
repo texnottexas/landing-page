@@ -81,9 +81,11 @@
   .dcard-icon { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; background: var(--surface); margin-bottom: .35rem; }
   .dcard-name { font-size: .75rem; font-weight: 600; line-height: 1.2; margin-bottom: .2rem; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-height: 1.8em; }
   .dcard-buff { font-size: .68rem; color: var(--muted); line-height: 1.3; }
-  .dcard-me { display: flex; gap: 3px; justify-content: center; margin-bottom: .15rem; opacity: .7; }
-  .dcard-me img { transition: opacity .15s; }
-  .dcard-me img:hover { opacity: 1; }
+  .dcard-me { display: flex; gap: .35rem; justify-content: center; align-items: flex-start; flex-wrap: wrap; margin-bottom: .2rem; }
+  .dcard-me-item { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+  .dcard-me-item img { width: 36px; height: 36px; border-radius: 5px; object-fit: cover; background: var(--surface); }
+  .dcard-me-item .dcard-me-name { font-size: .55rem; color: var(--muted); max-width: 60px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.2; }
+  .dcard-me-label { font-size: .55rem; color: var(--accent); font-weight: 600; width: 100%; text-align: center; margin-bottom: .1rem; }
   .dcard-level { position: absolute; top: .35rem; right: .35rem; background: var(--green); color: var(--bg); font-size: .6rem; font-weight: 700; padding: .1rem .35rem; border-radius: 4px; }
   .dcard-quality { position: absolute; top: .35rem; left: .35rem; font-size: .55rem; font-weight: 700; padding: .08rem .3rem; border-radius: 3px; }
   .dcard-quality.q6 { background: rgba(248,81,73,.15); color: var(--red); }
@@ -492,19 +494,25 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
 
     card.appendChild(el('span', { className: 'dcard-quality q' + d[3] }, QUALITY_NAMES[d[3]] || ''));
     if (pLvl) card.appendChild(el('span', { className: 'dcard-level' }, 'Lv.' + pLvl));
-    card.appendChild(decorIconImg(group, 48));
-    card.appendChild(el('div', { className: 'dcard-name' }, d[0]));
 
-    // ME variant mini-icons (show equivalent decorations)
+    // ME variants: show all equivalent decorations at equal size with names
     var meVars = getMEVariants(group);
     if (meVars && meVars.length > 1) {
       var meRow = el('div', { className: 'dcard-me' });
+      meRow.appendChild(el('div', { className: 'dcard-me-label' }, 'Equivalent'));
       for (var vi = 0; vi < meVars.length; vi++) {
-        if (meVars[vi] === group) continue; // skip self
-        var vIcon = decorIconImg(meVars[vi], 20);
-        if (vIcon) { vIcon.title = ME_NAMES[meVars[vi]] || ''; vIcon.style.width = '20px'; vIcon.style.height = '20px'; vIcon.style.borderRadius = '3px'; meRow.appendChild(vIcon); }
+        var vg = meVars[vi];
+        var vItem = el('div', { className: 'dcard-me-item' });
+        var vIcon = decorIconImg(vg, 36);
+        if (vIcon) vItem.appendChild(vIcon);
+        var vName = (vg === group) ? d[0] : (ME_NAMES[vg] || decorName(vg));
+        vItem.appendChild(el('div', { className: 'dcard-me-name' }, vName));
+        meRow.appendChild(vItem);
       }
-      if (meRow.children.length > 0) card.appendChild(meRow);
+      card.appendChild(meRow);
+    } else {
+      card.appendChild(decorIconImg(group, 48));
+      card.appendChild(el('div', { className: 'dcard-name' }, d[0]));
     }
 
     var desc = buffDesc(group, pLvl || 1);
