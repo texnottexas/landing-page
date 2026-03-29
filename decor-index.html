@@ -180,6 +180,7 @@
   <div class="filter-pills" id="cat-pills"></div>
   <div class="filter-sep"></div>
   <div class="filter-pills" id="star-pills"></div>
+  <span class="filter-pills" id="sort-pills" style="display:none"></span>
   <span class="filter-count" id="filter-count"></span>
 </div>
 
@@ -308,7 +309,8 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
 
   // --- State ---
   var activeCategory = -1; // -1 = all
-  var activeLevel = 0; // 0 = all, 1-3 = level range index
+  var activeLevel = 0; // 0 = all, 1-6 = level filter index
+  var activeSort = 0; // 0 = A-Z, 1 = Level ↓, 2 = Level ↑
   var searchText = '';
   var selectedPlayer = null; // {decos, playerInfo, side}
   var playerGroups = {}; // group -> placedId (for selected player)
@@ -381,10 +383,27 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
       })(li);
     }
 
+    // Sort pills (visible when report loaded)
+    var sortPills = document.getElementById('sort-pills');
+    var sortLabels = ['A-Z', 'Level \u2193', 'Level \u2191'];
+    for (var si = 0; si < sortLabels.length; si++) {
+      (function(idx) {
+        var pill = el('span', { className: 'fpill' + (idx === 0 ? ' active' : ''), onclick: function() { setSort(idx); } }, sortLabels[idx]);
+        sortPills.appendChild(pill);
+      })(si);
+    }
+
     document.getElementById('filter-search').oninput = function() {
       searchText = this.value.toLowerCase().trim();
       render();
     };
+  }
+
+  function setSort(idx) {
+    activeSort = idx;
+    var pills = document.getElementById('sort-pills').children;
+    for (var i = 0; i < pills.length; i++) pills[i].className = 'fpill' + (i === idx ? ' active' : '');
+    render();
   }
 
   function setCategory(idx) {
@@ -558,6 +577,25 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     return wrap;
   }
 
+  /** Get player's level for a decoration group (0 if not owned) */
+  function getPlayerLevel(group) {
+    if (!selectedPlayer || !playerGroups[group]) return 0;
+    return decorLevel(group, playerGroups[group]) || 0;
+  }
+
+  /** Sort filtered groups by active sort mode */
+  function applySortOrder(groups) {
+    if (activeSort === 0 || !selectedPlayer) return groups; // A-Z (default order from groupsByCategory)
+    var sorted = groups.slice();
+    var dir = activeSort === 1 ? -1 : 1; // 1 = Level ↓ (desc), 2 = Level ↑ (asc)
+    sorted.sort(function(a, b) {
+      var la = getPlayerLevel(a), lb = getPlayerLevel(b);
+      if (la !== lb) return (la - lb) * dir;
+      return DI[a][0].localeCompare(DI[b][0]); // tie-break by name
+    });
+    return sorted;
+  }
+
   function render() {
     var content = document.getElementById('content');
     while (content.firstChild) content.removeChild(content.firstChild);
@@ -572,6 +610,7 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
       for (var i = 0; i < groups.length; i++) {
         if (passesFilter(groups[i])) filtered.push(groups[i]);
       }
+      filtered = applySortOrder(filtered);
 
       if (filtered.length === 0) continue;
 
@@ -764,6 +803,7 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     }
 
     document.getElementById('star-pills').style.display = 'flex';
+    document.getElementById('sort-pills').style.display = 'flex';
 
     // Show player banner (battle-report style card)
     var banner = document.getElementById('player-banner');
@@ -782,9 +822,11 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     var flag = pi.flag ? flagEmoji(pi.flag) + ' ' : '';
     infoDiv.appendChild(el('div', { className: 'player-banner-name' }, flag + pi.name));
     if (pi.alliance) infoDiv.appendChild(el('div', { style: 'font-size:.75rem;color:var(--accent);' }, '[' + pi.alliance + ']'));
-    var ownedCount = Object.keys(playerGroups).length;
+    var totalPlaced = Object.keys(playerGroups).length;
+    var inIndex = 0;
+    for (var pg in playerGroups) { if (DI[pg]) inIndex++; }
     var indexCount = Object.keys(DI).length;
-    infoDiv.appendChild(el('div', { className: 'player-banner-detail' }, ownedCount + ' placed decorations (' + Math.round(ownedCount/indexCount*100) + '% of index)'));
+    infoDiv.appendChild(el('div', { className: 'player-banner-detail' }, totalPlaced + ' placed — ' + inIndex + '/' + indexCount + ' index decorations (' + Math.round(inIndex/indexCount*100) + '%)'));
     inner.appendChild(infoDiv);
     var clearBtn = el('button', { className: 'player-banner-clear' }, 'Clear');
     clearBtn.onclick = clearPlayer;
@@ -807,6 +849,10 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     activeLevel = 0;
     document.getElementById('player-banner').style.display = 'none';
     document.getElementById('star-pills').style.display = 'none';
+    document.getElementById('sort-pills').style.display = 'none';
+    activeSort = 0;
+    var sPills = document.getElementById('sort-pills').children;
+    for (var si = 0; si < sPills.length; si++) sPills[si].className = 'fpill' + (si === 0 ? ' active' : '');
     var rawSection = document.getElementById('raw-section');
     while (rawSection.firstChild) rawSection.removeChild(rawSection.firstChild);
     var lpills = document.getElementById('star-pills').children;
