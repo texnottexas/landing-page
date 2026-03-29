@@ -531,7 +531,7 @@
       row.appendChild(el('div', { className: leftCls }, formatBuffVal(aVal, buffId)));
       // Make Decoration row (typeBig 7) clickable to open decoration detail modal
       if (typeBig === 7) {
-        var drillBtn = el('span', { className: 'decor-drill', onclick: function() { document.body.appendChild(buildDecorationModal(att, def, attPI, defPI)); } });
+        var drillBtn = el('span', { className: 'decor-drill', onclick: function() { document.body.appendChild(buildDecorationModal(att, def, attPI, defPI, buffId, buffName)); } });
         drillBtn.appendChild(document.createTextNode(sourceName + ' '));
         drillBtn.appendChild(el('span', { className: 'drill-arrow' }, '\u25B8'));
         var nameEl = el('div', { className: 's-name' });
@@ -613,8 +613,28 @@
     return count;
   }
 
-  /** Build the Decoration Comparison modal */
-  function buildDecorationModal(att, def, attPI, defPI) {
+  /** Check if a decoration group contributes to a target display buff ID.
+   *  A decoration contributes if any of its raw buff IDs, after BUFF_GROUP redirect,
+   *  equals the filterBuffId OR any child in the same BUFF_DIVIDE_POOL family. */
+  function decorMatchesBuff(groupKey, filterBuffId) {
+    var dd = DECOR_DATA[String(groupKey)];
+    if (!dd || !dd.b) return false;
+    for (var i = 0; i < dd.b.length; i++) {
+      var rawId = dd.b[i].i;
+      // Direct match: decoration buff → display buff matches target
+      if (buffMatchesTarget(rawId, filterBuffId)) return true;
+      // Also check: if rawId redirects to a parent that has filterBuffId as a child
+      // e.g. rawId=930000 redirects to [930001,930002,930003], and filterBuffId=930001
+      // buffMatchesTarget already handles this (checks if redirect array includes target)
+      // But also: if rawId IS the target directly (no redirect)
+      // Already handled above.
+    }
+    return false;
+  }
+
+  /** Build the Decoration Comparison modal.
+   *  Optional filterBuffId/filterBuffName: when set, only show decorations contributing to that stat. */
+  function buildDecorationModal(att, def, attPI, defPI, filterBuffId, filterBuffName) {
     var attDecos = (att.players && att.players[0] && att.players[0].effectDecorations) || null;
     var defDecos = (def.players && def.players[0] && def.players[0].effectDecorations) || null;
 
@@ -623,7 +643,8 @@
 
     // Header
     var header = el('div', { className: 'stats-modal-header' });
-    header.appendChild(el('h2', null, 'Decoration Comparison'));
+    var modalTitle = filterBuffName ? 'Decorations \u2014 ' + filterBuffName : 'Decoration Comparison';
+    header.appendChild(el('h2', null, modalTitle));
     var closeBtn = el('button', { className: 'stats-close', onclick: function() { document.body.removeChild(overlay); } }, '\u00D7');
     header.appendChild(closeBtn);
     modal.appendChild(header);
@@ -696,27 +717,35 @@
     }
     body.appendChild(filterBar);
 
-    // --- Summary counts ---
-    var summaryContent = makeSection(body, 'Summary');
+    // --- Summary counts (hide when filtering by specific stat) ---
+    if (filterBuffId) {
+      // Show a filter indicator instead of summary
+      var filterNote = el('div', { style: 'padding:.5rem 1rem;color:var(--muted);font-size:.78rem;border-bottom:1px solid var(--border);' },
+        'Showing decorations contributing to: ' + (filterBuffName || 'selected stat'));
+      body.appendChild(filterNote);
+    }
+    var summaryContent = !filterBuffId ? makeSection(body, 'Summary') : null;
 
-    var summaryItems = [
-      { label: 'Placed', a: attIds.length, d: defIds.length },
-      { label: 'Sublimed (Adv. Upgrade)', a: attSublimes.length, d: defSublimes.length },
-      { label: 'Active Sets', a: attSuits.length, d: defSuits.length }
-    ];
+    if (summaryContent) {
+      var summaryItems = [
+        { label: 'Placed', a: attIds.length, d: defIds.length },
+        { label: 'Sublimed (Adv. Upgrade)', a: attSublimes.length, d: defSublimes.length },
+        { label: 'Active Sets', a: attSuits.length, d: defSuits.length }
+      ];
 
-    summaryItems.forEach(function(item) {
-      var row = el('div', { className: 'decor-summary-row' });
-      var lCls = 's-left';
-      var rCls = 's-right';
-      if (item.a > item.d) { lCls += ' s-green'; rCls += ' s-red'; }
-      else if (item.d > item.a) { lCls += ' s-red'; rCls += ' s-green'; }
-      else { lCls += ' s-equal'; rCls += ' s-equal'; }
-      row.appendChild(el('div', { className: lCls }, String(item.a)));
-      row.appendChild(el('div', { className: 's-name' }, item.label));
-      row.appendChild(el('div', { className: rCls }, String(item.d)));
-      summaryContent.appendChild(row);
-    });
+      summaryItems.forEach(function(item) {
+        var row = el('div', { className: 'decor-summary-row' });
+        var lCls = 's-left';
+        var rCls = 's-right';
+        if (item.a > item.d) { lCls += ' s-green'; rCls += ' s-red'; }
+        else if (item.d > item.a) { lCls += ' s-red'; rCls += ' s-green'; }
+        else { lCls += ' s-equal'; rCls += ' s-equal'; }
+        row.appendChild(el('div', { className: lCls }, String(item.a)));
+        row.appendChild(el('div', { className: 's-name' }, item.label));
+        row.appendChild(el('div', { className: rCls }, String(item.d)));
+        summaryContent.appendChild(row);
+      });
+    }
 
     // --- Placed Decorations section ---
     // Deduplicate placed IDs to unique groups for each side
@@ -752,8 +781,24 @@
     for (gk in attPlaced.groups) allPlacedGroups[gk] = true;
     for (gk in defPlaced.groups) allPlacedGroups[gk] = true;
 
+    // When opened from a specific stat row, filter to only decorations contributing to that stat
+    if (filterBuffId) {
+      for (gk in allPlacedGroups) {
+        // Check canonical group and actual variants for DECOR_DATA match
+        if (!decorMatchesBuff(gk, filterBuffId) &&
+            !decorMatchesBuff(attPlaced.variants[gk] || gk, filterBuffId) &&
+            !decorMatchesBuff(defPlaced.variants[gk] || gk, filterBuffId)) {
+          delete allPlacedGroups[gk];
+        }
+      }
+    }
+
     if (Object.keys(allPlacedGroups).length === 0) {
       filterBar.style.display = 'none';
+      if (filterBuffId) {
+        body.appendChild(el('div', { style: 'padding:1.5rem 1rem;text-align:center;color:var(--muted);font-size:.85rem;' },
+          'No placed decorations contribute to this stat.'));
+      }
     }
 
     if (Object.keys(allPlacedGroups).length > 0) {
@@ -901,8 +946,8 @@
       }
     }
 
-    // --- Decoration Sets section ---
-    if (attSuits.length > 0 || defSuits.length > 0) {
+    // --- Decoration Sets section (hidden when filtering by stat) ---
+    if (!filterBuffId && (attSuits.length > 0 || defSuits.length > 0)) {
       var setsContent = makeSection(body, 'Decoration Sets');
 
       var allSuitIds = {};
@@ -985,8 +1030,8 @@
       });
     }
 
-    // --- Advanced Upgrades section (renamed from Sublimed Decorations) ---
-    if (attSublimes.length > 0 || defSublimes.length > 0) {
+    // --- Advanced Upgrades section (hidden when filtering by stat) ---
+    if (!filterBuffId && (attSublimes.length > 0 || defSublimes.length > 0)) {
       var advContent = makeSection(body, 'Advanced Upgrades');
 
       // Group sublimes by buffId for each side
