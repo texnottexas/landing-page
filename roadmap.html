@@ -97,6 +97,8 @@ a:hover { text-decoration: underline; }
 .detail-desc { font-size: 14px; color: var(--text); line-height: 1.65; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
 .detail-desc p { margin-bottom: 6px; }
 .detail-desc p:last-child { margin-bottom: 0; }
+.detail-desc ul { margin: 4px 0 4px 18px; padding: 0; }
+.detail-desc li { margin-bottom: 3px; }
 .detail-desc ul, .detail-desc ol { padding-left: 20px; margin-bottom: 6px; }
 .detail-meta { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
 .detail-meta-row { display: flex; gap: 6px; }
@@ -236,6 +238,39 @@ function sanitizeHTML(html) {
   return walk(tmp);
 }
 
+function renderMarkdown(text) {
+  // Lightweight markdown → safe HTML for roadmap descriptions
+  var lines = (text || '').split('\n');
+  var out = '';
+  var inList = false;
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    var trimmed = line.trim();
+    if (!trimmed) { if (inList) { out += '</ul>'; inList = false; } out += '<br>'; continue; }
+    // Headings
+    var hMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (hMatch) {
+      if (inList) { out += '</ul>'; inList = false; }
+      out += '<b>' + esc(hMatch[2]).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') + '</b><br>';
+      continue;
+    }
+    // List items
+    var liMatch = trimmed.match(/^[-*]\s+(.+)$/);
+    if (liMatch) {
+      if (!inList) { out += '<ul>'; inList = true; }
+      var liContent = esc(liMatch[1]).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+      out += '<li>' + liContent + '</li>';
+      continue;
+    }
+    // Regular line
+    if (inList) { out += '</ul>'; inList = false; }
+    var escaped = esc(trimmed).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    out += escaped + '<br>';
+  }
+  if (inList) out += '</ul>';
+  return out;
+}
+
 // =================== DATE HELPERS ===================
 function fmtDate(str) {
   if (!str) return '';
@@ -341,8 +376,9 @@ function openDetail(item, isGitHub) {
     var descEl = makeEl('div', 'detail-desc');
     // Strip "Retroactive — originally completed YYYY-MM-DD based on git history. " prefix
     var cleanDesc = item.description.replace(/^Retroactive\s*[—–-]\s*originally completed \d{4}-\d{2}-\d{2} based on git history\.\s*/i, '');
-    if (isGitHub) {
-      descEl.textContent = cleanDesc;
+    var hasMarkdown = /^#{1,3}\s|^[-*]\s|\*\*/.test(cleanDesc);
+    if (isGitHub || hasMarkdown) {
+      descEl.innerHTML = renderMarkdown(cleanDesc);
     } else {
       // ADO descriptions may contain limited safe HTML — sanitized before insertion
       descEl.innerHTML = sanitizeHTML(cleanDesc); // sanitizeHTML strips unsafe tags; output is safe
