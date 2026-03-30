@@ -15,11 +15,11 @@
     --p1: #3fb950; --p2: #388bfd;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; }
 
   /* Header */
   .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: .75rem 1rem; display: flex; align-items: center; gap: .75rem; position: sticky; top: 0; z-index: 100; }
-  .header h1 { font-size: 1rem; font-weight: 600; flex: 1; }
+  .header h1 { font-size: 1rem; font-weight: 600; flex: 1; white-space: nowrap; }
   .home-btn { display: flex; align-items: center; justify-content: center; background: var(--card); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: .4rem .6rem; text-decoration: none; transition: all .15s; }
   .home-btn:hover { border-color: var(--accent); color: var(--accent); }
   .event-badge { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: .15rem .55rem; font-size: .7rem; color: var(--muted); font-weight: 600; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
@@ -109,8 +109,8 @@
   .reward-count { font-weight: 700; color: var(--text); }
   .reward-name { color: var(--muted); font-size: .65rem; }
   .reward-complete { display: inline-flex; align-items: center; gap: .25rem; padding: .15rem .5rem; border-radius: 10px; font-size: .62rem; font-weight: 700; letter-spacing: .03em; background: rgba(63,185,80,.15); color: #3fb950; border: 1px solid rgba(63,185,80,.35); white-space: nowrap; }
-  .mobile-complete { display: none; margin-top: .15rem; }
-  @media (max-width: 520px) { .mobile-complete { display: block; } }
+  .mobile-complete { display: none; }
+  .name-check { display: none; color: #3fb950; font-size: .7rem; margin-left: .25rem; flex-shrink: 0; }
   .no-results { text-align: center; padding: 2.5rem; color: var(--muted); font-size: .85rem; }
 
   /* Methodology section */
@@ -164,7 +164,7 @@
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
     .inventory-grid { grid-template-columns: repeat(2, 1fr); }
   }
-  @media (max-width: 520px) {
+  @media (max-width: 600px) {
     .stats-grid { grid-template-columns: 1fr; }
     .controls { flex-direction: column; align-items: stretch; gap: .4rem; margin-top: .75rem; margin-bottom: .5rem; }
     .round-select-wrap, .sort-wrap, .view-tabs { align-self: flex-start; }
@@ -172,21 +172,22 @@
     .method-header { padding: .5rem .75rem; font-size: .78rem; }
     .method-body { padding: .75rem .85rem; }
     .method-body p { font-size: .78rem; }
-    table { font-size: .75rem; min-width: 560px; }
-    thead th { padding: .45rem .5rem; font-size: .6rem; }
-    tbody td { padding: .4rem .5rem; }
-    td.rank { width: 32px; }
-    td.name-cell { max-width: 110px; }
-    td.tier-cell { width: 44px; }
-    .reward-name { display: none; }
-    .reward-icon { width: 18px; height: 18px; }
-    .reward-chip { padding: .1rem .3rem .1rem .2rem; gap: .2rem; font-size: .65rem; }
-    .reward-complete { font-size: .55rem; padding: .1rem .35rem; }
-    .player-avatar, .player-avatar-placeholder { width: 22px; height: 22px; }
-    .player-cell { gap: .35rem; }
-    .summary-bar { padding: .75rem .75rem; gap: .5rem; }
+    table { font-size: .8rem; min-width: 0; width: 100%; }
+    thead th { padding: .5rem .45rem; font-size: .62rem; }
+    tbody td { padding: .5rem .45rem; }
+    td.rank { width: 28px; }
+    td.name-cell { max-width: 130px; }
+    td.tier-cell { width: 40px; }
+    td.rewards-cell { display: none; }
+    th:last-child { display: none; }
+    .name-check { display: inline; }
+    .player-avatar, .player-avatar-placeholder { width: 24px; height: 24px; }
+    .player-cell { gap: .4rem; }
+    .summary-bar { padding: .75rem; gap: .5rem; }
+    .header { gap: .5rem; }
     .header h1 { font-size: .9rem; }
-    .event-badge { font-size: .6rem; padding: .1rem .4rem; }
+    .event-badge { font-size: .58rem; padding: .1rem .4rem; max-width: 160px; }
+    .inventory-grid { grid-template-columns: repeat(2, 1fr); }
   }
 
   /* Player avatars in table */
@@ -231,7 +232,7 @@
   .modal-round-chip { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: .15rem .45rem; font-size: .72rem; color: var(--muted); font-weight: 600; }
   .modal-empty { text-align: center; padding: 2rem; color: var(--muted); font-size: .82rem; }
 
-  @media (max-width: 520px) {
+  @media (max-width: 600px) {
     .modal-overlay { padding: 0; align-items: flex-end; }
     .modal-card { max-width: 100%; border-radius: 12px 12px 0 0; max-height: 85vh; margin: 0; }
   }
@@ -594,16 +595,14 @@ function buildRow(d, rank, roundStatus) {
   var nameSpan = document.createElement('span');
   nameSpan.textContent = d.name || '\u2014';
   playerCell.appendChild(nameSpan);
-  tdName.appendChild(playerCell);
   if (roundStatus === 'complete') {
-    var mp = document.createElement('div');
-    mp.className = 'mobile-complete';
-    var mpPill = document.createElement('span');
-    mpPill.className = 'reward-complete';
-    mpPill.textContent = 'Rewards Sent';
-    mp.appendChild(mpPill);
-    tdName.appendChild(mp);
+    var ck = document.createElement('span');
+    ck.className = 'name-check';
+    ck.textContent = '\u2713';
+    ck.title = 'Rewards Sent';
+    playerCell.appendChild(ck);
   }
+  tdName.appendChild(playerCell);
   tr.appendChild(tdName);
 
   /* player tier badge */
