@@ -115,10 +115,13 @@
 
   /* Methodology section */
   .method-section { margin-top: 1.5rem; }
+  .method-section { max-width: 1280px; margin: 0 auto .5rem; padding: 0 1rem; width: 100%; }
   .method-header { display: flex; align-items: center; gap: .5rem; cursor: pointer; user-select: none; padding: .65rem .9rem; background: var(--card); border: 1px solid var(--border); border-radius: 8px; font-size: .82rem; font-weight: 600; transition: background .15s; }
   .method-header:hover { background: var(--surface); }
   .method-header .chevron { font-size: .7rem; transition: transform .2s; color: var(--muted); }
   .method-header .chevron.closed { transform: rotate(-90deg); }
+  @keyframes method-glow { 0%, 100% { opacity: .85; } 50% { opacity: 1; } }
+  .method-shimmer { background-image: linear-gradient(90deg, var(--text) 0%, var(--accent) 25%, var(--text) 50%, var(--accent) 75%, var(--text) 100%); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: footer-shimmer 8s linear infinite, method-glow 4s ease-in-out infinite; }
   .method-body { background: var(--card); border: 1px solid var(--border); border-top: none; border-radius: 0 0 8px 8px; padding: 1rem 1.25rem; display: none; }
   .method-body.open { display: block; }
   .method-body p { font-size: .82rem; line-height: 1.6; color: var(--muted); margin-bottom: .75rem; }
@@ -149,10 +152,27 @@
   }
   @media (max-width: 520px) {
     .stats-grid { grid-template-columns: 1fr; }
-    .controls { flex-direction: column; align-items: stretch; }
+    .controls { flex-direction: column; align-items: stretch; gap: .4rem; margin-top: .75rem; margin-bottom: .5rem; }
     .round-select-wrap, .sort-wrap, .view-tabs { align-self: flex-start; }
-    table { font-size: .78rem; }
+    .method-section { margin-bottom: .35rem; }
+    .method-header { padding: .5rem .75rem; font-size: .78rem; }
+    .method-body { padding: .75rem .85rem; }
+    .method-body p { font-size: .78rem; }
+    table { font-size: .75rem; min-width: 560px; }
+    thead th { padding: .45rem .5rem; font-size: .6rem; }
+    tbody td { padding: .4rem .5rem; }
+    td.rank { width: 32px; }
+    td.name-cell { max-width: 110px; }
+    td.tier-cell { width: 44px; }
     .reward-name { display: none; }
+    .reward-icon { width: 18px; height: 18px; }
+    .reward-chip { padding: .1rem .3rem .1rem .2rem; gap: .2rem; font-size: .65rem; }
+    .reward-complete { font-size: .55rem; padding: .1rem .35rem; }
+    .player-avatar, .player-avatar-placeholder { width: 22px; height: 22px; }
+    .player-cell { gap: .35rem; }
+    .summary-bar { padding: .75rem .75rem; gap: .5rem; }
+    .header h1 { font-size: .9rem; }
+    .event-badge { font-size: .6rem; padding: .1rem .4rem; }
   }
 
   /* Player avatars in table */
@@ -242,6 +262,27 @@
   </div>
 </div>
 
+<div class="method-section">
+  <div class="method-header" onclick="toggleMethod()">
+    <span class="method-shimmer" style="flex:1">How Distribution Works</span>
+    <span class="chevron closed" id="methodChevron">&#9660;</span>
+  </div>
+  <div class="method-body" id="methodBody">
+    <p><strong>Player Tiers</strong> are assigned by fame earned in the event. Players with higher fame qualify for P-Tier 1 and receive priority access to top-tier rewards. Players with lower fame are assigned P-Tier 2 and still receive meaningful rewards.</p>
+    <p><strong>Reward Tiers</strong> indicate item rarity and value:</p>
+    <div class="tier-legend">
+      <span class="tleg t1l">T1 — Premium</span>
+      <span class="tleg t2l">T2 — Valuable</span>
+      <span class="tleg t3l">T3 — Common</span>
+      <span class="tleg t4l">T4 — Filler</span>
+    </div>
+    <p><strong>Category Limit:</strong> Each player can receive a maximum of <strong>5 reward categories</strong> per round. Resources (Oil, Food, Odinium) each count as 1 category. This prevents any single player from monopolising the treasury.</p>
+    <p><strong>CP-Aware Allocation:</strong> The system tracks each player's combat power and adjusts rewards accordingly (less likely to need mastery pages, as an example), and algorithm works to ensure rewards are not over-weighted to higher CP players. Players who contributed more receive higher-value reward tiers, while still ensuring every eligible player receives something.</p>
+    <p><strong>Cross-Round Balancing:</strong> Reward distributions are context-aware — each round considers cumulative rewards received thus far to ensure fair distribution. Players who received fewer or lower-tier rewards in previous rounds get priority in the current round. Treasury inventory resets each round (undistributed items are lost), so the algorithm maximizes usage of all T1 and T2 rewards every round.</p>
+    <p><strong>Transparency:</strong> All distributions are recorded here exactly as executed. Player names are shown as they appear in-game. UIDs are never stored or displayed.</p>
+  </div>
+</div>
+
 <div class="round-notice" id="roundNotice" style="display:none">
   <div class="notice-box" id="roundNoticeBox"></div>
 </div>
@@ -269,26 +310,7 @@
       <tbody id="tableBody"></tbody>
     </table>
   </div>
-  <div class="method-section">
-    <div class="method-header" onclick="toggleMethod()">
-      <span style="flex:1">How Distribution Works</span>
-      <span class="chevron closed" id="methodChevron">&#9660;</span>
-    </div>
-    <div class="method-body" id="methodBody">
-      <p><strong>Player Tiers</strong> are assigned by fame earned in the event. Players with higher fame qualify for P-Tier 1 and receive priority access to top-tier rewards. Players with lower fame are assigned P-Tier 2 and still receive meaningful rewards.</p>
-      <p><strong>Reward Tiers</strong> indicate item rarity and value:</p>
-      <div class="tier-legend">
-        <span class="tleg t1l">T1 — Premium</span>
-        <span class="tleg t2l">T2 — Valuable</span>
-        <span class="tleg t3l">T3 — Common</span>
-        <span class="tleg t4l">T4 — Filler</span>
-      </div>
-      <p><strong>Category Limit:</strong> Each player can receive a maximum of <strong>5 reward categories</strong> per round. Resources (Oil, Food, Odinium) each count as 1 category. This prevents any single player from monopolising the treasury.</p>
-      <p><strong>CP-Aware Allocation:</strong> The system tracks each player's combat power and adjusts rewards accordingly (less likely to need mastery pages, as an example), and algorithm works to ensure rewards are not over-weighted to higher CP players. Players who contributed more receive higher-value reward tiers, while still ensuring every eligible player receives something.</p>
-      <p><strong>Cross-Round Balancing:</strong> Reward distributions are context-aware — each round considers cumulative rewards received thus far to ensure fair distribution. Players who received fewer or lower-tier rewards in previous rounds get priority in the current round. Treasury inventory resets each round (undistributed items are lost), so the algorithm maximizes usage of all T1 and T2 rewards every round.</p>
-      <p><strong>Transparency:</strong> All distributions are recorded here exactly as executed. Player names are shown as they appear in-game. UIDs are never stored or displayed.</p>
-    </div>
-  </div>
+
 </div>
 
 <!-- Player Detail Modal -->
