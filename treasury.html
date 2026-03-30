@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https://raw.githubusercontent.com data:; connect-src https://raw.githubusercontent.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'">
+<title>UD Treasury — 2864</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --card: #1c2128; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #79c0ff;
+    --army: #3fb950; --navy: #388bfd; --air: #d29922; --purple: #a371f7;
+    --t1: #d29922; --t2: #bc8cff; --t3: #79c0ff; --t4: #8b949e;
+    --p1: #3fb950; --p2: #388bfd;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* Header */
+  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: .75rem 1rem; display: flex; align-items: center; gap: .75rem; position: sticky; top: 0; z-index: 100; }
+  .header h1 { font-size: 1rem; font-weight: 600; flex: 1; }
+  .home-btn { display: flex; align-items: center; justify-content: center; background: var(--card); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: .4rem .6rem; text-decoration: none; transition: all .15s; }
+  .home-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .event-badge { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: .15rem .55rem; font-size: .7rem; color: var(--muted); font-weight: 600; white-space: nowrap; }
+
+  /* Controls row */
+  .controls { max-width: 1280px; margin: 1.25rem auto .75rem; padding: 0 1rem; width: 100%; display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; }
+  .round-select-wrap { display: flex; align-items: center; gap: .5rem; }
+  .round-select-wrap label { font-size: .8rem; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  .round-select { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .38rem .65rem; color: var(--text); font-size: .85rem; outline: none; cursor: pointer; }
+  .round-select:focus { border-color: var(--accent); }
+  .view-tabs { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .view-tab { background: none; border: none; padding: .38rem .85rem; color: var(--muted); font-size: .8rem; cursor: pointer; font-weight: 600; transition: all .15s; white-space: nowrap; }
+  .view-tab.active { background: var(--accent); color: var(--bg); }
+  .view-tab:not(.active):hover { background: var(--card); color: var(--text); }
+  .search-wrap { flex: 1; min-width: 160px; }
+  .search-wrap input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .38rem .65rem; color: var(--text); font-size: .85rem; outline: none; }
+  .search-wrap input:focus { border-color: var(--accent); }
+  .search-wrap input::placeholder { color: var(--muted); }
+  .sort-wrap { display: flex; align-items: center; gap: .4rem; }
+  .sort-wrap label { font-size: .8rem; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  .sort-select { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .38rem .65rem; color: var(--text); font-size: .85rem; outline: none; cursor: pointer; }
+  .sort-select:focus { border-color: var(--accent); }
+
+  /* Status */
+  .status { text-align: center; padding: .5rem 1rem; color: var(--muted); font-size: .85rem; }
+  .status.error { color: #f85149; }
+
+  /* Round notice */
+  .round-notice { max-width: 1280px; margin: 0 auto .75rem; padding: 0 1rem; width: 100%; }
+  .notice-box { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--air); border-radius: 8px; padding: .65rem .9rem; font-size: .82rem; color: var(--muted); }
+
+  /* Summary stats */
+  .summary-bar { max-width: 1280px; margin: 0 auto .85rem; padding: 0 1rem; width: 100%; }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .6rem; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: .7rem .9rem; }
+  .stat-label { font-size: .65rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; color: var(--muted); margin-bottom: .35rem; }
+  .stat-value { font-size: 1.1rem; font-weight: 700; color: var(--text); }
+  .stat-value.accent { color: var(--accent); }
+  .stat-sub { font-size: .72rem; color: var(--muted); margin-top: .2rem; display: flex; flex-wrap: wrap; gap: .35rem; }
+  .stat-sub .chip { display: inline-flex; align-items: center; gap: .25rem; padding: .1rem .35rem; border-radius: 4px; font-weight: 600; }
+  .chip.p1 { background: rgba(63,185,80,.12); color: var(--p1); border: 1px solid rgba(63,185,80,.3); }
+  .chip.p2 { background: rgba(56,139,253,.12); color: var(--p2); border: 1px solid rgba(56,139,253,.3); }
+  .chip.t1c { background: rgba(210,153,34,.12); color: var(--t1); border: 1px solid rgba(210,153,34,.3); }
+  .chip.t2c { background: rgba(188,140,255,.12); color: var(--t2); border: 1px solid rgba(188,140,255,.3); }
+  .chip.t3c { background: rgba(121,192,255,.12); color: var(--t3); border: 1px solid rgba(121,192,255,.3); }
+  .chip.t4c { background: rgba(139,148,158,.12); color: var(--t4); border: 1px solid rgba(139,148,158,.3); }
+  .inventory-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: .4rem; margin-top: .6rem; }
+  .inv-item { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .4rem .55rem; }
+  .inv-name { font-size: .68rem; color: var(--muted); margin-bottom: .25rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .inv-bar-track { background: var(--border); border-radius: 2px; height: 4px; margin-bottom: .2rem; }
+  .inv-bar-fill { height: 4px; border-radius: 2px; background: var(--accent); transition: width .3s; }
+  .inv-pct { font-size: .65rem; font-weight: 700; color: var(--text); }
+  .inv-counts { font-size: .6rem; color: var(--muted); }
+
+  /* Main content */
+  #content { max-width: 1280px; margin: 0 auto 2rem; padding: 0 1rem; width: 100%; flex: 1; }
+
+  /* Table view */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: .82rem; min-width: 680px; }
+  thead th { background: var(--surface); padding: .6rem .75rem; text-align: left; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; user-select: none; }
+  thead th.sortable { cursor: pointer; }
+  thead th.sortable:hover { color: var(--accent); }
+  thead th.sorted { color: var(--accent); }
+  thead th .sort-arrow { margin-left: .25rem; opacity: .5; }
+  thead th.sorted .sort-arrow { opacity: 1; }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,.03); }
+  tbody td { padding: .55rem .75rem; vertical-align: middle; }
+  td.rank { color: var(--muted); font-size: .75rem; font-weight: 600; width: 42px; }
+  td.name-cell { font-weight: 600; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.tier-cell { width: 56px; }
+  .p-badge { display: inline-flex; align-items: center; padding: .12rem .4rem; border-radius: 4px; font-size: .65rem; font-weight: 700; letter-spacing: .02em; }
+  .p-badge.p1 { background: rgba(63,185,80,.15); color: var(--p1); border: 1px solid rgba(63,185,80,.35); }
+  .p-badge.p2 { background: rgba(56,139,253,.15); color: var(--p2); border: 1px solid rgba(56,139,253,.35); }
+  td.num { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .num-val { color: var(--text); font-weight: 600; }
+  td.rewards-cell { min-width: 200px; }
+  .reward-list { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+  .reward-chip { display: inline-flex; align-items: center; gap: .3rem; padding: .15rem .4rem .15rem .25rem; border-radius: 5px; border: 1px solid var(--border); background: var(--surface); font-size: .72rem; white-space: nowrap; }
+  .reward-chip.t1r { border-color: rgba(210,153,34,.35); background: rgba(210,153,34,.07); }
+  .reward-chip.t2r { border-color: rgba(188,140,255,.35); background: rgba(188,140,255,.07); }
+  .reward-chip.t3r { border-color: rgba(121,192,255,.25); background: rgba(121,192,255,.05); }
+  .reward-chip.t4r { border-color: rgba(139,148,158,.2); background: transparent; }
+  .reward-icon { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; }
+  .reward-count { font-weight: 700; color: var(--text); }
+  .reward-name { color: var(--muted); font-size: .65rem; }
+  .no-results { text-align: center; padding: 2.5rem; color: var(--muted); font-size: .85rem; }
+
+  /* Methodology section */
+  .method-section { margin-top: 1.5rem; }
+  .method-header { display: flex; align-items: center; gap: .5rem; cursor: pointer; user-select: none; padding: .65rem .9rem; background: var(--card); border: 1px solid var(--border); border-radius: 8px; font-size: .82rem; font-weight: 600; transition: background .15s; }
+  .method-header:hover { background: var(--surface); }
+  .method-header .chevron { font-size: .7rem; transition: transform .2s; color: var(--muted); }
+  .method-header .chevron.closed { transform: rotate(-90deg); }
+  .method-body { background: var(--card); border: 1px solid var(--border); border-top: none; border-radius: 0 0 8px 8px; padding: 1rem 1.25rem; display: none; }
+  .method-body.open { display: block; }
+  .method-body p { font-size: .82rem; line-height: 1.6; color: var(--muted); margin-bottom: .75rem; }
+  .method-body p:last-child { margin-bottom: 0; }
+  .method-body strong { color: var(--text); }
+  .method-body .tier-legend { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0 .75rem; }
+  .method-body .tleg { display: inline-flex; align-items: center; gap: .4rem; font-size: .75rem; font-weight: 600; padding: .2rem .55rem; border-radius: 5px; }
+  .tleg.t1l { background: rgba(210,153,34,.12); color: var(--t1); border: 1px solid rgba(210,153,34,.3); }
+  .tleg.t2l { background: rgba(188,140,255,.12); color: var(--t2); border: 1px solid rgba(188,140,255,.3); }
+  .tleg.t3l { background: rgba(121,192,255,.12); color: var(--t3); border: 1px solid rgba(121,192,255,.3); }
+  .tleg.t4l { background: rgba(139,148,158,.12); color: var(--t4); border: 1px solid rgba(139,148,158,.3); }
+
+  /* Empty/loading state */
+  .loading-box { text-align: center; padding: 3rem 1rem; color: var(--muted); font-size: .85rem; }
+
+  /* Footer */
+  footer { margin-top: auto; text-align: center; padding: 2rem 1rem; font-size: .7rem; color: var(--muted); }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  @keyframes footer-shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+  .shimmer-text { background-image: linear-gradient(90deg, var(--muted) 0%, var(--accent) 25%, var(--muted) 50%, var(--accent) 75%, var(--muted) 100%); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: footer-shimmer 6s linear infinite; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .controls { gap: .5rem; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .inventory-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 520px) {
+    .stats-grid { grid-template-columns: 1fr; }
+    .controls { flex-direction: column; align-items: stretch; }
+    .round-select-wrap, .sort-wrap, .view-tabs { align-self: flex-start; }
+    table { font-size: .78rem; }
+    .reward-name { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="https://2864tw.com/index.html" class="home-btn" title="Home">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8.354 1.146a.5.5 0 0 0-.708 0l-6 6A.5.5 0 0 0 1.5 7.5v7a.5.5 0 0 0 .5.5h4.5a.5.5 0 0 0 .5-.5v-4h2v4a.5.5 0 0 0 .5.5H14a.5.5 0 0 0 .5-.5v-7a.5.5 0 0 0-.146-.354L8.354 1.146z"/></svg>
+  </a>
+  <h1>UD Treasury</h1>
+  <span class="event-badge" id="eventBadge">Loading...</span>
+</div>
+
+<div id="statusEl" class="status"></div>
+
+<div class="controls">
+  <div class="round-select-wrap">
+    <label for="roundSelect">Round</label>
+    <select id="roundSelect" class="round-select"></select>
+  </div>
+  <div class="view-tabs">
+    <button class="view-tab active" id="tabRound" onclick="switchView('round')">Round View</button>
+    <button class="view-tab" id="tabCumulative" onclick="switchView('cumulative')">Cumulative</button>
+  </div>
+  <div class="search-wrap">
+    <input type="text" id="searchInput" placeholder="Search player name..." oninput="renderTable()">
+  </div>
+  <div class="sort-wrap">
+    <label for="sortSelect">Sort by</label>
+    <select id="sortSelect" class="sort-select" onchange="renderTable()">
+      <option value="fame-desc">Fame ↓</option>
+      <option value="fame-asc">Fame ↑</option>
+      <option value="merit-desc">Merit ↓</option>
+      <option value="merit-asc">Merit ↑</option>
+      <option value="power-desc">Power ↓</option>
+      <option value="power-asc">Power ↑</option>
+      <option value="name-asc">Name A→Z</option>
+    </select>
+  </div>
+</div>
+
+<div class="round-notice" id="roundNotice" style="display:none">
+  <div class="notice-box" id="roundNoticeBox"></div>
+</div>
+
+<div class="summary-bar" id="summaryBar" style="display:none">
+  <div class="stats-grid" id="statsGrid"></div>
+  <div class="inventory-grid" id="inventoryGrid"></div>
+</div>
+
+<div id="content">
+  <div class="loading-box" id="loadingBox">Loading treasury data...</div>
+  <div class="table-wrap" id="tableWrap" style="display:none">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Player</th>
+          <th>Tier</th>
+          <th class="sortable" onclick="setSort('fame')" id="thFame">Fame <span class="sort-arrow">↕</span></th>
+          <th class="sortable" onclick="setSort('merit')" id="thMerit">Merit <span class="sort-arrow">↕</span></th>
+          <th class="sortable" onclick="setSort('power')" id="thPower">Power <span class="sort-arrow">↕</span></th>
+          <th>Rewards</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+  <div class="method-section">
+    <div class="method-header" onclick="toggleMethod()">
+      <span style="flex:1">How Distribution Works</span>
+      <span class="chevron closed" id="methodChevron">&#9660;</span>
+    </div>
+    <div class="method-body" id="methodBody">
+      <p><strong>Player Tiers</strong> are assigned by fame earned in the event. Players with higher fame qualify for P-Tier 1 and receive priority access to top-tier rewards. Players with lower fame are assigned P-Tier 2 and still receive meaningful rewards.</p>
+      <p><strong>Reward Tiers</strong> indicate item rarity and value:</p>
+      <div class="tier-legend">
+        <span class="tleg t1l">T1 — Premium</span>
+        <span class="tleg t2l">T2 — Valuable</span>
+        <span class="tleg t3l">T3 — Common</span>
+        <span class="tleg t4l">T4 — Filler</span>
+      </div>
+      <p><strong>Category Limit:</strong> Each player can receive a maximum of <strong>5 reward categories</strong> per round. Resources (Oil, Food, Odinium) each count as 1 category. This prevents any single player from monopolising the treasury.</p>
+      <p><strong>CP-Aware Allocation:</strong> The system tracks each player's combat power contribution and adjusts rewards accordingly — players who contributed more receive higher-value reward tiers, while still ensuring every eligible player receives something.</p>
+      <p><strong>Cross-Round Balancing:</strong> Inventory is preserved across rounds. Items not distributed in one round roll over to future rounds, ensuring the full treasury is distributed fairly over the course of the event.</p>
+      <p><strong>Transparency:</strong> All distributions are recorded here exactly as executed. Player names are shown as they appear in-game. UIDs are never stored or displayed.</p>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <a href="https://github.com/texnottexas/landing-page" class="shimmer-text">Brought to you by supporters of the fk boats movement</a>
+  <div style="margin-top:.4rem"><a href="changelog.html" style="color:var(--muted);font-size:.6rem">Changelog</a></div>
+</footer>
+
+<script>
+/* All dynamic content on this page is rendered from our own static JSON files fetched from
+   our own repository. No user-supplied data is ever rendered as HTML — player names from
+   the JSON are inserted via textContent (not innerHTML) in the DOM builder functions.
+   The only innerHTML usage builds structural HTML from trusted static JSON values (numbers,
+   known tier strings, relative asset paths). Search input is used only for array filtering,
+   never rendered into the DOM. */
+
+var ASSET_BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/';
+var distData = null;
+var currentView = 'round';
+
+function fmtNum(n) {
+  if (n == null || isNaN(n)) return '\u2014';
+  return Number(n).toLocaleString();
+}
+
+function fmtPower(n) {
+  if (n == null || isNaN(n)) return '\u2014';
+  if (n >= 1e12) return (n / 1e12).toFixed(1).replace(/\.0$/, '') + 'T';
+  if (n >= 1e9) return (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(n);
+}
+
+function fmtPct(val, total) {
+  if (!total) return '0%';
+  return Math.round(val / total * 100) + '%';
+}
+
+/* Allowed reward tier class names — validated against known values, no user input */
+function tierClass(t) {
+  if (t === 'T1') return 't1r';
+  if (t === 'T2') return 't2r';
+  if (t === 'T3') return 't3r';
+  return 't4r';
+}
+
+function setSort(field) {
+  var sel = document.getElementById('sortSelect');
+  var parts = sel.value.split('-');
+  var curField = parts[0];
+  var curDir = parts[1];
+  sel.value = field + '-' + (curField === field && curDir === 'desc' ? 'asc' : 'desc');
+  renderTable();
+}
+
+function switchView(v) {
+  currentView = v;
+  document.getElementById('tabRound').classList.toggle('active', v === 'round');
+  document.getElementById('tabCumulative').classList.toggle('active', v === 'cumulative');
+  document.getElementById('roundSelect').disabled = (v === 'cumulative');
+  renderAll();
+}
+
+function toggleMethod() {
+  var body = document.getElementById('methodBody');
+  var chevron = document.getElementById('methodChevron');
+  var isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  chevron.classList.toggle('closed', isOpen);
+}
+
+function getAvailableRounds() {
+  if (!distData) return [];
+  return Object.keys(distData.rounds).map(Number).sort(function(a, b) { return a - b; });
+}
+
+function getCurrentRound() {
+  return parseInt(document.getElementById('roundSelect').value, 10);
+}
+
+function buildCumulativeDistributions() {
+  if (!distData) return [];
+  var playerMap = {};
+  getAvailableRounds().forEach(function(r) {
+    var rdata = distData.rounds[String(r)];
+    if (!rdata) return;
+    rdata.distributions.forEach(function(d) {
+      var k = d.siteKey;
+      if (!playerMap[k]) {
+        playerMap[k] = { siteKey: d.siteKey, name: d.name, playerTier: d.playerTier, fame: d.fame, merit: d.merit, power: d.power, rewards: [] };
+      } else {
+        playerMap[k].name = d.name;
+        playerMap[k].fame = d.fame;
+        playerMap[k].merit = d.merit;
+        playerMap[k].power = d.power;
+        playerMap[k].playerTier = d.playerTier;
+      }
+      d.rewards.forEach(function(rw) {
+        var ex = playerMap[k].rewards.find(function(x) { return x.itemId === rw.itemId; });
+        if (ex) { ex.count += rw.count; }
+        else { playerMap[k].rewards.push({itemId: rw.itemId, name: rw.name, count: rw.count, tier: rw.tier, icon: rw.icon}); }
+      });
+    });
+  });
+  return Object.values(playerMap);
+}
+
+/* Build a summary stat card element without innerHTML for player-name-bearing fields */
+function buildStatCard(label, mainValue, mainClass, chips) {
+  var card = document.createElement('div');
+  card.className = 'stat-card';
+  var lbl = document.createElement('div');
+  lbl.className = 'stat-label';
+  lbl.textContent = label;
+  var val = document.createElement('div');
+  val.className = 'stat-value' + (mainClass ? ' ' + mainClass : '');
+  val.textContent = mainValue;
+  card.appendChild(lbl);
+  card.appendChild(val);
+  if (chips && chips.length) {
+    var sub = document.createElement('div');
+    sub.className = 'stat-sub';
+    chips.forEach(function(c) {
+      var sp = document.createElement('span');
+      sp.className = 'chip ' + c.cls;
+      sp.textContent = c.text;
+      sub.appendChild(sp);
+    });
+    card.appendChild(sub);
+  }
+  return card;
+}
+
+function renderSummary(summary) {
+  var bar = document.getElementById('summaryBar');
+  var statsGrid = document.getElementById('statsGrid');
+  var invGrid = document.getElementById('inventoryGrid');
+  if (!summary) { bar.style.display = 'none'; return; }
+  bar.style.display = '';
+  statsGrid.innerHTML = '';
+
+  var bpt = summary.byPlayerTier || {};
+  var brt = summary.byRewardTier || {};
+  var inv = summary.inventoryUsed || {};
+
+  statsGrid.appendChild(buildStatCard('Players Receiving Rewards', fmtNum(summary.totalPlayers), 'accent', [
+    {cls: 'p1', text: 'P1 ' + fmtNum(bpt.tier1 || 0)},
+    {cls: 'p2', text: 'P2 ' + fmtNum(bpt.tier2 || 0)}
+  ]));
+  statsGrid.appendChild(buildStatCard('Reward Category Slots', fmtNum(summary.totalCategories), '', [
+    {cls: 't1c', text: 'T1 ' + fmtNum(brt.T1 || 0)},
+    {cls: 't2c', text: 'T2 ' + fmtNum(brt.T2 || 0)},
+    {cls: 't3c', text: 'T3 ' + fmtNum(brt.T3 || 0)},
+    brt.T4 ? {cls: 't4c', text: 'T4 ' + fmtNum(brt.T4)} : null
+  ].filter(Boolean)));
+
+  /* Inventory bars — icon paths and item names come from our own JSON, not user input */
+  invGrid.innerHTML = '';
+  Object.entries(inv).forEach(function(entry) {
+    var name = entry[0];
+    var info = entry[1];
+    var fillW = Math.round(info.distributed / info.totalCount * 100);
+    var item = document.createElement('div');
+    item.className = 'inv-item';
+
+    var nm = document.createElement('div');
+    nm.className = 'inv-name';
+    nm.title = name;
+    nm.textContent = name;
+
+    var track = document.createElement('div');
+    track.className = 'inv-bar-track';
+    var fill = document.createElement('div');
+    fill.className = 'inv-bar-fill';
+    fill.style.width = fillW + '%';
+    track.appendChild(fill);
+
+    var pct = document.createElement('div');
+    pct.className = 'inv-pct';
+    pct.textContent = fmtPct(info.distributed, info.totalCount) + ' used';
+
+    var counts = document.createElement('div');
+    counts.className = 'inv-counts';
+    counts.textContent = fmtNum(info.distributed) + ' / ' + fmtNum(info.totalCount);
+
+    item.appendChild(nm);
+    item.appendChild(track);
+    item.appendChild(pct);
+    item.appendChild(counts);
+    invGrid.appendChild(item);
+  });
+}
+
+function sortDistributions(dists) {
+  var parts = document.getElementById('sortSelect').value.split('-');
+  var field = parts[0], dir = parts[1];
+  return dists.slice().sort(function(a, b) {
+    var av = field === 'name' ? (a.name || '').toLowerCase() : (a[field] || 0);
+    var bv = field === 'name' ? (b.name || '').toLowerCase() : (b[field] || 0);
+    if (av < bv) return dir === 'desc' ? 1 : -1;
+    if (av > bv) return dir === 'desc' ? -1 : 1;
+    return 0;
+  });
+}
+
+/* Build a table row using DOM methods so player names go through textContent */
+function buildRow(d, rank) {
+  var tr = document.createElement('tr');
+
+  /* rank */
+  var tdRank = document.createElement('td');
+  tdRank.className = 'rank';
+  tdRank.textContent = rank;
+  tr.appendChild(tdRank);
+
+  /* name */
+  var tdName = document.createElement('td');
+  tdName.className = 'name-cell';
+  tdName.title = d.name || '';
+  tdName.textContent = d.name || '\u2014';
+  tr.appendChild(tdName);
+
+  /* player tier badge */
+  var tdTier = document.createElement('td');
+  tdTier.className = 'tier-cell';
+  var badge = document.createElement('span');
+  var pt = d.playerTier || 2;
+  badge.className = 'p-badge p' + pt;
+  badge.textContent = 'P' + pt;
+  tdTier.appendChild(badge);
+  tr.appendChild(tdTier);
+
+  /* fame */
+  var tdFame = document.createElement('td');
+  tdFame.className = 'num';
+  var spFame = document.createElement('span');
+  spFame.className = 'num-val';
+  spFame.textContent = fmtNum(d.fame);
+  tdFame.appendChild(spFame);
+  tr.appendChild(tdFame);
+
+  /* merit */
+  var tdMerit = document.createElement('td');
+  tdMerit.className = 'num';
+  var spMerit = document.createElement('span');
+  spMerit.className = 'num-val';
+  spMerit.textContent = fmtNum(d.merit);
+  tdMerit.appendChild(spMerit);
+  tr.appendChild(tdMerit);
+
+  /* power */
+  var tdPower = document.createElement('td');
+  tdPower.className = 'num';
+  var spPower = document.createElement('span');
+  spPower.className = 'num-val';
+  spPower.textContent = fmtPower(d.power);
+  tdPower.appendChild(spPower);
+  tr.appendChild(tdPower);
+
+  /* rewards */
+  var tdRewards = document.createElement('td');
+  tdRewards.className = 'rewards-cell';
+  var rewardList = document.createElement('div');
+  rewardList.className = 'reward-list';
+  (d.rewards || []).forEach(function(rw) {
+    var chip = document.createElement('span');
+    chip.className = 'reward-chip ' + tierClass(rw.tier);
+    if (rw.icon) {
+      var img = document.createElement('img');
+      img.className = 'reward-icon';
+      /* Icon path comes from our own JSON — relative asset path, not user supplied */
+      img.src = ASSET_BASE + rw.icon;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.onerror = function() { this.style.display = 'none'; };
+      chip.appendChild(img);
+    }
+    var cnt = document.createElement('span');
+    cnt.className = 'reward-count';
+    cnt.textContent = fmtNum(rw.count);
+    chip.appendChild(cnt);
+    var nm = document.createElement('span');
+    nm.className = 'reward-name';
+    nm.textContent = rw.name;
+    chip.appendChild(nm);
+    rewardList.appendChild(chip);
+  });
+  tdRewards.appendChild(rewardList);
+  tr.appendChild(tdRewards);
+
+  return tr;
+}
+
+function renderTable() {
+  var search = document.getElementById('searchInput').value.trim().toLowerCase();
+  var tbody = document.getElementById('tableBody');
+  var wrap = document.getElementById('tableWrap');
+
+  var dists;
+  if (currentView === 'cumulative') {
+    dists = buildCumulativeDistributions();
+  } else {
+    var r = getCurrentRound();
+    var rdata = distData && distData.rounds && distData.rounds[String(r)];
+    dists = rdata ? rdata.distributions : [];
+  }
+
+  if (search) {
+    dists = dists.filter(function(d) { return d.name && d.name.toLowerCase().includes(search); });
+  }
+  dists = sortDistributions(dists);
+
+  /* Update sort header indicators */
+  ['fame', 'merit', 'power'].forEach(function(f) {
+    var cap = f.charAt(0).toUpperCase() + f.slice(1);
+    var th = document.getElementById('th' + cap);
+    if (!th) return;
+    var sortVal = document.getElementById('sortSelect').value;
+    var active = sortVal.startsWith(f);
+    th.classList.toggle('sorted', active);
+    var arrow = th.querySelector('.sort-arrow');
+    if (arrow) arrow.textContent = active ? (sortVal.endsWith('desc') ? '\u2193' : '\u2191') : '\u2195';
+  });
+
+  tbody.innerHTML = '';
+  wrap.style.display = '';
+
+  if (!dists.length) {
+    var noRow = document.createElement('tr');
+    var noTd = document.createElement('td');
+    noTd.colSpan = 7;
+    noTd.className = 'no-results';
+    noTd.textContent = search ? 'No players match your search.' : 'No distribution data for this round.';
+    noRow.appendChild(noTd);
+    tbody.appendChild(noRow);
+    return;
+  }
+
+  var frag = document.createDocumentFragment();
+  dists.forEach(function(d, i) { frag.appendChild(buildRow(d, i + 1)); });
+  tbody.appendChild(frag);
+}
+
+function renderAll() {
+  if (!distData) return;
+  var r = getCurrentRound();
+  var noticeEl = document.getElementById('roundNotice');
+  var noticeBox = document.getElementById('roundNoticeBox');
+
+  if (currentView === 'round' && r === 1) {
+    noticeEl.style.display = '';
+    /* Build notice with DOM methods */
+    noticeBox.innerHTML = '';
+    var strong = document.createElement('strong');
+    strong.textContent = 'Round 1:';
+    noticeBox.appendChild(strong);
+    noticeBox.appendChild(document.createTextNode(' Distribution data is not available for Round 1. Rewards for this round were distributed manually before the tracking system was in place.'));
+    document.getElementById('summaryBar').style.display = 'none';
+    document.getElementById('tableWrap').style.display = 'none';
+    document.getElementById('loadingBox').style.display = 'none';
+    return;
+  }
+  noticeEl.style.display = 'none';
+
+  if (currentView === 'cumulative') {
+    renderSummary(null);
+  } else {
+    var rdata = distData.rounds && distData.rounds[String(r)];
+    renderSummary(rdata ? rdata.summary : null);
+  }
+
+  document.getElementById('loadingBox').style.display = 'none';
+  renderTable();
+}
+
+function populateRoundSelector() {
+  if (!distData) return;
+  var sel = document.getElementById('roundSelect');
+  var total = distData.totalRounds || 15;
+  var available = getAvailableRounds();
+  sel.innerHTML = '';
+  for (var r = 1; r <= total; r++) {
+    var opt = document.createElement('option');
+    opt.value = r;
+    opt.textContent = 'Round ' + r + (available.includes(r) ? '' : ' (no data)');
+    sel.appendChild(opt);
+  }
+  if (available.length) { sel.value = available[available.length - 1]; }
+}
+
+async function loadData() {
+  var statusEl = document.getElementById('statusEl');
+  statusEl.textContent = 'Loading\u2026';
+  try {
+    var responses = await Promise.all([
+      fetch('https://raw.githubusercontent.com/texnottexas/landing-page/main/data/ud-distributions.json'),
+      fetch('https://raw.githubusercontent.com/texnottexas/landing-page/main/data/treasury-items.json')
+    ]);
+    if (!responses[0].ok) throw new Error('Failed to load distribution data (' + responses[0].status + ')');
+    distData = await responses[0].json();
+    /* treasury-items.json loaded for future use; not strictly needed for display */
+
+    document.getElementById('eventBadge').textContent = distData.event || 'UD Treasury';
+    statusEl.textContent = '';
+
+    populateRoundSelector();
+    document.getElementById('roundSelect').addEventListener('change', renderAll);
+    renderAll();
+  } catch (e) {
+    statusEl.textContent = 'Error: ' + e.message;
+    statusEl.className = 'status error';
+    document.getElementById('loadingBox').style.display = 'none';
+  }
+}
+
+loadData();
+</script>
+</body>
+</html>
