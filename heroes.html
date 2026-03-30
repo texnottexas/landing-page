@@ -24,7 +24,7 @@
 
   /* Search bar */
   .search-bar { max-width: 1200px; margin: 1.25rem auto .75rem; padding: 0 1rem; width: 100%; }
-  .search-bar input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .6rem .75rem; color: var(--text); font-size: .95rem; outline: none; }
+  .search-bar input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .6rem .75rem; color: var(--text); font-size: .85rem; outline: none; box-sizing: border-box; }
   .search-bar input:focus { border-color: var(--accent); }
   .search-bar input::placeholder { color: var(--muted); }
 
@@ -174,7 +174,7 @@
 </div>
 
 <div class="search-bar">
-  <input id="searchInput" type="text" placeholder="Search heroes by name, skill, type, or effect...">
+  <input id="searchInput" type="text" placeholder="Search heroes, skills, effects...">
 </div>
 
 <div class="filter-row" id="typeFilters"></div>
@@ -501,15 +501,16 @@ function highlightDescription(desc) {
 }
 
 function renderSkillSection(hero) {
-  var skillIconFile = hero.skillIcon ? hero.skillIcon.replace('skill_icon', 'skill_') : '';
-  var skillIconUrl = skillIconFile
-    ? ASSET_BASE + 'assets/skill-icons/' + skillIconFile + '.png'
-    : '';
+  // Icon files use skill_{skillId}.png — try 10000+heroId, fallback 2010000+heroId via onerror
+  var skillBase = ASSET_BASE + 'assets/skill-icons/skill_';
+  var primaryIcon = skillBase + (10000 + hero.heroId) + '.png';
+  var fallbackIcon = skillBase + (2010000 + hero.heroId) + '.png';
+  var skillIconUrl = hero.heroId ? primaryIcon : '';
   var html = '<div class="skill-section">';
   html += '<div class="skill-section-title">Native Skill</div>';
   html += '<div class="skill-header">';
   if (skillIconUrl) {
-    html += '<img class="skill-icon native" src="' + escapeAttr(skillIconUrl) + '" alt="" onerror="this.style.display=\'none\'">';
+    html += '<img class="skill-icon native" src="' + escapeAttr(skillIconUrl) + '" alt="" onerror="this.src=\'' + escapeAttr(fallbackIcon) + '\';this.onerror=function(){this.style.display=\'none\'}">';
   }
   html += '<div class="skill-info"><div class="skill-name">' + (hero.skillName || 'Unknown') + '</div></div></div>';
   (hero.skills || []).forEach(function(s) {
