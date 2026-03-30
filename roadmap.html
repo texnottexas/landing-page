@@ -318,14 +318,15 @@ function renderCard(item, isGitHub) {
   titleEl.appendChild(document.createTextNode(item.title || ''));
   cardTop.appendChild(titleEl);
 
+  if (isEpic) {
+    var epicBadge = makeEl('span', 'card-type-badge epic-badge');
+    epicBadge.textContent = '\uD83D\uDC51 Epic';
+    cardTop.appendChild(epicBadge);
+  }
   if (isRel) {
     var relBadge = makeEl('span', 'card-type-badge release-badge');
     relBadge.textContent = getVersionTag(item) || 'Release';
     cardTop.appendChild(relBadge);
-  } else if (isEpic) {
-    var epicBadge = makeEl('span', 'card-type-badge epic-badge');
-    epicBadge.textContent = '\uD83D\uDC51 Epic';
-    cardTop.appendChild(epicBadge);
   }
 
   var badge = makeEl('span', 'card-badge');
@@ -371,10 +372,24 @@ function openDetail(item, isGitHub) {
 
   var isEpic = item.workItemType === 'Epic';
   var isRel = isRelease(item);
-  var srcCls = isGitHub ? 'github' : (isRel ? 'release' : isEpic ? 'epic' : 'ado');
-  var srcBadge = makeEl('span', 'detail-source ' + srcCls);
-  srcBadge.textContent = isGitHub ? 'GitHub Issue' : (isRel ? (getVersionTag(item) || 'Release') : isEpic ? '\uD83D\uDC51 Epic' : 'ADO');
-  badgesRow.appendChild(srcBadge);
+  if (isGitHub) {
+    var ghBadge = makeEl('span', 'detail-source github');
+    ghBadge.textContent = 'GitHub Issue';
+    badgesRow.appendChild(ghBadge);
+  } else if (isEpic) {
+    var epicSrc = makeEl('span', 'detail-source epic');
+    epicSrc.textContent = '\uD83D\uDC51 Epic';
+    badgesRow.appendChild(epicSrc);
+    if (isRel) {
+      var relSrc = makeEl('span', 'detail-source release');
+      relSrc.textContent = getVersionTag(item) || 'Release';
+      badgesRow.appendChild(relSrc);
+    }
+  } else {
+    var adoSrc = makeEl('span', 'detail-source ado');
+    adoSrc.textContent = 'ADO';
+    badgesRow.appendChild(adoSrc);
+  }
 
   var stateBadge = makeEl('span', 'card-badge');
   if (item.state === 'Done') { stateBadge.className += ' badge-done'; stateBadge.textContent = '\u2713 Done'; }
