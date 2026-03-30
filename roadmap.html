@@ -52,9 +52,13 @@ a:hover { text-decoration: underline; }
 .item-card:hover { border-color: var(--muted); background: var(--surface); }
 .item-card.done { border-left: 3px solid var(--good); }
 .item-card.doing { border-left: 3px solid var(--warn); }
-.item-card.epic { border-left: 3px solid #a371f7; }
-.item-card.epic.done { border-left: 3px solid #a371f7; }
-.card-type-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; white-space: nowrap; flex-shrink: 0; background: rgba(163,113,247,.15); color: #a371f7; border: 1px solid rgba(163,113,247,.3); }
+.item-card.epic { border-left: 3px solid var(--orange); }
+.item-card.epic.done { border-left: 3px solid var(--orange); }
+.item-card.release { border-left: 3px solid #a371f7; }
+.item-card.release.done { border-left: 3px solid #a371f7; }
+.card-type-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; white-space: nowrap; flex-shrink: 0; }
+.card-type-badge.release-badge { background: rgba(163,113,247,.15); color: #a371f7; border: 1px solid rgba(163,113,247,.3); }
+.card-type-badge.epic-badge { background: rgba(210,153,34,.15); color: var(--orange); border: 1px solid rgba(210,153,34,.3); }
 
 .card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 .card-title { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.4; flex: 1; }
@@ -92,7 +96,8 @@ a:hover { text-decoration: underline; }
 .detail-source { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 10px; }
 .detail-source.github { background: rgba(210,153,34,.15); color: var(--orange); border: 1px solid rgba(210,153,34,.3); }
 .detail-source.ado { background: rgba(56,139,253,.15); color: var(--blue); border: 1px solid rgba(56,139,253,.3); }
-.detail-source.epic { background: rgba(163,113,247,.15); color: #a371f7; border: 1px solid rgba(163,113,247,.3); }
+.detail-source.epic { background: rgba(210,153,34,.15); color: var(--orange); border: 1px solid rgba(210,153,34,.3); }
+.detail-source.release { background: rgba(163,113,247,.15); color: #a371f7; border: 1px solid rgba(163,113,247,.3); }
 .detail-tag { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 10px; background: var(--card); border: 1px solid var(--border); color: var(--muted); }
 .detail-desc { font-size: 14px; color: var(--text); line-height: 1.65; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
 .detail-desc p { margin-bottom: 6px; }
@@ -287,9 +292,19 @@ function makeEl(tag, cls) {
   return el;
 }
 
+function isRelease(item) {
+  return item.workItemType === 'Epic' && /^v\d+\.\d+/.test(item.title || '');
+}
+
+function getVersionTag(item) {
+  var m = (item.title || '').match(/^(v\d+\.\d+\.\d+)/);
+  return m ? m[1] : '';
+}
+
 function renderCard(item, isGitHub) {
   var isEpic = item.workItemType === 'Epic';
-  var cls = 'item-card' + (isEpic ? ' epic' : '') + (item.state === 'Done' ? ' done' : item.state === 'Doing' ? ' doing' : '');
+  var isRel = isRelease(item);
+  var cls = 'item-card' + (isRel ? ' release' : isEpic ? ' epic' : '') + (item.state === 'Done' ? ' done' : item.state === 'Doing' ? ' doing' : '');
   var card = makeEl('div', cls);
 
   var cardTop = makeEl('div', 'card-top');
@@ -303,10 +318,14 @@ function renderCard(item, isGitHub) {
   titleEl.appendChild(document.createTextNode(item.title || ''));
   cardTop.appendChild(titleEl);
 
-  if (isEpic) {
-    var typeBadge = makeEl('span', 'card-type-badge');
-    typeBadge.textContent = 'Release';
-    cardTop.appendChild(typeBadge);
+  if (isRel) {
+    var relBadge = makeEl('span', 'card-type-badge release-badge');
+    relBadge.textContent = getVersionTag(item) || 'Release';
+    cardTop.appendChild(relBadge);
+  } else if (isEpic) {
+    var epicBadge = makeEl('span', 'card-type-badge epic-badge');
+    epicBadge.textContent = '\uD83D\uDC51 Epic';
+    cardTop.appendChild(epicBadge);
   }
 
   var badge = makeEl('span', 'card-badge');
@@ -351,9 +370,10 @@ function openDetail(item, isGitHub) {
   var badgesRow = makeEl('div', 'detail-badges');
 
   var isEpic = item.workItemType === 'Epic';
-  var srcCls = isGitHub ? 'github' : (isEpic ? 'epic' : 'ado');
+  var isRel = isRelease(item);
+  var srcCls = isGitHub ? 'github' : (isRel ? 'release' : isEpic ? 'epic' : 'ado');
   var srcBadge = makeEl('span', 'detail-source ' + srcCls);
-  srcBadge.textContent = isGitHub ? 'GitHub Issue' : (isEpic ? 'Release' : 'ADO');
+  srcBadge.textContent = isGitHub ? 'GitHub Issue' : (isRel ? (getVersionTag(item) || 'Release') : isEpic ? '\uD83D\uDC51 Epic' : 'ADO');
   badgesRow.appendChild(srcBadge);
 
   var stateBadge = makeEl('span', 'card-badge');
