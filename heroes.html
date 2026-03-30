@@ -112,13 +112,14 @@
   .sub-skill-title { font-size: .75rem; font-weight: 700; color: var(--accent); margin-bottom: .3rem; }
   .sub-skill-desc { font-size: .8rem; line-height: 1.55; color: var(--text); }
   .sub-skill-desc .val { color: var(--army); font-weight: 600; }
-  .sub-skill-desc .effect-name { color: var(--accent); }
+  .sub-skill-desc .effect-name { color: var(--accent); cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; }
+  .sub-skill-desc .effect-name:hover { text-decoration-style: solid; }
   .effect-tags-row { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .5rem; }
-  .effect-pill { background: rgba(121,192,255,.08); border: 1px solid rgba(121,192,255,.2); border-radius: 4px; padding: .1rem .4rem; font-size: .65rem; color: var(--accent); cursor: pointer; position: relative; transition: background .15s; }
+  .effect-pill { background: rgba(121,192,255,.08); border: 1px solid rgba(121,192,255,.2); border-radius: 4px; padding: .1rem .4rem; font-size: .65rem; color: var(--accent); cursor: pointer; transition: background .15s; }
   .effect-pill:hover { background: rgba(121,192,255,.2); }
-  .effect-tooltip { display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .5rem .65rem; font-size: .72rem; color: var(--text); line-height: 1.45; width: 260px; box-shadow: 0 4px 16px rgba(0,0,0,.5); z-index: 10; pointer-events: none; }
-  .effect-tooltip::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: var(--border); }
-  .effect-pill.show-tip .effect-tooltip { display: block; }
+  .effect-tooltip { display: none; position: fixed; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .6rem .75rem; font-size: .75rem; color: var(--text); line-height: 1.5; max-width: 280px; width: max-content; box-shadow: 0 4px 20px rgba(0,0,0,.6); z-index: 2000; }
+  .effect-tooltip .tip-title { font-weight: 700; color: var(--accent); margin-bottom: .25rem; font-size: .7rem; }
+  .effect-tooltip.visible { display: block; }
 
   /* Exclusive skill */
   .exclusive-section { border-top: 1px solid var(--border); padding-top: 1rem; }
@@ -189,6 +190,7 @@
   <div class="hero-grid hidden" id="srGrid"></div>
 </div>
 
+<div class="effect-tooltip" id="effectTooltip"></div>
 <div class="modal-overlay hidden" id="modalOverlay" onclick="if(event.target===this)closeModal()">
   <div class="modal" id="modalContent"></div>
 </div>
@@ -459,7 +461,9 @@ function highlightDescription(desc) {
   text = text.replace(/(\d+\.?\d*%|\d+-\d+|\{\d+\})/g, '<span class="val">$1</span>');
   getSortedEffectNames().forEach(function(name) {
     var escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    text = text.replace(new RegExp('\\b(' + escaped + ')\\b', 'g'), '<span class="effect-name">$1</span>');
+    var attrName = name.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+    text = text.replace(new RegExp('\\b(' + escaped + ')\\b', 'g'),
+      '<span class="effect-name" onclick="event.stopPropagation();showEffectTip(this,\'' + attrName + '\')">$1</span>');
   });
   return text;
 }
@@ -492,10 +496,7 @@ function renderSkillSection(hero) {
   if (effectSet.length) {
     html += '<div class="effect-tags-row">';
     effectSet.forEach(function(name) {
-      var desc = EFFECT_DESCRIPTIONS[name] || '';
-      html += '<span class="effect-pill" onclick="event.stopPropagation();toggleTip(this)">' + name
-        + (desc ? '<span class="effect-tooltip">' + desc + '</span>' : '')
-        + '</span>';
+      html += '<span class="effect-pill" onclick="event.stopPropagation();showEffectTip(this,\'' + escapeAttr(name) + '\')">' + name + '</span>';
     });
     html += '</div>';
   }
@@ -566,12 +567,46 @@ function openModal(heroId) {
 function closeModal() {
   document.getElementById('modalOverlay').classList.add('hidden');
   document.body.style.overflow = '';
+  var tip = document.getElementById('effectTooltip');
+  tip.classList.remove('visible');
+  tip._currentEl = null;
 }
 
-function toggleTip(el) {
-  var wasOpen = el.classList.contains('show-tip');
-  document.querySelectorAll('.effect-pill.show-tip').forEach(function(p) { p.classList.remove('show-tip'); });
-  if (!wasOpen) el.classList.add('show-tip');
+function showEffectTip(el, name) {
+  var tip = document.getElementById('effectTooltip');
+  var desc = EFFECT_DESCRIPTIONS[name];
+  if (!desc) return;
+
+  // If clicking same element, toggle off
+  if (tip.classList.contains('visible') && tip._currentEl === el) {
+    tip.classList.remove('visible');
+    tip._currentEl = null;
+    return;
+  }
+
+  tip.innerHTML = '<div class="tip-title">' + name + '</div>' + desc;
+  tip.classList.add('visible');
+  tip._currentEl = el;
+
+  // Position: above the element, clamped to viewport
+  var rect = el.getBoundingClientRect();
+  tip.style.left = '0';
+  tip.style.top = '0';
+  var tipRect = tip.getBoundingClientRect();
+  var tipW = tipRect.width;
+  var tipH = tipRect.height;
+
+  var left = rect.left + rect.width / 2 - tipW / 2;
+  var top = rect.top - tipH - 8;
+
+  // If above overflows, put below
+  if (top < 8) top = rect.bottom + 8;
+  // Clamp horizontal
+  if (left < 8) left = 8;
+  if (left + tipW > window.innerWidth - 8) left = window.innerWidth - tipW - 8;
+
+  tip.style.left = left + 'px';
+  tip.style.top = top + 'px';
 }
 
 function toggleSR() {
@@ -588,9 +623,17 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') closeModal();
 });
 document.addEventListener('click', function(e) {
-  if (!e.target.closest('.effect-pill')) {
-    document.querySelectorAll('.effect-pill.show-tip').forEach(function(p) { p.classList.remove('show-tip'); });
+  if (!e.target.closest('.effect-pill') && !e.target.closest('.effect-name') && !e.target.closest('.effect-tooltip')) {
+    var tip = document.getElementById('effectTooltip');
+    tip.classList.remove('visible');
+    tip._currentEl = null;
   }
+});
+
+document.querySelector('.modal').addEventListener('scroll', function() {
+  var tip = document.getElementById('effectTooltip');
+  tip.classList.remove('visible');
+  tip._currentEl = null;
 });
 
 loadData();
