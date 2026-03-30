@@ -108,6 +108,7 @@
   .reward-icon { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; }
   .reward-count { font-weight: 700; color: var(--text); }
   .reward-name { color: var(--muted); font-size: .65rem; }
+  .reward-complete { display: inline-flex; align-items: center; gap: .25rem; padding: .15rem .5rem; border-radius: 10px; font-size: .62rem; font-weight: 700; letter-spacing: .03em; background: rgba(63,185,80,.15); color: #3fb950; border: 1px solid rgba(63,185,80,.35); white-space: nowrap; }
   .no-results { text-align: center; padding: 2.5rem; color: var(--muted); font-size: .85rem; }
 
   /* Methodology section */
@@ -514,7 +515,7 @@ function sortDistributions(dists) {
 }
 
 /* Build a table row using DOM methods so player names go through textContent */
-function buildRow(d, rank) {
+function buildRow(d, rank, roundStatus) {
   var tr = document.createElement('tr');
   tr.style.cursor = 'pointer';
   tr.addEventListener('click', function() { openModal(d); });
@@ -622,6 +623,12 @@ function buildRow(d, rank) {
     chip.appendChild(nm);
     rewardList.appendChild(chip);
   });
+  if (roundStatus === 'complete') {
+    var pill = document.createElement('span');
+    pill.className = 'reward-complete';
+    pill.textContent = 'Rewards Sent';
+    rewardList.appendChild(pill);
+  }
   tdRewards.appendChild(rewardList);
   tr.appendChild(tdRewards);
 
@@ -673,8 +680,14 @@ function renderTable() {
     return;
   }
 
+  var roundStatus = '';
+  if (currentView !== 'cumulative') {
+    var r2 = getCurrentRound();
+    var rd2 = distData && distData.rounds && distData.rounds[String(r2)];
+    roundStatus = rd2 && rd2.status || '';
+  }
   var frag = document.createDocumentFragment();
-  dists.forEach(function(d, i) { frag.appendChild(buildRow(d, i + 1)); });
+  dists.forEach(function(d, i) { frag.appendChild(buildRow(d, i + 1, roundStatus)); });
   tbody.appendChild(frag);
 }
 
