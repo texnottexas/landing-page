@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https://raw.githubusercontent.com data:; connect-src https://raw.githubusercontent.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https://raw.githubusercontent.com https://knight-cdn.akamaized.net data:; connect-src https://raw.githubusercontent.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'">
 <title>UD Treasury — 2864</title>
 <style>
   :root {
@@ -151,6 +151,53 @@
     table { font-size: .78rem; }
     .reward-name { display: none; }
   }
+
+  /* Player avatars in table */
+  .player-cell { display: flex; align-items: center; gap: .5rem; }
+  .player-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 1px solid var(--border); background: var(--card); }
+  .player-avatar-placeholder { width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; background: var(--card); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: .7rem; font-weight: 700; color: var(--muted); }
+  tbody tr { cursor: pointer; }
+
+  /* Player detail modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 500; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+  .modal-overlay.hidden { display: none; }
+  .modal-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; width: 100%; max-width: 560px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; }
+  .modal-header { display: flex; align-items: center; gap: .75rem; padding: 1rem 1rem .75rem; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .modal-avatar { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); background: var(--card); flex-shrink: 0; }
+  .modal-avatar-placeholder { width: 48px; height: 48px; border-radius: 50%; background: var(--card); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: 700; color: var(--muted); flex-shrink: 0; }
+  .modal-title { flex: 1; min-width: 0; }
+  .modal-title .modal-name { font-size: 1rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .modal-title .modal-badge { margin-top: .25rem; }
+  .modal-close { background: none; border: none; color: var(--muted); font-size: 1.2rem; cursor: pointer; padding: .2rem .4rem; line-height: 1; border-radius: 4px; flex-shrink: 0; }
+  .modal-close:hover { color: var(--text); background: var(--card); }
+  .modal-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .modal-tab { background: none; border: none; border-bottom: 2px solid transparent; padding: .6rem 1rem; color: var(--muted); font-size: .82rem; font-weight: 600; cursor: pointer; transition: all .15s; }
+  .modal-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .modal-tab:hover:not(.active) { color: var(--text); }
+  .modal-body { flex: 1; overflow-y: auto; padding: .85rem 1rem; }
+  .modal-stats-row { display: flex; gap: .5rem; margin-bottom: .85rem; flex-wrap: wrap; }
+  .modal-stat { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: .4rem .7rem; flex: 1; min-width: 90px; }
+  .modal-stat-label { font-size: .6rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; color: var(--muted); margin-bottom: .2rem; }
+  .modal-stat-value { font-size: .9rem; font-weight: 700; color: var(--text); }
+  .modal-rewards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .5rem; }
+  .modal-reward-card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: .55rem .65rem; display: flex; align-items: center; gap: .5rem; }
+  .modal-reward-card.t1r { border-color: rgba(210,153,34,.35); background: rgba(210,153,34,.06); }
+  .modal-reward-card.t2r { border-color: rgba(188,140,255,.35); background: rgba(188,140,255,.06); }
+  .modal-reward-card.t3r { border-color: rgba(121,192,255,.25); background: rgba(121,192,255,.04); }
+  .modal-reward-icon { width: 32px; height: 32px; object-fit: contain; flex-shrink: 0; }
+  .modal-reward-info { min-width: 0; flex: 1; }
+  .modal-reward-name { font-size: .68rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .modal-reward-count { font-size: .88rem; font-weight: 700; color: var(--text); }
+  .modal-section-label { font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; color: var(--muted); margin-bottom: .5rem; margin-top: .75rem; }
+  .modal-section-label:first-child { margin-top: 0; }
+  .modal-rounds-list { display: flex; flex-wrap: wrap; gap: .3rem; }
+  .modal-round-chip { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: .15rem .45rem; font-size: .72rem; color: var(--muted); font-weight: 600; }
+  .modal-empty { text-align: center; padding: 2rem; color: var(--muted); font-size: .82rem; }
+
+  @media (max-width: 520px) {
+    .modal-overlay { padding: 0; align-items: flex-end; }
+    .modal-card { max-width: 100%; border-radius: 12px 12px 0 0; max-height: 85vh; margin: 0 1rem; }
+  }
 </style>
 </head>
 <body>
@@ -233,10 +280,29 @@
         <span class="tleg t4l">T4 — Filler</span>
       </div>
       <p><strong>Category Limit:</strong> Each player can receive a maximum of <strong>5 reward categories</strong> per round. Resources (Oil, Food, Odinium) each count as 1 category. This prevents any single player from monopolising the treasury.</p>
-      <p><strong>CP-Aware Allocation:</strong> The system tracks each player's combat power contribution and adjusts rewards accordingly — players who contributed more receive higher-value reward tiers, while still ensuring every eligible player receives something.</p>
-      <p><strong>Cross-Round Balancing:</strong> Inventory is preserved across rounds. Items not distributed in one round roll over to future rounds, ensuring the full treasury is distributed fairly over the course of the event.</p>
+      <p><strong>CP-Aware Allocation:</strong> The system tracks each player's combat power and adjusts rewards accordingly (less likely to need mastery pages, as an example), and algorithm works to ensure rewards are not over-weighted to higher CP players. Players who contributed more receive higher-value reward tiers, while still ensuring every eligible player receives something.</p>
+      <p><strong>Cross-Round Balancing:</strong> Reward distributions are context-aware — each round considers cumulative rewards received thus far to ensure fair distribution. Players who received fewer or lower-tier rewards in previous rounds get priority in the current round. Treasury inventory resets each round (undistributed items are lost), so the algorithm maximizes usage of all T1 and T2 rewards every round.</p>
       <p><strong>Transparency:</strong> All distributions are recorded here exactly as executed. Player names are shown as they appear in-game. UIDs are never stored or displayed.</p>
     </div>
+  </div>
+</div>
+
+<!-- Player Detail Modal -->
+<div class="modal-overlay hidden" id="playerModal" onclick="handleModalOverlayClick(event)">
+  <div class="modal-card" id="modalCard">
+    <div class="modal-header">
+      <div id="modalAvatarWrap"></div>
+      <div class="modal-title">
+        <div class="modal-name" id="modalName"></div>
+        <div class="modal-badge" id="modalBadge"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal()" title="Close">&times;</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="modal-tab active" id="modalTabCurrent" onclick="switchModalTab('current')">Current Round</button>
+      <button class="modal-tab" id="modalTabCumulative" onclick="switchModalTab('cumulative')">Cumulative</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
   </div>
 </div>
 
@@ -254,8 +320,12 @@
    never rendered into the DOM. */
 
 var ASSET_BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/';
+var PLAYER_DATA_URL = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/player-data.json';
 var distData = null;
 var currentView = 'round';
+var playerAvatarMap = {}; /* siteKeyPrefix(16) → avatarurl */
+var modalCurrentPlayer = null;
+var modalCurrentTab = 'current';
 
 function fmtNum(n) {
   if (n == null || isNaN(n)) return '\u2014';
@@ -446,6 +516,8 @@ function sortDistributions(dists) {
 /* Build a table row using DOM methods so player names go through textContent */
 function buildRow(d, rank) {
   var tr = document.createElement('tr');
+  tr.style.cursor = 'pointer';
+  tr.addEventListener('click', function() { openModal(d); });
 
   /* rank */
   var tdRank = document.createElement('td');
@@ -453,11 +525,36 @@ function buildRow(d, rank) {
   tdRank.textContent = rank;
   tr.appendChild(tdRank);
 
-  /* name */
+  /* name cell with avatar */
   var tdName = document.createElement('td');
   tdName.className = 'name-cell';
   tdName.title = d.name || '';
-  tdName.textContent = d.name || '\u2014';
+  var playerCell = document.createElement('div');
+  playerCell.className = 'player-cell';
+  var avatarUrl = getAvatarUrl(d.siteKey);
+  if (avatarUrl) {
+    var avImg = document.createElement('img');
+    avImg.className = 'player-avatar';
+    avImg.src = avatarUrl;
+    avImg.alt = '';
+    avImg.loading = 'lazy';
+    avImg.onerror = function() {
+      var ph = document.createElement('div');
+      ph.className = 'player-avatar-placeholder';
+      ph.textContent = (d.name || '?').charAt(0).toUpperCase();
+      this.parentNode.replaceChild(ph, this);
+    };
+    playerCell.appendChild(avImg);
+  } else {
+    var ph = document.createElement('div');
+    ph.className = 'player-avatar-placeholder';
+    ph.textContent = (d.name || '?').charAt(0).toUpperCase();
+    playerCell.appendChild(ph);
+  }
+  var nameSpan = document.createElement('span');
+  nameSpan.textContent = d.name || '\u2014';
+  playerCell.appendChild(nameSpan);
+  tdName.appendChild(playerCell);
   tr.appendChild(tdName);
 
   /* player tier badge */
@@ -628,17 +725,307 @@ function populateRoundSelector() {
   if (available.length) { sel.value = available[available.length - 1]; }
 }
 
+/* ---- Modal ---- */
+
+function buildModalAvatar(siteKey, name, size) {
+  var avatarUrl = getAvatarUrl(siteKey);
+  if (avatarUrl) {
+    var img = document.createElement('img');
+    img.className = 'modal-avatar';
+    img.style.width = size + 'px';
+    img.style.height = size + 'px';
+    img.src = avatarUrl;
+    img.alt = '';
+    img.onerror = function() {
+      var ph = document.createElement('div');
+      ph.className = 'modal-avatar-placeholder';
+      ph.style.width = size + 'px';
+      ph.style.height = size + 'px';
+      ph.textContent = (name || '?').charAt(0).toUpperCase();
+      this.parentNode.replaceChild(ph, this);
+    };
+    return img;
+  } else {
+    var ph = document.createElement('div');
+    ph.className = 'modal-avatar-placeholder';
+    ph.style.width = size + 'px';
+    ph.style.height = size + 'px';
+    ph.textContent = (name || '?').charAt(0).toUpperCase();
+    return ph;
+  }
+}
+
+function renderModalCurrentTab(d) {
+  var body = document.getElementById('modalBody');
+  body.innerHTML = '';
+
+  /* Stats row */
+  var statsRow = document.createElement('div');
+  statsRow.className = 'modal-stats-row';
+  [
+    {label: 'Fame', value: fmtNum(d.fame)},
+    {label: 'Merit', value: fmtNum(d.merit)},
+    {label: 'Power', value: fmtPower(d.power)}
+  ].forEach(function(s) {
+    var card = document.createElement('div');
+    card.className = 'modal-stat';
+    var lbl = document.createElement('div');
+    lbl.className = 'modal-stat-label';
+    lbl.textContent = s.label;
+    var val = document.createElement('div');
+    val.className = 'modal-stat-value';
+    val.textContent = s.value;
+    card.appendChild(lbl);
+    card.appendChild(val);
+    statsRow.appendChild(card);
+  });
+  body.appendChild(statsRow);
+
+  /* Rewards */
+  var rewards = d.rewards || [];
+  if (!rewards.length) {
+    var empty = document.createElement('div');
+    empty.className = 'modal-empty';
+    empty.textContent = 'No rewards for this round.';
+    body.appendChild(empty);
+    return;
+  }
+
+  var secLabel = document.createElement('div');
+  secLabel.className = 'modal-section-label';
+  secLabel.textContent = 'Rewards';
+  body.appendChild(secLabel);
+
+  var grid = document.createElement('div');
+  grid.className = 'modal-rewards-grid';
+  rewards.forEach(function(rw) {
+    var card = document.createElement('div');
+    card.className = 'modal-reward-card ' + tierClass(rw.tier);
+    if (rw.icon) {
+      var img = document.createElement('img');
+      img.className = 'modal-reward-icon';
+      img.src = ASSET_BASE + rw.icon;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.onerror = function() { this.style.display = 'none'; };
+      card.appendChild(img);
+    }
+    var info = document.createElement('div');
+    info.className = 'modal-reward-info';
+    var nm = document.createElement('div');
+    nm.className = 'modal-reward-name';
+    nm.textContent = rw.name || '';
+    var cnt = document.createElement('div');
+    cnt.className = 'modal-reward-count';
+    cnt.textContent = fmtNum(rw.count);
+    /* Tier badge */
+    var tbadge = document.createElement('span');
+    tbadge.className = 'p-badge p' + (rw.tier === 'T1' ? '1' : '2');
+    tbadge.style.fontSize = '.55rem';
+    tbadge.style.marginLeft = '.25rem';
+    tbadge.style.verticalAlign = 'middle';
+    tbadge.textContent = rw.tier || '';
+    info.appendChild(nm);
+    var cntRow = document.createElement('div');
+    cntRow.style.display = 'flex';
+    cntRow.style.alignItems = 'center';
+    cntRow.appendChild(cnt);
+    cntRow.appendChild(tbadge);
+    info.appendChild(cntRow);
+    card.appendChild(info);
+    grid.appendChild(card);
+  });
+  body.appendChild(grid);
+}
+
+function renderModalCumulativeTab(d) {
+  var body = document.getElementById('modalBody');
+  body.innerHTML = '';
+  if (!distData) return;
+
+  /* Aggregate across all rounds */
+  var rewardMap = {};
+  var roundsParticipated = [];
+  getAvailableRounds().forEach(function(r) {
+    var rdata = distData.rounds[String(r)];
+    if (!rdata) return;
+    var entry = rdata.distributions.find(function(x) { return x.siteKey === d.siteKey; });
+    if (!entry) return;
+    roundsParticipated.push(r);
+    (entry.rewards || []).forEach(function(rw) {
+      var k = rw.itemId || rw.name;
+      if (!rewardMap[k]) {
+        rewardMap[k] = {itemId: rw.itemId, name: rw.name, count: 0, tier: rw.tier, icon: rw.icon};
+      }
+      rewardMap[k].count += rw.count;
+    });
+  });
+
+  /* Rounds participated */
+  var roundsLabel = document.createElement('div');
+  roundsLabel.className = 'modal-section-label';
+  roundsLabel.style.marginTop = '0';
+  roundsLabel.textContent = 'Rounds Received Rewards';
+  body.appendChild(roundsLabel);
+
+  if (!roundsParticipated.length) {
+    var noRounds = document.createElement('div');
+    noRounds.className = 'modal-empty';
+    noRounds.textContent = 'No distribution history found.';
+    body.appendChild(noRounds);
+    return;
+  }
+
+  var roundsList = document.createElement('div');
+  roundsList.className = 'modal-rounds-list';
+  roundsParticipated.forEach(function(r) {
+    var chip = document.createElement('span');
+    chip.className = 'modal-round-chip';
+    chip.textContent = 'R' + r;
+    roundsList.appendChild(chip);
+  });
+  body.appendChild(roundsList);
+
+  /* Aggregated rewards */
+  var rewardArr = Object.values(rewardMap).sort(function(a, b) {
+    var order = {T1: 0, T2: 1, T3: 2, T4: 3};
+    return (order[a.tier] || 3) - (order[b.tier] || 3);
+  });
+
+  if (rewardArr.length) {
+    var rwLabel = document.createElement('div');
+    rwLabel.className = 'modal-section-label';
+    rwLabel.textContent = 'Total Rewards Received';
+    body.appendChild(rwLabel);
+
+    var grid = document.createElement('div');
+    grid.className = 'modal-rewards-grid';
+    rewardArr.forEach(function(rw) {
+      var card = document.createElement('div');
+      card.className = 'modal-reward-card ' + tierClass(rw.tier);
+      if (rw.icon) {
+        var img = document.createElement('img');
+        img.className = 'modal-reward-icon';
+        img.src = ASSET_BASE + rw.icon;
+        img.alt = '';
+        img.loading = 'lazy';
+        img.onerror = function() { this.style.display = 'none'; };
+        card.appendChild(img);
+      }
+      var info = document.createElement('div');
+      info.className = 'modal-reward-info';
+      var nm = document.createElement('div');
+      nm.className = 'modal-reward-name';
+      nm.textContent = rw.name || '';
+      var cnt = document.createElement('div');
+      cnt.className = 'modal-reward-count';
+      cnt.textContent = fmtNum(rw.count);
+      var tbadge = document.createElement('span');
+      tbadge.className = 'p-badge p' + (rw.tier === 'T1' ? '1' : '2');
+      tbadge.style.fontSize = '.55rem';
+      tbadge.style.marginLeft = '.25rem';
+      tbadge.style.verticalAlign = 'middle';
+      tbadge.textContent = rw.tier || '';
+      info.appendChild(nm);
+      var cntRow = document.createElement('div');
+      cntRow.style.display = 'flex';
+      cntRow.style.alignItems = 'center';
+      cntRow.appendChild(cnt);
+      cntRow.appendChild(tbadge);
+      info.appendChild(cntRow);
+      card.appendChild(info);
+      grid.appendChild(card);
+    });
+    body.appendChild(grid);
+  }
+}
+
+function switchModalTab(tab) {
+  modalCurrentTab = tab;
+  document.getElementById('modalTabCurrent').classList.toggle('active', tab === 'current');
+  document.getElementById('modalTabCumulative').classList.toggle('active', tab === 'cumulative');
+  if (!modalCurrentPlayer) return;
+  if (tab === 'current') {
+    renderModalCurrentTab(modalCurrentPlayer);
+  } else {
+    renderModalCumulativeTab(modalCurrentPlayer);
+  }
+}
+
+function openModal(d) {
+  modalCurrentPlayer = d;
+  modalCurrentTab = 'current';
+
+  /* Avatar */
+  var avatarWrap = document.getElementById('modalAvatarWrap');
+  avatarWrap.innerHTML = '';
+  avatarWrap.appendChild(buildModalAvatar(d.siteKey, d.name, 48));
+
+  /* Name */
+  document.getElementById('modalName').textContent = d.name || '\u2014';
+
+  /* Tier badge */
+  var badgeEl = document.getElementById('modalBadge');
+  badgeEl.innerHTML = '';
+  var pt = d.playerTier || 2;
+  var badge = document.createElement('span');
+  badge.className = 'p-badge p' + pt;
+  badge.textContent = 'P' + pt;
+  badgeEl.appendChild(badge);
+
+  /* Tabs reset */
+  document.getElementById('modalTabCurrent').classList.add('active');
+  document.getElementById('modalTabCumulative').classList.remove('active');
+
+  /* Body */
+  renderModalCurrentTab(d);
+
+  /* Show */
+  document.getElementById('playerModal').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+  document.getElementById('playerModal').classList.add('hidden');
+  document.body.style.overflow = '';
+  modalCurrentPlayer = null;
+}
+
+function handleModalOverlayClick(e) {
+  if (e.target === document.getElementById('playerModal')) { closeModal(); }
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') { closeModal(); }
+});
+
+/* ---- End Modal ---- */
+
 async function loadData() {
   var statusEl = document.getElementById('statusEl');
   statusEl.textContent = 'Loading\u2026';
   try {
     var responses = await Promise.all([
       fetch('https://raw.githubusercontent.com/texnottexas/landing-page/main/data/ud-distributions.json'),
-      fetch('https://raw.githubusercontent.com/texnottexas/landing-page/main/data/treasury-items.json')
+      fetch('https://raw.githubusercontent.com/texnottexas/landing-page/main/data/treasury-items.json'),
+      fetch(PLAYER_DATA_URL)
     ]);
     if (!responses[0].ok) throw new Error('Failed to load distribution data (' + responses[0].status + ')');
     distData = await responses[0].json();
     /* treasury-items.json loaded for future use; not strictly needed for display */
+
+    /* Build avatar lookup map from player-data.json (best-effort, non-fatal) */
+    if (responses[2].ok) {
+      try {
+        var playerArr = await responses[2].json();
+        playerAvatarMap = {};
+        playerArr.forEach(function(p) {
+          if (p.siteKey && p.avatarurl) {
+            playerAvatarMap[p.siteKey] = p.avatarurl;
+          }
+        });
+      } catch (e2) { /* avatar lookup unavailable — degrade gracefully */ }
+    }
 
     document.getElementById('eventBadge').textContent = distData.event || 'UD Treasury';
     statusEl.textContent = '';
@@ -651,6 +1038,13 @@ async function loadData() {
     statusEl.className = 'status error';
     document.getElementById('loadingBox').style.display = 'none';
   }
+}
+
+function getAvatarUrl(siteKey) {
+  if (!siteKey) return null;
+  /* Distribution siteKeys are full 64-char SHA256; player-data uses 16-char prefix */
+  var prefix = siteKey.slice(0, 16);
+  return playerAvatarMap[prefix] || null;
 }
 
 loadData();
