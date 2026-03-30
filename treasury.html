@@ -531,7 +531,7 @@ function buildRow(d, rank) {
   tdName.title = d.name || '';
   var playerCell = document.createElement('div');
   playerCell.className = 'player-cell';
-  var avatarUrl = getAvatarUrl(d.siteKey);
+  var avatarUrl = getAvatarUrl(d.siteKey, d);
   if (avatarUrl) {
     var avImg = document.createElement('img');
     avImg.className = 'player-avatar';
@@ -727,8 +727,8 @@ function populateRoundSelector() {
 
 /* ---- Modal ---- */
 
-function buildModalAvatar(siteKey, name, size) {
-  var avatarUrl = getAvatarUrl(siteKey);
+function buildModalAvatar(siteKey, name, size, distEntry) {
+  var avatarUrl = getAvatarUrl(siteKey, distEntry);
   if (avatarUrl) {
     var img = document.createElement('img');
     img.className = 'modal-avatar';
@@ -959,7 +959,7 @@ function openModal(d) {
   /* Avatar */
   var avatarWrap = document.getElementById('modalAvatarWrap');
   avatarWrap.innerHTML = '';
-  avatarWrap.appendChild(buildModalAvatar(d.siteKey, d.name, 48));
+  avatarWrap.appendChild(buildModalAvatar(d.siteKey, d.name, 48, d));
 
   /* Name */
   document.getElementById('modalName').textContent = d.name || '\u2014';
@@ -1040,10 +1040,13 @@ async function loadData() {
   }
 }
 
-function getAvatarUrl(siteKey) {
+function getAvatarUrl(siteKey, distEntry) {
+  /* Prefer avatarurl embedded in distribution data */
+  if (distEntry && distEntry.avatarurl) return distEntry.avatarurl;
   if (!siteKey) return null;
-  /* Distribution siteKeys are full 64-char SHA256; player-data uses 16-char prefix */
-  var prefix = siteKey.slice(0, 16);
+  /* Fallback: distribution siteKeys may have sha256: prefix; player-data uses 16-char prefix */
+  var hash = siteKey.replace('sha256:', '');
+  var prefix = hash.slice(0, 16);
   return playerAvatarMap[prefix] || null;
 }
 
