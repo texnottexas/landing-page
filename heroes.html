@@ -67,11 +67,12 @@
   .hcard.navy:hover { border-color: var(--navy); box-shadow: 0 4px 16px rgba(56,139,253,.2); }
   .hcard.air:hover { border-color: var(--air); box-shadow: 0 4px 16px rgba(210,153,34,.2); }
   .hcard-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .hcard-overlay { position: absolute; bottom: 0; left: 0; right: 0; padding: .5rem .6rem .4rem; background: linear-gradient(transparent, rgba(0,0,0,.85) 40%); }
-  .hcard-name { font-size: .8rem; font-weight: 700; line-height: 1.2; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
-  .hcard-name.army { color: var(--army); }
-  .hcard-name.navy { color: var(--navy); }
-  .hcard-name.air { color: var(--air); }
+  .hcard-overlay { position: absolute; bottom: 0; left: 0; right: 0; padding: .5rem .6rem .4rem; background: linear-gradient(transparent, rgba(0,0,0,.85) 40%); display: flex; align-items: flex-end; gap: .35rem; }
+  .hcard-name { font-size: .8rem; font-weight: 700; line-height: 1.2; text-shadow: 0 1px 3px rgba(0,0,0,.8); color: var(--text); flex: 1; }
+  .hcard-type-pill { font-size: .5rem; font-weight: 700; padding: .15rem .35rem; border-radius: 3px; white-space: nowrap; flex-shrink: 0; text-transform: uppercase; letter-spacing: .03em; }
+  .hcard-type-pill.army { background: rgba(63,185,80,.25); color: var(--army); border: 1px solid rgba(63,185,80,.4); }
+  .hcard-type-pill.navy { background: rgba(56,139,253,.25); color: var(--navy); border: 1px solid rgba(56,139,253,.4); }
+  .hcard-type-pill.air { background: rgba(210,153,34,.25); color: var(--air); border: 1px solid rgba(210,153,34,.4); }
   .hcard-tags { position: absolute; top: .4rem; left: .4rem; display: flex; flex-direction: column; gap: .25rem; }
   .hcard-tag { background: rgba(0,0,0,.7); border: 1px solid rgba(255,255,255,.15); border-radius: 4px; padding: .1rem .35rem; font-size: .55rem; color: var(--text); font-weight: 600; backdrop-filter: blur(4px); white-space: nowrap; }
   .hcard-placeholder { width: 100%; height: 100%; background: linear-gradient(135deg, var(--surface), var(--card)); display: flex; align-items: center; justify-content: center; font-size: 2rem; color: var(--muted); opacity: .3; }
@@ -113,7 +114,11 @@
   .sub-skill-desc .val { color: var(--army); font-weight: 600; }
   .sub-skill-desc .effect-name { color: var(--accent); }
   .effect-tags-row { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .5rem; }
-  .effect-pill { background: rgba(121,192,255,.08); border: 1px solid rgba(121,192,255,.2); border-radius: 4px; padding: .1rem .4rem; font-size: .65rem; color: var(--accent); }
+  .effect-pill { background: rgba(121,192,255,.08); border: 1px solid rgba(121,192,255,.2); border-radius: 4px; padding: .1rem .4rem; font-size: .65rem; color: var(--accent); cursor: pointer; position: relative; transition: background .15s; }
+  .effect-pill:hover { background: rgba(121,192,255,.2); }
+  .effect-tooltip { display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .5rem .65rem; font-size: .72rem; color: var(--text); line-height: 1.45; width: 260px; box-shadow: 0 4px 16px rgba(0,0,0,.5); z-index: 10; pointer-events: none; }
+  .effect-tooltip::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: var(--border); }
+  .effect-pill.show-tip .effect-tooltip { display: block; }
 
   /* Exclusive skill */
   .exclusive-section { border-top: 1px solid var(--border); padding-top: 1rem; }
@@ -218,6 +223,42 @@ var INTERESTING_EFFECTS = new Set([
 ]);
 
 var TYPE_CLASS = {'Army':'army','Navy':'navy','Air Force':'air'};
+var TYPE_SHORT = {'Army':'Army','Navy':'Navy','Air Force':'Air'};
+
+var EFFECT_DESCRIPTIONS = {
+  'Indestructible':'Prevents your units from being eliminated for the duration. Units at 0 HP survive with 1 HP.',
+  'Strike':'Increases critical hit rate and critical damage for your units.',
+  'Chaos':'Causes an enemy unit to attack its own allies for the duration.',
+  'Silence':'Prevents an enemy hero from using their active/rage skill for the duration.',
+  'Heavy Armor':'Reduces damage taken. Each stack absorbs a fixed percentage of incoming damage, then is consumed.',
+  'Vulnerable':'Increases damage taken by the affected enemy unit. Stacks increase the effect.',
+  'Debilitation':'Reduces the attack power of affected enemy units for the duration.',
+  'HP Boost':'Increases the maximum HP of your units for the duration.',
+  'Attack Enhancement':'Increases the attack power of your units for the duration.',
+  'Rage':'Accumulated through attacks. When enough Rage points are gathered, the hero unleashes a powerful rage skill.',
+  'Disarm':'Prevents the affected unit from performing regular attacks for the duration.',
+  'Abnormal Status':'A category that includes debuffs like Vulnerable, Debilitation, Silence, etc. Some skills deal bonus damage to targets with any Abnormal Status.',
+  'Hostile':'Triggers a counterattack when the unit performs a regular attack. Consumes stacks on use.',
+  'Wild Instinct':'Increases damage dealt and provides other combat bonuses.',
+  'Domination':'Passively increases damage dealt to all enemies regardless of combat state.',
+  'Ignition':'A damage-over-time (DOT) effect. At the end of each turn, the affected unit takes Ignition damage based on the stack percentage. Can be detonated by certain skills.',
+  'Splash Damage':'Deals additional damage to units adjacent to or in the same column/row as the primary target.',
+  'Resistance':'Blocks or reduces the next incoming debuff or negative effect.',
+  'Support':'Units in the back row share damage taken by units in the same column, reducing frontline casualties.',
+  'Combo Attack':'After a regular attack, triggers an additional follow-up attack dealing bonus damage.',
+  'Mighty Charge':'Stacking buff that increases both Attack Enhancement and Decreased Damage Taken per stack.',
+  'Silent Precision':'Increases the chance of applying Silence to enemy heroes.',
+  'Damage Reduction Shield':'A category for effects like Heavy Armor and Light Armor. Some skills scale with the number of different shield types active.',
+  'Decoy':'Absorbs one incoming attack per stack, reducing the damage taken. Consumed on hit.',
+  'Magnetic Pulse':'A stacking DOT effect. At the end of each turn, all stacks are consumed and the target takes cumulative damage. Can be detonated by certain heroes for burst damage.',
+  'Status Damage (DOT)':'A category for damage-over-time effects like Ignition and Magnetic Pulse. Some skills detonate all DOT effects at once.',
+  'Light Armor':'Reduces damage taken. Each stack absorbs a percentage of incoming damage, then is consumed. Counts as a Damage Reduction Shield.',
+  'Vitality':'Heals a percentage of max HP at the start of each round for the duration.',
+  'Block':'Chance to completely negate an incoming attack, taking zero damage.',
+  'Taunt':'Forces enemies to target the unit with Taunt. Reduces damage taken when attacked and can trigger countereffects.',
+  'Meditation':'Passively increases hero stats when the hero is in your roster, even outside of battle.',
+  'Concentration':'Increases damage dealt with each attack, stacking up to a cap. Resets if the unit is hit.'
+};
 var STARS = {'Gold':5,'Purple':4,'Blue':3};
 
 var allHeroes = [], ssrHeroes = [], srHeroes = [];
@@ -377,10 +418,13 @@ function renderCard(hero) {
     ? '<img class="hcard-img" src="' + escapeAttr(imgSrc) + '" alt="' + escapeAttr(hero.displayName) + '" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">'
       + '<div class="hcard-placeholder" style="display:none">?</div>'
     : '<div class="hcard-placeholder">?</div>';
+  var typeLabel = TYPE_SHORT[hero.typeName] || '';
   return '<div class="hcard ' + tc + '" onclick="openModal(' + hero.heroId + ')">'
     + imgHtml
     + tagsHtml
-    + '<div class="hcard-overlay"><div class="hcard-name ' + tc + '">' + hero.displayName + '</div></div>'
+    + '<div class="hcard-overlay"><div class="hcard-name">' + hero.displayName + '</div>'
+    + (typeLabel ? '<span class="hcard-type-pill ' + tc + '">' + typeLabel + '</span>' : '')
+    + '</div>'
     + '</div>';
 }
 
@@ -448,7 +492,10 @@ function renderSkillSection(hero) {
   if (effectSet.length) {
     html += '<div class="effect-tags-row">';
     effectSet.forEach(function(name) {
-      html += '<span class="effect-pill">' + name + '</span>';
+      var desc = EFFECT_DESCRIPTIONS[name] || '';
+      html += '<span class="effect-pill" onclick="event.stopPropagation();toggleTip(this)">' + name
+        + (desc ? '<span class="effect-tooltip">' + desc + '</span>' : '')
+        + '</span>';
     });
     html += '</div>';
   }
@@ -521,6 +568,12 @@ function closeModal() {
   document.body.style.overflow = '';
 }
 
+function toggleTip(el) {
+  var wasOpen = el.classList.contains('show-tip');
+  document.querySelectorAll('.effect-pill.show-tip').forEach(function(p) { p.classList.remove('show-tip'); });
+  if (!wasOpen) el.classList.add('show-tip');
+}
+
 function toggleSR() {
   document.getElementById('srGrid').classList.toggle('hidden');
   document.getElementById('srChevron').classList.toggle('collapsed');
@@ -533,6 +586,11 @@ document.getElementById('searchInput').addEventListener('input', function(e) {
 
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') closeModal();
+});
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.effect-pill')) {
+    document.querySelectorAll('.effect-pill.show-tip').forEach(function(p) { p.classList.remove('show-tip'); });
+  }
 });
 
 loadData();
