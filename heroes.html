@@ -40,7 +40,6 @@
   .fpill.type-air.active { background: var(--air); border-color: var(--air); color: var(--bg); }
   .fpill.effect.active { background: rgba(121,192,255,.15); border-color: var(--accent); color: var(--accent); }
   .fpill.more-toggle { border-style: dashed; font-size: .7rem; }
-  .fpill.more-toggle:hover { border-color: var(--accent); color: var(--accent); }
 
   /* Status */
   .status { text-align: center; padding: .5rem 1rem; color: var(--muted); font-size: .85rem; }
@@ -228,10 +227,11 @@ var searchQuery = '';
 var allEffectsList = [];
 var effectExpanded = false;
 var VISIBLE_EFFECTS = 8;
+var sortedEffectNames = null;
 
 function loadData() {
   document.getElementById('statusEl').textContent = 'Loading heroes...';
-  fetch('data/all-heroes.json')
+  fetch('https://raw.githubusercontent.com/texnottexas/landing-page/main/data/all-heroes.json')
     .then(function(r) { if (!r.ok) throw new Error('Failed to load'); return r.json(); })
     .then(function(data) {
       allHeroes = data;
@@ -322,11 +322,8 @@ function filterHeroes(heroes) {
     if (activeTypeFilter !== 'All' && h.typeName !== activeTypeFilter) return false;
     if (activeEffectFilters.size > 0) {
       var tags = new Set(h.effectTags || []);
-      var match = true;
-      activeEffectFilters.forEach(function(eff) {
-        if (!tags.has(eff)) match = false;
-      });
-      if (!match) return false;
+      var allMatch = Array.from(activeEffectFilters).every(function(eff) { return tags.has(eff); });
+      if (!allMatch) return false;
     }
     if (searchQuery) {
       var q = searchQuery.toLowerCase();
@@ -359,11 +356,7 @@ function getCardTags(hero) {
   if (tags.length === 0) return [];
   var interesting = tags.filter(function(t) { return INTERESTING_EFFECTS.has(t); });
   var generic = tags.filter(function(t) { return !INTERESTING_EFFECTS.has(t); });
-  var picked = interesting.slice(0, 2);
-  if (picked.length < 2 && generic.length > 0) {
-    picked = picked.concat(generic.slice(0, 2 - picked.length));
-  }
-  return picked;
+  return interesting.concat(generic).slice(0, 2);
 }
 
 function escapeAttr(s) {
@@ -391,33 +384,36 @@ function renderCard(hero) {
     + '</div>';
 }
 
+function renderGrid(heroes, gridId, emptyMsg) {
+  var grid = document.getElementById(gridId);
+  grid.innerHTML = heroes.length
+    ? heroes.map(renderCard).join('')
+    : '<div class="no-results">' + emptyMsg + '</div>';
+}
+
 function renderAll() {
   var filteredSSR = filterHeroes(ssrHeroes);
   var filteredSR = filterHeroes(srHeroes);
-  var ssrGrid = document.getElementById('ssrGrid');
-  var srGrid = document.getElementById('srGrid');
-  if (filteredSSR.length) {
-    ssrGrid.innerHTML = filteredSSR.map(renderCard).join('');
-  } else {
-    ssrGrid.innerHTML = '<div class="no-results">No SSR heroes match your filters</div>';
-  }
-  if (filteredSR.length) {
-    srGrid.innerHTML = filteredSR.map(renderCard).join('');
-  } else {
-    srGrid.innerHTML = '<div class="no-results">No SR/R heroes match your filters</div>';
-  }
+  renderGrid(filteredSSR, 'ssrGrid', 'No SSR heroes match your filters');
+  renderGrid(filteredSR, 'srGrid', 'No SR/R heroes match your filters');
   document.getElementById('ssrCount').textContent = filteredSSR.length;
   document.getElementById('srCount').textContent = filteredSR.length;
   document.getElementById('heroCount').textContent = filteredSSR.length + filteredSR.length;
+}
+
+function getSortedEffectNames() {
+  if (!sortedEffectNames) {
+    sortedEffectNames = Object.values(EFFECT_NAMES);
+    sortedEffectNames.sort(function(a, b) { return b.length - a.length; });
+  }
+  return sortedEffectNames;
 }
 
 function highlightDescription(desc) {
   if (!desc) return '';
   var text = desc.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   text = text.replace(/(\d+\.?\d*%|\d+-\d+|\{\d+\})/g, '<span class="val">$1</span>');
-  var effectNames = Object.values(EFFECT_NAMES);
-  effectNames.sort(function(a, b) { return b.length - a.length; });
-  effectNames.forEach(function(name) {
+  getSortedEffectNames().forEach(function(name) {
     var escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     text = text.replace(new RegExp('\\b(' + escaped + ')\\b', 'g'), '<span class="effect-name">$1</span>');
   });
@@ -434,21 +430,20 @@ function renderSkillSection(hero) {
   if (skillIconUrl) {
     html += '<img class="skill-icon native" src="' + escapeAttr(skillIconUrl) + '" alt="" onerror="this.style.display=\'none\'">';
   }
-  html += '<div class="skill-info"><div class="skill-name">' + (hero.skillName || 'Unknown') + '</div>';
-  html += '<div class="skill-label">Native Skill</div></div></div>';
+  html += '<div class="skill-info"><div class="skill-name">' + (hero.skillName || 'Unknown') + '</div></div></div>';
   (hero.skills || []).forEach(function(s) {
     html += '<div class="sub-skill">';
     html += '<div class="sub-skill-title">' + (s.title || '') + '</div>';
     html += '<div class="sub-skill-desc">' + highlightDescription(s.description) + '</div>';
     html += '</div>';
   });
-  var effectSet = [];
   var seen = {};
-  (hero.skills || []).forEach(function(s) {
+  var effectSet = (hero.skills || []).reduce(function(acc, s) {
     (s.effects || []).forEach(function(e) {
-      if (!seen[e.name]) { seen[e.name] = true; effectSet.push(e.name); }
+      if (!seen[e.name]) { seen[e.name] = true; acc.push(e.name); }
     });
-  });
+    return acc;
+  }, []);
   if (effectSet.length) {
     html += '<div class="effect-tags-row">';
     effectSet.forEach(function(name) {
@@ -526,16 +521,8 @@ function closeModal() {
 }
 
 function toggleSR() {
-  var grid = document.getElementById('srGrid');
-  var chevron = document.getElementById('srChevron');
-  var isHidden = grid.classList.contains('hidden');
-  if (isHidden) {
-    grid.classList.remove('hidden');
-    chevron.classList.remove('collapsed');
-  } else {
-    grid.classList.add('hidden');
-    chevron.classList.add('collapsed');
-  }
+  document.getElementById('srGrid').classList.toggle('hidden');
+  document.getElementById('srChevron').classList.toggle('collapsed');
 }
 
 document.getElementById('searchInput').addEventListener('input', function(e) {
