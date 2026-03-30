@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https://raw.githubusercontent.com https://knight-cdn.akamaized.net https://h5.topwargame.com data:; connect-src https://raw.githubusercontent.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'">
+<title>Heroes Database — 2864</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --card: #1c2128; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #79c0ff;
+    --army: #3fb950; --navy: #388bfd; --air: #d29922; --purple: #a371f7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* Header */
+  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: .75rem 1rem; display: flex; align-items: center; gap: .75rem; position: sticky; top: 0; z-index: 100; }
+  .header h1 { font-size: 1rem; font-weight: 600; flex: 1; }
+  .home-btn { display: flex; align-items: center; justify-content: center; background: var(--card); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: .4rem .6rem; text-decoration: none; transition: all .15s; }
+  .home-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .hero-count { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: .15rem .55rem; font-size: .7rem; color: var(--muted); font-weight: 600; }
+
+  /* Search bar */
+  .search-bar { max-width: 1200px; margin: 1.25rem auto .75rem; padding: 0 1rem; width: 100%; }
+  .search-bar input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .6rem .75rem; color: var(--text); font-size: .95rem; outline: none; }
+  .search-bar input:focus { border-color: var(--accent); }
+  .search-bar input::placeholder { color: var(--muted); }
+
+  /* Filter rows */
+  .filter-row { max-width: 1200px; margin: 0 auto .5rem; padding: 0 1rem; width: 100%; display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+  .filter-label { font-size: .7rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; margin-right: .2rem; }
+  .fpill { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: .25rem .65rem; font-size: .75rem; color: var(--muted); cursor: pointer; white-space: nowrap; transition: all .15s; user-select: none; }
+  .fpill:hover { border-color: var(--accent); color: var(--accent); }
+  .fpill.active { font-weight: 600; }
+  .fpill.type-all.active { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  .fpill.type-army.active { background: var(--army); border-color: var(--army); color: var(--bg); }
+  .fpill.type-navy.active { background: var(--navy); border-color: var(--navy); color: #fff; }
+  .fpill.type-air.active { background: var(--air); border-color: var(--air); color: var(--bg); }
+  .fpill.effect.active { background: rgba(121,192,255,.15); border-color: var(--accent); color: var(--accent); }
+  .fpill.more-toggle { border-style: dashed; font-size: .7rem; }
+  .fpill.more-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Status */
+  .status { text-align: center; padding: .5rem 1rem; color: var(--muted); font-size: .85rem; }
+  .status.error { color: #f85149; }
+
+  /* Content */
+  #content { max-width: 1200px; margin: 0 auto 2rem; padding: 0 1rem; width: 100%; flex: 1; }
+  .section-header { font-size: .85rem; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; padding: .75rem 0 .5rem; border-bottom: 1px solid var(--border); margin: 1rem 0 .75rem; display: flex; align-items: center; gap: .5rem; }
+  .section-header .badge { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: .1rem .45rem; font-size: .7rem; color: var(--muted); font-weight: 600; }
+  .section-header.collapsible { cursor: pointer; user-select: none; }
+  .section-header.collapsible:hover { color: var(--text); }
+  .section-header .chevron { font-size: .7rem; transition: transform .2s; }
+  .section-header .chevron.collapsed { transform: rotate(-90deg); }
+  .section-header.muted { color: var(--muted); }
+
+  /* Hero card grid */
+  .hero-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: .75rem; }
+  .hero-grid.hidden { display: none; }
+  .no-results { text-align: center; padding: 2rem; color: var(--muted); font-size: .85rem; grid-column: 1 / -1; }
+
+  /* Hero card */
+  .hcard { position: relative; border-radius: 10px; overflow: hidden; cursor: pointer; border: 2px solid var(--border); transition: all .2s; background: var(--card); aspect-ratio: 3/4; }
+  .hcard:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+  .hcard.army:hover { border-color: var(--army); box-shadow: 0 4px 16px rgba(63,185,80,.2); }
+  .hcard.navy:hover { border-color: var(--navy); box-shadow: 0 4px 16px rgba(56,139,253,.2); }
+  .hcard.air:hover { border-color: var(--air); box-shadow: 0 4px 16px rgba(210,153,34,.2); }
+  .hcard-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hcard-overlay { position: absolute; bottom: 0; left: 0; right: 0; padding: .5rem .6rem .4rem; background: linear-gradient(transparent, rgba(0,0,0,.85) 40%); }
+  .hcard-name { font-size: .8rem; font-weight: 700; line-height: 1.2; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+  .hcard-name.army { color: var(--army); }
+  .hcard-name.navy { color: var(--navy); }
+  .hcard-name.air { color: var(--air); }
+  .hcard-tags { position: absolute; top: .4rem; left: .4rem; display: flex; flex-direction: column; gap: .25rem; }
+  .hcard-tag { background: rgba(0,0,0,.7); border: 1px solid rgba(255,255,255,.15); border-radius: 4px; padding: .1rem .35rem; font-size: .55rem; color: var(--text); font-weight: 600; backdrop-filter: blur(4px); white-space: nowrap; }
+  .hcard-placeholder { width: 100%; height: 100%; background: linear-gradient(135deg, var(--surface), var(--card)); display: flex; align-items: center; justify-content: center; font-size: 2rem; color: var(--muted); opacity: .3; }
+
+  /* Modal overlay */
+  .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.75); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; backdrop-filter: blur(2px); }
+  .modal-overlay.hidden { display: none; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; max-width: 600px; width: 100%; max-height: 85vh; overflow-y: auto; }
+  .modal-header { display: flex; align-items: center; gap: .75rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); z-index: 1; border-radius: 12px 12px 0 0; }
+  .modal-hero-img { width: 64px; height: 64px; border-radius: 8px; object-fit: cover; background: var(--card); border: 2px solid var(--border); flex-shrink: 0; }
+  .modal-hero-img.army { border-color: var(--army); }
+  .modal-hero-img.navy { border-color: var(--navy); }
+  .modal-hero-img.air { border-color: var(--air); }
+  .modal-hero-info { flex: 1; min-width: 0; }
+  .modal-hero-name { font-size: 1.1rem; font-weight: 700; }
+  .modal-hero-meta { display: flex; gap: .4rem; align-items: center; margin-top: .2rem; flex-wrap: wrap; }
+  .modal-stars { font-size: .75rem; color: var(--air); }
+  .modal-type-badge { font-size: .65rem; font-weight: 700; padding: .1rem .4rem; border-radius: 4px; }
+  .modal-type-badge.army { background: rgba(63,185,80,.15); color: var(--army); border: 1px solid rgba(63,185,80,.3); }
+  .modal-type-badge.navy { background: rgba(56,139,253,.15); color: var(--navy); border: 1px solid rgba(56,139,253,.3); }
+  .modal-type-badge.air { background: rgba(210,153,34,.15); color: var(--air); border: 1px solid rgba(210,153,34,.3); }
+  .modal-close { background: none; border: none; color: var(--muted); font-size: 1.5rem; cursor: pointer; padding: .2rem .5rem; line-height: 1; flex-shrink: 0; }
+  .modal-close:hover { color: var(--text); }
+  .modal-body { padding: 1rem 1.25rem; }
+
+  /* Skill sections */
+  .skill-section { margin-bottom: 1.25rem; }
+  .skill-section-title { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: .6rem; }
+  .skill-header { display: flex; align-items: center; gap: .6rem; margin-bottom: .75rem; }
+  .skill-icon { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: var(--card); flex-shrink: 0; }
+  .skill-icon.native { border: 2px solid var(--air); }
+  .skill-icon.exclusive { border: 2px solid var(--purple); }
+  .skill-info { flex: 1; min-width: 0; }
+  .skill-name { font-size: .95rem; font-weight: 600; }
+  .skill-label { font-size: .65rem; color: var(--muted); }
+  .sub-skill { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .6rem .75rem; margin-bottom: .5rem; }
+  .sub-skill-title { font-size: .75rem; font-weight: 700; color: var(--accent); margin-bottom: .3rem; }
+  .sub-skill-desc { font-size: .8rem; line-height: 1.55; color: var(--text); }
+  .sub-skill-desc .val { color: var(--army); font-weight: 600; }
+  .sub-skill-desc .effect-name { color: var(--accent); }
+  .effect-tags-row { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .5rem; }
+  .effect-pill { background: rgba(121,192,255,.08); border: 1px solid rgba(121,192,255,.2); border-radius: 4px; padding: .1rem .4rem; font-size: .65rem; color: var(--accent); }
+
+  /* Exclusive skill */
+  .exclusive-section { border-top: 1px solid var(--border); padding-top: 1rem; }
+  .exclusive-desc { font-size: .8rem; line-height: 1.5; color: var(--text); margin-bottom: .75rem; padding: .6rem .75rem; background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+  .milestones { display: flex; flex-direction: column; gap: .4rem; }
+  .milestone { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .5rem .7rem; display: flex; gap: .5rem; align-items: flex-start; }
+  .milestone-badge { background: var(--purple); color: #fff; font-size: .6rem; font-weight: 700; padding: .15rem .4rem; border-radius: 4px; white-space: nowrap; flex-shrink: 0; margin-top: .1rem; }
+  .milestone-text { font-size: .78rem; line-height: 1.45; color: var(--text); }
+  .milestone-text .val { color: var(--army); font-weight: 600; }
+  .milestone-text .effect-name { color: var(--accent); }
+
+  /* Footer */
+  footer { margin-top: auto; text-align: center; padding: 2rem 1rem; font-size: .7rem; color: var(--muted); }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  @keyframes footer-shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+  .shimmer-text { background-image: linear-gradient(90deg, var(--muted) 0%, var(--accent) 25%, var(--muted) 50%, var(--accent) 75%, var(--muted) 100%); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: footer-shimmer 6s linear infinite; }
+
+  /* Responsive */
+  @media (max-width: 1024px) {
+    .hero-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+  @media (max-width: 768px) {
+    .hero-grid { grid-template-columns: repeat(3, 1fr); }
+    .hcard-name { font-size: .75rem; }
+    .modal { max-height: 90vh; }
+  }
+  @media (max-width: 480px) {
+    .hero-grid { grid-template-columns: repeat(2, 1fr); gap: .5rem; }
+    .hcard-tag { font-size: .5rem; }
+    .hcard-name { font-size: .7rem; }
+    .modal-hero-img { width: 48px; height: 48px; }
+    .modal-hero-name { font-size: .95rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="https://2864tw.com/index.html" class="home-btn" title="Home">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8.354 1.146a.5.5 0 0 0-.708 0l-6 6A.5.5 0 0 0 1.5 7.5v7a.5.5 0 0 0 .5.5h4.5a.5.5 0 0 0 .5-.5v-4h2v4a.5.5 0 0 0 .5.5H14a.5.5 0 0 0 .5-.5v-7a.5.5 0 0 0-.146-.354L8.354 1.146z"/></svg>
+  </a>
+  <h1>Heroes Database</h1>
+  <span class="hero-count" id="heroCount">0</span>
+</div>
+
+<div class="search-bar">
+  <input id="searchInput" type="text" placeholder="Search heroes by name, skill, type, or effect...">
+</div>
+
+<div class="filter-row" id="typeFilters"></div>
+<div class="filter-row" id="effectFilters"></div>
+
+<div id="statusEl" class="status"></div>
+
+<div id="content">
+  <div class="section-header" id="ssrHeader">
+    <span>SSR Heroes</span>
+    <span class="badge" id="ssrCount">0</span>
+  </div>
+  <div class="hero-grid" id="ssrGrid"></div>
+
+  <div class="section-header collapsible muted" id="srHeader" onclick="toggleSR()">
+    <span class="chevron collapsed" id="srChevron">&#9660;</span>
+    <span>SR / R Heroes</span>
+    <span class="badge" id="srCount">0</span>
+  </div>
+  <div class="hero-grid hidden" id="srGrid"></div>
+</div>
+
+<div class="modal-overlay hidden" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modalContent"></div>
+</div>
+
+<footer>
+  <div style="margin-bottom:.3rem"><a href="https://2864tw.com">2864tw.com</a></div>
+  <a href="https://github.com/texnottexas/landing-page" class="shimmer-text">Brought to you by supporters of the fk boats movement</a>
+</footer>
+
+<script>
+/* All data rendered on this page is our own static JSON extracted from the game client.
+   No user input is ever rendered as HTML. innerHTML usage is safe as we control all the data. */
+
+var ASSET_BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/';
+
+var EFFECT_NAMES = {
+  5:'Indestructible',6:'Strike',8:'Chaos',9:'Silence',10:'Heavy Armor',
+  11:'Vulnerable',12:'Debilitation',13:'HP Boost',14:'Attack Enhancement',
+  15:'Rage',16:'Disarm',18:'Abnormal Status',19:'Hostile',20:'Wild Instinct',
+  21:'Domination',46:'Ignition',47:'Splash Damage',49:'Resistance',50:'Support',
+  52:'Combo Attack',56:'Mighty Charge',62:'Resistance',69:'Silent Precision',
+  70:'Damage Reduction Shield',71:'Decoy',72:'Magnetic Pulse',73:'Status Damage (DOT)',
+  77:'Light Armor',78:'Vitality',85:'Block',88:'Taunt',89:'Meditation',92:'Concentration'
+};
+
+var INTERESTING_EFFECTS = new Set([
+  'Ignition','Magnetic Pulse','Combo Attack','Indestructible','Splash Damage',
+  'Hostile','Silence','Chaos','Rage','Vulnerable','Debilitation','Heavy Armor',
+  'Light Armor','Taunt','Decoy','Mighty Charge','Wild Instinct','Domination',
+  'Vitality','Block','Meditation','Concentration','Silent Precision',
+  'Damage Reduction Shield','Status Damage (DOT)','Disarm','Strike','Abnormal Status'
+]);
+
+var TYPE_CLASS = {'Army':'army','Navy':'navy','Air Force':'air'};
+var STARS = {'Gold':5,'Purple':4,'Blue':3};
+
+var allHeroes = [], ssrHeroes = [], srHeroes = [];
+var activeTypeFilter = 'All';
+var activeEffectFilters = new Set();
+var searchQuery = '';
+var allEffectsList = [];
+var effectExpanded = false;
+var VISIBLE_EFFECTS = 8;
+
+function loadData() {
+  document.getElementById('statusEl').textContent = 'Loading heroes...';
+  fetch('data/all-heroes.json')
+    .then(function(r) { if (!r.ok) throw new Error('Failed to load'); return r.json(); })
+    .then(function(data) {
+      allHeroes = data;
+      ssrHeroes = data.filter(function(h) { return h.qualityName === 'Gold'; });
+      srHeroes = data.filter(function(h) { return h.qualityName !== 'Gold'; });
+      document.getElementById('statusEl').textContent = '';
+      buildTypeFilters();
+      buildEffectFilters();
+      renderAll();
+    })
+    .catch(function(e) {
+      document.getElementById('statusEl').textContent = 'Error loading hero data: ' + e.message;
+      document.getElementById('statusEl').className = 'status error';
+    });
+}
+
+function buildTypeFilters() {
+  var container = document.getElementById('typeFilters');
+  var types = [
+    {label:'All Types', value:'All', cls:'type-all'},
+    {label:'Army', value:'Army', cls:'type-army'},
+    {label:'Navy', value:'Navy', cls:'type-navy'},
+    {label:'Air Force', value:'Air Force', cls:'type-air'}
+  ];
+  var html = '<span class="filter-label">Type</span>';
+  types.forEach(function(t) {
+    var active = activeTypeFilter === t.value ? ' active' : '';
+    html += '<span class="fpill ' + t.cls + active + '" onclick="setTypeFilter(\'' + t.value + '\')">' + t.label + '</span>';
+  });
+  container.innerHTML = html;
+}
+
+function buildEffectFilters() {
+  var freq = {};
+  allHeroes.forEach(function(h) {
+    (h.effectTags || []).forEach(function(tag) {
+      freq[tag] = (freq[tag] || 0) + 1;
+    });
+  });
+  allEffectsList = Object.keys(freq).sort(function(a, b) { return freq[b] - freq[a]; });
+  renderEffectFilters();
+}
+
+function renderEffectFilters() {
+  var container = document.getElementById('effectFilters');
+  if (allEffectsList.length === 0) { container.innerHTML = ''; return; }
+  var html = '<span class="filter-label">Effects</span>';
+  var visible = effectExpanded ? allEffectsList : allEffectsList.slice(0, VISIBLE_EFFECTS);
+  visible.forEach(function(eff) {
+    var active = activeEffectFilters.has(eff) ? ' active' : '';
+    var escaped = eff.replace(/'/g, "\\'");
+    html += '<span class="fpill effect' + active + '" onclick="toggleEffect(\'' + escaped + '\')">' + eff + '</span>';
+  });
+  if (allEffectsList.length > VISIBLE_EFFECTS) {
+    if (effectExpanded) {
+      html += '<span class="fpill more-toggle" onclick="toggleEffectExpand()">Show less</span>';
+    } else {
+      var remaining = allEffectsList.length - VISIBLE_EFFECTS;
+      html += '<span class="fpill more-toggle" onclick="toggleEffectExpand()">+' + remaining + ' more</span>';
+    }
+  }
+  container.innerHTML = html;
+}
+
+function setTypeFilter(type) {
+  activeTypeFilter = type;
+  buildTypeFilters();
+  renderAll();
+}
+
+function toggleEffect(eff) {
+  if (activeEffectFilters.has(eff)) {
+    activeEffectFilters.delete(eff);
+  } else {
+    activeEffectFilters.add(eff);
+  }
+  renderEffectFilters();
+  renderAll();
+}
+
+function toggleEffectExpand() {
+  effectExpanded = !effectExpanded;
+  renderEffectFilters();
+}
+
+function filterHeroes(heroes) {
+  return heroes.filter(function(h) {
+    if (activeTypeFilter !== 'All' && h.typeName !== activeTypeFilter) return false;
+    if (activeEffectFilters.size > 0) {
+      var tags = new Set(h.effectTags || []);
+      var match = true;
+      activeEffectFilters.forEach(function(eff) {
+        if (!tags.has(eff)) match = false;
+      });
+      if (!match) return false;
+    }
+    if (searchQuery) {
+      var q = searchQuery.toLowerCase();
+      var searchable = [
+        h.displayName,
+        h.skillName,
+        h.typeName,
+        (h.effectTags || []).join(' ')
+      ];
+      (h.skills || []).forEach(function(s) {
+        searchable.push(s.description || '');
+        searchable.push(s.title || '');
+      });
+      if (h.exclusiveSkill) {
+        searchable.push(h.exclusiveSkill.name || '');
+        searchable.push(h.exclusiveSkill.description || '');
+        (h.exclusiveSkill.milestones || []).forEach(function(m) {
+          searchable.push(m.text || '');
+        });
+      }
+      var joined = searchable.join(' ').toLowerCase();
+      if (joined.indexOf(q) === -1) return false;
+    }
+    return true;
+  });
+}
+
+function getCardTags(hero) {
+  var tags = hero.effectTags || [];
+  if (tags.length === 0) return [];
+  var interesting = tags.filter(function(t) { return INTERESTING_EFFECTS.has(t); });
+  var generic = tags.filter(function(t) { return !INTERESTING_EFFECTS.has(t); });
+  var picked = interesting.slice(0, 2);
+  if (picked.length < 2 && generic.length > 0) {
+    picked = picked.concat(generic.slice(0, 2 - picked.length));
+  }
+  return picked;
+}
+
+function escapeAttr(s) {
+  return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderCard(hero) {
+  var tc = TYPE_CLASS[hero.typeName] || '';
+  var tags = getCardTags(hero);
+  var imgSrc = hero.iconLarge || hero.iconSmall || '';
+  var tagsHtml = '';
+  if (tags.length) {
+    tagsHtml = '<div class="hcard-tags">';
+    tags.forEach(function(t) { tagsHtml += '<span class="hcard-tag">' + t + '</span>'; });
+    tagsHtml += '</div>';
+  }
+  var imgHtml = imgSrc
+    ? '<img class="hcard-img" src="' + escapeAttr(imgSrc) + '" alt="' + escapeAttr(hero.displayName) + '" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">'
+      + '<div class="hcard-placeholder" style="display:none">?</div>'
+    : '<div class="hcard-placeholder">?</div>';
+  return '<div class="hcard ' + tc + '" onclick="openModal(' + hero.heroId + ')">'
+    + imgHtml
+    + tagsHtml
+    + '<div class="hcard-overlay"><div class="hcard-name ' + tc + '">' + hero.displayName + '</div></div>'
+    + '</div>';
+}
+
+function renderAll() {
+  var filteredSSR = filterHeroes(ssrHeroes);
+  var filteredSR = filterHeroes(srHeroes);
+  var ssrGrid = document.getElementById('ssrGrid');
+  var srGrid = document.getElementById('srGrid');
+  if (filteredSSR.length) {
+    ssrGrid.innerHTML = filteredSSR.map(renderCard).join('');
+  } else {
+    ssrGrid.innerHTML = '<div class="no-results">No SSR heroes match your filters</div>';
+  }
+  if (filteredSR.length) {
+    srGrid.innerHTML = filteredSR.map(renderCard).join('');
+  } else {
+    srGrid.innerHTML = '<div class="no-results">No SR/R heroes match your filters</div>';
+  }
+  document.getElementById('ssrCount').textContent = filteredSSR.length;
+  document.getElementById('srCount').textContent = filteredSR.length;
+  document.getElementById('heroCount').textContent = filteredSSR.length + filteredSR.length;
+}
+
+function highlightDescription(desc) {
+  if (!desc) return '';
+  var text = desc.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  text = text.replace(/(\d+\.?\d*%|\d+-\d+|\{\d+\})/g, '<span class="val">$1</span>');
+  var effectNames = Object.values(EFFECT_NAMES);
+  effectNames.sort(function(a, b) { return b.length - a.length; });
+  effectNames.forEach(function(name) {
+    var escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    text = text.replace(new RegExp('\\b(' + escaped + ')\\b', 'g'), '<span class="effect-name">$1</span>');
+  });
+  return text;
+}
+
+function renderSkillSection(hero) {
+  var skillIconUrl = hero.skillIcon
+    ? ASSET_BASE + 'assets/skill-icons/' + hero.skillIcon + '.png'
+    : '';
+  var html = '<div class="skill-section">';
+  html += '<div class="skill-section-title">Native Skill</div>';
+  html += '<div class="skill-header">';
+  if (skillIconUrl) {
+    html += '<img class="skill-icon native" src="' + escapeAttr(skillIconUrl) + '" alt="" onerror="this.style.display=\'none\'">';
+  }
+  html += '<div class="skill-info"><div class="skill-name">' + (hero.skillName || 'Unknown') + '</div>';
+  html += '<div class="skill-label">Native Skill</div></div></div>';
+  (hero.skills || []).forEach(function(s) {
+    html += '<div class="sub-skill">';
+    html += '<div class="sub-skill-title">' + (s.title || '') + '</div>';
+    html += '<div class="sub-skill-desc">' + highlightDescription(s.description) + '</div>';
+    html += '</div>';
+  });
+  var effectSet = [];
+  var seen = {};
+  (hero.skills || []).forEach(function(s) {
+    (s.effects || []).forEach(function(e) {
+      if (!seen[e.name]) { seen[e.name] = true; effectSet.push(e.name); }
+    });
+  });
+  if (effectSet.length) {
+    html += '<div class="effect-tags-row">';
+    effectSet.forEach(function(name) {
+      html += '<span class="effect-pill">' + name + '</span>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderExclusiveSection(hero) {
+  var exc = hero.exclusiveSkill;
+  if (!exc) return '';
+  var iconUrl = exc.iconFile
+    ? ASSET_BASE + 'assets/exclusive-skill-icons/' + exc.iconFile
+    : '';
+  var html = '<div class="skill-section exclusive-section">';
+  html += '<div class="skill-section-title" style="color:var(--purple)">Exclusive Skill</div>';
+  html += '<div class="skill-header">';
+  if (iconUrl) {
+    html += '<img class="skill-icon exclusive" src="' + escapeAttr(iconUrl) + '" alt="" onerror="this.style.display=\'none\'">';
+  }
+  html += '<div class="skill-info"><div class="skill-name">' + (exc.name || '') + '</div>';
+  html += '<div class="skill-label">Exclusive Skill &middot; Max Lv.' + (exc.maxLevel || 10) + '</div></div></div>';
+  if (exc.description) {
+    html += '<div class="exclusive-desc">' + highlightDescription(exc.description) + '</div>';
+  }
+  if (exc.milestones && exc.milestones.length) {
+    html += '<div class="milestones">';
+    exc.milestones.forEach(function(m) {
+      html += '<div class="milestone">';
+      html += '<span class="milestone-badge">Lv.' + m.level + '</span>';
+      html += '<span class="milestone-text">' + highlightDescription(m.text) + '</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function openModal(heroId) {
+  var hero = allHeroes.find(function(h) { return h.heroId === heroId; });
+  if (!hero) return;
+  var tc = TYPE_CLASS[hero.typeName] || '';
+  var stars = STARS[hero.qualityName] || 5;
+  var starStr = '';
+  for (var i = 0; i < stars; i++) starStr += '\u2605';
+  var imgSrc = hero.iconSmall || hero.iconLarge || '';
+  var html = '<div class="modal-header">';
+  if (imgSrc) {
+    html += '<img class="modal-hero-img ' + tc + '" src="' + escapeAttr(imgSrc) + '" alt="" onerror="this.style.display=\'none\'">';
+  }
+  html += '<div class="modal-hero-info">';
+  html += '<div class="modal-hero-name">' + hero.displayName + '</div>';
+  html += '<div class="modal-hero-meta">';
+  html += '<span class="modal-stars">' + starStr + '</span>';
+  html += '<span class="modal-type-badge ' + tc + '">' + hero.typeName + '</span>';
+  html += '</div></div>';
+  html += '<button class="modal-close" onclick="closeModal()">&times;</button>';
+  html += '</div>';
+  html += '<div class="modal-body">';
+  html += renderSkillSection(hero);
+  html += renderExclusiveSection(hero);
+  html += '</div>';
+  document.getElementById('modalContent').innerHTML = html;
+  document.getElementById('modalOverlay').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+function toggleSR() {
+  var grid = document.getElementById('srGrid');
+  var chevron = document.getElementById('srChevron');
+  var isHidden = grid.classList.contains('hidden');
+  if (isHidden) {
+    grid.classList.remove('hidden');
+    chevron.classList.remove('collapsed');
+  } else {
+    grid.classList.add('hidden');
+    chevron.classList.add('collapsed');
+  }
+}
+
+document.getElementById('searchInput').addEventListener('input', function(e) {
+  searchQuery = e.target.value.trim();
+  renderAll();
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeModal();
+});
+
+loadData();
+</script>
+</body>
+</html>
