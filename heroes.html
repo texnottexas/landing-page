@@ -38,6 +38,7 @@
   .fpill.type-army.active { background: var(--army); border-color: var(--army); color: var(--bg); }
   .fpill.type-navy.active { background: var(--navy); border-color: var(--navy); color: #fff; }
   .fpill.type-air.active { background: var(--air); border-color: var(--air); color: var(--bg); }
+  .fpill.type-decor.active { background: var(--red); border-color: var(--red); color: #fff; }
   .fpill.effect.active { background: rgba(121,192,255,.15); border-color: var(--accent); color: var(--accent); }
   .fpill.more-toggle { border-style: dashed; font-size: .7rem; }
 
@@ -47,13 +48,14 @@
 
   /* Content */
   #content { max-width: 1200px; margin: 0 auto 2rem; padding: 0 1rem; width: 100%; flex: 1; }
-  .section-header { font-size: .85rem; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; padding: .75rem 0 .5rem; border-bottom: 1px solid var(--border); margin: 1rem 0 .75rem; display: flex; align-items: center; gap: .5rem; }
+  .section-header { font-size: .85rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; padding: .75rem 0 .5rem; border-bottom: 1px solid var(--border); margin: 1rem 0 .75rem; display: flex; align-items: center; gap: .5rem; cursor: pointer; user-select: none; }
+  .section-header:hover { opacity: .85; }
   .section-header .badge { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: .1rem .45rem; font-size: .7rem; color: var(--muted); font-weight: 600; }
-  .section-header.collapsible { cursor: pointer; user-select: none; }
-  .section-header.collapsible:hover { color: var(--text); }
   .section-header .chevron { font-size: .7rem; transition: transform .2s; }
   .section-header .chevron.collapsed { transform: rotate(-90deg); }
-  .section-header.muted { color: var(--muted); }
+  .section-header.ssr { color: var(--air); }
+  .section-header.sr { color: var(--purple); }
+  .section-header.r { color: #58a6ff; }
 
   /* Hero card grid */
   .hero-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: .75rem; }
@@ -178,18 +180,26 @@
 <div id="statusEl" class="status"></div>
 
 <div id="content">
-  <div class="section-header" id="ssrHeader">
-    <span>SSR Heroes</span>
+  <div class="section-header ssr" id="ssrHeader" onclick="toggleSection('ssr')">
+    <span class="chevron" id="ssrChevron">&#9660;</span>
+    <span>★★★★★ SSR Heroes</span>
     <span class="badge" id="ssrCount">0</span>
   </div>
   <div class="hero-grid" id="ssrGrid"></div>
 
-  <div class="section-header collapsible muted" id="srHeader" onclick="toggleSR()">
+  <div class="section-header sr" id="srHeader" onclick="toggleSection('sr')">
     <span class="chevron collapsed" id="srChevron">&#9660;</span>
-    <span>SR / R Heroes</span>
+    <span>★★★★ SR Heroes</span>
     <span class="badge" id="srCount">0</span>
   </div>
   <div class="hero-grid hidden" id="srGrid"></div>
+
+  <div class="section-header r" id="rHeader" onclick="toggleSection('r')">
+    <span class="chevron collapsed" id="rChevron">&#9660;</span>
+    <span>★★★ R Heroes</span>
+    <span class="badge" id="rCount">0</span>
+  </div>
+  <div class="hero-grid hidden" id="rGrid"></div>
 </div>
 
 <div class="effect-tooltip" id="effectTooltip"></div>
@@ -266,7 +276,7 @@ var EFFECT_DESCRIPTIONS = {
 };
 var STARS = {'Gold':5,'Purple':4,'Blue':3};
 
-var allHeroes = [], ssrHeroes = [], srHeroes = [];
+var allHeroes = [], ssrHeroes = [], srHeroes = [], rHeroes = [];
 var activeTypeFilter = 'All';
 var activeEffectFilters = new Set();
 var searchQuery = '';
@@ -282,7 +292,8 @@ function loadData() {
     .then(function(data) {
       allHeroes = data;
       ssrHeroes = data.filter(function(h) { return h.qualityName === 'Gold'; });
-      srHeroes = data.filter(function(h) { return h.qualityName !== 'Gold'; });
+      srHeroes = data.filter(function(h) { return h.qualityName === 'Purple'; });
+      rHeroes = data.filter(function(h) { return h.qualityName === 'Blue'; });
       document.getElementById('statusEl').textContent = '';
       buildTypeFilters();
       buildEffectFilters();
@@ -300,7 +311,8 @@ function buildTypeFilters() {
     {label:'All Types', value:'All', cls:'type-all'},
     {label:'Army', value:'Army', cls:'type-army'},
     {label:'Navy', value:'Navy', cls:'type-navy'},
-    {label:'Air Force', value:'Air Force', cls:'type-air'}
+    {label:'Air Force', value:'Air Force', cls:'type-air'},
+    {label:'Decor', value:'Decor', cls:'type-decor'}
   ];
   var html = '<span class="filter-label">Type</span>';
   types.forEach(function(t) {
@@ -372,7 +384,8 @@ function toggleEffectExpand() {
 
 function filterHeroes(heroes) {
   return heroes.filter(function(h) {
-    if (activeTypeFilter !== 'All' && h.typeName !== activeTypeFilter) return false;
+    if (activeTypeFilter === 'Decor') { if (!DECOR_HEROES.has(h.heroId)) return false; }
+    else if (activeTypeFilter !== 'All' && h.typeName !== activeTypeFilter) return false;
     if (activeEffectFilters.size > 0) {
       var tags = new Set(h.effectTags || []);
       var allMatch = Array.from(activeEffectFilters).every(function(eff) { return tags.has(eff); });
@@ -454,11 +467,14 @@ function renderGrid(heroes, gridId, emptyMsg) {
 function renderAll() {
   var filteredSSR = filterHeroes(ssrHeroes);
   var filteredSR = filterHeroes(srHeroes);
+  var filteredR = filterHeroes(rHeroes);
   renderGrid(filteredSSR, 'ssrGrid', 'No SSR heroes match your filters');
-  renderGrid(filteredSR, 'srGrid', 'No SR/R heroes match your filters');
+  renderGrid(filteredSR, 'srGrid', 'No SR heroes match your filters');
+  renderGrid(filteredR, 'rGrid', 'No R heroes match your filters');
   document.getElementById('ssrCount').textContent = filteredSSR.length;
   document.getElementById('srCount').textContent = filteredSR.length;
-  document.getElementById('heroCount').textContent = filteredSSR.length + filteredSR.length;
+  document.getElementById('rCount').textContent = filteredR.length;
+  document.getElementById('heroCount').textContent = filteredSSR.length + filteredSR.length + filteredR.length;
 }
 
 function getSortedEffectNames() {
@@ -624,9 +640,9 @@ function showEffectTip(el, name) {
   tip.style.top = top + 'px';
 }
 
-function toggleSR() {
-  document.getElementById('srGrid').classList.toggle('hidden');
-  document.getElementById('srChevron').classList.toggle('collapsed');
+function toggleSection(key) {
+  document.getElementById(key + 'Grid').classList.toggle('hidden');
+  document.getElementById(key + 'Chevron').classList.toggle('collapsed');
 }
 
 document.getElementById('searchInput').addEventListener('input', function(e) {
