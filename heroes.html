@@ -73,6 +73,7 @@
   .hcard-type-pill.army { background: rgba(63,185,80,.25); color: var(--army); border: 1px solid rgba(63,185,80,.4); }
   .hcard-type-pill.navy { background: rgba(56,139,253,.25); color: var(--navy); border: 1px solid rgba(56,139,253,.4); }
   .hcard-type-pill.air { background: rgba(210,153,34,.25); color: var(--air); border: 1px solid rgba(210,153,34,.4); }
+  .hcard-type-pill.decor { background: rgba(248,81,73,.2); color: var(--red); border: 1px solid rgba(248,81,73,.35); }
   .hcard-tags { position: absolute; top: .4rem; left: .4rem; display: flex; flex-direction: column; gap: .25rem; }
   .hcard-tag { background: rgba(0,0,0,.7); border: 1px solid rgba(255,255,255,.15); border-radius: 4px; padding: .1rem .35rem; font-size: .55rem; color: var(--text); font-weight: 600; backdrop-filter: blur(4px); white-space: nowrap; }
   .hcard-placeholder { width: 100%; height: 100%; background: linear-gradient(135deg, var(--surface), var(--card)); display: flex; align-items: center; justify-content: center; font-size: 2rem; color: var(--muted); opacity: .3; }
@@ -94,6 +95,7 @@
   .modal-type-badge.army { background: rgba(63,185,80,.15); color: var(--army); border: 1px solid rgba(63,185,80,.3); }
   .modal-type-badge.navy { background: rgba(56,139,253,.15); color: var(--navy); border: 1px solid rgba(56,139,253,.3); }
   .modal-type-badge.air { background: rgba(210,153,34,.15); color: var(--air); border: 1px solid rgba(210,153,34,.3); }
+  .modal-type-badge.decor { background: rgba(248,81,73,.12); color: var(--red); border: 1px solid rgba(248,81,73,.25); }
   .modal-close { background: none; border: none; color: var(--muted); font-size: 1.5rem; cursor: pointer; padding: .2rem .5rem; line-height: 1; flex-shrink: 0; }
   .modal-close:hover { color: var(--text); }
   .modal-body { padding: 1rem 1.25rem; }
@@ -226,6 +228,7 @@ var INTERESTING_EFFECTS = new Set([
 
 var TYPE_CLASS = {'Army':'army','Navy':'navy','Air Force':'air'};
 var TYPE_SHORT = {'Army':'Army','Navy':'Navy','Air Force':'Air'};
+var DECOR_HEROES = new Set([119, 143, 146, 150, 155, 158, 163, 164]);
 
 var EFFECT_DESCRIPTIONS = {
   'Indestructible':'Prevents your units from being eliminated for the duration. Units at 0 HP survive with 1 HP.',
@@ -314,7 +317,14 @@ function buildEffectFilters() {
       freq[tag] = (freq[tag] || 0) + 1;
     });
   });
-  allEffectsList = Object.keys(freq).sort(function(a, b) { return freq[b] - freq[a]; });
+  var PRIORITY_TOP = ['Attack Enhancement', 'HP Boost', 'Indestructible'];
+  var PRIORITY_MID = ['Debilitation', 'Ignition', 'Magnetic Pulse', 'Vulnerable'];
+  var topSet = new Set(PRIORITY_TOP);
+  var midSet = new Set(PRIORITY_MID);
+  var rest = Object.keys(freq).filter(function(e) { return !topSet.has(e) && !midSet.has(e); }).sort();
+  var midFiltered = PRIORITY_MID.filter(function(e) { return freq[e]; });
+  var topFiltered = PRIORITY_TOP.filter(function(e) { return freq[e]; });
+  allEffectsList = topFiltered.concat(midFiltered).concat(rest);
   renderEffectFilters();
 }
 
@@ -421,11 +431,15 @@ function renderCard(hero) {
       + '<div class="hcard-placeholder" style="display:none">?</div>'
     : '<div class="hcard-placeholder">?</div>';
   var typeLabel = TYPE_SHORT[hero.typeName] || '';
+  var isDecor = DECOR_HEROES.has(hero.heroId);
+  var pills = '';
+  if (typeLabel) pills += '<span class="hcard-type-pill ' + tc + '">' + typeLabel + '</span>';
+  if (isDecor) pills += '<span class="hcard-type-pill decor">Decor</span>';
   return '<div class="hcard ' + tc + '" onclick="openModal(' + hero.heroId + ')">'
     + imgHtml
     + tagsHtml
     + '<div class="hcard-overlay"><div class="hcard-name">' + hero.displayName + '</div>'
-    + (typeLabel ? '<span class="hcard-type-pill ' + tc + '">' + typeLabel + '</span>' : '')
+    + pills
     + '</div>'
     + '</div>';
 }
@@ -552,6 +566,7 @@ function openModal(heroId) {
   html += '<div class="modal-hero-meta">';
   html += '<span class="modal-stars">' + starStr + '</span>';
   html += '<span class="modal-type-badge ' + tc + '">' + hero.typeName + '</span>';
+  if (DECOR_HEROES.has(hero.heroId)) html += '<span class="modal-type-badge decor">Decor</span>';
   html += '</div></div>';
   html += '<button class="modal-close" onclick="closeModal()">&times;</button>';
   html += '</div>';
