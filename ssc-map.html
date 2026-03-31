@@ -839,6 +839,30 @@
     .cd-cat-badge.economy { background:rgba(63,185,80,.15); color:#3fb950; }
     .cd-cat-badge.utility { background:rgba(56,139,253,.15); color:#388bfd; }
     .cd-cat-badge.special { background:rgba(210,153,34,.15); color:#d29922; }
+
+    /* Diff Animation Modal */
+    .diff-anim-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:700; align-items:center; justify-content:center; padding:1rem; }
+    .diff-anim-overlay.show { display:flex; }
+    .diff-anim-modal { background:var(--surface); border:1px solid var(--border); border-radius:12px; max-width:600px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.6); display:flex; flex-direction:column; }
+    .diff-anim-header { display:flex; align-items:center; justify-content:space-between; padding:.75rem 1rem; border-bottom:1px solid var(--border); }
+    .diff-anim-header h3 { font-size:.95rem; font-weight:700; margin:0; }
+    .diff-anim-legend { display:flex; gap:1rem; padding:.5rem 1rem; font-size:.75rem; flex-wrap:wrap; }
+    .diff-legend-item { display:flex; align-items:center; gap:.3rem; }
+    .diff-legend-item.gained { color:#3fb950; }
+    .diff-legend-item.lost { color:#f85149; }
+    .diff-legend-item.swapped { color:#d29922; }
+    .diff-anim-stats { padding:.25rem 1rem .5rem; font-size:.8rem; color:var(--muted); }
+    .diff-anim-grid-wrap { overflow:auto; padding:.75rem 1rem; flex:1; }
+    .diff-anim-grid { display:grid; gap:2px; background:#0d1117; border:1px solid var(--border); border-radius:4px; width:fit-content; margin:0 auto; }
+    .diff-cell { width:22px; height:22px; border-radius:2px; transition:background .3s, transform .3s; position:relative; display:flex; align-items:center; justify-content:center; font-size:.45rem; font-weight:700; }
+    .diff-cell.changed { transform:scale(1.2); z-index:5; }
+    .diff-cell.diff-gained { background:#1a4a25 !important; box-shadow:0 0 6px rgba(63,185,80,.8); }
+    .diff-cell.diff-lost { background:#4a1a1a !important; box-shadow:0 0 6px rgba(248,81,73,.8); }
+    .diff-cell.diff-swapped { background:#3a3010 !important; box-shadow:0 0 6px rgba(210,153,34,.6); }
+    .diff-anim-controls { display:flex; align-items:center; gap:.75rem; padding:.75rem 1rem; border-top:1px solid var(--border); flex-wrap:wrap; }
+    .diff-ctrl-btn { background:var(--card); border:1px solid var(--border); color:var(--text); padding:.4rem .9rem; border-radius:6px; cursor:pointer; font-size:.8rem; font-weight:600; transition:all .15s; }
+    .diff-ctrl-btn:hover { border-color:var(--accent); color:var(--accent); }
+    .diff-progress { font-size:.75rem; color:var(--muted); margin-left:auto; }
   </style>
 </head>
 <body>
@@ -851,6 +875,7 @@
     <div class="header-controls">
       <div class="round-pills" id="roundPills"></div>
       <button class="center-toggle active" id="centerToggle" title="Center map on S2864">Center S2864</button>
+      <button class="center-toggle" id="playChangesBtn" style="display:none">&#9654; Changes</button>
     </div>
   </header>
 
@@ -998,6 +1023,38 @@
     </div>
   </div>
   <div class="toast" id="toast"></div>
+
+  <!-- Diff Animation Modal -->
+  <div class="diff-anim-overlay" id="diffAnimOverlay">
+    <div class="diff-anim-modal" id="diffAnimModal">
+      <div class="diff-anim-header">
+        <h3 id="diffAnimTitle">Territory Changes</h3>
+        <button class="cell-detail-close" id="diffAnimClose">&times;</button>
+      </div>
+      <div class="diff-anim-legend">
+        <span class="diff-legend-item gained">&#9650; Gained</span>
+        <span class="diff-legend-item lost">&#9660; Lost</span>
+        <span class="diff-legend-item swapped">&#9670; Swapped</span>
+      </div>
+      <div class="diff-anim-stats" id="diffAnimStats"></div>
+      <div class="diff-anim-grid-wrap">
+        <div class="diff-anim-grid" id="diffAnimGrid"></div>
+      </div>
+      <div class="diff-anim-controls">
+        <button class="diff-ctrl-btn" id="diffPlayBtn">&#9654; Play</button>
+        <button class="diff-ctrl-btn" id="diffResetBtn">&#8635; Reset</button>
+        <div class="diff-ctrl-speed">
+          <label style="font-size:.72rem;color:var(--muted)">Speed:</label>
+          <select id="diffSpeed" style="background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:.2rem .35rem;font-size:.72rem;">
+            <option value="800">Slow</option>
+            <option value="400" selected>Normal</option>
+            <option value="150">Fast</option>
+          </select>
+        </div>
+        <span class="diff-progress" id="diffProgress"></span>
+      </div>
+    </div>
+  </div>
 
   <!-- Cell Detail Modal -->
   <div class="cell-detail-overlay" id="cellDetailOverlay">
@@ -1150,6 +1207,8 @@
         side = data.side || 24;
         activeRound = data.currentRound || Object.keys(data.rounds)[0];
         buildRoundPills(data.rounds, activeRound);
+        playChangesBtn = document.getElementById('playChangesBtn');
+        playChangesBtn.addEventListener('click', openDiffAnimation);
         switchRound(activeRound);
       } else {
         // Legacy flat format
@@ -1218,6 +1277,7 @@
       diffLbl.textContent = 'Show changes (needs 2+ rounds)';
     }
     initRound();
+    if (playChangesBtn) updatePlayChangesBtn();
   }
 
   function initRound() {
@@ -2273,6 +2333,168 @@
     if (e.target === this) closeCellDetail();
   });
 
+  /* --- Play Changes Button --- */
+  var playChangesBtn = null;
+
+  function updatePlayChangesBtn() {
+    if (!playChangesBtn) return;
+    // Show only when there's a previous round to diff against
+    var prevKey = String(parseInt(activeRound) - 1);
+    var hasDiff = rawData && rawData.rounds && rawData.rounds[prevKey] && rawData.rounds[activeRound];
+    playChangesBtn.style.display = hasDiff ? '' : 'none';
+  }
+
+  /* --- Diff Animation --- */
+  var diffAnimRunning = false;
+  var diffAnimTimer = null;
+  var diffCellEls = {}; // key -> element in anim grid
+
+  function openDiffAnimation() {
+    if (!rawData || !rawData.rounds) return;
+    var prevKey = String(parseInt(activeRound) - 1);
+    var curRound = rawData.rounds[activeRound];
+    var prevRound = rawData.rounds[prevKey];
+    if (!curRound || !prevRound) return;
+
+    var overlay = document.getElementById('diffAnimOverlay');
+    var title = document.getElementById('diffAnimTitle');
+    var statsEl = document.getElementById('diffAnimStats');
+    var grid = document.getElementById('diffAnimGrid');
+    var progress = document.getElementById('diffProgress');
+
+    title.textContent = 'Round ' + prevKey + ' \u2192 Round ' + activeRound + ' Territory Changes';
+    grid.textContent = '';
+    diffCellEls = {};
+    diffAnimRunning = false;
+    if (diffAnimTimer) clearTimeout(diffAnimTimer);
+    progress.textContent = '';
+
+    // Build prev/cur ownership maps by cell position
+    var prevMap = {}, curMap = {};
+    prevRound.cells.forEach(function(c) { prevMap[c.r + ',' + c.c] = c; });
+    curRound.cells.forEach(function(c) { curMap[c.r + ',' + c.c] = c; });
+
+    // Compute changes
+    var changes = []; // {key, type: gained/lost/swapped, r, c}
+    Object.keys(curMap).forEach(function(key) {
+      var prev = prevMap[key];
+      var cur = curMap[key];
+      if (!prev || prev.sid === cur.sid) return;
+      if (cur.sid === 2864 && prev.sid !== 2864) changes.push({key:key, type:'gained', r:cur.r, c:cur.c});
+      else if (prev.sid === 2864 && cur.sid !== 2864) changes.push({key:key, type:'lost', r:cur.r, c:cur.c});
+      else changes.push({key:key, type:'swapped', r:cur.r, c:cur.c});
+    });
+
+    var gained = changes.filter(function(c) { return c.type === 'gained'; }).length;
+    var lost = changes.filter(function(c) { return c.type === 'lost'; }).length;
+    var swapped = changes.filter(function(c) { return c.type === 'swapped'; }).length;
+    statsEl.textContent = gained + ' gained \u2022 ' + lost + ' lost \u2022 ' + swapped + ' other swaps \u2022 ' + changes.length + ' total changes';
+
+    // Build the mini grid (use current round layout)
+    grid.style.gridTemplateColumns = 'repeat(24, auto)';
+    for (var r = 0; r < 24; r++) {
+      for (var c = 0; c < 24; c++) {
+        var key = r + ',' + c;
+        var prevCell = prevMap[key] || {};
+        var d = el('div', 'diff-cell');
+        // Start from PREV state
+        d.style.background = serverColor(prevCell.sid || 0);
+        if (prevCell.type === 1) d.style.outline = '1px solid #d29922';
+        diffCellEls[key] = { el: d, change: null };
+        grid.appendChild(d);
+      }
+    }
+    // Mark which cells have changes
+    changes.forEach(function(ch) { if (diffCellEls[ch.key]) diffCellEls[ch.key].change = ch; });
+
+    // Sort changes: S2864 gained/lost first, then swaps
+    changes.sort(function(a, b) {
+      var order = {gained:0, lost:1, swapped:2};
+      return order[a.type] - order[b.type];
+    });
+    diffCellEls._changes = changes;
+    diffCellEls._changeIndex = 0;
+
+    overlay.classList.add('show');
+  }
+
+  function closeDiffAnimation() {
+    diffAnimRunning = false;
+    if (diffAnimTimer) clearTimeout(diffAnimTimer);
+    document.getElementById('diffAnimOverlay').classList.remove('show');
+  }
+
+  function playNextChange() {
+    var changes = diffCellEls._changes;
+    var idx = diffCellEls._changeIndex;
+    if (!changes || idx >= changes.length) {
+      diffAnimRunning = false;
+      document.getElementById('diffPlayBtn').textContent = '\u25BA Play';
+      document.getElementById('diffProgress').textContent = 'Complete \u2014 ' + changes.length + '/' + changes.length;
+      return;
+    }
+
+    var ch = changes[idx];
+    var item = diffCellEls[ch.key];
+    if (item) {
+      // Get current round cell color
+      var curRound = rawData.rounds[activeRound];
+      var curCell = null;
+      for (var i = 0; i < curRound.cells.length; i++) {
+        if (curRound.cells[i].r === ch.r && curRound.cells[i].c === ch.c) { curCell = curRound.cells[i]; break; }
+      }
+      item.el.style.background = serverColor(curCell ? curCell.sid : 0);
+      item.el.classList.remove('diff-gained', 'diff-lost', 'diff-swapped', 'changed');
+      item.el.classList.add('diff-' + ch.type, 'changed');
+      setTimeout(function() { item.el.classList.remove('changed'); }, 400);
+    }
+
+    diffCellEls._changeIndex = idx + 1;
+    var speed = parseInt(document.getElementById('diffSpeed').value) || 400;
+    var progress = document.getElementById('diffProgress');
+    progress.textContent = (idx + 1) + '/' + changes.length;
+    document.getElementById('diffPlayBtn').textContent = '\u23F8 Pause';
+
+    if (diffAnimRunning) {
+      diffAnimTimer = setTimeout(playNextChange, speed);
+    }
+  }
+
+  document.getElementById('diffAnimClose').addEventListener('click', closeDiffAnimation);
+  document.getElementById('diffAnimOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closeDiffAnimation();
+  });
+  document.getElementById('diffPlayBtn').addEventListener('click', function() {
+    if (diffAnimRunning) {
+      diffAnimRunning = false;
+      this.textContent = '\u25BA Play';
+    } else {
+      diffAnimRunning = true;
+      this.textContent = '\u23F8 Pause';
+      playNextChange();
+    }
+  });
+  document.getElementById('diffResetBtn').addEventListener('click', function() {
+    diffAnimRunning = false;
+    if (diffAnimTimer) clearTimeout(diffAnimTimer);
+    document.getElementById('diffPlayBtn').textContent = '\u25BA Play';
+    document.getElementById('diffProgress').textContent = '';
+    diffCellEls._changeIndex = 0;
+    // Reset all cells to prev state
+    var prevKey = String(parseInt(activeRound) - 1);
+    var prevRound = rawData.rounds[prevKey];
+    if (!prevRound) return;
+    var prevMap = {};
+    prevRound.cells.forEach(function(c) { prevMap[c.r + ',' + c.c] = c; });
+    Object.keys(prevMap).forEach(function(key) {
+      var item = diffCellEls[key];
+      if (item) {
+        item.el.style.background = serverColor(prevMap[key].sid || 0);
+        item.el.classList.remove('diff-gained', 'diff-lost', 'diff-swapped');
+      }
+    });
+  });
+
   /* --- Sidebar tabs --- */
   document.querySelectorAll('.sidebar-tab').forEach(function(tab) {
     tab.addEventListener('click', function() {
@@ -2347,9 +2569,29 @@
       if (highlight2864 && cell.sid !== 2864) dimmed = true;
       if (activeServer !== null && cell.sid !== activeServer) dimmed = true;
 
-      if (activeCat !== 'all' && cell.type === 3 && seq !== null && roundData.ownedWastelands) {
-        var ow = roundData.ownedWastelands[String(seq)];
-        if (ow && ow.category !== activeCat) dimmed = true;
+      if (activeCat !== 'all') {
+        if (cell.type === 3) {
+          // Get category from owned data, war/def targets, or cell.landCat
+          var cellCat = null;
+          if (roundData.ownedWastelands && seq !== null) {
+            var ow = roundData.ownedWastelands[String(seq)];
+            if (ow) cellCat = ow.category;
+          }
+          if (!cellCat && seq !== null && warSeqMap[seq]) cellCat = SPEC_CAT[warSeqMap[seq].specId];
+          if (!cellCat && seq !== null && defSeqMap[seq]) cellCat = SPEC_CAT[defSeqMap[seq].specId];
+          if (!cellCat) cellCat = cell.landCat || null;
+          // Hide wastelands that don't match — but never hide a server-highlighted cell
+          var isHighlighted = (activeServer !== null && cell.sid === activeServer) || (highlight2864 && cell.sid === 2864);
+          if (cellCat && cellCat !== activeCat && !isHighlighted) {
+            cellEl.style.display = 'none';
+          } else {
+            cellEl.style.display = '';
+          }
+        } else {
+          cellEl.style.display = ''; // always show warzones + neutral cities
+        }
+      } else {
+        cellEl.style.display = ''; // show all when filter is 'all'
       }
 
       cellEl.classList.toggle('dimmed', dimmed);
