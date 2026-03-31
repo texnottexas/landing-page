@@ -795,6 +795,9 @@
     .buff-row { display:flex; align-items:center; gap:.4rem; font-size:.72rem; padding:.25rem .35rem; border-radius:4px; background:var(--card); border:1px solid var(--border); }
     .buff-row.maxed { border-color:rgba(63,185,80,.3); }
     .buff-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); }
+    .buff-row.expanded .buff-name { white-space:normal; overflow:visible; text-overflow:unset; }
+    .buff-row { cursor:pointer; }
+    .buff-row:hover { border-color:var(--accent); }
     .buff-val { font-weight:700; white-space:nowrap; }
     .buff-val .current { color:var(--accent); }
     .buff-val .max { color:var(--muted); }
@@ -860,9 +863,9 @@
     .diff-map-grid { display:grid; gap:1.5px; background:#0d1117; }
     .diff-cell { width:16px; height:16px; border-radius:1px; position:relative; transition:all .25s ease; flex-shrink:0; }
     .diff-cell.dc-highlighted { transform:scale(1.5); z-index:10; border-radius:2px; }
-    .diff-cell.diff-gained { outline:2px solid #3fb950; outline-offset:1px; }
-    .diff-cell.diff-lost { outline:2px solid #f85149; outline-offset:1px; }
-    .diff-cell.diff-swapped { outline:1.5px solid #d29922; outline-offset:1px; }
+    .diff-cell.diff-gained { background:#1d5c28 !important; }
+    .diff-cell.diff-lost   { background:#5c1d1d !important; }
+    .diff-cell.diff-swapped { /* no extra decoration — just the new color */ }
     /* Event feed */
     .diff-feed-col { flex:1; overflow-y:auto; padding:.6rem .75rem; display:flex; flex-direction:column; gap:.35rem; }
     .diff-section-head { font-size:.65rem; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.06em; padding:.2rem 0; border-bottom:1px solid var(--border); margin-top:.15rem; }
@@ -1148,6 +1151,22 @@
     if (sid === 0) return UNCLAIMED_COLOR;
     var h = (sid * 2654435761) >>> 0;
     return SERVER_COLORS[h % SERVER_COLORS.length];
+  }
+  /* Brighter colors for diff mini-map (16px cells need more contrast) */
+  var DIFF_COLORS = [
+    '#3b2a6e','#0e5460','#6b4a18','#5c1a3a','#1a5a52',
+    '#4a1f65','#143a54','#5a4a18','#601818','#1a5030',
+    '#2e3060','#5a4218','#1a4840','#4e1a5a','#182e58',
+    '#3a4a18','#5a1a2a','#163848','#4a1a56','#5a4c18',
+    '#103e28','#3a1a52','#5c3a18','#1a4a48','#3a2254',
+    '#183e54','#5a5018','#5a1a3e','#1a4a32','#342454',
+    '#2a3060','#5a1a38','#1a4830','#5a4c18'
+  ];
+  function diffServerColor(sid) {
+    if (sid === 2864) return '#1e6b2d';
+    if (sid === 0) return '#181d24';
+    var h = (sid * 2654435761) >>> 0;
+    return DIFF_COLORS[h % DIFF_COLORS.length];
   }
   /* Brighter accent for legend/sidebar bars */
   var SERVER_ACCENTS = [
@@ -1491,32 +1510,36 @@
       val.appendChild(max);
       row.appendChild(val);
 
+      row.addEventListener('click', function() { this.classList.toggle('expanded'); });
       container.appendChild(row);
     });
   }
+
+  var activeLegendFilter = null;
 
   function buildLegend() {
     var list = document.getElementById('legendList');
     list.textContent = '';
     var items = [
-      { border: '2px solid #d29922', bg: 'transparent', label: 'Warzone (server home)' },
-      { border: '2px dashed #79c0ff', bg: 'transparent', label: 'Neutral City' },
-      { border: 'none', bg: '#30363d', label: 'Wasteland' },
-      { icon: '\u2694\uFE0F', color: '#f85149', label: 'S2864 attacking' },
-      { icon: '\uD83D\uDEE1\uFE0F', color: '#388bfd', label: 'S2864 defending' },
-      { icon: '\u2B50', color: '#d29922', label: 'Planned target' },
-      { icon: '\u25B2', color: '#3fb950', label: 'Gained (from prev round)' },
-      { icon: '\u25BC', color: '#f85149', label: 'Lost (from prev round)' },
-      { icon: '\u25C6', color: '#d29922', label: 'Swapped owner' }
+      { border: '2px solid #d29922', bg: 'transparent', label: 'Warzone (server home)', filter: 'type-1' },
+      { border: '2px dashed #79c0ff', bg: 'transparent', label: 'Neutral City',          filter: 'type-2' },
+      { border: 'none', bg: '#30363d',                   label: 'Wasteland',              filter: 'type-3' },
+      { icon: '\u2694\uFE0F', color: '#f85149',          label: 'S2864 attacking',        filter: 'attack' },
+      { icon: '\uD83D\uDEE1\uFE0F', color: '#388bfd',    label: 'S2864 defending',        filter: 'defend' },
+      { icon: '\u2B50', color: '#d29922',                label: 'Planned target',         filter: 'plan' },
+      { icon: '\u25B2', color: '#3fb950',                label: 'Gained (from prev round)',filter: 'diff-gained' },
+      { icon: '\u25BC', color: '#f85149',                label: 'Lost (from prev round)', filter: 'diff-lost' },
+      { icon: '\u25C6', color: '#d29922',                label: 'Swapped owner',          filter: 'diff-swapped' }
     ];
     items.forEach(function(item) {
-      var li = el('li', 'legend-item');
+      var li = el('li', 'legend-item legend-filter-item');
+      li.style.cursor = 'pointer';
+      li.style.borderRadius = '4px';
+      li.style.padding = '.15rem .3rem';
+      li.dataset.filter = item.filter;
       if (item.icon) {
         var sp = el('span', '', item.icon);
-        sp.style.fontSize = '.85rem';
-        sp.style.color = item.color;
-        sp.style.minWidth = '14px';
-        sp.style.textAlign = 'center';
+        sp.style.cssText = 'font-size:.85rem;color:'+item.color+';min-width:14px;text-align:center;';
         li.appendChild(sp);
       } else {
         var sw = el('span', 'legend-swatch');
@@ -1525,6 +1548,15 @@
         li.appendChild(sw);
       }
       li.appendChild(document.createTextNode(item.label));
+      li.addEventListener('click', function() {
+        var f = this.dataset.filter;
+        activeLegendFilter = (activeLegendFilter === f) ? null : f;
+        document.querySelectorAll('.legend-filter-item').forEach(function(el) {
+          el.style.background = (el.dataset.filter === activeLegendFilter) ? 'rgba(121,192,255,.12)' : '';
+          el.style.color = (el.dataset.filter === activeLegendFilter) ? 'var(--accent)' : '';
+        });
+        applyFilters();
+      });
       list.appendChild(li);
     });
   }
@@ -1662,7 +1694,7 @@
         // Label
         var label = el('span', 'cell-label');
         if (cell.type === 1 || cell.type === 2) {
-          label.textContent = cell.type === 1 ? 'S' + cell.sid : extractLevel(cell.name);
+          label.textContent = cell.type === 1 ? (cell.sid === 2864 ? '\uD83D\uDC51' : 'S' + cell.sid) : extractLevel(cell.name);
           label.style.color = '#fff';
           label.style.textShadow = '0 0 3px rgba(0,0,0,.8)';
         } else if (cell.type === 3 && seq !== null) {
@@ -1721,11 +1753,7 @@
         d.addEventListener('mouseenter', makeTooltipHandler(cell));
         d.addEventListener('mousemove', positionTooltip);
         d.addEventListener('mouseleave', hideTooltip);
-        d.addEventListener('click', function(e) {
-          e.preventDefault();
-          hideTooltip();
-          openCellDetail(cell);
-        });
+        d.addEventListener('click', makeClickHandler(cell));
 
         grid.appendChild(d);
         cellElements.push({ el: d, cell: cell, seq: seq });
@@ -1737,6 +1765,9 @@
 
   function makeTooltipHandler(cell) {
     return function(e) { showTooltip(e, cell); };
+  }
+  function makeClickHandler(cell) {
+    return function(e) { e.preventDefault(); hideTooltip(); openCellDetail(cell); };
   }
 
   /* --- Context Menu --- */
@@ -2403,7 +2434,7 @@
   function resetDiffMap() {
     Object.keys(diffPrevMap).forEach(function(key) {
       var d = diffCellEls[key];
-      if (d) { d.style.background = serverColor(diffPrevMap[key].sid||0); d.classList.remove('diff-gained','diff-lost','diff-swapped'); }
+      if (d) { d.style.background = diffServerColor(diffPrevMap[key].sid||0); d.classList.remove('diff-gained','diff-lost','diff-swapped'); }
     });
   }
 
@@ -2447,8 +2478,9 @@
         var key = r + ',' + c;
         var pc = diffPrevMap[key] || {};
         var d = el('div','diff-cell');
-        d.style.background = serverColor(pc.sid||0);
-        if (pc.type === 1) d.style.outline = '1px solid #d29922';
+        d.style.background = diffServerColor(pc.sid||0);
+        if (pc.sid === 2864) d.style.background = '#1e6b2d';
+        if (pc.type === 1 && pc.sid === 2864) d.style.outline = '2px solid #3fb950';
         diffCellEls[key] = d;
         grid.appendChild(d);
       }
@@ -2528,7 +2560,7 @@
     var ch = diffChanges[idx];
     var d = diffCellEls[ch.key];
     if (d) {
-      d.style.background = serverColor(ch.toSid||0);
+      d.style.background = (ch.type === 'gained') ? '#1e6b2d' : (ch.type === 'lost') ? '#5c1d1d' : diffServerColor(ch.toSid||0);
       d.classList.remove('diff-gained','diff-lost','diff-swapped');
       d.classList.add('diff-'+ch.type);
     }
@@ -2596,9 +2628,8 @@
       if (diffS2864Filter && ch.type === 'swapped') return;
       var d = diffCellEls[ch.key];
       if (d) {
-        d.style.background = serverColor(ch.toSid||0);
+        d.style.background = (ch.type==='gained') ? '#1e6b2d' : (ch.type==='lost') ? '#5c1d1d' : diffServerColor(ch.toSid||0);
         d.classList.remove('diff-gained','diff-lost','diff-swapped');
-        d.classList.add('diff-'+ch.type);
       }
     });
     // Update progress
@@ -2703,6 +2734,22 @@
       var dimmed = false;
       if (highlight2864 && cell.sid !== 2864) dimmed = true;
       if (activeServer !== null && cell.sid !== activeServer) dimmed = true;
+
+      // Legend filter: show only matching cell type/overlay
+      if (activeLegendFilter) {
+        var lf = activeLegendFilter;
+        var matches = false;
+        if (lf === 'type-1') matches = cell.type === 1;
+        else if (lf === 'type-2') matches = cell.type === 2;
+        else if (lf === 'type-3') matches = cell.type === 3;
+        else if (lf === 'attack') matches = seq !== null && warSeqSet.has(seq);
+        else if (lf === 'defend') matches = seq !== null && defSeqSet.has(seq);
+        else if (lf === 'plan') matches = planData && planData[cell.r + ',' + cell.c];
+        else if (lf === 'diff-gained') matches = diffMap && diffMap[seq] === 'gained';
+        else if (lf === 'diff-lost') matches = diffMap && diffMap[seq] === 'lost';
+        else if (lf === 'diff-swapped') matches = diffMap && diffMap[seq] === 'swapped';
+        if (!matches) dimmed = true;
+      }
 
       if (activeCat !== 'all') {
         if (cell.type === 3) {
