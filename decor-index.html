@@ -356,6 +356,7 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
   var selectedPlayer = null; // {decos, playerInfo, side}
   var playerGroups = {}; // group -> placedId (for selected player)
   var meExpanded = {}; // group -> { src: sourceGroup, pid: placedId } for ME-inherited ownership
+  var lastBattle = null; // store loaded battle data for re-opening player selection
 
   // --- Sub-category buff ID sets ---
   var DMG_INC_IDS = {1001001:1,980101:1,980102:1,980103:1,29801011:1,29801021:1};
@@ -832,8 +833,11 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
       .then(function(data) {
         btn.disabled = false;
         if (!data || !data.battle) throw new Error('Invalid report format');
+        lastBattle = data.battle;
         status.className = 'status success';
         status.textContent = 'Report loaded. Select your player:';
+        status.style.cursor = 'pointer';
+        status.onclick = function() { if (lastBattle) showPlayerSelection(lastBattle); };
         showPlayerSelection(data.battle);
       })
       .catch(function(err) {
@@ -884,7 +888,7 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
       return;
     }
 
-    var overlay = el('div', { className: 'select-overlay' });
+    var overlay = el('div', { className: 'select-overlay', onclick: function(e) { if (e.target === overlay) document.body.removeChild(overlay); } });
     var modal = el('div', { className: 'select-modal' });
     modal.appendChild(el('div', { className: 'select-title' }, 'Select Your Player'));
 
@@ -998,8 +1002,11 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     // Show raw JSON
     showRawJSON();
 
-    document.getElementById('status').className = 'status success';
-    document.getElementById('status').textContent = '';
+    var statusEl = document.getElementById('status');
+    statusEl.className = 'status success';
+    statusEl.textContent = '';
+    statusEl.style.cursor = '';
+    statusEl.onclick = null;
 
     render();
   }
@@ -1013,6 +1020,14 @@ var DN={"1500":"Tile","1501":"Red Tile","1502":"Beige Tile","1600":"Flag","1601"
     document.getElementById('player-banner').style.display = 'none';
     document.getElementById('star-pills').style.display = 'none';
     document.getElementById('sort-pills').style.display = 'none';
+    // Restore clickable "Select your player" prompt if battle data is available
+    if (lastBattle) {
+      var statusEl = document.getElementById('status');
+      statusEl.className = 'status success';
+      statusEl.textContent = 'Select your player:';
+      statusEl.style.cursor = 'pointer';
+      statusEl.onclick = function() { showPlayerSelection(lastBattle); };
+    }
     activeSort = 0;
     var sPills = document.getElementById('sort-pills').children;
     for (var si = 0; si < sPills.length; si++) sPills[si].className = 'fpill' + (si === 0 ? ' active' : '');
