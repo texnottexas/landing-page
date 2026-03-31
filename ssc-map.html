@@ -790,6 +790,19 @@
       .cell-diff { font-size: .35rem; }
     }
 
+    /* Buff Overview */
+    .buff-overview-list { display:flex; flex-direction:column; gap:.3rem; }
+    .buff-row { display:flex; align-items:center; gap:.4rem; font-size:.72rem; padding:.25rem .35rem; border-radius:4px; background:var(--card); border:1px solid var(--border); }
+    .buff-row.maxed { border-color:rgba(63,185,80,.3); }
+    .buff-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); }
+    .buff-val { font-weight:700; white-space:nowrap; }
+    .buff-val .current { color:var(--accent); }
+    .buff-val .max { color:var(--muted); }
+    .buff-val.maxed .current { color:var(--army); }
+    .buff-bar { width:40px; height:4px; background:var(--border); border-radius:2px; overflow:hidden; flex-shrink:0; }
+    .buff-bar-fill { height:100%; border-radius:2px; background:var(--accent); }
+    .buff-bar-fill.maxed { background:var(--army); }
+
     /* Cell Detail Modal */
     .cell-detail-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:600; align-items:center; justify-content:center; padding:1rem; }
     .cell-detail-overlay.show { display:flex; }
@@ -915,6 +928,11 @@
             <button class="cat-btn" data-cat="utility">Utility</button>
             <button class="cat-btn" data-cat="special">Special</button>
           </div>
+        </div>
+
+        <div class="sidebar-section">
+          <h3>S2864 Buff Totals</h3>
+          <div id="buffOverviewList" class="buff-overview-list"></div>
         </div>
 
         <div class="sidebar-section">
@@ -1223,6 +1241,7 @@
     if (gridWrap) gridWrap.remove();
 
     fillStats();
+    fillBuffOverview();
     fillServerSummary();
     fillWarDeclarations();
     buildLegend();
@@ -1332,6 +1351,45 @@
       var d = new Date(roundData.extractedAt);
       document.getElementById('statExtracted').textContent = d.toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
     }
+  }
+
+  function fillBuffOverview() {
+    var container = document.getElementById('buffOverviewList');
+    container.textContent = '';
+    var buffs = roundData.buffOverview;
+    if (!buffs || !buffs.length) {
+      container.appendChild(el('div', '', 'No buff data available'));
+      container.style.color = 'var(--muted)';
+      container.style.fontSize = '.75rem';
+      return;
+    }
+    buffs.forEach(function(b) {
+      var isMaxed = b.rawMax > 0 && b.rawCurrent >= b.rawMax;
+      var row = el('div', 'buff-row' + (isMaxed ? ' maxed' : ''));
+      var name = el('span', 'buff-name', b.description);
+      name.title = b.description;
+      row.appendChild(name);
+
+      // Progress bar
+      var pct = b.rawMax > 0 ? Math.min(100, (b.rawCurrent / b.rawMax) * 100) : 100;
+      var bar = el('div', 'buff-bar');
+      var fill = el('div', 'buff-bar-fill' + (isMaxed ? ' maxed' : ''));
+      fill.style.width = pct + '%';
+      bar.appendChild(fill);
+      row.appendChild(bar);
+
+      // Value
+      var val = el('span', 'buff-val' + (isMaxed ? ' maxed' : ''));
+      var cur = el('span', 'current', String(b.current));
+      var slash = document.createTextNode('/');
+      var max = el('span', 'max', String(b.max));
+      val.appendChild(cur);
+      val.appendChild(slash);
+      val.appendChild(max);
+      row.appendChild(val);
+
+      container.appendChild(row);
+    });
   }
 
   function buildLegend() {
