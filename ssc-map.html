@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://raw.githubusercontent.com; img-src 'self'; frame-ancestors 'none';">
   <title>SSC Map — S2864</title>
   <style>
     :root {
@@ -925,7 +926,7 @@
       <div class="sidebar-panel" id="panel-planning">
         <div class="sidebar-section">
           <h3>Planned Targets</h3>
-          <div class="plan-empty" id="planEmpty">No targets marked. Right-click a cell to add one.</div>
+          <div class="plan-empty" id="planEmpty">No targets marked. Click a cell and use "Mark as Target" to add one.</div>
           <ul class="plan-list" id="planList"></ul>
           <button class="plan-export-btn" id="planExportBtn" style="display:none">Copy Plan to Clipboard</button>
         </div>
@@ -982,12 +983,6 @@
 <script>
 (function() {
   'use strict';
-
-  /* --- Sanitize text for safe DOM insertion --- */
-  function esc(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
 
   /* --- Helper: create element with text --- */
   function el(tag, className, text) {
@@ -1325,41 +1320,30 @@
     while (atkContainer.children.length > 1) atkContainer.removeChild(atkContainer.lastChild);
     while (defContainer.children.length > 1) defContainer.removeChild(defContainer.lastChild);
 
-    // Attacking
-    if (roundData.warTargets && roundData.warTargets.length > 0) {
-      roundData.warTargets.forEach(function(w) {
-        var item = el('div', 'war-item attack');
-        var nameDiv = el('div', 'war-item-name', '#' + w.seq + ' ' + (w.specName || 'Unknown'));
-        item.appendChild(nameDiv);
-        var detailDiv = el('div', 'war-item-detail', 'Lv.' + w.level + ' \u2014 Owner: S' + w.currentOwner);
-        item.appendChild(detailDiv);
-        item.addEventListener('click', function() { scrollToSeq(w.seq); });
-        atkContainer.appendChild(item);
-      });
-    } else {
-      atkContainer.appendChild(el('div', 'war-none', 'No active attacks'));
-    }
+    fillWarList(atkContainer, roundData.warTargets, 'attack', 'No active attacks', function(w) {
+      return 'Lv.' + w.level + ' \u2014 Owner: S' + w.currentOwner;
+    });
 
-    // Defending
-    if (roundData.defenseTargets && roundData.defenseTargets.length > 0) {
-      roundData.defenseTargets.forEach(function(d) {
-        var item = el('div', 'war-item defend');
-        var nameDiv = el('div', 'war-item-name', '#' + d.seq + ' ' + (d.specName || 'Unknown'));
-        item.appendChild(nameDiv);
-        var attackers = d.attackerSids;
-        var detailText = 'Lv.' + d.level;
-        if (attackers && attackers.length > 0) {
-          detailText += ' \u2014 Attackers: ' + attackers.map(function(s){ return 'S' + s; }).join(', ');
-        } else {
-          detailText += ' \u2014 Uncontested';
-        }
-        var detailDiv = el('div', 'war-item-detail', detailText);
-        item.appendChild(detailDiv);
-        item.addEventListener('click', function() { scrollToSeq(d.seq); });
-        defContainer.appendChild(item);
+    fillWarList(defContainer, roundData.defenseTargets, 'defend', 'No incoming attacks', function(d) {
+      var attackers = d.attackerSids;
+      if (attackers && attackers.length > 0) {
+        return 'Lv.' + d.level + ' \u2014 Attackers: ' + attackers.map(function(s){ return 'S' + s; }).join(', ');
+      }
+      return 'Lv.' + d.level + ' \u2014 Uncontested';
+    });
+  }
+
+  function fillWarList(container, targets, className, emptyMsg, detailFn) {
+    if (targets && targets.length > 0) {
+      targets.forEach(function(t) {
+        var item = el('div', 'war-item ' + className);
+        item.appendChild(el('div', 'war-item-name', '#' + t.seq + ' ' + (t.specName || 'Unknown')));
+        item.appendChild(el('div', 'war-item-detail', detailFn(t)));
+        item.addEventListener('click', function() { scrollToSeq(t.seq); });
+        container.appendChild(item);
       });
     } else {
-      defContainer.appendChild(el('div', 'war-none', 'No incoming attacks'));
+      container.appendChild(el('div', 'war-none', emptyMsg));
     }
   }
 
@@ -1420,12 +1404,8 @@
 
         // Label
         var label = el('span', 'cell-label');
-        if (cell.type === 1) {
-          label.textContent = 'S' + cell.sid;
-          label.style.color = '#fff';
-          label.style.textShadow = '0 0 3px rgba(0,0,0,.8)';
-        } else if (cell.type === 2) {
-          label.textContent = extractLevel(cell.name);
+        if (cell.type === 1 || cell.type === 2) {
+          label.textContent = cell.type === 1 ? 'S' + cell.sid : extractLevel(cell.name);
           label.style.color = '#fff';
           label.style.textShadow = '0 0 3px rgba(0,0,0,.8)';
         } else if (cell.type === 3 && seq !== null) {
@@ -1489,27 +1469,6 @@
     return function(e) { showTooltip(e, cell); };
   }
 
-  function makeContextHandler(cell) {
-    return function(e) {
-      e.preventDefault();
-      showContextMenu(e, cell);
-    };
-  }
-
-  /* Long-press for mobile */
-  function setupLongPress(element, cell) {
-    var timer = null;
-    element.addEventListener('touchstart', function(e) {
-      timer = setTimeout(function() {
-        timer = null;
-        var touch = e.touches[0];
-        showContextMenu({ clientX: touch.clientX, clientY: touch.clientY, preventDefault: function(){} }, cell);
-      }, 500);
-    }, { passive: true });
-    element.addEventListener('touchend', function() { if (timer) clearTimeout(timer); });
-    element.addEventListener('touchmove', function() { if (timer) clearTimeout(timer); });
-  }
-
   /* --- Context Menu --- */
   function showContextMenu(e, cell) {
     hideTooltip();
@@ -1528,11 +1487,7 @@
       var removeBtn = el('button', 'context-menu-item danger', '\u2716 Remove Target');
       removeBtn.addEventListener('click', function() {
         hideContextMenu();
-        delete planData[planKey];
-        savePlan();
-        refreshPlanOverlays();
-        renderPlanList();
-        showToast('Target removed');
+        removePlanTarget(planKey);
       });
       contextMenu.appendChild(removeBtn);
     } else {
@@ -1644,11 +1599,7 @@
     empty.style.display = 'none';
     exportBtn.style.display = '';
 
-    // Sort: high > medium > low
-    var priorityOrder = { high: 0, medium: 1, low: 2 };
-    keys.sort(function(a, b) {
-      return (priorityOrder[planData[a].priority] || 1) - (priorityOrder[planData[b].priority] || 1);
-    });
+    sortPlanKeys(keys);
 
     keys.forEach(function(key) {
       var p = planData[key];
@@ -1691,16 +1642,30 @@
       var removeBtn = el('button', 'plan-action-btn remove', 'Remove');
       removeBtn.addEventListener('click', function(e) {
         e.stopPropagation();
-        delete planData[key];
-        savePlan();
-        refreshPlanOverlays();
-        renderPlanList();
-        showToast('Target removed');
+        removePlanTarget(key);
       });
       actions.appendChild(removeBtn);
 
       li.appendChild(actions);
       list.appendChild(li);
+    });
+  }
+
+  var PRIORITY_COLORS = { high: '#f85149', medium: '#d29922', low: '#3fb950' };
+
+  function removePlanTarget(planKey) {
+    delete planData[planKey];
+    savePlan();
+    refreshPlanOverlays();
+    renderPlanList();
+    showToast('Target removed');
+  }
+
+  var PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
+
+  function sortPlanKeys(keys) {
+    return keys.sort(function(a, b) {
+      return (PRIORITY_ORDER[planData[a].priority] || 1) - (PRIORITY_ORDER[planData[b].priority] || 1);
     });
   }
 
@@ -1718,10 +1683,7 @@
   document.getElementById('planExportBtn').addEventListener('click', function() {
     var keys = Object.keys(planData);
     if (keys.length === 0) return;
-    var priorityOrder = { high: 0, medium: 1, low: 2 };
-    keys.sort(function(a, b) {
-      return (priorityOrder[planData[a].priority] || 1) - (priorityOrder[planData[b].priority] || 1);
-    });
+    sortPlanKeys(keys);
 
     var lines = ['SSC Sector ' + sector + ' Plan', ''];
     var priorityLabels = { high: 'HIGH', medium: 'MED', low: 'LOW' };
@@ -1853,7 +1815,7 @@
     if (planData[planKey]) {
       var pInfo = planData[planKey];
       var planLine = el('div', '', '\u2605 Planned (' + pInfo.priority + ')');
-      var planColor = pInfo.priority === 'high' ? '#f85149' : pInfo.priority === 'low' ? '#3fb950' : '#d29922';
+      var planColor = PRIORITY_COLORS[pInfo.priority] || '#d29922';
       planLine.style.cssText = 'margin-top:.35rem;font-size:.72rem;font-weight:600;color:' + planColor;
       frag.appendChild(planLine);
       if (pInfo.note) {
@@ -2027,7 +1989,8 @@
       lvlRow.appendChild(el('span', 'cd-label', 'Level'));
       var lvlVal = el('span', 'cd-value');
       lvlVal.textContent = lvl;
-      lvlVal.style.color = lvl === '3' ? '#d29922' : lvl === '2' ? '#79c0ff' : '#8b949e';
+      var lvlColors = { '3': '#d29922', '2': '#79c0ff' };
+      lvlVal.style.color = lvlColors[lvl] || '#8b949e';
       lvlRow.appendChild(lvlVal);
       body.appendChild(lvlRow);
     }
@@ -2077,12 +2040,8 @@
         footer.appendChild(editBtn);
         var removeBtn = el('button', 'cd-action-btn danger', '\u2716 Remove Target');
         removeBtn.addEventListener('click', function() {
-          delete planData[planKey];
-          savePlan();
-          refreshPlanOverlays();
-          renderPlanList();
           closeCellDetail();
-          showToast('Target removed');
+          removePlanTarget(planKey);
         });
         footer.appendChild(removeBtn);
       } else {
