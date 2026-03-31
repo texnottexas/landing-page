@@ -228,6 +228,16 @@
   .decor-placed-check { color: var(--green); font-size: .85rem; }
   .decor-placed-dash { color: var(--muted); font-size: .85rem; }
 
+  /* Rally (multi-player) sections */
+  .rally-indicator { font-size: .75rem; color: var(--accent); background: rgba(121,192,255,.1); border: 1px solid rgba(121,192,255,.2); border-radius: 12px; padding: .2rem .6rem; margin-top: .35rem; display: inline-block; }
+  .rally-player-header { display: flex; align-items: center; gap: .4rem; padding: .45rem .6rem; background: var(--card); border: 1px solid var(--border); border-radius: 6px; margin-top: .4rem; cursor: pointer; user-select: none; font-size: .8rem; font-weight: 600; transition: background .15s; }
+  .rally-player-header:hover { background: var(--surface); }
+  .rally-player-header .rally-toggle { font-size: .6rem; color: var(--muted); transition: transform .2s; }
+  .rally-player-header.collapsed .rally-toggle { transform: rotate(-90deg); }
+  .rally-player-content { padding: .35rem 0; }
+  .rally-player-content.collapsed { display: none; }
+  .rally-leader-badge { font-size: .55rem; background: var(--yellow); color: var(--bg); border-radius: 3px; padding: .1rem .3rem; font-weight: 700; }
+
   @media (max-width: 640px) {
     .stats-modal { max-height: 90vh; }
     .stats-row .s-name { font-size: .7rem; }
@@ -384,10 +394,6 @@
    *  matching the game's EFFECTBUFF table group field + buff_divide logic. */
   function computeBuffStats(players) {
     if (!players || players.length === 0) return {};
-    var player = players[0];
-
-    var buffs = player.effectBuffs || [];
-    if (typeof buffs === 'string') buffs = JSON.parse(buffs);
 
     var pool = {};
 
@@ -397,25 +403,30 @@
       pool[did] += val;
     }
 
-    for (var i = 0; i < buffs.length; i++) {
-      var b = buffs[i];
-      var id = b.id || b.bufid;
-      var val = b.val || b.value || 0;
-      if (!id || !val) continue;
+    for (var p = 0; p < players.length; p++) {
+      var buffs = players[p].effectBuffs || [];
+      if (typeof buffs === 'string') try { buffs = JSON.parse(buffs); } catch(e) { buffs = []; }
 
-      // Skip IDs not in the game's EFFECTBUFF table
-      if (id === 520130 || id === 520131 || id === 520132 || id === 520133 || id === 520141 || id === 520142 || id === 520143 || (id >= 932001 && id <= 932043) || id === 933007 || id === 933008 || id === 934001 || id === 934004 || (id >= 936007 && id <= 936013) || id === 950011) continue;
+      for (var i = 0; i < buffs.length; i++) {
+        var b = buffs[i];
+        var id = b.id || b.bufid;
+        var val = b.val || b.value || 0;
+        if (!id || !val) continue;
 
-      // Check if this raw ID needs group redirect
-      var redirect = BUFF_GROUP[id];
-      if (redirect) {
-        if (Array.isArray(redirect)) {
-          for (var r = 0; r < redirect.length; r++) addToPool(redirect[r], val);
+        // Skip IDs not in the game's EFFECTBUFF table
+        if (id === 520130 || id === 520131 || id === 520132 || id === 520133 || id === 520141 || id === 520142 || id === 520143 || (id >= 932001 && id <= 932043) || id === 933007 || id === 933008 || id === 934001 || id === 934004 || (id >= 936007 && id <= 936013) || id === 950011) continue;
+
+        // Check if this raw ID needs group redirect
+        var redirect = BUFF_GROUP[id];
+        if (redirect) {
+          if (Array.isArray(redirect)) {
+            for (var r = 0; r < redirect.length; r++) addToPool(redirect[r], val);
+          } else {
+            addToPool(redirect, val);
+          }
         } else {
-          addToPool(redirect, val);
+          addToPool(id, val);
         }
-      } else {
-        addToPool(id, val);
       }
     }
     return pool;
@@ -468,18 +479,19 @@
   /** Compute per-source breakdown for a specific buff from traceEffectBuffs */
   function computeSourceBreakdown(players, targetBuffId) {
     if (!players || players.length === 0) return {};
-    var player = players[0];
-    var trace = player.traceEffectBuffs || [];
-    if (typeof trace === 'string') trace = JSON.parse(trace);
-
     var sources = {};
-    for (var i = 0; i < trace.length; i++) {
-      var b = trace[i];
-      if (!b.id || !b.val || b.s === undefined) continue;
-      if (!buffMatchesTarget(b.id, targetBuffId)) continue;
-      var typeBig = resolveSourceGroup(b.s);
-      if (!sources[typeBig]) sources[typeBig] = 0;
-      sources[typeBig] += b.val;
+    for (var p = 0; p < players.length; p++) {
+      var trace = players[p].traceEffectBuffs || [];
+      if (typeof trace === 'string') try { trace = JSON.parse(trace); } catch(e) { trace = []; }
+
+      for (var i = 0; i < trace.length; i++) {
+        var b = trace[i];
+        if (!b.id || !b.val || b.s === undefined) continue;
+        if (!buffMatchesTarget(b.id, targetBuffId)) continue;
+        var typeBig = resolveSourceGroup(b.s);
+        if (!sources[typeBig]) sources[typeBig] = 0;
+        sources[typeBig] += b.val;
+      }
     }
     return sources;
   }
@@ -636,6 +648,7 @@
   /** Build the Decoration Comparison modal.
    *  Optional filterBuffId/filterBuffName: when set, only show decorations contributing to that stat. */
   function buildDecorationModal(att, def, attPI, defPI, filterBuffId, filterBuffName) {
+    /* Decorations are rally-leader only (index 0) — rally members share the leader's city decorations */
     var attDecos = (att.players && att.players[0] && att.players[0].effectDecorations) || null;
     var defDecos = (def.players && def.players[0] && def.players[0].effectDecorations) || null;
 
@@ -1413,11 +1426,12 @@
   }
 
   /** Parse playerInfo JSON from players array */
-  function getPlayerInfo(side) {
+  function getPlayerInfo(side, playerIndex) {
     var players = side.players || [];
-    if (players.length === 0) return { username: 'Unknown', nationalflag: 0 };
+    var idx = (playerIndex !== undefined) ? playerIndex : 0;
+    if (players.length === 0 || idx >= players.length) return { username: 'Unknown', nationalflag: 0 };
     try {
-      var pi = JSON.parse(players[0].playerInfo || '{}');
+      var pi = JSON.parse(players[idx].playerInfo || '{}');
       return pi;
     } catch(e) {
       return { username: 'Unknown', nationalflag: 0 };
@@ -1479,11 +1493,23 @@
     return img;
   }
 
-  /** Extract heroList from a side's players[0], or return empty array */
-  function getHeroList(side) {
+  /** Extract heroList from a side's players[playerIndex], or return empty array */
+  function getHeroList(side, playerIndex) {
     var players = side.players || [];
-    if (players.length === 0) return [];
-    return players[0].heroList || [];
+    var idx = (playerIndex !== undefined) ? playerIndex : 0;
+    if (players.length === 0 || idx >= players.length) return [];
+    return players[idx].heroList || [];
+  }
+
+  /** Collect heroLists from ALL players on a side (for rally reports) */
+  function getAllHeroLists(side) {
+    var players = side.players || [];
+    var all = [];
+    for (var i = 0; i < players.length; i++) {
+      var hl = players[i].heroList || [];
+      for (var j = 0; j < hl.length; j++) all.push(hl[j]);
+    }
+    return all;
   }
 
   /** Build skillId -> { heroId, skillId } mapping from both sides' heroLists */
@@ -1708,11 +1734,21 @@
 
   function buildVSSection(att, def, attPI, defPI, attWins) {
     var vs = el('div', { className: 'vs-section' });
-    vs.appendChild(buildPlayerCard(att, attPI, attWins));
+    var attCard = buildPlayerCard(att, attPI, attWins);
+    var attPlayers = att.players || [];
+    if (attPlayers.length > 1) {
+      attCard.appendChild(el('div', { className: 'rally-indicator' }, 'Rally (' + attPlayers.length + ' players)'));
+    }
+    vs.appendChild(attCard);
     var badge = el('div', { className: 'vs-badge' });
     badge.textContent = 'VS';
     vs.appendChild(badge);
-    vs.appendChild(buildPlayerCard(def, defPI, !attWins));
+    var defCard = buildPlayerCard(def, defPI, !attWins);
+    var defPlayers = def.players || [];
+    if (defPlayers.length > 1) {
+      defCard.appendChild(el('div', { className: 'rally-indicator' }, 'Rally (' + defPlayers.length + ' players)'));
+    }
+    vs.appendChild(defCard);
     return vs;
   }
 
@@ -1737,21 +1773,95 @@
     row1.appendChild(right1);
     panel.appendChild(row1);
 
-    // Row 1.5: Hero Portraits
+    // Row 1.5: Hero Portraits (rally-aware: collapsible per-player sections)
     if ((attHeroes && attHeroes.length > 0) || (defHeroes && defHeroes.length > 0)) {
-      var heroRow = el('div', { className: 'details-row' });
+      var attPlayerCount = (att.players || []).length;
+      var defPlayerCount = (def.players || []).length;
+      var isRally = attPlayerCount > 1 || defPlayerCount > 1;
 
-      var leftHero = buildDetailSide('Heroes', false, attPI.username || 'Attacker');
-      var attPortraits = buildHeroPortraits(attHeroes, 'att');
-      if (attPortraits) leftHero.appendChild(attPortraits);
-      heroRow.appendChild(leftHero);
+      if (isRally) {
+        // Rally mode: render per-player collapsible hero sections
+        var heroRow = el('div', { className: 'details-row' });
 
-      var rightHero = buildDetailSide('Heroes', true, defPI.username || 'Defender');
-      var defPortraits = buildHeroPortraits(defHeroes, 'def');
-      if (defPortraits) rightHero.appendChild(defPortraits);
-      heroRow.appendChild(rightHero);
+        var leftHero = buildDetailSide('Heroes', false, attPI.username || 'Attacker');
+        if (attPlayerCount > 1) {
+          for (var ai = 0; ai < attPlayerCount; ai++) {
+            var api = getPlayerInfo(att, ai);
+            var aHeroes = getHeroList(att, ai);
+            var aFlag = flagEmoji(api.nationalflag || 0);
+            var aHeaderChildren = [
+              el('span', { className: 'rally-toggle' }, '\u25BC'),
+              aFlag ? el('span', null, aFlag + ' ') : null,
+              el('span', null, api.username || 'Unknown')
+            ];
+            if (ai === 0) aHeaderChildren.push(el('span', { className: 'rally-leader-badge' }, 'LEADER'));
+            var aHeader = el('div', { className: 'rally-player-header' + (ai > 0 ? ' collapsed' : '') }, aHeaderChildren);
+            var aContent = el('div', { className: 'rally-player-content' + (ai > 0 ? ' collapsed' : '') });
+            var ap = buildHeroPortraits(aHeroes, 'att');
+            if (ap) aContent.appendChild(ap);
+            (function(hdr, cnt) {
+              hdr.addEventListener('click', function() {
+                hdr.classList.toggle('collapsed');
+                cnt.classList.toggle('collapsed');
+              });
+            })(aHeader, aContent);
+            leftHero.appendChild(aHeader);
+            leftHero.appendChild(aContent);
+          }
+        } else {
+          var attPortraits = buildHeroPortraits(attHeroes, 'att');
+          if (attPortraits) leftHero.appendChild(attPortraits);
+        }
+        heroRow.appendChild(leftHero);
 
-      panel.appendChild(heroRow);
+        var rightHero = buildDetailSide('Heroes', true, defPI.username || 'Defender');
+        if (defPlayerCount > 1) {
+          for (var di = 0; di < defPlayerCount; di++) {
+            var dpi = getPlayerInfo(def, di);
+            var dHeroes = getHeroList(def, di);
+            var dFlag = flagEmoji(dpi.nationalflag || 0);
+            var dHeaderChildren = [
+              el('span', { className: 'rally-toggle' }, '\u25BC'),
+              dFlag ? el('span', null, dFlag + ' ') : null,
+              el('span', null, dpi.username || 'Unknown')
+            ];
+            if (di === 0) dHeaderChildren.push(el('span', { className: 'rally-leader-badge' }, 'LEADER'));
+            var dHeader = el('div', { className: 'rally-player-header' + (di > 0 ? ' collapsed' : '') }, dHeaderChildren);
+            var dContent = el('div', { className: 'rally-player-content' + (di > 0 ? ' collapsed' : '') });
+            var dp = buildHeroPortraits(dHeroes, 'def');
+            if (dp) dContent.appendChild(dp);
+            (function(hdr, cnt) {
+              hdr.addEventListener('click', function() {
+                hdr.classList.toggle('collapsed');
+                cnt.classList.toggle('collapsed');
+              });
+            })(dHeader, dContent);
+            rightHero.appendChild(dHeader);
+            rightHero.appendChild(dContent);
+          }
+        } else {
+          var defPortraits = buildHeroPortraits(defHeroes, 'def');
+          if (defPortraits) rightHero.appendChild(defPortraits);
+        }
+        heroRow.appendChild(rightHero);
+
+        panel.appendChild(heroRow);
+      } else {
+        // Standard 1v1 hero row
+        var heroRow = el('div', { className: 'details-row' });
+
+        var leftHero = buildDetailSide('Heroes', false, attPI.username || 'Attacker');
+        var attPortraits = buildHeroPortraits(attHeroes, 'att');
+        if (attPortraits) leftHero.appendChild(attPortraits);
+        heroRow.appendChild(leftHero);
+
+        var rightHero = buildDetailSide('Heroes', true, defPI.username || 'Defender');
+        var defPortraits = buildHeroPortraits(defHeroes, 'def');
+        if (defPortraits) rightHero.appendChild(defPortraits);
+        heroRow.appendChild(rightHero);
+
+        panel.appendChild(heroRow);
+      }
     }
 
     // Row 2: Unit Composition
@@ -1993,17 +2103,17 @@
   // ---- Multi-march rendering ----
 
   function renderMarchContent(container, fm, att, def, attPI, defPI) {
-    // Extract heroLists from both sides
-    var attHeroes = getHeroList(att);
-    var defHeroes = getHeroList(def);
+    // Extract heroLists from both sides (all players for skill map, per-player for portraits)
+    var attHeroes = getAllHeroLists(att);
+    var defHeroes = getAllHeroLists(def);
     var skillToHeroMap = buildSkillToHeroMap(attHeroes, defHeroes);
 
-    // Details panel (with hero portraits)
+    // Details panel (with hero portraits — rally-aware)
     container.appendChild(buildDetailsPanel(fm, att, def, attPI, defPI, attHeroes, defHeroes));
 
     // Stats Comparison button
-    var attHasBuffs = att.players && att.players[0] && att.players[0].effectBuffs;
-    var defHasBuffs = def.players && def.players[0] && def.players[0].effectBuffs;
+    var attHasBuffs = att.players && att.players.some(function(p) { return p.effectBuffs; });
+    var defHasBuffs = def.players && def.players.some(function(p) { return p.effectBuffs; });
     if (attHasBuffs || defHasBuffs) {
       var btnWrap = el('div', { className: 'stats-btn-wrap' });
       var statsBtn = el('button', { className: 'stats-btn', onclick: function() {
