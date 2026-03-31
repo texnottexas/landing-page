@@ -111,6 +111,15 @@ a:hover { text-decoration: underline; }
 .detail-meta { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
 .detail-meta-row { display: flex; gap: 6px; }
 .detail-meta-label { color: var(--text); font-weight: 600; }
+.detail-children { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: .75rem; }
+.detail-children-title { font-size: .8rem; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .04em; margin-bottom: .5rem; }
+.detail-children-list { display: flex; flex-direction: column; gap: .35rem; }
+.detail-child-row { display: flex; align-items: center; gap: .5rem; padding: .35rem .5rem; border-radius: 6px; background: var(--card); border: 1px solid var(--border); font-size: .82rem; }
+.detail-child-dot { width: 18px; text-align: center; font-size: .75rem; flex-shrink: 0; }
+.detail-child-dot.done { color: #3fb950; }
+.detail-child-dot.doing { color: #d29922; }
+.detail-child-dot.todo { color: #8b949e; }
+.detail-child-name { color: var(--text); }
 
 /* Footer */
 @keyframes footer-shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
@@ -445,6 +454,31 @@ function openDetail(item, isGitHub) {
   if (item.state === 'Done' && item.closedDate) addMeta('Completed:', fmtDate(item.closedDate));
   detailContent.appendChild(metaEl);
 
+  // Child items for Epics
+  if (item.childIds && item.childIds.length > 0) {
+    var childSection = makeEl('div', 'detail-children');
+    var childTitle = makeEl('div', 'detail-children-title');
+    childTitle.textContent = 'Features (' + item.childIds.length + ')';
+    childSection.appendChild(childTitle);
+    var childList = makeEl('div', 'detail-children-list');
+    item.childIds.forEach(function(cid) {
+      var child = allAdoItemsById[cid];
+      if (!child) return;
+      var row = makeEl('div', 'detail-child-row');
+      var statusDot = makeEl('span', 'detail-child-dot');
+      if (child.state === 'Done') { statusDot.classList.add('done'); statusDot.textContent = '\u2713'; }
+      else if (child.state === 'Doing') { statusDot.classList.add('doing'); statusDot.textContent = '\u25BA'; }
+      else { statusDot.classList.add('todo'); statusDot.textContent = '\u25CB'; }
+      row.appendChild(statusDot);
+      var nameEl = makeEl('span', 'detail-child-name');
+      nameEl.textContent = child.title;
+      row.appendChild(nameEl);
+      childList.appendChild(row);
+    });
+    childSection.appendChild(childList);
+    detailContent.appendChild(childSection);
+  }
+
   detailOverlay.classList.add('open');
   if (typeof nudgeTranslate === 'function') setTimeout(nudgeTranslate, 200);
 }
@@ -455,8 +489,11 @@ document.getElementById('detailClose').addEventListener('click', closeDetail);
 detailOverlay.addEventListener('click', function(e) { if (e.target === detailOverlay) closeDetail(); });
 
 // =================== RENDER ROADMAP ===================
+var allAdoItemsById = {};
 function renderRoadmap(data) {
   var adoItems = data.adoItems || [];
+  allAdoItemsById = {};
+  adoItems.forEach(function(item) { allAdoItemsById[item.id] = item; });
   var githubBugs = data.githubBugs || [];
 
   // Split GitHub bugs into open and closed
