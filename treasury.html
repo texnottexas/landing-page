@@ -66,10 +66,10 @@
   .chip.t2c { background: rgba(188,140,255,.12); color: var(--t2); border: 1px solid rgba(188,140,255,.3); }
   .chip.t3c { background: rgba(121,192,255,.12); color: var(--t3); border: 1px solid rgba(121,192,255,.3); }
   .chip.t4c { background: rgba(139,148,158,.12); color: var(--t4); border: 1px solid rgba(139,148,158,.3); }
-  .inv-toggle { display: flex; align-items: center; gap: .4rem; cursor: pointer; user-select: none; margin-top: .5rem; font-size: .7rem; font-weight: 600; color: var(--muted); transition: color .15s; }
-  .inv-toggle:hover { color: var(--accent); }
-  .inv-toggle .inv-chevron { font-size: .6rem; transition: transform .2s; }
-  .inv-toggle .inv-chevron.closed { transform: rotate(-90deg); }
+  .stat-card.expandable { cursor: pointer; transition: border-color .15s; }
+  .stat-card.expandable:hover { border-color: var(--muted); }
+  .stat-card .inv-chevron { font-size: .55rem; color: var(--muted); transition: transform .2s; float: right; margin-top: .1rem; }
+  .stat-card .inv-chevron.closed { transform: rotate(-90deg); }
   .inventory-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: .4rem; margin-top: .4rem; }
   .inventory-grid.collapsed { display: none; }
   .inv-item { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .4rem .55rem; }
@@ -177,11 +177,14 @@
   @media (max-width: 600px) {
     .stats-grid { grid-template-columns: 1fr; }
     .controls { display: grid; grid-template-columns: auto 1fr; gap: .4rem .5rem; margin-top: .75rem; margin-bottom: .5rem; align-items: center; }
-    .round-select-wrap { grid-column: 1; }
+    .round-select-wrap { grid-column: 1; min-width: 0; }
+    .round-select { max-width: 100%; }
     .view-tabs { grid-column: 2; justify-self: start; }
     .view-tab { padding: .32rem .6rem; font-size: .75rem; }
     .search-wrap { grid-column: 1; min-width: 0; }
-    .sort-wrap { grid-column: 2; justify-self: start; }
+    .search-wrap input { font-size: .8rem; }
+    .sort-wrap { grid-column: 2; justify-self: start; min-width: 0; }
+    .sort-select { max-width: 100%; font-size: .8rem; }
     .method-section { margin-bottom: .35rem; }
     .method-header { padding: .5rem .75rem; font-size: .78rem; }
     .method-body { padding: .75rem .85rem; }
@@ -318,10 +321,6 @@
 
 <div class="summary-bar" id="summaryBar" style="display:none">
   <div class="stats-grid" id="statsGrid"></div>
-  <div class="inv-toggle" id="invToggle" onclick="toggleInventory()">
-    <span class="inv-chevron closed" id="invChevron">&#9660;</span>
-    <span>Reward Category Breakdown</span>
-  </div>
   <div class="inventory-grid collapsed" id="inventoryGrid"></div>
 </div>
 
@@ -523,12 +522,20 @@ function renderSummary(summary) {
     {cls: 'p1', text: 'P1 ' + fmtNum(bpt.tier1 || 0)},
     {cls: 'p2', text: 'P2 ' + fmtNum(bpt.tier2 || 0)}
   ]));
-  statsGrid.appendChild(buildStatCard('Reward Category Slots', fmtNum(summary.totalCategories), '', [
+  var catCard = buildStatCard('Reward Category Slots', fmtNum(summary.totalCategories), '', [
     {cls: 't1c', text: 'T1 ' + fmtNum(brt.T1 || 0)},
     {cls: 't2c', text: 'T2 ' + fmtNum(brt.T2 || 0)},
     {cls: 't3c', text: 'T3 ' + fmtNum(brt.T3 || 0)},
     brt.T4 ? {cls: 't4c', text: 'T4 ' + fmtNum(brt.T4)} : null
-  ].filter(Boolean)));
+  ].filter(Boolean));
+  catCard.classList.add('expandable');
+  var chevSpan = document.createElement('span');
+  chevSpan.className = 'inv-chevron closed';
+  chevSpan.id = 'invChevron';
+  chevSpan.textContent = '\u25BC';
+  catCard.firstChild.appendChild(chevSpan);
+  catCard.addEventListener('click', toggleInventory);
+  statsGrid.appendChild(catCard);
 
   /* Inventory bars — icon paths and item names come from our own JSON, not user input */
   invGrid.innerHTML = '';
