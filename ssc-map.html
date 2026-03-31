@@ -332,7 +332,7 @@
     .grid {
       display: grid;
       gap: 1px;
-      background: var(--border);
+      background: #0d1117;
     }
 
     .cell {
@@ -349,22 +349,23 @@
       overflow: hidden;
       line-height: 1.1;
       text-align: center;
-      border: 2px solid transparent;
+      border: 1px solid rgba(48,54,61,.5);
     }
     .cell:hover {
-      filter: brightness(1.3);
+      filter: brightness(1.4);
       z-index: 10;
-      transform: scale(1.08);
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
     }
-    .cell.dimmed { opacity: .25; }
+    .cell.dimmed { opacity: .2; }
 
     .cell.type-1 {
       border: 2px solid var(--gold);
-      box-shadow: inset 0 0 6px rgba(210,153,34,.3);
+      box-shadow: inset 0 0 8px rgba(210,153,34,.35);
       font-size: .65rem;
     }
     .cell.type-2 {
-      border: 2px dashed var(--accent);
+      border: 1px dashed rgba(121,192,255,.5);
     }
 
     /* War/defense pulsing borders */
@@ -772,6 +773,41 @@
       .cat-dot { width: 4px; height: 4px; }
       .cell-plan-star { font-size: .45rem; }
     }
+
+    /* Cell Detail Modal */
+    .cell-detail-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:600; align-items:center; justify-content:center; padding:1rem; }
+    .cell-detail-overlay.show { display:flex; }
+    .cell-detail-modal { background:var(--surface); border:1px solid var(--border); border-radius:12px; max-width:420px; width:100%; max-height:80vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.5); }
+    .cell-detail-header { display:flex; align-items:center; justify-content:space-between; padding:.75rem 1rem; border-bottom:1px solid var(--border); }
+    .cell-detail-header h3 { font-size:.95rem; font-weight:700; margin:0; }
+    .cell-detail-close { background:none; border:none; color:var(--muted); font-size:1.4rem; cursor:pointer; padding:0 .25rem; line-height:1; }
+    .cell-detail-close:hover { color:var(--text); }
+    .cell-detail-body { padding:.75rem 1rem; display:flex; flex-direction:column; gap:.6rem; }
+    .cd-row { display:flex; justify-content:space-between; align-items:center; font-size:.8rem; }
+    .cd-label { color:var(--muted); }
+    .cd-value { font-weight:600; }
+    .cd-section { font-size:.7rem; text-transform:uppercase; letter-spacing:.04em; color:var(--accent); font-weight:700; margin-top:.25rem; }
+    .cd-buff-list { display:flex; flex-direction:column; gap:.2rem; }
+    .cd-buff { font-size:.78rem; padding:.2rem .4rem; border-radius:4px; }
+    .cd-buff.active { background:rgba(63,185,80,.12); color:var(--army); font-weight:600; }
+    .cd-buff.pending { color:var(--muted); }
+    .cd-exp-bar { height:6px; background:var(--card); border-radius:3px; overflow:hidden; margin-top:.2rem; }
+    .cd-exp-fill { height:100%; background:var(--accent); border-radius:3px; }
+    .cd-war-badge { display:inline-flex; align-items:center; gap:.3rem; padding:.25rem .6rem; border-radius:6px; font-size:.78rem; font-weight:600; }
+    .cd-war-badge.attack { background:rgba(248,81,73,.15); color:var(--red); }
+    .cd-war-badge.defend { background:rgba(56,139,253,.15); color:var(--navy); }
+    .cell-detail-footer { padding:.5rem 1rem .75rem; border-top:1px solid var(--border); display:flex; gap:.5rem; flex-wrap:wrap; }
+    .cd-action-btn { flex:1; padding:.45rem .6rem; border-radius:6px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:.78rem; font-weight:600; cursor:pointer; text-align:center; transition:all .15s; min-width:80px; }
+    .cd-action-btn:hover { border-color:var(--accent); }
+    .cd-action-btn.primary { background:var(--accent); color:var(--bg); border-color:var(--accent); }
+    .cd-action-btn.primary:hover { filter:brightness(1.1); }
+    .cd-action-btn.danger { color:var(--red); border-color:rgba(248,81,73,.3); }
+    .cd-action-btn.danger:hover { background:rgba(248,81,73,.12); }
+    .cd-cat-badge { display:inline-block; font-size:.65rem; font-weight:700; text-transform:uppercase; padding:.15rem .45rem; border-radius:10px; letter-spacing:.03em; }
+    .cd-cat-badge.combat { background:rgba(248,81,73,.15); color:#f85149; }
+    .cd-cat-badge.economy { background:rgba(63,185,80,.15); color:#3fb950; }
+    .cd-cat-badge.utility { background:rgba(56,139,253,.15); color:#388bfd; }
+    .cd-cat-badge.special { background:rgba(210,153,34,.15); color:#d29922; }
   </style>
 </head>
 <body>
@@ -923,6 +959,18 @@
   </div>
   <div class="toast" id="toast"></div>
 
+  <!-- Cell Detail Modal -->
+  <div class="cell-detail-overlay" id="cellDetailOverlay">
+    <div class="cell-detail-modal" id="cellDetailModal">
+      <div class="cell-detail-header" id="cellDetailHeader">
+        <h3 id="cellDetailTitle"></h3>
+        <button class="cell-detail-close" id="cellDetailClose">&times;</button>
+      </div>
+      <div class="cell-detail-body" id="cellDetailBody"></div>
+      <div class="cell-detail-footer" id="cellDetailFooter"></div>
+    </div>
+  </div>
+
   <footer class="site-footer">
     <a href="https://github.com/texnottexas/titan-canyon-rosters" target="_blank" rel="noopener noreferrer">
       <span class="shimmer-text">Brought to you by supporters of the fk boats movement</span>
@@ -956,19 +1004,20 @@
     t._timer = setTimeout(function() { t.classList.remove('show'); }, 2200);
   }
 
-  /* --- Server color palette --- */
+  /* --- Server color palette (muted/dark tints for map readability) --- */
   var SERVER_COLORS = [
-    '#8b5cf6','#06b6d4','#f97316','#ec4899','#14b8a6',
-    '#a855f7','#0ea5e9','#eab308','#ef4444','#22c55e',
-    '#6366f1','#f59e0b','#10b981','#e879f9','#3b82f6',
-    '#84cc16','#f43f5e','#0891b2','#d946ef','#fbbf24',
-    '#059669','#7c3aed','#fb923c','#2dd4bf','#c084fc',
-    '#38bdf8','#facc15','#f472b6','#34d399','#a78bfa',
-    '#818cf8','#fb7185','#4ade80','#fcd34d'
+    '#2d2654','#1a3a42','#3d2a10','#3a1a2e','#1a3632',
+    '#2e1f45','#162e40','#3a3010','#3d1818','#1a3520',
+    '#222640','#3a2d10','#1a3028','#361a40','#1a2840',
+    '#2a3510','#3d1a22','#163035','#341a40','#3a3410',
+    '#143828','#281a42','#3d2818','#1a3a35','#2e2240',
+    '#1a3240','#3a3810','#3a1a30','#1a3828','#281e40',
+    '#222840','#3a1a28','#1a3520','#3a3210'
   ];
 
-  var S2864_COLOR = '#3fb950';
-  var UNCLAIMED_COLOR = '#21262d';
+  var S2864_COLOR = '#1a4a25';
+  var S2864_BORDER = '#3fb950';
+  var UNCLAIMED_COLOR = '#161b22';
   var CAT_COLORS = { combat:'#f85149', economy:'#3fb950', utility:'#388bfd', special:'#d29922' };
   var EXP_MAX = { 1: 10000, 2: 30000, 3: 80000 };
 
@@ -977,6 +1026,22 @@
     if (sid === 0) return UNCLAIMED_COLOR;
     var h = (sid * 2654435761) >>> 0;
     return SERVER_COLORS[h % SERVER_COLORS.length];
+  }
+  /* Brighter accent for legend/sidebar bars */
+  var SERVER_ACCENTS = [
+    '#8b5cf6','#06b6d4','#f97316','#ec4899','#14b8a6',
+    '#a855f7','#0ea5e9','#eab308','#ef4444','#22c55e',
+    '#6366f1','#f59e0b','#10b981','#e879f9','#3b82f6',
+    '#84cc16','#f43f5e','#0891b2','#d946ef','#fbbf24',
+    '#059669','#7c3aed','#fb923c','#2dd4bf','#c084fc',
+    '#38bdf8','#facc15','#f472b6','#34d399','#a78bfa',
+    '#818cf8','#fb7185','#4ade80','#fcd34d'
+  ];
+  function serverAccent(sid) {
+    if (sid === 2864) return '#3fb950';
+    if (sid === 0) return '#30363d';
+    var h = (sid * 2654435761) >>> 0;
+    return SERVER_ACCENTS[h % SERVER_ACCENTS.length];
   }
 
   function extractSeq(name) {
@@ -1224,7 +1289,7 @@
     sorted.forEach(function(entry) {
       var sid = parseInt(entry[0]);
       var cnt = entry[1];
-      var color = serverColor(sid);
+      var color = serverAccent(sid);
       var li = el('li', 'server-row' + (sid === 2864 ? ' highlight' : ''));
 
       var nameSpan = el('span', '', 'S' + sid);
@@ -1342,6 +1407,7 @@
 
         var d = el('div', 'cell type-' + cell.type);
         d.style.background = serverColor(cell.sid);
+        if (cell.sid === 2864 && cell.type !== 1) d.style.borderColor = 'rgba(63,185,80,.45)';
         d.dataset.r = cell.r;
         d.dataset.c = cell.c;
         d.dataset.sid = cell.sid;
@@ -1399,15 +1465,15 @@
           d.appendChild(star);
         }
 
-        // Tooltip events
+        // Hover tooltip (brief), click opens detail modal
         d.addEventListener('mouseenter', makeTooltipHandler(cell));
         d.addEventListener('mousemove', positionTooltip);
         d.addEventListener('mouseleave', hideTooltip);
-        d.addEventListener('click', makeTooltipHandler(cell));
-
-        // Context menu (right-click / long-press)
-        d.addEventListener('contextmenu', makeContextHandler(cell));
-        setupLongPress(d, cell);
+        d.addEventListener('click', function(e) {
+          e.preventDefault();
+          hideTooltip();
+          openCellDetail(cell);
+        });
 
         grid.appendChild(d);
         cellElements.push({ el: d, cell: cell, seq: seq });
@@ -1820,6 +1886,221 @@
   function hideTooltip() {
     tooltip.classList.remove('show');
   }
+
+  /* --- Cell Detail Modal --- */
+  var SPEC_NAMES = {
+    4001:'ATK Buff', 4002:'Truck Transport', 4003:'Truck Heist', 4004:'Mining Hub',
+    4006:'HP Buff', 4007:'DMG Increase', 4008:'DMG Reduction', 4010:'DEF Buff',
+    4015:'Daily Tasks', 4016:'Seal Stone Train', 4017:'Realm', 4018:'Realm Thief', 4080:'Treasury Reward'
+  };
+  var SPEC_CAT = {
+    4001:'combat',4006:'combat',4007:'combat',4008:'combat',4010:'combat',
+    4002:'economy',4003:'economy',4004:'economy',4015:'economy',
+    4016:'utility',4017:'utility',4018:'utility',4080:'special'
+  };
+  var SPEC_BUFFS = {
+    4001:['All Units ATK +90%','All Units ATK +180%','All Units ATK +270%'],
+    4006:['All Units HP +90%','All Units HP +180%','All Units HP +270%'],
+    4007:['All Units DMG Increase +15%','All Units DMG Increase +30%','All Units DMG Increase +45%'],
+    4008:['All Units Decreased DMG Taken +15%','All Units Decreased DMG Taken +30%','All Units Decreased DMG Taken +45%'],
+    4010:['All Units DEF +5%','All Units DEF +10%','All Units DEF +15%'],
+    4002:['Truck Seal Stones +1','Truck Seal Stones +2','Truck Seal Stones +3'],
+    4003:['Heist Seal Stones +1','Heist Seal Stones +2','Heist Seal Stones +3'],
+    4004:['Gathering Speed +5%','Warehouse Level +1','Gathering Level +1'],
+    4015:['Task Seal Stones +2','Task Seal Stones +4','Task Seal Stones +6'],
+    4016:['Passengers per Carriage +1','Train Refresh Cost -2','Train Rarity +1'],
+    4017:['March Speed +10%','March Speed +20%','+1 Enigma Beast'],
+    4018:['Pass Drop on Defeat -10%','Pass Gain from Beasts +10%','Pass Gain from Beasts +20%'],
+    4080:['Treasury Reward +1','Treasury Reward +2','Treasury Reward +3']
+  };
+  var SPEC_RARITY = {4007:1,4008:1,4010:2,4016:2,4017:1,4018:1,4080:2,4004:1};
+
+  function openCellDetail(cell) {
+    var overlay = document.getElementById('cellDetailOverlay');
+    var title = document.getElementById('cellDetailTitle');
+    var body = document.getElementById('cellDetailBody');
+    var footer = document.getElementById('cellDetailFooter');
+    var header = document.getElementById('cellDetailHeader');
+    body.textContent = '';
+    footer.textContent = '';
+
+    var seq = extractSeq(cell.name);
+    var planKey = cell.r + ',' + cell.c;
+    var existingPlan = planData[planKey];
+
+    // Title
+    if (cell.type === 1) {
+      title.textContent = 'Warzone: S' + cell.sid;
+      header.style.borderBottomColor = serverAccent(cell.sid);
+    } else {
+      title.textContent = cell.name || 'Cell (' + cell.r + ',' + cell.c + ')';
+      header.style.borderBottomColor = '';
+    }
+
+    // Owner row
+    if (cell.owner && cell.type !== 0) {
+      var ownerRow = el('div', 'cd-row');
+      ownerRow.appendChild(el('span', 'cd-label', 'Territory'));
+      var ownerVal = el('span', 'cd-value');
+      ownerVal.style.color = serverAccent(cell.sid);
+      ownerVal.textContent = cell.sid ? 'S' + cell.sid : 'Unclaimed';
+      ownerRow.appendChild(ownerVal);
+      body.appendChild(ownerRow);
+
+      if (cell.ownerSid && cell.ownerSid !== cell.sid) {
+        var ctrlRow = el('div', 'cd-row');
+        ctrlRow.appendChild(el('span', 'cd-label', 'Controlled by'));
+        var ctrlVal = el('span', 'cd-value');
+        ctrlVal.textContent = 'S' + cell.ownerSid;
+        ctrlRow.appendChild(ctrlVal);
+        body.appendChild(ctrlRow);
+      }
+    }
+
+    // Wasteland buff info (for ALL wastelands, not just owned)
+    if (cell.type === 3 && seq !== null) {
+      var ow = roundData.ownedWastelands ? roundData.ownedWastelands[String(seq)] : null;
+      var specId = ow ? ow.specId : 0;
+      var level = ow ? ow.level : 0;
+
+      // Try to get specId from warTargets/defenseTargets if not owned
+      if (!specId && warSeqMap[seq]) specId = warSeqMap[seq].specId;
+      if (!specId && defSeqMap[seq]) specId = defSeqMap[seq].specId;
+
+      if (specId && SPEC_NAMES[specId]) {
+        body.appendChild(el('div', 'cd-section', 'Wasteland Type'));
+        var typeRow = el('div', 'cd-row');
+        typeRow.appendChild(el('span', 'cd-label', SPEC_NAMES[specId]));
+        var cat = SPEC_CAT[specId] || 'unknown';
+        typeRow.appendChild(el('span', 'cd-cat-badge ' + cat, cat));
+        body.appendChild(typeRow);
+
+        if (SPEC_RARITY[specId]) {
+          var rarRow = el('div', 'cd-row');
+          rarRow.appendChild(el('span', 'cd-label', 'Rarity'));
+          var stars = '';
+          for (var s = 0; s < (SPEC_RARITY[specId] + 1); s++) stars += '\u2605';
+          var rarVal = el('span', 'cd-value');
+          rarVal.textContent = stars;
+          rarVal.style.color = SPEC_RARITY[specId] >= 2 ? '#d29922' : '#79c0ff';
+          rarRow.appendChild(rarVal);
+          body.appendChild(rarRow);
+        }
+
+        // Buff breakdown
+        var buffs = SPEC_BUFFS[specId];
+        if (buffs) {
+          body.appendChild(el('div', 'cd-section', 'Buff Levels'));
+          var buffList = el('div', 'cd-buff-list');
+          buffs.forEach(function(b, i) {
+            var isActive = ow && (i < level);
+            var line = el('div', 'cd-buff ' + (isActive ? 'active' : 'pending'));
+            line.textContent = 'Lv.' + (i + 1) + ': ' + b;
+            buffList.appendChild(line);
+          });
+          body.appendChild(buffList);
+        }
+      }
+
+      // EXP if owned
+      if (ow && ow.exp !== undefined) {
+        var maxExp = EXP_MAX[level] || 50000;
+        var pct = Math.min(100, (ow.exp / maxExp) * 100);
+        body.appendChild(el('div', 'cd-section', 'Experience'));
+        var expRow = el('div', 'cd-row');
+        expRow.appendChild(el('span', 'cd-label', 'Lv.' + level));
+        expRow.appendChild(el('span', 'cd-value', ow.exp.toLocaleString() + ' / ' + maxExp.toLocaleString()));
+        body.appendChild(expRow);
+        var bar = el('div', 'cd-exp-bar');
+        var fill = el('div', 'cd-exp-fill');
+        fill.style.width = pct + '%';
+        bar.appendChild(fill);
+        body.appendChild(bar);
+      }
+    }
+
+    // Neutral city level
+    if (cell.type === 2) {
+      var lvl = extractLevel(cell.name);
+      var lvlRow = el('div', 'cd-row');
+      lvlRow.appendChild(el('span', 'cd-label', 'Level'));
+      var lvlVal = el('span', 'cd-value');
+      lvlVal.textContent = lvl;
+      lvlVal.style.color = lvl === '3' ? '#d29922' : lvl === '2' ? '#79c0ff' : '#8b949e';
+      lvlRow.appendChild(lvlVal);
+      body.appendChild(lvlRow);
+    }
+
+    // War/defense status
+    if (seq !== null && warSeqMap[seq]) {
+      var w = warSeqMap[seq];
+      body.appendChild(el('div', 'cd-section', 'War Declaration'));
+      var warBadge = el('div', 'cd-war-badge attack');
+      warBadge.textContent = '\u2694 S2864 attacking' + (w.currentOwner ? ' (from S' + w.currentOwner + ')' : '');
+      body.appendChild(warBadge);
+      if (w.specName) {
+        var wDetail = el('div', 'cd-row');
+        wDetail.appendChild(el('span', 'cd-label', 'Target'));
+        wDetail.appendChild(el('span', 'cd-value', w.specName + ' Lv.' + w.level));
+        body.appendChild(wDetail);
+      }
+    }
+    if (seq !== null && defSeqMap[seq]) {
+      body.appendChild(el('div', 'cd-section', 'Defense'));
+      var defBadge = el('div', 'cd-war-badge defend');
+      defBadge.textContent = '\uD83D\uDEE1 Uncontested (no enemy declaration)';
+      body.appendChild(defBadge);
+    }
+
+    // Planning status if exists
+    if (existingPlan) {
+      body.appendChild(el('div', 'cd-section', 'Planning'));
+      var planRow = el('div', 'cd-row');
+      planRow.appendChild(el('span', 'cd-label', 'Priority'));
+      var priBadge = el('span', 'plan-item-priority ' + existingPlan.priority, existingPlan.priority);
+      planRow.appendChild(priBadge);
+      body.appendChild(planRow);
+      if (existingPlan.note) {
+        var noteRow = el('div', 'cd-row');
+        noteRow.appendChild(el('span', 'cd-label', 'Note'));
+        noteRow.appendChild(el('span', 'cd-value', existingPlan.note));
+        body.appendChild(noteRow);
+      }
+    }
+
+    // Footer actions
+    if (cell.type === 2 || cell.type === 3) {
+      if (existingPlan) {
+        var editBtn = el('button', 'cd-action-btn', '\u270F Edit Target');
+        editBtn.addEventListener('click', function() { closeCellDetail(); openPlanModal(cell, existingPlan); });
+        footer.appendChild(editBtn);
+        var removeBtn = el('button', 'cd-action-btn danger', '\u2716 Remove Target');
+        removeBtn.addEventListener('click', function() {
+          delete planData[planKey];
+          savePlan();
+          refreshPlanOverlays();
+          renderPlanList();
+          closeCellDetail();
+          showToast('Target removed');
+        });
+        footer.appendChild(removeBtn);
+      } else {
+        var markBtn = el('button', 'cd-action-btn primary', '\u2605 Mark as Target');
+        markBtn.addEventListener('click', function() { closeCellDetail(); openPlanModal(cell, null); });
+        footer.appendChild(markBtn);
+      }
+    }
+
+    overlay.classList.add('show');
+  }
+
+  function closeCellDetail() {
+    document.getElementById('cellDetailOverlay').classList.remove('show');
+  }
+  document.getElementById('cellDetailClose').addEventListener('click', closeCellDetail);
+  document.getElementById('cellDetailOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closeCellDetail();
+  });
 
   /* --- Sidebar tabs --- */
   document.querySelectorAll('.sidebar-tab').forEach(function(tab) {
