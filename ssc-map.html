@@ -876,7 +876,13 @@
     .story-body .s-subtitle { display:block; font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:.75rem; }
     @media (max-width:600px) {
       .story-body { padding:1rem; font-size:.82rem; }
+      .story-scene { height:160px; }
+      .scene-label { font-size:.55rem !important; }
     }
+    /* Story canvas animation */
+    .story-canvas-wrap { position:relative; border-bottom:1px solid var(--border); background:#080c12; overflow:hidden; }
+    .story-canvas-wrap canvas { display:block; width:100%; }
+    .story-canvas-phase { position:absolute; top:8px; left:12px; font-size:.6rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; transition:opacity .3s; }
     /* Round narrative */
     .diff-narrative { padding:.6rem 1rem; font-size:.8rem; line-height:1.55; color:var(--muted); border-bottom:1px solid var(--border); background:rgba(121,192,255,.04); }
     .diff-narrative strong { color:var(--text); }
@@ -1094,6 +1100,10 @@
       <div class="story-header">
         <h3 id="storyTitle">The Chronicle of Sector 16</h3>
         <button class="cell-detail-close" id="storyClose">&times;</button>
+      </div>
+      <div class="story-canvas-wrap" id="storyCanvasWrap">
+        <canvas id="storyCanvas" width="640" height="260"></canvas>
+        <div class="story-canvas-phase" id="storyPhase"></div>
       </div>
       <div class="story-body" id="storyBody"></div>
     </div>
@@ -2619,6 +2629,279 @@
     return paras.map(function(p){ return '<p>'+p+'</p>'; }).join('');
   }
 
+  /* --- Canvas Story Animation --- */
+  var storyAnimFrame = null;
+  function playStoryAnimation(gained, lost, curScore, scoreDelta, topTargets, takenFrom) {
+    var canvas = document.getElementById('storyCanvas');
+    var wrap = document.getElementById('storyCanvasWrap');
+    var phase = document.getElementById('storyPhase');
+    var ctx = canvas.getContext('2d');
+    var W = 640, H = 260;
+    canvas.width = W; canvas.height = H;
+
+    if (storyAnimFrame) cancelAnimationFrame(storyAnimFrame);
+    var startTime = null;
+    var duration = 14000; // 14 seconds total
+
+    // Colors
+    var BG = '#080c12';
+    var GREEN = '#3fb950'; var DGREEN = '#1e6b2d';
+    var RED = '#f85149'; var GOLD = '#d29922';
+    var MUTED = '#4a5060'; var TEXT = '#e6edf3';
+
+    // Pre-compute scene data
+    var baseX = W * 0.38, baseY = H * 0.5; // S2864 home position
+    var gainPositions = gained.slice(0,8).map(function(_, i) {
+      var angle = (i / Math.max(gained.length,1)) * Math.PI * 2 - Math.PI/2;
+      var r = 60 + Math.random() * 40;
+      return { x: baseX + Math.cos(angle) * r, y: baseY + Math.sin(angle) * r, delay: i * 0.06 };
+    });
+    var lostPos = lost.length > 0 ? { x: baseX - 80, y: baseY + 30 } : null;
+
+    // Enemy positions
+    var enemies = (topTargets||[]).slice(0,3).map(function(sid, i) {
+      var ex = W * 0.75 + i * 30;
+      var ey = H * 0.3 + i * 50;
+      return { sid: sid, x: ex, y: ey, count: takenFrom[sid] || 0 };
+    });
+
+    function drawStickFigure(x, y, color, scale, walking, armUp) {
+      var s = scale || 1;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(s, s);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      // Head
+      ctx.beginPath();
+      ctx.arc(0, -18, 5, 0, Math.PI * 2);
+      ctx.stroke();
+      // Body
+      ctx.beginPath();
+      ctx.moveTo(0, -13); ctx.lineTo(0, 4);
+      ctx.stroke();
+      // Arms
+      ctx.beginPath();
+      if (armUp) {
+        ctx.moveTo(-9, -4); ctx.lineTo(0, -8); ctx.lineTo(9, -16);
+      } else {
+        ctx.moveTo(-9, -2); ctx.lineTo(0, -8); ctx.lineTo(9, -2);
+      }
+      ctx.stroke();
+      // Legs
+      var legOff = walking ? Math.sin(Date.now() * 0.008 + x) * 5 : 0;
+      ctx.beginPath();
+      ctx.moveTo(-6 + legOff, 16); ctx.lineTo(0, 4); ctx.lineTo(6 - legOff, 16);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawFlag(x, y, color, wavePhase) {
+      ctx.save();
+      ctx.strokeStyle = MUTED;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, y); ctx.lineTo(x, y - 22);
+      ctx.stroke();
+      // Flag wave
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x, y - 22);
+      ctx.quadraticCurveTo(x + 8 + Math.sin(wavePhase) * 3, y - 19, x + 14, y - 16);
+      ctx.lineTo(x, y - 12);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawSword(x, y, angle) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.strokeStyle = '#8b949e';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 0); ctx.lineTo(0, -16);
+      ctx.stroke();
+      ctx.strokeStyle = GOLD;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-4, -2); ctx.lineTo(4, -2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawExplosion(x, y, progress) {
+      var rays = 8;
+      var maxR = 15 + progress * 20;
+      ctx.save();
+      for (var i = 0; i < rays; i++) {
+        var angle = (i / rays) * Math.PI * 2 + progress * 2;
+        var r = maxR * (0.5 + Math.random() * 0.5);
+        ctx.strokeStyle = 'rgba(248,81,73,' + (1 - progress) + ')';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + Math.cos(angle) * r, y + Math.sin(angle) * r);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawText(text, x, y, color, size, alpha) {
+      ctx.save();
+      ctx.globalAlpha = alpha || 1;
+      ctx.fillStyle = color || TEXT;
+      ctx.font = (size || 12) + 'px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, x, y);
+      ctx.restore();
+    }
+
+    function render(timestamp) {
+      if (!startTime) startTime = timestamp;
+      var t = (timestamp - startTime) / duration; // 0 to 1
+      if (t > 1) t = 1;
+
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = BG;
+      ctx.fillRect(0, 0, W, H);
+
+      // Ground line
+      ctx.strokeStyle = '#1a2030';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, H * 0.78); ctx.lineTo(W, H * 0.78);
+      ctx.stroke();
+
+      // Stars (subtle background)
+      ctx.fillStyle = '#ffffff';
+      for (var si = 0; si < 30; si++) {
+        var sx = (si * 137.5 + 50) % W;
+        var sy = (si * 73.7 + 20) % (H * 0.6);
+        var twinkle = (Math.sin(timestamp * 0.001 + si) + 1) * 0.3;
+        ctx.globalAlpha = 0.15 + twinkle;
+        ctx.fillRect(sx, sy, 1.5, 1.5);
+      }
+      ctx.globalAlpha = 1;
+
+      var wave = timestamp * 0.003;
+
+      // Phase 1 (0-0.15): S2864 base appears
+      if (t >= 0) {
+        var baseAlpha = Math.min(t / 0.1, 1);
+        // Territory block
+        ctx.fillStyle = DGREEN;
+        ctx.globalAlpha = baseAlpha * 0.4;
+        ctx.fillRect(baseX - 50, baseY - 35, 100, 70);
+        ctx.globalAlpha = 1;
+        // Flag
+        if (t > 0.05) drawFlag(baseX, baseY - 5, GREEN, wave);
+        // Label
+        if (t > 0.08) drawText('S2864', baseX, baseY - 45, GREEN, 13, baseAlpha);
+        // Score
+        if (t > 0.1) {
+          var scoreShow = Math.min((t - 0.1) / 0.05, 1);
+          drawText('Score: ' + Math.floor((curScore - scoreDelta) + scoreDelta * Math.min(t / 0.8, 1)).toLocaleString(), baseX, baseY + 55, '#79c0ff', 10, scoreShow);
+        }
+        phase.textContent = t < 0.15 ? 'Establishing position...' : '';
+      }
+
+      // Phase 2 (0.15-0.55): Soldiers march out to claim territories
+      if (t > 0.12) {
+        phase.textContent = 'Expanding territory...';
+        gainPositions.forEach(function(gp, gi) {
+          var gt = Math.max(0, (t - 0.15 - gp.delay) / 0.35);
+          if (gt <= 0) return;
+          gt = Math.min(gt, 1);
+          var sx = baseX + (gp.x - baseX) * gt;
+          var sy = baseY + (gp.y - baseY) * gt;
+          // Marching soldier
+          if (gt < 1) {
+            drawStickFigure(sx, sy, GREEN, 0.7, true, false);
+          } else {
+            // Arrived — plant flag
+            drawStickFigure(gp.x + 8, gp.y, GREEN, 0.6, false, true);
+            drawFlag(gp.x - 3, gp.y + 2, GREEN, wave + gi);
+            // Territory claimed
+            ctx.fillStyle = DGREEN;
+            ctx.globalAlpha = 0.3;
+            ctx.fillRect(gp.x - 12, gp.y - 12, 24, 24);
+            ctx.globalAlpha = 1;
+          }
+        });
+      }
+
+      // Phase 3 (0.4-0.6): Enemies appear and one battle happens (loss)
+      if (t > 0.35 && enemies.length > 0) {
+        enemies.forEach(function(en, ei) {
+          var et = Math.max(0, (t - 0.35 - ei * 0.05) / 0.15);
+          if (et <= 0) return;
+          et = Math.min(et, 1);
+          var ex = W + 30 - (W + 30 - en.x) * et;
+          ctx.fillStyle = MUTED;
+          ctx.globalAlpha = 0.2 * et;
+          ctx.fillRect(en.x - 15, en.y - 15, 30, 30);
+          ctx.globalAlpha = 1;
+          drawStickFigure(ex, en.y, '#8b5cf6', 0.6, et < 1, false);
+          if (et >= 1) {
+            drawText('S' + en.sid, en.x, en.y - 25, '#8b949e', 9, 0.7);
+            // Sword clash marks
+            if (en.count > 0) {
+              drawSword(en.x - 18, en.y - 5, -0.3 + Math.sin(wave) * 0.2);
+            }
+          }
+        });
+      }
+
+      // Phase 4 (0.55-0.7): Loss explosion
+      if (t > 0.55 && lostPos) {
+        phase.textContent = 'Territory contested!';
+        var lt = Math.max(0, (t - 0.55) / 0.15);
+        lt = Math.min(lt, 1);
+        drawExplosion(lostPos.x, lostPos.y, lt);
+        if (lt > 0.3) {
+          drawStickFigure(lostPos.x, lostPos.y, RED, 0.6, false, false);
+          drawText('-1', lostPos.x, lostPos.y - 30, RED, 14, Math.min((lt - 0.3) / 0.3, 1));
+        }
+      }
+
+      // Phase 5 (0.7-0.85): Score counter + "+8 gained" banner
+      if (t > 0.7) {
+        phase.textContent = 'Victory consolidated';
+        var bt = Math.min((t - 0.7) / 0.15, 1);
+        // Big "+N" text
+        drawText('+' + gained.length + ' territories', W / 2, H * 0.15, GREEN, 20 * bt + 8, bt);
+        if (lost.length > 0 && bt > 0.5) {
+          drawText('-' + lost.length + ' lost', W / 2, H * 0.15 + 22, RED, 11, (bt - 0.5) * 2);
+        }
+      }
+
+      // Phase 6 (0.85-1.0): Closing — banner with score
+      if (t > 0.85) {
+        var ft = Math.min((t - 0.85) / 0.15, 1);
+        phase.textContent = 'Round complete';
+        ctx.fillStyle = '#0d1117';
+        ctx.globalAlpha = ft * 0.6;
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = 1;
+        drawText('Round ' + activeRound + ' — Sector 16', W / 2, H * 0.38, GOLD, 18, ft);
+        drawText('Score: ' + curScore.toLocaleString() + '  |  Rank #' + (curRound.s2864 ? curRound.s2864.rank : '?'), W / 2, H * 0.52, TEXT, 13, ft);
+        drawText(gained.length + ' gained  •  ' + lost.length + ' lost  •  Net +' + (gained.length - lost.length), W / 2, H * 0.65, MUTED, 11, ft);
+      }
+
+      if (t < 1) {
+        storyAnimFrame = requestAnimationFrame(render);
+      }
+    }
+
+    storyAnimFrame = requestAnimationFrame(render);
+  }
+
+  function stopStoryAnimation() {
+    if (storyAnimFrame) { cancelAnimationFrame(storyAnimFrame); storyAnimFrame = null; }
+  }
+
   function openStory() {
     if (!rawData || !rawData.rounds) return;
     var prevKey = String(parseInt(activeRound) - 1);
@@ -2628,15 +2911,30 @@
 
     var changes = buildChangeList(prevRound, curRound);
     document.getElementById('storyTitle').textContent = 'Sector 16 \u2014 Round ' + activeRound + ' Chronicle';
-    document.getElementById('storyBody').innerHTML = generateStory(prevRound, curRound, changes, prevKey, activeRound); // eslint-disable-line
+
+    // Use pre-generated story from data if available, otherwise generate dynamically
+    var storyHTML = curRound.story || generateStory(prevRound, curRound, changes, prevKey, activeRound);
+    document.getElementById('storyBody').innerHTML = storyHTML; // eslint-disable-line
+
+    // Launch canvas animation
+    var gained = changes.filter(function(c){ return c.type==='gained'; });
+    var lost = changes.filter(function(c){ return c.type==='lost'; });
+    var curScore = curRound.s2864 ? curRound.s2864.score : 0;
+    var scoreDelta = curScore - (prevRound.s2864 ? prevRound.s2864.score : 0);
+    var takenFrom = {};
+    gained.forEach(function(c){ if(c.fromSid) takenFrom[c.fromSid]=(takenFrom[c.fromSid]||0)+1; });
+    var topTargets = Object.keys(takenFrom).sort(function(a,b){return takenFrom[b]-takenFrom[a];});
+    playStoryAnimation(gained, lost, curScore, scoreDelta, topTargets, takenFrom);
+
     document.getElementById('storyOverlay').classList.add('show');
   }
 
   document.getElementById('storyClose').addEventListener('click', function() {
+    stopStoryAnimation();
     document.getElementById('storyOverlay').classList.remove('show');
   });
   document.getElementById('storyOverlay').addEventListener('click', function(e) {
-    if (e.target === this) this.classList.remove('show');
+    if (e.target === this) { stopStoryAnimation(); this.classList.remove('show'); }
   });
 
   function buildNarrative(prevRound, curRound, changes, prevKey, roundKey) {
