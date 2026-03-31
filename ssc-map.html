@@ -884,11 +884,14 @@
     .de-buff.special { background:rgba(210,153,34,.15); color:#d29922; }
     /* Controls */
     .diff-controls { display:flex; align-items:center; gap:.6rem; padding:.6rem 1rem; border-top:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; }
-    .diff-ctrl-btn { background:var(--card); border:1px solid var(--border); color:var(--text); padding:.35rem .8rem; border-radius:6px; cursor:pointer; font-size:.78rem; font-weight:600; transition:all .15s; }
+    .diff-ctrl-btn { background:var(--card); border:1px solid var(--border); color:var(--text); padding:.35rem .8rem; border-radius:6px; cursor:pointer; font-size:.78rem; font-weight:600; transition:all .15s; white-space:nowrap; }
     .diff-ctrl-btn:hover { border-color:var(--accent); color:var(--accent); }
     .diff-ctrl-btn.primary { background:var(--accent); color:var(--bg); border-color:var(--accent); }
     .diff-ctrl-btn.primary:hover { filter:brightness(1.1); }
+    .diff-ctrl-btn.active { background:rgba(63,185,80,.15); border-color:#3fb950; color:#3fb950; }
     .diff-progress { font-size:.72rem; color:var(--muted); margin-left:auto; }
+    .diff-cell { transition:background .25s ease, outline .15s; }
+    .diff-cell.morphing { transition:background .8s ease, outline .4s; }
     @media (max-width:600px) {
       .diff-body { flex-direction:column; }
       .diff-map-col { border-right:none; border-bottom:1px solid var(--border); }
@@ -1070,8 +1073,10 @@
         <div class="diff-feed-col" id="diffFeed"></div>
       </div>
       <div class="diff-controls">
-        <button class="diff-ctrl-btn primary" id="diffPlayBtn">&#9654; Animate</button>
-        <button class="diff-ctrl-btn" id="diffResetBtn">&#8635; Reset</button>
+        <button class="diff-ctrl-btn" id="diffS2864Only" aria-pressed="false">S2864 Only</button>
+        <button class="diff-ctrl-btn primary" id="diffPlayBtn">&#9654; Step</button>
+        <button class="diff-ctrl-btn" id="diffMorphBtn">&#10003; Morph All</button>
+        <button class="diff-ctrl-btn" id="diffResetBtn">&#8635;</button>
         <select id="diffSpeed" style="background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:.3rem .5rem;font-size:.75rem;">
           <option value="600">Slow</option>
           <option value="280" selected>Normal</option>
@@ -2491,7 +2496,12 @@
     var prog = document.getElementById('diffProgress');
     prog.textContent = '';
     prog.dataset.idx = '0';
-    document.getElementById('diffPlayBtn').textContent = '\u25BA Animate';
+    document.getElementById('diffPlayBtn').textContent = '\u25BA Step';
+    // Reset S2864-only filter
+    diffS2864Filter = false;
+    var s2864Btn = document.getElementById('diffS2864Only');
+    s2864Btn.classList.remove('active');
+    s2864Btn.setAttribute('aria-pressed','false');
     document.getElementById('diffAnimOverlay').classList.add('show');
   }
 
@@ -2504,10 +2514,15 @@
   function playNextChange() {
     var prog = document.getElementById('diffProgress');
     var idx = parseInt(prog.dataset.idx || '0');
+    // Skip swapped if S2864-only filter active
+    while (idx < diffChanges.length && diffS2864Filter && diffChanges[idx].type === 'swapped') {
+      idx++;
+    }
+    prog.dataset.idx = String(idx);
     if (idx >= diffChanges.length) {
       diffAnimRunning = false;
-      document.getElementById('diffPlayBtn').textContent = '\u25BA Animate';
-      prog.textContent = 'Done \u2014 ' + diffChanges.length + ' changes';
+      document.getElementById('diffPlayBtn').textContent = '\u25BA Step';
+      prog.textContent = 'Done';
       return;
     }
     var ch = diffChanges[idx];
@@ -2532,16 +2547,83 @@
     if (diffAnimRunning) diffAnimTimer = setTimeout(playNextChange, parseInt(document.getElementById('diffSpeed').value)||280);
   }
 
+  /* S2864-only filter */
+  var diffS2864Filter = false;
+  document.getElementById('diffS2864Only').addEventListener('click', function() {
+    diffS2864Filter = !diffS2864Filter;
+    this.classList.toggle('active', diffS2864Filter);
+    this.setAttribute('aria-pressed', String(diffS2864Filter));
+    // Filter event feed
+    document.querySelectorAll('#diffFeed .diff-event').forEach(function(row) {
+      var key = row.dataset.key;
+      var ch = diffChanges.find(function(c){ return c.key === key; });
+      if (!ch) return;
+      row.style.display = (diffS2864Filter && ch.type === 'swapped') ? 'none' : '';
+    });
+    // Filter section headers: hide if no visible items
+    var sections = document.getElementById('diffFeed').querySelectorAll('.diff-section-head');
+    sections.forEach(function(hdr) {
+      var next = hdr.nextSibling;
+      var hasVisible = false;
+      while (next && !next.classList.contains('diff-section-head')) {
+        if (next.style && next.style.display !== 'none') hasVisible = true;
+        next = next.nextSibling;
+      }
+      hdr.style.display = hasVisible ? '' : 'none';
+    });
+    // On mini-map: dim swapped cells when filtering
+    diffChanges.forEach(function(ch) {
+      var d = diffCellEls[ch.key];
+      if (!d) return;
+      if (diffS2864Filter && ch.type === 'swapped') {
+        d.classList.add('dimmed');
+      } else {
+        d.classList.remove('dimmed');
+      }
+    });
+  });
+
+  /* Morph All */
+  document.getElementById('diffMorphBtn').addEventListener('click', function() {
+    if (diffAnimRunning) { diffAnimRunning = false; document.getElementById('diffPlayBtn').textContent = '\u25BA Step'; }
+    // Add morphing class for slower transition
+    Object.keys(diffCellEls).forEach(function(key) {
+      var d = diffCellEls[key];
+      if (d && d.classList) d.classList.add('morphing');
+    });
+    // Apply final state to all cells at once
+    diffChanges.forEach(function(ch) {
+      if (diffS2864Filter && ch.type === 'swapped') return;
+      var d = diffCellEls[ch.key];
+      if (d) {
+        d.style.background = serverColor(ch.toSid||0);
+        d.classList.remove('diff-gained','diff-lost','diff-swapped');
+        d.classList.add('diff-'+ch.type);
+      }
+    });
+    // Update progress
+    var prog = document.getElementById('diffProgress');
+    prog.dataset.idx = String(diffChanges.length);
+    prog.textContent = 'Morphed \u2014 ' + diffChanges.length + ' changes';
+    // Remove morphing class after transition
+    setTimeout(function() {
+      Object.keys(diffCellEls).forEach(function(key) {
+        var d = diffCellEls[key];
+        if (d && d.classList) d.classList.remove('morphing');
+      });
+    }, 900);
+  });
+
   document.getElementById('diffAnimClose').addEventListener('click', closeDiffAnimation);
   document.getElementById('diffAnimOverlay').addEventListener('click', function(e){ if(e.target===this) closeDiffAnimation(); });
   document.getElementById('diffPlayBtn').addEventListener('click', function() {
-    if (diffAnimRunning) { diffAnimRunning=false; this.textContent='\u25BA Animate'; }
+    if (diffAnimRunning) { diffAnimRunning=false; this.textContent='\u25BA Step'; }
     else { diffAnimRunning=true; this.textContent='\u23F8 Pause'; playNextChange(); }
   });
   document.getElementById('diffResetBtn').addEventListener('click', function() {
     diffAnimRunning=false;
     if(diffAnimTimer) clearTimeout(diffAnimTimer);
-    document.getElementById('diffPlayBtn').textContent='\u25BA Animate';
+    document.getElementById('diffPlayBtn').textContent='\u25BA Step';
     var prog=document.getElementById('diffProgress'); prog.textContent=''; prog.dataset.idx='0';
     if(diffActiveEventEl){diffActiveEventEl.classList.remove('de-active');diffActiveEventEl=null;}
     document.querySelectorAll('#diffFeed .diff-event').forEach(function(r){r.classList.remove('de-active');});
