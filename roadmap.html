@@ -500,12 +500,19 @@ function renderRoadmap(data) {
   var openBugs = githubBugs.filter(function(b) { return b.state !== 'Done'; });
   var closedBugs = githubBugs.filter(function(b) { return b.state === 'Done'; });
 
-  // Categorize ADO items
+  // Build set of child IDs (shown inside their parent Epic, not as separate cards)
+  var childIdSet = {};
+  adoItems.forEach(function(item) {
+    if (item.childIds) item.childIds.forEach(function(cid) { childIdSet[cid] = true; });
+  });
+
+  // Categorize ADO items (skip children of Epics)
   var planned = [];
   var completed = [];
   var userFeatures = [];
 
   adoItems.forEach(function(item) {
+    if (childIdSet[item.id]) return; // shown inside parent Epic
     var isUserFeature = item.tags && item.tags.indexOf('feature-request') !== -1 && item.tags.indexOf('user-submitted') !== -1;
     if (item.state === 'Done') {
       completed.push(item);
