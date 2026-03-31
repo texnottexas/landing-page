@@ -857,6 +857,12 @@
     .diff-score-val.gained { color:#3fb950; }
     .diff-score-val.lost { color:#f85149; }
     .diff-score-val.neutral { color:var(--muted); }
+    /* Round narrative */
+    .diff-narrative { padding:.6rem 1rem; font-size:.8rem; line-height:1.55; color:var(--muted); border-bottom:1px solid var(--border); background:rgba(121,192,255,.04); }
+    .diff-narrative strong { color:var(--text); }
+    .diff-narrative .dn-gain { color:#3fb950; font-weight:700; }
+    .diff-narrative .dn-loss { color:#f85149; font-weight:700; }
+    .diff-narrative .dn-server { color:var(--accent); font-weight:600; }
     /* Body: mini-map left, event feed right */
     .diff-body { display:flex; flex:1; overflow:hidden; min-height:0; }
     .diff-map-col { flex-shrink:0; padding:.75rem; overflow:auto; border-right:1px solid var(--border); display:flex; align-items:flex-start; justify-content:center; }
@@ -1069,6 +1075,7 @@
         <button class="cell-detail-close" id="diffAnimClose">&times;</button>
       </div>
       <div class="diff-scoreboard" id="diffScoreboard"></div>
+      <div class="diff-narrative" id="diffNarrative"></div>
       <div class="diff-body">
         <div class="diff-map-col">
           <div class="diff-map-grid" id="diffAnimGrid"></div>
@@ -2450,6 +2457,81 @@
     });
   }
 
+  function buildNarrative(prevRound, curRound, changes, prevKey, roundKey) {
+    var gainedN = changes.filter(function(c){ return c.type==='gained'; }).length;
+    var lostN   = changes.filter(function(c){ return c.type==='lost'; }).length;
+    var swapsN  = changes.filter(function(c){ return c.type==='swapped'; }).length;
+    var net = gainedN - lostN;
+    var prevScore = prevRound.s2864 ? prevRound.s2864.score : 0;
+    var curScore  = curRound.s2864  ? curRound.s2864.score  : 0;
+    var scoreDelta = curScore - prevScore;
+
+    // Tally who we took from
+    var takenFrom = {};
+    changes.filter(function(c){ return c.type==='gained'; }).forEach(function(c) {
+      if (c.fromSid) takenFrom[c.fromSid] = (takenFrom[c.fromSid]||0) + 1;
+    });
+    var takenFromSorted = Object.keys(takenFrom).sort(function(a,b){ return takenFrom[b]-takenFrom[a]; });
+
+    // Tally buff categories gained/lost
+    var catGained = {}, catLost = {};
+    changes.forEach(function(c) {
+      if (!c.landCat) return;
+      if (c.type === 'gained') catGained[c.landCat] = (catGained[c.landCat]||0)+1;
+      if (c.type === 'lost')   catLost[c.landCat]   = (catLost[c.landCat]||0)+1;
+    });
+    var topCatGained = Object.keys(catGained).sort(function(a,b){return catGained[b]-catGained[a];});
+
+    // Build sentences
+    var sentences = [];
+
+    // Opening: result tone
+    if (net > 5) {
+      sentences.push('<strong>Dominant round.</strong> S2864 expanded its footprint by ' + net + ' wastelands in Round ' + roundKey + ', pushing the sector score to ' + curScore.toLocaleString() + (scoreDelta > 0 ? ' (+' + scoreDelta.toLocaleString() + ')' : '') + '.');
+    } else if (net > 0) {
+      sentences.push('<strong>Solid gains.</strong> S2864 came out ahead in Round ' + roundKey + ' with a net +' + net + ' wasteland' + (net>1?'s':'') + ', closing at ' + curScore.toLocaleString() + (scoreDelta > 0 ? ' (+' + scoreDelta.toLocaleString() + ')' : '') + '.');
+    } else if (net === 0) {
+      sentences.push('<strong>Even exchange.</strong> S2864 broke even in Round ' + roundKey + ', swapping equal territory while the sector score held at ' + curScore.toLocaleString() + '.');
+    } else {
+      sentences.push('<strong>Defensive round.</strong> S2864 ceded ' + Math.abs(net) + ' wasteland' + (Math.abs(net)>1?'s':'') + ' net in Round ' + roundKey + ', ending at ' + curScore.toLocaleString() + (scoreDelta < 0 ? ' (' + scoreDelta.toLocaleString() + ')' : '') + '.');
+    }
+
+    // Who we took from
+    if (gainedN > 0 && takenFromSorted.length) {
+      var fromParts = takenFromSorted.slice(0,3).map(function(sid) {
+        return '<span class="dn-server">S' + sid + '</span> (' + takenFrom[sid] + ')';
+      });
+      var unclaimed = takenFrom[0] || changes.filter(function(c){ return c.type==='gained' && !c.fromSid; }).length;
+      var fromStr = fromParts.join(', ');
+      if (unclaimed) fromStr += ', ' + unclaimed + ' unclaimed';
+      sentences.push('<span class="dn-gain">+' + gainedN + ' gained</span> — taken from ' + fromStr + '.');
+    }
+
+    // What we lost
+    if (lostN > 0) {
+      var lostItems = changes.filter(function(c){ return c.type==='lost'; });
+      var lostNames = lostItems.slice(0,3).map(function(c){ return c.name; }).join(', ');
+      sentences.push('<span class="dn-loss">-' + lostN + ' lost</span> — ' + (lostN<=3 ? lostNames : lostNames + ' and ' + (lostN-3) + ' more') + '.');
+    }
+
+    // Buff types gained
+    if (topCatGained.length) {
+      var catStr = topCatGained.map(function(cat){
+        return catGained[cat] + '\u00a0' + cat;
+      }).join(', ');
+      sentences.push('New territory adds ' + catStr + ' buff' + (Object.keys(catGained).length>1?'s':'') + ' to the warzone profile.');
+    }
+
+    // Sector context
+    if (swapsN > 20) {
+      sentences.push('The wider sector saw ' + swapsN + ' territory shifts — a volatile round across all ' + (Object.keys(Object.fromEntries(changes.map(function(c){return [c.fromSid||c.toSid,1]}))).length) + ' active servers.');
+    } else if (swapsN > 0) {
+      sentences.push(swapsN + ' other territory swaps reshuffled the sector between rival servers.');
+    }
+
+    return sentences.join(' ');
+  }
+
   function openDiffAnimation() {
     if (!rawData || !rawData.rounds) return;
     var prevKey = String(parseInt(activeRound) - 1);
@@ -2480,6 +2562,10 @@
       card.appendChild(el('div','diff-score-label',s.label));
       scoreboard.appendChild(card);
     });
+
+    // Narrative
+    var narrativeEl = document.getElementById('diffNarrative');
+    narrativeEl.innerHTML = buildNarrative(prevRound, curRound, diffChanges, prevKey, activeRound); // eslint-disable-line
 
     // Mini-map (PREV state)
     var grid = document.getElementById('diffAnimGrid');
