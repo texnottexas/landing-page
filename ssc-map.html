@@ -1115,10 +1115,22 @@
   var contextMenu = document.getElementById('contextMenu');
 
   /* --- Load plan from localStorage --- */
+  var VALID_PRIORITIES = { high: 1, medium: 1, low: 1 };
   function loadPlan() {
     try {
       var raw = localStorage.getItem('ssc-plan-' + sector);
-      if (raw) planData = JSON.parse(raw);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          var clean = {};
+          Object.keys(parsed).forEach(function(k) {
+            if (/^\d+,\d+$/.test(k) && parsed[k] && VALID_PRIORITIES[parsed[k].priority]) {
+              clean[k] = parsed[k];
+            }
+          });
+          planData = clean;
+        }
+      }
     } catch(e) { planData = {}; }
   }
   function savePlan() {
