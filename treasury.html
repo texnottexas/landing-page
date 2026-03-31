@@ -66,8 +66,18 @@
   .chip.t2c { background: rgba(188,140,255,.12); color: var(--t2); border: 1px solid rgba(188,140,255,.3); }
   .chip.t3c { background: rgba(121,192,255,.12); color: var(--t3); border: 1px solid rgba(121,192,255,.3); }
   .chip.t4c { background: rgba(139,148,158,.12); color: var(--t4); border: 1px solid rgba(139,148,158,.3); }
-  .inventory-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: .4rem; margin-top: .6rem; }
+  .inv-toggle { display: flex; align-items: center; gap: .4rem; cursor: pointer; user-select: none; margin-top: .5rem; font-size: .7rem; font-weight: 600; color: var(--muted); transition: color .15s; }
+  .inv-toggle:hover { color: var(--accent); }
+  .inv-toggle .inv-chevron { font-size: .6rem; transition: transform .2s; }
+  .inv-toggle .inv-chevron.closed { transform: rotate(-90deg); }
+  .inventory-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: .4rem; margin-top: .4rem; }
+  .inventory-grid.collapsed { display: none; }
   .inv-item { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .4rem .55rem; }
+  .inv-tier-pill { display: inline-block; font-size: .55rem; font-weight: 700; padding: 1px 5px; border-radius: 3px; margin-left: .3rem; vertical-align: middle; }
+  .inv-tier-pill.t1p { background: rgba(210,153,34,.15); color: var(--t1); border: 1px solid rgba(210,153,34,.3); }
+  .inv-tier-pill.t2p { background: rgba(188,140,255,.15); color: var(--t2); border: 1px solid rgba(188,140,255,.3); }
+  .inv-tier-pill.t3p { background: rgba(121,192,255,.15); color: var(--t3); border: 1px solid rgba(121,192,255,.3); }
+  .inv-tier-pill.t4p { background: rgba(139,148,158,.12); color: var(--t4); border: 1px solid rgba(139,148,158,.2); }
   .inv-name { font-size: .68rem; color: var(--muted); margin-bottom: .25rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .inv-bar-track { background: var(--border); border-radius: 2px; height: 4px; margin-bottom: .2rem; }
   .inv-bar-fill { height: 4px; border-radius: 2px; background: var(--accent); transition: width .3s; }
@@ -237,8 +247,8 @@
   .modal-empty { text-align: center; padding: 2rem; color: var(--muted); font-size: .82rem; }
 
   @media (max-width: 600px) {
-    .modal-overlay { padding: 0; align-items: flex-end; }
-    .modal-card { max-width: 100%; border-radius: 12px 12px 0 0; max-height: 85vh; margin: 0; }
+    .modal-overlay { padding: .75rem; }
+    .modal-card { max-width: 100%; max-height: 88vh; }
   }
   body.modal-open { overflow: hidden; }
 </style>
@@ -308,7 +318,11 @@
 
 <div class="summary-bar" id="summaryBar" style="display:none">
   <div class="stats-grid" id="statsGrid"></div>
-  <div class="inventory-grid" id="inventoryGrid"></div>
+  <div class="inv-toggle" id="invToggle" onclick="toggleInventory()">
+    <span class="inv-chevron closed" id="invChevron">&#9660;</span>
+    <span>Reward Category Breakdown</span>
+  </div>
+  <div class="inventory-grid collapsed" id="inventoryGrid"></div>
 </div>
 
 <div id="content">
@@ -424,6 +438,13 @@ function toggleMethod() {
   chevron.classList.toggle('closed', isOpen);
 }
 
+function toggleInventory() {
+  var grid = document.getElementById('inventoryGrid');
+  var chevron = document.getElementById('invChevron');
+  grid.classList.toggle('collapsed');
+  chevron.classList.toggle('closed');
+}
+
 function getAvailableRounds() {
   if (!distData) return [];
   return Object.keys(distData.rounds).map(Number).sort(function(a, b) { return a - b; });
@@ -511,6 +532,7 @@ function renderSummary(summary) {
 
   /* Inventory bars — icon paths and item names come from our own JSON, not user input */
   invGrid.innerHTML = '';
+  var TIER_CLS = { T1: 't1p', T2: 't2p', T3: 't3p', T4: 't4p' };
   Object.entries(inv).forEach(function(entry) {
     var name = entry[0];
     var info = entry[1];
@@ -522,6 +544,12 @@ function renderSummary(summary) {
     nm.className = 'inv-name';
     nm.title = name;
     nm.textContent = name;
+    if (info.tier && TIER_CLS[info.tier]) {
+      var pill = document.createElement('span');
+      pill.className = 'inv-tier-pill ' + TIER_CLS[info.tier];
+      pill.textContent = info.tier;
+      nm.appendChild(pill);
+    }
 
     var track = document.createElement('div');
     track.className = 'inv-bar-track';
