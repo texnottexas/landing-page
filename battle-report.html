@@ -1348,50 +1348,55 @@
 
     if (hasRallySelector) {
       var selectorRow = el('div', { style: 'display:flex;gap:.5rem;align-items:center;padding:.6rem 1rem;border-bottom:1px solid var(--border);flex-wrap:wrap;' });
-      /* Build attacker dropdown */
-      var attSelect = el('select', { style: 'background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:.25rem .4rem;font-size:.75rem;' });
-      var attOpt0 = el('option', { value: '-1' }, 'All (' + (att.players || []).length + ')');
-      attSelect.appendChild(attOpt0);
+      var selectStyle = 'background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:.25rem .4rem;font-size:.75rem;';
+
+      /* Build attacker selector — dropdown if multiple unique players, label if single */
+      var attSelect = null;
+      selectorRow.appendChild(el('span', { style: 'font-size:.7rem;color:var(--green);font-weight:600;' }, 'ATK:'));
       if (attUC > 1) {
+        attSelect = el('select', { style: selectStyle });
         for (var ai = 0; ai < (att.players || []).length; ai++) {
           var api = getPlayerInfo(att, ai);
-          var opt = el('option', { value: String(ai) }, (api.username || 'Player ' + (ai+1)));
-          attSelect.appendChild(opt);
+          attSelect.appendChild(el('option', { value: String(ai) }, (api.username || 'Player ' + (ai+1))));
         }
+        selectorRow.appendChild(attSelect);
+      } else {
+        selectorRow.appendChild(el('span', { style: 'font-size:.75rem;color:var(--text);' }, attPI.username || 'Attacker'));
       }
-      selectorRow.appendChild(el('span', { style: 'font-size:.7rem;color:var(--green);font-weight:600;' }, 'ATK:'));
-      selectorRow.appendChild(attSelect);
+
       selectorRow.appendChild(el('span', { style: 'font-size:.7rem;color:var(--muted);' }, 'vs'));
-      /* Build defender dropdown */
-      var defSelect = el('select', { style: 'background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:.25rem .4rem;font-size:.75rem;' });
-      var defOpt0 = el('option', { value: '-1' }, 'All (' + (def.players || []).length + ')');
-      defSelect.appendChild(defOpt0);
+
+      /* Build defender selector */
+      var defSelect = null;
+      selectorRow.appendChild(el('span', { style: 'font-size:.7rem;color:var(--red);font-weight:600;' }, 'DEF:'));
       if (defUC > 1) {
+        defSelect = el('select', { style: selectStyle });
         for (var di = 0; di < (def.players || []).length; di++) {
           var dpi = getPlayerInfo(def, di);
-          var dopt = el('option', { value: String(di) }, (dpi.username || 'Player ' + (di+1)));
-          defSelect.appendChild(dopt);
+          defSelect.appendChild(el('option', { value: String(di) }, (dpi.username || 'Player ' + (di+1))));
         }
+        selectorRow.appendChild(defSelect);
+      } else {
+        selectorRow.appendChild(el('span', { style: 'font-size:.75rem;color:var(--text);' }, defPI.username || 'Defender'));
       }
-      selectorRow.appendChild(el('span', { style: 'font-size:.7rem;color:var(--red);font-weight:600;' }, 'DEF:'));
-      selectorRow.appendChild(defSelect);
+
       body.appendChild(selectorRow);
 
       function updateBuffTable() {
-        var ai = parseInt(attSelect.value);
-        var di = parseInt(defSelect.value);
-        var aPlayers = ai >= 0 ? [att.players[ai]] : att.players;
-        var dPlayers = di >= 0 ? [def.players[di]] : def.players;
-        var aLabel = ai >= 0 ? getPlayerInfo(att, ai).username || 'Attacker' : (attPI.username || 'Attacker') + ' (All)';
-        var dLabel = di >= 0 ? getPlayerInfo(def, di).username || 'Defender' : (defPI.username || 'Defender') + ' (All)';
+        var ai = attSelect ? parseInt(attSelect.value) : 0;
+        var di = defSelect ? parseInt(defSelect.value) : 0;
+        var aPlayers = [att.players[ai]];
+        var dPlayers = [def.players[di]];
+        var aLabel = getPlayerInfo(att, ai).username || 'Attacker';
+        var dLabel = getPlayerInfo(def, di).username || 'Defender';
         renderBuffTable(aPlayers, dPlayers, aLabel, dLabel);
       }
-      attSelect.addEventListener('change', updateBuffTable);
-      defSelect.addEventListener('change', updateBuffTable);
+      if (attSelect) attSelect.addEventListener('change', updateBuffTable);
+      if (defSelect) defSelect.addEventListener('change', updateBuffTable);
     }
 
-    // Initial render with all players combined
-    renderBuffTable(att.players, def.players, attPI.username || 'Attacker', defPI.username || 'Defender');
+    // Initial render — first player on each side
+    renderBuffTable([att.players[0]], [def.players[0]], attPI.username || 'Attacker', defPI.username || 'Defender');
     body.appendChild(buffTableWrap);
 
     modal.appendChild(body);
