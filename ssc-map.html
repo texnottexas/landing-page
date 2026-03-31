@@ -448,6 +448,20 @@
       z-index: 4;
     }
 
+    /* Territory diff indicators */
+    .cell-diff {
+      position: absolute;
+      bottom: 1px;
+      right: 1px;
+      font-size: .5rem;
+      line-height: 1;
+      z-index: 5;
+      filter: drop-shadow(0 0 2px rgba(0,0,0,.9));
+    }
+    .cell-diff-gained { color: #3fb950; }
+    .cell-diff-lost { color: #f85149; }
+    .cell-diff-swapped { color: #d29922; }
+
     .tooltip {
       display: none;
       position: fixed;
@@ -773,6 +787,7 @@
       .cell-overlay { font-size: .5rem; }
       .cat-dot { width: 4px; height: 4px; }
       .cell-plan-star { font-size: .45rem; }
+      .cell-diff { font-size: .35rem; }
     }
 
     /* Cell Detail Modal */
@@ -886,6 +901,10 @@
             <div class="filter-row">
               <input type="checkbox" id="showPlanMarkers" checked>
               <label for="showPlanMarkers">Show plan markers</label>
+            </div>
+            <div class="filter-row">
+              <input type="checkbox" id="showDiffMarkers" checked disabled>
+              <label for="showDiffMarkers" style="opacity:.5" id="showDiffLabel">Show changes (needs 2+ rounds)</label>
             </div>
           </div>
           <h3 style="margin-top:.5rem">Wasteland Buffs</h3>
@@ -1066,6 +1085,7 @@
   var isCentered = true;
   var centerOffset = { r: 0, c: 0 };
   var activeRound = null;
+  var diffMap = null;  // { seq: 'gained'|'lost'|'swapped' } or null if no previous round
 
   /* --- Planning state --- */
   var planData = {};  // { "r,c": { priority, note, cellName, seq } }
@@ -1152,6 +1172,21 @@
   function switchRound(roundKey) {
     activeRound = roundKey;
     roundData = rawData.rounds[roundKey];
+    diffMap = computeDiff(roundKey, rawData.rounds);
+    // Update "Show changes" checkbox state
+    var diffCb = document.getElementById('showDiffMarkers');
+    var diffLbl = document.getElementById('showDiffLabel');
+    if (diffMap) {
+      diffCb.disabled = false;
+      diffCb.checked = true;
+      diffLbl.style.opacity = '';
+      diffLbl.textContent = 'Show changes';
+    } else {
+      diffCb.disabled = true;
+      diffCb.checked = false;
+      diffLbl.style.opacity = '.5';
+      diffLbl.textContent = 'Show changes (needs 2+ rounds)';
+    }
     initRound();
   }
 
@@ -1220,6 +1255,64 @@
     }
   }
 
+  function computeDiff(currentRoundKey, rounds) {
+    if (!rounds) return null;
+    var keys = Object.keys(rounds).sort(function(a,b){ return Number(a) - Number(b); });
+    var idx = keys.indexOf(String(currentRoundKey));
+    if (idx <= 0) return null; // No previous round
+    var prevRound = rounds[keys[idx - 1]];
+    var curRound = rounds[currentRoundKey];
+    if (!prevRound || !curRound || !prevRound.cells || !curRound.cells) return null;
+
+    // Build sid lookup by seq for both rounds
+    var prevOwner = {};
+    prevRound.cells.forEach(function(c) {
+      var seq = extractSeq(c.name);
+      if (seq !== null) prevOwner[seq] = c.sid;
+    });
+    var curOwner = {};
+    curRound.cells.forEach(function(c) {
+      var seq = extractSeq(c.name);
+      if (seq !== null) curOwner[seq] = c.sid;
+    });
+
+    var diff = {};
+    Object.keys(curOwner).forEach(function(seq) {
+      var cur = curOwner[seq];
+      var prev = prevOwner[seq];
+      if (prev === undefined) return; // Cell didn't exist in previous round
+      if (cur === prev) return; // No change
+      if (cur === 2864 && prev !== 2864) {
+        diff[seq] = 'gained';
+      } else if (prev === 2864 && cur !== 2864) {
+        diff[seq] = 'lost';
+      } else if (cur !== 2864 && prev !== 2864 && cur !== 0 && prev !== 0 && cur !== prev) {
+        diff[seq] = 'swapped';
+      }
+    });
+    return Object.keys(diff).length > 0 ? diff : null;
+  }
+
+  function getAdjacentServers(r, c) {
+    var cellMap = {};
+    if (roundData && roundData.cells) {
+      roundData.cells.forEach(function(cell) {
+        cellMap[cell.r + ',' + cell.c] = cell;
+      });
+    }
+    var dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+    var servers = {};
+    dirs.forEach(function(d) {
+      var nr = ((r + d[0]) % side + side) % side;
+      var nc = ((c + d[1]) % side + side) % side;
+      var neighbor = cellMap[nr + ',' + nc];
+      if (neighbor && neighbor.sid && neighbor.sid !== 0) {
+        servers[neighbor.sid] = true;
+      }
+    });
+    return Object.keys(servers).map(Number);
+  }
+
   function wrapCoord(val) {
     return ((val % side) + side) % side;
   }
@@ -1250,7 +1343,10 @@
       { border: 'none', bg: '#30363d', label: 'Wasteland' },
       { icon: '\u2694\uFE0F', color: '#f85149', label: 'S2864 attacking' },
       { icon: '\uD83D\uDEE1\uFE0F', color: '#388bfd', label: 'S2864 defending' },
-      { icon: '\u2B50', color: '#d29922', label: 'Planned target' }
+      { icon: '\u2B50', color: '#d29922', label: 'Planned target' },
+      { icon: '\u25B2', color: '#3fb950', label: 'Gained (from prev round)' },
+      { icon: '\u25BC', color: '#f85149', label: 'Lost (from prev round)' },
+      { icon: '\u25C6', color: '#d29922', label: 'Swapped owner' }
     ];
     items.forEach(function(item) {
       var li = el('li', 'legend-item');
@@ -1428,15 +1524,20 @@
             d.appendChild(ov2);
           }
 
-          // Category dot for owned wastelands
+          // Category dot — resolve from owned data, war/def targets, or cell landCat
+          var resolvedCat = null;
           if (roundData.ownedWastelands) {
             var ow = roundData.ownedWastelands[String(seq)];
-            if (ow) {
-              var dot = el('span', 'cat-dot');
-              dot.style.background = CAT_COLORS[ow.category] || '#8b949e';
-              d.dataset.cat = ow.category;
-              d.appendChild(dot);
-            }
+            if (ow) resolvedCat = ow.category;
+          }
+          if (!resolvedCat && warSeqMap[seq] && warSeqMap[seq].specId) resolvedCat = SPEC_CAT[warSeqMap[seq].specId];
+          if (!resolvedCat && defSeqMap[seq] && defSeqMap[seq].specId) resolvedCat = SPEC_CAT[defSeqMap[seq].specId];
+          if (!resolvedCat && cell.landCat) resolvedCat = cell.landCat;
+          if (resolvedCat) {
+            var dot = el('span', 'cat-dot');
+            dot.style.background = CAT_COLORS[resolvedCat] || '#8b949e';
+            d.dataset.cat = resolvedCat;
+            d.appendChild(dot);
           }
         }
 
@@ -1445,6 +1546,14 @@
         if (planData[planKey]) {
           var star = el('span', 'cell-plan-star priority-' + planData[planKey].priority, '\u2605');
           d.appendChild(star);
+        }
+
+        // Territory diff overlay
+        if (diffMap && seq !== null && diffMap[seq]) {
+          var diffType = diffMap[seq];
+          var diffSymbol = diffType === 'gained' ? '\u25B2' : diffType === 'lost' ? '\u25BC' : '\u25C6';
+          var diffEl = el('span', 'cell-diff cell-diff-' + diffType, diffSymbol);
+          d.appendChild(diffEl);
         }
 
         // Hover tooltip (brief), click opens detail modal
@@ -1931,11 +2040,14 @@
       if (!specId && warSeqMap[seq]) specId = warSeqMap[seq].specId;
       if (!specId && defSeqMap[seq]) specId = defSeqMap[seq].specId;
 
-      if (specId && SPEC_NAMES[specId]) {
-        var cat = SPEC_CAT[specId] || 'unknown';
+      // Determine type name and category — from specId (exact) or landCat (broad)
+      var typeName = specId ? SPEC_NAMES[specId] : (cell.landType || null);
+      var cat = specId ? (SPEC_CAT[specId] || 'unknown') : (cell.landCat || null);
+
+      if (typeName || cat) {
         var pillRow = el('div', 'cd-pill-row');
-        pillRow.appendChild(el('span', 'cd-type-pill', SPEC_NAMES[specId]));
-        pillRow.appendChild(el('span', 'cd-cat-badge ' + cat, cat));
+        pillRow.appendChild(el('span', 'cd-type-pill', typeName || 'Unknown'));
+        if (cat) pillRow.appendChild(el('span', 'cd-cat-badge ' + cat, cat));
         body.appendChild(pillRow);
 
         if (SPEC_RARITY[specId]) {
@@ -1982,7 +2094,7 @@
       }
     }
 
-    // Neutral city level
+    // Neutral city level + contestability
     if (cell.type === 2) {
       var lvl = extractLevel(cell.name);
       var lvlRow = el('div', 'cd-row');
@@ -1993,6 +2105,35 @@
       lvlVal.style.color = lvlColors[lvl] || '#8b949e';
       lvlRow.appendChild(lvlVal);
       body.appendChild(lvlRow);
+
+      // Strategic badge for Lv.3
+      if (lvl === '3') {
+        var stratBadge = el('span', 'cd-cat-badge special', 'Strategic');
+        stratBadge.style.marginBottom = '.25rem';
+        body.appendChild(stratBadge);
+      }
+
+      // Adjacent servers (contestability)
+      var adjServers = getAdjacentServers(cell.r, cell.c);
+      body.appendChild(el('div', 'cd-section', 'Nearby Servers'));
+      if (adjServers.length > 0) {
+        var adjList = el('div', 'cd-buff-list');
+        adjServers.sort(function(a,b){ return a - b; });
+        adjServers.forEach(function(sid) {
+          var adjItem = el('div', 'cd-buff');
+          adjItem.textContent = 'S' + sid;
+          adjItem.style.color = serverAccent(sid);
+          if (sid === 2864) {
+            adjItem.classList.add('active');
+            adjItem.style.fontWeight = '700';
+          }
+          adjList.appendChild(adjItem);
+        });
+        body.appendChild(adjList);
+      } else {
+        var noAdj = el('div', 'cd-buff pending', 'No nearby servers');
+        body.appendChild(noAdj);
+      }
     }
 
     // War/defense status
@@ -2082,6 +2223,7 @@
     document.getElementById('showLabels').addEventListener('change', applyFilters);
     document.getElementById('showOverlays').addEventListener('change', applyFilters);
     document.getElementById('showPlanMarkers').addEventListener('change', applyFilters);
+    document.getElementById('showDiffMarkers').addEventListener('change', applyFilters);
     document.getElementById('highlightS2864').addEventListener('change', function() {
       if (this.checked) activeServer = null;
       applyFilters();
@@ -2101,6 +2243,7 @@
     var showLabels = document.getElementById('showLabels').checked;
     var showOverlays = document.getElementById('showOverlays').checked;
     var showPlan = document.getElementById('showPlanMarkers').checked;
+    var showDiff = document.getElementById('showDiffMarkers').checked;
     var highlight2864 = document.getElementById('highlightS2864').checked;
 
     cellElements.forEach(function(item) {
@@ -2126,6 +2269,9 @@
 
       var planStar = cellEl.querySelector('.cell-plan-star');
       if (planStar) planStar.style.display = showPlan ? '' : 'none';
+
+      var diffEl = cellEl.querySelector('.cell-diff');
+      if (diffEl) diffEl.style.display = showDiff ? '' : 'none';
 
       var dimmed = false;
       if (highlight2864 && cell.sid !== 2864) dimmed = true;
