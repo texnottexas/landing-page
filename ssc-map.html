@@ -857,6 +857,26 @@
     .diff-score-val.gained { color:#3fb950; }
     .diff-score-val.lost { color:#f85149; }
     .diff-score-val.neutral { color:var(--muted); }
+    /* Story modal */
+    .story-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.8); z-index:800; align-items:center; justify-content:center; padding:1rem; }
+    .story-overlay.show { display:flex; }
+    .story-modal { background:var(--surface); border:1px solid var(--border); border-radius:12px; max-width:640px; width:100%; max-height:85vh; display:flex; flex-direction:column; box-shadow:0 16px 48px rgba(0,0,0,.7); }
+    .story-header { display:flex; align-items:center; justify-content:space-between; padding:.75rem 1.25rem; border-bottom:1px solid var(--border); }
+    .story-header h3 { font-size:1rem; font-weight:800; color:var(--gold); letter-spacing:.02em; }
+    .story-body { padding:1.25rem 1.5rem; overflow-y:auto; flex:1; line-height:1.7; color:var(--text); font-size:.88rem; }
+    .story-body p { margin-bottom:.85rem; }
+    .story-body p:last-child { margin-bottom:0; }
+    .story-body .s-num { color:var(--accent); font-weight:700; }
+    .story-body .s-gain { color:#3fb950; font-weight:700; }
+    .story-body .s-loss { color:#f85149; font-weight:700; }
+    .story-body .s-server { color:var(--accent); font-weight:600; }
+    .story-body .s-2864 { color:#3fb950; font-weight:700; }
+    .story-body .s-buff { font-style:italic; color:var(--gold); }
+    .story-body .s-title { display:block; font-size:1.1rem; font-weight:800; color:var(--text); margin-bottom:.5rem; letter-spacing:.01em; }
+    .story-body .s-subtitle { display:block; font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:.75rem; }
+    @media (max-width:600px) {
+      .story-body { padding:1rem; font-size:.82rem; }
+    }
     /* Round narrative */
     .diff-narrative { padding:.6rem 1rem; font-size:.8rem; line-height:1.55; color:var(--muted); border-bottom:1px solid var(--border); background:rgba(121,192,255,.04); }
     .diff-narrative strong { color:var(--text); }
@@ -919,6 +939,7 @@
       <div class="round-pills" id="roundPills"></div>
       <button class="center-toggle active" id="centerToggle" title="Center map on S2864">Center S2864</button>
       <button class="center-toggle" id="playChangesBtn" style="display:none">&#9654; Changes</button>
+      <button class="center-toggle" id="storyBtn" style="display:none">&#128214; Story</button>
     </div>
   </header>
 
@@ -1066,6 +1087,17 @@
     </div>
   </div>
   <div class="toast" id="toast"></div>
+
+  <!-- Story Modal -->
+  <div class="story-overlay" id="storyOverlay">
+    <div class="story-modal">
+      <div class="story-header">
+        <h3 id="storyTitle">The Chronicle of Sector 16</h3>
+        <button class="cell-detail-close" id="storyClose">&times;</button>
+      </div>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+  </div>
 
   <!-- Diff Animation Modal -->
   <div class="diff-anim-overlay" id="diffAnimOverlay">
@@ -1266,6 +1298,7 @@
         buildRoundPills(data.rounds, activeRound);
         playChangesBtn = document.getElementById('playChangesBtn');
         playChangesBtn.addEventListener('click', openDiffAnimation);
+        document.getElementById('storyBtn').addEventListener('click', openStory);
         switchRound(activeRound);
       } else {
         // Legacy flat format
@@ -2419,10 +2452,11 @@
 
   function updatePlayChangesBtn() {
     if (!playChangesBtn) return;
-    // Show only when there's a previous round to diff against
     var prevKey = String(parseInt(activeRound) - 1);
     var hasDiff = rawData && rawData.rounds && rawData.rounds[prevKey] && rawData.rounds[activeRound];
     playChangesBtn.style.display = hasDiff ? '' : 'none';
+    var storyBtn = document.getElementById('storyBtn');
+    if (storyBtn) storyBtn.style.display = hasDiff ? '' : 'none';
   }
 
   /* --- Territory Shifts Visualization --- */
@@ -2456,6 +2490,154 @@
       if (d) { d.style.background = diffServerColor(diffPrevMap[key].sid||0); d.classList.remove('diff-gained','diff-lost','diff-swapped'); }
     });
   }
+
+  /* --- Story Generator --- */
+  function generateStory(prevRound, curRound, changes, prevKey, roundKey) {
+    var gained = changes.filter(function(c){ return c.type==='gained'; });
+    var lost   = changes.filter(function(c){ return c.type==='lost'; });
+    var swaps  = changes.filter(function(c){ return c.type==='swapped'; });
+    var net = gained.length - lost.length;
+    var prevS = prevRound.s2864 || {};
+    var curS  = curRound.s2864  || {};
+    var scoreDelta = (curS.score||0) - (prevS.score||0);
+
+    var S = function(sid) { return '<span class="s-server">S' + sid + '</span>'; };
+    var N = function(n) { return '<span class="s-num">' + n + '</span>'; };
+    var G = function(t) { return '<span class="s-gain">' + t + '</span>'; };
+    var L = function(t) { return '<span class="s-loss">' + t + '</span>'; };
+    var B = function(t) { return '<span class="s-buff">' + t + '</span>'; };
+    var P = '<span class="s-2864">S2864</span>';
+
+    // Who we took from
+    var takenFrom = {};
+    gained.forEach(function(c) { if (c.fromSid) takenFrom[c.fromSid] = (takenFrom[c.fromSid]||0)+1; });
+    var topTargets = Object.keys(takenFrom).sort(function(a,b){ return takenFrom[b]-takenFrom[a]; });
+
+    // Server-level stories (swaps grouped by loser→winner)
+    var serverBattles = {};
+    swaps.forEach(function(c) {
+      var k = c.fromSid + '>' + c.toSid;
+      if (!serverBattles[k]) serverBattles[k] = { from:c.fromSid, to:c.toSid, count:0 };
+      serverBattles[k].count++;
+    });
+    var topBattles = Object.values(serverBattles).sort(function(a,b){ return b.count-a.count; }).slice(0,5);
+
+    // Buff categories
+    var catNames = {combat:'combat',economy:'economy',utility:'utility',special:'special'};
+    var gainedCats = {};
+    gained.forEach(function(c){ if(c.landCat) gainedCats[c.landCat]=(gainedCats[c.landCat]||0)+1; });
+
+    var paras = [];
+
+    // Title block
+    paras.push('<span class="s-title">Sector 16 \u2014 Round ' + roundKey + ' Chronicle</span>' +
+      '<span class="s-subtitle">War Declaration Stage \u2022 ' + new Date(curRound.extractedAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) + '</span>');
+
+    // Opening paragraph
+    if (net > 5) {
+      paras.push(P + ' stormed across Sector 16 with relentless momentum. When the dust settled, ' +
+        G('+' + gained.length + ' wastelands') + ' flew the green banner \u2014 ' +
+        'a decisive expansion that pushed the capture score to ' + N(curS.score.toLocaleString()) +
+        (scoreDelta > 0 ? ' (' + G('+' + scoreDelta.toLocaleString()) + ')' : '') +
+        '. With ' + N(curS.ownedCount) + ' territories now under command and a sector rank of ' +
+        N('#' + curS.rank) + ', the round marked one of the strongest showings yet.');
+    } else if (net > 0) {
+      paras.push('The commanders of ' + P + ' pressed outward in Round ' + roundKey + ', ' +
+        'claiming ' + G('+' + gained.length) + ' wastelands while conceding ' +
+        (lost.length > 0 ? L(lost.length + '') : 'none') + '. ' +
+        'The net gain of ' + G('+' + net) + ' pushed the score to ' + N(curS.score.toLocaleString()) +
+        (scoreDelta > 0 ? ' (' + G('+' + scoreDelta.toLocaleString()) + ')' : '') +
+        ' and ' + N(curS.ownedCount) + ' total holdings.');
+    } else if (net === 0) {
+      paras.push('Round ' + roundKey + ' was a test of endurance. ' + P +
+        ' traded territory blow for blow \u2014 ' + G('+' + gained.length + ' gained') +
+        ', ' + L('-' + lost.length + ' lost') + ' \u2014 holding steady at ' +
+        N(curS.ownedCount) + ' wastelands and ' + N(curS.score.toLocaleString()) + ' score.');
+    } else {
+      paras.push('The winds shifted against ' + P + ' in Round ' + roundKey + '. ' +
+        'Despite seizing ' + G(gained.length + '') + ' new territories, ' +
+        L(lost.length + ' fell') + ' to rival hands, netting ' + L(net + '') + '. ' +
+        'The score adjusted to ' + N(curS.score.toLocaleString()) + '.');
+    }
+
+    // Gains detail paragraph
+    if (gained.length > 0 && topTargets.length > 0) {
+      var gainStories = [];
+      topTargets.slice(0,3).forEach(function(sid) {
+        var cnt = takenFrom[sid];
+        var names = gained.filter(function(c){return c.fromSid==sid;}).slice(0,3).map(function(c){return c.name;});
+        if (cnt >= 3) {
+          gainStories.push(S(sid) + ' bore the brunt, surrendering ' + G(cnt + ' wastelands') + ' including ' + names.join(', '));
+        } else if (cnt === 2) {
+          gainStories.push(S(sid) + ' lost its grip on ' + G(cnt + ' positions') + ': ' + names.join(' and '));
+        } else {
+          gainStories.push(S(sid) + ' ceded ' + names[0]);
+        }
+      });
+      var unclaimedN = gained.filter(function(c){return !c.fromSid || c.fromSid===0;}).length;
+      if (unclaimedN) gainStories.push(G(unclaimedN + ' unclaimed') + ' wasteland' + (unclaimedN>1?'s were':' was') + ' swept up in the advance');
+
+      paras.push('The offensive carved through multiple fronts. ' + gainStories.join('. ') + '.');
+    }
+
+    // Losses paragraph
+    if (lost.length > 0) {
+      var lostNames = lost.map(function(c){return c.name;});
+      if (lost.length === 1) {
+        paras.push('Not everything went according to plan. ' + L(lostNames[0]) + ' slipped from ' + P + '\'s control \u2014 a ' + (lost[0].landCat ? B(lost[0].landCat) + ' ' : '') + 'position that will need to be reclaimed in future rounds.');
+      } else {
+        paras.push('The expansion wasn\'t without cost. ' + L(lost.length + ' wastelands') + ' changed hands \u2014 ' + lostNames.slice(0,3).join(', ') + (lost.length > 3 ? ' and ' + (lost.length-3) + ' more' : '') + ' \u2014 leaving gaps that rival servers were quick to exploit.');
+      }
+    }
+
+    // Buff paragraph
+    var catKeys = Object.keys(gainedCats);
+    if (catKeys.length > 0) {
+      var buffParts = catKeys.map(function(cat){ return G(gainedCats[cat]) + '\u00a0' + B(cat); });
+      paras.push('Strategically, the new holdings bolster ' + P + '\'s wasteland portfolio with ' + buffParts.join(', ') + ' buff' + (catKeys.length>1?'s':'') + '. Every captured wasteland feeds the war machine \u2014 more seal stones, stronger troops, deeper reach across the Realm.');
+    }
+
+    // Sector-wide drama
+    if (topBattles.length > 0 && swaps.length > 10) {
+      var battleStories = [];
+      topBattles.slice(0,3).forEach(function(b) {
+        battleStories.push(S(b.to) + ' seized ' + N(b.count) + ' from ' + S(b.from));
+      });
+      paras.push('Beyond ' + P + '\'s borders, Sector 16 churned. ' + N(swaps.length) + ' territory shifts reshaped the map: ' + battleStories.join('; ') + '. The balance of power continues to shift with every round.');
+    } else if (swaps.length > 0) {
+      paras.push('Across the wider sector, ' + N(swaps.length) + ' other territories changed hands as rival servers jockeyed for position.');
+    }
+
+    // Closing
+    var nextRound = parseInt(roundKey) + 1;
+    if (nextRound <= 15) {
+      paras.push('The war marches on. Round ' + nextRound + ' looms, and the question remains: will ' + P + ' consolidate and defend, or push deeper into enemy territory? The Seal Stones will tell.');
+    } else {
+      paras.push('The final chapter of this season\'s Seal Stone Chaos draws near. ' + P + '\'s campaign across Sector 16 will be remembered.');
+    }
+
+    return paras.map(function(p){ return '<p>'+p+'</p>'; }).join('');
+  }
+
+  function openStory() {
+    if (!rawData || !rawData.rounds) return;
+    var prevKey = String(parseInt(activeRound) - 1);
+    var curRound = rawData.rounds[activeRound];
+    var prevRound = rawData.rounds[prevKey];
+    if (!curRound || !prevRound) return;
+
+    var changes = buildChangeList(prevRound, curRound);
+    document.getElementById('storyTitle').textContent = 'Sector 16 \u2014 Round ' + activeRound + ' Chronicle';
+    document.getElementById('storyBody').innerHTML = generateStory(prevRound, curRound, changes, prevKey, activeRound); // eslint-disable-line
+    document.getElementById('storyOverlay').classList.add('show');
+  }
+
+  document.getElementById('storyClose').addEventListener('click', function() {
+    document.getElementById('storyOverlay').classList.remove('show');
+  });
+  document.getElementById('storyOverlay').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('show');
+  });
 
   function buildNarrative(prevRound, curRound, changes, prevKey, roundKey) {
     var gainedN = changes.filter(function(c){ return c.type==='gained'; }).length;
