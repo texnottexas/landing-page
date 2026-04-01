@@ -2641,247 +2641,809 @@
 
     if (storyAnimFrame) cancelAnimationFrame(storyAnimFrame);
     var startTime = null;
-    var duration = 14000; // 14 seconds total
+    var duration = 18000; // 18 seconds total
 
     // Colors
     var BG = '#080c12';
     var GREEN = '#3fb950'; var DGREEN = '#1e6b2d';
     var RED = '#f85149'; var GOLD = '#d29922';
+    var PURPLE = '#8b5cf6';
     var MUTED = '#4a5060'; var TEXT = '#e6edf3';
+    var GROUND_Y = 230;
 
-    // Pre-compute scene data
-    var baseX = W * 0.38, baseY = H * 0.5; // S2864 home position
-    var gainPositions = gained.slice(0,8).map(function(_, i) {
-      var angle = (i / Math.max(gained.length,1)) * Math.PI * 2 - Math.PI/2;
-      var r = 60 + Math.random() * 40;
-      return { x: baseX + Math.cos(angle) * r, y: baseY + Math.sin(angle) * r, delay: i * 0.06 };
+    // Resolve rank from rawData
+    var curRound = rawData && rawData.rounds && rawData.rounds[activeRound] ? rawData.rounds[activeRound] : {};
+    var rank = curRound.s2864 ? curRound.s2864.rank : '?';
+    var net = gained.length - lost.length;
+
+    // Particle system
+    var particles = [];
+    function spawnParticle(x, y, vx, vy, color, size, life) {
+      particles.push({ x:x, y:y, vx:vx, vy:vy, color:color, size:size||2, life:life||1, maxLife:life||1 });
+    }
+    function spawnDust(x, y, count) {
+      for (var i = 0; i < count; i++) {
+        spawnParticle(x + Math.random()*6-3, y, -1 - Math.random()*2, -Math.random()*1.5, '#c4a56e', 2+Math.random()*2, 0.6+Math.random()*0.4);
+      }
+    }
+    function spawnSparks(x, y, count) {
+      for (var i = 0; i < count; i++) {
+        var angle = Math.random() * Math.PI * 2;
+        var speed = 2 + Math.random() * 4;
+        spawnParticle(x, y, Math.cos(angle)*speed, Math.sin(angle)*speed, Math.random()>0.5?'#ffd700':'#ffffff', 1.5+Math.random()*2, 0.3+Math.random()*0.3);
+      }
+    }
+    function spawnFirework(x, y, color) {
+      for (var i = 0; i < 20; i++) {
+        var angle = (i/20)*Math.PI*2;
+        var speed = 1.5 + Math.random()*2.5;
+        spawnParticle(x, y, Math.cos(angle)*speed, Math.sin(angle)*speed - 1, color, 2+Math.random(), 0.8+Math.random()*0.5);
+      }
+    }
+
+    // Pre-compute battle sequence from topTargets
+    var battles = (topTargets||[]).slice(0,4).map(function(sid, i) {
+      return { sid: sid, count: takenFrom[sid]||0, startT: 0.278 + i*0.056, done: false, knockX: 0, knockY: 0, knockRot: 0 };
     });
-    var lostPos = lost.length > 0 ? { x: baseX - 80, y: baseY + 30 } : null;
 
-    // Enemy positions
-    var enemies = (topTargets||[]).slice(0,3).map(function(sid, i) {
-      var ex = W * 0.75 + i * 30;
-      var ey = H * 0.3 + i * 50;
-      return { sid: sid, x: ex, y: ey, count: takenFrom[sid] || 0 };
-    });
+    // Soldiers for the march
+    var soldiers = [];
+    for (var si = 0; si < 6; si++) {
+      soldiers.push({ offset: si * 0.4, phaseOff: si * 1.1 });
+    }
 
-    function drawStickFigure(x, y, color, scale, walking, armUp) {
+    // Flag positions for victory tally
+    var flagPositions = [];
+    var flagCount = Math.min(gained.length, 12);
+    for (var fi = 0; fi < flagCount; fi++) {
+      flagPositions.push({ x: (W/(flagCount+1))*(fi+1), y: GROUND_Y + 5 });
+    }
+
+    // Chronicle typewriter
+    var chronicleText = 'Round ' + activeRound + ' \u2014 Sector 16';
+    var statsText = 'Score: ' + curScore.toLocaleString() + '  |  Rank #' + rank + '  |  ' + (net >= 0 ? '+' : '') + net + ' Net';
+
+    /* --- Drawing Helpers --- */
+
+    function drawStickFigure(x, y, color, scale, walkPhase, pose) {
+      // poses: 'walk', 'fight', 'victory', 'knocked', 'dead', 'stand', 'defend'
       var s = scale || 1;
       ctx.save();
       ctx.translate(x, y);
       ctx.scale(s, s);
       ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.5;
       ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      var wp = walkPhase || 0;
+
       // Head
       ctx.beginPath();
-      ctx.arc(0, -18, 5, 0, Math.PI * 2);
+      ctx.arc(0, -20, 6, 0, Math.PI * 2);
       ctx.stroke();
+      // Eyes (two dots)
+      ctx.fillStyle = color;
+      ctx.fillRect(-3, -21, 1.5, 1.5);
+      ctx.fillRect(1.5, -21, 1.5, 1.5);
+
       // Body
       ctx.beginPath();
-      ctx.moveTo(0, -13); ctx.lineTo(0, 4);
+      ctx.moveTo(0, -14); ctx.lineTo(0, 4);
       ctx.stroke();
-      // Arms
-      ctx.beginPath();
-      if (armUp) {
-        ctx.moveTo(-9, -4); ctx.lineTo(0, -8); ctx.lineTo(9, -16);
+
+      if (pose === 'walk') {
+        // Arms: one forward one back, sword arm raised
+        var armSwing = Math.sin(wp) * 0.4;
+        ctx.beginPath();
+        ctx.moveTo(0, -10);
+        ctx.lineTo(-8*Math.cos(armSwing), -4 + 8*Math.sin(armSwing));
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, -10);
+        ctx.lineTo(8, -18 + Math.sin(wp*2)*3); // sword arm up bouncing
+        ctx.stroke();
+        // Legs with walk cycle
+        var legSwing = Math.sin(wp) * 6;
+        ctx.beginPath();
+        ctx.moveTo(0, 4); ctx.lineTo(-5 + legSwing, 18);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, 4); ctx.lineTo(5 - legSwing, 18);
+        ctx.stroke();
+      } else if (pose === 'fight') {
+        // Sword arm swinging
+        var swingAngle = Math.sin(wp * 8) * 1.2;
+        ctx.beginPath();
+        ctx.moveTo(0, -10);
+        ctx.lineTo(10*Math.cos(swingAngle), -10 + 10*Math.sin(swingAngle));
+        ctx.stroke();
+        // Off hand guard
+        ctx.beginPath();
+        ctx.moveTo(0, -10);
+        ctx.lineTo(-8, -6);
+        ctx.stroke();
+        // Legs wide stance
+        ctx.beginPath();
+        ctx.moveTo(0, 4); ctx.lineTo(-7, 18);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, 4); ctx.lineTo(7, 18);
+        ctx.stroke();
+      } else if (pose === 'victory') {
+        // Both arms up in V
+        ctx.beginPath();
+        ctx.moveTo(0, -10); ctx.lineTo(-10, -24);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, -10); ctx.lineTo(10, -24);
+        ctx.stroke();
+        // Legs together
+        ctx.beginPath();
+        ctx.moveTo(0, 4); ctx.lineTo(-4, 18);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, 4); ctx.lineTo(4, 18);
+        ctx.stroke();
+      } else if (pose === 'knocked') {
+        // Arms and legs splayed out -- flying back
+        ctx.beginPath();
+        ctx.moveTo(0, -10); ctx.lineTo(-12, -18);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, -10); ctx.lineTo(12, -4);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, 4); ctx.lineTo(-10, 14);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, 4); ctx.lineTo(10, 16);
+        ctx.stroke();
+      } else if (pose === 'defend') {
+        // Shield arm forward, sword ready
+        ctx.beginPath();
+        ctx.moveTo(0, -10); ctx.lineTo(-10, -8);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, -10); ctx.lineTo(8, -16);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, 4); ctx.lineTo(-5, 18);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, 4); ctx.lineTo(5, 18);
+        ctx.stroke();
       } else {
-        ctx.moveTo(-9, -2); ctx.lineTo(0, -8); ctx.lineTo(9, -2);
+        // Stand idle
+        ctx.beginPath();
+        ctx.moveTo(0, -10); ctx.lineTo(-8, -2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, -10); ctx.lineTo(8, -2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, 4); ctx.lineTo(-5, 18);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, 4); ctx.lineTo(5, 18);
+        ctx.stroke();
       }
-      ctx.stroke();
-      // Legs
-      var legOff = walking ? Math.sin(Date.now() * 0.008 + x) * 5 : 0;
+
+      ctx.restore();
+    }
+
+    function drawSword(x, y, angle, color) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      // Blade
+      ctx.strokeStyle = color || '#c0c8d4';
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.moveTo(-6 + legOff, 16); ctx.lineTo(0, 4); ctx.lineTo(6 - legOff, 16);
+      ctx.moveTo(0, 0); ctx.lineTo(0, -18);
+      ctx.stroke();
+      // Blade tip
+      ctx.beginPath();
+      ctx.moveTo(-2, -18); ctx.lineTo(0, -22); ctx.lineTo(2, -18);
+      ctx.fillStyle = color || '#c0c8d4';
+      ctx.fill();
+      // Crossguard
+      ctx.strokeStyle = GOLD;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-5, -1); ctx.lineTo(5, -1);
+      ctx.stroke();
+      // Grip
+      ctx.strokeStyle = '#6e4b2a';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, 0); ctx.lineTo(0, 5);
       ctx.stroke();
       ctx.restore();
     }
 
     function drawFlag(x, y, color, wavePhase) {
       ctx.save();
-      ctx.strokeStyle = MUTED;
-      ctx.lineWidth = 1.5;
+      // Pole
+      ctx.strokeStyle = '#6e6e7a';
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(x, y); ctx.lineTo(x, y - 22);
+      ctx.moveTo(x, y); ctx.lineTo(x, y - 28);
       ctx.stroke();
-      // Flag wave
+      // Pole cap
+      ctx.fillStyle = GOLD;
+      ctx.beginPath();
+      ctx.arc(x, y - 28, 2, 0, Math.PI*2);
+      ctx.fill();
+      // Flag cloth (wavy triangle)
       ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.moveTo(x, y - 22);
-      ctx.quadraticCurveTo(x + 8 + Math.sin(wavePhase) * 3, y - 19, x + 14, y - 16);
-      ctx.lineTo(x, y - 12);
+      ctx.moveTo(x, y - 28);
+      var wave1 = Math.sin(wavePhase) * 3;
+      var wave2 = Math.sin(wavePhase + 1.5) * 2;
+      ctx.quadraticCurveTo(x + 10 + wave1, y - 25, x + 18 + wave2, y - 20);
+      ctx.lineTo(x, y - 14);
+      ctx.closePath();
       ctx.fill();
       ctx.restore();
     }
 
-    function drawSword(x, y, angle) {
+    function drawParticles(timestamp) {
+      for (var i = particles.length - 1; i >= 0; i--) {
+        var p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.05; // gravity
+        p.life -= 0.016;
+        if (p.life <= 0) { particles.splice(i, 1); continue; }
+        var alpha = Math.min(p.life / p.maxLife, 1);
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function drawFortress(x, y, alpha) {
       ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(angle);
-      ctx.strokeStyle = '#8b949e';
-      ctx.lineWidth = 2;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#1a2636';
+      ctx.strokeStyle = '#3a4a5a';
+      ctx.lineWidth = 1.5;
+
+      // Main tower
+      ctx.fillRect(x - 20, y - 50, 40, 50);
+      ctx.strokeRect(x - 20, y - 50, 40, 50);
+
+      // Crenellations on main tower
+      for (var c = 0; c < 5; c++) {
+        ctx.fillRect(x - 22 + c*10, y - 58, 6, 8);
+        ctx.strokeRect(x - 22 + c*10, y - 58, 6, 8);
+      }
+
+      // Left wing
+      ctx.fillRect(x - 45, y - 30, 25, 30);
+      ctx.strokeRect(x - 45, y - 30, 25, 30);
+      for (var c2 = 0; c2 < 3; c2++) {
+        ctx.fillRect(x - 47 + c2*10, y - 36, 6, 6);
+        ctx.strokeRect(x - 47 + c2*10, y - 36, 6, 6);
+      }
+
+      // Right wing
+      ctx.fillRect(x + 20, y - 35, 25, 35);
+      ctx.strokeRect(x + 20, y - 35, 25, 35);
+      for (var c3 = 0; c3 < 3; c3++) {
+        ctx.fillRect(x + 18 + c3*10, y - 41, 6, 6);
+        ctx.strokeRect(x + 18 + c3*10, y - 41, 6, 6);
+      }
+
+      // Gate
+      ctx.fillStyle = '#0d1117';
       ctx.beginPath();
-      ctx.moveTo(0, 0); ctx.lineTo(0, -16);
-      ctx.stroke();
-      ctx.strokeStyle = GOLD;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(-4, -2); ctx.lineTo(4, -2);
-      ctx.stroke();
+      ctx.arc(x, y, 8, Math.PI, 0);
+      ctx.fillRect(x - 8, y - 8, 16, 8);
+      ctx.fill();
+
+      // Window slits
+      ctx.fillStyle = '#79c0ff';
+      ctx.globalAlpha = alpha * 0.6;
+      ctx.fillRect(x - 8, y - 40, 3, 8);
+      ctx.fillRect(x + 5, y - 40, 3, 8);
+      ctx.fillRect(x - 35, y - 22, 3, 6);
+      ctx.fillRect(x + 30, y - 26, 3, 6);
+
       ctx.restore();
     }
 
-    function drawExplosion(x, y, progress) {
-      var rays = 8;
-      var maxR = 15 + progress * 20;
+    function drawSpark(x, y, size, alpha) {
       ctx.save();
-      for (var i = 0; i < rays; i++) {
-        var angle = (i / rays) * Math.PI * 2 + progress * 2;
-        var r = maxR * (0.5 + Math.random() * 0.5);
-        ctx.strokeStyle = 'rgba(248,81,73,' + (1 - progress) + ')';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x + Math.cos(angle) * r, y + Math.sin(angle) * r);
-        ctx.stroke();
-      }
+      ctx.globalAlpha = alpha;
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = '#ffd700';
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI*2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
       ctx.restore();
     }
 
     function drawText(text, x, y, color, size, alpha) {
       ctx.save();
-      ctx.globalAlpha = alpha || 1;
+      ctx.globalAlpha = Math.max(0, Math.min(alpha||1, 1));
       ctx.fillStyle = color || TEXT;
-      ctx.font = (size || 12) + 'px -apple-system, sans-serif';
+      ctx.font = 'bold ' + (size || 12) + 'px -apple-system, "Segoe UI", sans-serif';
       ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
       ctx.fillText(text, x, y);
       ctx.restore();
     }
 
+    function drawGlowText(text, x, y, color, size, alpha, glowColor) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(alpha||1, 1));
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = glowColor || color;
+      ctx.fillStyle = color || TEXT;
+      ctx.font = 'bold ' + (size || 12) + 'px -apple-system, "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, x, y);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    function drawGround(alpha) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      // Ground line
+      ctx.strokeStyle = '#2a3a4a';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, GROUND_Y);
+      ctx.lineTo(W, GROUND_Y);
+      ctx.stroke();
+      // Ground gradient
+      var grd = ctx.createLinearGradient(0, GROUND_Y, 0, H);
+      grd.addColorStop(0, 'rgba(30,45,30,0.4)');
+      grd.addColorStop(1, 'rgba(10,15,10,0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+      ctx.restore();
+    }
+
+    function drawStars(timestamp) {
+      ctx.fillStyle = '#ffffff';
+      for (var i = 0; i < 50; i++) {
+        var sx = (i * 137.5 + 50) % W;
+        var sy = (i * 53.7 + 10) % (GROUND_Y - 30);
+        var twinkle = (Math.sin(timestamp * 0.002 + i * 2.3) + 1) * 0.35;
+        ctx.save();
+        ctx.globalAlpha = 0.1 + twinkle;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 0.8 + twinkle * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // Easing
+    function easeOutBounce(x) {
+      var n1 = 7.5625, d1 = 2.75;
+      if (x < 1/d1) return n1*x*x;
+      if (x < 2/d1) return n1*(x-=1.5/d1)*x+0.75;
+      if (x < 2.5/d1) return n1*(x-=2.25/d1)*x+0.9375;
+      return n1*(x-=2.625/d1)*x+0.984375;
+    }
+    function easeOutCubic(x) { return 1 - Math.pow(1-x,3); }
+    function easeInOutQuad(x) { return x<0.5?2*x*x:1-Math.pow(-2*x+2,2)/2; }
+
+    // Track battle knockback state
+    var knockbacks = []; // {x, y, rot, vx, vy, vr, color, life}
+
     function render(timestamp) {
       if (!startTime) startTime = timestamp;
-      var t = (timestamp - startTime) / duration; // 0 to 1
+      var elapsed = timestamp - startTime;
+      var t = elapsed / duration; // 0 to 1
       if (t > 1) t = 1;
 
       ctx.clearRect(0, 0, W, H);
       ctx.fillStyle = BG;
       ctx.fillRect(0, 0, W, H);
 
-      // Stars (subtle background)
-      ctx.fillStyle = '#ffffff';
-      for (var si = 0; si < 30; si++) {
-        var sx = (si * 137.5 + 50) % W;
-        var sy = (si * 73.7 + 20) % (H * 0.6);
-        var twinkle = (Math.sin(timestamp * 0.001 + si) + 1) * 0.3;
-        ctx.globalAlpha = 0.15 + twinkle;
-        ctx.fillRect(sx, sy, 1.5, 1.5);
-      }
-      ctx.globalAlpha = 1;
-
       var wave = timestamp * 0.003;
 
-      // Phase 1 (0-0.15): S2864 base appears
-      if (t >= 0) {
-        var baseAlpha = Math.min(t / 0.1, 1);
-        // Territory block
-        ctx.fillStyle = DGREEN;
-        ctx.globalAlpha = baseAlpha * 0.4;
-        ctx.fillRect(baseX - 50, baseY - 35, 100, 70);
-        ctx.globalAlpha = 1;
-        // Flag
-        if (t > 0.05) drawFlag(baseX, baseY - 5, GREEN, wave);
-        // Label
-        if (t > 0.08) drawText('S2864', baseX, baseY - 45, GREEN, 13, baseAlpha);
-        // Score
-        if (t > 0.1) {
-          var scoreShow = Math.min((t - 0.1) / 0.05, 1);
-          drawText('Score: ' + Math.floor((curScore - scoreDelta) + scoreDelta * Math.min(t / 0.8, 1)).toLocaleString(), baseX, baseY + 55, '#79c0ff', 10, scoreShow);
-        }
-        phase.textContent = t < 0.15 ? 'Establishing position...' : '';
+      // === PHASE 1 (0-2s, t: 0-0.111): "Dawn" — Fortress appears ===
+      var p1End = 2000/duration; // ~0.111
+      if (t < p1End || true) { // stars always drawn
+        drawStars(timestamp);
       }
 
-      // Phase 2 (0.15-0.55): Soldiers march out to claim territories
-      if (t > 0.12) {
-        phase.textContent = 'Expanding territory...';
-        gainPositions.forEach(function(gp, gi) {
-          var gt = Math.max(0, (t - 0.15 - gp.delay) / 0.35);
-          if (gt <= 0) return;
-          gt = Math.min(gt, 1);
-          var sx = baseX + (gp.x - baseX) * gt;
-          var sy = baseY + (gp.y - baseY) * gt;
-          // Marching soldier
-          if (gt < 1) {
-            drawStickFigure(sx, sy, GREEN, 0.7, true, false);
-          } else {
-            // Arrived — plant flag
-            drawStickFigure(gp.x + 8, gp.y, GREEN, 0.6, false, true);
-            drawFlag(gp.x - 3, gp.y + 2, GREEN, wave + gi);
-            // Territory claimed
-            ctx.fillStyle = DGREEN;
-            ctx.globalAlpha = 0.3;
-            ctx.fillRect(gp.x - 12, gp.y - 12, 24, 24);
-            ctx.globalAlpha = 1;
+      if (t <= p1End) {
+        phase.textContent = 'Dawn breaks...';
+        var fadeIn = Math.min(t / (p1End * 0.6), 1);
+        drawGround(fadeIn);
+        drawFortress(160, GROUND_Y, easeOutCubic(fadeIn));
+
+        // Green banner above fortress
+        if (t > p1End * 0.4) {
+          var bannerAlpha = Math.min((t - p1End*0.4) / (p1End*0.3), 1);
+          drawGlowText('S2864', 160, GROUND_Y - 72, GREEN, 16, bannerAlpha, DGREEN);
+          drawFlag(195, GROUND_Y - 40, GREEN, wave);
+        }
+
+        // Score counter starts
+        if (t > p1End * 0.5) {
+          var prevScore = curScore - scoreDelta;
+          var scoreAlpha = Math.min((t - p1End*0.5)/(p1End*0.3), 1);
+          var displayScore = Math.floor(prevScore + scoreDelta * 0 * scoreAlpha);
+          drawText('Score: ' + prevScore.toLocaleString(), 160, GROUND_Y + 20, '#79c0ff', 10, scoreAlpha);
+        }
+      }
+
+      // === PHASE 2 (2-5s, t: 0.111-0.278): "The March" ===
+      var p2Start = 2000/duration, p2End = 5000/duration;
+      if (t > p2Start && t <= p2End) {
+        phase.textContent = 'Deploying forces...';
+        drawGround(1);
+        drawFortress(160, GROUND_Y, 1);
+        drawGlowText('S2864', 160, GROUND_Y - 72, GREEN, 16, 1, DGREEN);
+        drawFlag(195, GROUND_Y - 40, GREEN, wave);
+
+        var marchT = (t - p2Start) / (p2End - p2Start); // 0 to 1
+
+        // Soldiers march RIGHT from the fortress
+        soldiers.forEach(function(sol, idx) {
+          var solProgress = Math.max(0, Math.min((marchT - idx * 0.04) / 0.7, 1));
+          if (solProgress <= 0) return;
+          var sx = 200 + solProgress * 250;
+          var sy = GROUND_Y - 18;
+          var wp = timestamp * 0.008 + sol.phaseOff;
+
+          drawStickFigure(sx, sy, GREEN, 0.85, wp, 'walk');
+
+          // Sword above head (bouncing with walk)
+          var swordBob = Math.sin(wp * 2) * 3;
+          drawSword(sx + 8, sy - 22 + swordBob, -0.3 + Math.sin(wp) * 0.15, '#c0c8d4');
+
+          // Dust particles
+          if (solProgress < 0.95 && Math.random() < 0.3) {
+            spawnDust(sx - 5, GROUND_Y - 2, 1);
           }
         });
+
+        // Score ticking slowly
+        var prevScore2 = curScore - scoreDelta;
+        drawText('Score: ' + prevScore2.toLocaleString(), 160, GROUND_Y + 20, '#79c0ff', 10, 1);
       }
 
-      // Phase 3 (0.4-0.6): Enemies appear and one battle happens (loss)
-      if (t > 0.35 && enemies.length > 0) {
-        enemies.forEach(function(en, ei) {
-          var et = Math.max(0, (t - 0.35 - ei * 0.05) / 0.15);
-          if (et <= 0) return;
-          et = Math.min(et, 1);
-          var ex = W + 30 - (W + 30 - en.x) * et;
-          ctx.fillStyle = MUTED;
-          ctx.globalAlpha = 0.2 * et;
-          ctx.fillRect(en.x - 15, en.y - 15, 30, 30);
-          ctx.globalAlpha = 1;
-          drawStickFigure(ex, en.y, '#8b5cf6', 0.6, et < 1, false);
-          if (et >= 1) {
-            drawText('S' + en.sid, en.x, en.y - 25, '#8b949e', 9, 0.7);
-            // Sword clash marks
-            if (en.count > 0) {
-              drawSword(en.x - 18, en.y - 5, -0.3 + Math.sin(wave) * 0.2);
+      // === PHASE 3 (5-9s, t: 0.278-0.5): "The Battles" ===
+      var p3Start = 5000/duration, p3End = 9000/duration;
+      if (t > p3Start && t <= p3End) {
+        phase.textContent = 'Engaging hostiles!';
+        drawGround(1);
+        drawFortress(160, GROUND_Y, 0.4); // fortress fades to bg
+
+        var battleT = (t - p3Start) / (p3End - p3Start);
+
+        // Run through each battle sequentially
+        var battleDur = 1 / Math.max(battles.length, 1);
+        battles.forEach(function(b, bi) {
+          var bStart = bi * battleDur;
+          var bEnd = bStart + battleDur;
+          var bt = Math.max(0, Math.min((battleT - bStart) / battleDur, 1));
+          if (bt <= 0) return;
+
+          var centerX = 320;
+          var centerY = GROUND_Y - 18;
+
+          // Sub-phases within each battle:
+          // 0-0.2: enemy approaches from right
+          // 0.2-0.5: sword clash (both fighting)
+          // 0.5-0.7: enemy knocked back (spinning off screen)
+          // 0.7-1.0: flag plants + "+1"
+
+          if (bt < 0.2) {
+            // Green soldier stands ready
+            drawStickFigure(centerX - 30, centerY, GREEN, 1, wave, 'defend');
+            drawSword(centerX - 22, centerY - 22, -0.5, '#c0c8d4');
+
+            // Enemy approaches from right
+            var approachT = bt / 0.2;
+            var enemyX = W + 20 - (W + 20 - (centerX + 30)) * easeOutCubic(approachT);
+            drawStickFigure(enemyX, centerY, PURPLE, 1, timestamp*0.008, 'walk');
+            drawSword(enemyX - 8, centerY - 22, 0.5, '#a070d0');
+
+            // Enemy server label
+            drawText('S' + b.sid, enemyX, centerY - 42, PURPLE, 11, approachT);
+          } else if (bt < 0.5) {
+            // SWORD FIGHT -- rapid alternating poses
+            var fightPhase = (bt - 0.2) / 0.3;
+            var wp2 = timestamp * 0.015;
+
+            drawStickFigure(centerX - 25, centerY, GREEN, 1, wp2, 'fight');
+            drawStickFigure(centerX + 25, centerY, PURPLE, 1, wp2 + Math.PI, 'fight');
+
+            // Clashing swords in center
+            var clashAngle = Math.sin(wp2 * 3) * 0.6;
+            drawSword(centerX - 10, centerY - 15, -0.8 + clashAngle, '#c0c8d4');
+            drawSword(centerX + 10, centerY - 15, 0.8 - clashAngle, '#a070d0');
+
+            // Sparks at clash point
+            if (Math.random() < 0.4) {
+              spawnSparks(centerX, centerY - 18, 2);
             }
+            drawSpark(centerX + Math.sin(wp2*5)*4, centerY - 18 + Math.cos(wp2*3)*3, 3 + Math.sin(wp2*4)*2, 0.5 + Math.sin(wp2*6)*0.3);
+
+            drawText('S' + b.sid, centerX + 25, centerY - 42, PURPLE, 11, 1 - fightPhase * 0.5);
+          } else if (bt < 0.7) {
+            // Enemy gets KNOCKED BACK with spinning
+            var knockT = (bt - 0.5) / 0.2;
+
+            // Green soldier in victory pose
+            drawStickFigure(centerX - 25, centerY, GREEN, 1, wave, 'victory');
+
+            // Enemy spinning off screen to the right
+            var knockX = centerX + 30 + knockT * 300;
+            var knockY = centerY - knockT * 60 + knockT * knockT * 120; // arc trajectory
+            ctx.save();
+            ctx.translate(knockX, knockY);
+            ctx.rotate(knockT * Math.PI * 4); // spin!
+            drawStickFigure(0, 0, PURPLE, 0.9 - knockT*0.3, 0, 'knocked');
+            ctx.restore();
+
+            // Big spark burst at moment of impact
+            if (knockT < 0.15) {
+              spawnSparks(centerX, centerY - 10, 5);
+            }
+          } else {
+            // Flag plants where enemy was
+            var flagT = (bt - 0.7) / 0.3;
+            var flagAlpha = easeOutBounce(Math.min(flagT * 1.5, 1));
+
+            drawStickFigure(centerX - 25, centerY, GREEN, 1, wave, 'victory');
+            drawFlag(centerX + 20, GROUND_Y - 2, GREEN, wave + bi);
+
+            // "+1" floating up
+            var floatY = centerY - 30 - flagT * 25;
+            drawGlowText('+' + Math.min(b.count, 99), centerX + 20, floatY, GREEN, 16 * flagAlpha, 1 - flagT * 0.5, GREEN);
           }
         });
+
+        // Score slowly ticking
+        var prevScore3 = curScore - scoreDelta;
+        var scoreProg3 = Math.min(battleT * 0.5, 0.5);
+        var displayScore3 = Math.floor(prevScore3 + scoreDelta * scoreProg3);
+        drawText('Score: ' + displayScore3.toLocaleString(), 100, GROUND_Y + 20, '#79c0ff', 10, 0.7);
       }
 
-      // Phase 4 (0.55-0.7): Loss explosion
-      if (t > 0.55 && lostPos) {
-        phase.textContent = 'Territory contested!';
-        var lt = Math.max(0, (t - 0.55) / 0.15);
-        lt = Math.min(lt, 1);
-        drawExplosion(lostPos.x, lostPos.y, lt);
-        if (lt > 0.3) {
-          drawStickFigure(lostPos.x, lostPos.y, RED, 0.6, false, false);
-          drawText('-1', lostPos.x, lostPos.y - 30, RED, 14, Math.min((lt - 0.3) / 0.3, 1));
+      // === PHASE 4 (9-11s, t: 0.5-0.611): "The Loss" ===
+      var p4Start = 9000/duration, p4End = 11000/duration;
+      if (t > p4Start && t <= p4End) {
+        drawGround(1);
+        var lossT = (t - p4Start) / (p4End - p4Start);
+
+        if (lost.length > 0) {
+          phase.textContent = 'Territory contested!';
+          var defenderX = 300, defenderY = GROUND_Y - 18;
+
+          if (lossT < 0.15) {
+            // Lone green defender standing
+            var standAlpha = lossT / 0.15;
+            drawStickFigure(defenderX, defenderY, GREEN, 1, wave, 'defend');
+            drawSword(defenderX + 8, defenderY - 22, -0.4, '#c0c8d4');
+            drawFlag(defenderX - 15, GROUND_Y - 2, GREEN, wave);
+          } else if (lossT < 0.35) {
+            // Red enemy charges in from the right
+            var chargeT = (lossT - 0.15) / 0.2;
+            drawStickFigure(defenderX, defenderY, GREEN, 1, wave, 'defend');
+            drawSword(defenderX + 8, defenderY - 22, -0.4, '#c0c8d4');
+            drawFlag(defenderX - 15, GROUND_Y - 2, GREEN, wave);
+
+            var redX = W + 20 - (W + 20 - (defenderX + 35)) * easeOutCubic(chargeT);
+            drawStickFigure(redX, defenderY, RED, 1.1, timestamp*0.01, 'walk');
+            drawSword(redX - 8, defenderY - 24, 0.6, '#ff6060');
+          } else if (lossT < 0.55) {
+            // Dramatic sword clash
+            var clashT2 = (lossT - 0.35) / 0.2;
+            var wp3 = timestamp * 0.02;
+            drawStickFigure(defenderX, defenderY, GREEN, 1, wp3, 'fight');
+            drawStickFigure(defenderX + 35, defenderY, RED, 1.1, wp3 + Math.PI, 'fight');
+
+            // Bigger sparks
+            if (Math.random() < 0.5) {
+              spawnSparks(defenderX + 17, defenderY - 15, 4);
+            }
+            drawSpark(defenderX + 17, defenderY - 15, 5 + Math.sin(wp3*5)*3, 0.7);
+            drawSword(defenderX + 8, defenderY - 18, Math.sin(wp3*4)*0.8, '#c0c8d4');
+            drawSword(defenderX + 27, defenderY - 18, -Math.sin(wp3*4)*0.8, '#ff6060');
+          } else if (lossT < 0.75) {
+            // Green figure knocked back with "oof" pose
+            var greenKnockT = (lossT - 0.55) / 0.2;
+
+            // Red soldier stands victorious
+            drawStickFigure(defenderX + 20, defenderY, RED, 1.1, wave, 'victory');
+
+            // Green soldier flying back to the left with spin
+            var gKnockX = defenderX - greenKnockT * 200;
+            var gKnockY = defenderY - greenKnockT * 40 + greenKnockT * greenKnockT * 80;
+            ctx.save();
+            ctx.translate(gKnockX, gKnockY);
+            ctx.rotate(-greenKnockT * Math.PI * 3);
+            drawStickFigure(0, 0, GREEN, 0.9 - greenKnockT*0.3, 0, 'knocked');
+            ctx.restore();
+
+            // Spark burst
+            if (greenKnockT < 0.1) {
+              spawnSparks(defenderX, defenderY - 10, 6);
+            }
+          } else {
+            // Red flag plants, skull mark
+            var redFlagT = (lossT - 0.75) / 0.25;
+
+            drawStickFigure(defenderX + 20, defenderY, RED, 1.1, wave, 'stand');
+            drawFlag(defenderX - 5, GROUND_Y - 2, RED, wave);
+
+            // "-1" floating up in red
+            var lossFloatY = defenderY - 30 - redFlagT * 20;
+            drawGlowText('\u22121', defenderX - 5, lossFloatY, RED, 18, 1 - redFlagT * 0.3, RED);
+
+            // Skull / X mark
+            var skullAlpha = easeOutBounce(Math.min(redFlagT*2, 1));
+            ctx.save();
+            ctx.globalAlpha = skullAlpha * 0.8;
+            ctx.strokeStyle = RED;
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            // X mark
+            ctx.beginPath();
+            ctx.moveTo(defenderX - 30, defenderY - 5); ctx.lineTo(defenderX - 18, defenderY + 7);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(defenderX - 18, defenderY - 5); ctx.lineTo(defenderX - 30, defenderY + 7);
+            ctx.stroke();
+            ctx.restore();
+          }
+        } else {
+          // No losses -- show troops holding the line
+          phase.textContent = 'Defenses hold!';
+          for (var dfi = 0; dfi < 3; dfi++) {
+            drawStickFigure(250 + dfi*50, GROUND_Y - 18, GREEN, 0.9, wave + dfi, 'defend');
+          }
+          drawText('No territory lost', W/2, GROUND_Y - 50, GREEN, 14, easeOutCubic(lossT));
         }
       }
 
-      // Phase 5 (0.7-0.85): Score counter + "+8 gained" banner
-      if (t > 0.7) {
-        phase.textContent = 'Victory consolidated';
-        var bt = Math.min((t - 0.7) / 0.15, 1);
-        // Big "+N" text
-        drawText('+' + gained.length + ' territories', W / 2, H * 0.15, GREEN, 20 * bt + 8, bt);
-        if (lost.length > 0 && bt > 0.5) {
-          drawText('-' + lost.length + ' lost', W / 2, H * 0.15 + 22, RED, 11, (bt - 0.5) * 2);
+      // === PHASE 5 (11-14s, t: 0.611-0.778): "Victory Tally" ===
+      var p5Start = 11000/duration, p5End = 14000/duration;
+      if (t > p5Start && t <= p5End) {
+        phase.textContent = 'Victory tally';
+        drawGround(0.5);
+
+        var tallyT = (t - p5Start) / (p5End - p5Start);
+
+        // Flags wave in a row at the bottom
+        flagPositions.forEach(function(fp, fi) {
+          var flagDelay = fi * 0.03;
+          var flagAppear = Math.max(0, Math.min((tallyT - flagDelay) / 0.2, 1));
+          if (flagAppear > 0) {
+            var bounceY = fp.y - 10 * easeOutBounce(flagAppear);
+            drawFlag(fp.x, bounceY, GREEN, wave + fi * 0.7);
+          }
+        });
+
+        // "+N TERRITORIES" in large green text with bounce
+        if (tallyT > 0.15) {
+          var textT = Math.min((tallyT - 0.15) / 0.25, 1);
+          var bounceScale = easeOutBounce(textT);
+          var textSize = 26 * bounceScale;
+          drawGlowText('+' + gained.length + ' TERRITORIES', W/2, 60, GREEN, textSize, textT, DGREEN);
+
+          if (lost.length > 0 && textT > 0.5) {
+            var lossTextAlpha = (textT - 0.5) * 2;
+            drawText('\u2212' + lost.length + ' lost', W/2, 88, RED, 13, lossTextAlpha);
+          }
+        }
+
+        // Score counter rapidly ticks to final
+        if (tallyT > 0.3) {
+          var scoreT = Math.min((tallyT - 0.3) / 0.4, 1);
+          var prevScore4 = curScore - scoreDelta;
+          var displayScore4 = Math.floor(prevScore4 + scoreDelta * easeOutCubic(scoreT));
+          drawGlowText(displayScore4.toLocaleString(), W/2, 125, '#79c0ff', 20, 1, '#388bfd');
+        }
+
+        // Territory count number pulses
+        if (tallyT > 0.5) {
+          var pulseT = (tallyT - 0.5) / 0.5;
+          var pulse = 1 + Math.sin(pulseT * Math.PI * 4) * 0.08 * (1 - pulseT);
+          var netNum = gained.length - lost.length;
+          drawGlowText('Net ' + (netNum >= 0 ? '+' : '') + netNum, W/2, 155, netNum >= 0 ? GREEN : RED, 15 * pulse, easeOutCubic(pulseT), netNum >= 0 ? DGREEN : RED);
+        }
+
+        // Firework particles
+        if (tallyT > 0.2 && Math.random() < 0.08) {
+          var fwX = 100 + Math.random() * (W - 200);
+          var fwY = 30 + Math.random() * 60;
+          spawnFirework(fwX, fwY, Math.random() > 0.5 ? GREEN : GOLD);
         }
       }
 
-      // Phase 6 (0.85-1.0): Closing — banner with score
-      if (t > 0.85) {
-        var ft = Math.min((t - 0.85) / 0.15, 1);
-        phase.textContent = 'Round complete';
-        ctx.fillStyle = '#0d1117';
-        ctx.globalAlpha = ft * 0.6;
+      // === PHASE 6 (14-18s, t: 0.778-1.0): "The Chronicle" ===
+      var p6Start = 14000/duration, p6End = 1.0;
+      if (t > p6Start) {
+        var chronicleT = (t - p6Start) / (p6End - p6Start);
+        phase.textContent = 'The Chronicle';
+
+        // Fade everything to dark
+        ctx.fillStyle = '#000000';
+        ctx.globalAlpha = Math.min(chronicleT / 0.15, 0.85);
         ctx.fillRect(0, 0, W, H);
         ctx.globalAlpha = 1;
-        drawText('Round ' + activeRound + ' — Sector 16', W / 2, H * 0.35, GOLD, 18, ft);
-        drawText('Score: ' + curScore.toLocaleString() + '  |  Rank #' + (curRound.s2864 ? curRound.s2864.rank : '?'), W / 2, H * 0.48, TEXT, 13, ft);
-        drawText(gained.length + ' gained  •  ' + lost.length + ' lost  •  Net +' + (gained.length - lost.length), W / 2, H * 0.58, MUTED, 11, ft);
+
+        // Cinematic letterbox bars
+        var barH = 35 * Math.min(chronicleT / 0.2, 1);
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, W, barH);
+        ctx.fillRect(0, H - barH, W, barH);
+
+        // Gold horizontal rules
+        if (chronicleT > 0.1) {
+          var lineAlpha = Math.min((chronicleT - 0.1)/0.15, 1);
+          ctx.save();
+          ctx.globalAlpha = lineAlpha * 0.4;
+          ctx.strokeStyle = GOLD;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(W*0.2, barH + 5); ctx.lineTo(W*0.8, barH + 5);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(W*0.2, H - barH - 5); ctx.lineTo(W*0.8, H - barH - 5);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Typewriter title: "Round 3 — Sector 16"
+        if (chronicleT > 0.15) {
+          var typeT = Math.min((chronicleT - 0.15) / 0.35, 1);
+          var charsToShow = Math.floor(typeT * chronicleText.length);
+          var visibleText = chronicleText.substring(0, charsToShow);
+          // Blinking cursor
+          var cursor = (Math.sin(timestamp * 0.006) > 0 && typeT < 1) ? '\u2588' : '';
+          drawGlowText(visibleText + cursor, W/2, H * 0.38, GOLD, 22, 1, '#b8860b');
+        }
+
+        // Stats line fades in
+        if (chronicleT > 0.55) {
+          var statsAlpha = Math.min((chronicleT - 0.55) / 0.2, 1);
+          drawText(statsText, W/2, H * 0.52, TEXT, 14, statsAlpha);
+        }
+
+        // Gained/lost summary
+        if (chronicleT > 0.7) {
+          var sumAlpha = Math.min((chronicleT - 0.7)/0.15, 1);
+          var sumText = gained.length + ' gained  \u2022  ' + lost.length + ' lost';
+          drawText(sumText, W/2, H * 0.64, MUTED, 11, sumAlpha);
+        }
+
+        // Subtle floating particles in chronicle
+        if (Math.random() < 0.05) {
+          spawnParticle(
+            Math.random() * W, H - barH - 10,
+            (Math.random()-0.5)*0.5, -0.5 - Math.random()*0.5,
+            GOLD, 1 + Math.random(), 1.5 + Math.random()
+          );
+        }
+
+        // Subtle star twinkle continues through letterbox
+        drawStars(timestamp);
       }
+
+      // Always draw particles on top
+      drawParticles(timestamp);
 
       if (t < 1) {
         storyAnimFrame = requestAnimationFrame(render);
