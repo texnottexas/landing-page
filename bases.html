@@ -82,8 +82,11 @@
   .scard-type { position: absolute; top: .35rem; left: .35rem; font-size: .55rem; font-weight: 700; padding: .08rem .3rem; border-radius: 3px; }
   .scard-type.event { background: rgba(210,153,34,.15); color: var(--yellow); border: 1px solid rgba(210,153,34,.3); }
   .scard-type.unreleased { background: rgba(139,148,158,.15); color: var(--muted); border: 1px solid rgba(139,148,158,.3); }
-  .section-header { font-size: .8rem; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; padding: .75rem 0 .5rem; border-bottom: 1px solid var(--border); margin: 1.5rem 0 .75rem; }
+  .section-header { font-size: .8rem; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; padding: .75rem 0 .5rem; border-bottom: 1px solid var(--border); margin: 1.5rem 0 .75rem; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between; }
   .section-header.muted { color: var(--muted); }
+  .section-header .section-arrow { font-size: .7rem; opacity: .7; transition: transform .2s; }
+  .section-header.collapsed .section-arrow { transform: rotate(-90deg); }
+  .section-body.collapsed { display: none; }
   .scard-levels { position: absolute; top: .35rem; right: .35rem; background: var(--navy); color: #fff; font-size: .55rem; font-weight: 700; padding: .1rem .35rem; border-radius: 4px; }
   .scard-skill { display: inline-flex; align-items: center; gap: .2rem; background: rgba(121,192,255,.1); border: 1px solid rgba(121,192,255,.25); border-radius: 4px; padding: .1rem .35rem; font-size: .6rem; color: var(--accent); cursor: pointer; margin-top: auto; }
   .scard-skill:hover { background: rgba(121,192,255,.2); }
@@ -209,7 +212,25 @@
   var N=0,EB=1,OB=2,GRP=3,LVL=4,ML=5,STYPE=6,ORD=7,POW=8,SKID=9,SKN=10,SKTYPE=11,SKDESC=12,SKUSE=13;
 
   // Buff name mapping
-  var BN = {"930001":"Army HP","930002":"Navy HP","930003":"AF HP","930100":"All ATK","930101":"Army ATK","930102":"Navy ATK","930103":"AF ATK","930000":"All HP","960012":"March Size","980101":"Army DMG+","980102":"Navy DMG+","980103":"AF DMG+","980201":"Army DMG\u2212","980202":"Navy DMG\u2212","980203":"AF DMG\u2212","1001001":"All DMG+","980204":"All DMG\u2212","930107":"Navy\u2192Army","930108":"AF\u2192Navy","930109":"Army\u2192AF","930201":"Army Crit%","930202":"Navy Crit%","930203":"AF Crit%","980301":"Army CritDMG","980302":"Navy CritDMG","980303":"AF CritDMG","930301":"Army Dodge","930302":"Navy Dodge","930303":"AF Dodge","930401":"Army AtkSpd","930402":"Navy AtkSpd","930403":"AF AtkSpd","960002":"Gathering Speed+","930504":"Navy DEF\u2190Army","930505":"AF DEF\u2190Navy","930506":"Army DEF\u2190AF","980501":"Army Hit","980502":"Navy Hit","980503":"AF Hit","1010001":"Army Shield","1010002":"Navy Shield","1010003":"AF Shield","1131009":"All Shield","1101064":"Morale","1130010":"Heroes War","1201003":"Rounds+1","1131006":"Capacity","990001":"ATK vs Boss","970003":"ATK vs Dark","970005":"ATK vs Dark","990100":"All ATK","990202":"All DEF","9301160":"All ATK","9301170":"All HP","9301161":"Army ATK","9301162":"Navy ATK","9301163":"AF ATK","9301171":"Army HP","9301172":"Navy HP","9301173":"AF HP","1002001":"Fort ATK","1002002":"Fort HP","990208":"DEF(atk)","990209":"DEF(def)","990890":"Front 2 Rows DMG+","910300":"Gathering Speed+","990592":"AF DMG\u2212 Back 2 Rows","990762":"Front Row DMG\u2212","38001002":"Front 2 Rows ATK","1131002":"All DMG\u2212","990888":"Front Row DMG+","93001301":"First 2 Rows HP","920900":"Gold Production+","990889":"Front 2 Rows DMG\u2212","1131001":"All DMG+","990723":"Navy DMG+ Front Row","990799":"Army DMG+ Front Row","93001201":"Back 2 Rows ATK","920800":"Training Speed+","990818":"Navy DMG\u2212 Back 2 Rows","990510":"DMG\u2212 Cross-Warzone","980205":"DMG\u2212 Base Defense","980104":"DMG+ Base Defense","1001002":"All CritDMG","990176":"DMG+ Cross-Warzone","990632":"First 2 Rows HP","990686":"Back 2 Rows ATK","990684":"AF DMG\u2212 First 2 Rows","990836":"AF DMG+ Front Row","920801":"Army Training Speed+","970002":"Gathering Load+","970008":"Gold Quick Collect","930200":"All Crit Rate","930300":"All Dodge","981063":"Repair Factory Cap","992288":"Max Merge Lv","992289":"Max Merge Lv"};
+  var BN = {"930001":"Army HP","930002":"Navy HP","930003":"AF HP","930100":"All ATK","930101":"Army ATK","930102":"Navy ATK","930103":"AF ATK","930000":"All HP","960012":"March Size","980101":"Army DMG+","980102":"Navy DMG+","980103":"AF DMG+","980201":"Army DMG\u2212","980202":"Navy DMG\u2212","980203":"AF DMG\u2212","1001001":"All DMG+","980204":"All DMG\u2212","930107":"Navy\u2192Army","930108":"AF\u2192Navy","930109":"Army\u2192AF","930201":"Army Crit%","930202":"Navy Crit%","930203":"AF Crit%","980301":"Army CritDMG","980302":"Navy CritDMG","980303":"AF CritDMG","930301":"Army Dodge","930302":"Navy Dodge","930303":"AF Dodge","930401":"Army AtkSpd","930402":"Navy AtkSpd","930403":"AF AtkSpd","960002":"Gathering Speed+","930504":"Navy DEF\u2190Army","930505":"AF DEF\u2190Navy","930506":"Army DEF\u2190AF","980501":"Army Hit","980502":"Navy Hit","980503":"AF Hit","1010001":"Army Shield","1010002":"Navy Shield","1010003":"AF Shield","1131009":"All Shield","1101064":"Morale","1130010":"Heroes War","1201003":"Rounds+1","1131006":"Capacity","990001":"ATK vs Boss","970003":"ATK vs Dark","970005":"ATK vs Dark","990100":"All ATK","990202":"All DEF","9301160":"All ATK","9301170":"All HP","9301161":"Army ATK","9301162":"Navy ATK","9301163":"AF ATK","9301171":"Army HP","9301172":"Navy HP","9301173":"AF HP","1002001":"Fort ATK","1002002":"Fort HP","990208":"DEF(atk)","990209":"DEF(def)","990890":"Front 2 Rows DMG+","910300":"Gathering Speed+","990592":"AF DMG\u2212 Back 2 Rows","990762":"Front Row DMG\u2212","38001002":"Front 2 Rows ATK","1131002":"All DMG\u2212","990888":"Front Row DMG+","93001301":"First 2 Rows HP","920900":"Gold Production+","990889":"Front 2 Rows DMG\u2212","1131001":"All DMG+","990723":"Navy DMG+ Front Row","990799":"Army DMG+ Front Row","93001201":"Back 2 Rows ATK","920800":"Training Speed+","990818":"Navy DMG\u2212 Back 2 Rows","990510":"DMG\u2212 Cross-Warzone","980205":"DMG\u2212 Base Defense","980104":"DMG+ Base Defense","1001002":"All CritDMG","990176":"DMG+ Cross-Warzone","990632":"First 2 Rows HP","990686":"Back 2 Rows ATK","990684":"AF DMG\u2212 First 2 Rows","990836":"AF DMG+ Front Row","920801":"Army Training Speed+","970002":"Gathering Load+","970008":"Gold Quick Collect","930200":"All Crit Rate","930300":"All Dodge","981063":"Repair Factory Cap","992288":"Max Merge Lv","992289":"Max Merge Lv",
+    "920802":"Navy Training Spd+","920803":"AF Training Spd+",
+    "187101":"TC DMG+","187106":"TC March Spd+",
+    "1101015":"Army DMG\u2212 (rcv)","1101016":"Navy DMG\u2212 (rcv)","1101017":"AF DMG\u2212 (rcv)",
+    "38001001":"AF DMG\u2212 Front Row","38001003":"Navy DMG\u2212 Front Row","38001004":"Navy DMG+ Back 2 Rows",
+    "38001005":"All ATK Front Row","38001006":"All ATK Front Row",
+    "520011":"Army DMG+","9301165":"AF ATK Front 2 Rows",
+    "9301176":"AF HP Front 2 Rows","9301177":"Navy HP Front 2 Rows","9301230":"All HP Front Row",
+    "981046":"Predator Max ATK","981064":"DMG\u2212 Base Defense",
+    "990101":"VIT Recovery Spd+","990115":"Expedition ATK","990116":"Exercise HP",
+    "990124":"Exercise HP","990125":"Exercise ATK","990129":"Navy ATK (offense)",
+    "990134":"Hero Shield+","990432":"All DMG\u2212 (rcv)","990444":"Troop Training Spd+",
+    "990563":"HP+ (defending)","990580":"Navy DMG+ Mid Row","990581":"Navy HP Front Row",
+    "990593":"AF HP Mid Row","990631":"DMG+ Back 2 Rows","990633":"DMG\u2212 Back 2 Rows",
+    "990661":"Navy HP Front 2 Rows","990662":"Navy HP Front 2 Rows",
+    "990685":"AF ATK Mid Row","990701":"Army DMG+ Front 2 Rows","990702":"Army DMG\u2212 Front Row",
+    "990780":"AF DMG+ Front 2 Rows","990781":"AF DMG+ Front 2 Rows",
+    "990800":"Army HP Front 2 Rows","990817":"Navy DMG+ Front 2 Rows",
+    "990837":"AF HP Front 2 Rows","990838":"LoD DMG+","990871":"Army DMG\u2212 Front 2 Rows"};
 
   // Skill type labels
   var SKILL_TYPES = {0:'Visual',1:'Reward',2:'Interaction',3:'Buff',4:'Status Buff'};
@@ -542,50 +563,57 @@
       else main.push(c);
     });
 
-    // Main grid
+    function makeSection(label, cards, headerClass, startCollapsed) {
+      var hdr = document.createElement('div');
+      hdr.className = 'section-header' + (headerClass ? ' ' + headerClass : '') + (startCollapsed ? ' collapsed' : '');
+      var labelSpan = document.createElement('span');
+      labelSpan.textContent = label;
+      hdr.appendChild(labelSpan);
+      var arrow = document.createElement('span');
+      arrow.className = 'section-arrow';
+      arrow.textContent = '\u25BE';
+      hdr.appendChild(arrow);
+
+      var body = document.createElement('div');
+      body.className = 'section-body' + (startCollapsed ? ' collapsed' : '');
+      var grid = el('div', { className: 'card-grid' });
+      cards.forEach(function(c) { grid.appendChild(buildCard(c)); });
+      body.appendChild(grid);
+
+      hdr.addEventListener('click', function() {
+        hdr.classList.toggle('collapsed');
+        body.classList.toggle('collapsed');
+      });
+
+      content.appendChild(hdr);
+      content.appendChild(body);
+    }
+
+    // Main grid (no collapsible header — always visible)
     if (main.length > 0) {
       var grid = el('div', { className: 'card-grid' });
       main.forEach(function(c) { grid.appendChild(buildCard(c)); });
       content.appendChild(grid);
     }
 
-    // Event Only section
+    // Event Only section (collapsed by default)
     if (eventOnly.length > 0) {
-      content.appendChild(el('div', { className: 'section-header' }, 'Event Only (' + eventOnly.length + ')'));
-      var evGrid = el('div', { className: 'card-grid' });
-      eventOnly.forEach(function(c) { evGrid.appendChild(buildCard(c)); });
-      content.appendChild(evGrid);
+      makeSection('Event Only (' + eventOnly.length + ')', eventOnly, '', true);
     }
 
-    // Unresolved buffs section
+    // Unresolved buffs section (collapsed by default)
     if (unresolvedBuff.length > 0) {
-      content.appendChild(el('div', { className: 'section-header muted' }, 'Unresolved Buff Names (' + unresolvedBuff.length + ')'));
-      var ubNote = el('div', { style: 'font-size:.75rem;color:var(--muted);margin-bottom:.75rem;line-height:1.5;' },
-        'Some buff names haven\u2019t been mapped yet. Want to help? Submit a bug report with the Buff# ID and its in-game display name, and this section will shrink over time.');
-      if (hasIdentity()) {
-        var ubBtn = el('button', { style: 'margin-left:.5rem;background:var(--accent);color:var(--bg);border:none;border-radius:5px;padding:.25rem .6rem;font-size:.7rem;font-weight:600;cursor:pointer;vertical-align:middle;', onclick: function() { openFeedbackModal(); } }, 'Submit Buff Name');
-        ubNote.appendChild(ubBtn);
-      }
-      content.appendChild(ubNote);
-      var ubGrid = el('div', { className: 'card-grid' });
-      unresolvedBuff.forEach(function(c) { ubGrid.appendChild(buildCard(c)); });
-      content.appendChild(ubGrid);
+      makeSection('Unresolved Buff Names (' + unresolvedBuff.length + ')', unresolvedBuff, 'muted', true);
     }
 
-    // Unreleased section
+    // Unreleased section (collapsed by default)
     if (unreleased.length > 0) {
-      content.appendChild(el('div', { className: 'section-header muted' }, 'Unreleased (' + unreleased.length + ')'));
-      var urGrid = el('div', { className: 'card-grid' });
-      unreleased.forEach(function(c) { urGrid.appendChild(buildCard(c)); });
-      content.appendChild(urGrid);
+      makeSection('Unreleased (' + unreleased.length + ')', unreleased, 'muted', true);
     }
 
-    // Junk section
+    // Junk section (collapsed by default)
     if (junk.length > 0) {
-      content.appendChild(el('div', { className: 'section-header muted' }, 'Junk (' + junk.length + ')'));
-      var jkGrid = el('div', { className: 'card-grid' });
-      junk.forEach(function(c) { jkGrid.appendChild(buildCard(c)); });
-      content.appendChild(jkGrid);
+      makeSection('Junk (' + junk.length + ')', junk, 'muted', true);
     }
 
     var total = main.length + eventOnly.length + unresolvedBuff.length + unreleased.length + junk.length;
@@ -844,64 +872,6 @@
   function getIdentityName() {
     try { return JSON.parse(localStorage.getItem('playerIdentity')).name || 'Anonymous'; }
     catch(e) { return 'Anonymous'; }
-  }
-
-  function openFeedbackModal() {
-    var overlay = el('div', { className: 'modal-overlay', onclick: function(e) { if (e.target === overlay) document.body.removeChild(overlay); } });
-    var modal = el('div', { className: 'modal', style: 'max-width:440px;' });
-
-    var header = el('div', { className: 'modal-header' });
-    header.appendChild(el('h2', null, 'Submit Buff Name'));
-    header.appendChild(el('button', { className: 'modal-close', onclick: function() { document.body.removeChild(overlay); } }, '\u00D7'));
-    modal.appendChild(header);
-
-    var body = el('div', { className: 'modal-body' });
-    body.appendChild(el('div', { style: 'font-size:.8rem;color:var(--muted);margin-bottom:.75rem;' },
-      'Submitting as: ' + getIdentityName()));
-
-    var titleInput = el('input', { type: 'text', placeholder: 'Buff ID (e.g. 990871)', style: 'width:100%;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:.5rem .7rem;color:var(--text);font-size:.85rem;margin-bottom:.5rem;outline:none;' });
-    body.appendChild(titleInput);
-
-    var descInput = el('textarea', { placeholder: 'In-game display name for this buff...', style: 'width:100%;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:.5rem .7rem;color:var(--text);font-size:.85rem;min-height:80px;resize:vertical;outline:none;font-family:inherit;' });
-    body.appendChild(descInput);
-
-    var resultDiv = el('div', { style: 'display:none;text-align:center;padding:1rem;' });
-
-    var sendBtn = el('button', { className: 'bf-apply', style: 'margin-top:.75rem;width:100%;', onclick: function() {
-      if (!titleInput.value.trim() || !descInput.value.trim()) return;
-      sendBtn.disabled = true;
-      sendBtn.textContent = 'Sending\u2026';
-
-      fetch(PUSH_WORKER + '/feedback/bug', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: '[Base Skin Buff] ' + titleInput.value.trim(),
-          description: 'Buff ID: ' + titleInput.value.trim() + '\nDisplay name: ' + descInput.value.trim() + '\nPage: bases.html',
-          submitter: getIdentityName()
-        })
-      }).then(function(r) { return r.json(); }).then(function(d) {
-        if (d.ok) {
-          resultDiv.style.display = '';
-          resultDiv.textContent = '\u2705 Submitted! Thank you.';
-          titleInput.style.display = 'none';
-          descInput.style.display = 'none';
-          sendBtn.style.display = 'none';
-        } else {
-          sendBtn.textContent = 'Error \u2014 try again';
-          sendBtn.disabled = false;
-        }
-      }).catch(function() {
-        sendBtn.textContent = 'Error \u2014 try again';
-        sendBtn.disabled = false;
-      });
-    } }, 'Submit');
-    body.appendChild(sendBtn);
-    body.appendChild(resultDiv);
-
-    modal.appendChild(body);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
   }
 
   // Init
