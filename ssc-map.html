@@ -2511,7 +2511,7 @@
     var curS  = curRound.s2864  || {};
     var scoreDelta = (curS.score||0) - (prevS.score||0);
 
-    var S = function(sid) { return '<span class="s-server">S' + sid + '</span>'; };
+    var S = function(sid) { return sid ? '<span class="s-server">S' + sid + '</span>' : '<span class="s-server">Unclaimed</span>'; };
     var N = function(n) { return '<span class="s-num">' + n + '</span>'; };
     var G = function(t) { return '<span class="s-gain">' + t + '</span>'; };
     var L = function(t) { return '<span class="s-loss">' + t + '</span>'; };
@@ -3394,6 +3394,40 @@
           var fwY = 30 + Math.random() * 60;
           spawnFirework(fwX, fwY, Math.random() > 0.5 ? GREEN : GOLD);
         }
+
+        // Victory dance! (last 40% of the tally phase)
+        if (tallyT > 0.55) {
+          var danceT = (tallyT - 0.55) / 0.45;
+          var danceWave = timestamp * 0.012;
+          var dancerCount = Math.min(soldiers.length, 6);
+          var spacing = (W - 120) / (dancerCount + 1);
+
+          for (var di = 0; di < dancerCount; di++) {
+            var dx = 60 + spacing * (di + 1);
+            var baseY = GROUND_Y - 18;
+            // Jump height cycles (each dancer offset for wave effect)
+            var jumpPhase = danceWave + di * 1.2;
+            var jumpH = Math.abs(Math.sin(jumpPhase * 1.5)) * 22;
+            var dy = baseY - jumpH;
+            // Lean side to side
+            ctx.save();
+            ctx.translate(dx, dy);
+            var lean = Math.sin(jumpPhase * 2) * 0.15;
+            ctx.rotate(lean);
+            // Alternate between silly poses
+            var poseIdx = Math.floor(jumpPhase * 2) % 4;
+            var pose = ['victory','fight','walk','victory'][poseIdx];
+            drawStickFigure(0, 0, GREEN, 0.75, danceWave + di, pose);
+            // Swords waving wildly above heads
+            var swordSpin = danceWave * 3 + di * 1.5;
+            drawSword(Math.sin(swordSpin) * 12, -30 + Math.cos(swordSpin * 0.7) * 5, swordSpin, di % 2 === 0 ? GOLD : '#c0c8d4');
+            ctx.restore();
+          }
+          // Disco sparkles
+          if (Math.random() < 0.3) {
+            spawnSparks(100 + Math.random() * (W - 200), GROUND_Y - 40 - Math.random() * 30, 2);
+          }
+        }
       }
 
       // === PHASE 6 (14-18s, t: 0.778-1.0): "The Chronicle" ===
@@ -3665,7 +3699,7 @@
         nm.style.overflow='hidden'; nm.style.textOverflow='ellipsis'; nm.style.whiteSpace='nowrap';
         info.appendChild(nm);
         var ft = el('div'); ft.style.cssText='display:flex;align-items:center;gap:.3rem;';
-        var fs = el('span','de-from','S'+ch.fromSid); fs.style.color=serverAccent(ch.fromSid||0);
+        var fs = el('span','de-from', ch.fromSid ? 'S'+ch.fromSid : 'Unclaimed'); fs.style.color=serverAccent(ch.fromSid||0);
         var ar = el('span','de-arrow','\u2192');
         var ts = el('span','de-to','S'+(ch.toSid||'?')); ts.style.color=serverAccent(ch.toSid||0);
         ft.appendChild(fs); ft.appendChild(ar); ft.appendChild(ts);
