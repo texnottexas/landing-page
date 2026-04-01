@@ -100,8 +100,8 @@
 
   // --- Build ---
   function buildWidget() {
-    // Inject a Feedback button into the page header
-    var hdr = document.querySelector('.header');
+    // Inject a Feedback button into the page header (.header class or bare <header> tag)
+    var hdr = document.querySelector('.header') || document.querySelector('header');
     var triggerBtn = el('button', { id: 'fw-hdr-btn', title: 'Submit Feedback', 'aria-label': 'Submit Feedback' });
     triggerBtn.appendChild(makeSvg(13, 13, CHAT_DEFS));
     triggerBtn.appendChild(document.createTextNode(' Feedback'));
@@ -262,7 +262,6 @@
   }
 
   function init() {
-    if (!getIdentity()) return;
     injectStyles();
     buildWidget();
   }
@@ -273,12 +272,5 @@
     init();
   }
 
-  // Re-check if identity is set after page load
-  window.addEventListener('storage', function (e) {
-    if (e.key !== 'playerIdentity') return;
-    if (!document.getElementById('fw-hdr-btn') && getIdentity()) {
-      injectStyles();
-      buildWidget();
-    }
-  });
+  // (No re-check needed — button always visible)
 })();
