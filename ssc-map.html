@@ -3087,7 +3087,6 @@
       // === PHASE 2 (2-5s, t: 0.111-0.278): "The March" ===
       var p2Start = 2000/duration, p2End = 5000/duration;
       if (t > p2Start && t <= p2End) {
-        phase.textContent = 'Deploying forces...';
         drawGround(1);
         drawFortress(160, GROUND_Y, 1);
         drawGlowText('S2864', 160, GROUND_Y - 72, GREEN, 16, 1, DGREEN);
@@ -3095,27 +3094,51 @@
 
         var marchT = (t - p2Start) / (p2End - p2Start); // 0 to 1
 
-        // Soldiers march RIGHT from the fortress
+        // War drum pulse — background throbs subtly
+        var drumPulse = Math.sin(marchT * Math.PI * 6) * 0.08;
+        ctx.fillStyle = 'rgba(63,185,80,' + Math.max(0, drumPulse) + ')';
+        ctx.fillRect(0, 0, W, H);
+
+        // Phase text with rally cry
+        if (marchT < 0.3) phase.textContent = 'Deploying forces...';
+        else if (marchT < 0.6) phase.textContent = 'FOR S2864!';
+        else phase.textContent = 'Advancing on all fronts!';
+
+        // Arrow-head formation: leader in front, others staggered behind in V
+        var formationY = [0, -14, 14, -26, 26, -8]; // V-shape offsets from center
+        var formationX = [0, -18, -18, -36, -36, -50]; // depth offsets (leader furthest right)
         soldiers.forEach(function(sol, idx) {
-          var solProgress = Math.max(0, Math.min((marchT - idx * 0.04) / 0.7, 1));
+          var delay = idx * 0.02; // very slight stagger
+          var solProgress = Math.max(0, Math.min((marchT - delay) / 0.8, 1));
           if (solProgress <= 0) return;
-          var sx = 200 + solProgress * 250;
-          var sy = GROUND_Y - 18;
-          var wp = timestamp * 0.008 + sol.phaseOff;
 
-          drawStickFigure(sx, sy, GREEN, 0.85, wp, 'walk');
+          // Formation position that marches together
+          var centerX = 210 + easeOutCubic(solProgress) * 320;
+          var sx = centerX + (formationX[idx] || 0);
+          var sy = GROUND_Y - 18 + (formationY[idx] || 0);
+          var wp = timestamp * 0.009 + sol.phaseOff;
+          var sc = idx === 0 ? 1.0 : 0.8; // Leader is bigger
 
-          // Sword above head (bouncing with walk)
+          drawStickFigure(sx, sy, GREEN, sc, wp, 'walk');
+
+          // Sword raised (leader holds higher)
           var swordBob = Math.sin(wp * 2) * 3;
-          drawSword(sx + 8, sy - 22 + swordBob, -0.3 + Math.sin(wp) * 0.15, '#c0c8d4');
+          var swordAngle = idx === 0 ? -0.6 : -0.3 + Math.sin(wp) * 0.15;
+          drawSword(sx + 6, sy - 24 + swordBob, swordAngle, idx === 0 ? GOLD : '#c0c8d4');
 
-          // Dust particles
-          if (solProgress < 0.95 && Math.random() < 0.3) {
-            spawnDust(sx - 5, GROUND_Y - 2, 1);
+          // Dust trail (more from leader)
+          if (solProgress < 0.9 && Math.random() < (idx === 0 ? 0.5 : 0.2)) {
+            spawnDust(sx - 8, GROUND_Y - 2 + (formationY[idx] || 0) + 16, 1.5);
           }
         });
 
-        // Score ticking slowly
+        // Battle cry text floats up at the peak of march
+        if (marchT > 0.35 && marchT < 0.7) {
+          var cryAlpha = Math.sin((marchT - 0.35) / 0.35 * Math.PI);
+          drawGlowText('\u2694 CHARGE! \u2694', W * 0.55, GROUND_Y - 70, GREEN, 14, cryAlpha * 0.8, DGREEN);
+        }
+
+        // Score
         var prevScore2 = curScore - scoreDelta;
         drawText('Score: ' + prevScore2.toLocaleString(), 160, GROUND_Y + 20, '#79c0ff', 10, 1);
       }
