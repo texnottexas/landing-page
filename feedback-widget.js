@@ -155,6 +155,15 @@
     });
     form.appendChild(pageSelect);
 
+    var notifNote = el('div', { css: 'font-size:.63rem;color:#8b949e;line-height:1.5;margin-bottom:.5rem;' });
+    notifNote.appendChild(document.createTextNode('\uD83D\uDCAC Want a notification when resolved? '));
+    var notifLink = el('a', { css: 'color:#79c0ff;', target: '_blank', rel: 'noopener noreferrer' });
+    notifLink.href = 'https://2864tw.com';
+    notifLink.textContent = 'Install the PWA or enable push notifications';
+    notifNote.appendChild(notifLink);
+    notifNote.appendChild(document.createTextNode(' on the home page first.'));
+    form.appendChild(notifNote);
+
     var footer = el('div', { cls: 'fw-footer' });
     var whoEl = el('span', { cls: 'fw-who' });
     var sendBtn = el('button', { cls: 'fw-submit-btn', text: 'Submit' });
