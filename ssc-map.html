@@ -4327,29 +4327,38 @@
       });
     });
 
-    document.getElementById('assignSearch').addEventListener('input', function() {
-      fetchPlayers(function(){ buildAcList(this.value); }.bind(document.getElementById('assignSearch')));
-    });
-    document.getElementById('assignSearch').addEventListener('blur', function() {
-      setTimeout(function(){ document.getElementById('assignAcList').style.display = 'none'; }, 150);
-    });
-    document.getElementById('assignModalClose').addEventListener('click', function() {
-      document.getElementById('assignModalOverlay').classList.remove('show');
-      activeAssign = null;
-    });
-    document.getElementById('assignModalOverlay').addEventListener('click', function(e) {
-      if (e.target === this) { this.classList.remove('show'); activeAssign = null; }
+    // Defer assign modal listeners — modal HTML is after </script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var searchEl = document.getElementById('assignSearch');
+      if (searchEl) {
+        searchEl.addEventListener('input', function() {
+          fetchPlayers(function(){ buildAcList(searchEl.value); });
+        });
+        searchEl.addEventListener('blur', function() {
+          setTimeout(function(){ var l = document.getElementById('assignAcList'); if (l) l.style.display = 'none'; }, 150);
+        });
+      }
+      var closeEl = document.getElementById('assignModalClose');
+      if (closeEl) closeEl.addEventListener('click', function() {
+        document.getElementById('assignModalOverlay').classList.remove('show');
+        activeAssign = null;
+      });
+      var overlayEl = document.getElementById('assignModalOverlay');
+      if (overlayEl) overlayEl.addEventListener('click', function(e) {
+        if (e.target === overlayEl) { overlayEl.classList.remove('show'); activeAssign = null; }
+      });
     });
 
-    // How to Play modal
+    // How to Play modal — htpBtn is in sidebar (before script), but overlay is after </script>
     document.getElementById('htpBtn').addEventListener('click', function() {
-      document.getElementById('htpOverlay').classList.add('show');
+      var ov = document.getElementById('htpOverlay');
+      if (ov) ov.classList.add('show');
     });
-    document.getElementById('htpClose').addEventListener('click', function() {
-      document.getElementById('htpOverlay').classList.remove('show');
-    });
-    document.getElementById('htpOverlay').addEventListener('click', function(e) {
-      if (e.target === this) this.classList.remove('show');
+    document.addEventListener('DOMContentLoaded', function() {
+      var htpClose = document.getElementById('htpClose');
+      var htpOv = document.getElementById('htpOverlay');
+      if (htpClose) htpClose.addEventListener('click', function() { htpOv.classList.remove('show'); });
+      if (htpOv) htpOv.addEventListener('click', function(e) { if (e.target === htpOv) htpOv.classList.remove('show'); });
     });
   })();
 
