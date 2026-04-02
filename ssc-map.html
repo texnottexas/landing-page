@@ -4283,7 +4283,7 @@
           if(s4>vi*0.06){
             var vp=Math.min((s4-vi*0.06)*3,1);
             drawStick(vx, GROUND_Y-18, GREEN, lerp(0.5,1,easeOut(vp)), wave*1.5+vi, s4>0.5?'victory':'stand');
-            if(s4>0.5 && Math.random()<0.02) spawnBurst(vx, GROUND_Y-40, GREEN2, 4, 2);
+            if(s4>0.5 && s4<0.68 && Math.random()<0.02) spawnBurst(vx, GROUND_Y-40, GREEN2, 4, 2);
           }
         }
 
@@ -4306,8 +4306,8 @@
           }
         }
 
-        // Fireworks celebration — gentle, not overwhelming
-        if(s4>0.4 && Math.random()<0.04){
+        // Fireworks only during early victory phase (flags planting), none near chronicle
+        if(s4>0.3 && s4<0.65 && Math.random()<0.04){
           var fw=[GREEN2,GOLD2,BLUE2,WHITE][Math.floor(Math.random()*4)];
           spawnBurst(rnd(80,W-80), rnd(20,100), fw, 7, 3);
         }
@@ -4318,50 +4318,68 @@
       if(s5>0){
         drawGround();
 
-        // 3 city structures glowing gold
-        var cities=[{x:140,name:'#2016',lv:'Lv.2'},{x:320,name:'#1040',lv:'Lv.1'},{x:500,name:'#1046',lv:'Lv.1'}];
-        cities.forEach(function(city,ci){
-          var cd=clamp((s5-ci*0.12)*5,0,1); if(cd<=0) return;
-
-          // Beam of light from sky
-          var beamAlpha=cd*(0.3+0.15*Math.sin(elapsed/400+ci));
+        // Phase A (s5 0→0.5): 3 owned cities — SECURED
+        var ownedCities=[{x:120,name:'#2016',lv:'Lv.2'},{x:320,name:'#1040',lv:'Lv.1'},{x:520,name:'#1046',lv:'Lv.1'}];
+        var phaseA=Math.min(s5/0.5,1);
+        ownedCities.forEach(function(city,ci){
+          var cd=clamp((phaseA-ci*0.2)*5,0,1); if(cd<=0) return;
+          // Gold beam
+          var ba=cd*(0.25+0.1*Math.sin(elapsed/400+ci));
           var grad=ctx.createLinearGradient(city.x,0,city.x,GROUND_Y);
           grad.addColorStop(0,GOLD2+'00');
-          grad.addColorStop(0.4,GOLD2+(Math.round(beamAlpha*255).toString(16).padStart(2,'0')));
+          grad.addColorStop(0.4,GOLD2+(Math.round(ba*255).toString(16).padStart(2,'0')));
           grad.addColorStop(1,GOLD2+'00');
-          ctx.fillStyle=grad; ctx.fillRect(city.x-20,0,40,GROUND_Y);
-
-          // City structure (tower with dome)
+          ctx.fillStyle=grad; ctx.fillRect(city.x-18,0,36,GROUND_Y);
+          // Tower
           ctx.save(); ctx.globalAlpha=cd;
-          ctx.fillStyle='#2a3a1a'; ctx.fillRect(city.x-18,GROUND_Y-55,36,55);
-          ctx.strokeStyle=GOLD2; ctx.lineWidth=1.5; ctx.strokeRect(city.x-18,GROUND_Y-55,36,55);
-          // Dome
+          ctx.fillStyle='#2a3a1a'; ctx.fillRect(city.x-16,GROUND_Y-52,32,52);
+          ctx.strokeStyle=GOLD2; ctx.lineWidth=1.5; ctx.strokeRect(city.x-16,GROUND_Y-52,32,52);
           ctx.fillStyle='#1a2a3a';
-          ctx.beginPath(); ctx.arc(city.x,GROUND_Y-55,18,Math.PI,0); ctx.closePath(); ctx.fill();
+          ctx.beginPath(); ctx.arc(city.x,GROUND_Y-52,16,Math.PI,0); ctx.closePath(); ctx.fill();
           ctx.strokeStyle=GOLD2; ctx.lineWidth=1.5;
-          ctx.beginPath(); ctx.arc(city.x,GROUND_Y-55,18,Math.PI,0); ctx.stroke();
-          // Glowing crown on top
+          ctx.beginPath(); ctx.arc(city.x,GROUND_Y-52,16,Math.PI,0); ctx.stroke();
           ctx.fillStyle=GOLD2; ctx.globalAlpha=cd*(0.8+0.2*Math.sin(elapsed/300+ci));
-          ctx.font='14px serif'; ctx.textAlign='center';
-          ctx.fillText('\u2605',city.x,GROUND_Y-70);
-          ctx.globalAlpha=cd;
-          ctx.fillStyle=GOLD; ctx.font='bold 8px monospace'; ctx.textAlign='center';
-          ctx.fillText(city.lv,city.x,GROUND_Y-38);
-          ctx.fillText(city.name,city.x,GROUND_Y+14);
+          ctx.font='12px serif'; ctx.textAlign='center'; ctx.fillText('\u2605',city.x,GROUND_Y-65);
+          ctx.globalAlpha=cd; ctx.fillStyle=GOLD; ctx.font='bold 7px monospace'; ctx.textAlign='center';
+          ctx.fillText(city.lv,city.x,GROUND_Y-36); ctx.fillText(city.name,city.x,GROUND_Y+13);
           ctx.restore();
-
-          // Green flag beside it
-          if(cd>0.4) drawFlag(city.x+20, GROUND_Y-2, GREEN, wave+ci*1.3);
-
-          // Sparkles
-          if(Math.random()<0.03) spawnSpark(city.x+rnd(-20,20), GROUND_Y-rnd(20,70), GOLD3, 2);
+          if(cd>0.4) drawFlag(city.x+18, GROUND_Y-2, GREEN, wave+ci*1.3);
+          if(Math.random()<0.025) spawnSpark(city.x+rnd(-18,18), GROUND_Y-rnd(20,60), GOLD3, 2);
         });
+        if(s5>0.15) glowText('SECURED', W/2, 22, GOLD2, 12, Math.min((s5-0.15)*6,1), 8);
 
-        if(s5>0.35){
-          glowText('3 NEUTRAL CITIES SECURED', W/2, 28, GOLD2, 13, Math.min((s5-0.35)*4,1), 12);
-        }
-        if(s5>0.6){
-          glowText('NEXT: #3008 \u00b7 #1060 \u00b7 #2008', W/2, 48, GOLD, 9, Math.min((s5-0.6)*5,1), 6);
+        // Phase B (s5 0.5→1.0): 3 declared targets — NEXT TARGETS
+        var phaseB=clamp((s5-0.5)/0.5,0,1);
+        if(phaseB>0){
+          var targets=[{x:120,name:'#3008',lv:'Lv.3'},{x:320,name:'#1060',lv:'Lv.1'},{x:520,name:'#2008',lv:'Lv.2'}];
+          targets.forEach(function(city,ci){
+            var td=clamp((phaseB-ci*0.2)*5,0,1); if(td<=0) return;
+            // Red targeting beam
+            var rba=td*(0.2+0.1*Math.sin(elapsed/350+ci));
+            var tgrad=ctx.createLinearGradient(city.x,0,city.x,GROUND_Y);
+            tgrad.addColorStop(0,RED+'00');
+            tgrad.addColorStop(0.4,RED+(Math.round(rba*255).toString(16).padStart(2,'0')));
+            tgrad.addColorStop(1,RED+'00');
+            ctx.fillStyle=tgrad; ctx.fillRect(city.x-18,0,36,GROUND_Y);
+            // Dashed target reticle around city outline
+            ctx.save(); ctx.globalAlpha=td;
+            ctx.setLineDash([4,4]);
+            ctx.strokeStyle=RED2; ctx.lineWidth=1.5;
+            ctx.strokeRect(city.x-18,GROUND_Y-52,36,52);
+            ctx.beginPath(); ctx.arc(city.x,GROUND_Y-52,18,Math.PI,0); ctx.stroke();
+            ctx.setLineDash([]);
+            // Targeting crosshair
+            var cr2=12+4*Math.sin(elapsed/250+ci);
+            ctx.globalAlpha=td*(0.6+0.4*Math.abs(Math.sin(elapsed/400+ci)));
+            ctx.strokeStyle=RED; ctx.lineWidth=1.5;
+            ctx.beginPath(); ctx.arc(city.x,GROUND_Y-28,cr2,0,Math.PI*2); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(city.x-cr2-4,GROUND_Y-28); ctx.lineTo(city.x+cr2+4,GROUND_Y-28); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(city.x,GROUND_Y-28-cr2-4); ctx.lineTo(city.x,GROUND_Y-28+cr2+4); ctx.stroke();
+            ctx.globalAlpha=td; ctx.fillStyle=RED2; ctx.font='bold 7px monospace'; ctx.textAlign='center';
+            ctx.fillText(city.lv,city.x,GROUND_Y-58); ctx.fillText(city.name,city.x,GROUND_Y+13);
+            ctx.restore();
+          });
+          if(phaseB>0.2) glowText('NEXT TARGETS', W/2, 38, RED2, 11, Math.min((phaseB-0.2)*5,1), 8);
         }
       }
 
