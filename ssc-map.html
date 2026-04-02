@@ -369,6 +369,31 @@
       border: 1px dashed rgba(121,192,255,.5);
     }
 
+    /* Neutral city owned by S2864 */
+    .cell.nc-owned {
+      border: 2px solid #d29922 !important;
+      box-shadow: 0 0 10px rgba(210,153,34,.7), inset 0 0 6px rgba(210,153,34,.2);
+      animation: pulse-nc-owned 2s ease-in-out infinite;
+    }
+    @keyframes pulse-nc-owned {
+      0%,100% { box-shadow: 0 0 8px rgba(210,153,34,.6), inset 0 0 4px rgba(210,153,34,.15); }
+      50%      { box-shadow: 0 0 16px rgba(210,153,34,1), inset 0 0 10px rgba(210,153,34,.4); }
+    }
+    /* Neutral city declared target */
+    .cell.nc-target {
+      border: 2px dashed #f0c040 !important;
+      box-shadow: 0 0 10px rgba(240,192,64,.5), inset 0 0 6px rgba(240,192,64,.15);
+      animation: pulse-nc-target 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse-nc-target {
+      0%,100% { box-shadow: 0 0 6px rgba(240,192,64,.4); }
+      50%      { box-shadow: 0 0 18px rgba(240,192,64,.9), inset 0 0 8px rgba(240,192,64,.3); }
+    }
+    /* SVG line overlay for neutral city declaration lines */
+    .nc-lines-svg { position:absolute; top:0; left:0; pointer-events:none; overflow:visible; }
+    .nc-line { stroke-dasharray:8 5; animation:nc-dash 1.2s linear infinite; }
+    @keyframes nc-dash { to { stroke-dashoffset:-26; } }
+
     /* War/defense pulsing borders */
     .cell.war-attack {
       border: 2px solid var(--red) !important;
@@ -1827,9 +1852,19 @@
 
   function renderGrid() {
     var wrap = el('div', 'grid-wrap');
+    wrap.style.position = 'relative';
     var grid = el('div', 'grid');
     grid.style.gridTemplateColumns = 'repeat(' + side + ', auto)';
     wrap.appendChild(grid);
+
+    // Build neutral city lookup sets for this round
+    var ncOwnedSet = {}, ncTargetSet = {};
+    if (roundData.neutralCityOwned) {
+      roundData.neutralCityOwned.forEach(function(nc){ ncOwnedSet[nc.r+','+nc.c] = nc; });
+    }
+    if (roundData.neutralCityTargets) {
+      roundData.neutralCityTargets.forEach(function(nc){ ncTargetSet[nc.r+','+nc.c] = nc; });
+    }
 
     // Build a lookup from (r,c) to cell data
     var cellMap = {};
@@ -1914,6 +1949,16 @@
           }
         }
 
+        // Neutral city owned / target highlighting
+        var rcKey = cell.r + ',' + cell.c;
+        if (cell.type === 2 && ncOwnedSet[rcKey]) {
+          d.classList.add('nc-owned');
+          d.title = ncOwnedSet[rcKey].name + ' — Held by S2864';
+        } else if (cell.type === 2 && ncTargetSet[rcKey]) {
+          d.classList.add('nc-target');
+          d.title = ncTargetSet[rcKey].name + ' — Declared by S2864';
+        }
+
         // Plan star overlay
         var planKey = cell.r + ',' + cell.c;
         if (planData[planKey]) {
@@ -1941,6 +1986,81 @@
     }
 
     mapContainer.appendChild(wrap);
+
+    // Draw neutral city declaration lines after layout
+    if (roundData.neutralCityOwned && roundData.neutralCityTargets && roundData.neutralCityTargets.length) {
+      requestAnimationFrame(function() { drawNeutralCityLines(wrap, roundData); });
+    }
+  }
+
+  function drawNeutralCityLines(wrap, rd) {
+    var existing = wrap.querySelector('.nc-lines-svg');
+    if (existing) existing.remove();
+    var CELL = 45; // 44px cell + 1px gap
+    function cellCenter(dataR, dataC) {
+      return {
+        x: displayC(dataC) * CELL + 22,
+        y: displayR(dataR) * CELL + 22
+      };
+    }
+    var ns = 'http://www.w3.org/2000/svg';
+    var gridW = side * CELL;
+    var svg = document.createElementNS(ns, 'svg');
+    svg.classList.add('nc-lines-svg');
+    svg.setAttribute('width', gridW);
+    svg.setAttribute('height', gridW);
+
+    // For each declaration target, draw a line from the nearest owned city to the target
+    (rd.neutralCityTargets || []).forEach(function(target) {
+      var tp = cellCenter(target.r, target.c);
+      // Find closest owned city as source
+      var src = null, minDist = Infinity;
+      (rd.neutralCityOwned || []).forEach(function(owned) {
+        var op = cellCenter(owned.r, owned.c);
+        var d2 = Math.hypot(tp.x - op.x, tp.y - op.y);
+        if (d2 < minDist) { minDist = d2; src = op; }
+      });
+      if (!src) return;
+
+      // Glow line (wider, lower opacity)
+      var glow = document.createElementNS(ns, 'line');
+      glow.setAttribute('x1', src.x); glow.setAttribute('y1', src.y);
+      glow.setAttribute('x2', tp.x);  glow.setAttribute('y2', tp.y);
+      glow.setAttribute('stroke', '#f0c040');
+      glow.setAttribute('stroke-width', '4');
+      glow.setAttribute('stroke-opacity', '0.25');
+      glow.setAttribute('stroke-dasharray', '8 5');
+      glow.classList.add('nc-line');
+      svg.appendChild(glow);
+
+      // Core line
+      var line = document.createElementNS(ns, 'line');
+      line.setAttribute('x1', src.x); line.setAttribute('y1', src.y);
+      line.setAttribute('x2', tp.x);  line.setAttribute('y2', tp.y);
+      line.setAttribute('stroke', '#f0c040');
+      line.setAttribute('stroke-width', '1.5');
+      line.setAttribute('stroke-opacity', '0.85');
+      line.setAttribute('stroke-dasharray', '8 5');
+      line.classList.add('nc-line');
+      svg.appendChild(line);
+
+      // Arrow head at target end
+      var angle = Math.atan2(tp.y - src.y, tp.x - src.x);
+      var al = 10, aw = 5;
+      var ax1 = tp.x - al * Math.cos(angle - aw * Math.PI / 180);
+      var ay1 = tp.y - al * Math.sin(angle - aw * Math.PI / 180);
+      var ax2 = tp.x - al * Math.cos(angle + aw * Math.PI / 180);
+      var ay2 = tp.y - al * Math.sin(angle + aw * Math.PI / 180);
+      var arrow = document.createElementNS(ns, 'polyline');
+      arrow.setAttribute('points', ax1+','+ay1+' '+tp.x+','+tp.y+' '+ax2+','+ay2);
+      arrow.setAttribute('stroke', '#f0c040');
+      arrow.setAttribute('stroke-width', '1.5');
+      arrow.setAttribute('fill', 'none');
+      arrow.setAttribute('stroke-opacity', '0.9');
+      svg.appendChild(arrow);
+    });
+
+    wrap.appendChild(svg);
   }
 
   function makeTooltipHandler(cell) {
@@ -3637,7 +3757,7 @@
     if (storyAnimFrame) { cancelAnimationFrame(storyAnimFrame); storyAnimFrame = null; }
   }
 
-  // === POST-BATTLE ANIMATION (Round 3.5 special) ===
+  // === POST-BATTLE ANIMATION — ROUND 3.5 "MICHAEL BAY EDITION" ===
   function playPostBattleAnimation(gained, lost, prevScore, curScore, scoreDelta, topTargets, takenFrom) {
     var canvas = document.getElementById('storyCanvas');
     var ctx = canvas.getContext('2d');
@@ -3646,255 +3766,492 @@
     if (storyAnimFrame) cancelAnimationFrame(storyAnimFrame);
 
     var startTime = null;
-    var duration = 16000;
+    var duration = 22000;
 
-    var BG = '#080c12';
-    var GREEN = '#3fb950'; var GOLD = '#d29922'; var BLUE = '#388bfd'; var RED = '#f85149';
-    var WHITE = '#e6edf3'; var MUTED = '#8b949e';
+    var BG = '#080c12', BG2 = '#0a0e18';
+    var GREEN = '#3fb950', DGREEN = '#1e6b2d', GREEN2 = '#56e370';
+    var GOLD = '#d29922', GOLD2 = '#f0c040', GOLD3 = '#ffe680';
+    var BLUE = '#388bfd', BLUE2 = '#79c0ff';
+    var RED = '#f85149', RED2 = '#ff8080';
+    var WHITE = '#e6edf3', MUTED = '#8b949e';
+    var ORANGE = '#f0822d';
 
-    // Particles pool
+    function easeOut(t) { return 1 - Math.pow(1-t, 3); }
+    function easeIn(t) { return t * t * t; }
+    function lerp(a,b,t){ return a+(b-a)*t; }
+    function clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }
+    function phaseT(t,s,e){ return clamp((t-s/duration)/((e-s)/duration),0,1); }
+
+    // ── Particles ──────────────────────────────────────────────────────────
     var particles = [];
-    function spawnBurst(x, y, color, n) {
-      for (var i = 0; i < n; i++) {
-        var a = Math.random() * Math.PI * 2;
-        var spd = 1 + Math.random() * 4;
-        particles.push({ x:x, y:y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd - 1,
-                          life:1, decay: 0.012 + Math.random()*0.02, color:color, size: 2+Math.random()*3 });
+    function spawnBurst(x,y,color,n,spd,size,decay) {
+      for(var i=0;i<n;i++){
+        var a=Math.random()*Math.PI*2, s=((spd||3)+Math.random()*3);
+        particles.push({x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-1,
+          life:1,decay:decay||(0.012+Math.random()*0.018),color:color,size:(size||2)+Math.random()*3});
       }
     }
-    function updateParticles(ctx) {
-      for (var i = particles.length-1; i >= 0; i--) {
-        var p = particles[i];
-        p.x += p.vx; p.y += p.vy; p.vy += 0.08;
-        p.life -= p.decay;
-        if (p.life <= 0) { particles.splice(i,1); continue; }
-        ctx.save(); ctx.globalAlpha = p.life;
-        ctx.fillStyle = p.color;
-        ctx.beginPath(); ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI*2); ctx.fill();
+    function spawnDebris(x,y,color,n) {
+      for(var i=0;i<n;i++){
+        var a=Math.random()*Math.PI*2, s=1+Math.random()*5;
+        particles.push({x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-2,
+          life:1,decay:0.008+Math.random()*0.012,color:color,size:1+Math.random()*2,isRect:true,rot:Math.random()*Math.PI,rotV:(Math.random()-.5)*.15});
+      }
+    }
+    function spawnSpark(x,y,color,n) {
+      for(var i=0;i<n;i++){
+        var a=Math.random()*Math.PI*2,s=3+Math.random()*8;
+        particles.push({x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-1,
+          life:1,decay:0.025+Math.random()*0.03,color:color,size:1,isSpark:true,
+          tx:x+Math.cos(a)*s*8,ty:y+Math.sin(a)*s*8});
+      }
+    }
+    function tickParticles() {
+      for(var i=particles.length-1;i>=0;i--){
+        var p=particles[i];
+        p.x+=p.vx; p.y+=p.vy; p.vy+=0.12; p.life-=p.decay;
+        if(p.life<=0){particles.splice(i,1);continue;}
+        ctx.save(); ctx.globalAlpha=p.life*p.life;
+        if(p.isSpark){
+          ctx.strokeStyle=p.color; ctx.lineWidth=1.2; ctx.globalAlpha=p.life;
+          ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(p.x-p.vx*3,p.y-p.vy*3); ctx.stroke();
+        } else if(p.isRect){
+          if(p.rot!==undefined) p.rot+=p.rotV;
+          ctx.translate(p.x,p.y); ctx.rotate(p.rot||0);
+          ctx.fillStyle=p.color;
+          ctx.fillRect(-p.size,-p.size,p.size*2,p.size*2);
+        } else {
+          ctx.fillStyle=p.color;
+          ctx.beginPath(); ctx.arc(p.x,p.y,p.size*p.life,0,Math.PI*2); ctx.fill();
+        }
         ctx.restore();
       }
     }
 
-    // Territory grid display (mini 6x6 tile map) showing conquered cells
-    var tileSize = 14;
-    var cols = 24, rows = 24;
-    var mapX = W - cols * tileSize - 20;
-    var mapY = (H - rows * tileSize) / 2;
-    var gainedSet = {};
-    gained.forEach(function(c){ if(c.seq !== null) gainedSet[c.seq] = true; });
-    var lostSet = {};
-    lost.forEach(function(c){ if(c.seq !== null) lostSet[c.seq] = true; });
+    // ── Shockwave rings ────────────────────────────────────────────────────
+    var rings = [];
+    function spawnRing(x,y,color,maxR,width){
+      rings.push({x:x,y:y,r:2,maxR:maxR||80,color:color||WHITE,life:1,width:width||2});
+    }
+    function tickRings() {
+      for(var i=rings.length-1;i>=0;i--){
+        var rg=rings[i];
+        rg.r+=rg.maxR*0.04; rg.life-=0.03;
+        if(rg.r>rg.maxR||rg.life<=0){rings.splice(i,1);continue;}
+        ctx.save(); ctx.globalAlpha=rg.life*(1-rg.r/rg.maxR);
+        ctx.strokeStyle=rg.color; ctx.lineWidth=rg.width;
+        ctx.beginPath(); ctx.arc(rg.x,rg.y,rg.r,0,Math.PI*2); ctx.stroke();
+        ctx.restore();
+      }
+    }
 
-    // Score counter easing
-    function easeOut(t) { return 1 - Math.pow(1-t, 3); }
-    function lerp(a,b,t){ return a + (b-a)*t; }
+    // ── Lightning bolt ─────────────────────────────────────────────────────
+    function drawLightning(x1,y1,x2,y2,alpha,color) {
+      var steps=8, dx=(x2-x1)/steps, dy=(y2-y1)/steps;
+      ctx.save(); ctx.globalAlpha=alpha; ctx.strokeStyle=color||GOLD2; ctx.lineWidth=1.5;
+      ctx.shadowBlur=8; ctx.shadowColor=color||GOLD2;
+      ctx.beginPath(); ctx.moveTo(x1,y1);
+      for(var s=1;s<=steps;s++){
+        var jitter=(s<steps)?(Math.random()-0.5)*20:0;
+        ctx.lineTo(x1+dx*s+jitter,y1+dy*s+jitter);
+      }
+      ctx.stroke(); ctx.restore();
+    }
 
-    // Build gained cells for staggered reveal
-    var gainedCells = gained.slice().sort(function(a,b){ return (a.seq||0)-(b.seq||0); });
+    // ── Screen shake state ─────────────────────────────────────────────────
+    var shake = {x:0,y:0,power:0};
+    function triggerShake(power){ shake.power=Math.max(shake.power,power); }
+    function updateShake() {
+      if(shake.power>0.2){
+        shake.x=(Math.random()-.5)*shake.power*8;
+        shake.y=(Math.random()-.5)*shake.power*8;
+        shake.power*=0.85;
+      } else { shake.x=0; shake.y=0; shake.power=0; }
+    }
+
+    // ── HUD bracket corners ────────────────────────────────────────────────
+    function drawHUDCorners(x,y,w,h,alpha,color) {
+      var s=12;
+      ctx.save(); ctx.globalAlpha=alpha; ctx.strokeStyle=color||GOLD; ctx.lineWidth=1.5;
+      [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]].forEach(function(c){
+        ctx.beginPath(); ctx.moveTo(c[0],c[1]); ctx.lineTo(c[0]+c[2]*s,c[1]);
+        ctx.moveTo(c[0],c[1]); ctx.lineTo(c[0],c[1]+c[3]*s);
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+
+    // ── Scanline effect ────────────────────────────────────────────────────
+    function drawScanlines(alpha) {
+      ctx.save(); ctx.globalAlpha=alpha*0.07;
+      for(var sy=0;sy<H;sy+=3){
+        ctx.fillStyle='#000'; ctx.fillRect(0,sy,W,1);
+      }
+      ctx.restore();
+    }
+
+    // ── Mini map setup ─────────────────────────────────────────────────────
+    var TILE = 10, COLS = 24;
+    var mapX = W - COLS*TILE - 16, mapY = (H - COLS*TILE)/2;
+    var cells35 = (rawData&&rawData.rounds&&rawData.rounds['3.5']&&rawData.rounds['3.5'].cells)||[];
+    var ncOwned35 = (rawData&&rawData.rounds['3.5']&&rawData.rounds['3.5'].neutralCityOwned)||[];
+    var ncTgt35   = (rawData&&rawData.rounds['3.5']&&rawData.rounds['3.5'].neutralCityTargets)||[];
+    var gainedCells = gained.slice().sort(function(a,b){return(a.r*24+a.c)-(b.r*24+b.c);});
+    var gainedRC={};
+    gainedCells.forEach(function(gc){gainedRC[gc.r+','+gc.c]=true;});
+
+    function drawMiniMap(revealFrac, flashPhase) {
+      ctx.save();
+      var revealed={};
+      var count=Math.floor(revealFrac*gainedCells.length);
+      for(var gi=0;gi<count;gi++) revealed[gainedCells[gi].r+','+gainedCells[gi].c]=true;
+
+      for(var r=0;r<COLS;r++){
+        for(var c=0;c<COLS;c++){
+          var cell=cells35[r*COLS+c]; if(!cell) continue;
+          var cx=mapX+c*TILE, cy=mapY+r*TILE;
+          var key=r+','+c;
+          var fill='#141820';
+          if(cell.type===1) fill='#0d1117';
+          else if(cell.type===2) fill='#1a2540';
+          else if(cell.type===3){
+            if(revealed[key]) fill=GREEN;
+            else if(cell.sid===2864) fill=DGREEN;
+            else if(cell.sid>0) fill='#2a1418';
+            else fill='#1a2030';
+          }
+          ctx.fillStyle=fill;
+          ctx.fillRect(cx,cy,TILE-1,TILE-1);
+        }
+      }
+      // NC owned = gold dots
+      ncOwned35.forEach(function(nc){
+        var cx=mapX+nc.c*TILE+TILE/2, cy=mapY+nc.r*TILE+TILE/2;
+        ctx.fillStyle=GOLD2; ctx.globalAlpha=0.85+0.15*Math.sin(flashPhase*4);
+        ctx.beginPath(); ctx.arc(cx,cy,3,0,Math.PI*2); ctx.fill();
+        ctx.globalAlpha=0.4; ctx.strokeStyle=GOLD2; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.arc(cx,cy,5+Math.sin(flashPhase*3)*2,0,Math.PI*2); ctx.stroke();
+      });
+      // NC targets = pulsing outline
+      ncTgt35.forEach(function(nc){
+        var cx=mapX+nc.c*TILE+TILE/2, cy=mapY+nc.r*TILE+TILE/2;
+        ctx.globalAlpha=0.7+0.3*Math.sin(flashPhase*5);
+        ctx.strokeStyle=GOLD3; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.arc(cx,cy,5,0,Math.PI*2); ctx.stroke();
+      });
+      ctx.globalAlpha=1;
+
+      // Border
+      ctx.strokeStyle=MUTED; ctx.lineWidth=1; ctx.globalAlpha=0.4;
+      ctx.strokeRect(mapX-1,mapY-1,COLS*TILE+1,COLS*TILE+1);
+      ctx.restore();
+    }
+
+    // ── Explosion registry for choreographed blasts ────────────────────────
+    var explosionTimings = gainedCells.map(function(gc,i){
+      return { t: 3500 + i*(3500/Math.max(gainedCells.length,1)), r:gc.r, c:gc.c };
+    });
+    var firedExplosions = {};
 
     var render = function(ts) {
-      if (!startTime) startTime = ts;
-      var elapsed = ts - startTime;
-      var t = Math.min(elapsed / duration, 1.0);
+      if(!startTime) startTime=ts;
+      var elapsed=ts-startTime, t=Math.min(elapsed/duration,1.0);
+      updateShake();
 
-      // Clear
-      ctx.fillStyle = BG;
-      ctx.fillRect(0, 0, W, H);
+      ctx.save();
+      ctx.translate(shake.x,shake.y);
+      ctx.fillStyle=BG; ctx.fillRect(-10,-10,W+20,H+20);
+      drawScanlines(1);
 
-      // === PHASE 1 (0-3s): Intro — "After Battle Results" banner ===
-      var p1End = 3000/duration;
-      if (t < p1End) {
-        var pt = t / p1End;
-        ctx.globalAlpha = Math.min(pt * 3, 1);
-        ctx.font = 'bold 22px monospace';
-        ctx.fillStyle = GOLD;
-        ctx.textAlign = 'center';
-        ctx.fillText('AFTER BATTLE RESULTS', W/2, H/2 - 20);
-        ctx.font = '13px monospace';
-        ctx.fillStyle = MUTED;
-        ctx.fillText('Round 3 \u2014 Wasteland Conquest Phase Complete', W/2, H/2 + 8);
-        // Horizontal scan line
-        var scanX = pt * W;
-        ctx.globalAlpha = 0.3;
-        ctx.fillStyle = GREEN;
-        ctx.fillRect(scanX - 2, 0, 4, H);
-        ctx.globalAlpha = 1;
-        if (Math.random() < 0.1 * pt) {
-          spawnBurst(Math.random()*W, Math.random()*H, GOLD, 3);
+      // ══ PHASE 1 (0-2s): TACTICAL BOOT SEQUENCE ══════════════════════════
+      var p1=phaseT(t,0,2000);
+      if(p1>0 && p1<1) {
+        // Cascading scan lines sweeping down
+        var scanY=(p1*H*1.5)%H;
+        ctx.save(); ctx.globalAlpha=0.15; ctx.fillStyle=GREEN2;
+        ctx.fillRect(0,scanY,W,2);
+        ctx.fillRect(0,scanY+H/3,W,1);
+        ctx.fillRect(0,scanY+2*H/3,W,1);
+        ctx.restore();
+        // Glitch-flicker rectangles
+        if(Math.random()<0.15){
+          ctx.save(); ctx.globalAlpha=0.06+Math.random()*0.08;
+          ctx.fillStyle=BLUE2;
+          var gy=Math.random()*H;
+          ctx.fillRect(0,gy,W,2+Math.random()*4);
+          ctx.restore();
+        }
+        var ta=Math.min(p1*4,1);
+        ctx.save(); ctx.globalAlpha=ta;
+        // HUD label
+        ctx.fillStyle=GREEN2; ctx.font='bold 10px monospace'; ctx.textAlign='left';
+        ctx.fillText('SECTOR-16 // SEAL STONE CHAOS // ROUND 3.5',12,18);
+        ctx.fillStyle=MUTED; ctx.font='9px monospace';
+        ctx.fillText('BATTLE ASSESSMENT — WASTELAND PHASE COMPLETE',12,32);
+        // Animated progress bar
+        ctx.fillStyle='#1a2030'; ctx.fillRect(12,40,W-24,4);
+        ctx.fillStyle=GREEN; ctx.fillRect(12,40,(W-24)*p1,4);
+        ctx.strokeStyle=GREEN2; ctx.lineWidth=1; ctx.globalAlpha=ta*0.5;
+        ctx.strokeRect(12,40,W-24,4);
+        drawHUDCorners(8,8,W-16,H-16,ta*0.7,GREEN);
+        ctx.restore();
+      }
+
+      // ══ PHASE 2 (2-5.5s): INTEL DISPLAY — WHO DID WE HIT ════════════════
+      var p2=phaseT(t,2000,5500);
+      if(p2>0){
+        var mapAlpha=Math.min(p2*3,1);
+        ctx.save(); ctx.globalAlpha=mapAlpha;
+        drawMiniMap(p2<1?0:1, elapsed/1000);
+        ctx.restore();
+
+        // Left intel panel slides in
+        var panelX=-220+220*Math.min(p2*4,1);
+        ctx.save(); ctx.translate(panelX,0);
+        ctx.fillStyle='rgba(13,17,23,0.88)';
+        ctx.fillRect(0,0,200,H);
+        ctx.strokeStyle=GREEN; ctx.lineWidth=1; ctx.globalAlpha=0.4;
+        ctx.strokeRect(0,0,200,H); ctx.globalAlpha=1;
+        ctx.fillStyle=GREEN2; ctx.font='bold 11px monospace'; ctx.textAlign='left';
+        ctx.fillText('FIELD REPORT',12,22);
+        ctx.fillStyle=MUTED; ctx.font='9px monospace';
+        ctx.fillText('WASTELAND SEIZURES',12,36);
+        ctx.fillStyle=GREEN; ctx.font='bold 18px monospace';
+        ctx.fillText('+'+gained.length+' SEIZED',12,60);
+        ctx.fillStyle=RED; ctx.font='bold 14px monospace';
+        ctx.fillText('-'+lost.length+' LOST',12,80);
+        ctx.fillStyle=GOLD; ctx.font='bold 14px monospace';
+        ctx.fillText('NET +'+String(gained.length-lost.length),12,98);
+        ctx.fillStyle=MUTED; ctx.font='9px monospace';
+        ctx.fillText('TARGETS ENGAGED:',12,120);
+        topTargets.slice(0,5).forEach(function(sid,i){
+          ctx.fillStyle=sid==0?MUTED:RED2;
+          ctx.fillText((sid==0?'UNCLAIMED':'S'+sid)+' \u00d7'+takenFrom[sid],14,136+i*14);
+        });
+        ctx.restore();
+      }
+
+      // ══ PHASE 3 (3.5-7s): CHOREOGRAPHED MAP EXPLOSIONS ══════════════════
+      if(elapsed>=3500 && elapsed<=7000 && cells35.length) {
+        explosionTimings.forEach(function(ev){
+          if(!firedExplosions[ev.t] && elapsed>=ev.t){
+            firedExplosions[ev.t]=true;
+            var ex=mapX+ev.c*TILE+TILE/2, ey=mapY+ev.r*TILE+TILE/2;
+            spawnBurst(ex,ey,GREEN,8,2,1.5,0.03);
+            spawnSpark(ex,ey,GREEN2,4);
+            spawnRing(ex,ey,GREEN,24,1);
+            if(Math.random()<0.3) triggerShake(1.5);
+          }
+        });
+        // Mini map reveal during explosions
+        var mReveal=(elapsed-3500)/3500;
+        ctx.save(); ctx.globalAlpha=1;
+        drawMiniMap(mReveal, elapsed/1000);
+        ctx.restore();
+      }
+
+      // ══ PHASE 4 (7-11s): SCORE DETONATION ═══════════════════════════════
+      var p4=phaseT(t,7000,11000);
+      if(p4>0){
+        var scoreT=easeOut(Math.min(p4*1.5,1));
+        var dispScore=Math.round(lerp(prevScore,curScore,scoreT));
+
+        // Big shockwave at 7s
+        if(p4>0 && p4<0.05) { spawnRing(W/2,H/2,GOLD2,120,4); triggerShake(6); }
+        if(p4>0.1 && p4<0.12){ spawnBurst(W/2,H/2,GOLD2,30,5,3,0.008); spawnDebris(W/2,H/2,GOLD,20); }
+
+        // Glowing score
+        ctx.save();
+        ctx.shadowBlur=30+20*Math.sin(elapsed/200); ctx.shadowColor=GOLD2;
+        ctx.textAlign='center';
+        ctx.fillStyle=MUTED; ctx.font='bold 10px monospace';
+        ctx.fillText('SECTOR SCORE',W/2,H/2-50);
+        ctx.fillStyle=p4<0.9?GOLD2:GREEN2;
+        ctx.font='bold 56px monospace';
+        ctx.fillText(dispScore.toLocaleString(),W/2,H/2+14);
+        ctx.restore();
+
+        // Delta
+        if(p4>0.35){
+          var da=Math.min((p4-0.35)/0.2,1);
+          ctx.save(); ctx.globalAlpha=da;
+          ctx.textAlign='center'; ctx.font='bold 20px monospace';
+          ctx.fillStyle=GREEN2; ctx.shadowBlur=12; ctx.shadowColor=GREEN;
+          ctx.fillText('+'+scoreDelta.toLocaleString(),W/2,H/2+40);
+          ctx.restore();
+        }
+        // Rank badge
+        if(p4>0.55){
+          var ra=Math.min((p4-0.55)/0.2,1);
+          ctx.save(); ctx.globalAlpha=ra;
+          ctx.fillStyle='rgba(56,139,253,0.15)'; ctx.fillRect(W/2-90,H/2+50,180,22);
+          ctx.strokeStyle=BLUE2; ctx.lineWidth=1; ctx.strokeRect(W/2-90,H/2+50,180,22);
+          ctx.textAlign='center'; ctx.font='bold 12px monospace'; ctx.fillStyle=BLUE2;
+          ctx.fillText('\u25b2  RANK 21  \u2192  RANK 20',W/2,H/2+65);
+          ctx.restore();
+        }
+        // Continuous fireworks
+        if(p4>0.4 && Math.random()<0.12){
+          var fc=[GREEN2,GOLD2,BLUE2,RED][Math.floor(Math.random()*4)];
+          spawnBurst(80+Math.random()*(W-160),15+Math.random()*80,fc,14,4,2.5,0.008);
+        }
+        if(p4>0.4 && Math.random()<0.08) spawnSpark(80+Math.random()*(W-160),20+Math.random()*60,GOLD3,6);
+
+        // Lightning arcs across the screen
+        if(p4>0.2 && p4<0.8 && Math.random()<0.07){
+          var lx=Math.random()*W;
+          drawLightning(lx,0,lx+(Math.random()-.5)*100,H,0.4+Math.random()*0.3,GOLD3);
         }
       }
 
-      // === PHASE 2 (3-7s): Territory map reveal with staggered cell lighting ===
-      var p2Start = 3000/duration, p2End = 7000/duration;
-      if (t >= p2Start && t <= p2End) {
-        var p2t = (t - p2Start) / (p2End - p2Start);
+      // ══ PHASE 5 (11-15.5s): NEUTRAL CITY SPOTLIGHT ═══════════════════════
+      var p5=phaseT(t,11000,15500);
+      if(p5>0){
+        var ncA=Math.min(p5*3,1);
 
-        // Draw mini map
-        if (rawData && rawData.rounds && rawData.rounds['3.5']) {
-          var cells35 = rawData.rounds['3.5'].cells;
-          // Build lookup of gained cells by r,c for fast highlight
-          var gainedRC = {};
-          gainedCells.forEach(function(gc){ gainedRC[gc.r + ',' + gc.c] = true; });
-          var revealCount = Math.floor(p2t * gainedCells.length);
-          var revealedRC = {};
-          for (var ri2 = 0; ri2 < revealCount; ri2++) {
-            var gci = gainedCells[ri2];
-            revealedRC[gci.r + ',' + gci.c] = true;
+        // Backdrop panel
+        ctx.save(); ctx.globalAlpha=ncA*0.7;
+        ctx.fillStyle=BG2; ctx.fillRect(0,0,W,H);
+        ctx.restore();
+
+        // Title
+        ctx.save(); ctx.globalAlpha=ncA;
+        ctx.textAlign='center';
+        ctx.fillStyle=GOLD3; ctx.font='bold 11px monospace';
+        ctx.shadowBlur=10; ctx.shadowColor=GOLD2;
+        ctx.fillText('NEUTRAL CITIES', W/2, 30);
+        ctx.restore();
+
+        // 3 city cards side by side with beam effect
+        var cardW=130, cardH=80, gap=20;
+        var totalW=3*cardW+2*gap, startX=(W-totalW)/2;
+        var cities3=[
+          {name:'Lv.2 #2016',status:'HELD',color:GREEN2},
+          {name:'Lv.1 #1040',status:'HELD',color:GREEN},
+          {name:'Lv.1 #1046',status:'HELD',color:GREEN}
+        ];
+        cities3.forEach(function(city,i){
+          var cx=startX+i*(cardW+gap), cy=50;
+          var revealDelay=i*0.12;
+          var ca=Math.min((p5-revealDelay)*6,1); if(ca<=0) return;
+          ctx.save(); ctx.globalAlpha=ca;
+
+          // Beam from top
+          if(p5>revealDelay && p5<revealDelay+0.4){
+            var beamT=(p5-revealDelay)/0.4;
+            ctx.globalAlpha=ca*(1-beamT)*0.6;
+            var grad=ctx.createLinearGradient(cx+cardW/2,0,cx+cardW/2,cy+beamT*cardH);
+            grad.addColorStop(0,GREEN2); grad.addColorStop(1,'transparent');
+            ctx.fillStyle=grad; ctx.fillRect(cx,0,cardW,cy+beamT*cardH);
+            ctx.globalAlpha=ca;
           }
-          ctx.save();
-          for (var ri = 0; ri < rows; ri++) {
-            for (var ci = 0; ci < cols; ci++) {
-              var cell = cells35[ri*cols + ci];
-              var cx2 = mapX + ci*tileSize;
-              var cy2 = mapY + ri*tileSize;
-              var key35 = ri + ',' + ci;
-              var fillC = '#1a1f2a';
-              if (cell.type === 1) fillC = '#0d1117';
-              else if (cell.type === 3) {
-                if (revealedRC[key35]) fillC = '#3fb950';
-                else if (cell.sid === 2864) fillC = '#1e6b2d';
-                else if (cell.sid > 0) fillC = '#2a1a1a';
-                else fillC = '#1a2030';
-              }
-              ctx.fillStyle = fillC;
-              ctx.fillRect(cx2, cy2, tileSize-1, tileSize-1);
-            }
-          }
-          // Burst on leading edge of reveal
-          if (revealCount > 0 && revealCount < gainedCells.length && Math.random() < 0.2) {
-            var edge = gainedCells[revealCount-1];
-            spawnBurst(mapX + edge.c*tileSize + tileSize/2, mapY + edge.r*tileSize + tileSize/2, GREEN, 4);
-          }
+
+          // Card bg
+          ctx.fillStyle='rgba(30,107,45,0.12)'; ctx.fillRect(cx,cy,cardW,cardH);
+          ctx.strokeStyle=city.color; ctx.lineWidth=1.5;
+          ctx.strokeRect(cx,cy,cardW,cardH);
+          drawHUDCorners(cx,cy,cardW,cardH,ca,city.color);
+
+          // Crown icon (hex star)
+          ctx.fillStyle=GOLD2; ctx.font='18px serif';
+          ctx.textAlign='center'; ctx.fillText('\u2605',cx+cardW/2,cy+28);
+
+          ctx.fillStyle=city.color; ctx.font='bold 10px monospace';
+          ctx.fillText(city.name,cx+cardW/2,cy+46);
+          ctx.fillStyle=GREEN2; ctx.font='bold 9px monospace';
+          ctx.fillText(city.status,cx+cardW/2,cy+60);
+
+          // Pulsing glow ring
+          var ringR=10+4*Math.sin(elapsed/300+i*1.2);
+          ctx.globalAlpha=ca*0.3; ctx.strokeStyle=city.color; ctx.lineWidth=1;
+          ctx.beginPath(); ctx.arc(cx+cardW/2,cy+23,ringR,0,Math.PI*2); ctx.stroke();
+          ctx.restore();
+        });
+
+        // War targets below
+        if(p5>0.4){
+          var ta2=Math.min((p5-0.4)*3,1);
+          ctx.save(); ctx.globalAlpha=ta2;
+          ctx.textAlign='center'; ctx.fillStyle=GOLD; ctx.font='bold 10px monospace';
+          ctx.fillText('DECLARED TARGETS: #3008 \u00b7 #2008 \u00b7 #1060',W/2,H-30);
+          ctx.fillStyle=MUTED; ctx.font='9px monospace';
+          ctx.fillText('Neutral City Declaration stage active',W/2,H-16);
           ctx.restore();
         }
 
-        // Left panel: stats
-        ctx.textAlign = 'left';
-        ctx.font = 'bold 13px monospace';
-        ctx.fillStyle = GREEN;
-        ctx.fillText('+' + gained.length + ' seized', 20, 60);
-        ctx.fillStyle = RED;
-        ctx.fillText('-' + lost.length + ' lost', 20, 80);
-        ctx.fillStyle = WHITE;
-        ctx.font = '11px monospace';
-        ctx.fillStyle = MUTED;
-        ctx.fillText('Net: +' + (gained.length - lost.length), 20, 100);
+        // Occasional NC beam sparks
+        if(Math.random()<0.05) spawnSpark(startX+Math.random()*totalW,50+Math.random()*80,GOLD2,3);
+      }
 
-        // Top targets
-        if (topTargets.length) {
-          ctx.fillStyle = MUTED;
-          ctx.fillText('Seized from:', 20, 130);
-          topTargets.slice(0,4).forEach(function(sid, idx) {
-            ctx.fillStyle = sid == 0 ? MUTED : RED;
-            ctx.fillText((sid == 0 ? 'Unclaimed' : 'S'+sid) + ' \u00d7' + takenFrom[sid], 20, 148 + idx*16);
-          });
+      // ══ PHASE 6 (15.5-19s): DOMINATION SALVO ════════════════════════════
+      var p6=phaseT(t,15500,19000);
+      if(p6>0){
+        if(p6<0.02){ triggerShake(10); spawnRing(W/2,H/2,GREEN2,200,6); }
+        if(Math.random()<0.18){
+          var bc=[GREEN2,GOLD2,BLUE2,ORANGE,RED][Math.floor(Math.random()*5)];
+          spawnBurst(60+Math.random()*(W-120),10+Math.random()*(H-40),bc,20,5,3,0.006);
+          spawnDebris(60+Math.random()*(W-120),10+Math.random()*(H-40),GOLD,10);
+        }
+        if(Math.random()<0.1) spawnSpark(Math.random()*W,Math.random()*H*0.6,GOLD3,8);
+        if(Math.random()<0.06){
+          var lx2=Math.random()*W;
+          drawLightning(lx2,0,lx2+(Math.random()-.5)*80,H*0.8,0.5,GREEN2);
+        }
+
+        // "S2864 DOMINATES" stamp
+        var stampA=Math.min(p6*4,1);
+        ctx.save(); ctx.globalAlpha=stampA;
+        ctx.textAlign='center';
+        ctx.shadowBlur=40; ctx.shadowColor=GREEN2;
+        ctx.fillStyle=GREEN2; ctx.font='bold 28px monospace';
+        ctx.fillText('S2864  DOMINATES',W/2,H/2-8);
+        ctx.shadowBlur=0;
+        ctx.fillStyle=GOLD2; ctx.font='bold 14px monospace';
+        ctx.fillText('55 WASTELANDS  \u00b7  3 NEUTRAL CITIES  \u00b7  RANK 20',W/2,H/2+18);
+        drawHUDCorners(20,H/2-40,W-40,68,stampA*0.9,GREEN2);
+        ctx.restore();
+      }
+
+      // ══ PHASE 7 (19-22s): THE CHRONICLE ═════════════════════════════════
+      var p7=phaseT(t,19000,22000);
+      if(p7>0){
+        ctx.fillStyle='rgba(0,0,0,'+Math.min(p7/0.2,0.92)+')';
+        ctx.fillRect(-10,-10,W+20,H+20);
+
+        if(p7>0.15){
+          var la=Math.min((p7-0.15)/0.1,1);
+          ctx.save(); ctx.globalAlpha=la; ctx.fillStyle=GOLD;
+          ctx.fillRect(40,H/2-24,(W-80)*Math.min((p7-0.15)/0.15,1),2);
+          ctx.restore();
+        }
+        if(p7>0.3){
+          var chron='Round 3.5 \u2014 Sector 16';
+          var cT=Math.min((p7-0.3)/0.35,1);
+          ctx.save(); ctx.globalAlpha=Math.min((p7-0.3)/0.15,1);
+          ctx.textAlign='center'; ctx.font='bold 20px monospace';
+          ctx.fillStyle=WHITE;
+          ctx.shadowBlur=12; ctx.shadowColor=GOLD2;
+          ctx.fillText(chron.substring(0,Math.floor(cT*chron.length)),W/2,H/2+4);
+          ctx.restore();
+        }
+        if(p7>0.65){
+          var sub='After Wasteland Battles — Neutral City Stage Active';
+          var sT=Math.min((p7-0.65)/0.25,1);
+          ctx.save(); ctx.globalAlpha=Math.min((p7-0.65)/0.15,1);
+          ctx.textAlign='center'; ctx.font='10px monospace'; ctx.fillStyle=MUTED;
+          ctx.fillText(sub.substring(0,Math.floor(sT*sub.length)),W/2,H/2+22);
+          ctx.restore();
         }
       }
 
-      // === PHASE 3 (7-11s): Score counter ===
-      var p3Start = 7000/duration, p3End = 11000/duration;
-      if (t >= p3Start) {
-        var p3t = Math.min((t - p3Start) / (p3End - p3Start), 1);
-        var displayScore = Math.round(lerp(prevScore, curScore, easeOut(p3t)));
+      tickParticles();
+      tickRings();
+      ctx.restore(); // shake restore
 
-        ctx.textAlign = 'center';
-        ctx.font = 'bold 11px monospace';
-        ctx.fillStyle = MUTED;
-        ctx.fillText('SECTOR SCORE', W/2, H/2 - 38);
-
-        ctx.font = 'bold 44px monospace';
-        ctx.fillStyle = t < p3End ? GOLD : GREEN;
-        ctx.fillText(displayScore.toLocaleString(), W/2, H/2 + 10);
-
-        // Score delta badge
-        if (p3t > 0.3) {
-          ctx.font = 'bold 16px monospace';
-          ctx.fillStyle = GREEN;
-          ctx.globalAlpha = Math.min((p3t - 0.3) / 0.2, 1);
-          ctx.fillText('+' + scoreDelta.toLocaleString(), W/2, H/2 + 34);
-          ctx.globalAlpha = 1;
-        }
-
-        // Rank improvement
-        if (p3t > 0.5) {
-          ctx.font = '12px monospace';
-          ctx.fillStyle = BLUE;
-          ctx.globalAlpha = Math.min((p3t - 0.5) / 0.2, 1);
-          ctx.fillText('\u25b2 Rank 21 \u2192 Rank 20', W/2, H/2 + 56);
-          ctx.globalAlpha = 1;
-        }
-
-        // Fireworks as score reaches target
-        if (p3t > 0.7 && Math.random() < 0.08) {
-          var fwColor = [GREEN, GOLD, BLUE][Math.floor(Math.random()*3)];
-          spawnBurst(100 + Math.random() * (W-200), 30 + Math.random() * 100, fwColor, 12);
-        }
-      }
-
-      // === PHASE 4 (11-14s): Victory salvo of fireworks ===
-      var p4Start = 11000/duration, p4End = 14000/duration;
-      if (t >= p4Start && t <= p4End) {
-        var p4t = (t - p4Start) / (p4End - p4Start);
-        if (Math.random() < 0.15) {
-          var burstColors = [GREEN, GOLD, BLUE, WHITE];
-          spawnBurst(80 + Math.random() * (W-160), 20 + Math.random() * 120,
-                     burstColors[Math.floor(Math.random()*burstColors.length)], 16);
-        }
-        // Owned count celebration
-        ctx.textAlign = 'center';
-        ctx.font = 'bold 13px monospace';
-        ctx.fillStyle = GREEN;
-        ctx.globalAlpha = Math.min(p4t * 4, 1);
-        ctx.fillText('55 WASTELANDS HELD', W/2, H - 60);
-        ctx.font = '11px monospace';
-        ctx.fillStyle = MUTED;
-        ctx.fillText('Neutral City Declaration now in progress', W/2, H - 42);
-        ctx.globalAlpha = 1;
-      }
-
-      // === PHASE 5 (14-16s): Chronicle fade-in ===
-      var p5Start = 14000/duration;
-      if (t >= p5Start) {
-        var p5t = (t - p5Start) / (1.0 - p5Start);
-        ctx.fillStyle = '#000000';
-        ctx.globalAlpha = Math.min(p5t / 0.2, 0.88);
-        ctx.fillRect(0, 0, W, H);
-        ctx.globalAlpha = 1;
-
-        if (p5t > 0.15) {
-          var lineA = Math.min((p5t - 0.15)/0.15, 1);
-          ctx.globalAlpha = lineA;
-          ctx.fillStyle = GOLD;
-          ctx.fillRect(40, H/2 - 20, (W-80) * Math.min((p5t-0.15)/0.2, 1), 2);
-          ctx.globalAlpha = 1;
-        }
-        if (p5t > 0.3) {
-          var textA = Math.min((p5t - 0.3)/0.2, 1);
-          ctx.globalAlpha = textA;
-          var chronicle35 = 'Round 3.5 \u2014 Sector 16';
-          ctx.font = 'bold 18px monospace';
-          ctx.fillStyle = WHITE;
-          ctx.textAlign = 'center';
-          var charsToShow = Math.floor(Math.min((p5t-0.3)/0.4, 1) * chronicle35.length);
-          ctx.fillText(chronicle35.substring(0, charsToShow), W/2, H/2 + 4);
-          ctx.globalAlpha = 1;
-        }
-        if (p5t > 0.7) {
-          ctx.globalAlpha = Math.min((p5t-0.7)/0.2, 1);
-          ctx.font = '11px monospace';
-          ctx.fillStyle = MUTED;
-          ctx.textAlign = 'center';
-          ctx.fillText('After Wasteland Battles', W/2, H/2 + 26);
-          ctx.globalAlpha = 1;
-        }
-      }
-
-      updateParticles(ctx);
-
-      if (t < 1.0) storyAnimFrame = requestAnimationFrame(render);
-      else storyAnimFrame = null;
+      if(t<1.0) storyAnimFrame=requestAnimationFrame(render);
+      else storyAnimFrame=null;
     };
-    storyAnimFrame = requestAnimationFrame(render);
+    storyAnimFrame=requestAnimationFrame(render);
   }
 
   function openStory() {
