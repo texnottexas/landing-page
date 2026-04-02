@@ -1761,15 +1761,17 @@
     while (defContainer.children.length > 1) defContainer.removeChild(defContainer.lastChild);
 
     fillWarList(atkContainer, roundData.warTargets, 'attack', 'No active attacks', function(w) {
-      return 'Lv.' + w.level + ' \u2014 Owner: S' + w.currentOwner;
+      var base = w.currentOwner ? 'Lv.' + w.level + ' \u2014 S' + w.currentOwner : 'Unclaimed';
+      if (w.coAttackers && w.coAttackers.length) base += ' \u26A0 3-way w/ S' + w.coAttackers.join('+S');
+      return base;
     });
 
     fillWarList(defContainer, roundData.defenseTargets, 'defend', 'No incoming attacks', function(d) {
       var attackers = d.attackerSids;
       if (attackers && attackers.length > 0) {
-        return 'Lv.' + d.level + ' \u2014 Attackers: ' + attackers.map(function(s){ return 'S' + s; }).join(', ');
+        return 'Lv.' + d.level + ' \u2014 ' + attackers.map(function(s){ return 'S' + s; }).join(' + ');
       }
-      return 'Lv.' + d.level + ' \u2014 Uncontested';
+      return 'Lv.' + d.level + ' \u2014 Under attack';
     });
   }
 
@@ -2499,9 +2501,13 @@
       }
     }
     if (seq !== null && defSeqMap[seq]) {
+      var dd = defSeqMap[seq];
       body.appendChild(el('div', 'cd-section', 'Defense'));
       var defBadge = el('div', 'cd-war-badge defend');
-      defBadge.textContent = '\uD83D\uDEE1 Uncontested (no enemy declaration)';
+      var attackers = dd.attackerSids && dd.attackerSids.length > 0;
+      defBadge.textContent = attackers
+        ? '\uD83D\uDEE1 Under attack from ' + dd.attackerSids.map(function(s){ return 'S'+s; }).join(', ')
+        : '\uD83D\uDEE1 Under attack (attacker TBD \u2014 re-extract to confirm)';
       body.appendChild(defBadge);
     }
 
