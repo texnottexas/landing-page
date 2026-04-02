@@ -77,7 +77,13 @@
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 2px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      max-width: 100%;
+      flex-shrink: 1;
+      scrollbar-width: none;
     }
+    .round-pills::-webkit-scrollbar { display: none; }
     .round-pill {
       font-size: .72rem;
       padding: .3rem .65rem;
@@ -88,6 +94,7 @@
       cursor: pointer;
       transition: all .15s;
       white-space: nowrap;
+      flex-shrink: 0;
     }
     .round-pill.active {
       background: var(--accent);
@@ -806,6 +813,7 @@
       .cell.type-1 { font-size: .5rem; }
       .map-container { padding: .5rem; }
       .header-controls { width: 100%; justify-content: flex-start; }
+      .round-pill { font-size: .64rem; padding: .25rem .5rem; }
     }
     @media (max-width: 480px) {
       .cell { width: 22px; height: 22px; font-size: .4rem; }
@@ -4232,14 +4240,14 @@
           if(stompT>0.6 && stompT<0.65){ bigExplosion(defX, GROUND_Y-20, RED); }
         }
 
-        // "#391, #373, #392 BLOCKED" text
-        if(s3>0.5){
-          var ba=Math.min((s3-0.5)*4,1);
-          glowText('S126 BLOCKS: #391, #373', W*0.35, 55, RED2, 10, ba, 6);
+        // Battle results text — fade in early, stay visible
+        if(s3>0.3){
+          var ba=Math.min((s3-0.3)*3,1);
+          glowText('S126 BLOCKS: #391, #373', W/2, H-70, RED2, 11, ba, 8);
         }
-        if(s3>0.78){
-          var la=Math.min((s3-0.78)*6,1);
-          glowText('#392 LOST', W*0.3, 72, RED, 11, la*Math.abs(Math.sin(elapsed/200)), 8);
+        if(s3>0.72){
+          var la=Math.min((s3-0.72)*4,1);
+          glowText('#392 LOST TO S126', W/2, H-50, RED, 12, la*(0.75+0.25*Math.sin(elapsed/500)), 10);
         }
 
         // "S126" boss label
@@ -4301,9 +4309,7 @@
           if(s4>0.6){
             glowText('+'+scoreDelta.toLocaleString(), W/2, H/2+26, GREEN2, 16, Math.min((s4-0.6)*4,1), 10);
           }
-          if(s4>0.75){
-            glowText('\u25b2 RANK 21 \u2192 20', W/2, H/2+46, BLUE2, 12, Math.min((s4-0.75)*5,1), 8);
-          }
+          // rank badge drawn post-particles below
         }
 
         // Fireworks only during early victory phase (flags planting), none near chronicle
@@ -4409,6 +4415,21 @@
 
       tickParticles();
       tickRings();
+
+      // HUD elements drawn on top of all particles
+      var s4hud=pt(t,7000,11000);
+      if(s4hud>0.75){
+        var rankA=Math.min((s4hud-0.75)*5,1);
+        ctx.save();
+        ctx.fillStyle='rgba(13,24,40,0.75)'; ctx.fillRect(W/2-92,H/2+50,184,24);
+        ctx.strokeStyle=BLUE2; ctx.lineWidth=1.5; ctx.globalAlpha=rankA;
+        ctx.strokeRect(W/2-92,H/2+50,184,24);
+        ctx.fillStyle=BLUE2; ctx.font='bold 12px monospace'; ctx.textAlign='center';
+        ctx.shadowBlur=10; ctx.shadowColor=BLUE2;
+        ctx.fillText('\u25b2  RANK 21  \u2192  RANK 20',W/2,H/2+66);
+        ctx.restore();
+      }
+
       ctx.restore();
 
       if(t<1.0) storyAnimFrame=requestAnimationFrame(render);
