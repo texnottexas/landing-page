@@ -390,7 +390,7 @@
       50%      { box-shadow: 0 0 18px rgba(240,192,64,.9), inset 0 0 8px rgba(240,192,64,.3); }
     }
     /* SVG line overlay for neutral city declaration lines */
-    .nc-lines-svg { position:absolute; top:0; left:0; pointer-events:none; overflow:visible; }
+    .nc-lines-svg { position:absolute; top:0; left:0; pointer-events:none; overflow:visible; z-index:5; }
     .nc-line { stroke-dasharray:8 5; animation:nc-dash 3s linear infinite; }
     @keyframes nc-dash { to { stroke-dashoffset:-78; } }
 
@@ -2010,16 +2010,29 @@
     svg.setAttribute('width', gridW);
     svg.setAttribute('height', gridW);
 
-    // For each declaration target, draw a line from the nearest owned city to the target
+    // Compute S2864 territory centroid from owned wasteland cells
+    var centroid = null;
+    if (rd.cells) {
+      var sumR = 0, sumC = 0, count = 0;
+      rd.cells.forEach(function(c) {
+        if (c.type === 3 && c.sid === 2864) { sumR += c.r; sumC += c.c; count++; }
+      });
+      if (count > 0) centroid = cellCenter(Math.round(sumR / count), Math.round(sumC / count));
+    }
+
+    // For each declaration target, draw a line from territory centroid to the target
     (rd.neutralCityTargets || []).forEach(function(target) {
       var tp = cellCenter(target.r, target.c);
-      // Find closest owned city as source
-      var src = null, minDist = Infinity;
-      (rd.neutralCityOwned || []).forEach(function(owned) {
-        var op = cellCenter(owned.r, owned.c);
-        var d2 = Math.hypot(tp.x - op.x, tp.y - op.y);
-        if (d2 < minDist) { minDist = d2; src = op; }
-      });
+      // Use territory centroid as source; fall back to nearest owned NC
+      var src = centroid;
+      if (!src) {
+        var minDist = Infinity;
+        (rd.neutralCityOwned || []).forEach(function(owned) {
+          var op = cellCenter(owned.r, owned.c);
+          var d2 = Math.hypot(tp.x - op.x, tp.y - op.y);
+          if (d2 < minDist) { minDist = d2; src = op; }
+        });
+      }
       if (!src) return;
 
       // Glow line (wider, lower opacity)
@@ -2059,6 +2072,25 @@
       arrow.setAttribute('stroke-opacity', '0.9');
       svg.appendChild(arrow);
     });
+
+    // Draw a pulsing source marker at the territory centroid
+    if (centroid) {
+      var pulse = document.createElementNS(ns, 'circle');
+      pulse.setAttribute('cx', centroid.x); pulse.setAttribute('cy', centroid.y);
+      pulse.setAttribute('r', '10');
+      pulse.setAttribute('fill', 'none');
+      pulse.setAttribute('stroke', '#f0c040');
+      pulse.setAttribute('stroke-width', '2');
+      pulse.setAttribute('stroke-opacity', '0.7');
+      pulse.style.animation = 'nc-dash 2s linear infinite';
+      svg.appendChild(pulse);
+      var dot = document.createElementNS(ns, 'circle');
+      dot.setAttribute('cx', centroid.x); dot.setAttribute('cy', centroid.y);
+      dot.setAttribute('r', '4');
+      dot.setAttribute('fill', '#f0c040');
+      dot.setAttribute('fill-opacity', '0.85');
+      svg.appendChild(dot);
+    }
 
     wrap.appendChild(svg);
   }
@@ -3767,6 +3799,7 @@
 
     var startTime = null;
     var duration = 24000;
+    var elapsed = 0; // hoisted so inner functions (drawGround, etc.) can access it
 
     // ── Colors ────────────────────────────────────────────────────────────
     var BG = '#080c12', GROUND_COL = '#1a2236';
@@ -4045,7 +4078,7 @@
 
     var render = function(ts){
       if(!startTime) startTime=ts;
-      var elapsed=ts-startTime, t=Math.min(elapsed/duration,1.0);
+      elapsed=ts-startTime; var t=Math.min(elapsed/duration,1.0);
       wave = elapsed/800;
       updateShake();
 
