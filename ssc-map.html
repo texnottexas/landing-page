@@ -1128,11 +1128,7 @@
             <h3 style="margin:0">Battle Assignments</h3>
             <button class="assign-htp-btn" id="htpBtn">How to Play</button>
           </div>
-          <p class="battle-intro">Assign players to defend or attack each declared wasteland. Each player has <strong>2 marches</strong> and can defend at most <strong>1 wasteland</strong>.</p>
-          <div class="battle-limits" id="battleLimitPills">
-            <span class="limit-pill ce" id="ceLimitPill">CE (big ships): loading…</span>
-            <span class="limit-pill mm" id="mmLimitPill">MM (small ships): loading…</span>
-          </div>
+          <p class="battle-intro">Assign players to defend or attack each declared wasteland. Each player has <strong>2 marches</strong> and can only be in <strong>1 wasteland</strong>. Ships: <strong>Mothership</strong> (100 slots, 5 hearts) + <strong>Sweeper</strong> (50, 3 hearts) + <strong>Patrol</strong> (50, 3 hearts).</p>
           <div class="assign-group-hdr defend-hdr">
             <span id="defendGroupHdr">Defending (0)</span>
           </div>
@@ -4105,23 +4101,7 @@
     var LIMITS_KEY = 'ssc_march_limits';
     var assignments = { defend: {}, attack: {} }; // seq(str) → [{name, profession}]
     var activeAssign = null; // {mode:'defend'|'attack', seq:str}
-    var PROF_CE = 'Combat Elite', PROF_MM = 'Mechanical Masters';
-    // Limits loaded from localStorage — leader sets these to match in-game alliance config
-    var savedLimits = (function(){ try { return JSON.parse(localStorage.getItem(LIMITS_KEY)) || {}; } catch(e){ return {}; } })();
-    var CE_LIMIT = savedLimits.ce || 3;
-    var MM_LIMIT = savedLimits.mm || 10;
-    function saveLimits() { try { localStorage.setItem(LIMITS_KEY, JSON.stringify({ce:CE_LIMIT,mm:MM_LIMIT})); } catch(e){} }
-    function updateLimitUI() {
-      var ceEl = document.getElementById('ceLimitPill');
-      var mmEl = document.getElementById('mmLimitPill');
-      var htpCe = document.getElementById('htpCeLimit');
-      var htpMm = document.getElementById('htpMmLimit');
-      if (ceEl) ceEl.textContent = 'CE (big ships): max ' + CE_LIMIT + ' per wasteland';
-      if (mmEl) mmEl.textContent = 'MM (small ships): max ' + MM_LIMIT + ' per wasteland';
-      if (htpCe) htpCe.textContent = CE_LIMIT;
-      if (htpMm) htpMm.textContent = MM_LIMIT;
-    }
-    updateLimitUI();
+    var MAX_PLAYERS_PER_WASTELAND = 200; // Mothership 100 + Sweeper 50 + Patrol 50
 
     // Buff priority scores for sorting (higher = more important to defend)
     var SPEC_PRIORITY = {4001:10,4007:9,4008:8,4010:7,4006:6,4003:5,4002:4,4015:4,4004:3,4016:3,4017:2,4018:2,4080:2};
@@ -4168,7 +4148,6 @@
     function buildBattlePanel() {
       if (!roundData) return;
       loadAssignments();
-      updateLimitUI();
       var defList = document.getElementById('defendAssignList');
       var atkList = document.getElementById('attackAssignList');
       defList.textContent = ''; atkList.textContent = '';
@@ -4237,7 +4216,7 @@
       var chip = document.createElement('div'); chip.className = 'assign-chip';
       var nameEl = document.createElement('span'); nameEl.className = 'chip-name'; nameEl.textContent = p.name;
       var profEl = document.createElement('span'); profEl.className = 'chip-prof';
-      profEl.textContent = p.profession === PROF_CE ? 'CE' : 'MM';
+      profEl.textContent = p.alliance || '';
       var removeBtn = document.createElement('button'); removeBtn.className = 'chip-remove'; removeBtn.textContent = '×';
       (function(pn, m, s, pw, c){ removeBtn.addEventListener('click', function(){
         assignments[m][s] = (assignments[m][s] || []).filter(function(x){ return x.name !== pn; });
@@ -4251,7 +4230,7 @@
       activeAssign = { mode: mode, seq: seq };
       var w = (mode === 'defend' ? roundData.defenseTargets : roundData.warTargets || []).find(function(x){ return String(x.seq) === seq; });
       document.getElementById('assignModalTitle').textContent = (mode === 'defend' ? 'Defend' : 'Attack') + ' #' + seq;
-      document.getElementById('assignModalSubtitle').textContent = w ? (w.specName || '') + ' Lv.' + (w.level||1) + (mode === 'defend' ? ' — max ' + CE_LIMIT + ' CE, ' + MM_LIMIT + ' MM' : '') : '';
+      document.getElementById('assignModalSubtitle').textContent = w ? (w.specName || '') + ' Lv.' + (w.level||1) + ' — max ' + MAX_PLAYERS_PER_WASTELAND + ' players' : '';
       renderAssignCurrent(seq, mode);
       document.getElementById('assignSearch').value = '';
       document.getElementById('assignAcList').style.display = 'none';
@@ -4290,7 +4269,7 @@
         var item = document.createElement('div'); item.className = 'player-ac-item';
         var nameEl = document.createElement('span'); nameEl.textContent = p.name;
         var profEl = document.createElement('span'); profEl.className = 'ac-prof';
-        profEl.textContent = (p.profession === PROF_CE ? 'CE' : 'MM') + ' · ' + p.alliance;
+        profEl.textContent = p.alliance;
         item.appendChild(nameEl); item.appendChild(profEl);
         (function(player){ item.addEventListener('mousedown', function(e){
           e.preventDefault();
@@ -4302,11 +4281,8 @@
             alert(player.name + ' is already assigned to defend another wasteland.');
             return;
           }
-          // Check march limits per wasteland
-          var ceCount = list.filter(function(x){ return x.profession === PROF_CE; }).length;
-          var mmCount = list.filter(function(x){ return x.profession === PROF_MM; }).length;
-          if (player.profession === PROF_CE && ceCount >= CE_LIMIT) { alert('CE limit (' + CE_LIMIT + ') reached for this wasteland.'); return; }
-          if (player.profession === PROF_MM && mmCount >= MM_LIMIT) { alert('MM limit (' + MM_LIMIT + ') reached for this wasteland.'); return; }
+          // Check per-wasteland player cap
+          if (list.length >= MAX_PLAYERS_PER_WASTELAND) { alert('Wasteland full (' + MAX_PLAYERS_PER_WASTELAND + ' players max).'); return; }
           list.push({ name: player.name, profession: player.profession, alliance: player.alliance });
           saveAssignments();
           renderAssignCurrent(a.seq, a.mode);
@@ -4367,48 +4343,14 @@
 
     // How to Play modal
     document.getElementById('htpBtn').addEventListener('click', function() {
-      updateLimitUI();
       document.getElementById('htpOverlay').classList.add('show');
     });
     document.getElementById('htpClose').addEventListener('click', function() {
-      // Save any limit edits on close
-      var ceInput = document.getElementById('htpCeInput');
-      var mmInput = document.getElementById('htpMmInput');
-      if (ceInput && mmInput) {
-        var ce = parseInt(ceInput.value); var mm = parseInt(mmInput.value);
-        if (ce > 0) CE_LIMIT = ce;
-        if (mm > 0) MM_LIMIT = mm;
-        saveLimits(); updateLimitUI();
-      }
       document.getElementById('htpOverlay').classList.remove('show');
     });
     document.getElementById('htpOverlay').addEventListener('click', function(e) {
       if (e.target === this) this.classList.remove('show');
     });
-
-    // Make HTP limit table cells editable (leader can input correct values)
-    (function() {
-      function makeEditable(id, getVal, setVal) {
-        var cell = document.getElementById(id);
-        if (!cell) return;
-        cell.style.cursor = 'pointer'; cell.title = 'Click to edit';
-        cell.addEventListener('click', function() {
-          var cur = getVal();
-          var input = document.createElement('input');
-          input.type = 'number'; input.min = '1'; input.max = '200'; input.value = cur;
-          input.id = id + 'Input';
-          input.style.cssText = 'width:50px;background:var(--card);border:1px solid var(--accent);border-radius:4px;color:var(--text);padding:.1rem .25rem;font-size:.72rem;';
-          cell.textContent = ''; cell.appendChild(input); input.focus(); input.select();
-          input.addEventListener('blur', function() {
-            var v = parseInt(input.value); if (v > 0) setVal(v);
-            saveLimits(); updateLimitUI();
-          });
-          input.addEventListener('keydown', function(e) { if (e.key === 'Enter') input.blur(); });
-        });
-      }
-      makeEditable('htpCeLimit', function(){ return CE_LIMIT; }, function(v){ CE_LIMIT = v; });
-      makeEditable('htpMmLimit', function(){ return MM_LIMIT; }, function(v){ MM_LIMIT = v; });
-    })();
   })();
 
 })();
@@ -4444,15 +4386,16 @@
 
     <div class="htp-section">
       <h3>March Limits Per Wasteland</h3>
-      <p style="font-size:.72rem;color:var(--muted);margin:0 0 .5rem">Each wasteland allows up to <strong style="color:var(--text)">200 total deployers per side</strong>. Within that, CE (big ships) and MM (small ships) have separate sub-limits. <strong style="color:var(--accent)">Click the values below to set the correct limits.</strong></p>
+      <p style="font-size:.72rem;color:var(--muted);margin:0 0 .5rem">Each wasteland has 3 ships. A player can only be in <strong style="color:var(--text)">1 wasteland</strong> but places their 2 marches across ships within it.</p>
       <table class="htp-limit-table">
-        <thead><tr><th>March Type</th><th>Sub-limit</th><th>Notes</th></tr></thead>
+        <thead><tr><th>Ship</th><th>Max Marches</th><th>Hearts/Player</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td><strong style="color:#f85149">CE (Combat Elite)</strong></td><td id="htpCeLimit">set by leader</td><td>"Big ships" — heavy combat</td></tr>
-          <tr><td><strong style="color:#79c0ff">MM (Mechanical Masters)</strong></td><td id="htpMmLimit">set by leader</td><td>"Small ships" — lighter units</td></tr>
+          <tr><td><strong style="color:#f85149">Wasteland Mothership</strong></td><td>100</td><td>5</td><td>Main battle force — put strongest marches here</td></tr>
+          <tr><td><strong style="color:#79c0ff">Sweeper Craft</strong></td><td>50</td><td>3</td><td>Secondary support</td></tr>
+          <tr><td><strong style="color:#3fb950">Patrol Craft</strong></td><td>50</td><td>3</td><td>While alive, grants extra attacks</td></tr>
         </tbody>
       </table>
-      <p style="font-size:.65rem;color:var(--muted);margin:.5rem 0 0">Fill CE slots first on high-value combat wastelands. Sending more than the cap does nothing — coordinate so every slot is covered.</p>
+      <p style="font-size:.65rem;color:var(--muted);margin:.5rem 0 0">Total max: 200 marches (100 players × 2 marches each). Put your primary march in Mothership, secondary in a small ship to keep both alive for the extra-attack benefit.</p>
     </div>
 
     <div class="htp-section">
