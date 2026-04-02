@@ -391,8 +391,8 @@
     }
     /* SVG line overlay for neutral city declaration lines */
     .nc-lines-svg { position:absolute; top:0; left:0; pointer-events:none; overflow:visible; }
-    .nc-line { stroke-dasharray:8 5; animation:nc-dash 1.2s linear infinite; }
-    @keyframes nc-dash { to { stroke-dashoffset:-26; } }
+    .nc-line { stroke-dasharray:8 5; animation:nc-dash 3s linear infinite; }
+    @keyframes nc-dash { to { stroke-dashoffset:-78; } }
 
     /* War/defense pulsing borders */
     .cell.war-attack {
@@ -3757,7 +3757,7 @@
     if (storyAnimFrame) { cancelAnimationFrame(storyAnimFrame); storyAnimFrame = null; }
   }
 
-  // === POST-BATTLE ANIMATION — ROUND 3.5 "MICHAEL BAY EDITION" ===
+  // === POST-BATTLE ANIMATION — ROUND 3.5 ===
   function playPostBattleAnimation(gained, lost, prevScore, curScore, scoreDelta, topTargets, takenFrom) {
     var canvas = document.getElementById('storyCanvas');
     var ctx = canvas.getContext('2d');
@@ -3766,487 +3766,594 @@
     if (storyAnimFrame) cancelAnimationFrame(storyAnimFrame);
 
     var startTime = null;
-    var duration = 22000;
+    var duration = 24000;
 
-    var BG = '#080c12', BG2 = '#0a0e18';
+    // ── Colors ────────────────────────────────────────────────────────────
+    var BG = '#080c12', GROUND_COL = '#1a2236';
     var GREEN = '#3fb950', DGREEN = '#1e6b2d', GREEN2 = '#56e370';
+    var RED = '#f85149', RED2 = '#ff6b6b', DRED = '#8b1a16';
     var GOLD = '#d29922', GOLD2 = '#f0c040', GOLD3 = '#ffe680';
     var BLUE = '#388bfd', BLUE2 = '#79c0ff';
-    var RED = '#f85149', RED2 = '#ff8080';
-    var WHITE = '#e6edf3', MUTED = '#8b949e';
-    var ORANGE = '#f0822d';
+    var WHITE = '#e6edf3', MUTED = '#8b949e', GREY = '#444c56';
+    var GROUND_Y = 210;
 
-    function easeOut(t) { return 1 - Math.pow(1-t, 3); }
-    function easeIn(t) { return t * t * t; }
-    function lerp(a,b,t){ return a+(b-a)*t; }
-    function clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }
-    function phaseT(t,s,e){ return clamp((t-s/duration)/((e-s)/duration),0,1); }
+    // ── Utilities ─────────────────────────────────────────────────────────
+    function lerp(a,b,t){return a+(b-a)*t;}
+    function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+    function easeOut(t){return 1-Math.pow(1-t,3);}
+    function easeIn(t){return t*t*t;}
+    function pt(t,s,e){return clamp((t-s/duration)/((e-s)/duration),0,1);}
+    function rnd(a,b){return a+Math.random()*(b-a);}
 
-    // ── Particles ──────────────────────────────────────────────────────────
-    var particles = [];
-    function spawnBurst(x,y,color,n,spd,size,decay) {
-      for(var i=0;i<n;i++){
-        var a=Math.random()*Math.PI*2, s=((spd||3)+Math.random()*3);
-        particles.push({x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-1,
-          life:1,decay:decay||(0.012+Math.random()*0.018),color:color,size:(size||2)+Math.random()*3});
+    // ── Particle system ───────────────────────────────────────────────────
+    var particles=[];
+    function spawnP(x,y,vx,vy,color,size,life,gravity){
+      particles.push({x:x,y:y,vx:vx,vy:vy,color:color,size:size||3,life:life||1,maxLife:life||1,g:gravity||0.12,isRect:false});
+    }
+    function spawnBurst(x,y,color,n,spd){
+      for(var i=0;i<(n||8);i++){
+        var a=Math.random()*Math.PI*2,s=(spd||3)+Math.random()*3;
+        spawnP(x,y,Math.cos(a)*s,Math.sin(a)*s-1,color,2+Math.random()*2,0.7+Math.random()*0.4);
       }
     }
-    function spawnDebris(x,y,color,n) {
-      for(var i=0;i<n;i++){
-        var a=Math.random()*Math.PI*2, s=1+Math.random()*5;
-        particles.push({x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-2,
-          life:1,decay:0.008+Math.random()*0.012,color:color,size:1+Math.random()*2,isRect:true,rot:Math.random()*Math.PI,rotV:(Math.random()-.5)*.15});
+    function spawnDebris(x,y,color,n){
+      for(var i=0;i<(n||6);i++){
+        var a=Math.random()*Math.PI*2,s=2+Math.random()*6;
+        var p={x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-3,color:color,size:2+Math.random()*3,
+               life:1,maxLife:1,g:0.2,isRect:true,rot:Math.random()*Math.PI,rotV:(Math.random()-.5)*0.2};
+        particles.push(p);
       }
     }
-    function spawnSpark(x,y,color,n) {
-      for(var i=0;i<n;i++){
-        var a=Math.random()*Math.PI*2,s=3+Math.random()*8;
-        particles.push({x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-1,
-          life:1,decay:0.025+Math.random()*0.03,color:color,size:1,isSpark:true,
-          tx:x+Math.cos(a)*s*8,ty:y+Math.sin(a)*s*8});
+    function spawnSpark(x,y,color,n){
+      for(var i=0;i<(n||5);i++){
+        var a=Math.random()*Math.PI*2,s=4+Math.random()*8;
+        var p={x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-2,color:color,size:1,life:0.7,maxLife:0.7,g:0.15,isSpark:true};
+        particles.push(p);
       }
     }
-    function tickParticles() {
+    function spawnBlood(x,y,color){
+      for(var i=0;i<6;i++){
+        spawnP(x,y,rnd(-3,3),rnd(-4,0),color,2,0.5,0.25);
+      }
+    }
+    function tickParticles(){
       for(var i=particles.length-1;i>=0;i--){
         var p=particles[i];
-        p.x+=p.vx; p.y+=p.vy; p.vy+=0.12; p.life-=p.decay;
+        p.x+=p.vx; p.y+=p.vy; p.vy+=p.g; p.life-=0.018;
         if(p.life<=0){particles.splice(i,1);continue;}
-        ctx.save(); ctx.globalAlpha=p.life*p.life;
+        var a=p.life/p.maxLife;
+        ctx.save(); ctx.globalAlpha=a*a;
         if(p.isSpark){
-          ctx.strokeStyle=p.color; ctx.lineWidth=1.2; ctx.globalAlpha=p.life;
-          ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(p.x-p.vx*3,p.y-p.vy*3); ctx.stroke();
+          ctx.strokeStyle=p.color; ctx.lineWidth=1.5;
+          ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(p.x-p.vx*2.5,p.y-p.vy*2.5); ctx.stroke();
         } else if(p.isRect){
           if(p.rot!==undefined) p.rot+=p.rotV;
           ctx.translate(p.x,p.y); ctx.rotate(p.rot||0);
-          ctx.fillStyle=p.color;
-          ctx.fillRect(-p.size,-p.size,p.size*2,p.size*2);
+          ctx.fillStyle=p.color; ctx.fillRect(-p.size,-p.size,p.size*2,p.size*2);
         } else {
           ctx.fillStyle=p.color;
-          ctx.beginPath(); ctx.arc(p.x,p.y,p.size*p.life,0,Math.PI*2); ctx.fill();
+          ctx.beginPath(); ctx.arc(p.x,p.y,p.size*a,0,Math.PI*2); ctx.fill();
         }
         ctx.restore();
       }
     }
 
-    // ── Shockwave rings ────────────────────────────────────────────────────
-    var rings = [];
-    function spawnRing(x,y,color,maxR,width){
-      rings.push({x:x,y:y,r:2,maxR:maxR||80,color:color||WHITE,life:1,width:width||2});
+    // ── Screen shake ──────────────────────────────────────────────────────
+    var shakeP=0;
+    function shake(p){shakeP=Math.max(shakeP,p);}
+    var shakeX=0,shakeY=0;
+    function updateShake(){
+      if(shakeP>0.3){shakeX=rnd(-1,1)*shakeP*7;shakeY=rnd(-1,1)*shakeP*7;shakeP*=0.82;}
+      else{shakeX=0;shakeY=0;shakeP=0;}
     }
-    function tickRings() {
+
+    // ── Shockwave rings ───────────────────────────────────────────────────
+    var rings=[];
+    function spawnRing(x,y,color,maxR,w){rings.push({x:x,y:y,r:2,maxR:maxR||60,color:color||WHITE,life:1,w:w||2});}
+    function tickRings(){
       for(var i=rings.length-1;i>=0;i--){
-        var rg=rings[i];
-        rg.r+=rg.maxR*0.04; rg.life-=0.03;
-        if(rg.r>rg.maxR||rg.life<=0){rings.splice(i,1);continue;}
-        ctx.save(); ctx.globalAlpha=rg.life*(1-rg.r/rg.maxR);
-        ctx.strokeStyle=rg.color; ctx.lineWidth=rg.width;
-        ctx.beginPath(); ctx.arc(rg.x,rg.y,rg.r,0,Math.PI*2); ctx.stroke();
+        var r=rings[i]; r.r+=r.maxR*0.045; r.life-=0.04;
+        if(r.r>r.maxR||r.life<=0){rings.splice(i,1);continue;}
+        ctx.save(); ctx.globalAlpha=r.life*(1-r.r/r.maxR);
+        ctx.strokeStyle=r.color; ctx.lineWidth=r.w;
+        ctx.beginPath(); ctx.arc(r.x,r.y,r.r,0,Math.PI*2); ctx.stroke();
         ctx.restore();
       }
     }
 
-    // ── Lightning bolt ─────────────────────────────────────────────────────
-    function drawLightning(x1,y1,x2,y2,alpha,color) {
-      var steps=8, dx=(x2-x1)/steps, dy=(y2-y1)/steps;
-      ctx.save(); ctx.globalAlpha=alpha; ctx.strokeStyle=color||GOLD2; ctx.lineWidth=1.5;
-      ctx.shadowBlur=8; ctx.shadowColor=color||GOLD2;
-      ctx.beginPath(); ctx.moveTo(x1,y1);
-      for(var s=1;s<=steps;s++){
-        var jitter=(s<steps)?(Math.random()-0.5)*20:0;
-        ctx.lineTo(x1+dx*s+jitter,y1+dy*s+jitter);
-      }
-      ctx.stroke(); ctx.restore();
-    }
-
-    // ── Screen shake state ─────────────────────────────────────────────────
-    var shake = {x:0,y:0,power:0};
-    function triggerShake(power){ shake.power=Math.max(shake.power,power); }
-    function updateShake() {
-      if(shake.power>0.2){
-        shake.x=(Math.random()-.5)*shake.power*8;
-        shake.y=(Math.random()-.5)*shake.power*8;
-        shake.power*=0.85;
-      } else { shake.x=0; shake.y=0; shake.power=0; }
-    }
-
-    // ── HUD bracket corners ────────────────────────────────────────────────
-    function drawHUDCorners(x,y,w,h,alpha,color) {
-      var s=12;
-      ctx.save(); ctx.globalAlpha=alpha; ctx.strokeStyle=color||GOLD; ctx.lineWidth=1.5;
-      [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]].forEach(function(c){
-        ctx.beginPath(); ctx.moveTo(c[0],c[1]); ctx.lineTo(c[0]+c[2]*s,c[1]);
-        ctx.moveTo(c[0],c[1]); ctx.lineTo(c[0],c[1]+c[3]*s);
-        ctx.stroke();
-      });
-      ctx.restore();
-    }
-
-    // ── Scanline effect ────────────────────────────────────────────────────
-    function drawScanlines(alpha) {
-      ctx.save(); ctx.globalAlpha=alpha*0.07;
-      for(var sy=0;sy<H;sy+=3){
-        ctx.fillStyle='#000'; ctx.fillRect(0,sy,W,1);
-      }
-      ctx.restore();
-    }
-
-    // ── Mini map setup ─────────────────────────────────────────────────────
-    var TILE = 10, COLS = 24;
-    var mapX = W - COLS*TILE - 16, mapY = (H - COLS*TILE)/2;
-    var cells35 = (rawData&&rawData.rounds&&rawData.rounds['3.5']&&rawData.rounds['3.5'].cells)||[];
-    var ncOwned35 = (rawData&&rawData.rounds['3.5']&&rawData.rounds['3.5'].neutralCityOwned)||[];
-    var ncTgt35   = (rawData&&rawData.rounds['3.5']&&rawData.rounds['3.5'].neutralCityTargets)||[];
-    var gainedCells = gained.slice().sort(function(a,b){return(a.r*24+a.c)-(b.r*24+b.c);});
-    var gainedRC={};
-    gainedCells.forEach(function(gc){gainedRC[gc.r+','+gc.c]=true;});
-
-    function drawMiniMap(revealFrac, flashPhase) {
-      ctx.save();
-      var revealed={};
-      var count=Math.floor(revealFrac*gainedCells.length);
-      for(var gi=0;gi<count;gi++) revealed[gainedCells[gi].r+','+gainedCells[gi].c]=true;
-
-      for(var r=0;r<COLS;r++){
-        for(var c=0;c<COLS;c++){
-          var cell=cells35[r*COLS+c]; if(!cell) continue;
-          var cx=mapX+c*TILE, cy=mapY+r*TILE;
-          var key=r+','+c;
-          var fill='#141820';
-          if(cell.type===1) fill='#0d1117';
-          else if(cell.type===2) fill='#1a2540';
-          else if(cell.type===3){
-            if(revealed[key]) fill=GREEN;
-            else if(cell.sid===2864) fill=DGREEN;
-            else if(cell.sid>0) fill='#2a1418';
-            else fill='#1a2030';
-          }
-          ctx.fillStyle=fill;
-          ctx.fillRect(cx,cy,TILE-1,TILE-1);
-        }
-      }
-      // NC owned = gold dots
-      ncOwned35.forEach(function(nc){
-        var cx=mapX+nc.c*TILE+TILE/2, cy=mapY+nc.r*TILE+TILE/2;
-        ctx.fillStyle=GOLD2; ctx.globalAlpha=0.85+0.15*Math.sin(flashPhase*4);
-        ctx.beginPath(); ctx.arc(cx,cy,3,0,Math.PI*2); ctx.fill();
-        ctx.globalAlpha=0.4; ctx.strokeStyle=GOLD2; ctx.lineWidth=1;
-        ctx.beginPath(); ctx.arc(cx,cy,5+Math.sin(flashPhase*3)*2,0,Math.PI*2); ctx.stroke();
-      });
-      // NC targets = pulsing outline
-      ncTgt35.forEach(function(nc){
-        var cx=mapX+nc.c*TILE+TILE/2, cy=mapY+nc.r*TILE+TILE/2;
-        ctx.globalAlpha=0.7+0.3*Math.sin(flashPhase*5);
-        ctx.strokeStyle=GOLD3; ctx.lineWidth=1;
-        ctx.beginPath(); ctx.arc(cx,cy,5,0,Math.PI*2); ctx.stroke();
+    // ── Drawing functions ─────────────────────────────────────────────────
+    function drawGround(){
+      // Sky gradient
+      var sky=ctx.createLinearGradient(0,0,0,GROUND_Y);
+      sky.addColorStop(0,'#050810'); sky.addColorStop(1,'#0d1520');
+      ctx.fillStyle=sky; ctx.fillRect(0,0,W,GROUND_Y);
+      // Stars
+      ctx.fillStyle=WHITE;
+      [[80,20],[150,40],[220,15],[320,35],[410,18],[500,42],[570,25],[600,10],[50,55],[250,60],[360,8],[480,55]].forEach(function(s){
+        ctx.globalAlpha=0.4+0.4*Math.sin(elapsed/700+s[0]*0.1);
+        ctx.beginPath(); ctx.arc(s[0],s[1],0.8,0,Math.PI*2); ctx.fill();
       });
       ctx.globalAlpha=1;
+      // Ground
+      ctx.fillStyle=GROUND_COL;
+      ctx.fillRect(0,GROUND_Y,W,H-GROUND_Y);
+      ctx.strokeStyle='#253040'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(0,GROUND_Y); ctx.lineTo(W,GROUND_Y); ctx.stroke();
+    }
 
-      // Border
-      ctx.strokeStyle=MUTED; ctx.lineWidth=1; ctx.globalAlpha=0.4;
-      ctx.strokeRect(mapX-1,mapY-1,COLS*TILE+1,COLS*TILE+1);
+    function drawFortress(x,a){
+      ctx.save(); ctx.globalAlpha=a;
+      ctx.fillStyle='#1a2636'; ctx.strokeStyle='#3a4a5a'; ctx.lineWidth=1.5;
+      ctx.fillRect(x-20,GROUND_Y-50,40,50); ctx.strokeRect(x-20,GROUND_Y-50,40,50);
+      for(var c=0;c<5;c++){ctx.fillRect(x-22+c*10,GROUND_Y-58,6,8);ctx.strokeRect(x-22+c*10,GROUND_Y-58,6,8);}
+      ctx.fillRect(x-42,GROUND_Y-30,22,30); ctx.strokeRect(x-42,GROUND_Y-30,22,30);
+      ctx.fillRect(x+20,GROUND_Y-30,22,30); ctx.strokeRect(x+20,GROUND_Y-30,22,30);
       ctx.restore();
     }
 
-    // ── Explosion registry for choreographed blasts ────────────────────────
-    var explosionTimings = gainedCells.map(function(gc,i){
-      return { t: 3500 + i*(3500/Math.max(gainedCells.length,1)), r:gc.r, c:gc.c };
-    });
-    var firedExplosions = {};
+    function drawFlag(x,y,color,wave){
+      ctx.save();
+      ctx.strokeStyle=GREY; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y-28); ctx.stroke();
+      ctx.fillStyle=GOLD; ctx.beginPath(); ctx.arc(x,y-28,2,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=color;
+      ctx.beginPath(); ctx.moveTo(x,y-28);
+      ctx.quadraticCurveTo(x+10+Math.sin(wave)*3,y-25,x+18+Math.sin(wave+1.5)*2,y-20);
+      ctx.lineTo(x,y-14); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
 
-    var render = function(ts) {
+    function drawStick(x,y,color,scale,wp,pose){
+      var s=scale||1;
+      ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
+      ctx.strokeStyle=color; ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.lineJoin='round';
+      // Head
+      ctx.beginPath(); ctx.arc(0,-20,6,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle=color; ctx.fillRect(-3,-21,1.5,1.5); ctx.fillRect(1.5,-21,1.5,1.5);
+      // Body
+      ctx.beginPath(); ctx.moveTo(0,-14); ctx.lineTo(0,4); ctx.stroke();
+      if(pose==='walk'){
+        var as=Math.sin(wp)*0.4;
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-8*Math.cos(as),-4+8*Math.sin(as)); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(8,-18+Math.sin(wp*2)*3); ctx.stroke();
+        var ls=Math.sin(wp)*6;
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(-5+ls,18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(5-ls,18); ctx.stroke();
+      } else if(pose==='fight'){
+        var sa=Math.sin(wp*8)*1.2;
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(10*Math.cos(sa),-10+10*Math.sin(sa)); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-8,-6); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(-7,18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(7,18); ctx.stroke();
+      } else if(pose==='victory'){
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-12,-24); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(12,-24); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(-4,18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(4,18); ctx.stroke();
+      } else if(pose==='knocked'){
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-12,-18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(12,-4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(-10,14); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(10,16); ctx.stroke();
+      } else if(pose==='defend'){
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-10,-8); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(8,-16); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(-5,18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(5,18); ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-8,-2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(8,-2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(-5,18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(5,18); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawSword(x,y,angle,color){
+      ctx.save(); ctx.translate(x,y); ctx.rotate(angle);
+      ctx.strokeStyle=color||'#c0c8d4'; ctx.lineWidth=2.5;
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-18); ctx.stroke();
+      ctx.fillStyle=color||'#c0c8d4';
+      ctx.beginPath(); ctx.moveTo(-2,-18); ctx.lineTo(0,-22); ctx.lineTo(2,-18); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle=GOLD; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(-5,-1); ctx.lineTo(5,-1); ctx.stroke();
+      ctx.strokeStyle='#6e4b2a'; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,5); ctx.stroke();
+      ctx.restore();
+    }
+
+    // Mecha robot (the S126 boss)
+    function drawMecha(x,y,scale,color,phase){
+      var s=scale||1;
+      ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
+      var c=color||RED; var dark=DRED;
+      // Legs (pistons)
+      ctx.strokeStyle=dark; ctx.lineWidth=7;
+      ctx.beginPath(); ctx.moveTo(-12,12); ctx.lineTo(-18,36); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(12,12); ctx.lineTo(18,36); ctx.stroke();
+      ctx.strokeStyle=c; ctx.lineWidth=5;
+      ctx.beginPath(); ctx.moveTo(-12,12); ctx.lineTo(-18,36); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(12,12); ctx.lineTo(18,36); ctx.stroke();
+      // Feet
+      ctx.fillStyle=dark;
+      ctx.fillRect(-24,34,14,6); ctx.fillRect(12,34,14,6);
+      // Torso
+      ctx.fillStyle=dark; ctx.fillRect(-18,-10,36,22); 
+      ctx.fillStyle=c; ctx.fillRect(-16,-8,32,18);
+      // Chest vent glow
+      ctx.fillStyle=RED2; ctx.globalAlpha=0.6+0.4*Math.sin(phase*3);
+      ctx.fillRect(-8,-4,16,8); ctx.globalAlpha=1;
+      // Shoulders (big blocks)
+      ctx.fillStyle=dark;
+      ctx.fillRect(-32,-14,14,16); ctx.fillRect(18,-14,14,16);
+      ctx.fillStyle=c; 
+      ctx.fillRect(-30,-12,10,12); ctx.fillRect(20,-12,10,12);
+      // Arms
+      ctx.strokeStyle=dark; ctx.lineWidth=8;
+      ctx.beginPath(); ctx.moveTo(-24,-6); ctx.lineTo(-34,8); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(24,-6); ctx.lineTo(34,8); ctx.stroke();
+      ctx.strokeStyle=c; ctx.lineWidth=6;
+      ctx.beginPath(); ctx.moveTo(-24,-6); ctx.lineTo(-34,8); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(24,-6); ctx.lineTo(34,8); ctx.stroke();
+      // Fists
+      ctx.fillStyle=dark; ctx.fillRect(-40,5,12,10); ctx.fillRect(28,5,12,10);
+      ctx.fillStyle=c; ctx.fillRect(-39,6,10,8); ctx.fillRect(29,6,10,8);
+      // Neck
+      ctx.fillStyle=dark; ctx.fillRect(-6,-14,12,6);
+      // Head (square with visor)
+      ctx.fillStyle=dark; ctx.fillRect(-14,-36,28,22);
+      ctx.fillStyle=c; ctx.fillRect(-12,-34,24,18);
+      // Visor glow
+      ctx.fillStyle=GOLD2; ctx.globalAlpha=0.7+0.3*Math.sin(phase*5);
+      ctx.fillRect(-10,-28,20,8);
+      ctx.globalAlpha=1;
+      // Antenna
+      ctx.strokeStyle=GREY; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(0,-34); ctx.lineTo(0,-44); ctx.stroke();
+      ctx.fillStyle=RED2; ctx.beginPath(); ctx.arc(0,-44,3,0,Math.PI*2); ctx.fill();
+      // "S126" label
+      ctx.fillStyle=RED2; ctx.font='bold 8px monospace'; ctx.textAlign='center';
+      ctx.fillText('S126',-1,-2);
+      ctx.restore();
+    }
+
+    // Big glow text
+    function glowText(text,x,y,color,size,alpha,glow){
+      ctx.save(); ctx.globalAlpha=alpha;
+      ctx.shadowBlur=glow||16; ctx.shadowColor=color;
+      ctx.fillStyle=color; ctx.font='bold '+size+'px monospace'; ctx.textAlign='center';
+      ctx.fillText(text,x,y);
+      ctx.restore();
+    }
+
+    // Explosion flash
+    function bigExplosion(x,y,color){
+      spawnBurst(x,y,color||GOLD2,20,5);
+      spawnDebris(x,y,color||GOLD2,12);
+      spawnSpark(x,y,WHITE,8);
+      spawnRing(x,y,color||GOLD2,80,3);
+      shake(5);
+    }
+
+    // ── Scene state ────────────────────────────────────────────────────────
+    var siegeCount = 0;   // wastelands captured so far
+    var totalGained = gained.length; // 13
+    var wave = 0;
+    var flagsPlanted = [];  // {x, planted}
+    var mechaDead = false;
+    var mechaHitTime = -1;
+
+    var render = function(ts){
       if(!startTime) startTime=ts;
       var elapsed=ts-startTime, t=Math.min(elapsed/duration,1.0);
+      wave = elapsed/800;
       updateShake();
 
-      ctx.save();
-      ctx.translate(shake.x,shake.y);
-      ctx.fillStyle=BG; ctx.fillRect(-10,-10,W+20,H+20);
-      drawScanlines(1);
+      ctx.save(); ctx.translate(shakeX,shakeY);
 
-      // ══ PHASE 1 (0-2s): TACTICAL BOOT SEQUENCE ══════════════════════════
-      var p1=phaseT(t,0,2000);
-      if(p1>0 && p1<1) {
-        // Cascading scan lines sweeping down
-        var scanY=(p1*H*1.5)%H;
-        ctx.save(); ctx.globalAlpha=0.15; ctx.fillStyle=GREEN2;
-        ctx.fillRect(0,scanY,W,2);
-        ctx.fillRect(0,scanY+H/3,W,1);
-        ctx.fillRect(0,scanY+2*H/3,W,1);
-        ctx.restore();
-        // Glitch-flicker rectangles
-        if(Math.random()<0.15){
-          ctx.save(); ctx.globalAlpha=0.06+Math.random()*0.08;
-          ctx.fillStyle=BLUE2;
-          var gy=Math.random()*H;
-          ctx.fillRect(0,gy,W,2+Math.random()*4);
-          ctx.restore();
-        }
-        var ta=Math.min(p1*4,1);
-        ctx.save(); ctx.globalAlpha=ta;
-        // HUD label
-        ctx.fillStyle=GREEN2; ctx.font='bold 10px monospace'; ctx.textAlign='left';
-        ctx.fillText('SECTOR-16 // SEAL STONE CHAOS // ROUND 3.5',12,18);
-        ctx.fillStyle=MUTED; ctx.font='9px monospace';
-        ctx.fillText('BATTLE ASSESSMENT — WASTELAND PHASE COMPLETE',12,32);
-        // Animated progress bar
-        ctx.fillStyle='#1a2030'; ctx.fillRect(12,40,W-24,4);
-        ctx.fillStyle=GREEN; ctx.fillRect(12,40,(W-24)*p1,4);
-        ctx.strokeStyle=GREEN2; ctx.lineWidth=1; ctx.globalAlpha=ta*0.5;
-        ctx.strokeRect(12,40,W-24,4);
-        drawHUDCorners(8,8,W-16,H-16,ta*0.7,GREEN);
-        ctx.restore();
-      }
-
-      // ══ PHASE 2 (2-5.5s): INTEL DISPLAY — WHO DID WE HIT ════════════════
-      var p2=phaseT(t,2000,5500);
-      if(p2>0){
-        var mapAlpha=Math.min(p2*3,1);
-        ctx.save(); ctx.globalAlpha=mapAlpha;
-        drawMiniMap(p2<1?0:1, elapsed/1000);
-        ctx.restore();
-
-        // Left intel panel slides in
-        var panelX=-220+220*Math.min(p2*4,1);
-        ctx.save(); ctx.translate(panelX,0);
-        ctx.fillStyle='rgba(13,17,23,0.88)';
-        ctx.fillRect(0,0,200,H);
-        ctx.strokeStyle=GREEN; ctx.lineWidth=1; ctx.globalAlpha=0.4;
-        ctx.strokeRect(0,0,200,H); ctx.globalAlpha=1;
-        ctx.fillStyle=GREEN2; ctx.font='bold 11px monospace'; ctx.textAlign='left';
-        ctx.fillText('FIELD REPORT',12,22);
-        ctx.fillStyle=MUTED; ctx.font='9px monospace';
-        ctx.fillText('WASTELAND SEIZURES',12,36);
-        ctx.fillStyle=GREEN; ctx.font='bold 18px monospace';
-        ctx.fillText('+'+gained.length+' SEIZED',12,60);
-        ctx.fillStyle=RED; ctx.font='bold 14px monospace';
-        ctx.fillText('-'+lost.length+' LOST',12,80);
-        ctx.fillStyle=GOLD; ctx.font='bold 14px monospace';
-        ctx.fillText('NET +'+String(gained.length-lost.length),12,98);
-        ctx.fillStyle=MUTED; ctx.font='9px monospace';
-        ctx.fillText('TARGETS ENGAGED:',12,120);
-        topTargets.slice(0,5).forEach(function(sid,i){
-          ctx.fillStyle=sid==0?MUTED:RED2;
-          ctx.fillText((sid==0?'UNCLAIMED':'S'+sid)+' \u00d7'+takenFrom[sid],14,136+i*14);
-        });
-        ctx.restore();
-      }
-
-      // ══ PHASE 3 (3.5-7s): CHOREOGRAPHED MAP EXPLOSIONS ══════════════════
-      if(elapsed>=3500 && elapsed<=7000 && cells35.length) {
-        explosionTimings.forEach(function(ev){
-          if(!firedExplosions[ev.t] && elapsed>=ev.t){
-            firedExplosions[ev.t]=true;
-            var ex=mapX+ev.c*TILE+TILE/2, ey=mapY+ev.r*TILE+TILE/2;
-            spawnBurst(ex,ey,GREEN,8,2,1.5,0.03);
-            spawnSpark(ex,ey,GREEN2,4);
-            spawnRing(ex,ey,GREEN,24,1);
-            if(Math.random()<0.3) triggerShake(1.5);
+      // ══ SCENE 1 (0-3s): THE MARCH OUT ═══════════════════════════════════
+      var s1=pt(t,0,3000);
+      if(s1>=0){
+        drawGround();
+        // S2864 fortress far left
+        drawFortress(70, Math.min(s1*3,1));
+        // Green flag above fortress
+        if(s1>0.2) drawFlag(90, GROUND_Y-50, GREEN, wave);
+        // Soldiers marching right
+        var nSoldiers=6;
+        for(var si=0;si<nSoldiers;si++){
+          var soldierBase=110+si*40;
+          var marchX = soldierBase + s1*80;
+          if(marchX < W-80){
+            drawStick(marchX, GROUND_Y-18, GREEN, 1, wave+si*0.9, 'walk');
+            drawSword(marchX+8, GROUND_Y-38, -0.8, GREEN2);
+            if(si%2===0) spawnP(marchX,GROUND_Y,rnd(-1,1),rnd(-1,0),GREY,1,0.3,0.1);
           }
-        });
-        // Mini map reveal during explosions
-        var mReveal=(elapsed-3500)/3500;
-        ctx.save(); ctx.globalAlpha=1;
-        drawMiniMap(mReveal, elapsed/1000);
-        ctx.restore();
-      }
-
-      // ══ PHASE 4 (7-11s): SCORE DETONATION ═══════════════════════════════
-      var p4=phaseT(t,7000,11000);
-      if(p4>0){
-        var scoreT=easeOut(Math.min(p4*1.5,1));
-        var dispScore=Math.round(lerp(prevScore,curScore,scoreT));
-
-        // Big shockwave at 7s
-        if(p4>0 && p4<0.05) { spawnRing(W/2,H/2,GOLD2,120,4); triggerShake(6); }
-        if(p4>0.1 && p4<0.12){ spawnBurst(W/2,H/2,GOLD2,30,5,3,0.008); spawnDebris(W/2,H/2,GOLD,20); }
-
-        // Glowing score
-        ctx.save();
-        ctx.shadowBlur=30+20*Math.sin(elapsed/200); ctx.shadowColor=GOLD2;
-        ctx.textAlign='center';
-        ctx.fillStyle=MUTED; ctx.font='bold 10px monospace';
-        ctx.fillText('SECTOR SCORE',W/2,H/2-50);
-        ctx.fillStyle=p4<0.9?GOLD2:GREEN2;
-        ctx.font='bold 56px monospace';
-        ctx.fillText(dispScore.toLocaleString(),W/2,H/2+14);
-        ctx.restore();
-
-        // Delta
-        if(p4>0.35){
-          var da=Math.min((p4-0.35)/0.2,1);
-          ctx.save(); ctx.globalAlpha=da;
-          ctx.textAlign='center'; ctx.font='bold 20px monospace';
-          ctx.fillStyle=GREEN2; ctx.shadowBlur=12; ctx.shadowColor=GREEN;
-          ctx.fillText('+'+scoreDelta.toLocaleString(),W/2,H/2+40);
-          ctx.restore();
         }
-        // Rank badge
-        if(p4>0.55){
-          var ra=Math.min((p4-0.55)/0.2,1);
-          ctx.save(); ctx.globalAlpha=ra;
-          ctx.fillStyle='rgba(56,139,253,0.15)'; ctx.fillRect(W/2-90,H/2+50,180,22);
-          ctx.strokeStyle=BLUE2; ctx.lineWidth=1; ctx.strokeRect(W/2-90,H/2+50,180,22);
-          ctx.textAlign='center'; ctx.font='bold 12px monospace'; ctx.fillStyle=BLUE2;
-          ctx.fillText('\u25b2  RANK 21  \u2192  RANK 20',W/2,H/2+65);
-          ctx.restore();
-        }
-        // Continuous fireworks
-        if(p4>0.4 && Math.random()<0.12){
-          var fc=[GREEN2,GOLD2,BLUE2,RED][Math.floor(Math.random()*4)];
-          spawnBurst(80+Math.random()*(W-160),15+Math.random()*80,fc,14,4,2.5,0.008);
-        }
-        if(p4>0.4 && Math.random()<0.08) spawnSpark(80+Math.random()*(W-160),20+Math.random()*60,GOLD3,6);
-
-        // Lightning arcs across the screen
-        if(p4>0.2 && p4<0.8 && Math.random()<0.07){
-          var lx=Math.random()*W;
-          drawLightning(lx,0,lx+(Math.random()-.5)*100,H,0.4+Math.random()*0.3,GOLD3);
+        if(s1>0.3){
+          glowText('\u2694 29 BATTLE FRONTS',W/2,40,GREEN,12,Math.min((s1-0.3)*3,1),8);
         }
       }
 
-      // ══ PHASE 5 (11-15.5s): NEUTRAL CITY SPOTLIGHT ═══════════════════════
-      var p5=phaseT(t,11000,15500);
-      if(p5>0){
-        var ncA=Math.min(p5*3,1);
+      // ══ SCENE 2 (2-9s): MULTI-FRONT BATTLE ══════════════════════════════
+      var s2=pt(t,2000,9000);
+      if(s2>0 && s2<=1){
+        if(s2<1) drawGround();
 
-        // Backdrop panel
-        ctx.save(); ctx.globalAlpha=ncA*0.7;
-        ctx.fillStyle=BG2; ctx.fillRect(0,0,W,H);
-        ctx.restore();
-
-        // Title
-        ctx.save(); ctx.globalAlpha=ncA;
-        ctx.textAlign='center';
-        ctx.fillStyle=GOLD3; ctx.font='bold 11px monospace';
-        ctx.shadowBlur=10; ctx.shadowColor=GOLD2;
-        ctx.fillText('NEUTRAL CITIES', W/2, 30);
-        ctx.restore();
-
-        // 3 city cards side by side with beam effect
-        var cardW=130, cardH=80, gap=20;
-        var totalW=3*cardW+2*gap, startX=(W-totalW)/2;
-        var cities3=[
-          {name:'Lv.2 #2016',status:'HELD',color:GREEN2},
-          {name:'Lv.1 #1040',status:'HELD',color:GREEN},
-          {name:'Lv.1 #1046',status:'HELD',color:GREEN}
+        // 4 simultaneous battle zones spread across the screen
+        var zones=[
+          {ax:160, ay:GROUND_Y-18},
+          {ax:280, ay:GROUND_Y-18},
+          {ax:400, ay:GROUND_Y-18},
+          {ax:520, ay:GROUND_Y-18}
         ];
-        cities3.forEach(function(city,i){
-          var cx=startX+i*(cardW+gap), cy=50;
-          var revealDelay=i*0.12;
-          var ca=Math.min((p5-revealDelay)*6,1); if(ca<=0) return;
-          ctx.save(); ctx.globalAlpha=ca;
 
-          // Beam from top
-          if(p5>revealDelay && p5<revealDelay+0.4){
-            var beamT=(p5-revealDelay)/0.4;
-            ctx.globalAlpha=ca*(1-beamT)*0.6;
-            var grad=ctx.createLinearGradient(cx+cardW/2,0,cx+cardW/2,cy+beamT*cardH);
-            grad.addColorStop(0,GREEN2); grad.addColorStop(1,'transparent');
-            ctx.fillStyle=grad; ctx.fillRect(cx,0,cardW,cy+beamT*cardH);
-            ctx.globalAlpha=ca;
+        var zoneProgress=s2*1.4;
+        zones.forEach(function(z,zi){
+          var zp=clamp(zoneProgress-zi*0.25,0,1);
+          if(zp<=0) return;
+
+          // Enemy (red) on right of each zone, our (green) on left
+          var redX=z.ax+40, greenX=z.ax;
+
+          if(zp<0.4){
+            // Approaching each other
+            var ap=zp/0.4;
+            drawStick(lerp(greenX-30,greenX,ap), z.ay, GREEN, 1, wave+zi, 'walk');
+            drawSword(lerp(greenX-22,greenX+8,ap), z.ay-20, -0.8, GREEN2);
+            drawStick(lerp(redX+30,redX,ap), z.ay, RED, 1, wave+zi, 'walk');
+            drawSword(lerp(redX+22,redX-8,ap), z.ay-20, 0.8+Math.PI, RED2);
+          } else if(zp<0.75){
+            // FIGHT! Both in combat
+            var fp=(zp-0.4)/0.35;
+            drawStick(greenX, z.ay, GREEN, 1, wave*3+zi, 'fight');
+            drawSword(greenX+10, z.ay-22, -0.5+Math.sin(wave*4+zi)*0.8, GREEN2);
+            drawStick(redX, z.ay, RED, 1, wave*3+zi+1.5, 'fight');
+            drawSword(redX-10, z.ay-22, Math.PI+0.5+Math.sin(wave*4+zi)*0.8, RED2);
+            // Sparks at clash point
+            if(Math.random()<0.2) spawnSpark((greenX+redX)/2, z.ay-20, GOLD2, 3);
+          } else {
+            // Green wins! Red knocked back, explosion
+            var wp2=(zp-0.75)/0.25;
+            drawStick(greenX, z.ay, GREEN, 1, wave+zi, 'victory');
+            drawSword(greenX+8, z.ay-38, -1.2, GREEN2);
+            // Red figure flying backward
+            var fbX=lerp(redX, redX+50, easeIn(wp2));
+            var fbY=lerp(0, 30, easeIn(wp2));
+            drawStick(fbX, z.ay+fbY, RED, 0.8, 0, 'knocked');
+            if(wp2<0.1){ bigExplosion((greenX+redX)/2, z.ay-10, GOLD2); }
+            // Flag planted
+            if(wp2>0.3){
+              drawFlag(greenX+15, GROUND_Y, GREEN, wave+zi);
+              if(wp2>0.3 && wp2<0.35){
+                siegeCount=Math.min(siegeCount+1, totalGained);
+              }
+            }
           }
-
-          // Card bg
-          ctx.fillStyle='rgba(30,107,45,0.12)'; ctx.fillRect(cx,cy,cardW,cardH);
-          ctx.strokeStyle=city.color; ctx.lineWidth=1.5;
-          ctx.strokeRect(cx,cy,cardW,cardH);
-          drawHUDCorners(cx,cy,cardW,cardH,ca,city.color);
-
-          // Crown icon (hex star)
-          ctx.fillStyle=GOLD2; ctx.font='18px serif';
-          ctx.textAlign='center'; ctx.fillText('\u2605',cx+cardW/2,cy+28);
-
-          ctx.fillStyle=city.color; ctx.font='bold 10px monospace';
-          ctx.fillText(city.name,cx+cardW/2,cy+46);
-          ctx.fillStyle=GREEN2; ctx.font='bold 9px monospace';
-          ctx.fillText(city.status,cx+cardW/2,cy+60);
-
-          // Pulsing glow ring
-          var ringR=10+4*Math.sin(elapsed/300+i*1.2);
-          ctx.globalAlpha=ca*0.3; ctx.strokeStyle=city.color; ctx.lineWidth=1;
-          ctx.beginPath(); ctx.arc(cx+cardW/2,cy+23,ringR,0,Math.PI*2); ctx.stroke();
-          ctx.restore();
         });
 
-        // War targets below
-        if(p5>0.4){
-          var ta2=Math.min((p5-0.4)*3,1);
-          ctx.save(); ctx.globalAlpha=ta2;
-          ctx.textAlign='center'; ctx.fillStyle=GOLD; ctx.font='bold 10px monospace';
-          ctx.fillText('DECLARED TARGETS: #3008 \u00b7 #2008 \u00b7 #1060',W/2,H-30);
-          ctx.fillStyle=MUTED; ctx.font='9px monospace';
-          ctx.fillText('Neutral City Declaration stage active',W/2,H-16);
+        // Running counter
+        if(s2>0.1){
+          var ca=Math.min((s2-0.1)*5,1);
+          glowText(siegeCount+' / '+totalGained+' SEIZED', W/2, 22, GREEN2, 11, ca, 6);
+        }
+      }
+
+      // ══ SCENE 3 (8-12s): THE S126 MECHA VILLAIN ═════════════════════════
+      var s3=pt(t,8000,12000);
+      if(s3>0){
+        drawGround();
+
+        // S126 mecha enters from right
+        var mechaEnterX=lerp(W+60, W*0.65, easeOut(Math.min(s3*4,1)));
+        var mechaScale=lerp(0.5,1.4,easeOut(Math.min(s3*3,1)));
+
+        drawMecha(mechaEnterX, GROUND_Y-36*mechaScale, mechaScale, RED, elapsed/400);
+
+        if(s3>0.2){
+          // Two green soldiers charge the mecha
+          var chargeT=Math.min((s3-0.2)/0.3,1);
+          // Soldier 1 — charges but gets swatted
+          var sol1x=lerp(W*0.35, mechaEnterX-60, chargeT);
+          if(chargeT<0.8){
+            drawStick(sol1x, GROUND_Y-18, GREEN, 1, wave*3, 'walk');
+            drawSword(sol1x+8, GROUND_Y-38, -0.8, GREEN2);
+          } else {
+            // Knocked away!
+            var ko1=(chargeT-0.8)/0.2;
+            drawStick(lerp(mechaEnterX-60,mechaEnterX-130,ko1), GROUND_Y-18+ko1*20, GREEN, 0.8, 0, 'knocked');
+            if(ko1<0.05){ spawnBurst(mechaEnterX-60, GROUND_Y-18, GOLD, 10); shake(4); }
+          }
+
+          // Soldier 2 — same fate
+          if(s3>0.45){
+            var chargeT2=Math.min((s3-0.45)/0.3,1);
+            var sol2x=lerp(W*0.25, mechaEnterX-70, chargeT2);
+            if(chargeT2<0.75){
+              drawStick(sol2x, GROUND_Y-18, GREEN, 1.1, wave*3+1, 'fight');
+              drawSword(sol2x+10, GROUND_Y-40, -0.5, GREEN2);
+            } else {
+              var ko2=(chargeT2-0.75)/0.25;
+              drawStick(lerp(mechaEnterX-70,mechaEnterX-160,ko2), GROUND_Y-10+ko2*25, GREEN, 0.8, 0, 'knocked');
+              if(ko2<0.05){ spawnBurst(mechaEnterX-70, GROUND_Y-18, RED, 10); shake(3); }
+            }
+          }
+        }
+
+        // Mecha stomps a defender (our #392)
+        if(s3>0.72){
+          var stompT=Math.min((s3-0.72)/0.25,1);
+          var defX=lerp(W*0.2, mechaEnterX-40, easeOut(stompT));
+          if(stompT<0.7){
+            drawStick(defX, GROUND_Y-18, GREEN, 1, wave, 'defend');
+            drawSword(defX+8, GROUND_Y-38, 0.4, GREEN);
+          } else {
+            drawStick(defX-20, GROUND_Y, GREEN, 0.6, 0, 'knocked');
+          }
+          if(stompT>0.6 && stompT<0.65){ bigExplosion(defX, GROUND_Y-20, RED); }
+        }
+
+        // "#391, #373, #392 BLOCKED" text
+        if(s3>0.5){
+          var ba=Math.min((s3-0.5)*4,1);
+          glowText('S126 BLOCKS: #391, #373', W*0.35, 55, RED2, 10, ba, 6);
+        }
+        if(s3>0.78){
+          var la=Math.min((s3-0.78)*6,1);
+          glowText('#392 LOST', W*0.3, 72, RED, 11, la*Math.abs(Math.sin(elapsed/200)), 8);
+        }
+
+        // "S126" boss label
+        if(s3>0.1){
+          var la2=Math.min(s3*5,1);
+          ctx.save(); ctx.globalAlpha=la2;
+          ctx.fillStyle=RED2; ctx.font='bold 9px monospace'; ctx.textAlign='center';
+          ctx.shadowBlur=8; ctx.shadowColor=RED;
+          ctx.fillText('THE VILLAIN', mechaEnterX, GROUND_Y-36*mechaScale-55);
           ctx.restore();
         }
-
-        // Occasional NC beam sparks
-        if(Math.random()<0.05) spawnSpark(startX+Math.random()*totalW,50+Math.random()*80,GOLD2,3);
       }
 
-      // ══ PHASE 6 (15.5-19s): DOMINATION SALVO ════════════════════════════
-      var p6=phaseT(t,15500,19000);
-      if(p6>0){
-        if(p6<0.02){ triggerShake(10); spawnRing(W/2,H/2,GREEN2,200,6); }
-        if(Math.random()<0.18){
-          var bc=[GREEN2,GOLD2,BLUE2,ORANGE,RED][Math.floor(Math.random()*5)];
-          spawnBurst(60+Math.random()*(W-120),10+Math.random()*(H-40),bc,20,5,3,0.006);
-          spawnDebris(60+Math.random()*(W-120),10+Math.random()*(H-40),GOLD,10);
-        }
-        if(Math.random()<0.1) spawnSpark(Math.random()*W,Math.random()*H*0.6,GOLD3,8);
-        if(Math.random()<0.06){
-          var lx2=Math.random()*W;
-          drawLightning(lx2,0,lx2+(Math.random()-.5)*80,H*0.8,0.5,GREEN2);
+      // ══ SCENE 4 (11.5-16s): REVENGE + VICTORY SWEEP ═════════════════════
+      var s4=pt(t,11500,16000);
+      if(s4>0){
+        drawGround();
+        siegeCount=13; // all captured by this scene
+
+        // The mecha retreats
+        var mechaRetX=lerp(W*0.65, W+100, easeIn(Math.min(s4*2,1)));
+        drawMecha(mechaRetX, GROUND_Y-50, 1.4*lerp(1,0.3,Math.min(s4*2,1)), RED, elapsed/400);
+
+        // 13 flags planted left to right
+        var nFlags=13;
+        for(var fi=0;fi<nFlags;fi++){
+          var fx=50+fi*(W-100)/(nFlags-1);
+          var fp2=clamp((s4-fi*0.04)*4,0,1);
+          if(fp2>0){
+            // Flag drops in from above
+            var fy=lerp(GROUND_Y-80, GROUND_Y-2, easeOut(fp2));
+            drawFlag(fx, fy, GREEN, wave+fi*0.5);
+            if(fp2>0 && fp2<0.08){ spawnBurst(fx, GROUND_Y-20, GREEN2, 8); }
+          }
         }
 
-        // "S2864 DOMINATES" stamp
-        var stampA=Math.min(p6*4,1);
-        ctx.save(); ctx.globalAlpha=stampA;
-        ctx.textAlign='center';
-        ctx.shadowBlur=40; ctx.shadowColor=GREEN2;
-        ctx.fillStyle=GREEN2; ctx.font='bold 28px monospace';
-        ctx.fillText('S2864  DOMINATES',W/2,H/2-8);
-        ctx.shadowBlur=0;
-        ctx.fillStyle=GOLD2; ctx.font='bold 14px monospace';
-        ctx.fillText('55 WASTELANDS  \u00b7  3 NEUTRAL CITIES  \u00b7  RANK 20',W/2,H/2+18);
-        drawHUDCorners(20,H/2-40,W-40,68,stampA*0.9,GREEN2);
-        ctx.restore();
+        // Army of green soldiers celebrating across the field
+        var nVictors=8;
+        for(var vi=0;vi<nVictors;vi++){
+          var vx=80+vi*(W-160)/(nVictors-1);
+          if(s4>vi*0.06){
+            var vp=Math.min((s4-vi*0.06)*3,1);
+            drawStick(vx, GROUND_Y-18, GREEN, lerp(0.5,1,easeOut(vp)), wave*1.5+vi, s4>0.5?'victory':'stand');
+            if(s4>0.5 && Math.random()<0.04) spawnBurst(vx, GROUND_Y-40, GREEN2, 5, 2);
+          }
+        }
+
+        // BIG explosion as mecha finally leaves
+        if(s4>0.08 && s4<0.12){
+          bigExplosion(W*0.6, GROUND_Y-50, GOLD2);
+          bigExplosion(W*0.7, GROUND_Y-30, RED);
+        }
+
+        // Score counter
+        if(s4>0.35){
+          var sp=easeOut(Math.min((s4-0.35)*2.5,1));
+          var dispScore=Math.round(lerp(prevScore,curScore,sp));
+          glowText(dispScore.toLocaleString(), W/2, H/2-8, sp>0.9?GREEN2:GOLD2, 40, Math.min((s4-0.35)*4,1), 30);
+          if(s4>0.6){
+            glowText('+'+scoreDelta.toLocaleString(), W/2, H/2+26, GREEN2, 16, Math.min((s4-0.6)*4,1), 10);
+          }
+          if(s4>0.75){
+            glowText('\u25b2 RANK 21 \u2192 20', W/2, H/2+46, BLUE2, 12, Math.min((s4-0.75)*5,1), 8);
+          }
+        }
+
+        // Fireworks celebration
+        if(s4>0.4 && Math.random()<0.12){
+          var fw=[GREEN2,GOLD2,BLUE2,WHITE][Math.floor(Math.random()*4)];
+          spawnBurst(rnd(80,W-80), rnd(20,120), fw, 16, 5);
+          spawnSpark(rnd(80,W-80), rnd(20,100), GOLD3, 6);
+        }
       }
 
-      // ══ PHASE 7 (19-22s): THE CHRONICLE ═════════════════════════════════
-      var p7=phaseT(t,19000,22000);
-      if(p7>0){
-        ctx.fillStyle='rgba(0,0,0,'+Math.min(p7/0.2,0.92)+')';
+      // ══ SCENE 5 (15.5-19.5s): NEUTRAL CITY SPOTLIGHT ════════════════════
+      var s5=pt(t,15500,19500);
+      if(s5>0){
+        drawGround();
+
+        // 3 city structures glowing gold
+        var cities=[{x:140,name:'#2016',lv:'Lv.2'},{x:320,name:'#1040',lv:'Lv.1'},{x:500,name:'#1046',lv:'Lv.1'}];
+        cities.forEach(function(city,ci){
+          var cd=clamp((s5-ci*0.12)*5,0,1); if(cd<=0) return;
+
+          // Beam of light from sky
+          var beamAlpha=cd*(0.3+0.15*Math.sin(elapsed/400+ci));
+          var grad=ctx.createLinearGradient(city.x,0,city.x,GROUND_Y);
+          grad.addColorStop(0,GOLD2+'00');
+          grad.addColorStop(0.4,GOLD2+(Math.round(beamAlpha*255).toString(16).padStart(2,'0')));
+          grad.addColorStop(1,GOLD2+'00');
+          ctx.fillStyle=grad; ctx.fillRect(city.x-20,0,40,GROUND_Y);
+
+          // City structure (tower with dome)
+          ctx.save(); ctx.globalAlpha=cd;
+          ctx.fillStyle='#2a3a1a'; ctx.fillRect(city.x-18,GROUND_Y-55,36,55);
+          ctx.strokeStyle=GOLD2; ctx.lineWidth=1.5; ctx.strokeRect(city.x-18,GROUND_Y-55,36,55);
+          // Dome
+          ctx.fillStyle='#1a2a3a';
+          ctx.beginPath(); ctx.arc(city.x,GROUND_Y-55,18,Math.PI,0); ctx.closePath(); ctx.fill();
+          ctx.strokeStyle=GOLD2; ctx.lineWidth=1.5;
+          ctx.beginPath(); ctx.arc(city.x,GROUND_Y-55,18,Math.PI,0); ctx.stroke();
+          // Glowing crown on top
+          ctx.fillStyle=GOLD2; ctx.globalAlpha=cd*(0.8+0.2*Math.sin(elapsed/300+ci));
+          ctx.font='14px serif'; ctx.textAlign='center';
+          ctx.fillText('\u2605',city.x,GROUND_Y-70);
+          ctx.globalAlpha=cd;
+          ctx.fillStyle=GOLD; ctx.font='bold 8px monospace'; ctx.textAlign='center';
+          ctx.fillText(city.lv,city.x,GROUND_Y-38);
+          ctx.fillText(city.name,city.x,GROUND_Y+14);
+          ctx.restore();
+
+          // Green flag beside it
+          if(cd>0.4) drawFlag(city.x+20, GROUND_Y-2, GREEN, wave+ci*1.3);
+
+          // Sparkles
+          if(Math.random()<0.06) spawnSpark(city.x+rnd(-20,20), GROUND_Y-rnd(20,70), GOLD3, 3);
+        });
+
+        if(s5>0.35){
+          glowText('3 NEUTRAL CITIES SECURED', W/2, 28, GOLD2, 13, Math.min((s5-0.35)*4,1), 12);
+        }
+        if(s5>0.6){
+          glowText('NEXT: #3008 \u00b7 #1060 \u00b7 #2008', W/2, 48, GOLD, 9, Math.min((s5-0.6)*5,1), 6);
+        }
+      }
+
+      // ══ SCENE 6 (19-24s): THE CHRONICLE ════════════════════════════════
+      var s6=pt(t,19000,24000);
+      if(s6>0){
+        ctx.fillStyle='rgba(0,0,0,'+Math.min(s6/0.18,0.94)+')';
         ctx.fillRect(-10,-10,W+20,H+20);
 
-        if(p7>0.15){
-          var la=Math.min((p7-0.15)/0.1,1);
+        if(s6>0.15){
+          var la=Math.min((s6-0.15)/0.12,1);
           ctx.save(); ctx.globalAlpha=la; ctx.fillStyle=GOLD;
-          ctx.fillRect(40,H/2-24,(W-80)*Math.min((p7-0.15)/0.15,1),2);
+          ctx.fillRect(40,H/2-24,(W-80)*Math.min((s6-0.15)/0.18,1),2);
           ctx.restore();
         }
-        if(p7>0.3){
-          var chron='Round 3.5 \u2014 Sector 16';
-          var cT=Math.min((p7-0.3)/0.35,1);
-          ctx.save(); ctx.globalAlpha=Math.min((p7-0.3)/0.15,1);
-          ctx.textAlign='center'; ctx.font='bold 20px monospace';
-          ctx.fillStyle=WHITE;
-          ctx.shadowBlur=12; ctx.shadowColor=GOLD2;
-          ctx.fillText(chron.substring(0,Math.floor(cT*chron.length)),W/2,H/2+4);
-          ctx.restore();
+        if(s6>0.3){
+          var cText='Round 3.5 \u2014 Sector 16';
+          var cProg=Math.min((s6-0.3)/0.4,1);
+          glowText(cText.substring(0,Math.floor(cProg*cText.length)), W/2, H/2+4, WHITE, 20, Math.min((s6-0.3)/0.15,1), 14);
         }
-        if(p7>0.65){
-          var sub='After Wasteland Battles — Neutral City Stage Active';
-          var sT=Math.min((p7-0.65)/0.25,1);
-          ctx.save(); ctx.globalAlpha=Math.min((p7-0.65)/0.15,1);
-          ctx.textAlign='center'; ctx.font='10px monospace'; ctx.fillStyle=MUTED;
-          ctx.fillText(sub.substring(0,Math.floor(sT*sub.length)),W/2,H/2+22);
-          ctx.restore();
+        if(s6>0.65){
+          var sText='13 seized \u00b7 1 lost \u00b7 Score 11,000 \u00b7 Rank 20';
+          var sProg=Math.min((s6-0.65)/0.3,1);
+          glowText(sText.substring(0,Math.floor(sProg*sText.length)), W/2, H/2+22, MUTED, 9, Math.min((s6-0.65)/0.15,1), 0);
         }
       }
 
       tickParticles();
       tickRings();
-      ctx.restore(); // shake restore
+      ctx.restore();
 
       if(t<1.0) storyAnimFrame=requestAnimationFrame(render);
       else storyAnimFrame=null;
