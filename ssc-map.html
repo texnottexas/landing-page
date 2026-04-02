@@ -2010,14 +2010,20 @@
     svg.setAttribute('width', gridW);
     svg.setAttribute('height', gridW);
 
-    // Compute S2864 territory centroid from owned wasteland cells
+    // Find S2864's warzone cell (type-1, sid=2864) — the crown cell — as line source
     var centroid = null;
     if (rd.cells) {
-      var sumR = 0, sumC = 0, count = 0;
-      rd.cells.forEach(function(c) {
-        if (c.type === 3 && c.sid === 2864) { sumR += c.r; sumC += c.c; count++; }
-      });
-      if (count > 0) centroid = cellCenter(Math.round(sumR / count), Math.round(sumC / count));
+      var wz = rd.cells.find(function(c) { return c.type === 1 && c.sid === 2864; });
+      if (wz) {
+        centroid = cellCenter(wz.r, wz.c);
+      } else {
+        // Fallback: centroid of owned wastelands
+        var sumR = 0, sumC = 0, count = 0;
+        rd.cells.forEach(function(c) {
+          if (c.type === 3 && c.sid === 2864) { sumR += c.r; sumC += c.c; count++; }
+        });
+        if (count > 0) centroid = cellCenter(Math.round(sumR / count), Math.round(sumC / count));
+      }
     }
 
     // For each declaration target, draw a line from territory centroid to the target
