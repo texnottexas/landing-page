@@ -145,7 +145,7 @@
   .raw-json pre { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .75rem; font-size: .7rem; max-height: 400px; overflow: auto; white-space: pre-wrap; word-break: break-all; color: var(--text); font-family: 'SF Mono', Monaco, monospace; }
 
   /* Stats Comparison button */
-  .stats-btn-wrap { text-align: center; margin-bottom: 1.5rem; }
+  .stats-btn-wrap { display: flex; gap: .5rem; justify-content: center; flex-wrap: wrap; margin-bottom: 1.5rem; }
   .stats-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .5rem 1.2rem; color: var(--accent); font-size: .85rem; font-weight: 600; cursor: pointer; transition: all .15s; }
   .stats-btn:hover { border-color: var(--accent); background: rgba(121,192,255,.08); }
 
@@ -2520,41 +2520,42 @@
     // Details panel (with hero portraits — rally-aware)
     container.appendChild(buildDetailsPanel(fm, att, def, attPI, defPI, attHeroes, defHeroes));
 
-    // Hero Attributes button (gear + exclusive skills)
+    // Hero Equipment + Stats Comparison buttons — side by side in one row
     var attHasGear = att.players && att.players.some(function(p){ return (p.heroList||[]).some(function(h){ return h.heroEquips && h.heroEquips.length > 0; }); });
     var defHasGear = def.players && def.players.some(function(p){ return (p.heroList||[]).some(function(h){ return h.heroEquips && h.heroEquips.length > 0; }); });
-    if (attHasGear || defHasGear) {
-      var attrBtnWrap = el('div', {className: 'stats-btn-wrap'});
-      var attrBtn = el('button', {className: 'stats-btn', onclick: function(){
-        document.body.appendChild(buildAttributesModal(att, def, attPI, defPI));
-      }});
-      attrBtn.appendChild(el('span', {style:'display:inline-flex;vertical-align:middle;margin-right:.35rem;'}, (function(){
-        var s = document.createElementNS('http://www.w3.org/2000/svg','svg');
-        s.setAttribute('width','16'); s.setAttribute('height','16'); s.setAttribute('viewBox','0 0 24 24'); s.setAttribute('fill','none'); s.setAttribute('stroke','currentColor'); s.setAttribute('stroke-width','2');
-        var p1 = document.createElementNS('http://www.w3.org/2000/svg','rect'); p1.setAttribute('x','2'); p1.setAttribute('y','3'); p1.setAttribute('width','20'); p1.setAttribute('height','14'); p1.setAttribute('rx','2');
-        var p2 = document.createElementNS('http://www.w3.org/2000/svg','path'); p2.setAttribute('d','M8 21h8M12 17v4');
-        s.appendChild(p1); s.appendChild(p2); return s;
-      })()));
-      attrBtn.appendChild(document.createTextNode('Hero Equipment'));
-      attrBtnWrap.appendChild(attrBtn);
-      container.appendChild(attrBtnWrap);
-    }
-
-    // Stats Comparison button
     var attHasBuffs = att.players && att.players.some(function(p) { return p.effectBuffs; });
     var defHasBuffs = def.players && def.players.some(function(p) { return p.effectBuffs; });
-    if (attHasBuffs || defHasBuffs) {
-      var btnWrap = el('div', { className: 'stats-btn-wrap' });
-      var statsBtn = el('button', { className: 'stats-btn', onclick: function() {
-        var modal = buildStatsModal(att, def, attPI, defPI);
-        document.body.appendChild(modal);
-      }});
-      statsBtn.appendChild(el('span', { style: 'display:inline-flex;vertical-align:middle;margin-right:.35rem;' }, [
-        (function() { var s = document.createElementNS('http://www.w3.org/2000/svg','svg'); s.setAttribute('width','16'); s.setAttribute('height','16'); s.setAttribute('viewBox','55 50 400 400'); s.setAttribute('fill','currentColor'); var p = document.createElementNS('http://www.w3.org/2000/svg','path'); p.setAttribute('d','M438,411.3l-37.6-37.6c0.1-0.2,0.1-0.2,0.1-0.4c9.7-20.8,6.2-46.3-11-63.5L363,336.3l-80.5-80.5l96.6-96.6c24-24,37.5-56.6,37.5-90.5L256,229.3L95.4,68.7c0,34,13.5,66.5,37.5,90.5l96.6,96.6L149,336.3l-26.5-26.5c-17.2,17.2-20.7,42.7-11,63.5c0.1,0.2,0.1,0.2,0.1,0.4L74,411.3c-7.3,7.3-7.3,19.2,0,26.5c7.3,7.3,19.2,7.3,26.5,0l37.6-37.6c0.2,0.1,0.2,0.1,0.4,0.1c20.8,9.7,46.3,6.2,63.5-11l-26.5-26.5l80.5-80.5l80.5,80.5L310,389.4c17.2,17.2,42.7,20.7,63.5,11c0.1-0.1,0.2-0.1,0.4-0.1l37.6,37.6c7.3,7.3,19.2,7.3,26.5,0C445.3,430.5,445.3,418.6,438,411.3z'); s.appendChild(p); return s; })()
-      ]));
-      statsBtn.appendChild(document.createTextNode('Stats Comparison'));
-      btnWrap.appendChild(statsBtn);
-      container.appendChild(btnWrap);
+
+    if (attHasGear || defHasGear || attHasBuffs || defHasBuffs) {
+      var btnRow = el('div', {className: 'stats-btn-wrap'});
+
+      if (attHasGear || defHasGear) {
+        var attrBtn = el('button', {className: 'stats-btn', onclick: function(){
+          document.body.appendChild(buildAttributesModal(att, def, attPI, defPI));
+        }});
+        attrBtn.appendChild(el('span', {style:'display:inline-flex;vertical-align:middle;margin-right:.35rem;'}, (function(){
+          var s = document.createElementNS('http://www.w3.org/2000/svg','svg');
+          s.setAttribute('width','16'); s.setAttribute('height','16'); s.setAttribute('viewBox','0 0 24 24'); s.setAttribute('fill','none'); s.setAttribute('stroke','currentColor'); s.setAttribute('stroke-width','2');
+          var p1 = document.createElementNS('http://www.w3.org/2000/svg','rect'); p1.setAttribute('x','2'); p1.setAttribute('y','3'); p1.setAttribute('width','20'); p1.setAttribute('height','14'); p1.setAttribute('rx','2');
+          var p2 = document.createElementNS('http://www.w3.org/2000/svg','path'); p2.setAttribute('d','M8 21h8M12 17v4');
+          s.appendChild(p1); s.appendChild(p2); return s;
+        })()));
+        attrBtn.appendChild(document.createTextNode('Hero Equipment'));
+        btnRow.appendChild(attrBtn);
+      }
+
+      if (attHasBuffs || defHasBuffs) {
+        var statsBtn = el('button', { className: 'stats-btn', onclick: function() {
+          document.body.appendChild(buildStatsModal(att, def, attPI, defPI));
+        }});
+        statsBtn.appendChild(el('span', { style: 'display:inline-flex;vertical-align:middle;margin-right:.35rem;' }, [
+          (function() { var s = document.createElementNS('http://www.w3.org/2000/svg','svg'); s.setAttribute('width','16'); s.setAttribute('height','16'); s.setAttribute('viewBox','55 50 400 400'); s.setAttribute('fill','currentColor'); var p = document.createElementNS('http://www.w3.org/2000/svg','path'); p.setAttribute('d','M438,411.3l-37.6-37.6c0.1-0.2,0.1-0.2,0.1-0.4c9.7-20.8,6.2-46.3-11-63.5L363,336.3l-80.5-80.5l96.6-96.6c24-24,37.5-56.6,37.5-90.5L256,229.3L95.4,68.7c0,34,13.5,66.5,37.5,90.5l96.6,96.6L149,336.3l-26.5-26.5c-17.2,17.2-20.7,42.7-11,63.5c0.1,0.2,0.1,0.2,0.1,0.4L74,411.3c-7.3,7.3-7.3,19.2,0,26.5c7.3,7.3,19.2,7.3,26.5,0l37.6-37.6c0.2,0.1,0.2,0.1,0.4,0.1c20.8,9.7,46.3,6.2,63.5-11l-26.5-26.5l80.5-80.5l80.5,80.5L310,389.4c17.2,17.2,42.7,20.7,63.5,11c0.1-0.1,0.2-0.1,0.4-0.1l37.6,37.6c7.3,7.3,19.2,7.3,26.5,0C445.3,430.5,445.3,418.6,438,411.3z'); s.appendChild(p); return s; })()
+        ]));
+        statsBtn.appendChild(document.createTextNode('Stats Comparison'));
+        btnRow.appendChild(statsBtn);
+      }
+
+      container.appendChild(btnRow);
     }
 
     // Skill damage tables (with hero icons + mecha icons)
