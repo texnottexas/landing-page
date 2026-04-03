@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://raw.githubusercontent.com; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://raw.githubusercontent.com; connect-src https://api.frankfurter.app; frame-ancestors 'none'">
 <title>Great Offers Preview — S2864</title>
 <style>
   :root{--bg:#0d1117;--surface:#161b22;--card:#1c2128;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#79c0ff;--army:#3fb950;--gold:#d29922;--red:#f85149;--navy:#388bfd;}
@@ -47,6 +47,44 @@
   .site-footer a{color:var(--muted);text-decoration:none;}
   .site-footer a:hover{color:var(--accent);}
   @media(max-width:480px){.item-grid{grid-template-columns:1fr;}.header-sub{display:none;}}
+  /* Pricing button */
+  .price-btn{background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.3);color:var(--army);border-radius:8px;padding:.25rem .6rem;cursor:pointer;font-size:.72rem;font-weight:600;font-family:inherit;display:flex;align-items:center;gap:.35rem;transition:all .15s;}
+  .price-btn:hover{background:rgba(63,185,80,.2);border-color:var(--army);}
+  /* Item money row */
+  .money-row{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin-top:.2rem;font-size:.65rem;}
+  .money-usd{color:#4caf50;font-weight:600;}
+  .money-jpy{color:#79c0ff;font-weight:600;}
+  .money-save{color:var(--army);font-weight:700;}
+  /* Pricing modal */
+  .pm-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;align-items:flex-start;justify-content:center;padding:1rem;overflow-y:auto;}
+  .pm-overlay.show{display:flex;}
+  .pm-modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;max-width:680px;width:100%;margin:auto;box-shadow:0 16px 48px rgba(0,0,0,.6);}
+  .pm-header{display:flex;align-items:center;justify-content:space-between;padding:.85rem 1.1rem;border-bottom:1px solid var(--border);}
+  .pm-title{font-size:.95rem;font-weight:700;color:var(--text);}
+  .pm-close{background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;line-height:1;padding:0 .2rem;}
+  .pm-close:hover{color:var(--text);}
+  .pm-body{padding:1rem 1.1rem;}
+  .pm-section{margin-bottom:1.1rem;}
+  .pm-section-title{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:.55rem;}
+  .pm-rate-bar{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;margin-bottom:.75rem;font-size:.75rem;}
+  .pm-rate-val{font-weight:700;color:var(--accent);}
+  .pm-rate-note{color:var(--muted);font-size:.65rem;}
+  .pm-table{width:100%;border-collapse:collapse;font-size:.73rem;}
+  .pm-table th{color:var(--muted);font-weight:600;text-align:right;padding:.3rem .5rem;border-bottom:1px solid var(--border);}
+  .pm-table th:first-child{text-align:left;}
+  .pm-table td{padding:.35rem .5rem;border-bottom:1px solid rgba(48,54,61,.5);text-align:right;color:var(--text);}
+  .pm-table td:first-child{text-align:left;color:var(--muted);}
+  .pm-table tr.best-usd td:nth-child(3){color:#4caf50;font-weight:700;}
+  .pm-table tr.best-jpy td:nth-child(4){color:var(--accent);font-weight:700;}
+  .pm-table tr.best-usd td:nth-child(5){color:#4caf50;font-weight:700;}
+  .pm-table tr.best-jpy td:nth-child(6){color:var(--accent);font-weight:700;}
+  .pm-items-table{width:100%;border-collapse:collapse;font-size:.72rem;}
+  .pm-items-table th{color:var(--muted);font-weight:600;padding:.3rem .4rem;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;}
+  .pm-items-table th:first-child{text-align:left;}
+  .pm-items-table td{padding:.35rem .4rem;border-bottom:1px solid rgba(48,54,61,.5);text-align:right;vertical-align:middle;}
+  .pm-items-table td:first-child{text-align:left;color:var(--text);max-width:140px;}
+  .pm-save-badge{background:rgba(63,185,80,.15);color:var(--army);border-radius:4px;padding:.1rem .3rem;font-size:.62rem;font-weight:700;white-space:nowrap;}
+  .pm-note{font-size:.65rem;color:var(--muted);margin-top:.6rem;line-height:1.5;}
 </style>
 </head>
 <body>
@@ -63,6 +101,55 @@
     <span class="meta-badge act">Activity #5015819</span>
     <span class="meta-badge cur">&#9830; Diamonds</span>
     <span class="meta-note">7-day rotation &mdash; 9 items per day</span>
+    <button class="price-btn" id="pricingBtn">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M4 10.781c.148 1.667 1.513 2.85 3.591 3.003V15h1.043v-1.216c2.27-.179 3.678-1.438 3.678-3.3 0-1.59-.947-2.51-2.956-3.028l-.722-.187V3.467c1.122.11 1.879.714 2.07 1.616h1.47c-.166-1.6-1.54-2.748-3.54-2.875V1H7.591v1.233c-1.939.23-3.27 1.472-3.27 3.156 0 1.454.966 2.483 2.661 2.917l.61.162v4.031c-1.149-.17-1.94-.8-2.07-1.718zm3.391-3.836c-1.043-.263-1.6-.825-1.6-1.616 0-.944.704-1.641 1.8-1.828v3.495l-.2-.051zm1.591 1.872c1.287.323 1.852.859 1.852 1.769 0 1.097-.826 1.828-2.2 1.939V8.73z"/></svg>
+      Real Cost
+    </button>
+  </div>
+
+  <!-- Pricing Modal -->
+  <div class="pm-overlay" id="pmOverlay">
+    <div class="pm-modal">
+      <div class="pm-header">
+        <div class="pm-title">&#9830; Diamond Pack Pricing &amp; Item Costs</div>
+        <button class="pm-close" id="pmClose">&times;</button>
+      </div>
+      <div class="pm-body">
+        <div class="pm-rate-bar">
+          <span>Live exchange rate:</span>
+          <span class="pm-rate-val" id="pmRate">Loading...</span>
+          <span class="pm-rate-note" id="pmRateNote"></span>
+        </div>
+        <div class="pm-section">
+          <div class="pm-section-title">Diamond Packs</div>
+          <table class="pm-table" id="pmPackTable">
+            <thead><tr>
+              <th>Pack</th>
+              <th>USD</th><th>¢/&#9830;</th>
+              <th>JPY</th><th>¥/&#9830;</th>
+              <th>JPY in USD</th>
+            </tr></thead>
+            <tbody id="pmPackBody"></tbody>
+          </table>
+          <p class="pm-note">&#9733; Best rate highlighted per currency. JPY packs bought via Japanese App Store / Google Play JP account.</p>
+        </div>
+        <div class="pm-section">
+          <div class="pm-section-title" id="pmItemsTitle">Item Costs — Day <span id="pmDay"></span></div>
+          <table class="pm-items-table" id="pmItemTable">
+            <thead><tr>
+              <th>Item</th>
+              <th>&#9830;</th>
+              <th>Min USD</th>
+              <th>Min JPY</th>
+              <th>JPY→USD</th>
+              <th>Savings</th>
+            </tr></thead>
+            <tbody id="pmItemBody"></tbody>
+          </table>
+          <p class="pm-note">Min costs use fewest packs to cover the diamond price exactly (greedy, largest pack first). Savings = USD minus JPY-in-USD cost.</p>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="day-tabs" id="dayTabs"></div>
   <div class="day-header" id="dayHeader"></div>
@@ -99,6 +186,186 @@ for(var d=1;d<=7;d++){
   tabs.appendChild(btn);
 }
 renderDay(TODAY);
+
+// ── Pricing modal ──────────────────────────────────────────────────────────
+var PACKS = [
+  {tokens:60,   usd:0.99,  jpy:160},
+  {tokens:300,  usd:4.99,  jpy:650},
+  {tokens:600,  usd:8.99,  jpy:1300},
+  {tokens:1280, usd:19.99, jpy:2700},
+  {tokens:3280, usd:49.99, jpy:7000},
+  {tokens:6480, usd:99.99, jpy:13900}
+];
+// Gold Block 5% bonus: buying via preloaded gold blocks gives 5% extra diamonds
+var GOLD_BLOCK_BONUS = 1.05;
+
+var fxRate = null;
+var pmOpenDay = TODAY;
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function td(text, style) {
+  var el = document.createElement('td');
+  el.textContent = text;
+  if (style) el.style.cssText = style;
+  return el;
+}
+function tdH(html, style) { // only used for safe numeric/badge content
+  var el = document.createElement('td');
+  el.innerHTML = html; // eslint-disable-line -- html is built from numbers only, no user input
+  if (style) el.style.cssText = style;
+  return el;
+}
+
+// Greedy minimum pack cost
+function minCost(diamonds, cur) {
+  var rem = diamonds, cost = 0;
+  for (var i = PACKS.length-1; i >= 0; i--) {
+    var cnt = Math.floor(rem / PACKS[i].tokens);
+    if (cnt > 0) { cost += cnt * PACKS[i][cur]; rem -= cnt * PACKS[i].tokens; }
+  }
+  if (rem > 0) cost += PACKS[0][cur];
+  return cost;
+}
+// With 5% gold block bonus: effective cost = minCost / 1.05
+function minCostGB(diamonds, cur) { return minCost(Math.ceil(diamonds / GOLD_BLOCK_BONUS), cur); }
+
+function buildPackTable() {
+  var bestUSDRate = Math.min.apply(null, PACKS.map(function(p){return p.usd/p.tokens;}));
+  var bestJPYRate = Math.min.apply(null, PACKS.map(function(p){return p.jpy/p.tokens;}));
+  var tbody = document.getElementById('pmPackBody');
+  tbody.innerHTML = ''; // eslint-disable-line -- clearing only
+  PACKS.forEach(function(p) {
+    var usdRate = p.usd/p.tokens;
+    var jpyRate = p.jpy/p.tokens;
+    var jpyInUsd = fxRate ? (p.jpy/fxRate) : null;
+    var isBestUSD = Math.abs(usdRate - bestUSDRate) < 0.00001;
+    var isBestJPY = Math.abs(jpyRate - bestJPYRate) < 0.00001;
+    var tr = document.createElement('tr');
+    if (isBestUSD) tr.classList.add('best-usd');
+    if (isBestJPY) tr.classList.add('best-jpy');
+    tr.appendChild(td((isBestUSD||isBestJPY?'\u2605 ':'')+p.tokens.toLocaleString()+' \u25c6'));
+    tr.appendChild(td('$'+p.usd.toFixed(2)));
+    tr.appendChild(td((usdRate*100).toFixed(2)+'\u00a2'));
+    tr.appendChild(td('\u00a5'+p.jpy.toLocaleString()));
+    tr.appendChild(td('\u00a5'+(jpyRate).toFixed(3)));
+    tr.appendChild(td(jpyInUsd ? '$'+jpyInUsd.toFixed(2) : '\u2014'));
+    tbody.appendChild(tr);
+  });
+}
+
+function buildItemTable(day) {
+  pmOpenDay = day;
+  document.getElementById('pmDay').textContent = day;
+  var items = DAYS[String(day)] || [];
+  var tbody = document.getElementById('pmItemBody');
+  tbody.innerHTML = ''; // eslint-disable-line -- clearing only
+  items.forEach(function(item) {
+    var d = item.salePrice;
+    var usdCost = minCost(d, 'usd');
+    var usdGBCost = minCostGB(d, 'usd');
+    var jpyCost = minCost(d, 'jpy');
+    var jpyGBCost = minCostGB(d, 'jpy');
+    var jpyInUsd = fxRate ? jpyCost / fxRate : null;
+    var jpyGBInUsd = fxRate ? jpyGBCost / fxRate : null;
+    var saving = jpyInUsd ? usdCost - jpyInUsd : null;
+    var savingPct = saving && saving > 0.005 ? Math.round(saving/usdCost*100) : 0;
+    var tr = document.createElement('tr');
+    // Name (truncated, escaped via textContent)
+    var nameParts = item.name.split(' ');
+    var shortName = nameParts.slice(0,3).join(' ')+(nameParts.length>3?'\u2026':'');
+    var nameTd = document.createElement('td');
+    nameTd.title = item.name;
+    nameTd.textContent = shortName;
+    tr.appendChild(nameTd);
+    tr.appendChild(td(d.toLocaleString(), 'color:var(--gold)'));
+    // USD min cost + gold block
+    var usdTd = document.createElement('td');
+    usdTd.style.cssText = 'color:#4caf50';
+    usdTd.textContent = '$'+usdCost.toFixed(2);
+    var usdGB = document.createElement('div');
+    usdGB.style.cssText = 'font-size:.58rem;color:#8b949e;margin-top:1px';
+    usdGB.textContent = '\u2605GB: $'+usdGBCost.toFixed(2);
+    usdTd.appendChild(usdGB);
+    tr.appendChild(usdTd);
+    // JPY min cost + gold block
+    var jpyTd = document.createElement('td');
+    jpyTd.style.cssText = 'color:var(--accent)';
+    jpyTd.textContent = '\u00a5'+jpyCost.toLocaleString();
+    var jpyGB = document.createElement('div');
+    jpyGB.style.cssText = 'font-size:.58rem;color:#8b949e;margin-top:1px';
+    jpyGB.textContent = '\u2605GB: \u00a5'+jpyGBCost.toLocaleString();
+    jpyTd.appendChild(jpyGB);
+    tr.appendChild(jpyTd);
+    // JPY→USD
+    var convTd = document.createElement('td');
+    convTd.style.cssText = 'color:var(--accent)';
+    if (jpyInUsd) {
+      convTd.textContent = '$'+jpyInUsd.toFixed(2);
+      var convGB = document.createElement('div');
+      convGB.style.cssText = 'font-size:.58rem;color:#8b949e;margin-top:1px';
+      convGB.textContent = '\u2605GB: $'+jpyGBInUsd.toFixed(2);
+      convTd.appendChild(convGB);
+    } else {
+      convTd.textContent = '\u2014';
+    }
+    tr.appendChild(convTd);
+    // Savings
+    var saveTd = document.createElement('td');
+    if (savingPct > 0 && saving) {
+      var badge = document.createElement('span');
+      badge.className = 'pm-save-badge';
+      badge.textContent = '-'+savingPct+'% ($'+saving.toFixed(2)+')';
+      saveTd.appendChild(badge);
+    } else if (saving !== null && saving < -0.005) {
+      saveTd.style.cssText = 'color:var(--muted);font-size:.62rem';
+      saveTd.textContent = 'USD cheaper';
+    } else {
+      saveTd.textContent = '\u2014';
+    }
+    tr.appendChild(saveTd);
+    tbody.appendChild(tr);
+  });
+}
+
+function openPricingModal(day) {
+  document.getElementById('pmOverlay').classList.add('show');
+  var rateEl = document.getElementById('pmRate');
+  rateEl.textContent = fxRate ? '1 USD = \u00a5'+fxRate.toFixed(2) : 'Loading\u2026';
+  buildPackTable();
+  buildItemTable(day || TODAY);
+}
+
+function fetchRate() {
+  fetch('https://api.frankfurter.app/latest?from=USD&to=JPY')
+    .then(function(r){return r.json();})
+    .then(function(d){
+      fxRate = (d.rates && d.rates.JPY) ? d.rates.JPY : null;
+      var rateEl = document.getElementById('pmRate');
+      if (rateEl && fxRate) {
+        rateEl.textContent = '1 USD = \u00a5'+fxRate.toFixed(2);
+        document.getElementById('pmRateNote').textContent = '('+d.date+')';
+      }
+      if (document.getElementById('pmOverlay').classList.contains('show')) {
+        buildPackTable(); buildItemTable(pmOpenDay);
+      }
+    }).catch(function(){
+      var rateEl = document.getElementById('pmRate');
+      if (rateEl) rateEl.textContent = 'Rate unavailable \u2014 check internet';
+    });
+}
+
+document.getElementById('pricingBtn').addEventListener('click', function() {
+  fetchRate();
+  openPricingModal(TODAY);
+});
+document.getElementById('pmClose').addEventListener('click', function() {
+  document.getElementById('pmOverlay').classList.remove('show');
+});
+document.getElementById('pmOverlay').addEventListener('click', function(e) {
+  if (e.target === this) this.classList.remove('show');
+});
 </script>
 </body>
 </html>
