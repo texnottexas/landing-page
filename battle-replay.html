@@ -784,6 +784,51 @@ function updateRoundListActive() {
 // ─── Event Log ────────────────────────────────────────────────────────────────
 var currentRoundEvents = []; // parsed events for current round
 
+function renderPreBattleLog(el) {
+  var ROWS = [[1,2,3],[11,12,13],[21,22,23]];
+  ['att','def'].forEach(function(side) {
+    var header = document.createElement('div');
+    header.className = 'ev init';
+    header.style.cssText = 'border-color:' + (side === 'att' ? 'var(--attColor)' : 'var(--defColor)') + ';margin-bottom:.15rem;';
+    var hMain = document.createElement('div');
+    hMain.className = 'ev-main';
+    hMain.style.color = side === 'att' ? 'var(--attColor)' : 'var(--defColor)';
+    hMain.textContent = (side === 'att' ? 'Attacker' : 'Defender') + ' Formation';
+    header.appendChild(hMain);
+    el.appendChild(header);
+
+    ROWS.forEach(function(row) {
+      row.forEach(function(pos) {
+        var uuid = findUnitByPos(side, pos);
+        if (!uuid) return;
+        var u = unitMap[uuid];
+        if (!u) return;
+        var row2 = document.createElement('div');
+        row2.className = 'ev init';
+        row2.style.cssText = 'padding:.18rem .4rem;gap:.3rem;border-color:var(--border);';
+        var icon = document.createElement('div');
+        icon.className = 'ev-icon';
+        icon.textContent = pos <= 3 ? '▶' : pos <= 13 ? '▷' : '▹';
+        row2.appendChild(icon);
+        var body = document.createElement('div');
+        body.className = 'ev-body';
+        var main = document.createElement('div');
+        main.className = 'ev-main';
+        var typeLabel = armyTypeName(u) || 'Unit';
+        var heroLabel = (u.heroId && heroNameMap[u.heroId]) ? ' · ' + heroNameMap[u.heroId].name : '';
+        main.textContent = 'P' + pos + '  ' + typeLabel + heroLabel;
+        var sub = document.createElement('div');
+        sub.className = 'ev-sub';
+        sub.textContent = u.maxHp > 0 ? fmtNum(u.maxHp) + ' HP' : '';
+        body.appendChild(main);
+        if (sub.textContent) body.appendChild(sub);
+        row2.appendChild(body);
+        el.appendChild(row2);
+      });
+    });
+  });
+}
+
 function updateEventLog(roundIdx) {
   var el = document.getElementById('event-log');
   var title = document.getElementById('event-log-title');
@@ -792,7 +837,8 @@ function updateEventLog(roundIdx) {
   currentEventIdx = -1;
 
   if (roundIdx < 0 || roundIdx >= combatRounds.length) {
-    title.textContent = 'Select a round';
+    title.textContent = 'Pre-Battle Formation';
+    renderPreBattleLog(el);
     return;
   }
 
