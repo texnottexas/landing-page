@@ -882,11 +882,32 @@ function buildEventItem(e, idx) {
   div.addEventListener('click', function() {
     currentEventIdx = idx;
     highlightEvent(idx);
+    applyEventsUpToEvent(currentRoundIdx, idx);
+    updateUnitCells();
     flashUnit(e.source);
     if (e.target) flashUnit(e.target);
   });
 
   return div;
+}
+
+// Apply all events through the end of previous rounds, then apply
+// only the first (eventIdx+1) displayable events of the current round.
+// This lets HP bars reflect exactly the state at each stepped event.
+function applyEventsUpToEvent(roundIdx, eventIdx) {
+  // Reset to end-of-(roundIdx-1) state
+  applyEventsUpTo(roundIdx - 1);
+  // Apply only currentRoundEvents[0..eventIdx] that affect HP/death
+  for (var i = 0; i <= eventIdx && i < currentRoundEvents.length; i++) {
+    var ev = currentRoundEvents[i];
+    if (ev.t === 2 && ev.target) {
+      var tu = unitMap[String(ev.target)];
+      if (tu) tu.hp = ev.val;
+    } else if (ev.t === 19 && ev.source) {
+      var du = unitMap[String(ev.source)];
+      if (du) { du.dead = true; du.hp = 0; }
+    }
+  }
 }
 
 function highlightEvent(idx) {
@@ -907,6 +928,8 @@ function stepEvent(dir) {
   if (!currentRoundEvents.length) return;
   currentEventIdx = Math.max(0, Math.min(currentRoundEvents.length-1, (currentEventIdx < 0 ? 0 : currentEventIdx) + dir));
   highlightEvent(currentEventIdx);
+  applyEventsUpToEvent(currentRoundIdx, currentEventIdx);
+  updateUnitCells();
   var e = currentRoundEvents[currentEventIdx];
   if (e) { flashUnit(e.source); if (e.target) flashUnit(e.target); }
 }
