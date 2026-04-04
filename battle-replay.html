@@ -5,74 +5,138 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Battle Replay — Server 2864</title>
 <style>
-:root{--bg:#0d1117;--surface:#161b22;--card:#1c2128;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#79c0ff;--green:#3fb950;--red:#f85149;--gold:#d29922;--navy:#388bfd;}
+:root{--bg:#0d1117;--surface:#161b22;--card:#1c2128;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#79c0ff;--green:#3fb950;--red:#f85149;--gold:#d29922;--navy:#388bfd;--attColor:#388bfd;--defColor:#f85149;}
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;}
-header{background:var(--surface);border-bottom:1px solid var(--border);padding:.75rem 1.5rem;display:flex;align-items:center;gap:1rem;}
-header h1{font-size:1.1rem;font-weight:700;}
-header h1 span{color:var(--accent);}
-.home-btn{display:flex;align-items:center;justify-content:center;background:var(--card);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:.4rem .6rem;text-decoration:none;transition:all .15s;}
+a{color:var(--accent);text-decoration:none;}
+
+/* Header */
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:.75rem 1.5rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;}
+header h1{font-size:1.1rem;font-weight:700;}header h1 span{color:var(--accent);}
+.home-btn{display:flex;align-items:center;background:var(--card);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:.4rem .6rem;transition:all .15s;}
 .home-btn:hover{border-color:var(--accent);color:var(--accent);}
 .bnp-wrap{position:relative;display:inline-flex;}
 #bnpBtn{background:none;border:1px solid var(--border);border-radius:8px;padding:.3rem .45rem;color:var(--muted);cursor:pointer;display:flex;align-items:center;}
 #bnpBtn:hover{border-color:var(--accent);color:var(--accent);}
 #bnpPop{display:none;position:absolute;top:calc(100% + 6px);left:0;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.4rem;z-index:500;min-width:168px;box-shadow:0 8px 24px rgba(0,0,0,.5);}
 #bnpPop.open{display:block;}
-.bnp-link{display:block;padding:.35rem .6rem;font-size:.78rem;color:var(--muted);text-decoration:none;border-radius:6px;white-space:nowrap;}
+.bnp-link{display:block;padding:.35rem .6rem;font-size:.78rem;color:var(--muted);border-radius:6px;white-space:nowrap;}
 .bnp-link:hover{background:rgba(121,192,255,.08);color:var(--text);}
 .bnp-link.bnp-cur{color:var(--accent);font-weight:600;pointer-events:none;}
-.main{flex:1;display:flex;flex-direction:column;padding:1rem;gap:1rem;max-width:1100px;margin:0 auto;width:100%;}
+
+/* Main */
+.main{flex:1;padding:1rem;max-width:1300px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:.75rem;}
 .search-row{display:flex;gap:.5rem;}
 .search-row input{flex:1;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:.5rem .75rem;font-size:.9rem;font-family:inherit;}
 .search-row input:focus{outline:none;border-color:var(--accent);}
 .search-row button{background:var(--accent);color:var(--bg);border:none;border-radius:8px;padding:.5rem 1.1rem;font-size:.85rem;font-weight:600;cursor:pointer;}
 .search-row button:hover{opacity:.85;}
-#status{font-size:.85rem;color:var(--muted);min-height:1.2em;}
-#report-ui{display:none;flex-direction:column;gap:1rem;}
-.vs-bar{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:.75rem 1.25rem;display:flex;align-items:center;gap:1rem;}
+#status{font-size:.82rem;color:var(--muted);min-height:1.1em;}
+#report-ui{display:none;flex-direction:column;gap:.75rem;}
+
+/* VS Bar */
+.vs-bar{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:.65rem 1.1rem;display:flex;align-items:center;gap:.75rem;}
 .vs-side{flex:1;}
-.vs-name{font-size:1rem;font-weight:700;margin-bottom:.2rem;}
-.vs-cp{font-size:.78rem;color:var(--muted);}
-.vs-result{font-size:.7rem;font-weight:700;padding:.15rem .5rem;border-radius:4px;display:inline-block;margin-top:.25rem;}
-.vs-result.win{background:rgba(63,185,80,.15);color:var(--green);}
-.vs-result.loss{background:rgba(248,81,73,.15);color:var(--red);}
-.vs-center{text-align:center;font-size:1.5rem;font-weight:800;color:var(--muted);}
-.vs-troops{font-size:.72rem;color:var(--muted);margin-top:.1rem;}
-.battle-area{display:flex;gap:1rem;align-items:flex-start;}
-#battle-canvas{background:var(--card);border:1px solid var(--border);border-radius:12px;display:block;flex-shrink:0;}
-.side-panel{flex:1;display:flex;flex-direction:column;gap:.75rem;min-width:0;}
-.round-info{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.75rem;}
-.round-info h3{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem;}
-.event-list{display:flex;flex-direction:column;gap:.25rem;max-height:200px;overflow-y:auto;}
-.event-item{font-size:.75rem;padding:.25rem .5rem;border-radius:5px;border-left:3px solid;}
-.event-item.attack{border-color:var(--red);background:rgba(248,81,73,.07);}
-.event-item.skill{border-color:var(--accent);background:rgba(121,192,255,.07);}
-.event-item.buff{border-color:var(--gold);background:rgba(210,153,34,.07);}
-.event-item.death{border-color:var(--muted);background:rgba(139,148,158,.07);}
-.event-item.formation{border-color:var(--green);background:rgba(63,185,80,.07);}
-.heroes-panel{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.75rem;}
-.heroes-panel h3{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem;}
-.hero-row{display:flex;gap:.4rem;flex-wrap:wrap;}
-.hero-chip{display:flex;align-items:center;gap:.3rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.2rem .4rem;font-size:.72rem;}
-.hero-chip img{width:24px;height:24px;border-radius:3px;object-fit:cover;}
-.controls{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:.75rem 1rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;}
-.ctrl-btn{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:.3rem .6rem;font-size:.8rem;cursor:pointer;transition:all .15s;}
+.vs-name{font-size:.95rem;font-weight:700;}
+.vs-sub{font-size:.72rem;color:var(--muted);margin-top:.1rem;}
+.vs-badge{display:inline-block;font-size:.65rem;font-weight:700;padding:.1rem .4rem;border-radius:3px;margin-top:.2rem;}
+.vs-badge.win{background:rgba(63,185,80,.15);color:var(--green);}
+.vs-badge.loss{background:rgba(248,81,73,.15);color:var(--red);}
+.vs-center{font-size:1.3rem;font-weight:800;color:var(--muted);padding:0 .5rem;}
+.vs-meta{font-size:.68rem;color:var(--muted);text-align:right;white-space:nowrap;}
+
+/* Battle Field */
+.battle-field{display:flex;gap:.5rem;align-items:stretch;position:relative;}
+.formation-panel{flex:1;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:.6rem;display:flex;flex-direction:column;gap:.4rem;}
+.formation-panel.att{border-color:rgba(56,139,253,.3);}
+.formation-panel.def{border-color:rgba(248,81,73,.3);}
+.formation-header{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem;text-align:center;}
+.formation-header.att{color:var(--attColor);}
+.formation-header.def{color:var(--defColor);}
+.formation-row{display:flex;gap:.4rem;justify-content:center;}
+/* Each unit cell */
+.unit-cell{flex:1;max-width:120px;display:flex;flex-direction:column;align-items:center;gap:.15rem;padding:.35rem .2rem;border-radius:8px;border:1px solid var(--border);background:var(--surface);transition:background .15s,border-color .15s;cursor:default;min-width:0;}
+.unit-cell:hover{background:var(--card);}
+.unit-cell.active-att{border-color:var(--attColor);box-shadow:0 0 8px rgba(56,139,253,.3);}
+.unit-cell.active-def{border-color:var(--defColor);box-shadow:0 0 8px rgba(248,81,73,.3);}
+.unit-cell.dead{opacity:.25;filter:grayscale(1);}
+.unit-pos-label{font-size:.58rem;color:var(--muted);line-height:1;}
+.unit-icon-wrap{position:relative;width:52px;height:52px;}
+.unit-icon-wrap img{width:52px;height:52px;object-fit:contain;border-radius:6px;}
+.unit-hero-mini{position:absolute;bottom:-4px;right:-4px;width:22px;height:22px;border-radius:50%;border:2px solid var(--bg);object-fit:cover;}
+.unit-hp-bar{width:100%;height:4px;background:#21262d;border-radius:2px;overflow:hidden;}
+.unit-hp-fill{height:100%;border-radius:2px;transition:width .3s;}
+.unit-hp-fill.high{background:var(--green);}
+.unit-hp-fill.mid{background:var(--gold);}
+.unit-hp-fill.low{background:var(--red);}
+.unit-hero-name{font-size:.6rem;color:var(--text);font-weight:600;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;}
+.unit-count{font-size:.58rem;color:var(--muted);}
+
+/* VS divider */
+.vs-divider{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.5rem;padding:0 .3rem;min-width:44px;}
+.vs-divider-line{flex:1;width:1px;background:var(--border);}
+.vs-divider-label{font-size:.85rem;font-weight:800;color:var(--muted);}
+
+/* Heroes row */
+.heroes-row{display:flex;gap:.5rem;}
+.heroes-panel{flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.5rem .75rem;}
+.heroes-panel h3{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;}
+.hero-chips{display:flex;gap:.4rem;flex-wrap:wrap;}
+.hero-chip{display:flex;align-items:center;gap:.3rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.2rem .5rem;font-size:.72rem;}
+.hero-chip img{width:24px;height:24px;border-radius:50%;object-fit:cover;}
+.hero-chip .hero-chip-skill{color:var(--muted);font-size:.66rem;}
+
+/* Controls */
+.controls-row{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.55rem .85rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;}
+.ctrl-btn{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:.28rem .55rem;font-size:.78rem;cursor:pointer;transition:all .15s;line-height:1;}
 .ctrl-btn:hover{border-color:var(--accent);color:var(--accent);}
 .ctrl-btn.active{background:var(--accent);color:var(--bg);border-color:var(--accent);}
-.ctrl-sep{width:1px;height:1.5rem;background:var(--border);}
-.round-display{font-size:.85rem;color:var(--text);font-weight:600;margin-left:auto;}
+.ctrl-sep{width:1px;height:1.4rem;background:var(--border);}
+.speed-group{display:flex;gap:.2rem;}
+.round-display{font-size:.82rem;font-weight:600;margin-left:auto;white-space:nowrap;}
 .round-display span{color:var(--muted);font-weight:400;}
-.speed-group{display:flex;gap:.25rem;}
-.progress-row{display:flex;align-items:center;gap:.75rem;padding:0 .25rem;}
-.progress-bar{flex:1;height:6px;background:var(--surface);border-radius:3px;cursor:pointer;position:relative;}
-.progress-fill{height:100%;background:var(--accent);border-radius:3px;}
-.footer{background:var(--surface);border-top:1px solid var(--border);padding:.6rem;text-align:center;font-size:.72rem;color:var(--muted);}
-.footer a{color:var(--accent);text-decoration:none;}
+.progress-bar-wrap{height:5px;background:var(--surface);border-radius:3px;cursor:pointer;overflow:visible;position:relative;}
+.progress-fill{height:5px;background:var(--accent);border-radius:3px;pointer-events:none;}
+
+/* Event panel */
+.event-panel{display:flex;gap:.5rem;min-height:160px;}
+.round-list-panel{width:200px;flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;}
+.round-list-panel h3{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:.45rem .65rem;border-bottom:1px solid var(--border);}
+.round-list{overflow-y:auto;flex:1;}
+.round-list-item{padding:.28rem .65rem;font-size:.73rem;cursor:pointer;border-left:3px solid transparent;color:var(--muted);}
+.round-list-item:hover{background:var(--surface);color:var(--text);}
+.round-list-item.current{border-left-color:var(--accent);color:var(--text);background:rgba(121,192,255,.06);}
+.event-log-panel{flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;overflow:hidden;}
+.event-log-header{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:.45rem .75rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.5rem;}
+.event-log-header .step-btns{display:flex;gap:.25rem;margin-left:auto;}
+.event-log-header button{background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:4px;padding:.15rem .4rem;font-size:.68rem;cursor:pointer;}
+.event-log-header button:hover{color:var(--accent);border-color:var(--accent);}
+.event-log{overflow-y:auto;flex:1;padding:.35rem .5rem;display:flex;flex-direction:column;gap:.2rem;}
+.ev{display:flex;align-items:flex-start;gap:.4rem;padding:.25rem .4rem;border-radius:5px;font-size:.72rem;border-left:3px solid;}
+.ev.attack{border-color:var(--red);background:rgba(248,81,73,.05);}
+.ev.skill{border-color:var(--accent);background:rgba(121,192,255,.05);}
+.ev.buff{border-color:var(--gold);background:rgba(210,153,34,.05);}
+.ev.death{border-color:var(--muted);background:rgba(139,148,158,.05);}
+.ev.formation{border-color:var(--green);background:rgba(63,185,80,.05);}
+.ev.mecha{border-color:#d2a8ff;background:rgba(210,168,255,.05);}
+.ev.init{border-color:var(--border);color:var(--muted);}
+.ev-icon{flex-shrink:0;width:14px;text-align:center;margin-top:.05rem;}
+.ev-body{flex:1;min-width:0;}
+.ev-main{font-weight:600;color:var(--text);}
+.ev-sub{color:var(--muted);font-size:.67rem;margin-top:.05rem;}
+.ev-val{color:var(--red);font-weight:700;white-space:nowrap;}
+.ev.current{outline:1px solid var(--accent);}
+
+/* Highlight pulse */
+@keyframes unit-flash{0%{opacity:1}50%{opacity:.4}100%{opacity:1}}
+.unit-cell.flash{animation:unit-flash .25s ease-out;}
+
+footer{background:var(--surface);border-top:1px solid var(--border);padding:.55rem;text-align:center;font-size:.7rem;color:var(--muted);}
 </style>
 </head>
 <body>
 <header>
-  <a href="https://2864tw.com" class="home-btn" title="Back to 2864tw.com"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></a>
+  <a href="https://2864tw.com" class="home-btn" title="Home"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></a>
   <div class="bnp-wrap">
     <button id="bnpBtn" title="All pages" onclick="document.getElementById('bnpPop').classList.toggle('open')"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zm8 0A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm-8 8A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm8 0A1.5 1.5 0 0 1 10.5 9h3A1.5 1.5 0 0 1 15 10.5v3A1.5 1.5 0 0 1 13.5 15h-3A1.5 1.5 0 0 1 9 13.5v-3z"/></svg></button>
     <div id="bnpPop">
@@ -100,35 +164,44 @@ header h1 span{color:var(--accent);}
   <div id="status"></div>
 
   <div id="report-ui">
+    <!-- VS Bar -->
     <div class="vs-bar" id="vs-bar"></div>
-    <div class="battle-area">
-      <canvas id="battle-canvas" width="600" height="400"></canvas>
-      <div class="side-panel">
-        <div class="heroes-panel">
-          <h3>Heroes</h3>
-          <div style="display:flex;gap:1rem;flex-wrap:wrap;">
-            <div>
-              <div style="font-size:.7rem;color:var(--green);margin-bottom:.3rem;">ATTACKER</div>
-              <div class="hero-row" id="att-heroes"></div>
-            </div>
-            <div>
-              <div style="font-size:.7rem;color:var(--red);margin-bottom:.3rem;">DEFENDER</div>
-              <div class="hero-row" id="def-heroes"></div>
-            </div>
-          </div>
-        </div>
-        <div class="round-info">
-          <h3 id="round-header">Round Events</h3>
-          <div class="event-list" id="event-list"></div>
-        </div>
+
+    <!-- Battle Field: Attacker | VS | Defender -->
+    <div class="battle-field">
+      <div class="formation-panel att" id="formation-att">
+        <div class="formation-header att" id="att-header">ATTACKER</div>
+        <!-- Rows injected by JS -->
+      </div>
+      <div class="vs-divider">
+        <div class="vs-divider-line"></div>
+        <div class="vs-divider-label">VS</div>
+        <div class="vs-divider-line"></div>
+      </div>
+      <div class="formation-panel def" id="formation-def">
+        <div class="formation-header def" id="def-header">DEFENDER</div>
       </div>
     </div>
-    <div class="controls">
-      <button class="ctrl-btn" title="First" onclick="gotoRound(0)">&#8676;</button>
+
+    <!-- Heroes -->
+    <div class="heroes-row">
+      <div class="heroes-panel" id="heroes-att">
+        <h3>Attacker Heroes</h3>
+        <div class="hero-chips" id="att-hero-chips"></div>
+      </div>
+      <div class="heroes-panel" id="heroes-def">
+        <h3>Defender Heroes</h3>
+        <div class="hero-chips" id="def-hero-chips"></div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls-row">
+      <button class="ctrl-btn" title="First round" onclick="gotoRound(0)">&#8676;</button>
       <button class="ctrl-btn" onclick="stepRound(-1)">&#9668;</button>
       <button class="ctrl-btn" id="btn-play" onclick="togglePlay()">&#9654;</button>
       <button class="ctrl-btn" onclick="stepRound(1)">&#9658;</button>
-      <button class="ctrl-btn" title="Last" onclick="gotoRound(99999)">&#8677;</button>
+      <button class="ctrl-btn" title="Last round" onclick="gotoRound(99999)">&#8677;</button>
       <div class="ctrl-sep"></div>
       <div class="speed-group">
         <button class="ctrl-btn active" onclick="setSpeed(1,this)">1x</button>
@@ -137,611 +210,716 @@ header h1 span{color:var(--accent);}
       </div>
       <div class="round-display" id="round-display">Round <span>— / —</span></div>
     </div>
-    <div class="progress-row">
-      <div class="progress-bar" id="progress-bar" onclick="seekProgress(event)">
-        <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+    <div class="progress-bar-wrap" id="progress-bar" onclick="seekProgress(event)">
+      <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+    </div>
+
+    <!-- Event Panel -->
+    <div class="event-panel">
+      <div class="round-list-panel">
+        <h3>Rounds</h3>
+        <div class="round-list" id="round-list"></div>
+      </div>
+      <div class="event-log-panel">
+        <div class="event-log-header">
+          <span id="event-log-title">Select a round</span>
+          <div class="step-btns">
+            <button onclick="stepEvent(-1)" title="Previous event">&#9650;</button>
+            <button onclick="stepEvent(1)" title="Next event">&#9660;</button>
+          </div>
+        </div>
+        <div class="event-log" id="event-log"></div>
       </div>
     </div>
   </div>
 </div>
 
-<footer class="footer">
+<footer>
   <a href="https://github.com/texnottexas/topwar-battle-anatomy" target="_blank" rel="noopener noreferrer">Battle Report Anatomy</a>
-  &nbsp;&middot;&nbsp;
-  <a href="https://2864tw.com" target="_blank" rel="noopener noreferrer">2864tw.com</a>
+  &middot;
+  <a href="https://2864tw.com">2864tw.com</a>
 </footer>
 
 <script>
 'use strict';
+
 // ─── Constants ────────────────────────────────────────────────────────────────
-var CDN_BASE = 'https://fight-report-va.oss-accelerate.aliyuncs.com/prod/';
+var CDN = 'https://fight-report-va.oss-accelerate.aliyuncs.com/prod/';
 var HERO_IMG = 'https://h5.topwargame.com/DynRes/images/headpic/hero_icon{id}_global.png?t=22.jpg';
+var ASSET = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/';
 
-// process[] event types decoded from game source analysis
-var EVT = {
-  UNIT_REGISTER:   1,  // source=unitUUID, val=gridPosition
-  UNIT_ATTACK:     2,  // source=uuid, target=uuid, val=newHP, eValue=dmgDealt
-  SKILL_SELF_BUFF: 3,  // source=uuid, hero=heroId, skill=skillId (passive self-buff)
-  BATTLE_INIT:     4,  // val=teamCount (always 1 event)
-  HERO_SKILL_ACT:  5,  // source=uuid, hero=heroId, skill=skillId (active activation)
-  HERO_REGISTER:   6,  // hero=heroId, source=0 (roster registration)
-  HERO_SKILL_HIT:  7,  // source=uuid, target=uuid, hero=heroId, val=damage
-  UNIT_INIT_STATS: 9,  // source=uuid, val=HP, selfVal=shield
-  EQUIP_SKILL:    11,  // source=teamId, target=uuid, skill=runeSkillId
-  BUFF_DAMAGE:    14,  // source=uuid, target=uuid, buffId=id, val=damage
-  UNIT_DEATH:     19,  // source=uuid (unit fully eliminated)
-  FORMATION_SKILL:25,  // source=uuid, skill=formationSkillId, val=buffId
-  MECHA_ACTION:   27,  // source=mechaUUID, val=actionValue
-  TEAM_SETUP:     30,  // source=attTeamId, target=defTeamId
-  STAGE_REGISTER: 31,  // val=stageIndex
-  BUFF_APPLY_MULTI:32, // source=uuid, targets=csv(uuids), buffId=id
-  UNIT_TURN_START:33,  // source=uuid (unit takes turn)
-  STAGE_CHANGE:   35,  // val=stageNum, selfVal=totalStages
-  RUNE_ACTIVATE:  37   // source=uuid, hero=heroId, skill=runeSkillId
+// armyId → icon path (from game's army TABLE: type 101=Army, 301=AF, plus mecha_id)
+var ARMY_ICON = {
+  901103: 'assets/unit-icons/ultra_valhalla_army_offense.png',
+  905103: 'assets/unit-icons/ultra_valhalla_airforce_offense.png',
+  906103: 'assets/unit-icons/ultra_valhalla_airforce_defense.png',
+  505111: 'assets/mecha-icons/mecha_1005.png',
+  506371: 'assets/mecha-icons/mecha_1006.png',
+  // Fallbacks by type prefix
+  _army_off: 'assets/unit-icons/ultra_valhalla_army_offense.png',
+  _army_def: 'assets/unit-icons/ultra_valhalla_army_defense.png',
+  _navy_off: 'assets/unit-icons/ultra_valhalla_navy_offense.png',
+  _navy_def: 'assets/unit-icons/ultra_valhalla_nary_defense.png',
+  _af_off:   'assets/unit-icons/ultra_valhalla_airforce_offense.png',
+  _af_def:   'assets/unit-icons/ultra_valhalla_airforce_defense.png',
 };
-
-// Grid position index -> {row, col}
-// Positions: 1,2,3=row0; 11,12,13=row1; 21,22,23=row2
-function posToGrid(pos) {
-  var p = parseInt(pos, 10);
-  return { row: Math.floor((p - 1) / 10), col: (p - 1) % 10 };
+function armyIcon(id) {
+  if (ARMY_ICON[id]) return ARMY_ICON[id];
+  var n = parseInt(id, 10);
+  if (n >= 500000 && n < 600000) return 'assets/mecha-icons/mecha_1005.png'; // default mecha
+  if (n >= 900000) return ARMY_ICON._army_off; // default Valhalla
+  if (n >= 100000 && n < 200000) return ARMY_ICON._army_off;
+  if (n >= 200000 && n < 300000) return ARMY_ICON._navy_off;
+  if (n >= 300000 && n < 400000) return ARMY_ICON._af_off;
+  return ARMY_ICON._army_off;
 }
 
-// ─── State ────────────────────────────────────────────────────────────────────
-var reportData = null;
-var combatRounds = [];   // sorted tl values >= 1800 (real fight ticks)
-var currentRoundIdx = 0;
-var isPlaying = false;
-var speed = 1;
-var units = {};          // uuid -> unit object
-var floatTexts = [];     // damage numbers floating up
-var animFrame = null;
-var lastAdvTime = 0;
-var AUTO_MS = 1600;      // ms per round at 1x
+// Buff ID → human name (decoded from process[] analysis)
+var BUFF_NAMES = {
+  100008: 'Counterblow', 100026: 'Counterblow', 100027: 'Counterblow',
+  400218: 'Ignition DoT (Rune)', 400226: 'Flammable (Ignition Amp)', 400230: 'Rune Damage',
+  935201: 'Titan Gear Effect', 935302: 'Titan Gear Damage', 935402: 'Titan Gear Damage',
+  936004: 'Ignition Mark (Gear)', 936005: 'Ignition Tick', 936006: 'Ignition Tick',
+  992232: 'Magnetic Pulse', 992318: 'Magnetic Pulse', 992323: 'Magnetic Pulse',
+  992341: 'Skill Damage', 992364: 'Magnetic Pulse', 992367: 'Magnetic Pulse', 992459: 'Magnetic Pulse',
+};
+function buffName(id) { return BUFF_NAMES[id] || 'Buff #' + id; }
 
-// ─── Load ─────────────────────────────────────────────────────────────────────
+// Skill ID → name (hero skills from hero-skills.json; others hardcoded)
+var SKILL_NAMES = {};
+var RUNE_SKILL_PREFIXES = { 400: 'Rune Skill', 3001: 'Titan Gear Skill', 941: 'Formation Skill' };
+function skillName(id) {
+  if (SKILL_NAMES[id]) return SKILL_NAMES[id];
+  var s = String(id);
+  if (s.startsWith('4001')) return 'Rune Skill';
+  if (s.startsWith('3001')) return 'Titan Gear Skill';
+  if (s.startsWith('941')) return id === 941215 ? 'Counterblow' : 'Formation Skill';
+  return 'Skill #' + id;
+}
+
+// Event type → display info
+var EVT_INFO = {
+  2:  { cls: 'attack',    icon: '\u2694', label: 'Attack' },
+  3:  { cls: 'buff',      icon: '\u25a3', label: 'Self-Buff' },
+  5:  { cls: 'skill',     icon: '\u2736', label: 'Skill' },
+  7:  { cls: 'skill',     icon: '\u26a1', label: 'Skill Hit' },
+  11: { cls: 'skill',     icon: '\u2605', label: 'Equip Skill' },
+  14: { cls: 'buff',      icon: '\u1f525', label: 'Buff Dmg' },
+  19: { cls: 'death',     icon: '\u2717', label: 'Eliminated' },
+  25: { cls: 'formation', icon: '\u25c8', label: 'Formation' },
+  27: { cls: 'mecha',     icon: '\u26b2', label: 'Mecha' },
+  32: { cls: 'buff',      icon: '\u25d1', label: 'Buff Apply' },
+  37: { cls: 'skill',     icon: '\u2744', label: 'Rune' },
+};
+
+// ─── State ────────────────────────────────────────────────────────────────────
+var heroNameMap  = {};  // heroId → { name, skillName, skillId, iconUrl }
+var unitMap      = {};  // uuid → { side, pos, armyId, hp, maxHp, shield, maxShield, dead, heroId, troopCount }
+var combatRounds = [];  // sorted tl values >= 1800
+var currentRoundIdx  = 0;
+var currentEventIdx  = -1; // -1 = show all events for round
+var isPlaying    = false;
+var speed        = 1;
+var lastAdvTime  = 0;
+var AUTO_MS      = 1600;
+var reportData   = null;
+var playTimer    = null;
+
+// ─── Load Data ────────────────────────────────────────────────────────────────
 function loadReport() {
   var rawId = document.getElementById('report-id').value.trim();
   var id = rawId.replace(/[^0-9]/g, '');
   if (!id) return;
   setStatus('Loading\u2026');
-  var url = CDN_BASE + id.substring(0, 4) + '/' + id + '.json';
-  fetch(url)
-    .then(function(r) {
+
+  // Load hero data + report in parallel
+  Promise.all([
+    fetch(CDN + id.substring(0,4) + '/' + id + '.json').then(function(r) {
       if (!r.ok) throw new Error('Report not found (HTTP ' + r.status + ')');
       return r.json();
-    })
-    .then(function(data) {
-      if (!data.battle) throw new Error('Invalid report format');
-      setStatus('');
-      parseReport(data);
-      history.replaceState(null, '', '?id=' + id);
-    })
-    .catch(function(err) { setStatus('\u2717 ' + err.message); });
+    }),
+    fetch('data/all-heroes.json').then(function(r) { return r.json(); }).catch(function() { return []; }),
+    fetch('data/hero-skills.json').then(function(r) { return r.json(); }).catch(function() { return []; }),
+  ]).then(function(results) {
+    var reportJSON = results[0];
+    var heroesJSON = results[1];
+    var skillsJSON = results[2];
+    if (!reportJSON.battle) throw new Error('Invalid report format');
+
+    // Build hero name map
+    heroesJSON.forEach(function(h) {
+      heroNameMap[h.heroId] = { name: h.displayName || ('Hero ' + h.heroId), iconUrl: h.iconSmall || HERO_IMG.replace('{id}', h.heroId), skillId: null, skillName: null };
+    });
+
+    // Build skill name map
+    skillsJSON.forEach(function(s) {
+      SKILL_NAMES[s.skillId] = s.skillName;
+      if (heroNameMap[s.heroId]) {
+        heroNameMap[s.heroId].skillId = s.skillId;
+        heroNameMap[s.heroId].skillName = s.skillName;
+      }
+    });
+
+    setStatus('');
+    parseReport(reportJSON);
+    history.replaceState(null, '', '?id=' + id);
+  }).catch(function(err) { setStatus('\u2717 ' + err.message); });
 }
 
-function setStatus(msg) {
-  document.getElementById('status').textContent = msg;
-}
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
 
-// ─── Parse ────────────────────────────────────────────────────────────────────
+// ─── Parse Report ─────────────────────────────────────────────────────────────
 function parseReport(data) {
   reportData = data;
-  units = {};
-  floatTexts = [];
+  unitMap = {};
+  combatRounds = [];
   currentRoundIdx = 0;
+  currentEventIdx = -1;
   isPlaying = false;
 
   var battle = data.battle;
   var proc = battle.process;
 
-  // Register formation units from units[] arrays (known UUIDs and armyIds)
+  // Register formation units
   function regUnit(u, side) {
-    units[String(u.uuid)] = {
-      uuid: String(u.uuid), side: side, armyId: u.armyId,
-      pos: null, hp: 0, maxHp: 0, shield: 0, maxShield: 0,
-      dead: false, x: 0, y: 0
-    };
+    unitMap[String(u.uuid)] = { uuid: String(u.uuid), side: side, armyId: u.armyId, pos: null, hp: 0, maxHp: 0, shield: 0, maxShield: 0, dead: false, heroId: null, troopCount: 0 };
   }
   (battle.attacker.units || []).forEach(function(u) { regUnit(u, 'att'); });
   (battle.defender.units || []).forEach(function(u) { regUnit(u, 'def'); });
 
-  // Process setup events (tl=0)
-  var i, e;
+  // Process tl=0 setup events
+  var i, e, src;
   for (i = 0; i < proc.length; i++) {
-    e = proc[i];
-    var src = String(e.source || '');
-    if (e.t === EVT.UNIT_REGISTER) {
-      if (!units[src]) {
-        units[src] = { uuid: src, side: null, armyId: null, pos: null, hp: 0, maxHp: 0, shield: 0, maxShield: 0, dead: false, x: 0, y: 0 };
-      }
-      units[src].pos = parseInt(e.val, 10);
-    } else if (e.t === EVT.UNIT_INIT_STATS) {
-      if (!units[src]) {
-        units[src] = { uuid: src, side: null, armyId: null, pos: null, hp: 0, maxHp: 0, shield: 0, maxShield: 0, dead: false, x: 0, y: 0 };
-      }
-      units[src].hp = e.val;
-      units[src].maxHp = e.val;
-      units[src].shield = e.selfVal;
-      units[src].maxShield = e.selfVal;
+    e = proc[i]; src = String(e.source || '');
+    if (e.t === 1) { // UNIT_REGISTER — position
+      if (!unitMap[src]) unitMap[src] = { uuid: src, side: null, armyId: null, pos: null, hp: 0, maxHp: 0, shield: 0, maxShield: 0, dead: false, heroId: null, troopCount: 0 };
+      unitMap[src].pos = parseInt(e.val, 10);
+    } else if (e.t === 9) { // UNIT_INIT_STATS
+      if (!unitMap[src]) unitMap[src] = { uuid: src, side: null, armyId: null, pos: null, hp: 0, maxHp: 0, shield: 0, maxShield: 0, dead: false, heroId: null, troopCount: 0 };
+      unitMap[src].hp = e.val; unitMap[src].maxHp = e.val;
+      unitMap[src].shield = e.selfVal; unitMap[src].maxShield = e.selfVal;
+    } else if (e.t === 3 || e.t === 5) { // SKILL_SELF_BUFF / HERO_SKILL_ACT — hero→unit mapping
+      if (unitMap[src] && e.hero && !unitMap[src].heroId) unitMap[src].heroId = e.hero;
     }
   }
 
-  // Infer side for any units without it from position pairing
+  // Infer side for units lacking it (defender UUIDs not in units[] initially)
   var posBySide = {};
-  Object.keys(units).forEach(function(uuid) {
-    var u = units[uuid];
-    if (u.pos && u.side) {
-      if (!posBySide[u.pos]) posBySide[u.pos] = {};
-      posBySide[u.pos][u.side] = true;
-    }
+  Object.keys(unitMap).forEach(function(uuid) {
+    var u = unitMap[uuid];
+    if (u.pos && u.side) { if (!posBySide[u.pos]) posBySide[u.pos] = {}; posBySide[u.pos][u.side] = true; }
   });
-  Object.keys(units).forEach(function(uuid) {
-    var u = units[uuid];
-    if (u.pos && !u.side) {
-      var occ = posBySide[u.pos] || {};
-      u.side = occ.att ? 'def' : 'att';
-    }
+  Object.keys(unitMap).forEach(function(uuid) {
+    var u = unitMap[uuid];
+    if (u.pos && !u.side) u.side = (posBySide[u.pos] || {}).att ? 'def' : 'att';
   });
 
-  // Build timeline
+  // Troop counts from attPutArmyV2/defPutArmyV2
+  var fm = battle.fightMarches[0] || {};
+  var attPut = fm.attPutArmyV2 || [];
+  var defPut = fm.defPutArmyV2 || [];
+  // Build armyId → total count map per side
+  function buildCountMap(putArr) {
+    var m = {};
+    putArr.forEach(function(e) { m[e.armyId] = (m[e.armyId] || 0) + (e.s0 || 0) + (e.s1 || 0); });
+    return m;
+  }
+  var attCounts = buildCountMap(attPut);
+  var defCounts = buildCountMap(defPut);
+  var attSlots = (battle.attacker.units || []).length || 1;
+  var defSlots = (battle.defender.units || []).length || 1;
+
+  // Assign per-slot troop count (approximate)
+  Object.keys(unitMap).forEach(function(uuid) {
+    var u = unitMap[uuid];
+    if (!u.armyId) return;
+    var total = u.side === 'att' ? (attCounts[u.armyId] || 0) : (defCounts[u.armyId] || 0);
+    var slots = u.side === 'att' ? attSlots : defSlots;
+    u.troopCount = Math.round(total / slots);
+  });
+
+  // Save initial stats for reset
+  Object.keys(unitMap).forEach(function(uuid) {
+    var u = unitMap[uuid];
+    u._initHp = u.hp; u._initShield = u.shield;
+  });
+
+  // Build combat round timeline
   var tlSet = Object.create(null);
   proc.forEach(function(ev) { tlSet[ev.tl || 0] = true; });
-  var allTLs = Object.keys(tlSet).map(Number).sort(function(a, b) { return a - b; });
-  combatRounds = allTLs.filter(function(tl) { return tl >= 1800; });
+  combatRounds = Object.keys(tlSet).map(Number).sort(function(a,b){return a-b;}).filter(function(tl){return tl>=1800;});
 
-  // Compute canvas positions
-  computeUnitPositions();
+  // Build DOM
+  showReportUI(battle, fm);
 
-  // Render UI
-  renderVSBar(battle);
-  renderHeroes(battle);
-  document.getElementById('report-ui').style.display = 'flex';
-  document.getElementById('report-ui').style.flexDirection = 'column';
-
-  // Init canvas
-  canvas = document.getElementById('battle-canvas');
-  ctx = canvas.getContext('2d');
-
-  // Snapshot initial HP (used for reset)
-  Object.keys(units).forEach(function(uuid) {
-    var u = units[uuid];
-    u._initHp = u.hp;
-    u._initShield = u.shield;
-  });
-
-  applyEventsUpTo(-1);
-  drawBattle();
+  // Start at round 0
+  applyEventsUpTo(0);
+  renderFormations();
+  renderRoundList();
   updateRoundDisplay();
-  updateEventList(-1);
-  startRenderLoop();
+  updateEventLog(0);
+  startLoop();
 }
 
-function computeUnitPositions() {
-  var W = 600, H = 400;
-  var MARGIN = 60;
-  var CW = (W - MARGIN * 2) / 3;
-  var RH = (H - MARGIN * 2) / 3;
-  var OFF = 28;
-
-  Object.keys(units).forEach(function(uuid) {
-    var u = units[uuid];
-    if (!u.pos) return;
-    var g = posToGrid(u.pos);
-    var cx = MARGIN + g.col * CW + CW / 2;
-    var cy = MARGIN + g.row * RH + RH / 2;
-    u.x = u.side === 'att' ? cx - OFF : cx + OFF;
-    u.y = u.side === 'att' ? cy + OFF : cy - OFF;
+// ─── Formation Rendering ─────────────────────────────────────────────────────
+function buildFormationGrid(side, panel) {
+  panel.querySelectorAll('.formation-row').forEach(function(el){el.remove();});
+  // 3 rows: row0=positions 1,2,3; row1=11,12,13; row2=21,22,23
+  var ROWS = [[1,2,3],[11,12,13],[21,22,23]];
+  ROWS.forEach(function(rowPositions) {
+    var rowEl = document.createElement('div');
+    rowEl.className = 'formation-row';
+    // Defender columns are mirrored (3,2,1) so front faces center
+    var cols = side === 'def' ? rowPositions.slice().reverse() : rowPositions;
+    cols.forEach(function(pos) {
+      var uuid = findUnitByPos(side, pos);
+      var cell = buildUnitCell(uuid, pos, side);
+      rowEl.appendChild(cell);
+    });
+    panel.appendChild(rowEl);
   });
 }
 
-// Apply all events up through the given combat round index
+function findUnitByPos(side, pos) {
+  var found = null;
+  Object.keys(unitMap).forEach(function(uuid) {
+    var u = unitMap[uuid];
+    if (u.side === side && u.pos === pos) found = uuid;
+  });
+  return found;
+}
+
+function buildUnitCell(uuid, pos, side) {
+  var cell = document.createElement('div');
+  cell.className = 'unit-cell';
+  if (uuid) cell.setAttribute('data-uuid', uuid);
+  cell.setAttribute('data-pos', pos);
+
+  // Position label
+  var posLbl = document.createElement('div');
+  posLbl.className = 'unit-pos-label';
+  posLbl.textContent = 'P' + pos;
+  cell.appendChild(posLbl);
+
+  // Icon wrap
+  var wrap = document.createElement('div');
+  wrap.className = 'unit-icon-wrap';
+  var img = document.createElement('img');
+  img.alt = 'Unit';
+  if (uuid && unitMap[uuid] && unitMap[uuid].armyId) {
+    img.src = armyIcon(unitMap[uuid].armyId);
+  } else {
+    img.src = armyIcon(0);
+  }
+  img.addEventListener('error', function() { this.style.opacity = '.3'; });
+  wrap.appendChild(img);
+
+  // Hero mini-portrait overlay
+  if (uuid && unitMap[uuid] && unitMap[uuid].heroId) {
+    var heroId = unitMap[uuid].heroId;
+    var hInfo = heroNameMap[heroId];
+    if (hInfo) {
+      var heroImg = document.createElement('img');
+      heroImg.className = 'unit-hero-mini';
+      heroImg.src = hInfo.iconUrl;
+      heroImg.alt = hInfo.name;
+      heroImg.title = hInfo.name;
+      heroImg.addEventListener('error', function() { this.style.display = 'none'; });
+      wrap.appendChild(heroImg);
+    }
+  }
+  cell.appendChild(wrap);
+
+  // HP bar
+  var hpBarWrap = document.createElement('div');
+  hpBarWrap.className = 'unit-hp-bar';
+  var hpFill = document.createElement('div');
+  hpFill.className = 'unit-hp-fill high';
+  hpFill.style.width = '100%';
+  hpBarWrap.appendChild(hpFill);
+  cell.appendChild(hpBarWrap);
+
+  // Hero name
+  var heroName = document.createElement('div');
+  heroName.className = 'unit-hero-name';
+  if (uuid && unitMap[uuid] && unitMap[uuid].heroId && heroNameMap[unitMap[uuid].heroId]) {
+    heroName.textContent = heroNameMap[unitMap[uuid].heroId].name;
+  } else if (uuid) {
+    heroName.textContent = 'Unit ' + String(uuid).slice(-3);
+  } else {
+    heroName.textContent = '\u2014';
+    heroName.style.color = 'var(--border)';
+  }
+  cell.appendChild(heroName);
+
+  return cell;
+}
+
+function renderFormations() {
+  var attPanel = document.getElementById('formation-att');
+  var defPanel = document.getElementById('formation-def');
+  buildFormationGrid('att', attPanel);
+  buildFormationGrid('def', defPanel);
+  updateUnitCells();
+}
+
+function updateUnitCells() {
+  // Update all unit cells with current HP/dead state
+  document.querySelectorAll('.unit-cell[data-uuid]').forEach(function(cell) {
+    var uuid = cell.getAttribute('data-uuid');
+    var u = unitMap[uuid];
+    if (!u) return;
+
+    cell.classList.toggle('dead', u.dead);
+
+    // HP bar
+    var fill = cell.querySelector('.unit-hp-fill');
+    if (fill && u.maxHp > 0) {
+      var pct = Math.max(0, Math.min(100, (u.hp / u.maxHp) * 100));
+      fill.style.width = pct + '%';
+      fill.className = 'unit-hp-fill ' + (pct > 50 ? 'high' : pct > 25 ? 'mid' : 'low');
+    }
+  });
+}
+
+function flashUnit(uuid) {
+  var cell = document.querySelector('.unit-cell[data-uuid="' + uuid + '"]');
+  if (!cell) return;
+  cell.classList.remove('flash');
+  void cell.offsetWidth; // reflow
+  cell.classList.add('flash');
+  setTimeout(function() { cell.classList.remove('flash'); }, 300);
+}
+
+// ─── Apply Events ─────────────────────────────────────────────────────────────
 function applyEventsUpTo(roundIdx) {
-  // Reset to initial
-  Object.keys(units).forEach(function(uuid) {
-    var u = units[uuid];
+  // Reset
+  Object.keys(unitMap).forEach(function(uuid) {
+    var u = unitMap[uuid];
     u.hp = u._initHp || u.maxHp;
     u.shield = u._initShield || u.maxShield;
     u.dead = false;
   });
-
-  if (roundIdx < 0 || combatRounds.length === 0) return;
-  var maxTL = combatRounds[Math.min(roundIdx, combatRounds.length - 1)];
+  if (roundIdx < 0 || !combatRounds.length) return;
+  var maxTL = combatRounds[Math.min(roundIdx, combatRounds.length-1)];
   var proc = reportData.battle.process;
-
   for (var i = 0; i < proc.length; i++) {
     var e = proc[i];
     var tl = e.tl || 0;
     if (tl === 0 || tl > maxTL) continue;
-
-    if (e.t === EVT.UNIT_ATTACK && e.target) {
-      var tgt = units[String(e.target)];
-      if (tgt) tgt.hp = e.val;
-    } else if (e.t === EVT.UNIT_DEATH && e.source) {
-      var dying = units[String(e.source)];
-      if (dying) { dying.dead = true; dying.hp = 0; }
+    if (e.t === 2 && e.target) {
+      var t = unitMap[String(e.target)];
+      if (t) t.hp = e.val;
+    } else if (e.t === 19 && e.source) {
+      var d = unitMap[String(e.source)];
+      if (d) { d.dead = true; d.hp = 0; }
     }
   }
 }
 
-// ─── Canvas ───────────────────────────────────────────────────────────────────
-var canvas, ctx;
-var UNIT_R = 26;
-var C = {
-  bg: '#0d1117', border: '#30363d', muted: '#8b949e', gold: '#d29922',
-  att: '#388bfd', attB: '#79c0ff', def: '#f85149', defB: '#ff7b72', dead: '#30363d'
-};
-
-function drawBattle() {
-  var W = canvas.width, H = canvas.height;
-  ctx.clearRect(0, 0, W, H);
-
-  // Background
-  ctx.fillStyle = C.bg;
-  ctx.fillRect(0, 0, W, H);
-
-  // Subtle grid
-  var MARGIN = 60, CW = (W - MARGIN * 2) / 3, RH = (H - MARGIN * 2) / 3;
-  ctx.strokeStyle = C.border;
-  ctx.lineWidth = 0.5;
-  ctx.setLineDash([3, 8]);
-  for (var c = 1; c < 3; c++) {
-    ctx.beginPath();
-    ctx.moveTo(MARGIN + c * CW, MARGIN);
-    ctx.lineTo(MARGIN + c * CW, H - MARGIN);
-    ctx.stroke();
-  }
-  for (var r = 1; r < 3; r++) {
-    ctx.beginPath();
-    ctx.moveTo(MARGIN, MARGIN + r * RH);
-    ctx.lineTo(W - MARGIN, MARGIN + r * RH);
-    ctx.stroke();
-  }
-  ctx.setLineDash([]);
-
-  // Diagonal separator
-  ctx.strokeStyle = 'rgba(48,54,61,0.6)';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(W * 0.08, 0);
-  ctx.lineTo(W, H * 0.88);
-  ctx.stroke();
-
-  // Side labels
-  ctx.font = 'bold 10px system-ui';
-  ctx.fillStyle = C.att;
-  ctx.fillText('ATTACKER', 10, 16);
-  ctx.fillStyle = C.def;
-  ctx.textAlign = 'right';
-  ctx.fillText('DEFENDER', W - 10, H - 6);
-  ctx.textAlign = 'left';
-
-  // Units
-  Object.keys(units).forEach(function(uuid) { drawUnit(units[uuid]); });
-
-  // Float texts
-  for (var fi = floatTexts.length - 1; fi >= 0; fi--) {
-    var ft = floatTexts[fi];
-    ctx.globalAlpha = ft.a;
-    ctx.font = 'bold 12px system-ui';
-    ctx.fillStyle = ft.color;
-    ctx.textAlign = 'center';
-    ctx.fillText(ft.text, ft.x, ft.y);
-    ctx.globalAlpha = 1;
-    ft.y -= ft.dy;
-    ft.a -= 0.016;
-    if (ft.a <= 0) floatTexts.splice(fi, 1);
-  }
-  ctx.textAlign = 'left';
-}
-
-function drawUnit(u) {
-  if (!u.pos || !u.x) return;
-  var x = u.x, y = u.y, r = UNIT_R;
-  var isAtt = u.side === 'att';
-  var color = u.dead ? C.dead : (isAtt ? C.att : C.def);
-  var bright = isAtt ? C.attB : C.defB;
-
-  ctx.globalAlpha = u.dead ? 0.22 : 1;
-  if (!u.dead) { ctx.shadowColor = color; ctx.shadowBlur = 6; }
-
-  // Fill
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fillStyle = u.dead ? '#1c2128' : (isAtt ? 'rgba(56,139,253,0.12)' : 'rgba(248,81,73,0.12)');
-  ctx.fill();
-
-  // Border
-  ctx.strokeStyle = color;
-  ctx.lineWidth = u.dead ? 1 : 2;
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-
-  // HP arc
-  if (!u.dead && u.maxHp > 0) {
-    var pct = Math.max(0, Math.min(1, u.hp / u.maxHp));
-    var s = -Math.PI * 0.75, sweep = Math.PI * 1.5;
-    ctx.beginPath();
-    ctx.arc(x, y, r + 5, s, s + sweep);
-    ctx.strokeStyle = '#30363d';
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(x, y, r + 5, s, s + sweep * pct);
-    ctx.strokeStyle = pct > 0.5 ? bright : (pct > 0.25 ? C.gold : C.def);
-    ctx.lineWidth = 3;
-    ctx.stroke();
-  }
-
-  // Label
-  ctx.font = '9px system-ui';
-  ctx.fillStyle = C.muted;
-  ctx.textAlign = 'center';
-  ctx.fillText('P' + u.pos, x, y - r - 8);
-
-  ctx.font = 'bold 9px system-ui';
-  ctx.fillStyle = u.dead ? '#30363d' : bright;
-  ctx.fillText(armyAbbr(u.armyId), x, y + 4);
-
-  if (u.dead) {
-    ctx.font = 'bold 14px system-ui';
-    ctx.fillStyle = '#f85149';
-    ctx.fillText('X', x, y + 5);
-  }
-
-  ctx.textAlign = 'left';
-  ctx.globalAlpha = 1;
-}
-
-function armyAbbr(id) {
-  if (!id) return '?';
-  var n = parseInt(id, 10);
-  if (n === 901103 || n === 905103 || n === 906103) return 'VLH';
-  if (n >= 500000 && n < 700000) return 'MCH';
-  if (n >= 100000 && n < 200000) return 'LND';
-  if (n >= 200000 && n < 300000) return 'SEA';
-  if (n >= 300000 && n < 400000) return 'AIR';
-  return String(id).slice(-3);
-}
-
-function addFloat(x, y, text, color) {
-  floatTexts.push({
-    x: x + (Math.random() - 0.5) * 18,
-    y: y - 15,
-    text: text, color: color,
-    a: 1.0, dy: 0.7 + Math.random() * 0.4
-  });
-}
-
-// ─── Render Loop ──────────────────────────────────────────────────────────────
-function startRenderLoop() {
-  if (animFrame) cancelAnimationFrame(animFrame);
-  function tick(ts) {
-    if (isPlaying) {
-      if (ts - lastAdvTime > AUTO_MS / speed) {
-        lastAdvTime = ts;
-        if (currentRoundIdx < combatRounds.length - 1) {
-          stepRound(1);
-        } else {
-          togglePlay();
-        }
-      }
-    }
-    drawBattle();
-    animFrame = requestAnimationFrame(tick);
-  }
-  animFrame = requestAnimationFrame(tick);
-}
-
-// ─── Round Navigation ─────────────────────────────────────────────────────────
-function gotoRound(idx) {
-  currentRoundIdx = Math.max(0, Math.min(combatRounds.length - 1, idx));
-  applyEventsUpTo(currentRoundIdx);
-  spawnFloats(currentRoundIdx);
-  updateRoundDisplay();
-  updateEventList(currentRoundIdx);
-}
-
-function stepRound(dir) { gotoRound(currentRoundIdx + dir); }
-
-function spawnFloats(roundIdx) {
-  if (!reportData || roundIdx < 0 || roundIdx >= combatRounds.length) return;
-  var tl = combatRounds[roundIdx];
-  var proc = reportData.battle.process;
-  var seenDmg = Object.create(null);
-
-  for (var i = 0; i < proc.length; i++) {
-    var e = proc[i];
-    if ((e.tl || 0) !== tl) continue;
-    if (e.t === EVT.UNIT_ATTACK && e.target && e.eValue && !seenDmg[e.target]) {
-      var u = units[String(e.target)];
-      if (u) { addFloat(u.x, u.y, '-' + fmtNum(e.eValue), u.side === 'att' ? '#ff7b72' : C.def); }
-      seenDmg[e.target] = true;
-    } else if (e.t === EVT.HERO_SKILL_HIT && e.target && e.val) {
-      var tu = units[String(e.target)];
-      if (tu) addFloat(tu.x, tu.y - 18, fmtNum(e.val), C.gold);
-    } else if (e.t === EVT.UNIT_DEATH && e.source) {
-      var du = units[String(e.source)];
-      if (du) addFloat(du.x, du.y, 'KO', C.muted);
-    }
-  }
-}
-
-function updateRoundDisplay() {
-  var el = document.getElementById('round-display');
-  if (!combatRounds.length) { el.textContent = 'Round — / —'; return; }
-  var rNum = currentRoundIdx + 1, rTotal = combatRounds.length;
-  el.textContent = '';
-  el.appendChild(document.createTextNode('Round ' + rNum + ' '));
-  var span = document.createElement('span');
-  span.textContent = '/ ' + rTotal;
-  el.appendChild(span);
-
-  var pct = rTotal > 1 ? (currentRoundIdx / (rTotal - 1)) * 100 : 100;
-  document.getElementById('progress-fill').style.width = pct + '%';
-}
-
-function updateEventList(roundIdx) {
-  var header = document.getElementById('round-header');
-  var list = document.getElementById('event-list');
-  list.textContent = '';
-
-  if (!reportData || roundIdx < 0 || roundIdx >= combatRounds.length) {
-    header.textContent = 'Round Events';
-    return;
-  }
-
-  var tl = combatRounds[roundIdx];
-  header.textContent = 'Round ' + (roundIdx + 1) + ' Events';
-
-  var proc = reportData.battle.process;
-  var attackDmg = 0, attackCount = 0;
-  var skillDmg = Object.create(null);
-  var buffDmg = 0, buffCount = 0;
-  var deaths = 0;
-  var formations = [];
-
-  for (var i = 0; i < proc.length; i++) {
-    var e = proc[i];
-    if ((e.tl || 0) !== tl) continue;
-    if (e.t === EVT.UNIT_ATTACK && e.eValue) { attackDmg += e.eValue; attackCount++; }
-    else if (e.t === EVT.HERO_SKILL_HIT && e.hero && e.val) { skillDmg[e.hero] = (skillDmg[e.hero] || 0) + e.val; }
-    else if (e.t === EVT.BUFF_DAMAGE && e.val) { buffDmg += e.val; buffCount++; }
-    else if (e.t === EVT.UNIT_DEATH) { deaths++; }
-    else if (e.t === EVT.FORMATION_SKILL && e.skill) { formations.push(e.skill); }
-  }
-
-  function addItem(cls, text) {
-    var div = document.createElement('div');
-    div.className = 'event-item ' + cls;
-    div.textContent = text;
-    list.appendChild(div);
-  }
-
-  if (attackCount > 0) addItem('attack', '\u2694 ' + attackCount + ' attacks \u2014 ' + fmtNum(attackDmg) + ' total dmg');
-  Object.keys(skillDmg).forEach(function(hero) { addItem('skill', '\u2736 Hero ' + hero + ' \u2014 ' + fmtNum(skillDmg[hero]) + ' dmg'); });
-  if (buffCount > 0) addItem('buff', '\u26a1 ' + buffCount + ' buff ticks \u2014 ' + fmtNum(buffDmg) + ' dmg');
-  formations.forEach(function(sk) {
-    addItem('formation', '\u25c8 ' + (sk === 941215 ? 'Counterblow' : 'Formation skill ' + sk));
-  });
-  if (deaths > 0) addItem('death', '\u2715 ' + deaths + ' unit' + (deaths > 1 ? 's' : '') + ' eliminated');
-
-  if (!list.childNodes.length) {
-    var empty = document.createElement('div');
-    empty.style.cssText = 'font-size:.75rem;color:var(--muted)';
-    empty.textContent = 'No combat events';
-    list.appendChild(empty);
-  }
-}
-
-// ─── VS Bar (DOM-built, no innerHTML) ────────────────────────────────────────
-function renderVSBar(battle) {
-  var fm = battle.fightMarches[0] || {};
-  var bar = document.getElementById('vs-bar');
-  bar.textContent = '';
-
-  function sideDiv(name, cp, troops, won, color) {
-    var col = document.createElement('div'); col.className = 'vs-side';
-    var nameEl = document.createElement('div'); nameEl.className = 'vs-name'; nameEl.style.color = color; nameEl.textContent = name; col.appendChild(nameEl);
-    var cpEl = document.createElement('div'); cpEl.className = 'vs-cp'; cpEl.textContent = 'CP ' + fmtNum(cp); col.appendChild(cpEl);
-    var trEl = document.createElement('div'); trEl.className = 'vs-troops'; trEl.textContent = troops + ' troops'; col.appendChild(trEl);
-    var res = document.createElement('div'); res.className = 'vs-result ' + (won ? 'win' : 'loss'); res.textContent = won ? 'VICTORY' : 'DEFEAT'; col.appendChild(res);
-    return col;
-  }
-
-  var attWon = battle.result === 1;
-  bar.appendChild(sideDiv(getPlayerName(battle.attacker), fm.attBattlePowerVal || 0, fm.attArmyNum || 0, attWon, '#388bfd'));
-  var vsEl = document.createElement('div'); vsEl.className = 'vs-center'; vsEl.textContent = 'VS'; bar.appendChild(vsEl);
-  bar.appendChild(sideDiv(getPlayerName(battle.defender), fm.defBattlePowerVal || 0, fm.defArmyNum || 0, !attWon, '#f85149'));
-
-  var meta = document.createElement('div');
-  meta.style.cssText = 'font-size:.72rem;color:var(--muted);margin-left:auto;align-self:flex-start;text-align:right;';
-  meta.textContent = 'fightType ' + battle.fightType + ' \u2014 ' + new Date(reportData.logtime * 1000).toLocaleDateString();
-  bar.appendChild(meta);
-}
-
-function getPlayerName(side) {
-  try {
-    var players = side.players || [];
-    if (players.length) {
-      var info = JSON.parse(players[0].playerInfo || '{}');
-      return info.username || info.nickname || 'Unknown';
-    }
-  } catch (ignored) {}
-  return 'Unknown';
-}
-
-// ─── Heroes (DOM-built, no innerHTML) ────────────────────────────────────────
+// ─── Heroes ───────────────────────────────────────────────────────────────────
 function renderHeroes(battle) {
-  function buildChips(players, containerId) {
-    var container = document.getElementById(containerId);
-    container.textContent = '';
+  function fill(players, containerId) {
+    var el = document.getElementById(containerId);
+    el.textContent = '';
     if (!players || !players[0]) return;
     (players[0].heroList || []).forEach(function(h) {
       var chip = document.createElement('div'); chip.className = 'hero-chip';
       var img = document.createElement('img');
-      img.src = HERO_IMG.replace('{id}', h.id);
-      img.alt = 'Hero ' + h.id;
-      img.style.cssText = 'width:24px;height:24px;border-radius:3px;object-fit:cover;';
-      img.addEventListener('error', function() { this.style.display = 'none'; });
-      var lv = document.createElement('span'); lv.textContent = 'Lv.' + h.level;
-      chip.appendChild(img); chip.appendChild(lv);
-      container.appendChild(chip);
+      var hInfo = heroNameMap[h.id] || {};
+      img.src = hInfo.iconUrl || HERO_IMG.replace('{id}', h.id);
+      img.alt = ''; img.addEventListener('error', function() { this.style.display='none'; });
+      var nameEl = document.createElement('span');
+      nameEl.textContent = hInfo.name || ('Hero ' + h.id);
+      chip.appendChild(img); chip.appendChild(nameEl);
+      if (hInfo.skillName) {
+        var sk = document.createElement('span'); sk.className = 'hero-chip-skill';
+        sk.textContent = hInfo.skillName;
+        chip.appendChild(sk);
+      }
+      el.appendChild(chip);
     });
   }
-  buildChips(battle.attacker.players, 'att-heroes');
-  buildChips(battle.defender.players, 'def-heroes');
+  fill(battle.attacker.players, 'att-hero-chips');
+  fill(battle.defender.players, 'def-hero-chips');
 }
 
-// ─── Controls ─────────────────────────────────────────────────────────────────
+// ─── VS Bar ───────────────────────────────────────────────────────────────────
+function showReportUI(battle, fm) {
+  var bar = document.getElementById('vs-bar');
+  bar.textContent = '';
+
+  function sideEl(name, cp, troops, won, color) {
+    var d = document.createElement('div'); d.className = 'vs-side';
+    var n = document.createElement('div'); n.className = 'vs-name'; n.style.color = color; n.textContent = name; d.appendChild(n);
+    var s = document.createElement('div'); s.className = 'vs-sub'; s.textContent = 'CP ' + fmtNum(cp) + ' \u00b7 ' + troops + ' troops'; d.appendChild(s);
+    var b = document.createElement('div'); b.className = 'vs-badge ' + (won ? 'win' : 'loss'); b.textContent = won ? 'VICTORY' : 'DEFEAT'; d.appendChild(b);
+    return d;
+  }
+  var attWon = battle.result === 1;
+  bar.appendChild(sideEl(getPlayerName(battle.attacker), fm.attBattlePowerVal||0, fm.attArmyNum||0, attWon, 'var(--attColor)'));
+  var vs = document.createElement('div'); vs.className = 'vs-center'; vs.textContent = 'VS'; bar.appendChild(vs);
+  bar.appendChild(sideEl(getPlayerName(battle.defender), fm.defBattlePowerVal||0, fm.defArmyNum||0, !attWon, 'var(--defColor)'));
+  var meta = document.createElement('div'); meta.className = 'vs-meta';
+  meta.textContent = 'fightType ' + battle.fightType + '\n' + new Date(reportData.logtime*1000).toLocaleDateString();
+  meta.style.cssText = 'white-space:pre-line;font-size:.68rem;color:var(--muted);text-align:right;';
+  bar.appendChild(meta);
+
+  // Header labels with player names
+  document.getElementById('att-header').textContent = 'ATTACKER — ' + getPlayerName(battle.attacker);
+  document.getElementById('def-header').textContent = 'DEFENDER — ' + getPlayerName(battle.defender);
+
+  document.getElementById('report-ui').style.display = 'flex';
+  document.getElementById('report-ui').style.flexDirection = 'column';
+  renderHeroes(battle);
+}
+
+function getPlayerName(side) {
+  try { return JSON.parse(side.players[0].playerInfo || '{}').username || 'Unknown'; } catch(e) { return 'Unknown'; }
+}
+
+// ─── Round List ───────────────────────────────────────────────────────────────
+function renderRoundList() {
+  var list = document.getElementById('round-list');
+  list.textContent = '';
+  combatRounds.forEach(function(tl, idx) {
+    var item = document.createElement('div');
+    item.className = 'round-list-item' + (idx === currentRoundIdx ? ' current' : '');
+    item.setAttribute('data-idx', idx);
+    // Count key events for this round
+    var proc = reportData.battle.process;
+    var attacks = 0, deaths = 0;
+    for (var i = 0; i < proc.length; i++) {
+      if ((proc[i].tl || 0) !== tl) continue;
+      if (proc[i].t === 2) attacks++;
+      if (proc[i].t === 19) deaths++;
+    }
+    item.textContent = 'R' + (idx+1) + ' \u2014 ' + attacks + ' atk' + (deaths ? ' \u00b7 ' + deaths + ' \u2717' : '');
+    item.addEventListener('click', function() { gotoRound(parseInt(this.getAttribute('data-idx'), 10)); });
+    list.appendChild(item);
+  });
+}
+
+function updateRoundListActive() {
+  document.querySelectorAll('.round-list-item').forEach(function(el) {
+    el.classList.toggle('current', parseInt(el.getAttribute('data-idx'), 10) === currentRoundIdx);
+  });
+  // Scroll into view
+  var cur = document.querySelector('.round-list-item.current');
+  if (cur) cur.scrollIntoView({ block: 'nearest' });
+}
+
+// ─── Event Log ────────────────────────────────────────────────────────────────
+var currentRoundEvents = []; // parsed events for current round
+
+function updateEventLog(roundIdx) {
+  var el = document.getElementById('event-log');
+  var title = document.getElementById('event-log-title');
+  el.textContent = '';
+  currentRoundEvents = [];
+  currentEventIdx = -1;
+
+  if (roundIdx < 0 || roundIdx >= combatRounds.length) {
+    title.textContent = 'Select a round';
+    return;
+  }
+
+  var tl = combatRounds[roundIdx];
+  title.textContent = 'Round ' + (roundIdx+1) + ' Events (tl=' + tl + ')';
+
+  var proc = reportData.battle.process;
+  for (var i = 0; i < proc.length; i++) {
+    var e = proc[i];
+    if ((e.tl || 0) !== tl) continue;
+    // Filter to displayable event types
+    if ([2,5,7,11,14,19,25,27,32,37].indexOf(e.t) < 0) continue;
+    currentRoundEvents.push(e);
+  }
+
+  currentRoundEvents.forEach(function(e, idx) {
+    var item = buildEventItem(e, idx);
+    el.appendChild(item);
+  });
+}
+
+function buildEventItem(e, idx) {
+  var info = EVT_INFO[e.t] || { cls: 'init', icon: '\u25aa', label: 'Event' };
+  var div = document.createElement('div');
+  div.className = 'ev ' + info.cls;
+  div.setAttribute('data-eidx', idx);
+
+  var iconEl = document.createElement('div'); iconEl.className = 'ev-icon'; iconEl.textContent = info.icon; div.appendChild(iconEl);
+  var body = document.createElement('div'); body.className = 'ev-body';
+
+  var srcName = uuidLabel(e.source);
+  var tgtName = e.target ? uuidLabel(e.target) : null;
+
+  var main = document.createElement('div'); main.className = 'ev-main';
+  var sub = document.createElement('div'); sub.className = 'ev-sub';
+  var val = e.t === 2 ? (e.eValue || 0) : (e.val || 0);
+
+  if (e.t === 2) { // UNIT_ATTACK
+    main.textContent = srcName + ' \u2192 ' + (tgtName || '?');
+    sub.textContent = 'Standard attack';
+    if (val) { var vEl = document.createElement('span'); vEl.className = 'ev-val'; vEl.textContent = ' \u2212' + fmtNum(val); main.appendChild(vEl); }
+  } else if (e.t === 7) { // HERO_SKILL_HIT
+    var hName = e.hero && heroNameMap[e.hero] ? heroNameMap[e.hero].name : ('Hero ' + e.hero);
+    var skName = e.skill ? skillName(e.skill) : '';
+    main.textContent = hName + ' \u2192 ' + (tgtName || '?');
+    sub.textContent = skName || 'Hero Skill';
+    if (val) { var vEl2 = document.createElement('span'); vEl2.className = 'ev-val'; vEl2.textContent = ' \u2212' + fmtNum(val); main.appendChild(vEl2); }
+  } else if (e.t === 14) { // BUFF_DAMAGE
+    var bName = e.buffId ? buffName(e.buffId) : 'Buff';
+    main.textContent = bName + ' \u2192 ' + (tgtName || '?');
+    sub.textContent = 'Source: ' + srcName;
+    if (val) { var vEl3 = document.createElement('span'); vEl3.className = 'ev-val'; vEl3.textContent = ' \u2212' + fmtNum(val); main.appendChild(vEl3); }
+  } else if (e.t === 19) { // UNIT_DEATH
+    main.textContent = srcName + ' eliminated';
+    div.className = 'ev death';
+  } else if (e.t === 25) { // FORMATION_SKILL
+    main.textContent = (e.skill === 941215 ? 'Counterblow' : 'Formation Skill') + ' \u2192 ' + srcName;
+    sub.textContent = 'Formation effect';
+  } else if (e.t === 27) { // MECHA_ACTION
+    main.textContent = srcName + ' mecha action';
+    sub.textContent = 'Value: ' + (e.val || 0);
+  } else if (e.t === 5) { // HERO_SKILL_ACT
+    var hn = e.hero && heroNameMap[e.hero] ? heroNameMap[e.hero].name : ('Hero ' + e.hero);
+    main.textContent = hn + ' activates ' + skillName(e.skill);
+    sub.textContent = 'on ' + srcName;
+  } else if (e.t === 32) { // BUFF_APPLY_MULTI
+    var targets = String(e.targets || '').split(',').length;
+    main.textContent = buffName(e.buffId || 0) + ' \u2192 ' + targets + ' targets';
+    sub.textContent = 'From ' + srcName;
+  } else if (e.t === 37) { // RUNE_ACTIVATE
+    var rhn = e.hero && heroNameMap[e.hero] ? heroNameMap[e.hero].name : '';
+    main.textContent = 'Rune activated' + (rhn ? ' (' + rhn + ')' : '') + ' on ' + srcName;
+    sub.textContent = skillName(e.skill);
+  } else if (e.t === 11) { // EQUIP_SKILL_BUFF
+    main.textContent = skillName(e.skill) + ' \u2192 ' + (tgtName || '?');
+    sub.textContent = 'Equipment skill';
+  } else {
+    main.textContent = info.label + ': ' + srcName + (tgtName ? ' \u2192 ' + tgtName : '');
+  }
+
+  body.appendChild(main);
+  if (sub.textContent) body.appendChild(sub);
+  div.appendChild(body);
+
+  div.addEventListener('click', function() {
+    currentEventIdx = idx;
+    highlightEvent(idx);
+    flashUnit(e.source);
+    if (e.target) flashUnit(e.target);
+  });
+
+  return div;
+}
+
+function highlightEvent(idx) {
+  document.querySelectorAll('.ev.current').forEach(function(el) { el.classList.remove('current'); });
+  var el = document.querySelector('.ev[data-eidx="' + idx + '"]');
+  if (el) { el.classList.add('current'); el.scrollIntoView({ block: 'nearest' }); }
+}
+
+function stepEvent(dir) {
+  if (!currentRoundEvents.length) return;
+  currentEventIdx = Math.max(0, Math.min(currentRoundEvents.length-1, (currentEventIdx < 0 ? 0 : currentEventIdx) + dir));
+  highlightEvent(currentEventIdx);
+  var e = currentRoundEvents[currentEventIdx];
+  if (e) { flashUnit(e.source); if (e.target) flashUnit(e.target); }
+}
+
+function uuidLabel(uuid) {
+  if (!uuid) return '?';
+  var u = unitMap[String(uuid)];
+  if (!u) return String(uuid).slice(-4);
+  var side = u.side === 'att' ? 'Att' : 'Def';
+  if (u.heroId && heroNameMap[u.heroId]) return heroNameMap[u.heroId].name + "'s unit";
+  return side + ' P' + (u.pos || '?');
+}
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+function gotoRound(idx) {
+  if (!combatRounds.length) return;
+  currentRoundIdx = Math.max(0, Math.min(combatRounds.length-1, idx));
+  applyEventsUpTo(currentRoundIdx);
+  updateUnitCells();
+  updateRoundDisplay();
+  updateRoundListActive();
+  updateEventLog(currentRoundIdx);
+}
+
+function stepRound(dir) { gotoRound(currentRoundIdx + dir); }
+
+function updateRoundDisplay() {
+  var el = document.getElementById('round-display');
+  if (!combatRounds.length) { el.textContent = 'Round — / —'; return; }
+  var total = combatRounds.length;
+  el.textContent = '';
+  el.appendChild(document.createTextNode('Round ' + (currentRoundIdx+1) + ' '));
+  var sp = document.createElement('span'); sp.textContent = '/ ' + total; el.appendChild(sp);
+  var pct = total > 1 ? (currentRoundIdx / (total-1)) * 100 : 100;
+  document.getElementById('progress-fill').style.width = pct + '%';
+}
+
+function seekProgress(evt) {
+  var rect = document.getElementById('progress-bar').getBoundingClientRect();
+  var pct = Math.max(0, Math.min(1, (evt.clientX - rect.left) / rect.width));
+  gotoRound(Math.round(pct * (combatRounds.length-1)));
+}
+
+// ─── Playback ─────────────────────────────────────────────────────────────────
+function startLoop() {
+  if (playTimer) cancelAnimationFrame(playTimer);
+  function tick(ts) {
+    if (isPlaying && ts - lastAdvTime > AUTO_MS / speed) {
+      lastAdvTime = ts;
+      if (currentRoundIdx < combatRounds.length-1) {
+        stepRound(1);
+      } else {
+        togglePlay();
+      }
+    }
+    playTimer = requestAnimationFrame(tick);
+  }
+  playTimer = requestAnimationFrame(tick);
+}
+
 function togglePlay() {
   isPlaying = !isPlaying;
   document.getElementById('btn-play').textContent = isPlaying ? '\u23F8' : '\u25B6';
   if (isPlaying) {
-    if (currentRoundIdx >= combatRounds.length - 1) gotoRound(0);
+    if (currentRoundIdx >= combatRounds.length-1) gotoRound(0);
     lastAdvTime = performance.now();
   }
 }
 
 function setSpeed(s, btn) {
   speed = s;
-  document.querySelectorAll('.speed-group .ctrl-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelectorAll('.speed-group .ctrl-btn').forEach(function(b){b.classList.remove('active');});
   btn.classList.add('active');
 }
 
-function seekProgress(evt) {
-  var bar = document.getElementById('progress-bar');
-  var rect = bar.getBoundingClientRect();
-  var pct = Math.max(0, Math.min(1, (evt.clientX - rect.left) / rect.width));
-  gotoRound(Math.round(pct * (combatRounds.length - 1)));
-}
-
-// ─── Utilities ────────────────────────────────────────────────────────────────
+// ─── Utils ────────────────────────────────────────────────────────────────────
 function fmtNum(n) {
-  if (!n && n !== 0) return '0';
+  if (!n && n!==0) return '0';
   n = Math.abs(n);
-  var tiers = [[1e33,'gg'],[1e30,'ff'],[1e27,'ee'],[1e24,'dd'],[1e21,'cc'],[1e18,'bb'],[1e15,'aa'],[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e3,'K']];
-  for (var i = 0; i < tiers.length; i++) {
-    if (n >= tiers[i][0]) return (n / tiers[i][0]).toFixed(1).replace(/\.0$/, '') + tiers[i][1];
-  }
+  var tiers=[[1e33,'gg'],[1e30,'ff'],[1e27,'ee'],[1e24,'dd'],[1e21,'cc'],[1e18,'bb'],[1e15,'aa'],[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e3,'K']];
+  for (var i=0;i<tiers.length;i++){if(n>=tiers[i][0])return(n/tiers[i][0]).toFixed(1).replace(/\.0$/,'')+tiers[i][1];}
   return Math.round(n).toLocaleString();
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('click', function(e) {
   var pop = document.getElementById('bnpPop');
-  if (pop && !pop.contains(e.target) && e.target.id !== 'bnpBtn' && !e.target.closest('#bnpBtn')) {
-    pop.classList.remove('open');
-  }
+  if (pop && !pop.contains(e.target) && e.target.id!=='bnpBtn' && !e.target.closest('#bnpBtn')) pop.classList.remove('open');
 });
-
 document.getElementById('report-id').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') loadReport();
+  if (e.key==='Enter') loadReport();
 });
-
 (function() {
   var id = new URLSearchParams(window.location.search).get('id');
-  if (id) { document.getElementById('report-id').value = id; loadReport(); }
+  if (id) { document.getElementById('report-id').value=id; loadReport(); }
 })();
 </script>
 
@@ -751,7 +929,6 @@ document.getElementById('report-id').addEventListener('keydown', function(e) {
     var THEMES=['dark','light'];
     function setTheme(t){if(THEMES.indexOf(t)<0)return;document.documentElement.setAttribute('data-theme',t);try{localStorage.setItem('theme',t);}catch(e){}}
     try{var s=localStorage.getItem('theme');if(s&&THEMES.indexOf(s)>=0)setTheme(s);}catch(e){}
-    var tb=document.getElementById('themeBtn');if(tb)tb.addEventListener('click',function(){setTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');});
   })();
   document.addEventListener('click',function(e){var p=document.getElementById('bnpPop');if(p&&!p.contains(e.target)&&e.target.id!=='bnpBtn'&&!e.target.closest('#bnpBtn'))p.classList.remove('open');});
 </script>
