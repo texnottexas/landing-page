@@ -96,7 +96,7 @@
   .beast-card.purple { border-color: #a371f7; }
   .beast-card.purple:hover { border-color: #c69bf7; }
   .beast-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .4rem; }
-  .beast-emoji { font-size: 1.4rem; flex-shrink: 0; width: 28px; text-align: center; }
+  .beast-icon { flex-shrink: 0; width: 44px; height: 44px; border-radius: 6px; object-fit: cover; background: var(--surface); }
   .beast-info { flex: 1; min-width: 0; }
   .beast-name { font-weight: 700; font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .beast-meta { font-size: .7rem; color: var(--muted); display: flex; gap: .5rem; flex-wrap: wrap; }
@@ -246,8 +246,8 @@
 <div id="summary-bar" class="summary-bar" style="display:none"></div>
 
 <div id="view-tabs" class="tab-bar" style="display:none">
-  <button class="tab-btn active" data-view="beasts">Beast Collection</button>
-  <button class="tab-btn" data-view="fields">Platforms / Fields</button>
+  <button class="tab-btn active" data-view="fields">Platforms / Fields</button>
+  <button class="tab-btn" data-view="beasts">Beast Collection</button>
 </div>
 
 <div id="filters" class="filter-bar" style="display:none"></div>
@@ -282,6 +282,13 @@ var BEAST_TYPES_5STAR = {
 };
 
 var ELEMENTS = { 1: 'Fire', 2: 'Wind', 3: 'Water', 4: 'Ground' };
+var ICON_BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/beast-icons/';
+function beastIconUrl(type, faction, star) {
+  var name = BEAST_TYPES[type] || 'Unknown';
+  var elem = ELEMENTS[faction] || 'Unknown';
+  var tier = star >= 5 ? 'evolved' : 'base';
+  return ICON_BASE + name + '_' + elem + '_' + tier + '.png';
+}
 var ELEMENT_COLORS = { Fire: 'var(--fire)', Wind: 'var(--wind)', Water: 'var(--water)', Ground: 'var(--ground)' };
 var ELEMENT_SVG = {
   Fire: '<svg width="16" height="16" viewBox="0 0 24 24" fill="var(--fire)"><path d="M12 23c-4.97 0-9-3.58-9-8 0-3.19 2.13-6.12 4-8l1 5 3-3c0 3 2 5 2 5s3-2.5 3-6c2.5 3 3 5 3 6 0 4.42-4.03 9-7 9z"/></svg>',
@@ -320,7 +327,7 @@ var FIELD_BUFF_NAMES = {
 /* ── State ── */
 var reportData = null;
 var currentSide = null;
-var currentView = 'beasts';
+var currentView = 'fields';
 var activeElements = new Set(['all']);
 var activeField = 'all';
 
@@ -561,8 +568,8 @@ function renderSide() {
   document.getElementById('view-tabs').style.display = '';
   activeElements = new Set(['all']);
   activeField = 'all';
-  currentView = 'beasts';
-  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.view === 'beasts'); });
+  currentView = 'fields';
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.view === 'fields'); });
   renderFilters();
   renderContent();
 }
@@ -717,10 +724,12 @@ function buildBeastCard(b) {
   // Head
   var head = document.createElement('div');
   head.className = 'beast-head';
-  var emoji = document.createElement('span');
-  emoji.className = 'beast-emoji';
-  emoji.innerHTML = ELEMENT_SVG[b.element] || '';
-  head.appendChild(emoji);
+  var iconImg = document.createElement('img');
+  iconImg.className = 'beast-icon';
+  iconImg.src = beastIconUrl(b.type, b.faction, b.star);
+  iconImg.alt = b.name;
+  iconImg.onerror = function() { this.style.display = 'none'; };
+  head.appendChild(iconImg);
 
   var info = document.createElement('div');
   info.className = 'beast-info';
@@ -987,10 +996,14 @@ function renderFieldView(el) {
         metaDiv.appendChild(elemTxt);
         slotCard.appendChild(metaDiv);
 
-        var lvDiv = document.createElement('div');
-        lvDiv.className = 'slot-level';
-        lvDiv.textContent = 'Slot Lv.' + s.level + ' \u00B7 Potential ' + b.potential.toLocaleString();
-        slotCard.appendChild(lvDiv);
+        var lvRow = document.createElement('div');
+        lvRow.className = 'slot-level';
+        var lvPill = document.createElement('span');
+        lvPill.className = 'beast-slotlv-badge';
+        lvPill.textContent = 'Level ' + s.level;
+        lvRow.appendChild(lvPill);
+        lvRow.appendChild(document.createTextNode(' Potential ' + b.potential.toLocaleString()));
+        slotCard.appendChild(lvRow);
 
         s.buffs.forEach(function(sb) {
           var buffDiv = document.createElement('div');
