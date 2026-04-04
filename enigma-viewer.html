@@ -89,14 +89,18 @@
 
   /* Beast cards grid */
   .beast-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .6rem; }
-  .beast-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .65rem; cursor: default; transition: all .15s; position: relative; }
+  .beast-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .65rem; cursor: pointer; transition: all .15s; position: relative; }
   .beast-card:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
   .beast-card.gold { border-color: var(--yellow); }
   .beast-card.gold:hover { border-color: #e8c547; }
   .beast-card.purple { border-color: #a371f7; }
   .beast-card.purple:hover { border-color: #c69bf7; }
   .beast-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .4rem; }
-  .beast-icon { flex-shrink: 0; width: 44px; height: 44px; border-radius: 6px; object-fit: cover; background: var(--surface); }
+  .beast-icon-wrap { position: relative; flex-shrink: 0; width: 44px; height: 44px; }
+  .beast-icon { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; background: var(--surface); }
+  .beast-icon.q5 { border: 2px solid var(--yellow); }
+  .beast-icon.q4 { border: 2px solid #a371f7; }
+  .beast-elem-overlay { position: absolute; bottom: -2px; right: -2px; width: 18px; height: 18px; border-radius: 3px; background: var(--card); pointer-events: none; }
   .beast-info { flex: 1; min-width: 0; }
   .beast-name { font-weight: 700; font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .beast-meta { font-size: .7rem; color: var(--muted); display: flex; gap: .5rem; flex-wrap: wrap; }
@@ -130,7 +134,7 @@
   .field-header.collapsed .field-toggle { transform: rotate(-90deg); }
   .field-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .5rem; }
   .field-body.collapsed { display: none; }
-  .slot-card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: .5rem; position: relative; }
+  .slot-card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: .5rem; position: relative; cursor: pointer; }
   .slot-card.empty { opacity: .4; border-style: dashed; }
   .slot-card.has-buffs { border-color: var(--green); }
   .slot-num { position: absolute; top: .3rem; right: .3rem; font-size: .55rem; color: var(--muted); font-weight: 700; }
@@ -146,6 +150,28 @@
   .field-conditions { margin-top: .5rem; padding: .4rem .6rem; background: var(--surface); border-radius: 6px; font-size: .7rem; }
   .field-conditions .cond-label { color: var(--accent); font-weight: 700; font-size: .6rem; text-transform: uppercase; margin-bottom: .2rem; }
   .field-conditions .cond-list { color: var(--muted); }
+  .slot-cond-badge { font-size: .55rem; background: rgba(121,192,255,.08); color: var(--accent); padding: .1rem .35rem; border-radius: 3px; border: 1px solid rgba(121,192,255,.15); display: inline-block; margin-top: .2rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Detail modal */
+  .detail-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,.7); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+  .detail-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; max-width: 420px; width: 100%; max-height: 85vh; overflow-y: auto; }
+  .detail-modal-header { display: flex; align-items: center; gap: .75rem; padding: 1rem 1rem .5rem; }
+  .detail-modal-icon { width: 64px; height: 64px; border-radius: 8px; object-fit: cover; background: var(--card); }
+  .detail-modal-icon.q5 { border: 2px solid var(--yellow); }
+  .detail-modal-icon.q4 { border: 2px solid #a371f7; }
+  .detail-modal-info { flex: 1; min-width: 0; }
+  .detail-modal-name { font-weight: 700; font-size: 1rem; }
+  .detail-modal-meta { font-size: .78rem; color: var(--muted); margin-top: .15rem; }
+  .detail-modal-section { padding: .5rem 1rem; }
+  .detail-modal-section + .detail-modal-section { border-top: 1px solid var(--border); }
+  .detail-modal-section .buff-label { margin-bottom: .2rem; }
+  .detail-modal-close { position: absolute; top: .75rem; right: .75rem; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); cursor: pointer; padding: .2rem .5rem; font-size: .85rem; }
+  .detail-modal-close:hover { border-color: var(--accent); color: var(--accent); }
+  .detail-deploy-info { font-size: .78rem; color: var(--muted); }
+  .detail-deploy-info .badge { display: inline-block; padding: .1rem .4rem; border-radius: 4px; font-size: .65rem; font-weight: 600; margin-right: .3rem; }
+  .detail-deploy-info .badge-field { background: rgba(121,192,255,.1); border: 1px solid rgba(121,192,255,.2); color: var(--accent); }
+  .detail-deploy-info .badge-slot { background: rgba(63,185,80,.1); border: 1px solid rgba(63,185,80,.2); color: var(--green); }
+  .detail-deploy-info .badge-lv { background: rgba(210,153,34,.1); border: 1px solid rgba(210,153,34,.2); color: var(--yellow); }
 
   /* No data */
   .no-data { text-align: center; padding: 3rem 1rem; color: var(--muted); }
@@ -324,6 +350,49 @@ var FIELD_BUFF_NAMES = {
   990202: 'Combat Bonus'
 };
 
+var FIELD_CONDITIONS = {
+  1: ['Fill All Slots', 'Deploy 1 Legendary', 'Deploy 2 Legendary', 'Deploy 3 Legendary', 'Deploy 4 Legendary'],
+  2: ['Fill All Slots', 'Deploy 2 Legendary', 'Deploy 3 Legendary', 'Deploy 4 Legendary', 'Deploy 5 at 2+ stars', 'Deploy 6 at 2+ stars', 'Deploy 7 at 2+ stars'],
+  3: ['Fill All Slots', 'Deploy 1 Legendary', 'Deploy 2 Legendary', 'Deploy 5 at 2+ stars', 'Deploy 5 at 2+ stars', 'Deploy 5 at 2+ stars', 'Deploy 7 at 3+ stars', 'Deploy 8 at 3+ stars', 'Deploy 9 at 3+ stars'],
+  4: ['Fill All Slots', 'Deploy 1 Legendary', 'Deploy 2 Legendary', 'Deploy 4 at 2+ stars', 'Deploy 5 at 2+ stars', 'Deploy 6 at 2+ stars', 'Deploy 7 at 3+ stars', 'Deploy 8 at 3+ stars', 'Deploy 9 at 3+ stars'],
+  5: ['Fill All Slots', 'Deploy 1 Legendary', 'Deploy 2 Legendary', 'Deploy 4 at 2+ stars', 'Deploy 5 at 2+ stars', 'Deploy 6 at 2+ stars', 'Deploy 7 at 3+ stars', 'Deploy 8 at 3+ stars', 'Deploy 9 at 3+ stars']
+};
+
+/* ── Buff value computation ── */
+function computeBuffValue(buffId, star, level, potential, isMain) {
+  var cat = getBuffCategory(buffId);
+  if (!cat) return null;
+  if (isMain) {
+    var smv = cat.mainStarMax[star - 1] || 0;
+    if (cat.key === 'march') return smv; // additive integer
+    return (smv / 100) * (potential / 16000);
+  } else {
+    var lmv = cat.baseLvMax || 0;
+    var bsmv = cat.baseStarMax[star - 1] || 0;
+    return ((level * lmv / 100) + (bsmv / 100)) * (potential / 16000);
+  }
+}
+
+function getBuffCategory(buffId) {
+  var id = Number(buffId);
+  // Main buff categories
+  if (id >= 520040 && id <= 520073) return { key: 'atkhp', mainStarMax: [600,1200,1800,2400,3000], baseLvMax: 0, baseStarMax: [0,0,0,0,0] };
+  if (id >= 520010 && id <= 520013) return { key: 'dmg', mainStarMax: [200,400,600,800,1000], baseLvMax: 2, baseStarMax: [0,75,150,225,300] };
+  if (id >= 520020 && id <= 520023) return { key: 'decdmg', mainStarMax: [200,400,600,800,1000], baseLvMax: 2, baseStarMax: [0,75,150,225,300] };
+  if (id >= 520030 && id <= 520033) return { key: 'def', mainStarMax: [80,160,240,320,400], baseLvMax: 0, baseStarMax: [0,0,0,0,0] };
+  if (id === 520000) return { key: 'march', mainStarMax: [1,1,2,2,3], baseLvMax: 0, baseStarMax: [0,0,0,0,0] };
+  // Base buff categories (not used as main)
+  if (id >= 520110 && id <= 520123) return { key: 'atkoff', mainStarMax: [600,1200,1800,2400,3000], baseLvMax: 6, baseStarMax: [0,225,450,675,900] };
+  if (id >= 520130 && id <= 520143) return { key: 'atkdef', mainStarMax: [600,1200,1800,2400,3000], baseLvMax: 12, baseStarMax: [0,450,900,1350,1800] };
+  if (id >= 520100 && id <= 520103) return { key: 'suppdef', mainStarMax: [200,400,600,800,1000], baseLvMax: 2, baseStarMax: [0,75,150,225,300] };
+  return null;
+}
+
+function formatBuffValue(val, buffId) {
+  if (Number(buffId) === 520000) return '+' + Math.round(val);
+  return '+' + val.toFixed(3) + '%';
+}
+
 /* ── State ── */
 var reportData = null;
 var currentSide = null;
@@ -386,26 +455,28 @@ function resolveBeasts(enigmas) {
       potential: b.potential, maxPotential: info.quality === 4 ? 8000 : 16000,
       power: b.power, mainBuff: b.mainBuff, mainBuffName: buffName(b.mainBuff),
       baseBuff: (b.baseBuff || []).map(function(id) { return { id: id, name: buffName(id) }; }),
-      fieldCfg: null, fieldName: null, slotId: null, slotLevel: null, slotBuffs: []
+      fieldCfg: null, fieldName: null, slotId: null, fieldSlotNum: null, slotLevel: null, slotBuffs: []
     };
     beastMap[b.id] = resolved;
     return resolved;
   });
 
   var fields = (enigmas.fields || []).map(function(f) {
-    var slots = (f.slots || []).map(function(s) {
+    var slots = (f.slots || []).map(function(s, idx) {
+      var fieldSlotNum = idx + 1;
       var beast = beastMap[s.beastId];
       if (beast && s.beastId !== '0') {
         beast.fieldCfg = f.cfg;
         beast.fieldName = fieldNameFn(f.cfg);
         beast.slotId = s.id;
+        beast.fieldSlotNum = fieldSlotNum;
         beast.slotLevel = s.level;
         beast.slotBuffs = (s.buffs || []).map(function(sb) {
           return { id: sb.id, name: buffName(sb.id), val: sb.val };
         });
       }
       return {
-        id: s.id, beastId: s.beastId, level: s.level, potential: s.potential,
+        id: s.id, fieldSlotNum: fieldSlotNum, beastId: s.beastId, level: s.level, potential: s.potential,
         buffs: (s.buffs || []).map(function(sb) { return { id: sb.id, name: buffName(sb.id), val: sb.val }; }),
         beast: (s.beastId !== '0' && beast) ? beast : null
       };
@@ -717,6 +788,25 @@ function filterBeasts() {
   });
 }
 
+function buildBeastIconWrap(b, size) {
+  var wrap = document.createElement('div');
+  wrap.className = 'beast-icon-wrap';
+  if (size) { wrap.style.width = size + 'px'; wrap.style.height = size + 'px'; }
+  var iconImg = document.createElement('img');
+  iconImg.className = 'beast-icon' + (b.quality === 5 ? ' q5' : ' q4');
+  iconImg.src = beastIconUrl(b.type, b.faction, b.star);
+  iconImg.alt = b.name;
+  if (size) { iconImg.style.width = size + 'px'; iconImg.style.height = size + 'px'; }
+  iconImg.onerror = function() { this.style.display = 'none'; };
+  wrap.appendChild(iconImg);
+  var elemIcon = document.createElement('img');
+  elemIcon.className = 'beast-elem-overlay';
+  elemIcon.src = ICON_BASE + 'element_' + b.element + '.png';
+  elemIcon.alt = b.element;
+  wrap.appendChild(elemIcon);
+  return wrap;
+}
+
 function buildBeastCard(b) {
   var card = document.createElement('div');
   card.className = 'beast-card' + (b.quality === 4 ? ' purple' : ' gold');
@@ -724,12 +814,7 @@ function buildBeastCard(b) {
   // Head
   var head = document.createElement('div');
   head.className = 'beast-head';
-  var iconImg = document.createElement('img');
-  iconImg.className = 'beast-icon';
-  iconImg.src = beastIconUrl(b.type, b.faction, b.star);
-  iconImg.alt = b.name;
-  iconImg.onerror = function() { this.style.display = 'none'; };
-  head.appendChild(iconImg);
+  head.appendChild(buildBeastIconWrap(b));
 
   var info = document.createElement('div');
   info.className = 'beast-info';
@@ -759,10 +844,10 @@ function buildBeastCard(b) {
     fb.textContent = b.fieldName;
     meta.appendChild(fb);
   }
-  if (b.slotId) {
+  if (b.fieldSlotNum) {
     var sb = document.createElement('span');
     sb.className = 'beast-slot-badge';
-    sb.textContent = '#' + b.slotId;
+    sb.textContent = '#' + b.fieldSlotNum;
     meta.appendChild(sb);
   }
   if (b.slotLevel) {
@@ -775,7 +860,7 @@ function buildBeastCard(b) {
   head.appendChild(info);
   card.appendChild(head);
 
-  // Main buff
+  // Main buff with value
   var mainSec = document.createElement('div');
   mainSec.className = 'buff-section';
   var mainLabel = document.createElement('div');
@@ -788,10 +873,17 @@ function buildBeastCard(b) {
   mainName.className = 'buff-name';
   mainName.textContent = b.mainBuffName;
   mainRow.appendChild(mainName);
+  var mainVal = computeBuffValue(b.mainBuff, b.star, b.level, b.potential, true);
+  if (mainVal !== null) {
+    var mvSpan = document.createElement('span');
+    mvSpan.className = 'buff-val';
+    mvSpan.textContent = formatBuffValue(mainVal, b.mainBuff);
+    mainRow.appendChild(mvSpan);
+  }
   mainSec.appendChild(mainRow);
   card.appendChild(mainSec);
 
-  // Base buffs
+  // Base buffs with values
   if (b.baseBuff.length) {
     var baseSec = document.createElement('div');
     baseSec.className = 'buff-section';
@@ -806,35 +898,16 @@ function buildBeastCard(b) {
       nm.className = 'buff-name';
       nm.textContent = bb.name;
       row.appendChild(nm);
+      var bv = computeBuffValue(bb.id, b.star, b.level, b.potential, false);
+      if (bv !== null) {
+        var bvSpan = document.createElement('span');
+        bvSpan.className = 'buff-val';
+        bvSpan.textContent = formatBuffValue(bv, bb.id);
+        row.appendChild(bvSpan);
+      }
       baseSec.appendChild(row);
     });
     card.appendChild(baseSec);
-  }
-
-  // Slot buffs
-  if (b.slotBuffs.length) {
-    var slotSec = document.createElement('div');
-    slotSec.className = 'buff-section';
-    var slotLabel = document.createElement('div');
-    slotLabel.className = 'buff-label';
-    slotLabel.textContent = 'Field Slot Buffs';
-    slotSec.appendChild(slotLabel);
-    b.slotBuffs.forEach(function(sb) {
-      var row = document.createElement('div');
-      row.className = 'buff-row';
-      var nm = document.createElement('span');
-      nm.className = 'buff-name';
-      nm.textContent = sb.name;
-      row.appendChild(nm);
-      if (sb.val) {
-        var vl = document.createElement('span');
-        vl.className = 'buff-val';
-        vl.textContent = '+' + (sb.val / 100).toFixed(2) + '%';
-        row.appendChild(vl);
-      }
-      slotSec.appendChild(row);
-    });
-    card.appendChild(slotSec);
   }
 
   // Potential
@@ -868,19 +941,213 @@ function buildBeastCard(b) {
   powerDiv.textContent = 'Power: ' + b.power.toLocaleString();
   card.appendChild(powerDiv);
 
+  card.onclick = function() { showBeastDetailModal(b, 'collection'); };
+
   return card;
+}
+
+/* ── Detail Modal ── */
+function showBeastDetailModal(b, context) {
+  var overlay = document.createElement('div');
+  overlay.className = 'detail-overlay';
+  overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+  var modal = document.createElement('div');
+  modal.className = 'detail-modal';
+  modal.style.position = 'relative';
+
+  var closeBtn = document.createElement('button');
+  closeBtn.className = 'detail-modal-close';
+  closeBtn.textContent = '\u2715';
+  closeBtn.onclick = function() { overlay.remove(); };
+  modal.appendChild(closeBtn);
+
+  // Header with icon + name
+  var header = document.createElement('div');
+  header.className = 'detail-modal-header';
+  var iconWrap = buildBeastIconWrap(b, 64);
+  header.appendChild(iconWrap);
+  var info = document.createElement('div');
+  info.className = 'detail-modal-info';
+  var nameEl = document.createElement('div');
+  nameEl.className = 'detail-modal-name notranslate';
+  nameEl.setAttribute('translate', 'no');
+  nameEl.textContent = b.name;
+  info.appendChild(nameEl);
+  var metaEl = document.createElement('div');
+  metaEl.className = 'detail-modal-meta';
+  var starsSpan = document.createElement('span');
+  starsSpan.style.color = 'var(--yellow)';
+  starsSpan.textContent = starStr(b.star);
+  metaEl.appendChild(starsSpan);
+  metaEl.appendChild(document.createTextNode(' \u00B7 Lv.' + b.level + ' \u00B7 '));
+  var elemSpan = document.createElement('span');
+  elemSpan.textContent = b.element;
+  elemSpan.style.color = ELEMENT_COLORS[b.element] || 'var(--muted)';
+  metaEl.appendChild(elemSpan);
+  if (b.quality === 4) {
+    metaEl.appendChild(document.createTextNode(' \u00B7 '));
+    var qSpan = document.createElement('span');
+    qSpan.textContent = 'Epic';
+    qSpan.style.color = '#a371f7';
+    metaEl.appendChild(qSpan);
+  }
+  info.appendChild(metaEl);
+  header.appendChild(info);
+  modal.appendChild(header);
+
+  // Main buff section
+  var mainSec = document.createElement('div');
+  mainSec.className = 'detail-modal-section';
+  var mainLabel = document.createElement('div');
+  mainLabel.className = 'buff-label';
+  mainLabel.textContent = 'Main Buff';
+  mainSec.appendChild(mainLabel);
+  var mainRow = document.createElement('div');
+  mainRow.className = 'buff-row';
+  var mainName = document.createElement('span');
+  mainName.className = 'buff-name';
+  mainName.textContent = b.mainBuffName;
+  mainRow.appendChild(mainName);
+  var mainVal = computeBuffValue(b.mainBuff, b.star, b.level, b.potential, true);
+  if (mainVal !== null) {
+    var mvSpan = document.createElement('span');
+    mvSpan.className = 'buff-val';
+    mvSpan.textContent = formatBuffValue(mainVal, b.mainBuff);
+    mainRow.appendChild(mvSpan);
+  }
+  mainSec.appendChild(mainRow);
+  modal.appendChild(mainSec);
+
+  // Base buffs section
+  if (b.baseBuff.length) {
+    var baseSec = document.createElement('div');
+    baseSec.className = 'detail-modal-section';
+    var baseLabel = document.createElement('div');
+    baseLabel.className = 'buff-label';
+    baseLabel.textContent = 'Base Buffs';
+    baseSec.appendChild(baseLabel);
+    b.baseBuff.forEach(function(bb) {
+      var row = document.createElement('div');
+      row.className = 'buff-row';
+      var nm = document.createElement('span');
+      nm.className = 'buff-name';
+      nm.textContent = bb.name;
+      row.appendChild(nm);
+      var bv = computeBuffValue(bb.id, b.star, b.level, b.potential, false);
+      if (bv !== null) {
+        var bvSpan = document.createElement('span');
+        bvSpan.className = 'buff-val';
+        bvSpan.textContent = formatBuffValue(bv, bb.id);
+        row.appendChild(bvSpan);
+      }
+      baseSec.appendChild(row);
+    });
+    modal.appendChild(baseSec);
+  }
+
+  // Context-specific section
+  if (context === 'collection' && b.fieldCfg) {
+    // Show deployment info + field slot buffs
+    var deploySec = document.createElement('div');
+    deploySec.className = 'detail-modal-section';
+    var deployLabel = document.createElement('div');
+    deployLabel.className = 'buff-label';
+    deployLabel.textContent = 'Deployment';
+    deploySec.appendChild(deployLabel);
+    var deployInfo = document.createElement('div');
+    deployInfo.className = 'detail-deploy-info';
+    var fieldBadge = document.createElement('span');
+    fieldBadge.className = 'badge badge-field';
+    fieldBadge.textContent = b.fieldName;
+    deployInfo.appendChild(fieldBadge);
+    var slotBadge = document.createElement('span');
+    slotBadge.className = 'badge badge-slot';
+    slotBadge.textContent = 'Slot #' + b.fieldSlotNum;
+    deployInfo.appendChild(slotBadge);
+    var lvBadge = document.createElement('span');
+    lvBadge.className = 'badge badge-lv';
+    lvBadge.textContent = 'Level ' + b.slotLevel;
+    deployInfo.appendChild(lvBadge);
+    deploySec.appendChild(deployInfo);
+
+    if (b.slotBuffs.length) {
+      var slotBuffLabel = document.createElement('div');
+      slotBuffLabel.className = 'buff-label';
+      slotBuffLabel.style.marginTop = '.5rem';
+      slotBuffLabel.textContent = 'Field Slot Buffs';
+      deploySec.appendChild(slotBuffLabel);
+      b.slotBuffs.forEach(function(sb) {
+        var row = document.createElement('div');
+        row.className = 'buff-row';
+        var nm = document.createElement('span');
+        nm.className = 'buff-name';
+        nm.textContent = sb.name;
+        row.appendChild(nm);
+        if (sb.val) {
+          var vl = document.createElement('span');
+          vl.className = 'buff-val';
+          vl.textContent = '+' + (sb.val / 100).toFixed(2) + '%';
+          row.appendChild(vl);
+        }
+        deploySec.appendChild(row);
+      });
+    }
+    modal.appendChild(deploySec);
+  } else if (context === 'collection' && !b.fieldCfg) {
+    var benchSec = document.createElement('div');
+    benchSec.className = 'detail-modal-section';
+    var benchLabel = document.createElement('div');
+    benchLabel.className = 'buff-label';
+    benchLabel.textContent = 'Deployment';
+    benchSec.appendChild(benchLabel);
+    var benchText = document.createElement('div');
+    benchText.style.cssText = 'font-size:.78rem;color:var(--muted)';
+    benchText.textContent = 'Not deployed (bench)';
+    benchSec.appendChild(benchText);
+    modal.appendChild(benchSec);
+  }
+
+  // Potential in modal
+  var potSec = document.createElement('div');
+  potSec.className = 'detail-modal-section';
+  var potPct = Math.round(b.potential / b.maxPotential * 100);
+  var pc = potColor(potPct);
+  var potMeta = document.createElement('div');
+  potMeta.className = 'potential-meta';
+  var potLbl = document.createElement('span');
+  potLbl.textContent = 'Potential';
+  potMeta.appendChild(potLbl);
+  var potValEl = document.createElement('span');
+  potValEl.textContent = b.potential.toLocaleString() + ' / ' + b.maxPotential.toLocaleString() + ' (' + potPct + '%)';
+  potValEl.style.color = pc;
+  potMeta.appendChild(potValEl);
+  potSec.appendChild(potMeta);
+  var potBar = document.createElement('div');
+  potBar.className = 'potential-bar';
+  var potFill = document.createElement('div');
+  potFill.className = 'potential-fill';
+  potFill.style.width = potPct + '%';
+  potFill.style.background = pc;
+  potBar.appendChild(potFill);
+  potSec.appendChild(potBar);
+  var powerLine = document.createElement('div');
+  powerLine.style.cssText = 'font-size:.75rem;color:var(--muted);margin-top:.3rem;text-align:right';
+  powerLine.textContent = 'Power: ' + b.power.toLocaleString();
+  potSec.appendChild(powerLine);
+  modal.appendChild(potSec);
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
 }
 
 function renderBeastGrid(el) {
   var beasts = filterBeasts();
   beasts.sort(function(a, b) {
-    var ad = a.fieldCfg ? 0 : 1, bd = b.fieldCfg ? 0 : 1;
-    if (ad !== bd) return ad - bd;
-    if (a.fieldCfg && b.fieldCfg) {
-      if (a.fieldCfg !== b.fieldCfg) return a.fieldCfg - b.fieldCfg;
-      return (a.slotId || 0) - (b.slotId || 0);
-    }
-    return b.star - a.star || b.level - a.level || b.potential - a.potential;
+    if (a.quality !== b.quality) return b.quality - a.quality;
+    if (a.potential !== b.potential) return b.potential - a.potential;
+    if (a.star !== b.star) return b.star - a.star;
+    return b.level - a.level;
   });
 
   var countEl = document.getElementById('filter-count');
@@ -953,11 +1220,14 @@ function renderFieldView(el) {
     };
     section.appendChild(header);
 
-    // Body (slots grid)
+    // Body (slots grid) — sorted by field-relative slot number
     var body = document.createElement('div');
     body.className = 'field-body';
 
-    f.slots.forEach(function(s) {
+    var sortedSlots = f.slots.slice().sort(function(a, b) { return a.fieldSlotNum - b.fieldSlotNum; });
+    var fieldConds = FIELD_CONDITIONS[f.cfg] || [];
+
+    sortedSlots.forEach(function(s) {
       var slotCard = document.createElement('div');
       var isEmpty = !s.beast;
       var hasBuff = s.buffs.length > 0;
@@ -965,7 +1235,7 @@ function renderFieldView(el) {
 
       var slotNum = document.createElement('div');
       slotNum.className = 'slot-num';
-      slotNum.textContent = 'Slot ' + s.id;
+      slotNum.textContent = 'Slot ' + s.fieldSlotNum;
       slotCard.appendChild(slotNum);
 
       if (isEmpty) {
@@ -980,21 +1250,31 @@ function renderFieldView(el) {
         slotCard.appendChild(slotLv);
       } else {
         var b = s.beast;
-        var nameDiv = document.createElement('div');
-        nameDiv.className = 'slot-beast-name';
-        nameDiv.innerHTML = (ELEMENT_SVG[b.element] || '') + ' ';
-        var nameSpan = document.createTextNode(b.name);
-        nameDiv.appendChild(nameSpan);
-        slotCard.appendChild(nameDiv);
 
+        // Beast icon + name head
+        var headDiv = document.createElement('div');
+        headDiv.className = 'beast-head';
+        headDiv.appendChild(buildBeastIconWrap(b));
+        var infoDiv = document.createElement('div');
+        infoDiv.className = 'beast-info';
+        var nameDiv = document.createElement('div');
+        nameDiv.className = 'beast-name notranslate';
+        nameDiv.setAttribute('translate', 'no');
+        nameDiv.textContent = b.name;
+        infoDiv.appendChild(nameDiv);
         var metaDiv = document.createElement('div');
-        metaDiv.className = 'slot-beast-meta';
-        metaDiv.textContent = starStr(b.star) + ' \u00B7 Lv.' + b.level;
+        metaDiv.className = 'beast-meta';
+        var starsSpan = document.createElement('span');
+        starsSpan.className = 'beast-stars';
+        starsSpan.textContent = starStr(b.star);
+        metaDiv.appendChild(starsSpan);
         var elemTxt = document.createElement('span');
-        elemTxt.textContent = ' \u00B7 ' + b.element;
+        elemTxt.textContent = b.element;
         elemTxt.style.color = ELEMENT_COLORS[b.element] || 'var(--muted)';
         metaDiv.appendChild(elemTxt);
-        slotCard.appendChild(metaDiv);
+        infoDiv.appendChild(metaDiv);
+        headDiv.appendChild(infoDiv);
+        slotCard.appendChild(headDiv);
 
         var lvRow = document.createElement('div');
         lvRow.className = 'slot-level';
@@ -1002,9 +1282,9 @@ function renderFieldView(el) {
         lvPill.className = 'beast-slotlv-badge';
         lvPill.textContent = 'Level ' + s.level;
         lvRow.appendChild(lvPill);
-        lvRow.appendChild(document.createTextNode(' Potential ' + b.potential.toLocaleString()));
         slotCard.appendChild(lvRow);
 
+        // Field slot buffs WITH values (field attribute contributions)
         s.buffs.forEach(function(sb) {
           var buffDiv = document.createElement('div');
           buffDiv.className = 'slot-buff';
@@ -1020,6 +1300,47 @@ function renderFieldView(el) {
           }
           slotCard.appendChild(buffDiv);
         });
+
+        // Potential bar
+        var potPct = Math.round(b.potential / b.maxPotential * 100);
+        var pc = potColor(potPct);
+        var potRow = document.createElement('div');
+        potRow.className = 'potential-row';
+        potRow.style.marginTop = '.25rem';
+        var potMeta = document.createElement('div');
+        potMeta.className = 'potential-meta';
+        var potLbl = document.createElement('span');
+        potLbl.textContent = 'Potential';
+        potMeta.appendChild(potLbl);
+        var potValEl = document.createElement('span');
+        potValEl.textContent = potPct + '%';
+        potValEl.style.color = pc;
+        potMeta.appendChild(potValEl);
+        potRow.appendChild(potMeta);
+        var potBar = document.createElement('div');
+        potBar.className = 'potential-bar';
+        var potFill = document.createElement('div');
+        potFill.className = 'potential-fill';
+        potFill.style.width = potPct + '%';
+        potFill.style.background = pc;
+        potBar.appendChild(potFill);
+        potRow.appendChild(potBar);
+        slotCard.appendChild(potRow);
+
+        // Click handler — show beast stat buffs in modal
+        (function(beast) {
+          slotCard.onclick = function() { showBeastDetailModal(beast, 'field'); };
+        })(b);
+      }
+
+      // Slot condition badge
+      var condIdx = s.fieldSlotNum - 1;
+      if (condIdx >= 0 && condIdx < fieldConds.length) {
+        var condBadge = document.createElement('div');
+        condBadge.className = 'slot-cond-badge';
+        condBadge.textContent = fieldConds[condIdx];
+        condBadge.title = fieldConds[condIdx];
+        slotCard.appendChild(condBadge);
       }
 
       body.appendChild(slotCard);
@@ -1027,16 +1348,20 @@ function renderFieldView(el) {
 
     section.appendChild(body);
 
-    // Conditions
+    // Conditions summary
     var condDiv = document.createElement('div');
     condDiv.className = 'field-conditions';
     var condLabel = document.createElement('div');
     condLabel.className = 'cond-label';
-    condLabel.textContent = 'Conditions';
+    condLabel.textContent = 'Unlock Conditions';
     condDiv.appendChild(condLabel);
     var condList = document.createElement('div');
     condList.className = 'cond-list';
-    condList.textContent = f.conditions.length ? 'Met for slots: ' + f.conditions.join(', ') : 'No conditions met';
+    if (fieldConds.length) {
+      condList.textContent = fieldConds.map(function(c, i) { return 'Slot ' + (i + 1) + ': ' + c; }).join(' \u00B7 ');
+    } else {
+      condList.textContent = 'No conditions data';
+    }
     condDiv.appendChild(condList);
     section.appendChild(condDiv);
 
@@ -1167,5 +1492,6 @@ document.addEventListener('click', function(e) {
 });
 </script>
 <script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+<script src="feedback-widget.js"></script>
 </body>
 </html>
