@@ -135,7 +135,7 @@
   .field-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .5rem; }
   .field-body.collapsed { display: none; }
   .slot-card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: .5rem; position: relative; cursor: pointer; }
-  .slot-card.empty { opacity: .4; border-style: dashed; }
+  .slot-card.empty { opacity: .55; border-style: dashed; }
   .slot-card.has-buffs { border-color: var(--green); }
   .slot-num { position: absolute; top: .3rem; right: .3rem; font-size: .55rem; color: var(--muted); font-weight: 700; }
   .slot-beast-name { font-weight: 600; font-size: .78rem; margin-bottom: .2rem; }
@@ -150,7 +150,9 @@
   .field-conditions { margin-top: .5rem; padding: .4rem .6rem; background: var(--surface); border-radius: 6px; font-size: .7rem; }
   .field-conditions .cond-label { color: var(--accent); font-weight: 700; font-size: .6rem; text-transform: uppercase; margin-bottom: .2rem; }
   .field-conditions .cond-list { color: var(--muted); }
-  .slot-cond-badge { font-size: .55rem; background: rgba(121,192,255,.08); color: var(--accent); padding: .1rem .35rem; border-radius: 3px; border: 1px solid rgba(121,192,255,.15); display: inline-block; margin-top: .2rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .slot-cond-badge { font-size: .55rem; background: rgba(56,139,253,.1); color: var(--navy); padding: .15rem .4rem; border-radius: 3px; border: 1px solid rgba(56,139,253,.2); display: inline-block; margin-top: .2rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fpill-icon { display: flex; align-items: center; justify-content: center; padding: .2rem .4rem; }
+  .fpill-icon img { width: 20px; height: 20px; object-fit: contain; }
 
   /* Detail modal */
   .detail-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,.7); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
@@ -691,28 +693,44 @@ function renderFilters() {
   el.style.display = '';
   el.textContent = '';
 
-  // Element pills
-  var elemDiv = document.createElement('div');
-  elemDiv.className = 'filter-pills';
-  elemDiv.id = 'elem-pills';
-
-  function makeElemPill(label, key, cls) {
-    var p = document.createElement('span');
-    p.className = 'fpill' + (cls ? ' ' + cls : '') + (activeElements.has(key) ? ' active' : '');
-    p.textContent = label;
-    p.dataset.elem = key;
-    return p;
+  // If on fields view and activeField is 'bench', reset to 'all'
+  if (currentView === 'fields' && activeField === 'bench') {
+    activeField = 'all';
   }
 
-  elemDiv.appendChild(makeElemPill('All', 'all', ''));
-  ['Fire', 'Wind', 'Water', 'Ground'].forEach(function(e) {
-    elemDiv.appendChild(makeElemPill(e, e, e.toLowerCase()));
-  });
-  el.appendChild(elemDiv);
+  // Element pills — only show in beasts view
+  if (currentView === 'beasts') {
+    var elemDiv = document.createElement('div');
+    elemDiv.className = 'filter-pills';
+    elemDiv.id = 'elem-pills';
 
-  var sep = document.createElement('div');
-  sep.className = 'filter-sep';
-  el.appendChild(sep);
+    // "All" pill stays as text
+    var allPill = document.createElement('span');
+    allPill.className = 'fpill' + (activeElements.has('all') ? ' active' : '');
+    allPill.textContent = 'All';
+    allPill.dataset.elem = 'all';
+    elemDiv.appendChild(allPill);
+
+    // Element pills with icons
+    ['Fire', 'Wind', 'Water', 'Ground'].forEach(function(e) {
+      var p = document.createElement('span');
+      p.className = 'fpill fpill-icon ' + e.toLowerCase() + (activeElements.has(e) ? ' active' : '');
+      p.dataset.elem = e;
+      p.title = e;
+      var img = document.createElement('img');
+      img.src = ICON_BASE + 'element_' + e + '.png';
+      img.alt = e;
+      img.width = 20;
+      img.height = 20;
+      p.appendChild(img);
+      elemDiv.appendChild(p);
+    });
+    el.appendChild(elemDiv);
+
+    var sep = document.createElement('div');
+    sep.className = 'filter-sep';
+    el.appendChild(sep);
+  }
 
   // Field pills
   var fieldDiv = document.createElement('div');
@@ -731,7 +749,10 @@ function renderFilters() {
   (window._fields || []).forEach(function(f) {
     fieldDiv.appendChild(makeFieldPill(f.name, String(f.cfg)));
   });
-  fieldDiv.appendChild(makeFieldPill('Bench', 'bench'));
+  // Bench pill only in beasts view
+  if (currentView === 'beasts') {
+    fieldDiv.appendChild(makeFieldPill('Bench', 'bench'));
+  }
   el.appendChild(fieldDiv);
 
   // Count
@@ -1244,10 +1265,41 @@ function renderFieldView(el) {
         emptyName.style.color = 'var(--muted)';
         emptyName.textContent = 'Empty';
         slotCard.appendChild(emptyName);
-        var slotLv = document.createElement('div');
-        slotLv.className = 'slot-level';
-        slotLv.textContent = 'Slot Lv.' + s.level;
-        slotCard.appendChild(slotLv);
+
+        var emptyLvRow = document.createElement('div');
+        emptyLvRow.className = 'slot-level';
+        var emptyLvPill = document.createElement('span');
+        emptyLvPill.className = 'beast-slotlv-badge';
+        emptyLvPill.textContent = 'Level ' + s.level;
+        emptyLvRow.appendChild(emptyLvPill);
+        slotCard.appendChild(emptyLvRow);
+
+        // Placeholder buff lines
+        var placeholderBuffs = ['ATK Bonus', 'HP Bonus'];
+        placeholderBuffs.forEach(function(pName) {
+          var buffDiv = document.createElement('div');
+          buffDiv.className = 'slot-buff';
+          var nm = document.createElement('span');
+          nm.className = 'slot-buff-name';
+          nm.textContent = pName;
+          buffDiv.appendChild(nm);
+          var vl = document.createElement('span');
+          vl.className = 'slot-buff-val';
+          vl.style.color = 'var(--muted)';
+          vl.textContent = '0.00%';
+          buffDiv.appendChild(vl);
+          slotCard.appendChild(buffDiv);
+        });
+
+        // Condition badge for empty slot
+        var emptyCondIdx = s.fieldSlotNum - 1;
+        if (emptyCondIdx >= 0 && emptyCondIdx < fieldConds.length) {
+          var emptyCondBadge = document.createElement('div');
+          emptyCondBadge.className = 'slot-cond-badge';
+          emptyCondBadge.textContent = fieldConds[emptyCondIdx];
+          emptyCondBadge.title = fieldConds[emptyCondIdx];
+          slotCard.appendChild(emptyCondBadge);
+        }
       } else {
         var b = s.beast;
 
@@ -1333,14 +1385,16 @@ function renderFieldView(el) {
         })(b);
       }
 
-      // Slot condition badge
-      var condIdx = s.fieldSlotNum - 1;
-      if (condIdx >= 0 && condIdx < fieldConds.length) {
-        var condBadge = document.createElement('div');
-        condBadge.className = 'slot-cond-badge';
-        condBadge.textContent = fieldConds[condIdx];
-        condBadge.title = fieldConds[condIdx];
-        slotCard.appendChild(condBadge);
+      // Slot condition badge (only for filled slots — empty slots get their own above)
+      if (!isEmpty) {
+        var condIdx = s.fieldSlotNum - 1;
+        if (condIdx >= 0 && condIdx < fieldConds.length) {
+          var condBadge = document.createElement('div');
+          condBadge.className = 'slot-cond-badge';
+          condBadge.textContent = fieldConds[condIdx];
+          condBadge.title = fieldConds[condIdx];
+          slotCard.appendChild(condBadge);
+        }
       }
 
       body.appendChild(slotCard);
@@ -1389,6 +1443,7 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
     document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
     btn.classList.add('active');
     currentView = btn.dataset.view;
+    renderFilters();
     renderContent();
   };
 });
