@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Easter Egg Wishing — Server 2864</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' https://raw.githubusercontent.com https://h5.topwargame.com data:; connect-src 'self' https://raw.githubusercontent.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' https://raw.githubusercontent.com https://h5.topwargame.com data:; connect-src 'self' https://raw.githubusercontent.com https://api.frankfurter.app /cdn-cgi/;">
 <style>
   :root {
     --bg: #0d1117; --surface: #161b22; --card: #1c2128;
@@ -19,15 +19,17 @@
   .sep { color: var(--border); }
   .page-title { font-size: 1.05rem; font-weight: 700; }
   .subtitle { font-size: .75rem; color: var(--muted); }
+  .header-right { margin-left: auto; }
+  #pricingBtn { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .35rem .7rem; font-size: .75rem; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: .35rem; transition: all .15s; }
+  #pricingBtn:hover { border-color: var(--accent); color: var(--accent); }
   .main { max-width: 920px; margin: 0 auto; padding: 1.5rem 1rem; }
-  .note { background: rgba(121,192,255,.08); border: 1px solid rgba(121,192,255,.2); border-radius: 6px; padding: .65rem .9rem; font-size: .78rem; color: var(--accent); margin-bottom: 1.25rem; }
-  .note strong { color: var(--text); }
 
-  .tab-row { display: flex; gap: .5rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+  .tab-row { display: flex; gap: .5rem; margin-bottom: 1.25rem; flex-wrap: wrap; align-items: center; }
   .tab-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: .4rem 1rem; font-size: .82rem; color: var(--muted); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: .35rem; }
   .tab-btn:hover { border-color: var(--accent); color: var(--text); }
   .tab-btn.active { background: rgba(121,192,255,.12); border-color: var(--accent); color: var(--accent); font-weight: 600; }
   .lock-badge { font-size: .65rem; background: rgba(139,148,158,.15); border-radius: 10px; padding: 1px 6px; color: var(--muted); }
+  .price-badge { font-size: .65rem; background: rgba(86,211,100,.12); border-radius: 10px; padding: 1px 6px; color: var(--green); font-weight: 600; }
 
   .tier { margin-bottom: 1.5rem; }
   .tier-label { font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: .75rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
@@ -45,9 +47,32 @@
   .item-name { font-size: .62rem; color: var(--text); line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .item-qty { font-size: .65rem; color: var(--accent); font-weight: 600; margin-top: .2rem; }
 
+  /* Pricing modal */
+  .pm-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 200; align-items: center; justify-content: center; padding: 1.5rem; }
+  .pm-overlay.show { display: flex; }
+  .pm-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; max-width: 560px; width: 100%; margin: auto; box-shadow: 0 16px 48px rgba(0,0,0,.6); }
+  .pm-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem .75rem; border-bottom: 1px solid var(--border); }
+  .pm-title { font-size: .95rem; font-weight: 700; }
+  .pm-close { background: none; border: none; color: var(--muted); font-size: 1.2rem; cursor: pointer; line-height: 1; padding: 2px 6px; border-radius: 4px; }
+  .pm-close:hover { color: var(--text); }
+  .pm-body { padding: 1rem 1.25rem 1.25rem; }
+  .pm-rate-bar { display: flex; align-items: center; gap: .5rem; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .45rem .75rem; margin-bottom: .9rem; font-size: .75rem; }
+  .pm-rate-val { font-weight: 700; color: var(--accent); }
+  .pm-rate-note { color: var(--muted); font-size: .65rem; margin-left: auto; }
+  .pm-table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+  .pm-table th { text-align: left; color: var(--muted); font-weight: 600; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; padding: .4rem .5rem; border-bottom: 1px solid var(--border); }
+  .pm-table td { padding: .55rem .5rem; border-bottom: 1px solid rgba(48,54,61,.5); }
+  .pm-table tr:last-child td { border-bottom: none; }
+  .pm-usd { color: var(--green); font-weight: 600; }
+  .pm-jpy { color: var(--accent); font-weight: 600; }
+  .pm-conv { color: var(--muted); }
+  .pm-save { color: var(--green); font-size: .7rem; }
+  .pm-note { font-size: .67rem; color: var(--muted); margin-top: .75rem; line-height: 1.5; }
+
   @media (max-width: 500px) {
     .item-grid { grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); }
     .item-icon, .item-ph { width: 44px; height: 44px; }
+    .pm-table { font-size: .72rem; }
   }
 </style>
 </head>
@@ -59,7 +84,41 @@
   <span class="sep">/</span>
   <span class="page-title">Easter Egg Wishing</span>
   <span class="subtitle">Festival Celebration &middot; Server 2864 &middot; 13d remaining</span>
+  <div class="header-right">
+    <button id="pricingBtn">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm2.5 7.5a.5.5 0 0 0 0 1h11a.5.5 0 0 0 0-1H2.5zm0-4a.5.5 0 0 0 0 1H10a.5.5 0 0 0 0-1H2.5zm0-2a.5.5 0 0 0 0 1H10a.5.5 0 0 0 0-1H2.5z"/></svg>
+      Real Cost
+    </button>
+  </div>
 </header>
+
+<!-- Pricing modal -->
+<div class="pm-overlay" id="pmOverlay">
+  <div class="pm-modal">
+    <div class="pm-header">
+      <span class="pm-title">Wish Cost Comparison</span>
+      <button class="pm-close" id="pmClose">&times;</button>
+    </div>
+    <div class="pm-body">
+      <div class="pm-rate-bar">
+        <span>Live rate:</span>
+        <span class="pm-rate-val" id="pmRate">Loading&hellip;</span>
+        <span class="pm-rate-note" id="pmRateNote"></span>
+      </div>
+      <table class="pm-table">
+        <thead><tr>
+          <th>Tab</th>
+          <th>USD</th>
+          <th>JPY</th>
+          <th>JPY&rarr;USD</th>
+          <th>Savings</th>
+        </tr></thead>
+        <tbody id="pmBody"></tbody>
+      </table>
+      <p class="pm-note">JPY prices via Japanese App Store / Google Play JP. Buy JPY gift cards at a local convenience store or online.</p>
+    </div>
+  </div>
+</div>
 
 <div class="main">
   <div class="tab-row" id="tabRow"></div>
@@ -70,6 +129,8 @@
 (function() {
   var ASSET = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/';
   var DYNRES = 'https://h5.topwargame.com/DynRes/images/items/';
+  var fxRate = null;
+  var tabsData = [];
 
   function getIconUrl(icon) {
     if (!icon) return '';
@@ -83,7 +144,6 @@
   }
 
   function qCls(q) { return q >= 5 ? 'q5' : q === 4 ? 'q4' : q === 3 ? 'q3' : ''; }
-
   function el(tag, cls) { var e = document.createElement(tag); if (cls) e.className = cls; return e; }
 
   function makeItemCard(item) {
@@ -91,39 +151,22 @@
     var url = getIconUrl(item.icon);
     if (url) {
       var img = el('img', 'item-icon');
-      img.src = url;
-      img.alt = '';
-      img.onerror = function() {
-        var ph = el('div', 'item-ph');
-        ph.textContent = '?';
-        card.replaceChild(ph, img);
-      };
+      img.src = url; img.alt = '';
+      img.onerror = function() { var ph = el('div', 'item-ph'); ph.textContent = '?'; card.replaceChild(ph, img); };
       card.appendChild(img);
     } else {
-      var ph = el('div', 'item-ph');
-      ph.textContent = '?';
-      card.appendChild(ph);
+      var ph = el('div', 'item-ph'); ph.textContent = '?'; card.appendChild(ph);
     }
-    var nm = el('div', 'item-name');
-    nm.textContent = item.name;
-    card.appendChild(nm);
-    if (item.count > 1) {
-      var qty = el('div', 'item-qty');
-      qty.textContent = '\u00d7' + item.count;
-      card.appendChild(qty);
-    }
+    var nm = el('div', 'item-name'); nm.textContent = item.name; card.appendChild(nm);
+    if (item.count > 1) { var qty = el('div', 'item-qty'); qty.textContent = '\u00d7' + item.count; card.appendChild(qty); }
     return card;
   }
 
   function makeTier(label, desc, items) {
     var tier = el('div', 'tier');
     var lbl = el('div', 'tier-label');
-    var hl = el('span', 'hl');
-    hl.textContent = label;
-    lbl.appendChild(hl);
-    var d = el('span', 'tier-desc');
-    d.textContent = desc;
-    lbl.appendChild(d);
+    var hl = el('span', 'hl'); hl.textContent = label; lbl.appendChild(hl);
+    var d = el('span', 'tier-desc'); d.textContent = desc; lbl.appendChild(d);
     tier.appendChild(lbl);
     var grid = el('div', 'item-grid');
     items.forEach(function(item) { grid.appendChild(makeItemCard(item)); });
@@ -133,31 +176,103 @@
 
   function renderTab(tab, container) {
     container.textContent = '';
-    container.appendChild(makeTier(
-      'Advanced Reward',
-      '\u2014 ' + tab.advanced.length + ' decorations (get 1 per wish)',
-      tab.advanced
-    ));
-    container.appendChild(makeTier(
-      'Common Reward',
-      '\u2014 ' + tab.common.length + ' items (random from pool)',
-      tab.common
-    ));
+    container.appendChild(makeTier('Advanced Reward', '\u2014 ' + tab.advanced.length + ' decorations (get 1 per wish)', tab.advanced));
+    container.appendChild(makeTier('Common Reward', '\u2014 ' + tab.common.length + ' items (random from pool)', tab.common));
   }
 
+  // ── Pricing modal ──────────────────────────────────────────────────────────
+  function buildPriceTable() {
+    var tbody = document.getElementById('pmBody');
+    tbody.innerHTML = ''; // eslint-disable-line
+    tabsData.forEach(function(tab) {
+      var jpyInUsd = fxRate ? tab.jpy / fxRate : null;
+      var saving = jpyInUsd ? tab.usd - jpyInUsd : null;
+      var savingPct = saving && saving > 0.01 ? Math.round(saving / tab.usd * 100) : 0;
+      var tr = document.createElement('tr');
+      var nameTd = document.createElement('td');
+      nameTd.textContent = tab.name;
+      if (tab.unlockHours > 0) {
+        var badge = document.createElement('span');
+        badge.style.cssText = 'font-size:.62rem;color:var(--muted);margin-left:.35rem';
+        badge.textContent = '+' + tab.unlockHours + 'h';
+        nameTd.appendChild(badge);
+      }
+      tr.appendChild(nameTd);
+      var usdTd = document.createElement('td');
+      usdTd.className = 'pm-usd';
+      usdTd.textContent = '$' + tab.usd.toFixed(2);
+      tr.appendChild(usdTd);
+      var jpyTd = document.createElement('td');
+      jpyTd.className = 'pm-jpy';
+      jpyTd.textContent = '\u00a5' + tab.jpy.toLocaleString();
+      tr.appendChild(jpyTd);
+      var convTd = document.createElement('td');
+      convTd.className = 'pm-conv';
+      convTd.textContent = jpyInUsd ? '$' + jpyInUsd.toFixed(2) : '\u2014';
+      tr.appendChild(convTd);
+      var saveTd = document.createElement('td');
+      if (savingPct > 0 && saving) {
+        saveTd.className = 'pm-save';
+        saveTd.textContent = '-' + savingPct + '% ($' + saving.toFixed(2) + ')';
+      } else {
+        saveTd.style.color = 'var(--muted)';
+        saveTd.textContent = '\u2014';
+      }
+      tr.appendChild(saveTd);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function fetchRate() {
+    fetch('https://api.frankfurter.app/latest?from=USD&to=JPY')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        fxRate = d.rates && d.rates.JPY ? d.rates.JPY : null;
+        var rateEl = document.getElementById('pmRate');
+        if (fxRate) {
+          rateEl.textContent = '1 USD = \u00a5' + fxRate.toFixed(2);
+          document.getElementById('pmRateNote').textContent = '(' + d.date + ')';
+        } else {
+          rateEl.textContent = 'Rate unavailable';
+        }
+        buildPriceTable();
+      }).catch(function() {
+        document.getElementById('pmRate').textContent = 'Rate unavailable';
+      });
+  }
+
+  document.getElementById('pricingBtn').addEventListener('click', function() {
+    document.getElementById('pmOverlay').classList.add('show');
+    if (!fxRate) fetchRate(); else buildPriceTable();
+  });
+  document.getElementById('pmClose').addEventListener('click', function() {
+    document.getElementById('pmOverlay').classList.remove('show');
+  });
+  document.getElementById('pmOverlay').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('show');
+  });
+
+  // Hide for CN visitors
+  fetch('/cdn-cgi/trace').then(function(r) { return r.text(); }).then(function(t) {
+    var m = t.match(/loc=([A-Z]{2})/);
+    if (m && m[1] === 'CN') document.getElementById('pricingBtn').style.display = 'none';
+  }).catch(function() {});
+
+  // ── Data load ──────────────────────────────────────────────────────────────
   fetch('https://raw.githubusercontent.com/texnottexas/landing-page/main/data/easter-wishing.json')
     .then(function(r) { return r.json(); })
     .then(function(data) {
+      tabsData = data.tabs;
       var tabRow = document.getElementById('tabRow');
       var content = document.getElementById('content');
-      var tabs = data.tabs;
       var btns = [];
 
-      tabs.forEach(function(tab, i) {
+      tabsData.forEach(function(tab, i) {
         var btn = el('button', 'tab-btn' + (i === 0 ? ' active' : ''));
-        var nameSpan = el('span');
-        nameSpan.textContent = tab.name;
-        btn.appendChild(nameSpan);
+        var nameSpan = el('span'); nameSpan.textContent = tab.name; btn.appendChild(nameSpan);
+        var priceBadge = el('span', 'price-badge');
+        priceBadge.textContent = '$' + tab.usd.toFixed(2);
+        btn.appendChild(priceBadge);
         if (tab.unlockHours > 0) {
           var badge = el('span', 'lock-badge');
           badge.textContent = '+' + tab.unlockHours + 'h';
@@ -172,7 +287,7 @@
         tabRow.appendChild(btn);
       });
 
-      renderTab(tabs[0], content);
+      renderTab(tabsData[0], content);
     });
 }());
 </script>
