@@ -347,7 +347,7 @@
   /* Theme + lang button */
   .theme-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: .3rem .45rem; color: var(--muted); cursor: pointer; display: flex; align-items: center; font-size: .95rem; transition: border-color .15s, color .15s; }
   .theme-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .icon-light { display: none; }
+  .icon-light { display: none; } /* JS controlled */
   /* Google Translate overrides */
   body { top: 0 !important; }
   body > .skiptranslate { display: none !important; }
@@ -387,6 +387,11 @@
     <a href="easter-wishing.html" class="bnp-link">Easter Wishing</a>
     <a href="armory-report.html" class="bnp-link">Armory Report</a>
     </div>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:.4rem;">
+    <button class="theme-btn notranslate" id="themeBtn" aria-label="Toggle theme"><span class="icon-dark">&#9790;</span><span class="icon-light">&#9728;</span></button>
+    <button class="lang-btn notranslate" id="langBtn" aria-label="Change language"><span id="langFlag">&#127482;&#127480;</span><span id="langCode">/en</span></button>
+  </div>
+<div id="google_translate_element"></div>
   </div>
   <h1>Battle Report Viewer</h1>
 </div>
@@ -2752,12 +2757,52 @@
   (function(){
     var THEMES=['dark','light'];
     function setTheme(t){if(THEMES.indexOf(t)<0)return;document.documentElement.setAttribute('data-theme',t);try{localStorage.setItem('theme',t);}catch(e){}updateIcons();}
-    function updateIcons(){var d=document.documentElement.getAttribute('data-theme')==='dark';document.querySelectorAll('.icon-dark').forEach(function(e){e.style.display=d?'':'none';});document.querySelectorAll('.icon-light').forEach(function(e){e.style.display=d?'none':'';});}
+    function updateIcons(){var d=document.documentElement.getAttribute('data-theme')==='dark';document.querySelectorAll('.icon-dark').forEach(function(e){e.style.display=d?'':'none';});document.querySelectorAll('.icon-light').forEach(function(e){e.style.display=d?'none':'inline';});}
     try{var s=localStorage.getItem('theme');if(s&&THEMES.indexOf(s)>=0)setTheme(s);}catch(e){}
     var tb=document.getElementById('themeBtn');if(tb)tb.addEventListener('click',function(){setTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');});
     updateIcons();
   })();
 </script>
+<script>
+  // Google Translate + language modal
+  var esc=function(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
+  var LANGUAGES=[
+    {code:'en',flag:'\uD83C\uDDFA\uD83C\uDDF8',name:'English'},{code:'es',flag:'\uD83C\uDDEA\uD83C\uDDF8',name:'Espa\u00F1ol'},
+    {code:'fr',flag:'\uD83C\uDDEB\uD83C\uDDF7',name:'Fran\u00E7ais'},{code:'de',flag:'\uD83C\uDDE9\uD83C\uDDEA',name:'Deutsch'},
+    {code:'pt',flag:'\uD83C\uDDE7\uD83C\uDDF7',name:'Portugu\u00EAs'},{code:'it',flag:'\uD83C\uDDEE\uD83C\uDDF9',name:'Italiano'},
+    {code:'ru',flag:'\uD83C\uDDF7\uD83C\uDDFA',name:'\u0420\u0443\u0441\u0441\u043A\u0438\u0439'},{code:'ja',flag:'\uD83C\uDDEF\uD83C\uDDF5',name:'\u65E5\u672C\u8A9E'},
+    {code:'ko',flag:'\uD83C\uDDF0\uD83C\uDDF7',name:'\uD55C\uAD6D\uC5B4'},{code:'zh-CN',flag:'\uD83C\uDDE8\uD83C\uDDF3',name:'\u4E2D\u6587'},
+    {code:'ar',flag:'\uD83C\uDDF8\uD83C\uDDE6',name:'\u0627\u0644\u0639\u0631\u0628\u064A\u0629'},{code:'tr',flag:'\uD83C\uDDF9\uD83C\uDDF7',name:'T\u00FCrk\u00E7e'},
+    {code:'vi',flag:'\uD83C\uDDFB\uD83C\uDDF3',name:'Ti\u1EBFng Vi\u1EC7t'},{code:'th',flag:'\uD83C\uDDF9\uD83C\uDDED',name:'\u0E44\u0E17\u0E22'},
+    {code:'hi',flag:'\uD83C\uDDEE\uD83C\uDDF3',name:'\u0939\u093F\u0928\u094D\u0926\u0940'},{code:'pl',flag:'\uD83C\uDDF5\uD83C\uDDF1',name:'Polski'},
+    {code:'uk',flag:'\uD83C\uDDFA\uD83C\uDDE6',name:'\u0423\u043A\u0440\u0430\u0457\u043D\u0441\u044C\u043A\u0430'},{code:'id',flag:'\uD83C\uDDEE\uD83C\uDDE9',name:'Indonesia'}
+  ];
+  function getLangData(c){var b=c.split('-')[0];return LANGUAGES.find(function(l){return l.code===c||l.code===b;})||null;}
+  function detectCurrentLang(){var m=document.cookie.match(/googtrans=\/en\/([a-zA-Z-]{2,10})/);return m&&m[1]?m[1]:'en';}
+  function updateLangBtn(code){var d=getLangData(code);var f=document.getElementById('langFlag');var c=document.getElementById('langCode');if(d&&f){f.textContent=d.flag;c.textContent='/'+d.code;}else if(f){f.textContent='\uD83C\uDF10';c.textContent='/'+code;}document.querySelectorAll('.lang-option').forEach(function(o){o.classList.toggle('active',o.dataset.lang===code);});}
+  function applyLangToCombo(code,delay){var a=0;var p=setInterval(function(){var c=document.querySelector('.goog-te-combo');if(c){c.value=code;c.dispatchEvent(new Event('change'));clearInterval(p);updateLangBtn(code);}if(++a>30)clearInterval(p);},delay||200);}
+  function selectLanguage(code){if(code==='en'){sessionStorage.removeItem('pendingLang');document.cookie='googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax; Secure';document.cookie='googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.2864tw.com; SameSite=Lax; Secure';closeLangModal();location.reload();return;}sessionStorage.setItem('pendingLang',code);applyLangToCombo(code,200);closeLangModal();}
+  var langModalEl=document.getElementById('langModal');
+  function openLangModal(){if(langModalEl)langModalEl.classList.add('active');}
+  function closeLangModal(){if(langModalEl)langModalEl.classList.remove('active');}
+  (function(){var g=document.getElementById('langGrid');if(!g)return;var det=detectCurrentLang();LANGUAGES.forEach(function(l){var b=document.createElement('button');b.className='lang-option'+(l.code===det?' active':'');b.dataset.lang=l.code;b.innerHTML='<span class="lang-flag">'+l.flag+'</span><span class="lang-name">'+esc(l.name)+'</span>';b.addEventListener('click',function(){selectLanguage(l.code);});g.appendChild(b);});updateLangBtn(det);})();
+  var lb=document.getElementById('langBtn');if(lb)lb.addEventListener('click',openLangModal);
+  var lmc=document.getElementById('langModalClose');if(lmc)lmc.addEventListener('click',closeLangModal);
+  if(langModalEl)langModalEl.addEventListener('click',function(e){if(e.target===langModalEl)closeLangModal();});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&langModalEl&&langModalEl.classList.contains('active')){closeLangModal();e.stopPropagation();}});
+  setTimeout(function(){if(!window._gtLoaded){var b=document.getElementById('langBtn');if(b){b.style.opacity='0.5';b.title='Translation unavailable';}}},15000);
+  function googleTranslateElementInit(){window._gtLoaded=true;new google.translate.TranslateElement({pageLanguage:'en',autoDisplay:false},'google_translate_element');var p=sessionStorage.getItem('pendingLang');if(p){sessionStorage.removeItem('pendingLang');applyLangToCombo(p,250);}else{var lo=localStorage.getItem('langOverride');if(lo&&lo!=='en')applyLangToCombo(lo,250);var d=detectCurrentLang();if(d!=='en')updateLangBtn(d);}}
+</script>
 <script src="https://translate.googleapis.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+
+<div class="lang-modal-overlay" id="langModal">
+  <div class="lang-modal">
+    <div class="lang-modal-header">
+      <span class="lang-modal-title">Select Language</span>
+      <button class="lang-modal-close" id="langModalClose" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="lang-grid" id="langGrid"></div>
+  </div>
+</div>
 </body>
 </html>
