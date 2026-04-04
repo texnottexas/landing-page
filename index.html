@@ -1135,7 +1135,8 @@
     .feedback-mobile-btn { margin-top: .5rem; font-size: .75rem; background: var(--tag, #21262d); border-color: var(--border); color: var(--muted); }
     .feedback-mobile-btn:hover { color: var(--accent); border-color: var(--accent); }
     @media (max-width: 600px) { .feedback-hdr-btn { display: none; } }
-    @media (min-width: 601px) { .feedback-mobile-btn { display: none; } }
+    @media (min-width: 601px) { .feedback-mobile-btn { display: none !important; } }
+    @media (max-width: 500px) { .mobile-toggle-row .feedback-mobile-btn { display: flex !important; } }
 
     /* Feedback modal */
     .feedback-modal { display: none; position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,.6); align-items: center; justify-content: center; }
@@ -1159,11 +1160,8 @@
       inset: 0;
       background: rgba(0,0,0,0.75);
       z-index: 300;
-      align-items: center;
-      justify-content: center;
-      padding: 1rem;
     }
-    .roster-modal.active { display: flex; }
+    .roster-modal.active { display: flex; align-items: center; justify-content: center; padding: 1rem; overflow-y: auto; }
     .roster-modal-content {
       background: var(--card);
       border: 1px solid var(--border);
@@ -1175,6 +1173,7 @@
       display: flex;
       flex-direction: column;
       box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      margin: auto;
     }
     .roster-header {
       display: flex;
@@ -1274,7 +1273,7 @@
     }
 
     /* Identity modal */
-    .identity-modal-content { max-width: 420px; }
+    .identity-modal-content { max-width: 420px; max-height: 70vh; }
     .identity-sub { font-size: .75rem; color: var(--muted); margin: 0 0 .75rem; }
     .identity-search { width: 100%; background: var(--tag); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: .35rem .5rem; font-size: .8rem; outline: none; margin-bottom: .5rem; box-sizing: border-box; }
     .identity-search:focus { border-color: var(--accent); }
@@ -1383,6 +1382,9 @@
     .prefs-unsub { background: none; border: none; color: var(--red, #f85149); font-size: .7rem; cursor: pointer; font-family: inherit; }
     .prefs-unsub:hover { text-decoration: underline; }
 
+    /* Mobile toggle row — hidden on desktop */
+    .mobile-toggle-row { display: none; }
+
     /* View toggle button */
     .view-toggle {
       display: none;
@@ -1414,28 +1416,45 @@
       }
       .view-toggle { display: block; }
 
+      /* Mobile toggle row — side by side */
+      .mobile-toggle-row {
+        display: flex;
+        gap: .5rem;
+        justify-content: center;
+        margin: 1rem auto 0;
+        max-width: 320px;
+      }
+      .mobile-toggle-row .view-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: .3rem;
+        flex: 1;
+        margin: 0;
+      }
+
       /* Mobile radial wheel (default on mobile) */
       .wheel-wrap {
-        width: 300px;
-        height: 300px;
-        margin: 1rem auto 2.5rem;
+        width: 340px;
+        height: 340px;
+        margin: 1rem auto 2rem;
       }
       .wheel-center {
-        width: 80px;
-        height: 80px;
-        font-size: 1rem;
+        width: 88px;
+        height: 88px;
+        font-size: 1.1rem;
       }
       .wheel-center:hover {
         transform: translate(-50%, -50%) scale(1.1);
       }
       .wheel-item {
-        width: 76px;
-        height: 76px;
-        font-size: .54rem;
+        width: 84px;
+        height: 84px;
+        font-size: .58rem;
         padding: 0 5px;
       }
-      .wheel-item .w-icon { font-size: 1.2rem; }
-      .wheel-item .w-icon svg { width: 22px; height: 22px; }
+      .wheel-item .w-icon { font-size: 1.35rem; }
+      .wheel-item .w-icon svg { width: 26px; height: 26px; }
 
       /* List view (toggled via JS) */
       .wheel-wrap.list-view {
@@ -1488,8 +1507,14 @@
       .wheel-wrap.list-view .wheel-item,
       .wheel-wrap.list-view .wheel-item-inner,
       .wheel-wrap.list-view .wheel-center { min-height: 48px; }
-      .wheel-item-inner { width: 34px; height: 34px; }
-      .wheel-item-inner svg { width: 15px; height: 15px; }
+      .wheel-item-inner { width: 38px; height: 38px; }
+      .wheel-item-inner svg { width: 16px; height: 16px; }
+      /* Push inner icons slightly outward for equidistant spacing */
+      .wheel-item-inner.egg-feedback { top: 45%; left: 26%; }
+      .wheel-item-inner.egg-map { top: 45%; left: 74%; }
+      .wheel-item-inner.egg-dollar { top: 71%; left: 34%; }
+      .wheel-item-inner.egg-heart { top: 71%; left: 66%; }
+      .wheel-item-inner[data-modal="tc-modal"] { top: 25%; }
       .wheel-wrap.list-view .wheel-item-inner {
         position: static;
         transform: none !important;
@@ -1579,6 +1604,84 @@
         flex-shrink: 0;
       }
     }
+
+    /* Version badge — opposite side of rocket, bottom-left of banner */
+    #version-badge {
+      display: none; position: absolute; bottom: -14px; left: 12px; z-index: 200;
+      background: rgba(13,17,23,.85); border: 1px solid rgba(121,192,255,.3);
+      border-radius: 12px; height: 26px; cursor: pointer;
+      padding: 0 .6rem; align-items: center; justify-content: center;
+      backdrop-filter: blur(4px); font-size: .65rem; font-weight: 600;
+      color: var(--accent); font-family: inherit; gap: .3rem;
+      box-shadow: 0 0 8px rgba(121,192,255,.15);
+      transition: box-shadow .15s, border-color .15s;
+    }
+    #version-badge:hover {
+      border-color: rgba(121,192,255,.8);
+      box-shadow: 0 0 16px rgba(121,192,255,.5);
+    }
+
+
+    /* Release notes modal */
+    .release-modal { display: none; position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,.6); }
+    .release-modal.active { display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .release-modal-content {
+      background: var(--surface, #161b22); border: 1px solid var(--border); border-radius: 12px;
+      padding: 1.5rem; width: 90vw; max-width: 520px; max-height: 80vh; overflow-y: auto; position: relative;
+      margin: auto;
+    }
+    .release-modal-close { position: absolute; top: .75rem; right: .75rem; background: none; border: none; color: var(--muted); font-size: 1.2rem; cursor: pointer; line-height: 1; padding: .25rem; }
+    .release-modal-close:hover { color: var(--text); }
+    .release-modal-title { font-size: 1.1rem; font-weight: 700; color: var(--text); margin-bottom: .25rem; }
+    .release-modal-subtitle { font-size: .75rem; color: var(--muted); margin-bottom: 1.25rem; }
+    .release-major-section { margin-bottom: 1.25rem; }
+    .release-major-header {
+      display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem;
+      padding-bottom: .35rem; border-bottom: 1px solid var(--border);
+      cursor: pointer; user-select: none;
+    }
+    .release-major-header:hover { opacity: .85; }
+    .release-major-chevron {
+      flex-shrink: 0; width: 16px; height: 16px; color: var(--muted);
+      transition: transform .2s;
+    }
+    .release-major-section.collapsed .release-major-chevron { transform: rotate(-90deg); }
+    .release-major-section.collapsed .release-bullet { display: none; }
+    .release-major-tag {
+      background: var(--accent); color: var(--bg); font-size: .6rem; font-weight: 700;
+      padding: .15rem .45rem; border-radius: 6px; flex-shrink: 0;
+    }
+    .release-major-tag.current { background: var(--army); }
+    .release-major-headline { font-size: .85rem; font-weight: 600; color: var(--text); flex: 1; }
+    .release-major-date { font-size: .65rem; color: var(--muted); flex-shrink: 0; }
+    .release-bullet {
+      display: flex; align-items: flex-start; gap: .5rem;
+      padding: .3rem 0; font-size: .78rem; color: var(--text); line-height: 1.4;
+    }
+    .release-bullet::before {
+      content: ''; width: 5px; height: 5px; border-radius: 50%;
+      background: var(--accent); flex-shrink: 0; margin-top: .35rem;
+    }
+    .release-bullet-tag {
+      font-size: .55rem; color: var(--muted); background: var(--tag);
+      padding: .1rem .35rem; border-radius: 4px; flex-shrink: 0; margin-left: auto; align-self: center;
+    }
+
+    /* First-visit release popup — uses same styles as release-modal */
+    .release-firstvisit-badge {
+      display: inline-block; background: var(--army); color: var(--bg);
+      font-size: .6rem; font-weight: 700; padding: .15rem .5rem;
+      border-radius: 6px; margin-bottom: .75rem;
+    }
+    .release-firstvisit-msg {
+      font-size: .78rem; color: var(--muted); margin-bottom: 1rem; line-height: 1.4;
+    }
+    .release-firstvisit-dismiss {
+      display: block; width: 100%; background: var(--accent); color: var(--bg);
+      border: none; border-radius: 8px; padding: .6rem; font-size: .85rem;
+      font-weight: 600; cursor: pointer; font-family: inherit; margin-top: .75rem;
+    }
+    .release-firstvisit-dismiss:hover { opacity: .9; }
 
     /* Reduced motion — driven by data attribute (synced with OS preference) */
     [data-reduced-motion="true"] .shimmer-text,
@@ -1888,8 +1991,10 @@
 
       <a href="https://shattereddisk.github.io/rickroll/" target="_blank" rel="noopener noreferrer" class="wheel-center notranslate">2864<span class="wheel-sub">fk boats</span></a>
     </div>
-    <button class="view-toggle" id="viewToggle">Switch to List View</button>
-    <button class="view-toggle feedback-mobile-btn" id="feedbackBtnMobile"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> Submit Feedback</button>
+    <div class="mobile-toggle-row">
+      <button class="view-toggle" id="viewToggle">List View</button>
+      <button class="view-toggle feedback-mobile-btn" id="feedbackBtnMobile"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> Feedback</button>
+    </div>
   </div>
 
   <!-- Beta Features Modal -->
@@ -2324,6 +2429,28 @@
     <br><span class="rc-wrap" id="rc-wrap"><span class="rc-icon">&#127871;</span><span class="rc-count" id="rc-count"></span></span>
   </footer>
 
+  <!-- Release Notes Modal -->
+  <div id="release-modal" class="release-modal" role="dialog" aria-modal="true" aria-label="Release Notes">
+    <div class="release-modal-content">
+      <button class="release-modal-close" id="release-modal-close">&#10005;</button>
+      <div class="release-modal-title">What's New</div>
+      <div class="release-modal-subtitle" id="release-modal-subtitle"></div>
+      <div id="release-modal-body"></div>
+    </div>
+  </div>
+
+  <!-- First-Visit Release Popup -->
+  <div id="release-firstvisit" class="release-modal" role="dialog" aria-modal="true" aria-label="New Version">
+    <div class="release-modal-content" style="max-width:440px">
+      <button class="release-modal-close" id="release-firstvisit-close">&#10005;</button>
+      <div class="release-firstvisit-badge" id="fv-badge"></div>
+      <div class="release-modal-title" id="fv-title"></div>
+      <div class="release-firstvisit-msg" id="fv-msg">Here's what's new in this release:</div>
+      <div id="fv-body"></div>
+      <button class="release-firstvisit-dismiss" id="fv-dismiss">Got it</button>
+    </div>
+  </div>
+
   <!-- Feedback Modal -->
   <div id="feedback-modal" class="feedback-modal" role="dialog" aria-modal="true" aria-label="Submit Feedback">
     <div class="feedback-modal-content">
@@ -2498,12 +2625,12 @@
       try {
         if (localStorage.getItem('view-mode') === 'list') {
           wheelWrap.classList.add('list-view');
-          viewToggle.textContent = 'Switch to Wheel View';
+          viewToggle.textContent = 'Wheel View';
         }
       } catch(e) {}
       viewToggle.addEventListener('click', function() {
         var isList = wheelWrap.classList.toggle('list-view');
-        viewToggle.textContent = isList ? 'Switch to Wheel View' : 'Switch to List View';
+        viewToggle.textContent = isList ? 'Wheel View' : 'List View';
         try { localStorage.setItem('view-mode', isList ? 'list' : 'wheel'); } catch(e) {}
       });
 
@@ -5334,29 +5461,7 @@
     var mobileFeedbackBtn = document.getElementById('feedbackBtnMobile');
     var wheelFeedbackBtn = document.getElementById('wheelFeedbackBtn');
 
-    function hasIdentity() {
-      try {
-        var stored = localStorage.getItem('playerIdentity');
-        if (!stored || stored === 'anonymous') return false;
-        var identity = JSON.parse(stored);
-        return !!(identity && identity.name);
-      } catch(e) { return false; }
-    }
-
-    function updateFeedbackVisibility() {
-      var show = hasIdentity();
-      hdrFeedbackBtn.style.display = show ? '' : 'none';
-      if (mobileFeedbackBtn) mobileFeedbackBtn.style.display = show ? '' : 'none';
-      if (wheelFeedbackBtn) wheelFeedbackBtn.style.display = show ? '' : 'none';
-    }
-    updateFeedbackVisibility();
-    // Re-check when identity changes (storage event or modal close)
-    window.addEventListener('storage', updateFeedbackVisibility);
-    var _origSetItem = localStorage.setItem;
-    localStorage.setItem = function(key, value) {
-      _origSetItem.call(localStorage, key, value);
-      if (key === 'playerIdentity') updateFeedbackVisibility();
-    };
+    // Feedback buttons always visible (anonymous submissions allowed)
 
     function openFeedback() {
       modal.classList.add('active');
@@ -5569,12 +5674,10 @@
 
   <script>
   (function () {
-    // Show automatically once per device; replay button stays available after
+    // Artemis II auto-popup disabled — replay button stays available
     var SEEN_KEY = 'artemis2_seen';
-    var hasSeen = localStorage.getItem(SEEN_KEY);
-    if (hasSeen) {
-      document.getElementById('artemis-overlay').style.display = 'none';
-    }
+    var hasSeen = true; // disabled auto-show
+    document.getElementById('artemis-overlay').style.display = 'none';
 
     var overlay = document.getElementById('artemis-overlay');
     var canvas  = document.getElementById('artemis-canvas');
@@ -5745,6 +5848,15 @@
       bannerEl.parentNode.insertBefore(bannerWrap, bannerEl);
       bannerWrap.appendChild(bannerEl);
       bannerWrap.appendChild(replayBtn);
+
+      // Version badge — bottom-left of banner (opposite of replay rocket)
+      var vBadge = document.createElement('button');
+      vBadge.id = 'version-badge';
+      var vLabel = document.createElement('span');
+      vLabel.className = 'vb-label';
+      vLabel.textContent = '';
+      vBadge.appendChild(vLabel);
+      bannerWrap.appendChild(vBadge);
     } else {
       replayBtn.style.position = 'fixed'; replayBtn.style.bottom = '1.25rem'; replayBtn.style.right = '1.25rem';
       document.body.appendChild(replayBtn);
@@ -5801,6 +5913,174 @@
     });
     overlay.addEventListener('click', function (e) { if (e.target === overlay) dismiss(); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') dismiss(); });
+  })();
+  </script>
+
+  <!-- Release Notes / Version Badge -->
+  <script>
+  (function () {
+    var MAJOR_SEEN_KEY = 'release_major_seen';
+    var releaseData = null;
+
+    function formatDate(d) {
+      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      var parts = d.split('-');
+      return months[parseInt(parts[1], 10) - 1] + ' ' + parseInt(parts[2], 10) + ', ' + parts[0];
+    }
+
+    function buildSectionHTML(major, isCurrent) {
+      var section = document.createElement('div');
+      section.className = 'release-major-section' + (isCurrent ? '' : ' collapsed');
+
+      var header = document.createElement('div');
+      header.className = 'release-major-header';
+      header.addEventListener('click', function () {
+        section.classList.toggle('collapsed');
+      });
+
+      var chevronNS = 'http://www.w3.org/2000/svg';
+      var chevSvg = document.createElementNS(chevronNS, 'svg');
+      chevSvg.setAttribute('class', 'release-major-chevron');
+      chevSvg.setAttribute('viewBox', '0 0 24 24');
+      chevSvg.setAttribute('fill', 'none');
+      chevSvg.setAttribute('stroke', 'currentColor');
+      chevSvg.setAttribute('stroke-width', '2');
+      chevSvg.setAttribute('stroke-linecap', 'round');
+      chevSvg.setAttribute('stroke-linejoin', 'round');
+      var chevPath = document.createElementNS(chevronNS, 'polyline');
+      chevPath.setAttribute('points', '6 9 12 15 18 9');
+      chevSvg.appendChild(chevPath);
+
+      var tag = document.createElement('span');
+      tag.className = 'release-major-tag' + (isCurrent ? ' current' : '');
+      tag.textContent = major.label;
+
+      var headline = document.createElement('span');
+      headline.className = 'release-major-headline';
+      headline.textContent = major.headline;
+
+      var date = document.createElement('span');
+      date.className = 'release-major-date';
+      date.textContent = formatDate(major.date);
+
+      header.appendChild(chevSvg);
+      header.appendChild(tag);
+      header.appendChild(headline);
+      header.appendChild(date);
+      section.appendChild(header);
+
+      major.highlights.forEach(function (h) {
+        var bullet = document.createElement('div');
+        bullet.className = 'release-bullet';
+
+        var text = document.createElement('span');
+        text.textContent = h.text;
+        bullet.appendChild(text);
+
+        if (h.tag) {
+          var btag = document.createElement('span');
+          btag.className = 'release-bullet-tag';
+          btag.textContent = h.tag;
+          bullet.appendChild(btag);
+        }
+        section.appendChild(bullet);
+      });
+
+      return section;
+    }
+
+    function openReleaseModal() {
+      if (!releaseData) return;
+      var modal = document.getElementById('release-modal');
+      var body = document.getElementById('release-modal-body');
+      var subtitle = document.getElementById('release-modal-subtitle');
+      subtitle.textContent = releaseData.currentVersion + ' \u2014 ' + releaseData.majors.length + ' major releases';
+      body.innerHTML = '';
+      releaseData.majors.forEach(function (m, i) {
+        body.appendChild(buildSectionHTML(m, i === 0));
+      });
+      modal.classList.add('active');
+    }
+
+    function closeReleaseModal() {
+      document.getElementById('release-modal').classList.remove('active');
+    }
+
+    function checkFirstVisit() {
+      if (!releaseData) return;
+      var currentMajor = releaseData.currentMajor;
+      var seenMajor = 0;
+      try { seenMajor = parseInt(localStorage.getItem(MAJOR_SEEN_KEY) || '0', 10); } catch(e) {}
+      if (seenMajor >= currentMajor) return;
+
+      // Show first-visit popup for the current major version
+      var latest = releaseData.majors[0];
+      if (!latest) return;
+
+      document.getElementById('fv-badge').textContent = 'NEW \u2014 ' + latest.label;
+      document.getElementById('fv-title').textContent = latest.headline;
+
+      var fvBody = document.getElementById('fv-body');
+      fvBody.innerHTML = '';
+      latest.highlights.forEach(function (h) {
+        var bullet = document.createElement('div');
+        bullet.className = 'release-bullet';
+        var text = document.createElement('span');
+        text.textContent = h.text;
+        bullet.appendChild(text);
+        fvBody.appendChild(bullet);
+      });
+
+      var fvModal = document.getElementById('release-firstvisit');
+      fvModal.classList.add('active');
+    }
+
+    function dismissFirstVisit() {
+      var fvModal = document.getElementById('release-firstvisit');
+      fvModal.classList.remove('active');
+      if (releaseData) {
+        try { localStorage.setItem(MAJOR_SEEN_KEY, String(releaseData.currentMajor)); } catch(e) {}
+      }
+    }
+
+    // Wire up close buttons
+    document.getElementById('release-modal-close').addEventListener('click', closeReleaseModal);
+    document.getElementById('release-modal').addEventListener('click', function (e) {
+      if (e.target === this) closeReleaseModal();
+    });
+    document.getElementById('release-firstvisit-close').addEventListener('click', dismissFirstVisit);
+    document.getElementById('fv-dismiss').addEventListener('click', dismissFirstVisit);
+    document.getElementById('release-firstvisit').addEventListener('click', function (e) {
+      if (e.target === this) dismissFirstVisit();
+    });
+
+    // Fetch release notes and set up badge
+    fetch('data/release-notes.json')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        releaseData = data;
+
+        // Create version badge (placed by Artemis replay button logic — bottom-left of banner)
+        var badge = document.getElementById('version-badge');
+        if (badge) {
+          badge.style.display = 'flex';
+          var badgeLabel = badge.querySelector('.vb-label');
+          if (badgeLabel) badgeLabel.textContent = data.currentVersion;
+          badge.addEventListener('click', openReleaseModal);
+        }
+
+        // Check first visit after a small delay (let Artemis finish if it was showing)
+        setTimeout(checkFirstVisit, 800);
+      })
+      .catch(function () {});
+
+    // Escape key closes both
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        closeReleaseModal();
+        dismissFirstVisit();
+      }
+    });
   })();
   </script>
 </body>
