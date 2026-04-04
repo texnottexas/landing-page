@@ -70,6 +70,7 @@ header h1{font-size:1.1rem;font-weight:700;}header h1 span{color:var(--accent);}
 .unit-hp-fill.mid{background:var(--gold);}
 .unit-hp-fill.low{background:var(--red);}
 .unit-hero-name{font-size:.6rem;color:var(--text);font-weight:600;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;}
+.unit-type-label{font-size:.58rem;color:var(--muted);text-align:center;}
 .unit-count{font-size:.58rem;color:var(--muted);}
 
 /* VS divider */
@@ -88,10 +89,11 @@ header h1{font-size:1.1rem;font-weight:700;}header h1 span{color:var(--accent);}
 
 /* Controls */
 .controls-row{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.55rem .85rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;}
-.ctrl-btn{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:.28rem .55rem;font-size:.78rem;cursor:pointer;transition:all .15s;line-height:1;}
+.ctrl-btn{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:.28rem .55rem;font-size:.78rem;cursor:pointer;transition:all .15s;line-height:1;white-space:nowrap;}
 .ctrl-btn:hover{border-color:var(--accent);color:var(--accent);}
 .ctrl-btn.active{background:var(--accent);color:var(--bg);border-color:var(--accent);}
 .ctrl-sep{width:1px;height:1.4rem;background:var(--border);}
+.ctrl-label{font-size:.68rem;color:var(--muted);white-space:nowrap;padding:0 .1rem;}
 .speed-group{display:flex;gap:.2rem;}
 .round-display{font-size:.82rem;font-weight:600;margin-left:auto;white-space:nowrap;}
 .round-display span{color:var(--muted);font-weight:400;}
@@ -197,16 +199,24 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:.55r
 
     <!-- Controls -->
     <div class="controls-row">
-      <button class="ctrl-btn" title="First round" onclick="gotoRound(0)">&#8676;</button>
-      <button class="ctrl-btn" onclick="stepRound(-1)">&#9668;</button>
-      <button class="ctrl-btn" id="btn-play" onclick="togglePlay()">&#9654;</button>
-      <button class="ctrl-btn" onclick="stepRound(1)">&#9658;</button>
-      <button class="ctrl-btn" title="Last round" onclick="gotoRound(99999)">&#8677;</button>
+      <span class="ctrl-label">Round</span>
+      <button class="ctrl-btn" title="Jump to first round" onclick="gotoRound(0)">&#8676;</button>
+      <button class="ctrl-btn" title="Previous round" onclick="stepRound(-1)">&#9668; Prev</button>
+      <button class="ctrl-btn" id="btn-play" onclick="togglePlay()">&#9654; Play</button>
+      <button class="ctrl-btn" title="Next round" onclick="stepRound(1)">Next &#9658;</button>
+      <button class="ctrl-btn" title="Jump to last round" onclick="gotoRound(99999)">&#8677;</button>
       <div class="ctrl-sep"></div>
+      <span class="ctrl-label">Speed</span>
       <div class="speed-group">
         <button class="ctrl-btn active" onclick="setSpeed(1,this)">1x</button>
         <button class="ctrl-btn" onclick="setSpeed(2,this)">2x</button>
         <button class="ctrl-btn" onclick="setSpeed(4,this)">4x</button>
+      </div>
+      <div class="ctrl-sep"></div>
+      <span class="ctrl-label">Event</span>
+      <div class="speed-group">
+        <button class="ctrl-btn" onclick="stepEvent(-1)" title="Step to previous event">&#9650; Prev</button>
+        <button class="ctrl-btn" onclick="stepEvent(1)" title="Step to next event">Next &#9660;</button>
       </div>
       <div class="round-display" id="round-display">Round <span>— / —</span></div>
     </div>
@@ -223,10 +233,6 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:.55r
       <div class="event-log-panel">
         <div class="event-log-header">
           <span id="event-log-title">Select a round</span>
-          <div class="step-btns">
-            <button onclick="stepEvent(-1)" title="Previous event">&#9650;</button>
-            <button onclick="stepEvent(1)" title="Next event">&#9660;</button>
-          </div>
         </div>
         <div class="event-log" id="event-log"></div>
       </div>
@@ -272,6 +278,25 @@ function armyIcon(id) {
   if (n >= 200000 && n < 300000) return ARMY_ICON._navy_off;
   if (n >= 300000 && n < 400000) return ARMY_ICON._af_off;
   return ARMY_ICON._army_off;
+}
+
+// Fight type names
+var FIGHT_TYPE = {
+  1:'Alliance vs Alliance', 2:'Wasteland Battle', 3:'City Battle',
+  4:'Resource Gathering', 5:'Counter-Attack', 6:'City Defense',
+  21:'Time Clash / SVS Warzone', 86:'Loot Quest', 126:'Warzone Guardian'
+};
+
+// Army type name from armyId
+function armyTypeName(u) {
+  if (!u || !u.armyId) return '';
+  var id = parseInt(u.armyId, 10);
+  if (id >= 500000 && id < 600000) return 'Mecha';
+  if (id >= 900000) return 'Valhalla';
+  if (id >= 300000 && id < 400000) return 'Air Force';
+  if (id >= 200000 && id < 300000) return 'Navy';
+  if (id >= 100000 && id < 200000) return 'Army';
+  return '';
 }
 
 // Buff ID → human name (decoded from process[] analysis)
@@ -398,8 +423,6 @@ function parseReport(data) {
       if (!unitMap[src]) unitMap[src] = { uuid: src, side: null, armyId: null, pos: null, hp: 0, maxHp: 0, shield: 0, maxShield: 0, dead: false, heroId: null, troopCount: 0 };
       unitMap[src].hp = e.val; unitMap[src].maxHp = e.val;
       unitMap[src].shield = e.selfVal; unitMap[src].maxShield = e.selfVal;
-    } else if (e.t === 3 || e.t === 5) { // SKILL_SELF_BUFF / HERO_SKILL_ACT — hero→unit mapping
-      if (unitMap[src] && e.hero && !unitMap[src].heroId) unitMap[src].heroId = e.hero;
     }
   }
 
@@ -437,6 +460,27 @@ function parseReport(data) {
     var slots = u.side === 'att' ? attSlots : defSlots;
     u.troopCount = Math.round(total / slots);
   });
+
+  // Hero→unit mapping: each hero's prep buffs (t=3) apply to ALL units on their side,
+  // making per-slot assignment unreliable. Only mecha units (armyId 5xxxxx) have a
+  // 1:1 hero relationship — identify via t=5 events filtered by side's heroList.
+  var attHeroSet = Object.create(null), defHeroSet = Object.create(null);
+  (battle.attacker.players || []).forEach(function(p) {
+    (p.heroList || []).forEach(function(h) { attHeroSet[h.id] = true; });
+  });
+  (battle.defender.players || []).forEach(function(p) {
+    (p.heroList || []).forEach(function(h) { defHeroSet[h.id] = true; });
+  });
+  for (var hi = 0; hi < proc.length; hi++) {
+    var he = proc[hi];
+    if (he.t !== 5 || !he.hero) continue;
+    var hu = unitMap[String(he.source || '')];
+    if (!hu || hu.heroId) continue;
+    var hset = hu.side === 'att' ? attHeroSet : defHeroSet;
+    if (!hset[he.hero]) continue;
+    var hArmyId = parseInt(hu.armyId || 0, 10);
+    if (hArmyId >= 500000 && hArmyId < 600000) hu.heroId = he.hero;
+  }
 
   // Save initial stats for reset
   Object.keys(unitMap).forEach(function(uuid) {
@@ -539,13 +583,20 @@ function buildUnitCell(uuid, pos, side) {
   hpBarWrap.appendChild(hpFill);
   cell.appendChild(hpBarWrap);
 
-  // Hero name
+  // Army type label
+  var aType = uuid && unitMap[uuid] ? armyTypeName(unitMap[uuid]) : '';
+  if (aType) {
+    var typeLbl = document.createElement('div');
+    typeLbl.className = 'unit-type-label';
+    typeLbl.textContent = aType;
+    cell.appendChild(typeLbl);
+  }
+
+  // Hero name (only for mecha heroes which have reliable 1:1 mapping)
   var heroName = document.createElement('div');
   heroName.className = 'unit-hero-name';
   if (uuid && unitMap[uuid] && unitMap[uuid].heroId && heroNameMap[unitMap[uuid].heroId]) {
     heroName.textContent = heroNameMap[unitMap[uuid].heroId].name;
-  } else if (uuid) {
-    heroName.textContent = 'Unit ' + String(uuid).slice(-3);
   } else {
     heroName.textContent = '\u2014';
     heroName.style.color = 'var(--border)';
@@ -661,7 +712,8 @@ function showReportUI(battle, fm) {
   var vs = document.createElement('div'); vs.className = 'vs-center'; vs.textContent = 'VS'; bar.appendChild(vs);
   bar.appendChild(sideEl(getPlayerName(battle.defender), fm.defBattlePowerVal||0, fm.defArmyNum||0, !attWon, 'var(--defColor)'));
   var meta = document.createElement('div'); meta.className = 'vs-meta';
-  meta.textContent = 'fightType ' + battle.fightType + '\n' + new Date(reportData.logtime*1000).toLocaleDateString();
+  var ftLabel = FIGHT_TYPE[battle.fightType] || ('Type ' + battle.fightType);
+  meta.textContent = ftLabel + '\n' + new Date(reportData.logtime*1000).toLocaleDateString();
   meta.style.cssText = 'white-space:pre-line;font-size:.68rem;color:var(--muted);text-align:right;';
   bar.appendChild(meta);
 
@@ -725,7 +777,6 @@ function updateEventLog(roundIdx) {
   }
 
   var tl = combatRounds[roundIdx];
-  title.textContent = 'Round ' + (roundIdx+1) + ' Events (tl=' + tl + ')';
 
   var proc = reportData.battle.process;
   for (var i = 0; i < proc.length; i++) {
@@ -740,6 +791,8 @@ function updateEventLog(roundIdx) {
     var item = buildEventItem(e, idx);
     el.appendChild(item);
   });
+
+  title.textContent = 'Round ' + (roundIdx+1) + ' — ' + currentRoundEvents.length + ' events';
 }
 
 function buildEventItem(e, idx) {
@@ -760,7 +813,8 @@ function buildEventItem(e, idx) {
 
   if (e.t === 2) { // UNIT_ATTACK
     main.textContent = srcName + ' \u2192 ' + (tgtName || '?');
-    sub.textContent = 'Standard attack';
+    var srcTypeName = e.source ? armyTypeName(unitMap[String(e.source)]) : '';
+    sub.textContent = 'Standard attack' + (srcTypeName ? ' \u00b7 ' + srcTypeName : '');
     if (val) { var vEl = document.createElement('span'); vEl.className = 'ev-val'; vEl.textContent = ' \u2212' + fmtNum(val); main.appendChild(vEl); }
   } else if (e.t === 7) { // HERO_SKILL_HIT
     var hName = e.hero && heroNameMap[e.hero] ? heroNameMap[e.hero].name : ('Hero ' + e.hero);
@@ -818,7 +872,15 @@ function buildEventItem(e, idx) {
 function highlightEvent(idx) {
   document.querySelectorAll('.ev.current').forEach(function(el) { el.classList.remove('current'); });
   var el = document.querySelector('.ev[data-eidx="' + idx + '"]');
-  if (el) { el.classList.add('current'); el.scrollIntoView({ block: 'nearest' }); }
+  if (el) {
+    el.classList.add('current');
+    // Scroll only within the event-log container, never the page
+    var log = document.getElementById('event-log');
+    var rect = el.getBoundingClientRect();
+    var lRect = log.getBoundingClientRect();
+    if (rect.top < lRect.top) log.scrollTop -= (lRect.top - rect.top) + 4;
+    else if (rect.bottom > lRect.bottom) log.scrollTop += (rect.bottom - lRect.bottom) + 4;
+  }
 }
 
 function stepEvent(dir) {
@@ -887,7 +949,7 @@ function startLoop() {
 
 function togglePlay() {
   isPlaying = !isPlaying;
-  document.getElementById('btn-play').textContent = isPlaying ? '\u23F8' : '\u25B6';
+  document.getElementById('btn-play').textContent = isPlaying ? '\u23F8 Pause' : '\u25B6 Play';
   if (isPlaying) {
     if (currentRoundIdx >= combatRounds.length-1) gotoRound(0);
     lastAdvTime = performance.now();
