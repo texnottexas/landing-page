@@ -4431,7 +4431,7 @@
           row.className = 'prefs-identity-row';
           var nameSpan = document.createElement('span');
           nameSpan.className = 'prefs-identity-name';
-          nameSpan.textContent = identity.guest ? identity.name + ' (Guest)' : identity.name + ' (' + identity.alliance + ')';
+          nameSpan.textContent = identity.guest ? identity.name + (identity.server ? ' (S' + identity.server + ' Guest)' : ' (Guest)') : identity.name + ' (' + identity.alliance + ')';
           var changeBtn = document.createElement('button');
           changeBtn.className = 'prefs-identity-action';
           changeBtn.textContent = 'Change';
@@ -4443,6 +4443,71 @@
           row.appendChild(nameSpan);
           row.appendChild(changeBtn);
           panel.appendChild(row);
+
+          // Guest name + server editor
+          if (identity.guest) {
+            var guestSep = document.createElement('hr');
+            guestSep.style.cssText = 'border:none;border-top:1px solid var(--border);margin:.6rem 0 .5rem';
+            panel.appendChild(guestSep);
+            var guestNote = document.createElement('div');
+            guestNote.style.cssText = 'font-size:.7rem;color:var(--muted);margin-bottom:.4rem';
+            guestNote.textContent = 'Change your guest display name. Server number is required (4 digits).';
+            panel.appendChild(guestNote);
+            var guestForm = document.createElement('div');
+            guestForm.style.cssText = 'display:flex;gap:.4rem;flex-wrap:wrap;align-items:flex-end';
+            var nameLabel = document.createElement('div');
+            nameLabel.style.cssText = 'flex:1;min-width:120px';
+            var nameLbl = document.createElement('label');
+            nameLbl.style.cssText = 'font-size:.6rem;color:var(--muted);display:block;margin-bottom:.15rem';
+            nameLbl.textContent = 'Name';
+            var nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.maxLength = 30;
+            nameInput.value = identity.name || '';
+            nameInput.placeholder = 'Display name...';
+            nameInput.style.cssText = 'width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.35rem .5rem;color:var(--text);font-size:.8rem;outline:none;font-family:inherit';
+            nameLabel.appendChild(nameLbl);
+            nameLabel.appendChild(nameInput);
+            guestForm.appendChild(nameLabel);
+            var svrLabel = document.createElement('div');
+            svrLabel.style.cssText = 'width:80px';
+            var svrLbl = document.createElement('label');
+            svrLbl.style.cssText = 'font-size:.6rem;color:var(--muted);display:block;margin-bottom:.15rem';
+            svrLbl.textContent = 'Server #';
+            var svrInput = document.createElement('input');
+            svrInput.type = 'text';
+            svrInput.maxLength = 4;
+            svrInput.pattern = '[0-9]{4}';
+            svrInput.value = identity.server || '';
+            svrInput.placeholder = 'e.g. 2864';
+            svrInput.style.cssText = 'width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.35rem .5rem;color:var(--text);font-size:.8rem;outline:none;font-family:inherit;text-align:center';
+            svrLabel.appendChild(svrLbl);
+            svrLabel.appendChild(svrInput);
+            guestForm.appendChild(svrLabel);
+            var saveBtn = document.createElement('button');
+            saveBtn.className = 'prefs-identity-action';
+            saveBtn.style.cssText = 'padding:.35rem .7rem;font-size:.75rem';
+            saveBtn.textContent = 'Save';
+            saveBtn.addEventListener('click', function() {
+              var newName = nameInput.value.trim();
+              var newSvr = svrInput.value.trim();
+              if (!newName) { nameInput.style.borderColor = 'var(--red)'; return; }
+              if (!/^\d{4}$/.test(newSvr)) { svrInput.style.borderColor = 'var(--red)'; svrInput.focus(); return; }
+              var updated = { name: newName, guest: true, alliance: null, server: newSvr };
+              try { localStorage.setItem('playerIdentity', JSON.stringify(updated)); } catch(e) {}
+              if (window._saveSubToWorker && window._getPushSub && window._getPushSub()) {
+                window._saveSubToWorker(window._getPushSub());
+              }
+              if (window._showGreeting) window._showGreeting(updated);
+              renderIdentityTab();
+            });
+            guestForm.appendChild(saveBtn);
+            panel.appendChild(guestForm);
+            var svrHint = document.createElement('div');
+            svrHint.style.cssText = 'font-size:.6rem;color:var(--muted);margin-top:.3rem';
+            svrHint.textContent = identity.server ? 'Server: S' + identity.server : '';
+            panel.appendChild(svrHint);
+          }
 
           // Flag picker (only for real players, not guests)
           if (!identity.guest) {
