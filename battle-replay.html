@@ -134,6 +134,18 @@ header h1{font-size:1.1rem;font-weight:700;}header h1 span{color:var(--accent);}
 .unit-cell.flash{animation:unit-flash .25s ease-out;}
 
 footer{background:var(--surface);border-top:1px solid var(--border);padding:.55rem;text-align:center;font-size:.7rem;color:var(--muted);}
+
+/* Mobile: stack formation panels vertically */
+@media(max-width:720px){
+  .battle-field{flex-direction:column;}
+  .vs-divider{flex-direction:row;min-width:unset;height:28px;padding:0;justify-content:center;gap:.5rem;}
+  .vs-divider-line{flex:1;height:1px;width:auto;}
+  .unit-cell{max-width:100px;}
+  .ctrl-label{display:none;}
+  .heroes-row{flex-direction:column;}
+  .event-panel{flex-direction:column;}
+  .round-list-panel{width:100%;max-height:120px;}
+}
 </style>
 </head>
 <body>
@@ -500,12 +512,13 @@ function parseReport(data) {
   // Build DOM
   showReportUI(battle, fm);
 
-  // Start at round 0
-  applyEventsUpTo(0);
+  // Start at pre-battle state (full HP, no events applied yet)
+  currentRoundIdx = -1;
+  applyEventsUpTo(-1);
   renderFormations();
   renderRoundList();
   updateRoundDisplay();
-  updateEventLog(0);
+  updateEventLog(-1);
   startLoop();
 }
 
@@ -596,11 +609,14 @@ function buildUnitCell(uuid, pos, side) {
     cell.appendChild(typeLbl);
   }
 
-  // Hero name (only for mecha heroes which have reliable 1:1 mapping)
+  // Hero name (only for mecha units — confirmed 1:1 from t=5 events)
+  var heroId = uuid && unitMap[uuid] ? unitMap[uuid].heroId : null;
+  var heroInfo = heroId ? heroNameMap[heroId] : null;
   var heroName = document.createElement('div');
   heroName.className = 'unit-hero-name';
-  if (uuid && unitMap[uuid] && unitMap[uuid].heroId && heroNameMap[unitMap[uuid].heroId]) {
-    heroName.textContent = heroNameMap[unitMap[uuid].heroId].name;
+  if (heroInfo) {
+    heroName.textContent = heroInfo.name;
+    heroName.title = 'Mecha hero: ' + heroInfo.name;
   } else {
     heroName.textContent = '\u2014';
     heroName.style.color = 'var(--border)';
@@ -919,8 +935,13 @@ function stepRound(dir) { gotoRound(currentRoundIdx + dir); }
 
 function updateRoundDisplay() {
   var el = document.getElementById('round-display');
-  if (!combatRounds.length) { el.textContent = 'Round — / —'; return; }
+  if (!combatRounds.length) { el.innerHTML = 'Round <span>— / —</span>'; return; }
   var total = combatRounds.length;
+  if (currentRoundIdx < 0) {
+    el.innerHTML = '<span>Pre-Battle</span> / ' + total;
+    document.getElementById('progress-fill').style.width = '0%';
+    return;
+  }
   el.textContent = '';
   el.appendChild(document.createTextNode('Round ' + (currentRoundIdx+1) + ' '));
   var sp = document.createElement('span'); sp.textContent = '/ ' + total; el.appendChild(sp);
@@ -931,7 +952,10 @@ function updateRoundDisplay() {
 function seekProgress(evt) {
   var rect = document.getElementById('progress-bar').getBoundingClientRect();
   var pct = Math.max(0, Math.min(1, (evt.clientX - rect.left) / rect.width));
-  gotoRound(Math.round(pct * (combatRounds.length-1)));
+  // Map 0% → pre-battle(-1), >0% → rounds 0..n-1
+  var idx = pct < 0.01 ? -1 : Math.round(pct * (combatRounds.length-1));
+  if (idx < 0) { currentRoundIdx = -1; applyEventsUpTo(-1); updateUnitCells(); updateRoundDisplay(); updateRoundListActive(); updateEventLog(-1); }
+  else gotoRound(idx);
 }
 
 // ─── Playback ─────────────────────────────────────────────────────────────────
@@ -955,7 +979,8 @@ function togglePlay() {
   isPlaying = !isPlaying;
   document.getElementById('btn-play').textContent = isPlaying ? '\u23F8 Pause' : '\u25B6 Play';
   if (isPlaying) {
-    if (currentRoundIdx >= combatRounds.length-1) gotoRound(0);
+    // If finished or at pre-battle, restart from round 1
+    if (currentRoundIdx >= combatRounds.length-1) { currentRoundIdx = -1; }
     lastAdvTime = performance.now();
   }
 }
