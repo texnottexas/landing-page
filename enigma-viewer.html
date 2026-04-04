@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; img-src https://raw.githubusercontent.com https://knight-cdn.akamaized.net https://h5.topwargame.com data: https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com; connect-src https://fight-report-va.oss-accelerate.aliyuncs.com https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'; frame-src https://translate.google.com;">
+<title>Enigma Beast Viewer — 2864</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --card: #1c2128; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #79c0ff;
+    --green: #3fb950; --red: #f85149; --yellow: #d29922; --navy: #388bfd;
+    --fire: #f97583; --wind: #56d364; --water: #6cb6ff; --ground: #e3b341;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* Header */
+  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: .75rem 1rem; display: flex; align-items: center; gap: .75rem; }
+  .header h1 { font-size: 1rem; font-weight: 600; flex: 1; }
+  .home-btn { display: flex; align-items: center; justify-content: center; background: var(--card); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: .4rem .6rem; text-decoration: none; transition: all .15s; }
+  .home-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Search */
+  .search-bar { max-width: 700px; margin: 1.5rem auto .75rem; padding: 0 1rem; width: 100%; }
+  .search-row { display: flex; gap: .5rem; flex-wrap: wrap; }
+  .search-row input { flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .6rem .75rem; color: var(--text); font-size: .95rem; outline: none; }
+  .search-row input:focus { border-color: var(--accent); }
+  .search-row input::placeholder { color: var(--muted); }
+  .search-row button { background: var(--accent); color: var(--bg); border: none; border-radius: 6px; padding: .6rem 1.2rem; font-weight: 600; cursor: pointer; font-size: .9rem; white-space: nowrap; flex-shrink: 0; }
+  .search-row button:hover { opacity: .9; }
+  .search-row button:disabled { opacity: .5; cursor: not-allowed; }
+  .search-hint { font-size: .75rem; color: var(--muted); margin-top: .4rem; }
+
+  /* Status */
+  .status { text-align: center; padding: .5rem 1rem; color: var(--muted); font-size: .9rem; }
+  .status.error { color: var(--red); }
+  .status.success { color: var(--green); }
+
+  /* Player selection modal */
+  .select-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,.7); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+  .select-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; max-width: 500px; width: 100%; padding: 1.25rem; }
+  .select-title { text-align: center; font-size: 1rem; font-weight: 700; margin-bottom: 1rem; }
+  .select-cards { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+  .select-card { background: var(--card); border: 2px solid var(--border); border-radius: 8px; padding: 1rem; text-align: center; cursor: pointer; transition: all .15s; }
+  .select-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+  .select-card img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; background: var(--surface); margin: 0 auto .5rem; display: block; }
+  .select-card-name { font-weight: 600; font-size: .9rem; word-break: break-all; }
+  .select-card-role { font-size: .7rem; color: var(--muted); text-transform: uppercase; margin-top: .3rem; }
+
+  /* Player banner */
+  .player-banner { max-width: 900px; margin: 0 auto .75rem; padding: 0 1rem; width: 100%; }
+  .player-banner-inner { background: var(--surface); border: 1px solid var(--green); border-radius: 8px; padding: .6rem 1rem; display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+  .player-banner-info { flex: 1; }
+  .player-banner-name { font-weight: 600; font-size: .9rem; }
+  .player-banner-detail { font-size: .75rem; color: var(--muted); }
+  .player-banner-clear { background: none; border: 1px solid var(--border); border-radius: 6px; padding: .3rem .7rem; color: var(--muted); font-size: .75rem; cursor: pointer; }
+  .player-banner-clear:hover { border-color: var(--red); color: var(--red); }
+
+  /* Summary stats */
+  .summary-bar { max-width: 900px; margin: 0 auto .75rem; padding: 0 1rem; width: 100%; }
+  .summary-inner { display: flex; gap: .75rem; flex-wrap: wrap; }
+  .summary-stat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .5rem .75rem; flex: 1; min-width: 100px; text-align: center; }
+  .summary-stat .label { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .summary-stat .value { font-size: 1.1rem; font-weight: 700; margin-top: .15rem; }
+
+  /* Filter bar */
+  .filter-bar { max-width: 900px; margin: 0 auto .75rem; padding: 0 1rem; width: 100%; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  .filter-pills { display: flex; gap: .3rem; flex-wrap: wrap; }
+  .fpill { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: .25rem .65rem; font-size: .75rem; color: var(--muted); cursor: pointer; white-space: nowrap; transition: all .15s; user-select: none; }
+  .fpill:hover { border-color: var(--accent); color: var(--accent); }
+  .fpill.active { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+  .fpill.fire.active { background: var(--fire); border-color: var(--fire); }
+  .fpill.wind.active { background: var(--wind); border-color: var(--wind); }
+  .fpill.water.active { background: var(--water); border-color: var(--water); }
+  .fpill.ground.active { background: var(--ground); border-color: var(--ground); }
+  .filter-sep { width: 1px; height: 20px; background: var(--border); margin: 0 .15rem; }
+  .filter-count { font-size: .75rem; color: var(--muted); margin-left: auto; white-space: nowrap; }
+
+  /* Tab bar */
+  .tab-bar { max-width: 900px; margin: 0 auto .75rem; padding: 0 1rem; width: 100%; display: flex; gap: .4rem; flex-wrap: wrap; }
+  .tab-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .4rem .8rem; font-size: .8rem; color: var(--muted); cursor: pointer; transition: all .15s; font-family: inherit; }
+  .tab-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .tab-btn.active { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+
+  /* Content */
+  #content { max-width: 900px; margin: 0 auto 2rem; padding: 0 1rem; width: 100%; }
+
+  /* Beast cards grid */
+  .beast-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .6rem; }
+  .beast-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .65rem; cursor: default; transition: all .15s; position: relative; }
+  .beast-card:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+  .beast-card.gold { border-color: var(--yellow); }
+  .beast-card.gold:hover { border-color: #e8c547; }
+  .beast-card.purple { border-color: #a371f7; }
+  .beast-card.purple:hover { border-color: #c69bf7; }
+  .beast-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .4rem; }
+  .beast-emoji { font-size: 1.4rem; flex-shrink: 0; width: 28px; text-align: center; }
+  .beast-info { flex: 1; min-width: 0; }
+  .beast-name { font-weight: 700; font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .beast-meta { font-size: .7rem; color: var(--muted); display: flex; gap: .5rem; flex-wrap: wrap; }
+  .beast-stars { color: var(--yellow); letter-spacing: -1px; }
+  .beast-field-badge { font-size: .6rem; background: rgba(121,192,255,.1); border: 1px solid rgba(121,192,255,.2); color: var(--accent); padding: .1rem .4rem; border-radius: 4px; }
+  .beast-slot-badge { font-size: .6rem; background: rgba(63,185,80,.1); border: 1px solid rgba(63,185,80,.2); color: var(--green); padding: .1rem .35rem; border-radius: 4px; font-weight: 700; }
+  .beast-slotlv-badge { font-size: .6rem; background: rgba(210,153,34,.1); border: 1px solid rgba(210,153,34,.2); color: var(--yellow); padding: .1rem .4rem; border-radius: 4px; font-weight: 600; }
+
+  /* Buff rows */
+  .buff-section { margin-top: .35rem; }
+  .buff-row { display: flex; justify-content: space-between; align-items: center; padding: .15rem 0; font-size: .75rem; }
+  .buff-row + .buff-row { border-top: 1px solid rgba(48,54,61,.5); }
+  .buff-label { font-size: .6rem; color: var(--accent); text-transform: uppercase; font-weight: 700; margin-bottom: .1rem; }
+  .buff-name { color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .buff-val { font-weight: 600; color: var(--green); margin-left: .5rem; flex-shrink: 0; }
+
+  /* Potential bar */
+  .potential-row { margin-top: .35rem; }
+  .potential-meta { display: flex; justify-content: space-between; font-size: .65rem; margin-bottom: .15rem; }
+  .potential-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .potential-fill { height: 100%; border-radius: 2px; transition: width .3s; }
+
+  /* Platform / Field view */
+  .field-section { margin-bottom: 1.25rem; }
+  .field-header { display: flex; align-items: center; gap: .5rem; padding-bottom: .5rem; border-bottom: 1px solid var(--border); margin-bottom: .6rem; cursor: pointer; user-select: none; }
+  .field-header h2 { font-size: .85rem; font-weight: 700; flex: 1; }
+  .field-status { font-size: .7rem; padding: .15rem .5rem; border-radius: 4px; font-weight: 600; }
+  .field-status.active { background: rgba(63,185,80,.1); color: var(--green); border: 1px solid rgba(63,185,80,.25); }
+  .field-status.inactive { background: rgba(248,81,73,.1); color: var(--red); border: 1px solid rgba(248,81,73,.25); }
+  .field-toggle { font-size: .65rem; color: var(--muted); transition: transform .15s; }
+  .field-header.collapsed .field-toggle { transform: rotate(-90deg); }
+  .field-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .5rem; }
+  .field-body.collapsed { display: none; }
+  .slot-card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: .5rem; position: relative; }
+  .slot-card.empty { opacity: .4; border-style: dashed; }
+  .slot-card.has-buffs { border-color: var(--green); }
+  .slot-num { position: absolute; top: .3rem; right: .3rem; font-size: .55rem; color: var(--muted); font-weight: 700; }
+  .slot-beast-name { font-weight: 600; font-size: .78rem; margin-bottom: .2rem; }
+  .slot-beast-meta { font-size: .65rem; color: var(--muted); margin-bottom: .2rem; }
+  .slot-level { font-size: .6rem; color: var(--accent); margin-bottom: .15rem; }
+  .slot-buff { display: flex; justify-content: space-between; font-size: .7rem; padding: .1rem 0; }
+  .slot-buff + .slot-buff { border-top: 1px solid rgba(48,54,61,.4); }
+  .slot-buff-name { color: var(--muted); }
+  .slot-buff-val { color: var(--green); font-weight: 600; }
+
+  /* Conditions */
+  .field-conditions { margin-top: .5rem; padding: .4rem .6rem; background: var(--surface); border-radius: 6px; font-size: .7rem; }
+  .field-conditions .cond-label { color: var(--accent); font-weight: 700; font-size: .6rem; text-transform: uppercase; margin-bottom: .2rem; }
+  .field-conditions .cond-list { color: var(--muted); }
+
+  /* No data */
+  .no-data { text-align: center; padding: 3rem 1rem; color: var(--muted); }
+  .no-data h2 { font-size: 1.1rem; margin-bottom: .5rem; color: var(--text); }
+
+  /* Footer */
+  .footer { text-align: center; padding: 2rem 1rem; font-size: .7rem; color: var(--muted); margin-top: auto; }
+  .footer a { color: var(--accent); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 640px) {
+    .beast-grid { grid-template-columns: 1fr; }
+    .field-body { grid-template-columns: 1fr; }
+    .summary-inner { gap: .4rem; }
+    .summary-stat { min-width: 70px; padding: .35rem .5rem; }
+    .summary-stat .value { font-size: .9rem; }
+    .select-cards { grid-template-columns: 1fr; }
+  }
+
+  /* Beta nav popover */
+  .bnp-wrap { position:relative; display:inline-flex; }
+  #bnpBtn { background:none; border:1px solid var(--border,#30363d); border-radius:8px; padding:.3rem .45rem; color:var(--muted,#8b949e); cursor:pointer; display:flex; align-items:center; }
+  #bnpBtn:hover { border-color:var(--accent,#79c0ff); color:var(--accent,#79c0ff); }
+  #bnpPop { display:none; position:absolute; top:calc(100% + 6px); left:0; background:var(--surface,#161b22); border:1px solid var(--border,#30363d); border-radius:10px; padding:.4rem; z-index:500; min-width:168px; box-shadow:0 8px 24px rgba(0,0,0,.5); }
+  #bnpPop.open { display:block; }
+  .bnp-link { display:block; padding:.35rem .6rem; font-size:.78rem; color:var(--muted,#8b949e); text-decoration:none; border-radius:6px; white-space:nowrap; }
+  .bnp-link:hover { background:rgba(121,192,255,.08); color:var(--text,#e6edf3); }
+  .bnp-link.bnp-cur { color:var(--accent,#79c0ff); font-weight:600; pointer-events:none; }
+
+  /* Light theme */
+  :root[data-theme="light"] {
+    --bg: #f6f8fa; --surface: #ffffff; --card: #ffffff;
+    --border: #d0d7de; --text: #1f2328; --muted: #656d76;
+    --accent: #1f75d4; --green: #1a7f37; --yellow: #9a6700;
+    --red: #cf222e; --fire: #cf222e; --wind: #1a7f37; --water: #1f75d4; --ground: #9a6700;
+  }
+  body { transition: background .2s, color .2s; }
+  .theme-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: .3rem .45rem; color: var(--muted); cursor: pointer; display: flex; align-items: center; font-size: .95rem; transition: border-color .15s, color .15s; }
+  .theme-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .icon-light { display: none; }
+  body { top: 0 !important; }
+  body > .skiptranslate { display: none !important; }
+  #google_translate_element { position: absolute; left: -9999px; opacity: 0; pointer-events: none; }
+  .lang-btn { background: none; border: 1px solid var(--border); border-radius: 8px; padding: .3rem .6rem; cursor: pointer; font-size: .82rem; display: flex; align-items: center; gap: .3rem; font-family: inherit; font-weight: 600; color: var(--muted); white-space: nowrap; transition: border-color .15s, color .15s; }
+  .lang-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .lang-modal-overlay { display: none; position: fixed; inset: 0; z-index: 400; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; padding: 1rem; }
+  .lang-modal-overlay.active { display: flex; }
+  .lang-modal { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; max-width: 400px; width: 100%; max-height: 80vh; overflow-y: auto; }
+  .lang-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+  .lang-modal-title { font-size: 15px; font-weight: 700; color: var(--text); }
+  .lang-modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.2rem; padding: .2rem; }
+  .lang-modal-close:hover { color: var(--text); }
+  .lang-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .lang-option { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid transparent; background: var(--surface); cursor: pointer; font-size: 13px; color: var(--text); font-family: inherit; transition: border-color .15s; }
+  .lang-option:hover { border-color: var(--accent); }
+  .lang-option.active { border-color: var(--accent); background: rgba(121,192,255,.08); }
+  .lang-option .lang-flag { font-size: 1.1rem; }
+  @media (max-width: 480px) { .lang-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="https://2864tw.com" class="home-btn" title="Back to 2864tw.com"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></a>
+  <div class="bnp-wrap">
+    <button id="bnpBtn" title="All pages" onclick="document.getElementById('bnpPop').classList.toggle('open')"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zm8 0A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm-8 8A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm8 0A1.5 1.5 0 0 1 10.5 9h3A1.5 1.5 0 0 1 15 10.5v3A1.5 1.5 0 0 1 13.5 15h-3A1.5 1.5 0 0 1 9 13.5v-3z"/></svg></button>
+    <div id="bnpPop">
+    <a href="battle-report.html" class="bnp-link">Battle Reports</a>
+    <a href="decor-index.html" class="bnp-link">Decor Index</a>
+    <a href="bases.html" class="bnp-link">Bases</a>
+    <a href="heroes.html" class="bnp-link">Heroes</a>
+    <a href="treasury.html" class="bnp-link">Treasury</a>
+    <a href="ssc-map.html" class="bnp-link">UD Sector Map</a>
+    <a href="great-offers-preview.html" class="bnp-link">Great Offers</a>
+    <a href="easter-wishing.html" class="bnp-link">Easter Wishing</a>
+    <a href="armory-report.html" class="bnp-link">Armory Report</a>
+    <a href="enigma-viewer.html" class="bnp-link bnp-cur">Enigma Beasts</a>
+    </div>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:.4rem;">
+    <button class="theme-btn notranslate" id="themeBtn" aria-label="Toggle theme"><span class="icon-dark">&#9790;</span><span class="icon-light">&#9728;</span></button>
+    <button class="lang-btn notranslate" id="langBtn" aria-label="Change language"><span id="langFlag">&#127482;&#127480;</span><span id="langCode">/en</span></button>
+  </div>
+<div id="google_translate_element"></div>
+  </div>
+  <h1>Enigma Beast Viewer</h1>
+</div>
+
+<div class="search-bar">
+  <div class="search-row">
+    <input type="text" id="report-id" placeholder="Battle Report ID..." autocomplete="off">
+    <button id="load-btn">Load Report</button>
+  </div>
+  <div class="search-hint">Paste a PvP battle report ID to view Enigma Beast data for attacker &amp; defender</div>
+</div>
+
+<div id="status" class="status"></div>
+<div id="player-banner" class="player-banner" style="display:none"></div>
+<div id="summary-bar" class="summary-bar" style="display:none"></div>
+
+<div id="view-tabs" class="tab-bar" style="display:none">
+  <button class="tab-btn active" data-view="beasts">Beast Collection</button>
+  <button class="tab-btn" data-view="fields">Platforms / Fields</button>
+</div>
+
+<div id="filters" class="filter-bar" style="display:none"></div>
+<div id="content"></div>
+
+<div class="footer">
+  <a href="https://github.com/texnottexas/landing-page">Brought to you by supporters of the fk boats movement</a>
+</div>
+
+<div class="lang-modal-overlay" id="langModal">
+  <div class="lang-modal">
+    <div class="lang-modal-header">
+      <span class="lang-modal-title">Select Language</span>
+      <button class="lang-modal-close" id="langModalClose" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="lang-grid" id="langGrid"></div>
+  </div>
+</div>
+
+<script>
+/* ── Constants & Mappings ── */
+var CDN_BASE = 'https://fight-report-va.oss-accelerate.aliyuncs.com/prod/';
+
+var BEAST_TYPES = {
+  1: 'Gleamdeer', 2: 'Dreadray', 3: 'Tornadeagle', 4: 'Grizzroar',
+  5: 'Fluffynx', 6: 'Bounceroo', 7: 'Swiftsteed', 8: 'Dusklion', 9: 'Crestegret'
+};
+
+var BEAST_TYPES_5STAR = {
+  1: 'Lumideer', 2: 'Doomray', 3: 'Stormpeagle', 4: 'Ironclaw',
+  5: 'Shadowlynx', 6: 'Thunderoo', 7: 'Blazesteed', 8: 'Dawnlion', 9: 'Royalegret'
+};
+
+var ELEMENTS = { 1: 'Fire', 2: 'Wind', 3: 'Water', 4: 'Ground' };
+var ELEMENT_COLORS = { Fire: 'var(--fire)', Wind: 'var(--wind)', Water: 'var(--water)', Ground: 'var(--ground)' };
+var ELEMENT_SVG = {
+  Fire: '<svg width="16" height="16" viewBox="0 0 24 24" fill="var(--fire)"><path d="M12 23c-4.97 0-9-3.58-9-8 0-3.19 2.13-6.12 4-8l1 5 3-3c0 3 2 5 2 5s3-2.5 3-6c2.5 3 3 5 3 6 0 4.42-4.03 9-7 9z"/></svg>',
+  Wind: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--wind)" stroke-width="2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/></svg>',
+  Water: '<svg width="16" height="16" viewBox="0 0 24 24" fill="var(--water)"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>',
+  Ground: '<svg width="16" height="16" viewBox="0 0 24 24" fill="var(--ground)"><path d="M12 2L2 19h20L12 2zm0 4l6.9 11H5.1L12 6z"/></svg>'
+};
+
+var FIELD_NAMES = { 1: 'CPNT Mastery', 2: 'Formation', 3: 'Equip', 4: 'Defense', 5: 'Offense' };
+var FIELD_SLOT_COUNTS = { 1: 5, 2: 7, 3: 6, 4: 9, 5: 9 };
+
+var BUFF_NAMES = {
+  520000: 'March Size',
+  520010: 'All DMG Increase', 520011: 'Army DMG Increase', 520012: 'Navy DMG Increase', 520013: 'Air DMG Increase',
+  520020: 'All Decreased DMG Taken', 520021: 'Army Decreased DMG Taken', 520022: 'Navy Decreased DMG Taken', 520023: 'Air Decreased DMG Taken',
+  520030: 'All DEF Increase', 520031: 'Army DEF Increase', 520032: 'Navy DEF Increase', 520033: 'Air DEF Increase',
+  520040: 'All ATK (offensive)', 520041: 'Army ATK (offensive)', 520042: 'Navy ATK (offensive)', 520043: 'Air ATK (offensive)',
+  520050: 'All HP (offensive)', 520051: 'Army HP (offensive)', 520052: 'Navy HP (offensive)', 520053: 'Air HP (offensive)',
+  520060: 'All ATK (defensive)', 520061: 'Army ATK (defensive)', 520062: 'Navy ATK (defensive)', 520063: 'Air ATK (defensive)',
+  520070: 'All HP (defensive)', 520071: 'Army HP (defensive)', 520072: 'Navy HP (defensive)', 520073: 'Air HP (defensive)',
+  520100: 'Suppression DEF Bonus', 520101: 'Navy DEF vs Army', 520102: 'Air DEF vs Navy', 520103: 'Army DEF vs Air',
+  520110: 'All ATK (offensive)', 520111: 'Army ATK (offensive)', 520112: 'Navy ATK (offensive)', 520113: 'Air ATK (offensive)',
+  520120: 'All HP (offensive)', 520121: 'Army HP (offensive)', 520122: 'Navy HP (offensive)', 520123: 'Air HP (offensive)',
+  520130: 'All ATK (defensive)', 520131: 'Army ATK (defensive)', 520132: 'Navy ATK (defensive)', 520133: 'Air ATK (defensive)',
+  520140: 'All HP (defensive)', 520141: 'Army HP (defensive)', 520142: 'Navy HP (defensive)', 520143: 'Air HP (defensive)'
+};
+
+var FIELD_BUFF_NAMES = {
+  9301160: 'All ATK (field)', 9301161: 'Army ATK (field)', 9301162: 'Navy ATK (field)', 9301163: 'Air ATK (field)',
+  9301170: 'All HP (field)', 9301171: 'Army HP (field)', 9301172: 'Navy HP (field)', 9301173: 'Air HP (field)',
+  1131001: 'Cross-field Bonus', 1131002: 'Cross-field Bonus',
+  1000021: 'Formation Bonus', 1000022: 'Formation Bonus',
+  990202: 'Combat Bonus'
+};
+
+/* ── State ── */
+var reportData = null;
+var currentSide = null;
+var currentView = 'beasts';
+var activeElements = new Set(['all']);
+var activeField = 'all';
+
+/* ── Decode cfg → type/element/quality ── */
+function decodeCfg(cfg) {
+  for (var t = 1; t <= 9; t++) {
+    for (var f = 1; f <= 4; f++) {
+      var q5 = (t - 1) * 20 + f * 5;
+      if (q5 === cfg) return { type: t, faction: f, quality: 5 };
+      if (q5 - 1 === cfg) return { type: t, faction: f, quality: 4 };
+    }
+  }
+  return { type: 0, faction: 0, quality: 5 };
+}
+
+function beastName(type, star) {
+  if (star >= 5 && BEAST_TYPES_5STAR[type]) return BEAST_TYPES_5STAR[type];
+  return BEAST_TYPES[type] || ('Beast #' + type);
+}
+
+function elementName(faction) { return ELEMENTS[faction] || 'Unknown'; }
+function buffName(id) { return BUFF_NAMES[id] || FIELD_BUFF_NAMES[id] || ('Buff #' + id); }
+function fieldNameFn(cfg) { return FIELD_NAMES[cfg] || ('Field ' + cfg); }
+
+function starStr(n) {
+  var s = '';
+  for (var i = 0; i < n; i++) s += '\u2605';
+  for (var j = n; j < 5; j++) s += '\u2606';
+  return s;
+}
+
+function esc(str) {
+  if (!str) return '';
+  var d = document.createElement('div');
+  d.textContent = String(str);
+  return d.innerHTML;
+}
+
+function potColor(pct) {
+  if (pct >= 85) return 'var(--green)';
+  if (pct >= 65) return 'var(--yellow)';
+  return 'var(--red)';
+}
+
+/* ── Resolve beasts from battle report enigma data ── */
+function resolveBeasts(enigmas) {
+  if (!enigmas || !enigmas.beastDatas) return { beasts: [], fields: [] };
+
+  var beastMap = {};
+  var beasts = enigmas.beastDatas.map(function(b) {
+    var info = decodeCfg(b.cfg);
+    var resolved = {
+      id: b.id, cfg: b.cfg, type: info.type, faction: info.faction,
+      quality: info.quality, element: elementName(info.faction),
+      name: beastName(info.type, b.star), star: b.star, level: b.level,
+      potential: b.potential, maxPotential: info.quality === 4 ? 8000 : 16000,
+      power: b.power, mainBuff: b.mainBuff, mainBuffName: buffName(b.mainBuff),
+      baseBuff: (b.baseBuff || []).map(function(id) { return { id: id, name: buffName(id) }; }),
+      fieldCfg: null, fieldName: null, slotId: null, slotLevel: null, slotBuffs: []
+    };
+    beastMap[b.id] = resolved;
+    return resolved;
+  });
+
+  var fields = (enigmas.fields || []).map(function(f) {
+    var slots = (f.slots || []).map(function(s) {
+      var beast = beastMap[s.beastId];
+      if (beast && s.beastId !== '0') {
+        beast.fieldCfg = f.cfg;
+        beast.fieldName = fieldNameFn(f.cfg);
+        beast.slotId = s.id;
+        beast.slotLevel = s.level;
+        beast.slotBuffs = (s.buffs || []).map(function(sb) {
+          return { id: sb.id, name: buffName(sb.id), val: sb.val };
+        });
+      }
+      return {
+        id: s.id, beastId: s.beastId, level: s.level, potential: s.potential,
+        buffs: (s.buffs || []).map(function(sb) { return { id: sb.id, name: buffName(sb.id), val: sb.val }; }),
+        beast: (s.beastId !== '0' && beast) ? beast : null
+      };
+    });
+    return {
+      cfg: f.cfg, name: fieldNameFn(f.cfg), active: f.active,
+      conditions: f.conditions || [], expectedSlots: FIELD_SLOT_COUNTS[f.cfg] || slots.length,
+      slots: slots, deployedCount: slots.filter(function(s) { return s.beast; }).length
+    };
+  });
+
+  return { beasts: beasts, fields: fields };
+}
+
+/* ── CDN fetch ── */
+function loadReport(id) {
+  var statusEl = document.getElementById('status');
+  var btn = document.getElementById('load-btn');
+  btn.disabled = true;
+  statusEl.className = 'status';
+  statusEl.textContent = 'Loading report\u2026';
+  hideAll();
+
+  var prefix = id.substring(0, 4);
+  var url = CDN_BASE + prefix + '/' + id + '.json';
+
+  fetch(url).then(function(r) {
+    if (!r.ok) throw new Error('Report not found (HTTP ' + r.status + ')');
+    return r.json();
+  }).then(function(data) {
+    if (!data.battle) throw new Error('Invalid report format');
+    reportData = data;
+    statusEl.textContent = '';
+    showPlayerSelect(data);
+  }).catch(function(e) {
+    statusEl.className = 'status error';
+    statusEl.textContent = e.message;
+  }).finally(function() { btn.disabled = false; });
+}
+
+/* ── Player selection ── */
+function makeAvatarFallback(size) {
+  return 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '"><rect fill="#161b22" width="' + size + '" height="' + size + '" rx="' + (size / 2) + '"/></svg>');
+}
+
+function parsePlayerInfo(player) {
+  try { var pi = JSON.parse(player.playerInfo || '{}'); } catch(e) { pi = {}; }
+  var avatarUrl = null;
+  var raw = pi.headimgurl_custom || pi.avatarurl || '';
+  if (raw) {
+    avatarUrl = raw.indexOf('http') === 0 ? raw : 'https://h5.topwargame.com/DynRes/images/headpic/' + raw + '.png?t=21.jpg';
+  }
+  return { name: pi.username || 'Unknown', avatar: avatarUrl, flag: pi.nationalflag || 0 };
+}
+
+function showPlayerSelect(data) {
+  var att = data.battle.attacker.players[0];
+  var def = data.battle.defender.players[0];
+  var attCount = att.enigmas && att.enigmas.beastDatas ? att.enigmas.beastDatas.length : 0;
+  var defCount = def.enigmas && def.enigmas.beastDatas ? def.enigmas.beastDatas.length : 0;
+  var attInfo = parsePlayerInfo(att);
+  var defInfo = parsePlayerInfo(def);
+
+  var overlay = document.createElement('div');
+  overlay.className = 'select-overlay';
+
+  var modal = document.createElement('div');
+  modal.className = 'select-modal';
+
+  var title = document.createElement('div');
+  title.className = 'select-title';
+  title.textContent = 'Select Player';
+  modal.appendChild(title);
+
+  var cards = document.createElement('div');
+  cards.className = 'select-cards';
+
+  [{ info: attInfo, side: 'attacker', count: attCount, role: 'Attacker' },
+   { info: defInfo, side: 'defender', count: defCount, role: 'Defender' }].forEach(function(p) {
+    var card = document.createElement('div');
+    card.className = 'select-card';
+    card.dataset.side = p.side;
+
+    var img = document.createElement('img');
+    img.src = p.info.avatar || makeAvatarFallback(48);
+    img.onerror = function() { this.src = makeAvatarFallback(48); };
+    card.appendChild(img);
+
+    var nameEl = document.createElement('div');
+    nameEl.className = 'select-card-name';
+    nameEl.textContent = p.info.name;
+    card.appendChild(nameEl);
+
+    var roleEl = document.createElement('div');
+    roleEl.className = 'select-card-role';
+    roleEl.textContent = p.role;
+    card.appendChild(roleEl);
+
+    var countEl = document.createElement('div');
+    countEl.style.cssText = 'font-size:.7rem;color:var(--muted);margin-top:.3rem';
+    countEl.textContent = p.count + ' beasts';
+    card.appendChild(countEl);
+
+    card.onclick = function() {
+      currentSide = p.side;
+      overlay.remove();
+      renderSide();
+    };
+    cards.appendChild(card);
+  });
+
+  modal.appendChild(cards);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+}
+
+/* ── Render selected side ── */
+function renderSide() {
+  var player = reportData.battle[currentSide].players[0];
+  var pInfo = parsePlayerInfo(player);
+  var resolved = resolveBeasts(player.enigmas);
+  window._beasts = resolved.beasts;
+  window._fields = resolved.fields;
+
+  // Banner
+  var bannerEl = document.getElementById('player-banner');
+  bannerEl.style.display = '';
+  bannerEl.textContent = '';
+
+  var inner = document.createElement('div');
+  inner.className = 'player-banner-inner';
+
+  var img = document.createElement('img');
+  img.src = pInfo.avatar || makeAvatarFallback(36);
+  img.onerror = function() { this.src = makeAvatarFallback(36); };
+  img.style.cssText = 'width:36px;height:36px;border-radius:50%;object-fit:cover;background:var(--card)';
+  inner.appendChild(img);
+
+  var info = document.createElement('div');
+  info.className = 'player-banner-info';
+  var nameDiv = document.createElement('div');
+  nameDiv.className = 'player-banner-name';
+  nameDiv.textContent = pInfo.name;
+  info.appendChild(nameDiv);
+  var detailDiv = document.createElement('div');
+  detailDiv.className = 'player-banner-detail';
+  detailDiv.textContent = (currentSide.charAt(0).toUpperCase() + currentSide.slice(1)) + ' \u00B7 ' + resolved.beasts.length + ' beasts \u00B7 ' + resolved.fields.length + ' fields';
+  info.appendChild(detailDiv);
+  inner.appendChild(info);
+
+  var switchBtn = document.createElement('button');
+  switchBtn.className = 'player-banner-clear';
+  switchBtn.textContent = 'Switch Player';
+  switchBtn.onclick = switchPlayer;
+  inner.appendChild(switchBtn);
+
+  bannerEl.appendChild(inner);
+
+  renderSummary(resolved);
+  document.getElementById('view-tabs').style.display = '';
+  activeElements = new Set(['all']);
+  activeField = 'all';
+  currentView = 'beasts';
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.view === 'beasts'); });
+  renderFilters();
+  renderContent();
+}
+
+function renderSummary(resolved) {
+  var bar = document.getElementById('summary-bar');
+  bar.style.display = '';
+  bar.textContent = '';
+
+  var totalPower = 0, totalPotential = 0, starCounts = {}, activeFields = 0;
+  resolved.beasts.forEach(function(b) {
+    totalPower += b.power;
+    totalPotential += b.potential;
+    starCounts[b.star] = (starCounts[b.star] || 0) + 1;
+  });
+  resolved.fields.forEach(function(f) { if (f.active) activeFields++; });
+
+  var inner = document.createElement('div');
+  inner.className = 'summary-inner';
+
+  var stats = [
+    { label: 'Total Power', value: totalPower.toLocaleString() },
+    { label: '5-Star', value: String(starCounts[5] || 0), color: 'var(--yellow)' },
+    { label: 'Active Fields', value: activeFields + '/' + resolved.fields.length },
+    { label: 'Avg Potential', value: resolved.beasts.length ? Math.round(totalPotential / resolved.beasts.length).toLocaleString() : '0' }
+  ];
+
+  stats.forEach(function(s) {
+    var stat = document.createElement('div');
+    stat.className = 'summary-stat';
+    var lbl = document.createElement('div');
+    lbl.className = 'label';
+    lbl.textContent = s.label;
+    stat.appendChild(lbl);
+    var val = document.createElement('div');
+    val.className = 'value';
+    val.textContent = s.value;
+    if (s.color) val.style.color = s.color;
+    stat.appendChild(val);
+    inner.appendChild(stat);
+  });
+
+  bar.appendChild(inner);
+}
+
+function renderFilters() {
+  var el = document.getElementById('filters');
+  el.style.display = '';
+  el.textContent = '';
+
+  // Element pills
+  var elemDiv = document.createElement('div');
+  elemDiv.className = 'filter-pills';
+  elemDiv.id = 'elem-pills';
+
+  function makeElemPill(label, key, cls) {
+    var p = document.createElement('span');
+    p.className = 'fpill' + (cls ? ' ' + cls : '') + (activeElements.has(key) ? ' active' : '');
+    p.textContent = label;
+    p.dataset.elem = key;
+    return p;
+  }
+
+  elemDiv.appendChild(makeElemPill('All', 'all', ''));
+  ['Fire', 'Wind', 'Water', 'Ground'].forEach(function(e) {
+    elemDiv.appendChild(makeElemPill(e, e, e.toLowerCase()));
+  });
+  el.appendChild(elemDiv);
+
+  var sep = document.createElement('div');
+  sep.className = 'filter-sep';
+  el.appendChild(sep);
+
+  // Field pills
+  var fieldDiv = document.createElement('div');
+  fieldDiv.className = 'filter-pills';
+  fieldDiv.id = 'field-pills';
+
+  function makeFieldPill(label, key) {
+    var p = document.createElement('span');
+    p.className = 'fpill' + (activeField === key ? ' active' : '');
+    p.textContent = label;
+    p.dataset.field = key;
+    return p;
+  }
+
+  fieldDiv.appendChild(makeFieldPill('All Fields', 'all'));
+  (window._fields || []).forEach(function(f) {
+    fieldDiv.appendChild(makeFieldPill(f.name, String(f.cfg)));
+  });
+  fieldDiv.appendChild(makeFieldPill('Bench', 'bench'));
+  el.appendChild(fieldDiv);
+
+  // Count
+  var countEl = document.createElement('div');
+  countEl.className = 'filter-count';
+  countEl.id = 'filter-count';
+  el.appendChild(countEl);
+
+  // Bind clicks
+  el.querySelectorAll('.fpill').forEach(function(p) {
+    p.onclick = function() {
+      if (p.dataset.elem !== undefined) {
+        if (p.dataset.elem === 'all') {
+          activeElements = new Set(['all']);
+        } else {
+          activeElements.delete('all');
+          if (activeElements.has(p.dataset.elem)) {
+            activeElements.delete(p.dataset.elem);
+            if (activeElements.size === 0) activeElements.add('all');
+          } else {
+            activeElements.add(p.dataset.elem);
+          }
+        }
+        el.querySelectorAll('#elem-pills .fpill').forEach(function(pp) {
+          pp.classList.toggle('active', activeElements.has(pp.dataset.elem));
+        });
+      } else if (p.dataset.field !== undefined) {
+        activeField = p.dataset.field;
+        el.querySelectorAll('.fpill[data-field]').forEach(function(pp) {
+          pp.classList.toggle('active', activeField === pp.dataset.field);
+        });
+      }
+      renderContent();
+    };
+  });
+}
+
+/* ── Render content ── */
+function renderContent() {
+  var el = document.getElementById('content');
+  if (currentView === 'beasts') {
+    renderBeastGrid(el);
+  } else {
+    renderFieldView(el);
+  }
+}
+
+function filterBeasts() {
+  return (window._beasts || []).filter(function(b) {
+    if (!activeElements.has('all') && !activeElements.has(b.element)) return false;
+    if (activeField === 'bench') return !b.fieldCfg;
+    if (activeField !== 'all') return b.fieldCfg === +activeField;
+    return true;
+  });
+}
+
+function buildBeastCard(b) {
+  var card = document.createElement('div');
+  card.className = 'beast-card' + (b.quality === 4 ? ' purple' : ' gold');
+
+  // Head
+  var head = document.createElement('div');
+  head.className = 'beast-head';
+  var emoji = document.createElement('span');
+  emoji.className = 'beast-emoji';
+  emoji.innerHTML = ELEMENT_SVG[b.element] || '';
+  head.appendChild(emoji);
+
+  var info = document.createElement('div');
+  info.className = 'beast-info';
+  var nameEl = document.createElement('div');
+  nameEl.className = 'beast-name notranslate';
+  nameEl.setAttribute('translate', 'no');
+  nameEl.textContent = b.name;
+  info.appendChild(nameEl);
+
+  var meta = document.createElement('div');
+  meta.className = 'beast-meta';
+  var starsSpan = document.createElement('span');
+  starsSpan.className = 'beast-stars';
+  starsSpan.textContent = starStr(b.star);
+  meta.appendChild(starsSpan);
+  var lvSpan = document.createElement('span');
+  lvSpan.textContent = 'Lv.' + b.level;
+  meta.appendChild(lvSpan);
+  var elemSpan = document.createElement('span');
+  elemSpan.textContent = b.element;
+  elemSpan.style.color = ELEMENT_COLORS[b.element] || 'var(--muted)';
+  meta.appendChild(elemSpan);
+
+  if (b.fieldName) {
+    var fb = document.createElement('span');
+    fb.className = 'beast-field-badge';
+    fb.textContent = b.fieldName;
+    meta.appendChild(fb);
+  }
+  if (b.slotId) {
+    var sb = document.createElement('span');
+    sb.className = 'beast-slot-badge';
+    sb.textContent = '#' + b.slotId;
+    meta.appendChild(sb);
+  }
+  if (b.slotLevel) {
+    var slvBadge = document.createElement('span');
+    slvBadge.className = 'beast-slotlv-badge';
+    slvBadge.textContent = 'Level ' + b.slotLevel;
+    meta.appendChild(slvBadge);
+  }
+  info.appendChild(meta);
+  head.appendChild(info);
+  card.appendChild(head);
+
+  // Main buff
+  var mainSec = document.createElement('div');
+  mainSec.className = 'buff-section';
+  var mainLabel = document.createElement('div');
+  mainLabel.className = 'buff-label';
+  mainLabel.textContent = 'Main Buff';
+  mainSec.appendChild(mainLabel);
+  var mainRow = document.createElement('div');
+  mainRow.className = 'buff-row';
+  var mainName = document.createElement('span');
+  mainName.className = 'buff-name';
+  mainName.textContent = b.mainBuffName;
+  mainRow.appendChild(mainName);
+  mainSec.appendChild(mainRow);
+  card.appendChild(mainSec);
+
+  // Base buffs
+  if (b.baseBuff.length) {
+    var baseSec = document.createElement('div');
+    baseSec.className = 'buff-section';
+    var baseLabel = document.createElement('div');
+    baseLabel.className = 'buff-label';
+    baseLabel.textContent = 'Base Buffs';
+    baseSec.appendChild(baseLabel);
+    b.baseBuff.forEach(function(bb) {
+      var row = document.createElement('div');
+      row.className = 'buff-row';
+      var nm = document.createElement('span');
+      nm.className = 'buff-name';
+      nm.textContent = bb.name;
+      row.appendChild(nm);
+      baseSec.appendChild(row);
+    });
+    card.appendChild(baseSec);
+  }
+
+  // Slot buffs
+  if (b.slotBuffs.length) {
+    var slotSec = document.createElement('div');
+    slotSec.className = 'buff-section';
+    var slotLabel = document.createElement('div');
+    slotLabel.className = 'buff-label';
+    slotLabel.textContent = 'Field Slot Buffs';
+    slotSec.appendChild(slotLabel);
+    b.slotBuffs.forEach(function(sb) {
+      var row = document.createElement('div');
+      row.className = 'buff-row';
+      var nm = document.createElement('span');
+      nm.className = 'buff-name';
+      nm.textContent = sb.name;
+      row.appendChild(nm);
+      if (sb.val) {
+        var vl = document.createElement('span');
+        vl.className = 'buff-val';
+        vl.textContent = '+' + (sb.val / 100).toFixed(2) + '%';
+        row.appendChild(vl);
+      }
+      slotSec.appendChild(row);
+    });
+    card.appendChild(slotSec);
+  }
+
+  // Potential
+  var potPct = Math.round(b.potential / b.maxPotential * 100);
+  var pc = potColor(potPct);
+  var potRow = document.createElement('div');
+  potRow.className = 'potential-row';
+  var potMeta = document.createElement('div');
+  potMeta.className = 'potential-meta';
+  var potLabel = document.createElement('span');
+  potLabel.textContent = 'Potential';
+  potMeta.appendChild(potLabel);
+  var potVal = document.createElement('span');
+  potVal.textContent = b.potential.toLocaleString() + ' / ' + b.maxPotential.toLocaleString();
+  potVal.style.color = pc;
+  potMeta.appendChild(potVal);
+  potRow.appendChild(potMeta);
+  var potBar = document.createElement('div');
+  potBar.className = 'potential-bar';
+  var potFill = document.createElement('div');
+  potFill.className = 'potential-fill';
+  potFill.style.width = potPct + '%';
+  potFill.style.background = pc;
+  potBar.appendChild(potFill);
+  potRow.appendChild(potBar);
+  card.appendChild(potRow);
+
+  // Power
+  var powerDiv = document.createElement('div');
+  powerDiv.style.cssText = 'font-size:.65rem;color:var(--muted);margin-top:.2rem;text-align:right';
+  powerDiv.textContent = 'Power: ' + b.power.toLocaleString();
+  card.appendChild(powerDiv);
+
+  return card;
+}
+
+function renderBeastGrid(el) {
+  var beasts = filterBeasts();
+  beasts.sort(function(a, b) {
+    var ad = a.fieldCfg ? 0 : 1, bd = b.fieldCfg ? 0 : 1;
+    if (ad !== bd) return ad - bd;
+    if (a.fieldCfg && b.fieldCfg) {
+      if (a.fieldCfg !== b.fieldCfg) return a.fieldCfg - b.fieldCfg;
+      return (a.slotId || 0) - (b.slotId || 0);
+    }
+    return b.star - a.star || b.level - a.level || b.potential - a.potential;
+  });
+
+  var countEl = document.getElementById('filter-count');
+  if (countEl) countEl.textContent = beasts.length + ' beast' + (beasts.length !== 1 ? 's' : '');
+
+  el.textContent = '';
+  if (beasts.length === 0) {
+    var nd = document.createElement('div');
+    nd.className = 'no-data';
+    var h = document.createElement('h2');
+    h.textContent = 'No beasts match filters';
+    nd.appendChild(h);
+    el.appendChild(nd);
+    return;
+  }
+
+  var grid = document.createElement('div');
+  grid.className = 'beast-grid';
+  beasts.forEach(function(b) { grid.appendChild(buildBeastCard(b)); });
+  el.appendChild(grid);
+}
+
+function renderFieldView(el) {
+  var fields = window._fields || [];
+  if (activeField !== 'all' && activeField !== 'bench') {
+    fields = fields.filter(function(f) { return f.cfg === +activeField; });
+  }
+  if (activeField === 'bench') fields = [];
+
+  var countEl = document.getElementById('filter-count');
+  if (countEl) countEl.textContent = fields.length + ' field' + (fields.length !== 1 ? 's' : '');
+
+  el.textContent = '';
+  if (fields.length === 0) {
+    var nd = document.createElement('div');
+    nd.className = 'no-data';
+    var h = document.createElement('h2');
+    h.textContent = activeField === 'bench' ? 'Switch to Beast Collection to see bench' : 'No fields to display';
+    nd.appendChild(h);
+    el.appendChild(nd);
+    return;
+  }
+
+  fields.forEach(function(f) {
+    var section = document.createElement('div');
+    section.className = 'field-section';
+
+    // Header
+    var header = document.createElement('div');
+    header.className = 'field-header';
+    var toggle = document.createElement('span');
+    toggle.className = 'field-toggle';
+    toggle.textContent = '\u25BC';
+    header.appendChild(toggle);
+    var h2 = document.createElement('h2');
+    h2.textContent = f.name;
+    header.appendChild(h2);
+    var countSpan = document.createElement('span');
+    countSpan.style.cssText = 'font-size:.7rem;color:var(--muted)';
+    countSpan.textContent = f.deployedCount + '/' + f.expectedSlots + ' deployed';
+    header.appendChild(countSpan);
+    var status = document.createElement('span');
+    status.className = 'field-status ' + (f.active ? 'active' : 'inactive');
+    status.textContent = f.active ? 'Active' : 'Inactive';
+    header.appendChild(status);
+
+    header.onclick = function() {
+      header.classList.toggle('collapsed');
+      body.classList.toggle('collapsed');
+    };
+    section.appendChild(header);
+
+    // Body (slots grid)
+    var body = document.createElement('div');
+    body.className = 'field-body';
+
+    f.slots.forEach(function(s) {
+      var slotCard = document.createElement('div');
+      var isEmpty = !s.beast;
+      var hasBuff = s.buffs.length > 0;
+      slotCard.className = 'slot-card' + (isEmpty ? ' empty' : '') + (hasBuff ? ' has-buffs' : '');
+
+      var slotNum = document.createElement('div');
+      slotNum.className = 'slot-num';
+      slotNum.textContent = 'Slot ' + s.id;
+      slotCard.appendChild(slotNum);
+
+      if (isEmpty) {
+        var emptyName = document.createElement('div');
+        emptyName.className = 'slot-beast-name';
+        emptyName.style.color = 'var(--muted)';
+        emptyName.textContent = 'Empty';
+        slotCard.appendChild(emptyName);
+        var slotLv = document.createElement('div');
+        slotLv.className = 'slot-level';
+        slotLv.textContent = 'Slot Lv.' + s.level;
+        slotCard.appendChild(slotLv);
+      } else {
+        var b = s.beast;
+        var nameDiv = document.createElement('div');
+        nameDiv.className = 'slot-beast-name';
+        nameDiv.innerHTML = (ELEMENT_SVG[b.element] || '') + ' ';
+        var nameSpan = document.createTextNode(b.name);
+        nameDiv.appendChild(nameSpan);
+        slotCard.appendChild(nameDiv);
+
+        var metaDiv = document.createElement('div');
+        metaDiv.className = 'slot-beast-meta';
+        metaDiv.textContent = starStr(b.star) + ' \u00B7 Lv.' + b.level;
+        var elemTxt = document.createElement('span');
+        elemTxt.textContent = ' \u00B7 ' + b.element;
+        elemTxt.style.color = ELEMENT_COLORS[b.element] || 'var(--muted)';
+        metaDiv.appendChild(elemTxt);
+        slotCard.appendChild(metaDiv);
+
+        var lvDiv = document.createElement('div');
+        lvDiv.className = 'slot-level';
+        lvDiv.textContent = 'Slot Lv.' + s.level + ' \u00B7 Potential ' + b.potential.toLocaleString();
+        slotCard.appendChild(lvDiv);
+
+        s.buffs.forEach(function(sb) {
+          var buffDiv = document.createElement('div');
+          buffDiv.className = 'slot-buff';
+          var nm = document.createElement('span');
+          nm.className = 'slot-buff-name';
+          nm.textContent = sb.name;
+          buffDiv.appendChild(nm);
+          if (sb.val) {
+            var vl = document.createElement('span');
+            vl.className = 'slot-buff-val';
+            vl.textContent = '+' + (sb.val / 100).toFixed(2) + '%';
+            buffDiv.appendChild(vl);
+          }
+          slotCard.appendChild(buffDiv);
+        });
+      }
+
+      body.appendChild(slotCard);
+    });
+
+    section.appendChild(body);
+
+    // Conditions
+    var condDiv = document.createElement('div');
+    condDiv.className = 'field-conditions';
+    var condLabel = document.createElement('div');
+    condLabel.className = 'cond-label';
+    condLabel.textContent = 'Conditions';
+    condDiv.appendChild(condLabel);
+    var condList = document.createElement('div');
+    condList.className = 'cond-list';
+    condList.textContent = f.conditions.length ? 'Met for slots: ' + f.conditions.join(', ') : 'No conditions met';
+    condDiv.appendChild(condList);
+    section.appendChild(condDiv);
+
+    el.appendChild(section);
+  });
+}
+
+/* ── Helpers ── */
+function hideAll() {
+  document.getElementById('player-banner').style.display = 'none';
+  document.getElementById('summary-bar').style.display = 'none';
+  document.getElementById('view-tabs').style.display = 'none';
+  document.getElementById('filters').style.display = 'none';
+  document.getElementById('content').textContent = '';
+}
+
+function switchPlayer() {
+  hideAll();
+  showPlayerSelect(reportData);
+}
+
+/* ── Tab switching ── */
+document.querySelectorAll('.tab-btn').forEach(function(btn) {
+  btn.onclick = function() {
+    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    currentView = btn.dataset.view;
+    renderContent();
+  };
+});
+
+/* ── Load button + URL param ── */
+document.getElementById('load-btn').onclick = function() {
+  var id = document.getElementById('report-id').value.trim();
+  if (!id) return;
+  loadReport(id);
+  var url = new URL(window.location);
+  url.searchParams.set('id', id);
+  history.replaceState(null, '', url);
+};
+
+document.getElementById('report-id').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') document.getElementById('load-btn').click();
+});
+
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var id = params.get('id');
+  if (id) {
+    document.getElementById('report-id').value = id;
+    loadReport(id);
+  }
+})();
+
+/* ── Theme toggle ── */
+(function() {
+  var saved = localStorage.getItem('theme');
+  if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+
+  document.getElementById('themeBtn').onclick = function() {
+    var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    localStorage.setItem('theme', isDark ? 'light' : 'dark');
+    document.querySelectorAll('.icon-dark').forEach(function(e) { e.style.display = isDark ? 'none' : 'inline'; });
+    document.querySelectorAll('.icon-light').forEach(function(e) { e.style.display = isDark ? 'inline' : 'none'; });
+  };
+
+  if (saved === 'light') {
+    document.querySelectorAll('.icon-dark').forEach(function(e) { e.style.display = 'none'; });
+    document.querySelectorAll('.icon-light').forEach(function(e) { e.style.display = 'inline'; });
+  }
+})();
+
+/* ── Language switcher ── */
+var LANGUAGES = [
+  { code: 'en', flag: '\uD83C\uDDFA\uD83C\uDDF8', label: 'English' },
+  { code: 'zh-CN', flag: '\uD83C\uDDE8\uD83C\uDDF3', label: '\u4E2D\u6587' },
+  { code: 'ja', flag: '\uD83C\uDDEF\uD83C\uDDF5', label: '\u65E5\u672C\u8A9E' },
+  { code: 'ko', flag: '\uD83C\uDDF0\uD83C\uDDF7', label: '\uD55C\uAD6D\uC5B4' },
+  { code: 'ru', flag: '\uD83C\uDDF7\uD83C\uDDFA', label: '\u0420\u0443\u0441\u0441\u043A\u0438\u0439' },
+  { code: 'de', flag: '\uD83C\uDDE9\uD83C\uDDEA', label: 'Deutsch' },
+  { code: 'fr', flag: '\uD83C\uDDEB\uD83C\uDDF7', label: 'Fran\u00E7ais' },
+  { code: 'es', flag: '\uD83C\uDDEA\uD83C\uDDF8', label: 'Espa\u00F1ol' },
+  { code: 'pt', flag: '\uD83C\uDDE7\uD83C\uDDF7', label: 'Portugu\u00EAs' },
+  { code: 'tr', flag: '\uD83C\uDDF9\uD83C\uDDF7', label: 'T\u00FCrk\u00E7e' },
+  { code: 'ar', flag: '\uD83C\uDDF8\uD83C\uDDE6', label: '\u0627\u0644\u0639\u0631\u0628\u064A\u0629' },
+  { code: 'vi', flag: '\uD83C\uDDFB\uD83C\uDDF3', label: 'Ti\u1EBFng Vi\u1EC7t' },
+  { code: 'th', flag: '\uD83C\uDDF9\uD83C\uDDED', label: '\u0E44\u0E17\u0E22' },
+  { code: 'id', flag: '\uD83C\uDDEE\uD83C\uDDE9', label: 'Indonesia' }
+];
+
+function openLangModal() {
+  var grid = document.getElementById('langGrid');
+  grid.textContent = '';
+  LANGUAGES.forEach(function(l) {
+    var btn = document.createElement('button');
+    btn.className = 'lang-option';
+    btn.dataset.code = l.code;
+    var flag = document.createElement('span');
+    flag.className = 'lang-flag';
+    flag.textContent = l.flag;
+    btn.appendChild(flag);
+    btn.appendChild(document.createTextNode(l.label));
+    btn.onclick = function() {
+      var frame = document.querySelector('.goog-te-combo');
+      if (frame) { frame.value = l.code; frame.dispatchEvent(new Event('change')); }
+      document.getElementById('langModal').classList.remove('active');
+      document.getElementById('langFlag').textContent = l.flag;
+      document.getElementById('langCode').textContent = '/' + l.code;
+    };
+    grid.appendChild(btn);
+  });
+  document.getElementById('langModal').classList.add('active');
+}
+
+document.getElementById('langBtn').onclick = openLangModal;
+document.getElementById('langModalClose').onclick = function() { document.getElementById('langModal').classList.remove('active'); };
+document.getElementById('langModal').onclick = function(e) { if (e.target === this) this.classList.remove('active'); };
+
+function googleTranslateElementInit() {
+  new google.translate.TranslateElement({ pageLanguage: 'en', autoDisplay: false }, 'google_translate_element');
+}
+
+/* Close beta nav on outside click */
+document.addEventListener('click', function(e) {
+  var pop = document.getElementById('bnpPop');
+  if (pop && pop.classList.contains('open') && !e.target.closest('.bnp-wrap')) pop.classList.remove('open');
+});
+</script>
+<script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+</body>
+</html>
