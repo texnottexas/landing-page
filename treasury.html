@@ -150,6 +150,8 @@
   .method-body.open { display: block; }
   .method-body p { font-size: .82rem; line-height: 1.6; color: var(--muted); margin-bottom: .75rem; }
   .method-body p:last-child { margin-bottom: 0; }
+  .method-body ul { font-size: .82rem; line-height: 1.6; color: var(--muted); margin: .4em 0 .75rem 1.2em; padding: 0; }
+  .method-body li { margin-bottom: .35rem; }
   .method-body strong { color: var(--text); }
   .method-body .tier-legend { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0 .75rem; }
   .method-body .tleg { display: inline-flex; align-items: center; gap: .4rem; font-size: .75rem; font-weight: 600; padding: .2rem .55rem; border-radius: 5px; }
@@ -361,20 +363,7 @@
     <span class="method-header-text" style="flex:1">How Distribution Works</span>
     <span class="chevron closed" id="methodChevron">&#9660;</span>
   </div>
-  <div class="method-body" id="methodBody">
-    <p><strong>Player Tiers</strong> are assigned by fame earned in the event. Players with higher fame qualify for P-Tier 1 and receive priority access to top-tier rewards. Players with lower fame are assigned P-Tier 2 and still receive meaningful rewards.</p>
-    <p><strong>Reward Tiers</strong> indicate item rarity and value:</p>
-    <div class="tier-legend">
-      <span class="tleg t1l">T1 — Premium</span>
-      <span class="tleg t2l">T2 — Valuable</span>
-      <span class="tleg t3l">T3 — Common</span>
-      <span class="tleg t4l">T4 — Filler</span>
-    </div>
-    <p><strong>Category Limit:</strong> Each player can receive a maximum of <strong>5 reward categories</strong> per round. Resources (Oil, Food, Odinium) each count as 1 category. This prevents any single player from monopolising the treasury.</p>
-    <p><strong>CP-Aware Allocation:</strong> The system tracks each player's combat power and adjusts rewards accordingly (less likely to need mastery pages, as an example), and algorithm works to ensure rewards are not over-weighted to higher CP players. Players who contributed more receive higher-value reward tiers, while still ensuring every eligible player receives something.</p>
-    <p><strong>Cross-Round Balancing:</strong> Reward distributions are context-aware — each round considers cumulative rewards received thus far to ensure fair distribution. Players who received fewer or lower-tier rewards in previous rounds get priority in the current round. Treasury inventory resets each round (undistributed items are lost), so the algorithm maximizes usage of all T1 and T2 rewards every round.</p>
-    <p><strong>Transparency:</strong> All distributions are recorded here exactly as executed. Player names are shown as they appear in-game. UIDs are never stored or displayed.</p>
-  </div>
+  <div class="method-body" id="methodBody"></div>
 </div>
 
 <div class="round-notice" id="roundNotice" style="display:none">
@@ -839,11 +828,118 @@ function renderTable() {
   tbody.appendChild(frag);
 }
 
+function updateMethodBody(round) {
+  var body = document.getElementById('methodBody');
+  while (body.firstChild) { body.removeChild(body.firstChild); }
+
+  if (round === 3) {
+    var p1 = document.createElement('p');
+    var s1 = document.createElement('strong');
+    s1.textContent = 'Player Tiers';
+    p1.appendChild(s1);
+    p1.appendChild(document.createTextNode(' are based on fame earned. Tier 1 = fame 80 (241 players), Tier 2 = fame below 80 (78 players).'));
+    body.appendChild(p1);
+
+    var p2 = document.createElement('p');
+    p2.textContent = 'Tier 1 is further split into 3 sub-groups by merit rank:';
+    body.appendChild(p2);
+
+    var ul = document.createElement('ul');
+    var items = [
+      'Group A (top 46 merit): Legendary Beast Chest + Advanced Catalyst + Beast Shards (max) + T3 items',
+      'Group B (next 49 merit): Top-tier Catalyst + Advanced Catalyst + Epic Beast Chest + T3 items (no shards)',
+      'Group C (remaining 146): Beast Shards (max) + T3/T4 items. Top 105 also get Advanced Catalyst.'
+    ];
+    for (var i = 0; i < items.length; i++) {
+      var li = document.createElement('li');
+      li.textContent = items[i];
+      ul.appendChild(li);
+    }
+    body.appendChild(ul);
+
+    var p3 = document.createElement('p');
+    p3.textContent = 'Tier 2 receives Beast Shards + T4 items + Resources. Seal Stone Badges distributed evenly to all.';
+    body.appendChild(p3);
+
+    var p4 = document.createElement('p');
+    var s4 = document.createElement('strong');
+    s4.textContent = 'Constraints:';
+    p4.appendChild(s4);
+    p4.appendChild(document.createTextNode(' Legendary Beast Chest holders get no Top-tier Catalyst. Top-tier Catalyst holders get no Beast Shards. No Tier 1 player receives resources. Distributions balanced against Round 2 allocations.'));
+    body.appendChild(p4);
+  } else {
+    /* Default / Round 2 description */
+    var p1 = document.createElement('p');
+    var s1 = document.createElement('strong');
+    s1.textContent = 'Player Tiers';
+    p1.appendChild(s1);
+    p1.appendChild(document.createTextNode(' are assigned by fame earned in the event. Players with higher fame qualify for P-Tier 1 and receive priority access to top-tier rewards. Players with lower fame are assigned P-Tier 2 and still receive meaningful rewards.'));
+    body.appendChild(p1);
+
+    var p2 = document.createElement('p');
+    var s2 = document.createElement('strong');
+    s2.textContent = 'Reward Tiers';
+    p2.appendChild(s2);
+    p2.appendChild(document.createTextNode(' indicate item rarity and value:'));
+    body.appendChild(p2);
+
+    var legend = document.createElement('div');
+    legend.className = 'tier-legend';
+    var tiers = [
+      ['t1l', 'T1 \u2014 Premium'],
+      ['t2l', 'T2 \u2014 Valuable'],
+      ['t3l', 'T3 \u2014 Common'],
+      ['t4l', 'T4 \u2014 Filler']
+    ];
+    for (var i = 0; i < tiers.length; i++) {
+      var sp = document.createElement('span');
+      sp.className = 'tleg ' + tiers[i][0];
+      sp.textContent = tiers[i][1];
+      legend.appendChild(sp);
+    }
+    body.appendChild(legend);
+
+    var p3 = document.createElement('p');
+    var s3a = document.createElement('strong');
+    s3a.textContent = 'Category Limit:';
+    p3.appendChild(s3a);
+    p3.appendChild(document.createTextNode(' Each player can receive a maximum of '));
+    var s3b = document.createElement('strong');
+    s3b.textContent = '5 reward categories';
+    p3.appendChild(s3b);
+    p3.appendChild(document.createTextNode(' per round. Resources (Oil, Food, Odinium) each count as 1 category. This prevents any single player from monopolising the treasury.'));
+    body.appendChild(p3);
+
+    var p4 = document.createElement('p');
+    var s4 = document.createElement('strong');
+    s4.textContent = 'CP-Aware Allocation:';
+    p4.appendChild(s4);
+    p4.appendChild(document.createTextNode(' The system tracks each player\'s combat power and adjusts rewards accordingly (less likely to need mastery pages, as an example), and algorithm works to ensure rewards are not over-weighted to higher CP players. Players who contributed more receive higher-value reward tiers, while still ensuring every eligible player receives something.'));
+    body.appendChild(p4);
+
+    var p5 = document.createElement('p');
+    var s5 = document.createElement('strong');
+    s5.textContent = 'Cross-Round Balancing:';
+    p5.appendChild(s5);
+    p5.appendChild(document.createTextNode(' Reward distributions are context-aware \u2014 each round considers cumulative rewards received thus far to ensure fair distribution. Players who received fewer or lower-tier rewards in previous rounds get priority in the current round. Treasury inventory resets each round (undistributed items are lost), so the algorithm maximizes usage of all T1 and T2 rewards every round.'));
+    body.appendChild(p5);
+
+    var p6 = document.createElement('p');
+    var s6 = document.createElement('strong');
+    s6.textContent = 'Transparency:';
+    p6.appendChild(s6);
+    p6.appendChild(document.createTextNode(' All distributions are recorded here exactly as executed. Player names are shown as they appear in-game. UIDs are never stored or displayed.'));
+    body.appendChild(p6);
+  }
+}
+
 function renderAll() {
   if (!distData) return;
   var r = getCurrentRound();
   var noticeEl = document.getElementById('roundNotice');
   var noticeBox = document.getElementById('roundNoticeBox');
+
+  updateMethodBody(currentView === 'cumulative' ? 0 : r);
 
   if (currentView === 'round' && r === 1) {
     noticeEl.style.display = '';
