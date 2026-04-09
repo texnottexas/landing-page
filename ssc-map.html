@@ -4516,6 +4516,525 @@
     storyAnimFrame=requestAnimationFrame(render);
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // ROUND 4.5 ANIMATION — THE BRAWL
+  // Post-battle chaos: stick figures fighting, partying, playing guitar,
+  // drinking beer, throwing chairs — a proper tavern brawl celebration
+  // ═══════════════════════════════════════════════════════════════════════
+  function playRound4BrawlAnimation(gained, lost, prevScore, curScore, scoreDelta, topTargets, takenFrom) {
+    var canvas = document.getElementById('storyCanvas');
+    var ctx = canvas.getContext('2d');
+    var W = 640, H = 280;
+    canvas.width = W; canvas.height = H;
+    if (storyAnimFrame) cancelAnimationFrame(storyAnimFrame);
+
+    var startTime = null;
+    var duration = 26000;
+    var elapsed = 0;
+
+    var BG = '#080c12', GROUND_COL = '#1a1810';
+    var GREEN = '#3fb950', GREEN2 = '#56e370';
+    var RED = '#f85149', RED2 = '#ff6b6b';
+    var GOLD = '#d29922', GOLD2 = '#f0c040', GOLD3 = '#ffe680';
+    var BLUE = '#388bfd', BLUE2 = '#79c0ff';
+    var BROWN = '#8b6914', BROWN2 = '#c4a050';
+    var WHITE = '#e6edf3', MUTED = '#8b949e', GREY = '#444c56';
+    var GROUND_Y = 215;
+    var net = gained.length - lost.length;
+    var curRound = rawData && rawData.rounds && rawData.rounds[activeRound] ? rawData.rounds[activeRound] : {};
+    var rank = curRound.s2864 ? curRound.s2864.rank : '?';
+
+    function lerp(a,b,t){return a+(b-a)*t;}
+    function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+    function easeOut(t){return 1-Math.pow(1-t,3);}
+    function easeIn(t){return t*t*t;}
+    function pt(t,s,e){return clamp((t-s/duration)/((e-s)/duration),0,1);}
+    function rnd(a,b){return a+Math.random()*(b-a);}
+
+    var particles=[];
+    function spawnP(x,y,vx,vy,color,size,life,gravity){
+      particles.push({x:x,y:y,vx:vx,vy:vy,color:color,size:size||3,life:life||1,maxLife:life||1,g:gravity||0.12,isRect:false});
+    }
+    function spawnBurst(x,y,color,n,spd){
+      for(var i=0;i<(n||8);i++){
+        var a=Math.random()*Math.PI*2,s=(spd||3)+Math.random()*3;
+        spawnP(x,y,Math.cos(a)*s,Math.sin(a)*s-1,color,2+Math.random()*2,0.7+Math.random()*0.4);
+      }
+    }
+    function spawnDebris(x,y,color,n){
+      for(var i=0;i<(n||6);i++){
+        var a=Math.random()*Math.PI*2,s=2+Math.random()*6;
+        particles.push({x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-3,color:color,size:2+Math.random()*3,
+               life:1,maxLife:1,g:0.2,isRect:true,rot:Math.random()*Math.PI,rotV:(Math.random()-.5)*0.2});
+      }
+    }
+    function tickParticles(){
+      for(var i=particles.length-1;i>=0;i--){
+        var p=particles[i];
+        p.x+=p.vx; p.y+=p.vy; p.vy+=p.g; p.life-=0.018;
+        if(p.life<=0){particles.splice(i,1);continue;}
+        var a=p.life/p.maxLife;
+        ctx.save(); ctx.globalAlpha=a*a;
+        if(p.isRect){
+          if(p.rot!==undefined) p.rot+=(p.rotV||0);
+          ctx.translate(p.x,p.y); ctx.rotate(p.rot||0);
+          ctx.fillStyle=p.color; ctx.fillRect(-p.size,-p.size,p.size*2,p.size*2);
+        } else {
+          ctx.fillStyle=p.color;
+          ctx.beginPath(); ctx.arc(p.x,p.y,p.size*a,0,Math.PI*2); ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+
+    var shakeP=0,shakeX=0,shakeY=0;
+    function shake(p){shakeP=Math.max(shakeP,p);}
+    function updateShake(){
+      if(shakeP>0.3){shakeX=rnd(-1,1)*shakeP*7;shakeY=rnd(-1,1)*shakeP*7;shakeP*=0.82;}
+      else{shakeX=0;shakeY=0;shakeP=0;}
+    }
+
+    var rings=[];
+    function spawnRing(x,y,color,maxR){rings.push({x:x,y:y,r:2,maxR:maxR||60,color:color||WHITE,life:1});}
+    function tickRings(){
+      for(var i=rings.length-1;i>=0;i--){
+        var r=rings[i]; r.r+=r.maxR*0.045; r.life-=0.04;
+        if(r.r>r.maxR||r.life<=0){rings.splice(i,1);continue;}
+        ctx.save(); ctx.globalAlpha=r.life*(1-r.r/r.maxR);
+        ctx.strokeStyle=r.color; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(r.x,r.y,r.r,0,Math.PI*2); ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    function glowText(text,x,y,color,size,alpha,glow){
+      ctx.save(); ctx.globalAlpha=Math.max(0,Math.min(alpha,1));
+      ctx.shadowBlur=glow||16; ctx.shadowColor=color;
+      ctx.fillStyle=color; ctx.font='bold '+size+'px monospace'; ctx.textAlign='center';
+      ctx.fillText(text,x,y);
+      ctx.restore();
+    }
+
+    function drawGround(){
+      ctx.fillStyle=BG; ctx.fillRect(0,0,W,GROUND_Y);
+      ctx.fillStyle=WHITE;
+      [[80,20],[150,40],[220,15],[320,35],[410,18],[500,42],[570,25],[600,10],[50,55],[250,60]].forEach(function(s){
+        ctx.globalAlpha=0.4+0.4*Math.sin(elapsed/700+s[0]*0.1);
+        ctx.beginPath(); ctx.arc(s[0],s[1],0.8,0,Math.PI*2); ctx.fill();
+      });
+      ctx.globalAlpha=1;
+      ctx.fillStyle=GROUND_COL; ctx.fillRect(0,GROUND_Y,W,H-GROUND_Y);
+      ctx.strokeStyle='#3a2a10'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(0,GROUND_Y); ctx.lineTo(W,GROUND_Y); ctx.stroke();
+    }
+
+    function drawTavern(x){
+      ctx.save();
+      // Main building
+      ctx.fillStyle='#2a1a0a'; ctx.fillRect(x-80,GROUND_Y-80,160,80);
+      ctx.strokeStyle=BROWN; ctx.lineWidth=1.5; ctx.strokeRect(x-80,GROUND_Y-80,160,80);
+      // Roof (triangle)
+      ctx.fillStyle='#3a1a0a';
+      ctx.beginPath(); ctx.moveTo(x-90,GROUND_Y-80); ctx.lineTo(x,GROUND_Y-120); ctx.lineTo(x+90,GROUND_Y-80); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle=BROWN; ctx.stroke();
+      // Sign: "THE BRAWL PIT"
+      ctx.fillStyle=BROWN2; ctx.fillRect(x-45,GROUND_Y-100,90,18);
+      ctx.fillStyle='#1a0a00'; ctx.font='bold 10px monospace'; ctx.textAlign='center';
+      ctx.fillText('THE BRAWL PIT',x,GROUND_Y-87);
+      // Door
+      ctx.fillStyle='#1a0a00';
+      ctx.beginPath(); ctx.arc(x,GROUND_Y,12,Math.PI,0); ctx.fillRect(x-12,GROUND_Y-12,24,12); ctx.fill();
+      // Windows (warm glow)
+      ctx.fillStyle='#d4a020'; ctx.globalAlpha=0.6+0.2*Math.sin(elapsed/400);
+      ctx.fillRect(x-60,GROUND_Y-60,20,16); ctx.fillRect(x+40,GROUND_Y-60,20,16);
+      ctx.fillRect(x-60,GROUND_Y-35,20,16); ctx.fillRect(x+40,GROUND_Y-35,20,16);
+      ctx.globalAlpha=1;
+      ctx.restore();
+    }
+
+    function drawStick(x,y,color,scale,wp,pose){
+      var s=scale||1;
+      ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
+      ctx.strokeStyle=color; ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.lineJoin='round';
+      ctx.beginPath(); ctx.arc(0,-20,6,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle=color; ctx.fillRect(-3,-21,1.5,1.5); ctx.fillRect(1.5,-21,1.5,1.5);
+      ctx.beginPath(); ctx.moveTo(0,-14); ctx.lineTo(0,4); ctx.stroke();
+      if(pose==='walk'||pose==='march'){
+        var as=Math.sin(wp)*0.4;
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-8*Math.cos(as),-4+8*Math.sin(as)); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(8,-18+Math.sin(wp*2)*3); ctx.stroke();
+        var ls=Math.sin(wp)*6;
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(-5+ls,18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(5-ls,18); ctx.stroke();
+      } else if(pose==='fight'){
+        var sa=Math.sin(wp*8)*1.2;
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(10*Math.cos(sa),-10+10*Math.sin(sa)); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-8,-6); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(-7,18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(7,18); ctx.stroke();
+      } else if(pose==='victory'){
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-12,-24); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(12,-24); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(-4,18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(4,18); ctx.stroke();
+      } else if(pose==='knocked'){
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-12,-18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(12,-4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(-10,14); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(10,16); ctx.stroke();
+      } else if(pose==='guitar'){
+        // Left hand on neck, right hand strumming
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-12,-4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(6,-2+Math.sin(wp*6)*3); ctx.stroke();
+        // Guitar body
+        ctx.strokeStyle=BROWN2; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.ellipse(2,2,8,5,0.3,0,Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-6,-1); ctx.lineTo(-18,-8); ctx.stroke(); // neck
+        ctx.strokeStyle=color; ctx.lineWidth=2.5;
+        // Legs tapping
+        var tap=Math.sin(wp*4)*3;
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(-5+tap,18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(5-tap,18); ctx.stroke();
+      } else if(pose==='drink'){
+        // One arm holding mug up, other arm down
+        var sip=Math.sin(wp*2)*0.3;
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(8+sip*4,-20+sip*6); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-8,-2); ctx.stroke();
+        // Beer mug
+        ctx.strokeStyle=GOLD; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.rect(8+sip*4-4,-24+sip*6,8,8); ctx.stroke();
+        // Foam on top
+        ctx.fillStyle=WHITE; ctx.beginPath(); ctx.ellipse(8+sip*4,-24+sip*6,5,2,0,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle=color; ctx.lineWidth=2.5;
+        // Legs relaxed, swaying
+        var sw=Math.sin(wp)*2;
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(-6+sw,18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(4+sw,18); ctx.stroke();
+      } else if(pose==='throw'){
+        // Arm back about to throw
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-12,-20); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(8,-2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(-6,18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(6,18); ctx.stroke();
+      } else if(pose==='headbang'){
+        // Head bobbing forward and back
+        var bob=Math.sin(wp*6)*8;
+        ctx.beginPath(); ctx.arc(bob,-20+Math.abs(bob)*0.3,6,0,Math.PI*2); ctx.stroke();
+        // Arms pumping
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-10+bob*0.5,-22); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(10-bob*0.5,-22); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(-5,18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(5,18); ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-8,-2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(8,-2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(-5,18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(5,18); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawChair(x,y,rot,alpha){
+      ctx.save(); ctx.translate(x,y); ctx.rotate(rot); ctx.globalAlpha=alpha;
+      ctx.strokeStyle=BROWN; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(-6,0); ctx.lineTo(-6,10); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(6,0); ctx.lineTo(6,10); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-6,0); ctx.lineTo(6,0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-6,0); ctx.lineTo(-6,-10); ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawBeerMug(x,y,rot,alpha){
+      ctx.save(); ctx.translate(x,y); ctx.rotate(rot); ctx.globalAlpha=alpha;
+      ctx.fillStyle=GOLD; ctx.fillRect(-4,-6,8,10);
+      ctx.strokeStyle=BROWN2; ctx.lineWidth=1.5; ctx.strokeRect(-4,-6,8,10);
+      ctx.fillStyle=WHITE; ctx.beginPath(); ctx.ellipse(0,-6,5,2,0,0,Math.PI*2); ctx.fill();
+      // Handle
+      ctx.strokeStyle=BROWN2; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.arc(6,-1,4,-.5*Math.PI,.5*Math.PI); ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawFlag(x,y,color,wave){
+      ctx.save();
+      ctx.strokeStyle=GREY; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y-28); ctx.stroke();
+      ctx.fillStyle=GOLD; ctx.beginPath(); ctx.arc(x,y-28,2,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=color;
+      ctx.beginPath(); ctx.moveTo(x,y-28);
+      ctx.quadraticCurveTo(x+10+Math.sin(wave)*3,y-25,x+18+Math.sin(wave+1.5)*2,y-20);
+      ctx.lineTo(x,y-14); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+
+    // Flying objects (chairs, mugs) state
+    var flyingObjects = [];
+    function launchObject(x,y,type){
+      flyingObjects.push({x:x,y:y,vx:rnd(-4,4),vy:rnd(-8,-4),rot:0,rotV:rnd(-0.2,0.2),type:type,life:1.5});
+    }
+
+    var wave = 0;
+
+    var render = function(ts){
+      if(!startTime) startTime=ts;
+      elapsed=ts-startTime; var t=Math.min(elapsed/duration,1.0);
+      wave = elapsed/800;
+      updateShake();
+
+      ctx.save(); ctx.translate(shakeX,shakeY);
+
+      // ══ SCENE 1 (0-4s): THE MARCH HOME ════════════════════════════════
+      var s1=pt(t,0,4000);
+      if(s1>=0 && s1<=1){
+        drawGround();
+        // Fortress in the distance
+        ctx.save(); ctx.globalAlpha=Math.min(s1*3,1);
+        ctx.fillStyle='#1a2636'; ctx.fillRect(540,GROUND_Y-45,35,45); ctx.fillRect(555,GROUND_Y-55,25,55);
+        ctx.strokeStyle='#3a4a5a'; ctx.lineWidth=1; ctx.strokeRect(540,GROUND_Y-45,35,45);
+        ctx.restore();
+        drawFlag(580, GROUND_Y-2, GREEN, wave);
+
+        // Green soldiers marching left to right, victorious, some stumbling
+        var nSol=8;
+        for(var si=0;si<nSol;si++){
+          var baseX=-40+si*50;
+          var marchX=baseX+s1*250;
+          if(marchX>-20 && marchX<W+20){
+            var stagger=si%3===0?Math.sin(wave*2+si)*4:0;
+            var pose2=si%4===0?'drink':si%5===0?'victory':'walk';
+            drawStick(marchX+stagger, GROUND_Y-18, GREEN, 1, wave+si*0.8, pose2);
+          }
+        }
+        // Defeated red figures scattered on the ground behind them
+        for(var ri=0;ri<3;ri++){
+          var rx=40+ri*80;
+          if(s1>0.3) drawStick(rx, GROUND_Y-5, RED, 0.7, 0, 'knocked');
+        }
+        if(s1>0.2) glowText('+'+gained.length+' WASTELANDS SEIZED', W/2, 30, GREEN2, 13, Math.min((s1-0.2)*4,1), 10);
+        if(s1>0.6) glowText(lost.length+' lost in the fray', W/2, 50, RED2, 10, Math.min((s1-0.6)*4,0.7), 6);
+      }
+
+      // ══ SCENE 2 (3.5-10s): THE TAVERN BRAWL ═══════════════════════════
+      var s2=pt(t,3500,10000);
+      if(s2>0 && s2<=1){
+        drawGround();
+        drawTavern(W/2);
+
+        // Inside the tavern — chaos erupts
+        var brawlT=s2;
+
+        // Two green guys fist-fighting (friendly brawl)
+        if(brawlT>0.05){
+          var bp=Math.min((brawlT-0.05)/0.3,1);
+          drawStick(W/2-50, GROUND_Y-18, GREEN, 1.1, wave*3, 'fight');
+          drawStick(W/2-20, GROUND_Y-18, GREEN2, 1.1, wave*3+1.5, 'fight');
+          if(Math.random()<0.06) spawnBurst((W/2-35), GROUND_Y-25, GOLD2, 3, 2);
+        }
+
+        // A red guy gets thrown out the door
+        if(brawlT>0.15 && brawlT<0.45){
+          var throwT=(brawlT-0.15)/0.3;
+          var thrownX=lerp(W/2, W/2+120, easeIn(throwT));
+          var thrownY=lerp(GROUND_Y-18, GROUND_Y+5, throwT>0.5?easeIn((throwT-0.5)*2):0);
+          drawStick(thrownX, thrownY, RED, 0.9-throwT*0.3, 0, 'knocked');
+          if(throwT<0.05){ shake(3); spawnBurst(W/2+10, GROUND_Y-18, RED, 8, 4); }
+        }
+
+        // Guitar player on the left, headbanging buddy next to him
+        if(brawlT>0.2){
+          drawStick(100, GROUND_Y-18, GREEN, 1, wave, 'guitar');
+          // Music notes floating up
+          if(Math.random()<0.05){
+            spawnP(100+rnd(-10,10), GROUND_Y-40, rnd(-0.5,0.5), rnd(-2,-1), GOLD2, 3, 1.2, -0.02);
+          }
+          drawStick(140, GROUND_Y-18, BLUE2, 1, wave, 'headbang');
+        }
+
+        // Beer drinkers on the right
+        if(brawlT>0.25){
+          drawStick(W-120, GROUND_Y-18, GREEN, 1, wave*0.5, 'drink');
+          drawStick(W-80, GROUND_Y-18, GREEN2, 1, wave*0.5+1, 'drink');
+        }
+
+        // Chair flying across the screen
+        if(brawlT>0.3 && brawlT<0.5){
+          var chairT=(brawlT-0.3)/0.2;
+          var chairX=lerp(W/2-30, W/2+100, chairT);
+          var chairY=GROUND_Y-60-Math.sin(chairT*Math.PI)*40;
+          drawChair(chairX, chairY, chairT*4, 1);
+          if(chairT>0.9){ shake(2); spawnDebris(chairX, GROUND_Y-20, BROWN, 4); }
+        }
+
+        // Beer mug flying
+        if(brawlT>0.45 && brawlT<0.65){
+          var mugT=(brawlT-0.45)/0.2;
+          var mugX=lerp(W-100, W/2-40, mugT);
+          var mugY=GROUND_Y-50-Math.sin(mugT*Math.PI)*30;
+          drawBeerMug(mugX, mugY, mugT*6, 1);
+          if(mugT>0.9) spawnBurst(mugX, mugY+10, GOLD, 5, 2);
+        }
+
+        // More brawlers joining in — a full melee
+        if(brawlT>0.5){
+          drawStick(W/2+60, GROUND_Y-18, RED, 1, wave*3+2, 'fight');
+          drawStick(W/2+90, GROUND_Y-18, GREEN, 1, wave*3+3, 'fight');
+          if(Math.random()<0.04) spawnBurst(W/2+75, GROUND_Y-25, WHITE, 2, 2);
+
+          // Another pair throwing punches
+          drawStick(200, GROUND_Y-18, RED2, 0.9, wave*4, 'fight');
+          drawStick(230, GROUND_Y-18, GREEN, 1, wave*4+1, 'fight');
+        }
+
+        // Someone on the roof headbanging
+        if(brawlT>0.4){
+          drawStick(W/2+20, GROUND_Y-130, GREEN2, 0.8, wave*1.5, 'headbang');
+          drawFlag(W/2+40, GROUND_Y-125, GREEN, wave*2);
+        }
+
+        // A second chair launch
+        if(brawlT>0.65 && brawlT<0.82){
+          var ch2T=(brawlT-0.65)/0.17;
+          var ch2X=lerp(W/2+80, W/2-60, ch2T);
+          var ch2Y=GROUND_Y-70-Math.sin(ch2T*Math.PI)*50;
+          drawChair(ch2X, ch2Y, -ch2T*5, 1);
+          if(ch2T>0.9){ shake(2); spawnDebris(ch2X, GROUND_Y-30, BROWN, 5); }
+        }
+
+        // Text
+        if(brawlT>0.1) glowText('THE BRAWL PIT', W/2, 22, GOLD2, 14, Math.min(brawlT*5,1), 10);
+      }
+
+      // ══ SCENE 3 (9.5-16s): THE BATTLEFIELD RECAP ══════════════════════
+      var s3=pt(t,9500,16000);
+      if(s3>0 && s3<=1){
+        drawGround();
+
+        // The brawl spills outdoors — battle scenes intercut with partying
+        var nBattles=Math.min(gained.length, 4);
+        var zonW=W/(nBattles+1);
+
+        for(var bi=0;bi<nBattles;bi++){
+          var bprog=clamp((s3-bi*0.12)*3,0,1);
+          if(bprog<=0) continue;
+          var bx=zonW*(bi+1);
+
+          if(bprog<0.4){
+            // Approach
+            var ap=bprog/0.4;
+            drawStick(lerp(bx-40,bx-15,ap), GROUND_Y-18, GREEN, 1, wave+bi, 'walk');
+            drawStick(lerp(bx+40,bx+15,ap), GROUND_Y-18, RED, 1, wave+bi+1, 'walk');
+          } else if(bprog<0.7){
+            // Brawl (no swords — fists!)
+            drawStick(bx-15, GROUND_Y-18, GREEN, 1, wave*4+bi, 'fight');
+            drawStick(bx+15, GROUND_Y-18, RED, 1, wave*4+bi+2, 'fight');
+            if(Math.random()<0.06) spawnBurst(bx, GROUND_Y-25, GOLD2, 2, 2);
+          } else {
+            // Green wins, red tumbles
+            var wt=(bprog-0.7)/0.3;
+            drawStick(bx-10, GROUND_Y-18, GREEN, 1, wave+bi, 'victory');
+            var flyX=lerp(bx+15,bx+60,easeIn(wt));
+            var flyY=lerp(0,20,easeIn(wt));
+            drawStick(flyX, GROUND_Y-18+flyY, RED, 0.7, 0, 'knocked');
+            if(wt<0.05){ shake(2); spawnRing(bx, GROUND_Y-20, GOLD2, 40); }
+            // Victory beer
+            if(wt>0.4) drawStick(bx-10, GROUND_Y-18, GREEN, 1, wave*0.3, 'drink');
+          }
+        }
+
+        // Score rising
+        if(s3>0.5){
+          var sp=easeOut(Math.min((s3-0.5)*2,1));
+          var dispScore=Math.round(lerp(prevScore,curScore,sp));
+          glowText(dispScore.toLocaleString(), W/2, 35, sp>0.9?GREEN2:GOLD2, 28, Math.min((s3-0.5)*4,1), 20);
+          if(s3>0.7) glowText('+'+(net>=0?'':'')+net+' net', W/2, 60, net>=0?GREEN2:RED2, 12, Math.min((s3-0.7)*5,1), 8);
+        }
+      }
+
+      // ══ SCENE 4 (15.5-21s): VICTORY CELEBRATION ═══════════════════════
+      var s4=pt(t,15500,21000);
+      if(s4>0 && s4<=1){
+        drawGround();
+
+        // Flags planted across the field
+        var nFlags=Math.min(gained.length, 12);
+        for(var fi=0;fi<nFlags;fi++){
+          var fx=40+fi*(W-80)/(nFlags-1);
+          var fp=clamp((s4-fi*0.03)*5,0,1);
+          if(fp>0){
+            drawFlag(fx, lerp(GROUND_Y-60,GROUND_Y-2,easeOut(fp)), GREEN, wave+fi*0.5);
+            if(fp>0 && fp<0.06) spawnBurst(fx, GROUND_Y-20, GREEN2, 6);
+          }
+        }
+
+        // Celebrating army — mix of guitar, drink, victory, headbang
+        var poses=['victory','drink','guitar','headbang','victory','drink','headbang','victory'];
+        var colors=[GREEN,GREEN2,BLUE2,GREEN,GREEN2,GREEN,BLUE2,GREEN2];
+        for(var vi=0;vi<8;vi++){
+          var vx=60+vi*(W-120)/7;
+          if(s4>vi*0.05){
+            drawStick(vx, GROUND_Y-18, colors[vi], 1, wave+vi*0.7, poses[vi%poses.length]);
+          }
+        }
+
+        // Fireworks
+        if(s4>0.3 && Math.random()<0.06){
+          var fwC=[GREEN2,GOLD2,BLUE2,RED2][Math.floor(Math.random()*4)];
+          spawnBurst(rnd(60,W-60), rnd(20,80), fwC, 10, 4);
+        }
+
+        // Rank badge
+        if(s4>0.45){
+          var ra=Math.min((s4-0.45)*4,1);
+          ctx.save(); ctx.globalAlpha=ra;
+          ctx.fillStyle='rgba(13,24,40,0.8)'; ctx.fillRect(W/2-100,H-60,200,28);
+          ctx.strokeStyle=BLUE2; ctx.lineWidth=1.5; ctx.strokeRect(W/2-100,H-60,200,28);
+          ctx.fillStyle=BLUE2; ctx.font='bold 12px monospace'; ctx.textAlign='center';
+          ctx.shadowBlur=10; ctx.shadowColor=BLUE2;
+          ctx.fillText('RANK #'+rank+'  \u2022  SCORE '+curScore.toLocaleString(),W/2,H-42);
+          ctx.restore();
+        }
+      }
+
+      // ══ SCENE 5 (20.5-26s): THE CHRONICLE ═════════════════════════════
+      var s5=pt(t,20500,26000);
+      if(s5>0){ particles.length=0; rings.length=0; }
+      if(s5>0){
+        ctx.fillStyle='rgba(0,0,0,'+Math.min(s5/0.15,0.94)+')';
+        ctx.fillRect(-10,-10,W+20,H+20);
+
+        if(s5>0.12){
+          var la=Math.min((s5-0.12)/0.12,1);
+          ctx.save(); ctx.globalAlpha=la; ctx.fillStyle=GOLD;
+          ctx.fillRect(40,H/2-24,(W-80)*Math.min((s5-0.12)/0.18,1),2);
+          ctx.restore();
+        }
+        if(s5>0.25){
+          var cText='Round 4.5 \u2014 Sector 16';
+          var cProg=Math.min((s5-0.25)/0.35,1);
+          glowText(cText.substring(0,Math.floor(cProg*cText.length)), W/2, H/2+4, WHITE, 20, Math.min((s5-0.25)/0.12,1), 14);
+        }
+        if(s5>0.55){
+          var sLine='+'+gained.length+' seized \u00b7 '+lost.length+' lost \u00b7 Score '+curScore.toLocaleString()+' \u00b7 Rank #'+rank;
+          var sP=Math.min((s5-0.55)/0.35,1);
+          glowText(sLine.substring(0,Math.floor(sP*sLine.length)), W/2, H/2+22, MUTED, 9, Math.min((s5-0.55)/0.12,1), 0);
+        }
+        if(s5>0.85){
+          glowText('\uD83C\uDF7A', W/2-40, H/2+50, WHITE, 16, Math.min((s5-0.85)*6,1), 0);
+          glowText('\uD83C\uDFB8', W/2, H/2+50, WHITE, 16, Math.min((s5-0.88)*6,1), 0);
+          glowText('\uD83E\uDD4A', W/2+40, H/2+50, WHITE, 16, Math.min((s5-0.91)*6,1), 0);
+        }
+      }
+
+      tickParticles();
+      tickRings();
+      ctx.restore();
+
+      if(t<1.0) storyAnimFrame=requestAnimationFrame(render);
+      else storyAnimFrame=null;
+    };
+    storyAnimFrame=requestAnimationFrame(render);
+  }
+
   function openStory() {
     if (!rawData || !rawData.rounds) return;
     var prevKey = getPrevRoundKey();
@@ -4540,7 +5059,9 @@
     var takenFrom = {};
     gained.forEach(function(c){ if(c.fromSid) takenFrom[c.fromSid]=(takenFrom[c.fromSid]||0)+1; });
     var topTargets = Object.keys(takenFrom).sort(function(a,b){return takenFrom[b]-takenFrom[a];});
-    if (String(activeRound) === '3.5') {
+    if (String(activeRound) === '4.5') {
+      playRound4BrawlAnimation(gained, lost, prevScore, curScore, scoreDelta, topTargets, takenFrom);
+    } else if (String(activeRound) === '3.5') {
       playPostBattleAnimation(gained, lost, prevScore, curScore, scoreDelta, topTargets, takenFrom);
     } else {
       playStoryAnimation(gained, lost, curScore, scoreDelta, topTargets, takenFrom);
