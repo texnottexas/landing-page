@@ -161,16 +161,16 @@
       opacity: .4;
     }
 
-    /* Zone rings */
+    /* Zone squares (game renders cells as squares) */
     .zone-outer {
       position: absolute; top: 8%; left: 8%; width: 84%; height: 84%;
-      border: 1.5px dashed rgba(0,0,0,.2); border-radius: 50%;
+      border: 1.5px dashed rgba(0,0,0,.25); border-radius: 6px;
       pointer-events: none;
     }
     .zone-inner {
       position: absolute; top: 28%; left: 28%; width: 44%; height: 44%;
-      border: 1.5px dashed rgba(0,0,0,.25); border-radius: 50%;
-      background: rgba(0,0,0,.12); pointer-events: none;
+      border: 1.5px dashed rgba(0,0,0,.3); border-radius: 4px;
+      background: rgba(0,0,0,.13); pointer-events: none;
     }
 
     /* ── Building icons ──────────────────────────────────────────── */
@@ -268,9 +268,13 @@
     .tl { display: flex; flex-direction: column; gap: 3px; }
     .tl-row {
       display: flex; align-items: baseline; gap: 6px;
-      font-size: .76rem; border-radius: 4px; padding: 3px 5px;
-      transition: background .3s;
+      font-size: .76rem; border-radius: 4px; padding: 4px 5px;
+      transition: background .15s;
+      border-bottom: 1px solid rgba(48,54,61,.5);
     }
+    .tl-row:last-child { border-bottom: none; }
+    .tl-row[data-bld] { cursor: pointer; }
+    .tl-row[data-bld]:hover { background: var(--card); }
     .tl-row.now { background: rgba(63,185,80,.1); }
     .tl-time  { font-family: monospace; font-size: .72rem; color: var(--muted); min-width: 38px; flex-shrink: 0; }
     .tl-label { color: var(--text); flex: 1; }
@@ -300,7 +304,8 @@
       .lang-btn #langCode { display: none; }
     }
 
-    /* Google Translate hide gadget */
+    /* Google Translate — suppress toolbar entirely like landing page */
+    body > .skiptranslate { display: none !important; }
     .goog-te-gadget, .goog-te-banner-frame { display: none !important; }
     body { top: 0 !important; }
   </style>
@@ -352,10 +357,10 @@
 
 <!-- Timer + Companion -->
 <div class="timer-bar">
-  <div class="timer-clock pre" id="timer-clock">--:--</div>
+  <div class="timer-clock pre notranslate" id="timer-clock" translate="no">--:--</div>
   <div class="timer-status">
-    <div class="timer-phase" id="timer-phase">Loading&hellip;</div>
-    <div class="timer-next"  id="timer-next"></div>
+    <div class="timer-phase notranslate" id="timer-phase" translate="no">Loading&hellip;</div>
+    <div class="timer-next  notranslate" id="timer-next"  translate="no"></div>
   </div>
   <div class="companion-wrap">
     <button class="companion-btn" id="companion-btn" onclick="handleCompanion()">
@@ -495,7 +500,7 @@
     <!-- Buildings (clickable to highlight) -->
     <div class="card">
       <div class="card-title">Buildings &mdash; click to highlight</div>
-      <div class="bld-row" data-highlight="station" onclick="toggleHighlight(this,'station')">
+      <div class="bld-row" data-highlight="station" onclick="toggleHighlight('station')">
         <img src="../assets/cnc-icons/cnc_building_out.png" alt="">
         <div class="bld-info">
           <div class="bld-name sc">Enigma Station &times;12</div>
@@ -503,7 +508,7 @@
         </div>
         <div class="bld-pts">500 capture<br>250/min</div>
       </div>
-      <div class="bld-row" data-highlight="hub" onclick="toggleHighlight(this,'hub')">
+      <div class="bld-row" data-highlight="hub" onclick="toggleHighlight('hub')">
         <img src="../assets/cnc-icons/cnc_building_in.png" alt="">
         <div class="bld-info">
           <div class="bld-name hc">Enigma Hub &times;8</div>
@@ -511,13 +516,13 @@
         </div>
         <div class="bld-pts">1000 capture<br>500/min</div>
       </div>
-      <div class="bld-row" data-highlight="cluster" onclick="toggleHighlight(this,'cluster')">
+      <div class="bld-row" data-highlight="cluster" onclick="toggleHighlight('cluster')">
         <img src="../assets/cnc-icons/icon_cq25_kuang.png" alt="">
         <div class="bld-info">
           <div class="bld-name cc">Seal Stone Cluster</div>
           <div class="bld-sub">3 waves &middot; 4 spawn points each</div>
         </div>
-        <div class="bld-pts">Continuous<br>pts/sec</div>
+        <div class="bld-pts">100/min<br>(team)</div>
       </div>
       <!-- Boss — not a building, no highlight, separated -->
       <div class="boss-row">
@@ -533,15 +538,15 @@
     <div class="card">
       <div class="card-title">Battle Timeline (60 min)</div>
       <div class="tl" id="timeline">
-        <div class="tl-row"       data-ps="0"  data-pe="5" ><span class="tl-time">0:00</span><span class="tl-label">Battle opens</span><span class="tl-note">&nbsp;&mdash; setup</span></div>
-        <div class="tl-row ts hl" data-ps="5"  data-pe="25"><span class="tl-time">5:00</span><span class="tl-label">Enigma Stations open</span></div>
-        <div class="tl-row tc"    data-ps="15" data-pe="25"><span class="tl-time">15:00</span><span class="tl-label">Clusters &mdash; wave 1</span><span class="tl-note">&nbsp;&times;15, 10 min</span></div>
-        <div class="tl-row th hl" data-ps="25" data-pe="60"><span class="tl-time">25:00</span><span class="tl-label">Enigma Hubs open</span></div>
-        <div class="tl-row tc"    data-ps="28" data-pe="38"><span class="tl-time">28:00</span><span class="tl-label">Clusters &mdash; wave 2</span><span class="tl-note">&nbsp;&times;15, 10 min</span></div>
-        <div class="tl-row tb"    data-ps="35" data-pe="40"><span class="tl-time">35:00</span><span class="tl-label">Enigma Lord attackable</span><span class="tl-note">&nbsp;5 min</span></div>
-        <div class="tl-row tc"    data-ps="42" data-pe="52"><span class="tl-time">42:00</span><span class="tl-label">Clusters &mdash; wave 3</span><span class="tl-note">&nbsp;&times;15, 10 min</span></div>
-        <div class="tl-row tburn hl" data-ps="45" data-pe="60"><span class="tl-time">45:00</span><span class="tl-label">Burn Stage &mdash; 3&times; points</span><span class="tl-note">&nbsp;15 min</span></div>
-        <div class="tl-row"       data-ps="60" data-pe="999"><span class="tl-time">60:00</span><span class="tl-label">Battle over</span></div>
+        <div class="tl-row"       data-ps="0"  data-pe="5"  ><span class="tl-time">0:00</span><span class="tl-label">Battle opens</span><span class="tl-note">&nbsp;&mdash; setup</span></div>
+        <div class="tl-row ts hl" data-ps="5"  data-pe="25" data-bld="station" onclick="toggleHighlight('station')"><span class="tl-time">5:00</span><span class="tl-label">Enigma Stations open</span></div>
+        <div class="tl-row tc"    data-ps="15" data-pe="25" data-bld="cluster" onclick="toggleHighlight('cluster')"><span class="tl-time">15:00</span><span class="tl-label">Clusters &mdash; wave 1</span><span class="tl-note">&nbsp;&times;15, 10 min</span></div>
+        <div class="tl-row th hl" data-ps="25" data-pe="60" data-bld="hub"     onclick="toggleHighlight('hub')"    ><span class="tl-time">25:00</span><span class="tl-label">Enigma Hubs open</span></div>
+        <div class="tl-row tc"    data-ps="28" data-pe="38" data-bld="cluster" onclick="toggleHighlight('cluster')"><span class="tl-time">28:00</span><span class="tl-label">Clusters &mdash; wave 2</span><span class="tl-note">&nbsp;&times;15, 10 min</span></div>
+        <div class="tl-row tb"    data-ps="35" data-pe="40" data-bld="boss"    onclick="toggleHighlight('boss')"   ><span class="tl-time">35:00</span><span class="tl-label">Enigma Lord attackable</span><span class="tl-note">&nbsp;5 min</span></div>
+        <div class="tl-row tc"    data-ps="42" data-pe="52" data-bld="cluster" onclick="toggleHighlight('cluster')"><span class="tl-time">42:00</span><span class="tl-label">Clusters &mdash; wave 3</span><span class="tl-note">&nbsp;&times;15, 10 min</span></div>
+        <div class="tl-row tburn hl" data-ps="45" data-pe="60"                 ><span class="tl-time">45:00</span><span class="tl-label">Burn Stage &mdash; 3&times; points</span><span class="tl-note">&nbsp;15 min</span></div>
+        <div class="tl-row"       data-ps="60" data-pe="999"                   ><span class="tl-time">60:00</span><span class="tl-label">Battle over</span></div>
       </div>
     </div>
 
@@ -743,24 +748,25 @@ fetch('../player-data.json').then(function(r) { return r.json(); }).then(functio
 
 renderIdentityRow(getIdentity());
 
-// ─── Map highlight (sidebar click) ───────────────────────────────────────────
+// ─── Map highlight (sidebar + timeline click) ────────────────────────────────
 var currentHighlight = null;
 
-function toggleHighlight(rowEl, type) {
-  var rows = document.querySelectorAll('.bld-row');
-  rows.forEach(function(r) { r.classList.remove('selected'); });
+function toggleHighlight(type) {
+  // Clear sidebar selections
+  document.querySelectorAll('.bld-row').forEach(function(r) { r.classList.remove('selected'); });
+  // Clear map highlights
+  document.querySelectorAll('.bld.map-highlight').forEach(function(b) { b.classList.remove('map-highlight'); });
 
   if (currentHighlight === type) {
-    // Toggle off
-    document.querySelectorAll('.bld.map-highlight').forEach(function(b) { b.classList.remove('map-highlight'); });
     currentHighlight = null;
     return;
   }
 
-  rowEl.classList.add('selected');
   currentHighlight = type;
-
-  document.querySelectorAll('.bld').forEach(function(b) { b.classList.remove('map-highlight'); });
+  // Highlight matching sidebar row
+  var sideRow = document.querySelector('.bld-row[data-highlight="' + type + '"]');
+  if (sideRow) sideRow.classList.add('selected');
+  // Highlight map icons
   document.querySelectorAll('.bld[data-type="' + type + '"]').forEach(function(b) { b.classList.add('map-highlight'); });
 }
 
