@@ -147,21 +147,30 @@
 
     /* ── Map ─────────────────────────────────────────────────────── */
     .map-wrap { flex: 0 0 auto; width: min(580px, 100%); }
+
+    /* map-container: sizing wrapper — overflow VISIBLE so tooltips escape */
     .map-container {
       position: relative; width: 100%; padding-top: 100%;
-      background: radial-gradient(ellipse at 50% 50%, #c8a870 0%, #b8924a 35%, #9a7434 65%, #7a5820 100%);
-      border-radius: 10px; border: 2px solid #6b4f1f; overflow: hidden;
+      border: 2px solid #6b4f1f; border-radius: 10px;
+      overflow: visible;
     }
-    .map-inner { position: absolute; inset: 0; }
 
-    /* Subtle sand texture overlay */
-    .map-container::before {
-      content: ''; position: absolute; inset: 0; pointer-events: none;
+    /* map-bg: visual background layer, clipped to border-radius */
+    .map-bg {
+      position: absolute; inset: 0; border-radius: 8px; overflow: hidden;
+      background: radial-gradient(ellipse at 50% 50%, #c8a870 0%, #b8924a 35%, #9a7434 65%, #7a5820 100%);
+      pointer-events: none; z-index: 0;
+    }
+    .map-bg::before {
+      content: ''; position: absolute; inset: 0;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='60' height='60' filter='url(%23n)' opacity='.06'/%3E%3C/svg%3E");
       opacity: .4;
     }
 
-    /* Zone squares (game renders cells as squares) */
+    /* map-inner: icon layer — overflow visible, sits above map-bg */
+    .map-inner { position: absolute; inset: 0; overflow: visible; z-index: 1; }
+
+    /* Zone squares */
     .zone-outer {
       position: absolute; top: 8%; left: 8%; width: 84%; height: 84%;
       border: 1.5px dashed rgba(0,0,0,.25); border-radius: 6px;
@@ -172,6 +181,34 @@
       border: 1.5px dashed rgba(0,0,0,.3); border-radius: 4px;
       background: rgba(0,0,0,.13); pointer-events: none;
     }
+
+    /* Building info popup (tap/click, works on mobile) */
+    #bld-popup {
+      display: none; position: fixed; z-index: 9999;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px; min-width: 180px; max-width: 240px;
+      box-shadow: 0 6px 24px rgba(0,0,0,.6); pointer-events: none;
+    }
+    #bld-popup.visible { display: block; }
+    #bld-popup .p-name { font-size: .82rem; font-weight: 700; margin-bottom: 5px; }
+    #bld-popup .p-row  { font-size: .72rem; color: var(--muted); line-height: 1.6; }
+    #bld-popup .p-row span { color: var(--text); }
+    #bld-popup .p-close { position: absolute; top: 6px; right: 8px; background: none; border: none; color: var(--muted); cursor: pointer; font-size: .9rem; pointer-events: all; }
+    @media (max-width: 600px) {
+      /* On mobile, show as bottom sheet */
+      #bld-popup {
+        position: fixed; left: 12px; right: 12px; bottom: 16px;
+        top: auto; max-width: none; min-width: 0; pointer-events: all;
+        border-radius: 10px;
+      }
+    }
+
+    /* PWA install hint */
+    .pwa-hint {
+      font-size: .7rem; color: var(--gold); text-align: right; max-width: 220px;
+      line-height: 1.4; margin-top: 2px;
+    }
+    .pwa-hint a { color: var(--gold); }
 
     /* ── Building icons ──────────────────────────────────────────── */
     .bld {
@@ -216,16 +253,18 @@
     .boss .badge    { border-color: var(--red); color: var(--red); display: none; }
     .boss.active .badge { display: block; }
 
-    /* Tooltip */
+    /* Tooltip — desktop hover only; high z-index since map overflow is now visible */
     .bld .tip {
       display: none; position: absolute;
       bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%);
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: 7px; padding: 8px 10px; min-width: 150px;
-      z-index: 99; pointer-events: none; text-align: left;
-      box-shadow: 0 4px 16px rgba(0,0,0,.5);
+      border-radius: 7px; padding: 8px 10px; min-width: 155px;
+      z-index: 9998; pointer-events: none; text-align: left;
+      box-shadow: 0 4px 16px rgba(0,0,0,.6);
     }
     .bld:hover .tip { display: block; }
+    /* Hide hover tooltips on touch devices — use tap popup instead */
+    @media (hover: none) { .bld .tip { display: none !important; } }
     .tip-name { font-size: .78rem; font-weight: 700; margin-bottom: 4px; }
     .tip-row  { font-size: .7rem; color: var(--muted); line-height: 1.5; }
     .tip-row span { color: var(--text); }
@@ -291,8 +330,15 @@
     .rule-item {
       background: var(--card); border-radius: 6px; padding: 8px 10px;
       font-size: .73rem; line-height: 1.5; color: var(--muted);
+      border-left: 3px solid transparent;
     }
     .rule-item strong { color: var(--text); display: block; font-size: .72rem; margin-bottom: 2px; }
+    .rules-grid .rule-item:nth-child(1) { border-left-color: var(--navy); }
+    .rules-grid .rule-item:nth-child(2) { border-left-color: var(--gold); }
+    .rules-grid .rule-item:nth-child(3) { border-left-color: var(--red); }
+    .rules-grid .rule-item:nth-child(4) { border-left-color: var(--green); }
+    .rules-grid .rule-item:nth-child(5) { border-left-color: var(--accent); }
+    .rules-grid .rule-item:nth-child(6) { border-left-color: var(--orange); }
     @media (max-width: 400px) { .rules-grid { grid-template-columns: 1fr; } }
 
     /* Responsive */
@@ -369,6 +415,7 @@
     </button>
     <div id="companion-status"></div>
     <span class="unsub-link" id="unsub-link" style="display:none" onclick="handleUnsub()">Remove storm alerts</span>
+    <div class="pwa-hint" id="pwa-hint" style="display:none"></div>
   </div>
 </div>
 
@@ -378,9 +425,13 @@
   <!-- MAP -->
   <div class="map-wrap">
     <div class="map-container">
-      <div class="map-inner">
+      <!-- Background layer — clipped by overflow:hidden + border-radius -->
+      <div class="map-bg">
         <div class="zone-outer"></div>
         <div class="zone-inner"></div>
+      </div>
+      <!-- Icon layer — overflow:visible so tooltips escape the container -->
+      <div class="map-inner">
 
         <!-- Enigma Stations — 12 outer ring, opens at 5:00 -->
         <div class="bld station inactive" data-type="station" data-opens="5" style="left:18.75%;top:37.5%">
@@ -566,6 +617,13 @@
   </div>
 </div>
 
+<!-- Building info popup (shared, positioned by JS) -->
+<div id="bld-popup">
+  <button class="p-close" id="bld-popup-close" aria-label="Close">&times;</button>
+  <div class="p-name" id="bld-popup-name"></div>
+  <div id="bld-popup-rows"></div>
+</div>
+
 <!-- Feedback widget -->
 <script src="../feedback-widget.js"></script>
 <script>
@@ -748,6 +806,88 @@ fetch('../player-data.json').then(function(r) { return r.json(); }).then(functio
 
 renderIdentityRow(getIdentity());
 
+// ─── Building tap popup (works on mobile) ────────────────────────────────────
+var popup     = document.getElementById('bld-popup');
+var popupName = document.getElementById('bld-popup-name');
+var popupRows = document.getElementById('bld-popup-rows');
+var popupClose = document.getElementById('bld-popup-close');
+
+function showBldPopup(el, e) {
+  // Populate from .tip children
+  var tip = el.querySelector('.tip');
+  if (!tip) return;
+
+  var nameEl = tip.querySelector('.tip-name');
+  popupName.textContent = nameEl ? nameEl.textContent : '';
+  popupName.style.color = getComputedStyle(nameEl || el).color;
+  while (popupRows.firstChild) popupRows.removeChild(popupRows.firstChild);
+  tip.querySelectorAll('.tip-row').forEach(function(row) {
+    var d = document.createElement('div');
+    d.className = 'p-row';
+    // Safely copy text content preserving span children
+    row.childNodes.forEach(function(child) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        d.appendChild(document.createTextNode(child.textContent));
+      } else if (child.tagName === 'SPAN') {
+        var s = document.createElement('span');
+        s.textContent = child.textContent;
+        d.appendChild(s);
+      }
+    });
+    popupRows.appendChild(d);
+  });
+
+  popup.classList.add('visible');
+
+  // Always set explicit position — never rely on CSS for fixed-position JS elements
+  var isMobile = window.innerWidth <= 600;
+  if (isMobile) {
+    // Bottom sheet
+    popup.style.left = '12px';
+    popup.style.right = '12px';
+    popup.style.bottom = '16px';
+    popup.style.top = 'auto';
+    popup.style.maxWidth = 'none';
+    popup.style.width = 'auto';
+    popup.style.pointerEvents = 'all';
+  } else if (e) {
+    // Near cursor
+    popup.style.maxWidth = '240px';
+    popup.style.width = '';
+    popup.style.pointerEvents = 'none';
+    var margin = 10, pw = 240, ph = 130;
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var x = e.clientX + margin;
+    var y = e.clientY - ph / 2;
+    if (x + pw > vw - 8) x = e.clientX - pw - margin;
+    if (y < 8) y = 8;
+    if (y + ph > vh - 8) y = vh - ph - 8;
+    popup.style.left   = x + 'px';
+    popup.style.top    = y + 'px';
+    popup.style.right  = '';
+    popup.style.bottom = '';
+  }
+
+  e && e.stopPropagation();
+}
+
+popupClose.addEventListener('click', function(e) {
+  popup.classList.remove('visible');
+  e.stopPropagation();
+});
+
+document.addEventListener('click', function(e) {
+  if (popup.classList.contains('visible') && !popup.contains(e.target)) {
+    popup.classList.remove('visible');
+  }
+});
+
+// Wire click handlers to all building icons
+document.querySelectorAll('.bld').forEach(function(el) {
+  el.style.cursor = 'pointer';
+  el.addEventListener('click', function(e) { showBldPopup(el, e); });
+});
+
 // ─── Map highlight (sidebar + timeline click) ────────────────────────────────
 var currentHighlight = null;
 
@@ -909,12 +1049,36 @@ function setUnsubscribed() {
   localStorage.removeItem('stormCompanion_2026_04_11');
 }
 
+function isStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+}
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+function isMobileDevice() {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
 async function handleCompanion() {
-  var btn = document.getElementById('companion-btn');
+  var btn    = document.getElementById('companion-btn');
   var status = document.getElementById('companion-status');
+  var hint   = document.getElementById('pwa-hint');
   if (btn.classList.contains('subscribed') || btn.classList.contains('loading')) return;
+
+  // iOS Safari requires PWA installation for push notifications
+  if (isIOS() && !isStandalone()) {
+    if (hint) {
+      hint.style.display = '';
+      while (hint.firstChild) hint.removeChild(hint.firstChild);
+      hint.appendChild(document.createTextNode('\u26A0\uFE0F iOS requires the PWA to be installed. Tap Share \u2192 Add to Home Screen, then reopen this page to subscribe.'));
+    }
+    return;
+  }
+
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    status.className = 'err'; status.textContent = 'Push not supported here.'; return;
+    status.className = 'err';
+    status.textContent = 'Push notifications not supported in this browser.';
+    return;
   }
   btn.classList.add('loading');
   status.className = ''; status.textContent = 'Subscribing\u2026';
@@ -937,6 +1101,8 @@ async function handleCompanion() {
     if (res.ok) {
       setSubscribed();
       status.className = 'ok'; status.textContent = '1 min alerts before each event today.';
+      var h = document.getElementById('pwa-hint');
+      if (h) h.style.display = 'none';
     } else {
       status.className = 'err'; status.textContent = 'Failed \u2014 try again.';
     }
