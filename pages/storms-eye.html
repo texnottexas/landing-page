@@ -5,405 +5,484 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Storm's Eye — S2864</title>
   <meta name="theme-color" content="#0d1117">
-
-  <!-- Google Translate -->
-  <script>
-    function googleTranslateInit() {
-      new google.translate.TranslateElement({
-        pageLanguage: 'en',
-        includedLanguages: 'zh-CN,zh-TW,ko,ja,de,fr,es,pt,ru,ar,hi,th,vi,id,tr',
-        layout: google.translate.TranslateElement.InlineLayout.SIMPLE,
-        autoDisplay: false
-      }, 'google_translate_element');
-    }
-  </script>
-  <script src="//translate.google.com/translate_a/element.js?cb=googleTranslateInit" async></script>
-
   <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --card: #1c2128;
+      --border: #30363d; --text: #e6edf3; --muted: #8b949e;
+      --accent: #79c0ff; --green: #3fb950; --gold: #d29922;
+      --red: #f85149; --navy: #388bfd; --orange: #ff8c00;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
-      background: #0d1117;
-      color: #e6edf3;
+      background: var(--bg); color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 12px 16px 32px;
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; padding: 12px 14px 40px;
     }
 
-    /* ── Header ─────────────────────────────────────────────────────── */
+    /* ── Header ──────────────────────────────────────────────────── */
     header {
-      width: 100%;
-      max-width: 900px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding-bottom: 12px;
-      margin-bottom: 12px;
-      border-bottom: 1px solid #30363d;
-      flex-wrap: wrap;
+      width: 100%; max-width: 940px;
+      display: flex; align-items: center; gap: 10px;
+      padding-bottom: 11px; margin-bottom: 12px;
+      border-bottom: 1px solid var(--border); flex-wrap: wrap;
     }
-    .city-icon { width: 52px; height: auto; flex-shrink: 0; }
-    .title-block h1 { font-size: 1.3rem; font-weight: 700; color: #79c0ff; }
-    .title-block p  { font-size: 0.75rem; color: #8b949e; margin-top: 1px; }
-    .header-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-    #google_translate_element { font-size: 0.75rem; }
+    .city-icon { width: 48px; height: auto; flex-shrink: 0; }
+    .title-block { flex: 1; min-width: 0; }
+    .title-block h1 { font-size: 1.25rem; font-weight: 700; color: var(--accent); }
+    .title-block p  { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
+    .identity-row { font-size: .72rem; color: var(--muted); margin-top: 2px; display: flex; align-items: center; gap: 4px; }
+    .identity-name { color: var(--accent); font-weight: 600; }
+    .identity-reset { background: none; border: none; color: var(--muted); cursor: pointer; font-size: .72rem; padding: 0 2px; line-height: 1; }
+    .identity-reset:hover { color: var(--red); }
+    .identity-who { color: var(--muted); cursor: pointer; text-decoration: underline dotted; font-size: .72rem; }
+    .identity-who:hover { color: var(--accent); }
 
-    /* ── Battle Timer Bar ────────────────────────────────────────────── */
+    .hdr-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+    .lang-btn {
+      background: var(--card); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 6px; padding: .3rem .6rem; cursor: pointer;
+      font-size: .78rem; display: flex; align-items: center; gap: .3rem;
+      font-family: inherit; font-weight: 600; transition: border-color .15s;
+      white-space: nowrap;
+    }
+    .lang-btn:hover { border-color: var(--accent); color: var(--text); }
+    #google_translate_element { display: none; }
+
+    /* Lang modal */
+    .lang-modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 500;
+      background: rgba(0,0,0,.6); align-items: center; justify-content: center;
+    }
+    .lang-modal-overlay.active { display: flex; }
+    .lang-modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 18px; max-width: 380px; width: 92%;
+      max-height: 80vh; overflow-y: auto;
+    }
+    .lang-modal h3 { font-size: .85rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 12px; }
+    .lang-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; }
+    .lang-opt {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 6px; padding: 7px 8px; cursor: pointer;
+      font-size: .78rem; font-family: inherit; color: var(--text);
+      transition: border-color .15s;
+    }
+    .lang-opt:hover { border-color: var(--accent); }
+    .lang-opt.active { border-color: var(--accent); color: var(--accent); }
+    .lang-flag { font-size: 1.1rem; }
+    .lang-name { font-size: .72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Identity picker modal */
+    .id-modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 500;
+      background: rgba(0,0,0,.6); align-items: center; justify-content: center;
+    }
+    .id-modal-overlay.active { display: flex; }
+    .id-modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px; max-width: 340px; width: 92%;
+    }
+    .id-modal h3 { font-size: .85rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px; }
+    .id-search {
+      width: 100%; background: var(--card); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 7px 10px;
+      font-size: .82rem; font-family: inherit; margin-bottom: 8px;
+      outline: none;
+    }
+    .id-search:focus { border-color: var(--accent); }
+    .id-list { max-height: 240px; overflow-y: auto; }
+    .id-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 8px; border-radius: 5px; cursor: pointer;
+      font-size: .8rem; transition: background .1s;
+    }
+    .id-item:hover { background: var(--card); }
+    .id-item .id-alliance { font-size: .68rem; color: var(--muted); }
+    .id-cancel { margin-top: 10px; width: 100%; background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 7px; cursor: pointer; font-family: inherit; font-size: .78rem; }
+    .id-cancel:hover { border-color: var(--red); color: var(--red); }
+
+    /* ── Timer bar ───────────────────────────────────────────────── */
     .timer-bar {
-      width: 100%;
-      max-width: 900px;
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      padding: 12px 16px;
-      margin-bottom: 14px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
+      width: 100%; max-width: 940px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px;
+      display: flex; align-items: center; gap: 14px;
+      margin-bottom: 14px; flex-wrap: wrap;
     }
     .timer-clock {
-      font-family: monospace;
-      font-size: 2rem;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      min-width: 120px;
+      font-family: monospace; font-size: 2rem; font-weight: 700;
+      letter-spacing: .04em; min-width: 110px; flex-shrink: 0;
     }
-    .timer-clock.pre    { color: #8b949e; }
-    .timer-clock.live   { color: #3fb950; }
-    .timer-clock.over   { color: #f85149; }
-    .timer-status {
-      flex: 1;
-      min-width: 0;
-    }
-    .timer-status .phase {
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: #e6edf3;
-    }
-    .timer-status .next-event {
-      font-size: 0.77rem;
-      color: #8b949e;
-      margin-top: 2px;
-    }
-    .timer-status .next-event span { color: #79c0ff; }
+    .timer-clock.pre  { color: var(--muted); }
+    .timer-clock.live { color: var(--green); }
+    .timer-clock.over { color: var(--red); }
+    .timer-status { flex: 1; min-width: 0; }
+    .timer-phase { font-size: .92rem; font-weight: 600; }
+    .timer-next  { font-size: .74rem; color: var(--muted); margin-top: 2px; }
+    .timer-next .ne { color: var(--accent); }
 
     /* companion button */
+    .companion-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
     .companion-btn {
-      background: #1c2128;
-      border: 1px solid #3fb950;
-      color: #3fb950;
-      padding: 9px 16px;
-      border-radius: 6px;
-      font-size: 0.82rem;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      white-space: nowrap;
-      transition: background 0.15s;
-      flex-shrink: 0;
+      background: var(--card); border: 1px solid var(--green);
+      color: var(--green); padding: 7px 13px; border-radius: 6px;
+      font-size: .8rem; cursor: pointer; display: flex; align-items: center;
+      gap: 6px; white-space: nowrap; transition: background .15s;
+      font-family: inherit;
     }
-    .companion-btn:hover { background: #2d333b; }
-    .companion-btn.subscribed { border-color: #79c0ff; color: #79c0ff; cursor: default; }
-    .companion-btn.loading    { opacity: 0.6; cursor: wait; }
-    .companion-btn svg { width: 14px; height: 14px; fill: currentColor; flex-shrink: 0; }
-    #companion-status { font-size: 0.72rem; color: #8b949e; margin-top: 4px; width: 100%; }
-    #companion-status.ok  { color: #3fb950; }
-    #companion-status.err { color: #f85149; }
+    .companion-btn:hover { background: #1e2d20; }
+    .companion-btn.subscribed { border-color: var(--accent); color: var(--accent); }
+    .companion-btn.loading    { opacity: .6; cursor: wait; }
+    .companion-btn svg { width: 13px; height: 13px; fill: currentColor; flex-shrink: 0; }
+    #companion-status { font-size: .68rem; color: var(--muted); text-align: right; max-width: 220px; }
+    #companion-status.ok  { color: var(--green); }
+    #companion-status.err { color: var(--red); }
+    .unsub-link { font-size: .68rem; color: var(--muted); cursor: pointer; text-decoration: underline dotted; text-align: right; }
+    .unsub-link:hover { color: var(--red); }
 
-    /* ── Main layout ─────────────────────────────────────────────────── */
-    .main-layout {
-      display: flex;
-      gap: 16px;
-      width: 100%;
-      max-width: 900px;
-      align-items: flex-start;
-    }
+    /* ── Main layout ─────────────────────────────────────────────── */
+    .main-layout { display: flex; gap: 16px; width: 100%; max-width: 940px; align-items: flex-start; }
 
-    /* ── Map ─────────────────────────────────────────────────────────── */
-    .map-wrap { flex: 0 0 auto; width: min(520px, 100%); }
+    /* ── Map ─────────────────────────────────────────────────────── */
+    .map-wrap { flex: 0 0 auto; width: min(580px, 100%); }
     .map-container {
-      position: relative;
-      width: 100%;
-      padding-top: 100%;
-      background: radial-gradient(ellipse at 50% 50%, #2a1e0f 0%, #1a1208 60%, #0d0a06 100%);
-      border-radius: 8px;
-      border: 1px solid #30363d;
-      overflow: hidden;
+      position: relative; width: 100%; padding-top: 100%;
+      background: radial-gradient(ellipse at 50% 50%, #c8a870 0%, #b8924a 35%, #9a7434 65%, #7a5820 100%);
+      border-radius: 10px; border: 2px solid #6b4f1f; overflow: hidden;
     }
     .map-inner { position: absolute; inset: 0; }
+
+    /* Subtle sand texture overlay */
     .map-container::before {
-      content: '';
-      position: absolute; inset: 0;
-      background-image:
-        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
-      background-size: 10% 10%;
-      pointer-events: none;
-    }
-    .safe-zone {
-      position: absolute;
-      top: 8%; left: 8%; width: 84%; height: 84%;
-      border: 1px dashed rgba(121,192,255,0.12);
-      border-radius: 50%;
-      pointer-events: none;
+      content: ''; position: absolute; inset: 0; pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='60' height='60' filter='url(%23n)' opacity='.06'/%3E%3C/svg%3E");
+      opacity: .4;
     }
 
-    /* ── Building icons ──────────────────────────────────────────────── */
+    /* Zone rings */
+    .zone-outer {
+      position: absolute; top: 8%; left: 8%; width: 84%; height: 84%;
+      border: 1.5px dashed rgba(0,0,0,.2); border-radius: 50%;
+      pointer-events: none;
+    }
+    .zone-inner {
+      position: absolute; top: 28%; left: 28%; width: 44%; height: 44%;
+      border: 1.5px dashed rgba(0,0,0,.25); border-radius: 50%;
+      background: rgba(0,0,0,.12); pointer-events: none;
+    }
+
+    /* ── Building icons ──────────────────────────────────────────── */
     .bld {
-      position: absolute;
-      transform: translate(-50%, -50%);
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      z-index: 2;
-      transition: opacity 0.4s;
+      position: absolute; transform: translate(-50%,-50%);
+      cursor: default; display: flex; flex-direction: column;
+      align-items: center; z-index: 2; transition: opacity .35s;
     }
-    .bld.inactive { opacity: 0.35; }
-    .bld.active   { opacity: 1; }
-    .bld.pulsing img { animation: pulse 1.4s ease-in-out infinite; }
-    @keyframes pulse { 0%,100%{filter:drop-shadow(0 0 4px currentColor) brightness(1)} 50%{filter:drop-shadow(0 0 12px currentColor) brightness(1.3)} }
-
     .bld img {
-      display: block;
-      transition: transform 0.15s;
-      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.7));
+      display: block; transition: transform .15s, filter .15s;
+      filter: drop-shadow(0 2px 5px rgba(0,0,0,.65));
     }
-    .bld:hover img { transform: scale(1.15); }
+    .bld:hover img { transform: scale(1.12); }
 
-    .station img { width: clamp(26px, 5vw, 42px); }
-    .hub img     { width: clamp(30px, 5.5vw, 46px); }
-    .cluster img { width: clamp(24px, 4.2vw, 36px); }
-    .boss img    { width: clamp(28px, 5vw, 42px); }
+    .station img { width: clamp(30px, 5.5vw, 44px); }
+    .hub img     { width: clamp(34px, 6vw, 48px); }
+    .cluster img { width: clamp(27px, 4.5vw, 38px); }
+    .boss img    { width: clamp(30px, 5vw, 42px); }
 
+    /* state classes */
+    .bld.inactive img { filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)) grayscale(0.5) brightness(0.6); }
+    .bld.active   img { filter: drop-shadow(0 2px 6px rgba(0,0,0,.7)) brightness(1.05); }
+    .bld.pulsing  img { animation: bld-pulse 1.5s ease-in-out infinite; }
+    @keyframes bld-pulse { 0%,100%{filter:drop-shadow(0 2px 6px rgba(0,0,0,.7)) brightness(1.05)} 50%{filter:drop-shadow(0 0 14px rgba(255,255,255,.7)) brightness(1.3)} }
+    .bld.burning  img { filter: drop-shadow(0 0 10px #ff6b00) brightness(1.15) !important; animation: bld-burn 1s ease-in-out infinite !important; }
+    @keyframes bld-burn { 0%,100%{filter:drop-shadow(0 0 8px #ff6b00) brightness(1.1)} 50%{filter:drop-shadow(0 0 16px #ff8c00) brightness(1.3)} }
+
+    /* map-highlight from sidebar click */
+    .bld.map-highlight img { filter: drop-shadow(0 0 12px rgba(255,255,255,.9)) brightness(1.4) !important; transform: scale(1.18) !important; animation: none !important; }
+
+    /* timing badge */
     .bld .badge {
-      position: absolute; top: -9px;
-      background: #161b22; border: 1px solid #30363d;
-      border-radius: 3px; font-size: 0.52rem;
-      padding: 1px 4px; white-space: nowrap;
-      pointer-events: none; line-height: 1.4;
+      position: absolute; top: -10px;
+      background: rgba(22,27,34,.88); border: 1px solid var(--border);
+      border-radius: 3px; font-size: .5rem; padding: 1px 4px;
+      white-space: nowrap; pointer-events: none; line-height: 1.4;
+      font-weight: 600;
     }
-    .station .badge { border-color: #388bfd; color: #79c0ff; }
-    .hub .badge     { border-color: #d29922; color: #d29922; }
-    .cluster .badge { border-color: #3fb950; color: #3fb950; }
-    .boss .badge    { border-color: #f85149; color: #f85149; display:none; }
+    .station .badge { border-color: var(--navy); color: var(--accent); }
+    .hub .badge     { border-color: var(--gold); color: var(--gold); }
+    .cluster .badge { border-color: var(--green); color: var(--green); display: none; }
+    .cluster.active .badge { display: block; }
+    .boss .badge    { border-color: var(--red); color: var(--red); display: none; }
     .boss.active .badge { display: block; }
-
-    /* burn stage highlight */
-    .bld.burning img { filter: drop-shadow(0 0 8px #ff6b00) brightness(1.15); }
 
     /* Tooltip */
     .bld .tip {
       display: none; position: absolute;
-      bottom: calc(100% + 6px); left: 50%;
-      transform: translateX(-50%);
-      background: #161b22; border: 1px solid #30363d;
-      border-radius: 6px; padding: 7px 10px;
-      min-width: 140px; z-index: 99;
-      pointer-events: none; text-align: left;
+      bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%);
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 7px; padding: 8px 10px; min-width: 150px;
+      z-index: 99; pointer-events: none; text-align: left;
+      box-shadow: 0 4px 16px rgba(0,0,0,.5);
     }
     .bld:hover .tip { display: block; }
-    .tip .tip-name { font-size: 0.78rem; font-weight: 600; margin-bottom: 3px; }
-    .tip .tip-row  { font-size: 0.7rem; color: #8b949e; line-height: 1.5; }
-    .tip .tip-row span { color: #e6edf3; }
-    .station .tip .tip-name { color: #79c0ff; }
-    .hub .tip .tip-name     { color: #d29922; }
-    .cluster .tip .tip-name { color: #3fb950; }
-    .boss .tip .tip-name    { color: #f85149; }
-    .bld.tip-below .tip { top: calc(100% + 6px); bottom: auto; }
+    .tip-name { font-size: .78rem; font-weight: 700; margin-bottom: 4px; }
+    .tip-row  { font-size: .7rem; color: var(--muted); line-height: 1.5; }
+    .tip-row span { color: var(--text); }
+    .station .tip-name { color: var(--accent); }
+    .hub .tip-name     { color: var(--gold); }
+    .cluster .tip-name { color: var(--green); }
+    .boss .tip-name    { color: var(--red); }
+    .bld.tip-below .tip { top: calc(100% + 7px); bottom: auto; }
 
-    /* ── Sidebar ─────────────────────────────────────────────────────── */
+    /* ── Sidebar ─────────────────────────────────────────────────── */
     .sidebar { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px 14px; }
-    .card h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #8b949e; margin-bottom: 8px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+    .card-title { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 10px; font-weight: 600; }
 
-    /* Legend */
-    .leg { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 0.8rem; }
-    .leg img { width: 26px; flex-shrink: 0; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.7)); }
-    .leg-name { font-weight: 600; }
-    .leg-pts  { margin-left: auto; font-size: 0.72rem; color: #8b949e; text-align: right; }
-    .sc { color: #79c0ff; } .hc { color: #d29922; } .cc { color: #3fb950; } .bc { color: #f85149; }
+    /* Building legend — clickable to highlight map */
+    .bld-row {
+      display: flex; align-items: center; gap: 8px; padding: 5px 6px;
+      border-radius: 6px; cursor: pointer; margin-bottom: 2px;
+      border: 1px solid transparent; transition: border-color .15s, background .15s;
+      user-select: none;
+    }
+    .bld-row:hover { background: var(--card); border-color: var(--border); }
+    .bld-row.selected { background: var(--card); border-color: var(--accent); }
+    .bld-row img { width: 28px; flex-shrink: 0; filter: drop-shadow(0 1px 3px rgba(0,0,0,.6)); }
+    .bld-info { flex: 1; min-width: 0; }
+    .bld-name { font-size: .8rem; font-weight: 600; }
+    .bld-sub  { font-size: .68rem; color: var(--muted); margin-top: 1px; }
+    .bld-pts  { font-size: .72rem; color: var(--muted); text-align: right; line-height: 1.4; flex-shrink: 0; }
+    .bld-row .select-hint { font-size: .62rem; color: var(--muted); display: none; }
+    .bld-row:hover .select-hint { display: block; }
+    .sc { color: var(--accent); } .hc { color: var(--gold); }
+    .cc { color: var(--green); } .bc { color: var(--red); }
+
+    /* Boss row (not clickable, no point values) */
+    .boss-row { display: flex; align-items: center; gap: 8px; padding: 5px 6px; margin-top: 4px; border-top: 1px solid var(--border); padding-top: 8px; }
+    .boss-row img { width: 24px; flex-shrink: 0; filter: drop-shadow(0 1px 3px rgba(0,0,0,.6)); }
+    .boss-sub { font-size: .68rem; color: var(--muted); margin-top: 1px; }
 
     /* Timeline */
-    .tl { display: flex; flex-direction: column; gap: 5px; }
-    .tl-row { display: flex; align-items: baseline; gap: 7px; font-size: 0.77rem; border-radius: 3px; padding: 2px 4px; transition: background 0.3s; }
-    .tl-row.current-phase { background: rgba(121,192,255,0.08); }
-    .tl-time  { font-family: monospace; font-size: 0.74rem; color: #8b949e; min-width: 42px; flex-shrink: 0; }
-    .tl-label { color: #e6edf3; }
-    .tl-note  { color: #8b949e; font-size: 0.7rem; }
-    .tl-row.highlight .tl-label { font-weight: 600; }
-    .tl-row.s .tl-time { color: #79c0ff; }
-    .tl-row.h .tl-time { color: #d29922; }
-    .tl-row.c .tl-time { color: #3fb950; }
-    .tl-row.b .tl-time { color: #f85149; }
-    .tl-row.burn .tl-time { color: #ff8c00; }
+    .tl { display: flex; flex-direction: column; gap: 3px; }
+    .tl-row {
+      display: flex; align-items: baseline; gap: 6px;
+      font-size: .76rem; border-radius: 4px; padding: 3px 5px;
+      transition: background .3s;
+    }
+    .tl-row.now { background: rgba(63,185,80,.1); }
+    .tl-time  { font-family: monospace; font-size: .72rem; color: var(--muted); min-width: 38px; flex-shrink: 0; }
+    .tl-label { color: var(--text); flex: 1; }
+    .tl-note  { color: var(--muted); font-size: .68rem; }
+    .tl-row.hl .tl-label { font-weight: 600; }
+    .tl-row.ts .tl-time { color: var(--accent); }
+    .tl-row.th .tl-time { color: var(--gold); }
+    .tl-row.tc .tl-time { color: var(--green); }
+    .tl-row.tb .tl-time { color: var(--red); }
+    .tl-row.tburn .tl-time { color: var(--orange); }
 
     /* Rules */
-    .rule { display: flex; gap: 5px; font-size: 0.76rem; margin-bottom: 5px; color: #8b949e; line-height: 1.45; }
-    .rule::before { content: '•'; flex-shrink: 0; margin-top: 1px; }
-    .rule strong { color: #e6edf3; }
+    .rules-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .rule-item {
+      background: var(--card); border-radius: 6px; padding: 8px 10px;
+      font-size: .73rem; line-height: 1.5; color: var(--muted);
+    }
+    .rule-item strong { color: var(--text); display: block; font-size: .72rem; margin-bottom: 2px; }
+    @media (max-width: 400px) { .rules-grid { grid-template-columns: 1fr; } }
 
-    @media (max-width: 680px) {
+    /* Responsive */
+    @media (max-width: 700px) {
       .main-layout { flex-direction: column; align-items: center; }
-      .map-wrap { width: min(480px, 100%); }
+      .map-wrap { width: min(500px, 100%); }
       .sidebar { width: 100%; }
-      .timer-clock { font-size: 1.5rem; }
+      .timer-clock { font-size: 1.6rem; }
+      .lang-btn #langCode { display: none; }
     }
 
-    /* Translate widget de-emphasis */
-    .goog-te-gadget { color: #8b949e !important; font-size: 0.72rem !important; }
-    .goog-te-gadget-simple { background: #1c2128 !important; border: 1px solid #30363d !important; border-radius: 4px; padding: 3px 6px !important; }
-    .goog-te-gadget-simple span { color: #79c0ff !important; }
+    /* Google Translate hide gadget */
+    .goog-te-gadget, .goog-te-banner-frame { display: none !important; }
+    body { top: 0 !important; }
   </style>
 </head>
 <body>
 
+<!-- Google Translate (hidden) -->
+<script>
+  function googleTranslateInit() {
+    new google.translate.TranslateElement({ pageLanguage: 'en', autoDisplay: false }, 'google_translate_element');
+  }
+</script>
+<script src="//translate.google.com/translate_a/element.js?cb=googleTranslateInit" async></script>
+<div id="google_translate_element" style="display:none"></div>
+
+<!-- Language modal -->
+<div class="lang-modal-overlay" id="langModal">
+  <div class="lang-modal">
+    <div class="card-title">Select Language</div>
+    <div class="lang-grid" id="langGrid"></div>
+  </div>
+</div>
+
+<!-- Identity picker modal -->
+<div class="id-modal-overlay" id="idModal">
+  <div class="id-modal">
+    <div class="card-title">Who are you?</div>
+    <input class="id-search" id="idSearch" type="text" placeholder="Search by name or alliance&hellip;" autocomplete="off">
+    <div class="id-list" id="idList"></div>
+    <button class="id-cancel" id="idCancel">Cancel</button>
+  </div>
+</div>
+
+<!-- Header -->
 <header>
   <img class="city-icon" src="../assets/cnc-icons/cnc_city_icon_8.png" alt="Storm's Eye">
   <div class="title-block">
     <h1>Storm's Eye</h1>
-    <p>Lv. 4 Neutral City &middot; SSC Round 4 &middot; S2864</p>
+    <p>Lv.&nbsp;4 Neutral City &middot; SSC Round&nbsp;4 &middot; S2864</p>
+    <div class="identity-row" id="identity-row" style="display:none"></div>
   </div>
-  <div class="header-actions">
-    <div id="google_translate_element"></div>
+  <div class="hdr-right">
+    <button class="lang-btn notranslate" id="langBtn">
+      <span id="langFlag">&#127482;&#127480;</span>
+      <span id="langCode">/en</span>
+    </button>
   </div>
 </header>
 
-<!-- Timer Bar -->
+<!-- Timer + Companion -->
 <div class="timer-bar">
   <div class="timer-clock pre" id="timer-clock">--:--</div>
   <div class="timer-status">
-    <div class="phase" id="timer-phase">Loading&hellip;</div>
-    <div class="next-event" id="timer-next"></div>
+    <div class="timer-phase" id="timer-phase">Loading&hellip;</div>
+    <div class="timer-next"  id="timer-next"></div>
   </div>
-  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+  <div class="companion-wrap">
     <button class="companion-btn" id="companion-btn" onclick="handleCompanion()">
       <svg viewBox="0 0 16 16"><path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2zm.995-14.901a1 1 0 1 0-1.99 0A5.002 5.002 0 0 0 3 6c0 1.098-.5 6-2 7h14c-1.5-1-2-5.902-2-7 0-2.42-1.72-4.44-4.005-4.901z"/></svg>
       <span id="companion-label">Battle Companion Alerts</span>
     </button>
     <div id="companion-status"></div>
+    <span class="unsub-link" id="unsub-link" style="display:none" onclick="handleUnsub()">Remove storm alerts</span>
   </div>
 </div>
 
+<!-- Main layout -->
 <div class="main-layout">
 
   <!-- MAP -->
   <div class="map-wrap">
     <div class="map-container">
       <div class="map-inner">
-        <div class="safe-zone"></div>
+        <div class="zone-outer"></div>
+        <div class="zone-inner"></div>
 
-        <!-- Enigma Stations (type=1, outer ring) — data-opens-at = battle-relative minutes -->
+        <!-- Enigma Stations — 12 outer ring, opens at 5:00 -->
         <div class="bld station inactive" data-type="station" data-opens="5" style="left:18.75%;top:37.5%">
-          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
-          <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div><div class="tip-row">Hold: <span>3 min to secure &middot; 60s shield</span></div></div>
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="S">
+          <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div><div class="tip-row">Hold: <span>3 min to secure</span></div></div>
         </div>
         <div class="bld station inactive" data-type="station" data-opens="5" style="left:18.75%;top:62.5%">
-          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="S">
           <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
         </div>
         <div class="bld station inactive tip-below" data-type="station" data-opens="5" style="left:25%;top:24.8%">
-          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="S">
           <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
         </div>
         <div class="bld station inactive" data-type="station" data-opens="5" style="left:25%;top:74.8%">
-          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="S">
           <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
         </div>
         <div class="bld station inactive tip-below" data-type="station" data-opens="5" style="left:37.5%;top:18.75%">
-          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="S">
           <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
         </div>
         <div class="bld station inactive" data-type="station" data-opens="5" style="left:37.5%;top:81.25%">
-          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="S">
           <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
         </div>
         <div class="bld station inactive tip-below" data-type="station" data-opens="5" style="left:62.5%;top:18.75%">
-          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="S">
           <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
         </div>
         <div class="bld station inactive" data-type="station" data-opens="5" style="left:62.5%;top:81.25%">
-          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="S">
           <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
         </div>
         <div class="bld station inactive tip-below" data-type="station" data-opens="5" style="left:75%;top:24.8%">
-          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="S">
           <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
         </div>
         <div class="bld station inactive" data-type="station" data-opens="5" style="left:75%;top:74.8%">
-          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="S">
           <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
         </div>
         <div class="bld station inactive" data-type="station" data-opens="5" style="left:81.25%;top:37.5%">
-          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="S">
           <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
         </div>
         <div class="bld station inactive" data-type="station" data-opens="5" style="left:81.25%;top:62.5%">
-          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="S">
           <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
         </div>
 
-        <!-- Enigma Hubs (type=2, inner cluster) -->
+        <!-- Enigma Hubs — 8 inner cluster, opens at 25:00 -->
         <div class="bld hub inactive" data-type="hub" data-opens="25" style="left:34.3%;top:34.1%">
-          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="Enigma Hub">
-          <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div><div class="tip-row">Hold: <span>3 min to secure &middot; 60s shield</span></div></div>
+          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="H">
+          <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div><div class="tip-row">Hold: <span>3 min to secure</span></div></div>
         </div>
         <div class="bld hub inactive" data-type="hub" data-opens="25" style="left:34.3%;top:65.4%">
-          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="Enigma Hub">
+          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="H">
           <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div></div>
         </div>
         <div class="bld hub inactive" data-type="hub" data-opens="25" style="left:37.5%;top:50%">
-          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="Enigma Hub">
+          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="H">
           <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div></div>
         </div>
         <div class="bld hub inactive" data-type="hub" data-opens="25" style="left:50%;top:37.5%">
-          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="Enigma Hub">
+          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="H">
           <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div></div>
         </div>
         <div class="bld hub inactive" data-type="hub" data-opens="25" style="left:50%;top:62.5%">
-          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="Enigma Hub">
+          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="H">
           <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div></div>
         </div>
         <div class="bld hub inactive" data-type="hub" data-opens="25" style="left:62.5%;top:50%">
-          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="Enigma Hub">
+          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="H">
           <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div></div>
         </div>
         <div class="bld hub inactive" data-type="hub" data-opens="25" style="left:65.7%;top:34.1%">
-          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="Enigma Hub">
+          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="H">
           <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div></div>
         </div>
         <div class="bld hub inactive" data-type="hub" data-opens="25" style="left:65.7%;top:65.4%">
-          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="Enigma Hub">
+          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="H">
           <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div></div>
         </div>
 
-        <!-- Seal Stone Clusters (cardinal midpoints) — multi-wave visibility -->
-        <div class="bld cluster inactive" data-type="cluster" data-opens="15" data-closes="25,38,52" data-waves="15,28,42" style="left:23.5%;top:50%">
-          <div class="badge">15:00</div><img src="../assets/cnc-icons/icon_cq25_kuang.png" alt="Seal Stone Cluster">
-          <div class="tip"><div class="tip-name">Seal Stone Cluster</div><div class="tip-row">Waves: <span>15:00 &middot; 28:00 &middot; 42:00</span></div><div class="tip-row">Each wave: <span>15 clusters, lasts 10 min</span></div></div>
+        <!-- Seal Stone Clusters — 4 cardinal midpoints -->
+        <div class="bld cluster inactive" data-type="cluster" style="left:23.5%;top:50%">
+          <div class="badge">Wave</div><img src="../assets/cnc-icons/icon_cq25_kuang.png" alt="C">
+          <div class="tip"><div class="tip-name">Seal Stone Cluster</div><div class="tip-row">Waves: <span>15:00 &middot; 28:00 &middot; 42:00</span></div><div class="tip-row">Each: <span>15 clusters, 10 min</span></div></div>
         </div>
-        <div class="bld cluster inactive" data-type="cluster" data-opens="15" data-waves="15,28,42" style="left:76.5%;top:50%">
-          <div class="badge">15:00</div><img src="../assets/cnc-icons/icon_cq25_kuang.png" alt="Seal Stone Cluster">
-          <div class="tip"><div class="tip-name">Seal Stone Cluster</div><div class="tip-row">Waves: <span>15:00 &middot; 28:00 &middot; 42:00</span></div><div class="tip-row">Each wave: <span>15 clusters, lasts 10 min</span></div></div>
+        <div class="bld cluster inactive" data-type="cluster" style="left:76.5%;top:50%">
+          <div class="badge">Wave</div><img src="../assets/cnc-icons/icon_cq25_kuang.png" alt="C">
+          <div class="tip"><div class="tip-name">Seal Stone Cluster</div><div class="tip-row">Waves: <span>15:00 &middot; 28:00 &middot; 42:00</span></div><div class="tip-row">Each: <span>15 clusters, 10 min</span></div></div>
         </div>
-        <div class="bld cluster inactive tip-below" data-type="cluster" data-opens="15" data-waves="15,28,42" style="left:50%;top:23.5%">
-          <div class="badge">15:00</div><img src="../assets/cnc-icons/icon_cq25_kuang.png" alt="Seal Stone Cluster">
-          <div class="tip"><div class="tip-name">Seal Stone Cluster</div><div class="tip-row">Waves: <span>15:00 &middot; 28:00 &middot; 42:00</span></div><div class="tip-row">Each wave: <span>15 clusters, lasts 10 min</span></div></div>
+        <div class="bld cluster inactive tip-below" data-type="cluster" style="left:50%;top:23.5%">
+          <div class="badge">Wave</div><img src="../assets/cnc-icons/icon_cq25_kuang.png" alt="C">
+          <div class="tip"><div class="tip-name">Seal Stone Cluster</div><div class="tip-row">Waves: <span>15:00 &middot; 28:00 &middot; 42:00</span></div><div class="tip-row">Each: <span>15 clusters, 10 min</span></div></div>
         </div>
-        <div class="bld cluster inactive" data-type="cluster" data-opens="15" data-waves="15,28,42" style="left:50%;top:76.5%">
-          <div class="badge">15:00</div><img src="../assets/cnc-icons/icon_cq25_kuang.png" alt="Seal Stone Cluster">
-          <div class="tip"><div class="tip-name">Seal Stone Cluster</div><div class="tip-row">Waves: <span>15:00 &middot; 28:00 &middot; 42:00</span></div><div class="tip-row">Each wave: <span>15 clusters, lasts 10 min</span></div></div>
+        <div class="bld cluster inactive" data-type="cluster" style="left:50%;top:76.5%">
+          <div class="badge">Wave</div><img src="../assets/cnc-icons/icon_cq25_kuang.png" alt="C">
+          <div class="tip"><div class="tip-name">Seal Stone Cluster</div><div class="tip-row">Waves: <span>15:00 &middot; 28:00 &middot; 42:00</span></div><div class="tip-row">Each: <span>15 clusters, 10 min</span></div></div>
         </div>
 
-        <!-- Enigma Lord -->
-        <div class="bld boss inactive" data-type="boss" data-opens="35" data-closes="40" style="left:50%;top:50%;z-index:3">
-          <div class="badge">35:00</div><img src="../assets/cnc-icons/cnc_npc_icon.png" alt="Enigma Lord">
-          <div class="tip"><div class="tip-name">Enigma Lord</div><div class="tip-row">Attackable: <span>35:00 &ndash; 40:00</span></div><div class="tip-row">Role: <span>Independent 3rd faction</span></div><div class="tip-row">Note: <span>Captures open buildings &mdash; if it wins, city uncontrolled</span></div></div>
+        <!-- Enigma Lord — center -->
+        <div class="bld boss inactive" data-type="boss" style="left:50%;top:50%;z-index:3">
+          <div class="badge">35:00</div><img src="../assets/cnc-icons/cnc_npc_icon.png" alt="Boss">
+          <div class="tip"><div class="tip-name">Enigma Lord</div><div class="tip-row">Attackable: <span>35:00 &ndash; 40:00</span></div><div class="tip-row">Independent faction &mdash; captures buildings</div><div class="tip-row" style="color:#f85149">If it wins the score: city uncontrolled</div></div>
         </div>
 
       </div>
@@ -413,41 +492,70 @@
   <!-- SIDEBAR -->
   <div class="sidebar">
 
-    <!-- Legend -->
+    <!-- Buildings (clickable to highlight) -->
     <div class="card">
-      <h3>Buildings</h3>
-      <div class="leg"><img src="../assets/cnc-icons/cnc_building_out.png" alt=""><div><div class="leg-name sc">Enigma Station &times;12</div><div style="font-size:0.7rem;color:#8b949e">Opens 5:00 &middot; outer ring</div></div><div class="leg-pts">500 capture<br>250/min</div></div>
-      <div class="leg"><img src="../assets/cnc-icons/cnc_building_in.png" alt=""><div><div class="leg-name hc">Enigma Hub &times;8</div><div style="font-size:0.7rem;color:#8b949e">Opens 25:00 &middot; inner cluster</div></div><div class="leg-pts">1000 capture<br>500/min</div></div>
-      <div class="leg"><img src="../assets/cnc-icons/icon_cq25_kuang.png" alt=""><div><div class="leg-name cc">Seal Stone Cluster</div><div style="font-size:0.7rem;color:#8b949e">3 waves &middot; 4 points each</div></div><div class="leg-pts">Continuous<br>pts/sec</div></div>
-      <div class="leg"><img src="../assets/cnc-icons/cnc_npc_icon.png" alt=""><div><div class="leg-name bc">Enigma Lord</div><div style="font-size:0.7rem;color:#8b949e">Center &middot; independent faction</div></div><div class="leg-pts">35:00&ndash;40:00<br>ranked dmg</div></div>
+      <div class="card-title">Buildings &mdash; click to highlight</div>
+      <div class="bld-row" data-highlight="station" onclick="toggleHighlight(this,'station')">
+        <img src="../assets/cnc-icons/cnc_building_out.png" alt="">
+        <div class="bld-info">
+          <div class="bld-name sc">Enigma Station &times;12</div>
+          <div class="bld-sub">Opens 5:00 &middot; outer ring</div>
+        </div>
+        <div class="bld-pts">500 capture<br>250/min</div>
+      </div>
+      <div class="bld-row" data-highlight="hub" onclick="toggleHighlight(this,'hub')">
+        <img src="../assets/cnc-icons/cnc_building_in.png" alt="">
+        <div class="bld-info">
+          <div class="bld-name hc">Enigma Hub &times;8</div>
+          <div class="bld-sub">Opens 25:00 &middot; inner cluster</div>
+        </div>
+        <div class="bld-pts">1000 capture<br>500/min</div>
+      </div>
+      <div class="bld-row" data-highlight="cluster" onclick="toggleHighlight(this,'cluster')">
+        <img src="../assets/cnc-icons/icon_cq25_kuang.png" alt="">
+        <div class="bld-info">
+          <div class="bld-name cc">Seal Stone Cluster</div>
+          <div class="bld-sub">3 waves &middot; 4 spawn points each</div>
+        </div>
+        <div class="bld-pts">Continuous<br>pts/sec</div>
+      </div>
+      <!-- Boss — not a building, no highlight, separated -->
+      <div class="boss-row">
+        <img src="../assets/cnc-icons/cnc_npc_icon.png" alt="">
+        <div>
+          <div class="bld-name bc">Enigma Lord</div>
+          <div class="boss-sub">Center &middot; 35:00&ndash;40:00 &middot; independent faction</div>
+        </div>
+      </div>
     </div>
 
     <!-- Timeline -->
     <div class="card">
-      <h3>Battle Timeline (60 min)</h3>
+      <div class="card-title">Battle Timeline (60 min)</div>
       <div class="tl" id="timeline">
-        <div class="tl-row" data-phase-start="0"  data-phase-end="5"><span class="tl-time">0:00</span><span class="tl-label">Battle opens</span><span class="tl-note">&nbsp;&mdash; setup</span></div>
-        <div class="tl-row s highlight" data-phase-start="5"  data-phase-end="25"><span class="tl-time">5:00</span><span class="tl-label">Enigma Stations open</span></div>
-        <div class="tl-row c" data-phase-start="15" data-phase-end="25"><span class="tl-time">15:00</span><span class="tl-label">Seal Stone Clusters &mdash; wave 1</span><span class="tl-note">&nbsp;&times;15, 10 min</span></div>
-        <div class="tl-row h highlight" data-phase-start="25" data-phase-end="60"><span class="tl-time">25:00</span><span class="tl-label">Enigma Hubs open</span></div>
-        <div class="tl-row c" data-phase-start="28" data-phase-end="38"><span class="tl-time">28:00</span><span class="tl-label">Seal Stone Clusters &mdash; wave 2</span><span class="tl-note">&nbsp;&times;15, 10 min</span></div>
-        <div class="tl-row b" data-phase-start="35" data-phase-end="40"><span class="tl-time">35:00</span><span class="tl-label">Enigma Lord attackable</span><span class="tl-note">&nbsp;5 min</span></div>
-        <div class="tl-row c" data-phase-start="42" data-phase-end="52"><span class="tl-time">42:00</span><span class="tl-label">Seal Stone Clusters &mdash; wave 3</span><span class="tl-note">&nbsp;&times;15, 10 min</span></div>
-        <div class="tl-row burn highlight" data-phase-start="45" data-phase-end="60"><span class="tl-time">45:00</span><span class="tl-label">Burn Stage &mdash; 3&times; points</span><span class="tl-note">&nbsp;15 min</span></div>
-        <div class="tl-row" data-phase-start="60" data-phase-end="999"><span class="tl-time">60:00</span><span class="tl-label">Battle over</span></div>
+        <div class="tl-row"       data-ps="0"  data-pe="5" ><span class="tl-time">0:00</span><span class="tl-label">Battle opens</span><span class="tl-note">&nbsp;&mdash; setup</span></div>
+        <div class="tl-row ts hl" data-ps="5"  data-pe="25"><span class="tl-time">5:00</span><span class="tl-label">Enigma Stations open</span></div>
+        <div class="tl-row tc"    data-ps="15" data-pe="25"><span class="tl-time">15:00</span><span class="tl-label">Clusters &mdash; wave 1</span><span class="tl-note">&nbsp;&times;15, 10 min</span></div>
+        <div class="tl-row th hl" data-ps="25" data-pe="60"><span class="tl-time">25:00</span><span class="tl-label">Enigma Hubs open</span></div>
+        <div class="tl-row tc"    data-ps="28" data-pe="38"><span class="tl-time">28:00</span><span class="tl-label">Clusters &mdash; wave 2</span><span class="tl-note">&nbsp;&times;15, 10 min</span></div>
+        <div class="tl-row tb"    data-ps="35" data-pe="40"><span class="tl-time">35:00</span><span class="tl-label">Enigma Lord attackable</span><span class="tl-note">&nbsp;5 min</span></div>
+        <div class="tl-row tc"    data-ps="42" data-pe="52"><span class="tl-time">42:00</span><span class="tl-label">Clusters &mdash; wave 3</span><span class="tl-note">&nbsp;&times;15, 10 min</span></div>
+        <div class="tl-row tburn hl" data-ps="45" data-pe="60"><span class="tl-time">45:00</span><span class="tl-label">Burn Stage &mdash; 3&times; points</span><span class="tl-note">&nbsp;15 min</span></div>
+        <div class="tl-row"       data-ps="60" data-pe="999"><span class="tl-time">60:00</span><span class="tl-label">Battle over</span></div>
       </div>
     </div>
 
     <!-- Rules -->
     <div class="card">
-      <h3>Key Rules</h3>
-      <div class="rule">Hold a building <strong>3 min</strong> to secure ownership &rarr; 60s immunity shield</div>
-      <div class="rule">On capture: new holder gets <strong>70%</strong> of bounty; 30% scattered nearby</div>
-      <div class="rule">Enigma Lord attacks open buildings &mdash; if it tops the score, <strong>no one captures the city</strong></div>
-      <div class="rule">Entry: top <strong>300 CP</strong> per faction pre-battle; <strong>1M CP+</strong> after it opens</div>
-      <div class="rule">Max <strong>3,000</strong> total &middot; <strong>300</strong> per warzone</div>
-      <div class="rule">First entry: <strong>5 Relocators + 5 Speedups</strong> &mdash; only way to move/speedup inside</div>
-      <div class="rule">Base Shield <strong>removed on entry</strong> &mdash; cannot reactivate inside</div>
+      <div class="card-title">Key Rules</div>
+      <div class="rules-grid">
+        <div class="rule-item"><strong>Capture &amp; Secure</strong>Hold building <b>3 min</b> to secure ownership. Then 60s immunity shield.</div>
+        <div class="rule-item"><strong>Bounty Points</strong>On capture: new holder gets <b>70%</b> of bounty; 30% scattered nearby.</div>
+        <div class="rule-item"><strong>Enigma Lord</strong>Attacks all open buildings. If it tops the score &mdash; <b>nobody captures the city.</b></div>
+        <div class="rule-item"><strong>Entry</strong>Top <b>300 CP</b> pre-battle; <b>1M CP+</b> after open. Max 3,000 total.</div>
+        <div class="rule-item"><strong>Tools</strong><b>5 Relocators + 5 Speedups</b> on first entry &mdash; only way to move inside.</div>
+        <div class="rule-item"><strong>Shield</strong>Base shield <b>removed on entry</b>. Cannot reactivate inside.</div>
+      </div>
     </div>
 
   </div>
@@ -462,76 +570,257 @@ if (typeof initFeedbackWidget === 'function') {
 </script>
 
 <script>
-// ─── Constants ───────────────────────────────────────────────────────────────
-var PUSH_WORKER    = 'https://push-worker.27tb8s6fct.workers.dev';
-var VAPID_PUBLIC   = 'BKbuearRTBpH6pAjoky9HVOYehah7lQ1Uti3APPMAYvdZJCUI8COAmVK7hym7zmefTGnI9_-vQY86IXa_nCHXHc';
-// Battle start: 2026-04-11 14:00:00 UTC (Round 4 Neutral City Battle)
-var BATTLE_START_UTC = Date.UTC(2026, 3, 11, 14, 0, 0); // month is 0-indexed
+// ─── Constants ────────────────────────────────────────────────────────────────
+var PUSH_WORKER  = 'https://push-worker.27tb8s6fct.workers.dev';
+var VAPID_PUBLIC = 'BKbuearRTBpH6pAjoky9HVOYehah7lQ1Uti3APPMAYvdZJCUI8COAmVK7hym7zmefTGnI9_-vQY86IXa_nCHXHc';
+// Battle start: 2026-04-11 14:00:00 UTC
+var BATTLE_START = Date.UTC(2026, 3, 11, 14, 0, 0);
 
-// ─── Timeline phases (minutes from battle start) ─────────────────────────────
-var PHASES = [
-  { start: 0,  label: 'Setup Phase',           next: 'Stations open at 5:00',     cls: '' },
-  { start: 5,  label: 'Enigma Stations Open',  next: 'Clusters wave 1 at 15:00',  cls: 'station' },
-  { start: 15, label: 'Seal Stone Clusters',   next: 'Hubs open at 25:00',        cls: 'cluster' },
-  { start: 25, label: 'Enigma Hubs Open',      next: 'Clusters wave 2 at 28:00',  cls: 'hub' },
-  { start: 28, label: 'Seal Stone Clusters',   next: 'Boss at 35:00',             cls: 'cluster' },
-  { start: 35, label: 'Enigma Lord Attackable',next: 'Clusters wave 3 at 42:00',  cls: 'boss' },
-  { start: 40, label: 'Enigma Lord Defeated',  next: 'Clusters wave 3 at 42:00',  cls: '' },
-  { start: 42, label: 'Seal Stone Clusters',   next: 'Burn Stage at 45:00',       cls: 'cluster' },
-  { start: 45, label: '\uD83D\uDD25 Burn Stage \u2014 3\u00D7 Points', next: 'Battle ends at 60:00', cls: 'burn' },
-  { start: 60, label: 'Battle Over',           next: '',                           cls: '' },
+// ─── Language picker ──────────────────────────────────────────────────────────
+var LANGUAGES = [
+  { code: 'en',    flag: '\uD83C\uDDFA\uD83C\uDDF8', name: 'English' },
+  { code: 'es',    flag: '\uD83C\uDDEA\uD83C\uDDF8', name: 'Espa\u00F1ol' },
+  { code: 'fr',    flag: '\uD83C\uDDEB\uD83C\uDDF7', name: 'Fran\u00E7ais' },
+  { code: 'de',    flag: '\uD83C\uDDE9\uD83C\uDDEA', name: 'Deutsch' },
+  { code: 'pt',    flag: '\uD83C\uDDE7\uD83C\uDDF7', name: 'Portugu\u00EAs' },
+  { code: 'ru',    flag: '\uD83C\uDDF7\uD83C\uDDFA', name: '\u0420\u0443\u0441\u0441\u043A\u0438\u0439' },
+  { code: 'ja',    flag: '\uD83C\uDDEF\uD83C\uDDF5', name: '\u65E5\u672C\u8A9E' },
+  { code: 'ko',    flag: '\uD83C\uDDF0\uD83C\uDDF7', name: '\uD55C\uAD6D\uC5B4' },
+  { code: 'zh-CN', flag: '\uD83C\uDDE8\uD83C\uDDF3', name: '\u4E2D\u6587' },
+  { code: 'ar',    flag: '\uD83C\uDDF8\uD83C\uDDE6', name: '\u0627\u0644\u0639\u0631\u0628\u064A\u0629' },
+  { code: 'tr',    flag: '\uD83C\uDDF9\uD83C\uDDF7', name: 'T\u00FCrk\u00E7e' },
+  { code: 'vi',    flag: '\uD83C\uDDFB\uD83C\uDDF3', name: 'Ti\u1EBFng Vi\u1EC7t' },
+  { code: 'th',    flag: '\uD83C\uDDF9\uD83C\uDDED', name: '\u0E44\u0E17\u0E22' },
+  { code: 'id',    flag: '\uD83C\uDDEE\uD83C\uDDE9', name: 'Indonesia' }
 ];
 
-// ─── Map state updater ───────────────────────────────────────────────────────
-function updateMap(elapsedMin) {
-  var isBurn = elapsedMin >= 45 && elapsedMin < 60;
+function getLangByCode(code) {
+  var base = code.split('-')[0];
+  for (var i = 0; i < LANGUAGES.length; i++) {
+    if (LANGUAGES[i].code === code || LANGUAGES[i].code === base) return LANGUAGES[i];
+  }
+  return null;
+}
 
-  // Station
-  document.querySelectorAll('[data-type="station"]').forEach(function(el) {
-    var opens = parseInt(el.dataset.opens, 10);
-    var active = elapsedMin >= opens;
-    el.classList.toggle('active', active);
-    el.classList.toggle('inactive', !active);
-    if (active && isBurn) el.classList.add('burning'); else el.classList.remove('burning');
+function updateLangBtn(code) {
+  var d = getLangByCode(code);
+  document.getElementById('langFlag').textContent = d ? d.flag : '\uD83C\uDF10';
+  document.getElementById('langCode').textContent = '/' + code;
+}
+
+function detectLang() {
+  var m = document.cookie.match(/googtrans=\/en\/([a-zA-Z-]{2,10})/);
+  return m ? m[1] : 'en';
+}
+
+function applyLang(code, onDone) {
+  if (code === 'en') {
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax';
+    location.reload();
+    return;
+  }
+  var attempts = 0;
+  var iv = setInterval(function() {
+    var combo = document.querySelector('.goog-te-combo');
+    if (combo) {
+      combo.value = code;
+      combo.dispatchEvent(new Event('change'));
+      clearInterval(iv);
+      updateLangBtn(code);
+      if (onDone) onDone();
+    }
+    if (++attempts > 40) clearInterval(iv);
+  }, 200);
+}
+
+(function buildLangGrid() {
+  var grid = document.getElementById('langGrid');
+  var detected = detectLang();
+  LANGUAGES.forEach(function(l) {
+    var btn = document.createElement('button');
+    btn.className = 'lang-opt' + (l.code === detected ? ' active' : '');
+    btn.setAttribute('data-lang', l.code);
+    var fs = document.createElement('span'); fs.className = 'lang-flag'; fs.textContent = l.flag;
+    var ns = document.createElement('span'); ns.className = 'lang-name'; ns.textContent = l.name;
+    btn.appendChild(fs); btn.appendChild(ns);
+    btn.addEventListener('click', (function(c) {
+      return function() { applyLang(c, function() { document.getElementById('langModal').classList.remove('active'); }); };
+    })(l.code));
+    grid.appendChild(btn);
   });
+  updateLangBtn(detected);
 
-  // Hub
-  document.querySelectorAll('[data-type="hub"]').forEach(function(el) {
-    var opens = parseInt(el.dataset.opens, 10);
-    var active = elapsedMin >= opens;
-    el.classList.toggle('active', active);
-    el.classList.toggle('inactive', !active);
-    if (active && isBurn) el.classList.add('burning'); else el.classList.remove('burning');
+  document.getElementById('langBtn').addEventListener('click', function() {
+    document.getElementById('langModal').classList.add('active');
   });
-
-  // Cluster — show during wave windows: 15-25, 28-38, 42-52
-  document.querySelectorAll('[data-type="cluster"]').forEach(function(el) {
-    var inWave = (elapsedMin >= 15 && elapsedMin < 25) ||
-                 (elapsedMin >= 28 && elapsedMin < 38) ||
-                 (elapsedMin >= 42 && elapsedMin < 52);
-    el.classList.toggle('active', inWave);
-    el.classList.toggle('inactive', !inWave);
-    if (inWave) el.classList.add('pulsing'); else el.classList.remove('pulsing');
+  document.getElementById('langModal').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('active');
   });
+})();
 
-  // Boss — active 35-40
-  document.querySelectorAll('[data-type="boss"]').forEach(function(el) {
-    var active = elapsedMin >= 35 && elapsedMin < 40;
-    el.classList.toggle('active', active);
-    el.classList.toggle('inactive', !active);
-    if (active) el.classList.add('pulsing'); else el.classList.remove('pulsing');
-  });
+// ─── Identity ─────────────────────────────────────────────────────────────────
+var allPlayers = [];
 
-  // Timeline highlight
-  document.querySelectorAll('#timeline .tl-row').forEach(function(row) {
-    var ps = parseInt(row.dataset.phaseStart, 10);
-    var pe = parseInt(row.dataset.phaseEnd,   10);
-    row.classList.toggle('current-phase', elapsedMin >= ps && elapsedMin < pe);
+function getIdentity() {
+  try {
+    var v = localStorage.getItem('playerIdentity');
+    if (!v || v === 'anonymous') return null;
+    return JSON.parse(v);
+  } catch(e) { return null; }
+}
+
+function renderIdentityRow(identity) {
+  var row = document.getElementById('identity-row');
+  row.style.display = 'flex';
+  while (row.firstChild) row.removeChild(row.firstChild);
+
+  if (identity && identity.name) {
+    row.appendChild(document.createTextNode('Hi,\u00A0'));
+    var n = document.createElement('span'); n.className = 'identity-name'; n.textContent = identity.name;
+    row.appendChild(n);
+    if (identity.alliance) {
+      row.appendChild(document.createTextNode('\u00A0\u00B7\u00A0'));
+      var a = document.createElement('span'); a.style.color = 'var(--muted)'; a.textContent = '[' + identity.alliance + ']';
+      row.appendChild(a);
+    }
+    row.appendChild(document.createTextNode('\u2002'));
+    var rb = document.createElement('button'); rb.className = 'identity-reset'; rb.textContent = '\u2715'; rb.title = 'Not you?';
+    rb.addEventListener('click', function() { localStorage.removeItem('playerIdentity'); renderIdentityRow(null); });
+    row.appendChild(rb);
+  } else {
+    var who = document.createElement('span'); who.className = 'identity-who'; who.textContent = '\uD83D\uDC4B Who are you?';
+    who.addEventListener('click', openIdModal);
+    row.appendChild(who);
+  }
+}
+
+function openIdModal() {
+  var modal = document.getElementById('idModal');
+  modal.classList.add('active');
+  document.getElementById('idSearch').value = '';
+  renderIdList('');
+  setTimeout(function() { document.getElementById('idSearch').focus(); }, 50);
+}
+
+function closeIdModal() { document.getElementById('idModal').classList.remove('active'); }
+
+function renderIdList(q) {
+  var list = document.getElementById('idList');
+  while (list.firstChild) list.removeChild(list.firstChild);
+  var filtered = allPlayers.filter(function(p) {
+    if (!q) return true;
+    return p.name.toLowerCase().indexOf(q) !== -1 || (p.alliance || '').toLowerCase().indexOf(q) !== -1;
+  }).slice(0, 60);
+  if (!filtered.length) {
+    var em = document.createElement('div');
+    em.style.cssText = 'padding:.5rem;font-size:.75rem;color:var(--muted);text-align:center';
+    em.textContent = 'No players found';
+    list.appendChild(em); return;
+  }
+  filtered.forEach(function(p) {
+    var item = document.createElement('div');
+    item.className = 'id-item';
+    var nameSpan = document.createElement('span'); nameSpan.style.fontWeight = '600'; nameSpan.textContent = p.name;
+    var alSpan = document.createElement('span'); alSpan.className = 'id-alliance'; alSpan.textContent = '[' + (p.alliance || '') + ']';
+    item.appendChild(nameSpan); item.appendChild(alSpan);
+    item.addEventListener('click', function() {
+      try { localStorage.setItem('playerIdentity', JSON.stringify({ name: p.name, alliance: p.alliance })); } catch(e) {}
+      renderIdentityRow({ name: p.name, alliance: p.alliance });
+      closeIdModal();
+    });
+    list.appendChild(item);
   });
 }
 
-// ─── Timer ───────────────────────────────────────────────────────────────────
+document.getElementById('idSearch').addEventListener('input', function() { renderIdList(this.value.toLowerCase()); });
+document.getElementById('idCancel').addEventListener('click', closeIdModal);
+document.getElementById('idModal').addEventListener('click', function(e) { if (e.target === this) closeIdModal(); });
+
+// Load player data and init identity
+fetch('../player-data.json').then(function(r) { return r.json(); }).then(function(data) {
+  allPlayers = Array.isArray(data) ? data : (data.players || []);
+}).catch(function() {});
+
+renderIdentityRow(getIdentity());
+
+// ─── Map highlight (sidebar click) ───────────────────────────────────────────
+var currentHighlight = null;
+
+function toggleHighlight(rowEl, type) {
+  var rows = document.querySelectorAll('.bld-row');
+  rows.forEach(function(r) { r.classList.remove('selected'); });
+
+  if (currentHighlight === type) {
+    // Toggle off
+    document.querySelectorAll('.bld.map-highlight').forEach(function(b) { b.classList.remove('map-highlight'); });
+    currentHighlight = null;
+    return;
+  }
+
+  rowEl.classList.add('selected');
+  currentHighlight = type;
+
+  document.querySelectorAll('.bld').forEach(function(b) { b.classList.remove('map-highlight'); });
+  document.querySelectorAll('.bld[data-type="' + type + '"]').forEach(function(b) { b.classList.add('map-highlight'); });
+}
+
+// ─── Battle timer & phase tracker ────────────────────────────────────────────
+var PHASES = [
+  { start: 0,  label: 'Setup Phase',              next: 'Stations open at 5:00',      cls: '' },
+  { start: 5,  label: 'Enigma Stations Open',     next: 'Clusters wave 1 at 15:00',   cls: 'station' },
+  { start: 15, label: 'Seal Stone Clusters',      next: 'Hubs open at 25:00',         cls: 'cluster' },
+  { start: 25, label: 'Enigma Hubs Open',         next: 'Clusters wave 2 at 28:00',   cls: 'hub' },
+  { start: 28, label: 'Seal Stone Clusters',      next: 'Boss at 35:00',              cls: 'cluster' },
+  { start: 35, label: '\u26A1 Enigma Lord Active',next: 'Final clusters at 42:00',    cls: 'boss' },
+  { start: 40, label: 'Enigma Lord Defeated',     next: 'Final clusters at 42:00',    cls: '' },
+  { start: 42, label: 'Seal Stone Clusters',      next: 'Burn Stage at 45:00',        cls: 'cluster' },
+  { start: 45, label: '\uD83D\uDD25 Burn Stage \u2014 3\u00D7 Points', next: 'Battle ends at 60:00', cls: 'burn' },
+  { start: 60, label: 'Battle Over',              next: '',                            cls: '' },
+];
+
 function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+function updateMap(elapsedMin) {
+  var isBurn = elapsedMin >= 45 && elapsedMin < 60;
+  var inBoss  = elapsedMin >= 35 && elapsedMin < 40;
+  var inCluster = (elapsedMin >= 15 && elapsedMin < 25) ||
+                  (elapsedMin >= 28 && elapsedMin < 38) ||
+                  (elapsedMin >= 42 && elapsedMin < 52);
+
+  document.querySelectorAll('[data-type="station"]').forEach(function(el) {
+    var on = elapsedMin >= 5 && elapsedMin < 60;
+    el.classList.toggle('active', on);
+    el.classList.toggle('inactive', !on);
+    el.classList.toggle('burning', on && isBurn);
+    if (on && isBurn) { el.classList.remove('pulsing'); } else { el.classList.remove('burning'); }
+  });
+
+  document.querySelectorAll('[data-type="hub"]').forEach(function(el) {
+    var on = elapsedMin >= 25 && elapsedMin < 60;
+    el.classList.toggle('active', on);
+    el.classList.toggle('inactive', !on);
+    el.classList.toggle('burning', on && isBurn);
+    if (on && isBurn) { el.classList.remove('pulsing'); } else { el.classList.remove('burning'); }
+  });
+
+  document.querySelectorAll('[data-type="cluster"]').forEach(function(el) {
+    el.classList.toggle('active', inCluster);
+    el.classList.toggle('inactive', !inCluster);
+    el.classList.toggle('pulsing', inCluster);
+  });
+
+  document.querySelectorAll('[data-type="boss"]').forEach(function(el) {
+    el.classList.toggle('active', inBoss);
+    el.classList.toggle('inactive', !inBoss);
+    el.classList.toggle('pulsing', inBoss);
+  });
+
+  document.querySelectorAll('#timeline .tl-row').forEach(function(row) {
+    var ps = parseInt(row.dataset.ps, 10);
+    var pe = parseInt(row.dataset.pe, 10);
+    row.classList.toggle('now', elapsedMin >= ps && elapsedMin < pe);
+  });
+}
 
 function tick() {
   var now = Date.now();
@@ -539,47 +828,44 @@ function tick() {
   var phase  = document.getElementById('timer-phase');
   var nextEl = document.getElementById('timer-next');
 
-  if (now < BATTLE_START_UTC) {
-    // Countdown to battle
-    var secsLeft = Math.ceil((BATTLE_START_UTC - now) / 1000);
+  if (now < BATTLE_START) {
+    var secsLeft = Math.ceil((BATTLE_START - now) / 1000);
     var h = Math.floor(secsLeft / 3600);
     var m = Math.floor((secsLeft % 3600) / 60);
     var s = secsLeft % 60;
     clock.className = 'timer-clock pre';
-    clock.textContent = (h > 0 ? h + ':' : '') + pad2(m) + ':' + pad2(s);
+    clock.textContent = h > 0 ? (h + ':' + pad2(m) + ':' + pad2(s)) : (pad2(m) + ':' + pad2(s));
     phase.textContent = 'Battle starts in\u2026';
-    nextEl.textContent = '';
+    while (nextEl.firstChild) nextEl.removeChild(nextEl.firstChild);
     updateMap(-1);
     return;
   }
 
-  var elapsedSec = Math.floor((now - BATTLE_START_UTC) / 1000);
+  var elapsedSec = Math.floor((now - BATTLE_START) / 1000);
   var elapsedMin = elapsedSec / 60;
 
   if (elapsedMin >= 60) {
     clock.className = 'timer-clock over';
     clock.textContent = '60:00';
     phase.textContent = 'Battle Over';
-    nextEl.textContent = '';
+    while (nextEl.firstChild) nextEl.removeChild(nextEl.firstChild);
     updateMap(60);
     return;
   }
 
-  var m2 = Math.floor(elapsedMin);
-  var s2 = elapsedSec % 60;
   clock.className = 'timer-clock live';
-  clock.textContent = pad2(m2) + ':' + pad2(s2);
+  clock.textContent = pad2(Math.floor(elapsedMin)) + ':' + pad2(elapsedSec % 60);
 
-  // Find current phase
-  var currentPhase = PHASES[0];
+  var cur = PHASES[0];
   for (var i = PHASES.length - 1; i >= 0; i--) {
-    if (elapsedMin >= PHASES[i].start) { currentPhase = PHASES[i]; break; }
+    if (elapsedMin >= PHASES[i].start) { cur = PHASES[i]; break; }
   }
-  phase.textContent = currentPhase.label;
-  if (currentPhase.next) {
-    nextEl.innerHTML = 'Next: <span>' + currentPhase.next + '</span>';
-  } else {
-    nextEl.textContent = '';
+  phase.textContent = cur.label;
+  while (nextEl.firstChild) nextEl.removeChild(nextEl.firstChild);
+  if (cur.next) {
+    nextEl.appendChild(document.createTextNode('Next: '));
+    var ne = document.createElement('span'); ne.className = 'ne'; ne.textContent = cur.next;
+    nextEl.appendChild(ne);
   }
   updateMap(elapsedMin);
 }
@@ -587,101 +873,102 @@ function tick() {
 setInterval(tick, 1000);
 tick();
 
-// ─── Push subscription helpers ───────────────────────────────────────────────
+// ─── Push / Battle Companion ──────────────────────────────────────────────────
 function urlBase64ToUint8Array(b) {
   var padding = '='.repeat((4 - b.length % 4) % 4);
-  var base64 = (b + padding).replace(/-/g, '+').replace(/_/g, '/');
-  var raw = atob(base64);
+  var b64 = (b + padding).replace(/-/g, '+').replace(/_/g, '/');
+  var raw = atob(b64);
   return Uint8Array.from(raw.split('').map(function(c) { return c.charCodeAt(0); }));
 }
 
-function setCompanionSubscribed() {
+function setSubscribed() {
   var btn = document.getElementById('companion-btn');
   var lbl = document.getElementById('companion-label');
+  var unsub = document.getElementById('unsub-link');
   if (btn) btn.classList.add('subscribed');
   if (lbl) lbl.textContent = '\u2713 Alerts Active';
+  if (unsub) unsub.style.display = '';
   localStorage.setItem('stormCompanion_2026_04_11', '1');
 }
 
-async function handleCompanion() {
-  var btn    = document.getElementById('companion-btn');
+function setUnsubscribed() {
+  var btn = document.getElementById('companion-btn');
+  var lbl = document.getElementById('companion-label');
   var status = document.getElementById('companion-status');
+  var unsub = document.getElementById('unsub-link');
+  if (btn) btn.classList.remove('subscribed');
+  if (lbl) lbl.textContent = 'Battle Companion Alerts';
+  if (unsub) unsub.style.display = 'none';
+  if (status) status.textContent = '';
+  localStorage.removeItem('stormCompanion_2026_04_11');
+}
 
+async function handleCompanion() {
+  var btn = document.getElementById('companion-btn');
+  var status = document.getElementById('companion-status');
   if (btn.classList.contains('subscribed') || btn.classList.contains('loading')) return;
-
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    status.className = 'err';
-    status.textContent = 'Push not supported in this browser.';
-    return;
+    status.className = 'err'; status.textContent = 'Push not supported here.'; return;
   }
-
   btn.classList.add('loading');
-  status.className = '';
-  status.textContent = 'Subscribing\u2026';
-
+  status.className = ''; status.textContent = 'Subscribing\u2026';
   try {
-    var permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      status.className = 'err';
-      status.textContent = 'Permission denied \u2014 enable notifications in browser settings.';
-      btn.classList.remove('loading');
-      return;
+    var perm = await Notification.requestPermission();
+    if (perm !== 'granted') {
+      status.className = 'err'; status.textContent = 'Permission denied.'; btn.classList.remove('loading'); return;
     }
-
     var reg = await navigator.serviceWorker.register('../sw.js', { scope: '/' });
     await navigator.serviceWorker.ready;
-
     var sub = await reg.pushManager.getSubscription();
     if (!sub) {
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC)
-      });
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC) });
     }
-
     var res = await fetch(PUSH_WORKER + '/subscribe-storm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ subscription: sub.toJSON() })
     });
-
     btn.classList.remove('loading');
     if (res.ok) {
-      setCompanionSubscribed();
-      status.className = 'ok';
-      status.textContent = 'You\u2019ll get alerts 1 min before each key event today.';
+      setSubscribed();
+      status.className = 'ok'; status.textContent = '1 min alerts before each event today.';
     } else {
-      status.className = 'err';
-      status.textContent = 'Subscription failed \u2014 try again.';
+      status.className = 'err'; status.textContent = 'Failed \u2014 try again.';
     }
-  } catch (e) {
+  } catch(e) {
     btn.classList.remove('loading');
-    status.className = 'err';
-    status.textContent = 'Error: ' + e.message;
+    status.className = 'err'; status.textContent = 'Error: ' + e.message;
   }
 }
 
-// Check if already subscribed on load
+async function handleUnsub() {
+  var status = document.getElementById('companion-status');
+  try {
+    var reg = await navigator.serviceWorker.getRegistration('../sw.js');
+    if (reg) {
+      var sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await fetch(PUSH_WORKER + '/unsubscribe', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: sub.endpoint })
+        });
+      }
+    }
+  } catch(e) {}
+  setUnsubscribed();
+  status.className = ''; status.textContent = 'Storm alerts removed.';
+}
+
+// Restore subscribed state on load
 (async function() {
-  if (localStorage.getItem('stormCompanion_2026_04_11')) {
-    setCompanionSubscribed();
-    return;
-  }
+  if (localStorage.getItem('stormCompanion_2026_04_11')) { setSubscribed(); return; }
   if (!('serviceWorker' in navigator)) return;
   try {
     var reg = await navigator.serviceWorker.getRegistration('../sw.js');
     if (!reg) return;
     var sub = await reg.pushManager.getSubscription();
     if (!sub) return;
-    // Verify it's registered as storm companion
-    var res = await fetch(PUSH_WORKER + '/status', {
-      method: 'GET',
-      headers: { 'X-Endpoint': sub.endpoint }
-    });
-    if (res.ok) {
-      var data = await res.json();
-      if (data.stormCompanion) setCompanionSubscribed();
-    }
+    var res = await fetch(PUSH_WORKER + '/status', { headers: { 'X-Endpoint': sub.endpoint } });
+    if (res.ok) { var d = await res.json(); if (d.stormCompanion) setSubscribed(); }
   } catch(e) {}
 })();
 </script>
