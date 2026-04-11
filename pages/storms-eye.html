@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Storm's Eye — S2864</title>
+  <meta name="theme-color" content="#0d1117">
+
+  <!-- Google Translate -->
+  <script>
+    function googleTranslateInit() {
+      new google.translate.TranslateElement({
+        pageLanguage: 'en',
+        includedLanguages: 'zh-CN,zh-TW,ko,ja,de,fr,es,pt,ru,ar,hi,th,vi,id,tr',
+        layout: google.translate.TranslateElement.InlineLayout.SIMPLE,
+        autoDisplay: false
+      }, 'google_translate_element');
+    }
+  </script>
+  <script src="//translate.google.com/translate_a/element.js?cb=googleTranslateInit" async></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px 16px 32px;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    header {
+      width: 100%;
+      max-width: 900px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-bottom: 12px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #30363d;
+      flex-wrap: wrap;
+    }
+    .city-icon { width: 52px; height: auto; flex-shrink: 0; }
+    .title-block h1 { font-size: 1.3rem; font-weight: 700; color: #79c0ff; }
+    .title-block p  { font-size: 0.75rem; color: #8b949e; margin-top: 1px; }
+    .header-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    #google_translate_element { font-size: 0.75rem; }
+
+    /* ── Battle Timer Bar ────────────────────────────────────────────── */
+    .timer-bar {
+      width: 100%;
+      max-width: 900px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .timer-clock {
+      font-family: monospace;
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      min-width: 120px;
+    }
+    .timer-clock.pre    { color: #8b949e; }
+    .timer-clock.live   { color: #3fb950; }
+    .timer-clock.over   { color: #f85149; }
+    .timer-status {
+      flex: 1;
+      min-width: 0;
+    }
+    .timer-status .phase {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #e6edf3;
+    }
+    .timer-status .next-event {
+      font-size: 0.77rem;
+      color: #8b949e;
+      margin-top: 2px;
+    }
+    .timer-status .next-event span { color: #79c0ff; }
+
+    /* companion button */
+    .companion-btn {
+      background: #1c2128;
+      border: 1px solid #3fb950;
+      color: #3fb950;
+      padding: 9px 16px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+    .companion-btn:hover { background: #2d333b; }
+    .companion-btn.subscribed { border-color: #79c0ff; color: #79c0ff; cursor: default; }
+    .companion-btn.loading    { opacity: 0.6; cursor: wait; }
+    .companion-btn svg { width: 14px; height: 14px; fill: currentColor; flex-shrink: 0; }
+    #companion-status { font-size: 0.72rem; color: #8b949e; margin-top: 4px; width: 100%; }
+    #companion-status.ok  { color: #3fb950; }
+    #companion-status.err { color: #f85149; }
+
+    /* ── Main layout ─────────────────────────────────────────────────── */
+    .main-layout {
+      display: flex;
+      gap: 16px;
+      width: 100%;
+      max-width: 900px;
+      align-items: flex-start;
+    }
+
+    /* ── Map ─────────────────────────────────────────────────────────── */
+    .map-wrap { flex: 0 0 auto; width: min(520px, 100%); }
+    .map-container {
+      position: relative;
+      width: 100%;
+      padding-top: 100%;
+      background: radial-gradient(ellipse at 50% 50%, #2a1e0f 0%, #1a1208 60%, #0d0a06 100%);
+      border-radius: 8px;
+      border: 1px solid #30363d;
+      overflow: hidden;
+    }
+    .map-inner { position: absolute; inset: 0; }
+    .map-container::before {
+      content: '';
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+      background-size: 10% 10%;
+      pointer-events: none;
+    }
+    .safe-zone {
+      position: absolute;
+      top: 8%; left: 8%; width: 84%; height: 84%;
+      border: 1px dashed rgba(121,192,255,0.12);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    /* ── Building icons ──────────────────────────────────────────────── */
+    .bld {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      z-index: 2;
+      transition: opacity 0.4s;
+    }
+    .bld.inactive { opacity: 0.35; }
+    .bld.active   { opacity: 1; }
+    .bld.pulsing img { animation: pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{filter:drop-shadow(0 0 4px currentColor) brightness(1)} 50%{filter:drop-shadow(0 0 12px currentColor) brightness(1.3)} }
+
+    .bld img {
+      display: block;
+      transition: transform 0.15s;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.7));
+    }
+    .bld:hover img { transform: scale(1.15); }
+
+    .station img { width: clamp(26px, 5vw, 42px); }
+    .hub img     { width: clamp(30px, 5.5vw, 46px); }
+    .cluster img { width: clamp(24px, 4.2vw, 36px); }
+    .boss img    { width: clamp(28px, 5vw, 42px); }
+
+    .bld .badge {
+      position: absolute; top: -9px;
+      background: #161b22; border: 1px solid #30363d;
+      border-radius: 3px; font-size: 0.52rem;
+      padding: 1px 4px; white-space: nowrap;
+      pointer-events: none; line-height: 1.4;
+    }
+    .station .badge { border-color: #388bfd; color: #79c0ff; }
+    .hub .badge     { border-color: #d29922; color: #d29922; }
+    .cluster .badge { border-color: #3fb950; color: #3fb950; }
+    .boss .badge    { border-color: #f85149; color: #f85149; display:none; }
+    .boss.active .badge { display: block; }
+
+    /* burn stage highlight */
+    .bld.burning img { filter: drop-shadow(0 0 8px #ff6b00) brightness(1.15); }
+
+    /* Tooltip */
+    .bld .tip {
+      display: none; position: absolute;
+      bottom: calc(100% + 6px); left: 50%;
+      transform: translateX(-50%);
+      background: #161b22; border: 1px solid #30363d;
+      border-radius: 6px; padding: 7px 10px;
+      min-width: 140px; z-index: 99;
+      pointer-events: none; text-align: left;
+    }
+    .bld:hover .tip { display: block; }
+    .tip .tip-name { font-size: 0.78rem; font-weight: 600; margin-bottom: 3px; }
+    .tip .tip-row  { font-size: 0.7rem; color: #8b949e; line-height: 1.5; }
+    .tip .tip-row span { color: #e6edf3; }
+    .station .tip .tip-name { color: #79c0ff; }
+    .hub .tip .tip-name     { color: #d29922; }
+    .cluster .tip .tip-name { color: #3fb950; }
+    .boss .tip .tip-name    { color: #f85149; }
+    .bld.tip-below .tip { top: calc(100% + 6px); bottom: auto; }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────── */
+    .sidebar { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px 14px; }
+    .card h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #8b949e; margin-bottom: 8px; }
+
+    /* Legend */
+    .leg { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 0.8rem; }
+    .leg img { width: 26px; flex-shrink: 0; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.7)); }
+    .leg-name { font-weight: 600; }
+    .leg-pts  { margin-left: auto; font-size: 0.72rem; color: #8b949e; text-align: right; }
+    .sc { color: #79c0ff; } .hc { color: #d29922; } .cc { color: #3fb950; } .bc { color: #f85149; }
+
+    /* Timeline */
+    .tl { display: flex; flex-direction: column; gap: 5px; }
+    .tl-row { display: flex; align-items: baseline; gap: 7px; font-size: 0.77rem; border-radius: 3px; padding: 2px 4px; transition: background 0.3s; }
+    .tl-row.current-phase { background: rgba(121,192,255,0.08); }
+    .tl-time  { font-family: monospace; font-size: 0.74rem; color: #8b949e; min-width: 42px; flex-shrink: 0; }
+    .tl-label { color: #e6edf3; }
+    .tl-note  { color: #8b949e; font-size: 0.7rem; }
+    .tl-row.highlight .tl-label { font-weight: 600; }
+    .tl-row.s .tl-time { color: #79c0ff; }
+    .tl-row.h .tl-time { color: #d29922; }
+    .tl-row.c .tl-time { color: #3fb950; }
+    .tl-row.b .tl-time { color: #f85149; }
+    .tl-row.burn .tl-time { color: #ff8c00; }
+
+    /* Rules */
+    .rule { display: flex; gap: 5px; font-size: 0.76rem; margin-bottom: 5px; color: #8b949e; line-height: 1.45; }
+    .rule::before { content: '•'; flex-shrink: 0; margin-top: 1px; }
+    .rule strong { color: #e6edf3; }
+
+    @media (max-width: 680px) {
+      .main-layout { flex-direction: column; align-items: center; }
+      .map-wrap { width: min(480px, 100%); }
+      .sidebar { width: 100%; }
+      .timer-clock { font-size: 1.5rem; }
+    }
+
+    /* Translate widget de-emphasis */
+    .goog-te-gadget { color: #8b949e !important; font-size: 0.72rem !important; }
+    .goog-te-gadget-simple { background: #1c2128 !important; border: 1px solid #30363d !important; border-radius: 4px; padding: 3px 6px !important; }
+    .goog-te-gadget-simple span { color: #79c0ff !important; }
+  </style>
+</head>
+<body>
+
+<header>
+  <img class="city-icon" src="../assets/cnc-icons/cnc_city_icon_8.png" alt="Storm's Eye">
+  <div class="title-block">
+    <h1>Storm's Eye</h1>
+    <p>Lv. 4 Neutral City &middot; SSC Round 4 &middot; S2864</p>
+  </div>
+  <div class="header-actions">
+    <div id="google_translate_element"></div>
+  </div>
+</header>
+
+<!-- Timer Bar -->
+<div class="timer-bar">
+  <div class="timer-clock pre" id="timer-clock">--:--</div>
+  <div class="timer-status">
+    <div class="phase" id="timer-phase">Loading&hellip;</div>
+    <div class="next-event" id="timer-next"></div>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+    <button class="companion-btn" id="companion-btn" onclick="handleCompanion()">
+      <svg viewBox="0 0 16 16"><path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2zm.995-14.901a1 1 0 1 0-1.99 0A5.002 5.002 0 0 0 3 6c0 1.098-.5 6-2 7h14c-1.5-1-2-5.902-2-7 0-2.42-1.72-4.44-4.005-4.901z"/></svg>
+      <span id="companion-label">Battle Companion Alerts</span>
+    </button>
+    <div id="companion-status"></div>
+  </div>
+</div>
+
+<div class="main-layout">
+
+  <!-- MAP -->
+  <div class="map-wrap">
+    <div class="map-container">
+      <div class="map-inner">
+        <div class="safe-zone"></div>
+
+        <!-- Enigma Stations (type=1, outer ring) — data-opens-at = battle-relative minutes -->
+        <div class="bld station inactive" data-type="station" data-opens="5" style="left:18.75%;top:37.5%">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div><div class="tip-row">Hold: <span>3 min to secure &middot; 60s shield</span></div></div>
+        </div>
+        <div class="bld station inactive" data-type="station" data-opens="5" style="left:18.75%;top:62.5%">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
+        </div>
+        <div class="bld station inactive tip-below" data-type="station" data-opens="5" style="left:25%;top:24.8%">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
+        </div>
+        <div class="bld station inactive" data-type="station" data-opens="5" style="left:25%;top:74.8%">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
+        </div>
+        <div class="bld station inactive tip-below" data-type="station" data-opens="5" style="left:37.5%;top:18.75%">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
+        </div>
+        <div class="bld station inactive" data-type="station" data-opens="5" style="left:37.5%;top:81.25%">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
+        </div>
+        <div class="bld station inactive tip-below" data-type="station" data-opens="5" style="left:62.5%;top:18.75%">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
+        </div>
+        <div class="bld station inactive" data-type="station" data-opens="5" style="left:62.5%;top:81.25%">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
+        </div>
+        <div class="bld station inactive tip-below" data-type="station" data-opens="5" style="left:75%;top:24.8%">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
+        </div>
+        <div class="bld station inactive" data-type="station" data-opens="5" style="left:75%;top:74.8%">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
+        </div>
+        <div class="bld station inactive" data-type="station" data-opens="5" style="left:81.25%;top:37.5%">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
+        </div>
+        <div class="bld station inactive" data-type="station" data-opens="5" style="left:81.25%;top:62.5%">
+          <div class="badge">5:00</div><img src="../assets/cnc-icons/cnc_building_out.png" alt="Enigma Station">
+          <div class="tip"><div class="tip-name">Enigma Station</div><div class="tip-row">Opens: <span>5:00</span></div><div class="tip-row">Points: <span>500 capture &middot; 250/min</span></div></div>
+        </div>
+
+        <!-- Enigma Hubs (type=2, inner cluster) -->
+        <div class="bld hub inactive" data-type="hub" data-opens="25" style="left:34.3%;top:34.1%">
+          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="Enigma Hub">
+          <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div><div class="tip-row">Hold: <span>3 min to secure &middot; 60s shield</span></div></div>
+        </div>
+        <div class="bld hub inactive" data-type="hub" data-opens="25" style="left:34.3%;top:65.4%">
+          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="Enigma Hub">
+          <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div></div>
+        </div>
+        <div class="bld hub inactive" data-type="hub" data-opens="25" style="left:37.5%;top:50%">
+          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="Enigma Hub">
+          <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div></div>
+        </div>
+        <div class="bld hub inactive" data-type="hub" data-opens="25" style="left:50%;top:37.5%">
+          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="Enigma Hub">
+          <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div></div>
+        </div>
+        <div class="bld hub inactive" data-type="hub" data-opens="25" style="left:50%;top:62.5%">
+          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="Enigma Hub">
+          <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div></div>
+        </div>
+        <div class="bld hub inactive" data-type="hub" data-opens="25" style="left:62.5%;top:50%">
+          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="Enigma Hub">
+          <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div></div>
+        </div>
+        <div class="bld hub inactive" data-type="hub" data-opens="25" style="left:65.7%;top:34.1%">
+          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="Enigma Hub">
+          <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div></div>
+        </div>
+        <div class="bld hub inactive" data-type="hub" data-opens="25" style="left:65.7%;top:65.4%">
+          <div class="badge">25:00</div><img src="../assets/cnc-icons/cnc_building_in.png" alt="Enigma Hub">
+          <div class="tip"><div class="tip-name">Enigma Hub</div><div class="tip-row">Opens: <span>25:00</span></div><div class="tip-row">Points: <span>1000 capture &middot; 500/min</span></div></div>
+        </div>
+
+        <!-- Seal Stone Clusters (cardinal midpoints) — multi-wave visibility -->
+        <div class="bld cluster inactive" data-type="cluster" data-opens="15" data-closes="25,38,52" data-waves="15,28,42" style="left:23.5%;top:50%">
+          <div class="badge">15:00</div><img src="../assets/cnc-icons/icon_cq25_kuang.png" alt="Seal Stone Cluster">
+          <div class="tip"><div class="tip-name">Seal Stone Cluster</div><div class="tip-row">Waves: <span>15:00 &middot; 28:00 &middot; 42:00</span></div><div class="tip-row">Each wave: <span>15 clusters, lasts 10 min</span></div></div>
+        </div>
+        <div class="bld cluster inactive" data-type="cluster" data-opens="15" data-waves="15,28,42" style="left:76.5%;top:50%">
+          <div class="badge">15:00</div><img src="../assets/cnc-icons/icon_cq25_kuang.png" alt="Seal Stone Cluster">
+          <div class="tip"><div class="tip-name">Seal Stone Cluster</div><div class="tip-row">Waves: <span>15:00 &middot; 28:00 &middot; 42:00</span></div><div class="tip-row">Each wave: <span>15 clusters, lasts 10 min</span></div></div>
+        </div>
+        <div class="bld cluster inactive tip-below" data-type="cluster" data-opens="15" data-waves="15,28,42" style="left:50%;top:23.5%">
+          <div class="badge">15:00</div><img src="../assets/cnc-icons/icon_cq25_kuang.png" alt="Seal Stone Cluster">
+          <div class="tip"><div class="tip-name">Seal Stone Cluster</div><div class="tip-row">Waves: <span>15:00 &middot; 28:00 &middot; 42:00</span></div><div class="tip-row">Each wave: <span>15 clusters, lasts 10 min</span></div></div>
+        </div>
+        <div class="bld cluster inactive" data-type="cluster" data-opens="15" data-waves="15,28,42" style="left:50%;top:76.5%">
+          <div class="badge">15:00</div><img src="../assets/cnc-icons/icon_cq25_kuang.png" alt="Seal Stone Cluster">
+          <div class="tip"><div class="tip-name">Seal Stone Cluster</div><div class="tip-row">Waves: <span>15:00 &middot; 28:00 &middot; 42:00</span></div><div class="tip-row">Each wave: <span>15 clusters, lasts 10 min</span></div></div>
+        </div>
+
+        <!-- Enigma Lord -->
+        <div class="bld boss inactive" data-type="boss" data-opens="35" data-closes="40" style="left:50%;top:50%;z-index:3">
+          <div class="badge">35:00</div><img src="../assets/cnc-icons/cnc_npc_icon.png" alt="Enigma Lord">
+          <div class="tip"><div class="tip-name">Enigma Lord</div><div class="tip-row">Attackable: <span>35:00 &ndash; 40:00</span></div><div class="tip-row">Role: <span>Independent 3rd faction</span></div><div class="tip-row">Note: <span>Captures open buildings &mdash; if it wins, city uncontrolled</span></div></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- Legend -->
+    <div class="card">
+      <h3>Buildings</h3>
+      <div class="leg"><img src="../assets/cnc-icons/cnc_building_out.png" alt=""><div><div class="leg-name sc">Enigma Station &times;12</div><div style="font-size:0.7rem;color:#8b949e">Opens 5:00 &middot; outer ring</div></div><div class="leg-pts">500 capture<br>250/min</div></div>
+      <div class="leg"><img src="../assets/cnc-icons/cnc_building_in.png" alt=""><div><div class="leg-name hc">Enigma Hub &times;8</div><div style="font-size:0.7rem;color:#8b949e">Opens 25:00 &middot; inner cluster</div></div><div class="leg-pts">1000 capture<br>500/min</div></div>
+      <div class="leg"><img src="../assets/cnc-icons/icon_cq25_kuang.png" alt=""><div><div class="leg-name cc">Seal Stone Cluster</div><div style="font-size:0.7rem;color:#8b949e">3 waves &middot; 4 points each</div></div><div class="leg-pts">Continuous<br>pts/sec</div></div>
+      <div class="leg"><img src="../assets/cnc-icons/cnc_npc_icon.png" alt=""><div><div class="leg-name bc">Enigma Lord</div><div style="font-size:0.7rem;color:#8b949e">Center &middot; independent faction</div></div><div class="leg-pts">35:00&ndash;40:00<br>ranked dmg</div></div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="card">
+      <h3>Battle Timeline (60 min)</h3>
+      <div class="tl" id="timeline">
+        <div class="tl-row" data-phase-start="0"  data-phase-end="5"><span class="tl-time">0:00</span><span class="tl-label">Battle opens</span><span class="tl-note">&nbsp;&mdash; setup</span></div>
+        <div class="tl-row s highlight" data-phase-start="5"  data-phase-end="25"><span class="tl-time">5:00</span><span class="tl-label">Enigma Stations open</span></div>
+        <div class="tl-row c" data-phase-start="15" data-phase-end="25"><span class="tl-time">15:00</span><span class="tl-label">Seal Stone Clusters &mdash; wave 1</span><span class="tl-note">&nbsp;&times;15, 10 min</span></div>
+        <div class="tl-row h highlight" data-phase-start="25" data-phase-end="60"><span class="tl-time">25:00</span><span class="tl-label">Enigma Hubs open</span></div>
+        <div class="tl-row c" data-phase-start="28" data-phase-end="38"><span class="tl-time">28:00</span><span class="tl-label">Seal Stone Clusters &mdash; wave 2</span><span class="tl-note">&nbsp;&times;15, 10 min</span></div>
+        <div class="tl-row b" data-phase-start="35" data-phase-end="40"><span class="tl-time">35:00</span><span class="tl-label">Enigma Lord attackable</span><span class="tl-note">&nbsp;5 min</span></div>
+        <div class="tl-row c" data-phase-start="42" data-phase-end="52"><span class="tl-time">42:00</span><span class="tl-label">Seal Stone Clusters &mdash; wave 3</span><span class="tl-note">&nbsp;&times;15, 10 min</span></div>
+        <div class="tl-row burn highlight" data-phase-start="45" data-phase-end="60"><span class="tl-time">45:00</span><span class="tl-label">Burn Stage &mdash; 3&times; points</span><span class="tl-note">&nbsp;15 min</span></div>
+        <div class="tl-row" data-phase-start="60" data-phase-end="999"><span class="tl-time">60:00</span><span class="tl-label">Battle over</span></div>
+      </div>
+    </div>
+
+    <!-- Rules -->
+    <div class="card">
+      <h3>Key Rules</h3>
+      <div class="rule">Hold a building <strong>3 min</strong> to secure ownership &rarr; 60s immunity shield</div>
+      <div class="rule">On capture: new holder gets <strong>70%</strong> of bounty; 30% scattered nearby</div>
+      <div class="rule">Enigma Lord attacks open buildings &mdash; if it tops the score, <strong>no one captures the city</strong></div>
+      <div class="rule">Entry: top <strong>300 CP</strong> per faction pre-battle; <strong>1M CP+</strong> after it opens</div>
+      <div class="rule">Max <strong>3,000</strong> total &middot; <strong>300</strong> per warzone</div>
+      <div class="rule">First entry: <strong>5 Relocators + 5 Speedups</strong> &mdash; only way to move/speedup inside</div>
+      <div class="rule">Base Shield <strong>removed on entry</strong> &mdash; cannot reactivate inside</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Feedback widget -->
+<script src="../feedback-widget.js"></script>
+<script>
+if (typeof initFeedbackWidget === 'function') {
+  initFeedbackWidget({ workerUrl: 'https://push-worker.27tb8s6fct.workers.dev' });
+}
+</script>
+
+<script>
+// ─── Constants ───────────────────────────────────────────────────────────────
+var PUSH_WORKER    = 'https://push-worker.27tb8s6fct.workers.dev';
+var VAPID_PUBLIC   = 'BKbuearRTBpH6pAjoky9HVOYehah7lQ1Uti3APPMAYvdZJCUI8COAmVK7hym7zmefTGnI9_-vQY86IXa_nCHXHc';
+// Battle start: 2026-04-11 14:00:00 UTC (Round 4 Neutral City Battle)
+var BATTLE_START_UTC = Date.UTC(2026, 3, 11, 14, 0, 0); // month is 0-indexed
+
+// ─── Timeline phases (minutes from battle start) ─────────────────────────────
+var PHASES = [
+  { start: 0,  label: 'Setup Phase',           next: 'Stations open at 5:00',     cls: '' },
+  { start: 5,  label: 'Enigma Stations Open',  next: 'Clusters wave 1 at 15:00',  cls: 'station' },
+  { start: 15, label: 'Seal Stone Clusters',   next: 'Hubs open at 25:00',        cls: 'cluster' },
+  { start: 25, label: 'Enigma Hubs Open',      next: 'Clusters wave 2 at 28:00',  cls: 'hub' },
+  { start: 28, label: 'Seal Stone Clusters',   next: 'Boss at 35:00',             cls: 'cluster' },
+  { start: 35, label: 'Enigma Lord Attackable',next: 'Clusters wave 3 at 42:00',  cls: 'boss' },
+  { start: 40, label: 'Enigma Lord Defeated',  next: 'Clusters wave 3 at 42:00',  cls: '' },
+  { start: 42, label: 'Seal Stone Clusters',   next: 'Burn Stage at 45:00',       cls: 'cluster' },
+  { start: 45, label: '\uD83D\uDD25 Burn Stage \u2014 3\u00D7 Points', next: 'Battle ends at 60:00', cls: 'burn' },
+  { start: 60, label: 'Battle Over',           next: '',                           cls: '' },
+];
+
+// ─── Map state updater ───────────────────────────────────────────────────────
+function updateMap(elapsedMin) {
+  var isBurn = elapsedMin >= 45 && elapsedMin < 60;
+
+  // Station
+  document.querySelectorAll('[data-type="station"]').forEach(function(el) {
+    var opens = parseInt(el.dataset.opens, 10);
+    var active = elapsedMin >= opens;
+    el.classList.toggle('active', active);
+    el.classList.toggle('inactive', !active);
+    if (active && isBurn) el.classList.add('burning'); else el.classList.remove('burning');
+  });
+
+  // Hub
+  document.querySelectorAll('[data-type="hub"]').forEach(function(el) {
+    var opens = parseInt(el.dataset.opens, 10);
+    var active = elapsedMin >= opens;
+    el.classList.toggle('active', active);
+    el.classList.toggle('inactive', !active);
+    if (active && isBurn) el.classList.add('burning'); else el.classList.remove('burning');
+  });
+
+  // Cluster — show during wave windows: 15-25, 28-38, 42-52
+  document.querySelectorAll('[data-type="cluster"]').forEach(function(el) {
+    var inWave = (elapsedMin >= 15 && elapsedMin < 25) ||
+                 (elapsedMin >= 28 && elapsedMin < 38) ||
+                 (elapsedMin >= 42 && elapsedMin < 52);
+    el.classList.toggle('active', inWave);
+    el.classList.toggle('inactive', !inWave);
+    if (inWave) el.classList.add('pulsing'); else el.classList.remove('pulsing');
+  });
+
+  // Boss — active 35-40
+  document.querySelectorAll('[data-type="boss"]').forEach(function(el) {
+    var active = elapsedMin >= 35 && elapsedMin < 40;
+    el.classList.toggle('active', active);
+    el.classList.toggle('inactive', !active);
+    if (active) el.classList.add('pulsing'); else el.classList.remove('pulsing');
+  });
+
+  // Timeline highlight
+  document.querySelectorAll('#timeline .tl-row').forEach(function(row) {
+    var ps = parseInt(row.dataset.phaseStart, 10);
+    var pe = parseInt(row.dataset.phaseEnd,   10);
+    row.classList.toggle('current-phase', elapsedMin >= ps && elapsedMin < pe);
+  });
+}
+
+// ─── Timer ───────────────────────────────────────────────────────────────────
+function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+function tick() {
+  var now = Date.now();
+  var clock  = document.getElementById('timer-clock');
+  var phase  = document.getElementById('timer-phase');
+  var nextEl = document.getElementById('timer-next');
+
+  if (now < BATTLE_START_UTC) {
+    // Countdown to battle
+    var secsLeft = Math.ceil((BATTLE_START_UTC - now) / 1000);
+    var h = Math.floor(secsLeft / 3600);
+    var m = Math.floor((secsLeft % 3600) / 60);
+    var s = secsLeft % 60;
+    clock.className = 'timer-clock pre';
+    clock.textContent = (h > 0 ? h + ':' : '') + pad2(m) + ':' + pad2(s);
+    phase.textContent = 'Battle starts in\u2026';
+    nextEl.textContent = '';
+    updateMap(-1);
+    return;
+  }
+
+  var elapsedSec = Math.floor((now - BATTLE_START_UTC) / 1000);
+  var elapsedMin = elapsedSec / 60;
+
+  if (elapsedMin >= 60) {
+    clock.className = 'timer-clock over';
+    clock.textContent = '60:00';
+    phase.textContent = 'Battle Over';
+    nextEl.textContent = '';
+    updateMap(60);
+    return;
+  }
+
+  var m2 = Math.floor(elapsedMin);
+  var s2 = elapsedSec % 60;
+  clock.className = 'timer-clock live';
+  clock.textContent = pad2(m2) + ':' + pad2(s2);
+
+  // Find current phase
+  var currentPhase = PHASES[0];
+  for (var i = PHASES.length - 1; i >= 0; i--) {
+    if (elapsedMin >= PHASES[i].start) { currentPhase = PHASES[i]; break; }
+  }
+  phase.textContent = currentPhase.label;
+  if (currentPhase.next) {
+    nextEl.innerHTML = 'Next: <span>' + currentPhase.next + '</span>';
+  } else {
+    nextEl.textContent = '';
+  }
+  updateMap(elapsedMin);
+}
+
+setInterval(tick, 1000);
+tick();
+
+// ─── Push subscription helpers ───────────────────────────────────────────────
+function urlBase64ToUint8Array(b) {
+  var padding = '='.repeat((4 - b.length % 4) % 4);
+  var base64 = (b + padding).replace(/-/g, '+').replace(/_/g, '/');
+  var raw = atob(base64);
+  return Uint8Array.from(raw.split('').map(function(c) { return c.charCodeAt(0); }));
+}
+
+function setCompanionSubscribed() {
+  var btn = document.getElementById('companion-btn');
+  var lbl = document.getElementById('companion-label');
+  if (btn) btn.classList.add('subscribed');
+  if (lbl) lbl.textContent = '\u2713 Alerts Active';
+  localStorage.setItem('stormCompanion_2026_04_11', '1');
+}
+
+async function handleCompanion() {
+  var btn    = document.getElementById('companion-btn');
+  var status = document.getElementById('companion-status');
+
+  if (btn.classList.contains('subscribed') || btn.classList.contains('loading')) return;
+
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    status.className = 'err';
+    status.textContent = 'Push not supported in this browser.';
+    return;
+  }
+
+  btn.classList.add('loading');
+  status.className = '';
+  status.textContent = 'Subscribing\u2026';
+
+  try {
+    var permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      status.className = 'err';
+      status.textContent = 'Permission denied \u2014 enable notifications in browser settings.';
+      btn.classList.remove('loading');
+      return;
+    }
+
+    var reg = await navigator.serviceWorker.register('../sw.js', { scope: '/' });
+    await navigator.serviceWorker.ready;
+
+    var sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC)
+      });
+    }
+
+    var res = await fetch(PUSH_WORKER + '/subscribe-storm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription: sub.toJSON() })
+    });
+
+    btn.classList.remove('loading');
+    if (res.ok) {
+      setCompanionSubscribed();
+      status.className = 'ok';
+      status.textContent = 'You\u2019ll get alerts 1 min before each key event today.';
+    } else {
+      status.className = 'err';
+      status.textContent = 'Subscription failed \u2014 try again.';
+    }
+  } catch (e) {
+    btn.classList.remove('loading');
+    status.className = 'err';
+    status.textContent = 'Error: ' + e.message;
+  }
+}
+
+// Check if already subscribed on load
+(async function() {
+  if (localStorage.getItem('stormCompanion_2026_04_11')) {
+    setCompanionSubscribed();
+    return;
+  }
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    var reg = await navigator.serviceWorker.getRegistration('../sw.js');
+    if (!reg) return;
+    var sub = await reg.pushManager.getSubscription();
+    if (!sub) return;
+    // Verify it's registered as storm companion
+    var res = await fetch(PUSH_WORKER + '/status', {
+      method: 'GET',
+      headers: { 'X-Endpoint': sub.endpoint }
+    });
+    if (res.ok) {
+      var data = await res.json();
+      if (data.stormCompanion) setCompanionSubscribed();
+    }
+  } catch(e) {}
+})();
+</script>
+
+</body>
+</html>
