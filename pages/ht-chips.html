@@ -407,9 +407,14 @@
       var chips = mecha.chips || [];
       if (chips.length === 0) continue;
 
-      // Determine set from first chip
-      var firstLookup = CL[chips[0].chipId];
-      var setGroupId = firstLookup ? firstLookup[0] : 0;
+      // Pre-scan chips to find dominant set (handles mixed sets)
+      var preSets = {};
+      for (var pi = 0; pi < chips.length; pi++) {
+        var pLk = CL[chips[pi].chipId];
+        if (pLk) { var psg = pLk[0]; preSets[psg] = (preSets[psg]||0)+1; }
+      }
+      var setGroupId = 0; var domCount = 0;
+      for (var psg2 in preSets) { if (preSets[psg2] > domCount) { domCount = preSets[psg2]; setGroupId = Number(psg2); } }
       var setName = SET_NAMES[setGroupId] || ('Set #' + setGroupId);
       var setIcon = SET_ICONS[setGroupId];
       var mechaName = MECHA_NAMES[mecha.mechaId] || ('Mecha #' + mecha.mechaId);
@@ -426,7 +431,14 @@
       }
       var nameDiv = el('div');
       nameDiv.appendChild(el('div', { className: 'army-name' }, setName));
-      nameDiv.appendChild(el('div', { className: 'mecha-name' }, mechaName + ' \u00B7 ' + chips.length + '/7 chips'));
+      var preSetKeys = Object.keys(preSets);
+      var chipsSub = mechaName + ' \u00B7 ';
+      if (preSetKeys.length > 1) {
+        chipsSub += preSetKeys.map(function(sg) { return (SET_NAMES[sg]||'Set#'+sg)+' '+preSets[sg]; }).join(', ');
+      } else {
+        chipsSub += chips.length + '/7 chips';
+      }
+      nameDiv.appendChild(el('div', { className: 'mecha-name' }, chipsSub));
       header.appendChild(nameDiv);
 
       if (hasEffectMecha) {
