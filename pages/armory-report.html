@@ -27,6 +27,97 @@
   .empty-state p { color: var(--muted); margin-bottom: 1.5rem; max-width: 400px; }
   .btn-primary { background: #238636; color: #fff; border: none; padding: .75rem 2rem; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background .2s; }
   .btn-primary:hover { background: #2ea043; }
+  .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
+
+  /* Wizard overlay */
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .wizard-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  .wizard-overlay.open {
+    display: flex;
+    animation: fadeIn .2s ease;
+  }
+
+  .wizard-card {
+    background: var(--bg);
+    border-radius: 16px;
+    padding: 2.5rem;
+    max-width: 520px;
+    width: 100%;
+    border: 1px solid var(--border);
+    text-align: center;
+    animation: slideUp .25s ease;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+  }
+
+  .wizard-card h2 { font-size: 1.4rem; margin: 1rem 0 .4rem; color: var(--text); }
+  .wizard-card p { color: var(--muted); margin-bottom: 1.5rem; font-size: .95rem; }
+
+  .wizard-input-row {
+    display: flex;
+    gap: .5rem;
+    margin-bottom: .5rem;
+  }
+
+  .wizard-input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .65rem .9rem;
+    color: var(--text);
+    font-size: 1rem;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .wizard-input::placeholder { color: var(--muted); }
+  .wizard-input:focus { border-color: var(--accent); }
+
+  .wizard-error {
+    color: var(--red);
+    font-size: .875rem;
+    min-height: 1.25rem;
+    text-align: left;
+  }
+
+  .wizard-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    vertical-align: middle;
+    margin-right: 4px;
+  }
+
+  .btn-secondary {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: .65rem 1.25rem;
+    border-radius: 8px;
+    font-size: .95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background .2s, border-color .2s;
+  }
+  .btn-secondary:hover { background: var(--card); border-color: var(--muted); }
+  .btn-secondary:disabled { opacity: .6; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -46,11 +137,271 @@
   </div>
 </div>
 
+<!-- Wizard overlay -->
+<div class="wizard-overlay" id="wizard">
+  <div class="wizard-card" id="wizard-content">
+  </div>
+</div>
+
 <script>
   var CDN_BASE = 'https://fight-report-va.oss-accelerate.aliyuncs.com/prod/';
   var ASSET_BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/';
-  function esc(s) { if (s == null) return ''; var d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
-  function el(tag, attrs, text) { var e = document.createElement(tag); if (attrs) { for (var k in attrs) e[k] = attrs[k]; } if (text != null) e.textContent = text; return e; }
+
+  function esc(s) {
+    if (s == null) return '';
+    var d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
+  }
+
+  function el(tag, attrs, text) {
+    var e = document.createElement(tag);
+    if (attrs) { for (var k in attrs) e[k] = attrs[k]; }
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  // ── Wizard state ──────────────────────────────────────────────────────────
+  var wizardState = {
+    reportData: [],       // array of {id, extracted} for each loaded report
+    player: null,         // {name, avatar, avatarFallback, level, server}
+    step: 'input'         // 'input' | 'select-player' | 'summary' | 'building'
+  };
+
+  function openWizard() {
+    wizardState.step = 'input';
+    document.getElementById('wizard').classList.add('open');
+    renderWizardStep();
+  }
+
+  function closeWizard() {
+    document.getElementById('wizard').classList.remove('open');
+  }
+
+  function renderWizardStep() {
+    var container = document.getElementById('wizard-content');
+    switch (wizardState.step) {
+      case 'input':         renderStepInput(container); break;
+      case 'select-player': renderStepSelectPlayer(container); break;
+      case 'summary':       renderStepSummary(container); break;
+      case 'building':      renderStepBuilding(container); break;
+    }
+  }
+
+  // ── Step 1: Report ID input ───────────────────────────────────────────────
+  function renderStepInput(container) {
+    var isFirst = wizardState.player === null;
+    var heading = isFirst ? 'Set Up Your Report' : 'Add Another Report';
+    var subtitle = 'Paste a battle report ID';
+
+    // Clear container using DOM (not innerHTML = '')
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    // SVG document icon (40px) - safe static SVG
+    var iconWrap = document.createElement('div');
+    var svgNS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('width', '40'); svg.setAttribute('height', '40');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'var(--accent)');
+    svg.setAttribute('stroke-width', '1.5');
+    var pathEl = document.createElementNS(svgNS, 'path');
+    pathEl.setAttribute('d', 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z');
+    var polyEl = document.createElementNS(svgNS, 'polyline');
+    polyEl.setAttribute('points', '14,2 14,8 20,8');
+    var line1 = document.createElementNS(svgNS, 'line');
+    line1.setAttribute('x1', '16'); line1.setAttribute('y1', '13');
+    line1.setAttribute('x2', '8');  line1.setAttribute('y2', '13');
+    var line2 = document.createElementNS(svgNS, 'line');
+    line2.setAttribute('x1', '16'); line2.setAttribute('y1', '17');
+    line2.setAttribute('x2', '8');  line2.setAttribute('y2', '17');
+    svg.appendChild(pathEl); svg.appendChild(polyEl);
+    svg.appendChild(line1); svg.appendChild(line2);
+    iconWrap.appendChild(svg);
+    container.appendChild(iconWrap);
+
+    var h2 = document.createElement('h2');
+    h2.textContent = heading;
+    container.appendChild(h2);
+
+    var sub = document.createElement('p');
+    sub.textContent = subtitle;
+    container.appendChild(sub);
+
+    // Input row
+    var row = document.createElement('div');
+    row.className = 'wizard-input-row';
+
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'wizard-input';
+    input.placeholder = 'Battle Report ID';
+    input.id = 'wizard-report-input';
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('inputmode', 'numeric');
+
+    var loadBtn = document.createElement('button');
+    loadBtn.className = 'btn-primary';
+    loadBtn.id = 'wizard-load-btn';
+    loadBtn.textContent = 'Load';
+
+    row.appendChild(input);
+    row.appendChild(loadBtn);
+    container.appendChild(row);
+
+    // Error div
+    var errDiv = document.createElement('div');
+    errDiv.className = 'wizard-error';
+    errDiv.id = 'wizard-error';
+    container.appendChild(errDiv);
+
+    // Wire events
+    loadBtn.addEventListener('click', wizardLoadReport);
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') wizardLoadReport();
+    });
+
+    // Auto-focus
+    setTimeout(function() {
+      var inp = document.getElementById('wizard-report-input');
+      if (inp) inp.focus();
+    }, 100);
+  }
+
+  // ── CDN fetch ─────────────────────────────────────────────────────────────
+  function wizardLoadReport() {
+    var input = document.getElementById('wizard-report-input');
+    var errDiv = document.getElementById('wizard-error');
+    var loadBtn = document.getElementById('wizard-load-btn');
+    if (!input || !errDiv || !loadBtn) return;
+
+    var id = input.value.trim();
+    errDiv.textContent = '';
+
+    // Validate: numeric, 10-25 digits
+    if (!/^\d{10,25}$/.test(id)) {
+      errDiv.textContent = 'Enter a valid numeric report ID (10\u201325 digits).';
+      return;
+    }
+
+    // Check duplicate
+    for (var i = 0; i < wizardState.reportData.length; i++) {
+      if (wizardState.reportData[i].id === id) {
+        errDiv.textContent = 'This report is already added.';
+        return;
+      }
+    }
+
+    // Check max
+    if (wizardState.reportData.length >= 6) {
+      errDiv.textContent = 'Maximum 6 reports reached.';
+      return;
+    }
+
+    // Disable button + show spinner via DOM
+    loadBtn.disabled = true;
+    while (loadBtn.firstChild) loadBtn.removeChild(loadBtn.firstChild);
+    var spinner = document.createElement('span');
+    spinner.className = 'wizard-spinner';
+    loadBtn.appendChild(spinner);
+    loadBtn.appendChild(document.createTextNode('Loading\u2026'));
+
+    var url = CDN_BASE + id.substring(0, 4) + '/' + id + '.json';
+
+    fetch(url)
+      .then(function(res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function(data) {
+        if (!data || !data.battle) {
+          throw new Error('Invalid report data (no battle field).');
+        }
+        onReportLoaded(id, data);
+      })
+      .catch(function(err) {
+        var errDiv2 = document.getElementById('wizard-error');
+        var loadBtn2 = document.getElementById('wizard-load-btn');
+        if (errDiv2) {
+          var msg = err && err.message ? err.message : '';
+          if (msg.indexOf('HTTP 404') !== -1) {
+            errDiv2.textContent = 'Report not found. Check the ID and try again.';
+          } else if (msg.indexOf('HTTP') !== -1) {
+            errDiv2.textContent = 'Could not fetch report (' + msg + ').';
+          } else {
+            errDiv2.textContent = 'Failed to load report. Please try again.';
+          }
+        }
+        if (loadBtn2) {
+          loadBtn2.disabled = false;
+          loadBtn2.textContent = 'Load';
+        }
+      });
+  }
+
+  // ── After successful fetch ────────────────────────────────────────────────
+  function onReportLoaded(id, data) {
+    if (wizardState.player === null) {
+      // First report — need to pick the player
+      wizardState._pendingReport = { id: id, data: data };
+      wizardState.step = 'select-player';
+      renderWizardStep();
+    } else {
+      // Subsequent report — match against known player name
+      var extracted = extractPlayerData(data, wizardState.player.name);
+      if (!extracted) {
+        var errDiv = document.getElementById('wizard-error');
+        var loadBtn = document.getElementById('wizard-load-btn');
+        if (errDiv) errDiv.textContent = 'Your player (' + esc(wizardState.player.name) + ') was not found in this report.';
+        if (loadBtn) { loadBtn.disabled = false; loadBtn.textContent = 'Load'; }
+        return;
+      }
+      wizardState.reportData.push({ id: id, extracted: extracted });
+      wizardState.step = 'summary';
+      renderWizardStep();
+    }
+  }
+
+  // ── Stubs for future tasks ────────────────────────────────────────────────
+  function extractPlayerData(data, playerName) {
+    // Stub — Task 3 will implement
+    console.log('[wizard] extractPlayerData stub — player:', playerName, 'data keys:', Object.keys(data));
+    return null;
+  }
+
+  function renderStepSelectPlayer(container) {
+    // Stub — Task 3 will implement
+    console.log('[wizard] renderStepSelectPlayer stub — pending:', wizardState._pendingReport && wizardState._pendingReport.id);
+    while (container.firstChild) container.removeChild(container.firstChild);
+    var h2 = document.createElement('h2');
+    h2.style.padding = '1rem';
+    h2.textContent = 'Select Player (coming in Task 3)';
+    container.appendChild(h2);
+  }
+
+  function renderStepSummary(container) {
+    // Stub — Task 4 will implement
+    console.log('[wizard] renderStepSummary stub — reports:', wizardState.reportData.length);
+    while (container.firstChild) container.removeChild(container.firstChild);
+    var h2 = document.createElement('h2');
+    h2.style.padding = '1rem';
+    h2.textContent = 'Summary (coming in Task 4)';
+    container.appendChild(h2);
+  }
+
+  function renderStepBuilding(container) {
+    // Stub — later task
+    console.log('[wizard] renderStepBuilding stub');
+    while (container.firstChild) container.removeChild(container.firstChild);
+    var h2 = document.createElement('h2');
+    h2.style.padding = '1rem';
+    h2.textContent = 'Building\u2026 (coming soon)';
+    container.appendChild(h2);
+  }
+
+  // ── Wire Get Started button ───────────────────────────────────────────────
+  document.getElementById('getStartedBtn').addEventListener('click', openWizard);
 </script>
 <script>
   // Google Translate
