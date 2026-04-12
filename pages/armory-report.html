@@ -2949,24 +2949,14 @@
     badge.textContent = reportCount + '/6 reports';
     actions.appendChild(badge);
 
-    var settingsBtn = document.createElement('button');
-    settingsBtn.className = 'settings-btn';
-    settingsBtn.title = 'Manage reports';
-    settingsBtn.addEventListener('click', openManageModal);
-
-    var gearSvg = document.createElementNS(svgNS, 'svg');
-    gearSvg.setAttribute('width', '18'); gearSvg.setAttribute('height', '18');
-    gearSvg.setAttribute('viewBox', '0 0 24 24'); gearSvg.setAttribute('fill', 'none');
-    gearSvg.setAttribute('stroke', 'currentColor'); gearSvg.setAttribute('stroke-width', '2');
-    gearSvg.setAttribute('stroke-linecap', 'round'); gearSvg.setAttribute('stroke-linejoin', 'round');
-    var gearCircle = document.createElementNS(svgNS, 'circle');
-    gearCircle.setAttribute('cx', '12'); gearCircle.setAttribute('cy', '12'); gearCircle.setAttribute('r', '3');
-    gearSvg.appendChild(gearCircle);
-    var gearPath = document.createElementNS(svgNS, 'path');
-    gearPath.setAttribute('d', 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z');
-    gearSvg.appendChild(gearPath);
-    settingsBtn.appendChild(gearSvg);
-    actions.appendChild(settingsBtn);
+    var manageBtn = document.createElement('button');
+    manageBtn.className = 'reports-badge';
+    manageBtn.style.cssText = 'cursor:pointer;border:1px solid var(--border);transition:all .15s;';
+    manageBtn.textContent = 'Manage Reports';
+    manageBtn.addEventListener('click', openManageModal);
+    manageBtn.addEventListener('mouseenter', function() { manageBtn.style.borderColor = 'var(--accent)'; manageBtn.style.color = 'var(--accent)'; });
+    manageBtn.addEventListener('mouseleave', function() { manageBtn.style.borderColor = 'var(--border)'; manageBtn.style.color = ''; });
+    actions.appendChild(manageBtn);
 
     // Save & Share button (only when player has site identity)
     var identity = getStoredIdentity();
@@ -4716,16 +4706,61 @@
         info.appendChild(ownWrap);
       }
 
-      // City skill badge
+      // City skill badge (clickable)
       if (skillName) {
         var skillBadge = document.createElement('div');
         skillBadge.className = 'skin-skill-badge';
+        skillBadge.style.cursor = 'pointer';
         skillBadge.textContent = '\u26A1 ' + skillName;
+        (function(sName, skinName) {
+          skillBadge.onclick = function(e) {
+            e.stopPropagation();
+            showSkinSkillModal(sName, skinName);
+          };
+        })(skillName, name);
         info.appendChild(skillBadge);
       }
 
       card.appendChild(info);
       return card;
+    }
+
+    function showSkinSkillModal(skillName, skinName) {
+      var existing = document.getElementById('skin-skill-overlay');
+      if (existing) existing.remove();
+
+      var overlay = document.createElement('div');
+      overlay.id = 'skin-skill-overlay';
+      overlay.style.cssText = 'display:flex;position:fixed;inset:0;z-index:400;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;padding:1rem;';
+      overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+
+      var modal = document.createElement('div');
+      modal.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1.5rem;max-width:360px;width:100%;text-align:center;';
+
+      var icon = document.createElement('div');
+      icon.style.cssText = 'font-size:2rem;margin-bottom:.5rem;';
+      icon.textContent = '\u26A1';
+      modal.appendChild(icon);
+
+      var nameEl = document.createElement('div');
+      nameEl.style.cssText = 'font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:.25rem;';
+      nameEl.textContent = skillName;
+      modal.appendChild(nameEl);
+
+      var fromEl = document.createElement('div');
+      fromEl.style.cssText = 'font-size:.8rem;color:var(--muted);margin-bottom:1rem;';
+      fromEl.textContent = 'From: ' + skinName;
+      modal.appendChild(fromEl);
+
+      var link = document.createElement('a');
+      link.href = 'bases.html';
+      link.target = '_blank';
+      link.style.cssText = 'display:inline-block;font-size:.8rem;color:var(--accent);text-decoration:none;padding:.4rem .8rem;border:1px solid var(--accent);border-radius:8px;';
+      link.textContent = 'View full skill details on Bases page';
+      modal.appendChild(link);
+
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
     }
 
     // Sort: active first, then by power desc
