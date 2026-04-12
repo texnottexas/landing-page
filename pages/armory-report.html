@@ -516,11 +516,17 @@
     display: flex; flex-wrap: wrap; gap: .75rem; align-items: center;
     padding: .75rem 0; margin-bottom: .75rem;
   }
-  .filter-search {
+  .filter-search, .tab-search {
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
     padding: .5rem .75rem; color: var(--text); font-size: .85rem; outline: none;
     min-width: 180px; transition: border-color .15s;
   }
+  .filter-select {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: .5rem .75rem; color: var(--text); font-size: .85rem; outline: none;
+    transition: border-color .15s; font-family: inherit; cursor: pointer;
+  }
+  .filter-select:focus { border-color: var(--accent); }
   .filter-search::placeholder { color: var(--muted); }
   .filter-search:focus { border-color: var(--accent); }
 
@@ -623,7 +629,7 @@
 
   /* Rune icon + stars */
   .gear-rune-wrap { display: flex; align-items: center; gap: .3rem; margin-top: .25rem; }
-  .gear-rune-wrap img { width: 20px; height: 20px; border-radius: 3px; flex-shrink: 0; }
+  .gear-rune-wrap img { width: 28px; height: 28px; border-radius: 4px; flex-shrink: 0; }
   .gear-rune-name-text { font-size: .7rem; color: var(--accent); }
 
   /* Hero power badge */
@@ -791,7 +797,7 @@
   .skin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: .65rem; }
   .skin-card { display: flex; gap: .75rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .75rem; transition: border-color .15s; }
   .skin-card:hover { border-color: var(--muted); }
-  .skin-card.skin-card-active { border-color: var(--accent); }
+  .skin-card.skin-card-active { border-color: var(--border); }
   .skin-icon-wrap { position: relative; flex-shrink: 0; }
   .skin-card-img { width: 64px; height: 64px; border-radius: 6px; object-fit: cover; background: var(--card); display: block; }
   .skin-active-badge { position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #000; font-size: .6rem; font-weight: 700; padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
@@ -854,7 +860,7 @@
   .eb-pill img { width: 14px; height: 14px; object-fit: contain; }
   .eb-pill.active img { filter: brightness(0); }
   .eb-filter-sep { width: 1px; height: 18px; background: var(--border); margin: 0 .1rem; }
-  .eb-sort-select { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .3rem .5rem; color: var(--text); font-size: .72rem; font-family: inherit; cursor: pointer; outline: none; }
+  .eb-sort-select { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .5rem .75rem; color: var(--text); font-size: .85rem; font-family: inherit; cursor: pointer; outline: none; transition: border-color .15s; }
   .eb-sort-select:focus { border-color: var(--accent); }
   .eb-filter-count { font-size: .72rem; color: var(--muted); margin-left: auto; white-space: nowrap; }
 
@@ -1955,8 +1961,8 @@
         HERO_CACHE = {};
         HERO_TYPE_CACHE = {};
         data.forEach(function(h) {
-          HERO_CACHE[h.id] = h.displayName || h.name || ('Hero #' + h.id);
-          HERO_TYPE_CACHE[h.id] = h.typeName || 'Unknown';
+          HERO_CACHE[h.heroId] = h.displayName || h.name || ('Hero #' + h.heroId);
+          HERO_TYPE_CACHE[h.heroId] = h.typeName || 'Unknown';
         });
         cb(HERO_CACHE);
       })
@@ -1971,8 +1977,8 @@
         HERO_CACHE = {};
         HERO_TYPE_CACHE = {};
         data.forEach(function(h) {
-          HERO_CACHE[h.id] = h.displayName || h.name || ('Hero #' + h.id);
-          HERO_TYPE_CACHE[h.id] = h.typeName || 'Unknown';
+          HERO_CACHE[h.heroId] = h.displayName || h.name || ('Hero #' + h.heroId);
+          HERO_TYPE_CACHE[h.heroId] = h.typeName || 'Unknown';
         });
         cb();
       })
@@ -2683,7 +2689,7 @@
     var gold = '#e3b341', grey = '#444c56';
     function makeStar(fill) {
       var s = document.createElementNS(svgNS, 'svg');
-      s.setAttribute('width', '10'); s.setAttribute('height', '10'); s.setAttribute('viewBox', '0 0 24 24');
+      s.setAttribute('width', '14'); s.setAttribute('height', '14'); s.setAttribute('viewBox', '0 0 24 24');
       var points = '12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26';
       if (fill === 'full') {
         var p = document.createElementNS(svgNS, 'polygon');
@@ -2861,7 +2867,7 @@
     if (gearScore > 0) {
       var powerEl = document.createElement('div');
       powerEl.className = 'hero-power';
-      powerEl.textContent = formatPower(gearScore);
+      powerEl.textContent = 'Gear: ' + formatPower(gearScore);
       header.appendChild(powerEl);
     }
 
@@ -3374,16 +3380,15 @@
 
     // March filter dropdown
     var marchSelect = document.createElement('select');
-    marchSelect.className = 'filter-search';
+    marchSelect.className = 'filter-select';
     marchSelect.id = 'hero-march-filter';
-    marchSelect.style.cssText = 'max-width:150px;padding:.3rem .5rem;font-size:.75rem;';
     marchSelect.addEventListener('change', function() { renderHeroGrid(heroes); });
     filterBar.appendChild(marchSelect);
 
     // Manage Marches button
     var manageBtn = document.createElement('button');
-    manageBtn.className = 'sort-btn';
-    manageBtn.textContent = 'Marches';
+    manageBtn.className = 'sort-btn active';
+    manageBtn.textContent = 'Manage Marches';
     manageBtn.addEventListener('click', function() { openMarchModal(heroes); });
     filterBar.appendChild(manageBtn);
 
@@ -4509,7 +4514,7 @@
     if (b.slotLevel) {
       var slvBadge = document.createElement('span');
       slvBadge.className = 'eb-slotlv-badge';
-      slvBadge.textContent = 'Level ' + b.slotLevel;
+      slvBadge.textContent = 'Platform Lv.' + b.slotLevel;
       meta.appendChild(slvBadge);
     }
     info.appendChild(meta);
@@ -4720,7 +4725,7 @@
       if (b.slotLevel) {
         var lvb = document.createElement('span');
         lvb.className = 'eb-detail-badge badge-lv';
-        lvb.textContent = 'Level ' + b.slotLevel;
+        lvb.textContent = 'Platform Lv.' + b.slotLevel;
         depSec.appendChild(lvb);
       }
       modal.appendChild(depSec);
@@ -5117,7 +5122,7 @@
         lvRow.style.cssText = 'font-size:.6rem;color:var(--accent);margin-bottom:.15rem';
         var lvPill = document.createElement('span');
         lvPill.className = 'eb-slotlv-badge';
-        lvPill.textContent = 'Level ' + slot.level;
+        lvPill.textContent = 'Platform Lv.' + slot.level;
         lvRow.appendChild(lvPill);
         card.appendChild(lvRow);
 
@@ -5159,7 +5164,7 @@
         lvRow2.style.cssText = 'font-size:.6rem;color:var(--accent);margin-bottom:.15rem';
         var lvPill2 = document.createElement('span');
         lvPill2.className = 'eb-slotlv-badge';
-        lvPill2.textContent = 'Level ' + slot.level;
+        lvPill2.textContent = 'Platform Lv.' + slot.level;
         lvRow2.appendChild(lvPill2);
         card.appendChild(lvRow2);
 
