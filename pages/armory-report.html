@@ -2592,10 +2592,19 @@
     homeLink.appendChild(homeSvg);
     left.appendChild(homeLink);
 
-    var title = document.createElement('span');
-    title.className = 'rh-title notranslate';
-    title.textContent = 'My Armory Report';
-    left.appendChild(title);
+    // Identity greeting (matches index.html pattern)
+    var pName = (player && player.name) || '';
+    if (pName) {
+      var greetEl = document.createElement('span');
+      greetEl.className = 'rh-title notranslate';
+      greetEl.textContent = 'Hi, ' + pName;
+      left.appendChild(greetEl);
+    } else {
+      var title = document.createElement('span');
+      title.className = 'rh-title notranslate';
+      title.textContent = 'Armory Report';
+      left.appendChild(title);
+    }
     hdr.appendChild(left);
 
     // ── Right side: lang, feedback, settings, share ──
@@ -2621,27 +2630,17 @@
     langBtn.addEventListener('click', function() { openLangPicker(); });
     right.appendChild(langBtn);
 
-    // Feedback button
-    var fbBtn = document.createElement('button');
-    fbBtn.className = 'rh-btn';
-    fbBtn.title = 'Feedback';
-    var fbSvg = document.createElementNS(svgNS, 'svg');
-    fbSvg.setAttribute('width', '14'); fbSvg.setAttribute('height', '14');
-    fbSvg.setAttribute('viewBox', '0 0 24 24'); fbSvg.setAttribute('fill', 'none');
-    fbSvg.setAttribute('stroke', 'currentColor'); fbSvg.setAttribute('stroke-width', '2');
-    fbSvg.setAttribute('stroke-linecap', 'round'); fbSvg.setAttribute('stroke-linejoin', 'round');
-    var fbPath = document.createElementNS(svgNS, 'path');
-    fbPath.setAttribute('d', 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z');
-    fbSvg.appendChild(fbPath);
-    fbBtn.appendChild(fbSvg);
-    var fbLabel = document.createElement('span');
-    fbLabel.className = 'rh-label';
-    fbLabel.textContent = 'Feedback';
-    fbBtn.appendChild(fbLabel);
-    fbBtn.addEventListener('click', function() {
-      if (window.openFeedbackWidget) window.openFeedbackWidget();
-    });
-    right.appendChild(fbBtn);
+    // Feedback: handled by feedback-widget.js (auto-appends to <header>)
+    // Move floating widget button into header if it was created before header existed
+    setTimeout(function() {
+      var fwBtn = document.getElementById('fw-hdr-btn');
+      if (fwBtn && fwBtn.style.position === 'fixed') {
+        fwBtn.style.cssText = '';
+        right.insertBefore(fwBtn, right.firstChild);
+      } else if (fwBtn && fwBtn.parentNode !== right) {
+        right.insertBefore(fwBtn, right.firstChild);
+      }
+    }, 100);
 
     // Settings / Identity button
     var prefsBtn = document.createElement('button');
@@ -2800,16 +2799,15 @@
 
     var identity = getStoredIdentity();
     var rows = [
-      { label: 'Player', value: (player && player.name) || 'Not set' },
-      { label: 'Server', value: (player && player.server) ? 'S' + player.server : 'Unknown' },
-      { label: 'Site Key', value: (identity && identity.siteKey) ? identity.siteKey.substring(0, 8) + '\u2026' : 'None' },
-      { label: 'Device ID', value: getDeviceId().substring(0, 8) + '\u2026' }
+      { label: 'Player', value: (player && player.name) || 'Not set' }
     ];
+    if (player && player.server) rows.push({ label: 'Server', value: 'S' + player.server });
+    if (identity && identity.siteKey) rows.push({ label: 'Site Key', value: identity.siteKey.substring(0, 8) + '\u2026' });
 
     // Show shortcode if saved
     try {
       var saved = JSON.parse(localStorage.getItem('playerReport') || '{}');
-      if (saved.shortcode) rows.push({ label: 'Shortcode', value: saved.shortcode });
+      if (saved.shortcode) rows.push({ label: 'Share Code', value: saved.shortcode });
     } catch(e) {}
 
     rows.forEach(function(r) {
@@ -2825,6 +2823,48 @@
       row.appendChild(val);
       content.appendChild(row);
     });
+
+    // Show saved configs from worker (if has siteKey)
+    if (identity && identity.siteKey) {
+      var configSection = document.createElement('div');
+      configSection.style.cssText = 'margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border);';
+      var configTitle = document.createElement('div');
+      configTitle.style.cssText = 'font-size:.78rem;font-weight:600;color:var(--text);margin-bottom:.5rem;';
+      configTitle.textContent = 'Saved Configs';
+      configSection.appendChild(configTitle);
+      var configLoading = document.createElement('div');
+      configLoading.style.cssText = 'font-size:.7rem;color:var(--muted);';
+      configLoading.textContent = 'Loading...';
+      configSection.appendChild(configLoading);
+      content.appendChild(configSection);
+
+      fetch(PUSH_WORKER + '/report-configs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteKey: identity.siteKey })
+      }).then(function(r) { return r.json(); }).then(function(result) {
+        configLoading.textContent = '';
+        if (!result || !result.ok || !result.configs || result.configs.length === 0) {
+          configLoading.textContent = 'No saved configs found.';
+          return;
+        }
+        result.configs.forEach(function(cfg) {
+          var cfgRow = document.createElement('div');
+          cfgRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;font-size:.75rem;';
+          var cfgLeft = document.createElement('span');
+          cfgLeft.style.color = 'var(--accent)';
+          cfgLeft.textContent = cfg.shortcode + ' \u2014 ' + (cfg.device || 'Unknown device');
+          cfgRow.appendChild(cfgLeft);
+          var cfgRight = document.createElement('span');
+          cfgRight.style.color = 'var(--muted)';
+          cfgRight.textContent = cfg.reportIds ? cfg.reportIds.split(',').length + ' reports' : '';
+          cfgRow.appendChild(cfgRight);
+          configSection.appendChild(cfgRow);
+        });
+      }).catch(function() {
+        configLoading.textContent = 'Could not load configs.';
+      });
+    }
 
     var el = document.getElementById('rh-prefs-overlay');
     if (el) el.classList.add('active');
@@ -2887,7 +2927,8 @@
     var nameEl = document.createElement('div');
     nameEl.className = 'dashboard-name';
     var flagStr = getPlayerFlag(player.name, player.nationalflag);
-    nameEl.textContent = (flagStr ? flagStr + ' ' : '') + (player.name || 'Unknown');
+    var displayName = player.name || 'Unknown';
+    nameEl.textContent = (flagStr ? flagStr + ' ' : '') + displayName + '\u2019s Armory Report';
     info.appendChild(nameEl);
     var metaParts = [];
     if (player.level) metaParts.push('Lv. ' + player.level);
