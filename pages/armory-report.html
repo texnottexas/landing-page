@@ -1156,6 +1156,10 @@
   .shortcode-close:hover { color: var(--text); }
   .shortcode-copied { font-size: .7rem; color: var(--green); margin-top: .5rem; min-height: 1rem; }
 
+  /* Toast message */
+  .toast-message { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--green); color: #000; padding: .5rem 1.25rem; border-radius: 8px; font-size: .8rem; font-weight: 600; opacity: 0; transition: all .3s ease; z-index: 9999; pointer-events: none; }
+  .toast-message.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
   /* Load from code in wizard */
   .wizard-divider { display: flex; align-items: center; gap: .75rem; margin: 1rem 0; color: var(--muted); font-size: .75rem; }
   .wizard-divider-line { flex: 1; height: 1px; background: var(--border); }
@@ -1179,7 +1183,7 @@
   .saved-configs-empty { font-size: .75rem; color: var(--muted); text-align: center; padding: .5rem; }
   .saved-configs-loading { font-size: .75rem; color: var(--muted); text-align: center; padding: .5rem; }
 
-  /* Save & Share button in dashboard */
+  /* Save/Share buttons in dashboard */
   .share-btn { display: inline-flex; align-items: center; gap: .35rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .35rem .65rem; font-size: .78rem; color: var(--muted); cursor: pointer; transition: all .15s; font-family: inherit; }
   .share-btn:hover { border-color: var(--accent); color: var(--accent); }
 </style>
@@ -1308,15 +1312,15 @@
     }).catch(function() { return null; });
   }
 
-  function saveAndShare() {
+  // Save config to server, return promise with shortcode
+  function saveConfig(showToast) {
     var identity = getStoredIdentity();
     var deviceId = getDeviceId();
-    // Guests use device-based key; identified users use siteKey
     var siteKey = (identity && identity.siteKey) ? identity.siteKey : ('guest_' + deviceId);
     var playerName = (wizardState.player && wizardState.player.name) || (identity && identity.name) || 'Guest';
     var reportIds = wizardState.reportData.map(function(r) { return r.id; }).join(',');
 
-    getPushEndpoint().then(function(endpoint) {
+    return getPushEndpoint().then(function(endpoint) {
       var body = {
         siteKey: siteKey,
         playerName: playerName,
@@ -1338,10 +1342,59 @@
           saved.shortcode = result.shortcode;
           localStorage.setItem('playerReport', JSON.stringify(saved));
         } catch(e) {}
-        showShortcodeModal(result.shortcode);
+        // Update displayed shortcode in header if exists
+        var codeDisplay = document.getElementById('header-shortcode');
+        if (codeDisplay) codeDisplay.textContent = result.shortcode;
+        if (showToast) showToastMessage('Saved!');
+        return result.shortcode;
       } else {
-        alert('Save failed: ' + ((result && result.error) || 'unknown error'));
+        throw new Error((result && result.error) || 'Save failed');
       }
+    });
+  }
+
+  // Share: copy link to clipboard (save first if no shortcode)
+  function shareConfig() {
+    var shortcode = null;
+    try { shortcode = JSON.parse(localStorage.getItem('playerReport') || '{}').shortcode; } catch(e) {}
+
+    if (shortcode) {
+      copyShareLink(shortcode);
+    } else {
+      // No shortcode yet, save first
+      saveConfig(false).then(function(code) {
+        copyShareLink(code);
+      }).catch(function(e) {
+        alert('Share failed: ' + e.message);
+      });
+    }
+  }
+
+  function copyShareLink(code) {
+    var url = 'https://2864tw.com/armory-report.html?code=' + code;
+    navigator.clipboard.writeText(url).then(function() {
+      showToastMessage('Link copied!');
+    }).catch(function() {
+      // Fallback: show modal with link
+      showShortcodeModal(code);
+    });
+  }
+
+  function showToastMessage(msg) {
+    var existing = document.querySelector('.toast-message');
+    if (existing) existing.remove();
+    var toast = document.createElement('div');
+    toast.className = 'toast-message';
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(function() { toast.classList.add('show'); }, 10);
+    setTimeout(function() { toast.classList.remove('show'); setTimeout(function() { toast.remove(); }, 300); }, 2000);
+  }
+
+  // Legacy function for backwards compatibility
+  function saveAndShare() {
+    saveConfig(false).then(function(code) {
+      showShortcodeModal(code);
     }).catch(function(e) {
       alert('Save failed: ' + e.message);
     });
@@ -2837,25 +2890,60 @@
     prefsBtn.addEventListener('click', function() { openIdentityPrefs(player); });
     right.appendChild(prefsBtn);
 
-    // Save & Share button (hidden in view-only mode)
+    // Save and Share buttons (hidden in view-only mode)
     if (!wizardState._viewOnly) {
+      // Save button
+      var saveBtn = document.createElement('button');
+      saveBtn.className = 'rh-btn';
+      saveBtn.title = 'Save config';
+      var saveSvg = document.createElementNS(svgNS, 'svg');
+      saveSvg.setAttribute('width', '14'); saveSvg.setAttribute('height', '14');
+      saveSvg.setAttribute('viewBox', '0 0 24 24'); saveSvg.setAttribute('fill', 'none');
+      saveSvg.setAttribute('stroke', 'currentColor'); saveSvg.setAttribute('stroke-width', '2');
+      var savePath = document.createElementNS(svgNS, 'path');
+      savePath.setAttribute('d', 'M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2zM17 21v-8H7v8M7 3v5h8');
+      saveSvg.appendChild(savePath);
+      saveBtn.appendChild(saveSvg);
+      var saveLabel = document.createElement('span');
+      saveLabel.className = 'rh-label';
+      saveLabel.textContent = 'Save';
+      saveBtn.appendChild(saveLabel);
+      saveBtn.addEventListener('click', function() { saveConfig(true); });
+      right.appendChild(saveBtn);
+
+      // Share button with shortcode display
+      var shareWrap = document.createElement('div');
+      shareWrap.style.cssText = 'display:flex;align-items:center;gap:.35rem;';
+
+      // Show shortcode if exists
+      var cachedCode = null;
+      try { cachedCode = JSON.parse(localStorage.getItem('playerReport') || '{}').shortcode; } catch(e) {}
+      if (cachedCode) {
+        var codeEl = document.createElement('span');
+        codeEl.id = 'header-shortcode';
+        codeEl.style.cssText = 'font-family:monospace;font-size:.7rem;color:var(--accent);letter-spacing:.08em;font-weight:600;';
+        codeEl.textContent = cachedCode;
+        shareWrap.appendChild(codeEl);
+      }
+
       var shareBtn = document.createElement('button');
       shareBtn.className = 'rh-btn';
-      shareBtn.title = 'Save & Share';
+      shareBtn.title = 'Copy share link';
       var shareSvg = document.createElementNS(svgNS, 'svg');
       shareSvg.setAttribute('width', '14'); shareSvg.setAttribute('height', '14');
       shareSvg.setAttribute('viewBox', '0 0 24 24'); shareSvg.setAttribute('fill', 'none');
       shareSvg.setAttribute('stroke', 'currentColor'); shareSvg.setAttribute('stroke-width', '2');
       var sharePath = document.createElementNS(svgNS, 'path');
-      sharePath.setAttribute('d', 'M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13');
+      sharePath.setAttribute('d', 'M18 8A3 3 0 1018 2a3 3 0 000 6zM6 15a3 3 0 100-6 3 3 0 000 6zM18 22a3 3 0 100-6 3 3 0 000 6zM8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98');
       shareSvg.appendChild(sharePath);
       shareBtn.appendChild(shareSvg);
       var shareLabel = document.createElement('span');
       shareLabel.className = 'rh-label';
-      shareLabel.textContent = 'Save';
+      shareLabel.textContent = 'Share';
       shareBtn.appendChild(shareLabel);
-      shareBtn.addEventListener('click', saveAndShare);
-      right.appendChild(shareBtn);
+      shareBtn.addEventListener('click', shareConfig);
+      shareWrap.appendChild(shareBtn);
+      right.appendChild(shareWrap);
     }
 
     hdr.appendChild(right);
@@ -3093,7 +3181,7 @@
         }).then(function(r) { return r.json(); }).then(function(result) {
           configList.textContent = '';
           if (!result || !result.ok || !result.configs || result.configs.length === 0) {
-            configList.textContent = 'No saved configs. Click Save & Share to create one.';
+            configList.textContent = 'No saved configs. Click Save to create one.';
             return;
           }
           result.configs.forEach(function(cfg) {
@@ -3151,17 +3239,17 @@
         });
       }
 
-      // Save & Share button at bottom (hidden in view-only mode)
+      // Save button at bottom (hidden in view-only mode)
       if (!wizardState._viewOnly) {
         var saveRow = document.createElement('div');
         saveRow.style.cssText = 'margin-top:.75rem;text-align:center;';
         var saveBtn = document.createElement('button');
         saveBtn.className = 'rh-prefs-btn';
         saveBtn.style.cssText = 'background:var(--green);color:#000;border-color:var(--green);font-weight:600;';
-        saveBtn.textContent = shortcode ? 'Update Save' : 'Save & Share';
+        saveBtn.textContent = 'Save';
         saveBtn.addEventListener('click', function() {
           closeIdentityPrefs();
-          saveAndShare();
+          saveConfig(true);
         });
         saveRow.appendChild(saveBtn);
         reportPanel.appendChild(saveRow);
@@ -3260,8 +3348,36 @@
     manageBtn.addEventListener('mouseleave', function() { manageBtn.style.borderColor = 'var(--border)'; manageBtn.style.color = ''; });
     actions.appendChild(manageBtn);
 
-    // Save & Share button (hidden in view-only mode)
+    // Save and Share buttons (hidden in view-only mode)
     if (!wizardState._viewOnly) {
+      // Save button
+      var saveBtn2 = document.createElement('button');
+      saveBtn2.className = 'share-btn';
+      var saveSvg2 = document.createElementNS(svgNS, 'svg');
+      saveSvg2.setAttribute('width', '14'); saveSvg2.setAttribute('height', '14');
+      saveSvg2.setAttribute('viewBox', '0 0 24 24'); saveSvg2.setAttribute('fill', 'none');
+      saveSvg2.setAttribute('stroke', 'currentColor'); saveSvg2.setAttribute('stroke-width', '2');
+      var savePath2 = document.createElementNS(svgNS, 'path');
+      savePath2.setAttribute('d', 'M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2zM17 21v-8H7v8M7 3v5h8');
+      saveSvg2.appendChild(savePath2);
+      saveBtn2.appendChild(saveSvg2);
+      saveBtn2.appendChild(document.createTextNode('Save'));
+      saveBtn2.addEventListener('click', function() { saveConfig(true); });
+      actions.appendChild(saveBtn2);
+
+      // Shortcode display + Share button
+      var cachedCode2 = null;
+      try { cachedCode2 = JSON.parse(localStorage.getItem('playerReport') || '{}').shortcode; } catch(e) {}
+
+      if (cachedCode2) {
+        var codeBadge = document.createElement('span');
+        codeBadge.className = 'reports-badge';
+        codeBadge.id = 'dashboard-shortcode';
+        codeBadge.style.cssText = 'font-family:monospace;letter-spacing:.1em;font-weight:600;color:var(--accent);';
+        codeBadge.textContent = cachedCode2;
+        actions.appendChild(codeBadge);
+      }
+
       var shareBtn2 = document.createElement('button');
       shareBtn2.className = 'share-btn';
       var shareSvg2 = document.createElementNS(svgNS, 'svg');
@@ -3269,29 +3385,13 @@
       shareSvg2.setAttribute('viewBox', '0 0 24 24'); shareSvg2.setAttribute('fill', 'none');
       shareSvg2.setAttribute('stroke', 'currentColor'); shareSvg2.setAttribute('stroke-width', '2');
       var sharePath2 = document.createElementNS(svgNS, 'path');
-      sharePath2.setAttribute('d', 'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13');
+      sharePath2.setAttribute('d', 'M18 8A3 3 0 1018 2a3 3 0 000 6zM6 15a3 3 0 100-6 3 3 0 000 6zM18 22a3 3 0 100-6 3 3 0 000 6zM8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98');
       shareSvg2.appendChild(sharePath2);
       shareBtn2.appendChild(shareSvg2);
-      shareBtn2.appendChild(document.createTextNode('Save & Share'));
-      shareBtn2.addEventListener('click', saveAndShare);
+      shareBtn2.appendChild(document.createTextNode('Share'));
+      shareBtn2.addEventListener('click', shareConfig);
       actions.appendChild(shareBtn2);
     }
-
-    // Show cached shortcode if available
-    try {
-      var cachedSaved = JSON.parse(localStorage.getItem('playerReport') || '{}');
-      if (cachedSaved.shortcode) {
-        var codeBadge = document.createElement('span');
-        codeBadge.className = 'reports-badge';
-        codeBadge.style.cssText = 'font-family:monospace;letter-spacing:.1em;cursor:pointer';
-        codeBadge.textContent = cachedSaved.shortcode;
-        codeBadge.title = 'Click to copy share link';
-        codeBadge.addEventListener('click', function() {
-          navigator.clipboard.writeText('https://2864tw.com/armory-report.html?code=' + cachedSaved.shortcode);
-        });
-        actions.appendChild(codeBadge);
-      }
-    } catch(e) {}
 
     // ── Compute stats for overview ──
     var heroCount = merged.heroes.length;
@@ -7186,7 +7286,7 @@
         configList.className = '';
         if (!result || !result.ok || !result.configs || result.configs.length === 0) {
           configList.className = 'saved-configs-empty';
-          configList.textContent = 'No saved configs yet. Use "Save & Share" from the dashboard.';
+          configList.textContent = 'No saved configs yet. Use "Save" from the dashboard.';
           return;
         }
         result.configs.forEach(function(cfg) {
