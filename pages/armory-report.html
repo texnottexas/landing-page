@@ -118,6 +118,20 @@
   }
   .btn-secondary:hover { background: var(--card); border-color: var(--muted); }
   .btn-secondary:disabled { opacity: .6; cursor: not-allowed; }
+
+  /* Capture summary items */
+  .capture-item {
+    display: flex; align-items: flex-start; gap: .75rem;
+    padding: .6rem 0; border-bottom: 1px solid #21262d;
+    opacity: 0; transform: translateX(-10px);
+    animation: captureReveal .4s ease forwards;
+  }
+  .capture-item:last-child { border-bottom: none; }
+  @keyframes captureReveal { to { opacity: 1; transform: translateX(0); } }
+
+  /* Build progress bar */
+  .build-progress { background: var(--surface); height: 6px; border-radius: 3px; overflow: hidden; max-width: 300px; margin: 1rem auto 0; }
+  .build-progress-fill { background: linear-gradient(90deg, #238636, var(--green)); height: 100%; border-radius: 3px; transition: width .5s ease; width: 0; }
 </style>
 </head>
 <body>
@@ -616,28 +630,420 @@
     renderWizardStep();
   }
 
-  function renderStepSummary(container) {
-    // Stub — Task 4 will implement
-    console.log('[wizard] renderStepSummary stub — reports:', wizardState.reportData.length);
-    while (container.firstChild) container.removeChild(container.firstChild);
-    var h2 = document.createElement('h2');
-    h2.style.padding = '1rem';
-    h2.textContent = 'Summary (coming in Task 4)';
-    container.appendChild(h2);
+  // ── Hero name cache ───────────────────────────────────────────────────────
+  var HERO_CACHE = null;
+
+  function loadHeroNames(cb) {
+    if (HERO_CACHE) return cb(HERO_CACHE);
+    fetch('data/all-heroes.json')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        HERO_CACHE = {};
+        data.forEach(function(h) { HERO_CACHE[h.id] = h.displayName || h.name || ('Hero #' + h.id); });
+        cb(HERO_CACHE);
+      })
+      .catch(function() { HERO_CACHE = {}; cb(HERO_CACHE); });
   }
 
-  function renderStepBuilding(container) {
-    // Stub — later task
-    console.log('[wizard] renderStepBuilding stub');
+  function heroName(id) {
+    return (HERO_CACHE && HERO_CACHE[id]) || ('Hero #' + id);
+  }
+
+  // ── Mecha names ───────────────────────────────────────────────────────────
+  var MECHA_NAMES = {
+    1002: 'Earthshaker E-100',
+    1003: 'Blazing Gale Rx',
+    1004: 'Tide Crusher BW-3',
+    1005: 'Doom Sawblade D-4',
+    1006: 'Luminary Knight LP-4',
+    1007: 'Blade Angel BA-6',
+    1008: 'Heavy Mothership HC-9999'
+  };
+
+  // ── Build capture summary from all reports ────────────────────────────────
+  function buildCaptureSummary() {
+    var heroMap = {};       // id -> true, for deduplication
+    var gearCount = 0;
+    var decoCount = 0;
+    var skinInfo = null;
+    var enigmaDeployed = 0;
+    var enigmaFields = 0;
+    var mechaMap = {};      // mechaId -> true
+    var ctcsInfo = null;
+
+    wizardState.reportData.forEach(function(r) {
+      var x = r.extracted;
+      if (!x) return;
+
+      // Heroes + gear
+      (x.heroes || []).forEach(function(h) {
+        if (!heroMap[h.id]) {
+          heroMap[h.id] = true;
+          gearCount += (h.heroEquips || []).length;
+        }
+      });
+
+      // Decorations — take first non-null
+      if (!decoCount && x.decorations) {
+        var placed = (x.decorations.sublimes || []).length || (x.decorations.buildings || []).length;
+        if (!placed && x.decorations.effectList) placed = x.decorations.effectList.length;
+        decoCount = placed || 0;
+      }
+
+      // Skin — take first available
+      if (!skinInfo && x.skins) skinInfo = x.skins;
+
+      // Enigma beasts — take first available
+      if (!enigmaDeployed && x.enigmas) {
+        var fields = x.enigmas.fields || x.enigmas;
+        if (Array.isArray(fields)) {
+          enigmaFields = fields.length;
+          fields.forEach(function(f) {
+            enigmaDeployed += (f.beasts || f.beastList || []).length;
+          });
+        }
+      }
+
+      // Mechas — deduplicate by mechaId
+      (x.mechas || []).forEach(function(m) {
+        if (m.mechaId) mechaMap[m.mechaId] = true;
+      });
+
+      // CTCs — take first available
+      if (!ctcsInfo && x.ctcs) ctcsInfo = x.ctcs;
+    });
+
+    var heroIds = Object.keys(heroMap);
+    var heroNames = heroIds.map(function(id) { return heroName(Number(id)); });
+
+    var mechaIds = Object.keys(mechaMap).map(Number);
+    var mechaNamesList = mechaIds.map(function(mid) { return MECHA_NAMES[mid] || ('Mecha #' + mid); });
+
+    return {
+      heroNames: heroNames,
+      heroCount: heroIds.length,
+      gearCount: gearCount,
+      decoCount: decoCount,
+      skinInfo: skinInfo,
+      enigmaDeployed: enigmaDeployed,
+      enigmaFields: enigmaFields,
+      mechaNames: mechaNamesList,
+      mechaCount: mechaIds.length,
+      ctcsInfo: ctcsInfo
+    };
+  }
+
+  // ── Shared helper: SVG checkmark ──────────────────────────────────────────
+  function makeCheckSvg(color) {
+    var svgNS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('width', '18'); svg.setAttribute('height', '18');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', color || 'var(--green)'); svg.setAttribute('stroke-width', '2.5');
+    svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+    svg.style.flexShrink = '0';
+    svg.style.marginTop = '1px';
+    var poly = document.createElementNS(svgNS, 'polyline');
+    poly.setAttribute('points', '20 6 9 17 4 12');
+    svg.appendChild(poly);
+    return svg;
+  }
+
+  // ── Step 3: Capture summary ───────────────────────────────────────────────
+  function renderStepSummary(container) {
+    loadHeroNames(function() {
+      _buildSummaryDOM(container);
+    });
+  }
+
+  function _buildSummaryDOM(container) {
     while (container.firstChild) container.removeChild(container.firstChild);
+
+    var player = wizardState.player || {};
+    var summary = buildCaptureSummary();
+    var reportCount = wizardState.reportData.length;
+
+    // ── Avatar (72px with green glow) ──
+    var avatarWrap = document.createElement('div');
+    avatarWrap.style.cssText = 'position:relative;width:72px;height:72px;margin:0 auto .75rem;flex-shrink:0;';
+
+    var fallbackLetter = (player.avatarFallback || (player.name || '?').charAt(0)).toUpperCase();
+
+    var fallbackDiv = document.createElement('div');
+    fallbackDiv.style.cssText = [
+      'position:absolute;inset:0;border-radius:50%;',
+      'background:var(--surface);border:2px solid var(--green);',
+      'display:none;align-items:center;justify-content:center;',
+      'font-size:2rem;font-weight:700;color:var(--green);',
+      'box-shadow:0 0 16px rgba(63,185,80,0.35);'
+    ].join('');
+    fallbackDiv.textContent = fallbackLetter;
+
+    if (player.avatar) {
+      var img = document.createElement('img');
+      img.src = player.avatar;
+      img.alt = '';
+      img.style.cssText = [
+        'width:72px;height:72px;border-radius:50%;object-fit:cover;display:block;',
+        'border:2px solid var(--green);',
+        'box-shadow:0 0 16px rgba(63,185,80,0.35);'
+      ].join('');
+      img.onerror = function() { img.style.display = 'none'; fallbackDiv.style.display = 'flex'; };
+      avatarWrap.appendChild(img);
+    } else {
+      fallbackDiv.style.display = 'flex';
+    }
+    avatarWrap.appendChild(fallbackDiv);
+    container.appendChild(avatarWrap);
+
+    // ── Welcome heading ──
     var h2 = document.createElement('h2');
-    h2.style.padding = '1rem';
-    h2.textContent = 'Building\u2026 (coming soon)';
+    h2.style.marginBottom = '.25rem';
+    h2.textContent = 'Welcome, ' + (player.name || 'Player') + '!';
     container.appendChild(h2);
+
+    // ── Subtitle ──
+    var sub = document.createElement('p');
+    sub.style.marginBottom = '1rem';
+    sub.textContent = 'Data captured from ' + reportCount + ' battle report' + (reportCount !== 1 ? 's' : '');
+    container.appendChild(sub);
+
+    // ── Capture checklist container ──
+    var list = document.createElement('div');
+    list.style.cssText = 'text-align:left;width:100%;margin-bottom:1.5rem;';
+    container.appendChild(list);
+
+    var delay = 0;
+
+    function addItem(labelText, detailText, countText, countColor) {
+      var item = document.createElement('div');
+      item.className = 'capture-item';
+      item.style.animationDelay = delay + 'ms';
+      delay += 150;
+
+      item.appendChild(makeCheckSvg());
+
+      var textBlock = document.createElement('div');
+      textBlock.style.cssText = 'flex:1;min-width:0;';
+
+      var labelEl = document.createElement('div');
+      labelEl.style.cssText = 'font-size:.9rem;font-weight:600;color:var(--text);';
+      labelEl.textContent = labelText;
+      textBlock.appendChild(labelEl);
+
+      if (detailText) {
+        var detailEl = document.createElement('div');
+        detailEl.style.cssText = 'font-size:.8rem;color:var(--muted);margin-top:.1rem;';
+        detailEl.textContent = detailText;
+        textBlock.appendChild(detailEl);
+      }
+
+      item.appendChild(textBlock);
+
+      if (countText != null) {
+        var countEl = document.createElement('div');
+        countEl.style.cssText = 'font-size:.85rem;font-weight:700;color:' + (countColor || 'var(--green)') + ';flex-shrink:0;white-space:nowrap;';
+        countEl.textContent = countText;
+        item.appendChild(countEl);
+      }
+
+      list.appendChild(item);
+    }
+
+    // Heroes row
+    var heroDetail = summary.heroCount > 0
+      ? summary.heroNames.slice(0, 4).join(', ') + (summary.heroCount > 4 ? ' +' + (summary.heroCount - 4) + ' more' : '')
+      : 'None found';
+    addItem('Heroes', heroDetail, summary.heroCount > 0 ? String(summary.heroCount) : null);
+
+    // Titan Gear row
+    addItem(
+      'Titan Gear',
+      summary.heroCount + ' hero' + (summary.heroCount !== 1 ? 'es' : '') + ' equipped, ' + summary.gearCount + ' gear piece' + (summary.gearCount !== 1 ? 's' : '')
+    );
+
+    // Decorations row
+    if (summary.decoCount > 0) {
+      addItem('Decorations', summary.decoCount + ' placed');
+    }
+
+    // Base Skin row
+    if (summary.skinInfo) {
+      addItem('Base Skin', 'Equipped');
+    }
+
+    // Base Decor & Halo row — check effectSkins for decor/halo sub-data
+    // (the extraction bundles base decor inside skins or as separate field — show if present)
+    if (summary.skinInfo && (summary.skinInfo.decorList || summary.skinInfo.haloList)) {
+      addItem('Base Decor & Halo', 'Data captured');
+    }
+
+    // Enigma Beasts row
+    if (summary.enigmaDeployed > 0 || summary.enigmaFields > 0) {
+      addItem(
+        'Enigma Beasts',
+        summary.enigmaDeployed + ' deployed, ' + summary.enigmaFields + ' field' + (summary.enigmaFields !== 1 ? 's' : '') + ' active'
+      );
+    }
+
+    // Heavy Troopers row
+    if (summary.mechaCount > 0) {
+      var mechaDetail = summary.mechaNames.join(', ');
+      var mechaCountColor = summary.mechaCount < 6 ? 'var(--yellow)' : 'var(--green)';
+      addItem('Heavy Troopers', mechaDetail, summary.mechaCount + '/6', mechaCountColor);
+    }
+
+    // ── Action buttons ──
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap;';
+    container.appendChild(btnRow);
+
+    var addBtn = document.createElement('button');
+    addBtn.className = 'btn-secondary';
+    addBtn.textContent = 'Add Another Report';
+    addBtn.addEventListener('click', wizardAddAnother);
+    btnRow.appendChild(addBtn);
+
+    var genBtn = document.createElement('button');
+    genBtn.className = 'btn-primary';
+    genBtn.textContent = 'Generate Report';
+    genBtn.addEventListener('click', wizardGenerate);
+    btnRow.appendChild(genBtn);
+  }
+
+  // ── Step 4: Building animation ────────────────────────────────────────────
+  function renderStepBuilding(container) {
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    var svgNS = 'http://www.w3.org/2000/svg';
+
+    // Green circle with checkmark (72px)
+    var iconWrap = document.createElement('div');
+    iconWrap.style.cssText = [
+      'width:72px;height:72px;border-radius:50%;',
+      'background:rgba(35,134,54,0.15);border:2px solid var(--green);',
+      'display:flex;align-items:center;justify-content:center;',
+      'margin:0 auto .75rem;'
+    ].join('');
+
+    var checkSvg = document.createElementNS(svgNS, 'svg');
+    checkSvg.setAttribute('width', '36'); checkSvg.setAttribute('height', '36');
+    checkSvg.setAttribute('viewBox', '0 0 24 24'); checkSvg.setAttribute('fill', 'none');
+    checkSvg.setAttribute('stroke', 'var(--green)'); checkSvg.setAttribute('stroke-width', '2.5');
+    checkSvg.setAttribute('stroke-linecap', 'round'); checkSvg.setAttribute('stroke-linejoin', 'round');
+    var checkPoly = document.createElementNS(svgNS, 'polyline');
+    checkPoly.setAttribute('points', '20 6 9 17 4 12');
+    checkSvg.appendChild(checkPoly);
+    iconWrap.appendChild(checkSvg);
+    container.appendChild(iconWrap);
+
+    // Heading
+    var h2 = document.createElement('h2');
+    h2.style.marginBottom = '.4rem';
+    h2.textContent = 'Building Your Report';
+    container.appendChild(h2);
+
+    // Progress bar wrapper
+    var progressWrap = document.createElement('div');
+    progressWrap.className = 'build-progress';
+    var progressFill = document.createElement('div');
+    progressFill.className = 'build-progress-fill';
+    progressWrap.appendChild(progressFill);
+    container.appendChild(progressWrap);
+
+    // Status text
+    var statusText = document.createElement('p');
+    statusText.style.cssText = 'margin-top:.75rem;font-size:.9rem;color:var(--muted);';
+    statusText.textContent = 'Preparing\u2026';
+    container.appendChild(statusText);
+
+    // Animate through 5 stages
+    var stages = [
+      { pct: 20, msg: 'Merging hero data\u2026' },
+      { pct: 40, msg: 'Building decorations\u2026' },
+      { pct: 60, msg: 'Processing enigma beasts\u2026' },
+      { pct: 80, msg: 'Assembling chip loadouts\u2026' },
+      { pct: 100, msg: 'Finalizing report\u2026' }
+    ];
+
+    var idx = 0;
+    function runStage() {
+      if (idx >= stages.length) {
+        setTimeout(saveAndRenderReport, 400);
+        return;
+      }
+      var stage = stages[idx++];
+      progressFill.style.width = stage.pct + '%';
+      statusText.textContent = stage.msg;
+      setTimeout(runStage, 600);
+    }
+
+    // Kick off after a short initial delay so the bar animates from 0
+    setTimeout(runStage, 150);
+  }
+
+  // ── Wizard navigation helpers ─────────────────────────────────────────────
+  function wizardAddAnother() {
+    wizardState.step = 'input';
+    renderWizardStep();
+  }
+
+  function wizardGenerate() {
+    wizardState.step = 'building';
+    renderWizardStep();
+  }
+
+  // ── Persist + render full report ──────────────────────────────────────────
+  function saveAndRenderReport() {
+    var saved = {
+      player: wizardState.player,
+      reportIds: wizardState.reportData.map(function(r) { return r.id; }),
+      marchGroups: []
+    };
+    localStorage.setItem('playerReport', JSON.stringify(saved));
+
+    var cache = {};
+    wizardState.reportData.forEach(function(r) { cache[r.id] = r.extracted; });
+    localStorage.setItem('playerReportData', JSON.stringify(cache));
+
+    closeWizard();
+    renderFullReport();
+  }
+
+  function renderFullReport() {
+    var app = document.getElementById('app');
+    while (app.firstChild) app.removeChild(app.firstChild);
+    var msg = document.createElement('div');
+    msg.style.cssText = 'padding:3rem;text-align:center;';
+    var h = document.createElement('h2');
+    h.style.color = 'var(--text)';
+    h.textContent = 'Report for ' + (wizardState.player ? wizardState.player.name : 'Unknown');
+    msg.appendChild(h);
+    var p = document.createElement('p');
+    p.style.color = 'var(--muted)';
+    p.textContent = 'Dashboard + tabs coming next';
+    msg.appendChild(p);
+    app.appendChild(msg);
   }
 
   // ── Wire Get Started button ───────────────────────────────────────────────
   document.getElementById('getStartedBtn').addEventListener('click', openWizard);
+
+  // ── Page init: restore saved report ──────────────────────────────────────
+  (function init() {
+    var saved = null;
+    try { saved = JSON.parse(localStorage.getItem('playerReport')); } catch(e) {}
+    if (saved && saved.player && saved.reportIds && saved.reportIds.length) {
+      wizardState.player = saved.player;
+      wizardState.reportData = [];
+      var cache = {};
+      try { cache = JSON.parse(localStorage.getItem('playerReportData')) || {}; } catch(e) {}
+      saved.reportIds.forEach(function(id) {
+        wizardState.reportData.push({ id: id, extracted: cache[id] || null });
+      });
+      renderFullReport();
+    }
+  })();
 </script>
 <script>
   // Google Translate
