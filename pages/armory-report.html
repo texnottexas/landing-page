@@ -464,12 +464,17 @@
     display: flex; gap: 0; margin-top: 1.5rem;
     border-bottom: 2px solid var(--border);
     overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
+    position: sticky; top: 48px; z-index: 100;
+    background: var(--bg); padding-top: .25rem;
   }
+  .tab-bar::-webkit-scrollbar { display: none; } /* Chrome/Safari */
   .tab-btn {
     padding: .75rem 1.25rem; color: var(--muted); font-size: .85rem;
     font-weight: 500; cursor: pointer; border: none; background: none;
     border-bottom: 2px solid transparent; margin-bottom: -2px;
     white-space: nowrap; transition: color .2s, border-color .2s;
+    flex-shrink: 0;
   }
   .tab-btn:hover { color: var(--text); }
   .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
@@ -1289,7 +1294,9 @@
 
   function getPushEndpoint() {
     if (!navigator.serviceWorker) return Promise.resolve(null);
-    return navigator.serviceWorker.ready.then(function(reg) {
+    // Don't use .ready (hangs if no SW registered). Check getRegistration instead.
+    return navigator.serviceWorker.getRegistration().then(function(reg) {
+      if (!reg || !reg.active) return null;
       return reg.pushManager.getSubscription();
     }).then(function(sub) {
       return sub ? sub.endpoint : null;
@@ -2648,14 +2655,13 @@
     right.appendChild(langBtn);
 
     // Feedback: handled by feedback-widget.js (auto-appends to <header>)
-    // Move floating widget button into header if it was created before header existed
+    // Move floating widget button into header (may have been hidden on landing or floating)
     setTimeout(function() {
       var fwBtn = document.getElementById('fw-hdr-btn');
-      if (fwBtn && fwBtn.style.position === 'fixed') {
-        fwBtn.style.cssText = '';
-        right.insertBefore(fwBtn, right.firstChild);
-      } else if (fwBtn && fwBtn.parentNode !== right) {
-        right.insertBefore(fwBtn, right.firstChild);
+      if (fwBtn) {
+        fwBtn.style.cssText = ''; // Clear any display:none or position:fixed
+        fwBtn.style.display = '';
+        if (fwBtn.parentNode !== right) right.insertBefore(fwBtn, right.firstChild);
       }
     }, 100);
 
@@ -6834,6 +6840,10 @@
   function renderEmptyState() {
     var app = document.getElementById('app');
     while (app.firstChild) app.removeChild(app.firstChild);
+
+    // Hide floating feedback widget on landing (no header to attach to)
+    var fwBtn = document.getElementById('fw-hdr-btn');
+    if (fwBtn) fwBtn.style.display = 'none';
 
     var hero = document.createElement('div');
     hero.className = 'landing-hero';
