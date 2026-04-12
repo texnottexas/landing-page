@@ -324,6 +324,41 @@
 
   @media (max-width: 1100px) { .gear-grid { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 600px) { .gear-grid { grid-template-columns: 1fr; } }
+
+  /* Sub-tab bar (Bases, future tabs) */
+  .sub-tab-bar {
+    display: flex; gap: 0; margin-bottom: 1rem; border-bottom: 1px solid var(--border);
+  }
+  .sub-tab-btn {
+    padding: .5rem 1rem; color: var(--muted); font-size: .8rem; font-weight: 500;
+    cursor: pointer; border: none; background: none;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: color .2s, border-color .2s;
+  }
+  .sub-tab-btn:hover { color: var(--text); }
+  .sub-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .sub-tab-content { display: none; }
+  .sub-tab-content.active { display: block; }
+
+  /* Skin card */
+  .skin-card-active {
+    display: flex; align-items: center; gap: 1rem;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 1rem; max-width: 420px;
+  }
+  .skin-icon {
+    width: 64px; height: 64px; border-radius: 8px; object-fit: cover;
+    background: var(--card); flex-shrink: 0; border: 1px solid var(--border);
+  }
+  .skin-icon-placeholder {
+    width: 64px; height: 64px; border-radius: 8px; background: var(--card);
+    flex-shrink: 0; border: 1px solid var(--border);
+  }
+  .skin-info-name { color: var(--text); font-size: 1rem; font-weight: 600; }
+  .skin-info-meta { color: var(--muted); font-size: .8rem; margin-top: .25rem; }
+  .skin-owned-note {
+    margin-top: .75rem; color: var(--muted); font-size: .8rem;
+  }
 </style>
 </head>
 <body>
@@ -1888,10 +1923,157 @@
     container.appendChild(grid);
   }
 
+  // ── Skin data cache + loader ───────────────────────────────────────────────
+  var SKIN_CACHE = null;
+  function loadSkinData(cb) {
+    if (SKIN_CACHE) return cb();
+    fetch('data/base-skins.json')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        SKIN_CACHE = {};
+        data.forEach(function(s) { SKIN_CACHE[s.id] = s; });
+        cb();
+      })
+      .catch(function() { SKIN_CACHE = {}; cb(); });
+  }
+
+  // ── Sub-tab switcher ───────────────────────────────────────────────────────
+  function switchSubTab(btn, parent) {
+    parent.querySelectorAll('.sub-tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    parent.querySelectorAll('.sub-tab-content').forEach(function(c) { c.classList.remove('active'); });
+    btn.classList.add('active');
+    var subtabId = 'subtab-' + btn.getAttribute('data-subtab');
+    var el = document.getElementById(subtabId);
+    el.classList.add('active');
+
+    // Lazy render
+    if (el.getAttribute('data-rendered')) return;
+    el.setAttribute('data-rendered', '1');
+
+    var m = window._mergedData;
+    var key = btn.getAttribute('data-subtab');
+    if (key === 'skins') renderSkinsSubTab(m);
+    else if (key === 'basedecor') renderBaseDecorSubTab(m);
+    else if (key === 'halo') renderHaloSubTab(m);
+  }
+
+  // ── Skins sub-tab ──────────────────────────────────────────────────────────
+  function renderSkinsSubTab(merged) {
+    var container = document.getElementById('subtab-skins');
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    var skins = merged ? merged.skins : null;
+    if (!skins) {
+      var msg = document.createElement('p'); msg.className = 'empty-tab';
+      msg.textContent = 'No base skin data found.';
+      container.appendChild(msg);
+      return;
+    }
+
+    loadSkinData(function() {
+      // Active skin
+      var useIds = (skins.useIds && skins.useIds.length) ? skins.useIds : [];
+      var activeId = useIds[0] || null;
+      var activeSkin = activeId ? (SKIN_CACHE[activeId] || null) : null;
+
+      // Active card
+      var card = document.createElement('div');
+      card.className = 'skin-card-active';
+
+      // Icon
+      if (activeSkin && activeSkin.icon) {
+        var img = document.createElement('img');
+        img.className = 'skin-icon';
+        img.src = ASSET_BASE + 'assets/base-icons/' + activeSkin.icon;
+        img.alt = activeSkin.name || 'Base Skin';
+        img.onerror = function() { this.style.display = 'none'; };
+        card.appendChild(img);
+      } else {
+        var ph = document.createElement('div'); ph.className = 'skin-icon-placeholder';
+        card.appendChild(ph);
+      }
+
+      // Info
+      var info = document.createElement('div');
+
+      var nameEl = document.createElement('div'); nameEl.className = 'skin-info-name';
+      nameEl.textContent = (activeSkin && activeSkin.name) ? activeSkin.name : (activeId ? 'Skin #' + activeId : 'Unknown Skin');
+      info.appendChild(nameEl);
+
+      var meta = document.createElement('div'); meta.className = 'skin-info-meta';
+      meta.textContent = 'Active skin';
+      info.appendChild(meta);
+
+      card.appendChild(info);
+      container.appendChild(card);
+
+      // Owned count note
+      var effectIds = skins.effectIds || [];
+      if (effectIds.length > 1) {
+        var note = document.createElement('p'); note.className = 'skin-owned-note';
+        note.textContent = effectIds.length + ' skins owned';
+        container.appendChild(note);
+      }
+    });
+  }
+
+  // ── Base Decor sub-tab ─────────────────────────────────────────────────────
+  function renderBaseDecorSubTab(merged) {
+    var container = document.getElementById('subtab-basedecor');
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    var msg = document.createElement('p'); msg.className = 'empty-tab';
+    msg.textContent = 'Base decoration details are not available from standard battle reports. This data requires game extraction.';
+    container.appendChild(msg);
+  }
+
+  // ── Halo sub-tab ───────────────────────────────────────────────────────────
+  function renderHaloSubTab(merged) {
+    var container = document.getElementById('subtab-halo');
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    var msg = document.createElement('p'); msg.className = 'empty-tab';
+    msg.textContent = 'Halo details are not available from standard battle reports.';
+    container.appendChild(msg);
+  }
+
+  // ── Bases tab (entry point) ────────────────────────────────────────────────
   function renderBasesTab(merged) {
-    var el = document.getElementById('tab-bases');
-    var p = document.createElement('p'); p.className = 'empty-tab';
-    p.textContent = 'Bases \u2014 coming soon'; el.appendChild(p);
+    var container = document.getElementById('tab-bases');
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    // Sub-tab bar
+    var bar = document.createElement('div');
+    bar.className = 'sub-tab-bar';
+
+    var tabs = [
+      { key: 'skins', label: 'Skins' },
+      { key: 'basedecor', label: 'Base Decor' },
+      { key: 'halo', label: 'Halo' }
+    ];
+
+    tabs.forEach(function(t, i) {
+      var btn = document.createElement('button');
+      btn.className = 'sub-tab-btn' + (i === 0 ? ' active' : '');
+      btn.setAttribute('data-subtab', t.key);
+      btn.textContent = t.label;
+      btn.addEventListener('click', function() { switchSubTab(btn, container); });
+      bar.appendChild(btn);
+    });
+    container.appendChild(bar);
+
+    // Sub-tab content areas
+    tabs.forEach(function(t, i) {
+      var content = document.createElement('div');
+      content.className = 'sub-tab-content' + (i === 0 ? ' active' : '');
+      content.id = 'subtab-' + t.key;
+      container.appendChild(content);
+    });
+
+    // Mark first sub-tab as rendered and render it
+    var skinsEl = document.getElementById('subtab-skins');
+    skinsEl.setAttribute('data-rendered', '1');
+    renderSkinsSubTab(merged);
   }
 
   function renderEnigmaTab(merged) {
