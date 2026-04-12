@@ -342,6 +342,60 @@
   .gear-attr-total { color: var(--accent); font-size: .65rem; }
   .gear-base-enh { font-size: .7rem; color: var(--green); margin-top: .25rem; }
 
+  /* Roll % bar */
+  .gear-roll-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: .2rem; }
+  .gear-roll-fill { height: 100%; border-radius: 2px; }
+  .gear-roll-pct { font-size: .6rem; color: var(--muted); }
+
+  /* Rune icon + stars */
+  .gear-rune-wrap { display: flex; align-items: center; gap: .3rem; margin-top: .25rem; }
+  .gear-rune-wrap img { width: 20px; height: 20px; border-radius: 3px; flex-shrink: 0; }
+  .gear-rune-name-text { font-size: .7rem; color: var(--accent); }
+
+  /* Hero power badge */
+  .hero-power { font-size: .7rem; color: var(--muted); margin-left: auto; white-space: nowrap; font-weight: 500; flex-shrink: 0; }
+
+  /* March modal */
+  .march-modal-overlay {
+    display: none; position: fixed; inset: 0; z-index: 1000;
+    background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    align-items: center; justify-content: center; padding: 1rem;
+  }
+  .march-modal-overlay.open { display: flex; animation: fadeIn .2s ease; }
+  .march-modal {
+    background: var(--bg); border-radius: 16px; padding: 2rem;
+    max-width: 520px; width: 100%; border: 1px solid var(--border);
+    animation: slideUp .25s ease; box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+    max-height: 80vh; overflow-y: auto;
+  }
+  .march-modal h3 { font-size: 1.1rem; color: var(--text); margin-bottom: 1rem; }
+  .march-row {
+    display: flex; align-items: center; gap: .5rem; padding: .5rem .5rem;
+    border-bottom: 1px solid var(--border); font-size: .8rem;
+  }
+  .march-row-name { color: var(--text); font-weight: 600; min-width: 80px; }
+  .march-row-heroes { color: var(--muted); flex: 1; }
+  .march-delete-btn {
+    background: none; border: none; color: var(--red); cursor: pointer; font-size: 1rem; padding: 0 .3rem; line-height: 1;
+  }
+  .march-form { margin-top: 1rem; display: flex; flex-direction: column; gap: .5rem; }
+  .march-form label { color: var(--muted); font-size: .75rem; }
+  .march-form input, .march-form select {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    padding: .45rem .6rem; color: var(--text); font-size: .85rem; font-family: inherit;
+  }
+  .march-form input:focus, .march-form select:focus { border-color: var(--accent); outline: none; }
+  .march-form-error { color: var(--red); font-size: .75rem; display: none; }
+  .march-form-row { display: flex; gap: .5rem; }
+  .march-btn {
+    padding: .4rem .8rem; border-radius: 6px; font-size: .8rem; font-weight: 600;
+    cursor: pointer; border: 1px solid var(--border); font-family: inherit;
+  }
+  .march-btn-add { background: #238636; color: #fff; border-color: #238636; }
+  .march-btn-add:hover { background: #2ea043; }
+  .march-btn-close { background: var(--surface); color: var(--text); }
+  .march-btn-close:hover { background: var(--card); }
+
   @media (max-width: 1100px) { .gear-grid { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 600px) { .gear-grid { grid-template-columns: 1fr; } }
 
@@ -1884,6 +1938,112 @@
   // Base stat enhancement buff names
   var ENHANCE_BUFF = {"930000":"All HP","930100":"All ATK","930001":"Army HP","930002":"Navy HP","930003":"AF HP","930101":"Army ATK","930102":"Navy ATK","930103":"AF ATK"};
 
+  // Rune name → icon filename
+  var RUNE_ICON = {"All-Out Surge":"all-out-surge","Artillery Storm":"artillery-storm","Unbreakable":"unbreakable","Steel Torrent":"steel-torrent","Tactical Awareness":"tactical-awareness","Stealth Hologram":"stealth-hologram","Searing":"searing","Armor-Breaking":"armor-breaking","Impact":"impact","Magnetic Field":"magnetic-field","Flammable":"flammable","Heavy Blow":"heavy-blow","Debilitate":"debilitate","Magnetize":"magnetize"};
+
+  // Resolve rune with fallback (6-digit derivation, alternate prefix)
+  function resolveRune(tid) {
+    if (RUNE_MAP[tid]) return RUNE_MAP[tid];
+    var base5 = Math.floor(tid / 10), star = tid % 10;
+    var baseData = RUNE_MAP[base5];
+    if (baseData) return {n: baseData.n, s: star, sm: baseData.sm};
+    var s = String(tid), slot = s.charAt(0);
+    if (s.length >= 5 && s.substring(1, 3) === '01') {
+      var alt = Number(slot + '02' + s.substring(3));
+      if (RUNE_MAP[alt]) return {n: RUNE_MAP[alt].n, s: RUNE_MAP[alt].s, sm: RUNE_MAP[alt].sm};
+      var altBase = Math.floor(alt / 10), altStar = alt % 10;
+      if (RUNE_MAP[altBase]) return {n: RUNE_MAP[altBase].n, s: altStar, sm: RUNE_MAP[altBase].sm};
+    }
+    return null;
+  }
+
+  // Roll quality color
+  function rollColor(pct) { return pct >= 70 ? '#56d364' : pct >= 50 ? '#e3b341' : '#f97583'; }
+
+  // Rune icon URL
+  function runeIconUrl(runeName) {
+    var f = RUNE_ICON[runeName];
+    return f ? (ASSET_BASE + 'assets/rune-icons/' + f + '.png') : null;
+  }
+
+  // Build rune star SVGs (createElement, no innerHTML)
+  function runeStarSVG(star, starMax) {
+    var svgNS = 'http://www.w3.org/2000/svg';
+    var maxStars = starMax === 6 ? 3 : 1;
+    var fullStars = Math.floor(star / 2);
+    var halfStar = star % 2 === 1 ? 1 : 0;
+    var emptyStars = maxStars - fullStars - halfStar;
+    var wrap = document.createElement('span');
+    wrap.style.cssText = 'display:inline-flex;gap:1px;vertical-align:middle;';
+    var gold = '#e3b341', grey = '#444c56';
+    function makeStar(fill) {
+      var s = document.createElementNS(svgNS, 'svg');
+      s.setAttribute('width', '10'); s.setAttribute('height', '10'); s.setAttribute('viewBox', '0 0 24 24');
+      var points = '12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26';
+      if (fill === 'full') {
+        var p = document.createElementNS(svgNS, 'polygon');
+        p.setAttribute('points', points); p.setAttribute('fill', gold); p.setAttribute('stroke', gold); p.setAttribute('stroke-width', '1');
+        s.appendChild(p);
+      } else if (fill === 'half') {
+        var bg = document.createElementNS(svgNS, 'polygon');
+        bg.setAttribute('points', points); bg.setAttribute('fill', grey); bg.setAttribute('stroke', gold); bg.setAttribute('stroke-width', '1');
+        s.appendChild(bg);
+        var clip = document.createElementNS(svgNS, 'clipPath');
+        clip.id = 'hc' + Math.random().toString(36).slice(2);
+        var cr = document.createElementNS(svgNS, 'rect');
+        cr.setAttribute('x', '0'); cr.setAttribute('y', '0'); cr.setAttribute('width', '12'); cr.setAttribute('height', '24');
+        clip.appendChild(cr); s.appendChild(clip);
+        var fp = document.createElementNS(svgNS, 'polygon');
+        fp.setAttribute('points', points); fp.setAttribute('fill', gold); fp.setAttribute('clip-path', 'url(#' + clip.id + ')');
+        s.appendChild(fp);
+      } else {
+        var p = document.createElementNS(svgNS, 'polygon');
+        p.setAttribute('points', points); p.setAttribute('fill', grey); p.setAttribute('stroke', gold); p.setAttribute('stroke-width', '1');
+        s.appendChild(p);
+      }
+      return s;
+    }
+    for (var i = 0; i < fullStars; i++) wrap.appendChild(makeStar('full'));
+    for (var i = 0; i < halfStar; i++) wrap.appendChild(makeStar('half'));
+    for (var i = 0; i < emptyStars; i++) wrap.appendChild(makeStar('empty'));
+    return wrap;
+  }
+
+  // Format power with K/M suffixes
+  function formatPower(val) {
+    if (val >= 1e6) return (val / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (val >= 1e3) return (val / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+    return String(val);
+  }
+
+  // Compute gear power score for a hero (sum of all buffValues)
+  function heroGearScore(hero) {
+    var total = 0;
+    (hero.heroEquips || []).forEach(function(equip) {
+      (equip.infos || []).forEach(function(info) {
+        if (info.type === 1) total += (info.buffValue || 0);
+      });
+    });
+    return total;
+  }
+
+  // ── March management ──────────────────────────────────────────────────────
+  function loadMarches() {
+    try {
+      var saved = JSON.parse(localStorage.getItem('playerReport'));
+      if (saved && Array.isArray(saved.marchGroups) && saved.marchGroups.length > 0) return saved.marchGroups;
+    } catch(e) {}
+    return [];
+  }
+
+  function saveMarches(marches) {
+    try {
+      var saved = JSON.parse(localStorage.getItem('playerReport')) || {};
+      saved.marchGroups = marches;
+      localStorage.setItem('playerReport', JSON.stringify(saved));
+    } catch(e) {}
+  }
+
   function gearSlotName(equipId) {
     // equipId format is typically XXYYYY where XX encodes slot
     // Detect by last digit of first two digits, or use modulo approach
@@ -1916,10 +2076,14 @@
     var equips = hero.heroEquips || [];
     var level = hero.level || 0;
     var star = hero.star || 0;
-    var hasExcl = (hero.nonActiveSkills || []).length > 0;
+    var nonActive = hero.nonActiveSkills || [];
+    var hasExcl = nonActive.length > 0;
+    var gearScore = heroGearScore(hero);
 
     var card = document.createElement('div');
     card.className = 'hero-card';
+    card.setAttribute('data-hero-id', id);
+    card.setAttribute('data-gear-score', gearScore);
 
     // ── Header ──
     var header = document.createElement('div');
@@ -1951,10 +2115,13 @@
     badge.textContent = branch;
     nameLine.appendChild(badge);
 
+    // Exclusive skill with level
     if (hasExcl) {
+      var exclSkill = nonActive[0];
+      var exclLevel = exclSkill.skillLevel || exclSkill.level || 0;
       var exclPill = document.createElement('span');
       exclPill.className = 'excl-pill';
-      exclPill.textContent = 'Exclusive';
+      exclPill.textContent = exclLevel > 0 ? ('Lv.' + exclLevel + ' Exclusive') : 'Exclusive';
       nameLine.appendChild(exclPill);
     }
     info.appendChild(nameLine);
@@ -1984,6 +2151,14 @@
 
     info.appendChild(metaLine);
     header.appendChild(info);
+
+    // Power badge
+    if (gearScore > 0) {
+      var powerEl = document.createElement('div');
+      powerEl.className = 'hero-power';
+      powerEl.textContent = formatPower(gearScore);
+      header.appendChild(powerEl);
+    }
 
     // Expand chevron SVG
     var expandWrap = document.createElement('div');
@@ -2023,7 +2198,6 @@
         slotName.className = 'gear-slot-name';
         var slotLabel = GEAR_SLOT_NAMES[idx + 1] || ('Slot ' + (idx + 1));
         if (equip.equipId) {
-          // equipId format: 100X04 where X = slot (1-6)
           var slotDigit = Math.floor((equip.equipId % 10000) / 100);
           if (slotDigit >= 1 && slotDigit <= 6) slotLabel = GEAR_SLOT_NAMES[slotDigit];
         }
@@ -2048,23 +2222,44 @@
         });
 
         if (type2 && type2.templateId) {
-          var runeData = RUNE_MAP[type2.templateId];
-          var runeEl = document.createElement('div');
-          runeEl.className = 'gear-rune';
+          var runeData = resolveRune(type2.templateId);
+
+          // Build rune wrap: icon + stars + name
+          var runeWrap = document.createElement('div');
+          runeWrap.className = 'gear-rune-wrap';
+
           if (runeData) {
-            var stars = runeData.s > 0 ? ' ' + Array(Math.ceil(runeData.s / 2) + 1).join('\u2605') : '';
-            runeEl.textContent = runeData.n + stars;
+            var iconUrl = runeIconUrl(runeData.n);
+            if (iconUrl) {
+              var rImg = document.createElement('img');
+              rImg.src = iconUrl;
+              rImg.alt = '';
+              rImg.onerror = function() { this.style.display = 'none'; };
+              runeWrap.appendChild(rImg);
+            }
+            var rNameSpan = document.createElement('span');
+            rNameSpan.className = 'gear-rune-name-text';
+            rNameSpan.textContent = runeData.n;
+            runeWrap.appendChild(rNameSpan);
+            if (runeData.s > 0) {
+              runeWrap.appendChild(runeStarSVG(runeData.s, runeData.sm));
+            }
           } else {
-            runeEl.textContent = 'Rune #' + type2.templateId;
+            var fallbackSpan = document.createElement('span');
+            fallbackSpan.className = 'gear-rune-name-text';
+            fallbackSpan.textContent = 'Rune #' + type2.templateId;
+            runeWrap.appendChild(fallbackSpan);
           }
-          gc.appendChild(runeEl);
+          gc.appendChild(runeWrap);
         }
 
-        // Random attributes (type=1 info entries)
+        // Random attributes (type=1 info entries) with roll % bars
         type1.forEach(function(info) {
           var tmpl = GEAR_TEMPLATE[info.templateId];
           var statName = tmpl ? tmpl.n : ('Stat#' + info.templateId);
           var baseVal = (info.buffValue / 100).toFixed(2).replace(/\.?0+$/, '') + '%';
+          var rollPct = tmpl ? Math.round(info.buffValue / tmpl.m * 100) : 0;
+          var color = rollColor(rollPct);
 
           var row = document.createElement('div');
           row.className = 'gear-attr-row';
@@ -2076,6 +2271,7 @@
 
           var valSpan = document.createElement('span');
           valSpan.className = 'gear-attr-val';
+          valSpan.style.color = color;
           valSpan.textContent = baseVal;
           row.appendChild(valSpan);
 
@@ -2099,6 +2295,24 @@
           }
 
           gc.appendChild(row);
+
+          // Roll % progress bar
+          if (tmpl) {
+            var barWrap = document.createElement('div');
+            barWrap.className = 'gear-roll-bar';
+            var fill = document.createElement('div');
+            fill.className = 'gear-roll-fill';
+            fill.style.width = Math.min(rollPct, 100) + '%';
+            fill.style.background = color;
+            barWrap.appendChild(fill);
+            gc.appendChild(barWrap);
+
+            var pctLabel = document.createElement('span');
+            pctLabel.className = 'gear-roll-pct';
+            pctLabel.style.color = color;
+            pctLabel.textContent = rollPct + '%';
+            gc.appendChild(pctLabel);
+          }
         });
 
         // Base stat enhancement (top-level enhanceValue)
@@ -2149,6 +2363,19 @@
       if (b.classList.contains('active')) sortMode = b.getAttribute('data-sort');
     });
 
+    // Get march filter
+    var marchSel = document.getElementById('hero-march-filter');
+    var marchVal = marchSel ? marchSel.value : 'all';
+    var marchHeroIds = null;
+    if (marchVal !== 'all') {
+      var marches = loadMarches();
+      var marchIdx = parseInt(marchVal, 10);
+      if (marches[marchIdx]) {
+        marchHeroIds = {};
+        marches[marchIdx].heroIds.forEach(function(hid) { marchHeroIds[hid] = true; });
+      }
+    }
+
     // Filter
     var filtered = heroes.filter(function(hero) {
       var branch = heroBranch(hero.id);
@@ -2158,6 +2385,7 @@
         var name = heroName(hero.id).toLowerCase();
         if (name.indexOf(query) === -1) return false;
       }
+      if (marchHeroIds && !marchHeroIds[hero.id]) return false;
       return true;
     });
 
@@ -2165,6 +2393,9 @@
     filtered.sort(function(a, b) {
       if (sortMode === 'level') {
         return (b.level || 0) - (a.level || 0);
+      }
+      if (sortMode === 'power') {
+        return heroGearScore(b) - heroGearScore(a);
       }
       var na = heroName(a.id).toLowerCase();
       var nb = heroName(b.id).toLowerCase();
@@ -2182,6 +2413,205 @@
     filtered.forEach(function(hero) {
       grid.appendChild(buildHeroCard(hero));
     });
+  }
+
+  // ── March modal helpers ─────────────────────────────────────────────────
+  function populateMarchFilter(heroes) {
+    var sel = document.getElementById('hero-march-filter');
+    if (!sel) return;
+    var currentVal = sel.value;
+    while (sel.firstChild) sel.removeChild(sel.firstChild);
+    var allOpt = document.createElement('option');
+    allOpt.value = 'all';
+    allOpt.textContent = 'All Heroes';
+    sel.appendChild(allOpt);
+    var marches = loadMarches();
+    marches.forEach(function(m, i) {
+      var opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = m.name;
+      sel.appendChild(opt);
+    });
+    if (currentVal !== 'all' && sel.querySelector('option[value="' + currentVal + '"]')) {
+      sel.value = currentVal;
+    } else {
+      sel.value = 'all';
+    }
+  }
+
+  function openMarchModal(heroes) {
+    var overlay = document.getElementById('march-modal-overlay');
+    if (!overlay) return;
+    overlay.classList.add('open');
+    renderMarchList(heroes);
+    resetMarchForm();
+    populateMarchHeroSelects(heroes);
+  }
+
+  function closeMarchModal() {
+    var overlay = document.getElementById('march-modal-overlay');
+    if (overlay) overlay.classList.remove('open');
+  }
+
+  function renderMarchList(heroes) {
+    var container = document.getElementById('march-list');
+    if (!container) return;
+    while (container.firstChild) container.removeChild(container.firstChild);
+    var marches = loadMarches();
+    if (marches.length === 0) {
+      var empty = document.createElement('div');
+      empty.style.cssText = 'color:var(--muted);font-size:.8rem;padding:.5rem 0;';
+      empty.textContent = 'No marches saved yet.';
+      container.appendChild(empty);
+      return;
+    }
+    marches.forEach(function(m, i) {
+      var row = document.createElement('div');
+      row.className = 'march-row';
+      var nameSpan = document.createElement('span');
+      nameSpan.className = 'march-row-name';
+      nameSpan.textContent = m.name;
+      row.appendChild(nameSpan);
+      var heroSpan = document.createElement('span');
+      heroSpan.className = 'march-row-heroes';
+      heroSpan.textContent = m.heroIds.map(function(hid) { return heroName(hid); }).join(', ');
+      row.appendChild(heroSpan);
+      var delBtn = document.createElement('button');
+      delBtn.className = 'march-delete-btn';
+      delBtn.textContent = '\u00d7';
+      delBtn.title = 'Delete march';
+      (function(idx) {
+        delBtn.addEventListener('click', function() {
+          var cur = loadMarches();
+          cur.splice(idx, 1);
+          saveMarches(cur);
+          renderMarchList(heroes);
+          populateMarchFilter(heroes);
+          renderHeroGrid(heroes);
+        });
+      })(i);
+      row.appendChild(delBtn);
+      container.appendChild(row);
+    });
+  }
+
+  function populateMarchHeroSelects(heroes) {
+    for (var i = 1; i <= 3; i++) {
+      var sel = document.getElementById('march-hero-' + i);
+      if (!sel) continue;
+      while (sel.firstChild) sel.removeChild(sel.firstChild);
+      var emptyOpt = document.createElement('option');
+      emptyOpt.value = '';
+      emptyOpt.textContent = '-- Select Hero --';
+      sel.appendChild(emptyOpt);
+      heroes.forEach(function(h) {
+        var opt = document.createElement('option');
+        opt.value = String(h.id);
+        opt.textContent = heroName(h.id);
+        sel.appendChild(opt);
+      });
+    }
+  }
+
+  function resetMarchForm() {
+    var nameInput = document.getElementById('march-name-input');
+    if (nameInput) nameInput.value = '';
+    for (var i = 1; i <= 3; i++) {
+      var sel = document.getElementById('march-hero-' + i);
+      if (sel) sel.value = '';
+    }
+    var err = document.getElementById('march-form-error');
+    if (err) err.style.display = 'none';
+  }
+
+  function addMarch(heroes) {
+    var nameInput = document.getElementById('march-name-input');
+    var name = nameInput ? nameInput.value.trim() : '';
+    var h1 = document.getElementById('march-hero-1');
+    var h2 = document.getElementById('march-hero-2');
+    var h3 = document.getElementById('march-hero-3');
+    var errEl = document.getElementById('march-form-error');
+
+    if (!name) { if (errEl) { errEl.textContent = 'Enter a march name.'; errEl.style.display = 'block'; } return; }
+    var ids = [];
+    [h1, h2, h3].forEach(function(s) { if (s && s.value) ids.push(Number(s.value)); });
+    if (ids.length < 3) { if (errEl) { errEl.textContent = 'Select all 3 heroes.'; errEl.style.display = 'block'; } return; }
+    var unique = {};
+    ids.forEach(function(id) { unique[id] = true; });
+    if (Object.keys(unique).length < 3) { if (errEl) { errEl.textContent = 'Heroes must be different.'; errEl.style.display = 'block'; } return; }
+
+    if (errEl) errEl.style.display = 'none';
+    var marches = loadMarches();
+    marches.push({ name: name, heroIds: ids });
+    saveMarches(marches);
+    renderMarchList(heroes);
+    populateMarchFilter(heroes);
+    resetMarchForm();
+  }
+
+  function buildMarchModal(heroes) {
+    var overlay = document.createElement('div');
+    overlay.className = 'march-modal-overlay';
+    overlay.id = 'march-modal-overlay';
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) closeMarchModal();
+    });
+
+    var modal = document.createElement('div');
+    modal.className = 'march-modal';
+
+    var title = document.createElement('h3');
+    title.textContent = 'Manage Marches';
+    modal.appendChild(title);
+
+    var list = document.createElement('div');
+    list.id = 'march-list';
+    modal.appendChild(list);
+
+    var form = document.createElement('div');
+    form.className = 'march-form';
+
+    var nameLabel = document.createElement('label');
+    nameLabel.textContent = 'March Name';
+    form.appendChild(nameLabel);
+    var nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.id = 'march-name-input';
+    nameInput.placeholder = 'e.g. Army Magnetic';
+    nameInput.setAttribute('autocomplete', 'off');
+    form.appendChild(nameInput);
+
+    for (var i = 1; i <= 3; i++) {
+      var heroLabel = document.createElement('label');
+      heroLabel.textContent = 'Hero ' + i;
+      form.appendChild(heroLabel);
+      var heroSel = document.createElement('select');
+      heroSel.id = 'march-hero-' + i;
+      form.appendChild(heroSel);
+    }
+
+    var errDiv = document.createElement('div');
+    errDiv.className = 'march-form-error';
+    errDiv.id = 'march-form-error';
+    form.appendChild(errDiv);
+
+    var btnRow = document.createElement('div');
+    btnRow.className = 'march-form-row';
+    var addBtn = document.createElement('button');
+    addBtn.className = 'march-btn march-btn-add';
+    addBtn.textContent = 'Add March';
+    addBtn.addEventListener('click', function() { addMarch(heroes); });
+    btnRow.appendChild(addBtn);
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'march-btn march-btn-close';
+    closeBtn.textContent = 'Close';
+    closeBtn.addEventListener('click', closeMarchModal);
+    btnRow.appendChild(closeBtn);
+    form.appendChild(btnRow);
+
+    modal.appendChild(form);
+    overlay.appendChild(modal);
+    return overlay;
   }
 
   // ── buildHeroesUI ─────────────────────────────────────────────────────────
@@ -2218,10 +2648,11 @@
       filterBar.appendChild(pill);
     });
 
-    // Sort buttons
+    // Sort buttons (Name, Level, Power)
     var sortDefs = [
       { key: 'name', label: 'Name' },
-      { key: 'level', label: 'Level' }
+      { key: 'level', label: 'Level' },
+      { key: 'power', label: 'Power' }
     ];
     sortDefs.forEach(function(sd, i) {
       var btn = document.createElement('button');
@@ -2236,7 +2667,28 @@
       filterBar.appendChild(btn);
     });
 
+    // March filter dropdown
+    var marchSelect = document.createElement('select');
+    marchSelect.className = 'filter-search';
+    marchSelect.id = 'hero-march-filter';
+    marchSelect.style.cssText = 'max-width:150px;padding:.3rem .5rem;font-size:.75rem;';
+    marchSelect.addEventListener('change', function() { renderHeroGrid(heroes); });
+    filterBar.appendChild(marchSelect);
+
+    // Manage Marches button
+    var manageBtn = document.createElement('button');
+    manageBtn.className = 'sort-btn';
+    manageBtn.textContent = 'Marches';
+    manageBtn.addEventListener('click', function() { openMarchModal(heroes); });
+    filterBar.appendChild(manageBtn);
+
     container.appendChild(filterBar);
+
+    // March modal
+    container.appendChild(buildMarchModal(heroes));
+
+    // Populate march filter
+    populateMarchFilter(heroes);
 
     // Hero grid
     var grid = document.createElement('div');
