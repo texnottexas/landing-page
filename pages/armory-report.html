@@ -2602,8 +2602,9 @@
     homeLink.appendChild(homeSvg);
     left.appendChild(homeLink);
 
-    // Identity greeting (matches index.html pattern: "Hi, Rex ✕")
-    var pName = (player && player.name) || '';
+    // Identity greeting — stored identity name takes priority over report player
+    var storedId = getStoredIdentity();
+    var pName = (storedId && storedId.name) || (player && player.name) || '';
     if (pName) {
       var greetWrap = document.createElement('div');
       greetWrap.style.cssText = 'display:flex;align-items:center;gap:.35rem;';
@@ -2843,10 +2844,17 @@
     if (identPanel) {
       while (identPanel.firstChild) identPanel.removeChild(identPanel.firstChild);
       var identity = getStoredIdentity();
+      // Site identity (from main site "Who are you?") takes priority over report player
+      var idName = (identity && identity.name) || (player && player.name) || 'Not set';
+      var idServer = (identity && identity.server) || (player && player.server) || '2864';
       var rows = [
-        { label: 'Player', value: (player && player.name) || 'Not set' },
-        { label: 'Server', value: 'S' + ((player && player.server) || '2864') }
+        { label: 'Identity', value: idName },
+        { label: 'Server', value: 'S' + idServer }
       ];
+      // Show report player separately if different from identity
+      if (player && player.name && identity && identity.name && player.name !== identity.name) {
+        rows.push({ label: 'Report Player', value: player.name });
+      }
       if (identity && identity.siteKey) rows.push({ label: 'Site Key', value: identity.siteKey.substring(0, 8) + '\u2026' });
       rows.push({ label: 'Device ID', value: getDeviceId().substring(0, 8) + '\u2026' });
 
