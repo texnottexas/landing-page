@@ -1274,11 +1274,13 @@
 
       // Enigma beasts — take first available
       if (!enigmaDeployed && x.enigmas) {
-        var fields = x.enigmas.fields || x.enigmas;
+        var fields = x.enigmas.fields || [];
         if (Array.isArray(fields)) {
-          enigmaFields = fields.length;
+          enigmaFields = fields.filter(function(f) { return f.active !== false; }).length;
           fields.forEach(function(f) {
-            enigmaDeployed += (f.beasts || f.beastList || []).length;
+            (f.slots || []).forEach(function(s) {
+              if (s.beastId && String(s.beastId) !== '0') enigmaDeployed++;
+            });
           });
         }
       }
@@ -1696,13 +1698,10 @@
     }
     // Beasts deployed count
     var beastCount = 0;
-    if (merged.enigmas) {
-      var enigmaFields = merged.enigmas.fields || (Array.isArray(merged.enigmas) ? merged.enigmas : []);
-      enigmaFields.forEach(function(f) {
-        var slots = f.slots || f.beasts || f.beastList || [];
-        slots.forEach(function(s) {
-          var bid = (typeof s === 'object') ? (s.beastId || s.id || s) : s;
-          if (bid && String(bid) !== '0') beastCount++;
+    if (merged.enigmas && merged.enigmas.fields) {
+      merged.enigmas.fields.forEach(function(f) {
+        (f.slots || []).forEach(function(s) {
+          if (s.beastId && String(s.beastId) !== '0') beastCount++;
         });
       });
     }
