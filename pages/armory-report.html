@@ -14,17 +14,225 @@
     --army: #56d364; --navy: #6cb6ff; --air: #e3b341;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; margin: 0; padding: 0; }
+  #app { }
 
   /* Google Translate overrides */
   body { top: 0 !important; }
   body > .skiptranslate { display: none !important; }
   #google_translate_element { position: absolute; left: -9999px; opacity: 0; pointer-events: none; }
 
-  /* Empty state */
-  .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 70vh; text-align: center; padding: 2rem; }
-  .empty-state h2 { color: var(--text); margin: 1rem 0 .5rem; font-size: 1.5rem; }
-  .empty-state p { color: var(--muted); margin-bottom: 1.5rem; max-width: 400px; }
+  /* Landing hero (first visit — no saved report) */
+  @keyframes landing-fade-in {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes shield-glow {
+    0%   { filter: drop-shadow(0 0 12px rgba(121,192,255,0.4)); color: var(--accent); }
+    33%  { filter: drop-shadow(0 0 12px rgba(63,185,80,0.4)); color: var(--army, #3fb950); }
+    66%  { filter: drop-shadow(0 0 12px rgba(210,153,34,0.4)); color: var(--air, #d29922); }
+    100% { filter: drop-shadow(0 0 12px rgba(121,192,255,0.4)); color: var(--accent); }
+  }
+
+  /* Particle swirl entrance — orbs loop in, form "fk boats", then shield reveals */
+  @keyframes p1 {
+    0%   { opacity:0; transform: translate(-160px,-100px) scale(.4); }
+    15%  { opacity:1; transform: translate(-90px, 50px) scale(.7); }
+    35%  { transform: translate(30px, -40px) scale(.6); }
+    55%  { transform: translate(-20px, 20px) scale(.5); }
+    75%  { opacity:1; transform: translate(0,0) scale(.3); }
+    100% { opacity:0; transform: translate(0,0) scale(0); }
+  }
+  @keyframes p2 {
+    0%   { opacity:0; transform: translate(140px,-90px) scale(.3); }
+    12%  { opacity:1; transform: translate(60px, 70px) scale(.6); }
+    30%  { transform: translate(-50px, -20px) scale(.7); }
+    55%  { transform: translate(15px, 30px) scale(.5); }
+    75%  { opacity:1; transform: translate(0,0) scale(.3); }
+    100% { opacity:0; transform: translate(0,0) scale(0); }
+  }
+  @keyframes p3 {
+    0%   { opacity:0; transform: translate(120px, 110px) scale(.5); }
+    18%  { opacity:1; transform: translate(-40px, 50px) scale(.6); }
+    40%  { transform: translate(50px, -60px) scale(.7); }
+    60%  { transform: translate(-10px, -15px) scale(.4); }
+    75%  { opacity:1; transform: translate(0,0) scale(.3); }
+    100% { opacity:0; transform: translate(0,0) scale(0); }
+  }
+  @keyframes p4 {
+    0%   { opacity:0; transform: translate(-130px, 80px) scale(.3); }
+    14%  { opacity:1; transform: translate(40px, 60px) scale(.5); }
+    32%  { transform: translate(70px, -50px) scale(.7); }
+    55%  { transform: translate(-25px, -10px) scale(.4); }
+    75%  { opacity:1; transform: translate(0,0) scale(.3); }
+    100% { opacity:0; transform: translate(0,0) scale(0); }
+  }
+  @keyframes p5 {
+    0%   { opacity:0; transform: translate(50px,-140px) scale(.4); }
+    16%  { opacity:1; transform: translate(-70px, -40px) scale(.6); }
+    38%  { transform: translate(40px, 60px) scale(.5); }
+    58%  { transform: translate(10px, -20px) scale(.4); }
+    75%  { opacity:1; transform: translate(0,0) scale(.3); }
+    100% { opacity:0; transform: translate(0,0) scale(0); }
+  }
+  @keyframes p6 {
+    0%   { opacity:0; transform: translate(-60px,-130px) scale(.5); }
+    20%  { opacity:1; transform: translate(80px, -30px) scale(.7); }
+    42%  { transform: translate(-30px, 70px) scale(.5); }
+    60%  { transform: translate(20px, -5px) scale(.4); }
+    75%  { opacity:1; transform: translate(0,0) scale(.3); }
+    100% { opacity:0; transform: translate(0,0) scale(0); }
+  }
+  @keyframes p7 {
+    0%   { opacity:0; transform: translate(-150px, 0px) scale(.3); }
+    17%  { opacity:1; transform: translate(-30px, -70px) scale(.6); }
+    36%  { transform: translate(60px, 40px) scale(.7); }
+    56%  { transform: translate(-15px, 5px) scale(.5); }
+    75%  { opacity:1; transform: translate(0,0) scale(.3); }
+    100% { opacity:0; transform: translate(0,0) scale(0); }
+  }
+  @keyframes p8 {
+    0%   { opacity:0; transform: translate(100px, 60px) scale(.4); }
+    13%  { opacity:1; transform: translate(-60px, -60px) scale(.5); }
+    34%  { transform: translate(-20px, 80px) scale(.6); }
+    54%  { transform: translate(5px, -10px) scale(.4); }
+    75%  { opacity:1; transform: translate(0,0) scale(.3); }
+    100% { opacity:0; transform: translate(0,0) scale(0); }
+  }
+  @keyframes pretext-flash {
+    0%   { opacity: 0; transform: scale(.7); filter: blur(4px); }
+    20%  { opacity: 1; transform: scale(1); filter: blur(0); }
+    70%  { opacity: 1; transform: scale(1); filter: blur(0); }
+    100% { opacity: 0; transform: scale(1.05); filter: blur(3px); }
+  }
+  @keyframes shield-reveal {
+    0%   { opacity: 0; transform: translate(-50%,-52%) scale(0.3); filter: blur(8px); }
+    30%  { opacity: 1; transform: translate(-50%,-52%) scale(1.08); filter: blur(0); }
+    50%  { transform: translate(-50%,-52%) scale(0.97); }
+    100% { opacity: 1; transform: translate(-50%,-52%) scale(1); filter: blur(0); }
+  }
+
+  .landing-hero {
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 2rem 1.5rem;
+    box-sizing: border-box;
+  }
+  .landing-icon-wrap {
+    position: relative; width: 120px; height: 120px; margin: 0 auto 1.25rem; flex-shrink: 0;
+  }
+  .landing-icon {
+    width: 72px; height: 72px;
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -52%);
+    animation: shield-reveal .8s ease 2.4s both, shield-glow 6s ease-in-out 3.2s infinite;
+  }
+  .landing-pretext {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1.1rem; font-weight: 800; letter-spacing: .15em; text-transform: lowercase;
+    color: var(--accent); text-align: center; line-height: 1.3; white-space: nowrap;
+    pointer-events: none;
+    animation: pretext-flash .8s ease 1.5s both;
+  }
+  .landing-particle {
+    position: absolute; top: 50%; left: 50%;
+    width: 8px; height: 8px; border-radius: 50%;
+    margin: -4px 0 0 -4px;
+    pointer-events: none;
+    box-shadow: 0 0 6px 2px currentColor;
+  }
+  .landing-particle:nth-child(1) { color: var(--accent); animation: p1 1.5s ease-out both; }
+  .landing-particle:nth-child(2) { color: #3fb950; animation: p2 1.5s ease-out .05s both; }
+  .landing-particle:nth-child(3) { color: #d29922; animation: p3 1.5s ease-out .1s both; }
+  .landing-particle:nth-child(4) { color: var(--accent); animation: p4 1.5s ease-out .03s both; }
+  .landing-particle:nth-child(5) { color: #3fb950; animation: p5 1.5s ease-out .08s both; }
+  .landing-particle:nth-child(6) { color: #d29922; animation: p6 1.5s ease-out .12s both; }
+  .landing-particle:nth-child(7) { color: #a371f7; animation: p7 1.5s ease-out .02s both; }
+  .landing-particle:nth-child(8) { color: #f0883e; animation: p8 1.5s ease-out .07s both; }
+  .landing-particle::after {
+    content: ''; position: absolute; inset: 0; border-radius: 50%;
+    background: currentColor; filter: blur(3px); opacity: .6;
+  }
+
+  .landing-title {
+    font-size: 1.5rem; font-weight: 700; color: var(--text); margin-bottom: .5rem; text-align: center;
+    animation: landing-fade-in .6s ease 2.8s both;
+  }
+  .landing-desc {
+    font-size: .88rem; color: var(--muted); line-height: 1.6; margin: 0 auto 1.5rem; max-width: 420px;
+    animation: landing-fade-in .6s ease 3s both;
+  }
+  .landing-features {
+    display: flex; gap: .75rem; justify-content: center; flex-wrap: wrap; margin-bottom: 1.5rem;
+    animation: landing-fade-in .6s ease 3.2s both;
+  }
+  .landing-feature {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: .5rem .75rem; font-size: .75rem; color: var(--text); font-weight: 600;
+  }
+  .landing-feature span { display: block; font-size: .6rem; color: var(--muted); font-weight: 400; margin-top: .15rem; }
+  .landing-identity-tip {
+    font-size: .72rem; color: var(--muted); margin: 0 auto 1.25rem; width: 100%; text-align: center;
+    animation: landing-fade-in .6s ease 3.4s both;
+  }
+  .landing-cta {
+    display: flex; justify-content: center; width: 100%;
+    animation: landing-fade-in .6s ease 3.5s both;
+  }
+  @keyframes cta-glow {
+    0%   { box-shadow: 0 0 20px rgba(35,134,54,0.4), 0 0 40px rgba(35,134,54,0.1); }
+    50%  { box-shadow: 0 0 25px rgba(35,134,54,0.6), 0 0 50px rgba(35,134,54,0.2); }
+    100% { box-shadow: 0 0 20px rgba(35,134,54,0.4), 0 0 40px rgba(35,134,54,0.1); }
+  }
+  .landing-cta .btn-primary {
+    font-size: 1.05rem; padding: .75rem 2.5rem; border-radius: 12px; letter-spacing: .02em;
+    background: linear-gradient(135deg, #238636 0%, #2ea043 50%, #3fb950 100%);
+    box-shadow: 0 0 20px rgba(35,134,54,0.4), 0 0 40px rgba(35,134,54,0.1);
+    animation: cta-glow 3s ease-in-out infinite;
+    transition: transform .2s, box-shadow .2s;
+  }
+  .landing-cta .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 30px rgba(35,134,54,0.6), 0 0 60px rgba(35,134,54,0.25);
+    animation: none;
+  }
+
+  /* Desktop: scale up landing elements */
+  @media (min-width: 768px) {
+    .landing-hero { padding: 4rem 2rem 3rem; }
+    .landing-desc { max-width: 480px; }
+    .landing-icon-wrap { width: 150px; height: 150px; }
+    .landing-pretext { font-size: 1.4rem; }
+    .landing-cta .btn-primary { min-width: 240px; }
+    .landing-icon { width: 96px; height: 96px; }
+    .landing-icon svg { width: 96px; height: 96px; }
+    .landing-title { font-size: 2rem; }
+    .landing-desc { font-size: 1rem; max-width: 480px; }
+    .landing-feature { padding: .6rem 1rem; font-size: .82rem; }
+    .landing-cta .btn-primary { font-size: 1.1rem; padding: .85rem 3rem; }
+    .landing-particle { width: 10px; height: 10px; margin: -5px 0 0 -5px; }
+  }
+
+  /* Loading state (return visit — cached report) */
+  .loading-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 70vh; text-align: center; padding: 4rem 1.5rem; max-width: 400px; margin: 0 auto;
+  }
+  .loading-icon { width: 40px; height: 40px; margin: 0 auto .75rem; color: var(--accent); animation: shield-glow 6s ease-in-out infinite; }
+  .loading-text { font-size: .9rem; color: var(--muted); margin-bottom: .75rem; }
+
+  @keyframes pulse-dots {
+    0%, 80%, 100% { opacity: .3; }
+    40% { opacity: 1; }
+  }
+  .loading-dots span {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); margin: 0 2px;
+    animation: pulse-dots 1.4s infinite ease-in-out;
+  }
+  .loading-dots span:nth-child(2) { animation-delay: .16s; }
+  .loading-dots span:nth-child(3) { animation-delay: .32s; }
   .btn-primary { background: #238636; color: #fff; border: none; padding: .75rem 2rem; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background .2s; }
   .btn-primary:hover { background: #2ea043; }
   .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
@@ -851,15 +1059,35 @@
 <div id="google_translate_element"></div>
 
 <div id="app">
-  <div class="empty-state">
-    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-      <polyline points="14,2 14,8 20,8"/>
-      <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
-    </svg>
-    <h2>Set Up Your Report</h2>
-    <p>Generate a personal account report from your battle data</p>
-    <button class="btn-primary" id="getStartedBtn">Get Started</button>
+  <div class="landing-hero">
+    <div class="landing-icon-wrap">
+      <div class="landing-particle"></div>
+      <div class="landing-particle"></div>
+      <div class="landing-particle"></div>
+      <div class="landing-particle"></div>
+      <div class="landing-particle"></div>
+      <div class="landing-particle"></div>
+      <div class="landing-particle"></div>
+      <div class="landing-particle"></div>
+      <div class="landing-pretext">fk<br>boats</div>
+      <div class="landing-icon">
+        <svg viewBox="0 0 100 100" fill="currentColor" width="72" height="72">
+          <path d="M91.06,19.11a1.36,1.36,0,0,0-1-1.48Q70.47,9,50.9.22a2.12,2.12,0,0,0-1.9,0Q29.49,8.92,9.95,17.57a1.52,1.52,0,0,0-1,1.66q0,7.21,0,14.42V45.19a57.47,57.47,0,0,0,12.5,36A52.12,52.12,0,0,0,48.11,99.7a6.23,6.23,0,0,0,3.82,0c11.51-3.46,20.58-10.31,27.68-19.87A57.3,57.3,0,0,0,90.3,54.54,59,59,0,0,0,91,45.83C91.1,36.93,91,28,91.06,19.11Zm-6.92,27.4a48.62,48.62,0,0,1-.59,7.23,47.62,47.62,0,0,1-8.88,21,43.87,43.87,0,0,1-23,16.5,5.2,5.2,0,0,1-3.17,0A43.36,43.36,0,0,1,26.38,75.88,47.61,47.61,0,0,1,15.89,46V36.4c0-4,0-8,0-11.95H16a1.25,1.25,0,0,1,.86-1.38Q33.05,15.89,49.25,8.65a1.74,1.74,0,0,1,1.57,0Q67.07,15.9,83.33,23.1a1.13,1.13,0,0,1,.81,1.23V46.51Z"/>
+          <path d="M78.14,50c-0.08,1-.18,2.09-0.37,3.13a39.5,39.5,0,0,1-7.38,17.45,36.49,36.49,0,0,1-19.1,13.71,4.32,4.32,0,0,1-2.66,0,36.49,36.49,0,0,1-19.1-13.71,39.5,39.5,0,0,1-7.38-17.45C22,52.07,21.87,51,21.79,50h0c-0.09-1.09-.13-2.19-0.14-3.3v-18a1,1,0,0,1,.71-1.07l27-12a1.26,1.26,0,0,1,.39-0.12,0.5,0.5,0,0,1,.28,0,1.26,1.26,0,0,1,.39.12l27,12a1,1,0,0,1,.71,1.07v18c0,1.11-.05,2.21-0.14,3.3h0.17Z"/>
+        </svg>
+      </div>
+    </div>
+    <h2 class="landing-title">My Armory Report</h2>
+    <p class="landing-desc">Paste your battle report IDs to generate a comprehensive personal account report. View your heroes, gear, decorations, base skins, enigma beasts, and HT chips — all in one place.</p>
+    <div class="landing-features">
+      <div class="landing-feature">6 Reports<span>Merge up to 6 battle reports</span></div>
+      <div class="landing-feature">Auto-Detect<span>Automatically finds your player data</span></div>
+      <div class="landing-feature">Share<span>Generate a shareable code</span></div>
+    </div>
+    <div class="landing-identity-tip" id="landingIdentityTip"></div>
+    <div class="landing-cta">
+      <button class="btn-primary" id="getStartedBtn">Get Started</button>
+    </div>
   </div>
 </div>
 
@@ -1277,28 +1505,10 @@
     // Clear container using DOM (not innerHTML = '')
     while (container.firstChild) container.removeChild(container.firstChild);
 
-    // SVG document icon (40px) - safe static SVG
+    // Shield icon (40px) - consistent with landing page
     var iconWrap = document.createElement('div');
-    var svgNS = 'http://www.w3.org/2000/svg';
-    var svg = document.createElementNS(svgNS, 'svg');
-    svg.setAttribute('width', '40'); svg.setAttribute('height', '40');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('fill', 'none');
-    svg.setAttribute('stroke', 'var(--accent)');
-    svg.setAttribute('stroke-width', '1.5');
-    var pathEl = document.createElementNS(svgNS, 'path');
-    pathEl.setAttribute('d', 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z');
-    var polyEl = document.createElementNS(svgNS, 'polyline');
-    polyEl.setAttribute('points', '14,2 14,8 20,8');
-    var line1 = document.createElementNS(svgNS, 'line');
-    line1.setAttribute('x1', '16'); line1.setAttribute('y1', '13');
-    line1.setAttribute('x2', '8');  line1.setAttribute('y2', '13');
-    var line2 = document.createElementNS(svgNS, 'line');
-    line2.setAttribute('x1', '16'); line2.setAttribute('y1', '17');
-    line2.setAttribute('x2', '8');  line2.setAttribute('y2', '17');
-    svg.appendChild(pathEl); svg.appendChild(polyEl);
-    svg.appendChild(line1); svg.appendChild(line2);
-    iconWrap.appendChild(svg);
+    iconWrap.style.color = 'var(--accent)';
+    iconWrap.appendChild(createShieldSVG(40));
     container.appendChild(iconWrap);
 
     var h2 = document.createElement('h2');
@@ -5699,6 +5909,19 @@
   // ── Wire Get Started button ───────────────────────────────────────────────
   document.getElementById('getStartedBtn').addEventListener('click', openWizard);
 
+  // ── Populate landing identity tip ─────────────────────────────────────────
+  (function populateLandingTip() {
+    var tipEl = document.getElementById('landingIdentityTip');
+    if (!tipEl) return;
+    var identity = null;
+    try { identity = JSON.parse(localStorage.getItem('playerIdentity')); } catch(e) {}
+    if (identity && identity.siteKey) {
+      tipEl.textContent = 'Signed in \u2014 save your config with a shareable code after setup';
+    } else {
+      tipEl.textContent = 'Sign in on the main site to save and share your report config';
+    }
+  })();
+
   // ── Object.values polyfill ────────────────────────────────────────────────
   function objValues(obj) {
     return Object.keys(obj).map(function(k) { return obj[k]; });
@@ -5744,48 +5967,111 @@
     };
   }
 
-  // ── Empty state renderer ──────────────────────────────────────────────────
+  // ── Shield SVG helper (shared by landing + loading states) ────────────────
+  var SHIELD_OUTER_D = 'M91.06,19.11a1.36,1.36,0,0,0-1-1.48Q70.47,9,50.9.22a2.12,2.12,0,0,0-1.9,0Q29.49,8.92,9.95,17.57a1.52,1.52,0,0,0-1,1.66q0,7.21,0,14.42V45.19a57.47,57.47,0,0,0,12.5,36A52.12,52.12,0,0,0,48.11,99.7a6.23,6.23,0,0,0,3.82,0c11.51-3.46,20.58-10.31,27.68-19.87A57.3,57.3,0,0,0,90.3,54.54,59,59,0,0,0,91,45.83C91.1,36.93,91,28,91.06,19.11Zm-6.92,27.4a48.62,48.62,0,0,1-.59,7.23,47.62,47.62,0,0,1-8.88,21,43.87,43.87,0,0,1-23,16.5,5.2,5.2,0,0,1-3.17,0A43.36,43.36,0,0,1,26.38,75.88,47.61,47.61,0,0,1,15.89,46V36.4c0-4,0-8,0-11.95H16a1.25,1.25,0,0,1,.86-1.38Q33.05,15.89,49.25,8.65a1.74,1.74,0,0,1,1.57,0Q67.07,15.9,83.33,23.1a1.13,1.13,0,0,1,.81,1.23V46.51Z';
+  var SHIELD_INNER_D = 'M78.14,50c-0.08,1-.18,2.09-0.37,3.13a39.5,39.5,0,0,1-7.38,17.45,36.49,36.49,0,0,1-19.1,13.71,4.32,4.32,0,0,1-2.66,0,36.49,36.49,0,0,1-19.1-13.71,39.5,39.5,0,0,1-7.38-17.45C22,52.07,21.87,51,21.79,50h0c-0.09-1.09-.13-2.19-0.14-3.3v-18a1,1,0,0,1,.71-1.07l27-12a1.26,1.26,0,0,1,.39-0.12,0.5,0.5,0,0,1,.28,0,1.26,1.26,0,0,1,.39.12l27,12a1,1,0,0,1,.71,1.07v18c0,1.11-.05,2.21-0.14,3.3h0.17Z';
+
+  function createShieldSVG(size) {
+    var svgNS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('fill', 'currentColor');
+    svg.setAttribute('width', String(size));
+    svg.setAttribute('height', String(size));
+    var p1 = document.createElementNS(svgNS, 'path');
+    p1.setAttribute('d', SHIELD_OUTER_D);
+    var p2 = document.createElementNS(svgNS, 'path');
+    p2.setAttribute('d', SHIELD_INNER_D);
+    svg.appendChild(p1);
+    svg.appendChild(p2);
+    return svg;
+  }
+
+  // ── Empty state renderer (premium landing) ────────────────────────────────
   function renderEmptyState() {
     var app = document.getElementById('app');
     while (app.firstChild) app.removeChild(app.firstChild);
 
-    var wrap = document.createElement('div');
-    wrap.className = 'empty-state';
+    var hero = document.createElement('div');
+    hero.className = 'landing-hero';
 
-    var svgNS = 'http://www.w3.org/2000/svg';
-    var svg = document.createElementNS(svgNS, 'svg');
-    svg.setAttribute('width', '48'); svg.setAttribute('height', '48');
-    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none');
-    svg.setAttribute('stroke', 'var(--accent)'); svg.setAttribute('stroke-width', '1.5');
-    var pathEl = document.createElementNS(svgNS, 'path');
-    pathEl.setAttribute('d', 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z');
-    var polyEl = document.createElementNS(svgNS, 'polyline');
-    polyEl.setAttribute('points', '14,2 14,8 20,8');
-    var line1 = document.createElementNS(svgNS, 'line');
-    line1.setAttribute('x1', '16'); line1.setAttribute('y1', '13');
-    line1.setAttribute('x2', '8');  line1.setAttribute('y2', '13');
-    var line2 = document.createElementNS(svgNS, 'line');
-    line2.setAttribute('x1', '16'); line2.setAttribute('y1', '17');
-    line2.setAttribute('x2', '8');  line2.setAttribute('y2', '17');
-    svg.appendChild(pathEl); svg.appendChild(polyEl);
-    svg.appendChild(line1); svg.appendChild(line2);
-    wrap.appendChild(svg);
+    // Shield icon with particle swirl + fk boats pretext
+    var iconOuter = document.createElement('div');
+    iconOuter.className = 'landing-icon-wrap';
+    for (var pi = 0; pi < 8; pi++) {
+      var particle = document.createElement('div');
+      particle.className = 'landing-particle';
+      iconOuter.appendChild(particle);
+    }
+    var pretext = document.createElement('div');
+    pretext.className = 'landing-pretext';
+    pretext.textContent = 'fk';
+    pretext.appendChild(document.createElement('br'));
+    pretext.appendChild(document.createTextNode('boats'));
+    iconOuter.appendChild(pretext);
+    var iconInner = document.createElement('div');
+    iconInner.className = 'landing-icon';
+    iconInner.appendChild(createShieldSVG(72));
+    iconOuter.appendChild(iconInner);
+    hero.appendChild(iconOuter);
 
-    var h2 = document.createElement('h2');
-    h2.textContent = 'Set Up Your Report';
-    wrap.appendChild(h2);
+    // Title
+    var title = document.createElement('h2');
+    title.className = 'landing-title';
+    title.textContent = 'My Armory Report';
+    hero.appendChild(title);
 
-    var p = document.createElement('p');
-    p.textContent = 'Generate a personal account report from your battle data';
-    wrap.appendChild(p);
+    // Description
+    var desc = document.createElement('p');
+    desc.className = 'landing-desc';
+    desc.textContent = 'Paste your battle report IDs to generate a comprehensive personal account report. View your heroes, gear, decorations, base skins, enigma beasts, and HT chips \u2014 all in one place.';
+    hero.appendChild(desc);
 
+    // Feature highlights
+    var features = document.createElement('div');
+    features.className = 'landing-features';
+
+    var featureData = [
+      { label: '6 Reports', sub: 'Merge up to 6 battle reports' },
+      { label: 'Auto-Detect', sub: 'Automatically finds your player data' },
+      { label: 'Share', sub: 'Generate a shareable code' }
+    ];
+    featureData.forEach(function(f) {
+      var card = document.createElement('div');
+      card.className = 'landing-feature';
+      card.textContent = f.label;
+      var span = document.createElement('span');
+      span.textContent = f.sub;
+      card.appendChild(span);
+      features.appendChild(card);
+    });
+    hero.appendChild(features);
+
+    // Identity tip
+    var tip = document.createElement('div');
+    tip.className = 'landing-identity-tip';
+    tip.id = 'landingIdentityTip';
+    var identity = null;
+    try { identity = JSON.parse(localStorage.getItem('playerIdentity')); } catch(e) {}
+    if (identity && identity.siteKey) {
+      tip.textContent = 'Signed in \u2014 save your config with a shareable code after setup';
+    } else {
+      tip.textContent = 'Sign in on the main site to save and share your report config';
+    }
+    hero.appendChild(tip);
+
+    // CTA button
+    var ctaWrap = document.createElement('div');
+    ctaWrap.className = 'landing-cta';
     var btn = document.createElement('button');
     btn.className = 'btn-primary';
+    btn.id = 'getStartedBtn';
     btn.textContent = 'Get Started';
     btn.addEventListener('click', openWizard);
-    wrap.appendChild(btn);
+    ctaWrap.appendChild(btn);
+    hero.appendChild(ctaWrap);
 
-    app.appendChild(wrap);
+    app.appendChild(hero);
   }
 
   // ── Re-fetch + merge init ─────────────────────────────────────────────────
@@ -5802,19 +6088,29 @@
 
     if (pending === 0) return;
 
-    // Show loading state
+    // Show polished loading state
     var app = document.getElementById('app');
     while (app.firstChild) app.removeChild(app.firstChild);
     var loadWrap = document.createElement('div');
-    loadWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;';
-    var spinner = document.createElement('div');
-    spinner.className = 'wizard-spinner';
-    spinner.style.cssText = 'width:32px;height:32px;border-width:3px;border-color:rgba(121,192,255,0.3);border-top-color:var(--accent);margin-bottom:1rem;';
-    loadWrap.appendChild(spinner);
+    loadWrap.className = 'loading-state';
+
+    var loadIcon = document.createElement('div');
+    loadIcon.className = 'loading-icon';
+    loadIcon.appendChild(createShieldSVG(40));
+    loadWrap.appendChild(loadIcon);
+
     var loadText = document.createElement('p');
-    loadText.style.color = 'var(--muted)';
-    loadText.textContent = 'Loading your report...';
+    loadText.className = 'loading-text';
+    loadText.textContent = 'Loading your report\u2026';
     loadWrap.appendChild(loadText);
+
+    var dots = document.createElement('div');
+    dots.className = 'loading-dots';
+    var d1 = document.createElement('span'); dots.appendChild(d1);
+    var d2 = document.createElement('span'); dots.appendChild(d2);
+    var d3 = document.createElement('span'); dots.appendChild(d3);
+    loadWrap.appendChild(dots);
+
     app.appendChild(loadWrap);
 
     ids.forEach(function(id, idx) {
