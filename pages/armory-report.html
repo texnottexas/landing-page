@@ -1619,7 +1619,17 @@
   };
 
   function openWizard() {
-    wizardState.step = 'input';
+    // Check if user has a saved config (either from localStorage or viewing someone else's)
+    var savedConfig = null;
+    try { savedConfig = JSON.parse(localStorage.getItem('playerReport')); } catch(e) {}
+    var hasSavedConfig = savedConfig && savedConfig.player && savedConfig.player.name && (savedConfig.reportIds || []).length > 0;
+
+    // If first visit AND user has a saved config, show choose step
+    if (wizardState.player === null && hasSavedConfig) {
+      wizardState.step = 'choose';
+    } else {
+      wizardState.step = 'input';
+    }
     document.getElementById('wizard').classList.add('open');
     renderWizardStep();
   }
@@ -1631,12 +1641,115 @@
   function renderWizardStep() {
     var container = document.getElementById('wizard-content');
     switch (wizardState.step) {
+      case 'choose':        renderStepChoose(container); break;
       case 'input':         renderStepInput(container); break;
       case 'select-player': renderStepSelectPlayer(container); break;
       case 'summary':       renderStepSummary(container); break;
       case 'building':      renderStepBuilding(container); break;
       case 'manage':        renderManageView(container); break;
     }
+  }
+
+  // ── Step 0: Choose action (when saved config exists) ────────────────────────
+  function renderStepChoose(container) {
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    var savedConfig = null;
+    try { savedConfig = JSON.parse(localStorage.getItem('playerReport')); } catch(e) {}
+    var playerName = savedConfig && savedConfig.player && savedConfig.player.name;
+    var reportCount = (savedConfig && savedConfig.reportIds || []).length;
+
+    // Shield icon
+    var iconWrap = document.createElement('div');
+    iconWrap.style.color = 'var(--accent)';
+    iconWrap.appendChild(createShieldSVG(40));
+    container.appendChild(iconWrap);
+
+    var h2 = document.createElement('h2');
+    h2.textContent = 'Welcome Back';
+    container.appendChild(h2);
+
+    var sub = document.createElement('p');
+    sub.style.marginBottom = '1.5rem';
+    sub.textContent = 'You have a saved report configuration.';
+    container.appendChild(sub);
+
+    // Option 1: Load saved config (prominent)
+    var loadSavedBtn = document.createElement('button');
+    loadSavedBtn.className = 'btn-primary';
+    loadSavedBtn.style.cssText = 'width:100%;margin-bottom:.75rem;display:flex;align-items:center;justify-content:center;gap:.5rem;';
+    var userIcon = document.createElementNS(SVG_NS, 'svg');
+    userIcon.setAttribute('width', '16'); userIcon.setAttribute('height', '16');
+    userIcon.setAttribute('viewBox', '0 0 24 24'); userIcon.setAttribute('fill', 'none');
+    userIcon.setAttribute('stroke', 'currentColor'); userIcon.setAttribute('stroke-width', '2');
+    var userPath = document.createElementNS(SVG_NS, 'path');
+    userPath.setAttribute('d', 'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8');
+    userIcon.appendChild(userPath);
+    loadSavedBtn.appendChild(userIcon);
+    loadSavedBtn.appendChild(document.createTextNode('Load ' + playerName + "'s Report"));
+    loadSavedBtn.addEventListener('click', function() {
+      closeWizard();
+      initFromSaved(savedConfig);
+    });
+    container.appendChild(loadSavedBtn);
+
+    var countNote = document.createElement('p');
+    countNote.style.cssText = 'font-size:.75rem;color:var(--muted);margin:-0.5rem 0 1rem;';
+    countNote.textContent = reportCount + ' report' + (reportCount !== 1 ? 's' : '') + ' saved';
+    container.appendChild(countNote);
+
+    // Divider
+    var divider = document.createElement('div');
+    divider.className = 'wizard-divider';
+    var dl = document.createElement('div');
+    dl.className = 'wizard-divider-line';
+    divider.appendChild(dl);
+    divider.appendChild(document.createTextNode('or'));
+    var dr = document.createElement('div');
+    dr.className = 'wizard-divider-line';
+    divider.appendChild(dr);
+    container.appendChild(divider);
+
+    // Option 2: Start fresh
+    var startFreshBtn = document.createElement('button');
+    startFreshBtn.className = 'btn-secondary';
+    startFreshBtn.style.cssText = 'width:100%;margin-bottom:.5rem;';
+    startFreshBtn.textContent = 'Start Fresh';
+    startFreshBtn.addEventListener('click', function() {
+      wizardState.step = 'input';
+      renderWizardStep();
+    });
+    container.appendChild(startFreshBtn);
+
+    // Option 3: Load someone else's code
+    var codeRow = document.createElement('div');
+    codeRow.className = 'wizard-code-row';
+    codeRow.style.marginTop = '.75rem';
+
+    var codeInput = document.createElement('input');
+    codeInput.type = 'text';
+    codeInput.className = 'wizard-code-input';
+    codeInput.placeholder = 'Code';
+    codeInput.id = 'wizard-code-input';
+    codeInput.maxLength = 4;
+    codeInput.setAttribute('autocomplete', 'off');
+    codeRow.appendChild(codeInput);
+
+    var codeBtn = document.createElement('button');
+    codeBtn.className = 'btn-secondary';
+    codeBtn.textContent = 'Load';
+    codeBtn.addEventListener('click', loadFromShortcode);
+    codeRow.appendChild(codeBtn);
+    container.appendChild(codeRow);
+
+    codeInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') loadFromShortcode();
+    });
+
+    var codeHint = document.createElement('p');
+    codeHint.style.cssText = 'font-size:.7rem;color:var(--muted);margin-top:.35rem;';
+    codeHint.textContent = 'View someone else\'s shared report';
+    container.appendChild(codeHint);
   }
 
   // ── Step 1: Report ID input ───────────────────────────────────────────────
@@ -2602,18 +2715,31 @@
     var storedId = getStoredIdentity();
     var pName = (storedId && storedId.name) || (player && player.name) || '';
     if (wizardState._viewOnly && player && player.name) {
-      // View-only mode: show whose report we're viewing
+      // View-only mode: show whose report we're viewing with prominent back button
       var viewWrap = document.createElement('div');
-      viewWrap.style.cssText = 'display:flex;align-items:center;gap:.35rem;';
+      viewWrap.style.cssText = 'display:flex;align-items:center;gap:.5rem;';
       var viewEl = document.createElement('span');
       viewEl.className = 'rh-title notranslate';
       viewEl.style.color = 'var(--muted)';
       viewEl.textContent = 'Viewing: ' + player.name;
       viewWrap.appendChild(viewEl);
       var backBtn = document.createElement('button');
-      backBtn.title = 'Back to my report';
-      backBtn.style.cssText = 'background:none;border:none;color:var(--accent);cursor:pointer;font-size:.7rem;padding:.1rem .2rem;line-height:1;text-decoration:underline;';
-      backBtn.textContent = 'back';
+      backBtn.className = 'rh-btn';
+      backBtn.title = 'Return to my report';
+      backBtn.style.cssText = 'background:var(--accent);color:#0d1117;border-color:var(--accent);font-size:.7rem;padding:.2rem .5rem;';
+      // Back arrow icon
+      var backSvg = document.createElementNS(svgNS, 'svg');
+      backSvg.setAttribute('width', '12'); backSvg.setAttribute('height', '12');
+      backSvg.setAttribute('viewBox', '0 0 24 24'); backSvg.setAttribute('fill', 'none');
+      backSvg.setAttribute('stroke', 'currentColor'); backSvg.setAttribute('stroke-width', '2.5');
+      var backPath = document.createElementNS(svgNS, 'path');
+      backPath.setAttribute('d', 'M19 12H5M12 19l-7-7 7-7');
+      backSvg.appendChild(backPath);
+      backBtn.appendChild(backSvg);
+      var backLabel = document.createElement('span');
+      backLabel.className = 'rh-label';
+      backLabel.textContent = 'My Report';
+      backBtn.appendChild(backLabel);
       backBtn.addEventListener('click', function() {
         window.location.href = window.location.pathname; // Reload without ?code= param
       });
