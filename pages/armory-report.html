@@ -363,21 +363,257 @@
     }
   }
 
-  // ── Stubs for future tasks ────────────────────────────────────────────────
-  function extractPlayerData(data, playerName) {
-    // Stub — Task 3 will implement
-    console.log('[wizard] extractPlayerData stub — player:', playerName, 'data keys:', Object.keys(data));
-    return null;
+  // ── Avatar / player info helpers ─────────────────────────────────────────
+  function resolveAvatar(url) {
+    if (!url) return null;
+    if (url.indexOf('http') === 0) return url;
+    return 'https://h5.topwargame.com/DynRes/images/headpic/' + url + '.png?t=21.jpg';
   }
 
+  function getAvatar(pi) {
+    return resolveAvatar(pi.headimgurl_custom) || resolveAvatar(pi.avatarurl) || null;
+  }
+
+  function parsePlayerInfo(side, playerIndex) {
+    var players = side.players || [];
+    var idx = playerIndex || 0;
+    if (idx >= players.length) return null;
+    try {
+      return JSON.parse(players[idx].playerInfo || '{}');
+    } catch(e) { return null; }
+  }
+
+  // ── Core extraction engine ────────────────────────────────────────────────
+  function extractPlayerData(data, playerName) {
+    var battle = data.battle;
+    if (!battle) return null;
+
+    var sides = [
+      { key: 'attacker', data: battle.attacker },
+      { key: 'defender', data: battle.defender }
+    ];
+    var matchedSide = null;
+    var matchedPlayerIdx = 0;
+
+    for (var s = 0; s < sides.length; s++) {
+      var players = (sides[s].data && sides[s].data.players) || [];
+      for (var p = 0; p < players.length; p++) {
+        try {
+          var pi = JSON.parse(players[p].playerInfo || '{}');
+          if (pi.username === playerName) {
+            matchedSide = sides[s];
+            matchedPlayerIdx = p;
+            break;
+          }
+        } catch(e) {}
+      }
+      if (matchedSide) break;
+    }
+
+    if (!matchedSide) return null;
+
+    var player0 = matchedSide.data.players[matchedPlayerIdx];
+
+    return {
+      playerInfo: JSON.parse(player0.playerInfo || '{}'),
+      heroes: (player0.heroList || []).map(function(h) {
+        return {
+          id: h.id, heroEquips: h.heroEquips || [],
+          skills: h.skills || [], nonActiveSkills: h.nonActiveSkills || [],
+          star: h.star || 0, level: h.level || 0
+        };
+      }),
+      decorations: player0.effectDecorations || null,
+      skins: player0.effectSkins || null,
+      enigmas: player0.enigmas || null,
+      // mechas is on the side level, not per-player
+      mechas: (matchedSide.data.mechas || []).map(function(m) {
+        return { mechaId: m.mechaId, chips: m.chips || [] };
+      }),
+      ctcs: player0.CTCs || null,
+      effectBuffs: player0.effectBuffs || null,
+      traceEffectBuffs: player0.traceEffectBuffs || null
+    };
+  }
+
+  // ── Step 2: Select player ─────────────────────────────────────────────────
   function renderStepSelectPlayer(container) {
-    // Stub — Task 3 will implement
-    console.log('[wizard] renderStepSelectPlayer stub — pending:', wizardState._pendingReport && wizardState._pendingReport.id);
+    var report = wizardState._pendingReport;
     while (container.firstChild) container.removeChild(container.firstChild);
+
+    var svgNS = 'http://www.w3.org/2000/svg';
+
+    // Icon — two-person icon using SVG
+    var iconWrap = document.createElement('div');
+    var iconSvg = document.createElementNS(svgNS, 'svg');
+    iconSvg.setAttribute('width', '40'); iconSvg.setAttribute('height', '40');
+    iconSvg.setAttribute('viewBox', '0 0 24 24'); iconSvg.setAttribute('fill', 'none');
+    iconSvg.setAttribute('stroke', 'var(--accent)'); iconSvg.setAttribute('stroke-width', '1.5');
+    // person circle
+    var c1 = document.createElementNS(svgNS, 'circle'); c1.setAttribute('cx','9'); c1.setAttribute('cy','7'); c1.setAttribute('r','4');
+    var p1 = document.createElementNS(svgNS, 'path'); p1.setAttribute('d','M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2');
+    var p2 = document.createElementNS(svgNS, 'path'); p2.setAttribute('d','M16 3.13a4 4 0 0 1 0 7.75');
+    var p3 = document.createElementNS(svgNS, 'path'); p3.setAttribute('d','M21 21v-2a4 4 0 0 0-3-3.85');
+    iconSvg.appendChild(c1); iconSvg.appendChild(p1); iconSvg.appendChild(p2); iconSvg.appendChild(p3);
+    iconWrap.appendChild(iconSvg);
+    container.appendChild(iconWrap);
+
     var h2 = document.createElement('h2');
-    h2.style.padding = '1rem';
-    h2.textContent = 'Select Player (coming in Task 3)';
+    h2.textContent = 'Which one is you?';
     container.appendChild(h2);
+
+    var sub = document.createElement('p');
+    sub.textContent = 'Pick your player card to set up your report.';
+    container.appendChild(sub);
+
+    // Cards row
+    var cardsRow = document.createElement('div');
+    cardsRow.style.cssText = 'display:flex;gap:1rem;justify-content:center;margin-top:.5rem;flex-wrap:wrap;';
+    container.appendChild(cardsRow);
+
+    var sides = [
+      { key: 'attacker', label: 'Attacker', color: 'var(--green)' },
+      { key: 'defender', label: 'Defender', color: 'var(--red)' }
+    ];
+
+    sides.forEach(function(side) {
+      var sideData = side.key === 'attacker' ? report.data.battle.attacker : report.data.battle.defender;
+      var pi = parsePlayerInfo(sideData, 0) || {};
+
+      var card = document.createElement('div');
+      card.style.cssText = [
+        'flex:1;min-width:160px;max-width:220px;',
+        'background:var(--card);border:2px solid var(--border);border-radius:12px;',
+        'padding:1.25rem 1rem;cursor:pointer;',
+        'display:flex;flex-direction:column;align-items:center;gap:.6rem;',
+        'transition:border-color .15s,transform .15s,box-shadow .15s;',
+        'user-select:none;'
+      ].join('');
+
+      // Hover effect via mouseover/mouseout
+      card.addEventListener('mouseover', function() {
+        card.style.borderColor = side.color;
+        card.style.transform = 'translateY(-3px)';
+        card.style.boxShadow = '0 8px 24px rgba(0,0,0,0.4)';
+      });
+      card.addEventListener('mouseout', function() {
+        card.style.borderColor = 'var(--border)';
+        card.style.transform = '';
+        card.style.boxShadow = '';
+      });
+
+      // Avatar container (relative positioning for fallback overlay)
+      var avatarWrap = document.createElement('div');
+      avatarWrap.style.cssText = 'position:relative;width:56px;height:56px;flex-shrink:0;';
+
+      var avatarUrl = getAvatar(pi);
+      var fallbackLetter = (pi.username || '?').charAt(0).toUpperCase();
+
+      // Letter fallback div (always present, shown when img errors)
+      var fallbackDiv = document.createElement('div');
+      fallbackDiv.style.cssText = [
+        'position:absolute;inset:0;border-radius:50%;',
+        'background:var(--surface);border:2px solid ' + side.color + ';',
+        'display:none;align-items:center;justify-content:center;',
+        'font-size:1.5rem;font-weight:700;color:' + side.color + ';'
+      ].join('');
+      fallbackDiv.textContent = fallbackLetter;
+
+      if (avatarUrl) {
+        var img = document.createElement('img');
+        img.src = avatarUrl;
+        img.alt = '';
+        img.style.cssText = 'width:56px;height:56px;border-radius:50%;object-fit:cover;display:block;border:2px solid ' + side.color + ';';
+        img.onerror = function() {
+          img.style.display = 'none';
+          fallbackDiv.style.display = 'flex';
+        };
+        avatarWrap.appendChild(img);
+      } else {
+        fallbackDiv.style.display = 'flex';
+      }
+      avatarWrap.appendChild(fallbackDiv);
+      card.appendChild(avatarWrap);
+
+      // Player name
+      var nameEl = document.createElement('div');
+      nameEl.style.cssText = 'font-weight:600;font-size:.95rem;color:var(--text);text-align:center;word-break:break-word;';
+      nameEl.textContent = pi.username || 'Unknown';
+      card.appendChild(nameEl);
+
+      // Role badge with SVG icon
+      var roleRow = document.createElement('div');
+      roleRow.style.cssText = 'display:flex;align-items:center;gap:.35rem;';
+
+      var roleSvg = document.createElementNS(svgNS, 'svg');
+      roleSvg.setAttribute('width', '14'); roleSvg.setAttribute('height', '14');
+      roleSvg.setAttribute('viewBox', '0 0 24 24'); roleSvg.setAttribute('fill', 'none');
+      roleSvg.setAttribute('stroke', side.color); roleSvg.setAttribute('stroke-width', '2');
+      roleSvg.setAttribute('stroke-linecap', 'round'); roleSvg.setAttribute('stroke-linejoin', 'round');
+
+      if (side.key === 'attacker') {
+        // Sword icon
+        var swordPath = document.createElementNS(svgNS, 'path');
+        swordPath.setAttribute('d', 'M14.5 17.5L3 6V3h3l11.5 11.5');
+        var swordPath2 = document.createElementNS(svgNS, 'path');
+        swordPath2.setAttribute('d', 'M13 19l6-6');
+        var swordPath3 = document.createElementNS(svgNS, 'path');
+        swordPath3.setAttribute('d', 'M16 16l4 4');
+        var swordPath4 = document.createElementNS(svgNS, 'path');
+        swordPath4.setAttribute('d', 'M19 21l2-2');
+        roleSvg.appendChild(swordPath); roleSvg.appendChild(swordPath2);
+        roleSvg.appendChild(swordPath3); roleSvg.appendChild(swordPath4);
+      } else {
+        // Shield icon
+        var shieldPath = document.createElementNS(svgNS, 'path');
+        shieldPath.setAttribute('d', 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z');
+        roleSvg.appendChild(shieldPath);
+      }
+
+      var roleLabel = document.createElement('span');
+      roleLabel.style.cssText = 'font-size:.8rem;font-weight:600;color:' + side.color + ';';
+      roleLabel.textContent = side.label;
+
+      roleRow.appendChild(roleSvg);
+      roleRow.appendChild(roleLabel);
+      card.appendChild(roleRow);
+
+      // Level display
+      if (pi.level) {
+        var levelEl = document.createElement('div');
+        levelEl.style.cssText = 'font-size:.8rem;color:var(--muted);';
+        levelEl.textContent = 'Lv. ' + pi.level;
+        card.appendChild(levelEl);
+      }
+
+      // Click handler
+      card.addEventListener('click', function() { selectPlayer(side.key); });
+
+      cardsRow.appendChild(card);
+    });
+  }
+
+  // ── selectPlayer ──────────────────────────────────────────────────────────
+  function selectPlayer(side) {
+    var report = wizardState._pendingReport;
+    var sideData = side === 'attacker' ? report.data.battle.attacker : report.data.battle.defender;
+    var pi = parsePlayerInfo(sideData, 0);
+    if (!pi) return;
+
+    wizardState.player = {
+      name: pi.username || 'Unknown',
+      avatar: getAvatar(pi),
+      avatarFallback: (pi.username || '?').charAt(0).toUpperCase(),
+      level: pi.level || 0,
+      server: pi.server || ''
+    };
+
+    var extracted = extractPlayerData(report.data, wizardState.player.name);
+    wizardState.reportData.push({ id: report.id, extracted: extracted });
+    delete wizardState._pendingReport;
+
+    wizardState.step = 'summary';
+    renderWizardStep();
   }
 
   function renderStepSummary(container) {
