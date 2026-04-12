@@ -132,6 +132,86 @@
   /* Build progress bar */
   .build-progress { background: var(--surface); height: 6px; border-radius: 3px; overflow: hidden; max-width: 300px; margin: 1rem auto 0; }
   .build-progress-fill { background: linear-gradient(90deg, #238636, var(--green)); height: 100%; border-radius: 3px; transition: width .5s ease; width: 0; }
+
+  /* Dashboard */
+  .dashboard { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
+
+  .dashboard-header {
+    display: flex; align-items: center; gap: 1rem;
+    padding-bottom: 1.25rem; border-bottom: 1px solid var(--border);
+  }
+  .dashboard-avatar { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; background: var(--surface); flex-shrink: 0; }
+  .dashboard-avatar-fallback {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: linear-gradient(135deg, #238636, #2ea043);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.75rem; color: #fff; font-weight: 700; flex-shrink: 0;
+  }
+  .dashboard-info { flex: 1; }
+  .dashboard-name { color: var(--text); font-size: 1.25rem; font-weight: 700; }
+  .dashboard-meta { color: var(--muted); font-size: .8rem; margin-top: .15rem; }
+  .dashboard-actions { display: flex; align-items: center; gap: .75rem; }
+
+  .reports-badge {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: .25rem .75rem; font-size: .75rem; color: var(--muted);
+  }
+  .settings-btn {
+    background: none; border: 1px solid var(--border); border-radius: 8px;
+    padding: .4rem; cursor: pointer; color: var(--muted);
+    transition: color .2s, border-color .2s; display: flex;
+  }
+  .settings-btn:hover { color: var(--text); border-color: var(--muted); }
+
+  /* Summary cards */
+  .summary-cards {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: .75rem; margin-top: 1.25rem;
+  }
+  .summary-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 1rem; text-align: center;
+    opacity: 0; animation: cardFadeIn .4s ease forwards;
+  }
+  @keyframes cardFadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .summary-card:nth-child(1) { animation-delay: .1s; }
+  .summary-card:nth-child(2) { animation-delay: .2s; }
+  .summary-card:nth-child(3) { animation-delay: .3s; }
+  .summary-card:nth-child(4) { animation-delay: .4s; }
+  .summary-card:nth-child(5) { animation-delay: .5s; }
+  .summary-card .value { color: var(--text); font-size: 1.5rem; font-weight: 700; }
+  .summary-card .label { color: var(--muted); font-size: .75rem; margin-top: .25rem; }
+
+  /* Tab bar */
+  .tab-bar {
+    display: flex; gap: 0; margin-top: 1.5rem;
+    border-bottom: 2px solid var(--border);
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+  }
+  .tab-btn {
+    padding: .75rem 1.25rem; color: var(--muted); font-size: .85rem;
+    font-weight: 500; cursor: pointer; border: none; background: none;
+    border-bottom: 2px solid transparent; margin-bottom: -2px;
+    white-space: nowrap; transition: color .2s, border-color .2s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .tab-content { display: none; padding-top: 1.25rem; }
+  .tab-content.active { display: block; }
+
+  /* Empty tab state */
+  .empty-tab { text-align: center; padding: 3rem; color: var(--muted); font-size: .9rem; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .dashboard-header { flex-wrap: wrap; }
+    .dashboard-actions { width: 100%; justify-content: flex-end; }
+    .summary-cards { grid-template-columns: repeat(2, 1fr); }
+  }
 </style>
 </head>
 <body>
@@ -1011,20 +1091,239 @@
   }
 
   function renderFullReport() {
+    var merged = mergeReportData(wizardState.reportData);
+    window._mergedData = merged;
+
     var app = document.getElementById('app');
     while (app.firstChild) app.removeChild(app.firstChild);
-    var msg = document.createElement('div');
-    msg.style.cssText = 'padding:3rem;text-align:center;';
-    var h = document.createElement('h2');
-    h.style.color = 'var(--text)';
-    h.textContent = 'Report for ' + (wizardState.player ? wizardState.player.name : 'Unknown');
-    msg.appendChild(h);
-    var p = document.createElement('p');
-    p.style.color = 'var(--muted)';
-    p.textContent = 'Dashboard + tabs coming next';
-    msg.appendChild(p);
-    app.appendChild(msg);
+
+    var player = wizardState.player || {};
+    var reportCount = wizardState.reportData.length;
+    var svgNS = 'http://www.w3.org/2000/svg';
+
+    // ── Dashboard container ──
+    var dash = document.createElement('div');
+    dash.className = 'dashboard';
+    app.appendChild(dash);
+
+    // ── Header ──
+    var header = document.createElement('div');
+    header.className = 'dashboard-header';
+    dash.appendChild(header);
+
+    // Avatar / fallback
+    var avatarUrl = player.avatar || null;
+    var fallbackLetter = (player.avatarFallback || (player.name || '?').charAt(0)).toUpperCase();
+
+    if (avatarUrl) {
+      var avatarImg = document.createElement('img');
+      avatarImg.className = 'dashboard-avatar';
+      avatarImg.src = avatarUrl;
+      avatarImg.alt = '';
+      avatarImg.onerror = function() {
+        avatarImg.style.display = 'none';
+        fallbackEl.style.display = 'flex';
+      };
+      header.appendChild(avatarImg);
+    }
+
+    var fallbackEl = document.createElement('div');
+    fallbackEl.className = 'dashboard-avatar-fallback';
+    fallbackEl.textContent = fallbackLetter;
+    if (avatarUrl) fallbackEl.style.display = 'none';
+    header.appendChild(fallbackEl);
+
+    // Info block
+    var info = document.createElement('div');
+    info.className = 'dashboard-info';
+    var nameEl = document.createElement('div');
+    nameEl.className = 'dashboard-name';
+    nameEl.textContent = player.name || 'Unknown';
+    info.appendChild(nameEl);
+    var metaParts = [];
+    if (player.level) metaParts.push('Lv. ' + player.level);
+    if (player.server) metaParts.push('S' + player.server);
+    var metaEl = document.createElement('div');
+    metaEl.className = 'dashboard-meta';
+    metaEl.textContent = metaParts.join(' \u00b7 ');
+    info.appendChild(metaEl);
+    header.appendChild(info);
+
+    // Actions
+    var actions = document.createElement('div');
+    actions.className = 'dashboard-actions';
+    header.appendChild(actions);
+
+    var badge = document.createElement('span');
+    badge.className = 'reports-badge';
+    badge.textContent = reportCount + '/6 reports';
+    actions.appendChild(badge);
+
+    var settingsBtn = document.createElement('button');
+    settingsBtn.className = 'settings-btn';
+    settingsBtn.title = 'Manage reports';
+    settingsBtn.addEventListener('click', openManageModal);
+
+    var gearSvg = document.createElementNS(svgNS, 'svg');
+    gearSvg.setAttribute('width', '18'); gearSvg.setAttribute('height', '18');
+    gearSvg.setAttribute('viewBox', '0 0 24 24'); gearSvg.setAttribute('fill', 'none');
+    gearSvg.setAttribute('stroke', 'currentColor'); gearSvg.setAttribute('stroke-width', '2');
+    gearSvg.setAttribute('stroke-linecap', 'round'); gearSvg.setAttribute('stroke-linejoin', 'round');
+    var gearCircle = document.createElementNS(svgNS, 'circle');
+    gearCircle.setAttribute('cx', '12'); gearCircle.setAttribute('cy', '12'); gearCircle.setAttribute('r', '3');
+    gearSvg.appendChild(gearCircle);
+    var gearPath = document.createElementNS(svgNS, 'path');
+    gearPath.setAttribute('d', 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z');
+    gearSvg.appendChild(gearPath);
+    settingsBtn.appendChild(gearSvg);
+    actions.appendChild(settingsBtn);
+
+    // ── Summary cards ──
+    var cards = document.createElement('div');
+    cards.className = 'summary-cards';
+    dash.appendChild(cards);
+
+    // Hero count
+    var heroCount = merged.heroes.length;
+    // Gear pieces count
+    var gearPieces = 0;
+    merged.heroes.forEach(function(h) { gearPieces += (h.heroEquips || []).length; });
+    // Decorations count
+    var decoCount = 0;
+    if (merged.decorations) {
+      decoCount = (merged.decorations.sublimes || []).length ||
+                  (merged.decorations.buildings || []).length ||
+                  (merged.decorations.effectList || []).length || 0;
+    }
+    // Beasts deployed count
+    var beastCount = 0;
+    if (merged.enigmas) {
+      var enigmaFields = merged.enigmas.fields || (Array.isArray(merged.enigmas) ? merged.enigmas : []);
+      enigmaFields.forEach(function(f) {
+        var slots = f.slots || f.beasts || f.beastList || [];
+        slots.forEach(function(s) {
+          var bid = (typeof s === 'object') ? (s.beastId || s.id || s) : s;
+          if (bid && String(bid) !== '0') beastCount++;
+        });
+      });
+    }
+    // Heavy Troopers count
+    var htCount = merged.mechas.length;
+
+    var cardDefs = [
+      { value: heroCount, label: 'Heroes' },
+      { value: gearPieces, label: 'Gear Pieces' },
+      { value: decoCount, label: 'Decorations' },
+      { value: beastCount, label: 'Beasts Deployed' },
+      { value: htCount, label: 'Heavy Troopers' }
+    ];
+
+    cardDefs.forEach(function(def) {
+      var card = document.createElement('div');
+      card.className = 'summary-card';
+      var valEl = document.createElement('div');
+      valEl.className = 'value';
+      valEl.textContent = String(def.value);
+      card.appendChild(valEl);
+      var lblEl = document.createElement('div');
+      lblEl.className = 'label';
+      lblEl.textContent = def.label;
+      card.appendChild(lblEl);
+      cards.appendChild(card);
+    });
+
+    // ── Tab bar ──
+    var tabBar = document.createElement('div');
+    tabBar.className = 'tab-bar';
+    dash.appendChild(tabBar);
+
+    var tabDefs = [
+      { id: 'heroes', label: 'Heroes & Gear' },
+      { id: 'decorations', label: 'Decorations' },
+      { id: 'bases', label: 'Bases' },
+      { id: 'enigma', label: 'Enigma Beasts' },
+      { id: 'chips', label: 'HT Chips' }
+    ];
+
+    tabDefs.forEach(function(def, i) {
+      var btn = document.createElement('button');
+      btn.className = 'tab-btn' + (i === 0 ? ' active' : '');
+      btn.setAttribute('data-tab', def.id);
+      btn.textContent = def.label;
+      btn.addEventListener('click', function() { switchTab(btn); });
+      tabBar.appendChild(btn);
+    });
+
+    // ── Tab content divs ──
+    tabDefs.forEach(function(def, i) {
+      var content = document.createElement('div');
+      content.className = 'tab-content' + (i === 0 ? ' active' : '');
+      content.id = 'tab-' + def.id;
+      dash.appendChild(content);
+    });
+
+    // Render first tab immediately (Heroes & Gear)
+    var firstTab = document.getElementById('tab-heroes');
+    firstTab.setAttribute('data-rendered', '1');
+    renderHeroesTab(merged);
   }
+
+  // ── Tab switching ─────────────────────────────────────────────────────────
+  function switchTab(btn) {
+    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+    btn.classList.add('active');
+    var tabId = 'tab-' + btn.getAttribute('data-tab');
+    document.getElementById(tabId).classList.add('active');
+
+    var container = document.getElementById(tabId);
+    if (container.getAttribute('data-rendered')) return;
+    container.setAttribute('data-rendered', '1');
+
+    var tab = btn.getAttribute('data-tab');
+    var m = window._mergedData;
+    switch (tab) {
+      case 'heroes':      renderHeroesTab(m); break;
+      case 'decorations': renderDecorationsTab(m); break;
+      case 'bases':       renderBasesTab(m); break;
+      case 'enigma':      renderEnigmaTab(m); break;
+      case 'chips':       renderChipsTab(m); break;
+    }
+  }
+
+  // ── Tab render stubs ──────────────────────────────────────────────────────
+  function renderHeroesTab(merged) {
+    var el = document.getElementById('tab-heroes');
+    var p = document.createElement('p'); p.className = 'empty-tab';
+    p.textContent = 'Heroes & Gear \u2014 coming soon'; el.appendChild(p);
+  }
+
+  function renderDecorationsTab(merged) {
+    var el = document.getElementById('tab-decorations');
+    var p = document.createElement('p'); p.className = 'empty-tab';
+    p.textContent = 'Decorations \u2014 coming soon'; el.appendChild(p);
+  }
+
+  function renderBasesTab(merged) {
+    var el = document.getElementById('tab-bases');
+    var p = document.createElement('p'); p.className = 'empty-tab';
+    p.textContent = 'Bases \u2014 coming soon'; el.appendChild(p);
+  }
+
+  function renderEnigmaTab(merged) {
+    var el = document.getElementById('tab-enigma');
+    var p = document.createElement('p'); p.className = 'empty-tab';
+    p.textContent = 'Enigma Beasts \u2014 coming soon'; el.appendChild(p);
+  }
+
+  function renderChipsTab(merged) {
+    var el = document.getElementById('tab-chips');
+    var p = document.createElement('p'); p.className = 'empty-tab';
+    p.textContent = 'HT Chips \u2014 coming soon'; el.appendChild(p);
+  }
+
+  // ── Manage modal stub ─────────────────────────────────────────────────────
+  function openManageModal() { openWizard(); }
 
   // ── Wire Get Started button ───────────────────────────────────────────────
   document.getElementById('getStartedBtn').addEventListener('click', openWizard);
