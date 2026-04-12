@@ -446,6 +446,46 @@
   .chip-bonus-tier { color: var(--muted); font-size: .7rem; margin-bottom: .15rem; }
   .chip-bonus-tier.active { color: var(--green); }
   .chip-bonus-count { font-size: .75rem; color: var(--muted); margin-bottom: .5rem; }
+
+  /* Management view */
+  .manage-identity {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .75rem; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; margin-bottom: 1rem; text-align: left;
+  }
+  .manage-identity-avatar {
+    width: 48px; height: 48px; border-radius: 50%; object-fit: cover;
+    background: var(--card); flex-shrink: 0;
+  }
+  .manage-identity-fallback {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: linear-gradient(135deg, #238636, #2ea043);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.25rem; color: #fff; font-weight: 700; flex-shrink: 0;
+  }
+  .manage-identity-name { color: var(--text); font-size: .95rem; font-weight: 600; }
+  .manage-identity-sub { color: var(--muted); font-size: .75rem; margin-top: .15rem; }
+
+  .manage-report-list { margin-bottom: .75rem; }
+  .manage-report-card {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .75rem; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; margin-bottom: .5rem;
+  }
+  .manage-report-info { flex: 1; text-align: left; }
+  .manage-report-title { color: var(--text); font-size: .85rem; font-weight: 500; }
+  .manage-report-meta { color: var(--muted); font-size: .7rem; margin-top: .15rem; }
+  .remove-btn {
+    background: none; border: 1px solid var(--border); border-radius: 6px;
+    padding: .3rem; cursor: pointer; color: var(--muted);
+    transition: color .2s, border-color .2s; display: flex;
+  }
+  .remove-btn:hover { color: var(--red); border-color: var(--red); }
+
+  .manage-btn-row {
+    display: flex; gap: .75rem; justify-content: center; flex-wrap: wrap;
+    margin-top: .5rem;
+  }
 </style>
 </head>
 <body>
@@ -657,6 +697,7 @@
       case 'select-player': renderStepSelectPlayer(container); break;
       case 'summary':       renderStepSummary(container); break;
       case 'building':      renderStepBuilding(container); break;
+      case 'manage':        renderManageView(container); break;
     }
   }
 
@@ -2597,8 +2638,176 @@
     });
   }
 
-  // ── Manage modal stub ─────────────────────────────────────────────────────
-  function openManageModal() { openWizard(); }
+  // ── Manage modal ──────────────────────────────────────────────────────────
+  function openManageModal() {
+    wizardState.step = 'manage';
+    document.getElementById('wizard').classList.add('open');
+    renderWizardStep();
+  }
+
+  function renderManageView(containerArg) {
+    var container = containerArg || document.getElementById('wizard-content');
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    var player = wizardState.player || {};
+    var reportCount = wizardState.reportData.length;
+
+    // ── Identity block ──
+    var identityDiv = document.createElement('div');
+    identityDiv.className = 'manage-identity';
+
+    var avatarUrl = player.avatar || null;
+    var fallbackLetter = (player.avatarFallback || (player.name || '?').charAt(0)).toUpperCase();
+
+    if (avatarUrl) {
+      var avatarImg = document.createElement('img');
+      avatarImg.className = 'manage-identity-avatar';
+      avatarImg.src = avatarUrl;
+      avatarImg.alt = '';
+      avatarImg.onerror = function() {
+        avatarImg.style.display = 'none';
+        fallbackDiv.style.display = 'flex';
+      };
+      identityDiv.appendChild(avatarImg);
+    }
+
+    var fallbackDiv = document.createElement('div');
+    fallbackDiv.className = 'manage-identity-fallback';
+    fallbackDiv.textContent = fallbackLetter;
+    if (avatarUrl) fallbackDiv.style.display = 'none';
+    identityDiv.appendChild(fallbackDiv);
+
+    var identInfo = document.createElement('div');
+    var identName = document.createElement('div');
+    identName.className = 'manage-identity-name';
+    identName.textContent = player.name || 'Unknown';
+    identInfo.appendChild(identName);
+    var identSub = document.createElement('div');
+    identSub.className = 'manage-identity-sub';
+    identSub.textContent = reportCount + '/6 reports loaded';
+    identInfo.appendChild(identSub);
+    identityDiv.appendChild(identInfo);
+    container.appendChild(identityDiv);
+
+    // ── Report list ──
+    var listDiv = document.createElement('div');
+    listDiv.className = 'manage-report-list';
+
+    wizardState.reportData.forEach(function(report, idx) {
+      var card = document.createElement('div');
+      card.className = 'manage-report-card';
+
+      var numDiv = document.createElement('div');
+      numDiv.style.cssText = 'color: var(--muted); font-size: .75rem; font-weight: 600; min-width: 20px; text-align: center; flex-shrink: 0;';
+      numDiv.textContent = String(idx + 1);
+      card.appendChild(numDiv);
+
+      var infoDiv = document.createElement('div');
+      infoDiv.className = 'manage-report-info';
+
+      var titleDiv = document.createElement('div');
+      titleDiv.className = 'manage-report-title';
+      var shortId = report.id ? (report.id.substring(0, 8) + '...') : 'Unknown';
+      titleDiv.textContent = 'Report ' + shortId;
+      infoDiv.appendChild(titleDiv);
+
+      var metaDiv = document.createElement('div');
+      metaDiv.className = 'manage-report-meta';
+      var heroCount = (report.extracted && report.extracted.heroes) ? report.extracted.heroes.length : 0;
+      var mechaCount = (report.extracted && report.extracted.mechas) ? report.extracted.mechas.length : 0;
+      metaDiv.textContent = heroCount + ' heroes\u00a0\u00b7\u00a0' + mechaCount + ' mechas';
+      infoDiv.appendChild(metaDiv);
+      card.appendChild(infoDiv);
+
+      // Remove button with X SVG — closure captures idx
+      (function(capturedIdx) {
+        var removeBtn = document.createElement('button');
+        removeBtn.className = 'remove-btn';
+        removeBtn.title = 'Remove report';
+
+        var svgNS = 'http://www.w3.org/2000/svg';
+        var xSvg = document.createElementNS(svgNS, 'svg');
+        xSvg.setAttribute('width', '16'); xSvg.setAttribute('height', '16');
+        xSvg.setAttribute('viewBox', '0 0 24 24'); xSvg.setAttribute('fill', 'none');
+        xSvg.setAttribute('stroke', 'currentColor'); xSvg.setAttribute('stroke-width', '2.5');
+        xSvg.setAttribute('stroke-linecap', 'round');
+        var line1 = document.createElementNS(svgNS, 'line');
+        line1.setAttribute('x1', '18'); line1.setAttribute('y1', '6');
+        line1.setAttribute('x2', '6');  line1.setAttribute('y2', '18');
+        var line2 = document.createElementNS(svgNS, 'line');
+        line2.setAttribute('x1', '6');  line2.setAttribute('y1', '6');
+        line2.setAttribute('x2', '18'); line2.setAttribute('y2', '18');
+        xSvg.appendChild(line1); xSvg.appendChild(line2);
+        removeBtn.appendChild(xSvg);
+
+        removeBtn.addEventListener('click', function() { removeReport(capturedIdx); });
+        card.appendChild(removeBtn);
+      })(idx);
+
+      listDiv.appendChild(card);
+    });
+    container.appendChild(listDiv);
+
+    // ── Button row ──
+    var btnRow = document.createElement('div');
+    btnRow.className = 'manage-btn-row';
+
+    if (reportCount < 6) {
+      var addBtn = document.createElement('button');
+      addBtn.className = 'btn-secondary';
+      addBtn.textContent = 'Add Report';
+      addBtn.addEventListener('click', manageAddReport);
+      btnRow.appendChild(addBtn);
+    }
+
+    var doneBtn = document.createElement('button');
+    doneBtn.className = 'btn-primary';
+    doneBtn.textContent = 'Done';
+    doneBtn.addEventListener('click', manageDone);
+    btnRow.appendChild(doneBtn);
+
+    container.appendChild(btnRow);
+  }
+
+  function removeReport(idx) {
+    wizardState.reportData.splice(idx, 1);
+
+    if (wizardState.reportData.length === 0) {
+      localStorage.removeItem('playerReport');
+      localStorage.removeItem('playerReportData');
+      wizardState.player = null;
+      closeWizard();
+      renderEmptyState();
+      return;
+    }
+
+    saveState();
+    renderManageView();
+  }
+
+  function manageAddReport() {
+    wizardState.step = 'input';
+    renderWizardStep();
+  }
+
+  function manageDone() {
+    saveState();
+    closeWizard();
+    renderFullReport();
+  }
+
+  function saveState() {
+    var saved = {
+      player: wizardState.player,
+      reportIds: wizardState.reportData.map(function(r) { return r.id; }),
+      marchGroups: []
+    };
+    localStorage.setItem('playerReport', JSON.stringify(saved));
+
+    var cache = {};
+    wizardState.reportData.forEach(function(r) { cache[r.id] = r.extracted; });
+    localStorage.setItem('playerReportData', JSON.stringify(cache));
+  }
 
   // ── Wire Get Started button ───────────────────────────────────────────────
   document.getElementById('getStartedBtn').addEventListener('click', openWizard);
