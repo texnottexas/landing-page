@@ -212,6 +212,104 @@
     .dashboard-actions { width: 100%; justify-content: flex-end; }
     .summary-cards { grid-template-columns: repeat(2, 1fr); }
   }
+
+  /* Filter bar */
+  .filter-bar {
+    display: flex; flex-wrap: wrap; gap: .75rem; align-items: center;
+    padding: .75rem 0; margin-bottom: .75rem;
+  }
+  .filter-search {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: .5rem .75rem; color: var(--text); font-size: .85rem; outline: none;
+    min-width: 180px; transition: border-color .15s;
+  }
+  .filter-search::placeholder { color: var(--muted); }
+  .filter-search:focus { border-color: var(--accent); }
+
+  .branch-pill {
+    padding: .3rem .7rem; border-radius: 12px; font-size: .75rem; font-weight: 600;
+    cursor: pointer; border: 1px solid; transition: opacity .15s;
+    user-select: none;
+  }
+  .branch-pill.army { background: rgba(86,211,100,0.15); color: var(--army); border-color: rgba(86,211,100,0.3); }
+  .branch-pill.navy { background: rgba(108,182,255,0.15); color: var(--navy); border-color: rgba(108,182,255,0.3); }
+  .branch-pill.air { background: rgba(227,179,65,0.15); color: var(--air); border-color: rgba(227,179,65,0.3); }
+  .branch-pill:not(.active) { opacity: .35; }
+
+  .sort-btn {
+    padding: .3rem .7rem; border-radius: 6px; font-size: .75rem;
+    background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+    cursor: pointer; transition: color .15s, border-color .15s;
+    font-family: inherit;
+  }
+  .sort-btn.active { color: var(--accent); border-color: var(--accent); }
+
+  /* Hero cards */
+  .hero-grid { display: flex; flex-direction: column; gap: .5rem; }
+
+  .hero-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden; transition: border-color .15s;
+  }
+  .hero-card:hover { border-color: var(--muted); }
+
+  .hero-header {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .75rem 1rem; cursor: pointer; user-select: none;
+  }
+  .hero-icon {
+    width: 48px; height: 48px; border-radius: 50%; object-fit: cover;
+    background: var(--card); flex-shrink: 0; border: 2px solid var(--border);
+  }
+  .hero-icon.army-border { border-color: var(--army); }
+  .hero-icon.navy-border { border-color: var(--navy); }
+  .hero-icon.air-border { border-color: var(--air); }
+
+  .hero-info { flex: 1; min-width: 0; }
+  .hero-name-line { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+  .hero-name { font-weight: 600; font-size: .9rem; color: var(--text); }
+  .branch-badge {
+    font-size: .65rem; font-weight: 600; padding: 2px 6px; border-radius: 4px;
+  }
+  .branch-badge.army { background: rgba(86,211,100,0.15); color: var(--army); }
+  .branch-badge.navy { background: rgba(108,182,255,0.15); color: var(--navy); }
+  .branch-badge.air { background: rgba(227,179,65,0.15); color: var(--air); }
+
+  .hero-meta { color: var(--muted); font-size: .75rem; margin-top: .15rem; }
+  .hero-stars { color: var(--yellow); letter-spacing: 1px; }
+
+  .excl-pill {
+    font-size: .65rem; font-weight: 600; padding: 2px 6px; border-radius: 8px;
+    background: rgba(121,192,255,0.12); color: var(--accent);
+    border: 1px solid rgba(121,192,255,0.25);
+  }
+
+  .expand-icon {
+    color: var(--muted); font-size: .75rem; transition: transform .2s; flex-shrink: 0;
+  }
+  .hero-card.expanded .expand-icon { transform: rotate(180deg); }
+
+  /* Gear panel */
+  .gear-panel {
+    max-height: 0; overflow: hidden; transition: max-height .4s ease;
+    border-top: 1px solid transparent;
+  }
+  .hero-card.expanded .gear-panel {
+    max-height: 2000px; border-top-color: var(--border);
+  }
+  .gear-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem;
+    padding: .75rem 1rem;
+  }
+  .gear-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+    padding: .6rem;
+  }
+  .gear-slot-name { font-size: .75rem; font-weight: 600; color: var(--text); margin-bottom: .3rem; }
+  .gear-stat { font-size: .7rem; color: var(--muted); }
+
+  @media (max-width: 1100px) { .gear-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .gear-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -710,8 +808,9 @@
     renderWizardStep();
   }
 
-  // ── Hero name cache ───────────────────────────────────────────────────────
+  // ── Hero name + type cache ────────────────────────────────────────────────
   var HERO_CACHE = null;
+  var HERO_TYPE_CACHE = null;
 
   function loadHeroNames(cb) {
     if (HERO_CACHE) return cb(HERO_CACHE);
@@ -719,14 +818,48 @@
       .then(function(r) { return r.json(); })
       .then(function(data) {
         HERO_CACHE = {};
-        data.forEach(function(h) { HERO_CACHE[h.id] = h.displayName || h.name || ('Hero #' + h.id); });
+        HERO_TYPE_CACHE = {};
+        data.forEach(function(h) {
+          HERO_CACHE[h.id] = h.displayName || h.name || ('Hero #' + h.id);
+          HERO_TYPE_CACHE[h.id] = h.typeName || 'Unknown';
+        });
         cb(HERO_CACHE);
       })
-      .catch(function() { HERO_CACHE = {}; cb(HERO_CACHE); });
+      .catch(function() { HERO_CACHE = {}; HERO_TYPE_CACHE = {}; cb(HERO_CACHE); });
+  }
+
+  function loadHeroData(cb) {
+    if (HERO_TYPE_CACHE) return cb();
+    fetch('data/all-heroes.json')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        HERO_CACHE = {};
+        HERO_TYPE_CACHE = {};
+        data.forEach(function(h) {
+          HERO_CACHE[h.id] = h.displayName || h.name || ('Hero #' + h.id);
+          HERO_TYPE_CACHE[h.id] = h.typeName || 'Unknown';
+        });
+        cb();
+      })
+      .catch(function() { HERO_TYPE_CACHE = {}; cb(); });
   }
 
   function heroName(id) {
     return (HERO_CACHE && HERO_CACHE[id]) || ('Hero #' + id);
+  }
+
+  function heroBranch(id) {
+    return (HERO_TYPE_CACHE && HERO_TYPE_CACHE[id]) || 'Unknown';
+  }
+
+  function branchClass(branch) {
+    if (/army/i.test(branch)) return 'army';
+    if (/navy/i.test(branch)) return 'navy';
+    return 'air';
+  }
+
+  function heroIconUrl(heroId) {
+    return 'https://h5.topwargame.com/DynRes/images/headpic/hero_icon' + heroId + '_global.png?t=22.jpg';
   }
 
   // ── Mecha names ───────────────────────────────────────────────────────────
@@ -1291,11 +1424,330 @@
     }
   }
 
+  // ── Gear slot name helper ─────────────────────────────────────────────────
+  var GEAR_SLOT_NAMES = { 1: 'Weapon', 2: 'Helmet', 3: 'Armor', 4: 'Boots', 5: 'Ring', 6: 'Amulet' };
+
+  function gearSlotName(equipId) {
+    // equipId format is typically XXYYYY where XX encodes slot
+    // Detect by last digit of first two digits, or use modulo approach
+    // From battle report data, slot is encoded in the equip config
+    // Simplest reliable approach: use slot index order (1-6)
+    var slot = equipId % 10;
+    if (slot >= 1 && slot <= 6) return GEAR_SLOT_NAMES[slot] || ('Slot ' + slot);
+    // fallback: try first digit of 6-digit ID
+    var asStr = String(equipId);
+    if (asStr.length >= 6) {
+      var prefix = parseInt(asStr.charAt(0), 10);
+      if (prefix >= 1 && prefix <= 6) return GEAR_SLOT_NAMES[prefix] || ('Slot ' + prefix);
+    }
+    return 'Gear';
+  }
+
+  // ── toggleHero ────────────────────────────────────────────────────────────
+  function toggleHero(headerEl) {
+    var card = headerEl.parentNode;
+    card.classList.toggle('expanded');
+  }
+
+  // ── buildHeroCard ─────────────────────────────────────────────────────────
+  function buildHeroCard(hero) {
+    var svgNS = 'http://www.w3.org/2000/svg';
+    var id = hero.id;
+    var name = heroName(id);
+    var branch = heroBranch(id);
+    var bc = branchClass(branch);
+    var equips = hero.heroEquips || [];
+    var level = hero.level || 0;
+    var star = hero.star || 0;
+    var hasExcl = (hero.nonActiveSkills || []).length > 0;
+
+    var card = document.createElement('div');
+    card.className = 'hero-card';
+
+    // ── Header ──
+    var header = document.createElement('div');
+    header.className = 'hero-header';
+    header.addEventListener('click', function() { toggleHero(header); });
+
+    // Icon
+    var iconImg = document.createElement('img');
+    iconImg.className = 'hero-icon ' + bc + '-border';
+    iconImg.src = heroIconUrl(id);
+    iconImg.alt = '';
+    iconImg.onerror = function() { iconImg.style.display = 'none'; };
+    header.appendChild(iconImg);
+
+    // Info block
+    var info = document.createElement('div');
+    info.className = 'hero-info';
+
+    var nameLine = document.createElement('div');
+    nameLine.className = 'hero-name-line';
+
+    var nameEl = document.createElement('span');
+    nameEl.className = 'hero-name';
+    nameEl.textContent = name;
+    nameLine.appendChild(nameEl);
+
+    var badge = document.createElement('span');
+    badge.className = 'branch-badge ' + bc;
+    badge.textContent = branch;
+    nameLine.appendChild(badge);
+
+    if (hasExcl) {
+      var exclPill = document.createElement('span');
+      exclPill.className = 'excl-pill';
+      exclPill.textContent = 'Exclusive';
+      nameLine.appendChild(exclPill);
+    }
+    info.appendChild(nameLine);
+
+    // Meta line: level + stars
+    var metaLine = document.createElement('div');
+    metaLine.className = 'hero-meta';
+
+    var metaParts = [];
+    if (level) metaParts.push('Lv. ' + level);
+    var metaText = document.createTextNode(metaParts.join(' '));
+    metaLine.appendChild(metaText);
+
+    if (star > 0) {
+      var starsSpan = document.createElement('span');
+      starsSpan.className = 'hero-stars';
+      starsSpan.style.marginLeft = metaParts.length ? '.35rem' : '0';
+      starsSpan.textContent = '\u2605'.repeat(Math.min(star, 10));
+      metaLine.appendChild(starsSpan);
+    }
+
+    // gear count
+    if (equips.length > 0) {
+      var gearText = document.createTextNode(' \u00b7 ' + equips.length + '/6 gear');
+      metaLine.appendChild(gearText);
+    }
+
+    info.appendChild(metaLine);
+    header.appendChild(info);
+
+    // Expand chevron SVG
+    var expandWrap = document.createElement('div');
+    expandWrap.className = 'expand-icon';
+    var chevron = document.createElementNS(svgNS, 'svg');
+    chevron.setAttribute('width', '16'); chevron.setAttribute('height', '16');
+    chevron.setAttribute('viewBox', '0 0 24 24'); chevron.setAttribute('fill', 'none');
+    chevron.setAttribute('stroke', 'currentColor'); chevron.setAttribute('stroke-width', '2');
+    chevron.setAttribute('stroke-linecap', 'round'); chevron.setAttribute('stroke-linejoin', 'round');
+    var chevPath = document.createElementNS(svgNS, 'polyline');
+    chevPath.setAttribute('points', '6 9 12 15 18 9');
+    chevron.appendChild(chevPath);
+    expandWrap.appendChild(chevron);
+    header.appendChild(expandWrap);
+
+    card.appendChild(header);
+
+    // ── Gear panel ──
+    var gearPanel = document.createElement('div');
+    gearPanel.className = 'gear-panel';
+
+    if (equips.length === 0) {
+      var noGear = document.createElement('p');
+      noGear.style.cssText = 'padding:.75rem 1rem;color:var(--muted);font-size:.8rem;';
+      noGear.textContent = 'No gear equipped.';
+      gearPanel.appendChild(noGear);
+    } else {
+      var gearGrid = document.createElement('div');
+      gearGrid.className = 'gear-grid';
+
+      equips.forEach(function(equip, idx) {
+        var gc = document.createElement('div');
+        gc.className = 'gear-card';
+
+        // Slot name
+        var slotName = document.createElement('div');
+        slotName.className = 'gear-slot-name';
+        // Try to derive slot from order (equips are typically ordered weapon → amulet)
+        var slotLabel = GEAR_SLOT_NAMES[idx + 1] || ('Slot ' + (idx + 1));
+        if (equip.equipId) {
+          // Check if equipId last digit maps to a slot
+          var lastDigit = equip.equipId % 10;
+          if (lastDigit >= 1 && lastDigit <= 6) slotLabel = GEAR_SLOT_NAMES[lastDigit];
+        }
+        slotName.textContent = slotLabel;
+        gc.appendChild(slotName);
+
+        // Equip ID + level
+        var statEl = document.createElement('div');
+        statEl.className = 'gear-stat';
+        var parts = [];
+        if (equip.equipId) parts.push('ID: ' + equip.equipId);
+        if (equip.level != null) parts.push('Lv. ' + equip.level);
+        statEl.textContent = parts.join(' \u00b7 ') || 'Equipped';
+        gc.appendChild(statEl);
+
+        // Enhancement level if present
+        if (equip.enhanceLevel != null && equip.enhanceLevel > 0) {
+          var enhEl = document.createElement('div');
+          enhEl.className = 'gear-stat';
+          enhEl.style.color = 'var(--green)';
+          enhEl.textContent = '+' + equip.enhanceLevel + ' Enhanced';
+          gc.appendChild(enhEl);
+        }
+
+        // Rune if present
+        if (equip.runeTemplateId) {
+          var runeEl = document.createElement('div');
+          runeEl.className = 'gear-stat';
+          runeEl.style.color = 'var(--accent)';
+          runeEl.textContent = 'Rune: ' + equip.runeTemplateId;
+          gc.appendChild(runeEl);
+        }
+
+        gearGrid.appendChild(gc);
+      });
+      gearPanel.appendChild(gearGrid);
+    }
+
+    card.appendChild(gearPanel);
+    return card;
+  }
+
+  // ── renderHeroGrid ────────────────────────────────────────────────────────
+  function renderHeroGrid(heroes) {
+    var grid = document.getElementById('hero-grid-container');
+    if (!grid) return;
+    while (grid.firstChild) grid.removeChild(grid.firstChild);
+
+    // Get active branches
+    var activeBranches = {};
+    var pills = document.querySelectorAll('.branch-pill');
+    pills.forEach(function(p) {
+      if (p.classList.contains('active')) activeBranches[p.getAttribute('data-branch')] = true;
+    });
+
+    // Get search text
+    var searchEl = document.getElementById('hero-search-input');
+    var query = searchEl ? searchEl.value.trim().toLowerCase() : '';
+
+    // Get sort
+    var sortMode = 'name';
+    var sortBtns = document.querySelectorAll('.sort-btn');
+    sortBtns.forEach(function(b) {
+      if (b.classList.contains('active')) sortMode = b.getAttribute('data-sort');
+    });
+
+    // Filter
+    var filtered = heroes.filter(function(hero) {
+      var branch = heroBranch(hero.id);
+      var bc = branchClass(branch);
+      if (!activeBranches[bc]) return false;
+      if (query) {
+        var name = heroName(hero.id).toLowerCase();
+        if (name.indexOf(query) === -1) return false;
+      }
+      return true;
+    });
+
+    // Sort
+    filtered.sort(function(a, b) {
+      if (sortMode === 'level') {
+        return (b.level || 0) - (a.level || 0);
+      }
+      var na = heroName(a.id).toLowerCase();
+      var nb = heroName(b.id).toLowerCase();
+      return na < nb ? -1 : na > nb ? 1 : 0;
+    });
+
+    if (filtered.length === 0) {
+      var empty = document.createElement('p');
+      empty.className = 'empty-tab';
+      empty.textContent = 'No heroes match the current filters.';
+      grid.appendChild(empty);
+      return;
+    }
+
+    filtered.forEach(function(hero) {
+      grid.appendChild(buildHeroCard(hero));
+    });
+  }
+
+  // ── buildHeroesUI ─────────────────────────────────────────────────────────
+  function buildHeroesUI(container, heroes) {
+    // Filter bar
+    var filterBar = document.createElement('div');
+    filterBar.className = 'filter-bar';
+
+    // Search input
+    var searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.className = 'filter-search';
+    searchInput.id = 'hero-search-input';
+    searchInput.placeholder = 'Search heroes\u2026';
+    searchInput.setAttribute('autocomplete', 'off');
+    searchInput.addEventListener('keyup', function() { renderHeroGrid(heroes); });
+    filterBar.appendChild(searchInput);
+
+    // Branch pills
+    var branchDefs = [
+      { key: 'army', label: 'Army' },
+      { key: 'navy', label: 'Navy' },
+      { key: 'air',  label: 'Air Force' }
+    ];
+    branchDefs.forEach(function(bd) {
+      var pill = document.createElement('button');
+      pill.className = 'branch-pill ' + bd.key + ' active';
+      pill.setAttribute('data-branch', bd.key);
+      pill.textContent = bd.label;
+      pill.addEventListener('click', function() {
+        pill.classList.toggle('active');
+        renderHeroGrid(heroes);
+      });
+      filterBar.appendChild(pill);
+    });
+
+    // Sort buttons
+    var sortDefs = [
+      { key: 'name', label: 'Name' },
+      { key: 'level', label: 'Level' }
+    ];
+    sortDefs.forEach(function(sd, i) {
+      var btn = document.createElement('button');
+      btn.className = 'sort-btn' + (i === 0 ? ' active' : '');
+      btn.setAttribute('data-sort', sd.key);
+      btn.textContent = sd.label;
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.sort-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        renderHeroGrid(heroes);
+      });
+      filterBar.appendChild(btn);
+    });
+
+    container.appendChild(filterBar);
+
+    // Hero grid
+    var grid = document.createElement('div');
+    grid.className = 'hero-grid';
+    grid.id = 'hero-grid-container';
+    container.appendChild(grid);
+
+    renderHeroGrid(heroes);
+  }
+
   // ── Tab render stubs ──────────────────────────────────────────────────────
   function renderHeroesTab(merged) {
-    var el = document.getElementById('tab-heroes');
-    var p = document.createElement('p'); p.className = 'empty-tab';
-    p.textContent = 'Heroes & Gear \u2014 coming soon'; el.appendChild(p);
+    var container = document.getElementById('tab-heroes');
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    if (!merged.heroes || merged.heroes.length === 0) {
+      var empty = document.createElement('p');
+      empty.className = 'empty-tab';
+      empty.textContent = 'No hero data found in your reports.';
+      container.appendChild(empty);
+      return;
+    }
+
+    loadHeroData(function() {
+      buildHeroesUI(container, merged.heroes);
+    });
   }
 
   function renderDecorationsTab(merged) {
