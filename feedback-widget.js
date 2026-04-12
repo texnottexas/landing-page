@@ -226,12 +226,15 @@
       var identity = getIdentity();
       var submitter = identity ? identity.name : 'Anonymous';
       var pageName = pageSelect.value;
+      var reportId = new URLSearchParams(window.location.search).get('id');
+      var suffix = '\n\nPage: ' + pageName;
+      if (reportId) suffix += '\nReport ID: ' + reportId;
       var endpoint = feedbackType === 'bug' ? '/feedback/bug' : '/feedback/feature';
 
       fetch(PUSH_WORKER + endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: t, description: d + '\n\nPage: ' + pageName, submitter: submitter }),
+        body: JSON.stringify({ title: t, description: d + suffix, submitter: submitter }),
       }).then(function (r) { return r.json(); }).then(function (resp) {
         form.style.display = 'none'; resultDiv.style.display = '';
         while (resultDiv.firstChild) resultDiv.removeChild(resultDiv.firstChild);
