@@ -1313,7 +1313,7 @@
     var deviceId = getDeviceId();
     // Guests use device-based key; identified users use siteKey
     var siteKey = (identity && identity.siteKey) ? identity.siteKey : ('guest_' + deviceId);
-    var playerName = (identity && identity.name) || (wizardState.player && wizardState.player.name) || 'Guest';
+    var playerName = (wizardState.player && wizardState.player.name) || (identity && identity.name) || 'Guest';
     var reportIds = wizardState.reportData.map(function(r) { return r.id; }).join(',');
 
     getPushEndpoint().then(function(endpoint) {
@@ -1433,13 +1433,18 @@
       });
   }
 
-  function applyShortcodeConfig(playerName, ids) {
+  function applyShortcodeConfig(playerName, ids, persistToStorage) {
     var fakeSaved = {
       player: { name: playerName, avatar: null, avatarFallback: (playerName || '?').charAt(0).toUpperCase(), level: 0, server: '', nationalflag: 0 },
-      reportIds: ids
+      reportIds: ids,
+      _viewOnly: persistToStorage === false
     };
+    // Always clear report data cache
     localStorage.removeItem('playerReportData');
-    localStorage.setItem('playerReport', JSON.stringify(fakeSaved));
+    // Only persist playerReport if explicitly allowed (default: true for wizard actions)
+    if (persistToStorage !== false) {
+      localStorage.setItem('playerReport', JSON.stringify(fakeSaved));
+    }
     closeWizard();
     initFromSaved(fakeSaved);
   }
@@ -1887,7 +1892,7 @@
       for (var p = 0; p < players.length; p++) {
         try {
           var pi = JSON.parse(players[p].playerInfo || '{}');
-          if (pi.username === playerName) {
+          if (pi.username === playerName || (pi.username || '').trim() === (playerName || '').trim()) {
             matchedSide = sides[s];
             matchedPlayerIdx = p;
             break;
@@ -3689,9 +3694,7 @@
             rNameSpan.className = 'gear-rune-name-text';
             rNameSpan.textContent = runeData.n;
             runeWrap.appendChild(rNameSpan);
-            if (runeData.s > 0) {
-              runeWrap.appendChild(runeStarSVG(runeData.s, runeData.sm));
-            }
+            runeWrap.appendChild(runeStarSVG(runeData.s, runeData.sm));
           } else {
             var fallbackSpan = document.createElement('span');
             fallbackSpan.className = 'gear-rune-name-text';
@@ -7309,16 +7312,17 @@
       wizardState.player.nationalflag = 0;
     }
 
-    // Update localStorage if any reports were dropped
-    if (valid.length < (saved.reportIds || []).length) {
-      saved.reportIds = valid.map(function(r) { return r.id; });
-      localStorage.setItem('playerReport', JSON.stringify(saved));
+    // Update localStorage if any reports were dropped (skip in view-only mode)
+    if (!saved._viewOnly) {
+      if (valid.length < (saved.reportIds || []).length) {
+        saved.reportIds = valid.map(function(r) { return r.id; });
+        localStorage.setItem('playerReport', JSON.stringify(saved));
+      }
+      // Update cache
+      var newCache = {};
+      valid.forEach(function(r) { newCache[r.id] = r.extracted; });
+      localStorage.setItem('playerReportData', JSON.stringify(newCache));
     }
-
-    // Update cache
-    var newCache = {};
-    valid.forEach(function(r) { newCache[r.id] = r.extracted; });
-    localStorage.setItem('playerReportData', JSON.stringify(newCache));
 
     if (valid.length === 0) {
       localStorage.removeItem('playerReport');
@@ -7354,7 +7358,14 @@
         .then(function(result) {
           if (result && result.ok) {
             var ids = result.reportIds.split(',').filter(Boolean);
-            applyShortcodeConfig(result.playerName, ids);
+            // Only overwrite stored config if this is the same player's code.
+            // If it belongs to a different player, show in-memory only (view mode)
+            // so the current player's own config is preserved.
+            var currentSaved = null;
+            try { currentSaved = JSON.parse(localStorage.getItem('playerReport')); } catch(e) {}
+            var currentPlayer = currentSaved && currentSaved.player && currentSaved.player.name;
+            var isSamePlayer = !currentPlayer || currentPlayer === result.playerName;
+            applyShortcodeConfig(result.playerName, ids, isSamePlayer);
           } else {
             normalInit();
           }
