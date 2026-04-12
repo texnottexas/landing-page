@@ -4577,6 +4577,33 @@
       playerGroupMap[String(group)] = true;
     });
 
+    // Expand ME clusters: if player owns one variant, mark all equivalents as owned
+    // meSourceMap tracks which source group owns each ME-expanded group
+    var meSourceMap = {}; // groupId -> sourceGroupId (the actually owned variant)
+    var pgSnapshot = Object.keys(playerGroupMap);
+    pgSnapshot.forEach(function(pg) {
+      var clusterKey = ME_LOOKUP[pg];
+      var meVars = clusterKey ? ME_CLUSTERS[String(clusterKey)] : null;
+      if (meVars) {
+        meVars.forEach(function(varGroup) {
+          var varKey = String(varGroup);
+          if (!playerGroupMap[varKey]) {
+            playerGroupMap[varKey] = true;
+            meSourceMap[varKey] = parseInt(pg); // track the actually owned group
+            // Also add to allGroups for display (use source group's maxId for level)
+            if (allGroups[pg]) {
+              allGroups[varKey] = {
+                groupId: varGroup,
+                maxId: allGroups[pg].maxId, // use owned variant's ID for level
+                name: DECOR_GROUPS[varKey] || ('Decoration #' + varGroup),
+                sourceGroup: parseInt(pg) // track source for icon lookup
+              };
+            }
+          }
+        });
+      }
+    });
+
     var allSorted = [];
     for (var g in allGroups) allSorted.push(allGroups[g]);
     allSorted.sort(function(a, b) { return a.name.localeCompare(b.name); });
@@ -4739,7 +4766,9 @@
         lvBadge.textContent = 'Lv.' + lvl;
         card.appendChild(lvBadge);
       }
-      var iconUrl = decorIconUrl(d.groupId);
+      // Use source group's icon for ME-expanded variants (shows the owned variant's icon)
+      var iconGroup = d.sourceGroup || d.groupId;
+      var iconUrl = decorIconUrl(iconGroup);
       if (iconUrl) {
         var img = document.createElement('img');
         img.className = 'deco-icon'; img.src = iconUrl; img.alt = '';
