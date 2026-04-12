@@ -4368,8 +4368,34 @@
 
   // ── Decoration detail modal ────────────────────────────────────────────────
   function showDecoDetail(d, playerGroupMap) {
-    var data = DECOR_DATA ? DECOR_DATA[String(d.groupId)] : null;
-    var lvl = d.maxId ? decorLevel(d.maxId, d.groupId) : 0; // 0 = not owned, show base buffs
+    // ME-aware: use sourceGroup for level calculation
+    var levelGroup = d.sourceGroup || d.groupId;
+    var lvl = d.maxId ? decorLevel(d.maxId, levelGroup) : 0; // 0 = not owned, show base buffs
+
+    // ME-aware: look up buff data from sourceGroup first, then fall through ME cluster
+    var data = null;
+    var buffGroup = levelGroup;
+    if (DECOR_DATA) {
+      if (d.sourceGroup && DECOR_DATA[String(d.sourceGroup)]) {
+        data = DECOR_DATA[String(d.sourceGroup)];
+        buffGroup = d.sourceGroup;
+      } else if (DECOR_DATA[String(d.groupId)]) {
+        data = DECOR_DATA[String(d.groupId)];
+        buffGroup = d.groupId;
+      } else {
+        // Try ME cluster equivalents (they have same buffs)
+        var clusterKey = ME_LOOKUP[String(d.groupId)];
+        var meVars = clusterKey ? ME_CLUSTERS[String(clusterKey)] : null;
+        if (meVars) {
+          for (var mi = 0; mi < meVars.length && !data; mi++) {
+            if (DECOR_DATA[String(meVars[mi])]) {
+              data = DECOR_DATA[String(meVars[mi])];
+              buffGroup = meVars[mi];
+            }
+          }
+        }
+      }
+    }
 
     var overlay = document.createElement('div');
     overlay.className = 'deco-detail-overlay';
@@ -4378,10 +4404,10 @@
     var modal = document.createElement('div');
     modal.className = 'deco-detail-modal';
 
-    // Header
+    // Header — use source group icon when ME-expanded
     var header = document.createElement('div');
     header.className = 'deco-detail-header';
-    var iconUrl = decorIconUrl(d.groupId);
+    var iconUrl = decorIconUrl(d.sourceGroup || d.groupId);
     if (iconUrl) {
       var hIcon = document.createElement('img');
       hIcon.src = iconUrl;
@@ -4393,7 +4419,8 @@
     hInfo.className = 'deco-detail-header-info';
     var hName = document.createElement('div');
     hName.className = 'deco-detail-header-name';
-    hName.textContent = d.name;
+    // Use source group name when ME-expanded
+    hName.textContent = d.sourceGroup ? (DECOR_GROUPS[String(d.sourceGroup)] || d.name) : d.name;
     hInfo.appendChild(hName);
     var hCat = document.createElement('div');
     hCat.className = 'deco-detail-header-cat';
@@ -4454,7 +4481,7 @@
         brow.appendChild(bName);
         var bVal = document.createElement('span');
         bVal.className = 'deco-detail-buff-val';
-        bVal.textContent = lvl > 0 ? formatScaledDecorBuff(b, lvl, d.groupId) : formatDecorBuffVal(b);
+        bVal.textContent = lvl > 0 ? formatScaledDecorBuff(b, lvl, buffGroup) : formatDecorBuffVal(b);
         brow.appendChild(bVal);
         buffSec.appendChild(brow);
       }
@@ -4748,11 +4775,34 @@
 
     // Build a single decoration card
     function buildDecoCard(d, isNotOwned) {
-      // For ME-expanded entries, use sourceGroup for data lookup (target may not be in DECOR_DATA)
-      var dataGroup = d.sourceGroup || d.groupId;
-      var dd = DECOR_DATA ? DECOR_DATA[String(dataGroup)] : null;
-      // For ME-expanded entries, use sourceGroup for level calculation (maxId belongs to source group)
-      var lvl = isNotOwned ? 0 : decorLevel(d.maxId, dataGroup);
+      // For level calculation, use sourceGroup (maxId belongs to source group)
+      var levelGroup = d.sourceGroup || d.groupId;
+      var lvl = isNotOwned ? 0 : decorLevel(d.maxId, levelGroup);
+
+      // For buff data, try sourceGroup, then groupId, then any ME equivalent (they have same buffs)
+      var dd = null;
+      var buffGroup = levelGroup; // default to levelGroup for scaling
+      if (DECOR_DATA) {
+        if (d.sourceGroup && DECOR_DATA[String(d.sourceGroup)]) {
+          dd = DECOR_DATA[String(d.sourceGroup)];
+          buffGroup = d.sourceGroup;
+        } else if (DECOR_DATA[String(d.groupId)]) {
+          dd = DECOR_DATA[String(d.groupId)];
+          buffGroup = d.groupId;
+        } else {
+          // Try ME cluster equivalents
+          var clusterKey = ME_LOOKUP[String(d.groupId)];
+          var meVars = clusterKey ? ME_CLUSTERS[String(clusterKey)] : null;
+          if (meVars) {
+            for (var mi = 0; mi < meVars.length && !dd; mi++) {
+              if (DECOR_DATA[String(meVars[mi])]) {
+                dd = DECOR_DATA[String(meVars[mi])];
+                buffGroup = meVars[mi];
+              }
+            }
+          }
+        }
+      }
 
       var card = document.createElement('div');
       card.className = 'deco-card' + (isNotOwned ? ' not-owned' : '');
@@ -4805,7 +4855,7 @@
           row.appendChild(bNameEl);
           var bValEl = document.createElement('span');
           bValEl.className = 'deco-buff-val';
-          bValEl.textContent = isNotOwned ? formatDecorBuffVal(dd.b[bi]) : formatScaledDecorBuff(b, lvl, dataGroup);
+          bValEl.textContent = isNotOwned ? formatDecorBuffVal(dd.b[bi]) : formatScaledDecorBuff(b, lvl, buffGroup);
           row.appendChild(bValEl);
           buffs.appendChild(row);
         }
