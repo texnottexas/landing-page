@@ -22,6 +22,10 @@
   body > .skiptranslate { display: none !important; }
   #google_translate_element { position: absolute; left: -9999px; opacity: 0; pointer-events: none; }
 
+  /* Hide feedback widget floating button — only show when moved into header by JS */
+  body > #fw-hdr-btn { display: none !important; }
+  .report-header #fw-hdr-btn { display: flex !important; }
+
   /* Landing hero (first visit — no saved report) */
   @keyframes landing-fade-in {
     from { opacity: 0; transform: translateY(12px); }
@@ -1305,17 +1309,16 @@
 
   function saveAndShare() {
     var identity = getStoredIdentity();
-    if (!identity || !identity.siteKey) {
-      alert('Sign in on the main site first to save your report config.');
-      return;
-    }
-    var reportIds = wizardState.reportData.map(function(r) { return r.id; }).join(',');
     var deviceId = getDeviceId();
+    // Guests use device-based key; identified users use siteKey
+    var siteKey = (identity && identity.siteKey) ? identity.siteKey : ('guest_' + deviceId);
+    var playerName = (identity && identity.name) || (wizardState.player && wizardState.player.name) || 'Guest';
+    var reportIds = wizardState.reportData.map(function(r) { return r.id; }).join(',');
 
     getPushEndpoint().then(function(endpoint) {
       var body = {
-        siteKey: identity.siteKey,
-        playerName: identity.name || wizardState.player.name,
+        siteKey: siteKey,
+        playerName: playerName,
         deviceId: deviceId,
         reportIds: reportIds
       };
@@ -2683,27 +2686,24 @@
     prefsBtn.addEventListener('click', function() { openIdentityPrefs(player); });
     right.appendChild(prefsBtn);
 
-    // Save & Share button (only when player has siteKey)
-    var identity = getStoredIdentity();
-    if (identity && identity.siteKey) {
-      var shareBtn = document.createElement('button');
-      shareBtn.className = 'rh-btn';
-      shareBtn.title = 'Save & Share';
-      var shareSvg = document.createElementNS(svgNS, 'svg');
-      shareSvg.setAttribute('width', '14'); shareSvg.setAttribute('height', '14');
-      shareSvg.setAttribute('viewBox', '0 0 24 24'); shareSvg.setAttribute('fill', 'none');
-      shareSvg.setAttribute('stroke', 'currentColor'); shareSvg.setAttribute('stroke-width', '2');
-      var sharePath = document.createElementNS(svgNS, 'path');
-      sharePath.setAttribute('d', 'M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13');
-      shareSvg.appendChild(sharePath);
-      shareBtn.appendChild(shareSvg);
-      var shareLabel = document.createElement('span');
-      shareLabel.className = 'rh-label';
-      shareLabel.textContent = 'Save';
-      shareBtn.appendChild(shareLabel);
-      shareBtn.addEventListener('click', saveAndShare);
-      right.appendChild(shareBtn);
-    }
+    // Save & Share button (available for all users, guests use deviceId-based key)
+    var shareBtn = document.createElement('button');
+    shareBtn.className = 'rh-btn';
+    shareBtn.title = 'Save & Share';
+    var shareSvg = document.createElementNS(svgNS, 'svg');
+    shareSvg.setAttribute('width', '14'); shareSvg.setAttribute('height', '14');
+    shareSvg.setAttribute('viewBox', '0 0 24 24'); shareSvg.setAttribute('fill', 'none');
+    shareSvg.setAttribute('stroke', 'currentColor'); shareSvg.setAttribute('stroke-width', '2');
+    var sharePath = document.createElementNS(svgNS, 'path');
+    sharePath.setAttribute('d', 'M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13');
+    shareSvg.appendChild(sharePath);
+    shareBtn.appendChild(shareSvg);
+    var shareLabel = document.createElement('span');
+    shareLabel.className = 'rh-label';
+    shareLabel.textContent = 'Save';
+    shareBtn.appendChild(shareLabel);
+    shareBtn.addEventListener('click', saveAndShare);
+    right.appendChild(shareBtn);
 
     hdr.appendChild(right);
     app.appendChild(hdr);
@@ -2843,8 +2843,10 @@
     if (identPanel) {
       while (identPanel.firstChild) identPanel.removeChild(identPanel.firstChild);
       var identity = getStoredIdentity();
-      var rows = [{ label: 'Player', value: (player && player.name) || 'Not set' }];
-      if (player && player.server) rows.push({ label: 'Server', value: 'S' + player.server });
+      var rows = [
+        { label: 'Player', value: (player && player.name) || 'Not set' },
+        { label: 'Server', value: 'S' + ((player && player.server) || '2864') }
+      ];
       if (identity && identity.siteKey) rows.push({ label: 'Site Key', value: identity.siteKey.substring(0, 8) + '\u2026' });
       rows.push({ label: 'Device ID', value: getDeviceId().substring(0, 8) + '\u2026' });
 
@@ -2911,8 +2913,9 @@
         reportPanel.appendChild(codeSection);
       }
 
-      // Saved configs from worker
-      if (identity && identity.siteKey) {
+      // Saved configs from worker (works for identified + guest users)
+      var reportSiteKey = (identity && identity.siteKey) ? identity.siteKey : ('guest_' + getDeviceId());
+      {
         var configTitle = document.createElement('div');
         configTitle.style.cssText = 'font-size:.78rem;font-weight:600;color:var(--text);margin-bottom:.5rem;';
         configTitle.textContent = 'Saved Configs';
@@ -2926,7 +2929,7 @@
         fetch(PUSH_WORKER + '/report-configs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ siteKey: identity.siteKey })
+          body: JSON.stringify({ siteKey: reportSiteKey })
         }).then(function(r) { return r.json(); }).then(function(result) {
           configList.textContent = '';
           if (!result || !result.ok || !result.configs || result.configs.length === 0) {
@@ -2986,15 +2989,10 @@
         }).catch(function() {
           configList.textContent = 'Could not load configs.';
         });
-      } else {
-        var noKey = document.createElement('div');
-        noKey.style.cssText = 'font-size:.78rem;color:var(--muted);text-align:center;padding:1rem;';
-        noKey.textContent = 'Sign in on the main site to save and share report configs.';
-        reportPanel.appendChild(noKey);
       }
 
-      // Save & Share button at bottom
-      if (identity && identity.siteKey) {
+      // Save & Share button at bottom (available for all)
+      {
         var saveRow = document.createElement('div');
         saveRow.style.cssText = 'margin-top:.75rem;text-align:center;';
         var saveBtn = document.createElement('button');
@@ -3102,39 +3100,36 @@
     manageBtn.addEventListener('mouseleave', function() { manageBtn.style.borderColor = 'var(--border)'; manageBtn.style.color = ''; });
     actions.appendChild(manageBtn);
 
-    // Save & Share button (only when player has site identity)
-    var identity = getStoredIdentity();
-    if (identity && identity.siteKey) {
-      var shareBtn = document.createElement('button');
-      shareBtn.className = 'share-btn';
-      var shareSvg = document.createElementNS(svgNS, 'svg');
-      shareSvg.setAttribute('width', '14'); shareSvg.setAttribute('height', '14');
-      shareSvg.setAttribute('viewBox', '0 0 24 24'); shareSvg.setAttribute('fill', 'none');
-      shareSvg.setAttribute('stroke', 'currentColor'); shareSvg.setAttribute('stroke-width', '2');
-      var sharePath = document.createElementNS(svgNS, 'path');
-      sharePath.setAttribute('d', 'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13');
-      shareSvg.appendChild(sharePath);
-      shareBtn.appendChild(shareSvg);
-      shareBtn.appendChild(document.createTextNode('Save & Share'));
-      shareBtn.addEventListener('click', saveAndShare);
-      actions.appendChild(shareBtn);
+    // Save & Share button (available for all users)
+    var shareBtn2 = document.createElement('button');
+    shareBtn2.className = 'share-btn';
+    var shareSvg2 = document.createElementNS(svgNS, 'svg');
+    shareSvg2.setAttribute('width', '14'); shareSvg2.setAttribute('height', '14');
+    shareSvg2.setAttribute('viewBox', '0 0 24 24'); shareSvg2.setAttribute('fill', 'none');
+    shareSvg2.setAttribute('stroke', 'currentColor'); shareSvg2.setAttribute('stroke-width', '2');
+    var sharePath2 = document.createElementNS(svgNS, 'path');
+    sharePath2.setAttribute('d', 'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13');
+    shareSvg2.appendChild(sharePath2);
+    shareBtn2.appendChild(shareSvg2);
+    shareBtn2.appendChild(document.createTextNode('Save & Share'));
+    shareBtn2.addEventListener('click', saveAndShare);
+    actions.appendChild(shareBtn2);
 
-      // Show cached shortcode if available
-      try {
-        var cachedSaved = JSON.parse(localStorage.getItem('playerReport') || '{}');
-        if (cachedSaved.shortcode) {
-          var codeBadge = document.createElement('span');
-          codeBadge.className = 'reports-badge';
-          codeBadge.style.cssText = 'font-family:monospace;letter-spacing:.1em;cursor:pointer';
-          codeBadge.textContent = cachedSaved.shortcode;
-          codeBadge.title = 'Click to copy share link';
-          codeBadge.addEventListener('click', function() {
-            navigator.clipboard.writeText('https://2864tw.com/armory-report.html?code=' + cachedSaved.shortcode);
-          });
-          actions.appendChild(codeBadge);
-        }
-      } catch(e) {}
-    }
+    // Show cached shortcode if available
+    try {
+      var cachedSaved = JSON.parse(localStorage.getItem('playerReport') || '{}');
+      if (cachedSaved.shortcode) {
+        var codeBadge = document.createElement('span');
+        codeBadge.className = 'reports-badge';
+        codeBadge.style.cssText = 'font-family:monospace;letter-spacing:.1em;cursor:pointer';
+        codeBadge.textContent = cachedSaved.shortcode;
+        codeBadge.title = 'Click to copy share link';
+        codeBadge.addEventListener('click', function() {
+          navigator.clipboard.writeText('https://2864tw.com/armory-report.html?code=' + cachedSaved.shortcode);
+        });
+        actions.appendChild(codeBadge);
+      }
+    } catch(e) {}
 
     // ── Summary cards ──
     var cards = document.createElement('div');
@@ -6767,7 +6762,7 @@
     if (identity && identity.siteKey) {
       tipEl.textContent = 'Signed in \u2014 save your config with a shareable code after setup';
     } else {
-      tipEl.textContent = 'Sign in on the main site to save and share your report config';
+      tipEl.textContent = 'Set up your identity on the main site to sync across devices';
     }
   })();
 
@@ -6909,7 +6904,7 @@
     if (identity && identity.siteKey) {
       tip.textContent = 'Signed in \u2014 save your config with a shareable code after setup';
     } else {
-      tip.textContent = 'Sign in on the main site to save and share your report config';
+      tip.textContent = 'Set up your identity on the main site to sync across devices';
     }
     hero.appendChild(tip);
 
