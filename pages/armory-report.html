@@ -2767,7 +2767,7 @@
     if (el) el.classList.remove('active');
   }
 
-  // ── Identity / Settings preferences modal ─────────────────────────────────
+  // ── Settings modal (tabbed: Identity + Armory Report) ──────────────────────
   function buildIdentityPrefsModal(parent, player) {
     var overlay = document.createElement('div');
     overlay.className = 'rh-prefs-overlay';
@@ -2776,111 +2776,232 @@
 
     var modal = document.createElement('div');
     modal.className = 'rh-prefs-modal';
+    modal.style.maxWidth = '440px';
 
-    var title = document.createElement('div');
-    title.className = 'rh-prefs-title';
-    title.textContent = 'Settings';
-    modal.appendChild(title);
+    // Header with close
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;';
+    var titleEl = document.createElement('div');
+    titleEl.className = 'rh-prefs-title';
+    titleEl.style.marginBottom = '0';
+    titleEl.textContent = 'Settings';
+    hdr.appendChild(titleEl);
+    var closeX = document.createElement('button');
+    closeX.style.cssText = 'background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem;padding:.25rem;';
+    closeX.textContent = '\u2715';
+    closeX.addEventListener('click', closeIdentityPrefs);
+    hdr.appendChild(closeX);
+    modal.appendChild(hdr);
 
-    var content = document.createElement('div');
-    content.id = 'rh-prefs-content';
-    modal.appendChild(content);
-
-    var actions = document.createElement('div');
-    actions.className = 'rh-prefs-actions';
-    var resetBtn = document.createElement('button');
-    resetBtn.className = 'rh-prefs-btn danger';
-    resetBtn.textContent = 'Reset Report';
-    resetBtn.addEventListener('click', function() {
-      localStorage.removeItem('playerReport');
-      localStorage.removeItem('playerReportData');
-      closeIdentityPrefs();
-      location.reload();
+    // Tab bar
+    var tabBar = document.createElement('div');
+    tabBar.style.cssText = 'display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:.75rem;';
+    var tabs = ['Identity', 'Armory Report'];
+    var tabBtns = [];
+    var tabPanels = [];
+    tabs.forEach(function(t, i) {
+      var btn = document.createElement('button');
+      btn.style.cssText = 'padding:.4rem .75rem;color:var(--muted);font-size:.78rem;font-weight:500;cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .2s,border-color .2s;';
+      if (i === 0) { btn.style.color = 'var(--accent)'; btn.style.borderBottomColor = 'var(--accent)'; }
+      btn.textContent = t;
+      btn.addEventListener('click', function() {
+        tabBtns.forEach(function(b) { b.style.color = 'var(--muted)'; b.style.borderBottomColor = 'transparent'; });
+        btn.style.color = 'var(--accent)'; btn.style.borderBottomColor = 'var(--accent)';
+        tabPanels.forEach(function(p, pi) { p.style.display = pi === i ? 'block' : 'none'; });
+      });
+      tabBtns.push(btn);
+      tabBar.appendChild(btn);
     });
-    actions.appendChild(resetBtn);
-    var closeBtn = document.createElement('button');
-    closeBtn.className = 'rh-prefs-btn';
-    closeBtn.textContent = 'Close';
-    closeBtn.addEventListener('click', closeIdentityPrefs);
-    actions.appendChild(closeBtn);
-    modal.appendChild(actions);
+    modal.appendChild(tabBar);
+
+    // Identity panel
+    var identPanel = document.createElement('div');
+    identPanel.id = 'rh-prefs-identity';
+    tabPanels.push(identPanel);
+    modal.appendChild(identPanel);
+
+    // Armory Report panel
+    var reportPanel = document.createElement('div');
+    reportPanel.id = 'rh-prefs-report';
+    reportPanel.style.display = 'none';
+    tabPanels.push(reportPanel);
+    modal.appendChild(reportPanel);
 
     overlay.appendChild(modal);
     parent.appendChild(overlay);
   }
 
   function openIdentityPrefs(player) {
-    var content = document.getElementById('rh-prefs-content');
-    if (!content) return;
-    while (content.firstChild) content.removeChild(content.firstChild);
+    // ── Identity tab ──
+    var identPanel = document.getElementById('rh-prefs-identity');
+    if (identPanel) {
+      while (identPanel.firstChild) identPanel.removeChild(identPanel.firstChild);
+      var identity = getStoredIdentity();
+      var rows = [{ label: 'Player', value: (player && player.name) || 'Not set' }];
+      if (player && player.server) rows.push({ label: 'Server', value: 'S' + player.server });
+      if (identity && identity.siteKey) rows.push({ label: 'Site Key', value: identity.siteKey.substring(0, 8) + '\u2026' });
+      rows.push({ label: 'Device ID', value: getDeviceId().substring(0, 8) + '\u2026' });
 
-    var identity = getStoredIdentity();
-    var rows = [
-      { label: 'Player', value: (player && player.name) || 'Not set' }
-    ];
-    if (player && player.server) rows.push({ label: 'Server', value: 'S' + player.server });
-    if (identity && identity.siteKey) rows.push({ label: 'Site Key', value: identity.siteKey.substring(0, 8) + '\u2026' });
-
-    // Show shortcode if saved
-    try {
-      var saved = JSON.parse(localStorage.getItem('playerReport') || '{}');
-      if (saved.shortcode) rows.push({ label: 'Share Code', value: saved.shortcode });
-    } catch(e) {}
-
-    rows.forEach(function(r) {
-      var row = document.createElement('div');
-      row.className = 'rh-prefs-row';
-      var lbl = document.createElement('span');
-      lbl.className = 'rh-prefs-label';
-      lbl.textContent = r.label;
-      row.appendChild(lbl);
-      var val = document.createElement('span');
-      val.className = 'rh-prefs-value';
-      val.textContent = r.value;
-      row.appendChild(val);
-      content.appendChild(row);
-    });
-
-    // Show saved configs from worker (if has siteKey)
-    if (identity && identity.siteKey) {
-      var configSection = document.createElement('div');
-      configSection.style.cssText = 'margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border);';
-      var configTitle = document.createElement('div');
-      configTitle.style.cssText = 'font-size:.78rem;font-weight:600;color:var(--text);margin-bottom:.5rem;';
-      configTitle.textContent = 'Saved Configs';
-      configSection.appendChild(configTitle);
-      var configLoading = document.createElement('div');
-      configLoading.style.cssText = 'font-size:.7rem;color:var(--muted);';
-      configLoading.textContent = 'Loading...';
-      configSection.appendChild(configLoading);
-      content.appendChild(configSection);
-
-      fetch(PUSH_WORKER + '/report-configs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ siteKey: identity.siteKey })
-      }).then(function(r) { return r.json(); }).then(function(result) {
-        configLoading.textContent = '';
-        if (!result || !result.ok || !result.configs || result.configs.length === 0) {
-          configLoading.textContent = 'No saved configs found.';
-          return;
-        }
-        result.configs.forEach(function(cfg) {
-          var cfgRow = document.createElement('div');
-          cfgRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;font-size:.75rem;';
-          var cfgLeft = document.createElement('span');
-          cfgLeft.style.color = 'var(--accent)';
-          cfgLeft.textContent = cfg.shortcode + ' \u2014 ' + (cfg.device || 'Unknown device');
-          cfgRow.appendChild(cfgLeft);
-          var cfgRight = document.createElement('span');
-          cfgRight.style.color = 'var(--muted)';
-          cfgRight.textContent = cfg.reportIds ? cfg.reportIds.split(',').length + ' reports' : '';
-          cfgRow.appendChild(cfgRight);
-          configSection.appendChild(cfgRow);
-        });
-      }).catch(function() {
-        configLoading.textContent = 'Could not load configs.';
+      rows.forEach(function(r) {
+        var row = document.createElement('div');
+        row.className = 'rh-prefs-row';
+        var lbl = document.createElement('span'); lbl.className = 'rh-prefs-label'; lbl.textContent = r.label;
+        row.appendChild(lbl);
+        var val = document.createElement('span'); val.className = 'rh-prefs-value'; val.textContent = r.value;
+        row.appendChild(val);
+        identPanel.appendChild(row);
       });
+
+      // Reset button
+      var resetRow = document.createElement('div');
+      resetRow.style.cssText = 'margin-top:.75rem;';
+      var resetBtn = document.createElement('button');
+      resetBtn.className = 'rh-prefs-btn danger';
+      resetBtn.textContent = 'Reset Player Selection';
+      resetBtn.addEventListener('click', function() {
+        if (confirm('Reset your player selection? You will need to set up your report again.')) {
+          localStorage.removeItem('playerReport');
+          localStorage.removeItem('playerReportData');
+          closeIdentityPrefs();
+          location.reload();
+        }
+      });
+      resetRow.appendChild(resetBtn);
+      identPanel.appendChild(resetRow);
+    }
+
+    // ── Armory Report tab ──
+    var reportPanel = document.getElementById('rh-prefs-report');
+    if (reportPanel) {
+      while (reportPanel.firstChild) reportPanel.removeChild(reportPanel.firstChild);
+      var identity = getStoredIdentity();
+
+      // Current shortcode display
+      var shortcode = null;
+      try { shortcode = JSON.parse(localStorage.getItem('playerReport') || '{}').shortcode; } catch(e) {}
+      if (shortcode) {
+        var codeSection = document.createElement('div');
+        codeSection.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.75rem;margin-bottom:.75rem;display:flex;align-items:center;justify-content:space-between;';
+        var codeLeft = document.createElement('div');
+        var codeLabel = document.createElement('div');
+        codeLabel.style.cssText = 'font-size:.7rem;color:var(--muted);margin-bottom:.15rem;';
+        codeLabel.textContent = 'Your Share Code';
+        codeLeft.appendChild(codeLabel);
+        var codeVal = document.createElement('div');
+        codeVal.style.cssText = 'font-family:monospace;font-size:1.5rem;font-weight:700;color:var(--accent);letter-spacing:.15em;';
+        codeVal.textContent = shortcode;
+        codeLeft.appendChild(codeVal);
+        codeSection.appendChild(codeLeft);
+        var copyBtn = document.createElement('button');
+        copyBtn.className = 'rh-prefs-btn';
+        copyBtn.textContent = 'Copy Link';
+        copyBtn.addEventListener('click', function() {
+          navigator.clipboard.writeText('https://2864tw.com/armory-report.html?code=' + shortcode).then(function() {
+            copyBtn.textContent = 'Copied!';
+            setTimeout(function() { copyBtn.textContent = 'Copy Link'; }, 1500);
+          });
+        });
+        codeSection.appendChild(copyBtn);
+        reportPanel.appendChild(codeSection);
+      }
+
+      // Saved configs from worker
+      if (identity && identity.siteKey) {
+        var configTitle = document.createElement('div');
+        configTitle.style.cssText = 'font-size:.78rem;font-weight:600;color:var(--text);margin-bottom:.5rem;';
+        configTitle.textContent = 'Saved Configs';
+        reportPanel.appendChild(configTitle);
+
+        var configList = document.createElement('div');
+        configList.style.cssText = 'font-size:.7rem;color:var(--muted);';
+        configList.textContent = 'Loading...';
+        reportPanel.appendChild(configList);
+
+        fetch(PUSH_WORKER + '/report-configs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ siteKey: identity.siteKey })
+        }).then(function(r) { return r.json(); }).then(function(result) {
+          configList.textContent = '';
+          if (!result || !result.ok || !result.configs || result.configs.length === 0) {
+            configList.textContent = 'No saved configs. Click Save & Share to create one.';
+            return;
+          }
+          result.configs.forEach(function(cfg) {
+            var cfgCard = document.createElement('div');
+            cfgCard.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem .75rem;margin-bottom:.4rem;display:flex;align-items:center;justify-content:space-between;';
+
+            var cfgInfo = document.createElement('div');
+            var cfgCode = document.createElement('div');
+            cfgCode.style.cssText = 'font-family:monospace;font-weight:700;color:var(--accent);font-size:.85rem;';
+            cfgCode.textContent = cfg.shortcode;
+            cfgInfo.appendChild(cfgCode);
+            var cfgMeta = document.createElement('div');
+            cfgMeta.style.cssText = 'font-size:.68rem;color:var(--muted);';
+            var rptCount = cfg.reportIds ? cfg.reportIds.split(',').length : 0;
+            cfgMeta.textContent = (cfg.device || 'Unknown') + ' \u00B7 ' + rptCount + ' reports';
+            cfgInfo.appendChild(cfgMeta);
+            cfgCard.appendChild(cfgInfo);
+
+            var cfgActions = document.createElement('div');
+            cfgActions.style.cssText = 'display:flex;gap:.35rem;';
+
+            // Load/restore button
+            var loadBtn = document.createElement('button');
+            loadBtn.className = 'rh-prefs-btn';
+            loadBtn.textContent = 'Load';
+            loadBtn.style.fontSize = '.7rem';
+            (function(code) {
+              loadBtn.addEventListener('click', function() {
+                closeIdentityPrefs();
+                window.location.href = 'armory-report.html?code=' + code;
+              });
+            })(cfg.shortcode);
+            cfgActions.appendChild(loadBtn);
+
+            // Copy button
+            var cpBtn = document.createElement('button');
+            cpBtn.className = 'rh-prefs-btn';
+            cpBtn.textContent = 'Copy';
+            cpBtn.style.fontSize = '.7rem';
+            (function(code) {
+              cpBtn.addEventListener('click', function() {
+                navigator.clipboard.writeText('https://2864tw.com/armory-report.html?code=' + code).then(function() {
+                  cpBtn.textContent = '\u2713';
+                  setTimeout(function() { cpBtn.textContent = 'Copy'; }, 1200);
+                });
+              });
+            })(cfg.shortcode);
+            cfgActions.appendChild(cpBtn);
+
+            cfgCard.appendChild(cfgActions);
+            configList.appendChild(cfgCard);
+          });
+        }).catch(function() {
+          configList.textContent = 'Could not load configs.';
+        });
+      } else {
+        var noKey = document.createElement('div');
+        noKey.style.cssText = 'font-size:.78rem;color:var(--muted);text-align:center;padding:1rem;';
+        noKey.textContent = 'Sign in on the main site to save and share report configs.';
+        reportPanel.appendChild(noKey);
+      }
+
+      // Save & Share button at bottom
+      if (identity && identity.siteKey) {
+        var saveRow = document.createElement('div');
+        saveRow.style.cssText = 'margin-top:.75rem;text-align:center;';
+        var saveBtn = document.createElement('button');
+        saveBtn.className = 'rh-prefs-btn';
+        saveBtn.style.cssText = 'background:var(--green);color:#000;border-color:var(--green);font-weight:600;';
+        saveBtn.textContent = shortcode ? 'Update Save' : 'Save & Share';
+        saveBtn.addEventListener('click', function() {
+          closeIdentityPrefs();
+          saveAndShare();
+        });
+        saveRow.appendChild(saveBtn);
+        reportPanel.appendChild(saveRow);
+      }
     }
 
     var el = document.getElementById('rh-prefs-overlay');
