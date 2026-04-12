@@ -488,50 +488,49 @@
 
       card.appendChild(layout);
 
-      // Set bonus rarity is determined by the CORE chip (position 0)
+      // Set bonuses — only the CORE chip's set grants bonuses
       var chipColor = 1;
+      var coreSetGroup = 0;
       for (var cc = 0; cc < chips.length; cc++) {
         var ccLookup = CL[chips[cc].chipId];
-        if (ccLookup && ccLookup[1] === 0) { chipColor = ccLookup[2]; break; }
+        if (ccLookup && ccLookup[1] === 0) { chipColor = ccLookup[2]; coreSetGroup = ccLookup[0]; break; }
       }
 
-      // Set bonuses
       var setInfo = el('div', { className: 'set-info' });
-      for (var sg in setCounts) {
-        if (!setCounts.hasOwnProperty(sg)) continue;
-        var bonuses = getSetBonuses(parseInt(sg), chipColor);
-        if (!bonuses.length) continue;
-        var setCount = setCounts[sg];
+      if (coreSetGroup) {
+        var coreSlotCount = setCounts[coreSetGroup] || 0;
+        var bonuses = getSetBonuses(coreSetGroup, chipColor);
+        if (bonuses.length) {
+          var setHeader = el('div', { className: 'set-header' });
+          if (SET_ICONS[coreSetGroup]) {
+            var sIcon = el('img');
+            sIcon.src = ICON_BASE + SET_ICONS[coreSetGroup];
+            sIcon.onerror = function() { this.style.display = 'none'; };
+            setHeader.appendChild(sIcon);
+          }
+          setHeader.appendChild(document.createTextNode(SET_NAMES[coreSetGroup] || ('Set #' + coreSetGroup)));
+          setHeader.appendChild(el('span', { className: 'set-count' }, ' (' + coreSlotCount + '/6)'));
+          setInfo.appendChild(setHeader);
 
-        var setHeader = el('div', { className: 'set-header' });
-        if (SET_ICONS[sg]) {
-          var sIcon = el('img');
-          sIcon.src = ICON_BASE + SET_ICONS[sg];
-          sIcon.onerror = function() { this.style.display = 'none'; };
-          setHeader.appendChild(sIcon);
-        }
-        setHeader.appendChild(document.createTextNode(SET_NAMES[sg] || ('Set #' + sg)));
-        setHeader.appendChild(el('span', { className: 'set-count' }, ' (' + setCount + '/6)'));
-        setInfo.appendChild(setHeader);
+          var bonusList = el('ul', { className: 'set-bonuses' });
+          for (var b = 0; b < bonuses.length; b++) {
+            var bonus = bonuses[b];
+            var isActive = coreSlotCount >= bonus.count;
+            var li = el('li', { className: 'set-bonus ' + (isActive ? 'active' : 'inactive') });
+            var check = el('span', { className: 'set-bonus-check ' + (isActive ? 'on' : 'off') });
+            check.textContent = isActive ? '\u2713' : '\u25CB';
+            li.appendChild(check);
+            li.appendChild(el('span', { className: 'set-bonus-tier' }, bonus.count + 'pc'));
+            li.appendChild(el('span', { className: 'set-bonus-desc' }, bonus.desc + ' +' + fmtPct(bonus.base)));
+            if (!isActive) li.appendChild(el('span', { className: 'set-bonus-need' }, 'need ' + (bonus.count - coreSlotCount) + ' more'));
+            bonusList.appendChild(li);
+          }
+          setInfo.appendChild(bonusList);
 
-        var bonusList = el('ul', { className: 'set-bonuses' });
-        for (var b = 0; b < bonuses.length; b++) {
-          var bonus = bonuses[b];
-          var isActive = setCount >= bonus.count;
-          var li = el('li', { className: 'set-bonus ' + (isActive ? 'active' : 'inactive') });
-          var check = el('span', { className: 'set-bonus-check ' + (isActive ? 'on' : 'off') });
-          check.textContent = isActive ? '\u2713' : '\u25CB';
-          li.appendChild(check);
-          li.appendChild(el('span', { className: 'set-bonus-tier' }, bonus.count + 'pc'));
-          li.appendChild(el('span', { className: 'set-bonus-desc' }, bonus.desc + ' +' + fmtPct(bonus.base)));
-          if (!isActive) li.appendChild(el('span', { className: 'set-bonus-need' }, 'need ' + (bonus.count - setCount) + ' more'));
-          bonusList.appendChild(li);
-        }
-        setInfo.appendChild(bonusList);
-
-        if (setCount >= 2) {
-          var cumul = buildCumulativeSummary(bonuses, setCount);
-          if (cumul) setInfo.appendChild(cumul);
+          if (coreSlotCount >= 2) {
+            var cumul = buildCumulativeSummary(bonuses, coreSlotCount);
+            if (cumul) setInfo.appendChild(cumul);
+          }
         }
       }
       card.appendChild(setInfo);

@@ -3472,11 +3472,11 @@
 
       mechas.forEach(function(mecha) {
         var chips = mecha.chips || []; if (!chips.length) return;
-        var byPos = {}, setCounts = {}, chipColor = 1;
+        var byPos = {}, setCounts = {}, chipColor = 1, coreSetGroup = 0;
         chips.forEach(function(c) {
           var lk = CL[c.chipId]; if (!lk) return;
           var pos = lk[1]; byPos[pos] = {chip:c, lk:lk};
-          if (pos === 0) { chipColor = lk[2]; }
+          if (pos === 0) { chipColor = lk[2]; coreSetGroup = lk[0]; }
           else { var sg = lk[0]; setCounts[sg] = (setCounts[sg]||0)+1; }
         });
 
@@ -3558,50 +3558,51 @@
         layout.appendChild(r3);
         card.appendChild(layout);
 
-        // Set bonuses
+        // Set bonuses — only the core chip's set grants bonuses
         var setInfo = el('div', {className:'htc-set-info'});
-        for (var sg in setCounts) {
-          if (!setCounts.hasOwnProperty(sg)) continue;
-          var bonuses = getBonuses(parseInt(sg), chipColor); if (!bonuses.length) continue;
-          var cnt = setCounts[sg];
-          var setHdr = el('div', {className:'htc-set-header'});
-          var shi = SET_ICONS[sg];
-          if (shi) {
-            var sico = el('img', {style:'width:24px;height:24px;border-radius:4px;object-fit:contain'});
-            sico.src = ICON_BASE+shi; sico.onerror = function(){ this.style.display='none'; };
-            setHdr.appendChild(sico);
-          }
-          setHdr.appendChild(document.createTextNode(SET_NAMES[sg]||('Set #'+sg)));
-          setHdr.appendChild(el('span', {className:'htc-set-count'}, ' ('+cnt+'/6)'));
-          setInfo.appendChild(setHdr);
-          var bonusList = el('ul', {className:'htc-set-bonuses'});
-          bonuses.forEach(function(b) {
-            var isActive = cnt >= b.count;
-            var li = el('li', {className:'htc-set-bonus '+(isActive?'htc-bon-active':'htc-bon-inactive')});
-            var chk = el('span', {className:'htc-bon-check '+(isActive?'htc-on':'htc-off')});
-            chk.textContent = isActive ? '\u2713' : '\u25CB';
-            li.appendChild(chk);
-            li.appendChild(el('span', {className:'htc-bon-tier'}, b.count+'pc'));
-            li.appendChild(el('span', {className:'htc-bon-desc'}, b.desc+' +'+fmt(b.base)));
-            if (!isActive) li.appendChild(el('span', {className:'htc-bon-need'}, 'need '+(b.count-cnt)+' more'));
-            bonusList.appendChild(li);
-          });
-          setInfo.appendChild(bonusList);
-          if (cnt >= 2) {
-            var activeTiers = bonuses.filter(function(b){ return cnt>=b.count; });
-            if (activeTiers.length) {
-              var sumMap = {};
-              activeTiers.forEach(function(b,i){ var m=activeTiers.length-i; if(!sumMap[b.desc])sumMap[b.desc]=0; sumMap[b.desc]+=b.base*m; });
-              var cumul = el('div', {className:'htc-cumul'});
-              cumul.appendChild(el('div', {className:'htc-cumul-title'}, 'Cumulative Bonuses'));
-              for (var d in sumMap) {
-                if (!sumMap.hasOwnProperty(d)) continue;
-                var cr = el('div', {className:'htc-cumul-row'});
-                cr.appendChild(el('span', {className:'htc-cumul-label'}, d));
-                cr.appendChild(el('span', {className:'htc-cumul-value'}, '+'+(sumMap[d]/100).toFixed(0)+'%'));
-                cumul.appendChild(cr);
+        if (coreSetGroup) {
+          var cnt = setCounts[coreSetGroup] || 0;
+          var bonuses = getBonuses(coreSetGroup, chipColor);
+          if (bonuses.length) {
+            var setHdr = el('div', {className:'htc-set-header'});
+            var shi = SET_ICONS[coreSetGroup];
+            if (shi) {
+              var sico = el('img', {style:'width:24px;height:24px;border-radius:4px;object-fit:contain'});
+              sico.src = ICON_BASE+shi; sico.onerror = function(){ this.style.display='none'; };
+              setHdr.appendChild(sico);
+            }
+            setHdr.appendChild(document.createTextNode(SET_NAMES[coreSetGroup]||('Set #'+coreSetGroup)));
+            setHdr.appendChild(el('span', {className:'htc-set-count'}, ' ('+cnt+'/6)'));
+            setInfo.appendChild(setHdr);
+            var bonusList = el('ul', {className:'htc-set-bonuses'});
+            bonuses.forEach(function(b) {
+              var isActive = cnt >= b.count;
+              var li = el('li', {className:'htc-set-bonus '+(isActive?'htc-bon-active':'htc-bon-inactive')});
+              var chk = el('span', {className:'htc-bon-check '+(isActive?'htc-on':'htc-off')});
+              chk.textContent = isActive ? '\u2713' : '\u25CB';
+              li.appendChild(chk);
+              li.appendChild(el('span', {className:'htc-bon-tier'}, b.count+'pc'));
+              li.appendChild(el('span', {className:'htc-bon-desc'}, b.desc+' +'+fmt(b.base)));
+              if (!isActive) li.appendChild(el('span', {className:'htc-bon-need'}, 'need '+(b.count-cnt)+' more'));
+              bonusList.appendChild(li);
+            });
+            setInfo.appendChild(bonusList);
+            if (cnt >= 2) {
+              var activeTiers = bonuses.filter(function(b){ return cnt>=b.count; });
+              if (activeTiers.length) {
+                var sumMap = {};
+                activeTiers.forEach(function(b,i){ var m=activeTiers.length-i; if(!sumMap[b.desc])sumMap[b.desc]=0; sumMap[b.desc]+=b.base*m; });
+                var cumul = el('div', {className:'htc-cumul'});
+                cumul.appendChild(el('div', {className:'htc-cumul-title'}, 'Cumulative Bonuses'));
+                for (var d in sumMap) {
+                  if (!sumMap.hasOwnProperty(d)) continue;
+                  var cr = el('div', {className:'htc-cumul-row'});
+                  cr.appendChild(el('span', {className:'htc-cumul-label'}, d));
+                  cr.appendChild(el('span', {className:'htc-cumul-value'}, '+'+(sumMap[d]/100).toFixed(0)+'%'));
+                  cumul.appendChild(cr);
+                }
+                setInfo.appendChild(cumul);
               }
-              setInfo.appendChild(cumul);
             }
           }
         }
