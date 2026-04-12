@@ -1029,19 +1029,182 @@
   // ── Wire Get Started button ───────────────────────────────────────────────
   document.getElementById('getStartedBtn').addEventListener('click', openWizard);
 
+  // ── Object.values polyfill ────────────────────────────────────────────────
+  function objValues(obj) {
+    return Object.keys(obj).map(function(k) { return obj[k]; });
+  }
+
+  // ── Data merge engine ─────────────────────────────────────────────────────
+  function mergeReportData(reports) {
+    var merged = {
+      heroes: {},        // keyed by heroId, latest wins
+      decorations: null, skins: null, ctcs: null, enigmas: null,
+      mechas: {},        // keyed by mechaId
+      effectBuffs: null, traceEffectBuffs: null
+    };
+
+    reports.forEach(function(report) {
+      var ex = report.extracted;
+      if (!ex) return;
+
+      // Per-march: latest-added wins for same hero/mecha
+      (ex.heroes || []).forEach(function(h) { merged.heroes[h.id] = h; });
+      (ex.mechas || []).forEach(function(m) {
+        if (m.chips && m.chips.length) merged.mechas[m.mechaId] = m;
+      });
+
+      // Account-level: first report wins
+      if (!merged.decorations && ex.decorations) merged.decorations = ex.decorations;
+      if (!merged.skins && ex.skins) merged.skins = ex.skins;
+      if (!merged.ctcs && ex.ctcs) merged.ctcs = ex.ctcs;
+      if (!merged.enigmas && ex.enigmas) merged.enigmas = ex.enigmas;
+      if (!merged.effectBuffs && ex.effectBuffs) merged.effectBuffs = ex.effectBuffs;
+      if (!merged.traceEffectBuffs && ex.traceEffectBuffs) merged.traceEffectBuffs = ex.traceEffectBuffs;
+    });
+
+    return {
+      heroes: objValues(merged.heroes),
+      decorations: merged.decorations,
+      skins: merged.skins,
+      ctcs: merged.ctcs,
+      enigmas: merged.enigmas,
+      mechas: objValues(merged.mechas),
+      effectBuffs: merged.effectBuffs,
+      traceEffectBuffs: merged.traceEffectBuffs
+    };
+  }
+
+  // ── Empty state renderer ──────────────────────────────────────────────────
+  function renderEmptyState() {
+    var app = document.getElementById('app');
+    while (app.firstChild) app.removeChild(app.firstChild);
+
+    var wrap = document.createElement('div');
+    wrap.className = 'empty-state';
+
+    var svgNS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('width', '48'); svg.setAttribute('height', '48');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'var(--accent)'); svg.setAttribute('stroke-width', '1.5');
+    var pathEl = document.createElementNS(svgNS, 'path');
+    pathEl.setAttribute('d', 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z');
+    var polyEl = document.createElementNS(svgNS, 'polyline');
+    polyEl.setAttribute('points', '14,2 14,8 20,8');
+    var line1 = document.createElementNS(svgNS, 'line');
+    line1.setAttribute('x1', '16'); line1.setAttribute('y1', '13');
+    line1.setAttribute('x2', '8');  line1.setAttribute('y2', '13');
+    var line2 = document.createElementNS(svgNS, 'line');
+    line2.setAttribute('x1', '16'); line2.setAttribute('y1', '17');
+    line2.setAttribute('x2', '8');  line2.setAttribute('y2', '17');
+    svg.appendChild(pathEl); svg.appendChild(polyEl);
+    svg.appendChild(line1); svg.appendChild(line2);
+    wrap.appendChild(svg);
+
+    var h2 = document.createElement('h2');
+    h2.textContent = 'Set Up Your Report';
+    wrap.appendChild(h2);
+
+    var p = document.createElement('p');
+    p.textContent = 'Generate a personal account report from your battle data';
+    wrap.appendChild(p);
+
+    var btn = document.createElement('button');
+    btn.className = 'btn-primary';
+    btn.textContent = 'Get Started';
+    btn.addEventListener('click', openWizard);
+    wrap.appendChild(btn);
+
+    app.appendChild(wrap);
+  }
+
+  // ── Re-fetch + merge init ─────────────────────────────────────────────────
+  function initFromSaved(saved) {
+    wizardState.player = saved.player;
+    wizardState.reportData = [];
+
+    var cache = {};
+    try { cache = JSON.parse(localStorage.getItem('playerReportData')) || {}; } catch(e) {}
+
+    var ids = saved.reportIds || [];
+    var pending = ids.length;
+    var results = [];
+
+    if (pending === 0) return;
+
+    // Show loading state
+    var app = document.getElementById('app');
+    while (app.firstChild) app.removeChild(app.firstChild);
+    var loadWrap = document.createElement('div');
+    loadWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;';
+    var spinner = document.createElement('div');
+    spinner.className = 'wizard-spinner';
+    spinner.style.cssText = 'width:32px;height:32px;border-width:3px;border-color:rgba(121,192,255,0.3);border-top-color:var(--accent);margin-bottom:1rem;';
+    loadWrap.appendChild(spinner);
+    var loadText = document.createElement('p');
+    loadText.style.color = 'var(--muted)';
+    loadText.textContent = 'Loading your report...';
+    loadWrap.appendChild(loadText);
+    app.appendChild(loadWrap);
+
+    ids.forEach(function(id, idx) {
+      if (cache[id]) {
+        results[idx] = { id: id, extracted: cache[id] };
+        if (--pending === 0) finishInit(results, saved);
+        return;
+      }
+
+      var prefix = id.substring(0, 4);
+      fetch(CDN_BASE + prefix + '/' + id + '.json')
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+          if (data && data.battle) {
+            var extracted = extractPlayerData(data, saved.player.name);
+            results[idx] = { id: id, extracted: extracted };
+          } else {
+            results[idx] = { id: id, extracted: null, error: true };
+          }
+        })
+        .catch(function() {
+          results[idx] = { id: id, extracted: null, error: true };
+        })
+        .finally(function() {
+          if (--pending === 0) finishInit(results, saved);
+        });
+    });
+  }
+
+  function finishInit(results, saved) {
+    var valid = results.filter(function(r) { return r && r.extracted; });
+    wizardState.reportData = valid;
+
+    // Update localStorage if any reports were dropped
+    if (valid.length < (saved.reportIds || []).length) {
+      saved.reportIds = valid.map(function(r) { return r.id; });
+      localStorage.setItem('playerReport', JSON.stringify(saved));
+    }
+
+    // Update cache
+    var newCache = {};
+    valid.forEach(function(r) { newCache[r.id] = r.extracted; });
+    localStorage.setItem('playerReportData', JSON.stringify(newCache));
+
+    if (valid.length === 0) {
+      localStorage.removeItem('playerReport');
+      localStorage.removeItem('playerReportData');
+      renderEmptyState();
+      return;
+    }
+
+    renderFullReport();
+  }
+
   // ── Page init: restore saved report ──────────────────────────────────────
   (function init() {
     var saved = null;
     try { saved = JSON.parse(localStorage.getItem('playerReport')); } catch(e) {}
     if (saved && saved.player && saved.reportIds && saved.reportIds.length) {
-      wizardState.player = saved.player;
-      wizardState.reportData = [];
-      var cache = {};
-      try { cache = JSON.parse(localStorage.getItem('playerReportData')) || {}; } catch(e) {}
-      saved.reportIds.forEach(function(id) {
-        wizardState.reportData.push({ id: id, extracted: cache[id] || null });
-      });
-      renderFullReport();
+      initFromSaved(saved);
     }
   })();
 </script>
