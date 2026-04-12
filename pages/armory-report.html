@@ -4748,8 +4748,11 @@
 
     // Build a single decoration card
     function buildDecoCard(d, isNotOwned) {
-      var dd = DECOR_DATA ? DECOR_DATA[String(d.groupId)] : null;
-      var lvl = isNotOwned ? 0 : decorLevel(d.maxId, d.groupId);
+      // For ME-expanded entries, use sourceGroup for data lookup (target may not be in DECOR_DATA)
+      var dataGroup = d.sourceGroup || d.groupId;
+      var dd = DECOR_DATA ? DECOR_DATA[String(dataGroup)] : null;
+      // For ME-expanded entries, use sourceGroup for level calculation (maxId belongs to source group)
+      var lvl = isNotOwned ? 0 : decorLevel(d.maxId, dataGroup);
 
       var card = document.createElement('div');
       card.className = 'deco-card' + (isNotOwned ? ' not-owned' : '');
@@ -4781,7 +4784,13 @@
       }
       var nameEl = document.createElement('div');
       nameEl.className = 'deco-name';
-      nameEl.textContent = d.name;
+      // For ME-expanded entries, show the source group's name (what player actually owns)
+      if (d.sourceGroup) {
+        var sourceName = DECOR_GROUPS[String(d.sourceGroup)] || d.name;
+        nameEl.textContent = sourceName;
+      } else {
+        nameEl.textContent = d.name;
+      }
       card.appendChild(nameEl);
       if (dd && dd.b && dd.b.length) {
         var buffs = document.createElement('div');
@@ -4796,7 +4805,7 @@
           row.appendChild(bNameEl);
           var bValEl = document.createElement('span');
           bValEl.className = 'deco-buff-val';
-          bValEl.textContent = isNotOwned ? formatDecorBuffVal(dd.b[bi]) : formatScaledDecorBuff(b, lvl, d.groupId);
+          bValEl.textContent = isNotOwned ? formatDecorBuffVal(dd.b[bi]) : formatScaledDecorBuff(b, lvl, dataGroup);
           row.appendChild(bValEl);
           buffs.appendChild(row);
         }
