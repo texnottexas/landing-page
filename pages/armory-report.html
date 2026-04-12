@@ -2598,10 +2598,28 @@
     homeLink.appendChild(homeSvg);
     left.appendChild(homeLink);
 
-    // Identity greeting — stored identity name takes priority over report player
+    // Identity greeting or view-only indicator
     var storedId = getStoredIdentity();
     var pName = (storedId && storedId.name) || (player && player.name) || '';
-    if (pName) {
+    if (wizardState._viewOnly && player && player.name) {
+      // View-only mode: show whose report we're viewing
+      var viewWrap = document.createElement('div');
+      viewWrap.style.cssText = 'display:flex;align-items:center;gap:.35rem;';
+      var viewEl = document.createElement('span');
+      viewEl.className = 'rh-title notranslate';
+      viewEl.style.color = 'var(--muted)';
+      viewEl.textContent = 'Viewing: ' + player.name;
+      viewWrap.appendChild(viewEl);
+      var backBtn = document.createElement('button');
+      backBtn.title = 'Back to my report';
+      backBtn.style.cssText = 'background:none;border:none;color:var(--accent);cursor:pointer;font-size:.7rem;padding:.1rem .2rem;line-height:1;text-decoration:underline;';
+      backBtn.textContent = 'back';
+      backBtn.addEventListener('click', function() {
+        window.location.href = window.location.pathname; // Reload without ?code= param
+      });
+      viewWrap.appendChild(backBtn);
+      left.appendChild(viewWrap);
+    } else if (pName) {
       var greetWrap = document.createElement('div');
       greetWrap.style.cssText = 'display:flex;align-items:center;gap:.35rem;';
       var greetEl = document.createElement('span');
@@ -2683,24 +2701,26 @@
     prefsBtn.addEventListener('click', function() { openIdentityPrefs(player); });
     right.appendChild(prefsBtn);
 
-    // Save & Share button (available for all users, guests use deviceId-based key)
-    var shareBtn = document.createElement('button');
-    shareBtn.className = 'rh-btn';
-    shareBtn.title = 'Save & Share';
-    var shareSvg = document.createElementNS(svgNS, 'svg');
-    shareSvg.setAttribute('width', '14'); shareSvg.setAttribute('height', '14');
-    shareSvg.setAttribute('viewBox', '0 0 24 24'); shareSvg.setAttribute('fill', 'none');
-    shareSvg.setAttribute('stroke', 'currentColor'); shareSvg.setAttribute('stroke-width', '2');
-    var sharePath = document.createElementNS(svgNS, 'path');
-    sharePath.setAttribute('d', 'M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13');
-    shareSvg.appendChild(sharePath);
-    shareBtn.appendChild(shareSvg);
-    var shareLabel = document.createElement('span');
-    shareLabel.className = 'rh-label';
-    shareLabel.textContent = 'Save';
-    shareBtn.appendChild(shareLabel);
-    shareBtn.addEventListener('click', saveAndShare);
-    right.appendChild(shareBtn);
+    // Save & Share button (hidden in view-only mode)
+    if (!wizardState._viewOnly) {
+      var shareBtn = document.createElement('button');
+      shareBtn.className = 'rh-btn';
+      shareBtn.title = 'Save & Share';
+      var shareSvg = document.createElementNS(svgNS, 'svg');
+      shareSvg.setAttribute('width', '14'); shareSvg.setAttribute('height', '14');
+      shareSvg.setAttribute('viewBox', '0 0 24 24'); shareSvg.setAttribute('fill', 'none');
+      shareSvg.setAttribute('stroke', 'currentColor'); shareSvg.setAttribute('stroke-width', '2');
+      var sharePath = document.createElementNS(svgNS, 'path');
+      sharePath.setAttribute('d', 'M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13');
+      shareSvg.appendChild(sharePath);
+      shareBtn.appendChild(shareSvg);
+      var shareLabel = document.createElement('span');
+      shareLabel.className = 'rh-label';
+      shareLabel.textContent = 'Save';
+      shareBtn.appendChild(shareLabel);
+      shareBtn.addEventListener('click', saveAndShare);
+      right.appendChild(shareBtn);
+    }
 
     hdr.appendChild(right);
     app.appendChild(hdr);
@@ -2995,8 +3015,8 @@
         });
       }
 
-      // Save & Share button at bottom (available for all)
-      {
+      // Save & Share button at bottom (hidden in view-only mode)
+      if (!wizardState._viewOnly) {
         var saveRow = document.createElement('div');
         saveRow.style.cssText = 'margin-top:.75rem;text-align:center;';
         var saveBtn = document.createElement('button');
@@ -3104,20 +3124,22 @@
     manageBtn.addEventListener('mouseleave', function() { manageBtn.style.borderColor = 'var(--border)'; manageBtn.style.color = ''; });
     actions.appendChild(manageBtn);
 
-    // Save & Share button (available for all users)
-    var shareBtn2 = document.createElement('button');
-    shareBtn2.className = 'share-btn';
-    var shareSvg2 = document.createElementNS(svgNS, 'svg');
-    shareSvg2.setAttribute('width', '14'); shareSvg2.setAttribute('height', '14');
-    shareSvg2.setAttribute('viewBox', '0 0 24 24'); shareSvg2.setAttribute('fill', 'none');
-    shareSvg2.setAttribute('stroke', 'currentColor'); shareSvg2.setAttribute('stroke-width', '2');
-    var sharePath2 = document.createElementNS(svgNS, 'path');
-    sharePath2.setAttribute('d', 'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13');
-    shareSvg2.appendChild(sharePath2);
-    shareBtn2.appendChild(shareSvg2);
-    shareBtn2.appendChild(document.createTextNode('Save & Share'));
-    shareBtn2.addEventListener('click', saveAndShare);
-    actions.appendChild(shareBtn2);
+    // Save & Share button (hidden in view-only mode)
+    if (!wizardState._viewOnly) {
+      var shareBtn2 = document.createElement('button');
+      shareBtn2.className = 'share-btn';
+      var shareSvg2 = document.createElementNS(svgNS, 'svg');
+      shareSvg2.setAttribute('width', '14'); shareSvg2.setAttribute('height', '14');
+      shareSvg2.setAttribute('viewBox', '0 0 24 24'); shareSvg2.setAttribute('fill', 'none');
+      shareSvg2.setAttribute('stroke', 'currentColor'); shareSvg2.setAttribute('stroke-width', '2');
+      var sharePath2 = document.createElementNS(svgNS, 'path');
+      sharePath2.setAttribute('d', 'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13');
+      shareSvg2.appendChild(sharePath2);
+      shareBtn2.appendChild(shareSvg2);
+      shareBtn2.appendChild(document.createTextNode('Save & Share'));
+      shareBtn2.addEventListener('click', saveAndShare);
+      actions.appendChild(shareBtn2);
+    }
 
     // Show cached shortcode if available
     try {
@@ -7215,6 +7237,7 @@
   function initFromSaved(saved) {
     wizardState.player = saved.player;
     wizardState.reportData = [];
+    wizardState._viewOnly = saved._viewOnly || false;
 
     var cache = {};
     try { cache = JSON.parse(localStorage.getItem('playerReportData')) || {}; } catch(e) {}
