@@ -3124,24 +3124,12 @@
       }
     } catch(e) {}
 
-    // ── Summary cards ──
-    var cards = document.createElement('div');
-    cards.className = 'summary-cards';
-    dash.appendChild(cards);
-
-    // Hero count
+    // ── Compute stats for overview ──
     var heroCount = merged.heroes.length;
-    // Gear pieces count
     var gearPieces = 0;
     merged.heroes.forEach(function(h) { gearPieces += (h.heroEquips || []).length; });
-    // Decorations count
     var decoCount = 0;
-    if (merged.decorations) {
-      decoCount = (merged.decorations.sublimes || []).length ||
-                  (merged.decorations.buildings || []).length ||
-                  (merged.decorations.effectList || []).length || 0;
-    }
-    // Beasts deployed count
+    if (merged.decorations && merged.decorations.ids) decoCount = merged.decorations.ids.length;
     var beastCount = 0;
     if (merged.enigmas && merged.enigmas.fields) {
       merged.enigmas.fields.forEach(function(f) {
@@ -3150,30 +3138,7 @@
         });
       });
     }
-    // Heavy Troopers count
     var htCount = merged.mechas.length;
-
-    var cardDefs = [
-      { value: heroCount, label: 'Heroes' },
-      { value: gearPieces, label: 'Gear Pieces' },
-      { value: decoCount, label: 'Decorations' },
-      { value: beastCount, label: 'Beasts Deployed' },
-      { value: htCount, label: 'Heavy Troopers' }
-    ];
-
-    cardDefs.forEach(function(def) {
-      var card = document.createElement('div');
-      card.className = 'summary-card';
-      var valEl = document.createElement('div');
-      valEl.className = 'value';
-      valEl.textContent = String(def.value);
-      card.appendChild(valEl);
-      var lblEl = document.createElement('div');
-      lblEl.className = 'label';
-      lblEl.textContent = def.label;
-      card.appendChild(lblEl);
-      cards.appendChild(card);
-    });
 
     // ── Tab bar ──
     var tabBar = document.createElement('div');
@@ -3181,6 +3146,7 @@
     dash.appendChild(tabBar);
 
     var tabDefs = [
+      { id: 'overview', label: 'Overview' },
       { id: 'heroes', label: 'Heroes & Gear' },
       { id: 'decorations', label: 'Decorations' },
       { id: 'bases', label: 'Bases' },
@@ -3205,10 +3171,10 @@
       dash.appendChild(content);
     });
 
-    // Render first tab immediately (Heroes & Gear)
-    var firstTab = document.getElementById('tab-heroes');
+    // Render first tab immediately (Overview)
+    var firstTab = document.getElementById('tab-overview');
     firstTab.setAttribute('data-rendered', '1');
-    renderHeroesTab(merged);
+    renderOverviewTab(merged, { heroes: heroCount, gear: gearPieces, decos: decoCount, beasts: beastCount, hts: htCount });
 
     // Pass report IDs to feedback widget for context
     window._reportContext = wizardState.reportData.map(function(r) { return r.id; }).join(', ');
@@ -3235,6 +3201,169 @@
       case 'enigma':      renderEnigmaTab(m); break;
       case 'chips':       renderChipsTab(m); break;
     }
+  }
+
+  // ── Overview / Dashboard tab ───────────────────────────────────────────────
+  function renderOverviewTab(merged, counts) {
+    var container = document.getElementById('tab-overview');
+    while (container.firstChild) container.removeChild(container.firstChild);
+    var player = wizardState.player || {};
+
+    // ── Stat cards row ──
+    var cards = document.createElement('div');
+    cards.className = 'summary-cards';
+    [
+      { value: counts.heroes, label: 'Heroes', color: 'var(--accent)' },
+      { value: counts.gear, label: 'Gear Pieces', color: 'var(--green)' },
+      { value: counts.decos, label: 'Decorations', color: 'var(--blue)' },
+      { value: counts.beasts, label: 'Beasts', color: 'var(--yellow)' },
+      { value: counts.hts, label: 'Heavy Troopers', color: 'var(--red)' }
+    ].forEach(function(def) {
+      var card = document.createElement('div');
+      card.className = 'summary-card';
+      var valEl = document.createElement('div');
+      valEl.className = 'value';
+      valEl.style.color = def.color;
+      valEl.textContent = String(def.value);
+      card.appendChild(valEl);
+      var lblEl = document.createElement('div');
+      lblEl.className = 'label';
+      lblEl.textContent = def.label;
+      card.appendChild(lblEl);
+      cards.appendChild(card);
+    });
+    container.appendChild(cards);
+
+    // ── Top Heroes (by gear score) ──
+    if (merged.heroes.length > 0) {
+      var topSection = document.createElement('div');
+      topSection.style.cssText = 'margin-top:1.25rem;';
+
+      var topTitle = document.createElement('h3');
+      topTitle.style.cssText = 'font-size:.9rem;color:var(--text);margin-bottom:.75rem;font-weight:600;';
+      topTitle.textContent = 'Top Heroes by Gear Score';
+      topSection.appendChild(topTitle);
+
+      var topGrid = document.createElement('div');
+      topGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.65rem;';
+
+      var sorted = merged.heroes.slice().sort(function(a, b) {
+        return heroGearScore(b) - heroGearScore(a);
+      }).slice(0, 6);
+
+      loadHeroData(function() {
+        sorted.forEach(function(hero) {
+          var id = hero.id;
+          var name = heroName(id);
+          var branch = heroBranch(id);
+          var bc = branchClass(branch);
+          var gs = heroGearScore(hero);
+
+          var card = document.createElement('div');
+          card.style.cssText = 'display:flex;align-items:center;gap:.65rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.65rem;';
+
+          var img = document.createElement('img');
+          img.style.cssText = 'width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid var(--' + (bc === 'army' ? 'army' : bc === 'navy' ? 'navy' : 'air') + ');flex-shrink:0;';
+          img.src = heroIconUrl(id);
+          img.alt = '';
+          img.onerror = function() { this.style.display = 'none'; };
+          card.appendChild(img);
+
+          var info = document.createElement('div');
+          info.style.cssText = 'flex:1;min-width:0;';
+          var nameDiv = document.createElement('div');
+          nameDiv.style.cssText = 'font-weight:600;font-size:.85rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+          nameDiv.textContent = name;
+          info.appendChild(nameDiv);
+          var metaDiv = document.createElement('div');
+          metaDiv.style.cssText = 'font-size:.72rem;color:var(--muted);';
+          metaDiv.textContent = branch + ' \u00B7 Lv.' + (hero.level || '?') + ' \u00B7 ' + (hero.heroEquips || []).length + '/6 gear';
+          info.appendChild(metaDiv);
+          card.appendChild(info);
+
+          if (gs > 0) {
+            var gsEl = document.createElement('div');
+            gsEl.style.cssText = 'font-size:.8rem;font-weight:700;color:var(--accent);white-space:nowrap;';
+            gsEl.textContent = formatPower(gs);
+            card.appendChild(gsEl);
+          }
+
+          topGrid.appendChild(card);
+        });
+      });
+
+      topSection.appendChild(topGrid);
+      container.appendChild(topSection);
+    }
+
+    // ── Branch breakdown ──
+    if (merged.heroes.length > 0) {
+      var branchSection = document.createElement('div');
+      branchSection.style.cssText = 'margin-top:1.25rem;';
+      var branchTitle = document.createElement('h3');
+      branchTitle.style.cssText = 'font-size:.9rem;color:var(--text);margin-bottom:.75rem;font-weight:600;';
+      branchTitle.textContent = 'Branch Breakdown';
+      branchSection.appendChild(branchTitle);
+
+      var branchCounts = { Army: 0, Navy: 0, 'Air Force': 0 };
+      merged.heroes.forEach(function(h) {
+        var b = heroBranch(h.id);
+        if (branchCounts[b] !== undefined) branchCounts[b]++;
+      });
+
+      var branchBar = document.createElement('div');
+      branchBar.style.cssText = 'display:flex;gap:.5rem;';
+      [
+        { label: 'Army', count: branchCounts['Army'], color: 'var(--army)', cls: 'army' },
+        { label: 'Navy', count: branchCounts['Navy'], color: 'var(--navy)', cls: 'navy' },
+        { label: 'Air Force', count: branchCounts['Air Force'], color: 'var(--air)', cls: 'air' }
+      ].forEach(function(b) {
+        var pill = document.createElement('div');
+        pill.style.cssText = 'flex:1;text-align:center;padding:.6rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;border-left:3px solid ' + b.color + ';';
+        var num = document.createElement('div');
+        num.style.cssText = 'font-size:1.2rem;font-weight:700;color:' + b.color + ';';
+        num.textContent = b.count;
+        pill.appendChild(num);
+        var lbl = document.createElement('div');
+        lbl.style.cssText = 'font-size:.7rem;color:var(--muted);';
+        lbl.textContent = b.label;
+        pill.appendChild(lbl);
+        branchBar.appendChild(pill);
+      });
+      branchSection.appendChild(branchBar);
+      container.appendChild(branchSection);
+    }
+
+    // ── Quick links to other tabs ──
+    var linksSection = document.createElement('div');
+    linksSection.style.cssText = 'margin-top:1.5rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.5rem;';
+    var linkDefs = [
+      { tab: 'heroes', label: 'Heroes & Gear', desc: counts.heroes + ' heroes, ' + counts.gear + ' gear pieces' },
+      { tab: 'decorations', label: 'Decorations', desc: counts.decos + ' placed decorations' },
+      { tab: 'bases', label: 'Base Skins', desc: 'Castle skins & effects' },
+      { tab: 'enigma', label: 'Enigma Beasts', desc: counts.beasts + ' beasts deployed' },
+      { tab: 'chips', label: 'HT Chips', desc: counts.hts + ' Heavy Troopers' }
+    ];
+    linkDefs.forEach(function(def) {
+      var link = document.createElement('button');
+      link.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.75rem;text-align:left;cursor:pointer;transition:border-color .15s;';
+      link.addEventListener('mouseenter', function() { link.style.borderColor = 'var(--accent)'; });
+      link.addEventListener('mouseleave', function() { link.style.borderColor = 'var(--border)'; });
+      link.addEventListener('click', function() {
+        var btn = document.querySelector('.tab-btn[data-tab="' + def.tab + '"]');
+        if (btn) switchTab(btn);
+      });
+      var linkLabel = document.createElement('div');
+      linkLabel.style.cssText = 'font-weight:600;font-size:.85rem;color:var(--text);';
+      linkLabel.textContent = def.label;
+      link.appendChild(linkLabel);
+      var linkDesc = document.createElement('div');
+      linkDesc.style.cssText = 'font-size:.72rem;color:var(--muted);margin-top:.2rem;';
+      linkDesc.textContent = def.desc;
+      link.appendChild(linkDesc);
+      linksSection.appendChild(link);
+    });
+    container.appendChild(linksSection);
   }
 
   // ── Gear slot name helper ─────────────────────────────────────────────────
