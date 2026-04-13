@@ -3460,35 +3460,88 @@
   }
 
   // ── Overview / Dashboard tab ───────────────────────────────────────────────
+  // SVG donut chart helper
+  function buildDonutChart(segments, size, innerRatio) {
+    size = size || 120;
+    innerRatio = innerRatio || 0.62;
+    var total = 0;
+    segments.forEach(function(s) { total += s.value; });
+    if (total === 0) return null;
+    var svgNS = SVG_NS;
+    var svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('width', size);
+    svg.setAttribute('height', size);
+    svg.setAttribute('viewBox', '0 0 ' + size + ' ' + size);
+    var cx = size / 2, cy = size / 2;
+    var r = size / 2 - 2;
+    var innerR = r * innerRatio;
+    var cumAngle = -Math.PI / 2; // start at top
+    segments.forEach(function(seg) {
+      var angle = (seg.value / total) * Math.PI * 2;
+      var a0 = cumAngle, a1 = cumAngle + angle;
+      var x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
+      var x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+      var xi1 = cx + innerR * Math.cos(a1), yi1 = cy + innerR * Math.sin(a1);
+      var xi0 = cx + innerR * Math.cos(a0), yi0 = cy + innerR * Math.sin(a0);
+      var large = angle > Math.PI ? 1 : 0;
+      var d = 'M ' + x0 + ' ' + y0 +
+              ' A ' + r + ' ' + r + ' 0 ' + large + ' 1 ' + x1 + ' ' + y1 +
+              ' L ' + xi1 + ' ' + yi1 +
+              ' A ' + innerR + ' ' + innerR + ' 0 ' + large + ' 0 ' + xi0 + ' ' + yi0 +
+              ' Z';
+      var path = document.createElementNS(svgNS, 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('fill', seg.color);
+      path.setAttribute('fill-opacity', '0.85');
+      path.setAttribute('stroke', 'var(--bg)');
+      path.setAttribute('stroke-width', '2');
+      svg.appendChild(path);
+      cumAngle = a1;
+    });
+    return svg;
+  }
+
   function renderOverviewTab(merged, counts) {
     var container = document.getElementById('tab-overview');
     while (container.firstChild) container.removeChild(container.firstChild);
     var player = wizardState.player || {};
 
-    // ── Stat cards row ──
-    var cards = document.createElement('div');
-    cards.className = 'summary-cards';
-    [
-      { value: counts.heroes, label: 'Heroes', color: 'var(--accent)' },
-      { value: counts.gear, label: 'Gear Pieces', color: 'var(--green)' },
-      { value: counts.decos, label: 'Decorations', color: 'var(--blue)' },
-      { value: counts.beasts, label: 'Beasts', color: 'var(--yellow)' },
-      { value: counts.hts, label: 'Heavy Troopers', color: 'var(--red)' }
-    ].forEach(function(def) {
-      var card = document.createElement('div');
-      card.className = 'summary-card';
-      var valEl = document.createElement('div');
-      valEl.className = 'value';
-      valEl.style.color = def.color;
-      valEl.textContent = String(def.value);
-      card.appendChild(valEl);
-      var lblEl = document.createElement('div');
-      lblEl.className = 'label';
-      lblEl.textContent = def.label;
-      card.appendChild(lblEl);
-      cards.appendChild(card);
+    // ── Summary chip row (compact stats) ──
+    var totalGearScore = 0;
+    var topHero = null, topHeroScore = 0;
+    merged.heroes.forEach(function(h) {
+      var gs = heroGearScore(h);
+      totalGearScore += gs;
+      if (gs > topHeroScore) { topHeroScore = gs; topHero = h; }
     });
-    container.appendChild(cards);
+    var avgGearScore = merged.heroes.length > 0 ? Math.round(totalGearScore / merged.heroes.length) : 0;
+
+    var chipRow = document.createElement('div');
+    chipRow.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.5rem;margin-bottom:1.25rem;';
+    function makeChip(label, value, color, subtext) {
+      var c = document.createElement('div');
+      c.style.cssText = 'background:linear-gradient(135deg,' + color + '15 0%,' + color + '08 100%);border:1px solid ' + color + '30;border-radius:10px;padding:.65rem .75rem;';
+      var v = document.createElement('div');
+      v.style.cssText = 'font-size:1.25rem;font-weight:700;color:' + color + ';line-height:1.1;';
+      v.textContent = value;
+      c.appendChild(v);
+      var l = document.createElement('div');
+      l.style.cssText = 'font-size:.7rem;color:var(--muted);margin-top:.2rem;text-transform:uppercase;letter-spacing:.04em;';
+      l.textContent = label;
+      c.appendChild(l);
+      if (subtext) {
+        var s = document.createElement('div');
+        s.style.cssText = 'font-size:.68rem;color:var(--muted);margin-top:.15rem;';
+        s.textContent = subtext;
+        c.appendChild(s);
+      }
+      return c;
+    }
+    chipRow.appendChild(makeChip('Total Gear Score', formatPower(totalGearScore), 'var(--accent)', merged.heroes.length + ' heroes'));
+    chipRow.appendChild(makeChip('Avg Score / Hero', formatPower(avgGearScore), 'var(--green)', 'max 6,000 per hero'));
+    chipRow.appendChild(makeChip('Decorations', String(counts.decos), 'var(--blue)', ''));
+    chipRow.appendChild(makeChip('Beasts / HTs', counts.beasts + ' / ' + counts.hts, 'var(--yellow)', ''));
+    container.appendChild(chipRow);
 
     // ── Top Heroes (by gear score) ──
     if (merged.heroes.length > 0) {
@@ -3521,17 +3574,22 @@
           var name = heroName(id);
           var branch = heroBranch(id);
           var bc = branchClass(branch);
-          var gs = heroGearScore(hero);
+          var bd = heroGearScoreBreakdown(hero);
+          var gs = bd.total;
+          var refinePct = gs > 0 ? (bd.refineTotal / gs * 100) : 0;
+          var branchColor = bc === 'army' ? 'var(--army)' : bc === 'navy' ? 'var(--navy)' : 'var(--air)';
 
           var card = document.createElement('div');
-          card.style.cssText = 'display:flex;align-items:center;gap:.65rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.65rem;';
+          card.style.cssText = 'display:flex;flex-direction:column;gap:.45rem;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.75rem;';
 
+          var topRow = document.createElement('div');
+          topRow.style.cssText = 'display:flex;align-items:center;gap:.65rem;';
           var img = document.createElement('img');
-          img.style.cssText = 'width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid var(--' + (bc === 'army' ? 'army' : bc === 'navy' ? 'navy' : 'air') + ');flex-shrink:0;';
+          img.style.cssText = 'width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid ' + branchColor + ';flex-shrink:0;';
           img.src = heroIconUrl(id);
           img.alt = '';
           img.onerror = function() { this.style.display = 'none'; };
-          card.appendChild(img);
+          topRow.appendChild(img);
 
           var info = document.createElement('div');
           info.style.cssText = 'flex:1;min-width:0;';
@@ -3540,16 +3598,43 @@
           nameDiv.textContent = name;
           info.appendChild(nameDiv);
           var metaDiv = document.createElement('div');
-          metaDiv.style.cssText = 'font-size:.72rem;color:var(--muted);';
-          metaDiv.textContent = branch + ' \u00B7 Lv.' + (hero.level || '?') + ' \u00B7 ' + (hero.heroEquips || []).length + '/6 gear';
+          metaDiv.style.cssText = 'font-size:.7rem;color:var(--muted);';
+          metaDiv.textContent = branch + ' \u00B7 Lv.' + (hero.level || '?') + ' \u00B7 ' + (hero.heroEquips || []).length + '/6';
           info.appendChild(metaDiv);
-          card.appendChild(info);
+          topRow.appendChild(info);
+
+          var gsEl = document.createElement('div');
+          gsEl.style.cssText = 'font-size:.95rem;font-weight:700;color:var(--accent);white-space:nowrap;';
+          gsEl.textContent = formatPower(gs);
+          topRow.appendChild(gsEl);
+          card.appendChild(topRow);
 
           if (gs > 0) {
-            var gsEl = document.createElement('div');
-            gsEl.style.cssText = 'font-size:.8rem;font-weight:700;color:var(--accent);white-space:nowrap;';
-            gsEl.textContent = formatPower(gs);
-            card.appendChild(gsEl);
+            var splitBar = document.createElement('div');
+            splitBar.style.cssText = 'display:flex;height:5px;border-radius:3px;overflow:hidden;background:var(--bg);';
+            var refineSeg = document.createElement('div');
+            refineSeg.style.cssText = 'background:var(--green);width:' + refinePct + '%;';
+            refineSeg.title = 'Refine ' + bd.refineTotal;
+            splitBar.appendChild(refineSeg);
+            var runeSeg = document.createElement('div');
+            runeSeg.style.cssText = 'background:var(--accent);width:' + (100 - refinePct) + '%;';
+            runeSeg.title = 'Rune ' + bd.runeTotal;
+            splitBar.appendChild(runeSeg);
+            card.appendChild(splitBar);
+
+            var legend = document.createElement('div');
+            legend.style.cssText = 'display:flex;justify-content:space-between;font-size:.65rem;color:var(--muted);';
+            var lr = document.createElement('span');
+            var sq1 = document.createElement('span'); sq1.style.color = 'var(--green)'; sq1.textContent = '\u25A0 ';
+            lr.appendChild(sq1);
+            lr.appendChild(document.createTextNode('Refine ' + bd.refineTotal));
+            legend.appendChild(lr);
+            var lu = document.createElement('span');
+            lu.appendChild(document.createTextNode('Rune ' + bd.runeTotal + ' '));
+            var sq2 = document.createElement('span'); sq2.style.color = 'var(--accent)'; sq2.textContent = '\u25A0';
+            lu.appendChild(sq2);
+            legend.appendChild(lu);
+            card.appendChild(legend);
           }
 
           topGrid.appendChild(card);
@@ -3560,7 +3645,53 @@
       container.appendChild(topSection);
     }
 
-    // ── Branch breakdown ──
+    // ── Top 3 Enigma Beasts (by deployed level) ──
+    var beastsDeployed = [];
+    if (merged.enigmas && merged.enigmas.fields) {
+      merged.enigmas.fields.forEach(function(f) {
+        (f.slots || []).forEach(function(s) {
+          if (s.beast && s.beastId && String(s.beastId) !== '0') {
+            beastsDeployed.push({ beast: s.beast, level: s.level || 0, fieldName: f.name });
+          }
+        });
+      });
+      beastsDeployed.sort(function(a, b) { return (b.level || 0) - (a.level || 0); });
+    }
+    if (beastsDeployed.length > 0) {
+      var beastsSection = document.createElement('div');
+      beastsSection.style.cssText = 'margin-top:1.25rem;';
+      var bt = document.createElement('h3');
+      bt.style.cssText = 'font-size:.9rem;color:var(--text);margin-bottom:.75rem;font-weight:600;';
+      bt.textContent = 'Top Enigma Beasts';
+      beastsSection.appendChild(bt);
+      var beastsGrid = document.createElement('div');
+      beastsGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.65rem;';
+      beastsDeployed.slice(0, 3).forEach(function(bi) {
+        var b = bi.beast;
+        var c = document.createElement('div');
+        c.style.cssText = 'display:flex;align-items:center;gap:.65rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.65rem;';
+        var bn = document.createElement('div');
+        bn.style.cssText = 'flex:1;min-width:0;';
+        var nm = document.createElement('div');
+        nm.style.cssText = 'font-weight:600;font-size:.85rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        nm.textContent = b.name || ('Beast #' + b.id);
+        bn.appendChild(nm);
+        var md = document.createElement('div');
+        md.style.cssText = 'font-size:.7rem;color:var(--muted);';
+        md.textContent = (b.element || '') + ' \u00B7 ' + bi.fieldName;
+        bn.appendChild(md);
+        c.appendChild(bn);
+        var lvEl = document.createElement('div');
+        lvEl.style.cssText = 'font-size:.9rem;font-weight:700;color:var(--yellow);white-space:nowrap;';
+        lvEl.textContent = 'Lv.' + bi.level;
+        c.appendChild(lvEl);
+        beastsGrid.appendChild(c);
+      });
+      beastsSection.appendChild(beastsGrid);
+      container.appendChild(beastsSection);
+    }
+
+    // ── Branch breakdown (donut chart) ──
     if (merged.heroes.length > 0) {
       var branchSection = document.createElement('div');
       branchSection.style.cssText = 'margin-top:1.25rem;';
@@ -3575,59 +3706,57 @@
         if (branchCounts[b] !== undefined) branchCounts[b]++;
       });
 
-      var branchBar = document.createElement('div');
-      branchBar.style.cssText = 'display:flex;gap:.5rem;';
-      [
-        { label: 'Army', count: branchCounts['Army'], color: 'var(--army)', cls: 'army' },
-        { label: 'Navy', count: branchCounts['Navy'], color: 'var(--navy)', cls: 'navy' },
-        { label: 'Air Force', count: branchCounts['Air Force'], color: 'var(--air)', cls: 'air' }
-      ].forEach(function(b) {
-        var pill = document.createElement('div');
-        pill.style.cssText = 'flex:1;text-align:center;padding:.6rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;border-left:3px solid ' + b.color + ';';
-        var num = document.createElement('div');
-        num.style.cssText = 'font-size:1.2rem;font-weight:700;color:' + b.color + ';';
-        num.textContent = b.count;
-        pill.appendChild(num);
-        var lbl = document.createElement('div');
-        lbl.style.cssText = 'font-size:.7rem;color:var(--muted);';
-        lbl.textContent = b.label;
-        pill.appendChild(lbl);
-        branchBar.appendChild(pill);
+      var branchCard = document.createElement('div');
+      branchCard.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;';
+
+      var segs = [
+        { value: branchCounts['Army'], color: '#3fb950', label: 'Army' },
+        { value: branchCounts['Navy'], color: '#388bfd', label: 'Navy' },
+        { value: branchCounts['Air Force'], color: '#d29922', label: 'Air Force' }
+      ];
+      var donut = buildDonutChart(segs, 120, 0.62);
+      if (donut) {
+        var donutWrap = document.createElement('div');
+        donutWrap.style.cssText = 'position:relative;flex-shrink:0;';
+        donutWrap.appendChild(donut);
+        var center = document.createElement('div');
+        center.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;';
+        var cv = document.createElement('div');
+        cv.style.cssText = 'font-size:1.3rem;font-weight:700;color:var(--text);line-height:1;';
+        cv.textContent = merged.heroes.length;
+        center.appendChild(cv);
+        var cl = document.createElement('div');
+        cl.style.cssText = 'font-size:.65rem;color:var(--muted);margin-top:.15rem;';
+        cl.textContent = 'Heroes';
+        center.appendChild(cl);
+        donutWrap.appendChild(center);
+        branchCard.appendChild(donutWrap);
+      }
+
+      var legendWrap = document.createElement('div');
+      legendWrap.style.cssText = 'display:flex;flex-direction:column;gap:.4rem;flex:1;min-width:140px;';
+      segs.forEach(function(s) {
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:.5rem;';
+        var dot = document.createElement('span');
+        dot.style.cssText = 'width:10px;height:10px;border-radius:2px;background:' + s.color + ';flex-shrink:0;';
+        row.appendChild(dot);
+        var lbl = document.createElement('span');
+        lbl.style.cssText = 'font-size:.8rem;color:var(--text);flex:1;';
+        lbl.textContent = s.label;
+        row.appendChild(lbl);
+        var cnt = document.createElement('span');
+        cnt.style.cssText = 'font-size:.8rem;color:var(--muted);font-weight:600;';
+        var pct = merged.heroes.length > 0 ? Math.round(s.value / merged.heroes.length * 100) : 0;
+        cnt.textContent = s.value + ' (' + pct + '%)';
+        row.appendChild(cnt);
+        legendWrap.appendChild(row);
       });
-      branchSection.appendChild(branchBar);
+      branchCard.appendChild(legendWrap);
+
+      branchSection.appendChild(branchCard);
       container.appendChild(branchSection);
     }
-
-    // ── Quick links to other tabs ──
-    var linksSection = document.createElement('div');
-    linksSection.style.cssText = 'margin-top:1.5rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.5rem;';
-    var linkDefs = [
-      { tab: 'heroes', label: 'Heroes & Gear', desc: counts.heroes + ' heroes, ' + counts.gear + ' gear pieces' },
-      { tab: 'decorations', label: 'Decorations', desc: counts.decos + ' placed decorations' },
-      { tab: 'bases', label: 'Base Skins', desc: 'Castle skins & effects' },
-      { tab: 'enigma', label: 'Enigma Beasts', desc: counts.beasts + ' beasts deployed' },
-      { tab: 'chips', label: 'HT Chips', desc: counts.hts + ' Heavy Troopers' }
-    ];
-    linkDefs.forEach(function(def) {
-      var link = document.createElement('button');
-      link.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.75rem;text-align:left;cursor:pointer;transition:border-color .15s;';
-      link.addEventListener('mouseenter', function() { link.style.borderColor = 'var(--accent)'; });
-      link.addEventListener('mouseleave', function() { link.style.borderColor = 'var(--border)'; });
-      link.addEventListener('click', function() {
-        var btn = document.querySelector('.tab-btn[data-tab="' + def.tab + '"]');
-        if (btn) switchTab(btn);
-      });
-      var linkLabel = document.createElement('div');
-      linkLabel.style.cssText = 'font-weight:600;font-size:.85rem;color:var(--text);';
-      linkLabel.textContent = def.label;
-      link.appendChild(linkLabel);
-      var linkDesc = document.createElement('div');
-      linkDesc.style.cssText = 'font-size:.72rem;color:var(--muted);margin-top:.2rem;';
-      linkDesc.textContent = def.desc;
-      link.appendChild(linkDesc);
-      linksSection.appendChild(link);
-    });
-    container.appendChild(linksSection);
   }
 
   // ── Gear slot name helper ─────────────────────────────────────────────────
