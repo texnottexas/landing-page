@@ -732,9 +732,18 @@
   .gear-roll-pct { font-size: .6rem; color: var(--muted); }
 
   /* Rune icon + stars */
-  .gear-rune-wrap { display: flex; align-items: center; gap: .3rem; margin-top: .25rem; }
+  .gear-rune-wrap { display: flex; align-items: center; gap: .3rem; margin-top: .25rem; cursor: pointer; position: relative; }
+  .gear-rune-wrap:hover { opacity: .85; }
   .gear-rune-wrap img { width: 28px; height: 28px; border-radius: 4px; flex-shrink: 0; }
   .gear-rune-name-text { font-size: .7rem; color: var(--accent); }
+
+  /* Rune tooltip */
+  .rune-tooltip { position: fixed; z-index: 9999; background: var(--surface); border: 1px solid var(--accent); border-radius: 8px; padding: .6rem .8rem; max-width: 320px; box-shadow: 0 4px 16px rgba(0,0,0,.6); pointer-events: auto; }
+  .rune-tooltip-header { display: flex; align-items: center; gap: .4rem; margin-bottom: .35rem; }
+  .rune-tooltip-header img { width: 24px; height: 24px; border-radius: 3px; }
+  .rune-tooltip-name { font-size: .8rem; font-weight: 600; color: var(--accent); }
+  .rune-tooltip-desc { font-size: .72rem; color: var(--text); line-height: 1.5; }
+  .rune-tooltip-desc b { color: var(--yellow); font-weight: 600; }
 
   /* Hero power badge */
   .hero-power { font-size: .7rem; color: var(--muted); margin-left: auto; white-space: nowrap; font-weight: 500; flex-shrink: 0; }
@@ -3595,6 +3604,112 @@
   // Rune name → icon filename
   var RUNE_ICON = {"All-Out Surge":"all-out-surge","Artillery Storm":"artillery-storm","Unbreakable":"unbreakable","Steel Torrent":"steel-torrent","Tactical Awareness":"tactical-awareness","Stealth Hologram":"stealth-hologram","Searing":"searing","Armor-Breaking":"armor-breaking","Impact":"impact","Magnetic Field":"magnetic-field","Flammable":"flammable","Heavy Blow":"heavy-blow","Debilitate":"debilitate","Magnetize":"magnetize"};
 
+  // Rune description templates + per-star-level values (from hero_equip_skill_rd_library TABLE)
+  // d=description with {v} and {t} placeholders, v=values (1-star), v3=values (3-star override).
+  // Status applier values are [targets, value] arrays.
+  var RUNE_DESC = {
+    "Artillery Storm":{d:"If the hero equipped with this gear has the Attack Enhancement effect, then this effect is boosted by {v}%.",v:[4,7,11,15,20,25,30]},
+    "All-Out Surge":{d:"In the first round of battle, after the hero triggers the active skill, the hero will trigger it an additional time. The re-triggered skill deals {v}% of the initial trigger's damage.",v:[15,18,22,27,33,40,50]},
+    "Steel Torrent":{d:"If the hero equipped with this gear has the HP Boost effect, then this effect is boosted by {v}%.",v:[4,7,11,15,20,25,30]},
+    "Unbreakable":{d:"If the hero equipped with this gear has the Indestructible effect, the duration is extended by 1 round at {v}% of the original effect.",v:[15,18,22,27,33,40,50]},
+    "Tactical Awareness":{d:"After equipping this gear, all your units gain a {v}% Damage Increase attribute.",v:[10,15,20],v3:[10,15,20,25,30,35,40]},
+    "Stealth Hologram":{d:"After equipping this gear, all your units gain a {v}% Decreased Damage Taken attribute.",v:[10,15,20],v3:[10,15,20,25,30,35,40]},
+    "Searing":{d:"Upon triggering the active skill, adds 1 stack of {v}% Ignition effect to {t} random target(s).",v:[[1,15],[1,30],[2,30]]},
+    "Armor-Breaking":{d:"Upon triggering the active skill, adds 1 stack of {v}% Vulnerable effect to {t} random target(s).",v:[[1,15],[1,30],[2,30]]},
+    "Impact":{d:"Upon triggering the active skill, adds 1 stack of {v}% Debilitation effect to {t} random target(s).",v:[[1,15],[1,30],[2,30]]},
+    "Magnetic Field":{d:"Upon triggering the active skill, adds 1 stack of {v}% Magnetic Pulse effect to {t} random target(s).",v:[[1,15],[1,30],[2,30]]},
+    "Flammable":{d:"If the hero equipped with this gear has the Ignition effect, then this effect is increased by {v}%.",v:[15,22,30]},
+    "Heavy Blow":{d:"If the hero equipped with this gear has the Vulnerable effect, then this effect is increased by {v}%.",v:[15,22,30]},
+    "Debilitate":{d:"If the hero equipped with this gear has the Debilitation effect, then this effect is increased by {v}%.",v:[15,22,30]},
+    "Magnetize":{d:"If the hero equipped with this gear has the Magnetic Pulse effect, then this effect is increased by {v}%.",v:[15,22,30]}
+  };
+
+  // Build tooltip description parts for a resolved rune (DOM-safe, no innerHTML)
+  function runeTooltipParts(name, star, starMax) {
+    var rd = RUNE_DESC[name];
+    if (!rd) return null;
+    var vals = (starMax === 6 && rd.v3) ? rd.v3 : rd.v;
+    var entry = vals[star];
+    if (entry == null) return null;
+    if (Array.isArray(entry)) {
+      return { text: rd.d.replace('{t}', String(entry[0])).replace('{v}', String(entry[1])), bolds: [String(entry[1]) + '%', String(entry[0]) + ' random'] };
+    }
+    return { text: rd.d.replace('{v}', String(entry)), bolds: [String(entry) + '%'] };
+  }
+
+  // Render description into a DOM element with bold value highlights
+  function renderRuneDesc(parent, parts) {
+    var remaining = parts.text;
+    parts.bolds.forEach(function(hl) {
+      var idx = remaining.indexOf(hl);
+      if (idx >= 0) {
+        if (idx > 0) parent.appendChild(document.createTextNode(remaining.substring(0, idx)));
+        var b = document.createElement('b');
+        b.textContent = hl;
+        parent.appendChild(b);
+        remaining = remaining.substring(idx + hl.length);
+      }
+    });
+    if (remaining) parent.appendChild(document.createTextNode(remaining));
+  }
+
+  // Show/dismiss rune tooltip on click
+  function showRuneTooltip(e, runeData) {
+    e.stopPropagation();
+    dismissRuneTooltip();
+    var tip = document.createElement('div');
+    tip.className = 'rune-tooltip';
+    tip.id = 'rune-tooltip-active';
+
+    var hdr = document.createElement('div');
+    hdr.className = 'rune-tooltip-header';
+    var iconUrl = runeIconUrl(runeData.n);
+    if (iconUrl) {
+      var img = document.createElement('img');
+      img.src = iconUrl; img.alt = '';
+      img.onerror = function() { this.style.display = 'none'; };
+      hdr.appendChild(img);
+    }
+    var nameEl = document.createElement('span');
+    nameEl.className = 'rune-tooltip-name';
+    nameEl.textContent = runeData.n;
+    hdr.appendChild(nameEl);
+    hdr.appendChild(runeStarSVG(runeData.s, runeData.sm));
+    tip.appendChild(hdr);
+
+    var parts = runeTooltipParts(runeData.n, runeData.s, runeData.sm);
+    if (parts) {
+      var descEl = document.createElement('div');
+      descEl.className = 'rune-tooltip-desc';
+      renderRuneDesc(descEl, parts);
+      tip.appendChild(descEl);
+    }
+
+    document.body.appendChild(tip);
+
+    // Position near click, keep on screen
+    var rect = e.currentTarget.getBoundingClientRect();
+    var tw = tip.offsetWidth, th = tip.offsetHeight;
+    var left = rect.left + rect.width / 2 - tw / 2;
+    var top = rect.bottom + 6;
+    if (left < 8) left = 8;
+    if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
+    if (top + th > window.innerHeight - 8) top = rect.top - th - 6;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+
+  function dismissRuneTooltip() {
+    var old = document.getElementById('rune-tooltip-active');
+    if (old) old.parentNode.removeChild(old);
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.rune-tooltip') && !e.target.closest('.gear-rune-wrap')) {
+      dismissRuneTooltip();
+    }
+  });
+
   // Resolve rune with fallback (6-digit derivation, alternate prefix)
   // Fallback: 6-digit IDs = 5-digit base × 10 + star_level.
   // Alternate prefixes {slot}01XX and {slot}03XX map to same runes as {slot}02XX.
@@ -3900,6 +4015,10 @@
             rNameSpan.textContent = runeData.n;
             runeWrap.appendChild(rNameSpan);
             runeWrap.appendChild(runeStarSVG(runeData.s, runeData.sm));
+            // Click to show rune tooltip
+            (function(rd) {
+              runeWrap.addEventListener('click', function(ev) { showRuneTooltip(ev, rd); });
+            })(runeData);
           } else {
             var fallbackSpan = document.createElement('span');
             fallbackSpan.className = 'gear-rune-name-text';
