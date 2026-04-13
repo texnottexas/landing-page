@@ -4676,6 +4676,11 @@
   }
 
   function populateMarchHeroSelects(heroes) {
+    // Sort heroes alphabetically by resolved display name
+    var sortedHeroes = heroes.slice().sort(function(a, b) {
+      return heroName(a.id).localeCompare(heroName(b.id));
+    });
+
     for (var i = 1; i <= 3; i++) {
       var sel = document.getElementById('march-hero-' + i);
       if (!sel) continue;
@@ -4684,13 +4689,44 @@
       emptyOpt.value = '';
       emptyOpt.textContent = '-- Select Hero --';
       sel.appendChild(emptyOpt);
-      heroes.forEach(function(h) {
+      sortedHeroes.forEach(function(h) {
         var opt = document.createElement('option');
         opt.value = String(h.id);
         opt.textContent = heroName(h.id);
         sel.appendChild(opt);
       });
     }
+
+    // Prevent picking the same hero in multiple slots — disable options in
+    // siblings that are already chosen elsewhere.
+    function refreshDisabledStates() {
+      var chosen = [];
+      for (var j = 1; j <= 3; j++) {
+        var s = document.getElementById('march-hero-' + j);
+        if (s && s.value) chosen.push({ slot: j, val: s.value });
+      }
+      for (var k = 1; k <= 3; k++) {
+        var s2 = document.getElementById('march-hero-' + k);
+        if (!s2) continue;
+        var myVal = s2.value;
+        Array.prototype.slice.call(s2.options).forEach(function(opt) {
+          if (!opt.value) { opt.disabled = false; return; }
+          // disable if this option is chosen in a different slot
+          var takenElsewhere = chosen.some(function(c) { return c.slot !== k && c.val === opt.value; });
+          opt.disabled = takenElsewhere && opt.value !== myVal;
+        });
+      }
+    }
+    for (var m = 1; m <= 3; m++) {
+      (function(n) {
+        var s3 = document.getElementById('march-hero-' + n);
+        if (s3 && !s3._dedupeWired) {
+          s3._dedupeWired = true;
+          s3.addEventListener('change', refreshDisabledStates);
+        }
+      })(m);
+    }
+    refreshDisabledStates();
   }
 
   function resetMarchForm() {
@@ -5905,6 +5941,21 @@
     searchInput.className = 'tab-search';
     header.appendChild(searchInput);
 
+    var skinSort = document.createElement('select');
+    skinSort.className = 'filter-select';
+    skinSort.id = 'skin-sort';
+    [
+      { v: 'az', label: 'A-Z' },
+      { v: 'za', label: 'Z-A' },
+      { v: 'power', label: 'Power (high \u2192 low)' },
+      { v: 'active', label: 'Active first' }
+    ].forEach(function(o) {
+      var opt = document.createElement('option');
+      opt.value = o.v; opt.textContent = 'Sort: ' + o.label;
+      skinSort.appendChild(opt);
+    });
+    header.appendChild(skinSort);
+
     // Buff filter dropdown — collect unique buff names from all owned skins
     var buffSet = {};
     effectIds.forEach(function(sid) {
@@ -6094,16 +6145,60 @@
       document.body.appendChild(overlay);
     }
 
-    // Sort: active first, then by power desc
-    var sorted = effectIds.slice().sort(function(a, b) {
-      if (a === activeId) return -1;
-      if (b === activeId) return 1;
-      var pa = (SKIN_SD[String(a)] && SKIN_SD[String(a)][5]) || 0;
-      var pb = (SKIN_SD[String(b)] && SKIN_SD[String(b)][5]) || 0;
-      return pb - pa;
+    // Sort helper
+    function sortSkinIds(ids, mode) {
+      return ids.slice().sort(function(a, b) {
+        var sda = SKIN_SD[String(a)], sdb = SKIN_SD[String(b)];
+        var na = (sda && sda[0]) ? sda[0] : String(a);
+        var nb = (sdb && sdb[0]) ? sdb[0] : String(b);
+        switch (mode) {
+          case 'za': return nb.localeCompare(na);
+          case 'power':
+            var pa = (sda && sda[5]) || 0;
+            var pb = (sdb && sdb[5]) || 0;
+            return pb - pa || na.localeCompare(nb);
+          case 'active':
+            if (a === activeId) return -1;
+            if (b === activeId) return 1;
+            return na.localeCompare(nb);
+          default: return na.localeCompare(nb); // az
+        }
+      });
+    }
+
+    var sorted = sortSkinIds(effectIds, 'az');
+    sorted.forEach(function(sid) {
+      var c = buildSkinCard(sid);
+      c.setAttribute('data-id', String(sid));
+      var sd = SKIN_SD[String(sid)];
+      c.setAttribute('data-name', (sd && sd[0] ? sd[0] : '').toLowerCase());
+      c.setAttribute('data-power', String((sd && sd[5]) || 0));
+      grid.appendChild(c);
     });
 
-    sorted.forEach(function(sid) { grid.appendChild(buildSkinCard(sid)); });
+    skinSort.addEventListener('change', function() {
+      var mode = this.value;
+      var cards = Array.prototype.slice.call(grid.children);
+      cards.sort(function(a, b) {
+        var na = a.getAttribute('data-name') || '';
+        var nb = b.getAttribute('data-name') || '';
+        switch (mode) {
+          case 'za': return nb.localeCompare(na);
+          case 'power':
+            var pa = parseInt(a.getAttribute('data-power'), 10) || 0;
+            var pb = parseInt(b.getAttribute('data-power'), 10) || 0;
+            return pb - pa || na.localeCompare(nb);
+          case 'active':
+            var ida = parseInt(a.getAttribute('data-id'), 10);
+            var idb = parseInt(b.getAttribute('data-id'), 10);
+            if (ida === activeId) return -1;
+            if (idb === activeId) return 1;
+            return na.localeCompare(nb);
+          default: return na.localeCompare(nb);
+        }
+      });
+      cards.forEach(function(c) { grid.appendChild(c); });
+    });
 
     // Combined search + buff + skill filter
     function filterSkins() {
@@ -6165,6 +6260,21 @@
     countEl.textContent = ownedIds.length + ' base decoration' + (ownedIds.length !== 1 ? 's' : '') + ' owned';
     ownedToggle.appendChild(countEl);
     headerRow.appendChild(ownedToggle);
+    // Sort dropdown
+    var bdSort = document.createElement('select');
+    bdSort.className = 'filter-select';
+    bdSort.id = 'basedecor-sort';
+    [
+      { v: 'az', label: 'A-Z' },
+      { v: 'za', label: 'Z-A' },
+      { v: 'newest', label: 'Newest' },
+      { v: 'oldest', label: 'Oldest' }
+    ].forEach(function(o) {
+      var opt = document.createElement('option');
+      opt.value = o.v; opt.textContent = 'Sort: ' + o.label;
+      bdSort.appendChild(opt);
+    });
+    headerRow.appendChild(bdSort);
     var bdSearch = document.createElement('input');
     bdSearch.type = 'search'; bdSearch.placeholder = 'Search\u2026'; bdSearch.className = 'tab-search';
     headerRow.appendChild(bdSearch);
@@ -6178,14 +6288,30 @@
       ownedChev.style.transform = hidden ? '' : 'rotate(-90deg)';
     });
 
-    // Sort by ID (newest first)
-    var sortedIds = ownedIds.slice().sort(function(a, b) { return b - a; });
+    function sortBaseDecorIds(ids, mode) {
+      return ids.slice().sort(function(a, b) {
+        var da = BASE_DECOR_DATA[String(a)];
+        var db = BASE_DECOR_DATA[String(b)];
+        var na = (da && da.n) ? da.n : String(a);
+        var nb = (db && db.n) ? db.n : String(b);
+        switch (mode) {
+          case 'za': return nb.localeCompare(na);
+          case 'newest': return b - a;
+          case 'oldest': return a - b;
+          default: return na.localeCompare(nb); // az
+        }
+      });
+    }
+
+    var sortedIds = sortBaseDecorIds(ownedIds, 'az');
 
     sortedIds.forEach(function(id) {
       var data = BASE_DECOR_DATA[String(id)];
       var card = document.createElement('div');
       card.className = 'basedecor-card';
       card.setAttribute('data-search', (data ? data.n : '').toLowerCase());
+      card.setAttribute('data-id', String(id));
+      card.setAttribute('data-name', (data ? data.n : '').toLowerCase());
 
       if (data && data.i) {
         var img = document.createElement('img');
@@ -6254,6 +6380,24 @@
       grid.querySelectorAll('.basedecor-card').forEach(function(c) {
         c.style.display = (!q || (c.getAttribute('data-search') || '').indexOf(q) >= 0) ? '' : 'none';
       });
+    });
+
+    bdSort.addEventListener('change', function() {
+      var mode = this.value;
+      var cards = Array.prototype.slice.call(grid.children);
+      cards.sort(function(a, b) {
+        var ida = parseInt(a.getAttribute('data-id'), 10);
+        var idb = parseInt(b.getAttribute('data-id'), 10);
+        var na = a.getAttribute('data-name') || '';
+        var nb = b.getAttribute('data-name') || '';
+        switch (mode) {
+          case 'za': return nb.localeCompare(na);
+          case 'newest': return idb - ida;
+          case 'oldest': return ida - idb;
+          default: return na.localeCompare(nb);
+        }
+      });
+      cards.forEach(function(c) { grid.appendChild(c); });
     });
 
     // Not Owned base decorations
