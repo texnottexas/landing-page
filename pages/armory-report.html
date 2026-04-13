@@ -543,6 +543,7 @@
   .deco-section-chevron { transition: transform .2s; font-size: .7rem; color: var(--muted); }
   .deco-section.collapsed .deco-section-chevron { transform: rotate(-90deg); }
   .deco-section.collapsed .deco-section-grid { display: none; }
+  .deco-section.collapsed .deco-subsection-wrap { display: none; }
   .deco-section-title { font-size: .8rem; font-weight: 700; color: var(--text); }
   .deco-section-count { font-size: .7rem; color: var(--muted); }
   .deco-section-grid {
@@ -3540,6 +3541,21 @@
     chipRow.appendChild(makeChip('Total Gear Score', formatPower(totalGearScore), 'var(--accent)', merged.heroes.length + ' heroes'));
     chipRow.appendChild(makeChip('Avg Score / Hero', formatPower(avgGearScore), 'var(--green)', 'max 6,000 per hero'));
     chipRow.appendChild(makeChip('Decorations', String(counts.decos), 'var(--blue)', ''));
+    // Decor Sets chip with level breakdown
+    var suitIdsOv = (merged.decorations && merged.decorations.suit) ? merged.decorations.suit : [];
+    var suitLevelsOv = (merged.decorations && merged.decorations.suitLevelBuff) ? merged.decorations.suitLevelBuff : {};
+    var totalSuits = (typeof DECOR_SUITS !== 'undefined') ? Object.keys(DECOR_SUITS).length : 22;
+    var levelBuckets = {1:0, 2:0, 3:0, 4:0, 5:0};
+    suitIdsOv.forEach(function(sid) {
+      var lv = suitLevelsOv[String(sid)] || 0;
+      if (lv > 0 && levelBuckets[lv] !== undefined) levelBuckets[lv]++;
+    });
+    var lvParts = [];
+    for (var lv = 5; lv >= 1; lv--) {
+      if (levelBuckets[lv]) lvParts.push('Lv' + lv + ':' + levelBuckets[lv]);
+    }
+    var suitSub = lvParts.length ? lvParts.join(' \u00B7 ') : 'no sets complete';
+    chipRow.appendChild(makeChip('Decor Sets', suitIdsOv.length + ' / ' + totalSuits, '#a371f7', suitSub));
     chipRow.appendChild(makeChip('Beasts / HTs', counts.beasts + ' / ' + counts.hts, 'var(--yellow)', ''));
     container.appendChild(chipRow);
 
@@ -3576,7 +3592,9 @@
           var bc = branchClass(branch);
           var bd = heroGearScoreBreakdown(hero);
           var gs = bd.total;
-          var refinePct = gs > 0 ? (bd.refineTotal / gs * 100) : 0;
+          // Scale to absolute max (6000 = 6 slots × 1000 per slot)
+          var refineBarPct = (bd.refineTotal / 6000) * 100;
+          var runeBarPct = (bd.runeTotal / 6000) * 100;
           var branchColor = bc === 'army' ? 'var(--army)' : bc === 'navy' ? 'var(--navy)' : 'var(--air)';
 
           var card = document.createElement('div');
@@ -3610,28 +3628,33 @@
           card.appendChild(topRow);
 
           if (gs > 0) {
+            // Bar shows score out of absolute max (6000). Empty space = distance-to-max.
             var splitBar = document.createElement('div');
-            splitBar.style.cssText = 'display:flex;height:5px;border-radius:3px;overflow:hidden;background:var(--bg);';
+            splitBar.style.cssText = 'display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--bg);border:1px solid var(--border);';
             var refineSeg = document.createElement('div');
-            refineSeg.style.cssText = 'background:var(--green);width:' + refinePct + '%;';
-            refineSeg.title = 'Refine ' + bd.refineTotal;
+            refineSeg.style.cssText = 'background:#3fb950;width:' + refineBarPct + '%;';
+            refineSeg.title = 'Refine ' + bd.refineTotal + ' / 2400';
             splitBar.appendChild(refineSeg);
             var runeSeg = document.createElement('div');
-            runeSeg.style.cssText = 'background:var(--accent);width:' + (100 - refinePct) + '%;';
-            runeSeg.title = 'Rune ' + bd.runeTotal;
+            runeSeg.style.cssText = 'background:#a371f7;width:' + runeBarPct + '%;';
+            runeSeg.title = 'Rune ' + bd.runeTotal + ' / 3600';
             splitBar.appendChild(runeSeg);
             card.appendChild(splitBar);
 
             var legend = document.createElement('div');
             legend.style.cssText = 'display:flex;justify-content:space-between;font-size:.65rem;color:var(--muted);';
             var lr = document.createElement('span');
-            var sq1 = document.createElement('span'); sq1.style.color = 'var(--green)'; sq1.textContent = '\u25A0 ';
+            var sq1 = document.createElement('span'); sq1.style.color = '#3fb950'; sq1.textContent = '\u25A0 ';
             lr.appendChild(sq1);
             lr.appendChild(document.createTextNode('Refine ' + bd.refineTotal));
             legend.appendChild(lr);
+            var lm = document.createElement('span');
+            lm.style.cssText = 'color:var(--muted);font-variant-numeric:tabular-nums;';
+            lm.textContent = Math.round(gs / 6000 * 100) + '% of max';
+            legend.appendChild(lm);
             var lu = document.createElement('span');
             lu.appendChild(document.createTextNode('Rune ' + bd.runeTotal + ' '));
-            var sq2 = document.createElement('span'); sq2.style.color = 'var(--accent)'; sq2.textContent = '\u25A0';
+            var sq2 = document.createElement('span'); sq2.style.color = '#a371f7'; sq2.textContent = '\u25A0';
             lu.appendChild(sq2);
             legend.appendChild(lu);
             card.appendChild(legend);
@@ -5688,9 +5711,12 @@
         });
         section.appendChild(header);
 
+        // Use a custom class (not deco-section-grid) so the parent's .collapsed
+        // CSS rule (which targets .deco-section-grid) doesn't fight our inline
+        // display:block. Collapse is handled below via inline style.
         var bodyWrap = document.createElement('div');
-        bodyWrap.className = 'deco-section-grid';
-        bodyWrap.style.cssText = 'display:block;padding:0;'; // override default grid — sub-sections manage their own grids
+        bodyWrap.className = 'deco-subsection-wrap';
+        bodyWrap.style.cssText = 'padding:0;';
         nonEmptySubKeys.forEach(function(sk) {
           bodyWrap.appendChild(buildSubSection(sk, subBuckets[sk], catIdx));
         });
@@ -5753,18 +5779,30 @@
         }
         setCard.appendChild(nameRow);
 
-        // Pieces count
+        // Pieces count — sets in suitIds are fully owned (set bonus active).
+        // Pieces may be placed OR just owned-in-stock; both contribute to the set.
         if (suitGroupIds) {
-          var ownCount = 0;
+          var placedCount = 0;
           for (var oi = 0; oi < suitGroupIds.length; oi++) {
-            if (playerGroupMap[String(suitGroupIds[oi])]) ownCount++;
+            if (playerGroupMap[String(suitGroupIds[oi])]) placedCount++;
           }
           var piecesEl = document.createElement('div');
           piecesEl.className = 'deco-set-pieces';
-          piecesEl.textContent = ownCount + ' / ' + suitGroupIds.length + ' placed';
+          // All sets here are full (they only show up in suitIds when fully owned).
+          // Show "Complete" plus how many are actively placed.
+          var placedNote = placedCount + ' / ' + suitGroupIds.length + ' placed';
+          var completeTag = document.createElement('span');
+          completeTag.style.cssText = 'color:var(--green);font-weight:600;margin-right:.4rem;';
+          completeTag.textContent = 'Complete';
+          piecesEl.appendChild(completeTag);
+          var placedSpan = document.createElement('span');
+          placedSpan.style.cssText = 'color:var(--muted);';
+          placedSpan.textContent = placedNote;
+          piecesEl.appendChild(placedSpan);
           setCard.appendChild(piecesEl);
 
-          // Component icons
+          // Component icons. Since the set is fully owned, show all at full opacity.
+          // Differentiate "placed" (green border) from "in stock" (yellow border).
           var compRow = document.createElement('div');
           compRow.className = 'deco-set-comp-row';
           for (var ci = 0; ci < suitGroupIds.length; ci++) {
@@ -5779,7 +5817,11 @@
             }
             compImg.alt = '';
             if (playerGroupMap[String(compG)]) {
-              compImg.className = 'deco-comp-owned';
+              compImg.className = 'deco-comp-owned'; // placed — green border
+            } else {
+              // Owned but not placed — full opacity, muted yellow border
+              compImg.style.cssText = 'opacity:1;border:1px solid var(--yellow);';
+              compImg.title = 'Owned (not placed)';
             }
             comp.appendChild(compImg);
             var compName = document.createElement('div');
