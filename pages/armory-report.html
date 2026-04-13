@@ -4592,6 +4592,40 @@
   var DECO_CAT_NAMES = ['March Size', 'Defense', 'Damage Boost', 'Others'];
   var DECO_CAT_COLORS = ['var(--blue)', 'var(--green)', 'var(--red)', 'var(--muted)'];
 
+  // Sub-category buff ID sets (mirrors decor-index.html)
+  var DMG_INC_IDS = {1001001:1,980101:1,980102:1,980103:1,29801011:1,29801021:1};
+  var DMG_DEC_IDS = {980204:1,1003020:1,1003021:1,1003022:1,990143:1,990221:1,29901301:1,29902211:1,10030201:1,20030201:1,21010161:1,98020501:1,980201:1,980202:1,980203:1};
+  var HP_BUFF_IDS = {930000:1,930001:1,930002:1,930003:1,9301170:1,9301171:1,9301172:1,9301173:1,9301174:1,93011701:1,9990769:1};
+  var ATK_BUFF_IDS = {930100:1,930101:1,930102:1,930103:1,9301160:1,9301161:1,9301162:1,9301163:1,9301164:1,93011601:1,990100:1};
+  var CAP_BUFF_IDS = {1131006:1};
+
+  var SUB_CAT_NAMES = {
+    dmg_inc: 'DMG Increase', dmg_dec: 'Decreased DMG', dmg_other: 'Other',
+    hp: 'HP', atk: 'ATK', capacity: 'Capacity', others_misc: 'Other'
+  };
+  var SUB_CAT_ORDER = {
+    2: ['dmg_inc', 'dmg_dec', 'dmg_other'], // Damage Boost
+    3: ['atk', 'hp', 'capacity', 'others_misc'] // Others
+  };
+
+  // Resolve sub-category for a decoration's DECOR_DATA entry
+  function getDecoSubCat(dd) {
+    if (!dd || !dd.b || !dd.b.length) return null;
+    var pid = dd.b[0].i; // primary buff ID
+    if (dd.c === 2) {
+      if (DMG_INC_IDS[pid]) return 'dmg_inc';
+      if (DMG_DEC_IDS[pid]) return 'dmg_dec';
+      return 'dmg_other';
+    }
+    if (dd.c === 3) {
+      if (HP_BUFF_IDS[pid]) return 'hp';
+      if (ATK_BUFF_IDS[pid]) return 'atk';
+      if (CAP_BUFF_IDS[pid]) return 'capacity';
+      return 'others_misc';
+    }
+    return null;
+  }
+
   // Build reverse lookup: groupId -> suitId
   var _groupToSuit = {};
   (function() {
@@ -5270,10 +5304,91 @@
         groups[c].push(d);
       });
 
-      // Render owned sections
+      // Build a sub-section (nested inside a parent category section)
+      function buildSubSection(subKey, items, parentCat) {
+        var subSec = document.createElement('div');
+        subSec.style.cssText = 'margin-top:.5rem;';
+        var subHdr = document.createElement('div');
+        subHdr.style.cssText = 'display:flex;align-items:center;gap:.35rem;padding:.3rem .5rem;cursor:pointer;user-select:none;background:var(--bg);border-radius:6px;margin-bottom:.35rem;';
+        var subChev = document.createElement('span');
+        var subCollapsed = collapsedCats['sub_' + parentCat + '_' + subKey];
+        subChev.style.cssText = 'font-size:.65rem;color:var(--muted);transition:transform .2s;' + (subCollapsed ? 'transform:rotate(-90deg);' : '');
+        subChev.textContent = '\u25BC';
+        subHdr.appendChild(subChev);
+        var subTitle = document.createElement('span');
+        subTitle.style.cssText = 'font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;';
+        subTitle.textContent = SUB_CAT_NAMES[subKey] + ' (' + items.length + ')';
+        subHdr.appendChild(subTitle);
+        subSec.appendChild(subHdr);
+        var subGrid = document.createElement('div');
+        subGrid.className = 'deco-section-grid';
+        if (subCollapsed) subGrid.style.display = 'none';
+        items.forEach(function(d) { subGrid.appendChild(buildDecoCard(d, false)); });
+        subSec.appendChild(subGrid);
+        subHdr.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var hidden = subGrid.style.display === 'none';
+          subGrid.style.display = hidden ? '' : 'none';
+          subChev.style.transform = hidden ? '' : 'rotate(-90deg)';
+          collapsedCats['sub_' + parentCat + '_' + subKey] = !hidden;
+        });
+        return subSec;
+      }
+
+      // Build a category section with optional sub-grouping
+      function buildSectionWithSubs(catIdx, catName, items) {
+        var subOrder = SUB_CAT_ORDER[catIdx];
+        if (!subOrder) return buildSection(catIdx, catName, items, false);
+
+        // Bucket items by sub-category
+        var subBuckets = {};
+        items.forEach(function(d) {
+          var dd = DECOR_DATA ? DECOR_DATA[String(d.groupId)] : null;
+          var sk = getDecoSubCat(dd) || 'others_misc';
+          (subBuckets[sk] = subBuckets[sk] || []).push(d);
+        });
+
+        // If only one sub-bucket exists, render as flat section (no nested UI noise)
+        var nonEmptySubKeys = subOrder.filter(function(k) { return subBuckets[k] && subBuckets[k].length > 0; });
+        if (nonEmptySubKeys.length <= 1) return buildSection(catIdx, catName, items, false);
+
+        // Build wrapper section with nested sub-sections
+        var section = document.createElement('div');
+        section.className = 'deco-section' + (collapsedCats[catName] ? ' collapsed' : '');
+        var header = document.createElement('div');
+        header.className = 'deco-section-header';
+        var chevron = document.createElement('span');
+        chevron.className = 'deco-section-chevron';
+        chevron.textContent = '\u25BC';
+        header.appendChild(chevron);
+        var titleEl = document.createElement('span');
+        titleEl.className = 'deco-section-title';
+        titleEl.textContent = catName;
+        header.appendChild(titleEl);
+        var countSpan = document.createElement('span');
+        countSpan.className = 'deco-section-count';
+        countSpan.textContent = '(' + items.length + ')';
+        header.appendChild(countSpan);
+        header.addEventListener('click', function() {
+          section.classList.toggle('collapsed');
+          collapsedCats[catName] = section.classList.contains('collapsed');
+        });
+        section.appendChild(header);
+
+        var bodyWrap = document.createElement('div');
+        bodyWrap.className = 'deco-section-grid';
+        bodyWrap.style.cssText = 'display:block;padding:0;'; // override default grid — sub-sections manage their own grids
+        nonEmptySubKeys.forEach(function(sk) {
+          bodyWrap.appendChild(buildSubSection(sk, subBuckets[sk], catIdx));
+        });
+        section.appendChild(bodyWrap);
+        return section;
+      }
+
+      // Render owned sections (with sub-grouping for DMG Boost and Others)
       catOrder.forEach(function(c) {
         if (!groups[c] || groups[c].length === 0) return;
-        grid.appendChild(buildSection(c, DECO_CAT_NAMES[c], groups[c], false));
+        grid.appendChild(buildSectionWithSubs(c, DECO_CAT_NAMES[c], groups[c]));
       });
 
       countEl.textContent = 'Showing ' + totalShown + ' of ' + allSorted.length;
