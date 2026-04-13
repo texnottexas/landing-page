@@ -733,6 +733,38 @@
   .gear-roll-fill { height: 100%; border-radius: 2px; }
   .gear-roll-pct { font-size: .6rem; color: var(--muted); }
 
+  /* Gear score info pill + modal */
+  .gs-info-pill {
+    background: rgba(121,192,255,0.1); border: 1px solid rgba(121,192,255,0.3);
+    color: var(--accent); font-size: .7rem; font-weight: 500;
+    padding: .25rem .6rem; border-radius: 999px; cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .gs-info-pill:hover { background: rgba(121,192,255,0.2); border-color: var(--accent); }
+  .gs-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 9999;
+    display: none; align-items: center; justify-content: center; padding: 1rem;
+  }
+  .gs-modal-overlay.active { display: flex; }
+  .gs-modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    max-width: 560px; width: 100%; max-height: 85vh; overflow-y: auto;
+    padding: 1.25rem 1.5rem; color: var(--text);
+  }
+  .gs-modal h3 { font-size: 1.05rem; color: var(--accent); margin-bottom: .75rem; }
+  .gs-modal h4 { font-size: .85rem; color: var(--text); margin: 1rem 0 .4rem; }
+  .gs-modal p { font-size: .8rem; color: var(--text); line-height: 1.55; margin-bottom: .5rem; }
+  .gs-modal code { background: var(--bg); padding: .1rem .35rem; border-radius: 4px; font-size: .75rem; color: var(--yellow); }
+  .gs-modal ul { font-size: .78rem; color: var(--text); padding-left: 1.2rem; line-height: 1.6; }
+  .gs-modal .gs-close { float: right; background: none; border: none; color: var(--muted); font-size: 1.3rem; cursor: pointer; line-height: 1; padding: 0 .25rem; }
+  .gs-modal .gs-close:hover { color: var(--text); }
+  .gs-breakdown {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: .6rem .75rem; font-size: .75rem; margin: .5rem 0;
+  }
+  .gs-breakdown-row { display: flex; justify-content: space-between; padding: .15rem 0; color: var(--muted); }
+  .gs-breakdown-row.total { border-top: 1px solid var(--border); margin-top: .25rem; padding-top: .35rem; color: var(--text); font-weight: 600; }
+
   /* Rune icon + stars */
   .gear-rune-wrap { display: flex; align-items: center; gap: .3rem; margin-top: .25rem; cursor: pointer; position: relative; }
   .gear-rune-wrap:hover { opacity: .85; }
@@ -3463,10 +3495,18 @@
       var topSection = document.createElement('div');
       topSection.style.cssText = 'margin-top:1.25rem;';
 
+      var topTitleRow = document.createElement('div');
+      topTitleRow.style.cssText = 'display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem;';
       var topTitle = document.createElement('h3');
-      topTitle.style.cssText = 'font-size:.9rem;color:var(--text);margin-bottom:.75rem;font-weight:600;';
+      topTitle.style.cssText = 'font-size:.9rem;color:var(--text);font-weight:600;margin:0;';
       topTitle.textContent = 'Top Heroes by Gear Score';
-      topSection.appendChild(topTitle);
+      topTitleRow.appendChild(topTitle);
+      var infoPill = document.createElement('button');
+      infoPill.className = 'gs-info-pill';
+      infoPill.textContent = 'How is this calculated?';
+      infoPill.addEventListener('click', function() { showGearScoreModal(); });
+      topTitleRow.appendChild(infoPill);
+      topSection.appendChild(topTitleRow);
 
       var topGrid = document.createElement('div');
       topGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.65rem;';
@@ -3789,15 +3829,159 @@
     return String(val);
   }
 
-  // Compute gear power score for a hero (sum of all buffValues)
+  // Compute gear score for a hero using custom 400 refine + 600 rune formula per slot.
+  // Each gear slot yields 0-1000. With 6 slots: 0-6000 total.
+  //   RefineScore (0-400) = avg rollPct across all random stat slots on that piece * 4
+  //     Normalized by slot count so 3-slot and 4-slot gear max out equally when fully refined.
+  //   RuneScore (0-600)   = (star / starMax) * 600
+  //     No rune = 0. A max 1-star rune (e.g. Tactical Awareness on Slot 1) scores equal to a
+  //     max 3-star rune (e.g. Tactical Awareness on Slot 3) — both are "maxed for their slot."
   function heroGearScore(hero) {
-    var total = 0;
+    return heroGearScoreBreakdown(hero).total;
+  }
+  function heroGearScoreBreakdown(hero) {
+    var slotScores = [];
+    var totalRefine = 0, totalRune = 0;
     (hero.heroEquips || []).forEach(function(equip) {
-      (equip.infos || []).forEach(function(info) {
-        if (info.type === 1) total += (info.buffValue || 0);
+      var infos = equip.infos || [];
+      // Refine: average rollPct across the random-stat (type=1) slots
+      var type1 = [];
+      var type2 = null;
+      infos.forEach(function(info) {
+        if (info.type === 1) type1.push(info);
+        else if (info.type === 2) type2 = info;
+      });
+      var rollSum = 0;
+      var rollSlots = 0;
+      type1.forEach(function(info) {
+        var tmpl = GEAR_TEMPLATE[info.templateId];
+        if (!tmpl || !tmpl.m) return;
+        var pct = Math.min(100, (info.buffValue || 0) / tmpl.m * 100);
+        rollSum += pct;
+        rollSlots++;
+      });
+      var refineScore = rollSlots > 0 ? (rollSum / (rollSlots * 100)) * 400 : 0;
+
+      // Rune: normalize star/starMax → 0-600
+      var runeScore = 0;
+      var runeData = null;
+      if (type2 && type2.templateId) {
+        runeData = resolveRune(type2.templateId);
+        if (runeData && runeData.sm > 0) {
+          runeScore = (runeData.s / runeData.sm) * 600;
+        }
+      }
+      totalRefine += refineScore;
+      totalRune += runeScore;
+      slotScores.push({
+        equipId: equip.id,
+        refine: Math.round(refineScore),
+        rune: Math.round(runeScore),
+        total: Math.round(refineScore + runeScore),
+        runeName: runeData ? runeData.n : null,
+        runeStar: runeData ? runeData.s : 0,
+        runeStarMax: runeData ? runeData.sm : 0,
+        rollSlots: rollSlots,
+        avgRollPct: rollSlots > 0 ? Math.round(rollSum / rollSlots) : 0
       });
     });
-    return total;
+    return {
+      total: Math.round(totalRefine + totalRune),
+      refineTotal: Math.round(totalRefine),
+      runeTotal: Math.round(totalRune),
+      slots: slotScores
+    };
+  }
+
+  // "How is this calculated?" modal for gear score
+  function buildGearScoreModal() {
+    if (document.getElementById('gs-modal-overlay')) return;
+    var overlay = document.createElement('div');
+    overlay.className = 'gs-modal-overlay';
+    overlay.id = 'gs-modal-overlay';
+    var modal = document.createElement('div');
+    modal.className = 'gs-modal';
+    var close = document.createElement('button');
+    close.className = 'gs-close';
+    close.textContent = '\u2715';
+    close.addEventListener('click', function() { overlay.classList.remove('active'); });
+    modal.appendChild(close);
+
+    var title = document.createElement('h3');
+    title.textContent = 'How Gear Score is Calculated';
+    modal.appendChild(title);
+
+    var intro = document.createElement('p');
+    intro.textContent = 'Each of the 6 gear slots scores 0-1000. Total is the sum across all equipped gear. Max possible per hero: 6000.';
+    modal.appendChild(intro);
+
+    var h4a = document.createElement('h4');
+    h4a.textContent = 'Per-Slot Breakdown';
+    modal.appendChild(h4a);
+
+    var bd = document.createElement('div');
+    bd.className = 'gs-breakdown';
+    function addRow(lbl, val, isTotal) {
+      var row = document.createElement('div');
+      row.className = 'gs-breakdown-row' + (isTotal ? ' total' : '');
+      var l = document.createElement('span'); l.textContent = lbl;
+      var v = document.createElement('span'); v.textContent = val;
+      row.appendChild(l); row.appendChild(v);
+      bd.appendChild(row);
+    }
+    addRow('Refinement', '0-400');
+    addRow('Rune', '0-600');
+    addRow('Per-slot total', '0-1000', true);
+    modal.appendChild(bd);
+
+    var h4b = document.createElement('h4');
+    h4b.textContent = 'Refinement (0-400)';
+    modal.appendChild(h4b);
+    var p1 = document.createElement('p');
+    p1.textContent = 'Average roll % across every random stat on the gear piece, then scaled to 400. A piece where every stat rolled 100% of its max = 400. 50% average roll = 200. This normalizes across gear with 3, 4, or 5 random stat slots so everyone is graded on "how close to perfect."';
+    modal.appendChild(p1);
+
+    var h4c = document.createElement('h4');
+    h4c.textContent = 'Rune (0-600)';
+    modal.appendChild(h4c);
+    var p2 = document.createElement('p');
+    p2.textContent = 'Rune star progression normalized to its slot\u2019s max potential: (star / starMax) \u00D7 600. A fully maxed 1-star rune (like Tactical Awareness on Slot 1, capped at 1 star / 20%) scores the same as a fully maxed 3-star rune (Tactical Awareness on Slot 3, capped at 3 stars / 40%) \u2014 both are "maxed for their slot." No rune = 0.';
+    modal.appendChild(p2);
+
+    var h4d = document.createElement('h4');
+    h4d.textContent = 'Example';
+    modal.appendChild(h4d);
+    var ex = document.createElement('div');
+    ex.className = 'gs-breakdown';
+    function addExRow(lbl, val, muted) {
+      var row = document.createElement('div');
+      row.className = 'gs-breakdown-row';
+      if (!muted) row.style.color = 'var(--text)';
+      var l = document.createElement('span'); l.textContent = lbl;
+      var v = document.createElement('span'); v.textContent = val;
+      row.appendChild(l); row.appendChild(v);
+      ex.appendChild(row);
+    }
+    addExRow('Slot 4 Raysor Headset', '', false);
+    addExRow('  4 random stats avg 68% roll', '0.68 \u00D7 400 = 272');
+    addExRow('  Stealth Hologram 4/6 stars', '4/6 \u00D7 600 = 400');
+    var exTotal = document.createElement('div');
+    exTotal.className = 'gs-breakdown-row total';
+    var el1 = document.createElement('span'); el1.textContent = 'Slot total';
+    var el2 = document.createElement('span'); el2.textContent = '672 / 1000';
+    exTotal.appendChild(el1); exTotal.appendChild(el2);
+    ex.appendChild(exTotal);
+    modal.appendChild(ex);
+
+    overlay.appendChild(modal);
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) overlay.classList.remove('active');
+    });
+    document.body.appendChild(overlay);
+  }
+  function showGearScoreModal() {
+    buildGearScoreModal();
+    document.getElementById('gs-modal-overlay').classList.add('active');
   }
 
   // ── March management ──────────────────────────────────────────────────────
