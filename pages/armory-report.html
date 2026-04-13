@@ -3437,6 +3437,19 @@
     window._reportContext = wizardState.reportData.map(function(r) { return r.id; }).join(', ');
   }
 
+  // Navigate to a tab by its id (programmatic equivalent of clicking its button)
+  function navigateToTab(tabId) {
+    var btn = document.querySelector('.tab-btn[data-tab="' + tabId + '"]');
+    if (btn) {
+      switchTab(btn);
+      // Smooth scroll to top of the tab content so users see they moved
+      var content = document.getElementById('tab-' + tabId);
+      if (content && content.scrollIntoView) {
+        content.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  }
+
   // ── Tab switching ─────────────────────────────────────────────────────────
   function switchTab(btn) {
     document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
@@ -3519,9 +3532,31 @@
 
     var chipRow = document.createElement('div');
     chipRow.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.5rem;margin-bottom:1.25rem;';
-    function makeChip(label, value, color, subtext) {
+    function makeChip(label, value, color, subtext, targetTab) {
       var c = document.createElement('div');
-      c.style.cssText = 'background:linear-gradient(135deg,' + color + '1f 0%,' + color + '0d 100%);border:1px solid ' + color + '40;border-radius:10px;padding:.65rem .75rem;';
+      var clickable = !!targetTab;
+      var baseStyle = 'background:linear-gradient(135deg,' + color + '1f 0%,' + color + '0d 100%);border:1px solid ' + color + '40;border-radius:10px;padding:.65rem .75rem;transition:transform .15s,border-color .15s,box-shadow .15s;position:relative;';
+      if (clickable) {
+        baseStyle += 'cursor:pointer;';
+        c.setAttribute('role', 'button');
+        c.setAttribute('tabindex', '0');
+        c.setAttribute('aria-label', label + ' — click to view ' + targetTab + ' tab');
+        c.addEventListener('mouseenter', function() {
+          c.style.transform = 'translateY(-2px)';
+          c.style.borderColor = color + '80';
+          c.style.boxShadow = '0 4px 16px ' + color + '20';
+        });
+        c.addEventListener('mouseleave', function() {
+          c.style.transform = '';
+          c.style.borderColor = color + '40';
+          c.style.boxShadow = '';
+        });
+        c.addEventListener('click', function() { navigateToTab(targetTab); });
+        c.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigateToTab(targetTab); }
+        });
+      }
+      c.style.cssText = baseStyle;
       var v = document.createElement('div');
       v.style.cssText = 'font-size:1.25rem;font-weight:700;color:' + color + ';line-height:1.1;';
       v.textContent = value;
@@ -3536,11 +3571,17 @@
         s.textContent = subtext;
         c.appendChild(s);
       }
+      if (clickable) {
+        var arrow = document.createElement('div');
+        arrow.style.cssText = 'position:absolute;top:.5rem;right:.55rem;font-size:.7rem;color:' + color + '80;opacity:.6;';
+        arrow.textContent = '\u2192';
+        c.appendChild(arrow);
+      }
       return c;
     }
-    chipRow.appendChild(makeChip('Total Gear Score', formatPower(totalGearScore), '#79c0ff', merged.heroes.length + ' heroes'));
-    chipRow.appendChild(makeChip('Avg Score / Hero', formatPower(avgGearScore), '#3fb950', 'max 6,000 per hero'));
-    chipRow.appendChild(makeChip('Decorations', String(counts.decos), '#388bfd', ''));
+    chipRow.appendChild(makeChip('Total Gear Score', formatPower(totalGearScore), '#79c0ff', merged.heroes.length + ' heroes', 'heroes'));
+    chipRow.appendChild(makeChip('Avg Score / Hero', formatPower(avgGearScore), '#3fb950', 'max 6,000 per hero', 'heroes'));
+    chipRow.appendChild(makeChip('Decorations', String(counts.decos), '#388bfd', '', 'decorations'));
     // Decor Sets chip with level breakdown
     var suitIdsOv = (merged.decorations && merged.decorations.suit) ? merged.decorations.suit : [];
     var suitLevelsOv = (merged.decorations && merged.decorations.suitLevelBuff) ? merged.decorations.suitLevelBuff : {};
@@ -3558,9 +3599,9 @@
       }
     }
     var suitSub = lvParts.length ? lvParts.join(', ') : 'no sets complete';
-    chipRow.appendChild(makeChip('Decor Sets', suitIdsOv.length + ' / ' + totalSuits, '#a371f7', suitSub));
-    chipRow.appendChild(makeChip('Enigma Beasts', String(counts.beasts), '#d29922', ''));
-    chipRow.appendChild(makeChip('Heavy Troopers', String(counts.hts), '#f0883e', ''));
+    chipRow.appendChild(makeChip('Decor Sets', suitIdsOv.length + ' / ' + totalSuits, '#a371f7', suitSub, 'decorations'));
+    chipRow.appendChild(makeChip('Enigma Beasts', String(counts.beasts), '#d29922', '', 'enigma'));
+    chipRow.appendChild(makeChip('Heavy Troopers', String(counts.hts), '#f0883e', '', 'chips'));
     container.appendChild(chipRow);
 
     // ── Top Heroes (by gear score) ──
@@ -3633,32 +3674,49 @@
 
           if (gs > 0) {
             // Bar shows score out of absolute max (6000). Empty space = distance-to-max.
+            // Clicking the bar opens a breakdown tooltip with %-of-max details.
             var splitBar = document.createElement('div');
-            splitBar.style.cssText = 'display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--bg);border:1px solid var(--border);';
+            splitBar.style.cssText = 'display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--bg);border:1px solid var(--border);cursor:pointer;transition:transform .15s,box-shadow .15s;';
+            splitBar.setAttribute('role', 'button');
+            splitBar.setAttribute('tabindex', '0');
+            splitBar.setAttribute('aria-label', 'Show gear score breakdown for ' + name);
+            splitBar.title = 'Click for breakdown';
+            splitBar.addEventListener('mouseenter', function() {
+              splitBar.style.transform = 'scaleY(1.15)';
+              splitBar.style.boxShadow = '0 0 0 1px var(--accent)';
+            });
+            splitBar.addEventListener('mouseleave', function() {
+              splitBar.style.transform = '';
+              splitBar.style.boxShadow = '';
+            });
             var refineSeg = document.createElement('div');
             refineSeg.style.cssText = 'background:#3fb950;width:' + refineBarPct + '%;';
-            refineSeg.title = 'Refine ' + bd.refineTotal + ' / 2400';
             splitBar.appendChild(refineSeg);
             var runeSeg = document.createElement('div');
             runeSeg.style.cssText = 'background:#a371f7;width:' + runeBarPct + '%;';
-            runeSeg.title = 'Rune ' + bd.runeTotal + ' / 3600';
             splitBar.appendChild(runeSeg);
+            var breakdownCapture = { bd: bd, gs: gs, name: name };
+            splitBar.addEventListener('click', function(e) {
+              showGearScoreBreakdownTooltip(e, breakdownCapture);
+            });
+            splitBar.addEventListener('keydown', function(e) {
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showGearScoreBreakdownTooltip(e, breakdownCapture); }
+            });
             card.appendChild(splitBar);
 
+            // Compact legend: just Refine + Rune values, color-coded. No % clutter.
             var legend = document.createElement('div');
-            legend.style.cssText = 'display:flex;justify-content:space-between;font-size:.65rem;color:var(--muted);';
+            legend.style.cssText = 'display:flex;justify-content:space-between;font-size:.65rem;color:var(--muted);align-items:center;';
             var lr = document.createElement('span');
-            var sq1 = document.createElement('span'); sq1.style.color = '#3fb950'; sq1.textContent = '\u25A0 ';
+            lr.style.cssText = 'display:inline-flex;align-items:center;gap:.25rem;';
+            var sq1 = document.createElement('span'); sq1.style.cssText = 'width:8px;height:8px;border-radius:2px;background:#3fb950;display:inline-block;';
             lr.appendChild(sq1);
             lr.appendChild(document.createTextNode('Refine ' + bd.refineTotal));
             legend.appendChild(lr);
-            var lm = document.createElement('span');
-            lm.style.cssText = 'color:var(--muted);font-variant-numeric:tabular-nums;';
-            lm.textContent = Math.round(gs / 6000 * 100) + '% of max';
-            legend.appendChild(lm);
             var lu = document.createElement('span');
-            lu.appendChild(document.createTextNode('Rune ' + bd.runeTotal + ' '));
-            var sq2 = document.createElement('span'); sq2.style.color = '#a371f7'; sq2.textContent = '\u25A0';
+            lu.style.cssText = 'display:inline-flex;align-items:center;gap:.25rem;';
+            lu.appendChild(document.createTextNode('Rune ' + bd.runeTotal));
+            var sq2 = document.createElement('span'); sq2.style.cssText = 'width:8px;height:8px;border-radius:2px;background:#a371f7;display:inline-block;';
             lu.appendChild(sq2);
             legend.appendChild(lu);
             card.appendChild(legend);
@@ -3718,50 +3776,64 @@
       container.appendChild(beastsSection);
     }
 
-    // ── Rune Inventory (bar chart showing rune types with star progress) ──
+    // ── Rune Progress (per-hero rune loadout with icons) ──
     if (merged.heroes.length > 0) {
       var runeSection = document.createElement('div');
       runeSection.style.cssText = 'margin-top:1.25rem;';
+      var runeTitleRow = document.createElement('div');
+      runeTitleRow.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;margin-bottom:.75rem;gap:.5rem;flex-wrap:wrap;';
       var runeTitle = document.createElement('h3');
-      runeTitle.style.cssText = 'font-size:.9rem;color:var(--text);margin-bottom:.75rem;font-weight:600;';
-      runeTitle.textContent = 'Rune Inventory';
-      runeSection.appendChild(runeTitle);
+      runeTitle.style.cssText = 'font-size:.9rem;color:var(--text);font-weight:600;margin:0;';
+      runeTitle.textContent = 'Rune Progress by Hero';
+      runeTitleRow.appendChild(runeTitle);
+      var runeHint = document.createElement('span');
+      runeHint.style.cssText = 'font-size:.72rem;color:var(--muted);';
+      runeHint.textContent = 'Top 6 by rune stars \u2192 click to view full Heroes & Gear';
+      runeTitleRow.appendChild(runeHint);
+      runeSection.appendChild(runeTitleRow);
 
-      // Collect rune data from all heroes (runes are in equip.infos with type=2)
-      var runesByName = {}; // { runeName: [{star, starMax}, ...] }
-      var totalSlots = 0;
-      var slotsWithRune = 0;
-      var totalStars = 0;
-      var maxPossibleStars = 0;
-      merged.heroes.forEach(function(h) {
+      // Per-hero rune summary: collect each hero's 6 slots
+      var heroRunes = merged.heroes.map(function(h) {
+        var slotInfo = []; // one entry per existing equip slot, in order
+        var starSum = 0, maxSum = 0;
         (h.heroEquips || []).forEach(function(eq) {
-          totalSlots++;
           var infos = eq.infos || [];
           var type2 = null;
           infos.forEach(function(info) { if (info.type === 2) type2 = info; });
-          if (type2 && type2.templateId) {
-            var rd = resolveRune(type2.templateId);
-            if (rd && rd.n) {
-              slotsWithRune++;
-              totalStars += rd.s;
-              maxPossibleStars += rd.sm;
-              if (!runesByName[rd.n]) runesByName[rd.n] = [];
-              runesByName[rd.n].push({ s: rd.s, sm: rd.sm });
-            }
-          }
+          var rd = null;
+          if (type2 && type2.templateId) rd = resolveRune(type2.templateId);
+          if (rd) { starSum += rd.s; maxSum += rd.sm; }
+          slotInfo.push({ equipId: eq.id, rune: rd });
         });
-      });
+        return { hero: h, slots: slotInfo, starSum: starSum, maxSum: maxSum };
+      }).filter(function(x) { return x.slots.length > 0; })
+        .sort(function(a, b) { return b.starSum - a.starSum; });
 
       var runeCard = document.createElement('div');
       runeCard.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;';
 
-      // Summary row
+      // Overall totals across all heroes
+      var grandStars = 0, grandMax = 0, equippedCount = 0, totalSlotCount = 0;
+      merged.heroes.forEach(function(h) {
+        (h.heroEquips || []).forEach(function(eq) {
+          totalSlotCount++;
+          var infos = eq.infos || [];
+          var t2 = null;
+          infos.forEach(function(i) { if (i.type === 2) t2 = i; });
+          if (t2 && t2.templateId) {
+            var rd = resolveRune(t2.templateId);
+            if (rd) { equippedCount++; grandStars += rd.s; grandMax += rd.sm; }
+          }
+        });
+      });
+
+      // Summary strip
       var summaryRow = document.createElement('div');
-      summaryRow.style.cssText = 'display:flex;gap:1.5rem;margin-bottom:1rem;flex-wrap:wrap;';
+      summaryRow.style.cssText = 'display:flex;gap:1.5rem;margin-bottom:.9rem;padding-bottom:.9rem;border-bottom:1px solid var(--border);flex-wrap:wrap;';
       var summaryItems = [
-        { label: 'Runes Equipped', value: slotsWithRune + '/' + totalSlots },
-        { label: 'Total Stars', value: totalStars + '/' + maxPossibleStars },
-        { label: 'Avg Stars', value: slotsWithRune > 0 ? (totalStars / slotsWithRune).toFixed(1) : '0' }
+        { label: 'Runes Equipped', value: equippedCount + ' / ' + totalSlotCount },
+        { label: 'Total Stars', value: grandStars + ' / ' + grandMax },
+        { label: 'Avg Stars / Rune', value: equippedCount > 0 ? (grandStars / equippedCount).toFixed(1) : '0' }
       ];
       summaryItems.forEach(function(item) {
         var s = document.createElement('div');
@@ -3770,78 +3842,139 @@
         sv.textContent = item.value;
         s.appendChild(sv);
         var sl = document.createElement('div');
-        sl.style.cssText = 'font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;';
+        sl.style.cssText = 'font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:.1rem;';
         sl.textContent = item.label;
         s.appendChild(sl);
         summaryRow.appendChild(s);
       });
       runeCard.appendChild(summaryRow);
 
-      // Rune bars (sorted by total stars desc)
-      var runeNames = Object.keys(runesByName).sort(function(a, b) {
-        var sumA = runesByName[a].reduce(function(t, r) { return t + r.s; }, 0);
-        var sumB = runesByName[b].reduce(function(t, r) { return t + r.s; }, 0);
-        return sumB - sumA;
-      });
-
-      if (runeNames.length > 0) {
-        var barsWrap = document.createElement('div');
-        barsWrap.style.cssText = 'display:flex;flex-direction:column;gap:.5rem;';
-        runeNames.forEach(function(rn) {
-          var runes = runesByName[rn];
-          var starSum = runes.reduce(function(t, r) { return t + r.s; }, 0);
-          var maxSum = runes.reduce(function(t, r) { return t + r.sm; }, 0);
-          var pct = maxSum > 0 ? (starSum / maxSum) * 100 : 0;
-          var barColor = pct >= 100 ? '#3fb950' : pct >= 80 ? '#a371f7' : pct >= 50 ? '#388bfd' : '#d29922';
-
-          var row = document.createElement('div');
-          row.style.cssText = 'display:flex;align-items:center;gap:.6rem;';
-
-          // Rune icon
-          var iconUrl = runeIconUrl(rn);
-          if (iconUrl) {
-            var icon = document.createElement('img');
-            icon.src = iconUrl;
-            icon.style.cssText = 'width:24px;height:24px;border-radius:4px;flex-shrink:0;';
-            icon.onerror = function() { this.style.display = 'none'; };
-            row.appendChild(icon);
-          }
-
-          // Name + count
-          var nameWrap = document.createElement('div');
-          nameWrap.style.cssText = 'width:110px;flex-shrink:0;';
-          var nameEl = document.createElement('div');
-          nameEl.style.cssText = 'font-size:.75rem;color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-          nameEl.textContent = rn;
-          nameWrap.appendChild(nameEl);
-          var countEl = document.createElement('div');
-          countEl.style.cssText = 'font-size:.65rem;color:var(--muted);';
-          countEl.textContent = runes.length + ' equipped';
-          nameWrap.appendChild(countEl);
-          row.appendChild(nameWrap);
-
-          // Progress bar
-          var barOuter = document.createElement('div');
-          barOuter.style.cssText = 'flex:1;height:8px;background:var(--bg);border-radius:4px;overflow:hidden;min-width:80px;';
-          var barInner = document.createElement('div');
-          barInner.style.cssText = 'height:100%;border-radius:4px;background:' + barColor + ';width:' + pct + '%;transition:width .3s;';
-          barOuter.appendChild(barInner);
-          row.appendChild(barOuter);
-
-          // Stars label
-          var starsEl = document.createElement('div');
-          starsEl.style.cssText = 'font-size:.7rem;color:var(--muted);width:50px;text-align:right;flex-shrink:0;';
-          starsEl.textContent = starSum + '/' + maxSum + ' \u2605';
-          row.appendChild(starsEl);
-
-          barsWrap.appendChild(row);
-        });
-        runeCard.appendChild(barsWrap);
-      } else {
+      if (heroRunes.length === 0 || grandMax === 0) {
         var noRunes = document.createElement('div');
         noRunes.style.cssText = 'font-size:.8rem;color:var(--muted);text-align:center;padding:1rem 0;';
         noRunes.textContent = 'No runes equipped';
         runeCard.appendChild(noRunes);
+      } else {
+        // Top 6 heroes by rune stars
+        var topHeroRunes = heroRunes.slice(0, 6);
+        var rowsWrap = document.createElement('div');
+        rowsWrap.style.cssText = 'display:flex;flex-direction:column;gap:.55rem;';
+
+        loadHeroData(function() {
+          topHeroRunes.forEach(function(entry) {
+            var h = entry.hero;
+            var id = h.id;
+            var name = heroName(id);
+            var branch = heroBranch(id);
+            var bc = branchClass(branch);
+            var branchColor = bc === 'army' ? 'var(--army)' : bc === 'navy' ? 'var(--navy)' : 'var(--air)';
+            var pct = entry.maxSum > 0 ? Math.round(entry.starSum / entry.maxSum * 100) : 0;
+
+            var row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:.7rem;padding:.5rem .6rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .15s,transform .15s;';
+            row.setAttribute('role', 'button');
+            row.setAttribute('tabindex', '0');
+            row.setAttribute('aria-label', 'View ' + name + ' in Heroes & Gear tab');
+            row.addEventListener('mouseenter', function() {
+              row.style.borderColor = 'var(--accent)';
+              row.style.transform = 'translateX(2px)';
+            });
+            row.addEventListener('mouseleave', function() {
+              row.style.borderColor = 'var(--border)';
+              row.style.transform = '';
+            });
+            var goToHeroes = function() { navigateToTab('heroes'); };
+            row.addEventListener('click', goToHeroes);
+            row.addEventListener('keydown', function(e) {
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToHeroes(); }
+            });
+
+            // Hero icon + name
+            var heroWrap = document.createElement('div');
+            heroWrap.style.cssText = 'display:flex;align-items:center;gap:.5rem;flex-shrink:0;width:150px;';
+            var img = document.createElement('img');
+            img.src = heroIconUrl(id);
+            img.alt = '';
+            img.style.cssText = 'width:32px;height:32px;border-radius:50%;object-fit:cover;border:2px solid ' + branchColor + ';flex-shrink:0;';
+            img.onerror = function() { this.style.display = 'none'; };
+            heroWrap.appendChild(img);
+            var nameCol = document.createElement('div');
+            nameCol.style.cssText = 'min-width:0;flex:1;';
+            var heroName_ = document.createElement('div');
+            heroName_.style.cssText = 'font-size:.78rem;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+            heroName_.textContent = name;
+            nameCol.appendChild(heroName_);
+            var heroMeta = document.createElement('div');
+            heroMeta.style.cssText = 'font-size:.62rem;color:var(--muted);';
+            heroMeta.textContent = entry.slots.length + '/6 gear';
+            nameCol.appendChild(heroMeta);
+            heroWrap.appendChild(nameCol);
+            row.appendChild(heroWrap);
+
+            // 6 rune slots (pad to 6)
+            var slotsWrap = document.createElement('div');
+            slotsWrap.style.cssText = 'display:flex;gap:.3rem;flex:1;flex-wrap:wrap;';
+            for (var i = 0; i < 6; i++) {
+              var slot = document.createElement('div');
+              slot.style.cssText = 'width:34px;height:34px;border-radius:6px;background:var(--card);border:1px solid var(--border);position:relative;display:flex;align-items:center;justify-content:center;flex-shrink:0;';
+              var slotData = entry.slots[i];
+              if (slotData && slotData.rune) {
+                var rd = slotData.rune;
+                var iconUrl = runeIconUrl(rd.n);
+                if (iconUrl) {
+                  var ricon = document.createElement('img');
+                  ricon.src = iconUrl;
+                  ricon.alt = rd.n;
+                  ricon.title = rd.n + ' \u2014 ' + rd.s + '/' + rd.sm + ' stars';
+                  ricon.style.cssText = 'width:26px;height:26px;border-radius:4px;';
+                  ricon.onerror = function() { this.style.display = 'none'; };
+                  slot.appendChild(ricon);
+                } else {
+                  var initial = document.createElement('span');
+                  initial.style.cssText = 'font-size:.7rem;color:var(--muted);font-weight:700;';
+                  initial.textContent = rd.n.charAt(0);
+                  slot.appendChild(initial);
+                }
+                // Star badge
+                var badge = document.createElement('span');
+                var badgeColor = rd.s === rd.sm ? '#3fb950' : rd.s >= Math.ceil(rd.sm * 0.66) ? '#a371f7' : rd.s >= Math.ceil(rd.sm / 2) ? '#388bfd' : '#d29922';
+                badge.style.cssText = 'position:absolute;bottom:-4px;right:-4px;background:' + badgeColor + ';color:#fff;font-size:.55rem;font-weight:700;padding:1px 4px;border-radius:8px;line-height:1.2;border:1.5px solid var(--surface);';
+                badge.textContent = rd.s + '\u2605';
+                slot.appendChild(badge);
+              } else if (slotData) {
+                // Gear slot exists but no rune
+                var dash = document.createElement('span');
+                dash.style.cssText = 'font-size:.9rem;color:var(--border);';
+                dash.textContent = '\u00B7';
+                dash.title = 'No rune';
+                slot.appendChild(dash);
+              } else {
+                // No gear in this slot
+                slot.style.opacity = '.35';
+                slot.style.borderStyle = 'dashed';
+              }
+              slotsWrap.appendChild(slot);
+            }
+            row.appendChild(slotsWrap);
+
+            // Stars summary
+            var starsCol = document.createElement('div');
+            starsCol.style.cssText = 'flex-shrink:0;width:72px;text-align:right;';
+            var starsVal = document.createElement('div');
+            var starColor = pct >= 80 ? '#3fb950' : pct >= 50 ? '#a371f7' : pct >= 25 ? '#388bfd' : '#d29922';
+            starsVal.style.cssText = 'font-size:.82rem;font-weight:700;color:' + starColor + ';';
+            starsVal.textContent = entry.starSum + '/' + entry.maxSum;
+            starsCol.appendChild(starsVal);
+            var starsLbl = document.createElement('div');
+            starsLbl.style.cssText = 'font-size:.6rem;color:var(--muted);';
+            starsLbl.textContent = pct + '% stars';
+            starsCol.appendChild(starsLbl);
+            row.appendChild(starsCol);
+
+            rowsWrap.appendChild(row);
+          });
+        });
+        runeCard.appendChild(rowsWrap);
       }
 
       runeSection.appendChild(runeCard);
@@ -3963,6 +4096,82 @@
   function dismissRuneTooltip() {
     var old = document.getElementById('rune-tooltip-active');
     if (old) old.parentNode.removeChild(old);
+  }
+
+  // Gear score breakdown tooltip — click on a hero's progress bar to see
+  // Refine / Rune / Total with %-of-max, which used to live inline and crowded the legend.
+  function showGearScoreBreakdownTooltip(e, data) {
+    e.stopPropagation();
+    dismissRuneTooltip();
+    var bd = data.bd, gs = data.gs, name = data.name;
+    var refinePct = Math.round(bd.refineTotal / 2400 * 100);
+    var runePct = Math.round(bd.runeTotal / 3600 * 100);
+    var totalPct = Math.round(gs / 6000 * 100);
+
+    var tip = document.createElement('div');
+    tip.className = 'rune-tooltip';
+    tip.id = 'rune-tooltip-active';
+
+    var hdr = document.createElement('div');
+    hdr.className = 'rune-tooltip-header';
+    var nameEl = document.createElement('span');
+    nameEl.className = 'rune-tooltip-name';
+    nameEl.textContent = name + ' \u2014 Gear Score';
+    hdr.appendChild(nameEl);
+    tip.appendChild(hdr);
+
+    var body = document.createElement('div');
+    body.style.cssText = 'display:flex;flex-direction:column;gap:.35rem;font-size:.72rem;';
+
+    function mkRow(label, val, max, color) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:.75rem;';
+      var lbl = document.createElement('span');
+      lbl.style.cssText = 'display:inline-flex;align-items:center;gap:.3rem;color:var(--text);';
+      var dot = document.createElement('span');
+      dot.style.cssText = 'width:8px;height:8px;border-radius:2px;background:' + color + ';display:inline-block;';
+      lbl.appendChild(dot);
+      lbl.appendChild(document.createTextNode(label));
+      row.appendChild(lbl);
+      var v = document.createElement('span');
+      v.style.cssText = 'color:var(--muted);font-variant-numeric:tabular-nums;';
+      var pct = max > 0 ? Math.round(val / max * 100) : 0;
+      v.textContent = val + ' / ' + max + ' (' + pct + '%)';
+      row.appendChild(v);
+      return row;
+    }
+
+    body.appendChild(mkRow('Refine', bd.refineTotal, 2400, '#3fb950'));
+    body.appendChild(mkRow('Rune',   bd.runeTotal,   3600, '#a371f7'));
+
+    var divider = document.createElement('div');
+    divider.style.cssText = 'height:1px;background:var(--border);margin:.1rem 0;';
+    body.appendChild(divider);
+
+    var totalRow = document.createElement('div');
+    totalRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:.75rem;font-weight:600;';
+    var tl = document.createElement('span');
+    tl.style.color = 'var(--text)';
+    tl.textContent = 'Total';
+    totalRow.appendChild(tl);
+    var tv = document.createElement('span');
+    tv.style.cssText = 'color:var(--accent);font-variant-numeric:tabular-nums;';
+    tv.textContent = gs + ' / 6000 (' + totalPct + '%)';
+    totalRow.appendChild(tv);
+    body.appendChild(totalRow);
+
+    tip.appendChild(body);
+    document.body.appendChild(tip);
+
+    var rect = e.currentTarget.getBoundingClientRect();
+    var tw = tip.offsetWidth, th = tip.offsetHeight;
+    var left = rect.left + rect.width / 2 - tw / 2;
+    var top = rect.bottom + 8;
+    if (left < 8) left = 8;
+    if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
+    if (top + th > window.innerHeight - 8) top = rect.top - th - 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
   }
 
   document.addEventListener('click', function(e) {
