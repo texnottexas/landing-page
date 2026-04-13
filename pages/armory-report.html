@@ -4121,6 +4121,7 @@
     var grid = document.getElementById('hero-grid-container');
     if (!grid) return;
     while (grid.firstChild) grid.removeChild(grid.firstChild);
+    grid.style.display = ''; // reset any overrides from a previous grouped render
 
     // Get active branches
     var activeBranches = {};
@@ -4187,9 +4188,75 @@
       return;
     }
 
-    filtered.forEach(function(hero) {
-      grid.appendChild(buildHeroCard(hero));
+    // Check if grouping by march is enabled
+    var groupToggleEl = document.getElementById('hero-group-toggle');
+    var isGrouped = groupToggleEl && groupToggleEl.classList.contains('active');
+    var marches = loadMarches();
+    if (!isGrouped || !marches.length) {
+      filtered.forEach(function(hero) {
+        grid.appendChild(buildHeroCard(hero));
+      });
+      return;
+    }
+
+    // Grouped render: organize heroes into march sections + unassigned
+    // Normalize grid to block so sections can stack (CSS grid is per-section)
+    grid.style.display = 'block';
+
+    // Build hero→march map for O(1) lookup
+    var heroToMarch = {};
+    marches.forEach(function(m, idx) {
+      (m.heroIds || []).forEach(function(hid) {
+        if (heroToMarch[hid] === undefined) heroToMarch[hid] = idx; // first march wins if hero in multiple
+      });
     });
+
+    var groups = marches.map(function(m) { return { name: m.name || ('March ' + ((m.idx||0)+1)), heroes: [] }; });
+    var unassigned = [];
+    filtered.forEach(function(hero) {
+      var mi = heroToMarch[hero.id];
+      if (mi !== undefined && groups[mi]) groups[mi].heroes.push(hero);
+      else unassigned.push(hero);
+    });
+
+    function buildSection(title, heroList, defaultOpen) {
+      if (!heroList.length) return null;
+      var section = document.createElement('div');
+      section.style.cssText = 'margin-bottom:1rem;';
+      var header = document.createElement('div');
+      header.style.cssText = 'display:flex;align-items:center;gap:.5rem;cursor:pointer;user-select:none;padding:.5rem .25rem;border-bottom:1px solid var(--border);margin-bottom:.75rem;';
+      var chev = document.createElement('span');
+      chev.style.cssText = 'font-size:.7rem;color:var(--muted);transition:transform .2s;' + (defaultOpen ? '' : 'transform:rotate(-90deg);');
+      chev.textContent = '\u25BC';
+      header.appendChild(chev);
+      var titleEl = document.createElement('span');
+      titleEl.style.cssText = 'font-size:.95rem;font-weight:600;color:var(--text);';
+      titleEl.textContent = title;
+      header.appendChild(titleEl);
+      var countEl = document.createElement('span');
+      countEl.style.cssText = 'font-size:.75rem;color:var(--muted);';
+      countEl.textContent = '(' + heroList.length + ')';
+      header.appendChild(countEl);
+      section.appendChild(header);
+      var sectionGrid = document.createElement('div');
+      sectionGrid.className = 'hero-grid';
+      sectionGrid.style.display = defaultOpen ? '' : 'none';
+      heroList.forEach(function(h) { sectionGrid.appendChild(buildHeroCard(h)); });
+      section.appendChild(sectionGrid);
+      header.addEventListener('click', function() {
+        var hidden = sectionGrid.style.display === 'none';
+        sectionGrid.style.display = hidden ? '' : 'none';
+        chev.style.transform = hidden ? '' : 'rotate(-90deg)';
+      });
+      return section;
+    }
+
+    groups.forEach(function(g) {
+      var s = buildSection(g.name, g.heroes, true);
+      if (s) grid.appendChild(s);
+    });
+    var unassignedSection = buildSection('Unassigned', unassigned, false);
+    if (unassignedSection) grid.appendChild(unassignedSection);
   }
 
   // ── March modal helpers ─────────────────────────────────────────────────
@@ -4450,6 +4517,21 @@
     marchSelect.id = 'hero-march-filter';
     marchSelect.addEventListener('change', function() { renderHeroGrid(heroes); });
     filterBar.appendChild(marchSelect);
+
+    // Group by March toggle
+    var groupToggle = document.createElement('button');
+    var groupByMarch = localStorage.getItem('heroGroupByMarch') === '1';
+    groupToggle.className = 'sort-btn' + (groupByMarch ? ' active' : '');
+    groupToggle.id = 'hero-group-toggle';
+    groupToggle.textContent = 'Group by March';
+    groupToggle.title = 'Organize heroes into march sections';
+    groupToggle.addEventListener('click', function() {
+      var nowOn = !groupToggle.classList.contains('active');
+      groupToggle.classList.toggle('active', nowOn);
+      localStorage.setItem('heroGroupByMarch', nowOn ? '1' : '0');
+      renderHeroGrid(heroes);
+    });
+    filterBar.appendChild(groupToggle);
 
     // Manage Marches button
     var manageBtn = document.createElement('button');
