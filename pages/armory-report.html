@@ -3521,7 +3521,7 @@
     chipRow.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.5rem;margin-bottom:1.25rem;';
     function makeChip(label, value, color, subtext) {
       var c = document.createElement('div');
-      c.style.cssText = 'background:linear-gradient(135deg,' + color + '15 0%,' + color + '08 100%);border:1px solid ' + color + '30;border-radius:10px;padding:.65rem .75rem;';
+      c.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.65rem .75rem;';
       var v = document.createElement('div');
       v.style.cssText = 'font-size:1.25rem;font-weight:700;color:' + color + ';line-height:1.1;';
       v.textContent = value;
@@ -3550,13 +3550,17 @@
       var lv = suitLevelsOv[String(sid)] || 0;
       if (lv > 0 && levelBuckets[lv] !== undefined) levelBuckets[lv]++;
     });
+    // Build readable level breakdown: "19 Level 1, 2 Level 5" etc
     var lvParts = [];
     for (var lv = 5; lv >= 1; lv--) {
-      if (levelBuckets[lv]) lvParts.push('Lv' + lv + ':' + levelBuckets[lv]);
+      if (levelBuckets[lv]) {
+        lvParts.push(levelBuckets[lv] + ' Level ' + lv);
+      }
     }
-    var suitSub = lvParts.length ? lvParts.join(' \u00B7 ') : 'no sets complete';
+    var suitSub = lvParts.length ? lvParts.join(', ') : 'no sets complete';
     chipRow.appendChild(makeChip('Decor Sets', suitIdsOv.length + ' / ' + totalSuits, '#a371f7', suitSub));
-    chipRow.appendChild(makeChip('Beasts / HTs', counts.beasts + ' / ' + counts.hts, 'var(--yellow)', ''));
+    chipRow.appendChild(makeChip('Enigma Beasts', String(counts.beasts), 'var(--yellow)', ''));
+    chipRow.appendChild(makeChip('Heavy Troopers', String(counts.hts), '#f0883e', ''));
     container.appendChild(chipRow);
 
     // ── Top Heroes (by gear score) ──
@@ -3714,28 +3718,39 @@
       container.appendChild(beastsSection);
     }
 
-    // ── Branch breakdown (donut chart) ──
+    // ── Rune Stars chart (donut showing rune star distribution across all gear) ──
     if (merged.heroes.length > 0) {
-      var branchSection = document.createElement('div');
-      branchSection.style.cssText = 'margin-top:1.25rem;';
-      var branchTitle = document.createElement('h3');
-      branchTitle.style.cssText = 'font-size:.9rem;color:var(--text);margin-bottom:.75rem;font-weight:600;';
-      branchTitle.textContent = 'Branch Breakdown';
-      branchSection.appendChild(branchTitle);
+      var runeSection = document.createElement('div');
+      runeSection.style.cssText = 'margin-top:1.25rem;';
+      var runeTitle = document.createElement('h3');
+      runeTitle.style.cssText = 'font-size:.9rem;color:var(--text);margin-bottom:.75rem;font-weight:600;';
+      runeTitle.textContent = 'Rune Progress';
+      runeSection.appendChild(runeTitle);
 
-      var branchCounts = { Army: 0, Navy: 0, 'Air Force': 0 };
+      // Count runes by star level across all heroes (max 6 stars per rune)
+      var starBuckets = { 6: 0, 5: 0, 4: 0, 3: 0, 2: 0, 1: 0, 0: 0 };
+      var totalSlots = 0;
+      var totalStars = 0;
       merged.heroes.forEach(function(h) {
-        var b = heroBranch(h.id);
-        if (branchCounts[b] !== undefined) branchCounts[b]++;
+        (h.heroEquips || []).forEach(function(eq) {
+          totalSlots++;
+          var stars = eq.runeStarLevel || 0;
+          totalStars += stars;
+          if (starBuckets[stars] !== undefined) starBuckets[stars]++;
+        });
       });
+      var maxStars = totalSlots * 6;
 
-      var branchCard = document.createElement('div');
-      branchCard.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;';
+      var runeCard = document.createElement('div');
+      runeCard.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;';
 
+      // Segments: 6-star (gold), 5-star (purple), 4-star (blue), 1-3 star (gray), no rune (dark)
       var segs = [
-        { value: branchCounts['Army'], color: '#3fb950', label: 'Army' },
-        { value: branchCounts['Navy'], color: '#388bfd', label: 'Navy' },
-        { value: branchCounts['Air Force'], color: '#d29922', label: 'Air Force' }
+        { value: starBuckets[6], color: '#d29922', label: '6-Star Runes' },
+        { value: starBuckets[5], color: '#a371f7', label: '5-Star Runes' },
+        { value: starBuckets[4], color: '#388bfd', label: '4-Star Runes' },
+        { value: starBuckets[3] + starBuckets[2] + starBuckets[1], color: '#8b949e', label: '1-3 Star Runes' },
+        { value: starBuckets[0], color: '#30363d', label: 'No Rune' }
       ];
       var donut = buildDonutChart(segs, 120, 0.62);
       if (donut) {
@@ -3745,40 +3760,40 @@
         var center = document.createElement('div');
         center.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;';
         var cv = document.createElement('div');
-        cv.style.cssText = 'font-size:1.3rem;font-weight:700;color:var(--text);line-height:1;';
-        cv.textContent = merged.heroes.length;
+        cv.style.cssText = 'font-size:1.1rem;font-weight:700;color:var(--text);line-height:1;';
+        cv.textContent = totalStars + '/' + maxStars;
         center.appendChild(cv);
         var cl = document.createElement('div');
-        cl.style.cssText = 'font-size:.65rem;color:var(--muted);margin-top:.15rem;';
-        cl.textContent = 'Heroes';
+        cl.style.cssText = 'font-size:.6rem;color:var(--muted);margin-top:.15rem;';
+        cl.textContent = 'Total Stars';
         center.appendChild(cl);
         donutWrap.appendChild(center);
-        branchCard.appendChild(donutWrap);
+        runeCard.appendChild(donutWrap);
       }
 
       var legendWrap = document.createElement('div');
-      legendWrap.style.cssText = 'display:flex;flex-direction:column;gap:.4rem;flex:1;min-width:140px;';
+      legendWrap.style.cssText = 'display:flex;flex-direction:column;gap:.35rem;flex:1;min-width:140px;';
       segs.forEach(function(s) {
+        if (s.value === 0) return; // skip empty segments
         var row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;gap:.5rem;';
         var dot = document.createElement('span');
         dot.style.cssText = 'width:10px;height:10px;border-radius:2px;background:' + s.color + ';flex-shrink:0;';
         row.appendChild(dot);
         var lbl = document.createElement('span');
-        lbl.style.cssText = 'font-size:.8rem;color:var(--text);flex:1;';
+        lbl.style.cssText = 'font-size:.78rem;color:var(--text);flex:1;';
         lbl.textContent = s.label;
         row.appendChild(lbl);
         var cnt = document.createElement('span');
-        cnt.style.cssText = 'font-size:.8rem;color:var(--muted);font-weight:600;';
-        var pct = merged.heroes.length > 0 ? Math.round(s.value / merged.heroes.length * 100) : 0;
-        cnt.textContent = s.value + ' (' + pct + '%)';
+        cnt.style.cssText = 'font-size:.78rem;color:var(--muted);font-weight:600;';
+        cnt.textContent = s.value;
         row.appendChild(cnt);
         legendWrap.appendChild(row);
       });
-      branchCard.appendChild(legendWrap);
+      runeCard.appendChild(legendWrap);
 
-      branchSection.appendChild(branchCard);
-      container.appendChild(branchSection);
+      runeSection.appendChild(runeCard);
+      container.appendChild(runeSection);
     }
   }
 
