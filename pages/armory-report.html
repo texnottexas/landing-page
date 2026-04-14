@@ -3803,6 +3803,11 @@
       runeTitle.style.cssText = 'font-size:.9rem;color:var(--text);font-weight:600;margin:0;';
       runeTitle.textContent = 'Rune Progress by Hero';
       runeTitleRow.appendChild(runeTitle);
+      var runeInfoPill = document.createElement('button');
+      runeInfoPill.className = 'gs-info-pill';
+      runeInfoPill.textContent = 'How is this calculated?';
+      runeInfoPill.addEventListener('click', function() { showRuneProgressModal(); });
+      runeTitleRow.appendChild(runeInfoPill);
       runeSection.appendChild(runeTitleRow);
 
       // Derive gear slot number from equipId (same logic as gearSlotName)
@@ -4444,6 +4449,99 @@
   function showGearScoreModal() {
     buildGearScoreModal();
     document.getElementById('gs-modal-overlay').classList.add('active');
+  }
+
+  // "How is this calculated?" modal for rune progress
+  function buildRuneProgressModal() {
+    if (document.getElementById('rp-modal-overlay')) return;
+    var overlay = document.createElement('div');
+    overlay.className = 'gs-modal-overlay';
+    overlay.id = 'rp-modal-overlay';
+    var modal = document.createElement('div');
+    modal.className = 'gs-modal';
+    var close = document.createElement('button');
+    close.className = 'gs-close';
+    close.textContent = '\u2715';
+    close.addEventListener('click', function() { overlay.classList.remove('active'); });
+    modal.appendChild(close);
+
+    var title = document.createElement('h3');
+    title.textContent = 'How Rune Progress is Calculated';
+    modal.appendChild(title);
+
+    var intro = document.createElement('p');
+    intro.textContent = 'Progress is measured as a percentage of the maximum possible stars for the runes a hero actually has equipped. This means a hero who has maxed all their runes shows 100%, regardless of whether those runes cap at 1 star or 6 stars.';
+    modal.appendChild(intro);
+
+    var h4a = document.createElement('h4');
+    h4a.textContent = 'Per-Hero Formula';
+    modal.appendChild(h4a);
+    var formula = document.createElement('div');
+    formula.className = 'gs-breakdown';
+    function addRow(lbl, val, isTotal) {
+      var row = document.createElement('div');
+      row.className = 'gs-breakdown-row' + (isTotal ? ' total' : '');
+      var l = document.createElement('span'); l.textContent = lbl;
+      var v = document.createElement('span'); v.textContent = val;
+      row.appendChild(l); row.appendChild(v);
+      formula.appendChild(row);
+    }
+    addRow('Current Stars', 'Sum of star levels on all equipped runes');
+    addRow('Max Stars', 'Sum of max star level for each equipped rune');
+    addRow('Progress', '(Current / Max) \u00D7 100%', true);
+    modal.appendChild(formula);
+
+    var h4b = document.createElement('h4');
+    h4b.textContent = 'Why Scale to Max?';
+    modal.appendChild(h4b);
+    var p1 = document.createElement('p');
+    p1.textContent = 'Different rune types have different star caps. Tactical Awareness in slot 1 maxes at 1 star, while Tactical Awareness in slot 3 maxes at 3 stars (6 for the 6-star variant). Raw star counts would unfairly penalize heroes with lower-cap runes. Scaling to each rune\u2019s own max shows true completion.';
+    modal.appendChild(p1);
+
+    var h4c = document.createElement('h4');
+    h4c.textContent = 'Example';
+    modal.appendChild(h4c);
+    var ex = document.createElement('div');
+    ex.className = 'gs-breakdown';
+    function addExRow(lbl, val) {
+      var row = document.createElement('div');
+      row.className = 'gs-breakdown-row';
+      row.style.color = 'var(--text)';
+      var l = document.createElement('span'); l.textContent = lbl;
+      var v = document.createElement('span'); v.textContent = val;
+      row.appendChild(l); row.appendChild(v);
+      ex.appendChild(row);
+    }
+    addExRow('Slot 1: Magnetize', '1/1 star (maxed)');
+    addExRow('Slot 2: Magnetic Field', '1/1 star (maxed)');
+    addExRow('Slot 3: Tactical Awareness', '5/6 stars');
+    addExRow('Slot 4: Stealth Hologram', '4/6 stars');
+    addExRow('Slot 5: Searing', '2/3 stars');
+    addExRow('Slot 6: Armor-Breaking', '3/3 stars (maxed)');
+    var exTotal = document.createElement('div');
+    exTotal.className = 'gs-breakdown-row total';
+    var el1 = document.createElement('span'); el1.textContent = 'Progress';
+    var el2 = document.createElement('span'); el2.textContent = '16/20 = 80%';
+    exTotal.appendChild(el1); exTotal.appendChild(el2);
+    ex.appendChild(exTotal);
+    modal.appendChild(ex);
+
+    var h4d = document.createElement('h4');
+    h4d.textContent = 'Summary Metrics';
+    modal.appendChild(h4d);
+    var p2 = document.createElement('p');
+    p2.textContent = 'Overall Progress applies the same formula across all heroes combined. Maxed Runes counts individual runes where current stars equal max stars. Runes Equipped shows how many gear slots have a rune vs total gear slots.';
+    modal.appendChild(p2);
+
+    overlay.appendChild(modal);
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) overlay.classList.remove('active');
+    });
+    document.body.appendChild(overlay);
+  }
+  function showRuneProgressModal() {
+    buildRuneProgressModal();
+    document.getElementById('rp-modal-overlay').classList.add('active');
   }
 
   // ── March management ──────────────────────────────────────────────────────
