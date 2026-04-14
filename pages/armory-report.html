@@ -768,10 +768,14 @@
   .gear-attr-name { color: var(--muted); }
   .gear-attr-val { color: var(--text); font-weight: 500; }
   .gear-attr-enh { font-weight: 500; }
-  .gear-attr-enh.active { color: var(--green); }
+  .gear-attr-enh.active { color: #f0883e; }
   .gear-attr-enh.inactive { color: var(--muted); opacity: .6; }
   .gear-attr-total { color: var(--accent); font-size: .65rem; }
-  .gear-base-enh { font-size: .7rem; color: var(--green); margin-top: .25rem; }
+  .gear-base-enh { display: flex; align-items: center; gap: .35rem; font-size: .72rem; margin-top: .3rem; padding: .3rem .5rem; background: rgba(240,136,62,0.08); border: 1px solid rgba(240,136,62,0.2); border-radius: 6px; }
+  .gear-base-enh-name { color: var(--text); font-weight: 500; }
+  .gear-base-enh-val { color: #f0883e; font-weight: 600; }
+  .gear-enh-legend { display: flex; align-items: center; gap: .4rem; font-size: .68rem; color: var(--muted); margin-bottom: .5rem; padding: .3rem 0; }
+  .gear-enh-legend-dot { width: 8px; height: 8px; border-radius: 2px; background: #f0883e; flex-shrink: 0; }
 
   /* Roll % bar */
   .gear-roll-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: .2rem; }
@@ -4800,6 +4804,23 @@
       noGear.textContent = 'No gear equipped.';
       gearPanel.appendChild(noGear);
     } else {
+      // Show enhancement legend if any gear has enigma platform enhancements
+      var hasAnyEnhance = equips.some(function(eq) {
+        var ev = eq.enhanceValue || {};
+        for (var k in ev) { if (ev.hasOwnProperty(k)) return true; }
+        var infos = eq.infos || [];
+        return infos.some(function(i) { return i.type === 1 && i.enhanceValue > 0 && i.enhanceShow === 2; });
+      });
+      if (hasAnyEnhance) {
+        var legend = document.createElement('div');
+        legend.className = 'gear-enh-legend';
+        var dot = document.createElement('span');
+        dot.className = 'gear-enh-legend-dot';
+        legend.appendChild(dot);
+        legend.appendChild(document.createTextNode('Enhanced by Enigma Platforms'));
+        gearPanel.appendChild(legend);
+      }
+
       var gearGrid = document.createElement('div');
       gearGrid.className = 'gear-grid';
 
@@ -4869,6 +4890,28 @@
           gc.appendChild(runeWrap);
         }
 
+        // Base stat enhancement (enigma platform bonus) — shown above random stats
+        var enh = equip.enhanceValue || {};
+        var enhKeys = [];
+        for (var ek in enh) { if (enh.hasOwnProperty(ek)) enhKeys.push(ek); }
+        if (enhKeys.length > 0) {
+          enhKeys.forEach(function(k) {
+            var bName = ENHANCE_BUFF[k] || ('Buff#' + k);
+            var bVal = '+' + (enh[k] / 100).toFixed(2).replace(/\.?0+$/, '') + '%';
+            var baseEnhEl = document.createElement('div');
+            baseEnhEl.className = 'gear-base-enh';
+            var nameEl = document.createElement('span');
+            nameEl.className = 'gear-base-enh-name';
+            nameEl.textContent = bName;
+            baseEnhEl.appendChild(nameEl);
+            var valEl = document.createElement('span');
+            valEl.className = 'gear-base-enh-val';
+            valEl.textContent = bVal;
+            baseEnhEl.appendChild(valEl);
+            gc.appendChild(baseEnhEl);
+          });
+        }
+
         // Random attributes (type=1 info entries) with roll % bars
         type1.forEach(function(info) {
           var tmpl = GEAR_TEMPLATE[info.templateId];
@@ -4930,21 +4973,6 @@
             gc.appendChild(pctLabel);
           }
         });
-
-        // Base stat enhancement (top-level enhanceValue)
-        var enh = equip.enhanceValue || {};
-        var enhKeys = [];
-        for (var ek in enh) { if (enh.hasOwnProperty(ek)) enhKeys.push(ek); }
-        if (enhKeys.length > 0) {
-          enhKeys.forEach(function(k) {
-            var bName = ENHANCE_BUFF[k] || ('Buff#' + k);
-            var bVal = (enh[k] / 100).toFixed(2).replace(/\.?0+$/, '') + '%';
-            var baseEnhEl = document.createElement('div');
-            baseEnhEl.className = 'gear-base-enh';
-            baseEnhEl.textContent = bName + ' +' + bVal;
-            gc.appendChild(baseEnhEl);
-          });
-        }
 
         gearGrid.appendChild(gc);
       });
