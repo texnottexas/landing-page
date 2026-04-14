@@ -3457,11 +3457,15 @@
     merged.heroes.forEach(function(h) { gearPieces += (h.heroEquips || []).length; });
     var decoCount = 0;
     if (merged.decorations && merged.decorations.ids) decoCount = merged.decorations.ids.length;
-    // Avg decor set level for subtext
-    var suitLvOv = (merged.decorations && merged.decorations.suitLevelBuff) ? merged.decorations.suitLevelBuff : {};
-    var suitLvVals = Object.keys(suitLvOv).map(function(k) { return suitLvOv[k]; }).filter(function(v) { return v > 0; });
-    var avgDecoLv = suitLvVals.length > 0 ? (suitLvVals.reduce(function(a, b) { return a + b; }, 0) / suitLvVals.length).toFixed(1) : null;
-    var decoSub = avgDecoLv ? 'Avg Set Level ' + avgDecoLv : '';
+    // Avg level of owned decorations
+    var decoIds = (merged.decorations && merged.decorations.ids) ? merged.decorations.ids : [];
+    var decoLvSum = 0, decoLvCount = 0;
+    decoIds.forEach(function(id) {
+      var gid = decorIdToGroup(id);
+      if (gid) { decoLvSum += decorLevel(id, gid); decoLvCount++; }
+    });
+    var avgDecoLv = decoLvCount > 0 ? (decoLvSum / decoLvCount).toFixed(1) : null;
+    var decoSub = avgDecoLv ? 'Avg Level ' + avgDecoLv : '';
 
     var beastCount = 0;
     var fieldCount = 0;
@@ -8277,6 +8281,18 @@
       return;
     }
 
+    // Mecha signature colors (tint for cards/tabs)
+    var MECHA_COLOR = {
+      1002: '#d29922',  // Earthshaker — yellow
+      1003: '#f85149',  // Blazing Gale — red
+      1004: '#79c0ff',  // Tide Crusher — light blue
+      1005: '#a371f7',  // Doom Sawblade — purple
+      1006: '#e6edf3',  // Luminary Knight — white
+      1007: '#f778ba',  // Blade Angel — pink
+      1008: '#8b949e'   // Heavy Mothership — gray
+    };
+    function mechaColor(id) { return MECHA_COLOR[id] || 'var(--accent)'; }
+
     // Mecha tab bar (if multiple HTs)
     var activeMechaIdx = 0;
     var tabBar = null;
@@ -8285,13 +8301,16 @@
       tabBar.className = 'chip-tab-bar';
       mechasWithChips.forEach(function(m, i) {
         var btn = document.createElement('button');
+        var mc = mechaColor(m.mechaId);
         btn.className = 'chip-tab-btn' + (i === 0 ? ' active' : '');
+        btn.style.cssText = 'background:linear-gradient(135deg,' + mc + '12 0%,' + mc + '06 100%);border-color:' + mc + '30;';
         var img = document.createElement('img');
         img.src = ASSET_BASE + 'assets/mecha-icons/mecha_' + m.mechaId + '.png';
         img.alt = ''; img.onerror = function() { this.style.display = 'none'; };
         btn.appendChild(img);
         var nameDiv = document.createElement('span');
         nameDiv.className = 'chip-tab-name';
+        nameDiv.style.color = mc;
         nameDiv.textContent = MECHA_NAMES[m.mechaId] || ('HT #' + m.mechaId);
         btn.appendChild(nameDiv);
         btn.addEventListener('click', function() {
@@ -8313,17 +8332,18 @@
     function renderMechaChips(mecha) {
       while (contentDiv.firstChild) contentDiv.removeChild(contentDiv.firstChild);
 
-      // Mecha icon + name header
+      // Mecha icon + name header with signature color tint
+      var mc = mechaColor(mecha.mechaId);
       var mechaHdr = document.createElement('div');
-      mechaHdr.style.cssText = 'display:flex;align-items:center;gap:.65rem;margin-bottom:.75rem;';
+      mechaHdr.style.cssText = 'display:flex;align-items:center;gap:.65rem;margin-bottom:.75rem;padding:.6rem .8rem;border-radius:10px;background:linear-gradient(135deg,' + mc + '15 0%,' + mc + '08 100%);border:1px solid ' + mc + '25;';
       var mechaImg = document.createElement('img');
       mechaImg.src = ASSET_BASE + 'assets/mecha-icons/mecha_' + mecha.mechaId + '.png';
       mechaImg.alt = '';
-      mechaImg.style.cssText = 'width:48px;height:48px;border-radius:8px;object-fit:cover;border:2px solid var(--border);background:var(--card);';
+      mechaImg.style.cssText = 'width:48px;height:48px;border-radius:8px;object-fit:cover;border:2px solid ' + mc + '40;background:var(--card);';
       mechaImg.onerror = function() { this.style.display = 'none'; };
       mechaHdr.appendChild(mechaImg);
       var mechaNameEl = document.createElement('div');
-      mechaNameEl.style.cssText = 'font-size:1rem;font-weight:600;color:var(--text);';
+      mechaNameEl.style.cssText = 'font-size:1rem;font-weight:600;color:' + mc + ';';
       mechaNameEl.textContent = MECHA_NAMES[mecha.mechaId] || ('Heavy Trooper #' + mecha.mechaId);
       mechaHdr.appendChild(mechaNameEl);
       var chipCountEl = document.createElement('div');
