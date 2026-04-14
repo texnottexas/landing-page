@@ -1484,15 +1484,6 @@
     setTimeout(function() { toast.classList.remove('show'); setTimeout(function() { toast.remove(); }, 300); }, 2000);
   }
 
-  // Legacy function for backwards compatibility
-  function saveAndShare() {
-    saveConfig(false).then(function(code) {
-      showShortcodeModal(code);
-    }).catch(function(e) {
-      alert('Save failed: ' + e.message);
-    });
-  }
-
   function showShortcodeModal(code) {
     var overlay = document.createElement('div');
     overlay.className = 'shortcode-overlay';
@@ -2383,36 +2374,24 @@
   var HERO_CACHE = null;
   var HERO_TYPE_CACHE = null;
 
-  function loadHeroNames(cb) {
-    if (HERO_CACHE) return cb(HERO_CACHE);
-    fetch('data/all-heroes.json')
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        HERO_CACHE = {};
-        HERO_TYPE_CACHE = {};
-        data.forEach(function(h) {
-          HERO_CACHE[h.heroId] = h.displayName || h.name || ('Hero #' + h.heroId);
-          HERO_TYPE_CACHE[h.heroId] = h.typeName || 'Unknown';
-        });
-        cb(HERO_CACHE);
-      })
-      .catch(function() { HERO_CACHE = {}; HERO_TYPE_CACHE = {}; cb(HERO_CACHE); });
-  }
-
+  // Single hero data loader — populates HERO_CACHE and HERO_TYPE_CACHE, deduplicates fetches
+  var _heroDataPromise = null;
   function loadHeroData(cb) {
-    if (HERO_TYPE_CACHE) return cb();
-    fetch('data/all-heroes.json')
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        HERO_CACHE = {};
-        HERO_TYPE_CACHE = {};
-        data.forEach(function(h) {
-          HERO_CACHE[h.heroId] = h.displayName || h.name || ('Hero #' + h.heroId);
-          HERO_TYPE_CACHE[h.heroId] = h.typeName || 'Unknown';
-        });
-        cb();
-      })
-      .catch(function() { HERO_TYPE_CACHE = {}; cb(); });
+    if (HERO_CACHE && HERO_TYPE_CACHE) return cb();
+    if (!_heroDataPromise) {
+      _heroDataPromise = fetch('data/all-heroes.json')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          HERO_CACHE = {};
+          HERO_TYPE_CACHE = {};
+          data.forEach(function(h) {
+            HERO_CACHE[h.heroId] = h.displayName || h.name || ('Hero #' + h.heroId);
+            HERO_TYPE_CACHE[h.heroId] = h.typeName || 'Unknown';
+          });
+        })
+        .catch(function() { HERO_CACHE = {}; HERO_TYPE_CACHE = {}; });
+    }
+    _heroDataPromise.then(cb);
   }
 
   function heroName(id) {
@@ -2582,7 +2561,7 @@
 
   // ── Step 3: Capture summary ───────────────────────────────────────────────
   function renderStepSummary(container) {
-    loadHeroNames(function() {
+    loadHeroData(function() {
       _buildSummaryDOM(container);
     });
   }
@@ -4382,9 +4361,9 @@
       }
       return s;
     }
-    for (var i = 0; i < fullStars; i++) wrap.appendChild(makeStar('full'));
-    for (var i = 0; i < halfStar; i++) wrap.appendChild(makeStar('half'));
-    for (var i = 0; i < emptyStars; i++) wrap.appendChild(makeStar('empty'));
+    for (var fi = 0; fi < fullStars; fi++) wrap.appendChild(makeStar('full'));
+    for (var hi = 0; hi < halfStar; hi++) wrap.appendChild(makeStar('half'));
+    for (var ei = 0; ei < emptyStars; ei++) wrap.appendChild(makeStar('empty'));
     return wrap;
   }
 
