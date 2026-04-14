@@ -3964,20 +3964,34 @@
               if (slotData && slotData.rune) {
                 var rd = slotData.rune;
                 var iconUrl = runeIconUrl(rd.n);
-                if (iconUrl) {
-                  var ricon = document.createElement('img');
-                  ricon.src = iconUrl;
-                  ricon.alt = rd.n;
-                  ricon.title = (GEAR_SLOT_NAMES[i + 1] || 'Slot') + ': ' + rd.n + ' (' + rd.s + '/' + rd.sm + ')';
-                  ricon.style.cssText = 'width:26px;height:26px;border-radius:4px;';
-                  ricon.onerror = function() { this.style.display = 'none'; };
-                  slotBox.appendChild(ricon);
-                } else {
-                  var initial = document.createElement('span');
-                  initial.style.cssText = 'font-size:.7rem;color:var(--muted);font-weight:700;';
-                  initial.textContent = rd.n.charAt(0);
-                  slotBox.appendChild(initial);
-                }
+                // Use IIFE to capture rd.n for the onerror fallback (var hoisting in for-loop)
+                (function(runeName, runeStars, runeMax, slotIdx, parentSlot, url) {
+                  var slotLabel = GEAR_SLOT_NAMES[slotIdx + 1] || ('Slot ' + (slotIdx + 1));
+                  var tipText = slotLabel + ': ' + runeName + ' (' + runeStars + '/' + runeMax + ')';
+                  if (url) {
+                    var ricon = document.createElement('img');
+                    ricon.src = url;
+                    ricon.alt = runeName;
+                    ricon.title = tipText;
+                    ricon.style.cssText = 'width:26px;height:26px;border-radius:4px;';
+                    ricon.onerror = function() {
+                      // Replace broken image with text initial fallback — never just hide
+                      this.style.display = 'none';
+                      var fb = document.createElement('span');
+                      fb.style.cssText = 'font-size:.7rem;color:var(--muted);font-weight:700;';
+                      fb.textContent = runeName.charAt(0);
+                      fb.title = tipText;
+                      parentSlot.insertBefore(fb, parentSlot.firstChild);
+                    };
+                    parentSlot.appendChild(ricon);
+                  } else {
+                    var initial = document.createElement('span');
+                    initial.style.cssText = 'font-size:.7rem;color:var(--muted);font-weight:700;';
+                    initial.textContent = runeName.charAt(0);
+                    initial.title = tipText;
+                    parentSlot.appendChild(initial);
+                  }
+                })(rd.n, rd.s, rd.sm, i, slotBox, iconUrl);
                 // Star badge
                 var badge = document.createElement('span');
                 badge.className = 'rune-star-badge';
