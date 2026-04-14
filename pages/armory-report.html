@@ -3810,37 +3810,18 @@
       runeTitleRow.appendChild(runeInfoPill);
       runeSection.appendChild(runeTitleRow);
 
-      // Derive gear slot number from equipId (same logic as gearSlotName)
-      function equipSlotNum(equipId) {
-        var s = equipId % 10;
-        if (s >= 1 && s <= 6) return s;
-        var d = Math.floor((equipId % 10000) / 100);
-        if (d >= 1 && d <= 6) return d;
-        var str = String(equipId);
-        if (str.length >= 6) { var p = parseInt(str.charAt(0), 10); if (p >= 1 && p <= 6) return p; }
-        return 0;
-      }
-      var SLOT_SHORT = { 1: 'Pistol', 2: 'Backarmor', 3: 'Optics', 4: 'Headset', 5: 'GPS', 6: 'Boots' };
-
-      // Per-hero rune summary: map equips to gear slot positions 1-6
+      // Per-hero rune summary: equips rendered in array order (same as Heroes & Gear tab)
       var heroRunes = merged.heroes.map(function(h) {
         var gearSlots = [null, null, null, null, null, null]; // index 0-5 = slot 1-6
         var starSum = 0, maxSum = 0;
-        (h.heroEquips || []).forEach(function(eq) {
+        (h.heroEquips || []).forEach(function(eq, idx) {
           var infos = eq.infos || [];
           var type2 = null;
           infos.forEach(function(info) { if (info.type === 2) type2 = info; });
           var rd = null;
           if (type2 && type2.templateId) rd = resolveRune(type2.templateId);
           if (rd) { starSum += rd.s; maxSum += rd.sm; }
-          var slotN = equipSlotNum(eq.id);
-          var idx = (slotN >= 1 && slotN <= 6) ? slotN - 1 : -1;
-          if (idx >= 0) {
-            gearSlots[idx] = { equipId: eq.id, rune: rd };
-          } else {
-            // Unknown slot — put in first empty position
-            for (var f = 0; f < 6; f++) { if (!gearSlots[f]) { gearSlots[f] = { equipId: eq.id, rune: rd }; break; } }
-          }
+          if (idx < 6) gearSlots[idx] = { equipId: eq.id, rune: rd };
         });
         var pct = maxSum > 0 ? Math.round(starSum / maxSum * 100) : 0;
         return { hero: h, gearSlots: gearSlots, starSum: starSum, maxSum: maxSum, pct: pct, hasGear: (h.heroEquips || []).length > 0 };
