@@ -481,8 +481,15 @@
     scrollbar-width: none; /* Firefox */
     position: sticky; top: 48px; z-index: 100;
     background: var(--bg); padding-top: .25rem;
+    /* Fade mask hints at off-screen tabs when scrollable */
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 32px), transparent);
+    mask-image: linear-gradient(to right, black calc(100% - 32px), transparent);
   }
   .tab-bar::-webkit-scrollbar { display: none; } /* Chrome/Safari */
+  /* Remove fade mask on wide screens where all tabs fit */
+  @media (min-width: 768px) {
+    .tab-bar { -webkit-mask-image: none; mask-image: none; }
+  }
   .tab-btn {
     padding: .75rem 1.25rem; color: var(--muted); font-size: .85rem;
     font-weight: 500; cursor: pointer; border: none; background: none;
@@ -622,9 +629,20 @@
     .deco-icon { width: 40px; height: 40px; }
     .deco-name { font-size: .7rem; }
     .deco-filter-bar { gap: .35rem; }
-    .deco-cat-pill { font-size: .65rem; padding: .2rem .5rem; }
+    .deco-cat-pill { font-size: .65rem; padding: .35rem .6rem; min-height: 32px; display: inline-flex; align-items: center; }
     .deco-detail-modal { max-width: 95vw; }
     .deco-set-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ── Desktop: compress rune progress width, enlarge assets ── */
+  @media (min-width: 769px) {
+    .rune-progress-card { max-width: 75%; }
+    .rune-progress-card .rune-slot-box { width: 48px !important; height: 48px !important; }
+    .rune-progress-card .rune-slot-box img { width: 36px !important; height: 36px !important; }
+    .rune-progress-card .rune-star-badge { transform: scale(0.8) !important; }
+    .rune-hero-icon { width: 44px !important; height: 44px !important; }
+    .rune-hero-name { font-size: .88rem !important; }
+    .rune-pct-val { font-size: 1.05rem !important; }
   }
 
   /* ── Mobile rune progress layout ── */
@@ -3456,15 +3474,30 @@
     merged.heroes.forEach(function(h) { gearPieces += (h.heroEquips || []).length; });
     var decoCount = 0;
     if (merged.decorations && merged.decorations.ids) decoCount = merged.decorations.ids.length;
+    // Avg decor set level for subtext
+    var suitLvOv = (merged.decorations && merged.decorations.suitLevelBuff) ? merged.decorations.suitLevelBuff : {};
+    var suitLvVals = Object.keys(suitLvOv).map(function(k) { return suitLvOv[k]; }).filter(function(v) { return v > 0; });
+    var avgDecoLv = suitLvVals.length > 0 ? (suitLvVals.reduce(function(a, b) { return a + b; }, 0) / suitLvVals.length).toFixed(1) : null;
+    var decoSub = avgDecoLv ? 'Avg Set Level ' + avgDecoLv : '';
+
     var beastCount = 0;
+    var fieldCount = 0;
+    var platformCount = 0;
     if (merged.enigmas && merged.enigmas.fields) {
       merged.enigmas.fields.forEach(function(f) {
+        var hasBeasts = false;
         (f.slots || []).forEach(function(s) {
-          if (s.beastId && String(s.beastId) !== '0') beastCount++;
+          if (s.beastId && String(s.beastId) !== '0') { beastCount++; hasBeasts = true; platformCount++; }
         });
+        if (hasBeasts) fieldCount++;
       });
     }
+    var enigmaSub = fieldCount > 0 ? fieldCount + ' fields, ' + platformCount + ' platforms' : '';
+
     var htCount = merged.mechas.length;
+    var htChipCount = 0;
+    merged.mechas.forEach(function(m) { htChipCount += (m.chips || []).length; });
+    var htSub = htChipCount > 0 ? htChipCount + ' chips loaded' : '';
 
     // ── Tab bar ──
     var tabBar = document.createElement('div');
@@ -3500,7 +3533,7 @@
     // Render first tab immediately (Overview)
     var firstTab = document.getElementById('tab-overview');
     firstTab.setAttribute('data-rendered', '1');
-    renderOverviewTab(merged, { heroes: heroCount, gear: gearPieces, decos: decoCount, beasts: beastCount, hts: htCount });
+    renderOverviewTab(merged, { heroes: heroCount, gear: gearPieces, decos: decoCount, beasts: beastCount, hts: htCount, decoSub: decoSub, enigmaSub: enigmaSub, htSub: htSub });
 
     // Pass report IDs to feedback widget for context
     window._reportContext = wizardState.reportData.map(function(r) { return r.id; }).join(', ');
@@ -3642,15 +3675,15 @@
       }
       if (clickable) {
         var arrow = document.createElement('div');
-        arrow.style.cssText = 'position:absolute;top:.5rem;right:.55rem;font-size:.7rem;color:' + color + '80;opacity:.6;';
+        arrow.style.cssText = 'position:absolute;top:.5rem;right:.55rem;font-size:.7rem;color:' + color + '80;opacity:.7;';
         arrow.textContent = '\u2192';
         c.appendChild(arrow);
       }
       return c;
     }
-    chipRow.appendChild(makeChip('Total Gear Score', formatPower(totalGearScore), '#79c0ff', merged.heroes.length + ' heroes', 'heroes'));
+    chipRow.appendChild(makeChip('Total Gear Score', formatPower(totalGearScore), '#f0c674', merged.heroes.length + ' heroes', 'heroes'));
     chipRow.appendChild(makeChip('Avg Score / Hero', formatPower(avgGearScore), '#3fb950', 'max 6,000 per hero', 'heroes'));
-    chipRow.appendChild(makeChip('Decorations', String(counts.decos), '#388bfd', '', 'decorations'));
+    chipRow.appendChild(makeChip('Decorations', String(counts.decos), '#388bfd', counts.decoSub, 'decorations'));
     // Decor Sets chip with level breakdown
     var suitIdsOv = (merged.decorations && merged.decorations.suit) ? merged.decorations.suit : [];
     var suitLevelsOv = (merged.decorations && merged.decorations.suitLevelBuff) ? merged.decorations.suitLevelBuff : {};
@@ -3669,8 +3702,8 @@
     }
     var suitSub = lvParts.length ? lvParts.join(', ') : 'no sets complete';
     chipRow.appendChild(makeChip('Decor Sets', suitIdsOv.length + ' / ' + totalSuits, '#a371f7', suitSub, 'decorations'));
-    chipRow.appendChild(makeChip('Enigma Beasts', String(counts.beasts), '#d29922', '', 'enigma'));
-    chipRow.appendChild(makeChip('Heavy Troopers', String(counts.hts), '#f0883e', '', 'chips'));
+    chipRow.appendChild(makeChip('Enigma Beasts', String(counts.beasts), '#d29922', counts.enigmaSub, 'enigma'));
+    chipRow.appendChild(makeChip('Heavy Troopers', String(counts.hts), '#f0883e', counts.htSub, 'chips'));
     container.appendChild(chipRow);
 
     // ── Top Heroes (by gear score) ──
@@ -3692,13 +3725,18 @@
       topSection.appendChild(topTitleRow);
 
       var topGrid = document.createElement('div');
-      topGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.65rem;';
+      topGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.65rem;min-height:120px;';
+      var topLoading = document.createElement('div');
+      topLoading.style.cssText = 'color:var(--muted);font-size:.8rem;grid-column:1/-1;display:flex;align-items:center;justify-content:center;';
+      topLoading.textContent = 'Loading hero data\u2026';
+      topGrid.appendChild(topLoading);
 
       var sorted = merged.heroes.slice().sort(function(a, b) {
         return heroGearScore(b) - heroGearScore(a);
       }).slice(0, 6);
 
       loadHeroData(function() {
+        if (topLoading.parentNode) topLoading.parentNode.removeChild(topLoading);
         sorted.forEach(function(hero) {
           var id = hero.id;
           var name = heroName(id);
@@ -3764,12 +3802,11 @@
             var runeSeg = document.createElement('div');
             runeSeg.style.cssText = 'background:#a371f7;width:' + runeBarPct + '%;';
             splitBar.appendChild(runeSeg);
-            var breakdownCapture = { bd: bd, gs: gs, name: name };
             splitBar.addEventListener('click', function(e) {
-              showGearScoreBreakdownTooltip(e, breakdownCapture);
+              e.stopPropagation(); showGearScoreModal();
             });
             splitBar.addEventListener('keydown', function(e) {
-              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showGearScoreBreakdownTooltip(e, breakdownCapture); }
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showGearScoreModal(); }
             });
             card.appendChild(splitBar);
 
@@ -3882,6 +3919,7 @@
         .sort(function(a, b) { return b.pct - a.pct || b.starSum - a.starSum; });
 
       var runeCard = document.createElement('div');
+      runeCard.className = 'rune-progress-card';
       runeCard.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;';
 
       // Overall totals across all heroes
@@ -3913,7 +3951,7 @@
       summaryItems.forEach(function(item) {
         var s = document.createElement('div');
         var sv = document.createElement('div');
-        sv.style.cssText = 'font-size:1rem;font-weight:700;color:var(--accent);';
+        sv.style.cssText = 'font-size:1.3rem;font-weight:700;color:var(--accent);';
         sv.textContent = item.value;
         s.appendChild(sv);
         var sl = document.createElement('div');
@@ -3933,9 +3971,14 @@
         // Top 6 heroes sorted by % progress
         var topHeroRunes = heroRunes.slice(0, 6);
         var rowsWrap = document.createElement('div');
-        rowsWrap.style.cssText = 'display:flex;flex-direction:column;gap:.55rem;';
+        rowsWrap.style.cssText = 'display:flex;flex-direction:column;gap:.55rem;min-height:80px;';
+        var runeLoading = document.createElement('div');
+        runeLoading.style.cssText = 'color:var(--muted);font-size:.8rem;display:flex;align-items:center;justify-content:center;padding:1rem 0;';
+        runeLoading.textContent = 'Loading hero data\u2026';
+        rowsWrap.appendChild(runeLoading);
 
         loadHeroData(function() {
+          if (runeLoading.parentNode) runeLoading.parentNode.removeChild(runeLoading);
           topHeroRunes.forEach(function(entry) {
             var h = entry.hero;
             var id = h.id;
@@ -3969,12 +4012,14 @@
             var img = document.createElement('img');
             img.src = heroIconUrl(id);
             img.alt = '';
+            img.className = 'rune-hero-icon';
             img.style.cssText = 'width:32px;height:32px;border-radius:50%;object-fit:cover;border:2px solid ' + branchColor + ';flex-shrink:0;';
             img.onerror = function() { this.style.display = 'none'; };
             heroWrap.appendChild(img);
             var nameCol = document.createElement('div');
             nameCol.style.cssText = 'min-width:0;flex:1;';
             var heroName_ = document.createElement('div');
+            heroName_.className = 'rune-hero-name';
             heroName_.style.cssText = 'font-size:.78rem;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
             heroName_.textContent = name;
             nameCol.appendChild(heroName_);
@@ -4054,6 +4099,7 @@
             pctCol.style.cssText = 'flex-shrink:0;width:52px;text-align:right;';
             var pctVal = document.createElement('div');
             var pctColor = entry.pct >= 80 ? '#3fb950' : entry.pct >= 50 ? '#a371f7' : entry.pct >= 25 ? '#388bfd' : '#d29922';
+            pctVal.className = 'rune-pct-val';
             pctVal.style.cssText = 'font-size:.95rem;font-weight:700;color:' + pctColor + ';';
             pctVal.textContent = entry.pct + '%';
             pctCol.appendChild(pctVal);
@@ -8234,7 +8280,7 @@
         var btn = document.createElement('button');
         btn.className = 'chip-tab-btn' + (i === 0 ? ' active' : '');
         var img = document.createElement('img');
-        img.src = ASSET_BASE + 'assets/mecha-icons/' + m.mechaId + '.png';
+        img.src = ASSET_BASE + 'assets/mecha-icons/mecha_' + m.mechaId + '.png';
         img.alt = ''; img.onerror = function() { this.style.display = 'none'; };
         btn.appendChild(img);
         var nameDiv = document.createElement('span');
@@ -8259,6 +8305,25 @@
 
     function renderMechaChips(mecha) {
       while (contentDiv.firstChild) contentDiv.removeChild(contentDiv.firstChild);
+
+      // Mecha icon + name header
+      var mechaHdr = document.createElement('div');
+      mechaHdr.style.cssText = 'display:flex;align-items:center;gap:.65rem;margin-bottom:.75rem;';
+      var mechaImg = document.createElement('img');
+      mechaImg.src = ASSET_BASE + 'assets/mecha-icons/mecha_' + mecha.mechaId + '.png';
+      mechaImg.alt = '';
+      mechaImg.style.cssText = 'width:48px;height:48px;border-radius:8px;object-fit:cover;border:2px solid var(--border);background:var(--card);';
+      mechaImg.onerror = function() { this.style.display = 'none'; };
+      mechaHdr.appendChild(mechaImg);
+      var mechaNameEl = document.createElement('div');
+      mechaNameEl.style.cssText = 'font-size:1rem;font-weight:600;color:var(--text);';
+      mechaNameEl.textContent = MECHA_NAMES[mecha.mechaId] || ('Heavy Trooper #' + mecha.mechaId);
+      mechaHdr.appendChild(mechaNameEl);
+      var chipCountEl = document.createElement('div');
+      chipCountEl.style.cssText = 'font-size:.75rem;color:var(--muted);margin-left:auto;';
+      chipCountEl.textContent = (mecha.chips || []).length + ' chips';
+      mechaHdr.appendChild(chipCountEl);
+      contentDiv.appendChild(mechaHdr);
 
       var byPos = {};
       var coreSetGroup = null;
