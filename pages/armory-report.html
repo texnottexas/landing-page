@@ -758,7 +758,7 @@
   }
   .gear-card {
     background: var(--card); border: 1px solid var(--border); border-radius: 6px;
-    padding: .6rem;
+    padding: .6rem; position: relative;
   }
   .gear-slot-name { font-size: .75rem; font-weight: 600; color: var(--text); margin-bottom: .3rem; }
   .gear-stat { font-size: .7rem; color: var(--muted); }
@@ -774,7 +774,7 @@
   .gear-base-enh { display: flex; align-items: center; gap: .35rem; font-size: .72rem; margin-top: .3rem; padding: .3rem .5rem; background: rgba(240,136,62,0.08); border: 1px solid rgba(240,136,62,0.2); border-radius: 6px; }
   .gear-base-enh-name { color: var(--text); font-weight: 500; }
   .gear-base-enh-val { color: #f0883e; font-weight: 600; }
-  .gear-enh-legend { display: flex; align-items: center; gap: .4rem; font-size: .68rem; color: var(--muted); margin-bottom: .5rem; padding: .3rem 0; }
+  .gear-enh-legend { display: inline-flex; align-items: center; gap: .35rem; font-size: .65rem; color: var(--muted); margin-bottom: .5rem; padding: .25rem .6rem; background: rgba(240,136,62,0.08); border: 1px solid rgba(240,136,62,0.2); border-radius: 16px; }
   .gear-enh-legend-dot { width: 8px; height: 8px; border-radius: 2px; background: #f0883e; flex-shrink: 0; }
 
   /* Roll % bar */
@@ -4842,35 +4842,40 @@
         if (type2 && type2.templateId) {
           var runeData = resolveRune(type2.templateId);
 
-          // Build rune wrap: icon + stars + name
-          var runeWrap = document.createElement('div');
-          runeWrap.className = 'gear-rune-wrap';
-
           if (runeData) {
+            // Rune icon + stars — positioned top-right of card
+            var runeCorner = document.createElement('div');
+            runeCorner.className = 'gear-rune-wrap';
+            runeCorner.style.cssText = 'position:absolute;top:.5rem;right:.5rem;display:flex;align-items:center;gap:.25rem;';
             var iconUrl = runeIconUrl(runeData.n);
             if (iconUrl) {
               var rImg = document.createElement('img');
               rImg.src = iconUrl;
               rImg.alt = '';
               rImg.onerror = function() { this.style.display = 'none'; };
-              runeWrap.appendChild(rImg);
+              runeCorner.appendChild(rImg);
             }
-            var rNameSpan = document.createElement('span');
-            rNameSpan.className = 'gear-rune-name-text';
-            rNameSpan.textContent = runeData.n;
-            runeWrap.appendChild(rNameSpan);
-            runeWrap.appendChild(runeStarSVG(runeData.s, runeData.sm));
-            // Click to show rune tooltip
+            runeCorner.appendChild(runeStarSVG(runeData.s, runeData.sm));
             (function(rd) {
-              runeWrap.addEventListener('click', function(ev) { showRuneTooltip(ev, rd); });
+              runeCorner.addEventListener('click', function(ev) { showRuneTooltip(ev, rd); });
             })(runeData);
+            gc.appendChild(runeCorner);
+
+            // Rune name — stays inline below level
+            var runeNameRow = document.createElement('div');
+            runeNameRow.className = 'gear-rune-name-text';
+            runeNameRow.style.cssText = 'cursor:pointer;margin-top:.15rem;';
+            runeNameRow.textContent = runeData.n;
+            (function(rd) {
+              runeNameRow.addEventListener('click', function(ev) { showRuneTooltip(ev, rd); });
+            })(runeData);
+            gc.appendChild(runeNameRow);
           } else {
             var fallbackSpan = document.createElement('span');
             fallbackSpan.className = 'gear-rune-name-text';
             fallbackSpan.textContent = 'Rune #' + type2.templateId;
-            runeWrap.appendChild(fallbackSpan);
+            gc.appendChild(fallbackSpan);
           }
-          gc.appendChild(runeWrap);
         }
 
         // Base stat enhancement (enigma platform bonus) — shown above random stats
