@@ -171,8 +171,11 @@
   <div id="screens-summary"></div>
 
   <h2>Pricing templates</h2>
-  <p style="color: var(--muted); font-size: 13px;">Each auction template defines an initial price range plus a step increment.</p>
-  <div style="overflow-x: auto;"><table id="auction-samples"><thead></thead><tbody></tbody></table></div>
+  <p style="color: var(--muted); font-size: 13px;">Each listing draws from one of two template families. The initial price falls somewhere in the range and the step is the minimum bid increment.</p>
+  <div id="pricing-summary"></div>
+  <h3 style="margin-top: 20px;">Titan Rune templates</h3>
+  <p style="color: var(--muted); font-size: 13px;">Each rune type has its own dedicated auction template.</p>
+  <div class="grid" id="rune-templates"></div>
 </section>
 
 <section class="section" id="bidding">
@@ -311,7 +314,8 @@
 
   function renderAll(data) {
     renderCurrencies(data);
-    renderAuctionSamples(data);
+    renderPricingSummary(data);
+    renderRuneTemplates(data);
     renderScreensSummary(data);
     renderBiddingTexts(data);
     renderEnvelope(data);
@@ -328,21 +332,98 @@
     });
   }
 
-  function renderAuctionSamples(data) {
-    var tbl = document.getElementById('auction-samples');
-    var thead = tbl.querySelector('thead');
-    var tbody = tbl.querySelector('tbody');
-    var headRow = document.createElement('tr');
-    ['Initial', 'Max initial', 'Step', 'Type'].forEach(function (h) { headRow.appendChild(el('th', null, h)); });
-    thead.appendChild(headRow);
+  // product_id 1-170 at auction.type === 1 are Titan Gear listings (SE/RA).
+  // product_id 44000016-44000029 at auction.type === 4 map directly to rune
+  // item IDs, one template per rune variant (Artillery Storm, etc.).
+  function renderPricingSummary(data) {
+    var wrap = document.getElementById('pricing-summary');
     var rows = (data.auction && data.auction.rows) || [];
-    rows.slice(0, 20).forEach(function (r) {
-      var tr = document.createElement('tr');
-      tr.appendChild(el('td', null, r.initial_price.toLocaleString()));
-      tr.appendChild(el('td', null, r.max_initial_price.toLocaleString()));
-      tr.appendChild(el('td', null, '+' + r.step));
-      tr.appendChild(el('td', null, 'type ' + r.type));
-      tbody.appendChild(tr);
+    var gear = rows.filter(function (r) { return r.type === 1; });
+    var runes = rows.filter(function (r) { return r.type === 4; });
+
+    function stats(list) {
+      if (!list.length) return null;
+      var ipMin = Infinity, ipMax = -Infinity, mMin = Infinity, mMax = -Infinity;
+      var stepMin = Infinity, stepMax = -Infinity;
+      list.forEach(function (r) {
+        if (r.initial_price < ipMin) ipMin = r.initial_price;
+        if (r.initial_price > ipMax) ipMax = r.initial_price;
+        if (r.max_initial_price < mMin) mMin = r.max_initial_price;
+        if (r.max_initial_price > mMax) mMax = r.max_initial_price;
+        if (r.step < stepMin) stepMin = r.step;
+        if (r.step > stepMax) stepMax = r.step;
+      });
+      return { count: list.length, ipMin: ipMin, ipMax: ipMax, mMin: mMin, mMax: mMax, stepMin: stepMin, stepMax: stepMax };
+    }
+
+    function family(title, desc, s) {
+      var card = el('div', 'card');
+      card.style.flexDirection = 'column';
+      card.style.alignItems = 'stretch';
+      var h = el('div', null);
+      var title1 = el('div', 'card-name', title + ' — ' + s.count + ' templates');
+      title1.style.fontSize = '14px';
+      h.appendChild(title1);
+      h.appendChild(el('div', 'card-meta', desc));
+      card.appendChild(h);
+
+      var body = el('div', null);
+      body.style.marginTop = '8px';
+      body.style.fontSize = '12px';
+      body.style.color = 'var(--muted)';
+      function addRow(label, value) {
+        var row = el('div', null);
+        row.style.display = 'flex';
+        row.style.justifyContent = 'space-between';
+        row.style.margin = '3px 0';
+        var k = el('span', null, label);
+        var v = el('span', null, value);
+        v.style.color = 'var(--text)';
+        v.style.fontFamily = 'ui-monospace, monospace';
+        row.appendChild(k);
+        row.appendChild(v);
+        body.appendChild(row);
+      }
+      addRow('Starting bid range', s.ipMin.toLocaleString() + ' – ' + s.ipMax.toLocaleString() + ' AC');
+      addRow('Ceiling range',      s.mMin.toLocaleString()  + ' – ' + s.mMax.toLocaleString()  + ' AC');
+      var stepStr = s.stepMin === s.stepMax ? ('+' + s.stepMin + ' AC') : ('+' + s.stepMin + ' – ' + s.stepMax + ' AC');
+      addRow('Bid step',           stepStr);
+      card.appendChild(body);
+      return card;
+    }
+
+    var grid = el('div', 'grid');
+    if (gear.length)  grid.appendChild(family('Titan Gear', 'SE/RA items — Legendary, Epic, Rare', stats(gear)));
+    if (runes.length) grid.appendChild(family('Titan Runes', 'One template per rune variant', stats(runes)));
+    wrap.appendChild(grid);
+  }
+
+  function renderRuneTemplates(data) {
+    var wrap = document.getElementById('rune-templates');
+    var rows = (data.auction && data.auction.rows) || [];
+    var runes = rows.filter(function (r) { return r.type === 4; });
+    runes.forEach(function (r) {
+      var item = data.items[r.product_id];
+      var name = item ? item.name : ('Rune #' + r.product_id);
+      var quality = item ? item.quality : 5;
+      var card = el('div', 'card');
+      var icon = el('div', 'card-icon q' + quality);
+      var img = document.createElement('img');
+      img.src = iconUrl(r.product_id);
+      img.alt = name;
+      img.onerror = function () {
+        icon.textContent = name.length > 12 ? name.slice(0, 12) + '...' : name;
+        img.remove();
+      };
+      icon.appendChild(img);
+      var info = el('div', 'card-info');
+      info.appendChild(el('div', 'card-name', name));
+      var meta = el('div', 'card-meta');
+      meta.textContent = r.initial_price.toLocaleString() + '–' + r.max_initial_price.toLocaleString() + ' AC start · +' + r.step + ' step';
+      info.appendChild(meta);
+      card.appendChild(icon);
+      card.appendChild(info);
+      wrap.appendChild(card);
     });
   }
 
