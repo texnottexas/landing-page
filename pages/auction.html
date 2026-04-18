@@ -94,6 +94,20 @@
   .shop-sub h3 { margin: 14px 0 4px; font-size: 15px; color: var(--text); }
   .shop-sub .shop-note { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
 
+  .gear-slot-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+  .slot-card { flex-direction: column !important; align-items: center !important; text-align: center; gap: 8px !important; padding: 14px 10px; }
+  .slot-svg { width: 42px; height: 42px; color: var(--accent); flex-shrink: 0; }
+  .slot-card .slot-name { font-weight: 600; font-size: 14px; }
+  .slot-card .slot-rarities { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+  .rarity-pill { padding: 2px 7px; border-radius: 10px; font-size: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); }
+  .rarity-pill.leg-se { color: var(--gold); border-color: var(--gold); }
+  .rarity-pill.epic-se { color: var(--purple); border-color: var(--purple); }
+  .rarity-pill.rare-se { color: var(--accent); border-color: var(--accent); }
+  .rarity-pill.leg-ra { color: var(--green); border-color: var(--green); }
+
+  #price-tiers th, #price-tiers td { font-family: ui-monospace, monospace; font-size: 12.5px; }
+  #price-tiers .tier-note { color: var(--muted); font-size: 11px; font-family: inherit; }
+
   footer { margin-top: auto; text-align: center; padding: 2rem 1rem; font-size: .7rem; color: var(--muted); }
   footer a { color: var(--accent); text-decoration: none; }
   footer a:hover { text-decoration: underline; }
@@ -186,11 +200,15 @@
   <div id="pricing-summary"></div>
 
   <h3 style="margin-top: 20px;">Titan Gear slots</h3>
-  <p style="color: var(--muted); font-size: 13px;">Gear templates cover all 6 titan gear slots. Each slot can be listed as Legendary SE / Epic SE / Rare SE (special effect) or Legendary RA (random attribute). Runes equipped to the gear at time of listing carry over — gear stars and rune stars are both preserved.</p>
-  <div class="grid" id="gear-slots"></div>
+  <p style="color: var(--muted); font-size: 13px;">Gear can be listed across all 6 titan slots. Each piece goes up as one of four rarity categories — <strong>Legendary SE</strong> / <strong>Epic SE</strong> / <strong>Rare SE</strong> (Special Effect) or <strong>Legendary RA</strong> (Random Attribute). Any runes equipped to the piece at listing time carry over; gear and rune star levels are both preserved.</p>
+  <div class="grid gear-slot-grid" id="gear-slots"></div>
+
+  <h3 style="margin-top: 20px;">Price tiers</h3>
+  <p style="color: var(--muted); font-size: 13px;">The 170 gear listing templates stratify into 8 price tiers. Higher tiers (tighter step, higher ceiling) are reserved for rarer listings. The specific tier a given piece lands in is determined by the seller's listing category.</p>
+  <div style="overflow-x: auto;"><table id="price-tiers"><thead></thead><tbody></tbody></table></div>
 
   <h3 style="margin-top: 20px;">Titan Rune templates</h3>
-  <p style="color: var(--muted); font-size: 13px;">Runes can be auctioned as standalone items. Each rune type has its own dedicated template.</p>
+  <p style="color: var(--muted); font-size: 13px;">Runes can also be auctioned standalone. Each rune type has its own dedicated template.</p>
   <div class="grid" id="rune-templates"></div>
 </section>
 
@@ -235,6 +253,7 @@
   <div id="shop-rc" class="shop-sub">
     <h3 id="shop-rc-title">Revenue Coin Store</h3>
     <p class="shop-note">Sellers earn Revenue Coins from auction sales (sale price minus tax) and spend them on these exclusive items.</p>
+    <p class="shop-note" style="border-left: 3px solid var(--gold); padding-left: 10px; margin-top: 6px; color: var(--text);">These are the current items loaded into the game client — the store can be refreshed on a future date and the list may change.</p>
     <div class="grid" id="shop-rc-items"></div>
   </div>
   <div id="shop-md" class="shop-sub">
@@ -373,25 +392,64 @@
     renderTrivia(data);
   }
 
+  var SLOT_ICON_BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/titan-slot-icons/';
+
   function renderGearSlots() {
     var wrap = document.getElementById('gear-slots');
     GEAR_SLOTS.forEach(function (slot) {
-      var card = el('div', 'card');
-      card.style.flexDirection = 'column';
-      card.style.alignItems = 'center';
-      card.style.textAlign = 'center';
-      card.style.gap = '6px';
-      var num = el('div', null, String(slot.id));
-      num.style.cssText = 'width:48px;height:48px;border:2px solid var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--accent);font-size:18px';
-      card.appendChild(num);
-      var name = el('div', 'card-name', slot.name);
-      name.style.fontSize = '13px';
+      var card = el('div', 'card slot-card');
+      var img = document.createElement('img');
+      img.src = SLOT_ICON_BASE + 'slot_' + slot.id + '.png';
+      img.alt = slot.name;
+      img.className = 'slot-svg';
+      img.style.height = '42px';
+      img.style.width = 'auto';
+      img.style.objectFit = 'contain';
+      img.onerror = function () { img.style.display = 'none'; };
+      card.appendChild(img);
+      var name = el('div', 'slot-name', slot.name);
       card.appendChild(name);
-      var meta = el('div', 'card-meta', 'Legendary SE · Epic SE · Rare SE · Legendary RA');
-      meta.style.fontSize = '11px';
-      meta.style.lineHeight = '1.4';
-      card.appendChild(meta);
+      var rarities = el('div', 'slot-rarities');
+      [['Legendary SE','leg-se'], ['Epic SE','epic-se'], ['Rare SE','rare-se'], ['Legendary RA','leg-ra']].forEach(function (pair) {
+        rarities.appendChild(el('span', 'rarity-pill ' + pair[1], pair[0]));
+      });
+      card.appendChild(rarities);
       wrap.appendChild(card);
+    });
+    renderPriceTiers();
+  }
+
+  // Pricing templates stratify into 8 tiers. Premium tiers (tier 1-4) have
+  // tight step, high ceiling — reserved for rare listings. Mid tiers (5-7)
+  // cover the three Special Effect rarities. Bottom tier is baseline.
+  var PRICE_TIERS = [
+    { tier: 1, initial: 20000, max: 40000, step: 2, count: 8,  note: 'Top-end — tight bidding step, likely Legendary RA premium' },
+    { tier: 2, initial: 15000, max: 30000, step: 2, count: 8,  note: 'Legendary RA standard' },
+    { tier: 3, initial: 10000, max: 20000, step: 3, count: 8,  note: 'Legendary RA common' },
+    { tier: 4, initial:  8000, max: 16000, step: 5, count: 8,  note: 'Legendary SE premium' },
+    { tier: 5, initial:  6000, max: 12000, step: 5, count: 34, note: 'Legendary SE standard — ~6 per slot' },
+    { tier: 6, initial:  4000, max:  8000, step: 5, count: 34, note: 'Epic SE — ~6 per slot' },
+    { tier: 7, initial:  2500, max:  5000, step: 5, count: 34, note: 'Rare SE — ~6 per slot' },
+    { tier: 8, initial:   300, max:   600, step: 5, count: 36, note: 'Baseline — ~6 per slot' },
+  ];
+
+  function renderPriceTiers() {
+    var tbl = document.getElementById('price-tiers');
+    if (!tbl) return;
+    var thead = tbl.querySelector('thead'), tbody = tbl.querySelector('tbody');
+    var head = document.createElement('tr');
+    ['Tier', 'Start price (AC)', 'Ceiling (AC)', 'Bid step', 'Templates', 'Likely category'].forEach(function (h) { head.appendChild(el('th', null, h)); });
+    thead.appendChild(head);
+    PRICE_TIERS.forEach(function (t) {
+      var tr = document.createElement('tr');
+      tr.appendChild(el('td', null, 'T' + t.tier));
+      tr.appendChild(el('td', null, t.initial.toLocaleString()));
+      tr.appendChild(el('td', null, t.max.toLocaleString()));
+      tr.appendChild(el('td', null, '+' + t.step));
+      tr.appendChild(el('td', null, String(t.count)));
+      var td = el('td', 'tier-note', t.note);
+      tr.appendChild(td);
+      tbody.appendChild(tr);
     });
   }
 
