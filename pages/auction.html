@@ -83,6 +83,17 @@
   .screen-block { margin: 10px 0; }
   .screen-block .head { color: var(--text); font-weight: 600; margin-bottom: 2px; }
 
+  .shop-toggle { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 8px; }
+  .shop-toggle button { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: inherit; display: inline-flex; align-items: center; gap: 6px; }
+  .shop-toggle button:hover { background: var(--surface); }
+  .shop-toggle button.active { border-color: var(--accent); color: var(--accent); background: rgba(121,192,255,0.08); }
+  .shop-toggle .count { font-size: 11px; color: var(--muted); }
+  .shop-toggle button.active .count { color: var(--accent); }
+  .shop-sub { display: none; }
+  .shop-sub.active { display: block; }
+  .shop-sub h3 { margin: 14px 0 4px; font-size: 15px; color: var(--text); }
+  .shop-sub .shop-note { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
+
   footer { margin-top: auto; text-align: center; padding: 2rem 1rem; font-size: .7rem; color: var(--muted); }
   footer a { color: var(--accent); text-decoration: none; }
   footer a:hover { text-decoration: underline; }
@@ -207,9 +218,25 @@
 </section>
 
 <section class="section" id="gift-shop">
-  <h2>Exchange leftover Auction Coins</h2>
-  <p style="color: var(--muted); font-size: 13px;">After the event ends, remaining Auction Coins can be exchanged for items in the Gift Shop. Each item has a personal limit per cycle plus a server-wide cap. Prices shown are the <em>true</em> (discounted) Auction-Coin cost; the original price is crossed out.</p>
-  <div class="grid" id="gift-shop-items"></div>
+  <p style="color: var(--muted); font-size: 13px;">Three shop categories — choose a currency to browse. Each item has a personal limit and a server-wide cap.</p>
+
+  <div class="shop-toggle" id="shop-toggle"></div>
+
+  <div id="shop-ac" class="shop-sub active">
+    <h3 id="shop-ac-title">Auction Coin Store</h3>
+    <p class="shop-note">After the event ends, remaining Auction Coins can be exchanged for items here. True (discounted) price shown; original price is crossed out.</p>
+    <div class="grid" id="shop-ac-items"></div>
+  </div>
+  <div id="shop-rc" class="shop-sub">
+    <h3 id="shop-rc-title">Revenue Coin Store</h3>
+    <p class="shop-note">Sellers earn Revenue Coins from auction sales (sale price minus tax) and spend them on these exclusive items.</p>
+    <div class="grid" id="shop-rc-items"></div>
+  </div>
+  <div id="shop-md" class="shop-sub">
+    <h3 id="shop-md-title">Mega Discount items</h3>
+    <p class="shop-note">Unlocked for the entire warzone by the Top-5 commanders on the Auction Rankings. Purchased with Mega-Discount Attempts (Privileges) rather than a currency, and shared across the server.</p>
+    <div class="grid" id="shop-md-items"></div>
+  </div>
 </section>
 
 <section class="section" id="merchant">
@@ -514,13 +541,20 @@
   }
 
   function renderGiftShop(data) {
-    var wrap = document.getElementById('gift-shop-items');
     var rows = (data.giftShop && data.giftShop.rows) || [];
-    if (rows.length === 0) {
-      wrap.appendChild(el('div', 'callout', 'No gift shop items loaded.'));
-      return;
-    }
+    // Three categories:
+    //   Auction Coin store: needItem ends with 1001701
+    //   Revenue Coin store: needItem ends with 1001702
+    //   Mega Discount:      needItem === '-1' (no currency; uses Privilege)
+    var buckets = { ac: [], rc: [], md: [] };
     rows.forEach(function (r) {
+      var ni = String(r.needItem || '');
+      if (ni.indexOf('1001702') !== -1) buckets.rc.push(r);
+      else if (ni === '-1') buckets.md.push(r);
+      else buckets.ac.push(r);
+    });
+
+    function makeCard(r, currencyLabel) {
       var rewardItems = (r.reward_detail && r.reward_detail.item) || [];
       var rewardNums = (r.reward_detail && r.reward_detail.num) || [];
       var rid = rewardItems[0];
@@ -543,17 +577,54 @@
         icon.textContent = name.length > 12 ? name.slice(0, 12) + '...' : name;
       }
       var info = el('div', 'card-info');
-      info.appendChild(el('div', 'card-name', name + (rnum !== '1' ? ' x' + rnum : '')));
+      info.appendChild(el('div', 'card-name', name + (rnum !== '1' ? ' ×' + rnum : '')));
       var meta = el('div', 'card-meta');
-      meta.appendChild(el('span', 'badge gold', r.true_price + ' AC'));
-      if (r.orininal_price !== r.true_price) meta.appendChild(el('span', 'badge strike', String(r.orininal_price)));
-      var m2 = el('div', null, 'per-player x' + r.exchange_times + ' — server x' + r.exchange_server_times);
-      m2.style.marginTop = '4px';
-      meta.appendChild(m2);
+      var priceBadge = el('span', 'badge gold', r.true_price + ' ' + currencyLabel);
+      meta.appendChild(priceBadge);
+      if (r.orininal_price && r.orininal_price !== r.true_price) {
+        meta.appendChild(el('span', 'badge strike', String(r.orininal_price)));
+      }
+      var limits = [];
+      if (r.exchange_times)        limits.push('per-player ×' + r.exchange_times);
+      if (r.exchange_server_times) limits.push('server ×' + r.exchange_server_times);
+      if (limits.length) {
+        var m2 = el('div', null, limits.join(' · '));
+        m2.style.marginTop = '4px';
+        meta.appendChild(m2);
+      }
       info.appendChild(meta);
       card.appendChild(icon);
       card.appendChild(info);
-      wrap.appendChild(card);
+      return card;
+    }
+
+    var acWrap = document.getElementById('shop-ac-items');
+    buckets.ac.forEach(function (r) { acWrap.appendChild(makeCard(r, 'AC')); });
+    var rcWrap = document.getElementById('shop-rc-items');
+    buckets.rc.forEach(function (r) { rcWrap.appendChild(makeCard(r, 'RC')); });
+    var mdWrap = document.getElementById('shop-md-items');
+    buckets.md.forEach(function (r) { mdWrap.appendChild(makeCard(r, 'Privilege')); });
+
+    // Build toggle
+    var toggle = document.getElementById('shop-toggle');
+    toggle.textContent = '';
+    var tabs = [
+      { id: 'ac', label: 'Auction Coin', count: buckets.ac.length },
+      { id: 'rc', label: 'Revenue Coin', count: buckets.rc.length },
+      { id: 'md', label: 'Mega Discount', count: buckets.md.length },
+    ];
+    tabs.forEach(function (t, idx) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.dataset.target = t.id;
+      if (idx === 0) btn.classList.add('active');
+      btn.appendChild(document.createTextNode(t.label + ' '));
+      btn.appendChild(el('span', 'count', '(' + t.count + ')'));
+      btn.addEventListener('click', function () {
+        toggle.querySelectorAll('button').forEach(function (b) { b.classList.toggle('active', b === btn); });
+        document.querySelectorAll('.shop-sub').forEach(function (s) { s.classList.toggle('active', s.id === 'shop-' + t.id); });
+      });
+      toggle.appendChild(btn);
     });
   }
 
