@@ -184,8 +184,13 @@
   <h2>Pricing templates</h2>
   <p style="color: var(--muted); font-size: 13px;">Each listing draws from one of two template families. The initial price falls somewhere in the range and the step is the minimum bid increment.</p>
   <div id="pricing-summary"></div>
+
+  <h3 style="margin-top: 20px;">Titan Gear slots</h3>
+  <p style="color: var(--muted); font-size: 13px;">Gear templates cover all 6 titan gear slots. Each slot can be listed as Legendary SE / Epic SE / Rare SE (special effect) or Legendary RA (random attribute). Runes equipped to the gear at time of listing carry over — gear stars and rune stars are both preserved.</p>
+  <div class="grid" id="gear-slots"></div>
+
   <h3 style="margin-top: 20px;">Titan Rune templates</h3>
-  <p style="color: var(--muted); font-size: 13px;">Each rune type has its own dedicated auction template.</p>
+  <p style="color: var(--muted); font-size: 13px;">Runes can be auctioned as standalone items. Each rune type has its own dedicated template.</p>
   <div class="grid" id="rune-templates"></div>
 </section>
 
@@ -284,12 +289,18 @@
   });
 
   var DATA_URL = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/data/auction.json';
+  var SKIN_URL = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/data/march-skins.json';
   var ICON_BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/auction-icons/';
+  var SKIN_ICON_BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/march-skin-icons/';
 
-  fetch(DATA_URL)
-    .then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
+  Promise.all([
+    fetch(DATA_URL).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }),
+    fetch(SKIN_URL).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }),
+  ])
+    .then(function (results) {
+      var data = results[0];
+      data.marchSkinMap = results[1] && results[1].skins ? results[1].skins : {};
+      return data;
     })
     .then(renderAll)
     .catch(function (e) {
@@ -339,9 +350,19 @@
     return String(s).replace(/<[^>]+>/g, '').replace(/\{(\d+)\}/g, function (_, n) { return n === '0' ? '[X]' : '[Y]'; });
   }
 
+  var GEAR_SLOTS = [
+    { id: 1, name: 'Assault Pistol' },
+    { id: 2, name: 'Tactical Backarmor' },
+    { id: 3, name: 'Optical Add-on' },
+    { id: 4, name: 'Raysor Headset' },
+    { id: 5, name: 'Portable GPS' },
+    { id: 6, name: 'Power Boots' },
+  ];
+
   function renderAll(data) {
     renderCurrencies(data);
     renderPricingSummary(data);
+    renderGearSlots(data);
     renderRuneTemplates(data);
     renderScreensSummary(data);
     renderBiddingTexts(data);
@@ -350,6 +371,28 @@
     renderGiftShop(data);
     renderGiftGroups(data);
     renderTrivia(data);
+  }
+
+  function renderGearSlots() {
+    var wrap = document.getElementById('gear-slots');
+    GEAR_SLOTS.forEach(function (slot) {
+      var card = el('div', 'card');
+      card.style.flexDirection = 'column';
+      card.style.alignItems = 'center';
+      card.style.textAlign = 'center';
+      card.style.gap = '6px';
+      var num = el('div', null, String(slot.id));
+      num.style.cssText = 'width:48px;height:48px;border:2px solid var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--accent);font-size:18px';
+      card.appendChild(num);
+      var name = el('div', 'card-name', slot.name);
+      name.style.fontSize = '13px';
+      card.appendChild(name);
+      var meta = el('div', 'card-meta', 'Legendary SE · Epic SE · Rare SE · Legendary RA');
+      meta.style.fontSize = '11px';
+      meta.style.lineHeight = '1.4';
+      card.appendChild(meta);
+      wrap.appendChild(card);
+    });
   }
 
   function renderCurrencies(data) {
@@ -632,15 +675,39 @@
     var tbl = document.getElementById('gift-groups');
     var thead = tbl.querySelector('thead'), tbody = tbl.querySelector('tbody');
     var headRow = document.createElement('tr');
-    ['Group', 'Rank type', 'March skin', 'Restock times'].forEach(function (h) { headRow.appendChild(el('th', null, h)); });
+    ['Rank', 'March skin reward', 'Restock times (server)'].forEach(function (h) { headRow.appendChild(el('th', null, h)); });
     thead.appendChild(headRow);
     var rows = (data.giftTbl && data.giftTbl.rows) || [];
+    var skins = data.marchSkinMap || {};
     rows.forEach(function (r) {
       var tr = document.createElement('tr');
-      tr.appendChild(el('td', null, String(r.group)));
-      tr.appendChild(el('td', null, String(r.rank_type)));
-      tr.appendChild(el('td', null, 'skin #' + r.march_skin_id));
-      tr.appendChild(el('td', null, r.add_time));
+      tr.appendChild(el('td', null, 'Rank ' + r.rank_type));
+
+      // March skin cell — id + image if we have one, otherwise label-only fallback
+      var td = document.createElement('td');
+      var id = r.march_skin_id;
+      var idStr = String(id);
+      var name = skins[idStr];
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'display:flex;align-items:center;gap:8px';
+      var img = document.createElement('img');
+      img.src = SKIN_ICON_BASE + 'skin_' + idStr + '.png';
+      img.alt = name || ('Skin ' + idStr);
+      img.style.cssText = 'width:32px;height:32px;object-fit:contain;border:1px solid var(--border);border-radius:4px;background:var(--surface)';
+      img.onerror = function () { img.style.display = 'none'; };
+      wrap.appendChild(img);
+      var textWrap = document.createElement('div');
+      var nameEl = el('div', null, name || 'Event-specific skin');
+      nameEl.style.fontWeight = '600';
+      textWrap.appendChild(nameEl);
+      var idEl = el('div', null, 'id ' + idStr);
+      idEl.style.cssText = 'font-size:11px;color:var(--muted);font-family:ui-monospace,monospace';
+      textWrap.appendChild(idEl);
+      wrap.appendChild(textWrap);
+      td.appendChild(wrap);
+      tr.appendChild(td);
+
+      tr.appendChild(el('td', null, (r.add_time || '').split('|').map(function (t) { return t + ':00'; }).join(', ')));
       tbody.appendChild(tr);
     });
   }
