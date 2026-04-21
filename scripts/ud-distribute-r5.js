@@ -16,7 +16,7 @@
  * - Max 5 reward categories per player
  * - P-Tier 1 does NOT get resources (T5)
  * - Shards are the flex item — quantity adjusted to maximize utilization
- * - Cross-round balancing against rounds 2 and 3
+ * - Cross-round balancing against rounds 2, 3, and 4
  */
 
 'use strict';
@@ -52,13 +52,15 @@ function allocate(name, qty) {
   const item = inv[name];
   if (!item || item.remaining < qty) return null;
   item.remaining -= qty;
-  return { name, count: qty, icon: item.icon || '' };
+  const reward = { name, count: qty, icon: item.icon || '' };
+  if (item.tier) reward.tier = item.tier;
+  return reward;
 }
 
 // ─── Cross-round balance: who got what in R2/R3 ──────────────────────────────
 
 const priorRewards = {}; // siteKey → Set of item names received
-for (const rnd of ['2', '3']) {
+for (const rnd of ['2', '3', '4']) {
   const rd = history.rounds[rnd];
   if (!rd || !rd.distributions) continue;
   for (const d of rd.distributions) {
