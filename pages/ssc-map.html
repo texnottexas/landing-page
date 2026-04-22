@@ -132,6 +132,33 @@
       font-size: 1.2rem; cursor: pointer; margin: -.25rem -.25rem 0 0;
     }
 
+    /* Strategic Target Modal — target table */
+    #stratTargetModalBody { max-height: 60vh; overflow-y: auto; }
+    .strat-target-table {
+      width: 100%; border-collapse: collapse; font-size: .72rem; margin-top: .4rem;
+    }
+    .strat-target-table th, .strat-target-table td {
+      padding: .4rem .5rem; border-bottom: 1px solid var(--border); text-align: left;
+    }
+    .strat-target-table th { color: var(--muted); font-weight: 600; font-size: .65rem; text-transform: uppercase; }
+    .strat-target-table tbody tr:hover { background: var(--surface); }
+    .strat-target-table .tgt-seq { color: var(--army); font-weight: 600; font-family: monospace; }
+    .strat-target-table .tgt-lv { display: inline-block; padding: 0 .3rem; border-radius: 3px; font-size: .6rem; font-weight: 600; }
+    .strat-target-table .tgt-lv.lv3 { background: rgba(210,153,34,.2); color: var(--gold); }
+    .strat-target-table .tgt-lv.lv2 { background: rgba(121,192,255,.15); color: var(--accent); }
+    .strat-target-table .tgt-lv.lv1 { background: rgba(139,148,158,.15); color: var(--muted); }
+    .strat-target-table .tgt-lv.lvunk { background: transparent; color: var(--muted); border: 1px dashed var(--border); }
+    .strat-target-table .tgt-contest { font-size: .65rem; }
+    .strat-target-table .tgt-contest.none { color: var(--army); }
+    .strat-target-table .tgt-contest.low { color: var(--gold); }
+    .strat-target-table .tgt-contest.high { color: var(--red); }
+    .strat-target-table .tgt-servers { font-size: .62rem; color: var(--muted); font-family: monospace; }
+    .strat-target-summary {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 5px; padding: .5rem .6rem; margin-bottom: .5rem; font-size: .72rem;
+    }
+    .strat-target-summary strong { color: var(--accent); }
+
     /* Center toggle */
     .center-toggle {
       font-size: .72rem;
@@ -1191,6 +1218,7 @@
         <button class="sidebar-tab active" data-panel="info">Info</button>
         <button class="sidebar-tab" data-panel="wars">Wars</button>
         <button class="sidebar-tab" data-panel="planning">Planning</button>
+        <button class="sidebar-tab" data-panel="strategy">Strategy</button>
         <button class="sidebar-tab" data-panel="battle">Battle</button>
       </div>
 
@@ -1293,6 +1321,18 @@
           <div class="war-subsection" id="warDefendList">
             <h4 class="defend-label">Defending</h4>
           </div>
+        </div>
+      </div>
+
+      <!-- STRATEGY PANEL -->
+      <div class="sidebar-panel" id="panel-strategy">
+        <div class="sidebar-section">
+          <h3>Strategic Targets</h3>
+          <p style="font-size:.7rem;color:var(--muted);margin:.25rem 0 .5rem">
+            Closest paths to maxing buff caps. Click a recommendation to open a detailed targeting plan
+            with adjacent servers that could contest each wasteland.
+          </p>
+          <div id="strategyTabList"></div>
         </div>
       </div>
 
@@ -1409,6 +1449,16 @@
         </select>
         <span class="diff-progress" id="diffProgress"></span>
       </div>
+    </div>
+  </div>
+
+  <!-- Strategic Target Modal -->
+  <div class="phase-modal-overlay" id="stratTargetModalOverlay">
+    <div class="phase-modal" style="max-width: 560px">
+      <button class="phase-modal-close" id="stratTargetModalClose">&times;</button>
+      <h4 id="stratTargetModalTitle">Strategic Targets</h4>
+      <p class="phase-desc" id="stratTargetModalDesc"></p>
+      <div id="stratTargetModalBody"></div>
     </div>
   </div>
 
@@ -1802,6 +1852,7 @@
     fillWarDeclarations();
     buildSpecFilters();
     fillStrategicRecommendations();
+    fillStrategyTab();
     buildLegend();
     renderGrid();
     setupFilters();
@@ -2056,6 +2107,158 @@
       list.appendChild(item);
     });
   }
+
+  /* Strategy tab — same data as Info panel recommendations but CTA opens a detailed modal */
+  function fillStrategyTab() {
+    var list = document.getElementById('strategyTabList');
+    if (!list) return;
+    list.textContent = '';
+    var recs = roundData.strategicRecommendations;
+    if (!recs || !recs.length) {
+      list.appendChild(el('div', '', 'No strategic recommendations available for this round'));
+      list.style.color = 'var(--muted)';
+      list.style.fontSize = '.75rem';
+      return;
+    }
+    recs.forEach(function(r) {
+      var item = el('div', 'strat-item');
+      var head = el('div', 'strat-item-head');
+      head.appendChild(el('span', 'strat-item-desc', r.description));
+      head.appendChild(el('span', 'strat-item-gap', r.currentDisplay + ' / ' + r.maxDisplay));
+      item.appendChild(head);
+
+      var maxNum = parseFloat(String(r.maxDisplay).replace('%', ''));
+      var curNum = parseFloat(String(r.currentDisplay).replace('%', ''));
+      var pct = (!isNaN(maxNum) && maxNum > 0) ? Math.min(100, 100 * curNum / maxNum) : 0;
+      var bar = el('div', 'strat-item-bar');
+      var fill = el('div', 'strat-item-fill');
+      fill.style.width = pct + '%';
+      bar.appendChild(fill);
+      item.appendChild(bar);
+
+      var plan = el('div', 'strat-item-plan');
+      plan.appendChild(document.createTextNode('Target '));
+      plan.appendChild(el('strong', '', r.specName));
+      var eligible = roundData.eligibleTargets && roundData.eligibleTargets[String(r.specId)] || [];
+      plan.appendChild(document.createTextNode(
+        ' — ' + eligible.length + ' eligible wasteland' + (eligible.length === 1 ? '' : 's') +
+        ' adjacent to our territory'
+      ));
+      item.appendChild(plan);
+
+      var cta = el('button', 'strat-item-cta', 'Show targeting plan');
+      cta.addEventListener('click', function() { openStratTargetModal(r, eligible); });
+      item.appendChild(cta);
+      list.appendChild(item);
+    });
+  }
+
+  function openStratTargetModal(rec, eligible) {
+    var overlay = document.getElementById('stratTargetModalOverlay');
+    var title = document.getElementById('stratTargetModalTitle');
+    var desc = document.getElementById('stratTargetModalDesc');
+    var body = document.getElementById('stratTargetModalBody');
+    title.textContent = rec.specName + ' — Targeting Plan';
+    desc.textContent = rec.description + '  ·  ' + rec.currentDisplay + ' / ' + rec.maxDisplay +
+      '  ·  Need ~' + rec.wastelandsToMax + ' more Lv3 captures to cap';
+    body.textContent = '';
+
+    if (!eligible || eligible.length === 0) {
+      body.appendChild(el('p', '', 'No unclaimed wastelands with this spec are adjacent to our territory right now.'));
+      overlay.classList.add('active');
+      return;
+    }
+
+    // Summary
+    var knownLv3 = eligible.filter(function(e){ return e.level === 3; });
+    var uncontested = eligible.filter(function(e){ return !e.adjacentServers || e.adjacentServers.length === 0; });
+    var summary = el('div', 'strat-target-summary');
+    summary.appendChild(document.createTextNode(eligible.length + ' eligible target' + (eligible.length === 1 ? '' : 's') + ' · '));
+    var s1 = el('strong', '', knownLv3.length + ' confirmed Lv3');
+    summary.appendChild(s1);
+    summary.appendChild(document.createTextNode(' · '));
+    var s2 = el('strong', '', uncontested.length + ' uncontested');
+    summary.appendChild(s2);
+    body.appendChild(summary);
+
+    // Table
+    var table = el('table', 'strat-target-table');
+    var thead = el('thead');
+    var hr = el('tr');
+    ['Wasteland', 'Level', 'Position', 'Contest', 'Adjacent Servers'].forEach(function(h){
+      hr.appendChild(el('th', '', h));
+    });
+    thead.appendChild(hr);
+    table.appendChild(thead);
+
+    var tbody = el('tbody');
+    // Sort: known Lv3 first, then Lv2, then Lv?, then Lv1; within same level: uncontested first
+    var sorted = eligible.slice().sort(function(a, b) {
+      var ra = (a.level === 3 ? 0 : a.level === 2 ? 1 : a.level === 0 ? 2 : 3);
+      var rb = (b.level === 3 ? 0 : b.level === 2 ? 1 : b.level === 0 ? 2 : 3);
+      if (ra !== rb) return ra - rb;
+      var ca = (a.adjacentServers || []).length;
+      var cb = (b.adjacentServers || []).length;
+      if (ca !== cb) return ca - cb;
+      return a.seq - b.seq;
+    });
+
+    sorted.forEach(function(e) {
+      var row = el('tr');
+
+      var tdSeq = el('td');
+      var seqSpan = el('span', 'tgt-seq', '#' + e.seq);
+      tdSeq.appendChild(seqSpan);
+      row.appendChild(tdSeq);
+
+      var tdLv = el('td');
+      var lvClass = e.level === 3 ? 'lv3' : e.level === 2 ? 'lv2' : e.level === 1 ? 'lv1' : 'lvunk';
+      var lvText = e.level ? 'Lv ' + e.level : 'Lv ?';
+      var lvSpan = el('span', 'tgt-lv ' + lvClass, lvText);
+      tdLv.appendChild(lvSpan);
+      row.appendChild(tdLv);
+
+      row.appendChild(el('td', '', '(r' + e.r + ',c' + e.c + ')'));
+
+      var adj = e.adjacentServers || [];
+      var contestClass = adj.length === 0 ? 'none' : adj.length <= 2 ? 'low' : 'high';
+      var contestText = adj.length === 0 ? '✓ Clear' : adj.length + ' rival' + (adj.length === 1 ? '' : 's');
+      var tdContest = el('td');
+      tdContest.appendChild(el('span', 'tgt-contest ' + contestClass, contestText));
+      row.appendChild(tdContest);
+
+      var tdServers = el('td', 'tgt-servers');
+      if (adj.length === 0) tdServers.textContent = '—';
+      else tdServers.textContent = adj.map(function(s){ return 'S' + s; }).join(', ');
+      row.appendChild(tdServers);
+
+      // Click row to also highlight on map
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', function() {
+        activeSpec = rec.specId;
+        activeCat = rec.category || 'all';
+        document.querySelectorAll('.cat-btn').forEach(function(b){ b.classList.toggle('active', b.dataset.cat === activeCat); });
+        if (typeof buildSpecFilters === 'function') buildSpecFilters();
+        if (typeof applyFilters === 'function') applyFilters();
+        overlay.classList.remove('active');
+      });
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    body.appendChild(table);
+
+    overlay.classList.add('active');
+  }
+
+  (function(){
+    var ov = document.getElementById('stratTargetModalOverlay');
+    var cl = document.getElementById('stratTargetModalClose');
+    if (cl) cl.addEventListener('click', function(){ ov.classList.remove('active'); });
+    if (ov) ov.addEventListener('click', function(e){ if (e.target === ov) ov.classList.remove('active'); });
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape' && ov && ov.classList.contains('active')) ov.classList.remove('active');
+    });
+  })();
 
   var activeLegendFilter = null;
 
