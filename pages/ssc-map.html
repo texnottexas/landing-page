@@ -102,6 +102,35 @@
       font-weight: 600;
     }
     .round-pill:hover:not(.active) { color: var(--text); background: var(--border); }
+    .round-pill.phase { border: 1px dashed var(--border); }
+    .round-pill.phase.active { border-style: solid; }
+
+    /* Phase modal */
+    .phase-modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.7);
+      display: none; align-items: center; justify-content: center; z-index: 9999;
+      padding: 1rem;
+    }
+    .phase-modal-overlay.active { display: flex; }
+    .phase-modal {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 1.25rem; max-width: 380px; width: 100%;
+    }
+    .phase-modal h4 { margin: 0 0 .75rem; color: var(--text); }
+    .phase-modal .phase-desc { color: var(--muted); font-size: .8rem; margin: 0 0 .85rem; }
+    .phase-round-btn {
+      display: block; width: 100%; padding: .55rem .8rem; margin: .3rem 0;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font-size: .85rem; cursor: pointer;
+      text-align: left; transition: all .15s;
+    }
+    .phase-round-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .phase-round-btn.active { background: var(--accent); color: #0d1117; border-color: var(--accent); font-weight: 600; }
+    .phase-round-btn .phase-round-meta { display: block; font-size: .7rem; opacity: .7; margin-top: .15rem; }
+    .phase-modal-close {
+      background: none; border: none; color: var(--muted); float: right;
+      font-size: 1.2rem; cursor: pointer; margin: -.25rem -.25rem 0 0;
+    }
 
     /* Center toggle */
     .center-toggle {
@@ -229,6 +258,30 @@
     .cat-btn[data-cat="utility"].active { background: rgba(56,139,253,.15); }
     .cat-btn[data-cat="special"] { color: var(--gold); }
     .cat-btn[data-cat="special"].active { background: rgba(210,153,34,.15); }
+    .spec-btn {
+      font-size: .65rem; padding: .2rem .45rem; border-radius: 4px;
+      border: 1px solid var(--border); background: var(--surface);
+      color: var(--muted); cursor: pointer; transition: all .15s;
+    }
+    .spec-btn:hover { color: var(--text); }
+    .spec-btn.active { background: var(--accent); color: #0d1117; border-color: var(--accent); font-weight: 600; }
+    .strat-item {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: .5rem; margin-bottom: .4rem; font-size: .72rem;
+    }
+    .strat-item-head { display: flex; justify-content: space-between; align-items: baseline; gap: .4rem; }
+    .strat-item-desc { color: var(--text); font-weight: 500; flex: 1; }
+    .strat-item-gap { color: var(--gold); font-weight: 600; font-size: .68rem; white-space: nowrap; }
+    .strat-item-bar { height: 5px; background: var(--border); border-radius: 3px; margin: .35rem 0 .3rem; overflow: hidden; }
+    .strat-item-fill { height: 100%; background: linear-gradient(90deg, var(--army), var(--accent)); }
+    .strat-item-plan { color: var(--muted); font-size: .68rem; }
+    .strat-item-plan strong { color: var(--accent); }
+    .strat-item-cta {
+      display: inline-block; padding: .15rem .4rem; margin-top: .3rem;
+      font-size: .65rem; background: transparent; border: 1px solid var(--border);
+      border-radius: 3px; color: var(--muted); cursor: pointer;
+    }
+    .strat-item-cta:hover { color: var(--accent); border-color: var(--accent); }
 
     .server-summary {
       list-style: none;
@@ -1186,6 +1239,13 @@
             <button class="cat-btn" data-cat="utility">Utility</button>
             <button class="cat-btn" data-cat="special">Special</button>
           </div>
+          <div class="spec-filters" id="specFilters" style="margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.3rem"></div>
+        </div>
+
+        <div class="sidebar-section" id="strategicSection" style="display:none">
+          <h3>Strategic Targets</h3>
+          <p style="font-size:.7rem;color:var(--muted);margin:.25rem 0 .5rem">Closest paths to maxing buff caps, based on current state</p>
+          <div id="strategicList"></div>
         </div>
 
         <div class="sidebar-section">
@@ -1333,6 +1393,16 @@
     </div>
   </div>
 
+  <!-- Phase Selection Modal -->
+  <div class="phase-modal-overlay" id="phaseModalOverlay">
+    <div class="phase-modal">
+      <button class="phase-modal-close" id="phaseModalClose">&times;</button>
+      <h4 id="phaseModalTitle">Select Round</h4>
+      <p class="phase-desc" id="phaseModalDesc"></p>
+      <div id="phaseModalBody"></div>
+    </div>
+  </div>
+
   <!-- Cell Detail Modal -->
   <div class="cell-detail-overlay" id="cellDetailOverlay">
     <div class="cell-detail-modal" id="cellDetailModal">
@@ -1450,6 +1520,7 @@
   var cellElements = [];
   var activeServer = null;
   var activeCat = 'all';
+  var activeSpec = null;  // specId filter — null = all specs matching activeCat
   var isCentered = false;
   var centerOffset = { r: 0, c: 0 };
   var activeRound = null;
@@ -1518,17 +1589,21 @@
       loadingMsg.style.color = '#f85149';
     });
 
+  /* Phase definitions: group older-sector rounds behind a dropdown.
+     Phase 1 = Sector 16 (R2..R4.5). Phase 2 onwards = current sector (R5+, R6+). */
+  var PHASE_GROUPS = [
+    { id: 'phase1', label: 'Phase 1', description: 'Sector 16 — Rounds 2-4.5', filter: function(k) { return Number(k) >= 2 && Number(k) < 5; } }
+  ];
+
   function buildRoundPills(rounds, current) {
     var container = document.getElementById('roundPills');
     container.textContent = '';
     if (!rounds) {
-      // Single legacy round — no pills needed, hide container
       container.style.display = 'none';
       return;
     }
     var keys = Object.keys(rounds).sort(function(a,b){ return Number(a) - Number(b); });
     if (keys.length <= 1) {
-      // Single round — show label only
       var label = rounds[keys[0]] && rounds[keys[0]].label;
       if (label) {
         var sp = el('span', '', label);
@@ -1539,7 +1614,35 @@
       }
       return;
     }
+
+    // Partition keys: phased vs standalone
+    var phased = {};  // phaseId -> [keys]
+    var standalone = [];
     keys.forEach(function(k) {
+      var phase = null;
+      PHASE_GROUPS.forEach(function(p) { if (!phase && p.filter(k)) phase = p; });
+      if (phase) {
+        phased[phase.id] = phased[phase.id] || [];
+        phased[phase.id].push(k);
+      } else {
+        standalone.push(k);
+      }
+    });
+
+    // Render phase buttons first
+    PHASE_GROUPS.forEach(function(p) {
+      if (!phased[p.id] || phased[p.id].length === 0) return;
+      var isActive = phased[p.id].indexOf(String(current)) !== -1;
+      var btn = el('button', 'round-pill phase' + (isActive ? ' active' : ''));
+      btn.textContent = p.label + ' ▾';
+      btn.dataset.phase = p.id;
+      btn.title = p.description;
+      btn.addEventListener('click', function() { openPhaseModal(p, phased[p.id], rounds); });
+      container.appendChild(btn);
+    });
+
+    // Render standalone round pills
+    standalone.forEach(function(k) {
       var btn = el('button', 'round-pill' + (String(k) === String(current) ? ' active' : ''));
       btn.textContent = rounds[k].label || ('Round ' + k);
       btn.dataset.round = k;
@@ -1551,6 +1654,47 @@
       container.appendChild(btn);
     });
   }
+
+  function openPhaseModal(phase, keys, rounds) {
+    var overlay = document.getElementById('phaseModalOverlay');
+    var body = document.getElementById('phaseModalBody');
+    document.getElementById('phaseModalTitle').textContent = phase.label;
+    document.getElementById('phaseModalDesc').textContent = phase.description;
+    body.textContent = '';
+    keys.forEach(function(k) {
+      var r = rounds[k];
+      var btn = el('button', 'phase-round-btn' + (String(k) === String(activeRound) ? ' active' : ''));
+      var title = r.label || ('Round ' + k);
+      btn.appendChild(el('span', '', title));
+      if (r.s2864) {
+        var meta = el('span', 'phase-round-meta',
+          'Rank #' + (r.s2864.rank || '-') + ' • Score ' + (r.s2864.score || 0).toLocaleString() +
+          ' • ' + (r.s2864.ownedCount || 0) + ' wastelands');
+        btn.appendChild(meta);
+      }
+      btn.addEventListener('click', function() {
+        switchRound(k);
+        // Update pill active state for phase button
+        var pills = document.querySelectorAll('.round-pill');
+        pills.forEach(function(p){ p.classList.remove('active'); });
+        var phasePill = document.querySelector('.round-pill.phase[data-phase="' + phase.id + '"]');
+        if (phasePill) phasePill.classList.add('active');
+        overlay.classList.remove('active');
+      });
+      body.appendChild(btn);
+    });
+    overlay.classList.add('active');
+  }
+
+  (function(){
+    var ov = document.getElementById('phaseModalOverlay');
+    var cl = document.getElementById('phaseModalClose');
+    if (cl) cl.addEventListener('click', function(){ ov.classList.remove('active'); });
+    if (ov) ov.addEventListener('click', function(e){ if (e.target === ov) ov.classList.remove('active'); });
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape' && ov.classList.contains('active')) ov.classList.remove('active');
+    });
+  })();
 
   function switchRound(roundKey) {
     activeRound = roundKey;
@@ -1637,6 +1781,8 @@
     fillBuffOverview();
     fillServerSummary();
     fillWarDeclarations();
+    buildSpecFilters();
+    fillStrategicRecommendations();
     buildLegend();
     renderGrid();
     setupFilters();
@@ -1783,6 +1929,96 @@
 
       row.addEventListener('click', function() { this.classList.toggle('expanded'); });
       container.appendChild(row);
+    });
+  }
+
+  /* Spec filter buttons — one per specId present in current round, filtered by active category */
+  function buildSpecFilters() {
+    var container = document.getElementById('specFilters');
+    if (!container) return;
+    container.textContent = '';
+    if (!roundData.cells) return;
+    // Collect specIds present in THIS round's cells
+    var specSet = {};
+    roundData.cells.forEach(function(c) {
+      if (c.type === 3 && c.specId) specSet[c.specId] = (specSet[c.specId] || 0) + 1;
+    });
+    var specIds = Object.keys(specSet).map(Number).sort(function(a, b) {
+      // Group by category, then alpha
+      var ca = SPEC_CAT[a] || 'zz', cb = SPEC_CAT[b] || 'zz';
+      if (ca !== cb) return ca.localeCompare(cb);
+      return (SPEC_NAMES[a] || '').localeCompare(SPEC_NAMES[b] || '');
+    });
+    // Render buttons (filter by current category)
+    specIds.forEach(function(sid) {
+      if (activeCat !== 'all' && SPEC_CAT[sid] !== activeCat) return;
+      var btn = el('button', 'spec-btn' + (activeSpec === sid ? ' active' : ''));
+      btn.textContent = (SPEC_NAMES[sid] || ('Spec ' + sid)) + ' (' + specSet[sid] + ')';
+      btn.dataset.spec = String(sid);
+      btn.addEventListener('click', function() {
+        activeSpec = (activeSpec === sid ? null : sid);
+        buildSpecFilters();
+        if (typeof applyFilters === 'function') applyFilters();
+      });
+      container.appendChild(btn);
+    });
+  }
+
+  /* Strategic recommendations panel — which spec to target to close buff gaps */
+  function fillStrategicRecommendations() {
+    var section = document.getElementById('strategicSection');
+    var list = document.getElementById('strategicList');
+    if (!section || !list) return;
+    list.textContent = '';
+    var recs = roundData.strategicRecommendations;
+    if (!recs || !recs.length) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = '';
+    recs.slice(0, 8).forEach(function(r) {
+      var item = el('div', 'strat-item');
+      var head = el('div', 'strat-item-head');
+      head.appendChild(el('span', 'strat-item-desc', r.description));
+      head.appendChild(el('span', 'strat-item-gap', r.currentDisplay + ' / ' + r.maxDisplay));
+      item.appendChild(head);
+
+      // Progress bar
+      var pct = r.rawGap > 0 ? 100 - (100 * r.rawGap / (r.rawGap + /* current raw */ parseInt(r.currentDisplay) || 1)) : 100;
+      // Better: use rawGap vs maxRaw — derive from currentDisplay pattern
+      var maxNum = parseFloat(String(r.maxDisplay).replace('%', ''));
+      var curNum = parseFloat(String(r.currentDisplay).replace('%', ''));
+      if (!isNaN(maxNum) && maxNum > 0) pct = Math.min(100, 100 * curNum / maxNum);
+      var bar = el('div', 'strat-item-bar');
+      var fill = el('div', 'strat-item-fill');
+      fill.style.width = pct + '%';
+      bar.appendChild(fill);
+      item.appendChild(bar);
+
+      var plan = el('div', 'strat-item-plan');
+      plan.appendChild(document.createTextNode('Target '));
+      var specStrong = el('strong', '', r.specName);
+      plan.appendChild(specStrong);
+      plan.appendChild(document.createTextNode(
+        ' — ~' + r.wastelandsToMax + ' more Lv3 to cap' +
+        ' (' + r.unclaimedLv3Available + ' unclaimed of this type)'
+      ));
+      item.appendChild(plan);
+
+      // CTA: focus filter on this spec
+      var cta = el('button', 'strat-item-cta', 'Focus map on ' + r.specName);
+      cta.addEventListener('click', function() {
+        activeSpec = r.specId;
+        // Set matching category too
+        activeCat = r.category || 'all';
+        document.querySelectorAll('.cat-btn').forEach(function(b){
+          b.classList.toggle('active', b.dataset.cat === activeCat);
+        });
+        buildSpecFilters();
+        if (typeof applyFilters === 'function') applyFilters();
+      });
+      item.appendChild(cta);
+      list.appendChild(item);
     });
   }
 
@@ -5422,6 +5658,11 @@
         document.querySelectorAll('.cat-btn').forEach(function(b){ b.classList.remove('active'); });
         btn.classList.add('active');
         activeCat = btn.dataset.cat;
+        // Reset spec when category changes if current spec doesn't fit new category
+        if (activeSpec && SPEC_CAT[activeSpec] && activeCat !== 'all' && SPEC_CAT[activeSpec] !== activeCat) {
+          activeSpec = null;
+        }
+        if (typeof buildSpecFilters === 'function') buildSpecFilters();
         applyFilters();
       });
     });
@@ -5491,9 +5732,21 @@
         }
         if (!cellCat && seq !== null && warSeqMap[seq]) cellCat = SPEC_CAT[warSeqMap[seq].specId];
         if (!cellCat && seq !== null && defSeqMap[seq]) cellCat = SPEC_CAT[defSeqMap[seq].specId];
-        if (!cellCat) cellCat = cell.landCat || null;
+        if (!cellCat) cellCat = cell.landCat || (cell.specId && SPEC_CAT[cell.specId]) || null;
         var isHighlighted = (activeServer !== null && cell.sid === activeServer) || (highlight2864 && cell.sid === 2864);
         if (cellCat && cellCat !== activeCat && !isHighlighted) dimmed = true;
+      }
+
+      // SpecId filter — dim wastelands whose spec doesn't match
+      if (activeSpec && cell.type === 3) {
+        var cellSpec = cell.specId || null;
+        if (!cellSpec && roundData.ownedWastelands && seq !== null) {
+          var ow2 = roundData.ownedWastelands[String(seq)];
+          if (ow2) cellSpec = ow2.specId;
+        }
+        if (!cellSpec && seq !== null && warSeqMap[seq]) cellSpec = warSeqMap[seq].specId;
+        if (!cellSpec && seq !== null && defSeqMap[seq]) cellSpec = defSeqMap[seq].specId;
+        if (cellSpec !== activeSpec) dimmed = true;
       }
 
       cellEl.classList.toggle('dimmed', dimmed);
