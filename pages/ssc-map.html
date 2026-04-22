@@ -419,6 +419,25 @@
       outline-offset: -2px;
     }
     .cell.dimmed { opacity: .2; }
+    /* Target highlight ring when a strategic spec is focused */
+    .cell.target-candidate {
+      outline: 2px solid #3fb950;
+      outline-offset: -3px;
+      box-shadow: 0 0 8px rgba(63,185,80,.55);
+      animation: pulseGreen 1.5s ease-in-out infinite;
+    }
+    @keyframes pulseGreen {
+      0%, 100% { box-shadow: 0 0 8px rgba(63,185,80,.55); }
+      50% { box-shadow: 0 0 14px rgba(63,185,80,.85); }
+    }
+    /* Extra emphasis for S2864 territory when Highlight S2864 is on —
+       wastelands get outline + glow; NCs/warzone already have their own border */
+    .cell.ours-highlight {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+      box-shadow: 0 0 10px rgba(121,192,255,.65), inset 0 0 6px rgba(121,192,255,.25) !important;
+      z-index: 3;
+    }
 
     .cell.type-1 {
       border: 2px solid var(--gold);
@@ -2005,11 +2024,27 @@
       ));
       item.appendChild(plan);
 
+      // Eligible target list (unclaimed wastelands adjacent to our territory with this spec)
+      var eligList = roundData.eligibleTargets && roundData.eligibleTargets[String(r.specId)] || [];
+      if (eligList.length > 0) {
+        var elig = el('div', 'strat-item-targets');
+        elig.style.cssText = 'margin-top:.3rem;font-size:.65rem;color:var(--muted)';
+        elig.appendChild(document.createTextNode('Eligible targets: '));
+        eligList.slice(0, 12).forEach(function(e, idx) {
+          if (idx > 0) elig.appendChild(document.createTextNode(', '));
+          var pill = el('span', 'elig-seq');
+          pill.style.cssText = 'color:var(--army);font-weight:600';
+          pill.textContent = '#' + e.seq + (e.level ? '·Lv' + e.level : '·Lv?');
+          elig.appendChild(pill);
+        });
+        if (eligList.length > 12) elig.appendChild(document.createTextNode(' +' + (eligList.length - 12) + ' more'));
+        item.appendChild(elig);
+      }
+
       // CTA: focus filter on this spec
       var cta = el('button', 'strat-item-cta', 'Focus map on ' + r.specName);
       cta.addEventListener('click', function() {
         activeSpec = r.specId;
-        // Set matching category too
         activeCat = r.category || 'all';
         document.querySelectorAll('.cat-btn').forEach(function(b){
           b.classList.toggle('active', b.dataset.cat === activeCat);
@@ -5703,8 +5738,21 @@
       if (diffEl) diffEl.style.display = showDiff ? '' : 'none';
 
       var dimmed = false;
-      if (highlight2864 && cell.sid !== 2864) dimmed = true;
+      // Ours = any cell (warzone, NC, wasteland) owned by S2864
+      var isOurs = cell.sid === 2864 && (cell.type === 1 || cell.type === 2 || cell.type === 3);
+      if (highlight2864 && !isOurs) dimmed = true;
       if (activeServer !== null && cell.sid !== activeServer) dimmed = true;
+      cellEl.classList.toggle('ours-highlight', highlight2864 && isOurs);
+
+      // Target candidate highlight (strategic spec focus shows eligible targets)
+      var isCandidate = false;
+      if (activeSpec && roundData.eligibleTargets) {
+        var list = roundData.eligibleTargets[String(activeSpec)] || [];
+        if (seq !== null && list.some(function(e) { return e.seq === seq; })) isCandidate = true;
+      }
+      cellEl.classList.toggle('target-candidate', isCandidate);
+      // When highlighting eligible targets, keep them un-dimmed
+      if (isCandidate) dimmed = false;
 
       // Legend filter: show only matching cell type/overlay
       if (activeLegendFilter) {
