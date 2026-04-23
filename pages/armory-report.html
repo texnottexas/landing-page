@@ -1383,6 +1383,19 @@
     } catch(e) { return null; }
   }
 
+  // Verified S2864 members (have a siteKey + not a guest) get an elevated
+  // report cap (9 instead of 6) when adding from the Manage Reports modal.
+  function isVerifiedS2864Member() {
+    var id = getStoredIdentity();
+    return !!(id && id.name && id.siteKey && !id.guest);
+  }
+
+  // Cap surfaced in the dashboard/manage UI. Always reflects the user's
+  // ceiling (6 non-member / 9 member) regardless of where they are in flow.
+  function getReportCap() {
+    return isVerifiedS2864Member() ? 9 : 6;
+  }
+
   function getDeviceId() {
     var id = localStorage.getItem('reportDeviceId');
     if (id && /^[0-9a-f]{16}$/.test(id)) return id;
@@ -1763,10 +1776,22 @@
   var wizardState = {
     reportData: [],       // array of {id, extracted} for each loaded report
     player: null,         // {name, avatar, avatarFallback, level, server}
-    step: 'input'         // 'input' | 'select-player' | 'summary' | 'building'
+    step: 'input',        // 'input' | 'select-player' | 'summary' | 'building'
+    _addingFromManage: false  // true when user opened "Add Report" from Manage Reports modal
+                              // (gates the 7-9 elevated cap so onboarding stays pinned at 6)
   };
 
+  // Cap applied at the moment a new report is being added. Onboarding flow
+  // always = 6; Manage-Reports flow unlocks 9 for verified S2864 members.
+  function getAddReportCap() {
+    if (wizardState._addingFromManage && isVerifiedS2864Member()) return 9;
+    return 6;
+  }
+
   function openWizard() {
+    // Fresh onboarding entry — clear manage-provenance flag so cap pins at 6.
+    wizardState._addingFromManage = false;
+
     // Check if user has a saved config (either from localStorage or viewing someone else's)
     var savedConfig = null;
     try { savedConfig = JSON.parse(localStorage.getItem('playerReport')); } catch(e) {}
@@ -1784,6 +1809,7 @@
 
   function closeWizard() {
     document.getElementById('wizard').classList.remove('open');
+    wizardState._addingFromManage = false;
   }
 
   function renderWizardStep() {
@@ -2046,9 +2072,10 @@
       }
     }
 
-    // Check max
-    if (wizardState.reportData.length >= 6) {
-      errDiv.textContent = 'Maximum 6 reports reached.';
+    // Check max — 6 during onboarding, 9 when a verified S2864 member is adding via Manage Reports.
+    var addCap = getAddReportCap();
+    if (wizardState.reportData.length >= addCap) {
+      errDiv.textContent = 'Maximum ' + addCap + ' reports reached.';
       return;
     }
 
@@ -3394,7 +3421,7 @@
 
     var badge = document.createElement('span');
     badge.className = 'reports-badge';
-    badge.textContent = reportCount + '/6 reports';
+    badge.textContent = reportCount + '/' + getReportCap() + ' reports';
     actions.appendChild(badge);
 
     var manageBtn = document.createElement('button');
@@ -8609,7 +8636,7 @@
     identInfo.appendChild(identName);
     var identSub = document.createElement('div');
     identSub.className = 'manage-identity-sub';
-    identSub.textContent = reportCount + '/6 reports loaded';
+    identSub.textContent = reportCount + '/' + getReportCap() + ' reports loaded';
     identInfo.appendChild(identSub);
     identityDiv.appendChild(identInfo);
     container.appendChild(identityDiv);
@@ -8809,7 +8836,7 @@
     var btnRow = document.createElement('div');
     btnRow.className = 'manage-btn-row';
 
-    if (reportCount < 6) {
+    if (reportCount < getReportCap()) {
       var addBtn = document.createElement('button');
       addBtn.className = 'btn-secondary';
       addBtn.textContent = 'Add Report';
@@ -8843,6 +8870,9 @@
   }
 
   function manageAddReport() {
+    // Mark provenance so the wizard's cap check unlocks the elevated 9-report
+    // ceiling for S2864 members. Cleared on closeWizard().
+    wizardState._addingFromManage = true;
     wizardState.step = 'input';
     renderWizardStep();
   }
