@@ -201,15 +201,43 @@ Under-commits the upper range by design — gives buffer for Tier A attrition es
 
 Declarations can't be withdrawn mid-round — these wastelands stay on our declaration list but **should not be attacked** unless a leader explicitly calls someone in. Garrisoning in them is fine (free hearts cost us nothing); spending attacks there is pure budget waste.
 
+### Contested combat (not prioritized)
+
 | Target | Spec | Why skip |
 |:---:|---|---|
 | **W-91** | ATK Lv.3 | 3-way vs S3396 + S3940. Budget hole. |
 | **W-225** | DMG Red Lv.3 | 3-way vs S3396 + S2463. Budget hole. |
 | **W-111** | DEF Lv.3 | S2463 entrenched owner. Hard to flip. |
-| **W-215** | DMG Inc Lv.3 | S208 owner. Lower ROI. |
+| **W-215** | DMG Inc Lv.3 | S208 entrenched owner. Lower ROI. |
 | **W-229** | DEF Lv.2 | Lower level. Skip for Lv.3 pickups. |
-| All 17 contested non-combat | — | Below priority threshold. |
-| 14 of 15 uncontested non-combat | — | Keep only W-77 (Truck Transport). |
+
+### Contested non-combat (17)
+
+| Target | Spec | Contest |
+|:---:|---|---|
+| **W-7** | Mining Hub Lv.3 | vs S3396 |
+| **W-37** | Truck Heist Lv.3 | vs S2953 |
+| **W-62** | Mining Hub Lv.3 | vs S420 |
+| **W-63** | Realm Lv.1 | vs S2463 |
+| **W-75** | Realm Lv.3 | S3853 owner |
+| **W-82** | Realm Thief Lv.3 | vs S2463 |
+| **W-94** | Truck Heist Lv.3 | vs S2463 |
+| **W-196** | Truck Transport Lv.3 | vs S208 |
+| **W-205** | Daily Tasks Lv.3 | vs S2463 |
+| **W-228** | Realm Lv.3 | vs S3396 |
+| **W-234** | Seal Stone Train Lv.3 | 3-way vs S208 + S1404 |
+| **W-242** | Realm Lv.3 | S3396 owner |
+| **W-244** | Daily Tasks Lv.3 | 3-way vs S2579 + S3902 |
+| **W-301** | Realm Thief Lv.3 | S3396 owner |
+| **W-337** | Mining Hub Lv.3 | vs S3649 |
+| **W-424** | Realm Lv.1 | vs S2463 |
+| **W-445** | Truck Heist Lv.3 | 3-way vs S3649 + S2463 |
+
+Note: W-7 (vs S3396) and W-82 (vs S2463) are against our two primary rivals — mentioning in case leadership wants to reconsider promoting one into a Priority 2 fight. Under the current attack-budget plan they remain passive.
+
+### Uncontested non-combat
+
+14 of 15 uncontested non-combat wastelands — skip attacks. Keep only **W-77** (Truck Transport Lv.3) in Tier C pickups.
 
 ---
 
