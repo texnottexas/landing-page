@@ -122,7 +122,7 @@ Combat Lv.3 captures compound — buffs apply to every battle we fight for the r
 
 | Target | Spec | Opponent | Plan |
 |:---:|---|---|---|
-| **W-208** | DMG Increase Lv.3 | S3396 | Message S1397 to pile on a S3396 declaration. If they commit, we reinforce with **25 garrison + ~250 attacks**. If not, concede. |
+| **W-208** | DMG Increase Lv.3 | S3396 | Message S1397 to pile on a S3396 declaration. If they commit, we reinforce with **25 garrison + ~250 attacks**. If not, leave the declaration passive — no attacks there. |
 
 ### Tier C — PvE garrison flood (6-8 passive captures)
 
@@ -203,9 +203,11 @@ Under-commits the upper range by design — gives buffer for Tier A attrition es
 
 ---
 
-## Concede list (withdraw declarations before Contest)
+## Do Not Attack — without leadership confirmation
 
-| Target | Spec | Why concede |
+Declarations can't be withdrawn mid-round — these wastelands stay on our declaration list but **should not be attacked** unless a leader explicitly calls someone in. Garrisoning in them is fine (free hearts cost us nothing); spending attacks there is pure budget waste.
+
+| Target | Spec | Why skip |
 |:---:|---|---|
 | **W-91** | ATK Lv.3 | 3-way vs S3396 + S3940. Budget hole. |
 | **W-225** | DMG Red Lv.3 | 3-way vs S3396 + S2463. Budget hole. |
@@ -219,7 +221,7 @@ Under-commits the upper range by design — gives buffer for Tier A attrition es
 
 ## Ally message draft (S1397)
 
-> "R6 Publicity 2 coordination from S2864: we're pushing W-192 (HP vs S1120), W-5 (DMG Inc vs S1677), plus 6 uncontested Lv.3 combat pickups (W-320, W-269, W-250, W-47, W-27, W-77). We're conceding W-91, W-225, W-111, W-215 (the S3396/S2463 fronts) — can you pile on at least one S3396 wasteland? If you hit W-208, we'll reinforce with 25 players. Please confirm your top 3 so we de-conflict."
+> "R6 Publicity 2 coordination from S2864: we're pushing W-192 (HP vs S1120), W-5 (DMG Inc vs S1677), plus 6 uncontested Lv.3 combat pickups (W-320, W-269, W-250, W-47, W-27, W-77). We're letting W-91, W-225, W-111, W-215 (the S3396/S2463 fronts) go — not spending attacks there. Can you pile on at least one S3396 wasteland? If you hit W-208, we'll reinforce with 25 players. Please confirm your top 3 so we de-conflict."
 
 ---
 
@@ -228,7 +230,7 @@ Under-commits the upper range by design — gives buffer for Tier A attrition es
 | If… | Then… |
 |---|---|
 | Activity under 130 by T-30 min | Drop Tier B. Hold Tier A at 40 each. Trim Tier C to 5 targets, bump garrison per target to 22. |
-| A Tier C target gets contested late | Concede it immediately — PvE economics don't hold vs a real defender. Redirect to Tier E. |
+| A Tier C target gets contested late | Stop attacking it — PvE economics don't hold vs a real defender. Redirect attacks to Tier E / another Tier C. |
 | S1397 confirms S3396 focus-fire | Activate Tier B (+25 players from flex, +250 attacks). |
 | We're ahead on both Tier A kills by T-30 | Commit flex attacks to the weaker one to guarantee both. |
 | Lv.3 NC attack incoming | Pull 10 flex players to reinforce, MS-only posture. |
@@ -238,14 +240,15 @@ Under-commits the upper range by design — gives buffer for Tier A attrition es
 ## Execution checklist
 
 - [ ] **T-60:** Confirm active list — ping marchall heads for activity commitments.
-- [ ] **T-45:** Withdraw declarations on concede list (W-91, W-225, W-111, W-215, W-229 + non-combat).
+- [ ] **T-45:** Broadcast the Do-Not-Attack list to all players — no attacks on W-91, W-225, W-111, W-215, W-229, or non-combat wastelands without a leader call.
 - [ ] **T-30:** Final garrison in — Tier A at 40 each, Tier C at 18 each, Tier D at spec, Tier E in reserve.
-- [ ] **T-15:** Confirm S1397 Tier B commit (yes/no) → activate or concede W-208.
+- [ ] **T-15:** Confirm S1397 Tier B commit (yes/no) → activate W-208 or leave it as a passive declaration.
 - [ ] **T-0:** Contest opens. **Focus-fire protocol:**
   - [ ] Tier A: all designated attackers focus the **same enemy Mothership in rotation** — no splitting.
   - [ ] Tier C: attackers hit PvE smalls first (cheap 1-heart kills trigger compound bonuses), then Mothership. **PIVOT** the moment our heart pool exceeds theirs — don't linger.
   - [ ] Defenders (Tier D): zero attack output unless a counter-raid window opens. Hold hearts.
   - [ ] Flex (Tier E): watch the Tier A kill-rate. Redirect attacks at T-60-minute mark if either fight is lagging.
+  - [ ] Player discipline: no Rockfield, strongest march only, wait 10 sec for chat calls before spending an attack if it's close, ask a leader when unsure.
 
 ---
 
