@@ -404,13 +404,13 @@ The wasteland cap system matters:
 - **Economy/utility specs** are capped at 40 per sector — the 41st doesn't help the whole warzone
 - **DMG Increase and DMG Reduction have a 300% cap** but each L3 wasteland gives 45% — so you hit the cap with only 7 wastelands. Low-hanging fruit.
 
-### Ship stacking
+### Ship stacking (corrected)
 
-A fully-attacked wasteland has 200 total slots (100 MS + 50 Sw + 50 Pa) = enough for 100 players × 2 marches. In practice most wastelands see 30-80% fill. The winners are usually determined by **small-ship uptime**, not raw Mothership fill.
+A wasteland holds 200 march slots total (100 MS + 50 Sw + 50 Pa). Against a competent PvP defender **both sides keep smalls empty** to deny compound bonuses — so the real contest happens entirely inside the Motherships. In practice, a winning contested attack needs enough active attackers to land ~500 successful Mothership hits inside the 90-minute window. Against PvE, fill your Mothership and let the compound bonuses do the work — a dozen active players is enough to clear a Lv.3.
 
 ### Contested vs. uncontested declarations
 
-`fightSids` in the wasteland's declaration data tells you who else declared. A 3-way fight splits the defending attention but also dilutes your reward share. Uncontested captures are free wins — target them first.
+The game exposes which servers declared on each wasteland. Multi-way fights split attack budgets across three defending garrisons — you burn the same attack currency to land fewer kills, and the reward share gets diluted across more winners. **Uncontested captures are the best ROI on your attack budget** — 220 compound attacks for a Lv.3 vs. 500 flat attacks for a 1v1 PvP — prioritize them first, then pick the one or two winnable PvP fronts to invest the remaining budget.
 
 ---
 
