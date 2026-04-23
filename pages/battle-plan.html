@@ -549,16 +549,18 @@ body{top:0!important;}
     });
   }
 
-  // Extract mermaid fenced blocks BEFORE markdown parsing. Keeps the raw
-  // mermaid syntax out of the DOM entirely (Google Translate never sees it).
-  // The rendered SVG that replaces the placeholder has text labels that GT
-  // will translate normally.
+  // Extract mermaid fenced blocks BEFORE markdown parsing. The raw mermaid
+  // syntax never enters the DOM (Google Translate never sees it). The token
+  // we leave behind is a block-level <div> placeholder — marked passes raw
+  // HTML through verbatim, so no markdown formatting fights the token.
+  // Earlier attempts used __MERMAID_BLOCK_N__ but marked parsed the
+  // surrounding underscores as bold markers, eating the placeholder.
   function extractMermaid(md){
     var blocks=[]; var idx=0;
     var out=md.replace(/```mermaid\s*\n([\s\S]*?)```/g,function(_,src){
-      var token='__MERMAID_BLOCK_'+(idx++)+'__';
-      blocks.push({token:token,src:src});
-      return '\n\n'+token+'\n\n';
+      var id='mmb'+(idx++);
+      blocks.push({id:id,src:src});
+      return '\n\n<div class="mermaid-chart" data-mm="'+id+'"></div>\n\n';
     });
     return {md:out,blocks:blocks};
   }
@@ -571,12 +573,6 @@ body{top:0!important;}
     var extracted=extractMermaid(rawMd);
     window.marked.setOptions({breaks:false,gfm:true});
     var html=window.marked.parse(extracted.md);
-    extracted.blocks.forEach(function(b){
-      var holder='<div class="mermaid-chart" data-mm="'+b.token+'"></div>';
-      // marked wraps bare tokens in <p>...</p>
-      html=html.replace(new RegExp('<p>\\s*'+b.token+'\\s*</p>'),holder);
-      html=html.replace(b.token,holder);
-    });
     replaceWithFragment(fpContent,html);
     renderAllMermaid(extracted.blocks);
   }
@@ -592,7 +588,7 @@ body{top:0!important;}
       }});
     }catch(e){/* continue */}
     blocks.forEach(function(b,i){
-      var el=fpContent.querySelector('[data-mm="'+b.token+'"]');
+      var el=fpContent.querySelector('[data-mm="'+b.id+'"]');
       if(!el) return;
       var id='mm-'+Date.now()+'-'+i;
       try{
