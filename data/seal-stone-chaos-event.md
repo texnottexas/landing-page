@@ -136,49 +136,106 @@ flowchart LR
 
 ## 3. Ship mechanics (wasteland + NC battles)
 
-Each player commits marches to one wasteland. Each wasteland has 3 ship types with different capacities and hearts.
+### Hearts (passive defense pool)
 
-| Ship | Slots | Hearts | Role |
-|------|:-----:|:------:|------|
-| **Mothership** | 100 | 5 | Primary carrier — should be filled first |
-| **Sweeper** | 50 | 3 | Secondary — unlocks extra attack ticks |
-| **Patrol** | 50 | 3 | Secondary — unlocks extra attack ticks |
+Hearts are the battle's HP bar. They're counted **per march**:
 
-### Deployment rules
+| Ship | Slots | Hearts per march | Max hearts (full fill) |
+|------|:-----:|:----------------:|:----------------------:|
+| **Mothership** | 100 | 5 | 500 |
+| **Sweeper** | 50 | 3 | 150 |
+| **Patrol** | 50 | 3 | 150 |
+| **PvP total** | 200 | — | **800** |
+
+**PvE (no real server defending)** uses a different pool: 100 MS + 60 Sw + 60 Pa marches each with **1 heart** → **220 hearts total**. PvE marches don't attack you — they sit there as a damage sponge.
+
+### Attack economy (the number that actually decides fights)
+
+This is the load-bearing rule and the one most players miss:
+
+- **Each real player has ~10 base attacks total — for the whole 90-minute battle, across all wastelands combined.**
+- That personal budget is not per-wasteland — it's a daily cap.
+- Each successful attack deals **1 damage** (reduces 1 heart). A Mothership march (5 hearts) takes **5 successful hits** to kill. A small-ship or PvE march (3/1 hearts) dies faster.
+
+**Bonus attacks (the small-ship rule):** for every **2 successful hits** you land on an opposing Mothership march, you earn **+1 bonus attack** — but **only if the opponent's small ships still have marches inside**. Bonuses compound (bonus attacks also count toward the next +1 trigger). Max ~**17-18 attacks** per active player when the opponent keeps smalls manned.
 
 ```mermaid
 flowchart TD
-    P[Player with<br/>2 marches] --> CH{Wasteland<br/>already has<br/>Mothership full?}
-    CH -->|No| M[March 1 → Mothership]
-    CH -->|Yes| S1[March 1 → Sweeper or Patrol]
-    M --> M2[March 2 → Sweeper or Patrol]
-    S1 --> S2[March 2 → same small ship]
+    A[Your attack budget<br/>10 base / 17-18 max<br/>per active player per day] --> B{Enemy small ships<br/>have marches?}
+    B -->|Yes<br/>smalls alive| C[Compound bonuses trigger<br/>+1 every 2 MS hits<br/>up to ~18 total]
+    B -->|No<br/>smalls empty| D[Flat 10 attacks<br/>no bonus]
+    C --> E[PvE case:<br/>smalls always manned<br/>→ always compound]
+    D --> F[Competent PvP defender:<br/>plans to 10 flat]
 
-    M2 --> R[Battle starts]
-    S2 --> R
+    classDef pool fill:#79c0ff,color:#0d1117
+    classDef yes fill:#3fb950,color:#fff
+    classDef no fill:#6e7681,color:#fff
+    classDef pve fill:#d29922,color:#0d1117
 
-    R --> A{Small ship<br/>alive?}
-    A -->|Yes| BONUS[+1 extra attack tick<br/>per round]
-    A -->|No| BASE[Base attack rate]
-
-    classDef pl fill:#79c0ff,color:#0d1117
-    classDef msh fill:#f85149,color:#fff
-    classDef sm fill:#3fb950,color:#fff
-    classDef bonus fill:#d29922,color:#0d1117
-    classDef base fill:#6e7681,color:#fff
-
-    class P pl
-    class M msh
-    class S1,S2,M2 sm
-    class BONUS bonus
-    class BASE base
+    class A pool
+    class C,E yes
+    class D,F no
 ```
 
-**Rules of thumb:**
-- 1 player = 1 wasteland only (can't split)
+### The counterintuitive result: defenders keep smalls EMPTY
+
+Because your small ships being manned **gives the enemy free attacks against your Mothership**, the optimal PvP defensive posture is to **leave Sweeper and Patrol empty** and pile everyone into the Mothership. That caps your defensive hearts at 500 (down from 800) but denies the attacker any compound bonuses — forcing them to spend 500 successful attacks to win, with no multiplier.
+
+```mermaid
+flowchart LR
+    subgraph defense [PvP Defense - our wasteland]
+        D1[Fill Mothership]
+        D2[Leave Sweeper empty]
+        D3[Leave Patrol empty]
+        D1 -.deny enemy bonus.-> OUT1[Attacker capped at<br/>10 attacks/player flat]
+    end
+
+    subgraph offense [PvP Offense - attacking a real server]
+        O1[Fill Mothership only]
+        O2[Assume enemy smalls empty]
+        O1 --> OUT2[Plan for flat 10<br/>per active player]
+    end
+
+    subgraph pve [PvE Offense - uncontested wasteland]
+        P1[Fill Mothership]
+        P2[PvE NPC always has<br/>smalls manned]
+        P2 --> P3[Compound bonuses kick in]
+        P3 --> OUT3[Each player gets<br/>up to 17-18 attacks]
+    end
+
+    classDef def fill:#388bfd,color:#fff
+    classDef off fill:#f85149,color:#fff
+    classDef pveClass fill:#d29922,color:#0d1117
+
+    class D1,D2,D3,OUT1 def
+    class O1,O2,OUT2 off
+    class P1,P2,P3,OUT3 pveClass
+```
+
+### Garrison vs. attacks
+
+Two separate concepts:
+- **Garrisoned marches** — committed to a wasteland, contribute to that wasteland's defensive heart pool. Stuck there for the round.
+- **Personal attacks** — the 10-18 strikes a player can spend freely across any wastelands, regardless of where their marches are garrisoned.
+
+You can attack a wasteland you're not garrisoned on. You can garrison in a wasteland and spend your attacks elsewhere. But each player has **1 garrison placement** (2 marches, 1 wasteland) and **1 daily attack budget**.
+
+### Win conditions (90-minute timer)
+
+1. Zero the opposing side's hearts before the timer expires → instant win.
+2. Timer expires with both sides still alive → **whichever side has more hearts remaining** wins.
+
+Because attack budgets are finite and daily, you can't out-attrition an opponent on every front — **you have to pick which wastelands you genuinely intend to win** and focus-fire there.
+
+### Rules of thumb (corrected)
+
+- 1 player = 1 wasteland garrison (can't split)
 - Both marches to the same wasteland
-- Primary in Mothership, secondary in a small ship
-- Don't skip small ships — the extra attack ticks while Sweeper/Patrol are alive are a major throughput boost
+- **Defense: Mothership only. Smalls empty.** Denies enemy bonus.
+- **Offense (vs. real server): Mothership only**, plan for 10 flat attacks per active player against a competent defender.
+- **Offense (PvE): Mothership heavy**, expect compound bonuses up to 18 attacks/player.
+- Not every deployed player is active — plan attacks around the **active fraction** (rule of thumb: ~60% of deployed).
+- Concentrate fire. Splitting 2,000 attacks across 45 targets wins nothing; splitting across 6 targets wins 6.
 
 ---
 
