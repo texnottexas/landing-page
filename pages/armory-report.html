@@ -3896,8 +3896,11 @@
           infos.forEach(function(info) { if (info.type === 2) type2 = info; });
           var rd = null;
           if (type2 && type2.templateId) rd = resolveRune(type2.templateId);
-          // Rune equipped: count actual stars/max. No rune: count as 0/6 so empty slots penalize progress.
-          if (rd) { starSum += rd.s; maxSum += rd.sm; } else { maxSum += 6; }
+          // Rune scoring: slotting itself = +1, each star = +1 more. So a rune w/ sm max stars scores
+          // (s+1)/(sm+1). Empty slot = 0/7 (assumes a 6-star-max rune could have been slotted there),
+          // so a slotted-but-0-stars rune scores higher than an empty slot. Fixes the bug where a
+          // slotted 0-star rune was indistinguishable from no rune at all.
+          if (rd) { starSum += rd.s + 1; maxSum += rd.sm + 1; } else { maxSum += 7; }
           if (idx < 6) gearSlots[idx] = { equipId: eq.id, rune: rd };
         });
         var pct = maxSum > 0 ? Math.round(starSum / maxSum * 100) : 0;
@@ -3919,9 +3922,9 @@
           infos.forEach(function(i) { if (i.type === 2) t2 = i; });
           if (t2 && t2.templateId) {
             var rd = resolveRune(t2.templateId);
-            if (rd) { equippedCount++; grandStars += rd.s; grandMax += rd.sm; } else { grandMax += 6; }
+            if (rd) { equippedCount++; grandStars += rd.s + 1; grandMax += rd.sm + 1; } else { grandMax += 7; }
           } else {
-            grandMax += 6;
+            grandMax += 7;
           }
         });
       });
@@ -4554,7 +4557,7 @@
     modal.appendChild(title);
 
     var intro = document.createElement('p');
-    intro.textContent = 'Progress is measured as a percentage of the maximum possible rune stars across all gear slots. Equipped runes count their actual star cap, while empty rune slots count as 0/6 \u2014 so missing runes penalize progress. A hero needs runes on every slot AND maxed stars to reach 100%.';
+    intro.textContent = 'Progress is scored per gear slot. Slotting a rune itself counts as +1, and each star improvement adds another +1. Empty slots score 0 out of 7 (assumes a full 6-star rune could have been slotted), so missing runes penalize progress \u2014 but a slotted unleveled rune is strictly better than an empty slot. A hero needs runes on every slot AND maxed stars to reach 100%.';
     modal.appendChild(intro);
 
     var h4a = document.createElement('h4');
@@ -4570,9 +4573,9 @@
       row.appendChild(l); row.appendChild(v);
       formula.appendChild(row);
     }
-    addRow('Current Stars', 'Sum of star levels on all equipped runes');
-    addRow('Max Stars', 'Sum of max star level for each equipped rune');
-    addRow('Progress', '(Current / Max) \u00D7 100%', true);
+    addRow('Per-slot score', 'Slotted: 1 + stars. Empty: 0.');
+    addRow('Per-slot max', 'Slotted: maxStars + 1. Empty: 7 (assumes 6-star rune).');
+    addRow('Progress', '(Sum of scores / Sum of maxes) \u00D7 100%', true);
     modal.appendChild(formula);
 
     var h4b = document.createElement('h4');
@@ -4596,16 +4599,16 @@
       row.appendChild(l); row.appendChild(v);
       ex.appendChild(row);
     }
-    addExRow('Slot 1: Magnetize', '1/1 star (maxed)');
-    addExRow('Slot 2: Magnetic Field', '1/1 star (maxed)');
-    addExRow('Slot 3: Tactical Awareness', '5/6 stars');
-    addExRow('Slot 4: Stealth Hologram', '4/6 stars');
-    addExRow('Slot 5: (no rune)', '0/6 stars');
-    addExRow('Slot 6: Armor-Breaking', '3/3 stars (maxed)');
+    addExRow('Slot 1: Magnetize (1/1 maxed)', '2 / 2');
+    addExRow('Slot 2: Magnetic Field (1/1 maxed)', '2 / 2');
+    addExRow('Slot 3: Tactical Awareness (5/6 stars)', '6 / 7');
+    addExRow('Slot 4: Stealth Hologram (4/6 stars)', '5 / 7');
+    addExRow('Slot 5: (no rune)', '0 / 7');
+    addExRow('Slot 6: Armor-Breaking (3/3 maxed)', '4 / 4');
     var exTotal = document.createElement('div');
     exTotal.className = 'gs-breakdown-row total';
     var el1 = document.createElement('span'); el1.textContent = 'Progress';
-    var el2 = document.createElement('span'); el2.textContent = '14/23 = 61%';
+    var el2 = document.createElement('span'); el2.textContent = '19/29 = 66%';
     exTotal.appendChild(el1); exTotal.appendChild(el2);
     ex.appendChild(exTotal);
     modal.appendChild(ex);
