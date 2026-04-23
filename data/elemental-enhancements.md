@@ -199,17 +199,19 @@ Under-commits the upper range by design — gives buffer for Tier A attrition es
 
 ## Do Not Attack — without leadership confirmation
 
-Declarations can't be withdrawn mid-round — these wastelands stay on our declaration list but **should not be attacked** unless a leader explicitly calls someone in. Garrisoning in them is fine (free hearts cost us nothing); spending attacks there is pure budget waste.
+Declarations can't be withdrawn mid-round — these wastelands stay on our declaration list but **should not be attacked** by default. Garrisoning in them is fine (free hearts cost us nothing); spending attacks there is what drains the budget.
+
+**Threat model:** only **S3396** is a peer. **S1397** is ally. Everyone else (S2463, S208, S3940, S2953, S3649, etc.) is weaker than us, so wastelands owned or contested by them are **winnable if a leader redirects budget** — we just aren't prioritizing them below our current Tier A / C commitments. These are deprioritized for attack budget, not because they're unwinnable.
 
 ### Contested combat (not prioritized)
 
-| Target | Spec | Why skip |
+| Target | Spec | Why deprioritized |
 |:---:|---|---|
-| **W-91** | ATK Lv.3 | 3-way vs S3396 + S3940. Budget hole. |
-| **W-225** | DMG Red Lv.3 | 3-way vs S3396 + S2463. Budget hole. |
-| **W-111** | DEF Lv.3 | S2463 entrenched owner. Hard to flip. |
-| **W-215** | DMG Inc Lv.3 | S208 entrenched owner. Lower ROI. |
-| **W-229** | DEF Lv.2 | Lower level. Skip for Lv.3 pickups. |
+| **W-91** | ATK Lv.3 | 3-way vs S3396 + S3940 — S3396 dilutes, 3-way drain. |
+| **W-225** | DMG Red Lv.3 | 3-way vs S3396 + S2463 — S3396 dilutes, 3-way drain. |
+| **W-111** | DEF Lv.3 | vs S2463 — **winnable**, flag if leader wants to add. |
+| **W-215** | DMG Inc Lv.3 | vs S208 — **winnable**, flag if leader wants to add. |
+| **W-229** | DEF Lv.2 | Lower level, lower buff-gap value. |
 
 ### Contested non-combat (17)
 
@@ -233,7 +235,9 @@ Declarations can't be withdrawn mid-round — these wastelands stay on our decla
 | **W-424** | Realm Lv.1 | vs S2463 |
 | **W-445** | Truck Heist Lv.3 | 3-way vs S3649 + S2463 |
 
-Note: W-7 (vs S3396) and W-82 (vs S2463) are against our two primary rivals — mentioning in case leadership wants to reconsider promoting one into a Priority 2 fight. Under the current attack-budget plan they remain passive.
+Notes:
+- Only S3396-owned / S3396-contested entries above (W-228, W-242, W-301) are genuinely tough fights. Our one committed S3396 push is already W-208 in Tier A.
+- Weak-opponent entries (S2463 / S208 / S2953 / S3649 / S420 / S3853 / S3902 / S2579 / S3940 / S1404) are **winnable** — they're deprioritized because the three-target Tier A already stretches our attack budget, not because we can't beat them. Leadership can promote any into a Priority 2 fight by redirecting budget from Tier C.
 
 ### Uncontested non-combat
 
