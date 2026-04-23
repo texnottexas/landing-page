@@ -104,25 +104,21 @@ Combat Lv.3 captures compound — buffs apply to every battle we fight for the r
 
 ## Deployment tiers
 
-### Tier A — PvP focus-fire (2 targets, top priority)
+### Tier A — PvP focus-fire (3 targets, top priority)
 
-"Win these or we wasted the day." Winnable 1v1s against secondary-tier rivals. These are the hard-attrition fights where garrison **and** attack both matter.
+"Win these or we wasted the day." All three get the same Priority-1 treatment: concentrated garrison, focus-fire attacks, and Mothership-only posture. W-208 is now a committed push on S3396 rather than a conditional ally-assist — ally S1397 pile-on is welcome if they call it, but we do not wait for it.
 
 | Target | Spec | Opponent | Garrison | Attack focus | Posture |
 |:---:|---|---|---:|---:|---|
-| **W-192** | HP Buff Lv.3 | S1120 (1v1) | 40 players | ~400 attacks concentrated here | Mothership only · **smalls empty** |
-| **W-5** | DMG Increase Lv.3 | S1677 (1v1) | 40 players | ~400 attacks concentrated here | Mothership only · **smalls empty** |
+| **W-208** | DMG Increase Lv.3 | S3396 | **45 players** | ~450 attacks concentrated | Mothership only · **smalls empty** |
+| **W-192** | HP Buff Lv.3 | S1120 (1v1) | 30 players | ~300 attacks concentrated | Mothership only · **smalls empty** |
+| **W-5** | DMG Increase Lv.3 | S1677 (1v1) | 30 players | ~300 attacks concentrated | Mothership only · **smalls empty** |
 
 **Rules for Tier A:**
 - **Fill Mothership, nothing in Sweeper or Patrol.** Denies the opponent compound bonuses — caps them at 10 flat per player.
 - Garrisoned players should spend their attacks on their own target (focused fire, no split).
-- Any surplus attacks from elsewhere pile onto whichever Tier A target has better kill progress near T-30.
-
-### Tier B — Coordination play (conditional)
-
-| Target | Spec | Opponent | Plan |
-|:---:|---|---|---|
-| **W-208** | DMG Increase Lv.3 | S3396 | Message S1397 to pile on a S3396 declaration. If they commit, we reinforce with **25 garrison + ~250 attacks**. If not, leave the declaration passive — no attacks there. |
+- W-208 is the heaviest commitment; W-192 / W-5 are thinner — if kills lag at T-30 on any of the three, redirect surplus attacks from Tier C-garrisoned active players to whichever Tier A fight is closest to flipping.
+- Attack budget is tight across three PvP targets — expect to need every active player's attack budget directed at Tier A at some point in the 90 minutes.
 
 ### Tier C — PvE garrison flood (6-8 passive captures)
 
@@ -169,7 +165,7 @@ Defenders don't attack unless counter-raiding. Just need hearts on the wall.
 ### Tier E — Flex reserve
 
 - **NC reinforcement** (when NC Declaration opens): 10 players ready to redeploy to #3004 / #3005 if contested.
-- **Ally-response flex**: 10 players held for Tier B activation or late pile-on.
+- **Late pile-on reserve**: remaining flex held for whichever Tier A target is lagging closest to timer.
 
 ---
 
@@ -179,24 +175,22 @@ Defenders don't attack unless counter-raiding. Just need hearts on the wall.
 
 | Tier | Players |
 |---|---:|
-| A — PvP focus | 80 |
-| B — Ally assist (conditional) | 0 – 25 |
-| C — PvE flood | 108 |
+| A — PvP focus (3 targets: 45/30/30) | 105 |
+| C — PvE flood (6 × 18) | 108 |
 | D — Defense | 24 |
-| E — Flex / NC | 20 |
-| **Total committed** | **~232 – 257** |
+| E — Flex / NC | 13 |
+| **Total committed** | **~250** |
 
-Fits 250 deployed with ~20-player buffer.
+Fits 250 deployed exactly — no buffer. If player count runs short, trim Tier C to 5 targets before touching Tier A.
 
 ### Attacks (150 active → 1,500 – 2,700 budget)
 
 | Spend | Attacks |
 |---|---:|
-| A — PvP focus-fire (2 × ~400) | 800 |
-| B — Ally assist (conditional) | 0 – 250 |
+| A — PvP focus-fire (3 × ~350 avg) | ~1,050 |
 | C — PvE threshold top-ups (6 × ~40) | 240 |
 | D — Defense counter-raid spare | 0 – 100 |
-| Reserve / flex | 160 – 500+ |
+| Reserve / flex (redirect to Tier A as needed) | 150 – 1,300+ |
 | **Total projected** | **~1,200 – 1,890** |
 
 Under-commits the upper range by design — gives buffer for Tier A attrition escalation or late Tier C pivot recoveries.
@@ -221,7 +215,7 @@ Declarations can't be withdrawn mid-round — these wastelands stay on our decla
 
 ## Ally message draft (S1397)
 
-> "R6 Publicity 2 coordination from S2864: we're pushing W-192 (HP vs S1120), W-5 (DMG Inc vs S1677), plus 6 uncontested Lv.3 combat pickups (W-320, W-269, W-250, W-47, W-27, W-77). We're letting W-91, W-225, W-111, W-215 (the S3396/S2463 fronts) go — not spending attacks there. Can you pile on at least one S3396 wasteland? If you hit W-208, we'll reinforce with 25 players. Please confirm your top 3 so we de-conflict."
+> "R6 Publicity 2 coordination from S2864: we're committing Priority-1 on W-208 (DMG Inc vs S3396) with 45 players, plus W-192 (HP vs S1120) and W-5 (DMG Inc vs S1677) at 30 each, and 6 uncontested Lv.3 combat pickups (W-320, W-269, W-250, W-47, W-27, W-77). We're letting W-91, W-225, W-111, W-215 go — not spending attacks there. A pile-on from you on W-208 or any other S3396 wasteland would help a lot. Please share your top targets so we de-conflict."
 
 ---
 
@@ -229,10 +223,10 @@ Declarations can't be withdrawn mid-round — these wastelands stay on our decla
 
 | If… | Then… |
 |---|---|
-| Activity under 130 by T-30 min | Drop Tier B. Hold Tier A at 40 each. Trim Tier C to 5 targets, bump garrison per target to 22. |
-| A Tier C target gets contested late | Stop attacking it — PvE economics don't hold vs a real defender. Redirect attacks to Tier E / another Tier C. |
-| S1397 confirms S3396 focus-fire | Activate Tier B (+25 players from flex, +250 attacks). |
-| We're ahead on both Tier A kills by T-30 | Commit flex attacks to the weaker one to guarantee both. |
+| Activity under 130 by T-30 min | Trim Tier C to 4 targets (bump per-target garrison to 22). Keep Tier A at 45/30/30. |
+| A Tier C target gets contested late | Stop attacking it — PvE economics don't hold vs a real defender. Redirect attacks to Tier A. |
+| S1397 confirms S3396 focus-fire on W-208 | Have flex reserve drop garrison on W-208 and direct spare attacks there. |
+| We're clearly winning one Tier A target by T-30 | Redirect its attackers' remaining budget to whichever other Tier A target is lagging. |
 | Lv.3 NC attack incoming | Pull 10 flex players to reinforce, MS-only posture. |
 
 ---
@@ -241,8 +235,8 @@ Declarations can't be withdrawn mid-round — these wastelands stay on our decla
 
 - [ ] **T-60:** Confirm active list — ping marchall heads for activity commitments.
 - [ ] **T-45:** Broadcast the Do-Not-Attack list to all players — no attacks on W-91, W-225, W-111, W-215, W-229, or non-combat wastelands without a leader call.
-- [ ] **T-30:** Final garrison in — Tier A at 40 each, Tier C at 18 each, Tier D at spec, Tier E in reserve.
-- [ ] **T-15:** Confirm S1397 Tier B commit (yes/no) → activate W-208 or leave it as a passive declaration.
+- [ ] **T-30:** Final garrison in — W-208 at 45, W-192 and W-5 at 30 each, Tier C at 18 each, Tier D at spec, Tier E in reserve.
+- [ ] **T-15:** Confirm S1397 coordination (if any) — sync on W-208 or other S3396 fronts they're pushing.
 - [ ] **T-0:** Contest opens. **Focus-fire protocol:**
   - [ ] Tier A: all designated attackers focus the **same enemy Mothership in rotation** — no splitting.
   - [ ] Tier C: attackers hit PvE smalls first (cheap 1-heart kills trigger compound bonuses), then Mothership. **PIVOT** the moment our heart pool exceeds theirs — don't linger.
