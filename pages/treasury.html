@@ -1385,15 +1385,17 @@ async function loadData() {
     distData = await responses[0].json();
     /* treasury-items.json loaded for future use; not strictly needed for display */
 
-    /* Build avatar lookup map from player-data.json (best-effort, non-fatal) */
+    /* Build avatar lookup map from player-data.json (best-effort, non-fatal).
+       player-data.json splits into `avatar` (CDN URL) and `avatarRef` (in-game asset key);
+       prefer avatar, fall back to avatarRef so asset-key players resolve via resolveAvatar(). */
     if (responses[2].ok) {
       try {
         var playerArr = await responses[2].json();
         playerAvatarMap = {};
         playerArr.forEach(function(p) {
-          if (p.siteKey && p.avatarurl) {
-            playerAvatarMap[p.siteKey] = p.avatarurl;
-          }
+          if (!p.siteKey) return;
+          var v = p.avatar || p.avatarurl || p.avatarRef;
+          if (v) playerAvatarMap[p.siteKey] = v;
         });
       } catch (e2) { /* avatar lookup unavailable — degrade gracefully */ }
     }
@@ -1411,14 +1413,21 @@ async function loadData() {
   }
 }
 
+function resolveAvatar(v) {
+  /* Pass through CDN URLs; resolve in-game asset keys to h5.topwargame.com headpic CDN */
+  if (!v) return null;
+  if (v.startsWith('http')) return v;
+  return 'https://h5.topwargame.com/DynRes/images/headpic/' + v + '.png?t=21.jpg';
+}
+
 function getAvatarUrl(siteKey, distEntry) {
   /* Prefer avatarurl embedded in distribution data */
-  if (distEntry && distEntry.avatarurl) return distEntry.avatarurl;
+  if (distEntry && distEntry.avatarurl) return resolveAvatar(distEntry.avatarurl);
   if (!siteKey) return null;
   /* Fallback: distribution siteKeys may have sha256: prefix; player-data uses 16-char prefix */
   var hash = siteKey.replace('sha256:', '');
   var prefix = hash.slice(0, 16);
-  return playerAvatarMap[prefix] || null;
+  return resolveAvatar(playerAvatarMap[prefix]);
 }
 
 loadData();
