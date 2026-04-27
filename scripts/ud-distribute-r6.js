@@ -268,6 +268,9 @@ function pushDist(p, tier, sub) {
     power: p.power,
     rewards,
   };
+  if (p.avatarurl) entry.avatarurl = p.avatarurl;
+  if (p.level) entry.level = p.level;
+  if (p.nationalflag) entry.nationalflag = p.nationalflag;
   if (p.specialReason) entry.specialReason = p.specialReason;
   distributions.push(entry);
 }
@@ -284,8 +287,18 @@ const summary = {
   totalPlayers: distributions.length,
   byPlayerTier: { tier1: ptier1All.length, tier2: ptier2.length },
   bySubGroup: { S: groupS.length, A: groupA.length, B: groupB.length, C: groupC.length },
+  byRewardTier: {},
+  totalCategories: 0,
   inventoryUsed: {},
 };
+
+for (const d of distributions) {
+  for (const r of d.rewards) {
+    const t = r.tier || 'T?';
+    summary.byRewardTier[t] = (summary.byRewardTier[t] || 0) + 1;
+    summary.totalCategories++;
+  }
+}
 
 for (const [name, item] of Object.entries(inv)) {
   const avail = item.available || 0;
