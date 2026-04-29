@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Hero System — Heroes Awakening &amp; Exchanging | S2864</title>
+  <meta name="theme-color" content="#0d1117">
+  <meta name="description" content="Top War's New Hero System — Heroes Awakening + Heroes Exchanging. Reconciled from in-game tables and Rivergame Discord posts. Pool/Core exchange calculator, hero skills, mutated alt-forms.">
+  <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --card: #1c2128;
+      --border: #30363d; --text: #e6edf3; --muted: #8b949e;
+      --accent: #79c0ff; --green: #3fb950; --gold: #d29922;
+      --red: #f85149; --navy: #388bfd; --orange: #ff8c00; --purple: #a371f7;
+      --army: #3fb950; --navyType: #388bfd; --air: #d29922;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; padding: 12px 14px 60px;
+      line-height: 1.55;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    header {
+      width: 100%; max-width: 1100px;
+      display: flex; align-items: center; gap: 10px;
+      padding-bottom: 11px; margin-bottom: 16px;
+      border-bottom: 1px solid var(--border); flex-wrap: wrap;
+    }
+    .title-block { flex: 1; min-width: 0; }
+    .title-block h1 { font-size: 1.35rem; font-weight: 700; color: var(--accent); }
+    .title-block p  { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+    .hdr-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+    .home-btn {
+      display: flex; align-items: center; justify-content: center;
+      background: var(--card); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 8px; padding: .4rem .6rem; text-decoration: none;
+      transition: all .15s; flex-shrink: 0;
+    }
+    .home-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    .banner {
+      width: 100%; max-width: 1100px;
+      border-radius: 12px; overflow: hidden;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      margin-bottom: 18px;
+      position: relative;
+    }
+    .banner img { width: 100%; display: block; }
+    .banner-tag {
+      position: absolute; left: 14px; bottom: 14px;
+      background: rgba(13,17,23,.85); border: 1px solid var(--border);
+      padding: 6px 11px; border-radius: 6px;
+      font-size: .8rem; backdrop-filter: blur(6px);
+    }
+    .banner-tag span { color: var(--gold); font-weight: 700; }
+
+    main { width: 100%; max-width: 1100px; }
+    section { margin-bottom: 28px; }
+    h2 {
+      font-size: 1.08rem; color: var(--accent);
+      border-bottom: 1px solid var(--border); padding-bottom: 6px;
+      margin-bottom: 12px; font-weight: 700;
+      display: flex; align-items: center; gap: 8px;
+    }
+    h2 .h2-tag {
+      font-size: .58rem; font-weight: 700; padding: 2px 7px;
+      border-radius: 10px; text-transform: uppercase; letter-spacing: .08em;
+      background: var(--card); color: var(--muted); border: 1px solid var(--border);
+    }
+    h2 .h2-tag.discord { color: var(--purple); border-color: var(--purple); }
+    h2 .h2-tag.game    { color: var(--green);  border-color: var(--green); }
+    h3 { font-size: .92rem; color: var(--text); margin-bottom: 6px; font-weight: 600; }
+    p { font-size: .86rem; margin-bottom: 8px; color: var(--text); }
+    .muted { color: var(--muted); font-size: .78rem; }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 16px;
+    }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .grid-6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+    @media (max-width: 700px) {
+      .grid-2, .grid-3, .grid-6 { grid-template-columns: 1fr 1fr; }
+      h2 { font-size: 1rem; }
+    }
+    @media (max-width: 480px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .grid-6 { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    .type-badge {
+      display: inline-block; padding: 2px 7px; border-radius: 10px;
+      font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+      border: 1px solid currentColor;
+    }
+    .type-army { color: var(--army); }
+    .type-navy { color: var(--navyType); }
+    .type-air  { color: var(--air); }
+    .new-badge {
+      display: inline-block; padding: 1px 6px; border-radius: 8px;
+      font-size: .56rem; font-weight: 700; background: var(--gold); color: #1c1300;
+      letter-spacing: .04em;
+    }
+
+    .hero-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px;
+      display: flex; flex-direction: column; align-items: center;
+      text-align: center; transition: border-color .15s, transform .15s;
+      cursor: pointer; position: relative; min-height: 105px;
+    }
+    .hero-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .hero-card.selected { border-color: var(--gold); background: #211a08; }
+    .hero-card.target {
+      border-color: var(--green); background: #0e1a10;
+      box-shadow: 0 0 0 2px rgba(63, 185, 80, .25);
+    }
+    .hero-card.dim { opacity: .25; pointer-events: none; }
+    .hero-icon {
+      width: 50px; height: 50px; border-radius: 6px;
+      background: #0d1117; border: 1px solid var(--border);
+      object-fit: cover;
+      image-rendering: -webkit-optimize-contrast;
+    }
+    .hero-name { font-size: .72rem; font-weight: 600; margin-top: 5px; line-height: 1.2; }
+    .hero-id { font-size: .58rem; color: var(--muted); }
+    .hero-card .new-badge {
+      position: absolute; top: 4px; right: 4px;
+    }
+
+    .calc-board { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: stretch; }
+    .calc-side { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+    .calc-arrow {
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2.2rem; color: var(--muted); padding: 0 4px;
+    }
+    .calc-title {
+      font-size: .76rem; text-transform: uppercase; letter-spacing: .06em;
+      color: var(--muted); margin-bottom: 8px; font-weight: 700;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .calc-title .count {
+      background: var(--card); border: 1px solid var(--border);
+      padding: 1px 7px; border-radius: 10px; font-size: .62rem;
+      color: var(--text); letter-spacing: 0;
+    }
+    .filter-row {
+      display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;
+    }
+    .filter-btn {
+      background: var(--card); border: 1px solid var(--border); color: var(--muted);
+      padding: 4px 10px; border-radius: 14px; font-size: .68rem;
+      cursor: pointer; font-family: inherit; transition: all .15s;
+    }
+    .filter-btn:hover { color: var(--text); border-color: var(--accent); }
+    .filter-btn.active { background: var(--accent); color: #0d1117; border-color: var(--accent); font-weight: 700; }
+    .pool-grid, .core-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+    }
+    @media (max-width: 700px) {
+      .calc-board { grid-template-columns: 1fr; }
+      .calc-arrow { font-size: 1.6rem; padding: 6px 0; transform: rotate(90deg); }
+      .pool-grid, .core-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    .mut-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px;
+    }
+    .mut-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px; display: flex; gap: 12px;
+      transition: border-color .15s;
+    }
+    .mut-card:hover { border-color: var(--accent); }
+    .mut-img-wrap { flex-shrink: 0; width: 76px; }
+    .mut-icon {
+      width: 76px; height: 92px; border-radius: 6px;
+      background: #0d1117; border: 1px solid var(--border);
+      object-fit: cover; cursor: pointer;
+      transform: rotate(180deg);
+    }
+    .mut-info { flex: 1; min-width: 0; }
+    .mut-name { font-size: .82rem; font-weight: 700; }
+    .mut-base { font-size: .68rem; color: var(--muted); margin-bottom: 6px; }
+    .mut-skill {
+      font-size: .7rem; color: var(--text); margin-top: 6px;
+      padding-top: 6px; border-top: 1px dashed var(--border);
+    }
+    .mut-skill-label {
+      font-size: .55rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: .06em; font-weight: 600; margin-bottom: 2px;
+    }
+
+    .spot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+    .spot-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden; display: flex; flex-direction: column;
+    }
+    .spot-card.is-new { border-color: var(--gold); }
+    .spot-portrait {
+      width: 100%; aspect-ratio: 16/9; object-fit: cover;
+      background: #0d1117; cursor: pointer;
+    }
+    .spot-body { padding: 12px 14px; }
+    .spot-title { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .spot-title h3 { font-size: 1.05rem; }
+    .spot-meta { font-size: .68rem; color: var(--muted); margin-bottom: 8px; }
+    .spot-skill-name {
+      color: var(--gold); font-size: .82rem; font-weight: 700;
+      margin: 8px 0 4px;
+    }
+    .spot-block { font-size: .76rem; line-height: 1.55; margin-bottom: 4px; }
+    .spot-block .lbl {
+      display: inline-block; font-size: .58rem; color: var(--accent);
+      font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+      margin-right: 4px;
+    }
+    .spot-es { margin-top: 8px; padding: 8px 10px; background: var(--surface); border-radius: 6px; }
+    .spot-es .es-row { font-size: .72rem; padding: 3px 0; }
+    .spot-es .es-row .lvl {
+      display: inline-block; min-width: 40px; color: var(--purple); font-weight: 700;
+    }
+    .spot-extra-link {
+      display: inline-block; margin-top: 6px;
+      font-size: .68rem; padding: 3px 8px;
+      border: 1px solid var(--border); border-radius: 12px;
+      color: var(--muted); cursor: pointer; background: var(--surface);
+    }
+    .spot-extra-link:hover { color: var(--accent); border-color: var(--accent); }
+
+    .aw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+    .aw-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; overflow: hidden; cursor: pointer;
+      transition: border-color .15s, transform .15s;
+    }
+    .aw-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .aw-card img { width: 100%; display: block; aspect-ratio: 16/9; object-fit: cover; }
+    .aw-card .aw-cap {
+      padding: 8px 10px; font-size: .76rem; font-weight: 600;
+      display: flex; justify-content: space-between; align-items: center; gap: 6px;
+    }
+    .aw-cap .src { font-size: .6rem; color: var(--muted); font-weight: 400; }
+
+    .qa-list details {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px; margin-bottom: 8px;
+    }
+    .qa-list summary {
+      cursor: pointer; font-size: .82rem; font-weight: 600; color: var(--text);
+      list-style: none;
+    }
+    .qa-list summary::-webkit-details-marker { display: none; }
+    .qa-list summary::before { content: '▸ '; color: var(--muted); }
+    .qa-list details[open] summary::before { content: '▾ '; color: var(--accent); }
+    .qa-list .qa-a { font-size: .8rem; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
+    .qa-list .qa-src { font-size: .65rem; color: var(--muted); margin-top: 4px; font-style: italic; }
+
+    .timeline {
+      list-style: none; border-left: 2px solid var(--border);
+      padding-left: 16px; margin-left: 6px;
+    }
+    .timeline li { margin-bottom: 12px; position: relative; padding-left: 4px; }
+    .timeline li::before {
+      content: ''; position: absolute; width: 10px; height: 10px;
+      border-radius: 50%; background: var(--accent);
+      left: -22px; top: 5px;
+    }
+    .timeline .t-date { font-size: .66rem; color: var(--muted); font-weight: 600; }
+    .timeline .t-title { font-size: .82rem; font-weight: 600; }
+    .timeline .t-detail { font-size: .76rem; color: var(--muted); margin-top: 2px; }
+    .timeline .t-channel {
+      font-size: .58rem; padding: 1px 5px; border: 1px solid var(--border); border-radius: 8px;
+      color: var(--accent); margin-left: 6px; vertical-align: middle;
+    }
+
+    .phase-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px; margin-bottom: 10px;
+      border-left: 4px solid var(--accent);
+    }
+    .phase-card.p2 { border-left-color: var(--gold); }
+    .phase-card.p3 { border-left-color: var(--green); }
+    .phase-num {
+      font-size: .58rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em;
+      font-weight: 700; margin-bottom: 4px;
+    }
+    .phase-card h3 { font-size: 1rem; margin-bottom: 6px; }
+    .phase-card ul { padding-left: 18px; margin-top: 6px; }
+    .phase-card li { font-size: .76rem; color: var(--text); margin-bottom: 3px; }
+
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,.85); align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-img {
+      max-width: min(1200px, 95vw); max-height: 90vh; border-radius: 8px;
+      border: 1px solid var(--border);
+      box-shadow: 0 8px 32px rgba(0,0,0,.8);
+    }
+    .modal-close {
+      position: fixed; top: 16px; right: 16px;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); width: 36px; height: 36px; border-radius: 50%;
+      font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+
+    .gallery {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px;
+    }
+    .gallery-item {
+      background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+      padding: 6px; cursor: pointer; text-align: center; transition: border-color .15s;
+    }
+    .gallery-item:hover { border-color: var(--accent); }
+    .gallery-item img { width: 100%; height: 90px; object-fit: contain; background: #0d1117; border-radius: 4px; }
+    .gallery-item .g-cap { font-size: .58rem; color: var(--muted); margin-top: 4px; line-height: 1.2; }
+
+    .result-box {
+      background: var(--surface); border: 1px solid var(--gold); border-radius: 10px;
+      padding: 14px; margin-top: 14px;
+    }
+    .result-box h3 { color: var(--gold); margin-bottom: 8px; }
+    .result-row { font-size: .82rem; padding: 4px 0; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    .result-row .k { color: var(--muted); flex-shrink: 0; }
+    .result-row .v { color: var(--text); font-weight: 600; text-align: right; }
+
+    footer {
+      width: 100%; max-width: 1100px; padding-top: 18px; margin-top: 30px;
+      border-top: 1px solid var(--border); text-align: center;
+      color: var(--muted); font-size: .74rem; line-height: 1.6;
+    }
+    footer a { color: var(--muted); }
+    footer a:hover { color: var(--accent); }
+
+    .icon-home { width: 16px; height: 16px; fill: currentColor; }
+    .source-line { font-size: .68rem; color: var(--muted); margin-top: 6px; font-style: italic; }
+    .placeholder {
+      width: 50px; height: 50px; border-radius: 6px;
+      background: linear-gradient(135deg, #1c2128, #2d333b);
+      border: 1px dashed var(--border);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: .65rem; font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="title-block">
+      <h1>Heroes Awakening &amp; Heroes Exchanging</h1>
+      <p>The new hero system — reconciled from in-game tables and Rivergame Discord posts</p>
+    </div>
+    <div class="hdr-right">
+      <a href="https://2864tw.com/index.html" class="home-btn" title="Home">
+        <svg class="icon-home" viewBox="0 0 24 24"><path d="M12 3l9 8h-3v9h-4v-6h-4v6H6v-9H3l9-8z"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <div class="banner">
+    <img src="../assets/heroes-awakening/discord_0_banner.jpg" alt="Heroes Awakening &amp; Heroes Exchanging — Coming Soon" loading="lazy">
+    <div class="banner-tag">Announced <span>2026-04-24</span> · live data 2026-04-29</div>
+  </div>
+
+  <main>
+
+    <section>
+      <h2>How this page is organised <span class="h2-tag">guide</span></h2>
+      <div class="card">
+        <p style="margin:0">Top War's <strong>New Hero System</strong> bundles two features. <strong>Heroes Awakening</strong> is a universal upgrade path for any 5★ Lv.120 hero. <strong>Heroes Exchanging</strong> is a 7-day event that lets you convert any of 24 'Pool' heroes into any of 18 'Core Lineup' heroes (same army type). Below: mechanics, the Pool ↔ Core calculator, every hero spotlight Rivergame published, plus what was already loaded into the client that they didn't talk about.</p>
+        <p class="muted" style="margin-top:8px">Tags <span style="color:var(--purple)">[discord]</span> = sourced from Rivergame Discord posts. <span style="color:var(--green)">[game]</span> = decoded from the live game client (often unreleased).</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Heroes Awakening — mechanics <span class="h2-tag discord">discord</span></h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Unlock + flow</h3>
+          <p>Hero must reach <strong>5 Stars and Level 120</strong>. Tap <code>[Hero] → [Awakening]</code> tab to begin.</p>
+          <p>Each Awakened hero unlocks <strong>4 new Awakening Skills</strong>, promoted separately. Each tier (Tier 1 → 4 visible in the preview UI) increases the Awakening Stats Bonus.</p>
+          <p class="source-line">Source: Discord 2026-04-24 announcement, Discord 2026-01-08 teaser.</p>
+        </div>
+        <div class="card">
+          <h3>Awakening Choice Chests</h3>
+          <p>Free from the event interface. <strong>1 chest</strong> drops immediately at event open; more after timed intervals; <strong>6 total</strong> per batch of Awakening Heroes. Forgotten chests accumulate — next collection grants the full backlog.</p>
+          <p class="source-line">Source: Discord 2026-04-24 announcement.</p>
+        </div>
+        <div class="card">
+          <h3>Bonus formula</h3>
+          <p>Increases active skill damage by <strong>N%</strong>, plus enemies with abnormal status take <strong>X% extra damage</strong>. The bonus stacks with the hero's existing Exclusive Skill levels.</p>
+        </div>
+        <div class="card">
+          <h3>Why this exists</h3>
+          <p>The "one new hero per month" treadmill ended in January 2026. Awakening keeps trained main heroes relevant — no more constant power-creep replacement.</p>
+          <p class="source-line">Source: Discord 2026-01-08 ("New Hero System Coming Soon!").</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Heroes Exchanging — Pool ↔ Core calculator <span class="h2-tag discord">discord</span></h2>
+      <div class="card" style="margin-bottom:12px">
+        <p>Pick a <strong>donor</strong> from the 24-hero Exchange Pool (left). Eligible <strong>Core Lineup</strong> targets (right) auto-filter to the same army type. Star level + Exclusive Skill levels on the donor are inherited 1:1 by the target. Excess materials are not wasted. Exchange itself is free.</p>
+        <p class="muted" style="margin-top:6px">Event window: <strong>7 Days</strong> · No combo / star / ES requirement · Hero Shards in inventory also convert</p>
+      </div>
+
+      <div class="calc-board">
+        <div class="calc-side">
+          <div class="calc-title">
+            <span>Exchange Pool (donor)</span>
+            <span class="count" id="pool-count">24</span>
+          </div>
+          <div class="filter-row" id="pool-filters"></div>
+          <div class="pool-grid" id="pool-grid"></div>
+        </div>
+
+        <div class="calc-arrow">→</div>
+
+        <div class="calc-side">
+          <div class="calc-title">
+            <span>Core Lineup (target)</span>
+            <span class="count" id="core-count">18</span>
+          </div>
+          <div class="filter-row" id="core-filters"></div>
+          <div class="core-grid" id="core-grid"></div>
+        </div>
+      </div>
+
+      <div class="result-box" id="result-box" style="display:none">
+        <h3 id="result-title">Exchange Preview</h3>
+        <div id="result-body"></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Hero Spotlights — full skills <span class="h2-tag discord">discord</span></h2>
+      <p class="muted" style="margin-bottom:10px">Rivergame published spotlights for 7 of the 18 Core Lineup heroes between Mar 12 and Apr 9. Five of them (Nova, Tannis, Sinope, Lophy, Margaretha) are brand-new heroes; the rest already exist in client tables. Each spotlight reveals the hero's <strong>Hero Skill</strong> + <strong>Exclusive Skill levels 3/5/7</strong>.</p>
+      <div class="spot-grid" id="spot-grid"></div>
+    </section>
+
+    <section>
+      <h2>Awakening Skill Previews — image-only reveals <span class="h2-tag discord">discord</span></h2>
+      <p class="muted" style="margin-bottom:10px">On Apr 10 + Apr 17 Rivergame previewed the Heroes-Awakening (universal-upgrade) skills for 6 individual heroes. Skill text is rendered into the images — click to enlarge.</p>
+      <div class="aw-grid" id="aw-grid"></div>
+    </section>
+
+    <section>
+      <h2>Other game-only findings <span class="h2-tag game">game</span></h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Hero Association — 5-hero club</h3>
+          <p>The <code>hero_association</code> TABLE has 1 theme (1001), gated server-side. Banner asset on remote CDN. <code>hero_association_honor_level</code> has 250 entries (50 levels × 5 heroes), ~5,000 shards each to max.</p>
+          <img src="../assets/heroes-awakening/association_building.png" alt="Association building sprite" style="margin-top:8px; max-width: 200px; background: #0d1117; padding: 6px; border-radius: 6px; border: 1px solid var(--border)" loading="lazy">
+          <p class="source-line">Status: never mentioned by Rivergame on Discord. Unrelated to New Hero System — likely separate upcoming feature.</p>
+        </div>
+        <div class="card">
+          <h3>Hero Voice Pack — 497 new lines</h3>
+          <p>New G123-only voice pack feature. The cross-platform <code>hero_voice</code> TABLE retains 528 older lines. 70 heroes × ~5 lines extracted = 356 MP3s.</p>
+          <p class="source-line">Status: never mentioned by Rivergame on Discord. May or may not ship alongside New Hero System.</p>
+        </div>
+        <div class="card">
+          <h3>5 brand-new heroes still missing in client</h3>
+          <p><strong>Nova, Tannis, Sinope, Lophy, Joan Mature</strong> have no entries in the client <code>hero</code> TABLE yet. Will appear post-launch — full game-side decode pending.</p>
+        </div>
+        <div class="card">
+          <h3>Verified pre-existing battle effects</h3>
+          <p><strong>Vulnerable / Silence / Ignition</strong> referenced in new spotlight skills are all pre-existing battle mechanics — not new effects. (Hero ID <strong>119 = "Silence"</strong> the recruit hero, not the silence-status mechanic.)</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Q&amp;A from Rivergame <span class="h2-tag discord">discord</span></h2>
+      <div class="qa-list" id="qa-list"></div>
+    </section>
+
+    <section>
+      <h2>Investigation journey — three phases</h2>
+      <div id="phases"></div>
+    </section>
+
+    <section>
+      <h2>Discord post timeline <span class="h2-tag discord">discord</span></h2>
+      <div class="card">
+        <ul class="timeline" id="timeline"></ul>
+      </div>
+    </section>
+
+    <section>
+      <h2>Asset gallery <span class="h2-tag game">game</span></h2>
+      <p class="muted" style="margin-bottom:10px">All extracted assets — game icons + tachie spine atlases + Rivergame screenshots. Click to enlarge.</p>
+      <div class="gallery" id="gallery"></div>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>Top War — Server 2864 community resource. Game data extracted from <code>TableManager</code> + Cocos Creator scene graph; Discord content scraped from public Rivergame channels.</p>
+    <p style="margin-top:6px">Page compiled <strong>2026-04-29</strong> · <a href="https://2864tw.com/index.html">2864tw.com</a></p>
+  </footer>
+
+  <div class="modal-overlay" id="modal">
+    <button class="modal-close" id="modal-close-btn">×</button>
+    <img class="modal-img" id="modal-img" alt="">
+  </div>
+
+  <script>
+    // DOM helpers — avoid string-HTML injection by using createElement + textContent.
+    const el = (tag, attrs, ...kids) => {
+      const n = document.createElement(tag);
+      if (attrs) for (const [k, v] of Object.entries(attrs)) {
+        if (v === null || v === undefined || v === false) continue;
+        if (k === 'class') n.className = v;
+        else if (k === 'style') n.style.cssText = v;
+        else if (k === 'on') for (const [ev, fn] of Object.entries(v)) n.addEventListener(ev, fn);
+        else if (k === 'data') for (const [dk, dv] of Object.entries(v)) n.dataset[dk] = dv;
+        else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+        else n.setAttribute(k, v);
+      }
+      for (const k of kids.flat(Infinity)) {
+        if (k === null || k === undefined || k === false) continue;
+        n.append(k instanceof Node ? k : document.createTextNode(String(k)));
+      }
+      return n;
+    };
+    const txt = s => document.createTextNode(s);
+    const replace = (parent, ...kids) => { while (parent.firstChild) parent.removeChild(parent.firstChild); for (const k of kids.flat(Infinity)) if (k != null && k !== false) parent.append(k instanceof Node ? k : txt(String(k))); };
+
+    let DATA = null;
+    const iconFor = h => h.id ? `https://h5.topwargame.com/DynRes/images/headpic/hero_icon${h.id}_global.png` : null;
+    const isAir = t => t === 'Air' || t === 'Air Force';
+    const typeKey = t => isAir(t) ? 'Air' : t;
+    const typeClass = t => 'type-' + (typeKey(t) === 'Air' ? 'air' : typeKey(t).toLowerCase());
+
+    let poolFilter = 'all', coreFilter = 'all';
+    let selected = null;
+
+    function buildHeroCard(h, side) {
+      const icon = iconFor(h);
+      const portrait = h.portraitImage ? '../' + h.portraitImage : null;
+      const imgSrc = icon || portrait;
+      let img;
+      if (imgSrc) {
+        img = el('img', { class: 'hero-icon', src: imgSrc, alt: h.name, loading: 'lazy' });
+        img.onerror = () => { const ph = el('div', { class: 'placeholder' }, '?'); img.replaceWith(ph); };
+      } else {
+        img = el('div', { class: 'placeholder' }, 'NEW');
+      }
+      const card = el('div', {
+        class: 'hero-card', data: { side, id: h.id || '', name: h.name, type: typeKey(h.type) }
+      },
+        img,
+        h.isNew ? el('span', { class: 'new-badge' }, 'NEW') : null,
+        el('div', { class: 'hero-name' }, h.name),
+        el('div', { class: 'hero-id' },
+          el('span', { class: 'type-badge ' + typeClass(h.type) }, h.type),
+          ' · ',
+          h.id ? '#' + h.id : 'unreleased'
+        )
+      );
+      return card;
+    }
+
+    function renderPool() {
+      const grid = document.getElementById('pool-grid');
+      const heroes = DATA.exchangePool.heroes.filter(h => poolFilter === 'all' || typeKey(h.type) === poolFilter);
+      document.getElementById('pool-count').textContent = heroes.length;
+      const cards = heroes.map(h => {
+        const c = buildHeroCard(h, 'pool');
+        c.addEventListener('click', () => selectPool(h.id));
+        return c;
+      });
+      replace(grid, ...cards);
+      updateSelection();
+    }
+
+    function renderCore() {
+      const grid = document.getElementById('core-grid');
+      const heroes = DATA.coreLineup.heroes.filter(h => coreFilter === 'all' || typeKey(h.type) === coreFilter);
+      document.getElementById('core-count').textContent = heroes.length;
+      const cards = heroes.map(h => {
+        const c = buildHeroCard(h, 'core');
+        c.addEventListener('click', () => selectCoreHero(h.name));
+        return c;
+      });
+      replace(grid, ...cards);
+      updateSelection();
+    }
+
+    function selectPool(id) {
+      if (!id) return;
+      const hero = DATA.exchangePool.heroes.find(h => String(h.id) === String(id));
+      if (selected && selected._side === 'pool' && String(selected.id) === String(id)) {
+        selected = null;
+      } else {
+        selected = { ...hero, _side: 'pool' };
+      }
+      updateSelection();
+    }
+
+    function selectCoreHero(name) {
+      if (!selected || selected._side !== 'pool') return;
+      const target = DATA.coreLineup.heroes.find(h => h.name === name);
+      if (target && typeKey(target.type) === typeKey(selected.type)) {
+        showResult(selected, target);
+      }
+    }
+
+    function updateSelection() {
+      document.querySelectorAll('.hero-card').forEach(c => c.classList.remove('selected', 'target', 'dim'));
+      if (!selected) { hideResult(); return; }
+      const sel = document.querySelector(`#${selected._side}-grid .hero-card[data-id="${selected.id || ''}"]`);
+      if (sel) sel.classList.add('selected');
+      const targetSide = selected._side === 'pool' ? 'core' : 'pool';
+      document.querySelectorAll(`#${targetSide}-grid .hero-card`).forEach(c => {
+        if (typeKey(c.dataset.type) !== typeKey(selected.type)) c.classList.add('dim');
+        else c.classList.add('target');
+      });
+      showSelectionPreview();
+    }
+
+    function showSelectionPreview() {
+      const eligible = DATA.coreLineup.heroes.filter(h => typeKey(h.type) === typeKey(selected.type));
+      const box = document.getElementById('result-box');
+      box.style.display = 'block';
+      document.getElementById('result-title').textContent = `${selected.name} → ${eligible.length} eligible ${typeKey(selected.type)} target${eligible.length === 1 ? '' : 's'}`;
+      const body = document.getElementById('result-body');
+      const eligibleNames = eligible.map(e => e.name + (e.isNew ? ' ⭐' : '')).join(', ');
+      const rows = [
+        ['Donor', `${selected.name} (${selected.type}, #${selected.id})`],
+        ['Eligible Core Lineup targets', eligibleNames],
+        ['Cost', 'Free — no items required'],
+        ['Inherited 1:1', 'Star · Hero level · Exclusive Skill · Hero shards · Exclusive shards'],
+        ['Donor after exchange', 'Reset to initial Lv.1 unlocked state']
+      ].map(([k, v]) => el('div', { class: 'result-row' },
+        el('span', { class: 'k' }, k),
+        el('span', { class: 'v' }, v)
+      ));
+      const note = el('p', { class: 'muted', style: 'margin-top:8px; font-size:.7rem' },
+        '⭐ = brand-new hero, no prior client data. Click a Core target on the right to pick a final destination.');
+      replace(body, ...rows, note);
+    }
+
+    function showResult(donor, target) {
+      const box = document.getElementById('result-box');
+      box.style.display = 'block';
+      document.getElementById('result-title').textContent = `Exchange ${donor.name} → ${target.name}`;
+      const targetSpot = target.spotlight;
+      const rows = [
+        ['Donor (consumed → Lv.1)', `${donor.name} (${donor.type}, #${donor.id})`],
+        ['Target (you receive)', `${target.name}${target.isNew ? ' ★ NEW' : ''}`],
+        ['Cost', 'Free']
+      ].map(([k, v]) => el('div', { class: 'result-row' },
+        el('span', { class: 'k' }, k),
+        el('span', { class: 'v' }, v)
+      ));
+      let skillBlock = null;
+      if (targetSpot) {
+        const k = targetSpot.heroSkill;
+        const blocks = [];
+        blocks.push(el('div', { class: 'spot-skill-name' }, k.name));
+        if (k.preparation) blocks.push(skillRow('Prep', k.preparation));
+        if (k.active)      blocks.push(skillRow('Active', k.active));
+        if (k.passive)     blocks.push(skillRow('Passive', k.passive));
+        skillBlock = el('div', { style: 'margin-top:10px; padding-top:10px; border-top:1px dashed var(--border)' }, ...blocks);
+      } else {
+        skillBlock = el('p', { class: 'muted', style: 'margin-top:8px' }, `No public skill spotlight published yet for ${target.name}.`);
+      }
+      replace(document.getElementById('result-body'), ...rows, skillBlock);
+      document.querySelectorAll('#core-grid .hero-card').forEach(c => c.classList.remove('selected'));
+      const t = document.querySelector(`#core-grid .hero-card[data-name="${target.name}"]`);
+      if (t) t.classList.add('selected');
+    }
+
+    const skillRow = (label, body) => el('div', { class: 'spot-block' },
+      el('span', { class: 'lbl' }, label), body
+    );
+
+    function hideResult() { document.getElementById('result-box').style.display = 'none'; }
+
+    function buildFilters() {
+      ['pool', 'core'].forEach(side => {
+        const wrap = document.getElementById(side + '-filters');
+        const types = ['all', 'Army', 'Navy', 'Air'];
+        const buttons = types.map((t, i) => {
+          const b = el('button', {
+            class: 'filter-btn' + (i === 0 ? ' active' : ''),
+            data: { side, type: t }
+          }, t === 'all' ? 'All' : t);
+          b.addEventListener('click', () => {
+            wrap.querySelectorAll('.filter-btn').forEach(x => x.classList.remove('active'));
+            b.classList.add('active');
+            if (side === 'pool') { poolFilter = t; renderPool(); }
+            else { coreFilter = t; renderCore(); }
+          });
+          return b;
+        });
+        replace(wrap, ...buttons);
+      });
+    }
+
+    function renderSpotlights() {
+      const grid = document.getElementById('spot-grid');
+      const heroes = DATA.coreLineup.heroes.filter(h => h.spotlight);
+      const cards = heroes.map(h => {
+        const s = h.spotlight;
+        const portrait = h.portraitImage ? '../' + h.portraitImage : null;
+        const skills = h.skillsImage ? '../' + h.skillsImage : null;
+        const aw = h.awakeningSkillImage ? '../' + h.awakeningSkillImage : null;
+        const k = s.heroSkill;
+        const blocks = [];
+        if (k.preparation) blocks.push(skillRow('Prep', k.preparation));
+        if (k.active)      blocks.push(skillRow('Active', k.active));
+        if (k.passive)     blocks.push(skillRow('Passive', k.passive));
+        const ex = s.exclusiveLevels;
+        let exBlock = null;
+        if (ex) {
+          const items = [];
+          items.push(el('div', { class: 'muted', style: 'font-size:.6rem; text-transform:uppercase; letter-spacing:.06em; font-weight:700; margin-bottom:4px' }, 'Exclusive Skill'));
+          if (ex.note) items.push(el('div', { class: 'muted', style: 'font-size:.66rem; margin-bottom:4px' }, ex.note));
+          if (ex.lv3) items.push(el('div', { class: 'es-row' }, el('span', { class: 'lvl' }, 'Lv.3'), ex.lv3));
+          if (ex.lv5) items.push(el('div', { class: 'es-row' }, el('span', { class: 'lvl' }, 'Lv.5'), ex.lv5));
+          if (ex.lv7) items.push(el('div', { class: 'es-row' }, el('span', { class: 'lvl' }, 'Lv.7'), ex.lv7));
+          exBlock = el('div', { class: 'spot-es' }, ...items);
+        }
+        const links = [];
+        if (skills) links.push(el('span', { class: 'spot-extra-link', on: { click: () => openModal(skills) } }, 'Skill panel'));
+        if (aw)     links.push(el('span', { class: 'spot-extra-link', on: { click: () => openModal(aw) } }, 'Awakening preview'));
+        const linkRow = links.length ? el('div', { style: 'margin-top:10px' }, ...links.flatMap((l, i) => i === 0 ? [l] : [' ', l])) : null;
+        const portraitImg = portrait ? el('img', { class: 'spot-portrait', src: portrait, alt: h.name, loading: 'lazy', on: { click: () => openModal(portrait) } }) : null;
+        return el('div', { class: 'spot-card ' + (h.isNew ? 'is-new' : '') },
+          portraitImg,
+          el('div', { class: 'spot-body' },
+            el('div', { class: 'spot-title' },
+              el('h3', null, h.name),
+              el('span', { class: 'type-badge ' + typeClass(h.type) }, h.type),
+              h.isNew ? el('span', { class: 'new-badge' }, 'NEW') : null
+            ),
+            el('div', { class: 'spot-meta' }, (s.postedAt ? 'Spotlight ' + s.postedAt : '') + (h.id ? ' · client #' + h.id : ' · unreleased')),
+            el('p', { class: 'muted', style: 'font-size:.74rem; margin-bottom:8px' }, s.intro),
+            el('div', { class: 'spot-skill-name' }, k.name),
+            ...blocks,
+            exBlock,
+            linkRow
+          )
+        );
+      });
+      replace(grid, ...cards);
+    }
+
+    function renderAwakeningPreviews() {
+      const grid = document.getElementById('aw-grid');
+      const items = DATA.coreLineup.heroes.filter(h => h.awakeningSkillImage);
+      const cards = items.map(h => {
+        const src = '../' + h.awakeningSkillImage;
+        const srcLabel = (h.awakeningSkillSource || '').includes('04-10') || (h.awakeningSkillSource || '').includes('Apr 10') || (h.awakeningSkillSource || '').includes('2026-04-10') ? 'Apr 10' : 'Apr 17';
+        return el('div', { class: 'aw-card', on: { click: () => openModal(src) } },
+          el('img', { src, alt: h.name + ' awakening skill', loading: 'lazy' }),
+          el('div', { class: 'aw-cap' },
+            el('span', null, h.name + ' ', el('span', { class: 'type-badge ' + typeClass(h.type) }, h.type)),
+            el('span', { class: 'src' }, srcLabel)
+          )
+        );
+      });
+      replace(grid, ...cards);
+    }
+
+    function renderQA() {
+      const list = document.getElementById('qa-list');
+      const items = DATA.qa.map(qa => el('details', null,
+        el('summary', null, qa.q),
+        el('div', { class: 'qa-a' }, qa.a),
+        el('div', { class: 'qa-src' }, qa.source)
+      ));
+      replace(list, ...items);
+    }
+
+    function renderPhases() {
+      const wrap = document.getElementById('phases');
+      const cards = DATA.investigationJourney.phases.map((p, i) => {
+        const cls = i === 0 ? '' : (i === 1 ? 'p2' : 'p3');
+        const items = p.found || p.corrections || p.crossRefResults || [];
+        const ul = items.length ? el('ul', null, ...items.map(x => el('li', null, x))) : null;
+        return el('div', { class: 'phase-card ' + cls },
+          el('div', { class: 'phase-num' }, 'Phase ' + p.phase),
+          el('h3', null, p.label),
+          el('p', null, p.what),
+          p.initialConclusion ? el('p', { style: 'margin-top:6px' }, el('strong', null, 'Initial conclusion: '), p.initialConclusion) : null,
+          p.keyDiscovery ? el('p', { style: 'margin-top:6px' }, el('strong', null, 'Key discovery: '), p.keyDiscovery) : null,
+          ul
+        );
+      });
+      replace(wrap, ...cards);
+    }
+
+    function renderTimeline() {
+      const ul = document.getElementById('timeline');
+      const items = DATA.discordTimeline.map(e => el('li', null,
+        el('div', { class: 't-date' }, e.date, el('span', { class: 't-channel' }, '#' + e.channel)),
+        el('div', { class: 't-title' }, e.title),
+        el('div', { class: 't-detail' },
+          e.kind +
+          (e.hero ? ' — ' + e.hero + (e.type ? ' (' + e.type + ')' : '') : '') +
+          (e.highlight ? ' — ' + e.highlight : '')
+        )
+      ));
+      replace(ul, ...items);
+    }
+
+    function renderGallery() {
+      const items = [];
+      ['discord_0_banner.jpg','discord_1_awakening_chests.png','discord_2_awakening_heroes_grid.png','discord_3_exchange_pool.png','discord_4_exchange_ui.png']
+        .forEach(f => items.push({ src: 'assets/heroes-awakening/' + f, cap: 'Apr 24 announcement' }));
+      ['nova_portrait.jpeg','tannis_portrait.jpeg','sinope_portrait.jpeg','lophy_portrait.jpeg','margaretha_portrait.jpeg','ella_portrait.jpeg','franziska_portrait.jpeg',
+       'sara_portrait.png','rohr_portrait.jpeg','marvingt_portrait.jpeg','shensuyu_portrait.png','alvida_portrait.jpg','lilia_portrait.jpeg','carna_portrait.png',
+       'joanmature_portrait.jpg','heid_portrait.jpg','jett_portrait.jpeg','vivian_portrait.jpeg']
+        .forEach(f => items.push({ src: 'assets/heroes-awakening/' + f, cap: 'Hero spotlight' }));
+      ['awakening_apr10_nova.png','awakening_apr10_shenSuyu.png','awakening_apr10_carna.png','awakening_apr17_jett.jpg','awakening_apr17_lophy.jpg','awakening_apr17_sara.jpg']
+        .forEach(f => items.push({ src: 'assets/heroes-awakening/' + f, cap: 'Awakening preview' }));
+      ['coming_soon_compare1.png','coming_soon_compare2.png','coming_soon_compare3.png','coming_soon_compare4.png','coming_soon_compare5.png','coming_soon_compare6.png']
+        .forEach(f => items.push({ src: 'assets/heroes-awakening/' + f, cap: 'Coming Soon teaser' }));
+      items.push({ src: 'assets/heroes-awakening/latest_intel_lineup.png', cap: 'Jan 28 lineup' });
+
+      const g = document.getElementById('gallery');
+      const cards = items.map(i => el('div', { class: 'gallery-item', on: { click: () => openModal('../' + i.src) } },
+        el('img', { src: '../' + i.src, alt: i.cap, loading: 'lazy' }),
+        el('div', { class: 'g-cap' }, i.cap)
+      ));
+      replace(g, ...cards);
+    }
+
+    function openModal(src) {
+      document.getElementById('modal-img').src = src;
+      document.getElementById('modal').classList.add('active');
+    }
+    function closeModal() {
+      document.getElementById('modal').classList.remove('active');
+      document.getElementById('modal-img').src = '';
+    }
+    document.getElementById('modal').addEventListener('click', closeModal);
+    document.getElementById('modal-close-btn').addEventListener('click', closeModal);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+    fetch('../data/heroes-awakening.json')
+      .then(r => r.json())
+      .then(d => {
+        DATA = d;
+        buildFilters();
+        renderPool();
+        renderCore();
+        renderSpotlights();
+        renderAwakeningPreviews();
+        renderQA();
+        renderPhases();
+        renderTimeline();
+        renderGallery();
+      })
+      .catch(err => {
+        console.error('Failed to load data', err);
+        const main = document.querySelector('main');
+        replace(main, el('div', { class: 'card', style: 'border-color:var(--red)' },
+          el('h3', { style: 'color:var(--red)' }, 'Failed to load data'),
+          el('p', null, err.message)
+        ));
+      });
+  </script>
+
+</body>
+</html>
