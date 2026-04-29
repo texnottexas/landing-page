@@ -1005,6 +1005,67 @@
       "langKey": "hero_association_ui_001",
       "context": "Hero Association buffs surface in battle reports as category 122. Sandwiched between hero_skill (104, order 7900) and enigma_beast (106, order 8100). When the lang key drops, battle report viewers (BR Comparison, SVS reports, etc.) will display a 'Hero Association' contribution row."
     },
+    "panelMechanics": {
+      "summary": "Tapping building 61100 opens the existing Hero Palace ('Hall of Heroes') panel — Hero Association rendering lives INSIDE that already-shipped panel. No new bundle is needed for the UI. The 'Function locked' message (lang 100599) shows when the feature is gated.",
+      "uiPath": "hero/heroPalace",
+      "uiName": "HeroPalacePanel",
+      "frame": 4,
+      "uiOpener": "BuildingItem.onHeroAssociationClick → if FunctionOn(hero_association) → UIManager.OpenUI(HeroPalacePanel), else ShowTips('Function locked')",
+      "postBuildHook": "After building 61100 is placed, HomeMap.SendBuildBuildingToServer specifically branches on building id 61100 — if guide 179200 hasn't been passed it auto-fires StartSpecialGuide(179200) (the BtnHeroAssociation tutorial chain).",
+      "themeNavigation": "HeroPalacePanel.updateView reads _heroAssociationList[_curIndex] and shows leftBtnNode + rightBtnNode arrows. Multiple themes (currently only theme 1001) will be navigable with prev/next buttons.",
+      "platformAssetVariants": {
+        "default": "banner_hero_association_1001.jpg",
+        "g123": "banner_hero_association_1001_g123.jpg (replaces .jpg with _g123.jpg)",
+        "harmony": "uses background_res_harmony field if needPlatformSafeFix"
+      },
+      "scoreSourceLangKeys": {
+        "1": "hero_association_ui_015 — initial recruit score (no params)",
+        "2": "hero_association_ui_016 — star score (params: Star, StarExp)",
+        "3": "hero_association_ui_017 — level score (param: Level)",
+        "4": "hero_association_ui_018 — exclusive skill score (param: ES level)"
+      }
+    },
+    "networkProtocol": {
+      "requestIds": [
+        { "id": 3520, "name": "HERO_ASSOCIATION_OPEN",          "purpose": "Open the building's data — server returns heroAssociationList (multiple themes possible)" },
+        { "id": 3521, "name": "HERO_ASSOCIATION_INVEST",        "purpose": "Place a hero into a slot (cannot be changed once placed)" },
+        { "id": 3522, "name": "HERO_ASSOCIATION_SCORE_GAIN",    "purpose": "Claim the buff for a reached score tier" },
+        { "id": 3523, "name": "HERO_ASSOCIATION_HONOR_LEVEL_UP", "purpose": "Spend Hero Shards to level up Honor (sends costHeroSplitNum=1 or 10)" }
+      ],
+      "redDotKeys": [
+        "PBEnumRedPointKey_HERO_ASSOCIATION_INVEST",
+        "PBEnumRedPointKey_HERO_ASSOCIATION_SCORE_GAIN",
+        "PBEnumRedPointKey_HERO_ASSOCIATION_HONOR_LEVEL_UP"
+      ],
+      "redDotNote": "BtnHeroAssociation pulses when ANY of the 3 red dot conditions are met (slot to fill, score to claim, or honor that can be levelled).",
+      "events": ["UPDATE_HERO_ASSOCIATION_INFO", "UPDATE_HERO_ALL_ASSOCIATION_INFO"]
+    },
+    "panelClasses": [
+      { "name": "BtnHeroAssociation",     "purpose": "The button on the building. 3 red-dot conditions trigger pulse animation." },
+      { "name": "HeroPalacePanel",        "purpose": "Main panel — renders the 5 hero busts at theme positions, has prev/next theme arrows, fetches via HERO_ASSOCIATION_OPEN" },
+      { "name": "HeroPalaceItem",         "purpose": "One per slot — checks if hero meets 3★/L80 to fill (uses tip lang hero_association_tips_015 with star + level params)" },
+      { "name": "HeroPalaceHonorUpPanel", "purpose": "Per-hero detail panel — shows score tiers + honor levels, has [+1] / [+10] honor buttons, validates 5★/L120 before honor up" },
+      { "name": "HeroPalaceScoreTips",    "purpose": "Score breakdown popup — 4 score-source rows (recruit/star/level/ES) using ui_015..018 lang keys" },
+      { "name": "HeroPalaceSelectPop",    "purpose": "Hero-pick popup — confirms with tips_020 ('cannot be changed') before sending HERO_ASSOCIATION_INVEST" },
+      { "name": "HeroPalaceBaseProperty", "purpose": "Hero bust loader — reads hero_association_hero_bust_pos and applies platform-aware spine offsets (g123 vs default)" },
+      { "name": "HeroConvertPatchPopup",  "purpose": "Triggered when player has insufficient hero shards — converts universal shards (uses hero_association_tips_017)" }
+    ],
+    "investigationCoverage": {
+      "summary": "After user pushback, ran an exhaustive 5-angle + advisor sweep before declaring lang strings absent — far more thorough than the V2 conclusion.",
+      "anglesCovered": [
+        "TableManager.getTableGroup force-load on all 1270 enum tables",
+        "Cross-table FULL SCAN of ~250K rows for 'hero_association' / '61100' literals",
+        "Direct CDN fetch of all 16 deployed languages at v1.6.3560",
+        "Probe 12 future versions (1.6.3561, _3565, ..., _3700, 1.7.x) — all 404",
+        "Brute-force getText for 250 candidate keys (5 prefixes × 50 indexes)",
+        "All-class deep grep across 7068 cc.js classes (10 reference Hero Association)",
+        "Bundle path scan + manifest direct fetch (5 manifest URLs probed)",
+        "Asset cache scan (cc.loader._cache) + asset bundle paths",
+        "Meta-table scan (function_open / red_dot / building_intro / 22 candidates)",
+        "_langContenIndexMap inspection (empty in this build)",
+        "LocalManager mutator method enumeration (no appendLangData = no server-pushed lang)"
+      ]
+    },
     "tables": [
       { "name": "hero_association", "rows": 1, "purpose": "Theme definition: lineup, position offsets, banner asset" },
       { "name": "hero_association_hero_slot", "rows": 5, "purpose": "Per-slot config: invest stars/level, score type weights, G123 alts, spine offsets" },

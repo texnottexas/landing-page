@@ -45,6 +45,7 @@
 
     .banner {
       width: 100%; max-width: 1100px;
+      margin: 0 auto 18px; display: block;
       border-radius: 12px; overflow: hidden;
       border: 1px solid var(--border);
       background: var(--surface);
@@ -518,11 +519,6 @@
     </div>
   </header>
 
-  <div class="banner">
-    <img src="../assets/heroes-awakening/discord_0_banner.jpg" alt="Heroes Awakening &amp; Heroes Exchanging — Coming Soon" loading="lazy">
-    <div class="banner-tag">Announced <span>2026-04-24</span> · live data 2026-04-29</div>
-  </div>
-
   <nav class="tabs" role="tablist">
     <button class="tab-btn active" data-tab="tab-awakening" role="tab">Heroes Awakening &amp; Exchanging<span class="tab-tag">discord+game</span></button>
     <button class="tab-btn" data-tab="tab-association" role="tab">Hero Association<span class="tab-tag">game-only</span></button>
@@ -531,6 +527,11 @@
   <main>
 
    <div id="tab-awakening" class="tab-panel active">
+
+    <div class="banner">
+      <img src="../assets/heroes-awakening/discord_0_banner.jpg" alt="Heroes Awakening &amp; Heroes Exchanging — Coming Soon" loading="lazy">
+      <div class="banner-tag">Announced <span>2026-04-24</span> · live data 2026-04-29</div>
+    </div>
 
     <section>
       <h2>How this page is organised <span class="h2-tag">guide</span></h2>
@@ -711,6 +712,27 @@
      </section>
 
      <section>
+       <h2>How the panel works <span class="h2-tag">source-decoded</span></h2>
+       <div class="card" id="ha-panel-mech"></div>
+     </section>
+
+     <section>
+       <h2>Network protocol IDs <span class="h2-tag">source-decoded</span></h2>
+       <div class="card">
+         <p class="muted" style="margin-bottom:6px" id="ha-proto-summary"></p>
+         <div class="buff-table-wrap"><table class="buff-table" id="ha-proto-table"></table></div>
+         <p class="source-line" style="margin-top:10px" id="ha-redpoint"></p>
+       </div>
+     </section>
+
+     <section>
+       <h2>Panel classes (8 referenced) <span class="h2-tag">source-decoded</span></h2>
+       <div class="card">
+         <div class="buff-table-wrap"><table class="buff-table" id="ha-classes"></table></div>
+       </div>
+     </section>
+
+     <section>
        <h2>Tables decoded (5 of 5)</h2>
        <div class="card">
          <div class="buff-table-wrap"><table class="buff-table" id="ha-tables"></table></div>
@@ -720,6 +742,11 @@
      <section>
        <h2>Status — why no in-game text yet</h2>
        <div class="card" id="ha-langs-card"></div>
+     </section>
+
+     <section>
+       <h2>Investigation coverage <span class="h2-tag">methodology</span></h2>
+       <div class="card" id="ha-coverage"></div>
      </section>
    </div><!-- /tab-association -->
 
@@ -1108,8 +1135,8 @@
       // Intro card with floating building image
       const intro = document.getElementById('ha-intro');
       const fig = el('div', { class: 'ha-building-fig' },
-        el('img', { src: '../assets/heroes-awakening/association_building.png', alt: 'Hero Association building', loading: 'lazy' }),
-        el('div', { class: 'cap' }, 'Building 61100 sprite (rotation corrected)')
+        el('img', { src: '../assets/heroes-awakening/association_building.png', alt: 'Hero Organization Building', loading: 'lazy' }),
+        el('div', { class: 'cap' }, 'Hero Organization Building')
       );
       const introNodes = [fig];
       ha.intro.forEach(p => introNodes.push(el('p', null, p)));
@@ -1246,6 +1273,64 @@
         )
       );
 
+      // Panel mechanics
+      const pm = ha.panelMechanics;
+      const panelMech = document.getElementById('ha-panel-mech');
+      const scoreSrcRows = Object.entries(pm.scoreSourceLangKeys).map(([n, desc]) => el('li', null, el('strong', null, 'Source ' + n + ': '), el('code', null, desc.split(' — ')[0]), ' — ', desc.split(' — ').slice(1).join(' — ')));
+      replace(panelMech,
+        el('p', null, pm.summary),
+        el('p', { style: 'margin-top:8px' },
+          el('strong', null, 'UI panel: '), el('code', null, pm.uiName),
+          ' · path ', el('code', null, pm.uiPath),
+          ' · frame ', el('code', null, String(pm.frame))
+        ),
+        el('p', null, el('strong', null, 'Open trigger: '), pm.uiOpener),
+        el('p', null, el('strong', null, 'Post-build hook: '), pm.postBuildHook),
+        el('p', null, el('strong', null, 'Theme navigation: '), pm.themeNavigation),
+        el('h3', { style: 'margin-top:12px' }, 'Score source breakdown popup'),
+        el('p', { class: 'muted' }, 'HeroPalaceScoreTips iterates 4 score-source rows. Each shows current contribution + the lang key formats player-facing label:'),
+        el('ul', { style: 'margin-left:18px; font-size:.78rem; color:var(--text)' }, ...scoreSrcRows),
+        el('h3', { style: 'margin-top:12px' }, 'Platform asset variants'),
+        el('ul', { style: 'margin-left:18px; font-size:.78rem; color:var(--muted)' },
+          el('li', null, el('strong', null, 'Default: '), el('code', null, pm.platformAssetVariants.default)),
+          el('li', null, el('strong', null, 'G123: '), el('code', null, pm.platformAssetVariants.g123)),
+          el('li', null, el('strong', null, 'Harmony OS: '), pm.platformAssetVariants.harmony)
+        )
+      );
+
+      // Network protocol
+      const np = ha.networkProtocol;
+      document.getElementById('ha-proto-summary').textContent = '4 protocol IDs decoded from source — ' + np.requestIds.length + ' request types live in the build, plus ' + np.events.length + ' client events.';
+      const protoTbl = document.getElementById('ha-proto-table');
+      replace(protoTbl,
+        el('thead', null, el('tr', null, el('th', null, 'ID'), el('th', null, 'Name'), el('th', null, 'Purpose'))),
+        el('tbody', null, ...np.requestIds.map(p => el('tr', null,
+          el('td', { class: 'num-cell' }, String(p.id)),
+          el('td', null, el('code', null, p.name)),
+          el('td', null, p.purpose)
+        )))
+      );
+      const rpDiv = document.getElementById('ha-redpoint');
+      replace(rpDiv,
+        el('strong', null, 'Red-dot keys: '),
+        ...np.redDotKeys.flatMap((k, i) => i === 0 ? [el('code', null, k)] : [' · ', el('code', null, k)]),
+        el('br', null),
+        el('strong', null, 'Note: '), np.redDotNote,
+        el('br', null),
+        el('strong', null, 'Client events: '),
+        ...np.events.flatMap((k, i) => i === 0 ? [el('code', null, k)] : [' · ', el('code', null, k)])
+      );
+
+      // Panel classes
+      const clsTbl = document.getElementById('ha-classes');
+      replace(clsTbl,
+        el('thead', null, el('tr', null, el('th', null, 'Class'), el('th', null, 'Purpose'))),
+        el('tbody', null, ...ha.panelClasses.map(c => el('tr', null,
+          el('td', null, el('code', null, c.name)),
+          el('td', null, c.purpose)
+        )))
+      );
+
       // Tables decoded
       const tWrap = document.getElementById('ha-tables');
       replace(tWrap,
@@ -1255,6 +1340,15 @@
           el('td', { class: 'num-cell' }, String(t.rows)),
           el('td', null, t.purpose)
         )))
+      );
+
+      // Investigation coverage
+      const cov = ha.investigationCoverage;
+      const covCard = document.getElementById('ha-coverage');
+      replace(covCard,
+        el('p', null, cov.summary),
+        el('p', { style: 'margin-top:8px' }, el('strong', null, 'Angles run (' + cov.anglesCovered.length + '): ')),
+        el('ol', { class: 'ha-flowlist' }, ...cov.anglesCovered.map(a => el('li', null, a)))
       );
 
       // Lang strings card
