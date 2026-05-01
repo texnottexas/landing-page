@@ -433,25 +433,24 @@
 
     function tick() {
       const now = Math.floor(Date.now()/1000);
-      // pick "current" target = next future step (or fightEnd)
-      let target = null, label = '';
-      if (now < sched.viewTime) { target = sched.viewTime; label = 'Preview opens in'; }
-      else if (now < sched.selectAreaTime) { target = sched.selectAreaTime; label = 'Server selection in'; }
-      else if (now < sched.waitFightBeginTime) { target = sched.waitFightBeginTime; label = 'Wait phase in'; }
-      else if (now < sched.fightBeginTime) { target = sched.fightBeginTime; label = 'Battle starts in'; }
-      else if (now < sched.fightEndTime) { target = sched.fightEndTime; label = 'Battle ends in'; }
-      else { target = null; label = 'Battle Over'; }
-      if (target == null) {
-        clock.className = 'timer-clock over';
-        clock.textContent = '00:00:00';
+      let label, target = sched.fightBeginTime;
+      if (now < sched.fightBeginTime) {
+        clock.className = 'timer-clock pre';
+        clock.textContent = fmtCountdown(sched.fightBeginTime - now);
+        label = 'Battle starts in';
+      } else if (now < sched.fightEndTime) {
+        clock.className = 'timer-clock live';
+        clock.textContent = 'LIVE';
+        label = 'Battle in progress';
+        target = sched.fightEndTime;
       } else {
-        const secs = target - now;
-        clock.className = (label === 'Battle ends in') ? 'timer-clock live' : 'timer-clock pre';
-        clock.textContent = fmtCountdown(secs);
+        clock.className = 'timer-clock over';
+        clock.textContent = 'OVER';
+        label = 'Battle ended';
+        target = null;
       }
       phase.textContent = label;
       clearNode(next);
-      // mark steps
       stripEl.querySelectorAll('.step').forEach(stEl => {
         const k = stEl.getAttribute('data-k');
         const ts = sched[k];
