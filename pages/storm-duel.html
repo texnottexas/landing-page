@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; img-src https://raw.githubusercontent.com https://knight-cdn.akamaized.net https://h5.topwargame.com data: https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com; connect-src 'self' https://raw.githubusercontent.com https://push-worker.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'; frame-src https://translate.google.com;">
+<title>Storm Duel — Team vs Team</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --card: #1c2128; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #79c0ff;
+    --ally: #3fb950; --opp: #f85149;
+    --army: #3fb950; --navy: #388bfd; --air: #d29922; --purple: #a371f7;
+    --red: #f85149; --orange: #d29922;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.4; }
+  a { color: var(--accent); text-decoration: none; }
+
+  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: .65rem 1rem; display: flex; align-items: center; gap: .75rem; position: sticky; top: 0; z-index: 100; }
+  .header h1 { font-size: 1rem; font-weight: 700; flex: 1; }
+  .home-btn { display: flex; align-items: center; justify-content: center; background: var(--card); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: .4rem .55rem; transition: all .15s; }
+  .home-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .meta-pill { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: .15rem .55rem; font-size: .7rem; color: var(--muted); font-weight: 600; }
+
+  .container { max-width: 1280px; margin: 0 auto; padding: 1rem; }
+
+  .status { text-align: center; padding: 2rem; color: var(--muted); }
+  .status.error { color: var(--red); }
+
+  .scoreboard { display: grid; grid-template-columns: 1fr auto 1fr; gap: 1rem; align-items: center; padding: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 1rem; }
+  .team-summary { display: flex; flex-direction: column; gap: .35rem; }
+  .team-summary.opp { text-align: right; }
+  .team-name { font-weight: 700; font-size: 1.1rem; }
+  .team-name.ally { color: var(--ally); }
+  .team-name.opp  { color: var(--opp); }
+  .team-stats { display: flex; gap: .9rem; flex-wrap: wrap; font-size: .8rem; color: var(--muted); }
+  .team-summary.opp .team-stats { justify-content: flex-end; }
+  .team-stats b { color: var(--text); font-weight: 700; }
+  .vs { font-size: 1.4rem; font-weight: 800; color: var(--muted); padding: 0 .5rem; }
+
+  .squads { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+  .squad { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: .75rem; }
+  .squad h3 { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: .6rem; display: flex; justify-content: space-between; align-items: center; }
+  .squad.ally h3 { color: var(--ally); }
+  .squad.opp h3  { color: var(--opp); }
+  .leader { display: flex; align-items: center; gap: .55rem; padding: .45rem .25rem; border-radius: 6px; font-size: .8rem; }
+  .leader + .leader { border-top: 1px solid var(--border); }
+  .leader .av { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; background: var(--surface); border: 1px solid var(--border); object-fit: cover; }
+  .leader .name { flex: 1; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .leader .sid { color: var(--muted); font-size: .7rem; font-weight: 600; min-width: 3.5rem; }
+  .leader .score-pill { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .1rem .45rem; font-size: .75rem; color: var(--text); font-weight: 700; }
+  .leader.is-leader { background: rgba(121,192,255,.06); }
+  .leader.is-leader .name::after { content: ' ★'; color: var(--accent); }
+
+  .tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1rem; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tab { background: transparent; border: 0; padding: .65rem 1rem; color: var(--muted); cursor: pointer; font-size: .8rem; font-weight: 600; border-bottom: 2px solid transparent; white-space: nowrap; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+  .col { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .65rem; }
+  .col h4 { font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: .5rem; display: flex; justify-content: space-between; align-items: center; }
+  .col.ally h4 { color: var(--ally); }
+  .col.opp  h4 { color: var(--opp);  }
+
+  .fame-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  .fame-table th { text-align: left; color: var(--muted); font-weight: 600; padding: .4rem; border-bottom: 1px solid var(--border); font-size: .7rem; text-transform: uppercase; letter-spacing: .03em; }
+  .fame-table td { padding: .4rem; border-bottom: 1px solid var(--border); }
+  .fame-table tr:hover td { background: rgba(255,255,255,.02); }
+  .fame-table .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .fame-table .rank-pill { display: inline-block; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .05rem .35rem; font-size: .7rem; color: var(--muted); font-weight: 700; }
+  .team-row.ally { background: rgba(63,185,80,.05); }
+  .team-row.opp  { background: rgba(248,81,73,.05); }
+
+  .bar-group { display: flex; flex-direction: column; gap: .35rem; padding: .35rem 0; }
+  .bar-row { display: grid; grid-template-columns: 110px 1fr 60px; gap: .5rem; align-items: center; font-size: .75rem; }
+  .bar-row .lab { color: var(--muted); }
+  .bar-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+  .bar-fill.ally { background: var(--ally); }
+  .bar-fill.opp  { background: var(--opp); }
+  .bar-row .v { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; font-size: .75rem; }
+
+  .player-list { display: flex; flex-direction: column; gap: 0; }
+  .pl-row { display: grid; grid-template-columns: 32px 32px 1fr auto; gap: .5rem; padding: .4rem 0; align-items: center; font-size: .8rem; border-bottom: 1px dashed var(--border); }
+  .pl-row:last-child { border-bottom: 0; }
+  .pl-row .rk { color: var(--muted); font-weight: 700; text-align: center; font-size: .75rem; font-variant-numeric: tabular-nums; }
+  .pl-row .av { width: 32px; height: 32px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); object-fit: cover; }
+  .pl-row .info { min-width: 0; }
+  .pl-row .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pl-row .sub { color: var(--muted); font-size: .7rem; }
+  .pl-row .score { font-weight: 700; font-variant-numeric: tabular-nums; font-size: .8rem; text-align: right; }
+
+  .wz-block { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: .65rem; margin-bottom: .5rem; }
+  .wz-block .wz-head { display: flex; align-items: center; gap: .5rem; padding-bottom: .5rem; border-bottom: 1px solid var(--border); margin-bottom: .5rem; }
+  .wz-block .wz-tag { font-family: 'SF Mono', Menlo, monospace; font-weight: 700; padding: .15rem .45rem; border-radius: 6px; font-size: .8rem; }
+  .wz-block.ally .wz-tag { background: rgba(63,185,80,.12); color: var(--ally); border: 1px solid rgba(63,185,80,.3); }
+  .wz-block.opp .wz-tag  { background: rgba(248,81,73,.12); color: var(--opp);  border: 1px solid rgba(248,81,73,.3); }
+  .wz-block .wz-leader { font-weight: 600; flex: 1; font-size: .85rem; }
+
+  .march { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .55rem; margin-bottom: .4rem; }
+  .march-head { display: flex; align-items: center; gap: .5rem; cursor: pointer; }
+  .march-head .av { width: 28px; height: 28px; border-radius: 50%; }
+  .march-head .name { flex: 1; font-weight: 600; font-size: .8rem; }
+  .march-head .pwr { font-weight: 700; font-variant-numeric: tabular-nums; font-size: .8rem; }
+  .march-head .arrow { color: var(--muted); font-size: .7rem; transition: transform .2s; }
+  .march.expanded .arrow { transform: rotate(90deg); }
+  .march-body { display: none; padding-top: .55rem; margin-top: .55rem; border-top: 1px dashed var(--border); }
+  .march.expanded .march-body { display: block; }
+  .march-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .25rem; padding: .35rem 0; max-width: 220px; }
+  .slot { aspect-ratio: 1; background: var(--card); border: 1px solid var(--border); border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: .65rem; color: var(--muted); padding: .25rem; }
+  .slot.empty { opacity: .3; }
+  .slot .id { font-family: 'SF Mono', Menlo, monospace; font-size: .55rem; }
+  .slot .num { font-weight: 700; color: var(--text); font-size: .8rem; }
+  .heroes-line { display: flex; gap: .35rem; flex-wrap: wrap; padding: .35rem 0; }
+  .hero-chip { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: .15rem .5rem; font-size: .7rem; color: var(--muted); display: inline-flex; gap: .35rem; }
+  .hero-chip b { color: var(--text); }
+
+  .buff-stack { display: flex; flex-direction: column; gap: .35rem; padding: .35rem .5rem; }
+  .buff-line { display: grid; grid-template-columns: 70px 1fr 50px; gap: .5rem; align-items: center; font-size: .75rem; }
+  .buff-track { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; position: relative; }
+  .buff-fill { height: 100%; border-radius: 4px; }
+  .buff-fill.atk { background: linear-gradient(90deg, #ef4444, #dc2626); }
+  .buff-fill.hp  { background: linear-gradient(90deg, #10b981, #059669); }
+  .buff-fill.def { background: linear-gradient(90deg, #3b82f6, #2563eb); }
+  .buff-fill.dmgp { background: linear-gradient(90deg, #f59e0b, #d97706); }
+  .buff-fill.dmgm { background: linear-gradient(90deg, #8b5cf6, #7c3aed); }
+  .buff-line .v { text-align: right; font-weight: 700; }
+
+  .subnav { display: flex; gap: .25rem; flex-wrap: wrap; margin-bottom: .75rem; }
+  .sb { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: .25rem .65rem; font-size: .75rem; color: var(--muted); cursor: pointer; font-weight: 600; }
+  .sb.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .sb.unit-army.active { background: var(--army); border-color: var(--army); color: var(--bg); }
+  .sb.unit-navy.active { background: var(--navy); border-color: var(--navy); color: #fff; }
+  .sb.unit-airforce.active { background: var(--air); border-color: var(--air); color: var(--bg); }
+
+  @media (max-width: 720px) {
+    .scoreboard { grid-template-columns: 1fr; text-align: center; }
+    .team-summary.opp { text-align: center; }
+    .team-summary.opp .team-stats { justify-content: center; }
+    .squads { grid-template-columns: 1fr; }
+    .compare { grid-template-columns: 1fr; }
+    .container { padding: .5rem; }
+    .header h1 { font-size: .85rem; }
+    .meta-pill { display: none; }
+    .leader .sid { display: none; }
+    .pl-row { grid-template-columns: 24px 28px 1fr auto; }
+    .pl-row .av { width: 28px; height: 28px; }
+    .bar-row { grid-template-columns: 80px 1fr 50px; }
+    .buff-line { grid-template-columns: 60px 1fr 50px; }
+  }
+</style>
+</head>
+<body>
+<header class="header">
+  <a href="/" class="home-btn" title="Home" aria-label="Home">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>
+  </a>
+  <h1>Storm Duel</h1>
+  <span class="meta-pill" id="meta-cid">cid 4 · R7</span>
+  <span class="meta-pill" id="meta-status">loading…</span>
+</header>
+
+<div class="container">
+  <div id="root">
+    <div class="status">Loading data…</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  const ALLY_LABEL = 'Our Team';
+  const OPP_LABEL = 'Opponents';
+
+  function fmtNum(n) {
+    if (n == null) return '-';
+    if (Math.abs(n) >= 1e9) return (n/1e9).toFixed(2) + 'B';
+    if (Math.abs(n) >= 1e6) return (n/1e6).toFixed(1) + 'M';
+    if (Math.abs(n) >= 1e3) return (n/1e3).toFixed(1) + 'k';
+    return String(n);
+  }
+  function fmtDate(ts) {
+    if (!ts) return '-';
+    const d = new Date(ts*1000);
+    return d.toLocaleString(undefined, {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
+  }
+  function el(tag, attrs, ...kids) {
+    const e = document.createElement(tag);
+    if (attrs) for (const k of Object.keys(attrs)) {
+      if (k === 'class') e.className = attrs[k];
+      else if (k.startsWith('on')) e.addEventListener(k.substring(2), attrs[k]);
+      else if (attrs[k] != null) e.setAttribute(k, attrs[k]);
+    }
+    for (const k of kids) {
+      if (k == null || k === false) continue;
+      if (typeof k === 'string' || typeof k === 'number') e.appendChild(document.createTextNode(String(k)));
+      else if (Array.isArray(k)) k.forEach(x => x && e.appendChild(typeof x === 'string' ? document.createTextNode(x) : x));
+      else e.appendChild(k);
+    }
+    return e;
+  }
+  function clearNode(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+  function avatarUrl(p) {
+    if (!p) return null;
+    return p.avatar_url || p.leader_avatar || null;
+  }
+  function avatarImg(p, fallbackText) {
+    const url = avatarUrl(p);
+    const txt = (fallbackText || '?').slice(0,1);
+    if (url) {
+      const img = el('img', { class:'av', src: url, alt: '', loading:'lazy' });
+      img.addEventListener('error', () => {
+        const sp = el('span', { class:'av', style:'display:flex;align-items:center;justify-content:center;font-size:.7rem;color:var(--muted)' }, txt);
+        img.replaceWith(sp);
+      });
+      return img;
+    }
+    return el('span', { class:'av', style:'display:flex;align-items:center;justify-content:center;font-size:.7rem;color:var(--muted)' }, txt);
+  }
+
+  const ARMY_ID_LABEL = {
+    901103: 'Vh ARMY off', 902103: 'Vh ARMY def',
+    903103: 'Vh NAVY off', 904103: 'Vh NAVY def',
+    905103: 'Vh AIR off',  906103: 'Vh AIR def',
+    505111: 'Mecha 1005', 506371: 'Mecha 1006', 507371: 'Mecha 1007'
+  };
+  function armyLabel(id) {
+    return ARMY_ID_LABEL[id] || ('A' + id);
+  }
+
+  function renderHeader(meta) {
+    document.getElementById('meta-cid').textContent = `cid ${meta.cid} · R${meta.round}`;
+    const sched = meta.schedule;
+    const now = Math.floor(Date.now()/1000);
+    let phase = 'unknown';
+    if (now < sched.viewTime) phase = 'pre-view';
+    else if (now < sched.selectAreaTime) phase = 'preview';
+    else if (now < sched.waitFightBeginTime) phase = 'select';
+    else if (now < sched.fightBeginTime) phase = 'wait';
+    else if (now < sched.fightEndTime) phase = 'FIGHT';
+    else phase = 'ended';
+    document.getElementById('meta-status').textContent = phase;
+  }
+
+  function renderScoreboard(data) {
+    const a = data.ally.totals;
+    const o = data.opp.totals;
+    return el('div', { class:'scoreboard' },
+      el('div', { class:'team-summary ally' },
+        el('div', { class:'team-name ally' }, ALLY_LABEL),
+        el('div', { class:'team-stats' },
+          el('span', null, 'Round ', el('b', null, fmtNum(a.round_score_sum))),
+          el('span', null, 'Fame ',  el('b', null, fmtNum(a.event_fame_sum))),
+          el('span', null, 'Top10 Merit ', el('b', null, fmtNum(a.merit_top10_sum))),
+          el('span', null, 'March pwr ', el('b', null, fmtNum(a.march_power_sum.Army + a.march_power_sum.Navy + a.march_power_sum.AirForce)))
+        )
+      ),
+      el('div', { class:'vs' }, 'VS'),
+      el('div', { class:'team-summary opp' },
+        el('div', { class:'team-name opp' }, OPP_LABEL),
+        el('div', { class:'team-stats' },
+          el('span', null, 'Round ', el('b', null, fmtNum(o.round_score_sum))),
+          el('span', null, 'Fame ',  el('b', null, fmtNum(o.event_fame_sum))),
+          el('span', null, 'Top10 Merit ', el('b', null, fmtNum(o.merit_top10_sum))),
+          el('span', null, 'March pwr ', el('b', null, fmtNum(o.march_power_sum.Army + o.march_power_sum.Navy + o.march_power_sum.AirForce)))
+        )
+      )
+    );
+  }
+
+  function renderSquads(data) {
+    function squadList(zones, cls) {
+      const rows = zones.map((z, i) => {
+        const sq = z.squad || {};
+        return el('div', { class: 'leader' + (i===0 ? ' is-leader' : '') },
+          avatarImg({ avatar_url: sq.leader_avatar }, sq.leader),
+          el('div', { class:'sid' }, 'S'+z.sid),
+          el('div', { class:'name' }, sq.leader || '—'),
+          el('div', { class:'score-pill' }, fmtNum(sq.score)+' / '+ (sq.ticket||0))
+        );
+      });
+      return el('div', { class: 'squad ' + cls },
+        el('h3', null, cls === 'ally' ? ALLY_LABEL : OPP_LABEL, el('span', { class:'meta-pill' }, '★ leader')),
+        ...rows
+      );
+    }
+    return el('div', { class:'squads' },
+      squadList(data.ally.warzones, 'ally'),
+      squadList(data.opp.warzones, 'opp')
+    );
+  }
+
+  function tabFame(data) {
+    const all = [];
+    for (const z of data.ally.warzones) all.push({ ...z, side:'ally' });
+    for (const z of data.opp.warzones)  all.push({ ...z, side:'opp' });
+    all.sort((a,b) => (a.fame?.rank||9999) - (b.fame?.rank||9999));
+
+    const table = el('table', { class:'fame-table' },
+      el('thead', null, el('tr', null,
+        el('th', null, 'Rank'),
+        el('th', null, 'Side'),
+        el('th', null, 'Sid'),
+        el('th', null, 'Leader'),
+        el('th', { class:'num' }, 'Round Score'),
+        el('th', { class:'num' }, 'Event Fame')
+      )),
+      el('tbody', null, ...all.map(z => {
+        const f = z.fame || {};
+        const sq = z.squad || {};
+        return el('tr', { class: 'team-row '+z.side },
+          el('td', null, el('span', { class:'rank-pill' }, '#'+(f.rank||'?'))),
+          el('td', null, el('span', { style: z.side==='ally'?'color:var(--ally);font-weight:700':'color:var(--opp);font-weight:700'}, z.side==='ally'?'ALLY':'OPP')),
+          el('td', null, el('span', { style:'font-family:SF Mono,Menlo,monospace;color:var(--accent);font-weight:700' }, 'S'+z.sid)),
+          el('td', null, sq.leader || '—'),
+          el('td', { class:'num' }, fmtNum(f.round_score)),
+          el('td', { class:'num' }, fmtNum(f.event_fame))
+        );
+      }))
+    );
+
+    const a = data.ally.totals, o = data.opp.totals;
+    const maxRound = Math.max(a.round_score_sum, o.round_score_sum, 1);
+    const maxFame = Math.max(a.event_fame_sum, o.event_fame_sum, 1);
+    const teamBars = el('div', { style:'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.75rem;margin-bottom:.75rem' },
+      el('h4', { style:'font-size:.75rem;color:var(--muted);margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.05em' }, 'Team Totals'),
+      el('div', { class:'bar-row' }, el('span', { class:'lab' }, 'Round score'), el('div', { class:'bar-track' }, el('div', { class:'bar-fill ally', style:'width:'+(100*a.round_score_sum/maxRound)+'%' })), el('span', { class:'v', style:'color:var(--ally)' }, fmtNum(a.round_score_sum))),
+      el('div', { class:'bar-row' }, el('span', { class:'lab' }, '  vs OPP'),    el('div', { class:'bar-track' }, el('div', { class:'bar-fill opp',  style:'width:'+(100*o.round_score_sum/maxRound)+'%' })), el('span', { class:'v', style:'color:var(--opp)' }, fmtNum(o.round_score_sum))),
+      el('div', { class:'bar-row' }, el('span', { class:'lab' }, 'Event fame'),  el('div', { class:'bar-track' }, el('div', { class:'bar-fill ally', style:'width:'+(100*a.event_fame_sum/maxFame)+'%' })), el('span', { class:'v', style:'color:var(--ally)' }, fmtNum(a.event_fame_sum))),
+      el('div', { class:'bar-row' }, el('span', { class:'lab' }, '  vs OPP'),    el('div', { class:'bar-track' }, el('div', { class:'bar-fill opp',  style:'width:'+(100*o.event_fame_sum/maxFame)+'%' })), el('span', { class:'v', style:'color:var(--opp)' }, fmtNum(o.event_fame_sum)))
+    );
+
+    return el('div', null, teamBars, table);
+  }
+
+  function tabBuffs(data) {
+    function buffRow(label, classKey, val, max) {
+      const pct = max ? Math.min(100, 100*val/max) : 0;
+      return el('div', { class:'buff-line' },
+        el('span', { class:'lab' }, label),
+        el('div', { class:'buff-track' }, el('div', { class:'buff-fill '+classKey, style:'width:'+pct+'%' })),
+        el('span', { class:'v' }, val.toFixed(0)+'%')
+      );
+    }
+    function warzoneBuffs(z, side) {
+      const cb = z.combat_buffs_L3;
+      const head = el('div', { class:'wz-head' },
+        el('span', { class:'wz-tag' }, 'S'+z.sid),
+        el('span', { class:'wz-leader' }, z.squad?.leader || '—'),
+        cb ? el('span', { class:'meta-pill' }, cb.combatWLs+' combat / '+cb.wastelandTotal+' wl') : null
+      );
+      if (!cb) return el('div', { class:'wz-block '+side }, head, el('div', { style:'color:var(--muted);font-size:.75rem' }, 'no data'));
+      const max = 1620;
+      return el('div', { class:'wz-block '+side }, head, el('div', { class:'buff-stack' },
+        buffRow('All ATK',  'atk',  cb.L3_pct['All Units ATK'], max),
+        buffRow('All HP',   'hp',   cb.L3_pct['All Units HP'],  max),
+        buffRow('All DMG+', 'dmgp', cb.L3_pct['All Units DMG+'], max),
+        buffRow('All DMG-', 'dmgm', cb.L3_pct['All Units DMG-'], max),
+        buffRow('All DEF',  'def',  cb.L3_pct['All Units DEF'],  max)
+      ));
+    }
+    return el('div', null,
+      el('div', { style:'background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.6rem;margin-bottom:.75rem;font-size:.75rem;color:var(--muted)' },
+        'Combat buffs from owned wastelands. Buffs apply per-warzone only — NOT pooled. All wastelands assumed L3. Per wl: ATK 270%, HP 270%, DMG+ 45%, DMG- 45%, DEF 15%.'
+      ),
+      el('div', { class:'compare' },
+        el('div', { class:'col ally' }, el('h4', null, ALLY_LABEL),
+          ...data.ally.warzones.map(z => warzoneBuffs(z, 'ally'))),
+        el('div', { class:'col opp' }, el('h4', null, OPP_LABEL),
+          ...data.opp.warzones.map(z => warzoneBuffs(z, 'opp')))
+      )
+    );
+  }
+
+  function tabMerit(data) {
+    function teamCol(side, zones) {
+      const blocks = zones.map(z => {
+        const m = z.individual_merit;
+        const head = el('div', { class:'wz-head' },
+          el('span', { class:'wz-tag' }, 'S'+z.sid),
+          el('span', { class:'wz-leader' }, z.squad?.leader || '—'),
+          el('span', { class:'meta-pill' }, m ? (m.count + ' ranked') : 'no data')
+        );
+        if (!m) return el('div', { class:'wz-block '+side }, head);
+        const rows = (m.top || []).slice(0, 10).map(p =>
+          el('div', { class:'pl-row' },
+            el('div', { class:'rk' }, '#'+p.rank),
+            avatarImg(p, p.username),
+            el('div', { class:'info' },
+              el('div', { class:'name' }, p.username || '—'),
+              el('div', { class:'sub' }, p.level ? ('Lv '+p.level) : '')
+            ),
+            el('div', { class:'score' }, fmtNum(p.merit))
+          )
+        );
+        return el('div', { class:'wz-block '+side }, head, ...rows);
+      });
+      const total = zones.reduce((s,z)=> s + (z.individual_merit?.merit_total || 0), 0);
+      return el('div', { class:'col '+side },
+        el('h4', null, side==='ally' ? ALLY_LABEL : OPP_LABEL, el('span', null, fmtNum(total))),
+        ...blocks
+      );
+    }
+    return el('div', { class:'compare' },
+      teamCol('ally', data.ally.warzones),
+      teamCol('opp',  data.opp.warzones)
+    );
+  }
+
+  function tabKartz(data) {
+    let mode = 'individual';
+    const wrap = el('div', null);
+    const ctrl = el('div', { class:'subnav' },
+      el('span', { class:'sb active', 'data-m':'individual' }, 'Individual'),
+      el('span', { class:'sb', 'data-m':'alliance' }, 'Alliance')
+    );
+    const body = el('div', null);
+    function render() {
+      clearNode(body);
+      if (mode === 'individual') {
+        function teamCol(side, zones) {
+          const blocks = zones.map(z => {
+            const k = z.kartz_individual;
+            const head = el('div', { class:'wz-head' },
+              el('span', { class:'wz-tag' }, 'S'+z.sid),
+              el('span', { class:'wz-leader' }, z.squad?.leader || '—'),
+              el('span', { class:'meta-pill' }, k ? (k.count + ' in top500') : 'none in top500')
+            );
+            if (!k) return el('div', { class:'wz-block '+side }, head);
+            const rows = (k.top || []).slice(0, 10).map(p =>
+              el('div', { class:'pl-row' },
+                el('div', { class:'rk' }, '#'+p.rank),
+                avatarImg(p, p.username),
+                el('div', { class:'info' },
+                  el('div', { class:'name' }, p.username || '—'),
+                  el('div', { class:'sub' }, p.specId ? ('boss '+p.specId) : '')
+                ),
+                el('div', { class:'score' }, p.damageShow || '-')
+              )
+            );
+            return el('div', { class:'wz-block '+side }, head, ...rows);
+          });
+          return el('div', { class:'col '+side },
+            el('h4', null, side==='ally' ? ALLY_LABEL : OPP_LABEL),
+            ...blocks
+          );
+        }
+        body.appendChild(el('div', { class:'compare' },
+          teamCol('ally', data.ally.warzones),
+          teamCol('opp',  data.opp.warzones)
+        ));
+      } else {
+        function teamCol(side, zones) {
+          const blocks = zones.map(z => {
+            const ka = z.kartz_alliances;
+            const head = el('div', { class:'wz-head' },
+              el('span', { class:'wz-tag' }, 'S'+z.sid),
+              el('span', { class:'wz-leader' }, z.squad?.leader || '—'),
+              el('span', { class:'meta-pill' }, ka ? (ka.count + ' alliances') : 'none')
+            );
+            if (!ka) return el('div', { class:'wz-block '+side }, head);
+            const rows = ka.alliances.slice(0, 8).map(a =>
+              el('div', { class:'pl-row' },
+                el('div', { class:'rk' }, '#'+a.rank),
+                el('span', { class:'av', style:'display:flex;align-items:center;justify-content:center;font-size:.65rem;color:var(--muted);font-weight:700' }, (a.tag||'?').slice(0,2)),
+                el('div', { class:'info' },
+                  el('div', { class:'name' }, a.name),
+                  el('div', { class:'sub' }, '['+a.tag+'] · totem '+a.totem)
+                ),
+                el('div', { class:'score' }, fmtNum(a.score))
+              )
+            );
+            return el('div', { class:'wz-block '+side }, head, ...rows);
+          });
+          return el('div', { class:'col '+side },
+            el('h4', null, side==='ally' ? ALLY_LABEL : OPP_LABEL),
+            ...blocks
+          );
+        }
+        body.appendChild(el('div', { class:'compare' },
+          teamCol('ally', data.ally.warzones),
+          teamCol('opp',  data.opp.warzones)
+        ));
+      }
+    }
+    ctrl.addEventListener('click', e => {
+      const t = e.target.closest('.sb');
+      if (!t) return;
+      ctrl.querySelectorAll('.sb').forEach(b => b.classList.remove('active'));
+      t.classList.add('active');
+      mode = t.getAttribute('data-m');
+      render();
+    });
+    wrap.appendChild(ctrl);
+    wrap.appendChild(body);
+    render();
+    return wrap;
+  }
+
+  function tabMarches(data) {
+    let unit = 'Army';
+    const wrap = el('div', null);
+    const ctrl = el('div', { class:'subnav' },
+      el('span', { class:'sb unit-army active', 'data-u':'Army' }, 'Army Formation'),
+      el('span', { class:'sb unit-navy', 'data-u':'Navy' }, 'Navy Formation'),
+      el('span', { class:'sb unit-airforce', 'data-u':'AirForce' }, 'Air Force Formation')
+    );
+    const body = el('div', null);
+
+    function renderMarchSlots(armys) {
+      const grid = el('div', { class:'march-grid' });
+      const positions = [1,2,3, 11,12,13, 21,22,23];
+      const map = {};
+      (armys||[]).forEach(a => map[a.pos] = a);
+      positions.forEach(p => {
+        const a = map[p];
+        if (a) {
+          grid.appendChild(el('div', { class:'slot' },
+            el('div', { class:'id' }, armyLabel(a.armyId)),
+            el('div', { class:'num' }, a.num)
+          ));
+        } else {
+          grid.appendChild(el('div', { class:'slot empty' }, '—'));
+        }
+      });
+      return grid;
+    }
+
+    function renderMarches(zones, side) {
+      return zones.map(z => {
+        const f = z.formations?.[unit] || [];
+        const head = el('div', { class:'wz-head' },
+          el('span', { class:'wz-tag' }, 'S'+z.sid),
+          el('span', { class:'wz-leader' }, z.squad?.leader || '—'),
+          el('span', { class:'meta-pill' }, f.length+' marches')
+        );
+        const items = f.slice(0, 10).map(m => {
+          const expandable = !!m.heroes;
+          const head2 = el('div', { class:'march-head' },
+            avatarImg(m, m.username),
+            el('div', { class:'name' }, m.username || '—'),
+            el('div', { class:'pwr' }, fmtNum(m.power)),
+            expandable ? el('span', { class:'arrow' }, '›') : null
+          );
+          const body2 = expandable ? el('div', { class:'march-body' },
+            el('div', { class:'heroes-line' },
+              ...(m.heroes || []).map(h => el('span', { class:'hero-chip' }, el('b', null, 'H'+h.heroId), '★'+h.star+' L'+h.level))
+            ),
+            el('div', { style:'display:flex;gap:.75rem;align-items:flex-start;flex-wrap:wrap' },
+              renderMarchSlots(m.armys),
+              el('div', { style:'font-size:.7rem;color:var(--muted)' },
+                el('div', null, 'March size: ', el('b', { style:'color:var(--text)' }, m.march_size||'?')),
+                el('div', null, 'Slots: ', el('b', { style:'color:var(--text)' }, m.slots||'?'))
+              )
+            )
+          ) : null;
+          const wrapEl = el('div', { class:'march' }, head2, body2);
+          if (expandable) head2.addEventListener('click', () => wrapEl.classList.toggle('expanded'));
+          return wrapEl;
+        });
+        return el('div', { class:'wz-block '+side }, head, ...items);
+      });
+    }
+
+    function render() {
+      clearNode(body);
+      const aPwr = data.ally.totals.march_power_sum[unit];
+      const oPwr = data.opp.totals.march_power_sum[unit];
+      const max = Math.max(aPwr, oPwr, 1);
+      body.appendChild(el('div', { style:'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.6rem;margin-bottom:.75rem' },
+        el('h4', { style:'font-size:.75rem;color:var(--muted);margin-bottom:.5rem' }, unit + ' — Top 50 March Power Sum'),
+        el('div', { class:'bar-row' }, el('span', { class:'lab' }, 'ALLY'), el('div', { class:'bar-track' }, el('div', { class:'bar-fill ally', style:'width:'+(100*aPwr/max)+'%' })), el('span', { class:'v', style:'color:var(--ally)' }, fmtNum(aPwr))),
+        el('div', { class:'bar-row' }, el('span', { class:'lab' }, 'OPP'),  el('div', { class:'bar-track' }, el('div', { class:'bar-fill opp',  style:'width:'+(100*oPwr/max)+'%' })), el('span', { class:'v', style:'color:var(--opp)' }, fmtNum(oPwr)))
+      ));
+      body.appendChild(el('div', { class:'compare' },
+        el('div', { class:'col ally' }, el('h4', null, ALLY_LABEL), ...renderMarches(data.ally.warzones, 'ally')),
+        el('div', { class:'col opp'  }, el('h4', null, OPP_LABEL),  ...renderMarches(data.opp.warzones, 'opp'))
+      ));
+    }
+    ctrl.addEventListener('click', e => {
+      const t = e.target.closest('.sb');
+      if (!t) return;
+      ctrl.querySelectorAll('.sb').forEach(b => b.classList.remove('active'));
+      t.classList.add('active');
+      unit = t.getAttribute('data-u');
+      render();
+    });
+    wrap.appendChild(ctrl);
+    wrap.appendChild(body);
+    render();
+    return wrap;
+  }
+
+  function tabOverview(data) {
+    const sched = data.metadata.schedule;
+    return el('div', null,
+      el('div', { style:'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.75rem;margin-bottom:.75rem;font-size:.85rem' },
+        el('h4', { style:'font-size:.75rem;color:var(--muted);margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.05em' }, 'Schedule'),
+        el('div', null, 'Preview opens: ', el('b', null, fmtDate(sched.viewTime))),
+        el('div', null, 'Server selection: ', el('b', null, fmtDate(sched.selectAreaTime))),
+        el('div', null, 'Wait phase: ', el('b', null, fmtDate(sched.waitFightBeginTime))),
+        el('div', null, 'Fight begins: ', el('b', null, fmtDate(sched.fightBeginTime))),
+        el('div', null, 'Fight ends: ', el('b', null, fmtDate(sched.fightEndTime)))
+      )
+    );
+  }
+
+  function setupTabs(panels) {
+    const nav = el('div', { class:'tabs' });
+    const wrap = el('div', null);
+    Object.keys(panels).forEach((name, i) => {
+      const btn = el('button', { class: 'tab' + (i===0 ? ' active' : ''), 'data-t': name }, name);
+      const p = el('div', { class: 'panel' + (i===0 ? ' active' : ''), id: 'p-'+name }, panels[name]());
+      nav.appendChild(btn);
+      wrap.appendChild(p);
+      btn.addEventListener('click', () => {
+        nav.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        wrap.querySelectorAll('.panel').forEach(pn => pn.classList.remove('active'));
+        document.getElementById('p-'+name).classList.add('active');
+      });
+    });
+    return el('div', null, nav, wrap);
+  }
+
+  async function init() {
+    const root = document.getElementById('root');
+    try {
+      const r = await fetch('data/storm-duel.json', { cache: 'no-cache' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      window.__data = data;
+
+      renderHeader(data.metadata);
+      const frag = document.createDocumentFragment();
+      frag.appendChild(renderScoreboard(data));
+      frag.appendChild(renderSquads(data));
+      frag.appendChild(setupTabs({
+        'Overview':  () => tabOverview(data),
+        'Fame':      () => tabFame(data),
+        'Buffs':     () => tabBuffs(data),
+        'Merit':     () => tabMerit(data),
+        'Kartz':     () => tabKartz(data),
+        'Marches':   () => tabMarches(data)
+      }));
+      clearNode(root);
+      root.appendChild(frag);
+    } catch (e) {
+      clearNode(root);
+      const err = el('div', { class:'status error' }, 'Load failed: ' + (e.message||String(e)));
+      root.appendChild(err);
+      console.error(e);
+    }
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
