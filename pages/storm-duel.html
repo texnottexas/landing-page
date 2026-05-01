@@ -235,8 +235,8 @@
 (function(){
   'use strict';
 
-  const ALLY_LABEL = 'Our Team';
-  const OPP_LABEL = 'Opponents';
+  let ALLY_LABEL = 'Our Team';
+  let OPP_LABEL = 'Opponents';
 
   function fmtNum(n) {
     if (n == null) return '-';
@@ -469,8 +469,8 @@
       const oB = el('b', null, fmt(oV));
       return el('div', { class:'ov-kpi' },
         el('div', { class:'lab' }, lab),
-        el('div', { class:'row ally' }, el('span', null, 'Ally'), aB),
-        el('div', { class:'row opp'  }, el('span', null, 'Opp'),  oB)
+        el('div', { class:'row ally' }, el('span', null, ALLY_LABEL), aB),
+        el('div', { class:'row opp'  }, el('span', null, OPP_LABEL),  oB)
       );
     }
     const kpis = el('div', { class:'ov-kpis' },
@@ -495,35 +495,30 @@
     const table = el('table', { class:'fame-table' },
       el('thead', null, el('tr', null,
         el('th', null, 'Fame Rank'),
-        el('th', null, 'Side'),
+        el('th', null, 'Team'),
         el('th', null, 'Server'),
         el('th', null, 'Leader'),
-        el('th', { class:'num' }, 'Event Fame'),
-        el('th', { class:'num' }, 'Round Score')
+        el('th', { class:'num' }, 'Event Fame')
       )),
       el('tbody', null, ...all.map(z => {
         const f = z.fame || {};
         const sq = z.squad || {};
         return el('tr', { class: 'team-row '+z.side },
           el('td', null, el('span', { class:'rank-pill' }, '#'+(f.rank||'?'))),
-          el('td', null, el('span', { style: z.side==='ally'?'color:var(--ally);font-weight:700':'color:var(--opp);font-weight:700' }, z.side==='ally'?'ALLY':'OPP')),
+          el('td', null, el('span', { style: z.side==='ally'?'color:var(--ally);font-weight:700':'color:var(--opp);font-weight:700' }, z.side==='ally'?ALLY_LABEL:OPP_LABEL)),
           el('td', null, el('span', { style:'font-family:SF Mono,Menlo,monospace;color:var(--accent);font-weight:700' }, 'S'+z.sid)),
           el('td', null, sq.leader || '—'),
-          el('td', { class:'num' }, fmtNum(f.event_fame)),
-          el('td', { class:'num' }, fmtNum(f.round_score))
+          el('td', { class:'num' }, fmtNum(f.event_fame))
         );
       }))
     );
 
     const a = data.ally.totals, o = data.opp.totals;
-    const maxRound = Math.max(a.round_score_sum, o.round_score_sum, 1);
     const maxFame = Math.max(a.event_fame_sum, o.event_fame_sum, 1);
     const teamBars = el('div', { style:'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.75rem;margin-bottom:.75rem' },
-      el('h4', { style:'font-size:.75rem;color:var(--muted);margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.05em' }, 'Team Totals'),
-      el('div', { class:'bar-row' }, el('span', { class:'lab' }, 'Event fame'),  el('div', { class:'bar-track' }, el('div', { class:'bar-fill ally', style:'width:'+(100*a.event_fame_sum/maxFame)+'%' })), el('span', { class:'v', style:'color:var(--ally)' }, fmtNum(a.event_fame_sum))),
-      el('div', { class:'bar-row' }, el('span', { class:'lab' }, '  vs OPP'),    el('div', { class:'bar-track' }, el('div', { class:'bar-fill opp',  style:'width:'+(100*o.event_fame_sum/maxFame)+'%' })), el('span', { class:'v', style:'color:var(--opp)' }, fmtNum(o.event_fame_sum))),
-      el('div', { class:'bar-row' }, el('span', { class:'lab' }, 'Round score'), el('div', { class:'bar-track' }, el('div', { class:'bar-fill ally', style:'width:'+(100*a.round_score_sum/maxRound)+'%' })), el('span', { class:'v', style:'color:var(--ally)' }, fmtNum(a.round_score_sum))),
-      el('div', { class:'bar-row' }, el('span', { class:'lab' }, '  vs OPP'),    el('div', { class:'bar-track' }, el('div', { class:'bar-fill opp',  style:'width:'+(100*o.round_score_sum/maxRound)+'%' })), el('span', { class:'v', style:'color:var(--opp)' }, fmtNum(o.round_score_sum)))
+      el('h4', { style:'font-size:.75rem;color:var(--muted);margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.05em' }, 'Total Event Fame'),
+      el('div', { class:'bar-row' }, el('span', { class:'lab' }, ALLY_LABEL), el('div', { class:'bar-track' }, el('div', { class:'bar-fill ally', style:'width:'+(100*a.event_fame_sum/maxFame)+'%' })), el('span', { class:'v', style:'color:var(--ally)' }, fmtNum(a.event_fame_sum))),
+      el('div', { class:'bar-row' }, el('span', { class:'lab' }, OPP_LABEL),  el('div', { class:'bar-track' }, el('div', { class:'bar-fill opp',  style:'width:'+(100*o.event_fame_sum/maxFame)+'%' })), el('span', { class:'v', style:'color:var(--opp)' }, fmtNum(o.event_fame_sum)))
     );
     return el('div', null, teamBars, table);
   }
@@ -669,14 +664,13 @@
       all.sort((a,b) => (a.rank||9999)-(b.rank||9999));
       return el('div', { class:'col '+side },
         el('h4', null, side==='ally' ? ALLY_LABEL : OPP_LABEL, el('span', null, all.length+' players')),
-        ...all.map((p, i) => el('div', { class:'pl-row' },
+        ...all.map((p) => el('div', { class:'pl-row' },
           el('div', { class:'rk' }, '#'+p.rank),
           avatarImg(p, p.username),
           el('div', { class:'info' },
             el('span', { class:'stag '+side }, 'S'+p._sid),
             el('span', { class:'name' }, p.username || '—')
-          ),
-          el('div', { class:'score' }, p.damageShow || '-')
+          )
         ))
       );
     }
@@ -693,8 +687,7 @@
         const rows = (k.top || []).slice(0, 10).map(p => el('div', { class:'pl-row' },
           el('div', { class:'rk' }, '#'+p.rank),
           avatarImg(p, p.username),
-          el('div', { class:'info' }, el('span', { class:'name' }, p.username || '—')),
-          el('div', { class:'score' }, p.damageShow || '-')
+          el('div', { class:'info' }, el('span', { class:'name' }, p.username || '—'))
         ));
         return el('div', { class:'wz-block '+side }, head, ...rows);
       });
@@ -836,8 +829,8 @@
       const max = Math.max(aPwr, oPwr, 1);
       body.appendChild(el('div', { style:'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.6rem;margin-bottom:.75rem' },
         el('h4', { style:'font-size:.75rem;color:var(--muted);margin-bottom:.5rem' }, unit + ' — Top 50 March Power Sum'),
-        el('div', { class:'bar-row' }, el('span', { class:'lab' }, 'ALLY'), el('div', { class:'bar-track' }, el('div', { class:'bar-fill ally', style:'width:'+(100*aPwr/max)+'%' })), el('span', { class:'v', style:'color:var(--ally)' }, fmtNum(aPwr))),
-        el('div', { class:'bar-row' }, el('span', { class:'lab' }, 'OPP'),  el('div', { class:'bar-track' }, el('div', { class:'bar-fill opp',  style:'width:'+(100*oPwr/max)+'%' })), el('span', { class:'v', style:'color:var(--opp)' }, fmtNum(oPwr)))
+        el('div', { class:'bar-row' }, el('span', { class:'lab' }, ALLY_LABEL), el('div', { class:'bar-track' }, el('div', { class:'bar-fill ally', style:'width:'+(100*aPwr/max)+'%' })), el('span', { class:'v', style:'color:var(--ally)' }, fmtNum(aPwr))),
+        el('div', { class:'bar-row' }, el('span', { class:'lab' }, OPP_LABEL),  el('div', { class:'bar-track' }, el('div', { class:'bar-fill opp',  style:'width:'+(100*oPwr/max)+'%' })), el('span', { class:'v', style:'color:var(--opp)' }, fmtNum(oPwr)))
       ));
       const compareEl = mode === 'combined'
         ? el('div', { class:'compare' }, combinedCol('ally', data.ally.warzones), combinedCol('opp', data.opp.warzones))
@@ -886,6 +879,10 @@
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
       window.__data = data;
+      const allyLead = data.ally.warzones[0]?.sid;
+      const oppLead  = data.opp.warzones[0]?.sid;
+      if (allyLead) ALLY_LABEL = 'Team ' + allyLead;
+      if (oppLead)  OPP_LABEL  = 'Team ' + oppLead;
       try {
         if (hr && hr.ok) {
           const heroes = await hr.json();
