@@ -1542,18 +1542,28 @@
         if (t.monitor || t.reserve) { t.team = []; }
         else { t.team = allocSlot(pools.defense, t, usedDefend); }
       });
-      // Second pass: dump leftover pool members into reserve rows so no one is unassigned
-      s.attack.forEach(t => {
-        if (t.reserve) {
-          t.team = pools.offense.filter(p => !usedAttack.has(p.name + '|' + p.sid));
-          t.team.forEach(p => usedAttack.add(p.name + '|' + p.sid));
-        }
+      // Second pass: collect leftover pool members and balance reserve counts
+      // across attack/defend so neither reserve is overflowing.
+      const leftAtk = pools.offense.filter(p => !usedAttack.has(p.name + '|' + p.sid));
+      const leftDef = pools.defense.filter(p => !usedDefend.has(p.name + '|' + p.sid));
+      // Sort each by power desc so .pop() removes lowest-power first.
+      leftAtk.sort((a, b) => b.power - a.power);
+      leftDef.sort((a, b) => b.power - a.power);
+      const total = leftAtk.length + leftDef.length;
+      const targetD = Math.floor(total / 2);
+      const targetA = total - targetD;
+      while (leftDef.length > targetD) leftAtk.push(leftDef.pop());
+      while (leftAtk.length > targetA) leftDef.push(leftAtk.pop());
+      // Re-sort each balanced list for display
+      leftAtk.sort((a, b) => b.power - a.power);
+      leftDef.sort((a, b) => b.power - a.power);
+      s.attack.filter(t => t.reserve).forEach(t => {
+        t.team = leftAtk;
+        leftAtk.forEach(p => usedAttack.add(p.name + '|' + p.sid));
       });
-      s.defend.forEach(t => {
-        if (t.reserve) {
-          t.team = pools.defense.filter(p => !usedDefend.has(p.name + '|' + p.sid));
-          t.team.forEach(p => usedDefend.add(p.name + '|' + p.sid));
-        }
+      s.defend.filter(t => t.reserve).forEach(t => {
+        t.team = leftDef;
+        leftDef.forEach(p => usedDefend.add(p.name + '|' + p.sid));
       });
     });
     return { stages, strikeTeam, anchorSid, offensePool, defensePool, serverRoles };
