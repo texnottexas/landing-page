@@ -1346,8 +1346,11 @@
     const strikeTeam = ranked.slice(0, 5);
     const offensePool = ranked.filter(p => attackSids.has(p.sid));
     const defensePool = ranked.filter(p => defendSids.has(p.sid));
-    // For each stage, allocate from pools to current targets
-    const take = (pool, n, used) => {
+    // For each stage, allocate from pools.
+    // takeFromTop = highest-power N (priority targets like Capital, L3).
+    // takeFromBottom = pull lowest-power N (monitor roles like silos).
+    // pickMonitors = 1 lowest-power player per server (each server posts a watcher).
+    const takeFromTop = (pool, n, used) => {
       const out = [];
       for (const p of pool) {
         if (used.has(p.name + '|' + p.sid)) continue;
@@ -1357,7 +1360,19 @@
       }
       return out;
     };
-    const usedO = new Set(), usedD = new Set();
+    const pickMonitors = (pool, sids, used) => {
+      const out = [];
+      sids.forEach(sid => {
+        const candidates = pool
+          .filter(p => p.sid === sid && !used.has(p.name + '|' + p.sid))
+          .sort((a, b) => a.power - b.power);
+        if (candidates[0]) {
+          out.push(candidates[0]);
+          used.add(candidates[0].name + '|' + candidates[0].sid);
+        }
+      });
+      return out;
+    };
     const stages = [
       {
         id:'s1', time:'0–15m', name:'Stage 1', focus:'L1 + L2 Ruins',
@@ -1375,33 +1390,50 @@
         ]
       },
       {
-        id:'s2', time:'15–30m', name:'Stage 2', focus:'L3 Ruin opens',
+        id:'s2', time:'15–30m', name:'Stage 2', focus:'L3 opens · keep L1/L2 held',
         attack: [
           { type:'Enemy L3', pts:40, slots:4 },
-          { type:'Hold Enemy L2s', pts:40, slots:3 }
+          { type:'Hold Enemy L2s', pts:40, slots:3 },
+          { type:'Hold Enemy L1s', pts:30, slots:2 }
         ],
         defend: [
           { type:'Our L3', pts:40, slots:3 },
-          { type:'Hold Our L2s', pts:40, slots:2 }
+          { type:'Hold Our L2s', pts:40, slots:2 },
+          { type:'Hold Our L1s', pts:30, slots:1 }
         ]
       },
       {
-        id:'s3', time:'30m+', name:'Stage 3', focus:'Capital + Silos',
+        id:'s3', time:'30m+', name:'Stage 3', focus:'Capital opens · hold ALL prior targets',
         attack: [
-          { type:'Enemy Silos (4)', pts:0, slots:3 },
-          { type:'Enemy Capital', pts:100, slots:5 }
+          { type:'Enemy Capital', pts:100, slots:5 },
+          { type:'Hold Enemy L3', pts:40, slots:2 },
+          { type:'Hold Enemy L2s', pts:40, slots:3 },
+          { type:'Hold Enemy L1s', pts:30, slots:2 },
+          { type:'Enemy Silos · 1 watcher / server', pts:0, monitor:true }
         ],
         defend: [
-          { type:'Our Silos (4)', pts:0, slots:3 },
-          { type:'Our Capital', pts:100, slots:3 }
+          { type:'Our Capital', pts:100, slots:3 },
+          { type:'Hold Our L3', pts:40, slots:2 },
+          { type:'Hold Our L2s', pts:40, slots:2 },
+          { type:'Hold Our L1s', pts:30, slots:1 },
+          { type:'Our Silos · 1 watcher / server', pts:0, monitor:true }
         ]
       }
     ];
+    const attackSidsArr = serverRoles.filter(s => s.role === 'ATTACK').map(s => s.sid);
+    const defendSidsArr = serverRoles.filter(s => s.role === 'DEFEND').map(s => s.sid);
     stages.forEach(s => {
-      // reset used per stage so same player can serve across stages
       const usedAttack = new Set(), usedDefend = new Set();
-      s.attack.forEach(t => { t.team = take(offensePool, t.slots, usedAttack); });
-      s.defend.forEach(t => { t.team = take(defensePool, t.slots, usedDefend); });
+      s.attack.forEach(t => {
+        t.team = t.monitor
+          ? pickMonitors(offensePool, attackSidsArr, usedAttack)
+          : takeFromTop(offensePool, t.slots, usedAttack);
+      });
+      s.defend.forEach(t => {
+        t.team = t.monitor
+          ? pickMonitors(defensePool, defendSidsArr, usedDefend)
+          : takeFromTop(defensePool, t.slots, usedDefend);
+      });
     });
     return { stages, strikeTeam, anchorSid, offensePool, defensePool, serverRoles };
   }
@@ -1541,11 +1573,11 @@
       el('div', { class:'stage-head' },
         el('span', { class:'stage-time' }, '15–30m'),
         el('span', { class:'stage-name' }, 'Stage 2'),
-        el('span', { class:'stage-focus' }, 'Focus: L3 Ruin (40/min)')
+        el('span', { class:'stage-focus' }, 'Focus: L3 · keep L1/L2 held')
       ),
-      stageRow('Defense', ['Half MM/Seal hold L2s. Half rotate to L3 with weakening towers up.']),
-      stageRow('Offense', ['Push enemy L3 — single biggest target until 30m. Strike Team rotates to enemy L3 pushers.']),
-      stageRow('Hold L2s', ['Don\'t lose claimed L2s — every minute lost = 20pts to enemy.']),
+      stageRow('L3 Push', ['Push enemy L3 — single biggest target until Capital opens. Strike Team rotates to enemy L3 defenders.']),
+      stageRow('Defense', ['Half hold our L2s + L1s. Half rotate to L3 with weakening towers up.']),
+      stageRow('Hold Prior', ['L1/L2 still tick — don\'t lose claimed ones for the L3 push. Every minute lost = 10/20pts to enemy.']),
       stageRow('Debuffs', [el('b', null, 'Corrosive Mucus'), ' on enemy reinforcements heading to L3 — slow march = more capture window.'])
     ));
     // Stage 3
@@ -1553,13 +1585,14 @@
       el('div', { class:'stage-head' },
         el('span', { class:'stage-time' }, '30–60m'),
         el('span', { class:'stage-name' }, 'Stage 3'),
-        el('span', { class:'stage-focus' }, 'Focus: Capital + Silos')
+        el('span', { class:'stage-focus' }, 'Focus: Capital · hold prior targets')
       ),
-      stageRow('Silos First', [el('b', null, 'Take enemy Silos before pushing their Capital'), ' — silos auto-kill capital reinforcements. Enemy holding our silos = our capital pushers die.']),
-      stageRow('Defense', ['All hands to Capital region. Hold our Capital + 4 Silos. Reclaim any lost silo immediately.']),
-      stageRow('Offense', ['Cap their 4 Silos, then their Capital (100/min, game-decider).']),
-      stageRow('Strike Team', ['Keep enemy HT whales dead in capital region constantly.']),
-      stageRow('Debuffs', ['Spread Magnetic Field + Mucus across multiple key enemies (don\'t double-spam — see note below).'])
+      stageRow('Hold All Prior', [el('b', null, 'Stage 1/2 targets do NOT go away'), ' — every L1/L2/L3 still ticks points. Don\'t abandon them when Capital opens.']),
+      stageRow('Capital Push', ['Top power → enemy Capital (100/min). Game-decider.']),
+      stageRow('Silos', [el('b', null, '1 watcher per server'), ' — silos don\'t need bigs, just monitor. If enemy takes ours, reclaim immediately (auto-kills our capital reinforcements).']),
+      stageRow('Defense', ['Hold our Capital + L3 + L2s + L1s. Defenders rotate to whatever is being besieged.']),
+      stageRow('Strike Team', ['Keep enemy HT whales dead near Capital. Flex to capture pushes when whales down.']),
+      stageRow('Debuffs', ['Spread Magnetic Field + Mucus across the top 5 enemies (see Key Targets).'])
     ));
     wrap.appendChild(planSection);
 
