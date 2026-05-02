@@ -303,6 +303,8 @@
   .buff-fill.dmgp { background: linear-gradient(90deg, #f59e0b, #d97706); }
   .buff-fill.dmgm { background: linear-gradient(90deg, #8b5cf6, #7c3aed); }
   .buff-line .v { text-align: right; font-weight: 700; }
+  .buff-line .v.capped { color: #d29922; cursor: help; }
+  .buff-line .v.capped::after { content: ' ⓘ'; font-size: .7em; opacity: .8; }
 
   .subnav { display: flex; gap: .25rem; flex-wrap: wrap; margin-bottom: .75rem; }
   .sb { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: .25rem .65rem; font-size: .75rem; color: var(--muted); cursor: pointer; font-weight: 600; }
@@ -644,7 +646,7 @@
       el('div', { class:'scard-stats' },
         statBox('Fame Rank', f.rank ? '#'+f.rank : '—', 'event ' + fmtNum(f.event_fame)),
         statBox('Round Score', fmtNum(f.round_score), null),
-        statBox('Combat ATK', cb ? cb.L3_pct['All Units ATK'].toFixed(0)+'%' : '—', cb ? cb.combatWLs+' wl' : null),
+        statBox('Combat ATK', cb ? (Math.min(cb.L3_pct['All Units ATK'], 1800).toFixed(0)+'%' + (cb.L3_pct['All Units ATK'] > 1800 ? ' MAX' : '')) : '—', cb ? cb.combatWLs+' wl' : null),
         statBox('Top Player Merit', m && m.top[0] ? fmtNum(m.top[0].merit) : '—', m && m.top[0] ? wastedSubNode(m.top[0].username) : null),
         statBox('Kartz Best', ki && ki.top[0] ? '#'+ki.top[0].rank : '—', ki && ki.top[0] ? wastedSubNode(ki.top[0].username) : null),
         statBox('Top Alliance', ka && ka.alliances[0] ? ('['+ka.alliances[0].tag+']') : '—', ka && ka.alliances[0] ? '#'+ka.alliances[0].rank : null),
@@ -819,11 +821,17 @@
   };
   function tabBuffs(data) {
     function buffRow(label, classKey, val, max) {
-      const pct = max ? Math.min(100, 100*val/max) : 0;
+      const isOver = val > max;
+      const effective = Math.min(val, max);
+      const pct = max ? (effective / max) * 100 : 0;
+      const valEl = el('span', { class:'v' + (isOver ? ' capped' : '') },
+        isOver ? (max + '% MAX') : (val.toFixed(0) + '% / ' + max + '%')
+      );
+      if (isOver) valEl.setAttribute('title', 'Raw stack ' + val.toFixed(0) + '% — capped at ' + max + '% (excess does nothing in battle)');
       return el('div', { class:'buff-line' },
         el('span', { class:'lab' }, label),
         el('div', { class:'buff-track' }, el('div', { class:'buff-fill '+classKey, style:'width:'+pct+'%' })),
-        el('span', { class:'v' }, val.toFixed(0)+'% / '+max+'%')
+        valEl
       );
     }
     function warzoneBuffs(z, side) {
