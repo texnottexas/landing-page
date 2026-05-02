@@ -181,8 +181,29 @@
   .strat-section h4 { font-size: .85rem; color: var(--text); margin-bottom: .35rem; }
   .strat-note { font-size: .72rem; color: var(--muted); margin-bottom: .55rem; line-height: 1.4; }
   .strat-svg-host { display: flex; justify-content: center; }
-  .battle-svg { width: 100%; max-width: 560px; height: auto; }
+  .maps-pair { display: grid; grid-template-columns: 1fr 1fr; gap: .85rem; width: 100%; max-width: 760px; }
+  .srv-host { display: flex; flex-direction: column; align-items: center; }
+  .srv-svg { width: 100%; max-width: 360px; height: auto; }
+  .srv-host.ours { background: rgba(63,185,80,.04); border: 1px solid rgba(63,185,80,.25); border-radius: 8px; padding: .35rem; }
+  .srv-host.theirs { background: rgba(248,81,73,.04); border: 1px solid rgba(248,81,73,.25); border-radius: 8px; padding: .35rem; }
+  @media (max-width: 600px) {
+    .maps-pair { grid-template-columns: 1fr; }
+  }
   .capture-svg { width: 100%; max-width: 720px; height: auto; }
+  .unlock-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin-bottom: .5rem; }
+  .unlock-card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .5rem; text-align: center; font-size: .72rem; }
+  .unlock-card .when { font-family: 'SF Mono', Menlo, monospace; font-weight: 800; font-size: .9rem; color: var(--accent); }
+  .unlock-card .what { color: var(--text); font-weight: 700; margin-top: .15rem; }
+  .unlock-card .pts { color: var(--muted); margin-top: .15rem; }
+  .lane-pair { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+  @media (max-width: 700px) { .lane-pair { grid-template-columns: 1fr; } }
+  .lane-col { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .55rem; }
+  .lane-col.attack { border-color: rgba(248,81,73,.4); }
+  .lane-col.defend { border-color: rgba(63,185,80,.4); }
+  .lane-col h5 { font-size: .82rem; margin-bottom: .35rem; }
+  .lane-col.attack h5 { color: var(--opp); }
+  .lane-col.defend h5 { color: var(--ally); }
+  .lane-sub { font-size: .68rem; color: var(--muted); margin-bottom: .45rem; line-height: 1.35; }
   .strat-legend { display: flex; flex-wrap: wrap; gap: .8rem; font-size: .7rem; color: var(--muted); margin-top: .4rem; justify-content: center; }
   .strat-legend .swatch { display: inline-block; width: 14px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: .25rem; border: 1px solid; }
   .win-cond { display: grid; grid-template-columns: 24px 1fr; gap: .6rem; font-size: .78rem; padding: .35rem 0; align-items: center; border-bottom: 1px dashed var(--border); }
@@ -1067,53 +1088,72 @@
     return e;
   }
 
-  function buildBattlefieldMap() {
-    const VB_W = 560, VB_H = 440;
-    const svg = svgEl('svg', { viewBox: '0 0 '+VB_W+' '+VB_H, class: 'battle-svg', xmlns:'http://www.w3.org/2000/svg' });
+  function buildServerMap(role, accent) {
+    // role: 'OUR SERVER (defend)' or 'ENEMY SERVER (attack)'
+    const SZ = 340;
+    const svg = svgEl('svg', { viewBox: '0 0 '+SZ+' '+(SZ+38), class: 'srv-svg', xmlns:'http://www.w3.org/2000/svg' });
     // background
-    svg.appendChild(svgEl('rect', { x:0, y:0, width:VB_W, height:VB_H, fill:'#0d1117', rx:8, ry:8 }));
-    // halves
-    svg.appendChild(svgEl('rect', { x:8, y:8, width:VB_W-16, height:(VB_H-16)/2 - 6, fill:'rgba(248,81,73,.05)', stroke:'rgba(248,81,73,.18)', 'stroke-dasharray':'4,3', rx:6, ry:6 }));
-    svg.appendChild(svgEl('rect', { x:8, y:VB_H/2 + 6, width:VB_W-16, height:(VB_H-16)/2 - 6, fill:'rgba(63,185,80,.05)', stroke:'rgba(63,185,80,.18)', 'stroke-dasharray':'4,3', rx:6, ry:6 }));
-    // frontier
-    svg.appendChild(svgEl('line', { x1:20, y1:VB_H/2, x2:VB_W-20, y2:VB_H/2, stroke:'#8b949e', 'stroke-dasharray':'8,5', 'stroke-width':1.5 }));
-    svg.appendChild(svgEl('text', { x:VB_W/2, y:VB_H/2 - 6, 'text-anchor':'middle', fill:'#8b949e', 'font-size':11, 'font-weight':700, 'letter-spacing':'.1em' }, 'FRONTIER'));
-    // side labels
-    svg.appendChild(svgEl('text', { x:20, y:24, fill:'#f85149', 'font-weight':800, 'font-size':14 }, 'OPPONENT HALF'));
-    svg.appendChild(svgEl('text', { x:20, y:VB_H-10, fill:'#3fb950', 'font-weight':800, 'font-size':14 }, 'OUR HALF'));
-    svg.appendChild(svgEl('text', { x:VB_W-20, y:24, 'text-anchor':'end', fill:'#8b949e', 'font-size':10 }, 'their defensive zone'));
-    svg.appendChild(svgEl('text', { x:VB_W-20, y:VB_H-10, 'text-anchor':'end', fill:'#8b949e', 'font-size':10 }, 'our defensive zone'));
+    svg.appendChild(svgEl('rect', { x:0, y:0, width:SZ, height:SZ+38, fill:'#0d1117', rx:8, ry:8 }));
+    // header label
+    svg.appendChild(svgEl('text', { x: SZ/2, y: 18, 'text-anchor':'middle', fill: accent, 'font-size':12, 'font-weight':800, 'letter-spacing':'.08em' }, role));
+    // map square
+    const M = 16, top = 28;
+    const sq = { x: M, y: top, w: SZ-2*M, h: SZ-2*M };
+    const cx = sq.x + sq.w/2, cy = sq.y + sq.h/2;
+    svg.appendChild(svgEl('rect', { x: sq.x, y: sq.y, width: sq.w, height: sq.h, fill:'#161b22', stroke:'#30363d', 'stroke-width':1.5, rx:4, ry:4 }));
+    // diagonals (X) creating 4 triangle quadrants
+    svg.appendChild(svgEl('line', { x1: sq.x, y1: sq.y, x2: sq.x+sq.w, y2: sq.y+sq.h, stroke:'#30363d', 'stroke-width':1 }));
+    svg.appendChild(svgEl('line', { x1: sq.x+sq.w, y1: sq.y, x2: sq.x, y2: sq.y+sq.h, stroke:'#30363d', 'stroke-width':1 }));
+    // shade INACTIVE quadrants (top, right, bottom). Active = LEFT triangle.
+    const tri = (pts, fill) => svgEl('polygon', { points: pts, fill, stroke:'none' });
+    // top, right, bottom inactive triangles
+    svg.appendChild(tri([[cx,cy],[sq.x,sq.y],[sq.x+sq.w,sq.y]].map(p=>p.join(',')).join(' '), 'rgba(120,120,120,.07)'));
+    svg.appendChild(tri([[cx,cy],[sq.x+sq.w,sq.y],[sq.x+sq.w,sq.y+sq.h]].map(p=>p.join(',')).join(' '), 'rgba(120,120,120,.07)'));
+    svg.appendChild(tri([[cx,cy],[sq.x+sq.w,sq.y+sq.h],[sq.x,sq.y+sq.h]].map(p=>p.join(',')).join(' '), 'rgba(120,120,120,.07)'));
+    // active LEFT triangle highlighted
+    const accentTint = accent === '#3fb950' ? 'rgba(63,185,80,.12)' : 'rgba(248,81,73,.12)';
+    svg.appendChild(tri([[cx,cy],[sq.x,sq.y],[sq.x,sq.y+sq.h]].map(p=>p.join(',')).join(' '), accentTint));
+    // "INACTIVE" labels in 3 inactive triangles
+    const labelFaint = (x, y) => svg.appendChild(svgEl('text', { x, y, 'text-anchor':'middle', fill:'#444c56', 'font-size':9, 'font-style':'italic' }, 'inactive'));
+    labelFaint(cx, sq.y + 28);                     // top
+    labelFaint(sq.x + sq.w - 36, cy);              // right
+    labelFaint(cx, sq.y + sq.h - 18);              // bottom
 
-    const buildings = [
-      // OPP top
-      { x: 100, y: 60,  type:'L1', pts:10, side:'opp' },
-      { x: 280, y: 60,  type:'L1', pts:10, side:'opp' },
-      { x: 460, y: 60,  type:'L1', pts:10, side:'opp' },
-      { x: 170, y: 120, type:'L2', pts:20, side:'opp' },
-      { x: 390, y: 120, type:'L2', pts:20, side:'opp' },
-      { x: 280, y: 165, type:'L3', pts:40, side:'opp' },
-      { x: 280, y: 200, type:'CAP',pts:100,side:'opp' },
-      // ALLY bottom (mirror)
-      { x: 280, y: 240, type:'CAP',pts:100,side:'ally' },
-      { x: 280, y: 275, type:'L3', pts:40, side:'ally' },
-      { x: 170, y: 320, type:'L2', pts:20, side:'ally' },
-      { x: 390, y: 320, type:'L2', pts:20, side:'ally' },
-      { x: 100, y: 380, type:'L1', pts:10, side:'ally' },
-      { x: 280, y: 380, type:'L1', pts:10, side:'ally' },
-      { x: 460, y: 380, type:'L1', pts:10, side:'ally' }
-    ];
-    buildings.forEach(b => {
-      const fill = b.side==='ally' ? '#1a3322' : '#3a1d1d';
-      const stroke = b.side==='ally' ? '#3fb950' : '#f85149';
-      const ptColor = b.side==='ally' ? '#7ce28a' : '#ff9a93';
-      const w = b.type==='CAP' ? 80 : (b.type==='L3' ? 56 : (b.type==='L2' ? 50 : 44));
-      const h = b.type==='CAP' ? 32 : (b.type==='L3' ? 28 : 24);
-      svg.appendChild(svgEl('rect', { x: b.x - w/2, y: b.y - h/2, width: w, height: h, rx: 5, ry: 5, fill, stroke, 'stroke-width': 2 }));
-      const lab = b.type==='CAP' ? 'CAPITAL' : (b.type==='L3' ? 'L3 RUIN' : (b.type==='L2' ? 'L2 RUIN' : 'L1 RUIN'));
-      svg.appendChild(svgEl('text', { x:b.x, y:b.y-1, 'text-anchor':'middle', fill:'#e6edf3', 'font-size':9, 'font-weight':700 }, lab));
-      svg.appendChild(svgEl('text', { x:b.x, y:b.y+11, 'text-anchor':'middle', fill: ptColor, 'font-size':8, 'font-weight':700 }, b.pts+' pts/min'));
-    });
+    // ACTIVE QUADRANT label
+    svg.appendChild(svgEl('text', { x: sq.x + 26, y: cy - 88, fill: accent, 'font-size':9, 'font-weight':800, 'letter-spacing':'.08em' }, 'ACTIVE'));
+
+    // Buildings in left quadrant
+    // L1 (pink) — 3, far edge
+    const L1pts = [ {x: sq.x + 26, y: cy - 60}, {x: sq.x + 26, y: cy}, {x: sq.x + 26, y: cy + 60} ];
+    // L2 (green) — 2, mid
+    const L2pts = [ {x: sq.x + 70, y: cy - 38}, {x: sq.x + 70, y: cy + 38} ];
+    // L3 (red) — 1, near capital
+    const L3pt = { x: sq.x + 110, y: cy };
+    // Capital (yellow) at exact center, drawn last so always on top
+    const drawBox = (x, y, fill, stroke, lab, sub, t) => {
+      const w = 32, h = 22;
+      svg.appendChild(svgEl('rect', { x: x-w/2, y: y-h/2, width:w, height:h, rx:4, ry:4, fill, stroke, 'stroke-width':1.5 }));
+      svg.appendChild(svgEl('text', { x, y: y+1, 'text-anchor':'middle', fill:'#e6edf3', 'font-size':8, 'font-weight':700 }, lab));
+      if (sub) svg.appendChild(svgEl('text', { x, y: y+10, 'text-anchor':'middle', fill:'#8b949e', 'font-size':7 }, sub));
+      if (t) svg.appendChild(svgEl('text', { x, y: y-h/2 - 3, 'text-anchor':'middle', fill:'#79c0ff', 'font-size':7, 'font-weight':700 }, t));
+    };
+    L1pts.forEach(p => drawBox(p.x, p.y, '#3a1f33', '#d75397', 'L1', '10/min', null));
+    L2pts.forEach(p => drawBox(p.x, p.y, '#1f3a25', '#3fb950', 'L2', '20/min', null));
+    drawBox(L3pt.x, L3pt.y, '#3a2020', '#f85149', 'L3', '40/min', '15m');
+    // Capital (always center, yellow circle)
+    svg.appendChild(svgEl('circle', { cx, cy, r: 22, fill:'#3a3320', stroke:'#d29922', 'stroke-width':2 }));
+    svg.appendChild(svgEl('text', { x: cx, y: cy + 1, 'text-anchor':'middle', fill:'#e6edf3', 'font-size':8, 'font-weight':800 }, 'CAP'));
+    svg.appendChild(svgEl('text', { x: cx, y: cy + 10, 'text-anchor':'middle', fill:'#d29922', 'font-size':7, 'font-weight':700 }, '100/min'));
+    svg.appendChild(svgEl('text', { x: cx, y: cy - 26, 'text-anchor':'middle', fill:'#79c0ff', 'font-size':7, 'font-weight':700 }, '30m'));
+
     return svg;
+  }
+
+  function buildBattlefieldMap() {
+    const host = el('div', { class:'maps-pair' });
+    host.appendChild(el('div', { class:'srv-host ours' }, buildServerMap('OUR SERVER · DEFEND', '#3fb950')));
+    host.appendChild(el('div', { class:'srv-host theirs' }, buildServerMap('ENEMY SERVER · ATTACK', '#f85149')));
+    return host;
   }
 
   function buildCaptureFlow() {
@@ -1148,13 +1188,20 @@
 
   function buildAssignments(data) {
     const ally = data.ally.warzones;
+    // Highest-combat-buff server = defensive anchor (lower marches stay home)
+    let anchorSid = null, anchorSum = -1, anchorSrv = null;
+    for (const z of ally) {
+      const cb = z.combat_buffs_L3;
+      if (!cb) continue;
+      const sum = (cb.L3_pct['All Units ATK']||0) + (cb.L3_pct['All Units DEF']||0) + (cb.L3_pct['All Units HP']||0);
+      if (sum > anchorSum) { anchorSum = sum; anchorSid = z.sid; anchorSrv = z; }
+    }
     const players = {};
     for (const z of ally) {
       const fs = z.formations || {};
       ['Army','Navy','AirForce'].forEach(u => {
         (fs[u]||[]).forEach(m => {
-          const isReef = m.username && m.username.indexOf('Reef') !== -1;
-          if (isReef) return;
+          if (m.username && m.username.indexOf('Reef') !== -1) return;
           const key = m.username + '|' + z.sid;
           if (!players[key] || (m.power||0) > players[key].power) {
             players[key] = { name: m.username, sid: z.sid, unit: u, power: m.power||0 };
@@ -1163,54 +1210,107 @@
       });
     }
     const ranked = Object.values(players).sort((a,b) => b.power - a.power);
-    const targets = [
-      { type:'Enemy Capital',     tier:'PRIMARY',   pts: 100, slots: 5 },
-      { type:'Enemy L3 Ruin',     tier:'PRIMARY',   pts: 40,  slots: 4 },
-      { type:'Enemy L2 Ruin #1',  tier:'SECONDARY', pts: 20,  slots: 3 },
-      { type:'Enemy L2 Ruin #2',  tier:'SECONDARY', pts: 20,  slots: 3 },
-      { type:'Enemy L1 Ruin #1',  tier:'TERTIARY',  pts: 10,  slots: 2 },
-      { type:'Enemy L1 Ruin #2',  tier:'TERTIARY',  pts: 10,  slots: 2 },
-      { type:'Enemy L1 Ruin #3',  tier:'TERTIARY',  pts: 10,  slots: 2 }
+
+    // Attack lane: top 14 marches NOT from anchor server
+    const attackPool = ranked.filter(p => p.sid !== anchorSid).slice(0, 14);
+    const attackTargets = [
+      { type:'Enemy Capital',     tier:'30m+',  pts: 100, slots: 4 },
+      { type:'Enemy L3 Ruin',     tier:'15m+',  pts: 40,  slots: 3 },
+      { type:'Enemy L2 Ruin #1',  tier:'OPEN',  pts: 20,  slots: 2 },
+      { type:'Enemy L2 Ruin #2',  tier:'OPEN',  pts: 20,  slots: 2 },
+      { type:'Enemy L1 Ruin #1',  tier:'OPEN',  pts: 10,  slots: 1 },
+      { type:'Enemy L1 Ruin #2',  tier:'OPEN',  pts: 10,  slots: 1 },
+      { type:'Enemy L1 Ruin #3',  tier:'OPEN',  pts: 10,  slots: 1 }
     ];
-    let idx = 0;
-    targets.forEach(t => { t.team = ranked.slice(idx, idx + t.slots); idx += t.slots; });
-    // Defense anchor: highest combat-buff sum server
-    let bestSid = null, bestSum = -1, bestSrv = null;
-    for (const z of ally) {
-      const cb = z.combat_buffs_L3;
-      if (!cb) continue;
-      const sum = (cb.L3_pct['All Units ATK']||0) + (cb.L3_pct['All Units DEF']||0) + (cb.L3_pct['All Units HP']||0);
-      if (sum > bestSum) { bestSum = sum; bestSid = z.sid; bestSrv = z; }
-    }
-    return { targets, bestSid, bestSrv, totalAssigned: idx };
+    let ai = 0;
+    attackTargets.forEach(t => { t.team = attackPool.slice(ai, ai + t.slots); ai += t.slots; });
+
+    // Defense lane: anchor server's marches + lowest-power marches from other servers
+    const anchorMarches = ranked.filter(p => p.sid === anchorSid);
+    const defenseTargets = [
+      { type:'Our Capital',     tier:'30m+',  pts: 100, slots: 3 },
+      { type:'Our L3 Ruin',     tier:'15m+',  pts: 40,  slots: 2 },
+      { type:'Our L2 Ruin #1',  tier:'OPEN',  pts: 20,  slots: 1 },
+      { type:'Our L2 Ruin #2',  tier:'OPEN',  pts: 20,  slots: 1 },
+      { type:'Our L1 Ruins',    tier:'OPEN',  pts: 10,  slots: 2 }
+    ];
+    let di = 0;
+    defenseTargets.forEach(t => { t.team = anchorMarches.slice(di, di + t.slots); di += t.slots; });
+
+    return { attackTargets, defenseTargets, anchorSid, anchorSrv, anchorSum };
+  }
+
+  function tgtRow(t, sideClass) {
+    return el('div', { class:'tgt-row' },
+      el('div', { class:'tgt-head' },
+        el('div', { class:'tgt-name' }, t.type, el('span', { class:'tgt-tier' }, t.tier)),
+        el('div', { class:'tgt-pts' }, t.pts + ' pts/min')
+      ),
+      el('div', { class:'tgt-team' },
+        ...t.team.map(p => el('div', { class:'pl-mini' },
+          el('span', { class:'stag ' + (sideClass||'ally') }, 'S'+p.sid),
+          el('span', { class:'name' }, p.name || '—'),
+          el('span', { class:'pwr' }, fmtNum(p.power))
+        ))
+      )
+    );
   }
 
   function tabStrategy(data) {
     const wrap = el('div', null);
 
-    // Map
+    // ===== Battlefield Layout =====
     const mapHost = el('div', { class:'strat-svg-host' });
     mapHost.appendChild(buildBattlefieldMap());
     wrap.appendChild(el('div', { class:'strat-section' },
       el('h4', null, 'Battlefield Layout'),
-      el('div', { class:'strat-note' }, '14 buildings, mirrored. Each side defends own half + attacks enemy half. Ruins generate 10/20/40 pts/min for L1/L2/L3 — Capital is 100 pts/min. All your Coalition warzones can teleport into either Core battlefield (5-min lockout between switches).'),
+      el('div', { class:'strat-note' },
+        'Two server maps — ours (defend) and theirs (attack). Each map has 4 quadrants (X dividers); only ONE quadrant is active per fight. Active quadrant holds 3 L1 + 2 L2 + 1 L3 ruins. Capital sits at exact center of the map and is the same place every time. ',
+        el('b', null, 'Assuming the LEFT quadrant is active for both sides.'),
+        ' Players choose to ATTACK enemy server or DEFEND ours — switching has a 5-minute cooldown.'
+      ),
       mapHost,
       el('div', { class:'strat-legend' },
-        el('span', null, el('span', { class:'swatch', style:'background:#1a3322;border-color:#3fb950' }), 'Our buildings (defend)'),
-        el('span', null, el('span', { class:'swatch', style:'background:#3a1d1d;border-color:#f85149' }), 'Enemy buildings (attack)')
+        el('span', null, el('span', { class:'swatch', style:'background:#3a1f33;border-color:#d75397' }), 'L1 Ruin (10/min)'),
+        el('span', null, el('span', { class:'swatch', style:'background:#1f3a25;border-color:#3fb950' }), 'L2 Ruin (20/min)'),
+        el('span', null, el('span', { class:'swatch', style:'background:#3a2020;border-color:#f85149' }), 'L3 Ruin (40/min)'),
+        el('span', null, el('span', { class:'swatch', style:'background:#3a3320;border-color:#d29922;border-radius:50%' }), 'Capital (100/min)')
       )
     ));
 
-    // Capture flow
+    // ===== Unlock Schedule =====
+    wrap.appendChild(el('div', { class:'strat-section' },
+      el('h4', null, 'Unlock Schedule'),
+      el('div', { class:'strat-note' }, 'Buildings unlock progressively. Higher-value targets stay locked early so the fight starts on ruins and escalates.'),
+      el('div', { class:'unlock-strip' },
+        el('div', { class:'unlock-card' },
+          el('div', { class:'when' }, '0 min'),
+          el('div', { class:'what' }, 'L1 + L2 Ruins'),
+          el('div', { class:'pts' }, '10 / 20 pts/min')
+        ),
+        el('div', { class:'unlock-card' },
+          el('div', { class:'when' }, '15 min'),
+          el('div', { class:'what' }, 'L3 Ruin opens'),
+          el('div', { class:'pts' }, '40 pts/min')
+        ),
+        el('div', { class:'unlock-card' },
+          el('div', { class:'when' }, '30 min'),
+          el('div', { class:'what' }, 'Capital opens'),
+          el('div', { class:'pts' }, '100 pts/min')
+        )
+      )
+    ));
+
+    // ===== Capture flow =====
     const capHost = el('div', { class:'strat-svg-host' });
     capHost.appendChild(buildCaptureFlow());
     wrap.appendChild(el('div', { class:'strat-section' },
       el('h4', null, 'Capture Mechanic'),
-      el('div', { class:'strat-note' }, 'Building must be besieged + held for 60 seconds straight to claim. After capture, building is At Peace 120 seconds (cannot be attacked). Once protection ends, ownership stays with capturer — score ticks every minute it remains held.'),
+      el('div', { class:'strat-note' }, 'Building must be unlocked first (see schedule above). Successful siege starts a 60-second Capture Timer — must hold continuous control until it expires to claim. After capture: At Peace 120 seconds, immune to attacks. Once protection ends, ownership stays with capturer and points tick every minute it remains held.'),
       capHost
     ));
 
-    // Win conditions (only 1 + 2 per user)
+    // ===== Win conditions =====
     wrap.appendChild(el('div', { class:'strat-section' },
       el('h4', null, 'Win Conditions'),
       el('div', { class:'win-cond' },
@@ -1223,32 +1323,27 @@
       )
     ));
 
-    // Assignment
+    // ===== Assignment lanes =====
     const a = buildAssignments(data);
-    const assignSection = el('div', { class:'strat-section' },
-      el('h4', null, 'Suggested Squad Assignment'),
-      el('div', { class:'strat-note' }, 'Top ' + a.totalAssigned + ' marches by power across our 5 servers, allocated to enemy targets in descending value. Reef excluded (transferred). Adjust based on enemy disposition during fight.'),
-      a.bestSid ? el('div', { class:'def-anchor' },
-        'Defensive Anchor: ', el('b', null, 'S' + a.bestSid),
-        ' — strongest combat-buff stack. Hold our Capital + L3 Ruin. Deploy lowest-power marches here; bigger marches push offense.'
-      ) : null
+    const attackCol = el('div', { class:'lane-col attack' },
+      el('h5', null, 'ATTACK LANE — Enemy Server'),
+      el('div', { class:'lane-sub' }, 'Top marches NOT from defensive anchor. Push enemy quadrant + Capital. Phase: hit L1/L2 from start, focus L3 at 15m, all-in on Capital at 30m.')
     );
-    a.targets.forEach(t => {
-      assignSection.appendChild(el('div', { class:'tgt-row' },
-        el('div', { class:'tgt-head' },
-          el('div', { class:'tgt-name' }, t.type, el('span', { class:'tgt-tier' }, t.tier)),
-          el('div', { class:'tgt-pts' }, t.pts + ' pts/min')
-        ),
-        el('div', { class:'tgt-team' },
-          ...t.team.map(p => el('div', { class:'pl-mini' },
-            el('span', { class:'stag ally' }, 'S'+p.sid),
-            el('span', { class:'name' }, p.name || '—'),
-            el('span', { class:'pwr' }, fmtNum(p.power))
-          ))
-        )
-      ));
-    });
-    wrap.appendChild(assignSection);
+    a.attackTargets.forEach(t => attackCol.appendChild(tgtRow(t, 'ally')));
+
+    const defendCol = el('div', { class:'lane-col defend' },
+      el('h5', null, 'DEFEND LANE — Our Server'),
+      el('div', { class:'lane-sub' },
+        a.anchorSid ? ['Anchor: ', el('b', null, 'S' + a.anchorSid), ' (strongest combat buffs). Hold the line — flex up to L3 + Capital at unlock times. Pull from anchor first.'] : 'Anchor server not determined — use your highest-buff server.'
+      )
+    );
+    a.defenseTargets.forEach(t => defendCol.appendChild(tgtRow(t, 'ally')));
+
+    wrap.appendChild(el('div', { class:'strat-section' },
+      el('h4', null, 'Suggested Squad Assignment'),
+      el('div', { class:'strat-note' }, 'Auto-derived from current march power rankings (Reef excluded, transferred). Defensive anchor = ally server with highest combat-buff stack. Attack lane drains the other 4 servers in descending power. Adjust live based on enemy disposition.'),
+      el('div', { class:'lane-pair' }, attackCol, defendCol)
+    ));
 
     return wrap;
   }
