@@ -809,13 +809,21 @@
   }
 
   // ----- TAB: Buffs -----
+  // Per-buff caps (effective in-battle max %)
+  const BUFF_MAX = {
+    'All Units ATK':   1800,
+    'All Units HP':    1800,
+    'All Units DMG+':  300,
+    'All Units DMG-':  300,
+    'All Units DEF':   100
+  };
   function tabBuffs(data) {
     function buffRow(label, classKey, val, max) {
       const pct = max ? Math.min(100, 100*val/max) : 0;
       return el('div', { class:'buff-line' },
         el('span', { class:'lab' }, label),
         el('div', { class:'buff-track' }, el('div', { class:'buff-fill '+classKey, style:'width:'+pct+'%' })),
-        el('span', { class:'v' }, val.toFixed(0)+'%')
+        el('span', { class:'v' }, val.toFixed(0)+'% / '+max+'%')
       );
     }
     function warzoneBuffs(z, side) {
@@ -827,18 +835,19 @@
         cb ? el('span', { class:'meta-pill' }, cb.combatWLs+' combat / '+cb.wastelandTotal+' wl') : null
       );
       if (!cb) return el('div', { class:'wz-block '+side }, head, el('div', { style:'color:var(--muted);font-size:.75rem' }, 'no data'));
-      const max = 1620;
       return el('div', { class:'wz-block '+side }, head, el('div', { class:'buff-stack' },
-        buffRow('All ATK',  'atk',  cb.L3_pct['All Units ATK'], max),
-        buffRow('All HP',   'hp',   cb.L3_pct['All Units HP'],  max),
-        buffRow('All DMG+', 'dmgp', cb.L3_pct['All Units DMG+'], max),
-        buffRow('All DMG-', 'dmgm', cb.L3_pct['All Units DMG-'], max),
-        buffRow('All DEF',  'def',  cb.L3_pct['All Units DEF'],  max)
+        buffRow('All ATK',  'atk',  cb.L3_pct['All Units ATK'],  BUFF_MAX['All Units ATK']),
+        buffRow('All HP',   'hp',   cb.L3_pct['All Units HP'],   BUFF_MAX['All Units HP']),
+        buffRow('All DMG+', 'dmgp', cb.L3_pct['All Units DMG+'], BUFF_MAX['All Units DMG+']),
+        buffRow('All DMG-', 'dmgm', cb.L3_pct['All Units DMG-'], BUFF_MAX['All Units DMG-']),
+        buffRow('All DEF',  'def',  cb.L3_pct['All Units DEF'],  BUFF_MAX['All Units DEF'])
       ));
     }
     return el('div', null,
       el('div', { style:'background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.6rem;margin-bottom:.75rem;font-size:.75rem;color:var(--muted)' },
-        'Combat buffs from owned wastelands. Buffs apply per-warzone only — NOT pooled across squad. All wastelands assumed L3. Per wl: ATK 270%, HP 270%, DMG+ 45%, DMG- 45%, DEF 15%.'
+        'Combat buffs from owned wastelands. Buffs apply per-warzone only — NOT pooled across squad. All wastelands assumed L3. Per wl: ATK 270%, HP 270%, DMG+ 45%, DMG- 45%, DEF 15%. ',
+        el('b', { style:'color:var(--text)' }, 'Caps: '),
+        'ATK / HP 1800%, DMG+ / DMG- 300%, DEF 100%. Bars scale to the cap.'
       ),
       el('div', { class:'compare' },
         el('div', { class:'col ally' }, el('h4', null, ALLY_LABEL), ...data.ally.warzones.map(z => warzoneBuffs(z, 'ally'))),
@@ -1291,14 +1300,20 @@
 
   function buildAssignments(data) {
     const ally = data.ally.warzones;
-    // Rank ALL ally servers by combat-buff sum. Top 2 → DEFEND, bottom 3 → ATTACK.
+    // S2864 pinned as primary defender (Tex initial defense). Second defender = next-best buff stack.
     const serverRoles = ally.map(z => {
       const cb = z.combat_buffs_L3 || { L3_pct:{} };
       const buffSum = (cb.L3_pct['All Units ATK']||0) + (cb.L3_pct['All Units DEF']||0) + (cb.L3_pct['All Units HP']||0);
       const fs = z.formations || {};
       const top10Pwr = ['Army','Navy','AirForce'].reduce((s,u) => s + ((fs[u]||[]).slice(0,10).reduce((x,m) => x+(m.power||0), 0)), 0);
       return { sid: z.sid, leader: z.squad?.leader, buffSum, top10Pwr };
-    }).sort((a,b) => b.buffSum - a.buffSum);
+    });
+    // Sort: S2864 always first (anchor), then by buff stack desc
+    serverRoles.sort((a, b) => {
+      if (a.sid === 2864) return -1;
+      if (b.sid === 2864) return 1;
+      return b.buffSum - a.buffSum;
+    });
     serverRoles.forEach((s, i) => { s.role = i < 2 ? 'DEFEND' : 'ATTACK'; s.rank = i+1; });
     const defendSids = new Set(serverRoles.filter(s => s.role === 'DEFEND').map(s => s.sid));
     const attackSids = new Set(serverRoles.filter(s => s.role === 'ATTACK').map(s => s.sid));
@@ -1630,7 +1645,7 @@
     });
     const assignSection = el('div', { class:'strat-section' },
       el('h4', null, 'Server Lane Assignment'),
-      el('div', { class:'strat-note' }, 'Top 2 ally servers by combat-buff stack defend home (bigger buff stack = better at holding). Other 3 push enemy server. Anchor = highest buff stack overall.'),
+      el('div', { class:'strat-note' }, 'S2864 pinned as primary defender (Tex on initial defense to secure homeland). Second defender = next-best combat-buff stack. Other 3 servers push enemy.'),
       srvRoleHost,
       el('h4', { style:'margin-top:.85rem' }, 'Suggested Stage Assignment'),
       el('div', { class:'strat-note' }, 'Auto-derived from march power within each server\'s lane. Strike Team appears separately AND fills stage slots when their lane needs them. Reef excluded.'),
