@@ -24,6 +24,24 @@
   .home-btn:hover { border-color: var(--accent); color: var(--accent); }
   .meta-pill { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: .15rem .55rem; font-size: .7rem; color: var(--muted); font-weight: 600; }
 
+  /* Language switcher */
+  .lang-btn { background: var(--card); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: .35rem .55rem; cursor: pointer; font-size: .78rem; display: flex; align-items: center; gap: .3rem; font-family: inherit; font-weight: 600; transition: border-color .15s; white-space: nowrap; }
+  .lang-btn:hover { border-color: var(--accent); color: var(--text); }
+  #google_translate_element { display: none; }
+  .lang-modal-overlay { display: none; position: fixed; inset: 0; z-index: 500; background: rgba(0,0,0,.6); align-items: center; justify-content: center; }
+  .lang-modal-overlay.active { display: flex; }
+  .lang-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; max-width: 380px; width: 92%; max-height: 80vh; overflow-y: auto; }
+  .lang-modal h3 { font-size: .85rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 12px; }
+  .lang-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; }
+  .lang-opt { display: flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 7px 8px; cursor: pointer; font-size: .78rem; font-family: inherit; color: var(--text); transition: border-color .15s; }
+  .lang-opt:hover { border-color: var(--accent); }
+  .lang-opt.active { border-color: var(--accent); color: var(--accent); }
+  .lang-flag { font-size: 1.1rem; }
+  .lang-name { font-size: .72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  @media (max-width: 600px) {
+    .lang-btn #langCode { display: none; }
+  }
+
   .container { max-width: 1280px; margin: 0 auto; padding: 1rem; }
   .status { text-align: center; padding: 2rem; color: var(--muted); }
   .status.error { color: var(--red); }
@@ -487,6 +505,24 @@
 </style>
 </head>
 <body>
+
+<!-- Google Translate (hidden) -->
+<script>
+  function googleTranslateInit() {
+    new google.translate.TranslateElement({ pageLanguage: 'en', autoDisplay: false }, 'google_translate_element');
+  }
+</script>
+<script src="//translate.google.com/translate_a/element.js?cb=googleTranslateInit" async></script>
+<div id="google_translate_element" style="display:none"></div>
+
+<!-- Language modal -->
+<div class="lang-modal-overlay" id="langModal">
+  <div class="lang-modal">
+    <h3>Select Language</h3>
+    <div class="lang-grid" id="langGrid"></div>
+  </div>
+</div>
+
 <div class="intro-overlay" id="intro-overlay" aria-hidden="true">
   <div class="intro-orb">
     <span class="intro-particle"></span><span class="intro-particle"></span>
@@ -501,6 +537,10 @@
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>
   </a>
   <h1>Storm Duel</h1>
+  <button class="lang-btn notranslate" id="langBtn" title="Language">
+    <span id="langFlag">&#127482;&#127480;</span>
+    <span id="langCode">/en</span>
+  </button>
 </header>
 
 <div class="container">
@@ -1960,6 +2000,82 @@
   }
 
   init();
+})();
+
+// ─── Language picker ──────────────────────────────────────────────────────────
+(function() {
+  var LANGUAGES = [
+    { code: 'en',    flag: '🇺🇸', name: 'English' },
+    { code: 'es',    flag: '🇪🇸', name: 'Español' },
+    { code: 'fr',    flag: '🇫🇷', name: 'Français' },
+    { code: 'de',    flag: '🇩🇪', name: 'Deutsch' },
+    { code: 'pt',    flag: '🇧🇷', name: 'Português' },
+    { code: 'ru',    flag: '🇷🇺', name: 'Русский' },
+    { code: 'ja',    flag: '🇯🇵', name: '日本語' },
+    { code: 'ko',    flag: '🇰🇷', name: '한국어' },
+    { code: 'zh-CN', flag: '🇨🇳', name: '中文' },
+    { code: 'ar',    flag: '🇸🇦', name: 'العربية' },
+    { code: 'tr',    flag: '🇹🇷', name: 'Türkçe' },
+    { code: 'vi',    flag: '🇻🇳', name: 'Tiếng Việt' },
+    { code: 'th',    flag: '🇹🇭', name: 'ไทย' },
+    { code: 'id',    flag: '🇮🇩', name: 'Indonesia' }
+  ];
+  function getLangByCode(code) {
+    var base = code.split('-')[0];
+    for (var i = 0; i < LANGUAGES.length; i++) {
+      if (LANGUAGES[i].code === code || LANGUAGES[i].code === base) return LANGUAGES[i];
+    }
+    return null;
+  }
+  function updateLangBtn(code) {
+    var d = getLangByCode(code);
+    document.getElementById('langFlag').textContent = d ? d.flag : '🌐';
+    document.getElementById('langCode').textContent = '/' + code;
+  }
+  function detectLang() {
+    var m = document.cookie.match(/googtrans=\/en\/([a-zA-Z-]{2,10})/);
+    return m ? m[1] : 'en';
+  }
+  function applyLang(code, onDone) {
+    if (code === 'en') {
+      document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax';
+      location.reload();
+      return;
+    }
+    var attempts = 0;
+    var iv = setInterval(function() {
+      var combo = document.querySelector('.goog-te-combo');
+      if (combo) {
+        combo.value = code;
+        combo.dispatchEvent(new Event('change'));
+        clearInterval(iv);
+        updateLangBtn(code);
+        if (onDone) onDone();
+      }
+      if (++attempts > 40) clearInterval(iv);
+    }, 200);
+  }
+  var grid = document.getElementById('langGrid');
+  var detected = detectLang();
+  LANGUAGES.forEach(function(l) {
+    var btn = document.createElement('button');
+    btn.className = 'lang-opt' + (l.code === detected ? ' active' : '');
+    btn.setAttribute('data-lang', l.code);
+    var fs = document.createElement('span'); fs.className = 'lang-flag'; fs.textContent = l.flag;
+    var ns = document.createElement('span'); ns.className = 'lang-name'; ns.textContent = l.name;
+    btn.appendChild(fs); btn.appendChild(ns);
+    btn.addEventListener('click', (function(c) {
+      return function() { applyLang(c, function() { document.getElementById('langModal').classList.remove('active'); }); };
+    })(l.code));
+    grid.appendChild(btn);
+  });
+  updateLangBtn(detected);
+  document.getElementById('langBtn').addEventListener('click', function() {
+    document.getElementById('langModal').classList.add('active');
+  });
+  document.getElementById('langModal').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('active');
+  });
 })();
 </script>
 </body>
