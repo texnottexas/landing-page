@@ -1329,7 +1329,8 @@
       if (b.sid === 2696) return 1;
       return b.buffSum - a.buffSum;
     });
-    serverRoles.forEach((s, i) => { s.role = i < 2 ? 'DEFEND' : 'ATTACK'; s.rank = i+1; });
+    // 3 defend / 2 attack server split (was 2/3) — defense was previously under-resourced.
+    serverRoles.forEach((s, i) => { s.role = i < 3 ? 'DEFEND' : 'ATTACK'; s.rank = i+1; });
     const defendSids = new Set(serverRoles.filter(s => s.role === 'DEFEND').map(s => s.sid));
     const attackSids = new Set(serverRoles.filter(s => s.role === 'ATTACK').map(s => s.sid));
     const anchorSid = serverRoles[0].sid;
@@ -1352,8 +1353,28 @@
     const ranked = Object.values(players).sort((a,b) => b.power - a.power);
     // Strike Team = top 5 power overall. Always-on but ALSO eligible to fill stage slots.
     const strikeTeam = ranked.slice(0, 5);
-    const baseOffense = ranked.filter(p => attackSids.has(p.sid));
-    const baseDefense = ranked.filter(p => defendSids.has(p.sid));
+    let baseOffense = ranked.filter(p => attackSids.has(p.sid));
+    let baseDefense = ranked.filter(p => defendSids.has(p.sid));
+
+    // Rebalance: shift 6 attack-pool players to defense as flex-defenders so the
+    // overall split isn't too attack-heavy. Seeded so reload yields same set.
+    const REBALANCE_COUNT = 6;
+    const FLEX_KEYS_PRE = new Set(['Tex|2864', 'PeeWee|2864']);
+    function seededRng(seed) { let s = seed >>> 0; return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; }; }
+    const rng = seededRng(7); // arbitrary stable seed
+    const rebPool = baseOffense.filter(p => !FLEX_KEYS_PRE.has(p.name + '|' + p.sid));
+    // Fisher-Yates shuffle copy
+    const shuffled = rebPool.slice();
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    const rebalanced = shuffled.slice(0, REBALANCE_COUNT);
+    const rebKeys = new Set(rebalanced.map(p => p.name + '|' + p.sid));
+    if (rebalanced.length) {
+      baseOffense = baseOffense.filter(p => !rebKeys.has(p.name + '|' + p.sid));
+      baseDefense = [...baseDefense, ...rebalanced].sort((a, b) => b.power - a.power);
+    }
 
     // Stage-specific manual overrides for which players defend/attack.
     // Stage 1: Tex + TESSIN defend (PeeWee shifts to attack to ease L2 power stack with Tex).
@@ -1365,12 +1386,22 @@
       's2': { defendPins: [{ name:'Tex', sid:2864 }, { name:'PeeWee', sid:2864 }],
               forceToAttack: [] }
     };
+    const FLEX_PLAYERS = [{ name:'Tex', sid:2864 }, { name:'PeeWee', sid:2864 }];
     const findInPool = (pool, ref) => pool.find(p => p.name === ref.name && p.sid === ref.sid);
     function buildStagePools(stageId) {
       const ov = STAGE_OVERRIDES[stageId];
       if (!ov) {
-        // Stage 3: flex — base pools, UI note covers movement.
-        return { offense: baseOffense.slice(), defense: baseDefense.slice(), swapped: null, pinned: [] };
+        // Stage 3: pull flex players out of BOTH pools so they're not auto-assigned.
+        // Flex banner above lane lists them separately.
+        const flexKeys = new Set(FLEX_PLAYERS.map(p => p.name + '|' + p.sid));
+        const flexFound = [...baseOffense, ...baseDefense].filter(p => flexKeys.has(p.name + '|' + p.sid));
+        return {
+          offense: baseOffense.filter(p => !flexKeys.has(p.name + '|' + p.sid)),
+          defense: baseDefense.filter(p => !flexKeys.has(p.name + '|' + p.sid)),
+          flex: flexFound,
+          swapped: null,
+          pinned: []
+        };
       }
       // Defense pins: pull each ref from offense → defense (if currently on offense).
       const movedToDefense = ov.defendPins
@@ -1787,9 +1818,10 @@
     });
     const assignSection = el('div', { class:'strat-section' },
       el('h4', null, 'Server Lane Assignment'),
-      el('div', { class:'strat-note' }, 'S2696 pinned as primary defender (swap with S2864). S2864 + heavy hitters (8960mr, Sparta🥕) push enemy server. Second defender = next-best combat-buff stack from the other 4. ',
-        el('b', null, 'Tex + PeeWee anchor defense in Stages 1–2 '),
-        '(one big shifts to attack to compensate); flex between lanes in Stage 3.'
+      el('div', { class:'strat-note' }, '3 servers DEFEND, 2 ATTACK (defense-heavy — capital + ruins must be held). S2696 pinned as primary defender; other 2 defenders = top combat-buff stacks. ',
+        el('b', null, '6 attack-pool players additionally rebalanced to defense as flex-defenders'),
+        ' so the lane split isn\'t too attack-heavy. ',
+        el('b', null, 'Stage 1: Tex + TESSIN defend, PeeWee attacks. Stage 2: Tex + PeeWee defend. Stage 3: Tex + PeeWee flex.')
       ),
       srvRoleHost,
       el('h4', { style:'margin-top:.85rem' }, 'Suggested Stage Assignment'),
