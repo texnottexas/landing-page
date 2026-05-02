@@ -1131,7 +1131,7 @@
 
   function buildServerMap(role, accent) {
     // role: 'OUR SERVER (defend)' or 'ENEMY SERVER (attack)'
-    const SZ = 340;
+    const SZ = 380;
     const svg = svgEl('svg', { viewBox: '0 0 '+SZ+' '+(SZ+38), class: 'srv-svg', xmlns:'http://www.w3.org/2000/svg' });
     // background
     svg.appendChild(svgEl('rect', { x:0, y:0, width:SZ, height:SZ+38, fill:'#0d1117', rx:8, ry:8 }));
@@ -1147,57 +1147,64 @@
     svg.appendChild(svgEl('line', { x1: sq.x+sq.w, y1: sq.y, x2: sq.x, y2: sq.y+sq.h, stroke:'#30363d', 'stroke-width':1 }));
     // shade INACTIVE quadrants (top, right, bottom). Active = LEFT triangle.
     const tri = (pts, fill) => svgEl('polygon', { points: pts, fill, stroke:'none' });
-    // top, right, bottom inactive triangles
     svg.appendChild(tri([[cx,cy],[sq.x,sq.y],[sq.x+sq.w,sq.y]].map(p=>p.join(',')).join(' '), 'rgba(120,120,120,.07)'));
     svg.appendChild(tri([[cx,cy],[sq.x+sq.w,sq.y],[sq.x+sq.w,sq.y+sq.h]].map(p=>p.join(',')).join(' '), 'rgba(120,120,120,.07)'));
     svg.appendChild(tri([[cx,cy],[sq.x+sq.w,sq.y+sq.h],[sq.x,sq.y+sq.h]].map(p=>p.join(',')).join(' '), 'rgba(120,120,120,.07)'));
     // active LEFT triangle highlighted
     const accentTint = accent === '#3fb950' ? 'rgba(63,185,80,.12)' : 'rgba(248,81,73,.12)';
     svg.appendChild(tri([[cx,cy],[sq.x,sq.y],[sq.x,sq.y+sq.h]].map(p=>p.join(',')).join(' '), accentTint));
-    // "INACTIVE" labels in 3 inactive triangles
+    // "inactive" labels in 3 inactive triangles
     const labelFaint = (x, y) => svg.appendChild(svgEl('text', { x, y, 'text-anchor':'middle', fill:'#444c56', 'font-size':9, 'font-style':'italic' }, 'inactive'));
-    labelFaint(cx, sq.y + 28);                     // top
-    labelFaint(sq.x + sq.w - 36, cy);              // right
-    labelFaint(cx, sq.y + sq.h - 18);              // bottom
+    labelFaint(cx, sq.y + 28);
+    labelFaint(sq.x + sq.w - 36, cy);
+    labelFaint(cx, sq.y + sq.h - 18);
+    // ACTIVE label
+    svg.appendChild(svgEl('text', { x: sq.x + 30, y: cy - 100, fill: accent, 'font-size':10, 'font-weight':800, 'letter-spacing':'.08em' }, 'ACTIVE'));
 
-    // ACTIVE QUADRANT label
-    svg.appendChild(svgEl('text', { x: sq.x + 26, y: cy - 88, fill: accent, 'font-size':9, 'font-weight':800, 'letter-spacing':'.08em' }, 'ACTIVE'));
+    // ===== Capital region (rotated diamond) at center =====
+    const regionR = 62;
+    const diamondPts = [ [cx, cy - regionR], [cx + regionR, cy], [cx, cy + regionR], [cx - regionR, cy] ].map(p=>p.join(',')).join(' ');
+    svg.appendChild(svgEl('polygon', { points: diamondPts, fill:'rgba(217,153,34,.04)', stroke:'#d29922', 'stroke-width':1.2, 'stroke-dasharray':'4,3', opacity:'.55' }));
+    // Capital region label
+    svg.appendChild(svgEl('text', { x: cx, y: cy - regionR - 6, 'text-anchor':'middle', fill:'#d29922', 'font-size':8, 'font-weight':700, 'letter-spacing':'.05em' }, 'CAPITAL REGION'));
 
-    // Buildings in left quadrant
-    // L1 (pink) — 3, far edge
-    const L1pts = [ {x: sq.x + 26, y: cy - 60}, {x: sq.x + 26, y: cy}, {x: sq.x + 26, y: cy + 60} ];
+    // 4 silos at cardinal vertices of diamond (N/E/S/W)
+    const silos = [
+      { dx: 0, dy: -regionR, lab:'N' },
+      { dx: regionR, dy: 0, lab:'E' },
+      { dx: 0, dy: regionR, lab:'S' },
+      { dx: -regionR, dy: 0, lab:'W' }
+    ];
+    silos.forEach(s => {
+      svg.appendChild(svgEl('circle', { cx: cx + s.dx, cy: cy + s.dy, r: 8, fill:'#1c2940', stroke:'#388bfd', 'stroke-width':1.8 }));
+      svg.appendChild(svgEl('text', { x: cx + s.dx, y: cy + s.dy + 2.8, 'text-anchor':'middle', fill:'#79c0ff', 'font-size':8, 'font-weight':800 }, 'S'));
+    });
+
+    // ===== Buildings in left quadrant — L3 OUTSIDE the capital region =====
+    // L1 (pink) — 3, far edge of map
+    const L1pts = [ {x: sq.x + 32, y: cy - 80}, {x: sq.x + 32, y: cy}, {x: sq.x + 32, y: cy + 80} ];
     // L2 (green) — 2, mid
-    const L2pts = [ {x: sq.x + 70, y: cy - 38}, {x: sq.x + 70, y: cy + 38} ];
-    // L3 (red) — 1, near capital
-    const L3pt = { x: sq.x + 110, y: cy };
-    // Capital (yellow) at exact center, drawn last so always on top
+    const L2pts = [ {x: sq.x + 80, y: cy - 50}, {x: sq.x + 80, y: cy + 50} ];
+    // L3 (red) — 1, between L2s and capital region edge (NOT overlapping diamond)
+    // diamond left vertex at cx - regionR. Place L3 ~14px outside that.
+    const L3pt = { x: cx - regionR - 24, y: cy };
+
     const drawBox = (x, y, fill, stroke, lab, sub, t) => {
-      const w = 32, h = 22;
-      svg.appendChild(svgEl('rect', { x: x-w/2, y: y-h/2, width:w, height:h, rx:4, ry:4, fill, stroke, 'stroke-width':1.5 }));
-      svg.appendChild(svgEl('text', { x, y: y+1, 'text-anchor':'middle', fill:'#e6edf3', 'font-size':8, 'font-weight':700 }, lab));
-      if (sub) svg.appendChild(svgEl('text', { x, y: y+10, 'text-anchor':'middle', fill:'#8b949e', 'font-size':7 }, sub));
+      const w = 40, h = 26;
+      svg.appendChild(svgEl('rect', { x: x-w/2, y: y-h/2, width:w, height:h, rx:5, ry:5, fill, stroke, 'stroke-width':1.6 }));
+      svg.appendChild(svgEl('text', { x, y: y+1, 'text-anchor':'middle', fill:'#e6edf3', 'font-size':9, 'font-weight':700 }, lab));
+      if (sub) svg.appendChild(svgEl('text', { x, y: y+12, 'text-anchor':'middle', fill:'#8b949e', 'font-size':7 }, sub));
       if (t) svg.appendChild(svgEl('text', { x, y: y-h/2 - 3, 'text-anchor':'middle', fill:'#79c0ff', 'font-size':7, 'font-weight':700 }, t));
     };
     L1pts.forEach(p => drawBox(p.x, p.y, '#3a1f33', '#d75397', 'L1', '10/min', null));
     L2pts.forEach(p => drawBox(p.x, p.y, '#1f3a25', '#3fb950', 'L2', '20/min', null));
     drawBox(L3pt.x, L3pt.y, '#3a2020', '#f85149', 'L3', '40/min', '15m');
-    // Capital region: dashed boundary + 4 silos + capital
-    const regionR = 50;
-    svg.appendChild(svgEl('circle', { cx, cy, r: regionR, fill:'none', stroke:'#d29922', 'stroke-width':1, 'stroke-dasharray':'3,3', opacity:'.4' }));
-    // 4 silos in corners of capital region
-    const silos = [
-      { dx: -34, dy: -34 }, { dx: 34, dy: -34 },
-      { dx: -34, dy: 34 },  { dx: 34, dy: 34 }
-    ];
-    silos.forEach(s => {
-      svg.appendChild(svgEl('circle', { cx: cx + s.dx, cy: cy + s.dy, r: 6, fill:'#332b1c', stroke:'#d29922', 'stroke-width':1.5 }));
-      svg.appendChild(svgEl('text', { x: cx + s.dx, y: cy + s.dy + 2.5, 'text-anchor':'middle', fill:'#d29922', 'font-size':7, 'font-weight':800 }, 'S'));
-    });
-    // Capital (always center, yellow circle)
-    svg.appendChild(svgEl('circle', { cx, cy, r: 22, fill:'#3a3320', stroke:'#d29922', 'stroke-width':2 }));
-    svg.appendChild(svgEl('text', { x: cx, y: cy + 1, 'text-anchor':'middle', fill:'#e6edf3', 'font-size':8, 'font-weight':800 }, 'CAP'));
-    svg.appendChild(svgEl('text', { x: cx, y: cy + 10, 'text-anchor':'middle', fill:'#d29922', 'font-size':7, 'font-weight':700 }, '100/min'));
-    svg.appendChild(svgEl('text', { x: cx, y: cy - 26, 'text-anchor':'middle', fill:'#79c0ff', 'font-size':7, 'font-weight':700 }, '30m'));
+
+    // Capital (drawn last, on top of region)
+    svg.appendChild(svgEl('circle', { cx, cy, r: 24, fill:'#3a3320', stroke:'#d29922', 'stroke-width':2.2 }));
+    svg.appendChild(svgEl('text', { x: cx, y: cy + 1, 'text-anchor':'middle', fill:'#e6edf3', 'font-size':9, 'font-weight':800 }, 'CAP'));
+    svg.appendChild(svgEl('text', { x: cx, y: cy + 11, 'text-anchor':'middle', fill:'#d29922', 'font-size':7, 'font-weight':700 }, '100/min'));
+    svg.appendChild(svgEl('text', { x: cx + 30, y: cy - 18, 'text-anchor':'start', fill:'#79c0ff', 'font-size':7, 'font-weight':700 }, '30m'));
 
     return svg;
   }
@@ -1396,7 +1403,7 @@
         el('span', null, el('span', { class:'swatch', style:'background:#1f3a25;border-color:#3fb950' }), 'L2 Ruin (20/min)'),
         el('span', null, el('span', { class:'swatch', style:'background:#3a2020;border-color:#f85149' }), 'L3 Ruin (40/min)'),
         el('span', null, el('span', { class:'swatch', style:'background:#3a3320;border-color:#d29922;border-radius:50%' }), 'Capital (100/min)'),
-        el('span', null, el('span', { class:'swatch', style:'background:#332b1c;border-color:#d29922;border-radius:50%;width:10px;height:10px' }), '4 Silos')
+        el('span', null, el('span', { class:'swatch', style:'background:#1c2940;border-color:#388bfd;border-radius:50%;width:10px;height:10px' }), '4 Silos (N/E/S/W of Capital)')
       ),
       el('div', { class:'silo-callout' },
         el('b', null, 'Silos: '), 'open at 30m alongside Capital. If we own them: nothing happens. ',
