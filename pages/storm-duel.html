@@ -142,6 +142,40 @@
   .march-inline .march-size { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .15rem .45rem; font-weight: 700; font-size: .75rem; font-variant-numeric: tabular-nums; }
   .march-inline .pwr { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 4rem; text-align: right; }
 
+  /* GTA "Wasted" stamp for transferred-out players */
+  .pl-row.is-wasted, .march-inline.is-wasted { position: relative; }
+  .pl-row.is-wasted > *, .march-inline.is-wasted > * { opacity: .35; filter: grayscale(1); }
+  .pl-row.is-wasted::after, .march-inline.is-wasted::after {
+    content: 'WASTED';
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Impact', 'Arial Black', sans-serif;
+    font-weight: 900; font-style: italic;
+    font-size: 1.5rem; letter-spacing: .18em;
+    color: #c1121f;
+    text-shadow: 0 0 6px rgba(0,0,0,.95), 2px 2px 0 #000, -1px 1px 0 #000, 0 0 14px rgba(193,18,31,.5);
+    transform: rotate(-5deg);
+    pointer-events: none;
+    z-index: 5;
+    text-transform: uppercase;
+    opacity: 1 !important;
+    filter: none !important;
+  }
+  .wasted-wrap { position: relative; display: inline-block; padding-right: 4.5rem; }
+  .wasted-wrap > .name-text { opacity: .35; filter: grayscale(1); text-decoration: line-through; }
+  .wasted-stamp {
+    position: absolute; right: 0; top: 50%;
+    transform: translateY(-50%) rotate(-5deg);
+    font-family: 'Impact', 'Arial Black', sans-serif;
+    font-weight: 900; font-style: italic;
+    font-size: .85rem; letter-spacing: .12em;
+    color: #c1121f;
+    text-shadow: 0 0 4px rgba(0,0,0,.95), 1px 1px 0 #000, -1px 1px 0 #000;
+    pointer-events: none;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
   /* Buff comparison */
   .buff-stack { display: flex; flex-direction: column; gap: .35rem; padding: .35rem .5rem; }
   .buff-line { display: grid; grid-template-columns: 70px 1fr 50px; gap: .5rem; align-items: center; font-size: .75rem; }
@@ -417,6 +451,17 @@
     }
     return el('span', { class: cls, style:'display:flex;align-items:center;justify-content:center;font-size:.65rem;color:var(--muted)' }, txt);
   }
+  function isWasted(name) { return typeof name === 'string' && name.indexOf('Reef') !== -1; }
+  function markWasted(rowEl, name) { if (isWasted(name)) rowEl.classList.add('is-wasted'); return rowEl; }
+  function wastedSubNode(name) {
+    if (!name) return '—';
+    if (!isWasted(name)) return name;
+    return el('span', null,
+      el('span', { style:'opacity:.4;text-decoration:line-through' }, name),
+      ' ',
+      el('span', { style:'color:#c1121f;font-weight:900;font-style:italic;font-family:Impact,Arial Black,sans-serif;letter-spacing:.05em' }, 'WASTED')
+    );
+  }
   function heroIcon(heroId) {
     const h = HEROES_BY_ID[heroId];
     if (h && h.iconSmall) {
@@ -484,8 +529,8 @@
         statBox('Fame Rank', f.rank ? '#'+f.rank : '—', 'event ' + fmtNum(f.event_fame)),
         statBox('Round Score', fmtNum(f.round_score), null),
         statBox('Combat ATK', cb ? cb.L3_pct['All Units ATK'].toFixed(0)+'%' : '—', cb ? cb.combatWLs+' wl' : null),
-        statBox('Top Player Merit', m && m.top[0] ? fmtNum(m.top[0].merit) : '—', m && m.top[0] ? m.top[0].username : null),
-        statBox('Kartz Best', ki && ki.top[0] ? '#'+ki.top[0].rank : '—', ki && ki.top[0] ? ki.top[0].username : null),
+        statBox('Top Player Merit', m && m.top[0] ? fmtNum(m.top[0].merit) : '—', m && m.top[0] ? wastedSubNode(m.top[0].username) : null),
+        statBox('Kartz Best', ki && ki.top[0] ? '#'+ki.top[0].rank : '—', ki && ki.top[0] ? wastedSubNode(ki.top[0].username) : null),
         statBox('Top Alliance', ka && ka.alliances[0] ? ('['+ka.alliances[0].tag+']') : '—', ka && ka.alliances[0] ? '#'+ka.alliances[0].rank : null),
         statBox('March Power', fmtNum(fSum), 'top 30'),
         statBox('Wastelands', cb ? cb.wastelandTotal : '—', cb ? cb.combatWLs+' combat' : null)
@@ -716,7 +761,7 @@
       const top = all.slice(0, 30);
       return el('div', { class:'col '+side },
         el('h4', null, side==='ally' ? ALLY_LABEL : OPP_LABEL, el('span', null, top.length+' players')),
-        ...top.map((p, i) => el('div', { class:'pl-row' },
+        ...top.map((p, i) => markWasted(el('div', { class:'pl-row' },
           el('div', { class:'rk' }, '#'+(i+1)),
           avatarImg(p, p.username),
           el('div', { class:'info' },
@@ -724,7 +769,7 @@
             el('span', { class:'name' }, p.username || '—')
           ),
           el('div', { class:'score' }, fmtNum(p.merit))
-        ))
+        ), p.username))
       );
     }
     function serverCol(side, zones) {
@@ -737,12 +782,12 @@
           el('span', { class:'meta-pill' }, m ? (m.count + ' ranked') : 'no data')
         );
         if (!m) return el('div', { class:'wz-block '+side }, head);
-        const rows = (m.top || []).slice(0, 10).map(p => el('div', { class:'pl-row' },
+        const rows = (m.top || []).slice(0, 10).map(p => markWasted(el('div', { class:'pl-row' },
           el('div', { class:'rk' }, '#'+p.rank),
           avatarImg(p, p.username),
           el('div', { class:'info' }, el('span', { class:'name' }, p.username || '—')),
           el('div', { class:'score' }, fmtNum(p.merit))
-        ));
+        ), p.username));
         return el('div', { class:'wz-block '+side }, head, ...rows);
       });
       return el('div', { class:'col '+side },
@@ -788,14 +833,14 @@
       all.sort((a,b) => (a.rank||9999)-(b.rank||9999));
       return el('div', { class:'col '+side },
         el('h4', null, side==='ally' ? ALLY_LABEL : OPP_LABEL, el('span', null, all.length+' players')),
-        ...all.map((p) => el('div', { class:'pl-row' },
+        ...all.map((p) => markWasted(el('div', { class:'pl-row' },
           el('div', { class:'rk' }, '#'+p.rank),
           avatarImg(p, p.username),
           el('div', { class:'info' },
             el('span', { class:'stag '+side }, 'S'+p._sid),
             el('span', { class:'name' }, p.username || '—')
           )
-        ))
+        ), p.username))
       );
     }
     function serverIndividual(side, zones) {
@@ -808,11 +853,11 @@
           el('span', { class:'meta-pill' }, k ? (k.count + ' in top500') : 'none in top500')
         );
         if (!k) return el('div', { class:'wz-block '+side }, head);
-        const rows = (k.top || []).slice(0, 10).map(p => el('div', { class:'pl-row' },
+        const rows = (k.top || []).slice(0, 10).map(p => markWasted(el('div', { class:'pl-row' },
           el('div', { class:'rk' }, '#'+p.rank),
           avatarImg(p, p.username),
           el('div', { class:'info' }, el('span', { class:'name' }, p.username || '—'))
-        ));
+        ), p.username));
         return el('div', { class:'wz-block '+side }, head, ...rows);
       });
       return el('div', { class:'col '+side },
@@ -908,7 +953,7 @@
       const remaining = 3 - (m.heroes ? m.heroes.length : 0);
       for (let i = 0; i < remaining; i++) heroes.appendChild(el('span', { class:'hav placeholder' }, '?'));
 
-      return el('div', { class:'march-inline' },
+      return markWasted(el('div', { class:'march-inline' },
         avatarImg(m, m.username),
         el('div', { class:'name-wrap' },
           includeSidTag ? el('span', { class:'stag '+side }, 'S'+m._sid) : null,
@@ -917,7 +962,7 @@
         heroes,
         el('span', { class:'march-size', title:'march size' }, m.march_size || '—'),
         el('span', { class:'pwr' }, fmtNum(m.power))
-      );
+      ), m.username);
     }
     function combinedCol(side, zones) {
       const all = [];
