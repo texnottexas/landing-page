@@ -1355,34 +1355,50 @@
     const baseOffense = ranked.filter(p => attackSids.has(p.sid));
     const baseDefense = ranked.filter(p => defendSids.has(p.sid));
 
-    // Stage 1+2 manual override: Tex + PeeWee defend, one big defender swaps to attack
-    // to keep attack power from getting too top-heavy.
-    const STAGE12_PINS = [
-      { name: 'Tex', sid: 2864 },
-      { name: 'PeeWee', sid: 2864 }
-    ];
+    // Stage-specific manual overrides for which players defend/attack.
+    // Stage 1: Tex + TESSIN defend (PeeWee shifts to attack to ease L2 power stack with Tex).
+    // Stage 2: Tex + PeeWee defend (TESSIN swaps to attack to balance attack power).
+    // Stage 3: flex — no override; UI note covers it.
+    const STAGE_OVERRIDES = {
+      's1': { defendPins: [{ name:'Tex', sid:2864 }, { name:'TESSIN', sid:2696 }],
+              forceToAttack: [{ name:'PeeWee', sid:2864 }] },
+      's2': { defendPins: [{ name:'Tex', sid:2864 }, { name:'PeeWee', sid:2864 }],
+              forceToAttack: [] }
+    };
     const findInPool = (pool, ref) => pool.find(p => p.name === ref.name && p.sid === ref.sid);
     function buildStagePools(stageId) {
-      if (stageId === 's3') {
-        // Stage 3: Tex/PeeWee flex — keep them in their lane (S2864 = attack),
-        // but they can shift to defense as needed; UI note covers this.
-        return { offense: baseOffense.slice(), defense: baseDefense.slice(), swapped: null };
+      const ov = STAGE_OVERRIDES[stageId];
+      if (!ov) {
+        // Stage 3: flex — base pools, UI note covers movement.
+        return { offense: baseOffense.slice(), defense: baseDefense.slice(), swapped: null, pinned: [] };
       }
-      // s1, s2: pin Tex + PeeWee on defense, move 1 top non-pinned defender to attack
-      const movedToDefense = STAGE12_PINS.map(ref => findInPool(baseOffense, ref)).filter(Boolean);
-      const newOffense = baseOffense.filter(p => !movedToDefense.includes(p));
-      let newDefense = [...baseDefense, ...movedToDefense].sort((a,b) => b.power - a.power);
+      // Defense pins: pull each ref from offense → defense (if currently on offense).
+      const movedToDefense = ov.defendPins
+        .map(ref => findInPool(baseOffense, ref))
+        .filter(Boolean);
+      // Force-to-attack: pull from defense → offense.
+      const movedToAttack = ov.forceToAttack
+        .map(ref => findInPool(baseDefense, ref))
+        .filter(Boolean);
+      let newOffense = baseOffense.filter(p => !movedToDefense.includes(p));
+      let newDefense = baseDefense.filter(p => !movedToAttack.includes(p));
+      newDefense = [...newDefense, ...movedToDefense].sort((a,b) => b.power - a.power);
+      newOffense = [...newOffense, ...movedToAttack].sort((a,b) => b.power - a.power);
+      // If we pulled defenders to defense and didn't already swap one, balance by sending
+      // top non-pinned defender to attack.
       let swapped = null;
-      if (movedToDefense.length > 0 && baseDefense.length > 0) {
-        const topOrigDefender = baseDefense.slice().sort((a,b) => b.power - a.power)[0];
-        if (topOrigDefender) {
-          newDefense = newDefense.filter(p => p !== topOrigDefender);
-          newOffense.push(topOrigDefender);
+      if (movedToDefense.length > 0 && movedToAttack.length === 0) {
+        const pinKeys = new Set(ov.defendPins.map(p => p.name + '|' + p.sid));
+        const orig = newDefense.filter(p => !pinKeys.has(p.name + '|' + p.sid))
+                               .sort((a,b) => b.power - a.power);
+        if (orig[0]) {
+          swapped = orig[0];
+          newDefense = newDefense.filter(p => p !== orig[0]);
+          newOffense.push(orig[0]);
           newOffense.sort((a,b) => b.power - a.power);
-          swapped = topOrigDefender;
         }
       }
-      return { offense: newOffense, defense: newDefense, swapped, pinned: movedToDefense };
+      return { offense: newOffense, defense: newDefense, swapped, pinned: movedToDefense, forced: movedToAttack };
     }
     // Default pools (stage 3 view): use base
     const offensePool = baseOffense.slice();
@@ -1645,7 +1661,7 @@
         el('span', { class:'stage-name' }, 'Stage 1'),
         el('span', { class:'stage-focus' }, 'Focus: L1 + L2 Ruins')
       ),
-      stageRow('Defense', [el('b', null, 'Tex + PeeWee'), ' anchor home defense (S2864 flex-back). MM build 2 weakening towers per L2. Hold our L2s + L1s.']),
+      stageRow('Defense', [el('b', null, 'Tex + TESSIN'), ' anchor home defense in S1 (PeeWee shifts to attack to ease L2 power stacking). MM build 2 weakening towers per L2. Hold our L2s + L1s.']),
       stageRow('Offense', ['Top Seal Team push enemy L2s (best 20/min target). Strike Team kills their pushers.']),
       stageRow('Scouts', ['Cap empty enemy L1s (10/min each, real points). Smash enemy weakening towers.']),
       stageRow('Debuffs', [el('b', null, 'Magnetic Field'), ' on enemy whales pushing our L2s — no relocate = stuck after death, walks back.']),
@@ -1811,12 +1827,18 @@
           el('b', null, 'Flex: '),
           'Tex + PeeWee shift between attack and defense as the fight dictates.'
         );
-      } else if (s.pools && s.pools.pinned && s.pools.pinned.length) {
-        const pinNames = s.pools.pinned.map(p => p.name).join(' + ');
-        const swappedTxt = s.pools.swapped ? ' · ' + s.pools.swapped.name + ' (S' + s.pools.swapped.sid + ') swaps to attack' : '';
-        pinNote = el('div', { class:'pin-note pin' },
-          el('b', null, 'Pinned to defense: '), pinNames, swappedTxt
-        );
+      } else if (s.pools && (s.pools.pinned?.length || s.pools.forced?.length)) {
+        const parts = [];
+        if (s.pools.pinned && s.pools.pinned.length) {
+          parts.push(el('span', null, el('b', null, 'Pinned to defense: '), s.pools.pinned.map(p => p.name).join(' + ')));
+        }
+        if (s.pools.forced && s.pools.forced.length) {
+          parts.push(el('span', null, ' · ', el('b', null, 'Forced to attack: '), s.pools.forced.map(p => p.name + ' (S'+p.sid+')').join(', ')));
+        }
+        if (s.pools.swapped) {
+          parts.push(el('span', null, ' · ', s.pools.swapped.name + ' (S' + s.pools.swapped.sid + ') swaps to attack to balance'));
+        }
+        pinNote = el('div', { class:'pin-note pin' }, ...parts);
       }
 
       assignSection.appendChild(el('div', { class:'stage-assign' },
