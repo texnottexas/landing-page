@@ -283,7 +283,8 @@
   .tgt-name .tgt-tier { font-size: .65rem; color: var(--muted); margin-left: .4rem; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
   .tgt-pts { font-family: 'SF Mono', Menlo, monospace; font-weight: 700; font-size: .8rem; color: var(--accent); white-space: nowrap; }
   .tgt-team { display: flex; flex-wrap: wrap; gap: .4rem; }
-  .pl-mini { display: flex; align-items: center; gap: .35rem; background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: .2rem .45rem; font-size: .72rem; }
+  .pl-mini { display: flex; align-items: center; gap: .3rem; background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: .15rem .4rem .15rem .15rem; font-size: .72rem; }
+  .pl-mini .pav { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; background: var(--surface); border: 1px solid var(--border); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: .55rem; color: var(--muted); font-weight: 700; }
   .pl-mini .stag { font-family: 'SF Mono', Menlo, monospace; font-size: .6rem; padding: .05rem .3rem; border-radius: 3px; font-weight: 700; }
   .pl-mini .stag.ally { background: rgba(63,185,80,.12); color: var(--ally); border: 1px solid rgba(63,185,80,.3); }
   .pl-mini .name { font-weight: 600; max-width: 7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1341,7 +1342,9 @@
           if (m.username && m.username.indexOf('Reef') !== -1) return;
           const key = m.username + '|' + z.sid;
           if (!players[key] || (m.power||0) > players[key].power) {
-            players[key] = { name: m.username, sid: z.sid, unit: u, power: m.power||0 };
+            players[key] = { name: m.username, sid: z.sid, unit: u, power: m.power||0, avatar_url: m.avatar_url || null };
+          } else if (!players[key].avatar_url && m.avatar_url) {
+            players[key].avatar_url = m.avatar_url;
           }
         });
       });
@@ -1417,43 +1420,49 @@
         attack: [
           { type:'Enemy L2 #1', pts:20, slots:3 },
           { type:'Enemy L2 #2', pts:20, slots:3 },
-          { type:'Enemy L1 #1', pts:10, slots:1 },
-          { type:'Enemy L1 #2', pts:10, slots:1 },
-          { type:'Enemy L1 #3', pts:10, slots:1 }
+          { type:'Enemy L1 #1', pts:10, slots:2 },
+          { type:'Enemy L1 #2', pts:10, slots:2 },
+          { type:'Enemy L1 #3', pts:10, slots:2 },
+          { type:'Reserve / Roving', pts:0, reserve:true }
         ],
         defend: [
           { type:'Our L2 #1', pts:20, slots:2 },
           { type:'Our L2 #2', pts:20, slots:2 },
-          { type:'Our L1 (3)', pts:30, slots:2 }
+          { type:'Our L1 (3)', pts:30, slots:3 },
+          { type:'Reserve / Roving', pts:0, reserve:true }
         ]
       },
       {
         id:'s2', time:'15–30m', name:'Stage 2', focus:'L3 opens · keep L1/L2 held',
         attack: [
           { type:'Enemy L3', pts:40, slots:4 },
-          { type:'Hold Enemy L2s', pts:40, slots:3 },
-          { type:'Hold Enemy L1s', pts:30, slots:2 }
+          { type:'Hold Enemy L2s', pts:40, slots:4 },
+          { type:'Hold Enemy L1s', pts:30, slots:4 },
+          { type:'Reserve / Roving', pts:0, reserve:true }
         ],
         defend: [
           { type:'Our L3', pts:40, slots:3 },
-          { type:'Hold Our L2s', pts:40, slots:2 },
-          { type:'Hold Our L1s', pts:30, slots:1 }
+          { type:'Hold Our L2s', pts:40, slots:3 },
+          { type:'Hold Our L1s', pts:30, slots:2 },
+          { type:'Reserve / Roving', pts:0, reserve:true }
         ]
       },
       {
         id:'s3', time:'30m+', name:'Stage 3', focus:'Capital opens · hold ALL prior targets',
         attack: [
           { type:'Enemy Capital', pts:100, slots:5 },
-          { type:'Hold Enemy L3', pts:40, slots:2 },
-          { type:'Hold Enemy L2s', pts:40, slots:3 },
-          { type:'Hold Enemy L1s', pts:30, slots:2 },
+          { type:'Hold Enemy L3', pts:40, slots:3 },
+          { type:'Hold Enemy L2s', pts:40, slots:4 },
+          { type:'Hold Enemy L1s', pts:30, slots:4 },
+          { type:'Reserve / Roving', pts:0, reserve:true },
           { type:'Enemy Silos · server leaders designate watcher', pts:0, monitor:true, note:'1 watcher per attacking server. Don\'t assign bigs — leader picks from full roster.' }
         ],
         defend: [
           { type:'Our Capital', pts:100, slots:3 },
-          { type:'Hold Our L3', pts:40, slots:2 },
-          { type:'Hold Our L2s', pts:40, slots:2 },
-          { type:'Hold Our L1s', pts:30, slots:1 },
+          { type:'Hold Our L3', pts:40, slots:3 },
+          { type:'Hold Our L2s', pts:40, slots:3 },
+          { type:'Hold Our L1s', pts:30, slots:3 },
+          { type:'Reserve / Roving', pts:0, reserve:true },
           { type:'Our Silos · server leaders designate watcher', pts:0, monitor:true, note:'1 watcher per defending server. Don\'t assign bigs — leader picks from full roster.' }
         ]
       }
@@ -1464,33 +1473,67 @@
       const pools = buildStagePools(s.id);
       s.pools = pools;
       const usedAttack = new Set(), usedDefend = new Set();
+      // First pass: assign all non-reserve, non-monitor slots
       s.attack.forEach(t => {
-        if (t.monitor) { t.team = []; }
+        if (t.monitor || t.reserve) { t.team = []; }
         else { t.team = takeFromTop(pools.offense, t.slots, usedAttack); }
       });
       s.defend.forEach(t => {
-        if (t.monitor) { t.team = []; }
+        if (t.monitor || t.reserve) { t.team = []; }
         else { t.team = takeFromTop(pools.defense, t.slots, usedDefend); }
+      });
+      // Second pass: dump leftover pool members into reserve rows so no one is unassigned
+      s.attack.forEach(t => {
+        if (t.reserve) {
+          t.team = pools.offense.filter(p => !usedAttack.has(p.name + '|' + p.sid));
+          t.team.forEach(p => usedAttack.add(p.name + '|' + p.sid));
+        }
+      });
+      s.defend.forEach(t => {
+        if (t.reserve) {
+          t.team = pools.defense.filter(p => !usedDefend.has(p.name + '|' + p.sid));
+          t.team.forEach(p => usedDefend.add(p.name + '|' + p.sid));
+        }
       });
     });
     return { stages, strikeTeam, anchorSid, offensePool, defensePool, serverRoles };
   }
 
+  function plAvatar(p) {
+    const fallback = (p.name || '?').slice(0, 1);
+    if (p.avatar_url) {
+      const img = el('img', { class:'pav', src: p.avatar_url, alt:'', loading:'lazy' });
+      img.addEventListener('error', () => {
+        const sp = el('span', { class:'pav' }, fallback);
+        img.replaceWith(sp);
+      });
+      return img;
+    }
+    return el('span', { class:'pav' }, fallback);
+  }
+  function plMini(p, sideClass) {
+    return el('div', { class:'pl-mini', title: p.name + ' · S' + p.sid + ' · ' + fmtNum(p.power) },
+      plAvatar(p),
+      el('span', { class:'stag ' + (sideClass||'ally') }, 'S'+p.sid),
+      el('span', { class:'name' }, p.name || '—'),
+      el('span', { class:'pwr' }, fmtNum(p.power))
+    );
+  }
   function tgtRow(t, sideClass) {
+    let body;
+    if (t.monitor) {
+      body = el('div', { class:'tgt-monitor-note' }, t.note || 'Server leaders designate.');
+    } else if (t.team.length === 0) {
+      body = el('div', { class:'tgt-monitor-note' }, t.reserve ? 'No leftover players — pool fully assigned above.' : '—');
+    } else {
+      body = el('div', { class:'tgt-team' }, ...t.team.map(p => plMini(p, sideClass)));
+    }
     return el('div', { class:'tgt-row' },
       el('div', { class:'tgt-head' },
         el('div', { class:'tgt-name' }, t.type, el('span', { class:'tgt-tier' }, t.tier)),
-        el('div', { class:'tgt-pts' }, t.pts + ' pts/min')
+        el('div', { class:'tgt-pts' }, t.pts ? (t.pts + ' pts/min') : (t.reserve ? 'flex' : ''))
       ),
-      t.monitor
-        ? el('div', { class:'tgt-monitor-note' }, t.note || 'Server leaders designate.')
-        : el('div', { class:'tgt-team' },
-            ...t.team.map(p => el('div', { class:'pl-mini' },
-              el('span', { class:'stag ' + (sideClass||'ally') }, 'S'+p.sid),
-              el('span', { class:'name' }, p.name || '—'),
-              el('span', { class:'pwr' }, fmtNum(p.power))
-            ))
-          )
+      body
     );
   }
 
@@ -1742,11 +1785,7 @@
           'Strike Team — top 5 march power (also flex to capture pushes)'
         ),
         el('div', { class:'tgt-team' },
-          ...a.strikeTeam.map(p => el('div', { class:'pl-mini' },
-            el('span', { class:'stag ally' }, 'S'+p.sid),
-            el('span', { class:'name' }, p.name || '—'),
-            el('span', { class:'pwr' }, fmtNum(p.power))
-          ))
+          ...a.strikeTeam.map(p => plMini(p, 'ally'))
         )
       )
     );
