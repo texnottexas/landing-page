@@ -217,8 +217,19 @@
   .stage-label { color: var(--muted); text-transform: uppercase; font-weight: 700; font-size: .65rem; letter-spacing: .05em; padding-top: .1rem; }
   .stage-text { color: var(--text); line-height: 1.4; }
   .stage-text b { color: var(--accent); }
-  .debuff-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .55rem; }
+  .debuff-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .55rem; }
   @media (max-width: 700px) { .debuff-grid { grid-template-columns: 1fr; } }
+  .key-targets { background: rgba(248,81,73,.06); border: 1px solid rgba(248,81,73,.4); border-radius: 8px; padding: .65rem .75rem; margin-top: .65rem; }
+  .key-targets .kt-head { font-weight: 800; font-size: .8rem; color: var(--opp); margin-bottom: .25rem; letter-spacing: .03em; }
+  .key-targets .kt-sub { font-size: .7rem; color: var(--muted); margin-bottom: .55rem; line-height: 1.35; }
+  .kt-row { display: flex; flex-wrap: wrap; gap: .55rem; }
+  .kt-card { display: flex; align-items: center; gap: .45rem; background: var(--card); border: 1px solid rgba(248,81,73,.3); border-radius: 6px; padding: .35rem .55rem; min-width: 0; flex: 1 1 calc(20% - .55rem); }
+  @media (max-width: 800px) { .kt-card { flex: 1 1 calc(50% - .55rem); } }
+  .kt-card .kt-rank { font-family: 'SF Mono', Menlo, monospace; font-weight: 800; font-size: .68rem; color: var(--opp); width: 18px; flex-shrink: 0; }
+  .kt-card .kt-av { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; background: var(--surface); border: 1px solid var(--border); flex-shrink: 0; }
+  .kt-card .kt-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+  .kt-card .kt-name { font-weight: 700; font-size: .76rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kt-card .kt-meta { font-family: 'SF Mono', Menlo, monospace; font-size: .62rem; color: var(--muted); }
   .debuff-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .55rem; }
   .debuff-card .top { display: flex; align-items: center; gap: .55rem; margin-bottom: .35rem; }
   .debuff-card img { width: 44px; height: 44px; flex-shrink: 0; image-rendering: -webkit-optimize-contrast; }
@@ -1502,7 +1513,40 @@
     ));
     wrap.appendChild(planSection);
 
-    // ===== Debuff Items =====
+    // ===== Debuff Items + Key Targets =====
+    // Top 5 enemy players by best march power
+    const oppPlayers = {};
+    for (const z of data.opp.warzones) {
+      const fs = z.formations || {};
+      ['Army','Navy','AirForce'].forEach(u => {
+        (fs[u]||[]).forEach(m => {
+          const key = (m.username||'?') + '|' + z.sid;
+          if (!oppPlayers[key] || (m.power||0) > oppPlayers[key].power) {
+            oppPlayers[key] = { name: m.username, sid: z.sid, power: m.power||0, avatar_url: m.avatar_url };
+          }
+        });
+      });
+    }
+    const oppTop5 = Object.values(oppPlayers).sort((a,b) => b.power - a.power).slice(0, 5);
+    const ktRow = el('div', { class:'kt-row' });
+    oppTop5.forEach((p, i) => {
+      const av = p.avatar_url
+        ? el('img', { class:'kt-av', src: p.avatar_url, alt:'', loading:'lazy' })
+        : el('span', { class:'kt-av', style:'display:flex;align-items:center;justify-content:center;font-size:.65rem;color:var(--muted)' }, (p.name||'?').slice(0,1));
+      if (av.tagName === 'IMG') av.addEventListener('error', () => {
+        const sp = el('span', { class:'kt-av', style:'display:flex;align-items:center;justify-content:center;font-size:.65rem;color:var(--muted)' }, (p.name||'?').slice(0,1));
+        av.replaceWith(sp);
+      });
+      ktRow.appendChild(el('div', { class:'kt-card' },
+        el('span', { class:'kt-rank' }, '#'+(i+1)),
+        av,
+        el('div', { class:'kt-info' },
+          el('span', { class:'kt-name' }, p.name || '—'),
+          el('span', { class:'kt-meta' }, 'S'+p.sid+' · '+fmtNum(p.power))
+        )
+      ));
+    });
+
     const debuffSection = el('div', { class:'strat-section' },
       el('h4', null, 'Debuff Tools'),
       el('div', { class:'strat-note' }, 'Crafted from Production Factory. Use on enemy bases via the world map.'),
@@ -1514,17 +1558,18 @@
         debuffCard('assets/storm-duel-icons/corrosive_mucus.png',
           'Corrosive Mucus',
           'Increases enemy\'s march time (slows movement to/from targets).',
-          'Slow enemy reinforcements heading to contested ruins — opens capture window.'),
-        debuffCard('assets/storm-duel-icons/electro_missile.png',
-          'Electro Missile',
-          'Temporarily disables enemy Strengthening/Weakening towers.',
-          'Break tower coverage around enemy ruins before pushing.')
+          'Slow enemy reinforcements heading to contested ruins — opens capture window.')
       ),
       el('div', { class:'debuff-note' },
         el('b', null, 'Note: '),
         'Successive applications on the same target shrink the effective duration. ',
         el('b', null, 'Spread debuffs across multiple key enemies'),
         ' rather than spamming one — coordinate via voice chat.'
+      ),
+      el('div', { class:'key-targets' },
+        el('div', { class:'kt-head' }, 'KEY TARGETS — Top 5 Enemy Whales'),
+        el('div', { class:'kt-sub' }, 'Spread Magnetic Field + Mucus across these players. Strike Team prioritizes their HTs. Avatars + power pulled from current opponent march data.'),
+        ktRow
       )
     );
     wrap.appendChild(debuffSection);
