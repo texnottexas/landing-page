@@ -768,32 +768,36 @@
       ))
     );
 
+    let lastLabel = null, lastClockTxt = null, lastClockClass = null;
     function tick() {
       const now = Math.floor(Date.now()/1000);
-      let label, target = sched.fightBeginTime;
+      let label, clockTxt, clockClass, target = sched.fightBeginTime;
       if (now < sched.fightBeginTime) {
-        clock.className = 'timer-clock pre';
-        clock.textContent = fmtCountdown(sched.fightBeginTime - now);
+        clockClass = 'timer-clock pre';
+        clockTxt = fmtCountdown(sched.fightBeginTime - now);
         label = 'Until Battle Start';
       } else if (now < sched.fightEndTime) {
-        clock.className = 'timer-clock live';
-        clock.textContent = 'LIVE';
+        clockClass = 'timer-clock live';
+        clockTxt = 'LIVE';
         label = 'Battle in progress';
         target = sched.fightEndTime;
       } else {
-        clock.className = 'timer-clock over';
-        clock.textContent = 'OVER';
+        clockClass = 'timer-clock over';
+        clockTxt = 'OVER';
         label = 'Battle ended';
         target = null;
       }
-      phase.textContent = label;
-      clearNode(next);
+      // Only mutate DOM when value actually changes — avoids GT retranslate loop on the label.
+      if (clockClass !== lastClockClass) { clock.className = clockClass; lastClockClass = clockClass; }
+      if (clockTxt !== lastClockTxt) { clock.textContent = clockTxt; lastClockTxt = clockTxt; }
+      if (label !== lastLabel) { phase.textContent = label; lastLabel = label; }
       stripEl.querySelectorAll('.step').forEach(stEl => {
         const k = stEl.getAttribute('data-k');
         const ts = sched[k];
-        stEl.classList.remove('done', 'cur');
-        if (now >= ts) stEl.classList.add('done');
-        if (target && ts === target) { stEl.classList.add('cur'); stEl.classList.remove('done'); }
+        const wantDone = now >= ts && !(target && ts === target);
+        const wantCur  = !!(target && ts === target);
+        if (stEl.classList.contains('done') !== wantDone) stEl.classList.toggle('done', wantDone);
+        if (stEl.classList.contains('cur')  !== wantCur)  stEl.classList.toggle('cur',  wantCur);
       });
     }
     tick();
