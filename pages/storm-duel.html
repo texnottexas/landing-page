@@ -256,6 +256,20 @@
   .stage-assign .lab .stage-tag.s3 { background: rgba(248,81,73,.15); color: #f85149; border: 1px solid rgba(248,81,73,.35); }
   .silo-callout { background: rgba(217,153,34,.08); border: 1px solid rgba(217,153,34,.3); border-radius: 6px; padding: .5rem .65rem; font-size: .72rem; color: var(--text); margin-top: .55rem; line-height: 1.4; }
   .silo-callout b { color: #d29922; }
+  .srv-role-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: .45rem; }
+  @media (max-width: 800px) { .srv-role-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px) { .srv-role-grid { grid-template-columns: 1fr; } }
+  .srv-role-card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .5rem .55rem; }
+  .srv-role-card.defend { border-left: 3px solid var(--ally); background: rgba(63,185,80,.04); }
+  .srv-role-card.attack { border-left: 3px solid var(--opp); background: rgba(248,81,73,.04); }
+  .srv-role-card .sr-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: .2rem; gap: .35rem; }
+  .srv-role-card .sr-sid { font-family: 'SF Mono', Menlo, monospace; font-weight: 800; font-size: .85rem; color: var(--accent); }
+  .srv-role-card .sr-tag { font-size: .6rem; font-weight: 800; letter-spacing: .04em; padding: .1rem .35rem; border-radius: 3px; }
+  .srv-role-card.defend .sr-tag { background: rgba(63,185,80,.15); color: var(--ally); border: 1px solid rgba(63,185,80,.35); }
+  .srv-role-card.attack .sr-tag { background: rgba(248,81,73,.15); color: var(--opp); border: 1px solid rgba(248,81,73,.35); }
+  .srv-role-card .sr-leader { font-size: .68rem; color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .srv-role-card .sr-buff { font-size: .62rem; color: var(--muted); font-family: 'SF Mono', Menlo, monospace; margin-top: .15rem; }
+  .srv-role-card .sr-anchor { font-size: .58rem; color: #d29922; font-weight: 800; letter-spacing: .04em; margin-top: .15rem; }
   .strat-legend { display: flex; flex-wrap: wrap; gap: .8rem; font-size: .7rem; color: var(--muted); margin-top: .4rem; justify-content: center; }
   .strat-legend .swatch { display: inline-block; width: 14px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: .25rem; border: 1px solid; }
   .win-cond { display: grid; grid-template-columns: 24px 1fr; gap: .6rem; font-size: .78rem; padding: .35rem 0; align-items: center; border-bottom: 1px dashed var(--border); }
@@ -1270,14 +1284,19 @@
 
   function buildAssignments(data) {
     const ally = data.ally.warzones;
-    // Highest-combat-buff server = defensive anchor (lower marches stay home)
-    let anchorSid = null, anchorSum = -1;
-    for (const z of ally) {
-      const cb = z.combat_buffs_L3;
-      if (!cb) continue;
-      const sum = (cb.L3_pct['All Units ATK']||0) + (cb.L3_pct['All Units DEF']||0) + (cb.L3_pct['All Units HP']||0);
-      if (sum > anchorSum) { anchorSum = sum; anchorSid = z.sid; }
-    }
+    // Rank ALL ally servers by combat-buff sum. Top 2 → DEFEND, bottom 3 → ATTACK.
+    const serverRoles = ally.map(z => {
+      const cb = z.combat_buffs_L3 || { L3_pct:{} };
+      const buffSum = (cb.L3_pct['All Units ATK']||0) + (cb.L3_pct['All Units DEF']||0) + (cb.L3_pct['All Units HP']||0);
+      const fs = z.formations || {};
+      const top10Pwr = ['Army','Navy','AirForce'].reduce((s,u) => s + ((fs[u]||[]).slice(0,10).reduce((x,m) => x+(m.power||0), 0)), 0);
+      return { sid: z.sid, leader: z.squad?.leader, buffSum, top10Pwr };
+    }).sort((a,b) => b.buffSum - a.buffSum);
+    serverRoles.forEach((s, i) => { s.role = i < 2 ? 'DEFEND' : 'ATTACK'; s.rank = i+1; });
+    const defendSids = new Set(serverRoles.filter(s => s.role === 'DEFEND').map(s => s.sid));
+    const attackSids = new Set(serverRoles.filter(s => s.role === 'ATTACK').map(s => s.sid));
+    const anchorSid = serverRoles[0].sid;
+
     const players = {};
     for (const z of ally) {
       const fs = z.formations || {};
@@ -1292,10 +1311,10 @@
       });
     }
     const ranked = Object.values(players).sort((a,b) => b.power - a.power);
-    // Strike Team = top 5 power overall
+    // Strike Team = top 5 power overall. Always-on but ALSO eligible to fill stage slots.
     const strikeTeam = ranked.slice(0, 5);
-    const offensePool = ranked.slice(5).filter(p => p.sid !== anchorSid);
-    const defensePool = ranked.slice(5).filter(p => p.sid === anchorSid);
+    const offensePool = ranked.filter(p => attackSids.has(p.sid));
+    const defensePool = ranked.filter(p => defendSids.has(p.sid));
     // For each stage, allocate from pools to current targets
     const take = (pool, n, used) => {
       const out = [];
@@ -1353,7 +1372,7 @@
       s.attack.forEach(t => { t.team = take(offensePool, t.slots, usedAttack); });
       s.defend.forEach(t => { t.team = take(defensePool, t.slots, usedDefend); });
     });
-    return { stages, strikeTeam, anchorSid, offensePool, defensePool };
+    return { stages, strikeTeam, anchorSid, offensePool, defensePool, serverRoles };
   }
 
   function tgtRow(t, sideClass) {
@@ -1582,21 +1601,37 @@
         roleCard('scout', 'Scouts', 'Less combat-focused. Cap empty L1 ruins, take down weakening towers, reinforce alliance towers, track key enemies. Both attack/defense.'),
         roleCard('mm', 'Mechanical Masters', '~90% defense. Build weakening towers at L2 ruins (Stage 1), then split between L2 and L3 (Stage 2). Pull back to capital region (Stage 3).'),
         roleCard('seal', 'Seal Team', 'Heavy hitters who hold top 100 of warzone. Split offense/defense. Hold ruins, port + burn enemy hives. Stage 3: capital + silo push.'),
-        roleCard('strike', 'Strike Team', 'Top 5 active players. Kill key enemy whales and keep their HTs dead. Coordinate with Scouts to track location. Always-on across all stages.')
+        roleCard('strike', 'Strike Team', 'Top 5 active players. Kill key enemy whales + keep their HTs dead. Also flex to capture pushes when whales are down. Always-on across all stages.')
       )
     ));
 
     // ===== Stage-keyed Squad Assignment =====
     const a = buildAssignments(data);
+
+    // Server Roles section
+    const srvRoleHost = el('div', { class:'srv-role-grid' });
+    a.serverRoles.forEach(s => {
+      srvRoleHost.appendChild(el('div', { class:'srv-role-card ' + s.role.toLowerCase() },
+        el('div', { class:'sr-top' },
+          el('span', { class:'sr-sid' }, 'S'+s.sid),
+          el('span', { class:'sr-tag' }, s.role)
+        ),
+        el('div', { class:'sr-leader' }, s.leader || '—'),
+        el('div', { class:'sr-buff' }, 'buffs ' + s.buffSum.toFixed(0) + '%'),
+        s.sid === a.anchorSid ? el('div', { class:'sr-anchor' }, '★ DEFENSIVE ANCHOR') : null
+      ));
+    });
     const assignSection = el('div', { class:'strat-section' },
-      el('h4', null, 'Suggested Stage Assignment'),
-      el('div', { class:'strat-note' }, 'Auto-derived from current march power. Defensive anchor = ally server with highest combat-buff stack (its marches stay home). Other 4 servers feed offense lane in descending power. Reef excluded.'),
-      a.anchorSid ? el('div', { class:'def-anchor' }, 'Defensive Anchor: ', el('b', null, 'S' + a.anchorSid), ' — strongest combat-buff stack.') : null,
+      el('h4', null, 'Server Lane Assignment'),
+      el('div', { class:'strat-note' }, 'Top 2 ally servers by combat-buff stack defend home (bigger buff stack = better at holding). Other 3 push enemy server. Anchor = highest buff stack overall.'),
+      srvRoleHost,
+      el('h4', { style:'margin-top:.85rem' }, 'Suggested Stage Assignment'),
+      el('div', { class:'strat-note' }, 'Auto-derived from march power within each server\'s lane. Strike Team appears separately AND fills stage slots when their lane needs them. Reef excluded.'),
       // Strike team
       el('div', { class:'stage-assign' },
         el('div', { class:'lab' },
           el('span', { class:'stage-tag s3', style:'background:rgba(255,90,90,.18);color:#ff5a5a;border-color:rgba(255,90,90,.5)' }, 'ALL STAGES'),
-          'Strike Team — top 5 march power'
+          'Strike Team — top 5 march power (also flex to capture pushes)'
         ),
         el('div', { class:'tgt-team' },
           ...a.strikeTeam.map(p => el('div', { class:'pl-mini' },
@@ -1609,14 +1644,16 @@
     );
 
     a.stages.forEach(s => {
+      const attackSidsList = a.serverRoles.filter(x => x.role === 'ATTACK').map(x => 'S'+x.sid).join(' + ');
       const attackCol = el('div', { class:'lane-col attack' },
         el('h5', null, s.name + ' — ATTACK'),
-        el('div', { class:'lane-sub' }, s.time + ' · ' + s.focus)
+        el('div', { class:'lane-sub' }, s.time + ' · ' + attackSidsList + ' · ' + s.focus)
       );
       s.attack.forEach(t => attackCol.appendChild(tgtRow({ ...t, tier: t.pts ? t.pts+'/min' : 'silo' }, 'ally')));
+      const defendSidsList = a.serverRoles.filter(x => x.role === 'DEFEND').map(x => 'S'+x.sid).join(' + ');
       const defendCol = el('div', { class:'lane-col defend' },
         el('h5', null, s.name + ' — DEFEND'),
-        el('div', { class:'lane-sub' }, s.time + ' · anchor S' + (a.anchorSid || '?'))
+        el('div', { class:'lane-sub' }, s.time + ' · ' + defendSidsList)
       );
       s.defend.forEach(t => defendCol.appendChild(tgtRow({ ...t, tier: t.pts ? t.pts+'/min' : 'silo' }, 'ally')));
       assignSection.appendChild(el('div', { class:'stage-assign' },
