@@ -1585,11 +1585,22 @@
   }
 
   function applyShortcodeConfig(playerName, ids, persistToStorage) {
+    // Preserve marchGroups + shortcode that were just written by saveMarches /
+    // a prior session — fakeSaved would otherwise clobber them on setItem below.
+    var priorMarches = [];
+    var priorShortcode = null;
+    try {
+      var prior = JSON.parse(localStorage.getItem('playerReport') || '{}');
+      if (Array.isArray(prior.marchGroups)) priorMarches = prior.marchGroups;
+      if (prior.shortcode) priorShortcode = prior.shortcode;
+    } catch(e) {}
     var fakeSaved = {
       player: { name: playerName, avatar: null, avatarFallback: (playerName || '?').charAt(0).toUpperCase(), level: 0, server: '', nationalflag: 0 },
       reportIds: ids,
+      marchGroups: priorMarches,
       _viewOnly: persistToStorage === false
     };
+    if (priorShortcode) fakeSaved.shortcode = priorShortcode;
     // Always clear report data cache
     localStorage.removeItem('playerReportData');
     // Only persist playerReport if explicitly allowed (default: true for wizard actions)
@@ -2835,8 +2846,12 @@
     var saved = {
       player: wizardState.player,
       reportIds: wizardState.reportData.map(function(r) { return r.id; }),
-      marchGroups: []
+      marchGroups: loadMarches()
     };
+    try {
+      var prior = JSON.parse(localStorage.getItem('playerReport') || '{}');
+      if (prior.shortcode) saved.shortcode = prior.shortcode;
+    } catch(e) {}
     localStorage.setItem('playerReport', JSON.stringify(saved));
 
     var cache = {};
@@ -8887,8 +8902,12 @@
     var saved = {
       player: wizardState.player,
       reportIds: wizardState.reportData.map(function(r) { return r.id; }),
-      marchGroups: []
+      marchGroups: loadMarches()
     };
+    try {
+      var prior = JSON.parse(localStorage.getItem('playerReport') || '{}');
+      if (prior.shortcode) saved.shortcode = prior.shortcode;
+    } catch(e) {}
     localStorage.setItem('playerReport', JSON.stringify(saved));
 
     var cache = {};
