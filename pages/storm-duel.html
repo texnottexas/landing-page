@@ -1356,9 +1356,9 @@
     let baseOffense = ranked.filter(p => attackSids.has(p.sid));
     let baseDefense = ranked.filter(p => defendSids.has(p.sid));
 
-    // Rebalance: shift 6 attack-pool players to defense as flex-defenders so the
-    // overall split isn't too attack-heavy. Seeded so reload yields same set.
-    const REBALANCE_COUNT = 6;
+    // Rebalance: shift a small set of attack-pool players to defense as flex-defenders
+    // so the overall split isn't too attack-heavy. Seeded so reload yields same set.
+    const REBALANCE_COUNT = 3;
     const FLEX_KEYS_PRE = new Set(['Tex|2864', 'PeeWee|2864']);
     function seededRng(seed) { let s = seed >>> 0; return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; }; }
     const rng = seededRng(7); // arbitrary stable seed
@@ -1381,8 +1381,8 @@
     // Stage 2: Tex + PeeWee defend (TESSIN swaps to attack to balance attack power).
     // Stage 3: flex — no override; UI note covers it.
     const STAGE_OVERRIDES = {
-      's1': { defendPins: [{ name:'Tex', sid:2864 }, { name:'TESSIN', sid:2696 }],
-              forceToAttack: [{ name:'PeeWee', sid:2864 }] },
+      's1': { defendPins: [{ name:'Tex', sid:2864 }, { name:'PeeWee', sid:2864 }],
+              forceToAttack: [] },
       's2': { defendPins: [{ name:'Tex', sid:2864 }, { name:'PeeWee', sid:2864 }],
               forceToAttack: [] }
     };
@@ -1473,7 +1473,8 @@
           { type:'Reserve / Roving', pts:0, reserve:true }
         ],
         defend: [
-          { type:'Our L2 #1', pts:20, slots:2 },
+          // Stage 1: Tex pairs with TESSIN on L2 #1 (move TESSIN-tier off PeeWee).
+          { type:'Our L2 #1', pts:20, slots:2, forced:[{name:'Tex', sid:2864},{name:'TESSIN', sid:2696}] },
           { type:'Our L2 #2', pts:20, slots:2 },
           { type:'Our L1 (3)', pts:30, slots:3 },
           { type:'Reserve / Roving', pts:0, reserve:true }
@@ -1516,18 +1517,30 @@
     ];
     const attackSidsArr = serverRoles.filter(s => s.role === 'ATTACK').map(s => s.sid);
     const defendSidsArr = serverRoles.filter(s => s.role === 'DEFEND').map(s => s.sid);
+    const allocSlot = (pool, t, used) => {
+      const out = [];
+      if (t.forced) {
+        t.forced.forEach(ref => {
+          const p = pool.find(x => x.name === ref.name && x.sid === ref.sid && !used.has(x.name + '|' + x.sid));
+          if (p) { out.push(p); used.add(p.name + '|' + p.sid); }
+        });
+      }
+      const remaining = (t.slots || 0) - out.length;
+      if (remaining > 0) out.push(...takeFromTop(pool, remaining, used));
+      return out;
+    };
     stages.forEach(s => {
       const pools = buildStagePools(s.id);
       s.pools = pools;
       const usedAttack = new Set(), usedDefend = new Set();
-      // First pass: assign all non-reserve, non-monitor slots
+      // First pass: assign all non-reserve, non-monitor slots (honor 'forced')
       s.attack.forEach(t => {
         if (t.monitor || t.reserve) { t.team = []; }
-        else { t.team = takeFromTop(pools.offense, t.slots, usedAttack); }
+        else { t.team = allocSlot(pools.offense, t, usedAttack); }
       });
       s.defend.forEach(t => {
         if (t.monitor || t.reserve) { t.team = []; }
-        else { t.team = takeFromTop(pools.defense, t.slots, usedDefend); }
+        else { t.team = allocSlot(pools.defense, t, usedDefend); }
       });
       // Second pass: dump leftover pool members into reserve rows so no one is unassigned
       s.attack.forEach(t => {
@@ -1692,7 +1705,7 @@
         el('span', { class:'stage-name' }, 'Stage 1'),
         el('span', { class:'stage-focus' }, 'Focus: L1 + L2 Ruins')
       ),
-      stageRow('Defense', [el('b', null, 'Tex + TESSIN'), ' anchor home defense in S1 (PeeWee shifts to attack to ease L2 power stacking). MM build 2 weakening towers per L2. Hold our L2s + L1s.']),
+      stageRow('Defense', [el('b', null, 'Tex + TESSIN'), ' on L2 #1; ', el('b', null, 'PeeWee'), ' anchors L2 #2 (avoid stacking Tex+PeeWee on same ruin). MM build 2 weakening towers per L2. Hold L1s.']),
       stageRow('Offense', ['Top Seal Team push enemy L2s (best 20/min target). Strike Team kills their pushers.']),
       stageRow('Scouts', ['Cap empty enemy L1s (10/min each, real points). Smash enemy weakening towers.']),
       stageRow('Debuffs', [el('b', null, 'Magnetic Field'), ' on enemy whales pushing our L2s — no relocate = stuck after death, walks back.']),
@@ -1819,7 +1832,7 @@
     const assignSection = el('div', { class:'strat-section' },
       el('h4', null, 'Server Lane Assignment'),
       el('div', { class:'strat-note' }, '3 servers DEFEND, 2 ATTACK (defense-heavy — capital + ruins must be held). S2696 pinned as primary defender; other 2 defenders = top combat-buff stacks. ',
-        el('b', null, '6 attack-pool players additionally rebalanced to defense as flex-defenders'),
+        el('b', null, '3 attack-pool players additionally rebalanced to defense as flex-defenders'),
         ' so the lane split isn\'t too attack-heavy. ',
         el('b', null, 'Stage 1: Tex + TESSIN defend, PeeWee attacks. Stage 2: Tex + PeeWee defend. Stage 3: Tex + PeeWee flex.')
       ),
@@ -1852,25 +1865,13 @@
       );
       s.defend.forEach(t => defendCol.appendChild(tgtRow({ ...t, tier: t.pts ? t.pts+'/min' : 'silo' }, 'ally')));
 
-      // Stage-specific pin/swap note
+      // Stage 3 flex banner only — s1/s2 pins are reflected directly in the rosters.
       let pinNote = null;
       if (s.id === 's3') {
         pinNote = el('div', { class:'pin-note flex' },
           el('b', null, 'Flex: '),
           'Tex + PeeWee shift between attack and defense as the fight dictates.'
         );
-      } else if (s.pools && (s.pools.pinned?.length || s.pools.forced?.length)) {
-        const parts = [];
-        if (s.pools.pinned && s.pools.pinned.length) {
-          parts.push(el('span', null, el('b', null, 'Pinned to defense: '), s.pools.pinned.map(p => p.name).join(' + ')));
-        }
-        if (s.pools.forced && s.pools.forced.length) {
-          parts.push(el('span', null, ' · ', el('b', null, 'Forced to attack: '), s.pools.forced.map(p => p.name + ' (S'+p.sid+')').join(', ')));
-        }
-        if (s.pools.swapped) {
-          parts.push(el('span', null, ' · ', s.pools.swapped.name + ' (S' + s.pools.swapped.sid + ') swaps to attack to balance'));
-        }
-        pinNote = el('div', { class:'pin-note pin' }, ...parts);
       }
 
       assignSection.appendChild(el('div', { class:'stage-assign' },
