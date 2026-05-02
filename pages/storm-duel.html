@@ -1201,35 +1201,42 @@
       { dx: -regionR, dy: 0, lab:'W' }
     ];
     silos.forEach(s => {
-      svg.appendChild(svgEl('circle', { cx: cx + s.dx, cy: cy + s.dy, r: 8, fill:'#1c2940', stroke:'#388bfd', 'stroke-width':1.8 }));
-      svg.appendChild(svgEl('text', { x: cx + s.dx, y: cy + s.dy + 2.8, 'text-anchor':'middle', fill:'#79c0ff', 'font-size':8, 'font-weight':800 }, 'S'));
+      const sg = svgEl('g', null);
+      sg.appendChild(svgEl('circle', { cx: cx + s.dx, cy: cy + s.dy, r: 8, fill:'#1c2940', stroke:'#388bfd', 'stroke-width':1.8 }));
+      sg.appendChild(svgEl('text', { x: cx + s.dx, y: cy + s.dy + 2.8, 'text-anchor':'middle', fill:'#79c0ff', 'font-size':8, 'font-weight':800 }, 'S'));
+      sg.appendChild(svgEl('title', null, 'Silo · opens 30m · auto-kills enemy capital reinforcements if held by opposing side'));
+      svg.appendChild(sg);
     });
 
     // ===== Buildings in left quadrant — L3 OUTSIDE the capital region =====
     // L1 (pink) — 3, far edge of map
-    const L1pts = [ {x: sq.x + 32, y: cy - 80}, {x: sq.x + 32, y: cy}, {x: sq.x + 32, y: cy + 80} ];
-    // L2 (green) — 2, mid
-    const L2pts = [ {x: sq.x + 80, y: cy - 50}, {x: sq.x + 80, y: cy + 50} ];
+    const L1pts = [ {x: sq.x + 28, y: cy - 80}, {x: sq.x + 28, y: cy}, {x: sq.x + 28, y: cy + 80} ];
+    // L2 (green) — 2, staggered horizontally between L1s and L3 (also vertically tighter)
+    const L2pts = [ {x: sq.x + 64, y: cy - 44}, {x: sq.x + 64, y: cy + 44} ];
     // L3 (red) — 1, between L2s and capital region edge (NOT overlapping diamond)
-    // diamond left vertex at cx - regionR. Place L3 ~14px outside that.
-    const L3pt = { x: cx - regionR - 24, y: cy };
+    const L3pt = { x: cx - regionR - 22, y: cy };
 
-    const drawBox = (x, y, fill, stroke, lab, sub, t) => {
-      const w = 40, h = 26;
-      svg.appendChild(svgEl('rect', { x: x-w/2, y: y-h/2, width:w, height:h, rx:5, ry:5, fill, stroke, 'stroke-width':1.6 }));
-      svg.appendChild(svgEl('text', { x, y: y+1, 'text-anchor':'middle', fill:'#e6edf3', 'font-size':9, 'font-weight':700 }, lab));
-      if (sub) svg.appendChild(svgEl('text', { x, y: y+12, 'text-anchor':'middle', fill:'#8b949e', 'font-size':7 }, sub));
-      if (t) svg.appendChild(svgEl('text', { x, y: y-h/2 - 3, 'text-anchor':'middle', fill:'#79c0ff', 'font-size':7, 'font-weight':700 }, t));
+    const drawBox = (x, y, fill, stroke, lab, tooltip, t) => {
+      const w = 28, h = 28;
+      const g = svgEl('g', { class: 'bldg' });
+      g.appendChild(svgEl('rect', { x: x-w/2, y: y-h/2, width:w, height:h, rx:5, ry:5, fill, stroke, 'stroke-width':1.8 }));
+      g.appendChild(svgEl('text', { x, y: y+4, 'text-anchor':'middle', fill:'#e6edf3', 'font-size':12, 'font-weight':800 }, lab));
+      // Native SVG tooltip on hover
+      if (tooltip) g.appendChild(svgEl('title', null, tooltip));
+      if (t) svg.appendChild(svgEl('text', { x, y: y-h/2 - 3, 'text-anchor':'middle', fill:'#79c0ff', 'font-size':8, 'font-weight':800 }, t));
+      svg.appendChild(g);
     };
-    L1pts.forEach(p => drawBox(p.x, p.y, '#3a1f33', '#d75397', 'L1', '10/min', null));
-    L2pts.forEach(p => drawBox(p.x, p.y, '#1f3a25', '#3fb950', 'L2', '20/min', null));
-    drawBox(L3pt.x, L3pt.y, '#3a2020', '#f85149', 'L3', '40/min', '15m');
+    L1pts.forEach(p => drawBox(p.x, p.y, '#3a1f33', '#d75397', 'L1', 'L1 Ruin · 10 pts/min · open from start', null));
+    L2pts.forEach(p => drawBox(p.x, p.y, '#1f3a25', '#3fb950', 'L2', 'L2 Ruin · 20 pts/min · open from start', null));
+    drawBox(L3pt.x, L3pt.y, '#3a2020', '#f85149', 'L3', 'L3 Ruin · 40 pts/min · opens 15 min', '15m');
 
     // Capital (drawn last, on top of region)
-    svg.appendChild(svgEl('circle', { cx, cy, r: 24, fill:'#3a3320', stroke:'#d29922', 'stroke-width':2.2 }));
-    svg.appendChild(svgEl('text', { x: cx, y: cy + 1, 'text-anchor':'middle', fill:'#e6edf3', 'font-size':9, 'font-weight':800 }, 'CAP'));
-    svg.appendChild(svgEl('text', { x: cx, y: cy + 11, 'text-anchor':'middle', fill:'#d29922', 'font-size':7, 'font-weight':700 }, '100/min'));
-    svg.appendChild(svgEl('text', { x: cx + 30, y: cy - 18, 'text-anchor':'start', fill:'#79c0ff', 'font-size':7, 'font-weight':700 }, '30m'));
+    const capG = svgEl('g', null);
+    capG.appendChild(svgEl('circle', { cx, cy, r: 24, fill:'#3a3320', stroke:'#d29922', 'stroke-width':2.2 }));
+    capG.appendChild(svgEl('text', { x: cx, y: cy + 4, 'text-anchor':'middle', fill:'#e6edf3', 'font-size':12, 'font-weight':800 }, 'CAP'));
+    capG.appendChild(svgEl('title', null, 'Capital · 100 pts/min · opens 30 min'));
+    svg.appendChild(capG);
+    svg.appendChild(svgEl('text', { x: cx + 30, y: cy - 18, 'text-anchor':'start', fill:'#79c0ff', 'font-size':8, 'font-weight':800 }, '30m'));
 
     return svg;
   }
@@ -1423,7 +1430,7 @@
     wrap.appendChild(el('div', { class:'strat-section' },
       el('h4', null, 'Battlefield Layout'),
       el('div', { class:'strat-note' },
-        'Two server maps — ours (defend) and theirs (attack). Each map has 4 quadrants (X dividers); only ONE quadrant is active per fight. Active quadrant holds 3 L1 + 2 L2 + 1 L3 ruins. Capital sits at exact center of the map every time, surrounded by 4 Silos (corners of the dashed capital region). ',
+        'Two server maps — ours (defend) and theirs (attack). Each map has 4 quadrants (X dividers); only ONE quadrant is active per fight. Active quadrant holds 3 L1 + 2 L2 + 1 L3 ruins. Capital sits at the exact center every time, ringed by 4 Silos at N/E/S/W vertices of the diamond capital region. Hover any building for point value + unlock time. ',
         el('b', null, 'Assuming the LEFT quadrant is active for both sides.'),
         ' Players choose to ATTACK enemy server or DEFEND ours — switching has a 5-minute cooldown.'
       ),
