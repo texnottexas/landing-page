@@ -1308,7 +1308,8 @@
 
   function buildAssignments(data) {
     const ally = data.ally.warzones;
-    // S2864 pinned as primary defender (Tex initial defense). Second defender = next-best buff stack.
+    // S2696 pinned as primary defender (swapped with S2864 — S2864 now attacks).
+    // Second defender = next-best buff stack from remaining 4.
     const serverRoles = ally.map(z => {
       const cb = z.combat_buffs_L3 || { L3_pct:{} };
       const buffSum = (cb.L3_pct['All Units ATK']||0) + (cb.L3_pct['All Units DEF']||0) + (cb.L3_pct['All Units HP']||0);
@@ -1316,10 +1317,10 @@
       const top10Pwr = ['Army','Navy','AirForce'].reduce((s,u) => s + ((fs[u]||[]).slice(0,10).reduce((x,m) => x+(m.power||0), 0)), 0);
       return { sid: z.sid, leader: z.squad?.leader, buffSum, top10Pwr };
     });
-    // Sort: S2864 always first (anchor), then by buff stack desc
+    // Sort: S2696 always first (anchor), then by buff stack desc
     serverRoles.sort((a, b) => {
-      if (a.sid === 2864) return -1;
-      if (b.sid === 2864) return 1;
+      if (a.sid === 2696) return -1;
+      if (b.sid === 2696) return 1;
       return b.buffSum - a.buffSum;
     });
     serverRoles.forEach((s, i) => { s.role = i < 2 ? 'DEFEND' : 'ATTACK'; s.rank = i+1; });
@@ -1653,7 +1654,7 @@
     });
     const assignSection = el('div', { class:'strat-section' },
       el('h4', null, 'Server Lane Assignment'),
-      el('div', { class:'strat-note' }, 'S2864 pinned as primary defender (Tex on initial defense to secure homeland). Second defender = next-best combat-buff stack. Other 3 servers push enemy.'),
+      el('div', { class:'strat-note' }, 'S2696 pinned as primary defender (swap with S2864). S2864 + heavy hitters (8960mr, Sparta🥕) push enemy server. Second defender = next-best combat-buff stack from the other 4.'),
       srvRoleHost,
       el('h4', { style:'margin-top:.85rem' }, 'Suggested Stage Assignment'),
       el('div', { class:'strat-note' }, 'Auto-derived from march power within each server\'s lane. Strike Team appears separately AND fills stage slots when their lane needs them. Reef excluded.'),
