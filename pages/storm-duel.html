@@ -176,6 +176,35 @@
     white-space: nowrap;
   }
 
+  /* Strategy tab */
+  .strat-section { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .85rem; margin-bottom: .75rem; }
+  .strat-section h4 { font-size: .85rem; color: var(--text); margin-bottom: .35rem; }
+  .strat-note { font-size: .72rem; color: var(--muted); margin-bottom: .55rem; line-height: 1.4; }
+  .strat-svg-host { display: flex; justify-content: center; }
+  .battle-svg { width: 100%; max-width: 560px; height: auto; }
+  .capture-svg { width: 100%; max-width: 720px; height: auto; }
+  .strat-legend { display: flex; flex-wrap: wrap; gap: .8rem; font-size: .7rem; color: var(--muted); margin-top: .4rem; justify-content: center; }
+  .strat-legend .swatch { display: inline-block; width: 14px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: .25rem; border: 1px solid; }
+  .win-cond { display: grid; grid-template-columns: 24px 1fr; gap: .6rem; font-size: .78rem; padding: .35rem 0; align-items: center; border-bottom: 1px dashed var(--border); }
+  .win-cond:last-child { border-bottom: 0; }
+  .win-cond .num { background: var(--accent); color: var(--bg); width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: .75rem; }
+  .def-anchor { background: rgba(63,185,80,.08); border: 1px solid rgba(63,185,80,.3); border-radius: 6px; padding: .55rem .7rem; font-size: .78rem; margin-bottom: .65rem; color: var(--text); }
+  .def-anchor b { color: var(--ally); }
+  .tgt-row { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .55rem .65rem; margin-bottom: .45rem; }
+  .tgt-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .4rem; gap: .5rem; }
+  .tgt-name { font-weight: 700; font-size: .82rem; color: var(--text); }
+  .tgt-name .tgt-tier { font-size: .65rem; color: var(--muted); margin-left: .4rem; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
+  .tgt-pts { font-family: 'SF Mono', Menlo, monospace; font-weight: 700; font-size: .8rem; color: var(--accent); white-space: nowrap; }
+  .tgt-team { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .pl-mini { display: flex; align-items: center; gap: .35rem; background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: .2rem .45rem; font-size: .72rem; }
+  .pl-mini .stag { font-family: 'SF Mono', Menlo, monospace; font-size: .6rem; padding: .05rem .3rem; border-radius: 3px; font-weight: 700; }
+  .pl-mini .stag.ally { background: rgba(63,185,80,.12); color: var(--ally); border: 1px solid rgba(63,185,80,.3); }
+  .pl-mini .name { font-weight: 600; max-width: 7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pl-mini .pwr { font-family: 'SF Mono', Menlo, monospace; color: var(--muted); font-size: .65rem; }
+  @media (max-width: 700px) {
+    .pl-mini .name { max-width: 5rem; }
+  }
+
   /* Buff comparison */
   .buff-stack { display: flex; flex-direction: column; gap: .35rem; padding: .35rem .5rem; }
   .buff-line { display: grid; grid-template-columns: 70px 1fr 50px; gap: .5rem; align-items: center; font-size: .75rem; }
@@ -1025,6 +1054,205 @@
     return wrap;
   }
 
+  // ----- TAB: Strategy -----
+  function svgEl(tag, attrs, ...kids) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const e = document.createElementNS(ns, tag);
+    if (attrs) Object.keys(attrs).forEach(k => e.setAttribute(k, attrs[k]));
+    kids.forEach(k => {
+      if (k == null || k === false) return;
+      if (typeof k === 'string' || typeof k === 'number') e.appendChild(document.createTextNode(String(k)));
+      else e.appendChild(k);
+    });
+    return e;
+  }
+
+  function buildBattlefieldMap() {
+    const VB_W = 560, VB_H = 440;
+    const svg = svgEl('svg', { viewBox: '0 0 '+VB_W+' '+VB_H, class: 'battle-svg', xmlns:'http://www.w3.org/2000/svg' });
+    // background
+    svg.appendChild(svgEl('rect', { x:0, y:0, width:VB_W, height:VB_H, fill:'#0d1117', rx:8, ry:8 }));
+    // halves
+    svg.appendChild(svgEl('rect', { x:8, y:8, width:VB_W-16, height:(VB_H-16)/2 - 6, fill:'rgba(248,81,73,.05)', stroke:'rgba(248,81,73,.18)', 'stroke-dasharray':'4,3', rx:6, ry:6 }));
+    svg.appendChild(svgEl('rect', { x:8, y:VB_H/2 + 6, width:VB_W-16, height:(VB_H-16)/2 - 6, fill:'rgba(63,185,80,.05)', stroke:'rgba(63,185,80,.18)', 'stroke-dasharray':'4,3', rx:6, ry:6 }));
+    // frontier
+    svg.appendChild(svgEl('line', { x1:20, y1:VB_H/2, x2:VB_W-20, y2:VB_H/2, stroke:'#8b949e', 'stroke-dasharray':'8,5', 'stroke-width':1.5 }));
+    svg.appendChild(svgEl('text', { x:VB_W/2, y:VB_H/2 - 6, 'text-anchor':'middle', fill:'#8b949e', 'font-size':11, 'font-weight':700, 'letter-spacing':'.1em' }, 'FRONTIER'));
+    // side labels
+    svg.appendChild(svgEl('text', { x:20, y:24, fill:'#f85149', 'font-weight':800, 'font-size':14 }, 'OPPONENT HALF'));
+    svg.appendChild(svgEl('text', { x:20, y:VB_H-10, fill:'#3fb950', 'font-weight':800, 'font-size':14 }, 'OUR HALF'));
+    svg.appendChild(svgEl('text', { x:VB_W-20, y:24, 'text-anchor':'end', fill:'#8b949e', 'font-size':10 }, 'their defensive zone'));
+    svg.appendChild(svgEl('text', { x:VB_W-20, y:VB_H-10, 'text-anchor':'end', fill:'#8b949e', 'font-size':10 }, 'our defensive zone'));
+
+    const buildings = [
+      // OPP top
+      { x: 100, y: 60,  type:'L1', pts:10, side:'opp' },
+      { x: 280, y: 60,  type:'L1', pts:10, side:'opp' },
+      { x: 460, y: 60,  type:'L1', pts:10, side:'opp' },
+      { x: 170, y: 120, type:'L2', pts:20, side:'opp' },
+      { x: 390, y: 120, type:'L2', pts:20, side:'opp' },
+      { x: 280, y: 165, type:'L3', pts:40, side:'opp' },
+      { x: 280, y: 200, type:'CAP',pts:100,side:'opp' },
+      // ALLY bottom (mirror)
+      { x: 280, y: 240, type:'CAP',pts:100,side:'ally' },
+      { x: 280, y: 275, type:'L3', pts:40, side:'ally' },
+      { x: 170, y: 320, type:'L2', pts:20, side:'ally' },
+      { x: 390, y: 320, type:'L2', pts:20, side:'ally' },
+      { x: 100, y: 380, type:'L1', pts:10, side:'ally' },
+      { x: 280, y: 380, type:'L1', pts:10, side:'ally' },
+      { x: 460, y: 380, type:'L1', pts:10, side:'ally' }
+    ];
+    buildings.forEach(b => {
+      const fill = b.side==='ally' ? '#1a3322' : '#3a1d1d';
+      const stroke = b.side==='ally' ? '#3fb950' : '#f85149';
+      const ptColor = b.side==='ally' ? '#7ce28a' : '#ff9a93';
+      const w = b.type==='CAP' ? 80 : (b.type==='L3' ? 56 : (b.type==='L2' ? 50 : 44));
+      const h = b.type==='CAP' ? 32 : (b.type==='L3' ? 28 : 24);
+      svg.appendChild(svgEl('rect', { x: b.x - w/2, y: b.y - h/2, width: w, height: h, rx: 5, ry: 5, fill, stroke, 'stroke-width': 2 }));
+      const lab = b.type==='CAP' ? 'CAPITAL' : (b.type==='L3' ? 'L3 RUIN' : (b.type==='L2' ? 'L2 RUIN' : 'L1 RUIN'));
+      svg.appendChild(svgEl('text', { x:b.x, y:b.y-1, 'text-anchor':'middle', fill:'#e6edf3', 'font-size':9, 'font-weight':700 }, lab));
+      svg.appendChild(svgEl('text', { x:b.x, y:b.y+11, 'text-anchor':'middle', fill: ptColor, 'font-size':8, 'font-weight':700 }, b.pts+' pts/min'));
+    });
+    return svg;
+  }
+
+  function buildCaptureFlow() {
+    const W = 720, H = 130;
+    const svg = svgEl('svg', { viewBox:'0 0 '+W+' '+H, class:'capture-svg', xmlns:'http://www.w3.org/2000/svg' });
+    svg.appendChild(svgEl('rect', { x:0, y:0, width:W, height:H, fill:'#0d1117', rx:8, ry:8 }));
+    const steps = [
+      { x:80,  label:'BESIEGE', sub:'attack building', color:'#f85149' },
+      { x:240, label:'CAPTURE TIMER', sub:'hold 60 sec', color:'#d29922' },
+      { x:400, label:'CAPTURED', sub:'ownership claimed', color:'#3fb950' },
+      { x:560, label:'AT PEACE', sub:'120 sec immune', color:'#388bfd' },
+      { x:680, label:'HELD', sub:'+pts/min ticking', color:'#79c0ff' }
+    ];
+    // arrows between
+    for (let i = 0; i < steps.length - 1; i++) {
+      const s = steps[i], n = steps[i+1];
+      svg.appendChild(svgEl('line', { x1: s.x+50, y1: 65, x2: n.x-50, y2: 65, stroke:'#30363d', 'stroke-width':2, 'marker-end':'url(#arr)' }));
+    }
+    // arrow def
+    const defs = svgEl('defs', null);
+    const marker = svgEl('marker', { id:'arr', viewBox:'0 0 10 10', refX:8, refY:5, markerWidth:6, markerHeight:6, orient:'auto' });
+    marker.appendChild(svgEl('path', { d:'M0,0 L10,5 L0,10 z', fill:'#8b949e' }));
+    defs.appendChild(marker); svg.appendChild(defs);
+    // boxes
+    steps.forEach(s => {
+      svg.appendChild(svgEl('circle', { cx: s.x, cy: 65, r: 38, fill:'#161b22', stroke: s.color, 'stroke-width':2 }));
+      svg.appendChild(svgEl('text', { x: s.x, y: 60, 'text-anchor':'middle', fill: s.color, 'font-size':10, 'font-weight':800 }, s.label));
+      svg.appendChild(svgEl('text', { x: s.x, y: 75, 'text-anchor':'middle', fill:'#8b949e', 'font-size':8 }, s.sub));
+    });
+    return svg;
+  }
+
+  function buildAssignments(data) {
+    const ally = data.ally.warzones;
+    const players = {};
+    for (const z of ally) {
+      const fs = z.formations || {};
+      ['Army','Navy','AirForce'].forEach(u => {
+        (fs[u]||[]).forEach(m => {
+          const isReef = m.username && m.username.indexOf('Reef') !== -1;
+          if (isReef) return;
+          const key = m.username + '|' + z.sid;
+          if (!players[key] || (m.power||0) > players[key].power) {
+            players[key] = { name: m.username, sid: z.sid, unit: u, power: m.power||0 };
+          }
+        });
+      });
+    }
+    const ranked = Object.values(players).sort((a,b) => b.power - a.power);
+    const targets = [
+      { type:'Enemy Capital',     tier:'PRIMARY',   pts: 100, slots: 5 },
+      { type:'Enemy L3 Ruin',     tier:'PRIMARY',   pts: 40,  slots: 4 },
+      { type:'Enemy L2 Ruin #1',  tier:'SECONDARY', pts: 20,  slots: 3 },
+      { type:'Enemy L2 Ruin #2',  tier:'SECONDARY', pts: 20,  slots: 3 },
+      { type:'Enemy L1 Ruin #1',  tier:'TERTIARY',  pts: 10,  slots: 2 },
+      { type:'Enemy L1 Ruin #2',  tier:'TERTIARY',  pts: 10,  slots: 2 },
+      { type:'Enemy L1 Ruin #3',  tier:'TERTIARY',  pts: 10,  slots: 2 }
+    ];
+    let idx = 0;
+    targets.forEach(t => { t.team = ranked.slice(idx, idx + t.slots); idx += t.slots; });
+    // Defense anchor: highest combat-buff sum server
+    let bestSid = null, bestSum = -1, bestSrv = null;
+    for (const z of ally) {
+      const cb = z.combat_buffs_L3;
+      if (!cb) continue;
+      const sum = (cb.L3_pct['All Units ATK']||0) + (cb.L3_pct['All Units DEF']||0) + (cb.L3_pct['All Units HP']||0);
+      if (sum > bestSum) { bestSum = sum; bestSid = z.sid; bestSrv = z; }
+    }
+    return { targets, bestSid, bestSrv, totalAssigned: idx };
+  }
+
+  function tabStrategy(data) {
+    const wrap = el('div', null);
+
+    // Map
+    const mapHost = el('div', { class:'strat-svg-host' });
+    mapHost.appendChild(buildBattlefieldMap());
+    wrap.appendChild(el('div', { class:'strat-section' },
+      el('h4', null, 'Battlefield Layout'),
+      el('div', { class:'strat-note' }, '14 buildings, mirrored. Each side defends own half + attacks enemy half. Ruins generate 10/20/40 pts/min for L1/L2/L3 — Capital is 100 pts/min. All your Coalition warzones can teleport into either Core battlefield (5-min lockout between switches).'),
+      mapHost,
+      el('div', { class:'strat-legend' },
+        el('span', null, el('span', { class:'swatch', style:'background:#1a3322;border-color:#3fb950' }), 'Our buildings (defend)'),
+        el('span', null, el('span', { class:'swatch', style:'background:#3a1d1d;border-color:#f85149' }), 'Enemy buildings (attack)')
+      )
+    ));
+
+    // Capture flow
+    const capHost = el('div', { class:'strat-svg-host' });
+    capHost.appendChild(buildCaptureFlow());
+    wrap.appendChild(el('div', { class:'strat-section' },
+      el('h4', null, 'Capture Mechanic'),
+      el('div', { class:'strat-note' }, 'Building must be besieged + held for 60 seconds straight to claim. After capture, building is At Peace 120 seconds (cannot be attacked). Once protection ends, ownership stays with capturer — score ticks every minute it remains held.'),
+      capHost
+    ));
+
+    // Win conditions (only 1 + 2 per user)
+    wrap.appendChild(el('div', { class:'strat-section' },
+      el('h4', null, 'Win Conditions'),
+      el('div', { class:'win-cond' },
+        el('span', { class:'num' }, '1'),
+        el('span', null, 'At end of Battle Stage, side with ', el('b', null, 'highest total points'), ' wins.')
+      ),
+      el('div', { class:'win-cond' },
+        el('span', { class:'num' }, '2'),
+        el('span', null, 'Tie → side ', el('b', null, "holding enemy's Capital"), ' wins.')
+      )
+    ));
+
+    // Assignment
+    const a = buildAssignments(data);
+    const assignSection = el('div', { class:'strat-section' },
+      el('h4', null, 'Suggested Squad Assignment'),
+      el('div', { class:'strat-note' }, 'Top ' + a.totalAssigned + ' marches by power across our 5 servers, allocated to enemy targets in descending value. Reef excluded (transferred). Adjust based on enemy disposition during fight.'),
+      a.bestSid ? el('div', { class:'def-anchor' },
+        'Defensive Anchor: ', el('b', null, 'S' + a.bestSid),
+        ' — strongest combat-buff stack. Hold our Capital + L3 Ruin. Deploy lowest-power marches here; bigger marches push offense.'
+      ) : null
+    );
+    a.targets.forEach(t => {
+      assignSection.appendChild(el('div', { class:'tgt-row' },
+        el('div', { class:'tgt-head' },
+          el('div', { class:'tgt-name' }, t.type, el('span', { class:'tgt-tier' }, t.tier)),
+          el('div', { class:'tgt-pts' }, t.pts + ' pts/min')
+        ),
+        el('div', { class:'tgt-team' },
+          ...t.team.map(p => el('div', { class:'pl-mini' },
+            el('span', { class:'stag ally' }, 'S'+p.sid),
+            el('span', { class:'name' }, p.name || '—'),
+            el('span', { class:'pwr' }, fmtNum(p.power))
+          ))
+        )
+      ));
+    });
+    wrap.appendChild(assignSection);
+
+    return wrap;
+  }
+
   function setupTabs(panels) {
     const nav = el('div', { class:'tabs' });
     const wrap = el('div', null);
@@ -1070,6 +1298,7 @@
       frag.appendChild(renderServers(data));
       frag.appendChild(setupTabs({
         'Overview':  () => tabOverview(data),
+        'Strategy':  () => tabStrategy(data),
         'Fame':      () => tabFame(data),
         'Buffs':     () => tabBuffs(data),
         'Merit':     () => tabMerit(data),
