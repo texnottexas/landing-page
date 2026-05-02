@@ -2223,7 +2223,14 @@
       }),
       ctcs: player0.CTCs || null,
       effectBuffs: player0.effectBuffs || null,
-      traceEffectBuffs: player0.traceEffectBuffs || null
+      traceEffectBuffs: player0.traceEffectBuffs || null,
+      // Formation V2 — only the marching formation is exposed per battle report.
+      // Across multiple reports the player will eventually march each of their 3 formations
+      // so consumers should accumulate by formation id.
+      formationV2: player0.formationV2 || null,
+      armyMastery: player0.armyMastery || null,
+      elementLevels: player0.elementLevels || null,
+      career: player0.career || null
     };
   }
 
@@ -3539,7 +3546,8 @@
       { id: 'decorations', label: 'Decorations' },
       { id: 'bases', label: 'Bases' },
       { id: 'enigma', label: 'Enigma Beasts' },
-      { id: 'chips', label: 'HT Chips' }
+      { id: 'chips', label: 'HT Chips' },
+      { id: 'formation', label: 'Formation' }
     ];
 
     tabDefs.forEach(function(def, i) {
@@ -3601,6 +3609,7 @@
       case 'bases':       renderBasesTab(m); break;
       case 'enigma':      renderEnigmaTab(m); break;
       case 'chips':       renderChipsTab(m); break;
+      case 'formation':   renderFormationTab(m); break;
     }
   }
 
@@ -8932,6 +8941,314 @@
     }
   })();
 
+  // ── Formation tab ─────────────────────────────────────────────────────────
+  // Reference data loaded on demand from /data/formation-v2.json (~234 KB)
+  var _formationRef = null;
+  var _formationRefPromise = null;
+  function loadFormationRef() {
+    if (_formationRef) return Promise.resolve(_formationRef);
+    if (_formationRefPromise) return _formationRefPromise;
+    _formationRefPromise = fetch('data/formation-v2.json').then(function(r) { return r.json(); }).then(function(j) { _formationRef = j; return j; });
+    return _formationRefPromise;
+  }
+
+  // Slot positional codes 1/2/3/11/12/13/21/22/23 → display 1-9 (numpad order).
+  var FORMATION_SLOT_ORDER = [1, 2, 3, 11, 12, 13, 21, 22, 23];
+  var FORMATION_SLOT_DISPLAY = { 1:1, 2:2, 3:3, 11:4, 12:5, 13:6, 21:7, 22:8, 23:9 };
+  var ARMY_TYPE_LABELS = { '101': 'Army', '201': 'Navy', '301': 'Air Force' };
+
+  function renderFormationTab(merged) {
+    var container = document.getElementById('tab-formation');
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    var formations = merged.formations || {};
+    var armyMastery = merged.armyMastery || null;
+    var hasFormations = Object.keys(formations).length > 0;
+    var hasArmy = armyMastery && Object.keys(armyMastery).length > 0;
+
+    if (!hasFormations && !hasArmy) {
+      var empty = document.createElement('div');
+      empty.style.cssText = 'padding:2rem;text-align:center;color:var(--muted);';
+      empty.textContent = 'No formation data yet. Add a battle report where you marched with Shark, Scorpion, or Eagle to populate this tab.';
+      container.appendChild(empty);
+      return;
+    }
+
+    loadFormationRef().then(function(ref) {
+      buildFormationTabContent(container, merged, ref);
+    }).catch(function(e) {
+      var err = document.createElement('div');
+      err.style.cssText = 'padding:1rem;color:var(--red);';
+      err.textContent = 'Failed to load formation reference data: ' + e.message;
+      container.appendChild(err);
+    });
+  }
+
+  function buildFormationTabContent(container, merged, ref) {
+    // Header banner with accumulator note
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.6rem .9rem;margin-bottom:.75rem;font-size:.78rem;color:var(--muted);';
+    var seenIds = Object.keys(merged.formations || {}).sort();
+    var seenNames = seenIds.map(function(id) {
+      var fm = ref.formations[id];
+      return fm ? fm.name.split(':')[1].trim() : id;
+    });
+    hdr.textContent = seenNames.length ? 'Tracked: ' + seenNames.join(', ') + '. March with another formation in a different battle report to add it here.'
+                                       : 'No formation data yet.';
+    container.appendChild(hdr);
+
+    // 3-card grid (Shark / Scorpion / Eagle)
+    var grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:.75rem;margin-bottom:1rem;';
+    container.appendChild(grid);
+
+    ['1001', '1002', '1003'].forEach(function(fid) {
+      grid.appendChild(buildFormationCard(fid, merged.formations[fid], ref));
+    });
+
+    // Army Mastery section
+    if (merged.armyMastery) {
+      var amSection = document.createElement('section');
+      amSection.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem;margin-top:.5rem;';
+      var amTitle = document.createElement('h3');
+      amTitle.style.cssText = 'margin:0 0 .25rem;font-size:1rem;color:var(--text);';
+      amTitle.textContent = 'Army Mastery';
+      amSection.appendChild(amTitle);
+      var amSub = document.createElement('p');
+      amSub.style.cssText = 'margin:0 0 .5rem;font-size:.75rem;color:var(--muted);';
+      amSub.textContent = 'Per unit type, level 1–20. Different from Formation Specialization.';
+      amSection.appendChild(amSub);
+
+      var amRow = document.createElement('div');
+      amRow.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;';
+      amSection.appendChild(amRow);
+
+      ['101', '201', '301'].forEach(function(typeCode) {
+        var raw = merged.armyMastery[typeCode];
+        if (raw == null) return;
+        var lvl = Number(raw) - Number(typeCode);
+        var pill = document.createElement('div');
+        pill.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem;text-align:center;';
+        var lbl = document.createElement('div');
+        lbl.style.cssText = 'font-size:.7rem;color:var(--muted);';
+        lbl.textContent = ARMY_TYPE_LABELS[typeCode];
+        pill.appendChild(lbl);
+        var val = document.createElement('div');
+        val.style.cssText = 'font-size:1.1rem;font-weight:600;color:var(--text);margin-top:.15rem;';
+        val.textContent = 'Lv ' + lvl + ' / 20';
+        pill.appendChild(val);
+        // Cumulative buff summary
+        var sum = computeArmyMasteryCumulative(ref, typeCode, lvl);
+        if (sum.length > 0) {
+          var ul = document.createElement('div');
+          ul.style.cssText = 'margin-top:.4rem;font-size:.7rem;color:var(--muted);text-align:left;';
+          sum.slice(0, 8).forEach(function(b) {
+            var line = document.createElement('div');
+            line.textContent = b.name + ': +' + (b.value / 100) + '%';
+            ul.appendChild(line);
+          });
+          pill.appendChild(ul);
+        }
+        amRow.appendChild(pill);
+      });
+      container.appendChild(amSection);
+    }
+
+    // Talent tree note (game-session only)
+    var note = document.createElement('div');
+    note.style.cssText = 'margin-top:1rem;padding:.6rem .9rem;background:var(--surface);border-left:3px solid var(--yellow);border-radius:4px;font-size:.78rem;color:var(--muted);';
+    note.textContent = 'Note: the 50-node Formation Talent Tree is not exposed in CDN battle reports. Showing it here would require uploading game-session data manually — not yet wired up.';
+    container.appendChild(note);
+  }
+
+  function buildFormationCard(fid, formationData, ref) {
+    var fm = ref.formations[fid];
+    var card = document.createElement('div');
+    card.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.85rem;';
+
+    // Header: icon + name + meta
+    var head = document.createElement('div');
+    head.style.cssText = 'display:flex;gap:.7rem;align-items:center;margin-bottom:.6rem;';
+
+    var icon = document.createElement('div');
+    icon.style.cssText = 'width:64px;height:80px;border:2px solid var(--border);border-radius:6px;background:#0d1117 center/cover no-repeat;flex-shrink:0;';
+    if (fm && fm.icon) icon.style.backgroundImage = 'url("' + fm.icon + '")';
+    if (!formationData) icon.style.opacity = '0.4';
+    head.appendChild(icon);
+
+    var meta = document.createElement('div');
+    meta.style.flex = '1';
+    var nameEl = document.createElement('div');
+    nameEl.style.cssText = 'font-weight:600;color:var(--text);font-size:.95rem;';
+    nameEl.textContent = fm ? fm.name : ('Formation ' + fid);
+    meta.appendChild(nameEl);
+
+    if (formationData) {
+      var lvLine = document.createElement('div');
+      lvLine.style.cssText = 'font-size:.75rem;color:var(--muted);margin-top:.15rem;';
+      var lvSpan = document.createElement('span');
+      lvSpan.appendChild(document.createTextNode('Lv '));
+      var lvStrong = document.createElement('strong');
+      lvStrong.style.color = 'var(--text)';
+      lvStrong.textContent = String(formationData.lv || 0);
+      lvSpan.appendChild(lvStrong);
+      if (formationData.formationLvUp) {
+        var lvPlus = document.createElement('span');
+        lvPlus.style.cssText = 'color:var(--green);font-weight:600;margin-left:.15rem;';
+        lvPlus.textContent = '+1';
+        lvSpan.appendChild(lvPlus);
+      }
+      lvLine.appendChild(lvSpan);
+      lvLine.appendChild(document.createTextNode('  ·  Tier '));
+      var qStrong = document.createElement('strong');
+      qStrong.style.color = 'var(--text)';
+      qStrong.textContent = String(formationData.quality || 0);
+      lvLine.appendChild(qStrong);
+      if (formationData.formationQualityUp) {
+        var qPlus = document.createElement('span');
+        qPlus.style.cssText = 'color:var(--green);font-weight:600;margin-left:.15rem;';
+        qPlus.textContent = '+1';
+        lvLine.appendChild(qPlus);
+        lvLine.title = 'Tier +1 active (Evolved Shark / Eagle Evolution talent)';
+      }
+      lvLine.appendChild(document.createTextNode('/10'));
+      meta.appendChild(lvLine);
+    } else {
+      var notSeen = document.createElement('div');
+      notSeen.style.cssText = 'font-size:.7rem;color:var(--muted);font-style:italic;margin-top:.15rem;';
+      notSeen.textContent = 'No report seen yet';
+      meta.appendChild(notSeen);
+    }
+    head.appendChild(meta);
+    card.appendChild(head);
+
+    if (!formationData) return card;
+
+    // Specialization 3x3 grid
+    var specBlock = document.createElement('div');
+    specBlock.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem;';
+    var specHead = document.createElement('div');
+    specHead.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem;';
+    var specLbl = document.createElement('span');
+    specLbl.style.cssText = 'font-size:.72rem;color:var(--muted);';
+    var skillName = (ref.mastery_skill_per_formation && ref.mastery_skill_per_formation[fid] && ref.mastery_skill_per_formation[fid].name) || '';
+    specLbl.textContent = 'Specialization' + (skillName ? ' (' + skillName + ')' : '') + (formationData.formationMasteryUp ? ' · +1 boost' : '');
+    specHead.appendChild(specLbl);
+    var specTotal = document.createElement('span');
+    specTotal.style.cssText = 'font-size:.7rem;color:var(--accent);';
+    var rawTotal = 0, unlockedSlots = 0;
+    var masterys = formationData.masterys || {};
+    FORMATION_SLOT_ORDER.forEach(function(s) {
+      if (masterys[s] != null) {
+        rawTotal += masterys[s];
+        unlockedSlots++;
+      }
+    });
+    var boostBonus = formationData.formationMasteryUp ? unlockedSlots : 0;
+    specTotal.textContent = (rawTotal + boostBonus) + '/45';
+    specHead.appendChild(specTotal);
+    specBlock.appendChild(specHead);
+
+    var grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:.25rem;';
+    FORMATION_SLOT_ORDER.forEach(function(s) {
+      var lv = masterys[s];
+      var cell = document.createElement('div');
+      var lvNum = lv != null ? Number(lv) : null;
+      var eff = lvNum != null ? lvNum + (formationData.formationMasteryUp ? 1 : 0) : null;
+      var bg = '#0d1117', border = 'var(--border)', txt = 'var(--muted)';
+      if (eff === 5) { bg = '#103d1c'; border = 'var(--green)'; txt = 'var(--green)'; }
+      else if (eff === 4) { bg = '#0e2a16'; border = '#3fb950cc'; txt = 'var(--text)'; }
+      else if (eff === 3) { border = '#3fb95099'; txt = 'var(--text)'; }
+      cell.style.cssText = 'aspect-ratio:1/1;background:' + bg + ';border:1px solid ' + border + ';border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:' + txt + ';';
+      var posSpan = document.createElement('span');
+      posSpan.style.cssText = 'font-size:.55rem;color:var(--muted);line-height:1;';
+      posSpan.textContent = 'slot ' + FORMATION_SLOT_DISPLAY[s];
+      cell.appendChild(posSpan);
+      var lvSpan = document.createElement('span');
+      lvSpan.style.cssText = 'font-size:.95rem;font-weight:700;line-height:1.1;';
+      if (lvNum != null) {
+        lvSpan.textContent = String(lvNum);
+        if (formationData.formationMasteryUp) {
+          var p = document.createElement('span');
+          p.style.cssText = 'color:var(--green);font-size:.6rem;margin-left:1px;';
+          p.textContent = ' +1';
+          lvSpan.appendChild(p);
+        }
+        cell.title = 'Slot ' + FORMATION_SLOT_DISPLAY[s] + ' (raw ' + s + ') — Lv ' + lvNum + (formationData.formationMasteryUp ? ' +1 → effective ' + eff : '') + '/5';
+      } else {
+        lvSpan.textContent = '—';
+        cell.title = 'Slot ' + FORMATION_SLOT_DISPLAY[s] + ' — locked';
+      }
+      cell.appendChild(lvSpan);
+      grid.appendChild(cell);
+    });
+    specBlock.appendChild(grid);
+    card.appendChild(specBlock);
+
+    // Sciences row (5 buckets)
+    if (formationData.sciences) {
+      var sciBlock = document.createElement('div');
+      sciBlock.style.cssText = 'margin-top:.5rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem;';
+      var sciTitle = document.createElement('div');
+      sciTitle.style.cssText = 'font-size:.72rem;color:var(--muted);margin-bottom:.3rem;';
+      sciTitle.textContent = 'Sciences';
+      sciBlock.appendChild(sciTitle);
+      var sciRow = document.createElement('div');
+      sciRow.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);gap:.2rem;';
+      sciBlock.appendChild(sciRow);
+      ['1', '2', '3', '4', '5'].forEach(function(sid) {
+        var sci = ref.sciences[sid];
+        var lv = formationData.sciences[sid] || 0;
+        var max = (sci && sci.max_level) || 1;
+        var pct = Math.round(lv / max * 100);
+        var pill = document.createElement('div');
+        pill.style.cssText = 'background:#0d1117;border:1px solid var(--border);border-radius:4px;padding:.25rem;text-align:center;';
+        var nm = document.createElement('div');
+        nm.style.cssText = 'font-size:.6rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        nm.textContent = (sci && sci.name) || sid;
+        pill.appendChild(nm);
+        var lvEl = document.createElement('div');
+        lvEl.style.cssText = 'font-size:.85rem;font-weight:600;color:var(--accent);';
+        lvEl.textContent = String(lv);
+        pill.appendChild(lvEl);
+        var maxEl = document.createElement('div');
+        maxEl.style.cssText = 'font-size:.55rem;color:var(--muted);';
+        maxEl.textContent = '/' + max;
+        pill.appendChild(maxEl);
+        var bar = document.createElement('div');
+        bar.style.cssText = 'height:3px;background:#0d1117;border-radius:99px;margin-top:.15rem;overflow:hidden;';
+        var fill = document.createElement('i');
+        fill.style.cssText = 'display:block;height:100%;background:var(--accent);width:' + pct + '%;';
+        bar.appendChild(fill);
+        pill.appendChild(bar);
+        pill.title = (sci && sci.name) + ' Lv ' + lv + '/' + max;
+        sciRow.appendChild(pill);
+      });
+      card.appendChild(sciBlock);
+    }
+
+    return card;
+  }
+
+  // Sum cumulative buff values up through level `lv` for a given army_type code.
+  function computeArmyMasteryCumulative(ref, typeCode, lv) {
+    var levels = ref.army_mastery && ref.army_mastery.levels && ref.army_mastery.levels[typeCode];
+    if (!levels) return [];
+    var totals = {};
+    var nameMap = {};
+    levels.forEach(function(entry) {
+      if (entry.level > lv) return;
+      (entry.buffs || []).forEach(function(b) {
+        totals[b.buff_id] = (totals[b.buff_id] || 0) + b.buff_value;
+        nameMap[b.buff_id] = b.buff_name;
+      });
+    });
+    return Object.keys(totals).map(function(id) {
+      return { id: id, name: nameMap[id] || id, value: totals[id] };
+    });
+  }
+
   // ── Object.values polyfill ────────────────────────────────────────────────
   function objValues(obj) {
     return Object.keys(obj).map(function(k) { return obj[k]; });
@@ -8943,7 +9260,14 @@
       heroes: {},        // keyed by heroId, latest wins
       decorations: null, skins: null, ctcs: null, enigmas: null,
       mechas: {},        // keyed by mechaId
-      effectBuffs: null, traceEffectBuffs: null
+      effectBuffs: null, traceEffectBuffs: null,
+      // Formation accumulator: each battle report exposes only the marching formation
+      // for that side, so as the player marches different formations across reports,
+      // we collect each one's state under its formation_id (1001/1002/1003).
+      formations: {},
+      armyMastery: null,
+      elementLevels: null,
+      career: null
     };
 
     reports.forEach(function(report) {
@@ -8963,6 +9287,15 @@
       if (!merged.enigmas && ex.enigmas) merged.enigmas = ex.enigmas;
       if (!merged.effectBuffs && ex.effectBuffs) merged.effectBuffs = ex.effectBuffs;
       if (!merged.traceEffectBuffs && ex.traceEffectBuffs) merged.traceEffectBuffs = ex.traceEffectBuffs;
+      if (!merged.armyMastery && ex.armyMastery) merged.armyMastery = ex.armyMastery;
+      if (!merged.elementLevels && ex.elementLevels) merged.elementLevels = ex.elementLevels;
+      if (!merged.career && ex.career) merged.career = ex.career;
+
+      // Formation accumulator — store latest per formation_id so re-running a report
+      // refreshes that formation's lv/quality/masterys without losing the others.
+      if (ex.formationV2 && ex.formationV2.id) {
+        merged.formations[String(ex.formationV2.id)] = ex.formationV2;
+      }
     });
 
     return {
@@ -8973,7 +9306,11 @@
       enigmas: merged.enigmas,
       mechas: objValues(merged.mechas),
       effectBuffs: merged.effectBuffs,
-      traceEffectBuffs: merged.traceEffectBuffs
+      traceEffectBuffs: merged.traceEffectBuffs,
+      formations: merged.formations,
+      armyMastery: merged.armyMastery,
+      elementLevels: merged.elementLevels,
+      career: merged.career
     };
   }
 

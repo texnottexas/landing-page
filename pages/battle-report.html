@@ -3526,8 +3526,10 @@
     var defHasSkins = def.players && def.players.some(function(p){ return p.effectSkins && p.effectSkins.effectIds && p.effectSkins.effectIds.length > 0; });
     var attHasChips = att.mechas && att.mechas.some(function(m){ return m.chips && m.chips.length > 0; });
     var defHasChips = def.mechas && def.mechas.some(function(m){ return m.chips && m.chips.length > 0; });
+    var attHasFormation = att.players && att.players.some(function(p) { return p.formationV2 && p.formationV2.id; });
+    var defHasFormation = def.players && def.players.some(function(p) { return p.formationV2 && p.formationV2.id; });
 
-    if (attHasGear || defHasGear || attHasBuffs || defHasBuffs || attHasEnigma || defHasEnigma || attHasSkins || defHasSkins || attHasChips || defHasChips) {
+    if (attHasGear || defHasGear || attHasBuffs || defHasBuffs || attHasEnigma || defHasEnigma || attHasSkins || defHasSkins || attHasChips || defHasChips || attHasFormation || defHasFormation) {
       var btnRow = el('div', {className: 'stats-btn-wrap'});
 
       if (attHasGear || defHasGear) {
@@ -3587,6 +3589,27 @@
         })()));
         skinBtn.appendChild(document.createTextNode('Base Skins'));
         btnRow.appendChild(skinBtn);
+      }
+
+      if (attHasFormation || defHasFormation) {
+        var fmBtn = el('button', { className: 'stats-btn', onclick: function() {
+          document.body.appendChild(buildFormationModal(att, def, attPI, defPI));
+        }});
+        fmBtn.appendChild(el('span', { style: 'display:inline-flex;vertical-align:middle;margin-right:.35rem;' }, (function() {
+          var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          s.setAttribute('width', '16'); s.setAttribute('height', '16'); s.setAttribute('viewBox', '0 0 24 24');
+          s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '2');
+          var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          [['3','3'],['10.5','3'],['18','3'],['3','10.5'],['10.5','10.5'],['18','10.5'],['10.5','18']].forEach(function(xy) {
+            var r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            r.setAttribute('x', xy[0]); r.setAttribute('y', xy[1]); r.setAttribute('width', '3'); r.setAttribute('height', '3'); r.setAttribute('rx', '0.5');
+            g.appendChild(r);
+          });
+          s.appendChild(g);
+          return s;
+        })()));
+        fmBtn.appendChild(document.createTextNode('Formation'));
+        btnRow.appendChild(fmBtn);
       }
 
       if (attHasChips || defHasChips) {
@@ -3672,6 +3695,201 @@
 
     // 4. Raw JSON
     container.appendChild(buildRawJSON(data));
+  }
+
+  // ── Formation comparison modal ────────────────────────────────────────────
+  // Reads CDN-only fields: players[0].formationV2 and players[0].armyMastery.
+  // formationV2 has only the marching formation; armyMastery encodes level as
+  // (rawValue - unitTypeCode), e.g. {101: 121} → Army Lv 20.
+  var _battleReportFormationRef = null;
+  var _battleReportFormationRefPromise = null;
+  function loadBattleReportFormationRef() {
+    if (_battleReportFormationRef) return Promise.resolve(_battleReportFormationRef);
+    if (_battleReportFormationRefPromise) return _battleReportFormationRefPromise;
+    _battleReportFormationRefPromise = fetch('data/formation-v2.json').then(function(r) { return r.json(); }).then(function(j) { _battleReportFormationRef = j; return j; });
+    return _battleReportFormationRefPromise;
+  }
+  var FORMATION_SLOT_ORDER_BR = [1, 2, 3, 11, 12, 13, 21, 22, 23];
+  var FORMATION_SLOT_DISPLAY_BR = { 1:1, 2:2, 3:3, 11:4, 12:5, 13:6, 21:7, 22:8, 23:9 };
+  var ARMY_TYPE_LABELS_BR = { '101': 'Army', '201': 'Navy', '301': 'Air Force' };
+
+  function buildFormationModal(att, def, attPI, defPI) {
+    var attFV = (att.players && att.players[0] && att.players[0].formationV2) || null;
+    var defFV = (def.players && def.players[0] && def.players[0].formationV2) || null;
+    var attAM = (att.players && att.players[0] && att.players[0].armyMastery) || null;
+    var defAM = (def.players && def.players[0] && def.players[0].armyMastery) || null;
+
+    var overlay = el('div', { className: 'stats-overlay', onclick: function(e) { if (e.target === overlay) document.body.removeChild(overlay); } });
+    var modal = el('div', { className: 'stats-modal' });
+    var header = el('div', { className: 'stats-modal-header' });
+    header.appendChild(el('h2', null, 'Formation Comparison'));
+    header.appendChild(el('button', { className: 'stats-close', onclick: function() { document.body.removeChild(overlay); } }, '×'));
+    modal.appendChild(header);
+
+    var body = el('div', { className: 'stats-modal-body' });
+    var loading = el('div', { style: 'padding:1rem;color:var(--muted);text-align:center;' }, 'Loading formation data…');
+    body.appendChild(loading);
+    modal.appendChild(body);
+    overlay.appendChild(modal);
+
+    loadBattleReportFormationRef().then(function(ref) {
+      while (body.firstChild) body.removeChild(body.firstChild);
+
+      var grid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:1rem;padding:.5rem;' });
+      grid.appendChild(buildFormationSidePanel(attFV, attAM, attPI, ref, defFV, defAM, 'left'));
+      grid.appendChild(buildFormationSidePanel(defFV, defAM, defPI, ref, attFV, attAM, 'right'));
+      body.appendChild(grid);
+
+      var note = el('div', { style: 'margin-top:.75rem;padding:.6rem .9rem;background:var(--surface,#161b22);border-left:3px solid #d29922;border-radius:4px;font-size:.78rem;color:var(--muted,#8b949e);' });
+      note.textContent = 'Battle reports expose only the marching formation per side. The other 2 formations and the 50-node Talent Tree are not in the report payload — only the resulting Tier+1 / Spec+1 / Lv+1 boost flags are reflected.';
+      body.appendChild(note);
+    }).catch(function(e) {
+      while (body.firstChild) body.removeChild(body.firstChild);
+      var err = el('div', { style: 'padding:1rem;color:var(--red);' }, 'Failed to load formation reference: ' + e.message);
+      body.appendChild(err);
+    });
+
+    return overlay;
+  }
+
+  function buildFormationSidePanel(fv, am, pi, ref, otherFv, otherAm, side) {
+    var col = el('div', { style: 'background:#1c2128;border:1px solid #30363d;border-radius:8px;padding:.85rem;' });
+    var name = (pi && pi.username) || (side === 'left' ? 'Attacker' : 'Defender');
+    col.appendChild(el('div', { style: 'font-weight:600;font-size:1rem;color:#e6edf3;margin-bottom:.5rem;' }, name));
+
+    if (!fv || !fv.id) {
+      col.appendChild(el('div', { style: 'color:#8b949e;font-size:.8rem;font-style:italic;' }, 'No formation data in report'));
+    } else {
+      var fid = String(fv.id);
+      var fm = ref.formations[fid];
+      // Header row: icon + name + tier
+      var head = el('div', { style: 'display:flex;gap:.7rem;align-items:center;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:.55rem;' });
+      var icon = el('div', { style: 'width:64px;height:80px;border:2px solid #30363d;border-radius:6px;background:#0d1117 center/cover no-repeat;flex-shrink:0;' });
+      if (fm && fm.icon) icon.style.backgroundImage = 'url("' + fm.icon + '")';
+      head.appendChild(icon);
+      var meta = el('div', { style: 'flex:1;' });
+      meta.appendChild(el('div', { style: 'font-weight:600;font-size:.95rem;color:#e6edf3;' }, fm ? fm.name : ('Formation ' + fid)));
+      var statRow = el('div', { style: 'font-size:.78rem;color:#8b949e;margin-top:.15rem;' });
+      var lvSpan = el('span', null, 'Lv ');
+      var lvStrong = el('strong', { style: 'color:#e6edf3;' }, String(fv.lv || 0));
+      lvSpan.appendChild(lvStrong);
+      if (fv.formationLvUp) {
+        var lvPlus = el('span', { style: 'color:#3fb950;font-weight:600;margin-left:.15rem;' }, '+1');
+        lvSpan.appendChild(lvPlus);
+      }
+      statRow.appendChild(lvSpan);
+      statRow.appendChild(document.createTextNode('  ·  Tier '));
+      var qStrong = el('strong', { style: 'color:#e6edf3;' }, String(fv.quality || 0));
+      statRow.appendChild(qStrong);
+      if (fv.formationQualityUp) {
+        var qPlus = el('span', { style: 'color:#3fb950;font-weight:600;margin-left:.15rem;', title: 'Tier +1 from talent (Evolved Shark / Eagle Evolution)' }, '+1');
+        statRow.appendChild(qPlus);
+      }
+      statRow.appendChild(document.createTextNode('/10'));
+      meta.appendChild(statRow);
+      head.appendChild(meta);
+      col.appendChild(head);
+
+      // Specialization grid
+      var specBlock = el('div', { style: 'margin-top:.5rem;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:.5rem;' });
+      var specHead = el('div', { style: 'display:flex;justify-content:space-between;margin-bottom:.4rem;' });
+      var skillName = (ref.mastery_skill_per_formation && ref.mastery_skill_per_formation[fid] && ref.mastery_skill_per_formation[fid].name) || '';
+      specHead.appendChild(el('span', { style: 'font-size:.72rem;color:#8b949e;' }, 'Specialization' + (skillName ? ' (' + skillName + ')' : '') + (fv.formationMasteryUp ? ' · +1 boost' : '')));
+      var rawTotal = 0, unlocked = 0;
+      var masterys = fv.masterys || {};
+      FORMATION_SLOT_ORDER_BR.forEach(function(s) {
+        if (masterys[s] != null) { rawTotal += Number(masterys[s]); unlocked++; }
+      });
+      var bonus = fv.formationMasteryUp ? unlocked : 0;
+      specHead.appendChild(el('span', { style: 'font-size:.72rem;color:#79c0ff;' }, (rawTotal + bonus) + '/45'));
+      specBlock.appendChild(specHead);
+
+      var grid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:.25rem;' });
+      var otherMast = (otherFv && otherFv.masterys) || {};
+      var otherUp = otherFv && otherFv.formationMasteryUp;
+      FORMATION_SLOT_ORDER_BR.forEach(function(s) {
+        var lv = masterys[s];
+        var lvNum = lv != null ? Number(lv) : null;
+        var eff = lvNum != null ? lvNum + (fv.formationMasteryUp ? 1 : 0) : null;
+        var otherLv = otherMast[s] != null ? Number(otherMast[s]) : null;
+        var otherEff = otherLv != null ? otherLv + (otherUp ? 1 : 0) : null;
+        var bg = '#0d1117', border = '#30363d', txt = '#8b949e';
+        if (eff === 5) { bg = '#103d1c'; border = '#3fb950'; txt = '#3fb950'; }
+        else if (eff === 4) { bg = '#0e2a16'; border = '#3fb950cc'; txt = '#e6edf3'; }
+        else if (eff === 3) { border = '#3fb95099'; txt = '#e6edf3'; }
+        var diffShadow = '';
+        if (eff != null && otherEff != null) {
+          if (eff > otherEff) diffShadow = 'box-shadow:0 0 0 2px #3fb950 inset;';
+          else if (eff < otherEff) diffShadow = 'box-shadow:0 0 0 2px #f85149 inset;';
+        } else if (eff != null && otherEff == null) diffShadow = 'box-shadow:0 0 0 2px #3fb950 inset;';
+        else if (eff == null && otherEff != null) diffShadow = 'box-shadow:0 0 0 2px #f85149 inset;';
+        var cell = el('div', { style: 'aspect-ratio:1/1;background:' + bg + ';border:1px solid ' + border + ';border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:' + txt + ';' + diffShadow });
+        cell.appendChild(el('span', { style: 'font-size:.55rem;color:#8b949e;line-height:1;' }, 'slot ' + FORMATION_SLOT_DISPLAY_BR[s]));
+        var lvSpan2 = el('span', { style: 'font-size:.95rem;font-weight:700;line-height:1.1;' });
+        if (lvNum != null) {
+          lvSpan2.appendChild(document.createTextNode(String(lvNum)));
+          if (fv.formationMasteryUp) {
+            lvSpan2.appendChild(el('span', { style: 'color:#3fb950;font-size:.6rem;margin-left:1px;' }, ' +1'));
+          }
+          cell.title = 'Slot ' + FORMATION_SLOT_DISPLAY_BR[s] + ' (raw ' + s + ') — Lv ' + lvNum + (fv.formationMasteryUp ? ' +1 → ' + eff : '') + '/5';
+        } else {
+          lvSpan2.textContent = '—';
+          cell.title = 'Slot ' + FORMATION_SLOT_DISPLAY_BR[s] + ' — locked';
+        }
+        cell.appendChild(lvSpan2);
+        grid.appendChild(cell);
+      });
+      specBlock.appendChild(grid);
+      col.appendChild(specBlock);
+
+      // Sciences
+      if (fv.sciences) {
+        var sciBlock = el('div', { style: 'margin-top:.5rem;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:.5rem;' });
+        sciBlock.appendChild(el('div', { style: 'font-size:.72rem;color:#8b949e;margin-bottom:.3rem;' }, 'Sciences'));
+        var sciRow = el('div', { style: 'display:grid;grid-template-columns:repeat(5,1fr);gap:.2rem;' });
+        ['1','2','3','4','5'].forEach(function(sid) {
+          var sci = ref.sciences[sid];
+          var lv = fv.sciences[sid] || 0;
+          var max = (sci && sci.max_level) || 1;
+          var pct = Math.round(lv / max * 100);
+          var pill = el('div', { style: 'background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:.25rem;text-align:center;' });
+          pill.appendChild(el('div', { style: 'font-size:.6rem;color:#8b949e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' }, (sci && sci.name) || sid));
+          pill.appendChild(el('div', { style: 'font-size:.85rem;font-weight:600;color:#79c0ff;' }, String(lv)));
+          pill.appendChild(el('div', { style: 'font-size:.55rem;color:#8b949e;' }, '/' + max));
+          var bar = el('div', { style: 'height:3px;background:#0d1117;border-radius:99px;margin-top:.15rem;overflow:hidden;' });
+          bar.appendChild(el('i', { style: 'display:block;height:100%;background:#79c0ff;width:' + pct + '%;' }));
+          pill.appendChild(bar);
+          pill.title = ((sci && sci.name) || sid) + ' Lv ' + lv + '/' + max;
+          sciRow.appendChild(pill);
+        });
+        sciBlock.appendChild(sciRow);
+        col.appendChild(sciBlock);
+      }
+    }
+
+    // Army Mastery (separate system, 1-20 per unit type)
+    if (am) {
+      var amBlock = el('div', { style: 'margin-top:.5rem;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:.5rem;' });
+      amBlock.appendChild(el('div', { style: 'font-size:.72rem;color:#8b949e;margin-bottom:.3rem;' }, 'Army Mastery (separate from Specialization)'));
+      var amRow = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:.25rem;' });
+      ['101','201','301'].forEach(function(typeCode) {
+        var raw = am[typeCode];
+        if (raw == null) return;
+        var lvl = Number(raw) - Number(typeCode);
+        var pill = el('div', { style: 'background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:.35rem;text-align:center;' });
+        pill.appendChild(el('div', { style: 'font-size:.65rem;color:#8b949e;' }, ARMY_TYPE_LABELS_BR[typeCode]));
+        var v = el('div', { style: 'font-size:.85rem;font-weight:600;color:#e6edf3;' });
+        v.appendChild(document.createTextNode('Lv '));
+        v.appendChild(el('strong', null, String(lvl)));
+        v.appendChild(document.createTextNode('/20'));
+        pill.appendChild(v);
+        amRow.appendChild(pill);
+      });
+      amBlock.appendChild(amRow);
+      col.appendChild(amBlock);
+    }
+
+    return col;
   }
 
   function buildHtChipModal(att, def, attPI, defPI) {
