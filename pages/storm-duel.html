@@ -588,12 +588,17 @@
     const d = new Date(ts*1000);
     return d.toLocaleString(undefined, {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
   }
+  // Class names that hold player/leader/alliance text — never translate via Google Translate.
+  const NO_TRANSLATE_CLASS_RE = /\b(name|lname|kt-name|sr-leader)\b/;
   function el(tag, attrs, ...kids) {
     const e = document.createElement(tag);
     if (attrs) for (const k of Object.keys(attrs)) {
       if (k === 'class') e.className = attrs[k];
       else if (k.startsWith('on')) e.addEventListener(k.substring(2), attrs[k]);
       else if (attrs[k] != null) e.setAttribute(k, attrs[k]);
+    }
+    if (attrs && typeof attrs.class === 'string' && NO_TRANSLATE_CLASS_RE.test(attrs.class)) {
+      e.setAttribute('translate', 'no');
     }
     for (const k of kids) {
       if (k == null || k === false) continue;
@@ -623,9 +628,9 @@
   function markWasted(rowEl, name) { if (isWasted(name)) rowEl.classList.add('is-wasted'); return rowEl; }
   function wastedSubNode(name) {
     if (!name) return '—';
-    if (!isWasted(name)) return name;
+    if (!isWasted(name)) return el('span', { translate:'no' }, name);
     return el('span', null,
-      el('span', { style:'opacity:.4;text-decoration:line-through' }, name),
+      el('span', { translate:'no', style:'opacity:.4;text-decoration:line-through' }, name),
       ' ',
       el('span', { style:'color:#c1121f;font-weight:900;font-style:italic;font-family:Impact,Arial Black,sans-serif;letter-spacing:.05em' }, 'WASTED')
     );
@@ -848,7 +853,7 @@
           el('td', null, el('span', { class:'rank-pill' }, '#'+(f.rank||'?'))),
           el('td', null, el('span', { class: 'stag '+z.side, style:'font-family:SF Mono,Menlo,monospace' }, z.side==='ally'?'Ally':'Opp')),
           el('td', null, el('span', { style:'font-family:SF Mono,Menlo,monospace;color:var(--accent);font-weight:700' }, 'S'+z.sid)),
-          el('td', null, sq.leader || '—'),
+          el('td', null, el('span', { translate:'no' }, sq.leader || '—')),
           el('td', { class:'num' }, fmtNum(f.event_fame))
         );
       }))
@@ -893,7 +898,7 @@
       const sq = z.squad || {};
       const head = el('div', { class:'wz-head' },
         el('span', { class:'wz-tag' }, 'Server: ' + z.sid),
-        el('span', { class:'wz-meta' }, '| Leader: ' + (sq.leader || '—')),
+        el('span', { class:'wz-meta' }, '| Leader: ', el('span', { translate:'no' }, sq.leader || '—')),
         cb ? el('span', { class:'meta-pill' }, cb.combatWLs+' combat / '+cb.wastelandTotal+' wl') : null
       );
       if (!cb) return el('div', { class:'wz-block '+side }, head, el('div', { style:'color:var(--muted);font-size:.75rem' }, 'no data'));
@@ -965,7 +970,7 @@
         const sq = z.squad || {};
         const head = el('div', { class:'wz-head' },
           el('span', { class:'wz-tag' }, 'S'+z.sid),
-          el('span', { class:'wz-meta' }, sq.leader || '—'),
+          el('span', { class:'wz-meta', translate:'no' }, sq.leader || '—'),
           el('span', { class:'meta-pill' }, m ? (m.count + ' ranked') : 'no data')
         );
         if (!m) return el('div', { class:'wz-block '+side }, head);
@@ -1036,7 +1041,7 @@
         const sq = z.squad || {};
         const head = el('div', { class:'wz-head' },
           el('span', { class:'wz-tag' }, 'S'+z.sid),
-          el('span', { class:'wz-meta' }, sq.leader || '—'),
+          el('span', { class:'wz-meta', translate:'no' }, sq.leader || '—'),
           el('span', { class:'meta-pill' }, k ? (k.count + ' in top500') : 'none in top500')
         );
         if (!k) return el('div', { class:'wz-block '+side }, head);
@@ -1075,7 +1080,7 @@
         const sq = z.squad || {};
         const head = el('div', { class:'wz-head' },
           el('span', { class:'wz-tag' }, 'S'+z.sid),
-          el('span', { class:'wz-meta' }, sq.leader || '—'),
+          el('span', { class:'wz-meta', translate:'no' }, sq.leader || '—'),
           el('span', { class:'meta-pill' }, ka ? (ka.count + ' alliances') : 'none')
         );
         if (!ka) return el('div', { class:'wz-block '+side }, head);
@@ -1167,7 +1172,7 @@
         const sq = z.squad || {};
         const head = el('div', { class:'wz-head' },
           el('span', { class:'wz-tag' }, 'S'+z.sid),
-          el('span', { class:'wz-meta' }, sq.leader || '—'),
+          el('span', { class:'wz-meta', translate:'no' }, sq.leader || '—'),
           el('span', { class:'meta-pill' }, f.length+' marches')
         );
         const items = f.slice(0, 10).map(m => marchInline({...m, _sid:z.sid}, side, false));
