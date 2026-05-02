@@ -1376,14 +1376,17 @@
       const top10Pwr = ['Army','Navy','AirForce'].reduce((s,u) => s + ((fs[u]||[]).slice(0,10).reduce((x,m) => x+(m.power||0), 0)), 0);
       return { sid: z.sid, leader: z.squad?.leader, buffSum, top10Pwr };
     });
-    // Sort: S2696 always first (anchor), then by buff stack desc
+    // Sort: S2696 always first (anchor), S836 forced LAST so it lands in attack split,
+    // remaining sorted by buff stack desc.
     serverRoles.sort((a, b) => {
       if (a.sid === 2696) return -1;
       if (b.sid === 2696) return 1;
+      if (a.sid === 836) return 1;
+      if (b.sid === 836) return -1;
       return b.buffSum - a.buffSum;
     });
-    // 3 defend / 2 attack server split (was 2/3) — defense was previously under-resourced.
-    serverRoles.forEach((s, i) => { s.role = i < 3 ? 'DEFEND' : 'ATTACK'; s.rank = i+1; });
+    // 2 defend / 3 attack split: S2696 anchor + next-best buff defend; remaining 3 attack.
+    serverRoles.forEach((s, i) => { s.role = i < 2 ? 'DEFEND' : 'ATTACK'; s.rank = i+1; });
     const defendSids = new Set(serverRoles.filter(s => s.role === 'DEFEND').map(s => s.sid));
     const attackSids = new Set(serverRoles.filter(s => s.role === 'ATTACK').map(s => s.sid));
     const anchorSid = serverRoles[0].sid;
@@ -1894,7 +1897,7 @@
     });
     const assignSection = el('div', { class:'strat-section' },
       el('h4', null, 'Server Lane Assignment'),
-      el('div', { class:'strat-note' }, '3 servers DEFEND, 2 ATTACK (defense-heavy — capital + ruins must be held). S2696 pinned as primary defender; other 2 defenders = top combat-buff stacks. ',
+      el('div', { class:'strat-note' }, '2 servers DEFEND, 3 ATTACK. S2696 pinned as primary defender; second defender = next-best combat-buff stack from S2952/S839/S2864 (S836 forced into attack lane). ',
         el('b', null, '3 attack-pool players additionally rebalanced to defense as flex-defenders'),
         ' so the lane split isn\'t too attack-heavy.'
       ),
