@@ -158,6 +158,46 @@ table.power.power-collapsed .hidden-row{display:none;}
 .rule.yellow svg{color:var(--yellow);}
 .rule.purple svg{color:var(--purple);}
 
+/* Focus order banner */
+.focus-order{display:flex;align-items:stretch;gap:.5rem;flex-wrap:wrap;margin-bottom:.85rem;}
+.fo-step{flex:1 1 160px;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.75rem .85rem;text-align:center;position:relative;overflow:hidden;}
+.fo-step::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
+.fo-step.fo-a::before{background:var(--red);}
+.fo-step.fo-b::before{background:var(--yellow);}
+.fo-step.fo-c::before{background:var(--green);}
+.fo-step.fo-d::before{background:var(--muted);}
+.fo-lbl{font-size:.6rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-top:.15rem;}
+.fo-title{font-size:.95rem;font-weight:800;margin:.2rem 0 .1rem;}
+.fo-step.fo-a .fo-title{color:var(--red);}
+.fo-step.fo-b .fo-title{color:var(--yellow);}
+.fo-step.fo-c .fo-title{color:var(--green);}
+.fo-step.fo-d .fo-title{color:var(--muted);}
+.fo-sub{font-size:.65rem;color:var(--muted);line-height:1.35;}
+.fo-arrow{color:var(--muted);align-self:center;flex-shrink:0;}
+@media (max-width:700px){.focus-order{flex-direction:column;gap:.4rem;}.fo-arrow{transform:rotate(90deg);align-self:center;}.fo-step{flex-basis:auto;}}
+
+/* Focus tier expanded cards */
+.focus-tier{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.75rem .9rem;margin-bottom:.55rem;display:flex;gap:.6rem;align-items:flex-start;}
+.focus-tier.fa{border-left:4px solid var(--red);}
+.focus-tier.fb{border-left:4px solid var(--yellow);}
+.focus-tier.fc{border-left:4px solid var(--green);}
+.focus-tier.fd{border-left:4px solid var(--muted);}
+.focus-tier .icon-wrap{flex-shrink:0;width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--surface);border:1px solid var(--border);}
+.focus-tier.fa .icon-wrap svg{color:var(--red);}
+.focus-tier.fb .icon-wrap svg{color:var(--yellow);}
+.focus-tier.fc .icon-wrap svg{color:var(--green);}
+.focus-tier.fd .icon-wrap svg{color:var(--muted);}
+.focus-tier .body{flex:1;min-width:0;}
+.focus-tier h4{font-size:.85rem;font-weight:800;margin-bottom:.2rem;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;}
+.focus-tier h4 .count{font-size:.65rem;font-weight:600;color:var(--muted);background:var(--surface);border:1px solid var(--border);padding:.1rem .4rem;border-radius:5px;}
+.focus-tier .desc{font-size:.72rem;color:var(--muted);line-height:1.45;margin-bottom:.45rem;}
+.focus-tier .desc b{color:var(--text);}
+.focus-tier .seq-pills{display:flex;flex-wrap:wrap;gap:.25rem;}
+.focus-tier .seq-pill{font-family:'SF Mono',Consolas,monospace;font-size:.66rem;padding:.12rem .4rem;background:var(--surface);border:1px solid var(--border);border-radius:5px;color:var(--text);}
+.focus-tier .seq-pill.with-nc{border-color:rgba(63,185,80,.5);background:rgba(63,185,80,.08);}
+.focus-tier .seq-pill.threat{border-color:rgba(248,81,73,.5);background:rgba(248,81,73,.08);}
+.focus-tier .seq-pill.over{border-color:rgba(139,148,158,.5);background:rgba(139,148,158,.08);text-decoration:line-through;color:var(--muted);}
+
 .foot{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--border);font-size:.7rem;color:var(--muted);text-align:center;}
 .foot .upd{display:block;margin-bottom:.25rem;}
 .foot a{color:var(--muted);}
@@ -314,9 +354,28 @@ body{top:0!important;}
   var SPEC_ICON = {4001:'sword',4006:'heart',4007:'sword',4008:'shield',4010:'shield',4002:'truck',4003:'truck',4004:'pickaxe',4015:'list',4016:'train',4017:'compass',4018:'ghost',4080:'treasure'};
   var EFFECT_TO_SPEC = {11001:4001,11002:4006,11003:4007,11004:4008,11006:4010,11011:4002,11012:4003,11017:4015,11020:4016,11023:4017,11015:4018,11080:4080};
 
-  function priorityLevel(opPI){ if (opPI >= 50) return 1; if (opPI >= 30) return 2; if (opPI >= 15) return 3; return 4; }
-  function priorityLabel(p){ return ['','Top-3 power','Top-10 power','Mid power','Standard'][p]; }
+  // Threat model: only sector servers with ≥100K event fame are real threats.
+  // Everything below = expected win regardless of round-score PI swings.
+  var FAME_THREAT_THRESHOLD = 100000;
+  function priorityLevel(opPI, opFame){
+    if ((opFame||0) >= FAME_THREAT_THRESHOLD) return 1;
+    if (opPI >= 30) return 2;
+    if (opPI >= 15) return 3;
+    return 4;
+  }
+  function priorityLabel(p){ return ['','Real threat','Top-10 power','Mid power','Standard'][p]; }
   function fmtNum(n){ return (n||0).toLocaleString(); }
+  // Parse "Lv. 2 Neutral City #2015" -> { num: 2015, level: 2 }
+  function parseNc(name){
+    var m = (name || '').match(/Lv\.\s*(\d+)\s*Neutral City\s*#(\d+)/);
+    if (!m) return { num: '?', level: 1, name: name };
+    return { num: m[2], level: parseInt(m[1], 10), name: name };
+  }
+  // Build "NC#2015 (Lv2)" or "NC#2015 (Lv2) + NC#1048 (Lv1)" from list of names
+  function formatNcUnlockList(names){
+    var parsed = (names || []).map(parseNc);
+    return parsed.map(function(p){ return 'NC#' + p.num + ' (Lv' + p.level + ')'; }).join(' + ');
+  }
 
   // ===== BUILDERS =====
   function buildHero(rd, roundKey, root){
@@ -379,6 +438,131 @@ body{top:0!important;}
     root.appendChild(section);
   }
 
+  function buildFocus(rd, root){
+    var warTargets = rd.warTargets || [];
+    if (!warTargets.length) return;
+    var ncUnlocks = rd.declarationNcUnlocks || {};
+    var contested = rd.contestedRanked || [];
+
+    // Index opp data by seq
+    var oppBySeq = {};
+    contested.forEach(function(f){ oppBySeq[String(f.seq)] = f; });
+
+    // Combat specs
+    var COMBAT_SPECS = {4001:1,4006:1,4007:1,4008:1,4010:1};
+
+    // Categorize each declaration into tier A/B/C/D
+    var tA = [], tB = [], tC = [], tD = [];
+    warTargets.forEach(function(w){
+      var seqStr = String(w.seq);
+      var opp = oppBySeq[seqStr];
+      var ncs = ncUnlocks[seqStr] || [];
+      var hasNc = ncs.length > 0;
+      var isCombat = !!COMBAT_SPECS[w.specId];
+      var threat = opp && opp.opFame >= FAME_THREAT_THRESHOLD;
+      // Over-cap drops (Truck Heist 4003 already over cap; SS Train 4016 redundant L3s)
+      var droppable = false;
+      if (w.specId === 4003 && w.level === 1) droppable = true; // L1 heist over cap
+      // Tier assignment
+      var entry = { seq: w.seq, level: w.level, specId: w.specId, specName: w.specName, opp: opp, ncs: ncs, hasNc: hasNc, isCombat: isCombat, threat: threat, droppable: droppable };
+      if (threat) tA.push(entry);
+      else if (isCombat && w.level === 3) tB.push(entry);
+      else if (hasNc) tC.push(entry);
+      else if (droppable) tD.push(entry);
+      else tD.push(entry);
+    });
+    // Sort within tiers: contested first inside B; NC-yielding combat already in A or C
+    tB.sort(function(a,b){ return (b.hasNc?1:0) - (a.hasNc?1:0) || a.seq - b.seq; });
+    tC.sort(function(a,b){
+      var la = a.ncs.length ? Math.max.apply(null, a.ncs.map(function(n){ return parseNc(n).level; })) : 0;
+      var lb = b.ncs.length ? Math.max.apply(null, b.ncs.map(function(n){ return parseNc(n).level; })) : 0;
+      return lb - la || a.seq - b.seq;
+    });
+    tD.sort(function(a,b){ return (b.droppable?1:0) - (a.droppable?1:0) || a.seq - b.seq; });
+
+    var section = el('section', 'sect');
+    var t = el('div', 'sect-title');
+    var dot = el('span', 'dot'); dot.style.background = 'var(--accent)';
+    t.appendChild(dot);
+    t.appendChild(el('span', null, 'Recommended Focus Order'));
+    t.appendChild(el('span', 'tag', 'combat first · threats above all'));
+    section.appendChild(t);
+
+    // Focus banner
+    var banner = el('div', 'focus-order');
+    var steps = [
+      { cls:'fo-a', lbl:'Tier A', title:'Real Threats', sub:tA.length + (tA.length === 1 ? ' fight · win-or-lose-points' : ' fights · win-or-lose-points') },
+      { cls:'fo-b', lbl:'Tier B', title:'Combat L3', sub:tB.length + ' targets · biggest buff impact' },
+      { cls:'fo-c', lbl:'Tier C', title:'NC Unlocks', sub:tC.length + ' targets · unlock NCs next round' },
+      { cls:'fo-d', lbl:'Tier D', title:'Filler / Drop', sub:tD.length + ' targets · low priority' }
+    ];
+    for (var si = 0; si < steps.length; si++){
+      var s = steps[si];
+      var step = el('div', 'fo-step ' + s.cls);
+      step.appendChild(el('div', 'fo-lbl', s.lbl));
+      step.appendChild(el('div', 'fo-title', s.title));
+      step.appendChild(el('div', 'fo-sub', s.sub));
+      banner.appendChild(step);
+      if (si < steps.length - 1){
+        var arrow = makeIcon('arrow', 22);
+        arrow.classList.add('fo-arrow');
+        banner.appendChild(arrow);
+      }
+    }
+    section.appendChild(banner);
+
+    // Tier detail cards
+    var tierConfigs = [
+      { letter:'fa', tier:tA, icon:'sword', title:'Tier A — Real Threats',
+        desc:'Opponent fame ≥100K. Fame is cumulative across all rounds, so these servers have proven sustained power. <b>Top-3 power players, Mothership full.</b> Lose-points-if-lose fights — assign deliberately, do not let mid-tier players solo these.' },
+      { letter:'fb', tier:tB, icon:'sword', title:'Tier B — Combat L3 (max buff impact)',
+        desc:'Combat wastelands (ATK / HP / DEF / DMG Inc / DMG Red) at Lv3. <b>All five caps still under 50% filled</b> — every combat win compounds for the rest of the event. Most are uncontested or vs <100K fame opponents = expected wins.' },
+      { letter:'fc', tier:tC, icon:'castle', title:'Tier C — NC Unlocks',
+        desc:'Non-combat declarations whose capture unlocks 4-way adjacency to a Neutral City next round. NC Lv1 = 3pts, Lv2 = 5pts, Lv3 = 8pts. Worth winning even when the buff itself is over-cap.' },
+      { letter:'fd', tier:tD, icon:'list', title:'Tier D — Filler & Over-Cap Drops',
+        desc:'Buff already capped or low-impact specs. <b>Truck Heist L1 ×2 (W-67, W-333) are over-cap drops</b> — reassign players if window allows. Otherwise low-priority routine wins.' }
+    ];
+    tierConfigs.forEach(function(tc){
+      if (!tc.tier.length) return;
+      var card = el('div', 'focus-tier ' + tc.letter);
+      var iw = el('div', 'icon-wrap');
+      iw.appendChild(makeIcon(tc.icon, 18));
+      card.appendChild(iw);
+      var body = el('div', 'body');
+      var h4 = el('h4');
+      h4.appendChild(el('span', null, tc.title));
+      h4.appendChild(el('span', 'count', tc.tier.length));
+      body.appendChild(h4);
+      var desc = el('div', 'desc');
+      // Allow inline <b> in desc — split on <b> tags
+      var parts = tc.desc.split(/<b>([^<]*)<\/b>/);
+      parts.forEach(function(part, idx){
+        if (idx % 2 === 0){
+          if (part) desc.appendChild(document.createTextNode(part));
+        } else {
+          desc.appendChild(el('b', null, part));
+        }
+      });
+      body.appendChild(desc);
+      var seqRow = el('div', 'seq-pills');
+      tc.tier.forEach(function(e){
+        var lbl = 'W-' + e.seq + ' L' + e.level + ' · ' + (e.specName || '?');
+        if (e.opp) lbl += ' vs S' + e.opp.opponent;
+        if (e.hasNc) lbl += ' → ' + formatNcUnlockList(e.ncs);
+        var pill = el('span', 'seq-pill', lbl);
+        if (e.threat) pill.classList.add('threat');
+        else if (e.hasNc) pill.classList.add('with-nc');
+        else if (e.droppable) pill.classList.add('over');
+        seqRow.appendChild(pill);
+      });
+      body.appendChild(seqRow);
+      card.appendChild(body);
+      section.appendChild(card);
+    });
+
+    root.appendChild(section);
+  }
+
   function buildContested(rd, root){
     var contested = (rd.contestedRanked || []).slice().sort(function(a,b){ return b.opPI - a.opPI; });
     if (!contested.length) return;
@@ -393,7 +577,7 @@ body{top:0!important;}
     var grid = el('div', 'fights');
     var ncUnlocks = rd.declarationNcUnlocks || {};
     contested.forEach(function(f){
-      var prio = priorityLevel(f.opPI);
+      var prio = priorityLevel(f.opPI, f.opFame);
       var card = el('div', 'fight p' + prio);
       var top = el('div', 'fight-top');
       var idDiv = el('div', 'fight-id');
@@ -422,7 +606,7 @@ body{top:0!important;}
       if (unlocks && unlocks.length){
         var bonus = el('div', 'fight-bonus');
         bonus.appendChild(makeIcon('castle', 13));
-        bonus.appendChild(el('span', null, 'Win unlocks ' + unlocks.length + ' NC' + (unlocks.length > 1 ? 's' : '') + ' next round'));
+        bonus.appendChild(el('span', null, 'Win unlocks ' + formatNcUnlockList(unlocks)));
         card.appendChild(bonus);
       }
       grid.appendChild(card);
@@ -568,8 +752,20 @@ body{top:0!important;}
       var over = rawMax > 0 && rawCur > rawMax;
       return { eff:b.effectType, desc:b.description, cat:cat, ico:ico, rawCur:rawCur, rawMax:rawMax, pct:pct, over:over, paraType:b.paraType };
     });
-    var catOrder = { combat:0, economy:1, utility:2, special:3, other:4 };
-    enriched.sort(function(a,b){ var co = (catOrder[a.cat]||9) - (catOrder[b.cat]||9); if (co !== 0) return co; return b.rawMax - a.rawMax; });
+    // Custom display order: combat first, then Realm March (11023), then Treasury (11080), then rest by category
+    var COMBAT_EFFECTS = { 11001:1, 11002:2, 11003:3, 11004:4, 11006:5 };
+    function buffSortKey(b){
+      if (COMBAT_EFFECTS[b.eff]) return [0, COMBAT_EFFECTS[b.eff]];
+      if (b.eff === 11023) return [1, 0]; // Realm march speed
+      if (b.eff === 11080) return [2, 0]; // Treasury
+      var catOrder = { combat:3, economy:4, utility:5, special:6, other:7 };
+      return [catOrder[b.cat] || 8, -b.rawMax];
+    }
+    enriched.sort(function(a,b){
+      var ka = buffSortKey(a), kb = buffSortKey(b);
+      if (ka[0] !== kb[0]) return ka[0] - kb[0];
+      return ka[1] - kb[1];
+    });
 
     var list = el('div', 'buff-list');
     enriched.forEach(function(b){
@@ -580,19 +776,35 @@ body{top:0!important;}
       desc.appendChild(el('span', null, b.desc));
       head.appendChild(desc);
       var dCur, dMax;
+      var hideMax = (b.eff === 11080) && b.rawMax === 0; // Treasury cap is round-pool dependent, not fixed
       if (b.paraType === 2){ dCur = (b.rawCur/100) + '%'; dMax = (b.rawMax/100) + '%'; }
       else { dCur = b.rawCur + ''; dMax = b.rawMax + ''; }
       var vals = el('span', 'vals');
-      vals.appendChild(el('b', null, dCur));
-      vals.appendChild(document.createTextNode(' / ' + dMax));
-      if (b.over) vals.appendChild(el('span', 'over', 'OVER'));
+      vals.appendChild(el('b', null, hideMax ? ('+' + dCur) : dCur));
+      if (hideMax){
+        vals.appendChild(document.createTextNode(' (round pool)'));
+      } else {
+        vals.appendChild(document.createTextNode(' / ' + dMax));
+        if (b.over) vals.appendChild(el('span', 'over', 'OVER'));
+      }
       head.appendChild(vals);
       row.appendChild(head);
-      var bar = el('div', 'buff-bar');
-      var fill = el('div', 'buff-fill ' + (b.over ? 'over' : b.cat));
-      fill.style.width = Math.max(2, b.pct) + '%';
-      bar.appendChild(fill);
-      row.appendChild(bar);
+      // Bar: hide for round-pool effect; otherwise normal
+      if (!hideMax){
+        var bar = el('div', 'buff-bar');
+        var fill = el('div', 'buff-fill ' + (b.over ? 'over' : b.cat));
+        fill.style.width = Math.max(2, b.pct) + '%';
+        bar.appendChild(fill);
+        row.appendChild(bar);
+      } else {
+        // For treasury: show a static "earned" indicator instead of cap bar
+        var bar = el('div', 'buff-bar');
+        var fill = el('div', 'buff-fill special');
+        fill.style.width = b.rawCur > 0 ? '100%' : '2%';
+        fill.style.opacity = '.4';
+        bar.appendChild(fill);
+        row.appendChild(bar);
+      }
       list.appendChild(row);
     });
     section.appendChild(list);
@@ -611,12 +823,12 @@ body{top:0!important;}
     section.appendChild(t);
 
     var tiers = { 1: [], 2: [], 3: [], 4: [] };
-    contested.forEach(function(f){ tiers[priorityLevel(f.opPI)].push(f); });
+    contested.forEach(function(f){ tiers[priorityLevel(f.opPI, f.opFame)].push(f); });
     var meta = {
-      1: { cls: 't1', label: 'P1', title: 'Top 3 Power Players', desc: 'S/A-tier opponents (PI ≥50). Full Mothership; smalls if needed. Lose-points-if-lose fights.' },
-      2: { cls: 't2', label: 'P2', title: 'Top 4-10 Power Players', desc: 'A-tier opponents (PI 30–50). Full Mothership. NC unlock bonuses worth extra effort.' },
-      3: { cls: 't3', label: 'P3', title: 'Mid-Tier Power Players', desc: 'B/C-tier opponents (PI 15–30). Standard march composition.' },
-      4: { cls: 't4', label: 'P4', title: 'Standard Players', desc: 'D-tier or near-empty defenders (PI <15). We are 5-10x stronger; routine wins.' }
+      1: { cls: 't1', label: 'P1', title: 'Real-Threat Fights — Top Power Players', desc: 'Opponent fame ≥100K. Full Mothership; smalls if needed. The only fights where a wrong assignment can lose us points.' },
+      2: { cls: 't2', label: 'P2', title: 'Top 4–10 Power Players', desc: 'Opponent fame <100K but PI ≥30. Full Mothership. NC unlock bonuses worth extra effort.' },
+      3: { cls: 't3', label: 'P3', title: 'Mid Power Players', desc: 'Opponent PI 15–30. Standard march composition. Routine wins.' },
+      4: { cls: 't4', label: 'P4', title: 'Standard Players', desc: 'Opponent PI <15 or near-empty. We are 5–10× stronger; assign anyone.' }
     };
     var grid = el('div', 'assign-grid');
     [1,2,3,4].forEach(function(p){
@@ -670,6 +882,7 @@ body{top:0!important;}
     document.getElementById('hdrSub').textContent = ' · R' + roundKey;
     buildHero(rd, roundKey, root);
     buildRules(root);
+    buildFocus(rd, root);
     buildContested(rd, root);
     buildNcFlow(rd, root);
     buildPower(rd, root);
