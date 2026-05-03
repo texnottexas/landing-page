@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inventory + Beast Test — TW S2864</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --card:#1c2128; --border:#30363d;
+    --text:#e6edf3; --muted:#8b949e; --accent:#79c0ff; --green:#3fb950;
+    --q1:#9ca3af; --q2:#3fb950; --q3:#388bfd; --q4:#a371f7; --q5:#d29922; --q6:#f85149;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); line-height:1.4; }
+  header { padding:14px 20px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+  header h1 { margin:0; font-size:18px; font-weight:600; }
+  header a { color:var(--accent); text-decoration:none; font-size:13px; }
+  .panel { padding:14px 20px; border-bottom:1px solid var(--border); }
+  .panel h2 { margin:0 0 8px; font-size:15px; color:var(--accent); }
+  .panel p.hint { margin:0 0 8px; font-size:12px; color:var(--muted); }
+  textarea.paste { width:100%; min-height:80px; max-height:240px; background:var(--card); border:1px solid var(--border); color:var(--text); padding:8px; border-radius:6px; font-family:"SF Mono",Menlo,Consolas,monospace; font-size:11px; resize:vertical; }
+  button.action { padding:8px 16px; background:var(--green); color:#0d1117; border:none; border-radius:6px; font-weight:600; cursor:pointer; font-size:13px; margin-top:6px; }
+  button.action:hover { background:#4cca5e; }
+  button.action:disabled { background:var(--card); color:var(--muted); cursor:not-allowed; }
+  .status { font-size:12px; color:var(--muted); margin-left:10px; }
+  .status.ok { color:var(--green); }
+  .status.err { color:#f85149; }
+  .meta { color:var(--muted); font-size:13px; display:flex; gap:18px; flex-wrap:wrap; padding:8px 20px; background:var(--surface); border-bottom:1px solid var(--border); }
+  .meta b { color:var(--text); }
+  .tabs { display:flex; gap:4px; padding:10px 20px 0; background:var(--surface); border-bottom:1px solid var(--border); overflow-x:auto; }
+  .tab { background:none; border:none; color:var(--muted); padding:10px 16px; cursor:pointer; font-size:14px; border-radius:6px 6px 0 0; border-bottom:2px solid transparent; white-space:nowrap; }
+  .tab:hover { color:var(--text); background:var(--card); }
+  .tab.active { color:var(--accent); border-bottom-color:var(--accent); background:var(--card); }
+  .tab .badge { display:inline-block; margin-left:6px; padding:1px 7px; background:var(--card); border:1px solid var(--border); border-radius:10px; font-size:11px; }
+  .tab.active .badge { background:var(--bg); }
+  .subtabs { display:flex; gap:4px; padding:8px 20px; background:var(--bg); border-bottom:1px solid var(--border); }
+  .subtabs.hidden { display:none; }
+  .subtab { background:var(--card); border:1px solid var(--border); color:var(--muted); padding:6px 14px; cursor:pointer; font-size:12px; border-radius:14px; }
+  .subtab:hover { color:var(--text); }
+  .subtab.active { color:var(--accent); border-color:var(--accent); }
+  .controls { padding:14px 20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; background:var(--bg); }
+  .controls input, .controls select { background:var(--card); border:1px solid var(--border); color:var(--text); padding:8px 12px; border-radius:6px; font-size:13px; }
+  .controls input { min-width:200px; flex:1; max-width:300px; }
+  .stats { color:var(--muted); font-size:13px; margin-left:auto; }
+  .grid { padding:0 20px 24px; display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:10px; }
+  .cell { background:var(--card); border:2px solid var(--border); border-radius:6px; padding:6px; cursor:pointer; position:relative; transition:transform .12s, border-color .12s; display:flex; flex-direction:column; align-items:center; }
+  .cell:hover { transform:translateY(-2px); border-color:var(--accent); }
+  .cell.q1 { border-color:var(--q1); }
+  .cell.q2 { border-color:var(--q2); }
+  .cell.q3 { border-color:var(--q3); }
+  .cell.q4 { border-color:var(--q4); }
+  .cell.q5 { border-color:var(--q5); }
+  .cell.q6 { border-color:var(--q6); }
+  .cell .icon-wrap { width:72%; aspect-ratio:1; display:flex; align-items:center; justify-content:center; position:relative; margin:2px auto 0; }
+  .cell img { max-width:100%; max-height:100%; }
+  .cell .placeholder { width:60%; height:60%; background:var(--surface); border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:22px; }
+  .cell .stats-row { width:100%; display:flex; justify-content:space-between; align-items:center; margin-top:4px; padding:0 2px; min-height:22px; gap:4px; }
+  .cell .lv { font-size:13px; font-weight:700; color:var(--accent); background:rgba(56,139,253,0.15); border:1px solid rgba(56,139,253,0.4); border-radius:4px; padding:1px 6px; line-height:1.1; white-space:nowrap; }
+  .cell .lv.empty { visibility:hidden; }
+  .cell .amt { font-size:14px; font-weight:700; color:#fff; background:rgba(0,0,0,0.45); border-radius:4px; padding:1px 7px; line-height:1.1; white-space:nowrap; }
+  .cell .amt.zero { color:var(--muted); background:transparent; }
+  .cell .name { width:100%; margin-top:4px; font-size:11px; line-height:1.2; color:var(--text); text-align:center; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; min-height:26px; }
+  .cell.q5 .name { color:#f0d175; }
+  .cell.q4 .name { color:#c4a4ff; }
+  .cell.q6 .name { color:#ff8a82; }
+  .cell .stars { display:flex; justify-content:center; gap:1px; margin-top:2px; font-size:10px; color:var(--q5); }
+  .cell .buff-mini { font-size:10px; color:var(--muted); width:100%; text-align:center; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .empty-msg { padding:40px 20px; text-align:center; color:var(--muted); font-size:13px; }
+  .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:99; align-items:center; justify-content:center; }
+  .modal-bg.show { display:flex; }
+  .modal { background:var(--surface); border:1px solid var(--border); border-radius:10px; max-width:560px; width:92%; max-height:85vh; overflow:auto; padding:20px; }
+  .modal h2 { margin:0 0 6px; font-size:18px; }
+  .modal .sub { color:var(--muted); font-size:12px; margin-bottom:14px; }
+  .modal img { width:96px; height:96px; object-fit:contain; background:var(--card); border-radius:8px; padding:8px; }
+  .modal .row { display:flex; gap:14px; margin-bottom:14px; align-items:flex-start; }
+  .modal table { width:100%; border-collapse:collapse; font-size:12px; }
+  .modal td { padding:5px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
+  .modal td:first-child { color:var(--muted); width:140px; }
+  .modal td.val { color:var(--text); word-break:break-all; }
+  .close { float:right; background:none; border:none; color:var(--muted); cursor:pointer; font-size:22px; line-height:1; }
+  footer { color:var(--muted); padding:24px 20px; text-align:center; font-size:12px; }
+  footer a { color:var(--accent); text-decoration:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Inventory + Beast Test Page</h1>
+  <a href="bookmarklets.html">← Bookmarklets</a>
+</header>
+
+<section class="panel" id="panel-inv">
+  <h2>1 · Inventory JSON</h2>
+  <p class="hint">Paste output from the Inventory bookmarklet. Click Render.</p>
+  <textarea class="paste" id="inv-paste" placeholder='{"v":1,"meta":{...},"tabs":{"item":[...],"unit":[...],"decor":[...],"hero":[...],"cpnt":[...]},"heros":{...}}'></textarea>
+  <div>
+    <button class="action" id="inv-render">Render Inventory</button>
+    <span class="status" id="inv-status"></span>
+  </div>
+</section>
+
+<div class="meta" id="inv-meta" hidden></div>
+<div class="tabs" id="inv-tabs" hidden></div>
+<div class="subtabs hidden" id="inv-subtabs"></div>
+<div class="controls" id="inv-controls" hidden>
+  <input id="inv-search" placeholder="Search by id, name, desc...">
+  <select id="inv-sort">
+    <option value="quality_lv">Quality desc, Level desc</option>
+    <option value="amount">Amount desc</option>
+    <option value="id">ID asc</option>
+    <option value="type">Type</option>
+  </select>
+  <select id="inv-quality">
+    <option value="">All qualities</option>
+    <option value="1">Q1 White</option>
+    <option value="2">Q2 Green</option>
+    <option value="3">Q3 Blue</option>
+    <option value="4">Q4 Purple</option>
+    <option value="5">Q5 Orange</option>
+    <option value="6">Q6 Red</option>
+  </select>
+  <span class="stats" id="inv-stats"></span>
+</div>
+<div class="grid" id="inv-grid"></div>
+
+<section class="panel" id="panel-beast">
+  <h2>2 · Enigma Beast JSON</h2>
+  <p class="hint">Paste output from the Beast bookmarklet. Click Render.</p>
+  <textarea class="paste" id="beast-paste" placeholder='{"v":1,"src":"EnigmaBeastListPanel._data","total":N,"kept":N,"beasts":[...]}'></textarea>
+  <div>
+    <button class="action" id="beast-render">Render Beasts</button>
+    <span class="status" id="beast-status"></span>
+  </div>
+</section>
+
+<div class="meta" id="beast-meta" hidden></div>
+<div class="controls" id="beast-controls" hidden>
+  <input id="beast-search" placeholder="Search beast name, buff...">
+  <select id="beast-sort">
+    <option value="potential">Potential desc</option>
+    <option value="quality_star">Quality desc, Star desc, Level desc</option>
+    <option value="type">Type, Element</option>
+  </select>
+  <select id="beast-quality">
+    <option value="">All qualities</option>
+    <option value="3">Q3 Blue</option>
+    <option value="4">Q4 Purple</option>
+    <option value="5">Q5 Orange</option>
+  </select>
+  <span class="stats" id="beast-stats"></span>
+</div>
+<div class="grid" id="beast-grid"></div>
+
+<div class="modal-bg" id="modal-bg">
+  <div class="modal" id="modal"></div>
+</div>
+
+<footer>Test page — not in nav. <a href="https://2864tw.com">2864tw.com</a></footer>
+
+<script>
+'use strict';
+
+const ASSET_BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/';
+
+// ── Lookups (lazy-loaded once) ────────────────────────────────────────────
+let LOOKUPS = null;
+async function loadLookups() {
+  if (LOOKUPS) return LOOKUPS;
+  const setStatus = (msg) => {
+    const s = document.getElementById('inv-status');
+    s.textContent = msg; s.className = 'status';
+  };
+  setStatus('loading lookup tables...');
+  const [item, building, army, heroes] = await Promise.all([
+    fetch('data/item-table.json').then(r => r.json()),
+    fetch('data/building-table.json').then(r => r.json()),
+    fetch('data/army-icon-map.json').then(r => r.json()),
+    fetch('data/all-heroes.json').then(r => r.json())
+  ]);
+  const heroById = {};
+  for (const h of heroes) heroById[h.heroId] = h;
+  LOOKUPS = { item, building, army, heroById };
+  setStatus('');
+  return LOOKUPS;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function fmtNum(n) {
+  if (n == null) return '-';
+  if (typeof n === 'string') return n;
+  if (n < 1000) return String(n);
+  if (n < 1e6) return (n/1e3).toFixed(1) + 'K';
+  if (n < 1e9) return (n/1e6).toFixed(2) + 'M';
+  if (n < 1e12) return (n/1e9).toFixed(2) + 'B';
+  if (n < 1e15) return (n/1e12).toFixed(2) + 'T';
+  return n.toExponential(2);
+}
+
+function sanitizeName(n) {
+  return String(n || '').replace(/[^a-zA-Z0-9 ]/g, '').replace(/ /g, '_');
+}
+
+function itemIconFile(i) {
+  if (!i) return null;
+  if (i.startsWith('image/')) {
+    let s = i.slice(6).replace(/\//g, '__');
+    if (!s.endsWith('.png')) s += '.png';
+    return 'image__' + s;
+  }
+  return null;
+}
+
+// Hero shard items: type 31 (Hero Shards), type 32 (Hero Skill Shards)
+// Hero Skill: type 42, 46
+function heroSubtab(type) {
+  if (type === 31) return 'shards';
+  if (type === 32 || type === 42 || type === 46) return 'skills';
+  return 'shards';
+}
+
+// ── Inventory Rehydration ─────────────────────────────────────────────────
+function rehydrateInventory(raw, lk) {
+  const out = { meta: raw.meta || {}, resources: raw.resources || {}, tabs: { item:[], unit:[], decor:[], hero:[], cpnt:[] } };
+  const tabs = raw.tabs || {};
+
+  // Item / CPNT — id lookup in item-table
+  for (const tabKey of ['item', 'cpnt']) {
+    for (const it of (tabs[tabKey] || [])) {
+      const cfg = lk.item[String(it.id)] || {};
+      out.tabs[tabKey].push({
+        id: it.id, amount: it.a || 0, level: it.l || null, group: it.g || cfg.g || it.id,
+        type: cfg.t, quality: cfg.q || 1,
+        name: cfg.n || ('#' + it.id), desc: cfg.d || '',
+        icon: itemIconFile(cfg.i),
+        iconDir: ASSET_BASE + 'inventory-icons',
+        rawIcon: cfg.i || null
+      });
+    }
+  }
+
+  // Unit — id lookup in army-icon-map
+  for (const it of (tabs.unit || [])) {
+    const cfg = lk.army[String(it.id)] || {};
+    // Get name from item-table if present (shows real localized name)
+    const itemCfg = lk.item[String(it.id)] || {};
+    out.tabs.unit.push({
+      id: it.id, amount: it.a || 0, level: it.l || cfg.level || null,
+      group: it.g || it.id, type: cfg.type, quality: itemCfg.q || 1,
+      name: itemCfg.n || cfg.name || ('Unit #' + it.id),
+      desc: itemCfg.d || '',
+      icon: cfg.icon_file || null,
+      iconDir: ASSET_BASE + 'unit-icons',
+      armyLevel: cfg.level
+    });
+  }
+
+  // Decor — id lookup in building-table
+  for (const it of (tabs.decor || [])) {
+    const cfg = lk.building[String(it.id)] || {};
+    const grp = cfg.g || it.g;
+    let icon = null;
+    if (grp && cfg.n) icon = grp + '_' + sanitizeName(cfg.n) + '.png';
+    out.tabs.decor.push({
+      id: it.id, amount: it.a || 0, level: it.l || cfg.lv || null, maxLevel: cfg.ml,
+      group: grp || it.id, type: cfg.t, quality: cfg.q || 1,
+      name: cfg.n || ('Decor #' + it.id), desc: cfg.d || '',
+      icon: icon,
+      iconDir: ASSET_BASE + 'decor-icons'
+    });
+  }
+
+  // Hero — split shards vs skills by type
+  for (const it of (tabs.hero || [])) {
+    const cfg = lk.item[String(it.id)] || {};
+    const t = cfg.t;
+    const sub = heroSubtab(t);
+    out.tabs.hero.push({
+      id: it.id, amount: it.a || 0, level: it.l || null, group: it.g || it.id,
+      type: t, quality: cfg.q || 1,
+      name: cfg.n || ('Hero #' + it.id), desc: cfg.d || '',
+      icon: itemIconFile(cfg.i),
+      iconDir: ASSET_BASE + 'inventory-icons',
+      subtab: sub
+    });
+  }
+
+  return out;
+}
+
+// ── Inventory Render ──────────────────────────────────────────────────────
+const INV_TAB_ORDER = [['item','Item'],['unit','Unit'],['decor','Decor'],['hero','Hero'],['cpnt','CPNT']];
+const INV_SUBTABS = { hero: [['shards','Hero Shards'], ['skills','Hero Skills']] };
+let INV_DATA = null;
+let INV_TAB = 'item';
+let INV_SUBTAB = 'shards';
+
+function renderInvMeta() {
+  const m = INV_DATA.meta;
+  const el = document.getElementById('inv-meta');
+  el.replaceChildren();
+  el.hidden = false;
+  const span = (label, v) => { const s = document.createElement('span'); s.textContent = label + ' '; const b = document.createElement('b'); b.textContent = v; s.appendChild(b); el.appendChild(s); };
+  span('UID', m.uid || '?');
+  span('Server', 'S' + (m.sid || m.serverId || '?'));
+  span('Lvl', m.lvl || '?');
+  span('Power', m.pwr || '?');
+  if (m.ts) span('Captured', new Date(m.ts).toLocaleString());
+}
+
+function renderInvTabs() {
+  const tabsEl = document.getElementById('inv-tabs');
+  tabsEl.replaceChildren();
+  tabsEl.hidden = false;
+  for (const [k, label] of INV_TAB_ORDER) {
+    const list = INV_DATA.tabs[k] || [];
+    const b = document.createElement('button');
+    b.className = 'tab' + (k === INV_TAB ? ' active' : '');
+    b.textContent = label + ' ';
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.textContent = list.length;
+    b.appendChild(badge);
+    b.onclick = () => { INV_TAB = k; renderInvTabs(); renderInv(); };
+    tabsEl.appendChild(b);
+  }
+  const subEl = document.getElementById('inv-subtabs');
+  subEl.replaceChildren();
+  const sub = INV_SUBTABS[INV_TAB];
+  if (sub) {
+    subEl.classList.remove('hidden');
+    const list = INV_DATA.tabs[INV_TAB] || [];
+    for (const [sk, slabel] of sub) {
+      const count = list.filter(x => x.subtab === sk).length;
+      const b = document.createElement('button');
+      b.className = 'subtab' + (sk === INV_SUBTAB ? ' active' : '');
+      b.textContent = slabel + ' (' + count + ')';
+      b.onclick = () => { INV_SUBTAB = sk; renderInvTabs(); renderInv(); };
+      subEl.appendChild(b);
+    }
+  } else {
+    subEl.classList.add('hidden');
+  }
+}
+
+function renderInv() {
+  const q = document.getElementById('inv-search').value.toLowerCase().trim();
+  const qf = document.getElementById('inv-quality').value;
+  const sort = document.getElementById('inv-sort').value;
+  let list = (INV_DATA.tabs[INV_TAB] || []).slice();
+  if (INV_SUBTABS[INV_TAB]) list = list.filter(it => it.subtab === INV_SUBTAB);
+  if (qf) list = list.filter(it => String(it.quality) === qf);
+  if (q) list = list.filter(it =>
+    String(it.id).includes(q) || (it.name || '').toLowerCase().includes(q) || (it.desc || '').toLowerCase().includes(q)
+  );
+  list.sort((a, b) => {
+    if (sort === 'amount') return (b.amount||0) - (a.amount||0);
+    if (sort === 'id') return (a.id||0) - (b.id||0);
+    if (sort === 'type') return (a.type||0) - (b.type||0) || (b.quality||0) - (a.quality||0);
+    return (b.quality||0) - (a.quality||0) || (b.level||0) - (a.level||0) || (b.amount||0) - (a.amount||0);
+  });
+
+  const grid = document.getElementById('inv-grid');
+  grid.replaceChildren();
+  for (let i = 0; i < list.length; i++) grid.appendChild(buildInvCell(list[i], i));
+
+  document.getElementById('inv-stats').textContent = list.length + ' items · ' + fmtNum(list.reduce((s,it)=>s+(it.amount||0),0)) + ' total stack';
+  document.getElementById('inv-controls').hidden = false;
+  window.__invList = list;
+}
+
+function buildInvCell(it, idx) {
+  const c = document.createElement('div');
+  c.className = 'cell q' + (it.quality || 0);
+  c.dataset.idx = idx;
+  c.title = it.id + ' · ' + (it.name || '') + (it.desc ? '\n' + it.desc : '');
+
+  const wrap = document.createElement('div'); wrap.className = 'icon-wrap';
+  if (it.icon) {
+    const img = document.createElement('img');
+    img.src = it.iconDir + '/' + it.icon; img.loading = 'lazy'; img.alt = String(it.id);
+    img.onerror = () => { wrap.replaceChildren(makePlaceholder()); };
+    wrap.appendChild(img);
+  } else {
+    wrap.appendChild(makePlaceholder());
+  }
+  c.appendChild(wrap);
+
+  const statsRow = document.createElement('div'); statsRow.className = 'stats-row';
+  const lvNum = it.armyLevel || (it.level && it.level > 1 ? it.level : null);
+  const lvEl = document.createElement('span');
+  lvEl.className = 'lv' + (lvNum ? '' : ' empty');
+  lvEl.textContent = lvNum ? 'Lv ' + lvNum : 'Lv';
+  statsRow.appendChild(lvEl);
+  const amtEl = document.createElement('span');
+  const hasAmt = it.amount && it.amount > 0;
+  amtEl.className = 'amt' + (hasAmt ? '' : ' zero');
+  amtEl.textContent = hasAmt ? '×' + fmtNum(it.amount) : '×0';
+  statsRow.appendChild(amtEl);
+  c.appendChild(statsRow);
+
+  const nm = document.createElement('div'); nm.className = 'name';
+  nm.textContent = it.name || ('#' + it.id);
+  c.appendChild(nm);
+
+  c.onclick = () => openInvModal(idx);
+  return c;
+}
+
+function makePlaceholder() { const ph = document.createElement('div'); ph.className = 'placeholder'; ph.textContent = '?'; return ph; }
+
+function openInvModal(idx) {
+  const it = window.__invList[idx];
+  if (!it) return;
+  const modal = document.getElementById('modal');
+  modal.replaceChildren();
+  const close = document.createElement('button'); close.className = 'close'; close.textContent = '×'; close.onclick = closeModal;
+  modal.appendChild(close);
+  const row = document.createElement('div'); row.className = 'row';
+  if (it.icon) {
+    const img = document.createElement('img'); img.src = it.iconDir + '/' + it.icon; row.appendChild(img);
+  } else {
+    const ph = document.createElement('div'); ph.className = 'placeholder'; ph.style.cssText = 'width:96px;height:96px;font-size:34px;'; ph.textContent = '?'; row.appendChild(ph);
+  }
+  const info = document.createElement('div');
+  const h = document.createElement('h2'); h.textContent = it.name || it.id; info.appendChild(h);
+  const sub = document.createElement('div'); sub.className = 'sub';
+  sub.textContent = 'ID ' + it.id + ' · type ' + it.type + ' · group ' + it.group + ' · q ' + it.quality + ' · amount ' + fmtNum(it.amount) + (it.level ? ' · lv ' + it.level : '');
+  info.appendChild(sub);
+  if (it.desc) { const d = document.createElement('div'); d.style.cssText = 'font-size:13px;color:var(--muted);'; d.textContent = it.desc; info.appendChild(d); }
+  row.appendChild(info);
+  modal.appendChild(row);
+
+  const tbl = document.createElement('table');
+  const fields = [['id',it.id],['name',it.name],['type',it.type],['quality',it.quality],['group',it.group],['amount',it.amount],['level',it.level||'-'],['icon',it.icon||'<missing>']];
+  for (const [k,v] of fields) {
+    const tr = document.createElement('tr');
+    const td1 = document.createElement('td'); td1.textContent = k;
+    const td2 = document.createElement('td'); td2.className = 'val'; td2.textContent = v == null ? '' : String(v);
+    tr.appendChild(td1); tr.appendChild(td2); tbl.appendChild(tr);
+  }
+  modal.appendChild(tbl);
+  document.getElementById('modal-bg').classList.add('show');
+}
+
+function closeModal() { document.getElementById('modal-bg').classList.remove('show'); }
+
+// ── Beast helpers (ported from armory-report) ─────────────────────────────
+const EB_TYPES = {1:'Gleamdeer',2:'Dreadray',3:'Tornadeagle',4:'Grizzroar',5:'Fluffynx',6:'Bounceroo',7:'Swiftsteed',8:'Dusklion',9:'Crestegret'};
+const EB_TYPES_5STAR = {1:'Lumideer',2:'Doomray',3:'Stormpeagle',4:'Ironclaw',5:'Shadowlynx',6:'Thunderoo',7:'Blazesteed',8:'Dawnlion',9:'Royalegret'};
+const EB_ELEMENTS = {1:'Fire',2:'Wind',3:'Water',4:'Ground'};
+const EB_ICON_BASE = ASSET_BASE + 'beast-icons/';
+const EB_BUFF_NAMES = {
+  520000:'March Size',
+  520010:'All DMG Inc.',520011:'Army DMG Inc.',520012:'Navy DMG Inc.',520013:'Air DMG Inc.',
+  520020:'All Reduce DMG',520021:'Army Reduce DMG',520022:'Navy Reduce DMG',520023:'Air Reduce DMG',
+  520030:'All DEF Inc.',520031:'Army DEF Inc.',520032:'Navy DEF Inc.',520033:'Air DEF Inc.',
+  520040:'All ATK (off)',520041:'Army ATK (off)',520042:'Navy ATK (off)',520043:'Air ATK (off)',
+  520050:'All HP (off)',520051:'Army HP (off)',520052:'Navy HP (off)',520053:'Air HP (off)',
+  520060:'All ATK (def)',520061:'Army ATK (def)',520062:'Navy ATK (def)',520063:'Air ATK (def)',
+  520070:'All HP (def)',520071:'Army HP (def)',520072:'Navy HP (def)',520073:'Air HP (def)',
+  520100:'Suppression DEF',520101:'Navy DEF vs Army',520102:'Air DEF vs Navy',520103:'Army DEF vs Air',
+  520110:'All ATK (off)',520111:'Army ATK (off)',520112:'Navy ATK (off)',520113:'Air ATK (off)',
+  520120:'All HP (off)',520121:'Army HP (off)',520122:'Navy HP (off)',520123:'Air HP (off)',
+  520130:'All ATK (def)',520131:'Army ATK (def)',520132:'Navy ATK (def)',520133:'Air ATK (def)',
+  520140:'All HP (def)',520141:'Army HP (def)',520142:'Navy HP (def)',520143:'Air HP (def)'
+};
+function ebBuffName(id) { return EB_BUFF_NAMES[id] || ('Buff #' + id); }
+function ebBeastName(type, star) {
+  if (star >= 5 && EB_TYPES_5STAR[type]) return EB_TYPES_5STAR[type];
+  return EB_TYPES[type] || ('Beast #' + type);
+}
+function ebBeastIcon(type, faction, star) {
+  const name = EB_TYPES[type] || 'Unknown';
+  const elem = EB_ELEMENTS[faction] || 'Unknown';
+  const tier = star >= 5 ? 'evolved' : 'base';
+  return EB_ICON_BASE + name + '_' + elem + '_' + tier + '.png';
+}
+
+// ── Beast Render ──────────────────────────────────────────────────────────
+let BEAST_DATA = null;
+
+function renderBeastMeta(dump) {
+  const el = document.getElementById('beast-meta');
+  el.replaceChildren();
+  el.hidden = false;
+  const span = (label, v) => { const s = document.createElement('span'); s.textContent = label + ' '; const b = document.createElement('b'); b.textContent = v; s.appendChild(b); el.appendChild(s); };
+  span('Total', dump.total);
+  span('Kept (Q3+)', dump.kept);
+  if (dump.ts) span('Captured', new Date(dump.ts).toLocaleString());
+  span('Source', dump.src || '?');
+}
+
+function renderBeasts() {
+  const q = document.getElementById('beast-search').value.toLowerCase().trim();
+  const qf = document.getElementById('beast-quality').value;
+  const sort = document.getElementById('beast-sort').value;
+  let list = (BEAST_DATA.beasts || []).slice();
+  if (qf) list = list.filter(b => String(b.q) === qf);
+  if (q) list = list.filter(b => {
+    const name = ebBeastName(b.type, b.st).toLowerCase();
+    const elem = (EB_ELEMENTS[b.fac] || '').toLowerCase();
+    const mb = ebBuffName(b.mb).toLowerCase();
+    return name.includes(q) || elem.includes(q) || mb.includes(q);
+  });
+  list.sort((a, b) => {
+    if (sort === 'potential') return (Number(b.pot)||0) - (Number(a.pot)||0);
+    if (sort === 'type') return (a.type||0) - (b.type||0) || (a.fac||0) - (b.fac||0) || (b.st||0) - (a.st||0);
+    return (b.q||0) - (a.q||0) || (b.st||0) - (a.st||0) || (b.lv||0) - (a.lv||0);
+  });
+  const grid = document.getElementById('beast-grid');
+  grid.replaceChildren();
+  for (let i = 0; i < list.length; i++) grid.appendChild(buildBeastCell(list[i], i));
+  document.getElementById('beast-stats').textContent = list.length + ' beasts shown';
+  document.getElementById('beast-controls').hidden = false;
+  window.__beastList = list;
+}
+
+function buildBeastCell(b, idx) {
+  const c = document.createElement('div');
+  c.className = 'cell q' + (b.q || 0);
+  c.dataset.idx = idx;
+
+  const wrap = document.createElement('div'); wrap.className = 'icon-wrap';
+  const img = document.createElement('img');
+  img.src = ebBeastIcon(b.type, b.fac, b.st); img.loading = 'lazy'; img.alt = ebBeastName(b.type, b.st);
+  img.onerror = () => { wrap.replaceChildren(makePlaceholder()); };
+  wrap.appendChild(img);
+  c.appendChild(wrap);
+
+  const statsRow = document.createElement('div'); statsRow.className = 'stats-row';
+  const lvEl = document.createElement('span'); lvEl.className = 'lv'; lvEl.textContent = 'Lv ' + (b.lv || 0);
+  statsRow.appendChild(lvEl);
+  const amtEl = document.createElement('span'); amtEl.className = 'amt'; amtEl.textContent = '★' + (b.st || 0);
+  statsRow.appendChild(amtEl);
+  c.appendChild(statsRow);
+
+  const nm = document.createElement('div'); nm.className = 'name';
+  nm.textContent = ebBeastName(b.type, b.st) + ' · ' + (EB_ELEMENTS[b.fac] || '?');
+  c.appendChild(nm);
+
+  const buffEl = document.createElement('div'); buffEl.className = 'buff-mini';
+  buffEl.textContent = ebBuffName(b.mb);
+  c.appendChild(buffEl);
+
+  c.onclick = () => openBeastModal(idx);
+  return c;
+}
+
+function openBeastModal(idx) {
+  const b = window.__beastList[idx];
+  if (!b) return;
+  const modal = document.getElementById('modal');
+  modal.replaceChildren();
+  const close = document.createElement('button'); close.className = 'close'; close.textContent = '×'; close.onclick = closeModal;
+  modal.appendChild(close);
+  const row = document.createElement('div'); row.className = 'row';
+  const img = document.createElement('img'); img.src = ebBeastIcon(b.type, b.fac, b.st); row.appendChild(img);
+  const info = document.createElement('div');
+  const h = document.createElement('h2'); h.textContent = ebBeastName(b.type, b.st); info.appendChild(h);
+  const sub = document.createElement('div'); sub.className = 'sub';
+  sub.textContent = (EB_ELEMENTS[b.fac] || '?') + ' · Q' + b.q + ' · Lv ' + b.lv + ' · ★' + b.st + ' · Potential ' + (b.pot || '?');
+  info.appendChild(sub);
+  row.appendChild(info);
+  modal.appendChild(row);
+  const tbl = document.createElement('table');
+  const fields = [
+    ['id', b.id], ['cfgId', b.cfgId], ['type', b.type + ' (' + (EB_TYPES[b.type] || '?') + ')'],
+    ['element', b.fac + ' (' + (EB_ELEMENTS[b.fac] || '?') + ')'],
+    ['quality', b.q], ['level', b.lv], ['star', b.st], ['potential', b.pot || '?'],
+    ['main buff', b.mb + ' · ' + ebBuffName(b.mb)],
+    ['base buff 1', (b.bb && b.bb[0]) ? b.bb[0] + ' · ' + ebBuffName(b.bb[0]) : '-'],
+    ['base buff 2', (b.bb && b.bb[1]) ? b.bb[1] + ' · ' + ebBuffName(b.bb[1]) : '-'],
+    ['base buff 3', (b.bb && b.bb[2]) ? b.bb[2] + ' · ' + ebBuffName(b.bb[2]) : '-']
+  ];
+  for (const [k, v] of fields) {
+    const tr = document.createElement('tr');
+    const td1 = document.createElement('td'); td1.textContent = k;
+    const td2 = document.createElement('td'); td2.className = 'val'; td2.textContent = String(v);
+    tr.appendChild(td1); tr.appendChild(td2); tbl.appendChild(tr);
+  }
+  modal.appendChild(tbl);
+  document.getElementById('modal-bg').classList.add('show');
+}
+
+// ── Wire up ────────────────────────────────────────────────────────────────
+async function handleInvRender() {
+  const status = document.getElementById('inv-status');
+  const ta = document.getElementById('inv-paste');
+  status.className = 'status';
+  let raw;
+  try { raw = JSON.parse(ta.value.trim()); }
+  catch (e) { status.textContent = 'JSON parse error: ' + e.message; status.className = 'status err'; return; }
+  if (!raw.tabs) { status.textContent = 'Missing tabs in JSON'; status.className = 'status err'; return; }
+  status.textContent = 'rehydrating...';
+  try {
+    const lk = await loadLookups();
+    INV_DATA = rehydrateInventory(raw, lk);
+    renderInvMeta();
+    renderInvTabs();
+    renderInv();
+    status.textContent = 'rendered';
+    status.className = 'status ok';
+  } catch (e) {
+    status.textContent = 'render failed: ' + e.message;
+    status.className = 'status err';
+  }
+}
+
+function handleBeastRender() {
+  const status = document.getElementById('beast-status');
+  const ta = document.getElementById('beast-paste');
+  status.className = 'status';
+  let raw;
+  try { raw = JSON.parse(ta.value.trim()); }
+  catch (e) { status.textContent = 'JSON parse error: ' + e.message; status.className = 'status err'; return; }
+  if (!raw.beasts) { status.textContent = 'Missing beasts in JSON'; status.className = 'status err'; return; }
+  BEAST_DATA = raw;
+  renderBeastMeta(raw);
+  renderBeasts();
+  status.textContent = 'rendered';
+  status.className = 'status ok';
+}
+
+document.getElementById('inv-render').addEventListener('click', handleInvRender);
+document.getElementById('beast-render').addEventListener('click', handleBeastRender);
+document.getElementById('inv-search').addEventListener('input', () => INV_DATA && renderInv());
+document.getElementById('inv-sort').addEventListener('change', () => INV_DATA && renderInv());
+document.getElementById('inv-quality').addEventListener('change', () => INV_DATA && renderInv());
+document.getElementById('beast-search').addEventListener('input', () => BEAST_DATA && renderBeasts());
+document.getElementById('beast-sort').addEventListener('change', () => BEAST_DATA && renderBeasts());
+document.getElementById('beast-quality').addEventListener('change', () => BEAST_DATA && renderBeasts());
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.getElementById('modal-bg').addEventListener('click', e => { if (e.target.id === 'modal-bg') closeModal(); });
+</script>
+</body>
+</html>
