@@ -1589,6 +1589,24 @@
   var _ar_supplementToken = null;
   var _ar_supplementTokenExpires = 0;
 
+  function _ar_relativeAge(ts) {
+    if (!ts) return '';
+    var d = (typeof ts === 'string') ? new Date(ts) : ts;
+    var ms = Date.now() - d.getTime();
+    if (isNaN(ms) || ms < 0) return '';
+    var s = Math.floor(ms / 1000);
+    if (s < 60) return 'just now';
+    var m = Math.floor(s / 60);
+    if (m < 60) return m + 'm ago';
+    var h = Math.floor(m / 60);
+    if (h < 24) return h + 'h ago';
+    var dd = Math.floor(h / 24);
+    if (dd < 30) return dd + 'd ago';
+    var mo = Math.floor(dd / 30);
+    if (mo < 12) return mo + 'mo ago';
+    return Math.floor(mo / 12) + 'y ago';
+  }
+
   async function _ar_handshake(uid) {
     var r = await fetch(SUPPLEMENT_WORKER + '/supplement/handshake', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -8194,13 +8212,18 @@
     } else {
       var roLabel = document.createElement('span');
       roLabel.style.cssText = 'color: var(--muted); font-size: 12px;';
-      roLabel.textContent = 'Read-only · uploaded by player';
+      var rel = (stored && stored.meta && stored.meta.ts) ? _ar_relativeAge(stored.meta.ts) : '';
+      roLabel.textContent = rel ? ('Read-only · uploaded ' + rel) : 'Read-only · uploaded by player';
+      if (stored && stored.meta && stored.meta.ts) {
+        roLabel.title = new Date(stored.meta.ts).toLocaleString();
+      }
       toolbar.appendChild(roLabel);
     }
-    if (stored && stored.meta && stored.meta.ts) {
+    if (isOwner && stored && stored.meta && stored.meta.ts) {
       var ts = document.createElement('span');
       ts.style.cssText = 'color: var(--muted); font-size: 12px;';
-      ts.textContent = 'Updated ' + new Date(stored.meta.ts).toLocaleString();
+      ts.textContent = 'Updated ' + _ar_relativeAge(stored.meta.ts);
+      ts.title = new Date(stored.meta.ts).toLocaleString();
       toolbar.appendChild(ts);
     }
     container.appendChild(toolbar);
@@ -8741,6 +8764,14 @@
             });
           };
           benchPill.parentElement.appendChild(benchUpdateBtn);
+        }
+        if (supBench && supBench.ts) {
+          var benchTs = document.createElement('span');
+          benchTs.style.cssText = 'margin-left: 10px; color: var(--muted); font-size: 11px;';
+          var rel = _ar_relativeAge(supBench.ts);
+          benchTs.textContent = unlocked ? ('Updated ' + rel) : ('Uploaded ' + rel);
+          benchTs.title = new Date(supBench.ts).toLocaleString();
+          benchPill.parentElement.appendChild(benchTs);
         }
       }
 
