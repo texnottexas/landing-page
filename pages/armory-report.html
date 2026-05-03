@@ -1560,14 +1560,21 @@
       err.textContent = '';
       var uid = input.value.trim();
       var hash = await _ar_sha256Hex(uid);
-      if (hash === siteKey) {
-        _ar_setUnlocked(siteKey, true);
-        document.body.removeChild(bg);
-        if (typeof onUnlock === 'function') onUnlock();
-      } else {
+      if (hash !== siteKey) {
         err.textContent = 'UID does not match this player.';
         submit.disabled = !input.value.trim();
+        return;
       }
+      // Hash matched — try to capture a fresh worker token. Fail-soft to local-only mode.
+      try {
+        await _ar_handshake(uid);
+      } catch (e) {
+        console.warn('Supplement handshake failed:', e);
+        err.textContent = 'Worker unreachable (' + e.message + ') — saved local-only.';
+      }
+      _ar_setUnlocked(siteKey, true);
+      document.body.removeChild(bg);
+      if (typeof onUnlock === 'function') onUnlock();
     });
 
     input.addEventListener('keydown', function(e) {
@@ -1576,6 +1583,41 @@
 
     document.body.appendChild(bg);
     setTimeout(function() { input.focus(); }, 50);
+  }
+
+  var SUPPLEMENT_WORKER = 'https://push-worker.27tb8s6fct.workers.dev';
+  var _ar_supplementToken = null;
+  var _ar_supplementTokenExpires = 0;
+
+  async function _ar_handshake(uid) {
+    var r = await fetch(SUPPLEMENT_WORKER + '/supplement/handshake', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid: uid })
+    });
+    if (!r.ok) {
+      var msg = await r.text();
+      throw new Error('Handshake failed: ' + r.status + ' ' + msg);
+    }
+    var data = await r.json();
+    _ar_supplementToken = data.token;
+    _ar_supplementTokenExpires = data.expires;
+    return data;
+  }
+
+  async function _ar_supplementUpload(kind, json) {
+    if (!_ar_supplementToken || Date.now() > _ar_supplementTokenExpires) {
+      throw new Error('No upload token. Re-enter UID.');
+    }
+    var r = await fetch(SUPPLEMENT_WORKER + '/supplement/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
+      body: JSON.stringify({ kind: kind, json: json })
+    });
+    if (!r.ok) {
+      var msg = await r.text();
+      throw new Error('Upload failed: ' + r.status + ' ' + msg);
+    }
+    return await r.json();
   }
 
   // ── Inventory lookup tables ────────────────────────────────────────────
@@ -3533,7 +3575,17 @@
             _ar_setUnlocked(siteKey, false);
             row.remove();
           });
+          var rebtn = document.createElement('button');
+          rebtn.style.cssText = 'padding: 4px 10px; margin-right: 6px; background: var(--card); color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; cursor: pointer; font-size: 12px;';
+          rebtn.textContent = 'Refresh token';
+          rebtn.onclick = function() {
+            var playerName = (p && p.name) || 'this player';
+            _ar_openUnlockModal(siteKey, playerName, function() {
+              alert('Token refreshed. Uploads enabled for 10 minutes.');
+            });
+          };
           row.appendChild(btn);
+          row.insertBefore(rebtn, btn);
           identPanel.appendChild(row);
         });
       }
@@ -8289,7 +8341,7 @@
     actions.appendChild(save);
     modal.appendChild(actions);
 
-    save.onclick = function() {
+    save.onclick = async function() {
       err.textContent = '';
       var raw;
       try { raw = JSON.parse(ta.value.trim()); }
@@ -8308,6 +8360,14 @@
       if (!raw.meta.ts) raw.meta.ts = new Date().toISOString();
       try { localStorage.setItem('armory_inv_' + siteKey, JSON.stringify(raw)); }
       catch (e) { err.textContent = 'localStorage write failed: ' + e.message; return; }
+      // Best-effort worker upload
+      try {
+        await _ar_supplementUpload('inv', raw);
+      } catch (e) {
+        console.warn('Worker upload failed', e);
+        err.textContent = 'Saved locally. Worker upload failed (' + e.message + '). Open settings to refresh token.';
+        return;
+      }
       document.body.removeChild(bg);
       if (typeof onSaved === 'function') onSaved();
     };
@@ -8355,7 +8415,7 @@
     actions.appendChild(save);
     modal.appendChild(actions);
 
-    save.onclick = function() {
+    save.onclick = async function() {
       err.textContent = '';
       var raw;
       try { raw = JSON.parse(ta.value.trim()); }
@@ -8373,6 +8433,14 @@
       if (!raw.ts) raw.ts = new Date().toISOString();
       try { localStorage.setItem('armory_bench_' + siteKey, JSON.stringify(raw)); }
       catch (e) { err.textContent = 'localStorage write failed: ' + e.message; return; }
+      // Best-effort worker upload
+      try {
+        await _ar_supplementUpload('bench', raw);
+      } catch (e) {
+        console.warn('Worker upload failed', e);
+        err.textContent = 'Saved locally. Worker upload failed (' + e.message + '). Open settings to refresh token.';
+        return;
+      }
       document.body.removeChild(bg);
       if (typeof onSaved === 'function') onSaved();
     };
