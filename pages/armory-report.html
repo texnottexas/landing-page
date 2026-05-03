@@ -1548,6 +1548,86 @@
     setTimeout(function() { input.focus(); }, 50);
   }
 
+  // ── Inventory lookup tables ────────────────────────────────────────────
+  var _ar_invLookups = null;
+  async function _ar_loadInvLookups() {
+    if (_ar_invLookups) return _ar_invLookups;
+    var data = await Promise.all([
+      fetch('data/item-table.json').then(function(r) { return r.json(); }),
+      fetch('data/building-table.json').then(function(r) { return r.json(); }),
+      fetch('data/army-icon-map.json').then(function(r) { return r.json(); }),
+      fetch('data/all-heroes.json').then(function(r) { return r.json(); })
+    ]);
+    var heroes = data[3];
+    var heroById = {};
+    for (var i = 0; i < heroes.length; i++) heroById[heroes[i].heroId] = heroes[i];
+    _ar_invLookups = { item: data[0], building: data[1], army: data[2], heroById: heroById };
+    return _ar_invLookups;
+  }
+
+  function _ar_sanitizeName(n) {
+    return String(n || '').replace(/[^a-zA-Z0-9 ]/g, '').replace(/ /g, '_');
+  }
+
+  function _ar_itemIconFile(i) {
+    if (!i || !i.startsWith('image/')) return null;
+    var s = i.slice(6).replace(/\//g, '__');
+    if (!s.endsWith('.png')) s += '.png';
+    return 'image__' + s;
+  }
+
+  function _ar_heroSubtab(type) {
+    if (type === 31) return 'shards';
+    if (type === 32 || type === 42 || type === 46) return 'skills';
+    return 'shards';
+  }
+
+  function _ar_rehydrateInv(raw, lk) {
+    var ASSET = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/';
+    var out = { meta: raw.meta || {}, resources: raw.resources || {}, tabs: { item: [], unit: [], decor: [], hero: [], cpnt: [] } };
+    var tabs = raw.tabs || {};
+    ['item', 'cpnt'].forEach(function(tabKey) {
+      (tabs[tabKey] || []).forEach(function(it) {
+        var cfg = lk.item[String(it.id)] || {};
+        out.tabs[tabKey].push({
+          id: it.id, amount: it.a || 0, level: it.l || null, group: it.g || cfg.g || it.id,
+          type: cfg.t, quality: cfg.q || 1, name: cfg.n || ('#' + it.id), desc: cfg.d || '',
+          icon: _ar_itemIconFile(cfg.i), iconDir: ASSET + 'inventory-icons'
+        });
+      });
+    });
+    (tabs.unit || []).forEach(function(it) {
+      var cfg = lk.army[String(it.id)] || {};
+      var itemCfg = lk.item[String(it.id)] || {};
+      out.tabs.unit.push({
+        id: it.id, amount: it.a || 0, level: it.l || cfg.level || null, group: it.g || it.id,
+        type: cfg.type, quality: itemCfg.q || 1, name: itemCfg.n || cfg.name || ('Unit #' + it.id),
+        desc: itemCfg.d || '', icon: cfg.icon_file || null, iconDir: ASSET + 'unit-icons',
+        armyLevel: cfg.level
+      });
+    });
+    (tabs.decor || []).forEach(function(it) {
+      var cfg = lk.building[String(it.id)] || {};
+      var grp = cfg.g || it.g;
+      var icon = (grp && cfg.n) ? grp + '_' + _ar_sanitizeName(cfg.n) + '.png' : null;
+      out.tabs.decor.push({
+        id: it.id, amount: it.a || 0, level: it.l || cfg.lv || null, maxLevel: cfg.ml,
+        group: grp || it.id, type: cfg.t, quality: cfg.q || 1, name: cfg.n || ('Decor #' + it.id),
+        desc: cfg.d || '', icon: icon, iconDir: ASSET + 'decor-icons'
+      });
+    });
+    (tabs.hero || []).forEach(function(it) {
+      var cfg = lk.item[String(it.id)] || {};
+      out.tabs.hero.push({
+        id: it.id, amount: it.a || 0, level: it.l || null, group: it.g || it.id,
+        type: cfg.t, quality: cfg.q || 1, name: cfg.n || ('Hero #' + it.id), desc: cfg.d || '',
+        icon: _ar_itemIconFile(cfg.i), iconDir: ASSET + 'inventory-icons',
+        subtab: _ar_heroSubtab(cfg.t)
+      });
+    });
+    return out;
+  }
+
   function getPushEndpoint() {
     if (!navigator.serviceWorker) return Promise.resolve(null);
     // Don't use .ready (hangs if no SW registered). Check getRegistration instead.
