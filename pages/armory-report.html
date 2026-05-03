@@ -8429,10 +8429,113 @@
     rerender();
   }
 
+  function _ar_openInvDetailModal(it) {
+    var bg = document.createElement('div');
+    bg.className = 'modal-bg show';
+    bg.style.zIndex = '120';
+    var modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.maxWidth = '560px';
+    bg.appendChild(modal);
+
+    var close = document.createElement('button');
+    close.style.cssText = 'float: right; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 22px; line-height: 1; padding: 0 4px;';
+    close.textContent = '×';
+    close.onclick = function() { document.body.removeChild(bg); };
+    modal.appendChild(close);
+
+    var row = document.createElement('div');
+    row.style.cssText = 'display: flex; gap: 14px; margin-bottom: 14px; align-items: flex-start;';
+    if (it.icon) {
+      var img = document.createElement('img');
+      img.src = it.iconDir + '/' + it.icon;
+      img.style.cssText = 'width: 96px; height: 96px; object-fit: contain; background: var(--card); border-radius: 8px; padding: 8px; flex-shrink: 0;';
+      img.onerror = function() {
+        img.replaceWith(makePh());
+      };
+      row.appendChild(img);
+    } else {
+      row.appendChild(makePh());
+    }
+    function makePh() {
+      var ph = document.createElement('div');
+      ph.style.cssText = 'width: 96px; height: 96px; background: var(--card); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 34px; color: var(--muted); flex-shrink: 0;';
+      ph.textContent = '?';
+      return ph;
+    }
+
+    var info = document.createElement('div');
+    info.style.cssText = 'min-width: 0; flex: 1;';
+    var h = document.createElement('h2');
+    h.style.cssText = 'margin: 0 0 6px; font-size: 18px;';
+    h.textContent = it.name || ('#' + it.id);
+    info.appendChild(h);
+
+    var sub = document.createElement('div');
+    sub.style.cssText = 'color: var(--muted); font-size: 12px; margin-bottom: 10px;';
+    var subParts = ['ID ' + it.id, 'type ' + (it.type != null ? it.type : '?'), 'group ' + (it.group != null ? it.group : '?'), 'q ' + (it.quality || 1), 'amount ' + (it.amount || 0)];
+    if (it.level && it.level > 1) subParts.push('lv ' + it.level);
+    if (it.maxLevel) subParts.push('max ' + it.maxLevel);
+    if (it.suitId) subParts.push('set ' + it.suitId);
+    sub.textContent = subParts.join(' · ');
+    info.appendChild(sub);
+
+    if (it.desc) {
+      var d = document.createElement('div');
+      d.style.cssText = 'font-size: 13px; color: var(--text); line-height: 1.5; white-space: pre-wrap;';
+      d.textContent = it.desc;
+      info.appendChild(d);
+    }
+    row.appendChild(info);
+    modal.appendChild(row);
+
+    var tbl = document.createElement('table');
+    tbl.style.cssText = 'width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px;';
+    var fields = [
+      ['id', it.id],
+      ['name', it.name],
+      ['type', it.type],
+      ['quality', it.quality],
+      ['group', it.group],
+      ['amount', it.amount],
+      ['level', it.level || '-'],
+      ['max level', it.maxLevel || '-'],
+      ['icon', it.icon || '<missing>']
+    ];
+    if (it.suitId && typeof DECOR_SUITS !== 'undefined' && DECOR_SUITS[it.suitId]) {
+      fields.push(['set', DECOR_SUITS[it.suitId].n + ' (#' + it.suitId + ')']);
+    }
+    fields.forEach(function(f) {
+      var tr = document.createElement('tr');
+      var td1 = document.createElement('td');
+      td1.style.cssText = 'padding: 5px 8px; border-bottom: 1px solid var(--border); color: var(--muted); width: 140px; vertical-align: top;';
+      td1.textContent = f[0];
+      var td2 = document.createElement('td');
+      td2.style.cssText = 'padding: 5px 8px; border-bottom: 1px solid var(--border); color: var(--text); word-break: break-all; vertical-align: top;';
+      td2.textContent = f[1] == null ? '' : String(f[1]);
+      tr.appendChild(td1);
+      tr.appendChild(td2);
+      tbl.appendChild(tr);
+    });
+    modal.appendChild(tbl);
+
+    bg.addEventListener('click', function(e) { if (e.target === bg) document.body.removeChild(bg); });
+    document.addEventListener('keydown', function escClose(e) {
+      if (e.key === 'Escape' && bg.parentNode) {
+        document.body.removeChild(bg);
+        document.removeEventListener('keydown', escClose);
+      }
+    });
+
+    document.body.appendChild(bg);
+  }
+
   function _ar_buildInvCell(it) {
     var c = document.createElement('div');
     c.className = 'inv-cell q' + (it.quality || 0);
+    c.style.cursor = 'pointer';
     c.title = it.id + ' · ' + (it.name || '') + (it.desc ? '\n' + it.desc : '');
+    c.onclick = function() { _ar_openInvDetailModal(it); };
     var wrap = document.createElement('div');
     wrap.className = 'icon-wrap';
     if (it.icon) {
