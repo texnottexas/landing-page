@@ -8999,25 +8999,21 @@
 
     // 3-card grid (Shark / Scorpion / Eagle)
     var grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:.75rem;margin-bottom:1rem;';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.75rem;margin-bottom:1rem;';
     container.appendChild(grid);
 
     ['1001', '1002', '1003'].forEach(function(fid) {
       grid.appendChild(buildFormationCard(fid, merged.formations[fid], ref));
     });
 
-    // Army Mastery section
+    // Component Mastery section (1-20 per unit type, distinct from Formation Specialization).
     if (merged.armyMastery) {
       var amSection = document.createElement('section');
       amSection.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem;margin-top:.5rem;';
       var amTitle = document.createElement('h3');
-      amTitle.style.cssText = 'margin:0 0 .25rem;font-size:1rem;color:var(--text);';
-      amTitle.textContent = 'Army Mastery';
+      amTitle.style.cssText = 'margin:0 0 .5rem;font-size:1rem;color:var(--text);';
+      amTitle.textContent = 'Component Mastery';
       amSection.appendChild(amTitle);
-      var amSub = document.createElement('p');
-      amSub.style.cssText = 'margin:0 0 .5rem;font-size:.75rem;color:var(--muted);';
-      amSub.textContent = 'Per unit type, level 1–20. Different from Formation Specialization.';
-      amSection.appendChild(amSub);
 
       var amRow = document.createElement('div');
       amRow.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;';
@@ -9028,27 +9024,15 @@
         if (raw == null) return;
         var lvl = Number(raw) - Number(typeCode);
         var pill = document.createElement('div');
-        pill.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem;text-align:center;';
+        pill.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.6rem .5rem;text-align:center;';
         var lbl = document.createElement('div');
-        lbl.style.cssText = 'font-size:.7rem;color:var(--muted);';
+        lbl.style.cssText = 'font-size:.75rem;color:var(--muted);';
         lbl.textContent = ARMY_TYPE_LABELS[typeCode];
         pill.appendChild(lbl);
         var val = document.createElement('div');
-        val.style.cssText = 'font-size:1.1rem;font-weight:600;color:var(--text);margin-top:.15rem;';
-        val.textContent = 'Lv ' + lvl + ' / 20';
+        val.style.cssText = 'font-size:1.2rem;font-weight:600;color:var(--text);margin-top:.2rem;';
+        val.textContent = 'Lv ' + lvl + '/20';
         pill.appendChild(val);
-        // Cumulative buff summary
-        var sum = computeArmyMasteryCumulative(ref, typeCode, lvl);
-        if (sum.length > 0) {
-          var ul = document.createElement('div');
-          ul.style.cssText = 'margin-top:.4rem;font-size:.7rem;color:var(--muted);text-align:left;';
-          sum.slice(0, 8).forEach(function(b) {
-            var line = document.createElement('div');
-            line.textContent = b.name + ': +' + (b.value / 100) + '%';
-            ul.appendChild(line);
-          });
-          pill.appendChild(ul);
-        }
         amRow.appendChild(pill);
       });
       container.appendChild(amSection);
@@ -9195,7 +9179,9 @@
       sciTitle.textContent = 'Sciences';
       sciBlock.appendChild(sciTitle);
       var sciRow = document.createElement('div');
-      sciRow.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);gap:.2rem;';
+      // Min-content columns prevent overflow on narrow cards. minmax(0,1fr) lets the column
+      // shrink below its label width so text-overflow ellipsis kicks in instead of pushing wide.
+      sciRow.style.cssText = 'display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.2rem;';
       sciBlock.appendChild(sciRow);
       ['1', '2', '3', '4', '5'].forEach(function(sid) {
         var sci = ref.sciences[sid];
@@ -9203,13 +9189,13 @@
         var max = (sci && sci.max_level) || 1;
         var pct = Math.round(lv / max * 100);
         var pill = document.createElement('div');
-        pill.style.cssText = 'background:#0d1117;border:1px solid var(--border);border-radius:4px;padding:.25rem;text-align:center;';
+        pill.style.cssText = 'background:#0d1117;border:1px solid var(--border);border-radius:4px;padding:.25rem .15rem;text-align:center;min-width:0;overflow:hidden;';
         var nm = document.createElement('div');
         nm.style.cssText = 'font-size:.6rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
         nm.textContent = (sci && sci.name) || sid;
         pill.appendChild(nm);
         var lvEl = document.createElement('div');
-        lvEl.style.cssText = 'font-size:.85rem;font-weight:600;color:var(--accent);';
+        lvEl.style.cssText = 'font-size:.85rem;font-weight:600;color:var(--accent);line-height:1.1;';
         lvEl.textContent = String(lv);
         pill.appendChild(lvEl);
         var maxEl = document.createElement('div');
