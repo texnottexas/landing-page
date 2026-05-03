@@ -571,6 +571,32 @@
   .res-stat .v { font-family: 'SF Mono', Menlo, monospace; font-weight: 800; font-size: .9rem; color: var(--text); margin-top: .15rem; }
   .res-stat.ally .v { color: var(--ally); }
   .res-stat.opp  .v { color: var(--opp); }
+
+  /* Round merit collapsible */
+  .merit-section { margin-top: 1.25rem; background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .merit-section summary { cursor: pointer; padding: .75rem .85rem; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: .65rem; user-select: none; }
+  .merit-section summary::-webkit-details-marker { display: none; }
+  .merit-section summary::after { content: '▾'; color: var(--muted); transition: transform .2s; font-size: .9rem; }
+  .merit-section[open] summary::after { transform: rotate(180deg); }
+  .merit-section .m-title { font-weight: 800; font-size: .95rem; color: var(--text); }
+  .merit-section .m-sub { font-size: .68rem; color: var(--muted); font-weight: 500; margin-top: .12rem; }
+  .merit-section .m-stats { display: flex; gap: .85rem; font-family: 'SF Mono', Menlo, monospace; font-size: .72rem; color: var(--muted); }
+  .merit-section .m-stats b { color: var(--accent); font-weight: 800; margin-left: .2rem; }
+  .merit-list { max-height: 600px; overflow-y: auto; padding: 0 .35rem .35rem; }
+  .merit-list .m-row { display: grid; grid-template-columns: 38px 38px 1fr auto; gap: .55rem; align-items: center; padding: .4rem .35rem; border-bottom: 1px dashed var(--border); }
+  .merit-list .m-row:last-child { border-bottom: 0; }
+  .merit-list .m-rank { font-family: 'SF Mono', Menlo, monospace; font-weight: 800; font-size: .82rem; color: var(--muted); text-align: center; }
+  .merit-list .m-rank.r1 { color: #d29922; }
+  .merit-list .m-rank.r2 { color: #c0c0c0; }
+  .merit-list .m-rank.r3 { color: #cd7f32; }
+  .merit-list .m-av { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; background: var(--surface); border: 1px solid var(--border); }
+  .merit-list .m-av.placeholder { display: flex; align-items: center; justify-content: center; font-size: .7rem; color: var(--muted); font-weight: 700; }
+  .merit-list .m-name { font-weight: 700; font-size: .82rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .merit-list .m-score { font-family: 'SF Mono', Menlo, monospace; font-weight: 800; font-size: .82rem; color: var(--accent); text-align: right; }
+  .merit-controls { display: flex; gap: .5rem; padding: .55rem .55rem .35rem; border-top: 1px solid var(--border); background: var(--surface); align-items: center; flex-wrap: wrap; }
+  .merit-search { flex: 1; min-width: 140px; background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: .4rem .55rem; color: var(--text); font-size: .8rem; }
+  .merit-search:focus { outline: none; border-color: var(--accent); }
+  .merit-count { font-size: .7rem; color: var(--muted); font-family: 'SF Mono', Menlo, monospace; }
 </style>
 </head>
 <body>
@@ -892,7 +918,55 @@
       )
     );
 
-    return el('div', null, banner, stats, mvpRow, warlord, slayer);
+    // S2864 round merit (collapsible, optional)
+    const meritData = r.s2864_round_merit;
+    let meritSection = null;
+    if (meritData && meritData.rankings && meritData.rankings.length) {
+      const search = el('input', { class:'merit-search', type:'search', placeholder:'Filter by name…', 'aria-label':'Filter merit rankings' });
+      const countLab = el('span', { class:'merit-count' }, meritData.rankings.length + ' players');
+      const list = el('div', { class:'merit-list' });
+      function row(p) {
+        const av = p.avatar
+          ? el('img', { class:'m-av', src: p.avatar, alt:'', loading:'lazy' })
+          : el('div', { class:'m-av placeholder' }, (p.username || '?').slice(0,1));
+        return el('div', { class:'m-row' },
+          el('div', { class:'m-rank r'+p.rank }, '#'+p.rank),
+          av,
+          el('div', { class:'m-name', translate:'no' }, p.username || '—'),
+          el('div', { class:'m-score' }, fmtNum(p.score))
+        );
+      }
+      function render(filter) {
+        clearNode(list);
+        const f = (filter || '').toLowerCase().trim();
+        let shown = 0;
+        for (const p of meritData.rankings) {
+          if (f && !(p.username || '').toLowerCase().includes(f)) continue;
+          list.appendChild(row(p));
+          shown++;
+        }
+        countLab.textContent = shown + (f ? ' / ' + meritData.rankings.length : '') + ' players';
+      }
+      render('');
+      search.addEventListener('input', () => render(search.value));
+      const summary = el('summary', null,
+        el('div', null,
+          el('div', { class:'m-title' }, 'S2864 Round ' + meritData.round + ' Merit'),
+          el('div', { class:'m-sub' }, 'Personal merit rankings — UD round ' + meritData.round + ' for our server')
+        ),
+        el('div', { class:'m-stats' },
+          el('span', null, 'Total', el('b', null, fmtNum(meritData.total))),
+          el('span', null, 'Players', el('b', null, meritData.count))
+        )
+      );
+      meritSection = el('details', { class:'merit-section' },
+        summary,
+        list,
+        el('div', { class:'merit-controls' }, search, countLab)
+      );
+    }
+
+    return el('div', null, banner, stats, mvpRow, warlord, slayer, meritSection);
   }
 
   // ----- TAB: Overview -----
