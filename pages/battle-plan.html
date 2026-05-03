@@ -99,8 +99,10 @@ table.power.power-collapsed .hidden-row{display:none;}
 .prio-4{background:rgba(139,148,158,.08);color:var(--muted);border:1px solid var(--border);}
 .fight-spec{font-size:.78rem;font-weight:600;display:flex;align-items:center;gap:.35rem;}
 .fight-spec svg{flex-shrink:0;color:var(--accent);}
-.fight-meta{font-size:.7rem;color:var(--muted);line-height:1.5;}
-.fight-meta b{color:var(--text);font-weight:600;}
+.fight-meta{font-size:.72rem;color:var(--muted);line-height:1.45;}
+.fight-meta b{color:var(--text);font-weight:700;}
+.fight-meta .meta-line1{color:var(--text);font-size:.78rem;font-weight:600;margin-bottom:.15rem;}
+.fight-meta .meta-line2{color:var(--muted);font-size:.7rem;}
 .fight-bonus{font-size:.68rem;padding:.3rem .45rem;border-radius:6px;background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.28);color:var(--green);display:flex;align-items:center;gap:.35rem;}
 .fight-bonus svg{flex-shrink:0;}
 
@@ -363,7 +365,17 @@ body{top:0!important;}
     if (opPI >= 15) return 3;
     return 4;
   }
-  function priorityLabel(p){ return ['','Real threat','Top-10 power','Mid power','Standard'][p]; }
+  function priorityLabel(p){ return ['','Real threat','Watch — strong','Should win','Easy win'][p]; }
+  function plainSummary(opFame, sectorRank, sectorTotal){
+    var k = (opFame||0) >= 1000 ? Math.round(opFame/1000) + 'K' : (opFame||0);
+    var rankDesc;
+    if (sectorRank <= 3) rankDesc = 'top of sector';
+    else if (sectorRank <= 6) rankDesc = 'upper sector';
+    else if (sectorRank <= 12) rankDesc = 'mid sector';
+    else if (sectorRank <= 20) rankDesc = 'lower-mid sector';
+    else rankDesc = 'weak (bottom of sector)';
+    return rankDesc + ' · ranked #' + sectorRank + ' of ' + sectorTotal + ' · ' + k + ' fame';
+  }
   function fmtNum(n){ return (n||0).toLocaleString(); }
   // Parse "Lv. 2 Neutral City #2015" -> { num: 2015, level: 2 }
   function parseNc(name){
@@ -592,14 +604,17 @@ body{top:0!important;}
       spec.appendChild(el('span', null, SPEC_NAMES[f.specId] || ('Spec ' + f.specId)));
       card.appendChild(spec);
 
+      var sectorTotal = (rd.sectorPower || []).length;
       var meta = el('div', 'fight-meta');
-      meta.appendChild(document.createTextNode('vs '));
-      meta.appendChild(el('b', null, 'S' + f.opponent));
-      meta.appendChild(document.createTextNode(' · '));
-      meta.appendChild(el('span', 'tier-pill tier-' + (f.tier || 'D'), f.tier || '?'));
-      meta.appendChild(document.createTextNode(' sec#' + f.sectorRank));
-      meta.appendChild(el('br'));
-      meta.appendChild(document.createTextNode('Fame ' + fmtNum(f.opFame) + ' · Score ' + f.opScore + ' · PI ' + f.opPI));
+      var line1 = el('div', 'meta-line1');
+      line1.appendChild(document.createTextNode('vs '));
+      line1.appendChild(el('b', null, 'S' + f.opponent));
+      meta.appendChild(line1);
+      var line2 = el('div', 'meta-line2');
+      line2.textContent = plainSummary(f.opFame, f.sectorRank, sectorTotal);
+      meta.appendChild(line2);
+      // Detailed PI / score available on hover for power users
+      meta.title = 'Sector PI ' + f.opPI + ' · current SSC score ' + f.opScore + ' · tier ' + (f.tier || '?');
       card.appendChild(meta);
 
       var unlocks = ncUnlocks[String(f.seq)];
