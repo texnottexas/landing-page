@@ -1406,6 +1406,53 @@
     return id;
   }
 
+  // ── S2864 supplement unlock ────────────────────────────────────────────
+  async function _ar_sha256Hex(s) {
+    var enc = new TextEncoder();
+    var buf = await crypto.subtle.digest('SHA-256', enc.encode(String(s)));
+    return Array.from(new Uint8Array(buf)).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+  }
+
+  var _ar_rosterMap = null;
+  async function _ar_getRosterMap() {
+    if (_ar_rosterMap) return _ar_rosterMap;
+    var r = await fetch('player-data.json');
+    var data = await r.json();
+    var arr = data.players || data;
+    _ar_rosterMap = {};
+    for (var i = 0; i < arr.length; i++) {
+      var p = arr[i];
+      if (p && p.siteKey) _ar_rosterMap[p.siteKey] = p;
+    }
+    return _ar_rosterMap;
+  }
+
+  function _ar_isUnlocked(siteKey) {
+    if (!siteKey) return false;
+    try {
+      var raw = localStorage.getItem('armory_unlocked');
+      var map = raw ? JSON.parse(raw) : {};
+      return map[siteKey] === true;
+    } catch (e) { return false; }
+  }
+
+  function _ar_setUnlocked(siteKey, on) {
+    if (!siteKey) return;
+    var raw = localStorage.getItem('armory_unlocked');
+    var map;
+    try { map = raw ? JSON.parse(raw) : {}; } catch (e) { map = {}; }
+    if (on) map[siteKey] = true; else delete map[siteKey];
+    localStorage.setItem('armory_unlocked', JSON.stringify(map));
+  }
+
+  function _ar_listUnlocked() {
+    try {
+      var raw = localStorage.getItem('armory_unlocked');
+      var map = raw ? JSON.parse(raw) : {};
+      return Object.keys(map).filter(function(k) { return map[k] === true; });
+    } catch (e) { return []; }
+  }
+
   function getPushEndpoint() {
     if (!navigator.serviceWorker) return Promise.resolve(null);
     // Don't use .ready (hangs if no SW registered). Check getRegistration instead.
