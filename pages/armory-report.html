@@ -1278,6 +1278,28 @@
   /* Save/Share buttons in dashboard */
   .share-btn { display: inline-flex; align-items: center; gap: .35rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .35rem .65rem; font-size: .78rem; color: var(--muted); cursor: pointer; transition: all .15s; font-family: inherit; }
   .share-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Supplement unlock modal */
+  .sup-unlock-modal { max-width: 460px; }
+  .sup-unlock-modal h2 { margin: 0 0 8px; font-size: 18px; }
+  .sup-unlock-modal p { margin: 0 0 14px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+  .sup-unlock-modal label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .sup-unlock-modal input[type="text"] {
+    width: 100%; padding: 8px 10px; background: var(--card); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; font-family: monospace; font-size: 13px;
+  }
+  .sup-unlock-modal .err { color: #f85149; font-size: 12px; margin-top: 6px; min-height: 18px; }
+  .sup-unlock-modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  .sup-unlock-modal button.primary {
+    background: var(--green, #3fb950); color: #0d1117; border: none; border-radius: 6px;
+    padding: 8px 16px; font-weight: 600; cursor: pointer; font-size: 13px;
+  }
+  .sup-unlock-modal button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .sup-unlock-modal button.secondary {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 13px;
+  }
+  .tab-btn .lock-icon { display: inline-block; margin-left: 4px; font-size: 11px; opacity: 0.75; }
 </style>
 </head>
 <body>
@@ -1451,6 +1473,79 @@
       var map = raw ? JSON.parse(raw) : {};
       return Object.keys(map).filter(function(k) { return map[k] === true; });
     } catch (e) { return []; }
+  }
+
+  function _ar_openUnlockModal(siteKey, playerName, onUnlock) {
+    var bg = document.createElement('div');
+    bg.className = 'modal-bg show';
+    bg.style.zIndex = '120';
+    var modal = document.createElement('div');
+    modal.className = 'modal sup-unlock-modal';
+    bg.appendChild(modal);
+
+    var h = document.createElement('h2');
+    h.textContent = 'Unlock S2864 features for ' + playerName;
+    modal.appendChild(h);
+
+    var p = document.createElement('p');
+    p.textContent = 'Enter your in-game UID. It is hashed locally to verify you own this account. The UID is never stored or sent anywhere.';
+    modal.appendChild(p);
+
+    var label = document.createElement('label');
+    label.textContent = 'In-game UID';
+    modal.appendChild(label);
+
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'e.g. 12345678';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    modal.appendChild(input);
+
+    var err = document.createElement('div');
+    err.className = 'err';
+    modal.appendChild(err);
+
+    var actions = document.createElement('div');
+    actions.className = 'actions';
+    var cancel = document.createElement('button');
+    cancel.className = 'secondary';
+    cancel.textContent = 'Cancel';
+    cancel.onclick = function() { document.body.removeChild(bg); };
+    var submit = document.createElement('button');
+    submit.className = 'primary';
+    submit.textContent = 'Unlock';
+    submit.disabled = true;
+    actions.appendChild(cancel);
+    actions.appendChild(submit);
+    modal.appendChild(actions);
+
+    input.addEventListener('input', function() {
+      submit.disabled = !input.value.trim();
+      err.textContent = '';
+    });
+
+    submit.addEventListener('click', async function() {
+      submit.disabled = true;
+      err.textContent = '';
+      var uid = input.value.trim();
+      var hash = await _ar_sha256Hex(uid);
+      if (hash === siteKey) {
+        _ar_setUnlocked(siteKey, true);
+        document.body.removeChild(bg);
+        if (typeof onUnlock === 'function') onUnlock();
+      } else {
+        err.textContent = 'UID does not match this player.';
+        submit.disabled = !input.value.trim();
+      }
+    });
+
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !submit.disabled) submit.click();
+    });
+
+    document.body.appendChild(bg);
+    setTimeout(function() { input.focus(); }, 50);
   }
 
   function getPushEndpoint() {
