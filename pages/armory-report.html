@@ -1704,12 +1704,13 @@
       fetch('data/item-table.json').then(function(r) { return r.json(); }),
       fetch('data/building-table.json').then(function(r) { return r.json(); }),
       fetch('data/army-icon-map.json').then(function(r) { return r.json(); }),
-      fetch('data/all-heroes.json').then(function(r) { return r.json(); })
+      fetch('data/all-heroes.json').then(function(r) { return r.json(); }),
+      fetch('data/decor-category-map.json').then(function(r) { return r.json(); }).catch(function() { return {}; })
     ]);
     var heroes = data[3];
     var heroById = {};
     for (var i = 0; i < heroes.length; i++) heroById[heroes[i].heroId] = heroes[i];
-    _ar_invLookups = { item: data[0], building: data[1], army: data[2], heroById: heroById };
+    _ar_invLookups = { item: data[0], building: data[1], army: data[2], heroById: heroById, decorCat: data[4] || {} };
     return _ar_invLookups;
   }
 
@@ -1766,12 +1767,14 @@
       var grp = cfg.g || it.g;
       var icon = (grp && cfg.n) ? grp + '_' + _ar_sanitizeName(cfg.n) + '.png' : null;
       var inSuit = grp && suitGroupSet[String(grp)];
+      var category = (lk.decorCat && grp) ? (lk.decorCat[String(grp)] || null) : null;
       out.tabs.decor.push({
         id: it.id, amount: it.a || 0, level: it.l || cfg.lv || null, maxLevel: cfg.ml,
         group: grp || it.id, type: cfg.t, quality: cfg.q || 1, name: cfg.n || ('Decor #' + it.id),
         desc: cfg.d || '', icon: icon, iconDir: ASSET + 'decor-icons',
         subtab: inSuit ? 'set' : 'other',
-        suitId: inSuit || null
+        suitId: inSuit || null,
+        category: category
       });
     });
     (tabs.hero || []).forEach(function(it) {
@@ -8418,6 +8421,50 @@
           sect.appendChild(inner);
           grid.appendChild(sect);
         });
+      } else if (state.tab === 'decor' && state.subtab === 'other') {
+        // Decor (non-set) groups by buff category from decor-category-map.json
+        grid.style.display = 'block';
+        var byCat = {};
+        list.forEach(function(it) {
+          var cat = it.category || 'Uncategorized';
+          if (!byCat[cat]) byCat[cat] = [];
+          byCat[cat].push(it);
+        });
+        var CAT_ORDER = ['March Size', 'Defense', 'Damage Boost', 'Others', 'Uncategorized'];
+        var cats = Object.keys(byCat).sort(function(a, b) {
+          var ai = CAT_ORDER.indexOf(a); var bi = CAT_ORDER.indexOf(b);
+          if (ai === -1) ai = 99; if (bi === -1) bi = 99;
+          return ai - bi;
+        });
+        cats.forEach(function(cat) {
+          var sect = document.createElement('div');
+          sect.className = 'deco-section';
+          var header = document.createElement('div');
+          header.className = 'deco-section-header';
+          var chev = document.createElement('span');
+          chev.className = 'deco-section-chevron';
+          chev.textContent = '▼';
+          header.appendChild(chev);
+          var title = document.createElement('span');
+          title.className = 'deco-section-title';
+          title.textContent = cat;
+          header.appendChild(title);
+          var count = document.createElement('span');
+          count.className = 'deco-section-count';
+          count.textContent = byCat[cat].length + ' items';
+          header.appendChild(count);
+          var inner = document.createElement('div');
+          inner.className = 'inv-grid';
+          inner.style.padding = '0';
+          byCat[cat].forEach(function(it) { inner.appendChild(_ar_buildInvCell(it)); });
+          header.onclick = function() {
+            sect.classList.toggle('collapsed');
+            inner.style.display = sect.classList.contains('collapsed') ? 'none' : '';
+          };
+          sect.appendChild(header);
+          sect.appendChild(inner);
+          grid.appendChild(sect);
+        });
       } else {
         grid.style.display = '';
         list.forEach(function(it) { grid.appendChild(_ar_buildInvCell(it)); });
@@ -8477,6 +8524,7 @@
     if (it.level && it.level > 1) subParts.push('lv ' + it.level);
     if (it.maxLevel) subParts.push('max ' + it.maxLevel);
     if (it.suitId) subParts.push('set ' + it.suitId);
+    if (it.category) subParts.push('cat ' + it.category);
     sub.textContent = subParts.join(' · ');
     info.appendChild(sub);
 
@@ -8505,6 +8553,7 @@
     if (it.suitId && typeof DECOR_SUITS !== 'undefined' && DECOR_SUITS[it.suitId]) {
       fields.push(['set', DECOR_SUITS[it.suitId].n + ' (#' + it.suitId + ')']);
     }
+    if (it.category) fields.push(['category', it.category]);
     fields.forEach(function(f) {
       var tr = document.createElement('tr');
       var td1 = document.createElement('td');
