@@ -8376,7 +8376,52 @@
         return (b.quality || 0) - (a.quality || 0) || (b.level || 0) - (a.level || 0) || (b.amount || 0) - (a.amount || 0);
       });
       grid.replaceChildren();
-      list.forEach(function(it) { grid.appendChild(_ar_buildInvCell(it)); });
+      // Decor (Set) subtab: group items by suitId and render with collapsible section headers
+      // matching the Decoration tab grouping style.
+      if (state.tab === 'decor' && state.subtab === 'set') {
+        grid.style.display = 'block';
+        var bySuit = {};
+        list.forEach(function(it) {
+          var sid = String(it.suitId || 'unknown');
+          if (!bySuit[sid]) bySuit[sid] = [];
+          bySuit[sid].push(it);
+        });
+        var sids = Object.keys(bySuit).sort(function(a, b) { return bySuit[b].length - bySuit[a].length; });
+        sids.forEach(function(sid) {
+          var sect = document.createElement('div');
+          sect.className = 'deco-section';
+          var header = document.createElement('div');
+          header.className = 'deco-section-header';
+          var chev = document.createElement('span');
+          chev.className = 'deco-section-chevron';
+          chev.textContent = '▼';
+          header.appendChild(chev);
+          var title = document.createElement('span');
+          title.className = 'deco-section-title';
+          var suitInfo = (typeof DECOR_SUITS !== 'undefined') ? DECOR_SUITS[sid] : null;
+          title.textContent = suitInfo ? suitInfo.n : ('Set #' + sid);
+          header.appendChild(title);
+          var count = document.createElement('span');
+          count.className = 'deco-section-count';
+          var totalInSet = suitInfo ? (suitInfo.c || '?') : '?';
+          count.textContent = bySuit[sid].length + ' / ' + totalInSet + ' owned';
+          header.appendChild(count);
+          var inner = document.createElement('div');
+          inner.className = 'inv-grid';
+          inner.style.padding = '0';
+          bySuit[sid].forEach(function(it) { inner.appendChild(_ar_buildInvCell(it)); });
+          header.onclick = function() {
+            sect.classList.toggle('collapsed');
+            inner.style.display = sect.classList.contains('collapsed') ? 'none' : '';
+          };
+          sect.appendChild(header);
+          sect.appendChild(inner);
+          grid.appendChild(sect);
+        });
+      } else {
+        grid.style.display = '';
+        list.forEach(function(it) { grid.appendChild(_ar_buildInvCell(it)); });
+      }
       stats.textContent = list.length + ' items';
     }
 
