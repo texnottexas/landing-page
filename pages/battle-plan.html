@@ -144,6 +144,17 @@ table.power.power-collapsed .hidden-row{display:none;}
 .nc-row .nc-pos{color:var(--muted);font-size:.7rem;font-weight:500;}
 .nc-row .nc-via{font-size:.7rem;color:var(--muted);text-align:right;flex-shrink:0;}
 .nc-row .nc-via b{color:var(--text);}
+.nc-row.two-hop svg{color:var(--purple);}
+.two-hop-via{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;justify-content:flex-end;}
+.two-hop-via .two-hop-path{display:inline-flex;align-items:center;gap:.25rem;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:.15rem .4rem;}
+.two-hop-via .hop-arrow{color:var(--muted);}
+.two-hop-via .w2-declared{color:var(--green);font-weight:700;}
+.two-hop-via .w2-open{color:var(--accent);font-weight:700;}
+.two-hop-via .path-sep{color:var(--muted);font-size:.65rem;}
+.two-hop-via .path-more{color:var(--muted);font-size:.65rem;font-style:italic;}
+.two-hop-legend{display:flex;gap:.85rem;flex-wrap:wrap;margin-top:.55rem;padding:.45rem .65rem;background:rgba(163,113,247,.04);border:1px dashed rgba(163,113,247,.25);border-radius:6px;font-size:.66rem;color:var(--muted);}
+.two-hop-legend .leg-item b.w2-declared{color:var(--green);font-weight:700;}
+.two-hop-legend .leg-item b.w2-open{color:var(--accent);font-weight:700;}
 
 .buff-list{display:flex;flex-direction:column;gap:.45rem;}
 .buff-row{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;}
@@ -806,6 +817,128 @@ body{top:0!important;}
     root.appendChild(section);
   }
 
+  // ===== 2-HOP NC PATH COMPUTATION =====
+  function compute2HopPaths(rd){
+    var cells = rd.cells || [];
+    if (!cells.length) return [];
+    var byRC = {};
+    cells.forEach(function(c){ byRC[c.r + ',' + c.c] = c; });
+    var declared = (rd.warTargets || []).map(function(w){ return w.seq; });
+    var declaredSet = {};
+    declared.forEach(function(s){ declaredSet[s] = true; });
+    var seqToCell = {};
+    cells.forEach(function(c){
+      if (c.type !== 3) return;
+      var m = (c.name||'').match(/Wasteland#(\d+)/);
+      if (m) seqToCell[parseInt(m[1], 10)] = c;
+    });
+    // 1-hop NCs already covered — exclude
+    var oneHop = {};
+    (rd.ncCaptureFlow || []).forEach(function(nc){ oneHop[nc.r + ',' + nc.c] = true; });
+    var dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+    var pathsByNc = {};
+    declared.forEach(function(seq){
+      var W = seqToCell[seq];
+      if (!W) return;
+      dirs.forEach(function(d){
+        var W2 = byRC[(W.r + d[0]) + ',' + (W.c + d[1])];
+        if (!W2 || W2.type !== 3 || W2.sid !== 0) return;
+        var m = (W2.name||'').match(/Wasteland#(\d+)/);
+        if (!m) return;
+        var W2seq = parseInt(m[1], 10);
+        dirs.forEach(function(d2){
+          var ncR = W2.r + d2[0], ncC = W2.c + d2[1];
+          var nc = byRC[ncR + ',' + ncC];
+          if (!nc || nc.type !== 2) return;
+          if (nc.sid === 2864) return; // already ours
+          if (oneHop[ncR + ',' + ncC]) return; // 1-hop already
+          var lm = (nc.name||'').match(/Lv\.\s*(\d+)/);
+          var lvl = lm ? parseInt(lm[1], 10) : 1;
+          var key = ncR + ',' + ncC;
+          if (!pathsByNc[key]){
+            pathsByNc[key] = { ncName: nc.name, r: ncR, c: ncC, sid: nc.sid, level: lvl, paths: [] };
+          }
+          var dup = pathsByNc[key].paths.some(function(p){ return p.via1 === seq && p.via2 === W2seq; });
+          if (!dup) pathsByNc[key].paths.push({ via1: seq, via2: W2seq, via2Declared: !!declaredSet[W2seq] });
+        });
+      });
+    });
+    var arr = Object.keys(pathsByNc).map(function(k){ return pathsByNc[k]; });
+    arr.sort(function(a,b){ return (b.level||0) - (a.level||0) || a.ncName.localeCompare(b.ncName); });
+    return arr;
+  }
+
+  function buildTwoHopFlow(rd, root){
+    var paths = compute2HopPaths(rd);
+    if (!paths.length) return;
+    var section = el('section', 'sect');
+    var t = el('div', 'sect-title');
+    var dot = el('span', 'dot'); dot.style.background = 'var(--purple)';
+    t.appendChild(dot);
+    t.appendChild(el('span', null, '2-Hop NC Pathways — Reachable in 2 Rounds'));
+    t.appendChild(el('span', 'tag', paths.length + ' additional NCs'));
+    section.appendChild(t);
+
+    var note = el('div', 'rule-box');
+    note.appendChild(makeIcon('compass', 18));
+    var body = el('div', 'body');
+    body.appendChild(el('strong', null, 'How to read this: '));
+    body.appendChild(document.createTextNode('NCs that need 2 captures to reach. Win '));
+    body.appendChild(el('b', null, 'W-A'));
+    body.appendChild(document.createTextNode(' this round, then declare '));
+    body.appendChild(el('b', null, 'W-B'));
+    body.appendChild(document.createTextNode(' next round. Two rounds out, the NC becomes adjacent and we can declare it. Use this to plan capture-chains in straight lines (4-way, no diagonals).'));
+    note.appendChild(body);
+    section.appendChild(note);
+
+    var box = el('div', 'nc-flow');
+    paths.forEach(function(p){
+      var lvl = p.level || 1;
+      var row = el('div', 'nc-row two-hop');
+      row.appendChild(makeIcon('castle', 16));
+      var name = el('div', 'nc-name');
+      name.appendChild(el('span', 'nc-lvl l' + lvl, 'Lv.' + lvl));
+      name.appendChild(document.createTextNode(' ' + p.ncName.replace(/^Lv\.\s*\d+\s*/, '')));
+      var ownerStr = p.sid ? 'S' + p.sid : 'unclaimed';
+      name.appendChild(el('span', 'nc-pos', '@(' + p.r + ',' + p.c + ') · ' + ownerStr));
+      row.appendChild(name);
+      var via = el('div', 'nc-via two-hop-via');
+      // Show first 2 paths inline; more on tooltip
+      var shown = p.paths.slice(0, 2);
+      shown.forEach(function(path, i){
+        if (i > 0) via.appendChild(el('span', 'path-sep', ' or '));
+        var pathSpan = el('span', 'two-hop-path');
+        pathSpan.appendChild(el('b', null, 'W-' + path.via1));
+        var arrow = makeIcon('arrow', 10);
+        arrow.classList.add('hop-arrow');
+        pathSpan.appendChild(arrow);
+        var w2pill = el('b', path.via2Declared ? 'w2-declared' : 'w2-open', 'W-' + path.via2);
+        pathSpan.appendChild(w2pill);
+        via.appendChild(pathSpan);
+      });
+      if (p.paths.length > shown.length){
+        via.appendChild(el('span', 'path-more', ' +' + (p.paths.length - shown.length) + ' more paths'));
+      }
+      row.appendChild(via);
+      box.appendChild(row);
+    });
+    section.appendChild(box);
+
+    // Legend
+    var legend = el('div', 'two-hop-legend');
+    var l1 = el('span', 'leg-item');
+    l1.appendChild(el('b', 'w2-declared', 'W-NNN'));
+    l1.appendChild(document.createTextNode(' = already in our R8 declarations'));
+    legend.appendChild(l1);
+    var l2 = el('span', 'leg-item');
+    l2.appendChild(el('b', 'w2-open', 'W-NNN'));
+    l2.appendChild(document.createTextNode(' = not declared yet (R9 candidate)'));
+    legend.appendChild(l2);
+    section.appendChild(legend);
+
+    root.appendChild(section);
+  }
+
   function buildPower(rd, root){
     var pow = rd.sectorPower || [];
     if (!pow.length) return;
@@ -1033,6 +1166,7 @@ body{top:0!important;}
     buildFocus(rd, root);
     buildContested(rd, root);
     buildNcFlow(rd, root);
+    buildTwoHopFlow(rd, root);
     buildPower(rd, root);
     buildBuffs(rd, root);
     buildAssignment(rd, root);
