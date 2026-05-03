@@ -3515,6 +3515,10 @@
   }
 
   function renderFullReport() {
+    // Roster fetch is normally <100ms (CDN-cached). If the tabs render before this resolves,
+    // the Inventory tab simply appears on next page load. Acceptable trade-off vs. blocking the UI.
+    if (!_ar_rosterMap) { _ar_getRosterMap(); }
+
     var merged = mergeReportData(wizardState.reportData);
     window._mergedData = merged;
 
@@ -3682,6 +3686,9 @@
     tabBar.className = 'tab-bar';
     dash.appendChild(tabBar);
 
+    var siteKey = (wizardState.player && wizardState.player.siteKey) || (window._reportSiteKey) || null;
+    var inS2864 = false;
+    if (siteKey && _ar_rosterMap && _ar_rosterMap[siteKey]) inS2864 = true;
     var tabDefs = [
       { id: 'overview', label: 'Overview' },
       { id: 'heroes', label: 'Heroes & Gear' },
@@ -3691,12 +3698,21 @@
       { id: 'chips', label: 'HT Chips' },
       { id: 'formation', label: 'Formation' }
     ];
+    if (inS2864) {
+      tabDefs.push({ id: 'inventory', label: 'Inventory' });
+    }
 
     tabDefs.forEach(function(def, i) {
       var btn = document.createElement('button');
       btn.className = 'tab-btn' + (i === 0 ? ' active' : '');
       btn.setAttribute('data-tab', def.id);
       btn.textContent = def.label;
+      if (def.id === 'inventory' && siteKey && !_ar_isUnlocked(siteKey)) {
+        var lock = document.createElement('span');
+        lock.className = 'lock-icon';
+        lock.textContent = '🔒';
+        btn.appendChild(lock);
+      }
       btn.addEventListener('click', function() { switchTab(btn); });
       tabBar.appendChild(btn);
     });
@@ -3745,6 +3761,7 @@
 
     var tab = btn.getAttribute('data-tab');
     var m = window._mergedData;
+    var siteKey = (wizardState.player && wizardState.player.siteKey) || null;
     switch (tab) {
       case 'heroes':      renderHeroesTab(m); break;
       case 'decorations': renderDecorationsTab(m); break;
@@ -3752,6 +3769,7 @@
       case 'enigma':      renderEnigmaTab(m); break;
       case 'chips':       renderChipsTab(m); break;
       case 'formation':   renderFormationTab(m); break;
+      case 'inventory':   renderInventoryTab(m, siteKey, _ar_isUnlocked(siteKey)); break;
     }
   }
 
@@ -7855,6 +7873,41 @@
 
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
+  }
+
+  function renderInventoryTab(merged, siteKey, unlocked) {
+    var container = document.getElementById('tab-inventory');
+    if (!container) return;
+    container.replaceChildren();
+    if (!unlocked) {
+      var card = document.createElement('div');
+      card.style.cssText = 'padding: 24px; text-align: center; color: var(--muted);';
+      var lock = document.createElement('div');
+      lock.style.cssText = 'font-size: 32px; margin-bottom: 8px;';
+      lock.textContent = '🔒';
+      card.appendChild(lock);
+      var msg = document.createElement('div');
+      msg.textContent = 'Locked. Enter your UID to view your full inventory.';
+      card.appendChild(msg);
+      var btn = document.createElement('button');
+      btn.style.cssText = 'margin-top: 14px; padding: 8px 20px; background: var(--green); color: #0d1117; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;';
+      btn.textContent = 'Unlock';
+      var playerName = (wizardState.player && wizardState.player.name) || 'this player';
+      btn.onclick = function() {
+        _ar_openUnlockModal(siteKey, playerName, function() {
+          var b = document.querySelector('.tab-btn[data-tab="inventory"] .lock-icon');
+          if (b) b.remove();
+          renderInventoryTab(merged, siteKey, true);
+        });
+      };
+      card.appendChild(btn);
+      container.appendChild(card);
+      return;
+    }
+    var msg = document.createElement('div');
+    msg.style.cssText = 'padding: 24px; text-align: center; color: var(--muted);';
+    msg.textContent = 'No inventory uploaded yet.';
+    container.appendChild(msg);
   }
 
   function renderEnigmaTab(merged) {
