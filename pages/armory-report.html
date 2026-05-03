@@ -4000,12 +4000,16 @@
       tabDefs.push({ id: 'inventory', label: 'Inventory' });
     }
 
+    var ownIdentityForTabs = getStoredIdentity();
+    var isOwnReport = !!(ownIdentityForTabs && ownIdentityForTabs.siteKey && ownIdentityForTabs.siteKey === siteKey);
     tabDefs.forEach(function(def, i) {
       var btn = document.createElement('button');
       btn.className = 'tab-btn' + (i === 0 ? ' active' : '');
       btn.setAttribute('data-tab', def.id);
       btn.textContent = def.label;
-      if (def.id === 'inventory' && siteKey && !_ar_isUnlocked(siteKey)) {
+      // Lock icon only when viewer is the report's own player and hasn't unlocked yet — shareable
+      // viewers see no lock. Inventory data still renders for everyone; lock only gates updates.
+      if (def.id === 'inventory' && siteKey && isOwnReport && !_ar_isUnlocked(siteKey)) {
         var lock = document.createElement('span');
         lock.className = 'lock-icon';
         lock.textContent = '🔒';
@@ -8193,33 +8197,10 @@
     if (!container) return;
     container.replaceChildren();
 
-    if (!unlocked) {
-      var card = document.createElement('div');
-      card.style.cssText = 'padding: 24px; text-align: center; color: var(--muted);';
-      var lock = document.createElement('div');
-      lock.style.cssText = 'font-size: 32px; margin-bottom: 8px;';
-      lock.textContent = '🔒';
-      card.appendChild(lock);
-      var msg = document.createElement('div');
-      msg.textContent = 'Locked. Enter your UID to view your full inventory.';
-      card.appendChild(msg);
-      var btn = document.createElement('button');
-      btn.style.cssText = 'margin-top: 14px; padding: 8px 20px; background: var(--green); color: #0d1117; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;';
-      btn.textContent = 'Unlock';
-      var playerName = (wizardState.player && wizardState.player.name) || 'this player';
-      btn.onclick = function() {
-        _ar_openUnlockModal(siteKey, playerName, function() {
-          var b = document.querySelector('.tab-btn[data-tab="inventory"] .lock-icon');
-          if (b) b.remove();
-          renderInventoryTab(merged, siteKey, true);
-        });
-      };
-      card.appendChild(btn);
-      container.appendChild(card);
-      return;
-    }
-
-    var isOwner = _ar_isUnlocked(siteKey);
+    var isOwner = !!unlocked;
+    var ownIdentity = getStoredIdentity();
+    var isOwnReport = !!(ownIdentity && ownIdentity.siteKey && ownIdentity.siteKey === siteKey);
+    var canUnlock = isOwnReport && !isOwner;
 
     var stored = null;
     try {
@@ -8241,6 +8222,19 @@
         }
       };
       toolbar.appendChild(updateBtn);
+    } else if (canUnlock) {
+      var unlockBtn = document.createElement('button');
+      unlockBtn.style.cssText = 'padding: 6px 14px; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px;';
+      unlockBtn.textContent = '🔒 Unlock to update';
+      unlockBtn.onclick = function() {
+        var playerName = (wizardState.player && wizardState.player.name) || 'this player';
+        _ar_openUnlockModal(siteKey, playerName, function() {
+          var b = document.querySelector('.tab-btn[data-tab="inventory"] .lock-icon');
+          if (b) b.remove();
+          renderInventoryTab(merged, siteKey, true);
+        });
+      };
+      toolbar.appendChild(unlockBtn);
     } else {
       var roLabel = document.createElement('span');
       roLabel.style.cssText = 'color: var(--muted); font-size: 12px;';
@@ -8622,10 +8616,11 @@
 
     // Identify bench beasts
     var benchBeasts = resolved.beasts.filter(function(b) { return !b.fieldCfg; });
+    var placedBeasts = resolved.beasts.filter(function(b) { return !!b.fieldCfg; });
 
-    // Summary stats
+    // Summary stats — placed beasts only (bench is shown as its own count)
     var totalPower = 0, fiveStarCount = 0, activeFields = 0, totalPotential = 0, totalMaxPotential = 0;
-    resolved.beasts.forEach(function(b) {
+    placedBeasts.forEach(function(b) {
       totalPower += b.power || 0;
       if (b.star >= 5) fiveStarCount++;
       totalPotential += b.potential || 0;
@@ -8637,7 +8632,7 @@
     var summaryBar = document.createElement('div');
     summaryBar.className = 'enigma-summary';
     [
-      { val: resolved.beasts.length, label: 'Beasts' },
+      { val: placedBeasts.length, label: 'Beasts' },
       { val: fiveStarCount, label: '5-Star' },
       { val: activeFields + '/' + resolved.fields.length, label: 'Active Fields' },
       { val: avgPotPct + '%', label: 'Avg Potential' },
