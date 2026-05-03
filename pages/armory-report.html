@@ -1670,6 +1670,17 @@
     return null;
   }
 
+  function _ar_validateBenchJson(raw) {
+    if (!raw || typeof raw !== 'object') return 'Not an object';
+    if (raw.v !== 1) return 'Unknown schema version (expected v:1)';
+    if (!Array.isArray(raw.beasts)) return 'Missing beasts array';
+    for (var i = 0; i < raw.beasts.length && i < 5; i++) {
+      var b = raw.beasts[i];
+      if (!b || b.cfgId == null || b.lv == null || b.st == null) return 'Beast entry missing cfgId/lv/st at index ' + i;
+    }
+    return null;
+  }
+
   function getPushEndpoint() {
     if (!navigator.serviceWorker) return Promise.resolve(null);
     // Don't use .ready (hangs if no SW registered). Check getRegistration instead.
@@ -8274,6 +8285,71 @@
     setTimeout(function() { ta.focus(); }, 50);
   }
 
+  function _ar_openBenchPasteModal(siteKey, onSaved) {
+    var bg = document.createElement('div');
+    bg.className = 'modal-bg show';
+    bg.style.zIndex = '120';
+    var modal = document.createElement('div');
+    modal.className = 'modal sup-unlock-modal';
+    modal.style.maxWidth = '640px';
+    bg.appendChild(modal);
+
+    var h = document.createElement('h2');
+    h.textContent = 'Paste Bench Beast JSON';
+    modal.appendChild(h);
+
+    var p = document.createElement('p');
+    p.textContent = 'Paste the JSON copied from the Enigma Beast bookmarklet (Q3+ unplaced beasts).';
+    modal.appendChild(p);
+
+    var ta = document.createElement('textarea');
+    ta.style.cssText = 'width: 100%; min-height: 120px; max-height: 240px; background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 8px; border-radius: 6px; font-family: monospace; font-size: 11px; resize: vertical;';
+    ta.placeholder = '{"v":1,"src":"...","beasts":[...]}';
+    modal.appendChild(ta);
+
+    var err = document.createElement('div');
+    err.className = 'err';
+    modal.appendChild(err);
+
+    var actions = document.createElement('div');
+    actions.className = 'actions';
+    var cancel = document.createElement('button');
+    cancel.className = 'secondary';
+    cancel.textContent = 'Cancel';
+    cancel.onclick = function() { document.body.removeChild(bg); };
+    var save = document.createElement('button');
+    save.className = 'primary';
+    save.textContent = 'Save';
+    actions.appendChild(cancel);
+    actions.appendChild(save);
+    modal.appendChild(actions);
+
+    save.onclick = function() {
+      err.textContent = '';
+      var raw;
+      try { raw = JSON.parse(ta.value.trim()); }
+      catch (e) { err.textContent = 'Invalid JSON: ' + e.message; return; }
+      var validationErr = _ar_validateBenchJson(raw);
+      if (validationErr) { err.textContent = validationErr; return; }
+      var existing;
+      try { existing = JSON.parse(localStorage.getItem('armory_bench_' + siteKey) || 'null'); } catch (e) { existing = null; }
+      if (existing && existing.ts) {
+        var ageMs = Date.now() - new Date(existing.ts).getTime();
+        if (ageMs < 3600 * 1000) {
+          if (!confirm('Existing bench snapshot is less than 1 hour old. Overwrite?')) return;
+        }
+      }
+      if (!raw.ts) raw.ts = new Date().toISOString();
+      try { localStorage.setItem('armory_bench_' + siteKey, JSON.stringify(raw)); }
+      catch (e) { err.textContent = 'localStorage write failed: ' + e.message; return; }
+      document.body.removeChild(bg);
+      if (typeof onSaved === 'function') onSaved();
+    };
+
+    document.body.appendChild(bg);
+    setTimeout(function() { ta.focus(); }, 50);
+  }
+
   function renderEnigmaTab(merged) {
     var container = document.getElementById('tab-enigma');
     while (container.firstChild) container.removeChild(container.firstChild);
@@ -8303,6 +8379,34 @@
     var ebActiveElems = new Set(['all']);
     var ebActiveField = 'all';
     var ebSort = 'star';
+
+    // Merge supplemental bench beasts if uploaded (Phase 1 — local only)
+    var siteKey = (wizardState.player && wizardState.player.siteKey) || null;
+    var unlocked = siteKey ? _ar_isUnlocked(siteKey) : false;
+    var supBench = null;
+    if (siteKey) {
+      try {
+        var rawBench = localStorage.getItem('armory_bench_' + siteKey);
+        if (rawBench) supBench = JSON.parse(rawBench);
+      } catch (e) {}
+    }
+    if (supBench && supBench.beasts) {
+      var existingIds = {};
+      resolved.beasts.forEach(function(b) { if (b.id) existingIds[String(b.id)] = true; });
+      supBench.beasts.forEach(function(sb) {
+        if (existingIds[String(sb.id)]) return;
+        resolved.beasts.push({
+          id: sb.id, cfg: sb.cfgId, type: sb.type, faction: sb.fac,
+          quality: sb.q, element: EB_ELEMENTS[sb.fac] || 'Unknown',
+          name: ebBeastName(sb.type, sb.st), star: sb.st, level: sb.lv,
+          potential: sb.pot, maxPotential: sb.q === 4 ? 8000 : 16000,
+          power: 0, mainBuff: sb.mb, mainBuffName: ebBuffName(sb.mb),
+          baseBuff: (sb.bb || []).map(function(id) { return { id: id, name: ebBuffName(id) }; }),
+          fieldCfg: null, fieldName: null, slotId: null, fieldSlotNum: null, slotLevel: null, slotBuffs: [],
+          _supplemental: true
+        });
+      });
+    }
 
     // Identify bench beasts
     var benchBeasts = resolved.beasts.filter(function(b) { return !b.fieldCfg; });
@@ -8467,6 +8571,32 @@
         benchPill.textContent = 'Bench (' + benchBeasts.length + ')';
         benchPill.dataset.field = 'bench';
         filterBar.appendChild(benchPill);
+
+        if (siteKey && _ar_rosterMap && _ar_rosterMap[siteKey]) {
+          var benchUpdateBtn = document.createElement('button');
+          benchUpdateBtn.style.cssText = 'margin-left: 12px; padding: 4px 12px; background: var(--green); color: #0d1117; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 600;';
+          benchUpdateBtn.textContent = unlocked ? 'Update Bench' : 'Unlock to Update';
+          benchUpdateBtn.onclick = function() {
+            if (!unlocked) {
+              var playerName = (wizardState.player && wizardState.player.name) || 'this player';
+              _ar_openUnlockModal(siteKey, playerName, function() {
+                var enigmaBtn = document.querySelector('.tab-btn[data-tab="enigma"]');
+                if (enigmaBtn) {
+                  var content = document.getElementById('tab-enigma');
+                  if (content) content.removeAttribute('data-rendered');
+                  switchTab(enigmaBtn);
+                }
+              });
+              return;
+            }
+            _ar_openBenchPasteModal(siteKey, function() {
+              var content = document.getElementById('tab-enigma');
+              if (content) content.removeAttribute('data-rendered');
+              switchTab(document.querySelector('.tab-btn[data-tab="enigma"]'));
+            });
+          };
+          benchPill.parentElement.appendChild(benchUpdateBtn);
+        }
       }
 
       var sep2 = document.createElement('div');
