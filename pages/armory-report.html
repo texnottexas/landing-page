@@ -1466,17 +1466,27 @@
   }
 
   var _ar_rosterMap = null;
+  var _ar_rosterByName = null;
   async function _ar_getRosterMap() {
     if (_ar_rosterMap) return _ar_rosterMap;
     var r = await fetch('player-data.json');
     var data = await r.json();
     var arr = data.players || data;
     _ar_rosterMap = {};
+    _ar_rosterByName = {};
     for (var i = 0; i < arr.length; i++) {
       var p = arr[i];
-      if (p && p.siteKey) _ar_rosterMap[p.siteKey] = p;
+      if (p && p.siteKey) {
+        _ar_rosterMap[p.siteKey] = p;
+        if (p.name) _ar_rosterByName[String(p.name).toLowerCase()] = p;
+      }
     }
     return _ar_rosterMap;
+  }
+  // Roster siteKeys are sha256(uid) truncated to 16 hex chars.
+  async function _ar_siteKeyFromUid(uid) {
+    var full = await _ar_sha256Hex(uid);
+    return full.slice(0, 16);
   }
 
   function _ar_isUnlocked(siteKey) {
@@ -1559,7 +1569,7 @@
       submit.disabled = true;
       err.textContent = '';
       var uid = input.value.trim();
-      var hash = await _ar_sha256Hex(uid);
+      var hash = await _ar_siteKeyFromUid(uid);
       if (hash !== siteKey) {
         err.textContent = 'UID does not match this player.';
         submit.disabled = !input.value.trim();
@@ -3780,10 +3790,16 @@
     if (el) el.classList.remove('active');
   }
 
-  function renderFullReport() {
-    // Roster fetch is normally <100ms (CDN-cached). If the tabs render before this resolves,
-    // the Inventory tab simply appears on next page load. Acceptable trade-off vs. blocking the UI.
-    if (!_ar_rosterMap) { _ar_getRosterMap(); }
+  async function renderFullReport() {
+    // Block on roster fetch so the Inventory tab decision is correct on first render.
+    // Fetch is CDN-cached (<100ms typical); failure falls back to empty roster (no S2864 tabs).
+    try { if (!_ar_rosterMap) { await _ar_getRosterMap(); } } catch (e) { _ar_rosterMap = _ar_rosterMap || {}; _ar_rosterByName = _ar_rosterByName || {}; }
+    // Battle reports populate wizardState.player from CDN data which has no siteKey.
+    // Look up siteKey via roster name (S2864 only — non-roster players just get null).
+    if (wizardState.player && wizardState.player.name && !wizardState.player.siteKey && _ar_rosterByName) {
+      var rosterMatch = _ar_rosterByName[String(wizardState.player.name).toLowerCase()];
+      if (rosterMatch && rosterMatch.siteKey) wizardState.player.siteKey = rosterMatch.siteKey;
+    }
 
     var merged = mergeReportData(wizardState.reportData);
     window._mergedData = merged;
