@@ -156,6 +156,18 @@ table.power.power-collapsed .hidden-row{display:none;}
 .two-hop-legend .leg-item b.w2-declared{color:var(--green);font-weight:700;}
 .two-hop-legend .leg-item b.w2-open{color:var(--accent);font-weight:700;}
 
+.three-hop-coll{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--card);}
+.three-hop-toggle{width:100%;background:var(--card);border:none;color:var(--text);padding:.7rem .9rem;display:flex;align-items:center;gap:.5rem;cursor:pointer;font-family:inherit;font-size:.78rem;font-weight:600;text-align:left;transition:background .15s;}
+.three-hop-toggle:hover{background:var(--surface);color:var(--accent);}
+.three-hop-toggle svg{transition:transform .2s;color:var(--muted);transform:rotate(90deg);}
+.three-hop-coll.open .three-hop-toggle svg{transform:rotate(-90deg);color:var(--accent);}
+.three-hop-body{display:none;padding:.85rem 1rem 1rem;border-top:1px solid var(--border);}
+.three-hop-coll.open .three-hop-body{display:block;}
+.three-hop-body .rule-box{margin-bottom:.85rem;}
+.three-hop-body .rule-box svg{color:var(--navy);}
+.three-hop-body .rule-box .body strong{color:var(--navy);}
+.nc-row.three-hop svg{color:var(--navy);}
+
 .buff-list{display:flex;flex-direction:column;gap:.45rem;}
 .buff-row{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;}
 .buff-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem;font-size:.78rem;font-weight:600;margin-bottom:.3rem;}
@@ -939,6 +951,151 @@ body{top:0!important;}
     root.appendChild(section);
   }
 
+  // ===== 3-HOP NC PATH COMPUTATION =====
+  function compute3HopPaths(rd){
+    var cells = rd.cells || [];
+    if (!cells.length) return [];
+    var byRC = {};
+    cells.forEach(function(c){ byRC[c.r + ',' + c.c] = c; });
+    var declared = (rd.warTargets || []).map(function(w){ return w.seq; });
+    var declaredSet = {};
+    declared.forEach(function(s){ declaredSet[s] = true; });
+    var seqToCell = {};
+    cells.forEach(function(c){
+      if (c.type !== 3) return;
+      var m = (c.name||'').match(/Wasteland#(\d+)/);
+      if (m) seqToCell[parseInt(m[1], 10)] = c;
+    });
+    // Exclude 1-hop and 2-hop NCs
+    var skipNc = {};
+    (rd.ncCaptureFlow || []).forEach(function(nc){ skipNc[nc.r + ',' + nc.c] = true; });
+    var twoHop = compute2HopPaths(rd);
+    twoHop.forEach(function(nc){ skipNc[nc.r + ',' + nc.c] = true; });
+
+    var dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+    var pathsByNc = {};
+    function seqOf(cell){ var m = (cell.name||'').match(/Wasteland#(\d+)/); return m ? parseInt(m[1], 10) : null; }
+    declared.forEach(function(seq){
+      var W = seqToCell[seq];
+      if (!W) return;
+      dirs.forEach(function(d){
+        var W2 = byRC[(W.r + d[0]) + ',' + (W.c + d[1])];
+        if (!W2 || W2.type !== 3 || W2.sid !== 0) return;
+        var W2seq = seqOf(W2);
+        if (!W2seq) return;
+        dirs.forEach(function(d2){
+          var W3 = byRC[(W2.r + d2[0]) + ',' + (W2.c + d2[1])];
+          if (!W3 || W3.type !== 3 || W3.sid !== 0) return;
+          // No revisit: W3 != W
+          if (W3.r === W.r && W3.c === W.c) return;
+          var W3seq = seqOf(W3);
+          if (!W3seq) return;
+          dirs.forEach(function(d3){
+            var ncR = W3.r + d3[0], ncC = W3.c + d3[1];
+            var nc = byRC[ncR + ',' + ncC];
+            if (!nc || nc.type !== 2) return;
+            if (nc.sid === 2864) return;
+            if (skipNc[ncR + ',' + ncC]) return;
+            var lm = (nc.name||'').match(/Lv\.\s*(\d+)/);
+            var lvl = lm ? parseInt(lm[1], 10) : 1;
+            var key = ncR + ',' + ncC;
+            if (!pathsByNc[key]){
+              pathsByNc[key] = { ncName: nc.name, r: ncR, c: ncC, sid: nc.sid, level: lvl, paths: [] };
+            }
+            var dup = pathsByNc[key].paths.some(function(p){ return p.via1 === seq && p.via2 === W2seq && p.via3 === W3seq; });
+            if (!dup) pathsByNc[key].paths.push({
+              via1: seq, via2: W2seq, via3: W3seq,
+              via2Declared: !!declaredSet[W2seq],
+              via3Declared: !!declaredSet[W3seq]
+            });
+          });
+        });
+      });
+    });
+    var arr = Object.keys(pathsByNc).map(function(k){ return pathsByNc[k]; });
+    arr.sort(function(a,b){ return (b.level||0) - (a.level||0) || a.ncName.localeCompare(b.ncName); });
+    return arr;
+  }
+
+  function buildThreeHopFlow(rd, root){
+    var paths = compute3HopPaths(rd);
+    if (!paths.length) return;
+    var totalRounds = 15;
+    var roundsLeft = Math.max(0, totalRounds - (parseInt(rd.label && rd.label.match(/\d+/) && rd.label.match(/\d+/)[0], 10) || 0));
+
+    var section = el('section', 'sect');
+    var t = el('div', 'sect-title');
+    var dot = el('span', 'dot'); dot.style.background = 'var(--navy)';
+    t.appendChild(dot);
+    t.appendChild(el('span', null, '3-Hop NC Pathways — Reachable in 3 Rounds'));
+    var roundsTag = (roundsLeft > 0 ? roundsLeft + ' rounds left · ' : '') + paths.length + ' more NCs';
+    t.appendChild(el('span', 'tag', roundsTag));
+    section.appendChild(t);
+
+    // Collapsible body
+    var coll = el('div', 'three-hop-coll');
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'three-hop-toggle';
+    btn.appendChild(makeIcon('arrow', 14));
+    btn.appendChild(el('span', null, 'Show 3-hop pathways (' + paths.length + ' NCs)'));
+    coll.appendChild(btn);
+
+    var body = el('div', 'three-hop-body');
+
+    var note = el('div', 'rule-box');
+    note.style.background = 'rgba(56,139,253,.05)';
+    note.style.borderColor = 'rgba(56,139,253,.28)';
+    note.appendChild(makeIcon('compass', 18));
+    var noteBody = el('div', 'body');
+    noteBody.appendChild(el('strong', null, 'Long-term planning: '));
+    noteBody.appendChild(document.createTextNode('NCs that need 3 captures to reach. Win W-A this round, declare W-B next round, declare W-C the round after. Three rounds out the NC opens up. With ' + roundsLeft + ' rounds left in the event, these are still actionable.'));
+    note.appendChild(noteBody);
+    body.appendChild(note);
+
+    var box = el('div', 'nc-flow');
+    paths.forEach(function(p){
+      var lvl = p.level || 1;
+      var row = el('div', 'nc-row three-hop');
+      row.appendChild(makeIcon('castle', 16));
+      var name = el('div', 'nc-name');
+      name.appendChild(el('span', 'nc-lvl l' + lvl, 'Lv.' + lvl));
+      name.appendChild(document.createTextNode(' ' + p.ncName.replace(/^Lv\.\s*\d+\s*/, '')));
+      var ownerStr = p.sid ? 'S' + p.sid : 'unclaimed';
+      name.appendChild(el('span', 'nc-pos', '@(' + p.r + ',' + p.c + ') · ' + ownerStr));
+      row.appendChild(name);
+      var via = el('div', 'nc-via two-hop-via');
+      var shown = p.paths.slice(0, 2);
+      shown.forEach(function(path, i){
+        if (i > 0) via.appendChild(el('span', 'path-sep', ' or '));
+        var pathSpan = el('span', 'two-hop-path');
+        pathSpan.appendChild(el('b', null, 'W-' + path.via1));
+        var arrow1 = makeIcon('arrow', 10); arrow1.classList.add('hop-arrow');
+        pathSpan.appendChild(arrow1);
+        pathSpan.appendChild(el('b', path.via2Declared ? 'w2-declared' : 'w2-open', 'W-' + path.via2));
+        var arrow2 = makeIcon('arrow', 10); arrow2.classList.add('hop-arrow');
+        pathSpan.appendChild(arrow2);
+        pathSpan.appendChild(el('b', path.via3Declared ? 'w2-declared' : 'w2-open', 'W-' + path.via3));
+        via.appendChild(pathSpan);
+      });
+      if (p.paths.length > shown.length){
+        via.appendChild(el('span', 'path-more', ' +' + (p.paths.length - shown.length) + ' more paths'));
+      }
+      row.appendChild(via);
+      box.appendChild(row);
+    });
+    body.appendChild(box);
+    coll.appendChild(body);
+
+    btn.addEventListener('click', function(){
+      var open = coll.classList.toggle('open');
+      btn.querySelector('span').textContent = open ? 'Hide 3-hop pathways' : ('Show 3-hop pathways (' + paths.length + ' NCs)');
+    });
+
+    section.appendChild(coll);
+    root.appendChild(section);
+  }
+
   function buildPower(rd, root){
     var pow = rd.sectorPower || [];
     if (!pow.length) return;
@@ -1167,6 +1324,7 @@ body{top:0!important;}
     buildContested(rd, root);
     buildNcFlow(rd, root);
     buildTwoHopFlow(rd, root);
+    buildThreeHopFlow(rd, root);
     buildPower(rd, root);
     buildBuffs(rd, root);
     buildAssignment(rd, root);
