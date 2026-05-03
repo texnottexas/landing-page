@@ -1658,6 +1658,18 @@
     return out;
   }
 
+  function _ar_validateInvJson(raw) {
+    if (!raw || typeof raw !== 'object') return 'Not an object';
+    if (raw.v !== 1) return 'Unknown schema version (expected v:1)';
+    if (!raw.tabs || typeof raw.tabs !== 'object') return 'Missing tabs object';
+    var keys = ['item', 'unit', 'decor', 'hero', 'cpnt'];
+    for (var i = 0; i < keys.length; i++) {
+      var t = raw.tabs[keys[i]];
+      if (t && !Array.isArray(t)) return 'tabs.' + keys[i] + ' must be an array';
+    }
+    return null;
+  }
+
   function getPushEndpoint() {
     if (!navigator.serviceWorker) return Promise.resolve(null);
     // Don't use .ready (hangs if no SW registered). Check getRegistration instead.
@@ -8194,6 +8206,72 @@
     nm.textContent = it.name || ('#' + it.id);
     c.appendChild(nm);
     return c;
+  }
+
+  function _ar_openInvPasteModal(siteKey, onSaved) {
+    var bg = document.createElement('div');
+    bg.className = 'modal-bg show';
+    bg.style.zIndex = '120';
+    var modal = document.createElement('div');
+    modal.className = 'modal sup-unlock-modal';
+    modal.style.maxWidth = '640px';
+    bg.appendChild(modal);
+
+    var h = document.createElement('h2');
+    h.textContent = 'Paste Inventory JSON';
+    modal.appendChild(h);
+
+    var p = document.createElement('p');
+    p.textContent = 'Paste the JSON copied from the Inventory bookmarklet on h5.topwargame.com.';
+    modal.appendChild(p);
+
+    var ta = document.createElement('textarea');
+    ta.style.cssText = 'width: 100%; min-height: 120px; max-height: 240px; background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 8px; border-radius: 6px; font-family: monospace; font-size: 11px; resize: vertical;';
+    ta.placeholder = '{"v":1,"meta":{...},"tabs":{...},"heros":{...}}';
+    modal.appendChild(ta);
+
+    var err = document.createElement('div');
+    err.className = 'err';
+    modal.appendChild(err);
+
+    var actions = document.createElement('div');
+    actions.className = 'actions';
+    var cancel = document.createElement('button');
+    cancel.className = 'secondary';
+    cancel.textContent = 'Cancel';
+    cancel.onclick = function() { document.body.removeChild(bg); };
+    var save = document.createElement('button');
+    save.className = 'primary';
+    save.textContent = 'Save';
+    actions.appendChild(cancel);
+    actions.appendChild(save);
+    modal.appendChild(actions);
+
+    save.onclick = function() {
+      err.textContent = '';
+      var raw;
+      try { raw = JSON.parse(ta.value.trim()); }
+      catch (e) { err.textContent = 'Invalid JSON: ' + e.message; return; }
+      var validationErr = _ar_validateInvJson(raw);
+      if (validationErr) { err.textContent = validationErr; return; }
+      var existing;
+      try { existing = JSON.parse(localStorage.getItem('armory_inv_' + siteKey) || 'null'); } catch (e) { existing = null; }
+      if (existing && existing.meta && existing.meta.ts) {
+        var ageMs = Date.now() - new Date(existing.meta.ts).getTime();
+        if (ageMs < 3600 * 1000) {
+          if (!confirm('Existing snapshot is less than 1 hour old. Overwrite?')) return;
+        }
+      }
+      if (!raw.meta) raw.meta = {};
+      if (!raw.meta.ts) raw.meta.ts = new Date().toISOString();
+      try { localStorage.setItem('armory_inv_' + siteKey, JSON.stringify(raw)); }
+      catch (e) { err.textContent = 'localStorage write failed: ' + e.message; return; }
+      document.body.removeChild(bg);
+      if (typeof onSaved === 'function') onSaved();
+    };
+
+    document.body.appendChild(bg);
+    setTimeout(function() { ta.focus(); }, 50);
   }
 
   function renderEnigmaTab(merged) {
