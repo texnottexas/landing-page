@@ -1620,6 +1620,38 @@
     return await r.json();
   }
 
+  async function _ar_fetchSupplement(kind, siteKey) {
+    try {
+      var r = await fetch(SUPPLEMENT_WORKER + '/supplement/' + kind + '/' + siteKey, { cache: 'default' });
+      if (r.status === 404) return null;
+      if (!r.ok) return null;
+      return await r.json();
+    } catch (e) { return null; }
+  }
+
+  async function _ar_hydrateSupplementsFromWorker(siteKey) {
+    if (!siteKey) return;
+    var pair = await Promise.all([
+      _ar_fetchSupplement('inv', siteKey),
+      _ar_fetchSupplement('bench', siteKey)
+    ]);
+    var invRemote = pair[0], benchRemote = pair[1];
+    if (invRemote) {
+      var localInv = null;
+      try { localInv = JSON.parse(localStorage.getItem('armory_inv_' + siteKey) || 'null'); } catch (e) {}
+      var lts = (localInv && localInv.meta && localInv.meta.ts) ? new Date(localInv.meta.ts).getTime() : 0;
+      var rts = (invRemote.meta && invRemote.meta.ts) ? new Date(invRemote.meta.ts).getTime() : 0;
+      if (rts > lts) localStorage.setItem('armory_inv_' + siteKey, JSON.stringify(invRemote));
+    }
+    if (benchRemote) {
+      var localBench = null;
+      try { localBench = JSON.parse(localStorage.getItem('armory_bench_' + siteKey) || 'null'); } catch (e) {}
+      var lts2 = (localBench && localBench.ts) ? new Date(localBench.ts).getTime() : 0;
+      var rts2 = benchRemote.ts ? new Date(benchRemote.ts).getTime() : 0;
+      if (rts2 > lts2) localStorage.setItem('armory_bench_' + siteKey, JSON.stringify(benchRemote));
+    }
+  }
+
   // ── Inventory lookup tables ────────────────────────────────────────────
   var _ar_invLookups = null;
   async function _ar_loadInvLookups() {
@@ -3948,6 +3980,21 @@
 
     // Pass report IDs to feedback widget for context
     window._reportContext = wizardState.reportData.map(function(r) { return r.id; }).join(', ');
+
+    // Phase 3: hydrate supplements from worker. Fire-and-forget; re-renders inventory/enigma if live.
+    if (wizardState.player && wizardState.player.siteKey) {
+      _ar_hydrateSupplementsFromWorker(wizardState.player.siteKey).then(function() {
+        var active = document.querySelector('.tab-btn.active');
+        if (active) {
+          var tab = active.getAttribute('data-tab');
+          if (tab === 'inventory' || tab === 'enigma') {
+            var content = document.getElementById('tab-' + tab);
+            if (content) content.removeAttribute('data-rendered');
+            switchTab(active);
+          }
+        }
+      });
+    }
   }
 
   // Navigate to a tab by its id (programmatic equivalent of clicking its button)
@@ -8122,6 +8169,8 @@
       return;
     }
 
+    var isOwner = _ar_isUnlocked(siteKey);
+
     var stored = null;
     try {
       var raw = localStorage.getItem('armory_inv_' + siteKey);
@@ -8130,17 +8179,24 @@
 
     var toolbar = document.createElement('div');
     toolbar.className = 'inv-toolbar';
-    var updateBtn = document.createElement('button');
-    updateBtn.style.cssText = 'padding: 6px 14px; background: var(--green); color: #0d1117; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px;';
-    updateBtn.textContent = stored ? 'Update Inventory' : 'Paste Inventory JSON';
-    updateBtn.onclick = function() {
-      if (typeof _ar_openInvPasteModal === 'function') {
-        _ar_openInvPasteModal(siteKey, function() { renderInventoryTab(merged, siteKey, true); });
-      } else {
-        alert('Paste-modal helper not yet wired (Task 6).');
-      }
-    };
-    toolbar.appendChild(updateBtn);
+    if (isOwner) {
+      var updateBtn = document.createElement('button');
+      updateBtn.style.cssText = 'padding: 6px 14px; background: var(--green); color: #0d1117; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px;';
+      updateBtn.textContent = stored ? 'Update Inventory' : 'Paste Inventory JSON';
+      updateBtn.onclick = function() {
+        if (typeof _ar_openInvPasteModal === 'function') {
+          _ar_openInvPasteModal(siteKey, function() { renderInventoryTab(merged, siteKey, true); });
+        } else {
+          alert('Paste-modal helper not yet wired.');
+        }
+      };
+      toolbar.appendChild(updateBtn);
+    } else {
+      var roLabel = document.createElement('span');
+      roLabel.style.cssText = 'color: var(--muted); font-size: 12px;';
+      roLabel.textContent = 'Read-only · uploaded by player';
+      toolbar.appendChild(roLabel);
+    }
     if (stored && stored.meta && stored.meta.ts) {
       var ts = document.createElement('span');
       ts.style.cssText = 'color: var(--muted); font-size: 12px;';
@@ -8152,7 +8208,9 @@
     if (!stored) {
       var empty = document.createElement('div');
       empty.style.cssText = 'padding: 32px 16px; text-align: center; color: var(--muted);';
-      empty.textContent = 'No inventory uploaded yet. Click "Paste Inventory JSON" above.';
+      empty.textContent = isOwner
+        ? 'No inventory uploaded yet. Click "Paste Inventory JSON" above.'
+        : 'This player has not uploaded inventory data yet.';
       container.appendChild(empty);
       return;
     }
@@ -8671,23 +8729,11 @@
         benchPill.dataset.field = 'bench';
         filterBar.appendChild(benchPill);
 
-        if (siteKey && _ar_rosterMap && _ar_rosterMap[siteKey]) {
+        if (siteKey && _ar_rosterMap && _ar_rosterMap[siteKey] && unlocked) {
           var benchUpdateBtn = document.createElement('button');
           benchUpdateBtn.style.cssText = 'margin-left: 12px; padding: 4px 12px; background: var(--green); color: #0d1117; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 600;';
-          benchUpdateBtn.textContent = unlocked ? 'Update Bench' : 'Unlock to Update';
+          benchUpdateBtn.textContent = 'Update Bench';
           benchUpdateBtn.onclick = function() {
-            if (!unlocked) {
-              var playerName = (wizardState.player && wizardState.player.name) || 'this player';
-              _ar_openUnlockModal(siteKey, playerName, function() {
-                var enigmaBtn = document.querySelector('.tab-btn[data-tab="enigma"]');
-                if (enigmaBtn) {
-                  var content = document.getElementById('tab-enigma');
-                  if (content) content.removeAttribute('data-rendered');
-                  switchTab(enigmaBtn);
-                }
-              });
-              return;
-            }
             _ar_openBenchPasteModal(siteKey, function() {
               var content = document.getElementById('tab-enigma');
               if (content) content.removeAttribute('data-rendered');
