@@ -1300,6 +1300,36 @@
     border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 13px;
   }
   .tab-btn .lock-icon { display: inline-block; margin-left: 4px; font-size: 11px; opacity: 0.75; }
+
+  /* Inventory tab grid */
+  .inv-toolbar { padding: 12px 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid var(--border); }
+  .inv-toolbar input, .inv-toolbar select { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 13px; }
+  .inv-toolbar input { min-width: 180px; }
+  .inv-toolbar .stats { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .inv-tabs { display: flex; gap: 4px; padding: 8px 16px 0; overflow-x: auto; border-bottom: 1px solid var(--border); }
+  .inv-tab { background: none; border: none; color: var(--muted); padding: 8px 14px; cursor: pointer; font-size: 13px; border-radius: 6px 6px 0 0; border-bottom: 2px solid transparent; white-space: nowrap; }
+  .inv-tab:hover { color: var(--text); background: var(--card); }
+  .inv-tab.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--card); }
+  .inv-tab .badge { display: inline-block; margin-left: 6px; padding: 1px 6px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; font-size: 11px; }
+  .inv-subtabs { display: flex; gap: 4px; padding: 6px 16px; }
+  .inv-subtab { background: var(--card); border: 1px solid var(--border); color: var(--muted); padding: 4px 12px; cursor: pointer; font-size: 12px; border-radius: 12px; }
+  .inv-subtab.active { color: var(--accent); border-color: var(--accent); }
+  .inv-grid { padding: 0 16px 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+  .inv-cell { background: var(--card); border: 2px solid var(--border); border-radius: 6px; padding: 5px; display: flex; flex-direction: column; align-items: center; }
+  .inv-cell.q1 { border-color: #9ca3af; }
+  .inv-cell.q2 { border-color: #3fb950; }
+  .inv-cell.q3 { border-color: #388bfd; }
+  .inv-cell.q4 { border-color: #a371f7; }
+  .inv-cell.q5 { border-color: #d29922; }
+  .inv-cell.q6 { border-color: #f85149; }
+  .inv-cell .icon-wrap { width: 70%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; }
+  .inv-cell img { max-width: 100%; max-height: 100%; }
+  .inv-cell .placeholder { width: 60%; height: 60%; background: var(--surface); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 18px; }
+  .inv-cell .stats-row { width: 100%; display: flex; justify-content: space-between; margin-top: 3px; }
+  .inv-cell .lv { font-size: 11px; font-weight: 700; color: var(--accent); background: rgba(56,139,253,0.15); border: 1px solid rgba(56,139,253,0.4); border-radius: 3px; padding: 1px 5px; }
+  .inv-cell .lv.empty { visibility: hidden; }
+  .inv-cell .amt { font-size: 12px; font-weight: 700; color: #fff; background: rgba(0,0,0,0.45); border-radius: 3px; padding: 1px 6px; }
+  .inv-cell .name { width: 100%; margin-top: 3px; font-size: 10px; line-height: 1.2; color: var(--text); text-align: center; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-height: 22px; }
 </style>
 </head>
 <body>
@@ -7959,6 +7989,7 @@
     var container = document.getElementById('tab-inventory');
     if (!container) return;
     container.replaceChildren();
+
     if (!unlocked) {
       var card = document.createElement('div');
       card.style.cssText = 'padding: 24px; text-align: center; color: var(--muted);';
@@ -7984,10 +8015,185 @@
       container.appendChild(card);
       return;
     }
-    var msg = document.createElement('div');
-    msg.style.cssText = 'padding: 24px; text-align: center; color: var(--muted);';
-    msg.textContent = 'No inventory uploaded yet.';
-    container.appendChild(msg);
+
+    var stored = null;
+    try {
+      var raw = localStorage.getItem('armory_inv_' + siteKey);
+      if (raw) stored = JSON.parse(raw);
+    } catch (e) {}
+
+    var toolbar = document.createElement('div');
+    toolbar.className = 'inv-toolbar';
+    var updateBtn = document.createElement('button');
+    updateBtn.style.cssText = 'padding: 6px 14px; background: var(--green); color: #0d1117; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px;';
+    updateBtn.textContent = stored ? 'Update Inventory' : 'Paste Inventory JSON';
+    updateBtn.onclick = function() {
+      if (typeof _ar_openInvPasteModal === 'function') {
+        _ar_openInvPasteModal(siteKey, function() { renderInventoryTab(merged, siteKey, true); });
+      } else {
+        alert('Paste-modal helper not yet wired (Task 6).');
+      }
+    };
+    toolbar.appendChild(updateBtn);
+    if (stored && stored.meta && stored.meta.ts) {
+      var ts = document.createElement('span');
+      ts.style.cssText = 'color: var(--muted); font-size: 12px;';
+      ts.textContent = 'Updated ' + new Date(stored.meta.ts).toLocaleString();
+      toolbar.appendChild(ts);
+    }
+    container.appendChild(toolbar);
+
+    if (!stored) {
+      var empty = document.createElement('div');
+      empty.style.cssText = 'padding: 32px 16px; text-align: center; color: var(--muted);';
+      empty.textContent = 'No inventory uploaded yet. Click "Paste Inventory JSON" above.';
+      container.appendChild(empty);
+      return;
+    }
+
+    _ar_loadInvLookups().then(function(lk) {
+      var data = _ar_rehydrateInv(stored, lk);
+      _ar_renderInvGrid(container, data);
+    });
+  }
+
+  function _ar_renderInvGrid(container, data) {
+    var TAB_ORDER = [['item','Item'],['unit','Unit'],['decor','Decor'],['hero','Hero'],['cpnt','CPNT']];
+    var SUBTABS = { hero: [['shards','Hero Shards'], ['skills','Hero Skills']] };
+    var state = { tab: 'item', subtab: 'shards', search: '', sort: 'quality_lv', quality: '' };
+
+    var tabsEl = document.createElement('div');
+    tabsEl.className = 'inv-tabs';
+    container.appendChild(tabsEl);
+    var subEl = document.createElement('div');
+    subEl.className = 'inv-subtabs';
+    container.appendChild(subEl);
+
+    var ctrls = document.createElement('div');
+    ctrls.className = 'inv-toolbar';
+    var search = document.createElement('input');
+    search.placeholder = 'Search...';
+    search.oninput = function() { state.search = search.value.toLowerCase().trim(); rerender(); };
+    ctrls.appendChild(search);
+    var sortSel = document.createElement('select');
+    [['quality_lv','Quality desc, Level desc'],['amount','Amount desc'],['id','ID asc'],['type','Type']].forEach(function(o) {
+      var opt = document.createElement('option');
+      opt.value = o[0]; opt.textContent = o[1];
+      sortSel.appendChild(opt);
+    });
+    sortSel.onchange = function() { state.sort = sortSel.value; rerender(); };
+    ctrls.appendChild(sortSel);
+    var qSel = document.createElement('select');
+    [['', 'All qualities'],['1','Q1'],['2','Q2'],['3','Q3'],['4','Q4'],['5','Q5'],['6','Q6']].forEach(function(o) {
+      var opt = document.createElement('option');
+      opt.value = o[0]; opt.textContent = o[1];
+      qSel.appendChild(opt);
+    });
+    qSel.onchange = function() { state.quality = qSel.value; rerender(); };
+    ctrls.appendChild(qSel);
+    var stats = document.createElement('span');
+    stats.className = 'stats';
+    ctrls.appendChild(stats);
+    container.appendChild(ctrls);
+
+    var grid = document.createElement('div');
+    grid.className = 'inv-grid';
+    container.appendChild(grid);
+
+    function buildTabs() {
+      tabsEl.replaceChildren();
+      TAB_ORDER.forEach(function(t) {
+        var btn = document.createElement('button');
+        btn.className = 'inv-tab' + (t[0] === state.tab ? ' active' : '');
+        btn.textContent = t[1] + ' ';
+        var badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = (data.tabs[t[0]] || []).length;
+        btn.appendChild(badge);
+        btn.onclick = function() { state.tab = t[0]; buildTabs(); rerender(); };
+        tabsEl.appendChild(btn);
+      });
+      subEl.replaceChildren();
+      var sub = SUBTABS[state.tab];
+      if (sub) {
+        sub.forEach(function(s) {
+          var b = document.createElement('button');
+          b.className = 'inv-subtab' + (s[0] === state.subtab ? ' active' : '');
+          var count = (data.tabs[state.tab] || []).filter(function(x) { return x.subtab === s[0]; }).length;
+          b.textContent = s[1] + ' (' + count + ')';
+          b.onclick = function() { state.subtab = s[0]; buildTabs(); rerender(); };
+          subEl.appendChild(b);
+        });
+      }
+    }
+
+    function rerender() {
+      var list = (data.tabs[state.tab] || []).slice();
+      if (SUBTABS[state.tab]) list = list.filter(function(x) { return x.subtab === state.subtab; });
+      if (state.quality) list = list.filter(function(x) { return String(x.quality) === state.quality; });
+      if (state.search) {
+        var q = state.search;
+        list = list.filter(function(x) {
+          return String(x.id).indexOf(q) >= 0 || (x.name || '').toLowerCase().indexOf(q) >= 0 || (x.desc || '').toLowerCase().indexOf(q) >= 0;
+        });
+      }
+      list.sort(function(a, b) {
+        if (state.sort === 'amount') return (b.amount || 0) - (a.amount || 0);
+        if (state.sort === 'id') return (a.id || 0) - (b.id || 0);
+        if (state.sort === 'type') return (a.type || 0) - (b.type || 0) || (b.quality || 0) - (a.quality || 0);
+        return (b.quality || 0) - (a.quality || 0) || (b.level || 0) - (a.level || 0) || (b.amount || 0) - (a.amount || 0);
+      });
+      grid.replaceChildren();
+      list.forEach(function(it) { grid.appendChild(_ar_buildInvCell(it)); });
+      stats.textContent = list.length + ' items';
+    }
+
+    buildTabs();
+    rerender();
+  }
+
+  function _ar_buildInvCell(it) {
+    var c = document.createElement('div');
+    c.className = 'inv-cell q' + (it.quality || 0);
+    c.title = it.id + ' · ' + (it.name || '') + (it.desc ? '\n' + it.desc : '');
+    var wrap = document.createElement('div');
+    wrap.className = 'icon-wrap';
+    if (it.icon) {
+      var img = document.createElement('img');
+      img.src = it.iconDir + '/' + it.icon;
+      img.loading = 'lazy';
+      img.alt = String(it.id);
+      img.onerror = function() {
+        var ph = document.createElement('div');
+        ph.className = 'placeholder';
+        ph.textContent = '?';
+        wrap.replaceChildren(ph);
+      };
+      wrap.appendChild(img);
+    } else {
+      var ph = document.createElement('div');
+      ph.className = 'placeholder';
+      ph.textContent = '?';
+      wrap.appendChild(ph);
+    }
+    c.appendChild(wrap);
+    var statsRow = document.createElement('div');
+    statsRow.className = 'stats-row';
+    var lv = document.createElement('span');
+    var lvNum = it.armyLevel || (it.level && it.level > 1 ? it.level : null);
+    lv.className = 'lv' + (lvNum ? '' : ' empty');
+    lv.textContent = lvNum ? 'Lv ' + lvNum : 'Lv';
+    statsRow.appendChild(lv);
+    var amt = document.createElement('span');
+    amt.className = 'amt';
+    amt.textContent = '×' + (it.amount || 0);
+    statsRow.appendChild(amt);
+    c.appendChild(statsRow);
+    var nm = document.createElement('div');
+    nm.className = 'name';
+    nm.textContent = it.name || ('#' + it.id);
+    c.appendChild(nm);
+    return c;
   }
 
   function renderEnigmaTab(merged) {
