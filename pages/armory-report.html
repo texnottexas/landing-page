@@ -1754,14 +1754,24 @@
         armyLevel: cfg.level
       });
     });
+    // Reverse map of suit group ids → suit id, so each decor knows whether it belongs to a set
+    var suitGroupSet = {};
+    if (typeof DECOR_SUIT_GROUPS !== 'undefined') {
+      for (var sid in DECOR_SUIT_GROUPS) {
+        DECOR_SUIT_GROUPS[sid].forEach(function(g) { suitGroupSet[String(g)] = sid; });
+      }
+    }
     (tabs.decor || []).forEach(function(it) {
       var cfg = lk.building[String(it.id)] || {};
       var grp = cfg.g || it.g;
       var icon = (grp && cfg.n) ? grp + '_' + _ar_sanitizeName(cfg.n) + '.png' : null;
+      var inSuit = grp && suitGroupSet[String(grp)];
       out.tabs.decor.push({
         id: it.id, amount: it.a || 0, level: it.l || cfg.lv || null, maxLevel: cfg.ml,
         group: grp || it.id, type: cfg.t, quality: cfg.q || 1, name: cfg.n || ('Decor #' + it.id),
-        desc: cfg.d || '', icon: icon, iconDir: ASSET + 'decor-icons'
+        desc: cfg.d || '', icon: icon, iconDir: ASSET + 'decor-icons',
+        subtab: inSuit ? 'set' : 'other',
+        suitId: inSuit || null
       });
     });
     (tabs.hero || []).forEach(function(it) {
@@ -8272,7 +8282,10 @@
 
   function _ar_renderInvGrid(container, data) {
     var TAB_ORDER = [['item','Item'],['unit','Unit'],['decor','Decor'],['hero','Hero'],['cpnt','CPNT']];
-    var SUBTABS = { hero: [['shards','Hero Shards'], ['skills','Hero Skills']] };
+    var SUBTABS = {
+      hero: [['shards','Hero Shards'], ['skills','Hero Skills']],
+      decor: [['set','Decor (Set)'], ['other','Decor']]
+    };
     var state = { tab: 'item', subtab: 'shards', search: '', sort: 'quality_lv', quality: '' };
 
     var tabsEl = document.createElement('div');
@@ -8323,7 +8336,13 @@
         badge.className = 'badge';
         badge.textContent = (data.tabs[t[0]] || []).length;
         btn.appendChild(badge);
-        btn.onclick = function() { state.tab = t[0]; buildTabs(); rerender(); };
+        btn.onclick = function() {
+          state.tab = t[0];
+          // Reset subtab to first option when switching to a tab that has subtabs
+          if (SUBTABS[t[0]]) state.subtab = SUBTABS[t[0]][0][0];
+          buildTabs();
+          rerender();
+        };
         tabsEl.appendChild(btn);
       });
       subEl.replaceChildren();
