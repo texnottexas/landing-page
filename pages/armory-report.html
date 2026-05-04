@@ -2674,7 +2674,29 @@
         }
         var ids = result.reportIds.split(',').filter(Boolean);
         if (result.marchGroups) saveMarches(result.marchGroups);
-        applyShortcodeConfig(result.playerName, ids, undefined, result.siteKey);
+        // Persist to localStorage (so the next reload prompts "Load <name>'s
+        // report") only when this shortcode belongs to the current viewer.
+        // Otherwise loading Wonka's code would clobber Tex's saved report
+        // and on reload Tex would be prompted with Wonka. siteKey-first
+        // compare with name fallback.
+        var ownIdent = getStoredIdentity();
+        var currentSaved = null;
+        try { currentSaved = JSON.parse(localStorage.getItem('playerReport')); } catch (e) {}
+        var currentName = (currentSaved && currentSaved.player && currentSaved.player.name) || '';
+        var currentSiteKey = (ownIdent && ownIdent.siteKey)
+          || (currentSaved && currentSaved.player && currentSaved.player.siteKey)
+          || null;
+        var resultSiteKey = result.siteKey || null;
+        function _norm(s) { return String(s || '').trim().toLowerCase(); }
+        var isSamePlayer;
+        if (!currentName && !ownIdent) {
+          isSamePlayer = true;
+        } else if (currentSiteKey && resultSiteKey) {
+          isSamePlayer = currentSiteKey === resultSiteKey;
+        } else {
+          isSamePlayer = _norm(currentName || (ownIdent && ownIdent.name)) === _norm(result.playerName);
+        }
+        applyShortcodeConfig(result.playerName, ids, isSamePlayer, result.siteKey);
       })
       .catch(function() {
         errDiv.textContent = 'Failed to load config.';
