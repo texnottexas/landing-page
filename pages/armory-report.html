@@ -12392,6 +12392,30 @@
       window._flagOverrides = data || {};
     }).catch(function() {});
 
+    // Identity siteKey migration (PWA-safe). Older roster builds wrote
+    // "p_<first 8>" siteKeys into playerIdentity; the current scheme is
+    // "<first 16>" hex. Users hitting armory-report directly (no landing
+    // page visit) never ran the landing-page migration, so their PWA stays
+    // on the legacy siteKey and the worker /report-configs query returns a
+    // different bucket than desktop. Rewrite by name+alliance lookup. Also
+    // refreshes the rank/profession from the latest roster.
+    (function migrateIdentitySiteKey() {
+      try {
+        var stored = JSON.parse(localStorage.getItem('playerIdentity') || 'null');
+        if (!stored || stored === 'anonymous' || !stored.name || stored.guest) return;
+        fetch('player-data.json', { cache: 'no-cache' }).then(function(r) { return r.json(); }).then(function(data) {
+          var keyMatch = stored.siteKey ? data.find(function(p) { return p.siteKey === stored.siteKey; }) : null;
+          if (keyMatch) return; // already on current scheme
+          var nameMatch = data.find(function(p) { return p.name === stored.name && p.alliance === stored.alliance; });
+          if (!nameMatch || !nameMatch.siteKey || nameMatch.siteKey === stored.siteKey) return;
+          stored.siteKey = nameMatch.siteKey;
+          stored.rank = nameMatch.rank;
+          stored.profession = nameMatch.profession;
+          localStorage.setItem('playerIdentity', JSON.stringify(stored));
+        }).catch(function() {});
+      } catch (e) {}
+    })();
+
     // Check for ?code= URL param (shortcode sharing)
     var params = new URLSearchParams(window.location.search);
     var code = params.get('code');

@@ -5681,6 +5681,22 @@
               saveIdentity(stored);
               showGreeting(stored);
             }
+            // Stale siteKey rescue: roster scheme switched from "p_<first 8>"
+            // to "<first 16>" hex. Older PWA installs cached the legacy form
+            // and never matched again — so the saved-configs query returned
+            // a different bucket from desktop. When stored.siteKey doesn't
+            // resolve, fall back to a name+alliance lookup and rewrite to
+            // the current scheme.
+            if (!keyMatch && !stored.guest) {
+              var nameMatch = data.find(function(p) { return p.name === stored.name && p.alliance === stored.alliance; });
+              if (nameMatch && nameMatch.siteKey && nameMatch.siteKey !== stored.siteKey) {
+                stored.siteKey = nameMatch.siteKey;
+                stored.rank = nameMatch.rank;
+                stored.profession = nameMatch.profession;
+                saveIdentity(stored);
+                showGreeting(stored);
+              }
+            }
           }
           showModalIfNeeded();
         })
