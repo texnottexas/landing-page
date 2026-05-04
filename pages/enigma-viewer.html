@@ -154,6 +154,15 @@
   .fpill-icon { display: flex; align-items: center; justify-content: center; padding: .2rem .4rem; }
   .fpill-icon img { width: 20px; height: 20px; object-fit: contain; }
 
+  /* Stat filter selects */
+  .fselect-wrap { display: inline-flex; align-items: center; gap: .25rem; flex-wrap: wrap; }
+  .fselect-label { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .fselect { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .2rem .4rem; color: var(--text); font-size: .72rem; font-family: inherit; cursor: pointer; max-width: 160px; }
+  .fselect:hover, .fselect:focus { border-color: var(--accent); outline: none; }
+  .fselect.active { border-color: var(--accent); color: var(--accent); }
+  .freset { font-size: .7rem; color: var(--muted); cursor: pointer; padding: .25rem .5rem; border-radius: 4px; }
+  .freset:hover { color: var(--accent); background: var(--surface); }
+
   /* Detail modal */
   .detail-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,.7); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
   .detail-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; max-width: 420px; width: 100%; max-height: 85vh; overflow-y: auto; }
@@ -309,7 +318,7 @@ var BEAST_TYPES_5STAR = {
   5: 'Shadowlynx', 6: 'Thunderoo', 7: 'Blazesteed', 8: 'Dawnlion', 9: 'Royalegret'
 };
 
-var ELEMENTS = { 1: 'Fire', 2: 'Wind', 3: 'Water', 4: 'Ground' };
+var ELEMENTS = { 1: 'Fire', 2: 'Water', 3: 'Wind', 4: 'Ground' };
 var ICON_BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/beast-icons/';
 function beastIconUrl(type, faction, star) {
   var name = BEAST_TYPES[type] || 'Unknown';
@@ -406,6 +415,8 @@ var currentSide = null;
 var currentView = 'fields';
 var activeElements = new Set(['all']);
 var activeField = 'all';
+var activePrimary = 'all';
+var activeSecondary = 'all';
 
 /* ── Decode cfg → type/element/quality ── */
 function decodeCfg(cfg) {
@@ -760,6 +771,73 @@ function renderFilters() {
   }
   el.appendChild(fieldDiv);
 
+  // Stat filters — only in beasts view
+  if (currentView === 'beasts') {
+    var sep2 = document.createElement('div');
+    sep2.className = 'filter-sep';
+    el.appendChild(sep2);
+
+    var beastsSrc = window._beasts || [];
+
+    function buildStatSelect(label, id, value, options) {
+      var wrap = document.createElement('div');
+      wrap.className = 'fselect-wrap';
+      var lab = document.createElement('span');
+      lab.className = 'fselect-label';
+      lab.textContent = label;
+      wrap.appendChild(lab);
+      var sel = document.createElement('select');
+      sel.className = 'fselect' + (value !== 'all' ? ' active' : '');
+      sel.id = id;
+      var allOpt = document.createElement('option');
+      allOpt.value = 'all';
+      allOpt.textContent = 'All';
+      sel.appendChild(allOpt);
+      options.forEach(function(o) {
+        var opt = document.createElement('option');
+        opt.value = String(o.id);
+        opt.textContent = o.name;
+        sel.appendChild(opt);
+      });
+      sel.value = value;
+      wrap.appendChild(sel);
+      return wrap;
+    }
+
+    // Distinct primary stat IDs from beasts present
+    var primaryMap = {};
+    var secondaryMap = {};
+    beastsSrc.forEach(function(b) {
+      if (b.mainBuff != null && BUFF_NAMES[b.mainBuff]) primaryMap[b.mainBuff] = BUFF_NAMES[b.mainBuff];
+      (b.baseBuff || []).forEach(function(bb) {
+        if (BUFF_NAMES[bb.id]) secondaryMap[bb.id] = BUFF_NAMES[bb.id];
+      });
+    });
+    function sortBuffs(map) {
+      return Object.keys(map).map(function(k) { return { id: +k, name: map[k] }; })
+        .sort(function(a, b) { return a.id - b.id; });
+    }
+
+    el.appendChild(buildStatSelect('Primary', 'primary-select', activePrimary, sortBuffs(primaryMap)));
+    el.appendChild(buildStatSelect('Secondary', 'secondary-select', activeSecondary, sortBuffs(secondaryMap)));
+
+    // Reset
+    if (!activeElements.has('all') || activeField !== 'all' || activePrimary !== 'all' || activeSecondary !== 'all') {
+      var reset = document.createElement('span');
+      reset.className = 'freset';
+      reset.textContent = '✕ Reset';
+      reset.onclick = function() {
+        activeElements = new Set(['all']);
+        activeField = 'all';
+        activePrimary = 'all';
+        activeSecondary = 'all';
+        renderFilters();
+        renderContent();
+      };
+      el.appendChild(reset);
+    }
+  }
+
   // Count
   var countEl = document.createElement('div');
   countEl.className = 'filter-count';
@@ -784,15 +862,34 @@ function renderFilters() {
         el.querySelectorAll('#elem-pills .fpill').forEach(function(pp) {
           pp.classList.toggle('active', activeElements.has(pp.dataset.elem));
         });
+        renderFilters();
       } else if (p.dataset.field !== undefined) {
         activeField = p.dataset.field;
         el.querySelectorAll('.fpill[data-field]').forEach(function(pp) {
           pp.classList.toggle('active', activeField === pp.dataset.field);
         });
+        renderFilters();
       }
       renderContent();
     };
   });
+
+  var primarySel = el.querySelector('#primary-select');
+  if (primarySel) {
+    primarySel.onchange = function() {
+      activePrimary = primarySel.value;
+      renderFilters();
+      renderContent();
+    };
+  }
+  var secondarySel = el.querySelector('#secondary-select');
+  if (secondarySel) {
+    secondarySel.onchange = function() {
+      activeSecondary = secondarySel.value;
+      renderFilters();
+      renderContent();
+    };
+  }
 }
 
 /* ── Render content ── */
@@ -808,8 +905,13 @@ function renderContent() {
 function filterBeasts() {
   return (window._beasts || []).filter(function(b) {
     if (!activeElements.has('all') && !activeElements.has(b.element)) return false;
-    if (activeField === 'bench') return !b.fieldCfg;
-    if (activeField !== 'all') return b.fieldCfg === +activeField;
+    if (activeField === 'bench' && b.fieldCfg) return false;
+    if (activeField !== 'all' && activeField !== 'bench' && b.fieldCfg !== +activeField) return false;
+    if (activePrimary !== 'all' && Number(b.mainBuff) !== Number(activePrimary)) return false;
+    if (activeSecondary !== 'all') {
+      var hasSec = (b.baseBuff || []).some(function(bb) { return Number(bb.id) === Number(activeSecondary); });
+      if (!hasSec) return false;
+    }
     return true;
   });
 }
