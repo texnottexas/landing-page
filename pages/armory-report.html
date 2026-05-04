@@ -2521,20 +2521,35 @@
     return false;
   }
 
-  function _ar_isSkillOrUniversal(cfg) {
+  // Special-case IDs that belong in the Skills & Universals bucket but
+  // aren't catchable by name/desc pattern alone.
+  var _AR_SKILL_UNIVERSAL_IDS = {
+    20213231: 1, // Universal Exclusive Skill Shard
+    20213232: 1, // Universal Decor Shard
+    10000074: 1, // Toolkit for Skills (gift box, lower priority but related)
+    260119001: 1 // Supreme Crystal (universal Supreme Deco upgrade material)
+  };
+
+  function _ar_isSkillOrUniversal(cfg, id) {
+    if (id != null && _AR_SKILL_UNIVERSAL_IDS[id]) return true;
     var n = String(cfg.n || '');
     var nl = n.toLowerCase();
     var dl = String(cfg.d || '').toLowerCase();
     // Exclusive skill shards (t46 with "skill shard" in name)
     if (cfg.t === 46 && /skill shard/i.test(n)) return true;
-    // Universal Decor Shard (raw + lucky chests/boxes)
-    if (/universal decor shard/.test(nl)) return true;
-    if (/universal decor shard/.test(dl) && /(box|chest|bag|lucky)/.test(nl)) return true;
+    // Universal Decor Shard / Universal Exclusive Skill Shard (raw + boxes)
+    if (/universal (decor|exclusive skill) shard/.test(nl)) return true;
+    if (/universal (decor|exclusive skill) shard/.test(dl) && /(box|chest|bag|lucky)/.test(nl)) return true;
     // Remould Blueprint + chests
     if (/remould blueprint|remold blueprint/.test(nl)) return true;
     if (/remould blueprint/.test(dl) && /(box|chest|bag)/.test(nl)) return true;
-    // Skill shard chests
+    // Skill shard chests / lucky boxes — match name OR desc
+    if (/skill shard/.test(nl) && /(box|chest|bag|lucky)/.test(nl)) return true;
     if (/skill shard/.test(dl) && /(box|chest|bag|lucky)/.test(nl)) return true;
+    // Decor shard lucky boxes (catch "Decor Shard Lucky Chest")
+    if (/decor shard/.test(nl) && /(box|chest|bag|lucky)/.test(nl)) return true;
+    // Supreme Crystal / Supreme Deco upgrade materials
+    if (/supreme crystal/.test(nl) || /supreme deco/.test(dl)) return true;
     return false;
   }
 
@@ -2559,19 +2574,17 @@
     return null;
   }
 
-  // Pack-quantity parser: "Food 500K", "1M Odinium", "5,000 Gems", etc.
-  // Reads cfg.ix first (pre-baked numeric value where present),
-  // falls back to first integer-with-suffix in the localized name.
-  function _ar_packQuantity(cfg) {
-    if (!cfg) return 0;
-    if (cfg.ix != null && cfg.ix !== '') {
-      var v = parseInt(String(cfg.ix).replace(/,/g, ''), 10);
-      if (!isNaN(v) && v > 0) return v;
+  // Parse "1K" / "500K" / "2M" / "1,000" / "1,000,000" → integer.
+  function _ar_parseSuffixed(s) {
+    if (s == null) return 0;
+    var str = String(s).trim();
+    if (!str) return 0;
+    var m = str.match(/^(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*([KMB])?$/i);
+    if (!m) {
+      // Fallback: first numeric-with-suffix anywhere
+      m = str.match(/(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*([KMB])?/i);
+      if (!m) return 0;
     }
-    var n = String(cfg.n || '');
-    if (/itemName\d+/i.test(n)) return 0;
-    var m = n.match(/(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*([KMB])?/i);
-    if (!m) return 0;
     var num = parseFloat(m[1].replace(/,/g, ''));
     var suf = (m[2] || '').toUpperCase();
     if (suf === 'K') num *= 1000;
@@ -2580,13 +2593,45 @@
     return Math.round(num) || 0;
   }
 
+  // Pack-quantity parser: "Food 500K", "1M Odinium", "5,000 Gems", etc.
+  // Reads cfg.ix first ("1K", "500", "2M") then falls back to parsing
+  // the localized name. Returns 0 when neither yields a value.
+  function _ar_packQuantity(cfg) {
+    if (!cfg) return 0;
+    if (cfg.ix != null && cfg.ix !== '') {
+      var v = _ar_parseSuffixed(cfg.ix);
+      if (v > 0) return v;
+    }
+    var n = String(cfg.n || '');
+    if (/itemName\d+/i.test(n)) return 0;
+    return _ar_parseSuffixed(n);
+  }
+
+  // Compact K/M/B formatter for aggregate cell totals (1,234 → "1.2K",
+  // 1,234,567 → "1.2M", etc.). Drops decimal when round.
+  function _ar_compactNumber(n) {
+    if (n == null || isNaN(n)) return '0';
+    n = Number(n);
+    if (n < 1000) return n.toLocaleString();
+    var units = [['B',1e9],['M',1e6],['K',1e3]];
+    for (var i = 0; i < units.length; i++) {
+      if (n >= units[i][1]) {
+        var v = n / units[i][1];
+        var rounded = (v >= 100) ? Math.round(v) : Math.round(v * 10) / 10;
+        var s = rounded.toString();
+        return s + units[i][0];
+      }
+    }
+    return n.toLocaleString();
+  }
+
   // Decide which priority bucket an Item-tab entry falls into.
   // Order matters — first match wins. Keep more-specific checks first
   // (Titan Gear before Combat Buff since some Titan Gear consumables
   // also live in t72/t73 family on rare items).
-  function _ar_classifyItemBucket(cfg) {
+  function _ar_classifyItemBucket(cfg, id) {
     if (!cfg || cfg.t == null) return 'other';
-    if (_ar_isSkillOrUniversal(cfg)) return 'skill_universal';
+    if (_ar_isSkillOrUniversal(cfg, id)) return 'skill_universal';
     if (_ar_classifyTitanGear(cfg)) return 'titan';
     if (_ar_isHTChip(cfg)) return 'ht_chip';
     if (_ar_isEnigma(cfg)) return 'enigma';
@@ -2701,15 +2746,16 @@
             out.aggDetails.gem.push({ id: it.id, name: cfg.n || ('#'+it.id), amount: amount, perPack: gemsPer, total: gemsPer * amount });
           }
         }
-        // Raw resource aggregates (Odinium/Food/Oil)
+        // Raw resource aggregates (Odinium/Food/Oil). Pack items have a
+        // parseable per-pack value ("1K Odinium", "Food 500K"); raw-currency
+        // entries (51000000 "Odinium" with no number in name) yield 0 from
+        // the parser — fall back to per=1 so amount counts directly.
         if (tabKey === 'item' && amount > 0) {
           var rk = _ar_resourceKind(cfg);
           if (rk && rk !== 'gem') {
-            var per = _ar_packQuantity(cfg);
-            if (per > 0) {
-              out.aggTotals[rk] += per * amount;
-              out.aggDetails[rk].push({ id: it.id, name: cfg.n || ('#'+it.id), amount: amount, perPack: per, total: per * amount });
-            }
+            var per = _ar_packQuantity(cfg) || 1;
+            out.aggTotals[rk] += per * amount;
+            out.aggDetails[rk].push({ id: it.id, name: cfg.n || ('#'+it.id), amount: amount, perPack: per, total: per * amount });
           }
         }
         // Boxed gems (gems hidden inside non-pack boxes — "ONE of the following: 100 Gems x1, ...")
@@ -2721,7 +2767,7 @@
           }
         }
         var titanCat = (tabKey === 'item') ? _ar_classifyTitanGear(cfg) : null;
-        var bucket = tabKey === 'item' ? _ar_classifyItemBucket(cfg) : null;
+        var bucket = tabKey === 'item' ? _ar_classifyItemBucket(cfg, it.id) : null;
         out.tabs[tabKey].push({
           id: it.id, amount: amount, level: it.l || null, group: it.g || cfg.g || it.id,
           type: cfg.t, quality: cfg.q || 1, name: cfg.n || ('#' + it.id), desc: cfg.d || '',
@@ -10366,7 +10412,8 @@
           l.textContent = label;
           var v = document.createElement('span');
           v.style.cssText = 'color:' + (dim ? 'var(--text)' : 'var(--accent)') + ';font-weight:700;font-size:.95rem;font-family:monospace;';
-          v.textContent = (val || 0).toLocaleString();
+          v.textContent = _ar_compactNumber(val || 0);
+          v.title = (val || 0).toLocaleString();
           w.appendChild(l); w.appendChild(v);
           return w;
         }
@@ -10569,7 +10616,16 @@
           var ba = (_AR_BUCKET_INDEX[a.bucket] != null) ? _AR_BUCKET_INDEX[a.bucket] : 99;
           var bb = (_AR_BUCKET_INDEX[b.bucket] != null) ? _AR_BUCKET_INDEX[b.bucket] : 99;
           cmp = ba - bb;
-          if (cmp === 0) cmp = (b.quality || 0) - (a.quality || 0) || (b.level || 0) - (a.level || 0) || (b.amount || 0) - (a.amount || 0);
+          if (cmp === 0) {
+            // Within the "other" bucket, group same-group ids together so
+            // related items (shards/parts of the same set) sit next to each
+            // other. Within a group, sort by quality desc → level desc → amt.
+            if (a.bucket === 'other') {
+              cmp = (a.group || 0) - (b.group || 0);
+              if (cmp !== 0) return cmp;
+            }
+            cmp = (b.quality || 0) - (a.quality || 0) || (b.level || 0) - (a.level || 0) || (b.amount || 0) - (a.amount || 0);
+          }
           // Bucket order is fixed (priority) — ignore dirMul for the bucket axis
           return cmp;
         }
@@ -10876,11 +10932,12 @@
   // Synthetic aggregate cell (Gems / Odinium / Food / Oil). Click → modal
   // showing every contributing pack with per-pack value × amount × total.
   function _ar_buildAggregateCell(kind, data) {
+    var TR = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/treasury-icons/';
     var META = {
       gem:     { name: 'Gems',     iconUrl: 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/inventory-icons/image__item__item_1000003.png', q: 5 },
-      odinium: { name: 'Odinium',  iconUrl: 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/inventory-icons/image__item__item_940003.png',  q: 5 },
-      food:    { name: 'Food',     iconUrl: 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/inventory-icons/image__item__item_910001.png',  q: 4 },
-      oil:     { name: 'Oil',      iconUrl: 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/inventory-icons/image__item__item_920001.png',  q: 4 }
+      odinium: { name: 'Odinium',  iconUrl: TR + 'odinium.png', q: 5 },
+      food:    { name: 'Food',     iconUrl: TR + 'food.png',    q: 4 },
+      oil:     { name: 'Oil',      iconUrl: TR + 'oil.png',     q: 4 }
     };
     var m = META[kind];
     var c = document.createElement('div');
@@ -10914,7 +10971,8 @@
     var total = kind === 'gem'
       ? (data.aggTotals.gem + (data.boxedGemTotal || 0))
       : (data.aggTotals[kind] || 0);
-    amt.textContent = '×' + total.toLocaleString();
+    amt.textContent = '×' + _ar_compactNumber(total);
+    amt.title = total.toLocaleString();
     statsRow.appendChild(amt);
     c.appendChild(statsRow);
     var nm = document.createElement('div');
