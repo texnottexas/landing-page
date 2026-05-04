@@ -4896,6 +4896,8 @@
                   return;
                 }
                 _ar_setUnlocked(identity.siteKey, true);
+                var ovBanner = document.getElementById('ar-verify-id-banner');
+                if (ovBanner && ovBanner.parentNode) ovBanner.parentNode.removeChild(ovBanner);
                 openIdentityPrefs(player);
               } catch (e) {
                 err.textContent = 'Hash failed: ' + e.message;
@@ -5527,6 +5529,36 @@
     var container = document.getElementById('tab-overview');
     while (container.firstChild) container.removeChild(container.firstChild);
     var player = wizardState.player || {};
+
+    // ── Verify Identity shimmer (S2864 reports, unverified viewers only) ──
+    // Hidden once the viewer's own siteKey is unlocked. Clicking opens the
+    // same settings modal as the header gear button.
+    (function renderVerifyIdentityBanner() {
+      var siteKey = (player && player.siteKey) || (window._reportSiteKey) || null;
+      var isS2864Report = !!(siteKey && _ar_rosterMap && _ar_rosterMap[siteKey]);
+      if (!isS2864Report) return;
+      var ident = getStoredIdentity();
+      var identityVerified = !!(ident && ident.siteKey && _ar_isUnlocked(ident.siteKey));
+      if (identityVerified) return;
+      var wrap = document.createElement('div');
+      wrap.id = 'ar-verify-id-banner';
+      wrap.style.cssText = 'display:flex;justify-content:center;margin-bottom:1rem;';
+      var pill = document.createElement('button');
+      pill.className = 'whats-new-pill';
+      pill.style.fontSize = '.78rem';
+      pill.style.padding = '.45rem 1rem';
+      pill.setAttribute('aria-label', 'Verify identity to unlock additional features');
+      var dot = document.createElement('span');
+      dot.className = 'dot';
+      pill.appendChild(dot);
+      var label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = 'Verify Identity to unlock additional features';
+      pill.appendChild(label);
+      pill.addEventListener('click', function() { openIdentityPrefs(player); });
+      wrap.appendChild(pill);
+      container.appendChild(wrap);
+    })();
 
     // ── Summary chip row (compact stats) ──
     var totalGearScore = 0;
@@ -11248,21 +11280,255 @@
     return txt;
   }
 
+  // Wizard is held back until iOS screenshots are added to assets/bookmarklet-guide/.
+  // Mobile users get the dense-panel walkthrough (now reordered: copy → edit/paste).
+  // Flip to true once ios-step-{1..5}.png are in place.
+  var _AR_WIZARD_ENABLED = false;
+
+  // Detect mobile platform for routing to the guided wizard.
+  function _ar_detectPlatform() {
+    var ua = navigator.userAgent || '';
+    var maxTouch = navigator.maxTouchPoints || 0;
+    var isIOS = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && maxTouch > 1);
+    var isAndroid = !isIOS && /Android/.test(ua);
+    return { isIOS: isIOS, isAndroid: isAndroid, isMobile: isIOS || isAndroid };
+  }
+
+  // Per-platform guided walkthrough. iOS variant uses real screenshots from
+  // assets/bookmarklet-guide/. Android variant is text-only until a volunteer
+  // provides screenshots; Android users can flip to the iOS visual guide.
+  // bookmarkLabel = recommended Safari bookmark name (e.g. "Inventory" / "Beasts" / "HT Chips").
+  function _ar_wizardStepsIOS(bookmarkLabel) {
+    var label = bookmarkLabel || 'Inventory';
+    return [
+      {
+        img: 'ios-step-1.png',
+        title: 'Open Safari + add a bookmark',
+        body: 'On any page (this one is fine), tap the Share button. Scroll down and tap "Add Bookmark", then "Save".',
+        encourage: 'Easy start — you just made your first bookmark!'
+      },
+      {
+        img: 'ios-step-2.png',
+        title: 'Copy the bookmarklet link',
+        body: 'Come back to this page. Open the "Show bookmarklet URL" box below this wizard and tap "Copy URL".',
+        encourage: 'That long string is what makes the magic happen.'
+      },
+      {
+        img: 'ios-step-3.png',
+        title: 'Edit the bookmark + paste the link',
+        body: 'In Safari, tap the open-book icon → tap "Edit" (bottom-right) → tap the bookmark you just made. Clear the URL field, then long-press → Paste. Rename it to "' + label + '" and tap Done.',
+        encourage: 'Bookmark is now a bookmarklet!'
+      },
+      {
+        img: 'ios-step-4.png',
+        title: 'Open the game + the right panel',
+        body: 'Go to h5.topwargame.com/h5game/index.html in Safari. Wait for the game to load. Open the panel the bookmarklet needs (e.g. Bag for inventory).',
+        encourage: 'Hardest part is over. One step left!'
+      },
+      {
+        img: 'ios-step-5.png',
+        title: 'Tap the bookmarklet',
+        body: 'Tap the address bar, start typing "' + label + '", and tap the suggestion that appears. The JSON is now in your clipboard — come back here and paste.',
+        encourage: 'You did it! High five 🖐'
+      }
+    ];
+  }
+  function _ar_wizardStepsAndroid(bookmarkLabel) {
+    var label = bookmarkLabel || 'Inventory';
+    return [
+      {
+        title: 'Open Chrome + add a bookmark',
+        body: 'On any page, open Chrome\'s menu (⋮) and tap "Add to bookmarks".',
+        encourage: 'First step done!'
+      },
+      {
+        title: 'Copy the bookmarklet link',
+        body: 'Open the "Show bookmarklet URL" box below this wizard and tap "Copy URL".',
+        encourage: 'That string is the bookmarklet — keep going!'
+      },
+      {
+        title: 'Edit the bookmark + paste the link',
+        body: 'Menu (⋮) → Bookmarks → tap-and-hold the new bookmark → Edit. Clear the URL field, paste, rename to "' + label + '", save.',
+        encourage: 'Bookmark is now a bookmarklet!'
+      },
+      {
+        title: 'Open game + right panel',
+        body: 'Go to h5.topwargame.com/h5game/index.html in Chrome. Open the right panel (Bag for inventory, etc).',
+        encourage: 'Almost there!'
+      },
+      {
+        title: 'Run the bookmarklet',
+        body: 'Tap the URL bar, start typing "' + label + '", then tap the autocomplete suggestion. (Chrome strips javascript: when you type the URL directly — picking from autocomplete keeps it intact.) JSON copies to clipboard.',
+        encourage: 'Done — paste the JSON in the box below this wizard!'
+      }
+    ];
+  }
+
+  function _ar_buildBookmarkletWizard(opts, variant) {
+    // variant: 'ios' or 'android'. Caller already detected platform.
+    var label = opts.bookmarkLabel || 'Inventory';
+    var steps = (variant === 'ios') ? _ar_wizardStepsIOS(label) : _ar_wizardStepsAndroid(label);
+    var idx = 0;
+
+    var wrap = document.createElement('div');
+    wrap.className = 'bm-wizard';
+    wrap.style.cssText = 'background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin: 0 0 14px;';
+
+    var lead = document.createElement('div');
+    lead.style.cssText = 'font-size: 13px; color: var(--text); margin-bottom: 10px; line-height: 1.4;';
+    lead.textContent = opts.panelLead;
+    wrap.appendChild(lead);
+
+    // Android-only: offer iOS visual guide + note about pending Android screenshots.
+    if (variant === 'android') {
+      var note = document.createElement('div');
+      note.style.cssText = 'font-size: 11px; color: #d29922; background: rgba(210,153,34,0.08); border: 1px solid rgba(210,153,34,0.25); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; line-height: 1.45;';
+      note.textContent = 'Android walkthrough is text-only — visual screenshots will be added when a volunteer provides them. The iOS guide has pictures and the steps are similar.';
+      wrap.appendChild(note);
+
+      var flipBtn = document.createElement('button');
+      flipBtn.type = 'button';
+      flipBtn.style.cssText = 'background: var(--surface); color: var(--accent); border: 1px solid var(--accent); padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; margin-bottom: 10px;';
+      flipBtn.textContent = 'Show iOS walkthrough instead';
+      flipBtn.onclick = function() {
+        var newWiz = _ar_buildBookmarkletWizard(opts, 'ios');
+        wrap.parentNode.replaceChild(newWiz, wrap);
+      };
+      wrap.appendChild(flipBtn);
+    } else if (variant === 'ios') {
+      // iOS view: link back to Android if user hit it by accident.
+      var backBtn = document.createElement('button');
+      backBtn.type = 'button';
+      backBtn.style.cssText = 'background: none; color: var(--muted); border: 1px solid var(--border); padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; margin-bottom: 10px;';
+      backBtn.textContent = '← Back to Android steps';
+      // Only show if device is Android (otherwise pointless).
+      var plat = _ar_detectPlatform();
+      if (plat.isAndroid) {
+        backBtn.onclick = function() {
+          var newWiz = _ar_buildBookmarkletWizard(opts, 'android');
+          wrap.parentNode.replaceChild(newWiz, wrap);
+        };
+        wrap.appendChild(backBtn);
+      }
+    }
+
+    // Progress dots
+    var progress = document.createElement('div');
+    progress.style.cssText = 'display: flex; gap: 6px; justify-content: center; margin: 6px 0 12px;';
+    var dots = [];
+    for (var i = 0; i < steps.length; i++) {
+      var dot = document.createElement('span');
+      dot.style.cssText = 'width: 8px; height: 8px; border-radius: 50%; background: var(--border); transition: background .2s;';
+      progress.appendChild(dot);
+      dots.push(dot);
+    }
+    wrap.appendChild(progress);
+
+    // Step counter
+    var counter = document.createElement('div');
+    counter.style.cssText = 'font-size: 11px; color: var(--muted); text-align: center; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; font-weight: 600;';
+    wrap.appendChild(counter);
+
+    // Image (iOS only)
+    var imgWrap = document.createElement('div');
+    imgWrap.style.cssText = 'display: flex; justify-content: center; margin: 4px 0 10px;';
+    var img = null;
+    if (variant === 'ios') {
+      img = document.createElement('img');
+      img.alt = '';
+      img.style.cssText = 'max-width: 100%; max-height: 320px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); object-fit: contain;';
+      img.onerror = function() { imgWrap.style.display = 'none'; };
+      imgWrap.appendChild(img);
+    } else {
+      imgWrap.style.display = 'none';
+    }
+    wrap.appendChild(imgWrap);
+
+    // Title + body + encouragement
+    var title = document.createElement('div');
+    title.style.cssText = 'font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 6px; text-align: center;';
+    wrap.appendChild(title);
+
+    var body = document.createElement('div');
+    body.style.cssText = 'font-size: 13px; color: var(--text); line-height: 1.5; text-align: center; padding: 0 4px;';
+    wrap.appendChild(body);
+
+    var encourage = document.createElement('div');
+    encourage.style.cssText = 'font-size: 12px; color: var(--accent); margin-top: 10px; text-align: center; font-style: italic;';
+    wrap.appendChild(encourage);
+
+    // Nav row
+    var nav = document.createElement('div');
+    nav.style.cssText = 'display: flex; justify-content: space-between; gap: 10px; margin-top: 14px;';
+    var backNav = document.createElement('button');
+    backNav.type = 'button';
+    backNav.style.cssText = 'flex: 1; padding: 10px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer;';
+    backNav.textContent = '← Back';
+    var nextNav = document.createElement('button');
+    nextNav.type = 'button';
+    nextNav.style.cssText = 'flex: 2; padding: 10px; background: linear-gradient(180deg, #2da44e, #218539); color: #fff; border: 0; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;';
+    nav.appendChild(backNav);
+    nav.appendChild(nextNav);
+    wrap.appendChild(nav);
+
+    function render() {
+      var s = steps[idx];
+      counter.textContent = 'Step ' + (idx + 1) + ' of ' + steps.length;
+      title.textContent = s.title;
+      body.textContent = s.body;
+      encourage.textContent = s.encourage || '';
+      if (img && s.img) {
+        imgWrap.style.display = 'flex';
+        img.src = '../assets/bookmarklet-guide/' + s.img;
+      } else if (img) {
+        imgWrap.style.display = 'none';
+      }
+      for (var i = 0; i < dots.length; i++) {
+        dots[i].style.background = (i <= idx) ? 'var(--accent)' : 'var(--border)';
+      }
+      backNav.disabled = (idx === 0);
+      backNav.style.opacity = backNav.disabled ? '0.4' : '1';
+      backNav.style.cursor = backNav.disabled ? 'default' : 'pointer';
+      nextNav.textContent = (idx === steps.length - 1) ? 'Done ✓' : 'Next →';
+    }
+    backNav.onclick = function() { if (idx > 0) { idx--; render(); } };
+    nextNav.onclick = function() {
+      if (idx < steps.length - 1) { idx++; render(); }
+      else { wrap.style.display = 'none'; }
+    };
+
+    render();
+    return wrap;
+  }
+
   // Build the in-modal instructions panel (drag link, copy URL, iOS/Android steps,
   // and step-by-step game usage). Returns the root element. Mounting + content
   // population happens inside this helper so paste modal stays declarative.
   function _ar_buildBookmarkletPanel(opts) {
     // opts: { fileName, dragLabel, panelLead, usageSteps, panelHint }
+    var platRaw = _ar_detectPlatform();
+    // Mobile-routed wizard hidden behind feature flag until iOS screenshots land.
+    // When flag is off everyone falls through to the dense-panel path.
+    var plat = _AR_WIZARD_ENABLED ? platRaw : { isIOS: false, isAndroid: false, isMobile: false };
+
     var wrap = document.createElement('div');
     wrap.className = 'bm-panel';
     wrap.style.cssText = 'background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin: 0 0 14px;';
 
+    // Mobile: lead with the guided wizard. Drag link + iOS/Android collapsibles
+    // get skipped — the wizard already walks through both platforms with images
+    // (iOS) or text (Android, until volunteer screenshots arrive).
+    if (plat.isMobile) {
+      var variant = plat.isIOS ? 'ios' : 'android';
+      wrap.appendChild(_ar_buildBookmarkletWizard(opts, variant));
+    }
+
     var lead = document.createElement('div');
     lead.style.cssText = 'font-size: 13px; color: var(--text); margin-bottom: 10px;';
     lead.textContent = opts.panelLead;
-    wrap.appendChild(lead);
+    if (!plat.isMobile) wrap.appendChild(lead);
 
-    // Drag link (desktop primary path)
+    // Drag link (desktop primary path) — useless on mobile, hidden there.
     var linkRow = document.createElement('div');
     linkRow.style.cssText = 'display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px;';
     var dragLink = document.createElement('a');
@@ -11279,7 +11545,7 @@
     dragHint.style.cssText = 'color: var(--muted); font-size: 12px;';
     dragHint.textContent = 'Drag → bookmarks bar (desktop)';
     linkRow.appendChild(dragHint);
-    wrap.appendChild(linkRow);
+    if (!plat.isMobile) wrap.appendChild(linkRow);
 
     // iOS / Android collapsibles
     function makeDetails(summary, html) {
@@ -11306,22 +11572,25 @@
       });
       return ol;
     }
-    wrap.appendChild(makeDetails('iOS Safari setup', makeOl([
-      'Tap Share → Add Bookmark → Save (any page)',
-      'Open Bookmarks → Edit → tap the new bookmark',
-      'Use the Copy URL button below to copy the bookmarklet, paste into the bookmark URL field, save',
-      'Open Safari and go to https://h5.topwargame.com/h5game/index.html — log in to your S2864 account if not already',
-      'Open the relevant panel inside the game (Bag for inventory, Beast list for bench), then tap your saved bookmark'
-    ])));
-    wrap.appendChild(makeDetails('Android Chrome setup', makeOl([
-      'Open this page in Chrome',
-      'Menu (⋮) → Add to bookmarks (any page)',
-      'Menu (⋮) → Bookmarks → tap-and-hold the new bookmark → Edit',
-      'Tap Copy URL below, paste into the URL field, save',
-      'Open Chrome and go to https://h5.topwargame.com/h5game/index.html — log in to your S2864 account if not already',
-      'Open the relevant panel inside the game (Bag for inventory, Beast list for bench)',
-      'In the URL bar type the bookmark name, then tap the autocomplete suggestion (Chrome strips javascript: when typed manually — picking from autocomplete preserves it)'
-    ])));
+    if (!plat.isMobile) {
+      var bmLabel = opts.bookmarkLabel || 'Inventory';
+      wrap.appendChild(makeDetails('iOS Safari setup', makeOl([
+        'Tap Share → Add Bookmark → Save (any page)',
+        'Use the "Show bookmarklet URL" box below to copy the bookmarklet link',
+        'Open Bookmarks → Edit → tap the new bookmark, clear the URL field, paste, rename to "' + bmLabel + '" and save',
+        'Open Safari and go to https://h5.topwargame.com/h5game/index.html — log in to your S2864 account if not already',
+        'Open the relevant panel inside the game (Bag for inventory, Beast list for bench), then tap the address bar, type "' + bmLabel + '", and tap the suggestion'
+      ])));
+      wrap.appendChild(makeDetails('Android Chrome setup', makeOl([
+        'Open this page in Chrome',
+        'Menu (⋮) → Add to bookmarks (any page)',
+        'Use the "Show bookmarklet URL" box below to copy the bookmarklet link',
+        'Menu (⋮) → Bookmarks → tap-and-hold the new bookmark → Edit. Clear the URL field, paste, rename to "' + bmLabel + '" and save',
+        'Open Chrome and go to https://h5.topwargame.com/h5game/index.html — log in to your S2864 account if not already',
+        'Open the relevant panel inside the game (Bag for inventory, Beast list for bench)',
+        'In the URL bar type "' + bmLabel + '", then tap the autocomplete suggestion (Chrome strips javascript: when typed manually — picking from autocomplete preserves it)'
+      ])));
+    }
 
     // Copy URL block
     var copyWrap = document.createElement('details');
@@ -11353,12 +11622,14 @@
     copyWrap.appendChild(copyBody);
     wrap.appendChild(copyWrap);
 
-    // Usage steps
-    var usageHdr = document.createElement('div');
-    usageHdr.style.cssText = 'font-size: 12px; color: var(--muted); margin: 12px 0 4px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;';
-    usageHdr.textContent = 'Then in the game';
-    wrap.appendChild(usageHdr);
-    wrap.appendChild(makeOl(opts.usageSteps));
+    // Usage steps — desktop only (mobile gets these inside the wizard).
+    if (!plat.isMobile) {
+      var usageHdr = document.createElement('div');
+      usageHdr.style.cssText = 'font-size: 12px; color: var(--muted); margin: 12px 0 4px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;';
+      usageHdr.textContent = 'Then in the game';
+      wrap.appendChild(usageHdr);
+      wrap.appendChild(makeOl(opts.usageSteps));
+    }
 
     if (opts.panelHint) {
       var hint = document.createElement('div');
@@ -11497,6 +11768,7 @@
       bookmarkletPanel: {
         fileName: 'bookmarklet.txt',
         dragLabel: 'Inventory Dump',
+        bookmarkLabel: 'Inventory',
         panelLead: 'Need the JSON? Set up the bookmarklet once, then run it from the game whenever you want a fresh snapshot.',
         usageSteps: [
           'Open your mobile browser (Safari on iOS, Chrome on Android) and go to https://h5.topwargame.com/h5game/index.html',
@@ -11524,6 +11796,7 @@
       bookmarkletPanel: {
         fileName: 'beast-bookmarklet.txt',
         dragLabel: 'Beast List Dump',
+        bookmarkLabel: 'Beasts',
         panelLead: 'Need the JSON? Set up the bookmarklet once, then run it from the game whenever you want a fresh bench snapshot.',
         usageSteps: [
           'Open your mobile browser (Safari on iOS, Chrome on Android) and go to https://h5.topwargame.com/h5game/index.html',
@@ -11552,6 +11825,7 @@
       bookmarkletPanel: {
         fileName: 'chips-bookmarklet.txt',
         dragLabel: 'HT Chip Dump',
+        bookmarkLabel: 'HT Chips',
         panelLead: 'Need the JSON? Set up the bookmarklet once, then run it from the game whenever you want a fresh chip pool snapshot.',
         usageSteps: [
           'Open your mobile browser (Safari on iOS, Chrome on Android) and go to https://h5.topwargame.com/h5game/index.html',
