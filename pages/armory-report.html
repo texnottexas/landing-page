@@ -1585,15 +1585,15 @@
       submit.disabled = true;
       err.textContent = '';
       var uid = input.value.trim();
-      var hash = await _ar_siteKeyFromUid(uid);
-      if (hash !== siteKey) {
+      var fullHash = await _ar_sha256Hex(uid);
+      if (fullHash.slice(0, 16) !== siteKey) {
         err.textContent = 'UID does not match this player.';
         submit.disabled = !input.value.trim();
         return;
       }
       // Hash matched — try to capture a fresh worker token. Fail-soft to local-only mode.
       try {
-        await _ar_handshake(uid);
+        await _ar_handshake(fullHash);
       } catch (e) {
         console.warn('Supplement handshake failed:', e);
         err.textContent = 'Worker unreachable (' + e.message + ') — saved local-only.';
@@ -1633,10 +1633,11 @@
     return Math.floor(mo / 12) + 'y ago';
   }
 
-  async function _ar_handshake(uid) {
+  // Send only sha256(uid) to the worker — raw UID never leaves the browser.
+  async function _ar_handshake(uidHash) {
     var r = await fetch(SUPPLEMENT_WORKER + '/supplement/handshake', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uid: uid })
+      body: JSON.stringify({ uidHash: uidHash })
     });
     if (!r.ok) {
       var msg = await r.text();
@@ -8696,7 +8697,23 @@
     return c;
   }
 
-  function _ar_openInvPasteModal(siteKey, onSaved) {
+  // Strip fields the renderer never reads but that would leak privacy if exposed
+  // via the public GET endpoint: meta.uid (lets a public siteKey resolve back to a
+  // game UID) and inv.resources (free/paid gold balances, never displayed).
+  function _ar_sanitizeSupplement(kind, raw) {
+    if (raw && raw.meta && raw.meta.uid != null) delete raw.meta.uid;
+    if (kind === 'inv' && raw && raw.resources != null) delete raw.resources;
+  }
+
+  var _AR_SUP_MAX_BYTES = 1024 * 1024; // 1 MB
+
+  // Shared paste modal — kind: 'inv' | 'bench'.
+  function _ar_openPasteModal(opts, onSaved) {
+    var kind = opts.kind, siteKey = opts.siteKey;
+    var validate = opts.validate, lsKey = opts.lsKey;
+    var tsPath = opts.tsPath;          // 'meta.ts' (inv) or 'ts' (bench)
+    var staleLabel = opts.staleLabel;  // 'snapshot' or 'bench snapshot'
+
     var bg = document.createElement('div');
     bg.className = 'modal-bg show';
     bg.style.zIndex = '120';
@@ -8706,16 +8723,16 @@
     bg.appendChild(modal);
 
     var h = document.createElement('h2');
-    h.textContent = 'Paste Inventory JSON';
+    h.textContent = opts.title;
     modal.appendChild(h);
 
     var p = document.createElement('p');
-    p.textContent = 'Paste the JSON copied from the Inventory bookmarklet on h5.topwargame.com.';
+    p.textContent = opts.desc;
     modal.appendChild(p);
 
     var ta = document.createElement('textarea');
     ta.style.cssText = 'width: 100%; min-height: 120px; max-height: 240px; background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 8px; border-radius: 6px; font-family: monospace; font-size: 11px; resize: vertical;';
-    ta.placeholder = '{"v":1,"meta":{...},"tabs":{...},"heros":{...}}';
+    ta.placeholder = opts.placeholder;
     modal.appendChild(ta);
 
     var err = document.createElement('div');
@@ -8735,28 +8752,45 @@
     actions.appendChild(save);
     modal.appendChild(actions);
 
+    function readTs(obj) {
+      if (!obj) return 0;
+      var v = (tsPath === 'meta.ts') ? (obj.meta && obj.meta.ts) : obj.ts;
+      return v ? new Date(v).getTime() : 0;
+    }
+    function writeTs(obj, iso) {
+      if (tsPath === 'meta.ts') { if (!obj.meta) obj.meta = {}; if (!obj.meta.ts) obj.meta.ts = iso; }
+      else { if (!obj.ts) obj.ts = iso; }
+    }
+
     save.onclick = async function() {
       err.textContent = '';
       var raw;
       try { raw = JSON.parse(ta.value.trim()); }
       catch (e) { err.textContent = 'Invalid JSON: ' + e.message; return; }
-      var validationErr = _ar_validateInvJson(raw);
+      var validationErr = validate(raw);
       if (validationErr) { err.textContent = validationErr; return; }
+
+      // Privacy scrub before either localStorage or upload sees the payload.
+      _ar_sanitizeSupplement(kind, raw);
+
       var existing;
-      try { existing = JSON.parse(localStorage.getItem('armory_inv_' + siteKey) || 'null'); } catch (e) { existing = null; }
-      if (existing && existing.meta && existing.meta.ts) {
-        var ageMs = Date.now() - new Date(existing.meta.ts).getTime();
-        if (ageMs < 3600 * 1000) {
-          if (!confirm('Existing snapshot is less than 1 hour old. Overwrite?')) return;
-        }
+      try { existing = JSON.parse(localStorage.getItem(lsKey + siteKey) || 'null'); } catch (e) { existing = null; }
+      var existingTs = readTs(existing);
+      if (existingTs && (Date.now() - existingTs) < 3600 * 1000) {
+        if (!confirm('Existing ' + staleLabel + ' is less than 1 hour old. Overwrite?')) return;
       }
-      if (!raw.meta) raw.meta = {};
-      if (!raw.meta.ts) raw.meta.ts = new Date().toISOString();
-      try { localStorage.setItem('armory_inv_' + siteKey, JSON.stringify(raw)); }
+      writeTs(raw, new Date().toISOString());
+
+      var serialized = JSON.stringify(raw);
+      if (serialized.length > _AR_SUP_MAX_BYTES) {
+        err.textContent = 'Payload too large (' + Math.round(serialized.length / 1024) + ' KB, max 1024 KB).';
+        return;
+      }
+      try { localStorage.setItem(lsKey + siteKey, serialized); }
       catch (e) { err.textContent = 'localStorage write failed: ' + e.message; return; }
       // Best-effort worker upload
       try {
-        await _ar_supplementUpload('inv', raw);
+        await _ar_supplementUpload(kind, raw);
       } catch (e) {
         console.warn('Worker upload failed', e);
         err.textContent = 'Saved locally. Worker upload failed (' + e.message + '). Open settings to refresh token.';
@@ -8770,77 +8804,30 @@
     setTimeout(function() { ta.focus(); }, 50);
   }
 
+  function _ar_openInvPasteModal(siteKey, onSaved) {
+    _ar_openPasteModal({
+      kind: 'inv', siteKey: siteKey,
+      title: 'Paste Inventory JSON',
+      desc: 'Paste the JSON copied from the Inventory bookmarklet on h5.topwargame.com.',
+      placeholder: '{"v":1,"meta":{...},"tabs":{...},"heros":{...}}',
+      validate: _ar_validateInvJson,
+      lsKey: 'armory_inv_',
+      tsPath: 'meta.ts',
+      staleLabel: 'snapshot'
+    }, onSaved);
+  }
+
   function _ar_openBenchPasteModal(siteKey, onSaved) {
-    var bg = document.createElement('div');
-    bg.className = 'modal-bg show';
-    bg.style.zIndex = '120';
-    var modal = document.createElement('div');
-    modal.className = 'modal sup-unlock-modal';
-    modal.style.maxWidth = '640px';
-    bg.appendChild(modal);
-
-    var h = document.createElement('h2');
-    h.textContent = 'Paste Bench Beast JSON';
-    modal.appendChild(h);
-
-    var p = document.createElement('p');
-    p.textContent = 'Paste the JSON copied from the Enigma Beast bookmarklet (Q3+ unplaced beasts).';
-    modal.appendChild(p);
-
-    var ta = document.createElement('textarea');
-    ta.style.cssText = 'width: 100%; min-height: 120px; max-height: 240px; background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 8px; border-radius: 6px; font-family: monospace; font-size: 11px; resize: vertical;';
-    ta.placeholder = '{"v":1,"src":"...","beasts":[...]}';
-    modal.appendChild(ta);
-
-    var err = document.createElement('div');
-    err.className = 'err';
-    modal.appendChild(err);
-
-    var actions = document.createElement('div');
-    actions.className = 'actions';
-    var cancel = document.createElement('button');
-    cancel.className = 'secondary';
-    cancel.textContent = 'Cancel';
-    cancel.onclick = function() { document.body.removeChild(bg); };
-    var save = document.createElement('button');
-    save.className = 'primary';
-    save.textContent = 'Save';
-    actions.appendChild(cancel);
-    actions.appendChild(save);
-    modal.appendChild(actions);
-
-    save.onclick = async function() {
-      err.textContent = '';
-      var raw;
-      try { raw = JSON.parse(ta.value.trim()); }
-      catch (e) { err.textContent = 'Invalid JSON: ' + e.message; return; }
-      var validationErr = _ar_validateBenchJson(raw);
-      if (validationErr) { err.textContent = validationErr; return; }
-      var existing;
-      try { existing = JSON.parse(localStorage.getItem('armory_bench_' + siteKey) || 'null'); } catch (e) { existing = null; }
-      if (existing && existing.ts) {
-        var ageMs = Date.now() - new Date(existing.ts).getTime();
-        if (ageMs < 3600 * 1000) {
-          if (!confirm('Existing bench snapshot is less than 1 hour old. Overwrite?')) return;
-        }
-      }
-      if (!raw.ts) raw.ts = new Date().toISOString();
-      try { localStorage.setItem('armory_bench_' + siteKey, JSON.stringify(raw)); }
-      catch (e) { err.textContent = 'localStorage write failed: ' + e.message; return; }
-      // Best-effort worker upload
-      try {
-        await _ar_supplementUpload('bench', raw);
-      } catch (e) {
-        console.warn('Worker upload failed', e);
-        err.textContent = 'Saved locally. Worker upload failed (' + e.message + '). Open settings to refresh token.';
-        return;
-      }
-      document.body.removeChild(bg);
-      if (typeof onSaved === 'function') onSaved();
-    };
-
-    document.body.appendChild(bg);
-    setTimeout(function() { ta.focus(); }, 50);
+    _ar_openPasteModal({
+      kind: 'bench', siteKey: siteKey,
+      title: 'Paste Bench Beast JSON',
+      desc: 'Paste the JSON copied from the Enigma Beast bookmarklet (Q3+ unplaced beasts).',
+      placeholder: '{"v":1,"src":"...","beasts":[...]}',
+      validate: _ar_validateBenchJson,
+      lsKey: 'armory_bench_',
+      tsPath: 'ts',
+      staleLabel: 'bench snapshot'
+    }, onSaved);
   }
 
   function renderEnigmaTab(merged) {
