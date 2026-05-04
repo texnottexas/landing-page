@@ -2144,11 +2144,51 @@
       // junk still validates.
       var attempts = [raw.trim(), raw.replace(/\D/g, '')];
       var matched = null;
+      var hashesTried = [];
       for (var i = 0; i < attempts.length; i++) {
         var candidate = attempts[i];
         if (!candidate) continue;
         var h = await _ar_sha256Hex(candidate);
+        hashesTried.push({ uid: candidate, hash: h, first16: h.slice(0, 16) });
         if (h.slice(0, 16) === siteKey) { matched = { uid: candidate, hash: h }; break; }
+      }
+      // Roster cross-check fallback: if the hash doesn't match the modal's
+      // siteKey but DOES match a current roster entry, the stored identity
+      // siteKey is stale (older roster build, manual edit, etc). Self-heal
+      // by rewriting playerIdentity to the matched roster player and unlock
+      // under the real siteKey. Beats forcing the user to wipe localStorage.
+      var rosterHeal = null;
+      if (!matched) {
+        try {
+          var roster = await fetch('player-data.json', { cache: 'no-cache' }).then(function(r) { return r.json(); });
+          for (var j = 0; j < hashesTried.length && !rosterHeal; j++) {
+            var first16 = hashesTried[j].first16;
+            for (var k = 0; k < roster.length; k++) {
+              if (roster[k].siteKey === first16) { rosterHeal = { player: roster[k], hash: hashesTried[j].hash }; break; }
+            }
+          }
+        } catch (e) { /* fail to roster — fall through to error */ }
+      }
+      if (!matched && rosterHeal) {
+        // Update stored playerIdentity to the matched roster player so the
+        // next page load uses the correct siteKey everywhere.
+        try {
+          var ident = JSON.parse(localStorage.getItem('playerIdentity') || '{}');
+          ident.name = rosterHeal.player.name;
+          ident.alliance = rosterHeal.player.alliance;
+          ident.rank = rosterHeal.player.rank;
+          ident.profession = rosterHeal.player.profession;
+          ident.siteKey = rosterHeal.player.siteKey;
+          localStorage.setItem('playerIdentity', JSON.stringify(ident));
+        } catch (e) {}
+        try { await _ar_handshake(rosterHeal.hash); } catch (e) { /* fail-soft */ }
+        _ar_setUnlocked(rosterHeal.player.siteKey, true);
+        document.body.removeChild(bg);
+        if (typeof onUnlock === 'function') onUnlock();
+        // Force a reload so isOwnReport / view-only checks pick up the new
+        // identity siteKey on the report currently in view.
+        setTimeout(function() { location.reload(); }, 50);
+        return;
       }
       if (!matched) {
         var trimmed = (raw || '').trim();

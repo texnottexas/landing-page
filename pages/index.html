@@ -5457,12 +5457,36 @@
             // Same paste-tolerance as armory-report verify modal: try the
             // user-entered string first, then a digits-only normalization.
             var attempts = [raw.trim(), raw.replace(/\D/g, '')];
+            var hashesTried = [];
             var matched = false;
             for (var i = 0; i < attempts.length; i++) {
               var c = attempts[i];
               if (!c) continue;
               var h = await _idSha256Hex(c);
+              hashesTried.push({ uid: c, first16: h.slice(0, 16) });
               if (h.slice(0, 16) === identity.siteKey) { matched = true; break; }
+            }
+            // Roster cross-check fallback: a stored identity siteKey can go
+            // stale (older roster build, manual edit). If the entered UID
+            // matches ANY current roster entry, self-heal the identity.
+            if (!matched) {
+              try {
+                var roster = await fetch('player-data.json', { cache: 'no-cache' }).then(function(r) { return r.json(); });
+                for (var j = 0; j < hashesTried.length && !matched; j++) {
+                  var first16 = hashesTried[j].first16;
+                  for (var k = 0; k < roster.length; k++) {
+                    if (roster[k].siteKey === first16) {
+                      var p = roster[k];
+                      var ident = { name: p.name, alliance: p.alliance, rank: p.rank, profession: p.profession, siteKey: p.siteKey };
+                      saveIdentity(ident);
+                      _idSetUnlocked(p.siteKey, true);
+                      showGreeting(ident);
+                      matched = true;
+                      break;
+                    }
+                  }
+                }
+              } catch (e) { /* fall through to error */ }
             }
             if (!matched) {
               var digits = raw.replace(/\D/g, '');
@@ -5474,7 +5498,11 @@
               submit.disabled = !input.value.trim();
               return;
             }
-            _idSetUnlocked(identity.siteKey, true);
+            // Pure-path match: identity already correct. Roster-heal path
+            // wrote the unlock + identity itself, so just refresh the panel.
+            if (!_idIsUnlocked(getIdentity().siteKey)) {
+              _idSetUnlocked(getIdentity().siteKey, true);
+            }
             renderExtras();
           } catch (e) {
             err.textContent = 'Hash failed: ' + e.message;
