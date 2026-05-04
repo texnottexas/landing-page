@@ -8045,14 +8045,41 @@
     };
   }
 
-  function _adv_calcGroupSpecificShards(group, inventory) {
+  // Sacrifice value of an owned-but-unplaced piece, in raw shards. Derived
+  // from the level table:
+  //   - Lv >= 2: raw fu[level] (mint-from-scratch cost = sacrifice refund)
+  //   - Lv == 1: fu_2 / 3 (the group's "base unit" — Lv1 mint is free so
+  //     fu_1 is 0, but the piece itself still has 1 base_unit of sacrifice
+  //     value because every piece is 3× the base step)
+  // Earlier impl returned amount * 3^(level-1), which gives BASE UNITS not
+  // raw shards. For Moss Lantern (group 5387, fu_2 = 120, base_unit = 40)
+  // an Lv3 spare was reported as 9 shards instead of 360. 8960mr saw the
+  // Moss Lantern card show Have: 1201 (= 1192 universal + 9 wrong group)
+  // when the correct addition was 360.
+  function _adv_pieceShardValue(level, levelsEntry) {
+    if (!levelsEntry || !Array.isArray(levelsEntry.levels) || level <= 0) return 0;
+    if (level === 1) {
+      var lv2 = null;
+      for (var i = 0; i < levelsEntry.levels.length; i++) {
+        if (levelsEntry.levels[i].l === 2) { lv2 = levelsEntry.levels[i]; break; }
+      }
+      return lv2 ? Math.round((lv2.fu || 0) / 3) : 0;
+    }
+    for (var j = 0; j < levelsEntry.levels.length; j++) {
+      if (levelsEntry.levels[j].l === level) return levelsEntry.levels[j].fu || 0;
+    }
+    return 0;
+  }
+
+  function _adv_calcGroupSpecificShards(group, inventory, levelsData) {
     var decor = (inventory && inventory.tabs && inventory.tabs.decor) || [];
+    var levelsEntry = levelsData ? levelsData[String(group)] : null;
     var total = 0;
     decor.forEach(function(d) {
       if (String(_adv_invGroup(d)) === String(group)) {
         var lv = _adv_invLevel(d);
         var amt = _adv_invAmount(d);
-        total += amt * Math.pow(3, lv - 1);
+        total += amt * _adv_pieceShardValue(lv, levelsEntry);
       }
     });
     return total;
@@ -8256,7 +8283,7 @@
       idx.forEach(function(e) { groupNames[String(e.group)] = e.name; });
       idx.forEach(function(entry) {
         var placed = _adv_getPlacedLevel(entry.group, merged);
-        var groupOnly = _adv_calcGroupSpecificShards(entry.group, inventory);
+        var groupOnly = _adv_calcGroupSpecificShards(entry.group, inventory, levelsData);
         var totalShards = groupOnly + shardSummary.universal;
         var rec = _adv_buildRecommendation(entry, placed, levelsData, totalShards, shardSummary.universal, groupOnly);
         if (!rec) return;
