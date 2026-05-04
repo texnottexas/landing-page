@@ -2470,6 +2470,30 @@
     return 'shards';
   }
 
+  // Classify an Item-tab entry against Titan Gear sub-categories. Returns
+  // null when the item is unrelated. Strict type-based mapping for the core
+  // categories; narrow name-pattern fallback for chests that yield Titan Gear
+  // runes/materials. Deliberately excludes:
+  //   - Titan Canyon consumables (types 28/72/73/75/91, "Titan Canyon" suffix)
+  //   - Titanium-prefixed items (Titanium Body Blueprint t86, Titanium Blue Coin t59)
+  //   - Timber Titan decoration (t17)
+  //   - Heart Of Titan saga points (t53)
+  function _ar_classifyTitanGear(cfg) {
+    if (!cfg) return null;
+    var t = cfg.t;
+    if (t === 153) return 'rune';
+    if (t === 140) return 'material';
+    if (t === 142) return 'catalyst';
+    if (t === 141) return 'blueprint';
+    if (t === 148) return 'booster';
+    if (t === 211) return 'gearchest';
+    var n = String(cfg.n || '');
+    if (/^Titan Gear (Random Material|Material Choice)/i.test(n)) return 'material';
+    if (/^Beginner Titan Gear Random Material/i.test(n)) return 'material';
+    if (/^Titan Rune (Choice|Random) Chest/i.test(n)) return 'rune';
+    return null;
+  }
+
   // Extract the gem-per-pack value from an item-table entry (group 1000000).
   // Prefer the `ix` field where present; otherwise parse the first integer
   // out of the localized name, stripping commas. Returns 0 when the item
@@ -2505,11 +2529,14 @@
           var gemsPer = _ar_gemValueFromCfg(cfg);
           if (gemsPer > 0) out.gemTotal += gemsPer * amount;
         }
+        var titanCat = (tabKey === 'item') ? _ar_classifyTitanGear(cfg) : null;
         out.tabs[tabKey].push({
           id: it.id, amount: amount, level: it.l || null, group: it.g || cfg.g || it.id,
           type: cfg.t, quality: cfg.q || 1, name: cfg.n || ('#' + it.id), desc: cfg.d || '',
           icon: icoInfo ? icoInfo.file : null,
-          iconDir: ASSET + (icoInfo ? icoInfo.dirSuffix : 'inventory-icons')
+          iconDir: ASSET + (icoInfo ? icoInfo.dirSuffix : 'inventory-icons'),
+          subtab: tabKey === 'item' ? (titanCat ? 'titan' : 'all') : undefined,
+          titanCat: titanCat
         });
       });
     });
@@ -10161,10 +10188,12 @@
   function _ar_renderInvGrid(container, data) {
     var TAB_ORDER = [['item','Item'],['unit','Unit'],['decor','Decor'],['hero','Hero'],['cpnt','CPNT']];
     var SUBTABS = {
+      item: [['all','All Items'], ['titan','Titan Gear']],
       hero: [['shards','Hero Shards'], ['skills','Hero Skills']],
       decor: [['other','Decor'], ['set','Decor (Set)']]
     };
-    var state = { tab: 'item', subtab: '', search: '', sort: 'quality_lv', sortDir: 'desc', quality: '' };
+    var TITAN_CATS = [['all','All'],['rune','Runes'],['material','Materials'],['catalyst','Catalysts'],['blueprint','Blueprints'],['booster','Boosters'],['gearchest','Gear Chests']];
+    var state = { tab: 'item', subtab: 'all', titanCat: 'all', search: '', sort: 'quality_lv', sortDir: 'desc', quality: '' };
 
     var tabsEl = document.createElement('div');
     tabsEl.className = 'inv-tabs';
@@ -10172,6 +10201,10 @@
     var subEl = document.createElement('div');
     subEl.className = 'inv-subtabs';
     container.appendChild(subEl);
+    var titanCatEl = document.createElement('div');
+    titanCatEl.className = 'inv-subtabs';
+    titanCatEl.style.cssText = 'gap:6px;flex-wrap:wrap;padding:0 16px 6px;';
+    container.appendChild(titanCatEl);
 
     var ctrls = document.createElement('div');
     ctrls.className = 'inv-toolbar';
@@ -10245,11 +10278,29 @@
           subEl.appendChild(b);
         });
       }
+      // Titan Gear sub-category chip row — only when Item → Titan Gear is active
+      titanCatEl.replaceChildren();
+      if (state.tab === 'item' && state.subtab === 'titan') {
+        var titanItems = (data.tabs.item || []).filter(function(x) { return x.subtab === 'titan'; });
+        TITAN_CATS.forEach(function(cat) {
+          var n = cat[0] === 'all' ? titanItems.length : titanItems.filter(function(x) { return x.titanCat === cat[0]; }).length;
+          if (cat[0] !== 'all' && n === 0) return; // hide empty sub-categories
+          var b = document.createElement('button');
+          b.className = 'inv-subtab' + (cat[0] === state.titanCat ? ' active' : '');
+          b.style.cssText = 'font-size:11px;padding:4px 10px;';
+          b.textContent = cat[1] + ' (' + n + ')';
+          b.onclick = function() { state.titanCat = cat[0]; buildTabs(); rerender(); };
+          titanCatEl.appendChild(b);
+        });
+      }
     }
 
     function rerender() {
       var list = (data.tabs[state.tab] || []).slice();
       if (SUBTABS[state.tab]) list = list.filter(function(x) { return x.subtab === state.subtab; });
+      if (state.tab === 'item' && state.subtab === 'titan' && state.titanCat && state.titanCat !== 'all') {
+        list = list.filter(function(x) { return x.titanCat === state.titanCat; });
+      }
       if (state.quality) list = list.filter(function(x) { return String(x.quality) === state.quality; });
       if (state.search) {
         var q = state.search;
