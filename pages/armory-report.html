@@ -6939,36 +6939,60 @@
   var _advisorIndexCache = null;
   var _advisorMutexCache = null;
 
+  // Stats trimmed to those that actually have decor coverage in decoration-index.
+  // march_speed / resource / building / research had no decor buffs in the index.
+  // Hangar / Dock / Garage all share a single combined buff (1131006) so they
+  // collapse into one entry — picking one would yield identical results.
   var ADVISOR_STAT_GROUPS = [
     { name: 'Combat', stats: [
       { id: 'attack', label: 'All Units Attack' },
       { id: 'hp', label: 'All Units HP' },
       { id: 'def', label: 'All Units Defense' },
-      { id: 'damage_boost', label: 'Damage Boost (vs target)' },
-      { id: 'damage_red', label: 'Damage Reduction (incoming)' }
+      { id: 'damage_boost', label: 'Damage Increase (output)' },
+      { id: 'damage_red', label: 'Decreased Damage Taken' }
     ]},
     { name: 'Logistics', stats: [
       { id: 'march_size', label: 'March Size' },
-      { id: 'hangar', label: 'Hangar Capacity (Air)' },
-      { id: 'dock', label: 'Dock Capacity (Navy)' },
-      { id: 'garage', label: 'Garage Capacity (Army)' },
-      { id: 'march_speed', label: 'March Speed' }
-    ]},
-    { name: 'Other', stats: [
-      { id: 'resource', label: 'Resource Production' },
-      { id: 'building', label: 'Building Speed' },
-      { id: 'research', label: 'Research Speed' }
+      { id: 'capacity', label: 'Garage / Dock / Hangar Capacity' }
     ]}
   ];
 
-  // Stat IDs map to decoration-index `category` strings. Coarse mapping for v1;
-  // refine later with buff-id allowlists for fine-grained stats.
-  var ADVISOR_STAT_TO_CATEGORY = {
-    attack: 'Damage Boost', hp: 'Defense', def: 'Defense',
-    damage_boost: 'Damage Boost', damage_red: 'Defense',
-    march_size: 'March Size',
-    hangar: 'Others', dock: 'Others', garage: 'Others',
-    march_speed: 'Others', resource: 'Others', building: 'Others', research: 'Others'
+  // Buff IDs that count for each stat. Sourced from BUFF_NAMES_DECOR.
+  // The decoration-index `category` field is too coarse — "Damage Boost" lumps
+  // Attack, DMG Increase, Decreased DMG Taken, March Size, and Defense buffs
+  // together, so an "Ammo Box" (980204 = Decreased DMG Taken) was leaking into
+  // an "All Units Attack" pick. Filter on buff_id directly instead.
+  var ADVISOR_STAT_BUFFS = {
+    attack: [
+      '930100','930101','930102','930103',
+      '9301160','9301161','9301162','9301163','9301164','93011601',
+      '990100'
+    ],
+    hp: [
+      '930000','930001','930002','930003',
+      '9301170','9301171','9301172','9301173','9301174','93011701',
+      '9990769'
+    ],
+    def: [
+      '990202'
+    ],
+    damage_boost: [
+      '1001001',
+      '29801011','29801021'
+    ],
+    damage_red: [
+      '980204',
+      '1003020','1003021','1003022',
+      '10030201','20030201','21010161',
+      '29901301','29902211','98020501',
+      '990143'
+    ],
+    march_size: [
+      '960012'
+    ],
+    capacity: [
+      '1131006'
+    ]
   };
 
   // Safe DOM constructor: never assigns innerHTML; all data flows through
@@ -7349,9 +7373,12 @@
   }
 
   function _adv_statMatchesEntry(statId, entry) {
-    var wantedCat = ADVISOR_STAT_TO_CATEGORY[statId];
-    if (!wantedCat) return false;
-    return entry.category === wantedCat;
+    var allow = ADVISOR_STAT_BUFFS[statId];
+    if (!allow || !entry || !entry.buffs) return false;
+    for (var i = 0; i < entry.buffs.length; i++) {
+      if (allow.indexOf(String(entry.buffs[i].id)) >= 0) return true;
+    }
+    return false;
   }
 
   // Universal Decor Shard item ID — the `fi` field on each levels entry tells you which
