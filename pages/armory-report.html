@@ -11602,11 +11602,37 @@
       return m.chips && m.chips.length > 0;
     });
 
+    var siteKey = (wizardState && wizardState.player && wizardState.player.siteKey) || null;
+    var unlocked = siteKey ? _ar_isUnlocked(siteKey) : false;
+    var canUpload = !wizardState._viewOnly && siteKey && _ar_rosterMap && _ar_rosterMap[siteKey] && unlocked;
+
+    // ── Update Chips action row (top of section) ──
+    if (canUpload) {
+      var actionRow = document.createElement('div');
+      actionRow.style.cssText = 'display:flex;justify-content:flex-end;align-items:center;gap:.5rem;margin-bottom:.6rem;flex-wrap:wrap;';
+      var updateBtn = document.createElement('button');
+      updateBtn.className = 'eb-bench-update-btn';
+      updateBtn.type = 'button';
+      updateBtn.textContent = 'Update Chips';
+      updateBtn.title = 'Paste fresh HT chip pool + Heavy Mothership JSON';
+      updateBtn.onclick = function() {
+        _ar_openChipsPasteModal(siteKey, function() {
+          var content = document.getElementById('tab-chips');
+          if (content) content.removeAttribute('data-rendered');
+          switchTab(document.querySelector('.tab-btn[data-tab="chips"]'));
+        });
+      };
+      actionRow.appendChild(updateBtn);
+      container.appendChild(actionRow);
+    }
+
     if (mechasWithChips.length === 0) {
       var empty = document.createElement('p');
       empty.className = 'empty-tab';
       empty.textContent = 'No Heavy Trooper chip data found in your reports. Add a battle that includes HT deployments.';
       container.appendChild(empty);
+      // Still render mothership pool section below — it doesn't depend on per-HT data
+      _ar_renderChipPoolSection(container, merged, /*showMothershipCard*/ true);
       return;
     }
 
@@ -11622,41 +11648,69 @@
     };
     function mechaColor(id) { return MECHA_COLOR[id] || 'var(--accent)'; }
 
-    // Mecha tab bar (if multiple HTs)
-    var activeMechaIdx = 0;
-    var tabBar = null;
-    if (mechasWithChips.length > 1) {
-      tabBar = document.createElement('div');
-      tabBar.className = 'chip-tab-bar';
-      mechasWithChips.forEach(function(m, i) {
-        var btn = document.createElement('button');
-        var mc = mechaColor(m.mechaId);
-        btn.className = 'chip-tab-btn' + (i === 0 ? ' active' : '');
-        btn.style.cssText = 'background:linear-gradient(135deg,' + mc + '12 0%,' + mc + '06 100%);border-color:' + mc + '30;';
-        var img = document.createElement('img');
-        img.src = ASSET_BASE + 'assets/mecha-icons/mecha_' + m.mechaId + '.png';
-        img.alt = ''; img.onerror = function() { this.style.display = 'none'; };
-        btn.appendChild(img);
-        var nameDiv = document.createElement('span');
-        nameDiv.className = 'chip-tab-name';
-        nameDiv.style.color = mc;
-        nameDiv.textContent = MECHA_NAMES[m.mechaId] || ('HT #' + m.mechaId);
-        btn.appendChild(nameDiv);
-        btn.addEventListener('click', function() {
-          activeMechaIdx = i;
-          tabBar.querySelectorAll('.chip-tab-btn').forEach(function(b) { b.classList.remove('active'); });
-          btn.classList.add('active');
-          renderMechaChips(mechasWithChips[i]);
-        });
-        tabBar.appendChild(btn);
-      });
-      container.appendChild(tabBar);
-    }
+    // Synthesize mothership tab entry — appears after the last HT (BA-6 or wherever).
+    // Selecting it renders the mothership card instead of the per-HT chip view.
+    var MOTHERSHIP_ENTRY = { mechaId: 1008, _isMothership: true };
+    var tabEntries = mechasWithChips.concat([MOTHERSHIP_ENTRY]);
 
-    // Content container for the selected mecha
+    // Mecha tab bar — always shown now (mothership = always at least one extra entry)
+    var activeMechaIdx = 0;
+    var tabBar = document.createElement('div');
+    tabBar.className = 'chip-tab-bar';
+    tabEntries.forEach(function(m, i) {
+      var btn = document.createElement('button');
+      var mc = mechaColor(m.mechaId);
+      btn.className = 'chip-tab-btn' + (i === 0 ? ' active' : '');
+      btn.style.cssText = 'background:linear-gradient(135deg,' + mc + '12 0%,' + mc + '06 100%);border-color:' + mc + '30;';
+      var img = document.createElement('img');
+      img.src = ASSET_BASE + 'assets/mecha-icons/mecha_' + m.mechaId + '.png';
+      img.alt = ''; img.onerror = function() { this.style.display = 'none'; };
+      btn.appendChild(img);
+      var nameDiv = document.createElement('span');
+      nameDiv.className = 'chip-tab-name';
+      nameDiv.style.color = mc;
+      nameDiv.textContent = MECHA_NAMES[m.mechaId] || ('HT #' + m.mechaId);
+      btn.appendChild(nameDiv);
+      btn.addEventListener('click', function() {
+        activeMechaIdx = i;
+        tabBar.querySelectorAll('.chip-tab-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        if (m._isMothership) {
+          renderMothershipView();
+        } else {
+          renderMechaChips(m);
+        }
+      });
+      tabBar.appendChild(btn);
+    });
+    container.appendChild(tabBar);
+
+    // Content container for the selected mecha / mothership
     var contentDiv = document.createElement('div');
     contentDiv.id = 'chip-mecha-content';
     container.appendChild(contentDiv);
+
+    // Mothership view: pieces owned + equipped status (no chip layout — HC-9999 doesn't take chips)
+    function renderMothershipView() {
+      while (contentDiv.firstChild) contentDiv.removeChild(contentDiv.firstChild);
+      _ar_renderMothershipCard(contentDiv, merged);
+      // Best-effort fill from /supplement/inv when localStorage inv is empty
+      var msSiteKey = (wizardState && wizardState.player && wizardState.player.siteKey) || null;
+      if (msSiteKey) {
+        var hasLocal = false;
+        try { hasLocal = !!localStorage.getItem('armory_inv_' + msSiteKey); } catch (e) {}
+        if (!hasLocal) {
+          _ar_fetchSupplement('inv', msSiteKey).then(function(invRaw) {
+            if (!invRaw) return;
+            _ar_updateMothershipPiecesFromInv(contentDiv, invRaw);
+          }).catch(function() {});
+        }
+        // Pull equipped count from chips supplement
+        _ar_loadChipsSupplement(msSiteKey).then(function(chipsRaw) {
+          if (chipsRaw && chipsRaw.mothership) _ar_updateMothershipFromSupplement(contentDiv, chipsRaw.mothership);
+        }).catch(function() {});
+      }
+    }
 
     function renderMechaChips(mecha) {
       while (contentDiv.firstChild) contentDiv.removeChild(contentDiv.firstChild);
@@ -11845,50 +11899,46 @@
     // Render first mecha
     renderMechaChips(mechasWithChips[0]);
 
-    // ── Heavy Mothership HC-9999 + Chip Pool section ─────────────────────────
-    // Load from chips supplement (player-uploaded). Renders below the per-mecha
-    // section. Same gating as inventory: requires 2864 roster + UID-unlocked
-    // for the *upload* button, but the rendered pool is visible to everyone.
-    _ar_renderChipPoolSection(container, merged);
+    // ── Chip Pool section (filters + grid) — always below, regardless of selected tab ──
+    // Mothership card lives in its own tab now; pool renders here.
+    _ar_renderChipPoolSection(container, merged, /*showMothershipCard*/ false);
   }
 
-  // Heavy Mothership HC-9999 + chip-pool renderer. Pulls the chips supplement
-  // and renders three things, below the per-HT cards:
-  //   1. Heavy Mothership HC-9999 piece counter (owned from inventory + equipped from supplement)
-  //   2. Chip Pool with filters (set, slot, rarity, mecha-binding) + sorting
-  //   3. Update Chips button (gated to verified S2864 owners viewing own report)
-  function _ar_renderChipPoolSection(container, merged) {
+  // Chip Pool section (and optional inline mothership card for the no-mechas-yet
+  // edge case). Update Chips button now lives at the top of renderChipsTab; this
+  // function only renders the read-only pool grid + heading.
+  function _ar_renderChipPoolSection(container, merged, showMothershipCard) {
     var siteKey = (wizardState && wizardState.player && wizardState.player.siteKey) || null;
     var unlocked = siteKey ? _ar_isUnlocked(siteKey) : false;
+    var canUpload = !wizardState._viewOnly && siteKey && _ar_rosterMap && _ar_rosterMap[siteKey] && unlocked;
 
     // Section wrapper
     var section = document.createElement('div');
     section.className = 'chip-pool-section';
     section.style.cssText = 'margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);';
 
-    // ── Heavy Mothership HC-9999 card ──
-    _ar_renderMothershipCard(section, merged);
-    // Best-effort: if no localStorage inv (viewing someone else's report or fresh
-    // session), pull from /supplement/inv to fill in piece counts. Updates the
-    // card in place when it arrives.
-    var msSiteKey = (wizardState && wizardState.player && wizardState.player.siteKey) || null;
-    if (msSiteKey) {
-      var hasLocal = false;
-      try { hasLocal = !!localStorage.getItem('armory_inv_' + msSiteKey); } catch (e) {}
-      if (!hasLocal) {
-        _ar_fetchSupplement('inv', msSiteKey).then(function(invRaw) {
-          if (!invRaw) return;
-          _ar_updateMothershipPiecesFromInv(section, invRaw);
-        }).catch(function() {});
+    // Inline mothership card only when caller asks (e.g. no per-HT chips at all)
+    if (showMothershipCard) {
+      _ar_renderMothershipCard(section, merged);
+      var msSiteKey = (wizardState && wizardState.player && wizardState.player.siteKey) || null;
+      if (msSiteKey) {
+        var hasLocal = false;
+        try { hasLocal = !!localStorage.getItem('armory_inv_' + msSiteKey); } catch (e) {}
+        if (!hasLocal) {
+          _ar_fetchSupplement('inv', msSiteKey).then(function(invRaw) {
+            if (!invRaw) return;
+            _ar_updateMothershipPiecesFromInv(section, invRaw);
+          }).catch(function() {});
+        }
       }
     }
 
     // ── Pool wrapper (loads supplement asynchronously) ──
     var poolWrap = document.createElement('div');
-    poolWrap.style.cssText = 'margin-top:1rem;';
+    poolWrap.style.cssText = 'margin-top:.5rem;';
     section.appendChild(poolWrap);
 
-    // Heading + Update button
+    // Heading row (Update button moved to top of tab — not duplicated here)
     var poolHdr = document.createElement('div');
     poolHdr.style.cssText = 'display:flex;align-items:center;gap:.5rem;margin-bottom:.6rem;flex-wrap:wrap;';
     var poolTitle = document.createElement('h3');
@@ -11903,21 +11953,6 @@
     poolMsg.id = 'chip-pool-msg';
     poolMsg.style.cssText = 'font-size:.7rem;color:var(--muted);margin-left:auto;';
     poolHdr.appendChild(poolMsg);
-    if (!wizardState._viewOnly && siteKey && _ar_rosterMap && _ar_rosterMap[siteKey] && unlocked) {
-      var updateBtn = document.createElement('button');
-      updateBtn.className = 'eb-bench-update-btn';
-      updateBtn.type = 'button';
-      updateBtn.textContent = 'Update Chips';
-      updateBtn.title = 'Paste fresh HT chip pool JSON';
-      updateBtn.onclick = function() {
-        _ar_openChipsPasteModal(siteKey, function() {
-          var content = document.getElementById('tab-chips');
-          if (content) content.removeAttribute('data-rendered');
-          switchTab(document.querySelector('.tab-btn[data-tab="chips"]'));
-        });
-      };
-      poolHdr.appendChild(updateBtn);
-    }
     poolWrap.appendChild(poolHdr);
 
     var poolBody = document.createElement('div');
@@ -11931,16 +11966,12 @@
         poolMsg.textContent = '';
         var empty = document.createElement('div');
         empty.style.cssText = 'padding:1rem;text-align:center;color:var(--muted);font-size:.85rem;border:1px dashed var(--border);border-radius:8px;';
-        if (!wizardState._viewOnly && siteKey && _ar_rosterMap && _ar_rosterMap[siteKey] && unlocked) {
-          empty.textContent = 'No chip pool uploaded yet. Use the Update Chips button.';
-        } else {
-          empty.textContent = 'Chip pool not provided by this player.';
-        }
+        empty.textContent = canUpload ? 'No chip pool uploaded yet. Use the Update Chips button at the top.' : 'Chip pool not provided by this player.';
         poolBody.appendChild(empty);
         return;
       }
-      // Update mothership card with equipped count from supplement
-      if (chipsRaw.mothership) _ar_updateMothershipFromSupplement(section, chipsRaw.mothership);
+      // Update mothership card if it's rendered inline (edge case)
+      if (showMothershipCard && chipsRaw.mothership) _ar_updateMothershipFromSupplement(section, chipsRaw.mothership);
       // Render filterable/sortable pool
       poolMsg.textContent = chipsRaw.chips.length + ' chips · updated ' + _ar_relativeAge(chipsRaw.ts);
       _ar_buildChipPoolGrid(poolBody, chipsRaw.chips);
