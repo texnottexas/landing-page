@@ -4391,10 +4391,114 @@
           verifyBtn.className = 'rh-prefs-btn';
           verifyBtn.style.cssText = 'background:var(--green,#3fb950);color:#0d1117;border:none;font-weight:600;';
           verifyBtn.textContent = 'Verify my UID';
+          // Inline form replaces the button on click — popping a separate
+          // modal hides behind the identity prefs modal stack and re-clicking
+          // just spawns more orphans. Mirrors the landing-page approach.
           verifyBtn.addEventListener('click', function() {
-            _ar_openUnlockModal(identity.siteKey, idName, function() {
-              openIdentityPrefs(player);
+            verifyRow.removeChild(verifyBtn);
+
+            var lbl = document.createElement('label');
+            lbl.textContent = 'In-game UID (12 or 13 digits from your in-game profile)';
+            lbl.style.cssText = 'font-size:.7rem;color:var(--muted);';
+            verifyRow.appendChild(lbl);
+
+            var input = document.createElement('input');
+            input.type = 'text';
+            input.inputMode = 'numeric';
+            input.placeholder = 'e.g. 7542499511087';
+            input.autocomplete = 'off';
+            input.spellcheck = false;
+            input.style.cssText = 'width:100%;padding:.4rem .55rem;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:monospace;font-size:.8rem;box-sizing:border-box;';
+            verifyRow.appendChild(input);
+
+            var err = document.createElement('div');
+            err.style.cssText = 'color:#f85149;font-size:.7rem;min-height:1em;';
+            verifyRow.appendChild(err);
+
+            var actions = document.createElement('div');
+            actions.style.cssText = 'display:flex;gap:.4rem;';
+            var cancel = document.createElement('button');
+            cancel.className = 'rh-prefs-btn';
+            cancel.textContent = 'Cancel';
+            cancel.addEventListener('click', function() { openIdentityPrefs(player); });
+            var submit = document.createElement('button');
+            submit.className = 'rh-prefs-btn';
+            submit.style.cssText = 'background:var(--green,#3fb950);color:#0d1117;border:none;font-weight:600;';
+            submit.textContent = 'Verify';
+            submit.disabled = true;
+            actions.appendChild(cancel);
+            actions.appendChild(submit);
+            verifyRow.appendChild(actions);
+
+            input.addEventListener('input', function() {
+              submit.disabled = !input.value.trim();
+              err.textContent = '';
             });
+            input.addEventListener('keydown', function(e) {
+              if (e.key === 'Enter' && !submit.disabled) submit.click();
+            });
+
+            submit.addEventListener('click', async function() {
+              submit.disabled = true;
+              err.textContent = '';
+              try {
+                var raw = input.value;
+                var attempts = [raw.trim(), raw.replace(/\D/g, '')];
+                var hashesTried = [];
+                var matched = false;
+                for (var i = 0; i < attempts.length; i++) {
+                  var c = attempts[i]; if (!c) continue;
+                  var h = await _ar_sha256Hex(c);
+                  hashesTried.push({ hash: h, first16: h.slice(0, 16) });
+                  if (h.slice(0, 16) === identity.siteKey) {
+                    matched = true;
+                    try { await _ar_handshake(h); } catch (e) {}
+                    break;
+                  }
+                }
+                // Roster cross-check fallback when the stored siteKey is stale.
+                if (!matched) {
+                  try {
+                    var roster = await fetch('player-data.json', { cache: 'no-cache' }).then(function(r) { return r.json(); });
+                    for (var j = 0; j < hashesTried.length && !matched; j++) {
+                      var first16 = hashesTried[j].first16;
+                      for (var k = 0; k < roster.length; k++) {
+                        if (roster[k].siteKey === first16) {
+                          var p = roster[k];
+                          var ident = JSON.parse(localStorage.getItem('playerIdentity') || '{}');
+                          ident.name = p.name; ident.alliance = p.alliance;
+                          ident.rank = p.rank; ident.profession = p.profession;
+                          ident.siteKey = p.siteKey;
+                          localStorage.setItem('playerIdentity', JSON.stringify(ident));
+                          try { await _ar_handshake(hashesTried[j].hash); } catch (e) {}
+                          _ar_setUnlocked(p.siteKey, true);
+                          matched = true;
+                          // Reload so other gates (Inventory, Bench, Decor Advisor) pick up the new siteKey.
+                          setTimeout(function() { location.reload(); }, 50);
+                          break;
+                        }
+                      }
+                    }
+                  } catch (e) {}
+                }
+                if (!matched) {
+                  var digits = raw.replace(/\D/g, '');
+                  var trimmed = raw.trim();
+                  if (!digits) err.textContent = 'UID should be all digits — copy it from your in-game profile.';
+                  else if (digits.length < 10 || digits.length > 14) err.textContent = 'That looks too ' + (digits.length < 10 ? 'short' : 'long') + ' (' + digits.length + ' digits). UIDs are 12 or 13 digits.';
+                  else if (trimmed !== digits) err.textContent = 'UID does not match this player. Try the digits only — no spaces or prefix.';
+                  else err.textContent = 'UID does not match this player. Make sure you picked the right name and copied the UID exactly from in-game profile.';
+                  submit.disabled = !input.value.trim();
+                  return;
+                }
+                _ar_setUnlocked(identity.siteKey, true);
+                openIdentityPrefs(player);
+              } catch (e) {
+                err.textContent = 'Hash failed: ' + e.message;
+                submit.disabled = !input.value.trim();
+              }
+            });
+            setTimeout(function() { input.focus(); }, 30);
           });
           verifyRow.appendChild(verifyBtn);
         }
