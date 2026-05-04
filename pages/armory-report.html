@@ -11797,26 +11797,89 @@
     contentDiv.id = 'chip-mecha-content';
     container.appendChild(contentDiv);
 
-    // Mothership view: pieces owned + equipped status (no chip layout — HC-9999 doesn't take chips)
+    // Mothership view: card + equipped HC-9999 chips (only available when the
+    // chips bookmarklet was run with Heavy Mothership detail open in-game,
+    // since battle reports never expose mothership equipment).
     function renderMothershipView() {
       while (contentDiv.firstChild) contentDiv.removeChild(contentDiv.firstChild);
       _ar_renderMothershipCard(contentDiv, merged);
-      // Best-effort fill from /supplement/inv when localStorage inv is empty
+
+      var msEquippedWrap = document.createElement('div');
+      msEquippedWrap.style.cssText = 'margin-top:1rem;';
+      var msEqHdr = document.createElement('div');
+      msEqHdr.style.cssText = 'display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap;';
+      var msEqTitle = document.createElement('h3');
+      msEqTitle.style.cssText = 'margin:0;font-size:.95rem;color:var(--text);';
+      msEqTitle.textContent = 'HC-9999 Equipped Chips';
+      msEqHdr.appendChild(msEqTitle);
+      var msEqSub = document.createElement('span');
+      msEqSub.style.cssText = 'font-size:.7rem;color:var(--muted);';
+      msEqSub.textContent = 'not exposed by battle reports — captured via chips bookmarklet only';
+      msEqHdr.appendChild(msEqSub);
+      msEquippedWrap.appendChild(msEqHdr);
+      var msEqBody = document.createElement('div');
+      msEquippedWrap.appendChild(msEqBody);
+      contentDiv.appendChild(msEquippedWrap);
+
       var msSiteKey = (wizardState && wizardState.player && wizardState.player.siteKey) || null;
-      if (msSiteKey) {
-        var hasLocal = false;
-        try { hasLocal = !!localStorage.getItem('armory_inv_' + msSiteKey); } catch (e) {}
-        if (!hasLocal) {
-          _ar_fetchSupplement('inv', msSiteKey).then(function(invRaw) {
-            if (!invRaw) return;
-            _ar_updateMothershipPiecesFromInv(contentDiv, invRaw);
-          }).catch(function() {});
-        }
-        // Pull equipped count from chips supplement
-        _ar_loadChipsSupplement(msSiteKey).then(function(chipsRaw) {
-          if (chipsRaw && chipsRaw.mothership) _ar_updateMothershipFromSupplement(contentDiv, chipsRaw.mothership);
+      if (!msSiteKey) return;
+      var hasLocal = false;
+      try { hasLocal = !!localStorage.getItem('armory_inv_' + msSiteKey); } catch (e) {}
+      if (!hasLocal) {
+        _ar_fetchSupplement('inv', msSiteKey).then(function(invRaw) {
+          if (!invRaw) return;
+          _ar_updateMothershipPiecesFromInv(contentDiv, invRaw);
         }).catch(function() {});
       }
+      _ar_loadChipsSupplement(msSiteKey).then(function(chipsRaw) {
+        var ms = chipsRaw && chipsRaw.mothership;
+        if (ms) _ar_updateMothershipFromSupplement(contentDiv, ms);
+        if (ms && Array.isArray(ms.chips) && ms.chips.length) {
+          var grid = document.createElement('div');
+          grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:.5rem;';
+          ms.chips.forEach(function(c) {
+            var lk = (typeof CL !== 'undefined') ? CL[c.c] : null;
+            var enriched = {
+              chipId: c.c,
+              setGroup: lk ? lk[0] : 0,
+              position: lk ? lk[1] : (c.slot || 0),
+              color: lk ? lk[2] : 0,
+              level: c.lv || 0,
+              refineTimes: c.rt || 0,
+              rndAttrs: c.r || '',
+              otherRndAttrs: c.o || '',
+              reservation: c.rs || 0,
+              mechaId: 1008
+            };
+            grid.appendChild(_ar_buildChipPoolCard(enriched));
+          });
+          msEqBody.appendChild(grid);
+        } else {
+          var miss = document.createElement('div');
+          miss.style.cssText = 'padding:.8rem 1rem;color:var(--muted);font-size:.78rem;border:1px dashed var(--border);border-radius:8px;line-height:1.45;';
+          if (canUpload) {
+            var line1 = document.createElement('div');
+            line1.textContent = 'Heavy Mothership equipped chips not captured yet.';
+            miss.appendChild(line1);
+            var line2 = document.createElement('div');
+            line2.style.marginTop = '.25rem';
+            line2.appendChild(document.createTextNode('Open '));
+            var strong = document.createElement('strong');
+            strong.textContent = 'Heavy Mothership HC-9999';
+            line2.appendChild(strong);
+            line2.appendChild(document.createTextNode(' detail in-game (the chip pool screen of HC-9999), then re-run the chips bookmarklet.'));
+            miss.appendChild(line2);
+          } else {
+            miss.textContent = 'Heavy Mothership equipped chips not provided by this player.';
+          }
+          msEqBody.appendChild(miss);
+        }
+      }).catch(function() {
+        var fail = document.createElement('div');
+        fail.style.cssText = 'padding:.8rem 1rem;color:var(--muted);font-size:.78rem;';
+        fail.textContent = 'Failed to load chips supplement.';
+        msEqBody.appendChild(fail);
+      });
     }
 
     function renderMechaChips(mecha) {
@@ -12135,12 +12198,17 @@
     var sub = document.createElement('div');
     sub.id = 'ms-stats';
     sub.style.cssText = 'font-size:.78rem;color:var(--muted);margin-top:.15rem;';
-    sub.textContent = 'Pieces owned: ' + totalOwned + (totalOwned === 0 ? ' (inventory snapshot needed)' : '');
+    if (totalOwned > 0) {
+      sub.textContent = 'Pieces owned: ' + totalOwned;
+    } else {
+      sub.textContent = 'Pieces owned: — (run Inventory bookmarklet on the Inventory tab to populate)';
+    }
     info.appendChild(sub);
     card.appendChild(info);
     var equippedTag = document.createElement('span');
     equippedTag.id = 'ms-equipped-tag';
     equippedTag.style.cssText = 'padding:.3rem .55rem;border-radius:6px;font-size:.75rem;font-weight:600;background:rgba(139,148,158,.2);color:#cdd9e5;';
+    equippedTag.title = 'Open Heavy Mothership detail in-game before running the chips bookmarklet so equipped state is captured.';
     equippedTag.textContent = 'Equipped: —';
     card.appendChild(equippedTag);
     parent.appendChild(card);
@@ -12159,8 +12227,10 @@
     }
     var sub = section.querySelector('#ms-stats');
     if (sub) {
-      var clean = sub.textContent.replace(/^Pieces owned: \d+( \(inventory snapshot needed\))?/, 'Pieces owned: ' + total);
-      sub.textContent = clean;
+      // Replace the entire "Pieces owned: …" prefix (which may include the
+      // inventory-not-uploaded hint or trailing level/power suffix).
+      var rest = sub.textContent.replace(/^Pieces owned:[^·]*/, '').trim();
+      sub.textContent = 'Pieces owned: ' + total + (rest ? ' ' + rest : '');
     }
   }
 
