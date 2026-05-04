@@ -2470,6 +2470,136 @@
     return 'shards';
   }
 
+  // Bucket priority ordering for the Item tab. Lower index renders first.
+  // Buckets 1-8 are user-selectable filter chips; 9-10 only render in
+  // the unfiltered "All Items" view. Aggregate-cell buckets ('gem',
+  // 'res_*') get a single synthetic cell + click-modal listing the
+  // contributing pack ids, instead of one cell per pack.
+  var _AR_BUCKET_ORDER = [
+    'skill_universal', // 1 — Exclusive Skill Shards / Universal Decor Shard / Remould (+ chests)
+    'titan',           // 2 — Titan Gear (existing classifier)
+    'ht_chip',         // 3 — Raw HT chips + chip chests (HT loadout neighbor of Titan Gear)
+    'enigma',          // 4 — Enigma + Beast + Repeater
+    'gem',             // 5 — Gem packs (aggregate)
+    'formation',       // 6 — Shark / Scorpion / Eagle holograms / resonators / shards
+    'chest',           // 7 — Choice / Random Chests
+    'speedup',         // 8 — Speed-ups (march/repair/shield/training/tech)
+    'combat_buff',     // 9 — Combat consumables (oil/energy/coating/traps/raw % buffs)
+    'resource',        // 10 — Odinium / Food / Oil raw packs (aggregate per resource)
+    'other'            // 11 — Everything else
+  ];
+  var _AR_BUCKET_INDEX = (function() { var m = {}; _AR_BUCKET_ORDER.forEach(function(k,i){m[k]=i;}); return m; })();
+
+  function _ar_isSpeedup(cfg) {
+    var t = cfg.t;
+    if (t === 28 || t === 12 || t === 11 || t === 5 || t === 79 || t === 65 || t === 111 || t === 89 || t === 110) return true;
+    return false;
+  }
+
+  function _ar_isHTChip(cfg) {
+    if (cfg.t === 128) return true;
+    var n = String(cfg.n || '').toLowerCase();
+    var d = String(cfg.d || '').toLowerCase();
+    if (/heavy trooper/.test(d) && /\bchip\b/.test(n)) return true;
+    if (/(amazing|epic|legendary|advanced|premium|core|sub).*chip\b/.test(n) && /heavy trooper|mecha/.test(d)) return true;
+    if (/\bmecha chip\b/.test(n)) return true;
+    return false;
+  }
+
+  function _ar_isFormation(cfg) {
+    var n = String(cfg.n || '').toLowerCase();
+    if (/\b(shark|scorpion|eagle)\b/.test(n) && /(hologram|resonator|shard|teeth|fang|specialization)/.test(n)) return true;
+    return false;
+  }
+
+  function _ar_isEnigma(cfg) {
+    var n = String(cfg.n || '').toLowerCase();
+    var d = String(cfg.d || '').toLowerCase();
+    if (/\benigma\b/.test(n) || /\benigma\b/.test(d)) return true;
+    if (/\bbeast\b/.test(n) && /(crystal|spawn|shard|chest|certificate|barrier|relic|repeater|bait|bounty)/.test(n + ' ' + d)) return true;
+    if (/\brepeater\b/.test(n)) return true;
+    return false;
+  }
+
+  function _ar_isSkillOrUniversal(cfg) {
+    var n = String(cfg.n || '');
+    var nl = n.toLowerCase();
+    var dl = String(cfg.d || '').toLowerCase();
+    // Exclusive skill shards (t46 with "skill shard" in name)
+    if (cfg.t === 46 && /skill shard/i.test(n)) return true;
+    // Universal Decor Shard (raw + lucky chests/boxes)
+    if (/universal decor shard/.test(nl)) return true;
+    if (/universal decor shard/.test(dl) && /(box|chest|bag|lucky)/.test(nl)) return true;
+    // Remould Blueprint + chests
+    if (/remould blueprint|remold blueprint/.test(nl)) return true;
+    if (/remould blueprint/.test(dl) && /(box|chest|bag)/.test(nl)) return true;
+    // Skill shard chests
+    if (/skill shard/.test(dl) && /(box|chest|bag|lucky)/.test(nl)) return true;
+    return false;
+  }
+
+  function _ar_isCombatBuff(cfg) {
+    var t = cfg.t;
+    if (t === 72 || t === 73 || t === 75 || t === 50) return true;
+    return false;
+  }
+
+  function _ar_isChoiceChest(cfg) {
+    var t = cfg.t;
+    if (t === 100 || t === 67 || t === 56 || t === 4035 || t === 90) return true;
+    return false;
+  }
+
+  // Raw-resource grant types (aggregate buckets). Returns 'gem'/'food'/'oil'/'odinium' or null.
+  function _ar_resourceKind(cfg) {
+    if (cfg.g === 1000000) return 'gem';
+    if (cfg.t === 27 && cfg.g === 910000) return 'food';
+    if (cfg.t === 25 && cfg.g === 920000) return 'oil';
+    if (cfg.t === 106 && cfg.g === 940001) return 'odinium';
+    return null;
+  }
+
+  // Pack-quantity parser: "Food 500K", "1M Odinium", "5,000 Gems", etc.
+  // Reads cfg.ix first (pre-baked numeric value where present),
+  // falls back to first integer-with-suffix in the localized name.
+  function _ar_packQuantity(cfg) {
+    if (!cfg) return 0;
+    if (cfg.ix != null && cfg.ix !== '') {
+      var v = parseInt(String(cfg.ix).replace(/,/g, ''), 10);
+      if (!isNaN(v) && v > 0) return v;
+    }
+    var n = String(cfg.n || '');
+    if (/itemName\d+/i.test(n)) return 0;
+    var m = n.match(/(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*([KMB])?/i);
+    if (!m) return 0;
+    var num = parseFloat(m[1].replace(/,/g, ''));
+    var suf = (m[2] || '').toUpperCase();
+    if (suf === 'K') num *= 1000;
+    else if (suf === 'M') num *= 1000000;
+    else if (suf === 'B') num *= 1000000000;
+    return Math.round(num) || 0;
+  }
+
+  // Decide which priority bucket an Item-tab entry falls into.
+  // Order matters — first match wins. Keep more-specific checks first
+  // (Titan Gear before Combat Buff since some Titan Gear consumables
+  // also live in t72/t73 family on rare items).
+  function _ar_classifyItemBucket(cfg) {
+    if (!cfg || cfg.t == null) return 'other';
+    if (_ar_isSkillOrUniversal(cfg)) return 'skill_universal';
+    if (_ar_classifyTitanGear(cfg)) return 'titan';
+    if (_ar_isHTChip(cfg)) return 'ht_chip';
+    if (_ar_isEnigma(cfg)) return 'enigma';
+    if (_ar_resourceKind(cfg) === 'gem') return 'gem';
+    if (_ar_isFormation(cfg)) return 'formation';
+    if (_ar_isChoiceChest(cfg)) return 'chest';
+    if (_ar_isSpeedup(cfg)) return 'speedup';
+    if (_ar_isCombatBuff(cfg)) return 'combat_buff';
+    var rk = _ar_resourceKind(cfg);
+    if (rk) return 'resource';
+    return 'other';
+  }
+
   // Classify an Item-tab entry against Titan Gear sub-categories. Returns
   // null when the item is unrelated. Strict type-based mapping for the core
   // categories; narrow name-pattern fallback for chests that yield Titan Gear
@@ -2494,6 +2624,31 @@
     return null;
   }
 
+  // Scan a chest/box description for embedded gem rewards. Returns the
+  // max gems obtainable from a single open of this box. For "ONE of the
+  // following" boxes the player picks one branch — we credit the best.
+  // Skips items whose group is 1000000 since those are raw gem packs
+  // already counted via _ar_gemValueFromCfg.
+  function _ar_boxedGemsPerOpen(cfg) {
+    if (!cfg || cfg.g === 1000000) return 0;
+    var d = String(cfg.d || '');
+    if (!/gem/i.test(d)) return 0;
+    var max = 0;
+    var patterns = [
+      /(\d{1,3}(?:,\d{3})+|\d+)\s*Gems?\b/gi,
+      /\bGems?\s*(?:x|×)\s*(\d{1,3}(?:,\d{3})+|\d+)/gi
+    ];
+    for (var i = 0; i < patterns.length; i++) {
+      var re = patterns[i];
+      var m;
+      while ((m = re.exec(d)) !== null) {
+        var v = parseInt(m[1].replace(/,/g, ''), 10);
+        if (!isNaN(v) && v > max) max = v;
+      }
+    }
+    return max;
+  }
+
   // Extract the gem-per-pack value from an item-table entry (group 1000000).
   // Prefer the `ix` field where present; otherwise parse the first integer
   // out of the localized name, stripping commas. Returns 0 when the item
@@ -2514,7 +2669,20 @@
 
   function _ar_rehydrateInv(raw, lk) {
     var ASSET = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/';
-    var out = { meta: raw.meta || {}, resources: raw.resources || {}, tabs: { item: [], unit: [], decor: [], hero: [], cpnt: [] }, gemTotal: 0 };
+    var out = {
+      meta: raw.meta || {}, resources: raw.resources || {},
+      tabs: { item: [], unit: [], decor: [], hero: [], cpnt: [] },
+      gemTotal: 0,
+      // Gems hidden inside non-pack boxes (parsed from desc). Counts the
+      // best-case branch since "ONE of the following" boxes let the player
+      // pick. Tracked separately so the top bar can show direct vs. boxed.
+      boxedGemTotal: 0,
+      boxedGemDetails: [],
+      // Aggregate-bucket detail: every contributing pack rolled into the
+      // synthetic gem/odinium/food/oil cells. Drives the click-modal.
+      aggDetails: { gem: [], odinium: [], food: [], oil: [] },
+      aggTotals:  { gem: 0,  odinium: 0,  food: 0,  oil: 0 }
+    };
     var tabs = raw.tabs || {};
     ['item', 'cpnt'].forEach(function(tabKey) {
       (tabs[tabKey] || []).forEach(function(it) {
@@ -2527,16 +2695,41 @@
         // for ~83% of them and the rest fall back to a name-parse.
         if (tabKey === 'item' && cfg.g === 1000000 && amount > 0) {
           var gemsPer = _ar_gemValueFromCfg(cfg);
-          if (gemsPer > 0) out.gemTotal += gemsPer * amount;
+          if (gemsPer > 0) {
+            out.gemTotal += gemsPer * amount;
+            out.aggTotals.gem += gemsPer * amount;
+            out.aggDetails.gem.push({ id: it.id, name: cfg.n || ('#'+it.id), amount: amount, perPack: gemsPer, total: gemsPer * amount });
+          }
+        }
+        // Raw resource aggregates (Odinium/Food/Oil)
+        if (tabKey === 'item' && amount > 0) {
+          var rk = _ar_resourceKind(cfg);
+          if (rk && rk !== 'gem') {
+            var per = _ar_packQuantity(cfg);
+            if (per > 0) {
+              out.aggTotals[rk] += per * amount;
+              out.aggDetails[rk].push({ id: it.id, name: cfg.n || ('#'+it.id), amount: amount, perPack: per, total: per * amount });
+            }
+          }
+        }
+        // Boxed gems (gems hidden inside non-pack boxes — "ONE of the following: 100 Gems x1, ...")
+        if (tabKey === 'item' && amount > 0) {
+          var boxed = _ar_boxedGemsPerOpen(cfg);
+          if (boxed > 0) {
+            out.boxedGemTotal += boxed * amount;
+            out.boxedGemDetails.push({ id: it.id, name: cfg.n || ('#'+it.id), amount: amount, perOpen: boxed, total: boxed * amount });
+          }
         }
         var titanCat = (tabKey === 'item') ? _ar_classifyTitanGear(cfg) : null;
+        var bucket = tabKey === 'item' ? _ar_classifyItemBucket(cfg) : null;
         out.tabs[tabKey].push({
           id: it.id, amount: amount, level: it.l || null, group: it.g || cfg.g || it.id,
           type: cfg.t, quality: cfg.q || 1, name: cfg.n || ('#' + it.id), desc: cfg.d || '',
           icon: icoInfo ? icoInfo.file : null,
           iconDir: ASSET + (icoInfo ? icoInfo.dirSuffix : 'inventory-icons'),
           subtab: tabKey === 'item' ? (titanCat ? 'titan' : 'all') : undefined,
-          titanCat: titanCat
+          titanCat: titanCat,
+          bucket: bucket
         });
       });
     });
@@ -10144,9 +10337,9 @@
       // Gem total summary — rendered above the grid so players see their
       // cross-mailbox gem stockpile (chests in inventory, not yet claimed)
       // without having to walk every category.
-      if (data.gemTotal > 0) {
+      if (data.gemTotal > 0 || data.boxedGemTotal > 0) {
         var gemBar = document.createElement('div');
-        gemBar.style.cssText = 'display:flex;align-items:center;gap:.5rem;padding:10px 16px;margin:0 16px 6px;background:linear-gradient(135deg, rgba(56,139,253,0.12), rgba(121,192,255,0.08));border:1px solid rgba(56,139,253,0.35);border-radius:8px;';
+        gemBar.style.cssText = 'display:flex;align-items:center;gap:.6rem;padding:10px 16px;margin:0 16px 6px;background:linear-gradient(135deg, rgba(56,139,253,0.12), rgba(121,192,255,0.08));border:1px solid rgba(56,139,253,0.35);border-radius:8px;flex-wrap:wrap;';
         var gemSvg = document.createElementNS(SVG_NS, 'svg');
         gemSvg.setAttribute('width', '18');
         gemSvg.setAttribute('height', '18');
@@ -10157,28 +10350,39 @@
         gemSvg.setAttribute('stroke-linecap', 'round');
         gemSvg.setAttribute('stroke-linejoin', 'round');
         gemSvg.style.color = 'var(--accent)';
-        // Diamond/gem outline with internal facet lines
         [
-          'M6 3h12l4 6-10 13L2 9z',
-          'M2 9h20',
-          'M6 3l4 6',
-          'M18 3l-4 6',
-          'M10 9l2 13',
-          'M14 9l-2 13'
+          'M6 3h12l4 6-10 13L2 9z','M2 9h20','M6 3l4 6','M18 3l-4 6','M10 9l2 13','M14 9l-2 13'
         ].forEach(function(d) {
           var p = document.createElementNS(SVG_NS, 'path');
           p.setAttribute('d', d);
           gemSvg.appendChild(p);
         });
-        var gemLbl = document.createElement('span');
-        gemLbl.style.cssText = 'color:var(--muted);font-size:.78rem;';
-        gemLbl.textContent = 'Unclaimed gems in inventory:';
-        var gemVal = document.createElement('span');
-        gemVal.style.cssText = 'color:var(--accent);font-weight:700;font-size:.95rem;font-family:monospace;';
-        gemVal.textContent = data.gemTotal.toLocaleString();
         gemBar.appendChild(gemSvg);
-        gemBar.appendChild(gemLbl);
-        gemBar.appendChild(gemVal);
+        function gemSeg(label, val, dim) {
+          var w = document.createElement('span');
+          w.style.cssText = 'display:inline-flex;align-items:baseline;gap:.3rem;';
+          var l = document.createElement('span');
+          l.style.cssText = 'color:var(--muted);font-size:.78rem;';
+          l.textContent = label;
+          var v = document.createElement('span');
+          v.style.cssText = 'color:' + (dim ? 'var(--text)' : 'var(--accent)') + ';font-weight:700;font-size:.95rem;font-family:monospace;';
+          v.textContent = (val || 0).toLocaleString();
+          w.appendChild(l); w.appendChild(v);
+          return w;
+        }
+        gemBar.appendChild(gemSeg('Unclaimed gems:', data.gemTotal));
+        if (data.boxedGemTotal > 0) {
+          var sep1 = document.createElement('span');
+          sep1.style.cssText = 'color:var(--border);';
+          sep1.textContent = '·';
+          gemBar.appendChild(sep1);
+          gemBar.appendChild(gemSeg('In boxes (max):', data.boxedGemTotal, true));
+          var sep2 = document.createElement('span');
+          sep2.style.cssText = 'color:var(--border);';
+          sep2.textContent = '·';
+          gemBar.appendChild(sep2);
+          gemBar.appendChild(gemSeg('Total potential:', data.gemTotal + data.boxedGemTotal));
+        }
         container.appendChild(gemBar);
       }
       _ar_renderInvGrid(container, data);
@@ -10187,8 +10391,21 @@
 
   function _ar_renderInvGrid(container, data) {
     var TAB_ORDER = [['item','Item'],['unit','Unit'],['decor','Decor'],['hero','Hero'],['cpnt','CPNT']];
+    // Item subtabs: 'all' = priority-bucket flat grid (default).
+    // The remaining keys map 1:1 to bucket classifier output for filter mode.
     var SUBTABS = {
-      item: [['all','All Items'], ['titan','Titan Gear']],
+      item: [
+        ['all','All Items'],
+        ['skill_universal','Skills'],
+        ['titan','Titan Gear'],
+        ['enigma','Enigma'],
+        ['gem','Gems'],
+        ['formation','Formation'],
+        ['chest','Chests'],
+        ['speedup','Speed-ups'],
+        ['combat_buff','Combat Buffs'],
+        ['ht_chip','HT Items']
+      ],
       hero: [['shards','Hero Shards'], ['skills','Hero Skills']],
       decor: [['other','Decor'], ['set','Decor (Set)']]
     };
@@ -10272,7 +10489,16 @@
         sub.forEach(function(s) {
           var b = document.createElement('button');
           b.className = 'inv-subtab' + (s[0] === state.subtab ? ' active' : '');
-          var count = (data.tabs[state.tab] || []).filter(function(x) { return x.subtab === s[0]; }).length;
+          var count;
+          if (state.tab === 'item') {
+            // Item subtabs filter by bucket; "all" shows everything
+            if (s[0] === 'all') count = (data.tabs.item || []).length;
+            else count = (data.tabs.item || []).filter(function(x) { return x.bucket === s[0]; }).length;
+          } else {
+            count = (data.tabs[state.tab] || []).filter(function(x) { return x.subtab === s[0]; }).length;
+          }
+          // Hide empty filter buttons (except "all" which is the default landing tab)
+          if (state.tab === 'item' && s[0] !== 'all' && count === 0) return;
           b.textContent = s[1] + ' (' + count + ')';
           b.onclick = function() { state.subtab = s[0]; buildTabs(); rerender(); };
           subEl.appendChild(b);
@@ -10281,10 +10507,10 @@
       // Titan Gear sub-category chip row — only when Item → Titan Gear is active
       titanCatEl.replaceChildren();
       if (state.tab === 'item' && state.subtab === 'titan') {
-        var titanItems = (data.tabs.item || []).filter(function(x) { return x.subtab === 'titan'; });
+        var titanItems = (data.tabs.item || []).filter(function(x) { return x.bucket === 'titan'; });
         TITAN_CATS.forEach(function(cat) {
           var n = cat[0] === 'all' ? titanItems.length : titanItems.filter(function(x) { return x.titanCat === cat[0]; }).length;
-          if (cat[0] !== 'all' && n === 0) return; // hide empty sub-categories
+          if (cat[0] !== 'all' && n === 0) return;
           var b = document.createElement('button');
           b.className = 'inv-subtab' + (cat[0] === state.titanCat ? ' active' : '');
           b.style.cssText = 'font-size:11px;padding:4px 10px;';
@@ -10297,9 +10523,34 @@
 
     function rerender() {
       var list = (data.tabs[state.tab] || []).slice();
-      if (SUBTABS[state.tab]) list = list.filter(function(x) { return x.subtab === state.subtab; });
-      if (state.tab === 'item' && state.subtab === 'titan' && state.titanCat && state.titanCat !== 'all') {
-        list = list.filter(function(x) { return x.titanCat === state.titanCat; });
+      var isItem = state.tab === 'item';
+      // Item-tab filtering: bucket-based when subtab !== 'all'.
+      // Aggregate-bucket items (raw gem/odinium/food/oil packs) hide from
+      // grid in 'all' mode + 'gem' filter — they get rolled into synthetic
+      // aggregate cells instead. In 'gem' filter view we still show only
+      // the aggregate cell (no raw packs).
+      var aggKindFor = function(it) {
+        if (it.bucket === 'gem') return 'gem';
+        if (it.bucket !== 'resource') return null;
+        var rk = (function() {
+          if (it.group === 940001) return 'odinium';
+          if (it.group === 910000) return 'food';
+          if (it.group === 920000) return 'oil';
+          return null;
+        })();
+        return rk;
+      };
+      if (isItem) {
+        if (state.subtab && state.subtab !== 'all') {
+          list = list.filter(function(x) { return x.bucket === state.subtab; });
+        }
+        // Strip raw packs from grid — replaced by aggregate cells
+        list = list.filter(function(x) { return !aggKindFor(x); });
+        if (state.subtab === 'titan' && state.titanCat && state.titanCat !== 'all') {
+          list = list.filter(function(x) { return x.titanCat === state.titanCat; });
+        }
+      } else if (SUBTABS[state.tab]) {
+        list = list.filter(function(x) { return x.subtab === state.subtab; });
       }
       if (state.quality) list = list.filter(function(x) { return String(x.quality) === state.quality; });
       if (state.search) {
@@ -10309,13 +10560,23 @@
         });
       }
       var dirMul = state.sortDir === 'asc' ? -1 : 1;
+      // Priority-bucket sort applies only on the All Items view at default
+      // sort. Any user-chosen sort/search overrides — they get a flat sort.
+      var useBucketSort = isItem && state.subtab === 'all' && state.sort === 'quality_lv' && !state.search;
       list.sort(function(a, b) {
         var cmp;
+        if (useBucketSort) {
+          var ba = (_AR_BUCKET_INDEX[a.bucket] != null) ? _AR_BUCKET_INDEX[a.bucket] : 99;
+          var bb = (_AR_BUCKET_INDEX[b.bucket] != null) ? _AR_BUCKET_INDEX[b.bucket] : 99;
+          cmp = ba - bb;
+          if (cmp === 0) cmp = (b.quality || 0) - (a.quality || 0) || (b.level || 0) - (a.level || 0) || (b.amount || 0) - (a.amount || 0);
+          // Bucket order is fixed (priority) — ignore dirMul for the bucket axis
+          return cmp;
+        }
         if (state.sort === 'amount') {
           cmp = (b.amount || 0) - (a.amount || 0);
         } else if (state.sort === 'id') {
           cmp = (a.id || 0) - (b.id || 0);
-          // ID natural is ascending — flip baseline so dirMul handles consistently
           cmp = -cmp;
         } else if (state.sort === 'type') {
           cmp = (a.type || 0) - (b.type || 0) || (b.quality || 0) - (a.quality || 0);
@@ -10329,6 +10590,59 @@
         return cmp * dirMul;
       });
       grid.replaceChildren();
+      // Aggregate cell injection (Gems + raw resource rollups). Skip when
+      // a search is active (nothing to match) or quality filter excludes
+      // the aggregate quality (gem=q5, food/oil=q4, odinium=q5).
+      if (isItem && (state.subtab === 'all' || state.subtab === 'gem') && !state.search) {
+        var aggCells = [];
+        var qFilter = state.quality;
+        function passQuality(q) { return !qFilter || String(q) === qFilter; }
+        if ((data.aggTotals.gem > 0 || data.boxedGemTotal > 0) && passQuality(5)) {
+          aggCells.push({ kind: 'gem', bucket: 'gem', q: 5 });
+        }
+        if (state.subtab === 'all') {
+          if (data.aggTotals.odinium > 0 && passQuality(5)) aggCells.push({ kind: 'odinium', bucket: 'resource', q: 5 });
+          if (data.aggTotals.food > 0    && passQuality(4)) aggCells.push({ kind: 'food',    bucket: 'resource', q: 4 });
+          if (data.aggTotals.oil > 0     && passQuality(4)) aggCells.push({ kind: 'oil',     bucket: 'resource', q: 4 });
+        }
+        if (state.subtab === 'gem') {
+          // Filter view: aggregate cell first, then anything else (typically empty)
+          grid.style.display = '';
+          aggCells.forEach(function(a) { grid.appendChild(_ar_buildAggregateCell(a.kind, data)); });
+          list.forEach(function(it) { grid.appendChild(_ar_buildInvCell(it)); });
+          stats.textContent = (aggCells.length + list.length) + ' items';
+          return;
+        }
+        if (state.subtab === 'all' && useBucketSort) {
+          // Inject aggregates at their bucket position
+          var combined = list.map(function(it) { return { item: it }; }).concat(aggCells.map(function(a) { return { agg: a }; }));
+          combined.sort(function(a, b) {
+            var ba = a.item ? (_AR_BUCKET_INDEX[a.item.bucket] != null ? _AR_BUCKET_INDEX[a.item.bucket] : 99)
+                            : (_AR_BUCKET_INDEX[a.agg.bucket]  != null ? _AR_BUCKET_INDEX[a.agg.bucket]  : 99);
+            var bb = b.item ? (_AR_BUCKET_INDEX[b.item.bucket] != null ? _AR_BUCKET_INDEX[b.item.bucket] : 99)
+                            : (_AR_BUCKET_INDEX[b.agg.bucket]  != null ? _AR_BUCKET_INDEX[b.agg.bucket]  : 99);
+            if (ba !== bb) return ba - bb;
+            if (a.agg && b.item) return -1;
+            if (a.item && b.agg) return 1;
+            return 0;
+          });
+          grid.style.display = '';
+          combined.forEach(function(entry) {
+            if (entry.agg) grid.appendChild(_ar_buildAggregateCell(entry.agg.kind, data));
+            else grid.appendChild(_ar_buildInvCell(entry.item));
+          });
+          stats.textContent = combined.length + ' items';
+          return;
+        }
+        if (state.subtab === 'all' && aggCells.length) {
+          // Non-default sort on All Items: aggregates at top, then sorted list
+          grid.style.display = '';
+          aggCells.forEach(function(a) { grid.appendChild(_ar_buildAggregateCell(a.kind, data)); });
+          list.forEach(function(it) { grid.appendChild(_ar_buildInvCell(it)); });
+          stats.textContent = (aggCells.length + list.length) + ' items';
+          return;
+        }
+      }
       // Decor (Set) subtab: group items by suitId and render with collapsible section headers
       // matching the Decoration tab grouping style.
       if (state.tab === 'decor' && state.subtab === 'set') {
@@ -10557,6 +10871,161 @@
         keepalive: true
       }).catch(function() {});
     } catch (e) {}
+  }
+
+  // Synthetic aggregate cell (Gems / Odinium / Food / Oil). Click → modal
+  // showing every contributing pack with per-pack value × amount × total.
+  function _ar_buildAggregateCell(kind, data) {
+    var META = {
+      gem:     { name: 'Gems',     iconUrl: 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/inventory-icons/image__item__item_1000003.png', q: 5 },
+      odinium: { name: 'Odinium',  iconUrl: 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/inventory-icons/image__item__item_940003.png',  q: 5 },
+      food:    { name: 'Food',     iconUrl: 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/inventory-icons/image__item__item_910001.png',  q: 4 },
+      oil:     { name: 'Oil',      iconUrl: 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/inventory-icons/image__item__item_920001.png',  q: 4 }
+    };
+    var m = META[kind];
+    var c = document.createElement('div');
+    c.className = 'inv-cell q' + m.q;
+    c.style.cursor = 'pointer';
+    c.title = m.name + ' aggregate — click for breakdown';
+    c.dataset.aggregate = kind;
+    c.onclick = function() { _ar_openAggregateModal(kind, data); };
+    var wrap = document.createElement('div');
+    wrap.className = 'icon-wrap';
+    var img = document.createElement('img');
+    img.src = m.iconUrl;
+    img.loading = 'lazy';
+    img.alt = m.name;
+    img.onerror = function() {
+      var ph = document.createElement('div');
+      ph.className = 'placeholder';
+      ph.textContent = m.name.charAt(0);
+      wrap.replaceChildren(ph);
+    };
+    wrap.appendChild(img);
+    c.appendChild(wrap);
+    var statsRow = document.createElement('div');
+    statsRow.className = 'stats-row';
+    var lv = document.createElement('span');
+    lv.className = 'lv empty';
+    lv.textContent = 'Total';
+    statsRow.appendChild(lv);
+    var amt = document.createElement('span');
+    amt.className = 'amt';
+    var total = kind === 'gem'
+      ? (data.aggTotals.gem + (data.boxedGemTotal || 0))
+      : (data.aggTotals[kind] || 0);
+    amt.textContent = '×' + total.toLocaleString();
+    statsRow.appendChild(amt);
+    c.appendChild(statsRow);
+    var nm = document.createElement('div');
+    nm.className = 'name';
+    nm.textContent = m.name;
+    c.appendChild(nm);
+    return c;
+  }
+
+  function _ar_openAggregateModal(kind, data) {
+    var bg = document.createElement('div');
+    bg.className = 'modal-bg show';
+    bg.style.zIndex = '120';
+    var modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.maxWidth = '640px';
+    bg.appendChild(modal);
+
+    var close = document.createElement('button');
+    close.style.cssText = 'float:right;background:none;border:none;color:var(--muted);cursor:pointer;font-size:22px;line-height:1;padding:0 4px;';
+    close.textContent = '×';
+    close.onclick = function() { document.body.removeChild(bg); };
+    modal.appendChild(close);
+
+    var titleMap = { gem: 'Gems', odinium: 'Odinium', food: 'Food', oil: 'Oil' };
+    var h = document.createElement('h2');
+    h.style.cssText = 'margin:0 0 6px;font-size:18px;';
+    h.textContent = titleMap[kind] + ' — breakdown';
+    modal.appendChild(h);
+
+    var sub = document.createElement('div');
+    sub.style.cssText = 'color:var(--muted);font-size:12px;margin-bottom:14px;';
+    if (kind === 'gem') {
+      var direct = data.aggTotals.gem || 0;
+      var boxed = data.boxedGemTotal || 0;
+      sub.textContent = 'Direct ' + direct.toLocaleString() + ' · In boxes (max) ' + boxed.toLocaleString() + ' · Total potential ' + (direct + boxed).toLocaleString();
+    } else {
+      sub.textContent = 'Total ' + (data.aggTotals[kind] || 0).toLocaleString() + ' across ' + (data.aggDetails[kind] || []).length + ' pack types';
+    }
+    modal.appendChild(sub);
+
+    var tbl = document.createElement('table');
+    tbl.style.cssText = 'width:100%;border-collapse:collapse;font-size:13px;';
+    var thead = document.createElement('thead');
+    var thr = document.createElement('tr');
+    ['Item','ID','Per-pack','Owned','Total'].forEach(function(t) {
+      var th = document.createElement('th');
+      th.textContent = t;
+      th.style.cssText = 'text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;';
+      if (t !== 'Item' && t !== 'ID') th.style.textAlign = 'right';
+      thr.appendChild(th);
+    });
+    thead.appendChild(thr);
+    tbl.appendChild(thead);
+
+    var tb = document.createElement('tbody');
+    var rows = (data.aggDetails[kind] || []).slice().sort(function(a,b){ return (b.total||0) - (a.total||0); });
+    rows.forEach(function(r) {
+      var tr = document.createElement('tr');
+      tr.style.cssText = 'border-bottom:1px solid rgba(48,54,61,0.4);';
+      var c1 = document.createElement('td'); c1.textContent = r.name; c1.style.cssText = 'padding:6px 10px;';
+      var c2 = document.createElement('td'); c2.textContent = r.id;   c2.style.cssText = 'padding:6px 10px;color:var(--muted);font-family:monospace;font-size:11px;';
+      var c3 = document.createElement('td'); c3.textContent = (r.perPack || 0).toLocaleString(); c3.style.cssText = 'padding:6px 10px;text-align:right;font-family:monospace;';
+      var c4 = document.createElement('td'); c4.textContent = (r.amount  || 0).toLocaleString(); c4.style.cssText = 'padding:6px 10px;text-align:right;font-family:monospace;';
+      var c5 = document.createElement('td'); c5.textContent = (r.total   || 0).toLocaleString(); c5.style.cssText = 'padding:6px 10px;text-align:right;font-family:monospace;color:var(--accent);font-weight:600;';
+      tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(c5);
+      tb.appendChild(tr);
+    });
+    tbl.appendChild(tb);
+    modal.appendChild(tbl);
+
+    if (kind === 'gem' && (data.boxedGemDetails || []).length) {
+      var hb = document.createElement('h3');
+      hb.style.cssText = 'margin:18px 0 6px;font-size:14px;';
+      hb.textContent = 'Boxed gems (max-case per open)';
+      modal.appendChild(hb);
+      var sb = document.createElement('div');
+      sb.style.cssText = 'color:var(--muted);font-size:11px;margin-bottom:8px;';
+      sb.textContent = '"ONE of the following" boxes — credits the highest-gem branch × box count.';
+      modal.appendChild(sb);
+      var tbl2 = tbl.cloneNode(false);
+      tbl2.style.cssText = tbl.style.cssText;
+      var thead2 = document.createElement('thead');
+      var thr2 = document.createElement('tr');
+      ['Box','ID','Per open','Owned','Max gems'].forEach(function(t) {
+        var th = document.createElement('th');
+        th.textContent = t;
+        th.style.cssText = 'text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;';
+        if (t !== 'Box' && t !== 'ID') th.style.textAlign = 'right';
+        thr2.appendChild(th);
+      });
+      thead2.appendChild(thr2);
+      tbl2.appendChild(thead2);
+      var tb2 = document.createElement('tbody');
+      (data.boxedGemDetails || []).slice().sort(function(a,b){ return (b.total||0) - (a.total||0); }).forEach(function(r) {
+        var tr = document.createElement('tr');
+        tr.style.cssText = 'border-bottom:1px solid rgba(48,54,61,0.4);';
+        var c1 = document.createElement('td'); c1.textContent = r.name; c1.style.cssText = 'padding:6px 10px;';
+        var c2 = document.createElement('td'); c2.textContent = r.id;   c2.style.cssText = 'padding:6px 10px;color:var(--muted);font-family:monospace;font-size:11px;';
+        var c3 = document.createElement('td'); c3.textContent = (r.perOpen || 0).toLocaleString(); c3.style.cssText = 'padding:6px 10px;text-align:right;font-family:monospace;';
+        var c4 = document.createElement('td'); c4.textContent = (r.amount  || 0).toLocaleString(); c4.style.cssText = 'padding:6px 10px;text-align:right;font-family:monospace;';
+        var c5 = document.createElement('td'); c5.textContent = (r.total   || 0).toLocaleString(); c5.style.cssText = 'padding:6px 10px;text-align:right;font-family:monospace;color:var(--accent);font-weight:600;';
+        tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4); tr.appendChild(c5);
+        tb2.appendChild(tr);
+      });
+      tbl2.appendChild(tb2);
+      modal.appendChild(tbl2);
+    }
+
+    bg.onclick = function(e) { if (e.target === bg) document.body.removeChild(bg); };
+    document.body.appendChild(bg);
   }
 
   function _ar_buildInvCell(it) {
