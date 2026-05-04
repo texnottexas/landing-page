@@ -2056,6 +2056,24 @@
     return full.slice(0, 16);
   }
 
+  // Decide whether the loaded report belongs to the viewer. Strict siteKey
+  // equality is the canonical signal, but legacy/migrated siteKeys can
+  // briefly desync between identity and wizardState.player. Fall back to a
+  // case/whitespace-insensitive name compare so own reports stay editable
+  // through the migration window.
+  function _ar_isOwnReport(reportSiteKey) {
+    var ident = getStoredIdentity();
+    if (!ident) return false;
+    if (ident.siteKey && reportSiteKey && ident.siteKey === reportSiteKey) return true;
+    var rp = wizardState && wizardState.player;
+    if (ident.name && rp && rp.name) {
+      var a = String(ident.name).trim().toLowerCase();
+      var b = String(rp.name).trim().toLowerCase();
+      if (a && a === b) return true;
+    }
+    return false;
+  }
+
   function _ar_isUnlocked(siteKey) {
     if (!siteKey) return false;
     try {
@@ -4760,7 +4778,7 @@
     }
 
     var ownIdentityForTabs = getStoredIdentity();
-    var isOwnReport = !!(ownIdentityForTabs && ownIdentityForTabs.siteKey && ownIdentityForTabs.siteKey === siteKey);
+    var isOwnReport = _ar_isOwnReport(siteKey);
     tabDefs.forEach(function(def, i) {
       var btn = document.createElement('button');
       btn.className = 'tab-btn' + (i === 0 ? ' active' : '');
@@ -7928,6 +7946,14 @@
     // their own report (UID-unlocked locally). Hidden entirely on shared / view-only
     // loads and for unverified viewers.
     var siteKeyForAdvisor = (wizardState.player && wizardState.player.siteKey) || null;
+    // Same harmonization as inventory/bench: prefer identity.siteKey on own
+    // reports so legacy wizardState siteKeys don't hide the advisor button.
+    if (_ar_isOwnReport(siteKeyForAdvisor)) {
+      var _ownIdAdv = getStoredIdentity();
+      if (_ownIdAdv && _ownIdAdv.siteKey && _ownIdAdv.siteKey !== siteKeyForAdvisor) {
+        siteKeyForAdvisor = _ownIdAdv.siteKey;
+      }
+    }
     var advisorAllowed = !wizardState._viewOnly &&
                          siteKeyForAdvisor &&
                          _ar_isUnlocked(siteKeyForAdvisor);
@@ -9687,9 +9713,15 @@
     if (!container) return;
     container.replaceChildren();
 
-    var isOwner = !!unlocked;
     var ownIdentity = getStoredIdentity();
-    var isOwnReport = !!(ownIdentity && ownIdentity.siteKey && ownIdentity.siteKey === siteKey);
+    var isOwnReport = _ar_isOwnReport(siteKey);
+    // For own reports, always operate against the identity siteKey (canonical
+    // post-migration value) so a stale wizardState.player.siteKey doesn't
+    // route us to the wrong unlock-map entry / wrong supplement bucket.
+    if (isOwnReport && ownIdentity && ownIdentity.siteKey && ownIdentity.siteKey !== siteKey) {
+      siteKey = ownIdentity.siteKey;
+    }
+    var isOwner = !!unlocked || (isOwnReport && _ar_isUnlocked(siteKey));
     var canUnlock = isOwnReport && !isOwner;
 
     var stored = null;
@@ -10499,6 +10531,15 @@
 
     // Merge supplemental bench beasts if uploaded (Phase 1 — local only)
     var siteKey = (wizardState.player && wizardState.player.siteKey) || null;
+    // Same harmonization as renderInventoryTab: when viewer is the report
+    // owner, prefer identity.siteKey so a stale wizardState.player.siteKey
+    // doesn't hide the Update Bench button under the wrong unlock-map key.
+    if (_ar_isOwnReport(siteKey)) {
+      var _ownIdEnigma = getStoredIdentity();
+      if (_ownIdEnigma && _ownIdEnigma.siteKey && _ownIdEnigma.siteKey !== siteKey) {
+        siteKey = _ownIdEnigma.siteKey;
+      }
+    }
     var unlocked = siteKey ? _ar_isUnlocked(siteKey) : false;
     var supBench = null;
     if (siteKey) {
@@ -12224,32 +12265,43 @@
     wizardState.reportData = [];
     wizardState._viewOnly = saved._viewOnly || false;
 
-    // Override _viewOnly when this is the current user's own report. Prevents
-    // a stale `_viewOnly: true` written by an earlier buggy shortcode load
-    // (or a name-drift mismatch) from sticking forever in localStorage even
-    // after the user has identity set. Match by siteKey first; fall back to
-    // a case/whitespace-insensitive name compare. Persist the corrected
-    // value back so the next reload starts clean.
+    // Harmonize the saved.player.siteKey with the current playerIdentity
+    // siteKey whenever the names match. Two failure modes get fixed here:
+    //
+    //  1. Stale `_viewOnly: true` from an earlier buggy shortcode load
+    //     (or a name-drift mismatch) sticking forever in localStorage.
+    //
+    //  2. Stale `saved.player.siteKey` (legacy "p_<first 8>" form, missing
+    //     entirely, or different from the current 16-hex roster scheme)
+    //     making the Inventory-tab `isOwnReport = identity.siteKey === report.siteKey`
+    //     check fail even though it IS the user's own report. That's the
+    //     root cause Meliodas/Biggie kept hitting "Read-only · uploaded
+    //     by player" while logged in as themselves.
+    //
+    // Match by siteKey first; fall back to case/whitespace-insensitive
+    // name compare. Persist the corrected playerReport so future loads
+    // start clean.
     try {
       var _ownId = getStoredIdentity();
-      if (wizardState._viewOnly && _ownId && saved.player) {
+      if (_ownId && saved.player) {
         function _normName(s) { return String(s || '').trim().toLowerCase(); }
         var _isOwn = false;
-        if (_ownId.siteKey && saved.player.siteKey) {
-          _isOwn = _ownId.siteKey === saved.player.siteKey;
-        } else if (_ownId.name && saved.player.name) {
-          _isOwn = _normName(_ownId.name) === _normName(saved.player.name);
+        if (_ownId.siteKey && saved.player.siteKey && _ownId.siteKey === saved.player.siteKey) {
+          _isOwn = true;
+        } else if (_ownId.name && saved.player.name && _normName(_ownId.name) === _normName(saved.player.name)) {
+          _isOwn = true;
         }
         if (_isOwn) {
-          wizardState._viewOnly = false;
-          // Backfill siteKey on saved.player when missing — keeps later
-          // isOwnReport siteKey checks (Inventory tab) working.
-          if (_ownId.siteKey && !saved.player.siteKey) {
+          var changed = false;
+          if (wizardState._viewOnly) { wizardState._viewOnly = false; saved._viewOnly = false; changed = true; }
+          if (_ownId.siteKey && saved.player.siteKey !== _ownId.siteKey) {
             saved.player.siteKey = _ownId.siteKey;
             wizardState.player.siteKey = _ownId.siteKey;
+            changed = true;
           }
-          saved._viewOnly = false;
-          try { localStorage.setItem('playerReport', JSON.stringify(saved)); } catch (e) {}
+          if (changed) {
+            try { localStorage.setItem('playerReport', JSON.stringify(saved)); } catch (e) {}
+          }
         }
       }
     } catch (e) { /* best-effort */ }
@@ -12399,20 +12451,26 @@
     // on the legacy siteKey and the worker /report-configs query returns a
     // different bucket than desktop. Rewrite by name+alliance lookup. Also
     // refreshes the rank/profession from the latest roster.
-    (function migrateIdentitySiteKey() {
+    //
+    // Returns a Promise that resolves once the migration has either rewritten
+    // localStorage or determined no change is needed. The remainder of init
+    // awaits this so initFromSaved sees the fresh siteKey when harmonizing
+    // saved.player.siteKey — otherwise the harmonization runs against the
+    // stale identity, persists the stale value, and the Inventory tab still
+    // mismatches under the wrong unlock-map key.
+    var migrationDone = (async function migrateIdentitySiteKey() {
       try {
         var stored = JSON.parse(localStorage.getItem('playerIdentity') || 'null');
         if (!stored || stored === 'anonymous' || !stored.name || stored.guest) return;
-        fetch('player-data.json', { cache: 'no-cache' }).then(function(r) { return r.json(); }).then(function(data) {
-          var keyMatch = stored.siteKey ? data.find(function(p) { return p.siteKey === stored.siteKey; }) : null;
-          if (keyMatch) return; // already on current scheme
-          var nameMatch = data.find(function(p) { return p.name === stored.name && p.alliance === stored.alliance; });
-          if (!nameMatch || !nameMatch.siteKey || nameMatch.siteKey === stored.siteKey) return;
-          stored.siteKey = nameMatch.siteKey;
-          stored.rank = nameMatch.rank;
-          stored.profession = nameMatch.profession;
-          localStorage.setItem('playerIdentity', JSON.stringify(stored));
-        }).catch(function() {});
+        var data = await fetch('player-data.json', { cache: 'no-cache' }).then(function(r) { return r.json(); });
+        var keyMatch = stored.siteKey ? data.find(function(p) { return p.siteKey === stored.siteKey; }) : null;
+        if (keyMatch) return;
+        var nameMatch = data.find(function(p) { return p.name === stored.name && p.alliance === stored.alliance; });
+        if (!nameMatch || !nameMatch.siteKey || nameMatch.siteKey === stored.siteKey) return;
+        stored.siteKey = nameMatch.siteKey;
+        stored.rank = nameMatch.rank;
+        stored.profession = nameMatch.profession;
+        localStorage.setItem('playerIdentity', JSON.stringify(stored));
       } catch (e) {}
     })();
 
@@ -12420,9 +12478,15 @@
     var params = new URLSearchParams(window.location.search);
     var code = params.get('code');
     if (code && /^[0-9A-Za-z]{4}$/.test(code)) {
-      fetch(PUSH_WORKER + '/report-config?code=' + code.toUpperCase())
-        .then(function(r) { return r.json(); })
-        .then(function(result) {
+      // Wait for siteKey migration before computing isSamePlayer; otherwise
+      // a freshly-migrated user reads stale identity siteKey and gets
+      // bumped into view-only on their own shortcode.
+      Promise.all([
+        migrationDone,
+        fetch(PUSH_WORKER + '/report-config?code=' + code.toUpperCase()).then(function(r) { return r.json(); })
+      ]).then(function(arr) {
+        var result = arr[1];
+        (function (result) {
           if (result && result.ok) {
             var ids = result.reportIds.split(',').filter(Boolean);
             // Determine if the loaded shortcode belongs to the current player.
@@ -12463,12 +12527,14 @@
           } else {
             normalInit();
           }
-        })
-        .catch(function() { normalInit(); });
+        })(result);
+      }).catch(function() { normalInit(); });
       return;
     }
 
-    normalInit();
+    // No shortcode — but still wait for migration before initFromSaved so
+    // the saved.player.siteKey harmonization picks up the migrated identity.
+    migrationDone.finally(function() { normalInit(); });
   })();
 
   function detectCurrentLang(){var m=document.cookie.match(/googtrans=\/en\/([a-zA-Z-]{2,10})/);return m&&m[1]?m[1]:'en';}
