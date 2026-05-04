@@ -7415,6 +7415,17 @@
         normalizedScalar = raw;
       }
       var perShard = upg.shardCost > 0 ? (normalizedScalar / upg.shardCost) : 0;
+      // Display the inverse — "shards per +1 unit" — since players think in
+      // terms of unit cost ("how many shards to gain 1 more"). The raw rate
+      // (0.002/shard) was technically correct but unintuitive. ROI math
+      // unchanged: higher stat-per-shard still ranks better.
+      var shardsPerUnit = (normalizedScalar > 0) ? (upg.shardCost / normalizedScalar) : 0;
+      function fmtShards(n) {
+        if (!isFinite(n) || n <= 0) return '—';
+        return n >= 100 ? Math.round(n).toLocaleString()
+             : n >= 10  ? n.toFixed(1)
+             : n.toFixed(2);
+      }
       rows.push({
         id: bid,
         label: (typeof BUFF_NAMES_DECOR !== 'undefined' && BUFF_NAMES_DECOR[bid]) ? BUFF_NAMES_DECOR[bid] : ('Buff ' + bid),
@@ -7423,8 +7434,8 @@
         displayDelta: displayDelta,
         perShard: perShard,
         perShardLabel: meta.valueType === 10000
-          ? (perShard.toFixed(3).replace(/\.?0+$/, '') + '%/shard')
-          : (perShard.toFixed(3).replace(/\.?0+$/, '') + '/shard')
+          ? (fmtShards(shardsPerUnit) + ' shards per +1%')
+          : (fmtShards(shardsPerUnit) + ' shards per +1')
       });
       roiScalar += normalizedScalar;
     });
@@ -7516,7 +7527,7 @@
         buffsBlock.appendChild(line);
         buffsBlock.appendChild(_adv_mk('div', {
           cls: 'advisor-rec-buff-rate',
-          text: row.perShardLabel + ' per shard'
+          text: row.perShardLabel
         }));
       });
       card.appendChild(buffsBlock);
