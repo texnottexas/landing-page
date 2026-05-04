@@ -5254,6 +5254,12 @@
           if (sub) {
             pushSub = sub;
             setBellState(true);
+            // Backfill: if local identity already has siteKey but the worker
+            // record predates siteKey storage, re-sync now. Idempotent.
+            try {
+              var _id = JSON.parse(localStorage.getItem('playerIdentity') || 'null');
+              if (_id && _id.siteKey) saveSubToWorker(sub);
+            } catch (e) {}
           } else {
             setBellState(false);
           }
@@ -5697,6 +5703,14 @@
                 showGreeting(stored);
               }
             }
+          }
+          // Re-sync identity to push-worker if a subscription is active.
+          // Backfills subscribers whose siteKey was rewritten in localStorage
+          // by the migration above but never propagated to the worker record.
+          // Worker handler is idempotent (data.player ?? existing.player).
+          if (stored && stored.siteKey && window._getPushSub && window._saveSubToWorker) {
+            var _ps = window._getPushSub();
+            if (_ps) window._saveSubToWorker(_ps);
           }
           showModalIfNeeded();
         })
