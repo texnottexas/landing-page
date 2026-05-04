@@ -624,6 +624,11 @@
   .advisor-rec-name { font-weight: 500; color: var(--text); }
   .advisor-rec-level { color: var(--muted); font-size: 12px; }
   .advisor-rec-stat { color: var(--accent); font-weight: 500; }
+  .advisor-rec-buffs { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .advisor-rec-buff-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; }
+  .advisor-rec-buff-name { color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .advisor-rec-buff-delta { color: var(--accent); font-weight: 600; flex-shrink: 0; }
+  .advisor-rec-buff-rate { font-size: 11px; color: var(--muted); padding-left: 0; line-height: 1.3; }
   .advisor-rec-cost, .advisor-rec-have { color: var(--muted); font-size: 12px; }
   .advisor-ready { color: #3fb950; font-weight: 500; margin-left: 6px; }
   .advisor-empty { color: var(--muted); padding: 1rem; text-align: center; }
@@ -6746,21 +6751,28 @@
     return Math.max(1, maxId - baseId + 1);
   }
 
-  // Parses 'be' / 'bi' strings that are 'buffId|value' or composite '932011|2400 932010|800'.
-  // Returns the numeric value(s) summed (we only care about deltas, so summing per level
-  // gives a fair scalar to subtract).
-  function _adv_parseBuffValue(s) {
-    if (!s) return 0;
-    var parts = String(s).split(/\s+/);
-    var total = 0;
-    parts.forEach(function(p) {
+  // Parses 'be' / 'bi' strings of form 'buffId|value' or whitespace-separated multi-buff
+  // 'buffId1|value1 buffId2|value2'. Returns map { buffId(string): numericValue }.
+  function _adv_parseBuffMap(s) {
+    var out = {};
+    if (!s) return out;
+    String(s).split(/\s+/).filter(Boolean).forEach(function(p) {
       var bits = p.split('|');
       if (bits.length >= 2) {
         var n = parseFloat(bits[1]);
-        if (!isNaN(n)) total += n;
+        if (!isNaN(n)) out[bits[0]] = n;
       }
     });
-    return total;
+    return out;
+  }
+
+  // Per-buff numeric delta from currentLevel to nextLevel, combining 'bi' and 'be' fields.
+  // 'bi' carries additive (valueType=1) buff values; 'be' carries percent (valueType=10000).
+  function _adv_levelBuffMap(lv) {
+    var m = _adv_parseBuffMap(lv && lv.bi);
+    var be = _adv_parseBuffMap(lv && lv.be);
+    Object.keys(be).forEach(function(k) { m[k] = be[k]; });
+    return m;
   }
 
   function _adv_getNextUpgrade(group, currentLevel, levelsData) {
@@ -6773,13 +6785,18 @@
       if (lv.l === currentLevel + 1) nextLv = lv;
     }
     if (!nextLv) return null;
-    var nextVal = _adv_parseBuffValue(nextLv.be);
-    var curVal = curLv ? _adv_parseBuffValue(curLv.be) : 0;
+    var nextMap = _adv_levelBuffMap(nextLv);
+    var curMap = curLv ? _adv_levelBuffMap(curLv) : {};
+    var deltas = {};  // buffId -> raw delta (units depend on valueType)
+    Object.keys(nextMap).forEach(function(k) {
+      var d = nextMap[k] - (curMap[k] || 0);
+      if (d !== 0) deltas[k] = d;
+    });
     return {
       fromLevel: currentLevel,
       toLevel: currentLevel + 1,
       shardCost: nextLv.fu || 0,
-      statDelta: nextVal - curVal
+      buffDeltas: deltas
     };
   }
 
@@ -6821,9 +6838,53 @@
     return entry.category === wantedCat;
   }
 
+  // Universal Decor Shard item ID — the `fi` field on each levels entry tells you which
+  // currency this decor consumes for upgrades. 20213232 = Universal Decor Shard.
+  // Other values (260119001 etc.) = special per-decor shard not in scope for this advisor.
+  // 0/null = not upgradeable via shards.
+  var ADVISOR_UNIVERSAL_SHARD_ID = 20213232;
+
   function _adv_buildRecommendation(entry, currentLevel, levelsData, availableForGroup) {
+    var levelsEntry = levelsData[String(entry.group)];
+    if (!levelsEntry || levelsEntry.fi !== ADVISOR_UNIVERSAL_SHARD_ID) return null;
     var upg = _adv_getNextUpgrade(entry.group, currentLevel, levelsData);
     if (!upg || upg.shardCost <= 0) return null;
+
+    // Build per-buff display rows: { id, label, valueType, rawDelta, formattedDelta, perShard }
+    var buffMeta = {};
+    (entry.buffs || []).forEach(function(b) {
+      buffMeta[String(b.id)] = b;
+    });
+    var rows = [];
+    var roiScalar = 0;
+    Object.keys(upg.buffDeltas).forEach(function(bid) {
+      var meta = buffMeta[bid] || { id: bid, valueType: 1 };
+      var raw = upg.buffDeltas[bid];
+      var displayDelta, normalizedScalar;
+      if (meta.valueType === 10000) {
+        // basis-point percent: 400 -> 4.0%
+        var pct = raw / 100;
+        displayDelta = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+        normalizedScalar = pct;  // percent points contribute most directly to ROI
+      } else {
+        // raw additive integer
+        displayDelta = (raw >= 0 ? '+' : '') + raw;
+        normalizedScalar = raw;
+      }
+      var perShard = upg.shardCost > 0 ? (normalizedScalar / upg.shardCost) : 0;
+      rows.push({
+        id: bid,
+        label: (typeof BUFF_NAMES_DECOR !== 'undefined' && BUFF_NAMES_DECOR[bid]) ? BUFF_NAMES_DECOR[bid] : ('Buff ' + bid),
+        valueType: meta.valueType,
+        rawDelta: raw,
+        displayDelta: displayDelta,
+        perShard: perShard,
+        perShardLabel: meta.valueType === 10000
+          ? (perShard.toFixed(3).replace(/\.?0+$/, '') + '%/shard')
+          : (perShard.toFixed(3).replace(/\.?0+$/, '') + '/shard')
+      });
+      roiScalar += normalizedScalar;
+    });
     return {
       group: entry.group,
       name: entry.name,
@@ -6831,10 +6892,10 @@
       fromLevel: upg.fromLevel,
       toLevel: upg.toLevel,
       shardCost: upg.shardCost,
-      statDelta: upg.statDelta,
+      buffRows: rows,
       available: availableForGroup,
       ready: availableForGroup >= upg.shardCost,
-      roi: upg.statDelta / Math.max(upg.shardCost, 1),
+      roi: roiScalar / Math.max(upg.shardCost, 1),
       category: entry.category
     };
   }
@@ -6889,11 +6950,21 @@
     head.appendChild(nameWrap);
     card.appendChild(head);
 
-    var deltaTxt = (r.statDelta > 0 ? '+' : '') + r.statDelta.toFixed(2);
-    card.appendChild(_adv_mk('div', {
-      cls: 'advisor-rec-stat',
-      text: deltaTxt + (r.category ? ' (' + r.category + ')' : '')
-    }));
+    // Per-buff stat rows: gain at this upgrade + cost per shard for this stat
+    if (r.buffRows && r.buffRows.length > 0) {
+      var buffsBlock = _adv_mk('div', { cls: 'advisor-rec-buffs' });
+      r.buffRows.forEach(function(row) {
+        var line = _adv_mk('div', { cls: 'advisor-rec-buff-row' });
+        line.appendChild(_adv_mk('span', { cls: 'advisor-rec-buff-name', text: row.label }));
+        line.appendChild(_adv_mk('span', { cls: 'advisor-rec-buff-delta', text: row.displayDelta }));
+        buffsBlock.appendChild(line);
+        buffsBlock.appendChild(_adv_mk('div', {
+          cls: 'advisor-rec-buff-rate',
+          text: row.perShardLabel + ' (per universal shard)'
+        }));
+      });
+      card.appendChild(buffsBlock);
+    }
 
     card.appendChild(_adv_mk('div', {
       cls: 'advisor-rec-cost',
