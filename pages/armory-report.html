@@ -12158,6 +12158,36 @@
     wizardState.reportData = [];
     wizardState._viewOnly = saved._viewOnly || false;
 
+    // Override _viewOnly when this is the current user's own report. Prevents
+    // a stale `_viewOnly: true` written by an earlier buggy shortcode load
+    // (or a name-drift mismatch) from sticking forever in localStorage even
+    // after the user has identity set. Match by siteKey first; fall back to
+    // a case/whitespace-insensitive name compare. Persist the corrected
+    // value back so the next reload starts clean.
+    try {
+      var _ownId = getStoredIdentity();
+      if (wizardState._viewOnly && _ownId && saved.player) {
+        function _normName(s) { return String(s || '').trim().toLowerCase(); }
+        var _isOwn = false;
+        if (_ownId.siteKey && saved.player.siteKey) {
+          _isOwn = _ownId.siteKey === saved.player.siteKey;
+        } else if (_ownId.name && saved.player.name) {
+          _isOwn = _normName(_ownId.name) === _normName(saved.player.name);
+        }
+        if (_isOwn) {
+          wizardState._viewOnly = false;
+          // Backfill siteKey on saved.player when missing — keeps later
+          // isOwnReport siteKey checks (Inventory tab) working.
+          if (_ownId.siteKey && !saved.player.siteKey) {
+            saved.player.siteKey = _ownId.siteKey;
+            wizardState.player.siteKey = _ownId.siteKey;
+          }
+          saved._viewOnly = false;
+          try { localStorage.setItem('playerReport', JSON.stringify(saved)); } catch (e) {}
+        }
+      }
+    } catch (e) { /* best-effort */ }
+
     var cache = {};
     try { cache = JSON.parse(localStorage.getItem('playerReportData')) || {}; } catch(e) {}
 
