@@ -1745,14 +1745,29 @@
         });
       });
     });
+    var UNIT_TYPE_LABELS = { 101: 'Army', 201: 'Navy', 301: 'Air Force' };
     (tabs.unit || []).forEach(function(it) {
       var cfg = lk.army[String(it.id)] || {};
       var itemCfg = lk.item[String(it.id)] || {};
+      // item-table rarely has unit display names, and cfg.name from army-icon-map is an asset
+      // key (e.g. "army_baseV6_name04"). Synthesize a readable label from type + level when
+      // the raw name doesn't look human (no spaces, all underscore_lowercase + digits).
+      var rawName = itemCfg.n || cfg.name || '';
+      var looksLikeAssetKey = rawName && /^[a-zA-Z][a-zA-Z0-9_]*$/.test(rawName) && rawName.indexOf('_') >= 0;
+      var displayName;
+      if (rawName && !looksLikeAssetKey) {
+        displayName = rawName;
+      } else {
+        var typeLabel = UNIT_TYPE_LABELS[cfg.type] || 'Unit';
+        var lv = cfg.level || it.l;
+        displayName = lv ? (typeLabel + ' Lv ' + lv) : (typeLabel + ' #' + it.id);
+      }
       out.tabs.unit.push({
         id: it.id, amount: it.a || 0, level: it.l || cfg.level || null, group: it.g || it.id,
-        type: cfg.type, quality: itemCfg.q || 1, name: itemCfg.n || cfg.name || ('Unit #' + it.id),
+        type: cfg.type, quality: itemCfg.q || 1, name: displayName,
         desc: itemCfg.d || '', icon: cfg.icon_file || null, iconDir: ASSET + 'unit-icons',
-        armyLevel: cfg.level
+        armyLevel: cfg.level,
+        rawName: rawName
       });
     });
     // Reverse map of suit group ids → suit id, so each decor knows whether it belongs to a set
@@ -8284,12 +8299,12 @@
   }
 
   function _ar_renderInvGrid(container, data) {
-    var TAB_ORDER = [['item','Item'],['unit','Unit'],['decor','Decor'],['hero','Hero'],['cpnt','CPNT']];
+    var TAB_ORDER = [['decor','Decor'],['item','Item'],['unit','Unit'],['hero','Hero'],['cpnt','CPNT']];
     var SUBTABS = {
       hero: [['shards','Hero Shards'], ['skills','Hero Skills']],
-      decor: [['set','Decor (Set)'], ['other','Decor']]
+      decor: [['other','Decor'], ['set','Decor (Set)']]
     };
-    var state = { tab: 'item', subtab: 'shards', search: '', sort: 'quality_lv', quality: '' };
+    var state = { tab: 'decor', subtab: 'other', search: '', sort: 'quality_lv', sortDir: 'desc', quality: '' };
 
     var tabsEl = document.createElement('div');
     tabsEl.className = 'inv-tabs';
@@ -8305,13 +8320,23 @@
     search.oninput = function() { state.search = search.value.toLowerCase().trim(); rerender(); };
     ctrls.appendChild(search);
     var sortSel = document.createElement('select');
-    [['quality_lv','Quality desc, Level desc'],['amount','Amount desc'],['id','ID asc'],['type','Type']].forEach(function(o) {
+    [['quality_lv','Quality, Level'],['amount','Amount'],['id','ID'],['type','Type'],['name','Name']].forEach(function(o) {
       var opt = document.createElement('option');
       opt.value = o[0]; opt.textContent = o[1];
       sortSel.appendChild(opt);
     });
     sortSel.onchange = function() { state.sort = sortSel.value; rerender(); };
     ctrls.appendChild(sortSel);
+    var dirBtn = document.createElement('button');
+    dirBtn.style.cssText = 'background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; min-width: 36px;';
+    dirBtn.title = 'Toggle sort direction';
+    dirBtn.textContent = state.sortDir === 'asc' ? '↑' : '↓';
+    dirBtn.onclick = function() {
+      state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+      dirBtn.textContent = state.sortDir === 'asc' ? '↑' : '↓';
+      rerender();
+    };
+    ctrls.appendChild(dirBtn);
     var qSel = document.createElement('select');
     [['', 'All qualities'],['1','Q1'],['2','Q2'],['3','Q3'],['4','Q4'],['5','Q5'],['6','Q6']].forEach(function(o) {
       var opt = document.createElement('option');
@@ -8372,11 +8397,25 @@
           return String(x.id).indexOf(q) >= 0 || (x.name || '').toLowerCase().indexOf(q) >= 0 || (x.desc || '').toLowerCase().indexOf(q) >= 0;
         });
       }
+      var dirMul = state.sortDir === 'asc' ? -1 : 1;
       list.sort(function(a, b) {
-        if (state.sort === 'amount') return (b.amount || 0) - (a.amount || 0);
-        if (state.sort === 'id') return (a.id || 0) - (b.id || 0);
-        if (state.sort === 'type') return (a.type || 0) - (b.type || 0) || (b.quality || 0) - (a.quality || 0);
-        return (b.quality || 0) - (a.quality || 0) || (b.level || 0) - (a.level || 0) || (b.amount || 0) - (a.amount || 0);
+        var cmp;
+        if (state.sort === 'amount') {
+          cmp = (b.amount || 0) - (a.amount || 0);
+        } else if (state.sort === 'id') {
+          cmp = (a.id || 0) - (b.id || 0);
+          // ID natural is ascending — flip baseline so dirMul handles consistently
+          cmp = -cmp;
+        } else if (state.sort === 'type') {
+          cmp = (a.type || 0) - (b.type || 0) || (b.quality || 0) - (a.quality || 0);
+          cmp = -cmp;
+        } else if (state.sort === 'name') {
+          cmp = String(a.name || '').localeCompare(String(b.name || ''));
+          cmp = -cmp;
+        } else {
+          cmp = (b.quality || 0) - (a.quality || 0) || (b.level || 0) - (a.level || 0) || (b.amount || 0) - (a.amount || 0);
+        }
+        return cmp * dirMul;
       });
       grid.replaceChildren();
       // Decor (Set) subtab: group items by suitId and render with collapsible section headers
@@ -8579,6 +8618,36 @@
     document.body.appendChild(bg);
   }
 
+  // Track in-session reports so each missing icon only fires once per page load.
+  var _ar_missiconReported = (function() {
+    try {
+      var s = JSON.parse(localStorage.getItem('armory_missicon_reported') || '{}');
+      return s && typeof s === 'object' ? s : {};
+    } catch (e) { return {}; }
+  })();
+  function _ar_reportMissingIcon(it, kind) {
+    var key = (kind || 'inv') + '_' + it.id;
+    if (_ar_missiconReported[key]) return;
+    _ar_missiconReported[key] = Date.now();
+    try { localStorage.setItem('armory_missicon_reported', JSON.stringify(_ar_missiconReported)); } catch (e) {}
+    try {
+      fetch(PUSH_WORKER + '/feedback/missing-icon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: kind || 'inv',
+          id: it.id,
+          name: it.name || '',
+          type: it.type,
+          group: it.group,
+          iconPath: it.icon ? (it.iconDir + '/' + it.icon) : '',
+          page: 'armory-report/inventory'
+        }),
+        keepalive: true
+      }).catch(function() {});
+    } catch (e) {}
+  }
+
   function _ar_buildInvCell(it) {
     var c = document.createElement('div');
     c.className = 'inv-cell q' + (it.quality || 0);
@@ -8597,6 +8666,7 @@
         ph.className = 'placeholder';
         ph.textContent = '?';
         wrap.replaceChildren(ph);
+        _ar_reportMissingIcon(it, 'inv');
       };
       wrap.appendChild(img);
     } else {
@@ -8604,6 +8674,7 @@
       ph.className = 'placeholder';
       ph.textContent = '?';
       wrap.appendChild(ph);
+      _ar_reportMissingIcon(it, 'inv-noicon');
     }
     c.appendChild(wrap);
     var statsRow = document.createElement('div');
