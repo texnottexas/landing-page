@@ -1069,38 +1069,53 @@
   .gear-roll-fill { height: 100%; border-radius: 2px; }
   .gear-roll-pct { font-size: .6rem; color: var(--muted); }
 
-  /* What's New (S2864 beta callout) — shimmer-pill in the report header. */
-  @keyframes whats-new-shimmer {
-    0%   { background-position: -200% center; }
-    100% { background-position: 200% center; }
+  /* What's New (S2864 beta callout) — color-cycling glow matching the
+     treasury-report "How is this calculated?" pill. Border, text, and
+     dot rotate accent → army → air → accent over 6s. Hover locks accent. */
+  @keyframes whats-new-border {
+    0%   { border-color: var(--accent); box-shadow: 0 0 12px rgba(121,192,255,.25); }
+    33%  { border-color: var(--army);   box-shadow: 0 0 12px rgba(86,211,100,.25); }
+    66%  { border-color: var(--air);    box-shadow: 0 0 12px rgba(227,179,65,.25); }
+    100% { border-color: var(--accent); box-shadow: 0 0 12px rgba(121,192,255,.25); }
   }
-  @keyframes whats-new-pulse-dot {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50%      { transform: scale(1.4); opacity: 0.7; }
+  @keyframes whats-new-text {
+    0%   { color: var(--accent); }
+    33%  { color: var(--army); }
+    66%  { color: var(--air); }
+    100% { color: var(--accent); }
+  }
+  @keyframes whats-new-dot {
+    0%   { background: var(--accent); box-shadow: 0 0 6px rgba(121,192,255,.6); }
+    33%  { background: var(--army);   box-shadow: 0 0 6px rgba(86,211,100,.6); }
+    66%  { background: var(--air);    box-shadow: 0 0 6px rgba(227,179,65,.6); }
+    100% { background: var(--accent); box-shadow: 0 0 6px rgba(121,192,255,.6); }
   }
   .whats-new-pill {
     display: inline-flex; align-items: center; gap: 6px;
-    background-image: linear-gradient(90deg,
-      rgba(121,192,255,0.12) 0%,
-      rgba(121,192,255,0.28) 25%,
-      rgba(121,192,255,0.12) 50%,
-      rgba(121,192,255,0.28) 75%,
-      rgba(121,192,255,0.12) 100%);
-    background-size: 200% auto;
-    animation: whats-new-shimmer 4.5s linear infinite;
-    border: 1px solid rgba(121,192,255,0.45);
+    background: var(--card);
+    border: 1px solid var(--accent);
     color: var(--accent);
     font-size: .72rem; font-weight: 600;
     padding: .3rem .7rem; border-radius: 999px;
-    cursor: pointer; transition: transform 0.1s, border-color 0.15s;
+    cursor: pointer; transition: transform 0.1s, background 0.15s;
     white-space: nowrap;
+    animation: whats-new-border 6s ease-in-out infinite;
   }
-  .whats-new-pill:hover { border-color: var(--accent); }
+  .whats-new-pill .label {
+    animation: whats-new-text 6s ease-in-out infinite;
+  }
+  .whats-new-pill:hover {
+    animation: none; border-color: var(--accent);
+    box-shadow: 0 0 16px rgba(121,192,255,.35);
+    background: var(--surface);
+  }
+  .whats-new-pill:hover .label { animation: none; color: var(--accent); }
+  .whats-new-pill:hover .dot   { animation: none; background: var(--accent); box-shadow: 0 0 6px rgba(121,192,255,.6); }
   .whats-new-pill:active { transform: translateY(1px); }
   .whats-new-pill .dot {
     width: 6px; height: 6px; border-radius: 50%;
     background: var(--accent); flex-shrink: 0;
-    animation: whats-new-pulse-dot 1.5s ease-in-out infinite;
+    animation: whats-new-dot 6s ease-in-out infinite;
   }
   .whats-new-modal-card {
     max-width: 540px; padding: 0; overflow: hidden;
@@ -1851,17 +1866,9 @@
   }
 
   // ── What's New (S2864 beta callout) ─────────────────────────────────────
-  // Shown once per device for verified S2864 members viewing their own report.
-  // Bumps the WHATS_NEW_KEY when the message changes.
-  var _AR_WHATS_NEW_KEY = 'armory_whatsnew_v6_seen';
-
-  function _ar_whatsNewDismissed() {
-    try { return localStorage.getItem(_AR_WHATS_NEW_KEY) === '1'; }
-    catch (e) { return false; }
-  }
-  function _ar_setWhatsNewDismissed() {
-    try { localStorage.setItem(_AR_WHATS_NEW_KEY, '1'); } catch (e) {}
-  }
+  // Persistent shimmer pill in the report header — visible for verified S2864
+  // members viewing their own report. Modal opens on click and closes on
+  // Got It / Esc / backdrop click; the pill stays so players can revisit.
 
   function _ar_makeFeatureIcon(kind) {
     var SVG = SVG_NS;
@@ -1905,9 +1912,8 @@
     bg.appendChild(modal);
 
     function closeNow() {
-      _ar_setWhatsNewDismissed();
-      var pill = document.querySelector('.whats-new-pill');
-      if (pill && pill.parentNode) pill.parentNode.removeChild(pill);
+      // Persistent pill: just close the modal; do not remove the pill or
+      // mark dismissed. Players can revisit the callout any time.
       if (bg.parentNode) bg.parentNode.removeChild(bg);
       document.removeEventListener('keydown', onEsc);
     }
@@ -3974,10 +3980,10 @@
     var right = document.createElement('div');
     right.className = 'rh-right';
 
-    // What's New (S2864 beta callout) — only for verified S2864 members viewing
-    // their own report (not view-only / shortcode-share). Suppresses after they've
-    // dismissed it (per device, persisted in localStorage).
-    if (!wizardState._viewOnly && isVerifiedS2864Member() && !_ar_whatsNewDismissed()) {
+    // What's New (S2864 beta callout) — for verified S2864 members viewing
+    // their own report (not view-only / shortcode-share). Persistent: stays
+    // in the header even after the modal is closed so players can revisit.
+    if (!wizardState._viewOnly && isVerifiedS2864Member()) {
       var wnBtn = document.createElement('button');
       wnBtn.className = 'whats-new-pill';
       wnBtn.title = 'New S2864 beta features';
@@ -3986,6 +3992,7 @@
       dot.className = 'dot';
       wnBtn.appendChild(dot);
       var wnText = document.createElement('span');
+      wnText.className = 'label';
       wnText.textContent = 'What’s new?';
       wnBtn.appendChild(wnText);
       wnBtn.addEventListener('click', function() { _ar_openWhatsNewModal(); });
