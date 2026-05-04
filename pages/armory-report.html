@@ -10918,6 +10918,8 @@
     var ebView = 'fields';
     var ebActiveElems = new Set(['all']);
     var ebActiveField = 'all';
+    var ebActivePrimary = 'all';
+    var ebActiveSecondary = 'all';
     var ebSort = 'star';
 
     // Merge supplemental bench beasts if uploaded (Phase 1 — local only)
@@ -11065,8 +11067,13 @@
     function ebFilterBeasts() {
       return resolved.beasts.filter(function(b) {
         if (!ebActiveElems.has('all') && !ebActiveElems.has(b.element)) return false;
-        if (ebActiveField === 'bench') return !b.fieldCfg;
-        if (ebActiveField !== 'all') return b.fieldCfg === +ebActiveField;
+        if (ebActiveField === 'bench' && b.fieldCfg) return false;
+        if (ebActiveField !== 'all' && ebActiveField !== 'bench' && b.fieldCfg !== +ebActiveField) return false;
+        if (ebActivePrimary !== 'all' && Number(b.mainBuff) !== Number(ebActivePrimary)) return false;
+        if (ebActiveSecondary !== 'all') {
+          var hasSec = (b.baseBuff || []).some(function(bb) { return Number(bb.id) === Number(ebActiveSecondary); });
+          if (!hasSec) return false;
+        }
         return true;
       });
     }
@@ -11154,6 +11161,71 @@
         }
       }
 
+      // Primary / Secondary stat dropdowns — beasts view only
+      if (ebView === 'beasts') {
+        var sep3 = document.createElement('div');
+        sep3.className = 'eb-filter-sep';
+        filterBar.appendChild(sep3);
+
+        var primaryMap = {};
+        var secondaryMap = {};
+        resolved.beasts.forEach(function(b) {
+          if (b.mainBuff != null && EB_BUFF_NAMES[b.mainBuff]) primaryMap[b.mainBuff] = EB_BUFF_NAMES[b.mainBuff];
+          (b.baseBuff || []).forEach(function(bb) {
+            if (EB_BUFF_NAMES[bb.id]) secondaryMap[bb.id] = EB_BUFF_NAMES[bb.id];
+          });
+        });
+        function ebSortBuffs(map) {
+          return Object.keys(map).map(function(k) { return { id: +k, name: map[k] }; })
+            .sort(function(a, b) { return a.id - b.id; });
+        }
+
+        function ebBuildSelect(label, id, value, options) {
+          var wrap = document.createElement('span');
+          wrap.style.cssText = 'display:inline-flex;align-items:center;gap:.25rem;';
+          var lab = document.createElement('span');
+          lab.style.cssText = 'font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;';
+          lab.textContent = label;
+          wrap.appendChild(lab);
+          var sel = document.createElement('select');
+          sel.id = id;
+          sel.style.cssText = 'background:var(--surface);border:1px solid ' + (value !== 'all' ? 'var(--accent)' : 'var(--border)') + ';border-radius:6px;padding:.2rem .35rem;color:' + (value !== 'all' ? 'var(--accent)' : 'var(--text)') + ';font-size:.7rem;font-family:inherit;cursor:pointer;max-width:180px;';
+          var allOpt = document.createElement('option');
+          allOpt.value = 'all';
+          allOpt.textContent = 'All';
+          sel.appendChild(allOpt);
+          options.forEach(function(o) {
+            var opt = document.createElement('option');
+            opt.value = String(o.id);
+            opt.textContent = o.name;
+            sel.appendChild(opt);
+          });
+          sel.value = value;
+          wrap.appendChild(sel);
+          return wrap;
+        }
+
+        filterBar.appendChild(ebBuildSelect('Primary', 'eb-primary-select', ebActivePrimary, ebSortBuffs(primaryMap)));
+        filterBar.appendChild(ebBuildSelect('Secondary', 'eb-secondary-select', ebActiveSecondary, ebSortBuffs(secondaryMap)));
+
+        if (!ebActiveElems.has('all') || ebActiveField !== 'all' || ebActivePrimary !== 'all' || ebActiveSecondary !== 'all') {
+          var resetBtn = document.createElement('span');
+          resetBtn.style.cssText = 'font-size:.7rem;color:var(--muted);cursor:pointer;padding:.25rem .5rem;border-radius:4px;';
+          resetBtn.textContent = '✕ Reset';
+          resetBtn.onmouseover = function() { resetBtn.style.color = 'var(--accent)'; resetBtn.style.background = 'var(--surface)'; };
+          resetBtn.onmouseout = function() { resetBtn.style.color = 'var(--muted)'; resetBtn.style.background = 'transparent'; };
+          resetBtn.onclick = function() {
+            ebActiveElems = new Set(['all']);
+            ebActiveField = 'all';
+            ebActivePrimary = 'all';
+            ebActiveSecondary = 'all';
+            renderEBFilters();
+            renderEBContent();
+          };
+          filterBar.appendChild(resetBtn);
+        }
+      }
+
       var sep2 = document.createElement('div');
       sep2.className = 'eb-filter-sep';
       filterBar.appendChild(sep2);
@@ -11185,6 +11257,24 @@
           renderEBContent();
         };
       });
+
+      // Bind stat-select changes
+      var primarySel = filterBar.querySelector('#eb-primary-select');
+      if (primarySel) {
+        primarySel.onchange = function() {
+          ebActivePrimary = primarySel.value;
+          renderEBFilters();
+          renderEBContent();
+        };
+      }
+      var secondarySel = filterBar.querySelector('#eb-secondary-select');
+      if (secondarySel) {
+        secondarySel.onchange = function() {
+          ebActiveSecondary = secondarySel.value;
+          renderEBFilters();
+          renderEBContent();
+        };
+      }
     }
 
     // Render beast collection grid
@@ -11605,6 +11695,19 @@
     return panel;
   }
 
+  // Mecha signature colors shared between chip-tab-bar (top of chips tab) and
+  // chip-pool cards (bound-HT outlines further down). Single source of truth.
+  var _AR_MECHA_COLOR = {
+    1002: '#d29922',  // Earthshaker — yellow
+    1003: '#f85149',  // Blazing Gale — red
+    1004: '#79c0ff',  // Tide Crusher — light blue
+    1005: '#a371f7',  // Doom Sawblade — purple
+    1006: '#e6edf3',  // Luminary Knight — white
+    1007: '#f778ba',  // Blade Angel — pink
+    1008: '#8b949e'   // Heavy Mothership — gray
+  };
+  function _ar_mechaColor(id) { return _AR_MECHA_COLOR[id] || 'var(--accent)'; }
+
   function renderChipsTab(merged) {
     var container = document.getElementById('tab-chips');
     while (container.firstChild) container.removeChild(container.firstChild);
@@ -11647,17 +11750,10 @@
       return;
     }
 
-    // Mecha signature colors (tint for cards/tabs)
-    var MECHA_COLOR = {
-      1002: '#d29922',  // Earthshaker — yellow
-      1003: '#f85149',  // Blazing Gale — red
-      1004: '#79c0ff',  // Tide Crusher — light blue
-      1005: '#a371f7',  // Doom Sawblade — purple
-      1006: '#e6edf3',  // Luminary Knight — white
-      1007: '#f778ba',  // Blade Angel — pink
-      1008: '#8b949e'   // Heavy Mothership — gray
-    };
-    function mechaColor(id) { return MECHA_COLOR[id] || 'var(--accent)'; }
+    // Mecha signature colors — uses module-level _AR_MECHA_COLOR / _ar_mechaColor
+    // so the chip-pool card builder (further down) can reuse the same palette
+    // for bound-HT outline tinting.
+    function mechaColor(id) { return _ar_mechaColor(id); }
 
     // Synthesize mothership tab entry — appears after the last HT (BA-6 or wherever).
     // Selecting it renders the mothership card instead of the per-HT chip view.
@@ -12246,25 +12342,42 @@
   function _ar_buildChipPoolCard(e) {
     var COLORS = { 1:'#8b949e', 2:'#3fb950', 3:'#79c0ff', 4:'#a371f7', 5:'#d29922' };
     var SLOT_NAMES = (typeof SLOT_LABELS !== 'undefined' && SLOT_LABELS) || ['Core','1','2','3','4','5','6'];
-    var color = COLORS[e.color] || '#8b949e';
+    var rarityColor = COLORS[e.color] || '#8b949e';
+    var bound = e.mechaId > 0;
+    var htColor = bound ? _ar_mechaColor(e.mechaId) : null;
+    // Bound chips: outline matches the HT's signature color so the card visually
+    // ties back to the chip-tab-bar tile above. Unbound: rarity color.
+    var outline = htColor || rarityColor;
+    var borderWidth = bound ? '2px' : '1px';
+
     var card = document.createElement('div');
-    card.style.cssText = 'background:var(--card);border:1px solid ' + color + '40;border-radius:8px;padding:.4rem .5rem;display:flex;flex-direction:column;gap:.25rem;position:relative;';
+    card.style.cssText = 'background:var(--card);border:' + borderWidth + ' solid ' + outline + (bound ? '99' : '40') + ';border-radius:8px;padding:.4rem .5rem;display:flex;flex-direction:column;gap:.25rem;position:relative;';
 
     var head = document.createElement('div');
     head.style.cssText = 'display:flex;align-items:center;gap:.35rem;';
-    var setName = (typeof SET_NAMES !== 'undefined' && SET_NAMES[e.setGroup]) || 'Set ' + e.setGroup;
     var setIcon = (typeof SET_ICONS !== 'undefined' && SET_ICONS[e.setGroup]) ? (ASSET_BASE + 'assets/ht-chip-icons/' + SET_ICONS[e.setGroup]) : null;
     if (setIcon) {
       var img = document.createElement('img');
       img.src = setIcon;
-      img.style.cssText = 'width:24px;height:24px;border-radius:4px;background:#0d1117;border:1px solid ' + color + '60;';
+      img.style.cssText = 'width:24px;height:24px;border-radius:4px;background:#0d1117;border:1px solid ' + rarityColor + '60;';
       img.onerror = function() { this.style.display = 'none'; };
       head.appendChild(img);
     }
     var slotPill = document.createElement('span');
-    slotPill.style.cssText = 'font-size:.62rem;padding:.05rem .3rem;border-radius:4px;background:' + color + '22;color:' + color + ';font-weight:600;';
+    slotPill.style.cssText = 'font-size:.62rem;padding:.05rem .3rem;border-radius:4px;background:' + rarityColor + '22;color:' + rarityColor + ';font-weight:600;';
     slotPill.textContent = SLOT_NAMES[e.position] || ('S' + e.position);
     head.appendChild(slotPill);
+    // Tiny HT icon for bound chips — keys the card to the relevant HT tab above.
+    if (bound) {
+      var htIcon = document.createElement('img');
+      htIcon.src = ASSET_BASE + 'assets/mecha-icons/mecha_' + e.mechaId + '.png';
+      htIcon.alt = '';
+      var htName = (typeof MECHA_NAMES !== 'undefined' && MECHA_NAMES[e.mechaId]) || ('HT #' + e.mechaId);
+      htIcon.title = 'Bound to ' + htName;
+      htIcon.style.cssText = 'width:18px;height:18px;border-radius:3px;object-fit:cover;border:1px solid ' + htColor + 'aa;background:#0d1117;';
+      htIcon.onerror = function() { this.style.display = 'none'; };
+      head.appendChild(htIcon);
+    }
     if (e.reservation) {
       var lock = document.createElement('span');
       lock.title = 'Locked / reserved';
@@ -12274,28 +12387,41 @@
     }
     card.appendChild(head);
 
+    var setName = (typeof SET_NAMES !== 'undefined' && SET_NAMES[e.setGroup]) || 'Set ' + e.setGroup;
     var setLine = document.createElement('div');
     setLine.style.cssText = 'font-size:.72rem;color:var(--text);font-weight:600;line-height:1.15;';
     setLine.textContent = setName;
     card.appendChild(setLine);
 
+    // Bound HT name on its own line in the HT's signature color
+    if (bound) {
+      var boundLine = document.createElement('div');
+      boundLine.style.cssText = 'font-size:.62rem;font-weight:600;color:' + htColor + ';line-height:1.15;';
+      var boundName = (typeof MECHA_NAMES !== 'undefined' && MECHA_NAMES[e.mechaId]) || ('HT #' + e.mechaId);
+      boundLine.textContent = 'Bound to ' + boundName;
+      card.appendChild(boundLine);
+    }
+
     var meta = document.createElement('div');
     meta.style.cssText = 'font-size:.62rem;color:var(--muted);display:flex;gap:.4rem;flex-wrap:wrap;';
     var rar = (typeof RARITY_LABELS !== 'undefined' && RARITY_LABELS[e.color]) || ('R' + e.color);
-    meta.appendChild(_ar_chipMetaTag('Rarity', rar, color));
+    meta.appendChild(_ar_chipMetaTag('Rarity', rar, rarityColor));
     if (e.level > 0) meta.appendChild(_ar_chipMetaTag('Lv', e.level));
     if (e.refineTimes > 0) meta.appendChild(_ar_chipMetaTag('Refine', e.refineTimes));
-    if (e.mechaId > 0) {
-      var bound = (typeof MECHA_NAMES !== 'undefined' && MECHA_NAMES[e.mechaId]) || ('HT' + e.mechaId);
-      meta.appendChild(_ar_chipMetaTag('Bound', bound.split(' ')[0]));
-    }
     card.appendChild(meta);
 
     if (e.rndAttrs) {
-      var stats = document.createElement('div');
-      stats.style.cssText = 'font-size:.62rem;color:var(--muted);line-height:1.25;';
-      stats.textContent = _ar_decodeChipStats(e.rndAttrs, e.position).join(' / ');
-      card.appendChild(stats);
+      var statLines = _ar_decodeChipStats(e.rndAttrs, e.position);
+      if (statLines.length) {
+        var stats = document.createElement('div');
+        stats.style.cssText = 'font-size:.62rem;color:var(--muted);line-height:1.4;display:flex;flex-direction:column;gap:.05rem;margin-top:.1rem;padding-top:.2rem;border-top:1px solid rgba(48,54,61,.5);';
+        statLines.forEach(function(line) {
+          var row = document.createElement('div');
+          row.textContent = line;
+          stats.appendChild(row);
+        });
+        card.appendChild(stats);
+      }
     }
 
     return card;
