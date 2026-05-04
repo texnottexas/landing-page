@@ -2775,27 +2775,51 @@
   // Scan a chest/box description for embedded Odinium rewards. Returns the
   // max Odinium obtainable from a single open of this box. Skips raw Odinium
   // packs (already counted via aggTotals.odinium).
+  //
+  // Real game formats observed:
+  //   "Odinium (1k) x2"           — 1000 per pack × 2 packs = 2000
+  //   "100 Odinium x7"             — 100 × 7 = 700
+  //   "1M Odinium x1"              — 1,000,000
+  //   "1k Odinium"                 — 1000 (× 1 implicit)
+  // The "ONE of the following" boxes are picked-branch — we still want the
+  // best Odinium branch, so we take the max across all per-mention totals.
   function _ar_boxedOdiniumPerOpen(cfg) {
     if (!cfg) return 0;
     if (cfg.t === 106 && cfg.g === 940001) return 0;
     var d = String(cfg.d || '');
     if (!/odinium/i.test(d)) return 0;
+    // Negative lookahead skips "Odinium Chip(s)" / "Odinium Tech" / similar
+    // — those are unrelated items, not the Odinium currency.
+    // Three observed shapes:
+    //   "100 Odinium x7"             — amount before, multiplier after
+    //   "Odinium (1k) x2"            — paren amount, multiplier after
+    //   "Odinium x2000"              — only multiplier, treated as absolute
+    var re = /(?:(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*([KMB])?\s+)?Odinium(?!\s*(?:Chip|Tech))(?:\s*\((\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*([KMB])?\))?(?:\s*(?:x|×)\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*([KMB])?)?/gi;
+    function applySuffix(n, suf) {
+      var s = (suf || '').toUpperCase();
+      if (s === 'K') return n * 1000;
+      if (s === 'M') return n * 1000000;
+      if (s === 'B') return n * 1000000000;
+      return n;
+    }
     var max = 0;
-    var patterns = [
-      /(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*([KMB])?\s*Odinium\b/gi,
-      /\bOdinium\s*(?:x|×)\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*([KMB])?/gi
-    ];
-    for (var i = 0; i < patterns.length; i++) {
-      var re = patterns[i]; var m;
-      while ((m = re.exec(d)) !== null) {
-        var num = parseFloat(m[1].replace(/,/g, ''));
-        var suf = (m[2] || '').toUpperCase();
-        if (suf === 'K') num *= 1000;
-        else if (suf === 'M') num *= 1000000;
-        else if (suf === 'B') num *= 1000000000;
-        var v = Math.round(num);
-        if (!isNaN(v) && v > max) max = v;
+    var m;
+    while ((m = re.exec(d)) !== null) {
+      var amount = 0;
+      if (m[1]) {
+        amount = applySuffix(parseFloat(m[1].replace(/,/g, '')), m[2]);
+        if (m[5]) amount *= applySuffix(parseFloat(m[5].replace(/,/g, '')), m[6]);
+      } else if (m[3]) {
+        amount = applySuffix(parseFloat(m[3].replace(/,/g, '')), m[4]);
+        if (m[5]) amount *= applySuffix(parseFloat(m[5].replace(/,/g, '')), m[6]);
+      } else if (m[5]) {
+        // Lone "Odinium xN" — N is the absolute amount, not a multiplier.
+        amount = applySuffix(parseFloat(m[5].replace(/,/g, '')), m[6]);
+      } else {
+        continue;
       }
+      var v = Math.round(amount);
+      if (!isNaN(v) && v > max) max = v;
     }
     return max;
   }
