@@ -9691,6 +9691,146 @@
 
   var _AR_SUP_MAX_BYTES = 1024 * 1024; // 1 MB
 
+  // Lazy-loaded bookmarklet sources.
+  var _ar_bookmarkletCache = {};
+  async function _ar_loadBookmarklet(name) {
+    if (_ar_bookmarkletCache[name]) return _ar_bookmarkletCache[name];
+    var r = await fetch('../' + name);
+    if (!r.ok) throw new Error('failed to fetch ' + name);
+    var txt = (await r.text()).trim();
+    _ar_bookmarkletCache[name] = txt;
+    return txt;
+  }
+
+  // Build the in-modal instructions panel (drag link, copy URL, iOS/Android steps,
+  // and step-by-step game usage). Returns the root element. Mounting + content
+  // population happens inside this helper so paste modal stays declarative.
+  function _ar_buildBookmarkletPanel(opts) {
+    // opts: { fileName, dragLabel, panelLead, usageSteps, panelHint }
+    var wrap = document.createElement('div');
+    wrap.className = 'bm-panel';
+    wrap.style.cssText = 'background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin: 0 0 14px;';
+
+    var lead = document.createElement('div');
+    lead.style.cssText = 'font-size: 13px; color: var(--text); margin-bottom: 10px;';
+    lead.textContent = opts.panelLead;
+    wrap.appendChild(lead);
+
+    // Drag link (desktop primary path)
+    var linkRow = document.createElement('div');
+    linkRow.style.cssText = 'display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px;';
+    var dragLink = document.createElement('a');
+    dragLink.style.cssText = 'display: inline-block; padding: 8px 14px; background: linear-gradient(180deg, #2da44e, #218539); color: #fff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 13px; cursor: grab; user-select: none;';
+    dragLink.href = '#'; // populated after fetch
+    dragLink.textContent = '→ ' + opts.dragLabel;
+    dragLink.title = 'Drag to your bookmarks bar';
+    dragLink.onclick = function(e) {
+      e.preventDefault();
+      alert('Drag this button to your bookmarks bar. Tapping it here does nothing — the bookmarklet only works on h5.topwargame.com.');
+    };
+    linkRow.appendChild(dragLink);
+    var dragHint = document.createElement('span');
+    dragHint.style.cssText = 'color: var(--muted); font-size: 12px;';
+    dragHint.textContent = 'Drag → bookmarks bar (desktop)';
+    linkRow.appendChild(dragHint);
+    wrap.appendChild(linkRow);
+
+    // iOS / Android collapsibles
+    function makeDetails(summary, html) {
+      var d = document.createElement('details');
+      d.style.cssText = 'margin: 8px 0 0;';
+      var s = document.createElement('summary');
+      s.style.cssText = 'cursor: pointer; padding: 6px 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; font-weight: 500; color: var(--muted);';
+      s.textContent = summary;
+      d.appendChild(s);
+      var body = document.createElement('div');
+      body.style.cssText = 'padding: 10px 12px; border: 1px solid var(--border); border-top: none; border-radius: 0 0 6px 6px; background: var(--surface); font-size: 12px; color: var(--muted); line-height: 1.45;';
+      body.appendChild(html);
+      d.appendChild(body);
+      return d;
+    }
+    function makeOl(steps) {
+      var ol = document.createElement('ol');
+      ol.style.cssText = 'padding-left: 20px; margin: 0;';
+      steps.forEach(function(t) {
+        var li = document.createElement('li');
+        li.style.cssText = 'margin: 4px 0;';
+        li.textContent = t;
+        ol.appendChild(li);
+      });
+      return ol;
+    }
+    wrap.appendChild(makeDetails('iOS Safari setup', makeOl([
+      'Tap Share → Add Bookmark → Save (any page)',
+      'Open Bookmarks → Edit → tap the new bookmark',
+      'Use the Copy URL button below to copy the bookmarklet, paste into the bookmark URL field, save',
+      'Open the game in Safari, open the relevant panel (Bag or Beast list), tap the bookmark'
+    ])));
+    wrap.appendChild(makeDetails('Android Chrome setup', makeOl([
+      'Open this page in Chrome',
+      'Menu (⋮) → Add to bookmarks (any page)',
+      'Menu (⋮) → Bookmarks → tap-and-hold the new bookmark → Edit',
+      'Tap Copy URL below, paste into the URL field, save',
+      'To run: open the game, type the bookmark name into the URL bar, tap the autocomplete suggestion (Chrome strips javascript: when typed manually — picking from autocomplete preserves it)'
+    ])));
+
+    // Copy URL block
+    var copyWrap = document.createElement('details');
+    copyWrap.style.cssText = 'margin: 8px 0 0;';
+    var copySummary = document.createElement('summary');
+    copySummary.style.cssText = 'cursor: pointer; padding: 6px 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; font-weight: 500; color: var(--muted);';
+    copySummary.textContent = 'Show bookmarklet URL (manual copy)';
+    copyWrap.appendChild(copySummary);
+    var copyBody = document.createElement('div');
+    copyBody.style.cssText = 'padding: 10px 12px; border: 1px solid var(--border); border-top: none; border-radius: 0 0 6px 6px; background: var(--surface);';
+    var urlTa = document.createElement('textarea');
+    urlTa.readOnly = true;
+    urlTa.style.cssText = 'width: 100%; height: 90px; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 8px; border-radius: 4px; font-family: monospace; font-size: 10px; resize: vertical;';
+    copyBody.appendChild(urlTa);
+    var copyBtn = document.createElement('button');
+    copyBtn.style.cssText = 'padding: 6px 12px; background: var(--accent); color: #0d1117; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; margin-top: 6px; font-size: 12px;';
+    copyBtn.textContent = 'Copy URL';
+    copyBtn.type = 'button';
+    copyBtn.onclick = function() {
+      urlTa.select();
+      try {
+        if (navigator.clipboard) navigator.clipboard.writeText(urlTa.value);
+        else document.execCommand('copy');
+        copyBtn.textContent = 'Copied!';
+        setTimeout(function() { copyBtn.textContent = 'Copy URL'; }, 1500);
+      } catch (e) {}
+    };
+    copyBody.appendChild(copyBtn);
+    copyWrap.appendChild(copyBody);
+    wrap.appendChild(copyWrap);
+
+    // Usage steps
+    var usageHdr = document.createElement('div');
+    usageHdr.style.cssText = 'font-size: 12px; color: var(--muted); margin: 12px 0 4px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;';
+    usageHdr.textContent = 'Then in the game';
+    wrap.appendChild(usageHdr);
+    wrap.appendChild(makeOl(opts.usageSteps));
+
+    if (opts.panelHint) {
+      var hint = document.createElement('div');
+      hint.style.cssText = 'font-size: 11px; color: #d29922; margin-top: 8px; padding: 6px 8px; background: rgba(210, 153, 34, 0.08); border-radius: 4px;';
+      hint.textContent = opts.panelHint;
+      wrap.appendChild(hint);
+    }
+
+    // Async fetch + populate
+    _ar_loadBookmarklet(opts.fileName).then(function(url) {
+      dragLink.href = url;
+      urlTa.value = url;
+    }).catch(function(e) {
+      dragLink.style.opacity = '0.5';
+      dragLink.title = 'Bookmarklet failed to load: ' + e.message;
+      urlTa.value = '(failed to load: ' + e.message + ')';
+    });
+
+    return wrap;
+  }
+
   // Shared paste modal — kind: 'inv' | 'bench'.
   function _ar_openPasteModal(opts, onSaved) {
     var kind = opts.kind, siteKey = opts.siteKey;
@@ -9713,6 +9853,10 @@
     var p = document.createElement('p');
     p.textContent = opts.desc;
     modal.appendChild(p);
+
+    if (opts.bookmarkletPanel) {
+      modal.appendChild(_ar_buildBookmarkletPanel(opts.bookmarkletPanel));
+    }
 
     var ta = document.createElement('textarea');
     ta.style.cssText = 'width: 100%; min-height: 120px; max-height: 240px; background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 8px; border-radius: 6px; font-family: monospace; font-size: 11px; resize: vertical;';
@@ -9792,12 +9936,25 @@
     _ar_openPasteModal({
       kind: 'inv', siteKey: siteKey,
       title: 'Paste Inventory JSON',
-      desc: 'Paste the JSON copied from the Inventory bookmarklet on h5.topwargame.com.',
+      desc: 'Use the inventory bookmarklet on h5.topwargame.com, then paste the JSON below.',
       placeholder: '{"v":1,"meta":{...},"tabs":{...},"heros":{...}}',
       validate: _ar_validateInvJson,
       lsKey: 'armory_inv_',
       tsPath: 'meta.ts',
-      staleLabel: 'snapshot'
+      staleLabel: 'snapshot',
+      bookmarkletPanel: {
+        fileName: 'bookmarklet.txt',
+        dragLabel: 'Inventory Dump',
+        panelLead: 'Need the JSON? Set up the bookmarklet once, then run it from the game whenever you want a fresh snapshot.',
+        usageSteps: [
+          'Open the game in your browser',
+          'Tap the Bag icon (bottom-right)',
+          'Tap any tab — Item / Unit / Decor / Hero / CPNT',
+          'Tap your saved bookmarklet → JSON copies to clipboard',
+          'Come back here and paste below'
+        ],
+        panelHint: 'Only run when the Bag panel is open. The bookmarklet reads scene-graph state, not server data.'
+      }
     }, onSaved);
   }
 
@@ -9805,12 +9962,26 @@
     _ar_openPasteModal({
       kind: 'bench', siteKey: siteKey,
       title: 'Paste Bench Beast JSON',
-      desc: 'Paste the JSON copied from the Enigma Beast bookmarklet (Q3+ unplaced beasts).',
+      desc: 'Use the Enigma Beast bookmarklet on h5.topwargame.com to grab Q3+ unplaced beasts, then paste below.',
       placeholder: '{"v":1,"src":"...","beasts":[...]}',
       validate: _ar_validateBenchJson,
       lsKey: 'armory_bench_',
       tsPath: 'ts',
-      staleLabel: 'bench snapshot'
+      staleLabel: 'bench snapshot',
+      bookmarkletPanel: {
+        fileName: 'beast-bookmarklet.txt',
+        dragLabel: 'Beast List Dump',
+        panelLead: 'Need the JSON? Set up the bookmarklet once, then run it from the game whenever you want a fresh bench snapshot.',
+        usageSteps: [
+          'Open the game in your browser',
+          'Open the Enigma Beast section',
+          'Open the panel that lists every owned beast (the one with quality / faction / type filters)',
+          'Wait for the list to fully load',
+          'Tap your saved bookmarklet → JSON copies to clipboard (Q3+ unplaced only — placed beasts already come from your battle reports)',
+          'Come back here and paste below'
+        ],
+        panelHint: 'Only run when the Beast list panel is open. The bookmarklet reads scene-graph state, not server data.'
+      }
     }, onSaved);
   }
 
