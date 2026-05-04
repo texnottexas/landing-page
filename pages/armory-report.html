@@ -10548,9 +10548,26 @@
     if (isPrivate && !isOwner) {
       var lockWrap = document.createElement('div');
       lockWrap.style.cssText = 'padding: 48px 24px; text-align: center; color: var(--muted); display:flex;flex-direction:column;align-items:center;gap:.6rem;';
+      var lockSvg = document.createElementNS(SVG_NS, 'svg');
+      lockSvg.setAttribute('width', '40');
+      lockSvg.setAttribute('height', '40');
+      lockSvg.setAttribute('viewBox', '0 0 24 24');
+      lockSvg.setAttribute('fill', 'none');
+      lockSvg.setAttribute('stroke', 'currentColor');
+      lockSvg.setAttribute('stroke-width', '1.6');
+      lockSvg.setAttribute('stroke-linecap', 'round');
+      lockSvg.setAttribute('stroke-linejoin', 'round');
+      var lockRect = document.createElementNS(SVG_NS, 'rect');
+      lockRect.setAttribute('x', '3'); lockRect.setAttribute('y', '11');
+      lockRect.setAttribute('width', '18'); lockRect.setAttribute('height', '11');
+      lockRect.setAttribute('rx', '2');
+      var lockShackle = document.createElementNS(SVG_NS, 'path');
+      lockShackle.setAttribute('d', 'M7 11V7a5 5 0 0 1 10 0v4');
+      lockSvg.appendChild(lockRect);
+      lockSvg.appendChild(lockShackle);
       var lockIcon = document.createElement('div');
-      lockIcon.style.cssText = 'font-size: 32px;';
-      lockIcon.textContent = '🔒';
+      lockIcon.style.cssText = 'color:var(--muted);';
+      lockIcon.appendChild(lockSvg);
       var lockTitle = document.createElement('div');
       lockTitle.style.cssText = 'font-size: 15px; color: var(--text); font-weight: 600;';
       lockTitle.textContent = 'Inventory hidden by player';
@@ -10588,27 +10605,68 @@
       // Privacy toggle — only visible to verified owner. Server enforces;
       // flipping private wipes the public GET endpoint behind a 403.
       var privacyBtn = document.createElement('button');
+      privacyBtn.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;font-weight:600;cursor:pointer;font-size:12px;';
+      var privacyIconSlot = document.createElementNS(SVG_NS, 'svg');
+      privacyIconSlot.setAttribute('width', '14');
+      privacyIconSlot.setAttribute('height', '14');
+      privacyIconSlot.setAttribute('viewBox', '0 0 24 24');
+      privacyIconSlot.setAttribute('fill', 'none');
+      privacyIconSlot.setAttribute('stroke', 'currentColor');
+      privacyIconSlot.setAttribute('stroke-width', '2');
+      privacyIconSlot.setAttribute('stroke-linecap', 'round');
+      privacyIconSlot.setAttribute('stroke-linejoin', 'round');
+      privacyIconSlot.style.flexShrink = '0';
+      var privacyLabel = document.createElement('span');
+      privacyBtn.appendChild(privacyIconSlot);
+      privacyBtn.appendChild(privacyLabel);
       function paintPrivacy() {
         var priv = _ar_isSupplementPrivate(siteKey, 'inv');
-        privacyBtn.textContent = priv ? '🔒 Inventory: private' : '🌐 Inventory: public';
+        // Swap the SVG path set: lock body for private, globe for public.
+        while (privacyIconSlot.firstChild) privacyIconSlot.removeChild(privacyIconSlot.firstChild);
+        if (priv) {
+          // Lock — closed shackle + body
+          var rect = document.createElementNS(SVG_NS, 'rect');
+          rect.setAttribute('x', '3'); rect.setAttribute('y', '11');
+          rect.setAttribute('width', '18'); rect.setAttribute('height', '11');
+          rect.setAttribute('rx', '2');
+          var path = document.createElementNS(SVG_NS, 'path');
+          path.setAttribute('d', 'M7 11V7a5 5 0 0 1 10 0v4');
+          privacyIconSlot.appendChild(rect);
+          privacyIconSlot.appendChild(path);
+        } else {
+          // Globe — circle + meridian + equator
+          var c = document.createElementNS(SVG_NS, 'circle');
+          c.setAttribute('cx', '12'); c.setAttribute('cy', '12'); c.setAttribute('r', '10');
+          var l1 = document.createElementNS(SVG_NS, 'line');
+          l1.setAttribute('x1', '2'); l1.setAttribute('y1', '12');
+          l1.setAttribute('x2', '22'); l1.setAttribute('y2', '12');
+          var p2 = document.createElementNS(SVG_NS, 'path');
+          p2.setAttribute('d', 'M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z');
+          privacyIconSlot.appendChild(c);
+          privacyIconSlot.appendChild(l1);
+          privacyIconSlot.appendChild(p2);
+        }
+        privacyLabel.textContent = priv ? 'Inventory Visibility: Private' : 'Inventory Visibility: Public';
         privacyBtn.title = priv
           ? 'Click to make inventory visible to other viewers'
           : 'Click to hide inventory from other viewers';
-        privacyBtn.style.cssText = 'padding: 6px 12px; background: ' + (priv ? 'rgba(210,153,34,0.15)' : 'transparent') + '; color: ' + (priv ? '#d29922' : 'var(--muted)') + '; border: 1px solid ' + (priv ? 'rgba(210,153,34,0.5)' : 'var(--border)') + '; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 12px;';
+        privacyBtn.style.background = priv ? 'rgba(210,153,34,0.15)' : 'transparent';
+        privacyBtn.style.color = priv ? '#d29922' : 'var(--muted)';
+        privacyBtn.style.border = '1px solid ' + (priv ? 'rgba(210,153,34,0.5)' : 'var(--border)');
       }
       paintPrivacy();
       privacyBtn.onclick = async function() {
         var current = _ar_isSupplementPrivate(siteKey, 'inv');
         var next = !current;
         privacyBtn.disabled = true;
-        var prevText = privacyBtn.textContent;
-        privacyBtn.textContent = 'Saving…';
+        var prevLabel = privacyLabel.textContent;
+        privacyLabel.textContent = 'Saving…';
         try {
           await _ar_setSupplementPrivacy(siteKey, 'inv', next);
           paintPrivacy();
         } catch (e) {
           alert('Could not update privacy: ' + (e && e.message ? e.message : e));
-          privacyBtn.textContent = prevText;
+          privacyLabel.textContent = prevLabel;
         } finally {
           privacyBtn.disabled = false;
         }
