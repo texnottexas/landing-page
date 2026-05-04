@@ -1457,6 +1457,13 @@
   .eb-view-btn:first-child { border-radius: 6px 0 0 6px; }
   .eb-view-btn:last-child { border-radius: 0 6px 6px 0; }
   .eb-view-btn.active { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+  .eb-bench-update-btn {
+    background: var(--green); border: 1px solid var(--green); color: #0d1117;
+    padding: .35rem .8rem; border-radius: 6px; font-size: .75rem; font-weight: 600;
+    cursor: pointer; font-family: inherit; transition: background .15s, transform .1s;
+  }
+  .eb-bench-update-btn:hover { background: #4cc962; }
+  .eb-bench-update-btn:active { transform: translateY(1px); }
   .eb-filter-bar { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
   .eb-pill { padding: .2rem .55rem; border-radius: 12px; font-size: .7rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--muted); transition: all .15s; user-select: none; white-space: nowrap; display: inline-flex; align-items: center; gap: .25rem; }
   .eb-pill:hover { border-color: var(--accent); color: var(--accent); }
@@ -1692,18 +1699,22 @@
   .modal-bg {
     display: none; position: fixed; inset: 0; z-index: 800;
     background: rgba(0,0,0,0.7); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-    align-items: center; justify-content: center; padding: 1rem;
-    overflow-y: auto;
+    /* align-items: flex-start so tall modals start at top and the entire
+       background scrolls — avoids the flex+center "stuck above viewport"
+       trap on iOS Safari and small desktop heights. margin:auto on .modal
+       still vertically centers it when it fits. */
+    align-items: flex-start; justify-content: center; padding: 1rem;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
   .modal-bg.show { display: flex; animation: fadeIn .15s ease; }
   .modal {
     background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
     padding: 1.5rem; width: 100%; max-width: 480px;
-    max-height: calc(100vh - 2rem); overflow-y: auto;
+    margin: auto;
     box-shadow: 0 24px 64px rgba(0,0,0,0.6);
     animation: slideUp .2s ease;
   }
-  .sup-unlock-modal { max-width: 460px; }
+  .sup-unlock-modal { max-width: 560px; }
   .sup-unlock-modal h2 { margin: 0 0 8px; font-size: 18px; }
   .sup-unlock-modal p { margin: 0 0 14px; color: var(--muted); font-size: 13px; line-height: 1.45; }
   .sup-unlock-modal label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
@@ -10418,6 +10429,26 @@
     viewToggle.appendChild(collBtn);
     toolbar.appendChild(viewToggle);
 
+    // Update Bench — sits next to the view toggle as a third top-level
+    // action so verified S2864 owners can update without first switching
+    // to Beast Collection. Gated by !_viewOnly + roster + UID-unlocked.
+    if (!wizardState._viewOnly &&
+        siteKey && _ar_rosterMap && _ar_rosterMap[siteKey] && unlocked) {
+      var benchUpdateTopBtn = document.createElement('button');
+      benchUpdateTopBtn.className = 'eb-bench-update-btn';
+      benchUpdateTopBtn.type = 'button';
+      benchUpdateTopBtn.textContent = 'Update Bench';
+      benchUpdateTopBtn.title = 'Paste Q3+ unplaced beasts to refresh your bench';
+      benchUpdateTopBtn.onclick = function() {
+        _ar_openBenchPasteModal(siteKey, function() {
+          var content = document.getElementById('tab-enigma');
+          if (content) content.removeAttribute('data-rendered');
+          switchTab(document.querySelector('.tab-btn[data-tab="enigma"]'));
+        });
+      };
+      toolbar.appendChild(benchUpdateTopBtn);
+    }
+
     // Sort select
     var sortSelect = document.createElement('select');
     sortSelect.className = 'eb-sort-select';
@@ -10527,23 +10558,8 @@
         benchPill.dataset.field = 'bench';
         filterBar.appendChild(benchPill);
 
-        // Update Bench — verified S2864 owner only (UID-unlocked locally) and not
-        // in view-only / shortcode-share mode. Other viewers see neither button
-        // nor any prompt to unlock from the Beasts tab.
-        if (!wizardState._viewOnly &&
-            siteKey && _ar_rosterMap && _ar_rosterMap[siteKey] && unlocked) {
-          var benchUpdateBtn = document.createElement('button');
-          benchUpdateBtn.style.cssText = 'margin-left: 12px; padding: 4px 12px; background: var(--green); color: #0d1117; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 600;';
-          benchUpdateBtn.textContent = 'Update Bench';
-          benchUpdateBtn.onclick = function() {
-            _ar_openBenchPasteModal(siteKey, function() {
-              var content = document.getElementById('tab-enigma');
-              if (content) content.removeAttribute('data-rendered');
-              switchTab(document.querySelector('.tab-btn[data-tab="enigma"]'));
-            });
-          };
-          benchPill.parentElement.appendChild(benchUpdateBtn);
-        }
+        // (Update Bench button moved to the top toolbar so players don't
+        // have to switch to Beast Collection first to find it.)
         if (supBench && supBench.ts) {
           var benchTs = document.createElement('span');
           benchTs.style.cssText = 'margin-left: 10px; color: var(--muted); font-size: 11px;';
