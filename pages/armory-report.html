@@ -2563,14 +2563,14 @@
         }
         var ids = result.reportIds.split(',').filter(Boolean);
         if (result.marchGroups) saveMarches(result.marchGroups);
-        applyShortcodeConfig(result.playerName, ids);
+        applyShortcodeConfig(result.playerName, ids, undefined, result.siteKey);
       })
       .catch(function() {
         errDiv.textContent = 'Failed to load config.';
       });
   }
 
-  function applyShortcodeConfig(playerName, ids, persistToStorage) {
+  function applyShortcodeConfig(playerName, ids, persistToStorage, siteKey) {
     // Preserve marchGroups + shortcode that were just written by saveMarches /
     // a prior session — fakeSaved would otherwise clobber them on setItem below.
     var priorMarches = [];
@@ -2580,8 +2580,17 @@
       if (Array.isArray(prior.marchGroups)) priorMarches = prior.marchGroups;
       if (prior.shortcode) priorShortcode = prior.shortcode;
     } catch(e) {}
+    // siteKey is required for the Inventory unlock gate (isOwnReport compares
+    // stored identity siteKey vs loaded report siteKey). When the worker
+    // returned one, set it on the player object so that check succeeds.
+    var playerObj = {
+      name: playerName, avatar: null,
+      avatarFallback: (playerName || '?').charAt(0).toUpperCase(),
+      level: 0, server: '', nationalflag: 0
+    };
+    if (siteKey) playerObj.siteKey = siteKey;
     var fakeSaved = {
-      player: { name: playerName, avatar: null, avatarFallback: (playerName || '?').charAt(0).toUpperCase(), level: 0, server: '', nationalflag: 0 },
+      player: playerObj,
       reportIds: ids,
       marchGroups: priorMarches,
       _viewOnly: persistToStorage === false
@@ -11476,7 +11485,7 @@
             (function(c) {
               syncBtn.addEventListener('click', function() {
                 var ids = c.reportIds.split(',').filter(Boolean);
-                applyShortcodeConfig(c.playerName, ids);
+                applyShortcodeConfig(c.playerName, ids, undefined, c.siteKey);
               });
             })(cfg);
             actionsEl.appendChild(syncBtn);
@@ -12219,16 +12228,30 @@
         .then(function(result) {
           if (result && result.ok) {
             var ids = result.reportIds.split(',').filter(Boolean);
-            // Only overwrite stored config if this is the same player's code.
-            // If it belongs to a different player, show in-memory only (view mode)
-            // so the current player's own config is preserved.
+            // Determine if the loaded shortcode belongs to the current player.
+            // Match by siteKey when both sides have one (most reliable);
+            // otherwise fall back to a case-insensitive trimmed name compare —
+            // the strict equality used to flip the player into view-only mode
+            // when names differed only in case or whitespace (e.g. roster
+            // sync changed display name capitalization since the shortcode
+            // was minted).
             var currentSaved = null;
             try { currentSaved = JSON.parse(localStorage.getItem('playerReport')); } catch(e) {}
-            var currentPlayer = currentSaved && currentSaved.player && currentSaved.player.name;
-            var isSamePlayer = !currentPlayer || currentPlayer === result.playerName;
+            var currentPlayer = (currentSaved && currentSaved.player && currentSaved.player.name) || '';
+            var currentSiteKey = (currentSaved && currentSaved.player && currentSaved.player.siteKey) || null;
+            var resultSiteKey = result.siteKey || null;
+            function _norm(s) { return String(s || '').trim().toLowerCase(); }
+            var isSamePlayer;
+            if (!currentPlayer) {
+              isSamePlayer = true;
+            } else if (currentSiteKey && resultSiteKey) {
+              isSamePlayer = currentSiteKey === resultSiteKey;
+            } else {
+              isSamePlayer = _norm(currentPlayer) === _norm(result.playerName);
+            }
             // Load server-stored march groupings into localStorage for this session
             if (result.marchGroups) saveMarches(result.marchGroups);
-            applyShortcodeConfig(result.playerName, ids, isSamePlayer);
+            applyShortcodeConfig(result.playerName, ids, isSamePlayer, result.siteKey);
           } else {
             normalInit();
           }
