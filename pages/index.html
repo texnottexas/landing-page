@@ -5416,13 +5416,18 @@
       }
       function _idShowVerifyForm(host, identity) {
         while (host.firstChild) host.removeChild(host.firstChild);
+        var hintTop = document.createElement('div');
+        hintTop.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;margin-bottom:.4rem;';
+        hintTop.textContent = 'Enter your in-game UID — the 12 or 13-digit number from your in-game profile.';
+        host.appendChild(hintTop);
         var lbl = document.createElement('label');
         lbl.textContent = 'In-game UID';
         lbl.style.cssText = 'display:block;font-size:.7rem;color:var(--muted);margin-bottom:.25rem;';
         host.appendChild(lbl);
         var input = document.createElement('input');
         input.type = 'text';
-        input.placeholder = 'e.g. 12345678';
+        input.inputMode = 'numeric';
+        input.placeholder = 'e.g. 7542499511087';
         input.autocomplete = 'off';
         input.spellcheck = false;
         input.style.cssText = 'width:100%;padding:.4rem .55rem;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:monospace;font-size:.8rem;box-sizing:border-box;';
@@ -5448,9 +5453,24 @@
           submit.disabled = true;
           err.textContent = '';
           try {
-            var hash = await _idSha256Hex(input.value.trim());
-            if (hash.slice(0, 16) !== identity.siteKey) {
-              err.textContent = 'UID does not match this player.';
+            var raw = input.value;
+            // Same paste-tolerance as armory-report verify modal: try the
+            // user-entered string first, then a digits-only normalization.
+            var attempts = [raw.trim(), raw.replace(/\D/g, '')];
+            var matched = false;
+            for (var i = 0; i < attempts.length; i++) {
+              var c = attempts[i];
+              if (!c) continue;
+              var h = await _idSha256Hex(c);
+              if (h.slice(0, 16) === identity.siteKey) { matched = true; break; }
+            }
+            if (!matched) {
+              var digits = raw.replace(/\D/g, '');
+              var trimmed = raw.trim();
+              if (!digits) err.textContent = 'UID should be all digits — copy it from your in-game profile.';
+              else if (digits.length < 10 || digits.length > 14) err.textContent = 'That looks too ' + (digits.length < 10 ? 'short' : 'long') + ' (' + digits.length + ' digits). UIDs are 12 or 13 digits.';
+              else if (trimmed !== digits) err.textContent = 'UID does not match this player. Try the digits only — no spaces or prefix.';
+              else err.textContent = 'UID does not match this player. Make sure you picked the right name and copied the UID exactly from in-game profile.';
               submit.disabled = !input.value.trim();
               return;
             }

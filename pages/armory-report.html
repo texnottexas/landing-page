@@ -2095,7 +2095,7 @@
     modal.appendChild(h);
 
     var p = document.createElement('p');
-    p.textContent = 'Enter your in-game UID. It is hashed locally to verify you own this account. The UID is never stored or sent anywhere.';
+    p.textContent = 'Enter your in-game UID — the 12 or 13-digit number from your in-game profile. Hashed locally to verify you own this account. UID is never stored or sent anywhere.';
     modal.appendChild(p);
 
     var label = document.createElement('label');
@@ -2104,7 +2104,8 @@
 
     var input = document.createElement('input');
     input.type = 'text';
-    input.placeholder = 'e.g. 12345678';
+    input.inputMode = 'numeric';
+    input.placeholder = 'e.g. 7542499511087';
     input.autocomplete = 'off';
     input.spellcheck = false;
     modal.appendChild(input);
@@ -2135,13 +2136,38 @@
     submit.addEventListener('click', async function() {
       submit.disabled = true;
       err.textContent = '';
-      var uid = input.value.trim();
-      var fullHash = await _ar_sha256Hex(uid);
-      if (fullHash.slice(0, 16) !== siteKey) {
-        err.textContent = 'UID does not match this player.';
+      var raw = input.value;
+      // Try the user-entered string first, then a digits-only normalization.
+      // Players sometimes paste with surrounding whitespace, "UID:" prefix,
+      // server tag, or invisible characters from screenshot OCR; the second
+      // attempt strips everything except digits so a copy-paste with extra
+      // junk still validates.
+      var attempts = [raw.trim(), raw.replace(/\D/g, '')];
+      var matched = null;
+      for (var i = 0; i < attempts.length; i++) {
+        var candidate = attempts[i];
+        if (!candidate) continue;
+        var h = await _ar_sha256Hex(candidate);
+        if (h.slice(0, 16) === siteKey) { matched = { uid: candidate, hash: h }; break; }
+      }
+      if (!matched) {
+        var trimmed = (raw || '').trim();
+        var digits = raw.replace(/\D/g, '');
+        var hint;
+        if (!digits) {
+          hint = 'UID should be all digits — copy it from your in-game profile.';
+        } else if (digits.length < 10 || digits.length > 14) {
+          hint = 'That looks too ' + (digits.length < 10 ? 'short' : 'long') + ' (' + digits.length + ' digits). UIDs are 12 or 13 digits.';
+        } else if (trimmed !== digits) {
+          hint = 'UID does not match this player. Try the digits only — no spaces or prefix.';
+        } else {
+          hint = 'UID does not match this player. Make sure you picked the right name and copied the UID exactly from in-game profile.';
+        }
+        err.textContent = hint;
         submit.disabled = !input.value.trim();
         return;
       }
+      var fullHash = matched.hash;
       // Hash matched — try to capture a fresh worker token. Fail-soft to local-only mode.
       try {
         await _ar_handshake(fullHash);
