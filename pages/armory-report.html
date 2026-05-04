@@ -2576,6 +2576,19 @@
     return null;
   }
 
+  function _ar_validateChipsJson(raw) {
+    if (!raw || typeof raw !== 'object') return 'Not an object';
+    if (raw.v !== 1) return 'Unknown schema version (expected v:1)';
+    if (!Array.isArray(raw.chips)) return 'Missing chips array';
+    if (raw.chips.length > 5000) return 'Too many chips (>5000)';
+    for (var i = 0; i < raw.chips.length && i < 8; i++) {
+      var c = raw.chips[i];
+      if (!c || c.c == null) return 'Chip at index ' + i + ' missing chipId (c)';
+    }
+    if (raw.mothership && typeof raw.mothership !== 'object') return 'mothership wrong type';
+    return null;
+  }
+
   function getPushEndpoint() {
     if (!navigator.serviceWorker) return Promise.resolve(null);
     // Don't use .ready (hangs if no SW registered). Check getRegistration instead.
@@ -10839,6 +10852,33 @@
     }, onSaved);
   }
 
+  function _ar_openChipsPasteModal(siteKey, onSaved) {
+    _ar_openPasteModal({
+      kind: 'chips', siteKey: siteKey,
+      title: 'Paste HT Chip Pool JSON',
+      desc: 'Use the HT Chip bookmarklet on h5.topwargame.com to grab unequipped chips + Heavy Mothership state, then paste below.',
+      placeholder: '{"v":1,"chips":[...],"mothership":{...}}',
+      validate: _ar_validateChipsJson,
+      lsKey: 'armory_chips_',
+      tsPath: 'ts',
+      staleLabel: 'chip pool snapshot',
+      bookmarkletPanel: {
+        fileName: 'chips-bookmarklet.txt',
+        dragLabel: 'HT Chip Dump',
+        panelLead: 'Need the JSON? Set up the bookmarklet once, then run it from the game whenever you want a fresh chip pool snapshot.',
+        usageSteps: [
+          'Open your mobile browser (Safari on iOS, Chrome on Android) and go to https://h5.topwargame.com/h5game/index.html',
+          'Log in to your S2864 account if not already',
+          'Tap the Heavy Mothership HC-9999 in your mecha list',
+          'Tap the Chip button on the mothership to open the chip pool',
+          'Tap your saved bookmarklet → JSON copies to clipboard (cycles all 7 chip-type tabs to capture every unequipped chip; equipped chips already come from your battle reports)',
+          'Come back here and paste below'
+        ],
+        panelHint: 'Only run when the chip-pool panel is open. Captures HC-9999 piece state from the mecha-main panel automatically (still in memory while chip-pool is on top).'
+      }
+    }, onSaved);
+  }
+
   function renderEnigmaTab(merged) {
     var container = document.getElementById('tab-enigma');
     while (container.firstChild) container.removeChild(container.firstChild);
@@ -11804,6 +11844,445 @@
 
     // Render first mecha
     renderMechaChips(mechasWithChips[0]);
+
+    // ── Heavy Mothership HC-9999 + Chip Pool section ─────────────────────────
+    // Load from chips supplement (player-uploaded). Renders below the per-mecha
+    // section. Same gating as inventory: requires 2864 roster + UID-unlocked
+    // for the *upload* button, but the rendered pool is visible to everyone.
+    _ar_renderChipPoolSection(container, merged);
+  }
+
+  // Heavy Mothership HC-9999 + chip-pool renderer. Pulls the chips supplement
+  // and renders three things, below the per-HT cards:
+  //   1. Heavy Mothership HC-9999 piece counter (owned from inventory + equipped from supplement)
+  //   2. Chip Pool with filters (set, slot, rarity, mecha-binding) + sorting
+  //   3. Update Chips button (gated to verified S2864 owners viewing own report)
+  function _ar_renderChipPoolSection(container, merged) {
+    var siteKey = (wizardState && wizardState.player && wizardState.player.siteKey) || null;
+    var unlocked = siteKey ? _idIsUnlocked(siteKey) : false;
+
+    // Section wrapper
+    var section = document.createElement('div');
+    section.className = 'chip-pool-section';
+    section.style.cssText = 'margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);';
+
+    // ── Heavy Mothership HC-9999 card ──
+    _ar_renderMothershipCard(section, merged);
+    // Best-effort: if no localStorage inv (viewing someone else's report or fresh
+    // session), pull from /supplement/inv to fill in piece counts. Updates the
+    // card in place when it arrives.
+    var msSiteKey = (wizardState && wizardState.player && wizardState.player.siteKey) || null;
+    if (msSiteKey) {
+      var hasLocal = false;
+      try { hasLocal = !!localStorage.getItem('armory_inv_' + msSiteKey); } catch (e) {}
+      if (!hasLocal) {
+        _ar_fetchSupplement('inv', msSiteKey).then(function(invRaw) {
+          if (!invRaw) return;
+          _ar_updateMothershipPiecesFromInv(section, invRaw);
+        }).catch(function() {});
+      }
+    }
+
+    // ── Pool wrapper (loads supplement asynchronously) ──
+    var poolWrap = document.createElement('div');
+    poolWrap.style.cssText = 'margin-top:1rem;';
+    section.appendChild(poolWrap);
+
+    // Heading + Update button
+    var poolHdr = document.createElement('div');
+    poolHdr.style.cssText = 'display:flex;align-items:center;gap:.5rem;margin-bottom:.6rem;flex-wrap:wrap;';
+    var poolTitle = document.createElement('h3');
+    poolTitle.style.cssText = 'margin:0;font-size:1rem;color:var(--text);';
+    poolTitle.textContent = 'HT Chip Pool';
+    poolHdr.appendChild(poolTitle);
+    var poolSub = document.createElement('span');
+    poolSub.style.cssText = 'font-size:.75rem;color:var(--muted);';
+    poolSub.textContent = 'unequipped chips, sortable + filterable';
+    poolHdr.appendChild(poolSub);
+    var poolMsg = document.createElement('span');
+    poolMsg.id = 'chip-pool-msg';
+    poolMsg.style.cssText = 'font-size:.7rem;color:var(--muted);margin-left:auto;';
+    poolHdr.appendChild(poolMsg);
+    if (!wizardState._viewOnly && siteKey && _ar_rosterMap && _ar_rosterMap[siteKey] && unlocked) {
+      var updateBtn = document.createElement('button');
+      updateBtn.className = 'eb-bench-update-btn';
+      updateBtn.type = 'button';
+      updateBtn.textContent = 'Update Chips';
+      updateBtn.title = 'Paste fresh HT chip pool JSON';
+      updateBtn.onclick = function() {
+        _ar_openChipsPasteModal(siteKey, function() {
+          var content = document.getElementById('tab-chips');
+          if (content) content.removeAttribute('data-rendered');
+          switchTab(document.querySelector('.tab-btn[data-tab="chips"]'));
+        });
+      };
+      poolHdr.appendChild(updateBtn);
+    }
+    poolWrap.appendChild(poolHdr);
+
+    var poolBody = document.createElement('div');
+    poolWrap.appendChild(poolBody);
+
+    container.appendChild(section);
+
+    // Async-load the chips supplement (own player or shared report)
+    _ar_loadChipsSupplement(siteKey).then(function(chipsRaw) {
+      if (!chipsRaw || !Array.isArray(chipsRaw.chips) || chipsRaw.chips.length === 0) {
+        poolMsg.textContent = '';
+        var empty = document.createElement('div');
+        empty.style.cssText = 'padding:1rem;text-align:center;color:var(--muted);font-size:.85rem;border:1px dashed var(--border);border-radius:8px;';
+        if (!wizardState._viewOnly && siteKey && _ar_rosterMap && _ar_rosterMap[siteKey] && unlocked) {
+          empty.textContent = 'No chip pool uploaded yet. Use the Update Chips button.';
+        } else {
+          empty.textContent = 'Chip pool not provided by this player.';
+        }
+        poolBody.appendChild(empty);
+        return;
+      }
+      // Update mothership card with equipped count from supplement
+      if (chipsRaw.mothership) _ar_updateMothershipFromSupplement(section, chipsRaw.mothership);
+      // Render filterable/sortable pool
+      poolMsg.textContent = chipsRaw.chips.length + ' chips · updated ' + _ar_relativeAge(chipsRaw.ts);
+      _ar_buildChipPoolGrid(poolBody, chipsRaw.chips);
+    }).catch(function(e) {
+      console.warn('Chips supplement load failed', e);
+      poolMsg.textContent = 'load failed';
+    });
+  }
+
+  // ── Mothership card: owned (inventory) + equipped (chips supplement / battle reports) ──
+  function _ar_renderMothershipCard(parent, merged) {
+    var MS_ITEM_IDS = [51071, 51072, 51073, 51074, 51075, 51076, 51077, 51078, 51079];
+    var siteKey = (wizardState && wizardState.player && wizardState.player.siteKey) || null;
+    var ownedCounts = {};
+    var totalOwned = 0;
+    // Inventory supplement is loaded into localStorage by the Inventory tab. Read
+    // the same key here so we don't need a second network round-trip.
+    if (siteKey) {
+      try {
+        var rawInv = localStorage.getItem('armory_inv_' + siteKey);
+        if (rawInv) {
+          var stored = JSON.parse(rawInv);
+          var items = stored && stored.tabs && stored.tabs.item;
+          if (Array.isArray(items)) {
+            for (var i = 0; i < items.length; i++) {
+              var it = items[i];
+              var idNum = parseInt(it && (it.id != null ? it.id : it.i), 10);
+              if (MS_ITEM_IDS.indexOf(idNum) >= 0) {
+                var amt = it.amount != null ? it.amount : (it.amt != null ? it.amt : (it.n != null ? it.n : 0));
+                ownedCounts[idNum] = amt;
+                totalOwned += amt;
+              }
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    var card = document.createElement('div');
+    card.id = 'ms-card';
+    card.style.cssText = 'display:flex;align-items:center;gap:.7rem;padding:.7rem .9rem;border-radius:10px;background:linear-gradient(135deg,rgba(139,148,158,.18) 0%,rgba(139,148,158,.06) 100%);border:1px solid rgba(139,148,158,.35);';
+    var img = document.createElement('img');
+    img.src = ASSET_BASE + 'assets/mecha-icons/mecha_1008.png';
+    img.alt = '';
+    img.style.cssText = 'width:52px;height:52px;border-radius:8px;object-fit:cover;border:2px solid rgba(139,148,158,.4);background:var(--card);';
+    img.onerror = function() { this.style.display = 'none'; };
+    card.appendChild(img);
+    var info = document.createElement('div');
+    info.style.cssText = 'flex:1;min-width:0;';
+    var name = document.createElement('div');
+    name.style.cssText = 'font-size:1rem;font-weight:600;color:#cdd9e5;';
+    name.textContent = MECHA_NAMES[1008] || 'Heavy Mothership HC-9999';
+    info.appendChild(name);
+    var sub = document.createElement('div');
+    sub.id = 'ms-stats';
+    sub.style.cssText = 'font-size:.78rem;color:var(--muted);margin-top:.15rem;';
+    sub.textContent = 'Pieces owned: ' + totalOwned + (totalOwned === 0 ? ' (inventory snapshot needed)' : '');
+    info.appendChild(sub);
+    card.appendChild(info);
+    var equippedTag = document.createElement('span');
+    equippedTag.id = 'ms-equipped-tag';
+    equippedTag.style.cssText = 'padding:.3rem .55rem;border-radius:6px;font-size:.75rem;font-weight:600;background:rgba(139,148,158,.2);color:#cdd9e5;';
+    equippedTag.textContent = 'Equipped: —';
+    card.appendChild(equippedTag);
+    parent.appendChild(card);
+  }
+
+  function _ar_updateMothershipPiecesFromInv(section, invRaw) {
+    var MS_ITEM_IDS = [51071, 51072, 51073, 51074, 51075, 51076, 51077, 51078, 51079];
+    var items = invRaw && invRaw.tabs && invRaw.tabs.item;
+    if (!Array.isArray(items)) return;
+    var total = 0;
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var idNum = parseInt(it && (it.id != null ? it.id : it.i), 10);
+      if (MS_ITEM_IDS.indexOf(idNum) < 0) continue;
+      total += (it.amount != null ? it.amount : (it.amt != null ? it.amt : (it.n != null ? it.n : 0)));
+    }
+    var sub = section.querySelector('#ms-stats');
+    if (sub) {
+      var clean = sub.textContent.replace(/^Pieces owned: \d+( \(inventory snapshot needed\))?/, 'Pieces owned: ' + total);
+      sub.textContent = clean;
+    }
+  }
+
+  function _ar_updateMothershipFromSupplement(section, ms) {
+    var tag = section.querySelector('#ms-equipped-tag');
+    if (tag) tag.textContent = 'Equipped: ' + (ms.ep || 0) + '/9';
+    var sub = section.querySelector('#ms-stats');
+    if (sub) {
+      var cur = sub.textContent;
+      var hasLevel = ms.l ? (' · Lv. ' + ms.l) : '';
+      var hasPower = ms.p ? (' · ' + ms.p.toLocaleString() + ' power') : '';
+      sub.textContent = cur + hasLevel + hasPower;
+    }
+  }
+
+  // Cache + load chips supplement. siteKey may be null for shared shortcodes —
+  // in that case we fetch the shortcode owner's siteKey via wizardState.player.siteKey.
+  function _ar_loadChipsSupplement(siteKey) {
+    if (!siteKey) return Promise.resolve(null);
+    // Try localStorage first when viewing own report (faster, offline-tolerant)
+    if (!wizardState._viewOnly) {
+      try {
+        var ls = localStorage.getItem('armory_chips_' + siteKey);
+        if (ls) {
+          var parsed = JSON.parse(ls);
+          if (parsed && Array.isArray(parsed.chips)) return Promise.resolve(parsed);
+        }
+      } catch (e) {}
+    }
+    return _ar_fetchSupplement('chips', siteKey);
+  }
+
+  // Render chip pool with multi-faceted filters + sort. Reuses existing CL +
+  // SET_NAMES + SET_ICONS + RARITY_LABELS + SLOT_LABELS lookups.
+  function _ar_buildChipPoolGrid(parent, chips) {
+    var SLOT_NAMES = (typeof SLOT_LABELS !== 'undefined' && SLOT_LABELS) || ['Core','Slot 1','Slot 2','Slot 3','Slot 4','Slot 5','Slot 6'];
+    var COLORS = { 1:'#8b949e', 2:'#3fb950', 3:'#79c0ff', 4:'#a371f7', 5:'#d29922' };
+    var DEFAULT_ICON = ASSET_BASE + 'assets/ht-chip-icons/Hoplon.png';
+
+    // Pre-resolve cfg-derived fields per chip via CL lookup.
+    var enriched = chips.map(function(c) {
+      var lk = (typeof CL !== 'undefined' && CL[c.c]) ? CL[c.c] : null;
+      // CL[chipId] = [setGroupId, position, color, chip_buff, base, upgrade, core_skill]
+      return {
+        c: c,
+        chipId: c.c,
+        level: c.lv || 0,
+        mechaId: c.m || 0,
+        rndAttrs: c.r || '',
+        otherRndAttrs: c.o || null,
+        refineTimes: c.rt || 0,
+        reservation: c.rs || 0,
+        setGroup: lk ? lk[0] : null,
+        position: lk ? lk[1] : null,
+        color: lk ? lk[2] : 1
+      };
+    });
+
+    // Build filter row
+    var ctrls = document.createElement('div');
+    ctrls.style.cssText = 'display:flex;flex-wrap:wrap;gap:.4rem .6rem;margin-bottom:.6rem;align-items:center;';
+
+    function _mk(label, optsArr, onChange) {
+      var w = document.createElement('label');
+      w.style.cssText = 'font-size:.7rem;color:var(--muted);display:flex;align-items:center;gap:.3rem;';
+      w.textContent = label;
+      var sel = document.createElement('select');
+      sel.style.cssText = 'background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:.2rem .35rem;font-size:.75rem;';
+      optsArr.forEach(function(o) {
+        var op = document.createElement('option');
+        op.value = o.value; op.textContent = o.label;
+        sel.appendChild(op);
+      });
+      sel.onchange = function() { onChange(sel.value); };
+      w.appendChild(sel);
+      return { wrap: w, sel: sel };
+    }
+
+    // Set filter
+    var setOpts = [{ value: '', label: 'All Sets' }];
+    var setGroupCounts = {};
+    enriched.forEach(function(e) { if (e.setGroup) setGroupCounts[e.setGroup] = (setGroupCounts[e.setGroup] || 0) + 1; });
+    Object.keys(setGroupCounts).sort(function(a, b) { return setGroupCounts[b] - setGroupCounts[a]; })
+      .forEach(function(sg) {
+        setOpts.push({ value: sg, label: ((typeof SET_NAMES !== 'undefined' && SET_NAMES[sg]) || ('Set ' + sg)) + ' (' + setGroupCounts[sg] + ')' });
+      });
+
+    // Slot filter
+    var slotOpts = [{ value: '', label: 'All Slots' }];
+    for (var s = 0; s <= 6; s++) {
+      var slotCount = enriched.filter(function(e) { return e.position === s; }).length;
+      if (slotCount) slotOpts.push({ value: String(s), label: SLOT_NAMES[s] + ' (' + slotCount + ')' });
+    }
+
+    // Rarity filter
+    var rarOpts = [{ value: '', label: 'All Rarities' }];
+    for (var r = 5; r >= 1; r--) {
+      var rcnt = enriched.filter(function(e) { return e.color === r; }).length;
+      if (rcnt) rarOpts.push({ value: String(r), label: ((typeof RARITY_LABELS !== 'undefined' && RARITY_LABELS[r]) || ('R' + r)) + ' (' + rcnt + ')' });
+    }
+
+    // Mecha-binding filter (chips that prefer a particular HT)
+    var mechaOpts = [{ value: '', label: 'All HTs' }];
+    var mechaCounts = {};
+    enriched.forEach(function(e) { var m = e.mechaId || 0; mechaCounts[m] = (mechaCounts[m] || 0) + 1; });
+    Object.keys(mechaCounts).sort(function(a, b) { return mechaCounts[b] - mechaCounts[a]; })
+      .forEach(function(mid) {
+        var lbl = mid === '0' ? 'Universal' : ((typeof MECHA_NAMES !== 'undefined' && MECHA_NAMES[mid]) || ('HT #' + mid));
+        mechaOpts.push({ value: mid, label: lbl + ' (' + mechaCounts[mid] + ')' });
+      });
+
+    // Sort options
+    var sortOpts = [
+      { value: 'rarity-desc', label: 'Rarity ↓' },
+      { value: 'level-desc', label: 'Level ↓' },
+      { value: 'set', label: 'Set' },
+      { value: 'slot', label: 'Slot' },
+      { value: 'refine-desc', label: 'Refines ↓' }
+    ];
+
+    var state = { set: '', slot: '', rar: '', mecha: '', sort: 'rarity-desc', locked: 'all' };
+
+    var setSel   = _mk('Set',     setOpts,   function(v) { state.set = v; renderGrid(); });
+    var slotSel  = _mk('Slot',    slotOpts,  function(v) { state.slot = v; renderGrid(); });
+    var rarSel   = _mk('Rarity',  rarOpts,   function(v) { state.rar = v; renderGrid(); });
+    var mechaSel = _mk('Bound',   mechaOpts, function(v) { state.mecha = v; renderGrid(); });
+    var sortSel  = _mk('Sort',    sortOpts,  function(v) { state.sort = v; renderGrid(); });
+    var lockSel  = _mk('Lock',    [{ value:'all', label:'All' },{ value:'locked', label:'Locked only' },{ value:'unlocked', label:'Unlocked only' }], function(v) { state.locked = v; renderGrid(); });
+    [setSel, slotSel, rarSel, mechaSel, sortSel, lockSel].forEach(function(o) { ctrls.appendChild(o.wrap); });
+
+    parent.appendChild(ctrls);
+
+    var grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:.4rem;';
+    parent.appendChild(grid);
+
+    var tally = document.createElement('div');
+    tally.style.cssText = 'font-size:.7rem;color:var(--muted);margin-top:.5rem;';
+    parent.appendChild(tally);
+
+    function applyFilters(arr) {
+      return arr.filter(function(e) {
+        if (state.set && String(e.setGroup) !== state.set) return false;
+        if (state.slot !== '' && String(e.position) !== state.slot) return false;
+        if (state.rar && String(e.color) !== state.rar) return false;
+        if (state.mecha !== '' && String(e.mechaId) !== state.mecha) return false;
+        if (state.locked === 'locked' && !e.reservation) return false;
+        if (state.locked === 'unlocked' && e.reservation) return false;
+        return true;
+      });
+    }
+    function applySort(arr) {
+      var copy = arr.slice();
+      copy.sort(function(a, b) {
+        switch (state.sort) {
+          case 'rarity-desc': return (b.color - a.color) || (b.level - a.level) || (a.position - b.position);
+          case 'level-desc':  return (b.level - a.level) || (b.color - a.color);
+          case 'set':         return (a.setGroup - b.setGroup) || (a.position - b.position) || (b.color - a.color);
+          case 'slot':        return (a.position - b.position) || (b.color - a.color) || (b.level - a.level);
+          case 'refine-desc': return (b.refineTimes - a.refineTimes) || (b.color - a.color);
+          default: return 0;
+        }
+      });
+      return copy;
+    }
+    function renderGrid() {
+      while (grid.firstChild) grid.removeChild(grid.firstChild);
+      var filtered = applyFilters(enriched);
+      var sorted = applySort(filtered);
+      // Only render the first 600 to avoid heavy DOM cost when no filter applied.
+      var cap = 600;
+      sorted.slice(0, cap).forEach(function(e) { grid.appendChild(_ar_buildChipPoolCard(e)); });
+      var shown = Math.min(cap, sorted.length);
+      tally.textContent = 'Showing ' + shown + ' of ' + sorted.length + ' filtered (' + enriched.length + ' total)' + (sorted.length > cap ? ' — narrow filters to see more' : '');
+    }
+    renderGrid();
+  }
+
+  function _ar_buildChipPoolCard(e) {
+    var COLORS = { 1:'#8b949e', 2:'#3fb950', 3:'#79c0ff', 4:'#a371f7', 5:'#d29922' };
+    var SLOT_NAMES = (typeof SLOT_LABELS !== 'undefined' && SLOT_LABELS) || ['Core','1','2','3','4','5','6'];
+    var color = COLORS[e.color] || '#8b949e';
+    var card = document.createElement('div');
+    card.style.cssText = 'background:var(--card);border:1px solid ' + color + '40;border-radius:8px;padding:.4rem .5rem;display:flex;flex-direction:column;gap:.25rem;position:relative;';
+
+    var head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:center;gap:.35rem;';
+    var setName = (typeof SET_NAMES !== 'undefined' && SET_NAMES[e.setGroup]) || 'Set ' + e.setGroup;
+    var setIcon = (typeof SET_ICONS !== 'undefined' && SET_ICONS[e.setGroup]) ? (ASSET_BASE + 'assets/ht-chip-icons/' + SET_ICONS[e.setGroup]) : null;
+    if (setIcon) {
+      var img = document.createElement('img');
+      img.src = setIcon;
+      img.style.cssText = 'width:24px;height:24px;border-radius:4px;background:#0d1117;border:1px solid ' + color + '60;';
+      img.onerror = function() { this.style.display = 'none'; };
+      head.appendChild(img);
+    }
+    var slotPill = document.createElement('span');
+    slotPill.style.cssText = 'font-size:.62rem;padding:.05rem .3rem;border-radius:4px;background:' + color + '22;color:' + color + ';font-weight:600;';
+    slotPill.textContent = SLOT_NAMES[e.position] || ('S' + e.position);
+    head.appendChild(slotPill);
+    if (e.reservation) {
+      var lock = document.createElement('span');
+      lock.title = 'Locked / reserved';
+      lock.style.cssText = 'font-size:.65rem;color:#d29922;margin-left:auto;';
+      lock.textContent = '\u{1F512}';
+      head.appendChild(lock);
+    }
+    card.appendChild(head);
+
+    var setLine = document.createElement('div');
+    setLine.style.cssText = 'font-size:.72rem;color:var(--text);font-weight:600;line-height:1.15;';
+    setLine.textContent = setName;
+    card.appendChild(setLine);
+
+    var meta = document.createElement('div');
+    meta.style.cssText = 'font-size:.62rem;color:var(--muted);display:flex;gap:.4rem;flex-wrap:wrap;';
+    var rar = (typeof RARITY_LABELS !== 'undefined' && RARITY_LABELS[e.color]) || ('R' + e.color);
+    meta.appendChild(_ar_chipMetaTag('Rarity', rar, color));
+    if (e.level > 0) meta.appendChild(_ar_chipMetaTag('Lv', e.level));
+    if (e.refineTimes > 0) meta.appendChild(_ar_chipMetaTag('Refine', e.refineTimes));
+    if (e.mechaId > 0) {
+      var bound = (typeof MECHA_NAMES !== 'undefined' && MECHA_NAMES[e.mechaId]) || ('HT' + e.mechaId);
+      meta.appendChild(_ar_chipMetaTag('Bound', bound.split(' ')[0]));
+    }
+    card.appendChild(meta);
+
+    if (e.rndAttrs) {
+      var stats = document.createElement('div');
+      stats.style.cssText = 'font-size:.62rem;color:var(--muted);line-height:1.25;';
+      stats.textContent = _ar_decodeChipStats(e.rndAttrs, e.position).join(' / ');
+      card.appendChild(stats);
+    }
+
+    return card;
+  }
+
+  function _ar_chipMetaTag(label, val, color) {
+    var s = document.createElement('span');
+    s.style.cssText = 'background:rgba(139,148,158,.15);border-radius:3px;padding:.05rem .25rem;color:' + (color || 'var(--muted)') + ';';
+    s.textContent = label + ' ' + val;
+    return s;
+  }
+
+  // Decode rndAttrs "buffIdx;value|buffIdx;value..." into compact buff names.
+  // For core chips (position 0) idx points into RND_CORE; for sub-chips into RND_REG/RND_GLO.
+  function _ar_decodeChipStats(rndAttrs, position) {
+    if (!rndAttrs) return [];
+    var pool = (position === 0) ? (typeof RND_CORE !== 'undefined' ? RND_CORE : null)
+             : (typeof RND_REG !== 'undefined' ? RND_REG : null);
+    var out = [];
+    rndAttrs.split('|').forEach(function(tok) {
+      var parts = tok.split(';');
+      var idx = parseInt(parts[0], 10);
+      var val = parseInt(parts[1], 10);
+      if (isNaN(idx) || isNaN(val)) return;
+      var buffId = pool && pool[idx];
+      var name = buffId && (typeof BUFF_NAMES_CHIP !== 'undefined') && BUFF_NAMES_CHIP[buffId];
+      out.push((name || ('buff#' + idx)) + ' +' + val);
+    });
+    return out;
   }
 
   // ── Manage modal ──────────────────────────────────────────────────────────
