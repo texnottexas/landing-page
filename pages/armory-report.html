@@ -8256,19 +8256,29 @@
       });
       roiScalar += normalizedScalar;
     });
+    // Apply group-spare credit to the displayed cost rather than inflating
+    // "Have". Have stays anchored to universal shards (the player's actual
+    // resource); the spare unplaced pieces in this group reduce the upgrade
+    // cost since they get sacrificed-in during the upgrade. Net effect on
+    // "ready" check is identical.
+    var rawCost = upg.shardCost;
+    var groupCredit = groupShards || 0;
+    var netCost = Math.max(0, rawCost - groupCredit);
     return {
       group: entry.group,
       name: entry.name,
       iconPath: entry.iconPath,
       fromLevel: upg.fromLevel,
       toLevel: upg.toLevel,
-      shardCost: upg.shardCost,
+      shardCost: netCost,
+      rawShardCost: rawCost,
+      groupCredit: groupCredit,
       buffRows: rows,
       available: availableForGroup,
       universalShards: universalShards != null ? universalShards : availableForGroup,
-      groupShards: groupShards != null ? groupShards : 0,
-      ready: availableForGroup >= upg.shardCost,
-      roi: roiScalar / Math.max(upg.shardCost, 1),
+      groupShards: groupCredit,
+      ready: availableForGroup >= rawCost,
+      roi: roiScalar / Math.max(rawCost, 1),
       category: entry.category
     };
   }
@@ -8354,25 +8364,20 @@
     }
 
     var costRow = _adv_mk('div', { cls: 'advisor-rec-cost-row' });
-    costRow.appendChild(_adv_mk('span', { cls: 'advisor-rec-cost', text: 'Cost: ' + r.shardCost.toLocaleString() }));
-    var haveSide = _adv_mk('span', { cls: 'advisor-rec-have' });
-    // Display split: "Have: <universal>" with optional "(+<group>)" badge
-    // when this group has unplaced pieces feeding it. Earlier we summed both
-    // into one number so adjacent cards looked like the shard count was
-    // changing between rows (8960mr saw 1192 → 1201 between Cosmic Star
-    // Chart and Moss Lantern because Moss Lantern had a Lv3 spare = 9 group
-    // shards). Keeping the universal number stable across cards prevents
-    // that confusion; the bonus is shown explicitly.
-    haveSide.appendChild(document.createTextNode('Have: ' + r.universalShards.toLocaleString()));
-    if (r.groupShards > 0) {
-      var bonus = _adv_mk('span', {
-        cls: 'advisor-rec-group-bonus',
-        text: ' +' + r.groupShards.toLocaleString() + ' group',
-        attrs: { title: 'Spare unplaced pieces in this group sell back as shards toward this upgrade only.' }
-      });
-      bonus.style.cssText = 'color:var(--accent);font-size:.75rem;margin-left:.35rem;';
-      haveSide.appendChild(bonus);
+    var costSpan = _adv_mk('span', { cls: 'advisor-rec-cost', text: 'Cost: ' + r.shardCost.toLocaleString() });
+    // When unplaced spares in this group reduce the upgrade cost, annotate
+    // the cost so players see why it's discounted. Have stays = universal
+    // shards (the actual resource they hold across all upgrades).
+    if (r.groupCredit > 0 && r.shardCost < r.rawShardCost) {
+      costSpan.title = 'Discounted by ' + r.groupCredit.toLocaleString() + ' shards from spare Lv pieces in this group (consumed on upgrade). Original cost ' + r.rawShardCost.toLocaleString() + '.';
+      var disc = document.createElement('span');
+      disc.style.cssText = 'color:var(--accent);font-size:.72rem;margin-left:.35rem;';
+      disc.textContent = '(–' + r.groupCredit.toLocaleString() + ' group spares)';
+      costSpan.appendChild(disc);
     }
+    costRow.appendChild(costSpan);
+    var haveSide = _adv_mk('span', { cls: 'advisor-rec-have' });
+    haveSide.appendChild(document.createTextNode('Have: ' + r.universalShards.toLocaleString()));
     if (r.ready) {
       haveSide.appendChild(_adv_mk('span', { cls: 'advisor-ready', text: 'READY' }));
     }
