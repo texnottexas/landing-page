@@ -2724,6 +2724,34 @@
     return max;
   }
 
+  // Scan a chest/box description for embedded Odinium rewards. Returns the
+  // max Odinium obtainable from a single open of this box. Skips raw Odinium
+  // packs (already counted via aggTotals.odinium).
+  function _ar_boxedOdiniumPerOpen(cfg) {
+    if (!cfg) return 0;
+    if (cfg.t === 106 && cfg.g === 940001) return 0;
+    var d = String(cfg.d || '');
+    if (!/odinium/i.test(d)) return 0;
+    var max = 0;
+    var patterns = [
+      /(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*([KMB])?\s*Odinium\b/gi,
+      /\bOdinium\s*(?:x|×)\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*([KMB])?/gi
+    ];
+    for (var i = 0; i < patterns.length; i++) {
+      var re = patterns[i]; var m;
+      while ((m = re.exec(d)) !== null) {
+        var num = parseFloat(m[1].replace(/,/g, ''));
+        var suf = (m[2] || '').toUpperCase();
+        if (suf === 'K') num *= 1000;
+        else if (suf === 'M') num *= 1000000;
+        else if (suf === 'B') num *= 1000000000;
+        var v = Math.round(num);
+        if (!isNaN(v) && v > max) max = v;
+      }
+    }
+    return max;
+  }
+
   // Extract the gem-per-pack value from an item-table entry (group 1000000).
   // Prefer the `ix` field where present; otherwise parse the first integer
   // out of the localized name, stripping commas. Returns 0 when the item
@@ -2753,6 +2781,9 @@
       // pick. Tracked separately so the top bar can show direct vs. boxed.
       boxedGemTotal: 0,
       boxedGemDetails: [],
+      // Same pattern for Odinium hidden inside non-pack boxes.
+      boxedOdiniumTotal: 0,
+      boxedOdiniumDetails: [],
       // Aggregate-bucket detail: every contributing pack rolled into the
       // synthetic gem/odinium/food/oil cells. Drives the click-modal.
       aggDetails: { gem: [], odinium: [], food: [], oil: [] },
@@ -2795,6 +2826,14 @@
           if (boxed > 0) {
             out.boxedGemTotal += boxed * amount;
             out.boxedGemDetails.push({ id: it.id, name: cfg.n || ('#'+it.id), amount: amount, perOpen: boxed, total: boxed * amount });
+          }
+        }
+        // Boxed Odinium (Odinium hidden inside non-pack boxes — "1M Odinium x1" etc.)
+        if (tabKey === 'item' && amount > 0) {
+          var boxedO = _ar_boxedOdiniumPerOpen(cfg);
+          if (boxedO > 0) {
+            out.boxedOdiniumTotal += boxedO * amount;
+            out.boxedOdiniumDetails.push({ id: it.id, name: cfg.n || ('#'+it.id), amount: amount, perOpen: boxedO, total: boxedO * amount });
           }
         }
         var titanCat = (tabKey === 'item') ? _ar_classifyTitanGear(cfg) : null;
@@ -10547,6 +10586,46 @@
         }
         container.appendChild(gemBar);
       }
+      // Odinium bar — same shape as gems but with the gold/yellow palette.
+      // Direct Odinium comes from aggTotals.odinium (raw + pack items).
+      // Boxed Odinium comes from desc-scan over non-pack boxes.
+      if ((data.aggTotals.odinium || 0) > 0 || (data.boxedOdiniumTotal || 0) > 0) {
+        var odBar = document.createElement('div');
+        odBar.style.cssText = 'display:flex;align-items:center;gap:.6rem;padding:10px 16px;margin:0 16px 6px;background:linear-gradient(135deg, rgba(210,153,34,0.14), rgba(240,198,116,0.08));border:1px solid rgba(210,153,34,0.4);border-radius:8px;flex-wrap:wrap;';
+        var odIcon = document.createElement('img');
+        odIcon.src = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/inventory-icons/image__item__item_940001.png';
+        odIcon.alt = '';
+        odIcon.style.cssText = 'width:20px;height:20px;object-fit:contain;flex-shrink:0;';
+        odIcon.onerror = function() { odIcon.style.display = 'none'; };
+        odBar.appendChild(odIcon);
+        function odSeg(label, val, dim) {
+          var w = document.createElement('span');
+          w.style.cssText = 'display:inline-flex;align-items:baseline;gap:.3rem;';
+          var l = document.createElement('span');
+          l.style.cssText = 'color:var(--muted);font-size:.78rem;';
+          l.textContent = label;
+          var v = document.createElement('span');
+          v.style.cssText = 'color:' + (dim ? 'var(--text)' : '#d29922') + ';font-weight:700;font-size:.95rem;font-family:monospace;';
+          v.textContent = _ar_compactNumber(val || 0);
+          v.title = (val || 0).toLocaleString();
+          w.appendChild(l); w.appendChild(v);
+          return w;
+        }
+        odBar.appendChild(odSeg('Unclaimed Odinium:', data.aggTotals.odinium || 0));
+        if ((data.boxedOdiniumTotal || 0) > 0) {
+          var odSep1 = document.createElement('span');
+          odSep1.style.cssText = 'color:var(--border);';
+          odSep1.textContent = '·';
+          odBar.appendChild(odSep1);
+          odBar.appendChild(odSeg('In boxes (max):', data.boxedOdiniumTotal, true));
+          var odSep2 = document.createElement('span');
+          odSep2.style.cssText = 'color:var(--border);';
+          odSep2.textContent = '·';
+          odBar.appendChild(odSep2);
+          odBar.appendChild(odSeg('Total potential:', (data.aggTotals.odinium || 0) + data.boxedOdiniumTotal));
+        }
+        container.appendChild(odBar);
+      }
       _ar_renderInvGrid(container, data);
     });
   }
@@ -11094,6 +11173,8 @@
     amt.className = 'amt';
     var total = kind === 'gem'
       ? (data.aggTotals.gem + (data.boxedGemTotal || 0))
+      : kind === 'odinium'
+      ? ((data.aggTotals.odinium || 0) + (data.boxedOdiniumTotal || 0))
       : (data.aggTotals[kind] || 0);
     amt.textContent = '×' + _ar_compactNumber(total);
     amt.title = total.toLocaleString();
@@ -11133,6 +11214,10 @@
       var direct = data.aggTotals.gem || 0;
       var boxed = data.boxedGemTotal || 0;
       sub.textContent = 'Direct ' + direct.toLocaleString() + ' · In boxes (max) ' + boxed.toLocaleString() + ' · Total potential ' + (direct + boxed).toLocaleString();
+    } else if (kind === 'odinium' && (data.boxedOdiniumTotal || 0) > 0) {
+      var directO = data.aggTotals.odinium || 0;
+      var boxedO = data.boxedOdiniumTotal || 0;
+      sub.textContent = 'Direct ' + directO.toLocaleString() + ' · In boxes (max) ' + boxedO.toLocaleString() + ' · Total potential ' + (directO + boxedO).toLocaleString();
     } else {
       sub.textContent = 'Total ' + (data.aggTotals[kind] || 0).toLocaleString() + ' across ' + (data.aggDetails[kind] || []).length + ' pack types';
     }
@@ -11168,20 +11253,21 @@
     tbl.appendChild(tb);
     modal.appendChild(tbl);
 
-    if (kind === 'gem' && (data.boxedGemDetails || []).length) {
+    function appendBoxedTable(label, headerLast, details) {
+      if (!details || !details.length) return;
       var hb = document.createElement('h3');
       hb.style.cssText = 'margin:18px 0 6px;font-size:14px;';
-      hb.textContent = 'Boxed gems (max-case per open)';
+      hb.textContent = label;
       modal.appendChild(hb);
       var sb = document.createElement('div');
       sb.style.cssText = 'color:var(--muted);font-size:11px;margin-bottom:8px;';
-      sb.textContent = '"ONE of the following" boxes — credits the highest-gem branch × box count.';
+      sb.textContent = '"ONE of the following" boxes — credits the highest branch × box count.';
       modal.appendChild(sb);
       var tbl2 = tbl.cloneNode(false);
       tbl2.style.cssText = tbl.style.cssText;
       var thead2 = document.createElement('thead');
       var thr2 = document.createElement('tr');
-      ['Box','ID','Per open','Owned','Max gems'].forEach(function(t) {
+      ['Box','ID','Per open','Owned', headerLast].forEach(function(t) {
         var th = document.createElement('th');
         th.textContent = t;
         th.style.cssText = 'text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;';
@@ -11191,7 +11277,7 @@
       thead2.appendChild(thr2);
       tbl2.appendChild(thead2);
       var tb2 = document.createElement('tbody');
-      (data.boxedGemDetails || []).slice().sort(function(a,b){ return (b.total||0) - (a.total||0); }).forEach(function(r) {
+      details.slice().sort(function(a,b){ return (b.total||0) - (a.total||0); }).forEach(function(r) {
         var tr = document.createElement('tr');
         tr.style.cssText = 'border-bottom:1px solid rgba(48,54,61,0.4);';
         var c1 = document.createElement('td'); c1.textContent = r.name; c1.style.cssText = 'padding:6px 10px;';
@@ -11205,6 +11291,8 @@
       tbl2.appendChild(tb2);
       modal.appendChild(tbl2);
     }
+    if (kind === 'gem') appendBoxedTable('Boxed gems (max-case per open)', 'Max gems', data.boxedGemDetails);
+    if (kind === 'odinium') appendBoxedTable('Boxed Odinium (max-case per open)', 'Max Odinium', data.boxedOdiniumDetails);
 
     bg.onclick = function(e) { if (e.target === bg) document.body.removeChild(bg); };
     document.body.appendChild(bg);
