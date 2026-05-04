@@ -4229,6 +4229,78 @@
         identPanel.appendChild(row);
       });
 
+      // ── Verify identity (UID) ──
+      // Show a CTA when the user has picked a roster identity (siteKey present)
+      // but hasn't yet verified UID ownership. Once verified, show a green
+      // checkmark row instead. Verifying here unlocks the same S2864 features
+      // (inventory + bench + decor advisor) on every shortcode whose siteKey
+      // matches this identity — no need to re-verify per shortcode.
+      if (identity && identity.siteKey) {
+        var idVerified = _ar_isUnlocked(identity.siteKey);
+        var verifyRow = document.createElement('div');
+        verifyRow.style.cssText = 'margin-top:.75rem;display:flex;flex-direction:column;gap:.4rem;';
+
+        var verifyHint = document.createElement('div');
+        verifyHint.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;';
+        if (idVerified) {
+          var ok = document.createElement('span');
+          ok.style.cssText = 'color:#3fb950;font-weight:600;';
+          ok.textContent = '✓ Identity verified';
+          verifyHint.appendChild(ok);
+          verifyHint.appendChild(document.createTextNode(' — inventory, bench, and decor advisor are unlocked on every report whose siteKey matches yours.'));
+        } else {
+          verifyHint.textContent = 'Verify your in-game UID to unlock S2864 features (inventory, bench, decor advisor) on all of your reports. UID is hashed locally and never stored.';
+        }
+        verifyRow.appendChild(verifyHint);
+
+        if (!idVerified) {
+          var verifyBtn = document.createElement('button');
+          verifyBtn.className = 'rh-prefs-btn';
+          verifyBtn.style.cssText = 'background:var(--green,#3fb950);color:#0d1117;border:none;font-weight:600;';
+          verifyBtn.textContent = 'Verify my UID';
+          verifyBtn.addEventListener('click', function() {
+            _ar_openUnlockModal(identity.siteKey, idName, function() {
+              openIdentityPrefs(player);
+            });
+          });
+          verifyRow.appendChild(verifyBtn);
+        }
+        identPanel.appendChild(verifyRow);
+      }
+
+      // ── Force refresh (clear caches + reload) ──
+      // Installed PWA + iOS Safari hold HTTP responses harder than the browser
+      // tab. This wipes Cache Storage, updates the service worker, and forces
+      // a cache-busted reload so users can pull a new build immediately.
+      var refreshRow = document.createElement('div');
+      refreshRow.style.cssText = 'margin-top:.75rem;display:flex;flex-direction:column;gap:.4rem;';
+      var refreshHint = document.createElement('div');
+      refreshHint.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;';
+      refreshHint.textContent = 'Stuck on an old version? This clears the page cache and reloads — useful when the PWA caches an older build.';
+      refreshRow.appendChild(refreshHint);
+      var refreshBtn = document.createElement('button');
+      refreshBtn.className = 'rh-prefs-btn';
+      refreshBtn.textContent = 'Force refresh';
+      refreshBtn.addEventListener('click', async function() {
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = 'Clearing…';
+        try {
+          if (window.caches && caches.keys) {
+            var keys = await caches.keys();
+            await Promise.all(keys.map(function(k) { return caches.delete(k); }));
+          }
+          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            var regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map(function(r) { return r.update(); }));
+          }
+        } catch (e) { /* best-effort */ }
+        var u = new URL(window.location.href);
+        u.searchParams.set('_t', Date.now());
+        window.location.replace(u.toString());
+      });
+      refreshRow.appendChild(refreshBtn);
+      identPanel.appendChild(refreshRow);
+
       // Reset button
       var resetRow = document.createElement('div');
       resetRow.style.cssText = 'margin-top:.75rem;';

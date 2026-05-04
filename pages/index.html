@@ -2512,6 +2512,8 @@
       </div>
       <input type="text" id="identity-search" class="identity-search" placeholder="Search your name..." autocomplete="off" spellcheck="false">
       <div class="identity-list" id="identity-list"></div>
+      <!-- Verify UID + Force refresh — populated by identity script when applicable -->
+      <div id="identity-extras" style="margin-top:.6rem;display:flex;flex-direction:column;gap:.5rem;"></div>
       <div class="identity-footer">
         <button class="identity-skip" id="identity-skip">Skip for now</button>
       </div>
@@ -5377,12 +5379,162 @@
         identityModal.classList.add('active');
         identitySearch.value = '';
         renderList('');
+        renderExtras();
         setTimeout(function() { identitySearch.focus(); }, 50);
       }
 
       function closeModal() {
         identityModal.classList.remove('active');
       }
+
+      // armory_unlocked is per-siteKey (shared across pages on 2864tw.com).
+      // Verifying UID here marks this player's siteKey unlocked so the armory
+      // report (and any other page reading the same map) skips the per-page
+      // re-verify gate when this user opens their own report.
+      function _idIsUnlocked(siteKey) {
+        if (!siteKey) return false;
+        try {
+          var raw = localStorage.getItem('armory_unlocked');
+          var map = raw ? JSON.parse(raw) : {};
+          return map[siteKey] === true;
+        } catch (e) { return false; }
+      }
+      function _idSetUnlocked(siteKey, on) {
+        if (!siteKey) return;
+        try {
+          var raw = localStorage.getItem('armory_unlocked');
+          var map = raw ? JSON.parse(raw) : {};
+          if (on) map[siteKey] = true; else delete map[siteKey];
+          localStorage.setItem('armory_unlocked', JSON.stringify(map));
+        } catch (e) {}
+      }
+      async function _idSha256Hex(s) {
+        var enc = new TextEncoder().encode(String(s));
+        var buf = await crypto.subtle.digest('SHA-256', enc);
+        var arr = Array.from(new Uint8Array(buf));
+        return arr.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+      }
+      function _idShowVerifyForm(host, identity) {
+        while (host.firstChild) host.removeChild(host.firstChild);
+        var lbl = document.createElement('label');
+        lbl.textContent = 'In-game UID';
+        lbl.style.cssText = 'display:block;font-size:.7rem;color:var(--muted);margin-bottom:.25rem;';
+        host.appendChild(lbl);
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'e.g. 12345678';
+        input.autocomplete = 'off';
+        input.spellcheck = false;
+        input.style.cssText = 'width:100%;padding:.4rem .55rem;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:monospace;font-size:.8rem;box-sizing:border-box;';
+        host.appendChild(input);
+        var err = document.createElement('div');
+        err.style.cssText = 'color:#f85149;font-size:.7rem;min-height:1em;margin-top:.25rem;';
+        host.appendChild(err);
+        var actions = document.createElement('div');
+        actions.style.cssText = 'display:flex;gap:.4rem;justify-content:flex-end;margin-top:.4rem;';
+        var cancel = document.createElement('button');
+        cancel.textContent = 'Cancel';
+        cancel.style.cssText = 'background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:.35rem .8rem;cursor:pointer;font-size:.75rem;';
+        cancel.addEventListener('click', function() { renderExtras(); });
+        var submit = document.createElement('button');
+        submit.textContent = 'Verify';
+        submit.style.cssText = 'background:#3fb950;color:#0d1117;border:none;border-radius:6px;padding:.35rem .9rem;cursor:pointer;font-size:.75rem;font-weight:600;';
+        submit.disabled = true;
+        input.addEventListener('input', function() {
+          submit.disabled = !input.value.trim();
+          err.textContent = '';
+        });
+        submit.addEventListener('click', async function() {
+          submit.disabled = true;
+          err.textContent = '';
+          try {
+            var hash = await _idSha256Hex(input.value.trim());
+            if (hash.slice(0, 16) !== identity.siteKey) {
+              err.textContent = 'UID does not match this player.';
+              submit.disabled = !input.value.trim();
+              return;
+            }
+            _idSetUnlocked(identity.siteKey, true);
+            renderExtras();
+          } catch (e) {
+            err.textContent = 'Hash failed: ' + e.message;
+            submit.disabled = !input.value.trim();
+          }
+        });
+        input.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter' && !submit.disabled) submit.click();
+        });
+        actions.appendChild(cancel);
+        actions.appendChild(submit);
+        host.appendChild(actions);
+        setTimeout(function() { input.focus(); }, 30);
+      }
+      function renderExtras() {
+        var host = document.getElementById('identity-extras');
+        if (!host) return;
+        while (host.firstChild) host.removeChild(host.firstChild);
+
+        var stored = getIdentity();
+        var identityObj = (stored && stored !== 'anonymous' && stored.siteKey) ? stored : null;
+
+        // Verify UID block (only when picked, non-guest, non-anon, has siteKey)
+        if (identityObj && !identityObj.guest) {
+          var verifyBox = document.createElement('div');
+          verifyBox.style.cssText = 'background:var(--card,#1c2128);border:1px solid var(--border);border-radius:8px;padding:.6rem .7rem;';
+          var verified = _idIsUnlocked(identityObj.siteKey);
+          var hint = document.createElement('div');
+          hint.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;margin-bottom:.4rem;';
+          if (verified) {
+            var ok = document.createElement('span');
+            ok.style.cssText = 'color:#3fb950;font-weight:600;';
+            ok.textContent = '✓ Identity verified';
+            hint.appendChild(ok);
+            hint.appendChild(document.createTextNode(' — armory inventory, bench, and decor advisor are unlocked across all of your reports.'));
+          } else {
+            hint.textContent = 'Verify your in-game UID to unlock S2864 features (inventory, bench, decor advisor) on any of your armory reports. UID is hashed locally and never stored.';
+          }
+          verifyBox.appendChild(hint);
+          if (!verified) {
+            var verifyBtn = document.createElement('button');
+            verifyBtn.style.cssText = 'background:#3fb950;color:#0d1117;border:none;border-radius:6px;padding:.4rem 1rem;cursor:pointer;font-size:.78rem;font-weight:600;width:100%;';
+            verifyBtn.textContent = 'Verify my UID';
+            verifyBtn.addEventListener('click', function() { _idShowVerifyForm(verifyBox, identityObj); });
+            verifyBox.appendChild(verifyBtn);
+          }
+          host.appendChild(verifyBox);
+        }
+
+        // Force refresh — clears Cache Storage + service worker, then hard reloads
+        var refreshBox = document.createElement('div');
+        refreshBox.style.cssText = 'background:var(--card,#1c2128);border:1px solid var(--border);border-radius:8px;padding:.6rem .7rem;';
+        var rhint = document.createElement('div');
+        rhint.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;margin-bottom:.4rem;';
+        rhint.textContent = 'Stuck on an old version? Clear the page cache and reload. Useful when the PWA caches an older build.';
+        refreshBox.appendChild(rhint);
+        var refreshBtn = document.createElement('button');
+        refreshBtn.style.cssText = 'background:transparent;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.4rem 1rem;cursor:pointer;font-size:.78rem;width:100%;';
+        refreshBtn.textContent = 'Force refresh';
+        refreshBtn.addEventListener('click', async function() {
+          refreshBtn.disabled = true;
+          refreshBtn.textContent = 'Clearing…';
+          try {
+            if (window.caches && caches.keys) {
+              var keys = await caches.keys();
+              await Promise.all(keys.map(function(k) { return caches.delete(k); }));
+            }
+            if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+              var regs = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(regs.map(function(r) { return r.update(); }));
+            }
+          } catch (e) { /* best-effort */ }
+          var u = new URL(window.location.href);
+          u.searchParams.set('_t', Date.now());
+          window.location.replace(u.toString());
+        });
+        refreshBox.appendChild(refreshBtn);
+        host.appendChild(refreshBox);
+      }
+      window._renderIdentityExtras = renderExtras;
 
       function stripLeadingSymbols(s) {
         return s.replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase();
@@ -5435,7 +5587,13 @@
             if (window._getPushSub && window._getPushSub() && window._saveSubToWorker) {
               window._saveSubToWorker(window._getPushSub());
             }
-            closeModal();
+            // Keep modal open so the verify-UID CTA below the list shows up
+            // for the just-picked identity. Users still get a Skip / X exit.
+            if (identity.siteKey && !_idIsUnlocked(identity.siteKey)) {
+              renderExtras();
+            } else {
+              closeModal();
+            }
           }
           item.addEventListener('click', selectPlayer);
           item.addEventListener('keydown', function(e) { if (e.key === 'Enter') selectPlayer(); });
