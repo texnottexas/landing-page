@@ -12240,14 +12240,25 @@
             // when names differed only in case or whitespace (e.g. roster
             // sync changed display name capitalization since the shortcode
             // was minted).
+            // Prefer playerIdentity (UID-verified, stable across all of this
+            // user's shortcodes) over playerReport.player.siteKey, which only
+            // gets populated once a shortcode-for-this-player has been loaded
+            // and persisted. Without this fallback, the very first time a
+            // verified user opens a never-loaded shortcode of theirs, the
+            // siteKey compare fails (no currentSiteKey in playerReport yet),
+            // we drop to a name compare, and any case/whitespace drift in
+            // their display name flips the page into view-only.
+            var ownIdent = getStoredIdentity();
             var currentSaved = null;
             try { currentSaved = JSON.parse(localStorage.getItem('playerReport')); } catch(e) {}
             var currentPlayer = (currentSaved && currentSaved.player && currentSaved.player.name) || '';
-            var currentSiteKey = (currentSaved && currentSaved.player && currentSaved.player.siteKey) || null;
+            var currentSiteKey = (ownIdent && ownIdent.siteKey)
+              || (currentSaved && currentSaved.player && currentSaved.player.siteKey)
+              || null;
             var resultSiteKey = result.siteKey || null;
             function _norm(s) { return String(s || '').trim().toLowerCase(); }
             var isSamePlayer;
-            if (!currentPlayer) {
+            if (!currentPlayer && !ownIdent) {
               isSamePlayer = true;
             } else if (currentSiteKey && resultSiteKey) {
               isSamePlayer = currentSiteKey === resultSiteKey;
