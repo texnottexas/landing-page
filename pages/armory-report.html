@@ -537,27 +537,49 @@
   .deco-summary-val { font-size: 1.25rem; font-weight: 700; color: var(--text); }
   .deco-summary-label { font-size: .7rem; color: var(--muted); }
 
-  /* Decor Upgrade Advisor */
+  /* Decor Upgrade Advisor — modeled after wizard-card aesthetic. */
+  @keyframes advisor-hat-glow {
+    0%, 100% { filter: drop-shadow(0 0 10px rgba(121,192,255,0.45)); }
+    50%      { filter: drop-shadow(0 0 22px rgba(121,192,255,0.85)); }
+  }
+  @keyframes advisor-fade-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes advisor-bar-grow {
+    from { width: 0; }
+    to   { width: var(--bar-width, 100%); }
+  }
   .advisor-bar { margin: 0 0 1rem; }
   .advisor-btn {
     display: inline-flex; align-items: center; gap: 6px;
     background: var(--card); border: 1px solid var(--border);
     color: var(--accent); padding: 6px 14px; border-radius: 999px;
     cursor: pointer; font-size: 13px; font-weight: 500;
-    transition: background 0.15s, border-color 0.15s;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s;
   }
   .advisor-btn:hover:not(:disabled) { background: #1f2730; border-color: var(--accent); }
+  .advisor-btn:active:not(:disabled) { transform: translateY(1px); }
   .advisor-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-  .advisor-btn.primary { background: var(--accent); color: #0d1117; border-color: var(--accent); }
-  .advisor-btn.primary:hover:not(:disabled) { background: #4799ed; }
+  .advisor-btn.primary {
+    background: linear-gradient(135deg, var(--accent), #4799ed);
+    color: #0d1117; border-color: var(--accent);
+    box-shadow: 0 4px 16px rgba(121,192,255,0.25);
+  }
+  .advisor-btn.primary:hover:not(:disabled) { box-shadow: 0 6px 22px rgba(121,192,255,0.4); }
   .advisor-btn svg { color: var(--accent); }
   .advisor-btn.primary svg { color: #0d1117; }
-  /* Flex layout: card itself doesn't scroll; body is the only scroll region.
-     Avoids sticky-element bleed-through when modal-bg also scrolls. */
+  /* Modal-bg open animation override (parent rule already declares fadeIn). */
+  #advisor-modal.show { animation: fadeIn 0.18s ease; }
+  /* Flex layout: card itself doesn't scroll; body is the only scroll region. */
   .advisor-modal-card {
     display: flex; flex-direction: column;
-    max-width: 720px; max-height: calc(100vh - 2rem);
+    max-width: 760px; width: 100%;
+    max-height: calc(100vh - 2rem);
     padding: 0; overflow: hidden;
+    border-radius: 16px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+    animation: slideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .advisor-modal-content {
     display: flex; flex-direction: column;
@@ -565,18 +587,23 @@
   }
   .advisor-modal-card header {
     flex: 0 0 auto;
-    padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border);
+    padding: 1rem 1.5rem; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; justify-content: space-between;
     background: var(--bg);
   }
-  .advisor-modal-card header h2 { margin: 0; font-size: 18px; color: var(--text); }
+  .advisor-modal-card header h2 {
+    margin: 0; font-size: 16px; color: var(--text);
+    font-weight: 500; letter-spacing: 0.01em;
+  }
   .advisor-modal-card .close-x {
     background: transparent; border: 0; color: var(--muted);
     font-size: 22px; line-height: 1; cursor: pointer; padding: 4px 8px;
+    border-radius: 6px; transition: background 0.15s, color 0.15s;
   }
+  .advisor-modal-card .close-x:hover { background: var(--card); color: var(--text); }
   .advisor-step-body {
     flex: 1 1 auto; min-height: 0; overflow-y: auto;
-    padding: 1.25rem 1.5rem;
+    padding: 1.5rem 1.75rem;
   }
   .advisor-step-footer {
     flex: 0 0 auto;
@@ -584,78 +611,215 @@
     display: flex; justify-content: space-between; gap: 8px;
     background: var(--bg);
   }
-  .advisor-blurb { color: var(--muted); margin: 0 0 1rem; font-size: 13px; }
-  .advisor-stat-group { margin-bottom: 1.25rem; }
+  /* Hero header (Step 1) */
+  .advisor-hero {
+    text-align: center; padding: 0.5rem 0 1.5rem;
+    animation: advisor-fade-up 0.5s ease;
+  }
+  .advisor-hero-icon {
+    color: var(--accent); margin: 0 auto 0.75rem;
+    animation: advisor-hat-glow 3s ease-in-out infinite;
+  }
+  .advisor-hero h1 {
+    margin: 0 0 0.5rem; font-size: 1.5rem; color: var(--text);
+    font-weight: 600; letter-spacing: -0.01em;
+  }
+  .advisor-hero p {
+    margin: 0; color: var(--muted); font-size: 0.95rem;
+    max-width: 460px; margin: 0 auto;
+  }
+  /* Modern selection cards (replaces plain checkboxes) */
+  .advisor-stat-group { margin-bottom: 1.5rem; animation: advisor-fade-up 0.4s ease both; }
+  .advisor-stat-group:nth-child(2) { animation-delay: 0.05s; }
+  .advisor-stat-group:nth-child(3) { animation-delay: 0.1s; }
+  .advisor-stat-group:nth-child(4) { animation-delay: 0.15s; }
   .advisor-stat-group h3 {
-    margin: 0 0 0.5rem; font-size: 13px; text-transform: uppercase;
-    letter-spacing: 0.05em; color: var(--muted);
+    margin: 0 0 0.6rem; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--muted); font-weight: 600;
   }
-  .advisor-stat-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
-  .advisor-stat-list label {
-    display: flex; align-items: center; gap: 8px; padding: 6px 8px;
-    background: var(--card); border: 1px solid var(--border); border-radius: 6px;
-    cursor: pointer; font-size: 13px;
+  .advisor-stat-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .advisor-stat-card {
+    position: relative;
+    display: flex; align-items: center; gap: 10px;
+    padding: 0.7rem 0.85rem; padding-right: 2rem;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; cursor: pointer; font-size: 13px;
+    color: var(--text);
+    transition: border-color 0.15s, background 0.15s, transform 0.1s;
+    user-select: none;
   }
-  .advisor-stat-list label:hover { border-color: var(--accent); }
-  .advisor-stat-list input { accent-color: var(--accent); }
+  .advisor-stat-card:hover { border-color: var(--muted); background: #1c232c; }
+  .advisor-stat-card.selected {
+    border-color: var(--accent);
+    background: rgba(121,192,255,0.08);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+  .advisor-stat-card input { position: absolute; opacity: 0; pointer-events: none; }
+  .advisor-stat-icon {
+    flex: 0 0 auto; width: 26px; height: 26px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(121,192,255,0.1); border-radius: 7px; color: var(--accent);
+  }
+  .advisor-stat-card.selected .advisor-stat-icon { background: rgba(121,192,255,0.18); }
+  .advisor-stat-label { flex: 1; min-width: 0; }
+  .advisor-stat-check {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 1.5px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .advisor-stat-card.selected .advisor-stat-check {
+    border-color: var(--accent); background: var(--accent);
+  }
+  .advisor-stat-card.selected .advisor-stat-check::after {
+    content: ''; width: 5px; height: 9px;
+    border-right: 2px solid #0d1117; border-bottom: 2px solid #0d1117;
+    transform: rotate(45deg) translate(-1px, -1px);
+  }
+  .advisor-pick-counter {
+    margin: 0 0 0.75rem; font-size: 12px; color: var(--muted);
+    text-align: center;
+  }
+  .advisor-pick-counter strong { color: var(--accent); }
+  /* Dashboard styling */
   .advisor-shard-card {
-    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-    padding: 0.75rem 1rem; margin-bottom: 1.25rem;
+    background: linear-gradient(135deg, var(--card) 0%, #1c232c 100%);
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 1rem 1.25rem; margin-bottom: 1.25rem;
+    animation: advisor-fade-up 0.4s ease;
   }
-  .advisor-shard-card strong { color: var(--accent); font-size: 20px; }
-  .advisor-shard-card span { color: var(--muted); font-size: 13px; margin-left: 6px; }
-  .advisor-shard-breakdown { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .advisor-shard-card-row {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  }
+  .advisor-shard-headline strong {
+    color: var(--accent); font-size: 28px; font-weight: 700; letter-spacing: -0.02em;
+  }
+  .advisor-shard-headline span { color: var(--muted); font-size: 13px; margin-left: 8px; }
+  .advisor-shard-breakdown { font-size: 12px; color: var(--muted); margin-top: 6px; }
   .advisor-lucky-caveat {
-    font-size: 12px; color: #d29922; margin-top: 6px;
-    padding: 6px 8px; background: rgba(210, 153, 34, 0.08); border-radius: 4px;
+    font-size: 12px; color: #d29922; margin-top: 10px;
+    padding: 8px 10px; background: rgba(210, 153, 34, 0.08);
+    border-radius: 6px; border: 1px solid rgba(210, 153, 34, 0.2);
   }
-  .advisor-loading, .advisor-error { text-align: center; padding: 2rem; color: var(--muted); }
-  .advisor-error { color: #f85149; }
-  .advisor-stat-section { margin-bottom: 1rem; border: 1px solid var(--border); border-radius: 8px; }
+  .advisor-loading {
+    text-align: center; padding: 3rem 1rem; color: var(--muted);
+  }
+  .advisor-loading-spinner {
+    display: inline-block; width: 28px; height: 28px;
+    border: 3px solid rgba(121,192,255,0.2); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+    margin-bottom: 0.75rem;
+  }
+  .advisor-error {
+    text-align: center; padding: 2rem; color: #f85149;
+    background: rgba(248, 81, 73, 0.08); border-radius: 10px;
+  }
+  .advisor-stat-section {
+    margin-bottom: 1rem; border: 1px solid var(--border); border-radius: 12px;
+    overflow: hidden;
+    animation: advisor-fade-up 0.4s ease both;
+  }
+  .advisor-stat-section:nth-child(2) { animation-delay: 0.04s; }
+  .advisor-stat-section:nth-child(3) { animation-delay: 0.08s; }
+  .advisor-stat-section:nth-child(4) { animation-delay: 0.12s; }
   .advisor-stat-section summary {
-    padding: 0.75rem 1rem; cursor: pointer; font-weight: 500; color: var(--text);
-    list-style: none;
+    padding: 0.85rem 1.1rem; cursor: pointer; font-weight: 500; color: var(--text);
+    list-style: none; display: flex; align-items: center; gap: 8px;
+    background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.15) 100%);
   }
   .advisor-stat-section summary::-webkit-details-marker { display: none; }
   .advisor-stat-section summary::before {
-    content: '▶'; margin-right: 8px; font-size: 10px; transition: transform 0.15s;
-    display: inline-block;
+    content: '▶'; font-size: 10px; transition: transform 0.15s;
+    display: inline-block; color: var(--muted);
   }
   .advisor-stat-section[open] summary::before { transform: rotate(90deg); }
   .advisor-stat-section .count { color: var(--muted); font-size: 12px; font-weight: normal; }
+  .advisor-section-tagline {
+    font-size: 12px; color: var(--muted);
+    padding: 0 1.1rem 0.75rem; line-height: 1.4;
+    border-top: 1px solid var(--border);
+    padding-top: 0.6rem;
+  }
+  .advisor-section-tagline strong { color: var(--accent); font-weight: 500; }
   .advisor-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 12px; padding: 0.5rem 1rem 1rem;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px; padding: 0.25rem 1rem 1rem;
   }
   .advisor-rec-card {
-    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-    padding: 12px; display: flex; flex-direction: column; gap: 6px; font-size: 13px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; display: flex; flex-direction: column; gap: 8px; font-size: 13px;
+    transition: border-color 0.15s, transform 0.1s;
   }
+  .advisor-rec-card:hover { border-color: var(--muted); }
+  .advisor-rec-rank {
+    position: absolute; top: 6px; right: 8px;
+    background: var(--accent); color: #0d1117;
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+  }
+  .advisor-rec-card { position: relative; }
+  .advisor-rec-card.rank-1 { border-color: var(--accent); }
   .advisor-rec-head { display: flex; gap: 10px; align-items: center; }
-  .advisor-rec-head img { width: 44px; height: 44px; object-fit: contain; }
-  .advisor-rec-name { font-weight: 500; color: var(--text); }
+  .advisor-rec-head img {
+    width: 44px; height: 44px; object-fit: contain;
+    background: var(--bg); border-radius: 6px; padding: 2px;
+  }
+  .advisor-rec-name { font-weight: 600; color: var(--text); font-size: 13px; }
   .advisor-rec-level { color: var(--muted); font-size: 12px; }
-  .advisor-rec-stat { color: var(--accent); font-weight: 500; }
-  .advisor-rec-buffs { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-  .advisor-rec-buff-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; }
-  .advisor-rec-buff-name { color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* ROI bar visualization */
+  .advisor-roi-bar-wrap {
+    margin-top: 2px; height: 5px; background: rgba(255,255,255,0.06);
+    border-radius: 999px; overflow: hidden;
+  }
+  .advisor-roi-bar {
+    height: 100%; background: linear-gradient(90deg, var(--accent), #4799ed);
+    border-radius: 999px;
+    animation: advisor-bar-grow 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .advisor-rec-buffs {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 8px 0; border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .advisor-rec-buff-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 8px; font-size: 12px;
+  }
+  .advisor-rec-buff-name {
+    color: var(--text); flex: 1; min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
   .advisor-rec-buff-delta { color: var(--accent); font-weight: 600; flex-shrink: 0; }
-  .advisor-rec-buff-rate { font-size: 11px; color: var(--muted); padding-left: 0; line-height: 1.3; }
-  .advisor-rec-cost, .advisor-rec-have { color: var(--muted); font-size: 12px; }
-  .advisor-ready { color: #3fb950; font-weight: 500; margin-left: 6px; }
-  .advisor-empty { color: var(--muted); padding: 1rem; text-align: center; }
+  .advisor-rec-buff-rate {
+    font-size: 11px; color: var(--muted); line-height: 1.3;
+  }
+  .advisor-rec-cost-row {
+    display: flex; justify-content: space-between; gap: 8px; font-size: 12px;
+  }
+  .advisor-rec-cost { color: var(--muted); }
+  .advisor-rec-have { color: var(--muted); }
+  .advisor-ready {
+    color: #3fb950; font-weight: 600; margin-left: 6px;
+    background: rgba(63, 185, 80, 0.1); padding: 1px 6px; border-radius: 4px;
+    font-size: 11px;
+  }
+  .advisor-empty { color: var(--muted); padding: 1.5rem; text-align: center; }
   .advisor-mutex {
     font-size: 11px; color: #d29922;
-    padding: 4px 6px; background: rgba(210, 153, 34, 0.08);
-    border-left: 2px solid #d29922; border-radius: 0 4px 4px 0;
+    padding: 5px 8px; background: rgba(210, 153, 34, 0.08);
+    border-left: 2px solid #d29922; border-radius: 0 6px 6px 0;
     cursor: help;
   }
   @media (max-width: 600px) {
-    .advisor-modal-card { max-width: 100%; }
+    .advisor-modal-card { max-width: 100%; border-radius: 12px; }
+    .advisor-step-body { padding: 1.25rem 1rem; }
     .advisor-stat-list { grid-template-columns: 1fr; }
-    .advisor-grid { grid-template-columns: 1fr; }
-    .advisor-step-footer { flex-direction: column; }
-    .advisor-step-footer .advisor-btn { width: 100%; }
+    .advisor-grid { grid-template-columns: 1fr; padding: 0.25rem 0.75rem 0.75rem; }
+    .advisor-step-footer { flex-direction: column-reverse; }
+    .advisor-step-footer .advisor-btn { width: 100%; justify-content: center; }
+    .advisor-hero h1 { font-size: 1.25rem; }
   }
   .deco-filter-bar {
     display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
@@ -6664,6 +6828,28 @@
 
   function _adv_escClose(e) { if (e.key === 'Escape') _adv_close(); }
 
+  // Stat-group icons (inline SVG, currentColor) — visual variety per category.
+  function _adv_makeGroupIcon(groupName) {
+    var SVG = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(SVG, 'svg');
+    svg.setAttribute('width', '14'); svg.setAttribute('height', '14');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+    var pathD;
+    if (groupName === 'Combat') {
+      pathD = 'M14.5 17.5 4 7l3-3 10.5 10.5M14 8 19 3l2 2-5 5M5 19l1.5-1.5M16 16l4 4';
+    } else if (groupName === 'Logistics') {
+      pathD = 'M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16zM3.3 7l8.7 5 8.7-5M12 22V12';
+    } else {
+      pathD = 'M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83';
+    }
+    var p = document.createElementNS(SVG, 'path');
+    p.setAttribute('d', pathD);
+    svg.appendChild(p);
+    return svg;
+  }
+
   function _adv_renderStatPicker() {
     var content = document.querySelector('#advisor-modal .advisor-modal-content');
     while (content.firstChild) content.removeChild(content.firstChild);
@@ -6674,33 +6860,68 @@
     }, '×');
     closeX.addEventListener('click', _adv_close);
     content.appendChild(_adv_mk('header', null,
-      _adv_mk('h2', { attrs: { id: 'advisor-title' }, text: 'Upgrade Advisor' }),
+      _adv_mk('h2', { attrs: { id: 'advisor-title' }, text: 'Decor Upgrade Advisor' }),
       closeX
     ));
 
     var body = _adv_mk('div', { cls: 'advisor-step-body' });
-    body.appendChild(_adv_mk('p', {
-      cls: 'advisor-blurb',
-      text: "Pick the stats you care about. We'll show you the best decor upgrades for your shards."
-    }));
 
-    var nextBtn;  // declared here so checkbox handler can flip its disabled state.
+    // Hero header with glowing wizard hat
+    var hero = _adv_mk('div', { cls: 'advisor-hero' });
+    var heroIcon = _adv_createWizardHatSvg(56);
+    heroIcon.classList.add('advisor-hero-icon');
+    hero.appendChild(heroIcon);
+    hero.appendChild(_adv_mk('h1', { text: 'Find Your Best Upgrades' }));
+    hero.appendChild(_adv_mk('p', {
+      text: 'Pick the stats you care about. We\'ll rank the decor upgrades that give you the most stat value per Universal Decor Shard spent.'
+    }));
+    body.appendChild(hero);
+
+    // Live counter
+    var counter = _adv_mk('p', { cls: 'advisor-pick-counter' });
+    function refreshCounter() {
+      while (counter.firstChild) counter.removeChild(counter.firstChild);
+      var n = _advisorState.selectedStats.size;
+      counter.appendChild(document.createTextNode(n === 0 ? 'Select one or more stats below' : ''));
+      if (n > 0) {
+        counter.appendChild(_adv_mk('strong', { text: String(n) }));
+        counter.appendChild(document.createTextNode(' stat' + (n === 1 ? '' : 's') + ' selected'));
+      }
+    }
+    refreshCounter();
+    body.appendChild(counter);
+
+    var nextBtn; // declared here so card click handler can flip its disabled state.
     ADVISOR_STAT_GROUPS.forEach(function(group) {
       var gWrap = _adv_mk('div', { cls: 'advisor-stat-group' });
       gWrap.appendChild(_adv_mk('h3', { text: group.name }));
       var list = _adv_mk('div', { cls: 'advisor-stat-list' });
       group.stats.forEach(function(s) {
-        var cb = _adv_mk('input', {
-          attrs: { type: 'checkbox' },
+        var hidden = _adv_mk('input', {
+          attrs: { type: 'checkbox', 'aria-label': s.label },
           dataset: { stat: s.id }
         });
-        cb.checked = _advisorState.selectedStats.has(s.id);
-        cb.addEventListener('change', function() {
-          if (cb.checked) _advisorState.selectedStats.add(s.id);
-          else _advisorState.selectedStats.delete(s.id);
+        hidden.checked = _advisorState.selectedStats.has(s.id);
+        var card = _adv_mk('label', { cls: 'advisor-stat-card' });
+        if (hidden.checked) card.classList.add('selected');
+        var iconBox = _adv_mk('span', { cls: 'advisor-stat-icon' });
+        iconBox.appendChild(_adv_makeGroupIcon(group.name));
+        card.appendChild(iconBox);
+        card.appendChild(_adv_mk('span', { cls: 'advisor-stat-label', text: s.label }));
+        card.appendChild(hidden);
+        card.appendChild(_adv_mk('span', { cls: 'advisor-stat-check', attrs: { 'aria-hidden': 'true' } }));
+        hidden.addEventListener('change', function() {
+          if (hidden.checked) {
+            _advisorState.selectedStats.add(s.id);
+            card.classList.add('selected');
+          } else {
+            _advisorState.selectedStats.delete(s.id);
+            card.classList.remove('selected');
+          }
+          refreshCounter();
           if (nextBtn) nextBtn.disabled = _advisorState.selectedStats.size === 0;
         });
-        list.appendChild(_adv_mk('label', null, cb, ' ' + s.label));
+        list.appendChild(card);
       });
       gWrap.appendChild(list);
       body.appendChild(gWrap);
@@ -6722,12 +6943,16 @@
   // ── Advisor recommendation engine ─────────────────────────────────────────
   function _adv_calcAvailableShards(inventory) {
     var inv = inventory || {};
+    // Inventory item IDs may be stored as strings or numbers depending on upload path —
+    // coerce both sides to Number for the comparisons below.
     var items = (inv.tabs && inv.tabs.item) || [];
     var directShards = 0, boxShards = 0, luckyChests = 0;
     items.forEach(function(it) {
-      if (it.id === 20213232) directShards += (it.amount || 0);
-      else if (it.id === 10000196) boxShards += 10 * (it.amount || 0);
-      else if (it.id === 10000096) luckyChests += (it.amount || 0);
+      var id = Number(it.id);
+      var amt = Number(it.amount) || 0;
+      if (id === 20213232) directShards += amt;
+      else if (id === 10000196) boxShards += 10 * amt;
+      else if (id === 10000096) luckyChests += amt;
     });
     return {
       universal: directShards + boxShards,
@@ -6742,8 +6967,9 @@
     var total = 0;
     decor.forEach(function(d) {
       if (String(d.group) === String(group)) {
-        var lv = d.level || 1;
-        total += (d.amount || 0) * Math.pow(3, lv - 1);
+        var lv = Number(d.level) || 1;
+        var amt = Number(d.amount) || 0;
+        total += amt * Math.pow(3, lv - 1);
       }
     });
     return total;
@@ -6944,8 +7170,11 @@
     return String(name || '').replace(/[^a-zA-Z0-9 ]/g, '').replace(/ /g, '_');
   }
 
-  function _adv_renderRecCard(r) {
-    var card = _adv_mk('div', { cls: 'advisor-rec-card' });
+  function _adv_renderRecCard(r, rank, maxRoi) {
+    var card = _adv_mk('div', { cls: 'advisor-rec-card' + (rank === 1 ? ' rank-1' : '') });
+    if (rank) {
+      card.appendChild(_adv_mk('span', { cls: 'advisor-rec-rank', text: '#' + rank }));
+    }
     var head = _adv_mk('div', { cls: 'advisor-rec-head' });
     if (r.iconPath) {
       var sanitizedName = _adv_sanitizeDecorNameForIcon(r.name);
@@ -6962,7 +7191,17 @@
     head.appendChild(nameWrap);
     card.appendChild(head);
 
-    // Per-buff stat rows: gain at this upgrade + cost per shard for this stat
+    // Relative ROI bar — visualizes how this card compares to the top within its stat section.
+    if (typeof maxRoi === 'number' && maxRoi > 0 && r.roi > 0) {
+      var pct = Math.min(100, Math.max(8, Math.round((r.roi / maxRoi) * 100)));
+      var barWrap = _adv_mk('div', { cls: 'advisor-roi-bar-wrap' });
+      var bar = _adv_mk('div', { cls: 'advisor-roi-bar' });
+      bar.style.setProperty('--bar-width', pct + '%');
+      bar.style.width = pct + '%';
+      barWrap.appendChild(bar);
+      card.appendChild(barWrap);
+    }
+
     if (r.buffRows && r.buffRows.length > 0) {
       var buffsBlock = _adv_mk('div', { cls: 'advisor-rec-buffs' });
       r.buffRows.forEach(function(row) {
@@ -6972,23 +7211,21 @@
         buffsBlock.appendChild(line);
         buffsBlock.appendChild(_adv_mk('div', {
           cls: 'advisor-rec-buff-rate',
-          text: row.perShardLabel + ' (per universal shard)'
+          text: row.perShardLabel + ' per shard'
         }));
       });
       card.appendChild(buffsBlock);
     }
 
-    card.appendChild(_adv_mk('div', {
-      cls: 'advisor-rec-cost',
-      text: 'Cost: ' + r.shardCost.toLocaleString() + ' shards'
-    }));
-
-    var haveRow = _adv_mk('div', { cls: 'advisor-rec-have' });
-    haveRow.appendChild(document.createTextNode('Have: ' + r.available.toLocaleString() + ' '));
+    var costRow = _adv_mk('div', { cls: 'advisor-rec-cost-row' });
+    costRow.appendChild(_adv_mk('span', { cls: 'advisor-rec-cost', text: 'Cost: ' + r.shardCost.toLocaleString() }));
+    var haveSide = _adv_mk('span', { cls: 'advisor-rec-have' });
+    haveSide.appendChild(document.createTextNode('Have: ' + r.available.toLocaleString()));
     if (r.ready) {
-      haveRow.appendChild(_adv_mk('span', { cls: 'advisor-ready', text: '✓ READY' }));
+      haveSide.appendChild(_adv_mk('span', { cls: 'advisor-ready', text: 'READY' }));
     }
-    card.appendChild(haveRow);
+    costRow.appendChild(haveSide);
+    card.appendChild(costRow);
 
     if (r.mutexPartners && r.mutexPartners.length > 0) {
       var listed = r.mutexPartners.slice(0, 2).join(', ');
@@ -7019,10 +7256,13 @@
     ));
 
     var body = _adv_mk('div', { cls: 'advisor-step-body' });
-    body.appendChild(_adv_mk('div', { cls: 'advisor-loading', text: 'Computing recommendations…' }));
+    var loadingEl = _adv_mk('div', { cls: 'advisor-loading' },
+      _adv_mk('div', { cls: 'advisor-loading-spinner' }),
+      _adv_mk('div', { text: 'Crunching shard math…' })
+    );
+    body.appendChild(loadingEl);
     content.appendChild(body);
 
-    // Footer (added later after async work but pre-built so the back button is consistent)
     var backBtn = _adv_mk('button', { cls: 'advisor-btn', attrs: { type: 'button' }, text: '← Pick Different Stats' });
     backBtn.addEventListener('click', _adv_renderStatPicker);
     var doneBtn = _adv_mk('button', { cls: 'advisor-btn primary', attrs: { type: 'button' }, text: 'Close' });
@@ -7033,20 +7273,25 @@
     _adv_computeRecommendations(statIds, _advisorState.inventory, _advisorState.merged).then(function(result) {
       while (body.firstChild) body.removeChild(body.firstChild);
 
+      // Shard summary card
       var s = result.shardSummary;
       var shardCard = _adv_mk('div', { cls: 'advisor-shard-card' });
-      shardCard.appendChild(_adv_mk('div', null,
-        _adv_mk('strong', { text: s.universal.toLocaleString() }),
-        _adv_mk('span', { text: ' Universal Shards' })
-      ));
+      var topRow = _adv_mk('div', { cls: 'advisor-shard-card-row' },
+        _adv_mk('div', { cls: 'advisor-shard-headline' },
+          _adv_mk('strong', { text: s.universal.toLocaleString() }),
+          _adv_mk('span', { text: 'Universal Shards Available' })
+        )
+      );
+      shardCard.appendChild(topRow);
       shardCard.appendChild(_adv_mk('div', {
         cls: 'advisor-shard-breakdown',
-        text: 'Direct: ' + s.directShards + ' · Boxes (×10): ' + s.boxShards
+        text: 'Direct shards: ' + s.directShards.toLocaleString() +
+              ' · From boxes (×10): ' + s.boxShards.toLocaleString()
       }));
       if (s.luckyChests > 0) {
         shardCard.appendChild(_adv_mk('div', {
           cls: 'advisor-lucky-caveat',
-          text: '+ ' + s.luckyChests + ' Lucky Chests (10–1,000 random shards each, not counted in math)'
+          text: '✦ ' + s.luckyChests + ' Lucky Chests in inventory — each gives 10–1,000 random shards. Not counted in the math below.'
         }));
       }
       body.appendChild(shardCard);
@@ -7063,17 +7308,26 @@
         if (idx === 0) section.open = true;
         var summary = _adv_mk('summary', null,
           document.createTextNode(statLabels[sid] || sid),
-          _adv_mk('span', { cls: 'count', text: ' (' + allRecs.length + ' candidates)' })
+          _adv_mk('span', { cls: 'count', text: ' · ' + allRecs.length + ' candidates' })
         );
         section.appendChild(summary);
+        section.appendChild(_adv_mk('div', { cls: 'advisor-section-tagline' },
+          _adv_mk('strong', { text: 'Top recommendations: ' }),
+          document.createTextNode('decor that delivers the most ' + (statLabels[sid] || sid).toLowerCase() + ' per Universal Decor Shard you spend.')
+        ));
         if (top5.length === 0) {
           section.appendChild(_adv_mk('p', {
             cls: 'advisor-empty',
             text: 'No upgrade recommendations for this stat.'
           }));
         } else {
+          // Find max ROI within this stat for bar normalization
+          var maxRoi = 0;
+          top5.forEach(function(r) { if (r.roi > maxRoi) maxRoi = r.roi; });
           var grid = _adv_mk('div', { cls: 'advisor-grid' });
-          top5.forEach(function(r) { grid.appendChild(_adv_renderRecCard(r)); });
+          top5.forEach(function(r, rankIdx) {
+            grid.appendChild(_adv_renderRecCard(r, rankIdx + 1, maxRoi));
+          });
           section.appendChild(grid);
         }
         body.appendChild(section);
