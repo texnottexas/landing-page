@@ -2090,6 +2090,11 @@
     try { map = raw ? JSON.parse(raw) : {}; } catch (e) { map = {}; }
     if (on) map[siteKey] = true; else delete map[siteKey];
     localStorage.setItem('armory_unlocked', JSON.stringify(map));
+    // Drop the cached uidHash on "Forget" so a future re-verify re-prompts
+    // for UID instead of silently re-handshaking under the old identity.
+    if (!on) {
+      try { localStorage.removeItem('armory_uidHash_' + siteKey); } catch (e) {}
+    }
   }
 
   function _ar_listUnlocked() {
@@ -2200,6 +2205,7 @@
           localStorage.setItem('playerIdentity', JSON.stringify(ident));
         } catch (e) {}
         try { await _ar_handshake(rosterHeal.hash); } catch (e) { /* fail-soft */ }
+        _ar_storeUidHash(rosterHeal.player.siteKey, rosterHeal.hash);
         _ar_setUnlocked(rosterHeal.player.siteKey, true);
         document.body.removeChild(bg);
         if (typeof onUnlock === 'function') onUnlock();
@@ -2233,6 +2239,7 @@
         console.warn('Supplement handshake failed:', e);
         err.textContent = 'Worker unreachable (' + e.message + ') — saved local-only.';
       }
+      _ar_storeUidHash(siteKey, fullHash);
       _ar_setUnlocked(siteKey, true);
       document.body.removeChild(bg);
       if (typeof onUnlock === 'function') onUnlock();
@@ -2284,9 +2291,36 @@
     return data;
   }
 
-  async function _ar_supplementUpload(kind, json) {
-    if (!_ar_supplementToken || Date.now() > _ar_supplementTokenExpires) {
-      throw new Error('No upload token. Re-enter UID.');
+  // Persist the full sha256(uid) so the next upload can transparently
+  // re-handshake when the 10-min worker token expires. The hash is
+  // already what gets sent to the worker over the wire (we never receive
+  // or store the raw UID), so caching it adds no privacy regression and
+  // saves the user from having to re-enter the UID every time the token
+  // lapses between paste sessions.
+  function _ar_storeUidHash(siteKey, uidHash) {
+    if (!siteKey || !uidHash) return;
+    try { localStorage.setItem('armory_uidHash_' + siteKey, uidHash); } catch (e) {}
+  }
+  function _ar_getStoredUidHash(siteKey) {
+    if (!siteKey) return null;
+    try { return localStorage.getItem('armory_uidHash_' + siteKey); } catch (e) { return null; }
+  }
+
+  // Ensure a fresh token is available; auto-handshake from cached uidHash
+  // when possible. Throws when no cached hash exists (caller surfaces a
+  // re-enter UID prompt).
+  async function _ar_ensureSupplementToken(siteKey) {
+    if (_ar_supplementToken && Date.now() < _ar_supplementTokenExpires - 10000) return;
+    var hash = _ar_getStoredUidHash(siteKey);
+    if (!hash) throw new Error('No upload token. Re-enter UID.');
+    await _ar_handshake(hash);
+  }
+
+  async function _ar_supplementUpload(kind, json, siteKey) {
+    try {
+      await _ar_ensureSupplementToken(siteKey);
+    } catch (e) {
+      throw e;
     }
     var r = await fetch(SUPPLEMENT_WORKER + '/supplement/upload', {
       method: 'POST',
@@ -4453,6 +4487,7 @@
                   if (h.slice(0, 16) === identity.siteKey) {
                     matched = true;
                     try { await _ar_handshake(h); } catch (e) {}
+                    _ar_storeUidHash(identity.siteKey, h);
                     break;
                   }
                 }
@@ -4471,6 +4506,7 @@
                           ident.siteKey = p.siteKey;
                           localStorage.setItem('playerIdentity', JSON.stringify(ident));
                           try { await _ar_handshake(hashesTried[j].hash); } catch (e) {}
+                          _ar_storeUidHash(p.siteKey, hashesTried[j].hash);
                           _ar_setUnlocked(p.siteKey, true);
                           matched = true;
                           // Reload so other gates (Inventory, Bench, Decor Advisor) pick up the new siteKey.
@@ -10630,12 +10666,15 @@
       }
       try { localStorage.setItem(lsKey + siteKey, serialized); }
       catch (e) { err.textContent = 'localStorage write failed: ' + e.message; return; }
-      // Best-effort worker upload
+      // Best-effort worker upload — passes siteKey so the upload helper can
+      // transparently re-handshake from the cached uidHash when the 10-min
+      // token has expired (common across sessions / page reloads). Without
+      // this, paste sessions kept reporting "No upload token. Re-enter UID."
       try {
-        await _ar_supplementUpload(kind, raw);
+        await _ar_supplementUpload(kind, raw, siteKey);
       } catch (e) {
         console.warn('Worker upload failed', e);
-        err.textContent = 'Saved locally. Worker upload failed (' + e.message + '). Open settings to refresh token.';
+        err.textContent = 'Saved locally. Worker upload failed (' + e.message + '). Open Identity settings to re-verify UID.';
         return;
       }
       document.body.removeChild(bg);
