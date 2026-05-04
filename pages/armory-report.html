@@ -2477,16 +2477,17 @@
   // contributing pack ids, instead of one cell per pack.
   var _AR_BUCKET_ORDER = [
     'skill_universal', // 1 — Exclusive Skill Shards / Universal Decor Shard / Remould (+ chests)
-    'titan',           // 2 — Titan Gear (existing classifier)
-    'ht_chip',         // 3 — Raw HT chips + chip chests (HT loadout neighbor of Titan Gear)
+    'titan',           // 2 — Titan Gear
+    'ht_chip',         // 3 — Raw HT chips + chip chests
     'enigma',          // 4 — Enigma + Beast + Repeater
     'gem',             // 5 — Gem packs (aggregate)
     'formation',       // 6 — Shark / Scorpion / Eagle holograms / resonators / shards
-    'chest',           // 7 — Choice / Random Chests
-    'speedup',         // 8 — Speed-ups (march/repair/shield/training/tech)
-    'combat_buff',     // 9 — Combat consumables (oil/energy/coating/traps/raw % buffs)
-    'resource',        // 10 — Odinium / Food / Oil raw packs (aggregate per resource)
-    'other'            // 11 — Everything else
+    'units',           // 7 — Unit Choice Chests + Airdrop Support
+    'chest',           // 8 — Other Choice / Random Chests
+    'speedup',         // 9 — Speed-ups (march/repair/shield/training/tech)
+    'combat_buff',     // 10 — Combat consumables (oil/energy/coating/traps/raw % buffs)
+    'resource',        // 11 — Odinium / Food / Oil raw packs (aggregate per resource)
+    'other'            // 12 — Everything else
   ];
   var _AR_BUCKET_INDEX = (function() { var m = {}; _AR_BUCKET_ORDER.forEach(function(k,i){m[k]=i;}); return m; })();
 
@@ -2565,6 +2566,18 @@
     return false;
   }
 
+  // Unit Choice Chests + similar unit-grant items. Caught BEFORE the
+  // generic chest classifier so 55200001-2 / 691xxx / 5200001-5 land
+  // in the dedicated 'units' bucket instead of 'chest'.
+  var _AR_UNIT_CHOICE_IDS = { 55200002: 1 };
+  function _ar_isUnitChoice(cfg, id) {
+    if (id != null && _AR_UNIT_CHOICE_IDS[id]) return true;
+    var n = String(cfg.n || '').toLowerCase();
+    if (/unit choice|unit \+\d|optional unit \+\d|choice unit \+\d/.test(n)) return true;
+    if (/^airdrop support/.test(n)) return true;
+    return false;
+  }
+
   // Raw-resource grant types (aggregate buckets). Returns 'gem'/'food'/'oil'/'odinium' or null.
   function _ar_resourceKind(cfg) {
     if (cfg.g === 1000000) return 'gem';
@@ -2637,6 +2650,7 @@
     if (_ar_isEnigma(cfg)) return 'enigma';
     if (_ar_resourceKind(cfg) === 'gem') return 'gem';
     if (_ar_isFormation(cfg)) return 'formation';
+    if (_ar_isUnitChoice(cfg, id)) return 'units';
     if (_ar_isChoiceChest(cfg)) return 'chest';
     if (_ar_isSpeedup(cfg)) return 'speedup';
     if (_ar_isCombatBuff(cfg)) return 'combat_buff';
@@ -2759,8 +2773,9 @@
           }
         }
         // Boxed gems (gems hidden inside non-pack boxes — "ONE of the following: 100 Gems x1, ...")
+        var boxed = 0;
         if (tabKey === 'item' && amount > 0) {
-          var boxed = _ar_boxedGemsPerOpen(cfg);
+          boxed = _ar_boxedGemsPerOpen(cfg);
           if (boxed > 0) {
             out.boxedGemTotal += boxed * amount;
             out.boxedGemDetails.push({ id: it.id, name: cfg.n || ('#'+it.id), amount: amount, perOpen: boxed, total: boxed * amount });
@@ -2775,7 +2790,8 @@
           iconDir: ASSET + (icoInfo ? icoInfo.dirSuffix : 'inventory-icons'),
           subtab: tabKey === 'item' ? (titanCat ? 'titan' : 'all') : undefined,
           titanCat: titanCat,
-          bucket: bucket
+          bucket: bucket,
+          boxedGems: boxed
         });
       });
     });
@@ -10448,6 +10464,7 @@
         ['enigma','Enigma'],
         ['gem','Gems'],
         ['formation','Formation'],
+        ['units','Units'],
         ['chest','Chests'],
         ['speedup','Speed-ups'],
         ['combat_buff','Combat Buffs'],
@@ -10589,7 +10606,15 @@
       };
       if (isItem) {
         if (state.subtab && state.subtab !== 'all') {
-          list = list.filter(function(x) { return x.bucket === state.subtab; });
+          if (state.subtab === 'gem') {
+            // Gems filter view: bucket='gem' raw packs (aggregated below)
+            // PLUS any item that contains gems inside a box ("ONE of the
+            // following: ...100 Gems x1..."). Boxed-gem items keep their
+            // natural bucket too — they show in both views.
+            list = list.filter(function(x) { return x.bucket === 'gem' || x.boxedGems > 0; });
+          } else {
+            list = list.filter(function(x) { return x.bucket === state.subtab; });
+          }
         }
         // Strip raw packs from grid — replaced by aggregate cells
         list = list.filter(function(x) { return !aggKindFor(x); });
@@ -10934,7 +10959,7 @@
   function _ar_buildAggregateCell(kind, data) {
     var TR = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/treasury-icons/';
     var META = {
-      gem:     { name: 'Gems',     iconUrl: 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/inventory-icons/image__item__item_1000003.png', q: 5 },
+      gem:     { name: 'Gems',     iconUrl: 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/inventory-icons/image__item__item_1000000.png', q: 5 },
       odinium: { name: 'Odinium',  iconUrl: TR + 'odinium.png', q: 5 },
       food:    { name: 'Food',     iconUrl: TR + 'food.png',    q: 4 },
       oil:     { name: 'Oil',      iconUrl: TR + 'oil.png',     q: 4 }
