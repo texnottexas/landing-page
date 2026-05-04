@@ -6941,15 +6941,26 @@
   }
 
   // ── Advisor recommendation engine ─────────────────────────────────────────
+  // Raw inventory payload uses abbreviated keys: a=amount, l=level, g=group.
+  // The Inventory tab calls _ar_rehydrateInv() to expand them, but the advisor reads
+  // straight from localStorage so it must accept both shapes.
+  function _adv_invAmount(it) {
+    return Number(it && (it.amount != null ? it.amount : it.a)) || 0;
+  }
+  function _adv_invLevel(it) {
+    return Number(it && (it.level != null ? it.level : it.l)) || 1;
+  }
+  function _adv_invGroup(it) {
+    return it && (it.group != null ? it.group : it.g);
+  }
+
   function _adv_calcAvailableShards(inventory) {
     var inv = inventory || {};
-    // Inventory item IDs may be stored as strings or numbers depending on upload path —
-    // coerce both sides to Number for the comparisons below.
     var items = (inv.tabs && inv.tabs.item) || [];
     var directShards = 0, boxShards = 0, luckyChests = 0;
     items.forEach(function(it) {
       var id = Number(it.id);
-      var amt = Number(it.amount) || 0;
+      var amt = _adv_invAmount(it);
       if (id === 20213232) directShards += amt;
       else if (id === 10000196) boxShards += 10 * amt;
       else if (id === 10000096) luckyChests += amt;
@@ -6966,9 +6977,9 @@
     var decor = (inventory && inventory.tabs && inventory.tabs.decor) || [];
     var total = 0;
     decor.forEach(function(d) {
-      if (String(d.group) === String(group)) {
-        var lv = Number(d.level) || 1;
-        var amt = Number(d.amount) || 0;
+      if (String(_adv_invGroup(d)) === String(group)) {
+        var lv = _adv_invLevel(d);
+        var amt = _adv_invAmount(d);
         total += amt * Math.pow(3, lv - 1);
       }
     });
