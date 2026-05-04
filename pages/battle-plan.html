@@ -90,6 +90,10 @@ table.power.power-collapsed .hidden-row{display:none;}
 .fight.p2::before{background:var(--yellow);}
 .fight.p3::before{background:var(--accent);}
 .fight.p4::before{background:var(--muted);}
+.fight.threeway{box-shadow:inset 0 0 0 1px rgba(210,153,34,.45);background:rgba(210,153,34,.04);}
+.fight .lvl.threeway-tag{margin-left:.3rem;color:var(--yellow);font-weight:700;}
+.fight.defense::before{background:var(--navy);}
+.fight.defense{background:rgba(56,139,253,.05);border-color:rgba(56,139,253,.3);}
 .fight-top{display:flex;justify-content:space-between;align-items:flex-start;gap:.4rem;}
 .fight-id{font-size:1rem;font-weight:800;display:flex;align-items:center;gap:.35rem;}
 .fight-id .lvl{font-size:.55rem;padding:.1rem .4rem;border-radius:5px;background:rgba(121,192,255,.1);color:var(--accent);border:1px solid rgba(121,192,255,.25);font-weight:700;letter-spacing:.04em;}
@@ -205,6 +209,7 @@ table.power.power-collapsed .hidden-row{display:none;}
 .assign-card.t4 h4 .pill{background:rgba(139,148,158,.08);color:var(--muted);border:1px solid var(--border);}
 .assign-card .seqs{font-size:.72rem;color:var(--text);font-family:'SF Mono',Consolas,monospace;line-height:1.7;}
 .assign-card .seqs .seq{display:inline-block;padding:.05rem .35rem;background:var(--surface);border:1px solid var(--border);border-radius:4px;margin-right:.25rem;margin-bottom:.2rem;}
+.assign-card .seqs .seq.threeway{border-color:rgba(210,153,34,.85);background:rgba(210,153,34,.18);font-weight:700;}
 .assign-card .desc{font-size:.7rem;color:var(--muted);margin-top:.5rem;line-height:1.45;}
 
 .rules{display:grid;gap:.5rem;grid-template-columns:1fr;}
@@ -258,6 +263,9 @@ table.power.power-collapsed .hidden-row{display:none;}
 .focus-tier .seq-pill.with-nc{border-color:rgba(63,185,80,.5);background:rgba(63,185,80,.08);}
 .focus-tier .seq-pill.threat{border-color:rgba(248,81,73,.5);background:rgba(248,81,73,.08);}
 .focus-tier .seq-pill.over{border-color:rgba(139,148,158,.5);background:rgba(139,148,158,.08);text-decoration:line-through;color:var(--muted);}
+.focus-tier .seq-pill.contested{border-color:rgba(210,153,34,.55);background:rgba(210,153,34,.10);}
+.focus-tier .seq-pill.threeway{border-color:rgba(210,153,34,.85);background:rgba(210,153,34,.18);font-weight:600;}
+.focus-tier .seq-pill.threat.threeway{border-color:rgba(248,81,73,.85);background:rgba(248,81,73,.16);}
 
 .foot{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--border);font-size:.7rem;color:var(--muted);text-align:center;}
 .foot .upd{display:block;margin-bottom:.25rem;}
@@ -621,11 +629,17 @@ body{top:0!important;}
     sub.appendChild(bold);
     hero.appendChild(sub);
     var hs = el('div', 'hero-stats');
+    var contestedCount = (rd.s2864 && rd.s2864.contestedDeclarations !== undefined)
+        ? rd.s2864.contestedDeclarations
+        : (rd.warTargets || []).filter(function(w){ return (w.contestedBy && w.contestedBy.length) || (w.coAttackers && w.coAttackers.length); }).length;
+    var defenseCount = (rd.s2864 && rd.s2864.defensiveDeclarations !== undefined)
+        ? rd.s2864.defensiveDeclarations
+        : (rd.defenseTargets || []).length;
     var statsArr = [
       { v: (rd.s2864 ? rd.s2864.warDeclarations : 0), l: 'Declarations', c: 'v-accent' },
-      { v: (rd.contestedRanked || []).length, l: 'Contested', c: 'v-yellow' },
-      { v: (rd.ncCaptureFlow || []).length, l: 'NCs Reachable', c: 'v-green' },
-      { v: (rd.neutralCityOwned || []).length, l: 'NCs Owned', c: 'v-accent' }
+      { v: contestedCount, l: 'Contested', c: 'v-yellow' },
+      { v: defenseCount, l: 'Defending', c: 'v-red' },
+      { v: (rd.ncCaptureFlow || []).length, l: 'NCs Reachable', c: 'v-green' }
     ];
     statsArr.forEach(function(s){
       var sd = el('div', 'stat ' + s.c);
@@ -675,9 +689,16 @@ body{top:0!important;}
     var ncUnlocks = rd.declarationNcUnlocks || {};
     var contested = rd.contestedRanked || [];
 
-    // Index opp data by seq
-    var oppBySeq = {};
-    contested.forEach(function(f){ oppBySeq[String(f.seq)] = f; });
+    // Index opp data by seq — ALL opponents per seq (multi-way fights)
+    var oppBySeq = {};       // first/strongest opponent only (back-compat)
+    var oppListBySeq = {};   // full opponent list
+    contested.forEach(function(f){
+      var k = String(f.seq);
+      if (!oppListBySeq[k]) oppListBySeq[k] = [];
+      oppListBySeq[k].push(f);
+      // Keep highest opPI as primary
+      if (!oppBySeq[k] || (f.opPI || 0) > (oppBySeq[k].opPI || 0)) oppBySeq[k] = f;
+    });
 
     // Combat specs
     var COMBAT_SPECS = {4001:1,4006:1,4007:1,4008:1,4010:1};
@@ -778,12 +799,18 @@ body{top:0!important;}
       var seqRow = el('div', 'seq-pills');
       tc.tier.forEach(function(e){
         var lbl = 'W-' + e.seq + ' L' + e.level + ' · ' + (e.specName || '?');
-        if (e.opp) lbl += ' vs S' + e.opp.opponent;
+        var opps = oppListBySeq[String(e.seq)] || [];
+        if (opps.length) {
+          var sids = opps.map(function(o){ return 'S' + o.opponent; }).join(' + ');
+          lbl += (opps.length >= 2 ? ' ⚠ ' + (opps.length + 1) + '-way ' : ' vs ') + sids;
+        } else if (e.opp) lbl += ' vs S' + e.opp.opponent;
         if (e.hasNc) lbl += ' → ' + formatNcUnlockList(e.ncs);
         var pill = el('span', 'seq-pill', lbl);
         if (e.threat) pill.classList.add('threat');
+        else if (opps.length) pill.classList.add('contested');
         else if (e.hasNc) pill.classList.add('with-nc');
         else if (e.droppable) pill.classList.add('over');
+        if (opps.length >= 2) pill.classList.add('threeway');
         seqRow.appendChild(pill);
       });
       body.appendChild(seqRow);
@@ -797,23 +824,32 @@ body{top:0!important;}
   function buildContested(rd, root){
     var contested = (rd.contestedRanked || []).slice().sort(function(a,b){ return b.opPI - a.opPI; });
     if (!contested.length) return;
+    // Count distinct contested seqs vs total entries (3-way fights show twice)
+    var seqCount = {};
+    contested.forEach(function(f){ seqCount[f.seq] = (seqCount[f.seq] || 0) + 1; });
+    var threeWayCount = Object.keys(seqCount).filter(function(k){ return seqCount[k] >= 2; }).length;
+    var distinctSeqs = Object.keys(seqCount).length;
     var section = el('section', 'sect');
     var t = el('div', 'sect-title');
     var dot = el('span', 'dot'); dot.style.background = 'var(--red)';
     t.appendChild(dot);
     t.appendChild(el('span', null, 'Contested Fights — Ranked by Opponent Power'));
-    t.appendChild(el('span', 'tag', contested.length + ' fights'));
+    var tagLabel = distinctSeqs + ' wastelands · ' + contested.length + ' fight cards';
+    if (threeWayCount) tagLabel += ' · ' + threeWayCount + ' 3-way';
+    t.appendChild(el('span', 'tag', tagLabel));
     section.appendChild(t);
 
     var grid = el('div', 'fights');
     var ncUnlocks = rd.declarationNcUnlocks || {};
     contested.forEach(function(f){
       var prio = priorityLevel(f.opPI, f.opFame);
-      var card = el('div', 'fight p' + prio);
+      var isThreeWay = seqCount[f.seq] >= 2;
+      var card = el('div', 'fight p' + prio + (isThreeWay ? ' threeway' : ''));
       var top = el('div', 'fight-top');
       var idDiv = el('div', 'fight-id');
       idDiv.appendChild(document.createTextNode('W-' + f.seq + ' '));
       idDiv.appendChild(el('span', 'lvl', 'Lv.' + f.level));
+      if (isThreeWay) idDiv.appendChild(el('span', 'lvl threeway-tag', '⚠ 3-way'));
       top.appendChild(idDiv);
       top.appendChild(el('span', 'fight-prio prio-' + prio, priorityLabel(prio)));
       card.appendChild(top);
@@ -1361,8 +1397,27 @@ body{top:0!important;}
     t.appendChild(el('span', 'tag', 'deploy strongest where it matters'));
     section.appendChild(t);
 
+    // Group per-seq so 3-way fights produce one card per wasteland (highest-priority opponent drives tier)
+    var bySeq = {};
+    contested.forEach(function(f){
+      var k = String(f.seq);
+      if (!bySeq[k]) bySeq[k] = { seq: f.seq, level: f.level, specId: f.specId, opps: [] };
+      bySeq[k].opps.push(f);
+    });
+    Object.keys(bySeq).forEach(function(k){
+      bySeq[k].opps.sort(function(a,b){ return (b.opPI||0) - (a.opPI||0); });
+      bySeq[k].topOpp = bySeq[k].opps[0];
+    });
+
     var tiers = { 1: [], 2: [], 3: [], 4: [] };
-    contested.forEach(function(f){ tiers[priorityLevel(f.opPI, f.opFame)].push(f); });
+    Object.keys(bySeq).forEach(function(k){
+      var f = bySeq[k];
+      tiers[priorityLevel(f.topOpp.opPI, f.topOpp.opFame)].push(f);
+    });
+    // Sort each tier by top-opponent power desc
+    Object.keys(tiers).forEach(function(p){
+      tiers[p].sort(function(a,b){ return (b.topOpp.opPI||0) - (a.topOpp.opPI||0); });
+    });
     var meta = {
       1: { cls: 't1', label: 'P1', title: 'Real-Threat Fights — Top Power Players', desc: 'Opponent fame ≥100K. Full Mothership; smalls if needed. The only fights where a wrong assignment can lose us points.' },
       2: { cls: 't2', label: 'P2', title: 'Top 4–10 Power Players', desc: 'Opponent fame <100K but PI ≥30. Full Mothership. NC unlock bonuses worth extra effort.' },
@@ -1380,11 +1435,55 @@ body{top:0!important;}
       card.appendChild(h4);
       var seqs = el('div', 'seqs');
       tiers[p].forEach(function(f){
-        var s = el('span', 'seq', 'W-' + f.seq + ' L' + f.level + ' vs S' + f.opponent);
+        var sids = f.opps.map(function(o){ return 'S' + o.opponent; }).join(' + ');
+        var label = 'W-' + f.seq + ' L' + f.level + (f.opps.length >= 2 ? ' ⚠ ' + (f.opps.length + 1) + '-way ' : ' vs ') + sids;
+        var s = el('span', 'seq', label);
+        if (f.opps.length >= 2) s.classList.add('threeway');
         seqs.appendChild(s);
       });
       card.appendChild(seqs);
       card.appendChild(el('div', 'desc', m.desc));
+      grid.appendChild(card);
+    });
+    section.appendChild(grid);
+    root.appendChild(section);
+  }
+
+  function buildDefense(rd, root){
+    var def = (rd.defenseTargets || []).filter(function(d){ return (d.attackerSids||[]).length > 0; });
+    if (!def.length) return;
+    var section = el('section', 'sect');
+    var t = el('div', 'sect-title');
+    var dot = el('span', 'dot'); dot.style.background = 'var(--navy)';
+    t.appendChild(dot);
+    t.appendChild(el('span', null, 'Defense — Wastelands We Own Under Attack'));
+    t.appendChild(el('span', 'tag', def.length + ' incoming'));
+    section.appendChild(t);
+
+    var grid = el('div', 'fights');
+    def.sort(function(a,b){ return (b.attackerSids.length) - (a.attackerSids.length) || a.seq - b.seq; });
+    def.forEach(function(d){
+      var atks = d.attackerSids || [];
+      var multi = atks.length >= 2;
+      var card = el('div', 'fight defense' + (multi ? ' threeway' : ''));
+      var top = el('div', 'fight-top');
+      var idDiv = el('div', 'fight-id');
+      idDiv.appendChild(document.createTextNode('W-' + d.seq + ' '));
+      idDiv.appendChild(el('span', 'lvl', 'Lv.' + d.level));
+      if (multi) idDiv.appendChild(el('span', 'lvl threeway-tag', '⚠ ' + (atks.length + 1) + '-way'));
+      top.appendChild(idDiv);
+      top.appendChild(el('span', 'fight-prio prio-1', 'Defend'));
+      card.appendChild(top);
+
+      var spec = el('div', 'fight-spec');
+      spec.appendChild(makeIcon((typeof SPEC_ICON !== 'undefined' && SPEC_ICON[d.specId]) || 'shield', 14));
+      spec.appendChild(el('span', null, d.specName || ('Spec ' + d.specId)));
+      card.appendChild(spec);
+
+      var oppDiv = el('div', 'fight-opp');
+      oppDiv.appendChild(makeIcon('users', 14));
+      oppDiv.appendChild(el('span', null, 'Defending vs ' + atks.map(function(s){ return 'S'+s; }).join(' + ')));
+      card.appendChild(oppDiv);
       grid.appendChild(card);
     });
     section.appendChild(grid);
@@ -1423,6 +1522,7 @@ body{top:0!important;}
     buildRules(root);
     buildFocus(rd, root);
     buildContested(rd, root);
+    buildDefense(rd, root);
     buildNcFlow(rd, root);
     buildTwoHopFlow(rd, root);
     buildThreeHopFlow(rd, root);

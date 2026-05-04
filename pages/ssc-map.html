@@ -395,6 +395,8 @@
     .war-item:hover { background: var(--card); }
     .war-item.attack { border-left-color: var(--red); }
     .war-item.defend { border-left-color: var(--navy); }
+    .war-item.contested { border-left-color: #d29922; box-shadow: inset 3px 0 0 #d29922; background: rgba(210,153,34,.06); }
+    .war-item.contested .war-item-detail { color: #d29922; font-weight: 600; }
     .war-item-name { color: var(--text); font-weight: 500; }
     .war-item-detail { font-size: .68rem; color: var(--muted); }
     .war-item-owner { font-size: .68rem; }
@@ -518,6 +520,16 @@
     @keyframes pulse-border-defend {
       0%, 100% { box-shadow: 0 0 8px rgba(56,139,253,.6), inset 0 0 6px rgba(56,139,253,.2); }
       50% { box-shadow: 0 0 16px rgba(56,139,253,.9), inset 0 0 10px rgba(56,139,253,.4); }
+    }
+    /* Contested wasteland: gold/yellow accent — overrides red/navy */
+    .cell.war-contested {
+      border: 2px solid var(--air-yellow, #d29922) !important;
+      box-shadow: 0 0 10px rgba(210,153,34,.7), inset 0 0 6px rgba(210,153,34,.25);
+      animation: pulse-border-contested 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse-border-contested {
+      0%, 100% { box-shadow: 0 0 10px rgba(210,153,34,.7), inset 0 0 6px rgba(210,153,34,.25); }
+      50% { box-shadow: 0 0 18px rgba(210,153,34,1), inset 0 0 12px rgba(210,153,34,.5); }
     }
 
     .cell-overlay {
@@ -960,6 +972,7 @@
     .cd-war-badge { display:inline-flex; align-items:center; gap:.3rem; padding:.25rem .6rem; border-radius:6px; font-size:.78rem; font-weight:600; }
     .cd-war-badge.attack { background:rgba(248,81,73,.15); color:var(--red); }
     .cd-war-badge.defend { background:rgba(56,139,253,.15); color:var(--navy); }
+    .cd-war-badge.contested { background:rgba(210,153,34,.15); color:#d29922; margin-top:.3rem; }
     .cell-detail-footer { padding:.5rem 1rem .75rem; border-top:1px solid var(--border); display:flex; gap:.5rem; flex-wrap:wrap; }
     .cd-action-btn { flex:1; padding:.45rem .6rem; border-radius:6px; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:.78rem; font-weight:600; cursor:pointer; text-align:center; transition:all .15s; min-width:80px; }
     .cd-action-btn:hover { border-color:var(--accent); }
@@ -2271,6 +2284,7 @@
       { border: '2px dashed #79c0ff', bg: 'transparent', label: 'Neutral City',          filter: 'type-2' },
       { border: 'none', bg: '#30363d',                   label: 'Wasteland',              filter: 'type-3' },
       { icon: '\u2694\uFE0F', color: '#f85149',          label: 'S2864 attacking',        filter: 'attack' },
+      { icon: '\u26A0\uFE0F', color: '#d29922',          label: 'Contested (multi-server)', filter: 'contested' },
       { icon: '\uD83D\uDEE1\uFE0F', color: '#388bfd',    label: 'S2864 defending',        filter: 'defend' },
       { icon: '\u2B50', color: '#d29922',                label: 'Planned target',         filter: 'plan' },
       { icon: '\u25B2', color: '#3fb950',                label: 'Gained (from prev round)',filter: 'diff-gained' },
@@ -2363,7 +2377,12 @@
 
     fillWarList(atkContainer, roundData.warTargets, 'attack', 'No active attacks', function(w) {
       var base = w.currentOwner ? 'Lv.' + w.level + ' \u2014 S' + w.currentOwner : 'Unclaimed';
-      if (w.coAttackers && w.coAttackers.length) base += ' \u26A0 3-way w/ S' + w.coAttackers.join('+S');
+      var contested = (w.contestedBy && w.contestedBy.length) ? w.contestedBy
+                    : (w.coAttackers && w.coAttackers.length ? w.coAttackers : null);
+      if (contested) {
+        var label = contested.length >= 2 ? '\u26A0 ' + (contested.length + 1) + '-way w/ S' : '\u26A0 contested vs S';
+        base += ' ' + label + contested.join('+S');
+      }
       return base;
     });
 
@@ -2380,6 +2399,9 @@
     if (targets && targets.length > 0) {
       targets.forEach(function(t) {
         var item = el('div', 'war-item ' + className);
+        var contestedAtk = className === 'attack' && (t.contestedBy || t.coAttackers || []).length > 0;
+        var contestedDef = className === 'defend' && (t.attackerSids || []).length > 0;
+        if (contestedAtk || contestedDef) item.classList.add('contested');
         item.appendChild(el('div', 'war-item-name', '#' + t.seq + ' ' + (t.specName || 'Unknown')));
         item.appendChild(el('div', 'war-item-detail', detailFn(t)));
         item.addEventListener('click', function() { scrollToSeq(t.seq); });
@@ -2477,11 +2499,15 @@
         if (seq !== null) {
           if (warSeqSet.has(seq)) {
             d.classList.add('war-attack');
-            var ov = el('span', 'cell-overlay attack', '\u2694');
+            var w_ = warSeqMap[seq];
+            var contestedAtk = w_ && ((w_.contestedBy && w_.contestedBy.length) || (w_.coAttackers && w_.coAttackers.length));
+            if (contestedAtk) d.classList.add('war-contested');
+            var ov = el('span', 'cell-overlay attack', contestedAtk ? '\u26A0' : '\u2694');
             d.appendChild(ov);
           }
           if (defSeqSet.has(seq)) {
             d.classList.add('war-defend');
+            d.classList.add('war-contested');
             var ov2 = el('span', 'cell-overlay defend', '\uD83D\uDEE1');
             d.appendChild(ov2);
           }
@@ -3236,6 +3262,14 @@
         wDetail.appendChild(el('span', 'cd-label', 'Target'));
         wDetail.appendChild(el('span', 'cd-value', w.specName + ' Lv.' + w.level));
         body.appendChild(wDetail);
+      }
+      var contestedList = (w.contestedBy && w.contestedBy.length) ? w.contestedBy
+                         : (w.coAttackers && w.coAttackers.length ? w.coAttackers : []);
+      if (contestedList.length) {
+        var contestedBadge = el('div', 'cd-war-badge contested');
+        var prefix = contestedList.length >= 2 ? '\u26a0 ' + (contestedList.length + 1) + '-way fight vs ' : '\u26a0 Contested vs ';
+        contestedBadge.textContent = prefix + contestedList.map(function(s){ return 'S'+s; }).join(' + ');
+        body.appendChild(contestedBadge);
       }
     }
     if (seq !== null && defSeqMap[seq]) {
@@ -5927,11 +5961,20 @@
 
       // War border classes visibility via toggle
       if (showOverlays) {
-        if (seq !== null && warSeqSet.has(seq)) cellEl.classList.add('war-attack');
-        if (seq !== null && defSeqSet.has(seq)) cellEl.classList.add('war-defend');
+        if (seq !== null && warSeqSet.has(seq)) {
+          cellEl.classList.add('war-attack');
+          var wm_ = warSeqMap[seq];
+          var ca_ = wm_ && ((wm_.contestedBy && wm_.contestedBy.length) || (wm_.coAttackers && wm_.coAttackers.length));
+          if (ca_) cellEl.classList.add('war-contested');
+        }
+        if (seq !== null && defSeqSet.has(seq)) {
+          cellEl.classList.add('war-defend');
+          cellEl.classList.add('war-contested');
+        }
       } else {
         cellEl.classList.remove('war-attack');
         cellEl.classList.remove('war-defend');
+        cellEl.classList.remove('war-contested');
       }
 
       var planStar = cellEl.querySelector('.cell-plan-star');
@@ -5966,6 +6009,13 @@
         else if (lf === 'type-3') matches = cell.type === 3;
         else if (lf === 'attack') matches = seq !== null && warSeqSet.has(seq);
         else if (lf === 'defend') matches = seq !== null && defSeqSet.has(seq);
+        else if (lf === 'contested') {
+          var wm = warSeqMap[seq];
+          var dm = defSeqMap[seq];
+          var ca = wm && ((wm.contestedBy && wm.contestedBy.length) || (wm.coAttackers && wm.coAttackers.length));
+          var cd = dm && (dm.attackerSids && dm.attackerSids.length);
+          matches = !!(ca || cd);
+        }
         else if (lf === 'plan') matches = planData && planData[cell.r + ',' + cell.c];
         else if (lf === 'diff-gained') matches = diffMap && diffMap[seq] === 'gained';
         else if (lf === 'diff-lost') matches = diffMap && diffMap[seq] === 'lost';
