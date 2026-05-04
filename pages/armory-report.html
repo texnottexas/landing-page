@@ -11797,32 +11797,31 @@
     contentDiv.id = 'chip-mecha-content';
     container.appendChild(contentDiv);
 
-    // Mothership view: card + equipped HC-9999 chips (only available when the
-    // chips bookmarklet was run with Heavy Mothership detail open in-game,
-    // since battle reports never expose mothership equipment).
+    // Mothership view: card + hex layout of HC-9999 equipped chips. Hex layout
+    // uses renderMechaChips with a synthetic mecha object built from the chips
+    // supplement's mothership.chips[] (only available when chips bookmarklet
+    // was run with Heavy Mothership chip pool open — battle reports never
+    // expose mothership equipment).
     function renderMothershipView() {
       while (contentDiv.firstChild) contentDiv.removeChild(contentDiv.firstChild);
       _ar_renderMothershipCard(contentDiv, merged);
 
-      var msEquippedWrap = document.createElement('div');
-      msEquippedWrap.style.cssText = 'margin-top:1rem;';
-      var msEqHdr = document.createElement('div');
-      msEqHdr.style.cssText = 'display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap;';
-      var msEqTitle = document.createElement('h3');
-      msEqTitle.style.cssText = 'margin:0;font-size:.95rem;color:var(--text);';
-      msEqTitle.textContent = 'HC-9999 Equipped Chips';
-      msEqHdr.appendChild(msEqTitle);
-      var msEqSub = document.createElement('span');
-      msEqSub.style.cssText = 'font-size:.7rem;color:var(--muted);';
-      msEqSub.textContent = 'not exposed by battle reports — captured via chips bookmarklet only';
-      msEqHdr.appendChild(msEqSub);
-      msEquippedWrap.appendChild(msEqHdr);
-      var msEqBody = document.createElement('div');
-      msEquippedWrap.appendChild(msEqBody);
-      contentDiv.appendChild(msEquippedWrap);
+      // Equipped chips section anchor — renderMechaChips appends to contentDiv,
+      // so we'll use a marker div that we replace once the supplement loads.
+      var msEqAnchor = document.createElement('div');
+      msEqAnchor.id = 'ms-equipped-anchor';
+      msEqAnchor.style.cssText = 'margin-top:1rem;';
+      var loading = document.createElement('div');
+      loading.style.cssText = 'padding:.8rem 1rem;color:var(--muted);font-size:.78rem;';
+      loading.textContent = 'Loading HC-9999 equipped chips…';
+      msEqAnchor.appendChild(loading);
+      contentDiv.appendChild(msEqAnchor);
 
       var msSiteKey = (wizardState && wizardState.player && wizardState.player.siteKey) || null;
-      if (!msSiteKey) return;
+      if (!msSiteKey) {
+        loading.textContent = 'Sign in to view mothership chips.';
+        return;
+      }
       var hasLocal = false;
       try { hasLocal = !!localStorage.getItem('armory_inv_' + msSiteKey); } catch (e) {}
       if (!hasLocal) {
@@ -11834,29 +11833,31 @@
       _ar_loadChipsSupplement(msSiteKey).then(function(chipsRaw) {
         var ms = chipsRaw && chipsRaw.mothership;
         if (ms) _ar_updateMothershipFromSupplement(contentDiv, ms);
+        // Drop the loading placeholder
+        if (msEqAnchor.parentNode) msEqAnchor.parentNode.removeChild(msEqAnchor);
+
         if (ms && Array.isArray(ms.chips) && ms.chips.length) {
-          var grid = document.createElement('div');
-          grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:.5rem;';
-          ms.chips.forEach(function(c) {
-            var lk = (typeof CL !== 'undefined') ? CL[c.c] : null;
-            var enriched = {
-              chipId: c.c,
-              setGroup: lk ? lk[0] : 0,
-              position: lk ? lk[1] : (c.slot || 0),
-              color: lk ? lk[2] : 0,
-              level: c.lv || 0,
-              refineTimes: c.rt || 0,
-              rndAttrs: c.r || '',
-              otherRndAttrs: c.o || '',
-              reservation: c.rs || 0,
-              mechaId: 1008
-            };
-            grid.appendChild(_ar_buildChipPoolCard(enriched));
-          });
-          msEqBody.appendChild(grid);
+          // Build synthetic mecha matching the shape renderMechaChips expects:
+          // { mechaId, chips: [{ chipId, level, rndAttrs, ... }] }
+          var msHex = {
+            mechaId: 1008,
+            chips: ms.chips.map(function(c) {
+              return {
+                chipId: c.c,
+                level: c.lv || 0,
+                rndAttrs: c.r || '',
+                otherRndAttrs: c.o || '',
+                refineTimes: c.rt || 0,
+                reservation: c.rs || 0,
+                mechaId: 1008,
+                _slot: c.slot
+              };
+            })
+          };
+          renderMechaChips(msHex);
         } else {
           var miss = document.createElement('div');
-          miss.style.cssText = 'padding:.8rem 1rem;color:var(--muted);font-size:.78rem;border:1px dashed var(--border);border-radius:8px;line-height:1.45;';
+          miss.style.cssText = 'padding:.8rem 1rem;color:var(--muted);font-size:.78rem;border:1px dashed var(--border);border-radius:8px;line-height:1.45;margin-top:1rem;';
           if (canUpload) {
             var line1 = document.createElement('div');
             line1.textContent = 'Heavy Mothership equipped chips not captured yet.';
@@ -11872,13 +11873,14 @@
           } else {
             miss.textContent = 'Heavy Mothership equipped chips not provided by this player.';
           }
-          msEqBody.appendChild(miss);
+          contentDiv.appendChild(miss);
         }
-      }).catch(function() {
+      }).catch(function(e) {
+        if (msEqAnchor.parentNode) msEqAnchor.parentNode.removeChild(msEqAnchor);
         var fail = document.createElement('div');
-        fail.style.cssText = 'padding:.8rem 1rem;color:var(--muted);font-size:.78rem;';
-        fail.textContent = 'Failed to load chips supplement.';
-        msEqBody.appendChild(fail);
+        fail.style.cssText = 'padding:.8rem 1rem;color:var(--muted);font-size:.78rem;margin-top:1rem;';
+        fail.textContent = 'Failed to load chips supplement: ' + (e && e.message || 'unknown');
+        contentDiv.appendChild(fail);
       });
     }
 
@@ -12342,6 +12344,33 @@
         mechaOpts.push({ value: mid, label: lbl + ' (' + mechaCounts[mid] + ')' });
       });
 
+    // Stat filter — collect distinct buff names rolled across rndAttrs on the
+    // loaded chips. Uses same getPool() / RND_CORE/REG/GLO selection as the
+    // hex-layout decoder so labels match what the cards actually render.
+    var statCounts = {};
+    enriched.forEach(function(e) {
+      if (!e.rndAttrs || e.position == null) return;
+      var pool = (typeof getPool === 'function') ? getPool(e.position) : null;
+      if (!pool) return;
+      var seenInChip = {};
+      e.rndAttrs.split('|').forEach(function(tok) {
+        var parts = tok.split(';');
+        var idx = parseInt(parts[0], 10);
+        if (isNaN(idx) || idx < 0 || idx >= pool.length) return;
+        var buffId = pool[idx];
+        if (seenInChip[buffId]) return;
+        seenInChip[buffId] = true;
+        statCounts[buffId] = (statCounts[buffId] || 0) + 1;
+      });
+    });
+    var statOpts = [{ value: '', label: 'Any Stat' }];
+    Object.keys(statCounts)
+      .sort(function(a, b) { return statCounts[b] - statCounts[a]; })
+      .forEach(function(bid) {
+        var nm = (typeof BUFF_NAMES_CHIP !== 'undefined' && BUFF_NAMES_CHIP[bid]) || ('Buff #' + bid);
+        statOpts.push({ value: bid, label: nm + ' (' + statCounts[bid] + ')' });
+      });
+
     // Sort options
     var sortOpts = [
       { value: 'rarity-desc', label: 'Rarity ↓' },
@@ -12351,15 +12380,16 @@
       { value: 'refine-desc', label: 'Refines ↓' }
     ];
 
-    var state = { set: '', slot: '', rar: '', mecha: '', sort: 'rarity-desc', locked: 'all' };
+    var state = { set: '', slot: '', rar: '', mecha: '', stat: '', sort: 'rarity-desc', locked: 'all' };
 
     var setSel   = _mk('Set',     setOpts,   function(v) { state.set = v; renderGrid(); });
     var slotSel  = _mk('Slot',    slotOpts,  function(v) { state.slot = v; renderGrid(); });
     var rarSel   = _mk('Rarity',  rarOpts,   function(v) { state.rar = v; renderGrid(); });
     var mechaSel = _mk('Bound',   mechaOpts, function(v) { state.mecha = v; renderGrid(); });
+    var statSel  = _mk('Stat',    statOpts,  function(v) { state.stat = v; renderGrid(); });
     var sortSel  = _mk('Sort',    sortOpts,  function(v) { state.sort = v; renderGrid(); });
     var lockSel  = _mk('Lock',    [{ value:'all', label:'All' },{ value:'locked', label:'Locked only' },{ value:'unlocked', label:'Unlocked only' }], function(v) { state.locked = v; renderGrid(); });
-    [setSel, slotSel, rarSel, mechaSel, sortSel, lockSel].forEach(function(o) { ctrls.appendChild(o.wrap); });
+    [setSel, slotSel, rarSel, mechaSel, statSel, sortSel, lockSel].forEach(function(o) { ctrls.appendChild(o.wrap); });
 
     parent.appendChild(ctrls);
 
@@ -12379,6 +12409,16 @@
         if (state.mecha !== '' && String(e.mechaId) !== state.mecha) return false;
         if (state.locked === 'locked' && !e.reservation) return false;
         if (state.locked === 'unlocked' && e.reservation) return false;
+        if (state.stat) {
+          if (!e.rndAttrs || e.position == null) return false;
+          var pool = (typeof getPool === 'function') ? getPool(e.position) : null;
+          if (!pool) return false;
+          var hit = e.rndAttrs.split('|').some(function(tok) {
+            var idx = parseInt(tok.split(';')[0], 10);
+            return !isNaN(idx) && idx >= 0 && idx < pool.length && String(pool[idx]) === state.stat;
+          });
+          if (!hit) return false;
+        }
         return true;
       });
     }
@@ -12504,12 +12544,25 @@
     return s;
   }
 
-  // Decode rndAttrs "buffIdx;value|buffIdx;value..." into compact buff names.
-  // For core chips (position 0) idx points into RND_CORE; for sub-chips into RND_REG/RND_GLO.
+  // Decode rndAttrs "buffIdx;value|buffIdx;value..." into formatted "<name> +<x>%" strings.
+  // Mirrors the main hex-layout decodeRnd() / fmtPct() in chipBuildDetail so values
+  // match the in-game UI (raw values are basis points; divide by 100 for percent).
+  // Pool selection:
+  //   position 0  → RND_CORE   (core chip)
+  //   position 1-3 → RND_REG   (regular sub-chip slots)
+  //   position 4+ → RND_GLO    (global sub-chip slots)
   function _ar_decodeChipStats(rndAttrs, position) {
     if (!rndAttrs) return [];
-    var pool = (position === 0) ? (typeof RND_CORE !== 'undefined' ? RND_CORE : null)
-             : (typeof RND_REG !== 'undefined' ? RND_REG : null);
+    var pool = null;
+    if (typeof getPool === 'function') {
+      pool = getPool(position);
+    } else if (position === 0 && typeof RND_CORE !== 'undefined') {
+      pool = RND_CORE;
+    } else if (position <= 3 && typeof RND_REG !== 'undefined') {
+      pool = RND_REG;
+    } else if (typeof RND_GLO !== 'undefined') {
+      pool = RND_GLO;
+    }
     var out = [];
     rndAttrs.split('|').forEach(function(tok) {
       var parts = tok.split(';');
@@ -12518,7 +12571,8 @@
       if (isNaN(idx) || isNaN(val)) return;
       var buffId = pool && pool[idx];
       var name = buffId && (typeof BUFF_NAMES_CHIP !== 'undefined') && BUFF_NAMES_CHIP[buffId];
-      out.push((name || ('buff#' + idx)) + ' +' + val);
+      var formatted = (typeof fmtPct === 'function') ? fmtPct(val) : ((val / 100).toFixed(2) + '%');
+      out.push((name || ('buff#' + idx)) + ' +' + formatted);
     });
     return out;
   }
