@@ -8177,7 +8177,7 @@
   // 0/null = not upgradeable via shards.
   var ADVISOR_UNIVERSAL_SHARD_ID = 20213232;
 
-  function _adv_buildRecommendation(entry, currentLevel, levelsData, availableForGroup) {
+  function _adv_buildRecommendation(entry, currentLevel, levelsData, availableForGroup, universalShards, groupShards) {
     var levelsEntry = levelsData[String(entry.group)];
     if (!levelsEntry || levelsEntry.fi !== ADVISOR_UNIVERSAL_SHARD_ID) return null;
     var upg = _adv_getNextUpgrade(entry.group, currentLevel, levelsData);
@@ -8238,6 +8238,8 @@
       shardCost: upg.shardCost,
       buffRows: rows,
       available: availableForGroup,
+      universalShards: universalShards != null ? universalShards : availableForGroup,
+      groupShards: groupShards != null ? groupShards : 0,
       ready: availableForGroup >= upg.shardCost,
       roi: roiScalar / Math.max(upg.shardCost, 1),
       category: entry.category
@@ -8254,8 +8256,9 @@
       idx.forEach(function(e) { groupNames[String(e.group)] = e.name; });
       idx.forEach(function(entry) {
         var placed = _adv_getPlacedLevel(entry.group, merged);
-        var groupShards = _adv_calcGroupSpecificShards(entry.group, inventory) + shardSummary.universal;
-        var rec = _adv_buildRecommendation(entry, placed, levelsData, groupShards);
+        var groupOnly = _adv_calcGroupSpecificShards(entry.group, inventory);
+        var totalShards = groupOnly + shardSummary.universal;
+        var rec = _adv_buildRecommendation(entry, placed, levelsData, totalShards, shardSummary.universal, groupOnly);
         if (!rec) return;
         var partners = mutex[String(rec.group)] || [];
         rec.mutexPartners = partners.map(function(g) {
@@ -8326,7 +8329,23 @@
     var costRow = _adv_mk('div', { cls: 'advisor-rec-cost-row' });
     costRow.appendChild(_adv_mk('span', { cls: 'advisor-rec-cost', text: 'Cost: ' + r.shardCost.toLocaleString() }));
     var haveSide = _adv_mk('span', { cls: 'advisor-rec-have' });
-    haveSide.appendChild(document.createTextNode('Have: ' + r.available.toLocaleString()));
+    // Display split: "Have: <universal>" with optional "(+<group>)" badge
+    // when this group has unplaced pieces feeding it. Earlier we summed both
+    // into one number so adjacent cards looked like the shard count was
+    // changing between rows (8960mr saw 1192 → 1201 between Cosmic Star
+    // Chart and Moss Lantern because Moss Lantern had a Lv3 spare = 9 group
+    // shards). Keeping the universal number stable across cards prevents
+    // that confusion; the bonus is shown explicitly.
+    haveSide.appendChild(document.createTextNode('Have: ' + r.universalShards.toLocaleString()));
+    if (r.groupShards > 0) {
+      var bonus = _adv_mk('span', {
+        cls: 'advisor-rec-group-bonus',
+        text: ' +' + r.groupShards.toLocaleString() + ' group',
+        attrs: { title: 'Spare unplaced pieces in this group sell back as shards toward this upgrade only.' }
+      });
+      bonus.style.cssText = 'color:var(--accent);font-size:.75rem;margin-left:.35rem;';
+      haveSide.appendChild(bonus);
+    }
     if (r.ready) {
       haveSide.appendChild(_adv_mk('span', { cls: 'advisor-ready', text: 'READY' }));
     }
