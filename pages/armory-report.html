@@ -1726,6 +1726,25 @@
     return 'image__' + s;
   }
 
+  // Item table uses two prefix schemes for icons:
+  //   image/<path>     -> assets/inventory-icons/image__<path>.png  (atlas-extracted)
+  //   res:items/<file> -> assets/auction-icons/<file>               (auction-style flat icons)
+  // Returns { file, dirSuffix } or null. dirSuffix is the assets/ subfolder.
+  function _ar_resolveItemIcon(i) {
+    if (!i) return null;
+    if (i.startsWith('image/')) {
+      var s = i.slice(6).replace(/\//g, '__');
+      if (!s.endsWith('.png')) s += '.png';
+      return { file: 'image__' + s, dirSuffix: 'inventory-icons' };
+    }
+    if (i.startsWith('res:items/')) {
+      var fn = i.slice('res:items/'.length);
+      if (!fn.endsWith('.png')) fn += '.png';
+      return { file: fn, dirSuffix: 'auction-icons' };
+    }
+    return null;
+  }
+
   function _ar_heroSubtab(type) {
     if (type === 31) return 'shards';
     if (type === 32 || type === 42 || type === 46) return 'skills';
@@ -1739,10 +1758,12 @@
     ['item', 'cpnt'].forEach(function(tabKey) {
       (tabs[tabKey] || []).forEach(function(it) {
         var cfg = lk.item[String(it.id)] || {};
+        var icoInfo = _ar_resolveItemIcon(cfg.i);
         out.tabs[tabKey].push({
           id: it.id, amount: it.a || 0, level: it.l || null, group: it.g || cfg.g || it.id,
           type: cfg.t, quality: cfg.q || 1, name: cfg.n || ('#' + it.id), desc: cfg.d || '',
-          icon: _ar_itemIconFile(cfg.i), iconDir: ASSET + 'inventory-icons'
+          icon: icoInfo ? icoInfo.file : null,
+          iconDir: ASSET + (icoInfo ? icoInfo.dirSuffix : 'inventory-icons')
         });
       });
     });
@@ -1795,10 +1816,12 @@
     });
     (tabs.hero || []).forEach(function(it) {
       var cfg = lk.item[String(it.id)] || {};
+      var icoInfo = _ar_resolveItemIcon(cfg.i);
       out.tabs.hero.push({
         id: it.id, amount: it.a || 0, level: it.l || null, group: it.g || it.id,
         type: cfg.t, quality: cfg.q || 1, name: cfg.n || ('Hero #' + it.id), desc: cfg.d || '',
-        icon: _ar_itemIconFile(cfg.i), iconDir: ASSET + 'inventory-icons',
+        icon: icoInfo ? icoInfo.file : null,
+        iconDir: ASSET + (icoInfo ? icoInfo.dirSuffix : 'inventory-icons'),
         subtab: _ar_heroSubtab(cfg.t)
       });
     });
