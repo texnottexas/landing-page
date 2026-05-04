@@ -7515,10 +7515,19 @@
       var d = nextMap[k] - (curMap[k] || 0);
       if (d !== 0) deltas[k] = d;
     });
+    // The `fu` field is the target level's full shard value, but in-game the
+    // existing piece being consumed is credited as 1/3 of that value (decor
+    // shard progression scales 3× per level). Net upgrade cost = fu * 2/3.
+    // Verified: Osmanthus Moon L1→L2 advisor was 720, game shows 480; ratio
+    // holds across every shard-upgradeable decor. Only apply the discount
+    // when there's a piece to consume (currentLevel >= 1) — minting from
+    // scratch (currentLevel = 0 → L1 piece) has fu = 0 anyway.
+    var rawFu = nextLv.fu || 0;
+    var shardCost = (currentLevel >= 1 && rawFu > 0) ? Math.round(rawFu * 2 / 3) : rawFu;
     return {
       fromLevel: currentLevel,
       toLevel: currentLevel + 1,
-      shardCost: nextLv.fu || 0,
+      shardCost: shardCost,
       buffDeltas: deltas
     };
   }
