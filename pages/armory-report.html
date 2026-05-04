@@ -2400,10 +2400,55 @@
     return await r.json();
   }
 
+  // Privacy cache keyed by siteKey: { inv:bool, bench:bool, chips:bool }.
+  // Worker is the source of truth — set by the verified owner via /supplement/privacy.
+  var _ar_supplementPrivacy = {};
+
+  async function _ar_fetchSupplementPrivacy(siteKey) {
+    if (!siteKey) return null;
+    try {
+      var r = await fetch(SUPPLEMENT_WORKER + '/supplement/privacy/' + siteKey, { cache: 'default' });
+      if (!r.ok) return null;
+      var j = await r.json();
+      _ar_supplementPrivacy[siteKey] = j;
+      return j;
+    } catch (e) { return null; }
+  }
+
+  function _ar_isSupplementPrivate(siteKey, kind) {
+    var p = _ar_supplementPrivacy[siteKey];
+    return !!(p && p[kind]);
+  }
+
+  async function _ar_setSupplementPrivacy(siteKey, kind, isPrivate) {
+    await _ar_ensureSupplementToken(siteKey);
+    if (!_ar_supplementToken) throw new Error('No upload token. Re-enter UID.');
+    var r = await fetch(SUPPLEMENT_WORKER + '/supplement/privacy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
+      body: JSON.stringify({ kind: kind, private: !!isPrivate })
+    });
+    if (!r.ok) {
+      var msg = await r.text();
+      throw new Error('Privacy update failed: ' + r.status + ' ' + msg);
+    }
+    if (!_ar_supplementPrivacy[siteKey]) _ar_supplementPrivacy[siteKey] = {};
+    _ar_supplementPrivacy[siteKey][kind] = !!isPrivate;
+    return true;
+  }
+
   async function _ar_fetchSupplement(kind, siteKey) {
     try {
       var r = await fetch(SUPPLEMENT_WORKER + '/supplement/' + kind + '/' + siteKey, { cache: 'default' });
       if (r.status === 404) return null;
+      if (r.status === 403) {
+        // Mark private and wipe any stale local cache so non-owners can't
+        // bypass privacy via leftover localStorage from a previous session.
+        if (!_ar_supplementPrivacy[siteKey]) _ar_supplementPrivacy[siteKey] = {};
+        _ar_supplementPrivacy[siteKey][kind] = true;
+        try { localStorage.removeItem('armory_' + kind + '_' + siteKey); } catch (e) {}
+        return { __private: true };
+      }
       if (!r.ok) return null;
       return await r.json();
     } catch (e) { return null; }
@@ -2411,19 +2456,22 @@
 
   async function _ar_hydrateSupplementsFromWorker(siteKey) {
     if (!siteKey) return;
+    // Fetch privacy first so the inventory tab can render the right shell
+    // (placeholder for non-owners, toggle for owners) on first paint.
+    await _ar_fetchSupplementPrivacy(siteKey);
     var pair = await Promise.all([
       _ar_fetchSupplement('inv', siteKey),
       _ar_fetchSupplement('bench', siteKey)
     ]);
     var invRemote = pair[0], benchRemote = pair[1];
-    if (invRemote) {
+    if (invRemote && !invRemote.__private) {
       var localInv = null;
       try { localInv = JSON.parse(localStorage.getItem('armory_inv_' + siteKey) || 'null'); } catch (e) {}
       var lts = (localInv && localInv.meta && localInv.meta.ts) ? new Date(localInv.meta.ts).getTime() : 0;
       var rts = (invRemote.meta && invRemote.meta.ts) ? new Date(invRemote.meta.ts).getTime() : 0;
       if (rts > lts) localStorage.setItem('armory_inv_' + siteKey, JSON.stringify(invRemote));
     }
-    if (benchRemote) {
+    if (benchRemote && !benchRemote.__private) {
       var localBench = null;
       try { localBench = JSON.parse(localStorage.getItem('armory_bench_' + siteKey) || 'null'); } catch (e) {}
       var lts2 = (localBench && localBench.ts) ? new Date(localBench.ts).getTime() : 0;
@@ -10469,6 +10517,28 @@
     }
     var isOwner = !!unlocked || (isOwnReport && _ar_isUnlocked(siteKey));
     var canUnlock = isOwnReport && !isOwner;
+    var isPrivate = _ar_isSupplementPrivate(siteKey, 'inv');
+
+    // Non-owner viewing a private inventory — render lock placeholder, no data.
+    // Owner always bypasses (their own data, their own toggle).
+    if (isPrivate && !isOwner) {
+      var lockWrap = document.createElement('div');
+      lockWrap.style.cssText = 'padding: 48px 24px; text-align: center; color: var(--muted); display:flex;flex-direction:column;align-items:center;gap:.6rem;';
+      var lockIcon = document.createElement('div');
+      lockIcon.style.cssText = 'font-size: 32px;';
+      lockIcon.textContent = '🔒';
+      var lockTitle = document.createElement('div');
+      lockTitle.style.cssText = 'font-size: 15px; color: var(--text); font-weight: 600;';
+      lockTitle.textContent = 'Inventory hidden by player';
+      var lockBody = document.createElement('div');
+      lockBody.style.cssText = 'font-size: 12px; max-width: 360px; line-height: 1.5;';
+      lockBody.textContent = 'This player has set their inventory to private. Only they can see it.';
+      lockWrap.appendChild(lockIcon);
+      lockWrap.appendChild(lockTitle);
+      lockWrap.appendChild(lockBody);
+      container.appendChild(lockWrap);
+      return;
+    }
 
     var stored = null;
     try {
@@ -10490,6 +10560,36 @@
         }
       };
       toolbar.appendChild(updateBtn);
+
+      // Privacy toggle — only visible to verified owner. Server enforces;
+      // flipping private wipes the public GET endpoint behind a 403.
+      var privacyBtn = document.createElement('button');
+      function paintPrivacy() {
+        var priv = _ar_isSupplementPrivate(siteKey, 'inv');
+        privacyBtn.textContent = priv ? '🔒 Inventory: private' : '🌐 Inventory: public';
+        privacyBtn.title = priv
+          ? 'Click to make inventory visible to other viewers'
+          : 'Click to hide inventory from other viewers';
+        privacyBtn.style.cssText = 'padding: 6px 12px; background: ' + (priv ? 'rgba(210,153,34,0.15)' : 'transparent') + '; color: ' + (priv ? '#d29922' : 'var(--muted)') + '; border: 1px solid ' + (priv ? 'rgba(210,153,34,0.5)' : 'var(--border)') + '; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 12px;';
+      }
+      paintPrivacy();
+      privacyBtn.onclick = async function() {
+        var current = _ar_isSupplementPrivate(siteKey, 'inv');
+        var next = !current;
+        privacyBtn.disabled = true;
+        var prevText = privacyBtn.textContent;
+        privacyBtn.textContent = 'Saving…';
+        try {
+          await _ar_setSupplementPrivacy(siteKey, 'inv', next);
+          paintPrivacy();
+        } catch (e) {
+          alert('Could not update privacy: ' + (e && e.message ? e.message : e));
+          privacyBtn.textContent = prevText;
+        } finally {
+          privacyBtn.disabled = false;
+        }
+      };
+      toolbar.appendChild(privacyBtn);
     } else if (canUnlock) {
       var unlockBtn = document.createElement('button');
       unlockBtn.style.cssText = 'padding: 6px 14px; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px;';
