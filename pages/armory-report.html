@@ -474,23 +474,62 @@
   .summary-card .label { color: var(--muted); font-size: .75rem; margin-top: .25rem; }
 
   /* Tab bar */
-  .tab-bar {
-    display: flex; gap: 0; margin-top: 1.5rem;
+  .tab-bar-wrap {
+    position: sticky; top: 48px; z-index: 100; margin-top: 1.5rem;
+    background: var(--bg); padding-top: .25rem;
     border-bottom: 2px solid var(--border);
+  }
+  .tab-bar {
+    display: flex; gap: 0;
     overflow-x: auto; overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain; touch-action: pan-x;
     scrollbar-width: none; /* Firefox */
-    position: sticky; top: 48px; z-index: 100;
-    background: var(--bg); padding-top: .25rem;
-    /* Fade mask hints at off-screen tabs when scrollable */
-    -webkit-mask-image: linear-gradient(to right, black calc(100% - 32px), transparent);
-    mask-image: linear-gradient(to right, black calc(100% - 32px), transparent);
   }
   .tab-bar::-webkit-scrollbar { display: none; } /* Chrome/Safari */
-  /* Remove fade mask on wide screens where all tabs fit */
+  /* Conditional fade-edge hints — toggled by JS via .has-left / .has-right */
+  .tab-bar-wrap.has-right .tab-bar {
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 36px), transparent);
+    mask-image: linear-gradient(to right, black calc(100% - 36px), transparent);
+  }
+  .tab-bar-wrap.has-left.has-right .tab-bar {
+    -webkit-mask-image: linear-gradient(to right, transparent 0, black 36px, black calc(100% - 36px), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, black 36px, black calc(100% - 36px), transparent 100%);
+  }
+  .tab-bar-wrap.has-left:not(.has-right) .tab-bar {
+    -webkit-mask-image: linear-gradient(to right, transparent 0, black 36px);
+    mask-image: linear-gradient(to right, transparent 0, black 36px);
+  }
+  /* Chevron indicators — sit above the fade, animate to draw the eye */
+  .tab-scroll-indicator {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 50%;
+    color: var(--accent); pointer-events: auto; cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,.35);
+    opacity: 0; transition: opacity .2s ease, transform .2s ease;
+    z-index: 2;
+  }
+  .tab-scroll-indicator.left { left: 2px; }
+  .tab-scroll-indicator.right { right: 2px; }
+  .tab-bar-wrap.has-left .tab-scroll-indicator.left { opacity: 1; animation: tab-nudge-left 1.6s ease-in-out 2; }
+  .tab-bar-wrap.has-right .tab-scroll-indicator.right { opacity: 1; animation: tab-nudge-right 1.6s ease-in-out 2; }
+  @keyframes tab-nudge-right {
+    0%, 100% { transform: translateY(-50%) translateX(0); }
+    50% { transform: translateY(-50%) translateX(4px); }
+  }
+  @keyframes tab-nudge-left {
+    0%, 100% { transform: translateY(-50%) translateX(0); }
+    50% { transform: translateY(-50%) translateX(-4px); }
+  }
+  .tab-scroll-indicator svg { width: 14px; height: 14px; }
+  /* Hide indicators + fade entirely on wide screens where all tabs fit */
   @media (min-width: 768px) {
-    .tab-bar { -webkit-mask-image: none; mask-image: none; }
+    .tab-bar-wrap .tab-scroll-indicator { display: none; }
+    .tab-bar-wrap.has-left .tab-bar, .tab-bar-wrap.has-right .tab-bar,
+    .tab-bar-wrap.has-left.has-right .tab-bar {
+      -webkit-mask-image: none; mask-image: none;
+    }
   }
   .tab-btn {
     padding: .75rem 1.25rem; color: var(--muted); font-size: .85rem;
@@ -4946,9 +4985,58 @@
     var htSub = htChipCount > 0 ? htChipCount + ' chips loaded' : '';
 
     // ── Tab bar ──
+    // Wrapper holds the scrollable .tab-bar plus left/right chevron
+    // indicators. Indicators toggle visibility via .has-left / .has-right
+    // classes on the wrapper, driven by a scroll listener below. Mobile
+    // users were missing scrollable tabs entirely without a visible cue.
+    var tabBarWrap = document.createElement('div');
+    tabBarWrap.className = 'tab-bar-wrap';
     var tabBar = document.createElement('div');
     tabBar.className = 'tab-bar';
-    dash.appendChild(tabBar);
+    tabBarWrap.appendChild(tabBar);
+
+    function _ar_makeChevron(dir) {
+      var btn = document.createElement('button');
+      btn.className = 'tab-scroll-indicator ' + dir;
+      btn.type = 'button';
+      btn.setAttribute('aria-label', dir === 'left' ? 'Scroll tabs left' : 'Scroll tabs right');
+      var svg = document.createElementNS(SVG_NS, 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('fill', 'none');
+      svg.setAttribute('stroke', 'currentColor');
+      svg.setAttribute('stroke-width', '2.5');
+      svg.setAttribute('stroke-linecap', 'round');
+      svg.setAttribute('stroke-linejoin', 'round');
+      var path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', dir === 'left' ? 'M15 18l-6-6 6-6' : 'M9 6l6 6-6 6');
+      svg.appendChild(path);
+      btn.appendChild(svg);
+      btn.addEventListener('click', function() {
+        var dx = Math.max(120, Math.floor(tabBar.clientWidth * 0.6));
+        tabBar.scrollBy({ left: dir === 'left' ? -dx : dx, behavior: 'smooth' });
+      });
+      return btn;
+    }
+    var leftChev = _ar_makeChevron('left');
+    var rightChev = _ar_makeChevron('right');
+    tabBarWrap.appendChild(leftChev);
+    tabBarWrap.appendChild(rightChev);
+    dash.appendChild(tabBarWrap);
+
+    function _ar_updateTabScrollState() {
+      var maxScroll = tabBar.scrollWidth - tabBar.clientWidth;
+      var sl = tabBar.scrollLeft;
+      tabBarWrap.classList.toggle('has-left', sl > 4);
+      tabBarWrap.classList.toggle('has-right', sl < maxScroll - 4);
+    }
+    // Expose so switchTab (defined outside this closure) can refresh state
+    // after the active tab scrolls into view.
+    window._ar_updateTabScrollState = _ar_updateTabScrollState;
+    tabBar.addEventListener('scroll', _ar_updateTabScrollState, { passive: true });
+    window.addEventListener('resize', _ar_updateTabScrollState);
+    // Initial check after layout settles + scroll-into-view of active tab
+    setTimeout(_ar_updateTabScrollState, 50);
+    setTimeout(_ar_updateTabScrollState, 400);
 
     var siteKey = (wizardState.player && wizardState.player.siteKey) || (window._reportSiteKey) || null;
     var inS2864 = false;
@@ -5037,6 +5125,14 @@
     btn.classList.add('active');
     var tabId = 'tab-' + btn.getAttribute('data-tab');
     document.getElementById(tabId).classList.add('active');
+    // Keep the freshly active tab visible inside the horizontal scroller
+    // so users always see context of where they are in the list.
+    if (btn.scrollIntoView) {
+      try { btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' }); } catch (e) {}
+    }
+    if (typeof window._ar_updateTabScrollState === 'function') {
+      setTimeout(window._ar_updateTabScrollState, 320);
+    }
 
     var container = document.getElementById(tabId);
     if (container.getAttribute('data-rendered')) return;
