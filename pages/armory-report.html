@@ -2358,7 +2358,7 @@
   }
 
   // Persist the full sha256(uid) so the next upload can transparently
-  // re-handshake when the 10-min worker token expires. The hash is
+  // re-handshake when the worker token expires (90-day TTL). The hash is
   // already what gets sent to the worker over the wire (we never receive
   // or store the raw UID), so caching it adds no privacy regression and
   // saves the user from having to re-enter the UID every time the token
@@ -12318,9 +12318,9 @@
       try { localStorage.setItem(lsKey + siteKey, serialized); }
       catch (e) { err.textContent = 'localStorage write failed: ' + e.message; return; }
       // Best-effort worker upload — passes siteKey so the upload helper can
-      // transparently re-handshake from the cached uidHash when the 10-min
-      // token has expired (common across sessions / page reloads). Without
-      // this, paste sessions kept reporting "No upload token. Re-enter UID."
+      // transparently re-handshake from the cached uidHash when the worker
+      // token has expired or the in-memory token died on reload. Init also
+      // pre-warms a token at boot, so this path is now mostly belt + suspenders.
       try {
         await _ar_supplementUpload(kind, raw, siteKey);
         // Mark synced so background sync skips redundant retries on next open.
