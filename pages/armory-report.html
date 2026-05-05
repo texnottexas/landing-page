@@ -5134,11 +5134,34 @@
           var rebtn = document.createElement('button');
           rebtn.style.cssText = 'padding: 4px 10px; margin-right: 6px; background: var(--card); color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; cursor: pointer; font-size: 12px;';
           rebtn.textContent = 'Refresh token';
-          rebtn.onclick = function() {
+          rebtn.onclick = async function() {
+            // Cached uidHash means we can re-handshake silently — no need to
+            // pop the UID re-entry modal behind the settings sheet (it ends up
+            // hidden + the user thinks it didn't do anything). Fall back to
+            // the modal only when no hash is stored.
+            var hash = _ar_getStoredUidHash(siteKey);
+            if (hash) {
+              var prevText = rebtn.textContent;
+              rebtn.disabled = true;
+              rebtn.textContent = 'Refreshing…';
+              try {
+                await _ar_handshake(hash);
+                rebtn.textContent = '✓ Refreshed';
+                setTimeout(function() {
+                  rebtn.textContent = prevText;
+                  rebtn.disabled = false;
+                }, 1500);
+              } catch (e) {
+                console.warn('Silent token refresh failed', e);
+                rebtn.textContent = prevText;
+                rebtn.disabled = false;
+                var playerName = (p && p.name) || 'this player';
+                _ar_openUnlockModal(siteKey, playerName, function() {});
+              }
+              return;
+            }
             var playerName = (p && p.name) || 'this player';
-            _ar_openUnlockModal(siteKey, playerName, function() {
-              alert('Token refreshed. Uploads enabled for 10 minutes.');
-            });
+            _ar_openUnlockModal(siteKey, playerName, function() {});
           };
           row.appendChild(btn);
           row.insertBefore(rebtn, btn);
@@ -15098,6 +15121,21 @@
         localStorage.setItem('playerIdentity', JSON.stringify(stored));
       } catch (e) {}
     })();
+
+    // Boot-time supplement-token warmup. The in-memory _ar_supplementToken
+    // dies on every page load, but the cached uidHash survives. Mint a fresh
+    // token in the background so the first action that needs auth (delete,
+    // privacy toggle, background sync) doesn't have to round-trip a handshake
+    // first — and so users no longer have to hit "Refresh token" by hand.
+    migrationDone.then(function() {
+      try {
+        var ident = getStoredIdentity();
+        if (!ident || !ident.siteKey) return;
+        var hash = _ar_getStoredUidHash(ident.siteKey);
+        if (!hash) return;
+        _ar_handshake(hash).catch(function(e) { console.warn('Boot handshake failed', e); });
+      } catch (e) {}
+    });
 
     // Check for ?code= URL param (shortcode sharing)
     var params = new URLSearchParams(window.location.search);
