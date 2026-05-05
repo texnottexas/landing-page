@@ -2899,6 +2899,17 @@
       (tabs[tabKey] || []).forEach(function(it) {
         var cfg = lk.item[String(it.id)] || {};
         var icoInfo = _ar_resolveItemIcon(cfg.i);
+        // Type 153 = unequipped Titan rune. Inventory atlas doesn't include
+        // them — redirect to the existing assets/rune-icons/ files keyed by
+        // rune name. Strip the trailing " Rune" / " Rune Shard" suffix to
+        // match RUNE_ICON keys ("All-Out Surge Rune" → "All-Out Surge").
+        if (tabKey === 'item' && cfg.t === 153) {
+          var rname = String(cfg.n || '').replace(/\s*Rune(\s+Shard)?\s*$/i, '').trim();
+          var rfn = (typeof RUNE_ICON !== 'undefined') ? RUNE_ICON[rname] : null;
+          if (rfn) {
+            icoInfo = { file: rfn + '.png', dirSuffix: 'rune-icons' };
+          }
+        }
         var amount = it.a || 0;
         // Sum gem packs from the item tab into a running total. Player-
         // facing chests labeled "20 Gems", "Gem x5,000" etc. all live in
