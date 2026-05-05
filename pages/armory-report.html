@@ -5205,9 +5205,35 @@
             configList.textContent = 'No saved configs. Click Save to create one.';
             return;
           }
+          // Per-config supplement state cache. One probe per unique siteKey
+          // since all configs sharing a siteKey share the same supplement bucket.
+          var supplementCache = {};
+          function getSupplementState(sk) {
+            if (!sk) return Promise.resolve({ inv: 'missing', bench: 'missing', chips: 'missing' });
+            if (supplementCache[sk]) return supplementCache[sk];
+            var probe = function(kind) {
+              return fetch(SUPPLEMENT_WORKER + '/supplement/' + kind + '/' + sk, { method: 'GET' })
+                .then(function(r) {
+                  if (r.status === 200) return 'loaded';
+                  if (r.status === 403) return 'private';
+                  return 'missing';
+                })
+                .catch(function() { return 'missing'; });
+            };
+            supplementCache[sk] = Promise.all([probe('inv'), probe('bench'), probe('chips')])
+              .then(function(arr) { return { inv: arr[0], bench: arr[1], chips: arr[2] }; });
+            return supplementCache[sk];
+          }
+
+          var ownIdentForDel = identity;
+          var canBearerDelete = !!(ownIdentForDel && ownIdentForDel.siteKey && _ar_isUnlocked(ownIdentForDel.siteKey));
+
           result.configs.forEach(function(cfg) {
             var cfgCard = document.createElement('div');
-            cfgCard.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem .75rem;margin-bottom:.4rem;display:flex;align-items:center;justify-content:space-between;';
+            cfgCard.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem .75rem;margin-bottom:.4rem;display:flex;flex-direction:column;gap:.4rem;';
+
+            var topRow = document.createElement('div');
+            topRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:.5rem;';
 
             var cfgInfo = document.createElement('div');
             var cfgCode = document.createElement('div');
@@ -5219,12 +5245,11 @@
             var rptCount = cfg.reportIds ? cfg.reportIds.split(',').length : 0;
             cfgMeta.textContent = (cfg.device || 'Unknown') + ' \u00B7 ' + rptCount + ' reports';
             cfgInfo.appendChild(cfgMeta);
-            cfgCard.appendChild(cfgInfo);
+            topRow.appendChild(cfgInfo);
 
             var cfgActions = document.createElement('div');
-            cfgActions.style.cssText = 'display:flex;gap:.35rem;';
+            cfgActions.style.cssText = 'display:flex;gap:.35rem;flex-wrap:wrap;';
 
-            // Load/restore button
             var loadBtn = document.createElement('button');
             loadBtn.className = 'rh-prefs-btn';
             loadBtn.textContent = 'Load';
@@ -5237,7 +5262,6 @@
             })(cfg.shortcode);
             cfgActions.appendChild(loadBtn);
 
-            // Copy button
             var cpBtn = document.createElement('button');
             cpBtn.className = 'rh-prefs-btn';
             cpBtn.textContent = 'Copy';
@@ -5252,7 +5276,104 @@
             })(cfg.shortcode);
             cfgActions.appendChild(cpBtn);
 
-            cfgCard.appendChild(cfgActions);
+            // Delete: require either matching deviceId (legacy) or verified-UID
+            // Bearer (cross-device). cfg.isThisDevice already covers legacy.
+            var canDelete = canBearerDelete || cfg.isThisDevice;
+            if (canDelete) {
+              var delBtn = document.createElement('button');
+              delBtn.className = 'rh-prefs-btn';
+              delBtn.textContent = 'Delete';
+              delBtn.style.cssText = 'font-size:.7rem;color:#f85149;border-color:rgba(248,81,73,0.4);';
+              (function(code, recSiteKey) {
+                delBtn.addEventListener('click', async function() {
+                  if (!confirm('Delete share code ' + code + '? Anyone using this link will get a not-found error. Your saved march groups + identity remain intact.')) return;
+                  delBtn.disabled = true;
+                  delBtn.textContent = 'Deleting\u2026';
+                  try {
+                    var headers = { 'Content-Type': 'application/json' };
+                    var body = { shortcode: code };
+                    if (canBearerDelete && recSiteKey) {
+                      try { await _ar_ensureSupplementToken(ownIdentForDel.siteKey); } catch (e) {}
+                      if (_ar_supplementToken) {
+                        headers['Authorization'] = 'Bearer ' + _ar_supplementToken;
+                      }
+                    }
+                    if (cfg.isThisDevice) {
+                      body.siteKey = recSiteKey || reportSiteKey;
+                      body.deviceId = getDeviceId();
+                    }
+                    var r = await fetch(PUSH_WORKER + '/report-config', {
+                      method: 'DELETE', headers: headers, body: JSON.stringify(body)
+                    });
+                    var jr = await r.json().catch(function() { return null; });
+                    if (!r.ok || !jr || !jr.ok) {
+                      throw new Error((jr && jr.error) || ('HTTP ' + r.status));
+                    }
+                    cfgCard.style.opacity = '0.5';
+                    cfgCard.style.pointerEvents = 'none';
+                    setTimeout(function() {
+                      if (cfgCard.parentNode) cfgCard.parentNode.removeChild(cfgCard);
+                      if (configList.children.length === 0) {
+                        configList.textContent = 'No saved configs. Click Save to create one.';
+                      }
+                    }, 200);
+                  } catch (e) {
+                    alert('Delete failed: ' + (e && e.message ? e.message : e));
+                    delBtn.textContent = 'Delete';
+                    delBtn.disabled = false;
+                  }
+                });
+              })(cfg.shortcode, cfg.siteKey);
+              cfgActions.appendChild(delBtn);
+            }
+
+            topRow.appendChild(cfgActions);
+            cfgCard.appendChild(topRow);
+
+            // Supplement loaded indicators (Inv / Beasts / HT Chips)
+            var supRow = document.createElement('div');
+            supRow.style.cssText = 'display:flex;gap:.4rem;flex-wrap:wrap;font-size:.65rem;';
+            var supLoading = document.createElement('span');
+            supLoading.style.cssText = 'color:var(--muted);';
+            supLoading.textContent = 'Checking supplements\u2026';
+            supRow.appendChild(supLoading);
+            cfgCard.appendChild(supRow);
+
+            getSupplementState(cfg.siteKey).then(function(state) {
+              while (supRow.firstChild) supRow.removeChild(supRow.firstChild);
+              [
+                { key: 'inv',   label: 'Inventory' },
+                { key: 'bench', label: 'Beasts' },
+                { key: 'chips', label: 'HT Chips' }
+              ].forEach(function(spec) {
+                var s = state[spec.key];
+                var chip = document.createElement('span');
+                chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);';
+                var dot = document.createElement('span');
+                dot.style.cssText = 'width:6px;height:6px;border-radius:50%;flex-shrink:0;';
+                if (s === 'loaded') {
+                  dot.style.background = '#3fb950';
+                  chip.style.color = 'var(--text)';
+                  chip.style.borderColor = 'rgba(63,185,80,0.4)';
+                  chip.title = spec.label + ' uploaded \u2014 visible to viewers';
+                } else if (s === 'private') {
+                  dot.style.background = '#d29922';
+                  chip.style.color = '#d29922';
+                  chip.style.borderColor = 'rgba(210,153,34,0.5)';
+                  chip.title = spec.label + ' uploaded but set to private \u2014 viewers see lock placeholder';
+                } else {
+                  dot.style.background = 'var(--border)';
+                  chip.style.color = 'var(--muted)';
+                  chip.title = spec.label + ' not uploaded yet';
+                }
+                chip.appendChild(dot);
+                var lbl = document.createElement('span');
+                lbl.textContent = spec.label + (s === 'loaded' ? ' loaded' : s === 'private' ? ' private' : ' missing');
+                chip.appendChild(lbl);
+                supRow.appendChild(chip);
+              });
+            });
+
             configList.appendChild(cfgCard);
           });
         }).catch(function() {
