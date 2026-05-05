@@ -5254,6 +5254,8 @@
 
           var ownIdentForDel = identity;
           var canBearerDelete = !!(ownIdentForDel && ownIdentForDel.siteKey && _ar_isUnlocked(ownIdentForDel.siteKey));
+          var primaryShortcode = null;
+          try { primaryShortcode = JSON.parse(localStorage.getItem('playerReport') || '{}').shortcode || null; } catch (e) {}
 
           result.configs.forEach(function(cfg) {
             var cfgCard = document.createElement('div');
@@ -5277,17 +5279,62 @@
             var cfgActions = document.createElement('div');
             cfgActions.style.cssText = 'display:flex;gap:.35rem;flex-wrap:wrap;';
 
-            var loadBtn = document.createElement('button');
-            loadBtn.className = 'rh-prefs-btn';
-            loadBtn.textContent = 'Load';
-            loadBtn.style.fontSize = '.7rem';
-            (function(code) {
-              loadBtn.addEventListener('click', function() {
-                closeIdentityPrefs();
-                window.location.href = 'armory-report.html?code=' + code;
-              });
-            })(cfg.shortcode);
-            cfgActions.appendChild(loadBtn);
+            // Replace "Load" with explicit Make Primary semantics. The currently
+            // primary code shows a green "Primary" badge instead of a button so
+            // it's obvious which one owns the top "Your Share Code" slot.
+            if (cfg.shortcode === primaryShortcode) {
+              var primaryBadge = document.createElement('span');
+              primaryBadge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;border:1px solid rgba(63,185,80,0.5);color:#3fb950;font-size:.7rem;font-weight:600;';
+              var pbDot = document.createElement('span');
+              pbDot.style.cssText = 'width:6px;height:6px;border-radius:50%;background:#3fb950;';
+              primaryBadge.appendChild(pbDot);
+              var pbLabel = document.createElement('span');
+              pbLabel.textContent = 'Primary';
+              primaryBadge.appendChild(pbLabel);
+              cfgActions.appendChild(primaryBadge);
+            } else {
+              var primaryBtn = document.createElement('button');
+              primaryBtn.className = 'rh-prefs-btn';
+              primaryBtn.textContent = 'Make Primary';
+              primaryBtn.style.fontSize = '.7rem';
+              (function(code) {
+                primaryBtn.addEventListener('click', async function() {
+                  primaryBtn.disabled = true;
+                  primaryBtn.textContent = 'Switching…';
+                  // Pre-write playerReport so the next page load uses this code
+                  // as the device's primary even if applyShortcodeConfig's
+                  // isSamePlayer check would otherwise refuse to persist
+                  // (legacy siteKey forms, missing identity, etc.).
+                  try {
+                    var r = await fetch(PUSH_WORKER + '/report-config?code=' + code);
+                    if (r.ok) {
+                      var data = await r.json();
+                      if (data && data.ok) {
+                        var ids = (data.reportIds || '').split(',').filter(Boolean);
+                        var prior = {};
+                        try { prior = JSON.parse(localStorage.getItem('playerReport') || '{}'); } catch (e) {}
+                        var saved = {
+                          shortcode: code,
+                          player: {
+                            name: data.playerName,
+                            siteKey: data.siteKey || null,
+                            avatarFallback: (data.playerName || '?').charAt(0).toUpperCase(),
+                            level: 0, server: '', nationalflag: 0
+                          },
+                          reportIds: ids,
+                          marchGroups: data.marchGroups || prior.marchGroups || []
+                        };
+                        localStorage.setItem('playerReport', JSON.stringify(saved));
+                        localStorage.removeItem('playerReportData');
+                      }
+                    }
+                  } catch (e) { console.warn('Make Primary pre-fetch failed', e); }
+                  closeIdentityPrefs();
+                  window.location.href = 'armory-report.html?code=' + code;
+                });
+              })(cfg.shortcode);
+              cfgActions.appendChild(primaryBtn);
+            }
 
             var cpBtn = document.createElement('button');
             cpBtn.className = 'rh-prefs-btn';
@@ -5334,7 +5381,9 @@
                     });
                     var jr = await r.json().catch(function() { return null; });
                     if (!r.ok || !jr || !jr.ok) {
-                      throw new Error((jr && jr.error) || ('HTTP ' + r.status));
+                      var why = (jr && jr.error) || ('HTTP ' + r.status);
+                      if (jr && jr.reason) why += ' (' + jr.reason + ')';
+                      throw new Error(why);
                     }
                     cfgCard.style.opacity = '0.5';
                     cfgCard.style.pointerEvents = 'none';
