@@ -2382,6 +2382,39 @@
     await _ar_handshake(hash);
   }
 
+  // Background re-sync: if the owner has local data newer than what the
+  // worker holds (or the worker has nothing), push it up using the cached
+  // uidHash. Silent on success — only the owner notices via the toolbar
+  // status pill. Tracks last-synced timestamp in localStorage so repeated
+  // tab opens don't spam the worker.
+  // Returns: 'synced' | 'no-change' | 'no-hash' | 'error'
+  async function _ar_backgroundSyncSupplement(kind, siteKey) {
+    if (!siteKey) return 'error';
+    var local = null;
+    try { local = JSON.parse(localStorage.getItem('armory_' + kind + '_' + siteKey) || 'null'); } catch (e) {}
+    if (!local) return 'no-change';
+    var localTs = 0;
+    if (kind === 'inv') {
+      localTs = (local.meta && local.meta.ts) ? new Date(local.meta.ts).getTime() : 0;
+    } else {
+      localTs = local.ts ? new Date(local.ts).getTime() : 0;
+    }
+    if (!localTs) return 'no-change';
+    var lastSynced = 0;
+    try { lastSynced = parseInt(localStorage.getItem('armory_lastSync_' + kind + '_' + siteKey) || '0', 10); } catch (e) {}
+    if (lastSynced >= localTs) return 'no-change';
+    var hash = _ar_getStoredUidHash(siteKey);
+    if (!hash) return 'no-hash';
+    try {
+      await _ar_supplementUpload(kind, local, siteKey);
+      try { localStorage.setItem('armory_lastSync_' + kind + '_' + siteKey, String(localTs)); } catch (e) {}
+      return 'synced';
+    } catch (e) {
+      console.warn('Background sync failed (' + kind + ')', e);
+      return 'error';
+    }
+  }
+
   async function _ar_supplementUpload(kind, json, siteKey) {
     try {
       await _ar_ensureSupplementToken(siteKey);
@@ -10702,6 +10735,55 @@
       ts.title = new Date(stored.meta.ts).toLocaleString();
       toolbar.appendChild(ts);
     }
+
+    // Background sync pill — owner only. Reflects whether the local data
+    // is mirrored to the worker. Catches the "uploaded locally but worker
+    // never received it" case (token expired + ignored error) by silently
+    // re-syncing on tab open whenever cached uidHash + newer-local exist.
+    var syncPill;
+    if (isOwner && stored) {
+      syncPill = document.createElement('span');
+      syncPill.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);padding:4px 10px;border-radius:999px;border:1px solid var(--border);';
+      var syncDot = document.createElement('span');
+      syncDot.style.cssText = 'width:7px;height:7px;border-radius:50%;background:var(--muted);';
+      var syncText = document.createElement('span');
+      syncText.textContent = 'Cloud sync: checking…';
+      syncPill.appendChild(syncDot);
+      syncPill.appendChild(syncText);
+      toolbar.appendChild(syncPill);
+      function paintSync(state) {
+        if (state === 'synced' || state === 'no-change') {
+          syncDot.style.background = '#3fb950';
+          syncText.textContent = 'Cloud sync: up to date';
+          syncPill.title = 'Local snapshot is mirrored to the cloud — other viewers see the same data.';
+          syncPill.style.color = 'var(--muted)';
+          syncPill.style.borderColor = 'var(--border)';
+        } else if (state === 'no-hash') {
+          syncDot.style.background = '#d29922';
+          syncText.textContent = 'Cloud sync: re-verify UID';
+          syncPill.title = 'Cached UID hash is missing — open Identity settings and verify your UID to resume cloud sync.';
+          syncPill.style.color = '#d29922';
+          syncPill.style.borderColor = 'rgba(210,153,34,0.5)';
+          syncPill.style.cursor = 'pointer';
+          syncPill.onclick = function() {
+            try { openIdentityPrefs(wizardState.player || {}); } catch (e) {}
+          };
+        } else if (state === 'error') {
+          syncDot.style.background = '#f85149';
+          syncText.textContent = 'Cloud sync: failed';
+          syncPill.title = 'Worker upload failed. Click to retry.';
+          syncPill.style.color = '#f85149';
+          syncPill.style.borderColor = 'rgba(248,81,73,0.5)';
+          syncPill.style.cursor = 'pointer';
+          syncPill.onclick = async function() {
+            syncText.textContent = 'Cloud sync: retrying…';
+            var s = await _ar_backgroundSyncSupplement('inv', siteKey);
+            paintSync(s);
+          };
+        }
+      }
+      _ar_backgroundSyncSupplement('inv', siteKey).then(paintSync).catch(function() { paintSync('error'); });
+    }
     container.appendChild(toolbar);
 
     if (!stored) {
@@ -12012,6 +12094,11 @@
       // this, paste sessions kept reporting "No upload token. Re-enter UID."
       try {
         await _ar_supplementUpload(kind, raw, siteKey);
+        // Mark synced so background sync skips redundant retries on next open.
+        try {
+          var ts = readTs(raw);
+          if (ts) localStorage.setItem('armory_lastSync_' + kind + '_' + siteKey, String(ts));
+        } catch (e) {}
       } catch (e) {
         console.warn('Worker upload failed', e);
         err.textContent = 'Saved locally. Worker upload failed (' + e.message + '). Open Identity settings to re-verify UID.';
