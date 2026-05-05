@@ -2433,6 +2433,98 @@
     return await r.json();
   }
 
+  // Self-heal: detect supplement data that exists locally but not on the
+  // worker (or local is newer), then force one hard refresh + upload. Without
+  // this, players who pasted JSON before the cloud-sync flow existed kept
+  // hitting "no inventory uploaded" on shared reports until they manually
+  // re-pasted everything. The hard refresh wipes any stale in-memory state
+  // (old SW-cached HTML, dangling handshake error, etc.) before the upload
+  // attempt. Sentinels (sessionStorage per-tab + localStorage cross-tab)
+  // prevent reload loops when the upload itself keeps failing.
+  function _ar_supplementLocalTs(kind, obj) {
+    if (!obj) return 0;
+    if (kind === 'inv') {
+      return (obj.meta && obj.meta.ts) ? new Date(obj.meta.ts).getTime() : 0;
+    }
+    return obj.ts ? new Date(obj.ts).getTime() : 0;
+  }
+
+  async function _ar_selfHealSupplements(siteKey) {
+    if (!siteKey) return;
+    var hash = _ar_getStoredUidHash(siteKey);
+    if (!hash) return;
+
+    var priv = {};
+    try {
+      var pr = await fetch(SUPPLEMENT_WORKER + '/supplement/privacy/' + siteKey);
+      if (pr.ok) priv = await pr.json();
+    } catch (e) {}
+
+    var kinds = ['inv', 'bench', 'chips'];
+    var needs = [];
+    for (var i = 0; i < kinds.length; i++) {
+      var kind = kinds[i];
+      var local = null;
+      try { local = JSON.parse(localStorage.getItem('armory_' + kind + '_' + siteKey) || 'null'); } catch (e) {}
+      if (!local) continue;
+      var lTs = _ar_supplementLocalTs(kind, local);
+      if (!lTs) continue;
+
+      var rTs = 0;
+      if (priv[kind]) {
+        var ls = parseInt(localStorage.getItem('armory_lastSync_' + kind + '_' + siteKey) || '0', 10);
+        if (ls >= lTs) continue;
+      } else {
+        try {
+          var rr = await fetch(SUPPLEMENT_WORKER + '/supplement/' + kind + '/' + siteKey, { cache: 'no-store' });
+          if (rr.ok) {
+            var rj = await rr.json();
+            rTs = _ar_supplementLocalTs(kind, rj);
+          }
+        } catch (e) {}
+      }
+      if (lTs > rTs) needs.push(kind);
+    }
+
+    if (needs.length === 0) return;
+
+    var sessionSentinel = 'armory_selfheal_session';
+    var crossTabKey = 'armory_selfheal_lastReloadTs';
+    var lastReload = 0;
+    try { lastReload = parseInt(localStorage.getItem(crossTabKey) || '0', 10); } catch (e) {}
+    var alreadyReloaded = !!sessionStorage.getItem(sessionSentinel);
+    var withinCooldown = (Date.now() - lastReload) < 90000;
+
+    if (!alreadyReloaded && !withinCooldown) {
+      try { sessionStorage.setItem(sessionSentinel, '1'); } catch (e) {}
+      try { localStorage.setItem(crossTabKey, String(Date.now())); } catch (e) {}
+      console.log('[self-heal] kinds out-of-sync:', needs.join(','), '— forcing reload');
+      location.reload();
+      return;
+    }
+
+    try {
+      await _ar_handshake(hash);
+    } catch (e) {
+      console.warn('[self-heal] handshake failed', e);
+      return;
+    }
+
+    for (var j = 0; j < needs.length; j++) {
+      var k = needs[j];
+      try {
+        var data = JSON.parse(localStorage.getItem('armory_' + k + '_' + siteKey) || 'null');
+        if (!data) continue;
+        await _ar_supplementUpload(k, data, siteKey);
+        var ts = _ar_supplementLocalTs(k, data);
+        try { localStorage.setItem('armory_lastSync_' + k + '_' + siteKey, String(ts)); } catch (e) {}
+        console.log('[self-heal] uploaded', k);
+      } catch (e) {
+        console.warn('[self-heal] upload failed (' + k + ')', e);
+      }
+    }
+  }
+
   // Privacy cache keyed by siteKey: { inv:bool, bench:bool, chips:bool }.
   // Worker is the source of truth — set by the verified owner via /supplement/privacy.
   var _ar_supplementPrivacy = {};
@@ -15167,7 +15259,14 @@
         if (!ident || !ident.siteKey) return;
         var hash = _ar_getStoredUidHash(ident.siteKey);
         if (!hash) return;
-        _ar_handshake(hash).catch(function(e) { console.warn('Boot handshake failed', e); });
+        _ar_handshake(hash)
+          .catch(function(e) { console.warn('Boot handshake failed', e); })
+          .then(function() {
+            // Self-heal supplements: catch up any local-only data that never
+            // made it to the worker (legacy paste-only flows, failed uploads).
+            return _ar_selfHealSupplements(ident.siteKey);
+          })
+          .catch(function(e) { console.warn('Self-heal failed', e); });
       } catch (e) {}
     });
 
