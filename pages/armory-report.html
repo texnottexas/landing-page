@@ -5366,10 +5366,19 @@
                   try {
                     var headers = { 'Content-Type': 'application/json' };
                     var body = { shortcode: code };
-                    if (canBearerDelete && recSiteKey) {
-                      try { await _ar_ensureSupplementToken(ownIdentForDel.siteKey); } catch (e) {}
-                      if (_ar_supplementToken) {
-                        headers['Authorization'] = 'Bearer ' + _ar_supplementToken;
+                    // Mint or refresh the Bearer token from the cached uidHash.
+                    // The ensure-helper short-circuits on a non-expired token,
+                    // so when the in-memory token is stale (page idled, came
+                    // back later) we force a fresh handshake by clearing it
+                    // first. Without this the user had to hit Refresh Token in
+                    // identity prefs before delete would attach the header.
+                    if (canBearerDelete) {
+                      var hash = _ar_getStoredUidHash(ownIdentForDel.siteKey);
+                      if (hash) {
+                        try { await _ar_handshake(hash); } catch (e) { console.warn('handshake failed', e); }
+                        if (_ar_supplementToken) {
+                          headers['Authorization'] = 'Bearer ' + _ar_supplementToken;
+                        }
                       }
                     }
                     if (cfg.isThisDevice) {
