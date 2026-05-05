@@ -2554,9 +2554,12 @@
       return { file: 'image__' + s, dirSuffix: 'inventory-icons' };
     }
     if (i.startsWith('res:items/')) {
+      // res:items/* resolves to the public game CDN. Auction-icons folder
+      // doesn't carry these files (only the auction page extracted a subset);
+      // the DynRes URL works for every res:items entry observed so far.
       var fn = i.slice('res:items/'.length);
       if (!fn.endsWith('.png')) fn += '.png';
-      return { file: fn, dirSuffix: 'auction-icons' };
+      return { file: fn, dirSuffix: 'auction-icons', absDir: 'https://h5.topwargame.com/DynRes/images/items' };
     }
     return null;
   }
@@ -2970,12 +2973,15 @@
           id: it.id, amount: amount, level: it.l || null, group: it.g || cfg.g || it.id,
           type: cfg.t, quality: cfg.q || 1, name: cfg.n || ('#' + it.id), desc: cfg.d || '',
           icon: icoInfo ? icoInfo.file : null,
-          // iconAbsUrl wins when set (hero shards routed to game CDN); else use
-          // the standard ASSET + dirSuffix path. Renderer concats iconDir + '/' + icon,
-          // so for absolute-URL items we drop the trailing slash on iconDir.
+          // Resolution priority for iconDir:
+          //   1. iconAbsUrl (hero shards) — strip filename, reuse the URL stem
+          //   2. icoInfo.absDir (res:items routed to game CDN)
+          //   3. ASSET + dirSuffix (default — standard repo asset folder)
           iconDir: iconAbsUrl
             ? iconAbsUrl.replace(/\/[^\/]*$/, '')
-            : ASSET + (icoInfo ? icoInfo.dirSuffix : 'inventory-icons'),
+            : (icoInfo && icoInfo.absDir)
+              ? icoInfo.absDir
+              : ASSET + (icoInfo ? icoInfo.dirSuffix : 'inventory-icons'),
           subtab: tabKey === 'item' ? (titanCat ? 'titan' : 'all') : undefined,
           titanCat: titanCat,
           bucket: bucket,
@@ -3027,7 +3033,7 @@
         id: it.id, amount: it.a || 0, level: it.l || null, group: it.g || it.id,
         type: cfg.t, quality: cfg.q || 1, name: cfg.n || ('Hero #' + it.id), desc: cfg.d || '',
         icon: icoInfo ? icoInfo.file : null,
-        iconDir: ASSET + (icoInfo ? icoInfo.dirSuffix : 'inventory-icons'),
+        iconDir: (icoInfo && icoInfo.absDir) ? icoInfo.absDir : (ASSET + (icoInfo ? icoInfo.dirSuffix : 'inventory-icons')),
         subtab: _ar_heroSubtab(cfg.t)
       });
     });
