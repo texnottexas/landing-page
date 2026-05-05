@@ -2910,6 +2910,18 @@
             icoInfo = { file: rfn + '.png', dirSuffix: 'rune-icons' };
           }
         }
+        // Type 31 = hero shard. Skip the missing inventory atlas image and
+        // redirect to the public hero portrait CDN. cfg.i carries the hero id
+        // as "image/hero_icon/hero_icon{N}" which maps 1:1 to the global
+        // headpic URL pattern.
+        var iconAbsUrl = null;
+        if (tabKey === 'item' && cfg.t === 31) {
+          var hm = String(cfg.i || '').match(/hero_icon(\d+)/i);
+          if (hm) {
+            iconAbsUrl = 'https://h5.topwargame.com/DynRes/images/headpic/hero_icon' + hm[1] + '_global.png';
+            icoInfo = { file: 'hero_icon' + hm[1] + '_global.png', dirSuffix: null };
+          }
+        }
         var amount = it.a || 0;
         // Sum gem packs from the item tab into a running total. Player-
         // facing chests labeled "20 Gems", "Gem x5,000" etc. all live in
@@ -2958,7 +2970,12 @@
           id: it.id, amount: amount, level: it.l || null, group: it.g || cfg.g || it.id,
           type: cfg.t, quality: cfg.q || 1, name: cfg.n || ('#' + it.id), desc: cfg.d || '',
           icon: icoInfo ? icoInfo.file : null,
-          iconDir: ASSET + (icoInfo ? icoInfo.dirSuffix : 'inventory-icons'),
+          // iconAbsUrl wins when set (hero shards routed to game CDN); else use
+          // the standard ASSET + dirSuffix path. Renderer concats iconDir + '/' + icon,
+          // so for absolute-URL items we drop the trailing slash on iconDir.
+          iconDir: iconAbsUrl
+            ? iconAbsUrl.replace(/\/[^\/]*$/, '')
+            : ASSET + (icoInfo ? icoInfo.dirSuffix : 'inventory-icons'),
           subtab: tabKey === 'item' ? (titanCat ? 'titan' : 'all') : undefined,
           titanCat: titanCat,
           bucket: bucket,
