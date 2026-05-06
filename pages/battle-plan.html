@@ -558,15 +558,20 @@ body{top:0!important;}
     if (fame >= 20000)  return { count: 20, label: '20 marches (token)',       tone: 'low'  };
     return { count: 0, label: 'Skip if buff not needed', tone: 'skip' };
   }
-  // Bonus for multi-attacker fights: bump one tier up because volume stacks.
-  function marchSuggestionMultiAttack(maxFame, attackerCount, verb){
-    var base = marchSuggestionByFame(maxFame, verb);
-    if (attackerCount <= 1) return base;
-    // 3-way+ → escalate band
-    if (base.tone === 'high') return { count: 100, label: 'Full Mothership (100) — multi-attacker', tone: 'high' };
-    if (base.tone === 'mid')  return { count: 65,  label: '60–70 (1 strong) — multi-attacker',      tone: 'high' };
-    if (base.tone === 'low')  return { count: 35,  label: '30–40 — multi-attacker',                 tone: 'mid'  };
-    return { count: 20, label: '20 marches — multi-attacker', tone: 'low' };
+  // Multi-attacker bump only when ≥2 attackers each ≥50K fame (both will
+  // actually ship). One big + one ghost (e.g. S2616 184K + S3343 31K) does
+  // not escalate — small attacker won't add meaningful march volume.
+  function marchSuggestionMultiAttack(attackerFames, verb){
+    var fames = (attackerFames || []).slice().sort(function(a,b){ return b - a; });
+    var max = fames[0] || 0;
+    var seriousCount = fames.filter(function(f){ return f >= 50000; }).length;
+    var base = marchSuggestionByFame(max, verb);
+    if (seriousCount < 2) return base;
+    // Two+ serious attackers → escalate band
+    if (base.tone === 'high') return { count: 100, label: 'Full Mothership (100) — multi-strong', tone: 'high' };
+    if (base.tone === 'mid')  return { count: 65,  label: '60–70 (1 strong) — multi-strong',      tone: 'high' };
+    if (base.tone === 'low')  return { count: 35,  label: '30–40 — multi-strong',                 tone: 'mid'  };
+    return { count: 20, label: '20 marches — multi-strong', tone: 'low' };
   }
   // Combined: max of TAKE + DEFEND when both apply (multi-way).
   function maxMarches(a, b){ return (a.count >= b.count) ? a : b; }
@@ -1637,7 +1642,7 @@ body{top:0!important;}
       var seqs = el('div', 'seqs');
       tiers[p].forEach(function(f){
         var sids = f.opps.map(function(o){ return 'S' + o.opponent + ' (' + (((o.opFame||0)>=1000) ? Math.round(o.opFame/1000)+'K' : (o.opFame||0)) + ')'; }).join(' + ');
-        var marchVal = marchSuggestionMultiAttack(f.topOpp.opFame || 0, f.opps.length, 'TAKE');
+        var marchVal = marchSuggestionMultiAttack(f.opps.map(function(o){ return o.opFame || 0; }), 'TAKE');
         var label = 'TAKE W-' + f.seq + ' L' + f.level + (f.opps.length >= 2 ? ' ⚠ ' + (f.opps.length + 1) + '-way ' : ' vs ') + sids + ' → ' + marchVal.label;
         var s = el('span', 'seq', label);
         if (f.opps.length >= 2) s.classList.add('threeway');
@@ -1697,7 +1702,7 @@ body{top:0!important;}
       var atkFames = atks.map(function(s){ return { sid: s, fame: fameOfSid(rd, s) }; });
       atkFames.sort(function(a,b){ return b.fame - a.fame; });
       var topFame = atkFames[0] ? atkFames[0].fame : 0;
-      var march = marchSuggestionMultiAttack(topFame, atks.length, 'DEFEND');
+      var march = marchSuggestionMultiAttack(atkFames.map(function(a){ return a.fame; }), 'DEFEND');
       var adjNcs = adjacentOwnedNCs(rd, d.seq);
       var maxAdjLevel = adjNcs.reduce(function(m, n){ return Math.max(m, n.level); }, 0);
       return { d: d, atkFames: atkFames, topFame: topFame, march: march, adjNcs: adjNcs, maxAdjLevel: maxAdjLevel };
