@@ -855,6 +855,14 @@ body{top:0!important;}
   // regardless of varying card heights.
   function clampGrid(grid, itemSelector, fallbackThreshold, noun){
     if (!grid) return;
+    // Defer until grid is actually in the DOM and laid out — getComputedStyle
+    // on detached elements returns the specified, unresolved value (e.g.
+    // "repeat(auto-fill, minmax(...))") which breaks gridColCount.
+    if (!grid.isConnected){
+      var schedule = window.requestAnimationFrame || function(fn){ setTimeout(fn, 0); };
+      schedule(function(){ clampGrid(grid, itemSelector, fallbackThreshold, noun); });
+      return;
+    }
     var items = grid.querySelectorAll(itemSelector);
     var count = items.length;
     if (count === 0) return;
