@@ -149,6 +149,16 @@ table.power.power-collapsed .hidden-row{display:none;}
 .nc-row .nc-pos{color:var(--muted);font-size:.7rem;font-weight:500;}
 .nc-row .nc-via{font-size:.7rem;color:var(--muted);text-align:right;flex-shrink:0;}
 .nc-row .nc-via b{color:var(--text);}
+.nc-row .nc-via b.via-ownednc{color:var(--green);}
+.nc-row .nc-via .via-tag{display:inline-block;margin-left:.35rem;padding:.05rem .35rem;font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;border-radius:4px;background:rgba(63,185,80,.14);color:var(--green);border:1px solid rgba(63,185,80,.3);}
+.nc-row .nc-via .path-break{height:.2rem;}
+.nc-row.nc-target{background:rgba(210,153,34,.06);box-shadow:inset 3px 0 0 var(--yellow);}
+.nc-target-badge{display:inline-block;margin-left:.35rem;padding:.08rem .4rem;font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;border-radius:4px;background:rgba(210,153,34,.18);color:var(--yellow);border:1px solid rgba(210,153,34,.45);}
+.nc-target-tag{display:inline-block;margin:0 .15rem;padding:.05rem .4rem;font-size:.7rem;font-weight:800;border-radius:5px;}
+.nc-target-tag.l3{background:rgba(248,81,73,.14);color:var(--red);border:1px solid rgba(248,81,73,.3);}
+.nc-target-tag.l2{background:rgba(210,153,34,.14);color:var(--yellow);border:1px solid rgba(210,153,34,.3);}
+.nc-target-tag.l1{background:rgba(121,192,255,.14);color:var(--accent);border:1px solid rgba(121,192,255,.3);}
+.nc-target-rule{margin-top:.4rem;font-size:.7rem;color:var(--muted);font-style:italic;}
 @media (max-width:640px){
   .nc-row{flex-direction:column;align-items:flex-start;gap:.4rem;padding:.7rem .85rem;}
   .nc-row .nc-name{flex-wrap:wrap;width:100%;}
@@ -894,7 +904,18 @@ body{top:0!important;}
   }
 
   function buildNcFlow(rd, root){
+    var targetSet = {};
+    (rd.ncTargets || []).forEach(function(t){ targetSet[t.ncNum] = true; });
     var flow = (rd.ncCaptureFlow || []).slice().sort(function(a,b){
+      // Targets first, then immediate (via owned NC), then by level desc
+      var na = (a.nc.match(/#(\d+)/) || [])[1];
+      var nb = (b.nc.match(/#(\d+)/) || [])[1];
+      var ta = targetSet[parseInt(na, 10)] ? 0 : 1;
+      var tb = targetSet[parseInt(nb, 10)] ? 0 : 1;
+      if (ta !== tb) return ta - tb;
+      var ia = (a.viaOwnedNCs || []).length > 0 ? 0 : 1;
+      var ib = (b.viaOwnedNCs || []).length > 0 ? 0 : 1;
+      if (ia !== ib) return ia - ib;
       var la = parseInt(a.level) || 0, lb = parseInt(b.level) || 0;
       return lb - la;
     });
@@ -903,7 +924,7 @@ body{top:0!important;}
     var t = el('div', 'sect-title');
     var dot = el('span', 'dot'); dot.style.background = 'var(--green)';
     t.appendChild(dot);
-    t.appendChild(el('span', null, 'NC Capture Flow — Reachable Next Round'));
+    t.appendChild(el('span', null, 'NC Capture Flow — Reachable This/Next Round'));
     t.appendChild(el('span', 'tag', flow.length + ' NCs'));
     section.appendChild(t);
 
@@ -911,24 +932,60 @@ body{top:0!important;}
     note.appendChild(makeIcon('info', 18));
     var body = el('div', 'body');
     body.appendChild(el('strong', null, 'How to read this: '));
-    body.appendChild(document.createTextNode('if we capture the listed wasteland(s) this round, the NC becomes 4-way adjacent next round and we can declare on it for points (NC Lv1 = 3pts, Lv2 = 5pts, Lv3 = 8pts).'));
+    body.appendChild(document.createTextNode('NCs already 4-way adjacent to one of our owned NCs are attackable this round (green, "attack now"). Otherwise, capture the listed wasteland(s) this round and the NC becomes 4-way adjacent next round. NC Lv1 = 3pts, Lv2 = 5pts, Lv3 = 8pts.'));
     note.appendChild(body);
     section.appendChild(note);
 
+    // NC target plan (one per level — game limit)
+    if (rd.ncTargets && rd.ncTargets.length){
+      var planBox = el('div', 'rule-box accent');
+      planBox.appendChild(makeIcon('target', 18));
+      var pb = el('div', 'body');
+      pb.appendChild(el('strong', null, 'R' + (rd.label && rd.label.match(/\d+/) ? rd.label.match(/\d+/)[0] : '?') + ' NC target plan: '));
+      rd.ncTargets.forEach(function(t, i){
+        if (i > 0) pb.appendChild(document.createTextNode(' · '));
+        pb.appendChild(el('b', 'nc-target-tag l' + t.level, 'Lv' + t.level + ' #' + t.ncNum));
+      });
+      pb.appendChild(el('div', 'nc-target-rule', rd.ncTargetsRule || ''));
+      planBox.appendChild(pb);
+      section.appendChild(planBox);
+    }
+
+    var targetSet = {};
+    (rd.ncTargets || []).forEach(function(t){ targetSet[t.ncNum] = true; });
     var box = el('div', 'nc-flow');
     flow.forEach(function(nc){
       var lvl = parseInt(nc.level) || 1;
-      var row = el('div', 'nc-row');
+      var ncNumMatch = (nc.nc || '').match(/#(\d+)/);
+      var ncNum = ncNumMatch ? parseInt(ncNumMatch[1], 10) : 0;
+      var isTarget = !!targetSet[ncNum];
+      var row = el('div', 'nc-row' + (isTarget ? ' nc-target' : ''));
       row.appendChild(makeIcon('castle', 16));
       var name = el('div', 'nc-name');
       name.appendChild(el('span', 'nc-lvl l' + lvl, 'Lv.' + lvl));
       name.appendChild(document.createTextNode(' ' + nc.nc.replace(/^Lv\.\s*\d+\s*/, '')));
+      if (isTarget) name.appendChild(el('span', 'nc-target-badge', 'TARGET'));
       var ownerStr = nc.sid ? 'S' + nc.sid : 'unclaimed';
       name.appendChild(el('span', 'nc-pos', '@(' + nc.r + ',' + nc.c + ') · ' + ownerStr));
       row.appendChild(name);
       var via = el('div', 'nc-via');
-      via.appendChild(document.createTextNode('via '));
-      via.appendChild(el('b', null, 'W-' + nc.viaWastelands.join(', W-')));
+      var hasW = (nc.viaWastelands || []).length > 0;
+      var hasNcSrc = (nc.viaOwnedNCs || []).length > 0;
+      if (hasNcSrc){
+        via.appendChild(document.createTextNode('via owned '));
+        nc.viaOwnedNCs.forEach(function(ncName, i){
+          if (i > 0) via.appendChild(document.createTextNode(', '));
+          var m = ncName.match(/#(\d+)/);
+          var label = m ? ('NC#' + m[1]) : ncName;
+          via.appendChild(el('b', 'via-ownednc', label));
+        });
+        via.appendChild(el('span', 'via-tag', 'attack now'));
+      }
+      if (hasW){
+        if (hasNcSrc) via.appendChild(el('div', 'path-break'));
+        via.appendChild(document.createTextNode('via '));
+        via.appendChild(el('b', null, 'W-' + nc.viaWastelands.join(', W-')));
+      }
       row.appendChild(via);
       box.appendChild(row);
     });
