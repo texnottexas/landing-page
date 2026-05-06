@@ -838,31 +838,40 @@ body{top:0!important;}
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
   }
-  // Read live grid column count for responsive clamp thresholds.
+  // Live grid column count. null when container isn't display:grid.
   function gridColCount(el){
     try {
-      var cs = getComputedStyle(el).gridTemplateColumns;
-      if (!cs || cs === 'none') return 1;
-      return cs.trim().split(/\s+/).length || 1;
-    } catch(e){ return 1; }
+      var cs = getComputedStyle(el);
+      if (cs.display !== 'grid' && cs.display !== 'inline-grid') return null;
+      var t = cs.gridTemplateColumns;
+      if (!t || t === 'none') return null;
+      return t.trim().split(/\s+/).length || 1;
+    } catch(e){ return null; }
   }
-  // Clamp a grid to ~2 rows (cols × 2) of items; partial 3rd row shows via gradient.
-  // If maxRows is given, use that. Falls back to fixed threshold for non-grid lists.
+  // Clamp a container to N visible items + partial peek of next.
+  // - For CSS grid: threshold = cols × 2 (always 2 rows visible).
+  // - For non-grid (flex/block list): threshold = fallback param.
+  // Max-height computed from actual rendered offsets so the cutoff is exact
+  // regardless of varying card heights.
   function clampGrid(grid, itemSelector, fallbackThreshold, noun){
     if (!grid) return;
     var items = grid.querySelectorAll(itemSelector);
     var count = items.length;
     if (count === 0) return;
-    var cols = gridColCount(grid);
-    var threshold = cols > 1 ? cols * 2 : fallbackThreshold;
+    var label = noun || 'items';
+    function thresholdNow(){
+      var cols = gridColCount(grid);
+      return cols ? cols * 2 : fallbackThreshold;
+    }
+    var threshold = thresholdNow();
     if (count <= threshold) return;
     grid.classList.add('clampable', 'collapsed');
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'show-more-btn';
-    var hidden = count - threshold;
-    var label = noun || 'items';
     function setLabel(open){
+      var th = thresholdNow();
+      var hidden = Math.max(0, count - th);
       btn.textContent = open ? 'Show fewer' : ('Show ' + hidden + ' more ' + label + ' · ' + count + ' total');
     }
     setLabel(false);
@@ -872,20 +881,32 @@ body{top:0!important;}
       else grid.style.maxHeight = '';
       setLabel(!collapsed);
     });
-    // Recompute threshold + max-height on resize so partial 3rd row stays correct.
+    // Compute max-height from offset of N-th item + ~30% peek of next item.
     function applyMaxHeight(){
       if (!grid.classList.contains('collapsed')) return;
-      var firstItems = grid.querySelectorAll(itemSelector);
-      if (!firstItems.length) return;
-      var firstRect = firstItems[0].getBoundingClientRect();
-      var rowHeight = firstRect.height;
-      // Read gap from grid style
-      var gap = parseFloat(getComputedStyle(grid).rowGap || getComputedStyle(grid).gap || '8') || 8;
-      // Show 2 full rows + ~30% of 3rd row to hint there's more
-      var max = (rowHeight + gap) * 2 + rowHeight * 0.3;
+      var its = grid.querySelectorAll(itemSelector);
+      if (its.length === 0) return;
+      var th = thresholdNow();
+      if (its.length <= th){
+        grid.style.maxHeight = '';
+        return;
+      }
+      var lastVisible = its[th - 1];
+      var nextItem = its[th] || null;
+      var gridTop = grid.getBoundingClientRect().top;
+      var lastBottom = lastVisible.getBoundingClientRect().bottom;
+      var nextH = nextItem ? nextItem.getBoundingClientRect().height : 0;
+      var peek = nextH * 0.3;
+      var max = (lastBottom - gridTop) + peek;
       grid.style.maxHeight = max + 'px';
+      setLabel(false);
     }
+    // Initial measurement may be off if fonts/icons still loading — also try one frame later.
     applyMaxHeight();
+    if (window.requestAnimationFrame){
+      requestAnimationFrame(applyMaxHeight);
+      setTimeout(applyMaxHeight, 100);
+    }
     if (window.ResizeObserver){
       var ro = new ResizeObserver(applyMaxHeight);
       ro.observe(grid);
