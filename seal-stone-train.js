@@ -31,6 +31,14 @@ function svgIcon(id, cls) {
   return s;
 }
 
+// Roster has "DOG*" / "MSS*" / "Cat+" / "DEV*". Strip the trailing asterisk
+// to get the canonical alliance form used for tabs, KV writes, and matching.
+function canonAlliance(s) {
+  if (typeof s !== 'string') return null;
+  var t = s.replace(/\*+$/, '');
+  return ['DOG','MSS','Cat+'].indexOf(t) >= 0 ? t : null;
+}
+
 // ── Identity ────────────────────────────────────────────
 function getIdentity() {
   try {
@@ -82,19 +90,17 @@ function render() {
   var info = state.status.alliances[state.alliance];
   if (!info) { root.appendChild(mk('p', { cls: 'card', text: 'No data for ' + state.alliance })); return; }
 
-  // Pending train card
+  // Next train card + forecast
   var todayCard = mk('div', { cls: 'card' });
   todayCard.appendChild(mk('h2', null, svgIcon('i-train'), 'Next train — ' + state.alliance));
   if (info.pending && info.pending.cap && info.pending.vip) {
     var slotDate = new Date(info.pending.slotUtc * 1000);
-    var slotStr = slotDate.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    var slotStr = slotDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     todayCard.appendChild(mk('p', null,
       mk('strong', { text: 'Captain: ' }),
       info.pending.cap.name + ' (slot +' + info.pending.cap.slot + ' → ' + slotStr + ')'
     ));
-    todayCard.appendChild(mk('p', null,
-      mk('strong', { text: 'VIP: ' }), info.pending.vip.name
-    ));
+    todayCard.appendChild(mk('p', null, mk('strong', { text: 'VIP: ' }), info.pending.vip.name));
     var me = state.status.me;
     if (me && info.pending.cap.sitekey === me.sitekey) {
       todayCard.appendChild(mk('button', { cls: 'primary', text: 'Swap VIP', on: { click: openSwapVipModal } }));
@@ -103,6 +109,25 @@ function render() {
     todayCard.appendChild(mk('p', {
       text: info.signupCount < 2 ? 'Need at least 2 signups before train can run.' : 'Awaiting next pick (15:45 UTC).'
     }));
+  }
+  // 5-day forecast
+  var forecast = info.forecast || [];
+  if (forecast.length) {
+    var fcWrap = mk('details', { style: { marginTop: '12px' } });
+    fcWrap.appendChild(mk('summary', { style: { cursor: 'pointer', color: 'var(--muted)' }, text: 'Upcoming days (forecast →)' }));
+    var fcList = mk('div', { style: { marginTop: '8px', display: 'grid', gap: '6px' } });
+    forecast.forEach(function(f) {
+      var dt = new Date(f.slotUtc * 1000);
+      var label = dt.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ' ' +
+                  dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      var row = mk('div', { style: { padding: '8px 10px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px' } });
+      row.appendChild(mk('div', { style: { color: 'var(--muted)', fontSize: '11px' }, text: label + ' · slot +' + f.cap.slot + 'h' }));
+      row.appendChild(mk('div', null, mk('strong', { text: 'Cap: ' }), f.cap.name, '  ', mk('strong', { text: 'VIP: ' }), f.vip.name));
+      fcList.appendChild(row);
+    });
+    fcWrap.appendChild(fcList);
+    todayCard.appendChild(fcWrap);
+    todayCard.appendChild(mk('p', { style: { fontSize: '11px', color: 'var(--muted)', marginTop: '8px' }, text: 'Forecast is informational — actual picks fire daily at 15:45 UTC and may shift if signups change.' }));
   }
   root.appendChild(todayCard);
 
@@ -124,6 +149,22 @@ function render() {
     ));
     meCard.appendChild(mk('button', { cls: 'danger', on: { click: cancelSignup } },
       svgIcon('i-x-circle'), ' Cancel signup'));
+    var hist = (state.status.me && state.status.me.history) || [];
+    if (hist.length) {
+      var histWrap = mk('details', { style: { marginTop: '12px' } });
+      histWrap.appendChild(mk('summary', { style: { cursor: 'pointer', color: 'var(--muted)' }, text: 'My ride history (' + hist.length + ')' }));
+      var histList = mk('div', { style: { marginTop: '8px', display: 'grid', gap: '4px' } });
+      hist.forEach(function(h) {
+        var d = h.date ? (h.date.slice(0,4) + '-' + h.date.slice(4,6) + '-' + h.date.slice(6,8)) : '?';
+        var row = mk('div', { style: { padding: '6px 10px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '12px' } });
+        row.appendChild(mk('span', { text: d }));
+        row.appendChild(mk('span', { style: { marginLeft: '12px', color: 'var(--accent)', fontWeight: '600' }, text: h.role.toUpperCase() }));
+        row.appendChild(mk('span', { style: { marginLeft: '12px', color: 'var(--muted)' }, text: h.alliance }));
+        histList.appendChild(row);
+      });
+      histWrap.appendChild(histList);
+      meCard.appendChild(histWrap);
+    }
   } else if (!state.status.eventOver) {
     meCard.appendChild(mk('button', { cls: 'primary', text: 'Sign me up', on: { click: openSignupModal } }));
   }
@@ -131,7 +172,7 @@ function render() {
 
   // Not-signed-up roster grid
   var gapCard = mk('div', { cls: 'card' });
-  var allianceRoster = (state.roster || []).filter(function(p) { return p.alliance === state.alliance; });
+  var allianceRoster = (state.roster || []).filter(function(p) { return canonAlliance(p.alliance) === state.alliance; });
   var signedSitekeys = {};
   (info.signups || []).forEach(function(s) { signedSitekeys[s.sitekey] = true; });
   var missing = allianceRoster.filter(function(p) { return !p.siteKey || !signedSitekeys[p.siteKey]; });
@@ -244,7 +285,7 @@ async function openSignupModal() {
         body: JSON.stringify({
           sitekey: state.identity.siteKey,
           name: state.identity.name,
-          alliance: state.identity.alliance,
+          alliance: canonAlliance(state.identity.alliance) || state.alliance,
           preferredSlot: picked,
           notifyOK: !!notifyOK,
         })
@@ -362,6 +403,11 @@ async function refresh() {
 
 (async function init() {
   state.identity = getIdentity();
+  // Default the active tab to the player's alliance (DOG*/MSS* → DOG/MSS).
+  if (state.identity) {
+    var canon = canonAlliance(state.identity.alliance);
+    if (canon) state.alliance = canon;
+  }
   state.roster = await loadRoster().catch(function() { return []; });
   await refresh();
 })();
