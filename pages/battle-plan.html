@@ -250,6 +250,14 @@ section.sect{scroll-margin-top:120px;}
 .focus-row .fr-label{color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;font-size:.62rem;align-self:center;}
 .focus-row .fr-value{color:var(--text);}
 .focus-row .fr-value.muted{color:var(--muted);font-style:italic;}
+.fr-enemies{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem;}
+.fr-meta{color:var(--muted);font-size:.65rem;}
+.enemy-pill{font-family:inherit;font-size:.7rem;font-weight:700;padding:.1rem .45rem;border-radius:5px;background:rgba(121,192,255,.08);border:1px solid rgba(121,192,255,.3);color:var(--accent);cursor:pointer;transition:all .12s;}
+.enemy-pill:hover{background:rgba(121,192,255,.18);border-color:var(--accent);color:var(--text);}
+.focus-row.threat .enemy-pill{background:rgba(248,81,73,.08);border-color:rgba(248,81,73,.35);color:var(--red);}
+.focus-row.threat .enemy-pill:hover{background:rgba(248,81,73,.18);}
+.focus-row.threeway .enemy-pill{background:rgba(210,153,34,.1);border-color:rgba(210,153,34,.4);color:var(--yellow);}
+.focus-row.threeway .enemy-pill:hover{background:rgba(210,153,34,.2);}
 .adj-nc-tag.l3{background:rgba(248,81,73,.12);color:var(--red);border:1px solid rgba(248,81,73,.3);}
 .adj-nc-tag.l2{background:rgba(210,153,34,.12);color:var(--yellow);border:1px solid rgba(210,153,34,.3);}
 .adj-nc-tag.l1{background:rgba(121,192,255,.1);color:var(--accent);border:1px solid rgba(121,192,255,.28);}
@@ -1238,13 +1246,23 @@ body{top:0!important;}
         head.appendChild(el('span', 'fr-w', 'W-' + e.seq));
         head.appendChild(el('span', 'fr-buff', 'L' + e.level + ' · ' + (e.specName || '?')));
         rowEl.appendChild(head);
-        // Enemies row
+        // Enemies row — clickable pills per server
         var enRow = el('div', 'fr-row');
         enRow.appendChild(el('span', 'fr-label', 'Enemy'));
-        var enVal = el('span', 'fr-value');
+        var enVal = el('span', 'fr-value fr-enemies');
         if (opps.length){
-          var sids = opps.map(function(o){ return 'S' + o.opponent; }).join(' + ');
-          enVal.textContent = sids + (opps.length >= 2 ? ' (' + (opps.length + 1) + '-way)' : '');
+          opps.forEach(function(o, i){
+            if (i > 0) enVal.appendChild(document.createTextNode(' '));
+            var pill = document.createElement('button');
+            pill.type = 'button';
+            pill.className = 'enemy-pill';
+            pill.textContent = 'S' + o.opponent;
+            pill.addEventListener('click', function(){ openOppModal(o, rd); });
+            enVal.appendChild(pill);
+          });
+          if (opps.length >= 2){
+            enVal.appendChild(el('span', 'fr-meta', ' (' + (opps.length + 1) + '-way)'));
+          }
         } else {
           enVal.textContent = '—';
           enVal.classList.add('muted');
@@ -2059,14 +2077,21 @@ body{top:0!important;}
         asnRow.appendChild(el('span', 'fr-label', 'Assign'));
         asnRow.appendChild(el('span', 'fr-value', marchVal.label));
         rowEl.appendChild(asnRow);
-        // Enemies row
+        // Enemies row — clickable pills with fame
         var enRow = el('div', 'fr-row');
         enRow.appendChild(el('span', 'fr-label', 'Enemy'));
-        var enemyText = f.opps.map(function(o){
+        var enVal = el('span', 'fr-value fr-enemies');
+        f.opps.forEach(function(o, i){
+          if (i > 0) enVal.appendChild(document.createTextNode(' '));
           var k = (o.opFame||0) >= 1000 ? Math.round(o.opFame/1000)+'K' : (o.opFame||0);
-          return 'S' + o.opponent + ' (' + k + ')';
-        }).join(' + ');
-        enRow.appendChild(el('span', 'fr-value', enemyText));
+          var pill = document.createElement('button');
+          pill.type = 'button';
+          pill.className = 'enemy-pill';
+          pill.textContent = 'S' + o.opponent + ' · ' + k;
+          pill.addEventListener('click', function(){ openOppModal(o, rd); });
+          enVal.appendChild(pill);
+        });
+        enRow.appendChild(enVal);
         rowEl.appendChild(enRow);
         // Notes row
         var notes = [];
