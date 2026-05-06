@@ -1,0 +1,46 @@
+name: Train log backup
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch train logs from worker
+        env:
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          mkdir -p data
+          curl -sf -H "X-Admin-Password: $ADMIN_PASSWORD" \
+            "https://push-worker.27tb8s6fct.workers.dev/train/logs" \
+            -o data/train-log.json || echo "[]" > data/train-log.json
+          # Validate JSON
+          python3 -c "import json; d = json.load(open('data/train-log.json')); print('entries:', len(d) if isinstance(d, list) else len(d.get('entries', [])))"
+
+      - name: Check for changes and commit via API
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          git diff --quiet data/train-log.json && exit 0
+          # Get current file SHA (needed for update)
+          FILE_SHA=$(gh api repos/"$REPO"/contents/data/train-log.json --jq '.sha' 2>/dev/null || echo "")
+          CONTENT=$(base64 -w 0 data/train-log.json)
+          PAYLOAD=$(jq -n \
+            --arg msg "chore: snapshot train logs from worker KV" \
+            --arg content "$CONTENT" \
+            --arg sha "$FILE_SHA" \
+            '{message: $msg, content: $content} + (if $sha != "" then {sha: $sha} else {} end)')
+          gh api repos/"$REPO"/contents/data/train-log.json \
+            --method PUT --input - <<< "$PAYLOAD"
+          echo "Train log snapshot committed via API"
