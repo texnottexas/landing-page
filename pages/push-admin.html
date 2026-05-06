@@ -170,6 +170,7 @@
     <div class="tab-bar">
       <button class="tab-btn active" data-tab="notif-tab" type="button">Notifications</button>
       <button class="tab-btn" data-tab="cal-tab" type="button">Calendar Events</button>
+      <button class="tab-btn" data-tab="train-tab" type="button">Train</button>
     </div>
 
     <div class="tab-panel active" id="notif-tab">
@@ -287,6 +288,23 @@
         <div id="cal-events-container"></div>
       </div>
     </div><!-- /cal-tab -->
+
+    <div class="tab-panel" id="train-tab">
+      <div class="card">
+        <h2>Seal Stone Train — Override</h2>
+        <div id="train-admin-cards"></div>
+        <button class="secondary" id="train-refresh-btn" style="margin-top:.75rem;padding:.35rem .75rem;font-size:.75rem">Refresh</button>
+      </div>
+      <div class="card">
+        <h2>Test Push Notification</h2>
+        <label for="train-test-sitekey">Sitekey (16+ hex chars)</label>
+        <input type="text" id="train-test-sitekey" placeholder="sitekey" autocomplete="off" style="font-family:monospace">
+        <label for="train-test-msg">Message (optional)</label>
+        <input type="text" id="train-test-msg" placeholder="Custom message">
+        <button id="train-test-btn">Send Test Push</button>
+        <pre id="train-test-out" style="margin-top:.75rem;font-size:.7rem;color:var(--muted);white-space:pre-wrap;word-break:break-word;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:.5rem;display:none"></pre>
+      </div>
+    </div><!-- /train-tab -->
   </div>
 
   <!-- Subscribers Modal -->
@@ -927,6 +945,162 @@
     }
     secretEl.addEventListener('change', function() {
       if (this.value.trim()) loadSubscribers();
+    });
+
+    // --- Train tab ---
+    function trainClearChildren(n) {
+      while (n.firstChild) { n.removeChild(n.firstChild); }
+    }
+
+    function trainAdminLoad() {
+      var pw = document.getElementById('secret').value;
+      fetch(PUSH_WORKER + '/train/status', {
+        headers: { 'X-Admin-Password': pw }
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var host = document.getElementById('train-admin-cards');
+          trainClearChildren(host);
+          var alliances = data.alliances || {};
+          var keys = Object.keys(alliances);
+          if (keys.length === 0) {
+            var empty = document.createElement('p');
+            empty.className = 'empty-state';
+            empty.textContent = 'No alliance data returned.';
+            host.appendChild(empty);
+            return;
+          }
+          keys.forEach(function(a) {
+            var info = alliances[a];
+            var card = document.createElement('div');
+            card.style.background = 'var(--bg2)';
+            card.style.border = '1px solid var(--border)';
+            card.style.borderRadius = '8px';
+            card.style.padding = '.75rem 1rem';
+            card.style.marginBottom = '.75rem';
+
+            var h = document.createElement('div');
+            h.style.fontWeight = '600';
+            h.style.marginBottom = '.4rem';
+            h.style.color = 'var(--accent)';
+            h.textContent = a;
+            card.appendChild(h);
+
+            var meta = document.createElement('div');
+            meta.style.fontSize = '.75rem';
+            meta.style.color = 'var(--muted)';
+            meta.style.marginBottom = '.5rem';
+            var capPct = Math.round((info.capPoolPct || 0) * 100);
+            var vipPct = Math.round((info.vipPoolPct || 0) * 100);
+            meta.textContent = (info.signupCount || 0) + ' signups  |  cap pool ' + capPct + '%  |  vip pool ' + vipPct + '%';
+            card.appendChild(meta);
+
+            if (info.pending && info.pending.cap) {
+              var pendingInfo = document.createElement('div');
+              pendingInfo.style.fontSize = '.75rem';
+              pendingInfo.style.marginBottom = '.5rem';
+              var capName = info.pending.cap.name || '?';
+              var capSlot = info.pending.cap.slot != null ? info.pending.cap.slot : '?';
+              var vipName = info.pending.vip ? (info.pending.vip.name || '?') : '—';
+              pendingInfo.textContent = 'Pending cap: ' + capName + ' (slot ' + capSlot + ')  |  vip: ' + vipName;
+              card.appendChild(pendingInfo);
+
+              var btnRow = document.createElement('div');
+              btnRow.style.display = 'flex';
+              btnRow.style.gap = '.5rem';
+
+              var capBtn = document.createElement('button');
+              capBtn.style.padding = '.35rem .75rem';
+              capBtn.style.fontSize = '.75rem';
+              capBtn.style.marginTop = '0';
+              capBtn.textContent = 'Override CAP';
+              (function(alliance) {
+                capBtn.addEventListener('click', function() { trainOverride(alliance, 'cap'); });
+              }(a));
+              btnRow.appendChild(capBtn);
+
+              var vipBtn = document.createElement('button');
+              vipBtn.style.padding = '.35rem .75rem';
+              vipBtn.style.fontSize = '.75rem';
+              vipBtn.style.marginTop = '0';
+              vipBtn.textContent = 'Override VIP';
+              (function(alliance) {
+                vipBtn.addEventListener('click', function() { trainOverride(alliance, 'vip'); });
+              }(a));
+              btnRow.appendChild(vipBtn);
+
+              card.appendChild(btnRow);
+            } else {
+              var noPending = document.createElement('div');
+              noPending.style.fontSize = '.75rem';
+              noPending.style.color = 'var(--muted)';
+              noPending.textContent = 'No pending pick.';
+              card.appendChild(noPending);
+            }
+            host.appendChild(card);
+          });
+        })
+        .catch(function(err) {
+          var host = document.getElementById('train-admin-cards');
+          trainClearChildren(host);
+          var errEl = document.createElement('p');
+          errEl.style.color = 'var(--red)';
+          errEl.style.fontSize = '.8rem';
+          errEl.textContent = 'Error: ' + (err && err.message ? err.message : String(err));
+          host.appendChild(errEl);
+        });
+    }
+
+    function trainOverride(alliance, role) {
+      var pw = document.getElementById('secret').value;
+      var sk = prompt('Override target sitekey for ' + role.toUpperCase() + ' in ' + alliance + ':');
+      if (!sk || !sk.trim()) { return; }
+      fetch(PUSH_WORKER + '/train/override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Password': pw },
+        body: JSON.stringify({ alliance: alliance, role: role, targetSitekey: sk.trim() })
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          alert(JSON.stringify(d, null, 2));
+          trainAdminLoad();
+        })
+        .catch(function(err) {
+          alert('Error: ' + (err && err.message ? err.message : String(err)));
+        });
+    }
+
+    function trainTestNotify() {
+      var pw = document.getElementById('secret').value;
+      var sk = document.getElementById('train-test-sitekey').value.trim();
+      var msg = document.getElementById('train-test-msg').value.trim();
+      var outEl = document.getElementById('train-test-out');
+      if (!sk) { outEl.style.display = 'block'; outEl.textContent = 'Enter a sitekey first.'; return; }
+      var body = { sitekey: sk };
+      if (msg) { body.message = msg; }
+      fetch(PUSH_WORKER + '/train/test-notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Password': pw },
+        body: JSON.stringify(body)
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          outEl.style.display = 'block';
+          outEl.textContent = JSON.stringify(d, null, 2);
+        })
+        .catch(function(err) {
+          outEl.style.display = 'block';
+          outEl.textContent = 'Error: ' + (err && err.message ? err.message : String(err));
+        });
+    }
+
+    document.getElementById('train-test-btn').addEventListener('click', trainTestNotify);
+    document.getElementById('train-refresh-btn').addEventListener('click', trainAdminLoad);
+
+    // Hook Train tab into existing tab switch listener
+    // The existing listener activates by data-tab; we detect train-tab click here.
+    document.querySelectorAll('.tab-btn[data-tab="train-tab"]').forEach(function(btn) {
+      btn.addEventListener('click', trainAdminLoad);
     });
   </script>
 </body>
