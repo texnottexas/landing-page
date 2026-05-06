@@ -94,6 +94,7 @@ table.power.power-collapsed .hidden-row{display:none;}
 .fight .lvl.threeway-tag{margin-left:.3rem;color:var(--yellow);font-weight:700;}
 .fight.defense::before{background:var(--navy);}
 .fight.defense{background:rgba(56,139,253,.05);border-color:rgba(56,139,253,.3);}
+.fight-opp-wrap{display:flex;flex-direction:column;gap:.25rem;}
 .fight-top{display:flex;justify-content:space-between;align-items:flex-start;gap:.4rem;}
 .fight-id{font-size:1rem;font-weight:800;display:flex;align-items:center;gap:.35rem;}
 .fight-id .lvl{font-size:.55rem;padding:.1rem .4rem;border-radius:5px;background:rgba(121,192,255,.1);color:var(--accent);border:1px solid rgba(121,192,255,.25);font-weight:700;letter-spacing:.04em;}
@@ -829,9 +830,23 @@ body{top:0!important;}
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
   }
-  function clampGrid(grid, itemSelector, threshold, noun){
+  // Read live grid column count for responsive clamp thresholds.
+  function gridColCount(el){
+    try {
+      var cs = getComputedStyle(el).gridTemplateColumns;
+      if (!cs || cs === 'none') return 1;
+      return cs.trim().split(/\s+/).length || 1;
+    } catch(e){ return 1; }
+  }
+  // Clamp a grid to ~2 rows (cols × 2) of items; partial 3rd row shows via gradient.
+  // If maxRows is given, use that. Falls back to fixed threshold for non-grid lists.
+  function clampGrid(grid, itemSelector, fallbackThreshold, noun){
     if (!grid) return;
-    var count = grid.querySelectorAll(itemSelector).length;
+    var items = grid.querySelectorAll(itemSelector);
+    var count = items.length;
+    if (count === 0) return;
+    var cols = gridColCount(grid);
+    var threshold = cols > 1 ? cols * 2 : fallbackThreshold;
     if (count <= threshold) return;
     grid.classList.add('clampable', 'collapsed');
     var btn = document.createElement('button');
@@ -839,11 +854,36 @@ body{top:0!important;}
     btn.className = 'show-more-btn';
     var hidden = count - threshold;
     var label = noun || 'items';
-    btn.textContent = 'Show ' + hidden + ' more ' + label + ' · ' + count + ' total';
+    function setLabel(open){
+      btn.textContent = open ? 'Show fewer' : ('Show ' + hidden + ' more ' + label + ' · ' + count + ' total');
+    }
+    setLabel(false);
     btn.addEventListener('click', function(){
       var collapsed = grid.classList.toggle('collapsed');
-      btn.textContent = collapsed ? ('Show ' + hidden + ' more ' + label + ' · ' + count + ' total') : 'Show fewer';
+      if (collapsed) applyMaxHeight();
+      else grid.style.maxHeight = '';
+      setLabel(!collapsed);
     });
+    // Recompute threshold + max-height on resize so partial 3rd row stays correct.
+    function applyMaxHeight(){
+      if (!grid.classList.contains('collapsed')) return;
+      var firstItems = grid.querySelectorAll(itemSelector);
+      if (!firstItems.length) return;
+      var firstRect = firstItems[0].getBoundingClientRect();
+      var rowHeight = firstRect.height;
+      // Read gap from grid style
+      var gap = parseFloat(getComputedStyle(grid).rowGap || getComputedStyle(grid).gap || '8') || 8;
+      // Show 2 full rows + ~30% of 3rd row to hint there's more
+      var max = (rowHeight + gap) * 2 + rowHeight * 0.3;
+      grid.style.maxHeight = max + 'px';
+    }
+    applyMaxHeight();
+    if (window.ResizeObserver){
+      var ro = new ResizeObserver(applyMaxHeight);
+      ro.observe(grid);
+    } else {
+      window.addEventListener('resize', applyMaxHeight);
+    }
     if (grid.parentNode) grid.parentNode.insertBefore(btn, grid.nextSibling);
   }
   function clampFightGrid(grid, threshold){
@@ -2140,11 +2180,38 @@ body{top:0!important;}
       spec.appendChild(el('span', null, d.specName || ('Spec ' + d.specId)));
       card.appendChild(spec);
 
-      var oppDiv = el('div', 'fight-opp');
-      oppDiv.appendChild(makeIcon('users', 14));
-      var oppText = e.atkFames.map(function(a){ return 'S' + a.sid + ' (' + fmtFame(a.fame) + ' fame)'; }).join(' + ');
-      oppDiv.appendChild(el('span', null, oppText));
-      card.appendChild(oppDiv);
+      var oppWrap = el('div', 'fight-opp-wrap');
+      e.atkFames.forEach(function(a, i){
+        var pow = (rd.sectorPower || []).find(function(p){ return p.sid === a.sid; }) || {};
+        var oppBtn = document.createElement('button');
+        oppBtn.type = 'button';
+        oppBtn.className = 'fight-opp';
+        oppBtn.appendChild(makeIcon('users', 14));
+        var oppText = el('span');
+        var prefix = i === 0 ? 'vs ' : '+ ';
+        oppText.appendChild(document.createTextNode(prefix));
+        oppText.appendChild(el('span', 'opp-sid', 'S' + a.sid));
+        oppText.appendChild(el('span', 'opp-where', ' · ' + fmtFame(a.fame) + ' fame'));
+        oppBtn.appendChild(oppText);
+        var info = makeIcon('info', 14);
+        info.classList.add('opp-info-icon');
+        oppBtn.appendChild(info);
+        var synthFight = {
+          seq: d.seq,
+          level: d.level,
+          specId: d.specId,
+          opponent: a.sid,
+          opFame: pow.score2 || a.fame,
+          opScore: pow.score || 0,
+          opPI: pow.powerIndex || 0,
+          sectorRank: pow.sectorRank || 999,
+          tier: pow.tier || 'C',
+          is3way: atks.length >= 2
+        };
+        oppBtn.addEventListener('click', function(){ openOppModal(synthFight, rd); });
+        oppWrap.appendChild(oppBtn);
+      });
+      card.appendChild(oppWrap);
 
       // March suggestion row
       var march = el('div', 'fight-march tone-' + e.march.tone);
