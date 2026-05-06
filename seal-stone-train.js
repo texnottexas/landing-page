@@ -408,6 +408,77 @@ async function cancelSignup() {
   await refresh();
 }
 
+// ── Settings modal ──────────────────────────────────────
+async function hardRefresh() {
+  try {
+    if ('serviceWorker' in navigator) {
+      var regs = await navigator.serviceWorker.getRegistrations();
+      for (var i = 0; i < regs.length; i++) { try { await regs[i].unregister(); } catch (e) {} }
+    }
+    if ('caches' in window) {
+      var keys = await caches.keys();
+      for (var j = 0; j < keys.length; j++) { try { await caches.delete(keys[j]); } catch (e) {} }
+    }
+  } catch (e) {}
+  // Cache-bust query param + reload
+  var u = new URL(window.location.href);
+  u.searchParams.set('_t', String(Date.now()));
+  window.location.replace(u.toString());
+}
+
+window.openSettingsModal = function openSettingsModal() {
+  var modalBg = mk('div', { cls: 'modal-bg show' });
+  var modal = mk('div', { cls: 'modal' });
+  modal.appendChild(mk('h2', null, svgIcon('i-shield'), ' Settings'));
+
+  // Identity section
+  modal.appendChild(mk('div', { style: { marginTop: '8px', fontSize: '11px', textTransform: 'uppercase', color: 'var(--muted)' }, text: 'Identity' }));
+  if (state.identity) {
+    var idBox = mk('div', { style: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px', marginTop: '6px', fontSize: '13px' } });
+    idBox.appendChild(mk('div', null, mk('strong', null, 'Name: '), state.identity.name || '?'));
+    idBox.appendChild(mk('div', null, mk('strong', null, 'Alliance: '), state.identity.alliance || '?'));
+    idBox.appendChild(mk('div', { style: { fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)', marginTop: '4px' } }, mk('strong', null, 'siteKey: '), state.identity.siteKey || '?'));
+    modal.appendChild(idBox);
+    modal.appendChild(mk('p', { style: { fontSize: '11px', color: 'var(--muted)', marginTop: '6px' }, text: 'If your name/alliance is wrong, re-verify your in-game UID on the home page.' }));
+    var verifyBtn = mk('a', { attrs: { href: '/index.html' }, cls: 'primary', style: { display: 'inline-block', textDecoration: 'none', textAlign: 'center', marginTop: '4px' }, text: 'Open home to re-verify UID' });
+    modal.appendChild(verifyBtn);
+  } else {
+    modal.appendChild(mk('p', { style: { color: 'var(--muted)', fontSize: '13px' }, text: 'No identity set. Visit the home page to verify your UID.' }));
+  }
+
+  // Hard refresh section
+  modal.appendChild(mk('div', { style: { marginTop: '20px', fontSize: '11px', textTransform: 'uppercase', color: 'var(--muted)' }, text: 'Cache' }));
+  modal.appendChild(mk('p', { style: { fontSize: '12px', color: 'var(--muted)', margin: '6px 0' }, text: 'If something looks stuck or stale, clear the page cache + service worker and reload.' }));
+  modal.appendChild(mk('button', { cls: 'danger', text: 'Hard refresh', on: { click: hardRefresh } }));
+
+  // Full ride history
+  modal.appendChild(mk('div', { style: { marginTop: '20px', fontSize: '11px', textTransform: 'uppercase', color: 'var(--muted)' }, text: 'My ride history' }));
+  var hist = (state.status && state.status.me && state.status.me.history) || [];
+  if (hist.length === 0) {
+    modal.appendChild(mk('p', { style: { color: 'var(--muted)', fontSize: '13px', margin: '6px 0' }, text: 'No rides yet.' }));
+  } else {
+    var histList = mk('div', { style: { marginTop: '6px', display: 'grid', gap: '4px', maxHeight: '300px', overflow: 'auto' } });
+    hist.forEach(function(h) {
+      var d = h.date ? (h.date.slice(0,4) + '-' + h.date.slice(4,6) + '-' + h.date.slice(6,8)) : '?';
+      var row = mk('div', { style: { padding: '8px 10px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '12px' } });
+      row.appendChild(mk('span', { text: d }));
+      row.appendChild(mk('span', { style: { color: 'var(--accent)', fontWeight: '600' }, text: h.role.toUpperCase() }));
+      row.appendChild(mk('span', { style: { color: 'var(--muted)' }, text: h.alliance }));
+      if (h.slotUtc) {
+        var dt = new Date(h.slotUtc * 1000);
+        row.appendChild(mk('span', { style: { color: 'var(--muted)', marginLeft: 'auto', fontSize: '11px' }, text: dt.toLocaleString([], { hour: '2-digit', minute: '2-digit' }) + ' UTC' }));
+      }
+      histList.appendChild(row);
+    });
+    modal.appendChild(histList);
+  }
+
+  // Close
+  modal.appendChild(mk('button', { cls: 'danger', text: 'Close', style: { marginTop: '20px' }, on: { click: function() { document.body.removeChild(modalBg); } } }));
+  modalBg.appendChild(modal);
+  document.body.appendChild(modalBg);
+};
+
 // ── Refresh + init ──────────────────────────────────────
 async function refresh() {
   var sitekey = state.identity ? state.identity.siteKey : '';
