@@ -304,7 +304,10 @@ section.sect{scroll-margin-top:120px;}
 .assign-grid{display:grid;gap:.55rem;grid-template-columns:1fr;}
 @media (min-width:720px){.assign-grid{grid-template-columns:repeat(2,1fr);}}
 .assign-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.7rem .9rem;}
-.assign-card h4{font-size:.78rem;font-weight:800;margin-bottom:.45rem;display:flex;align-items:center;gap:.4rem;}
+.assign-card h4{font-size:.78rem;font-weight:800;margin-bottom:.45rem;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;}
+.assign-card h4 .count{margin-left:auto;font-size:.66rem;background:var(--surface);color:var(--muted);padding:.1rem .4rem;border-radius:10px;font-weight:700;}
+.assign-card .desc{font-size:.7rem;color:var(--muted);margin:.3rem 0 .55rem;line-height:1.45;}
+.assign-card .focus-rows{margin-top:0;}
 .assign-card h4 .pill{font-size:.6rem;padding:.1rem .4rem;border-radius:5px;font-weight:700;}
 .assign-card.t1 h4 .pill{background:rgba(248,81,73,.14);color:var(--red);border:1px solid rgba(248,81,73,.3);}
 .assign-card.t2 h4 .pill{background:rgba(210,153,34,.12);color:var(--yellow);border:1px solid rgba(210,153,34,.3);}
@@ -1985,6 +1988,7 @@ body{top:0!important;}
       3: { cls: 't3', label: 'P3', title: 'Light Activity (20–50K fame)', desc: 'Token attacker. 20–30 marches by any player wins.' },
       4: { cls: 't4', label: 'P4', title: 'Inactive (<20K fame)', desc: 'Will likely ghost. 10–15 marches or skip.' }
     };
+    var ncUnlocks = rd.declarationNcUnlocks || {};
     var grid = el('div', 'assign-grid');
     [1,2,3,4].forEach(function(p){
       if (!tiers[p].length) return;
@@ -1993,19 +1997,55 @@ body{top:0!important;}
       var h4 = el('h4');
       h4.appendChild(el('span', 'pill', m.label));
       h4.appendChild(el('span', null, m.title));
+      h4.appendChild(el('span', 'count', tiers[p].length));
       card.appendChild(h4);
-      var seqs = el('div', 'seqs');
-      tiers[p].forEach(function(f){
-        var sids = f.opps.map(function(o){ return 'S' + o.opponent + ' (' + (((o.opFame||0)>=1000) ? Math.round(o.opFame/1000)+'K' : (o.opFame||0)) + ')'; }).join(' + ');
-        var marchVal = marchSuggestionMultiAttack(f.opps.map(function(o){ return o.opFame || 0; }), 'TAKE');
-        var label = 'TAKE W-' + f.seq + ' L' + f.level + (f.opps.length >= 2 ? ' ⚠ ' + (f.opps.length + 1) + '-way ' : ' vs ') + sids + ' → ' + marchVal.label;
-        var s = el('span', 'seq', label);
-        if (f.opps.length >= 2) s.classList.add('threeway');
-        seqs.appendChild(s);
-      });
-      card.appendChild(seqs);
       card.appendChild(el('div', 'desc', m.desc));
+      var rowsBox = el('div', 'focus-rows');
+      tiers[p].forEach(function(f){
+        var fames = f.opps.map(function(o){ return o.opFame || 0; });
+        var marchVal = marchSuggestionMultiAttack(fames, 'TAKE');
+        var threeWay = f.opps.length >= 2;
+        var rowEl = el('div', 'focus-row');
+        if (threeWay) rowEl.classList.add('threeway');
+        // Head: Action verb + W#
+        var head = el('div', 'fr-head');
+        var verb = el('span', 'verb verb-take', 'TAKE');
+        head.appendChild(verb);
+        head.appendChild(el('span', 'fr-w', 'W-' + f.seq));
+        head.appendChild(el('span', 'fr-buff', SPEC_NAMES[f.specId] || ('Spec ' + f.specId)));
+        rowEl.appendChild(head);
+        // Assignment row
+        var asnRow = el('div', 'fr-row');
+        asnRow.appendChild(el('span', 'fr-label', 'Assign'));
+        asnRow.appendChild(el('span', 'fr-value', marchVal.label));
+        rowEl.appendChild(asnRow);
+        // Enemies row
+        var enRow = el('div', 'fr-row');
+        enRow.appendChild(el('span', 'fr-label', 'Enemy'));
+        var enemyText = f.opps.map(function(o){
+          var k = (o.opFame||0) >= 1000 ? Math.round(o.opFame/1000)+'K' : (o.opFame||0);
+          return 'S' + o.opponent + ' (' + k + ')';
+        }).join(' + ');
+        enRow.appendChild(el('span', 'fr-value', enemyText));
+        rowEl.appendChild(enRow);
+        // Notes row
+        var notes = [];
+        if (threeWay) notes.push((f.opps.length + 1) + '-way fight');
+        var unlocks = ncUnlocks[String(f.seq)];
+        if (unlocks && unlocks.length) notes.push('unlocks ' + formatNcUnlockList(unlocks));
+        var ntRow = el('div', 'fr-row');
+        ntRow.appendChild(el('span', 'fr-label', 'Notes'));
+        var ntVal = el('span', 'fr-value');
+        if (notes.length) ntVal.textContent = notes.join(' · ');
+        else { ntVal.textContent = '—'; ntVal.classList.add('muted'); }
+        ntRow.appendChild(ntVal);
+        rowEl.appendChild(ntRow);
+        rowsBox.appendChild(rowEl);
+      });
+      card.appendChild(rowsBox);
       grid.appendChild(card);
+      // Per-tier clamp after 6 cards (~2 rows desktop)
+      clampGrid(rowsBox, '.focus-row', 6, 'fights');
     });
     section.appendChild(grid);
     root.appendChild(section);
