@@ -190,13 +190,21 @@ table.power.power-collapsed .hidden-row{display:none;}
 .fight-march .march-hint{color:var(--muted);font-style:italic;}
 /* Adj-owned-NC tag on defense card */
 .adj-nc-tag{font-size:.55rem;padding:.1rem .35rem;border-radius:4px;margin-left:.25rem;}
-/* Section nav */
-.section-nav{display:flex;flex-wrap:wrap;gap:.4rem;padding:.5rem 0 1rem;position:sticky;top:0;z-index:50;background:linear-gradient(to bottom,var(--bg) 80%,transparent);}
+/* Section nav — sticky below page header */
+.section-nav{display:flex;flex-wrap:wrap;gap:.4rem;padding:.55rem .25rem;position:sticky;top:54px;z-index:90;background:var(--bg);border-bottom:1px solid var(--border);margin-bottom:1rem;}
 .section-nav a{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .65rem;background:var(--card);border:1px solid var(--border);border-radius:18px;font-size:.72rem;font-weight:600;color:var(--muted);text-decoration:none;transition:all .12s;}
 .section-nav a:hover{color:var(--text);border-color:var(--accent);background:rgba(121,192,255,.08);}
+.section-nav a.active{color:var(--text);border-color:var(--accent);background:rgba(121,192,255,.12);}
 .section-nav a .nav-count{font-size:.66rem;background:var(--surface);color:var(--muted);padding:0 .35rem;border-radius:10px;font-weight:700;}
-/* Section anchor offset (sticky nav) */
-section.sect{scroll-margin-top:60px;}
+@media (max-width:700px){.section-nav{top:48px;padding:.4rem .15rem;gap:.3rem;}}
+/* Section anchor offset (sticky nav + sticky header) */
+section.sect{scroll-margin-top:120px;}
+/* Back-to-top floating button */
+.back-to-top{position:fixed;bottom:1.2rem;right:1.2rem;width:42px;height:42px;border-radius:50%;background:var(--accent);color:var(--bg);border:none;display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.4);z-index:80;transition:transform .15s,background .15s;}
+.back-to-top:hover{background:var(--text);transform:translateY(-2px);}
+.back-to-top.visible{display:inline-flex;}
+.back-to-top svg{stroke:var(--bg);transform:rotate(-90deg);}
+@media (max-width:700px){.back-to-top{bottom:.9rem;right:.9rem;width:38px;height:38px;}}
 /* Filter bar */
 .filter-bar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;padding:.5rem 0 .6rem;font-size:.74rem;}
 .filter-bar label{color:var(--muted);font-weight:600;display:inline-flex;align-items:center;gap:.35rem;}
@@ -760,9 +768,11 @@ body{top:0!important;}
     var sections = root.querySelectorAll('section[data-nav-label]');
     if (!sections.length) return;
     var nav = el('nav', 'section-nav notranslate');
+    var navLinks = [];
     sections.forEach(function(s){
       var a = document.createElement('a');
       a.href = '#' + s.id;
+      a.dataset.targetId = s.id;
       var label = s.getAttribute('data-nav-label');
       var icon = s.getAttribute('data-nav-icon');
       var count = s.getAttribute('data-nav-count');
@@ -770,10 +780,48 @@ body{top:0!important;}
       a.appendChild(el('span', null, label));
       if (count) a.appendChild(el('span', 'nav-count', count));
       nav.appendChild(a);
+      navLinks.push({ link: a, sectionId: s.id });
     });
     var hero = root.querySelector('section.hero');
     if (hero && hero.nextSibling) root.insertBefore(nav, hero.nextSibling);
     else root.insertBefore(nav, root.children[1] || null);
+    // Active-section highlight on scroll (intersection observer)
+    if ('IntersectionObserver' in window){
+      var visibility = {};
+      var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(en){
+          visibility[en.target.id] = en.isIntersecting ? en.intersectionRatio : 0;
+        });
+        var bestId = null, bestRatio = 0;
+        Object.keys(visibility).forEach(function(id){
+          if (visibility[id] > bestRatio){ bestRatio = visibility[id]; bestId = id; }
+        });
+        navLinks.forEach(function(nl){
+          if (nl.sectionId === bestId) nl.link.classList.add('active');
+          else nl.link.classList.remove('active');
+        });
+      }, { rootMargin: '-130px 0px -55% 0px', threshold: [0, 0.2, 0.5, 1] });
+      sections.forEach(function(s){ io.observe(s); });
+    }
+  }
+  function ensureBackToTop(){
+    if (document.getElementById('back-to-top')) return;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'back-to-top';
+    btn.className = 'back-to-top';
+    btn.setAttribute('aria-label', 'Back to top');
+    btn.appendChild(makeIcon('arrow', 18));
+    btn.addEventListener('click', function(){
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    document.body.appendChild(btn);
+    var onScroll = function(){
+      if (window.scrollY > 600) btn.classList.add('visible');
+      else btn.classList.remove('visible');
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
   }
   function clampFightGrid(grid, threshold){
     if (!grid) return;
@@ -992,10 +1040,11 @@ body{top:0!important;}
     section.appendChild(t);
     var grid = el('div', 'rules');
     var rules = [
-      { cls: 'accent', icon: 'compass', title: 'Adjacency = 4-way (no diagonals)', body: 'Capturing a wasteland only opens orthogonal neighbors (N/S/E/W). Plan capture chains in straight lines toward the next NC.' },
+      { cls: 'red', icon: 'flag', title: 'Round cycle = one week per shuffle', body: 'Each round: Wasteland Declaration → Wasteland Battle → Neutral City Declaration (1 Lv1 + 1 Lv2 + 1 Lv3 attack max, unlimited defense; Lv4 / Storm\'s Eye if we own a Lv3) → NC Battle → Storm Duel → MAP RESHUFFLE. Wastelands DO NOT persist across rounds. NC ownership DOES persist.' },
+      { cls: 'accent', icon: 'compass', title: 'Adjacency = 4-way (no diagonals)', body: 'Capturing a wasteland only opens orthogonal neighbors (N/S/E/W). Owned NCs also extend 4-way reach for declaring on adjacent enemy NCs in this round\'s NC stage.' },
       { cls: 'purple', icon: 'arrow', title: 'Empty cells (type 0) allow jump-overs', body: 'Blank cells in the grid count as bridges — an enemy adjacent to one side can target our wasteland on the other side. Watch the edges of our cluster.' },
       { cls: 'red', icon: 'sword', title: 'Combat buffs are the priority', body: 'ATK / HP / DEF / DMG Inc / DMG Red caps are all under 50% filled. Wins on combat L3 wastelands feed everything else for the rest of the event.' },
-      { cls: 'green', icon: 'castle', title: 'Goal: capture wastelands then reach NCs', body: 'Every wasteland we hold expands our 4-way reach. NCs (3pts each, more for Lv2/Lv3) are the score multiplier. The capture flow below shows which wins unlock which NCs next round.' },
+      { cls: 'green', icon: 'castle', title: 'Wastelands → NC stage same round', body: 'Every wasteland we capture this round expands our reach for THIS round\'s NC declaration stage. NC Lv1 = 3pts, Lv2 = 5pts, Lv3 = 8pts. NCs we own carry forward; wastelands reshuffle.' },
       { cls: 'yellow', icon: 'info', title: 'Mothership-first on contested L3', body: 'Mothership = 100 troops at 5 HP. Sweeper / Patrol = 50 at 3 HP. For high-power opponent fights, fill Mothership first; smalls only if uncontested.' },
       { cls: 'accent', icon: 'bolt', title: 'No Rockfield', body: 'Use your strongest standard march. Wasted attacks = lost hearts on our side. If you cannot kill anyone at your wasteland, ping a leader for a reassign.' }
     ];
@@ -1493,12 +1542,8 @@ body{top:0!important;}
     var note = el('div', 'rule-box');
     note.appendChild(makeIcon('compass', 18));
     var body = el('div', 'body');
-    body.appendChild(el('strong', null, 'How to read this: '));
-    body.appendChild(document.createTextNode('NCs that need 2 captures to reach. Win '));
-    body.appendChild(el('b', null, 'W-A'));
-    body.appendChild(document.createTextNode(' this round, then declare '));
-    body.appendChild(el('b', null, 'W-B'));
-    body.appendChild(document.createTextNode(' next round. Two rounds out, the NC becomes adjacent and we can declare it. Use this to plan capture-chains in straight lines (4-way, no diagonals).'));
+    body.appendChild(el('strong', null, 'Speculative — map reshuffles next round. '));
+    body.appendChild(document.createTextNode('NCs that would need 2 captures to reach IF the map persisted. It doesn\'t — wasteland IDs and positions reshuffle every round. Read this as cluster geometry (which directions hold dense NC reach), not as a literal capture chain. Only NC ownership persists.'));
     note.appendChild(body);
     section.appendChild(note);
 
@@ -1625,9 +1670,8 @@ body{top:0!important;}
     var t = el('div', 'sect-title');
     var dot = el('span', 'dot'); dot.style.background = 'var(--navy)';
     t.appendChild(dot);
-    t.appendChild(el('span', null, '3-Hop NC Pathways — Reachable in 3 Rounds'));
-    var roundsTag = (roundsLeft > 0 ? roundsLeft + ' rounds left · ' : '') + paths.length + ' more NCs';
-    t.appendChild(el('span', 'tag', roundsTag));
+    t.appendChild(el('span', null, '3-Hop NC Pathways — Speculative (cross-round)'));
+    t.appendChild(el('span', 'tag', paths.length + ' patterns · reshuffles each round'));
     section.appendChild(t);
 
     // Collapsible body
@@ -1646,8 +1690,8 @@ body{top:0!important;}
     note.style.borderColor = 'rgba(56,139,253,.28)';
     note.appendChild(makeIcon('compass', 18));
     var noteBody = el('div', 'body');
-    noteBody.appendChild(el('strong', null, 'Long-term planning: '));
-    noteBody.appendChild(document.createTextNode('NCs that need 3 captures to reach. Win W-A this round, declare W-B next round, declare W-C the round after. Three rounds out the NC opens up. With ' + roundsLeft + ' rounds left in the event, these are still actionable.'));
+    noteBody.appendChild(el('strong', null, 'Pattern study (NOT actionable as a chain): '));
+    noteBody.appendChild(document.createTextNode('Map reshuffles every round — wasteland IDs and positions change. These 3-step paths assume the current map persists, which it does NOT. Use this as a shape-of-cluster signal (which corners of the map open richest NC clusters) — not a literal "do W-A then W-B then W-C" plan. NC ownership IS what carries forward; wastelands reset.'));
     note.appendChild(noteBody);
     body.appendChild(note);
 
@@ -2115,6 +2159,7 @@ body{top:0!important;}
     buildAssignment(rd, root);
     buildFoot(rd, root);
     buildSectionNav(root);
+    ensureBackToTop();
   }
 
   function showError(msg){
