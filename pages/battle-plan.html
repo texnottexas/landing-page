@@ -539,22 +539,34 @@ body{top:0!important;}
     if (opPI >= 15) return 3;
     return 4;
   }
-  // March allocation by opponent fame (Gary's framework).
-  // Take fights: more aggressive (we want to win); Defend fights: invest only
-  // proportional to threat — buff retention vs march cost.
+  // March allocation by opponent fame.
+  // We are #1 combat in sector — 1 strong player ≈ 2× average. Volume bands
+  // tuned for "1 strong player can carry the fight"; 200 cap reserved only when
+  // multi-strong opponents stack.
+  // TAKE = we declared (offense). DEFEND = enemy declared on us (incoming).
   function marchSuggestionByFame(opFame, verb){
     var fame = opFame || 0;
     if (verb === 'TAKE'){
-      if (fame >= 100000) return { count: 100, label: 'Mothership full (100)', tone: 'high' };
-      if (fame >= 50000)  return { count: 80,  label: '80 marches',           tone: 'high' };
-      if (fame >= 20000)  return { count: 50,  label: '50 marches',           tone: 'mid'  };
-      return { count: 30, label: '30 marches', tone: 'low' };
+      if (fame >= 100000) return { count: 65, label: '60–70 (1 strong)',       tone: 'high' };
+      if (fame >= 50000)  return { count: 45, label: '40–50 (1 strong)',       tone: 'mid'  };
+      if (fame >= 20000)  return { count: 25, label: '20–30 marches',          tone: 'low'  };
+      return { count: 15, label: '10–15 marches', tone: 'low' };
     }
     // DEFEND
-    if (fame >= 100000) return { count: 100, label: 'Mothership full (100)', tone: 'high' };
-    if (fame >= 50000)  return { count: 60,  label: '50–60 marches',         tone: 'mid'  };
-    if (fame >= 20000)  return { count: 25,  label: '20–30 marches (token)', tone: 'low'  };
+    if (fame >= 100000) return { count: 65, label: '60–70 (1 strong)',         tone: 'high' };
+    if (fame >= 50000)  return { count: 40, label: '40 (1 strong)',            tone: 'mid'  };
+    if (fame >= 20000)  return { count: 20, label: '20 marches (token)',       tone: 'low'  };
     return { count: 0, label: 'Skip if buff not needed', tone: 'skip' };
+  }
+  // Bonus for multi-attacker fights: bump one tier up because volume stacks.
+  function marchSuggestionMultiAttack(maxFame, attackerCount, verb){
+    var base = marchSuggestionByFame(maxFame, verb);
+    if (attackerCount <= 1) return base;
+    // 3-way+ → escalate band
+    if (base.tone === 'high') return { count: 100, label: 'Full Mothership (100) — multi-attacker', tone: 'high' };
+    if (base.tone === 'mid')  return { count: 65,  label: '60–70 (1 strong) — multi-attacker',      tone: 'high' };
+    if (base.tone === 'low')  return { count: 35,  label: '30–40 — multi-attacker',                 tone: 'mid'  };
+    return { count: 20, label: '20 marches — multi-attacker', tone: 'low' };
   }
   // Combined: max of TAKE + DEFEND when both apply (multi-way).
   function maxMarches(a, b){ return (a.count >= b.count) ? a : b; }
@@ -1608,10 +1620,10 @@ body{top:0!important;}
       tiers[p].sort(function(a,b){ return (b.topOpp.opPI||0) - (a.topOpp.opPI||0); });
     });
     var meta = {
-      1: { cls: 't1', label: 'P1', title: 'Real-Threat Fights — Top Power Players', desc: 'Opponent fame ≥100K. Full Mothership; smalls if needed. The only fights where a wrong assignment can lose us points.' },
-      2: { cls: 't2', label: 'P2', title: 'Top 4–10 Power Players', desc: 'Opponent fame <100K but PI ≥30. Full Mothership. NC unlock bonuses worth extra effort.' },
-      3: { cls: 't3', label: 'P3', title: 'Mid Power Players', desc: 'Opponent PI 15–30. Standard march composition. Routine wins.' },
-      4: { cls: 't4', label: 'P4', title: 'Standard Players', desc: 'Opponent PI <15 or near-empty. We are 5–10× stronger; assign anyone.' }
+      1: { cls: 't1', label: 'P1', title: 'Most-Active Opponents (≥100K fame)', desc: 'Opponent fame ≥100K — likely to ship full attack stack. We are still stronger combat-wise; 1 strong player with 60–70 marches carries. Multi-attacker → escalate to 100.' },
+      2: { cls: 't2', label: 'P2', title: 'Moderate Activity (50–100K fame)', desc: 'Opponent ships meaningful stack but lower commitment. 1 strong player, 40–50 marches.' },
+      3: { cls: 't3', label: 'P3', title: 'Light Activity (20–50K fame)', desc: 'Token attacker. 20–30 marches by any player wins.' },
+      4: { cls: 't4', label: 'P4', title: 'Inactive (<20K fame)', desc: 'Will likely ghost. 10–15 marches or skip.' }
     };
     var grid = el('div', 'assign-grid');
     [1,2,3,4].forEach(function(p){
@@ -1625,7 +1637,7 @@ body{top:0!important;}
       var seqs = el('div', 'seqs');
       tiers[p].forEach(function(f){
         var sids = f.opps.map(function(o){ return 'S' + o.opponent + ' (' + (((o.opFame||0)>=1000) ? Math.round(o.opFame/1000)+'K' : (o.opFame||0)) + ')'; }).join(' + ');
-        var marchVal = marchSuggestionByFame(f.topOpp.opFame || 0, 'TAKE');
+        var marchVal = marchSuggestionMultiAttack(f.topOpp.opFame || 0, f.opps.length, 'TAKE');
         var label = 'TAKE W-' + f.seq + ' L' + f.level + (f.opps.length >= 2 ? ' ⚠ ' + (f.opps.length + 1) + '-way ' : ' vs ') + sids + ' → ' + marchVal.label;
         var s = el('span', 'seq', label);
         if (f.opps.length >= 2) s.classList.add('threeway');
@@ -1685,7 +1697,7 @@ body{top:0!important;}
       var atkFames = atks.map(function(s){ return { sid: s, fame: fameOfSid(rd, s) }; });
       atkFames.sort(function(a,b){ return b.fame - a.fame; });
       var topFame = atkFames[0] ? atkFames[0].fame : 0;
-      var march = marchSuggestionByFame(topFame, 'DEFEND');
+      var march = marchSuggestionMultiAttack(topFame, atks.length, 'DEFEND');
       var adjNcs = adjacentOwnedNCs(rd, d.seq);
       var maxAdjLevel = adjNcs.reduce(function(m, n){ return Math.max(m, n.level); }, 0);
       return { d: d, atkFames: atkFames, topFame: topFame, march: march, adjNcs: adjNcs, maxAdjLevel: maxAdjLevel };
