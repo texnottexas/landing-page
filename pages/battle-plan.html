@@ -159,6 +159,40 @@ table.power.power-collapsed .hidden-row{display:none;}
 .nc-target-tag.l2{background:rgba(210,153,34,.14);color:var(--yellow);border:1px solid rgba(210,153,34,.3);}
 .nc-target-tag.l1{background:rgba(121,192,255,.14);color:var(--accent);border:1px solid rgba(121,192,255,.3);}
 .nc-target-rule{margin-top:.4rem;font-size:.7rem;color:var(--muted);font-style:italic;}
+/* Pillage Priority section */
+.pillage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:.7rem;}
+.pillage-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.85rem 1rem;display:flex;flex-direction:column;gap:.5rem;}
+.pillage-card.l3{border-color:rgba(248,81,73,.4);background:rgba(248,81,73,.04);}
+.pillage-card.l2{border-color:rgba(210,153,34,.4);background:rgba(210,153,34,.04);}
+.pillage-card.l1{border-color:rgba(121,192,255,.4);background:rgba(121,192,255,.04);}
+.pillage-head{display:flex;align-items:center;gap:.5rem;}
+.pillage-lvl{padding:.1rem .45rem;border-radius:5px;font-size:.7rem;font-weight:800;letter-spacing:.04em;}
+.pillage-lvl.l3{background:rgba(248,81,73,.18);color:var(--red);}
+.pillage-lvl.l2{background:rgba(210,153,34,.18);color:var(--yellow);}
+.pillage-lvl.l1{background:rgba(121,192,255,.18);color:var(--accent);}
+.pillage-name{font-weight:700;font-size:.95rem;flex:1;}
+.pillage-pts{font-size:.72rem;color:var(--muted);font-weight:700;background:var(--card);padding:.1rem .45rem;border:1px solid var(--border);border-radius:5px;}
+.pillage-attack{font-size:.78rem;color:var(--text);line-height:1.5;}
+.pillage-attack.pillage-noop{color:var(--muted);font-style:italic;}
+.pillage-note{font-size:.7rem;color:var(--muted);font-style:italic;border-top:1px dashed var(--border);padding-top:.4rem;}
+/* Verb pills (TAKE / DEFEND) */
+.verb{display:inline-block;padding:.1rem .45rem;border-radius:5px;font-size:.65rem;font-weight:800;letter-spacing:.05em;border:1px solid currentColor;}
+.verb-take{background:rgba(63,185,80,.12);color:var(--green);}
+.verb-defend{background:rgba(56,139,253,.12);color:var(--navy);}
+/* Fight march suggestion row */
+.fight-march{display:flex;align-items:center;gap:.4rem;padding:.35rem .55rem;border-radius:6px;font-size:.72rem;background:var(--card);border:1px solid var(--border);}
+.fight-march b{color:var(--text);}
+.fight-march svg{flex-shrink:0;}
+.fight-march.tone-high{background:rgba(248,81,73,.08);border-color:rgba(248,81,73,.3);color:var(--red);}
+.fight-march.tone-mid{background:rgba(210,153,34,.06);border-color:rgba(210,153,34,.28);color:var(--yellow);}
+.fight-march.tone-low{background:rgba(121,192,255,.06);border-color:rgba(121,192,255,.25);color:var(--accent);}
+.fight-march.tone-skip{background:rgba(139,148,158,.08);border-color:var(--border);color:var(--muted);font-style:italic;}
+.fight-march .march-hint{color:var(--muted);font-style:italic;}
+/* Adj-owned-NC tag on defense card */
+.adj-nc-tag{font-size:.55rem;padding:.1rem .35rem;border-radius:4px;margin-left:.25rem;}
+.adj-nc-tag.l3{background:rgba(248,81,73,.12);color:var(--red);border:1px solid rgba(248,81,73,.3);}
+.adj-nc-tag.l2{background:rgba(210,153,34,.12);color:var(--yellow);border:1px solid rgba(210,153,34,.3);}
+.adj-nc-tag.l1{background:rgba(121,192,255,.1);color:var(--accent);border:1px solid rgba(121,192,255,.28);}
 @media (max-width:640px){
   .nc-row{flex-direction:column;align-items:flex-start;gap:.4rem;padding:.7rem .85rem;}
   .nc-row .nc-name{flex-wrap:wrap;width:100%;}
@@ -505,6 +539,25 @@ body{top:0!important;}
     if (opPI >= 15) return 3;
     return 4;
   }
+  // March allocation by opponent fame (Gary's framework).
+  // Take fights: more aggressive (we want to win); Defend fights: invest only
+  // proportional to threat — buff retention vs march cost.
+  function marchSuggestionByFame(opFame, verb){
+    var fame = opFame || 0;
+    if (verb === 'TAKE'){
+      if (fame >= 100000) return { count: 100, label: 'Mothership full (100)', tone: 'high' };
+      if (fame >= 50000)  return { count: 80,  label: '80 marches',           tone: 'high' };
+      if (fame >= 20000)  return { count: 50,  label: '50 marches',           tone: 'mid'  };
+      return { count: 30, label: '30 marches', tone: 'low' };
+    }
+    // DEFEND
+    if (fame >= 100000) return { count: 100, label: 'Mothership full (100)', tone: 'high' };
+    if (fame >= 50000)  return { count: 60,  label: '50–60 marches',         tone: 'mid'  };
+    if (fame >= 20000)  return { count: 25,  label: '20–30 marches (token)', tone: 'low'  };
+    return { count: 0, label: 'Skip if buff not needed', tone: 'skip' };
+  }
+  // Combined: max of TAKE + DEFEND when both apply (multi-way).
+  function maxMarches(a, b){ return (a.count >= b.count) ? a : b; }
   function priorityLabel(p){ return ['','Real threat','Watch — strong','Should win','Easy win'][p]; }
   function sectorRankDescriptor(rank){
     if (rank <= 3) return 'top of sector';
@@ -897,6 +950,81 @@ body{top:0!important;}
         bonus.appendChild(el('span', null, 'Win unlocks ' + formatNcUnlockList(unlocks)));
         card.appendChild(bonus);
       }
+      grid.appendChild(card);
+    });
+    section.appendChild(grid);
+    root.appendChild(section);
+  }
+
+  // ===== PILLAGE PRIORITY — top-of-plan: enemy NCs we plan to take =====
+  function buildPillagePriority(rd, root){
+    var targets = rd.ncTargets || [];
+    if (!targets.length) return;
+    var section = el('section', 'sect');
+    var t = el('div', 'sect-title');
+    var dot = el('span', 'dot'); dot.style.background = 'var(--yellow)';
+    t.appendChild(dot);
+    t.appendChild(el('span', null, 'Pillage Priority — Enemy NCs to Take This Week'));
+    t.appendChild(el('span', 'tag', targets.length + ' targets'));
+    section.appendChild(t);
+
+    var note = el('div', 'rule-box');
+    note.appendChild(makeIcon('target', 18));
+    var body = el('div', 'body');
+    body.appendChild(el('strong', null, 'Rule: '));
+    body.appendChild(document.createTextNode(rd.ncTargetsRule || 'One unowned NC per level per week.'));
+    note.appendChild(body);
+    section.appendChild(note);
+
+    var flowByNc = {};
+    (rd.ncCaptureFlow || []).forEach(function(nc){
+      var m = (nc.nc || '').match(/#(\d+)/);
+      if (m) flowByNc[parseInt(m[1], 10)] = nc;
+    });
+
+    var grid = el('div', 'pillage-grid');
+    targets.slice().sort(function(a,b){ return b.level - a.level; }).forEach(function(t){
+      var flow = flowByNc[t.ncNum];
+      var card = el('div', 'pillage-card l' + t.level);
+      var head = el('div', 'pillage-head');
+      head.appendChild(el('span', 'pillage-lvl l' + t.level, 'Lv' + t.level));
+      head.appendChild(el('span', 'pillage-name', 'NC #' + t.ncNum));
+      head.appendChild(el('span', 'pillage-pts', t.level === 3 ? '8 pts' : t.level === 2 ? '5 pts' : '3 pts'));
+      card.appendChild(head);
+
+      if (flow){
+        if ((flow.viaOwnedNCs || []).length > 0){
+          var pAttack = el('div', 'pillage-attack');
+          pAttack.appendChild(el('span', 'verb verb-take', 'TAKE'));
+          pAttack.appendChild(document.createTextNode(' attack now via owned '));
+          flow.viaOwnedNCs.forEach(function(ncName, i){
+            var nm = ncName.match(/#(\d+)/);
+            if (i > 0) pAttack.appendChild(document.createTextNode(', '));
+            pAttack.appendChild(el('b', 'via-ownednc', nm ? ('NC#' + nm[1]) : ncName));
+          });
+          pAttack.appendChild(document.createTextNode(' — no wasteland capture required.'));
+          card.appendChild(pAttack);
+        } else if ((flow.viaWastelands || []).length > 0){
+          var pCap = el('div', 'pillage-attack');
+          pCap.appendChild(el('span', 'verb verb-take', 'TAKE'));
+          pCap.appendChild(document.createTextNode(' must capture '));
+          flow.viaWastelands.forEach(function(seq, i){
+            if (i > 0) pCap.appendChild(document.createTextNode(', '));
+            pCap.appendChild(el('b', null, 'W-' + seq));
+          });
+          pCap.appendChild(document.createTextNode(' first → next round NC opens.'));
+          card.appendChild(pCap);
+        }
+      } else {
+        var pNo = el('div', 'pillage-attack pillage-noop');
+        pNo.appendChild(document.createTextNode('Not currently reachable in capture flow.'));
+        card.appendChild(pNo);
+      }
+
+      if (t.note){
+        card.appendChild(el('div', 'pillage-note', t.note));
+      }
+
       grid.appendChild(card);
     });
     section.appendChild(grid);
@@ -1496,8 +1624,9 @@ body{top:0!important;}
       card.appendChild(h4);
       var seqs = el('div', 'seqs');
       tiers[p].forEach(function(f){
-        var sids = f.opps.map(function(o){ return 'S' + o.opponent; }).join(' + ');
-        var label = 'W-' + f.seq + ' L' + f.level + (f.opps.length >= 2 ? ' ⚠ ' + (f.opps.length + 1) + '-way ' : ' vs ') + sids;
+        var sids = f.opps.map(function(o){ return 'S' + o.opponent + ' (' + (((o.opFame||0)>=1000) ? Math.round(o.opFame/1000)+'K' : (o.opFame||0)) + ')'; }).join(' + ');
+        var marchVal = marchSuggestionByFame(f.topOpp.opFame || 0, 'TAKE');
+        var label = 'TAKE W-' + f.seq + ' L' + f.level + (f.opps.length >= 2 ? ' ⚠ ' + (f.opps.length + 1) + '-way ' : ' vs ') + sids + ' → ' + marchVal.label;
         var s = el('span', 'seq', label);
         if (f.opps.length >= 2) s.classList.add('threeway');
         seqs.appendChild(s);
@@ -1510,6 +1639,35 @@ body{top:0!important;}
     root.appendChild(section);
   }
 
+  // Compute owned-NC adjacency for a wasteland seq (for defense importance).
+  // Returns array of {name, level} of owned NCs 4-way adjacent to the wasteland.
+  function adjacentOwnedNCs(rd, seq){
+    var cells = rd.cells || [];
+    var byRC = {};
+    cells.forEach(function(c){ byRC[c.r + ',' + c.c] = c; });
+    var w = null;
+    cells.forEach(function(c){
+      if (c.type !== 3) return;
+      var m = (c.name||'').match(/Wasteland#(\d+)/);
+      if (m && parseInt(m[1], 10) === seq) w = c;
+    });
+    if (!w) return [];
+    var out = [];
+    [[-1,0],[1,0],[0,-1],[0,1]].forEach(function(d){
+      var n = byRC[(w.r+d[0]) + ',' + (w.c+d[1])];
+      if (n && n.type === 2 && n.sid === 2864){
+        var lm = (n.name||'').match(/Lv\.\s*(\d+)\s*Neutral City\s*#(\d+)/);
+        if (lm) out.push({ name: 'NC#' + lm[2], level: parseInt(lm[1], 10) });
+      }
+    });
+    return out;
+  }
+  function fameOfSid(rd, sid){
+    var p = (rd.sectorPower || []).find(function(x){ return x.sid === sid; });
+    return p ? (p.score2 || 0) : 0;
+  }
+  function fmtFame(f){ return f >= 1000 ? Math.round(f/1000) + 'K' : (f||0); }
+
   function buildDefense(rd, root){
     var def = (rd.defenseTargets || []).filter(function(d){ return (d.attackerSids||[]).length > 0; });
     if (!def.length) return;
@@ -1521,9 +1679,27 @@ body{top:0!important;}
     t.appendChild(el('span', 'tag', def.length + ' incoming'));
     section.appendChild(t);
 
+    // Compute richer per-fight info: max attacker fame, adjacent owned NC, march suggestion.
+    var enriched = def.map(function(d){
+      var atks = (d.attackerSids || []).slice();
+      var atkFames = atks.map(function(s){ return { sid: s, fame: fameOfSid(rd, s) }; });
+      atkFames.sort(function(a,b){ return b.fame - a.fame; });
+      var topFame = atkFames[0] ? atkFames[0].fame : 0;
+      var march = marchSuggestionByFame(topFame, 'DEFEND');
+      var adjNcs = adjacentOwnedNCs(rd, d.seq);
+      var maxAdjLevel = adjNcs.reduce(function(m, n){ return Math.max(m, n.level); }, 0);
+      return { d: d, atkFames: atkFames, topFame: topFame, march: march, adjNcs: adjNcs, maxAdjLevel: maxAdjLevel };
+    });
+    // Sort: protect higher-level NCs first, then by attacker fame desc, then 3-way first
+    enriched.sort(function(a,b){
+      if (b.maxAdjLevel !== a.maxAdjLevel) return b.maxAdjLevel - a.maxAdjLevel;
+      if (b.topFame !== a.topFame) return b.topFame - a.topFame;
+      return (b.d.attackerSids.length) - (a.d.attackerSids.length);
+    });
+
     var grid = el('div', 'fights');
-    def.sort(function(a,b){ return (b.attackerSids.length) - (a.attackerSids.length) || a.seq - b.seq; });
-    def.forEach(function(d){
+    enriched.forEach(function(e){
+      var d = e.d;
       var atks = d.attackerSids || [];
       var multi = atks.length >= 2;
       var card = el('div', 'fight defense' + (multi ? ' threeway' : ''));
@@ -1532,8 +1708,12 @@ body{top:0!important;}
       idDiv.appendChild(document.createTextNode('W-' + d.seq + ' '));
       idDiv.appendChild(el('span', 'lvl', 'Lv.' + d.level));
       if (multi) idDiv.appendChild(el('span', 'lvl threeway-tag', '⚠ ' + (atks.length + 1) + '-way'));
+      // Adj-owned-NC tag: highlights why this defense matters
+      e.adjNcs.forEach(function(nc){
+        idDiv.appendChild(el('span', 'lvl adj-nc-tag l' + nc.level, 'protects ' + nc.name + ' L' + nc.level));
+      });
       top.appendChild(idDiv);
-      top.appendChild(el('span', 'fight-prio prio-1', 'Defend'));
+      top.appendChild(el('span', 'fight-prio verb verb-defend', 'DEFEND'));
       card.appendChild(top);
 
       var spec = el('div', 'fight-spec');
@@ -1543,8 +1723,18 @@ body{top:0!important;}
 
       var oppDiv = el('div', 'fight-opp');
       oppDiv.appendChild(makeIcon('users', 14));
-      oppDiv.appendChild(el('span', null, 'Defending vs ' + atks.map(function(s){ return 'S'+s; }).join(' + ')));
+      var oppText = e.atkFames.map(function(a){ return 'S' + a.sid + ' (' + fmtFame(a.fame) + ' fame)'; }).join(' + ');
+      oppDiv.appendChild(el('span', null, oppText));
       card.appendChild(oppDiv);
+
+      // March suggestion row
+      var march = el('div', 'fight-march tone-' + e.march.tone);
+      march.appendChild(makeIcon('users', 12));
+      march.appendChild(el('b', null, e.march.label));
+      if (e.march.tone === 'skip'){
+        march.appendChild(el('span', 'march-hint', ' — buff retention vs march cost'));
+      }
+      card.appendChild(march);
       grid.appendChild(card);
     });
     section.appendChild(grid);
@@ -1581,6 +1771,7 @@ body{top:0!important;}
     document.getElementById('hdrSub').textContent = ' · R' + roundKey;
     buildHero(rd, roundKey, root);
     buildRules(root);
+    buildPillagePriority(rd, root);
     buildFocus(rd, root);
     buildContested(rd, root);
     buildDefense(rd, root);
