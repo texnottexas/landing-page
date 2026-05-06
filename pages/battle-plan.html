@@ -216,6 +216,8 @@ section.sect{scroll-margin-top:120px;}
 /* Clamp fight grid + show-more */
 .clampable.collapsed{max-height:520px;overflow:hidden;position:relative;}
 .clampable.collapsed::after{content:'';position:absolute;left:0;right:0;bottom:0;height:80px;background:linear-gradient(to bottom,transparent,var(--bg) 90%);pointer-events:none;}
+.focus-rows.clampable.collapsed{max-height:340px;}
+.buff-list.clampable.collapsed{max-height:380px;}
 .show-more-btn{display:block;width:100%;margin-top:.5rem;padding:.5rem;background:var(--surface);border:1px dashed var(--border);color:var(--accent);font-family:inherit;font-size:.78rem;font-weight:600;border-radius:8px;cursor:pointer;}
 .show-more-btn:hover{border-color:var(--accent);background:rgba(121,192,255,.06);}
 /* Help button + modal */
@@ -459,6 +461,7 @@ body{top:0!important;}
     info: { parts: [ ['circle', { cx:'12', cy:'12', r:'10' }], ['line', { x1:'12', y1:'8', x2:'12', y2:'12' }], ['circle', { cx:'12', cy:'16', r:'.5', fill:'currentColor' }] ] },
     arrow: { parts: [ ['line', { x1:'5', y1:'12', x2:'19', y2:'12' }], ['polyline', { points:'12 5 19 12 12 19' }] ] },
     bolt: { parts: [ ['polygon', { points:'13 2 3 14 12 14 11 22 21 10 12 10' }] ] },
+    flame: { parts: [ ['path', { d: 'M12 2c2 4-2 6 0 9 2 3 5 2 5 6a5 5 0 0 1-10 0c0-3 2-4 2-7 0-2-1-3 3-8z' }] ] },
     chart: { parts: [ ['path', { d: 'M3 3v18h18' }], ['path', { d: 'M7 14l4-4 4 4 5-5' }] ] },
     compass: { parts: [ ['circle', { cx:'12', cy:'12', r:'10' }], ['polygon', { points:'16 8 14 14 8 16 10 10' }] ] },
     users: { parts: [ ['path', { d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' }], ['circle', { cx:'9', cy:'7', r:'4' }], ['path', { d: 'M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75' }] ] },
@@ -823,21 +826,25 @@ body{top:0!important;}
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
   }
-  function clampFightGrid(grid, threshold){
+  function clampGrid(grid, itemSelector, threshold, noun){
     if (!grid) return;
-    var cardCount = grid.querySelectorAll('.fight').length;
-    if (cardCount <= threshold) return;
+    var count = grid.querySelectorAll(itemSelector).length;
+    if (count <= threshold) return;
     grid.classList.add('clampable', 'collapsed');
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'show-more-btn';
-    var hidden = cardCount - threshold;
-    btn.textContent = 'Show ' + hidden + ' more · ' + cardCount + ' total';
+    var hidden = count - threshold;
+    var label = noun || 'items';
+    btn.textContent = 'Show ' + hidden + ' more ' + label + ' · ' + count + ' total';
     btn.addEventListener('click', function(){
       var collapsed = grid.classList.toggle('collapsed');
-      btn.textContent = collapsed ? ('Show ' + hidden + ' more · ' + cardCount + ' total') : 'Show fewer';
+      btn.textContent = collapsed ? ('Show ' + hidden + ' more ' + label + ' · ' + count + ' total') : 'Show fewer';
     });
     if (grid.parentNode) grid.parentNode.insertBefore(btn, grid.nextSibling);
+  }
+  function clampFightGrid(grid, threshold){
+    clampGrid(grid, '.fight', threshold, 'fights');
   }
   function attachFightFilters(section, grid, fightItems){
     if (!fightItems.length) return;
@@ -1046,7 +1053,8 @@ body{top:0!important;}
       { cls: 'red', icon: 'sword', title: 'Combat buffs are the priority', body: 'ATK / HP / DEF / DMG Inc / DMG Red caps are all under 50% filled. Wins on combat L3 wastelands feed everything else for the rest of the event.' },
       { cls: 'green', icon: 'castle', title: 'Wastelands → NC stage same round', body: 'Every wasteland we capture this round expands our reach for THIS round\'s NC declaration stage. NC Lv1 = 3pts, Lv2 = 5pts, Lv3 = 8pts. NCs we own carry forward; wastelands reshuffle.' },
       { cls: 'yellow', icon: 'info', title: 'Mothership-first on contested L3', body: 'Mothership = 100 troops at 5 HP. Sweeper / Patrol = 50 at 3 HP. For high-power opponent fights, fill Mothership first; smalls only if uncontested.' },
-      { cls: 'accent', icon: 'bolt', title: 'No Rockfield', body: 'Use your strongest standard march. Wasted attacks = lost hearts on our side. If you cannot kill anyone at your wasteland, ping a leader for a reassign.' }
+      { cls: 'accent', icon: 'bolt', title: 'No Rockfield', body: 'Use your strongest standard march. Wasted attacks = lost hearts on our side. If you cannot kill anyone at your wasteland, ping a leader for a reassign.' },
+      { cls: 'red', icon: 'flame', title: 'fk boats', body: 'Simple as that, fk boats.' }
     ];
     rules.forEach(function(r){
       var div = el('div', 'rule ' + r.cls);
@@ -1225,6 +1233,8 @@ body{top:0!important;}
       body.appendChild(rowsBox);
       card.appendChild(body);
       section.appendChild(card);
+      // Per-tier clamp after 6 rows (~2 rows on desktop, ~6 on mobile)
+      clampGrid(rowsBox, '.focus-row', 6, 'targets');
     });
 
     root.appendChild(section);
@@ -1305,7 +1315,7 @@ body{top:0!important;}
     });
     section.appendChild(grid);
     attachFightFilters(section, grid, fightItems);
-    clampFightGrid(grid, 8);
+    clampFightGrid(grid, 6);
     root.appendChild(section);
   }
 
@@ -1926,6 +1936,7 @@ body{top:0!important;}
       list.appendChild(row);
     });
     section.appendChild(list);
+    clampGrid(list, '.buff-row', 5, 'buffs');
     root.appendChild(section);
   }
 
@@ -2113,7 +2124,7 @@ body{top:0!important;}
     section.appendChild(grid);
     var defFightItems = Array.prototype.map.call(grid.querySelectorAll('.fight'), function(c){ return c._fightItem; });
     attachFightFilters(section, grid, defFightItems);
-    clampFightGrid(grid, 8);
+    clampFightGrid(grid, 6);
     root.appendChild(section);
   }
 
