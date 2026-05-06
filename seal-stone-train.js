@@ -202,20 +202,28 @@ function render() {
   var signedSitekeys = {};
   (info.signups || []).forEach(function(s) { signedSitekeys[s.sitekey] = true; });
   var missing = allianceRoster.filter(function(p) { return !p.siteKey || !signedSitekeys[p.siteKey]; });
-  var details = mk('details');
-  var summary = mk('summary', { style: { cursor: 'pointer', listStyle: 'none', padding: '0', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', textTransform: 'uppercase', color: 'var(--muted)' } });
-  summary.appendChild(svgIcon('i-chev-down'));
-  summary.appendChild(document.createTextNode('Not signed up — ' + state.alliance + ': ' + missing.length + '/' + allianceRoster.length));
-  details.appendChild(summary);
-  var grid = mk('div', { cls: 'roster-grid', style: { marginTop: '12px' } });
+  // Use plain h2 + onclick toggle — iOS Safari has historical issues with
+  // <summary display:flex> not toggling. This is a reliable manual toggle.
+  var hdr = mk('h2', { style: { cursor: 'pointer', userSelect: 'none', margin: '0' } });
+  var chev = svgIcon('i-chev-down');
+  chev.style.transition = 'transform .15s';
+  chev.style.transform = 'rotate(-90deg)';
+  hdr.appendChild(chev);
+  hdr.appendChild(document.createTextNode('Not signed up — ' + state.alliance + ': ' + missing.length + '/' + allianceRoster.length));
+  var grid = mk('div', { cls: 'roster-grid', style: { marginTop: '12px', display: 'none' } });
   missing.forEach(function(p) {
     var cell = mk('div', { cls: 'roster-cell' });
     cell.appendChild(avatarImg(p));
     cell.appendChild(mk('span', { text: (p.name || '?').slice(0, 12) }));
     grid.appendChild(cell);
   });
-  details.appendChild(grid);
-  gapCard.appendChild(details);
+  hdr.addEventListener('click', function() {
+    var open = grid.style.display !== 'none';
+    grid.style.display = open ? 'none' : 'grid';
+    chev.style.transform = open ? 'rotate(-90deg)' : 'rotate(0deg)';
+  });
+  gapCard.appendChild(hdr);
+  gapCard.appendChild(grid);
   root.appendChild(gapCard);
 }
 
@@ -428,31 +436,49 @@ async function hardRefresh() {
 
 window.openSettingsModal = function openSettingsModal() {
   var modalBg = mk('div', { cls: 'modal-bg show' });
+  function close() { if (modalBg.parentNode) modalBg.parentNode.removeChild(modalBg); }
+  // Click outside modal closes it
+  modalBg.addEventListener('click', function(e) { if (e.target === modalBg) close(); });
+
   var modal = mk('div', { cls: 'modal' });
-  modal.appendChild(mk('h2', null, svgIcon('i-shield'), ' Settings'));
+  // Title row
+  var titleRow = mk('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' } });
+  titleRow.appendChild(svgIcon('i-gear'));
+  titleRow.appendChild(mk('h2', { style: { margin: '0' }, text: 'Settings' }));
+  var closeX = mk('button', {
+    style: { marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '4px', display: 'flex' },
+    attrs: { 'aria-label': 'Close' },
+    on: { click: close }
+  });
+  closeX.appendChild(svgIcon('i-x-circle'));
+  titleRow.appendChild(closeX);
+  modal.appendChild(titleRow);
 
   // Identity section
-  modal.appendChild(mk('div', { style: { marginTop: '8px', fontSize: '11px', textTransform: 'uppercase', color: 'var(--muted)' }, text: 'Identity' }));
+  modal.appendChild(mk('div', { style: { fontSize: '11px', textTransform: 'uppercase', color: 'var(--muted)', letterSpacing: '0.05em' }, text: 'Identity' }));
   if (state.identity) {
     var idBox = mk('div', { style: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px', marginTop: '6px', fontSize: '13px' } });
     idBox.appendChild(mk('div', null, mk('strong', null, 'Name: '), state.identity.name || '?'));
     idBox.appendChild(mk('div', null, mk('strong', null, 'Alliance: '), state.identity.alliance || '?'));
-    idBox.appendChild(mk('div', { style: { fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)', marginTop: '4px' } }, mk('strong', null, 'siteKey: '), state.identity.siteKey || '?'));
+    idBox.appendChild(mk('div', { style: { fontFamily: 'monospace', fontSize: '11px', color: 'var(--muted)', marginTop: '4px', wordBreak: 'break-all' } }, mk('strong', null, 'siteKey: '), state.identity.siteKey || '?'));
     modal.appendChild(idBox);
-    modal.appendChild(mk('p', { style: { fontSize: '11px', color: 'var(--muted)', marginTop: '6px' }, text: 'If your name/alliance is wrong, re-verify your in-game UID on the home page.' }));
-    var verifyBtn = mk('a', { attrs: { href: '/index.html' }, cls: 'primary', style: { display: 'inline-block', textDecoration: 'none', textAlign: 'center', marginTop: '4px' }, text: 'Open home to re-verify UID' });
-    modal.appendChild(verifyBtn);
+    modal.appendChild(mk('p', { style: { fontSize: '11px', color: 'var(--muted)', margin: '8px 0' }, text: 'If your name/alliance is wrong, re-verify your in-game UID on the home page.' }));
+    modal.appendChild(mk('button', {
+      cls: 'primary',
+      text: 'Open home to re-verify UID',
+      on: { click: function() { window.location.href = '/index.html'; } }
+    }));
   } else {
-    modal.appendChild(mk('p', { style: { color: 'var(--muted)', fontSize: '13px' }, text: 'No identity set. Visit the home page to verify your UID.' }));
+    modal.appendChild(mk('p', { style: { color: 'var(--muted)', fontSize: '13px', margin: '6px 0' }, text: 'No identity set. Visit the home page to verify your UID.' }));
   }
 
   // Hard refresh section
-  modal.appendChild(mk('div', { style: { marginTop: '20px', fontSize: '11px', textTransform: 'uppercase', color: 'var(--muted)' }, text: 'Cache' }));
+  modal.appendChild(mk('div', { style: { marginTop: '20px', fontSize: '11px', textTransform: 'uppercase', color: 'var(--muted)', letterSpacing: '0.05em' }, text: 'Cache' }));
   modal.appendChild(mk('p', { style: { fontSize: '12px', color: 'var(--muted)', margin: '6px 0' }, text: 'If something looks stuck or stale, clear the page cache + service worker and reload.' }));
-  modal.appendChild(mk('button', { cls: 'danger', text: 'Hard refresh', on: { click: hardRefresh } }));
+  modal.appendChild(mk('button', { cls: 'primary', text: 'Hard refresh', on: { click: hardRefresh } }));
 
   // Full ride history
-  modal.appendChild(mk('div', { style: { marginTop: '20px', fontSize: '11px', textTransform: 'uppercase', color: 'var(--muted)' }, text: 'My ride history' }));
+  modal.appendChild(mk('div', { style: { marginTop: '20px', fontSize: '11px', textTransform: 'uppercase', color: 'var(--muted)', letterSpacing: '0.05em' }, text: 'My ride history' }));
   var hist = (state.status && state.status.me && state.status.me.history) || [];
   if (hist.length === 0) {
     modal.appendChild(mk('p', { style: { color: 'var(--muted)', fontSize: '13px', margin: '6px 0' }, text: 'No rides yet.' }));
@@ -462,8 +488,8 @@ window.openSettingsModal = function openSettingsModal() {
       var d = h.date ? (h.date.slice(0,4) + '-' + h.date.slice(4,6) + '-' + h.date.slice(6,8)) : '?';
       var row = mk('div', { style: { padding: '8px 10px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '12px' } });
       row.appendChild(mk('span', { text: d }));
-      row.appendChild(mk('span', { style: { color: 'var(--accent)', fontWeight: '600' }, text: h.role.toUpperCase() }));
-      row.appendChild(mk('span', { style: { color: 'var(--muted)' }, text: h.alliance }));
+      row.appendChild(mk('span', { style: { color: 'var(--accent)', fontWeight: '600' }, text: (h.role || '?').toUpperCase() }));
+      row.appendChild(mk('span', { style: { color: 'var(--muted)' }, text: h.alliance || '' }));
       if (h.slotUtc) {
         var dt = new Date(h.slotUtc * 1000);
         row.appendChild(mk('span', { style: { color: 'var(--muted)', marginLeft: 'auto', fontSize: '11px' }, text: dt.toLocaleString([], { hour: '2-digit', minute: '2-digit' }) + ' UTC' }));
@@ -473,8 +499,8 @@ window.openSettingsModal = function openSettingsModal() {
     modal.appendChild(histList);
   }
 
-  // Close
-  modal.appendChild(mk('button', { cls: 'danger', text: 'Close', style: { marginTop: '20px' }, on: { click: function() { document.body.removeChild(modalBg); } } }));
+  // Close (footer)
+  modal.appendChild(mk('button', { cls: 'danger', text: 'Close', style: { marginTop: '20px' }, on: { click: close } }));
   modalBg.appendChild(modal);
   document.body.appendChild(modalBg);
 };
