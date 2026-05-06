@@ -22,6 +22,32 @@ function mk(tag, opts) {
   return el;
 }
 function clearChildren(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+// Resolve an avatar value (CDN URL, in-game asset key, or null) to a usable
+// <img src>. Asset keys like "hero_icon330_global" or "icon_man02_1" route
+// through the topwargame headpic CDN. Pattern lifted from treasury.html.
+function resolveAvatar(v) {
+  if (!v || typeof v !== 'string') return null;
+  if (v.indexOf('http') === 0) return v;
+  return 'https://h5.topwargame.com/DynRes/images/headpic/' + v + '.png?t=21.jpg';
+}
+
+// Build an avatar <img> with onerror fallback to the default placeholder div.
+function avatarImg(p, size) {
+  var src = resolveAvatar(p && (p.avatar || p.avatarRef || p.avatarurl));
+  var sz = size || 48;
+  if (!src) return placeholderAvatar(sz);
+  var img = mk('img', { attrs: { src: src, alt: '', loading: 'lazy' } });
+  img.addEventListener('error', function() {
+    if (img.parentNode) img.parentNode.replaceChild(placeholderAvatar(sz), img);
+  });
+  return img;
+}
+
+function placeholderAvatar(size) {
+  var sz = (size || 48) + 'px';
+  return mk('div', { style: { width: sz, height: sz, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '50%' } });
+}
 function svgIcon(id, cls) {
   var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   s.setAttribute('class', 'icon ' + (cls || ''));
@@ -170,28 +196,26 @@ function render() {
   }
   root.appendChild(meCard);
 
-  // Not-signed-up roster grid
+  // Not-signed-up roster grid (collapsible, default closed)
   var gapCard = mk('div', { cls: 'card' });
   var allianceRoster = (state.roster || []).filter(function(p) { return canonAlliance(p.alliance) === state.alliance; });
   var signedSitekeys = {};
   (info.signups || []).forEach(function(s) { signedSitekeys[s.sitekey] = true; });
   var missing = allianceRoster.filter(function(p) { return !p.siteKey || !signedSitekeys[p.siteKey]; });
-  gapCard.appendChild(mk('h2', null,
-    svgIcon('i-chev-down'),
-    'Not signed up — ' + state.alliance + ': ' + missing.length + '/' + allianceRoster.length
-  ));
-  var grid = mk('div', { cls: 'roster-grid' });
+  var details = mk('details');
+  var summary = mk('summary', { style: { cursor: 'pointer', listStyle: 'none', padding: '0', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', textTransform: 'uppercase', color: 'var(--muted)' } });
+  summary.appendChild(svgIcon('i-chev-down'));
+  summary.appendChild(document.createTextNode('Not signed up — ' + state.alliance + ': ' + missing.length + '/' + allianceRoster.length));
+  details.appendChild(summary);
+  var grid = mk('div', { cls: 'roster-grid', style: { marginTop: '12px' } });
   missing.forEach(function(p) {
     var cell = mk('div', { cls: 'roster-cell' });
-    if (p.avatar) {
-      cell.appendChild(mk('img', { attrs: { src: p.avatar, alt: '', loading: 'lazy' } }));
-    } else {
-      cell.appendChild(mk('div', { style: { width: '48px', height: '48px', background: 'var(--surface)', borderRadius: '50%' } }));
-    }
+    cell.appendChild(avatarImg(p));
     cell.appendChild(mk('span', { text: (p.name || '?').slice(0, 12) }));
     grid.appendChild(cell);
   });
-  gapCard.appendChild(grid);
+  details.appendChild(grid);
+  gapCard.appendChild(details);
   root.appendChild(gapCard);
 }
 
@@ -217,9 +241,9 @@ async function openSignupModal() {
     ' · ',
     mk('strong', null, 'Alliance: '), state.identity.alliance || '?'
   ));
-  modal.appendChild(mk('p', { text: 'Pick your preferred slot. Train runs from 16:00 UTC to 20:00 UTC (12:00 ET to 16:00 ET).' }));
+  modal.appendChild(mk('p', { text: 'Pick your preferred slot. Train runs from Reset to Reset +4 (16:00–20:00 UTC).' }));
 
-  var picked = 2;
+  var picked = 0;
   var slotPicker = mk('div', { cls: 'slot-picker' });
   [0, 1, 2, 3, 4].forEach(function(s) {
     var btn = mk('button', null,
@@ -354,11 +378,7 @@ async function openSwapVipModal() {
         }
       }
     });
-    if (p.avatar) {
-      cell.appendChild(mk('img', { attrs: { src: p.avatar, alt: '', loading: 'lazy' } }));
-    } else {
-      cell.appendChild(mk('div', { style: { width: '48px', height: '48px', background: 'var(--surface)', borderRadius: '50%' } }));
-    }
+    cell.appendChild(avatarImg(p));
     cell.appendChild(mk('span', { text: (s.name || '?').slice(0, 12) }));
     cell.appendChild(mk('span', { cls: 'slot-time', text: 'VIP rides: ' + (s.vipRideCount || 0) }));
     grid.appendChild(cell);
