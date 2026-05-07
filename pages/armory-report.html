@@ -11377,7 +11377,9 @@
       // Gem total summary — rendered above the grid so players see their
       // cross-mailbox gem stockpile (chests in inventory, not yet claimed)
       // without having to walk every category.
-      if (data.gemTotal > 0 || data.boxedGemTotal > 0) {
+      var goldBalance = (data.resources && typeof data.resources._gold === 'number') ? data.resources._gold : 0;
+      var thorBalance = (data.resources && typeof data.resources._thor === 'number') ? data.resources._thor : 0;
+      if (data.gemTotal > 0 || data.boxedGemTotal > 0 || goldBalance > 0) {
         var gemBar = document.createElement('div');
         gemBar.style.cssText = 'display:flex;align-items:center;gap:.6rem;padding:10px 16px;margin:0 16px 6px;background:linear-gradient(135deg, rgba(56,139,253,0.12), rgba(121,192,255,0.08));border:1px solid rgba(56,139,253,0.35);border-radius:8px;flex-wrap:wrap;';
         var gemSvg = document.createElementNS(SVG_NS, 'svg');
@@ -11411,6 +11413,13 @@
           w.appendChild(l); w.appendChild(v);
           return w;
         }
+        if (goldBalance > 0) {
+          gemBar.appendChild(gemSeg('Out of bag:', goldBalance));
+          var sepBag = document.createElement('span');
+          sepBag.style.cssText = 'color:var(--border);';
+          sepBag.textContent = '·';
+          gemBar.appendChild(sepBag);
+        }
         gemBar.appendChild(gemSeg('Unclaimed gems:', data.gemTotal));
         if (data.boxedGemTotal > 0) {
           var sep1 = document.createElement('span');
@@ -11422,14 +11431,21 @@
           sep2.style.cssText = 'color:var(--border);';
           sep2.textContent = '·';
           gemBar.appendChild(sep2);
-          gemBar.appendChild(gemSeg('Total potential:', data.gemTotal + data.boxedGemTotal));
+          gemBar.appendChild(gemSeg('Total potential:', goldBalance + data.gemTotal + data.boxedGemTotal));
+        } else if (goldBalance > 0) {
+          var sepGT = document.createElement('span');
+          sepGT.style.cssText = 'color:var(--border);';
+          sepGT.textContent = '·';
+          gemBar.appendChild(sepGT);
+          gemBar.appendChild(gemSeg('Total:', goldBalance + data.gemTotal));
         }
         container.appendChild(gemBar);
       }
       // Odinium bar — same shape as gems but with the gold/yellow palette.
       // Direct Odinium comes from aggTotals.odinium (raw + pack items).
       // Boxed Odinium comes from desc-scan over non-pack boxes.
-      if ((data.aggTotals.odinium || 0) > 0 || (data.boxedOdiniumTotal || 0) > 0) {
+      // Out-of-bag Odinium balance lives on resources._thor.
+      if ((data.aggTotals.odinium || 0) > 0 || (data.boxedOdiniumTotal || 0) > 0 || thorBalance > 0) {
         var odBar = document.createElement('div');
         odBar.style.cssText = 'display:flex;align-items:center;gap:.6rem;padding:10px 16px;margin:0 16px 6px;background:linear-gradient(135deg, rgba(210,153,34,0.14), rgba(240,198,116,0.08));border:1px solid rgba(210,153,34,0.4);border-radius:8px;flex-wrap:wrap;';
         var odIcon = document.createElement('img');
@@ -11451,6 +11467,13 @@
           w.appendChild(l); w.appendChild(v);
           return w;
         }
+        if (thorBalance > 0) {
+          odBar.appendChild(odSeg('Out of bag:', thorBalance));
+          var odSepBag = document.createElement('span');
+          odSepBag.style.cssText = 'color:var(--border);';
+          odSepBag.textContent = '·';
+          odBar.appendChild(odSepBag);
+        }
         odBar.appendChild(odSeg('Unclaimed Odinium:', data.aggTotals.odinium || 0));
         if ((data.boxedOdiniumTotal || 0) > 0) {
           var odSep1 = document.createElement('span');
@@ -11462,7 +11485,13 @@
           odSep2.style.cssText = 'color:var(--border);';
           odSep2.textContent = '·';
           odBar.appendChild(odSep2);
-          odBar.appendChild(odSeg('Total potential:', (data.aggTotals.odinium || 0) + data.boxedOdiniumTotal));
+          odBar.appendChild(odSeg('Total potential:', thorBalance + (data.aggTotals.odinium || 0) + data.boxedOdiniumTotal));
+        } else if (thorBalance > 0) {
+          var odSepBT = document.createElement('span');
+          odSepBT.style.cssText = 'color:var(--border);';
+          odSepBT.textContent = '·';
+          odBar.appendChild(odSepBT);
+          odBar.appendChild(odSeg('Total:', thorBalance + (data.aggTotals.odinium || 0)));
         }
         container.appendChild(odBar);
       }
@@ -12234,12 +12263,17 @@
     return c;
   }
 
-  // Strip fields the renderer never reads but that would leak privacy if exposed
-  // via the public GET endpoint: meta.uid (lets a public siteKey resolve back to a
-  // game UID) and inv.resources (free/paid gold balances, never displayed).
+  // Strip fields the renderer never reads, or that would leak privacy if
+  // exposed via the public GET endpoint: meta.uid (lets a public siteKey
+  // resolve back to a game UID) and resources._paidgold / _payCNYTotal (those
+  // leak monetization detail). resources block as a whole is kept so the
+  // inventory tab can render gem/odinium currency balances next to bag totals.
   function _ar_sanitizeSupplement(kind, raw) {
     if (raw && raw.meta && raw.meta.uid != null) delete raw.meta.uid;
-    if (kind === 'inv' && raw && raw.resources != null) delete raw.resources;
+    if (kind === 'inv' && raw && raw.resources && typeof raw.resources === 'object') {
+      if (raw.resources._paidgold != null) delete raw.resources._paidgold;
+      if (raw.resources._payCNYTotal != null) delete raw.resources._payCNYTotal;
+    }
   }
 
   var _AR_SUP_MAX_BYTES = 1024 * 1024; // 1 MB
