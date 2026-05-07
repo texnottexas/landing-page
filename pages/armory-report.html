@@ -2952,6 +2952,56 @@
     return max;
   }
 
+  // VIT (Vitality) yield helpers.
+  // Direct yield rules:
+  //   1. Name contains "N VIT" (e.g. "10 VIT", "50 VIT")
+  //   2. Name has VIT as a whole word AND desc includes "VIT x N" / "N VIT"
+  //      (Small/Large VIT Capsules — "Use to instantly restore VIT x10")
+  //   3. Name lacks VIT but desc says "gain/restore N VIT instantly"
+  //      (Virtuous Flower / Loving Heart)
+  // Excludes anything matching the invitation pattern so Alliance Move
+  // Invitation and similar don't false-positive.
+  function _ar_vitYieldFromCfg(cfg) {
+    if (!cfg) return 0;
+    var n = String(cfg.n || '');
+    var d = String(cfg.d || '');
+    if (/\b(invitation|invite)/i.test(n)) return 0;
+    var nameHasVit = /\bVIT\b/i.test(n);
+    var m;
+    m = n.match(/(\d{1,3}(?:,\d{3})+|\d+)\s*VIT\b/i);
+    if (m) return parseInt(m[1].replace(/,/g, ''), 10);
+    if (nameHasVit) {
+      m = d.match(/VIT\s*(?:x|×)\s*(\d{1,3}(?:,\d{3})+|\d+)/i);
+      if (m) return parseInt(m[1].replace(/,/g, ''), 10);
+      m = d.match(/(\d{1,3}(?:,\d{3})+|\d+)\s*VIT\b/i);
+      if (m) return parseInt(m[1].replace(/,/g, ''), 10);
+    }
+    if (!nameHasVit) {
+      m = d.match(/\b(?:gain|restore|get|grants?|gives?)\s+(\d{1,3}(?:,\d{3})+|\d+)\s*VIT\b/i);
+      if (m) return parseInt(m[1].replace(/,/g, ''), 10);
+    }
+    return 0;
+  }
+
+  // VIT hidden inside non-VIT-named boxes. Skips items whose name already
+  // mentions VIT (those are direct, counted by _ar_vitYieldFromCfg).
+  function _ar_boxedVitPerOpen(cfg) {
+    if (!cfg) return 0;
+    var n = String(cfg.n || '');
+    var d = String(cfg.d || '');
+    if (/\b(invitation|invite)/i.test(n) || /\b(invitation|invite)/i.test(d)) return 0;
+    if (/\bVIT\b/i.test(n)) return 0;
+    if (!/\bVIT\b/i.test(d)) return 0;
+    var max = 0;
+    var re = /(\d{1,3}(?:,\d{3})+|\d+)\s*VIT\b/gi;
+    var m;
+    while ((m = re.exec(d)) !== null) {
+      var v = parseInt(m[1].replace(/,/g, ''), 10);
+      if (!isNaN(v) && v > max) max = v;
+    }
+    return max;
+  }
+
   // Extract the gem-per-pack value from an item-table entry (group 1000000).
   // Prefer the `ix` field where present; otherwise parse the first integer
   // out of the localized name, stripping commas. Returns 0 when the item
@@ -2984,6 +3034,12 @@
       // Same pattern for Odinium hidden inside non-pack boxes.
       boxedOdiniumTotal: 0,
       boxedOdiniumDetails: [],
+      // VIT (Vitality) totals — direct yield from named items + boxed yield
+      // from non-VIT-named chests.
+      vitTotal: 0,
+      vitDetails: [],
+      boxedVitTotal: 0,
+      boxedVitDetails: [],
       // Aggregate-bucket detail: every contributing pack rolled into the
       // synthetic gem/odinium/food/oil cells. Drives the click-modal.
       aggDetails: { gem: [], odinium: [], food: [], oil: [] },
@@ -3057,6 +3113,22 @@
           if (boxedO > 0) {
             out.boxedOdiniumTotal += boxedO * amount;
             out.boxedOdiniumDetails.push({ id: it.id, name: cfg.n || ('#'+it.id), amount: amount, perOpen: boxedO, total: boxedO * amount });
+          }
+        }
+        // VIT (Vitality) — direct yield from VIT-named items + per-flower
+        // VIT items (Virtuous Flower / Loving Heart). Falls through to the
+        // boxed branch when name lacks VIT but desc still mentions it.
+        if (tabKey === 'item' && amount > 0) {
+          var vitPer = _ar_vitYieldFromCfg(cfg);
+          if (vitPer > 0) {
+            out.vitTotal += vitPer * amount;
+            out.vitDetails.push({ id: it.id, name: cfg.n || ('#'+it.id), amount: amount, perPack: vitPer, total: vitPer * amount });
+          } else {
+            var boxedV = _ar_boxedVitPerOpen(cfg);
+            if (boxedV > 0) {
+              out.boxedVitTotal += boxedV * amount;
+              out.boxedVitDetails.push({ id: it.id, name: cfg.n || ('#'+it.id), amount: amount, perOpen: boxedV, total: boxedV * amount });
+            }
           }
         }
         var titanCat = (tabKey === 'item') ? _ar_classifyTitanGear(cfg) : null;
@@ -11393,6 +11465,53 @@
           odBar.appendChild(odSeg('Total potential:', (data.aggTotals.odinium || 0) + data.boxedOdiniumTotal));
         }
         container.appendChild(odBar);
+      }
+      // VIT (Vitality) bar — same shape as gems/odinium but with the army-
+      // green palette and a lightning-bolt icon. Sums VIT items in bag plus
+      // any VIT hidden inside non-VIT-named chests.
+      if ((data.vitTotal || 0) > 0 || (data.boxedVitTotal || 0) > 0) {
+        var vitBar = document.createElement('div');
+        vitBar.style.cssText = 'display:flex;align-items:center;gap:.6rem;padding:10px 16px;margin:0 16px 6px;background:linear-gradient(135deg, rgba(63,185,80,0.14), rgba(86,211,100,0.08));border:1px solid rgba(63,185,80,0.4);border-radius:8px;flex-wrap:wrap;';
+        var vitSvg = document.createElementNS(SVG_NS, 'svg');
+        vitSvg.setAttribute('width', '18');
+        vitSvg.setAttribute('height', '18');
+        vitSvg.setAttribute('viewBox', '0 0 24 24');
+        vitSvg.setAttribute('fill', 'currentColor');
+        vitSvg.setAttribute('stroke', 'currentColor');
+        vitSvg.setAttribute('stroke-width', '1.2');
+        vitSvg.setAttribute('stroke-linejoin', 'round');
+        vitSvg.style.color = '#3fb950';
+        var vitPath = document.createElementNS(SVG_NS, 'path');
+        vitPath.setAttribute('d', 'M13 2L4 14h7l-1 8 9-12h-7l1-8z');
+        vitSvg.appendChild(vitPath);
+        vitBar.appendChild(vitSvg);
+        function vitSeg(label, val, dim) {
+          var w = document.createElement('span');
+          w.style.cssText = 'display:inline-flex;align-items:baseline;gap:.3rem;';
+          var l = document.createElement('span');
+          l.style.cssText = 'color:var(--muted);font-size:.78rem;';
+          l.textContent = label;
+          var v = document.createElement('span');
+          v.style.cssText = 'color:' + (dim ? 'var(--text)' : '#3fb950') + ';font-weight:700;font-size:.95rem;font-family:monospace;';
+          v.textContent = _ar_compactNumber(val || 0);
+          v.title = (val || 0).toLocaleString();
+          w.appendChild(l); w.appendChild(v);
+          return w;
+        }
+        vitBar.appendChild(vitSeg('Bag VIT:', data.vitTotal || 0));
+        if ((data.boxedVitTotal || 0) > 0) {
+          var vitSep1 = document.createElement('span');
+          vitSep1.style.cssText = 'color:var(--border);';
+          vitSep1.textContent = '·';
+          vitBar.appendChild(vitSep1);
+          vitBar.appendChild(vitSeg('In boxes (max):', data.boxedVitTotal, true));
+          var vitSep2 = document.createElement('span');
+          vitSep2.style.cssText = 'color:var(--border);';
+          vitSep2.textContent = '·';
+          vitBar.appendChild(vitSep2);
+          vitBar.appendChild(vitSeg('Total potential:', (data.vitTotal || 0) + data.boxedVitTotal));
+        }
+        container.appendChild(vitBar);
       }
       _ar_renderInvGrid(container, data);
     });
