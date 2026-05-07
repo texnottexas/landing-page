@@ -5476,12 +5476,19 @@
             var attempts = [raw.trim(), raw.replace(/\D/g, '')];
             var hashesTried = [];
             var matched = false;
+            var matchedHash = null;
+            var matchedSiteKey = null;
             for (var i = 0; i < attempts.length; i++) {
               var c = attempts[i];
               if (!c) continue;
               var h = await _idSha256Hex(c);
-              hashesTried.push({ uid: c, first16: h.slice(0, 16) });
-              if (h.slice(0, 16) === identity.siteKey) { matched = true; break; }
+              hashesTried.push({ uid: c, hash: h, first16: h.slice(0, 16) });
+              if (h.slice(0, 16) === identity.siteKey) {
+                matched = true;
+                matchedHash = h;
+                matchedSiteKey = identity.siteKey;
+                break;
+              }
             }
             // Roster cross-check fallback: a stored identity siteKey can go
             // stale (older roster build, manual edit). If the entered UID
@@ -5490,15 +5497,17 @@
               try {
                 var roster = await fetch('player-data.json', { cache: 'no-cache' }).then(function(r) { return r.json(); });
                 for (var j = 0; j < hashesTried.length && !matched; j++) {
-                  var first16 = hashesTried[j].first16;
+                  var ht = hashesTried[j];
                   for (var k = 0; k < roster.length; k++) {
-                    if (roster[k].siteKey === first16) {
+                    if (roster[k].siteKey === ht.first16) {
                       var p = roster[k];
                       var ident = { name: p.name, alliance: p.alliance, rank: p.rank, profession: p.profession, siteKey: p.siteKey };
                       saveIdentity(ident);
                       _idSetUnlocked(p.siteKey, true);
                       showGreeting(ident);
                       matched = true;
+                      matchedHash = ht.hash;
+                      matchedSiteKey = p.siteKey;
                       break;
                     }
                   }
@@ -5519,6 +5528,22 @@
             // wrote the unlock + identity itself, so just refresh the panel.
             if (!_idIsUnlocked(getIdentity().siteKey)) {
               _idSetUnlocked(getIdentity().siteKey, true);
+            }
+            // Mint supplement token + cache uidHash so cross-page features
+            // (armory-report inventory upload, decor advisor) skip a second UID
+            // prompt. Worker token has 90-day TTL; uidHash cache lets the
+            // armory-report boot warmup re-handshake silently after expiry.
+            // Without this, users who verified UID on the homepage hit
+            // "No upload token. Re-enter UID." on first inventory upload.
+            if (matchedHash && matchedSiteKey) {
+              try {
+                await fetch('https://push-worker.27tb8s6fct.workers.dev/supplement/handshake', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ uidHash: matchedHash })
+                });
+              } catch (e) { /* fail-soft — armory-report will retry on demand */ }
+              try { localStorage.setItem('armory_uidHash_' + matchedSiteKey, matchedHash); } catch (e) {}
             }
             renderExtras();
           } catch (e) {
