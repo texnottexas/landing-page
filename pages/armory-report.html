@@ -15313,12 +15313,21 @@
                       var av = getAvatar(pInfo);
                       if (av) {
                         wizardState.player.avatar = av;
-                        // Persist updated avatar
-                        try {
-                          var s = JSON.parse(localStorage.getItem('playerReport') || '{}');
-                          s.player = wizardState.player;
-                          localStorage.setItem('playerReport', JSON.stringify(s));
-                        } catch(e) {}
+                        // Persist updated avatar — but ONLY when this is the
+                        // viewer's own primary report. Without this gate, opening
+                        // another player's shortcode in view-only mode (where
+                        // applyShortcodeConfig deliberately skipped the
+                        // playerReport setItem) overwrote the viewer's own
+                        // saved player with the foreign player's name + avatar,
+                        // causing the next plain visit's "Welcome Back" prompt
+                        // to ask if the user wanted to load the foreign report.
+                        if (!saved._viewOnly) {
+                          try {
+                            var s = JSON.parse(localStorage.getItem('playerReport') || '{}');
+                            s.player = wizardState.player;
+                            localStorage.setItem('playerReport', JSON.stringify(s));
+                          } catch(e) {}
+                        }
                       }
                       break;
                     }
