@@ -14889,7 +14889,21 @@
       career: null
     };
 
-    reports.forEach(function(report) {
+    // Sort by reportId ascending so newest battles iterate last. Top War
+    // reportIds are timestamp-encoded fixed-width numeric strings, so lex
+    // compare yields chronological order. Account-level fields (decorations,
+    // skins, suit/sublimes, enigmas, etc.) are full snapshots that evolve
+    // between battles — using last-wins on the chrono-sorted list reflects
+    // the player's most recent state. Earlier first-wins logic silently
+    // discarded data from newer reports (e.g. a decoration acquired after
+    // the oldest loaded report would never surface in the decorations tab).
+    var sortedReports = reports.slice().sort(function(a, b) {
+      var ai = String(a.id || ''), bi = String(b.id || '');
+      if (ai.length !== bi.length) return ai.length - bi.length;
+      return ai < bi ? -1 : ai > bi ? 1 : 0;
+    });
+
+    sortedReports.forEach(function(report) {
       var ex = report.extracted;
       if (!ex) return;
 
@@ -14899,16 +14913,16 @@
         if (m.chips && m.chips.length) merged.mechas[m.mechaId] = m;
       });
 
-      // Account-level: first report wins
-      if (!merged.decorations && ex.decorations) merged.decorations = ex.decorations;
-      if (!merged.skins && ex.skins) merged.skins = ex.skins;
-      if (!merged.ctcs && ex.ctcs) merged.ctcs = ex.ctcs;
-      if (!merged.enigmas && ex.enigmas) merged.enigmas = ex.enigmas;
-      if (!merged.effectBuffs && ex.effectBuffs) merged.effectBuffs = ex.effectBuffs;
-      if (!merged.traceEffectBuffs && ex.traceEffectBuffs) merged.traceEffectBuffs = ex.traceEffectBuffs;
-      if (!merged.armyMastery && ex.armyMastery) merged.armyMastery = ex.armyMastery;
-      if (!merged.elementLevels && ex.elementLevels) merged.elementLevels = ex.elementLevels;
-      if (!merged.career && ex.career) merged.career = ex.career;
+      // Account-level: latest report wins (chrono-sorted above).
+      if (ex.decorations) merged.decorations = ex.decorations;
+      if (ex.skins) merged.skins = ex.skins;
+      if (ex.ctcs) merged.ctcs = ex.ctcs;
+      if (ex.enigmas) merged.enigmas = ex.enigmas;
+      if (ex.effectBuffs) merged.effectBuffs = ex.effectBuffs;
+      if (ex.traceEffectBuffs) merged.traceEffectBuffs = ex.traceEffectBuffs;
+      if (ex.armyMastery) merged.armyMastery = ex.armyMastery;
+      if (ex.elementLevels) merged.elementLevels = ex.elementLevels;
+      if (ex.career) merged.career = ex.career;
 
       // Formation accumulator — store latest per formation_id so re-running a report
       // refreshes that formation's lv/quality/masterys without losing the others.
