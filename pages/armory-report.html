@@ -3121,11 +3121,29 @@
     (tabs.hero || []).forEach(function(it) {
       var cfg = lk.item[String(it.id)] || {};
       var icoInfo = _ar_resolveItemIcon(cfg.i);
+      // Type 31 hero shards: same CDN-redirect rule as the Item tab. The
+      // inventory atlas doesn't ship hero portraits, but the public game
+      // headpic CDN does — pluck the hero id out of cfg.i and rewrite the
+      // resolved icon to the global headpic URL. Without this, every hero
+      // shard (Katrina, Abad, Storm Shadow, …) renders the placeholder and
+      // hits /feedback/missing-icon for an asset the repo will never have.
+      var iconAbsUrl = null;
+      if (cfg.t === 31) {
+        var hm = String(cfg.i || '').match(/hero_icon(\d+)/i);
+        if (hm) {
+          iconAbsUrl = 'https://h5.topwargame.com/DynRes/images/headpic/hero_icon' + hm[1] + '_global.png';
+          icoInfo = { file: 'hero_icon' + hm[1] + '_global.png', dirSuffix: null };
+        }
+      }
       out.tabs.hero.push({
         id: it.id, amount: it.a || 0, level: it.l || null, group: it.g || it.id,
         type: cfg.t, quality: cfg.q || 1, name: cfg.n || ('Hero #' + it.id), desc: cfg.d || '',
         icon: icoInfo ? icoInfo.file : null,
-        iconDir: (icoInfo && icoInfo.absDir) ? icoInfo.absDir : (ASSET + (icoInfo ? icoInfo.dirSuffix : 'inventory-icons')),
+        iconDir: iconAbsUrl
+          ? iconAbsUrl.replace(/\/[^\/]*$/, '')
+          : (icoInfo && icoInfo.absDir)
+            ? icoInfo.absDir
+            : (ASSET + (icoInfo ? icoInfo.dirSuffix : 'inventory-icons')),
         subtab: _ar_heroSubtab(cfg.t)
       });
     });
