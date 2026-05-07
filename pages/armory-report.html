@@ -3187,6 +3187,16 @@
     var playerName = (wizardState.player && wizardState.player.name) || (identity && identity.name) || 'Guest';
     var reportIds = wizardState.reportData.map(function(r) { return r.id; }).join(',');
 
+    // Block guest-keyed share codes. The /supplement/<kind>/<siteKey> route
+    // requires a 16-hex siteKey, so a "guest_<deviceId>" code can never carry
+    // inventory/beasts/HT chips — viewers always see "not uploaded" and the
+    // owner's chip-status indicators stay gray no matter how many syncs run.
+    // Force UID verification first (rosterHeal rewrites identity.siteKey to
+    // the player's real 16-hex key) so the saved code is usable.
+    if (String(siteKey).indexOf('guest_') === 0) {
+      return Promise.reject(new Error('Verify your in-game UID before saving a share code. Guest share codes can’t carry inventory, beasts, or HT chips — viewers see no data.'));
+    }
+
     return getPushEndpoint().then(function(endpoint) {
       var body = {
         siteKey: siteKey,
@@ -5618,19 +5628,102 @@
         });
       }
 
-      // Save button at bottom (hidden in view-only mode)
+      // Save / Sync now / Forget Share Code row (hidden in view-only mode)
       if (!wizardState._viewOnly) {
         var saveRow = document.createElement('div');
-        saveRow.style.cssText = 'margin-top:.75rem;text-align:center;';
+        saveRow.style.cssText = 'margin-top:.75rem;display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center;';
+
+        // Sync now — force-push local supplements (inv/bench/chips) for the
+        // current player view. Useful when "Cloud sync: up to date" is wrong
+        // (e.g. after the upload silently failed earlier and lastSync got out
+        // of date with the worker).
+        var syncNowBtn = document.createElement('button');
+        syncNowBtn.className = 'rh-prefs-btn';
+        syncNowBtn.textContent = 'Sync now';
+        syncNowBtn.addEventListener('click', async function() {
+          var syncSiteKey = (wizardState.player && wizardState.player.siteKey)
+                          || (identity && identity.siteKey) || null;
+          if (!syncSiteKey) { alert('No siteKey available — verify your UID first.'); return; }
+          syncNowBtn.disabled = true;
+          var origLabel = syncNowBtn.textContent;
+          syncNowBtn.textContent = 'Syncing…';
+          var kinds = ['inv', 'bench', 'chips'];
+          var results = {};
+          for (var i = 0; i < kinds.length; i++) {
+            var k = kinds[i];
+            // Force a re-upload by clearing the per-kind lastSync sentinel so
+            // backgroundSync can't short-circuit to "no-change".
+            try { localStorage.removeItem('armory_lastSync_' + k + '_' + syncSiteKey); } catch (e) {}
+            try { results[k] = await _ar_backgroundSyncSupplement(k, syncSiteKey); }
+            catch (e) { results[k] = 'error'; }
+          }
+          syncNowBtn.textContent = origLabel;
+          syncNowBtn.disabled = false;
+          var summary = kinds.map(function(k) { return k + ': ' + results[k]; }).join('\n');
+          var note = '';
+          if (String(syncSiteKey).indexOf('guest_') === 0) {
+            note = '\n\nWarning: this player is on a guest siteKey. Uploads land under your verified UID instead, so viewers of a guest-keyed share code still won’t see anything. Verify UID and Save a new share code.';
+          }
+          alert('Sync result:\n' + summary + note);
+        });
+        saveRow.appendChild(syncNowBtn);
+
         var saveBtn = document.createElement('button');
         saveBtn.className = 'rh-prefs-btn';
         saveBtn.style.cssText = 'background:var(--green);color:#000;border-color:var(--green);font-weight:600;';
         saveBtn.textContent = 'Save';
         saveBtn.addEventListener('click', function() {
           closeIdentityPrefs();
-          saveConfig(true);
+          saveConfig(true).catch(function(e) {
+            alert(e && e.message ? e.message : 'Save failed');
+          });
         });
         saveRow.appendChild(saveBtn);
+
+        // Forget Share Code — always available when a primary shortcode is
+        // cached locally. Wipes the local pointer regardless of device-id /
+        // Bearer match (so users on a wiped/changed browser can still
+        // disassociate a stale code), best-effort DELETE on the worker, then
+        // reloads the page so a fresh save can be issued.
+        var primaryCodeForReset = null;
+        try { primaryCodeForReset = JSON.parse(localStorage.getItem('playerReport') || '{}').shortcode || null; } catch (e) {}
+        if (primaryCodeForReset) {
+          var resetBtn = document.createElement('button');
+          resetBtn.className = 'rh-prefs-btn';
+          resetBtn.style.cssText = 'color:#f85149;border-color:rgba(248,81,73,0.4);';
+          resetBtn.textContent = 'Forget Share Code';
+          resetBtn.addEventListener('click', async function() {
+            if (!confirm(
+              'Forget share code ' + primaryCodeForReset + ' on this device?\n\n' +
+              '• The worker shortcode entry is best-effort deleted (left to expire in 90 days if delete fails).\n' +
+              '• Your inventory / beasts / HT chips data stays on this device — only the share-code link is dropped.\n' +
+              '• Use this when Save is blocked or the existing code points to the wrong identity.'
+            )) return;
+            resetBtn.disabled = true;
+            resetBtn.textContent = 'Working…';
+            try {
+              if (identity && identity.siteKey && _ar_isUnlocked(identity.siteKey)) {
+                var hash = _ar_getStoredUidHash(identity.siteKey);
+                if (hash) { try { await _ar_handshake(hash); } catch (e) {} }
+              }
+              var headers = { 'Content-Type': 'application/json' };
+              if (_ar_supplementToken) headers['Authorization'] = 'Bearer ' + _ar_supplementToken;
+              var body = { shortcode: primaryCodeForReset, siteKey: reportSiteKey, deviceId: getDeviceId() };
+              await fetch(PUSH_WORKER + '/report-config', {
+                method: 'DELETE', headers: headers, body: JSON.stringify(body)
+              }).catch(function() {});
+            } catch (e) { /* swallow — local wipe still proceeds */ }
+            try {
+              var saved = JSON.parse(localStorage.getItem('playerReport') || '{}');
+              delete saved.shortcode;
+              localStorage.setItem('playerReport', JSON.stringify(saved));
+            } catch (e) {}
+            closeIdentityPrefs();
+            location.reload();
+          });
+          saveRow.appendChild(resetBtn);
+        }
+
         reportPanel.appendChild(saveRow);
       }
     }
@@ -5751,7 +5844,9 @@
       saveSvg2.appendChild(savePath2);
       saveBtn2.appendChild(saveSvg2);
       saveBtn2.appendChild(document.createTextNode('Save'));
-      saveBtn2.addEventListener('click', function() { saveConfig(true); });
+      saveBtn2.addEventListener('click', function() {
+        saveConfig(true).catch(function(e) { alert(e && e.message ? e.message : 'Save failed'); });
+      });
       actions.appendChild(saveBtn2);
 
       // Shortcode display + Share button
