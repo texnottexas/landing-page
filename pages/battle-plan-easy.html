@@ -25,6 +25,11 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 .home-btn,.lang-btn,.full-btn{display:inline-flex;align-items:center;justify-content:center;background:var(--card);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:.4rem .55rem;font-size:.78rem;text-decoration:none;transition:border-color .15s,color .15s;cursor:pointer;font-family:inherit;gap:.3rem;}
 .home-btn:hover,.lang-btn:hover,.full-btn:hover{border-color:var(--accent);color:var(--accent);text-decoration:none;}
 .full-btn{font-weight:700;}
+.mode-btn.caveman{background:linear-gradient(135deg,rgba(210,153,34,.25),rgba(248,81,73,.18));border-color:rgba(210,153,34,.5);color:var(--yellow);}
+.mode-btn.caveman:hover{border-color:var(--yellow);color:var(--yellow);}
+body.caveman{font-family:'Impact','Arial Black',-apple-system,BlinkMacSystemFont,sans-serif;letter-spacing:.005em;}
+body.caveman .hero h1,body.caveman .step-title,body.caveman .f-buff,body.caveman .cheer{text-transform:uppercase;letter-spacing:.01em;}
+body.caveman .step-sub,body.caveman .hero .sub,body.caveman .tip,body.caveman .f-buffname,body.caveman .f-vs,body.caveman .f-pill{text-transform:uppercase;}
 .lang-btn #langCode{font-size:.7rem;color:var(--muted);}
 .notranslate{unicode-bidi:isolate;}
 #google_translate_element{position:absolute;left:-9999px;opacity:0;pointer-events:none;}
@@ -168,8 +173,9 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 <header>
   <div class="hdr-left">
     <a href="https://2864tw.com/index.html" class="home-btn" id="homeBtn" title="Home"></a>
-    <div class="hdr-title">Battle Plan <span class="dim">Easy Mode</span><span class="dim" id="hdrSub"></span></div>
+    <div class="hdr-title">Battle Plan <span class="dim" id="modeLabel">Easy Mode</span><span class="dim" id="hdrSub"></span></div>
   </div>
+  <button class="full-btn mode-btn" id="modeToggle" type="button" title="Switch between Easy mode and Caveman mode">Caveman</button>
   <a href="battle-plan.html" class="full-btn" title="Full battle plan with all the details">Full plan</a>
   <button class="lang-btn" id="langBtn" type="button" title="Language">
     <span id="langFlag">🇺🇸</span><span id="langCode">/en</span>
@@ -226,6 +232,54 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
   var SPEC_ICON={4001:'sword',4006:'heart',4007:'flame',4008:'shield',4010:'shield',4002:'truck',4003:'truck',4004:'pickaxe',4015:'list',4016:'train',4017:'compass',4018:'ghost',4080:'treasure'};
   var FAME_THREAT_THRESHOLD=100000;
   var COMBAT_SPECS={4001:1,4006:1,4007:1,4008:1,4010:1};
+
+  // ===== MODE (easy | caveman) =====
+  var MODE_KEY='bp-easy-mode';
+  var MODE='easy';
+  try{var m=localStorage.getItem(MODE_KEY);if(m==='caveman'||m==='easy')MODE=m;}catch(e){}
+  var STR={
+    easy:{
+      modeLabel:'Easy Mode', toggleLabel:'Caveman',
+      heroPill:function(r,n){return 'Round '+r+' · '+n+' wastelands';},
+      heroH1a:'Hit ', heroEm:'these wastelands', heroH1b:' in this order!',
+      heroSubA:'Start at ', heroSubB:'#1', heroSubC:' and work down. The big bullies first, then the power-ups. Bonus fights at the bottom if you have time.',
+      tipLead:'Each fight has a number — that is the order to hit them. ',
+      tipRed:'Red = bullies', tipYel:'Yellow = power-ups', tipGrn:'Green = bonus stuff',
+      tipMidA:' (real opponents). ', tipMidB:'. ', tipEnd:'.',
+      step1Title:'First — Stop the bullies', step1Sub:'Strong enemies. Win these or we lose points.', step1Empty:'No bullies this round. Lucky!',
+      step2Title:'Next — Grab the power-ups', step2Sub:'Big buffs: attack, health, defense, damage. The good stuff.', step2Empty:'No power-up fights left.',
+      cheer:'Done with the hard part — bonus rounds below!',
+      step3Title:'Bonus — Extra wins', step3Sub:'Hit these in order if you still have troops left. Wastelands that open new cities first, then everything else.', step3Empty:'No bonus fights this round.',
+      divCity:'Open new cities — hit these next', divFiller:'Everything else — only if troops left',
+      pillBully:'Bully!', pillPower:'Power-up', pillCity:'Opens new city', pillSkip:'Skip if busy', pillFiller:'Extra',
+      vsEasy:' Easy take', vsBully:function(s){return ' Bully S'+s+' — really strong';}, vsMulti:function(n){return ' '+n+'-way fight';}, vsSingle:function(s){return ' vs S'+s;},
+      checkTitle:'Tap when this wasteland is done', checkAria:function(s){return 'Mark W-'+s+' done';},
+      footFights:function(n){return ' · '+n+' fights · ';}, resetBtn:'Clear my checks',
+      loading:'Loading battle plan…', errPrefix:'Could not load battle plan: ',
+      noRound:function(r){return 'No data for round '+r;}
+    },
+    caveman:{
+      modeLabel:'Caveman', toggleLabel:'Easy',
+      heroPill:function(r,n){return 'ROUND '+r+' · '+n+' LAND';},
+      heroH1a:'HIT ', heroEm:'THESE LAND', heroH1b:'. THIS ORDER.',
+      heroSubA:'START AT ', heroSubB:'#1', heroSubC:'. GO DOWN. BULLY FIRST. POWER NEXT. EXTRA IF TIME.',
+      tipLead:'NUMBER = ORDER. ',
+      tipRed:'RED = BULLY', tipYel:'YELLOW = POWER', tipGrn:'GREEN = EXTRA',
+      tipMidA:'. ', tipMidB:'. ', tipEnd:'.',
+      step1Title:'1. SMASH BULLY', step1Sub:'BIG ENEMY. WIN OR LOSE POINT.', step1Empty:'NO BULLY. GOOD.',
+      step2Title:'2. GRAB POWER', step2Sub:'BIG BUFF. ATK. HP. DEF. DMG. GOOD.', step2Empty:'NO POWER LEFT.',
+      cheer:'HARD PART DONE. EXTRA BELOW.',
+      step3Title:'3. EXTRA WIN', step3Sub:'TROOP LEFT? HIT. NEW CITY FIRST. REST AFTER.', step3Empty:'NO EXTRA.',
+      divCity:'OPEN NEW CITY. HIT FIRST.', divFiller:'REST. ONLY IF TROOP LEFT.',
+      pillBully:'BULLY', pillPower:'POWER', pillCity:'NEW CITY', pillSkip:'SKIP', pillFiller:'EXTRA',
+      vsEasy:' EASY', vsBully:function(s){return ' BIG BULLY S'+s+'.';}, vsMulti:function(n){return ' '+n+'-WAY';}, vsSingle:function(s){return ' VS S'+s;},
+      checkTitle:'TAP WHEN DONE', checkAria:function(s){return 'MARK W-'+s+' DONE';},
+      footFights:function(n){return ' · '+n+' FIGHT · ';}, resetBtn:'CLEAR CHECK',
+      loading:'LOADING…', errPrefix:'BROKE. ',
+      noRound:function(r){return 'NO ROUND '+r+'.';}
+    }
+  };
+  function t(){return STR[MODE];}
 
   // Local-only "done" tracking, scoped per round. Reset by round change.
   var DONE_PREFIX='bp-easy-done-r';
@@ -332,44 +386,44 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 
   function vsLine(e){
     var opps=e.opps||[];
+    var L=t();
     if(!opps.length){
       var s=el('span','f-vs easy');
       s.appendChild(makeIcon('star',12));
-      s.appendChild(document.createTextNode(' Easy take'));
+      s.appendChild(document.createTextNode(L.vsEasy));
       return s;
     }
     if(e.threat){
-      var t=el('span','f-vs threat');
-      t.appendChild(makeIcon('skull',12));
-      var biggest=opps[0];
-      t.appendChild(document.createTextNode(' Bully S'+biggest.opponent+' — really strong'));
-      return t;
+      var th=el('span','f-vs threat');
+      th.appendChild(makeIcon('skull',12));
+      th.appendChild(document.createTextNode(L.vsBully(opps[0].opponent)));
+      return th;
     }
-    var label=opps.length>=2?(opps.length+1)+'-way fight':'vs S'+opps[0].opponent;
+    var label=opps.length>=2?L.vsMulti(opps.length+1):L.vsSingle(opps[0].opponent);
     var c=el('span','f-vs contest');
     c.appendChild(makeIcon('bolt',12));
-    c.appendChild(document.createTextNode(' '+label));
+    c.appendChild(document.createTextNode(label));
     return c;
   }
   function tagPill(e,tier){
-    if(e.threat)return el('span','f-pill threat','Bully!');
-    if(tier==='B')return el('span','f-pill combat','Power-up');
-    if(tier==='C'){
-      return el('span','f-pill nc','Opens new city');
-    }
-    if(e.droppable)return el('span','f-pill skip','Skip if busy');
-    return el('span','f-pill skip','Extra');
+    var L=t();
+    if(e.threat)return el('span','f-pill threat',L.pillBully);
+    if(tier==='B')return el('span','f-pill combat',L.pillPower);
+    if(tier==='C')return el('span','f-pill nc',L.pillCity);
+    if(e.droppable)return el('span','f-pill skip',L.pillSkip);
+    return el('span','f-pill skip',L.pillFiller);
   }
   function fightCard(e,num,tier,roundKey){
     var card=el('div','fight cat-'+(SPEC_CAT[e.specId]||'special')+' tier-'+tier.toLowerCase());
     if(e.threat)card.classList.add('threat');
     if(isDone(e.seq))card.classList.add('done');
 
+    var L=t();
     var check=document.createElement('button');
     check.type='button';
     check.className='f-check'+(isDone(e.seq)?' checked':'');
-    check.setAttribute('aria-label','Mark W-'+e.seq+' done');
-    check.title='Tap when this wasteland is done';
+    check.setAttribute('aria-label',L.checkAria(e.seq));
+    check.title=L.checkTitle;
     check.appendChild(makeIcon('check',18));
     check.addEventListener('click',function(ev){
       ev.stopPropagation();
@@ -404,32 +458,34 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
   }
 
   function buildHero(rd,roundKey,totalFights){
+    var L=t();
     var hero=el('div','hero');
-    hero.appendChild(el('div','round-pill','Round '+roundKey+' · '+totalFights+' wastelands'));
+    hero.appendChild(el('div','round-pill',L.heroPill(roundKey,totalFights)));
     var h1=el('h1');
-    h1.appendChild(document.createTextNode('Hit '));
-    h1.appendChild(el('span','em','these wastelands'));
-    h1.appendChild(document.createTextNode(' in this order!'));
+    h1.appendChild(document.createTextNode(L.heroH1a));
+    h1.appendChild(el('span','em',L.heroEm));
+    h1.appendChild(document.createTextNode(L.heroH1b));
     hero.appendChild(h1);
     var sub=el('div','sub');
-    sub.appendChild(document.createTextNode('Start at '));
-    sub.appendChild(el('b',null,'#1'));
-    sub.appendChild(document.createTextNode(' and work down. The big bullies first, then the power-ups. Bonus fights at the bottom if you have time.'));
+    sub.appendChild(document.createTextNode(L.heroSubA));
+    sub.appendChild(el('b',null,L.heroSubB));
+    sub.appendChild(document.createTextNode(L.heroSubC));
     hero.appendChild(sub);
     return hero;
   }
 
   function buildTip(){
+    var L=t();
     var tip=el('div','tip');
     tip.appendChild(makeIcon('info',16));
     var body=el('div');
-    body.appendChild(document.createTextNode('Each fight has a number — that is the order to hit them. '));
-    body.appendChild(el('b','red','Red = bullies'));
-    body.appendChild(document.createTextNode(' (real opponents). '));
-    body.appendChild(el('b','yel','Yellow = power-ups'));
-    body.appendChild(document.createTextNode('. '));
-    body.appendChild(el('b','grn','Green = bonus stuff'));
-    body.appendChild(document.createTextNode('.'));
+    body.appendChild(document.createTextNode(L.tipLead));
+    body.appendChild(el('b','red',L.tipRed));
+    body.appendChild(document.createTextNode(L.tipMidA));
+    body.appendChild(el('b','yel',L.tipYel));
+    body.appendChild(document.createTextNode(L.tipMidB));
+    body.appendChild(el('b','grn',L.tipGrn));
+    body.appendChild(document.createTextNode(L.tipEnd));
     tip.appendChild(body);
     return tip;
   }
@@ -455,14 +511,17 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     return s;
   }
 
+  var _lastData=null;
   function render(data){
+    _lastData=data;
     var root=document.getElementById('root');
     while(root.firstChild)root.removeChild(root.firstChild);
     var roundKey=String(data.currentRound);
     var rd=data.rounds[roundKey];
-    if(!rd){root.appendChild(el('div','error','No data for round '+roundKey));return;}
+    if(!rd){root.appendChild(el('div','error',t().noRound(roundKey)));return;}
     document.getElementById('hdrSub').textContent=' · R'+roundKey;
     loadDone(roundKey);
+    var L=t();
 
     var tiers=categorize(rd);
     var totalFights=tiers.A.length+tiers.B.length+tiers.C.length+tiers.D.length;
@@ -471,14 +530,14 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     root.appendChild(buildTip());
 
     var counter={n:1};
-    root.appendChild(buildStep('s-a',1,'First — Stop the bullies','Strong enemies. Win these or we lose points.',tiers.A,counter,'A','No bullies this round. Lucky!',roundKey));
-    root.appendChild(buildStep('s-b',2,'Next — Grab the power-ups','Big buffs: attack, health, defense, damage. The good stuff.',tiers.B,counter,'B','No power-up fights left.',roundKey));
+    root.appendChild(buildStep('s-a',1,L.step1Title,L.step1Sub,tiers.A,counter,'A',L.step1Empty,roundKey));
+    root.appendChild(buildStep('s-b',2,L.step2Title,L.step2Sub,tiers.B,counter,'B',L.step2Empty,roundKey));
 
     var cheer=el('div','cheer');
     var pulseStar=el('span','pulse');
     pulseStar.appendChild(makeIcon('star',18));
     cheer.appendChild(pulseStar);
-    cheer.appendChild(document.createTextNode('Done with the hard part — bonus rounds below!'));
+    cheer.appendChild(document.createTextNode(L.cheer));
     root.appendChild(cheer);
 
     // Bonus step: C + D combined with internal divider
@@ -486,33 +545,33 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     var bHead=el('div','step-head');
     bHead.appendChild(el('div','step-num','3'));
     var bText=el('div','step-text');
-    bText.appendChild(el('div','step-title','Bonus — Extra wins'));
-    bText.appendChild(el('div','step-sub','Hit these in order if you still have troops left. Wastelands that open new cities first, then everything else.'));
+    bText.appendChild(el('div','step-title',L.step3Title));
+    bText.appendChild(el('div','step-sub',L.step3Sub));
     bHead.appendChild(bText);
     bonus.appendChild(bHead);
     var bList=el('div','fights');
     var hadAny=false;
     if(tiers.C.length){
-      bList.appendChild(divLabel('Open new cities — hit these next'));
+      bList.appendChild(divLabel(L.divCity));
       tiers.C.forEach(function(e){bList.appendChild(fightCard(e,counter.n++,'C',roundKey));});
       hadAny=true;
     }
     if(tiers.D.length){
-      bList.appendChild(divLabel('Everything else — only if troops left'));
+      bList.appendChild(divLabel(L.divFiller));
       tiers.D.forEach(function(e){bList.appendChild(fightCard(e,counter.n++,'D',roundKey));});
       hadAny=true;
     }
-    if(!hadAny){bList.appendChild(el('div','step-empty','No bonus fights this round.'));}
+    if(!hadAny){bList.appendChild(el('div','step-empty',L.step3Empty));}
     bonus.appendChild(bList);
     root.appendChild(bonus);
 
     var foot=el('div','foot');
     var label=rd.label||('Round '+roundKey);
-    foot.appendChild(document.createTextNode(label+' · '+totalFights+' fights · '));
+    foot.appendChild(document.createTextNode(label+L.footFights(totalFights)));
     var resetBtn=document.createElement('button');
     resetBtn.type='button';
     resetBtn.className='reset-btn';
-    resetBtn.textContent='Clear my checks';
+    resetBtn.textContent=L.resetBtn;
     resetBtn.addEventListener('click',function(){
       doneSet={};
       try{localStorage.removeItem(DONE_PREFIX+roundKey);}catch(e){}
@@ -533,8 +592,26 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
   function showError(msg){
     var root=document.getElementById('root');
     while(root.firstChild)root.removeChild(root.firstChild);
-    root.appendChild(el('div','error','Could not load battle plan: '+msg));
+    root.appendChild(el('div','error',t().errPrefix+msg));
   }
+
+  function applyMode(){
+    var L=t();
+    document.body.classList.toggle('caveman',MODE==='caveman');
+    var ml=document.getElementById('modeLabel');if(ml)ml.textContent=L.modeLabel;
+    var tg=document.getElementById('modeToggle');if(tg){tg.textContent=L.toggleLabel;tg.classList.toggle('caveman',MODE==='caveman');}
+    var loadEl=document.querySelector('#root .loading');if(loadEl)loadEl.textContent=L.loading;
+  }
+  function setMode(next){
+    if(next!==MODE){
+      MODE=next;
+      try{localStorage.setItem(MODE_KEY,MODE);}catch(e){}
+    }
+    applyMode();
+    if(_lastData)render(_lastData);
+  }
+  document.getElementById('modeToggle').addEventListener('click',function(){setMode(MODE==='easy'?'caveman':'easy');});
+  applyMode();
 
   fetch('https://raw.githubusercontent.com/texnottexas/landing-page/main/data/ssc-map.json?_t='+Date.now(),{cache:'no-store'})
     .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
