@@ -3313,7 +3313,21 @@
         // Update displayed shortcode in header if exists
         var codeDisplay = document.getElementById('header-shortcode');
         if (codeDisplay) codeDisplay.textContent = result.shortcode;
-        if (showToast) showToastMessage('Saved!');
+        // FIFO eviction: at the cap, the worker drops the oldest code(s)
+        // to make room. Surface a notice so the player knows their old
+        // share link stopped working.
+        if (result.evicted && result.evicted.length) {
+          var lost = result.evicted.join(', ');
+          if (showToast) {
+            showToastMessage('Saved. Oldest code (' + lost + ') was replaced.');
+          } else {
+            // shareConfig() path — toast suppressed but eviction is still
+            // worth surfacing because the player just got a new shortcode.
+            showToastMessage('Old code (' + lost + ') replaced by new one.');
+          }
+        } else if (showToast) {
+          showToastMessage('Saved!');
+        }
         return result.shortcode;
       } else {
         throw new Error((result && result.error) || 'Save failed');
