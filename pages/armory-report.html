@@ -12007,6 +12007,44 @@
     });
     modal.appendChild(tbl);
 
+    // Icon-orientation report row. Player taps when an inventory icon
+    // renders rotated/mirrored — the report goes to the same KV bucket
+    // as missing-icons so the next extract pass can fix the bad
+    // sprite-frame rotation. Memory `feedback_gl_readpixels_orientation.md`
+    // notes orientation is per-icon variable on the Cocos atlas; this is
+    // how we collect the long tail without reviewing every report.
+    if (it.icon) {
+      var orientRow = document.createElement('div');
+      orientRow.style.cssText = 'display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:12px; padding-top:10px; border-top:1px solid var(--border); font-size:12px;';
+      var orientLabel = document.createElement('span');
+      orientLabel.style.cssText = 'color: var(--muted);';
+      orientLabel.textContent = 'Icon looks wrong?';
+      orientRow.appendChild(orientLabel);
+      var orientBtns = [
+        { reason: 'upside_down', label: 'Upside down' },
+        { reason: 'flipped_h',   label: 'Mirrored' },
+        { reason: 'rotated',     label: 'Rotated' }
+      ];
+      orientBtns.forEach(function(spec) {
+        var btn = document.createElement('button');
+        btn.style.cssText = 'padding:4px 10px; background:transparent; border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer; font-size:12px;';
+        btn.textContent = spec.label;
+        btn.onmouseenter = function() { btn.style.borderColor = 'var(--accent)'; btn.style.color = 'var(--accent)'; };
+        btn.onmouseleave = function() { if (!btn.disabled) { btn.style.borderColor = 'var(--border)'; btn.style.color = 'var(--text)'; } };
+        btn.onclick = function() {
+          if (btn.disabled) return;
+          btn.disabled = true;
+          btn.textContent = spec.label + ' ✓';
+          btn.style.color = '#3fb950';
+          btn.style.borderColor = 'rgba(63,185,80,0.5)';
+          btn.style.cursor = 'default';
+          _ar_reportIconOrientation(it, spec.reason);
+        };
+        orientRow.appendChild(btn);
+      });
+      modal.appendChild(orientRow);
+    }
+
     bg.addEventListener('click', function(e) { if (e.target === bg) document.body.removeChild(bg); });
     document.addEventListener('keydown', function escClose(e) {
       if (e.key === 'Escape' && bg.parentNode) {
@@ -12037,6 +12075,40 @@
         body: JSON.stringify({
           kind: kind || 'inv',
           id: it.id,
+          name: it.name || '',
+          type: it.type,
+          group: it.group,
+          iconPath: it.icon ? (it.iconDir + '/' + it.icon) : '',
+          page: 'armory-report/inventory'
+        }),
+        keepalive: true
+      }).catch(function() {});
+    } catch (e) {}
+  }
+
+  // Per-(id, reason) dedupe so spamming the button only counts once per
+  // browser session. Server still bumps lastSeen + per-reason counter on
+  // every POST so cross-device + cross-session reports still aggregate.
+  var _ar_orientReported = (function() {
+    try {
+      var s = JSON.parse(localStorage.getItem('armory_orient_reported') || '{}');
+      return s && typeof s === 'object' ? s : {};
+    } catch (e) { return {}; }
+  })();
+  function _ar_reportIconOrientation(it, reason) {
+    if (!it || !it.id) return;
+    var key = (it.id) + '_' + reason;
+    if (_ar_orientReported[key]) return;
+    _ar_orientReported[key] = Date.now();
+    try { localStorage.setItem('armory_orient_reported', JSON.stringify(_ar_orientReported)); } catch (e) {}
+    try {
+      fetch(PUSH_WORKER + '/feedback/icon-orientation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'inv',
+          id: it.id,
+          orientation: reason,
           name: it.name || '',
           type: it.type,
           group: it.group,
