@@ -158,6 +158,48 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 .lang-option.active{background:rgba(121,192,255,.1);border-color:var(--accent);color:var(--accent);}
 .lang-flag{font-size:1rem;}
 
+/* Search */
+.search-wrap{position:relative;margin-bottom:1.2rem;}
+.search-input{width:100%;background:var(--card);border:2px solid var(--border);border-radius:14px;color:var(--text);font-size:1rem;font-weight:600;padding:.85rem 1rem .85rem 2.6rem;font-family:inherit;transition:border-color .15s ease,background .15s ease;}
+.search-input:focus{outline:none;border-color:var(--accent);background:var(--surface);}
+.search-input::placeholder{color:var(--muted);font-weight:500;}
+.search-icon{position:absolute;left:.95rem;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;}
+.search-input:focus + .search-icon{color:var(--accent);}
+.search-results{position:absolute;top:calc(100% + .25rem);left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:none;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,.4);}
+.search-results.active{display:block;}
+.search-result{display:flex;align-items:center;gap:.6rem;padding:.65rem .85rem;cursor:pointer;font-size:.85rem;border-bottom:1px solid var(--border);transition:background .12s ease;}
+.search-result:last-child{border-bottom:none;}
+.search-result:hover,.search-result.focused{background:rgba(121,192,255,.1);}
+.search-result .sr-name{font-weight:700;color:var(--text);flex:1;min-width:0;}
+.search-result .sr-alli{font-size:.7rem;font-family:'SF Mono',Consolas,monospace;color:var(--muted);background:var(--surface);border:1px solid var(--border);padding:.05rem .35rem;border-radius:5px;}
+.search-result .sr-prof{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+.search-result .sr-prof.ce{color:var(--red);}
+.search-result .sr-prof.mm{color:var(--accent);}
+.search-empty{padding:.85rem;text-align:center;font-size:.8rem;color:var(--muted);}
+
+/* Player modal */
+.pm-overlay{display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.75);align-items:center;justify-content:center;padding:1rem;}
+.pm-overlay.active{display:flex;}
+.pm{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:1.4rem;max-width:480px;width:100%;max-height:88vh;overflow-y:auto;}
+.pm-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.6rem;margin-bottom:.4rem;}
+.pm-name{font-size:1.4rem;font-weight:900;line-height:1.1;}
+.pm-meta{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin-bottom:.85rem;font-size:.75rem;color:var(--muted);}
+.pm-meta .pm-alli{font-family:'SF Mono',Consolas,monospace;background:var(--surface);border:1px solid var(--border);padding:.1rem .45rem;border-radius:5px;font-weight:700;color:var(--text);}
+.pm-meta .pm-prof{font-weight:800;text-transform:uppercase;letter-spacing:.04em;}
+.pm-meta .pm-prof.ce{color:var(--red);}
+.pm-meta .pm-prof.mm{color:var(--accent);}
+.pm-close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.4rem;padding:.15rem .45rem;border-radius:6px;line-height:1;}
+.pm-close:hover{background:var(--surface);color:var(--text);}
+.pm-sub{font-size:.85rem;color:var(--text);background:rgba(121,192,255,.06);border:1px solid rgba(121,192,255,.3);border-radius:10px;padding:.7rem .9rem;margin-bottom:.95rem;line-height:1.45;}
+.pm-sub b{color:var(--accent);}
+.pm-heading{font-size:.95rem;font-weight:800;margin-bottom:.55rem;display:flex;align-items:center;gap:.45rem;}
+.pm-heading svg{color:var(--green);}
+.pm-fights{display:flex;flex-direction:column;gap:.5rem;}
+.pm-empty{background:var(--surface);border:1px dashed var(--border);border-radius:10px;padding:.85rem;text-align:center;color:var(--muted);font-size:.85rem;}
+.pm-foot{margin-top:1.1rem;display:flex;justify-content:flex-end;}
+.pm-ok{background:linear-gradient(135deg,var(--green),var(--accent));border:none;color:#0d1117;font-weight:800;font-size:.9rem;padding:.55rem 1.2rem;border-radius:10px;cursor:pointer;font-family:inherit;letter-spacing:.02em;}
+.pm-ok:hover{filter:brightness(1.1);}
+
 .cheer{background:linear-gradient(90deg,rgba(63,185,80,.18),rgba(121,192,255,.12),rgba(247,120,186,.10));border:1px dashed rgba(63,185,80,.4);border-radius:14px;padding:.85rem 1rem;margin:1.6rem 0 1rem;text-align:center;font-size:.95rem;font-weight:800;color:var(--green);letter-spacing:-.005em;}
 .cheer .pulse{display:inline-block;animation:pulse 2s ease-in-out infinite;margin-right:.4rem;}
 @keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.15);}}
@@ -190,7 +232,28 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 </div>
 
 <div class="wrap">
+  <div class="search-wrap" id="searchWrap" style="display:none;">
+    <input id="searchInput" class="search-input" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Type your name…">
+    <span class="search-icon" id="searchIcon"></span>
+    <div id="searchResults" class="search-results"></div>
+  </div>
   <div id="root"><div class="loading">Loading battle plan…</div></div>
+</div>
+
+<div class="pm-overlay" id="playerModal">
+  <div class="pm">
+    <div class="pm-head">
+      <div>
+        <div class="pm-name" id="pmName"></div>
+        <div class="pm-meta" id="pmMeta"></div>
+      </div>
+      <button class="pm-close" id="pmClose" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="pm-sub" id="pmSub"></div>
+    <div class="pm-heading" id="pmHeading"></div>
+    <div class="pm-fights" id="pmFights"></div>
+    <div class="pm-foot"><button class="pm-ok" id="pmOk" type="button">Got it</button></div>
+  </div>
 </div>
 
 <script>
@@ -221,7 +284,9 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     compass:{parts:[['circle',{cx:'12',cy:'12',r:'10'}],['polygon',{points:'16 8 14 14 8 16 10 10'}]]},
     skull:{parts:[['path',{d:'M12 2a8 8 0 0 0-8 8v5l2 2v3h3v-3h6v3h3v-3l2-2v-5a8 8 0 0 0-8-8z'}],['circle',{cx:'9',cy:'12',r:'1.5',fill:'currentColor'}],['circle',{cx:'15',cy:'12',r:'1.5',fill:'currentColor'}]]},
     star:{parts:[['polygon',{points:'12 2 15 9 22 9 17 14 19 22 12 18 5 22 7 14 2 9 9 9'}]]},
-    check:{parts:[['polyline',{points:'4 12 10 18 20 6'}]]}
+    check:{parts:[['polyline',{points:'4 12 10 18 20 6'}]]},
+    search:{parts:[['circle',{cx:'11',cy:'11',r:'7'}],['line',{x1:'16.5',y1:'16.5',x2:'21',y2:'21'}]]},
+    person:{parts:[['circle',{cx:'12',cy:'7',r:'4'}],['path',{d:'M4 21v-1a8 8 0 0 1 16 0v1'}]]}
   };
 
   var SPEC_NAMES={4001:'ATK Buff',4002:'Truck Transport',4003:'Truck Heist',4004:'Mining Hub',4006:'HP Buff',4007:'DMG Increase',4008:'DMG Reduction',4010:'DEF Buff',4015:'Daily Tasks',4016:'Seal Stone Train',4017:'Realm March',4018:'Realm Thief',4080:'Treasury Reward'};
@@ -253,7 +318,15 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
       checkTitle:'Tap when this wasteland is done', checkAria:function(s){return 'Mark W-'+s+' done';},
       footFights:function(n){return ' · '+n+' fights · ';}, resetBtn:'Clear my checks',
       loading:'Loading battle plan…', errPrefix:'Could not load battle plan: ',
-      noRound:function(r){return 'No data for round '+r;}
+      noRound:function(r){return 'No data for round '+r;},
+      searchPh:'Type your name to find your fights…',
+      searchEmpty:'No player matches that name.',
+      pmHeading:'Where you go fight',
+      pmSubCE:function(n){return n+', you are Combat Elite. The strong enemies are your fight — hit these first.';},
+      pmSubMM:function(n){return n+', you are Mechanical Master. Power-up wastelands are your job.';},
+      pmSubX:function(n){return n+', no role set. Hit the top of the list with the alliance.';},
+      pmEmpty:'Nothing assigned this round — go help where the alliance needs you.',
+      pmOk:'Got it'
     },
     caveman:{
       modeLabel:'Caveman', toggleLabel:'Easy',
@@ -273,7 +346,15 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
       checkTitle:'TAP WHEN DEAD', checkAria:function(s){return 'MARK W-'+s+' DEAD';},
       footFights:function(n){return ' · '+n+' FIGHT · ';}, resetBtn:'CLEAR',
       loading:'LOADING…', errPrefix:'BROKE. ',
-      noRound:function(r){return 'NO ROUND '+r+'.';}
+      noRound:function(r){return 'NO ROUND '+r+'.';},
+      searchPh:'TYPE NAME. FIND KILL.',
+      searchEmpty:'NO PLAYER. CHECK SPELL.',
+      pmHeading:'YOU GO KILL HERE',
+      pmSubCE:function(n){return n+'. CE. KILL STRONG ENEMY FIRST.';},
+      pmSubMM:function(n){return n+'. MM. STEAL POWER.';},
+      pmSubX:function(n){return n+'. NO ROLE. KILL FROM TOP.';},
+      pmEmpty:'NOTHING. HELP ALLIANCE.',
+      pmOk:'OK'
     }
   };
   function t(){return STR[MODE];}
@@ -415,6 +496,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     return el('span','f-pill skip',L.pillFiller);
   }
   function fightCard(e,num,tier,roundKey){
+    _lastNumMap[e.seq]={num:num,tier:tier,entry:e};
     var card=el('div','fight cat-'+(SPEC_CAT[e.specId]||'special')+' tier-'+tier.toLowerCase());
     if(e.threat)card.classList.add('threat');
     if(isDone(e.seq))card.classList.add('done');
@@ -513,6 +595,9 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
   }
 
   var _lastData=null;
+  var _lastTiers=null;
+  var _lastNumMap={};
+  var _lastRoundKey=null;
   function render(data){
     _lastData=data;
     var root=document.getElementById('root');
@@ -525,6 +610,9 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     var L=t();
 
     var tiers=categorize(rd);
+    _lastTiers=tiers;
+    _lastRoundKey=roundKey;
+    _lastNumMap={};
     var totalFights=tiers.A.length+tiers.B.length+tiers.C.length+tiers.D.length;
 
     root.appendChild(buildHero(rd,roundKey,totalFights));
@@ -588,6 +676,12 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     fka.target='_blank';fka.rel='noopener';
     fk.appendChild(fka);
     root.appendChild(fk);
+
+    // Reveal + sync search bar after first successful render
+    var sw=document.getElementById('searchWrap');
+    if(sw)sw.style.display='';
+    var sin=document.getElementById('searchInput');
+    if(sin)sin.placeholder=L.searchPh;
   }
 
   function showError(msg){
@@ -613,6 +707,162 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
   }
   document.getElementById('modeToggle').addEventListener('click',function(){setMode(MODE==='easy'?'caveman':'easy');});
   applyMode();
+
+  // ===== PLAYER SEARCH =====
+  var _players=null,_playersLoading=false,_playerErr=null;
+  var searchInput=document.getElementById('searchInput');
+  var searchResults=document.getElementById('searchResults');
+  var searchIcon=document.getElementById('searchIcon');
+  if(searchIcon)searchIcon.appendChild(makeIcon('search',18));
+  var _focusedIdx=-1;
+  var _matches=[];
+
+  function loadPlayers(cb){
+    if(_players){cb(_players);return;}
+    if(_playersLoading)return;
+    _playersLoading=true;
+    fetch('https://raw.githubusercontent.com/texnottexas/landing-page/main/player-data.json?_t='+Date.now(),{cache:'no-store'})
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+      .then(function(arr){_players=Array.isArray(arr)?arr:[];_playersLoading=false;cb(_players);})
+      .catch(function(err){_playerErr=err.message||'load failed';_playersLoading=false;cb([]);});
+  }
+
+  function profCode(p){
+    var s=(p&&p.profession||'').toLowerCase();
+    if(s.indexOf('combat')>=0||s==='ce')return 'ce';
+    if(s.indexOf('mechanical')>=0||s==='mm')return 'mm';
+    return '';
+  }
+
+  function searchPlayers(q,limit){
+    if(!_players)return [];
+    var qn=q.toLowerCase().trim();
+    if(!qn)return [];
+    var startsWith=[],contains=[];
+    for(var i=0;i<_players.length;i++){
+      var p=_players[i];
+      var nm=(p.name||'').toLowerCase();
+      if(!nm)continue;
+      if(nm===qn)startsWith.unshift(p);
+      else if(nm.indexOf(qn)===0)startsWith.push(p);
+      else if(nm.indexOf(qn)>0)contains.push(p);
+      if(startsWith.length>=limit)break;
+    }
+    return startsWith.concat(contains).slice(0,limit);
+  }
+
+  function renderResults(){
+    while(searchResults.firstChild)searchResults.removeChild(searchResults.firstChild);
+    if(!_matches.length){
+      searchResults.classList.remove('active');
+      return;
+    }
+    _matches.forEach(function(p,i){
+      var row=el('div','search-result'+(i===_focusedIdx?' focused':''));
+      row.appendChild(el('span','sr-name',p.name||'?'));
+      if(p.alliance)row.appendChild(el('span','sr-alli',p.alliance));
+      var pc=profCode(p);
+      if(pc)row.appendChild(el('span','sr-prof '+pc,pc.toUpperCase()));
+      row.addEventListener('mousedown',function(ev){ev.preventDefault();selectPlayer(p);});
+      searchResults.appendChild(row);
+    });
+    searchResults.classList.add('active');
+  }
+
+  function pickFightsForPlayer(p){
+    if(!_lastTiers)return [];
+    var pc=profCode(p);
+    var prefer;
+    if(pc==='ce')prefer=[_lastTiers.A,_lastTiers.B,_lastTiers.C,_lastTiers.D];
+    else if(pc==='mm')prefer=[_lastTiers.B,_lastTiers.C,_lastTiers.A,_lastTiers.D];
+    else prefer=[_lastTiers.A,_lastTiers.B,_lastTiers.C,_lastTiers.D];
+    var picks=[];
+    for(var i=0;i<prefer.length&&picks.length<3;i++){
+      for(var j=0;j<prefer[i].length&&picks.length<3;j++){
+        picks.push(prefer[i][j]);
+      }
+    }
+    return picks;
+  }
+
+  var pmEl=document.getElementById('playerModal');
+  function openPlayerModal(p){
+    var L=t();
+    document.getElementById('pmName').textContent=p.name||'?';
+    var meta=document.getElementById('pmMeta');
+    while(meta.firstChild)meta.removeChild(meta.firstChild);
+    if(p.alliance)meta.appendChild(el('span','pm-alli',p.alliance));
+    var pc=profCode(p);
+    if(pc==='ce')meta.appendChild(el('span','pm-prof ce','Combat Elite'));
+    else if(pc==='mm')meta.appendChild(el('span','pm-prof mm','Mechanical Master'));
+    var sub=document.getElementById('pmSub');
+    var subTxt=pc==='ce'?L.pmSubCE(p.name||''):pc==='mm'?L.pmSubMM(p.name||''):L.pmSubX(p.name||'');
+    sub.textContent=subTxt;
+    var heading=document.getElementById('pmHeading');
+    while(heading.firstChild)heading.removeChild(heading.firstChild);
+    heading.appendChild(makeIcon('compass',18));
+    heading.appendChild(document.createTextNode(' '+L.pmHeading));
+    var fights=document.getElementById('pmFights');
+    while(fights.firstChild)fights.removeChild(fights.firstChild);
+    var picks=pickFightsForPlayer(p);
+    if(!picks.length){
+      fights.appendChild(el('div','pm-empty',L.pmEmpty));
+    }else{
+      picks.forEach(function(e){
+        var info=_lastNumMap[e.seq]||{num:'?',tier:'A',entry:e};
+        fights.appendChild(fightCard(e,info.num,info.tier,_lastRoundKey));
+      });
+    }
+    document.getElementById('pmOk').textContent=L.pmOk;
+    pmEl.classList.add('active');
+  }
+  function closePlayerModal(){pmEl.classList.remove('active');}
+  document.getElementById('pmClose').addEventListener('click',closePlayerModal);
+  document.getElementById('pmOk').addEventListener('click',closePlayerModal);
+  pmEl.addEventListener('click',function(ev){if(ev.target===pmEl)closePlayerModal();});
+
+  function selectPlayer(p){
+    if(searchInput)searchInput.value=p.name||'';
+    searchResults.classList.remove('active');
+    _focusedIdx=-1;
+    openPlayerModal(p);
+  }
+
+  function doSearch(){
+    var q=searchInput.value||'';
+    _focusedIdx=-1;
+    if(!q.trim()){_matches=[];renderResults();return;}
+    if(!_players){
+      loadPlayers(function(){_matches=searchPlayers(q,5);renderResults();});
+      return;
+    }
+    _matches=searchPlayers(q,5);
+    if(!_matches.length){
+      while(searchResults.firstChild)searchResults.removeChild(searchResults.firstChild);
+      searchResults.appendChild(el('div','search-empty',t().searchEmpty));
+      searchResults.classList.add('active');
+      return;
+    }
+    renderResults();
+  }
+
+  if(searchInput){
+    searchInput.addEventListener('focus',function(){loadPlayers(function(){});});
+    searchInput.addEventListener('input',doSearch);
+    searchInput.addEventListener('keydown',function(ev){
+      if(ev.key==='Escape'){searchResults.classList.remove('active');searchInput.blur();return;}
+      if(!_matches.length)return;
+      if(ev.key==='ArrowDown'){ev.preventDefault();_focusedIdx=Math.min(_matches.length-1,_focusedIdx+1);renderResults();}
+      else if(ev.key==='ArrowUp'){ev.preventDefault();_focusedIdx=Math.max(0,_focusedIdx-1);renderResults();}
+      else if(ev.key==='Enter'){ev.preventDefault();var pick=_matches[_focusedIdx>=0?_focusedIdx:0];if(pick)selectPlayer(pick);}
+    });
+    document.addEventListener('click',function(ev){
+      if(!searchInput.contains(ev.target)&&!searchResults.contains(ev.target))searchResults.classList.remove('active');
+    });
+    document.addEventListener('keydown',function(ev){
+      if(ev.key==='Escape'&&pmEl.classList.contains('active')){closePlayerModal();ev.stopPropagation();}
+    });
+  }
 
   fetch('https://raw.githubusercontent.com/texnottexas/landing-page/main/data/ssc-map.json?_t='+Date.now(),{cache:'no-store'})
     .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
