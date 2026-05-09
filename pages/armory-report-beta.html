@@ -8428,24 +8428,20 @@
       container.appendChild(content);
     });
 
-    // Wire sub-tab renderers
+    // Wire sub-tab renderers — render both eagerly so switchSubTab just toggles visibility.
+    // The gear pool view does not depend on hero metadata (avatars are URL-built from heroId),
+    // so we skip the loadHeroData wrapper that previously swallowed the render callback.
     var heroesEl = document.getElementById('subtab-heroes-grid');
     var gearPoolEl = document.getElementById('subtab-gear-pool');
     heroesEl.setAttribute('data-rendered', '1');
-    loadHeroData(function() {
-      buildHeroesUI(heroesEl, merged.heroes);
-    });
-    // Lazy-render gear pool on first click
-    var gearPoolBtn = bar.querySelector('[data-subtab="gear-pool"]');
-    var origClick = gearPoolBtn.onclick;
-    gearPoolBtn.addEventListener('click', function() {
-      if (!gearPoolEl.getAttribute('data-rendered')) {
-        gearPoolEl.setAttribute('data-rendered', '1');
-        loadHeroData(function() {
-          renderTitanGearPoolSubTab(gearPoolEl, window._gearPoolMockData);
-        });
-      }
-    });
+    loadHeroData(function() { buildHeroesUI(heroesEl, merged.heroes); });
+    gearPoolEl.setAttribute('data-rendered', '1');
+    try {
+      renderTitanGearPoolSubTab(gearPoolEl, window._gearPoolMockData);
+    } catch (e) {
+      var errEl = gpEl('div', { cls: 'gp-empty', text: 'Could not render gear pool: ' + (e && e.message ? e.message : e) });
+      gearPoolEl.appendChild(errEl);
+    }
   }
 
   // ── Titan Gear Pool sub-tab (BETA) ──────────────────────────────────────
