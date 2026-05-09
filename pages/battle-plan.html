@@ -482,6 +482,11 @@ body{top:0!important;}
 .nc-foot b{color:var(--text);}
 .nc-foot a{color:var(--accent);}
 
+.nc-alt{margin:1rem 0;padding:.85rem 1rem;background:linear-gradient(135deg,rgba(210,153,34,.10),rgba(63,185,80,.06));border:1px solid rgba(210,153,34,.4);border-radius:12px;display:flex;align-items:center;gap:.7rem;}
+.nc-alt-icon{flex-shrink:0;width:34px;height:34px;border-radius:10px;background:rgba(210,153,34,.18);border:1px solid rgba(210,153,34,.4);display:flex;align-items:center;justify-content:center;color:var(--yellow);}
+.nc-alt-text{flex:1;font-size:.9rem;font-weight:700;color:var(--text);line-height:1.4;}
+.nc-alt-text .nc-alt-tag{display:inline-block;font-size:.65rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--yellow);background:rgba(210,153,34,.15);border:1px solid rgba(210,153,34,.35);padding:.1rem .4rem;border-radius:6px;margin-right:.5rem;vertical-align:middle;}
+
 /* Caveman mascots */
 .nc-hero{display:flex;align-items:flex-start;gap:1rem;}
 .nc-hero-text{flex:1;min-width:0;}
@@ -2482,12 +2487,9 @@ body{top:0!important;}
     var h1 = el('h1', null, '');
     h1.appendChild(document.createTextNode('Go '));
     h1.appendChild(el('span', 'em', 'smash'));
-    h1.appendChild(document.createTextNode(' the city.'));
+    h1.appendChild(document.createTextNode(' city.'));
     textWrap.appendChild(h1);
     var sub = el('div', 'nc-sub', '');
-    var totalPlayers = (plan.fronts || []).reduce(function(a, f){ return a + (f.count || 0); }, 0);
-    sub.appendChild(el('b', null, totalPlayers + ' of us.'));
-    sub.appendChild(document.createTextNode(' '));
     sub.appendChild(el('b', null, '4 cities.'));
     sub.appendChild(document.createTextNode(' Find name. Go city. Smash head. Kill all. Win.'));
     textWrap.appendChild(sub);
@@ -2498,7 +2500,7 @@ body{top:0!important;}
     hero.appendChild(textWrap);
     var mascot = el('div', 'nc-hero-mascot');
     var img = el('img');
-    img.setAttribute('src', '../assets/caveman/caveman-primal-idle.webp');
+    img.setAttribute('src', '../assets/caveman/caveman-primal-stoic.png');
     img.setAttribute('alt', '');
     img.setAttribute('aria-hidden', 'true');
     img.setAttribute('loading', 'eager');
@@ -2515,10 +2517,10 @@ body{top:0!important;}
     box.appendChild(title);
     var grid = el('div', 'nc-rules-grid');
     var rules = [
-      ['Take Stations',  '5:00',   'Outer ring. Take them fast.'],
-      ['Take Hubs',      '25:00',  'Inner ring. Big points.'],
-      ['Hold 3 minutes', null,     'A building only counts after 3 min hold.'],
-      ['Burn Stage',     '45:00',  '3x points. This is when you win or lose.'],
+      ['Take Stations',  '5:00',   'Outside. Take fast.'],
+      ['Take Hubs',      '25:00',  'Inside. Big points.'],
+      ['Hold 3 min',     null,     'Hold. No lose.'],
+      ['Burn Stage',     '45:00',  'BIG points. Win.'],
     ];
     rules.forEach(function(r){
       var d = el('div', 'nc-rule');
@@ -2545,8 +2547,8 @@ body{top:0!important;}
     return front.name;
   }
   function ncCardSub(front){
-    if (front.key === 'storm') return 'Defend the Lv4 city we already own.';
-    if (front.showNum) return 'Take Neutral City #' + front.showNum + ' from them.';
+    if (front.key === 'storm') return 'Lv4 city. Ours. Keep ours.';
+    if (front.showNum) return 'City #' + front.showNum + '. Theirs. Take.';
     return '';
   }
   function ncOppList(front){
@@ -2558,7 +2560,7 @@ body{top:0!important;}
   }
 
   function ncFrontMascotSrc(key){
-    if (key === 'storm') return '../assets/caveman/caveman-primal-victorious.webp';
+    if (key === 'storm') return '../assets/caveman/caveman-primal-idle.webp';
     return '../assets/caveman/caveman-primal-attack-mode.webp';
   }
 
@@ -2582,11 +2584,13 @@ body{top:0!important;}
     head.appendChild(el('span', 'nc-front-pri ' + ncPriorityClass(idx), 'Priority ' + (idx + 1)));
     card.appendChild(head);
 
-    // Big "X PLAYERS GO HERE" strip
+    // Big "X% OF US GO HERE" strip
+    var totalCount = (window.__ncPlanTotal__ || 1);
+    var pct = Math.round(((front.count || 0) / totalCount) * 100);
     var bigRow = el('div', 'nc-bigline');
-    var num = el('span', 'nc-bigline-num', String(front.count || 0));
+    var num = el('span', 'nc-bigline-num', pct + '%');
     bigRow.appendChild(num);
-    bigRow.appendChild(el('span', 'nc-bigline-lab', 'players go here'));
+    bigRow.appendChild(el('span', 'nc-bigline-lab', 'go here'));
     var pwBadge = el('span', 'nc-bigline-pw', fmtPower(front.powerTotal || 0));
     bigRow.appendChild(pwBadge);
     card.appendChild(bigRow);
@@ -2611,7 +2615,7 @@ body{top:0!important;}
     // Names go here label
     var players = front.players || [];
     if (players.length){
-      var nLab = el('div', 'nc-names-lab', 'Find your name below — if you’re here, fight here');
+      var nLab = el('div', 'nc-names-lab', 'Find name. Fight.');
       card.appendChild(nLab);
       var anchors = el('div', 'nc-anchors');
       players.slice(0, 6).forEach(function(p){
@@ -2666,12 +2670,27 @@ body{top:0!important;}
 
   function buildNcFoot(root){
     var f = el('div', 'nc-foot');
-    f.appendChild(document.createTextNode('Names are a starting plan — squad leads can move people. Read the '));
+    f.appendChild(document.createTextNode('Names = plan. Lead can move you. '));
     var a = el('a', null, 'Storm’s Eye guide');
     a.setAttribute('href', 'storms-eye.html');
     f.appendChild(a);
-    f.appendChild(document.createTextNode(' for the full 60-min map. Need the wasteland plan? Use the button up top.'));
+    f.appendChild(document.createTextNode(' tell more. Wasteland plan = button up top.'));
     root.appendChild(f);
+  }
+
+  function buildNcAltNote(plan, root){
+    if (!plan.altNote) return;
+    var box = el('div', 'nc-alt');
+    var icon = el('div', 'nc-alt-icon');
+    var s = svgEl('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
+    s.appendChild(svgEl('path', { d: 'M12 2 L4 5 v6 c0 5 3.5 9 8 11 4.5-2 8-6 8-11 V5 L12 2 z' }));
+    icon.appendChild(s);
+    box.appendChild(icon);
+    var text = el('div', 'nc-alt-text');
+    text.appendChild(el('span', 'nc-alt-tag', 'Got alt?'));
+    text.appendChild(document.createTextNode(plan.altNote));
+    box.appendChild(text);
+    root.appendChild(box);
   }
 
   function buildNCPlan(rd){
@@ -2679,8 +2698,10 @@ body{top:0!important;}
     while (ncRoot.firstChild) ncRoot.removeChild(ncRoot.firstChild);
     var plan = rd.neutralCityPlan;
     if (!plan || !plan.fronts || !plan.fronts.length){ return false; }
+    window.__ncPlanTotal__ = plan.fronts.reduce(function(a, f){ return a + (f.count || 0); }, 0) || 1;
     buildNcHero(rd, ncRoot, plan);
     buildNcRules(ncRoot);
+    buildNcAltNote(plan, ncRoot);
     var fronts = el('div', 'nc-fronts');
     ncRoot.appendChild(fronts);
     plan.fronts.forEach(function(front, idx){ buildNcFront(front, idx, fronts); });
