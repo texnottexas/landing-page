@@ -1915,13 +1915,127 @@
     return flagEmoji(nationalflag);
   }
 
+  // ── Identity / supplement-cache facade ────────────────────────────────────
+  // Single chokepoint for every identity-adjacent localStorage key on this
+  // page. Centralising these reads/writes lets bulk operations (clearSupplements
+  // for guest-out / 403 cache wipe / migration) reach every relevant key in
+  // one call instead of spreading the list across the file.
+  //
+  // Keys touched:
+  //   playerIdentity                    — the logged-in user
+  //   armory_uidHash_<sk>               — re-handshake credential
+  //   armory_unlocked                   — { sk: true } map of UID-verified keys
+  //   armory_<kind>_<sk>                — supplement payloads (kind: inv/bench/chips)
+  //   armory_meta_<kind>_<sk>           — supplement metadata (updated, hash, v)
+  //   armory_lastSync_<kind>_<sk>       — Unix ms of last successful sync
+  //
+  // See Topics/Landing-Page-Architecture/01-Identity-and-SiteKeys.md for the
+  // full schema. Functions remain byte-faithful to the previous inline
+  // localStorage calls — this is centralisation, not behaviour change.
+  var ArmoryIdentity = (function() {
+    var SUP_KINDS = ['inv', 'bench', 'chips'];
+
+    function safeRead(key) {
+      try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+    function safeWrite(key, value) {
+      try { localStorage.setItem(key, value); } catch (e) {}
+    }
+    function safeRemove(key) {
+      try { localStorage.removeItem(key); } catch (e) {}
+    }
+    function parseJSON(raw, fallback) {
+      if (!raw) return fallback;
+      try { return JSON.parse(raw); } catch (e) { return fallback; }
+    }
+
+    return {
+      // ── Identity object ────────────────────────────────────────────────
+      get: function() {
+        var v = safeRead('playerIdentity');
+        if (!v || v === 'anonymous') return null;
+        return parseJSON(v, null);
+      },
+      set: function(ident) {
+        if (!ident) { safeRemove('playerIdentity'); return; }
+        safeWrite('playerIdentity', JSON.stringify(ident));
+      },
+
+      // ── uidHash cache (re-handshake credential) ────────────────────────
+      getUidHash: function(siteKey) {
+        return safeRead('armory_uidHash_' + siteKey);
+      },
+      setUidHash: function(siteKey, uidHash) {
+        safeWrite('armory_uidHash_' + siteKey, uidHash);
+      },
+      removeUidHash: function(siteKey) {
+        safeRemove('armory_uidHash_' + siteKey);
+      },
+
+      // ── Unlocked siteKey set ───────────────────────────────────────────
+      getUnlocked: function() {
+        return parseJSON(safeRead('armory_unlocked'), {}) || {};
+      },
+      setUnlocked: function(map) {
+        safeWrite('armory_unlocked', JSON.stringify(map || {}));
+      },
+      isUnlocked: function(siteKey) {
+        var map = this.getUnlocked();
+        return !!(map && map[siteKey]);
+      },
+
+      // ── Supplement payloads ────────────────────────────────────────────
+      getSupplement: function(kind, siteKey) {
+        return parseJSON(safeRead('armory_' + kind + '_' + siteKey), null);
+      },
+      setSupplement: function(kind, siteKey, json) {
+        safeWrite('armory_' + kind + '_' + siteKey, JSON.stringify(json));
+      },
+      removeSupplement: function(kind, siteKey) {
+        safeRemove('armory_' + kind + '_' + siteKey);
+      },
+
+      // ── Supplement metadata ────────────────────────────────────────────
+      removeSupplementMeta: function(kind, siteKey) {
+        safeRemove('armory_meta_' + kind + '_' + siteKey);
+      },
+
+      // ── Sync timestamps ────────────────────────────────────────────────
+      getLastSync: function(kind, siteKey) {
+        var raw = safeRead('armory_lastSync_' + kind + '_' + siteKey);
+        return raw ? (parseInt(raw, 10) || 0) : 0;
+      },
+      setLastSync: function(kind, siteKey, ts) {
+        safeWrite('armory_lastSync_' + kind + '_' + siteKey, String(ts));
+      },
+      removeLastSync: function(kind, siteKey) {
+        safeRemove('armory_lastSync_' + kind + '_' + siteKey);
+      },
+
+      // ── Bulk wipe (the headline feature) ───────────────────────────────
+      // Wipes payload + meta + lastSync for every supplement kind under a
+      // siteKey. Use after a 403-sentinel response, on guest-out, or when
+      // migrating a stale local identity. Single call → no chance of a
+      // half-cleared cache leaking stale data across privacy toggles.
+      clearSupplements: function(siteKey) {
+        for (var i = 0; i < SUP_KINDS.length; i++) {
+          var k = SUP_KINDS[i];
+          this.removeSupplement(k, siteKey);
+          this.removeSupplementMeta(k, siteKey);
+          this.removeLastSync(k, siteKey);
+        }
+      },
+
+      // Internal — exposed so tests / callers can iterate the same kind list
+      KINDS: SUP_KINDS,
+    };
+  })();
+
   // ── Shortcode sharing helpers ─────────────────────────────────────────────
+  // Back-compat alias so existing call sites keep working without migration.
+  // New code should prefer `ArmoryIdentity.get()`.
   function getStoredIdentity() {
-    try {
-      var v = localStorage.getItem('playerIdentity');
-      if (!v || v === 'anonymous') return null;
-      return JSON.parse(v);
-    } catch(e) { return null; }
+    return ArmoryIdentity.get();
   }
 
   // Verified S2864 members (have a siteKey + not a guest) get an elevated
@@ -2142,33 +2256,22 @@
 
   function _ar_isUnlocked(siteKey) {
     if (!siteKey) return false;
-    try {
-      var raw = localStorage.getItem('armory_unlocked');
-      var map = raw ? JSON.parse(raw) : {};
-      return map[siteKey] === true;
-    } catch (e) { return false; }
+    return ArmoryIdentity.isUnlocked(siteKey);
   }
 
   function _ar_setUnlocked(siteKey, on) {
     if (!siteKey) return;
-    var raw = localStorage.getItem('armory_unlocked');
-    var map;
-    try { map = raw ? JSON.parse(raw) : {}; } catch (e) { map = {}; }
+    var map = ArmoryIdentity.getUnlocked();
     if (on) map[siteKey] = true; else delete map[siteKey];
-    localStorage.setItem('armory_unlocked', JSON.stringify(map));
+    ArmoryIdentity.setUnlocked(map);
     // Drop the cached uidHash on "Forget" so a future re-verify re-prompts
     // for UID instead of silently re-handshaking under the old identity.
-    if (!on) {
-      try { localStorage.removeItem('armory_uidHash_' + siteKey); } catch (e) {}
-    }
+    if (!on) ArmoryIdentity.removeUidHash(siteKey);
   }
 
   function _ar_listUnlocked() {
-    try {
-      var raw = localStorage.getItem('armory_unlocked');
-      var map = raw ? JSON.parse(raw) : {};
-      return Object.keys(map).filter(function(k) { return map[k] === true; });
-    } catch (e) { return []; }
+    var map = ArmoryIdentity.getUnlocked();
+    return Object.keys(map).filter(function(k) { return map[k] === true; });
   }
 
   function _ar_openUnlockModal(siteKey, playerName, onUnlock) {
@@ -2262,13 +2365,13 @@
         // Update stored playerIdentity to the matched roster player so the
         // next page load uses the correct siteKey everywhere.
         try {
-          var ident = JSON.parse(localStorage.getItem('playerIdentity') || '{}');
+          var ident = ArmoryIdentity.get() || {};
           ident.name = rosterHeal.player.name;
           ident.alliance = rosterHeal.player.alliance;
           ident.rank = rosterHeal.player.rank;
           ident.profession = rosterHeal.player.profession;
           ident.siteKey = rosterHeal.player.siteKey;
-          localStorage.setItem('playerIdentity', JSON.stringify(ident));
+          ArmoryIdentity.set(ident);
         } catch (e) {}
         try { await _ar_handshake(rosterHeal.hash); } catch (e) { /* fail-soft */ }
         _ar_storeUidHash(rosterHeal.player.siteKey, rosterHeal.hash);
@@ -2365,11 +2468,11 @@
   // lapses between paste sessions.
   function _ar_storeUidHash(siteKey, uidHash) {
     if (!siteKey || !uidHash) return;
-    try { localStorage.setItem('armory_uidHash_' + siteKey, uidHash); } catch (e) {}
+    ArmoryIdentity.setUidHash(siteKey, uidHash);
   }
   function _ar_getStoredUidHash(siteKey) {
     if (!siteKey) return null;
-    try { return localStorage.getItem('armory_uidHash_' + siteKey); } catch (e) { return null; }
+    return ArmoryIdentity.getUidHash(siteKey);
   }
 
   // Ensure a fresh token is available; auto-handshake from cached uidHash
@@ -2390,8 +2493,7 @@
   // Returns: 'synced' | 'no-change' | 'no-hash' | 'error'
   async function _ar_backgroundSyncSupplement(kind, siteKey) {
     if (!siteKey) return 'error';
-    var local = null;
-    try { local = JSON.parse(localStorage.getItem('armory_' + kind + '_' + siteKey) || 'null'); } catch (e) {}
+    var local = ArmoryIdentity.getSupplement(kind, siteKey);
     if (!local) return 'no-change';
     var localTs = 0;
     if (kind === 'inv') {
@@ -2400,14 +2502,13 @@
       localTs = local.ts ? new Date(local.ts).getTime() : 0;
     }
     if (!localTs) return 'no-change';
-    var lastSynced = 0;
-    try { lastSynced = parseInt(localStorage.getItem('armory_lastSync_' + kind + '_' + siteKey) || '0', 10); } catch (e) {}
+    var lastSynced = ArmoryIdentity.getLastSync(kind, siteKey);
     if (lastSynced >= localTs) return 'no-change';
     var hash = _ar_getStoredUidHash(siteKey);
     if (!hash) return 'no-hash';
     try {
       await _ar_supplementUpload(kind, local, siteKey);
-      try { localStorage.setItem('armory_lastSync_' + kind + '_' + siteKey, String(localTs)); } catch (e) {}
+      ArmoryIdentity.setLastSync(kind, siteKey, localTs);
       return 'synced';
     } catch (e) {
       console.warn('Background sync failed (' + kind + ')', e);
@@ -2460,19 +2561,18 @@
       if (pr.ok) priv = await pr.json();
     } catch (e) {}
 
-    var kinds = ['inv', 'bench', 'chips'];
+    var kinds = ArmoryIdentity.KINDS;
     var needs = [];
     for (var i = 0; i < kinds.length; i++) {
       var kind = kinds[i];
-      var local = null;
-      try { local = JSON.parse(localStorage.getItem('armory_' + kind + '_' + siteKey) || 'null'); } catch (e) {}
+      var local = ArmoryIdentity.getSupplement(kind, siteKey);
       if (!local) continue;
       var lTs = _ar_supplementLocalTs(kind, local);
       if (!lTs) continue;
 
       var rTs = 0;
       if (priv[kind]) {
-        var ls = parseInt(localStorage.getItem('armory_lastSync_' + kind + '_' + siteKey) || '0', 10);
+        var ls = ArmoryIdentity.getLastSync(kind, siteKey);
         if (ls >= lTs) continue;
       } else {
         try {
@@ -2513,11 +2613,11 @@
     for (var j = 0; j < needs.length; j++) {
       var k = needs[j];
       try {
-        var data = JSON.parse(localStorage.getItem('armory_' + k + '_' + siteKey) || 'null');
+        var data = ArmoryIdentity.getSupplement(k, siteKey);
         if (!data) continue;
         await _ar_supplementUpload(k, data, siteKey);
         var ts = _ar_supplementLocalTs(k, data);
-        try { localStorage.setItem('armory_lastSync_' + k + '_' + siteKey, String(ts)); } catch (e) {}
+        ArmoryIdentity.setLastSync(k, siteKey, ts);
         console.log('[self-heal] uploaded', k);
       } catch (e) {
         console.warn('[self-heal] upload failed (' + k + ')', e);
@@ -2571,7 +2671,7 @@
         // bypass privacy via leftover localStorage from a previous session.
         if (!_ar_supplementPrivacy[siteKey]) _ar_supplementPrivacy[siteKey] = {};
         _ar_supplementPrivacy[siteKey][kind] = true;
-        try { localStorage.removeItem('armory_' + kind + '_' + siteKey); } catch (e) {}
+        ArmoryIdentity.removeSupplement(kind, siteKey);
         return { __private: true };
       }
       if (!r.ok) return null;
@@ -2590,18 +2690,16 @@
     ]);
     var invRemote = pair[0], benchRemote = pair[1];
     if (invRemote && !invRemote.__private) {
-      var localInv = null;
-      try { localInv = JSON.parse(localStorage.getItem('armory_inv_' + siteKey) || 'null'); } catch (e) {}
+      var localInv = ArmoryIdentity.getSupplement('inv', siteKey);
       var lts = (localInv && localInv.meta && localInv.meta.ts) ? new Date(localInv.meta.ts).getTime() : 0;
       var rts = (invRemote.meta && invRemote.meta.ts) ? new Date(invRemote.meta.ts).getTime() : 0;
-      if (rts > lts) localStorage.setItem('armory_inv_' + siteKey, JSON.stringify(invRemote));
+      if (rts > lts) ArmoryIdentity.setSupplement('inv', siteKey, invRemote);
     }
     if (benchRemote && !benchRemote.__private) {
-      var localBench = null;
-      try { localBench = JSON.parse(localStorage.getItem('armory_bench_' + siteKey) || 'null'); } catch (e) {}
+      var localBench = ArmoryIdentity.getSupplement('bench', siteKey);
       var lts2 = (localBench && localBench.ts) ? new Date(localBench.ts).getTime() : 0;
       var rts2 = benchRemote.ts ? new Date(benchRemote.ts).getTime() : 0;
-      if (rts2 > lts2) localStorage.setItem('armory_bench_' + siteKey, JSON.stringify(benchRemote));
+      if (rts2 > lts2) ArmoryIdentity.setSupplement('bench', siteKey, benchRemote);
     }
   }
 
@@ -5288,11 +5386,11 @@
                       for (var k = 0; k < roster.length; k++) {
                         if (roster[k].siteKey === first16) {
                           var p = roster[k];
-                          var ident = JSON.parse(localStorage.getItem('playerIdentity') || '{}');
+                          var ident = ArmoryIdentity.get() || {};
                           ident.name = p.name; ident.alliance = p.alliance;
                           ident.rank = p.rank; ident.profession = p.profession;
                           ident.siteKey = p.siteKey;
-                          localStorage.setItem('playerIdentity', JSON.stringify(ident));
+                          ArmoryIdentity.set(ident);
                           try { await _ar_handshake(hashesTried[j].hash); } catch (e) {}
                           _ar_storeUidHash(p.siteKey, hashesTried[j].hash);
                           _ar_setUnlocked(p.siteKey, true);
@@ -5790,7 +5888,7 @@
             var k = kinds[i];
             // Force a re-upload by clearing the per-kind lastSync sentinel so
             // backgroundSync can't short-circuit to "no-change".
-            try { localStorage.removeItem('armory_lastSync_' + k + '_' + syncSiteKey); } catch (e) {}
+            ArmoryIdentity.removeLastSync(k, syncSiteKey);
             try { results[k] = await _ar_backgroundSyncSupplement(k, syncSiteKey); }
             catch (e) { results[k] = 'error'; }
           }
@@ -8621,10 +8719,7 @@
 
   function _adv_getInventoryForSiteKey(siteKey) {
     if (!siteKey) return null;
-    try {
-      var raw = localStorage.getItem('armory_inv_' + siteKey);
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) { return null; }
+    return ArmoryIdentity.getSupplement('inv', siteKey);
   }
 
   function _adv_makeAdvisorButton(siteKey, merged) {
@@ -11204,11 +11299,7 @@
       return;
     }
 
-    var stored = null;
-    try {
-      var raw = localStorage.getItem('armory_inv_' + siteKey);
-      if (raw) stored = JSON.parse(raw);
-    } catch (e) {}
+    var stored = ArmoryIdentity.getSupplement('inv', siteKey);
 
     var toolbar = document.createElement('div');
     toolbar.className = 'inv-toolbar';
@@ -12840,7 +12931,7 @@
         // Mark synced so background sync skips redundant retries on next open.
         try {
           var ts = readTs(raw);
-          if (ts) localStorage.setItem('armory_lastSync_' + kind + '_' + siteKey, String(ts));
+          if (ts) ArmoryIdentity.setLastSync(kind, siteKey, ts);
         } catch (e) {}
       } catch (e) {
         console.warn('Worker upload failed', e);
@@ -12994,10 +13085,7 @@
     var unlocked = siteKey ? _ar_isUnlocked(siteKey) : false;
     var supBench = null;
     if (siteKey) {
-      try {
-        var rawBench = localStorage.getItem('armory_bench_' + siteKey);
-        if (rawBench) supBench = JSON.parse(rawBench);
-      } catch (e) {}
+      supBench = ArmoryIdentity.getSupplement('bench', siteKey);
     }
     if (supBench && supBench.beasts) {
       var existingIds = {};
@@ -13881,7 +13969,7 @@
         return;
       }
       var hasLocal = false;
-      try { hasLocal = !!localStorage.getItem('armory_inv_' + msSiteKey); } catch (e) {}
+      hasLocal = !!ArmoryIdentity.getSupplement('inv', msSiteKey);
       if (!hasLocal) {
         _ar_fetchSupplement('inv', msSiteKey).then(function(invRaw) {
           if (!invRaw) return;
@@ -14153,7 +14241,7 @@
       var msSiteKey = (wizardState && wizardState.player && wizardState.player.siteKey) || null;
       if (msSiteKey) {
         var hasLocal = false;
-        try { hasLocal = !!localStorage.getItem('armory_inv_' + msSiteKey); } catch (e) {}
+        hasLocal = !!ArmoryIdentity.getSupplement('inv', msSiteKey);
         if (!hasLocal) {
           _ar_fetchSupplement('inv', msSiteKey).then(function(invRaw) {
             if (!invRaw) return;
@@ -14221,9 +14309,8 @@
     // the same key here so we don't need a second network round-trip.
     if (siteKey) {
       try {
-        var rawInv = localStorage.getItem('armory_inv_' + siteKey);
-        if (rawInv) {
-          var stored = JSON.parse(rawInv);
+        var stored = ArmoryIdentity.getSupplement('inv', siteKey);
+        if (stored) {
           var items = stored && stored.tabs && stored.tabs.item;
           if (Array.isArray(items)) {
             for (var i = 0; i < items.length; i++) {
@@ -14313,13 +14400,8 @@
     if (!siteKey) return Promise.resolve(null);
     // Try localStorage first when viewing own report (faster, offline-tolerant)
     if (!wizardState._viewOnly) {
-      try {
-        var ls = localStorage.getItem('armory_chips_' + siteKey);
-        if (ls) {
-          var parsed = JSON.parse(ls);
-          if (parsed && Array.isArray(parsed.chips)) return Promise.resolve(parsed);
-        }
-      } catch (e) {}
+      var parsed = ArmoryIdentity.getSupplement('chips', siteKey);
+      if (parsed && Array.isArray(parsed.chips)) return Promise.resolve(parsed);
     }
     return _ar_fetchSupplement('chips', siteKey);
   }
@@ -14955,8 +15037,7 @@
   (function populateLandingTip() {
     var tipEl = document.getElementById('landingIdentityTip');
     if (!tipEl) return;
-    var identity = null;
-    try { identity = JSON.parse(localStorage.getItem('playerIdentity')); } catch(e) {}
+    var identity = ArmoryIdentity.get();
     if (identity && identity.siteKey) {
       tipEl.textContent = 'Signed in \u2014 save your config with a shareable code after setup';
     } else {
@@ -15420,8 +15501,7 @@
     var tip = document.createElement('div');
     tip.className = 'landing-identity-tip';
     tip.id = 'landingIdentityTip';
-    var identity = null;
-    try { identity = JSON.parse(localStorage.getItem('playerIdentity')); } catch(e) {}
+    var identity = ArmoryIdentity.get();
     if (identity && identity.siteKey) {
       tip.textContent = 'Signed in \u2014 save your config with a shareable code after setup';
     } else {
@@ -15663,8 +15743,8 @@
     // mismatches under the wrong unlock-map key.
     var migrationDone = (async function migrateIdentitySiteKey() {
       try {
-        var stored = JSON.parse(localStorage.getItem('playerIdentity') || 'null');
-        if (!stored || stored === 'anonymous' || !stored.name || stored.guest) return;
+        var stored = ArmoryIdentity.get();
+        if (!stored || !stored.name || stored.guest) return;
         var data = await fetch('player-data.json', { cache: 'no-cache' }).then(function(r) { return r.json(); });
         var keyMatch = stored.siteKey ? data.find(function(p) { return p.siteKey === stored.siteKey; }) : null;
         if (keyMatch) return;
@@ -15673,7 +15753,7 @@
         stored.siteKey = nameMatch.siteKey;
         stored.rank = nameMatch.rank;
         stored.profession = nameMatch.profession;
-        localStorage.setItem('playerIdentity', JSON.stringify(stored));
+        ArmoryIdentity.set(stored);
       } catch (e) {}
     })();
 
