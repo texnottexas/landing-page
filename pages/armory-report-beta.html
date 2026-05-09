@@ -8477,7 +8477,62 @@
 
   function renderTitanGearPoolSubTab(container, data) {
     while (container.firstChild) container.removeChild(container.firstChild);
-    if (!data || !data.goldGear) {
+    // Prefer locally-stored real extraction over the bundled mock
+    var siteKey = (wizardState.player && wizardState.player.siteKey) || null;
+    var lsKey = siteKey ? ('gearPool_' + siteKey) : null;
+    var stored = null;
+    if (lsKey) {
+      try {
+        var raw = localStorage.getItem(lsKey);
+        if (raw) stored = JSON.parse(raw);
+      } catch (e) { /* ignore */ }
+    }
+    var src = stored || data;
+    var srcLabel = stored ? 'Your extracted gear pool' : 'Sample data (Tex)';
+    var srcTime = (stored && stored.meta && stored.meta.ts) ? stored.meta.ts : null;
+
+    // ── Toolbar (Update / source label) ──────────────────────────────────
+    var toolbar = gpEl('div', { style: 'display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;' });
+    var updateBtn = gpEl('button', {
+      style: 'padding:6px 14px;background:var(--green);color:#0d1117;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px;',
+      text: stored ? 'Update Gear Pool' : 'Upload Gear Pool JSON'
+    });
+    updateBtn.addEventListener('click', function () { gpOpenPasteModal(siteKey, function () { renderTitanGearPoolSubTab(container, data); }); });
+    toolbar.appendChild(updateBtn);
+
+    var howBtn = gpEl('button', {
+      style: 'padding:6px 14px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:6px;font-weight:600;cursor:pointer;font-size:13px;',
+      text: 'Bookmarklet ↗'
+    });
+    howBtn.addEventListener('click', function () { gpOpenBookmarkletModal(); });
+    toolbar.appendChild(howBtn);
+
+    if (stored) {
+      var clearBtn = gpEl('button', {
+        style: 'padding:6px 12px;background:transparent;color:var(--red);border:1px solid var(--border);border-radius:6px;font-weight:600;cursor:pointer;font-size:12px;',
+        text: 'Clear my data'
+      });
+      clearBtn.addEventListener('click', function () {
+        if (!confirm('Remove your locally-stored gear pool? This only clears your browser; nothing is uploaded.')) return;
+        try { localStorage.removeItem(lsKey); } catch (e) {}
+        renderTitanGearPoolSubTab(container, data);
+      });
+      toolbar.appendChild(clearBtn);
+    }
+
+    var labelEl = gpEl('div', {
+      style: 'margin-left:auto;font-size:11px;color:' + (stored ? 'var(--green)' : 'var(--muted)') + ';',
+      text: srcLabel + (srcTime ? ' · ' + new Date(srcTime).toLocaleString() : '')
+    });
+    toolbar.appendChild(labelEl);
+    container.appendChild(toolbar);
+
+    if (!src || !src.goldGear) {
+      container.appendChild(gpEl('p', { cls: 'gp-empty', text: 'No Titan Gear Pool data loaded yet. Click "Upload Gear Pool JSON" to push your own extraction.' }));
+      return;
+    }
+    data = src;
+    if (false) { // keep TS-style guard for legacy condition
       container.appendChild(gpEl('p', { cls: 'gp-empty', text: 'No Titan Gear Pool data loaded.' }));
       return;
     }
@@ -8880,6 +8935,123 @@
     closeBtn.addEventListener('click', function() { overlay.remove(); });
     footer.appendChild(closeBtn);
     modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  }
+
+  // ── Gear Pool: paste-JSON modal ──────────────────────────────────────────
+  function gpOpenPasteModal(siteKey, onSaved) {
+    var existing = document.getElementById('gp-paste-modal');
+    if (existing) existing.remove();
+    var overlay = gpEl('div', { style: 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10003;display:flex;align-items:center;justify-content:center;padding:20px;' });
+    overlay.id = 'gp-paste-modal';
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+
+    var modal = gpEl('div', { style: 'background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:680px;width:100%;max-height:90vh;overflow-y:auto;padding:22px;display:flex;flex-direction:column;gap:12px;' });
+
+    modal.appendChild(gpEl('div', { style: 'font-size:18px;font-weight:700;color:var(--text);', text: 'Paste your Gear Pool JSON' }));
+    modal.appendChild(gpEl('div', {
+      style: 'font-size:12px;color:var(--muted);line-height:1.5;',
+      text: 'Run the bookmarklet on the Top War game tab — it copies the dump to your clipboard. Paste it below and click Save. Data stays in your browser only (BETA preview); no upload to the server.'
+    }));
+
+    var ta = document.createElement('textarea');
+    ta.placeholder = '{"v":1,"meta":...,"goldGear":[...]}';
+    ta.style.cssText = 'width:100%;min-height:240px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font-family:monospace;font-size:11px;box-sizing:border-box;';
+    modal.appendChild(ta);
+
+    var statusEl = gpEl('div', { style: 'font-size:11px;color:var(--muted);min-height:14px;' });
+    modal.appendChild(statusEl);
+
+    var btnRow = gpEl('div', { style: 'display:flex;gap:8px;justify-content:flex-end;' });
+    var cancelBtn = gpEl('button', { style: 'padding:7px 16px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;', text: 'Cancel' });
+    cancelBtn.addEventListener('click', function () { overlay.remove(); });
+    var saveBtn = gpEl('button', { style: 'padding:7px 18px;background:var(--green);color:#0d1117;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;', text: 'Save' });
+    saveBtn.addEventListener('click', function () {
+      var raw = (ta.value || '').trim();
+      if (!raw) { statusEl.textContent = 'Paste the JSON first.'; statusEl.style.color = 'var(--red)'; return; }
+      var parsed;
+      try { parsed = JSON.parse(raw); }
+      catch (e) { statusEl.textContent = 'Not valid JSON: ' + e.message; statusEl.style.color = 'var(--red)'; return; }
+      if (!parsed || !Array.isArray(parsed.goldGear)) {
+        statusEl.textContent = 'Missing goldGear[] — did you run the gear-pool bookmarklet?';
+        statusEl.style.color = 'var(--red)';
+        return;
+      }
+      if (!siteKey) {
+        statusEl.textContent = 'No siteKey on this report — open your saved report first.';
+        statusEl.style.color = 'var(--red)';
+        return;
+      }
+      try {
+        localStorage.setItem('gearPool_' + siteKey, raw);
+      } catch (e) {
+        statusEl.textContent = 'Storage failed (quota?): ' + e.message;
+        statusEl.style.color = 'var(--red)';
+        return;
+      }
+      statusEl.textContent = 'Saved (' + raw.length + ' bytes). Refreshing view…';
+      statusEl.style.color = 'var(--green)';
+      setTimeout(function () { overlay.remove(); if (typeof onSaved === 'function') onSaved(); }, 400);
+    });
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(saveBtn);
+    modal.appendChild(btnRow);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
+  // ── Gear Pool: bookmarklet instructions modal ────────────────────────────
+  function gpOpenBookmarkletModal() {
+    var existing = document.getElementById('gp-bm-modal');
+    if (existing) existing.remove();
+
+    var overlay = gpEl('div', { style: 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10003;display:flex;align-items:center;justify-content:center;padding:20px;' });
+    overlay.id = 'gp-bm-modal';
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+
+    var modal = gpEl('div', { style: 'background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:680px;width:100%;max-height:90vh;overflow-y:auto;padding:22px;display:flex;flex-direction:column;gap:12px;' });
+    modal.appendChild(gpEl('div', { style: 'font-size:18px;font-weight:700;color:var(--text);', text: 'Titan Gear Pool — bookmarklet' }));
+    modal.appendChild(gpEl('div', {
+      style: 'font-size:12px;color:var(--muted);line-height:1.5;',
+      text: 'Drag this button to your bookmarks bar (desktop), or long-press → Add Bookmark (mobile). Then on the Top War game tab, click the bookmark — it dumps your gear inventory and copies it to the clipboard.'
+    }));
+
+    var dragWrap = gpEl('div', { style: 'display:flex;justify-content:center;padding:14px 0;' });
+    var dragLink = document.createElement('a');
+    dragLink.href = "javascript:(function(){var s=document.createElement('script');s.src='https://2864tw.com/gear-pool-bookmarklet.js?_='+Date.now();s.onerror=function(){alert('Bookmarklet load failed. Check internet + try again.');};document.body.appendChild(s);})();";
+    dragLink.textContent = '🛠 Tex Gear Pool';
+    dragLink.style.cssText = 'display:inline-block;padding:10px 22px;background:var(--accent);color:#0d1117;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px;cursor:grab;user-select:none;';
+    dragLink.draggable = true;
+    dragLink.addEventListener('click', function (e) { e.preventDefault(); alert('Drag this button to your bookmarks bar instead of clicking it here.'); });
+    dragWrap.appendChild(dragLink);
+    modal.appendChild(dragWrap);
+
+    modal.appendChild(gpEl('div', { style: 'font-size:11px;color:var(--muted);', text: 'Or copy the bookmarklet JS manually:' }));
+    var ta = document.createElement('textarea');
+    ta.value = "javascript:(function(){var s=document.createElement('script');s.src='https://2864tw.com/gear-pool-bookmarklet.js?_='+Date.now();s.onerror=function(){alert('Bookmarklet load failed. Check internet + try again.');};document.body.appendChild(s);})();";
+    ta.readOnly = true;
+    ta.style.cssText = 'width:100%;min-height:60px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font-family:monospace;font-size:10px;box-sizing:border-box;';
+    modal.appendChild(ta);
+
+    var stepsList = document.createElement('ol');
+    stepsList.style.cssText = 'font-size:12px;color:var(--text);line-height:1.6;padding-left:20px;margin:0;';
+    [
+      'Open the Top War game tab (h5.topwargame.com) and wait for it to load fully.',
+      'Click the "🛠 Tex Gear Pool" bookmark — it scans your gear inventory.',
+      'When the alert says copied, return here and click "Update Gear Pool" → paste → Save.',
+      'Your data stays in localStorage on this device only (BETA — no server upload yet).'
+    ].forEach(function (t) { var li = document.createElement('li'); li.textContent = t; stepsList.appendChild(li); });
+    modal.appendChild(stepsList);
+
+    var closeRow = gpEl('div', { style: 'display:flex;justify-content:flex-end;' });
+    var closeBtn = gpEl('button', { style: 'padding:7px 18px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;', text: 'Close' });
+    closeBtn.addEventListener('click', function () { overlay.remove(); });
+    closeRow.appendChild(closeBtn);
+    modal.appendChild(closeRow);
 
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
