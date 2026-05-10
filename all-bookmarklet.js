@@ -221,17 +221,55 @@
 
     // ─── Titan gear pool ──────────────────────────────────────────────────
     async function extractGear() {
-      stepHook && stepHook('Titan gear…');
-      var gearPath = 'UICanvas/PopLayer/UIFrameNone/CONTENT/HeroEquipWearPanel';
-      // Open the gear screen so HeroEquipController is guaranteed populated for
-      // cold sessions. (For warm sessions the controller is already loaded; the
-      // open is fast either way.)
-      var node = await openPanel(UIDataInfo.HeroEquipWearPanel, gearPath);
-      if (!node) throw new Error('HeroEquipWearPanel did not mount');
+      stepHook && stepHook('Titan gear (loading)…');
       var HC;
       try { HC = req('HeroEquipController').HeroEquipController.getInstance(); }
       catch (e) { throw new Error('HeroEquipController not available'); }
-      if (!HC || !HC._heroEquipsMap || !HC._heroEquipSchemes) throw new Error('Hero equip data not loaded');
+      if (!HC) throw new Error('HeroEquipController not available');
+
+      // Cold-session warm-up. HeroEquipController._heroEquipsMap is populated
+      // by the bulk WS responses to ALL_HERO_EQUIPS + HERO_EQUIP_SCHEMES.
+      // Those requests are normally triggered when the player first taps the
+      // Hero icon (NMainUI.onHeroClick → HeroListPopup2023 → fetch). Opening
+      // HeroEquipWearPanel directly skips that step, so on a cold cache the
+      // controller would still be empty when we tried to read it.
+      //
+      // Call the bulk load directly (same internal API the panel chain uses)
+      // and wait for the response. Fast on warm sessions (no-op + immediate),
+      // 1–3s on cold sessions (one WS round-trip). Skips needing to mount any
+      // gear UI at all — purely a data fetch.
+      if (!HC._heroEquipsMap || HC._heroEquipsMap.size === 0) {
+        if (typeof HC.requestAllHeroEquipData === 'function') {
+          try { HC.requestAllHeroEquipData(); } catch (e) { /* fall through to panel fallback */ }
+        }
+        var t0 = Date.now();
+        while (Date.now() - t0 < 8000) {
+          if (HC._heroEquipsMap && HC._heroEquipsMap.size > 0) break;
+          await delay(150);
+        }
+      }
+
+      // Panel-open fallback. If the direct WS path didn't populate the
+      // controller (older client, unknown network state, function gating),
+      // fall back to opening the gear panel which used to be the canonical
+      // path. Closes itself afterwards so the player ends back at main.
+      if (!HC._heroEquipsMap || HC._heroEquipsMap.size === 0) {
+        var gearPath = 'UICanvas/PopLayer/UIFrameNone/CONTENT/HeroEquipWearPanel';
+        var node = await openPanel(UIDataInfo.HeroEquipWearPanel, gearPath);
+        if (node) {
+          var t1 = Date.now();
+          while (Date.now() - t1 < 5000) {
+            if (HC._heroEquipsMap && HC._heroEquipsMap.size > 0) break;
+            await delay(150);
+          }
+          await closePanel(UIDataInfo.HeroEquipWearPanel, gearPath);
+        }
+      }
+
+      if (!HC._heroEquipsMap || HC._heroEquipsMap.size === 0) {
+        throw new Error('Hero equip data did not load — try opening Heroes once in-game, then re-run');
+      }
+      if (!HC._heroEquipSchemes) throw new Error('Hero equip schemes map missing');
 
       var T, getText, equipTable, buffRdTable, skillRdTable, heroTable, effectBuff;
       try {
@@ -402,9 +440,10 @@
                    + equippedNonGold.filter(function (g) { return g.locked; }).length
                    + presetOnly.filter(function (g) { return g.locked; }).length,
       };
-      var dump = { v: 1, meta: { ts: new Date().toISOString() }, summary: summary, schemes: schemes, goldGear: goldGear, equippedNonGold: equippedNonGold, presetOnly: presetOnly };
-      await closePanel(UIDataInfo.HeroEquipWearPanel, gearPath);
-      return dump;
+      // No panel close needed here — the WS-direct path doesn't open a panel,
+      // and the fallback path already closed HeroEquipWearPanel inline before
+      // reaching this point.
+      return { v: 1, meta: { ts: new Date().toISOString() }, summary: summary, schemes: schemes, goldGear: goldGear, equippedNonGold: equippedNonGold, presetOnly: presetOnly };
     }
 
     return (async function () {
