@@ -1319,11 +1319,15 @@
     font-size: .58rem; padding: 1px 5px; border-radius: 3px; font-weight: 700;
     text-transform: uppercase; letter-spacing: .05em; flex-shrink: 0;
   }
-  .adv-slot-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+  .adv-slot-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
+  @media (max-width: 520px) {
+    .adv-slot-row { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  }
   .adv-slot-tile {
-    aspect-ratio: 1 / 1; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 6px; padding: 0; cursor: pointer; position: relative;
-    display: flex; align-items: center; justify-content: center;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 2px 3px; cursor: pointer; position: relative;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    gap: 2px; min-height: 86px;
     transition: transform .12s, border-color .12s, background .12s;
     overflow: hidden;
   }
@@ -1331,24 +1335,32 @@
     border-color: var(--accent); transform: translateY(-1px);
     background: rgba(121, 192, 255, 0.08);
   }
+  .adv-slot-tile.empty img.ast-gear { opacity: .55; }
   .adv-slot-tile.empty .ast-empty {
-    color: var(--muted); font-size: 1.2rem; opacity: .5;
+    color: var(--muted); font-size: 1.4rem; opacity: .55; line-height: 1;
+    margin-top: -1px;
   }
   .adv-slot-tile.queued {
     border-color: rgba(63, 185, 80, 0.6);
     background: rgba(63, 185, 80, 0.08);
   }
+  .adv-slot-tile img.ast-gear {
+    width: 22px; height: 22px; image-rendering: pixelated; opacity: .85;
+    flex-shrink: 0;
+  }
   .adv-slot-tile img.ast-icon {
-    width: 70%; height: 70%; image-rendering: pixelated;
+    width: 32px; height: 32px; image-rendering: pixelated;
+    flex-shrink: 0;
+  }
+  .adv-slot-tile .ast-stars-wrap {
+    display: inline-flex; align-items: center; justify-content: center;
+    transform: scale(0.78); transform-origin: center; line-height: 1;
+    margin-top: -2px;
   }
   .adv-slot-tile .ast-num {
     position: absolute; top: 2px; left: 4px; font-size: .58rem;
     color: var(--muted); font-weight: 700; line-height: 1;
-  }
-  .adv-slot-tile .ast-star {
-    position: absolute; bottom: 2px; right: 4px; font-size: .58rem;
-    color: #e3b341; font-weight: 700; line-height: 1;
-    text-shadow: 0 0 3px rgba(0,0,0,0.7);
+    background: rgba(13,17,23,0.6); padding: 1px 3px; border-radius: 3px;
   }
   .adv-slot-tile .ast-queued-dot {
     position: absolute; top: 2px; right: 4px; width: 6px; height: 6px;
@@ -16386,16 +16398,34 @@
           slotRow.className = 'adv-slot-row';
           for (var s = 1; s <= 6; s++) {
             var rune = state.gearByHero[h.id] && state.gearByHero[h.id][s];
+            var slotName = (typeof GEAR_SLOT_NAMES === 'object' && GEAR_SLOT_NAMES[s]) || ('Slot ' + s);
             var tile = document.createElement('button');
             tile.type = 'button';
             tile.className = 'adv-slot-tile' + (rune && rune.runeName ? ' filled' : ' empty');
+            // Star max for tooltip + SVG (look up via runeIdx; fall back to rune.starMax stamped from base)
+            var starMaxVal = null;
+            if (rune && rune.runeName) {
+              starMaxVal = rune.starMax != null ? rune.starMax : (function() {
+                var m = runeIdx[rune.runeName];
+                if (!m) return null;
+                var se = (m.slots || []).filter(function(x) { return x.slot === s; })[0];
+                return se ? se.star_max : null;
+              })();
+            }
             tile.title = (rune && rune.runeName)
-              ? rune.runeName + ' ' + rune.star + '★ — click to act on this slot'
-              : 'Empty slot ' + s + ' — click to place a rune';
+              ? slotName + ' — ' + rune.runeName + ' ' + rune.star + (starMaxVal != null ? '/' + starMaxVal : '') + ' stars (click to act)'
+              : slotName + ' — empty (click to place a rune)';
             var slotNumEl = document.createElement('span');
             slotNumEl.className = 'ast-num';
             slotNumEl.textContent = String(s);
             tile.appendChild(slotNumEl);
+            // Gear-type icon (top of stack)
+            var gearImg = document.createElement('img');
+            gearImg.className = 'ast-gear';
+            gearImg.src = ASSET_BASE + 'assets/titan-slot-icons/gear_' + s + '.png';
+            gearImg.alt = '';
+            gearImg.onerror = function() { this.style.display = 'none'; };
+            tile.appendChild(gearImg);
             if (rune && rune.runeName) {
               var icoFile = iconMap[rune.runeName];
               if (icoFile) {
@@ -16406,10 +16436,20 @@
                 icoImg.onerror = function() { this.style.display = 'none'; };
                 tile.appendChild(icoImg);
               }
-              var stEl = document.createElement('span');
-              stEl.className = 'ast-star';
-              stEl.textContent = rune.star + '★';
-              tile.appendChild(stEl);
+              // SVG stars (matches heroes/gear tab) — use runeStarSVG when available
+              var starsWrap = document.createElement('span');
+              starsWrap.className = 'ast-stars-wrap';
+              if (typeof runeStarSVG === 'function' && starMaxVal != null) {
+                starsWrap.appendChild(runeStarSVG(rune.star || 0, starMaxVal));
+                tile.appendChild(starsWrap);
+              } else {
+                // Fallback: text rendering if helper missing
+                starsWrap.textContent = (rune.star || 0) + (starMaxVal != null ? '/' + starMaxVal : '') + '★';
+                starsWrap.style.color = '#e3b341';
+                starsWrap.style.fontSize = '.58rem';
+                starsWrap.style.fontWeight = '700';
+                tile.appendChild(starsWrap);
+              }
             } else {
               var emp2 = document.createElement('span');
               emp2.className = 'ast-empty';
