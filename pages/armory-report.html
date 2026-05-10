@@ -5391,9 +5391,16 @@
         var ident = getStoredIdentity();
         var sk = (ident && ident.siteKey) ? ident.siteKey : null;
         if (!sk || (ident && ident.guest)) {
-          // Defensive — gate above should catch this, but if a player
-          // somehow gets here without a verified siteKey send them through
-          // the existing UID verify flow first.
+          // No siteKey at all — kick into the existing UID verify flow.
+          try { openIdentityPrefs(player || {}); } catch (e) {}
+          return;
+        }
+        // Identity-gate above only checks that a non-guest identity exists.
+        // The bookmarklet content + envelope upload both require a verified
+        // UID hash — without one the player would see install steps, run
+        // the bookmarklet, paste, and the worker would reject every section
+        // for missing auth. Force them through Identity Prefs first.
+        if (!_ar_isUnlocked(sk) && !_ar_getStoredUidHash(sk)) {
           try { openIdentityPrefs(player || {}); } catch (e) {}
           return;
         }
