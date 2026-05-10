@@ -1088,6 +1088,9 @@
     padding: .6rem; position: relative;
   }
   .gear-slot-name { font-size: .75rem; font-weight: 600; color: var(--text); margin-bottom: .3rem; }
+  .gear-slot-head { display: flex; align-items: center; gap: .4rem; margin-bottom: .2rem; }
+  .gear-slot-head img { width: 32px; height: 32px; object-fit: contain; flex-shrink: 0; }
+  .gear-slot-head .gear-slot-name { margin-bottom: 0; flex: 1; min-width: 0; }
   .gear-stat { font-size: .7rem; color: var(--muted); }
   .gear-rune { font-size: .7rem; color: var(--accent); margin-top: .2rem; }
   .gear-rune-stars { color: var(--yellow); letter-spacing: 1px; }
@@ -1946,6 +1949,68 @@
     position: absolute; bottom: 4px; left: 4px;
     font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 999px;
     background: var(--bg); color: var(--green); border: 1px solid var(--green);
+  }
+  /* ── New flat pool grid (chip-pool style) ─── */
+  .gp-pool-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+    gap: 10px;
+  }
+  .gp-card .hero-badge {
+    position: absolute; top: 4px; right: 4px;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--card) center/cover no-repeat;
+    border: 2px solid var(--accent);
+    box-shadow: 0 0 0 2px var(--surface);
+  }
+  .gp-card.unequipped .hero-badge {
+    border-color: var(--muted); box-shadow: 0 0 0 2px var(--surface);
+    background: var(--card); color: var(--muted);
+    display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700;
+  }
+  .gp-card .hero-name-line {
+    font-size: 10px; color: var(--accent); font-weight: 700; line-height: 1.15;
+    text-align: center; padding: 0 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%;
+  }
+  .gp-card.unequipped .hero-name-line { color: var(--muted); }
+  .gp-card .stat-rows {
+    width: 100%; font-size: 9.5px; color: var(--muted); line-height: 1.4;
+    display: flex; flex-direction: column; gap: 1px;
+    margin-top: 2px; padding-top: 4px; border-top: 1px solid rgba(48,54,61,.5);
+  }
+  .gp-card .stat-rows .row { display: flex; justify-content: space-between; gap: 4px; }
+  .gp-card .stat-rows .row .v { color: var(--text); font-weight: 600; }
+  .gp-card .meta-tags {
+    display: flex; gap: 3px; flex-wrap: wrap; justify-content: center;
+    font-size: 9px;
+  }
+  .gp-card .meta-tags .tag {
+    background: rgba(139,148,158,.12); border-radius: 3px;
+    padding: 1px 5px; color: var(--muted);
+  }
+  .gp-card .meta-tags .tag.gold { color: var(--yellow); }
+  .gp-card .meta-tags .tag.refine { color: var(--green); }
+  .gp-pool-section-head {
+    display: flex; align-items: center; gap: 8px;
+    margin: 18px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
+  }
+  .gp-pool-section-head .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--surface) center/cover no-repeat; border: 1.5px solid var(--accent);
+    flex-shrink: 0;
+  }
+  .gp-pool-section-head .avatar.no-hero { border-color: var(--muted); display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;font-weight:700; }
+  .gp-pool-section-head .name { font-size: 13px; font-weight: 700; color: var(--text); }
+  .gp-pool-section-head .preset { font-size: 11px; color: var(--accent); padding: 1px 8px; border: 1px solid rgba(121,192,255,0.3); border-radius: 999px; background: rgba(121,192,255,0.06); }
+  .gp-pool-section-head .count { font-size: 11px; color: var(--muted); margin-left: auto; }
+
+  .gp-select {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    border-radius: 5px; padding: 4px 8px; font-size: 12px; max-width: 200px;
+  }
+  .gp-select-label {
+    font-size: 10px; color: var(--muted); display: flex; align-items: center; gap: 5px;
+    text-transform: uppercase; letter-spacing: .4px;
   }
   .gp-card .refine-badge.below { color: var(--muted); border-color: var(--border); }
 
@@ -7769,16 +7834,27 @@
         var gc = document.createElement('div');
         gc.className = 'gear-card';
 
-        // Slot name
+        // Slot icon + name (visual cue for slot type)
+        var slotLabel = GEAR_SLOT_NAMES[idx + 1] || ('Slot ' + (idx + 1));
+        var slotDigit = idx + 1;
+        if (equip.equipId) {
+          var d = Math.floor((equip.equipId % 10000) / 100);
+          if (d >= 1 && d <= 6) { slotDigit = d; slotLabel = GEAR_SLOT_NAMES[d]; }
+        }
+        var slotHead = document.createElement('div');
+        slotHead.className = 'gear-slot-head';
+        if (slotDigit >= 1 && slotDigit <= 6) {
+          var slotImg = document.createElement('img');
+          slotImg.src = ASSET_BASE + 'assets/titan-slot-icons/gear_' + slotDigit + '.png';
+          slotImg.alt = '';
+          slotImg.onerror = function() { this.style.display = 'none'; };
+          slotHead.appendChild(slotImg);
+        }
         var slotName = document.createElement('div');
         slotName.className = 'gear-slot-name';
-        var slotLabel = GEAR_SLOT_NAMES[idx + 1] || ('Slot ' + (idx + 1));
-        if (equip.equipId) {
-          var slotDigit = Math.floor((equip.equipId % 10000) / 100);
-          if (slotDigit >= 1 && slotDigit <= 6) slotLabel = GEAR_SLOT_NAMES[slotDigit];
-        }
         slotName.textContent = slotLabel;
-        gc.appendChild(slotName);
+        slotHead.appendChild(slotName);
+        gc.appendChild(slotHead);
 
         // Level
         if (equip.level != null) {
@@ -8906,16 +8982,6 @@
     var summary = data.summary || {};
     var schemes = data.schemes || [];
 
-    function groupByHero(pieces) {
-      var byHero = {};
-      pieces.forEach(function(p) {
-        var key = p.heroId || 0;
-        if (!byHero[key]) byHero[key] = { heroId: key, heroName: p.heroName, pieces: [] };
-        byHero[key].pieces.push(p);
-      });
-      return byHero;
-    }
-
     function presetForHero(heroId) {
       for (var i = 0; i < schemes.length; i++) {
         if (schemes[i].heroId === heroId && !schemes[i].isEmpty) return schemes[i].name;
@@ -8941,8 +9007,29 @@
     });
     container.appendChild(summaryEl);
 
-    // ── Filter bar ───────────────────────────────────────────────────────
-    var state = { search: '', slot: 0, quality: 'all', lockedOnly: false };
+    // ── Filter / sort bar ────────────────────────────────────────────────
+    // Single flat pool grid (no per-hero rows). Default sort groups same-hero
+    // pieces together with section headers; alternate sorts (Score, Level,
+    // Quality, Slot) drop the headers and just list cards.
+    var state = {
+      search: '', hero: 'all', slot: 'all', rune: 'all', stat: 'all',
+      quality: 'all', lockedOnly: false, sort: 'default'
+    };
+
+    function pieceScore(p) {
+      var s = p.scores || {};
+      return Number(s.land || 0) + Number(s.navy || 0) + Number(s.air || 0);
+    }
+    function pieceRuneName(p) {
+      var r = (p.buffs || []).find(function (b) { return b.type === 'rune'; });
+      return r ? (r.name || '') : '';
+    }
+    function pieceStatNames(p) {
+      return (p.buffs || []).filter(function (b) { return b.type === 'stat'; })
+                            .map(function (b) { return b.name || ''; })
+                            .filter(Boolean);
+    }
+
     var filterBar = gpEl('div', { cls: 'gp-filters' });
 
     var searchInput = document.createElement('input');
@@ -8950,38 +9037,94 @@
     searchInput.className = 'filter-search';
     searchInput.placeholder = 'Search heroes, gear, runes…';
     searchInput.setAttribute('autocomplete', 'off');
-    searchInput.addEventListener('input', function() { state.search = (this.value || '').toLowerCase().trim(); rerender(); });
+    searchInput.addEventListener('input', function () { state.search = (this.value || '').toLowerCase().trim(); rerender(); });
     filterBar.appendChild(searchInput);
 
-    [{ k: 0, l: 'All slots' }, { k: 1, l: 'W' }, { k: 2, l: 'A' }, { k: 3, l: 'Acc' },
-     { k: 4, l: 'Helm' }, { k: 5, l: 'Dev' }, { k: 6, l: 'Boots' }].forEach(function(s) {
-      var btn = gpEl('button', { cls: 'gp-pill' + (s.k === 0 ? ' active' : ''), text: s.l, title: s.k === 0 ? 'Show all slots' : GP_SLOT_NAMES[s.k] });
-      btn.addEventListener('click', function() {
-        state.slot = s.k;
-        filterBar.querySelectorAll('.gp-pill[data-group="slot"]').forEach(function(b) { b.classList.remove('active'); });
-        btn.classList.add('active');
-        rerender();
+    function mkDropdown(label, optsArr, key) {
+      var wrap = gpEl('label', { cls: 'gp-select-label', text: label + ': ' });
+      var sel = document.createElement('select');
+      sel.className = 'gp-select';
+      optsArr.forEach(function (o) {
+        var op = document.createElement('option');
+        op.value = o.value; op.textContent = o.label;
+        sel.appendChild(op);
       });
-      btn.setAttribute('data-group', 'slot');
-      filterBar.appendChild(btn);
+      sel.value = state[key];
+      sel.addEventListener('change', function () { state[key] = sel.value; rerender(); });
+      wrap.appendChild(sel);
+      filterBar.appendChild(wrap);
+      return sel;
+    }
+
+    // Build option lists from the loaded pool.
+    var heroCounts = {};
+    allPieces.forEach(function (p) {
+      var k = p.heroId || 0;
+      heroCounts[k] = (heroCounts[k] || 0) + 1;
+    });
+    var heroOpts = [{ value: 'all', label: 'All heroes' }];
+    Object.keys(heroCounts).filter(function (k) { return Number(k) > 0; })
+      .sort(function (a, b) {
+        var ap = allPieces.find(function (x) { return x.heroId == a; });
+        var bp = allPieces.find(function (x) { return x.heroId == b; });
+        return ((ap && ap.heroName) || '').localeCompare((bp && bp.heroName) || '');
+      })
+      .forEach(function (hid) {
+        var hp = allPieces.find(function (x) { return x.heroId == hid; });
+        heroOpts.push({ value: String(hid), label: ((hp && hp.heroName) || ('Hero ' + hid)) + ' (' + heroCounts[hid] + ')' });
+      });
+    if (heroCounts[0]) heroOpts.push({ value: '0', label: 'Unassigned (' + heroCounts[0] + ')' });
+
+    var slotOpts = [{ value: 'all', label: 'All slots' }];
+    for (var s = 1; s <= 6; s++) {
+      var sc = allPieces.filter(function (p) { return p.slot === s; }).length;
+      if (sc) slotOpts.push({ value: String(s), label: GP_SLOT_NAMES[s] + ' (' + sc + ')' });
+    }
+
+    var runeCounts = {};
+    allPieces.forEach(function (p) {
+      var nm = pieceRuneName(p);
+      if (nm) runeCounts[nm] = (runeCounts[nm] || 0) + 1;
+    });
+    var runeOpts = [{ value: 'all', label: 'Any rune' }, { value: '__none', label: 'No rune' }];
+    Object.keys(runeCounts).sort(function (a, b) { return runeCounts[b] - runeCounts[a]; })
+      .forEach(function (nm) { runeOpts.push({ value: nm, label: nm + ' (' + runeCounts[nm] + ')' }); });
+
+    var statCounts = {};
+    allPieces.forEach(function (p) {
+      pieceStatNames(p).forEach(function (n) { statCounts[n] = (statCounts[n] || 0) + 1; });
+    });
+    var statOpts = [{ value: 'all', label: 'Any stat' }];
+    Object.keys(statCounts).sort(function (a, b) { return statCounts[b] - statCounts[a]; })
+      .forEach(function (nm) { statOpts.push({ value: nm, label: nm + ' (' + statCounts[nm] + ')' }); });
+
+    var qualityCounts = {};
+    allPieces.forEach(function (p) { var q = p.quality || 0; qualityCounts[q] = (qualityCounts[q] || 0) + 1; });
+    var qualityOpts = [{ value: 'all', label: 'All quality' }];
+    [5, 4, 3, 2].forEach(function (q) {
+      if (qualityCounts[q]) qualityOpts.push({ value: String(q), label: (GP_QUALITY_NAMES[q] || ('Q' + q)) + ' (' + qualityCounts[q] + ')' });
     });
 
-    [{ k: 'all', l: 'All quality' }, { k: '5', l: 'Gold only' }].forEach(function(q) {
-      var btn = gpEl('button', { cls: 'gp-pill' + (q.k === 'all' ? ' active' : ''), text: q.l });
-      btn.addEventListener('click', function() {
-        state.quality = q.k;
-        filterBar.querySelectorAll('.gp-pill[data-group="quality"]').forEach(function(b) { b.classList.remove('active'); });
-        btn.classList.add('active');
-        rerender();
-      });
-      btn.setAttribute('data-group', 'quality');
-      filterBar.appendChild(btn);
-    });
+    var sortOpts = [
+      { value: 'default', label: 'Equipped → hero → slot' },
+      { value: 'slot-asc', label: 'Slot ↑' },
+      { value: 'score-desc', label: 'Score ↓' },
+      { value: 'level-desc', label: 'Level ↓' },
+      { value: 'quality-desc', label: 'Quality ↓' },
+      { value: 'refine-desc', label: 'Refinement ↓' }
+    ];
+
+    mkDropdown('Hero', heroOpts, 'hero');
+    mkDropdown('Slot', slotOpts, 'slot');
+    mkDropdown('Rune', runeOpts, 'rune');
+    mkDropdown('Stat', statOpts, 'stat');
+    mkDropdown('Quality', qualityOpts, 'quality');
+    mkDropdown('Sort', sortOpts, 'sort');
 
     var lockedBtn = gpEl('button', { cls: 'gp-pill', style: 'display:inline-flex;align-items:center;gap:5px;' });
     lockedBtn.appendChild(gpSvgIcon('lock', { size: 12 }));
     lockedBtn.appendChild(document.createTextNode('Locked only'));
-    lockedBtn.addEventListener('click', function() {
+    lockedBtn.addEventListener('click', function () {
       state.lockedOnly = !state.lockedOnly;
       lockedBtn.classList.toggle('locked-on', state.lockedOnly);
       lockedBtn.classList.toggle('active', state.lockedOnly);
@@ -8995,116 +9138,124 @@
     container.appendChild(bodyEl);
 
     function pieceMatches(p) {
-      if (state.slot && p.slot !== state.slot) return false;
+      if (state.hero !== 'all' && String(p.heroId || 0) !== state.hero) return false;
+      if (state.slot !== 'all' && String(p.slot) !== state.slot) return false;
       if (state.quality !== 'all' && String(p.quality) !== state.quality) return false;
       if (state.lockedOnly && !p.locked) return false;
+      if (state.rune !== 'all') {
+        var rn = pieceRuneName(p);
+        if (state.rune === '__none') { if (rn) return false; }
+        else if (rn !== state.rune) return false;
+      }
+      if (state.stat !== 'all') {
+        if (pieceStatNames(p).indexOf(state.stat) === -1) return false;
+      }
       if (state.search) {
         var hay = ((p.heroName || '') + ' ' + (p.gearName || '') + ' ' + (p.slotName || '') + ' ' +
                    (p.qualityName || '') + ' ' +
-                   (p.buffs || []).map(function(b){return b.name||'';}).join(' ') + ' ' +
-                   (p.schemes || []).map(function(s){return s.name||'';}).join(' ')).toLowerCase();
+                   (p.buffs || []).map(function (b) { return b.name || ''; }).join(' ') + ' ' +
+                   (p.schemes || []).map(function (s) { return s.name || ''; }).join(' ')).toLowerCase();
         if (hay.indexOf(state.search) === -1) return false;
       }
       return true;
     }
 
+    // Default sort: equipped pieces first, grouped by hero (alphabetical).
+    // Within each group, slot 1 → 6. Unassigned pieces last, sorted by quality
+    // then slot. Mirrors the chip-pool flow where bound HTs cluster naturally.
+    function defaultCompare(a, b) {
+      var ah = a.heroId || 0, bh = b.heroId || 0;
+      var aEq = ah > 0 ? 0 : 1, bEq = bh > 0 ? 0 : 1;
+      if (aEq !== bEq) return aEq - bEq;
+      if (ah > 0 && bh > 0) {
+        var c = (a.heroName || '').localeCompare(b.heroName || '');
+        if (c) return c;
+        return (a.slot || 0) - (b.slot || 0);
+      }
+      return (b.quality - a.quality) || ((a.slot || 0) - (b.slot || 0));
+    }
+    function applySort(arr) {
+      var copy = arr.slice();
+      switch (state.sort) {
+        case 'slot-asc':     copy.sort(function (a, b) { return (a.slot - b.slot) || (b.quality - a.quality) || (b.level - a.level); }); break;
+        case 'score-desc':   copy.sort(function (a, b) { return (pieceScore(b) - pieceScore(a)) || (b.quality - a.quality); }); break;
+        case 'level-desc':   copy.sort(function (a, b) { return (b.level - a.level) || (b.quality - a.quality); }); break;
+        case 'quality-desc': copy.sort(function (a, b) { return (b.quality - a.quality) || (a.slot - b.slot); }); break;
+        case 'refine-desc':  copy.sort(function (a, b) {
+          var ar = a.refinement && a.refinement.percent != null ? a.refinement.percent : -1;
+          var br = b.refinement && b.refinement.percent != null ? b.refinement.percent : -1;
+          return (br - ar) || (b.quality - a.quality);
+        }); break;
+        default: copy.sort(defaultCompare);
+      }
+      return copy;
+    }
+
     function rerender() {
       while (bodyEl.firstChild) bodyEl.removeChild(bodyEl.firstChild);
       var filtered = allPieces.filter(pieceMatches);
-      var byHero = groupByHero(filtered);
+      var sorted = applySort(filtered);
 
-      var equippedHeroIds = Object.keys(byHero).filter(function(k) { return Number(k) > 0; })
-        .sort(function(a, b) {
-          var ah = byHero[a], bh = byHero[b];
-          var aGold = ah.pieces.filter(function(p){return p.quality===5;}).length;
-          var bGold = bh.pieces.filter(function(p){return p.quality===5;}).length;
-          if (aGold !== bGold) return bGold - aGold;
-          return (ah.heroName || '').localeCompare(bh.heroName || '');
-        });
-
-      if (equippedHeroIds.length === 0 && !byHero[0]) {
-        bodyEl.appendChild(gpEl('div', { cls: 'gp-empty', text: 'No gear matches your filters.' }));
+      if (sorted.length === 0) {
+        bodyEl.appendChild(gpEl('div', { cls: 'gp-empty', style: 'padding:32px;text-align:center;color:var(--muted);', text: 'No gear matches your filters.' }));
         return;
       }
 
-      if (equippedHeroIds.length > 0) {
-        bodyEl.appendChild(gpEl('div', { cls: 'gp-section-title', text: 'Equipped on heroes (' + equippedHeroIds.length + ')' }));
-        equippedHeroIds.forEach(function(hid) {
-          bodyEl.appendChild(buildHeroRow(byHero[hid], false));
+      // Tally line
+      var tally = gpEl('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:8px;', text: sorted.length + ' of ' + allPieces.length + ' pieces' });
+      bodyEl.appendChild(tally);
+
+      if (state.sort === 'default') {
+        // Grouped headers per hero (and one "Unassigned" group at the end).
+        var lastHeroId = '__init__';
+        var sectionGrid = null;
+        sorted.forEach(function (p) {
+          var hid = p.heroId || 0;
+          if (String(hid) !== String(lastHeroId)) {
+            lastHeroId = hid;
+            var sectionHead = gpEl('div', { cls: 'gp-pool-section-head' });
+            var avatar = gpEl('div', { cls: 'avatar' + (hid > 0 ? '' : ' no-hero') });
+            if (hid > 0) avatar.style.backgroundImage = "url('" + gpHeroAvatarUrl(hid) + "')";
+            else avatar.textContent = '?';
+            sectionHead.appendChild(avatar);
+            sectionHead.appendChild(gpEl('div', { cls: 'name', text: hid > 0 ? (p.heroName || ('Hero ' + hid)) : 'Available pool — unassigned' }));
+            var preset = hid > 0 ? presetForHero(hid) : null;
+            if (preset) sectionHead.appendChild(gpEl('div', { cls: 'preset', text: preset }));
+            var groupCount = sorted.filter(function (q) { return (q.heroId || 0) === hid; }).length;
+            sectionHead.appendChild(gpEl('div', { cls: 'count', text: groupCount + ' piece' + (groupCount === 1 ? '' : 's') }));
+            bodyEl.appendChild(sectionHead);
+            sectionGrid = gpEl('div', { cls: 'gp-pool-grid' });
+            bodyEl.appendChild(sectionGrid);
+          }
+          sectionGrid.appendChild(buildPoolCard(p));
         });
-      }
-
-      if (byHero[0] && byHero[0].pieces.length > 0) {
-        bodyEl.appendChild(gpEl('div', { cls: 'gp-section-title', text: 'Available pool — unassigned (' + byHero[0].pieces.length + ')' }));
-        bodyEl.appendChild(buildHeroRow(byHero[0], true));
-      }
-    }
-
-    function buildHeroRow(group, isUnassigned) {
-      var row = gpEl('div', { cls: 'gp-hero-row' + (isUnassigned ? ' dim' : '') });
-      var meta = gpEl('div', { cls: 'gp-hero-meta' });
-
-      var avatar = gpEl('div', { cls: 'gp-hero-avatar' });
-      if (group.heroId > 0) {
-        avatar.style.backgroundImage = "url('" + gpHeroAvatarUrl(group.heroId) + "')";
       } else {
-        avatar.classList.add('no-hero');
-        avatar.textContent = '?';
+        var grid = gpEl('div', { cls: 'gp-pool-grid' });
+        sorted.forEach(function (p) { grid.appendChild(buildPoolCard(p)); });
+        bodyEl.appendChild(grid);
       }
-      meta.appendChild(avatar);
-
-      meta.appendChild(gpEl('div', { cls: 'gp-hero-name', text: group.heroId > 0 ? (group.heroName || ('Hero ' + group.heroId)) : 'Unassigned' }));
-
-      var preset = group.heroId > 0 ? presetForHero(group.heroId) : null;
-      meta.appendChild(gpEl('div', {
-        cls: 'gp-hero-preset' + (preset ? '' : ' no-preset'),
-        text: preset ? ('Preset: ' + preset) : (group.heroId > 0 ? 'No preset' : '—')
-      }));
-
-      var goldCount = group.pieces.filter(function(p){return p.quality===5;}).length;
-      var refinedCount = group.pieces.filter(function(p){return p.refinement && p.refinement.meetsThreshold;}).length;
-      var runeCount = group.pieces.filter(function(p){return (p.buffs||[]).some(function(b){return b.type==='rune';});}).length;
-      var lockedCount = group.pieces.filter(function(p){return p.locked;}).length;
-      var stats = gpEl('div', { cls: 'gp-hero-stats' });
-      stats.appendChild(gpEl('span', { cls: 'pip', text: goldCount + '/' + group.pieces.length + ' gold' }));
-      if (refinedCount > 0) stats.appendChild(gpEl('span', { cls: 'pip refined', text: refinedCount + ' refined' }));
-      if (runeCount > 0) stats.appendChild(gpEl('span', { cls: 'pip runed', text: runeCount + ' runes' }));
-      if (lockedCount > 0) stats.appendChild(gpEl('span', { cls: 'pip locked', text: lockedCount + ' locked' }));
-      meta.appendChild(stats);
-      row.appendChild(meta);
-
-      var slotGrid = gpEl('div', { cls: 'gp-slot-grid' });
-      var bySlot = {};
-      group.pieces.forEach(function(p) {
-        if (!bySlot[p.slot] || (p.quality > bySlot[p.slot].quality)) bySlot[p.slot] = p;
-      });
-
-      for (var s = 1; s <= 6; s++) {
-        var card;
-        if (bySlot[s]) {
-          card = buildPieceCard(bySlot[s]);
-        } else if (group.heroId > 0) {
-          card = gpEl('div', { cls: 'gp-card empty' });
-          var slotIcon = document.createElement('img');
-          slotIcon.className = 'slot-icon';
-          slotIcon.src = gpSlotIconUrl(s);
-          slotIcon.alt = GP_SLOT_NAMES[s];
-          slotIcon.style.opacity = '0.3';
-          card.appendChild(slotIcon);
-          card.appendChild(gpEl('div', { cls: 'gp-empty-label', text: 'No ' + GP_SLOT_NAMES[s] }));
-        } else {
-          continue;
-        }
-        slotGrid.appendChild(card);
-      }
-      row.appendChild(slotGrid);
-      return row;
     }
 
-    function buildPieceCard(p) {
-      var titleStr = p.gearName + ' — ' + (p.qualityName || '') + (p.level > 0 ? ' Lv.' + p.level : '') + (p.locked ? ' (locked)' : '');
-      var card = gpEl('div', { cls: 'gp-card q' + p.quality, title: titleStr });
-      card.addEventListener('click', function() { gpOpenDetailModal(p); });
+    function buildPoolCard(p) {
+      var titleStr = p.gearName + ' — ' + (p.qualityName || '') +
+        (p.level > 0 ? ' Lv.' + p.level : '') +
+        (p.heroName ? ' · ' + p.heroName : ' · unassigned') +
+        (p.locked ? ' (locked)' : '');
+      var equipped = (p.heroId || 0) > 0;
+      var card = gpEl('div', { cls: 'gp-card q' + p.quality + (equipped ? '' : ' unequipped'), title: titleStr });
+      card.addEventListener('click', function () { gpOpenDetailModal(p); });
+
+      // Hero portrait badge — top-right. Mirrors the chip-pool "bound to HT"
+      // tile so the visual cue carries between sub-tabs.
+      var heroBadge = gpEl('div', { cls: 'hero-badge' });
+      if (equipped) {
+        heroBadge.style.backgroundImage = "url('" + gpHeroAvatarUrl(p.heroId) + "')";
+        heroBadge.title = 'Equipped on ' + (p.heroName || ('Hero ' + p.heroId));
+      } else {
+        heroBadge.textContent = '?';
+        heroBadge.title = 'Unassigned';
+      }
+      card.appendChild(heroBadge);
 
       if (p.schemes && p.schemes.length > 0 && p.schemes[0].name) {
         card.appendChild(gpEl('div', { cls: 'scheme-tag', text: p.schemes[0].name }));
@@ -9125,26 +9276,54 @@
       slotIcon.className = 'slot-icon';
       slotIcon.src = gpSlotIconUrl(p.slot);
       slotIcon.alt = p.slotName || '';
-      slotIcon.onerror = function() { this.style.display = 'none'; };
+      slotIcon.onerror = function () { this.style.display = 'none'; };
       card.appendChild(slotIcon);
 
       card.appendChild(gpEl('div', { cls: 'gear-name', text: p.gearName || ('Gear ' + p.equipId) }));
 
+      // Hero name line under the gear name so the card identifies itself even
+      // when the section header is offscreen (alternate sorts).
+      card.appendChild(gpEl('div', {
+        cls: 'hero-name-line',
+        text: equipped ? (p.heroName || ('Hero ' + p.heroId)) : 'Unassigned'
+      }));
+
+      // Compact meta tags: Quality + Score + Refinement
+      var metaTags = gpEl('div', { cls: 'meta-tags' });
+      var qTag = gpEl('span', { cls: 'tag' + (p.quality === 5 ? ' gold' : ''), text: GP_QUALITY_NAMES[p.quality] || ('Q' + p.quality) });
+      metaTags.appendChild(qTag);
+      var sc = pieceScore(p);
+      if (sc > 0) metaTags.appendChild(gpEl('span', { cls: 'tag', text: 'Score ' + sc.toLocaleString() }));
       if (p.refinement && p.refinement.percent != null) {
-        card.appendChild(gpEl('div', {
-          cls: 'refine-badge' + (p.refinement.meetsThreshold ? '' : ' below'),
-          text: p.refinement.percent + '%',
-          title: 'Refinement ' + p.refinement.percent + '% — ' + (p.refinement.meetsThreshold ? 'meets 70% threshold' : 'below 70% threshold')
+        metaTags.appendChild(gpEl('span', {
+          cls: 'tag refine',
+          text: 'Refine ' + p.refinement.percent + '%',
+          title: p.refinement.meetsThreshold ? 'meets 70% threshold' : 'below 70% threshold'
         }));
       }
+      card.appendChild(metaTags);
 
-      var rune = (p.buffs || []).find(function(b) { return b.type === 'rune'; });
+      // Random stat list — first 3 to keep cards tight; details modal has all.
+      var stats = (p.buffs || []).filter(function (b) { return b.type === 'stat'; });
+      if (stats.length) {
+        var statRows = gpEl('div', { cls: 'stat-rows' });
+        stats.slice(0, 3).forEach(function (b) {
+          var row = gpEl('div', { cls: 'row' });
+          row.appendChild(gpEl('span', { text: b.name || ('#' + b.templateId) }));
+          row.appendChild(gpEl('span', { cls: 'v', text: '+' + (b.valuePercent != null ? b.valuePercent.toFixed(2) : '?') + '%' }));
+          statRows.appendChild(row);
+        });
+        if (stats.length > 3) statRows.appendChild(gpEl('div', { cls: 'row', text: '+' + (stats.length - 3) + ' more' }));
+        card.appendChild(statRows);
+      }
+
+      var rune = (p.buffs || []).find(function (b) { return b.type === 'rune'; });
       if (rune && rune.name) {
         var rbWrap = gpEl('div', { cls: 'rune-badge', title: rune.name });
         var rImg = document.createElement('img');
         rImg.src = gpRuneIconUrl(rune.name);
         rImg.alt = rune.name;
-        rImg.onerror = function() { this.parentElement.style.display = 'none'; };
+        rImg.onerror = function () { this.parentElement.style.display = 'none'; };
         rbWrap.appendChild(rImg);
         card.appendChild(rbWrap);
       }
