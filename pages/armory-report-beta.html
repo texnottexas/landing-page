@@ -1909,9 +1909,9 @@
 
   .gp-card {
     position: relative; background: var(--surface); border: 2px solid var(--border); border-radius: 8px;
-    padding: 8px 6px 6px; cursor: pointer; transition: transform .15s, border-color .15s;
-    display: flex; flex-direction: column; align-items: center; gap: 4px;
-    min-height: 130px;
+    padding: 8px 8px 8px; cursor: pointer; transition: transform .15s, border-color .15s;
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+    min-height: 220px;
   }
   .gp-card:hover { transform: translateY(-2px); border-color: var(--accent); }
   .gp-card.q5 { border-color: rgba(210,153,34,0.5); background: linear-gradient(180deg, rgba(210,153,34,0.06), var(--surface) 60%); }
@@ -1934,26 +1934,27 @@
     padding: 1px 6px; border-radius: 4px; background: rgba(0,0,0,0.4); color: var(--text);
   }
   .gp-card .level-badge.lv0 { color: var(--muted); background: transparent; }
-  .gp-card .slot-icon { width: 56px; height: 56px; object-fit: contain; }
-  .gp-card .gear-name { font-size: 10px; color: var(--text); text-align: center; line-height: 1.15; min-height: 24px; padding: 0 2px; }
+  .gp-card .slot-icon { width: 68px; height: 68px; object-fit: contain; }
+  .gp-card .gear-name {
+    font-size: 11px; font-weight: 600; color: var(--text); text-align: center;
+    line-height: 1.15; padding: 0 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+  }
   .gp-card .quality-tag { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
 
+  /* Rune badge sits in the top-right corner just under the hero pill. Pulled
+     out of its old bottom-right spot so the random-stat rows below can take
+     the full card width without dancing around it. */
   .gp-card .rune-badge {
-    position: absolute; bottom: 4px; right: 4px;
+    position: absolute; top: 30px; right: 8px;
     width: 26px; height: 26px; border-radius: 50%; overflow: hidden;
     background: var(--card); border: 1.5px solid var(--accent);
   }
   .gp-card .rune-badge img { width: 100%; height: 100%; object-fit: cover; }
-
-  .gp-card .refine-badge {
-    position: absolute; bottom: 4px; left: 4px;
-    font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 999px;
-    background: var(--bg); color: var(--green); border: 1px solid var(--green);
-  }
   /* ── New flat pool grid (chip-pool style) ─── */
   .gp-pool-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 10px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
+    gap: 12px;
   }
   /* Top header row: lock+level on the left, hero pill on the right.
      Replaces the previous absolute hero-badge so it can never overlap the
@@ -2004,20 +2005,22 @@
   .gp-roll-fill { height: 100%; border-radius: 2px; }
   .gp-roll-pct { font-size: 10px; align-self: flex-end; }
   .gp-card .gp-roll-pct { font-size: 9px; }
+  /* Random-stat block is pinned to the bottom of every card so the first
+     random row lines up across all cards regardless of how many base-stat
+     rows sit above. Always 3 reserved slots — empty rows keep the spacing
+     identical even when a piece has < 3 random rolls. */
   .gp-card .stat-list {
-    width: 100%; display: flex; flex-direction: column; gap: 3px;
-    margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(48,54,61,.5);
+    width: 100%; display: flex; flex-direction: column; gap: 4px;
+    margin-top: auto; padding-top: 6px; border-top: 1px solid rgba(48,54,61,.5);
   }
-  .gp-card .meta-tags {
-    display: flex; gap: 3px; flex-wrap: wrap; justify-content: center;
-    font-size: 9px;
+  .gp-card .stat-list.base {
+    margin-top: 0; padding-top: 4px;
+    border-top: 1px dashed rgba(48,54,61,.4);
   }
-  .gp-card .meta-tags .tag {
-    background: rgba(139,148,158,.12); border-radius: 3px;
-    padding: 1px 5px; color: var(--muted);
-  }
-  .gp-card .meta-tags .tag.gold { color: var(--yellow); }
-  .gp-card .meta-tags .tag.refine { color: var(--green); }
+  /* Empty placeholder reserves layout space without painting. Keeps row
+     index N at the same y across every card. */
+  .gp-card .gp-stat-row.empty { visibility: hidden; min-height: 14px; }
+  .gp-card .gp-stat-row.empty .gp-roll-bar { display: none; }
   .gp-card .preset-chip {
     font-size: 9px; padding: 1px 6px; border-radius: 999px;
     background: rgba(121,192,255,0.08); color: var(--accent);
@@ -9377,63 +9380,12 @@
       top.appendChild(heroPill);
       card.appendChild(top);
 
-      var slotIcon = document.createElement('img');
-      slotIcon.className = 'slot-icon';
-      slotIcon.src = gpSlotIconUrl(p.slot);
-      slotIcon.alt = p.slotName || '';
-      slotIcon.onerror = function () { this.style.display = 'none'; };
-      card.appendChild(slotIcon);
-
-      card.appendChild(gpEl('div', { cls: 'gear-name', text: p.gearName || ('Gear ' + p.equipId) }));
-
-      // Compact meta tags: Quality + Score + Refinement
-      var metaTags = gpEl('div', { cls: 'meta-tags' });
-      var qTag = gpEl('span', { cls: 'tag' + (p.quality === 5 ? ' gold' : ''), text: GP_QUALITY_NAMES[p.quality] || ('Q' + p.quality) });
-      metaTags.appendChild(qTag);
-      var sc = pieceScore(p);
-      if (sc > 0) metaTags.appendChild(gpEl('span', { cls: 'tag', text: 'Score ' + sc.toLocaleString() }));
-      if (p.refinement && p.refinement.percent != null) {
-        metaTags.appendChild(gpEl('span', {
-          cls: 'tag refine',
-          text: 'Refine ' + p.refinement.percent + '%',
-          title: p.refinement.meetsThreshold ? 'meets 70% threshold' : 'below 70% threshold'
-        }));
-      }
-      card.appendChild(metaTags);
-
-      if (p.schemes && p.schemes.length > 0 && p.schemes[0].name) {
-        card.appendChild(gpEl('div', { cls: 'preset-chip', text: p.schemes[0].name, title: 'Preset: ' + p.schemes[0].name }));
-      }
-
-      // Base attribute rows — always rendered when the stock equipId is in
-      // EQUIP_BASE_BUFF. Shows base value (deterministic from rarity+slot+
-      // level) and the optional Enigma Platform enhancement chip / total.
-      var baseStats = gpResolveBaseStats(p);
-      if (baseStats.length) {
-        var baseList = gpEl('div', { cls: 'stat-list', style: 'border-top:none;padding-top:2px;margin-top:2px;' });
-        baseStats.forEach(function (bs) {
-          var row = gpEl('div', { cls: 'gp-stat-row', style: 'background:rgba(121,192,255,0.04);border-radius:3px;padding:1px 4px;' });
-          row.appendChild(gpEl('span', { cls: 'name', text: bs.statName }));
-          row.appendChild(gpEl('span', { cls: 'val', style: 'color:var(--text);', text: gpFmtPct(bs.basePct) }));
-          if (bs.enhPct > 0) {
-            var isActive = bs.enhanceShow === 2;
-            row.appendChild(gpEl('span', { cls: 'enh ' + (isActive ? 'active' : 'inactive'), text: '+' + gpFmtPct(bs.enhPct) }));
-            if (isActive) row.appendChild(gpEl('span', { cls: 'total', text: '= ' + gpFmtPct(bs.basePct + bs.enhPct) }));
-          }
-          baseList.appendChild(row);
-        });
-        card.appendChild(baseList);
-      }
-
-      // Random stat rows — heroes-tab format. Show all (typically 1–3); the
-      // bar makes vertical density manageable.
-      var stats = (p.buffs || []).filter(function (b) { return b.type === 'stat'; });
-      if (stats.length) {
-        var list = gpEl('div', { cls: 'stat-list' });
-        stats.forEach(function (b) { list.appendChild(gpBuildStatRow(b, { compact: true })); });
-        card.appendChild(list);
-      }
-
+      // Rune badge — top-right under the hero pill (absolute), so the random
+      // stats area below can take the full card width without wrapping around
+      // it. The card border still encodes quality (gold / purple / blue) so
+      // the dropped Quality/Score/Refine meta-tags row is no information loss
+      // — those signals are surfaced via the toolbar sort + filter dropdowns
+      // and the detail modal.
       var rune = (p.buffs || []).find(function (b) { return b.type === 'rune'; });
       if (rune && rune.name) {
         var rbWrap = gpEl('div', { cls: 'rune-badge', title: rune.name });
@@ -9444,6 +9396,61 @@
         rbWrap.appendChild(rImg);
         card.appendChild(rbWrap);
       }
+
+      var slotIcon = document.createElement('img');
+      slotIcon.className = 'slot-icon';
+      slotIcon.src = gpSlotIconUrl(p.slot);
+      slotIcon.alt = p.slotName || '';
+      slotIcon.onerror = function () { this.style.display = 'none'; };
+      card.appendChild(slotIcon);
+
+      // Preset chip (small) sits directly above the gear name when the piece
+      // belongs to a saved preset; suppressed otherwise so the row doesn't
+      // collapse the spacing.
+      if (p.schemes && p.schemes.length > 0 && p.schemes[0].name) {
+        card.appendChild(gpEl('div', { cls: 'preset-chip', text: p.schemes[0].name, title: 'Preset: ' + p.schemes[0].name }));
+      }
+      card.appendChild(gpEl('div', { cls: 'gear-name', text: p.gearName || ('Gear ' + p.equipId), title: p.gearName || '' }));
+
+      // Base attribute rows — always 2 reserved slots so accessory/boots
+      // (multi-buff) and pistol/headset (single-buff) align row-for-row.
+      var baseStats = gpResolveBaseStats(p);
+      var baseList = gpEl('div', { cls: 'stat-list base' });
+      var baseRows = 0;
+      baseStats.forEach(function (bs) {
+        var row = gpEl('div', { cls: 'gp-stat-row', style: 'background:rgba(121,192,255,0.04);border-radius:3px;padding:1px 4px;' });
+        row.appendChild(gpEl('span', { cls: 'name', text: bs.statName }));
+        row.appendChild(gpEl('span', { cls: 'val', style: 'color:var(--text);', text: gpFmtPct(bs.basePct) }));
+        if (bs.enhPct > 0) {
+          var isActive = bs.enhanceShow === 2;
+          row.appendChild(gpEl('span', { cls: 'enh ' + (isActive ? 'active' : 'inactive'), text: '+' + gpFmtPct(bs.enhPct) }));
+          if (isActive) row.appendChild(gpEl('span', { cls: 'total', text: '= ' + gpFmtPct(bs.basePct + bs.enhPct) }));
+        }
+        baseList.appendChild(row);
+        baseRows++;
+      });
+      // Pad to 2 base-row slots so single-buff slots don't have a shorter
+      // top half than multi-buff slots. Without this, the random-row block
+      // (pinned to bottom by margin-top:auto) would still align, but the
+      // base block heights would visibly differ slot to slot.
+      while (baseRows < 2) {
+        baseList.appendChild(gpEl('div', { cls: 'gp-stat-row empty' }));
+        baseRows++;
+      }
+      card.appendChild(baseList);
+
+      // Random stat rows — always 3 reserved slots. Empty placeholders keep
+      // row N aligned across cards regardless of actual roll count.
+      var stats = (p.buffs || []).filter(function (b) { return b.type === 'stat'; });
+      var list = gpEl('div', { cls: 'stat-list' });
+      var rendered = 0;
+      stats.forEach(function (b) { list.appendChild(gpBuildStatRow(b, { compact: true })); rendered++; });
+      while (rendered < 3) {
+        list.appendChild(gpEl('div', { cls: 'gp-stat-row empty' }));
+        rendered++;
+      }
+      card.appendChild(list);
+
       return card;
     }
 
