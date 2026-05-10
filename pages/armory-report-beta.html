@@ -5745,7 +5745,7 @@
         var legend = document.createElement('div');
         legend.style.cssText = 'font-size:.65rem;color:var(--muted);margin-bottom:.5rem;line-height:1.5;';
         var legendIntro = document.createElement('div');
-        legendIntro.textContent = 'Each row shows whether your Inventory, Beasts (Q3+ unplaced), and HT Chips have made it to the cloud. Anyone with the share code sees the same state.';
+        legendIntro.textContent = 'Each row shows whether your Inventory, Beasts (Q3+ unplaced), HT Chips, and Titan Gear (BETA, local-only for now) have made it to the cloud. Anyone with the share code sees the same state.';
         legendIntro.style.marginBottom = '.3rem';
         legend.appendChild(legendIntro);
         var legendChips = document.createElement('div');
@@ -5763,6 +5763,7 @@
         }
         legendChips.appendChild(legendChip('#3fb950', 'rgba(63,185,80,0.4)', 'var(--text)', 'loaded — visible to viewers'));
         legendChips.appendChild(legendChip('#d29922', 'rgba(210,153,34,0.5)', '#d29922', 'private — viewers see lock'));
+        legendChips.appendChild(legendChip('#79c0ff', 'rgba(121,192,255,0.5)', '#79c0ff', 'local — BETA, this device only'));
         legendChips.appendChild(legendChip('var(--border)', 'var(--border)', 'var(--muted)', 'missing — not uploaded'));
         legend.appendChild(legendChips);
         reportPanel.appendChild(legend);
@@ -5786,7 +5787,7 @@
           // since all configs sharing a siteKey share the same supplement bucket.
           var supplementCache = {};
           function getSupplementState(sk) {
-            if (!sk) return Promise.resolve({ inv: 'missing', bench: 'missing', chips: 'missing' });
+            if (!sk) return Promise.resolve({ inv: 'missing', bench: 'missing', chips: 'missing', gear: 'missing' });
             if (supplementCache[sk]) return supplementCache[sk];
             var probe = function(kind) {
               return fetch(SUPPLEMENT_WORKER + '/supplement/' + kind + '/' + sk, { method: 'GET' })
@@ -5797,8 +5798,19 @@
                 })
                 .catch(function() { return 'missing'; });
             };
+            // Titan Gear pool is BETA — worker route doesn't exist yet, so we
+            // can only attest to local-device state (own siteKey only).
+            var gearProbe = (function() {
+              try {
+                var ownIdent = getStoredIdentity();
+                if (ownIdent && ownIdent.siteKey === sk) {
+                  return localStorage.getItem('gearPool_' + sk) ? 'local' : 'missing';
+                }
+              } catch (e) {}
+              return 'unknown';
+            })();
             supplementCache[sk] = Promise.all([probe('inv'), probe('bench'), probe('chips')])
-              .then(function(arr) { return { inv: arr[0], bench: arr[1], chips: arr[2] }; });
+              .then(function(arr) { return { inv: arr[0], bench: arr[1], chips: arr[2], gear: gearProbe }; });
             return supplementCache[sk];
           }
 
@@ -5979,32 +5991,56 @@
               [
                 { key: 'inv',   label: 'Inventory' },
                 { key: 'bench', label: 'Beasts' },
-                { key: 'chips', label: 'HT Chips' }
+                { key: 'chips', label: 'HT Chips' },
+                { key: 'gear',  label: 'Titan Gear', beta: true }
               ].forEach(function(spec) {
                 var s = state[spec.key];
                 var chip = document.createElement('span');
                 chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);';
                 var dot = document.createElement('span');
                 dot.style.cssText = 'width:6px;height:6px;border-radius:50%;flex-shrink:0;';
+                var stateText;
                 if (s === 'loaded') {
                   dot.style.background = '#3fb950';
                   chip.style.color = 'var(--text)';
                   chip.style.borderColor = 'rgba(63,185,80,0.4)';
                   chip.title = spec.label + ' uploaded \u2014 visible to viewers';
+                  stateText = ' loaded';
                 } else if (s === 'private') {
                   dot.style.background = '#d29922';
                   chip.style.color = '#d29922';
                   chip.style.borderColor = 'rgba(210,153,34,0.5)';
                   chip.title = spec.label + ' uploaded but set to private \u2014 viewers see lock placeholder';
+                  stateText = ' private';
+                } else if (s === 'local') {
+                  // BETA-only: gear pool stored on this device but not in cloud.
+                  dot.style.background = '#79c0ff';
+                  chip.style.color = '#79c0ff';
+                  chip.style.borderColor = 'rgba(121,192,255,0.5)';
+                  chip.title = spec.label + ' saved locally \u2014 BETA, no cloud upload yet';
+                  stateText = ' local';
+                } else if (s === 'unknown') {
+                  // Other-device gear pool \u2014 we can't probe a non-cloud kind.
+                  dot.style.background = 'var(--border)';
+                  chip.style.color = 'var(--muted)';
+                  chip.title = spec.label + ' \u2014 BETA, only this device can verify';
+                  stateText = ' \u2013';
                 } else {
                   dot.style.background = 'var(--border)';
                   chip.style.color = 'var(--muted)';
                   chip.title = spec.label + ' not uploaded yet';
+                  stateText = ' missing';
                 }
                 chip.appendChild(dot);
                 var lbl = document.createElement('span');
-                lbl.textContent = spec.label + (s === 'loaded' ? ' loaded' : s === 'private' ? ' private' : ' missing');
+                lbl.textContent = spec.label + stateText;
                 chip.appendChild(lbl);
+                if (spec.beta) {
+                  var betaTag = document.createElement('span');
+                  betaTag.textContent = 'BETA';
+                  betaTag.style.cssText = 'font-size:8px;font-weight:700;padding:0 4px;border-radius:3px;background:rgba(210,153,34,0.2);color:#d29922;margin-left:2px;';
+                  chip.appendChild(betaTag);
+                }
                 supRow.appendChild(chip);
               });
             });
@@ -8465,6 +8501,151 @@
   function gpHeroAvatarUrl(heroId) {
     return 'https://h5.topwargame.com/DynRes/images/headpic/hero_icon' + heroId + '_global.png?t=22.jpg';
   }
+  // ── Reusable Cloud-sync pill ──────────────────────────────────────────────
+  // Compact "Cloud sync" pill with a coloured status dot. Click pops a tooltip
+  // showing exact upload time + share-code visibility (or "local only" for
+  // bookmarklet kinds that haven't been wired to the worker yet, like 'gear').
+  // Supplement kinds 'inv' / 'bench' / 'chips' probe the worker via the
+  // existing GET endpoint; 'gear' (BETA) only inspects localStorage.
+  function _ar_buildCloudSyncPill(kind, siteKey, opts) {
+    opts = opts || {};
+    var pill = document.createElement('span');
+    pill.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);padding:4px 10px;border-radius:999px;border:1px solid var(--border);cursor:pointer;user-select:none;position:relative;';
+    var dot = document.createElement('span');
+    dot.style.cssText = 'width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0;';
+    var label = document.createElement('span');
+    label.textContent = 'Cloud sync';
+    pill.appendChild(dot); pill.appendChild(label);
+
+    // State tracking lets us drive both the dot color and the click tooltip.
+    var state = { kind: kind, siteKey: siteKey, status: 'checking', updatedAt: null, shortcode: null, hash: null };
+
+    function paint() {
+      var palette = {
+        'cloud-synced': { dot: '#3fb950', border: 'rgba(63,185,80,0.4)', text: 'var(--text)' },
+        'local-only':   { dot: '#d29922', border: 'rgba(210,153,34,0.5)', text: '#d29922' },
+        'not-uploaded': { dot: 'var(--border)', border: 'var(--border)', text: 'var(--muted)' },
+        'error':        { dot: '#f85149', border: 'rgba(248,81,73,0.5)', text: '#f85149' },
+        'checking':     { dot: 'var(--muted)', border: 'var(--border)', text: 'var(--muted)' }
+      };
+      var c = palette[state.status] || palette.checking;
+      dot.style.background = c.dot;
+      pill.style.borderColor = c.border;
+      pill.style.color = c.text;
+    }
+
+    var tooltip = null;
+    function dismissTooltip() { if (tooltip) { tooltip.remove(); tooltip = null; } }
+    function buildTooltipContent() {
+      var lines = [];
+      var KIND_LABELS = { inv: 'Inventory', bench: 'Bench Beasts', chips: 'HT Chips', gear: 'Titan Gear Pool' };
+      var kindLabel = KIND_LABELS[state.kind] || state.kind;
+
+      if (state.status === 'cloud-synced') {
+        lines.push({ text: kindLabel + ' is synced to the cloud.', strong: true });
+        if (state.updatedAt) lines.push({ text: 'Updated: ' + new Date(state.updatedAt).toLocaleString() });
+        if (state.shortcode) lines.push({ text: 'Available to share code: ' + state.shortcode });
+        else lines.push({ text: 'Anyone with your share code can view it.' });
+      } else if (state.status === 'local-only') {
+        lines.push({ text: kindLabel + ' is saved on this device only.', strong: true });
+        if (state.updatedAt) lines.push({ text: 'Updated: ' + new Date(state.updatedAt).toLocaleString() });
+        if (state.kind === 'gear') {
+          lines.push({ text: 'BETA preview — worker upload for gear pool is not wired yet.' });
+        } else {
+          lines.push({ text: 'Re-run the bookmarklet on a verified device to push this snapshot to the cloud.' });
+        }
+      } else if (state.status === 'not-uploaded') {
+        lines.push({ text: 'No ' + kindLabel + ' data yet.', strong: true });
+        lines.push({ text: 'Run the bookmarklet on the Top War game tab to populate this section.' });
+      } else if (state.status === 'error') {
+        lines.push({ text: kindLabel + ' upload failed.', strong: true });
+        lines.push({ text: 'Click the pill again to retry, or open Identity settings to re-verify your UID.' });
+      } else {
+        lines.push({ text: 'Checking…' });
+      }
+      return lines;
+    }
+    function showTooltip() {
+      dismissTooltip();
+      var lines = buildTooltipContent();
+      tooltip = document.createElement('div');
+      tooltip.style.cssText = 'position:absolute;top:calc(100% + 6px);left:0;z-index:10010;min-width:240px;max-width:320px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.45);font-size:11px;color:var(--text);line-height:1.5;';
+      lines.forEach(function (line, i) {
+        var l = document.createElement('div');
+        if (line.strong) l.style.fontWeight = '700';
+        if (i > 0 && !line.strong) l.style.color = 'var(--muted)';
+        if (i > 0) l.style.marginTop = '4px';
+        l.textContent = line.text;
+        tooltip.appendChild(l);
+      });
+      pill.appendChild(tooltip);
+      // Auto-dismiss on outside click
+      setTimeout(function () {
+        document.addEventListener('click', function once(ev) {
+          if (!tooltip || !pill.contains(ev.target)) {
+            dismissTooltip();
+            document.removeEventListener('click', once);
+          }
+        });
+      }, 0);
+    }
+    pill.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      if (tooltip) dismissTooltip(); else showTooltip();
+    });
+
+    function refresh() {
+      state.status = 'checking'; paint();
+      // Resolve shortcode from local storage for the tooltip.
+      try {
+        var saved = JSON.parse(localStorage.getItem('playerReport') || '{}');
+        if (saved && saved.player && saved.player.siteKey === siteKey) state.shortcode = saved.shortcode || null;
+      } catch (e) { /* ignore */ }
+
+      if (state.kind === 'gear') {
+        // Worker has no /supplement/gear route yet — read localStorage directly.
+        try {
+          var raw = localStorage.getItem('gearPool_' + siteKey);
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            state.updatedAt = parsed && parsed.meta && parsed.meta.ts ? parsed.meta.ts : null;
+            state.status = 'local-only';
+          } else {
+            state.status = 'not-uploaded';
+          }
+        } catch (e) { state.status = 'not-uploaded'; }
+        paint();
+        return Promise.resolve(state.status);
+      }
+
+      // inv / bench / chips: probe worker meta endpoint for last-updated timestamp.
+      // GET /supplement/<kind>/<siteKey> is public-readable when not private; meta
+      // ships in headers (X-Updated, X-Hash) per worker contract.
+      return fetch(SUPPLEMENT_WORKER + '/supplement/' + state.kind + '/' + siteKey, { method: 'GET' })
+        .then(function (r) {
+          if (r.status === 200) {
+            state.updatedAt = r.headers.get('X-Updated') || null;
+            state.hash = r.headers.get('X-Hash') || null;
+            state.status = 'cloud-synced';
+          } else if (r.status === 403) {
+            // Private — cloud has data but the public endpoint is gated. From the
+            // owner's view this is still a successful sync, just hidden externally.
+            state.status = 'cloud-synced';
+          } else {
+            state.status = 'not-uploaded';
+          }
+          paint();
+          return state.status;
+        })
+        .catch(function () { state.status = 'error'; paint(); return 'error'; });
+    }
+
+    paint();
+    if (!opts.skipAutoRefresh) refresh();
+    pill._refresh = refresh;
+    return pill;
+  }
+
   // Inline SVG helper — returns an <svg> element using the icon set we use across the gear-pool UI.
   // Sized 1em so the icon scales with surrounding text. Stroke-based glyphs look crisp on dark theme.
   function gpSvgIcon(name, opts) {
@@ -8568,10 +8749,18 @@
     }
 
     var labelEl = gpEl('div', {
-      style: 'margin-left:auto;font-size:11px;color:' + (stored ? 'var(--green)' : 'var(--muted)') + ';',
-      text: srcLabel + (srcTime ? ' · ' + new Date(srcTime).toLocaleString() : '')
+      style: 'font-size:11px;color:' + (stored ? 'var(--green)' : 'var(--muted)') + ';',
+      text: srcLabel
     });
     toolbar.appendChild(labelEl);
+
+    // Cloud-sync pill — for gear pool this currently always reports 'local-only'
+    // (worker upload not wired yet). Pushed to the right edge of the toolbar.
+    if (siteKey) {
+      var spacer = gpEl('div', { style: 'flex:1;' });
+      toolbar.appendChild(spacer);
+      toolbar.appendChild(_ar_buildCloudSyncPill('gear', siteKey));
+    }
     container.appendChild(toolbar);
 
     if (!src || !src.goldGear) {
