@@ -12901,6 +12901,43 @@
     container.replaceChildren();
 
     var isOwn = _ar_isOwnReport(siteKey);
+    var isOwnerVerified = isOwn && siteKey && _ar_isUnlocked(siteKey);
+    var isPrivate = _ar_isSupplementPrivate(siteKey, 'runepool');
+
+    // Non-owner viewing a private rune pool — show lock placeholder, no data.
+    // Owner bypasses (their own pool, their own visibility toggle).
+    if (isPrivate && !isOwnerVerified) {
+      var lockWrap = document.createElement('div');
+      lockWrap.style.cssText = 'padding: 48px 24px; text-align: center; color: var(--muted); display:flex;flex-direction:column;align-items:center;gap:.6rem;';
+      var lockSvg = document.createElementNS(SVG_NS, 'svg');
+      lockSvg.setAttribute('width', '40');
+      lockSvg.setAttribute('height', '40');
+      lockSvg.setAttribute('viewBox', '0 0 24 24');
+      lockSvg.setAttribute('fill', 'none');
+      lockSvg.setAttribute('stroke', 'currentColor');
+      lockSvg.setAttribute('stroke-width', '2');
+      lockSvg.setAttribute('stroke-linecap', 'round');
+      lockSvg.setAttribute('stroke-linejoin', 'round');
+      var lockRect = document.createElementNS(SVG_NS, 'rect');
+      lockRect.setAttribute('x', '3'); lockRect.setAttribute('y', '11');
+      lockRect.setAttribute('width', '18'); lockRect.setAttribute('height', '11');
+      lockRect.setAttribute('rx', '2');
+      lockSvg.appendChild(lockRect);
+      var lockPath = document.createElementNS(SVG_NS, 'path');
+      lockPath.setAttribute('d', 'M7 11V7a5 5 0 0 1 10 0v4');
+      lockSvg.appendChild(lockPath);
+      lockWrap.appendChild(lockSvg);
+      var lockTitle = document.createElement('div');
+      lockTitle.style.cssText = 'font-size: 15px; color: var(--text); font-weight: 600;';
+      lockTitle.textContent = 'Rune pool hidden by player';
+      var lockBody = document.createElement('div');
+      lockBody.style.cssText = 'font-size: 12px; max-width: 360px; line-height: 1.5;';
+      lockBody.textContent = 'This player has set their rune pool to private. Only they can see it.';
+      lockWrap.appendChild(lockTitle);
+      lockWrap.appendChild(lockBody);
+      container.appendChild(lockWrap);
+      return;
+    }
 
     // Toolbar — title + cloud-sync pill (right-aligned).
     var toolbar = document.createElement('div');
@@ -12914,7 +12951,7 @@
     sub.textContent = 'Available runes — your bag plus runes on unequipped gold pieces.';
     toolbar.appendChild(sub);
 
-    if (isOwn && siteKey && _ar_isUnlocked(siteKey)) {
+    if (isOwnerVerified) {
       var editBtn = document.createElement('button');
       editBtn.className = 'runepool-edit-btn';
       editBtn.type = 'button';
@@ -12951,11 +12988,81 @@
         });
       };
       toolbar.appendChild(editBtn);
+
+      // Privacy toggle — flips the runepool kind between public and private
+      // on the worker. Server enforces; flipping to private wipes the public
+      // GET endpoint behind a 403 and the next non-owner reload sees the lock.
+      var privBtn = document.createElement('button');
+      privBtn.className = 'runepool-edit-btn';
+      privBtn.type = 'button';
+      var privIcon = document.createElementNS(SVG_NS, 'svg');
+      privIcon.setAttribute('width', '12');
+      privIcon.setAttribute('height', '12');
+      privIcon.setAttribute('viewBox', '0 0 24 24');
+      privIcon.setAttribute('fill', 'none');
+      privIcon.setAttribute('stroke', 'currentColor');
+      privIcon.setAttribute('stroke-width', '2');
+      privIcon.setAttribute('stroke-linecap', 'round');
+      privIcon.setAttribute('stroke-linejoin', 'round');
+      privIcon.style.flexShrink = '0';
+      var privLabel = document.createElement('span');
+      privBtn.appendChild(privIcon);
+      privBtn.appendChild(privLabel);
+      function paintPriv() {
+        var p = _ar_isSupplementPrivate(siteKey, 'runepool');
+        while (privIcon.firstChild) privIcon.removeChild(privIcon.firstChild);
+        if (p) {
+          var rct = document.createElementNS(SVG_NS, 'rect');
+          rct.setAttribute('x', '3'); rct.setAttribute('y', '11');
+          rct.setAttribute('width', '18'); rct.setAttribute('height', '11');
+          rct.setAttribute('rx', '2');
+          var lk = document.createElementNS(SVG_NS, 'path');
+          lk.setAttribute('d', 'M7 11V7a5 5 0 0 1 10 0v4');
+          privIcon.appendChild(rct);
+          privIcon.appendChild(lk);
+        } else {
+          var c = document.createElementNS(SVG_NS, 'circle');
+          c.setAttribute('cx', '12'); c.setAttribute('cy', '12'); c.setAttribute('r', '10');
+          var ln = document.createElementNS(SVG_NS, 'line');
+          ln.setAttribute('x1', '2'); ln.setAttribute('y1', '12');
+          ln.setAttribute('x2', '22'); ln.setAttribute('y2', '12');
+          var pp = document.createElementNS(SVG_NS, 'path');
+          pp.setAttribute('d', 'M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z');
+          privIcon.appendChild(c);
+          privIcon.appendChild(ln);
+          privIcon.appendChild(pp);
+        }
+        privLabel.textContent = p ? 'Private' : 'Public';
+        privBtn.title = p
+          ? 'Click to make your rune pool visible to other viewers'
+          : 'Click to hide your rune pool from other viewers';
+        privBtn.style.background = p ? 'rgba(210,153,34,0.15)' : '';
+        privBtn.style.color = p ? '#d29922' : '';
+        privBtn.style.borderColor = p ? 'rgba(210,153,34,0.5)' : '';
+      }
+      paintPriv();
+      privBtn.onclick = async function() {
+        var current = _ar_isSupplementPrivate(siteKey, 'runepool');
+        var nextVal = !current;
+        privBtn.disabled = true;
+        var prev = privLabel.textContent;
+        privLabel.textContent = 'Saving…';
+        try {
+          await _ar_setSupplementPrivacy(siteKey, 'runepool', nextVal);
+          paintPriv();
+        } catch (e) {
+          alert('Could not update privacy: ' + (e && e.message ? e.message : e));
+          privLabel.textContent = prev;
+        } finally {
+          privBtn.disabled = false;
+        }
+      };
+      toolbar.appendChild(privBtn);
     }
 
     if (siteKey) {
       var pill = _ar_buildCloudSyncPill('runepool', siteKey, { isOwner: !!isOwn });
-      pill.style.marginLeft = isOwn && _ar_isUnlocked(siteKey) ? '8px' : 'auto';
+      pill.style.marginLeft = isOwnerVerified ? '8px' : 'auto';
       toolbar.appendChild(pill);
     }
     container.appendChild(toolbar);
@@ -15028,7 +15135,7 @@
     modal.appendChild(h);
 
     var p = document.createElement('p');
-    p.textContent = 'Adjust counts to override the derived view. Saving publishes a manual snapshot to the cloud, replacing the auto-extracted view from your inventory and titan gear pool.';
+    p.textContent = 'Adjust counts to override the derived view. Saving publishes a manual snapshot to the cloud. Reset to derived clears your saved manual pool and falls back to the auto-extracted view.';
     modal.appendChild(p);
 
     var listEl = document.createElement('div');
@@ -15121,6 +15228,46 @@
 
     var actions = document.createElement('div');
     actions.className = 'actions';
+
+    var hasStored = !!ArmoryIdentity.getSupplement('runepool', siteKey);
+    if (hasStored) {
+      var resetBtn = document.createElement('button');
+      resetBtn.className = 'secondary';
+      resetBtn.textContent = 'Reset to derived';
+      resetBtn.title = 'Clears your saved manual pool. The tab falls back to the auto-extracted view from inv + gear.';
+      resetBtn.style.marginRight = 'auto';
+      resetBtn.onclick = async function() {
+        if (!confirm('Clear your saved manual rune pool? The tab will fall back to the auto-derived view, and other viewers will no longer see your manual snapshot.')) return;
+        resetBtn.disabled = true; cancel.disabled = true; save.disabled = true;
+        err.style.color = 'var(--muted)';
+        err.textContent = 'Clearing…';
+        try {
+          await _ar_ensureSupplementToken(siteKey);
+          if (!_ar_supplementToken) throw new Error('No token. Re-verify UID.');
+          var r = await fetch(SUPPLEMENT_WORKER + '/supplement/runepool/' + siteKey, {
+            method: 'DELETE',
+            headers: { 'Authorization': 'Bearer ' + _ar_supplementToken }
+          });
+          if (!r.ok) {
+            var msg = await r.text();
+            throw new Error(r.status + ' ' + msg);
+          }
+        } catch (e) {
+          err.style.color = 'var(--red)';
+          err.textContent = 'Worker delete failed (' + e.message + '). Local state untouched.';
+          resetBtn.disabled = false; cancel.disabled = false; save.disabled = false;
+          return;
+        }
+        try {
+          ArmoryIdentity.removeSupplement('runepool', siteKey);
+          ArmoryIdentity.removeSupplementMeta('runepool', siteKey);
+          ArmoryIdentity.removeLastSync('runepool', siteKey);
+        } catch (_) {}
+        document.body.removeChild(bg);
+        if (typeof onSaved === 'function') onSaved();
+      };
+      actions.appendChild(resetBtn);
+    }
 
     var cancel = document.createElement('button');
     cancel.className = 'secondary';
