@@ -9283,6 +9283,24 @@
     // Rendered between the filter bar and the grid so the counts sit right
     // above the first row of cards rather than ahead of the controls the
     // player uses to slice the data.
+    //
+    // Presets-used numerator is derived from each piece's own scheme refs,
+    // not from summary.schemesActive: the bookmarklet's schemesActive flags
+    // schemes by `s.ids.length`, which counts purple/non-pool gear too. The
+    // honest pool-side signal is "how many distinct presets are referenced
+    // by any piece visible in this pool". Denominator is the player's
+    // unlocked scheme count from data.schemes (caps at 20 for max-level).
+    var presetsUsed = (function () {
+      var seen = {};
+      allPieces.forEach(function (p) {
+        (p.schemes || []).forEach(function (s) {
+          if (s && s.idx != null) seen[s.idx] = 1;
+        });
+      });
+      return Object.keys(seen).length;
+    })();
+    var presetsTotal = (data.schemes && data.schemes.length) || summary.schemesCount || 20;
+
     var summaryEl = _gp_el('div', { cls: 'gp-summary' });
     var statDefs = [
       { v: summary.goldCount || 0, l: 'Gold pieces', cls: 'gold' },
@@ -9290,7 +9308,7 @@
       { v: summary.goldUnequipped || 0, l: 'Available' },
       { v: summary.distinctHeroes || 0, l: 'Heroes' },
       { v: summary.lockedCount || 0, l: 'Locked', cls: 'locked' },
-      { v: (summary.schemesActive || 0) + ' / ' + (summary.schemesCount || 20), l: 'Presets used' }
+      { v: presetsUsed + ' / ' + presetsTotal, l: 'Presets used' }
     ];
     statDefs.forEach(function(s) {
       var c = _gp_el('div', { cls: 'gp-stat' + (s.cls ? (' ' + s.cls) : '') });
