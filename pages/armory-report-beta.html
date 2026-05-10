@@ -2042,6 +2042,18 @@
     font-size: 10px; color: var(--muted); display: flex; align-items: center; gap: 5px;
     text-transform: uppercase; letter-spacing: .4px;
   }
+
+  /* Mobile: keep the gear-pool filter row scannable on phones (search full-width,
+     dropdowns 2-up, locked-only pill spans). Without these the bar wraps into 6+
+     stacked rows on a 375px viewport. */
+  @media (max-width: 600px) {
+    .gp-filters { padding: 8px 10px; gap: 8px; }
+    .gp-filters .filter-search { flex: 1 1 100%; min-width: 0; max-width: none; }
+    .gp-filters .gp-select-label { flex: 1 1 calc(50% - 8px); font-size: 11px; }
+    .gp-filters .gp-select { width: 100%; min-width: 0; max-width: none; }
+    .gp-filters .gp-pill { flex: 1 1 100%; justify-content: center; }
+    .gp-pool-grid { grid-template-columns: 1fr; gap: 10px; }
+  }
   .gp-card .refine-badge.below { color: var(--muted); border-color: var(--border); }
 
   .gp-card .scheme-tag {
@@ -7183,7 +7195,42 @@
   // Sources: hero_equip_skill_rd_library TABLE (402 entries, 14 runes, 6 slots)
   var RUNE_MAP={10201:{n:"Artillery Storm",s:6,sm:6},10202:{n:"All-Out Surge",s:6,sm:6},10203:{n:"Tactical Awareness",s:2,sm:2},10204:{n:"Searing",s:2,sm:2},10205:{n:"Armor-Breaking",s:2,sm:2},10206:{n:"Impact",s:2,sm:2},10207:{n:"Magnetic Field",s:2,sm:2},10208:{n:"Tactical Awareness",s:0,sm:2},10209:{n:"Searing",s:0,sm:2},10210:{n:"Armor-Breaking",s:0,sm:2},10211:{n:"Impact",s:0,sm:2},10212:{n:"Magnetic Field",s:0,sm:2},20201:{n:"Steel Torrent",s:6,sm:6},20202:{n:"Unbreakable",s:6,sm:6},20203:{n:"Stealth Hologram",s:2,sm:2},20204:{n:"Flammable",s:2,sm:2},20205:{n:"Heavy Blow",s:2,sm:2},20206:{n:"Debilitate",s:2,sm:2},20207:{n:"Magnetize",s:2,sm:2},20208:{n:"Flammable",s:0,sm:2},20209:{n:"Heavy Blow",s:0,sm:2},20210:{n:"Debilitate",s:0,sm:2},20211:{n:"Magnetize",s:0,sm:2},20212:{n:"Stealth Hologram",s:0,sm:2},30201:{n:"Tactical Awareness",s:6,sm:6},30202:{n:"Tactical Awareness",s:2,sm:6},30203:{n:"Searing",s:2,sm:2},30204:{n:"Armor-Breaking",s:2,sm:2},30205:{n:"Impact",s:2,sm:2},30206:{n:"Magnetic Field",s:2,sm:2},30207:{n:"Tactical Awareness",s:0,sm:6},30208:{n:"Searing",s:0,sm:2},30209:{n:"Armor-Breaking",s:0,sm:2},30210:{n:"Impact",s:0,sm:2},30211:{n:"Magnetic Field",s:0,sm:2},40201:{n:"Stealth Hologram",s:6,sm:6},40202:{n:"Stealth Hologram",s:2,sm:6},40203:{n:"Flammable",s:2,sm:2},40204:{n:"Heavy Blow",s:2,sm:2},40205:{n:"Debilitate",s:2,sm:2},40206:{n:"Magnetize",s:2,sm:2},40207:{n:"Flammable",s:0,sm:2},40208:{n:"Heavy Blow",s:0,sm:2},40209:{n:"Debilitate",s:0,sm:2},40210:{n:"Magnetize",s:0,sm:2},40211:{n:"Stealth Hologram",s:0,sm:6},50103:{n:"Searing",s:2,sm:2},50201:{n:"Tactical Awareness",s:6,sm:6},50202:{n:"Tactical Awareness",s:2,sm:6},50203:{n:"Searing",s:2,sm:2},50204:{n:"Armor-Breaking",s:2,sm:2},50205:{n:"Impact",s:2,sm:2},50206:{n:"Magnetic Field",s:2,sm:2},50207:{n:"Tactical Awareness",s:0,sm:6},50208:{n:"Searing",s:0,sm:2},50209:{n:"Armor-Breaking",s:0,sm:2},50210:{n:"Impact",s:0,sm:2},50211:{n:"Magnetic Field",s:0,sm:2},60110:{n:"Magnetize",s:0,sm:2},60201:{n:"Stealth Hologram",s:6,sm:6},60202:{n:"Stealth Hologram",s:2,sm:6},60203:{n:"Flammable",s:2,sm:2},60204:{n:"Heavy Blow",s:2,sm:2},60205:{n:"Debilitate",s:2,sm:2},60206:{n:"Magnetize",s:2,sm:2},60207:{n:"Flammable",s:0,sm:2},60208:{n:"Heavy Blow",s:0,sm:2},60209:{n:"Debilitate",s:0,sm:2},60210:{n:"Magnetize",s:0,sm:2},60211:{n:"Stealth Hologram",s:0,sm:6}};
 
-  // Base stat enhancement buff names
+  // Base-stat lookup for the 24 stock gear configs (slot 1-6 × rarity Blue/Purple/Purple+/Gold).
+  // Each entry: [{ buffId, baseAtLv1, perLevel }] in basis points (e.g. 600 = 6%).
+  // Formula at level L: base = baseAtLv1 + perLevel × L. Verified against in-game UI:
+  //   Lv.20 Gold pistol (100104): 600 + 120×20 = 3000 → "All units Attack 30%"
+  //   Lv.20 Gold accessory (100304): "300|100" + "60|20"×20 → ATK 15% + HP 5%
+  // Pulled live from the hero_equip TABLE on 2026-05-09.
+  var EQUIP_BASE_BUFF = {
+    100101: [{ buffId: '930100', baseAtLv1: 120, perLevel: 24 }],
+    100102: [{ buffId: '930100', baseAtLv1: 240, perLevel: 48 }],
+    100103: [{ buffId: '930100', baseAtLv1: 360, perLevel: 70 }],
+    100104: [{ buffId: '930100', baseAtLv1: 600, perLevel: 120 }],
+    100201: [{ buffId: '930000', baseAtLv1: 120, perLevel: 24 }],
+    100202: [{ buffId: '930000', baseAtLv1: 240, perLevel: 48 }],
+    100203: [{ buffId: '930000', baseAtLv1: 360, perLevel: 70 }],
+    100204: [{ buffId: '930000', baseAtLv1: 600, perLevel: 120 }],
+    100301: [{ buffId: '930100', baseAtLv1: 60, perLevel: 12 }, { buffId: '930000', baseAtLv1: 20, perLevel: 4 }],
+    100302: [{ buffId: '930100', baseAtLv1: 120, perLevel: 24 }, { buffId: '930000', baseAtLv1: 40, perLevel: 8 }],
+    100303: [{ buffId: '930100', baseAtLv1: 180, perLevel: 40 }, { buffId: '930000', baseAtLv1: 60, perLevel: 10 }],
+    100304: [{ buffId: '930100', baseAtLv1: 300, perLevel: 60 }, { buffId: '930000', baseAtLv1: 100, perLevel: 20 }],
+    100401: [{ buffId: '930000', baseAtLv1: 80, perLevel: 16 }],
+    100402: [{ buffId: '930000', baseAtLv1: 160, perLevel: 32 }],
+    100403: [{ buffId: '930000', baseAtLv1: 240, perLevel: 48 }],
+    100404: [{ buffId: '930000', baseAtLv1: 400, perLevel: 80 }],
+    100501: [{ buffId: '930100', baseAtLv1: 80, perLevel: 16 }],
+    100502: [{ buffId: '930100', baseAtLv1: 160, perLevel: 32 }],
+    100503: [{ buffId: '930100', baseAtLv1: 240, perLevel: 48 }],
+    100504: [{ buffId: '930100', baseAtLv1: 400, perLevel: 80 }],
+    100601: [{ buffId: '930100', baseAtLv1: 20, perLevel: 4 }, { buffId: '930000', baseAtLv1: 60, perLevel: 12 }],
+    100602: [{ buffId: '930100', baseAtLv1: 40, perLevel: 8 }, { buffId: '930000', baseAtLv1: 120, perLevel: 24 }],
+    100603: [{ buffId: '930100', baseAtLv1: 60, perLevel: 10 }, { buffId: '930000', baseAtLv1: 180, perLevel: 40 }],
+    100604: [{ buffId: '930100', baseAtLv1: 100, perLevel: 20 }, { buffId: '930000', baseAtLv1: 300, perLevel: 60 }]
+  };
+  // Buff ID → display name for the base-stat rows (paired with EQUIP_BASE_BUFF above).
+  var BASE_BUFF_NAMES = { '930100': 'All units Attack', '930000': 'All units HP' };
+
+  // Base stat enhancement buff names (used by Heroes tab + gear pool detail modal)
   var ENHANCE_BUFF = {"930000":"All HP","930100":"All ATK","930001":"Army HP","930002":"Navy HP","930003":"AF HP","930101":"Army ATK","930102":"Navy ATK","930103":"AF ATK"};
   var SKILL_TYPES = {0:"Visual",1:"Reward",2:"Interaction",3:"Buff",4:"Status Buff",5:"Aura",6:"Special",7:"Debuff",8:"Teleport",9:"Exchange",10:"Repair"};
   var CITY_SKILL_DB = {"1761000":["Conqueror Missile",0,"","1. On the World Map, tap your base to see the \"Skill\".\n2. Tap \"Skill\", and tap a base with a GREEN mark on it on the World Map.\n3. Tap that base and then - \"Interact\" to release the skill.\n4. This skill will not gain you any attributes. It's only for visual effect."],"1765000":["Dragon's Breath",0,"","1. On the World Map, tap your base to see the \"Skill\".\n2. Tap \"Skill\" to activate the attribute.\n3. You can only use this skill for your base."],"1768000":["Tentacles Of Greed",1,"Randomly get 1~3 Relics in the Deep chests","1. On the world map, tap your base to see the Skill button.\n2. Tap \"Skill\" to use it.\n3. Relics in the Deep: open it may have a chance to get the Mermaid decor or other rare items.\n4. You may get one of the following: Mermaid Decor x1, Shining Gold Chest x3, 100 Gems x1, Unit Choice Chest+1 x1, Small VIT potion x1.\n5. Drop rates: 20%, 20%, 20%, 20%, 20%."],"1771000":["Floral Scent",2,"Virtuous Flower (both players): 1","1. How to use the Skill: On the World Map, tap your Base -> Skill -> Select a target base -> Interact -> and both of you would get the Virtuous Flower x1.\n2. Virtuous Flower: Use it to get 30 VIT\n3. Each base can gain up to 5 Virtuous Flowers from interaction everyday.\n4. If you put Out of Blue next to a Pretty in Pink, you'll see the magic of love (heart effect)"],"1772000":["Flipped",2,"Loving Heart (both players): 1","1. How to use the Skill: On the World Map, tap your Base -> Skill -> Select a target base -> Interact -> and both of you would get the Loving Heart x1.\n2. Loving Heart: Use it to get 30 VIT\n3. Each base can gain up to 5 Loving Hearts from interaction everyday.\n4. If you put Out of Blue next to a Pretty in Pink, you'll see the magic of love (heart effect)"],"1773000":["Revitalize",1,"Obtain Heart of Flames: 1","1. On the World Map, tap your base to see the \"Skill\".\n2. Tap \"Skill\" to use it.\n3. Heart of Flames: Activate this skill to obtain ONE random item from the following: The Emerging Phoenix x1, Burning Feather x1, Gem (100 Gems) x1,  Shining Gold Chest x5, Unit +1 Choice Chest x1.\nDrop Rates are: 20%, 50%, 10%, 10% and 10% respectively.\n4. Attribute of the decors\nThe Emerging Phoenix: Increases Attack of all units. 3% at Lv. 1, and +2% for each level\nBurning Feather: Increases HP of all units. 1% at Lv. 1, and +1% for each level."],"1774000":["Magic Blow",3,"{0} Attack boost to all units in the selected march queue\nMarch time reduces by {1}","1. Tap the \">>\" icon next to the March Queue to open the boost panel and use the skill.\n2. The effect of this buff can stack.\n3 The Attack buff will only take effect in ONE battle.\n4. You cannot use this skill when: a) the troop is returning to the base, b) you are in a special event (the same as speed up items)."],"1775000":["Aura of the Ocean",4,"Buff for you and your Allies in your Aura: All units Attack +30%. Buff for you (only): All units HP +30%.","1. On the World Map, tap your base to see the \"Skill\".\n2. Tap \"Skill\" to use it.\n3. This skill will buff the Allies within the skill range (the \"Aura\"). The Aura moves with you if you move your base after using this skill. For instance, after using this skill, if you move your base from Spot A to Spot B, Allies located in Spot A will lose the buff while Allies in Spot B will gain the buff.\n4. Range of this Aura: 8x8.\n5. Effect of this Aura can stack up to 3 times\n6. The skill is not effective for defending in Warzone Exercise and Dimensional Mine.\n7. Important note: the Aura is powerful so it will visually overlap the special effect of other skills, but only visually.\n8. Skill is ONLY accessible with MAX level skin."],"1778000":["Rallying Cry",0,"","1. On the world map, tap on your base to see the \"Skill\" button.\n2. Tap on the name of the skill to use it.\n3. This skill can only be used on your own base.\n4. If you use this skill and then set the defense troop in your War Hall, and then the buff expires, the march size will be reduced and goes back to normal.\n5. However, if you use this skill and then set a defense troop in the Dimensional Mine and Warzone Exercise, after the buff expires the march size will not go back to normal until the next time you set the defense troop."],"1780000":["Energy Matrix",5,"When releasing the skill, buff you and your allies: Attack +40% to all units, and also buff you (only): Attack +20% to all units. Lasts 15 minutes","1 On the world map, tap on your base to see the skill button.\n2 Tap the skill button to use the skill.\n3 Use the skill to buff allies within the range for a certain period of time.\n4 After gaining the buff, you may move your base freely and the effect still exists\n5 Skill range: 8x8 grid.\n6 The Matrix effect can stack up to 2 times, and the duration of each skill will be reset.\n7 The effect of the skill does not take effect in Warzone exercise and Dimensional Mine when defending.\n"],"1781000":["Harsh Teleport",6,"Gain the ability \"Harsh Teleport\", can be used 3 times/day, and grants you: all units HP +30%, Attack +30%, lasts 5 minutes.","1. Get the skin and you'll gain the ability \"Harsh Teleport\", which can be used 3 times/day\n2. On the World Map, select an empty spot, tap and trigger the \"Move Base\" panel to use that skill.\n3. Effect (buff) of this skill is not Stackable. \n4. Harsh Teleport can not be used in special occasions (the same restrictions as the Move Base items apply)."],"1790000":["Full Speed Ahead",6,"When you send out a Marching Queue, it rushes for 5 grids and the Attack of units in this troop increases by {0}. Not effective when the troop is returning or under special circumstances (refer to the speed-up items).",""],"1797000":["Royal Majesty",7,"Anyone who is able to draw this blade has the majesty of a royal. Use on enemy alliance commanders' base to disable their ability to teleport","1. Click on the target base on the world map to see the skill button.\n2. Tap the \"Skill\" button to open the list and select a skill to cast.\n3. This skill disables the target's \"Move Base\" function temporarily.\n4. This effect cannot be stacked, nor will the time be accumulated.\n5. This skill is ONLY accessible on the MAX level skin."],"1804000":["Power Leap",5,"Buff for you and allies in your Aura: All units HP Boost +40% and you (only) HP Boost +20% to all units.","\u00b7 The skill of Nemesis and the Cobra Island skill are mutually exclusive.\n\u00b7 Mutual Exclusive Skills: Mutual exclusive skills share cooldown time and daily limit. This means that when one skill from the mutually exclusive set is used, the other skills in the set will also go into cooldown and are deducted from the daily use total.\n1 On the world map, tap on your base to see the skill button.\n2 Tap the skill button to use the skill.\n3 Release the skill to buff allies within the range for a certain period of time. After gaining the buff, you may move your base freely and the effect still exists\n4 Skill range: 8x8 grid.\n5 The Matrix effect can stack up to 2 times, and the duration of each skill will be reset.\n6 The effect of the skill does not take effect in Warzone exercise and Dimensional Mine when defending.\n"],"1809000":["Starry Aura",8,"When you use this skill, a Starry Aura will form around the base. Alliance members can move into the Aura without using a Teleport item.","1. After obtaining this Base skin, you'll be able to use the skill once every 24 hours.\n2. Tap the skill button to use the skill. When you use this skill, a Starry Aura will form around the base.\n3. Alliance members located outside the aura can move into the Aura without using a Teleport item.\n4. If you choose to move your base again while in an Aura, a Teleport item will be consumed.\n5. Effective range: 6x6 grid on the world map.\n6. If the Aura includes a spot that you are not allowed to move to, you won't be able to move there.\n7. If the base with the aura is destroyed, or moved to a new place, the skill will be interrupted.\n8. Skill is ONLY accessible with MAX level skin."],"1833000":["Frontline Builder",6,"Commanders may use the skill to build a Frontline Base on the World Map and the Frontline Base will be available for 1 hour after construction.","1. Tap a location on the World Map to see the skill button.\n2. Tap the skill to use it and build a \"Frontline Base\".\n3. Commanders may send a queue to the Frontline Base.\n4. The queues garrisoned at the Frontline Base can be sent to do other tasks.\n5. The Frontline Base will be demolished if it has lost its durability.\n6. The Frontline Base can exist for a certain amount of time.\n7. If the frontline base's existence time goes down to 0, or if it is destroyed, or if the commander decides to destroy it, the queues at the frontline base will return to their bases.\n8. If you send a queue garrisoned in the Frontline Base to battle and the battle is won, but it's just an attack and not a contest for a facility, the queue will go back to the Frontline Base instead of your base. Damaged units will go back to your base."],"1844000":["Energy Matrix",0,"All units inflict 50% extra damage on Kaiju that emerge from the Pacific Rim.","This skill is passive and does not require activation."],"1853000":["Energy Matrix",5,"(Level 2 base skin) When releasing the skill, buff you and your allies: Attack +40% to all units, and also buff you (only): Attack +20% to all units. Lasts 15 minutes","The skill of Ark and the fully upgraded Shatterdome skill are mutually exclusive.\nMutual Exclusive Skills: Mutual exclusive skills share cooldown time and daily limit. This means that when one skill from the mutually exclusive set is used, the other skills in the set will also go into cooldown and are deducted from the daily use total.\nAfter upgrading, the skill \"Kaiju Slayer\" will still work. Kaiju Slayer is a passive skill and it's not a Mutual Exclusive Skill.\n1 On the world map, tap on your base to see the skill button.\n2 Tap the skill button to use the skill.\n3 Release the skill to buff allies within the range for a certain period of time.\n4 After gaining the buff, you may move your base freely and the effect still exists\n5 Skill range: 8x8 grid.\n6 The Matrix effect can stack up to 2 times, and the duration of each skill will be reset.\n7 The effect of the skill does not take effect in Warzone exercise and Dimensional Mine when defending.\n"],"1871000":["Arcane Gate",9,"Using the skill will consume shards of varying levels for the current Base Skin to exchange for Arcane Treasure Box.","1. Clicking the skill button will activate this skill. Using the skill will consume base skin shard to exchange for the box.\n2. This skill will only consume shards of the current base skin level and/or below, exchanging for a box of the corresponding level.\n3. If there aren't enough shards, the skill cannot be activated.\n4. Opening the box can increase Decryption Progress. When progress is maxed, you'll earn extra rewards. You have {0} progress points in total. Accumulate another {1} progress points to receive extra rewards."],"1872000":["Arcane Gate",9,"Using the skill will consume shards of varying levels for the current Base Skin to exchange for Arcane Treasure Box.","1. Clicking the skill button will activate this skill. Using the skill will consume base skin shard to exchange for the box.\n2. This skill will only consume shards of the current base skin level and/or below, exchanging for a box of the corresponding level.\n3. If there aren't enough shards, the skill cannot be activated.\n4. Opening the box can increase Decryption Progress. When progress is maxed, you'll earn extra rewards. You have {0} progress points in total. Accumulate another {1} progress points to receive extra rewards."],"1873000":["Arcane Gate",9,"Using the skill will consume shards of varying levels for the current Base Skin to exchange for Arcane Treasure Box.","1. Clicking the skill button will activate this skill. Using the skill will consume base skin shard to exchange for the box.\n2. This skill will only consume shards of the current base skin level and/or below, exchanging for a box of the corresponding level.\n3. If there aren't enough shards, the skill cannot be activated.\n4. Opening the box can increase Decryption Progress. When progress is maxed, you'll earn extra rewards. You have {0} progress points in total. Accumulate another {1} progress points to receive extra rewards."],"1878000":["Restoration Beam",10,"Gain the ability of the \"Restoration Beam\" once daily, which can instantly repair one damaged Heavy Trooper.","1. Acquire this Base Skin to use the skill once per day.\nWhen a Heavy Trooper is damaged, you can deploy the repair skill either in the battle menu or the Heavy Trooper menu."],"1879000":["Power Leap",5,"Buff for you and allies in your Aura: All units HP Boost +40% and you (only) HP Boost +20% to all units.","\u00b7 The skill of Nemesis and the Cobra Island skill are mutually exclusive.\n\u00b7 Mutual Exclusive Skills: Mutual exclusive skills share cooldown time and daily limit. This means that when one skill from the mutually exclusive set is used, the other skills in the set will also go into cooldown and are deducted from the daily use total.\n1 On the world map, tap on your base to see the skill button.\n2 Tap the skill button to use the skill.\n3 Release the skill to buff allies within the range for a certain period of time. After gaining the buff, you may move your base freely and the effect still exists\n4 Skill range: 8x8 grid.\n5 The Matrix effect can stack up to 2 times, and the duration of each skill will be reset.\n6 The effect of the skill does not take effect in Warzone exercise and Dimensional Mine when defending.\n"],"1898000":["Energy Matrix",5,"Buff for you and allies in your Aura: All units Attack +40% and you (only) Attack +20% to all units.","The skills of Ark, the fully upgraded Shatterdome, and the Jade Palace are mutually exclusive.\nMutual Exclusive Skills: Mutual exclusive skills share cooldown time and daily limit. This means that when one skill from the mutually exclusive set is used, the other skills in the set will also go into cooldown and are deducted from the daily use total.\nAfter upgrading, the level 1 castle's \"Kaiju Slayer\" skill will still work. This skill is a passive skill, no need to use, and it's not a Mutual Exclusive Skill.\n1 On the world map, tap on your base to see the skill button.\n2 Tap the skill button to use the skill.\n3 Release the skill to buff allies within the range for a certain period of time. After gaining the buff, you may move your base freely and the effect still exists\n4 Skill range: 8x8 grid.\n5 The Matrix effect of this skill can stack up to 2 times, and the duration of each skill will be reset.\n6 The effect of the skill does not take effect in Warzone exercise and Dimensional Mine when defending.\n"],"1923000":["Majestic Shield",5,"Buff for you and allies in your Aura: 5% Defense boost to all units, and you (only) receive an extra 5% Defense boost for all units","1. On the world map, tap on your base to see the skill button.\n2. Tap the skill button to use the skill.\n3. Release the skill to buff allies within the range for a certain period of time. After gaining the buff, you may move your base freely and the effect still exists\n4. Skill range: 8x8 grid.\n5. The Majestic Shield effect can stack up to 2 times, and the duration of each skill will be reset.\n6. The effect of the skill does not take effect in Warzone exercise and Dimensional Mine when defending."],"1927000":["Power Leap",5,"Buff for you and allies in your Aura: All units HP Boost +40% and you (only) HP Boost +20% to all units.","\u00b7 The skill of Nemesis, the Cobra Island and R.P.D. Base skills are mutually exclusive.\n\u00b7 Mutual Exclusive Skills: Mutual exclusive skills share cooldown time and daily limit. This means that when one skill from the mutually exclusive set is used, the other skills in the set will also go into cooldown and are deducted from the daily use total.\n1 On the world map, tap on your base to see the skill button.\n2 Tap the skill button to use the skill.\n3 Release the skill to buff allies within the range for a certain period of time. After gaining the buff, you may move your base freely and the effect still exists\n4 Skill range: 8x8 grid.\n5 The Matrix effect can stack up to 2 times, and the duration of each skill will be reset.\n6 The effect of the skill does not take effect in Warzone exercise and Dimensional Mine when defending.\n"],"1958000":["Gathering of Storms Lv. 1",5,"Buff you and allies in your Aura: All units Damage Increase +10%. Additionally buff you: All units Damage Increase +20%.","1. On the world map, tap on your base to see the skill button.\n2. Tap the skill button to use the skill.\n3. Use the skill to buff allies within the range for a certain period of time. After gaining the buff, you may move your base freely and the effect still exists\n4. Skill range: 8x8 grid.\n5. Gathering of Storms has two levels and can stack up to 2 times. When stacked beyond this limit, higher-level buffs take priority, and the duration of each skill will be reset.\n6. The effect of the skill does not take effect in Warzone Exercise and Dimensional Mine when defending.\n7. This skill and Gathering of Storms Lv. 2 are different levels of the same skill."],"1959000":["Gathering of Storms Lv. 2",5,"Buff you and allies in your Aura: All units Damage Increase +15%. Additionally buff you: All units Damage Increase +35%.","1. On the world map, tap on your base to see the skill button.\n2. Tap the skill button to use the skill.\n3. Use the skill to buff allies within the range for a certain period of time. After gaining the buff, you may move your base freely and the effect still exists\n4. Skill range: 8x8 grid.\n5. Gathering of Storms has two levels and can stack up to 2 times. When stacked beyond this limit, higher-level buffs take priority, and the duration of each skill will be reset.\n6. The effect of the skill does not take effect in Warzone Exercise and Dimensional Mine when defending.\n7. This skill and Gathering of Storms Lv. 1 are different levels of the same skill."]};
@@ -8525,11 +8572,14 @@
       return;
     }
 
-    // Determine if Titan Gear Pool should appear (mock data present + S2864 viewer).
-    // Real wiring will gate on supplement data per siteKey, mirroring the Inventory tab.
+    // Titan Gear Pool sub-tab is available to any S2864 viewer with a resolved
+    // siteKey. The renderer itself handles the no-data case (toolbar + empty
+    // state message). Mock JS is a fallback for the Tex preview only; once the
+    // mock is removed post-beta, players still get the tab plus the empty
+    // state until they paste their own bookmarklet output.
     var siteKey = (wizardState.player && wizardState.player.siteKey) || null;
     var inS2864 = siteKey && _ar_rosterMap && _ar_rosterMap[siteKey];
-    var gearPoolAvailable = inS2864 && !!window._gearPoolMockData;
+    var gearPoolAvailable = !!inS2864;
 
     if (!gearPoolAvailable) {
       // No sub-tabs — render heroes UI directly (existing behavior)
@@ -8592,40 +8642,8 @@
   // mock-data file is loaded as gear-pool-mock-data.js -> window._gearPoolMockData.
   var GP_SLOT_NAMES = { 1: 'Weapon', 2: 'Armor', 3: 'Accessory', 4: 'Helmet', 5: 'Device', 6: 'Boots' };
   var GP_QUALITY_NAMES = { 2: 'Blue', 3: 'Purple', 4: 'Purple+', 5: 'Gold' };
-  // Base-stat lookup for the 24 stock gear configs (slot 1-6 × rarity Blue/Purple/Purple+/Gold).
-  // Each entry: [{ buffId, baseAtLv1, perLevel }] in basis points (e.g. 600 = 6%).
-  // Formula at level L: base = baseAtLv1 + perLevel × L. Verified against in-game UI:
-  //   Lv.20 Gold pistol (100104): 600 + 120×20 = 3000 → "All units Attack 30%"
-  //   Lv.20 Gold accessory (100304): "300|100" + "60|20"×20 → ATK 15% + HP 5%
-  // Pulled live from the hero_equip TABLE on 2026-05-09.
-  var EQUIP_BASE_BUFF = {
-    100101: [{ buffId: '930100', baseAtLv1: 120, perLevel: 24 }],
-    100102: [{ buffId: '930100', baseAtLv1: 240, perLevel: 48 }],
-    100103: [{ buffId: '930100', baseAtLv1: 360, perLevel: 70 }],
-    100104: [{ buffId: '930100', baseAtLv1: 600, perLevel: 120 }],
-    100201: [{ buffId: '930000', baseAtLv1: 120, perLevel: 24 }],
-    100202: [{ buffId: '930000', baseAtLv1: 240, perLevel: 48 }],
-    100203: [{ buffId: '930000', baseAtLv1: 360, perLevel: 70 }],
-    100204: [{ buffId: '930000', baseAtLv1: 600, perLevel: 120 }],
-    100301: [{ buffId: '930100', baseAtLv1: 60, perLevel: 12 }, { buffId: '930000', baseAtLv1: 20, perLevel: 4 }],
-    100302: [{ buffId: '930100', baseAtLv1: 120, perLevel: 24 }, { buffId: '930000', baseAtLv1: 40, perLevel: 8 }],
-    100303: [{ buffId: '930100', baseAtLv1: 180, perLevel: 40 }, { buffId: '930000', baseAtLv1: 60, perLevel: 10 }],
-    100304: [{ buffId: '930100', baseAtLv1: 300, perLevel: 60 }, { buffId: '930000', baseAtLv1: 100, perLevel: 20 }],
-    100401: [{ buffId: '930000', baseAtLv1: 80, perLevel: 16 }],
-    100402: [{ buffId: '930000', baseAtLv1: 160, perLevel: 32 }],
-    100403: [{ buffId: '930000', baseAtLv1: 240, perLevel: 48 }],
-    100404: [{ buffId: '930000', baseAtLv1: 400, perLevel: 80 }],
-    100501: [{ buffId: '930100', baseAtLv1: 80, perLevel: 16 }],
-    100502: [{ buffId: '930100', baseAtLv1: 160, perLevel: 32 }],
-    100503: [{ buffId: '930100', baseAtLv1: 240, perLevel: 48 }],
-    100504: [{ buffId: '930100', baseAtLv1: 400, perLevel: 80 }],
-    100601: [{ buffId: '930100', baseAtLv1: 20, perLevel: 4 }, { buffId: '930000', baseAtLv1: 60, perLevel: 12 }],
-    100602: [{ buffId: '930100', baseAtLv1: 40, perLevel: 8 }, { buffId: '930000', baseAtLv1: 120, perLevel: 24 }],
-    100603: [{ buffId: '930100', baseAtLv1: 60, perLevel: 10 }, { buffId: '930000', baseAtLv1: 180, perLevel: 40 }],
-    100604: [{ buffId: '930100', baseAtLv1: 100, perLevel: 20 }, { buffId: '930000', baseAtLv1: 300, perLevel: 60 }]
-  };
-  // Buff ID → display name. Game uses "All units Attack" / "All units HP".
-  var BASE_BUFF_NAMES = { '930100': 'All units Attack', '930000': 'All units HP' };
+  // EQUIP_BASE_BUFF + BASE_BUFF_NAMES live with the other gear data tables
+  // (GEAR_TEMPLATE / RUNE_MAP / ENHANCE_BUFF, ~line 7180).
   // Resolve the per-buff base-stat rows for a piece, applying the level scaling
   // and pairing with the enhancement values from p.enhance (when present).
   // Returns array of { buffId, statName, basePct, enhPct, enhanceShow }.
@@ -8680,6 +8698,53 @@
   function gpHeroAvatarUrl(heroId) {
     return 'https://h5.topwargame.com/DynRes/images/headpic/hero_icon' + heroId + '_global.png?t=22.jpg';
   }
+
+  // Builds one stat row matching the heroes-tab layout: name | base | +enh
+  // | =total | roll bar (if max known). Used by both the gear-pool card
+  // and the detail modal so the numbers line up byte-for-byte.
+  function gpBuildStatRow(b, opts) {
+    opts = opts || {};
+    var compact = !!opts.compact;
+    var wrap = gpEl('div', { cls: 'gp-stat-wrap', style: 'width:100%;display:flex;flex-direction:column;gap:1px;' });
+    var row = gpEl('div', { cls: 'gp-stat-row' });
+    var rollPct = gpRollPct(b);
+    var color = rollPct != null ? gpRollColor(rollPct) : 'var(--text)';
+
+    row.appendChild(gpEl('span', { cls: 'name', text: b.name || ('#' + b.templateId) }));
+
+    var valEl = gpEl('span', { cls: 'val', text: gpFmtPct(b.valuePercent) });
+    valEl.style.color = color;
+    row.appendChild(valEl);
+
+    var enhPct = b.enhancePercent != null ? b.enhancePercent : ((b.rawEnhance || 0) / 100);
+    if (enhPct > 0) {
+      var isActive = b.enhanceShow === 2;
+      var enhEl = gpEl('span', { cls: 'enh ' + (isActive ? 'active' : 'inactive'), text: '+' + gpFmtPct(enhPct) });
+      row.appendChild(enhEl);
+      if (isActive && b.valuePercent != null) {
+        var total = b.valuePercent + enhPct;
+        row.appendChild(gpEl('span', { cls: 'total', text: '= ' + gpFmtPct(total) }));
+      }
+    }
+    wrap.appendChild(row);
+
+    if (rollPct != null) {
+      var bar = gpEl('div', { cls: 'gp-roll-bar' });
+      var fill = gpEl('div', { cls: 'gp-roll-fill' });
+      fill.style.width = Math.min(rollPct, 100) + '%';
+      fill.style.background = color;
+      bar.appendChild(fill);
+      wrap.appendChild(bar);
+
+      if (!compact) {
+        var pctLabel = gpEl('span', { cls: 'gp-roll-pct', text: rollPct + '%' });
+        pctLabel.style.color = color;
+        wrap.appendChild(pctLabel);
+      }
+    }
+    return wrap;
+  }
+
   // ── Reusable Cloud-sync pill ──────────────────────────────────────────────
   // Compact "Cloud sync" pill with a coloured status dot. Click pops a tooltip
   // showing exact upload time + share-code visibility (or "local only" for
@@ -8771,7 +8836,7 @@
         line(kindLabel + ' is saved on this device only.', true);
         if (state.updatedAt) line('Updated: ' + new Date(state.updatedAt).toLocaleString());
         if (state.kind === 'gear') {
-          line('BETA preview — worker upload for gear pool is not wired yet.');
+          line('BETA preview. Worker upload for gear pool is not wired yet.');
         } else if (state.isOwner) {
           if (!state.hasUidHash) {
             line('Verify your in-game UID to enable cloud sync. Other viewers can’t see this snapshot until then.');
@@ -9023,7 +9088,7 @@
       } catch (e) { /* ignore */ }
     }
     var src = stored || data;
-    var srcLabel = stored ? 'Your extracted gear pool' : 'Sample data (Tex)';
+    var srcLabel = stored ? 'Your extracted gear pool' : 'Sample data (preview)';
     var srcTime = (stored && stored.meta && stored.meta.ts) ? stored.meta.ts : null;
 
     // ── Toolbar (Update / source label) ──────────────────────────────────
@@ -9036,9 +9101,10 @@
     toolbar.appendChild(updateBtn);
 
     var howBtn = gpEl('button', {
-      style: 'padding:6px 14px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:6px;font-weight:600;cursor:pointer;font-size:13px;',
-      text: 'Bookmarklet ↗'
+      style: 'padding:6px 14px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:6px;font-weight:600;cursor:pointer;font-size:13px;display:inline-flex;align-items:center;gap:6px;'
     });
+    howBtn.appendChild(gpSvgIcon('wrench', { size: 12 }));
+    howBtn.appendChild(document.createTextNode('Bookmarklet'));
     howBtn.addEventListener('click', function () { gpOpenBookmarkletModal(); });
     toolbar.appendChild(howBtn);
 
@@ -9056,18 +9122,20 @@
     }
 
     var labelEl = gpEl('div', {
-      style: 'font-size:11px;color:' + (stored ? 'var(--green)' : 'var(--muted)') + ';',
+      style: 'font-size:12px;color:' + (stored ? 'var(--green)' : 'var(--muted)') + ';',
       text: srcLabel
     });
     toolbar.appendChild(labelEl);
 
-    // Cloud-sync pill — for gear pool this currently always reports 'local-only'
-    // (worker upload not wired yet). Pushed to the right edge of the toolbar.
+    // Cloud-sync pill (gear currently always reports 'local-only' since the
+    // worker route isn't wired yet). marginLeft:auto pushes it to the trailing
+    // edge of the toolbar without an extra spacer div, matching how inv/bench
+    // anchor their pills (and avoiding a wrap artifact at narrow widths).
     if (siteKey) {
-      var spacer = gpEl('div', { style: 'flex:1;' });
-      toolbar.appendChild(spacer);
       var gearIsOwner = _ar_isOwnReport(siteKey) || _ar_isUnlocked(siteKey);
-      toolbar.appendChild(_ar_buildCloudSyncPill('gear', siteKey, { isOwner: !!gearIsOwner }));
+      var gearPill = _ar_buildCloudSyncPill('gear', siteKey, { isOwner: !!gearIsOwner });
+      gearPill.style.marginLeft = 'auto';
+      toolbar.appendChild(gearPill);
     }
     container.appendChild(toolbar);
 
@@ -9076,32 +9144,10 @@
       return;
     }
     data = src;
-    if (false) { // keep TS-style guard for legacy condition
-      container.appendChild(gpEl('p', { cls: 'gp-empty', text: 'No Titan Gear Pool data loaded.' }));
-      return;
-    }
 
     var allPieces = (data.goldGear || []).concat(data.equippedNonGold || []);
     var summary = data.summary || {};
     var schemes = data.schemes || [];
-
-    // ── Summary cards ────────────────────────────────────────────────────
-    var summaryEl = gpEl('div', { cls: 'gp-summary' });
-    var statDefs = [
-      { v: summary.goldCount || 0, l: 'Gold pieces', cls: 'gold' },
-      { v: (summary.goldEquipped || 0) + (summary.equippedNonGoldCount || 0), l: 'Equipped' },
-      { v: summary.goldUnequipped || 0, l: 'Available' },
-      { v: summary.distinctHeroes || 0, l: 'Heroes' },
-      { v: summary.lockedCount || 0, l: 'Locked', cls: 'locked' },
-      { v: (summary.schemesActive || 0) + ' / ' + (summary.schemesCount || 20), l: 'Presets used' }
-    ];
-    statDefs.forEach(function(s) {
-      var c = gpEl('div', { cls: 'gp-stat' + (s.cls ? (' ' + s.cls) : '') });
-      c.appendChild(gpEl('div', { cls: 'v', text: String(s.v) }));
-      c.appendChild(gpEl('div', { cls: 'l', text: s.l }));
-      summaryEl.appendChild(c);
-    });
-    container.appendChild(summaryEl);
 
     // ── Filter / sort bar ────────────────────────────────────────────────
     // Single flat pool grid (no per-hero rows). Default sort groups same-hero
@@ -9230,6 +9276,27 @@
 
     container.appendChild(filterBar);
 
+    // ── Summary cards ─────────────────────────────────────────────────────
+    // Rendered between the filter bar and the grid so the counts sit right
+    // above the first row of cards rather than ahead of the controls the
+    // player uses to slice the data.
+    var summaryEl = gpEl('div', { cls: 'gp-summary' });
+    var statDefs = [
+      { v: summary.goldCount || 0, l: 'Gold pieces', cls: 'gold' },
+      { v: (summary.goldEquipped || 0) + (summary.equippedNonGoldCount || 0), l: 'Equipped' },
+      { v: summary.goldUnequipped || 0, l: 'Available' },
+      { v: summary.distinctHeroes || 0, l: 'Heroes' },
+      { v: summary.lockedCount || 0, l: 'Locked', cls: 'locked' },
+      { v: (summary.schemesActive || 0) + ' / ' + (summary.schemesCount || 20), l: 'Presets used' }
+    ];
+    statDefs.forEach(function(s) {
+      var c = gpEl('div', { cls: 'gp-stat' + (s.cls ? (' ' + s.cls) : '') });
+      c.appendChild(gpEl('div', { cls: 'v', text: String(s.v) }));
+      c.appendChild(gpEl('div', { cls: 'l', text: s.l }));
+      summaryEl.appendChild(c);
+    });
+    container.appendChild(summaryEl);
+
     var bodyEl = gpEl('div');
     container.appendChild(bodyEl);
 
@@ -9310,54 +9377,8 @@
       bodyEl.appendChild(grid);
     }
 
-    // Builds one stat row matching the heroes-tab layout: name | base | +enh
-    // | =total | roll bar (if max known). Used by both card and modal so the
-    // numbers line up byte-for-byte.
-    function gpBuildStatRow(b, opts) {
-      opts = opts || {};
-      var compact = !!opts.compact;
-      var wrap = gpEl('div', { cls: 'gp-stat-wrap', style: 'width:100%;display:flex;flex-direction:column;gap:1px;' });
-      var row = gpEl('div', { cls: 'gp-stat-row' });
-      var rollPct = gpRollPct(b);
-      var color = rollPct != null ? gpRollColor(rollPct) : 'var(--text)';
-
-      row.appendChild(gpEl('span', { cls: 'name', text: b.name || ('#' + b.templateId) }));
-
-      var valEl = gpEl('span', { cls: 'val', text: gpFmtPct(b.valuePercent) });
-      valEl.style.color = color;
-      row.appendChild(valEl);
-
-      var enhPct = b.enhancePercent != null ? b.enhancePercent : ((b.rawEnhance || 0) / 100);
-      if (enhPct > 0) {
-        var isActive = b.enhanceShow === 2;
-        var enhEl = gpEl('span', { cls: 'enh ' + (isActive ? 'active' : 'inactive'), text: '+' + gpFmtPct(enhPct) });
-        row.appendChild(enhEl);
-        if (isActive && b.valuePercent != null) {
-          var total = b.valuePercent + enhPct;
-          row.appendChild(gpEl('span', { cls: 'total', text: '= ' + gpFmtPct(total) }));
-        }
-      }
-      wrap.appendChild(row);
-
-      if (rollPct != null) {
-        var bar = gpEl('div', { cls: 'gp-roll-bar' });
-        var fill = gpEl('div', { cls: 'gp-roll-fill' });
-        fill.style.width = Math.min(rollPct, 100) + '%';
-        fill.style.background = color;
-        bar.appendChild(fill);
-        wrap.appendChild(bar);
-
-        if (!compact) {
-          var pctLabel = gpEl('span', { cls: 'gp-roll-pct', text: rollPct + '%' });
-          pctLabel.style.color = color;
-          wrap.appendChild(pctLabel);
-        }
-      }
-      return wrap;
-    }
-
     function buildPoolCard(p) {
-      var titleStr = p.gearName + ' — ' + (p.qualityName || '') +
+      var titleStr = p.gearName + ' · ' + (p.qualityName || '') +
         (p.level > 0 ? ' Lv.' + p.level : '') +
         (p.heroName ? ' · ' + p.heroName : ' · unassigned') +
         (p.locked ? ' (locked)' : '');
@@ -9375,7 +9396,7 @@
         lockBadge.appendChild(gpSvgIcon('lock', { size: 11 }));
         leftGroup.appendChild(lockBadge);
       }
-      leftGroup.appendChild(gpEl('div', { cls: 'level-badge' + (p.level === 0 ? ' lv0' : ''), text: p.level > 0 ? ('Lv.' + p.level) : '—' }));
+      leftGroup.appendChild(gpEl('div', { cls: 'level-badge' + (p.level === 0 ? ' lv0' : ''), text: p.level > 0 ? ('Lv.' + p.level) : 'Lv.0' }));
       top.appendChild(leftGroup);
 
       var heroPill = gpEl('div', { cls: 'hero-pill', title: equipped ? ('Equipped on ' + (p.heroName || ('Hero ' + p.heroId))) : 'Unassigned' });
@@ -9463,10 +9484,6 @@
       return card;
     }
 
-    // Expose to the modal so it picks up the same row builder without needing
-    // its own copy of GEAR_TEMPLATE math.
-    window._gpBuildStatRow = gpBuildStatRow;
-
     rerender();
   }
 
@@ -9480,6 +9497,9 @@
     overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
 
     var modal = gpEl('div', { style: 'background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:640px;width:100%;max-height:90vh;overflow-y:auto;padding:20px;' });
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Gear piece details');
 
     // Header
     var header = gpEl('div', { style: 'display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border);' });
@@ -9502,7 +9522,7 @@
       hTop.appendChild(lockChip);
     }
     hMain.appendChild(hTop);
-    var lvlText = p.level > 0 ? ('Lv. ' + p.level) : 'Lv. —';
+    var lvlText = p.level > 0 ? ('Lv. ' + p.level) : 'Lv. 0';
     hMain.appendChild(gpEl('div', {
       style: 'font-size:12px;color:var(--muted);',
       text: (p.qualityName || '') + ' · ' + (p.slotName || ('Slot ' + p.slot)) + ' · ' + lvlText
@@ -9536,19 +9556,13 @@
     if (statBuffs.length === 0) {
       randomCol.appendChild(gpEl('div', { style: 'font-size:11px;color:var(--muted);', text: 'None' }));
     } else {
-      // Mirror the heroes-tab gear card layout exactly: name | base | +enh
-      // | =total + roll bar + percent label. Uses the shared row builder
-      // exposed via window._gpBuildStatRow (defined alongside buildPoolCard
-      // so it can lean on GEAR_TEMPLATE for the canonical max value, not
-      // the bookmarklet's average-roll baseline).
+      // Mirror the heroes-tab gear card layout: name | base | +enh | =total
+      // + roll bar + percent label. Same module-scope row builder as the pool
+      // card uses, so numbers line up byte-for-byte.
       var statListWrap = gpEl('div', { style: 'display:flex;flex-direction:column;gap:8px;' });
       statBuffs.forEach(function (b) {
         var rowWrap = gpEl('div', { style: 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px;' });
-        if (typeof window._gpBuildStatRow === 'function') {
-          rowWrap.appendChild(window._gpBuildStatRow(b, { compact: false }));
-        } else {
-          rowWrap.appendChild(gpEl('div', { text: (b.name || '#' + b.templateId) + ' +' + (b.valuePercent || 0).toFixed(2) + '%' }));
-        }
+        rowWrap.appendChild(gpBuildStatRow(b, { compact: false }));
         statListWrap.appendChild(rowWrap);
       });
       randomCol.appendChild(statListWrap);
@@ -9587,28 +9601,22 @@
       var rText = gpEl('div', { style: 'flex:1;min-width:0;' });
       var rNameRow = gpEl('div', { style: 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;' });
       rNameRow.appendChild(gpEl('span', { style: 'font-size:13px;font-weight:700;color:var(--accent);', text: rune.name || '' }));
-      var rLvStar = rune.star, rLvMax = rune.starMax;
-      if ((rLvStar == null || rLvMax == null) && rune.templateId != null && typeof RUNE_MAP === 'object') {
+      // Star + starMax: prefer values on the rune itself, fall back to RUNE_MAP for older
+      // snapshots that didn't carry star data. Same lookup feeds both the Lv badge and the
+      // description placeholder substitution further down.
+      var rStar = rune.star, rStarMax = rune.starMax;
+      if ((rStar == null || rStarMax == null) && rune.templateId != null && typeof RUNE_MAP === 'object') {
         var rmEntry = RUNE_MAP[rune.templateId];
-        if (rmEntry) { rLvStar = rmEntry.s; rLvMax = rmEntry.sm; }
+        if (rmEntry) { rStar = rmEntry.s; rStarMax = rmEntry.sm; }
       }
-      if (rLvStar != null && rLvMax != null) {
+      if (rStar != null && rStarMax != null) {
         rNameRow.appendChild(gpEl('span', {
           style: 'font-size:10px;color:var(--muted);padding:1px 6px;border:1px solid var(--border);border-radius:999px;',
-          text: 'Lv ' + (rLvStar + 1) + ' / ' + rLvMax
+          text: 'Lv ' + (rStar + 1) + ' / ' + rStarMax
         }));
       }
       rText.appendChild(rNameRow);
       var rDesc = gpEl('div', { style: 'font-size:11px;color:var(--muted);line-height:1.5;margin-top:4px;' });
-      // Substitute the {v}/{t} placeholders in RUNE_DESC using star + starMax.
-      // Snapshots from the original gear-pool bookmarklet didn't carry star data,
-      // so fall back to RUNE_MAP[templateId] which the Heroes tab already uses
-      // for the same purpose. Same lookup, same numbers.
-      var rStar = rune.star, rStarMax = rune.starMax;
-      if ((rStar == null || rStarMax == null) && rune.templateId != null && typeof RUNE_MAP === 'object') {
-        var fromMap = RUNE_MAP[rune.templateId];
-        if (fromMap) { rStar = fromMap.s; rStarMax = fromMap.sm; }
-      }
       var resolved = null;
       if (typeof runeTooltipParts === 'function' && rStar != null && rStarMax != null) {
         try { resolved = runeTooltipParts(rune.name, rStar, rStarMax); } catch (e) { resolved = null; }
@@ -9658,7 +9666,8 @@
           // Base-stat enhancement is binary (Enigma Platform on/off, no
           // per-row refinement gating). Always active when present.
           line.appendChild(gpEl('span', {
-            style: 'font-size:11px;color:#f0883e;',
+            cls: 'gear-attr-enh active',
+            style: 'font-size:11px;',
             text: '+' + gpFmtPct(bs.enhPct)
           }));
           line.appendChild(gpEl('span', {
@@ -9676,7 +9685,7 @@
     modal.appendChild(grid);
 
     var footer = gpEl('div', { style: 'margin-top:16px;padding-top:12px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--muted);' });
-    footer.appendChild(gpEl('span', { text: 'UID ' + p.uid + ' · equipId ' + p.equipId }));
+    footer.appendChild(gpEl('span', { text: 'equipId ' + p.equipId }));
     var closeBtn = gpEl('button', {
       style: 'padding:5px 14px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:11px;',
       text: 'Close'
@@ -9698,15 +9707,19 @@
     overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
 
     var modal = gpEl('div', { style: 'background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:680px;width:100%;max-height:90vh;overflow-y:auto;padding:22px;display:flex;flex-direction:column;gap:12px;' });
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Paste gear pool JSON');
 
     modal.appendChild(gpEl('div', { style: 'font-size:18px;font-weight:700;color:var(--text);', text: 'Paste your Gear Pool JSON' }));
     modal.appendChild(gpEl('div', {
       style: 'font-size:12px;color:var(--muted);line-height:1.5;',
-      text: 'Run the bookmarklet on the Top War game tab — it copies the dump to your clipboard. Paste it below and click Save. Data stays in your browser only (BETA preview); no upload to the server.'
+      text: 'Run the bookmarklet on the Top War game tab. It copies the dump to your clipboard. Paste it below and click Save. Data stays in your browser only (BETA preview); no upload to the server.'
     }));
 
     var ta = document.createElement('textarea');
     ta.placeholder = '{"v":1,"meta":...,"goldGear":[...]}';
+    ta.setAttribute('aria-label', 'Gear pool JSON');
     ta.style.cssText = 'width:100%;min-height:240px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font-family:monospace;font-size:11px;box-sizing:border-box;';
     modal.appendChild(ta);
 
@@ -9724,12 +9737,12 @@
       try { parsed = JSON.parse(raw); }
       catch (e) { statusEl.textContent = 'Not valid JSON: ' + e.message; statusEl.style.color = 'var(--red)'; return; }
       if (!parsed || !Array.isArray(parsed.goldGear)) {
-        statusEl.textContent = 'Missing goldGear[] — did you run the gear-pool bookmarklet?';
+        statusEl.textContent = 'Missing goldGear[]. Did you run the gear-pool bookmarklet?';
         statusEl.style.color = 'var(--red)';
         return;
       }
       if (!siteKey) {
-        statusEl.textContent = 'No siteKey on this report — open your saved report first.';
+        statusEl.textContent = 'No siteKey on this report. Open your saved report first.';
         statusEl.style.color = 'var(--red)';
         return;
       }
@@ -9763,41 +9776,26 @@
     overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
 
     var modal = gpEl('div', { style: 'background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:680px;width:100%;max-height:90vh;overflow-y:auto;padding:22px;display:flex;flex-direction:column;gap:12px;' });
-    modal.appendChild(gpEl('div', { style: 'font-size:18px;font-weight:700;color:var(--text);', text: 'Titan Gear Pool — bookmarklet' }));
-    modal.appendChild(gpEl('div', {
-      style: 'font-size:12px;color:var(--muted);line-height:1.5;',
-      text: 'Drag this button to your bookmarks bar (desktop), or long-press → Add Bookmark (mobile). Then on the Top War game tab, click the bookmark — it dumps your gear inventory and copies it to the clipboard.'
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Gear pool bookmarklet setup');
+    modal.appendChild(gpEl('div', { style: 'font-size:18px;font-weight:700;color:var(--text);', text: 'Titan Gear Pool bookmarklet' }));
+
+    // Shared bookmarklet panel handles the drag link, iOS / Android setup
+    // collapsibles, manual copy URL block, and usage steps. Keeps the gear
+    // setup flow visually identical to inv / bench / chips.
+    modal.appendChild(_ar_buildBookmarkletPanel({
+      fileName: 'gear-pool-bookmarklet.txt',
+      dragLabel: 'Tex Gear Pool',
+      bookmarkLabel: 'Gear Pool',
+      panelLead: 'Drag this button to your bookmarks bar (desktop), or long-press → Add Bookmark (mobile). Then on the Top War game tab, click the bookmark. It dumps your gear inventory and copies it to the clipboard.',
+      usageSteps: [
+        'Open the Top War game tab (h5.topwargame.com) and wait for it to load fully.',
+        'Click the "Tex Gear Pool" bookmark. It scans your gear inventory.',
+        'When the alert says copied, return here and click "Update Gear Pool" → paste → Save.',
+        'Your data stays in localStorage on this device only (BETA, no server upload yet).'
+      ]
     }));
-
-    var dragWrap = gpEl('div', { style: 'display:flex;justify-content:center;padding:14px 0;' });
-    var dragLink = document.createElement('a');
-    dragLink.href = "javascript:(function(){var s=document.createElement('script');s.src='https://2864tw.com/gear-pool-bookmarklet.js?_='+Date.now();s.onerror=function(){alert('Bookmarklet load failed. Check internet + try again.');};document.body.appendChild(s);})();";
-    dragLink.textContent = '';
-    dragLink.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:10px 22px;background:var(--accent);color:#0d1117;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px;cursor:grab;user-select:none;';
-    var dragIcon = gpSvgIcon('wrench', { size: 14, stroke: '#0d1117' });
-    dragLink.appendChild(dragIcon);
-    dragLink.appendChild(document.createTextNode('Tex Gear Pool'));
-    dragLink.draggable = true;
-    dragLink.addEventListener('click', function (e) { e.preventDefault(); alert('Drag this button to your bookmarks bar instead of clicking it here.'); });
-    dragWrap.appendChild(dragLink);
-    modal.appendChild(dragWrap);
-
-    modal.appendChild(gpEl('div', { style: 'font-size:11px;color:var(--muted);', text: 'Or copy the bookmarklet JS manually:' }));
-    var ta = document.createElement('textarea');
-    ta.value = "javascript:(function(){var s=document.createElement('script');s.src='https://2864tw.com/gear-pool-bookmarklet.js?_='+Date.now();s.onerror=function(){alert('Bookmarklet load failed. Check internet + try again.');};document.body.appendChild(s);})();";
-    ta.readOnly = true;
-    ta.style.cssText = 'width:100%;min-height:60px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font-family:monospace;font-size:10px;box-sizing:border-box;';
-    modal.appendChild(ta);
-
-    var stepsList = document.createElement('ol');
-    stepsList.style.cssText = 'font-size:12px;color:var(--text);line-height:1.6;padding-left:20px;margin:0;';
-    [
-      'Open the Top War game tab (h5.topwargame.com) and wait for it to load fully.',
-      'Click the "Tex Gear Pool" bookmark — it scans your gear inventory.',
-      'When the alert says copied, return here and click "Update Gear Pool" → paste → Save.',
-      'Your data stays in localStorage on this device only (BETA — no server upload yet).'
-    ].forEach(function (t) { var li = document.createElement('li'); li.textContent = t; stepsList.appendChild(li); });
-    modal.appendChild(stepsList);
 
     var closeRow = gpEl('div', { style: 'display:flex;justify-content:flex-end;' });
     var closeBtn = gpEl('button', { style: 'padding:7px 18px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;', text: 'Close' });
