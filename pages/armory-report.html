@@ -2849,25 +2849,32 @@
   // ── Rune Advisor: rune-pool extraction ─────────────────────────────────
   // Sums runes from two sources the consolidated bookmarklet (v=2 envelope)
   // already publishes for any S2864 player:
-  //   (a) Free runes in the bag — inv.tabs.item entries whose templateId
-  //       resolves to a rune via the in-page RUNE_MAP / resolveRune helper.
+  //   (a) Free runes in the bag — inv.tabs.item entries with cfg.t===153
+  //       (Titan Rune type) in data/item-table.json. Bag runes are always
+  //       raw / s:0; their family name is cfg.n with the trailing
+  //       " Rune"/" Rune Shard" suffix stripped to match the catalog.
   //   (b) Runes attached to UNEQUIPPED gold pieces — gear.goldGear[] filtered
-  //       to heroId === 0, then piece.buffs.find(b => b.type === 'rune').
+  //       to heroId === 0, then piece.buffs.find(b => b.type === 'rune'). The
+  //       in-page RUNE_MAP / resolveRune helper covers these (equipped-rune
+  //       templateId format).
   // Equipped pieces are excluded by design (those runes are in active use):
   // anything in equippedNonGold / presetOnly, and gold pieces with heroId>0.
-  function _ar_extractRunePool(inv, gear) {
+  // Caller must pass `lookups` from `_ar_loadInvLookups()` so bag IDs resolve.
+  function _ar_extractRunePool(inv, gear, lookups) {
     var pool = {};
     function bump(name, star, qty) {
       if (!name || qty <= 0) return;
       if (!pool[name]) pool[name] = {0:0,1:0,2:0,3:0,4:0,5:0,6:0};
       pool[name][star] = (pool[name][star] || 0) + qty;
     }
-    if (inv && inv.tabs && Array.isArray(inv.tabs.item)) {
+    if (inv && inv.tabs && Array.isArray(inv.tabs.item) && lookups && lookups.item) {
       for (var i = 0; i < inv.tabs.item.length; i++) {
         var it = inv.tabs.item[i];
-        var r = (typeof resolveRune === 'function') ? resolveRune(+it.id) : null;
-        if (!r) continue;
-        bump(r.n, r.s, it.a || 1);
+        var cfg = lookups.item[String(it.id)];
+        if (!cfg || cfg.t !== 153) continue;
+        var name = String(cfg.n || '').replace(/\s*Rune(\s+Shard)?\s*$/i, '').trim();
+        if (!name) continue;
+        bump(name, 0, it.a || 1);
       }
     }
     if (gear && Array.isArray(gear.goldGear)) {
@@ -2876,13 +2883,13 @@
         if (p && p.heroId && p.heroId > 0) continue; // equipped, skip
         var rune = ((p && p.buffs) || []).find(function(b) { return b && b.type === 'rune'; });
         if (!rune) continue;
-        var name = rune.name;
-        var star = (rune.star != null) ? rune.star : 0;
-        if (!name && rune.templateId != null && typeof resolveRune === 'function') {
+        var rname = rune.name;
+        var rstar = (rune.star != null) ? rune.star : 0;
+        if (!rname && rune.templateId != null && typeof resolveRune === 'function') {
           var rr = resolveRune(+rune.templateId);
-          if (rr) { name = rr.n; if (rune.star == null) star = rr.s; }
+          if (rr) { rname = rr.n; if (rune.star == null) rstar = rr.s; }
         }
-        bump(name, star, 1);
+        bump(rname, rstar, 1);
       }
     }
     return pool;
@@ -12853,15 +12860,12 @@
 
     // Source resolution: prefer explicit runepool supplement; fall back to
     // a derived view from inv + gear when the player hasn't saved one yet.
+    // Bag rune resolution requires data/item-table.json (cfg.t===153 lookup),
+    // so we await `_ar_loadInvLookups()` before deriving.
     var stored = siteKey ? ArmoryIdentity.getSupplement('runepool', siteKey) : null;
-    var pool = stored && stored.pool ? stored.pool : null;
-    var derived = false;
     var inv = siteKey ? ArmoryIdentity.getSupplement('inv', siteKey) : null;
     var gear = siteKey ? ArmoryIdentity.getSupplement('gear', siteKey) : null;
-    if (!pool) {
-      pool = _ar_extractRunePool(inv, gear);
-      derived = true;
-    }
+    var derived = !stored;
 
     // Status line under the toolbar.
     var status = document.createElement('div');
@@ -12873,7 +12877,7 @@
                       : 'saved snapshot';
       status.textContent = 'Saved pool (' + sourceLabel + ')'
                          + (ts ? ' · ' + _ar_relativeAge(ts) : '');
-    } else if (derived && (inv || gear)) {
+    } else if (inv || gear) {
       status.textContent = 'Derived from your inventory and titan gear pool. '
                          + 'Use Import TopWar Data in the header to refresh.';
     } else if (isOwn) {
@@ -12883,28 +12887,23 @@
     }
     container.appendChild(status);
 
-    // Empty-state when there's truly nothing to render (no derived counts AND no saved pool).
-    var hasAny = false;
-    for (var rn in pool) { var t = pool[rn]; for (var s in t) { if (t[s] > 0) { hasAny = true; break; } } if (hasAny) break; }
-    if (!hasAny) {
+    // Body host — replaced once async data resolves.
+    var bodyHost = document.createElement('div');
+    container.appendChild(bodyHost);
+
+    function showEmpty(msg) {
+      bodyHost.replaceChildren();
       var emptyHint = document.createElement('div');
       emptyHint.style.cssText = 'padding:1.5rem;text-align:center;color:var(--muted);font-size:.85rem;border:1px dashed var(--border);border-radius:8px;';
-      emptyHint.textContent = isOwn
-        ? 'No runes detected. Run Import TopWar Data once your bag has runes or your gold gear pool has unequipped pieces.'
-        : 'No published rune pool.';
-      container.appendChild(emptyHint);
-      return;
+      emptyHint.textContent = msg;
+      bodyHost.appendChild(emptyHint);
     }
 
-    // Grid render — one card per rune family that has any non-zero count.
-    var grid = document.createElement('div');
-    grid.className = 'runepool-grid';
-    container.appendChild(grid);
-
-    // Use the canonical 14-family order from data/rune-types.json when it's
-    // available; until then fall back to a sorted list of names found in pool.
-    function paint(catalog) {
-      grid.replaceChildren();
+    function paintGrid(pool, catalog) {
+      bodyHost.replaceChildren();
+      var grid = document.createElement('div');
+      grid.className = 'runepool-grid';
+      bodyHost.appendChild(grid);
       var order;
       if (catalog && Array.isArray(catalog.runes) && catalog.runes.length) {
         order = catalog.runes.map(function(r) { return r.name; });
@@ -12918,10 +12917,8 @@
         if (!tiers) continue;
         var total = 0; for (var k in tiers) total += (tiers[k] || 0);
         if (!total) continue;
-
         var card = document.createElement('div');
         card.className = 'rune-card';
-
         var iconFile = iconMap[name];
         if (iconFile) {
           var img = document.createElement('img');
@@ -12934,7 +12931,6 @@
         nameEl.className = 'rune-name';
         nameEl.textContent = name;
         card.appendChild(nameEl);
-
         var counts = document.createElement('div');
         counts.className = 'rune-counts';
         var STAR_LABELS = ['s:0', 's:1', 's:2', 's:3', 's:4', 's:5', 's:6'];
@@ -12947,17 +12943,33 @@
           counts.appendChild(pillEl);
         }
         card.appendChild(counts);
-
         var totalEl = document.createElement('div');
         totalEl.className = 'rune-total';
         totalEl.textContent = total + ' total';
         card.appendChild(totalEl);
-
         grid.appendChild(card);
       }
     }
-    paint(null);
-    _ar_loadRuneTypes().then(function(cat) { if (cat) paint(cat); });
+
+    showEmpty('Loading rune pool…');
+
+    Promise.all([
+      derived ? _ar_loadInvLookups().catch(function() { return null; }) : Promise.resolve(null),
+      _ar_loadRuneTypes().catch(function() { return null; })
+    ]).then(function(arr) {
+      var lookups = arr[0];
+      var catalog = arr[1];
+      var pool = stored && stored.pool ? stored.pool : _ar_extractRunePool(inv, gear, lookups);
+      var hasAny = false;
+      for (var rn in pool) { var t = pool[rn]; for (var s in t) { if (t[s] > 0) { hasAny = true; break; } } if (hasAny) break; }
+      if (!hasAny) {
+        showEmpty(isOwn
+          ? 'No runes detected. Run Import TopWar Data once your bag has runes or your gold gear pool has unequipped pieces.'
+          : 'No published rune pool.');
+        return;
+      }
+      paintGrid(pool, catalog);
+    });
   }
 
   function renderInventoryTab(merged, siteKey, unlocked) {
