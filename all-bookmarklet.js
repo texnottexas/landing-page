@@ -271,17 +271,37 @@
       }
       if (!HC._heroEquipSchemes) throw new Error('Hero equip schemes map missing');
 
-      var T, getText, equipTable, buffRdTable, skillRdTable, heroTable, effectBuff;
+      var TM, T, getText, equipTable, buffRdTable, skillRdTable, heroTable, effectBuff;
       try {
-        T = req('TableManager').TABLE._tableMap;
+        TM = req('TableManager').TABLE;
+        T = TM._tableMap;
         getText = req('LocalManager').LOCAL.getText.bind(req('LocalManager').LOCAL);
-        equipTable = T['hero_equip'];
-        buffRdTable = T['hero_equip_buff_rd'];
-        skillRdTable = T['hero_equip_skill_rd_library'];
-        heroTable = T['hero'];
-        effectBuff = T['effect_buff'];
       } catch (e) { throw new Error('Table manager not ready'); }
-      if (!equipTable) throw new Error('hero_equip table missing');
+
+      // Cold-session table warm-up. TableManager lazy-loads most groups; on a
+      // fresh game load `_tableMap['hero_equip']` and friends are null until
+      // something triggers them. Force-load each group we'll read from.
+      // getTableGroup populates the cache for that group; getTableDataById is
+      // used per-id below as a per-entry fallback so we never depend on the
+      // cache being complete.
+      ['hero_equip', 'hero_equip_buff_rd', 'hero_equip_skill_rd_library', 'hero', 'effect_buff'].forEach(function (name) {
+        try { TM.getTableGroup(name, true); } catch (_) {}
+      });
+      equipTable = T['hero_equip'] || {};
+      buffRdTable = T['hero_equip_buff_rd'] || {};
+      skillRdTable = T['hero_equip_skill_rd_library'] || {};
+      heroTable = T['hero'] || {};
+      effectBuff = T['effect_buff'] || {};
+
+      // Cache-first, decompressor-fallback lookup. Necessary because
+      // TableManager only stores a subset of each group in _tableMap; full
+      // entries are decompressed on-demand via getTableDataById.
+      function lookup(name, id) {
+        var t = T[name];
+        var v = t && t[id];
+        if (v) return v;
+        try { return TM.getTableDataById(name, id); } catch (_) { return null; }
+      }
 
       var heroNameById = {};
       for (var hk in heroTable) {
@@ -290,7 +310,7 @@
       }
       function resolveBuffName(buff_id) {
         if (!buff_id) return null;
-        var e = effectBuff && effectBuff[buff_id];
+        var e = lookup('effect_buff', buff_id);
         return e && e.string ? getText(e.string) : 'buff_id:' + buff_id;
       }
       function getMax(rd) {
@@ -303,7 +323,7 @@
       var QUAL = { 2: 'Blue', 3: 'Purple', 4: 'Purple+', 5: 'Gold' };
       function processInfo(info) {
         if (info.type === 1) {
-          var rd = buffRdTable && buffRdTable[info.templateId];
+          var rd = lookup('hero_equip_buff_rd', info.templateId);
           var buff_id = rd ? rd.buff_id : null;
           var max = getMax(rd);
           return {
@@ -315,8 +335,11 @@
             enhanceShow: info.enhanceShow,
           };
         } else if (info.type === 2) {
-          var sk = skillRdTable && skillRdTable[info.templateId];
+          var sk = lookup('hero_equip_skill_rd_library', info.templateId);
           var star = null, starMax = null;
+          // Sibling-group iteration relies on the loaded cache. After
+          // getTableGroup the skillRdTable has 404 entries which covers
+          // every rune family, so this works on cold sessions.
           if (sk && sk.group != null) {
             var g = [];
             for (var skKey in skillRdTable) {
@@ -382,7 +405,7 @@
       var qHist = {};
       for (var ei = 0; ei < allEquips.length; ei++) {
         var e = allEquips[ei];
-        var cfg = equipTable[e.equipId];
+        var cfg = lookup('hero_equip', e.equipId);
         if (!cfg) continue;
         qHist[cfg.quality] = (qHist[cfg.quality] || 0) + 1;
         var isEquipped = !!(e.heroId && e.heroId > 0);
