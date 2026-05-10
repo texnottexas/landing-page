@@ -1283,6 +1283,13 @@
     background: rgba(63, 185, 80, 0.12); color: var(--army-green, #3fb950);
     border: 1px solid rgba(63, 185, 80, 0.4);
   }
+  /* "Unequipped" — yellow pill on the Rune Pool tab for runes still attached
+     to idle gold gear pieces (not on a hero). Distinct from "Recovered" which
+     represents queued recycles in the hypothetical pool. */
+  .rune-card .rune-source-unequipped {
+    background: rgba(227, 179, 65, 0.14); color: #e3b341;
+    border: 1px solid rgba(227, 179, 65, 0.45);
+  }
   .rune-card .rune-total { font-size: 0.75rem; color: var(--accent); margin-top: 0.1rem; }
   @media (max-width: 600px) { .runepool-grid { grid-template-columns: repeat(2, 1fr); } }
   /* Rune Pool edit modal */
@@ -1338,12 +1345,22 @@
     background: rgba(121, 192, 255, 0.12); color: var(--accent);
     border: 1px solid rgba(121, 192, 255, 0.4);
   }
-  .adv-pool-row .ap-pill.rec {
-    background: rgba(63, 185, 80, 0.12); color: #3fb950;
-    border: 1px solid rgba(63, 185, 80, 0.4);
+  /* Unequipped (yellow) — runes on idle gold gear pieces, mirrors the Rune
+     Pool tab's renamed pill so the two surfaces share vocabulary. */
+  .adv-pool-row .ap-pill.unequipped {
+    background: rgba(227, 179, 65, 0.14); color: #e3b341;
+    border: 1px solid rgba(227, 179, 65, 0.45);
   }
-  .adv-pool-row .ap-delta { color: #3fb950; font-weight: 600; font-variant-numeric: tabular-nums; flex-shrink: 0; }
-  .adv-pool-row .ap-delta.neg { color: #f85149; }
+  /* Recovered (green) — net positive bag delta from queued recycle steps. */
+  .adv-pool-row .ap-pill.recovered {
+    background: rgba(63, 185, 80, 0.14); color: #3fb950;
+    border: 1px solid rgba(63, 185, 80, 0.5);
+  }
+  /* Spent (red) — net negative delta when queued merges consume fodder. */
+  .adv-pool-row .ap-pill.spent {
+    background: rgba(248, 81, 73, 0.12); color: #f85149;
+    border: 1px solid rgba(248, 81, 73, 0.45);
+  }
   .adv-step-list {
     list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .4rem;
   }
@@ -13704,9 +13721,9 @@
         }
         if (gearN > 0) {
           var gearPill = document.createElement('span');
-          gearPill.className = 'rune-source-pill rune-source-recoverable';
-          gearPill.textContent = 'Recoverable: ' + gearN;
-          gearPill.title = 'Runes attached to unequipped gold gear pieces. Single-gear recycle returns non-upgraded (s:0) ones to your bag intact.';
+          gearPill.className = 'rune-source-pill rune-source-unequipped';
+          gearPill.textContent = 'Unequipped: ' + gearN;
+          gearPill.title = 'Runes attached to gold gear pieces sitting in your bag (not equipped to a hero). Single-gear recycle returns non-upgraded (0★) ones to your bag intact.';
           counts.appendChild(gearPill);
         }
         card.appendChild(counts);
@@ -16414,8 +16431,10 @@
     body.className = 'asr-body';
     var title = document.createElement('div');
     title.className = 'asr-title';
+    // Advisor codes are canonical-lowercase; render as-is so a manual
+    // copy-paste of what's on screen lines up with the regex on the URL side.
     var titleText = isOwner
-      ? ('Code ' + rec.code.toUpperCase() + (rec.advisorName ? '  ·  Advisor: ' + rec.advisorName : ''))
+      ? ('Code ' + rec.code + (rec.advisorName ? '  ·  Advisor: ' + rec.advisorName : ''))
       : (rec.playerName ? rec.playerName : 'Player');
     title.textContent = titleText;
     body.appendChild(title);
@@ -16439,7 +16458,7 @@
     actions.className = 'asr-actions';
     var openBtn = document.createElement('a');
     openBtn.className = 'asr-action';
-    openBtn.textContent = isOwner ? 'Open' : 'Open';
+    openBtn.textContent = 'Open';
     openBtn.href = isOwner
       ? 'https://2864tw.com/armory-report.html#tab=myadvisorplans'
       : 'https://2864tw.com/armory-report.html?advise=' + rec.code;
@@ -16447,12 +16466,43 @@
     actions.appendChild(openBtn);
 
     if (isOwner) {
+      // Copy link — the whole point of My Requests is being able to re-share
+      // the advisor URL with a teammate, so it gets its own primary button.
+      var copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'asr-action';
+      copyBtn.textContent = 'Copy link';
+      copyBtn.title = 'Copy the advisor URL for code ' + rec.code;
+      var shareUrl = 'https://2864tw.com/armory-report.html?advise=' + rec.code;
+      copyBtn.addEventListener('click', async function() {
+        var prev = copyBtn.textContent;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(shareUrl);
+          } else {
+            // Fallback for older browsers + non-https origins
+            var ta = document.createElement('textarea');
+            ta.value = shareUrl;
+            ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+          }
+          copyBtn.textContent = 'Copied ✓';
+        } catch (e) {
+          copyBtn.textContent = 'Copy failed';
+        }
+        setTimeout(function() { copyBtn.textContent = prev; }, 1500);
+      });
+      actions.appendChild(copyBtn);
+
       var del = document.createElement('button');
       del.type = 'button';
       del.className = 'asr-action danger';
       del.textContent = 'Delete';
       del.addEventListener('click', async function() {
-        if (!confirm('Delete advisor request ' + rec.code.toUpperCase() + '? The advisor will lose access; the plan (if any) will be removed.')) return;
+        if (!confirm('Delete advisor request ' + rec.code + '? The advisor will lose access; the plan (if any) will be removed.')) return;
         del.disabled = true; del.textContent = 'Deleting…';
         try {
           var ident = (typeof getStoredIdentity === 'function') ? getStoredIdentity() : null;
@@ -16739,15 +16789,21 @@
 
   function _ar_advisorStepEnglish(step) {
     function hn(id) { return (typeof heroName === 'function') ? heroName(id) : ('Hero #' + id); }
+    // Resolve slot 1..6 to the in-game gear-piece name (Assault Pistol etc.)
+    // so plan steps read like inventory actions instead of indexed array entries.
+    function sn(s) {
+      if (typeof GEAR_SLOT_NAMES === 'object' && GEAR_SLOT_NAMES && GEAR_SLOT_NAMES[s]) return GEAR_SLOT_NAMES[s];
+      return 'slot ' + s;
+    }
     switch (step.type) {
       case 'place':
-        return 'Place ' + step.runeName + ' on ' + hn(step.dstHero) + ' slot ' + step.dstSlot + ' (1 ' + step.runeName + ' s:0)';
+        return 'Place ' + step.runeName + ' on ' + hn(step.dstHero) + "'s " + sn(step.dstSlot) + ' (1 ' + step.runeName + ' 0★)';
       case 'merge':
-        return 'Merge ' + step.runeName + ' on ' + hn(step.dstHero) + ' slot ' + step.dstSlot + ' from ' + step.fromStar + '★ to ' + step.toStar + '★';
+        return 'Merge ' + step.runeName + ' on ' + hn(step.dstHero) + "'s " + sn(step.dstSlot) + ' from ' + step.fromStar + '★ to ' + step.toStar + '★';
       case 'inherit':
-        return 'Inherit ' + hn(step.srcHero) + ' slot ' + step.srcSlot + ' ↔ ' + hn(step.dstHero) + ' slot ' + step.dstSlot;
+        return 'Inherit ' + hn(step.srcHero) + "'s " + sn(step.srcSlot) + ' ↔ ' + hn(step.dstHero) + "'s " + sn(step.dstSlot);
       case 'recycle':
-        return 'Recycle ' + hn(step.srcHero) + ' slot ' + step.srcSlot + ' (returns rune to bag)';
+        return 'Recycle ' + hn(step.srcHero) + "'s " + sn(step.srcSlot) + ' (returns rune to bag)';
       default:
         return JSON.stringify(step);
     }
@@ -17160,36 +17216,43 @@
         nameEl.className = 'ap-name';
         nameEl.textContent = name;
         row.appendChild(nameEl);
-        // Bag (s:0) and Recoverable (s:1+) pills, matching the Rune Pool tab.
-        // Render only the non-zero side(s) so single-source families stay compact.
+        // Render only the non-zero pills so single-source families stay compact.
+        // Bag = post-step loose runes. Unequipped = post-step gear-attached.
+        // Recovered = net positive delta from queued recycles (runes added to
+        // bag by the plan). Spent = net negative delta from merge fodder use.
         if (bagN > 0) {
           var bagEl = document.createElement('span');
           bagEl.className = 'ap-pill bag';
           bagEl.textContent = 'Bag: ' + bagN;
-          bagEl.title = 'Loose runes in your bag (0 stars).';
+          bagEl.title = 'Loose runes in your bag (0 stars) after the plan applies.';
           row.appendChild(bagEl);
         }
         if (gearN > 0) {
-          var recEl = document.createElement('span');
-          recEl.className = 'ap-pill rec';
-          recEl.textContent = 'Recoverable: ' + gearN;
-          recEl.title = 'Runes attached to unequipped gold gear pieces. Single-gear recycle returns 0-star ones to your bag intact.';
-          row.appendChild(recEl);
+          var uneqEl = document.createElement('span');
+          uneqEl.className = 'ap-pill unequipped';
+          uneqEl.textContent = 'Unequipped: ' + gearN;
+          uneqEl.title = 'Runes on gold gear pieces sitting in your bag (not on a hero) after the plan applies.';
+          row.appendChild(uneqEl);
         }
         if (bagN === 0 && gearN === 0 && total === 0 && baseTotal > 0) {
-          // Family was depleted by queued steps — show a 0 placeholder so the
-          // delta has something to sit next to.
           var emptyEl = document.createElement('span');
           emptyEl.className = 'ap-pill bag';
           emptyEl.style.opacity = '.5';
           emptyEl.textContent = '0';
           row.appendChild(emptyEl);
         }
-        if (delta !== 0) {
-          var deltaEl = document.createElement('span');
-          deltaEl.className = 'ap-delta' + (delta < 0 ? ' neg' : '');
-          deltaEl.textContent = (delta > 0 ? '+' : '') + delta;
-          row.appendChild(deltaEl);
+        if (delta > 0) {
+          var recEl = document.createElement('span');
+          recEl.className = 'ap-pill recovered';
+          recEl.textContent = 'Recovered: +' + delta;
+          recEl.title = 'Runes the plan adds back to your bag via recycle steps.';
+          row.appendChild(recEl);
+        } else if (delta < 0) {
+          var spEl = document.createElement('span');
+          spEl.className = 'ap-pill spent';
+          spEl.textContent = 'Spent: ' + delta;
+          spEl.title = 'Runes the plan consumes as merge fodder.';
+          row.appendChild(spEl);
         }
         poolGrid.appendChild(row);
       });
@@ -21289,8 +21352,11 @@
 
     // Check for ?advise=<code> URL param — Rune Advisor mode (Phase 2)
     // Takes priority over ?code= when both are present.
+    // Accept any case from the URL (settings modal historically showed the
+    // code uppercased so copy/paste rewrites the canonical lowercase form);
+    // normalise here before the worker lookup.
     var params = new URLSearchParams(window.location.search);
-    var adviseCode = params.get('advise');
+    var adviseCode = (params.get('advise') || '').toLowerCase();
     if (adviseCode && /^[a-z0-9]{6}$/.test(adviseCode)) {
       Promise.all([migrationDone, _ar_decorReady.catch(function() { return null; })]).finally(function() {
         _ar_initAdvisorMode(adviseCode);
