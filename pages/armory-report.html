@@ -1171,6 +1171,30 @@
   .import-tw-pill:hover { background: rgba(63,185,80,0.2); box-shadow: 0 0 14px rgba(63,185,80,0.25); }
   .import-tw-pill:active { transform: translateY(1px); }
   .import-tw-pill svg { flex-shrink: 0; }
+
+  /* ── Rune Pool tab (Phase 1 of rune-advisor; read-only derived view) ─── */
+  .runepool-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.75rem;
+  }
+  .rune-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.75rem; text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 0.4rem;
+  }
+  .rune-card img { width: 64px; height: 64px; image-rendering: pixelated; }
+  .rune-card .rune-name { font-weight: 600; color: var(--text); font-size: .85rem; line-height: 1.2; }
+  .rune-card .rune-counts {
+    display: flex; flex-wrap: wrap; gap: 0.25rem; justify-content: center;
+    font-size: 0.7rem; color: var(--muted);
+  }
+  .rune-card .rune-tier-pill {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 999px; padding: 1px 6px; font-variant-numeric: tabular-nums;
+  }
+  .rune-card .rune-total { font-size: 0.75rem; color: var(--accent); margin-top: 0.1rem; }
+  @media (max-width: 600px) { .runepool-grid { grid-template-columns: repeat(2, 1fr); } }
   .whats-new-pill .dot {
     width: 6px; height: 6px; border-radius: 50%;
     background: var(--accent); flex-shrink: 0;
@@ -2196,7 +2220,7 @@
   // full schema. Functions remain byte-faithful to the previous inline
   // localStorage calls — this is centralisation, not behaviour change.
   var ArmoryIdentity = (function() {
-    var SUP_KINDS = ['inv', 'bench', 'chips', 'gear'];
+    var SUP_KINDS = ['inv', 'bench', 'chips', 'gear', 'runepool'];
 
     function safeRead(key) {
       try { return localStorage.getItem(key); } catch (e) { return null; }
@@ -2768,7 +2792,7 @@
     var local = ArmoryIdentity.getSupplement(kind, siteKey);
     if (!local) return 'no-change';
     var localTs = 0;
-    if (kind === 'inv' || kind === 'gear') {
+    if (kind === 'inv' || kind === 'gear' || kind === 'runepool') {
       localTs = (local.meta && local.meta.ts) ? new Date(local.meta.ts).getTime() : 0;
     } else {
       localTs = local.ts ? new Date(local.ts).getTime() : 0;
@@ -2816,10 +2840,65 @@
   // prevent reload loops when the upload itself keeps failing.
   function _ar_supplementLocalTs(kind, obj) {
     if (!obj) return 0;
-    if (kind === 'inv' || kind === 'gear') {
+    if (kind === 'inv' || kind === 'gear' || kind === 'runepool') {
       return (obj.meta && obj.meta.ts) ? new Date(obj.meta.ts).getTime() : 0;
     }
     return obj.ts ? new Date(obj.ts).getTime() : 0;
+  }
+
+  // ── Rune Advisor: rune-pool extraction ─────────────────────────────────
+  // Sums runes from two sources the consolidated bookmarklet (v=2 envelope)
+  // already publishes for any S2864 player:
+  //   (a) Free runes in the bag — inv.tabs.item entries whose templateId
+  //       resolves to a rune via the in-page RUNE_MAP / resolveRune helper.
+  //   (b) Runes attached to UNEQUIPPED gold pieces — gear.goldGear[] filtered
+  //       to heroId === 0, then piece.buffs.find(b => b.type === 'rune').
+  // Equipped pieces are excluded by design (those runes are in active use):
+  // anything in equippedNonGold / presetOnly, and gold pieces with heroId>0.
+  function _ar_extractRunePool(inv, gear) {
+    var pool = {};
+    function bump(name, star, qty) {
+      if (!name || qty <= 0) return;
+      if (!pool[name]) pool[name] = {0:0,1:0,2:0,3:0,4:0,5:0,6:0};
+      pool[name][star] = (pool[name][star] || 0) + qty;
+    }
+    if (inv && inv.tabs && Array.isArray(inv.tabs.item)) {
+      for (var i = 0; i < inv.tabs.item.length; i++) {
+        var it = inv.tabs.item[i];
+        var r = (typeof resolveRune === 'function') ? resolveRune(+it.id) : null;
+        if (!r) continue;
+        bump(r.n, r.s, it.a || 1);
+      }
+    }
+    if (gear && Array.isArray(gear.goldGear)) {
+      for (var j = 0; j < gear.goldGear.length; j++) {
+        var p = gear.goldGear[j];
+        if (p && p.heroId && p.heroId > 0) continue; // equipped, skip
+        var rune = ((p && p.buffs) || []).find(function(b) { return b && b.type === 'rune'; });
+        if (!rune) continue;
+        var name = rune.name;
+        var star = (rune.star != null) ? rune.star : 0;
+        if (!name && rune.templateId != null && typeof resolveRune === 'function') {
+          var rr = resolveRune(+rune.templateId);
+          if (rr) { name = rr.n; if (rune.star == null) star = rr.s; }
+        }
+        bump(name, star, 1);
+      }
+    }
+    return pool;
+  }
+
+  // Lazy-loaded canonical rune catalog from data/rune-types.json. Provides
+  // per-slot star caps + merge/recycle/inherit mechanics for the advisor.
+  // Phase 1 only consumes the icon + name for rendering; Phase 3 step
+  // builder pulls the cost data. Cached after first fetch.
+  var _ar_runeTypes = null;
+  function _ar_loadRuneTypes() {
+    if (_ar_runeTypes) return Promise.resolve(_ar_runeTypes);
+    return fetch('data/rune-types.json', { cache: 'default' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(j) { _ar_runeTypes = j; return j; })
+      .catch(function() { return null; });
   }
 
   async function _ar_selfHealSupplements(siteKey) {
@@ -5412,7 +5491,7 @@
           // once at initial render with closure-scoped counts (switchTab has no
           // 'overview' case) — clearing it would leave the tab blank, so skip it.
           try {
-            var REFRESHABLE = ['heroes', 'decorations', 'bases', 'enigma', 'chips', 'formation', 'inventory'];
+            var REFRESHABLE = ['heroes', 'decorations', 'bases', 'enigma', 'chips', 'formation', 'inventory', 'runepool'];
             REFRESHABLE.forEach(function(name) {
               var c = document.getElementById('tab-' + name);
               if (!c) return;
@@ -6578,6 +6657,7 @@
     ];
     if (inS2864) {
       tabDefs.push({ id: 'inventory', label: 'Inventory' });
+      tabDefs.push({ id: 'runepool', label: 'Rune Pool' });
     }
 
     var ownIdentityForTabs = getStoredIdentity();
@@ -6675,6 +6755,7 @@
       case 'chips':       renderChipsTab(m); break;
       case 'formation':   renderFormationTab(m); break;
       case 'inventory':   renderInventoryTab(m, siteKey, _ar_isUnlocked(siteKey)); break;
+      case 'runepool':    renderRunePoolTab(siteKey, _ar_isUnlocked(siteKey)); break;
     }
   }
 
@@ -12736,6 +12817,147 @@
 
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
+  }
+
+  // ── Rune Pool tab (read-only, derived from inv + gear) ─────────────────
+  // Phase 1 of the rune-advisor feature (see docs/superpowers/plans/
+  // 2026-05-09-titan-gear-rune-advisor.md). Shows a derived count of every
+  // rune the player has available — bag runes plus runes attached to their
+  // unequipped gold pieces — across all 14 rune families. The manual editor
+  // (Phase 1.4) and the advisor request flow (Phase 2) layer on top of this.
+  function renderRunePoolTab(siteKey, unlocked) {
+    var container = document.getElementById('tab-runepool');
+    if (!container) return;
+    container.replaceChildren();
+
+    var isOwn = _ar_isOwnReport(siteKey);
+
+    // Toolbar — title + cloud-sync pill (right-aligned).
+    var toolbar = document.createElement('div');
+    toolbar.style.cssText = 'display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem;';
+    var title = document.createElement('div');
+    title.style.cssText = 'font-size:1rem;font-weight:600;color:var(--text);';
+    title.textContent = 'Rune Pool';
+    toolbar.appendChild(title);
+    var sub = document.createElement('div');
+    sub.style.cssText = 'font-size:.75rem;color:var(--muted);';
+    sub.textContent = 'Available runes — your bag plus runes on unequipped gold pieces.';
+    toolbar.appendChild(sub);
+
+    if (siteKey) {
+      var pill = _ar_buildCloudSyncPill('runepool', siteKey, { isOwner: !!isOwn });
+      pill.style.marginLeft = 'auto';
+      toolbar.appendChild(pill);
+    }
+    container.appendChild(toolbar);
+
+    // Source resolution: prefer explicit runepool supplement; fall back to
+    // a derived view from inv + gear when the player hasn't saved one yet.
+    var stored = siteKey ? ArmoryIdentity.getSupplement('runepool', siteKey) : null;
+    var pool = stored && stored.pool ? stored.pool : null;
+    var derived = false;
+    var inv = siteKey ? ArmoryIdentity.getSupplement('inv', siteKey) : null;
+    var gear = siteKey ? ArmoryIdentity.getSupplement('gear', siteKey) : null;
+    if (!pool) {
+      pool = _ar_extractRunePool(inv, gear);
+      derived = true;
+    }
+
+    // Status line under the toolbar.
+    var status = document.createElement('div');
+    status.style.cssText = 'font-size:.72rem;color:var(--muted);margin-bottom:.75rem;line-height:1.5;';
+    if (stored) {
+      var ts = (stored.meta && stored.meta.ts) ? stored.meta.ts : null;
+      var sourceLabel = stored.source === 'manual'           ? 'manual edits'
+                      : stored.source === 'advisor-applied'  ? 'applied from advisor plan ' + (stored.appliedFromCode || '')
+                      : 'saved snapshot';
+      status.textContent = 'Saved pool (' + sourceLabel + ')'
+                         + (ts ? ' · ' + _ar_relativeAge(ts) : '');
+    } else if (derived && (inv || gear)) {
+      status.textContent = 'Derived from your inventory and titan gear pool. '
+                         + 'Use Import TopWar Data in the header to refresh.';
+    } else if (isOwn) {
+      status.textContent = 'No rune data yet. Use Import TopWar Data in the header to populate from your inventory and titan gear pool.';
+    } else {
+      status.textContent = 'This player has not published a rune pool yet.';
+    }
+    container.appendChild(status);
+
+    // Empty-state when there's truly nothing to render (no derived counts AND no saved pool).
+    var hasAny = false;
+    for (var rn in pool) { var t = pool[rn]; for (var s in t) { if (t[s] > 0) { hasAny = true; break; } } if (hasAny) break; }
+    if (!hasAny) {
+      var emptyHint = document.createElement('div');
+      emptyHint.style.cssText = 'padding:1.5rem;text-align:center;color:var(--muted);font-size:.85rem;border:1px dashed var(--border);border-radius:8px;';
+      emptyHint.textContent = isOwn
+        ? 'No runes detected. Run Import TopWar Data once your bag has runes or your gold gear pool has unequipped pieces.'
+        : 'No published rune pool.';
+      container.appendChild(emptyHint);
+      return;
+    }
+
+    // Grid render — one card per rune family that has any non-zero count.
+    var grid = document.createElement('div');
+    grid.className = 'runepool-grid';
+    container.appendChild(grid);
+
+    // Use the canonical 14-family order from data/rune-types.json when it's
+    // available; until then fall back to a sorted list of names found in pool.
+    function paint(catalog) {
+      grid.replaceChildren();
+      var order;
+      if (catalog && Array.isArray(catalog.runes) && catalog.runes.length) {
+        order = catalog.runes.map(function(r) { return r.name; });
+      } else {
+        order = Object.keys(pool).sort();
+      }
+      var iconMap = (typeof RUNE_ICON === 'object' && RUNE_ICON) ? RUNE_ICON : {};
+      for (var i = 0; i < order.length; i++) {
+        var name = order[i];
+        var tiers = pool[name];
+        if (!tiers) continue;
+        var total = 0; for (var k in tiers) total += (tiers[k] || 0);
+        if (!total) continue;
+
+        var card = document.createElement('div');
+        card.className = 'rune-card';
+
+        var iconFile = iconMap[name];
+        if (iconFile) {
+          var img = document.createElement('img');
+          img.src = ASSET_BASE + 'assets/rune-icons/' + iconFile + '.png';
+          img.alt = '';
+          img.onerror = function() { this.style.display = 'none'; };
+          card.appendChild(img);
+        }
+        var nameEl = document.createElement('div');
+        nameEl.className = 'rune-name';
+        nameEl.textContent = name;
+        card.appendChild(nameEl);
+
+        var counts = document.createElement('div');
+        counts.className = 'rune-counts';
+        var STAR_LABELS = ['s:0', 's:1', 's:2', 's:3', 's:4', 's:5', 's:6'];
+        for (var s2 = 0; s2 <= 6; s2++) {
+          var c = tiers[s2] || 0;
+          if (!c) continue;
+          var pillEl = document.createElement('span');
+          pillEl.className = 'rune-tier-pill';
+          pillEl.textContent = STAR_LABELS[s2] + ' × ' + c;
+          counts.appendChild(pillEl);
+        }
+        card.appendChild(counts);
+
+        var totalEl = document.createElement('div');
+        totalEl.className = 'rune-total';
+        totalEl.textContent = total + ' total';
+        card.appendChild(totalEl);
+
+        grid.appendChild(card);
+      }
+    }
+    paint(null);
+    _ar_loadRuneTypes().then(function(cat) { if (cat) paint(cat); });
   }
 
   function renderInventoryTab(merged, siteKey, unlocked) {
