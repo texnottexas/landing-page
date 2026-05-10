@@ -1942,11 +1942,11 @@
   }
   .gp-card .quality-tag { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
 
-  /* Rune badge sits in the top-right corner just under the hero pill. Pulled
-     out of its old bottom-right spot so the random-stat rows below can take
-     the full card width without dancing around it. */
+  /* Rune badge sits in the top-right corner clearly below the hero pill so
+     it never visually collides with the avatar. Pulled out of its old bottom
+     -right spot so the random-stat rows below can take the full card width. */
   .gp-card .rune-badge {
-    position: absolute; top: 30px; right: 8px;
+    position: absolute; top: 42px; right: 8px;
     width: 26px; height: 26px; border-radius: 50%; overflow: hidden;
     background: var(--card); border: 1.5px solid var(--accent);
   }
@@ -9248,12 +9248,15 @@
     });
 
     var sortOpts = [
-      { value: 'default', label: 'Equipped → hero → slot' },
-      { value: 'slot-asc', label: 'Slot ↑' },
-      { value: 'score-desc', label: 'Score ↓' },
-      { value: 'level-desc', label: 'Level ↓' },
+      { value: 'default',      label: 'Equipped → hero → slot' },
+      { value: 'slot-asc',     label: 'Slot ↑' },
+      { value: 'slot-desc',    label: 'Slot ↓' },
+      { value: 'score-desc',   label: 'Score ↓' },
+      { value: 'score-asc',    label: 'Score ↑' },
+      { value: 'level-desc',   label: 'Level ↓' },
+      { value: 'level-asc',    label: 'Level ↑' },
       { value: 'quality-desc', label: 'Quality ↓' },
-      { value: 'refine-desc', label: 'Refinement ↓' }
+      { value: 'quality-asc',  label: 'Quality ↑' }
     ];
 
     mkDropdown('Hero', heroOpts, 'hero');
@@ -9341,14 +9344,13 @@
       var copy = arr.slice();
       switch (state.sort) {
         case 'slot-asc':     copy.sort(function (a, b) { return (a.slot - b.slot) || (b.quality - a.quality) || (b.level - a.level); }); break;
+        case 'slot-desc':    copy.sort(function (a, b) { return (b.slot - a.slot) || (b.quality - a.quality) || (b.level - a.level); }); break;
         case 'score-desc':   copy.sort(function (a, b) { return (pieceScore(b) - pieceScore(a)) || (b.quality - a.quality); }); break;
+        case 'score-asc':    copy.sort(function (a, b) { return (pieceScore(a) - pieceScore(b)) || (a.quality - b.quality); }); break;
         case 'level-desc':   copy.sort(function (a, b) { return (b.level - a.level) || (b.quality - a.quality); }); break;
+        case 'level-asc':    copy.sort(function (a, b) { return (a.level - b.level) || (a.quality - b.quality); }); break;
         case 'quality-desc': copy.sort(function (a, b) { return (b.quality - a.quality) || (a.slot - b.slot); }); break;
-        case 'refine-desc':  copy.sort(function (a, b) {
-          var ar = a.refinement && a.refinement.percent != null ? a.refinement.percent : -1;
-          var br = b.refinement && b.refinement.percent != null ? b.refinement.percent : -1;
-          return (br - ar) || (b.quality - a.quality);
-        }); break;
+        case 'quality-asc':  copy.sort(function (a, b) { return (a.quality - b.quality) || (a.slot - b.slot); }); break;
         default: copy.sort(defaultCompare);
       }
       return copy;
@@ -9566,21 +9568,9 @@
         statListWrap.appendChild(rowWrap);
       });
       randomCol.appendChild(statListWrap);
-      if (p.refinement) {
-        var refRow = _gp_el('div', { style: 'margin-top:10px;padding-top:8px;border-top:1px dashed var(--border);font-size:11px;' });
-        var pct = p.refinement.percent || 0;
-        var refColor = p.refinement.meetsThreshold ? 'var(--green)' : 'var(--muted)';
-        refRow.appendChild(_gp_el('span', { style: 'color:var(--muted);', text: 'Refinement: ' }));
-        refRow.appendChild(_gp_el('span', { style: 'color:' + refColor + ';font-weight:700;', text: pct + '%' }));
-        var thrSpan = _gp_el('span', { style: 'color:var(--muted);display:inline-flex;align-items:center;gap:4px;' });
-        thrSpan.appendChild(document.createTextNode(' (70% threshold '));
-        thrSpan.appendChild(_gp_svgIcon(p.refinement.meetsThreshold ? 'check' : 'cross', {
-          size: 11, stroke: p.refinement.meetsThreshold ? 'var(--green)' : 'var(--red)'
-        }));
-        thrSpan.appendChild(document.createTextNode(')'));
-        refRow.appendChild(thrSpan);
-        randomCol.appendChild(refRow);
-      }
+      // Refinement progress is exclusively per-random-stat: the per-row roll bar
+      // and percent label already encode whether each stat meets its own 70%
+      // threshold. There is no meaningful aggregate, so don't render one here.
     }
     grid.appendChild(randomCol);
 
