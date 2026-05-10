@@ -40,11 +40,35 @@
     }
 
     async function openPanel(uiData, mountPath, fallbackClick, timeoutMs) {
+      // The mount path is the canonical "first frame in PopLayer" location for
+      // this panel; cc.find('a/b/UIFrameNone/c/X') only matches the FIRST
+      // UIFrameNone child, so when multiple UIFrameNone frames are stacked
+      // (e.g. chip panel + gear panel both use UIFrameNone) the panel can
+      // mount inside the second frame and the direct find returns null.
+      // Walk PopLayer for any active frame whose CONTENT holds our panel.
+      var panelName = mountPath.split('/').pop();
+      function findPanel() {
+        // Direct path first (fastest, covers the typical single-frame case)
+        var node = cc.find(mountPath);
+        if (node && node.active) return node;
+        // Walk fallback for stacked-frame case
+        var pop = cc.find('UICanvas/PopLayer');
+        if (!pop) return null;
+        for (var i = 0; i < pop.children.length; i++) {
+          var frame = pop.children[i];
+          if (!frame.active) continue;
+          var content = (frame.children || []).find(function (c) { return c.name === 'CONTENT'; });
+          if (!content) continue;
+          var found = (content.children || []).find(function (c) { return c.name === panelName && c.active; });
+          if (found) return found;
+        }
+        return null;
+      }
       var t0 = Date.now();
       try { UIMgr.OpenUI(uiData); } catch (e) { /* fall through to fallback */ }
       while (Date.now() - t0 < (timeoutMs || 5000)) {
-        var node = cc.find(mountPath);
-        if (node && node.active) return node;
+        var n = findPanel();
+        if (n) return n;
         await delay(80);
       }
       // Fallback: button-event style click on the documented entry point
@@ -52,8 +76,8 @@
         try { fallbackClick(); } catch (e) { /* swallow */ }
         var t1 = Date.now();
         while (Date.now() - t1 < 5000) {
-          var n2 = cc.find(mountPath);
-          if (n2 && n2.active) return n2;
+          var n2 = findPanel();
+          if (n2) return n2;
           await delay(80);
         }
       }
@@ -278,14 +302,33 @@
         getText = req('LocalManager').LOCAL.getText.bind(req('LocalManager').LOCAL);
       } catch (e) { throw new Error('Table manager not ready'); }
 
-      // Cold-session table warm-up. TableManager lazy-loads most groups; on a
-      // fresh game load `_tableMap['hero_equip']` and friends are null until
-      // something triggers them. Force-load each group we'll read from.
-      // getTableGroup populates the cache for that group; getTableDataById is
-      // used per-id below as a per-entry fallback so we never depend on the
-      // cache being complete.
+      // Cold-session table warm-up.
+      //
+      // Two layers of laziness in TableManager:
+      //   1. Group level: _tableMap[name] is null until getTableGroup loads it.
+      //   2. Entry level: even after the group is loaded, individual entries
+      //      are stored as compressed backtick-delimited strings (e.g.
+      //      "100501`5`2`5`^#5`^#11`...") and only get decoded into objects
+      //      on first call to getTableDataById(name, id) — which mutates the
+      //      cache in-place, replacing the string with the parsed object.
+      //
+      // For gear extraction we iterate `for k in skillRdTable` to find sibling
+      // group members, and read fields like cfg.quality directly. Both require
+      // every entry in those tables to be in DECODED form. So after loading
+      // the group, walk every cached id and call getTableDataById to decode it.
+      //
+      // hero (206) and effect_buff (2577) appear to be loaded eagerly with
+      // entries pre-decoded at game boot, but we run them through the same
+      // pipeline to be defensive.
       ['hero_equip', 'hero_equip_buff_rd', 'hero_equip_skill_rd_library', 'hero', 'effect_buff'].forEach(function (name) {
         try { TM.getTableGroup(name, true); } catch (_) {}
+        var t = T[name];
+        if (t) {
+          var keys = Object.keys(t);
+          for (var i = 0; i < keys.length; i++) {
+            try { TM.getTableDataById(name, keys[i]); } catch (_) {}
+          }
+        }
       });
       equipTable = T['hero_equip'] || {};
       buffRdTable = T['hero_equip_buff_rd'] || {};
@@ -293,13 +336,14 @@
       heroTable = T['hero'] || {};
       effectBuff = T['effect_buff'] || {};
 
-      // Cache-first, decompressor-fallback lookup. Necessary because
-      // TableManager only stores a subset of each group in _tableMap; full
-      // entries are decompressed on-demand via getTableDataById.
+      // Cached lookup with on-demand decode fallback for ids that aren't in
+      // the cache yet (e.g. an equipId the player owns whose entry getTableGroup
+      // didn't pull). getTableDataById both returns the decoded object and
+      // populates the cache for future iterations.
       function lookup(name, id) {
         var t = T[name];
         var v = t && t[id];
-        if (v) return v;
+        if (v && typeof v === 'object') return v;
         try { return TM.getTableDataById(name, id); } catch (_) { return null; }
       }
 
