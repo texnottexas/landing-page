@@ -1214,6 +1214,13 @@
     display: inline-flex; align-items: center; gap: 4px;
   }
   .runepool-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .runepool-advice-btn {
+    background: rgba(121, 192, 255, 0.15); border: 1px solid var(--accent); color: var(--accent);
+    border-radius: 6px; padding: 4px 12px; font-size: .75rem; font-weight: 600; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .runepool-advice-btn:hover { background: rgba(121, 192, 255, 0.28); }
+  .runepool-advice-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .runepool-edit-list {
     max-height: 56vh; overflow-y: auto; margin: 8px 0;
     border: 1px solid var(--border); border-radius: 6px;
@@ -13066,6 +13073,22 @@
         }
       };
       toolbar.appendChild(privBtn);
+
+      // "Request Rune Advice" CTA — only when the player has explicitly saved
+      // their runepool supplement (auto-derived view doesn't carry to the
+      // worker, so the advisor would have nothing to read). Posts to
+      // /advisor/request and shows a shareable URL on success.
+      if (ArmoryIdentity.getSupplement('runepool', siteKey)) {
+        var adviceBtn = document.createElement('button');
+        adviceBtn.className = 'runepool-advice-btn';
+        adviceBtn.type = 'button';
+        adviceBtn.textContent = 'Request Rune Advice';
+        adviceBtn.title = 'Generate a share link an advisor can open to coach your runes.';
+        adviceBtn.onclick = function() {
+          _ar_openAdvisorRequestModal(siteKey);
+        };
+        toolbar.appendChild(adviceBtn);
+      }
     }
 
     if (siteKey) {
@@ -15336,6 +15359,188 @@
       }
       document.body.removeChild(bg);
       if (typeof onSaved === 'function') onSaved();
+    };
+
+    document.body.appendChild(bg);
+  }
+
+  // ── Rune Advisor request modal (Phase 2) ─────────────────────────────────
+  // Player on their own report picks a target hero + free-text note, server
+  // mints a 6-char shortcode, modal shows a copyable share URL. The advisor
+  // opens that URL → armory-report.html?advise=<code> → bootstraps advisor
+  // mode (Phase 2.3) reading the player's saved runepool + report config.
+  function _ar_openAdvisorRequestModal(siteKey) {
+    var bg = document.createElement('div');
+    bg.className = 'modal-bg show';
+    bg.style.zIndex = '850';
+    var modal = document.createElement('div');
+    modal.className = 'modal sup-unlock-modal';
+    modal.style.maxWidth = '560px';
+    bg.appendChild(modal);
+
+    var h = document.createElement('h2');
+    h.textContent = 'Request Rune Advice';
+    modal.appendChild(h);
+
+    function showCloseOnly(message) {
+      var pp = document.createElement('p');
+      pp.textContent = message;
+      modal.appendChild(pp);
+      var ax = document.createElement('div');
+      ax.className = 'actions';
+      var close = document.createElement('button');
+      close.className = 'primary';
+      close.textContent = 'Close';
+      close.onclick = function() { document.body.removeChild(bg); };
+      ax.appendChild(close);
+      modal.appendChild(ax);
+      document.body.appendChild(bg);
+    }
+
+    // Resolve report shortcode + hero list. Both required for a useful
+    // advisor link — the advisor needs a shortcode to load gear and at
+    // least one hero to coach.
+    var savedConfig = null;
+    try { savedConfig = JSON.parse(localStorage.getItem('playerReport') || 'null'); } catch (e) {}
+    var shortcode = (savedConfig && savedConfig.shortcode) || null;
+    if (!shortcode) {
+      showCloseOnly('Save your report first. Auto-save runs when the wizard finalizes; the advisor needs a shortcode to load your gear.');
+      return;
+    }
+
+    var merged = mergeReportData(wizardState.reportData);
+    var heroes = (merged && Array.isArray(merged.heroes)) ? merged.heroes : [];
+    if (heroes.length === 0) {
+      showCloseOnly('Load at least one battle report so the advisor knows which heroes you want coaching for.');
+      return;
+    }
+
+    var p = document.createElement('p');
+    p.textContent = 'Pick the hero you want rune coaching on and add any context. The advisor gets a link to your gear, runes, and report.';
+    modal.appendChild(p);
+
+    var heroLabel = document.createElement('label');
+    heroLabel.textContent = 'Hero';
+    modal.appendChild(heroLabel);
+    var select = document.createElement('select');
+    select.style.cssText = 'width:100%;padding:8px;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:13px;margin-bottom:12px;';
+    var sortedHeroes = heroes.slice().sort(function(a, b) {
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+    sortedHeroes.forEach(function(hr) {
+      if (!hr || !hr.name) return;
+      var opt = document.createElement('option');
+      opt.value = hr.name;
+      opt.textContent = hr.name;
+      select.appendChild(opt);
+    });
+    modal.appendChild(select);
+
+    var noteLabel = document.createElement('label');
+    noteLabel.textContent = 'Note (optional, max 500 chars)';
+    modal.appendChild(noteLabel);
+    var note = document.createElement('textarea');
+    note.style.cssText = 'width:100%;min-height:80px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:12px;resize:vertical;margin-bottom:8px;';
+    note.maxLength = 500;
+    note.placeholder = 'e.g. "Building Rohr for SVS, mostly PvP boost. Already have 4 Artillery Storm in bag."';
+    modal.appendChild(note);
+
+    var err = document.createElement('div');
+    err.className = 'err';
+    modal.appendChild(err);
+
+    var resultBox = document.createElement('div');
+    resultBox.style.cssText = 'margin-top:12px;display:none;';
+    modal.appendChild(resultBox);
+
+    var actions = document.createElement('div');
+    actions.className = 'actions';
+    var cancel = document.createElement('button');
+    cancel.className = 'secondary';
+    cancel.textContent = 'Cancel';
+    cancel.onclick = function() { document.body.removeChild(bg); };
+    actions.appendChild(cancel);
+    var createBtn = document.createElement('button');
+    createBtn.className = 'primary';
+    createBtn.textContent = 'Create Request';
+    actions.appendChild(createBtn);
+    modal.appendChild(actions);
+
+    createBtn.onclick = async function() {
+      err.textContent = '';
+      err.style.color = '';
+      var hero = select.value;
+      var noteVal = (note.value || '').trim();
+      if (!hero) { err.textContent = 'Pick a hero.'; return; }
+      if (noteVal.length > 500) { err.textContent = 'Note too long (max 500 chars).'; return; }
+
+      createBtn.disabled = true;
+      cancel.disabled = true;
+      err.style.color = 'var(--muted)';
+      err.textContent = 'Creating request…';
+
+      try {
+        await _ar_ensureSupplementToken(siteKey);
+        if (!_ar_supplementToken) throw new Error('No upload token. Re-verify UID.');
+        var r = await fetch(SUPPLEMENT_WORKER + '/advisor/request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
+          body: JSON.stringify({ reportShortcode: shortcode, hero: hero, note: noteVal })
+        });
+        if (!r.ok) {
+          var msg = await r.text();
+          throw new Error(r.status + ' ' + msg);
+        }
+        var resp = await r.json();
+        var url = resp && resp.url;
+        if (!url) throw new Error('Server returned no url');
+
+        err.textContent = '';
+        resultBox.style.display = 'block';
+        resultBox.replaceChildren();
+        var label = document.createElement('div');
+        label.style.cssText = 'font-size:12px;color:var(--muted);margin-bottom:6px;';
+        label.textContent = 'Send this link to your advisor:';
+        resultBox.appendChild(label);
+        var urlInput = document.createElement('input');
+        urlInput.type = 'text';
+        urlInput.readOnly = true;
+        urlInput.value = url;
+        urlInput.style.cssText = 'width:100%;padding:6px 8px;background:var(--card);border:1px solid var(--accent);color:var(--accent);border-radius:6px;font-family:monospace;font-size:12px;margin-bottom:8px;box-sizing:border-box;';
+        urlInput.addEventListener('focus', function() { urlInput.select(); });
+        resultBox.appendChild(urlInput);
+        var copyBtn = document.createElement('button');
+        copyBtn.className = 'secondary';
+        copyBtn.type = 'button';
+        copyBtn.textContent = 'Copy Link';
+        copyBtn.onclick = function() {
+          var done = function() {
+            copyBtn.textContent = 'Copied!';
+            setTimeout(function() { copyBtn.textContent = 'Copy Link'; }, 1500);
+          };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(done, function() {
+              urlInput.select();
+              try { document.execCommand('copy'); done(); } catch (e) {}
+            });
+          } else {
+            urlInput.select();
+            try { document.execCommand('copy'); done(); } catch (e) {}
+          }
+        };
+        resultBox.appendChild(copyBtn);
+
+        select.disabled = true;
+        note.disabled = true;
+        createBtn.style.display = 'none';
+        cancel.disabled = false;
+        cancel.textContent = 'Close';
+      } catch (e) {
+        err.style.color = 'var(--red)';
+        err.textContent = 'Request failed: ' + e.message;
+        createBtn.disabled = false;
+        cancel.disabled = false;
+      }
     };
 
     document.body.appendChild(bg);
