@@ -1221,6 +1221,25 @@
   }
   .runepool-advice-btn:hover { background: rgba(121, 192, 255, 0.28); }
   .runepool-advice-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  /* Advisor mode banner (Phase 2.3) */
+  .advisor-banner {
+    position: sticky; top: 0; z-index: 1200;
+    background: linear-gradient(180deg, rgba(121, 192, 255, 0.18), rgba(121, 192, 255, 0.08));
+    border-bottom: 2px solid var(--accent);
+    padding: 8px 16px;
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+    font-size: 13px;
+  }
+  .advisor-banner .ab-tag {
+    background: var(--accent); color: var(--bg);
+    padding: 2px 10px; border-radius: 999px;
+    font-size: .7rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .advisor-banner .ab-text { flex: 1; min-width: 200px; }
+  .advisor-banner .ab-stub {
+    color: var(--muted); font-size: .72rem; font-style: italic; flex-shrink: 0;
+  }
   .runepool-edit-list {
     max-height: 56vh; overflow-y: auto; margin: 8px 0;
     border: 1px solid var(--border); border-radius: 6px;
@@ -15546,6 +15565,113 @@
     document.body.appendChild(bg);
   }
 
+  // ── Advisor mode bootstrap (Phase 2.3) ───────────────────────────────────
+  // Triggered by ?advise=<code> in the URL. Resolves the advisor request,
+  // looks up the linked report config, and re-enters via applyShortcodeConfig
+  // in viewOnly mode so the advisor sees the player's gear/supplements without
+  // mutating their own localStorage. Stashes the advisor context on window so
+  // tab renderers (e.g. renderRunePoolTab in Phase 3) can branch on it.
+  async function _ar_initAdvisorMode(code) {
+    document.body.classList.add('advisor-mode');
+
+    function showAdvisorError(title, body) {
+      var root = document.getElementById('app') || document.body;
+      root.replaceChildren();
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'padding:64px 24px;text-align:center;color:var(--muted);max-width:520px;margin:0 auto;';
+      var h = document.createElement('h1');
+      h.style.cssText = 'font-size:1.4rem;color:var(--text);margin-bottom:.5rem;';
+      h.textContent = title;
+      wrap.appendChild(h);
+      if (body) {
+        var p = document.createElement('p');
+        p.style.cssText = 'font-size:.9rem;line-height:1.5;';
+        p.textContent = body;
+        wrap.appendChild(p);
+      }
+      root.appendChild(wrap);
+    }
+
+    var reqResp;
+    try {
+      reqResp = await fetch(SUPPLEMENT_WORKER + '/advisor/request/' + code);
+    } catch (e) {
+      showAdvisorError('Advisor request unavailable', 'Could not reach the advisor service. Try again in a few seconds.');
+      return;
+    }
+    if (reqResp.status === 404) {
+      showAdvisorError('Advisor request not found', 'The link may have expired or been mistyped. Ask the player to create a fresh request.');
+      return;
+    }
+    if (!reqResp.ok) {
+      showAdvisorError('Advisor request failed', 'Server returned ' + reqResp.status + '. Try again later.');
+      return;
+    }
+    var reqObj;
+    try { reqObj = await reqResp.json(); }
+    catch (e) { showAdvisorError('Advisor request corrupted', 'Server returned an unparseable response.'); return; }
+
+    // Resolve the underlying report config so applyShortcodeConfig has a
+    // playerName + reportIds to work with.
+    var cfgResp;
+    try {
+      cfgResp = await fetch(PUSH_WORKER + '/report-config?code=' + encodeURIComponent(reqObj.reportShortcode || '').toUpperCase());
+    } catch (e) {
+      showAdvisorError('Player report unavailable', 'Could not load the player report. The shortcode may have been deleted.');
+      return;
+    }
+    if (!cfgResp.ok) {
+      showAdvisorError('Player report not available', 'The player has removed their report. Ask them to create a new advisor request.');
+      return;
+    }
+    var cfg;
+    try { cfg = await cfgResp.json(); }
+    catch (e) { showAdvisorError('Player report corrupted', 'Could not parse the player report.'); return; }
+    if (!cfg || !cfg.ok || !cfg.reportIds) {
+      showAdvisorError('Player report not available', 'The player has removed their report. Ask them to create a new advisor request.');
+      return;
+    }
+
+    // Stash advisor context on window so tab renderers can detect mode +
+    // surface the request details. Phase 3 builder will read these.
+    window._adviseCode = code;
+    window._adviseReq = reqObj;
+
+    var ids = String(cfg.reportIds).split(',').filter(Boolean);
+    if (cfg.marchGroups) saveMarches(cfg.marchGroups);
+    // viewOnly = true so localStorage stays the advisor's own.
+    applyShortcodeConfig(cfg.playerName, ids, false, cfg.siteKey || reqObj.siteKey);
+    setTimeout(function() { _ar_showAdvisorBanner(code, reqObj); }, 200);
+  }
+
+  function _ar_showAdvisorBanner(code, reqObj) {
+    if (document.querySelector('.advisor-banner')) return;
+    var banner = document.createElement('div');
+    banner.className = 'advisor-banner';
+    var tag = document.createElement('span');
+    tag.className = 'ab-tag';
+    tag.textContent = 'Rune Advisor';
+    banner.appendChild(tag);
+    var text = document.createElement('div');
+    text.className = 'ab-text';
+    var heroLine = document.createElement('div');
+    heroLine.style.cssText = 'font-weight:600;color:var(--text);';
+    heroLine.textContent = 'Coaching ' + (reqObj.hero || '?') + ' for ' + ((reqObj.siteKey || '').slice(0, 8) || '?') + '…';
+    text.appendChild(heroLine);
+    if (reqObj.note) {
+      var noteLine = document.createElement('div');
+      noteLine.style.cssText = 'font-size:.78rem;color:var(--muted);margin-top:2px;';
+      noteLine.textContent = reqObj.note;
+      text.appendChild(noteLine);
+    }
+    banner.appendChild(text);
+    var stub = document.createElement('span');
+    stub.className = 'ab-stub';
+    stub.textContent = 'Builder UI: see Phase 3';
+    banner.appendChild(stub);
+    document.body.insertBefore(banner, document.body.firstChild);
+  }
+
   // ── Combined "Import TopWar Data" modal ──────────────────────────────────
   // Single entry point for the consolidated all-bookmarklet (v=2 envelope).
   // Shows per-section progress and refreshes every cloud-sync pill on the page.
@@ -18449,8 +18575,18 @@
       } catch (e) {}
     });
 
-    // Check for ?code= URL param (shortcode sharing)
+    // Check for ?advise=<code> URL param — Rune Advisor mode (Phase 2)
+    // Takes priority over ?code= when both are present.
     var params = new URLSearchParams(window.location.search);
+    var adviseCode = params.get('advise');
+    if (adviseCode && /^[a-z0-9]{6}$/.test(adviseCode)) {
+      Promise.all([migrationDone, _ar_decorReady.catch(function() { return null; })]).finally(function() {
+        _ar_initAdvisorMode(adviseCode);
+      });
+      return;
+    }
+
+    // Check for ?code= URL param (shortcode sharing)
     var code = params.get('code');
     if (code && /^[0-9A-Za-z]{4}$/.test(code)) {
       // Wait for siteKey migration before computing isSamePlayer; otherwise
