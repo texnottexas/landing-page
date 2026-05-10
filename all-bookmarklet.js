@@ -340,7 +340,7 @@
 
       var allEquips = [];
       HC._heroEquipsMap.forEach(function (eq) { if (eq && eq.equipId) allEquips.push(eq); });
-      var goldGear = [], equippedNonGold = [];
+      var goldGear = [], equippedNonGold = [], presetOnly = [];
       var qHist = {};
       for (var ei = 0; ei < allEquips.length; ei++) {
         var e = allEquips[ei];
@@ -350,7 +350,11 @@
         var isEquipped = !!(e.heroId && e.heroId > 0);
         var isGold = cfg.quality === 5;
         var inSchemes = uidToSchemes[e.id] || [];
-        if (!isGold && !isEquipped) continue;
+        // Keep gold, equipped non-gold, and any non-gold piece that's slotted
+        // into at least one preset (swap-in candidates the player intentionally
+        // configured). Drops everything else. Mirrors gear-pool-bookmarklet.js
+        // 4119abf so the consolidated bookmarklet matches the standalone shape.
+        if (!isGold && !isEquipped && inSchemes.length === 0) continue;
         var processed = (e.infos || []).map(processInfo);
         var enhanceParsed = {};
         for (var ek in (e.enhanceValue || {})) {
@@ -378,7 +382,9 @@
           rateEquipId: e.rateEquipId, rateEndTime: e.rateEndTime,
           schemes: inSchemes,
         };
-        if (isGold) goldGear.push(piece); else equippedNonGold.push(piece);
+        if (isGold) goldGear.push(piece);
+        else if (isEquipped) equippedNonGold.push(piece);
+        else presetOnly.push(piece);
       }
       goldGear.sort(function (a, b) { return (b.heroId - a.heroId) || (a.slot - b.slot); });
 
@@ -388,13 +394,15 @@
         goldEquipped: goldGear.filter(function (g) { return g.heroId > 0; }).length,
         goldUnequipped: goldGear.filter(function (g) { return g.heroId === 0; }).length,
         equippedNonGoldCount: equippedNonGold.length,
+        presetOnlyCount: presetOnly.length,
         qualityHistogram: qHist,
         schemesCount: schemes.length,
         schemesActive: schemes.filter(function (s) { return !s.isEmpty; }).length,
         lockedCount: goldGear.filter(function (g) { return g.locked; }).length
-                   + equippedNonGold.filter(function (g) { return g.locked; }).length,
+                   + equippedNonGold.filter(function (g) { return g.locked; }).length
+                   + presetOnly.filter(function (g) { return g.locked; }).length,
       };
-      var dump = { v: 1, meta: { ts: new Date().toISOString() }, summary: summary, schemes: schemes, goldGear: goldGear, equippedNonGold: equippedNonGold };
+      var dump = { v: 1, meta: { ts: new Date().toISOString() }, summary: summary, schemes: schemes, goldGear: goldGear, equippedNonGold: equippedNonGold, presetOnly: presetOnly };
       await closePanel(UIDataInfo.HeroEquipWearPanel, gearPath);
       return dump;
     }
@@ -421,9 +429,13 @@
 
   // ───────────────────────────────────────────────────────────────────────
   // Status overlay — shown during the 2–4s extraction so the user sees
-  // progress, then converts to a single Copy button on completion.
+  // progress, then converts to a Copy button + status hint on completion.
   // iOS clipboard requires a fresh user gesture; that's why the Copy
   // button waits for the player to tap rather than firing automatically.
+  // Element refs are cached at construction so attachCopyUI can mutate them
+  // directly — querying via `bg.querySelector('div + div')` was fragile on
+  // iOS Safari and caused the success overlay to throw + auto-close (the
+  // .then() handler rejecting fell into .catch which removed the overlay).
   // ───────────────────────────────────────────────────────────────────────
   function buildOverlay() {
     var bg = document.createElement('div');
@@ -439,6 +451,8 @@
     document.body.appendChild(bg);
     return {
       root: bg,
+      hdr: hdr,
+      sub: sub,
       setStep: function (text) { sub.textContent = text; },
       setHeader: function (text) { hdr.textContent = text; },
       setHeaderColor: function (c) { hdr.style.color = c; },
@@ -453,21 +467,44 @@
 
   function attachCopyUI(overlay, text, summary) {
     var bg = overlay.root;
-    var sub = bg.querySelector('div + div');
-    sub.textContent = summary;
+    overlay.sub.textContent = summary;
     var ta = document.createElement('textarea');
     ta.value = text;
     ta.readOnly = true;
     ta.style.cssText = 'flex:1;width:100%;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:8px;font-family:monospace;font-size:11px;min-height:160px;box-sizing:border-box;';
     bg.appendChild(ta);
+    var status = document.createElement('div');
+    status.style.cssText = 'color:#8b949e;font-size:12px;margin-top:10px;text-align:center;min-height:1.4em;';
+    status.textContent = 'Tap Copy. Then paste at 2864tw.com → armory-report.';
+    bg.appendChild(status);
     var row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:8px;margin-top:10px;';
+    row.style.cssText = 'display:flex;gap:8px;margin-top:8px;';
     var copyBtn = document.createElement('button');
     copyBtn.textContent = 'Copy combined JSON';
     copyBtn.style.cssText = 'flex:1;padding:14px;background:#3fb950;color:#0d1117;border:none;border-radius:6px;font-weight:600;font-size:14px;';
     copyBtn.onclick = function () {
-      function ok() { copyBtn.textContent = 'Copied! Paste at 2864tw.com'; setTimeout(function () { try { document.body.removeChild(bg); } catch (_) {} }, 1100); }
-      function fail() { copyBtn.textContent = 'Long-press text + Copy'; }
+      function ok() {
+        copyBtn.textContent = '✓ Copied to clipboard';
+        copyBtn.style.background = '#2ea043';
+        copyBtn.disabled = true;
+        status.style.color = '#3fb950';
+        status.textContent = 'Done. Paste at 2864tw.com → armory-report → use this snapshot. Tap Close to dismiss.';
+        closeBtn.textContent = 'Close';
+        closeBtn.style.background = '#3fb950';
+        closeBtn.style.color = '#0d1117';
+        closeBtn.style.borderColor = '#3fb950';
+        // Intentionally NO auto-close — players need to read the confirmation
+        // and we don't want to look like the bookmarklet failed silently.
+      }
+      function fail(reason) {
+        copyBtn.textContent = '✗ Copy failed';
+        copyBtn.style.background = '#f85149';
+        copyBtn.style.color = '#fff';
+        status.style.color = '#f85149';
+        status.textContent = 'Couldn’t auto-copy' + (reason ? ' (' + reason + ')' : '') + '. Long-press the JSON above → Select All → Copy.';
+        // Pre-select so manual copy is one tap easier
+        try { ta.readOnly = false; ta.focus(); ta.select(); ta.setSelectionRange(0, text.length); ta.readOnly = true; } catch (_) {}
+      }
       function execFallback() {
         try {
           ta.readOnly = false;
@@ -476,16 +513,23 @@
           ta.setSelectionRange(0, text.length);
           var did = document.execCommand('copy');
           ta.readOnly = true;
-          if (did) ok(); else fail();
-        } catch (_) { fail(); }
+          if (did) ok(); else fail('execCommand returned false');
+        } catch (e) { fail(e && e.message); }
       }
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(ok).catch(execFallback);
-      } else { execFallback(); }
+        navigator.clipboard.writeText(text)
+          .then(ok)
+          .catch(function (e) {
+            // Fall back to execCommand path on permission/secure-context refusal
+            execFallback();
+          });
+      } else {
+        execFallback();
+      }
     };
     var closeBtn = document.createElement('button');
-    closeBtn.textContent = 'Close';
-    closeBtn.style.cssText = 'padding:14px 18px;background:transparent;color:#e6edf3;border:1px solid #30363d;border-radius:6px;font-size:14px;';
+    closeBtn.textContent = 'Close without copying';
+    closeBtn.style.cssText = 'padding:14px 18px;background:transparent;color:#8b949e;border:1px solid #30363d;border-radius:6px;font-size:13px;';
     closeBtn.onclick = function () { try { document.body.removeChild(bg); } catch (_) {} };
     row.appendChild(copyBtn);
     row.appendChild(closeBtn);
@@ -560,22 +604,37 @@
   } catch (_) { /* DOM somehow not ready; bail without overlay */ }
 
   buildDump(overlay && overlay.setStep).then(function (dump) {
-    var json = JSON.stringify(dump);
-    var sections = [];
-    if (dump.inventory) sections.push((dump.inventory.tabs ? Object.keys(dump.inventory.tabs).reduce(function (s, k) { return s + (dump.inventory.tabs[k] || []).length; }, 0) : 0) + ' inv');
-    if (dump.beasts) sections.push(dump.beasts.kept + ' beasts');
-    if (dump.chips) sections.push(dump.chips.total + ' chips');
-    if (dump.gear) sections.push(dump.gear.summary.goldCount + ' gold gear');
-    var summary = sections.join(' · ') + ' — ' + fmtBytes(json.length);
-    if (dump.errors && dump.errors.length) {
-      summary += ' · ' + dump.errors.length + ' section(s) failed';
-    }
-    if (overlay) {
-      overlay.setHeader(dump.errors && dump.errors.length ? 'Partial snapshot' : 'Snapshot ready');
-      overlay.setHeaderColor(dump.errors && dump.errors.length ? '#d29922' : '#3fb950');
-      attachCopyUI(overlay, json, summary);
-    } else {
-      try { alert('Snapshot: ' + summary); } catch (_) {}
+    // Wrap the success-path UI work in its own try so any rendering glitch
+    // doesn't fall through to .catch() (which removes the overlay — the
+    // bug behind the iOS "popup vanished after ~1s" report). Even if the
+    // UI fails to render, the snapshot itself is already in `dump`, so we
+    // fall back to alert with the JSON exposed via window.__snapshot.
+    try {
+      var json = JSON.stringify(dump);
+      var sections = [];
+      if (dump.inventory) sections.push((dump.inventory.tabs ? Object.keys(dump.inventory.tabs).reduce(function (s, k) { return s + (dump.inventory.tabs[k] || []).length; }, 0) : 0) + ' inv');
+      if (dump.beasts) sections.push(dump.beasts.kept + ' beasts');
+      if (dump.chips) sections.push(dump.chips.total + ' chips');
+      if (dump.gear) sections.push(dump.gear.summary.goldCount + ' gold gear');
+      var summary = sections.join(' · ') + ' — ' + fmtBytes(json.length);
+      if (dump.errors && dump.errors.length) {
+        summary += ' · ' + dump.errors.length + ' section(s) failed';
+      }
+      if (overlay) {
+        overlay.setHeader(dump.errors && dump.errors.length ? 'Partial snapshot' : 'Snapshot ready');
+        overlay.setHeaderColor(dump.errors && dump.errors.length ? '#d29922' : '#3fb950');
+        attachCopyUI(overlay, json, summary);
+      } else {
+        try { alert('Snapshot: ' + summary); } catch (_) {}
+      }
+    } catch (uiErr) {
+      // Last-ditch surface — still expose the JSON so the run isn't wasted
+      try { window.__snapshot = JSON.stringify(dump); } catch (_) {}
+      try {
+        if (overlay) overlay.setHeader('UI render failed — JSON at window.__snapshot');
+        if (overlay) overlay.setHeaderColor('#d29922');
+      } catch (_) {}
+      try { alert('Snapshot ready but UI failed: ' + uiErr.message + '\nJSON saved to window.__snapshot'); } catch (_) {}
     }
   }).catch(function (err) {
     if (overlay) { try { document.body.removeChild(overlay.root); } catch (_) {} }
