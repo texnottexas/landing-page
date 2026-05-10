@@ -1207,6 +1207,46 @@
   }
   .rune-card .rune-total { font-size: 0.75rem; color: var(--accent); margin-top: 0.1rem; }
   @media (max-width: 600px) { .runepool-grid { grid-template-columns: repeat(2, 1fr); } }
+  /* Rune Pool edit modal */
+  .runepool-edit-btn {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 4px 10px; font-size: .75rem; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .runepool-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .runepool-edit-list {
+    max-height: 56vh; overflow-y: auto; margin: 8px 0;
+    border: 1px solid var(--border); border-radius: 6px;
+  }
+  .runepool-edit-row {
+    display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid var(--border); flex-wrap: wrap;
+  }
+  .runepool-edit-row:last-child { border-bottom: none; }
+  .runepool-edit-row img {
+    width: 32px; height: 32px; image-rendering: pixelated; flex-shrink: 0;
+  }
+  .runepool-edit-row .rp-name {
+    font-weight: 600; font-size: .8rem; color: var(--text); min-width: 130px; flex-shrink: 0;
+  }
+  .runepool-edit-row .rp-stepper {
+    display: inline-flex; align-items: center; gap: 4px; font-size: .7rem; color: var(--muted);
+  }
+  .runepool-edit-row .rp-stepper label { font-weight: 500; }
+  .runepool-edit-row .rp-stepper button {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    width: 22px; height: 22px; border-radius: 4px; cursor: pointer; font-size: .8rem;
+    line-height: 1; padding: 0;
+  }
+  .runepool-edit-row .rp-stepper button:hover { border-color: var(--accent); color: var(--accent); }
+  .runepool-edit-row .rp-stepper input {
+    width: 50px; text-align: center; background: var(--card); border: 1px solid var(--border);
+    color: var(--text); border-radius: 4px; padding: 2px 4px; font-size: .75rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .runepool-edit-row .rp-stepper.bag input { border-color: rgba(121, 192, 255, 0.4); }
+  .runepool-edit-row .rp-stepper.gear input { border-color: rgba(63, 185, 80, 0.4); }
+  .runepool-edit-row .rp-spacer { flex: 1; }
   .whats-new-pill .dot {
     width: 6px; height: 6px; border-radius: 50%;
     background: var(--accent); flex-shrink: 0;
@@ -12874,9 +12914,48 @@
     sub.textContent = 'Available runes — your bag plus runes on unequipped gold pieces.';
     toolbar.appendChild(sub);
 
+    if (isOwn && siteKey && _ar_isUnlocked(siteKey)) {
+      var editBtn = document.createElement('button');
+      editBtn.className = 'runepool-edit-btn';
+      editBtn.type = 'button';
+      editBtn.title = 'Manually adjust rune counts. Saves as a manual snapshot.';
+      editBtn.textContent = 'Edit Pool';
+      editBtn.style.marginLeft = 'auto';
+      editBtn.onclick = function() {
+        editBtn.disabled = true;
+        Promise.all([
+          _ar_loadInvLookups().catch(function() { return null; }),
+          _ar_loadRuneTypes().catch(function() { return null; })
+        ]).then(function(arr) {
+          editBtn.disabled = false;
+          var lookups = arr[0];
+          var catalog = arr[1];
+          var savedNow = ArmoryIdentity.getSupplement('runepool', siteKey);
+          var bagCounts0 = {};
+          var gearCounts0 = {};
+          if (savedNow && savedNow.pool) {
+            for (var nm in savedNow.pool) {
+              bagCounts0[nm] = savedNow.pool[nm][0] || 0;
+              var sg = 0;
+              for (var k0 = 1; k0 <= 6; k0++) sg += (savedNow.pool[nm][k0] || 0);
+              gearCounts0[nm] = sg;
+            }
+          } else {
+            var ext = _ar_extractRunePool(inv, gear, lookups);
+            bagCounts0 = ext.bagCounts;
+            gearCounts0 = ext.gearCounts;
+          }
+          _ar_openRunepoolEditModal(siteKey, bagCounts0, gearCounts0, catalog, function() {
+            renderRunePoolTab(siteKey, _ar_isUnlocked(siteKey));
+          });
+        });
+      };
+      toolbar.appendChild(editBtn);
+    }
+
     if (siteKey) {
       var pill = _ar_buildCloudSyncPill('runepool', siteKey, { isOwner: !!isOwn });
-      pill.style.marginLeft = 'auto';
+      pill.style.marginLeft = isOwn && _ar_isUnlocked(siteKey) ? '8px' : 'auto';
       toolbar.appendChild(pill);
     }
     container.appendChild(toolbar);
@@ -14924,6 +15003,187 @@
         panelHint: 'Only run when the gear equipment panel is open. The bookmarklet reads scene-graph state, not server data.'
       }
     }, onSaved);
+  }
+
+  // ── Rune Pool manual editor modal (Phase 1.4) ────────────────────────────
+  // Per-rune-family +/- editor. Pre-populates from the current Bag/Recoverable
+  // counts (derived from inv + gear, OR approximated from a saved manual pool).
+  // Save model: pool[name] = {0: bag, 1: recoverable, 2..6: 0}. The s:0/s:1
+  // bucketing is a deliberate approximation — the saved schema is byStar but
+  // manual entries don't carry per-star fidelity (bag is always s:0; "recoverable"
+  // is a mixed-star bag that the source-tagged renderer collapses to one pill).
+  // Phase 3 advisor builder will round-trip with full per-star fidelity from
+  // the live gear supplement when costs need to be precise.
+  function _ar_openRunepoolEditModal(siteKey, initialBag, initialGear, catalog, onSaved) {
+    var bg = document.createElement('div');
+    bg.className = 'modal-bg show';
+    bg.style.zIndex = '850';
+    var modal = document.createElement('div');
+    modal.className = 'modal sup-unlock-modal';
+    modal.style.maxWidth = '720px';
+    bg.appendChild(modal);
+
+    var h = document.createElement('h2');
+    h.textContent = 'Edit Rune Pool';
+    modal.appendChild(h);
+
+    var p = document.createElement('p');
+    p.textContent = 'Adjust counts to override the derived view. Saving publishes a manual snapshot to the cloud, replacing the auto-extracted view from your inventory and titan gear pool.';
+    modal.appendChild(p);
+
+    var listEl = document.createElement('div');
+    listEl.className = 'runepool-edit-list';
+    modal.appendChild(listEl);
+
+    var iconMap = (typeof RUNE_ICON === 'object' && RUNE_ICON) ? RUNE_ICON : {};
+    var runes;
+    if (catalog && Array.isArray(catalog.runes) && catalog.runes.length) {
+      runes = catalog.runes.map(function(r) { return r.name; });
+      // Forward-compat: append any saved-pool family that's not in the catalog
+      // (e.g., a future rune name added to the game before the catalog ships).
+      var seen = {};
+      runes.forEach(function(n) { seen[n] = true; });
+      Object.keys(initialBag).concat(Object.keys(initialGear)).forEach(function(n) {
+        if (!seen[n]) { runes.push(n); seen[n] = true; }
+      });
+    } else {
+      runes = Object.keys(initialBag).concat(Object.keys(initialGear))
+        .filter(function(v, i, a) { return a.indexOf(v) === i; }).sort();
+    }
+
+    var bagInputs = {};
+    var gearInputs = {};
+
+    function makeStepper(kind, name, initialVal) {
+      var wrap = document.createElement('div');
+      wrap.className = 'rp-stepper ' + kind;
+      var label = document.createElement('label');
+      label.textContent = (kind === 'bag') ? 'Bag' : 'Recoverable';
+      wrap.appendChild(label);
+      var dec = document.createElement('button');
+      dec.type = 'button';
+      dec.textContent = '−';
+      dec.setAttribute('aria-label', 'Decrease');
+      wrap.appendChild(dec);
+      var input = document.createElement('input');
+      input.type = 'number';
+      input.min = '0';
+      input.max = '99999';
+      input.step = '1';
+      input.value = String(initialVal || 0);
+      wrap.appendChild(input);
+      var inc = document.createElement('button');
+      inc.type = 'button';
+      inc.textContent = '+';
+      inc.setAttribute('aria-label', 'Increase');
+      wrap.appendChild(inc);
+      dec.onclick = function() { var v = parseInt(input.value, 10) || 0; input.value = String(Math.max(0, v - 1)); };
+      inc.onclick = function() { var v = parseInt(input.value, 10) || 0; input.value = String(Math.min(99999, v + 1)); };
+      input.addEventListener('input', function() {
+        var v = parseInt(input.value, 10);
+        if (isNaN(v) || v < 0) input.value = '0';
+        else if (v > 99999) input.value = '99999';
+      });
+      return { wrap: wrap, input: input };
+    }
+
+    for (var i = 0; i < runes.length; i++) {
+      var name = runes[i];
+      var row = document.createElement('div');
+      row.className = 'runepool-edit-row';
+      var iconFile = iconMap[name];
+      if (iconFile) {
+        var img = document.createElement('img');
+        img.src = ASSET_BASE + 'assets/rune-icons/' + iconFile + '.png';
+        img.alt = '';
+        img.onerror = function() { this.style.display = 'none'; };
+        row.appendChild(img);
+      }
+      var nameEl = document.createElement('div');
+      nameEl.className = 'rp-name';
+      nameEl.textContent = name;
+      row.appendChild(nameEl);
+      var bag = makeStepper('bag', name, initialBag[name] || 0);
+      var gear = makeStepper('gear', name, initialGear[name] || 0);
+      bagInputs[name] = bag.input;
+      gearInputs[name] = gear.input;
+      var spacer = document.createElement('div');
+      spacer.className = 'rp-spacer';
+      row.appendChild(spacer);
+      row.appendChild(bag.wrap);
+      row.appendChild(gear.wrap);
+      listEl.appendChild(row);
+    }
+
+    var err = document.createElement('div');
+    err.className = 'err';
+    modal.appendChild(err);
+
+    var actions = document.createElement('div');
+    actions.className = 'actions';
+
+    var cancel = document.createElement('button');
+    cancel.className = 'secondary';
+    cancel.textContent = 'Cancel';
+    cancel.onclick = function() { document.body.removeChild(bg); };
+    actions.appendChild(cancel);
+
+    var save = document.createElement('button');
+    save.className = 'primary';
+    save.textContent = 'Save to Cloud';
+    actions.appendChild(save);
+    modal.appendChild(actions);
+
+    save.onclick = async function() {
+      err.textContent = '';
+      err.style.color = '';
+      var pool = {};
+      var anyNonzero = false;
+      for (var rn in bagInputs) {
+        var bagN = parseInt(bagInputs[rn].value, 10) || 0;
+        var gearN = parseInt(gearInputs[rn].value, 10) || 0;
+        if (bagN === 0 && gearN === 0) continue;
+        if (bagN > 100000 || gearN > 100000) {
+          err.textContent = 'Counts must be 0–100000.';
+          return;
+        }
+        pool[rn] = { 0: bagN, 1: gearN, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+        anyNonzero = true;
+      }
+      if (Object.keys(pool).length > 32) {
+        err.textContent = 'Too many rune families (max 32).';
+        return;
+      }
+      var nowIso = new Date().toISOString();
+      var payload = {
+        v: 1,
+        meta: { ts: nowIso },
+        pool: pool,
+        source: 'manual'
+      };
+      var serialized = JSON.stringify(payload);
+      if (serialized.length > _AR_SUP_MAX_BYTES) {
+        err.textContent = 'Payload too large (' + Math.round(serialized.length / 1024) + ' KB).';
+        return;
+      }
+      save.disabled = true; cancel.disabled = true;
+      err.style.color = 'var(--muted)';
+      err.textContent = anyNonzero ? 'Saving…' : 'Saving empty pool (all rune counts are 0)…';
+      try {
+        ArmoryIdentity.setSupplement('runepool', siteKey, payload);
+        await _ar_supplementUpload('runepool', payload, siteKey);
+        try { ArmoryIdentity.setLastSync('runepool', siteKey, new Date(nowIso).getTime()); } catch (_) {}
+      } catch (e) {
+        err.style.color = 'var(--red)';
+        err.textContent = 'Saved locally. Worker upload failed (' + e.message + ').';
+        save.disabled = false; cancel.disabled = false;
+        return;
+      }
+      document.body.removeChild(bg);
+      if (typeof onSaved === 'function') onSaved();
+    };
+
+    document.body.appendChild(bg);
   }
 
   // ── Combined "Import TopWar Data" modal ──────────────────────────────────
