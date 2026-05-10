@@ -1990,20 +1990,6 @@
   }
   .gp-card .meta-tags .tag.gold { color: var(--yellow); }
   .gp-card .meta-tags .tag.refine { color: var(--green); }
-  .gp-pool-section-head {
-    display: flex; align-items: center; gap: 8px;
-    margin: 18px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
-  }
-  .gp-pool-section-head .avatar {
-    width: 28px; height: 28px; border-radius: 50%;
-    background: var(--surface) center/cover no-repeat; border: 1.5px solid var(--accent);
-    flex-shrink: 0;
-  }
-  .gp-pool-section-head .avatar.no-hero { border-color: var(--muted); display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;font-weight:700; }
-  .gp-pool-section-head .name { font-size: 13px; font-weight: 700; color: var(--text); }
-  .gp-pool-section-head .preset { font-size: 11px; color: var(--accent); padding: 1px 8px; border: 1px solid rgba(121,192,255,0.3); border-radius: 999px; background: rgba(121,192,255,0.06); }
-  .gp-pool-section-head .count { font-size: 11px; color: var(--muted); margin-left: auto; }
-
   .gp-select {
     background: var(--card); border: 1px solid var(--border); color: var(--text);
     border-radius: 5px; padding: 4px 8px; font-size: 12px; max-width: 200px;
@@ -8982,13 +8968,6 @@
     var summary = data.summary || {};
     var schemes = data.schemes || [];
 
-    function presetForHero(heroId) {
-      for (var i = 0; i < schemes.length; i++) {
-        if (schemes[i].heroId === heroId && !schemes[i].isEmpty) return schemes[i].name;
-      }
-      return null;
-    }
-
     // ── Summary cards ────────────────────────────────────────────────────
     var summaryEl = gpEl('div', { cls: 'gp-summary' });
     var statDefs = [
@@ -9205,35 +9184,13 @@
       var tally = gpEl('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:8px;', text: sorted.length + ' of ' + allPieces.length + ' pieces' });
       bodyEl.appendChild(tally);
 
-      if (state.sort === 'default') {
-        // Grouped headers per hero (and one "Unassigned" group at the end).
-        var lastHeroId = '__init__';
-        var sectionGrid = null;
-        sorted.forEach(function (p) {
-          var hid = p.heroId || 0;
-          if (String(hid) !== String(lastHeroId)) {
-            lastHeroId = hid;
-            var sectionHead = gpEl('div', { cls: 'gp-pool-section-head' });
-            var avatar = gpEl('div', { cls: 'avatar' + (hid > 0 ? '' : ' no-hero') });
-            if (hid > 0) avatar.style.backgroundImage = "url('" + gpHeroAvatarUrl(hid) + "')";
-            else avatar.textContent = '?';
-            sectionHead.appendChild(avatar);
-            sectionHead.appendChild(gpEl('div', { cls: 'name', text: hid > 0 ? (p.heroName || ('Hero ' + hid)) : 'Available pool — unassigned' }));
-            var preset = hid > 0 ? presetForHero(hid) : null;
-            if (preset) sectionHead.appendChild(gpEl('div', { cls: 'preset', text: preset }));
-            var groupCount = sorted.filter(function (q) { return (q.heroId || 0) === hid; }).length;
-            sectionHead.appendChild(gpEl('div', { cls: 'count', text: groupCount + ' piece' + (groupCount === 1 ? '' : 's') }));
-            bodyEl.appendChild(sectionHead);
-            sectionGrid = gpEl('div', { cls: 'gp-pool-grid' });
-            bodyEl.appendChild(sectionGrid);
-          }
-          sectionGrid.appendChild(buildPoolCard(p));
-        });
-      } else {
-        var grid = gpEl('div', { cls: 'gp-pool-grid' });
-        sorted.forEach(function (p) { grid.appendChild(buildPoolCard(p)); });
-        bodyEl.appendChild(grid);
-      }
+      // Single flat grid for every sort. Default ordering (equipped → hero
+      // name → slot 1-6) naturally clusters same-hero pieces side-by-side;
+      // each card's hero portrait + name line carries the visual cue, no
+      // section headers needed (those duplicated the Heroes sub-tab above).
+      var grid = gpEl('div', { cls: 'gp-pool-grid' });
+      sorted.forEach(function (p) { grid.appendChild(buildPoolCard(p)); });
+      bodyEl.appendChild(grid);
     }
 
     function buildPoolCard(p) {
