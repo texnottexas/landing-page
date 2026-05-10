@@ -15427,41 +15427,17 @@
       return;
     }
 
-    var merged = mergeReportData(wizardState.reportData);
-    var heroes = (merged && Array.isArray(merged.heroes)) ? merged.heroes : [];
-    if (heroes.length === 0) {
-      showCloseOnly('Load at least one battle report so the advisor knows which heroes you want coaching for.');
-      return;
-    }
-
     var p = document.createElement('p');
-    p.textContent = 'Pick the hero you want rune coaching on and add any context. The advisor gets a link to your gear, runes, and report.';
+    p.textContent = 'Tell the advisor what you want help with. The link gives them full read-only access to your heroes, gear, runes, and titan gear pool.';
     modal.appendChild(p);
 
-    var heroLabel = document.createElement('label');
-    heroLabel.textContent = 'Hero';
-    modal.appendChild(heroLabel);
-    var select = document.createElement('select');
-    select.style.cssText = 'width:100%;padding:8px;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:13px;margin-bottom:12px;';
-    var sortedHeroes = heroes.slice().sort(function(a, b) {
-      return String(a.name || '').localeCompare(String(b.name || ''));
-    });
-    sortedHeroes.forEach(function(hr) {
-      if (!hr || !hr.name) return;
-      var opt = document.createElement('option');
-      opt.value = hr.name;
-      opt.textContent = hr.name;
-      select.appendChild(opt);
-    });
-    modal.appendChild(select);
-
     var noteLabel = document.createElement('label');
-    noteLabel.textContent = 'Note (optional, max 500 chars)';
+    noteLabel.textContent = 'What do you want help with? (max 500 chars)';
     modal.appendChild(noteLabel);
     var note = document.createElement('textarea');
-    note.style.cssText = 'width:100%;min-height:80px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:12px;resize:vertical;margin-bottom:8px;';
+    note.style.cssText = 'width:100%;min-height:100px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:12px;resize:vertical;margin-bottom:8px;';
     note.maxLength = 500;
-    note.placeholder = 'e.g. "Building Rohr for SVS, mostly PvP boost. Already have 4 Artillery Storm in bag."';
+    note.placeholder = 'e.g. "Help me prioritize runes for Rohr and Bradley for SVS. Mostly PvP-boost lineups. Already have 4 Artillery Storm and 12 Heavy Blow in bag, OK to recycle the gold pieces I am not using."';
     modal.appendChild(note);
 
     var err = document.createElement('div');
@@ -15488,9 +15464,8 @@
     createBtn.onclick = async function() {
       err.textContent = '';
       err.style.color = '';
-      var hero = select.value;
       var noteVal = (note.value || '').trim();
-      if (!hero) { err.textContent = 'Pick a hero.'; return; }
+      if (!noteVal) { err.textContent = 'Add a note describing what you want help with.'; return; }
       if (noteVal.length > 500) { err.textContent = 'Note too long (max 500 chars).'; return; }
 
       createBtn.disabled = true;
@@ -15504,7 +15479,7 @@
         var r = await fetch(SUPPLEMENT_WORKER + '/advisor/request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
-          body: JSON.stringify({ reportShortcode: shortcode, hero: hero, note: noteVal })
+          body: JSON.stringify({ reportShortcode: shortcode, note: noteVal })
         });
         if (!r.ok) {
           var msg = await r.text();
@@ -15549,7 +15524,6 @@
         };
         resultBox.appendChild(copyBtn);
 
-        select.disabled = true;
         note.disabled = true;
         createBtn.style.display = 'none';
         cancel.disabled = false;
@@ -15654,15 +15628,24 @@
     banner.appendChild(tag);
     var text = document.createElement('div');
     text.className = 'ab-text';
-    var heroLine = document.createElement('div');
-    heroLine.style.cssText = 'font-weight:600;color:var(--text);';
-    heroLine.textContent = 'Coaching ' + (reqObj.hero || '?') + ' for ' + ((reqObj.siteKey || '').slice(0, 8) || '?') + '…';
-    text.appendChild(heroLine);
+    var playerName = (wizardState && wizardState.player && wizardState.player.name)
+      ? wizardState.player.name
+      : ((reqObj.siteKey || '').slice(0, 8) + '…');
+    var titleLine = document.createElement('div');
+    titleLine.style.cssText = 'font-weight:600;color:var(--text);';
+    titleLine.textContent = 'Advising ' + playerName + ' — full account read access';
+    text.appendChild(titleLine);
     if (reqObj.note) {
       var noteLine = document.createElement('div');
-      noteLine.style.cssText = 'font-size:.78rem;color:var(--muted);margin-top:2px;';
+      noteLine.style.cssText = 'font-size:.78rem;color:var(--muted);margin-top:2px;line-height:1.4;';
       noteLine.textContent = reqObj.note;
       text.appendChild(noteLine);
+    } else if (reqObj.hero) {
+      // Backward compat — older requests with only a hero field
+      var heroLine = document.createElement('div');
+      heroLine.style.cssText = 'font-size:.78rem;color:var(--muted);margin-top:2px;';
+      heroLine.textContent = 'Focus: ' + reqObj.hero;
+      text.appendChild(heroLine);
     }
     banner.appendChild(text);
     var stub = document.createElement('span');
