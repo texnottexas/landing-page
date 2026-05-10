@@ -3139,23 +3139,34 @@
     // Fetch privacy first so the inventory tab can render the right shell
     // (placeholder for non-owners, toggle for owners) on first paint.
     await _ar_fetchSupplementPrivacy(siteKey);
-    var pair = await Promise.all([
+    var quad = await Promise.all([
       _ar_fetchSupplement('inv', siteKey),
-      _ar_fetchSupplement('bench', siteKey)
+      _ar_fetchSupplement('bench', siteKey),
+      _ar_fetchSupplement('gear', siteKey),
+      _ar_fetchSupplement('chips', siteKey),
+      _ar_fetchSupplement('runepool', siteKey)
     ]);
-    var invRemote = pair[0], benchRemote = pair[1];
-    if (invRemote && !invRemote.__private) {
-      var localInv = ArmoryIdentity.getSupplement('inv', siteKey);
-      var lts = (localInv && localInv.meta && localInv.meta.ts) ? new Date(localInv.meta.ts).getTime() : 0;
-      var rts = (invRemote.meta && invRemote.meta.ts) ? new Date(invRemote.meta.ts).getTime() : 0;
-      if (rts > lts) ArmoryIdentity.setSupplement('inv', siteKey, invRemote);
+    var invRemote = quad[0], benchRemote = quad[1], gearRemote = quad[2], chipsRemote = quad[3], runepoolRemote = quad[4];
+    // Helper: shape-aware ts read (inv/gear/runepool nest in meta.ts; bench/chips at the top).
+    function tsOf(kind, obj) {
+      if (!obj) return 0;
+      if (kind === 'inv' || kind === 'gear' || kind === 'runepool') {
+        return (obj.meta && obj.meta.ts) ? new Date(obj.meta.ts).getTime() : 0;
+      }
+      return obj.ts ? new Date(obj.ts).getTime() : 0;
     }
-    if (benchRemote && !benchRemote.__private) {
-      var localBench = ArmoryIdentity.getSupplement('bench', siteKey);
-      var lts2 = (localBench && localBench.ts) ? new Date(localBench.ts).getTime() : 0;
-      var rts2 = benchRemote.ts ? new Date(benchRemote.ts).getTime() : 0;
-      if (rts2 > lts2) ArmoryIdentity.setSupplement('bench', siteKey, benchRemote);
+    function adoptIfNewer(kind, remote) {
+      if (!remote || remote.__private) return;
+      var local = ArmoryIdentity.getSupplement(kind, siteKey);
+      if (tsOf(kind, remote) > tsOf(kind, local)) {
+        ArmoryIdentity.setSupplement(kind, siteKey, remote);
+      }
     }
+    adoptIfNewer('inv', invRemote);
+    adoptIfNewer('bench', benchRemote);
+    adoptIfNewer('gear', gearRemote);
+    adoptIfNewer('chips', chipsRemote);
+    adoptIfNewer('runepool', runepoolRemote);
   }
 
   // ── Inventory lookup tables ────────────────────────────────────────────
@@ -6799,13 +6810,15 @@
     // Pass report IDs to feedback widget for context
     window._reportContext = wizardState.reportData.map(function(r) { return r.id; }).join(', ');
 
-    // Phase 3: hydrate supplements from worker. Fire-and-forget; re-renders inventory/enigma if live.
+    // Phase 3: hydrate supplements from worker. Fire-and-forget; re-renders the
+    // active tab if it consumes any of the freshly-hydrated supplements.
     if (wizardState.player && wizardState.player.siteKey) {
       _ar_hydrateSupplementsFromWorker(wizardState.player.siteKey).then(function() {
         var active = document.querySelector('.tab-btn.active');
         if (active) {
           var tab = active.getAttribute('data-tab');
-          if (tab === 'inventory' || tab === 'enigma') {
+          if (tab === 'inventory' || tab === 'enigma' || tab === 'runepool' ||
+              tab === 'chips' || tab === 'heroes') {
             var content = document.getElementById('tab-' + tab);
             if (content) content.removeAttribute('data-rendered');
             switchTab(active);
@@ -13093,11 +13106,16 @@
       };
       toolbar.appendChild(privBtn);
 
-      // "Request Rune Advice" CTA — only when the player has explicitly saved
-      // their runepool supplement (auto-derived view doesn't carry to the
-      // worker, so the advisor would have nothing to read). Posts to
-      // /advisor/request and shows a shareable URL on success.
-      if (ArmoryIdentity.getSupplement('runepool', siteKey)) {
+      // "Request Rune Advice" CTA — show whenever the player has uploaded the
+      // two supplements the advisor needs to derive a rune pool: bag runes
+      // come from `inv`, recoverable runes from unequipped `gear` pieces. The
+      // manual `runepool` supplement (Edit Pool) is an OPTIONAL override —
+      // not required to request advice. Both inv and gear ship together via
+      // the consolidated bookmarklet so this gate just confirms the player
+      // has run Import TopWar Data at least once.
+      var hasInv = !!ArmoryIdentity.getSupplement('inv', siteKey);
+      var hasGear = !!ArmoryIdentity.getSupplement('gear', siteKey);
+      if (hasInv && hasGear) {
         var adviceBtn = document.createElement('button');
         adviceBtn.className = 'runepool-advice-btn';
         adviceBtn.type = 'button';
