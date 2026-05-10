@@ -107,7 +107,7 @@
     var allEquips = [];
     HC._heroEquipsMap.forEach(function (eq) { if (eq && eq.equipId) allEquips.push(eq); });
 
-    var goldGear = [], equippedNonGold = [];
+    var goldGear = [], equippedNonGold = [], presetOnly = [];
     var qHist = {};
     for (var ei = 0; ei < allEquips.length; ei++) {
       var e = allEquips[ei];
@@ -116,7 +116,11 @@
       var isEquipped = !!(e.heroId && e.heroId > 0);
       var isGold = cfg.quality === 5;
       var inSchemes = uidToSchemes[e.id] || [];
-      if (!isGold && !isEquipped) continue;
+      // Keep every gold piece, every equipped non-gold piece, plus any non-gold
+      // unequipped piece that lives inside at least one preset. The third group
+      // (presetOnly) covers swap-in candidates: a player who configured a
+      // preset with purple gear should still see those pieces in the pool.
+      if (!isGold && !isEquipped && inSchemes.length === 0) continue;
 
       var processed = (e.infos || []).map(processInfo);
       var enhanceParsed = {};
@@ -143,7 +147,9 @@
         rateEquipId: e.rateEquipId, rateEndTime: e.rateEndTime,
         schemes: inSchemes
       };
-      if (isGold) goldGear.push(piece); else equippedNonGold.push(piece);
+      if (isGold) goldGear.push(piece);
+      else if (isEquipped) equippedNonGold.push(piece);
+      else presetOnly.push(piece);
     }
 
     goldGear.sort(function (a, b) { return (b.heroId - a.heroId) || (a.slot - b.slot); });
@@ -154,17 +160,21 @@
       goldEquipped: goldGear.filter(function (g) { return g.heroId > 0; }).length,
       goldUnequipped: goldGear.filter(function (g) { return g.heroId === 0; }).length,
       equippedNonGoldCount: equippedNonGold.length,
+      presetOnlyCount: presetOnly.length,
       distinctHeroes: (function () {
         var ids = {};
         for (var i = 0; i < goldGear.length; i++) if (goldGear[i].heroId) ids[goldGear[i].heroId] = 1;
         for (var j = 0; j < equippedNonGold.length; j++) if (equippedNonGold[j].heroId) ids[equippedNonGold[j].heroId] = 1;
+        for (var k = 0; k < presetOnly.length; k++) if (presetOnly[k].heroId) ids[presetOnly[k].heroId] = 1;
         return Object.keys(ids).length;
       })(),
       qualityHistogram: qHist,
       goldBySlot: goldGear.reduce(function (acc, g) { acc[g.slotName] = (acc[g.slotName] || 0) + 1; return acc; }, {}),
       schemesCount: schemes.length,
       schemesActive: schemes.filter(function (s) { return !s.isEmpty; }).length,
-      lockedCount: goldGear.filter(function (g) { return g.locked; }).length + equippedNonGold.filter(function (g) { return g.locked; }).length
+      lockedCount: goldGear.filter(function (g) { return g.locked; }).length
+        + equippedNonGold.filter(function (g) { return g.locked; }).length
+        + presetOnly.filter(function (g) { return g.locked; }).length
     };
 
     var meta = { v: 1, ts: new Date().toISOString() };
@@ -173,7 +183,7 @@
       if (UD && UD.prototype && UD.prototype.__capturedUD) { /* not used */ }
     } catch (_) {}
 
-    return { v: 1, meta: meta, summary: summary, schemes: schemes, goldGear: goldGear, equippedNonGold: equippedNonGold };
+    return { v: 1, meta: meta, summary: summary, schemes: schemes, goldGear: goldGear, equippedNonGold: equippedNonGold, presetOnly: presetOnly };
   }
 
   function copyAndReport(json) {
