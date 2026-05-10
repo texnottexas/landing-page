@@ -1310,7 +1310,7 @@
     border: 1px dashed var(--border); border-radius: 6px;
   }
   .adv-pool-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: .5rem;
   }
   .adv-pool-row {
@@ -1320,8 +1320,21 @@
   }
   .adv-pool-row img { width: 24px; height: 24px; image-rendering: pixelated; flex-shrink: 0; }
   .adv-pool-row .ap-name { font-weight: 500; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .adv-pool-row .ap-bag { color: var(--accent); font-variant-numeric: tabular-nums; }
-  .adv-pool-row .ap-delta { color: #3fb950; font-weight: 600; font-variant-numeric: tabular-nums; }
+  /* Source pills mirror the Rune Pool tab so terminology stays in sync. */
+  .adv-pool-row .ap-pill {
+    border-radius: 999px; padding: 1px 7px; font-size: .68rem;
+    font-variant-numeric: tabular-nums; font-weight: 600;
+    flex-shrink: 0; cursor: help; line-height: 1.4;
+  }
+  .adv-pool-row .ap-pill.bag {
+    background: rgba(121, 192, 255, 0.12); color: var(--accent);
+    border: 1px solid rgba(121, 192, 255, 0.4);
+  }
+  .adv-pool-row .ap-pill.rec {
+    background: rgba(63, 185, 80, 0.12); color: #3fb950;
+    border: 1px solid rgba(63, 185, 80, 0.4);
+  }
+  .adv-pool-row .ap-delta { color: #3fb950; font-weight: 600; font-variant-numeric: tabular-nums; flex-shrink: 0; }
   .adv-pool-row .ap-delta.neg { color: #f85149; }
   .adv-step-list {
     list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .4rem;
@@ -17138,10 +17151,31 @@
         nameEl.className = 'ap-name';
         nameEl.textContent = name;
         row.appendChild(nameEl);
-        var bagEl = document.createElement('span');
-        bagEl.className = 'ap-bag';
-        bagEl.textContent = bagN + ' s:0';
-        row.appendChild(bagEl);
+        // Bag (s:0) and Recoverable (s:1+) pills, matching the Rune Pool tab.
+        // Render only the non-zero side(s) so single-source families stay compact.
+        if (bagN > 0) {
+          var bagEl = document.createElement('span');
+          bagEl.className = 'ap-pill bag';
+          bagEl.textContent = 'Bag: ' + bagN;
+          bagEl.title = 'Loose runes in your bag (0 stars).';
+          row.appendChild(bagEl);
+        }
+        if (gearN > 0) {
+          var recEl = document.createElement('span');
+          recEl.className = 'ap-pill rec';
+          recEl.textContent = 'Recoverable: ' + gearN;
+          recEl.title = 'Runes attached to unequipped gold gear pieces. Single-gear recycle returns 0-star ones to your bag intact.';
+          row.appendChild(recEl);
+        }
+        if (bagN === 0 && gearN === 0 && total === 0 && baseTotal > 0) {
+          // Family was depleted by queued steps — show a 0 placeholder so the
+          // delta has something to sit next to.
+          var emptyEl = document.createElement('span');
+          emptyEl.className = 'ap-pill bag';
+          emptyEl.style.opacity = '.5';
+          emptyEl.textContent = '0';
+          row.appendChild(emptyEl);
+        }
         if (delta !== 0) {
           var deltaEl = document.createElement('span');
           deltaEl.className = 'ap-delta' + (delta < 0 ? ' neg' : '');
