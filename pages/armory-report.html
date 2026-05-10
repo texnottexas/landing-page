@@ -1316,6 +1316,55 @@
   .adv-preview-box .pv-line:last-child { margin-bottom: 0; }
   .adv-preview-box .pv-cost { color: var(--accent); font-variant-numeric: tabular-nums; }
   .adv-preview-box .pv-err { color: #f85149; font-weight: 600; }
+  /* Player-side advisor plans tab (Phase 4) */
+  .adv-tab-badge {
+    background: #f85149; color: white;
+    font-size: .65rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;
+    margin-left: 6px; min-width: 18px; display: inline-block; text-align: center;
+  }
+  .adv-plan-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: .75rem 1rem; margin-bottom: .75rem;
+  }
+  .adv-plan-card-hdr {
+    display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: .35rem;
+  }
+  .adv-plan-card-title {
+    font-weight: 600; color: var(--text); font-size: .9rem; flex: 1; min-width: 200px;
+  }
+  .adv-plan-card-meta { color: var(--muted); font-size: .72rem; }
+  .adv-plan-status {
+    font-size: .65rem; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: .05em;
+  }
+  .adv-plan-status.status-open { background: rgba(139, 148, 158, 0.2); color: var(--muted); }
+  .adv-plan-status.status-planned { background: rgba(121, 192, 255, 0.2); color: var(--accent); }
+  .adv-plan-status.status-applied { background: rgba(63, 185, 80, 0.18); color: #3fb950; }
+  .adv-plan-code {
+    font-family: 'SF Mono', monospace; font-size: .7rem; color: var(--muted);
+    background: var(--card); border: 1px solid var(--border); padding: 1px 6px; border-radius: 4px;
+  }
+  .adv-plan-card-note {
+    background: var(--card); border-left: 2px solid var(--accent);
+    padding: .4rem .6rem; border-radius: 0 4px 4px 0; font-size: .78rem;
+    color: var(--text); line-height: 1.4; margin: .35rem 0 .5rem; white-space: pre-wrap;
+  }
+  .adv-plan-card-open { font-size: .78rem; color: var(--muted); margin-top: .35rem; }
+  .adv-plan-card-open a { color: var(--accent); word-break: break-all; }
+  .adv-plan-card-toggle {
+    background: transparent; border: 1px solid var(--border); color: var(--text);
+    border-radius: 4px; padding: 4px 12px; font-size: .72rem; cursor: pointer; margin-top: .35rem;
+  }
+  .adv-plan-card-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .adv-plan-card-detail { margin-top: .6rem; padding-top: .6rem; border-top: 1px dashed var(--border); }
+  .adv-step-row.adv-step-accept .as-accept-toggle {
+    font-size: .72rem; color: var(--muted); cursor: pointer;
+    display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
+  }
+  .adv-step-row.adv-step-accept .as-accept-toggle input { cursor: pointer; }
+  .adv-apply-summary { font-size: .78rem; color: var(--muted); margin: .5rem 0; }
+  .adv-apply-summary.ok { color: #3fb950; }
+  .adv-apply-summary.err { color: #f85149; }
   /* Advisor mode banner (Phase 2.3) */
   .advisor-banner {
     position: sticky; top: 0; z-index: 1200;
@@ -6868,6 +6917,13 @@
     if (inS2864) {
       tabDefs.push({ id: 'inventory', label: 'Inventory' });
       tabDefs.push({ id: 'runepool', label: 'Rune Pool' });
+      // Player-side accept/skip viewer (Phase 4) — only on the player's own
+      // report. Advisor index fetch happens during hydrate; tab stays empty
+      // until the player creates a request, but is always visible to keep
+      // the feature discoverable.
+      if (isOwnReport && !window._adviseCode) {
+        tabDefs.push({ id: 'myadvisorplans', label: 'Advisor Plans' });
+      }
     }
     // Advisor mode (?advise=<code>) — append the Advisor Plan working surface.
     if (window._adviseCode) {
@@ -6932,6 +6988,11 @@
           }
         }
       });
+      // Phase 4: fetch advisor index in parallel so the Advisor Plans tab
+      // badges with the count of planned (unapplied) plans + an indicator dot.
+      if (_ar_isOwnReport(wizardState.player.siteKey) && !window._adviseCode) {
+        _ar_refreshAdvisorIndex(wizardState.player.siteKey);
+      }
     }
   }
 
@@ -6981,6 +7042,7 @@
       case 'inventory':   renderInventoryTab(m, siteKey, _ar_isUnlocked(siteKey)); break;
       case 'runepool':    renderRunePoolTab(siteKey, _ar_isUnlocked(siteKey)); break;
       case 'advisorplan': renderAdvisorPlanTab(siteKey, m); break;
+      case 'myadvisorplans': renderMyAdvisorPlansTab(siteKey, m); break;
     }
   }
 
@@ -16638,6 +16700,367 @@
 
     rebuildFields();
     document.body.appendChild(bg);
+  }
+
+  // ── Player-side accept/skip viewer (Phase 4) ─────────────────────────────
+  // The advisor saves their plan to /advisor/plan/<code>; the player visits
+  // their own armory-report and lands on the My Advisor Plans tab to see
+  // any plans waiting for them. Each step has Accept / Skip toggles; when
+  // they click Apply Accepted Steps we recompute the post-application rune
+  // pool from the player's CURRENT inv+gear (not the advisor's snapshot at
+  // plan time, since the player may have moved runes around since), apply
+  // accepted steps to that base, save the result as a runepool supplement
+  // with source='advisor-applied' + appliedFromCode=<code>, and POST
+  // /advisor/plan/<code>/apply so the index entry flips to 'applied'.
+
+  function _ar_refreshAdvisorIndex(siteKey) {
+    if (!siteKey) return Promise.resolve(null);
+    return fetch(SUPPLEMENT_WORKER + '/advisor/index/' + siteKey, { cache: 'no-store' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .catch(function() { return null; })
+      .then(function(idx) {
+        window._advisorPlayerIndex = idx || { v: 1, entries: [] };
+        _ar_paintMyAdvisorPlansBadge();
+        return window._advisorPlayerIndex;
+      });
+  }
+
+  function _ar_paintMyAdvisorPlansBadge() {
+    var btn = document.querySelector('.tab-btn[data-tab="myadvisorplans"]');
+    if (!btn) return;
+    var idx = window._advisorPlayerIndex || { entries: [] };
+    var planned = idx.entries.filter(function(e) { return e.status === 'planned'; }).length;
+    // Wipe any existing badge before re-painting.
+    var existing = btn.querySelector('.adv-tab-badge');
+    if (existing) existing.remove();
+    btn.firstChild && btn.firstChild.nodeType === 3 && (btn.firstChild.nodeValue = 'Advisor Plans');
+    if (planned > 0) {
+      var badge = document.createElement('span');
+      badge.className = 'adv-tab-badge';
+      badge.textContent = String(planned);
+      btn.appendChild(badge);
+    }
+  }
+
+  function _ar_advisorRelativeAge(ts) {
+    if (!ts) return '';
+    var diff = Date.now() - ts;
+    if (diff < 0) return 'just now';
+    var mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    var hours = Math.floor(mins / 60);
+    if (hours < 24) return hours + 'h ago';
+    var days = Math.floor(hours / 24);
+    if (days < 30) return days + 'd ago';
+    return new Date(ts).toLocaleDateString();
+  }
+
+  function renderMyAdvisorPlansTab(siteKey, merged) {
+    var container = document.getElementById('tab-myadvisorplans');
+    if (!container) return;
+    container.replaceChildren();
+
+    var header = document.createElement('div');
+    header.className = 'adv-plan-section';
+    var title = document.createElement('div');
+    title.className = 'adv-plan-section-title';
+    title.textContent = 'Advisor Plans';
+    header.appendChild(title);
+    var blurb = document.createElement('div');
+    blurb.style.cssText = 'font-size:.78rem;color:var(--muted);line-height:1.5;';
+    blurb.textContent = 'Plans your advisors have saved for you. Expand a plan to walk through the steps in-game, mark each as accepted or skipped, then Apply Accepted Steps to update your rune pool.';
+    header.appendChild(blurb);
+    container.appendChild(header);
+
+    var listHost = document.createElement('div');
+    container.appendChild(listHost);
+
+    var loading = document.createElement('div');
+    loading.className = 'adv-plan-empty';
+    loading.textContent = 'Loading your advisor plans…';
+    listHost.appendChild(loading);
+
+    Promise.all([
+      _ar_refreshAdvisorIndex(siteKey),
+      _ar_loadRuneTypes().catch(function() { return null; }),
+      _ar_loadInvLookups().catch(function() { return null; })
+    ]).then(function(arr) {
+      var idx = arr[0];
+      var catalog = arr[1];
+      var lookups = arr[2];
+      listHost.replaceChildren();
+
+      if (!idx || !idx.entries || idx.entries.length === 0) {
+        var emp = document.createElement('div');
+        emp.className = 'adv-plan-empty';
+        emp.textContent = 'No advisor requests yet. Open the Rune Pool tab and click Request Rune Advice to invite a coach.';
+        listHost.appendChild(emp);
+        return;
+      }
+
+      idx.entries.forEach(function(entry) {
+        var card = document.createElement('div');
+        card.className = 'adv-plan-card';
+        listHost.appendChild(card);
+
+        var hdr = document.createElement('div');
+        hdr.className = 'adv-plan-card-hdr';
+        var statusPill = document.createElement('span');
+        statusPill.className = 'adv-plan-status status-' + entry.status;
+        statusPill.textContent = entry.status === 'open' ? 'Awaiting advisor'
+                              : entry.status === 'planned' ? 'Plan ready'
+                              : entry.status === 'applied' ? 'Applied'
+                              : entry.status;
+        hdr.appendChild(statusPill);
+        var titleLine = document.createElement('div');
+        titleLine.className = 'adv-plan-card-title';
+        var advName = entry.advisorName || 'Advisor';
+        titleLine.textContent = advName + (entry.stepCount ? ' · ' + entry.stepCount + ' step' + (entry.stepCount === 1 ? '' : 's') : '');
+        hdr.appendChild(titleLine);
+        var meta = document.createElement('span');
+        meta.className = 'adv-plan-card-meta';
+        var tsLabel = entry.appliedTs ? 'applied ' + _ar_advisorRelativeAge(entry.appliedTs)
+                    : entry.plannedTs ? 'planned ' + _ar_advisorRelativeAge(entry.plannedTs)
+                    : 'requested ' + _ar_advisorRelativeAge(entry.createdTs);
+        meta.textContent = tsLabel;
+        hdr.appendChild(meta);
+        var codeChip = document.createElement('span');
+        codeChip.className = 'adv-plan-code';
+        codeChip.textContent = entry.code;
+        codeChip.title = 'Plan code — share the link to re-open with the advisor';
+        hdr.appendChild(codeChip);
+        card.appendChild(hdr);
+
+        if (entry.note) {
+          var noteLine = document.createElement('div');
+          noteLine.className = 'adv-plan-card-note';
+          noteLine.textContent = entry.note;
+          card.appendChild(noteLine);
+        }
+
+        // Open status: nothing to expand, just show the share link
+        if (entry.status === 'open') {
+          var openHelp = document.createElement('div');
+          openHelp.className = 'adv-plan-card-open';
+          var url = 'https://2864tw.com/armory-report.html?advise=' + entry.code;
+          openHelp.appendChild(document.createTextNode('Share this link with your advisor: '));
+          var a = document.createElement('a');
+          a.href = url; a.textContent = url;
+          a.target = '_blank'; a.rel = 'noopener';
+          openHelp.appendChild(a);
+          card.appendChild(openHelp);
+          return;
+        }
+
+        // Planned / applied — expand to step list on click
+        var detailHost = document.createElement('div');
+        detailHost.className = 'adv-plan-card-detail';
+        detailHost.style.display = 'none';
+        card.appendChild(detailHost);
+
+        var toggle = document.createElement('button');
+        toggle.className = 'adv-plan-card-toggle';
+        toggle.type = 'button';
+        toggle.textContent = entry.status === 'applied' ? 'View steps' : 'View steps & accept';
+        toggle.onclick = function() {
+          if (detailHost.style.display === 'none') {
+            detailHost.style.display = '';
+            toggle.textContent = 'Hide';
+            if (!detailHost.dataset.loaded) {
+              _ar_loadAdvisorPlanDetail(detailHost, entry, siteKey, merged, catalog, lookups);
+            }
+          } else {
+            detailHost.style.display = 'none';
+            toggle.textContent = entry.status === 'applied' ? 'View steps' : 'View steps & accept';
+          }
+        };
+        card.appendChild(toggle);
+      });
+    });
+  }
+
+  function _ar_loadAdvisorPlanDetail(host, entry, siteKey, merged, catalog, lookups) {
+    host.dataset.loaded = '1';
+    host.replaceChildren();
+    var loading = document.createElement('div');
+    loading.className = 'adv-plan-empty';
+    loading.textContent = 'Loading plan steps…';
+    host.appendChild(loading);
+
+    fetch(SUPPLEMENT_WORKER + '/advisor/plan/' + entry.code, { cache: 'no-store' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .catch(function() { return null; })
+      .then(function(plan) {
+        host.replaceChildren();
+        if (!plan || !Array.isArray(plan.steps)) {
+          var err = document.createElement('div');
+          err.className = 'adv-plan-empty';
+          err.textContent = 'Could not load plan. The advisor may have removed it.';
+          host.appendChild(err);
+          return;
+        }
+        _ar_renderPlanStepList(host, entry, plan, siteKey, merged, catalog, lookups);
+      });
+  }
+
+  function _ar_renderPlanStepList(host, entry, plan, siteKey, merged, catalog, lookups) {
+    var alreadyApplied = entry.status === 'applied';
+    // Per-step accept state. Default all checked unless plan was already applied.
+    var accepted = (plan.steps || []).map(function() { return !alreadyApplied; });
+
+    var list = document.createElement('ul');
+    list.className = 'adv-step-list';
+    plan.steps.forEach(function(step, i) {
+      var li = document.createElement('li');
+      li.className = 'adv-step-row adv-step-accept';
+      var num = document.createElement('span');
+      num.className = 'as-num';
+      num.textContent = String(i + 1);
+      li.appendChild(num);
+      var txt = document.createElement('span');
+      txt.className = 'as-text';
+      txt.textContent = _ar_advisorStepEnglish(step);
+      li.appendChild(txt);
+      var lbl = document.createElement('label');
+      lbl.className = 'as-accept-toggle';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = accepted[i];
+      cb.disabled = alreadyApplied;
+      cb.onchange = function() {
+        accepted[i] = cb.checked;
+        updateApplySummary();
+      };
+      lbl.appendChild(cb);
+      var lblText = document.createTextNode(' Accept');
+      lbl.appendChild(lblText);
+      li.appendChild(lbl);
+      list.appendChild(li);
+    });
+    host.appendChild(list);
+
+    var summary = document.createElement('div');
+    summary.className = 'adv-apply-summary';
+    host.appendChild(summary);
+
+    var applyRow = document.createElement('div');
+    applyRow.className = 'adv-plan-actions';
+    if (alreadyApplied) {
+      var done = document.createElement('span');
+      done.className = 'adv-save-status ok';
+      done.textContent = 'Already applied · ' + (entry.acceptedCount || 0) + ' step' + (entry.acceptedCount === 1 ? '' : 's') + ' accepted';
+      applyRow.appendChild(done);
+    } else {
+      var applyBtn = document.createElement('button');
+      applyBtn.className = 'adv-save-btn';
+      applyBtn.type = 'button';
+      applyBtn.textContent = 'Apply Accepted Steps to Pool';
+      applyBtn.onclick = function() {
+        applyBtn.disabled = true;
+        summary.classList.remove('err', 'ok');
+        summary.textContent = 'Applying…';
+        var verified = _ar_isUnlocked(siteKey);
+        if (!verified) {
+          applyBtn.disabled = false;
+          summary.classList.add('err');
+          summary.textContent = 'Verify your in-game UID first (Inventory tab → unlock).';
+          return;
+        }
+        _ar_applyAcceptedSteps(entry.code, plan, accepted, siteKey, merged, catalog, lookups)
+          .then(function(result) {
+            summary.classList.add('ok');
+            summary.textContent = 'Applied · ' + result.acceptedCount + ' step' + (result.acceptedCount === 1 ? '' : 's') + ' rolled into your rune pool. Refreshing…';
+            setTimeout(function() {
+              // Refresh: re-render this tab + invalidate the rune pool tab
+              var rpContent = document.getElementById('tab-runepool');
+              if (rpContent) rpContent.removeAttribute('data-rendered');
+              _ar_refreshAdvisorIndex(siteKey).then(function() {
+                renderMyAdvisorPlansTab(siteKey, merged);
+              });
+            }, 1200);
+          })
+          .catch(function(e) {
+            summary.classList.add('err');
+            summary.textContent = 'Apply failed: ' + (e && e.message ? e.message : e);
+            applyBtn.disabled = false;
+          });
+      };
+      applyRow.appendChild(applyBtn);
+    }
+    host.appendChild(applyRow);
+
+    function updateApplySummary() {
+      summary.classList.remove('err', 'ok');
+      var n = accepted.filter(function(x) { return x; }).length;
+      summary.textContent = n + ' of ' + plan.steps.length + ' step' + (plan.steps.length === 1 ? '' : 's') + ' accepted';
+    }
+    updateApplySummary();
+  }
+
+  async function _ar_applyAcceptedSteps(code, plan, acceptedFlags, siteKey, merged, catalog, lookups) {
+    // Filter accepted steps preserving order.
+    var acceptedSteps = (plan.steps || []).filter(function(_, i) { return acceptedFlags[i]; });
+    if (acceptedSteps.length === 0) {
+      throw new Error('Nothing accepted — check at least one step.');
+    }
+    // Build base from current state. The advisor's plan was composed against
+    // a snapshot from when they opened the link; we re-derive from CURRENT
+    // inv+gear so the applied result reflects whatever the player has done
+    // in the meantime.
+    var inv = ArmoryIdentity.getSupplement('inv', siteKey);
+    var gear = ArmoryIdentity.getSupplement('gear', siteKey);
+    var ext = _ar_extractRunePool(inv, gear, lookups);
+    var basePool = ext.pool;
+    var baseGear = _ar_advisorBuildBaseGear(merged);
+    var runeIdx = _ar_advisorRuneTypeIndex(catalog);
+
+    var state = _ar_recomputeAdvisorState(basePool, baseGear, acceptedSteps, catalog, runeIdx);
+
+    // Convert state.pool → runepool supplement schema. Drop families that
+    // ended up all-zero so the saved record stays small. Sanitize counts to
+    // non-negative ints (defensive — recompute can theoretically go negative
+    // if the advisor's plan referenced runes the player no longer has).
+    var pool = {};
+    Object.keys(state.pool).forEach(function(name) {
+      var t = state.pool[name];
+      var any = false;
+      var clean = {0:0,1:0,2:0,3:0,4:0,5:0,6:0};
+      for (var s = 0; s <= 6; s++) {
+        var v = Math.max(0, Math.floor(t[s] || 0));
+        clean[s] = v;
+        if (v > 0) any = true;
+      }
+      if (any) pool[name] = clean;
+    });
+
+    var nowIso = new Date().toISOString();
+    var payload = {
+      v: 1,
+      meta: { ts: nowIso },
+      pool: pool,
+      source: 'advisor-applied',
+      appliedFromCode: code
+    };
+
+    // Save runepool supplement (locally + worker)
+    ArmoryIdentity.setSupplement('runepool', siteKey, payload);
+    await _ar_supplementUpload('runepool', payload, siteKey);
+    try { ArmoryIdentity.setLastSync('runepool', siteKey, new Date(nowIso).getTime()); } catch (_) {}
+
+    // POST /advisor/plan/<code>/apply — flips status + records acceptedCount
+    await _ar_ensureSupplementToken(siteKey);
+    if (!_ar_supplementToken) throw new Error('No upload token. Re-verify UID.');
+    var r = await fetch(SUPPLEMENT_WORKER + '/advisor/plan/' + code + '/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
+      body: JSON.stringify({ acceptedCount: acceptedSteps.length })
+    });
+    if (!r.ok) {
+      var msg = await r.text();
+      throw new Error(r.status + ' ' + msg);
+    }
+    return { acceptedCount: acceptedSteps.length };
   }
 
   // ── Combined "Import TopWar Data" modal ──────────────────────────────────
