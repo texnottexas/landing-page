@@ -1342,6 +1342,34 @@
     border-radius: 4px; padding: 2px 8px; font-size: .7rem; cursor: pointer;
   }
   .adv-step-row .as-rm:hover { color: #f85149; border-color: #f85149; }
+  /* Drag handle + arrow buttons (advisor builder step reorder) */
+  .adv-step-row .as-drag-handle {
+    color: var(--muted); cursor: grab; font-size: .9rem; user-select: none;
+    padding: 0 .15rem; line-height: 1;
+  }
+  .adv-step-row .as-drag-handle:active { cursor: grabbing; }
+  .adv-step-row .as-arrow {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    border-radius: 4px; padding: 1px 6px; font-size: .8rem; cursor: pointer;
+    line-height: 1;
+  }
+  .adv-step-row .as-arrow:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+  .adv-step-row .as-arrow:disabled { opacity: .35; cursor: not-allowed; }
+  .adv-step-row.dragging { opacity: .55; }
+  .adv-step-row.drag-target {
+    border-color: var(--accent);
+    background: rgba(121, 192, 255, 0.08);
+  }
+  /* Stale-step indicator on the player accept UI (Polish A) */
+  .adv-step-row.adv-step-stale {
+    border-color: rgba(248, 81, 73, 0.45);
+    background: rgba(248, 81, 73, 0.06);
+  }
+  .adv-step-row .as-stale-pill {
+    font-size: .58rem; padding: 1px 6px; border-radius: 3px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0;
+    background: rgba(248, 81, 73, 0.15); color: #f85149; cursor: help;
+  }
   .adv-plan-actions {
     display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .5rem;
   }
@@ -17098,6 +17126,14 @@
         steps.forEach(function(step, i) {
           var li = document.createElement('li');
           li.className = 'adv-step-row';
+          li.draggable = true;
+          li.dataset.stepIdx = String(i);
+          // Drag handle — visible affordance + keyboard hint via title.
+          var handle = document.createElement('span');
+          handle.className = 'as-drag-handle';
+          handle.textContent = '☰'; // ☰
+          handle.title = 'Drag to reorder';
+          li.appendChild(handle);
           var num = document.createElement('span');
           num.className = 'as-num';
           num.textContent = String(i + 1);
@@ -17106,6 +17142,37 @@
           txt.className = 'as-text';
           txt.textContent = _ar_advisorStepEnglish(step);
           li.appendChild(txt);
+          // Up/Down arrows — mobile + a11y fallback for drag-and-drop.
+          var up = document.createElement('button');
+          up.type = 'button';
+          up.className = 'as-arrow';
+          up.textContent = '↑'; // ↑
+          up.title = 'Move up';
+          up.disabled = i === 0;
+          up.onclick = function() {
+            if (i === 0) return;
+            var arr = window._advisorPlanSteps || [];
+            var tmp = arr[i - 1]; arr[i - 1] = arr[i]; arr[i] = tmp;
+            saveStatus.textContent = 'Unsaved changes';
+            saveStatus.classList.remove('ok', 'err');
+            repaint();
+          };
+          li.appendChild(up);
+          var down = document.createElement('button');
+          down.type = 'button';
+          down.className = 'as-arrow';
+          down.textContent = '↓'; // ↓
+          down.title = 'Move down';
+          down.disabled = i === steps.length - 1;
+          down.onclick = function() {
+            var arr = window._advisorPlanSteps || [];
+            if (i >= arr.length - 1) return;
+            var tmp = arr[i + 1]; arr[i + 1] = arr[i]; arr[i] = tmp;
+            saveStatus.textContent = 'Unsaved changes';
+            saveStatus.classList.remove('ok', 'err');
+            repaint();
+          };
+          li.appendChild(down);
           var rm = document.createElement('button');
           rm.className = 'as-rm';
           rm.type = 'button';
@@ -17117,6 +17184,40 @@
             repaint();
           };
           li.appendChild(rm);
+          // HTML5 drag-and-drop. Storing the index on dataset means the drop
+          // handler can look it up regardless of which child of the <li> the
+          // drop event lands on.
+          li.addEventListener('dragstart', function(e) {
+            li.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            try { e.dataTransfer.setData('text/plain', String(i)); } catch (er) {}
+          });
+          li.addEventListener('dragend', function() {
+            li.classList.remove('dragging');
+            stepList.querySelectorAll('.drag-target').forEach(function(el) { el.classList.remove('drag-target'); });
+          });
+          li.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            li.classList.add('drag-target');
+          });
+          li.addEventListener('dragleave', function() { li.classList.remove('drag-target'); });
+          li.addEventListener('drop', function(e) {
+            e.preventDefault();
+            li.classList.remove('drag-target');
+            var fromStr = '';
+            try { fromStr = e.dataTransfer.getData('text/plain'); } catch (er) {}
+            var from = parseInt(fromStr, 10);
+            var to = i;
+            if (Number.isNaN(from) || from === to) return;
+            var arr = window._advisorPlanSteps || [];
+            if (from < 0 || from >= arr.length) return;
+            var moved = arr.splice(from, 1)[0];
+            arr.splice(to, 0, moved);
+            saveStatus.textContent = 'Unsaved changes';
+            saveStatus.classList.remove('ok', 'err');
+            repaint();
+          });
           stepList.appendChild(li);
         });
       }
@@ -17951,13 +18052,48 @@
   function _ar_renderPlanStepList(host, entry, plan, siteKey, merged, catalog, lookups) {
     var alreadyApplied = entry.status === 'applied';
     // Per-step accept state. Default all checked unless plan was already applied.
-    var accepted = (plan.steps || []).map(function() { return !alreadyApplied; });
+    // Steps that no longer validate against the player's current state (rune
+    // already merged, fodder spent elsewhere, slot now empty, etc.) start
+    // unchecked so the player has to deliberately re-confirm if they want
+    // them — the apply pipeline already clamps to non-negative pool counts,
+    // but skipping here avoids confusing post-apply diffs.
+    var runeIdx = (typeof _ar_advisorRuneTypeIndex === 'function') ? _ar_advisorRuneTypeIndex(catalog) : {};
+    var basePool = (function() {
+      try { return _ar_extractRunePool(merged.inv || {}, merged.gear || {}, lookups || {}).pool || {}; }
+      catch (e) { return {}; }
+    })();
+    var baseGear = (typeof _ar_advisorBuildBaseGear === 'function') ? _ar_advisorBuildBaseGear(merged) : {};
+    // Walk steps in order, validating each against the running state so a
+    // valid merge that depends on an earlier valid place still shows green.
+    var validateState = {
+      pool: JSON.parse(JSON.stringify(basePool)),
+      gearByHero: JSON.parse(JSON.stringify(baseGear))
+    };
+    var stepValidations = (plan.steps || []).map(function(step) {
+      var errors = (typeof _ar_validateAdvisorStep === 'function')
+        ? _ar_validateAdvisorStep(step, { pool: validateState.pool, gearByHero: validateState.gearByHero, runeIdx: runeIdx, catalog: catalog })
+        : [];
+      var ok = !errors || errors.length === 0;
+      // Even when invalid, advance the simulated state with the step so
+      // downstream steps can still surface "depends on this earlier step"
+      // failures rather than cascading the same complaint.
+      if (typeof _ar_applyAdvisorStep === 'function') {
+        try { _ar_applyAdvisorStep(validateState, step, catalog, runeIdx); } catch (e) {}
+      }
+      return { ok: ok, errors: errors || [] };
+    });
+
+    var accepted = (plan.steps || []).map(function(_, i) {
+      if (alreadyApplied) return false;
+      return stepValidations[i] && stepValidations[i].ok;
+    });
 
     var list = document.createElement('ul');
     list.className = 'adv-step-list';
     plan.steps.forEach(function(step, i) {
+      var validation = stepValidations[i] || { ok: true, errors: [] };
       var li = document.createElement('li');
-      li.className = 'adv-step-row adv-step-accept';
+      li.className = 'adv-step-row adv-step-accept' + (validation.ok ? '' : ' adv-step-stale');
       var num = document.createElement('span');
       num.className = 'as-num';
       num.textContent = String(i + 1);
@@ -17966,6 +18102,15 @@
       txt.className = 'as-text';
       txt.textContent = _ar_advisorStepEnglish(step);
       li.appendChild(txt);
+      // Stale indicator + tooltip with reason. Players see a small "stale"
+      // pill they can hover/tap to read why the step won't apply cleanly.
+      if (!validation.ok) {
+        var stalePill = document.createElement('span');
+        stalePill.className = 'as-stale-pill';
+        stalePill.textContent = 'stale';
+        stalePill.title = validation.errors.join('. ') || 'No longer valid against current pool/gear.';
+        li.appendChild(stalePill);
+      }
       var lbl = document.createElement('label');
       lbl.className = 'as-accept-toggle';
       var cb = document.createElement('input');
@@ -17995,6 +18140,36 @@
       done.className = 'adv-save-status ok';
       done.textContent = 'Already applied · ' + (entry.acceptedCount || 0) + ' step' + (entry.acceptedCount === 1 ? '' : 's') + ' accepted';
       applyRow.appendChild(done);
+      // Remove finished plans: cascades request + plan + index entry through
+      // the same DELETE endpoint the settings modal uses. Keeps the player's
+      // Advisor Plans tab from accumulating cruft once a plan is done with.
+      var rmSpacer = document.createElement('span');
+      rmSpacer.className = 'ap-spacer';
+      applyRow.appendChild(rmSpacer);
+      var rmBtn = document.createElement('button');
+      rmBtn.type = 'button';
+      rmBtn.className = 'asr-action danger';
+      rmBtn.style.marginLeft = '.5rem';
+      rmBtn.textContent = 'Remove from list';
+      rmBtn.onclick = async function() {
+        if (!confirm('Remove this applied plan from your list? The advisor will lose access to the request as well.')) return;
+        rmBtn.disabled = true; rmBtn.textContent = 'Removing…';
+        try {
+          if (typeof _ar_ensureSupplementToken === 'function') await _ar_ensureSupplementToken(siteKey);
+          if (!_ar_supplementToken) throw new Error('verify your UID first');
+          var rr = await fetch(SUPPLEMENT_WORKER + '/advisor/request/' + entry.code, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken }
+          });
+          if (!rr.ok) throw new Error('http ' + rr.status);
+          await _ar_refreshAdvisorIndex(siteKey);
+          renderMyAdvisorPlansTab(siteKey, merged);
+        } catch (e) {
+          rmBtn.disabled = false; rmBtn.textContent = 'Remove from list';
+          alert('Remove failed: ' + (e && e.message || 'unknown'));
+        }
+      };
+      applyRow.appendChild(rmBtn);
     } else {
       var applyBtn = document.createElement('button');
       applyBtn.className = 'adv-save-btn';
