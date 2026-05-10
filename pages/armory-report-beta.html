@@ -8582,6 +8582,79 @@
   // mock-data file is loaded as gear-pool-mock-data.js -> window._gearPoolMockData.
   var GP_SLOT_NAMES = { 1: 'Weapon', 2: 'Armor', 3: 'Accessory', 4: 'Helmet', 5: 'Device', 6: 'Boots' };
   var GP_QUALITY_NAMES = { 2: 'Blue', 3: 'Purple', 4: 'Purple+', 5: 'Gold' };
+  // Base-stat lookup for the 24 stock gear configs (slot 1-6 × rarity Blue/Purple/Purple+/Gold).
+  // Each entry: [{ buffId, baseAtLv1, perLevel }] in basis points (e.g. 600 = 6%).
+  // Formula at level L: base = baseAtLv1 + perLevel × L. Verified against in-game UI:
+  //   Lv.20 Gold pistol (100104): 600 + 120×20 = 3000 → "All units Attack 30%"
+  //   Lv.20 Gold accessory (100304): "300|100" + "60|20"×20 → ATK 15% + HP 5%
+  // Pulled live from the hero_equip TABLE on 2026-05-09.
+  var EQUIP_BASE_BUFF = {
+    100101: [{ buffId: '930100', baseAtLv1: 120, perLevel: 24 }],
+    100102: [{ buffId: '930100', baseAtLv1: 240, perLevel: 48 }],
+    100103: [{ buffId: '930100', baseAtLv1: 360, perLevel: 70 }],
+    100104: [{ buffId: '930100', baseAtLv1: 600, perLevel: 120 }],
+    100201: [{ buffId: '930000', baseAtLv1: 120, perLevel: 24 }],
+    100202: [{ buffId: '930000', baseAtLv1: 240, perLevel: 48 }],
+    100203: [{ buffId: '930000', baseAtLv1: 360, perLevel: 70 }],
+    100204: [{ buffId: '930000', baseAtLv1: 600, perLevel: 120 }],
+    100301: [{ buffId: '930100', baseAtLv1: 60, perLevel: 12 }, { buffId: '930000', baseAtLv1: 20, perLevel: 4 }],
+    100302: [{ buffId: '930100', baseAtLv1: 120, perLevel: 24 }, { buffId: '930000', baseAtLv1: 40, perLevel: 8 }],
+    100303: [{ buffId: '930100', baseAtLv1: 180, perLevel: 40 }, { buffId: '930000', baseAtLv1: 60, perLevel: 10 }],
+    100304: [{ buffId: '930100', baseAtLv1: 300, perLevel: 60 }, { buffId: '930000', baseAtLv1: 100, perLevel: 20 }],
+    100401: [{ buffId: '930000', baseAtLv1: 80, perLevel: 16 }],
+    100402: [{ buffId: '930000', baseAtLv1: 160, perLevel: 32 }],
+    100403: [{ buffId: '930000', baseAtLv1: 240, perLevel: 48 }],
+    100404: [{ buffId: '930000', baseAtLv1: 400, perLevel: 80 }],
+    100501: [{ buffId: '930100', baseAtLv1: 80, perLevel: 16 }],
+    100502: [{ buffId: '930100', baseAtLv1: 160, perLevel: 32 }],
+    100503: [{ buffId: '930100', baseAtLv1: 240, perLevel: 48 }],
+    100504: [{ buffId: '930100', baseAtLv1: 400, perLevel: 80 }],
+    100601: [{ buffId: '930100', baseAtLv1: 20, perLevel: 4 }, { buffId: '930000', baseAtLv1: 60, perLevel: 12 }],
+    100602: [{ buffId: '930100', baseAtLv1: 40, perLevel: 8 }, { buffId: '930000', baseAtLv1: 120, perLevel: 24 }],
+    100603: [{ buffId: '930100', baseAtLv1: 60, perLevel: 10 }, { buffId: '930000', baseAtLv1: 180, perLevel: 40 }],
+    100604: [{ buffId: '930100', baseAtLv1: 100, perLevel: 20 }, { buffId: '930000', baseAtLv1: 300, perLevel: 60 }]
+  };
+  // Buff ID → display name. Game uses "All units Attack" / "All units HP".
+  var BASE_BUFF_NAMES = { '930100': 'All units Attack', '930000': 'All units HP' };
+  // Resolve the per-buff base-stat rows for a piece, applying the level scaling
+  // and pairing with the enhancement values from p.enhance (when present).
+  // Returns array of { buffId, statName, basePct, enhPct, enhanceShow }.
+  function gpResolveBaseStats(p) {
+    if (!p || p.equipId == null) return [];
+    var rows = EQUIP_BASE_BUFF[p.equipId] || [];
+    var lvl = p.level != null ? p.level : 0;
+    var enh = p.enhance || {};
+    return rows.map(function (r) {
+      var basisPts = r.baseAtLv1 + r.perLevel * lvl;
+      var basePct = basisPts / 100;
+      var enhEntry = enh[r.buffId] || null;
+      return {
+        buffId: r.buffId,
+        statName: BASE_BUFF_NAMES[r.buffId] || (enhEntry && enhEntry.statName) || ('buff ' + r.buffId),
+        basePct: basePct,
+        enhPct: enhEntry ? enhEntry.percent : 0,
+        enhanceShow: p.enhanceShow || 0
+      };
+    });
+  }
+  // Heroes-tab parity helpers, hoisted to module scope so both the card
+  // builder (inside renderTitanGearPoolSubTab) and the detail modal can
+  // call them without crossing closures. Mirrors armory-report.html's
+  // GEAR_TEMPLATE-based rollPct + rollColor exactly.
+  function gpRollPct(b) {
+    var tmpl = (typeof GEAR_TEMPLATE === 'object') ? GEAR_TEMPLATE[b.templateId] : null;
+    if (!tmpl || !tmpl.m) return null;
+    var raw = (b.rawValue != null) ? b.rawValue : (b.valuePercent != null ? b.valuePercent * 100 : null);
+    if (raw == null) return null;
+    return Math.round(raw / tmpl.m * 100);
+  }
+  function gpRollColor(pct) {
+    return pct >= 70 ? '#56d364' : pct >= 50 ? '#e3b341' : pct >= 25 ? '#a371f7' : '#6cb6ff';
+  }
+  function gpFmtPct(v) {
+    if (v == null) return '?';
+    return v.toFixed(2).replace(/\.?0+$/, '') + '%';
+  }
 
   function gpRuneSlug(name) {
     if (!name) return null;
@@ -9227,25 +9300,6 @@
       bodyEl.appendChild(grid);
     }
 
-    // Heroes-tab parity helpers (use GEAR_TEMPLATE for max, rollColor for tier).
-    // The bookmarklet's b.rollPercent uses a different denominator (avg-roll
-    // baseline, not max), so we ignore it and recompute from b.valuePercent
-    // against the canonical max stored in GEAR_TEMPLATE[templateId].m.
-    function gpRollPct(b) {
-      var tmpl = (typeof GEAR_TEMPLATE === 'object') ? GEAR_TEMPLATE[b.templateId] : null;
-      if (!tmpl || !tmpl.m) return null;
-      var raw = (b.rawValue != null) ? b.rawValue : (b.valuePercent != null ? b.valuePercent * 100 : null);
-      if (raw == null) return null;
-      return Math.round(raw / tmpl.m * 100);
-    }
-    function gpRollColor(pct) {
-      // Same bands as the heroes tab's rollColor().
-      return pct >= 70 ? '#56d364' : pct >= 50 ? '#e3b341' : pct >= 25 ? '#a371f7' : '#6cb6ff';
-    }
-    function gpFmtPct(v) {
-      if (v == null) return '?';
-      return v.toFixed(2).replace(/\.?0+$/, '') + '%';
-    }
     // Builds one stat row matching the heroes-tab layout: name | base | +enh
     // | =total | roll bar (if max known). Used by both card and modal so the
     // numbers line up byte-for-byte.
@@ -9349,6 +9403,26 @@
 
       if (p.schemes && p.schemes.length > 0 && p.schemes[0].name) {
         card.appendChild(gpEl('div', { cls: 'preset-chip', text: p.schemes[0].name, title: 'Preset: ' + p.schemes[0].name }));
+      }
+
+      // Base attribute rows — always rendered when the stock equipId is in
+      // EQUIP_BASE_BUFF. Shows base value (deterministic from rarity+slot+
+      // level) and the optional Enigma Platform enhancement chip / total.
+      var baseStats = gpResolveBaseStats(p);
+      if (baseStats.length) {
+        var baseList = gpEl('div', { cls: 'stat-list', style: 'border-top:none;padding-top:2px;margin-top:2px;' });
+        baseStats.forEach(function (bs) {
+          var row = gpEl('div', { cls: 'gp-stat-row', style: 'background:rgba(121,192,255,0.04);border-radius:3px;padding:1px 4px;' });
+          row.appendChild(gpEl('span', { cls: 'name', text: bs.statName }));
+          row.appendChild(gpEl('span', { cls: 'val', style: 'color:var(--text);', text: gpFmtPct(bs.basePct) }));
+          if (bs.enhPct > 0) {
+            var isActive = bs.enhanceShow === 2;
+            row.appendChild(gpEl('span', { cls: 'enh ' + (isActive ? 'active' : 'inactive'), text: '+' + gpFmtPct(bs.enhPct) }));
+            if (isActive) row.appendChild(gpEl('span', { cls: 'total', text: '= ' + gpFmtPct(bs.basePct + bs.enhPct) }));
+          }
+          baseList.appendChild(row);
+        });
+        card.appendChild(baseList);
       }
 
       // Random stat rows — heroes-tab format. Show all (typically 1–3); the
@@ -9548,18 +9622,39 @@
         });
     }
 
-    if (p.enhance && Object.keys(p.enhance).length > 0) {
+    // Base attributes (matches in-game "Base Attributes" panel). Always shown
+    // even for unenhanced pieces — the base value is meaningful on its own,
+    // and the enhancement chip + total only appear when the player has an
+    // active Enigma Platform boosting this slot (enhanceShow === 2).
+    var baseStats = gpResolveBaseStats(p);
+    if (baseStats.length) {
       rightCol.appendChild(gpEl('div', {
         style: 'font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:14px 0 8px;letter-spacing:.5px;',
-        text: 'Enhancement (Base Stat)'
+        text: 'Base Attributes'
       }));
-      Object.keys(p.enhance).forEach(function(k) {
-        var en = p.enhance[k];
-        var row = gpEl('div', { cls: 'gp-modal-stat-row' });
-        row.appendChild(gpEl('span', { cls: 'name', text: en.statName || ('buff_id:' + k) }));
-        row.appendChild(gpEl('span', { cls: 'val', text: '+' + (en.percent != null ? en.percent.toFixed(2) : '?') + '%' }));
-        rightCol.appendChild(row);
+      var baseListWrap = gpEl('div', { style: 'display:flex;flex-direction:column;gap:8px;' });
+      baseStats.forEach(function (bs) {
+        var rowWrap = gpEl('div', { style: 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px;' });
+        var line = gpEl('div', { style: 'display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;' });
+        line.appendChild(gpEl('span', { style: 'color:var(--muted);flex:1;min-width:0;', text: bs.statName }));
+        line.appendChild(gpEl('span', { style: 'color:var(--text);font-weight:700;', text: gpFmtPct(bs.basePct) }));
+        if (bs.enhPct > 0) {
+          var isActive = bs.enhanceShow === 2;
+          line.appendChild(gpEl('span', {
+            style: 'font-size:11px;color:' + (isActive ? '#f0883e' : 'var(--muted)') + (isActive ? '' : ';opacity:0.6'),
+            text: '+' + gpFmtPct(bs.enhPct)
+          }));
+          if (isActive) {
+            line.appendChild(gpEl('span', {
+              style: 'font-size:11px;color:var(--accent);',
+              text: '= ' + gpFmtPct(bs.basePct + bs.enhPct)
+            }));
+          }
+        }
+        rowWrap.appendChild(line);
+        baseListWrap.appendChild(rowWrap);
       });
+      rightCol.appendChild(baseListWrap);
     }
 
     grid.appendChild(rightCol);
