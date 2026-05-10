@@ -16866,6 +16866,45 @@
     addBtn.type = 'button';
     addBtn.textContent = '+ Add Step';
     actions.appendChild(addBtn);
+    // Bulk macro: queue a recycle step for every recoverable rune (s:0,
+    // any hero/slot). Walks the post-step state so re-clicking after
+    // partial work doesn't double-queue. Disabled when there's nothing
+    // to recover.
+    var recoverBtn = document.createElement('button');
+    recoverBtn.className = 'adv-add-btn';
+    recoverBtn.type = 'button';
+    recoverBtn.style.cssText = 'background:rgba(63,185,80,0.12);border-color:#3fb950;color:#3fb950;';
+    recoverBtn.textContent = 'Recover all';
+    recoverBtn.title = 'Queue a recycle step for every recoverable (s:0) rune';
+    recoverBtn.onclick = function() {
+      var steps = window._advisorPlanSteps || [];
+      var liveState = (typeof _ar_recomputeAdvisorState === 'function')
+        ? _ar_recomputeAdvisorState(basePool, baseGear, steps, catalog, runeIdx)
+        : { gearByHero: baseGear || {} };
+      var toAdd = [];
+      Object.keys(liveState.gearByHero || {}).forEach(function(hidStr) {
+        var hid = parseInt(hidStr, 10);
+        if (!Number.isFinite(hid)) return;
+        var slots = liveState.gearByHero[hidStr] || {};
+        for (var s = 1; s <= 6; s++) {
+          var r = slots[s];
+          if (r && r.runeName && (r.star === 0 || r.star == null)) {
+            toAdd.push({ type: 'recycle', srcHero: hid, srcSlot: s });
+          }
+        }
+      });
+      if (toAdd.length === 0) {
+        saveStatus.classList.remove('ok', 'err');
+        saveStatus.textContent = 'No recoverable runes left to queue';
+        return;
+      }
+      if (!confirm('Queue ' + toAdd.length + ' recycle step' + (toAdd.length === 1 ? '' : 's') + '? Each one returns a 0★ rune to the bag when the player applies the plan.')) return;
+      window._advisorPlanSteps = (window._advisorPlanSteps || []).concat(toAdd);
+      saveStatus.classList.remove('ok', 'err');
+      saveStatus.textContent = 'Unsaved changes — added ' + toAdd.length + ' recycle step' + (toAdd.length === 1 ? '' : 's');
+      repaint();
+    };
+    actions.appendChild(recoverBtn);
     var spacer = document.createElement('span');
     spacer.className = 'ap-spacer';
     actions.appendChild(spacer);
@@ -17221,6 +17260,22 @@
           stepList.appendChild(li);
         });
       }
+
+      // Refresh "Recover all" button affordance — count s:0 runes still
+      // present in the post-step state so the player can see how many
+      // recycle steps would be queued. Disabled when there's nothing to
+      // recover so the button doesn't tempt a click that goes nowhere.
+      var recoverableCount = 0;
+      Object.keys(state.gearByHero || {}).forEach(function(hidStr) {
+        var slots = state.gearByHero[hidStr] || {};
+        for (var s = 1; s <= 6; s++) {
+          var r = slots[s];
+          if (r && r.runeName && (r.star === 0 || r.star == null)) recoverableCount++;
+        }
+      });
+      recoverBtn.disabled = recoverableCount === 0;
+      recoverBtn.style.opacity = recoverableCount === 0 ? '.45' : '';
+      recoverBtn.textContent = recoverableCount > 0 ? ('Recover all (' + recoverableCount + ')') : 'Recover all';
     }
 
     addBtn.onclick = function() {
