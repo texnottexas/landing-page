@@ -1319,15 +1319,21 @@
     font-size: .58rem; padding: 1px 5px; border-radius: 3px; font-weight: 700;
     text-transform: uppercase; letter-spacing: .05em; flex-shrink: 0;
   }
-  .adv-slot-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
-  @media (max-width: 520px) {
-    .adv-slot-row { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  .adv-hero-card-hdr .hh-march {
+    font-size: .62rem; padding: 1px 6px; border-radius: 999px;
+    background: rgba(121, 192, 255, 0.12); color: var(--accent);
+    border: 1px solid rgba(121, 192, 255, 0.35);
+    font-weight: 600; flex-shrink: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    max-width: 110px;
   }
+  .adv-slot-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .adv-slot-tile {
+    aspect-ratio: 1 / 1;
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: 6px; padding: 4px 2px 3px; cursor: pointer; position: relative;
-    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
-    gap: 2px; min-height: 86px;
+    border-radius: 6px; padding: 6px 2px 4px; cursor: pointer; position: relative;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px;
     transition: transform .12s, border-color .12s, background .12s;
     overflow: hidden;
   }
@@ -1344,29 +1350,54 @@
     border-color: rgba(63, 185, 80, 0.6);
     background: rgba(63, 185, 80, 0.08);
   }
+  .adv-slot-tile.maxed {
+    border-color: rgba(227, 179, 65, 0.45);
+  }
   .adv-slot-tile img.ast-gear {
-    width: 22px; height: 22px; image-rendering: pixelated; opacity: .85;
+    width: 32px; height: 32px; image-rendering: pixelated; opacity: .9;
     flex-shrink: 0;
   }
   .adv-slot-tile img.ast-icon {
-    width: 32px; height: 32px; image-rendering: pixelated;
+    width: 40px; height: 40px; image-rendering: pixelated;
     flex-shrink: 0;
   }
   .adv-slot-tile .ast-stars-wrap {
     display: inline-flex; align-items: center; justify-content: center;
-    transform: scale(0.78); transform-origin: center; line-height: 1;
+    transform: scale(0.85); transform-origin: center; line-height: 1;
     margin-top: -2px;
   }
   .adv-slot-tile .ast-num {
-    position: absolute; top: 2px; left: 4px; font-size: .58rem;
+    position: absolute; top: 3px; left: 4px; font-size: .58rem;
     color: var(--muted); font-weight: 700; line-height: 1;
     background: rgba(13,17,23,0.6); padding: 1px 3px; border-radius: 3px;
   }
   .adv-slot-tile .ast-queued-dot {
-    position: absolute; top: 2px; right: 4px; width: 6px; height: 6px;
+    position: absolute; top: 3px; right: 4px; width: 6px; height: 6px;
     border-radius: 50%; background: #3fb950;
     box-shadow: 0 0 4px rgba(63, 185, 80, 0.6);
   }
+  .adv-slot-tile .ast-max-tag {
+    position: absolute; top: 3px; right: 4px; font-size: .56rem;
+    color: #e3b341; font-weight: 700; line-height: 1;
+    background: rgba(13,17,23,0.7); padding: 1px 3px; border-radius: 3px;
+    text-transform: uppercase; letter-spacing: .04em;
+  }
+  /* Effect tooltip blocks inside step builder modal */
+  .adv-effect-block {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px; font-size: .78rem;
+    color: var(--text); line-height: 1.5;
+    margin: .35rem 0;
+  }
+  .adv-effect-block .aeb-label {
+    display: inline-block; font-size: .62rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .05em;
+    color: var(--muted); margin-bottom: 2px;
+  }
+  .adv-effect-block.before .aeb-label { color: #8b949e; }
+  .adv-effect-block.after  .aeb-label { color: #3fb950; }
+  .adv-effect-block.after  { border-color: rgba(63, 185, 80, 0.4); }
+  .adv-effect-block .aeb-text b { color: #e3b341; font-weight: 700; }
   .adv-hero-card-empty-hint {
     font-size: .68rem; color: var(--muted); margin-top: .35rem; text-align: center; opacity: .7;
   }
@@ -8283,7 +8314,14 @@
   }
 
   // ── March management ──────────────────────────────────────────────────────
+  // In advisor (viewOnly) mode the player's marches are surfaced via the
+  // window-scoped override so the device's localStorage (the advisor's own
+  // saved marches) is never clobbered. Non-advisor reads fall through to
+  // the device's saved marchGroups.
   function loadMarches() {
+    if (Array.isArray(window._advisorOverrideMarches) && window._advisorOverrideMarches.length > 0) {
+      return window._advisorOverrideMarches;
+    }
     try {
       var saved = JSON.parse(localStorage.getItem('playerReport'));
       if (saved && Array.isArray(saved.marchGroups) && saved.marchGroups.length > 0) return saved.marchGroups;
@@ -15918,7 +15956,9 @@
     window._adviseReq = reqObj;
 
     var ids = String(cfg.reportIds).split(',').filter(Boolean);
-    if (cfg.marchGroups) saveMarches(cfg.marchGroups);
+    // Surface the player's marches to runtime helpers without persisting
+    // them to localStorage — preserves the advisor's own saved marches.
+    window._advisorOverrideMarches = Array.isArray(cfg.marchGroups) ? cfg.marchGroups : [];
     // viewOnly = true so localStorage stays the advisor's own.
     applyShortcodeConfig(cfg.playerName, ids, false, cfg.siteKey || reqObj.siteKey);
     setTimeout(function() { _ar_showAdvisorBanner(code, reqObj); }, 200);
@@ -16357,12 +16397,27 @@
         if (s.srcHero && s.srcSlot) touched[s.srcHero + ':' + s.srcSlot] = true;
       });
 
-      // Hero gear gallery — heroes with at least 1 piece of gear
+      // Hero gear gallery — heroes with at least 1 piece of gear.
+      // Sorted so heroes that share a march sit next to each other (in the
+      // order the player saved them), then non-marched heroes by gear count.
       galleryGrid.replaceChildren();
       var iconMap = (typeof RUNE_ICON === 'object' && RUNE_ICON) ? RUNE_ICON : {};
+      var marchList = (typeof loadMarches === 'function') ? loadMarches() : [];
+      var heroMarch = {}; // heroId → { name, marchIdx, posInMarch }
+      marchList.forEach(function(m, mi) {
+        if (!m || !Array.isArray(m.heroIds)) return;
+        m.heroIds.forEach(function(hid, pi) {
+          if (hid && !heroMarch[hid]) heroMarch[hid] = { name: m.name || ('March ' + (mi + 1)), marchIdx: mi, posInMarch: pi };
+        });
+      });
       var galleryHeroes = ((merged && merged.heroes) || []).filter(function(h) {
         return h && h.id && Array.isArray(h.heroEquips) && h.heroEquips.length > 0;
       }).slice().sort(function(a, b) {
+        var ma = heroMarch[a.id], mb = heroMarch[b.id];
+        var aIdx = ma ? ma.marchIdx : 9999;
+        var bIdx = mb ? mb.marchIdx : 9999;
+        if (aIdx !== bIdx) return aIdx - bIdx;
+        if (ma && mb) return ma.posInMarch - mb.posInMarch;
         return (b.heroEquips.length - a.heroEquips.length) ||
                String(heroName(a.id)).localeCompare(String(heroName(b.id)));
       });
@@ -16393,6 +16448,13 @@
             bbadge.textContent = branch;
             hdr.appendChild(bbadge);
           }
+          if (heroMarch[h.id]) {
+            var mPill = document.createElement('span');
+            mPill.className = 'hh-march';
+            mPill.textContent = heroMarch[h.id].name;
+            mPill.title = heroMarch[h.id].name;
+            hdr.appendChild(mPill);
+          }
           card.appendChild(hdr);
           var slotRow = document.createElement('div');
           slotRow.className = 'adv-slot-row';
@@ -16412,8 +16474,10 @@
                 return se ? se.star_max : null;
               })();
             }
+            var isMaxed = !!(rune && rune.runeName && starMaxVal != null && (rune.star || 0) >= starMaxVal);
+            if (isMaxed) tile.classList.add('maxed');
             tile.title = (rune && rune.runeName)
-              ? slotName + ' — ' + rune.runeName + ' ' + rune.star + (starMaxVal != null ? '/' + starMaxVal : '') + ' stars (click to act)'
+              ? slotName + ' — ' + rune.runeName + ' ' + rune.star + (starMaxVal != null ? '/' + starMaxVal : '') + ' stars' + (isMaxed ? ' (MAX)' : '') + ' — click for details'
               : slotName + ' — empty (click to place a rune)';
             var slotNumEl = document.createElement('span');
             slotNumEl.className = 'ast-num';
@@ -16443,12 +16507,17 @@
                 starsWrap.appendChild(runeStarSVG(rune.star || 0, starMaxVal));
                 tile.appendChild(starsWrap);
               } else {
-                // Fallback: text rendering if helper missing
                 starsWrap.textContent = (rune.star || 0) + (starMaxVal != null ? '/' + starMaxVal : '') + '★';
                 starsWrap.style.color = '#e3b341';
                 starsWrap.style.fontSize = '.58rem';
                 starsWrap.style.fontWeight = '700';
                 tile.appendChild(starsWrap);
+              }
+              if (isMaxed && !touched[h.id + ':' + s]) {
+                var maxTag = document.createElement('span');
+                maxTag.className = 'ast-max-tag';
+                maxTag.textContent = 'MAX';
+                tile.appendChild(maxTag);
               }
             } else {
               var emp2 = document.createElement('span');
@@ -16622,6 +16691,21 @@
 
     var prefill = ctx.prefill || null;
 
+    // Resolve the slot's star_max for the prefilled rune so we can detect
+    // "already maxed" and disable Merge accordingly.
+    function _ar_resolveSlotStarMax(rname, slot) {
+      if (!rname || !slot) return null;
+      var meta = ctx.runeIdx && ctx.runeIdx[rname];
+      if (!meta) return null;
+      var se = (meta.slots || []).filter(function(x) { return x.slot === slot; })[0];
+      return se ? se.star_max : null;
+    }
+    var prefillStarMax = (prefill && prefill.rune && prefill.rune.runeName)
+      ? (prefill.rune.starMax != null ? prefill.rune.starMax : _ar_resolveSlotStarMax(prefill.rune.runeName, prefill.slot))
+      : null;
+    var prefillIsMaxed = !!(prefill && prefill.rune && prefill.rune.runeName
+      && prefillStarMax != null && (prefill.rune.star || 0) >= prefillStarMax);
+
     var h = document.createElement('h2');
     h.textContent = prefill ? 'Compose Step' : 'Add Step';
     modal.appendChild(h);
@@ -16651,11 +16735,31 @@
       var bSub = document.createElement('div');
       bSub.className = 'ascb-sub';
       bSub.textContent = (prefill.rune && prefill.rune.runeName)
-        ? ('Currently: ' + prefill.rune.runeName + ' ' + prefill.rune.star + '★')
+        ? ('Currently: ' + prefill.rune.runeName + ' ' + prefill.rune.star + (prefillStarMax != null ? '/' + prefillStarMax : '') + '★' + (prefillIsMaxed ? ' (MAX)' : ''))
         : 'Currently: empty slot';
       bText.appendChild(bSub);
       banner.appendChild(bText);
       modal.appendChild(banner);
+
+      // Current rune effect (rune tooltip text). Helps the advisor reason
+      // about value at this star tier without leaving the modal.
+      if (prefill.rune && prefill.rune.runeName && typeof runeTooltipParts === 'function') {
+        var parts = runeTooltipParts(prefill.rune.runeName, prefill.rune.star || 0, prefillStarMax);
+        if (parts && parts.text) {
+          var effBlock = document.createElement('div');
+          effBlock.className = 'adv-effect-block before';
+          var effLbl = document.createElement('div');
+          effLbl.className = 'aeb-label';
+          effLbl.textContent = 'Current effect — ' + (prefill.rune.star || 0) + '★';
+          effBlock.appendChild(effLbl);
+          var effText = document.createElement('div');
+          effText.className = 'aeb-text';
+          if (typeof renderRuneDesc === 'function') renderRuneDesc(effText, parts);
+          else effText.textContent = parts.text;
+          effBlock.appendChild(effText);
+          modal.appendChild(effBlock);
+        }
+      }
     }
 
     // Action picker — card-style. Filtered + ordered based on slot state.
@@ -16671,36 +16775,52 @@
       { type: 'inherit', label: 'Inherit', desc: 'Move/swap with same-numbered slot' },
       { type: 'recycle', label: 'Recycle', desc: 'Recover s:0 rune to bag' }
     ];
+    function actionDisabledReason(type) {
+      if (!prefill) return null;
+      var hasRune = !!(prefill.rune && prefill.rune.runeName);
+      var star = (prefill.rune && prefill.rune.star) || 0;
+      if (type === 'place'   && hasRune)                  return 'Slot already has a rune';
+      if (type === 'merge'   && !hasRune)                 return 'No rune in this slot';
+      if (type === 'merge'   && prefillIsMaxed)           return 'Already at MAX stars';
+      if (type === 'recycle' && !hasRune)                 return 'No rune in this slot';
+      if (type === 'recycle' && hasRune && star !== 0)    return 'Only 0★ runes can be recycled';
+      return null;
+    }
     function actionDisabled(type) {
       if (!prefill) return false; // no slot context, all actions allowed
       var hasRune = !!(prefill.rune && prefill.rune.runeName);
       var star = (prefill.rune && prefill.rune.star) || 0;
       if (type === 'place')   return hasRune;          // need empty slot
-      if (type === 'merge')   return !hasRune;         // need rune to merge
+      if (type === 'merge')   return !hasRune || prefillIsMaxed; // need rune AND headroom
       if (type === 'recycle') return !hasRune || star !== 0; // need rune at s:0
       return false; // inherit always available
     }
     // Default action picks the most natural for the slot state.
+    // - No prefill / empty slot → place
+    // - Filled, max stars → inherit (merge unavailable, swapping is the realistic next move)
+    // - Filled, headroom → merge
     var defaultAction;
     if (!prefill) defaultAction = 'place';
     else if (!(prefill.rune && prefill.rune.runeName)) defaultAction = 'place';
-    else if (prefill.rune.star === 0) defaultAction = 'merge';
+    else if (prefillIsMaxed) defaultAction = 'inherit';
     else defaultAction = 'merge';
     var currentAction = defaultAction;
     var actionBtns = {};
     ACTIONS.forEach(function(a) {
       var btn = document.createElement('button');
       var disabled = actionDisabled(a.type);
+      var reason = disabled ? actionDisabledReason(a.type) : null;
       btn.className = 'adv-action-card' + (a.type === currentAction ? ' active' : '') + (disabled ? ' disabled' : '');
       btn.type = 'button';
       btn.disabled = disabled;
+      if (reason) btn.title = reason;
       var lbl = document.createElement('div');
       lbl.className = 'acc-label';
       lbl.textContent = a.label;
       btn.appendChild(lbl);
       var desc = document.createElement('div');
       desc.className = 'acc-desc';
-      desc.textContent = a.desc;
+      desc.textContent = reason || a.desc;
       btn.appendChild(desc);
       btn.onclick = function() {
         if (disabled) return;
@@ -16863,6 +16983,48 @@
       var toSel = document.createElement('select');
       host.appendChild(toLbl); host.appendChild(toSel);
 
+      // Before/After effect blocks — show how the rune description changes
+      // at the target star tier so the advisor can see the actual gameplay
+      // delta, not just "+1 star".
+      var beforeBlock = document.createElement('div');
+      beforeBlock.className = 'adv-effect-block before';
+      beforeBlock.style.display = 'none';
+      var beforeLbl = document.createElement('div');
+      beforeLbl.className = 'aeb-label';
+      beforeBlock.appendChild(beforeLbl);
+      var beforeText = document.createElement('div');
+      beforeText.className = 'aeb-text';
+      beforeBlock.appendChild(beforeText);
+      host.appendChild(beforeBlock);
+
+      var afterBlock = document.createElement('div');
+      afterBlock.className = 'adv-effect-block after';
+      afterBlock.style.display = 'none';
+      var afterLbl = document.createElement('div');
+      afterLbl.className = 'aeb-label';
+      afterBlock.appendChild(afterLbl);
+      var afterText = document.createElement('div');
+      afterText.className = 'aeb-text';
+      afterBlock.appendChild(afterText);
+      host.appendChild(afterBlock);
+
+      function paintEffectBlock(block, lblEl, textEl, name, star, starMax, labelPrefix) {
+        if (typeof runeTooltipParts !== 'function') {
+          block.style.display = 'none';
+          return;
+        }
+        var parts = runeTooltipParts(name, star, starMax);
+        if (!parts || !parts.text) {
+          block.style.display = 'none';
+          return;
+        }
+        block.style.display = '';
+        lblEl.textContent = labelPrefix + ' — ' + star + '★';
+        textEl.replaceChildren();
+        if (typeof renderRuneDesc === 'function') renderRuneDesc(textEl, parts);
+        else textEl.textContent = parts.text;
+      }
+
       function refresh() {
         var hid = +heroSel.value || null;
         var slot = +slotSel.value || null;
@@ -16872,6 +17034,8 @@
           ctxBox.textContent = '(empty slot — nothing to merge)';
           step.runeName = null; step.fromStar = null;
           toSel.replaceChildren();
+          beforeBlock.style.display = 'none';
+          afterBlock.style.display = 'none';
           revalidate();
           return;
         }
@@ -16883,6 +17047,15 @@
         var meta = ctx.runeIdx[curr.runeName];
         var slotEntry = meta && (meta.slots || []).filter(function(x) { return x.slot === slot; })[0];
         var starMax = slotEntry ? slotEntry.star_max : (curr.starMax || 6);
+        if (curr.star >= starMax) {
+          // Already maxed — the slot-banner already says (MAX), the action-card
+          // surface already disabled Merge. Belt-and-braces: short-circuit.
+          beforeBlock.style.display = 'none';
+          afterBlock.style.display = 'none';
+          step.toStar = null;
+          revalidate();
+          return;
+        }
         for (var t = curr.star + 1; t <= starMax; t++) {
           var ci = _ar_advisorMergeCost(ctx.catalog, ctx.runeIdx, curr.runeName, slot, curr.star, t);
           var opt = document.createElement('option');
@@ -16891,11 +17064,26 @@
           toSel.appendChild(opt);
         }
         step.toStar = +toSel.value || null;
+        paintEffectBlock(beforeBlock, beforeLbl, beforeText, curr.runeName, curr.star, starMax, 'Before');
+        paintEffectBlock(afterBlock,  afterLbl,  afterText,  curr.runeName, step.toStar || curr.star + 1, starMax, 'After');
         revalidate();
       }
       heroSel.onchange = refresh;
       slotSel.onchange = refresh;
-      toSel.onchange = function() { step.toStar = +toSel.value || null; revalidate(); };
+      toSel.onchange = function() {
+        step.toStar = +toSel.value || null;
+        // Repaint after-block when target changes; before stays the same.
+        var hid = +heroSel.value || null;
+        var slot = +slotSel.value || null;
+        var curr = ctx.state.gearByHero[hid] && ctx.state.gearByHero[hid][slot];
+        if (curr && curr.runeName && step.toStar) {
+          var meta2 = ctx.runeIdx[curr.runeName];
+          var se2 = meta2 && (meta2.slots || []).filter(function(x) { return x.slot === slot; })[0];
+          var sm = se2 ? se2.star_max : (curr.starMax || 6);
+          paintEffectBlock(afterBlock, afterLbl, afterText, curr.runeName, step.toStar, sm, 'After');
+        }
+        revalidate();
+      };
       // Apply prefill before initial refresh.
       if (prefill && prefill.heroId) {
         heroSel.value = String(prefill.heroId);
