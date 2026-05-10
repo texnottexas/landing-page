@@ -7294,6 +7294,46 @@
     if (window._adviseCode) {
       var advBtn = document.querySelector('.tab-btn[data-tab="advisorplan"]');
       if (advBtn) setTimeout(function() { switchTab(advBtn); }, 50);
+    } else {
+      // Deep-link routing: `?plan=<code>` lands on My Advisor Plans and
+      // auto-expands the matching plan card; `#tab=<id>` switches to a tab
+      // by id. Used by the settings-modal "Open" button so a player can jump
+      // straight to a teammate's saved plan instead of hunting for it.
+      try {
+        var dlParams = new URLSearchParams(location.search);
+        var dlPlanCode = (dlParams.get('plan') || '').toLowerCase();
+        var dlHashMatch = (location.hash || '').match(/^#tab=([a-z0-9-]+)$/i);
+        var dlTargetTab = null;
+        if (dlPlanCode && /^[a-z0-9]{6}$/.test(dlPlanCode)) dlTargetTab = 'myadvisorplans';
+        else if (dlHashMatch) dlTargetTab = dlHashMatch[1];
+        if (dlTargetTab) {
+          var dlBtn = document.querySelector('.tab-btn[data-tab="' + dlTargetTab + '"]');
+          if (dlBtn) {
+            setTimeout(function() {
+              switchTab(dlBtn);
+              if (dlPlanCode) {
+                // Plan card renders async (waits on /advisor/index + catalog).
+                // Poll for it briefly then expand.
+                var tries = 0;
+                var poll = setInterval(function() {
+                  tries++;
+                  var card = document.querySelector('.adv-plan-card[data-code="' + dlPlanCode + '"]');
+                  if (card) {
+                    var tog = card.querySelector('.adv-plan-card-toggle');
+                    if (tog && card.querySelector('.adv-plan-card-detail')
+                        && card.querySelector('.adv-plan-card-detail').style.display === 'none') {
+                      tog.click();
+                    }
+                    if (card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    clearInterval(poll);
+                  }
+                  if (tries > 40) clearInterval(poll); // ~4s cap
+                }, 100);
+              }
+            }, 80);
+          }
+        }
+      } catch (e) { /* deep-link routing is best-effort */ }
     }
 
     // Phase 3: hydrate supplements from worker. Fire-and-forget; re-renders the
@@ -16459,9 +16499,12 @@
     var openBtn = document.createElement('a');
     openBtn.className = 'asr-action';
     openBtn.textContent = 'Open';
+    // Owner side: ?plan=<code> auto-switches to Advisor Plans + auto-expands
+    // the matching plan card. Advisor side: ?advise=<code> bootstraps advisor
+    // view-only mode against the player's report.
     openBtn.href = isOwner
-      ? 'https://2864tw.com/armory-report.html#tab=myadvisorplans'
-      : 'https://2864tw.com/armory-report.html?advise=' + rec.code;
+      ? ('https://2864tw.com/armory-report.html?plan=' + rec.code)
+      : ('https://2864tw.com/armory-report.html?advise=' + rec.code);
     openBtn.target = '_self';
     actions.appendChild(openBtn);
 
@@ -17398,8 +17441,14 @@
       saveStatus.classList.remove('ok', 'err');
       saveStatus.textContent = 'Saving…';
       try {
+        // Identity stores the player's display name as `.name`; the older
+        // `.playerName` accessor never existed, so every save was falling
+        // through to the unsigned fallback. Read the right field so the
+        // player's push notification names the actual advisor.
         var advisorIdent = getStoredIdentity();
-        var advisorName = (advisorIdent && advisorIdent.playerName) ? advisorIdent.playerName : 'Anonymous Advisor';
+        var advisorName = (advisorIdent && advisorIdent.name && !advisorIdent.guest)
+          ? advisorIdent.name
+          : 'An advisor';
         var r = await fetch(SUPPLEMENT_WORKER + '/advisor/plan/' + code, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -18112,6 +18161,9 @@
       idx.entries.forEach(function(entry) {
         var card = document.createElement('div');
         card.className = 'adv-plan-card';
+        // Stamp the code so deep-links (?plan=<code>) can locate the card
+        // and auto-expand it on landing.
+        card.dataset.code = entry.code;
         listHost.appendChild(card);
 
         var hdr = document.createElement('div');
