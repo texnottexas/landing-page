@@ -51,9 +51,24 @@
           enhanceShow: info.enhanceShow };
       } else if (info.type === 2) {
         var sk = skillRdTable && skillRdTable[info.templateId];
+        // Compute star (0-indexed level) + starMax (3 for 1★ runes, 7 for 3★ runes)
+        // by counting templateIds sharing the same `group` field and locating ours within them.
+        var star = null, starMax = null;
+        if (sk && sk.group != null) {
+          var groupTemplates = [];
+          for (var skKey in skillRdTable) {
+            var entry = skillRdTable[skKey];
+            if (entry && entry.group === sk.group) groupTemplates.push(+skKey);
+          }
+          groupTemplates.sort(function (a, b) { return a - b; });
+          starMax = groupTemplates.length;
+          var idx = groupTemplates.indexOf(info.templateId);
+          if (idx >= 0) star = idx;
+        }
         return { type: 'rune', templateId: info.templateId, skillId: sk ? sk.skill_id : null,
           name: sk && sk.name ? getText(sk.name) : null, desc: sk && sk.desc ? getText(sk.desc) : null,
           group: sk ? sk.group : null, buffValue: sk ? sk.buff_value : null,
+          star: star, starMax: starMax,
           skillIcon: sk ? sk.skill_icon : null, smallIcon: sk ? sk.small_skill_icon : null };
       }
       return { type: 'unknown', templateId: info.templateId };
