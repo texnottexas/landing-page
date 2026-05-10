@@ -1345,7 +1345,7 @@
 
   /* Sub-tab bar (Bases, future tabs) */
   .sub-tab-bar {
-    display: flex; gap: 0; margin-bottom: 1rem; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 0; margin-bottom: 1rem; border-bottom: 1px solid var(--border);
   }
   .sub-tab-btn {
     padding: .5rem 1rem; color: var(--muted); font-size: .8rem; font-weight: 500;
@@ -8649,7 +8649,7 @@
       return;
     }
 
-    // Sub-tab bar (Heroes / Titan Gear Pool)
+    // Sub-tab bar (Heroes / Titan Gear Pool) + right-aligned gear cloud-sync pill
     var bar = document.createElement('div');
     bar.className = 'sub-tab-bar';
     var subTabs = [
@@ -8661,15 +8661,16 @@
       btn.className = 'sub-tab-btn' + (i === 0 ? ' active' : '');
       btn.setAttribute('data-subtab', t.key);
       btn.textContent = t.label;
-      if (t.key === 'gear-pool') {
-        var betaTag = document.createElement('span');
-        betaTag.style.cssText = 'margin-left:6px;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:rgba(210,153,34,0.2);color:var(--yellow);';
-        betaTag.textContent = 'BETA';
-        btn.appendChild(betaTag);
-      }
       btn.addEventListener('click', function() { switchSubTab(btn, container); });
       bar.appendChild(btn);
     });
+    if (siteKey) {
+      var gearIsOwner = _ar_isOwnReport(siteKey) || _ar_isUnlocked(siteKey);
+      var gearPill = _ar_buildCloudSyncPill('gear', siteKey, { isOwner: !!gearIsOwner });
+      gearPill.style.marginLeft = 'auto';
+      gearPill.style.marginBottom = '6px';
+      bar.appendChild(gearPill);
+    }
     container.appendChild(bar);
 
     // Sub-tab content areas
@@ -8832,16 +8833,17 @@
 
     function paint() {
       var palette = {
-        'cloud-synced': { dot: '#3fb950', border: 'rgba(63,185,80,0.4)', text: 'var(--text)' },
-        'local-only':   { dot: '#d29922', border: 'rgba(210,153,34,0.5)', text: '#d29922' },
-        'not-uploaded': { dot: 'var(--border)', border: 'var(--border)', text: 'var(--muted)' },
-        'error':        { dot: '#f85149', border: 'rgba(248,81,73,0.5)', text: '#f85149' },
-        'checking':     { dot: 'var(--muted)', border: 'var(--border)', text: 'var(--muted)' }
+        'cloud-synced': { dot: '#3fb950', border: 'rgba(63,185,80,0.4)', text: 'var(--text)',  label: 'Cloud Sync: Active' },
+        'local-only':   { dot: '#d29922', border: 'rgba(210,153,34,0.5)', text: '#d29922',     label: 'Cloud Sync: Local only' },
+        'not-uploaded': { dot: 'var(--border)', border: 'var(--border)', text: 'var(--muted)', label: 'Cloud Sync: Not uploaded' },
+        'error':        { dot: '#f85149', border: 'rgba(248,81,73,0.5)', text: '#f85149',     label: 'Cloud Sync: Error' },
+        'checking':     { dot: 'var(--muted)', border: 'var(--border)', text: 'var(--muted)', label: 'Cloud Sync…' }
       };
       var c = palette[state.status] || palette.checking;
       dot.style.background = c.dot;
       pill.style.borderColor = c.border;
       pill.style.color = c.text;
+      label.textContent = c.label;
     }
 
     var tooltip = null;
@@ -9131,44 +9133,11 @@
       }
     }
     var src = stored || data;
-    var srcLabel = stored ? 'Your extracted gear pool' : 'Sample data (preview)';
-    var srcTime = (stored && stored.meta && stored.meta.ts) ? stored.meta.ts : null;
 
-    // ── Toolbar (source label + cloud-sync pill + clear) ─────────────────
-    // Per-kind "Update Gear Pool" / "Bookmarklet" buttons retired — players
-    // refresh via the header "Import TopWar Data" entry. The cloud-sync pill
-    // and Clear-my-data control stay so owners can see sync state and reset.
-    var toolbar = _gp_el('div', { style: 'display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;' });
-    var labelEl = _gp_el('div', {
-      style: 'font-size:12px;color:' + (stored ? 'var(--green)' : 'var(--muted)') + ';',
-      text: srcLabel
-    });
-    toolbar.appendChild(labelEl);
-
-    if (stored) {
-      var clearBtn = _gp_el('button', {
-        style: 'padding:6px 12px;background:transparent;color:var(--red);border:1px solid var(--border);border-radius:6px;font-weight:600;cursor:pointer;font-size:12px;',
-        text: 'Clear my data'
-      });
-      clearBtn.addEventListener('click', function () {
-        if (!confirm('Remove your locally-stored gear pool? This only clears your browser; nothing is uploaded.')) return;
-        try { ArmoryIdentity.removeSupplement('gear', siteKey); } catch (e) {}
-        try { ArmoryIdentity.removeLastSync('gear', siteKey); } catch (e) {}
-        try { localStorage.removeItem('gearPool_' + siteKey); } catch (e) {} // legacy key
-        renderTitanGearPoolSubTab(container, data);
-      });
-      toolbar.appendChild(clearBtn);
-    }
-
-    // Cloud-sync pill — same probe path as inv/bench/chips. marginLeft:auto
-    // pushes it to the trailing edge of the toolbar without an extra spacer div.
-    if (siteKey) {
-      var gearIsOwner = _ar_isOwnReport(siteKey) || _ar_isUnlocked(siteKey);
-      var gearPill = _ar_buildCloudSyncPill('gear', siteKey, { isOwner: !!gearIsOwner });
-      gearPill.style.marginLeft = 'auto';
-      toolbar.appendChild(gearPill);
-    }
-    container.appendChild(toolbar);
+    // Cloud-sync pill is hosted on the parent sub-tab bar (Heroes / Titan Gear
+    // Pool) so it sits flush with the other tab indicators — no separate
+    // toolbar needed. See renderHeroesTab where the pill is appended with
+    // marginLeft:auto to right-align inside the sub-tab bar.
 
     if (!src || !src.goldGear) {
       container.appendChild(_gp_el('p', { cls: 'gp-empty', text: 'No Titan Gear Pool data loaded yet. Use the "Import TopWar Data" button in the header to upload your own extraction.' }));
