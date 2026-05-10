@@ -8505,20 +8505,26 @@
   // Compact "Cloud sync" pill with a coloured status dot. Click pops a tooltip
   // showing exact upload time + share-code visibility (or "local only" for
   // bookmarklet kinds that haven't been wired to the worker yet, like 'gear').
-  // Supplement kinds 'inv' / 'bench' / 'chips' probe the worker via the
-  // existing GET endpoint; 'gear' (BETA) only inspects localStorage.
+  // Identical UI for inv / bench / chips / gear; per-kind logic lives in
+  // refresh(). Tooltip is body-portalled with viewport-aware placement so
+  // it can never push the page wider than the viewport.
   function _ar_buildCloudSyncPill(kind, siteKey, opts) {
     opts = opts || {};
+    var isOwner = !!opts.isOwner;
     var pill = document.createElement('span');
-    pill.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);padding:4px 10px;border-radius:999px;border:1px solid var(--border);cursor:pointer;user-select:none;position:relative;';
+    pill.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);padding:4px 10px;border-radius:999px;border:1px solid var(--border);cursor:pointer;user-select:none;white-space:nowrap;';
     var dot = document.createElement('span');
     dot.style.cssText = 'width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0;';
     var label = document.createElement('span');
     label.textContent = 'Cloud sync';
     pill.appendChild(dot); pill.appendChild(label);
 
-    // State tracking lets us drive both the dot color and the click tooltip.
-    var state = { kind: kind, siteKey: siteKey, status: 'checking', updatedAt: null, shortcode: null, hash: null };
+    // State drives dot colour, border colour, and tooltip body.
+    var state = {
+      kind: kind, siteKey: siteKey, isOwner: isOwner,
+      status: 'checking', updatedAt: null, cloudHash: null, shortcode: null,
+      localTs: 0, lastSyncTs: 0, hasUidHash: false
+    };
 
     function paint() {
       var palette = {
@@ -8535,58 +8541,148 @@
     }
 
     var tooltip = null;
-    function dismissTooltip() { if (tooltip) { tooltip.remove(); tooltip = null; } }
-    function buildTooltipContent() {
-      var lines = [];
-      var KIND_LABELS = { inv: 'Inventory', bench: 'Bench Beasts', chips: 'HT Chips', gear: 'Titan Gear Pool' };
+    var outsideClickHandler = null;
+    function dismissTooltip() {
+      if (tooltip) { tooltip.remove(); tooltip = null; }
+      if (outsideClickHandler) {
+        document.removeEventListener('click', outsideClickHandler, true);
+        window.removeEventListener('resize', dismissTooltip);
+        window.removeEventListener('scroll', dismissTooltip, true);
+        outsideClickHandler = null;
+      }
+    }
+
+    var KIND_LABELS = { inv: 'Inventory', bench: 'Bench Beasts', chips: 'HT Chips', gear: 'Titan Gear Pool' };
+
+    function buildTooltipBody() {
+      var frag = document.createDocumentFragment();
       var kindLabel = KIND_LABELS[state.kind] || state.kind;
 
+      function line(text, strong) {
+        var l = document.createElement('div');
+        if (strong) l.style.fontWeight = '700';
+        else l.style.color = 'var(--muted)';
+        l.style.marginTop = frag.firstChild ? '4px' : '0';
+        l.textContent = text;
+        frag.appendChild(l);
+        return l;
+      }
+      function action(text, onClick) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = text;
+        btn.style.cssText = 'margin-top:8px;padding:5px 10px;background:transparent;color:var(--accent);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;font-weight:600;';
+        btn.onmouseenter = function () { btn.style.borderColor = 'var(--accent)'; };
+        btn.onmouseleave = function () { btn.style.borderColor = 'var(--border)'; };
+        btn.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          onClick(btn);
+        });
+        frag.appendChild(btn);
+        return btn;
+      }
+
       if (state.status === 'cloud-synced') {
-        lines.push({ text: kindLabel + ' is synced to the cloud.', strong: true });
-        if (state.updatedAt) lines.push({ text: 'Updated: ' + new Date(state.updatedAt).toLocaleString() });
-        if (state.shortcode) lines.push({ text: 'Available to share code: ' + state.shortcode });
-        else lines.push({ text: 'Anyone with your share code can view it.' });
+        line(kindLabel + ' is synced to the cloud.', true);
+        if (state.updatedAt) line('Updated: ' + new Date(state.updatedAt).toLocaleString());
+        if (state.shortcode) line('Visible via your share code: ' + state.shortcode);
+        else if (state.isOwner) line('Anyone with your share code can view this.');
+        else line('Loaded from the report owner’s upload.');
       } else if (state.status === 'local-only') {
-        lines.push({ text: kindLabel + ' is saved on this device only.', strong: true });
-        if (state.updatedAt) lines.push({ text: 'Updated: ' + new Date(state.updatedAt).toLocaleString() });
+        line(kindLabel + ' is saved on this device only.', true);
+        if (state.updatedAt) line('Updated: ' + new Date(state.updatedAt).toLocaleString());
         if (state.kind === 'gear') {
-          lines.push({ text: 'BETA preview — worker upload for gear pool is not wired yet.' });
+          line('BETA preview — worker upload for gear pool is not wired yet.');
+        } else if (state.isOwner) {
+          if (!state.hasUidHash) {
+            line('Verify your in-game UID to enable cloud sync. Other viewers can’t see this snapshot until then.');
+            action('Verify UID', function () {
+              dismissTooltip();
+              try { openIdentityPrefs(wizardState.player || {}); } catch (e) { /* ignore */ }
+            });
+          } else {
+            line('Local snapshot is newer than the cloud copy. Push it now so other viewers stay in sync.');
+            action('Sync now', function (btn) {
+              btn.disabled = true; btn.textContent = 'Syncing…';
+              _ar_backgroundSyncSupplement(state.kind, siteKey).then(function (s) {
+                dismissTooltip();
+                refresh();
+              }).catch(function () {
+                dismissTooltip();
+                state.status = 'error'; paint();
+              });
+            });
+          }
         } else {
-          lines.push({ text: 'Re-run the bookmarklet on a verified device to push this snapshot to the cloud.' });
+          line('Owner hasn’t pushed this snapshot to the cloud.');
         }
       } else if (state.status === 'not-uploaded') {
-        lines.push({ text: 'No ' + kindLabel + ' data yet.', strong: true });
-        lines.push({ text: 'Run the bookmarklet on the Top War game tab to populate this section.' });
+        line('No ' + kindLabel + ' data yet.', true);
+        if (state.isOwner) {
+          line('Run the bookmarklet on the Top War game tab to populate this section.');
+        } else {
+          line('Owner hasn’t uploaded this section yet.');
+        }
       } else if (state.status === 'error') {
-        lines.push({ text: kindLabel + ' upload failed.', strong: true });
-        lines.push({ text: 'Click the pill again to retry, or open Identity settings to re-verify your UID.' });
+        line('Cloud sync check failed.', true);
+        line('Worker may be offline, or your auth token expired.');
+        if (state.isOwner) {
+          action('Retry', function (btn) {
+            btn.disabled = true; btn.textContent = 'Retrying…';
+            refresh().then(function () { dismissTooltip(); });
+          });
+        }
       } else {
-        lines.push({ text: 'Checking…' });
+        line('Checking…');
       }
-      return lines;
+      return frag;
     }
+
+    function placeTooltip() {
+      if (!tooltip) return;
+      tooltip.style.visibility = 'hidden';
+      // Reset position before measuring so previous run doesn't bias size.
+      tooltip.style.top = '0px'; tooltip.style.left = '0px';
+      var pillRect = pill.getBoundingClientRect();
+      var ttRect = tooltip.getBoundingClientRect();
+      var margin = 8;
+      var top = pillRect.bottom + 6;
+      // Right-align tooltip to pill, then clamp to viewport.
+      var left = pillRect.right - ttRect.width;
+      if (left + ttRect.width > window.innerWidth - margin) {
+        left = window.innerWidth - ttRect.width - margin;
+      }
+      if (left < margin) left = margin;
+      if (top + ttRect.height > window.innerHeight - margin) {
+        // Flip above if there's no room below.
+        var above = pillRect.top - 6 - ttRect.height;
+        if (above >= margin) top = above;
+      }
+      tooltip.style.top = top + 'px';
+      tooltip.style.left = left + 'px';
+      tooltip.style.visibility = 'visible';
+    }
+
     function showTooltip() {
       dismissTooltip();
-      var lines = buildTooltipContent();
       tooltip = document.createElement('div');
-      tooltip.style.cssText = 'position:absolute;top:calc(100% + 6px);left:0;z-index:10010;min-width:240px;max-width:320px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.45);font-size:11px;color:var(--text);line-height:1.5;';
-      lines.forEach(function (line, i) {
-        var l = document.createElement('div');
-        if (line.strong) l.style.fontWeight = '700';
-        if (i > 0 && !line.strong) l.style.color = 'var(--muted)';
-        if (i > 0) l.style.marginTop = '4px';
-        l.textContent = line.text;
-        tooltip.appendChild(l);
-      });
-      pill.appendChild(tooltip);
-      // Auto-dismiss on outside click
+      tooltip.className = 'ar-cloud-sync-tooltip';
+      tooltip.style.cssText = 'position:fixed;z-index:10010;min-width:240px;max-width:320px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.45);font-size:11px;color:var(--text);line-height:1.5;visibility:hidden;';
+      tooltip.appendChild(buildTooltipBody());
+      // Body-portal so parent overflow can't push the page wider.
+      document.body.appendChild(tooltip);
+      placeTooltip();
+
+      outsideClickHandler = function (ev) {
+        if (!tooltip) return;
+        if (pill.contains(ev.target) || tooltip.contains(ev.target)) return;
+        dismissTooltip();
+      };
+      // Use capture so we beat handlers that stopPropagation in their bubble phase.
       setTimeout(function () {
-        document.addEventListener('click', function once(ev) {
-          if (!tooltip || !pill.contains(ev.target)) {
-            dismissTooltip();
-            document.removeEventListener('click', once);
-          }
-        });
+        document.addEventListener('click', outsideClickHandler, true);
+        window.addEventListener('resize', dismissTooltip);
+        window.addEventListener('scroll', dismissTooltip, true);
       }, 0);
     }
     pill.addEventListener('click', function (ev) {
@@ -8594,45 +8690,77 @@
       if (tooltip) dismissTooltip(); else showTooltip();
     });
 
-    function refresh() {
-      state.status = 'checking'; paint();
-      // Resolve shortcode from local storage for the tooltip.
+    function readLocalState() {
+      // Pull every signal we need to drive status, regardless of kind.
       try {
         var saved = JSON.parse(localStorage.getItem('playerReport') || '{}');
-        if (saved && saved.player && saved.player.siteKey === siteKey) state.shortcode = saved.shortcode || null;
+        if (saved && saved.player && saved.player.siteKey === siteKey) {
+          state.shortcode = saved.shortcode || null;
+        }
       } catch (e) { /* ignore */ }
+      try { state.hasUidHash = !!_ar_getStoredUidHash(siteKey); } catch (e) { state.hasUidHash = false; }
 
       if (state.kind === 'gear') {
-        // Worker has no /supplement/gear route yet — read localStorage directly.
         try {
           var raw = localStorage.getItem('gearPool_' + siteKey);
           if (raw) {
             var parsed = JSON.parse(raw);
+            state.localTs = parsed && parsed.meta && parsed.meta.ts ? new Date(parsed.meta.ts).getTime() : 0;
             state.updatedAt = parsed && parsed.meta && parsed.meta.ts ? parsed.meta.ts : null;
-            state.status = 'local-only';
           } else {
-            state.status = 'not-uploaded';
+            state.localTs = 0; state.updatedAt = null;
           }
-        } catch (e) { state.status = 'not-uploaded'; }
+        } catch (e) { state.localTs = 0; state.updatedAt = null; }
+      } else {
+        var local = null;
+        try { local = ArmoryIdentity.getSupplement(state.kind, siteKey); } catch (e) {}
+        state.localTs = local ? _ar_supplementLocalTs(state.kind, local) : 0;
+        state.lastSyncTs = 0;
+        try { state.lastSyncTs = ArmoryIdentity.getLastSync(state.kind, siteKey) || 0; } catch (e) {}
+      }
+    }
+
+    function refresh() {
+      state.status = 'checking'; paint();
+      readLocalState();
+
+      // Gear: localStorage-only kind. Worker route doesn't exist yet.
+      if (state.kind === 'gear') {
+        state.status = state.localTs ? 'local-only' : 'not-uploaded';
         paint();
         return Promise.resolve(state.status);
       }
 
-      // inv / bench / chips: probe worker meta endpoint for last-updated timestamp.
-      // GET /supplement/<kind>/<siteKey> is public-readable when not private; meta
-      // ships in headers (X-Updated, X-Hash) per worker contract.
-      return fetch(SUPPLEMENT_WORKER + '/supplement/' + state.kind + '/' + siteKey, { method: 'GET' })
+      // inv / bench / chips: probe worker meta endpoint. 200=public, 403=private,
+      // 404=missing. For owners we additionally compare local ts against the
+      // last successful upload to detect "local newer than cloud" drift.
+      return fetch(SUPPLEMENT_WORKER + '/supplement/' + state.kind + '/' + siteKey, { method: 'GET', cache: 'no-store' })
         .then(function (r) {
+          var cloudExists = false;
           if (r.status === 200) {
-            state.updatedAt = r.headers.get('X-Updated') || null;
-            state.hash = r.headers.get('X-Hash') || null;
-            state.status = 'cloud-synced';
+            cloudExists = true;
+            state.updatedAt = r.headers.get('X-Updated') || state.updatedAt;
+            state.cloudHash = r.headers.get('X-Hash') || null;
           } else if (r.status === 403) {
-            // Private — cloud has data but the public endpoint is gated. From the
-            // owner's view this is still a successful sync, just hidden externally.
-            state.status = 'cloud-synced';
+            // Private but the row exists; from the owner's POV this is still synced.
+            cloudExists = true;
+          }
+
+          if (state.isOwner) {
+            // Owner: respect local data even if the cloud probe fails. Drift
+            // is "local exists & last-sync is older than local ts" (or no
+            // last-sync record at all). That matches what
+            // _ar_backgroundSyncSupplement uses internally.
+            if (!state.localTs && !cloudExists) {
+              state.status = 'not-uploaded';
+            } else if (state.localTs && (!cloudExists || state.lastSyncTs < state.localTs)) {
+              state.status = 'local-only';
+              if (state.localTs && !state.updatedAt) state.updatedAt = new Date(state.localTs).toISOString();
+            } else {
+              state.status = 'cloud-synced';
+            }
           } else {
-            state.status = 'not-uploaded';
+            state.status = cloudExists ? 'cloud-synced' : 'not-uploaded';
           }
           paint();
           return state.status;
@@ -8759,7 +8887,8 @@
     if (siteKey) {
       var spacer = gpEl('div', { style: 'flex:1;' });
       toolbar.appendChild(spacer);
-      toolbar.appendChild(_ar_buildCloudSyncPill('gear', siteKey));
+      var gearIsOwner = _ar_isOwnReport(siteKey) || _ar_isUnlocked(siteKey);
+      toolbar.appendChild(_ar_buildCloudSyncPill('gear', siteKey, { isOwner: !!gearIsOwner }));
     }
     container.appendChild(toolbar);
 
@@ -9138,19 +9267,31 @@
       var rText = gpEl('div', { style: 'flex:1;min-width:0;' });
       var rNameRow = gpEl('div', { style: 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;' });
       rNameRow.appendChild(gpEl('span', { style: 'font-size:13px;font-weight:700;color:var(--accent);', text: rune.name || '' }));
-      if (rune.star != null && rune.starMax != null) {
+      var rLvStar = rune.star, rLvMax = rune.starMax;
+      if ((rLvStar == null || rLvMax == null) && rune.templateId != null && typeof RUNE_MAP === 'object') {
+        var rmEntry = RUNE_MAP[rune.templateId];
+        if (rmEntry) { rLvStar = rmEntry.s; rLvMax = rmEntry.sm; }
+      }
+      if (rLvStar != null && rLvMax != null) {
         rNameRow.appendChild(gpEl('span', {
           style: 'font-size:10px;color:var(--muted);padding:1px 6px;border:1px solid var(--border);border-radius:999px;',
-          text: 'Lv ' + (rune.star + 1) + ' / ' + rune.starMax
+          text: 'Lv ' + (rLvStar + 1) + ' / ' + rLvMax
         }));
       }
       rText.appendChild(rNameRow);
       var rDesc = gpEl('div', { style: 'font-size:11px;color:var(--muted);line-height:1.5;margin-top:4px;' });
-      // Prefer the existing armory's resolved description (substitutes <id=N> placeholders with values).
-      // Falls back to a stripped view when the rune name is unknown to RUNE_DESC or star data is missing.
+      // Substitute the {v}/{t} placeholders in RUNE_DESC using star + starMax.
+      // Snapshots from the original gear-pool bookmarklet didn't carry star data,
+      // so fall back to RUNE_MAP[templateId] which the Heroes tab already uses
+      // for the same purpose. Same lookup, same numbers.
+      var rStar = rune.star, rStarMax = rune.starMax;
+      if ((rStar == null || rStarMax == null) && rune.templateId != null && typeof RUNE_MAP === 'object') {
+        var fromMap = RUNE_MAP[rune.templateId];
+        if (fromMap) { rStar = fromMap.s; rStarMax = fromMap.sm; }
+      }
       var resolved = null;
-      if (typeof runeTooltipParts === 'function' && rune.star != null && rune.starMax != null) {
-        try { resolved = runeTooltipParts(rune.name, rune.star, rune.starMax); } catch (e) { resolved = null; }
+      if (typeof runeTooltipParts === 'function' && rStar != null && rStarMax != null) {
+        try { resolved = runeTooltipParts(rune.name, rStar, rStarMax); } catch (e) { resolved = null; }
       }
       if (resolved && resolved.text) {
         renderRuneDesc(rDesc, resolved);
@@ -12510,53 +12651,21 @@
       toolbar.appendChild(ts);
     }
 
-    // Background sync pill — owner only. Reflects whether the local data
-    // is mirrored to the worker. Catches the "uploaded locally but worker
-    // never received it" case (token expired + ignored error) by silently
-    // re-syncing on tab open whenever cached uidHash + newer-local exist.
-    var syncPill;
-    if (isOwner && stored) {
-      syncPill = document.createElement('span');
-      syncPill.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);padding:4px 10px;border-radius:999px;border:1px solid var(--border);';
-      var syncDot = document.createElement('span');
-      syncDot.style.cssText = 'width:7px;height:7px;border-radius:50%;background:var(--muted);';
-      var syncText = document.createElement('span');
-      syncText.textContent = 'Cloud sync: checking…';
-      syncPill.appendChild(syncDot);
-      syncPill.appendChild(syncText);
-      toolbar.appendChild(syncPill);
-      function paintSync(state) {
-        if (state === 'synced' || state === 'no-change') {
-          syncDot.style.background = '#3fb950';
-          syncText.textContent = 'Cloud sync: up to date';
-          syncPill.title = 'Local snapshot is mirrored to the cloud — other viewers see the same data.';
-          syncPill.style.color = 'var(--muted)';
-          syncPill.style.borderColor = 'var(--border)';
-        } else if (state === 'no-hash') {
-          syncDot.style.background = '#d29922';
-          syncText.textContent = 'Cloud sync: re-verify UID';
-          syncPill.title = 'Cached UID hash is missing — open Identity settings and verify your UID to resume cloud sync.';
-          syncPill.style.color = '#d29922';
-          syncPill.style.borderColor = 'rgba(210,153,34,0.5)';
-          syncPill.style.cursor = 'pointer';
-          syncPill.onclick = function() {
-            try { openIdentityPrefs(wizardState.player || {}); } catch (e) {}
-          };
-        } else if (state === 'error') {
-          syncDot.style.background = '#f85149';
-          syncText.textContent = 'Cloud sync: failed';
-          syncPill.title = 'Worker upload failed. Click to retry.';
-          syncPill.style.color = '#f85149';
-          syncPill.style.borderColor = 'rgba(248,81,73,0.5)';
-          syncPill.style.cursor = 'pointer';
-          syncPill.onclick = async function() {
-            syncText.textContent = 'Cloud sync: retrying…';
-            var s = await _ar_backgroundSyncSupplement('inv', siteKey);
-            paintSync(s);
-          };
-        }
+    // Cloud-sync pill — unified across Inventory / Beasts / HT Chips / Titan Gear.
+    // Fires the existing background sync (uploads local → worker if local is newer)
+    // and refreshes the pill once it resolves so the dot reflects post-sync state
+    // rather than the pre-sync snapshot.
+    if (siteKey) {
+      var invPill = _ar_buildCloudSyncPill('inv', siteKey, { isOwner: isOwner });
+      invPill.style.marginLeft = 'auto';
+      toolbar.appendChild(invPill);
+      if (isOwner && stored) {
+        _ar_backgroundSyncSupplement('inv', siteKey).then(function () {
+          if (invPill._refresh) invPill._refresh();
+        }).catch(function () {
+          if (invPill._refresh) invPill._refresh();
+        });
       }
-      _ar_backgroundSyncSupplement('inv', siteKey).then(paintSync).catch(function() { paintSync('error'); });
     }
     container.appendChild(toolbar);
 
@@ -14257,8 +14366,8 @@
     // Update Bench — sits next to the view toggle as a third top-level
     // action so verified S2864 owners can update without first switching
     // to Beast Collection. Gated by !_viewOnly + roster + UID-unlocked.
-    if (!wizardState._viewOnly &&
-        siteKey && _ar_rosterMap && _ar_rosterMap[siteKey] && unlocked) {
+    var benchIsOwner = !wizardState._viewOnly && siteKey && _ar_rosterMap && _ar_rosterMap[siteKey] && unlocked;
+    if (benchIsOwner) {
       var benchUpdateTopBtn = document.createElement('button');
       benchUpdateTopBtn.className = 'eb-bench-update-btn';
       benchUpdateTopBtn.type = 'button';
@@ -14290,6 +14399,23 @@
       sortSelect.appendChild(opt);
     });
     toolbar.appendChild(sortSelect);
+
+    // Cloud-sync pill — same look + tooltip as Inventory / HT Chips / Titan Gear.
+    // Always shown when we have a siteKey so viewers also get the cloud/local
+    // status of the bench supplement; owners get inline retry/verify actions.
+    if (siteKey) {
+      var benchPill = _ar_buildCloudSyncPill('bench', siteKey, { isOwner: !!benchIsOwner });
+      benchPill.style.marginLeft = 'auto';
+      toolbar.appendChild(benchPill);
+      if (benchIsOwner && ArmoryIdentity.getSupplement('bench', siteKey)) {
+        _ar_backgroundSyncSupplement('bench', siteKey).then(function () {
+          if (benchPill._refresh) benchPill._refresh();
+        }).catch(function () {
+          if (benchPill._refresh) benchPill._refresh();
+        });
+      }
+    }
+
     container.appendChild(toolbar);
 
     // Filter bar
@@ -14960,22 +15086,35 @@
     var canUpload = !wizardState._viewOnly && siteKey && _ar_rosterMap && _ar_rosterMap[siteKey] && unlocked;
 
     // ── Update Chips action row (top of section) ──
-    if (canUpload) {
+    // Now always rendered when we have a siteKey so we can host the cloud-sync
+    // pill; the Update Chips button is owner-gated as before.
+    if (siteKey) {
       var actionRow = document.createElement('div');
       actionRow.style.cssText = 'display:flex;justify-content:flex-end;align-items:center;gap:.5rem;margin-bottom:.6rem;flex-wrap:wrap;';
-      var updateBtn = document.createElement('button');
-      updateBtn.className = 'eb-bench-update-btn';
-      updateBtn.type = 'button';
-      updateBtn.textContent = 'Update Chips';
-      updateBtn.title = 'Paste fresh HT chip pool + Heavy Mothership JSON';
-      updateBtn.onclick = function() {
-        _ar_openChipsPasteModal(siteKey, function() {
-          var content = document.getElementById('tab-chips');
-          if (content) content.removeAttribute('data-rendered');
-          switchTab(document.querySelector('.tab-btn[data-tab="chips"]'));
+      if (canUpload) {
+        var updateBtn = document.createElement('button');
+        updateBtn.className = 'eb-bench-update-btn';
+        updateBtn.type = 'button';
+        updateBtn.textContent = 'Update Chips';
+        updateBtn.title = 'Paste fresh HT chip pool + Heavy Mothership JSON';
+        updateBtn.onclick = function() {
+          _ar_openChipsPasteModal(siteKey, function() {
+            var content = document.getElementById('tab-chips');
+            if (content) content.removeAttribute('data-rendered');
+            switchTab(document.querySelector('.tab-btn[data-tab="chips"]'));
+          });
+        };
+        actionRow.appendChild(updateBtn);
+      }
+      var chipsPill = _ar_buildCloudSyncPill('chips', siteKey, { isOwner: !!canUpload });
+      actionRow.appendChild(chipsPill);
+      if (canUpload && ArmoryIdentity.getSupplement('chips', siteKey)) {
+        _ar_backgroundSyncSupplement('chips', siteKey).then(function () {
+          if (chipsPill._refresh) chipsPill._refresh();
+        }).catch(function () {
+          if (chipsPill._refresh) chipsPill._refresh();
         });
-      };
-      actionRow.appendChild(updateBtn);
+      }
       container.appendChild(actionRow);
     }
 
