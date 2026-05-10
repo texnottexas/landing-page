@@ -2336,6 +2336,9 @@
       d = ['M12 2 L21 7 V17 L12 22 L3 17 V7 Z',
            'M9 9 H15 V15 H9 Z',
            'M9 12 H7', 'M17 12 H15', 'M12 9 V7', 'M12 17 V15'];
+    } else if (kind === 'shield') {
+      // shield — titan gear
+      d = ['M12 2 L4 6 V12 C4 17 7.5 21.5 12 22 C16.5 21.5 20 17 20 12 V6 L12 2 Z'];
     } else {
       // box / inventory
       d = ['M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z',
@@ -2373,13 +2376,13 @@
     hero.className = 'whats-new-hero';
     var badge = document.createElement('span');
     badge.className = 'badge';
-    badge.textContent = 'S2864 Beta';
+    badge.textContent = 'S2864';
     hero.appendChild(badge);
     var h2 = document.createElement('h2');
-    h2.textContent = 'Four new features for S2864 players';
+    h2.textContent = 'What’s new';
     hero.appendChild(h2);
     var sub = document.createElement('p');
-    sub.textContent = 'Released in v6.0+. All four features unlock together once you verify your in-game UID on the Inventory tab — your UID is the beta access key. Feedback welcome through the in-page bug button.';
+    sub.textContent = 'Verify your in-game UID on the Inventory tab to unlock these. Then click Import TopWar Data (top right) to keep all four supplements in sync with one paste.';
     hero.appendChild(sub);
     modal.appendChild(hero);
 
@@ -2414,27 +2417,33 @@
 
     addFeature(
       'box',
-      'Inventory Tab',
-      "Your full Bag — Item, Unit, Decor, Hero, CPNT — right inside the armory report. Verify your in-game UID once on the Inventory tab to unlock all four beta features. We hash the UID and never store it.",
-      'Inventory tab → unlock with your UID'
+      'Inventory',
+      'Your full Bag (Item, Unit, Decor, Hero, CPNT) inside the report.',
+      'Inventory tab'
     );
     addFeature(
       'beast',
-      'Beast Collection — Load Bench',
-      'Paste your unplaced Q3+ beasts so the Beasts tab shows your full collection, not just what is currently deployed in your battle reports. Now part of the consolidated Import TopWar Data flow. One tap, one paste covers Inventory, Beasts, HT Chips, and Titan Gear together.',
-      'Header → Import TopWar Data (after UID unlock)'
+      'Beast Collection',
+      'Q3+ unplaced beasts that don’t show up in your battle reports.',
+      'Beasts tab → Beast Collection'
+    );
+    addFeature(
+      'chip',
+      'HT Chip Pool',
+      'Unequipped chip stash plus the Heavy Mothership HC-9999 tab.',
+      'HT Chips tab'
+    );
+    addFeature(
+      'shield',
+      'Titan Gear Pool',
+      'Every gold piece plus any non-gold slotted into a preset.',
+      'Titan Gear tab'
     );
     addFeature(
       'hat',
       'Decor Upgrade Advisor',
-      "Wizard that ranks your decor upgrades by stat-per-shard. Pick the stats you care about and we'll show you the top picks per category, with mutex partners flagged and Lucky Chests called out separately. Only visible on your own report after UID unlock.",
-      'Decoration tab → wizard hat button (after UID unlock)'
-    );
-    addFeature(
-      'chip',
-      'HT Chip Pool + Heavy Mothership',
-      'Paste your unequipped HT chip stash to render the full pool with set / slot / rarity / bound-HT filters and sorting. The Heavy Mothership HC-9999 gets its own tab after BA-6 showing pieces owned (from inventory) and equipped. Now part of the consolidated Import TopWar Data flow. One tap, one paste.',
-      'Header → Import TopWar Data (after UID unlock)'
+      'Ranks your decor upgrades by stat-per-shard, with mutex partners and Lucky Chests flagged.',
+      'Decoration tab → wizard hat'
     );
 
     modal.appendChild(list);
@@ -5364,7 +5373,7 @@
       var importBtn = document.createElement('button');
       importBtn.className = 'import-tw-pill';
       importBtn.type = 'button';
-      importBtn.title = 'Run the consolidated bookmarklet, then paste the JSON to upload all four sections at once';
+      importBtn.title = 'Paste your TopWar bookmarklet output to sync all four supplements';
       var impSvg = document.createElementNS(svgNS, 'svg');
       impSvg.setAttribute('width', '12'); impSvg.setAttribute('height', '12');
       impSvg.setAttribute('viewBox', '0 0 24 24'); impSvg.setAttribute('fill', 'none');
@@ -5389,17 +5398,25 @@
           return;
         }
         _ar_openImportModal(sk, function() {
-          // After a successful import, invalidate every tab's render cache
-          // and re-trigger the active one. Cloud-sync pills, gear pool grid,
-          // inventory table, etc. all rebuild from the just-uploaded local
-          // state so the player sees green pills without reloading.
+          // After a successful import, invalidate every supplement-aware tab's
+          // render cache and re-trigger the active one so cloud-sync pills,
+          // gear pool grid, inventory table, etc. rebuild from the just-uploaded
+          // local state without forcing a full reload. Overview is bootstrapped
+          // once at initial render with closure-scoped counts (switchTab has no
+          // 'overview' case) — clearing it would leave the tab blank, so skip it.
           try {
-            document.querySelectorAll('.tab-content').forEach(function(c) {
+            var REFRESHABLE = ['heroes', 'decorations', 'bases', 'enigma', 'chips', 'formation', 'inventory'];
+            REFRESHABLE.forEach(function(name) {
+              var c = document.getElementById('tab-' + name);
+              if (!c) return;
               c.removeAttribute('data-rendered');
               while (c.firstChild) c.removeChild(c.firstChild);
             });
             var active = document.querySelector('.tab-btn.active');
-            if (active && typeof switchTab === 'function') switchTab(active);
+            if (active && typeof switchTab === 'function') {
+              var activeTab = active.getAttribute('data-tab');
+              if (REFRESHABLE.indexOf(activeTab) !== -1) switchTab(active);
+            }
           } catch (e) { /* ignore */ }
         });
       });
@@ -14666,21 +14683,20 @@
     modal.appendChild(h);
 
     var p = document.createElement('p');
-    p.textContent = 'Run the consolidated bookmarklet on h5.topwargame.com. One tap snapshots your inventory, bench beasts, HT chips, and titan gear together. Paste the JSON below to upload all four sections at once.';
+    p.textContent = 'One tap on h5.topwargame.com snapshots all four supplements; paste the JSON below to upload them.';
     modal.appendChild(p);
 
     modal.appendChild(_ar_buildBookmarkletPanel({
       fileName: 'all-bookmarklet.txt',
       dragLabel: 'TopWar Snapshot',
       bookmarkLabel: 'TopWar Snapshot',
-      panelLead: 'Drag this button to your bookmarks bar (desktop), or long-press to Add Bookmark (mobile). Then on the Top War game tab, tap the bookmark. It scans all four sections and copies the combined JSON to your clipboard in about 2.5 seconds.',
+      panelLead: 'Drag to your bookmarks bar (desktop) or long-press to Add Bookmark (mobile). Tap it on the Top War game tab and the combined JSON copies to your clipboard in about 2.5 seconds.',
       usageSteps: [
-        'Open https://h5.topwargame.com/h5game/index.html and wait for the game to fully load.',
-        'Tap the saved bookmark. A "Snapshotting…" overlay walks through inventory, beasts, chips, and gear.',
-        'When the header turns green, tap "Copy combined JSON". The data is now in your clipboard.',
-        'Come back here and paste below, then click Save. All four sections upload sequentially, and the cloud-sync pills update as each one lands.'
-      ],
-      panelHint: 'Single tap, single paste. Old per-kind bookmarklets still work but are no longer offered here.'
+        'Open https://h5.topwargame.com/h5game/index.html and let the game load.',
+        'Tap the saved bookmark. The overlay snapshots inventory, beasts, chips, and gear.',
+        'Tap Copy combined JSON when the header turns green.',
+        'Paste below and click Save. All four sections upload one by one.'
+      ]
     }));
 
     var ta = document.createElement('textarea');
@@ -15749,12 +15765,23 @@
         // Drop the loading placeholder
         if (msEqAnchor.parentNode) msEqAnchor.parentNode.removeChild(msEqAnchor);
 
-        if (ms && Array.isArray(ms.chips) && ms.chips.length) {
+        // Prefer the explicit mothership.chips array (legacy chips bookmarklet
+        // populates it from the HC-9999 detail screen). Fall back to chips with
+        // mechaId === 1008 from the bag pool — the consolidated bookmarklet
+        // doesn't navigate to HC-9999 detail, but every chip carries its
+        // mechaId so we can recover the equipped set from chipsRaw.chips.
+        var msChips = (ms && Array.isArray(ms.chips) && ms.chips.length)
+          ? ms.chips
+          : (chipsRaw && Array.isArray(chipsRaw.chips)
+              ? chipsRaw.chips.filter(function(c) { return c.m === 1008; })
+              : []);
+
+        if (msChips.length) {
           // Build synthetic mecha matching the shape renderMechaChips expects:
           // { mechaId, chips: [{ chipId, level, rndAttrs, ... }] }
           var msHex = {
             mechaId: 1008,
-            chips: ms.chips.map(function(c) {
+            chips: msChips.map(function(c) {
               return {
                 chipId: c.c,
                 level: c.lv || 0,
@@ -15773,15 +15800,11 @@
           miss.style.cssText = 'padding:.8rem 1rem;color:var(--muted);font-size:.78rem;border:1px dashed var(--border);border-radius:8px;line-height:1.45;margin-top:1rem;';
           if (canUpload) {
             var line1 = document.createElement('div');
-            line1.textContent = 'Heavy Mothership equipped chips not captured yet.';
+            line1.textContent = 'No chips equipped on Heavy Mothership HC-9999.';
             miss.appendChild(line1);
             var line2 = document.createElement('div');
             line2.style.marginTop = '.25rem';
-            line2.appendChild(document.createTextNode('Open '));
-            var strong = document.createElement('strong');
-            strong.textContent = 'Heavy Mothership HC-9999';
-            line2.appendChild(strong);
-            line2.appendChild(document.createTextNode(' detail in-game (the chip pool screen of HC-9999), then re-run the chips bookmarklet.'));
+            line2.textContent = 'If that’s wrong, refresh via "Import TopWar Data" in the header — every chip carries its bound-HT field, so HC-9999 picks up automatically.';
             miss.appendChild(line2);
           } else {
             miss.textContent = 'Heavy Mothership equipped chips not provided by this player.';
@@ -16116,7 +16139,7 @@
     if (totalOwned > 0) {
       sub.textContent = 'Pieces owned: ' + totalOwned;
     } else {
-      sub.textContent = 'Pieces owned: — (run Inventory bookmarklet on the Inventory tab to populate)';
+      sub.textContent = 'Pieces owned: — (use Import TopWar Data in the header to populate)';
     }
     info.appendChild(sub);
     card.appendChild(info);
