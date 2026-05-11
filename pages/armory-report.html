@@ -16942,30 +16942,76 @@
   // hypothetical state (base + already-applied steps). Save POSTs to
   // /advisor/plan/<code>; Phase 4 player-side viewer will read that record.
 
-  function _ar_advisorBuildBaseGear(merged) {
+  function _ar_advisorBuildBaseGear(merged, siteKey) {
     // gearByHero[heroId][slot] = { runeName, star, equipId } | undefined
+    // Sources, in priority order:
+    //   1. merged.heroes[].heroEquips — battle report (when a report ID resolves)
+    //   2. gear supplement (goldGear / equippedNonGold / presetOnly) — falls back
+    //      to bookmarklet-extracted gear so heroes/slots show even when no battle
+    //      report has been loaded for the player.
+    // Slots filled from source 1 take precedence; source 2 fills the gaps.
+    // Rune names from source 2 are re-resolved via templateId so a locale-
+    // mismatched extraction (e.g. Russian client) renders in canonical English.
     var gearByHero = {};
-    if (!merged || !Array.isArray(merged.heroes)) return gearByHero;
-    merged.heroes.forEach(function(h) {
-      if (!h || !h.id) return;
-      gearByHero[h.id] = {};
-      var equips = h.heroEquips || [];
-      equips.forEach(function(eq, idx) {
-        var slot = idx + 1; // heroEquips array index 0-5 → slot 1-6
-        if (slot > 6) return;
-        var rd = null;
-        (eq.infos || []).forEach(function(info) {
-          if (info.type === 2 && info.templateId) {
-            rd = resolveRune(info.templateId);
+    if (merged && Array.isArray(merged.heroes)) {
+      merged.heroes.forEach(function(h) {
+        if (!h || !h.id) return;
+        gearByHero[h.id] = gearByHero[h.id] || {};
+        var equips = h.heroEquips || [];
+        equips.forEach(function(eq, idx) {
+          var slot = idx + 1; // heroEquips array index 0-5 → slot 1-6
+          if (slot > 6) return;
+          var rd = null;
+          (eq.infos || []).forEach(function(info) {
+            if (info.type === 2 && info.templateId) {
+              rd = resolveRune(info.templateId);
+            }
+          });
+          if (rd) {
+            gearByHero[h.id][slot] = { runeName: rd.n, star: rd.s, starMax: rd.sm, equipId: eq.id };
+          } else {
+            gearByHero[h.id][slot] = null; // gear piece without a rune
           }
         });
-        if (rd) {
-          gearByHero[h.id][slot] = { runeName: rd.n, star: rd.s, starMax: rd.sm, equipId: eq.id };
-        } else {
-          gearByHero[h.id][slot] = null; // gear piece without a rune
-        }
       });
-    });
+    }
+    if (siteKey) {
+      var gearSupp = null;
+      try { gearSupp = ArmoryIdentity.getSupplement('gear', siteKey); } catch (e) {}
+      if (gearSupp) {
+        var pieces = (gearSupp.goldGear || [])
+          .concat(gearSupp.equippedNonGold || [])
+          .concat(gearSupp.presetOnly || []);
+        pieces.forEach(function(p) {
+          if (!p || !p.heroId || p.heroId <= 0) return;
+          var slot = p.slot;
+          if (!slot || slot < 1 || slot > 6) return;
+          var hid = p.heroId;
+          gearByHero[hid] = gearByHero[hid] || {};
+          // Already filled from battle report? Don't overwrite — de-dupe by slot.
+          if (Object.prototype.hasOwnProperty.call(gearByHero[hid], slot)) return;
+          var rune = (p.buffs || []).find(function(b) { return b && b.type === 'rune'; });
+          if (!rune) { gearByHero[hid][slot] = null; return; }
+          // Prefer templateId-based resolution (locale-agnostic).
+          var rd = null;
+          if (rune.templateId != null && typeof resolveRune === 'function') {
+            rd = resolveRune(+rune.templateId);
+          }
+          if (rd) {
+            gearByHero[hid][slot] = { runeName: rd.n, star: rd.s, starMax: rd.sm, equipId: p.uid || null };
+          } else if (rune.name) {
+            gearByHero[hid][slot] = {
+              runeName: rune.name,
+              star: rune.star != null ? rune.star : 0,
+              starMax: rune.starMax != null ? rune.starMax : null,
+              equipId: p.uid || null
+            };
+          } else {
+            gearByHero[hid][slot] = null;
+          }
+        });
+      }
+    }
     return gearByHero;
   }
 
@@ -17203,7 +17249,7 @@
         var ext = _ar_extractRunePool(inv, gear, lookups);
         return ext.pool;
       })();
-      var baseGear = _ar_advisorBuildBaseGear(merged);
+      var baseGear = _ar_advisorBuildBaseGear(merged, siteKey);
       var runeIdx = _ar_advisorRuneTypeIndex(catalog);
 
       // Initialize / restore working state. Re-opening the tab keeps the
@@ -17417,21 +17463,32 @@
           if (hid && !heroMarch[hid]) heroMarch[hid] = { name: m.name || ('March ' + (mi + 1)), marchIdx: mi, posInMarch: pi };
         });
       });
-      var galleryHeroes = ((merged && merged.heroes) || []).filter(function(h) {
-        return h && h.id && Array.isArray(h.heroEquips) && h.heroEquips.length > 0;
-      }).slice().sort(function(a, b) {
+      // Gallery source = any hero with at least one slot known in the working
+      // state (battle-report or gear-supplement). De-duped by heroId so a hero
+      // appearing in both sources only renders once.
+      var heroSlotCount = {};
+      Object.keys(state.gearByHero || {}).forEach(function(hid) {
+        var slots = state.gearByHero[hid] || {};
+        var n = 0;
+        for (var s = 1; s <= 6; s++) if (slots[s]) n++;
+        if (n > 0) heroSlotCount[hid] = n;
+      });
+      var galleryHeroes = Object.keys(heroSlotCount).map(function(hidStr) {
+        var hid = parseInt(hidStr, 10);
+        return { id: hid, _slotCount: heroSlotCount[hidStr] };
+      }).sort(function(a, b) {
         var ma = heroMarch[a.id], mb = heroMarch[b.id];
         var aIdx = ma ? ma.marchIdx : 9999;
         var bIdx = mb ? mb.marchIdx : 9999;
         if (aIdx !== bIdx) return aIdx - bIdx;
         if (ma && mb) return ma.posInMarch - mb.posInMarch;
-        return (b.heroEquips.length - a.heroEquips.length) ||
+        return (b._slotCount - a._slotCount) ||
                String(heroName(a.id)).localeCompare(String(heroName(b.id)));
       });
       if (galleryHeroes.length === 0) {
         var noHeroes = document.createElement('div');
         noHeroes.className = 'adv-plan-empty';
-        noHeroes.textContent = 'No heroes with gear loaded. The player needs to upload a battle report first.';
+        noHeroes.textContent = 'No heroes with gear loaded. The player needs to upload a battle report or paste a Titan Gear Pool snapshot first.';
         galleryGrid.appendChild(noHeroes);
       } else {
         galleryHeroes.forEach(function(h) {
@@ -18611,7 +18668,7 @@
       try { return _ar_extractRunePool(merged.inv || {}, merged.gear || {}, lookups || {}).pool || {}; }
       catch (e) { return {}; }
     })();
-    var baseGear = (typeof _ar_advisorBuildBaseGear === 'function') ? _ar_advisorBuildBaseGear(merged) : {};
+    var baseGear = (typeof _ar_advisorBuildBaseGear === 'function') ? _ar_advisorBuildBaseGear(merged, siteKey) : {};
     // Walk steps in order, validating each against the running state so a
     // valid merge that depends on an earlier valid place still shows green.
     var validateState = {
@@ -18795,7 +18852,7 @@
     var gear = ArmoryIdentity.getSupplement('gear', siteKey);
     var ext = _ar_extractRunePool(inv, gear, lookups);
     var basePool = ext.pool;
-    var baseGear = _ar_advisorBuildBaseGear(merged);
+    var baseGear = _ar_advisorBuildBaseGear(merged, siteKey);
     var runeIdx = _ar_advisorRuneTypeIndex(catalog);
 
     var state = _ar_recomputeAdvisorState(basePool, baseGear, acceptedSteps, catalog, runeIdx);
