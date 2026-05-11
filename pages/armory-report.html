@@ -1654,6 +1654,24 @@
   }
   .adv-plan-card-toggle:hover { border-color: var(--accent); color: var(--accent); }
   .adv-plan-card-detail { margin-top: .6rem; padding-top: .6rem; border-top: 1px dashed var(--border); }
+  /* Per-advisor sub-row inside an advisor-plan card — one row per submission */
+  .adv-plan-subrow {
+    margin-top: .55rem; padding-top: .55rem;
+    border-top: 1px dashed var(--border);
+  }
+  .adv-plan-subrow:first-of-type { margin-top: .25rem; }
+  .adv-plan-subhdr {
+    display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+    margin-bottom: .3rem;
+  }
+  .adv-plan-subname { font-weight: 600; color: var(--text); font-size: .82rem; }
+  .adv-plan-substeps { font-size: .7rem; color: var(--muted); }
+  .adv-plan-subts { font-size: .7rem; color: var(--muted); margin-left: auto; }
+  .adv-plan-applied-tag {
+    font-size: .65rem; font-weight: 700; color: #3fb950;
+    background: rgba(63,185,80,.1); border: 1px solid rgba(63,185,80,.3);
+    border-radius: 999px; padding: .1rem .45rem;
+  }
   .adv-step-row.adv-step-accept .as-accept-toggle {
     font-size: .72rem; color: var(--muted); cursor: pointer;
     display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
@@ -2872,6 +2890,29 @@
   function isVerifiedS2864Member() {
     var id = getStoredIdentity();
     return !!(id && id.name && id.siteKey && !id.guest);
+  }
+
+  // Stable per-device advisor identifier used by the multi-advisor plan
+  // schema. Signed-in S2864 members use their siteKey so re-saves on any
+  // device collapse to the same plan slot; unsigned advisors get a
+  // generated random ID stored in localStorage (per-browser, per-device).
+  // Length matches the worker's ADVISOR_ID_RX (8..128, [A-Za-z0-9:_-]).
+  function _ar_getAdvisorId() {
+    var id = getStoredIdentity();
+    if (id && id.siteKey && !id.guest) return 'sk:' + id.siteKey;
+    var key = 'armory_advisor_local_id';
+    var existing = null;
+    try { existing = localStorage.getItem(key); } catch (e) {}
+    if (existing && /^[A-Za-z0-9:_-]{8,128}$/.test(existing)) return existing;
+    var rand = '';
+    var alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    var bytes;
+    try { bytes = crypto.getRandomValues(new Uint8Array(20)); }
+    catch (e) { bytes = []; for (var i = 0; i < 20; i++) bytes.push(Math.floor(Math.random() * 256)); }
+    for (var i = 0; i < bytes.length; i++) rand += alphabet[bytes[i] % alphabet.length];
+    var fresh = 'a:' + rand;
+    try { localStorage.setItem(key, fresh); } catch (e) {}
+    return fresh;
   }
 
   // ── What's New (S2864 beta callout) ─────────────────────────────────────
@@ -17250,11 +17291,13 @@
     loading.textContent = 'Loading rune catalog and current pool…';
     container.appendChild(loading);
 
+    var myAdvisorId = _ar_getAdvisorId();
     Promise.all([
       _ar_loadRuneTypes().catch(function() { return null; }),
       _ar_loadInvLookups().catch(function() { return null; }),
-      // Try to fetch any existing saved plan so the advisor resumes mid-edit
-      fetch(SUPPLEMENT_WORKER + '/advisor/plan/' + code).then(function(r) {
+      // Try to fetch THIS advisor's own previous save (filtered by advisorId)
+      // so multiple advisors editing the same code don't clobber each other.
+      fetch(SUPPLEMENT_WORKER + '/advisor/plan/' + code + '?advisorId=' + encodeURIComponent(myAdvisorId)).then(function(r) {
         if (r.status === 404) return null;
         if (!r.ok) return null;
         return r.json().catch(function() { return null; });
@@ -17262,7 +17305,13 @@
     ]).then(function(arr) {
       var catalog = arr[0];
       var lookups = arr[1];
-      var savedPlan = arr[2];
+      var savedRec = arr[2];
+      // v2 shape: { plans: [{ ... }] }. Extract our own plan (already filtered
+      // by the worker via ?advisorId=, so plans[0] is the only entry).
+      var savedPlan = null;
+      if (savedRec && Array.isArray(savedRec.plans) && savedRec.plans.length > 0) {
+        savedPlan = savedRec.plans[0];
+      }
 
       if (!catalog) {
         container.replaceChildren();
@@ -17879,6 +17928,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            advisorId: myAdvisorId,
             advisorName: advisorName,
             planNote: (window._advisorPlanNote || '').slice(0, 1000),
             steps: window._advisorPlanSteps || []
@@ -18515,15 +18565,25 @@
     var btn = document.querySelector('.tab-btn[data-tab="myadvisorplans"]');
     if (!btn) return;
     var idx = window._advisorPlayerIndex || { entries: [] };
-    var planned = idx.entries.filter(function(e) { return e.status === 'planned'; }).length;
+    // Count individual unapplied advisor plans across all entries — a single
+    // request with 3 advisors waiting for review shows "3", not "1".
+    var unappliedPlans = 0;
+    idx.entries.forEach(function(e) {
+      if (e.status !== 'planned' && e.status !== 'applied') return;
+      if (Array.isArray(e.plans) && e.plans.length > 0) {
+        unappliedPlans += e.plans.filter(function(p) { return !p.applied; }).length;
+      } else if (e.status === 'planned') {
+        unappliedPlans += 1; // legacy v1 entry without plans[]
+      }
+    });
     // Wipe any existing badge before re-painting.
     var existing = btn.querySelector('.adv-tab-badge');
     if (existing) existing.remove();
     btn.firstChild && btn.firstChild.nodeType === 3 && (btn.firstChild.nodeValue = 'Advisor Plans');
-    if (planned > 0) {
+    if (unappliedPlans > 0) {
       var badge = document.createElement('span');
       badge.className = 'adv-tab-badge';
-      badge.textContent = String(planned);
+      badge.textContent = String(unappliedPlans);
       btn.appendChild(badge);
     }
   }
@@ -18593,24 +18653,50 @@
         card.dataset.code = entry.code;
         listHost.appendChild(card);
 
+        // Multi-plan support: entry.plans[] is an array of advisor submissions.
+        // Each advisor saves under their own advisorId so multiple coaches can
+        // submit separately for the same code without overwriting. Legacy v1
+        // entries (no plans array) are migrated server-side; defensive fallback
+        // here in case the migration ever lags.
+        var plans = Array.isArray(entry.plans) ? entry.plans.slice() : [];
+        if (plans.length === 0 && (entry.advisorName || entry.stepCount)) {
+          plans.push({
+            advisorId: null,
+            advisorName: entry.advisorName || 'An advisor',
+            plannedTs: entry.plannedTs || 0,
+            stepCount: entry.stepCount || 0,
+            applied: entry.status === 'applied',
+            appliedTs: entry.appliedTs || 0,
+            acceptedCount: entry.acceptedCount || 0
+          });
+        }
+        // Newest first.
+        plans.sort(function(a, b) { return (b.plannedTs || 0) - (a.plannedTs || 0); });
+
         var hdr = document.createElement('div');
         hdr.className = 'adv-plan-card-hdr';
         var statusPill = document.createElement('span');
         statusPill.className = 'adv-plan-status status-' + entry.status;
         statusPill.textContent = entry.status === 'open' ? 'Awaiting advisor'
-                              : entry.status === 'planned' ? 'Plan ready'
+                              : entry.status === 'planned' ? (plans.length > 1 ? plans.length + ' plans ready' : 'Plan ready')
                               : entry.status === 'applied' ? 'Applied'
                               : entry.status;
         hdr.appendChild(statusPill);
         var titleLine = document.createElement('div');
         titleLine.className = 'adv-plan-card-title';
-        var advName = entry.advisorName || 'Advisor';
-        titleLine.textContent = advName + (entry.stepCount ? ' · ' + entry.stepCount + ' step' + (entry.stepCount === 1 ? '' : 's') : '');
+        if (plans.length === 1) {
+          var p0 = plans[0];
+          titleLine.textContent = (p0.advisorName || 'Advisor') + (p0.stepCount ? ' · ' + p0.stepCount + ' step' + (p0.stepCount === 1 ? '' : 's') : '');
+        } else if (plans.length > 1) {
+          titleLine.textContent = plans.length + ' advisor submissions';
+        } else {
+          titleLine.textContent = 'Awaiting first advisor';
+        }
         hdr.appendChild(titleLine);
         var meta = document.createElement('span');
         meta.className = 'adv-plan-card-meta';
-        var tsLabel = entry.appliedTs ? 'applied ' + _ar_advisorRelativeAge(entry.appliedTs)
-                    : entry.plannedTs ? 'planned ' + _ar_advisorRelativeAge(entry.plannedTs)
+        var tsLabel = entry.appliedTs ? 'first applied ' + _ar_advisorRelativeAge(entry.appliedTs)
+                    : entry.plannedTs ? 'latest plan ' + _ar_advisorRelativeAge(entry.plannedTs)
                     : 'requested ' + _ar_advisorRelativeAge(entry.createdTs);
         meta.textContent = tsLabel;
         hdr.appendChild(meta);
@@ -18642,34 +18728,67 @@
           return;
         }
 
-        // Planned / applied — expand to step list on click
-        var detailHost = document.createElement('div');
-        detailHost.className = 'adv-plan-card-detail';
-        detailHost.style.display = 'none';
-        card.appendChild(detailHost);
+        // Each advisor's plan gets its own sub-row with expand-to-steps.
+        // When there's only one plan, this renders as a single expandable
+        // section (visually identical to the pre-multi-plan UX).
+        plans.forEach(function(planMeta) {
+          var subRow = document.createElement('div');
+          subRow.className = 'adv-plan-subrow';
 
-        var toggle = document.createElement('button');
-        toggle.className = 'adv-plan-card-toggle';
-        toggle.type = 'button';
-        toggle.textContent = entry.status === 'applied' ? 'View steps' : 'View steps & accept';
-        toggle.onclick = function() {
-          if (detailHost.style.display === 'none') {
-            detailHost.style.display = '';
-            toggle.textContent = 'Hide';
-            if (!detailHost.dataset.loaded) {
-              _ar_loadAdvisorPlanDetail(detailHost, entry, siteKey, merged, catalog, lookups);
-            }
-          } else {
-            detailHost.style.display = 'none';
-            toggle.textContent = entry.status === 'applied' ? 'View steps' : 'View steps & accept';
+          var subHdr = document.createElement('div');
+          subHdr.className = 'adv-plan-subhdr';
+          var subName = document.createElement('span');
+          subName.className = 'adv-plan-subname';
+          subName.textContent = planMeta.advisorName || 'Advisor';
+          subHdr.appendChild(subName);
+          var subSteps = document.createElement('span');
+          subSteps.className = 'adv-plan-substeps';
+          subSteps.textContent = (planMeta.stepCount || 0) + ' step' + (planMeta.stepCount === 1 ? '' : 's');
+          subHdr.appendChild(subSteps);
+          var subTs = document.createElement('span');
+          subTs.className = 'adv-plan-subts';
+          subTs.textContent = planMeta.appliedTs ? 'applied ' + _ar_advisorRelativeAge(planMeta.appliedTs)
+                            : planMeta.plannedTs ? _ar_advisorRelativeAge(planMeta.plannedTs)
+                            : '';
+          subHdr.appendChild(subTs);
+          if (planMeta.applied) {
+            var appliedTag = document.createElement('span');
+            appliedTag.className = 'adv-plan-applied-tag';
+            appliedTag.textContent = '✓ applied';
+            subHdr.appendChild(appliedTag);
           }
-        };
-        card.appendChild(toggle);
+          subRow.appendChild(subHdr);
+
+          var detailHost = document.createElement('div');
+          detailHost.className = 'adv-plan-card-detail';
+          detailHost.style.display = 'none';
+          subRow.appendChild(detailHost);
+
+          var toggle = document.createElement('button');
+          toggle.className = 'adv-plan-card-toggle';
+          toggle.type = 'button';
+          toggle.textContent = planMeta.applied ? 'View steps' : 'View steps & accept';
+          toggle.onclick = function() {
+            if (detailHost.style.display === 'none') {
+              detailHost.style.display = '';
+              toggle.textContent = 'Hide';
+              if (!detailHost.dataset.loaded) {
+                _ar_loadAdvisorPlanDetail(detailHost, entry, siteKey, merged, catalog, lookups, planMeta);
+              }
+            } else {
+              detailHost.style.display = 'none';
+              toggle.textContent = planMeta.applied ? 'View steps' : 'View steps & accept';
+            }
+          };
+          subRow.appendChild(toggle);
+
+          card.appendChild(subRow);
+        });
       });
     });
   }
 
-  function _ar_loadAdvisorPlanDetail(host, entry, siteKey, merged, catalog, lookups) {
+  function _ar_loadAdvisorPlanDetail(host, entry, siteKey, merged, catalog, lookups, planMeta) {
     host.dataset.loaded = '1';
     host.replaceChildren();
     var loading = document.createElement('div');
@@ -18677,11 +18796,26 @@
     loading.textContent = 'Loading plan steps…';
     host.appendChild(loading);
 
-    fetch(SUPPLEMENT_WORKER + '/advisor/plan/' + entry.code, { cache: 'no-store' })
+    // When multiple advisors have submitted, filter to the specific advisor
+    // via ?advisorId=. Legacy v1 records / single-plan paths fall through
+    // to the unfiltered fetch.
+    var url = SUPPLEMENT_WORKER + '/advisor/plan/' + entry.code;
+    if (planMeta && planMeta.advisorId) {
+      url += '?advisorId=' + encodeURIComponent(planMeta.advisorId);
+    }
+    fetch(url, { cache: 'no-store' })
       .then(function(r) { return r.ok ? r.json() : null; })
       .catch(function() { return null; })
-      .then(function(plan) {
+      .then(function(rec) {
         host.replaceChildren();
+        // v2 shape: { plans: [{ advisorId, advisorName, planNote, steps, ts, applied, ... }] }
+        // v1 shape: { advisorName, planNote, steps, ts }
+        var plan = null;
+        if (rec && Array.isArray(rec.plans) && rec.plans.length > 0) {
+          plan = rec.plans[0];
+        } else if (rec && Array.isArray(rec.steps)) {
+          plan = rec;
+        }
         if (!plan || !Array.isArray(plan.steps)) {
           var err = document.createElement('div');
           err.className = 'adv-plan-empty';
@@ -18932,7 +19066,12 @@
     var r = await fetch(SUPPLEMENT_WORKER + '/advisor/plan/' + code + '/apply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
-      body: JSON.stringify({ acceptedCount: acceptedSteps.length })
+      body: JSON.stringify({
+        acceptedCount: acceptedSteps.length,
+        // advisorId selects which plan (when multiple advisors have saved) was
+        // applied. Falls back to undefined for v1 legacy single-plan records.
+        advisorId: plan && plan.advisorId ? plan.advisorId : undefined
+      })
     });
     if (!r.ok) {
       var msg = await r.text();
