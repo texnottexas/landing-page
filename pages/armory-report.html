@@ -10554,16 +10554,6 @@
     document.body.appendChild(overlay);
   }
 
-  // ── Gear Pool: paste-JSON modal ──────────────────────────────────────────
-  // Thin shim — delegates to the unified _ar_openPasteModal path so gear gets
-  // the same validate → sanitize → localStorage → worker-upload → setLastSync
-  // lifecycle as inv / bench / chips. Older code paths kept stomping on
-  // `gearPool_<siteKey>` directly; that key is gone, gear now lives under
-  // `armory_gear_<siteKey>` with the rest of the supplements.
-  function _gp_openPasteModal(siteKey, onSaved) {
-    _ar_openGearPasteModal(siteKey, onSaved);
-  }
-
   function decorLevel(id, groupId) {
     var baseId = DECOR_GROUP_BASE[String(groupId)];
     if (!baseId) return 1; // default to level 1 if no base found
@@ -15966,119 +15956,6 @@
 
     document.body.appendChild(bg);
     setTimeout(function() { ta.focus(); }, 50);
-  }
-
-  function _ar_openInvPasteModal(siteKey, onSaved) {
-    _ar_openPasteModal({
-      kind: 'inv', siteKey: siteKey,
-      title: 'Paste Inventory JSON',
-      desc: 'Use the inventory bookmarklet on h5.topwargame.com, then paste the JSON below.',
-      placeholder: '{"v":1,"meta":{...},"tabs":{...},"heros":{...}}',
-      validate: _ar_validateInvJson,
-      lsKey: 'armory_inv_',
-      tsPath: 'meta.ts',
-      staleLabel: 'snapshot',
-      bookmarkletPanel: {
-        fileName: 'bookmarklet.txt',
-        dragLabel: 'Inventory Dump',
-        bookmarkLabel: 'Inventory',
-        panelLead: 'Need the JSON? Set up the bookmarklet once, then run it from the game whenever you want a fresh snapshot.',
-        usageSteps: [
-          'Open your mobile browser (Safari on iOS, Chrome on Android) and go to https://h5.topwargame.com/h5game/index.html',
-          'Log in to your S2864 account if not already',
-          'Tap the Bag icon (bottom-right)',
-          'Tap any tab — Item / Unit / Decor / Hero / CPNT',
-          'Tap your saved bookmarklet → JSON copies to clipboard',
-          'Come back here and paste below'
-        ],
-        panelHint: 'Only run when the Bag panel is open. The bookmarklet reads scene-graph state, not server data.'
-      }
-    }, onSaved);
-  }
-
-  function _ar_openBenchPasteModal(siteKey, onSaved) {
-    _ar_openPasteModal({
-      kind: 'bench', siteKey: siteKey,
-      title: 'Paste Bench Beast JSON',
-      desc: 'Use the Enigma Beast bookmarklet on h5.topwargame.com to grab Q3+ unplaced beasts, then paste below.',
-      placeholder: '{"v":1,"src":"...","beasts":[...]}',
-      validate: _ar_validateBenchJson,
-      lsKey: 'armory_bench_',
-      tsPath: 'ts',
-      staleLabel: 'bench snapshot',
-      bookmarkletPanel: {
-        fileName: 'beast-bookmarklet.txt',
-        dragLabel: 'Beast List Dump',
-        bookmarkLabel: 'Beasts',
-        panelLead: 'Need the JSON? Set up the bookmarklet once, then run it from the game whenever you want a fresh bench snapshot.',
-        usageSteps: [
-          'Open your mobile browser (Safari on iOS, Chrome on Android) and go to https://h5.topwargame.com/h5game/index.html',
-          'Log in to your S2864 account if not already',
-          'Open the Enigma Beast section',
-          'Open the panel that lists every owned beast (the one with quality / faction / type filters)',
-          'Wait for the list to fully load',
-          'Tap your saved bookmarklet → JSON copies to clipboard (Q3+ unplaced only — placed beasts already come from your battle reports)',
-          'Come back here and paste below'
-        ],
-        panelHint: 'Only run when the Beast list panel is open. The bookmarklet reads scene-graph state, not server data.'
-      }
-    }, onSaved);
-  }
-
-  function _ar_openChipsPasteModal(siteKey, onSaved) {
-    _ar_openPasteModal({
-      kind: 'chips', siteKey: siteKey,
-      title: 'Paste HT Chip Pool JSON',
-      desc: 'Use the HT Chip bookmarklet on h5.topwargame.com to grab unequipped chips + Heavy Mothership state, then paste below.',
-      placeholder: '{"v":1,"chips":[...],"mothership":{...}}',
-      validate: _ar_validateChipsJson,
-      lsKey: 'armory_chips_',
-      tsPath: 'ts',
-      staleLabel: 'chip pool snapshot',
-      bookmarkletPanel: {
-        fileName: 'chips-bookmarklet.txt',
-        dragLabel: 'HT Chip Dump',
-        bookmarkLabel: 'HT Chips',
-        panelLead: 'Need the JSON? Set up the bookmarklet once, then run it from the game whenever you want a fresh chip pool snapshot.',
-        usageSteps: [
-          'Open your mobile browser (Safari on iOS, Chrome on Android) and go to https://h5.topwargame.com/h5game/index.html',
-          'Log in to your S2864 account if not already',
-          'Tap the Heavy Mothership HC-9999 in your mecha list',
-          'Tap the Chip button on the mothership to open the chip pool',
-          'Tap your saved bookmarklet → JSON copies to clipboard (cycles all 7 chip-type tabs to capture every unequipped chip; equipped chips already come from your battle reports)',
-          'Come back here and paste below'
-        ],
-        panelHint: 'Only run when the chip-pool panel is open. Captures HC-9999 piece state from the mecha-main panel automatically (still in memory while chip-pool is on top).'
-      }
-    }, onSaved);
-  }
-
-  function _ar_openGearPasteModal(siteKey, onSaved) {
-    _ar_openPasteModal({
-      kind: 'gear', siteKey: siteKey,
-      title: 'Paste Titan Gear Pool JSON',
-      desc: 'Use the gear-pool bookmarklet on h5.topwargame.com to grab every gold piece + slotted non-gold piece, then paste below.',
-      placeholder: '{"v":1,"meta":{...},"summary":{...},"schemes":[...],"goldGear":[...]}',
-      validate: _ar_validateGearJson,
-      lsKey: 'armory_gear_',
-      tsPath: 'meta.ts',
-      staleLabel: 'gear pool snapshot',
-      bookmarkletPanel: {
-        fileName: 'gear-pool-bookmarklet.txt',
-        dragLabel: 'Tex Gear Pool',
-        bookmarkLabel: 'Gear Pool',
-        panelLead: 'Need the JSON? Set up the bookmarklet once, then run it from the game whenever you want a fresh gear pool snapshot.',
-        usageSteps: [
-          'Open your mobile browser (Safari on iOS, Chrome on Android) and go to https://h5.topwargame.com/h5game/index.html',
-          'Log in to your S2864 account if not already',
-          'Open Hero list → tap any hero → tap their Titan Gear Equipment menu',
-          'Wait for the gear panel to fully load',
-          'Tap your saved bookmarklet → JSON copies to clipboard (scans your full gear inventory, not just the open hero)',
-          'Come back here and paste below'
-        ],
-        panelHint: 'Only run when the gear equipment panel is open. The bookmarklet reads scene-graph state, not server data.'
-      }
-    }, onSaved);
   }
 
   // ── Rune Pool manual editor modal (Phase 1.4) ────────────────────────────
