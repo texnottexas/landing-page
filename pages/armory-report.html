@@ -9920,6 +9920,39 @@
     var allPieces = (data.goldGear || [])
       .concat(data.equippedNonGold || [])
       .concat(data.presetOnly || []);
+    // ── Locale canonicalization ──────────────────────────────────────────
+    // The bookmarklet captures display strings in the player's game locale,
+    // so a Russian-client extraction lands with Russian rune/slot/quality
+    // names baked into the supplement. Substitute canonical English where
+    // we have a lookup so the tab reads the same regardless of the source
+    // player's language. Stat/gear/buff names are skipped (no canonical
+    // English buff_id → name table is loaded here).
+    allPieces = allPieces.map(function(p) {
+      if (!p) return p;
+      var copy = Object.assign({}, p);
+      if (_GP_SLOT_NAMES[p.slot]) copy.slotName = _GP_SLOT_NAMES[p.slot];
+      if (_GP_QUALITY_NAMES[p.quality]) copy.qualityName = _GP_QUALITY_NAMES[p.quality];
+      if (p.heroId && typeof heroName === 'function') {
+        var hn = heroName(p.heroId);
+        if (hn && !/^Hero\s*#?\s*\d+/i.test(hn)) copy.heroName = hn;
+      }
+      if (Array.isArray(p.buffs)) {
+        copy.buffs = p.buffs.map(function(b) {
+          if (b && b.type === 'rune' && b.templateId != null && typeof resolveRune === 'function') {
+            var rr = resolveRune(+b.templateId);
+            if (rr && rr.n) {
+              var bc = Object.assign({}, b);
+              bc.name = rr.n;
+              if (b.star == null && rr.s != null) bc.star = rr.s;
+              if (b.starMax == null && rr.sm != null) bc.starMax = rr.sm;
+              return bc;
+            }
+          }
+          return b;
+        });
+      }
+      return copy;
+    });
     var summary = data.summary || {};
     var schemes = data.schemes || [];
 
