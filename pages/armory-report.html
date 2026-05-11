@@ -1320,6 +1320,18 @@
     padding: .6rem .8rem; border-radius: 0 6px 6px 0; font-size: .85rem;
     color: var(--text); line-height: 1.5; white-space: pre-wrap;
   }
+  .adv-plan-note.advisor {
+    border-left-color: #3fb950;
+  }
+  .adv-note-input {
+    width: 100%; min-height: 64px; resize: vertical;
+    background: var(--card); border: 1px solid var(--border); border-left: 3px solid #3fb950;
+    border-radius: 0 6px 6px 0; padding: .55rem .75rem;
+    color: var(--text); font: inherit; font-size: .85rem; line-height: 1.5;
+    box-sizing: border-box; outline: none; transition: border-color .15s;
+  }
+  .adv-note-input:focus { border-color: var(--accent); border-left-color: var(--accent); }
+  .adv-note-input::placeholder { color: var(--muted); }
   .adv-plan-empty {
     padding: 1rem; text-align: center; color: var(--muted); font-size: .85rem;
     border: 1px dashed var(--border); border-radius: 6px;
@@ -17201,7 +17213,9 @@
       if (!window._advisorPlanSteps) {
         window._advisorPlanSteps = (savedPlan && Array.isArray(savedPlan.steps)) ? savedPlan.steps.slice() : [];
         window._advisorPlanSavedTs = savedPlan ? savedPlan.ts : 0;
+        window._advisorPlanNote = (savedPlan && typeof savedPlan.planNote === 'string') ? savedPlan.planNote : '';
       }
+      if (typeof window._advisorPlanNote !== 'string') window._advisorPlanNote = '';
 
       _ar_renderAdvisorPlanLayout(container, code, basePool, baseGear, catalog, runeIdx, merged);
     });
@@ -17223,6 +17237,34 @@
     noteBody.textContent = reqObj.note || (reqObj.hero ? ('Focus: ' + reqObj.hero) : '(no note attached)');
     noteSec.appendChild(noteBody);
     container.appendChild(noteSec);
+
+    // Section: advisor's own note back to the player. Optional, 1000-char cap
+    // enforced server-side. Renders above the step list on the player's view
+    // so they get context before scanning the actions.
+    var advNoteSec = document.createElement('div');
+    advNoteSec.className = 'adv-plan-section';
+    var advNoteTitle = document.createElement('div');
+    advNoteTitle.className = 'adv-plan-section-title';
+    advNoteTitle.textContent = 'Advisor note';
+    var advNoteHelp = document.createElement('span');
+    advNoteHelp.style.cssText = 'font-size:.7rem;font-weight:400;color:var(--muted);';
+    advNoteHelp.textContent = '(optional — shows above the plan steps on the player’s view)';
+    advNoteTitle.appendChild(advNoteHelp);
+    advNoteSec.appendChild(advNoteTitle);
+    var advNoteInput = document.createElement('textarea');
+    advNoteInput.className = 'adv-note-input';
+    advNoteInput.placeholder = 'Context, priorities, or follow-up reminders for the player…';
+    advNoteInput.maxLength = 1000;
+    advNoteInput.value = window._advisorPlanNote || '';
+    advNoteInput.addEventListener('input', function() {
+      window._advisorPlanNote = advNoteInput.value;
+      if (saveStatus) {
+        saveStatus.classList.remove('ok', 'err');
+        saveStatus.textContent = 'Unsaved changes';
+      }
+    });
+    advNoteSec.appendChild(advNoteInput);
+    container.appendChild(advNoteSec);
 
     // Section: hero gear gallery — visual click-to-act surface. Each hero
     // with at least one piece of gear shows their 6 slots with the current
@@ -17743,6 +17785,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             advisorName: advisorName,
+            planNote: (window._advisorPlanNote || '').slice(0, 1000),
             steps: window._advisorPlanSteps || []
           })
         });
@@ -18593,6 +18636,21 @@
       if (alreadyApplied) return false;
       return stepValidations[i] && stepValidations[i].ok;
     });
+
+    // Advisor note — above the step list when the advisor included one.
+    if (plan.planNote && typeof plan.planNote === 'string' && plan.planNote.trim()) {
+      var advNoteWrap = document.createElement('div');
+      advNoteWrap.style.cssText = 'margin-bottom:.6rem;';
+      var advNoteLbl = document.createElement('div');
+      advNoteLbl.style.cssText = 'font-size:.72rem;font-weight:600;color:#3fb950;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.25rem;';
+      advNoteLbl.textContent = 'Advisor note';
+      advNoteWrap.appendChild(advNoteLbl);
+      var advNoteBody = document.createElement('div');
+      advNoteBody.className = 'adv-plan-note advisor';
+      advNoteBody.textContent = plan.planNote;
+      advNoteWrap.appendChild(advNoteBody);
+      host.appendChild(advNoteWrap);
+    }
 
     var list = document.createElement('ul');
     list.className = 'adv-step-list';
