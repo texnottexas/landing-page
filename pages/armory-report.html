@@ -17317,34 +17317,6 @@
     noteSec.appendChild(noteBody);
     container.appendChild(noteSec);
 
-    // Section: advisor's own note back to the player. Optional, 1000-char cap
-    // enforced server-side. Renders above the step list on the player's view
-    // so they get context before scanning the actions.
-    var advNoteSec = document.createElement('div');
-    advNoteSec.className = 'adv-plan-section';
-    var advNoteTitle = document.createElement('div');
-    advNoteTitle.className = 'adv-plan-section-title';
-    advNoteTitle.textContent = 'Advisor note';
-    var advNoteHelp = document.createElement('span');
-    advNoteHelp.style.cssText = 'font-size:.7rem;font-weight:400;color:var(--muted);';
-    advNoteHelp.textContent = '(optional — shows above the plan steps on the player’s view)';
-    advNoteTitle.appendChild(advNoteHelp);
-    advNoteSec.appendChild(advNoteTitle);
-    var advNoteInput = document.createElement('textarea');
-    advNoteInput.className = 'adv-note-input';
-    advNoteInput.placeholder = 'Context, priorities, or follow-up reminders for the player…';
-    advNoteInput.maxLength = 1000;
-    advNoteInput.value = window._advisorPlanNote || '';
-    advNoteInput.addEventListener('input', function() {
-      window._advisorPlanNote = advNoteInput.value;
-      if (saveStatus) {
-        saveStatus.classList.remove('ok', 'err');
-        saveStatus.textContent = 'Unsaved changes';
-      }
-    });
-    advNoteSec.appendChild(advNoteInput);
-    container.appendChild(advNoteSec);
-
     // Section: hero gear gallery — visual click-to-act surface. Each hero
     // with at least one piece of gear shows their 6 slots with the current
     // rune icon + star. Click a slot → contextual step builder pre-filled
@@ -17379,6 +17351,35 @@
     poolGrid.className = 'adv-pool-grid';
     poolSec.appendChild(poolGrid);
     container.appendChild(poolSec);
+
+    // Section: advisor's own note back to the player. Sits directly above
+    // the plan steps so the advisor's commentary pairs with their actions.
+    // Optional, 1000-char cap enforced server-side. Renders above the step
+    // list on the player's view so they get context before scanning actions.
+    var advNoteSec = document.createElement('div');
+    advNoteSec.className = 'adv-plan-section';
+    var advNoteTitle = document.createElement('div');
+    advNoteTitle.className = 'adv-plan-section-title';
+    advNoteTitle.textContent = 'Advisor note';
+    var advNoteHelp = document.createElement('span');
+    advNoteHelp.style.cssText = 'font-size:.7rem;font-weight:400;color:var(--muted);';
+    advNoteHelp.textContent = '(optional — shows above the plan steps on the player’s view)';
+    advNoteTitle.appendChild(advNoteHelp);
+    advNoteSec.appendChild(advNoteTitle);
+    var advNoteInput = document.createElement('textarea');
+    advNoteInput.className = 'adv-note-input';
+    advNoteInput.placeholder = 'Context, priorities, or follow-up reminders for the player…';
+    advNoteInput.maxLength = 1000;
+    advNoteInput.value = window._advisorPlanNote || '';
+    advNoteInput.addEventListener('input', function() {
+      window._advisorPlanNote = advNoteInput.value;
+      if (saveStatus) {
+        saveStatus.classList.remove('ok', 'err');
+        saveStatus.textContent = 'Unsaved changes';
+      }
+    });
+    advNoteSec.appendChild(advNoteInput);
+    container.appendChild(advNoteSec);
 
     // Section: step list
     var stepSec = document.createElement('div');
@@ -17496,14 +17497,18 @@
           if (hid && !heroMarch[hid]) heroMarch[hid] = { name: m.name || ('March ' + (mi + 1)), marchIdx: mi, posInMarch: pi };
         });
       });
-      // Gallery source = any hero with at least one slot known in the working
-      // state (battle-report or gear-supplement). De-duped by heroId so a hero
-      // appearing in both sources only renders once.
+      // Gallery source = any hero with at least one gear slot in the BASE
+      // state (battle-report or gear-supplement). Use baseGear (pre-step)
+      // instead of state.gearByHero (post-step) so recycle / inherit moves
+      // that null out a rune don't make the hero disappear — the gear piece
+      // is still there, just the rune slot is now empty.
       var heroSlotCount = {};
-      Object.keys(state.gearByHero || {}).forEach(function(hid) {
-        var slots = state.gearByHero[hid] || {};
+      Object.keys(baseGear || {}).forEach(function(hid) {
+        var slots = baseGear[hid] || {};
         var n = 0;
-        for (var s = 1; s <= 6; s++) if (slots[s]) n++;
+        for (var s = 1; s <= 6; s++) {
+          if (Object.prototype.hasOwnProperty.call(slots, s)) n++;
+        }
         if (n > 0) heroSlotCount[hid] = n;
       });
       var galleryHeroes = Object.keys(heroSlotCount).map(function(hidStr) {
