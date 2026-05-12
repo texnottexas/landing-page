@@ -33,17 +33,13 @@ A landing page for Server 2864 (Top War) — built with vanilla HTML/CSS/JS and 
 | Component | Location |
 |-----------|----------|
 | Landing page | `index.html` (single file, inline CSS/JS) |
-| Push admin | `push-admin.html` |
 | Service worker | `sw.js` |
 | Calendar data | `seal-stone-calendar.json` |
 | Player data | `player-data.json` (334 players, no UIDs) |
-| Push worker | Cloudflare Worker ([source](../push-worker/)) |
 
 ## Deployment
 
 Automatically deployed via GitHub Pages on push to `main`. Commits must be GPG-signed.
-
-Push worker deployed separately via `wrangler deploy` from the `push-worker/` directory.
 
 ## Related
 
