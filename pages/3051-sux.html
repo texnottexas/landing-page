@@ -102,15 +102,27 @@
   .btn:disabled{opacity:.4;cursor:not-allowed}
   .btn svg{width:14px;height:14px}
 
-  .reco{background:linear-gradient(135deg,rgba(63,185,80,.12),rgba(121,192,255,.06));border:1px solid var(--ally);border-radius:10px;padding:.75rem .9rem;margin-top:.9rem;display:none}
-  .reco.show{display:block}
-  .reco h4{color:var(--ally);font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem;font-weight:800;display:flex;align-items:center;gap:.4rem}
-  .reco h4 .ctx{color:var(--muted);font-weight:600;letter-spacing:0;font-size:.7rem;text-transform:none}
-  .reco .pick-list{display:flex;flex-wrap:wrap;gap:.4rem}
-  .reco .pick-chip{background:var(--card);border:1px solid var(--ally);border-radius:999px;padding:.32rem .65rem;font-size:.78rem;display:inline-flex;align-items:center;gap:.4rem;font-family:'SF Mono',Menlo,monospace;font-weight:700}
-  .reco .pick-chip .ssid{color:var(--ally);font-weight:800}
-  .reco .pick-chip .cost{color:var(--muted)}
-  .reco .why{font-size:.72rem;color:var(--muted);margin-top:.5rem;line-height:1.5}
+  .reco{display:none;margin-top:.9rem;flex-direction:column;gap:.55rem}
+  .reco.show{display:flex}
+  .reco-row{border:1px solid var(--border);border-radius:10px;padding:.7rem .85rem;display:none}
+  .reco-row.show{display:block}
+  .reco-row.primary{background:linear-gradient(135deg,rgba(63,185,80,.12),rgba(121,192,255,.06));border-color:var(--ally)}
+  .reco-row.alternate{background:linear-gradient(135deg,rgba(121,192,255,.10),rgba(121,192,255,.02));border-color:var(--accent)}
+  .reco-row h4{font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem;font-weight:800;display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
+  .reco-row.primary h4{color:var(--ally)}
+  .reco-row.alternate h4{color:var(--accent)}
+  .reco-row h4 .ctx{color:var(--muted);font-weight:600;letter-spacing:0;font-size:.7rem;text-transform:none}
+  .reco-row h4 .tag-rec{margin-left:auto;font-size:.6rem;font-weight:700;padding:.1rem .45rem;border-radius:999px;letter-spacing:.04em;text-transform:uppercase}
+  .reco-row h4 .tag-rec.primary{background:rgba(63,185,80,.15);color:var(--ally);border:1px solid var(--ally)}
+  .reco-row h4 .tag-rec.alt{background:rgba(121,192,255,.12);color:var(--accent);border:1px solid var(--accent)}
+  .reco-row .pick-list{display:flex;flex-wrap:wrap;gap:.4rem}
+  .reco-row .pick-chip{background:var(--card);border-radius:999px;padding:.32rem .65rem;font-size:.78rem;display:inline-flex;align-items:center;gap:.4rem;font-family:'SF Mono',Menlo,monospace;font-weight:700;border:1px solid var(--border)}
+  .reco-row.primary .pick-chip{border-color:var(--ally)}
+  .reco-row.primary .pick-chip .ssid{color:var(--ally);font-weight:800}
+  .reco-row.alternate .pick-chip{border-color:var(--accent)}
+  .reco-row.alternate .pick-chip .ssid{color:var(--accent);font-weight:800}
+  .reco-row .pick-chip .cost{color:var(--muted)}
+  .reco-row .why{font-size:.72rem;color:var(--muted);margin-top:.45rem;line-height:1.5}
 
   /* Method-header shimmer (treasury style) */
   .method-wrap{margin-bottom:1rem}
@@ -169,6 +181,7 @@
   .ccard.taken-opp{opacity:.4;filter:grayscale(.5)}
   .ccard.taken-ally{box-shadow:inset 0 0 0 2px var(--ally)}
   .ccard.recommended{box-shadow:inset 0 0 0 2px var(--gold)}
+  .ccard.alternate{box-shadow:inset 0 0 0 2px var(--accent)}
   .ccard.compare-checked{outline:2px dashed var(--accent);outline-offset:-2px}
 
   .chead{padding:.7rem .9rem;border-bottom:1px solid var(--border);background:var(--card)}
@@ -220,6 +233,7 @@
   .badge.good{color:var(--ally);border-color:var(--ally)}
   .badge.warn{color:var(--gold);border-color:var(--gold)}
   .badge.bad{color:var(--opp);border-color:var(--opp)}
+  .badge.info{color:var(--accent);border-color:var(--accent)}
 
   /* Compare bar */
   .compare-bar{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:.5rem .75rem;z-index:80;align-items:center;gap:.5rem;flex-wrap:wrap;box-shadow:0 -3px 12px rgba(0,0,0,.4)}
@@ -349,17 +363,22 @@
     <span class="chev">&#x25BC;</span>
   </div>
   <div class="method-body" id="methodBody">
-    <p>Every candidate gets a single <b>Power Index</b> score (0&ndash;100) so two servers can be compared at a glance. The blend rewards depth and SSC performance while giving a modest discount to cheaper tickets, so the cost-100 column isn&rsquo;t just &ldquo;free filler&rdquo;.</p>
+    <p>Every candidate gets a single <b>Power Index</b> score (0&ndash;100) so two servers can be compared at a glance. The blend rewards depth, the strength of the top end, and SSC performance, while giving a small discount to cheaper tickets so the 100-cost column isn&rsquo;t penalised for being affordable.</p>
     <div class="formula">
-      score = ( <span class="w">0.50</span> &middot; meritNorm + <span class="w">0.25</span> &middot; wzNorm + <span class="w">0.15</span> &middot; depthNorm ) &times; 100 &times; costMul
+      score = ( <span class="w">0.40</span> &middot; meritNorm + <span class="w">0.25</span> &middot; top5Norm + <span class="w">0.15</span> &middot; wzNorm + <span class="w">0.10</span> &middot; depthNorm ) &times; 100 &times; costMul
     </div>
     <ul>
-      <li><b>meritNorm</b> &mdash; that server&rsquo;s total <i>Total Merit</i> sum, divided by the highest in the candidate pool. Weighted heaviest because merit is the single best proxy for what an ally can put on the battlefield.</li>
-      <li><b>wzNorm</b> &mdash; their UD/Seal Stone <i>warzone score</i>, normalised the same way. Captures how well the whole sector has been performing this season.</li>
+      <li><b>meritNorm</b> &mdash; that server&rsquo;s <i>Total Merit</i> sum, divided by the highest in the candidate pool. Heaviest weight because merit is the best proxy for what an ally can put on the battlefield.</li>
+      <li><b>top5Norm</b> &mdash; mean merit of their top 5 ranked players, normalised the same way. This is the new headline stat &mdash; it catches servers whose top end punches above their headline rank (think Msk&#x1D461; / &#x2605;&#x30BB;&#x30EA;&#x30AB;&#x2605;).</li>
+      <li><b>wzNorm</b> &mdash; their UD/Seal Stone <i>warzone score</i>. Captures how the whole sector has been performing this season.</li>
       <li><b>depthNorm</b> &mdash; how many of their players show up in the cross-server merit rankings (top-12k). Wide rosters mean the ally still functions when a star or two no-shows.</li>
-      <li><b>costMul</b> &mdash; <code>1.00</code> at 300 tickets, <code>1.05</code> at 200, <code>1.15</code> at 100. A small nudge so the cheap tier doesn&rsquo;t look worse than it really is.</li>
+      <li><b>costMul</b> &mdash; <code>1.00</code> at 300 tickets, <code>1.05</code> at 200, <code>1.15</code> at 100. Small nudge so the cheap tier doesn&rsquo;t look worse than it really is.</li>
     </ul>
-    <p>The <b>Recommended next picks</b> in the simulator use the same numbers in a budget-bounded search, picking the best combination of remaining candidates that still fits the budget and the 4-pick cap.</p>
+    <p>The simulator surfaces <b>two</b> recommendations on every turn:</p>
+    <ul>
+      <li><b style="color:var(--ally)">Primary</b> &mdash; the highest-Power-Index combination where every pick costs at least 200 tickets. This biases against grabbing 100-cost allies in the early rounds, since they are likely to still be on the board when our second turn comes around.</li>
+      <li><b style="color:var(--accent)">Alternate</b> &mdash; the next-best combination with a different cost profile (usually the value-greedy pick that includes a 100-cost ally). If the budget is tight enough that the &ldquo;all &ge; 200&rdquo; rule has no feasible answer, Primary falls back to the greedy pick and Alternate fills in with the next distinct combo.</li>
+    </ul>
     <p>This is a quick weighted average, not the literal in-game battle outcome model &mdash; the actual fight is server-vs-server cell capture, so morale and timezone overlap matter too. Use the index as a starting point, not a verdict.</p>
   </div>
 </div>
@@ -387,9 +406,16 @@
     </span>
   </div>
   <div class="reco" id="reco">
-    <h4>Recommended next picks for us <span class="ctx" id="recoCtx"></span></h4>
-    <div class="pick-list" id="recoPicks"></div>
-    <div class="why" id="recoWhy"></div>
+    <div class="reco-row primary" id="recoPrimary">
+      <h4>Primary picks <span class="ctx" id="recoCtxP"></span><span class="tag-rec primary">expensive-first</span></h4>
+      <div class="pick-list" id="recoPicksP"></div>
+      <div class="why" id="recoWhyP"></div>
+    </div>
+    <div class="reco-row alternate" id="recoAlternate">
+      <h4>Alternate <span class="ctx" id="recoCtxA"></span><span class="tag-rec alt">best raw power</span></h4>
+      <div class="pick-list" id="recoPicksA"></div>
+      <div class="why" id="recoWhyA"></div>
+    </div>
   </div>
 </div>
 
@@ -712,14 +738,23 @@ function valueScore(c){
 }
 
 function bestPickPlan(remainingBudget, picksLeft, takenSids){
+  var combos = topCombos(remainingBudget, picksLeft, takenSids, 1);
+  return combos.length ? combos[0].picks : [];
+}
+
+function topCombos(remainingBudget, picksLeft, takenSids, K){
   var pool = DATA.candidates.filter(function(c){ return !takenSids.has(c.sid) && c.cost <= remainingBudget; });
   if (picksLeft <= 0) return [];
-  var best = {score:-1, picks:[]};
+  // Enumerate combos sized 1..picksLeft; we only want the full picksLeft size though for a clean choice
+  var combos = [];
   function rec(idx, budget, picks){
+    if (picks.length === picksLeft){
+      var s = 0, cost = 0;
+      for (var i=0;i<picks.length;i++){ s += valueScore(picks[i]); cost += picks[i].cost; }
+      combos.push({ picks: picks.slice(), sum: s, cost: cost, sig: picks.map(function(p){return p.cost;}).sort().join('-') });
+      return;
+    }
     if (picks.length > picksLeft) return;
-    var s = 0;
-    for (var i=0;i<picks.length;i++) s += valueScore(picks[i]);
-    if (s > best.score) best = {score:s, picks:picks.slice()};
     for (var i=idx;i<pool.length;i++){
       var c = pool[i];
       if (c.cost > budget) continue;
@@ -729,7 +764,24 @@ function bestPickPlan(remainingBudget, picksLeft, takenSids){
     }
   }
   rec(0, remainingBudget, []);
-  return best.picks;
+  combos.sort(function(a,b){ return b.sum - a.sum; });
+  return combos.slice(0, K || combos.length);
+}
+
+function dualReco(remainingBudget, picksLeft, takenSids){
+  // Returns { primary, alternate }
+  // Primary: best combo where every pick costs >= 200 (expensive-first).
+  //   Falls back to the greedy combo if the constraint is infeasible.
+  // Alternate: best combo with a DIFFERENT cost signature from primary.
+  var combos = topCombos(remainingBudget, picksLeft, takenSids, 60);
+  if (!combos.length) return { primary: null, alternate: null };
+  var primary = combos.find(function(c){
+    return c.picks.every(function(p){ return p.cost >= 200; });
+  }) || combos[0];
+  var altPool = combos.filter(function(c){ return c !== primary && c.sig !== primary.sig; });
+  // Prefer the highest-PI alternate, but if that means just demoting a 100 chip we still want it
+  var alternate = altPool.length ? altPool[0] : null;
+  return { primary: primary, alternate: alternate };
 }
 
 function ourCurrentRoundPicksLeft(){
@@ -756,6 +808,23 @@ function ourCurrentRoundPicksLeft(){
   return { picksInRound: n, round: rr, isOurTurn: true };
 }
 
+function renderRecoRow(rowId, ctxId, picksId, whyId, ctxLab, combo, allyB, nNow){
+  var picks = combo.picks;
+  $('#' + ctxId).textContent = '(' + ctxLab + ', ' + nNow + ' pick' + (nNow>1?'s':'') + ')';
+  var pickWrap = $('#' + picksId); pickWrap.textContent = '';
+  picks.forEach(function(c){
+    var chip = document.createElement('span'); chip.className='pick-chip';
+    var s1 = document.createElement('span'); s1.className='ssid'; s1.textContent = 'S'+c.sid;
+    var s2 = document.createElement('span'); s2.className='cost'; s2.textContent = '· ' + c.cost;
+    chip.appendChild(s1); chip.appendChild(s2);
+    pickWrap.appendChild(chip);
+  });
+  var cost = 0, merit = 0, idx = 0;
+  picks.forEach(function(c){ cost += c.cost; merit += c.totalWarzoneMerit||0; idx += c.powerIndex||0; });
+  $('#' + whyId).textContent = cost + ' / ' + allyB + ' tickets · ' + fmt(merit) + ' merit added · sum power index ' + idx.toFixed(1);
+  $('#' + rowId).classList.add('show');
+}
+
 function updateReco(){
   var taken = new Set(history_.map(function(h){return h.sid;}));
   var allyB = computeBudget('ally');
@@ -764,23 +833,17 @@ function updateReco(){
   var roundCtx = ourCurrentRoundPicksLeft();
   var nNow = Math.min(roundCtx.picksInRound, allyTotalLeft);
   var reco = $('#reco');
+  $('#recoPrimary').classList.remove('show');
+  $('#recoAlternate').classList.remove('show');
   if (nNow <= 0 || allyB <= 0){ reco.classList.remove('show'); return; }
-  var plan = bestPickPlan(allyB, nNow, taken);
-  if (!plan.length){ reco.classList.remove('show'); return; }
+  var rec = dualReco(allyB, nNow, taken);
+  if (!rec.primary){ reco.classList.remove('show'); return; }
   reco.classList.add('show');
   var ctxLab = roundCtx.isOurTurn ? ('Round ' + (roundCtx.round + 1) + ' — our turn now') : ('Round ' + (roundCtx.round + 1) + ' — our next turn');
-  $('#recoCtx').textContent = '(' + ctxLab + ', ' + nNow + ' pick' + (nNow>1?'s':'') + ')';
-  var pickWrap = $('#recoPicks'); pickWrap.textContent = '';
-  plan.forEach(function(c){
-    var chip = document.createElement('span'); chip.className='pick-chip';
-    var s1 = document.createElement('span'); s1.className='ssid'; s1.textContent = 'S'+c.sid;
-    var s2 = document.createElement('span'); s2.className='cost'; s2.textContent = '· ' + c.cost;
-    chip.appendChild(s1); chip.appendChild(s2);
-    pickWrap.appendChild(chip);
-  });
-  var cost = 0, merit = 0, idx = 0;
-  plan.forEach(function(c){ cost += c.cost; merit += c.totalWarzoneMerit||0; idx += c.powerIndex||0; });
-  $('#recoWhy').textContent = nNow + ' pick' + (nNow>1?'s':'') + ' · ' + cost + ' / ' + allyB + ' budget on this turn · ' + fmt(merit) + ' merit added · sum power index ' + idx.toFixed(1) + '. Picks update as 3051’s selections are entered.';
+  renderRecoRow('recoPrimary', 'recoCtxP', 'recoPicksP', 'recoWhyP', ctxLab, rec.primary, allyB, nNow);
+  if (rec.alternate){
+    renderRecoRow('recoAlternate', 'recoCtxA', 'recoPicksA', 'recoWhyA', ctxLab, rec.alternate, allyB, nNow);
+  }
 }
 
 function renderCandidates(){
@@ -810,8 +873,10 @@ function renderCandidates(){
   var allyTotalLeft = 4 - allyDone;
   var roundCtx = ourCurrentRoundPicksLeft();
   var nNow = Math.min(roundCtx.picksInRound, allyTotalLeft);
-  var reco = nNow > 0 ? bestPickPlan(allyB, nNow, taken) : [];
-  var recoSet = new Set(reco.map(function(r){return r.sid;}));
+  var rec = nNow > 0 ? dualReco(allyB, nNow, taken) : { primary:null, alternate:null };
+  var primarySet = new Set((rec.primary ? rec.primary.picks : []).map(function(r){return r.sid;}));
+  var alternateSet = new Set((rec.alternate ? rec.alternate.picks : []).map(function(r){return r.sid;}));
+  var recoSet = new Set([].concat([...primarySet], [...alternateSet]));
 
   // Max power index for bar fill
   var maxPI = 0;
@@ -823,7 +888,8 @@ function renderCandidates(){
     var cls = 'ccard t-' + c.cost;
     if (t === 'opp') cls += ' taken-opp';
     if (t === 'ally') cls += ' taken-ally';
-    if (recoSet.has(c.sid)) cls += ' recommended';
+    if (primarySet.has(c.sid)) cls += ' recommended';
+    else if (alternateSet.has(c.sid)) cls += ' alternate';
     if (compareMode && compareSelection.indexOf(c.sid) >= 0) cls += ' compare-checked';
     var card = document.createElement('div'); card.className = cls;
     card.addEventListener('click', (function(sid){ return function(e){
@@ -849,7 +915,8 @@ function renderCandidates(){
     if (c.meritPlayerCount >= 40) badges.push({cls:'good', txt:'Deep roster'});
     if (c.meritPlayerCount < 15) badges.push({cls:'bad', txt:'Shallow'});
     if (c.cost === 100 && c.totalWarzoneMerit > 40e6) badges.push({cls:'warn', txt:'Value pick'});
-    if (recoSet.has(c.sid)) badges.push({cls:'warn', txt:'Recommended'});
+    if (primarySet.has(c.sid)) badges.push({cls:'warn', txt:'Primary pick'});
+    else if (alternateSet.has(c.sid)) badges.push({cls:'info', txt:'Alternate'});
     if (badges.length){
       var bw = document.createElement('div'); bw.className='badges';
       badges.forEach(function(b){
