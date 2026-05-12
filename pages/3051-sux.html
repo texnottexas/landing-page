@@ -69,8 +69,9 @@
   .banner .sub{color:var(--muted);font-size:.85rem}
 
   .score{display:grid;grid-template-columns:1fr auto 1fr;gap:1rem;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1rem;margin-bottom:1rem}
-  .side{display:flex;align-items:center;gap:.75rem;min-width:0}
+  .side{display:flex;align-items:center;gap:.75rem;min-width:0;border-radius:10px;padding:.25rem;margin:-.25rem;transition:background .15s}
   .side.opp{flex-direction:row-reverse;text-align:right}
+  .side.clickable:hover{background:rgba(121,192,255,.06)}
   .side .av{width:54px;height:54px;border-radius:50%;border:2px solid var(--border);object-fit:cover;background:var(--card);flex-shrink:0}
   .side.ally .av{border-color:var(--ally)}
   .side.opp .av{border-color:var(--opp)}
@@ -682,6 +683,17 @@ function setSide(which, s){
   pair('Fame', s.fame);
   pair('Total Merit', s.totalWarzoneMerit);
   pair('Ranked players', s.meritPlayerCount);
+  // Click anywhere on this side to open the detail modal
+  var sideEl = document.querySelector('.side.' + which);
+  if (sideEl){
+    sideEl.classList.add('clickable');
+    sideEl.title = 'Click for full ' + (which === 'ally' ? 'S' + s.sid + ' (us)' : 'S' + s.sid + ' (3051)') + ' details';
+    sideEl.style.cursor = 'pointer';
+    // remove any existing listener (re-rendering safety)
+    if (sideEl._clickHandler) sideEl.removeEventListener('click', sideEl._clickHandler);
+    sideEl._clickHandler = function(){ openDetailModal(s, { role: which === 'ally' ? 'us' : 'opp' }); };
+    sideEl.addEventListener('click', sideEl._clickHandler);
+  }
 }
 
 function getOrder(){
@@ -1161,22 +1173,44 @@ function startCountdown(targetTs){
 }
 
 // ===== Detail modal =====
-function openDetailModal(sid){
-  var c = findCand(sid);
-  if (!c) return;
-  $('#detailTitle').textContent = 'S' + c.sid + ' — ally candidate detail';
+function openDetailModal(sidOrServer, opts){
+  // sidOrServer: either a number sid (candidate) or a server object (us/opp)
+  var c, role;
+  if (typeof sidOrServer === 'object' && sidOrServer){
+    c = sidOrServer;
+    role = (opts && opts.role) || 'side';
+  } else {
+    c = findCand(sidOrServer);
+    role = 'candidate';
+    if (!c) return;
+  }
+  var titleSuffix = role === 'candidate' ? 'ally candidate detail'
+    : (role === 'us' ? 'your server' : (role === 'opp' ? 'opponent core' : 'server detail'));
+  $('#detailTitle').textContent = 'S' + c.sid + ' — ' + titleSuffix;
   var body = $('#detailBody'); body.textContent = '';
-  // Header
+
+  // Header row
   var row = document.createElement('div'); row.className='det-row';
   var av = document.createElement('img'); av.className='av';
-  var leaderFb = c.leaderName || ('S' + c.sid);
+  var leaderFb = c.leaderName || c.name || ('S' + c.sid);
   av.src = safeUrl(c.leaderAvatar) || initialsAvatar(leaderFb);
   attachImgFallback(av, leaderFb); av.alt=''; row.appendChild(av);
   var meta = document.createElement('div'); meta.className='meta';
   var sidEl = document.createElement('div'); sidEl.className='sid-big'; sidEl.textContent = 'S' + c.sid; meta.appendChild(sidEl);
-  var leader = document.createElement('div'); leader.className='leader'; leader.textContent = 'Leader: ' + (c.leaderName || '?'); meta.appendChild(leader);
+  var leader = document.createElement('div'); leader.className='leader';
+  leader.textContent = 'Leader: ' + (c.leaderName || c.name || '?');
+  meta.appendChild(leader);
   row.appendChild(meta);
-  var cost = document.createElement('div'); cost.className='cost-pill'; cost.textContent = c.cost + ' tickets'; row.appendChild(cost);
+  if (role === 'candidate'){
+    var cost = document.createElement('div'); cost.className='cost-pill'; cost.textContent = c.cost + ' tickets'; row.appendChild(cost);
+  } else if (role === 'us' || role === 'opp'){
+    var tag = document.createElement('div'); tag.className='cost-pill';
+    tag.style.background = role === 'us' ? 'rgba(63,185,80,.15)' : 'rgba(248,81,73,.15)';
+    tag.style.borderColor = role === 'us' ? 'var(--ally)' : 'var(--opp)';
+    tag.style.color = role === 'us' ? 'var(--ally)' : 'var(--opp)';
+    tag.textContent = role === 'us' ? 'Core warzone — us' : 'Core warzone — opponent';
+    row.appendChild(tag);
+  }
   body.appendChild(row);
 
   // Stats grid
@@ -1188,16 +1222,23 @@ function openDetailModal(sid){
     if (sub){ var ss = document.createElement('div'); ss.className='s'; ss.textContent = sub; s.appendChild(ss); }
     stats.appendChild(s);
   }
-  ds('Power Index', (c.powerIndex||0).toFixed(1), 'rank #' + c.powerRank + ' in pool');
+  // Power Index — only meaningful for candidates (it's a 0-100 score normalised against the candidate pool).
+  // Core warzones (us / opponent) live outside that pool so we omit the row.
+  if (role === 'candidate'){
+    ds('Power Index', (c.powerIndex||0).toFixed(1), 'rank #' + c.powerRank + ' in pool');
+  }
   ds('UD Score (Total Seal Stone)', fmt(c.warzoneScore), 'global rank #' + c.overallRank);
   ds('Fame', fmt(c.fame), null);
   ds('Total Merit (top-12k sum)', fmt(c.totalWarzoneMerit), 'across ' + c.meritPlayerCount + ' ranked players');
   ds('Top 5 avg merit', fmt(c.meritTop5Avg), 'mean of their five strongest ranked');
-  ds('Top merit player', c.meritTopName ? (c.meritTopName + ' — #' + c.meritTopRank) : '—', c.meritTopScore ? fmt(c.meritTopScore) + ' merit' : null);
-  ds('Value (merit per ticket)', fmt(Math.round((c.totalWarzoneMerit||0) / c.cost)) , 'per cost');
+  var topPlayer = (c.meritTop10 && c.meritTop10[0]) || null;
+  ds('Top merit player', topPlayer ? (topPlayer.name + ' — #' + topPlayer.rank) : '—', topPlayer ? fmt(topPlayer.score) + ' merit' : null);
+  if (role === 'candidate'){
+    ds('Value (merit per ticket)', fmt(Math.round((c.totalWarzoneMerit||0) / c.cost)) , 'per cost');
+  }
   body.appendChild(stats);
 
-  // Top merit
+  // Top merit roster
   if (c.meritTop10 && c.meritTop10.length){
     var sec = document.createElement('div'); sec.className='det-section';
     var h = document.createElement('h4'); h.textContent = 'Top merit players (server-level)'; sec.appendChild(h);
