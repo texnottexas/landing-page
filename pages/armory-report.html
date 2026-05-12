@@ -7290,6 +7290,12 @@
     var siteKey = (wizardState.player && wizardState.player.siteKey) || (window._reportSiteKey) || null;
     var inS2864 = false;
     if (siteKey && _ar_rosterMap && _ar_rosterMap[siteKey]) inS2864 = true;
+    // Resolve identity + own-report before building tabDefs — the Advisor
+    // Plans tab gate at the bottom of this block reads isOwnReport and was
+    // silently dropping the tab (var hoisting → undefined) until both
+    // declarations moved above the tab list.
+    var ownIdentityForTabs = getStoredIdentity();
+    var isOwnReport = _ar_isOwnReport(siteKey);
     var tabDefs = [
       { id: 'overview', label: 'Overview' },
       { id: 'heroes', label: 'Heroes & Gear' },
@@ -7315,8 +7321,6 @@
       tabDefs.push({ id: 'advisorplan', label: 'Advisor Plan' });
     }
 
-    var ownIdentityForTabs = getStoredIdentity();
-    var isOwnReport = _ar_isOwnReport(siteKey);
     tabDefs.forEach(function(def, i) {
       var btn = document.createElement('button');
       btn.className = 'tab-btn' + (i === 0 ? ' active' : '');
@@ -16708,10 +16712,20 @@
     body.className = 'asr-body';
     var title = document.createElement('div');
     title.className = 'asr-title';
-    // Advisor codes are canonical-lowercase; render as-is so a manual
-    // copy-paste of what's on screen lines up with the regex on the URL side.
+    // Owner-side title shows the code + advisor breakdown so a player can see
+    // at a glance who saved a plan. v2 records carry advisors in rec.plans[];
+    // v1 records have rec.advisorName at the top level (fallback path).
+    var advisorLabel = '';
+    if (isOwner) {
+      if (Array.isArray(rec.plans) && rec.plans.length > 0) {
+        var names = rec.plans.map(function(p) { return (p && p.advisorName) || 'An advisor'; });
+        advisorLabel = '  ·  ' + (rec.plans.length > 1 ? (rec.plans.length + ' advisors: ') : 'Advisor: ') + names.join(', ');
+      } else if (rec.advisorName) {
+        advisorLabel = '  ·  Advisor: ' + rec.advisorName;
+      }
+    }
     var titleText = isOwner
-      ? ('Code ' + rec.code + (rec.advisorName ? '  ·  Advisor: ' + rec.advisorName : ''))
+      ? ('Code ' + rec.code + advisorLabel)
       : (rec.playerName ? rec.playerName : 'Player');
     title.textContent = titleText;
     body.appendChild(title);
@@ -16720,7 +16734,14 @@
     var bits = [];
     if (rec.note) bits.push('"' + String(rec.note).slice(0, 80) + (rec.note.length > 80 ? '…' : '') + '"');
     if (rec.createdTs || rec.ts) bits.push('Opened ' + _ar_relativeTime(rec.openedTs || rec.ts));
-    if (rec.stepCount) bits.push(rec.stepCount + ' step' + (rec.stepCount === 1 ? '' : 's'));
+    // Step-count line: prefer per-plan totals for v2 records; fall back to
+    // legacy top-level stepCount for v1.
+    if (Array.isArray(rec.plans) && rec.plans.length > 0) {
+      var total = rec.plans.reduce(function(s, p) { return s + (p && p.stepCount || 0); }, 0);
+      if (total > 0) bits.push(total + ' step' + (total === 1 ? '' : 's') + (rec.plans.length > 1 ? ' across ' + rec.plans.length + ' plans' : ''));
+    } else if (rec.stepCount) {
+      bits.push(rec.stepCount + ' step' + (rec.stepCount === 1 ? '' : 's'));
+    }
     meta.textContent = bits.join('  ·  ');
     body.appendChild(meta);
     row.appendChild(body);
