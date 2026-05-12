@@ -27,7 +27,7 @@
 
   .container{max-width:1280px;margin:0 auto;padding:1rem}
   .banner{background:linear-gradient(135deg,rgba(248,81,73,.08),rgba(63,185,80,.08));border:1px solid var(--border);border-radius:14px;padding:1.1rem 1rem;margin-bottom:1rem;text-align:center}
-  .banner .tag{display:inline-block;background:var(--opp);color:#fff;font-weight:800;letter-spacing:.05em;font-size:.7rem;padding:.15rem .5rem;border-radius:4px;margin-bottom:.6rem;text-transform:uppercase}
+  .banner .tag{display:inline-block;background:rgba(248,81,73,.18);color:#ffbab8;border:1px solid var(--opp);font-weight:700;letter-spacing:.06em;font-size:.7rem;padding:.18rem .6rem;border-radius:4px;margin-bottom:.6rem;text-transform:uppercase}
   .banner h2{font-size:1.4rem;font-weight:800;margin-bottom:.35rem}
   .banner h2 .opp{color:var(--opp)}
   .banner h2 .ally{color:var(--ally)}
@@ -153,8 +153,10 @@
   .fpill[data-tier="2"].active{color:var(--tier2);border-color:var(--tier2)}
   .fpill[data-tier="3"].active{color:var(--tier3);border-color:var(--tier3)}
 
-  .cands{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:.75rem;margin-bottom:1.5rem}
-  .ccard{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:border-color .15s;cursor:pointer}
+  .cands{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:.75rem;margin-bottom:1.5rem;align-items:stretch}
+  .ccard{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:border-color .15s;cursor:pointer;display:flex;flex-direction:column}
+  .ccard > .cbody{flex:1;display:flex;flex-direction:column}
+  .ccard > .cbody .mlist{flex:1}
   .ccard:hover{border-color:var(--accent)}
   .ccard.t-300{border-top:3px solid var(--tier3)}
   .ccard.t-200{border-top:3px solid var(--tier2)}
@@ -186,8 +188,10 @@
 
   .cstats{display:grid;grid-template-columns:repeat(2,1fr);gap:.3rem;padding:.55rem .65rem;background:var(--bg);border-bottom:1px solid var(--border)}
   .cstat{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:.35rem .45rem;display:flex;flex-direction:column;gap:.05rem}
+  .cstat.span2{grid-column:1 / -1;background:linear-gradient(135deg,rgba(121,192,255,.06),rgba(63,185,80,.04));border-color:var(--accent)}
   .cstat .l{font-size:.62rem;color:var(--muted);font-weight:700}
   .cstat .v{font-weight:800;font-size:.85rem;font-variant-numeric:tabular-nums;color:var(--text)}
+  .cstat.span2 .v{font-size:.95rem;color:var(--accent)}
   .cstat .s{font-size:.6rem;color:var(--muted)}
 
   .cbody{padding:.55rem .65rem}
@@ -406,11 +410,16 @@
   <select id="sortSel" class="fpill" style="cursor:pointer">
     <option value="powerIndex">Sort: Power Index</option>
     <option value="merit">Sort: Total merit</option>
-    <option value="wscore">Sort: Warzone score</option>
+    <option value="top5avg">Sort: Top 5 avg merit</option>
+    <option value="wscore">Sort: UD score</option>
     <option value="fame">Sort: Fame</option>
-    <option value="cost">Sort: Cost then merit</option>
+    <option value="cost">Sort: Cost then power</option>
     <option value="value">Sort: Value (merit per ticket)</option>
   </select>
+  <button class="fpill" id="sortDirBtn" onclick="toggleSortDir()" title="Toggle ascending / descending" style="display:flex;align-items:center;gap:.25rem">
+    <svg id="sortDirIcon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    <span id="sortDirLabel">Desc</span>
+  </button>
 </div>
 
 <div class="cands" id="cands"></div>
@@ -463,6 +472,7 @@ var DATA = null;
 var history_ = [];
 var filterMode = 'all';
 var sortMode = 'powerIndex';
+var sortDir = 'desc';
 var compareMode = false;
 var compareSelection = []; // sids
 
@@ -477,6 +487,35 @@ function fmtTs(ts){
 function tierOf(cost){ return cost>=300?3:(cost>=200?2:1); }
 var fallbackAv = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" fill="%23161b22"/><text x="50%25" y="58%25" text-anchor="middle" fill="%238b949e" font-family="sans-serif" font-size="20" font-weight="700">?</text></svg>';
 
+// Initials avatar: hashes the name to one of a few palette colors, draws first character (or two) as fallback when no image is available
+var INITIAL_PALETTE = ['#388bfd','#3fb950','#d29922','#a371f7','#79c0ff','#f85149','#dba01b','#56d364'];
+function initialsAvatar(name){
+  var s = String(name || '?').trim();
+  if (!s) s = '?';
+  // First grapheme (handles multi-byte CJK)
+  var ch = '';
+  try {
+    if (typeof Intl !== 'undefined' && Intl.Segmenter){
+      var seg = new Intl.Segmenter(undefined, { granularity:'grapheme' });
+      var it = seg.segment(s)[Symbol.iterator]();
+      var first = it.next();
+      if (!first.done) ch = first.value.segment;
+    }
+  } catch (e){}
+  if (!ch) ch = s.charAt(0);
+  // Hash for color
+  var h = 0;
+  for (var i=0; i<s.length; i++) h = ((h<<5) - h + s.charCodeAt(i)) | 0;
+  var color = INITIAL_PALETTE[Math.abs(h) % INITIAL_PALETTE.length];
+  var fontSize = ch.length > 1 ? 16 : 22;
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">' +
+    '<rect width="40" height="40" fill="' + color + '" fill-opacity="0.85"/>' +
+    '<text x="50%" y="58%" text-anchor="middle" fill="#fff" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="' + fontSize + '" font-weight="700" dominant-baseline="middle">' +
+    ch.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') +
+    '</text></svg>';
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+
 function safeUrl(u){
   if (!u) return '';
   var s = String(u).trim();
@@ -485,12 +524,18 @@ function safeUrl(u){
   return 'https://h5.topwargame.com/DynRes/images/headpic/' + s + '.png';
 }
 
-function attachImgFallback(img){
+function attachImgFallback(img, name){
+  if (name) img.dataset.fbName = name;
   img.addEventListener('error', function once(){
     if (this.dataset.fallbackUsed) return;
     this.dataset.fallbackUsed = '1';
-    this.src = fallbackAv;
+    this.src = this.dataset.fbName ? initialsAvatar(this.dataset.fbName) : fallbackAv;
   });
+  // also prime initials when URL is empty
+  if (!img.src || img.src === window.location.href){
+    img.src = name ? initialsAvatar(name) : fallbackAv;
+    img.dataset.fallbackUsed = '1';
+  }
 }
 
 function init(){
@@ -533,8 +578,9 @@ function init(){
 
 function setSide(which, s){
   var avEl = $('#' + which + 'Av');
-  avEl.src = safeUrl(s.leaderAvatar) || fallbackAv;
-  attachImgFallback(avEl);
+  var leaderImg = safeUrl(s.leaderAvatar);
+  avEl.src = leaderImg || initialsAvatar(s.name || 'S' + s.sid);
+  attachImgFallback(avEl, s.name || 'S' + s.sid);
   $('#' + which + 'Sid').textContent = 'S' + s.sid + ' · #' + s.overallRank + ' overall';
   $('#' + which + 'Leader').textContent = s.name || '';
   var stat = $('#' + which + 'Stat'); stat.textContent = '';
@@ -738,12 +784,15 @@ function renderCandidates(){
   var sorters = {
     powerIndex: function(a,b){ return (b.powerIndex||0) - (a.powerIndex||0); },
     merit: function(a,b){ return (b.totalWarzoneMerit||0) - (a.totalWarzoneMerit||0); },
+    top5avg: function(a,b){ return (b.meritTop5Avg||0) - (a.meritTop5Avg||0); },
     wscore: function(a,b){ return (b.warzoneScore||0) - (a.warzoneScore||0); },
     fame: function(a,b){ return (b.fame||0) - (a.fame||0); },
     cost: function(a,b){ return (b.cost - a.cost) || ((b.powerIndex||0) - (a.powerIndex||0)); },
     value: function(a,b){ return ((b.totalWarzoneMerit||0)/b.cost) - ((a.totalWarzoneMerit||0)/a.cost); }
   };
-  list.sort(sorters[sortMode] || sorters.powerIndex);
+  var cmp = sorters[sortMode] || sorters.powerIndex;
+  var dirSign = (sortDir === 'asc') ? -1 : 1;
+  list.sort(function(a,b){ return cmp(a,b) * dirSign; });
 
   // Recommendation set sized to current-round picks
   var allyB = computeBudget('ally');
@@ -777,8 +826,10 @@ function renderCandidates(){
     var head = document.createElement('div'); head.className = 'chead';
     var hrow = document.createElement('div'); hrow.className = 'chead-row';
     var sidSpan = document.createElement('span'); sidSpan.className='sid'; sidSpan.textContent = 'S'+c.sid; hrow.appendChild(sidSpan);
-    var lav = document.createElement('img'); lav.className='lav'; lav.src = safeUrl(c.leaderAvatar) || fallbackAv;
-    attachImgFallback(lav); lav.alt = ''; hrow.appendChild(lav);
+    var lav = document.createElement('img'); lav.className='lav';
+    var leaderFallback = c.leaderName || ('S' + c.sid);
+    lav.src = safeUrl(c.leaderAvatar) || initialsAvatar(leaderFallback);
+    attachImgFallback(lav, leaderFallback); lav.alt = ''; hrow.appendChild(lav);
     var lnm = document.createElement('span'); lnm.className='lnm'; lnm.textContent = c.leaderName || ''; hrow.appendChild(lnm);
     var ccost = document.createElement('span'); ccost.className='ccost'; ccost.textContent = String(c.cost); hrow.appendChild(ccost);
     head.appendChild(hrow);
@@ -821,8 +872,16 @@ function renderCandidates(){
     }
     addStat('UD Score', fmt(c.warzoneScore), 'global #' + c.overallRank);
     addStat('Fame', fmt(c.fame), (c.fame/1000).toFixed(0) + 'k');
-    addStat('Total Merit', (c.totalWarzoneMerit/1e6).toFixed(1) + 'M', 'top-12k sum');
+    var avgPer = c.meritPlayerCount > 0 ? Math.round((c.totalWarzoneMerit||0) / c.meritPlayerCount) : 0;
+    addStat('Total Merit', (c.totalWarzoneMerit/1e6).toFixed(1) + 'M', 'Average merit ' + (avgPer/1e6).toFixed(2) + 'M');
     addStat('Players ranked', String(c.meritPlayerCount), 'in merit list');
+    // Headline: top-5 average merit (spans full row)
+    var avg5 = c.meritTop5Avg || 0;
+    var st5 = document.createElement('div'); st5.className='cstat span2';
+    var l5 = document.createElement('div'); l5.className='l'; l5.textContent = 'Top 5 avg merit'; st5.appendChild(l5);
+    var v5 = document.createElement('div'); v5.className='v'; v5.textContent = (avg5/1e6).toFixed(2) + 'M'; st5.appendChild(v5);
+    var s5 = document.createElement('div'); s5.className='s'; s5.textContent = 'mean of their top 5 ranked players · ' + fmt(avg5); st5.appendChild(s5);
+    stats.appendChild(st5);
     card.appendChild(stats);
 
     var body = document.createElement('div'); body.className='cbody';
@@ -832,8 +891,9 @@ function renderCandidates(){
     if (top.length){
       top.forEach(function(p){
         var row = document.createElement('div'); row.className='mrow';
-        var av = document.createElement('img'); av.className='av'; av.src = safeUrl(p.avatar) || fallbackAv;
-        attachImgFallback(av); av.alt='';
+        var av = document.createElement('img'); av.className='av';
+        av.src = safeUrl(p.avatar) || initialsAvatar(p.name || '?');
+        attachImgFallback(av, p.name); av.alt='';
         row.appendChild(av);
         var rk = document.createElement('span'); rk.className='rk'; rk.textContent = '#'+p.rank; row.appendChild(rk);
         var nm = document.createElement('span'); nm.className='nm'; nm.textContent = p.name || '?'; row.appendChild(nm);
@@ -872,6 +932,15 @@ function renderCandidates(){
 function toggleMethod(){
   $('#methodHeader').classList.toggle('closed');
   $('#methodBody').classList.toggle('open');
+}
+
+function toggleSortDir(){
+  sortDir = (sortDir === 'desc') ? 'asc' : 'desc';
+  var icon = $('#sortDirIcon');
+  var poly = icon.querySelector('polyline');
+  poly.setAttribute('points', sortDir === 'desc' ? '6 9 12 15 18 9' : '6 15 12 9 18 15');
+  $('#sortDirLabel').textContent = sortDir === 'desc' ? 'Desc' : 'Asc';
+  renderCandidates();
 }
 
 function startCountdown(targetTs){
@@ -929,8 +998,10 @@ function openDetailModal(sid){
   var body = $('#detailBody'); body.textContent = '';
   // Header
   var row = document.createElement('div'); row.className='det-row';
-  var av = document.createElement('img'); av.className='av'; av.src = safeUrl(c.leaderAvatar) || fallbackAv;
-  attachImgFallback(av); av.alt=''; row.appendChild(av);
+  var av = document.createElement('img'); av.className='av';
+  var leaderFb = c.leaderName || ('S' + c.sid);
+  av.src = safeUrl(c.leaderAvatar) || initialsAvatar(leaderFb);
+  attachImgFallback(av, leaderFb); av.alt=''; row.appendChild(av);
   var meta = document.createElement('div'); meta.className='meta';
   var sidEl = document.createElement('div'); sidEl.className='sid-big'; sidEl.textContent = 'S' + c.sid; meta.appendChild(sidEl);
   var leader = document.createElement('div'); leader.className='leader'; leader.textContent = 'Leader: ' + (c.leaderName || '?'); meta.appendChild(leader);
@@ -951,6 +1022,7 @@ function openDetailModal(sid){
   ds('UD Score (Total Seal Stone)', fmt(c.warzoneScore), 'global rank #' + c.overallRank);
   ds('Fame', fmt(c.fame), null);
   ds('Total Merit (top-12k sum)', fmt(c.totalWarzoneMerit), 'across ' + c.meritPlayerCount + ' ranked players');
+  ds('Top 5 avg merit', fmt(c.meritTop5Avg), 'mean of their five strongest ranked');
   ds('Top merit player', c.meritTopName ? (c.meritTopName + ' — #' + c.meritTopRank) : '—', c.meritTopScore ? fmt(c.meritTopScore) + ' merit' : null);
   ds('Value (merit per ticket)', fmt(Math.round((c.totalWarzoneMerit||0) / c.cost)) , 'per cost');
   body.appendChild(stats);
@@ -962,8 +1034,9 @@ function openDetailModal(sid){
     var ml = document.createElement('div'); ml.className='mlist'; ml.style.maxHeight='340px';
     c.meritTop10.forEach(function(p){
       var row = document.createElement('div'); row.className='mrow';
-      var av2 = document.createElement('img'); av2.className='av'; av2.src = safeUrl(p.avatar) || fallbackAv;
-      attachImgFallback(av2); av2.alt=''; row.appendChild(av2);
+      var av2 = document.createElement('img'); av2.className='av';
+      av2.src = safeUrl(p.avatar) || initialsAvatar(p.name || '?');
+      attachImgFallback(av2, p.name); av2.alt=''; row.appendChild(av2);
       var rk = document.createElement('span'); rk.className='rk'; rk.textContent = '#'+p.rank; row.appendChild(rk);
       var nm = document.createElement('span'); nm.className='nm'; nm.textContent = p.name || '?'; row.appendChild(nm);
       var sc = document.createElement('span'); sc.className='sc'; sc.textContent = fmt(p.score); row.appendChild(sc);
@@ -1037,8 +1110,10 @@ function openCompareModal(){
   function col(c){
     var col = document.createElement('div'); col.className='col';
     var head = document.createElement('div'); head.className='col-head';
-    var av = document.createElement('img'); av.className='av'; av.src = safeUrl(c.leaderAvatar) || fallbackAv;
-    attachImgFallback(av); av.alt=''; head.appendChild(av);
+    var av = document.createElement('img'); av.className='av';
+    var fbName = c.leaderName || ('S' + c.sid);
+    av.src = safeUrl(c.leaderAvatar) || initialsAvatar(fbName);
+    attachImgFallback(av, fbName); av.alt=''; head.appendChild(av);
     var meta = document.createElement('div'); meta.style.flex='1'; meta.style.minWidth='0';
     var sidEl = document.createElement('div'); sidEl.className='sid-big'; sidEl.textContent = 'S' + c.sid; meta.appendChild(sidEl);
     var l = document.createElement('div'); l.className='leader'; l.textContent = c.leaderName || ''; meta.appendChild(l);
@@ -1057,8 +1132,9 @@ function openCompareModal(){
     { l:'Global rank', f:'overallRank', fmt:function(v){return '#'+v;}, lowerWins:true },
     { l:'Fame', f:'fame', fmt:fmt },
     { l:'Total Merit', f:'totalWarzoneMerit', fmt:fmt },
+    { l:'Top 5 avg merit', f:'meritTop5Avg', fmt:fmt },
     { l:'Players ranked', f:'meritPlayerCount', fmt:fmt },
-    { l:'Top merit', f:'meritTopScore', fmt:fmt },
+    { l:'Top single merit', f:'meritTopScore', fmt:fmt },
     { l:'Value (merit/ticket)', f:'_value', fmt:fmt, calc:function(c){return Math.round((c.totalWarzoneMerit||0)/c.cost);} }
   ];
   fields.forEach(function(row){
