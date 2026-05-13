@@ -18622,6 +18622,24 @@
       { type: 'inherit', label: 'Inherit', desc: 'Move/swap with same-numbered slot' },
       { type: 'recycle', label: 'Recover', desc: 'Inherit 0★ rune onto a junk piece, then recycle the junk to send the rune back to the bag' }
     ];
+    // Inherit needs a piece with a rune SOMEWHERE in the same slot — the
+    // clicked tile if it has a rune (clicked = source, destination chosen),
+    // or any other same-slot hero (clicked = destination, source chosen).
+    // Without at least one same-slot rune anywhere, inherit has nothing to
+    // move so we disable it.
+    function _otherSameSlotHasRune() {
+      if (!prefill || !prefill.slot) return false;
+      var g = ctx.state && ctx.state.gearByHero;
+      if (!g) return false;
+      var keys = Object.keys(g);
+      for (var i = 0; i < keys.length; i++) {
+        var hid = parseInt(keys[i], 10);
+        if (!hid || hid === prefill.heroId) continue;
+        var r = g[keys[i]] && g[keys[i]][prefill.slot];
+        if (r && r.runeName) return true;
+      }
+      return false;
+    }
     function actionDisabledReason(type) {
       if (!prefill) return null;
       var hasRune = !!(prefill.rune && prefill.rune.runeName);
@@ -18629,6 +18647,7 @@
       if (type === 'place'   && hasRune)                  return 'Slot already has a rune';
       if (type === 'merge'   && !hasRune)                 return 'No rune in this slot';
       if (type === 'merge'   && prefillIsMaxed)           return 'Already at MAX stars';
+      if (type === 'inherit' && !hasRune && !_otherSameSlotHasRune()) return 'No same-slot rune available to inherit from';
       if (type === 'recycle' && !hasRune)                 return 'No rune in this slot';
       if (type === 'recycle' && hasRune && star !== 0)    return 'Only 0★ runes can be recycled';
       return null;
@@ -18640,7 +18659,8 @@
       if (type === 'place')   return hasRune;          // need empty slot
       if (type === 'merge')   return !hasRune || prefillIsMaxed; // need rune AND headroom
       if (type === 'recycle') return !hasRune || star !== 0; // need rune at s:0
-      return false; // inherit always available
+      if (type === 'inherit') return !hasRune && !_otherSameSlotHasRune(); // need at least one same-slot rune somewhere
+      return false;
     }
     // Default action picks the most natural for the slot state.
     // - No prefill / empty slot → place
@@ -19001,14 +19021,43 @@
         revalidate();
       }
       [srcHeroSel, srcSlotSel, dstHeroSel].forEach(function(el) { el.onchange = refresh; });
-      // Prefill — clicked slot is the source.
-      if (prefill && prefill.heroId) {
-        srcHeroSel.value = String(prefill.heroId);
-        srcHeroSel.disabled = true;
-      }
+      // Prefill direction depends on whether the clicked slot already holds
+      // a rune. If yes → clicked slot is the SOURCE (pull rune off, push
+      // onto a chosen destination). If no → clicked slot is the DESTINATION
+      // (advisor picks a same-slot hero whose rune they want to move here).
+      // Either way slot is locked to prefill.slot since inherit only works
+      // between identical slot numbers.
+      var prefillHasRune = !!(prefill && prefill.rune && prefill.rune.runeName);
       if (prefill && prefill.slot) {
         srcSlotSel.value = String(prefill.slot);
         srcSlotSel.disabled = true;
+      }
+      if (prefill && prefillHasRune) {
+        // Clicked slot has a rune → it's the source.
+        srcHeroSel.value = String(prefill.heroId);
+        srcHeroSel.disabled = true;
+      } else if (prefill && prefill.heroId) {
+        // Clicked slot is empty → it's the destination. Pick a default
+        // source from any other hero that has a rune in this same slot, so
+        // the modal opens with a valid step instead of an immediate error.
+        dstHeroSel.value = String(prefill.heroId);
+        dstHeroSel.disabled = true;
+        var defaultSrcHero = null;
+        var gMap = ctx.state && ctx.state.gearByHero;
+        if (gMap) {
+          var keys2 = Object.keys(gMap);
+          for (var i2 = 0; i2 < keys2.length; i2++) {
+            var hid2 = parseInt(keys2[i2], 10);
+            if (!hid2 || hid2 === prefill.heroId) continue;
+            var r2 = gMap[keys2[i2]] && gMap[keys2[i2]][prefill.slot];
+            if (r2 && r2.runeName) { defaultSrcHero = hid2; break; }
+          }
+        }
+        if (defaultSrcHero) srcHeroSel.value = String(defaultSrcHero);
+        // Re-label the "auto-locked" hint so the advisor sees which side is
+        // pinned to the clicked tile.
+        dstSlotLbl.textContent = 'Destination slot (locked to clicked tile)';
+        dstHeroLbl.textContent = 'Destination hero (locked to clicked tile)';
       }
       refresh();
       refs.srcHeroSel = srcHeroSel; refs.srcSlotSel = srcSlotSel; refs.dstHeroSel = dstHeroSel;
