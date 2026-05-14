@@ -6,7 +6,7 @@
 // — the canonical Cocos panel-open API. Falls back to button-event clicks if
 // OpenUI silently fails (no error but panel never mounts within timeout).
 //
-// Output envelope: { v: 2, ts, inventory, beasts, chips, gear, errors }
+// Output envelope: { v: 2, ts, inventory, beasts, chips, gear, heroes, errors }
 // Each section preserves the v=1 shape produced by the existing single-purpose
 // bookmarklets so the wizard's existing handlers can route them unchanged.
 (function () {
@@ -513,13 +513,74 @@
       return { v: 1, meta: { ts: new Date().toISOString() }, summary: summary, schemes: schemes, goldGear: goldGear, equippedNonGold: equippedNonGold, presetOnly: presetOnly };
     }
 
+    // ─── Owned heroes (roster + skill loadouts) ───────────────────────────
+    // Read straight from HeroController.getHaveHeroList() — no UI mount, no
+    // scrolling, no WS round-trip needed (the player's roster is hydrated
+    // at login). Captures both skill presets so the armory-report can show
+    // p1 vs p2 side-by-side and downstream features can compare loadouts.
+    async function extractHeroes() {
+      stepHook && stepHook('Hero roster…');
+      var HC;
+      try { HC = req('HeroController').HeroController.getInstance(); }
+      catch (e) { throw new Error('HeroController not available'); }
+      if (!HC || typeof HC.getHaveHeroList !== 'function') throw new Error('HeroController.getHaveHeroList not available');
+      var have = HC.getHaveHeroList();
+      if (!Array.isArray(have)) throw new Error('getHaveHeroList returned non-array');
+      function trimSlots(arr) {
+        if (!Array.isArray(arr)) return [];
+        return arr.map(function (s) { return { id: (s && s.skillId) || 0, lv: (s && s.level) || 0 }; });
+      }
+      function trimTalents(arr) {
+        if (!Array.isArray(arr)) return [];
+        return arr.map(function (t) {
+          var o = { id: t && t.talentId || 0 };
+          if (t && t.tmpTalentId) o.tmp = t.tmpTalentId;
+          if (t && t.ttsr != null && t.ttsr !== 10000) o.ttsr = t.ttsr;
+          if (t && t.randomNum) o.rn = t.randomNum;
+          return o;
+        });
+      }
+      var list = have.map(function (h) {
+        var o = {
+          id: h._id,
+          star: h._star,
+          lv: h._level,
+          mlv: h._maxLevel,
+          q: h._quality,
+          t: h._type,
+          ht: h._hero_type,
+          pw: h._power,
+          ns: h._skill,
+          ap: h._skillsIndex || 0,
+          p1: { x: trimSlots(h._firstSkillList),  b: trimSlots(h._firstBuffList)  },
+          p2: { x: trimSlots(h._secondSkillList), b: trimSlots(h._secondBuffList) }
+        };
+        if (h._skinId)        o.sk = h._skinId;
+        if (h._dressId)       o.dr = h._dressId;
+        if (h._awakenLevel)   o.aw = h._awakenLevel;
+        if (h._fullAwaken)    o.fa = 1;
+        // Slot 0 of the active extra-skill list is always the exclusive slot
+        // (skill_type === 3 + hero_id matches in the hero_skill table). Surface
+        // its level at the top level so the Bench card can show it without
+        // re-deriving which preset is active.
+        if (h._extraSkill && h._extraSkill[0] && h._extraSkill[0].skillId && h._extraSkill[0].level) {
+          o.exLv = h._extraSkill[0].level;
+        }
+        var tl = trimTalents(h._talents);
+        if (tl.length) o.tal = tl;
+        return o;
+      });
+      return { v: 1, ts: new Date().toISOString(), list: list };
+    }
+
     return (async function () {
       var errors = [];
-      var inv = null, beasts = null, chips = null, gear = null;
+      var inv = null, beasts = null, chips = null, gear = null, heroes = null;
       try { inv = await extractInventory(); } catch (e) { errors.push({ section: 'inventory', message: e.message }); }
       try { beasts = await extractBeasts(); } catch (e) { errors.push({ section: 'beasts', message: e.message }); }
       try { chips = await extractChips(); } catch (e) { errors.push({ section: 'chips', message: e.message }); }
       try { gear = await extractGear(); } catch (e) { errors.push({ section: 'gear', message: e.message }); }
+      try { heroes = await extractHeroes(); } catch (e) { errors.push({ section: 'heroes', message: e.message }); }
       return {
         v: 2,
         ts: new Date().toISOString(),
@@ -528,6 +589,7 @@
         beasts: beasts,
         chips: chips,
         gear: gear,
+        heroes: heroes,
         errors: errors,
       };
     })();
@@ -722,6 +784,7 @@
       if (dump.beasts) sections.push(dump.beasts.kept + ' beasts');
       if (dump.chips) sections.push(dump.chips.total + ' chips');
       if (dump.gear) sections.push(dump.gear.summary.goldCount + ' gold gear');
+      if (dump.heroes) sections.push(dump.heroes.list.length + ' heroes');
       var summary = sections.join(' · ') + ' — ' + fmtBytes(json.length);
       if (dump.errors && dump.errors.length) {
         summary += ' · ' + dump.errors.length + ' section(s) failed';

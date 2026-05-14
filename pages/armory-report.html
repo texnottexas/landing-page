@@ -2978,7 +2978,7 @@
   // full schema. Functions remain byte-faithful to the previous inline
   // localStorage calls — this is centralisation, not behaviour change.
   var ArmoryIdentity = (function() {
-    var SUP_KINDS = ['inv', 'bench', 'chips', 'gear', 'runepool'];
+    var SUP_KINDS = ['inv', 'bench', 'chips', 'gear', 'runepool', 'heroes'];
 
     function safeRead(key) {
       try { return localStorage.getItem(key); } catch (e) { return null; }
@@ -4536,6 +4536,21 @@
       if (g.quality == null) return 'goldGear at ' + i + ' missing quality';
     }
     if (raw.summary && typeof raw.summary !== 'object') return 'summary wrong type';
+    return null;
+  }
+
+  // Mirrors push-worker validateHeroesJson. Owned hero roster (one entry per
+  // hero with star / level / power / native skill + both preset loadouts).
+  function _ar_validateHeroesJson(raw) {
+    if (!raw || typeof raw !== 'object') return 'Not an object';
+    if (raw.v !== 1) return 'Unknown schema version (expected v:1)';
+    if (!Array.isArray(raw.list)) return 'Missing list array';
+    if (raw.list.length > 1000) return 'Too many heroes (>1000)';
+    for (var i = 0; i < raw.list.length && i < 5; i++) {
+      var h = raw.list[i];
+      if (!h || typeof h !== 'object') return 'Hero at ' + i + ' not an object';
+      if (typeof h.id !== 'number' || h.id < 1 || h.id > 9999) return 'Hero at ' + i + ' has bad id';
+    }
     return null;
   }
 
@@ -9870,7 +9885,7 @@
       }
     }
 
-    var KIND_LABELS = { inv: 'Inventory', bench: 'Bench Beasts', chips: 'HT Chips', gear: 'Titan Gear Pool' };
+    var KIND_LABELS = { inv: 'Inventory', bench: 'Bench Beasts', chips: 'HT Chips', gear: 'Titan Gear Pool', heroes: 'Hero Roster' };
 
     function buildTooltipBody() {
       var frag = document.createDocumentFragment();
@@ -15930,14 +15945,15 @@
   // route them unchanged. We detect, validate, save locally, and upload all
   // sections in one shot.
   var _AR_ENVELOPE_KINDS = [
-    { kind: 'inv',   field: 'inventory', validate: _ar_validateInvJson,   lsKey: 'armory_inv_',   tsPath: 'meta.ts' },
-    { kind: 'bench', field: 'beasts',    validate: _ar_validateBenchJson, lsKey: 'armory_bench_', tsPath: 'ts'      },
-    { kind: 'chips', field: 'chips',     validate: _ar_validateChipsJson, lsKey: 'armory_chips_', tsPath: 'ts'      },
-    { kind: 'gear',  field: 'gear',      validate: _ar_validateGearJson,  lsKey: 'armory_gear_',  tsPath: 'meta.ts' }
+    { kind: 'inv',    field: 'inventory', validate: _ar_validateInvJson,    lsKey: 'armory_inv_',    tsPath: 'meta.ts' },
+    { kind: 'bench',  field: 'beasts',    validate: _ar_validateBenchJson,  lsKey: 'armory_bench_',  tsPath: 'ts'      },
+    { kind: 'chips',  field: 'chips',     validate: _ar_validateChipsJson,  lsKey: 'armory_chips_',  tsPath: 'ts'      },
+    { kind: 'gear',   field: 'gear',      validate: _ar_validateGearJson,   lsKey: 'armory_gear_',   tsPath: 'meta.ts' },
+    { kind: 'heroes', field: 'heroes',    validate: _ar_validateHeroesJson, lsKey: 'armory_heroes_', tsPath: 'ts'      }
   ];
 
   function _ar_isEnvelope(obj) {
-    return !!(obj && typeof obj === 'object' && obj.v === 2 && (obj.inventory || obj.beasts || obj.chips || obj.gear));
+    return !!(obj && typeof obj === 'object' && obj.v === 2 && (obj.inventory || obj.beasts || obj.chips || obj.gear || obj.heroes));
   }
 
   // Drives one section through the same validate → sanitize → store → upload
@@ -19908,9 +19924,9 @@
       progress.appendChild(chip);
       return chip;
     }
-    var KIND_LABELS = { inv: 'Inventory', bench: 'Beasts', chips: 'HT Chips', gear: 'Titan Gear' };
+    var KIND_LABELS = { inv: 'Inventory', bench: 'Beasts', chips: 'HT Chips', gear: 'Titan Gear', heroes: 'Heroes' };
     var chips = {};
-    ['inv', 'bench', 'chips', 'gear'].forEach(function(k) { chips[k] = progressChip(k, KIND_LABELS[k]); });
+    ['inv', 'bench', 'chips', 'gear', 'heroes'].forEach(function(k) { chips[k] = progressChip(k, KIND_LABELS[k]); });
     modal.appendChild(progress);
 
     var err = document.createElement('div');
