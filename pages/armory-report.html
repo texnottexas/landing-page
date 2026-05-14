@@ -5258,14 +5258,22 @@
         var idx = {};
         j.holes.forEach(function(h) {
           if (!idx[h.fieldType]) idx[h.fieldType] = {};
+          // Multi-type slots have arrays in beastTypeIds/Names; the older
+          // single-type fields (beastTypeId/beastTypeName) are kept as
+          // beastTypeIds[0] / "Deer / Bear / Lion" for back-compat with code
+          // that wasn't updated yet.
+          var typeIds = Array.isArray(h.beastTypeIds) ? h.beastTypeIds : (h.beastTypeId ? [h.beastTypeId] : []);
+          var typeNames = Array.isArray(h.beastTypeNames) ? h.beastTypeNames : (h.beastTypeName && h.beastTypeId ? [h.beastTypeName] : []);
+          var label = h.beastTypeLabel || (typeNames.length === 0 ? 'Any beast type' : typeNames.join(' / '));
           idx[h.fieldType][h.order] = {
-            rarity: h.minQualityName,            // "Common".."Legendary"
-            element: h.factionName,              // "Any" / "Fire" / "Water" / "Wind" / "Ground"
-            elementId: h.faction,                // 0 = Any, 1..4 = element id
-            beastType: h.beastTypeName,          // "Any beast type" / "Deer" / "Ray" / etc.
-            beastTypeId: h.beastTypeId,          // 0 = any, 1..9 = type id
-            beastTypeCap: h.beastTypeCap,        // second part of "X|Y" — quality cap on beast
-            isUniversal: h.faction === 0 && h.beastTypeId === 0 && h.minQuality === 1
+            rarity: h.minQualityName,
+            element: h.factionName,
+            elementId: h.faction,
+            beastTypeIds: typeIds,             // [] = Any, otherwise list of allowed beast type IDs
+            beastTypeNames: typeNames,         // parallel list of human-readable names
+            beastTypeLabel: label,             // pre-joined display string ("Ray / Bear / Lion")
+            qualityCap: h.qualityCap || h.beastTypeCap,
+            isUniversal: h.faction === 0 && typeIds.length === 0 && h.minQuality === 1
           };
         });
         EB_PLATFORM_REQS = idx;
@@ -21881,12 +21889,19 @@
           }
           reqRow.appendChild(elemPill);
 
+          // Beast pill — single beast (e.g. "Bear") or a slash-joined list when
+          // the slot accepts multiple types ("Ray / Bear / Lion"). The "any"
+          // class only kicks in for truly unrestricted slots which already
+          // short-circuit to the universal pill above, so this branch always
+          // has at least one beast type to name.
           var bestPill = document.createElement('span');
-          bestPill.className = 'eb-req-pill eb-req-beast' + (req.beastTypeId === 0 ? ' any' : '');
-          bestPill.textContent = req.beastTypeId === 0 ? 'Any type' : req.beastType;
-          bestPill.title = req.beastTypeId === 0
+          var typeIds = req.beastTypeIds || [];
+          var isAny = typeIds.length === 0;
+          bestPill.className = 'eb-req-pill eb-req-beast' + (isAny ? ' any' : '');
+          bestPill.textContent = isAny ? 'Any type' : req.beastTypeLabel;
+          bestPill.title = isAny
             ? 'Any beast type accepted'
-            : ('Required beast type: ' + req.beastType + (req.beastTypeCap ? ' (Q' + req.beastTypeCap + ' cap)' : ''));
+            : ((typeIds.length === 1 ? 'Required beast type: ' : 'Allowed beast types: ') + req.beastTypeLabel + (req.qualityCap && req.qualityCap < 5 ? ' (Q' + req.qualityCap + ' cap)' : ''));
           reqRow.appendChild(bestPill);
         }
         card.appendChild(reqRow);
