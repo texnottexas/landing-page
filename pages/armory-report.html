@@ -2602,7 +2602,10 @@
   .eb-slot-card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: .5rem; position: relative; cursor: pointer; }
   .eb-slot-card.empty { opacity: .55; border-style: dashed; cursor: default; }
   .eb-slot-card.has-buffs { border-color: var(--green); }
-  .eb-slot-num { position: absolute; top: .3rem; right: .3rem; font-size: .55rem; color: var(--muted); font-weight: 700; }
+  /* Slot number lives in the bottom-right corner now that the requirements
+   * row took the top of the card — kept it out of the way of the rarity /
+   * element / beast pills which kept colliding with it on smaller cards. */
+  .eb-slot-num { position: absolute; bottom: .3rem; right: .5rem; font-size: .55rem; color: var(--muted); font-weight: 700; letter-spacing: .03em; }
   .eb-slot-cond-badge { font-size: .55rem; background: rgba(56,139,253,.1); color: var(--navy, #388bfd); padding: .15rem .4rem; border-radius: 3px; border: 1px solid rgba(56,139,253,.2); display: inline-block; margin-top: .2rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Platform placement-requirements pills (rarity / element / beast type) */
   .eb-slot-reqs { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: .35rem; align-items: center; }
@@ -5783,6 +5786,12 @@
     var player0 = matchedSide.data.players[matchedPlayerIdx];
 
     return {
+      // Report timestamp (Unix seconds) — used to chrono-sort reports during
+      // merging so the "latest report wins" rule for account-level snapshots
+      // (decorations / skins / enigmas / ctcs / formations / armyMastery /
+      // elementLevels) actually picks the most-recent battle rather than
+      // assuming report-id length is monotonic with time.
+      logtime: data.logtime || 0,
       playerInfo: JSON.parse(player0.playerInfo || '{}'),
       heroes: (player0.heroList || []).map(function(h) {
         return {
@@ -23255,7 +23264,21 @@
       var heroes = (report.extracted && report.extracted.heroes) || [];
       var mechaCount = (report.extracted && report.extracted.mechas) ? report.extracted.mechas.length : 0;
       var heroNames = heroes.map(function(h) { return heroName(h.id); }).join(', ');
-      metaDiv.textContent = heroes.length + ' heroes\u00a0\u00b7\u00a0' + mechaCount + ' mechas';
+      // Battle date (from data.logtime captured at extract time) helps the
+      // player tell at a glance which report is freshest \u2014 useful when the
+      // "latest-wins" merge for account-level snapshots (enigmas, decor,
+      // skins) seems to be showing stale data because the newest report
+      // happens to be a Loot Quest battle without those sections.
+      var logtime = (report.extracted && report.extracted.logtime) || 0;
+      var dateStr = '';
+      if (logtime) {
+        var rd = new Date(logtime * 1000);
+        var mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][rd.getMonth()];
+        dateStr = mon + ' ' + rd.getDate() + ', ' + rd.getFullYear();
+        var hm = rd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        dateStr += ' ' + hm;
+      }
+      metaDiv.textContent = (dateStr ? dateStr + '\u00a0\u00b7\u00a0' : '') + heroes.length + ' heroes\u00a0\u00b7\u00a0' + mechaCount + ' mechas';
       infoDiv.appendChild(metaDiv);
       if (heroNames) {
         var heroDiv = document.createElement('div');
@@ -23813,15 +23836,16 @@
       career: null
     };
 
-    // Sort by reportId ascending so newest battles iterate last. Top War
-    // reportIds are timestamp-encoded fixed-width numeric strings, so lex
-    // compare yields chronological order. Account-level fields (decorations,
-    // skins, suit/sublimes, enigmas, etc.) are full snapshots that evolve
-    // between battles — using last-wins on the chrono-sorted list reflects
-    // the player's most recent state. Earlier first-wins logic silently
-    // discarded data from newer reports (e.g. a decoration acquired after
-    // the oldest loaded report would never surface in the decorations tab).
+    // Sort by logtime ascending so newest battles iterate last. Top War's
+    // battle report JSON carries a `logtime` Unix-seconds timestamp on the
+    // root object — captured into ex.logtime at extract time. Falling back
+    // to report-id lex compare only kicks in when logtime is missing (older
+    // cached extractions that predate the field), since report-ids are
+    // already known to drift over time when the in-game battle log rolls.
     var sortedReports = reports.slice().sort(function(a, b) {
+      var at = (a.extracted && a.extracted.logtime) || 0;
+      var bt = (b.extracted && b.extracted.logtime) || 0;
+      if (at !== bt) return at - bt;
       var ai = String(a.id || ''), bi = String(b.id || '');
       if (ai.length !== bi.length) return ai.length - bi.length;
       return ai < bi ? -1 : ai > bi ? 1 : 0;
