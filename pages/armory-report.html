@@ -23889,27 +23889,12 @@
       if (ex.decorations) merged.decorations = ex.decorations;
       if (ex.skins) merged.skins = ex.skins;
       if (ex.ctcs) merged.ctcs = ex.ctcs;
-      // Enigmas merge per-field, not wholesale. A battle report only carries
-      // the fields the player actually deployed for that side (e.g. a defense
-      // battle drops the Offense field from the snapshot). Overwriting
-      // merged.enigmas entirely would erase any field the newer battle didn't
-      // touch, so we update field-by-field (keyed by cfg) and union the
-      // beastDatas inventory so stars/levels propagate.
-      if (ex.enigmas) {
-        if (!merged.enigmas) merged.enigmas = { fields: [], beastDatas: [] };
-        if (Array.isArray(ex.enigmas.fields) && ex.enigmas.fields.length) {
-          var fieldByCfg = {};
-          (merged.enigmas.fields || []).forEach(function(f) { fieldByCfg[f.cfg] = f; });
-          ex.enigmas.fields.forEach(function(f) { fieldByCfg[f.cfg] = f; });
-          merged.enigmas.fields = Object.keys(fieldByCfg).sort(function(a,b){ return Number(a)-Number(b); }).map(function(k){ return fieldByCfg[k]; });
-        }
-        if (Array.isArray(ex.enigmas.beastDatas) && ex.enigmas.beastDatas.length) {
-          var beastById = {};
-          (merged.enigmas.beastDatas || []).forEach(function(b) { beastById[b.id] = b; });
-          ex.enigmas.beastDatas.forEach(function(b) { beastById[b.id] = b; });
-          merged.enigmas.beastDatas = Object.values(beastById);
-        }
-      }
+      // Battle reports always carry the player's full enigmas snapshot
+      // regardless of which side they fought on, so the latest report wins
+      // wholesale here. Earlier per-field merging caused stale data to leak
+      // forward when an older report's field happened to outlive the newer
+      // snapshot it should have been replaced by.
+      if (ex.enigmas) merged.enigmas = ex.enigmas;
       if (ex.effectBuffs) merged.effectBuffs = ex.effectBuffs;
       if (ex.traceEffectBuffs) merged.traceEffectBuffs = ex.traceEffectBuffs;
       if (ex.armyMastery) merged.armyMastery = ex.armyMastery;
