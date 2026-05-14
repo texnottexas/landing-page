@@ -10455,8 +10455,12 @@
   // Quality tier for supportive skills (drives the supp pill color):
   //   1 = green/normal, 2 = blue/rare, 3 = purple, 4 = gold, 5 = red
   var _BENCH_SUPP_QUALITY_CACHE = null;
+  // Inventory-icon file lookup for supportive skills — each entry is the
+  // basename inside assets/inventory-icons/ (e.g. image__item__item_2501801.png).
+  // Pre-baked into data/supportive-skills.json (extracted via item TABLE para1).
+  var _BENCH_SUPP_ICON_CACHE = null;
   function _bench_buildSkillCaches() {
-    var idx = {}, q = {};
+    var idx = {}, q = {}, icons = {};
     if (Array.isArray(window._heroSkillsData)) {
       window._heroSkillsData.forEach(function(h) {
         if (!h) return;
@@ -10471,10 +10475,12 @@
         if (!s || !s.id) return;
         if (s.name) idx[s.id] = s.name;
         if (s.quality) q[s.id] = s.quality;
+        if (s.iconFile) icons[s.id] = s.iconFile;
       });
     }
     _BENCH_SKILL_NAMES_CACHE = idx;
     _BENCH_SUPP_QUALITY_CACHE = q;
+    _BENCH_SUPP_ICON_CACHE = icons;
   }
   function _bench_resolveSkillName(skillId, heroIdHint) {
     if (!skillId) return null;
@@ -10485,6 +10491,12 @@
     if (!skillId) return 0;
     if (!_BENCH_SUPP_QUALITY_CACHE) _bench_buildSkillCaches();
     return (_BENCH_SUPP_QUALITY_CACHE && _BENCH_SUPP_QUALITY_CACHE[skillId]) || 0;
+  }
+  function _bench_supportiveIconUrl(skillId) {
+    if (!skillId) return null;
+    if (!_BENCH_SUPP_ICON_CACHE) _bench_buildSkillCaches();
+    var fn = _BENCH_SUPP_ICON_CACHE && _BENCH_SUPP_ICON_CACHE[skillId];
+    return fn ? (ASSET_BASE + 'assets/inventory-icons/' + fn) : null;
   }
   function _bench_skillIconUrl(skillId) {
     if (!skillId) return null;
@@ -11363,6 +11375,10 @@
       lbl.textContent = 'Preset ' + idx + (h.ap === idx ? ' · active' : '');
       col.appendChild(lbl);
 
+      // Show only the exclusive + 3 supportive active slots (p.x[0..3]).
+      // The passive buff slot (p.b) is already surfaced in the Skills tab's
+      // "equipped supportive skills" block, so it would just clutter the
+      // preset comparison without adding info.
       var extraLbl = document.createElement('div');
       extraLbl.className = 'bench-skill-section-label inline';
       extraLbl.textContent = 'Exclusive + supportive';
@@ -11370,12 +11386,6 @@
       (p.x || []).forEach(function(s, i) {
         col.appendChild(_bench_buildSkillRow(s, { heroId: h.id, exclusiveSlot: i === 0 }));
       });
-
-      var buffLbl = document.createElement('div');
-      buffLbl.className = 'bench-skill-section-label inline';
-      buffLbl.textContent = 'Passive buff';
-      col.appendChild(buffLbl);
-      (p.b || []).forEach(function(s) { col.appendChild(_bench_buildSkillRow(s, { heroId: h.id, passive: true })); });
 
       presetWrap.appendChild(col);
     });
@@ -11403,8 +11413,17 @@
       img.src = _bench_exclusiveIconUrl(opts.heroId);
       img.onerror = function() { img.src = _bench_skillIconUrl(slot.id); img.onerror = function() { this.style.display = 'none'; }; };
     } else {
-      img.src = _bench_skillIconUrl(slot.id);
-      img.onerror = function() { this.style.display = 'none'; };
+      // Supportive skills (21xxx + 20xxx active/buff types) live in
+      // assets/inventory-icons/ — preferred when present. Fall back to the
+      // skill-icons folder for any unmapped ids (collab/reduplicated etc.).
+      var suppIcon = _bench_supportiveIconUrl(slot.id);
+      if (suppIcon) {
+        img.src = suppIcon;
+        img.onerror = function() { img.src = _bench_skillIconUrl(slot.id); img.onerror = function() { this.style.display = 'none'; }; };
+      } else {
+        img.src = _bench_skillIconUrl(slot.id);
+        img.onerror = function() { this.style.display = 'none'; };
+      }
     }
     row.appendChild(img);
     var meta = document.createElement('div');
