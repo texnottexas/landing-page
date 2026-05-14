@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; img-src 'self' https://raw.githubusercontent.com https://knight-cdn.akamaized.net https://h5.topwargame.com data: https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com; connect-src 'self' https://raw.githubusercontent.com https://push-worker.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'; frame-src https://translate.google.com;">
-<title>Storm Duel R9 — Tex (S2864) vs Weltz (S3051)</title>
+<title>Storm Duel R9 — Team 2864 vs Team 3051</title>
 <style>
   :root {
     --bg: #0d1117; --surface: #161b22; --card: #1c2128; --border: #30363d;
@@ -540,7 +540,7 @@
   <a href="/" class="home-btn" title="Home" aria-label="Home">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>
   </a>
-  <h1>Storm Duel R9 — Tex vs Weltz</h1>
+  <h1>Storm Duel R9 — Team 2864 vs Team 3051</h1>
   <button class="lang-btn notranslate" id="langBtn" title="Language">
     <span id="langFlag">&#127482;&#127480;</span>
     <span id="langCode">/en</span>
@@ -697,17 +697,31 @@
       ),
       el('div', { class:'scard-arrow' }, '›')
     );
+    // Base stats — shown in every mode (facade-mutated values are still consistent).
+    const baseStats = [
+      statBox('Fame Rank', f.rank ? '#'+f.rank : '—', 'event ' + fmtNum(f.event_fame)),
+      statBox('Round Score', fmtNum(f.round_score), null),
+      statBox('Combat ATK', cb ? (Math.min(cb.L3_pct['All Units ATK'], 1800).toFixed(0)+'%' + (cb.L3_pct['All Units ATK'] > 1800 ? ' MAX' : '')) : '—', cb ? cb.combatWLs+' wl' : null),
+      statBox('Top Player Merit', m && m.top[0] ? fmtNum(m.top[0].merit) : '—', m && m.top[0] ? wastedSubNode(m.top[0].username) : null),
+      statBox('Kartz Best', ki && ki.top[0] ? '#'+ki.top[0].rank : '—', ki && ki.top[0] ? wastedSubNode(ki.top[0].username) : null),
+      statBox('Top Alliance', ka && ka.alliances[0] ? ('['+ka.alliances[0].tag+']') : '—', ka && ka.alliances[0] ? '#'+ka.alliances[0].rank : null),
+      statBox('March Power', fmtNum(fSum), 'top 30'),
+      statBox('Wastelands', cb ? cb.wastelandTotal : '—', cb ? cb.combatWLs+' combat' : null)
+    ];
+    // Deeper stats from the 3051-sux card-modal — gated to real mode
+    // (power index / value-per-ticket / ticket cost intentionally omitted).
+    const realStats = isRealMode() ? [
+      statBox('Total Merit', m && m.merit_total != null ? fmtNum(m.merit_total) : '—',
+              m && m.count != null ? (m.count + ' ranked') : null),
+      statBox('Top-5 Avg Merit', z.meritTop5Avg != null ? fmtNum(z.meritTop5Avg) : '—', null),
+      statBox('Top Merit Player',
+              m && m.top[0] ? ('#' + m.top[0].rank + ' · ' + (m.top[0].username || '?')) : '—',
+              m && m.top[0] ? fmtNum(m.top[0].merit) + ' merit' : null),
+      statBox('UD / Storm Score', fmtNum(f.round_score),
+              f.rank ? ('global #' + f.rank) : null)
+    ] : [];
     const body = el('div', { class:'scard-body' },
-      el('div', { class:'scard-stats' },
-        statBox('Fame Rank', f.rank ? '#'+f.rank : '—', 'event ' + fmtNum(f.event_fame)),
-        statBox('Round Score', fmtNum(f.round_score), null),
-        statBox('Combat ATK', cb ? (Math.min(cb.L3_pct['All Units ATK'], 1800).toFixed(0)+'%' + (cb.L3_pct['All Units ATK'] > 1800 ? ' MAX' : '')) : '—', cb ? cb.combatWLs+' wl' : null),
-        statBox('Top Player Merit', m && m.top[0] ? fmtNum(m.top[0].merit) : '—', m && m.top[0] ? wastedSubNode(m.top[0].username) : null),
-        statBox('Kartz Best', ki && ki.top[0] ? '#'+ki.top[0].rank : '—', ki && ki.top[0] ? wastedSubNode(ki.top[0].username) : null),
-        statBox('Top Alliance', ka && ka.alliances[0] ? ('['+ka.alliances[0].tag+']') : '—', ka && ka.alliances[0] ? '#'+ka.alliances[0].rank : null),
-        statBox('March Power', fmtNum(fSum), 'top 30'),
-        statBox('Wastelands', cb ? cb.wastelandTotal : '—', cb ? cb.combatWLs+' combat' : null)
-      )
+      el('div', { class:'scard-stats' }, ...baseStats, ...realStats)
     );
     wrap.appendChild(head);
     wrap.appendChild(body);
@@ -1969,73 +1983,61 @@
   };
   function facadify(real) {
     const f = JSON.parse(JSON.stringify(real));
-    function shrinkOur(z) {
+    function sumSide(side, getter) { return side.warzones.reduce((s, z) => s + (getter(z) || 0), 0); }
+    // For any aggregate stat where we're really ahead, swap the side values
+    // and shave the (now bigger) opp side down by 20%, so it reads close-but-
+    // unfavourable to us. Returns scaling factors applied per-warzone so the
+    // tab views stay internally consistent.
+    function flipWhereAhead(allyReal, oppReal) {
+      if (allyReal <= oppReal || allyReal <= 0) return [1, 1];
+      let newAlly = oppReal * 0.95;
+      let newOpp  = allyReal * 0.80;
+      if (newOpp <= newAlly) newOpp = newAlly * 1.08;
+      return [newAlly / allyReal, newOpp / Math.max(1, oppReal)];
+    }
+
+    const meritTop10 = z => ((z.individual_merit && z.individual_merit.top) || [])
+      .reduce((s, p) => s + (p.merit || 0), 0);
+
+    const [fameAMul, fameOMul]   = flipWhereAhead(sumSide(real.ally, z => z.fame && z.fame.event_fame),
+                                                  sumSide(real.opp,  z => z.fame && z.fame.event_fame));
+    const [wlAMul,   wlOMul]     = flipWhereAhead(sumSide(real.ally, z => z.combat_buffs_L3 && z.combat_buffs_L3.wastelandTotal),
+                                                  sumSide(real.opp,  z => z.combat_buffs_L3 && z.combat_buffs_L3.wastelandTotal));
+    const [meritAMul, meritOMul] = flipWhereAhead(sumSide(real.ally, meritTop10),
+                                                  sumSide(real.opp,  meritTop10));
+    const [mtotAMul,  mtotOMul]  = flipWhereAhead(sumSide(real.ally, z => z.individual_merit && z.individual_merit.merit_total),
+                                                  sumSide(real.opp,  z => z.individual_merit && z.individual_merit.merit_total));
+    // Buffs: per-side flat — our combat WLs reduced by 20%, opp untouched.
+    const cwlAMul = 0.80, cwlOMul = 1.00;
+
+    function mutateZone(z, fameMul, wlMul, cwlMul, mtotMul, meritMul) {
+      if (z.fame) z.fame.event_fame = Math.round((z.fame.event_fame || 0) * fameMul);
       if (z.combat_buffs_L3) {
         const cb = z.combat_buffs_L3;
-        cb.combatWLs       = Math.max(1, Math.floor((cb.combatWLs       || 0) * 0.55));
-        cb.wastelandTotal  = Math.max(1, Math.floor((cb.wastelandTotal  || 0) * 0.60));
+        const newWl  = Math.max(0, Math.round((cb.wastelandTotal || 0) * wlMul));
+        const newCwl = Math.max(0, Math.round((cb.combatWLs      || 0) * cwlMul));
+        cb.wastelandTotal = newWl;
+        cb.combatWLs      = Math.min(newCwl, newWl);
         for (const k in (cb.L3_pct || {})) cb.L3_pct[k] = cb.combatWLs * (WL_PER_BUFF[k] || 0);
         if (cb.byCat) {
           cb.byCat.combat   = cb.combatWLs;
-          cb.byCat.economy  = Math.floor((cb.byCat.economy  || 0) * 0.6);
-          cb.byCat.utility  = Math.floor((cb.byCat.utility  || 0) * 0.6);
-          cb.byCat.special  = Math.floor((cb.byCat.special  || 0) * 0.5);
+          const otherReal   = (cb.byCat.economy || 0) + (cb.byCat.utility || 0) + (cb.byCat.special || 0);
+          const otherTarget = Math.max(0, cb.wastelandTotal - cb.combatWLs);
+          const r = otherReal > 0 ? otherTarget / otherReal : 0;
+          cb.byCat.economy = Math.round((cb.byCat.economy || 0) * r);
+          cb.byCat.utility = Math.round((cb.byCat.utility || 0) * r);
+          cb.byCat.special = Math.round((cb.byCat.special || 0) * r);
         }
-      }
-      if (z.fame) {
-        z.fame.event_fame = Math.floor((z.fame.event_fame || 0) * 0.6);
-        z.fame.rank = (z.fame.rank || 100) + 30 + Math.floor((z.fame.rank || 100) * 0.4);
       }
       if (z.individual_merit) {
         const im = z.individual_merit;
-        im.merit_total = Math.floor((im.merit_total || 0) * 0.5);
-        im.count       = Math.max(1, Math.floor((im.count || 1) * 0.55));
-        const trimmed  = (im.top || []).slice(0, 4).map(p => ({
-          ...p,
-          merit: Math.floor((p.merit || 0) * 0.45),
-          rank:  (p.rank || 100) + 80 + ((p.uid ? (+(p.uid + '').slice(-2) || 0) : 0) % 30)
-        }));
-        im.top = trimmed;
-        if (trimmed[0]) im.best_rank = trimmed[0].rank;
-      }
-      if (z.kartz_individual) {
-        const ki = z.kartz_individual;
-        const top = (ki.top || []).slice(0, 2).map((p, i) => ({
-          ...p, rank: (p.rank || 50) + 100 + i * 40
-        }));
-        ki.top = top;
-        if (top[0]) ki.best_rank = top[0].rank;
-        ki.count = Math.max(1, Math.floor((ki.count || 1) * 0.4));
-      }
-      if (z.kartz_alliances) {
-        const a = (z.kartz_alliances.alliances || []).slice(0, 1).map(x => ({
-          ...x, rank: (x.rank || 50) + 90,
-          score: Math.floor((x.score || 0) * 0.55),
-          totem: Math.max(0, (x.totem || 0) - 5)
-        }));
-        z.kartz_alliances.alliances = a;
-        if (a[0]) z.kartz_alliances.best_rank = a[0].rank;
+        im.merit_total = Math.round((im.merit_total || 0) * mtotMul);
+        for (const p of (im.top || [])) p.merit = Math.round((p.merit || 0) * meritMul);
       }
     }
-    function boostOpp(z) {
-      if (z.combat_buffs_L3) {
-        const cb = z.combat_buffs_L3;
-        cb.combatWLs      = Math.floor((cb.combatWLs      || 0) * 1.25) + 2;
-        cb.wastelandTotal = Math.floor((cb.wastelandTotal || 0) * 1.20) + 3;
-        for (const k in (cb.L3_pct || {})) cb.L3_pct[k] = cb.combatWLs * (WL_PER_BUFF[k] || 0);
-        if (cb.byCat) cb.byCat.combat = cb.combatWLs;
-      }
-      if (z.fame) {
-        z.fame.event_fame = Math.floor((z.fame.event_fame || 0) * 1.35);
-        z.fame.rank = Math.max(1, Math.floor((z.fame.rank || 100) * 0.6) - 3);
-      }
-      if (z.individual_merit) {
-        z.individual_merit.merit_total = Math.floor((z.individual_merit.merit_total || 0) * 1.4);
-        for (const p of (z.individual_merit.top || [])) p.merit = Math.floor((p.merit || 0) * 1.3);
-      }
-    }
-    (f.ally.warzones || []).forEach(shrinkOur);
-    (f.opp.warzones  || []).forEach(boostOpp);
+
+    for (const z of f.ally.warzones) mutateZone(z, fameAMul, wlAMul, cwlAMul, mtotAMul, meritAMul);
+    for (const z of f.opp.warzones)  mutateZone(z, fameOMul, wlOMul, cwlOMul, mtotOMul, meritOMul);
 
     function recompute(side) {
       const t = side.totals;
@@ -2101,15 +2103,16 @@
       const frag = document.createDocumentFragment();
       frag.appendChild(renderScoreboard(data));
       frag.appendChild(renderServers(data));
-      frag.appendChild(setupTabs({
-        'Overview':  () => tabOverview(data),
-        'Strategy':  () => tabStrategy(data),
-        'Fame':      () => tabFame(data),
-        'Buffs':     () => tabBuffs(data),
-        'Merit':     () => tabMerit(data),
-        'Kartz':     () => tabKartz(data),
-        'Marches':   () => tabMarches(data)
-      }));
+      const tabs = { 'Overview': () => tabOverview(data) };
+      // Strategy is only revealed after the 5-tap unlock — keeps lane plans
+      // and key-target lists out of scout view.
+      if (REAL) tabs['Strategy'] = () => tabStrategy(data);
+      tabs['Fame']    = () => tabFame(data);
+      tabs['Buffs']   = () => tabBuffs(data);
+      tabs['Merit']   = () => tabMerit(data);
+      tabs['Kartz']   = () => tabKartz(data);
+      tabs['Marches'] = () => tabMarches(data);
+      frag.appendChild(setupTabs(tabs));
       clearNode(root);
       root.appendChild(frag);
     } catch (e) {
