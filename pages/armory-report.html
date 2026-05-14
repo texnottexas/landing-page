@@ -5250,6 +5250,15 @@
   // required, and downstream features (which-bench-beasts-fit) can use the same
   // map without re-fetching.
   var EB_PLATFORM_REQS = null;       // map: fieldId → (slotOrder → req)
+  // Battle reports identify each slot by hole_id (the enigma_field_hole.id,
+  // globally unique 1..36 across all 5 fields). That hole_id ≠ in-game slot
+  // number — the slot's display position lives in the row's `order` column.
+  // Without this map the renderer falls back to "array index + 1" which
+  // happens to match for Defense but is rotated for Offense because the
+  // battle JSON serializes Field 5 starting from the center platform
+  // (order=5) instead of order=1. Indexing hole_id → order lets us compute
+  // the player's true in-game slot number regardless of array order.
+  var EB_HOLE_TO_ORDER = null;       // map: holeId → in-game slot order
   var _ebPlatformsPromise = null;
   function ebLoadPlatformReqs(cb) {
     if (EB_PLATFORM_REQS) { cb && cb(); return; }
@@ -5259,12 +5268,9 @@
       .then(function(j) {
         if (!j || !Array.isArray(j.holes)) return;
         var idx = {};
+        var holeIdx = {};
         j.holes.forEach(function(h) {
           if (!idx[h.fieldType]) idx[h.fieldType] = {};
-          // Multi-type slots have arrays in beastTypeIds/Names; the older
-          // single-type fields (beastTypeId/beastTypeName) are kept as
-          // beastTypeIds[0] / "Deer / Bear / Lion" for back-compat with code
-          // that wasn't updated yet.
           var typeIds = Array.isArray(h.beastTypeIds) ? h.beastTypeIds : (h.beastTypeId ? [h.beastTypeId] : []);
           var typeNames = Array.isArray(h.beastTypeNames) ? h.beastTypeNames : (h.beastTypeName && h.beastTypeId ? [h.beastTypeName] : []);
           var label = h.beastTypeLabel || (typeNames.length === 0 ? 'Any beast type' : typeNames.join(' / '));
@@ -5272,14 +5278,16 @@
             rarity: h.minQualityName,
             element: h.factionName,
             elementId: h.faction,
-            beastTypeIds: typeIds,             // [] = Any, otherwise list of allowed beast type IDs
-            beastTypeNames: typeNames,         // parallel list of human-readable names
-            beastTypeLabel: label,             // pre-joined display string ("Ray / Bear / Lion")
+            beastTypeIds: typeIds,
+            beastTypeNames: typeNames,
+            beastTypeLabel: label,
             qualityCap: h.qualityCap || h.beastTypeCap,
             isUniversal: h.faction === 0 && typeIds.length === 0 && h.minQuality === 1
           };
+          holeIdx[h.id] = h.order;
         });
         EB_PLATFORM_REQS = idx;
+        EB_HOLE_TO_ORDER = holeIdx;
       })
       .catch(function() {});
     _ebPlatformsPromise.then(cb);
@@ -5288,6 +5296,13 @@
     if (!EB_PLATFORM_REQS) return null;
     var f = EB_PLATFORM_REQS[fieldId];
     return f ? (f[slotOrder] || null) : null;
+  }
+  // Resolve a hole_id (as it appears on a battle-report slot) to the in-game
+  // slot order (1..9). Returns null until the platforms JSON has loaded.
+  function ebHoleOrder(holeId) {
+    if (!EB_HOLE_TO_ORDER) return null;
+    var n = Number(holeId);
+    return EB_HOLE_TO_ORDER[n] || null;
   }
 
   function ebDecodeCfg(cfg) {
@@ -5335,7 +5350,11 @@
 
     var fields = (enigmas.fields || []).map(function(f) {
       var slots = (f.slots || []).map(function(s, idx) {
-        var fieldSlotNum = idx + 1;
+        // Prefer the platform table's `order` for this hole id when the
+        // platforms JSON has loaded — that's the player's true in-game slot
+        // number. Fall back to array index + 1 only before the JSON loads
+        // (renderEnigmaTab re-renders once it's available).
+        var fieldSlotNum = ebHoleOrder(s.id) || (idx + 1);
         var beast = beastMap[s.beastId];
         if (beast && s.beastId !== '0') {
           beast.fieldCfg = f.cfg;
@@ -5353,6 +5372,11 @@
           beast: (s.beastId !== '0' && beast) ? beast : null
         };
       });
+      // Sort by the (now hole-id-corrected) slot number so cards render in
+      // visual order. Field 5 (Offense) ships slots in a rotated array order
+      // in the battle JSON; without this, cards display correct slot labels
+      // but in the wrong sequence on the grid.
+      slots.sort(function(a, b) { return a.fieldSlotNum - b.fieldSlotNum; });
       return {
         cfg: f.cfg, name: EB_FIELD_NAMES[f.cfg] || ('Field ' + f.cfg), active: f.active,
         expectedSlots: EB_FIELD_SLOT_COUNTS[f.cfg] || slots.length,
