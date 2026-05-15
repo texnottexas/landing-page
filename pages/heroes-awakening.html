@@ -422,6 +422,75 @@
       background: var(--surface); border: 1px solid var(--border);
       color: var(--text); width: 36px; height: 36px; border-radius: 50%;
       font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+      z-index: 1001;
+    }
+
+    /* Skill detail modal */
+    .skill-modal-box {
+      background: var(--card); border: 1px solid var(--gold);
+      border-radius: 12px; padding: 20px 22px;
+      max-width: min(800px, 95vw); max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 8px 32px rgba(0,0,0,.8);
+    }
+    .sm-head { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px; flex-wrap: wrap; }
+    .sm-icon {
+      width: 76px; height: 76px; border-radius: 10px; background: #0d1117;
+      border: 1px solid var(--gold); padding: 4px; image-rendering: -webkit-optimize-contrast;
+      flex-shrink: 0;
+    }
+    .sm-head-meta { flex: 1; min-width: 200px; }
+    .sm-skill-name { font-size: 1.25rem; font-weight: 700; color: var(--gold); }
+    .sm-hero-line {
+      font-size: .76rem; color: var(--muted); margin-top: 4px;
+      display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+    }
+    .sm-pills { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+    .sm-pill {
+      font-size: .58rem; padding: 2px 8px; border-radius: 10px;
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+    }
+    .sm-pill.gold { color: var(--gold); border-color: var(--gold); }
+    .sm-pill.green { color: var(--green); border-color: var(--green); }
+    .sm-section { margin-top: 14px; }
+    .sm-section h4 {
+      font-size: .68rem; text-transform: uppercase; letter-spacing: .06em;
+      color: var(--accent); margin-bottom: 6px; font-weight: 700;
+    }
+    .sm-section p { font-size: .78rem; line-height: 1.55; }
+    .sm-section code { background: var(--surface); padding: 1px 5px; border-radius: 4px; font-size: .92em; }
+    .sm-table { width: 100%; border-collapse: collapse; font-size: .72rem; margin-top: 4px; }
+    .sm-table th, .sm-table td {
+      padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--border);
+    }
+    .sm-table th {
+      font-size: .58rem; text-transform: uppercase; letter-spacing: .05em;
+      color: var(--muted); background: var(--surface); font-weight: 700;
+    }
+    .sm-table tbody tr:hover { background: rgba(121,192,255,.04); }
+    .sm-table .num { font-family: 'SF Mono', Menlo, monospace; color: var(--gold); text-align: right; }
+    .sm-table .lvl-cell { color: var(--purple); font-weight: 700; }
+    .sm-buff-pair {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px;
+    }
+    @media (max-width: 600px) { .sm-buff-pair { grid-template-columns: 1fr; } }
+    .sm-buff-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 10px;
+    }
+    .sm-buff-card.excl { border-color: var(--purple); }
+    .sm-buff-label {
+      font-size: .58rem; text-transform: uppercase; letter-spacing: .05em;
+      color: var(--muted); font-weight: 700;
+    }
+    .sm-buff-card.excl .sm-buff-label { color: var(--purple); }
+    .sm-buff-id {
+      font-family: 'SF Mono', Menlo, monospace; font-size: .9rem;
+      color: var(--text); margin-top: 4px;
+    }
+    .sm-note {
+      font-size: .68rem; color: var(--muted); margin-top: 10px;
+      padding: 8px 10px; border-left: 3px solid var(--accent);
+      background: var(--surface); border-radius: 4px;
     }
 
     .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
@@ -714,14 +783,18 @@
   </main>
 
   <footer>
-    <p>Top War — Server 2864 community resource. Game data extracted via <code>TableManager</code> dump + Cocos Creator <code>cc.resources.load</code> pipeline; Hero Swap UI decoded from <code>LocalManager._langData</code>.</p>
-    <p style="margin-top:6px">Page compiled <strong>2026-05-15</strong> · <a href="https://2864tw.com/index.html">2864tw.com</a></p>
+    <p>Page compiled <strong>2026-05-15</strong> · <a href="https://2864tw.com/index.html">2864tw.com</a></p>
     <p style="margin-top:10px"><a href="https://github.com/texnottexas/landing-page" class="shimmer-text">Brought to you by supporters of the fk boats movement</a></p>
   </footer>
 
   <div class="modal-overlay" id="modal">
     <button class="modal-close" id="modal-close-btn">×</button>
     <img class="modal-img" id="modal-img" alt="">
+  </div>
+
+  <div class="modal-overlay" id="skill-modal">
+    <button class="modal-close" id="skill-modal-close-btn">×</button>
+    <div class="skill-modal-box" id="skill-modal-box"></div>
   </div>
 
   <script>
@@ -837,7 +910,7 @@
           quote ? el('div', { class: 'awk-quote' }, '"', quote, '"') : null,
           el('div', { class: 'awk-bio' }, h.bio),
           el('div', { class: 'awk-skills' }, ...h.skills.map(s =>
-            el('div', { class: 'awk-skill', title: s.name + ' (applies buff ' + s.appliedBuff + ', Exclusive-7 swaps to ' + s.exclusive7Buff + ')', on: { click: () => openModal('../' + s.icon) } },
+            el('div', { class: 'awk-skill', title: s.name + ' — click for level scaling + buff IDs', on: { click: () => openSkillModal(h, s) } },
               el('img', { src: '../' + s.icon, alt: s.name, loading: 'lazy' }),
               el('div', { class: 'skn' }, s.name)
             )
@@ -1280,7 +1353,114 @@
     }
     document.getElementById('modal').addEventListener('click', closeModal);
     document.getElementById('modal-close-btn').addEventListener('click', closeModal);
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+    function openSkillModal(hero, skill) {
+      const box = document.getElementById('skill-modal-box');
+      const lvls = skill.levelTable || [];
+      const tableRows = lvls.map(r => el('tr', null,
+        el('td', { class: 'lvl-cell' }, 'Lv.' + r.level),
+        el('td', { class: 'num' }, r.val1_pct || '—'),
+        el('td', { class: 'num' }, r.val2_pct || '—'),
+        el('td', null, r.bonus || '—'),
+        el('td', { class: 'num' }, r.power ? r.power.toLocaleString() : '—'),
+        el('td', { class: 'num' }, r.cost ? (r.cost.split(',').slice(-1)[0] + '×') : '—')
+      ));
+      const tbl = el('table', { class: 'sm-table' },
+        el('thead', null, el('tr', null,
+          el('th', null, 'Lv'),
+          el('th', null, 'Val 1'),
+          el('th', null, 'Val 2'),
+          el('th', null, 'Bonus'),
+          el('th', null, 'Power'),
+          el('th', null, 'Stones')
+        )),
+        el('tbody', null, ...tableRows)
+      );
+
+      const heroPersonaPill = hero.awakenedLabel
+        ? el('span', { class: 'sm-pill gold' }, hero.awakenedLabel)
+        : null;
+      const heroTypePill = el('span', { class: 'sm-pill ' + (hero.type === 'Air' ? 'gold' : '') }, hero.type);
+
+      const content = [
+        el('div', { class: 'sm-head' },
+          el('img', { class: 'sm-icon', src: '../' + skill.icon, alt: skill.name, on: { click: () => openModal('../' + skill.icon) } }),
+          el('div', { class: 'sm-head-meta' },
+            el('div', { class: 'sm-skill-name' }, skill.name),
+            el('div', { class: 'sm-hero-line' },
+              hero.name, ' · #', String(hero.id),
+              heroPersonaPill ? ' · ' : null, heroPersonaPill,
+              ' · ', heroTypePill
+            ),
+            el('div', { class: 'sm-pills' },
+              el('span', { class: 'sm-pill green' }, 'LIVE Phase I'),
+              el('span', { class: 'sm-pill' }, 'Max Lv.' + (lvls.length || 10)),
+              el('span', { class: 'sm-pill' }, 'Slot #' + skill.index + '/4'),
+              skill.appliedBuff ? el('span', { class: 'sm-pill' }, 'Buff ' + skill.appliedBuff) : null
+            )
+          )
+        ),
+
+        el('div', { class: 'sm-section' },
+          el('h4', null, 'Per-level scaling'),
+          el('p', { class: 'muted', style: 'font-size:.7rem; margin-bottom:6px' },
+            'Val 1 and Val 2 are pipe-delimited effect multipliers from the skill row. Bonus is the carried-over Lv.1–8 scalar (clears at Lv.9 once the multi-trigger formula kicks in). Stones = Awakening Stones consumed per level — universal item ID 44301001.'
+          ),
+          tbl
+        ),
+
+        el('div', { class: 'sm-section' },
+          el('h4', null, 'Applied buffs'),
+          el('div', { class: 'sm-buff-pair' },
+            el('div', { class: 'sm-buff-card' },
+              el('div', { class: 'sm-buff-label' }, 'Base — Exclusive Skill 0–6'),
+              el('div', { class: 'sm-buff-id' }, skill.appliedBuff || '—')
+            ),
+            el('div', { class: 'sm-buff-card excl' },
+              el('div', { class: 'sm-buff-label' }, 'Exclusive Skill Lv.7 swap'),
+              el('div', { class: 'sm-buff-id' }, skill.exclusive7Buff || '—')
+            )
+          ),
+          el('p', { class: 'muted', style: 'font-size:.66rem; margin-top:6px' },
+            'When the hero hits Exclusive Skill Lv.7, the base buff is replaced with the upgraded family (21x1101 series). The skill\'s in-game behavior gets a meaningful jump — usually more triggers or a higher damage cap.'
+          )
+        ),
+
+        el('div', { class: 'sm-section' },
+          el('h4', null, 'Skill description (lang status)'),
+          el('p', null, 'Description lang keys are referenced by the awakening_skill row (',
+            el('code', null, 'hero_awake_skill_' + hero.id + '_*'),
+            '), but the player-facing text has not been pushed to ',
+            el('code', null, '_langData'),
+            ' yet. Only the skill name (',
+            el('code', null, 'hero_awake_kill_name' + hero.id + '_' + skill.index),
+            ') resolves in this patch — full description text should ship in the next localization round.'
+          ),
+          el('div', { class: 'sm-note' },
+            'Workaround: the val1/val2 columns above show the raw per-level percentages the engine applies, and the buff IDs let you cross-reference behavior with the live battle log.'
+          )
+        )
+      ];
+
+      replace(box, ...content);
+      document.getElementById('skill-modal').classList.add('active');
+    }
+
+    function closeSkillModal() {
+      document.getElementById('skill-modal').classList.remove('active');
+      const box = document.getElementById('skill-modal-box');
+      if (box) replace(box);
+    }
+
+    document.getElementById('skill-modal').addEventListener('click', (e) => {
+      // Click outside box closes; inside box does not
+      if (e.target.id === 'skill-modal' || e.target.id === 'skill-modal-close-btn') closeSkillModal();
+    });
+    document.getElementById('skill-modal-close-btn').addEventListener('click', closeSkillModal);
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { closeModal(); closeSkillModal(); }
+    });
 
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
