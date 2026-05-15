@@ -1400,11 +1400,23 @@
                wlTotal: (cb.wastelandTotal||0), combatWLs: (cb.combatWLs||0) };
     });
     serverRoles.sort((a, b) => (b.buffSum - a.buffSum) || (b.wlTotal - a.wlTotal));
-    // 2 defend / 3 attack split: top-2 buff stacks defend; remaining 3 attack.
-    serverRoles.forEach((s, i) => { s.role = i < 2 ? 'DEFEND' : 'ATTACK'; s.rank = i+1; });
+    // R9 directive (Tex): close matchup with S3051 → split S2864 and push the
+    // bulk onto attack. So we force S2864 → ATTACK, then pick the top-2 buff
+    // stacks from the REMAINING servers to defend.
+    const HOME_SID = 2864;
+    serverRoles.forEach(s => { s.role = null; });
+    const home = serverRoles.find(s => s.sid === HOME_SID);
+    if (home) home.role = 'ATTACK';
+    const rest = serverRoles.filter(s => !s.role);
+    rest.slice(0, 2).forEach(s => s.role = 'DEFEND');
+    rest.slice(2).forEach(s => s.role = 'ATTACK');
+    serverRoles.forEach((s, i) => { s.rank = i + 1; });
     const defendSids = new Set(serverRoles.filter(s => s.role === 'DEFEND').map(s => s.sid));
     const attackSids = new Set(serverRoles.filter(s => s.role === 'ATTACK').map(s => s.sid));
-    const anchorSid = serverRoles[0].sid;
+    // Defensive anchor = strongest buff stack among the defending servers.
+    const defendingSorted = serverRoles.filter(s => s.role === 'DEFEND')
+      .sort((a, b) => (b.buffSum - a.buffSum) || (b.wlTotal - a.wlTotal));
+    const anchorSid = (defendingSorted[0] || serverRoles[0]).sid;
 
     const players = {};
     for (const z of ally) {
@@ -1426,22 +1438,29 @@
     let baseOffense = ranked.filter(p => attackSids.has(p.sid));
     let baseDefense = ranked.filter(p => defendSids.has(p.sid));
 
-    // Rebalance: shift a small set of attack-pool players to defense as flex-defenders
-    // so the overall split isn't too attack-heavy. Seeded so reload yields same set.
-    const REBALANCE_COUNT = 3;
-    function seededRng(seed) { let s = seed >>> 0; return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; }; }
-    const rng = seededRng(7); // arbitrary stable seed
-    // Fisher-Yates shuffle copy
-    const shuffled = baseOffense.slice();
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    const rebalanced = shuffled.slice(0, REBALANCE_COUNT);
-    const rebKeys = new Set(rebalanced.map(p => p.name + '|' + p.sid));
-    if (rebalanced.length) {
-      baseOffense = baseOffense.filter(p => !rebKeys.has(p.name + '|' + p.sid));
-      baseDefense = [...baseDefense, ...rebalanced].sort((a, b) => b.power - a.power);
+    // R9 rebalance: S2864 is on ATTACK overall, but bigs split — Tex and
+    // PeeWee anchor home defense, plus the next 2 highest-power S2864 names
+    // join them so the defending lane has real teeth. Everyone else from
+    // S2864 stays on attack.
+    const DEFENSE_PIN_NAMES = ['Tex', 'PeeWee'];
+    const HOME_BIGS_TO_DEFENSE = 2;  // # of additional S2864 bigs pulled to defense
+    const movedToDefense = [];
+    // 1) Pinned names first (exact match on home sid)
+    DEFENSE_PIN_NAMES.forEach(nm => {
+      const idx = baseOffense.findIndex(p => p.name === nm && p.sid === HOME_SID);
+      if (idx >= 0) movedToDefense.push(baseOffense.splice(idx, 1)[0]);
+    });
+    // 2) Pull next-N highest-power S2864 names from offense into defense
+    const homeBigsLeft = baseOffense
+      .filter(p => p.sid === HOME_SID)
+      .sort((a, b) => b.power - a.power)
+      .slice(0, HOME_BIGS_TO_DEFENSE);
+    homeBigsLeft.forEach(p => {
+      const idx = baseOffense.indexOf(p);
+      if (idx >= 0) movedToDefense.push(baseOffense.splice(idx, 1)[0]);
+    });
+    if (movedToDefense.length) {
+      baseDefense = [...baseDefense, ...movedToDefense].sort((a, b) => b.power - a.power);
     }
 
     // No stage-specific player pins — defense roster is purely data-driven.
@@ -1523,19 +1542,21 @@
     };
     const stages = [
       {
-        id:'s1', time:'0–15m', name:'Stage 1', focus:'L1 + L2 Ruins',
+        id:'s1', time:'0–15m', name:'Stage 1', focus:'L1 + L2 Ruins — bodies over roving',
         attack: [
-          { type:'Enemy L2 #1', pts:20, slots:3 },
-          { type:'Enemy L2 #2', pts:20, slots:3 },
-          { type:'Enemy L1 #1', pts:10, slots:2 },
-          { type:'Enemy L1 #2', pts:10, slots:2 },
-          { type:'Enemy L1 #3', pts:10, slots:2 },
+          { type:'Enemy L2 #1', pts:20, slots:4 },
+          { type:'Enemy L2 #2', pts:20, slots:4 },
+          { type:'Enemy L1 #1', pts:10, slots:3 },
+          { type:'Enemy L1 #2', pts:10, slots:3 },
+          { type:'Enemy L1 #3', pts:10, slots:3 },
           { type:'Reserve / Roving', pts:0, reserve:true }
         ],
         defend: [
-          { type:'Our L2 #1', pts:20, slots:2 },
-          { type:'Our L2 #2', pts:20, slots:2 },
-          { type:'Our L1 (3)', pts:30, slots:3 },
+          { type:'Our L2 #1', pts:20, slots:3 },
+          { type:'Our L2 #2', pts:20, slots:3 },
+          { type:'Our L1 #1', pts:10, slots:2 },
+          { type:'Our L1 #2', pts:10, slots:2 },
+          { type:'Our L1 #3', pts:10, slots:2 },
           { type:'Reserve / Roving', pts:0, reserve:true }
         ]
       },
@@ -1774,9 +1795,9 @@
         el('span', { class:'stage-name' }, 'Stage 1'),
         el('span', { class:'stage-focus' }, 'Focus: L1 + L2 Ruins')
       ),
-      stageRow('Defense', [el('b', null, 'Top 2 defenders'), ' split across L2 #1 / L2 #2 (avoid stacking both biggest hitters on one ruin). MM build 2 weakening towers per L2. Hold L1s.']),
-      stageRow('Offense', ['Top Seal Team push enemy L2s (best 20/min target). Strike Team kills their pushers.']),
-      stageRow('Scouts', ['Cap empty enemy L1s (10/min each, real points). Smash enemy weakening towers.']),
+      stageRow('Defense', [el('b', null, 'Tex + PeeWee anchor'), ' the home L2s. Rest of the L2 + L1 coverage is drawn from the ', el('b', null, 'cross-server ally Roving pool'), ' (5 servers deep) — every L1 gets a 2-player babysit so nothing sits bare.']),
+      stageRow('Offense', [el('b', null, 'Attack lane (S2864 + S1421 + S2474)'), ' pushes enemy L2s — 4 bodies per ruin, best 20/min target. Strike Team kills their pushers.']),
+      stageRow('Scouts', ['3 bodies on each enemy L1 — bulk pulled from Roving across the full ally team. Cap empties first (10/min × 3 = 30/min if all held), then smash enemy weakening towers.']),
       stageRow('Debuffs', [el('b', null, 'Magnetic Field'), ' on enemy whales pushing our L2s — no relocate = stuck after death, walks back.']),
       stageRow('Prep', ['At ~10m, position weakening towers near L3 spawn for the 15m unlock.'])
     ));
@@ -1900,9 +1921,11 @@
     });
     const assignSection = el('div', { class:'strat-section' },
       el('h4', null, 'Server Lane Assignment'),
-      el('div', { class:'strat-note' }, '2 servers DEFEND, 3 ATTACK. Defenders = top-2 combat-buff stacks; attackers = the remaining 3. ',
-        el('b', null, '3 attack-pool players additionally rebalanced to defense as flex-defenders'),
-        ' so the lane split isn\'t too attack-heavy.'
+      el('div', { class:'strat-note' }, '2 servers DEFEND, 3 ATTACK. ',
+        el('b', null, 'R9: S2864 → ATTACK'),
+        ' (close matchup with S3051, push the bulk forward). Defenders = top-2 combat-buff stacks from the remaining 4 servers. ',
+        el('b', null, 'Tex + PeeWee + 2 more S2864 bigs pulled across as defensive anchors'),
+        ' — the rest of the home defense is filled from the cross-server Roving pool.'
       ),
       srvRoleHost,
       el('h4', { style:'margin-top:.85rem' }, 'Suggested Stage Assignment'),
