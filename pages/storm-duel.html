@@ -1399,17 +1399,23 @@
       return { sid: z.sid, leader: z.squad?.leader, buffSum, top10Pwr,
                wlTotal: (cb.wastelandTotal||0), combatWLs: (cb.combatWLs||0) };
     });
-    serverRoles.sort((a, b) => (b.buffSum - a.buffSum) || (b.wlTotal - a.wlTotal));
-    // R9 directive (Tex): close matchup with S3051 → split S2864 and push the
-    // bulk onto attack. So we force S2864 → ATTACK, then pick the top-2 buff
-    // stacks from the REMAINING servers to defend.
+    // R9 directive (Tex): explicit 3-defend / 2-attack split — S655, S1421,
+    // S2474 defend; S3885 and S2864 attack. Overrides the auto buff-stack
+    // logic for this round.
     const HOME_SID = 2864;
-    serverRoles.forEach(s => { s.role = null; });
-    const home = serverRoles.find(s => s.sid === HOME_SID);
-    if (home) home.role = 'ATTACK';
-    const rest = serverRoles.filter(s => !s.role);
-    rest.slice(0, 2).forEach(s => s.role = 'DEFEND');
-    rest.slice(2).forEach(s => s.role = 'ATTACK');
+    const R9_DEFEND_SIDS = new Set([655, 1421, 2474]);
+    const R9_ATTACK_SIDS = new Set([3885, 2864]);
+    serverRoles.forEach(s => {
+      if (R9_DEFEND_SIDS.has(s.sid))      s.role = 'DEFEND';
+      else if (R9_ATTACK_SIDS.has(s.sid)) s.role = 'ATTACK';
+      else                                s.role = 'ATTACK'; // fallback
+    });
+    // Display order: defenders first (sorted by buff stack desc), then
+    // attackers (sorted by buff stack desc).
+    serverRoles.sort((a, b) => {
+      if (a.role !== b.role) return a.role === 'DEFEND' ? -1 : 1;
+      return (b.buffSum - a.buffSum) || (b.wlTotal - a.wlTotal);
+    });
     serverRoles.forEach((s, i) => { s.rank = i + 1; });
     const defendSids = new Set(serverRoles.filter(s => s.role === 'DEFEND').map(s => s.sid));
     const attackSids = new Set(serverRoles.filter(s => s.role === 'ATTACK').map(s => s.sid));
@@ -1796,7 +1802,7 @@
         el('span', { class:'stage-focus' }, 'Focus: L1 + L2 Ruins')
       ),
       stageRow('Defense', [el('b', null, 'Tex + PeeWee anchor'), ' the home L2s. Rest of the L2 + L1 coverage is drawn from the ', el('b', null, 'cross-server ally Roving pool'), ' (5 servers deep) — every L1 gets a 2-player babysit so nothing sits bare.']),
-      stageRow('Offense', [el('b', null, 'Attack lane (S2864 + S1421 + S2474)'), ' pushes enemy L2s — 4 bodies per ruin, best 20/min target. Strike Team kills their pushers.']),
+      stageRow('Offense', [el('b', null, 'Attack lane (S2864 + S3885)'), ' pushes enemy L2s — 4 bodies per ruin, best 20/min target. Strike Team kills their pushers.']),
       stageRow('Scouts', ['3 bodies on each enemy L1 — bulk pulled from Roving across the full ally team. Cap empties first (10/min × 3 = 30/min if all held), then smash enemy weakening towers.']),
       stageRow('Debuffs', [el('b', null, 'Magnetic Field'), ' on enemy whales pushing our L2s — no relocate = stuck after death, walks back.']),
       stageRow('Prep', ['At ~10m, position weakening towers near L3 spawn for the 15m unlock.'])
@@ -1921,9 +1927,9 @@
     });
     const assignSection = el('div', { class:'strat-section' },
       el('h4', null, 'Server Lane Assignment'),
-      el('div', { class:'strat-note' }, '2 servers DEFEND, 3 ATTACK. ',
-        el('b', null, 'R9: S2864 → ATTACK'),
-        ' (close matchup with S3051, push the bulk forward). Defenders = top-2 combat-buff stacks from the remaining 4 servers. ',
+      el('div', { class:'strat-note' }, '3 servers DEFEND, 2 ATTACK. ',
+        el('b', null, 'R9: S655 + S1421 + S2474 → DEFEND, S3885 + S2864 → ATTACK'),
+        ' (close matchup with S3051, push the bulk forward with S2864 + S3885 power). ',
         el('b', null, 'Tex + PeeWee + 2 more S2864 bigs pulled across as defensive anchors'),
         ' — the rest of the home defense is filled from the cross-server Roving pool.'
       ),
