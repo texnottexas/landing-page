@@ -47,6 +47,13 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 @media (max-width:560px){.sb-hero h1{font-size:1.3rem;}.sb-hero .sb-sub{font-size:.85rem;}.sb-hero-mascot{width:80px;}.sb-hero-mascot img{width:80px;max-height:120px;}}
 @media (max-width:380px){.sb-hero-mascot{display:none;}}
 
+/* Under-construction facade card */
+.sb-uc{background:repeating-linear-gradient(135deg,rgba(210,153,34,.08) 0 14px,rgba(210,153,34,.16) 14px 28px),var(--card);border:1px solid rgba(210,153,34,.5);border-radius:14px;padding:1.4rem 1.2rem;margin-bottom:1.2rem;text-align:center;}
+.sb-uc-pill{display:inline-flex;align-items:center;gap:.35rem;background:rgba(210,153,34,.16);border:1px solid rgba(210,153,34,.45);color:var(--yellow);font-size:.7rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:.25rem .65rem;border-radius:999px;margin-bottom:.65rem;}
+.sb-uc-h{font-size:1.25rem;font-weight:900;color:var(--text);letter-spacing:-.01em;margin-bottom:.4rem;}
+.sb-uc-sub{font-size:.85rem;color:var(--muted);max-width:480px;margin:0 auto;line-height:1.55;}
+@media (max-width:480px){.sb-uc-h{font-size:1.05rem;} .sb-uc-sub{font-size:.78rem;}}
+
 /* Rules */
 .sb-rules{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:.9rem 1rem;margin-bottom:1.2rem;}
 .sb-rules-title{font-size:.7rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:.5rem;display:flex;align-items:center;gap:.4rem;}
@@ -441,6 +448,25 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
   var _allyRosters={}; // sid → [{name, power, merit, avatar_url}]
   var _assigns=null;   // built by buildAssignments
 
+  // ===== Facade mode (default) → 3 taps on the hero card reveals the
+  // real plan for the rest of the session. Mirrors storm-duel.html. =====
+  var FACADE_KEY='sbp-real-v1';
+  function isRealMode(){ try { return sessionStorage.getItem(FACADE_KEY)==='1'; } catch(e){ return false; } }
+  function setRealMode(v){
+    try {
+      if(v) sessionStorage.setItem(FACADE_KEY,'1');
+      else sessionStorage.removeItem(FACADE_KEY);
+    } catch(e){}
+    location.reload();
+  }
+  var _heroTapCount=0, _heroTapTimer=null;
+  function bumpHeroTap(){
+    _heroTapCount++;
+    clearTimeout(_heroTapTimer);
+    if(_heroTapCount>=3){ _heroTapCount=0; setRealMode(!isRealMode()); return; }
+    _heroTapTimer=setTimeout(function(){ _heroTapCount=0; }, 1200);
+  }
+
   var DATA_URL=(location.hostname==='localhost'||location.hostname==='127.0.0.1')
     ? '../data/storm-duel.json?_t='+Date.now()
     : 'https://raw.githubusercontent.com/texnottexas/2864tw.com-landing-page/main/data/storm-duel.json?_t='+Date.now();
@@ -506,9 +532,14 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     while(root.firstChild)root.removeChild(root.firstChild);
     var round=(data.metadata||{}).round||'?';
     document.getElementById('hdrSub').textContent=' · R'+round;
+    buildHero(round,data,root);
+    if(!isRealMode()){
+      buildUnderConstruction(root);
+      buildFoot(root);
+      return;
+    }
     var assigns=buildAssignments(data);
     _assigns=assigns;
-    buildHero(round,data,root);
     buildSearch(root);
     buildRules(root);
     buildLaneStrip(data,root);
@@ -615,6 +646,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 
   function buildHero(round, data, root){
     var hero=el('div','sb-hero');
+    hero.addEventListener('click', bumpHeroTap);
     var textWrap=el('div','sb-hero-text');
     textWrap.appendChild(el('div','sb-pill','Storm Duel · Round '+round));
     var h1=el('h1');
@@ -636,6 +668,16 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     mascot.appendChild(img);
     hero.appendChild(mascot);
     root.appendChild(hero);
+  }
+
+  function buildUnderConstruction(root){
+    var box=el('div','sb-uc');
+    box.appendChild(el('div','sb-uc-pill','Under construction'));
+    var h=el('div','sb-uc-h','Plan still being drafted.');
+    box.appendChild(h);
+    var sub=el('div','sb-uc-sub','Roles, server splits, and stage assignments are not finalized yet. Check back closer to fight time.');
+    box.appendChild(sub);
+    root.appendChild(box);
   }
 
   function buildCountdown(startTs, endTs){
