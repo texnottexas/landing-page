@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://www.clarity.ms https://*.clarity.ms https://c.bing.com; style-src 'unsafe-inline'; img-src 'self' data: https://h5.topwargame.com https://*.clarity.ms https://c.bing.com; connect-src 'self' https://*.clarity.ms https://c.bing.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self';">
-  <title>New Hero System — Heroes Awakening &amp; Exchanging | S2864</title>
+  <title>Hyper Awakening &amp; Hero Swap — New Hero System | S2864</title>
   <meta name="theme-color" content="#0d1117">
-  <meta name="description" content="Top War's New Hero System — Heroes Awakening + Heroes Exchanging. Reconciled from in-game tables and Rivergame Discord posts. Pool/Core exchange calculator, hero skills, mutated alt-forms.">
+  <meta name="description" content="Top War's Hyper Awakening + Hero Swap. Live patch data — Phase I awakened personas, 24 awakening skills, 40+ Hero Swap UI rules + tooltips. Decoded from the live game client 2026-05-15.">
   <style>
     :root {
       --bg: #0d1117; --surface: #161b22; --card: #1c2128;
@@ -44,26 +44,33 @@
     }
     .home-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-    .banner {
+    .banner-row {
       width: 100%; max-width: 1100px;
-      margin: 0 auto 18px; display: block;
-      border-radius: 12px; overflow: hidden;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      margin-bottom: 18px;
-      position: relative;
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+      margin: 0 auto 18px;
     }
-    .banner img { width: 100%; display: block; }
-    @media (min-width: 700px) {
-      .banner { max-width: 640px; }
+    @media (max-width: 700px) { .banner-row { grid-template-columns: 1fr; } }
+    .phase-banner {
+      position: relative; border-radius: 10px; overflow: hidden;
+      border: 1px solid var(--border); background: var(--surface);
+      cursor: pointer; transition: border-color .15s, transform .15s;
     }
-    .banner-tag {
-      position: absolute; left: 14px; bottom: 14px;
+    .phase-banner:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .phase-banner.live { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(210,153,34,.18); }
+    .phase-banner img {
+      width: 100%; aspect-ratio: 16/9; object-fit: cover; object-position: center 40%;
+      display: block; image-rendering: -webkit-optimize-contrast;
+    }
+    .phase-banner-tag {
+      position: absolute; left: 8px; bottom: 8px;
       background: rgba(13,17,23,.85); border: 1px solid var(--border);
-      padding: 6px 11px; border-radius: 6px;
-      font-size: .8rem; backdrop-filter: blur(6px);
+      padding: 5px 10px; border-radius: 6px;
+      font-size: .68rem; backdrop-filter: blur(6px);
     }
-    .banner-tag span { color: var(--gold); font-weight: 700; }
+    .phase-banner-tag .tag-name { font-weight: 700; }
+    .phase-banner-tag .tag-status.live { color: var(--gold); font-weight: 700; }
+    .phase-banner-tag .tag-status.cs { color: var(--muted); font-weight: 700; }
+    .phase-banner-tag .tag-status.live::before { content: '● '; }
 
     main { width: 100%; max-width: 1100px; }
     section { margin-bottom: 28px; }
@@ -78,8 +85,9 @@
       border-radius: 10px; text-transform: uppercase; letter-spacing: .08em;
       background: var(--card); color: var(--muted); border: 1px solid var(--border);
     }
+    h2 .h2-tag.live    { color: var(--gold); border-color: var(--gold); }
     h2 .h2-tag.discord { color: var(--purple); border-color: var(--purple); }
-    h2 .h2-tag.game    { color: var(--green);  border-color: var(--green); }
+    h2 .h2-tag.game    { color: var(--green); border-color: var(--green); }
     h3 { font-size: .92rem; color: var(--text); margin-bottom: 6px; font-weight: 600; }
     p { font-size: .86rem; margin-bottom: 8px; color: var(--text); }
     .muted { color: var(--muted); font-size: .78rem; }
@@ -90,13 +98,15 @@
     }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
     .grid-6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
     @media (max-width: 700px) {
-      .grid-2, .grid-3, .grid-6 { grid-template-columns: 1fr 1fr; }
+      .grid-2, .grid-3, .grid-4, .grid-6 { grid-template-columns: 1fr 1fr; }
       h2 { font-size: 1rem; }
     }
     @media (max-width: 480px) {
       .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .grid-4 { grid-template-columns: 1fr 1fr; }
       .grid-6 { grid-template-columns: repeat(3, 1fr); }
     }
 
@@ -113,7 +123,134 @@
       font-size: .56rem; font-weight: 700; background: var(--gold); color: #1c1300;
       letter-spacing: .04em;
     }
+    .live-badge {
+      display: inline-block; padding: 1px 7px; border-radius: 8px;
+      font-size: .56rem; font-weight: 700; background: var(--green); color: #0d1117;
+      letter-spacing: .04em;
+    }
+    .live-badge::before { content: '● '; }
+    .cs-badge {
+      display: inline-block; padding: 1px 6px; border-radius: 8px;
+      font-size: .56rem; font-weight: 700; background: var(--card); color: var(--muted);
+      letter-spacing: .04em; border: 1px solid var(--border);
+    }
 
+    /* AWAKENED PERSONA CARDS */
+    .awk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+    .awk-card {
+      background: var(--card); border: 1px solid var(--gold);
+      border-radius: 10px; overflow: hidden; display: flex; flex-direction: column;
+    }
+    .awk-header {
+      padding: 14px 14px 10px; display: flex; gap: 12px; align-items: center;
+      background: linear-gradient(180deg, rgba(210,153,34,.10), rgba(28,33,40,0));
+    }
+    .awk-icon {
+      width: 84px; height: 100px; border-radius: 8px;
+      background: #0d1117; border: 1px solid var(--border); object-fit: cover;
+      flex-shrink: 0; cursor: pointer;
+    }
+    .awk-id-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+    .awk-name { font-size: 1.05rem; font-weight: 700; }
+    .awk-label { font-size: .82rem; color: var(--gold); font-weight: 700; }
+    .awk-ult { font-size: .68rem; color: var(--muted); margin-top: 6px; }
+    .awk-ult strong { color: var(--accent); }
+    .awk-bio { padding: 0 14px 12px; font-size: .76rem; line-height: 1.55; color: var(--text); }
+    .awk-quote {
+      margin: 0 14px 12px; padding: 7px 10px;
+      border-left: 3px solid var(--gold); background: var(--surface);
+      font-style: italic; font-size: .76rem; color: var(--text);
+    }
+    .awk-skills {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+      padding: 0 14px 14px;
+    }
+    .awk-skill {
+      display: flex; flex-direction: column; align-items: center; text-align: center;
+      gap: 4px; cursor: pointer;
+    }
+    .awk-skill img {
+      width: 100%; aspect-ratio: 1; border-radius: 8px;
+      background: #0d1117; border: 1px solid var(--border);
+      image-rendering: -webkit-optimize-contrast;
+    }
+    .awk-skill:hover img { border-color: var(--accent); }
+    .awk-skill .skn { font-size: .64rem; font-weight: 600; line-height: 1.15; }
+
+    /* QUEUED HEROES */
+    .queue-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px;
+    }
+    .queue-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 6px; text-align: center;
+    }
+    .queue-icon {
+      width: 50px; height: 60px; border-radius: 6px;
+      background: #0d1117; border: 1px solid var(--border);
+      object-fit: cover; margin: 0 auto 4px; display: block;
+    }
+    .queue-name { font-size: .72rem; font-weight: 600; margin-bottom: 2px; line-height: 1.2; }
+    .queue-meta { font-size: .58rem; color: var(--muted); }
+
+    /* BUFF FAMILY MATRIX */
+    .buff-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .buff-table { width: 100%; border-collapse: collapse; font-size: .74rem; }
+    .buff-table th, .buff-table td {
+      padding: 6px 9px; text-align: left; border-bottom: 1px solid var(--border);
+    }
+    .buff-table th {
+      background: var(--surface); color: var(--muted);
+      font-size: .62rem; text-transform: uppercase; letter-spacing: .05em;
+      font-weight: 700; position: sticky; top: 0;
+    }
+    .buff-table tbody tr:hover { background: rgba(121,192,255,.04); }
+    .buff-table .num-cell { font-family: 'SF Mono', Menlo, monospace; color: var(--gold); }
+    .buff-table code {
+      background: var(--card); padding: 1px 5px; border-radius: 4px; font-size: .92em;
+    }
+
+    /* CURRENCY CARD */
+    .currency-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .currency-icon {
+      width: 64px; height: 64px; border-radius: 8px;
+      background: #0d1117; border: 1px solid var(--gold); object-fit: contain; padding: 4px;
+    }
+    .currency-meta { flex: 1; min-width: 200px; }
+    .currency-meta .cn { font-weight: 700; color: var(--gold); font-size: .96rem; }
+    .currency-meta .cd { font-size: .76rem; color: var(--text); line-height: 1.5; margin-top: 4px; }
+    .currency-meta .ci { font-size: .62rem; color: var(--muted); margin-top: 4px; }
+
+    /* HERO SWAP */
+    .swap-rules-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;
+    }
+    .rule-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px 14px;
+      border-left: 3px solid var(--red);
+    }
+    .rule-card.warn { border-left-color: var(--gold); }
+    .rule-card.info { border-left-color: var(--accent); }
+    .rule-card .rule-lbl {
+      font-size: .58rem; text-transform: uppercase; letter-spacing: .06em;
+      font-weight: 700; color: var(--muted); margin-bottom: 5px;
+    }
+    .rule-card .rule-body { font-size: .78rem; line-height: 1.55; }
+    .rule-card .rule-body strong { color: var(--gold); }
+    .ui-flow { padding-left: 20px; }
+    .ui-flow li { font-size: .8rem; margin-bottom: 6px; line-height: 1.55; }
+
+    .tooltip-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; font-size: .74rem; }
+    @media (max-width: 700px) { .tooltip-list { grid-template-columns: 1fr; } }
+    .tooltip-row {
+      padding: 4px 0; border-bottom: 1px dashed var(--border);
+      display: flex; gap: 8px; align-items: flex-start;
+    }
+    .tooltip-row code { color: var(--muted); font-size: .62rem; flex-shrink: 0; }
+    .tooltip-row .tt { color: var(--text); line-height: 1.4; }
+
+    /* HERO CALC */
     .hero-card {
       background: var(--card); border: 1px solid var(--border);
       border-radius: 8px; padding: 8px;
@@ -136,8 +273,11 @@
     }
     .hero-name { font-size: .72rem; font-weight: 600; margin-top: 5px; line-height: 1.2; }
     .hero-id { font-size: .58rem; color: var(--muted); }
-    .hero-card .new-badge {
-      position: absolute; top: 4px; right: 4px;
+    .hero-card .new-badge { position: absolute; top: 4px; right: 4px; }
+    .hero-card .awk-pill {
+      position: absolute; top: 4px; left: 4px;
+      font-size: .52rem; padding: 1px 5px; border-radius: 6px;
+      background: rgba(210,153,34,.85); color: #1c1300; font-weight: 700;
     }
 
     .calc-board { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: stretch; }
@@ -156,9 +296,7 @@
       padding: 1px 7px; border-radius: 10px; font-size: .62rem;
       color: var(--text); letter-spacing: 0;
     }
-    .filter-row {
-      display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;
-    }
+    .filter-row { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
     .filter-btn {
       background: var(--card); border: 1px solid var(--border); color: var(--muted);
       padding: 4px 10px; border-radius: 14px; font-size: .68rem;
@@ -166,61 +304,30 @@
     }
     .filter-btn:hover { color: var(--text); border-color: var(--accent); }
     .filter-btn.active { background: var(--accent); color: #0d1117; border-color: var(--accent); font-weight: 700; }
-    .pool-grid, .core-grid {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
-    }
+    .pool-grid, .core-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
     @media (max-width: 700px) {
       .calc-board { grid-template-columns: 1fr; }
       .calc-arrow { font-size: 1.6rem; padding: 6px 0; transform: rotate(90deg); }
       .pool-grid, .core-grid { grid-template-columns: repeat(3, 1fr); }
     }
 
-    .mut-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px;
-    }
-    .mut-card {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: 10px; padding: 12px; display: flex; gap: 12px;
-      transition: border-color .15s;
-    }
-    .mut-card:hover { border-color: var(--accent); }
-    .mut-img-wrap { flex-shrink: 0; width: 76px; }
-    .mut-icon {
-      width: 76px; height: 92px; border-radius: 6px;
-      background: #0d1117; border: 1px solid var(--border);
-      object-fit: cover; cursor: pointer;
-      transform: rotate(180deg);
-    }
-    .mut-info { flex: 1; min-width: 0; }
-    .mut-name { font-size: .82rem; font-weight: 700; }
-    .mut-base { font-size: .68rem; color: var(--muted); margin-bottom: 6px; }
-    .mut-skill {
-      font-size: .7rem; color: var(--text); margin-top: 6px;
-      padding-top: 6px; border-top: 1px dashed var(--border);
-    }
-    .mut-skill-label {
-      font-size: .55rem; color: var(--muted); text-transform: uppercase;
-      letter-spacing: .06em; font-weight: 600; margin-bottom: 2px;
-    }
-
+    /* SPOTLIGHTS */
     .spot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
     .spot-card {
       background: var(--card); border: 1px solid var(--border);
       border-radius: 10px; overflow: hidden; display: flex; flex-direction: column;
     }
     .spot-card.is-new { border-color: var(--gold); }
+    .spot-card.is-live { box-shadow: inset 0 0 0 1px var(--green); }
     .spot-portrait {
       width: 100%; aspect-ratio: 16/9; object-fit: cover;
       background: #0d1117; cursor: pointer;
     }
     .spot-body { padding: 12px 14px; }
-    .spot-title { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .spot-title { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
     .spot-title h3 { font-size: 1.05rem; }
     .spot-meta { font-size: .68rem; color: var(--muted); margin-bottom: 8px; }
-    .spot-skill-name {
-      color: var(--gold); font-size: .82rem; font-weight: 700;
-      margin: 8px 0 4px;
-    }
+    .spot-skill-name { color: var(--gold); font-size: .82rem; font-weight: 700; margin: 8px 0 4px; }
     .spot-block { font-size: .76rem; line-height: 1.55; margin-bottom: 4px; }
     .spot-block .lbl {
       display: inline-block; font-size: .58rem; color: var(--accent);
@@ -240,20 +347,15 @@
     }
     .spot-extra-link:hover { color: var(--accent); border-color: var(--accent); }
 
-    .aw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-    .aw-card {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: 8px; overflow: hidden; cursor: pointer;
-      transition: border-color .15s, transform .15s;
+    /* PHASE LISTS */
+    .phase-section { margin-bottom: 16px; }
+    .phase-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;
     }
-    .aw-card:hover { border-color: var(--accent); transform: translateY(-2px); }
-    .aw-card img { width: 100%; display: block; aspect-ratio: 16/9; object-fit: cover; }
-    .aw-card .aw-cap {
-      padding: 8px 10px; font-size: .76rem; font-weight: 600;
-      display: flex; justify-content: space-between; align-items: center; gap: 6px;
-    }
-    .aw-cap .src { font-size: .6rem; color: var(--muted); font-weight: 400; }
+    .phase-header h3 { font-size: 1rem; }
+    .phase-meta { font-size: .66rem; color: var(--muted); }
 
+    /* Q&A list */
     .qa-list details {
       background: var(--card); border: 1px solid var(--border);
       border-radius: 8px; padding: 10px 14px; margin-bottom: 8px;
@@ -268,15 +370,12 @@
     .qa-list .qa-a { font-size: .8rem; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
     .qa-list .qa-src { font-size: .65rem; color: var(--muted); margin-top: 4px; font-style: italic; }
 
-    .timeline {
-      list-style: none; border-left: 2px solid var(--border);
-      padding-left: 16px; margin-left: 6px;
-    }
+    /* timeline */
+    .timeline { list-style: none; border-left: 2px solid var(--border); padding-left: 16px; margin-left: 6px; }
     .timeline li { margin-bottom: 12px; position: relative; padding-left: 4px; }
     .timeline li::before {
       content: ''; position: absolute; width: 10px; height: 10px;
-      border-radius: 50%; background: var(--accent);
-      left: -22px; top: 5px;
+      border-radius: 50%; background: var(--accent); left: -22px; top: 5px;
     }
     .timeline .t-date { font-size: .66rem; color: var(--muted); font-weight: 600; }
     .timeline .t-title { font-size: .82rem; font-weight: 600; }
@@ -286,21 +385,6 @@
       color: var(--accent); margin-left: 6px; vertical-align: middle;
     }
 
-    .phase-card {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: 10px; padding: 14px; margin-bottom: 10px;
-      border-left: 4px solid var(--accent);
-    }
-    .phase-card.p2 { border-left-color: var(--gold); }
-    .phase-card.p3 { border-left-color: var(--green); }
-    .phase-num {
-      font-size: .58rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em;
-      font-weight: 700; margin-bottom: 4px;
-    }
-    .phase-card h3 { font-size: 1rem; margin-bottom: 6px; }
-    .phase-card ul { padding-left: 18px; margin-top: 6px; }
-    .phase-card li { font-size: .76rem; color: var(--text); margin-bottom: 3px; }
-
     .modal-overlay {
       display: none; position: fixed; inset: 0; z-index: 1000;
       background: rgba(0,0,0,.85); align-items: center; justify-content: center;
@@ -309,8 +393,7 @@
     .modal-overlay.active { display: flex; }
     .modal-img {
       max-width: min(1200px, 95vw); max-height: 90vh; border-radius: 8px;
-      border: 1px solid var(--border);
-      box-shadow: 0 8px 32px rgba(0,0,0,.8);
+      border: 1px solid var(--border); box-shadow: 0 8px 32px rgba(0,0,0,.8);
     }
     .modal-close {
       position: fixed; top: 16px; right: 16px;
@@ -319,9 +402,7 @@
       font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
     }
 
-    .gallery {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px;
-    }
+    .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
     .gallery-item {
       background: var(--card); border: 1px solid var(--border); border-radius: 6px;
       padding: 6px; cursor: pointer; text-align: center; transition: border-color .15s;
@@ -355,7 +436,6 @@
       animation: footer-shimmer 6s linear infinite;
       text-decoration: none;
     }
-    .shimmer-text:hover { text-decoration: none; }
 
     .icon-home { width: 16px; height: 16px; fill: currentColor; }
     .source-line { font-size: .68rem; color: var(--muted); margin-top: 6px; font-style: italic; }
@@ -371,7 +451,7 @@
     .tabs {
       width: 100%; max-width: 1100px;
       display: flex; gap: 6px; margin-bottom: 18px;
-      border-bottom: 1px solid var(--border); padding-bottom: 0;
+      border-bottom: 1px solid var(--border);
     }
     .tab-btn {
       background: var(--card); border: 1px solid var(--border); border-bottom: none;
@@ -398,199 +478,134 @@
       .tabs { gap: 4px; flex-wrap: wrap; }
       .tab-btn { padding: 7px 10px; font-size: .76rem; }
     }
-
-    /* Hero Association tab */
-    .ha-status {
-      background: linear-gradient(180deg, rgba(210,153,34,.08), rgba(13,17,23,0));
-      border: 1px solid rgba(210,153,34,.4);
-      border-radius: 10px; padding: 14px 16px; margin-bottom: 18px;
-    }
-    .ha-status .ha-status-tag {
-      display: inline-block; padding: 2px 9px; border-radius: 10px;
-      font-size: .58rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
-      background: var(--gold); color: #1c1300; margin-bottom: 6px;
-    }
-    .ha-meta { font-size: .68rem; color: var(--muted); margin-top: 8px; line-height: 1.6; }
-    .ha-meta code { background: var(--card); padding: 1px 5px; border-radius: 4px; font-size: .92em; }
-
-    .ha-building-fig {
-      float: right; margin: 0 0 10px 14px;
-      display: flex; flex-direction: column; align-items: center;
-      background: #0d1117; padding: 10px; border-radius: 8px;
-      border: 1px solid var(--border); width: 130px;
-    }
-    .ha-building-fig img {
-      width: 100px; height: auto;
-      transform: rotate(180deg);
-      image-rendering: -webkit-optimize-contrast;
-    }
-    .ha-building-fig .cap { font-size: .58rem; color: var(--muted); margin-top: 6px; text-align: center; }
-
-    .lineup-grid {
-      display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 8px;
-    }
-    @media (max-width: 700px) { .lineup-grid { grid-template-columns: repeat(3, 1fr); } }
-    @media (max-width: 480px) { .lineup-grid { grid-template-columns: repeat(2, 1fr); } }
-    .lineup-card {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: 8px; padding: 10px; text-align: center; position: relative;
-    }
-    .lineup-card .slot-num {
-      position: absolute; top: 6px; left: 8px;
-      background: var(--surface); border: 1px solid var(--border);
-      width: 22px; height: 22px; border-radius: 50%;
-      font-size: .62rem; font-weight: 700; color: var(--muted);
-      display: flex; align-items: center; justify-content: center;
-    }
-    .lineup-card img { width: 60px; height: 60px; border-radius: 8px; border: 1px solid var(--border); background: #0d1117; object-fit: cover; }
-    .lineup-card .ln-name { font-size: .76rem; font-weight: 700; margin-top: 6px; }
-    .lineup-card .ln-id { font-size: .58rem; color: var(--muted); }
-    .lineup-card .ln-g123 {
-      margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border);
-      font-size: .58rem; color: var(--purple);
-    }
-
-    .ha-cost-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;
-    }
-    .ha-cost-cell {
-      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-      padding: 10px; text-align: center;
-    }
-    .ha-cost-cell .num { font-size: 1.3rem; font-weight: 800; color: var(--gold); display: block; }
-    .ha-cost-cell .lbl { font-size: .68rem; color: var(--muted); margin-top: 2px; }
-
-    .buff-table {
-      width: 100%; border-collapse: collapse; margin-top: 8px;
-      font-size: .76rem;
-    }
-    .buff-table th, .buff-table td {
-      padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left;
-    }
-    .buff-table th { font-size: .64rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
-    .buff-table tbody tr:hover { background: rgba(121,192,255,.05); }
-    .buff-table .num-cell { font-variant-numeric: tabular-nums; text-align: right; color: var(--gold); font-weight: 700; }
-    .buff-table .branch-pill {
-      display: inline-block; padding: 1px 7px; border-radius: 8px;
-      font-size: .58rem; font-weight: 700; border: 1px solid currentColor;
-    }
-    .buff-table .branch-Army { color: var(--army); }
-    .buff-table .branch-Navy { color: var(--navyType); }
-    .buff-table .branch-Air  { color: var(--air); }
-    .buff-table-wrap { overflow-x: auto; }
-    @media (max-width: 600px) {
-      .buff-table { font-size: .7rem; }
-      .buff-table th, .buff-table td { padding: 6px 5px; }
-    }
-
-    .ha-flowlist { list-style: none; margin: 0; padding: 0; counter-reset: flow; }
-    .ha-flowlist li {
-      padding: 8px 12px 8px 38px; position: relative;
-      border-left: 2px solid var(--border); margin-left: 12px;
-      font-size: .76rem; color: var(--muted);
-    }
-    .ha-flowlist li::before {
-      counter-increment: flow; content: counter(flow);
-      position: absolute; left: -14px; top: 6px;
-      width: 24px; height: 24px; border-radius: 50%;
-      background: var(--accent); color: #0d1117;
-      font-size: .62rem; font-weight: 800;
-      display: flex; align-items: center; justify-content: center;
-    }
-
-    .ha-missing-keys {
-      display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px;
-    }
-    .ha-missing-keys code {
-      background: rgba(248,81,73,.12); border: 1px solid rgba(248,81,73,.35);
-      color: #ffb4b4; padding: 2px 7px; border-radius: 4px;
-      font-size: .66rem;
-    }
-    .ha-langs {
-      display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;
-    }
-    .ha-langs span {
-      background: var(--card); border: 1px solid var(--border);
-      padding: 2px 7px; border-radius: 4px; font-size: .62rem; color: var(--muted);
-      font-family: 'SF Mono', Consolas, monospace;
-    }
   </style>
-<!-- Microsoft Clarity -->
-<script type="text/javascript">
-    (function(c,l,a,r,i,t,y){
-        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-    })(window, document, "clarity", "script", "won9zormpi");
-</script>
 </head>
 <body>
 
   <header>
+    <a href="https://2864tw.com/index.html" class="home-btn" title="Home">
+      <svg class="icon-home" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 14.5v-3.505c0-.245.25-.495.5-.495h2c.25 0 .5.25.5.5v3.5a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5v-7a.5.5 0 0 0-.146-.354L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293L8.354 1.146a.5.5 0 0 0-.708 0l-6 6A.5.5 0 0 0 1.5 7.5v7a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5z"/></svg>
+    </a>
     <div class="title-block">
-      <h1>Heroes Awakening &amp; Heroes Exchanging</h1>
-      <p>The new hero system — reconciled from in-game tables and Rivergame Discord posts</p>
-    </div>
-    <div class="hdr-right">
-      <a href="https://2864tw.com/index.html" class="home-btn" title="Home">
-        <svg class="icon-home" viewBox="0 0 24 24"><path d="M12 3l9 8h-3v9h-4v-6h-4v6H6v-9H3l9-8z"/></svg>
-      </a>
+      <h1>Hyper Awakening &amp; Hero Swap</h1>
+      <p>Top War New Hero System — Phase I LIVE, decoded from the 2026-05-15 client patch</p>
     </div>
   </header>
 
   <nav class="tabs" role="tablist">
-    <button class="tab-btn active" data-tab="tab-awakening" role="tab">Heroes Awakening &amp; Exchanging<span class="tab-tag">discord+game</span></button>
-    <button class="tab-btn" data-tab="tab-association" role="tab">Hero Association<span class="tab-tag">game-only</span></button>
+    <button class="tab-btn active" data-tab="tab-awakening" role="tab">Hyper Awakening<span class="tab-tag">live</span></button>
+    <button class="tab-btn" data-tab="tab-swap" role="tab">Hero Swap<span class="tab-tag">live</span></button>
+    <button class="tab-btn" data-tab="tab-spotlights" role="tab">Spotlights &amp; History<span class="tab-tag">discord</span></button>
   </nav>
 
   <main>
 
+   <!-- ================================================================ -->
+   <!-- TAB 1 — HYPER AWAKENING -->
+   <!-- ================================================================ -->
    <div id="tab-awakening" class="tab-panel active">
 
-    <div class="banner">
-      <img src="../assets/heroes-awakening/discord_0_banner.jpg" alt="Heroes Awakening &amp; Heroes Exchanging — Coming Soon" loading="lazy">
-      <div class="banner-tag">Announced <span>2026-04-24</span> · live data 2026-04-29</div>
-    </div>
+    <div class="banner-row" id="phase-banner-row"></div>
 
     <section>
-      <h2>How this page is organised <span class="h2-tag">guide</span></h2>
+      <h2>What is Hyper Awakening? <span class="h2-tag live">live patch 2026-05-15</span></h2>
       <div class="card">
-        <p style="margin:0">Top War's <strong>New Hero System</strong> bundles two features. <strong>Heroes Awakening</strong> is a universal upgrade path for any 5★ Lv.120 hero. <strong>Heroes Exchanging</strong> is a 7-day event that lets you convert any of 24 'Pool' heroes into any of 18 'Core Lineup' heroes (same army type). Below: mechanics, the Pool ↔ Core calculator, every hero spotlight Rivergame published, plus what was already loaded into the client that they didn't talk about.</p>
-        <p class="muted" style="margin-top:8px">Tags <span style="color:var(--purple)">[discord]</span> = sourced from Rivergame Discord posts. <span style="color:var(--green)">[game]</span> = decoded from the live game client (often unreleased).</p>
+        <p id="ha-summary"></p>
+        <p style="margin-top:8px"><strong>Researcher:</strong> <span id="ha-researcher"></span></p>
+        <p class="muted" style="margin-top:8px">Patch landed for server 2864 on 2026-05-15. Later servers begin Phase I beta on Sunday after this date. Phase II/III banners + heroes exist in client tables; lang text + lineup is gated behind a server flag.</p>
       </div>
     </section>
 
     <section>
-      <h2>Heroes Awakening — mechanics <span class="h2-tag discord">discord</span></h2>
+      <h2>Awakening Stone — universal currency <span class="h2-tag live">live</span></h2>
+      <div class="card">
+        <div class="currency-row" id="currency-row"></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Phase I — Awakened personas (6 heroes LIVE) <span class="h2-tag live">live</span></h2>
+      <p class="muted" style="margin-bottom:10px">All 6 Phase I heroes are FULLY playable in the patch. Each has a new awakened persona name, a unique 4-skill loadout, an ultimate awakening skill, and a one-line voice line from the game's Awakening Time event.</p>
+      <div class="awk-grid" id="awk-grid"></div>
+    </section>
+
+    <section>
+      <h2>Awakening Skill Loadouts <span class="h2-tag live">live</span></h2>
+      <p class="muted" style="margin-bottom:10px">Each awakened hero has 4 stackable Awakening Skills + an ultimate "kill name" skill. Per-skill icons extracted directly from the patch resources bundle. Each skill caps at Lv.10 (40 levels of progression per hero). Reaching <strong>Exclusive Skill Lv.7</strong> swaps the applied-buff family from the base 21x101 series to the enhanced 21x1101 series.</p>
+      <div class="awk-grid" id="awk-skills-grid"></div>
+    </section>
+
+    <section>
+      <h2>Buff system — per-row 521xxx family <span class="h2-tag live">live</span></h2>
+      <div class="card">
+        <p>Every awakening level grants <strong>4 buffs</strong>: front/mid/back row variants from one family, plus a global Army/Navy/Air HP or ATK buff. Six families exist across Army/Navy/Air × DMG/DEF/DEF Taken. Per-row scaling: <strong>300 → 900</strong> across the 10× tier ladder.</p>
+        <div class="buff-table-wrap" style="margin-top:10px">
+          <table class="buff-table" id="buff-matrix"></table>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Phase II + III — Coming Soon (12 heroes queued) <span class="h2-tag">deferred</span></h2>
+      <p class="muted" style="margin-bottom:10px">12 more heroes have row slots in <code>hero_awakening_hero</code>, but their persona labels, awakening-card descriptions and 4-skill bios are still gated server-side. Awakening Time tooltip confirms: "Stay tuned for Hero Awakening Phase 2/3!"</p>
+      <div id="queue-phases"></div>
+    </section>
+
+    <section>
+      <h2>How awakening progression works <span class="h2-tag live">live</span></h2>
       <div class="grid-2">
         <div class="card">
-          <h3>Unlock + flow</h3>
-          <p>Hero must reach <strong>5 Stars and Level 120</strong>. Tap <code>[Hero] → [Awakening]</code> tab to begin.</p>
-          <p>Each Awakened hero unlocks <strong>4 new Awakening Skills</strong>, promoted separately. Each tier (Tier 1 → 4 visible in the preview UI) increases the Awakening Stats Bonus.</p>
-          <p class="source-line">Source: Discord 2026-04-24 announcement, Discord 2026-01-08 teaser.</p>
+          <h3>Hero level — 40 ranks</h3>
+          <p>Each awakened hero has <strong>40 levels</strong> of awakening progression. Each level grants ~2000 power (capping at 80,000 power total). Item cost ramps: <code>2|0</code> shards/level for Lv.1–9, <code>4|2</code> for Lv.10–19, up to <code>10|8</code> for Lv.30–40.</p>
         </div>
         <div class="card">
-          <h3>Awakening Choice Chests</h3>
-          <p>Free from the event interface. <strong>1 chest</strong> drops immediately at event open; more after timed intervals; <strong>6 total</strong> per batch of Awakening Heroes. Forgotten chests accumulate — next collection grants the full backlog.</p>
-          <p class="source-line">Source: Discord 2026-04-24 announcement.</p>
+          <h3>Skill level — 10 ranks each</h3>
+          <p>Each of the 4 awakening skills has its own Lv.1–10 ladder. <code>hero_awakening_skill</code> rows tag each level's <strong>required buff</strong> (the 21x101 family) and the <strong>Exclusive-7 alternate</strong> (the 21x1101 family) — proof that Exclusive Skill Lv.7 swaps in a more potent buff.</p>
         </div>
         <div class="card">
-          <h3>Bonus formula</h3>
-          <p>Increases active skill damage by <strong>N%</strong>, plus enemies with abnormal status take <strong>X% extra damage</strong>. The bonus stacks with the hero's existing Exclusive Skill levels.</p>
+          <h3>maxUpgrade — 7,200 rows</h3>
+          <p>The <code>hero_awakening_maxUpgrade</code> table (7,200 rows, 18 heroes × 4 skills × 100 sub-levels) holds the late-game progression. Each row stores 2 buff IDs (Army/Navy/Air-specific from the 521xxx family) and a per-row power gain.</p>
         </div>
         <div class="card">
-          <h3>Why this exists</h3>
-          <p>The "one new hero per month" treadmill ended in January 2026. Awakening keeps trained main heroes relevant — no more constant power-creep replacement.</p>
-          <p class="source-line">Source: Discord 2026-01-08 ("New Hero System Coming Soon!").</p>
+          <h3>Awakening Choice Chest cadence</h3>
+          <p>Each Phase = <strong>7-day box</strong> (<code>item_box_countdown: 604800</code>). 1 reward delivered immediately; remaining 5 unlock on a 7-day cadence; <strong>6 total</strong> per phase. Backlog accumulates if not collected.</p>
         </div>
       </div>
     </section>
 
+   </div><!-- /tab-awakening -->
+
+   <!-- ================================================================ -->
+   <!-- TAB 2 — HERO SWAP -->
+   <!-- ================================================================ -->
+   <div id="tab-swap" class="tab-panel">
+
     <section>
-      <h2>Heroes Exchanging — Pool ↔ Core calculator <span class="h2-tag discord">discord</span></h2>
+      <h2>Hero Swap — the system <span class="h2-tag live">live patch</span></h2>
+      <div class="card">
+        <p id="swap-summary"></p>
+        <p class="muted" style="margin-top:8px">In-game UI name is <strong>Hero Swap</strong>. Lang namespace: <code>hero_awake_exchangeactivity_*</code> (40+ strings). Backing TABLE: <code>hero_exchange</code> (3 pools, 6 targets per pool).</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Critical rules — read these BEFORE you swap <span class="h2-tag live">live</span></h2>
+      <p class="muted" style="margin-bottom:10px">Hero Swap is one of the highest-leverage actions in the new system. Every rule below is enforced by the game client.</p>
+      <div class="swap-rules-grid" id="swap-rules-grid"></div>
+    </section>
+
+    <section>
+      <h2>UI flow — what you'll see in-game <span class="h2-tag live">live</span></h2>
+      <div class="card">
+        <ol class="ui-flow" id="swap-ui-flow"></ol>
+      </div>
+    </section>
+
+    <section>
+      <h2>Pool ↔ Core calculator <span class="h2-tag discord">discord rules</span></h2>
       <div class="card" style="margin-bottom:12px">
-        <p>Pick a <strong>donor</strong> from the 24-hero Exchange Pool (left). Eligible <strong>Core Lineup</strong> targets (right) auto-filter to the same army type. Star level + Exclusive Skill levels on the donor are inherited 1:1 by the target. Excess materials are not wasted. Exchange itself is free.</p>
-        <p class="muted" style="margin-top:6px">Event window: <strong>7 Days</strong> · No combo / star / ES requirement · Hero Shards in inventory also convert</p>
+        <p>Pick a <strong>donor</strong> from the 24-hero Exchange Pool (left). Eligible <strong>Core Lineup</strong> targets (right) auto-filter to the same army type. Targets marked <span style="color:var(--gold)">AWK</span> are LIVE awakening heroes — picking one of those gives you immediate access to Phase I awakening once the source hero meets 5★ Lv.120. Hero Shards, Exclusive Skill levels and Hero level all convert 100% to the target.</p>
+        <p class="muted" style="margin-top:6px">Event window: <strong>7 Days</strong> per Phase · Strict 1-to-1 · No combo / star / ES requirement · Cost: FREE</p>
       </div>
 
       <div class="calc-board">
@@ -622,45 +637,35 @@
     </section>
 
     <section>
-      <h2>Hero Spotlights — full skills <span class="h2-tag discord">discord</span></h2>
-      <p class="muted" style="margin-bottom:10px">Rivergame published spotlights for 7 of the 18 Core Lineup heroes between Mar 12 and Apr 9. Five of them (Nova, Tannis, Sinope, Lophy, Margaretha) are brand-new heroes; the rest already exist in client tables. Each spotlight reveals the hero's <strong>Hero Skill</strong> + <strong>Exclusive Skill levels 3/5/7</strong>.</p>
-      <div class="spot-grid" id="spot-grid"></div>
-    </section>
-
-    <section>
-      <h2>Awakening Skill Previews — image-only reveals <span class="h2-tag discord">discord</span></h2>
-      <p class="muted" style="margin-bottom:10px">On Apr 10 + Apr 17 Rivergame previewed the Heroes-Awakening (universal-upgrade) skills for 6 individual heroes. Skill text is rendered into the images — click to enlarge.</p>
-      <div class="aw-grid" id="aw-grid"></div>
-    </section>
-
-    <section>
-      <h2>Other game-only findings <span class="h2-tag game">game</span></h2>
-      <p class="muted" style="margin-bottom:10px">A separate building called <strong>Hero Association</strong> (5-hero collection club) is also fully decoded in client tables — open the second tab above for the full mechanics, per-hero buff matrix, tutorial flow and lang-string status.</p>
-      <div class="grid-2">
-        <div class="card">
-          <h3>Hero Voice Pack — 497 new lines</h3>
-          <p>New G123-only voice pack feature. The cross-platform <code>hero_voice</code> TABLE retains 528 older lines. 70 heroes × ~5 lines extracted = 356 MP3s.</p>
-          <p class="source-line">Status: never mentioned by Rivergame on Discord. May or may not ship alongside New Hero System.</p>
-        </div>
-        <div class="card">
-          <h3>5 brand-new heroes still missing in client</h3>
-          <p><strong>Nova, Tannis, Sinope, Lophy, Joan Mature</strong> have no entries in the client <code>hero</code> TABLE yet. Will appear post-launch — full game-side decode pending.</p>
-        </div>
-        <div class="card">
-          <h3>Verified pre-existing battle effects</h3>
-          <p><strong>Vulnerable / Silence / Ignition</strong> referenced in new spotlight skills are all pre-existing battle mechanics — not new effects. (Hero ID <strong>119 = "Silence"</strong> the recruit hero, not the silence-status mechanic.)</p>
-        </div>
+      <h2>Every Hero Swap tooltip in the game <span class="h2-tag live">live patch</span></h2>
+      <p class="muted" style="margin-bottom:10px">All 43 lang strings under <code>hero_awake_exchangeactivity_*</code>. These are what the game displays in dialogs, button labels, filter chips, error states, confirmation screens and the swap preview. Each row shows the actual lang key + the player-facing text.</p>
+      <div class="card">
+        <div class="tooltip-list" id="tooltip-list"></div>
       </div>
+    </section>
+
+    <section>
+      <h2>Phase exchange pools <span class="h2-tag live">live</span></h2>
+      <p class="muted" style="margin-bottom:10px">Each Phase has its own pool of 8 donor heroes you can convert FROM. Decoded from <code>hero_exchange</code> rows 1/2/3.</p>
+      <div id="exchange-pools"></div>
+    </section>
+
+   </div><!-- /tab-swap -->
+
+   <!-- ================================================================ -->
+   <!-- TAB 3 — SPOTLIGHTS + HISTORY -->
+   <!-- ================================================================ -->
+   <div id="tab-spotlights" class="tab-panel">
+
+    <section>
+      <h2>Hero Spotlights — full skills <span class="h2-tag discord">discord</span></h2>
+      <p class="muted" style="margin-bottom:10px">Rivergame published spotlights for 18 of the Core Lineup heroes between 2024 and Apr 9 2026. Each spotlight reveals the hero's <strong>Hero Skill</strong> + <strong>Exclusive Skill levels 3 / 5 / 7</strong>. Heroes marked <span style="color:var(--green)">LIVE</span> have full Phase I awakening data in the 2026-05-15 patch.</p>
+      <div class="spot-grid" id="spot-grid"></div>
     </section>
 
     <section>
       <h2>Q&amp;A from Rivergame <span class="h2-tag discord">discord</span></h2>
       <div class="qa-list" id="qa-list"></div>
-    </section>
-
-    <section>
-      <h2>Investigation journey — three phases</h2>
-      <div id="phases"></div>
     </section>
 
     <section>
@@ -671,109 +676,18 @@
     </section>
 
     <section>
-      <h2>Asset gallery <span class="h2-tag game">game</span></h2>
-      <p class="muted" style="margin-bottom:10px">All extracted assets — game icons + tachie spine atlases + Rivergame screenshots. Click to enlarge.</p>
+      <h2>Asset gallery</h2>
+      <p class="muted" style="margin-bottom:10px">All extracted assets — game icons + tachie spine portraits + Rivergame screenshots. Click to enlarge.</p>
       <div class="gallery" id="gallery"></div>
     </section>
 
-   </div><!-- /tab-awakening -->
-
-   <div id="tab-association" class="tab-panel">
-     <section>
-       <h2>Hero Association — what is this? <span class="h2-tag game">game-only</span></h2>
-       <div class="ha-status" id="ha-status"></div>
-       <div class="card" id="ha-intro"></div>
-     </section>
-
-     <section>
-       <h2>The 5-hero lineup (Theme 1001)</h2>
-       <div class="card">
-         <p class="muted" style="margin-bottom:8px">5 fixed heroes occupy the slots. Investing them grants score-tier buffs; levelling their Honor adds bigger buffs on top.</p>
-         <div class="lineup-grid" id="ha-lineup"></div>
-         <p class="source-line" id="ha-mix"></p>
-       </div>
-     </section>
-
-     <section>
-       <h2>Unlock conditions</h2>
-       <div class="grid-3" id="ha-unlock"></div>
-     </section>
-
-     <section>
-       <h2>Per-hero buff matrix <span class="h2-tag">decoded</span></h2>
-       <div class="card">
-         <p class="muted" style="margin-bottom:6px" id="ha-design-note"></p>
-         <div class="buff-table-wrap"><table class="buff-table" id="ha-buff-matrix"></table></div>
-       </div>
-     </section>
-
-     <section>
-       <h2>Score &amp; Honor mechanics</h2>
-       <div class="grid-2" id="ha-mechanics"></div>
-     </section>
-
-     <section>
-       <h2>Total max buffs (all 5 heroes maxed)</h2>
-       <div class="card">
-         <p class="muted" style="margin-bottom:6px">If every slot reaches score tier 4 + honor level 50:</p>
-         <div class="buff-table-wrap"><table class="buff-table" id="ha-totals"></table></div>
-       </div>
-     </section>
-
-     <section>
-       <h2>Tutorial &amp; intro flow</h2>
-       <div class="card" id="ha-guides"></div>
-     </section>
-
-     <section>
-       <h2>Battle report integration</h2>
-       <div class="card" id="ha-br"></div>
-     </section>
-
-     <section>
-       <h2>How the panel works <span class="h2-tag">source-decoded</span></h2>
-       <div class="card" id="ha-panel-mech"></div>
-     </section>
-
-     <section>
-       <h2>Network protocol IDs <span class="h2-tag">source-decoded</span></h2>
-       <div class="card">
-         <p class="muted" style="margin-bottom:6px" id="ha-proto-summary"></p>
-         <div class="buff-table-wrap"><table class="buff-table" id="ha-proto-table"></table></div>
-         <p class="source-line" style="margin-top:10px" id="ha-redpoint"></p>
-       </div>
-     </section>
-
-     <section>
-       <h2>Panel classes (8 referenced) <span class="h2-tag">source-decoded</span></h2>
-       <div class="card">
-         <div class="buff-table-wrap"><table class="buff-table" id="ha-classes"></table></div>
-       </div>
-     </section>
-
-     <section>
-       <h2>Tables decoded (5 of 5)</h2>
-       <div class="card">
-         <div class="buff-table-wrap"><table class="buff-table" id="ha-tables"></table></div>
-       </div>
-     </section>
-
-     <section>
-       <h2>Status — why no in-game text yet</h2>
-       <div class="card" id="ha-langs-card"></div>
-     </section>
-
-     <section>
-       <h2>Investigation coverage <span class="h2-tag">methodology</span></h2>
-       <div class="card" id="ha-coverage"></div>
-     </section>
-   </div><!-- /tab-association -->
+   </div><!-- /tab-spotlights -->
 
   </main>
 
   <footer>
-    <p>Top War — Server 2864 community resource. Game data extracted from <code>TableManager</code> + Cocos Creator scene graph; Discord content scraped from public Rivergame channels.</p>
-    <p style="margin-top:6px">Page compiled <strong>2026-04-29</strong> · <a href="https://2864tw.com/index.html">2864tw.com</a></p>
+    <p>Top War — Server 2864 community resource. Game data extracted via <code>TableManager</code> dump + Cocos Creator <code>cc.resources.load</code> pipeline; Hero Swap UI decoded from <code>LocalManager._langData</code>.</p>
+    <p style="margin-top:6px">Page compiled <strong>2026-05-15</strong> · <a href="https://2864tw.com/index.html">2864tw.com</a></p>
     <p style="margin-top:10px"><a href="https://github.com/texnottexas/landing-page" class="shimmer-text">Brought to you by supporters of the fk boats movement</a></p>
   </footer>
 
@@ -783,7 +697,6 @@
   </div>
 
   <script>
-    // DOM helpers — avoid string-HTML injection by using createElement + textContent.
     const el = (tag, attrs, ...kids) => {
       const n = document.createElement(tag);
       if (attrs) for (const [k, v] of Object.entries(attrs)) {
@@ -801,8 +714,10 @@
       }
       return n;
     };
-    const txt = s => document.createTextNode(s);
-    const replace = (parent, ...kids) => { while (parent.firstChild) parent.removeChild(parent.firstChild); for (const k of kids.flat(Infinity)) if (k != null && k !== false) parent.append(k instanceof Node ? k : txt(String(k))); };
+    const replace = (parent, ...kids) => {
+      while (parent.firstChild) parent.removeChild(parent.firstChild);
+      for (const k of kids.flat(Infinity)) if (k != null && k !== false) parent.append(k instanceof Node ? k : document.createTextNode(String(k)));
+    };
 
     let DATA = null;
     const iconFor = h => h.id ? `https://h5.topwargame.com/DynRes/images/headpic/hero_icon${h.id}_global.png` : null;
@@ -812,7 +727,225 @@
 
     let poolFilter = 'all', coreFilter = 'all';
     let selected = null;
+    let liveAwakeIds = new Set();
 
+    // ============================================================
+    // TAB 1 — HYPER AWAKENING
+    // ============================================================
+    function renderPhaseBanners() {
+      const row = document.getElementById('phase-banner-row');
+      const banners = DATA.hyperAwakening.phases.map(p => {
+        const live = p.status === 'LIVE';
+        return el('div', { class: 'phase-banner ' + (live ? 'live' : ''), on: { click: () => openModal('../' + p.banner) } },
+          el('img', { src: '../' + p.banner, alt: p.label, loading: 'lazy' }),
+          el('div', { class: 'phase-banner-tag' },
+            el('div', { class: 'tag-name' }, p.label),
+            el('div', { class: 'tag-status ' + (live ? 'live' : 'cs') }, p.status)
+          )
+        );
+      });
+      replace(row, ...banners);
+    }
+
+    function renderHaSummary() {
+      document.getElementById('ha-summary').textContent = DATA.hyperAwakening.summary;
+      document.getElementById('ha-researcher').textContent = DATA.hyperAwakening.researcher;
+    }
+
+    function renderCurrency() {
+      const c = DATA.hyperAwakening.currency;
+      const wrap = document.getElementById('currency-row');
+      replace(wrap,
+        el('img', { class: 'currency-icon', src: '../' + c.icon, alt: c.name, on: { click: () => openModal('../' + c.icon) } }),
+        el('div', { class: 'currency-meta' },
+          el('div', { class: 'cn' }, c.name),
+          el('div', { class: 'cd' }, c.description),
+          el('div', { class: 'ci' }, 'Item ID: ', el('code', { style: 'color:var(--accent)' }, String(c.id)))
+        )
+      );
+    }
+
+    function renderAwakenedPersonas() {
+      const grid = document.getElementById('awk-grid');
+      const phase1 = DATA.hyperAwakening.phases.find(p => p.phase === 1);
+      const orderMap = new Map(phase1.heroes.map(h => [h.id, h]));
+      const cards = DATA.hyperAwakening.awakenedHeroes.map(h => {
+        const phaseHero = orderMap.get(h.id) || {};
+        const quote = phaseHero.voiceLine;
+        return el('div', { class: 'awk-card' },
+          el('div', { class: 'awk-header' },
+            el('img', { class: 'awk-icon', src: '../' + h.icon, alt: h.name, on: { click: () => openModal('../' + h.icon) } }),
+            el('div', { style: 'flex:1; min-width:0' },
+              el('div', { class: 'awk-id-line' },
+                el('div', { class: 'awk-name' }, h.name),
+                el('span', { class: 'type-badge ' + typeClass(h.type) }, h.type),
+                el('span', { class: 'live-badge' }, 'LIVE')
+              ),
+              el('div', { class: 'awk-label' }, h.awakenedLabel),
+              el('div', { class: 'awk-ult' }, 'Ultimate: ', el('strong', null, h.ultimateSkillName))
+            )
+          ),
+          quote ? el('div', { class: 'awk-quote' }, '"', quote, '"') : null,
+          el('div', { class: 'awk-bio' }, h.bio),
+          el('div', { class: 'awk-skills' }, ...h.skills.map(s =>
+            el('div', { class: 'awk-skill', title: s.name + ' (applies buff ' + s.appliedBuff + ', Exclusive-7 swaps to ' + s.exclusive7Buff + ')', on: { click: () => openModal('../' + s.icon) } },
+              el('img', { src: '../' + s.icon, alt: s.name, loading: 'lazy' }),
+              el('div', { class: 'skn' }, s.name)
+            )
+          ))
+        );
+      });
+      replace(grid, ...cards);
+    }
+
+    function renderAwakeningSkillsGrid() {
+      // Reuse same as awakened personas — already includes skill icons
+      const grid = document.getElementById('awk-skills-grid');
+      const cards = DATA.hyperAwakening.awakenedHeroes.map(h =>
+        el('div', { class: 'awk-card' },
+          el('div', { class: 'awk-header', style: 'padding-bottom:8px' },
+            el('img', { class: 'awk-icon', style: 'width:56px; height:68px', src: '../' + h.icon, alt: h.name, on: { click: () => openModal('../' + h.icon) } }),
+            el('div', { style: 'flex:1; min-width:0' },
+              el('div', { class: 'awk-id-line' },
+                el('div', { class: 'awk-name' }, h.name),
+                el('span', { class: 'type-badge ' + typeClass(h.type) }, h.type)
+              ),
+              el('div', { class: 'awk-label' }, h.awakenedLabel),
+              el('div', { class: 'awk-ult' }, 'Ult: ', el('strong', null, h.ultimateSkillName))
+            )
+          ),
+          el('div', { class: 'awk-skills', style: 'padding-top:0' }, ...h.skills.map(s =>
+            el('div', { class: 'awk-skill', title: s.name + ' · applies buff ' + s.appliedBuff + ' · Exclusive-7 → ' + s.exclusive7Buff, on: { click: () => openModal('../' + s.icon) } },
+              el('img', { src: '../' + s.icon, alt: s.name, loading: 'lazy' }),
+              el('div', { class: 'skn' }, s.name)
+            )
+          ))
+        )
+      );
+      replace(grid, ...cards);
+    }
+
+    function renderBuffMatrix() {
+      const tbl = document.getElementById('buff-matrix');
+      const families = DATA.hyperAwakening.buffSystem.perHeroFamily;
+      const head = el('thead', null, el('tr', null,
+        el('th', null, 'Hero'),
+        el('th', null, 'Per-row family'),
+        el('th', null, 'Category'),
+        el('th', null, 'Global buff'),
+        el('th', null, 'Status')
+      ));
+      const liveSet = new Set(DATA.hyperAwakening.awakenedHeroes.map(h => h.id));
+      const rows = Object.entries(families).map(([key, f]) => {
+        const idStr = key.split(' ')[0];
+        const heroName = key.substring(idStr.length + 1);
+        const isLive = liveSet.has(Number(idStr));
+        return el('tr', null,
+          el('td', null,
+            el('strong', null, heroName),
+            ' ', el('code', null, '#' + idStr)
+          ),
+          el('td', { class: 'num-cell' }, f.family),
+          el('td', null, f.category),
+          el('td', { class: 'num-cell' }, f.globalHP),
+          el('td', null, isLive ? el('span', { class: 'live-badge' }, 'LIVE') : el('span', { class: 'cs-badge' }, 'COMING SOON'))
+        );
+      });
+      replace(tbl, head, el('tbody', null, ...rows));
+    }
+
+    function renderQueuePhases() {
+      const wrap = document.getElementById('queue-phases');
+      const queue = DATA.hyperAwakening.queuedHeroes;
+      const phases = DATA.hyperAwakening.phases.slice(1); // skip Phase I
+      const sections = phases.map(p => {
+        const heroes = queue.filter(h => h.phase === p.phase);
+        const cards = heroes.map(h => el('div', { class: 'queue-card' },
+          iconFor(h) ? el('img', { class: 'queue-icon', src: iconFor(h), alt: h.name, loading: 'lazy' }) : el('div', { class: 'placeholder', style: 'width:50px; height:60px; margin:0 auto 4px' }, '?'),
+          el('div', { class: 'queue-name' }, h.name),
+          el('div', { class: 'queue-meta' },
+            el('span', { class: 'type-badge ' + typeClass(h.type), style: 'font-size:.5rem' }, h.type),
+            ' · #', String(h.id)
+          ),
+          h.bioReady ? el('div', { class: 'queue-meta', style: 'margin-top:4px; color:var(--accent)' }, 'Bio in patch') : null
+        ));
+        return el('div', { class: 'phase-section' },
+          el('div', { class: 'phase-header' },
+            el('h3', null, p.label),
+            el('span', { class: 'cs-badge' }, p.status),
+            p.tipText ? el('span', { class: 'phase-meta' }, '"', p.tipText, '"') : null
+          ),
+          el('div', { class: 'queue-grid' }, ...cards)
+        );
+      });
+      replace(wrap, ...sections);
+    }
+
+    // ============================================================
+    // TAB 2 — HERO SWAP
+    // ============================================================
+    function renderSwapSummary() {
+      document.getElementById('swap-summary').textContent = DATA.heroSwap.summary;
+    }
+
+    function renderSwapRules() {
+      const grid = document.getElementById('swap-rules-grid');
+      const cards = DATA.heroSwap.criticalRules.map((rule, i) => {
+        let cls = '';
+        const lower = rule.toLowerCase();
+        if (lower.includes('irreversible') || lower.includes('reset')) cls = '';
+        else if (lower.includes('cannot') || lower.includes('not be')) cls = 'warn';
+        else cls = 'info';
+        return el('div', { class: 'rule-card ' + cls },
+          el('div', { class: 'rule-lbl' }, 'Rule ' + (i + 1)),
+          el('div', { class: 'rule-body' }, rule)
+        );
+      });
+      replace(grid, ...cards);
+    }
+
+    function renderSwapUiFlow() {
+      const ol = document.getElementById('swap-ui-flow');
+      replace(ol, ...DATA.heroSwap.uiFlow.map(s => el('li', null, s.replace(/^\d+\.\s*/, ''))));
+    }
+
+    function renderTooltipList() {
+      const wrap = document.getElementById('tooltip-list');
+      const items = DATA.heroSwap.tooltips.map(t => el('div', { class: 'tooltip-row' },
+        el('code', null, t.key.replace('hero_awake_exchangeactivity_', '_')),
+        el('span', { class: 'tt' }, t.text)
+      ));
+      replace(wrap, ...items);
+    }
+
+    function renderExchangePools() {
+      const wrap = document.getElementById('exchange-pools');
+      const phases = DATA.hyperAwakening.phases;
+      // exchangePool already has all 24 heroes; the hero_exchange table maps them to phases (pool 1 = batch 1)
+      // pool 1 donors: 162|166|168|167|171|160|156|159 (Army)
+      //              + 236|229|233|238|230|231|235|228 (Navy)
+      //              + 328|327|329|331|335|326|330|325 (Air)
+      // ALL 24 are in pool — but the hero_exchange.row[N].consume_hero array tells us the 8 donors per pool
+      // Each pool maps to a Phase batch (1 → Phase I, 2 → Phase II, 3 → Phase III)
+      const poolDonors = [
+        { phase: 1, label: 'Phase I exchange pool (LIVE)', donors: ['162','166','168','167','171','160','156','159', '236','229','233','238','230','231','235','228', '328','327','329','331','335','326','330','325'] },
+      ];
+      // All 24 donors are eligible to convert into any Phase I target. Render the eligible donors.
+      const sections = [
+        el('div', { class: 'card', style: 'margin-bottom:14px' },
+          el('h3', null, 'How the pool works'),
+          el('p', null, 'The full 24-donor Exchange Pool is shared across all 3 Phases. A donor can be used ONCE per phase, into ONE target of the same army type. The target list for each Phase is fixed (decoded from <code>hero_exchange</code> table — 6 targets per Phase).'),
+          el('p', null, 'Phase I targets: ', el('strong', null, '170 Rohr · 174 Ella · 169 Sara · 165 Marvingt · 173 Tannis · 172 Nova')),
+          el('p', null, 'Phase II targets: ', el('strong', null, '332 Vivian · 338 Franziska · 334 Jett · 337 Heid · 336 Joan Mature · 333 Carna')),
+          el('p', null, 'Phase III targets: ', el('strong', null, '240 Sinope · 241 Margaretha · 234 Shen Suyu · 237 Alvida · 232 Lilia · 239 Lophy'))
+        )
+      ];
+      replace(wrap, ...sections);
+    }
+
+    // ============================================================
+    // TAB 2 — Pool/Core calculator (existing logic, reused)
+    // ============================================================
     function buildHeroCard(h, side) {
       const cdn = iconFor(h);
       const local = h.localIcon ? '../' + h.localIcon : null;
@@ -828,6 +961,7 @@
         class: 'hero-card', data: { side, id: h.id || '', name: h.name, type: typeKey(h.type) }
       },
         img,
+        liveAwakeIds.has(Number(h.id)) ? el('span', { class: 'awk-pill' }, 'AWK') : null,
         h.isNew ? el('span', { class: 'new-badge' }, 'NEW') : null,
         el('div', { class: 'hero-name' }, h.name),
         el('div', { class: 'hero-id' },
@@ -903,31 +1037,34 @@
       box.style.display = 'block';
       document.getElementById('result-title').textContent = `${selected.name} → ${eligible.length} eligible ${typeKey(selected.type)} target${eligible.length === 1 ? '' : 's'}`;
       const body = document.getElementById('result-body');
-      const eligibleNames = eligible.map(e => e.name + (e.isNew ? ' ⭐' : '')).join(', ');
+      const eligibleNames = eligible.map(e => e.name + (liveAwakeIds.has(Number(e.id)) ? ' ★AWK' : (e.isNew ? ' ⭐' : ''))).join(', ');
       const rows = [
         ['Donor', `${selected.name} (${selected.type}, #${selected.id})`],
         ['Eligible Core Lineup targets', eligibleNames],
         ['Cost', 'Free — no items required'],
-        ['Inherited 1:1', 'Star · Hero level · Exclusive Skill · Hero shards · Exclusive shards'],
-        ['Donor after exchange', 'Reset to initial Lv.1 unlocked state']
+        ['Inherited 100%', 'Star · Hero level · Exclusive Skill · Hero shards · Exclusive shards'],
+        ['Donor after exchange', 'Reset to initial Lv.1 unlocked state'],
+        ['Reminder', 'Target hero can only be swapped ONCE per Phase. Hero swaps are IRREVERSIBLE.']
       ].map(([k, v]) => el('div', { class: 'result-row' },
         el('span', { class: 'k' }, k),
         el('span', { class: 'v' }, v)
       ));
       const note = el('p', { class: 'muted', style: 'margin-top:8px; font-size:.7rem' },
-        '⭐ = brand-new hero, no prior client data. Click a Core target on the right to pick a final destination.');
+        '★AWK = Phase I LIVE awakening target. ⭐ = brand-new hero. Click a Core target on the right to lock in a destination.');
       replace(body, ...rows, note);
     }
 
     function showResult(donor, target) {
       const box = document.getElementById('result-box');
       box.style.display = 'block';
-      document.getElementById('result-title').textContent = `Exchange ${donor.name} → ${target.name}`;
+      document.getElementById('result-title').textContent = `Swap ${donor.name} → ${target.name}`;
       const targetSpot = target.spotlight;
+      const isAwk = liveAwakeIds.has(Number(target.id));
       const rows = [
-        ['Donor (consumed → Lv.1)', `${donor.name} (${donor.type}, #${donor.id})`],
-        ['Target (you receive)', `${target.name}${target.isNew ? ' ★ NEW' : ''}`],
-        ['Cost', 'Free']
+        ['Donor (consumed → 1★ Lv.1)', `${donor.name} (${donor.type}, #${donor.id})`],
+        ['Target (you receive)', `${target.name}${isAwk ? ' ★ LIVE AWK' : (target.isNew ? ' ★ NEW' : '')}`],
+        ['Cost', 'Free'],
+        ['Hero Swap warning', 'Irreversible. Target can only be swapped once per Phase.']
       ].map(([k, v]) => el('div', { class: 'result-row' },
         el('span', { class: 'k' }, k),
         el('span', { class: 'v' }, v)
@@ -977,6 +1114,9 @@
       });
     }
 
+    // ============================================================
+    // TAB 3 — SPOTLIGHTS + HISTORY
+    // ============================================================
     function renderSpotlights() {
       const grid = document.getElementById('spot-grid');
       const heroes = DATA.coreLineup.heroes.filter(h => h.spotlight);
@@ -1006,13 +1146,14 @@
         if (aw)     links.push(el('span', { class: 'spot-extra-link', on: { click: () => openModal(aw) } }, 'Awakening preview'));
         const linkRow = links.length ? el('div', { style: 'margin-top:10px' }, ...links.flatMap((l, i) => i === 0 ? [l] : [' ', l])) : null;
         const portraitImg = portrait ? el('img', { class: 'spot-portrait', src: portrait, alt: h.name, loading: 'lazy', on: { click: () => openModal(portrait) } }) : null;
-        return el('div', { class: 'spot-card ' + (h.isNew ? 'is-new' : '') },
+        const isLive = liveAwakeIds.has(Number(h.id));
+        return el('div', { class: 'spot-card ' + (h.isNew ? 'is-new ' : '') + (isLive ? 'is-live' : '') },
           portraitImg,
           el('div', { class: 'spot-body' },
             el('div', { class: 'spot-title' },
               el('h3', null, h.name),
               el('span', { class: 'type-badge ' + typeClass(h.type) }, h.type),
-              h.isNew ? el('span', { class: 'new-badge' }, 'NEW') : null
+              isLive ? el('span', { class: 'live-badge' }, 'LIVE AWK') : (h.isNew ? el('span', { class: 'new-badge' }, 'NEW') : null)
             ),
             el('div', { class: 'spot-meta' }, (s.postedAt ? 'Spotlight ' + s.postedAt : '') + (h.id ? ' · client #' + h.id : ' · unreleased')),
             el('p', { class: 'muted', style: 'font-size:.74rem; margin-bottom:8px' }, s.intro),
@@ -1020,23 +1161,6 @@
             ...blocks,
             exBlock,
             linkRow
-          )
-        );
-      });
-      replace(grid, ...cards);
-    }
-
-    function renderAwakeningPreviews() {
-      const grid = document.getElementById('aw-grid');
-      const items = DATA.coreLineup.heroes.filter(h => h.awakeningSkillImage);
-      const cards = items.map(h => {
-        const src = '../' + h.awakeningSkillImage;
-        const srcLabel = (h.awakeningSkillSource || '').includes('04-10') || (h.awakeningSkillSource || '').includes('Apr 10') || (h.awakeningSkillSource || '').includes('2026-04-10') ? 'Apr 10' : 'Apr 17';
-        return el('div', { class: 'aw-card', on: { click: () => openModal(src) } },
-          el('img', { src, alt: h.name + ' awakening skill', loading: 'lazy' }),
-          el('div', { class: 'aw-cap' },
-            el('span', null, h.name + ' ', el('span', { class: 'type-badge ' + typeClass(h.type) }, h.type)),
-            el('span', { class: 'src' }, srcLabel)
           )
         );
       });
@@ -1051,24 +1175,6 @@
         el('div', { class: 'qa-src' }, qa.source)
       ));
       replace(list, ...items);
-    }
-
-    function renderPhases() {
-      const wrap = document.getElementById('phases');
-      const cards = DATA.investigationJourney.phases.map((p, i) => {
-        const cls = i === 0 ? '' : (i === 1 ? 'p2' : 'p3');
-        const items = p.found || p.corrections || p.crossRefResults || [];
-        const ul = items.length ? el('ul', null, ...items.map(x => el('li', null, x))) : null;
-        return el('div', { class: 'phase-card ' + cls },
-          el('div', { class: 'phase-num' }, 'Phase ' + p.phase),
-          el('h3', null, p.label),
-          el('p', null, p.what),
-          p.initialConclusion ? el('p', { style: 'margin-top:6px' }, el('strong', null, 'Initial conclusion: '), p.initialConclusion) : null,
-          p.keyDiscovery ? el('p', { style: 'margin-top:6px' }, el('strong', null, 'Key discovery: '), p.keyDiscovery) : null,
-          ul
-        );
-      });
-      replace(wrap, ...cards);
     }
 
     function renderTimeline() {
@@ -1087,6 +1193,14 @@
 
     function renderGallery() {
       const items = [];
+      // Live patch assets
+      ['hero_awakeicon169','hero_awakeicon172','hero_awakeicon234','hero_awakeicon239','hero_awakeicon333','hero_awakeicon334']
+        .forEach(f => items.push({ src: 'assets/hero-awake-icons/' + f + '.png', cap: 'Awakened persona' }));
+      ['item_88000001','item_44300001','item_44300002','item_44300003','item_44300004','item_44300005','item_44300006']
+        .forEach(f => items.push({ src: 'assets/hero-awake-items/' + f + '.png', cap: 'Awakening item' }));
+      ['hero_awaken_bg_0','hero_awaken_bg_1','hero_awaken_bg_2']
+        .forEach(f => items.push({ src: 'assets/hero-awake-bgs/' + f + '.png', cap: 'Phase banner' }));
+      // Discord assets
       ['discord_0_banner.jpg','discord_1_awakening_chests.png','discord_2_awakening_heroes_grid.png','discord_3_exchange_pool.png','discord_4_exchange_ui.png']
         .forEach(f => items.push({ src: 'assets/heroes-awakening/' + f, cap: 'Apr 24 announcement' }));
       ['nova_portrait.jpeg','tannis_portrait.jpeg','sinope_portrait.jpeg','lophy_portrait.jpeg','margaretha_portrait.jpeg','ella_portrait.jpeg','franziska_portrait.jpeg',
@@ -1095,9 +1209,6 @@
         .forEach(f => items.push({ src: 'assets/heroes-awakening/' + f, cap: 'Hero spotlight' }));
       ['awakening_apr10_nova.png','awakening_apr10_shenSuyu.png','awakening_apr10_carna.png','awakening_apr17_jett.jpg','awakening_apr17_lophy.jpg','awakening_apr17_sara.jpg']
         .forEach(f => items.push({ src: 'assets/heroes-awakening/' + f, cap: 'Awakening preview' }));
-      ['coming_soon_compare1.png','coming_soon_compare2.png','coming_soon_compare3.png','coming_soon_compare4.png','coming_soon_compare5.png','coming_soon_compare6.png']
-        .forEach(f => items.push({ src: 'assets/heroes-awakening/' + f, cap: 'Coming Soon teaser' }));
-      items.push({ src: 'assets/heroes-awakening/latest_intel_lineup.png', cap: 'Jan 28 lineup' });
 
       const g = document.getElementById('gallery');
       const cards = items.map(i => el('div', { class: 'gallery-item', on: { click: () => openModal('../' + i.src) } },
@@ -1107,6 +1218,9 @@
       replace(g, ...cards);
     }
 
+    // ============================================================
+    // MODAL + TABS
+    // ============================================================
     function openModal(src) {
       document.getElementById('modal-img').src = src;
       document.getElementById('modal').classList.add('active');
@@ -1119,7 +1233,6 @@
     document.getElementById('modal-close-btn').addEventListener('click', closeModal);
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
-    // Tab switching
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const target = btn.getAttribute('data-tab');
@@ -1129,287 +1242,39 @@
       });
     });
 
-    function branchClass(branch) {
-      if (branch === 'Army') return 'branch-Army';
-      if (branch === 'Navy') return 'branch-Navy';
-      if (branch === 'Air')  return 'branch-Air';
-      return '';
-    }
-
-    function renderHeroAssociation() {
-      const ha = DATA.heroAssociation;
-      if (!ha) return;
-
-      // Status banner
-      const status = document.getElementById('ha-status');
-      replace(status,
-        el('span', { class: 'ha-status-tag' }, ha.status.label),
-        el('p', null, ha.status.summary),
-        el('div', { class: 'ha-meta' },
-          el('strong', null, 'Building: '), el('code', null, ha.status.buildingPrefab),
-          ' (id ', el('code', null, String(ha.status.buildingId)), ', unlocks at player Lv.', String(ha.status.playerLevelUnlock), ') · ',
-          el('strong', null, 'Verified: '), ha.status.lastVerified
-        )
-      );
-
-      // Intro card with floating building image
-      const intro = document.getElementById('ha-intro');
-      const fig = el('div', { class: 'ha-building-fig' },
-        el('img', { src: '../assets/heroes-awakening/association_building.png', alt: 'Hero Organization Building', loading: 'lazy' }),
-        el('div', { class: 'cap' }, 'Hero Organization Building')
-      );
-      const introNodes = [fig];
-      ha.intro.forEach(p => introNodes.push(el('p', null, p)));
-      introNodes.push(el('p', { class: 'source-line' }, ha.investigationNote));
-      replace(intro, ...introNodes);
-
-      // Lineup grid
-      const lineup = document.getElementById('ha-lineup');
-      replace(lineup, ...ha.lineup.slots.map(s => {
-        const cdn = DATA.meta.iconCdnPattern.replace('{id}', s.heroId);
-        return el('div', { class: 'lineup-card' },
-          el('div', { class: 'slot-num' }, String(s.slot)),
-          el('img', { src: cdn, alt: s.name, loading: 'lazy' }),
-          el('div', { class: 'ln-name' }, s.name),
-          el('div', { class: 'ln-id' }, '#' + s.heroId, ' · ', el('span', { class: 'branch-pill ' + branchClass(s.branch) }, s.branch)),
-          s.g123Alt ? el('div', { class: 'ln-g123' }, 'G123: ', s.g123Alt.name) : null
-        );
-      }));
-      const mix = document.getElementById('ha-mix');
-      replace(mix, 'Branch mix: ' + ha.lineup.branchMix + ' · Background asset: ', el('code', null, ha.lineup.background));
-
-      // Unlock conditions
-      const unlock = document.getElementById('ha-unlock');
-      const u = ha.unlockConditions;
-      replace(unlock,
-        el('div', { class: 'card' },
-          el('h3', null, 'Slot fill'),
-          el('p', null, 'Hero ≥ ', el('strong', { style: 'color:var(--gold)' }, u.slotInvest.stars + '★'), ' + Lv.', el('strong', { style: 'color:var(--gold)' }, String(u.slotInvest.level))),
-          el('p', { class: 'source-line' }, u.slotInvest.source)
-        ),
-        el('div', { class: 'card' },
-          el('h3', null, 'Honor leveling'),
-          el('p', null, 'Hero ≥ ', el('strong', { style: 'color:var(--gold)' }, u.honorLeveling.stars + '★'), ' + Lv.', el('strong', { style: 'color:var(--gold)' }, String(u.honorLeveling.level))),
-          el('p', { class: 'source-line' }, u.honorLeveling.source)
-        ),
-        el('div', { class: 'card' },
-          el('h3', null, 'Building unlock'),
-          el('p', null, 'Player Lv.', el('strong', { style: 'color:var(--gold)' }, String(u.playerBuilding.playerLevel))),
-          el('p', { class: 'source-line' }, u.playerBuilding.source)
-        )
-      );
-
-      // Per-hero buff matrix
-      const bm = document.getElementById('ha-buff-matrix');
-      const head = el('thead', null, el('tr', null,
-        el('th', null, 'Slot'),
-        el('th', null, 'Hero'),
-        el('th', null, 'Branch'),
-        el('th', null, 'Score buff (per tier)'),
-        el('th', null, 'Score Max (4 tiers)'),
-        el('th', null, 'Honor buff (Lv.50 max)')
-      ));
-      const body = el('tbody', null, ...ha.perHeroBuffMatrix.map((r, i) => el('tr', null,
-        el('td', null, String(i + 1)),
-        el('td', null, el('strong', null, r.name), ' #' + r.heroId),
-        el('td', null, el('span', { class: 'branch-pill ' + branchClass(r.branch) }, r.branch)),
-        el('td', null, r.scoreBuff, el('span', { class: 'num-cell', style: 'margin-left:6px' }, '+' + r.scorePctPerTier + '%')),
-        el('td', { class: 'num-cell' }, '+' + r.scoreBuffMaxPct + '%'),
-        el('td', null, r.honorBuff, el('span', { class: 'num-cell', style: 'margin-left:6px' }, '+' + r.honorBuffMaxPct + '%'))
-      )));
-      replace(bm, head, body);
-      document.getElementById('ha-design-note').textContent = ha.designNote;
-
-      // Mechanics — score + honor
-      const mech = document.getElementById('ha-mechanics');
-      const sc = ha.scoreTiers;
-      const hl = ha.honorLevels;
-      replace(mech,
-        el('div', { class: 'card' },
-          el('h3', null, 'Score tiers'),
-          el('p', null, 'Each hero accumulates score from 4 sources, each granting 1 score-type point:'),
-          el('ul', { style: 'margin-left:18px; font-size:.78rem; color:var(--muted); margin-top:4px' },
-            ...sc.scoreSources.map(s => el('li', null, el('code', null, s)))
-          ),
-          el('p', { style: 'margin-top:8px' }, 'Tier thresholds: ', sc.thresholds.map(t => el('strong', { style: 'color:var(--gold)', key: t }, t.toLocaleString())).reduce((acc, n, i) => i === 0 ? [n] : [...acc, ' · ', n], [])),
-          el('p', null, el('strong', null, 'Power per tier: '), '+' + sc.powerPerTier),
-          el('p', { class: 'source-line' }, sc.explanation)
-        ),
-        el('div', { class: 'card' },
-          el('h3', null, 'Honor levels'),
-          el('div', { class: 'ha-cost-grid', style: 'margin:8px 0' },
-            el('div', { class: 'ha-cost-cell' }, el('span', { class: 'num' }, String(hl.totalLevels)), el('div', { class: 'lbl' }, 'levels (' + hl.levelRange + ')')),
-            el('div', { class: 'ha-cost-cell' }, el('span', { class: 'num' }, hl.totalCostPerHero.toLocaleString()), el('div', { class: 'lbl' }, 'shards / hero to max')),
-            el('div', { class: 'ha-cost-cell' }, el('span', { class: 'num' }, hl.totalCostAllFive.toLocaleString()), el('div', { class: 'lbl' }, 'shards · all 5 maxed')),
-            el('div', { class: 'ha-cost-cell' }, el('span', { class: 'num' }, hl.powerAtMax.toLocaleString()), el('div', { class: 'lbl' }, 'power / hero max'))
-          ),
-          el('p', null, el('strong', null, 'Currency: '), hl.currency),
-          el('p', { class: 'source-line' }, 'Cost ramp — ' + hl.costRamp),
-          el('p', { class: 'source-line' }, hl.honorExpRate)
-        )
-      );
-
-      // Total max buffs
-      const totalsTbl = document.getElementById('ha-totals');
-      const tHead = el('thead', null, el('tr', null, el('th', null, 'Stat'), el('th', null, 'Total %'), el('th', null, 'Breakdown')));
-      const tBody = el('tbody', null, ...ha.totalMaxBuffs.map(t => el('tr', null,
-        el('td', null, el('strong', null, t.stat)),
-        el('td', { class: 'num-cell' }, '+' + t.total + '%'),
-        el('td', null, t.breakdown)
-      )));
-      replace(totalsTbl, tHead, tBody);
-
-      // Guides
-      const g = ha.guides;
-      const gWrap = document.getElementById('ha-guides');
-      const gNodes = [
-        el('h3', null, 'Tutorial NPC'),
-        el('p', null, 'The free guide is narrated by Hero #', String(g.tutorialNpc.heroId), ' = ', el('strong', null, g.tutorialNpc.name), ' (using bust ', el('code', null, g.tutorialNpc.tachie), ').'),
-        el('h3', { style: 'margin-top:12px' }, 'Dialog chains (' + g.dialogChains.reduce((s, c) => s + c.ids.length, 0) + ' steps total)'),
-      ];
-      g.dialogChains.forEach(c => {
-        gNodes.push(el('p', null, el('strong', null, c.label + ': '), 'tutorial_dialog ', c.ids.join(' → '), ' — texts ', c.langKeys.map(k => el('code', { key: k }, k)).reduce((acc, n, i) => i === 0 ? [n] : [...acc, ', ', n], [])));
-      });
-      gNodes.push(el('h3', { style: 'margin-top:12px' }, 'Free guide flow'));
-      gNodes.push(el('ol', { class: 'ha-flowlist' }, ...g.freeGuideFlow.map(s => el('li', null, s))));
-      gNodes.push(el('h3', { style: 'margin-top:12px' }, '"Rules" info section'));
-      gNodes.push(el('p', null, 'guide_activity group ', String(g.infoSection.guideActivityGroup), ' — root: ', el('code', null, String(g.infoSection.rootRow))));
-      gNodes.push(el('ul', { style: 'margin-left:18px; font-size:.78rem; color:var(--muted); margin-top:4px' },
-        ...g.infoSection.paragraphs.map(p => el('li', null, 'row ', String(p.id), ' → ', el('code', null, p.lang)))
-      ));
-      gNodes.push(el('p', { class: 'source-line' }, g.infoSection.note));
-      replace(gWrap, ...gNodes);
-
-      // Battle report
-      const br = ha.battleReportIntegration;
-      const brCard = document.getElementById('ha-br');
-      replace(brCard,
-        el('p', null, br.context),
-        el('p', { class: 'source-line' },
-          'Source row: ', el('code', null, br.tableRow), ' · ',
-          'type_big: ', el('code', null, String(br.typeBig)), ' · ',
-          'order: ', el('code', null, String(br.order)), ' · ',
-          'lang key: ', el('code', null, br.langKey)
-        )
-      );
-
-      // Panel mechanics
-      const pm = ha.panelMechanics;
-      const panelMech = document.getElementById('ha-panel-mech');
-      const scoreSrcRows = Object.entries(pm.scoreSourceLangKeys).map(([n, desc]) => el('li', null, el('strong', null, 'Source ' + n + ': '), el('code', null, desc.split(' — ')[0]), ' — ', desc.split(' — ').slice(1).join(' — ')));
-      replace(panelMech,
-        el('p', null, pm.summary),
-        el('p', { style: 'margin-top:8px' },
-          el('strong', null, 'UI panel: '), el('code', null, pm.uiName),
-          ' · path ', el('code', null, pm.uiPath),
-          ' · frame ', el('code', null, String(pm.frame))
-        ),
-        el('p', null, el('strong', null, 'Open trigger: '), pm.uiOpener),
-        el('p', null, el('strong', null, 'Post-build hook: '), pm.postBuildHook),
-        el('p', null, el('strong', null, 'Theme navigation: '), pm.themeNavigation),
-        el('h3', { style: 'margin-top:12px' }, 'Score source breakdown popup'),
-        el('p', { class: 'muted' }, 'HeroPalaceScoreTips iterates 4 score-source rows. Each shows current contribution + the lang key formats player-facing label:'),
-        el('ul', { style: 'margin-left:18px; font-size:.78rem; color:var(--text)' }, ...scoreSrcRows),
-        el('h3', { style: 'margin-top:12px' }, 'Platform asset variants'),
-        el('ul', { style: 'margin-left:18px; font-size:.78rem; color:var(--muted)' },
-          el('li', null, el('strong', null, 'Default: '), el('code', null, pm.platformAssetVariants.default)),
-          el('li', null, el('strong', null, 'G123: '), el('code', null, pm.platformAssetVariants.g123)),
-          el('li', null, el('strong', null, 'Harmony OS: '), pm.platformAssetVariants.harmony)
-        )
-      );
-
-      // Network protocol
-      const np = ha.networkProtocol;
-      document.getElementById('ha-proto-summary').textContent = '4 protocol IDs decoded from source — ' + np.requestIds.length + ' request types live in the build, plus ' + np.events.length + ' client events.';
-      const protoTbl = document.getElementById('ha-proto-table');
-      replace(protoTbl,
-        el('thead', null, el('tr', null, el('th', null, 'ID'), el('th', null, 'Name'), el('th', null, 'Purpose'))),
-        el('tbody', null, ...np.requestIds.map(p => el('tr', null,
-          el('td', { class: 'num-cell' }, String(p.id)),
-          el('td', null, el('code', null, p.name)),
-          el('td', null, p.purpose)
-        )))
-      );
-      const rpDiv = document.getElementById('ha-redpoint');
-      replace(rpDiv,
-        el('strong', null, 'Red-dot keys: '),
-        ...np.redDotKeys.flatMap((k, i) => i === 0 ? [el('code', null, k)] : [' · ', el('code', null, k)]),
-        el('br', null),
-        el('strong', null, 'Note: '), np.redDotNote,
-        el('br', null),
-        el('strong', null, 'Client events: '),
-        ...np.events.flatMap((k, i) => i === 0 ? [el('code', null, k)] : [' · ', el('code', null, k)])
-      );
-
-      // Panel classes
-      const clsTbl = document.getElementById('ha-classes');
-      replace(clsTbl,
-        el('thead', null, el('tr', null, el('th', null, 'Class'), el('th', null, 'Purpose'))),
-        el('tbody', null, ...ha.panelClasses.map(c => el('tr', null,
-          el('td', null, el('code', null, c.name)),
-          el('td', null, c.purpose)
-        )))
-      );
-
-      // Tables decoded
-      const tWrap = document.getElementById('ha-tables');
-      replace(tWrap,
-        el('thead', null, el('tr', null, el('th', null, 'Table'), el('th', null, 'Rows'), el('th', null, 'Purpose'))),
-        el('tbody', null, ...ha.tables.map(t => el('tr', null,
-          el('td', null, el('code', null, t.name)),
-          el('td', { class: 'num-cell' }, String(t.rows)),
-          el('td', null, t.purpose)
-        )))
-      );
-
-      // Investigation coverage
-      const cov = ha.investigationCoverage;
-      const covCard = document.getElementById('ha-coverage');
-      replace(covCard,
-        el('p', null, cov.summary),
-        el('p', { style: 'margin-top:8px' }, el('strong', null, 'Angles run (' + cov.anglesCovered.length + '): ')),
-        el('ol', { class: 'ha-flowlist' }, ...cov.anglesCovered.map(a => el('li', null, a)))
-      );
-
-      // Lang strings card
-      const lc = document.getElementById('ha-langs-card');
-      const la = ha.langStringsAbsent;
-      replace(lc,
-        el('p', null,
-          'Verified at lang version ',
-          el('strong', null, la.verifiedAt),
-          ' across all 16 deployed languages — zero matches for ',
-          el('code', null, 'hero_associat'),
-          ' anywhere.'
-        ),
-        el('div', { class: 'ha-langs' }, ...la.languagesChecked.map(l => el('span', null, l))),
-        el('p', { style: 'margin-top:10px' }, el('strong', null, 'Method: '), la.method),
-        el('p', { style: 'margin-top:10px' }, el('strong', null, 'Lang keys referenced but absent (' + la.missingKeys.length + '):')),
-        el('div', { class: 'ha-missing-keys' }, ...la.missingKeys.map(k => el('code', null, k))),
-        el('p', { class: 'source-line', style: 'margin-top:10px' },
-          'The only Hero Association lang key that resolves: ',
-          el('code', null, la.onlyResolvedKey.key),
-          ' = "',
-          la.onlyResolvedKey.value,
-          '"'
-        )
-      );
-    }
-
-    fetch('../data/heroes-awakening.json')
+    // ============================================================
+    // LOAD
+    // ============================================================
+    fetch('../data/heroes-awakening.json?v=20260515')
       .then(r => r.json())
       .then(d => {
         DATA = d;
+        liveAwakeIds = new Set(DATA.hyperAwakening.awakenedHeroes.map(h => h.id));
+
+        // Tab 1
+        renderPhaseBanners();
+        renderHaSummary();
+        renderCurrency();
+        renderAwakenedPersonas();
+        renderAwakeningSkillsGrid();
+        renderBuffMatrix();
+        renderQueuePhases();
+
+        // Tab 2
+        renderSwapSummary();
+        renderSwapRules();
+        renderSwapUiFlow();
+        renderTooltipList();
+        renderExchangePools();
         buildFilters();
         renderPool();
         renderCore();
+
+        // Tab 3
         renderSpotlights();
-        renderAwakeningPreviews();
         renderQA();
-        renderPhases();
         renderTimeline();
         renderGallery();
-        renderHeroAssociation();
       })
       .catch(err => {
         console.error('Failed to load data', err);
