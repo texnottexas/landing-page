@@ -566,9 +566,20 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
       var usedAttack=new Set(), usedDefend=new Set();
       s.attack.forEach(function(t){ t.team = t.reserve ? [] : takeFromTop(baseOffense, t.slots||0, usedAttack); });
       s.defend.forEach(function(t){ t.team = t.reserve ? [] : takeFromTop(baseDefense, t.slots||0, usedDefend); });
-      // Reserve = leftovers from each pool, balanced for display
+      // Collect leftover pool members per side, then balance the two
+      // reserve buckets so neither side overflows. Mirrors storm-duel.html
+      // — lowest-power names get shuffled across to even out the totals.
       var leftAtk=baseOffense.filter(function(p){return !usedAttack.has(p.name+'|'+p.sid);});
       var leftDef=baseDefense.filter(function(p){return !usedDefend.has(p.name+'|'+p.sid);});
+      leftAtk.sort(function(a,b){return b.power-a.power;});
+      leftDef.sort(function(a,b){return b.power-a.power;});
+      var total=leftAtk.length+leftDef.length;
+      var targetD=Math.floor(total/2);
+      var targetA=total-targetD;
+      while(leftDef.length>targetD) leftAtk.push(leftDef.pop());
+      while(leftAtk.length>targetA) leftDef.push(leftAtk.pop());
+      leftAtk.sort(function(a,b){return b.power-a.power;});
+      leftDef.sort(function(a,b){return b.power-a.power;});
       s.attack.filter(function(t){return t.reserve;}).forEach(function(t){t.team=leftAtk;});
       s.defend.filter(function(t){return t.reserve;}).forEach(function(t){t.team=leftDef;});
     });
