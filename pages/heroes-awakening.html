@@ -221,6 +221,28 @@
     .currency-meta .cd { font-size: .76rem; color: var(--text); line-height: 1.5; margin-top: 4px; }
     .currency-meta .ci { font-size: .62rem; color: var(--muted); margin-top: 4px; }
 
+    /* ITEMS GRID */
+    .items-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+    .item-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px; display: flex; gap: 10px;
+      align-items: flex-start; transition: border-color .15s;
+    }
+    .item-card:hover { border-color: var(--accent); }
+    .item-card.currency { border-color: var(--gold); }
+    .item-card.card-item { border-color: var(--accent); }
+    .item-card.shard-item { border-color: var(--green); }
+    .item-card-icon {
+      width: 56px; height: 56px; flex-shrink: 0;
+      background: #0d1117; border: 1px solid var(--border);
+      border-radius: 6px; object-fit: contain; padding: 3px; cursor: pointer;
+    }
+    .item-card-meta { flex: 1; min-width: 0; }
+    .item-card-name { font-weight: 700; font-size: .82rem; line-height: 1.25; }
+    .item-card-cat { font-size: .58rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-top: 2px; }
+    .item-card-role { font-size: .68rem; line-height: 1.45; color: var(--text); margin-top: 5px; }
+    .item-card-id { font-size: .58rem; color: var(--muted); margin-top: 4px; font-family: 'SF Mono', Menlo, monospace; }
+
     /* HERO SWAP */
     .swap-rules-grid {
       display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;
@@ -517,10 +539,16 @@
     </section>
 
     <section>
-      <h2>Awakening Stone — universal currency <span class="h2-tag live">live</span></h2>
+      <h2>Awakening Stone — universal skill XP currency <span class="h2-tag live">live</span></h2>
       <div class="card">
         <div class="currency-row" id="currency-row"></div>
       </div>
+    </section>
+
+    <section>
+      <h2>Items &amp; economy <span class="h2-tag live">live</span></h2>
+      <p class="muted" style="margin-bottom:10px">Hyper Awakening introduces 4 item categories: per-hero <strong>Awakening Cards</strong> (one-time unlock), the universal <strong>Awakening Stone</strong> (skill XP), pre-existing <strong>Hero Shards</strong> (40-level base ladder), and event-reward pointers. Per-Phase I hero card mapping verified from the decoded item table.</p>
+      <div class="items-grid" id="items-grid"></div>
     </section>
 
     <section>
@@ -763,6 +791,27 @@
           el('div', { class: 'ci' }, 'Item ID: ', el('code', { style: 'color:var(--accent)' }, String(c.id)))
         )
       );
+    }
+
+    function renderItemsEconomy() {
+      const wrap = document.getElementById('items-grid');
+      const ie = DATA.hyperAwakening.itemsEconomy;
+      if (!ie) { wrap && replace(wrap); return; }
+      const cards = ie.items.map(it => {
+        const isCurrency = it.category === 'Skill XP currency';
+        const isCardItem = it.category === 'Per-hero awakening unlock';
+        const cls = 'item-card' + (isCurrency ? ' currency' : isCardItem ? ' card-item' : '');
+        return el('div', { class: cls },
+          el('img', { class: 'item-card-icon', src: '../' + it.icon, alt: it.name, loading: 'lazy', on: { click: () => openModal('../' + it.icon) } }),
+          el('div', { class: 'item-card-meta' },
+            el('div', { class: 'item-card-name' }, it.name),
+            el('div', { class: 'item-card-cat' }, it.category),
+            el('div', { class: 'item-card-role' }, it.role),
+            el('div', { class: 'item-card-id' }, 'ID: ', String(it.id))
+          )
+        );
+      });
+      replace(wrap, ...cards);
     }
 
     function renderAwakenedPersonas() {
@@ -1255,6 +1304,7 @@
         renderPhaseBanners();
         renderHaSummary();
         renderCurrency();
+        renderItemsEconomy();
         renderAwakenedPersonas();
         renderAwakeningSkillsGrid();
         renderBuffMatrix();
