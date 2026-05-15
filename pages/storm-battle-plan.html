@@ -57,23 +57,21 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 .sb-rules-grid b.y{color:var(--yellow);}
 .sb-rules-grid .sb-rule{padding:.2rem 0;}
 
-/* Lane assignment overview — clickable filters */
+/* Lane assignment overview */
 .lane-overview{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-bottom:1.2rem;}
 @media (max-width:560px){.lane-overview{grid-template-columns:1fr;}}
-.lane-block{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:.85rem 1rem;position:relative;cursor:pointer;transition:background .12s,border-color .12s,box-shadow .12s;}
-.lane-block:hover{background:var(--surface);}
+.lane-block{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:.85rem 1rem;position:relative;}
 .lane-block.defend{border-left:5px solid var(--defend);}
 .lane-block.attack{border-left:5px solid var(--attack);}
-.lane-block.active{box-shadow:0 0 0 2px rgba(121,192,255,.45) inset;}
-.lane-block.defend.active{background:rgba(63,185,80,.06);}
-.lane-block.attack.active{background:rgba(248,81,73,.06);}
 .lane-block-hint{font-size:.66rem;color:var(--muted);margin-top:.35rem;font-weight:600;}
-.lane-block.active .lane-block-hint{color:var(--accent);}
-/* Filter state — hide the non-matching column in every stage */
-.stages.only-defend .tgt-col.attack{display:none;}
-.stages.only-attack .tgt-col.defend{display:none;}
-.stages.only-defend .tgt-split,
-.stages.only-attack .tgt-split{grid-template-columns:1fr;}
+/* Server filter: clickable sid chips inside each block. Active chip
+   filters every stage's player chips to that sid only. */
+.srv-chip{cursor:pointer;transition:transform .12s,box-shadow .12s;}
+.srv-chip:hover{transform:translateY(-1px);}
+.srv-chip.active{box-shadow:0 0 0 2px var(--accent);}
+.stages.filtering .pchip{opacity:.22;}
+.stages.filtering .pchip.match{opacity:1;}
+.stages.filtering .tgt-team{gap:.18rem;}
 .lane-block-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.45rem;}
 .lane-block-tag{font-size:.62rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:.18rem .5rem;border-radius:999px;}
 .lane-block.defend .lane-block-tag{background:rgba(63,185,80,.16);color:var(--defend);border:1px solid rgba(63,185,80,.4);}
@@ -708,9 +706,9 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     root.appendChild(box);
   }
 
-  // Compact lane strip — also drives the stage-board filter. Click a
-  // block to filter the stage board to just that side; click again to
-  // clear and show both.
+  // Lane strip — the individual server pills inside each block are the
+  // filters. Click "S655" → stage board dims every chip whose sid !== 655.
+  // Click the same chip again to clear.
   function buildLaneStrip(data, root){
     var wrap=el('div','lane-overview');
     wrap.appendChild(buildLaneBlock('defend', 'Defenders', DEFEND_SIDS, data));
@@ -720,9 +718,6 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 
   function buildLaneBlock(side, title, sids, data){
     var block=el('div','lane-block '+side);
-    block.setAttribute('role','button');
-    block.setAttribute('tabindex','0');
-    block.setAttribute('aria-pressed','false');
     block.dataset.side=side;
     var head=el('div','lane-block-head');
     head.appendChild(el('div','lane-block-title', title));
@@ -730,32 +725,37 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     block.appendChild(head);
     var srvs=el('div','lane-block-srvs');
     sids.forEach(function(sid){
-      var chip=el('span','srv-chip', 'S'+sid);
+      var chip=document.createElement('button');
+      chip.type='button';
+      chip.className='srv-chip';
+      chip.textContent='S'+sid;
+      chip.dataset.sid=String(sid);
+      chip.setAttribute('aria-pressed','false');
+      chip.title='Tap to show only S'+sid+' players in the stage board';
+      chip.addEventListener('click', function(){ toggleServerFilter(sid); });
       srvs.appendChild(chip);
     });
     block.appendChild(srvs);
-    block.appendChild(el('div','lane-block-hint','Tap to filter stages'));
-    block.addEventListener('click', function(){ toggleLaneFilter(side); });
-    block.addEventListener('keydown', function(ev){
-      if(ev.key==='Enter'||ev.key===' '){ev.preventDefault(); toggleLaneFilter(side);}
-    });
+    block.appendChild(el('div','lane-block-hint','Tap a server to filter stages'));
     return block;
   }
 
-  var _laneFilter=null; // 'defend' | 'attack' | null
-  function toggleLaneFilter(side){
-    _laneFilter = (_laneFilter===side) ? null : side;
+  var _serverFilter=null; // sid (number) or null
+  function toggleServerFilter(sid){
+    _serverFilter = (_serverFilter===sid) ? null : sid;
+    applyServerFilter();
+  }
+  function applyServerFilter(){
     var stages=document.querySelector('.stages');
-    if(stages){
-      stages.classList.toggle('only-defend', _laneFilter==='defend');
-      stages.classList.toggle('only-attack', _laneFilter==='attack');
-    }
-    document.querySelectorAll('.lane-block').forEach(function(b){
-      var on = b.dataset.side===_laneFilter;
+    if(stages) stages.classList.toggle('filtering', _serverFilter!=null);
+    document.querySelectorAll('.srv-chip').forEach(function(b){
+      var on = String(b.dataset.sid)===String(_serverFilter);
       b.classList.toggle('active', on);
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
-      var hint=b.querySelector('.lane-block-hint');
-      if(hint) hint.textContent = on ? 'Showing only this side · tap to clear' : 'Tap to filter stages';
+    });
+    document.querySelectorAll('.pchip').forEach(function(c){
+      var match = _serverFilter==null || String(c.dataset.sid)===String(_serverFilter);
+      c.classList.toggle('match', match);
     });
   }
 
@@ -834,6 +834,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     var pin=isDefensePin(p.name);
     var att=isAttackCallout(p.name);
     var c=el('span','pchip'+((pin||att)?' pinned':''));
+    c.dataset.sid=String(p.sid);
     if(p.avatar_url){
       var img=el('img','pchip-av');
       img.setAttribute('src',p.avatar_url);img.setAttribute('alt','');img.setAttribute('loading','lazy');
