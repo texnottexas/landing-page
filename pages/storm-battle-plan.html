@@ -57,12 +57,23 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 .sb-rules-grid b.y{color:var(--yellow);}
 .sb-rules-grid .sb-rule{padding:.2rem 0;}
 
-/* Lane assignment overview */
+/* Lane assignment overview — clickable filters */
 .lane-overview{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-bottom:1.2rem;}
 @media (max-width:560px){.lane-overview{grid-template-columns:1fr;}}
-.lane-block{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:.85rem 1rem;position:relative;}
+.lane-block{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:.85rem 1rem;position:relative;cursor:pointer;transition:background .12s,border-color .12s,box-shadow .12s;}
+.lane-block:hover{background:var(--surface);}
 .lane-block.defend{border-left:5px solid var(--defend);}
 .lane-block.attack{border-left:5px solid var(--attack);}
+.lane-block.active{box-shadow:0 0 0 2px rgba(121,192,255,.45) inset;}
+.lane-block.defend.active{background:rgba(63,185,80,.06);}
+.lane-block.attack.active{background:rgba(248,81,73,.06);}
+.lane-block-hint{font-size:.66rem;color:var(--muted);margin-top:.35rem;font-weight:600;}
+.lane-block.active .lane-block-hint{color:var(--accent);}
+/* Filter state — hide the non-matching column in every stage */
+.stages.only-defend .tgt-col.attack{display:none;}
+.stages.only-attack .tgt-col.defend{display:none;}
+.stages.only-defend .tgt-split,
+.stages.only-attack .tgt-split{grid-template-columns:1fr;}
 .lane-block-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.45rem;}
 .lane-block-tag{font-size:.62rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:.18rem .5rem;border-radius:999px;}
 .lane-block.defend .lane-block-tag{background:rgba(63,185,80,.16);color:var(--defend);border:1px solid rgba(63,185,80,.4);}
@@ -162,10 +173,12 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 .see-more.open svg{transform:rotate(180deg);}
 .see-more svg{transition:transform .15s;}
 
-/* Search */
+/* Search — always-on animated gradient border + glow */
+@keyframes sb-shimmer{0%{background-position:-200% center;}100%{background-position:200% center;}}
+@keyframes sb-glow{0%,100%{box-shadow:0 0 12px rgba(121,192,255,.2),0 0 24px rgba(63,185,80,.08);}50%{box-shadow:0 0 16px rgba(121,192,255,.35),0 0 32px rgba(63,185,80,.18);}}
 .sb-search-wrap{position:relative;margin-bottom:1.2rem;}
-.sb-search-input{width:100%;background:var(--card);border:2px solid var(--border);border-radius:14px;color:var(--text);font-size:1rem;font-weight:600;padding:.85rem 1rem .85rem 2.6rem;font-family:inherit;transition:border-color .15s ease,background .15s ease;}
-.sb-search-input:focus{outline:none;border-color:var(--accent);background:var(--surface);}
+.sb-search-input{width:100%;background-color:var(--card);background-image:linear-gradient(var(--card),var(--card)),linear-gradient(90deg,var(--accent) 0%,var(--green) 25%,var(--yellow) 50%,var(--red) 75%,var(--accent) 100%);background-origin:border-box;background-clip:padding-box,border-box;background-size:100% 100%,200% auto;border:2px solid transparent;border-radius:14px;color:var(--text);font-size:1rem;font-weight:600;padding:.85rem 1rem .85rem 2.6rem;font-family:inherit;animation:sb-shimmer 6s linear infinite,sb-glow 4s ease-in-out infinite;transition:background-color .15s ease;}
+.sb-search-input:focus{outline:none;background-color:var(--surface);background-image:linear-gradient(var(--surface),var(--surface)),linear-gradient(90deg,var(--accent) 0%,var(--green) 50%,var(--accent) 100%);}
 .sb-search-input::placeholder{color:var(--muted);font-weight:500;}
 .sb-search-icon{position:absolute;left:.95rem;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;}
 .sb-search-input:focus + .sb-search-icon{color:var(--accent);}
@@ -674,16 +687,15 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     var box=el('div','sb-rules');
     var title=el('div','sb-rules-title');
     title.appendChild(makeIcon('info',14));
-    title.appendChild(el('span',null,'How storm duel scores — capture buildings, hold for points/min'));
+    title.appendChild(el('span',null,'Storm duel, how score.'));
     box.appendChild(title);
     var grid=el('div','sb-rules-grid');
     var rules=[
-      {head:'Capital', cls:'y', body:'100 pts/min (opens 30m). Tiebreaker decider.'},
-      {head:'L3 Ruin', cls:'y', body:'40 pts/min (opens 15m). 1 per side.'},
-      {head:'L2 Ruin', cls:'y', body:'20 pts/min (open from start). 2 per side.'},
-      {head:'L1 Ruin', cls:'y', body:'10 pts/min (open from start). 3 per side.'},
-      {head:'Capture flow', cls:null, body:'Besiege → 60s capture timer → captured → 120s at-peace → held (+pts/min ticks).'},
-      {head:'Min 4 bodies', cls:null, body:'Every L1/L2/L3 slot has at least 4 players assigned — pulled from the cross-server Roving pool when needed.'}
+      {head:'Capital',      cls:'y',  body:'100 pts/min.'},
+      {head:'L3 Ruin',      cls:'y',  body:'40 pts/min.'},
+      {head:'L2 Ruin',      cls:'y',  body:'20 pts/min.'},
+      {head:'L1 Ruin',      cls:'y',  body:'10 pts/min.'},
+      {head:'Capture flow', cls:null, body:'Own 60 sec, capture, 120 sec peace, fight again.'}
     ];
     rules.forEach(function(r){
       var d=el('div','sb-rule');
@@ -696,7 +708,9 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     root.appendChild(box);
   }
 
-  // Compact one-line lane strip — just context for the stage board below.
+  // Compact lane strip — also drives the stage-board filter. Click a
+  // block to filter the stage board to just that side; click again to
+  // clear and show both.
   function buildLaneStrip(data, root){
     var wrap=el('div','lane-overview');
     wrap.appendChild(buildLaneBlock('defend', 'Defenders', DEFEND_SIDS, data));
@@ -706,6 +720,10 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 
   function buildLaneBlock(side, title, sids, data){
     var block=el('div','lane-block '+side);
+    block.setAttribute('role','button');
+    block.setAttribute('tabindex','0');
+    block.setAttribute('aria-pressed','false');
+    block.dataset.side=side;
     var head=el('div','lane-block-head');
     head.appendChild(el('div','lane-block-title', title));
     head.appendChild(el('span','lane-block-tag', side==='defend' ? sids.length+' servers · defend' : sids.length+' servers · attack'));
@@ -716,7 +734,29 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
       srvs.appendChild(chip);
     });
     block.appendChild(srvs);
+    block.appendChild(el('div','lane-block-hint','Tap to filter stages'));
+    block.addEventListener('click', function(){ toggleLaneFilter(side); });
+    block.addEventListener('keydown', function(ev){
+      if(ev.key==='Enter'||ev.key===' '){ev.preventDefault(); toggleLaneFilter(side);}
+    });
     return block;
+  }
+
+  var _laneFilter=null; // 'defend' | 'attack' | null
+  function toggleLaneFilter(side){
+    _laneFilter = (_laneFilter===side) ? null : side;
+    var stages=document.querySelector('.stages');
+    if(stages){
+      stages.classList.toggle('only-defend', _laneFilter==='defend');
+      stages.classList.toggle('only-attack', _laneFilter==='attack');
+    }
+    document.querySelectorAll('.lane-block').forEach(function(b){
+      var on = b.dataset.side===_laneFilter;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      var hint=b.querySelector('.lane-block-hint');
+      if(hint) hint.textContent = on ? 'Showing only this side · tap to clear' : 'Tap to filter stages';
+    });
   }
 
 
