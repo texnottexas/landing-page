@@ -10624,6 +10624,39 @@
     if (!skillId) return null;
     return ASSET_BASE + 'assets/skill-icons/skill_' + skillId + '.png';
   }
+  // Talent name + value resolution — backed by data/hero-talents.json which
+  // mirrors the in-game `talent` TABLE plus the rn cap from DataConfig 20021
+  // (talent_self_choose_time). Game formula (verified against in-game UI):
+  //   percent = ttsr * (max_num + add_num * max(quality - 3, 0)) / 1e6
+  // — i.e. ttsr is "fully learned" at 10000 (and the bookmarklet omits it
+  // when defaulted), randomNum is the re-roll counter (does NOT change the
+  // percent, just the N/rnMax progress).
+  var _BENCH_TALENT_INDEX = null;
+  function _bench_talentIndex() {
+    if (_BENCH_TALENT_INDEX) return _BENCH_TALENT_INDEX;
+    var data = window._heroTalentsData;
+    if (!data || !Array.isArray(data.talents)) return null;
+    var idx = {};
+    data.talents.forEach(function (t) { if (t && t.id != null) idx[t.id] = t; });
+    _BENCH_TALENT_INDEX = { rnMax: data.rnMax || 20, defaultTtsr: data.defaultTtsr || 10000, byId: idx };
+    return _BENCH_TALENT_INDEX;
+  }
+  function _bench_talentInfo(talentId) {
+    var ix = _bench_talentIndex();
+    return (ix && ix.byId[talentId]) || null;
+  }
+  function _bench_talentPercent(talentId, ttsr, heroQuality) {
+    var info = _bench_talentInfo(talentId);
+    if (!info) return null;
+    var ix = _bench_talentIndex();
+    var actualTtsr = (ttsr != null) ? ttsr : (ix ? ix.defaultTtsr : 10000);
+    var i = Math.max((heroQuality || 0) - 3, 0);
+    return actualTtsr * (info.maxNum + info.addNum * i) / 1e6;
+  }
+  function _bench_talentRnMax() {
+    var ix = _bench_talentIndex();
+    return ix ? ix.rnMax : 20;
+  }
   // Determines whether the player actually has the hero's exclusive skill
   // equipped (vs. just a supportive sitting in slot 0 of _extraSkill). v2
   // bookmarklets emit `exId` — the skillId we captured from the matching
@@ -10975,6 +11008,12 @@
       _benchPending++;
       fetch('data/supportive-skills.json').then(function(r) { return r.ok ? r.json() : null; })
         .then(function(j) { if (j) window._supportiveSkillsData = j; _benchAfterLoad(); })
+        .catch(function() { _benchAfterLoad(); });
+    }
+    if (!window._heroTalentsData) {
+      _benchPending++;
+      fetch('data/hero-talents.json').then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(j) { if (j) window._heroTalentsData = j; _benchAfterLoad(); })
         .catch(function() { _benchAfterLoad(); });
     }
     if (!window._allHeroesData) {
@@ -11478,11 +11517,27 @@
       talSec.appendChild(talLbl);
       var talRow = document.createElement('div');
       talRow.className = 'bench-talents';
+      var rnMax = _bench_talentRnMax();
       h.tal.forEach(function(t) {
         var pill = document.createElement('span');
         pill.className = 'bench-talent-pill';
-        pill.textContent = 'T' + t.id + (t.rn ? ' (rn ' + t.rn + ')' : '');
-        if (t.tmp) pill.title = 'Temp talent ' + t.tmp;
+        var info = _bench_talentInfo(t.id);
+        var pct = _bench_talentPercent(t.id, t.ttsr, h.q);
+        var label;
+        if (info && pct != null) {
+          label = info.name + ' +' + pct.toFixed(2) + '%';
+        } else {
+          label = 'T' + t.id;
+        }
+        var subBits = [];
+        subBits.push((t.rn || 0) + '/' + rnMax);
+        if (t.tmp) subBits.push('temp T' + t.tmp);
+        pill.textContent = label + ' · ' + subBits.join(' · ');
+        if (info) {
+          pill.title = info.name + ' (talent #' + t.id + ') — re-roll ' + (t.rn || 0) + '/' + rnMax + (t.tmp ? '; pending swap to T' + t.tmp : '');
+        } else if (t.tmp) {
+          pill.title = 'Temp talent ' + t.tmp;
+        }
         talRow.appendChild(pill);
       });
       talSec.appendChild(talRow);
