@@ -10657,16 +10657,27 @@
     var ix = _bench_talentIndex();
     return ix ? ix.rnMax : 20;
   }
-  // Determines whether the player actually has the hero's exclusive skill
-  // equipped (vs. just a supportive sitting in slot 0 of _extraSkill). v2
-  // bookmarklets emit `exId` — the skillId we captured from the matching
-  // _extraSkill entry — so we can verify it matches the hero's expected
-  // exclusive. v1 (legacy) data has no exId; we fall back to trusting exLv
-  // because we can't verify, but new extractions will be accurate.
+  // Slot 0 of each preset's skill list is the "top" slot which usually holds
+  // the hero's exclusive (skill_type 3). For older heroes whose exclusive
+  // isn't unlocked, slot 0 can hold a passive/supportive (skill_type 4)
+  // instead — so we can't blindly treat slot 0 as the exclusive. The truth
+  // is: slot 0 IS the exclusive when its skillId matches the hero's known
+  // exclusive (per all-heroes.json meta.exclusiveSkill.id). Otherwise slot 0
+  // is a regular supportive pick and should be rendered as one.
+  function _bench_activePreset(h) {
+    return (h && h.ap === 2) ? h.p2 : (h && h.p1) || null;
+  }
+  function _bench_slotIsExclusive(slot, meta) {
+    if (!slot || !slot.id || !meta || !meta.exclusiveSkill || !meta.exclusiveSkill.id) return false;
+    return slot.id === meta.exclusiveSkill.id && (slot.lv || 0) > 0;
+  }
   function _bench_hasExclusiveEquipped(h, meta) {
-    if (!h || !meta || !meta.exclusiveSkill || !meta.exclusiveSkill.id) return false;
-    if (h.exId != null) return h.exId === meta.exclusiveSkill.id;
-    return !!h.exLv;
+    var p = _bench_activePreset(h);
+    return p && Array.isArray(p.x) && _bench_slotIsExclusive(p.x[0], meta);
+  }
+  function _bench_exclusiveLevel(h, meta) {
+    if (!_bench_hasExclusiveEquipped(h, meta)) return 0;
+    return _bench_activePreset(h).x[0].lv || 0;
   }
   function _bench_exclusiveIconUrl(heroId) {
     return ASSET_BASE + 'assets/exclusive-skill-icons/exc-skill-' + heroId + '.png';
@@ -10922,7 +10933,13 @@
         switch (state.sort) {
           case 'star': return (b.star || 0) - (a.star || 0) || (b.pw || 0) - (a.pw || 0);
           case 'lv':   return (b.lv || 0)   - (a.lv || 0)   || (b.pw || 0) - (a.pw || 0);
-          case 'exLv': return (b.exLv || 0) - (a.exLv || 0) || (b.pw || 0) - (a.pw || 0);
+          case 'exLv': {
+            var ma = (window._allHeroesById && window._allHeroesById[a.id]) || null;
+            var mb = (window._allHeroesById && window._allHeroesById[b.id]) || null;
+            var av = _bench_exclusiveLevel(a, ma);
+            var bv = _bench_exclusiveLevel(b, mb);
+            return bv - av || (b.pw || 0) - (a.pw || 0);
+          }
           case 'name': {
             var an = String(heroName(a.id) || a.id);
             var bn = String(heroName(b.id) || b.id);
@@ -11102,13 +11119,14 @@
     var topRight = document.createElement('div');
     topRight.className = 'bench-top-right';
     var heroMeta = (window._allHeroesById && window._allHeroesById[h.id]) || null;
-    if (h.exLv && _bench_hasExclusiveEquipped(h, heroMeta)) {
+    var cardExcLv = _bench_exclusiveLevel(h, heroMeta);
+    if (cardExcLv) {
       var exLv = document.createElement('span');
-      exLv.className = 'bench-exlv tier-' + _bench_exLvTier(h.exLv);
-      exLv.textContent = 'Exc Lv ' + h.exLv;
-      exLv.title = h.exLv >= 7
+      exLv.className = 'bench-exlv tier-' + _bench_exLvTier(cardExcLv);
+      exLv.textContent = 'Exc Lv ' + cardExcLv;
+      exLv.title = cardExcLv >= 7
         ? 'Exclusive skill level — whale tier'
-        : h.exLv >= 5
+        : cardExcLv >= 5
           ? 'Exclusive skill level — standard max'
           : 'Exclusive skill level';
       topRight.appendChild(exLv);
@@ -11293,7 +11311,8 @@
       subParts.push('Lv.' + (h.lv || 0) + (h.mlv ? '/' + h.mlv : ''));
       subParts.push('CP ' + (h.pw || 0).toLocaleString());
       if (h.aw) subParts.push('Awaken ' + h.aw);
-      if (h.exLv && _bench_hasExclusiveEquipped(h, meta)) subParts.push('Exclusive Lv.' + h.exLv);
+      var subExcLv = _bench_exclusiveLevel(h, meta);
+      if (subExcLv) subParts.push('Exclusive Lv.' + subExcLv);
       hSub.textContent = subParts.join('  ·  ');
       hTxt.appendChild(hSub);
       hTxt.appendChild(_bench_starRow(h.star, 5));
@@ -11426,11 +11445,12 @@
     if (meta && meta.exclusiveSkill) {
       var exc = meta.exclusiveSkill;
       var excEquipped = !readOnly && _bench_hasExclusiveEquipped(h, meta);
+      var excLv = excEquipped ? _bench_exclusiveLevel(h, meta) : 0;
       var excSec = document.createElement('div');
       excSec.className = 'bench-skill-section bench-exclusive-section';
       var excLbl = document.createElement('div');
       excLbl.className = 'bench-skill-section-label';
-      excLbl.textContent = 'Exclusive skill' + (excEquipped && h.exLv ? ' · current Lv ' + h.exLv : (!readOnly && !excEquipped ? ' · not equipped' : ''));
+      excLbl.textContent = 'Exclusive skill' + (excEquipped && excLv ? ' · current Lv ' + excLv : (!readOnly && !excEquipped ? ' · not equipped' : ''));
       excSec.appendChild(excLbl);
 
       var excHdr = document.createElement('div');
@@ -11471,7 +11491,7 @@
           row.className = 'bench-milestone';
           var badge = document.createElement('span');
           badge.className = 'bench-milestone-badge';
-          if (excEquipped && h.exLv && m.level <= h.exLv) badge.classList.add('reached');
+          if (excEquipped && excLv && m.level <= excLv) badge.classList.add('reached');
           badge.textContent = 'Lv.' + m.level;
           row.appendChild(badge);
           var txt = document.createElement('span');
@@ -11496,11 +11516,15 @@
         eqLbl.className = 'bench-skill-section-label';
         eqLbl.textContent = 'Equipped supportive skills · Preset ' + activeIdx + ' (active)';
         eqSec.appendChild(eqLbl);
-        // All four entries of p.x are supportive slots — the bookmarklet reads
-        // them from h._firstSkillList / h._secondSkillList which never holds
-        // the exclusive. The exclusive lives in h._extraSkill[0] and is
-        // surfaced separately above via meta.exclusiveSkill + h.exLv.
-        var slots = (p.x || []);
+        // Slot 0 of p.x is the "top" slot in the in-game preset. When the
+        // hero has their exclusive equipped, slot 0 holds the exclusive
+        // (skill_type 3) and is already shown in the bench-exclusive-section
+        // above — skip it here. Otherwise (slot 0 empty, or holding a
+        // passive/supportive for older heroes whose exclusive isn't
+        // unlocked) keep all four slots so we don't drop a real equipped
+        // skill from the list.
+        var slot0IsExclusive = _bench_slotIsExclusive(p.x && p.x[0], meta);
+        var slots = slot0IsExclusive ? (p.x || []).slice(1) : (p.x || []);
         slots.forEach(function(s) { eqSec.appendChild(_bench_buildSkillRow(s, { heroId: h.id })); });
         (p.b || []).forEach(function(s) { eqSec.appendChild(_bench_buildSkillRow(s, { heroId: h.id, passive: true })); });
         pane.appendChild(eqSec);
@@ -11566,24 +11590,22 @@
       lbl.textContent = 'Preset ' + idx + (h.ap === idx ? ' · active' : '');
       col.appendChild(lbl);
 
-      // Mirror the in-game stack: exclusive icon on top (only when the player
-      // actually has it equipped — same exclusive applies to both presets
-      // since the hero's exclusive isn't part of the preset config), then the
-      // four supportive slots from p.x[0..3], then the Combat Elite 5th
-      // "buff" platform from p.b[0] when the player has unlocked it. Locked
-      // slots are skipped, matching the in-game UI.
-      var equipped = _bench_hasExclusiveEquipped(h, meta);
+      // Mirror the in-game stack: slot 0 is the "top" platform — usually the
+      // hero's exclusive (skill_type 3) when equipped, but for older heroes
+      // it can hold a passive/supportive (skill_type 4) when the exclusive
+      // isn't unlocked. Slots 1..3 are supportive. p.b[0] is the Combat
+      // Elite 5th platform, present only when unlocked. We render each
+      // preset's slot 0 with the exclusive icon + "exclusive" label ONLY
+      // when its skillId matches the hero's known exclusive (per
+      // meta.exclusiveSkill.id); otherwise it renders as a regular slot.
+      var slot0Exc = p.x && _bench_slotIsExclusive(p.x[0], meta);
       var extraLbl = document.createElement('div');
       extraLbl.className = 'bench-skill-section-label inline';
-      extraLbl.textContent = equipped ? 'Exclusive + supportive' : 'Supportive';
+      extraLbl.textContent = slot0Exc ? 'Exclusive + supportive' : 'Supportive';
       col.appendChild(extraLbl);
-      if (equipped) {
-        var excSlot = { id: meta.exclusiveSkill.id };
-        if (h.exLv) excSlot.lv = h.exLv;
-        col.appendChild(_bench_buildSkillRow(excSlot, { heroId: h.id, exclusiveSlot: true }));
-      }
-      (p.x || []).forEach(function(s) {
-        col.appendChild(_bench_buildSkillRow(s, { heroId: h.id }));
+      (p.x || []).forEach(function(s, i) {
+        var isExc = (i === 0) && _bench_slotIsExclusive(s, meta);
+        col.appendChild(_bench_buildSkillRow(s, { heroId: h.id, exclusiveSlot: isExc }));
       });
       (p.b || []).forEach(function(s) {
         col.appendChild(_bench_buildSkillRow(s, { heroId: h.id, passive: true }));
