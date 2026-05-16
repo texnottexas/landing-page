@@ -15694,6 +15694,137 @@
     return Promise.all([p1, p2, p3, p4]);
   }
 
+  // ── Beast Optimizer: data-prep helpers ────────────────────────────────────
+  // Normalize deployed + bench beasts into one flat list with stable field
+  // names. Deployed beasts come from ebResolveBeasts (uses `cfg`, `faction`,
+  // `quality`, `star`, `level`, `potential`, `mainBuff`, `baseBuff:[{id}]`);
+  // bench supplements use the compact shape (`cfgId`, `fac`, `q`, `st`, `lv`,
+  // `pot`, `mb`, `bb:[ids]`). Either field can be missing — return zero/empty
+  // defaults rather than throwing.
+  function boBuildOwnedBeasts(merged, benchSupp, resolved) {
+    var beasts = [];
+
+    (resolved && resolved.fields || []).forEach(function(f) {
+      // f.cfg is a numeric fieldType (1..5) — not an object.
+      var fieldType = f && f.cfg;
+      (f.slots || []).forEach(function(s) {
+        if (!s.beast) return;
+        var b = s.beast;
+        beasts.push({
+          id: String(b.id),
+          cfgId: b.cfgId != null ? b.cfgId : b.cfg,
+          type: b.type,
+          fac: b.fac != null ? b.fac : b.faction,
+          q: b.quality != null ? b.quality : (b.q || 0),
+          lv: b.level != null ? b.level : (b.lv || 0),
+          st: b.star != null ? b.star : (b.st || 0),
+          pot: (b.potential != null) ? Number(b.potential) : (b.pot != null ? Number(b.pot) : 0),
+          mb: b.mainBuff != null ? b.mainBuff : b.mb,
+          bb: (b.baseBuff || b.bb || []).map(function(x) { return (x && typeof x === 'object') ? x.id : x; }),
+          placement: { fieldType: fieldType, slot: s.fieldSlotNum }
+        });
+      });
+    });
+
+    if (benchSupp && Array.isArray(benchSupp.beasts)) {
+      benchSupp.beasts.forEach(function(b) {
+        beasts.push({
+          id: String(b.id),
+          cfgId: b.cfgId,
+          type: b.type,
+          fac: b.fac,
+          q: b.q || 0,
+          lv: b.lv || 0,
+          st: b.st || 0,
+          pot: b.pot != null ? Number(b.pot) : 0,
+          mb: b.mb,
+          bb: (b.bb || []).map(function(x) { return (x && typeof x === 'object') ? x.id : x; }),
+          placement: null
+        });
+      });
+    }
+
+    return beasts;
+  }
+
+  // Build a {fieldType: {slotOrder: beastId|null}} map of the player's
+  // current placement, taken straight from the resolved fields.
+  function boBuildCurrentPlan(resolved) {
+    var plan = {};
+    (resolved && resolved.fields || []).forEach(function(f) {
+      var fid = f && f.cfg;
+      if (!fid) return;
+      plan[fid] = {};
+      (f.slots || []).forEach(function(s) {
+        plan[fid][s.fieldSlotNum] = s.beast ? String(s.beast.id) : null;
+      });
+    });
+    return plan;
+  }
+
+  // Walk every condition row and emit one entry per matched (fieldId, conditionId).
+  // Real data shape: conditions[id] = { id, conditionType, conditionPara1/2/3,
+  // descRendered, descLoc, ... }. There is NO buffId/buffValue on conditions —
+  // they're pure gating descriptions. The deployed beast supplies the buff.
+  //
+  //   conditionType 0 = Fill All Slots
+  //   conditionType 1 = deploy N (para1) at rarity para2 or higher
+  //   conditionType 6 = deploy N (para1) at >= stars (para2) at rarity (para3)
+  function boComputeActiveConditions(plan, beasts) {
+    if (!boFieldConditions) return [];
+    var byId = {};
+    beasts.forEach(function(b) { if (b.id) byId[b.id] = b; });
+
+    var active = [];
+    Object.keys(plan).forEach(function(fidStr) {
+      var fid = Number(fidStr);
+      var slots = plan[fid] || {};
+      var fieldBeastIds = [];
+      var filledCount = 0;
+      var totalCount = 0;
+      Object.keys(slots).forEach(function(slotKey) {
+        totalCount++;
+        var bId = slots[slotKey];
+        if (bId) { filledCount++; fieldBeastIds.push(bId); }
+      });
+      var allFilled = filledCount === totalCount && totalCount > 0;
+      var fieldBeasts = fieldBeastIds.map(function(id) { return byId[id]; }).filter(Boolean);
+
+      Object.keys(boFieldConditions).forEach(function(cId) {
+        var c = boFieldConditions[cId];
+        if (!c) return;
+        var matched = false;
+        if (c.conditionType === 0) {
+          matched = allFilled;
+        } else if (c.conditionType === 1) {
+          var needCount = Number(c.conditionPara1 || 0);
+          var needRarity = Number(c.conditionPara2 || 0);
+          var have = fieldBeasts.filter(function(b) { return b.q >= needRarity; }).length;
+          matched = allFilled && have >= needCount;
+        } else if (c.conditionType === 6) {
+          var needCount6 = Number(c.conditionPara1 || 0);
+          var needStars = Number(c.conditionPara2 || 0);
+          var needRarity6 = Number(c.conditionPara3 || 0);
+          var have6 = fieldBeasts.filter(function(b) {
+            return b.q >= needRarity6 && b.st >= needStars;
+          }).length;
+          matched = allFilled && have6 >= needCount6;
+        }
+        if (matched) {
+          active.push({
+            fieldId: fid,
+            conditionId: c.id,
+            conditionName: c.descRendered || c.descLoc,
+            conditionType: c.conditionType,
+            buffId: null,
+            buffValue: null
+          });
+        }
+      });
+    });
+    return active;
+  }
+
   // ── Enigma buff value computation (ported from enigma-viewer) ─────────────
   function ebGetBuffCategory(buffId) {
     var id = Number(buffId);
