@@ -24540,12 +24540,26 @@
     return out;
   }
 
-  // Resolve a tree node's icon (relative path under landing-page/).
+  // Resolve a tree node's icon. ASSET_BASE points at the raw.githubusercontent
+  // CDN so relative-path resolution from /pages/ doesn't matter.
   function formationTalentIconUrl(node) {
     if (!node) return '';
     var icon = node.icon_name || '';
     if (!icon) return '';
-    return 'assets/formation-icons/image_professionTalent_' + icon + '.png';
+    return ASSET_BASE + 'assets/formation-icons/image_professionTalent_' + icon + '.png';
+  }
+
+  // Game shows three of these with placeholder ref-data names; override them
+  // with the canonical in-game labels Tex confirmed. Sciences 1 and 2 already
+  // come through as "Assault" and "Fortified Formation" in the JSON.
+  var FORMATION_TECH_NAME_OVERRIDES = {
+    '3': 'Defense',
+    '4': 'Full Defense',
+    '5': 'Swept Wing Formation'
+  };
+  function formationTechName(ref, sid) {
+    var sci = ref && ref.sciences && ref.sciences[sid];
+    return FORMATION_TECH_NAME_OVERRIDES[String(sid)] || (sci && sci.name) || sid;
   }
 
   // Sum power for a given current-levels map by walking the tree definition.
@@ -24833,26 +24847,19 @@
       badge.textContent = lv + '/' + maxLv;
       box.appendChild(badge);
 
-      var tipParts = [];
-      tipParts.push(n.name + ' — Lv ' + lv + '/' + maxLv);
-      if (n.desc) tipParts.push(n.desc);
-      var nextEntry = lv < maxLv && n.levels && n.levels[lv + 1];
-      if (nextEntry) {
-        tipParts.push('Next: cost ' + nextEntry.cost + ' Formation 101  ·  power +' + ((nextEntry.power || 0) - ((n.levels[lv] && n.levels[lv].power) || 0)));
-      }
+      var tipParts = [n.name + ' — Lv ' + lv + '/' + maxLv];
       if (parentLocked && !unlocked) tipParts.push('Locked: train its parent first');
-      if (planning && lv > 0) tipParts.push('Right-click / long-press to step down');
+      tipParts.push(planning ? 'Click for details + level up' : 'Click for details');
       box.title = tipParts.join('\n');
 
-      if (clickable) {
-        box.addEventListener('click', function(e) {
-          e.preventDefault();
-          state.planner.levels[n.id] = lv + 1;
-          state.planner.dirty = true;
-          saveFormationPlanner(state.plannerKey, state.planner);
-          refresh();
+      box.style.cursor = 'pointer';
+      box.addEventListener('click', function(e) {
+        e.preventDefault();
+        openTalentNodeModal({
+          node: n, tree: tree, state: state, refresh: refresh,
+          parentLocked: parentLocked,
         });
-      }
+      });
       if (rightClickable) {
         box.addEventListener('contextmenu', function(e) {
           e.preventDefault();
@@ -24876,6 +24883,185 @@
     });
 
     return col;
+  }
+
+  // In-game style talent node detail modal. Shows the icon, name, desc, every
+  // level's effect_value + cost + power, and (in planner mode only) Level Up /
+  // Step Down / Max buttons. None of those buttons ever call game APIs — they
+  // mutate state.planner.levels only. Right-click on the node remains the
+  // power-user shortcut for step-down.
+  function openTalentNodeModal(opts) {
+    var n = opts.node, tree = opts.tree, state = opts.state, refresh = opts.refresh, parentLocked = opts.parentLocked;
+    var planning = state.mode === 'plan';
+    var levels = planning ? state.planner.levels : state.currentLevels;
+    var maxLv = n.max_lv != null ? n.max_lv : 5;
+
+    var bg = document.createElement('div');
+    bg.className = 'modal-bg show';
+    bg.style.zIndex = '900';
+    var modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.cssText = 'max-width:440px;';
+    bg.appendChild(modal);
+    function close() { if (document.body.contains(bg)) document.body.removeChild(bg); }
+    bg.addEventListener('click', function(e) { if (e.target === bg) close(); });
+
+    function paint() {
+      var lv = levels[n.id] || 0;
+      var unlocked = lv > 0;
+      while (modal.firstChild) modal.removeChild(modal.firstChild);
+
+      var head = document.createElement('div');
+      head.style.cssText = 'display:flex;gap:.85rem;align-items:center;margin-bottom:.6rem;';
+      var iconWrap = document.createElement('div');
+      iconWrap.style.cssText = 'width:64px;height:64px;border:2px solid ' + (unlocked ? '#3fb950' : 'var(--border)') + ';border-radius:8px;background:#0d1117;display:flex;align-items:center;justify-content:center;flex-shrink:0;';
+      var iconSrc = formationTalentIconUrl(n);
+      if (iconSrc) {
+        var img = document.createElement('img');
+        img.src = iconSrc;
+        img.alt = n.name || '';
+        img.style.cssText = 'width:48px;height:48px;object-fit:contain;' + (unlocked ? '' : 'opacity:.55;filter:grayscale(.5);');
+        img.onerror = function() { img.style.display = 'none'; };
+        iconWrap.appendChild(img);
+      }
+      head.appendChild(iconWrap);
+
+      var titleBlock = document.createElement('div');
+      titleBlock.style.flex = '1';
+      var h2 = document.createElement('h2');
+      h2.style.cssText = 'margin:0 0 .15rem;font-size:1.1rem;color:var(--text);';
+      h2.textContent = n.name || ('Talent ' + n.id);
+      titleBlock.appendChild(h2);
+      var meta = document.createElement('div');
+      meta.style.cssText = 'font-size:.78rem;color:var(--muted);';
+      meta.appendChild(document.createTextNode('Lv '));
+      var s = document.createElement('strong');
+      s.style.color = unlocked ? '#3fb950' : 'var(--muted)';
+      s.textContent = String(lv);
+      meta.appendChild(s);
+      meta.appendChild(document.createTextNode(' / ' + maxLv + '  ·  Side: ' + (n.side === 'left' ? 'Shark / Scorpion' : 'Eagle')));
+      titleBlock.appendChild(meta);
+      head.appendChild(titleBlock);
+      modal.appendChild(head);
+
+      if (n.desc) {
+        var desc = document.createElement('p');
+        desc.style.cssText = 'margin:.3rem 0 .75rem;font-size:.85rem;color:var(--text);';
+        desc.textContent = n.desc;
+        modal.appendChild(desc);
+      }
+      if (parentLocked && !unlocked) {
+        var lock = document.createElement('div');
+        lock.style.cssText = 'background:#1a1010;border-left:3px solid #f85149;color:#f85149;padding:.4rem .6rem;border-radius:4px;font-size:.78rem;margin-bottom:.5rem;';
+        lock.textContent = 'Locked — train its parent talent first.';
+        modal.appendChild(lock);
+      }
+
+      // Per-level table
+      var levelsArr = Array.isArray(n.levels) ? n.levels : [];
+      if (levelsArr.length) {
+        var tbl = document.createElement('div');
+        tbl.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;max-height:240px;overflow-y:auto;';
+        var hdrRow = document.createElement('div');
+        hdrRow.style.cssText = 'display:grid;grid-template-columns:38px 1fr 80px 64px;gap:.4rem;padding:.35rem .55rem;font-size:.68rem;color:var(--muted);background:var(--card);position:sticky;top:0;';
+        ['Lv', 'Effect value', 'Cost (F101)', 'Power'].forEach(function(t) {
+          var c = document.createElement('div'); c.textContent = t; hdrRow.appendChild(c);
+        });
+        tbl.appendChild(hdrRow);
+
+        // Some nodes have a "level 0 / unlocked baseline" entry in the data
+        // with effect_value 0; skip it from the user view since it's not
+        // meaningful in the in-game UI.
+        levelsArr.forEach(function(entry, i) {
+          if (entry.level === 0 && entry.effect_value === 0 && i === 0) return;
+          var row = document.createElement('div');
+          var isCur = entry.level === lv;
+          var isNext = entry.level === lv + 1;
+          row.style.cssText = 'display:grid;grid-template-columns:38px 1fr 80px 64px;gap:.4rem;padding:.35rem .55rem;font-size:.78rem;color:var(--text);border-top:1px solid var(--border);' + (isCur ? 'background:rgba(63,185,80,0.10);' : (isNext ? 'background:rgba(121,192,255,0.08);' : ''));
+          var lvc = document.createElement('div'); lvc.style.color = isCur ? '#3fb950' : (isNext ? '#79c0ff' : 'var(--muted)'); lvc.textContent = (isCur ? '▶ ' : '') + entry.level; row.appendChild(lvc);
+          var ec  = document.createElement('div'); ec.textContent = '+' + (entry.effect_value || 0); row.appendChild(ec);
+          var cc  = document.createElement('div'); cc.style.color = entry.cost === '0' || entry.cost === 0 ? 'var(--muted)' : 'var(--text)'; cc.textContent = String(entry.cost != null ? entry.cost : '—'); row.appendChild(cc);
+          var pc  = document.createElement('div'); pc.style.color = '#79c0ff'; pc.textContent = (entry.power || 0).toLocaleString(); row.appendChild(pc);
+          tbl.appendChild(row);
+        });
+        modal.appendChild(tbl);
+      }
+
+      if (planning) {
+        var ctrls = document.createElement('div');
+        ctrls.style.cssText = 'display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.75rem;';
+
+        var upBtn = document.createElement('button');
+        upBtn.type = 'button';
+        var canUp = !parentLocked && lv < maxLv;
+        upBtn.disabled = !canUp;
+        upBtn.style.cssText = 'padding:.45rem .85rem;background:' + (canUp ? '#3fb950' : 'var(--border)') + ';color:' + (canUp ? '#0d1117' : 'var(--muted)') + ';border:none;border-radius:6px;font-size:.82rem;font-weight:700;cursor:' + (canUp ? 'pointer' : 'default') + ';';
+        upBtn.textContent = canUp ? ('Level Up → ' + (lv + 1)) : (parentLocked ? 'Locked' : 'Max level');
+        upBtn.onclick = function() {
+          state.planner.levels[n.id] = lv + 1;
+          state.planner.dirty = true;
+          saveFormationPlanner(state.plannerKey, state.planner);
+          refresh();
+          paint();
+        };
+        ctrls.appendChild(upBtn);
+
+        if (lv < maxLv && !parentLocked) {
+          var maxBtn = document.createElement('button');
+          maxBtn.type = 'button';
+          maxBtn.style.cssText = 'padding:.45rem .85rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;cursor:pointer;';
+          maxBtn.textContent = 'Max (' + maxLv + ')';
+          maxBtn.onclick = function() {
+            state.planner.levels[n.id] = maxLv;
+            state.planner.dirty = true;
+            saveFormationPlanner(state.plannerKey, state.planner);
+            refresh();
+            paint();
+          };
+          ctrls.appendChild(maxBtn);
+        }
+
+        if (lv > 0) {
+          var downBtn = document.createElement('button');
+          downBtn.type = 'button';
+          downBtn.style.cssText = 'padding:.45rem .85rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:#f85149;font-size:.82rem;cursor:pointer;';
+          downBtn.textContent = 'Step Down → ' + (lv - 1);
+          downBtn.onclick = function() {
+            var newLv = lv - 1;
+            if (newLv <= 0) {
+              delete state.planner.levels[n.id];
+              cascadeChildrenToZero(tree, state.planner.levels, n.id);
+            } else {
+              state.planner.levels[n.id] = newLv;
+            }
+            state.planner.dirty = true;
+            saveFormationPlanner(state.plannerKey, state.planner);
+            refresh();
+            paint();
+          };
+          ctrls.appendChild(downBtn);
+        }
+
+        var hint = document.createElement('span');
+        hint.style.cssText = 'flex-basis:100%;font-size:.7rem;color:var(--muted);margin-top:.2rem;';
+        hint.textContent = 'Simulator only — no game APIs are called.';
+        ctrls.appendChild(hint);
+        modal.appendChild(ctrls);
+      }
+
+      var closeRow = document.createElement('div');
+      closeRow.className = 'actions';
+      closeRow.style.cssText = 'margin-top:.85rem;display:flex;justify-content:flex-end;';
+      var closeBtn = document.createElement('button');
+      closeBtn.className = 'secondary';
+      closeBtn.textContent = 'Close';
+      closeBtn.onclick = close;
+      closeRow.appendChild(closeBtn);
+      modal.appendChild(closeRow);
+    }
+
+    paint();
+    document.body.appendChild(bg);
   }
 
   function cascadeChildrenToZero(tree, levels, rootId) {
@@ -25022,13 +25208,13 @@
     specBlock.appendChild(grid);
     card.appendChild(specBlock);
 
-    // Sciences row (5 buckets)
+    // Formation Tech row (5 buckets — Assault / Fortified / Defense / Full Defense / Swept Wing)
     if (formationData.sciences) {
       var sciBlock = document.createElement('div');
       sciBlock.style.cssText = 'margin-top:.5rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem;';
       var sciTitle = document.createElement('div');
       sciTitle.style.cssText = 'font-size:.72rem;color:var(--muted);margin-bottom:.3rem;';
-      sciTitle.textContent = 'Sciences';
+      sciTitle.textContent = 'Formation Tech';
       sciBlock.appendChild(sciTitle);
       var sciRow = document.createElement('div');
       // Min-content columns prevent overflow on narrow cards. minmax(0,1fr) lets the column
@@ -25040,11 +25226,12 @@
         var lv = formationData.sciences[sid] || 0;
         var max = (sci && sci.max_level) || 1;
         var pct = Math.round(lv / max * 100);
+        var techName = formationTechName(ref, sid);
         var pill = document.createElement('div');
         pill.style.cssText = 'background:#0d1117;border:1px solid var(--border);border-radius:4px;padding:.25rem .15rem;text-align:center;min-width:0;overflow:hidden;';
         var nm = document.createElement('div');
         nm.style.cssText = 'font-size:.6rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-        nm.textContent = (sci && sci.name) || sid;
+        nm.textContent = techName;
         pill.appendChild(nm);
         var lvEl = document.createElement('div');
         lvEl.style.cssText = 'font-size:.85rem;font-weight:600;color:var(--accent);line-height:1.1;';
@@ -25060,7 +25247,7 @@
         fill.style.cssText = 'display:block;height:100%;background:var(--accent);width:' + pct + '%;';
         bar.appendChild(fill);
         pill.appendChild(bar);
-        pill.title = (sci && sci.name) + ' Lv ' + lv + '/' + max;
+        pill.title = techName + ' Lv ' + lv + '/' + max;
         sciRow.appendChild(pill);
       });
       card.appendChild(sciBlock);
