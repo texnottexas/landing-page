@@ -526,6 +526,24 @@
       if (!HC || typeof HC.getHaveHeroList !== 'function') throw new Error('HeroController.getHaveHeroList not available');
       var have = HC.getHaveHeroList();
       if (!Array.isArray(have)) throw new Error('getHaveHeroList returned non-array');
+      // Map hero_id → exclusive skillId by walking hero_skill once (skill_type
+      // 3 is exclusive). We only need this to tell whether _extraSkill[0] is
+      // the player's actual exclusive or just a supportive sitting in that
+      // slot — heroes without an unlocked exclusive can have _extraSkill[0]
+      // populated by something else, which would otherwise misreport exLv.
+      var exclusiveByHero = {};
+      try {
+        var TM = req('TableManager').TABLE;
+        var grp = TM.getTableGroup ? TM.getTableGroup('hero_skill', true) : null;
+        if (grp && typeof grp === 'object') {
+          Object.keys(grp).forEach(function (k) {
+            var row = (TM.getTableDataById ? TM.getTableDataById('hero_skill', k) : grp[k]) || {};
+            if (row && Number(row.skill_type) === 3 && row.hero_id && row.skill_id) {
+              exclusiveByHero[row.hero_id] = row.skill_id;
+            }
+          });
+        }
+      } catch (e) { /* best-effort — fall back to raw slot 0 read */ }
       function trimSlots(arr) {
         if (!Array.isArray(arr)) return [];
         return arr.map(function (s) { return { id: (s && s.skillId) || 0, lv: (s && s.level) || 0 }; });
@@ -559,12 +577,21 @@
         if (h._dressId)       o.dr = h._dressId;
         if (h._awakenLevel)   o.aw = h._awakenLevel;
         if (h._fullAwaken)    o.fa = 1;
-        // Slot 0 of the active extra-skill list is always the exclusive slot
-        // (skill_type === 3 + hero_id matches in the hero_skill table). Surface
-        // its level at the top level so the Bench card can show it without
-        // re-deriving which preset is active.
-        if (h._extraSkill && h._extraSkill[0] && h._extraSkill[0].skillId && h._extraSkill[0].level) {
-          o.exLv = h._extraSkill[0].level;
+        // Find the entry in _extraSkill whose skillId matches this hero's
+        // exclusive (per hero_skill TABLE). Slot 0 isn't always the exclusive —
+        // some setups put a supportive there instead. Surface the matching
+        // skillId so the frontend can verify the exclusive really IS equipped
+        // before annotating it with the current level.
+        var expectedExcl = exclusiveByHero[h._id];
+        if (expectedExcl && Array.isArray(h._extraSkill)) {
+          for (var ei = 0; ei < h._extraSkill.length; ei++) {
+            var es = h._extraSkill[ei];
+            if (es && es.skillId === expectedExcl && es.level) {
+              o.exId = es.skillId;
+              o.exLv = es.level;
+              break;
+            }
+          }
         }
         var tl = trimTalents(h._talents);
         if (tl.length) o.tal = tl;
