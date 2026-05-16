@@ -537,6 +537,38 @@
     margin-top: 2px;
   }
   .adv-plan-diff .apd-more:hover { text-decoration: underline; }
+  /* Final-state hero gallery — mirrors the advisor's gear gallery but
+     read-only. Player sees what each affected hero looks like after the
+     plan applies; changed slots glow green so the eye lands on them. */
+  .apd-final-state {
+    margin-top: .55rem; padding-top: .55rem;
+    border-top: 1px dashed rgba(56, 139, 253, 0.25);
+  }
+  .apd-final-state .apd-fs-hint {
+    font-size: .68rem; color: var(--muted); margin-bottom: .35rem;
+    line-height: 1.45;
+  }
+  .apd-final-state .adv-slot-tile { cursor: default; }
+  .apd-final-state .adv-slot-tile:hover {
+    transform: none;
+    border-color: var(--border); background: var(--surface);
+  }
+  .apd-final-state .adv-slot-tile.queued { cursor: default; }
+  .apd-final-state .adv-slot-tile.queued:hover {
+    border-color: rgba(63, 185, 80, 0.6);
+    background: rgba(63, 185, 80, 0.08);
+  }
+  .apd-final-state .adv-slot-tile.maxed:hover {
+    border-color: rgba(227, 179, 65, 0.45);
+  }
+  .apd-final-state .adv-hero-card:hover { border-color: var(--border); }
+  .apd-fs-show-all {
+    background: none; border: none; color: var(--accent);
+    font-size: .72rem; padding: 6px 0 0; cursor: pointer;
+    margin-top: 4px;
+  }
+  .apd-fs-show-all:hover { text-decoration: underline; }
+  .apd-fs-hidden { display: none; }
   .adv-settings-row .asr-actions {
     display: flex; gap: .3rem; flex-shrink: 0; align-items: center;
   }
@@ -21600,55 +21632,177 @@
           }
 
           if (gearChanges.length > 0) {
-            // Long lists get a "show all" collapse so the panel doesn't
-            // dominate the card. Default visible: 5 entries.
             var gearLbl = document.createElement('div');
             gearLbl.className = 'apd-sublabel';
             gearLbl.textContent = 'Gear changes (' + gearChanges.length + ')';
             diffWrap.appendChild(gearLbl);
 
-            var gearList = document.createElement('ul');
-            gearList.className = 'apd-gear-list';
-            var INITIAL = 5;
-            function _slotN(s) {
-              return (typeof GEAR_SLOT_NAMES === 'object' && GEAR_SLOT_NAMES[s]) || ('Slot ' + s);
-            }
-            gearChanges.forEach(function(ch, i) {
-              var li = document.createElement('li');
-              if (i >= INITIAL) li.classList.add('apd-gear-hidden');
-              var hn = (typeof heroName === 'function') ? heroName(ch.heroId) : ('Hero ' + ch.heroId);
-              var slotN = _slotN(ch.slot);
-              var nm = document.createElement('span');
-              nm.className = 'apd-gear-hero';
-              nm.textContent = hn + ' · ' + slotN + ': ';
-              li.appendChild(nm);
-              var before = document.createElement('span');
-              before.className = 'apd-gear-before';
-              before.textContent = ch.before;
-              li.appendChild(before);
-              var arrow = document.createElement('span');
-              arrow.className = 'apd-gear-arrow';
-              arrow.textContent = ' → ';
-              li.appendChild(arrow);
-              var after = document.createElement('span');
-              after.className = 'apd-gear-after';
-              after.textContent = ch.after;
-              li.appendChild(after);
-              gearList.appendChild(li);
-            });
-            diffWrap.appendChild(gearList);
+            // Visual final-state gallery — one card per affected hero with
+            // their full 6-slot row in the AFTER state. Changed slots get
+            // the green "queued" glow so the eye lands on them; unchanged
+            // slots provide context (the player can see the rest of the
+            // hero's setup without leaving the plan view).
+            var fsWrap = document.createElement('div');
+            fsWrap.className = 'apd-final-state';
+            var fsHint = document.createElement('div');
+            fsHint.className = 'apd-fs-hint';
+            fsHint.textContent = 'Green tiles are the slots the plan changes. Other tiles show the hero’s current gear for context.';
+            fsWrap.appendChild(fsHint);
 
-            if (gearChanges.length > INITIAL) {
-              var more = document.createElement('button');
-              more.type = 'button';
-              more.className = 'apd-more';
-              more.textContent = 'Show ' + (gearChanges.length - INITIAL) + ' more';
-              more.onclick = function() {
-                gearList.querySelectorAll('.apd-gear-hidden').forEach(function(el) { el.classList.remove('apd-gear-hidden'); });
-                more.remove();
+            // Group changes by hero so each hero gets exactly one card.
+            var changedByHero = {};
+            gearChanges.forEach(function(ch) {
+              if (!changedByHero[ch.heroId]) changedByHero[ch.heroId] = {};
+              changedByHero[ch.heroId][ch.slot] = true;
+            });
+
+            // March-grouped sort, same logic as the advisor-side gallery,
+            // so a player who marches Astrid+Bradley together sees them
+            // adjacent in the After view too.
+            var marchList = (typeof loadMarches === 'function') ? loadMarches() : [];
+            var heroMarch = {};
+            marchList.forEach(function(m, mi) {
+              if (!m || !Array.isArray(m.heroIds)) return;
+              m.heroIds.forEach(function(hid, pi) {
+                if (hid && !heroMarch[hid]) heroMarch[hid] = { name: m.name || ('March ' + (mi + 1)), marchIdx: mi, posInMarch: pi };
+              });
+            });
+            var fsHeroIds = Object.keys(changedByHero).map(function(s) { return parseInt(s, 10); }).filter(Boolean);
+            fsHeroIds.sort(function(a, b) {
+              var ma = heroMarch[a], mb = heroMarch[b];
+              var aIdx = ma ? ma.marchIdx : 9999;
+              var bIdx = mb ? mb.marchIdx : 9999;
+              if (aIdx !== bIdx) return aIdx - bIdx;
+              if (ma && mb) return ma.posInMarch - mb.posInMarch;
+              var an = String((typeof heroName === 'function') ? heroName(a) : a);
+              var bn = String((typeof heroName === 'function') ? heroName(b) : b);
+              return an.localeCompare(bn);
+            });
+
+            var fsGallery = document.createElement('div');
+            fsGallery.className = 'adv-hero-gallery';
+            var fsIconMap = (typeof RUNE_ICON === 'object' && RUNE_ICON) ? RUNE_ICON : {};
+            var FS_INITIAL_HERO_LIMIT = 6;
+            fsHeroIds.forEach(function(hid, hi) {
+              var card = document.createElement('div');
+              card.className = 'adv-hero-card';
+              if (hi >= FS_INITIAL_HERO_LIMIT) card.classList.add('apd-fs-hidden');
+
+              var hdr = document.createElement('div');
+              hdr.className = 'adv-hero-card-hdr';
+              var heroImg = document.createElement('img');
+              heroImg.src = heroIconUrl(hid);
+              heroImg.alt = '';
+              heroImg.onerror = function() { this.style.display = 'none'; };
+              hdr.appendChild(heroImg);
+              var nameEl = document.createElement('span');
+              nameEl.className = 'hh-name';
+              nameEl.textContent = (typeof heroName === 'function') ? heroName(hid) : ('Hero ' + hid);
+              hdr.appendChild(nameEl);
+              var branch = (typeof heroBranch === 'function') ? heroBranch(hid) : null;
+              if (branch) {
+                var bbadge = document.createElement('span');
+                bbadge.className = 'hh-branch branch-badge ' + (typeof branchClass === 'function' ? branchClass(branch) : '');
+                bbadge.textContent = branch;
+                hdr.appendChild(bbadge);
+              }
+              if (heroMarch[hid]) {
+                var mPill = document.createElement('span');
+                mPill.className = 'hh-march';
+                mPill.textContent = heroMarch[hid].name;
+                mPill.title = heroMarch[hid].name;
+                hdr.appendChild(mPill);
+              }
+              card.appendChild(hdr);
+
+              var slotRow = document.createElement('div');
+              slotRow.className = 'adv-slot-row';
+              for (var fs = 1; fs <= 6; fs++) {
+                var aRune = afterState.gearByHero[hid] && afterState.gearByHero[hid][fs];
+                var slotName = (typeof GEAR_SLOT_NAMES === 'object' && GEAR_SLOT_NAMES[fs]) || ('Slot ' + fs);
+                var tile = document.createElement('div');
+                var isChangedHere = !!(changedByHero[hid] && changedByHero[hid][fs]);
+                var hasRune = !!(aRune && aRune.runeName);
+                tile.className = 'adv-slot-tile' + (hasRune ? ' filled' : ' empty') + (isChangedHere ? ' queued' : '');
+                var starMaxVal = null;
+                if (hasRune) {
+                  starMaxVal = aRune.starMax != null ? aRune.starMax : (function() {
+                    var m = runeIdx[aRune.runeName];
+                    if (!m) return null;
+                    var se = (m.slots || []).filter(function(x) { return x.slot === fs; })[0];
+                    return se ? se.star_max : null;
+                  })();
+                }
+                var isMaxed = !!(hasRune && starMaxVal != null && (aRune.star || 0) >= starMaxVal);
+                if (isMaxed) tile.classList.add('maxed');
+                var beforeRune = (baseGear[hid] || {})[fs];
+                var beforeLabel = (beforeRune && beforeRune.runeName) ? (beforeRune.runeName + ' ' + (beforeRune.star || 0) + '★') : 'empty';
+                var afterLabel = hasRune ? (aRune.runeName + ' ' + (aRune.star || 0) + (starMaxVal != null ? '/' + starMaxVal : '') + '★' + (isMaxed ? ' (MAX)' : '')) : 'empty';
+                tile.title = slotName + (isChangedHere ? ' — was: ' + beforeLabel + ' → ' + afterLabel : ' — ' + afterLabel);
+
+                var slotNumEl = document.createElement('span');
+                slotNumEl.className = 'ast-num';
+                slotNumEl.textContent = String(fs);
+                tile.appendChild(slotNumEl);
+                var gearImg = document.createElement('img');
+                gearImg.className = 'ast-gear';
+                gearImg.src = ASSET_BASE + 'assets/titan-slot-icons/gear_' + fs + '.png';
+                gearImg.alt = '';
+                gearImg.onerror = function() { this.style.display = 'none'; };
+                tile.appendChild(gearImg);
+                if (hasRune) {
+                  var icoFile = fsIconMap[aRune.runeName];
+                  if (icoFile) {
+                    var icoImg = document.createElement('img');
+                    icoImg.className = 'ast-icon';
+                    icoImg.src = ASSET_BASE + 'assets/rune-icons/' + icoFile + '.png';
+                    icoImg.alt = '';
+                    icoImg.onerror = function() { this.style.display = 'none'; };
+                    tile.appendChild(icoImg);
+                  }
+                  var starsWrap = document.createElement('span');
+                  starsWrap.className = 'ast-stars-wrap';
+                  if (typeof runeStarSVG === 'function' && starMaxVal != null) {
+                    starsWrap.appendChild(runeStarSVG(aRune.star || 0, starMaxVal));
+                  } else {
+                    starsWrap.textContent = (aRune.star || 0) + (starMaxVal != null ? '/' + starMaxVal : '') + '★';
+                    starsWrap.style.color = '#e3b341';
+                    starsWrap.style.fontSize = '.58rem';
+                    starsWrap.style.fontWeight = '700';
+                  }
+                  tile.appendChild(starsWrap);
+                  if (isMaxed) {
+                    var maxTag = document.createElement('span');
+                    maxTag.className = 'ast-max-tag';
+                    maxTag.textContent = 'MAX';
+                    tile.appendChild(maxTag);
+                  }
+                } else {
+                  var emp2 = document.createElement('span');
+                  emp2.className = 'ast-empty';
+                  emp2.textContent = '+';
+                  tile.appendChild(emp2);
+                }
+                slotRow.appendChild(tile);
+              }
+              card.appendChild(slotRow);
+              fsGallery.appendChild(card);
+            });
+            fsWrap.appendChild(fsGallery);
+
+            if (fsHeroIds.length > FS_INITIAL_HERO_LIMIT) {
+              var fsMore = document.createElement('button');
+              fsMore.type = 'button';
+              fsMore.className = 'apd-fs-show-all';
+              fsMore.textContent = 'Show ' + (fsHeroIds.length - FS_INITIAL_HERO_LIMIT) + ' more hero' + (fsHeroIds.length - FS_INITIAL_HERO_LIMIT === 1 ? '' : 'es');
+              fsMore.onclick = function() {
+                fsGallery.querySelectorAll('.apd-fs-hidden').forEach(function(el) { el.classList.remove('apd-fs-hidden'); });
+                fsMore.remove();
               };
-              diffWrap.appendChild(more);
+              fsWrap.appendChild(fsMore);
             }
+
+            diffWrap.appendChild(fsWrap);
           }
 
           host.appendChild(diffWrap);
