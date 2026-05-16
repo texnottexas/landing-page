@@ -16194,9 +16194,17 @@
     try { bench = ArmoryIdentity.getSupplement('bench', siteKey); } catch (e) {}
     var resolved = ebResolveBeasts(merged.enigmas || {});
     var owned = boBuildOwnedBeasts(merged, bench, resolved);
-    var openDetail = function(beast) {
+    // openDetail(beast, swapCtx?) - opens the standard beast modal and, when
+    // called from a swap card with a swap context, appends a "Swap impact"
+    // section showing slot location + per-stat delta + gain numbers.
+    var openDetail = function(beast, swapCtx) {
       var rich = boFindRichBeast(beast, resolved, bench);
-      if (rich) ebShowDetailModal(rich);
+      if (!rich) return;
+      ebShowDetailModal(rich);
+      if (swapCtx) {
+        var modal = document.querySelector('.eb-detail-overlay .eb-detail-modal');
+        if (modal) modal.appendChild(boBuildSwapImpactSection(swapCtx, prefs));
+      }
     };
     var currentPlan = boBuildCurrentPlan(resolved);
     var active = boComputeActiveConditions(currentPlan, owned);
@@ -16476,6 +16484,79 @@
     return box;
   }
 
+  // Build a "Swap impact at this slot" panel appended to the standard beast
+  // detail modal when a chip is clicked from the optimizer plan. Shows the
+  // slot location, the matching delta table, and the same gain-today /
+  // gain-at-max-out numbers the swap card surfaces, so the player can see
+  // exactly what changes by making the swap at THIS slot. role 'to' frames
+  // it as "if you move here", role 'from' frames it as "what you'd lose".
+  function boBuildSwapImpactSection(swapCtx, prefs) {
+    var rec = swapCtx.rec;
+    var role = swapCtx.role;
+    var FIELD_NAMES = ['', 'CPNT Mastery', 'Formation', 'Equip', 'Defense', 'Offense'];
+
+    var section = document.createElement('div');
+    section.className = 'eb-detail-section';
+
+    var heading = document.createElement('div');
+    heading.style.cssText = 'font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.35rem;font-weight:600;';
+    heading.textContent = role === 'to' ? 'Swap impact: moving here' : 'Swap impact: being replaced';
+    section.appendChild(heading);
+
+    var loc = document.createElement('div');
+    loc.style.cssText = 'font-size:.82rem;color:var(--text);margin-bottom:.4rem;';
+    loc.textContent = 'Field ' + rec.slot.fieldType + ' (' + FIELD_NAMES[rec.slot.fieldType] + ') · Slot ' + rec.slot.order;
+    section.appendChild(loc);
+
+    // Gain numbers (mirroring the swap card so the modal is self-contained)
+    var gainRow = document.createElement('div');
+    gainRow.style.cssText = 'display:flex;gap:1rem;font-size:.78rem;margin-bottom:.5rem;flex-wrap:wrap;';
+    var gainTodaySigned = role === 'from' ? -rec.gainToday : rec.gainToday;
+    var gainMaxSigned = role === 'from' ? -rec.gainAtMax : rec.gainAtMax;
+    var gainTodayColor = gainTodaySigned >= 0 ? 'var(--green)' : '#f85149';
+    var gainMaxColor = gainMaxSigned >= 0 ? 'var(--green)' : '#f85149';
+
+    var gToday = document.createElement('div');
+    var gTodayLbl = document.createElement('span');
+    gTodayLbl.style.color = 'var(--muted)';
+    gTodayLbl.textContent = 'Power score today: ';
+    var gTodayVal = document.createElement('strong');
+    gTodayVal.style.color = gainTodayColor;
+    gTodayVal.textContent = (gainTodaySigned >= 0 ? '+' : '') + Math.round(gainTodaySigned) + ' pts';
+    gToday.appendChild(gTodayLbl);
+    gToday.appendChild(gTodayVal);
+    gainRow.appendChild(gToday);
+
+    var gMax = document.createElement('div');
+    var gMaxLbl = document.createElement('span');
+    gMaxLbl.style.color = 'var(--muted)';
+    gMaxLbl.textContent = 'At max-out: ';
+    var gMaxVal = document.createElement('strong');
+    gMaxVal.style.color = gainMaxColor;
+    gMaxVal.textContent = (gainMaxSigned >= 0 ? '+' : '') + Math.round(gainMaxSigned) + ' pts';
+    gMax.appendChild(gMaxLbl);
+    gMax.appendChild(gMaxVal);
+    gainRow.appendChild(gMax);
+    section.appendChild(gainRow);
+
+    var deltaTable = boRenderStatDeltaTable(rec, prefs);
+    if (deltaTable) {
+      deltaTable.style.marginTop = '0';
+      section.appendChild(deltaTable);
+    }
+
+    if (rec.threshold && role === 'to') {
+      var t = document.createElement('div');
+      t.style.cssText = 'font-size:.78rem;color:#d29922;background:rgba(210,153,34,0.1);border-left:3px solid #d29922;padding:.4rem .6rem;border-radius:4px;margin-top:.5rem;';
+      t.textContent = 'Needs ' + rec.threshold.starsFromCurrent + ' more star' + (rec.threshold.starsFromCurrent === 1 ? '' : 's') +
+        ' and ' + rec.threshold.levelsFromCurrent + ' more level' + (rec.threshold.levelsFromCurrent === 1 ? '' : 's') +
+        ' before this beats the current placement.';
+      section.appendChild(t);
+    }
+
+    return section;
+  }
+
   // Surface the top 2 stat categories the new beast contributes to a swap.
   // Mirrors boBeastScore's per-buff weighting so the reasoning text reflects
   // the same logic the optimizer used to rank the swap.
@@ -16530,12 +16611,12 @@
 
     var swap = document.createElement('div');
     swap.style.cssText = 'display:flex;align-items:center;gap:1rem;margin-bottom:.5rem;';
-    swap.appendChild(boBeastChip(rec.from, 'from', openDetail));
+    swap.appendChild(boBeastChip(rec.from, 'from', openDetail, { rec: rec, role: 'from' }));
     var arrow = document.createElement('div');
     arrow.style.cssText = 'color:var(--muted);font-size:1.5rem;';
     arrow.textContent = '→';
     swap.appendChild(arrow);
-    swap.appendChild(boBeastChip(rec.to, 'to', openDetail));
+    swap.appendChild(boBeastChip(rec.to, 'to', openDetail, { rec: rec, role: 'to' }));
     card.appendChild(swap);
 
     var stats = document.createElement('div');
@@ -16595,13 +16676,13 @@
     return card;
   }
 
-  function boBeastChip(beast, label, openDetail) {
+  function boBeastChip(beast, label, openDetail, swapCtx) {
     var wrap = document.createElement('div');
     wrap.style.cssText = 'flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem;display:flex;gap:.55rem;align-items:center;min-width:0;';
     if (beast && openDetail) {
       wrap.style.cursor = 'pointer';
-      wrap.title = 'Click for full beast details';
-      wrap.onclick = function() { openDetail(beast); };
+      wrap.title = swapCtx ? 'Click for full beast details + swap impact' : 'Click for full beast details';
+      wrap.onclick = function() { openDetail(beast, swapCtx); };
       wrap.onmouseover = function() { wrap.style.borderColor = 'var(--accent)'; };
       wrap.onmouseout = function() { wrap.style.borderColor = 'var(--border)'; };
     }
