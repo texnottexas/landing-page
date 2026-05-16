@@ -16092,11 +16092,20 @@
       var newBeast = newId ? beastById[newId] : null;
       if (!newBeast) return;
 
+      // Both states for both beasts. gainAtMax MUST compare max-vs-max so a
+      // recommendation like "swap Lion 3* Lv70 for Lion 5* Lv80" doesn't get
+      // a free pass on max-out: at max-out both project to 5* Lv80 and the
+      // delta correctly collapses to ~0 if the two beasts are structurally
+      // equivalent. Previously gainAtMax mixed scoreMaxNew - scoreNowCur
+      // which made every higher-tier-same-type swap look great at max.
       var scoreNowCur = origBeast ? boBeastScore(origBeast, 'current', s.desc, playstyle) : 0;
       var scoreNowNew = boBeastScore(newBeast, 'current', s.desc, playstyle);
+      var scoreMaxCur = origBeast ? boBeastScore(origBeast, 'maxOut', s.desc, playstyle) : 0;
       var scoreMaxNew = boBeastScore(newBeast, 'maxOut', s.desc, playstyle);
 
-      if (scoreMaxNew <= scoreNowCur) return;
+      // Recommend the swap only if EITHER state shows a meaningful gain.
+      // Half-a-point epsilon to filter noise from near-equal candidates.
+      if (scoreMaxNew <= scoreMaxCur + 0.5 && scoreNowNew <= scoreNowCur + 0.5) return;
 
       var threshold = null;
       if (scoreNowNew <= scoreNowCur) {
@@ -16108,7 +16117,7 @@
         from: origBeast,
         to: newBeast,
         gainToday: scoreNowNew - scoreNowCur,
-        gainAtMax: scoreMaxNew - scoreNowCur,
+        gainAtMax: scoreMaxNew - scoreMaxCur,
         threshold: threshold,
         brokeConditions: brokeMap[s.key] || []
       });
@@ -16235,7 +16244,7 @@
     statBlock.appendChild(statValue);
     var statHelp = document.createElement('div');
     statHelp.style.cssText = 'font-size:.68rem;color:var(--muted);margin-top:.2rem;max-width:380px;line-height:1.35;';
-    statHelp.textContent = 'Each point is one ATK-equivalent percent for your playstyle. +1 March = 30 pts (highest), 1% DEF = 25.5 pts, 1% DMG = 9 pts, 1% HP = 1.5 pts. March is also a hard floor: no swap will ever reduce march at a slot. Today uses your beasts as they stand; max-out assumes 5-star Lv 80.';
+    statHelp.textContent = 'Each point is one ATK-equivalent percent for your playstyle. +1 March = 30 pts (highest), 1% DEF = 25.5 pts, 1% DMG = 9 pts, 1% HP = 1.5 pts. March is also a hard floor: no swap will ever reduce march at a slot. "Today" compares both beasts at their current stars/levels; "At max-out" compares both at 5-star Lv 80 so the swap is judged fairly even when the proposed beast is currently leveled higher than the one it would replace.';
     statBlock.appendChild(statHelp);
     hRow.appendChild(statBlock);
 
@@ -16340,10 +16349,35 @@
       });
     });
 
-    var disc = document.createElement('p');
-    disc.style.cssText = 'font-size:.7rem;color:var(--muted);margin-top:1rem;font-style:italic;';
-    disc.textContent = 'This plan does not consider: elemental beast attributes for combat damage triangles, situational buffs (defending-buildings etc.), or shard or F101 upgrade costs.';
-    container.appendChild(disc);
+    // Honest disclaimer block. The optimizer is still missing several inputs
+    // that affect placement value in the real game; surface them so the
+    // player can sanity-check recommendations against what they know.
+    var discBox = document.createElement('div');
+    discBox.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.6rem .75rem;margin-top:1rem;';
+
+    var discTitle = document.createElement('div');
+    discTitle.style.cssText = 'font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-bottom:.3rem;';
+    discTitle.textContent = 'Known gaps in this plan';
+    discBox.appendChild(discTitle);
+
+    var gaps = [
+      'Per-platform rarity bonuses (the multiplier each slot gives a beast based on the slot rarity tier) are not yet factored in. Field 1 formulas are mapped internally but the full bonus pipeline is not wired into the score.',
+      'Titan Gear refinement bonuses (the per-slot bonus that triggers when a tied gear stat is refined to 70% or higher) are not yet wired in. Fields 4 and 5 slots 7 to 9 are the affected platforms.',
+      'Field activation conditions (Fill All Slots, Deploy N Legendary, etc.) currently surface as warnings only when a swap breaks one. The numeric value of each condition reward is not yet wired into the score.',
+      'Elemental beast attributes for combat damage triangles, situational buffs (defending buildings etc.), and shard or F101 upgrade costs are intentionally out of scope.'
+    ];
+    gaps.forEach(function(g) {
+      var p = document.createElement('p');
+      p.style.cssText = 'font-size:.72rem;color:var(--text);margin:.2rem 0 0;line-height:1.4;';
+      var bullet = document.createElement('span');
+      bullet.style.color = '#d29922';
+      bullet.style.marginRight = '.35rem';
+      bullet.textContent = '•';
+      p.appendChild(bullet);
+      p.appendChild(document.createTextNode(g));
+      discBox.appendChild(p);
+    });
+    container.appendChild(discBox);
   }
 
   function boPlaystyleLabel(prefs) {
