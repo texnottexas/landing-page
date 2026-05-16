@@ -24535,22 +24535,91 @@
     }
   }
 
-  // Decode an info id (e.g. 1001006) into {groupId, level} per the per-level
-  // formationV2_talent_info convention: infoId = groupId + (level + 1).
-  function decodeFormationTalentInfoId(infoId) {
+  // Decode an info id (e.g. 1001006) into {groupId, level, variantEffectId}.
+  // The naive (infoId % 1000) - 1 trick works for the 45 progressive nodes,
+  // but switchable nodes (is_switch: true — Evolved Shark, Shark Impact,
+  // Shadow of the Shark, Eagle Evolution, Eagle Watch) have 2 mutually-
+  // exclusive variants packed into the same levels[] array, so info ids
+  // 1007001/1007002/1007003/1007004 represent Shark-unlocked / Shark-lv1 /
+  // Scorpion-unlocked / Scorpion-lv1, NOT levels 0/1/2/3. When the tree ref
+  // is available, look up the real level + effect_id from the levels[] row
+  // matching this info id and fall back to the math only when no tree is
+  // passed (e.g. early in render before the ref loads).
+  function decodeFormationTalentInfoId(infoId, tree) {
     var groupId = Math.floor(infoId / 1000) * 1000;
-    var level = (infoId % 1000) - 1;
-    return { groupId: groupId, level: level };
+    if (tree) {
+      var node = tree[groupId] || tree[String(groupId)];
+      if (node && Array.isArray(node.levels)) {
+        for (var i = 0; i < node.levels.length; i++) {
+          if (node.levels[i].id === infoId) {
+            return {
+              groupId: groupId,
+              level: node.levels[i].level,
+              variantEffectId: node.levels[i].effect_id ? Number(node.levels[i].effect_id) : null,
+              variantIndex: i
+            };
+          }
+        }
+      }
+    }
+    return { groupId: groupId, level: (infoId % 1000) - 1, variantEffectId: null, variantIndex: -1 };
   }
 
-  // Build the per-node {groupId: level} map from a supplement.talents array.
-  function buildFormationCurrentLevels(talents) {
-    var out = {};
+  // Build per-node level + variant maps from a supplement.talents array.
+  // Returns { levels: {gid:lv}, variants: {gid:effectId} }. For non-switchable
+  // nodes `variants` carries the node's single effect_id (handy for display
+  // labels) or is omitted when the level row has no effect_id.
+  function buildFormationCurrentLevels(talents, tree) {
+    var levels = {};
+    var variants = {};
     for (var i = 0; i < talents.length; i++) {
-      var d = decodeFormationTalentInfoId(talents[i]);
-      if (d.groupId && d.level >= 0) out[d.groupId] = d.level;
+      var d = decodeFormationTalentInfoId(talents[i], tree);
+      if (d.groupId && d.level >= 0) {
+        // Skip the "level 0 / unlocked baseline" rows on switchable nodes —
+        // they only appear in the data as a stepping stone and don't count
+        // as the talent being trained.
+        if (d.level === 0) continue;
+        levels[d.groupId] = d.level;
+        if (d.variantEffectId) variants[d.groupId] = d.variantEffectId;
+      }
     }
-    return out;
+    return { levels: levels, variants: variants };
+  }
+
+  // Switchable-node variant metadata. Each entry tells us the human label
+  // and the formation it applies to. Keys are buff_ids from effect_buff —
+  // shared with FORMATION_BUFF_NAMES so labels stay in sync.
+  var FORMATION_VARIANT_INFO = {
+    100017: { label: 'Shark',    formation: 1001 },
+    100018: { label: 'Scorpion', formation: 1002 },
+    100019: { label: 'Shark',    formation: 1001 },
+    100020: { label: 'Scorpion', formation: 1002 },
+    100021: { label: 'Shark',    formation: 1001 },
+    100022: { label: 'Scorpion', formation: 1002 },
+    100023: { label: 'Eagle',    formation: 1003 },
+    100024: { label: 'Eagle',    formation: 1003 }
+  };
+
+  // Group a switchable node's levels[] into per-variant tracks keyed by
+  // effect_id, so the modal can render two side-by-side mini-tables for
+  // Shark vs Scorpion (or just one for Eagle nodes which only have one).
+  function groupVariantLevels(node) {
+    if (!node || !Array.isArray(node.levels)) return [];
+    var byEffect = {};
+    node.levels.forEach(function(entry) {
+      var eid = entry.effect_id ? Number(entry.effect_id) : 0;
+      if (!byEffect[eid]) byEffect[eid] = [];
+      byEffect[eid].push(entry);
+    });
+    return Object.keys(byEffect).map(function(eid) {
+      var info = FORMATION_VARIANT_INFO[Number(eid)] || { label: 'Variant ' + eid, formation: null };
+      return {
+        effectId: Number(eid),
+        label: info.label,
+        formation: info.formation,
+        entries: byEffect[eid].sort(function(a, b) { return a.level - b.level; })
+      };
+    });
   }
 
   // Resolve a tree node's icon. ASSET_BASE points at the raw.githubusercontent
@@ -25004,7 +25073,9 @@
     titleRow.appendChild(modePill);
     section.appendChild(titleRow);
 
-    var currentLevels = buildFormationCurrentLevels(supp.talents || []);
+    var decoded = buildFormationCurrentLevels(supp.talents || [], ref.talent_tree || {});
+    var currentLevels = decoded.levels;
+    var currentVariants = decoded.variants;
 
     // Planner state — kept under siteKey + a versioning tag so a refresh from
     // the bookmarklet doesn't silently clobber the player's WIP. Stored under
@@ -25012,9 +25083,15 @@
     // tree was rendered against.
     var siteKey = (wizardState.player && wizardState.player.siteKey) || null;
     var plannerKey = 'formation_planner_' + (siteKey || 'anon');
-    var planner = loadFormationPlanner(plannerKey, currentLevels);
+    var planner = loadFormationPlanner(plannerKey, currentLevels, currentVariants, ref.talent_tree || {});
 
-    var state = { mode: 'view', currentLevels: currentLevels, planner: planner, plannerKey: plannerKey };
+    var state = {
+      mode: 'view',
+      currentLevels: currentLevels,
+      currentVariants: currentVariants,
+      planner: planner,
+      plannerKey: plannerKey
+    };
 
     function refresh() {
       styleModeBtn(modeViewBtn, state.mode === 'view');
@@ -25031,21 +25108,42 @@
     return section;
   }
 
-  function loadFormationPlanner(plannerKey, currentLevels) {
+  function loadFormationPlanner(plannerKey, currentLevels, currentVariants, tree) {
     try {
       var raw = localStorage.getItem(plannerKey);
       if (raw) {
         var saved = JSON.parse(raw);
         if (saved && typeof saved === 'object' && saved.levels && typeof saved.levels === 'object') {
-          return { levels: saved.levels, dirty: !!saved.dirty };
+          // Stale-state migration: clamp every level to the node's max_lv.
+          // Planner state saved before the switchable-node fix stored level
+          // 3 for nodes whose real max is 1 (the (id%1000)-1 decode bug);
+          // clamping prevents the 3/1 badge from reappearing for those
+          // players until they hit "Reset planner to current build".
+          var clean = {};
+          Object.keys(saved.levels).forEach(function(gid) {
+            var node = tree && (tree[gid] || tree[String(gid)]);
+            var max = node && node.max_lv != null ? node.max_lv : 5;
+            var v = Number(saved.levels[gid]) || 0;
+            if (v > max) v = max;
+            if (v > 0) clean[gid] = v;
+          });
+          return {
+            levels: clean,
+            variants: (saved.variants && typeof saved.variants === 'object') ? saved.variants : {},
+            dirty: !!saved.dirty
+          };
         }
       }
     } catch (e) {}
-    return { levels: Object.assign({}, currentLevels), dirty: false };
+    return {
+      levels: Object.assign({}, currentLevels),
+      variants: Object.assign({}, currentVariants || {}),
+      dirty: false
+    };
   }
 
   function saveFormationPlanner(plannerKey, planner) {
-    try { localStorage.setItem(plannerKey, JSON.stringify({ levels: planner.levels, dirty: planner.dirty })); } catch (e) {}
+    try { localStorage.setItem(plannerKey, JSON.stringify({ levels: planner.levels, variants: planner.variants || {}, dirty: planner.dirty })); } catch (e) {}
   }
 
   function renderFormationTreeBody(container, ref, supp, state, refresh) {
@@ -25090,6 +25188,7 @@
       resetPoolBtn.style.cssText = 'padding:.35rem .75rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.78rem;cursor:pointer;';
       resetPoolBtn.onclick = function() {
         state.planner.levels = {};
+        state.planner.variants = {};
         state.planner.dirty = true;
         saveFormationPlanner(state.plannerKey, state.planner);
         refresh();
@@ -25103,6 +25202,7 @@
       snapBtn.style.cssText = 'padding:.35rem .75rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.78rem;cursor:pointer;';
       snapBtn.onclick = function() {
         state.planner.levels = Object.assign({}, state.currentLevels);
+        state.planner.variants = Object.assign({}, state.currentVariants || {});
         state.planner.dirty = false;
         saveFormationPlanner(state.plannerKey, state.planner);
         refresh();
@@ -25200,18 +25300,18 @@
 
     // Node layer
     var planning = state.mode === 'plan';
+    var variants = planning ? (state.planner.variants || {}) : (state.currentVariants || {});
     nodes.forEach(function(n) {
       var p = px(n);
       var lv = levels[n.id] || 0;
       var maxLv = n.max_lv != null ? n.max_lv : 5;
       var unlocked = lv > 0;
       var parentLocked = (n.parent_ids || []).some(function(pid) { return (levels[pid] || 0) === 0; });
-      var clickable = planning && !parentLocked && lv < maxLv;
       var rightClickable = planning && lv > 0;
 
       var box = document.createElement('button');
       box.type = 'button';
-      box.style.cssText = 'position:absolute;left:' + (p.x - 22) + 'px;top:' + (p.y - 22) + 'px;width:44px;height:44px;border-radius:6px;background:' + (unlocked ? '#0d1f0e' : '#0d1117') + ';border:2px solid ' + (unlocked ? '#3fb950' : (parentLocked ? '#30363d' : '#58a6ff')) + ';padding:0;cursor:' + (clickable ? 'pointer' : 'default') + ';display:flex;align-items:center;justify-content:center;color:var(--text);';
+      box.style.cssText = 'position:absolute;left:' + (p.x - 22) + 'px;top:' + (p.y - 22) + 'px;width:44px;height:44px;border-radius:6px;background:' + (unlocked ? '#0d1f0e' : '#0d1117') + ';border:2px solid ' + (unlocked ? '#3fb950' : (parentLocked ? '#30363d' : '#58a6ff')) + ';padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text);';
 
       var icon = formationTalentIconUrl(n);
       if (icon) {
@@ -25230,12 +25330,26 @@
       badge.textContent = lv + '/' + maxLv;
       box.appendChild(badge);
 
+      // Switchable nodes get a tiny corner pip showing the active variant
+      // (S = Shark, Sc = Scorpion, E = Eagle) so a player scanning the tree
+      // sees which side a +1 boost is currently applied to without opening
+      // the modal.
+      if (n.is_switch && unlocked && variants[n.id]) {
+        var vInfo = FORMATION_VARIANT_INFO[variants[n.id]];
+        if (vInfo) {
+          var vPip = document.createElement('span');
+          vPip.style.cssText = 'position:absolute;left:-4px;top:-4px;background:#0d1117;border:1px solid #79c0ff;color:#79c0ff;font-size:.55rem;line-height:1;padding:1px 3px;border-radius:3px;font-weight:700;';
+          vPip.textContent = vInfo.label.slice(0, 2);
+          box.appendChild(vPip);
+        }
+      }
+
       var tipParts = [n.name + ' — Lv ' + lv + '/' + maxLv];
+      if (n.is_switch) tipParts.push(unlocked && variants[n.id] ? ('Applied to ' + (FORMATION_VARIANT_INFO[variants[n.id]] || {}).label) : 'Switchable — pick a formation when training');
       if (parentLocked && !unlocked) tipParts.push('Locked: train its parent first');
       tipParts.push(planning ? 'Click for details + level up' : 'Click for details');
       box.title = tipParts.join('\n');
 
-      box.style.cursor = 'pointer';
       box.addEventListener('click', function(e) {
         e.preventDefault();
         openTalentNodeModal({
@@ -25253,7 +25367,8 @@
           var newLv = lv - 1;
           if (newLv <= 0) {
             delete state.planner.levels[n.id];
-            cascadeChildrenToZero(tree, state.planner.levels, n.id);
+            if (state.planner.variants) delete state.planner.variants[n.id];
+            cascadeChildrenToZero(tree, state.planner.levels, n.id, state.planner.variants);
           } else {
             state.planner.levels[n.id] = newLv;
           }
@@ -25276,22 +25391,27 @@
   function openTalentNodeModal(opts) {
     var n = opts.node, tree = opts.tree, state = opts.state, refresh = opts.refresh, parentLocked = opts.parentLocked;
     var planning = state.mode === 'plan';
-    var levels = planning ? state.planner.levels : state.currentLevels;
     var maxLv = n.max_lv != null ? n.max_lv : 5;
+    var isSwitch = !!n.is_switch;
+    var variantTracks = isSwitch ? groupVariantLevels(n) : null;
 
     var bg = document.createElement('div');
     bg.className = 'modal-bg show';
     bg.style.zIndex = '900';
     var modal = document.createElement('div');
     modal.className = 'modal';
-    modal.style.cssText = 'max-width:440px;';
+    modal.style.cssText = 'max-width:480px;';
     bg.appendChild(modal);
     function close() { if (document.body.contains(bg)) document.body.removeChild(bg); }
     bg.addEventListener('click', function(e) { if (e.target === bg) close(); });
 
     function paint() {
+      var levels = planning ? state.planner.levels : state.currentLevels;
+      var variants = planning ? (state.planner.variants || {}) : (state.currentVariants || {});
       var lv = levels[n.id] || 0;
       var unlocked = lv > 0;
+      var activeVariantId = variants[n.id] || null;
+      var activeVariant = isSwitch && activeVariantId ? FORMATION_VARIANT_INFO[activeVariantId] : null;
       while (modal.firstChild) modal.removeChild(modal.firstChild);
 
       var head = document.createElement('div');
@@ -25324,6 +25444,14 @@
       meta.appendChild(s);
       meta.appendChild(document.createTextNode(' / ' + maxLv + '  ·  Side: ' + (n.side === 'left' ? 'Shark / Scorpion' : 'Eagle')));
       titleBlock.appendChild(meta);
+      if (isSwitch) {
+        var swLine = document.createElement('div');
+        swLine.style.cssText = 'font-size:.72rem;color:#79c0ff;margin-top:.15rem;';
+        swLine.textContent = activeVariant
+          ? ('Active variant: ' + activeVariant.label)
+          : 'Switchable — pick a variant when activating';
+        titleBlock.appendChild(swLine);
+      }
       head.appendChild(titleBlock);
       modal.appendChild(head);
 
@@ -25340,80 +25468,140 @@
         modal.appendChild(lock);
       }
 
-      // Per-level table
-      var levelsArr = Array.isArray(n.levels) ? n.levels : [];
-      if (levelsArr.length) {
-        var tbl = document.createElement('div');
-        tbl.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;max-height:240px;overflow-y:auto;';
-        var hdrRow = document.createElement('div');
-        hdrRow.style.cssText = 'display:grid;grid-template-columns:38px 1fr 80px 64px;gap:.4rem;padding:.35rem .55rem;font-size:.68rem;color:var(--muted);background:var(--card);position:sticky;top:0;';
-        ['Lv', 'Effect value', 'Cost (F101)', 'Power'].forEach(function(t) {
-          var c = document.createElement('div'); c.textContent = t; hdrRow.appendChild(c);
-        });
-        tbl.appendChild(hdrRow);
+      if (isSwitch && variantTracks && variantTracks.length) {
+        // Switchable nodes: render one card per variant with its activate /
+        // switch buttons. Each variant shows its own effect description so
+        // the player understands what they get for picking, say, Shark over
+        // Scorpion. Eagle nodes only have a single variant so they render
+        // a single card with just an Activate button.
+        var vWrap = document.createElement('div');
+        vWrap.style.cssText = 'display:grid;grid-template-columns:repeat(' + Math.min(variantTracks.length, 2) + ',1fr);gap:.5rem;';
+        variantTracks.forEach(function(track) {
+          var activeHere = activeVariantId === track.effectId;
+          // The "interesting" row is the level-1 entry (cost 0, power > 0)
+          // since switchable nodes top out at lv 1 — the lv-0 row only
+          // exists so the game can stage the unlock.
+          var actionEntry = track.entries.find(function(e) { return e.level === 1; }) || track.entries[0];
+          var unlockEntry = track.entries.find(function(e) { return e.level === 0; });
 
-        // Some nodes have a "level 0 / unlocked baseline" entry in the data
-        // with effect_value 0; skip it from the user view since it's not
-        // meaningful in the in-game UI.
-        levelsArr.forEach(function(entry, i) {
-          if (entry.level === 0 && entry.effect_value === 0 && i === 0) return;
-          var row = document.createElement('div');
-          var isCur = entry.level === lv;
-          var isNext = entry.level === lv + 1;
-          row.style.cssText = 'display:grid;grid-template-columns:38px 1fr 80px 64px;gap:.4rem;padding:.35rem .55rem;font-size:.78rem;color:var(--text);border-top:1px solid var(--border);' + (isCur ? 'background:rgba(63,185,80,0.10);' : (isNext ? 'background:rgba(121,192,255,0.08);' : ''));
-          var lvc = document.createElement('div'); lvc.style.color = isCur ? '#3fb950' : (isNext ? '#79c0ff' : 'var(--muted)'); lvc.textContent = (isCur ? '▶ ' : '') + entry.level; row.appendChild(lvc);
-          var ec  = document.createElement('div'); ec.textContent = '+' + (entry.effect_value || 0); row.appendChild(ec);
-          var cc  = document.createElement('div'); cc.style.color = entry.cost === '0' || entry.cost === 0 ? 'var(--muted)' : 'var(--text)'; cc.textContent = String(entry.cost != null ? entry.cost : '—'); row.appendChild(cc);
-          var pc  = document.createElement('div'); pc.style.color = '#79c0ff'; pc.textContent = (entry.power || 0).toLocaleString(); row.appendChild(pc);
-          tbl.appendChild(row);
+          var card = document.createElement('div');
+          card.style.cssText = 'background:' + (activeHere ? 'rgba(63,185,80,0.10)' : 'var(--surface)') + ';border:1px solid ' + (activeHere ? '#3fb950' : 'var(--border)') + ';border-radius:6px;padding:.5rem .65rem;';
+          var nameLine = document.createElement('div');
+          nameLine.style.cssText = 'font-weight:600;color:' + (activeHere ? '#3fb950' : 'var(--text)') + ';';
+          nameLine.textContent = track.label + (activeHere ? ' (active)' : '');
+          card.appendChild(nameLine);
+          var effDesc = document.createElement('div');
+          effDesc.style.cssText = 'font-size:.72rem;color:var(--muted);margin:.15rem 0;';
+          effDesc.textContent = formationBuffName(track.effectId);
+          card.appendChild(effDesc);
+          var stats = document.createElement('div');
+          stats.style.cssText = 'font-size:.7rem;color:var(--muted);';
+          var cost = unlockEntry ? unlockEntry.cost : (actionEntry && actionEntry.cost);
+          stats.textContent = 'Cost: ' + (cost || '—') + ' F101  ·  Power: +' + ((actionEntry && actionEntry.power) || 0).toLocaleString();
+          card.appendChild(stats);
+
+          if (planning && !parentLocked) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.style.cssText = 'margin-top:.45rem;padding:.35rem .65rem;background:' + (activeHere ? 'var(--border)' : (unlocked ? '#79c0ff' : '#3fb950')) + ';color:#0d1117;border:none;border-radius:5px;font-size:.78rem;font-weight:600;cursor:' + (activeHere ? 'default' : 'pointer') + ';';
+            if (activeHere) {
+              btn.textContent = '✓ Active';
+              btn.disabled = true;
+            } else if (unlocked) {
+              btn.textContent = 'Switch to ' + track.label;
+            } else {
+              btn.textContent = 'Activate ' + track.label;
+            }
+            btn.onclick = function() {
+              state.planner.levels[n.id] = 1;
+              if (!state.planner.variants) state.planner.variants = {};
+              state.planner.variants[n.id] = track.effectId;
+              state.planner.dirty = true;
+              saveFormationPlanner(state.plannerKey, state.planner);
+              refresh();
+              paint();
+            };
+            card.appendChild(btn);
+          }
+          vWrap.appendChild(card);
         });
-        modal.appendChild(tbl);
+        modal.appendChild(vWrap);
+      } else {
+        // Per-level table for progressive nodes
+        var levelsArr = Array.isArray(n.levels) ? n.levels : [];
+        if (levelsArr.length) {
+          var tbl = document.createElement('div');
+          tbl.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;max-height:240px;overflow-y:auto;';
+          var hdrRow = document.createElement('div');
+          hdrRow.style.cssText = 'display:grid;grid-template-columns:38px 1fr 80px 64px;gap:.4rem;padding:.35rem .55rem;font-size:.68rem;color:var(--muted);background:var(--card);position:sticky;top:0;';
+          ['Lv', 'Effect value', 'Cost (F101)', 'Power'].forEach(function(t) {
+            var c = document.createElement('div'); c.textContent = t; hdrRow.appendChild(c);
+          });
+          tbl.appendChild(hdrRow);
+
+          levelsArr.forEach(function(entry, i) {
+            if (entry.level === 0 && entry.effect_value === 0 && i === 0) return;
+            var row = document.createElement('div');
+            var isCur = entry.level === lv;
+            var isNext = entry.level === lv + 1;
+            row.style.cssText = 'display:grid;grid-template-columns:38px 1fr 80px 64px;gap:.4rem;padding:.35rem .55rem;font-size:.78rem;color:var(--text);border-top:1px solid var(--border);' + (isCur ? 'background:rgba(63,185,80,0.10);' : (isNext ? 'background:rgba(121,192,255,0.08);' : ''));
+            var lvc = document.createElement('div'); lvc.style.color = isCur ? '#3fb950' : (isNext ? '#79c0ff' : 'var(--muted)'); lvc.textContent = (isCur ? '▶ ' : '') + entry.level; row.appendChild(lvc);
+            var ec  = document.createElement('div'); ec.textContent = '+' + (entry.effect_value || 0); row.appendChild(ec);
+            var cc  = document.createElement('div'); cc.style.color = entry.cost === '0' || entry.cost === 0 ? 'var(--muted)' : 'var(--text)'; cc.textContent = String(entry.cost != null ? entry.cost : '—'); row.appendChild(cc);
+            var pc  = document.createElement('div'); pc.style.color = '#79c0ff'; pc.textContent = (entry.power || 0).toLocaleString(); row.appendChild(pc);
+            tbl.appendChild(row);
+          });
+          modal.appendChild(tbl);
+        }
       }
 
       if (planning) {
         var ctrls = document.createElement('div');
         ctrls.style.cssText = 'display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.75rem;';
 
-        var upBtn = document.createElement('button');
-        upBtn.type = 'button';
-        var canUp = !parentLocked && lv < maxLv;
-        upBtn.disabled = !canUp;
-        upBtn.style.cssText = 'padding:.45rem .85rem;background:' + (canUp ? '#3fb950' : 'var(--border)') + ';color:' + (canUp ? '#0d1117' : 'var(--muted)') + ';border:none;border-radius:6px;font-size:.82rem;font-weight:700;cursor:' + (canUp ? 'pointer' : 'default') + ';';
-        upBtn.textContent = canUp ? ('Level Up → ' + (lv + 1)) : (parentLocked ? 'Locked' : 'Max level');
-        upBtn.onclick = function() {
-          state.planner.levels[n.id] = lv + 1;
-          state.planner.dirty = true;
-          saveFormationPlanner(state.plannerKey, state.planner);
-          refresh();
-          paint();
-        };
-        ctrls.appendChild(upBtn);
-
-        if (lv < maxLv && !parentLocked) {
-          var maxBtn = document.createElement('button');
-          maxBtn.type = 'button';
-          maxBtn.style.cssText = 'padding:.45rem .85rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;cursor:pointer;';
-          maxBtn.textContent = 'Max (' + maxLv + ')';
-          maxBtn.onclick = function() {
-            state.planner.levels[n.id] = maxLv;
+        if (!isSwitch) {
+          var upBtn = document.createElement('button');
+          upBtn.type = 'button';
+          var canUp = !parentLocked && lv < maxLv;
+          upBtn.disabled = !canUp;
+          upBtn.style.cssText = 'padding:.45rem .85rem;background:' + (canUp ? '#3fb950' : 'var(--border)') + ';color:' + (canUp ? '#0d1117' : 'var(--muted)') + ';border:none;border-radius:6px;font-size:.82rem;font-weight:700;cursor:' + (canUp ? 'pointer' : 'default') + ';';
+          upBtn.textContent = canUp ? ('Level Up → ' + (lv + 1)) : (parentLocked ? 'Locked' : 'Max level');
+          upBtn.onclick = function() {
+            state.planner.levels[n.id] = lv + 1;
             state.planner.dirty = true;
             saveFormationPlanner(state.plannerKey, state.planner);
             refresh();
             paint();
           };
-          ctrls.appendChild(maxBtn);
+          ctrls.appendChild(upBtn);
+
+          if (lv < maxLv && !parentLocked) {
+            var maxBtn = document.createElement('button');
+            maxBtn.type = 'button';
+            maxBtn.style.cssText = 'padding:.45rem .85rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;cursor:pointer;';
+            maxBtn.textContent = 'Max (' + maxLv + ')';
+            maxBtn.onclick = function() {
+              state.planner.levels[n.id] = maxLv;
+              state.planner.dirty = true;
+              saveFormationPlanner(state.plannerKey, state.planner);
+              refresh();
+              paint();
+            };
+            ctrls.appendChild(maxBtn);
+          }
         }
 
         if (lv > 0) {
           var downBtn = document.createElement('button');
           downBtn.type = 'button';
           downBtn.style.cssText = 'padding:.45rem .85rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:#f85149;font-size:.82rem;cursor:pointer;';
-          downBtn.textContent = 'Step Down → ' + (lv - 1);
+          downBtn.textContent = isSwitch ? 'Deactivate' : ('Step Down → ' + (lv - 1));
           downBtn.onclick = function() {
             var newLv = lv - 1;
             if (newLv <= 0) {
               delete state.planner.levels[n.id];
-              cascadeChildrenToZero(tree, state.planner.levels, n.id);
+              if (state.planner.variants) delete state.planner.variants[n.id];
+              cascadeChildrenToZero(tree, state.planner.levels, n.id, state.planner.variants);
             } else {
               state.planner.levels[n.id] = newLv;
             }
@@ -25447,7 +25635,7 @@
     document.body.appendChild(bg);
   }
 
-  function cascadeChildrenToZero(tree, levels, rootId) {
+  function cascadeChildrenToZero(tree, levels, rootId, variants) {
     var queue = [rootId];
     var visited = {};
     while (queue.length) {
@@ -25459,6 +25647,7 @@
         if ((child.parent_ids || []).some(function(p) { return String(p) === String(id); })) {
           if ((levels[childId] || 0) > 0) {
             delete levels[childId];
+            if (variants) delete variants[childId];
             queue.push(childId);
           }
         }
