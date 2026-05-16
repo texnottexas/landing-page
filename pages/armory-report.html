@@ -11292,7 +11292,7 @@
     presetsBtn.addEventListener('click', showPresets);
 
     _bench_renderSkillsPane(skillsPane, h, meta, readOnly);
-    if (!readOnly) _bench_renderPresetsPane(presetsPane, h);
+    if (!readOnly) _bench_renderPresetsPane(presetsPane, h, meta);
 
     document.body.appendChild(bg);
   }
@@ -11444,10 +11444,11 @@
         eqLbl.className = 'bench-skill-section-label';
         eqLbl.textContent = 'Equipped supportive skills · Preset ' + activeIdx + ' (active)';
         eqSec.appendChild(eqLbl);
-        // Slot 0 of the active preset is also the exclusive (shown above), so
-        // skip it here and show slots 1..3 + the buff slot which are the actual
-        // "equipped supportive" picks the player chose.
-        var slots = (p.x || []).slice(1);
+        // All four entries of p.x are supportive slots — the bookmarklet reads
+        // them from h._firstSkillList / h._secondSkillList which never holds
+        // the exclusive. The exclusive lives in h._extraSkill[0] and is
+        // surfaced separately above via meta.exclusiveSkill + h.exLv.
+        var slots = (p.x || []);
         slots.forEach(function(s) { eqSec.appendChild(_bench_buildSkillRow(s, { heroId: h.id })); });
         (p.b || []).forEach(function(s) { eqSec.appendChild(_bench_buildSkillRow(s, { heroId: h.id, passive: true })); });
         pane.appendChild(eqSec);
@@ -11478,7 +11479,7 @@
 
   // PRESETS pane — original side-by-side preset compare with the active preset
   // accent-bordered. Only rendered for owned heroes.
-  function _bench_renderPresetsPane(pane, h) {
+  function _bench_renderPresetsPane(pane, h, meta) {
     while (pane.firstChild) pane.removeChild(pane.firstChild);
     var note = document.createElement('p');
     note.className = 'bench-pane-note';
@@ -11497,21 +11498,25 @@
       lbl.textContent = 'Preset ' + idx + (h.ap === idx ? ' · active' : '');
       col.appendChild(lbl);
 
-      // Render all 5 platforms in order, matching the in-game stack:
-      // slot 0 = exclusive (from p.x[0]), slots 1-3 = supportive actives
-      // (p.x[1..3]), slot 4 = the Combat Elite "buff" platform (p.b[0]).
-      // Only Combat Elite players who unlocked it will have p.b populated;
-      // skipping that entry when empty mirrors what the in-game UI does
-      // (locked slots aren't shown).
+      // Mirror the in-game stack: exclusive icon on top (same exclusive for
+      // both presets — the hero's exclusive isn't part of the preset config),
+      // then the four supportive slots from p.x[0..3], then the Combat Elite
+      // 5th "buff" platform from p.b[0] when the player has unlocked it.
+      // Locked slots are skipped, matching the in-game UI.
       var extraLbl = document.createElement('div');
       extraLbl.className = 'bench-skill-section-label inline';
       extraLbl.textContent = 'Exclusive + supportive';
       col.appendChild(extraLbl);
-      (p.x || []).forEach(function(s, i) {
-        col.appendChild(_bench_buildSkillRow(s, { heroId: h.id, exclusiveSlot: i === 0 }));
+      if (meta && meta.exclusiveSkill && meta.exclusiveSkill.id) {
+        var excSlot = { id: meta.exclusiveSkill.id };
+        if (h.exLv) excSlot.lv = h.exLv;
+        col.appendChild(_bench_buildSkillRow(excSlot, { heroId: h.id, exclusiveSlot: true }));
+      }
+      (p.x || []).forEach(function(s) {
+        col.appendChild(_bench_buildSkillRow(s, { heroId: h.id }));
       });
       (p.b || []).forEach(function(s) {
-        col.appendChild(_bench_buildSkillRow(s, { heroId: h.id }));
+        col.appendChild(_bench_buildSkillRow(s, { heroId: h.id, passive: true }));
       });
 
       presetWrap.appendChild(col);
