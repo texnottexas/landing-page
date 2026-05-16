@@ -16112,7 +16112,7 @@
 
   // ── Beast Optimizer: UI ───────────────────────────────────────────────────
   // Phase 4 will replace boRenderPlan with the real renderer. This stub keeps
-  // Phase 3 testable on its own — wizard saves prefs, plan view confirms the
+  // Phase 3 testable on its own: wizard saves prefs, plan view confirms the
   // saved shape, and a reset button clears prefs to re-enter the wizard.
   function boRenderPlan(container, merged, siteKey, prefs) {
     while (container.firstChild) container.removeChild(container.firstChild);
@@ -16164,6 +16164,206 @@
       err.textContent = 'Failed to load optimizer reference data: ' + (e && e.message ? e.message : e);
       container.appendChild(err);
     });
+  }
+
+  function boRenderWizard(container, merged, siteKey) {
+    var state = { step: 1, mode: null, units: [], balance: 'even' };
+
+    function repaint() {
+      while (container.firstChild) container.removeChild(container.firstChild);
+      if (state.step === 1) renderStep1();
+      else if (state.step === 2) renderStep2();
+    }
+
+    function renderStep1() {
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'max-width:520px;margin:0 auto;padding:1rem;';
+
+      var h = document.createElement('h2');
+      h.style.cssText = 'margin:0 0 .25rem;color:var(--text);';
+      h.textContent = 'Beast Optimizer';
+      wrap.appendChild(h);
+
+      var sub = document.createElement('p');
+      sub.style.cssText = 'color:var(--muted);font-size:.85rem;margin:0 0 1rem;';
+      sub.textContent = 'How many unit types do you fight with?';
+      wrap.appendChild(sub);
+
+      var grid = document.createElement('div');
+      grid.style.cssText = 'display:grid;grid-template-columns:1fr;gap:.5rem;';
+      wrap.appendChild(grid);
+
+      [
+        { mode: 'mono',   title: '1 unit (mono)',      body: 'I specialize in one branch and always march it.' },
+        { mode: 'dual',   title: '2 units (dual)',     body: 'I main two branches.' },
+        { mode: 'triple', title: '3 units (balanced)', body: 'I use all three branches roughly evenly.' }
+      ].forEach(function(opt) {
+        var card = document.createElement('button');
+        card.type = 'button';
+        card.style.cssText = 'text-align:left;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.85rem;cursor:pointer;color:var(--text);';
+        var t = document.createElement('div');
+        t.style.cssText = 'font-weight:600;margin-bottom:.2rem;';
+        t.textContent = opt.title;
+        card.appendChild(t);
+        var b = document.createElement('div');
+        b.style.cssText = 'font-size:.78rem;color:var(--muted);';
+        b.textContent = opt.body;
+        card.appendChild(b);
+        card.onclick = function() {
+          state.mode = opt.mode;
+          if (opt.mode === 'triple') {
+            state.units = [1, 2, 3];
+            boSavePrefs(siteKey, state);
+            boRenderPlan(container, merged, siteKey, state);
+          } else {
+            state.step = 2;
+            repaint();
+          }
+        };
+        grid.appendChild(card);
+      });
+
+      container.appendChild(wrap);
+    }
+
+    function renderStep2() {
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'max-width:520px;margin:0 auto;padding:1rem;';
+
+      var h = document.createElement('h2');
+      h.style.cssText = 'margin:0 0 .25rem;color:var(--text);';
+      h.textContent = state.mode === 'mono' ? 'Which unit?' : 'Which two units?';
+      wrap.appendChild(h);
+
+      if (state.mode === 'dual') {
+        var sub = document.createElement('p');
+        sub.style.cssText = 'color:var(--muted);font-size:.85rem;margin:0 0 1rem;';
+        sub.textContent = 'Pick two. Order matters if you choose Primary / Secondary below.';
+        wrap.appendChild(sub);
+      }
+
+      var picker = document.createElement('div');
+      picker.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:1rem;';
+      wrap.appendChild(picker);
+
+      var selectedDisplay = state.units.slice();
+      function paintPicker() {
+        while (picker.firstChild) picker.removeChild(picker.firstChild);
+        [
+          { id: 1, label: 'Army' },
+          { id: 2, label: 'Navy' },
+          { id: 3, label: 'Air Force' }
+        ].forEach(function(u) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          var idx = selectedDisplay.indexOf(u.id);
+          var on = idx >= 0;
+          var primary = on && idx === 0;
+          btn.style.cssText = 'background:' + (on ? 'var(--accent)' : 'var(--surface)') +
+            ';border:2px solid ' + (primary ? 'var(--green)' : on ? 'var(--accent)' : 'var(--border)') +
+            ';border-radius:8px;padding:.85rem;color:' + (on ? '#0d1117' : 'var(--text)') +
+            ';font-weight:600;cursor:pointer;';
+          btn.textContent = u.label + (on && state.mode === 'dual' ? (primary ? ' (1st)' : ' (2nd)') : '');
+          btn.onclick = function() {
+            if (idx >= 0) {
+              selectedDisplay.splice(idx, 1);
+            } else {
+              var cap = state.mode === 'mono' ? 1 : 2;
+              if (selectedDisplay.length >= cap) selectedDisplay.shift();
+              selectedDisplay.push(u.id);
+            }
+            paintPicker();
+            paintBalanceToggle();
+            clearWizardErr();
+          };
+          picker.appendChild(btn);
+        });
+      }
+      paintPicker();
+
+      var balanceBox = document.createElement('div');
+      balanceBox.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.75rem;margin-bottom:1rem;display:none;';
+      wrap.appendChild(balanceBox);
+
+      function paintBalanceToggle() {
+        if (state.mode !== 'dual' || selectedDisplay.length !== 2) {
+          balanceBox.style.display = 'none';
+          return;
+        }
+        balanceBox.style.display = '';
+        while (balanceBox.firstChild) balanceBox.removeChild(balanceBox.firstChild);
+        var head = document.createElement('div');
+        head.style.cssText = 'font-size:.78rem;color:var(--muted);margin-bottom:.4rem;';
+        head.textContent = 'How are these two units weighted?';
+        balanceBox.appendChild(head);
+        [
+          { val: 'even', label: 'Even balance, both count equally (1.0x each)' },
+          { val: 'primarySecondary', label: 'Primary / Secondary, first pick 1.0x, second pick 0.75x' }
+        ].forEach(function(opt) {
+          var lbl = document.createElement('label');
+          lbl.style.cssText = 'display:block;font-size:.82rem;color:var(--text);margin-bottom:.3rem;cursor:pointer;';
+          var radio = document.createElement('input');
+          radio.type = 'radio';
+          radio.name = 'bo-balance';
+          radio.value = opt.val;
+          radio.checked = state.balance === opt.val;
+          radio.onchange = function() { state.balance = opt.val; };
+          lbl.appendChild(radio);
+          lbl.appendChild(document.createTextNode(' ' + opt.label));
+          balanceBox.appendChild(lbl);
+        });
+      }
+      paintBalanceToggle();
+
+      function clearWizardErr() {
+        var existing = wrap.querySelector('.bo-wizard-err');
+        if (existing) existing.remove();
+      }
+
+      var actions = document.createElement('div');
+      actions.style.cssText = 'display:flex;gap:.5rem;justify-content:space-between;';
+      var back = document.createElement('button');
+      back.type = 'button';
+      back.className = 'secondary';
+      back.textContent = 'Back';
+      back.onclick = function() { state.step = 1; repaint(); };
+      actions.appendChild(back);
+      var go = document.createElement('button');
+      go.type = 'button';
+      go.className = 'primary';
+      go.textContent = 'Optimize';
+      go.onclick = function() {
+        var cap = state.mode === 'mono' ? 1 : 2;
+        if (selectedDisplay.length !== cap) {
+          clearWizardErr();
+          var errEl = document.createElement('div');
+          errEl.className = 'bo-wizard-err';
+          errEl.style.cssText = 'color:var(--red);font-size:.82rem;margin:.5rem 0;text-align:center;';
+          errEl.textContent = 'Pick ' + cap + ' unit' + (cap > 1 ? 's' : '') + ' before continuing.';
+          wrap.insertBefore(errEl, actions);
+          return;
+        }
+        state.units = selectedDisplay.slice();
+        boSavePrefs(siteKey, state);
+        boRenderPlan(container, merged, siteKey, state);
+      };
+      actions.appendChild(go);
+      wrap.appendChild(actions);
+
+      container.appendChild(wrap);
+    }
+
+    repaint();
+  }
+
+  function boSavePrefs(siteKey, state) {
+    var prefs = {
+      mode: state.mode,
+      units: state.units,
+      balance: state.balance,
+      savedAt: new Date().toISOString()
+    };
+    try { localStorage.setItem('beast_optimizer_prefs_' + siteKey, JSON.stringify(prefs)); } catch (e) {}
   }
 
   // ── Enigma buff value computation (ported from enigma-viewer) ─────────────
