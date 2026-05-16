@@ -15484,6 +15484,43 @@
     renderSkinsSubTab(merged);
   }
 
+  // ── Beast Optimizer: scoring engine ───────────────────────────────────────
+  // Pure functions. See spec doc for math derivation.
+
+  var BO_STAT_WEIGHTS = {
+    atk:        1.0,
+    hp:         1.5,
+    dmgInc:     9.0,
+    dmgDec:     9.0,
+    def:       25.5,
+    march:     13.5,
+    elemental:  0.0,
+  };
+
+  var BO_SCOPE_MULT = {
+    always:      1.0,
+    offensive:   0.5,
+    defensive:   0.5,
+  };
+
+  // targetUnit: 0 = all, 1 = Army, 2 = Navy, 3 = Air
+  function boPlaystyleMult(targetUnit, playstyle) {
+    if (targetUnit === 0) return 1.0;
+    var mode = playstyle.mode;
+    if (mode === 'triple') return 1.0;
+    var primary = playstyle.units[0];
+    var secondary = playstyle.units[1];
+    if (mode === 'mono') {
+      return targetUnit === primary ? 1.0 : 0.0;
+    }
+    if (playstyle.balance === 'even') {
+      return (targetUnit === primary || targetUnit === secondary) ? 1.0 : 0.0;
+    }
+    if (targetUnit === primary) return 1.0;
+    if (targetUnit === secondary) return 0.75;
+    return 0.0;
+  }
+
   // ── Enigma buff value computation (ported from enigma-viewer) ─────────────
   function ebGetBuffCategory(buffId) {
     var id = Number(buffId);
