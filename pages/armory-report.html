@@ -3347,7 +3347,7 @@
   // full schema. Functions remain byte-faithful to the previous inline
   // localStorage calls — this is centralisation, not behaviour change.
   var ArmoryIdentity = (function() {
-    var SUP_KINDS = ['inv', 'bench', 'chips', 'gear', 'runepool', 'heroes'];
+    var SUP_KINDS = ['inv', 'bench', 'chips', 'gear', 'runepool', 'heroes', 'formation'];
 
     function safeRead(key) {
       try { return localStorage.getItem(key); } catch (e) { return null; }
@@ -4940,6 +4940,20 @@
       if (!h || typeof h !== 'object') return 'Hero at ' + i + ' not an object';
       if (typeof h.id !== 'number' || h.id < 1 || h.id > 9999) return 'Hero at ' + i + ' has bad id';
     }
+    return null;
+  }
+
+  // Formation V2: { v:1, ts, talents:[infoIds], formations:{1001:{lv,quality,...},...}, currencies, power }
+  function _ar_validateFormationJson(raw) {
+    if (!raw || typeof raw !== 'object') return 'Not an object';
+    if (raw.v !== 1) return 'Unknown schema version (expected v:1)';
+    if (!Array.isArray(raw.talents)) return 'Missing talents array';
+    if (raw.talents.length > 200) return 'Too many talent entries (>200)';
+    for (var i = 0; i < raw.talents.length && i < 8; i++) {
+      var id = raw.talents[i];
+      if (typeof id !== 'number' || id < 1000000 || id > 9999999) return 'Talent at ' + i + ' has bad info id';
+    }
+    if (raw.formations && typeof raw.formations !== 'object') return 'formations must be object';
     return null;
   }
 
@@ -8164,7 +8178,7 @@
       case 'bases':       renderBasesTab(m); break;
       case 'enigma':      renderEnigmaTab(m); break;
       case 'chips':       renderChipsTab(m); break;
-      case 'formation':   renderFormationTab(m); break;
+      case 'formation':   renderFormationTab(m, siteKey); break;
       case 'inventory':   renderInventoryTab(m, siteKey, _ar_isUnlocked(siteKey)); break;
       case 'runepool':    renderRunePoolTab(siteKey, _ar_isUnlocked(siteKey)); break;
       case 'advisorplan': renderAdvisorPlanTab(siteKey, m); break;
@@ -17822,15 +17836,16 @@
   // route them unchanged. We detect, validate, save locally, and upload all
   // sections in one shot.
   var _AR_ENVELOPE_KINDS = [
-    { kind: 'inv',    field: 'inventory', validate: _ar_validateInvJson,    lsKey: 'armory_inv_',    tsPath: 'meta.ts' },
-    { kind: 'bench',  field: 'beasts',    validate: _ar_validateBenchJson,  lsKey: 'armory_bench_',  tsPath: 'ts'      },
-    { kind: 'chips',  field: 'chips',     validate: _ar_validateChipsJson,  lsKey: 'armory_chips_',  tsPath: 'ts'      },
-    { kind: 'gear',   field: 'gear',      validate: _ar_validateGearJson,   lsKey: 'armory_gear_',   tsPath: 'meta.ts' },
-    { kind: 'heroes', field: 'heroes',    validate: _ar_validateHeroesJson, lsKey: 'armory_heroes_', tsPath: 'ts'      }
+    { kind: 'inv',       field: 'inventory', validate: _ar_validateInvJson,       lsKey: 'armory_inv_',       tsPath: 'meta.ts' },
+    { kind: 'bench',     field: 'beasts',    validate: _ar_validateBenchJson,     lsKey: 'armory_bench_',     tsPath: 'ts'      },
+    { kind: 'chips',     field: 'chips',     validate: _ar_validateChipsJson,     lsKey: 'armory_chips_',     tsPath: 'ts'      },
+    { kind: 'gear',      field: 'gear',      validate: _ar_validateGearJson,      lsKey: 'armory_gear_',      tsPath: 'meta.ts' },
+    { kind: 'heroes',    field: 'heroes',    validate: _ar_validateHeroesJson,    lsKey: 'armory_heroes_',    tsPath: 'ts'      },
+    { kind: 'formation', field: 'formation', validate: _ar_validateFormationJson, lsKey: 'armory_formation_', tsPath: 'ts'      }
   ];
 
   function _ar_isEnvelope(obj) {
-    return !!(obj && typeof obj === 'object' && obj.v === 2 && (obj.inventory || obj.beasts || obj.chips || obj.gear || obj.heroes));
+    return !!(obj && typeof obj === 'object' && obj.v === 2 && (obj.inventory || obj.beasts || obj.chips || obj.gear || obj.heroes || obj.formation));
   }
 
   // Drives one section through the same validate → sanitize → store → upload
@@ -24380,25 +24395,42 @@
   var FORMATION_SLOT_DISPLAY = { 1:1, 2:2, 3:3, 11:4, 12:5, 13:6, 21:7, 22:8, 23:9 };
   var ARMY_TYPE_LABELS = { '101': 'Army', '201': 'Navy', '301': 'Air Force' };
 
-  function renderFormationTab(merged) {
+  function renderFormationTab(merged, siteKey) {
     var container = document.getElementById('tab-formation');
     while (container.firstChild) container.removeChild(container.firstChild);
 
-    var formations = merged.formations || {};
+    // Pull the formation supplement if uploaded. Supplement has all 3 formations
+    // and the talent tree; battle reports only carry the marching formation, so
+    // when both are present supplement wins per-formation.
+    var supp = null;
+    try { supp = siteKey ? ArmoryIdentity.getSupplement('formation', siteKey) : null; } catch (e) {}
+
+    var formations = Object.assign({}, merged.formations || {});
+    if (supp && supp.formations) {
+      Object.keys(supp.formations).forEach(function(fid) {
+        var s = supp.formations[fid];
+        if (!s) return;
+        // Preserve any battle-report fields the supplement didn't capture, while
+        // letting supplement overwrite lv/quality/masterys/sciences/boost flags.
+        formations[fid] = Object.assign({}, formations[fid] || {}, s, { id: Number(fid) });
+      });
+    }
+
     var armyMastery = merged.armyMastery || null;
     var hasFormations = Object.keys(formations).length > 0;
     var hasArmy = armyMastery && Object.keys(armyMastery).length > 0;
+    var hasTree = !!(supp && Array.isArray(supp.talents) && supp.talents.length);
 
-    if (!hasFormations && !hasArmy) {
+    if (!hasFormations && !hasArmy && !hasTree) {
       var empty = document.createElement('div');
       empty.style.cssText = 'padding:2rem;text-align:center;color:var(--muted);';
-      empty.textContent = 'No formation data yet. Add a battle report where you marched with Shark, Scorpion, or Eagle to populate this tab.';
+      empty.textContent = 'No formation data yet. Run the consolidated bookmarklet on h5.topwargame.com (the Import TopWar Data button) or add a battle report where you marched with Shark, Scorpion, or Eagle.';
       container.appendChild(empty);
       return;
     }
 
     loadFormationRef().then(function(ref) {
-      buildFormationTabContent(container, merged, ref);
+      buildFormationTabContent(container, merged, ref, formations, supp);
     }).catch(function(e) {
       var err = document.createElement('div');
       err.style.cssText = 'padding:1rem;color:var(--red);';
@@ -24407,17 +24439,21 @@
     });
   }
 
-  function buildFormationTabContent(container, merged, ref) {
+  function buildFormationTabContent(container, merged, ref, formations, supp) {
     // Header banner with accumulator note
     var hdr = document.createElement('div');
     hdr.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.6rem .9rem;margin-bottom:.75rem;font-size:.78rem;color:var(--muted);';
-    var seenIds = Object.keys(merged.formations || {}).sort();
+    var seenIds = Object.keys(formations || {}).sort();
     var seenNames = seenIds.map(function(id) {
       var fm = ref.formations[id];
       return fm ? fm.name.split(':')[1].trim() : id;
     });
-    hdr.textContent = seenNames.length ? 'Tracked: ' + seenNames.join(', ') + '. March with another formation in a different battle report to add it here.'
-                                       : 'No formation data yet.';
+    if (supp && supp.ts) {
+      hdr.textContent = 'Snapshot uploaded ' + new Date(supp.ts).toLocaleString() + '. Re-run the bookmarklet to refresh.';
+    } else {
+      hdr.textContent = seenNames.length ? 'Tracked: ' + seenNames.join(', ') + '. March with another formation in a different battle report to add it here.'
+                                         : 'No formation data yet.';
+    }
     container.appendChild(hdr);
 
     // 3-card grid (Shark / Scorpion / Eagle)
@@ -24426,7 +24462,7 @@
     container.appendChild(grid);
 
     ['1001', '1002', '1003'].forEach(function(fid) {
-      grid.appendChild(buildFormationCard(fid, merged.formations[fid], ref));
+      grid.appendChild(buildFormationCard(fid, formations[fid], ref));
     });
 
     // Component Mastery section (1-20 per unit type, distinct from Formation Specialization).
@@ -24461,11 +24497,389 @@
       container.appendChild(amSection);
     }
 
-    // Talent tree note (game-session only)
-    var note = document.createElement('div');
-    note.style.cssText = 'margin-top:1rem;padding:.6rem .9rem;background:var(--surface);border-left:3px solid var(--yellow);border-radius:4px;font-size:.78rem;color:var(--muted);';
-    note.textContent = 'Note: the 50-node Formation Talent Tree is not exposed in CDN battle reports. Showing it here would require uploading game-session data manually — not yet wired up.';
-    container.appendChild(note);
+    if (supp && Array.isArray(supp.talents) && supp.talents.length) {
+      container.appendChild(buildTalentTreeSection(ref, supp));
+    } else {
+      var note = document.createElement('div');
+      note.style.cssText = 'margin-top:1rem;padding:.6rem .9rem;background:var(--surface);border-left:3px solid var(--yellow);border-radius:4px;font-size:.78rem;color:var(--muted);';
+      note.textContent = 'Talent tree not uploaded yet. Run the consolidated bookmarklet on h5.topwargame.com to capture your 50-node formation tree and unlock the planner.';
+      container.appendChild(note);
+    }
+  }
+
+  // Decode an info id (e.g. 1001006) into {groupId, level} per the per-level
+  // formationV2_talent_info convention: infoId = groupId + (level + 1).
+  function decodeFormationTalentInfoId(infoId) {
+    var groupId = Math.floor(infoId / 1000) * 1000;
+    var level = (infoId % 1000) - 1;
+    return { groupId: groupId, level: level };
+  }
+
+  // Build the per-node {groupId: level} map from a supplement.talents array.
+  function buildFormationCurrentLevels(talents) {
+    var out = {};
+    for (var i = 0; i < talents.length; i++) {
+      var d = decodeFormationTalentInfoId(talents[i]);
+      if (d.groupId && d.level >= 0) out[d.groupId] = d.level;
+    }
+    return out;
+  }
+
+  // Resolve a tree node's icon (relative path under landing-page/).
+  function formationTalentIconUrl(node) {
+    if (!node) return '';
+    var icon = node.icon_name || '';
+    if (!icon) return '';
+    return 'assets/formation-icons/image_professionTalent_' + icon + '.png';
+  }
+
+  // Sum power for a given current-levels map by walking the tree definition.
+  function sumTalentTreePower(treeDict, levels) {
+    var total = 0;
+    Object.keys(levels).forEach(function(g) {
+      var node = treeDict[g] || treeDict[Number(g)];
+      if (!node) return;
+      var lv = levels[g];
+      var info = node.levels && node.levels[lv];
+      if (info && typeof info.power === 'number') total += info.power;
+    });
+    return total;
+  }
+
+  // Sum cost for the spent levels — used by the planner pool math. The cost
+  // field on each level entry is in Formation 101 currency (cost_currency_id
+  // 2800000). Level 0 is "unlocked" and costs whatever its `cost` field says;
+  // max level reports 0 cost. Sum 1..lv to capture what was paid TO REACH lv.
+  function sumTalentTreeCost(treeDict, levels) {
+    var total = 0;
+    Object.keys(levels).forEach(function(g) {
+      var node = treeDict[g] || treeDict[Number(g)];
+      if (!node) return;
+      var lv = levels[g];
+      if (!node.levels) return;
+      for (var i = 0; i <= lv && i < node.levels.length; i++) {
+        var entry = node.levels[i];
+        var c = entry && entry.cost != null ? Number(entry.cost) || 0 : 0;
+        total += c;
+      }
+    });
+    return total;
+  }
+
+  // 50-node tree section with toggle for read-only view vs interactive planner.
+  function buildTalentTreeSection(ref, supp) {
+    var section = document.createElement('section');
+    section.style.cssText = 'margin-top:1rem;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem;';
+
+    var titleRow = document.createElement('div');
+    titleRow.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.75rem;';
+    var h = document.createElement('h3');
+    h.style.cssText = 'margin:0;font-size:1rem;color:var(--text);';
+    h.textContent = 'Formation Talent Tree';
+    titleRow.appendChild(h);
+
+    var modePill = document.createElement('div');
+    modePill.style.cssText = 'display:flex;gap:.25rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.15rem;';
+    var modeViewBtn = document.createElement('button');
+    var modePlanBtn = document.createElement('button');
+    function styleModeBtn(btn, active) {
+      btn.style.cssText = 'padding:.25rem .55rem;border-radius:4px;border:none;font-size:.72rem;cursor:pointer;' + (active ? 'background:var(--accent);color:#0d1117;font-weight:600;' : 'background:transparent;color:var(--muted);');
+    }
+    modeViewBtn.type = 'button'; modeViewBtn.textContent = 'Current Build';
+    modePlanBtn.type = 'button'; modePlanBtn.textContent = 'Planner';
+    modePill.appendChild(modeViewBtn);
+    modePill.appendChild(modePlanBtn);
+    titleRow.appendChild(modePill);
+    section.appendChild(titleRow);
+
+    var currentLevels = buildFormationCurrentLevels(supp.talents || []);
+
+    // Planner state — kept under siteKey + a versioning tag so a refresh from
+    // the bookmarklet doesn't silently clobber the player's WIP. Stored under
+    // the supplement's ts so reset-to-current is anchored to the snapshot the
+    // tree was rendered against.
+    var siteKey = (wizardState.player && wizardState.player.siteKey) || null;
+    var plannerKey = 'formation_planner_' + (siteKey || 'anon');
+    var planner = loadFormationPlanner(plannerKey, currentLevels);
+
+    var state = { mode: 'view', currentLevels: currentLevels, planner: planner, plannerKey: plannerKey };
+
+    function refresh() {
+      styleModeBtn(modeViewBtn, state.mode === 'view');
+      styleModeBtn(modePlanBtn, state.mode === 'plan');
+      while (body.firstChild) body.removeChild(body.firstChild);
+      renderFormationTreeBody(body, ref, supp, state, refresh);
+    }
+    modeViewBtn.onclick = function() { state.mode = 'view'; refresh(); };
+    modePlanBtn.onclick = function() { state.mode = 'plan'; refresh(); };
+
+    var body = document.createElement('div');
+    section.appendChild(body);
+    refresh();
+    return section;
+  }
+
+  function loadFormationPlanner(plannerKey, currentLevels) {
+    try {
+      var raw = localStorage.getItem(plannerKey);
+      if (raw) {
+        var saved = JSON.parse(raw);
+        if (saved && typeof saved === 'object' && saved.levels && typeof saved.levels === 'object') {
+          return { levels: saved.levels, dirty: !!saved.dirty };
+        }
+      }
+    } catch (e) {}
+    return { levels: Object.assign({}, currentLevels), dirty: false };
+  }
+
+  function saveFormationPlanner(plannerKey, planner) {
+    try { localStorage.setItem(plannerKey, JSON.stringify({ levels: planner.levels, dirty: planner.dirty })); } catch (e) {}
+  }
+
+  function renderFormationTreeBody(container, ref, supp, state, refresh) {
+    var tree = ref.talent_tree || {};
+    var nodes = Object.keys(tree).map(function(k) { return tree[k]; });
+    var planning = state.mode === 'plan';
+    var levels = planning ? state.planner.levels : state.currentLevels;
+
+    // Stats banner — power, cost spent, Formation 101 pool
+    var stats = document.createElement('div');
+    stats.style.cssText = 'display:flex;flex-wrap:wrap;gap:.75rem;margin-bottom:.75rem;font-size:.75rem;color:var(--muted);';
+
+    var totalPower = sumTalentTreePower(tree, levels);
+    var maxPower = sumTalentTreePower(tree, (function() {
+      var max = {};
+      Object.keys(tree).forEach(function(g) { max[g] = (tree[g].max_lv != null ? tree[g].max_lv : 5); });
+      return max;
+    })());
+    stats.appendChild(makeStatChip('Power', totalPower.toLocaleString() + ' / ' + maxPower.toLocaleString(), '#79c0ff'));
+
+    var liveSpend = sumTalentTreeCost(tree, state.currentLevels);
+    var planSpend = sumTalentTreeCost(tree, state.planner.levels);
+    var f101Held = supp.currencies && supp.currencies['2800000'];
+    if (f101Held != null) stats.appendChild(makeStatChip('Formation 101 in bag', String(Number(f101Held).toLocaleString()), '#3fb950'));
+    stats.appendChild(makeStatChip('Spent on tree (live)', liveSpend.toLocaleString(), '#8b949e'));
+    if (planning) {
+      var delta = planSpend - liveSpend;
+      var sign = delta === 0 ? '±' : (delta > 0 ? '+' : '−');
+      var deltaColor = delta === 0 ? '#8b949e' : (delta > 0 ? '#d29922' : '#3fb950');
+      stats.appendChild(makeStatChip('Planner cost', planSpend.toLocaleString() + ' (' + sign + Math.abs(delta).toLocaleString() + ')', deltaColor));
+    }
+    container.appendChild(stats);
+
+    // Planner-only controls
+    if (planning) {
+      var ctrls = document.createElement('div');
+      ctrls.style.cssText = 'display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.75rem;';
+      var resetPoolBtn = document.createElement('button');
+      resetPoolBtn.type = 'button';
+      resetPoolBtn.textContent = 'Reset tree (all levels → 0)';
+      resetPoolBtn.title = 'Simulator only. Zeros every node so you can plan from scratch — does NOT touch the game.';
+      resetPoolBtn.style.cssText = 'padding:.35rem .75rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.78rem;cursor:pointer;';
+      resetPoolBtn.onclick = function() {
+        state.planner.levels = {};
+        state.planner.dirty = true;
+        saveFormationPlanner(state.plannerKey, state.planner);
+        refresh();
+      };
+      ctrls.appendChild(resetPoolBtn);
+
+      var snapBtn = document.createElement('button');
+      snapBtn.type = 'button';
+      snapBtn.textContent = 'Reset planner to current build';
+      snapBtn.title = 'Reset the planner back to the snapshot uploaded from the bookmarklet.';
+      snapBtn.style.cssText = 'padding:.35rem .75rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.78rem;cursor:pointer;';
+      snapBtn.onclick = function() {
+        state.planner.levels = Object.assign({}, state.currentLevels);
+        state.planner.dirty = false;
+        saveFormationPlanner(state.plannerKey, state.planner);
+        refresh();
+      };
+      ctrls.appendChild(snapBtn);
+
+      var disclaimer = document.createElement('span');
+      disclaimer.style.cssText = 'font-size:.7rem;color:var(--muted);align-self:center;';
+      disclaimer.textContent = 'Simulator only. No game APIs are called. To actually reset your tree, use the in-game reset button.';
+      ctrls.appendChild(disclaimer);
+      container.appendChild(ctrls);
+    }
+
+    // Two columns: left side (1xxxxxx, Shark/Scorpion shared) + right side (2xxxxxx, Eagle).
+    var cols = document.createElement('div');
+    cols.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:1rem;';
+    container.appendChild(cols);
+
+    var leftSide = buildTreeColumn(nodes.filter(function(n) { return n.side === 'left'; }), tree, levels, state, refresh, 'Shark / Scorpion side');
+    var rightSide = buildTreeColumn(nodes.filter(function(n) { return n.side === 'right'; }), tree, levels, state, refresh, 'Eagle side');
+    cols.appendChild(leftSide);
+    cols.appendChild(rightSide);
+  }
+
+  function makeStatChip(label, value, color) {
+    var chip = document.createElement('div');
+    chip.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-left:3px solid ' + color + ';border-radius:4px;padding:.3rem .6rem;';
+    var l = document.createElement('div');
+    l.style.cssText = 'font-size:.65rem;color:var(--muted);';
+    l.textContent = label;
+    chip.appendChild(l);
+    var v = document.createElement('div');
+    v.style.cssText = 'font-size:.85rem;color:var(--text);font-weight:600;';
+    v.textContent = value;
+    chip.appendChild(v);
+    return chip;
+  }
+
+  function buildTreeColumn(nodes, tree, levels, state, refresh, sideLabel) {
+    var col = document.createElement('div');
+    col.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem;position:relative;overflow:auto;';
+
+    var head = document.createElement('div');
+    head.style.cssText = 'font-size:.7rem;color:var(--muted);margin-bottom:.4rem;';
+    head.textContent = sideLabel + ' (' + nodes.length + ' nodes)';
+    col.appendChild(head);
+
+    // Compute pixel extents so SVG + nodes share a coordinate system. pos_x/pos_y
+    // ranges are roughly -250..+320 in the data — normalize to a 0-based canvas.
+    var pad = 30;
+    var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    nodes.forEach(function(n) {
+      if (n.pos_x < minX) minX = n.pos_x;
+      if (n.pos_x > maxX) maxX = n.pos_x;
+      if (n.pos_y < minY) minY = n.pos_y;
+      if (n.pos_y > maxY) maxY = n.pos_y;
+    });
+    var scaleX = 0.55, scaleY = 0.55;
+    function px(n) {
+      return {
+        x: Math.round((n.pos_x - minX) * scaleX + pad),
+        // pos_y is inverted (higher = lower row in-game), keep that.
+        y: Math.round((maxY - n.pos_y) * scaleY + pad),
+      };
+    }
+    var w = Math.round((maxX - minX) * scaleX + pad * 2);
+    var h = Math.round((maxY - minY) * scaleY + pad * 2);
+
+    var canvas = document.createElement('div');
+    canvas.style.cssText = 'position:relative;width:' + w + 'px;height:' + h + 'px;margin:0 auto;';
+    col.appendChild(canvas);
+
+    // SVG edge layer
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', String(w));
+    svg.setAttribute('height', String(h));
+    svg.style.cssText = 'position:absolute;inset:0;pointer-events:none;';
+    canvas.appendChild(svg);
+
+    nodes.forEach(function(n) {
+      var p = px(n);
+      (n.parent_ids || []).forEach(function(pid) {
+        var parent = tree[pid] || tree[String(pid)];
+        if (!parent) return;
+        var pp = px(parent);
+        var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', pp.x); line.setAttribute('y1', pp.y);
+        line.setAttribute('x2', p.x);  line.setAttribute('y2', p.y);
+        var parentLv = levels[pid] || 0;
+        line.setAttribute('stroke', parentLv > 0 ? '#3fb950aa' : '#30363d');
+        line.setAttribute('stroke-width', '2');
+        svg.appendChild(line);
+      });
+    });
+
+    // Node layer
+    var planning = state.mode === 'plan';
+    nodes.forEach(function(n) {
+      var p = px(n);
+      var lv = levels[n.id] || 0;
+      var maxLv = n.max_lv != null ? n.max_lv : 5;
+      var unlocked = lv > 0;
+      var parentLocked = (n.parent_ids || []).some(function(pid) { return (levels[pid] || 0) === 0; });
+      var clickable = planning && !parentLocked && lv < maxLv;
+      var rightClickable = planning && lv > 0;
+
+      var box = document.createElement('button');
+      box.type = 'button';
+      box.style.cssText = 'position:absolute;left:' + (p.x - 22) + 'px;top:' + (p.y - 22) + 'px;width:44px;height:44px;border-radius:6px;background:' + (unlocked ? '#0d1f0e' : '#0d1117') + ';border:2px solid ' + (unlocked ? '#3fb950' : (parentLocked ? '#30363d' : '#58a6ff')) + ';padding:0;cursor:' + (clickable ? 'pointer' : 'default') + ';display:flex;align-items:center;justify-content:center;color:var(--text);';
+
+      var icon = formationTalentIconUrl(n);
+      if (icon) {
+        var img = document.createElement('img');
+        img.src = icon;
+        img.alt = n.name || '';
+        img.style.cssText = 'width:30px;height:30px;object-fit:contain;' + (unlocked ? '' : 'opacity:.45;filter:grayscale(.6);');
+        img.onerror = function() { img.style.display = 'none'; };
+        box.appendChild(img);
+      } else {
+        box.textContent = n.name ? n.name.charAt(0) : '?';
+      }
+
+      var badge = document.createElement('span');
+      badge.style.cssText = 'position:absolute;right:-4px;bottom:-4px;background:#0d1117;border:1px solid ' + (unlocked ? '#3fb950' : '#30363d') + ';color:' + (unlocked ? '#3fb950' : '#8b949e') + ';font-size:.6rem;line-height:1;padding:1px 3px;border-radius:3px;font-weight:600;';
+      badge.textContent = lv + '/' + maxLv;
+      box.appendChild(badge);
+
+      var tipParts = [];
+      tipParts.push(n.name + ' — Lv ' + lv + '/' + maxLv);
+      if (n.desc) tipParts.push(n.desc);
+      var nextEntry = lv < maxLv && n.levels && n.levels[lv + 1];
+      if (nextEntry) {
+        tipParts.push('Next: cost ' + nextEntry.cost + ' Formation 101  ·  power +' + ((nextEntry.power || 0) - ((n.levels[lv] && n.levels[lv].power) || 0)));
+      }
+      if (parentLocked && !unlocked) tipParts.push('Locked: train its parent first');
+      if (planning && lv > 0) tipParts.push('Right-click / long-press to step down');
+      box.title = tipParts.join('\n');
+
+      if (clickable) {
+        box.addEventListener('click', function(e) {
+          e.preventDefault();
+          state.planner.levels[n.id] = lv + 1;
+          state.planner.dirty = true;
+          saveFormationPlanner(state.plannerKey, state.planner);
+          refresh();
+        });
+      }
+      if (rightClickable) {
+        box.addEventListener('contextmenu', function(e) {
+          e.preventDefault();
+          // Step down. If a child node depends on this (parent_ids contains n.id),
+          // and we drop n to 0, walk the tree and clamp dependents to 0 too —
+          // matching the game's gating rules. Without this you can end up with
+          // "leaves" surviving past their parent's removal in the planner only.
+          var newLv = lv - 1;
+          if (newLv <= 0) {
+            delete state.planner.levels[n.id];
+            cascadeChildrenToZero(tree, state.planner.levels, n.id);
+          } else {
+            state.planner.levels[n.id] = newLv;
+          }
+          state.planner.dirty = true;
+          saveFormationPlanner(state.plannerKey, state.planner);
+          refresh();
+        });
+      }
+      canvas.appendChild(box);
+    });
+
+    return col;
+  }
+
+  function cascadeChildrenToZero(tree, levels, rootId) {
+    var queue = [rootId];
+    var visited = {};
+    while (queue.length) {
+      var id = queue.shift();
+      if (visited[id]) continue;
+      visited[id] = true;
+      Object.keys(tree).forEach(function(childId) {
+        var child = tree[childId];
+        if ((child.parent_ids || []).some(function(p) { return String(p) === String(id); })) {
+          if ((levels[childId] || 0) > 0) {
+            delete levels[childId];
+            queue.push(childId);
+          }
+        }
+      });
+    }
   }
 
   function buildFormationCard(fid, formationData, ref) {

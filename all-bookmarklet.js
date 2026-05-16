@@ -571,14 +571,97 @@
       return { v: 1, ts: new Date().toISOString(), list: list };
     }
 
+    // ─── Formation V2 (3 formations + 50-node talent tree) ──────────────
+    // Read-only snapshot. Calls requestFormationTalentInfo() to populate the
+    // server-side talent array, then dumps per-formation state from
+    // _advFormation. NEVER invokes sendLevelUpFormationTalent /
+    // sendResetFormationTalent / sendChangeFormationTalent — the player
+    // executes any reset/relevel in-game themselves; this extractor is purely
+    // a snapshot for the planner.
+    async function extractFormation() {
+      stepHook && stepHook('Formation…');
+      var FC;
+      try { FC = req('FightFormationAdvController')._instance; }
+      catch (e) { throw new Error('FightFormationAdvController not available'); }
+      if (!FC) throw new Error('FightFormationAdvController._instance is null — open the Formation panel once, then retry');
+
+      if (!Array.isArray(FC.serverFormationV2Talent) || FC.serverFormationV2Talent.length === 0) {
+        if (typeof FC.requestFormationTalentInfo === 'function') {
+          try { FC.requestFormationTalentInfo(); } catch (e) {}
+        }
+        var t0 = Date.now();
+        while (Date.now() - t0 < 5000) {
+          if (Array.isArray(FC.serverFormationV2Talent) && FC.serverFormationV2Talent.length > 0) break;
+          await delay(120);
+        }
+      }
+      var talents = Array.isArray(FC.serverFormationV2Talent) ? FC.serverFormationV2Talent.slice() : [];
+
+      // Per-formation snapshot. _advFormation field names verified at
+      // extraction time may differ — dump common-likely shapes plus a raw
+      // copy of each formation state object for diagnostics on first paste.
+      var perF = {};
+      var adv = FC._advFormation || FC._advFormationMap || {};
+      ['1001', '1002', '1003'].forEach(function (fid) {
+        var s = adv[fid] || adv[Number(fid)];
+        if (!s) return;
+        var entry = {
+          id: Number(fid),
+          lv: s.lv != null ? s.lv : (s._level != null ? s._level : (s.level || 0)),
+          quality: s.quality != null ? s.quality : (s._quality != null ? s._quality : 0),
+          masterys: s.masterys || s._masterys || null,
+          sciences: s.sciences || s._sciences || null,
+          formationLvUp: !!(s.formationLvUp || s._formationLvUp),
+          formationQualityUp: !!(s.formationQualityUp || s._formationQualityUp),
+          formationMasteryUp: !!(s.formationMasteryUp || s._formationMasteryUp),
+        };
+        // Raw dump for first-paste field-name discovery. Strips functions
+        // and circular refs by JSON round-trip; failed extract drops the
+        // _raw field so we don't blow up the envelope.
+        try { entry._raw = JSON.parse(JSON.stringify(s)); } catch (e) {}
+        perF[fid] = entry;
+      });
+
+      // Formation 101 currency (item 2800000) — needed by the planner so
+      // the player sees their pool size when simulating resets. Best-effort
+      // lookup; falls through to null if the ItemController path differs.
+      var f101 = null;
+      try {
+        var ItemCtl = req('ItemController');
+        var IC = ItemCtl && ItemCtl.default && ItemCtl.default.getInstance && ItemCtl.default.getInstance();
+        if (IC && typeof IC.getItemCount === 'function') f101 = IC.getItemCount(2800000);
+      } catch (e) {}
+      if (f101 == null) {
+        try {
+          var ud2 = window.__capturedUD;
+          if (ud2 && ud2._itemMap && ud2._itemMap[2800000]) f101 = ud2._itemMap[2800000]._amount;
+        } catch (e) {}
+      }
+
+      // Total talent power for "you're N% of max" display on the planner.
+      var pwrCur = null, pwrMax = null;
+      try { if (typeof FC.getAllFormationTalentPower === 'function')    pwrCur = FC.getAllFormationTalentPower(); }    catch (e) {}
+      try { if (typeof FC.getAllFormationTalentPowerMax === 'function') pwrMax = FC.getAllFormationTalentPowerMax(); } catch (e) {}
+
+      return {
+        v: 1,
+        ts: new Date().toISOString(),
+        talents: talents,
+        formations: perF,
+        currencies: { '2800000': f101 },
+        power: { cur: pwrCur, max: pwrMax },
+      };
+    }
+
     return (async function () {
       var errors = [];
-      var inv = null, beasts = null, chips = null, gear = null, heroes = null;
+      var inv = null, beasts = null, chips = null, gear = null, heroes = null, formation = null;
       try { inv = await extractInventory(); } catch (e) { errors.push({ section: 'inventory', message: e.message }); }
       try { beasts = await extractBeasts(); } catch (e) { errors.push({ section: 'beasts', message: e.message }); }
       try { chips = await extractChips(); } catch (e) { errors.push({ section: 'chips', message: e.message }); }
       try { gear = await extractGear(); } catch (e) { errors.push({ section: 'gear', message: e.message }); }
       try { heroes = await extractHeroes(); } catch (e) { errors.push({ section: 'heroes', message: e.message }); }
+      try { formation = await extractFormation(); } catch (e) { errors.push({ section: 'formation', message: e.message }); }
       return {
         v: 2,
         ts: new Date().toISOString(),
@@ -588,6 +671,7 @@
         chips: chips,
         gear: gear,
         heroes: heroes,
+        formation: formation,
         errors: errors,
       };
     })();
@@ -612,7 +696,7 @@
     bg.appendChild(hdr);
     var sub = document.createElement('div');
     sub.style.cssText = 'color:#8b949e;font-size:12px;margin-bottom:10px;text-align:center;';
-    sub.textContent = 'Inventory · Beasts · HT chips · Titan gear';
+    sub.textContent = 'Inventory · Beasts · HT chips · Titan gear · Heroes · Formation';
     bg.appendChild(sub);
     document.body.appendChild(bg);
     return {
