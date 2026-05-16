@@ -16484,16 +16484,21 @@
     return box;
   }
 
-  // Build a "Swap impact at this slot" panel appended to the standard beast
-  // detail modal when a chip is clicked from the optimizer plan. Shows the
-  // slot location, the matching delta table, and the same gain-today /
-  // gain-at-max-out numbers the swap card surfaces, so the player can see
-  // exactly what changes by making the swap at THIS slot. role 'to' frames
-  // it as "if you move here", role 'from' frames it as "what you'd lose".
+  // Swap-impact section appended to the beast detail modal when a chip is
+  // clicked from the optimizer plan. Tex's feedback drove the design:
+  // - Toggle "Today" / "After upgrades" so the player can compare the swap's
+  //   value with current beast states versus assumed max-out.
+  // - Per-buff breakdown for BOTH beasts side-by-side, each row tagged with
+  //   the buff's unit target (All units / Army / Navy / Air Force) AND
+  //   whether it applies to the chosen playstyle. Buffs that don't apply
+  //   (Navy buff while playing Army+Air) are muted so the player can see at
+  //   a glance which buffs are "wasted" on this beast given their picks.
+  // - Aggregate stat delta table recomputed at the toggled state.
   function boBuildSwapImpactSection(swapCtx, prefs) {
     var rec = swapCtx.rec;
     var role = swapCtx.role;
     var FIELD_NAMES = ['', 'CPNT Mastery', 'Formation', 'Equip', 'Defense', 'Offense'];
+    var atState = rec.threshold ? 'maxOut' : 'current';
 
     var section = document.createElement('div');
     section.className = 'eb-detail-section';
@@ -16504,57 +16509,273 @@
     section.appendChild(heading);
 
     var loc = document.createElement('div');
-    loc.style.cssText = 'font-size:.82rem;color:var(--text);margin-bottom:.4rem;';
+    loc.style.cssText = 'font-size:.82rem;color:var(--text);margin-bottom:.5rem;';
     loc.textContent = 'Field ' + rec.slot.fieldType + ' (' + FIELD_NAMES[rec.slot.fieldType] + ') · Slot ' + rec.slot.order;
     section.appendChild(loc);
 
-    // Gain numbers (mirroring the swap card so the modal is self-contained)
-    var gainRow = document.createElement('div');
-    gainRow.style.cssText = 'display:flex;gap:1rem;font-size:.78rem;margin-bottom:.5rem;flex-wrap:wrap;';
-    var gainTodaySigned = role === 'from' ? -rec.gainToday : rec.gainToday;
-    var gainMaxSigned = role === 'from' ? -rec.gainAtMax : rec.gainAtMax;
-    var gainTodayColor = gainTodaySigned >= 0 ? 'var(--green)' : '#f85149';
-    var gainMaxColor = gainMaxSigned >= 0 ? 'var(--green)' : '#f85149';
+    // Toggle: Today / After upgrades
+    var toggleRow = document.createElement('div');
+    toggleRow.style.cssText = 'display:flex;margin-bottom:.55rem;border:1px solid var(--border);border-radius:6px;overflow:hidden;';
+    var todayBtn = document.createElement('button');
+    todayBtn.type = 'button';
+    todayBtn.textContent = 'Today (current stars/levels)';
+    var maxBtn = document.createElement('button');
+    maxBtn.type = 'button';
+    maxBtn.textContent = 'After upgrades (5★ Lv 80)';
+    [todayBtn, maxBtn].forEach(function(b) {
+      b.style.cssText = 'flex:1;padding:.4rem .35rem;font-size:.72rem;border:0;background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit;border-right:1px solid var(--border);';
+    });
+    maxBtn.style.borderRight = '0';
+    toggleRow.appendChild(todayBtn);
+    toggleRow.appendChild(maxBtn);
+    section.appendChild(toggleRow);
 
-    var gToday = document.createElement('div');
-    var gTodayLbl = document.createElement('span');
-    gTodayLbl.style.color = 'var(--muted)';
-    gTodayLbl.textContent = 'Power score today: ';
-    var gTodayVal = document.createElement('strong');
-    gTodayVal.style.color = gainTodayColor;
-    gTodayVal.textContent = (gainTodaySigned >= 0 ? '+' : '') + Math.round(gainTodaySigned) + ' pts';
-    gToday.appendChild(gTodayLbl);
-    gToday.appendChild(gTodayVal);
-    gainRow.appendChild(gToday);
+    var dyn = document.createElement('div');
+    section.appendChild(dyn);
 
-    var gMax = document.createElement('div');
-    var gMaxLbl = document.createElement('span');
-    gMaxLbl.style.color = 'var(--muted)';
-    gMaxLbl.textContent = 'At max-out: ';
-    var gMaxVal = document.createElement('strong');
-    gMaxVal.style.color = gainMaxColor;
-    gMaxVal.textContent = (gainMaxSigned >= 0 ? '+' : '') + Math.round(gainMaxSigned) + ' pts';
-    gMax.appendChild(gMaxLbl);
-    gMax.appendChild(gMaxVal);
-    gainRow.appendChild(gMax);
-    section.appendChild(gainRow);
+    function paint() {
+      todayBtn.style.background = atState === 'current' ? 'var(--accent)' : 'var(--surface)';
+      todayBtn.style.color = atState === 'current' ? '#0d1117' : 'var(--text)';
+      todayBtn.style.fontWeight = atState === 'current' ? '700' : '400';
+      maxBtn.style.background = atState === 'maxOut' ? 'var(--accent)' : 'var(--surface)';
+      maxBtn.style.color = atState === 'maxOut' ? '#0d1117' : 'var(--text)';
+      maxBtn.style.fontWeight = atState === 'maxOut' ? '700' : '400';
 
-    var deltaTable = boRenderStatDeltaTable(rec, prefs);
-    if (deltaTable) {
-      deltaTable.style.marginTop = '0';
-      section.appendChild(deltaTable);
+      while (dyn.firstChild) dyn.removeChild(dyn.firstChild);
+
+      // Headline gain number for active state
+      var gainBox = document.createElement('div');
+      gainBox.style.cssText = 'background:var(--card);border-radius:6px;padding:.45rem .65rem;margin-bottom:.55rem;display:flex;justify-content:space-between;align-items:baseline;';
+      var gainNum = atState === 'maxOut' ? rec.gainAtMax : rec.gainToday;
+      var gainSigned = role === 'from' ? -gainNum : gainNum;
+      var gainColor = gainSigned >= 0 ? 'var(--green)' : '#f85149';
+      var gainLbl = document.createElement('span');
+      gainLbl.style.cssText = 'font-size:.74rem;color:var(--muted);';
+      gainLbl.textContent = atState === 'maxOut' ? 'Power score change at max-out' : 'Power score change today';
+      var gainVal = document.createElement('strong');
+      gainVal.style.cssText = 'font-size:1.05rem;color:' + gainColor + ';';
+      gainVal.textContent = (gainSigned >= 0 ? '+' : '') + Math.round(gainSigned) + ' pts';
+      gainBox.appendChild(gainLbl);
+      gainBox.appendChild(gainVal);
+      dyn.appendChild(gainBox);
+
+      // Per-buff breakdown: from beast vs to beast, side by side
+      var breakdownLabel = document.createElement('div');
+      breakdownLabel.style.cssText = 'font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:.3rem;';
+      breakdownLabel.textContent = 'Per-buff breakdown (muted rows do not apply to your playstyle)';
+      dyn.appendChild(breakdownLabel);
+
+      var grid = document.createElement('div');
+      grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin-bottom:.55rem;';
+      grid.appendChild(boRenderBeastBuffPanel(rec.from, 'Currently here', atState, prefs));
+      grid.appendChild(boRenderBeastBuffPanel(rec.to, 'Proposed', atState, prefs));
+      dyn.appendChild(grid);
+
+      // Aggregate stat delta at active state
+      var tbl = boRenderStatDeltaTableAt(rec, prefs, atState);
+      if (tbl) dyn.appendChild(tbl);
+
+      if (rec.threshold && role === 'to') {
+        var t = document.createElement('div');
+        t.style.cssText = 'font-size:.78rem;color:#d29922;background:rgba(210,153,34,0.1);border-left:3px solid #d29922;padding:.4rem .6rem;border-radius:4px;margin-top:.5rem;';
+        t.textContent = 'This beast needs ' + rec.threshold.starsFromCurrent + ' more star' + (rec.threshold.starsFromCurrent === 1 ? '' : 's') +
+          ' and ' + rec.threshold.levelsFromCurrent + ' more level' + (rec.threshold.levelsFromCurrent === 1 ? '' : 's') +
+          ' to beat the current placement. The "After upgrades" view above shows the projected stats.';
+        dyn.appendChild(t);
+      }
     }
 
-    if (rec.threshold && role === 'to') {
-      var t = document.createElement('div');
-      t.style.cssText = 'font-size:.78rem;color:#d29922;background:rgba(210,153,34,0.1);border-left:3px solid #d29922;padding:.4rem .6rem;border-radius:4px;margin-top:.5rem;';
-      t.textContent = 'Needs ' + rec.threshold.starsFromCurrent + ' more star' + (rec.threshold.starsFromCurrent === 1 ? '' : 's') +
-        ' and ' + rec.threshold.levelsFromCurrent + ' more level' + (rec.threshold.levelsFromCurrent === 1 ? '' : 's') +
-        ' before this beats the current placement.';
-      section.appendChild(t);
-    }
+    todayBtn.onclick = function() { atState = 'current'; paint(); };
+    maxBtn.onclick = function() { atState = 'maxOut'; paint(); };
+    paint();
 
     return section;
+  }
+
+  // Per-buff entries for one beast at one state, classified with playstyle
+  // applicability so each row can be rendered with a unit pill and a "applies"
+  // flag the row renderer uses for muting.
+  function boComputeBuffEntries(beast, atState, prefs) {
+    if (!beast) return [];
+    var star = atState === 'maxOut' ? boMaxStarFor(beast) : (beast.st || 0);
+    var level = atState === 'maxOut' ? boMaxLevelFor(beast) : (beast.lv || 0);
+    var pot = beast.pot || 0;
+    var entries = [];
+    function push(buffId, isMain) {
+      if (!buffId) return;
+      var cls = boClassifyBuff(buffId, isMain);
+      var raw = ebComputeBuffValue(buffId, star, level, pot, isMain);
+      if (raw == null) return;
+      var unitId = cls ? cls.targetUnit : 0;
+      var statKey = cls ? cls.statKey : null;
+      var psm = cls ? boPlaystyleMult(unitId, prefs) : 0;
+      var scm = cls ? BO_SCOPE_MULT[cls.scope] : 1;
+      var weight = (statKey && BO_STAT_WEIGHTS[statKey] != null) ? BO_STAT_WEIGHTS[statKey] : 0;
+      entries.push({
+        buffId: buffId, isMain: isMain,
+        name: ebBuffName(buffId),
+        rawValue: raw,
+        statKey: statKey,
+        scope: cls ? cls.scope : 'always',
+        scopeMult: scm,
+        targetUnit: unitId,
+        playstyleMult: psm,
+        weighted: raw * scm * psm * weight,
+        applies: psm > 0 && weight > 0
+      });
+    }
+    push(beast.mb, true);
+    (beast.bb || []).forEach(function(bid) { push(bid, false); });
+    return entries;
+  }
+
+  function boRenderBuffRow(entry) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:space-between;gap:.4rem;font-size:.7rem;line-height:1.3;padding:.3rem 0;border-top:1px solid var(--border);' +
+      (entry.applies ? '' : 'opacity:.5;');
+
+    var left = document.createElement('div');
+    left.style.cssText = 'flex:1;min-width:0;';
+    var nameEl = document.createElement('div');
+    nameEl.style.cssText = 'color:var(--text);font-weight:600;font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    nameEl.textContent = entry.name + (entry.isMain ? ' (Main)' : '');
+    left.appendChild(nameEl);
+
+    var meta = document.createElement('div');
+    meta.style.cssText = 'font-size:.62rem;color:var(--muted);margin-top:.1rem;line-height:1.3;';
+    var UNIT_LABEL = { 0: 'All units', 1: 'Army', 2: 'Navy', 3: 'Air Force' };
+    var unitTxt = UNIT_LABEL[entry.targetUnit] || ('Unit ' + entry.targetUnit);
+    var statusBits = [];
+    if (!entry.statKey || entry.statKey === 'elemental') statusBits.push('not scored');
+    if (entry.playstyleMult === 0) statusBits.push('not your playstyle');
+    else if (entry.playstyleMult === 0.75) statusBits.push('your secondary 0.75x');
+    if (entry.scopeMult === 0.5) statusBits.push('base buff 0.5x');
+    meta.textContent = unitTxt + (statusBits.length ? ' · ' + statusBits.join(' · ') : '');
+    left.appendChild(meta);
+    row.appendChild(left);
+
+    var valBox = document.createElement('div');
+    valBox.style.cssText = 'text-align:right;flex-shrink:0;';
+    var rawSpan = document.createElement('div');
+    rawSpan.style.cssText = 'color:var(--text);font-weight:600;font-size:.72rem;';
+    rawSpan.textContent = (entry.statKey === 'march')
+      ? ('+' + entry.rawValue.toFixed(2))
+      : ('+' + entry.rawValue.toFixed(2) + '%');
+    valBox.appendChild(rawSpan);
+    var wSpan = document.createElement('div');
+    wSpan.style.cssText = 'font-size:.6rem;color:' + (entry.weighted > 0.5 ? 'var(--green)' : 'var(--muted)') + ';';
+    wSpan.textContent = Math.round(entry.weighted) + ' pts';
+    valBox.appendChild(wSpan);
+    row.appendChild(valBox);
+    return row;
+  }
+
+  function boRenderBeastBuffPanel(beast, title, atState, prefs) {
+    var panel = document.createElement('div');
+    panel.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem .55rem;min-width:0;';
+
+    var head = document.createElement('div');
+    head.style.cssText = 'font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:.25rem;font-weight:600;';
+    head.textContent = title;
+    panel.appendChild(head);
+
+    if (!beast) {
+      var empty = document.createElement('div');
+      empty.style.cssText = 'font-size:.74rem;color:var(--muted);font-style:italic;padding:.3rem 0;';
+      empty.textContent = 'Empty slot';
+      panel.appendChild(empty);
+      return panel;
+    }
+
+    var name = document.createElement('div');
+    name.style.cssText = 'font-size:.78rem;font-weight:600;color:var(--text);margin-bottom:.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    name.textContent = ebBeastName(beast.type, beast.st);
+    panel.appendChild(name);
+
+    var subtitle = document.createElement('div');
+    subtitle.style.cssText = 'font-size:.64rem;color:var(--muted);margin-bottom:.25rem;';
+    var effStar = atState === 'maxOut' ? boMaxStarFor(beast) : (beast.st || 0);
+    var effLv = atState === 'maxOut' ? boMaxLevelFor(beast) : (beast.lv || 0);
+    subtitle.textContent = 'Q' + beast.q + ' · ' + effStar + '★ Lv' + effLv + (atState === 'maxOut' && (effStar > beast.st || effLv > beast.lv) ? ' (projected)' : '');
+    panel.appendChild(subtitle);
+
+    var entries = boComputeBuffEntries(beast, atState, prefs);
+    if (!entries.length) {
+      var none = document.createElement('div');
+      none.style.cssText = 'font-size:.7rem;color:var(--muted);font-style:italic;';
+      none.textContent = '(no buffs)';
+      panel.appendChild(none);
+    } else {
+      entries.forEach(function(e) { panel.appendChild(boRenderBuffRow(e)); });
+    }
+    return panel;
+  }
+
+  // Single-state stat delta table for the modal. Mirrors the swap-card table
+  // but shows only the active toggle state (the card version overlays
+  // current-in-parens which is redundant when the modal has the toggle).
+  function boRenderStatDeltaTableAt(rec, prefs, atState) {
+    var from = boBeastStatProfile(rec.from, atState, prefs);
+    var to = boBeastStatProfile(rec.to, atState, prefs);
+    var keys = Object.keys(BO_STAT_LABELS).filter(function(k) {
+      return Math.abs((from[k] || 0)) > 0.005 || Math.abs((to[k] || 0)) > 0.005;
+    });
+    if (!keys.length) return null;
+    keys.sort(function(a, b) {
+      var aImpact = Math.max((from[a] || 0), (to[a] || 0)) * (BO_STAT_WEIGHTS[a] || 0);
+      var bImpact = Math.max((from[b] || 0), (to[b] || 0)) * (BO_STAT_WEIGHTS[b] || 0);
+      return bImpact - aImpact;
+    });
+
+    var box = document.createElement('div');
+    box.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.45rem .6rem;';
+    var caption = document.createElement('div');
+    caption.style.cssText = 'font-size:.65rem;color:var(--muted);margin-bottom:.3rem;';
+    caption.textContent = 'Aggregate stat change ' + (atState === 'maxOut' ? 'at max-out' : 'today') + ' (weighted for your playstyle):';
+    box.appendChild(caption);
+
+    var table = document.createElement('table');
+    table.style.cssText = 'width:100%;border-collapse:collapse;font-size:.72rem;';
+    var thead = document.createElement('thead');
+    var hrow = document.createElement('tr');
+    ['Stat', 'From', 'To', 'Net'].forEach(function(t, i) {
+      var th = document.createElement('th');
+      th.style.cssText = 'text-align:' + (i === 0 ? 'left' : 'right') + ';color:var(--muted);font-weight:500;padding:.2rem .35rem;border-bottom:1px solid var(--border);';
+      th.textContent = t;
+      hrow.appendChild(th);
+    });
+    thead.appendChild(hrow);
+    table.appendChild(thead);
+
+    var tbody = document.createElement('tbody');
+    keys.forEach(function(k) {
+      var spec = BO_STAT_LABELS[k];
+      var f = from[k] || 0;
+      var t = to[k] || 0;
+      var delta = t - f;
+      var tr = document.createElement('tr');
+      var tdLabel = document.createElement('td');
+      tdLabel.style.cssText = 'padding:.18rem .35rem;color:' + spec.color + ';font-weight:600;';
+      tdLabel.textContent = spec.label;
+      tr.appendChild(tdLabel);
+      var tdFrom = document.createElement('td');
+      tdFrom.style.cssText = 'padding:.18rem .35rem;text-align:right;color:var(--text);';
+      tdFrom.textContent = boFmtStat(k, f);
+      tr.appendChild(tdFrom);
+      var tdTo = document.createElement('td');
+      tdTo.style.cssText = 'padding:.18rem .35rem;text-align:right;color:var(--text);';
+      tdTo.textContent = boFmtStat(k, t);
+      tr.appendChild(tdTo);
+      var tdDelta = document.createElement('td');
+      var deltaColor = delta > 0.005 ? 'var(--green)' : (delta < -0.005 ? '#f85149' : 'var(--muted)');
+      tdDelta.style.cssText = 'padding:.18rem .35rem;text-align:right;color:' + deltaColor + ';font-weight:600;';
+      tdDelta.textContent = boFmtStatDelta(k, delta);
+      tr.appendChild(tdDelta);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    box.appendChild(table);
+    return box;
   }
 
   // Surface the top 2 stat categories the new beast contributes to a swap.
