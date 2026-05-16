@@ -21342,10 +21342,109 @@
       ]
     }));
 
+    // Clipboard-first import. The Clipboard API reads the full text in one
+    // go on every modern browser (desktop Chrome/Edge/Firefox/Safari,
+    // Android Chrome, iOS Safari) — no textarea needed, and it sidesteps the
+    // ~32-64 KB truncation Gboard / Android system clipboard apply when
+    // pasting via the keyboard into <input>/<textarea>. iOS users see a
+    // one-tap "Allow Paste" system prompt the first time per session.
+    // The textarea is kept hidden as a manual-paste escape hatch (revealed
+    // via the "Paste manually" link) for the rare browser where the
+    // Clipboard API is blocked.
+    var pasted = '';                 // holds the JSON once the player loads it
+    var pasteRow = document.createElement('div');
+    pasteRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 4px;align-items:center;';
+
+    var pasteBtn = document.createElement('button');
+    pasteBtn.type = 'button';
+    pasteBtn.style.cssText = 'padding:10px 18px;background:var(--accent);border:none;border-radius:6px;color:var(--bg);font-size:13px;font-weight:700;cursor:pointer;';
+    pasteBtn.textContent = 'Paste from clipboard';
+    pasteRow.appendChild(pasteBtn);
+
+    var manualToggle = document.createElement('a');
+    manualToggle.href = '#';
+    manualToggle.style.cssText = 'font-size:11px;color:var(--muted);text-decoration:underline dotted;cursor:pointer;';
+    manualToggle.textContent = 'Paste manually';
+    pasteRow.appendChild(manualToggle);
+
+    modal.appendChild(pasteRow);
+
+    var pasteStatus = document.createElement('div');
+    pasteStatus.style.cssText = 'font-size:11px;color:var(--muted);margin-bottom:8px;min-height:14px;';
+    pasteStatus.textContent = 'Tap the bookmarklet on h5.topwargame.com, then tap Paste from clipboard.';
+    modal.appendChild(pasteStatus);
+
+    // Hidden manual textarea — shown when player toggles "Paste manually".
     var ta = document.createElement('textarea');
-    ta.style.cssText = 'width:100%;min-height:140px;max-height:240px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-family:monospace;font-size:11px;resize:vertical;';
+    ta.style.cssText = 'width:100%;min-height:120px;max-height:240px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-family:monospace;font-size:11px;resize:vertical;display:none;margin-bottom:6px;';
     ta.placeholder = '{"v":2,"ts":"...","inventory":{...},"beasts":{...},"chips":{...},"gear":{...}}';
     modal.appendChild(ta);
+
+    function describeLoaded(raw) {
+      try {
+        var j = JSON.parse(raw);
+        if (j && typeof j === 'object' && j.v === 2) {
+          var bits = [];
+          if (j.inventory) bits.push('inventory');
+          if (j.beasts) bits.push('beasts');
+          if (j.chips) bits.push('chips');
+          if (j.gear) bits.push('gear');
+          if (j.heroes) bits.push('heroes');
+          return (bits.length ? ('v2 envelope · ' + bits.join(' + ')) : 'v2 envelope (empty?)');
+        }
+        return 'Parsed (' + (j && typeof j === 'object' ? Object.keys(j).length : 0) + ' keys) but not a v=2 envelope';
+      } catch (e) { return 'Not JSON yet — ' + (e.message || e); }
+    }
+    function markLoaded(src, txt) {
+      pasted = txt;
+      ta.value = txt;
+      pasteStatus.style.color = 'var(--accent)';
+      pasteStatus.textContent = '✓ ' + src + ': ' + txt.length.toLocaleString() + ' chars · ' + describeLoaded(txt);
+      err.textContent = '';
+    }
+
+    pasteBtn.onclick = async function() {
+      pasteBtn.disabled = true;
+      var prev = pasteBtn.textContent;
+      pasteBtn.textContent = 'Reading…';
+      try {
+        if (!navigator.clipboard || !navigator.clipboard.readText) {
+          throw new Error('Clipboard API not available in this browser');
+        }
+        var txt = await navigator.clipboard.readText();
+        if (!txt) throw new Error('Clipboard is empty');
+        markLoaded('Clipboard', txt);
+      } catch (e) {
+        err.style.color = '';
+        err.textContent = 'Paste failed: ' + (e.message || e) + '. Use Paste manually instead, or rerun the bookmarklet to refresh your clipboard.';
+        // Auto-reveal the manual textarea so the player has somewhere to go
+        // when the Clipboard API is blocked.
+        ta.style.display = '';
+        manualToggle.style.display = 'none';
+      }
+      pasteBtn.textContent = prev;
+      pasteBtn.disabled = false;
+    };
+
+    manualToggle.onclick = function(e) {
+      e.preventDefault();
+      ta.style.display = '';
+      manualToggle.style.display = 'none';
+      ta.focus();
+    };
+
+    // Keep the in-memory `pasted` mirror in sync when the player types/pastes
+    // directly into the manual textarea, so Save sees the latest content.
+    ta.addEventListener('input', function() {
+      pasted = ta.value;
+      if (pasted) {
+        pasteStatus.style.color = 'var(--accent)';
+        pasteStatus.textContent = '✓ Manual paste: ' + pasted.length.toLocaleString() + ' chars · ' + describeLoaded(pasted);
+      } else {
+        pasteStatus.style.color = 'var(--muted)';
+        pasteStatus.textContent = 'Tap the bookmarklet on h5.topwargame.com, then tap Paste from clipboard.';
+      }
+    });
 
     // Per-section progress strip — paints a chip per kind as uploads land.
     var progress = document.createElement('div');
