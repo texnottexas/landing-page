@@ -16543,7 +16543,7 @@
 
     var gaps = [
       'Slot rarity bonus is fully wired for all 36 slots across all 5 fields. Weights were extracted live from the in-game tooltip data and the formula ceil(pot/16) * slot_cap / 100000 has been verified against the game UI. Fields 4 and 5 slots 7 to 9 reflect Tex\'s specific Titan Gear refinement values; another player with different TG refinement would see different weights at those six slots.',
-      'Titan Gear refinement is now computed live from your loaded hero gear for Fields 4 and 5 slots 7 to 9. The optimizer reads each TG slot\'s random attributes and only counts attributes refined to 70 percent or higher, mapped to the linked enigma slot via the system enhancement table. Slots with no qualifying refined attributes contribute zero. Fields 4 and 5 slots 4 to 6 use the type 10 base-attribute rule (any Titan Rune activated) and are not yet dynamically gated, so they may over-estimate if you have a TG gear slot with no rune.',
+      'Titan Gear contributions are now computed live from your loaded hero gear for Fields 4 and 5 slots 4 to 9. Slots 4 to 6 use the gear\'s base attributes (the enhanceValue map on each piece, surfaced in the Heroes tab as the orange "enigma platform bonus" row). Slots 7 to 9 use the gear\'s random attributes refined to 70 percent or higher. Slots with no gear data loaded fall back to the captured-Tex defaults.',
       'Field activation conditions (Fill All Slots, Deploy N Legendary, etc.) gate the ability to upgrade a platform further. They do not grant a separate buff. The warning on a swap card indicates you will lose the ability to upgrade the affected platform until the condition is satisfied again. Existing platform levels are preserved.',
       'Elemental beast attributes for combat damage triangles, situational buffs (defending buildings etc.), and shard or F101 upgrade costs are intentionally out of scope.'
     ];
@@ -16990,25 +16990,23 @@
         var tgMeta = document.createElement('div');
         tgMeta.style.cssText = 'font-size:.6rem;color:var(--muted);margin-top:.1rem;';
         tgMeta.textContent = tgLink.type === 11
-          ? 'Bonus active when Titan Gear slot ' + tgLink.tgSlot + ' refined to ' + tgLink.threshold + '%+'
-          : 'Bonus active when any Titan Rune in TG slot ' + tgLink.tgSlot;
+          ? 'Uses random attributes from TG slot ' + tgLink.tgSlot + ' refined to ' + tgLink.threshold + '%+'
+          : 'Uses base attributes from TG slot ' + tgLink.tgSlot;
         tgLeft.appendChild(tgMeta);
         tgRow.appendChild(tgLeft);
         var tgWarn = document.createElement('div');
         tgWarn.style.cssText = 'text-align:right;flex-shrink:0;font-size:.6rem;';
         var tgSlotKey = slot.fieldType + ':' + slot.order;
         var tgDyn = !!(BO_TG_DYNAMIC_OVERRIDES && BO_TG_DYNAMIC_OVERRIDES[tgSlotKey]);
-        if (tgLink.type === 11) {
-          if (tgDyn) {
-            tgWarn.style.color = 'var(--green)';
-            tgWarn.textContent = 'active (from gear)';
-          } else {
-            tgWarn.style.color = '#d29922';
-            tgWarn.textContent = 'no qualifying refines';
-          }
+        if (tgDyn) {
+          tgWarn.style.color = 'var(--green)';
+          tgWarn.textContent = 'live from your gear';
+        } else if (tgLink.type === 11) {
+          tgWarn.style.color = '#d29922';
+          tgWarn.textContent = 'no qualifying refines';
         } else {
-          tgWarn.style.color = 'var(--muted)';
-          tgWarn.textContent = 'assumed active';
+          tgWarn.style.color = '#d29922';
+          tgWarn.textContent = 'no gear loaded';
         }
         tgRow.appendChild(tgWarn);
         panel.appendChild(tgRow);
@@ -17336,18 +17334,17 @@
     return out;
   }
 
-  // Derive Field 4/5 slots 7-9 TG-refinement weights live from the player's
-  // gear data instead of relying on the captured-Tex fallback in
-  // BO_RARITY_BUFF_TABLE. The bookmarklet loads heroEquips[].infos for each
-  // hero; each info with type === 1 is a random attribute with a templateId
-  // (mapped via GEAR_TEMPLATE to {statKey, targetUnit, max}). When the
-  // attribute's refining progress reaches 70%+ (buffValue / templateMax >=
-  // 0.70), it contributes its actual stat value (buffValue / 10000 as
-  // weightRatio) to the enigma slot linked to that TG gear slot via
-  // BO_TG_REFINEMENT_LINK. Aggregates across all heroes (Top War players
-  // typically have one TG-equipped Marshal but the math is the same for
-  // multi-hero setups). Returns {} when gear data is not loaded so the
-  // BO_RARITY_BUFF_TABLE captured-Tex fallback kicks in instead.
+  // Derive Field 4/5 slots 4-9 weights live from the player's gear data.
+  // - Type 10 (slots 4-6 of Field 4/5): driven by the gear piece's BASE
+  //   attributes, surfaced as equip.enhanceValue (keyed by ENHANCE_BUFF
+  //   group ids like "930100" = All ATK, "930000" = All HP, etc).
+  // - Type 11 (slots 7-9 of Field 4/5): driven by the gear's RANDOM
+  //   attributes (infos with type === 1) where refining progress reaches
+  //   70 percent or higher (buffValue / templateMax >= 0.70).
+  // Rune presence does NOT affect either; the system_enhancement label that
+  // mentions "Titan Rune" is just an activation marker in-game, not a
+  // contributor. Aggregates per TG slot across all heroes (max per stat)
+  // and projects via BO_TG_REFINEMENT_LINK to the matching enigma slot.
   function boGearTemplateClassify(templateId) {
     if (typeof GEAR_TEMPLATE !== 'object') return null;
     var tmpl = GEAR_TEMPLATE[templateId];
@@ -17366,6 +17363,19 @@
     return { statKey: statKey, targetUnit: targetUnit, max: tmpl.m || 0 };
   }
 
+  // ENHANCE_BUFF group id -> {statKey, targetUnit}. Used to classify the
+  // gear base-attribute payload (equip.enhanceValue) into optimizer stats.
+  var BO_ENHANCE_BUFF_CLASS = {
+    '930000': { statKey: 'hp',  targetUnit: 0 },
+    '930100': { statKey: 'atk', targetUnit: 0 },
+    '930001': { statKey: 'hp',  targetUnit: 1 },
+    '930002': { statKey: 'hp',  targetUnit: 2 },
+    '930003': { statKey: 'hp',  targetUnit: 3 },
+    '930101': { statKey: 'atk', targetUnit: 1 },
+    '930102': { statKey: 'atk', targetUnit: 2 },
+    '930103': { statKey: 'atk', targetUnit: 3 }
+  };
+
   // Cache the per-(fieldType:order) override weights from the last
   // boReadTgRefinement call so boComputeRarityBonus and
   // boRarityBonusBreakdown can look them up without threading new args
@@ -17376,37 +17386,51 @@
     BO_TG_DYNAMIC_OVERRIDES = null;
     if (!merged || !merged.heroes || !merged.heroes.length) return {};
 
-    // tgSlotAggr[tgSlot][stat|unit] = sum of qualifying buffValues
-    var tgSlotAggr = {};
+    // Per-tgSlot aggregators. Keyed by "statKey|targetUnit" -> max value.
+    var aggrType11 = {};  // refined random attributes 70%+
+    var aggrType10 = {};  // base attributes from equip.enhanceValue
+
     merged.heroes.forEach(function(h) {
       var equips = h.heroEquips || [];
       equips.forEach(function(equip, idx) {
         var tgSlot = idx + 1;
+
+        // Type 11: random attrs refined to 70%+
         var infos = equip.infos || [];
         infos.forEach(function(info) {
-          if (info.type !== 1) return; // random attrs only
+          if (info.type !== 1) return;
           var cls = boGearTemplateClassify(info.templateId);
           if (!cls || !cls.statKey || !cls.max) return;
           var pct = (info.buffValue || 0) / cls.max * 100;
-          if (pct < 70) return; // 70%+ refining gate
+          if (pct < 70) return;
           var key = cls.statKey + '|' + cls.targetUnit;
-          tgSlotAggr[tgSlot] = tgSlotAggr[tgSlot] || {};
-          // Take max across heroes per stat so multi-hero setups don't double-count
-          tgSlotAggr[tgSlot][key] = Math.max(tgSlotAggr[tgSlot][key] || 0, info.buffValue || 0);
+          aggrType11[tgSlot] = aggrType11[tgSlot] || {};
+          aggrType11[tgSlot][key] = Math.max(aggrType11[tgSlot][key] || 0, info.buffValue || 0);
+        });
+
+        // Type 10: base attributes from gear's enhanceValue map.
+        var enh = equip.enhanceValue || {};
+        Object.keys(enh).forEach(function(buffGroupId) {
+          var cls = BO_ENHANCE_BUFF_CLASS[buffGroupId];
+          if (!cls) return;
+          var val = enh[buffGroupId];
+          if (!val) return;
+          var key = cls.statKey + '|' + cls.targetUnit;
+          aggrType10[tgSlot] = aggrType10[tgSlot] || {};
+          aggrType10[tgSlot][key] = Math.max(aggrType10[tgSlot][key] || 0, val);
         });
       });
     });
 
-    // Project tgSlot -> enigma (fieldType, order) via the linkage table
+    // Project to enigma slots via the linkage table.
     var overrides = {};
     Object.keys(BO_TG_REFINEMENT_LINK).forEach(function(fid) {
       var fieldLink = BO_TG_REFINEMENT_LINK[fid];
       Object.keys(fieldLink).forEach(function(order) {
         var link = fieldLink[order];
-        if (link.type !== 11) return; // only type 11 (random attributes 70%+)
         var tgSlot = link.tgSlot;
-        var aggr = tgSlotAggr[tgSlot];
-        if (!aggr) return; // no qualifying attrs - slot contributes nothing
+        var aggr = link.type === 11 ? aggrType11[tgSlot] : aggrType10[tgSlot];
+        if (!aggr) return;
         var weights = Object.keys(aggr).map(function(k) {
           var parts = k.split('|');
           return {
