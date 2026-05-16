@@ -217,23 +217,53 @@
       });
     });
 
+    // Names that the server requires a bearer-token proof for. Mirror of
+    // RESERVED_SUBMITTER_NAMES in push-worker; kept lowercase. Submitting one
+    // of these without a valid armoryToken in localStorage will be rejected
+    // (and gets the IP block-listed), so we both warn the user up-front and
+    // also forward the token when we have it.
+    var RESERVED_SUBMITTER_NAMES = ['tex'];
+
+    function getArmoryToken() {
+      try {
+        var raw = localStorage.getItem('armoryToken');
+        if (!raw) return null;
+        var t = JSON.parse(raw);
+        if (!t || !t.token || !t.expires) return null;
+        if (Date.now() >= t.expires - 10000) return null;
+        return t;
+      } catch (e) { return null; }
+    }
+
     sendBtn.addEventListener('click', function () {
       var t = titleInput.value.trim();
       var d = descInput.value.trim();
       if (!t || !d) return;
-      sendBtn.disabled = true; sendBtn.textContent = 'Sending...';
 
       var identity = getIdentity();
       var submitter = identity ? identity.name : 'Anonymous';
+      var token = getArmoryToken();
+      if (RESERVED_SUBMITTER_NAMES.indexOf(String(submitter).trim().toLowerCase()) !== -1 && !token) {
+        form.style.display = 'none'; resultDiv.style.display = '';
+        while (resultDiv.firstChild) resultDiv.removeChild(resultDiv.firstChild);
+        resultDiv.appendChild(el('div', { cls: 'fw-result-icon', text: '⚠️' }));
+        resultDiv.appendChild(el('div', { cls: 'fw-result-msg', text: 'Verify your UID on the Armory Report first to submit under this name.' }));
+        return;
+      }
+      sendBtn.disabled = true; sendBtn.textContent = 'Sending...';
+
       var pageName = pageSelect.value;
       var reportId = new URLSearchParams(window.location.search).get('id');
       var suffix = '\n\nPage: ' + pageName;
       if (reportId) suffix += '\nReport ID: ' + reportId;
       var endpoint = feedbackType === 'bug' ? '/feedback/bug' : '/feedback/feature';
 
+      var headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = 'Bearer ' + token.token;
+
       fetch(PUSH_WORKER + endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify({ title: t, description: d + suffix, submitter: submitter }),
       }).then(function (r) { return r.json(); }).then(function (resp) {
         form.style.display = 'none'; resultDiv.style.display = '';

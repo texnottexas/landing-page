@@ -3818,6 +3818,18 @@
     var data = await r.json();
     _ar_supplementToken = data.token;
     _ar_supplementTokenExpires = data.expires;
+    // Mirror into localStorage so other pages (e.g. the feedback widget) can
+    // prove ownership of a reserved submitter name without needing the user
+    // to re-handshake. Token is HMAC-bound to a single siteKey, expires in
+    // 90 days, and grants nothing beyond supplement-write + reserved-name
+    // feedback for that siteKey.
+    try {
+      localStorage.setItem('armoryToken', JSON.stringify({
+        token: data.token,
+        expires: data.expires,
+        siteKey: data.siteKey
+      }));
+    } catch (e) {}
     return data;
   }
 
