@@ -15504,8 +15504,16 @@
   };
 
   // targetUnit: 0 = all, 1 = Army, 2 = Navy, 3 = Air
+  // All-units buffs (targetUnit=0) stack across every unit type in the
+  // playstyle. Each unit type contributes by its own playstyle weight and the
+  // contributions sum, so a dual primary+secondary playstyle gives 1.75x
+  // (1.0 + 0.75), dual even gives 2.0x, triple gives 3.0x, and mono gives 1.0x.
   function boPlaystyleMult(targetUnit, playstyle) {
-    if (targetUnit === 0) return 1.0;
+    if (targetUnit === 0) {
+      if (playstyle.mode === 'mono') return 1.0;
+      if (playstyle.mode === 'triple') return 3.0;
+      return playstyle.balance === 'even' ? 2.0 : 1.75;
+    }
     var mode = playstyle.mode;
     if (mode === 'triple') return 1.0;
     var primary = playstyle.units[0];
@@ -15539,39 +15547,39 @@
       return { statKey: statKey, scope: 'always', targetUnit: targetUnit };
     }
 
-    if (id >= 520100 && id <= 520103) {
-      return BO_SUPPRESSION_OVERRIDE || { statKey: 'elemental', scope: 'always', targetUnit: 0 };
-    }
+    // 520100-103 = Suppression DEF: cross-faction DEF that benefits the
+    // DEFENDING unit type. The trailing digit does NOT follow the usual
+    // 1=Army/2=Navy/3=Air pattern; the buff names are explicit:
+    //   520100 = All Forces Suppression DEF Bonus  → all units
+    //   520101 = Navy DEF vs Army                  → Navy (targetUnit 2)
+    //   520102 = Air DEF vs Navy                   → Air  (targetUnit 3)
+    //   520103 = Army DEF vs Air                   → Army (targetUnit 1)
+    // Weighted as DEF per Tex's stat equivalencies.
+    if (id === 520100) return { statKey: 'def', scope: 'always', targetUnit: 0 };
+    if (id === 520101) return { statKey: 'def', scope: 'always', targetUnit: 2 };
+    if (id === 520102) return { statKey: 'def', scope: 'always', targetUnit: 3 };
+    if (id === 520103) return { statKey: 'def', scope: 'always', targetUnit: 1 };
 
-    if (id >= 520110 && id <= 520123) {
-      var statKey2 = BO_ATKHP_MAP[id] || 'atk';
-      return { statKey: statKey2, scope: 'offensive', targetUnit: targetUnit };
-    }
+    // 520110-113 = ATK (offensive scope), 520120-123 = HP Boost (offensive).
+    if (id >= 520110 && id <= 520113) return { statKey: 'atk', scope: 'offensive', targetUnit: targetUnit };
+    if (id >= 520120 && id <= 520123) return { statKey: 'hp',  scope: 'offensive', targetUnit: targetUnit };
 
-    if (id >= 520130 && id <= 520143) {
-      var statKey3 = BO_ATKHP_MAP[id] || 'hp';
-      return { statKey: statKey3, scope: 'defensive', targetUnit: targetUnit };
-    }
+    // 520130-143 = Elemental Enhance / Elemental RES. Per Tex's stat
+    // equivalencies, elemental stats are useless in the optimizer (weight 0).
+    if (id >= 520130 && id <= 520143) return { statKey: 'elemental', scope: 'always', targetUnit: targetUnit };
 
     return null;
   }
 
-  // Per-buff-id ATK vs HP mapping, populated from Phase 0 label probe.
-  // TODO Phase 5: replace with Phase 0 probe results once labels are read.
+  // ATK vs HP split for buff_ids 520040-520073. Other ranges (520110-123,
+  // 520130-143) are decided inline in boClassifyBuff above, so they don't
+  // need to appear here.
   var BO_ATKHP_MAP = {
     520040: 'atk',  520041: 'atk',  520042: 'atk',  520043: 'atk',
     520050: 'hp',   520051: 'hp',   520052: 'hp',   520053: 'hp',
     520060: 'atk',  520061: 'atk',  520062: 'atk',  520063: 'atk',
     520070: 'hp',   520071: 'hp',   520072: 'hp',   520073: 'hp',
-    520110: 'atk',  520111: 'atk',  520112: 'atk',  520113: 'atk',
-    520120: 'hp',   520121: 'hp',   520122: 'hp',   520123: 'hp',
-    520130: 'atk',  520131: 'atk',  520132: 'atk',  520133: 'atk',
-    520140: 'hp',   520141: 'hp',   520142: 'hp',   520143: 'hp',
   };
-
-  // Set to { statKey: 'def', scope: 'defensive', targetUnit: 0 } if Tex
-  // confirms 520100-103 is situational unit-RPS DEF.
-  var BO_SUPPRESSION_OVERRIDE = null;
 
   function boBeastScore(beast, atState, slot, playstyle) {
     if (!beast) return 0;
@@ -16872,6 +16880,9 @@
     if (!entry.statKey || entry.statKey === 'elemental') statusBits.push('not scored');
     if (entry.playstyleMult === 0) statusBits.push('not your playstyle');
     else if (entry.playstyleMult === 0.75) statusBits.push('your secondary 0.75x');
+    else if (entry.targetUnit === 0 && entry.playstyleMult > 1) {
+      statusBits.push('stacks ' + entry.playstyleMult.toFixed(2).replace(/\.?0+$/, '') + 'x across your units');
+    }
     if (entry.scopeMult === 0.5) statusBits.push('base buff 0.5x');
     meta.textContent = unitTxt + (statusBits.length ? ' · ' + statusBits.join(' · ') : '');
     left.appendChild(meta);
