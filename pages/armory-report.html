@@ -7419,7 +7419,7 @@
           // whether the Bench tab will actually have data on this device.
           var supplementCache = {};
           function getSupplementState(sk) {
-            if (!sk) return Promise.resolve({ inv: 'missing', bench: 'missing', chips: 'missing', gear: 'missing', heroes: 'missing' });
+            if (!sk) return Promise.resolve({ inv: 'missing', bench: 'missing', chips: 'missing', gear: 'missing', heroes: 'missing', formation: 'missing' });
             if (supplementCache[sk]) return supplementCache[sk];
             var probe = function(kind) {
               return fetch(SUPPLEMENT_WORKER + '/supplement/' + kind + '/' + sk, { method: 'GET' })
@@ -7430,8 +7430,8 @@
                 })
                 .catch(function() { return 'missing'; });
             };
-            supplementCache[sk] = Promise.all([probe('inv'), probe('bench'), probe('chips'), probe('gear'), probe('heroes')])
-              .then(function(arr) { return { inv: arr[0], bench: arr[1], chips: arr[2], gear: arr[3], heroes: arr[4] }; });
+            supplementCache[sk] = Promise.all([probe('inv'), probe('bench'), probe('chips'), probe('gear'), probe('heroes'), probe('formation')])
+              .then(function(arr) { return { inv: arr[0], bench: arr[1], chips: arr[2], gear: arr[3], heroes: arr[4], formation: arr[5] }; });
             return supplementCache[sk];
           }
 
@@ -7610,11 +7610,12 @@
             getSupplementState(cfg.siteKey).then(function(state) {
               while (supRow.firstChild) supRow.removeChild(supRow.firstChild);
               [
-                { key: 'inv',    label: 'Inventory' },
-                { key: 'bench',  label: 'Beasts' },
-                { key: 'chips',  label: 'HT Chips' },
-                { key: 'gear',   label: 'Titan Gear' },
-                { key: 'heroes', label: 'Heroes' }
+                { key: 'inv',       label: 'Inventory' },
+                { key: 'bench',     label: 'Beasts' },
+                { key: 'chips',     label: 'HT Chips' },
+                { key: 'gear',      label: 'Titan Gear' },
+                { key: 'heroes',    label: 'Heroes' },
+                { key: 'formation', label: 'Formation' }
               ].forEach(function(spec) {
                 var s = state[spec.key];
                 var chip = document.createElement('span');
@@ -22044,7 +22045,7 @@
     modal.appendChild(h);
 
     var p = document.createElement('p');
-    p.textContent = 'One tap on h5.topwargame.com snapshots all four supplements; paste the JSON below to upload them.';
+    p.textContent = 'One tap on h5.topwargame.com snapshots every supplement; paste the JSON below to upload them.';
     modal.appendChild(p);
 
     modal.appendChild(_ar_buildBookmarkletPanel({
@@ -22054,9 +22055,9 @@
       panelLead: 'Drag to your bookmarks bar (desktop) or long-press to Add Bookmark (mobile). Tap it on the Top War game tab and the combined JSON copies to your clipboard in about 2.5 seconds.',
       usageSteps: [
         'Open https://h5.topwargame.com/h5game/index.html and let the game load.',
-        'Tap the saved bookmark. The overlay snapshots inventory, beasts, chips, and gear.',
+        'Tap the saved bookmark. The overlay snapshots inventory, beasts, chips, gear, heroes, and formation.',
         'Tap Copy combined JSON when the header turns green.',
-        'Paste below and click Save. All four sections upload one by one.'
+        'Paste below and click Save. Each section uploads one by one.'
       ]
     }));
 
@@ -22095,7 +22096,7 @@
     // Hidden manual textarea — shown when player toggles "Paste manually".
     var ta = document.createElement('textarea');
     ta.style.cssText = 'width:100%;min-height:120px;max-height:240px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-family:monospace;font-size:11px;resize:vertical;display:none;margin-bottom:6px;';
-    ta.placeholder = '{"v":2,"ts":"...","inventory":{...},"beasts":{...},"chips":{...},"gear":{...}}';
+    ta.placeholder = '{"v":2,"ts":"...","inventory":{...},"beasts":{...},"chips":{...},"gear":{...},"heroes":{...},"formation":{...}}';
     modal.appendChild(ta);
 
     function describeLoaded(raw) {
@@ -22108,6 +22109,7 @@
           if (j.chips) bits.push('chips');
           if (j.gear) bits.push('gear');
           if (j.heroes) bits.push('heroes');
+          if (j.formation) bits.push('formation');
           return (bits.length ? ('v2 envelope · ' + bits.join(' + ')) : 'v2 envelope (empty?)');
         }
         return 'Parsed (' + (j && typeof j === 'object' ? Object.keys(j).length : 0) + ' keys) but not a v=2 envelope';
@@ -22180,9 +22182,9 @@
       progress.appendChild(chip);
       return chip;
     }
-    var KIND_LABELS = { inv: 'Inventory', bench: 'Beasts', chips: 'HT Chips', gear: 'Titan Gear', heroes: 'Heroes' };
+    var KIND_LABELS = { inv: 'Inventory', bench: 'Beasts', chips: 'HT Chips', gear: 'Titan Gear', heroes: 'Heroes', formation: 'Formation' };
     var chips = {};
-    ['inv', 'bench', 'chips', 'gear', 'heroes'].forEach(function(k) { chips[k] = progressChip(k, KIND_LABELS[k]); });
+    ['inv', 'bench', 'chips', 'gear', 'heroes', 'formation'].forEach(function(k) { chips[k] = progressChip(k, KIND_LABELS[k]); });
     modal.appendChild(progress);
 
     var err = document.createElement('div');
@@ -22210,7 +22212,7 @@
       catch (e) { err.textContent = 'Invalid JSON: ' + e.message; return; }
 
       if (!_ar_isEnvelope(parsed)) {
-        err.textContent = 'This isn’t a combined snapshot. Run the consolidated bookmarklet (single tap, all four sections) and paste its JSON here.';
+        err.textContent = 'This isn’t a combined snapshot. Run the consolidated bookmarklet (single tap, all sections) and paste its JSON here.';
         return;
       }
       if (!siteKey) {
@@ -22262,7 +22264,7 @@
         } catch (_) {}
 
         err.style.color = '#3fb950';
-        err.textContent = 'All four sections uploaded.';
+        err.textContent = 'All sections uploaded.';
         setTimeout(function() {
           if (document.body.contains(bg)) document.body.removeChild(bg);
           if (typeof onSaved === 'function') onSaved();

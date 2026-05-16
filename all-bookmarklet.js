@@ -871,6 +871,7 @@
       if (dump.chips) sections.push(dump.chips.total + ' chips');
       if (dump.gear) sections.push(dump.gear.summary.goldCount + ' gold gear');
       if (dump.heroes) sections.push(dump.heroes.list.length + ' heroes');
+      if (dump.formation) sections.push((dump.formation.talents ? dump.formation.talents.length : 0) + ' formation talents');
       var summary = sections.join(' · ') + ' — ' + fmtBytes(json.length);
       if (dump.errors && dump.errors.length) {
         summary += ' · ' + dump.errors.length + ' section(s) failed';
