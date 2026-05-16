@@ -15825,6 +15825,66 @@
     return active;
   }
 
+  // ── Beast Optimizer: slot descriptors + eligibility ──────────────────────
+  // A slot descriptor is the normalized shape the optimizer uses to check
+  // whether a beast may legally occupy a given (fieldType, order) platform.
+  // Sources: existing ebPlatformReq() (req.beastTypeIds, req.qualityCap), and
+  // boLookupHole() for the underlying hole row (hole.minQuality, hole.faction,
+  // hole.maxEnhanceValue, hole.id). Either source can be missing; callers
+  // should treat a null return as "no platform data, skip this slot."
+  function boBeastEligibleForSlot(beast, slotDesc) {
+    if (!beast || !slotDesc) return false;
+    if (beast.q < (slotDesc.minQuality || 1)) return false;
+    if (slotDesc.faction && beast.fac !== slotDesc.faction) return false;
+    if (slotDesc.beastTypeIds && slotDesc.beastTypeIds.length) {
+      if (slotDesc.beastTypeIds.indexOf(beast.type) < 0) return false;
+    }
+    if (slotDesc.qualityCap && beast.q > slotDesc.qualityCap) return false;
+    return true;
+  }
+
+  function boSlotDescriptor(fieldType, order, enhanceLevel, tgActive) {
+    var req = ebPlatformReq(fieldType, order);
+    var hole = boLookupHole(fieldType, order);
+    if (!req && !hole) return null;
+    var enhanceRowId = null;
+    if (hole && hole.maxEnhanceValue) {
+      enhanceRowId = String(hole.maxEnhanceValue).split('|')[0];
+    }
+    // minQuality + faction come from the hole row; req exposes them as
+    // localized strings (minQualityName, elementId). Fall back to req when
+    // the hole index is not loaded yet.
+    var minQuality = (hole && hole.minQuality != null) ? hole.minQuality :
+      (req && req.elementId != null ? req.minQuality : 1);
+    var faction = (hole && hole.faction != null) ? hole.faction :
+      (req && req.elementId != null ? req.elementId : 0);
+    var beastTypeIds = (req && req.beastTypeIds) || (hole && hole.beastTypeIds) || [];
+    var qualityCap = (req && req.qualityCap) || (hole && hole.qualityCap) || null;
+    return {
+      fieldType: fieldType,
+      order: order,
+      holeId: hole ? hole.id : null,
+      minQuality: minQuality,
+      faction: faction,
+      beastTypeIds: beastTypeIds,
+      qualityCap: qualityCap,
+      enhanceRowId: enhanceRowId,
+      enhanceLevel: enhanceLevel || 0,
+      isTgLinked: hole ? !!(boTgLinkData && boTgLinkData[String(hole.id)]) : false,
+      tgActive: !!tgActive
+    };
+  }
+
+  function boLookupHole(fieldType, order) {
+    if (!boHoleIndex && boPlatforms) {
+      boHoleIndex = {};
+      (boPlatforms.holes || []).forEach(function(h) {
+        boHoleIndex[h.fieldType + ':' + h.order] = h;
+      });
+    }
+    return boHoleIndex ? boHoleIndex[fieldType + ':' + order] : null;
+  }
+
   // ── Enigma buff value computation (ported from enigma-viewer) ─────────────
   function ebGetBuffCategory(buffId) {
     var id = Number(buffId);
