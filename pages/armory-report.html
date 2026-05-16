@@ -16110,6 +16110,62 @@
     return null;
   }
 
+  // ── Beast Optimizer: UI ───────────────────────────────────────────────────
+  // Phase 4 will replace boRenderPlan with the real renderer. This stub keeps
+  // Phase 3 testable on its own — wizard saves prefs, plan view confirms the
+  // saved shape, and a reset button clears prefs to re-enter the wizard.
+  function boRenderPlan(container, merged, siteKey, prefs) {
+    while (container.firstChild) container.removeChild(container.firstChild);
+    var msg = document.createElement('p');
+    msg.className = 'empty-tab';
+    msg.style.padding = '1rem';
+    msg.textContent = 'Optimization plan renderer arrives in the next update.';
+    container.appendChild(msg);
+    var sub = document.createElement('p');
+    sub.style.cssText = 'font-size:.78rem;color:var(--muted);padding:0 1rem;';
+    sub.textContent = 'Mode: ' + (prefs && prefs.mode) + ', units: ' + JSON.stringify(prefs && prefs.units) + ', balance: ' + (prefs && prefs.balance);
+    container.appendChild(sub);
+    var reset = document.createElement('button');
+    reset.type = 'button';
+    reset.textContent = 'Change playstyle';
+    reset.style.cssText = 'margin:1rem;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.5rem .9rem;border-radius:6px;cursor:pointer;';
+    reset.onclick = function() {
+      try { localStorage.removeItem('beast_optimizer_prefs_' + siteKey); } catch (e) {}
+      renderBeastOptimizerSubTab(container, merged, siteKey);
+    };
+    container.appendChild(reset);
+  }
+
+  function renderBeastOptimizerSubTab(container, merged, siteKey) {
+    while (container.firstChild) container.removeChild(container.firstChild);
+
+    if (!siteKey) {
+      var msg = document.createElement('p');
+      msg.className = 'empty-tab';
+      msg.textContent = 'Verify your in-game UID to use the Beast Optimizer.';
+      container.appendChild(msg);
+      return;
+    }
+
+    var prefsKey = 'beast_optimizer_prefs_' + siteKey;
+    var prefs = null;
+    try { prefs = JSON.parse(localStorage.getItem(prefsKey) || 'null'); } catch (e) {}
+
+    boLoadOptimizerData().then(function() {
+      if (prefs && prefs.mode) {
+        boRenderPlan(container, merged, siteKey, prefs);
+      } else {
+        boRenderWizard(container, merged, siteKey);
+      }
+    }).catch(function(e) {
+      var err = document.createElement('p');
+      err.className = 'empty-tab';
+      err.style.color = 'var(--red)';
+      err.textContent = 'Failed to load optimizer reference data: ' + (e && e.message ? e.message : e);
+      container.appendChild(err);
+    });
+  }
+
   // ── Enigma buff value computation (ported from enigma-viewer) ─────────────
   function ebGetBuffCategory(buffId) {
     var id = Number(buffId);
@@ -23038,6 +23094,11 @@
     collBtn.textContent = 'Beast Collection';
     collBtn.dataset.view = 'beasts';
     viewToggle.appendChild(collBtn);
+    var optBtn = document.createElement('button');
+    optBtn.className = 'eb-view-btn';
+    optBtn.textContent = 'Optimizer';
+    optBtn.dataset.view = 'optimizer';
+    viewToggle.appendChild(optBtn);
     toolbar.appendChild(viewToggle);
 
     // Update Bench button retired — players refresh their bench via the
@@ -23632,10 +23693,19 @@
 
     // Content dispatcher
     function renderEBContent() {
-      if (ebView === 'beasts') {
-        renderEBBeastGrid();
+      if (ebView === 'optimizer') {
+        // Optimizer owns its own filter/sort UI; hide the shared ones.
+        filterBar.style.display = 'none';
+        sortSelect.style.display = 'none';
+        renderBeastOptimizerSubTab(contentEl, merged, siteKey);
       } else {
-        renderEBFieldView();
+        filterBar.style.display = '';
+        sortSelect.style.display = '';
+        if (ebView === 'beasts') {
+          renderEBBeastGrid();
+        } else {
+          renderEBFieldView();
+        }
       }
     }
 
