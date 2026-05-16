@@ -572,73 +572,77 @@
     }
 
     // ─── Formation V2 (3 formations + 50-node talent tree) ──────────────
-    // Read-only snapshot. Calls requestFormationTalentInfo() to populate the
+    // Read-only snapshot. Pulls the controller singleton via the static
+    // `Instance` GETTER (capital I, non-enumerable — `_instance` stays null
+    // until something touches the getter, hence "controller missing"
+    // failures earlier). Calls requestFormationTalentInfo() to populate the
     // server-side talent array, then dumps per-formation state from
     // _advFormation. NEVER invokes sendLevelUpFormationTalent /
     // sendResetFormationTalent / sendChangeFormationTalent — the player
-    // executes any reset/relevel in-game themselves; this extractor is purely
-    // a snapshot for the planner.
+    // executes any reset/relevel in-game themselves; this extractor is
+    // purely a snapshot for the planner.
     async function extractFormation() {
       stepHook && stepHook('Formation…');
       var FC;
-      try { FC = req('FightFormationAdvController')._instance; }
-      catch (e) { throw new Error('FightFormationAdvController not available'); }
-      if (!FC) throw new Error('FightFormationAdvController._instance is null — open the Formation panel once, then retry');
+      try {
+        var mod = req('FightFormationAdvController');
+        FC = mod && mod.default && mod.default.Instance;  // static getter, lazy-creates singleton
+      } catch (e) { throw new Error('FightFormationAdvController not available'); }
+      if (!FC) throw new Error('FightFormationAdvController.Instance returned null');
 
       if (!Array.isArray(FC.serverFormationV2Talent) || FC.serverFormationV2Talent.length === 0) {
         if (typeof FC.requestFormationTalentInfo === 'function') {
           try { FC.requestFormationTalentInfo(); } catch (e) {}
         }
         var t0 = Date.now();
-        while (Date.now() - t0 < 5000) {
+        while (Date.now() - t0 < 6000) {
           if (Array.isArray(FC.serverFormationV2Talent) && FC.serverFormationV2Talent.length > 0) break;
-          await delay(120);
+          await delay(200);
         }
       }
       var talents = Array.isArray(FC.serverFormationV2Talent) ? FC.serverFormationV2Talent.slice() : [];
 
-      // Per-formation snapshot. _advFormation field names verified at
-      // extraction time may differ — dump common-likely shapes plus a raw
-      // copy of each formation state object for diagnostics on first paste.
+      // Per-formation snapshot. Real field names on _advFormation are:
+      // level (not lv/_level), quality, masteryLevel (not masterys),
+      // formationId, isMarching, canMarchNum, maxCanMarchNum. Sciences +
+      // boost flags do NOT live here — they come from battle reports.
       var perF = {};
-      var adv = FC._advFormation || FC._advFormationMap || {};
+      var adv = FC._advFormation || {};
       ['1001', '1002', '1003'].forEach(function (fid) {
         var s = adv[fid] || adv[Number(fid)];
         if (!s) return;
-        var entry = {
+        perF[fid] = {
           id: Number(fid),
-          lv: s.lv != null ? s.lv : (s._level != null ? s._level : (s.level || 0)),
-          quality: s.quality != null ? s.quality : (s._quality != null ? s._quality : 0),
-          masterys: s.masterys || s._masterys || null,
-          sciences: s.sciences || s._sciences || null,
-          formationLvUp: !!(s.formationLvUp || s._formationLvUp),
-          formationQualityUp: !!(s.formationQualityUp || s._formationQualityUp),
-          formationMasteryUp: !!(s.formationMasteryUp || s._formationMasteryUp),
+          lv: s.level != null ? s.level : 0,
+          quality: s.quality != null ? s.quality : 0,
+          masterys: s.masteryLevel || null,
+          isMarching: !!s.isMarching,
+          canMarchNum: s.canMarchNum || 0,
+          maxCanMarchNum: s.maxCanMarchNum || 0,
         };
-        // Raw dump for first-paste field-name discovery. Strips functions
-        // and circular refs by JSON round-trip; failed extract drops the
-        // _raw field so we don't blow up the envelope.
-        try { entry._raw = JSON.parse(JSON.stringify(s)); } catch (e) {}
-        perF[fid] = entry;
       });
 
-      // Formation 101 currency (item 2800000) — needed by the planner so
-      // the player sees their pool size when simulating resets. Best-effort
-      // lookup; falls through to null if the ItemController path differs.
+      // Formation 101 currency (item 2800000) for the planner's pool view.
+      // Lives in UserData._items (flat array, ~1000 entries). The patched
+      // UserData reference from extractInventory is the primary path; falls
+      // back to a fresh UserData ref if formation runs without inventory.
       var f101 = null;
       try {
-        var ItemCtl = req('ItemController');
-        var IC = ItemCtl && ItemCtl.default && ItemCtl.default.getInstance && ItemCtl.default.getInstance();
-        if (IC && typeof IC.getItemCount === 'function') f101 = IC.getItemCount(2800000);
+        var ud2 = window.__capturedUD;
+        if (!ud2) {
+          try {
+            var UDC = req('UserData');
+            ud2 = UDC && UDC.default && (UDC.default.Instance || (UDC.default.getInstance && UDC.default.getInstance()));
+          } catch (e) {}
+        }
+        if (ud2 && Array.isArray(ud2._items)) {
+          for (var ii = 0; ii < ud2._items.length; ii++) {
+            var it = ud2._items[ii];
+            if (it && it._itemId === 2800000) { f101 = it._amount; break; }
+          }
+        }
       } catch (e) {}
-      if (f101 == null) {
-        try {
-          var ud2 = window.__capturedUD;
-          if (ud2 && ud2._itemMap && ud2._itemMap[2800000]) f101 = ud2._itemMap[2800000]._amount;
-        } catch (e) {}
-      }
 
-      // Total talent power for "you're N% of max" display on the planner.
       var pwrCur = null, pwrMax = null;
       try { if (typeof FC.getAllFormationTalentPower === 'function')    pwrCur = FC.getAllFormationTalentPower(); }    catch (e) {}
       try { if (typeof FC.getAllFormationTalentPowerMax === 'function') pwrMax = FC.getAllFormationTalentPowerMax(); } catch (e) {}
