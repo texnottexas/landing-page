@@ -24480,6 +24480,19 @@
       grid.appendChild(buildFormationCard(fid, formations[fid], ref));
     });
 
+    // Shared Formation Tech section. Sciences are account-wide so we render
+    // once below the 3-card grid instead of repeating inside each card.
+    // Pick the first formation that carries sciences as the source of levels;
+    // if no formation has them yet (no battle reports + no supplement) the
+    // section still renders with everything at Lv 0.
+    var techSource = null;
+    ['1001', '1002', '1003'].forEach(function(fid) {
+      if (!techSource && formations[fid] && formations[fid].sciences) techSource = formations[fid];
+    });
+    if (techSource || (supp && supp.formations)) {
+      container.appendChild(buildFormationTechSection(ref, techSource));
+    }
+
     // Component Mastery section (1-20 per unit type, distinct from Formation Specialization).
     if (merged.armyMastery) {
       var amSection = document.createElement('section');
@@ -24560,6 +24573,376 @@
   function formationTechName(ref, sid) {
     var sci = ref && ref.sciences && ref.sciences[sid];
     return FORMATION_TECH_NAME_OVERRIDES[String(sid)] || (sci && sci.name) || sid;
+  }
+
+  // Color accent per tech for the shared section + click modal. Mirrors the
+  // in-game color theming roughly (assault=red, fortified=blue, defense=teal,
+  // full-defense=purple, swept-wing=gold).
+  var FORMATION_TECH_ACCENTS = {
+    '1': '#f85149', '2': '#58a6ff', '3': '#3fb950', '4': '#bc8cff', '5': '#d29922'
+  };
+
+  // buff_id → human label. Extracted from the effect_buff table; covers every
+  // buff_id referenced in formationV2_science.buff_group / .buff_show + the
+  // formation talent tree. Falls back to "Buff #N" for ids not in the map.
+  var FORMATION_BUFF_NAMES = {
+    1000021: 'Unit HP',
+    1000022: 'Unit ATK',
+    1000023: 'DMG Increase',
+    1000024: 'Decreased DMG Taken',
+    990202:  'All units DEF',
+    990208:  'DEF (attacking buildings)',
+    990209:  'DEF (defending buildings)',
+    1001001: 'All units DMG Increase',
+    1101040: 'All units Decreased DMG Taken',
+    9301160: 'All units Attack',
+    9301161: 'Army Attack',
+    9301162: 'Navy Attack',
+    9301163: 'Air Force Attack',
+    9301170: 'All units HP',
+    9301201: 'Navy → Army DMG Bonus',
+    9301202: 'Air Force → Navy DMG Bonus',
+    9301203: 'Army → Air Force DMG Bonus',
+    100017:  'Formation: Shark Tier +1',
+    100018:  'Formation: Scorpion Tier +1',
+    100019:  'Formation: Shark Specialization +1 (all slots)',
+    100020:  'Formation: Scorpion Specialization +1 (all slots)',
+    100021:  '"Formation: Shark" deploys in an extra march',
+    100022:  '"Formation: Scorpion" deploys in an extra march',
+    100023:  'Formation: Eagle Tier +1',
+    100024:  'Formation: Eagle Specialization +1 (all slots)'
+  };
+  function formationBuffName(id) { return FORMATION_BUFF_NAMES[id] || ('Buff #' + id); }
+
+  // effect_buff.value_type is 10000 for percent-style buffs (raw / 10000 = mult,
+  // so 4200 means +42.00%). Format with up to 2 decimals trimmed of trailing 0s.
+  function formationBuffValueString(rawVal) {
+    var pct = (Number(rawVal) || 0) / 100; // value 10000 = 100%
+    var s = pct.toFixed(2).replace(/\.?0+$/, '');
+    return '+' + s + '%';
+  }
+
+  // Parse a buff_group string into a { slotId: [{id, value}, ...] } map.
+  // Format: "1=1000022,4000|1000023,500;2=1000022,4000;..."
+  function parseFormationBuffGroup(str) {
+    var out = {};
+    if (!str) return out;
+    str.split(';').forEach(function(chunk) {
+      var eq = chunk.indexOf('=');
+      if (eq < 0) return;
+      var slot = chunk.slice(0, eq);
+      var rest = chunk.slice(eq + 1);
+      if (!rest) return;
+      out[slot] = rest.split('|').map(function(pair) {
+        var p = pair.split(',');
+        return { id: Number(p[0]), value: Number(p[1]) };
+      }).filter(function(b) { return b.id; });
+    });
+    return out;
+  }
+
+  // Group slots into the three row buckets used by the in-game display.
+  // Anything outside the canonical 9-slot grid (e.g. 31/32/33 used by some
+  // Full Defense rows) gets bucketed as "extra" so it's still surfaced.
+  var FORMATION_ROW_BUCKETS = [
+    { id: 'front', label: 'Front row',   slots: ['1', '2', '3']    },
+    { id: 'mid',   label: 'Middle row',  slots: ['11', '12', '13'] },
+    { id: 'back',  label: 'Back row',    slots: ['21', '22', '23'] }
+  ];
+
+  // Aggregate a parsed buff_group into per-row buff totals. If every slot in
+  // the row has identical buffs (common case), the row collapses to one set
+  // of values; otherwise we expose the slot-level detail via `byEach`.
+  function summarizeFormationBuffsByRow(parsed) {
+    return FORMATION_ROW_BUCKETS.map(function(bucket) {
+      var perSlot = bucket.slots.map(function(s) { return parsed[s] || []; });
+      var hasAny = perSlot.some(function(arr) { return arr.length; });
+      if (!hasAny) return { id: bucket.id, label: bucket.label, present: false };
+      var keyForSlot = function(arr) {
+        return arr.slice().sort(function(a, b) { return a.id - b.id; }).map(function(b) { return b.id + ':' + b.value; }).join(',');
+      };
+      var keys = perSlot.map(keyForSlot);
+      var uniform = keys.every(function(k) { return k === keys[0]; });
+      return {
+        id: bucket.id, label: bucket.label, present: true, uniform: uniform,
+        oneSet: uniform ? perSlot[0] : null,
+        bySlot: bucket.slots.map(function(s, i) { return { slot: s, buffs: perSlot[i] }; })
+      };
+    });
+  }
+
+  // Build the shared "Formation Tech" section that sits between the 3-card
+  // grid and Component Mastery. Same data across all 3 formations so this
+  // replaces the per-card sciences row.
+  function buildFormationTechSection(ref, sourceFormation) {
+    // Use the first formation we have sciences data for as the source of
+    // current levels. They're shared across the 3 formations, so picking
+    // the first non-null is safe.
+    var techLevels = (sourceFormation && sourceFormation.sciences) || {};
+
+    var section = document.createElement('section');
+    section.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem;margin-top:.5rem;';
+    var h = document.createElement('h3');
+    h.style.cssText = 'margin:0 0 .15rem;font-size:1rem;color:var(--text);';
+    h.textContent = 'Formation Tech';
+    section.appendChild(h);
+    var sub = document.createElement('div');
+    sub.style.cssText = 'margin:0 0 .65rem;font-size:.72rem;color:var(--muted);';
+    sub.textContent = 'Shared across all three formations. Click a card for per-row buff breakdown.';
+    section.appendChild(sub);
+
+    var grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.55rem;';
+    section.appendChild(grid);
+
+    ['1', '2', '3', '4', '5'].forEach(function(sid) {
+      var sci = ref.sciences[sid];
+      var lv = techLevels[sid] || 0;
+      var max = (sci && sci.max_level) || 1;
+      var pct = Math.round((lv / max) * 100);
+      var techName = formationTechName(ref, sid);
+      var accent = FORMATION_TECH_ACCENTS[sid] || '#79c0ff';
+
+      var card = document.createElement('button');
+      card.type = 'button';
+      card.style.cssText = 'text-align:left;background:var(--surface);border:1px solid var(--border);border-left:3px solid ' + accent + ';border-radius:6px;padding:.55rem .65rem;color:var(--text);cursor:pointer;display:flex;flex-direction:column;gap:.25rem;';
+
+      var nameLine = document.createElement('div');
+      nameLine.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;gap:.4rem;';
+      var nm = document.createElement('strong');
+      nm.style.cssText = 'font-size:.85rem;color:var(--text);';
+      nm.textContent = techName;
+      nameLine.appendChild(nm);
+      var lvTag = document.createElement('span');
+      lvTag.style.cssText = 'font-size:.7rem;color:var(--muted);white-space:nowrap;';
+      lvTag.innerHTML = '<strong style="color:' + accent + ';font-size:.85rem;">' + lv + '</strong> <span style="color:var(--muted);">/ ' + max + '</span>';
+      nameLine.appendChild(lvTag);
+      card.appendChild(nameLine);
+
+      // Show the buff summary at the current level (uses buff_show when set,
+      // else the first row of buff_group). Empty when lv = 0.
+      var sciRef = ref.sciences[sid];
+      var lvData = lv > 0 && sciRef && sciRef.levels ? sciRef.levels[lv - 1] : null; // 0-indexed array, level 1 lives at [0]
+      var summaryRow = document.createElement('div');
+      summaryRow.style.cssText = 'font-size:.7rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:.3rem;';
+      if (lv === 0) {
+        summaryRow.textContent = 'Not yet researched.';
+      } else if (lvData && lvData.buff_show) {
+        lvData.buff_show.split('|').forEach(function(pair) {
+          var p = pair.split(',');
+          var b = document.createElement('span');
+          b.style.cssText = 'background:#0d1117;border:1px solid var(--border);border-radius:4px;padding:1px 5px;color:var(--text);font-size:.7rem;';
+          b.textContent = formationBuffValueString(p[1]) + ' ' + formationBuffName(Number(p[0]));
+          summaryRow.appendChild(b);
+        });
+      } else if (lvData && lvData.buff_group) {
+        var parsed = parseFormationBuffGroup(lvData.buff_group);
+        var firstSlot = Object.keys(parsed)[0];
+        (parsed[firstSlot] || []).forEach(function(b) {
+          var chip = document.createElement('span');
+          chip.style.cssText = 'background:#0d1117;border:1px solid var(--border);border-radius:4px;padding:1px 5px;color:var(--text);font-size:.7rem;';
+          chip.textContent = formationBuffValueString(b.value) + ' ' + formationBuffName(b.id);
+          summaryRow.appendChild(chip);
+        });
+        var tail = document.createElement('span');
+        tail.style.cssText = 'color:var(--muted);font-size:.65rem;';
+        tail.textContent = '(front row · click for full breakdown)';
+        summaryRow.appendChild(tail);
+      } else {
+        summaryRow.textContent = 'No buff info at this level.';
+      }
+      card.appendChild(summaryRow);
+
+      var bar = document.createElement('div');
+      bar.style.cssText = 'height:4px;background:#0d1117;border-radius:99px;overflow:hidden;margin-top:.15rem;';
+      var fill = document.createElement('i');
+      fill.style.cssText = 'display:block;height:100%;background:' + accent + ';width:' + pct + '%;';
+      bar.appendChild(fill);
+      card.appendChild(bar);
+
+      card.addEventListener('click', function() {
+        openFormationTechModal({ ref: ref, sid: sid, level: lv });
+      });
+      grid.appendChild(card);
+    });
+
+    return section;
+  }
+
+  function openFormationTechModal(opts) {
+    var ref = opts.ref, sid = opts.sid;
+    var sci = ref.sciences[sid] || {};
+    var max = sci.max_level || 1;
+    var accent = FORMATION_TECH_ACCENTS[sid] || '#79c0ff';
+    var techName = formationTechName(ref, sid);
+    // Allow stepping through levels in the modal — useful to compare current vs
+    // higher levels without leaving the report.
+    var viewLv = Math.max(opts.level || 0, 1); // levels start at 1 (lv 0 == not researched)
+    if (viewLv > max) viewLv = max;
+
+    var bg = document.createElement('div');
+    bg.className = 'modal-bg show';
+    bg.style.zIndex = '900';
+    var modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.cssText = 'max-width:560px;';
+    bg.appendChild(modal);
+    function close() { if (document.body.contains(bg)) document.body.removeChild(bg); }
+    bg.addEventListener('click', function(e) { if (e.target === bg) close(); });
+
+    function paint() {
+      while (modal.firstChild) modal.removeChild(modal.firstChild);
+
+      var head = document.createElement('div');
+      head.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;gap:.5rem;margin-bottom:.4rem;';
+      var h = document.createElement('h2');
+      h.style.cssText = 'margin:0;font-size:1.1rem;color:' + accent + ';';
+      h.textContent = techName;
+      head.appendChild(h);
+      var lvTag = document.createElement('div');
+      lvTag.style.cssText = 'font-size:.85rem;color:var(--muted);';
+      lvTag.innerHTML = 'Viewing <strong style="color:var(--text);">Lv ' + viewLv + '</strong> / ' + max + (viewLv === (opts.level || 0) ? ' · current' : '');
+      head.appendChild(lvTag);
+      modal.appendChild(head);
+
+      // Level stepper
+      var stepRow = document.createElement('div');
+      stepRow.style.cssText = 'display:flex;align-items:center;gap:.4rem;margin-bottom:.65rem;';
+      function mkBtn(label, lv) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = label;
+        b.disabled = lv < 1 || lv > max;
+        b.style.cssText = 'padding:.25rem .55rem;font-size:.72rem;background:var(--surface);border:1px solid var(--border);border-radius:5px;color:var(--text);cursor:' + (b.disabled ? 'default' : 'pointer') + ';opacity:' + (b.disabled ? '0.4' : '1') + ';';
+        if (!b.disabled) b.onclick = function() { viewLv = lv; paint(); };
+        return b;
+      }
+      stepRow.appendChild(mkBtn('« 1', 1));
+      stepRow.appendChild(mkBtn('−5', viewLv - 5));
+      stepRow.appendChild(mkBtn('−1', viewLv - 1));
+      if (opts.level && opts.level >= 1) {
+        var cur = document.createElement('button');
+        cur.type = 'button';
+        cur.textContent = 'Current (' + opts.level + ')';
+        cur.style.cssText = 'padding:.25rem .55rem;font-size:.72rem;background:' + accent + ';color:#0d1117;border:none;border-radius:5px;font-weight:600;cursor:pointer;';
+        cur.onclick = function() { viewLv = opts.level; paint(); };
+        stepRow.appendChild(cur);
+      }
+      stepRow.appendChild(mkBtn('+1', viewLv + 1));
+      stepRow.appendChild(mkBtn('+5', viewLv + 5));
+      stepRow.appendChild(mkBtn('Max »', max));
+      modal.appendChild(stepRow);
+
+      var lvData = sci.levels ? sci.levels[viewLv - 1] : null;
+      if (!lvData) {
+        var miss = document.createElement('p');
+        miss.style.cssText = 'color:var(--muted);';
+        miss.textContent = 'No data for this level.';
+        modal.appendChild(miss);
+        addCloseRow();
+        return;
+      }
+
+      // Top stats: power gain + cost to reach this level
+      var stats = document.createElement('div');
+      stats.style.cssText = 'display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem;font-size:.72rem;color:var(--muted);';
+      stats.appendChild(makeStatChip('Power at Lv ' + viewLv, (lvData.power || 0).toLocaleString(), '#79c0ff'));
+      if (lvData.cost) stats.appendChild(makeStatChip('Upgrade cost', String(lvData.cost), '#d29922'));
+      modal.appendChild(stats);
+
+      // Per-row buff breakdown
+      var parsed = parseFormationBuffGroup(lvData.buff_group);
+      var rows = summarizeFormationBuffsByRow(parsed);
+
+      rows.forEach(function(row) {
+        var block = document.createElement('div');
+        block.style.cssText = 'margin-top:.5rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem .65rem;';
+        var lbl = document.createElement('div');
+        lbl.style.cssText = 'font-size:.72rem;color:var(--muted);margin-bottom:.25rem;';
+        lbl.textContent = row.label + ' (slots ' + row.id + ')';
+        block.appendChild(lbl);
+        if (!row.present) {
+          var none = document.createElement('div');
+          none.style.cssText = 'font-size:.78rem;color:var(--muted);font-style:italic;';
+          none.textContent = 'No buffs in this row.';
+          block.appendChild(none);
+        } else if (row.uniform) {
+          var line = document.createElement('div');
+          line.style.cssText = 'display:flex;flex-wrap:wrap;gap:.3rem;';
+          row.oneSet.forEach(function(b) {
+            var chip = document.createElement('span');
+            chip.style.cssText = 'background:#0d1117;border:1px solid ' + accent + '99;color:var(--text);font-size:.78rem;padding:.15rem .45rem;border-radius:4px;';
+            chip.textContent = formationBuffValueString(b.value) + ' ' + formationBuffName(b.id);
+            line.appendChild(chip);
+          });
+          block.appendChild(line);
+        } else {
+          row.bySlot.forEach(function(slot) {
+            var sl = document.createElement('div');
+            sl.style.cssText = 'display:flex;gap:.35rem;align-items:center;font-size:.75rem;margin-top:.15rem;';
+            var sLbl = document.createElement('span');
+            sLbl.style.cssText = 'color:var(--muted);min-width:60px;';
+            sLbl.textContent = 'Slot ' + slot.slot;
+            sl.appendChild(sLbl);
+            if (!slot.buffs.length) {
+              var dash = document.createElement('span');
+              dash.style.color = 'var(--muted)';
+              dash.textContent = '—';
+              sl.appendChild(dash);
+            } else {
+              slot.buffs.forEach(function(b) {
+                var chip = document.createElement('span');
+                chip.style.cssText = 'background:#0d1117;border:1px solid ' + accent + '99;color:var(--text);padding:.1rem .4rem;border-radius:4px;';
+                chip.textContent = formationBuffValueString(b.value) + ' ' + formationBuffName(b.id);
+                sl.appendChild(chip);
+              });
+            }
+            block.appendChild(sl);
+          });
+        }
+        modal.appendChild(block);
+      });
+
+      // Any extra (non-canonical) slots like 31/32/33 — surface them so we
+      // don't quietly drop data.
+      var extraSlots = Object.keys(parsed).filter(function(s) {
+        return !FORMATION_ROW_BUCKETS.some(function(b) { return b.slots.indexOf(s) !== -1; });
+      });
+      if (extraSlots.length) {
+        var extra = document.createElement('div');
+        extra.style.cssText = 'margin-top:.5rem;background:var(--surface);border:1px dashed var(--border);border-radius:6px;padding:.5rem .65rem;font-size:.72rem;color:var(--muted);';
+        extra.textContent = 'Other slots: ' + extraSlots.map(function(s) {
+          return s + ' [' + parsed[s].map(function(b) { return formationBuffValueString(b.value) + ' ' + formationBuffName(b.id); }).join(', ') + ']';
+        }).join('  ·  ');
+        modal.appendChild(extra);
+      }
+
+      // Description (always at the bottom, since the placeholder names are
+      // localized differently per tech).
+      if (sci.desc && !/^Formation_des_/.test(sci.desc)) {
+        var d = document.createElement('p');
+        d.style.cssText = 'margin:.75rem 0 0;font-size:.78rem;color:var(--muted);font-style:italic;';
+        d.textContent = sci.desc;
+        modal.appendChild(d);
+      }
+
+      addCloseRow();
+    }
+
+    function addCloseRow() {
+      var row = document.createElement('div');
+      row.className = 'actions';
+      row.style.cssText = 'margin-top:.85rem;display:flex;justify-content:flex-end;';
+      var btn = document.createElement('button');
+      btn.className = 'secondary';
+      btn.textContent = 'Close';
+      btn.onclick = close;
+      row.appendChild(btn);
+      modal.appendChild(row);
+    }
+
+    paint();
+    document.body.appendChild(bg);
   }
 
   // Sum power for a given current-levels map by walking the tree definition.
@@ -25208,51 +25591,9 @@
     specBlock.appendChild(grid);
     card.appendChild(specBlock);
 
-    // Formation Tech row (5 buckets — Assault / Fortified / Defense / Full Defense / Swept Wing)
-    if (formationData.sciences) {
-      var sciBlock = document.createElement('div');
-      sciBlock.style.cssText = 'margin-top:.5rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem;';
-      var sciTitle = document.createElement('div');
-      sciTitle.style.cssText = 'font-size:.72rem;color:var(--muted);margin-bottom:.3rem;';
-      sciTitle.textContent = 'Formation Tech';
-      sciBlock.appendChild(sciTitle);
-      var sciRow = document.createElement('div');
-      // Min-content columns prevent overflow on narrow cards. minmax(0,1fr) lets the column
-      // shrink below its label width so text-overflow ellipsis kicks in instead of pushing wide.
-      sciRow.style.cssText = 'display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.2rem;';
-      sciBlock.appendChild(sciRow);
-      ['1', '2', '3', '4', '5'].forEach(function(sid) {
-        var sci = ref.sciences[sid];
-        var lv = formationData.sciences[sid] || 0;
-        var max = (sci && sci.max_level) || 1;
-        var pct = Math.round(lv / max * 100);
-        var techName = formationTechName(ref, sid);
-        var pill = document.createElement('div');
-        pill.style.cssText = 'background:#0d1117;border:1px solid var(--border);border-radius:4px;padding:.25rem .15rem;text-align:center;min-width:0;overflow:hidden;';
-        var nm = document.createElement('div');
-        nm.style.cssText = 'font-size:.6rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-        nm.textContent = techName;
-        pill.appendChild(nm);
-        var lvEl = document.createElement('div');
-        lvEl.style.cssText = 'font-size:.85rem;font-weight:600;color:var(--accent);line-height:1.1;';
-        lvEl.textContent = String(lv);
-        pill.appendChild(lvEl);
-        var maxEl = document.createElement('div');
-        maxEl.style.cssText = 'font-size:.55rem;color:var(--muted);';
-        maxEl.textContent = '/' + max;
-        pill.appendChild(maxEl);
-        var bar = document.createElement('div');
-        bar.style.cssText = 'height:3px;background:#0d1117;border-radius:99px;margin-top:.15rem;overflow:hidden;';
-        var fill = document.createElement('i');
-        fill.style.cssText = 'display:block;height:100%;background:var(--accent);width:' + pct + '%;';
-        bar.appendChild(fill);
-        pill.appendChild(bar);
-        pill.title = techName + ' Lv ' + lv + '/' + max;
-        sciRow.appendChild(pill);
-      });
-      card.appendChild(sciBlock);
-    }
-
+    // Formation Tech used to render per-formation here, but it's account-wide
+    // (same Lv across Shark/Scorpion/Eagle), so it now lives in a single
+    // shared section built by buildFormationTechSection().
     return card;
   }
 
