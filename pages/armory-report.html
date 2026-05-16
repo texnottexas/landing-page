@@ -16176,6 +16176,38 @@
 
     var actions = document.createElement('div');
     actions.style.cssText = 'margin-top:.6rem;display:flex;gap:.5rem;';
+
+    var copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'secondary';
+    copyBtn.style.cssText = 'padding:.35rem .75rem;font-size:.78rem;';
+    copyBtn.textContent = 'Copy as checklist';
+    copyBtn.onclick = function() {
+      var fieldNames = ['', 'CPNT Mastery', 'Formation', 'Equip', 'Defense', 'Offense'];
+      var lines = result.recommendations.map(function(rec, i) {
+        var fromName = rec.from ? boBeastDisplayName(rec.from) + ' (Q' + rec.from.q + ' ' + rec.from.st + '★ Lv ' + rec.from.lv + ')' : 'empty';
+        var toName = boBeastDisplayName(rec.to) + ' (Q' + rec.to.q + ' ' + rec.to.st + '★ Lv ' + rec.to.lv + ')';
+        var note = rec.threshold ? (' [upgrade to ' + rec.threshold.star + '★ Lv ' + rec.threshold.level + ' first]') : '';
+        return (i + 1) + '. Field ' + rec.slot.fieldType + ' (' + fieldNames[rec.slot.fieldType] + ') Slot ' + rec.slot.order +
+          ': ' + fromName + ' -> ' + toName + note;
+      });
+      var text = lines.join('\n');
+      function flash(msg) {
+        copyBtn.textContent = msg;
+        setTimeout(function() { copyBtn.textContent = 'Copy as checklist'; }, 2000);
+      }
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function() { flash('Copied'); }, function() { flash('Copy failed'); });
+        } else {
+          flash('Copy failed');
+        }
+      } catch (e) {
+        flash('Copy failed');
+      }
+    };
+    actions.appendChild(copyBtn);
+
     var rerun = document.createElement('button');
     rerun.type = 'button';
     rerun.className = 'secondary';
