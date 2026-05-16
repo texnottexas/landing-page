@@ -16012,6 +16012,11 @@
     var newActiveSet = {};
     newActive.forEach(function(c) { newActiveSet[c.fieldId + ':' + c.conditionId] = true; });
 
+    // brokeMap[slotKey] = [conditionName, ...] for any slot that changed
+    // assignment AND sat in a field whose previously-active condition is no
+    // longer met. Pass 5 attaches these names to each rec so the UI can warn
+    // the player that the swap costs a field-condition buff.
+    var brokeMap = {};
     activeConditions.forEach(function(c) {
       if (newActiveSet[c.fieldId + ':' + c.conditionId]) return;
       var cls = boClassifyBuff(c.buffId, true);
@@ -16035,6 +16040,14 @@
           var orig = currentPlan[c.fieldId][s.order];
           if (orig && assignment[s.key] !== orig) {
             assignment[s.key] = orig;
+          }
+        });
+      } else {
+        // Swap survives the cost/benefit check — tag every changed slot in
+        // this field with the condition that's about to drop.
+        slots.filter(function(s) { return s.fieldType === c.fieldId; }).forEach(function(s) {
+          if (assignment[s.key] !== currentPlan[c.fieldId][s.order]) {
+            brokeMap[s.key] = (brokeMap[s.key] || []).concat([c.conditionName]);
           }
         });
       }
@@ -16070,7 +16083,8 @@
         to: newBeast,
         gainToday: scoreNowNew - scoreNowCur,
         gainAtMax: scoreMaxNew - scoreNowCur,
-        threshold: threshold
+        threshold: threshold,
+        brokeConditions: brokeMap[s.key] || []
       });
     });
 
@@ -16303,6 +16317,13 @@
         ' and ' + rec.threshold.levelsFromCurrent + ' more level' + (rec.threshold.levelsFromCurrent === 1 ? '' : 's') +
         ' before this beats your current placement.';
       card.appendChild(t);
+    }
+
+    if (rec.brokeConditions && rec.brokeConditions.length) {
+      var pill = document.createElement('div');
+      pill.style.cssText = 'font-size:.74rem;color:#f85149;background:rgba(248,81,73,0.1);border-left:3px solid #f85149;padding:.4rem .6rem;border-radius:4px;margin-top:.4rem;';
+      pill.textContent = 'This swap breaks: ' + rec.brokeConditions.join(', ') + '. Plan still nets a positive gain.';
+      card.appendChild(pill);
     }
 
     var why = boReasoning(rec, prefs);
