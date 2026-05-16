@@ -19147,6 +19147,24 @@
         if (step.srcHero === step.dstHero && step.srcSlot === step.dstSlot) errors.push('Source and destination must differ');
         var src = gear[step.srcHero] && gear[step.srcHero][step.srcSlot];
         if (!src || !src.runeName) errors.push('Source slot has no rune');
+        // Destination must own a gear piece in that slot — Inherit is a swap,
+        // not a teleport. Park is the verb for moving onto a not-yet-owned
+        // empty piece (advises the player to craft one).
+        var dg = gear[step.dstHero];
+        if (!dg || !Object.prototype.hasOwnProperty.call(dg, step.dstSlot)) {
+          errors.push('Destination hero has no gear piece in that slot. Use Park instead to inherit onto an empty piece.');
+        }
+        break;
+      }
+      case 'park': {
+        // Park: move a rune off a hero onto an "open" empty piece of the
+        // same slot type. Player crafts one if they don't have a spare.
+        // No destination hero — the rune leaves the hero's setup entirely.
+        if (!step.srcHero) errors.push('Pick source hero');
+        if (!step.srcSlot) errors.push('Pick source slot');
+        if (errors.length) break;
+        var psrc = gear[step.srcHero] && gear[step.srcHero][step.srcSlot];
+        if (!psrc || !psrc.runeName) errors.push('Source slot has no rune to park');
         break;
       }
       case 'recycle': {
@@ -19216,6 +19234,15 @@
         sg[step.srcSlot] = dstRune;
         break;
       }
+      case 'park': {
+        // Source's rune moves onto an empty open gear piece (off-hero).
+        // We don't track parked runes in state — the rune leaves the hero's
+        // slot and lives on whatever empty piece the player crafts/uses.
+        // After-state shows the source slot as empty.
+        var pg = ensureGear(step.srcHero);
+        pg[step.srcSlot] = null;
+        break;
+      }
       case 'recycle': {
         var rg = ensureGear(step.srcHero);
         var rsrc = rg[step.srcSlot];
@@ -19255,6 +19282,13 @@
         return 'Merge ' + step.runeName + ' on ' + hn(step.dstHero) + "'s " + sn(step.dstSlot) + ' from ' + step.fromStar + '★ to ' + step.toStar + '★';
       case 'inherit':
         return 'Inherit ' + hn(step.srcHero) + "'s " + sn(step.srcSlot) + ' ↔ ' + hn(step.dstHero) + "'s " + sn(step.dstSlot);
+      case 'park': {
+        var pSlot = sn(step.srcSlot);
+        var pRune = step.srcRuneName
+          ? (step.srcRuneName + (step.srcRuneStar ? ' ' + step.srcRuneStar + '★' : '') + ' rune')
+          : 'the rune';
+        return 'Park ' + pRune + ' off ' + hn(step.srcHero) + "'s " + pSlot + ' (inherit it to an empty ' + pSlot + ', craft one if you do not have a spare)';
+      }
       case 'recycle': {
         // Spell out the macro instead of saying "Recycle <hero>'s <gear>" —
         // the game-mechanic "recycle" destroys the gear, which is the wrong
@@ -20481,6 +20515,7 @@
       { type: 'place',   label: 'Place',   desc: 'Slot a new rune from the bag' },
       { type: 'merge',   label: 'Merge',   desc: 'Raise rune star tier (consumes fodder)' },
       { type: 'inherit', label: 'Inherit', desc: 'Move/swap with same-numbered slot' },
+      { type: 'park',    label: 'Park',    desc: 'Move a rune off this hero onto an empty piece of the same gear type (craft one if needed). Works for upgraded runes.' },
       { type: 'recycle', label: 'Recover', desc: 'Inherit 0★ rune onto a junk piece, then recycle the junk to send the rune back to the bag' }
     ];
     // Inherit needs a piece with a rune SOMEWHERE in the same slot — the
@@ -20509,6 +20544,7 @@
       if (type === 'merge'   && !hasRune)                 return 'No rune in this slot';
       if (type === 'merge'   && prefillIsMaxed)           return 'Already at MAX stars';
       if (type === 'inherit' && !hasRune && !_otherSameSlotHasRune()) return 'No same-slot rune available to inherit from';
+      if (type === 'park'    && !hasRune)                 return 'No rune in this slot to park';
       if (type === 'recycle' && !hasRune)                 return 'No rune in this slot';
       if (type === 'recycle' && hasRune && star !== 0)    return 'Only 0★ runes can be recycled';
       return null;
@@ -20521,6 +20557,7 @@
       if (type === 'merge')   return !hasRune || prefillIsMaxed; // need rune AND headroom
       if (type === 'recycle') return !hasRune || star !== 0; // need rune at s:0
       if (type === 'inherit') return !hasRune && !_otherSameSlotHasRune(); // need at least one same-slot rune somewhere
+      if (type === 'park')    return !hasRune;         // need a rune to park
       return false;
     }
     // Default action picks the most natural for the slot state.
@@ -20610,6 +20647,7 @@
       if (currentAction === 'place')   _buildPlaceFields(fieldsHost, draftStep, currentFields);
       if (currentAction === 'merge')   _buildMergeFields(fieldsHost, draftStep, currentFields);
       if (currentAction === 'inherit') _buildInheritFields(fieldsHost, draftStep, currentFields);
+      if (currentAction === 'park')    _buildParkFields(fieldsHost, draftStep, currentFields);
       if (currentAction === 'recycle') _buildRecycleFields(fieldsHost, draftStep, currentFields);
       revalidate();
     }
@@ -20842,11 +20880,40 @@
       }
       srcCol.appendChild(srcSlotLbl); srcCol.appendChild(srcSlotSel);
       row.appendChild(srcCol);
-      // Destination
+      // Destination — only heroes whose gear includes a piece in the
+      // destination slot (presence keyed by `slot in gearByHero[hid]` so
+      // empty-but-equipped pieces still qualify). Inherit swaps the two
+      // slots' contents, so without a destination gear piece there's
+      // nothing to swap WITH — the in-game action is impossible. The
+      // builder's source side already only shows source heroes whose
+      // slot holds a rune, so this completes the symmetry.
       var dstCol = document.createElement('div');
       var dstHeroLbl = document.createElement('label'); dstHeroLbl.textContent = 'Destination hero';
       var dstHeroSel = document.createElement('select');
-      heroes.forEach(function(h) { dstHeroSel.appendChild(heroOpt(h)); });
+      function refreshDstHeroOptions() {
+        var prev = dstHeroSel.value;
+        while (dstHeroSel.firstChild) dstHeroSel.removeChild(dstHeroSel.firstChild);
+        var slot = step.dstSlot || (+srcSlotSel.value || null);
+        var g = ctx.state && ctx.state.gearByHero;
+        heroes.forEach(function(h) {
+          if (slot && g) {
+            var hg = g[h.id];
+            if (!hg || !Object.prototype.hasOwnProperty.call(hg, slot)) return;
+          }
+          dstHeroSel.appendChild(heroOpt(h));
+        });
+        if (dstHeroSel.options.length === 0) {
+          var stub = document.createElement('option');
+          stub.value = '';
+          stub.textContent = '(no hero owns this slot — use Park instead)';
+          stub.disabled = true;
+          dstHeroSel.appendChild(stub);
+        }
+        if (prev && Array.prototype.some.call(dstHeroSel.options, function(o) { return o.value === prev; })) {
+          dstHeroSel.value = prev;
+        }
+      }
+      refreshDstHeroOptions();
       dstCol.appendChild(dstHeroLbl); dstCol.appendChild(dstHeroSel);
       var dstSlotLbl = document.createElement('label');
       dstSlotLbl.textContent = 'Destination slot (auto-locked to source slot)';
@@ -20866,7 +20933,6 @@
       function refresh() {
         step.srcHero = +srcHeroSel.value || null;
         step.srcSlot = +srcSlotSel.value || null;
-        step.dstHero = +dstHeroSel.value || null;
         // Lock dst slot to src slot.
         dstSlotSel.replaceChildren();
         if (step.srcSlot) {
@@ -20874,6 +20940,10 @@
           dstSlotSel.appendChild(o);
         }
         step.dstSlot = step.srcSlot;
+        // Re-filter destination heroes whenever the slot changes — only
+        // heroes who actually have a gear piece in this slot qualify.
+        refreshDstHeroOptions();
+        step.dstHero = +dstHeroSel.value || null;
         var sg = ctx.state.gearByHero[step.srcHero] && ctx.state.gearByHero[step.srcHero][step.srcSlot];
         var dg = ctx.state.gearByHero[step.dstHero] && ctx.state.gearByHero[step.dstHero][step.dstSlot];
         var srcDesc = sg && sg.runeName ? (sg.runeName + ' ' + sg.star + '★') : '(empty)';
@@ -20922,6 +20992,79 @@
       }
       refresh();
       refs.srcHeroSel = srcHeroSel; refs.srcSlotSel = srcSlotSel; refs.dstHeroSel = dstHeroSel;
+    }
+
+    // Park — the "move a rune off a hero" macro. The destination is always
+    // "any empty gear piece of the same slot type" (craft one if needed),
+    // so there's no destination hero to pick. Works for runes at any star
+    // level, unlike Recover which only handles 0★. The plan step renders
+    // as "inherit to an open <slot>" so the player knows what to do.
+    function _buildParkFields(host, step, refs) {
+      var row = document.createElement('div');
+      row.className = 'adv-builder-row';
+      var heroLbl = document.createElement('label'); heroLbl.textContent = 'Hero';
+      var heroSel = document.createElement('select');
+      heroes.forEach(function(h) { heroSel.appendChild(heroOpt(h)); });
+      var heroCol = document.createElement('div'); heroCol.appendChild(heroLbl); heroCol.appendChild(heroSel);
+      row.appendChild(heroCol);
+      var slotLbl = document.createElement('label'); slotLbl.textContent = 'Slot';
+      var slotSel = document.createElement('select');
+      for (var ps = 1; ps <= 6; ps++) {
+        var po = document.createElement('option');
+        po.value = String(ps);
+        po.textContent = (typeof GEAR_SLOT_NAMES === 'object' && GEAR_SLOT_NAMES[ps]) || ('Slot ' + ps);
+        slotSel.appendChild(po);
+      }
+      var slotCol = document.createElement('div'); slotCol.appendChild(slotLbl); slotCol.appendChild(slotSel);
+      row.appendChild(slotCol);
+      host.appendChild(row);
+
+      var ctxLbl = document.createElement('label');
+      ctxLbl.textContent = 'Will park';
+      host.appendChild(ctxLbl);
+      var ctxBox = document.createElement('div');
+      ctxBox.style.cssText = 'padding:6px 8px;background:var(--card);border:1px solid var(--border);border-radius:4px;font-size:.78rem;color:var(--text);line-height:1.5;';
+      host.appendChild(ctxBox);
+
+      function slotNameLocal(s) {
+        return (typeof GEAR_SLOT_NAMES === 'object' && GEAR_SLOT_NAMES[s]) || ('slot ' + s);
+      }
+
+      function refresh() {
+        step.srcHero = +heroSel.value || null;
+        step.srcSlot = +slotSel.value || null;
+        var curr = ctx.state.gearByHero[step.srcHero] && ctx.state.gearByHero[step.srcHero][step.srcSlot];
+        if (curr && curr.runeName) {
+          step.srcRuneName = curr.runeName;
+          step.srcRuneStar = curr.star || 0;
+        } else {
+          delete step.srcRuneName;
+          delete step.srcRuneStar;
+        }
+        if (step.srcSlot) {
+          step.srcGearName = slotNameLocal(step.srcSlot);
+        } else {
+          delete step.srcGearName;
+        }
+        if (!curr || !curr.runeName) {
+          ctxBox.textContent = '(empty slot — nothing to park)';
+        } else {
+          ctxBox.textContent = 'Park ' + curr.runeName + ' ' + (curr.star || 0) + '★ by inheriting it to an empty ' + slotNameLocal(step.srcSlot) + ' piece (craft one if you don\'t have a spare).';
+        }
+        revalidate();
+      }
+      heroSel.onchange = refresh;
+      slotSel.onchange = refresh;
+      if (prefill && prefill.heroId) {
+        heroSel.value = String(prefill.heroId);
+        heroSel.disabled = true;
+      }
+      if (prefill && prefill.slot) {
+        slotSel.value = String(prefill.slot);
+        slotSel.disabled = true;
+      }
+      refresh();
+      refs.heroSel = heroSel; refs.slotSel = slotSel;
     }
 
     function _buildRecycleFields(host, step, refs) {
