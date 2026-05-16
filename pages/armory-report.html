@@ -10411,7 +10411,7 @@
       }
     }
 
-    var KIND_LABELS = { inv: 'Inventory', bench: 'Bench Beasts', chips: 'HT Chips', gear: 'Titan Gear Pool', heroes: 'Hero Roster' };
+    var KIND_LABELS = { inv: 'Inventory', bench: 'Bench Beasts', chips: 'HT Chips', gear: 'Titan Gear Pool', heroes: 'Hero Roster', formation: 'Formation' };
 
     function buildTooltipBody() {
       var frag = document.createDocumentFragment();
@@ -24432,7 +24432,7 @@
     }
 
     loadFormationRef().then(function(ref) {
-      buildFormationTabContent(container, merged, ref, formations, supp);
+      buildFormationTabContent(container, merged, ref, formations, supp, siteKey);
     }).catch(function(e) {
       var err = document.createElement('div');
       err.style.cssText = 'padding:1rem;color:var(--red);';
@@ -24441,10 +24441,16 @@
     });
   }
 
-  function buildFormationTabContent(container, merged, ref, formations, supp) {
-    // Header banner with accumulator note
+  function buildFormationTabContent(container, merged, ref, formations, supp, siteKey) {
+    // Header row: accumulator note + cloud-sync pill so the formation
+    // supplement gets the same "loaded / synced / not uploaded" signal
+    // as inv / bench / chips / gear / heroes.
+    var hdrRow = document.createElement('div');
+    hdrRow.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin-bottom:.75rem;';
+    container.appendChild(hdrRow);
+
     var hdr = document.createElement('div');
-    hdr.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.6rem .9rem;margin-bottom:.75rem;font-size:.78rem;color:var(--muted);';
+    hdr.style.cssText = 'flex:1;min-width:200px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.6rem .9rem;font-size:.78rem;color:var(--muted);';
     var seenIds = Object.keys(formations || {}).sort();
     var seenNames = seenIds.map(function(id) {
       var fm = ref.formations[id];
@@ -24456,7 +24462,14 @@
       hdr.textContent = seenNames.length ? 'Tracked: ' + seenNames.join(', ') + '. March with another formation in a different battle report to add it here.'
                                          : 'No formation data yet.';
     }
-    container.appendChild(hdr);
+    hdrRow.appendChild(hdr);
+
+    if (siteKey) {
+      var ownerForPill = _ar_isOwnReport(siteKey) || _ar_isUnlocked(siteKey);
+      var fPill = _ar_buildCloudSyncPill('formation', siteKey, { isOwner: !!ownerForPill });
+      fPill.title = 'Formation supplement (talent tree + per-formation state)';
+      hdrRow.appendChild(fPill);
+    }
 
     // 3-card grid (Shark / Scorpion / Eagle)
     var grid = document.createElement('div');
