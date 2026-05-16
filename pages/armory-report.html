@@ -2292,6 +2292,59 @@
   .bench-fpill.q-decor.active  { background: #f85149; border-color: #f85149; color: #fff; }
   .bench-fpill.eff.active      { background: rgba(121,192,255,.18); border-color: var(--accent); color: var(--accent); }
 
+  /* Find-a-skill button + modal — surfaces every placement (hero × preset)
+     of a skill so players can locate a march-size / gathering / etc. they
+     can't find from the in-game UI. */
+  .bench-find-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 4px 10px; font-size: .72rem; color: var(--text); cursor: pointer;
+    white-space: nowrap; transition: all .12s;
+  }
+  .bench-find-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .bench-find-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+  .bench-finder-modal { max-width: 640px; max-height: 88vh; overflow: hidden; display: flex; flex-direction: column; }
+  .bench-finder-hdr { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: .75rem; padding-bottom: .6rem; border-bottom: 1px solid var(--border); }
+  .bench-finder-hdr h2 { margin: 0; font-size: 1rem; }
+  .bench-finder-search {
+    width: 100%; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px; font-size: .85rem; color: var(--text);
+    margin-bottom: .6rem; box-sizing: border-box;
+  }
+  .bench-finder-search:focus { outline: none; border-color: var(--accent); }
+  .bench-finder-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: .75rem; align-items: center; }
+  .bench-finder-count { font-size: .68rem; color: var(--muted); margin-bottom: .5rem; }
+  .bench-finder-results { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; min-height: 0; padding-right: 4px; }
+  .bench-finder-result {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 10px; cursor: pointer; transition: all .12s;
+  }
+  .bench-finder-result:hover { border-color: var(--accent); background: rgba(121,192,255,0.06); }
+  .bench-finder-result .fr-hero-img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--card); }
+  .bench-finder-result .fr-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .bench-finder-result .fr-hero { font-weight: 600; font-size: .78rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bench-finder-result .fr-skill-line { display: flex; align-items: center; gap: 6px; font-size: .68rem; color: var(--muted); }
+  .bench-finder-result .fr-skill-icon { width: 18px; height: 18px; border-radius: 3px; object-fit: cover; background: var(--card); flex-shrink: 0; }
+  .bench-finder-result .fr-skill-name { color: var(--text); }
+  .bench-finder-result .fr-lv { font-variant-numeric: tabular-nums; }
+  .bench-finder-result .fr-tier {
+    display: inline-block; padding: 1px 6px; border-radius: 8px;
+    font-size: .58rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    border: 1px solid; line-height: 1.3;
+  }
+  .bench-finder-result .fr-tier.q1 { color: var(--green); border-color: var(--green); }
+  .bench-finder-result .fr-tier.q2 { color: var(--accent); border-color: var(--accent); }
+  .bench-finder-result .fr-tier.exc { color: #a371f7; border-color: #a371f7; }
+  .bench-finder-result .fr-preset {
+    font-size: .6rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    padding: 2px 7px; border-radius: 10px;
+    border: 1px solid var(--border); color: var(--muted);
+    flex-shrink: 0; white-space: nowrap;
+  }
+  .bench-finder-result .fr-preset.active { color: var(--green); border-color: var(--green); background: rgba(63,185,80,0.08); }
+  .bench-finder-empty { padding: 1.5rem; text-align: center; color: var(--muted); font-size: .8rem; font-style: italic; }
+
   /* Owned / Not-owned section headers */
   .bench-section { margin-bottom: 1rem; }
   .bench-section-hdr {
@@ -10766,6 +10819,17 @@
       { v: 'name', l: 'Name A→Z' }
     ], 'sort', 'Sort');
 
+    // "Find skill" button — opens a search modal that scans every equipped
+    // slot across both presets and lists each placement so players can spot
+    // a skill they tucked into a hero's inactive preset.
+    var findBtn = document.createElement('button');
+    findBtn.type = 'button';
+    findBtn.className = 'bench-find-btn';
+    findBtn.title = 'Find which hero and preset has a specific skill';
+    findBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg><span>Find skill</span>';
+    findBtn.addEventListener('click', function() { _bench_openSkillFinder(heroes); });
+    topRow.appendChild(findBtn);
+
     // Pill rows — Branch, Quality, Effects. Built dynamically so we can reflect
     // the active state without hand-rolling DOM swaps.
     function makePill(label, cls, isActive, onClick) {
@@ -11233,6 +11297,250 @@
   //      skill milestones, effect tags), plus the equipped active preset for owned heroes.
   //   2. Presets — side-by-side preset comparison (the original first version).
   // `readOnly` flips to the catalog view: no equipped data, no preset compare.
+  // Walk every owned hero's two presets and return every slot where an
+  // equipped skill is present. The finder UI filters/searches this list.
+  function _bench_collectSkillPlacements(heroes) {
+    var out = [];
+    (heroes || []).forEach(function(h) {
+      if (!h) return;
+      [1, 2].forEach(function(presetIdx) {
+        var p = (presetIdx === 1) ? h.p1 : h.p2;
+        if (!p) return;
+        var meta = (window._allHeroesById && window._allHeroesById[h.id]) || null;
+        var excId = meta && meta.exclusiveSkill && meta.exclusiveSkill.id;
+        (p.x || []).forEach(function(s, idx) {
+          if (!s || !s.id) return;
+          var isExc = (idx === 0) && excId && s.id === excId;
+          out.push({
+            heroId: h.id,
+            presetIdx: presetIdx,
+            isActive: (h.ap || 1) === presetIdx,
+            skillId: s.id,
+            level: s.lv || 0,
+            slotKind: isExc ? 'exclusive' : 'supportive',
+            slotIdx: idx
+          });
+        });
+        (p.b || []).forEach(function(s, idx) {
+          if (!s || !s.id) return;
+          out.push({
+            heroId: h.id,
+            presetIdx: presetIdx,
+            isActive: (h.ap || 1) === presetIdx,
+            skillId: s.id,
+            level: s.lv || 0,
+            slotKind: 'buff',
+            slotIdx: idx
+          });
+        });
+      });
+    });
+    return out;
+  }
+
+  function _bench_openSkillFinder(heroes) {
+    var placements = _bench_collectSkillPlacements(heroes);
+    var state = { query: '', quality: 'all' }; // quality: all | 1 (normal) | 2 (rare) | exc
+
+    var bg = document.createElement('div');
+    bg.className = 'modal-bg show';
+    bg.style.zIndex = '870';
+    function closeModal() { try { document.body.removeChild(bg); } catch (e) {} document.removeEventListener('keydown', escHandler); }
+    function escHandler(e) { if (e.key === 'Escape') closeModal(); }
+    document.addEventListener('keydown', escHandler);
+    bg.addEventListener('click', function(e) { if (e.target === bg) closeModal(); });
+
+    var modal = document.createElement('div');
+    modal.className = 'modal bench-modal bench-finder-modal';
+    bg.appendChild(modal);
+
+    var close = document.createElement('button');
+    close.className = 'bench-modal-close';
+    close.textContent = '✕';
+    close.title = 'Close (Esc)';
+    close.onclick = closeModal;
+    modal.appendChild(close);
+
+    var hdr = document.createElement('div');
+    hdr.className = 'bench-finder-hdr';
+    var h2 = document.createElement('h2');
+    h2.textContent = 'Find an equipped skill';
+    hdr.appendChild(h2);
+    modal.appendChild(hdr);
+
+    var blurb = document.createElement('div');
+    blurb.className = 'bench-modal-sub';
+    blurb.textContent = 'Search across both presets of every owned hero. Click a result to open that hero.';
+    modal.appendChild(blurb);
+
+    var search = document.createElement('input');
+    search.type = 'text';
+    search.className = 'bench-finder-search';
+    search.placeholder = 'Search by skill name (e.g. march size, gathering)';
+    search.addEventListener('input', function() { state.query = (this.value || '').toLowerCase().trim(); renderResults(); });
+    modal.appendChild(search);
+
+    var chips = document.createElement('div');
+    chips.className = 'bench-finder-chips';
+    var chipLbl = document.createElement('span');
+    chipLbl.className = 'bench-filter-label';
+    chipLbl.textContent = 'Quality';
+    chips.appendChild(chipLbl);
+    var qopts = [
+      { v: 'all', l: 'Any', cls: 'q-all' },
+      { v: '1',   l: 'Normal', cls: 'q-r' },
+      { v: '2',   l: 'Rare', cls: 'q-sr' },
+      { v: 'exc', l: 'Exclusive', cls: 'q-ssr' }
+    ];
+    qopts.forEach(function(o) {
+      var pill = document.createElement('span');
+      pill.className = 'bench-fpill ' + o.cls + (state.quality === o.v ? ' active' : '');
+      pill.textContent = o.l;
+      pill.addEventListener('click', function() {
+        state.quality = o.v;
+        Array.prototype.forEach.call(chips.querySelectorAll('.bench-fpill'), function(p) { p.classList.remove('active'); });
+        pill.classList.add('active');
+        renderResults();
+      });
+      chips.appendChild(pill);
+    });
+    modal.appendChild(chips);
+
+    var countLbl = document.createElement('div');
+    countLbl.className = 'bench-finder-count';
+    modal.appendChild(countLbl);
+
+    var resultsEl = document.createElement('div');
+    resultsEl.className = 'bench-finder-results';
+    modal.appendChild(resultsEl);
+
+    function renderResults() {
+      while (resultsEl.firstChild) resultsEl.removeChild(resultsEl.firstChild);
+      var q = state.query;
+      var qf = state.quality;
+      var filtered = placements.filter(function(pl) {
+        if (qf === 'exc') {
+          if (pl.slotKind !== 'exclusive') return false;
+        } else if (qf === '1' || qf === '2') {
+          if (pl.slotKind === 'exclusive') return false;
+          var qa = _bench_supportiveQuality(pl.skillId);
+          if (String(qa) !== qf) return false;
+        }
+        if (q) {
+          var name = (_bench_resolveSkillName(pl.skillId, pl.heroId) || '').toLowerCase();
+          var heroNm = (heroName(pl.heroId) || '').toLowerCase();
+          if (name.indexOf(q) === -1 && heroNm.indexOf(q) === -1) return false;
+        }
+        return true;
+      });
+      // Sort: active presets first, then by hero name, then preset index.
+      filtered.sort(function(a, b) {
+        if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+        var an = String(heroName(a.heroId) || a.heroId);
+        var bn = String(heroName(b.heroId) || b.heroId);
+        var c = an.localeCompare(bn);
+        if (c) return c;
+        return a.presetIdx - b.presetIdx;
+      });
+      countLbl.textContent = filtered.length === 0
+        ? (q || qf !== 'all' ? 'No matches.' : 'Start typing or pick a quality to narrow the list.')
+        : (filtered.length + ' placement' + (filtered.length === 1 ? '' : 's') + ' found');
+
+      if (filtered.length === 0 && (q || qf !== 'all')) {
+        var empty = document.createElement('div');
+        empty.className = 'bench-finder-empty';
+        empty.textContent = 'No equipped skills match the current filter.';
+        resultsEl.appendChild(empty);
+        return;
+      }
+      // Cap render to keep the modal responsive — anything past 200 is noise.
+      filtered.slice(0, 200).forEach(function(pl) {
+        resultsEl.appendChild(_bench_renderFinderResult(pl, heroes, closeModal));
+      });
+      if (filtered.length > 200) {
+        var more = document.createElement('div');
+        more.className = 'bench-finder-empty';
+        more.textContent = 'Showing first 200 of ' + filtered.length + '. Refine your search to narrow.';
+        resultsEl.appendChild(more);
+      }
+    }
+
+    renderResults();
+    document.body.appendChild(bg);
+    // Autofocus the search input on open so the user can start typing.
+    setTimeout(function() { try { search.focus(); } catch (e) {} }, 50);
+  }
+
+  function _bench_renderFinderResult(pl, heroes, closeFn) {
+    var row = document.createElement('div');
+    row.className = 'bench-finder-result';
+
+    var img = document.createElement('img');
+    img.className = 'fr-hero-img';
+    img.src = heroIconUrl(pl.heroId);
+    img.alt = '';
+    img.onerror = function() { this.style.display = 'none'; };
+    row.appendChild(img);
+
+    var main = document.createElement('div');
+    main.className = 'fr-main';
+
+    var heroLine = document.createElement('div');
+    heroLine.className = 'fr-hero';
+    heroLine.textContent = heroName(pl.heroId) || ('Hero #' + pl.heroId);
+    main.appendChild(heroLine);
+
+    var skillLine = document.createElement('div');
+    skillLine.className = 'fr-skill-line';
+    var sIcon = document.createElement('img');
+    sIcon.className = 'fr-skill-icon';
+    sIcon.alt = '';
+    var iconUrl = (pl.slotKind === 'exclusive') ? _bench_exclusiveIconUrl(pl.heroId) : (_bench_supportiveIconUrl(pl.skillId) || _bench_skillIconUrl(pl.skillId));
+    sIcon.src = iconUrl;
+    sIcon.onerror = function() {
+      this.onerror = function() { this.style.display = 'none'; };
+      this.src = _bench_skillIconUrl(pl.skillId);
+    };
+    skillLine.appendChild(sIcon);
+    var sName = document.createElement('span');
+    sName.className = 'fr-skill-name';
+    sName.textContent = _bench_resolveSkillName(pl.skillId, pl.heroId) || ('Skill #' + pl.skillId);
+    skillLine.appendChild(sName);
+    var lv = document.createElement('span');
+    lv.className = 'fr-lv';
+    lv.textContent = 'Lv.' + (pl.level || 0);
+    skillLine.appendChild(lv);
+    var tier = document.createElement('span');
+    if (pl.slotKind === 'exclusive') {
+      tier.className = 'fr-tier exc';
+      tier.textContent = 'Exclusive';
+    } else {
+      var q = _bench_supportiveQuality(pl.skillId);
+      if (q === 2) { tier.className = 'fr-tier q2'; tier.textContent = 'Rare'; }
+      else if (q === 1) { tier.className = 'fr-tier q1'; tier.textContent = 'Normal'; }
+    }
+    if (tier.className) skillLine.appendChild(tier);
+    main.appendChild(skillLine);
+
+    row.appendChild(main);
+
+    var presetPill = document.createElement('span');
+    presetPill.className = 'fr-preset' + (pl.isActive ? ' active' : '');
+    presetPill.textContent = 'Preset ' + pl.presetIdx + (pl.isActive ? ' · active' : '');
+    row.appendChild(presetPill);
+
+    row.addEventListener('click', function() {
+      // Find the hero object and open its modal. Close the finder first so
+      // the hero modal is the only one on screen.
+      var hero = (heroes || []).find(function(h) { return h && h.id === pl.heroId; });
+      if (!hero) return;
+      if (typeof closeFn === 'function') closeFn();
+      _bench_openHeroModal(hero, false);
+    });
+
+    return row;
+  }
+
   function _bench_openHeroModal(h, readOnly) {
     var meta = (window._allHeroesById && window._allHeroesById[h.id]) || null;
 
