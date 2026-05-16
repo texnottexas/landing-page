@@ -15493,7 +15493,7 @@
     dmgInc:     9.0,
     dmgDec:     9.0,
     def:       25.5,
-    march:     13.5,
+    march:     30.0,  // bumped above DEF; march is a hard floor (see boSlotMarchAt) and the highest-priority stat per Tex
     elemental:  0.0,
   };
 
@@ -15911,12 +15911,38 @@
       });
     });
 
+    var beastById = {};
+    ownedBeasts.forEach(function(b) { beastById[b.id] = b; });
+
+    // March is a HARD floor per Tex's rule: a swap may never reduce march
+    // at any slot. Compute each slot's current march contribution at max-out,
+    // then filter every candidate set to beasts whose max-out march at that
+    // slot is >= the current beast's max-out march. Returns 0 for empty slots
+    // so empty -> non-march is fine, but march -> non-march is rejected.
+    function boMarchOfBeast(b) {
+      if (!b) return 0;
+      return boBeastStatProfile(b, 'maxOut', playstyle).march || 0;
+    }
+    var slotMarchFloor = {};
+    slots.forEach(function(s) {
+      var origId = currentPlan[s.fieldType] && currentPlan[s.fieldType][s.order];
+      slotMarchFloor[s.key] = origId ? boMarchOfBeast(beastById[origId]) : 0;
+    });
+    function boMarchEligible(s, b) {
+      var floor = slotMarchFloor[s.key] || 0;
+      if (floor <= 0) return true;
+      return boMarchOfBeast(b) >= floor - 0.0001;
+    }
+
     // Pass 1: compute each slot's impact ceiling (best at-max score among
-    // any eligible owned beast) and sort by ceiling descending.
+    // any eligible owned beast) and sort by ceiling descending. March floor
+    // applies here too so the ceiling reflects what we can actually reach
+    // without reducing march.
     slots.forEach(function(s) {
       var best = 0;
       ownedBeasts.forEach(function(b) {
         if (!boBeastEligibleForSlot(b, s.desc)) return;
+        if (!boMarchEligible(s, b)) return;
         var sc = boBeastScore(b, 'maxOut', s.desc, playstyle);
         if (sc > best) best = sc;
       });
@@ -15926,14 +15952,13 @@
 
     // Pass 2: greedy first assignment — highest-impact slot picks first.
     var assignment = {};
-    var beastById = {};
-    ownedBeasts.forEach(function(b) { beastById[b.id] = b; });
 
     slots.forEach(function(s) {
       var bestBeast = null;
       var bestScore = -Infinity;
       ownedBeasts.forEach(function(b) {
         if (!boBeastEligibleForSlot(b, s.desc)) return;
+        if (!boMarchEligible(s, b)) return;
         var sc = boBeastScore(b, 'maxOut', s.desc, playstyle);
         if (sc > bestScore) { bestScore = sc; bestBeast = b; }
       });
@@ -15982,6 +16007,7 @@
           ownedBeasts.forEach(function(other) {
             if (alreadyClaimed[other.id]) return;
             if (!boBeastEligibleForSlot(other, s.desc)) return;
+            if (!boMarchEligible(s, other)) return;
             var sc = boBeastScore(other, 'maxOut', s.desc, playstyle);
             if (sc > bestScore) { bestScore = sc; bestBeast = other; }
           });
@@ -16125,6 +16151,42 @@
   }
 
   // ── Beast Optimizer: UI ───────────────────────────────────────────────────
+  // Build a "rich" beast shape suitable for ebShowDetailModal from an
+  // optimizer-shape beast. Deployed beasts are looked up directly in
+  // resolved.beasts (full data, with mainBuffName, baseBuff names, deployment
+  // badges, etc.). Bench beasts are synthesized from compact ids using the
+  // existing EB_* lookup tables; the modal still gets a usable card even if
+  // a couple of nicities (slot badges, slotBuffs) are absent.
+  function boFindRichBeast(beast, resolved, bench) {
+    if (!beast) return null;
+    var bid = String(beast.id);
+    if (resolved && resolved.beasts) {
+      for (var i = 0; i < resolved.beasts.length; i++) {
+        if (String(resolved.beasts[i].id) === bid) return resolved.beasts[i];
+      }
+    }
+    return {
+      id: beast.id,
+      cfg: beast.cfgId,
+      type: beast.type,
+      faction: beast.fac,
+      quality: beast.q,
+      star: beast.st,
+      level: beast.lv,
+      potential: beast.pot,
+      maxPotential: 16000,
+      element: EB_ELEMENTS[beast.fac] || '',
+      name: ebBeastName(beast.type, beast.st),
+      mainBuff: beast.mb,
+      mainBuffName: ebBuffName(beast.mb),
+      baseBuff: (beast.bb || []).map(function(id) { return { id: id, name: ebBuffName(id) }; }),
+      slotBuffs: [],
+      fieldName: null,
+      fieldSlotNum: null,
+      slotLevel: null
+    };
+  }
+
   function boRenderPlan(container, merged, siteKey, prefs) {
     while (container.firstChild) container.removeChild(container.firstChild);
 
@@ -16132,6 +16194,10 @@
     try { bench = ArmoryIdentity.getSupplement('bench', siteKey); } catch (e) {}
     var resolved = ebResolveBeasts(merged.enigmas || {});
     var owned = boBuildOwnedBeasts(merged, bench, resolved);
+    var openDetail = function(beast) {
+      var rich = boFindRichBeast(beast, resolved, bench);
+      if (rich) ebShowDetailModal(rich);
+    };
     var currentPlan = boBuildCurrentPlan(resolved);
     var active = boComputeActiveConditions(currentPlan, owned);
 
@@ -16161,7 +16227,7 @@
     statBlock.appendChild(statValue);
     var statHelp = document.createElement('div');
     statHelp.style.cssText = 'font-size:.68rem;color:var(--muted);margin-top:.2rem;max-width:380px;line-height:1.35;';
-    statHelp.textContent = 'Each point is one ATK-equivalent percent for your playstyle. 1% HP = 1.5 pts, 1% DEF = 25.5 pts, +1 March = 13.5 pts. Today uses your beasts as they stand; max-out assumes 5-star Lv 80.';
+    statHelp.textContent = 'Each point is one ATK-equivalent percent for your playstyle. +1 March = 30 pts (highest), 1% DEF = 25.5 pts, 1% DMG = 9 pts, 1% HP = 1.5 pts. March is also a hard floor: no swap will ever reduce march at a slot. Today uses your beasts as they stand; max-out assumes 5-star Lv 80.';
     statBlock.appendChild(statHelp);
     hRow.appendChild(statBlock);
 
@@ -16262,7 +16328,7 @@
       container.appendChild(fieldHeader);
 
       recs.forEach(function(rec) {
-        container.appendChild(boRenderSwapCard(rec, prefs, result.conditionWarnings));
+        container.appendChild(boRenderSwapCard(rec, prefs, result.conditionWarnings, openDetail));
       });
     });
 
@@ -16343,6 +16409,14 @@
       return Math.abs((fromMax[k] || 0)) > 0.005 || Math.abs((toMax[k] || 0)) > 0.005;
     });
     if (!keys.length) return null;
+    // Sort by weighted ATK-equivalent contribution (whichever beast contributes
+    // more) so the primary stat of the swap leads. With march weighted at 30,
+    // a +1 march beast surfaces above lower-impact ATK/HP swings.
+    keys.sort(function(a, b) {
+      var aImpact = Math.max((fromMax[a] || 0), (toMax[a] || 0)) * (BO_STAT_WEIGHTS[a] || 0);
+      var bImpact = Math.max((fromMax[b] || 0), (toMax[b] || 0)) * (BO_STAT_WEIGHTS[b] || 0);
+      return bImpact - aImpact;
+    });
 
     var fromNow = boBeastStatProfile(rec.from, 'current', prefs);
     var toNow = boBeastStatProfile(rec.to, 'current', prefs);
@@ -16429,7 +16503,7 @@
     return 'Top contributions: ' + top.map(function(k) { return LABELS[k] || k; }).join(' + ') + '.';
   }
 
-  function boRenderSwapCard(rec, prefs, conditionWarnings) {
+  function boRenderSwapCard(rec, prefs, conditionWarnings, openDetail) {
     var card = document.createElement('div');
     card.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.85rem;margin-bottom:.65rem;';
 
@@ -16456,12 +16530,12 @@
 
     var swap = document.createElement('div');
     swap.style.cssText = 'display:flex;align-items:center;gap:1rem;margin-bottom:.5rem;';
-    swap.appendChild(boBeastChip(rec.from, 'from'));
+    swap.appendChild(boBeastChip(rec.from, 'from', openDetail));
     var arrow = document.createElement('div');
     arrow.style.cssText = 'color:var(--muted);font-size:1.5rem;';
     arrow.textContent = '→';
     swap.appendChild(arrow);
-    swap.appendChild(boBeastChip(rec.to, 'to'));
+    swap.appendChild(boBeastChip(rec.to, 'to', openDetail));
     card.appendChild(swap);
 
     var stats = document.createElement('div');
@@ -16521,9 +16595,16 @@
     return card;
   }
 
-  function boBeastChip(beast, label) {
+  function boBeastChip(beast, label, openDetail) {
     var wrap = document.createElement('div');
     wrap.style.cssText = 'flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem;display:flex;gap:.55rem;align-items:center;min-width:0;';
+    if (beast && openDetail) {
+      wrap.style.cursor = 'pointer';
+      wrap.title = 'Click for full beast details';
+      wrap.onclick = function() { openDetail(beast); };
+      wrap.onmouseover = function() { wrap.style.borderColor = 'var(--accent)'; };
+      wrap.onmouseout = function() { wrap.style.borderColor = 'var(--border)'; };
+    }
     if (!beast) {
       var empty = document.createElement('div');
       empty.style.cssText = 'color:var(--muted);font-style:italic;font-size:.8rem;padding:.5rem 0;';
