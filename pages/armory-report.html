@@ -16152,13 +16152,17 @@
     var statBlock = document.createElement('div');
     var statLabel = document.createElement('div');
     statLabel.style.cssText = 'font-size:.7rem;color:var(--muted);';
-    statLabel.textContent = 'Total power score';
+    statLabel.textContent = 'Total power score gain';
     statBlock.appendChild(statLabel);
     var statValue = document.createElement('div');
     statValue.style.cssText = 'font-size:1.3rem;font-weight:700;color:var(--green);';
     statValue.textContent = '+' + Math.round(result.totalGainToday) +
       ' today, +' + Math.round(result.totalGainAtMax) + ' at max-out';
     statBlock.appendChild(statValue);
+    var statHelp = document.createElement('div');
+    statHelp.style.cssText = 'font-size:.68rem;color:var(--muted);margin-top:.2rem;max-width:380px;line-height:1.35;';
+    statHelp.textContent = 'Each point is one ATK-equivalent percent for your playstyle. 1% HP = 1.5 pts, 1% DEF = 25.5 pts, +1 March = 13.5 pts. Today uses your beasts as they stand; max-out assumes 5-star Lv 80.';
+    statBlock.appendChild(statHelp);
     hRow.appendChild(statBlock);
 
     // Right side: meta
@@ -16232,8 +16236,34 @@
       return;
     }
 
+    // Group recommendations by field (1 CPNT, 2 Formation, 3 Equip, 4 Defense, 5 Offense)
+    var FIELD_NAMES = ['', 'CPNT Mastery', 'Formation', 'Equip', 'Defense', 'Offense'];
+    var byField = {};
     result.recommendations.forEach(function(rec) {
-      container.appendChild(boRenderSwapCard(rec, prefs, result.conditionWarnings));
+      var f = rec.slot.fieldType;
+      (byField[f] = byField[f] || []).push(rec);
+    });
+    [1, 2, 3, 4, 5].forEach(function(fid) {
+      var recs = byField[fid];
+      if (!recs || !recs.length) return;
+      // Sort by slot order within the field
+      recs.sort(function(a, b) { return a.slot.order - b.slot.order; });
+
+      var fieldHeader = document.createElement('div');
+      fieldHeader.style.cssText = 'display:flex;align-items:baseline;gap:.5rem;margin:1rem 0 .5rem;padding-bottom:.35rem;border-bottom:1px solid var(--border);';
+      var fhName = document.createElement('strong');
+      fhName.style.cssText = 'color:var(--text);font-size:.95rem;';
+      fhName.textContent = 'Field ' + fid + ': ' + FIELD_NAMES[fid];
+      fieldHeader.appendChild(fhName);
+      var fhCount = document.createElement('span');
+      fhCount.style.cssText = 'color:var(--muted);font-size:.78rem;';
+      fhCount.textContent = recs.length + ' change' + (recs.length === 1 ? '' : 's');
+      fieldHeader.appendChild(fhCount);
+      container.appendChild(fieldHeader);
+
+      recs.forEach(function(rec) {
+        container.appendChild(boRenderSwapCard(rec, prefs, result.conditionWarnings));
+      });
     });
 
     var disc = document.createElement('p');
@@ -16251,6 +16281,125 @@
       return 'Dual ' + names[0] + ' + ' + names[1] + ' (primary ' + names[0] + ')';
     }
     return 'Dual ' + names.join(' + ') + ' (even balance)';
+  }
+
+  // Per-stat raw contribution a beast brings at given star/level/potential at a slot
+  // for a given playstyle. Returns { atk, hp, def, dmgInc, dmgDec, march } where each
+  // value is the effective % (already scope-weighted and playstyle-weighted) the
+  // beast contributes. Used by the swap card delta table so a player can see
+  // ATK before vs after, etc. Units mirror what ebFormatBuffValue prints
+  // (percent for everything except march which is a flat count).
+  function boBeastStatProfile(beast, atState, playstyle) {
+    var out = { atk: 0, hp: 0, def: 0, dmgInc: 0, dmgDec: 0, march: 0 };
+    if (!beast) return out;
+    var star = atState === 'maxOut' ? boMaxStarFor(beast) : (beast.st || 0);
+    var level = atState === 'maxOut' ? boMaxLevelFor(beast) : (beast.lv || 0);
+    var pot = beast.pot || 0;
+    function add(buffId, isMain) {
+      if (!buffId) return;
+      var cls = boClassifyBuff(buffId, isMain);
+      if (!cls || cls.statKey === 'elemental') return;
+      var raw = ebComputeBuffValue(buffId, star, level, pot, isMain);
+      if (raw == null) return;
+      var weighted = raw * BO_SCOPE_MULT[cls.scope] * boPlaystyleMult(cls.targetUnit, playstyle);
+      if (out[cls.statKey] == null) out[cls.statKey] = 0;
+      out[cls.statKey] += weighted;
+    }
+    if (beast.mb) add(beast.mb, true);
+    (beast.bb || []).forEach(function(bid) { add(bid, false); });
+    return out;
+  }
+
+  // Format a stat-line value: march is a flat count, everything else is a percentage.
+  function boFmtStat(key, val) {
+    if (!val) return '0';
+    if (key === 'march') return val.toFixed(2);
+    return val.toFixed(2) + '%';
+  }
+
+  function boFmtStatDelta(key, delta) {
+    if (Math.abs(delta) < 0.005) return '0';
+    var sign = delta > 0 ? '+' : '';
+    if (key === 'march') return sign + delta.toFixed(2);
+    return sign + delta.toFixed(2) + '%';
+  }
+
+  var BO_STAT_LABELS = {
+    atk:    { label: 'ATK',          color: '#f85149' },
+    hp:     { label: 'HP',           color: '#3fb950' },
+    def:    { label: 'DEF',          color: '#79c0ff' },
+    dmgInc: { label: 'DMG Increase', color: '#f0883e' },
+    dmgDec: { label: 'DMG Decrease', color: '#a371f7' },
+    march:  { label: 'March Size',   color: '#d29922' }
+  };
+
+  // Render a 4-column "stat | from | to | net" table for the swap card.
+  // Only includes rows where either beast contributes that stat (so we don't
+  // clutter cards with five rows of zeros).
+  function boRenderStatDeltaTable(rec, prefs) {
+    var fromMax = boBeastStatProfile(rec.from, 'maxOut', prefs);
+    var toMax = boBeastStatProfile(rec.to, 'maxOut', prefs);
+    var keys = Object.keys(BO_STAT_LABELS).filter(function(k) {
+      return Math.abs((fromMax[k] || 0)) > 0.005 || Math.abs((toMax[k] || 0)) > 0.005;
+    });
+    if (!keys.length) return null;
+
+    var fromNow = boBeastStatProfile(rec.from, 'current', prefs);
+    var toNow = boBeastStatProfile(rec.to, 'current', prefs);
+
+    var box = document.createElement('div');
+    box.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem .6rem;margin-top:.55rem;';
+
+    var caption = document.createElement('div');
+    caption.style.cssText = 'font-size:.7rem;color:var(--muted);margin-bottom:.35rem;';
+    caption.textContent = 'Stat-by-stat at max-out (today in parens). Weighted for your playstyle.';
+    box.appendChild(caption);
+
+    var table = document.createElement('table');
+    table.style.cssText = 'width:100%;border-collapse:collapse;font-size:.74rem;';
+
+    var thead = document.createElement('thead');
+    var hrow = document.createElement('tr');
+    ['Stat', 'From', 'To', 'Net'].forEach(function(t, i) {
+      var th = document.createElement('th');
+      th.style.cssText = 'text-align:' + (i === 0 ? 'left' : 'right') + ';color:var(--muted);font-weight:500;padding:.2rem .35rem;border-bottom:1px solid var(--border);';
+      th.textContent = t;
+      hrow.appendChild(th);
+    });
+    thead.appendChild(hrow);
+    table.appendChild(thead);
+
+    var tbody = document.createElement('tbody');
+    keys.forEach(function(k) {
+      var spec = BO_STAT_LABELS[k];
+      var f = fromMax[k] || 0;
+      var t = toMax[k] || 0;
+      var delta = t - f;
+      var fNow = fromNow[k] || 0;
+      var tNow = toNow[k] || 0;
+      var tr = document.createElement('tr');
+      var tdLabel = document.createElement('td');
+      tdLabel.style.cssText = 'padding:.2rem .35rem;color:' + spec.color + ';font-weight:600;';
+      tdLabel.textContent = spec.label;
+      tr.appendChild(tdLabel);
+      var tdFrom = document.createElement('td');
+      tdFrom.style.cssText = 'padding:.2rem .35rem;text-align:right;color:var(--text);';
+      tdFrom.textContent = boFmtStat(k, f) + (Math.abs(fNow - f) > 0.005 ? ' (' + boFmtStat(k, fNow) + ')' : '');
+      tr.appendChild(tdFrom);
+      var tdTo = document.createElement('td');
+      tdTo.style.cssText = 'padding:.2rem .35rem;text-align:right;color:var(--text);';
+      tdTo.textContent = boFmtStat(k, t) + (Math.abs(tNow - t) > 0.005 ? ' (' + boFmtStat(k, tNow) + ')' : '');
+      tr.appendChild(tdTo);
+      var tdDelta = document.createElement('td');
+      var deltaColor = delta > 0.005 ? 'var(--green)' : (delta < -0.005 ? '#f85149' : 'var(--muted)');
+      tdDelta.style.cssText = 'padding:.2rem .35rem;text-align:right;color:' + deltaColor + ';font-weight:600;';
+      tdDelta.textContent = boFmtStatDelta(k, delta);
+      tr.appendChild(tdDelta);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    box.appendChild(table);
+    return box;
   }
 
   // Surface the top 2 stat categories the new beast contributes to a swap.
@@ -16322,10 +16471,10 @@
     var statToday = document.createElement('div');
     var statTodayLbl = document.createElement('span');
     statTodayLbl.style.color = 'var(--muted)';
-    statTodayLbl.textContent = 'Gain today: ';
+    statTodayLbl.textContent = 'Power score today: ';
     var statTodayVal = document.createElement('strong');
     statTodayVal.style.color = gainTodayColor;
-    statTodayVal.textContent = (rec.gainToday >= 0 ? '+' : '') + Math.round(rec.gainToday);
+    statTodayVal.textContent = (rec.gainToday >= 0 ? '+' : '') + Math.round(rec.gainToday) + ' pts';
     statToday.appendChild(statTodayLbl);
     statToday.appendChild(statTodayVal);
     stats.appendChild(statToday);
@@ -16333,14 +16482,17 @@
     var statMax = document.createElement('div');
     var statMaxLbl = document.createElement('span');
     statMaxLbl.style.color = 'var(--muted)';
-    statMaxLbl.textContent = 'Gain at max: ';
+    statMaxLbl.textContent = 'At max-out: ';
     var statMaxVal = document.createElement('strong');
     statMaxVal.style.color = 'var(--green)';
-    statMaxVal.textContent = '+' + Math.round(rec.gainAtMax);
+    statMaxVal.textContent = '+' + Math.round(rec.gainAtMax) + ' pts';
     statMax.appendChild(statMaxLbl);
     statMax.appendChild(statMaxVal);
     stats.appendChild(statMax);
     card.appendChild(stats);
+
+    var deltaTable = boRenderStatDeltaTable(rec, prefs);
+    if (deltaTable) card.appendChild(deltaTable);
 
     if (rec.threshold) {
       var t = document.createElement('div');
@@ -16371,29 +16523,83 @@
 
   function boBeastChip(beast, label) {
     var wrap = document.createElement('div');
-    wrap.style.cssText = 'flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem;';
+    wrap.style.cssText = 'flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem;display:flex;gap:.55rem;align-items:center;min-width:0;';
     if (!beast) {
       var empty = document.createElement('div');
-      empty.style.cssText = 'color:var(--muted);font-style:italic;font-size:.8rem;';
-      empty.textContent = 'empty slot';
+      empty.style.cssText = 'color:var(--muted);font-style:italic;font-size:.8rem;padding:.5rem 0;';
+      empty.textContent = 'Empty slot';
       wrap.appendChild(empty);
       return wrap;
     }
+
+    var elementName = EB_ELEMENTS[beast.fac] || null;
+
+    // Icon + element overlay
+    var iconWrap = document.createElement('div');
+    iconWrap.style.cssText = 'position:relative;width:48px;height:48px;flex-shrink:0;';
+    var iconImg = document.createElement('img');
+    iconImg.src = ebBeastIconUrl(beast.type, beast.fac, beast.st);
+    iconImg.alt = ebBeastName(beast.type, beast.st);
+    iconImg.style.cssText = 'width:48px;height:48px;border-radius:6px;background:var(--card);object-fit:contain;' +
+      (beast.q >= 5 ? 'box-shadow:inset 0 0 0 2px #d29922;' : 'box-shadow:inset 0 0 0 2px #a371f7;');
+    iconImg.onerror = function() { this.style.display = 'none'; };
+    iconWrap.appendChild(iconImg);
+    if (elementName) {
+      var elemOver = document.createElement('img');
+      elemOver.src = EB_ICON_BASE + 'element_' + elementName + '.png';
+      elemOver.alt = elementName;
+      elemOver.title = elementName;
+      elemOver.style.cssText = 'position:absolute;top:-3px;right:-3px;width:18px;height:18px;';
+      elemOver.onerror = function() { this.style.display = 'none'; };
+      iconWrap.appendChild(elemOver);
+    }
+    wrap.appendChild(iconWrap);
+
+    // Info column
+    var info = document.createElement('div');
+    info.style.cssText = 'flex:1;min-width:0;';
     var name = document.createElement('div');
-    name.style.cssText = 'font-weight:600;color:var(--text);font-size:.85rem;';
-    name.textContent = boBeastDisplayName(beast);
-    wrap.appendChild(name);
-    var stats = document.createElement('div');
-    stats.style.cssText = 'font-size:.7rem;color:var(--muted);margin-top:.15rem;';
-    stats.textContent = 'Q' + beast.q + ' · ' + beast.st + '★ Lv ' + beast.lv + ' · pot ' + beast.pot;
-    wrap.appendChild(stats);
+    name.style.cssText = 'font-weight:600;color:var(--text);font-size:.82rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    name.textContent = ebBeastName(beast.type, beast.st);
+    info.appendChild(name);
+
+    var line1 = document.createElement('div');
+    line1.style.cssText = 'font-size:.7rem;color:var(--muted);margin-top:.15rem;';
+    var qSpan = document.createElement('span');
+    qSpan.style.color = beast.q >= 5 ? '#d29922' : '#a371f7';
+    qSpan.style.fontWeight = '600';
+    qSpan.textContent = 'Q' + beast.q;
+    line1.appendChild(qSpan);
+    line1.appendChild(document.createTextNode(' · '));
+    var starsSpan = document.createElement('span');
+    starsSpan.style.color = '#d29922';
+    var starText = '';
+    for (var i = 0; i < beast.st; i++) starText += '★';
+    starsSpan.textContent = starText;
+    line1.appendChild(starsSpan);
+    line1.appendChild(document.createTextNode(' Lv' + beast.lv));
+    info.appendChild(line1);
+
+    var line2 = document.createElement('div');
+    line2.style.cssText = 'font-size:.68rem;color:var(--muted);margin-top:.1rem;';
+    if (elementName) {
+      var elemTxt = document.createElement('span');
+      elemTxt.style.color = EB_ELEM_COLORS[elementName] || 'var(--muted)';
+      elemTxt.style.fontWeight = '600';
+      elemTxt.textContent = elementName;
+      line2.appendChild(elemTxt);
+      line2.appendChild(document.createTextNode(' · '));
+    }
+    line2.appendChild(document.createTextNode('Pot ' + beast.pot));
+    info.appendChild(line2);
+
+    wrap.appendChild(info);
     return wrap;
   }
 
   function boBeastDisplayName(beast) {
     if (!beast) return '';
-    var TYPE_NAMES = { 1: 'Deer', 2: 'Ray', 3: 'Eagle', 4: 'Bear', 5: 'Lynx', 6: 'Kangaroo', 7: 'Horse', 8: 'Lion', 9: 'Egret' };
-    return (TYPE_NAMES[beast.type] || 'Beast') + ' (#' + beast.cfgId + ')';
+    return ebBeastName(beast.type, beast.st);
   }
 
   function boRenderDataWarnings(container, merged, bench, owned) {
@@ -16548,7 +16754,7 @@
       if (state.mode === 'dual') {
         var sub = document.createElement('p');
         sub.style.cssText = 'color:var(--muted);font-size:.85rem;margin:0 0 1rem;';
-        sub.textContent = 'Pick two. Order matters if you choose Primary / Secondary below.';
+        sub.textContent = 'Pick two. If you choose Primary / Secondary weighting below, you can set which one is primary.';
         wrap.appendChild(sub);
       }
 
@@ -16568,12 +16774,13 @@
           btn.type = 'button';
           var idx = selectedDisplay.indexOf(u.id);
           var on = idx >= 0;
-          var primary = on && idx === 0;
+          var isPrimary = on && idx === 0;
+          var showPrimaryBadge = on && state.mode === 'dual' && state.balance === 'primarySecondary' && selectedDisplay.length === 2;
           btn.style.cssText = 'background:' + (on ? 'var(--accent)' : 'var(--surface)') +
-            ';border:2px solid ' + (primary ? 'var(--green)' : on ? 'var(--accent)' : 'var(--border)') +
+            ';border:2px solid ' + (showPrimaryBadge && isPrimary ? 'var(--green)' : on ? 'var(--accent)' : 'var(--border)') +
             ';border-radius:8px;padding:.85rem;color:' + (on ? '#0d1117' : 'var(--text)') +
             ';font-weight:600;cursor:pointer;';
-          btn.textContent = u.label + (on && state.mode === 'dual' ? (primary ? ' (1st)' : ' (2nd)') : '');
+          btn.textContent = u.label + (showPrimaryBadge ? (isPrimary ? ' (Primary)' : ' (Secondary)') : '');
           btn.onclick = function() {
             if (idx >= 0) {
               selectedDisplay.splice(idx, 1);
@@ -16584,12 +16791,45 @@
             }
             paintPicker();
             paintBalanceToggle();
+            paintPrimarySwap();
             clearWizardErr();
           };
           picker.appendChild(btn);
         });
       }
       paintPicker();
+
+      var primarySwapBox = document.createElement('div');
+      primarySwapBox.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.75rem;margin-bottom:1rem;display:none;';
+      wrap.appendChild(primarySwapBox);
+
+      function paintPrimarySwap() {
+        if (state.mode !== 'dual' || state.balance !== 'primarySecondary' || selectedDisplay.length !== 2) {
+          primarySwapBox.style.display = 'none';
+          return;
+        }
+        primarySwapBox.style.display = '';
+        while (primarySwapBox.firstChild) primarySwapBox.removeChild(primarySwapBox.firstChild);
+        var UNIT_LABELS = { 1: 'Army', 2: 'Navy', 3: 'Air Force' };
+        var primaryUnit = selectedDisplay[0];
+        var secondaryUnit = selectedDisplay[1];
+        var head = document.createElement('div');
+        head.style.cssText = 'font-size:.78rem;color:var(--muted);margin-bottom:.5rem;';
+        head.textContent = 'Primary: ' + UNIT_LABELS[primaryUnit] + ' (1.0x) | Secondary: ' + UNIT_LABELS[secondaryUnit] + ' (0.75x)';
+        primarySwapBox.appendChild(head);
+        var swapBtn = document.createElement('button');
+        swapBtn.type = 'button';
+        swapBtn.style.cssText = 'background:var(--card);border:1px solid var(--border);color:var(--text);padding:.4rem .75rem;font-size:.8rem;border-radius:6px;cursor:pointer;';
+        swapBtn.textContent = 'Swap: make ' + UNIT_LABELS[secondaryUnit] + ' primary';
+        swapBtn.onclick = function() {
+          selectedDisplay = [secondaryUnit, primaryUnit];
+          paintPicker();
+          paintBalanceToggle();
+          paintPrimarySwap();
+        };
+        primarySwapBox.appendChild(swapBtn);
+      }
+      paintPrimarySwap();
 
       var balanceBox = document.createElement('div');
       balanceBox.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.75rem;margin-bottom:1rem;display:none;';
@@ -16617,7 +16857,11 @@
           radio.name = 'bo-balance';
           radio.value = opt.val;
           radio.checked = state.balance === opt.val;
-          radio.onchange = function() { state.balance = opt.val; };
+          radio.onchange = function() {
+            state.balance = opt.val;
+            paintPicker();
+            paintPrimarySwap();
+          };
           lbl.appendChild(radio);
           lbl.appendChild(document.createTextNode(' ' + opt.label));
           balanceBox.appendChild(lbl);
