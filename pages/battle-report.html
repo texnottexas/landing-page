@@ -739,6 +739,16 @@
     128: 'Neutral City', 200: 'Hero Experiment'
   };
 
+  // System / non-hero skill IDs that appear in skill_hurts (drone, formation specializations).
+  // Without this map, the >900000 catch-all wrongly labelled all of them as "HT".
+  // Names sourced from hero_skill TABLE; formation skills are triggered by formationV2 specializations.
+  var SYSTEM_SKILLS = {
+    '941212': { label: 'Airdrop Support: Drone', icon: '941212', color: 'var(--accent)' },
+    '941215': { label: 'Scorpion: Counterblow',  icon: '941215', color: 'var(--accent)' },
+    '941216': { label: 'Eagle Strike',           icon: '941216', color: 'var(--accent)' },
+    '941217': { label: 'Eagle Strike',           icon: '941216', color: 'var(--accent)' }
+  };
+
   // Buff ID → display name (grouped categories from EFFECTBUFF table)
   var BUFF_NAMES = {"930001":"Army HP Boost","930002":"Navy HP Boost","930003":"Air Force HP Boost","930101":"Army Attack","930102":"Navy Attack","930103":"Air Force ATK","930107":"Navy - Army DMG Bonus","930108":"Air Force - Navy DMG Bonus","930109":"Army - Air DMG Bonus","930201":"Army Crit. Rate","930202":"Navy Crit. Rate","930203":"Air Force Crit. Rate","930301":"Army Dodge Buff","930302":"Navy Dodge Buff","930303":"Air Force Dodge Buff","930401":"Army ATK Speed Bonus","930402":"Navy ATK Speed Bonus","930403":"Air Force ATK Speed Bonus","930504":"Navy DEF against Army","930505":"Air Force DEF against Navy","930506":"Army DEF against Air Force","980101":"Army DMG Increase","980102":"Navy DMG Increase","980103":"Air Force DMG Increase","980201":"Army Decreased DMG Taken","980202":"Navy Decreased DMG Taken","980203":"Air Force Decreased DMG Taken","980301":"Army Crit. DMG","980302":"Navy Crit. DMG","980303":"Air Force Crit. DMG","980501":"Army Hit","980502":"Navy Hit","980503":"Air Force Hit","960012":"March Size","990202":"Increase DEF of all units","990203":"Increase DEF of Army","990204":"Increase DEF of Navy","990205":"Increase DEF of Air Force","990208":"DEF increase when attacking","990209":"DEF increase when defending","990221":"Decreased DMG Taken (offensive)","1010001":"Army Starting Shield","1010002":"Navy Starting Shield","1010003":"Air Force Starting Shield","1131009":"Starting Shield of All Units","1101064":"Extra Troop Morale","1130010":"All heroes War increase","1201003":"Total battle rounds +1","29901301":"Decreased DMG Taken (defensive)","941300":"Hall Of Valhalla ATK","941301":"Hall Of Valhalla HP","941303":"Hall Of Valhalla Crit Damage","941304":"Hall Of Valhalla INV","990001":"Attack Boost vs World Boss","970003":"Attack Boost vs Dark Forces","990137":"All units DMG Increase (Silence)","921006":"Golden Tank","981021":"Golden Plane","1002001":"Attack inside Fort","1002002":"HP inside Fort","1150":"Ultra Valhalla AF Offense DMG","1156":"Ultra Valhalla AF Offense HP","1162":"Ultra Valhalla AF Offense ATK","930000":"All Units HP","930100":"All Units ATK","980204":"All Units Decreased DMG Taken","1001001":"All Units DMG Increase","990100":"All Units ATK","1003020":"Army Decreased DMG Taken","1003021":"Navy Decreased DMG Taken","1003022":"Air Force Decreased DMG Taken","1131006":"Garage/Dock/Hangar Capacity","960002":"All Units ATK Speed","9301160":"All Units ATK","9301161":"Army Attack","9301162":"Navy Attack","9301163":"Air Force ATK","9301164":"All Units ATK","9301170":"All Units HP","9301171":"Army HP Boost","9301172":"Navy HP Boost","9301173":"Air Force HP Boost","9301174":"All Units HP","93011601":"All Units ATK","93011701":"All Units HP","9990769":"All Units HP","990143":"Decreased DMG Taken (def)","990563":"All Units HP","29801011":"Army DMG Increase","29801021":"Navy DMG Increase","29902211":"Decreased DMG Taken (offensive)","10030201":"Army Decreased DMG Taken","20030201":"Army Decreased DMG Taken","21010161":"Navy Decreased DMG Taken","98020501":"Army Decreased DMG Taken"};
 
@@ -3373,20 +3383,17 @@
           nameSpan.textContent = HERO_NAMES[String(mapped.heroId)] || ('#' + mapped.heroId);
           cellWrap.appendChild(nameSpan);
           skillTd.appendChild(cellWrap);
-        } else if (parseInt(r.skill) > 900000) {
-          // Mecha skill — show mecha icon + label
-          var mechaCellWrap = el('span', { className: 'skill-cell-wrap' });
-          var mechaIconId = mechas && mechas.length > 0 && mechas[0].mechaId ? mechas[0].mechaId : null;
-          if (mechaIconId) {
-            var mechaImg = el('img', { src: ASSET_BASE + 'assets/mecha-icons/mecha_' + mechaIconId + '.png', className: 'skill-icon', alt: 'HT', width: '32', height: '32' });
-            mechaImg.onerror = function() { this.style.display = 'none'; };
-            mechaCellWrap.appendChild(mechaImg);
-          }
-          var mechaSpan = el('span', { className: 'skill-id' });
-          mechaSpan.textContent = 'HT';
-          mechaSpan.style.color = 'var(--yellow)';
-          mechaCellWrap.appendChild(mechaSpan);
-          skillTd.appendChild(mechaCellWrap);
+        } else if (SYSTEM_SKILLS[r.skill]) {
+          var sys = SYSTEM_SKILLS[r.skill];
+          var sysWrap = el('span', { className: 'skill-cell-wrap' });
+          var sysImg = el('img', { src: ASSET_BASE + 'assets/skill-icons/skill_' + sys.icon + '.png', className: 'skill-icon', alt: sys.label, width: '32', height: '32' });
+          sysImg.onerror = function() { this.style.display = 'none'; };
+          sysWrap.appendChild(sysImg);
+          var sysSpan = el('span', { className: 'skill-id' });
+          sysSpan.textContent = sys.label;
+          sysSpan.style.color = sys.color || 'var(--accent)';
+          sysWrap.appendChild(sysSpan);
+          skillTd.appendChild(sysWrap);
         } else {
           var idSpan = el('span', { className: 'skill-id' });
           idSpan.textContent = '#' + r.skill;
