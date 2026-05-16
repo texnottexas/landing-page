@@ -16207,6 +16207,33 @@
     return 'Dual ' + names.join(' + ') + ' (even balance)';
   }
 
+  // Surface the top 2 stat categories the new beast contributes to a swap.
+  // Mirrors boBeastScore's per-buff weighting so the reasoning text reflects
+  // the same logic the optimizer used to rank the swap.
+  function boReasoning(rec, prefs) {
+    if (!rec.to) return '';
+    var contribs = {};
+    function add(buffId, val) {
+      var cls = boClassifyBuff(buffId, true);
+      if (!cls) return;
+      var v = val * BO_STAT_WEIGHTS[cls.statKey] * BO_SCOPE_MULT[cls.scope] * boPlaystyleMult(cls.targetUnit, prefs);
+      if (v <= 0) return;
+      contribs[cls.statKey] = (contribs[cls.statKey] || 0) + v;
+    }
+    if (rec.to.mb) {
+      var raw = ebComputeBuffValue(rec.to.mb, boMaxStarFor(rec.to), boMaxLevelFor(rec.to), rec.to.pot, true);
+      if (raw != null) add(rec.to.mb, raw);
+    }
+    (rec.to.bb || []).forEach(function(bid) {
+      var raw2 = ebComputeBuffValue(bid, boMaxStarFor(rec.to), boMaxLevelFor(rec.to), rec.to.pot, false);
+      if (raw2 != null) add(bid, raw2);
+    });
+    var top = Object.keys(contribs).sort(function(a, b) { return contribs[b] - contribs[a]; }).slice(0, 2);
+    var LABELS = { march: 'March Size', dmgInc: 'DMG Increase', dmgDec: 'DMG Decrease', def: 'DEF', atk: 'ATK', hp: 'HP' };
+    if (!top.length) return '';
+    return 'Top contributions: ' + top.map(function(k) { return LABELS[k] || k; }).join(' + ') + '.';
+  }
+
   function boRenderSwapCard(rec, prefs, conditionWarnings) {
     var card = document.createElement('div');
     card.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.85rem;margin-bottom:.65rem;';
@@ -16276,6 +16303,14 @@
         ' and ' + rec.threshold.levelsFromCurrent + ' more level' + (rec.threshold.levelsFromCurrent === 1 ? '' : 's') +
         ' before this beats your current placement.';
       card.appendChild(t);
+    }
+
+    var why = boReasoning(rec, prefs);
+    if (why) {
+      var w = document.createElement('div');
+      w.style.cssText = 'font-size:.72rem;color:var(--muted);margin-top:.4rem;';
+      w.textContent = why;
+      card.appendChild(w);
     }
 
     return card;
