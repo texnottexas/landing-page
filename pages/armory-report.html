@@ -15573,6 +15573,127 @@
   // confirms 520100-103 is situational unit-RPS DEF.
   var BO_SUPPRESSION_OVERRIDE = null;
 
+  function boBeastScore(beast, atState, slot, playstyle) {
+    if (!beast) return 0;
+    var star = atState === 'maxOut' ? boMaxStarFor(beast) : (beast.st || 0);
+    var level = atState === 'maxOut' ? boMaxLevelFor(beast) : (beast.lv || 0);
+    var pot = beast.pot || 0;
+
+    var total = 0;
+    if (beast.mb) total += boScoreOneBuff(beast.mb, true, star, level, pot, playstyle);
+    (beast.bb || []).forEach(function(buffId) {
+      total += boScoreOneBuff(buffId, false, star, level, pot, playstyle);
+    });
+
+    if (slot && slot.enhanceRowId) {
+      var enhLevel = atState === 'maxOut' ? boMaxEnhanceLevel(slot.enhanceRowId) : (slot.enhanceLevel || 0);
+      if (enhLevel > 0) {
+        var enh = boEnhanceAt(slot.enhanceRowId, enhLevel);
+        if (enh && enh.buffId) {
+          var cls = boClassifyBuff(enh.buffId, true);
+          if (cls && cls.statKey !== 'elemental') {
+            total += enh.buffValue
+              * BO_STAT_WEIGHTS[cls.statKey]
+              * BO_SCOPE_MULT[cls.scope]
+              * boPlaystyleMult(cls.targetUnit, playstyle);
+          }
+        }
+      }
+    }
+
+    if (slot && slot.isTgLinked && slot.tgActive) {
+      var tg = boTgRefinementBuff(slot);
+      if (tg && tg.buffId) {
+        var tcls = boClassifyBuff(tg.buffId, true);
+        if (tcls && tcls.statKey !== 'elemental') {
+          total += tg.buffValue
+            * BO_STAT_WEIGHTS[tcls.statKey]
+            * BO_SCOPE_MULT[tcls.scope]
+            * boPlaystyleMult(tcls.targetUnit, playstyle);
+        }
+      }
+    }
+
+    return total;
+  }
+
+  function boScoreOneBuff(buffId, isMain, star, level, pot, playstyle) {
+    var cls = boClassifyBuff(buffId, isMain);
+    if (!cls) return 0;
+    if (cls.statKey === 'elemental') return 0;
+    var raw = ebComputeBuffValue(buffId, star, level, pot, isMain);
+    if (raw == null) return 0;
+    return raw
+      * BO_STAT_WEIGHTS[cls.statKey]
+      * BO_SCOPE_MULT[cls.scope]
+      * boPlaystyleMult(cls.targetUnit, playstyle);
+  }
+
+  var BO_MAX_STAR_BY_Q = { 3: 5, 4: 5, 5: 5 };
+  var BO_MAX_LV_BY_Q   = { 3: 60, 4: 70, 5: 80 };
+
+  function boMaxStarFor(beast) { return BO_MAX_STAR_BY_Q[beast.q || 5] || 5; }
+  function boMaxLevelFor(beast) { return BO_MAX_LV_BY_Q[beast.q || 5] || 80; }
+
+  // Reference data state, populated by boLoadOptimizerData.
+  // boEnhData is re-keyed by enhanceRowId (source JSON is keyed by holeId).
+  var boEnhData = null;
+  var boFieldConditions = null;
+  var boTgLinkData = null;
+  var boPlatforms = null;
+  var boHoleIndex = null;
+
+  function boEnhanceAt(rowId, level) {
+    if (!boEnhData) return null;
+    var entry = boEnhData[String(rowId)] || boEnhData[rowId];
+    if (!entry) return null;
+    var rows = entry.levels || entry; // tolerate either shape
+    if (!rows.find) return null;
+    return rows.find(function(r) { return r.level === level; }) || null;
+  }
+
+  function boMaxEnhanceLevel(rowId) {
+    if (!boEnhData) return 0;
+    var entry = boEnhData[String(rowId)] || boEnhData[rowId];
+    if (!entry) return 0;
+    var rows = entry.levels || entry;
+    if (!rows.length) return 0;
+    return rows[rows.length - 1].level;
+  }
+
+  function boTgRefinementBuff(slot) {
+    if (!boTgLinkData || !slot) return null;
+    return boTgLinkData[String(slot.holeId)] || boTgLinkData[slot.holeId] || null;
+  }
+
+  function boLoadOptimizerData() {
+    if (boEnhData && boFieldConditions && boPlatforms) return Promise.resolve();
+    // Source JSON is keyed by holeId; re-index by enhanceRowId for boEnhanceAt lookups.
+    var p1 = fetch('data/enigma-platform-enhance.json')
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        var byHole = j.platforms || j.enhance || j;
+        boEnhData = {};
+        Object.keys(byHole).forEach(function(k) {
+          var entry = byHole[k];
+          if (entry && entry.enhanceRowId != null) {
+            boEnhData[String(entry.enhanceRowId)] = entry;
+          }
+        });
+      });
+    var p2 = fetch('data/enigma-field-conditions.json')
+      .then(function(r) { return r.json(); })
+      .then(function(j) { boFieldConditions = j.conditions || j; });
+    var p3 = fetch('data/enigma-tg-refinement-link.json')
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(j) { boTgLinkData = j || {}; })
+      .catch(function() { boTgLinkData = {}; });
+    var p4 = fetch('data/enigma-platforms.json')
+      .then(function(r) { return r.json(); })
+      .then(function(j) { boPlatforms = j; });
+    return Promise.all([p1, p2, p3, p4]);
+  }
+
   // ── Enigma buff value computation (ported from enigma-viewer) ─────────────
   function ebGetBuffCategory(buffId) {
     var id = Number(buffId);
