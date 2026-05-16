@@ -16111,30 +16111,233 @@
   }
 
   // ── Beast Optimizer: UI ───────────────────────────────────────────────────
-  // Phase 4 will replace boRenderPlan with the real renderer. This stub keeps
-  // Phase 3 testable on its own: wizard saves prefs, plan view confirms the
-  // saved shape, and a reset button clears prefs to re-enter the wizard.
   function boRenderPlan(container, merged, siteKey, prefs) {
     while (container.firstChild) container.removeChild(container.firstChild);
-    var msg = document.createElement('p');
-    msg.className = 'empty-tab';
-    msg.style.padding = '1rem';
-    msg.textContent = 'Optimization plan renderer arrives in the next update.';
-    container.appendChild(msg);
-    var sub = document.createElement('p');
-    sub.style.cssText = 'font-size:.78rem;color:var(--muted);padding:0 1rem;';
-    sub.textContent = 'Mode: ' + (prefs && prefs.mode) + ', units: ' + JSON.stringify(prefs && prefs.units) + ', balance: ' + (prefs && prefs.balance);
-    container.appendChild(sub);
-    var reset = document.createElement('button');
-    reset.type = 'button';
-    reset.textContent = 'Change playstyle';
-    reset.style.cssText = 'margin:1rem;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.5rem .9rem;border-radius:6px;cursor:pointer;';
-    reset.onclick = function() {
+
+    var bench = null;
+    try { bench = ArmoryIdentity.getSupplement('bench', siteKey); } catch (e) {}
+    var resolved = ebResolveBeasts(merged.enigmas || {});
+    var owned = boBuildOwnedBeasts(merged, bench, resolved);
+    var currentPlan = boBuildCurrentPlan(resolved);
+    var active = boComputeActiveConditions(currentPlan, owned);
+
+    var playerEnhance = boReadPlayerEnhance(merged, siteKey) || {};
+    var tgRefinementByHole = boReadTgRefinement(merged, siteKey) || {};
+
+    var result = boOptimize(owned, currentPlan, active, prefs, playerEnhance, tgRefinementByHole);
+
+    // Header summary card
+    var header = document.createElement('div');
+    header.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem;margin-bottom:1rem;';
+
+    var hRow = document.createElement('div');
+    hRow.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:.5rem;';
+    header.appendChild(hRow);
+
+    // Left side: total gain
+    var statBlock = document.createElement('div');
+    var statLabel = document.createElement('div');
+    statLabel.style.cssText = 'font-size:.7rem;color:var(--muted);';
+    statLabel.textContent = 'Total power score';
+    statBlock.appendChild(statLabel);
+    var statValue = document.createElement('div');
+    statValue.style.cssText = 'font-size:1.3rem;font-weight:700;color:var(--green);';
+    statValue.textContent = '+' + Math.round(result.totalGainToday) +
+      ' today, +' + Math.round(result.totalGainAtMax) + ' at max-out';
+    statBlock.appendChild(statValue);
+    hRow.appendChild(statBlock);
+
+    // Right side: meta
+    var meta = document.createElement('div');
+    meta.style.cssText = 'font-size:.78rem;color:var(--muted);text-align:right;';
+    var metaLine1 = document.createElement('div');
+    metaLine1.textContent = result.recommendations.length + ' swap' +
+      (result.recommendations.length === 1 ? '' : 's') +
+      (result.conditionWarnings.length ? (', ' + result.conditionWarnings.length + ' condition warning' + (result.conditionWarnings.length === 1 ? '' : 's')) : '');
+    meta.appendChild(metaLine1);
+    var metaLine2 = document.createElement('div');
+    metaLine2.textContent = boPlaystyleLabel(prefs);
+    meta.appendChild(metaLine2);
+    hRow.appendChild(meta);
+
+    var actions = document.createElement('div');
+    actions.style.cssText = 'margin-top:.6rem;display:flex;gap:.5rem;';
+    var rerun = document.createElement('button');
+    rerun.type = 'button';
+    rerun.className = 'secondary';
+    rerun.style.cssText = 'padding:.35rem .75rem;font-size:.78rem;';
+    rerun.textContent = 'Edit preferences';
+    rerun.onclick = function() {
       try { localStorage.removeItem('beast_optimizer_prefs_' + siteKey); } catch (e) {}
-      renderBeastOptimizerSubTab(container, merged, siteKey);
+      boRenderWizard(container, merged, siteKey);
     };
-    container.appendChild(reset);
+    actions.appendChild(rerun);
+    header.appendChild(actions);
+    container.appendChild(header);
+
+    boRenderDataWarnings(container, merged, bench, owned);
+
+    if (!result.recommendations.length) {
+      var empty = document.createElement('div');
+      empty.style.cssText = 'background:var(--surface);border-left:3px solid var(--green);padding:1rem;border-radius:6px;';
+      empty.textContent = 'Your current placements are already optimal for ' + boPlaystyleLabel(prefs) +
+        '. Re-run with a different playstyle to compare.';
+      container.appendChild(empty);
+      return;
+    }
+
+    result.recommendations.forEach(function(rec) {
+      container.appendChild(boRenderSwapCard(rec, prefs, result.conditionWarnings));
+    });
+
+    var disc = document.createElement('p');
+    disc.style.cssText = 'font-size:.7rem;color:var(--muted);margin-top:1rem;font-style:italic;';
+    disc.textContent = 'This plan does not consider: elemental beast attributes for combat damage triangles, situational buffs (defending-buildings etc.), or shard or F101 upgrade costs.';
+    container.appendChild(disc);
   }
+
+  function boPlaystyleLabel(prefs) {
+    var UNITS = { 1: 'Army', 2: 'Navy', 3: 'Air' };
+    if (prefs.mode === 'triple') return 'Balanced (all 3 units)';
+    if (prefs.mode === 'mono') return 'Mono ' + UNITS[prefs.units[0]];
+    var names = prefs.units.map(function(u) { return UNITS[u]; });
+    if (prefs.balance === 'primarySecondary') {
+      return 'Dual ' + names[0] + ' + ' + names[1] + ' (primary ' + names[0] + ')';
+    }
+    return 'Dual ' + names.join(' + ') + ' (even balance)';
+  }
+
+  function boRenderSwapCard(rec, prefs, conditionWarnings) {
+    var card = document.createElement('div');
+    card.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.85rem;margin-bottom:.65rem;';
+
+    var head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;margin-bottom:.5rem;';
+
+    var fieldNames = ['', 'CPNT Mastery', 'Formation', 'Equip', 'Defense', 'Offense'];
+    var location = document.createElement('div');
+    var fieldStrong = document.createElement('strong');
+    fieldStrong.style.color = 'var(--text)';
+    fieldStrong.textContent = 'Field ' + rec.slot.fieldType + ' (' + fieldNames[rec.slot.fieldType] + ')';
+    location.appendChild(fieldStrong);
+    var slotSpan = document.createElement('span');
+    slotSpan.style.color = 'var(--muted)';
+    slotSpan.textContent = ' · Slot ' + rec.slot.order;
+    location.appendChild(slotSpan);
+    head.appendChild(location);
+
+    var src = document.createElement('span');
+    src.style.cssText = 'font-size:.7rem;color:var(--muted);';
+    src.textContent = rec.to.placement ? ('from Field ' + rec.to.placement.fieldType + ' Slot ' + rec.to.placement.slot) : 'from bench';
+    head.appendChild(src);
+    card.appendChild(head);
+
+    var swap = document.createElement('div');
+    swap.style.cssText = 'display:flex;align-items:center;gap:1rem;margin-bottom:.5rem;';
+    swap.appendChild(boBeastChip(rec.from, 'from'));
+    var arrow = document.createElement('div');
+    arrow.style.cssText = 'color:var(--muted);font-size:1.5rem;';
+    arrow.textContent = '→';
+    swap.appendChild(arrow);
+    swap.appendChild(boBeastChip(rec.to, 'to'));
+    card.appendChild(swap);
+
+    var stats = document.createElement('div');
+    stats.style.cssText = 'display:flex;gap:1rem;font-size:.82rem;margin-bottom:.4rem;flex-wrap:wrap;';
+    var gainTodayColor = rec.gainToday >= 0 ? 'var(--green)' : '#d29922';
+
+    var statToday = document.createElement('div');
+    var statTodayLbl = document.createElement('span');
+    statTodayLbl.style.color = 'var(--muted)';
+    statTodayLbl.textContent = 'Gain today: ';
+    var statTodayVal = document.createElement('strong');
+    statTodayVal.style.color = gainTodayColor;
+    statTodayVal.textContent = (rec.gainToday >= 0 ? '+' : '') + Math.round(rec.gainToday);
+    statToday.appendChild(statTodayLbl);
+    statToday.appendChild(statTodayVal);
+    stats.appendChild(statToday);
+
+    var statMax = document.createElement('div');
+    var statMaxLbl = document.createElement('span');
+    statMaxLbl.style.color = 'var(--muted)';
+    statMaxLbl.textContent = 'Gain at max: ';
+    var statMaxVal = document.createElement('strong');
+    statMaxVal.style.color = 'var(--green)';
+    statMaxVal.textContent = '+' + Math.round(rec.gainAtMax);
+    statMax.appendChild(statMaxLbl);
+    statMax.appendChild(statMaxVal);
+    stats.appendChild(statMax);
+    card.appendChild(stats);
+
+    if (rec.threshold) {
+      var t = document.createElement('div');
+      t.style.cssText = 'font-size:.78rem;color:#d29922;background:rgba(210,153,34,0.1);border-left:3px solid #d29922;padding:.4rem .6rem;border-radius:4px;margin-top:.4rem;';
+      t.textContent = 'Needs ' + rec.threshold.starsFromCurrent + ' more star' + (rec.threshold.starsFromCurrent === 1 ? '' : 's') +
+        ' and ' + rec.threshold.levelsFromCurrent + ' more level' + (rec.threshold.levelsFromCurrent === 1 ? '' : 's') +
+        ' before this beats your current placement.';
+      card.appendChild(t);
+    }
+
+    return card;
+  }
+
+  function boBeastChip(beast, label) {
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem;';
+    if (!beast) {
+      var empty = document.createElement('div');
+      empty.style.cssText = 'color:var(--muted);font-style:italic;font-size:.8rem;';
+      empty.textContent = 'empty slot';
+      wrap.appendChild(empty);
+      return wrap;
+    }
+    var name = document.createElement('div');
+    name.style.cssText = 'font-weight:600;color:var(--text);font-size:.85rem;';
+    name.textContent = boBeastDisplayName(beast);
+    wrap.appendChild(name);
+    var stats = document.createElement('div');
+    stats.style.cssText = 'font-size:.7rem;color:var(--muted);margin-top:.15rem;';
+    stats.textContent = 'Q' + beast.q + ' · ' + beast.st + '★ Lv ' + beast.lv + ' · pot ' + beast.pot;
+    wrap.appendChild(stats);
+    return wrap;
+  }
+
+  function boBeastDisplayName(beast) {
+    if (!beast) return '';
+    var TYPE_NAMES = { 1: 'Deer', 2: 'Ray', 3: 'Eagle', 4: 'Bear', 5: 'Lynx', 6: 'Kangaroo', 7: 'Horse', 8: 'Lion', 9: 'Egret' };
+    return (TYPE_NAMES[beast.type] || 'Beast') + ' (#' + beast.cfgId + ')';
+  }
+
+  function boRenderDataWarnings(container, merged, bench, owned) {
+    var warnings = [];
+
+    if (bench && bench.ts) {
+      var benchAge = (Date.now() - new Date(bench.ts).getTime()) / 86400000;
+      if (benchAge > 7) {
+        warnings.push('Bench snapshot is ' + Math.round(benchAge) + ' days old. Re-run the bookmarklet for fresh placements.');
+      }
+    }
+
+    if (bench && typeof bench.skippedDeployed === 'number') {
+      var deployedFound = owned.filter(function(b) { return b.placement; }).length;
+      if (bench.skippedDeployed > deployedFound) {
+        warnings.push('Battle reports cover only ' + deployedFound + ' of ' + bench.skippedDeployed +
+          ' deployed beasts. Add a battle report where you marched each formation for a complete plan.');
+      }
+    }
+
+    warnings.forEach(function(w) {
+      var div = document.createElement('div');
+      div.style.cssText = 'background:rgba(210,153,34,0.1);border-left:3px solid #d29922;padding:.5rem .75rem;border-radius:4px;margin-bottom:.5rem;font-size:.82rem;color:var(--text);';
+      div.textContent = w;
+      container.appendChild(div);
+    });
+  }
+
+  // Stubs filled in during Phase 5. For v1 returning empty is safe — the
+  // optimizer treats every slot as unenhanced and no TG bonuses active.
+  function boReadPlayerEnhance(merged, siteKey) { return {}; }
+  function boReadTgRefinement(merged, siteKey) { return {}; }
 
   function renderBeastOptimizerSubTab(container, merged, siteKey) {
     while (container.firstChild) container.removeChild(container.firstChild);
