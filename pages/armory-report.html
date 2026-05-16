@@ -15885,6 +15885,231 @@
     return boHoleIndex ? boHoleIndex[fieldType + ':' + order] : null;
   }
 
+  // ── Beast Optimizer: 5-pass greedy optimizer ─────────────────────────────
+  // Inputs:
+  //   ownedBeasts        — flat list from boBuildOwnedBeasts.
+  //   currentPlan        — {fieldType:{slotOrder:beastId|null}} from boBuildCurrentPlan.
+  //   activeConditions   — from boComputeActiveConditions(currentPlan, ownedBeasts).
+  //   playstyle          — {mode, units[], balance} (see boPlaystyleMult).
+  //   playerEnhance      — {<fieldType:order>: enhanceLevel} (caller supplied).
+  //   tgRefinementByHole — {holeId: bool} for active Titan Gear refinement links.
+  // Returns { recommendations[], totalGainToday, totalGainAtMax, conditionWarnings }.
+  function boOptimize(ownedBeasts, currentPlan, activeConditions, playstyle, playerEnhance, tgRefinementByHole) {
+    // Pass 0: build slot descriptors for every (field, order) in the plan.
+    var slots = [];
+    Object.keys(currentPlan).forEach(function(fidStr) {
+      var fid = Number(fidStr);
+      Object.keys(currentPlan[fid] || {}).forEach(function(orderStr) {
+        var order = Number(orderStr);
+        var key = fid + ':' + order;
+        var enhLevel = playerEnhance ? (playerEnhance[key] || 0) : 0;
+        var hole = boLookupHole(fid, order);
+        var tgActive = (hole && tgRefinementByHole) ? !!tgRefinementByHole[hole.id] : false;
+        var desc = boSlotDescriptor(fid, order, enhLevel, tgActive);
+        if (!desc) return;
+        slots.push({ key: key, fieldType: fid, order: order, desc: desc });
+      });
+    });
+
+    // Pass 1: compute each slot's impact ceiling (best at-max score among
+    // any eligible owned beast) and sort by ceiling descending.
+    slots.forEach(function(s) {
+      var best = 0;
+      ownedBeasts.forEach(function(b) {
+        if (!boBeastEligibleForSlot(b, s.desc)) return;
+        var sc = boBeastScore(b, 'maxOut', s.desc, playstyle);
+        if (sc > best) best = sc;
+      });
+      s.impactCeiling = best;
+    });
+    slots.sort(function(a, b) { return b.impactCeiling - a.impactCeiling; });
+
+    // Pass 2: greedy first assignment — highest-impact slot picks first.
+    var assignment = {};
+    var beastById = {};
+    ownedBeasts.forEach(function(b) { beastById[b.id] = b; });
+
+    slots.forEach(function(s) {
+      var bestBeast = null;
+      var bestScore = -Infinity;
+      ownedBeasts.forEach(function(b) {
+        if (!boBeastEligibleForSlot(b, s.desc)) return;
+        var sc = boBeastScore(b, 'maxOut', s.desc, playstyle);
+        if (sc > bestScore) { bestScore = sc; bestBeast = b; }
+      });
+      if (bestBeast) assignment[s.key] = bestBeast.id;
+    });
+
+    // Pass 3: conflict resolution. If a beast was assigned to multiple slots,
+    // keep it on the slot with the largest marginal gain over the next-best
+    // available beast; the losing slots re-pick from beasts that aren't yet
+    // single-claimed.
+    var maxIters = 36;
+    for (var iter = 0; iter < maxIters; iter++) {
+      var counts = {};
+      Object.keys(assignment).forEach(function(k) {
+        var bId = assignment[k];
+        counts[bId] = (counts[bId] || 0) + 1;
+      });
+      var conflicts = Object.keys(counts).filter(function(bId) { return counts[bId] > 1; });
+      if (!conflicts.length) break;
+
+      conflicts.forEach(function(bId) {
+        var contestSlots = slots.filter(function(s) { return assignment[s.key] === bId; });
+        var marginals = contestSlots.map(function(s) {
+          var b = beastById[bId];
+          var score = boBeastScore(b, 'maxOut', s.desc, playstyle);
+          var runnerUp = 0;
+          ownedBeasts.forEach(function(other) {
+            if (other.id === bId) return;
+            if (!boBeastEligibleForSlot(other, s.desc)) return;
+            if (counts[other.id] === 1) return;
+            var sc = boBeastScore(other, 'maxOut', s.desc, playstyle);
+            if (sc > runnerUp) runnerUp = sc;
+          });
+          return { slotKey: s.key, marginal: score - runnerUp };
+        });
+        marginals.sort(function(a, b) { return b.marginal - a.marginal; });
+        marginals.slice(1).forEach(function(m) {
+          var s = slots.find(function(x) { return x.key === m.slotKey; });
+          if (!s) { delete assignment[m.slotKey]; return; }
+          var alreadyClaimed = {};
+          Object.keys(assignment).forEach(function(k) {
+            if (k !== m.slotKey) alreadyClaimed[assignment[k]] = true;
+          });
+          var bestBeast = null;
+          var bestScore = -Infinity;
+          ownedBeasts.forEach(function(other) {
+            if (alreadyClaimed[other.id]) return;
+            if (!boBeastEligibleForSlot(other, s.desc)) return;
+            var sc = boBeastScore(other, 'maxOut', s.desc, playstyle);
+            if (sc > bestScore) { bestScore = sc; bestBeast = other; }
+          });
+          if (bestBeast) assignment[m.slotKey] = bestBeast.id;
+          else delete assignment[m.slotKey];
+        });
+      });
+    }
+
+    // Pass 4: field-condition guard. If a previously-active condition is no
+    // longer met after the proposed swaps, weigh the lost condition buff
+    // against the field-level score gain and roll back the field if the
+    // tradeoff is net-negative.
+    //
+    // NOTE: conditions don't surface buffId/buffValue in the current data
+    // set, so lostScore is effectively 0 and Pass 4 currently acts as a
+    // warning-only check via conditionWarnings. Wire real activation buffs
+    // in Phase 5.
+    var proposedPlan = {};
+    Object.keys(currentPlan).forEach(function(fid) {
+      proposedPlan[fid] = {};
+      Object.keys(currentPlan[fid] || {}).forEach(function(order) {
+        var key = fid + ':' + order;
+        proposedPlan[fid][order] = assignment[key] || null;
+      });
+    });
+    var newActive = boComputeActiveConditions(proposedPlan, ownedBeasts);
+    var newActiveSet = {};
+    newActive.forEach(function(c) { newActiveSet[c.fieldId + ':' + c.conditionId] = true; });
+
+    activeConditions.forEach(function(c) {
+      if (newActiveSet[c.fieldId + ':' + c.conditionId]) return;
+      var cls = boClassifyBuff(c.buffId, true);
+      var lostScore = 0;
+      if (cls && cls.statKey !== 'elemental') {
+        lostScore = (c.buffValue || 0)
+          * BO_STAT_WEIGHTS[cls.statKey]
+          * BO_SCOPE_MULT[cls.scope]
+          * boPlaystyleMult(cls.targetUnit, playstyle);
+      }
+      var fieldGain = 0;
+      slots.filter(function(s) { return s.fieldType === c.fieldId; }).forEach(function(s) {
+        var oldB = ownedBeasts.find(function(b) { return b.id === currentPlan[c.fieldId][s.order]; });
+        var newB = ownedBeasts.find(function(b) { return b.id === assignment[s.key]; });
+        var oldS = oldB ? boBeastScore(oldB, 'maxOut', s.desc, playstyle) : 0;
+        var newS = newB ? boBeastScore(newB, 'maxOut', s.desc, playstyle) : 0;
+        fieldGain += (newS - oldS);
+      });
+      if (fieldGain < lostScore) {
+        slots.filter(function(s) { return s.fieldType === c.fieldId; }).forEach(function(s) {
+          var orig = currentPlan[c.fieldId][s.order];
+          if (orig && assignment[s.key] !== orig) {
+            assignment[s.key] = orig;
+          }
+        });
+      }
+    });
+
+    // Pass 5: build the recommendation list. A recommendation is emitted
+    // only when the swap will eventually pay off (scoreMaxNew > scoreNowCur);
+    // if the new beast isn't ready today, attach the upgrade threshold so
+    // the UI can tell the player "needs N stars / M levels first."
+    var recs = [];
+    slots.forEach(function(s) {
+      var origId = currentPlan[s.fieldType] && currentPlan[s.fieldType][s.order];
+      var newId = assignment[s.key];
+      if (origId === newId) return;
+      var origBeast = origId ? beastById[origId] : null;
+      var newBeast = newId ? beastById[newId] : null;
+      if (!newBeast) return;
+
+      var scoreNowCur = origBeast ? boBeastScore(origBeast, 'current', s.desc, playstyle) : 0;
+      var scoreNowNew = boBeastScore(newBeast, 'current', s.desc, playstyle);
+      var scoreMaxNew = boBeastScore(newBeast, 'maxOut', s.desc, playstyle);
+
+      if (scoreMaxNew <= scoreNowCur) return;
+
+      var threshold = null;
+      if (scoreNowNew <= scoreNowCur) {
+        threshold = boUpgradeThreshold(newBeast, scoreNowCur, s.desc, playstyle);
+      }
+
+      recs.push({
+        slot: { fieldType: s.fieldType, order: s.order, holeId: s.desc.holeId },
+        from: origBeast,
+        to: newBeast,
+        gainToday: scoreNowNew - scoreNowCur,
+        gainAtMax: scoreMaxNew - scoreNowCur,
+        threshold: threshold
+      });
+    });
+
+    return {
+      recommendations: recs,
+      totalGainToday: recs.reduce(function(sum, r) { return sum + r.gainToday; }, 0),
+      totalGainAtMax: recs.reduce(function(sum, r) { return sum + r.gainAtMax; }, 0),
+      conditionWarnings: activeConditions.filter(function(c) {
+        return !newActiveSet[c.fieldId + ':' + c.conditionId];
+      })
+    };
+  }
+
+  // Find the smallest (stars, level) increment from a beast's current state
+  // that pushes its score above targetScore. Returns null if even the
+  // fully-maxed beast can't beat the target.
+  function boUpgradeThreshold(newBeast, targetScore, slotDesc, playstyle) {
+    var maxStar = boMaxStarFor(newBeast);
+    var maxLv = boMaxLevelFor(newBeast);
+    var curStar = newBeast.st || 0;
+    var curLv = newBeast.lv || 0;
+    for (var s = curStar; s <= maxStar; s++) {
+      var lvStart = s === curStar ? curLv : 0;
+      for (var l = lvStart; l <= maxLv; l++) {
+        var projected = Object.assign({}, newBeast, { st: s, lv: l });
+        var sc = boBeastScore(projected, 'current', slotDesc, playstyle);
+        if (sc > targetScore) {
+          return {
+            star: s,
+            level: l,
+            starsFromCurrent: s - curStar,
+            levelsFromCurrent: s === curStar ? (l - curLv) : (l + (maxLv - curLv))
+          };
+        }
+      }
+    }
+    return null;
+  }
+
   // ── Enigma buff value computation (ported from enigma-viewer) ─────────────
   function ebGetBuffCategory(buffId) {
     var id = Number(buffId);
