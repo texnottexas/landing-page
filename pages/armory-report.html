@@ -15521,6 +15521,58 @@
     return 0.0;
   }
 
+  // Map a buff_id to { statKey, scope, targetUnit }.
+  // targetUnit: 0=all, 1=Army, 2=Navy, 3=Air (last digit of buff_id).
+  function boClassifyBuff(buffId, isMain) {
+    var id = Number(buffId);
+    var lastDigit = id % 10;
+    var targetUnit = lastDigit;
+
+    if (id === 520000) return { statKey: 'march', scope: 'always', targetUnit: 0 };
+    if (id >= 520010 && id <= 520013) return { statKey: 'dmgInc', scope: 'always', targetUnit: targetUnit };
+    if (id >= 520020 && id <= 520023) return { statKey: 'dmgDec', scope: 'always', targetUnit: targetUnit };
+    if (id >= 520030 && id <= 520033) return { statKey: 'def', scope: 'always', targetUnit: targetUnit };
+
+    // ATK/HP main buffs (520040-520073). Phase 0 splits these into ATK and HP.
+    if (id >= 520040 && id <= 520073) {
+      var statKey = BO_ATKHP_MAP[id] || 'atk';
+      return { statKey: statKey, scope: 'always', targetUnit: targetUnit };
+    }
+
+    if (id >= 520100 && id <= 520103) {
+      return BO_SUPPRESSION_OVERRIDE || { statKey: 'elemental', scope: 'always', targetUnit: 0 };
+    }
+
+    if (id >= 520110 && id <= 520123) {
+      var statKey2 = BO_ATKHP_MAP[id] || 'atk';
+      return { statKey: statKey2, scope: 'offensive', targetUnit: targetUnit };
+    }
+
+    if (id >= 520130 && id <= 520143) {
+      var statKey3 = BO_ATKHP_MAP[id] || 'hp';
+      return { statKey: statKey3, scope: 'defensive', targetUnit: targetUnit };
+    }
+
+    return null;
+  }
+
+  // Per-buff-id ATK vs HP mapping, populated from Phase 0 label probe.
+  // TODO Phase 5: replace with Phase 0 probe results once labels are read.
+  var BO_ATKHP_MAP = {
+    520040: 'atk',  520041: 'atk',  520042: 'atk',  520043: 'atk',
+    520050: 'hp',   520051: 'hp',   520052: 'hp',   520053: 'hp',
+    520060: 'atk',  520061: 'atk',  520062: 'atk',  520063: 'atk',
+    520070: 'hp',   520071: 'hp',   520072: 'hp',   520073: 'hp',
+    520110: 'atk',  520111: 'atk',  520112: 'atk',  520113: 'atk',
+    520120: 'hp',   520121: 'hp',   520122: 'hp',   520123: 'hp',
+    520130: 'atk',  520131: 'atk',  520132: 'atk',  520133: 'atk',
+    520140: 'hp',   520141: 'hp',   520142: 'hp',   520143: 'hp',
+  };
+
+  // Set to { statKey: 'def', scope: 'defensive', targetUnit: 0 } if Tex
+  // confirms 520100-103 is situational unit-RPS DEF.
+  var BO_SUPPRESSION_OVERRIDE = null;
+
   // ── Enigma buff value computation (ported from enigma-viewer) ─────────────
   function ebGetBuffCategory(buffId) {
     var id = Number(buffId);
