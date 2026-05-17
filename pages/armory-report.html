@@ -15674,61 +15674,164 @@
   // TG-refinement-driven and capture Tex's actual gear refinement values
   // (player-specific; the optimizer scores Tex's armory so this is correct
   // for him).
+  // Per-slot rarity-bonus buff package, captured live 2026-05-16 from
+  // tipsData (EnigmaBeastFiledTip data.buffs.buffs + posBuffs). Each entry's
+  // `ratio` is the per-enhance-unit value: at the player's current platform
+  // level, the slot's effective buff value for that stat = ratio *
+  // playerEnhanceId. Scoring formula:
+  //   pct = (beast.pot / 16000) * ratio * playerEnhanceId / 10000
+  //   contribution = pct * BO_STAT_WEIGHTS[stat] * playstyle * scope
+  // For a max-potential beast at the probe-time level, pct collapses to
+  // capturedBuffValue / 10000 which is the literal in-game % the slot
+  // displays. Empty `entries: []` rows are slots whose tipsData did not
+  // populate during the probe (very low platform levels) and contribute
+  // zero rarity bonus until re-probed.
   var BO_RARITY_BUFF_TABLE = {
     1: {
-      1: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 0.30 }, { statKey: 'hp',  targetUnit: 0, weightRatio: 0.30 }],
-      2: [{ statKey: 'dmgDec', targetUnit: 0, weightRatio: 0.15 }, { statKey: 'hp',  targetUnit: 0, weightRatio: 0.45 }],
-      3: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 0.15 }, { statKey: 'dmgInc', targetUnit: 0, weightRatio: 0.05 }],
-      4: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 0.15 }, { statKey: 'dmgInc', targetUnit: 0, weightRatio: 0.05 }],
-      5: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 0.15 }, { statKey: 'dmgInc', targetUnit: 0, weightRatio: 0.05 }]
+      1: { holeId: 1, probeLevel: 15, probeEnhanceId: 19800, entries: [
+        { buffId: 9301160, statKey: 'atk', targetUnit: 0, ratio: 0.151515 },
+        { buffId: 9301170, statKey: 'hp',  targetUnit: 0, ratio: 0.151515 }
+      ] },
+      2: { holeId: 2, probeLevel: 15, probeEnhanceId: 9900, entries: [
+        { buffId: 1131002, statKey: 'dmgDec', targetUnit: 0, ratio: 0.151515 },
+        { buffId: 9301170, statKey: 'hp',     targetUnit: 0, ratio: 0.454545 }
+      ] },
+      3: { holeId: 3, probeLevel: 15, probeEnhanceId: 26400, entries: [
+        { buffId: 9301160, statKey: 'atk',    targetUnit: 0, ratio: 0.056818 },
+        { buffId: 1131001, statKey: 'dmgInc', targetUnit: 0, ratio: 0.018939 }
+      ] },
+      4: { holeId: 4, probeLevel: 15, probeEnhanceId: 26400, entries: [
+        { buffId: 9301160, statKey: 'atk',    targetUnit: 0, ratio: 0.056818 },
+        { buffId: 1131001, statKey: 'dmgInc', targetUnit: 0, ratio: 0.018939 }
+      ] },
+      5: { holeId: 5, probeLevel: 15, probeEnhanceId: 26400, entries: [
+        { buffId: 9301160, statKey: 'atk',    targetUnit: 0, ratio: 0.056818 },
+        { buffId: 1131001, statKey: 'dmgInc', targetUnit: 0, ratio: 0.018939 }
+      ] }
     },
     2: {
-      1: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 0.40 }, { statKey: 'hp',  targetUnit: 0, weightRatio: 0.40 }],
-      2: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 1.50 }, { statKey: 'hp',  targetUnit: 0, weightRatio: 1.50 }],
-      3: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 1.50 }, { statKey: 'hp',  targetUnit: 0, weightRatio: 1.50 }],
-      4: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 1.65 }, { statKey: 'hp',  targetUnit: 0, weightRatio: 1.65 }],
-      5: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 7.00 }, { statKey: 'hp',  targetUnit: 0, weightRatio: 7.00 }],
-      6: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 7.00 }, { statKey: 'hp',  targetUnit: 0, weightRatio: 7.00 }],
-      7: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 7.75 }, { statKey: 'hp',  targetUnit: 0, weightRatio: 7.75 }]
+      1: { holeId: 6, probeLevel: 15, probeEnhanceId: 9900, entries: [
+        { buffId: 990202,  statKey: 'def', targetUnit: 0, ratio: 0.202020 },
+        { buffId: 1000021, statKey: 'hp',  targetUnit: 0, ratio: 0.606061 }
+      ] },
+      2: { holeId: 7, probeLevel: 10, probeEnhanceId: 8000, entries: [
+        { buffId: 1000022, statKey: 'atk', targetUnit: 0, ratio: 3.750000 }
+      ] },
+      3: { holeId: 8, probeLevel: 10, probeEnhanceId: 8000, entries: [
+        { buffId: 1000021, statKey: 'hp',  targetUnit: 0, ratio: 3.750000 }
+      ] },
+      4: { holeId: 9, probeLevel: 10, probeEnhanceId: 8000, entries: [
+        { buffId: 1000021, statKey: 'hp',  targetUnit: 0, ratio: 4.125000 }
+      ] },
+      5: { holeId: 10, probeLevel: 10, probeEnhanceId: 6000, entries: [
+        { buffId: 1000024, statKey: 'dmgDec', targetUnit: 0, ratio: 3.333333, positional: true },
+        { buffId: 1000023, statKey: 'dmgInc', targetUnit: 0, ratio: 3.333333, positional: true },
+        { buffId: 1000022, statKey: 'atk',    targetUnit: 0, ratio: 8.333333, positional: true },
+        { buffId: 1000021, statKey: 'hp',     targetUnit: 0, ratio: 8.333333, positional: true }
+      ] },
+      6: { holeId: 11, probeLevel: 10, probeEnhanceId: 6000, entries: [
+        { buffId: 1000024, statKey: 'dmgDec', targetUnit: 0, ratio: 3.333333, positional: true },
+        { buffId: 1000023, statKey: 'dmgInc', targetUnit: 0, ratio: 3.333333, positional: true },
+        { buffId: 1000022, statKey: 'atk',    targetUnit: 0, ratio: 8.333333, positional: true },
+        { buffId: 1000021, statKey: 'hp',     targetUnit: 0, ratio: 8.333333, positional: true }
+      ] },
+      7: { holeId: 12, probeLevel: 10, probeEnhanceId: 6000, entries: [
+        { buffId: 1000024, statKey: 'dmgDec', targetUnit: 0, ratio: 3.750000, positional: true },
+        { buffId: 1000023, statKey: 'dmgInc', targetUnit: 0, ratio: 3.750000, positional: true },
+        { buffId: 1000022, statKey: 'atk',    targetUnit: 0, ratio: 9.166667, positional: true },
+        { buffId: 1000021, statKey: 'hp',     targetUnit: 0, ratio: 9.166667, positional: true }
+      ] }
     },
     3: {
-      1: [{ statKey: 'atk',    targetUnit: 1, weightRatio: 1.80 }, { statKey: 'hp',  targetUnit: 1, weightRatio: 0.30 }],
-      2: [{ statKey: 'atk',    targetUnit: 3, weightRatio: 1.80 }, { statKey: 'hp',  targetUnit: 3, weightRatio: 0.30 }],
-      3: [{ statKey: 'atk',    targetUnit: 2, weightRatio: 1.80 }, { statKey: 'hp',  targetUnit: 2, weightRatio: 0.30 }],
-      4: [{ statKey: 'atk',    targetUnit: 1, weightRatio: 1.40 }],
-      5: [{ statKey: 'atk',    targetUnit: 2, weightRatio: 1.40 }],
-      6: [{ statKey: 'atk',    targetUnit: 3, weightRatio: 1.40 }]
+      1: { holeId: 13, probeLevel: 10, probeEnhanceId: 16000, entries: [
+        { buffId: 9301161, statKey: 'atk', targetUnit: 1, ratio: 1.125000 },
+        { buffId: 9301171, statKey: 'hp',  targetUnit: 1, ratio: 0.187500 }
+      ] },
+      2: { holeId: 14, probeLevel: 10, probeEnhanceId: 16000, entries: [
+        { buffId: 9301163, statKey: 'atk', targetUnit: 3, ratio: 1.125000 },
+        { buffId: 9301173, statKey: 'hp',  targetUnit: 3, ratio: 0.187500 }
+      ] },
+      3: { holeId: 15, probeLevel: 2,  probeEnhanceId: 1600, entries: [] },
+      4: { holeId: 16, probeLevel: 10, probeEnhanceId: 24000, entries: [
+        { buffId: 9301161, statKey: 'atk', targetUnit: 1, ratio: 0.583333 }
+      ] },
+      5: { holeId: 17, probeLevel: 1,  probeEnhanceId: 1200, entries: [] },
+      6: { holeId: 18, probeLevel: 10, probeEnhanceId: 24000, entries: [
+        { buffId: 9301163, statKey: 'atk', targetUnit: 3, ratio: 0.583333 }
+      ] }
     },
     4: {
-      1: [{ statKey: 'atk',    targetUnit: 1, weightRatio: 0.60 }, { statKey: 'hp',  targetUnit: 1, weightRatio: 1.50 }],
-      2: [{ statKey: 'atk',    targetUnit: 2, weightRatio: 0.60 }, { statKey: 'hp',  targetUnit: 2, weightRatio: 1.50 }],
-      3: [{ statKey: 'atk',    targetUnit: 3, weightRatio: 0.60 }, { statKey: 'hp',  targetUnit: 3, weightRatio: 1.50 }],
-      4: [{ statKey: 'hp',     targetUnit: 0, weightRatio: 0.60 }],
-      5: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 0.15 }, { statKey: 'hp',  targetUnit: 0, weightRatio: 0.45 }],
-      6: [{ statKey: 'hp',     targetUnit: 0, weightRatio: 0.90 }],
-      7: [{ statKey: 'dmgDec', targetUnit: 1, weightRatio: 0.4518 }, { statKey: 'dmgDec', targetUnit: 3, weightRatio: 0.3852 }],
-      8: [{ statKey: 'dmgDec', targetUnit: 1, weightRatio: 0.3528 }, { statKey: 'dmgDec', targetUnit: 3, weightRatio: 0.2364 }],
-      9: [{ statKey: 'def',    targetUnit: 1, weightRatio: 0.1470 }, { statKey: 'def',    targetUnit: 3, weightRatio: 0.1248 }]
+      1: { holeId: 19, probeLevel: 6, probeEnhanceId: 2430, entries: [
+        { buffId: 9301161, statKey: 'atk', targetUnit: 1, ratio: 2.469136 },
+        { buffId: 9301171, statKey: 'hp',  targetUnit: 1, ratio: 6.172840 }
+      ] },
+      2: { holeId: 20, probeLevel: 1, probeEnhanceId: 270,  entries: [] },
+      3: { holeId: 21, probeLevel: 6, probeEnhanceId: 2430, entries: [
+        { buffId: 9301163, statKey: 'atk', targetUnit: 3, ratio: 2.469136 },
+        { buffId: 9301173, statKey: 'hp',  targetUnit: 3, ratio: 6.172840 }
+      ] },
+      4: { holeId: 22, probeLevel: 5, probeEnhanceId: 6480, entries: [
+        { buffId: 9301170, statKey: 'hp', targetUnit: 0, ratio: 0.925926 }
+      ] },
+      5: { holeId: 23, probeLevel: 5, probeEnhanceId: 6480, entries: [
+        { buffId: 9301160, statKey: 'atk', targetUnit: 0, ratio: 0.231481 },
+        { buffId: 9301170, statKey: 'hp',  targetUnit: 0, ratio: 0.694444 }
+      ] },
+      6: { holeId: 24, probeLevel: 6, probeEnhanceId: 4860, entries: [
+        { buffId: 9301170, statKey: 'hp', targetUnit: 0, ratio: 1.851852 }
+      ] },
+      7: { holeId: 25, probeLevel: 5, probeEnhanceId: 1200, entries: [
+        { buffId: 1101015, statKey: 'dmgDec', targetUnit: 1, ratio: 3.765000 },
+        { buffId: 1101017, statKey: 'dmgDec', targetUnit: 3, ratio: 3.210000 }
+      ] },
+      8: { holeId: 26, probeLevel: 5, probeEnhanceId: 1200, entries: [
+        { buffId: 1101015, statKey: 'dmgDec', targetUnit: 1, ratio: 2.940000 },
+        { buffId: 1101017, statKey: 'dmgDec', targetUnit: 3, ratio: 1.970000 }
+      ] },
+      9: { holeId: 27, probeLevel: 5, probeEnhanceId: 800, entries: [
+        { buffId: 990205, statKey: 'def', targetUnit: 3, ratio: 1.560000 },
+        { buffId: 990203, statKey: 'def', targetUnit: 1, ratio: 1.837500 }
+      ] }
     },
     5: {
-      1: [{ statKey: 'atk',    targetUnit: 3, weightRatio: 1.00 }, { statKey: 'hp',  targetUnit: 3, weightRatio: 0.90 }],
-      2: [{ statKey: 'atk',    targetUnit: 2, weightRatio: 1.00 }, { statKey: 'hp',  targetUnit: 2, weightRatio: 0.90 }],
-      3: [{ statKey: 'atk',    targetUnit: 1, weightRatio: 1.00 }, { statKey: 'hp',  targetUnit: 1, weightRatio: 0.90 }],
-      4: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 0.45 }, { statKey: 'hp',  targetUnit: 0, weightRatio: 0.15 }],
-      5: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 0.60 }],
-      6: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 0.90 }],
-      7: [{ statKey: 'dmgInc', targetUnit: 1, weightRatio: 0.2778 }, { statKey: 'dmgInc', targetUnit: 3, weightRatio: 0.2460 }],
-      8: [{ statKey: 'dmgInc', targetUnit: 1, weightRatio: 0.2214 }, { statKey: 'dmgInc', targetUnit: 3, weightRatio: 0.3096 }],
-      9: [{ statKey: 'dmgInc', targetUnit: 1, weightRatio: 0.3756 }, { statKey: 'dmgInc', targetUnit: 3, weightRatio: 0.3252 }]
+      1: { holeId: 28, probeLevel: 6, probeEnhanceId: 3240, entries: [
+        { buffId: 9301163, statKey: 'atk', targetUnit: 3, ratio: 3.086420 },
+        { buffId: 9301173, statKey: 'hp',  targetUnit: 3, ratio: 2.777778 }
+      ] },
+      2: { holeId: 29, probeLevel: 1, probeEnhanceId: 360,  entries: [] },
+      3: { holeId: 30, probeLevel: 5, probeEnhanceId: 2880, entries: [
+        { buffId: 9301161, statKey: 'atk', targetUnit: 1, ratio: 3.472222 },
+        { buffId: 9301171, statKey: 'hp',  targetUnit: 1, ratio: 3.125000 }
+      ] },
+      4: { holeId: 31, probeLevel: 5, probeEnhanceId: 8640, entries: [
+        { buffId: 9301160, statKey: 'atk', targetUnit: 0, ratio: 0.520833 },
+        { buffId: 9301170, statKey: 'hp',  targetUnit: 0, ratio: 0.173611 }
+      ] },
+      5: { holeId: 32, probeLevel: 6, probeEnhanceId: 9720, entries: [
+        { buffId: 9301160, statKey: 'atk', targetUnit: 0, ratio: 0.617284 }
+      ] },
+      6: { holeId: 33, probeLevel: 5, probeEnhanceId: 5760, entries: [
+        { buffId: 9301160, statKey: 'atk', targetUnit: 0, ratio: 1.562500 }
+      ] },
+      7: { holeId: 34, probeLevel: 5, probeEnhanceId: 1600, entries: [
+        { buffId: 980103, statKey: 'dmgInc', targetUnit: 3, ratio: 1.537500 },
+        { buffId: 980101, statKey: 'dmgInc', targetUnit: 1, ratio: 1.736250 }
+      ] },
+      8: { holeId: 35, probeLevel: 5, probeEnhanceId: 1600, entries: [
+        { buffId: 980103, statKey: 'dmgInc', targetUnit: 3, ratio: 1.935000 },
+        { buffId: 980101, statKey: 'dmgInc', targetUnit: 1, ratio: 1.383750 }
+      ] },
+      9: { holeId: 36, probeLevel: 5, probeEnhanceId: 1600, entries: [
+        { buffId: 980103, statKey: 'dmgInc', targetUnit: 3, ratio: 2.032500 },
+        { buffId: 980101, statKey: 'dmgInc', targetUnit: 1, ratio: 2.347500 }
+      ] }
     }
   };
 
-  // Fallback only used if a slot somehow has no entry above (should never
-  // happen now that all 36 slots are covered).
-  var BO_RARITY_DEFAULT_WEIGHTS = [
-    { statKey: 'atk', targetUnit: 0, weightRatio: 0.15 },
-    { statKey: 'hp',  targetUnit: 0, weightRatio: 0.15 }
-  ];
+  // Fallback for slots whose probe came back empty (low-level platforms).
+  // No rarity bonus contribution until tipsData is re-captured at a higher
+  // level.
+  var BO_RARITY_DEFAULT_WEIGHTS = { entries: [] };
 
   // TG refinement linkage from system_enhancement table (probed 2026-05-16).
   // Each enigma slot in Fields 4 and 5 maps to a Titan Gear slot (1-6); the
@@ -15765,59 +15868,116 @@
     return f ? f[order] || null : null;
   }
 
-  // Resolve the active rarity-bonus weights for a slot. Dynamic overrides
-  // (computed live from player gear) take priority over the BO_RARITY_BUFF_TABLE
-  // fallback. Used by both boComputeRarityBonus and boRarityBonusBreakdown so
-  // both score and per-stat split stay in sync.
-  function boResolveSlotWeights(slot) {
+  // Resolve the per-slot buff entries. Dynamic overrides for Field 4/5
+  // TG-refinement slots (computed live from player gear via boReadTgRefinement)
+  // take priority over the static BO_RARITY_BUFF_TABLE.
+  function boResolveSlotEntries(slot) {
     var key = slot.fieldType + ':' + slot.order;
     var dyn = BO_TG_DYNAMIC_OVERRIDES && BO_TG_DYNAMIC_OVERRIDES[key];
-    if (dyn) return dyn;
-    return (BO_RARITY_BUFF_TABLE[slot.fieldType] && BO_RARITY_BUFF_TABLE[slot.fieldType][slot.order])
-           || BO_RARITY_DEFAULT_WEIGHTS;
+    if (dyn) {
+      // Dynamic overrides keep the legacy array shape: [{statKey,targetUnit,weightRatio}].
+      // Adapt them into the new entries shape so the formula stays uniform.
+      // The dynamic override's weightRatio is already a per-enhance-unit value
+      // calibrated to the player's gear, so we treat it as `ratio` directly.
+      return dyn.map(function(w) {
+        return { statKey: w.statKey, targetUnit: w.targetUnit, ratio: w.weightRatio, dynamic: true };
+      });
+    }
+    var slotData = (BO_RARITY_BUFF_TABLE[slot.fieldType] || {})[slot.order];
+    return slotData && slotData.entries ? slotData.entries : [];
   }
 
+  // Player's slot-enhance value at their current platform level. The buff
+  // table stored each slot's per-enhance-unit ratio at probe time; for any
+  // other level, the effective buff value scales linearly with this lookup.
+  // Falls back to the slot's probe-time enhance id (i.e. the table is treated
+  // as authoritative for that level) when player level data is missing.
+  function boPlayerEnhanceId(slot) {
+    var slotData = (BO_RARITY_BUFF_TABLE[slot.fieldType] || {})[slot.order];
+    var level = slot && slot.enhanceLevel;
+    if (level && slot.enhanceRowId && boEnhData) {
+      var enh = boEnhanceAt(slot.enhanceRowId, level);
+      if (enh && enh.enhanceValue != null) return enh.enhanceValue;
+    }
+    return slotData ? slotData.probeEnhanceId : 0;
+  }
+
+  // Slot's rarity-bonus contribution to score. The game's effect_buff values
+  // are stored in basis-10000 units (raw / 10000 = ratio, e.g. 3000 = 30%).
+  // ebComputeBuffValue divides by 100 to land on display-percent (where the
+  // optimizer scales 1 pt = 1% stat); we use the same /100 convention here so
+  // beast-buff and slot-rarity-bonus contributions stay on the same scale.
+  //
+  // effectiveBuffValue  = entry.ratio * playerEnhanceId    (basis-10000)
+  // displayPct          = effectiveBuffValue / 100         (% stat)
+  // scaledByBeast       = displayPct * (beast.pot / 16000)
+  // score               = scaledByBeast * BO_STAT_WEIGHTS[stat] * playstyle * scope
+  //
+  // Platform level is the player's CURRENT level (not max) on both Today and
+  // At max-out views per Tex - repeaters are too expensive to assume max
+  // platforms in projections. Only the beast's potential / star / level
+  // ascends on max-out.
+  // Per-entry display-percent. Static entries (from the captured BUFF_TABLE)
+  // scale by the player's current platform enhance value; dynamic entries
+  // (from TG refinement aggregated off the player's gear) carry their own
+  // display fraction so they bypass the platform scaling.
+  function boEntryDisplayPct(entry, potRatio, playerEnhId) {
+    if (entry.dynamic) {
+      // entry.ratio was set from gearBuffValue / 10000 in boReadTgRefinement,
+      // i.e. it is already a stat ratio (0.30 = 30%). Multiply by 100 to land
+      // on the optimizer's 1-pt-equals-1% display-percent scale.
+      return potRatio * entry.ratio * 100;
+    }
+    return potRatio * entry.ratio * playerEnhId / 100;
+  }
+
+  // Slot's rarity-bonus contribution to score. The game's effect_buff values
+  // are stored in basis-10000 units (raw / 10000 = ratio, e.g. 3000 = 30%).
+  // ebComputeBuffValue divides by 100 to land on display-percent (where the
+  // optimizer scales 1 pt = 1% stat); we use the same /100 convention here so
+  // beast-buff and slot-rarity-bonus contributions stay on the same scale.
+  //
+  // Platform level is the player's CURRENT level (not max) on both Today and
+  // At max-out views per Tex - repeaters are too expensive to assume max
+  // platforms in projections. Only the beast's potential / star / level
+  // ascends on max-out.
   function boComputeRarityBonus(beast, slot, atState, playstyle) {
     if (!beast || !slot) return 0;
     var pot = atState === 'maxOut' ? Math.max(beast.pot || 0, 16000) : (beast.pot || 0);
     if (pot <= 0) return 0;
-    var hole = boLookupHole(slot.fieldType, slot.order);
-    if (!hole || !hole.maxEnhanceValue) return 0;
-    var cap = parseInt(String(hole.maxEnhanceValue).split('|')[1], 10);
-    if (!cap) return 0;
-
-    var rarityBoostPct = Math.ceil(pot / 16) * cap / 100000;
-    var weights = boResolveSlotWeights(slot);
-
+    var entries = boResolveSlotEntries(slot);
+    if (!entries.length) return 0;
+    var playerEnhId = boPlayerEnhanceId(slot);
+    var potRatio = pot / 16000;
     var total = 0;
-    weights.forEach(function(w) {
-      var psm = boPlaystyleMult(w.targetUnit, playstyle);
-      total += rarityBoostPct * w.weightRatio * (BO_STAT_WEIGHTS[w.statKey] || 0) * psm;
-    });
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      if (!e.dynamic && !playerEnhId) continue;
+      var psm = boPlaystyleMult(e.targetUnit, playstyle);
+      var pct = boEntryDisplayPct(e, potRatio, playerEnhId);
+      total += pct * (BO_STAT_WEIGHTS[e.statKey] || 0) * psm;
+    }
     return total;
   }
 
-  // Per-stat rarity bonus split for the modal delta table. Returns the same
-  // {atk, hp, def, dmgInc, dmgDec, march} shape as boBeastStatProfile, with
-  // each value being the rarity-bonus contribution in raw percent (or +N for
-  // march, though march is never in BO_RARITY_BUFF_TABLE).
+  // Per-stat rarity bonus split (display-percent) for the modal delta table.
   function boRarityBonusBreakdown(beast, slot, atState, playstyle) {
     var out = { atk: 0, hp: 0, def: 0, dmgInc: 0, dmgDec: 0, march: 0 };
     if (!beast || !slot) return out;
     var pot = atState === 'maxOut' ? Math.max(beast.pot || 0, 16000) : (beast.pot || 0);
     if (pot <= 0) return out;
-    var hole = boLookupHole(slot.fieldType, slot.order);
-    if (!hole || !hole.maxEnhanceValue) return out;
-    var cap = parseInt(String(hole.maxEnhanceValue).split('|')[1], 10);
-    if (!cap) return out;
-    var rarityBoostPct = Math.ceil(pot / 16) * cap / 100000;
-    var weights = boResolveSlotWeights(slot);
-    weights.forEach(function(w) {
-      var psm = boPlaystyleMult(w.targetUnit, playstyle);
-      if (out[w.statKey] != null) {
-        out[w.statKey] += rarityBoostPct * w.weightRatio * psm;
+    var entries = boResolveSlotEntries(slot);
+    if (!entries.length) return out;
+    var playerEnhId = boPlayerEnhanceId(slot);
+    var potRatio = pot / 16000;
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      if (!e.dynamic && !playerEnhId) continue;
+      var psm = boPlaystyleMult(e.targetUnit, playstyle);
+      if (out[e.statKey] != null) {
+        out[e.statKey] += boEntryDisplayPct(e, potRatio, playerEnhId) * psm;
       }
-    });
+    }
     return out;
   }
 
@@ -17061,12 +17221,18 @@
     // beast's own buffs and is computed via the verified rarity-boost formula.
     if (slot) {
       var pot = atState === 'maxOut' ? Math.max(beast.pot || 0, 16000) : (beast.pot || 0);
-      var hole = boLookupHole(slot.fieldType, slot.order);
-      if (hole && hole.maxEnhanceValue && pot > 0) {
-        var cap = parseInt(String(hole.maxEnhanceValue).split('|')[1], 10);
-        if (cap > 0) {
-          var rarityBoostPct = Math.ceil(pot / 16) * cap / 100000;
+      if (pot > 0) {
+        var slotData = (BO_RARITY_BUFF_TABLE[slot.fieldType] || {})[slot.order];
+        var slotKey = slot.fieldType + ':' + slot.order;
+        var isDynamic = !!(BO_TG_DYNAMIC_OVERRIDES && BO_TG_DYNAMIC_OVERRIDES[slotKey]);
+        var hasEntries = isDynamic || (slotData && slotData.entries && slotData.entries.length);
+        if (hasEntries) {
+          // Display the sum of per-stat display-percents (matches the
+          // breakdown table in the swap-impact section).
+          var bd = boRarityBonusBreakdown(beast, slot, atState, prefs);
+          var sumPct = (bd.atk || 0) + (bd.hp || 0) + (bd.def || 0) + (bd.dmgInc || 0) + (bd.dmgDec || 0);
           var weighted = boComputeRarityBonus(beast, slot, atState, prefs);
+          var playerEnhId = boPlayerEnhanceId(slot);
           var rarityRow = document.createElement('div');
           rarityRow.style.cssText = 'display:flex;justify-content:space-between;gap:.4rem;font-size:.7rem;line-height:1.3;padding:.3rem 0;border-top:1px solid var(--border);';
           var rLeft = document.createElement('div');
@@ -17077,19 +17243,16 @@
           rLeft.appendChild(rName);
           var rMeta = document.createElement('div');
           rMeta.style.cssText = 'font-size:.62rem;color:var(--muted);margin-top:.1rem;line-height:1.3;';
-          var slotKey = slot.fieldType + ':' + slot.order;
-          var isDynamic = !!(BO_TG_DYNAMIC_OVERRIDES && BO_TG_DYNAMIC_OVERRIDES[slotKey]);
-          var hasFieldWeights = !!(BO_RARITY_BUFF_TABLE[slot.fieldType] && BO_RARITY_BUFF_TABLE[slot.fieldType][slot.order]);
           rMeta.textContent = isDynamic
-            ? 'Beast potential boosts the slot (weights computed live from your TG refinement)'
-            : (hasFieldWeights ? 'Beast potential boosts the slot (verified from in-game tipsData)' : 'Beast potential boosts the slot (fallback weights)');
+            ? 'Live from your TG refinement (gear-driven)'
+            : ('Platform Lv ' + (slot.enhanceLevel || 0) + ' (verified from in-game tipsData)');
           rLeft.appendChild(rMeta);
           rarityRow.appendChild(rLeft);
           var rVal = document.createElement('div');
           rVal.style.cssText = 'text-align:right;flex-shrink:0;';
           var rRaw = document.createElement('div');
           rRaw.style.cssText = 'color:var(--text);font-weight:600;font-size:.72rem;';
-          rRaw.textContent = '+' + rarityBoostPct.toFixed(2) + '%';
+          rRaw.textContent = '+' + sumPct.toFixed(2) + '%';
           rVal.appendChild(rRaw);
           var rW = document.createElement('div');
           rW.style.cssText = 'font-size:.6rem;color:' + (weighted > 0.5 ? 'var(--green)' : 'var(--muted)') + ';';
