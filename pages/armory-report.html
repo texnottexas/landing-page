@@ -28446,7 +28446,17 @@
 
     var icon = document.createElement('div');
     icon.style.cssText = 'width:64px;height:80px;border:2px solid var(--border);border-radius:6px;background:#0d1117 center/cover no-repeat;flex-shrink:0;';
-    if (fm && fm.icon) icon.style.backgroundImage = 'url("' + fm.icon + '")';
+    if (fm && fm.icon) {
+      // fm.icon is a relative path from data/formation-v2.json (e.g.
+      // "assets/formation-icons/formation_1001_shark.png"). The page's
+      // CSP img-src whitelist excludes 'self' (only raw.githubusercontent
+      // + a few remotes are allowed), so a same-origin URL would render
+      // an empty box. Route through ASSET_BASE so the CDN URL satisfies
+      // CSP. Idempotent: if a future data file uses an absolute URL,
+      // leave it alone.
+      var iconUrl = /^https?:\/\//.test(fm.icon) ? fm.icon : (ASSET_BASE + fm.icon);
+      icon.style.backgroundImage = 'url("' + iconUrl + '")';
+    }
     if (!formationData) icon.style.opacity = '0.4';
     head.appendChild(icon);
 
