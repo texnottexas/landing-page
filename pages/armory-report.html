@@ -16005,6 +16005,20 @@
   function boMaxStarFor(beast) { return BO_MAX_STAR_BY_Q[beast.q || 5] || 5; }
   function boMaxLevelFor(beast) { return BO_MAX_LV_BY_Q[beast.q || 5] || 100; }
 
+  // Numeric tiebreak when two beasts score within the epsilon used by the
+  // optimizer. Higher potential beats lower; within equal potential, higher
+  // rarity / stars / level wins. Pure numeric so the result is stable across
+  // re-runs. Falls back to 0 for a missing beast.
+  function boBeastTiebreak(b) {
+    if (!b) return 0;
+    var pot = Number(b.pot) || 0;
+    var q   = Number(b.q)   || 0;
+    var st  = Number(b.st)  || 0;
+    var lv  = Number(b.lv)  || 0;
+    return pot * 1000 + q * 1e5 + st * 100 + lv;
+  }
+  var BO_TIEBREAK_EPSILON = 0.5;
+
   // Fodder needed to bring a beast from its current stars up to targetStars.
   function boFodderForStarUp(fromStars, toStars) {
     var total = 0;
@@ -16409,7 +16423,14 @@
         if (!boBeastEligibleForSlot(b, s.desc, { maxOut: true })) return;
         if (!boMarchEligible(s, b)) return;
         var sc = boBeastScore(b, 'maxOut', s.desc, playstyle);
-        if (sc > bestScore) { bestScore = sc; bestBeast = b; }
+        if (!bestBeast) { bestScore = sc; bestBeast = b; return; }
+        var diff = sc - bestScore;
+        if (diff > BO_TIEBREAK_EPSILON) {
+          bestScore = sc; bestBeast = b;
+        } else if (Math.abs(diff) <= BO_TIEBREAK_EPSILON &&
+                   boBeastTiebreak(b) > boBeastTiebreak(bestBeast)) {
+          bestScore = sc; bestBeast = b;
+        }
       });
       if (bestBeast) assignment[s.key] = bestBeast.id;
     });
@@ -16458,7 +16479,14 @@
             if (!boBeastEligibleForSlot(other, s.desc, { maxOut: true })) return;
             if (!boMarchEligible(s, other)) return;
             var sc = boBeastScore(other, 'maxOut', s.desc, playstyle);
-            if (sc > bestScore) { bestScore = sc; bestBeast = other; }
+            if (!bestBeast) { bestScore = sc; bestBeast = other; return; }
+            var diff = sc - bestScore;
+            if (diff > BO_TIEBREAK_EPSILON) {
+              bestScore = sc; bestBeast = other;
+            } else if (Math.abs(diff) <= BO_TIEBREAK_EPSILON &&
+                       boBeastTiebreak(other) > boBeastTiebreak(bestBeast)) {
+              bestScore = sc; bestBeast = other;
+            }
           });
           if (bestBeast) assignment[m.slotKey] = bestBeast.id;
           else delete assignment[m.slotKey];
@@ -16659,6 +16687,144 @@
     };
   }
 
+  // Talent-tree effect ids run outside the 520xxx beast-buff range that
+  // boClassifyBuff knows. This map covers everything that shows up in
+  // data/formation-v2.json with a non-zero effect_value plus the rest of
+  // the 9301xxx army-mastery family. Format mirrors boClassifyBuff's
+  // return shape so the baseline function can route through one path.
+  // Tier / spec / extra-march effects (100017-100024) are structural buffs
+  // that don't translate to a stat % and are intentionally absent.
+  var BO_TALENT_BUFF_CLASS = {
+    // Formation V2 level buffs
+    1000021: { statKey: 'hp',     scope: 'always',    targetUnit: 0 },
+    1000022: { statKey: 'atk',    scope: 'always',    targetUnit: 0 },
+    1000023: { statKey: 'dmgInc', scope: 'always',    targetUnit: 0 },
+    1000024: { statKey: 'dmgDec', scope: 'always',    targetUnit: 0 },
+    // Generic stat buffs from the talent tree
+    1001001: { statKey: 'dmgInc', scope: 'always',    targetUnit: 0 },
+    1101040: { statKey: 'dmgDec', scope: 'always',    targetUnit: 0 },
+    1131001: { statKey: 'dmgInc', scope: 'always',    targetUnit: 0 },
+    1131002: { statKey: 'dmgDec', scope: 'always',    targetUnit: 0 },
+    // Army-mastery family (9301 prefix). Trailing digit: 0 all units,
+    // 1 Army, 2 Navy, 3 Air Force.
+    9301160: { statKey: 'atk', scope: 'always', targetUnit: 0 },
+    9301161: { statKey: 'atk', scope: 'always', targetUnit: 1 },
+    9301162: { statKey: 'atk', scope: 'always', targetUnit: 2 },
+    9301163: { statKey: 'atk', scope: 'always', targetUnit: 3 },
+    9301170: { statKey: 'hp',  scope: 'always', targetUnit: 0 },
+    9301171: { statKey: 'hp',  scope: 'always', targetUnit: 1 },
+    9301172: { statKey: 'hp',  scope: 'always', targetUnit: 2 },
+    9301173: { statKey: 'hp',  scope: 'always', targetUnit: 3 },
+    // Cross-faction DMG bonuses route to the defending side per Tex's stat
+    // equivalencies, but they're conditional offensive bonuses so we drop
+    // them to half (offensive scope) like the other narrowly-scoped buffs.
+    9301201: { statKey: 'dmgInc', scope: 'offensive', targetUnit: 2 }, // Navy vs Army → primary Navy
+    9301202: { statKey: 'dmgInc', scope: 'offensive', targetUnit: 3 }, // Air  vs Navy → primary Air
+    9301203: { statKey: 'dmgInc', scope: 'offensive', targetUnit: 1 }, // Army vs Air  → primary Army
+    // DEF family — 990202 is the canonical all-units DEF; 990208/9 are
+    // narrowly-scoped (attacking / defending buildings) and weighted lower.
+    990202: { statKey: 'def', scope: 'always',    targetUnit: 0 },
+    990208: { statKey: 'def', scope: 'offensive', targetUnit: 0 },
+    990209: { statKey: 'def', scope: 'defensive', targetUnit: 0 }
+  };
+
+  // Aggregate the player's talent-tree contribution into per-stat totals
+  // (display-percent, so 1.0 == +1.00% of that stat). Walks supp.talents,
+  // decodes each info-id against ref.talent_tree to find the level's
+  // effect_id + effect_value, then routes via the talent-buff classifier
+  // (with a fallback to boClassifyBuff for any overlap). Returns null when
+  // there's not enough data to compute a meaningful baseline.
+  //
+  // The baseline is FYI context for the player: it doesn't change the
+  // optimizer's marginal-gain scoring (talents are a constant across all
+  // beast placements), but it lets the player see what foundation their
+  // talents already provide before comparing beast swaps.
+  function boComputeTalentBaseline(talents, tree, playstyle) {
+    if (!talents || !talents.length || !tree) return null;
+    if (typeof decodeFormationTalentInfoId !== 'function') return null;
+    var out = { atk: 0, hp: 0, def: 0, dmgInc: 0, dmgDec: 0, march: 0 };
+    var any = false;
+    talents.forEach(function(infoId) {
+      var d = decodeFormationTalentInfoId(infoId, tree);
+      if (!d.groupId || d.level <= 0) return;
+      var node = tree[d.groupId] || tree[String(d.groupId)];
+      if (!node || !node.levels) return;
+      // Find the level row matching this info id (supports switchable nodes).
+      var lvRow = null;
+      for (var i = 0; i < node.levels.length; i++) {
+        if (node.levels[i].id === infoId) { lvRow = node.levels[i]; break; }
+      }
+      if (!lvRow) lvRow = node.levels[d.level];
+      if (!lvRow) return;
+      var buffId = Number(lvRow.effect_id);
+      var raw = Number(lvRow.effect_value);
+      if (!buffId || !raw) return;
+      var cls = BO_TALENT_BUFF_CLASS[buffId] || boClassifyBuff(buffId, true);
+      if (!cls || cls.statKey === 'elemental') return;
+      if (out[cls.statKey] == null) return;
+      // effect_value is in 10000-basis (200 == 2.00%). Convert to display-%.
+      var pct = raw / 100;
+      // Apply playstyle weighting so the displayed baseline reflects what
+      // those talents are actually worth for the player's selected mode.
+      var psm = boPlaystyleMult(cls.targetUnit, playstyle);
+      out[cls.statKey] += pct * (BO_SCOPE_MULT[cls.scope] || 1) * psm;
+      any = true;
+    });
+    return any ? out : null;
+  }
+
+  // Tiny inline chip row used by the optimizer header to expose the player's
+  // out-of-field foundation (Component Mastery levels per unit + talent-tree
+  // contributions). Players asked for visibility into the constants behind
+  // their stat pool so they can sanity-check swap recommendations.
+  function boRenderFoundationRow(armyMastery, talentBaseline) {
+    var hasArmy = armyMastery && Object.keys(armyMastery).length;
+    var hasBaseline = talentBaseline && Object.keys(talentBaseline).some(function(k) {
+      return Math.abs(talentBaseline[k]) >= 0.01;
+    });
+    if (!hasArmy && !hasBaseline) return null;
+
+    var row = document.createElement('div');
+    row.style.cssText = 'margin-top:.65rem;padding-top:.55rem;border-top:1px dashed var(--border);display:flex;flex-wrap:wrap;gap:.45rem;align-items:center;';
+
+    var label = document.createElement('div');
+    label.style.cssText = 'font-size:.66rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-right:.2rem;';
+    label.textContent = 'Foundation';
+    row.appendChild(label);
+
+    function chip(text, accent) {
+      var c = document.createElement('span');
+      c.style.cssText = 'display:inline-block;background:var(--surface);border:1px solid var(--border);border-left:3px solid ' + accent + ';border-radius:4px;padding:.18rem .45rem;font-size:.7rem;color:var(--text);line-height:1.3;';
+      c.textContent = text;
+      return c;
+    }
+
+    if (hasArmy) {
+      var labels = { '101': 'Army', '201': 'Navy', '301': 'Air' };
+      var accents = { '101': '#3fb950', '201': '#388bfd', '301': '#d29922' };
+      ['101', '201', '301'].forEach(function(code) {
+        var raw = armyMastery[code];
+        if (raw == null) return;
+        var lvl = Number(raw) - Number(code);
+        if (!isFinite(lvl) || lvl <= 0) return;
+        row.appendChild(chip(labels[code] + ' CM Lv ' + lvl + '/20', accents[code]));
+      });
+    }
+
+    if (hasBaseline) {
+      var STAT_ORDER = ['atk', 'hp', 'dmgInc', 'dmgDec', 'def', 'march'];
+      var STAT_LABEL = { atk: 'ATK', hp: 'HP', dmgInc: 'DMG Inc', dmgDec: 'DMG Dec', def: 'DEF', march: 'March' };
+      STAT_ORDER.forEach(function(k) {
+        var v = talentBaseline[k];
+        if (!v || Math.abs(v) < 0.01) return;
+        var txt = '+' + v.toFixed(1) + '% ' + STAT_LABEL[k] + ' (talents)';
+        row.appendChild(chip(txt, '#bc8cff'));
+      });
+    }
+
+    return row;
+  }
+
   function boRenderPlan(container, merged, siteKey, prefs) {
     while (container.firstChild) container.removeChild(container.firstChild);
 
@@ -16769,6 +16935,33 @@
     };
     actions.appendChild(rerun);
     header.appendChild(actions);
+
+    // Foundation context row (Component Mastery + talent-tree baseline).
+    // Sync-renders with whatever data we have right now; if the formation
+    // supplement carries a talent tree, the row is replaced async once
+    // data/formation-v2.json finishes loading. Optional throughout, so a
+    // missing supplement or missing armyMastery just elides that side.
+    var foundationMount = document.createElement('div');
+    header.appendChild(foundationMount);
+
+    var armyMastery = merged && merged.armyMastery ? merged.armyMastery : null;
+    var fSupp = null;
+    try { fSupp = siteKey ? ArmoryIdentity.getSupplement('formation', siteKey) : null; } catch (e) {}
+    function mountFoundation(baseline) {
+      while (foundationMount.firstChild) foundationMount.removeChild(foundationMount.firstChild);
+      var row = boRenderFoundationRow(armyMastery, baseline);
+      if (row) foundationMount.appendChild(row);
+    }
+    mountFoundation(null);
+    if (fSupp && Array.isArray(fSupp.talents) && fSupp.talents.length && typeof loadFormationRef === 'function') {
+      loadFormationRef().then(function(ref) {
+        try {
+          var baseline = boComputeTalentBaseline(fSupp.talents, ref && ref.talent_tree, prefs);
+          if (baseline) mountFoundation(baseline);
+        } catch (e) {}
+      }).catch(function() {});
+    }
+
     container.appendChild(header);
 
     boRenderDataWarnings(container, merged, bench, owned);
