@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com https://www.clarity.ms https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; connect-src 'self' https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com https://raw.githubusercontent.com https://*.clarity.ms https://c.bing.com; img-src 'self' https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com data: https://*.clarity.ms https://c.bing.com; frame-ancestors 'none'; frame-src https://translate.google.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com https://www.clarity.ms https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; connect-src 'self' https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com https://raw.githubusercontent.com https://*.clarity.ms https://c.bing.com; img-src 'self' https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com data: https://knight-cdn.akamaized.net https://h5.topwargame.com https://*.clarity.ms https://c.bing.com; frame-ancestors 'none'; frame-src https://translate.google.com;">
 <title>S2864 Battle Plan</title>
 <style>
 :root{
@@ -135,6 +135,24 @@ table.power.power-collapsed .hidden-row{display:none;}
 .opp-other-fights h5{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-bottom:.4rem;}
 .opp-other-list{display:flex;flex-wrap:wrap;gap:.3rem;font-size:.7rem;}
 .opp-other-pill{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:.15rem .45rem;color:var(--text);font-family:'SF Mono',Consolas,monospace;}
+.opp-card-section{margin-top:.85rem;padding-top:.65rem;border-top:1px solid var(--border);}
+.opp-card-section h5{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-bottom:.5rem;}
+.opp-headline{display:flex;align-items:center;gap:.55rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.5rem .6rem;margin-bottom:.5rem;}
+.opp-headline .av{width:34px;height:34px;border-radius:50%;background:var(--card);border:1px solid var(--border);object-fit:cover;flex-shrink:0;}
+.opp-headline .av-fb{width:34px;height:34px;border-radius:50%;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;color:var(--muted);flex-shrink:0;}
+.opp-headline .hl-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:.1rem;}
+.opp-headline .hl-name{font-size:.85rem;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.opp-headline .hl-sub{font-size:.66rem;color:var(--muted);}
+.opp-headline .hl-score{font-size:.85rem;font-weight:700;color:var(--accent);font-family:'SF Mono',Consolas,monospace;}
+.opp-merit-list{display:flex;flex-direction:column;gap:.25rem;max-height:260px;overflow-y:auto;}
+.opp-merit-row{display:flex;align-items:center;gap:.45rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.3rem .5rem;font-size:.72rem;}
+.opp-merit-row .av{width:22px;height:22px;border-radius:50%;background:var(--card);border:1px solid var(--border);object-fit:cover;flex-shrink:0;}
+.opp-merit-row .av-fb{width:22px;height:22px;border-radius:50%;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;color:var(--muted);flex-shrink:0;}
+.opp-merit-row .rk{color:var(--muted);font-family:'SF Mono',Consolas,monospace;font-size:.65rem;width:3.2rem;flex-shrink:0;}
+.opp-merit-row .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--text);}
+.opp-merit-row .sc{color:var(--accent);font-family:'SF Mono',Consolas,monospace;font-size:.7rem;}
+.opp-card-summary{display:flex;flex-wrap:wrap;gap:.3rem .8rem;font-size:.7rem;color:var(--muted);margin:.3rem 0 .55rem;}
+.opp-card-summary b{color:var(--text);font-weight:700;font-family:'SF Mono',Consolas,monospace;}
 .fight-bonus{font-size:.68rem;padding:.3rem .45rem;border-radius:6px;background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.28);color:var(--green);display:flex;align-items:center;gap:.35rem;}
 .fight-bonus svg{flex-shrink:0;}
 
@@ -944,7 +962,102 @@ body{top:0!important;}
       modal.appendChild(ofSect);
     }
 
+    // Storm-duel-style server intel — top merit player + roster
+    var card = (rd.sectorServerCards || []).find(function(c){ return c.sid === fight.opponent; });
+    if (card){
+      appendServerCardSections(modal, card);
+    }
+
     return modal;
+  }
+  function safeAvatarUrl(v){
+    if (!v) return null;
+    if (/^https?:/i.test(v)) return v;
+    // sprite-frame key → topwar headpic CDN
+    return 'https://h5.topwargame.com/DynRes/images/headpic/' + v + '.png';
+  }
+  function meritShort(n){
+    if (!n) return '0';
+    if (n >= 1e9) return (n/1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+    if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+    return String(n);
+  }
+  function makeAvatar(url, fallbackChar, size){
+    if (url){
+      var img = document.createElement('img');
+      img.className = 'av';
+      img.src = url;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.onerror = function(){
+        var ph = document.createElement('div');
+        ph.className = 'av-fb';
+        ph.textContent = (fallbackChar || '?').slice(0,1).toUpperCase();
+        if (this.parentNode) this.parentNode.replaceChild(ph, this);
+      };
+      return img;
+    }
+    var ph = document.createElement('div');
+    ph.className = 'av-fb';
+    ph.textContent = (fallbackChar || '?').slice(0,1).toUpperCase();
+    return ph;
+  }
+  function appendServerCardSections(modal, card){
+    var sect = el('div', 'opp-card-section');
+    sect.appendChild(el('h5', null, 'Server intel — S' + card.sid));
+
+    // Summary chips
+    var summary = el('div', 'opp-card-summary');
+    summary.appendChild(el('span', null, 'Sector #'));
+    var srk = el('b', null, String(card.sectorRank));
+    summary.appendChild(srk);
+    summary.appendChild(document.createTextNode(' · Global #'));
+    summary.appendChild(el('b', null, String(card.overallRank)));
+    summary.appendChild(document.createTextNode(' · UD score '));
+    summary.appendChild(el('b', null, String(card.warzoneScore)));
+    summary.appendChild(document.createTextNode(' · Fame '));
+    summary.appendChild(el('b', null, meritShort(card.fame)));
+    summary.appendChild(document.createTextNode(' · '));
+    summary.appendChild(el('b', null, (card.meritPlayerCount||0) + ' ranked'));
+    summary.appendChild(document.createTextNode(' · Total merit '));
+    summary.appendChild(el('b', null, meritShort(card.totalMerit||0)));
+    summary.appendChild(document.createTextNode(' · Top-5 avg '));
+    summary.appendChild(el('b', null, meritShort(card.meritTop5Avg||0)));
+    sect.appendChild(summary);
+
+    // Headline player (top merit)
+    if (card.topPlayer){
+      var hl = el('div', 'opp-headline');
+      hl.appendChild(makeAvatar(safeAvatarUrl(card.topPlayer.avatar), card.topPlayer.name || 'P'));
+      var meta = el('div', 'hl-meta');
+      meta.appendChild(el('div', 'hl-name', card.topPlayer.name || ('UID ' + card.topPlayer.uid)));
+      meta.appendChild(el('div', 'hl-sub', 'Top merit · global rank #' + (card.topPlayer.rank || '?')));
+      hl.appendChild(meta);
+      hl.appendChild(el('div', 'hl-score', meritShort(card.topPlayer.score||0)));
+      sect.appendChild(hl);
+    }
+
+    // Top merit roster (up to 10)
+    var top = card.meritTop10 || [];
+    if (top.length){
+      sect.appendChild(el('h5', null, 'Top merit players'));
+      var list = el('div', 'opp-merit-list');
+      top.forEach(function(p){
+        var row = el('div', 'opp-merit-row');
+        row.appendChild(makeAvatar(safeAvatarUrl(p.avatar), p.name || 'P'));
+        row.appendChild(el('span', 'rk', '#' + p.rank));
+        row.appendChild(el('span', 'nm', p.name || ('UID ' + p.uid)));
+        row.appendChild(el('span', 'sc', meritShort(p.score||0)));
+        list.appendChild(row);
+      });
+      sect.appendChild(list);
+    } else {
+      var none = el('div', null, '— no top-merit hits for this server —');
+      none.style.cssText = 'font-size:.7rem;color:var(--muted);padding:.4rem;text-align:center;';
+      sect.appendChild(none);
+    }
+    modal.appendChild(sect);
   }
   function fmtNum(n){ return (n||0).toLocaleString(); }
   // Parse "Lv. 2 Neutral City #2015" -> { num: 2015, level: 2 }
