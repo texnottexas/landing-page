@@ -15505,12 +15505,13 @@
 
   // targetUnit: 0 = all, 1 = Army, 2 = Navy, 3 = Air
   // All-units buffs (targetUnit=0) stack across every unit type in the
-  // playstyle. Each unit type contributes by its own playstyle weight and the
-  // contributions sum, so a dual primary+secondary playstyle gives 1.75x
-  // (1.0 + 0.75), dual even gives 2.0x, triple gives 3.0x, and mono gives 1.0x.
+  // playstyle. Dual primary+secondary gives 1.75x (1.0 + 0.75), dual even
+  // gives 2.0x, triple gives 3.0x. Mono is bumped above a unit-specific stat
+  // (1.5x rather than 1.0x) because the player's roster grows over time and
+  // an all-units buff carries forward as they branch into a second unit type.
   function boPlaystyleMult(targetUnit, playstyle) {
     if (targetUnit === 0) {
-      if (playstyle.mode === 'mono') return 1.0;
+      if (playstyle.mode === 'mono') return 1.5;
       if (playstyle.mode === 'triple') return 3.0;
       return playstyle.balance === 'even' ? 2.0 : 1.75;
     }
@@ -15581,11 +15582,17 @@
     520070: 'hp',   520071: 'hp',   520072: 'hp',   520073: 'hp',
   };
 
-  function boBeastScore(beast, atState, slot, playstyle) {
+  // boBeastScore accepts an optional conditionMet flag (default true). When
+  // false, the slot's rarity bonus contribution is skipped because the
+  // slot's unlock condition is unmet under whatever plan is being scored.
+  // The beast's main / sub buffs and the slot's enhance + TG refinement
+  // contributions are unaffected - only the slot-level rarity bonus is gated.
+  function boBeastScore(beast, atState, slot, playstyle, conditionMet) {
     if (!beast) return 0;
     var star = atState === 'maxOut' ? boMaxStarFor(beast) : (beast.st || 0);
     var level = atState === 'maxOut' ? boMaxLevelFor(beast) : (beast.lv || 0);
     var pot = beast.pot || 0;
+    var gated = conditionMet === false; // undefined / true / non-false → not gated
 
     var total = 0;
     if (beast.mb) total += boScoreOneBuff(beast.mb, true, star, level, pot, playstyle);
@@ -15597,9 +15604,10 @@
     // into a "rarity boost %" that becomes effective ATK / HP / DEF / etc. via
     // the slot's stat-package weights. Formula proven against game UI:
     //   rarityBoostPct = ceil(potential/16) * slot.maxEnhanceCap / 100000
-    // Field 1 weights are verified; Fields 2-5 fall back to a conservative
-    // approximation until each field's tipsData is captured per-slot.
-    total += boComputeRarityBonus(beast, slot, atState, playstyle);
+    // Skipped entirely when the slot's unlock condition is unmet (gated).
+    if (!gated) {
+      total += boComputeRarityBonus(beast, slot, atState, playstyle);
+    }
 
     if (slot && slot.enhanceRowId) {
       var enhLevel = atState === 'maxOut' ? boMaxEnhanceLevel(slot.enhanceRowId) : (slot.enhanceLevel || 0);
@@ -15648,17 +15656,21 @@
   // populates _tipsData.hAttr[].data.buffs.buffs[] with {buffId, value} entries
   // (value is raw integer; ratio = value / 10000). All 36 slots probed.
   //
-  // Field 1 matches the verified memory exactly. Fields 2 has Formation Bonus
-  // and Combat Bonus buffs which are tech-multiplier rather than direct stats;
-  // we approximate them as 50/50 ATK + HP weighting per the bonus value, since
-  // formation tech itself distributes across multiple stats. Field 2 slots 5-7
-  // are position-based (posBuffs across 5 formation positions): we sum the
-  // per-position buff values to get a total weight, same 50/50 split. Field 3
-  // Navy entries (slots 3, 5) were inferred from sibling Army/Air patterns
-  // because Tex has not unlocked Navy equip - the slot structure is identical,
-  // only targetUnit changes. Fields 4-5 slots 7-9 are TG-refinement-driven and
-  // capture Tex's actual gear refinement values (player-specific; the
-  // optimizer scores Tex's armory so this is correct for him).
+  // Field 1 matches the verified memory exactly. Field 2 slots 1-4 carry
+  // separate {buffId: 1000021 HP, value: X} and {buffId: 1000022 ATK, value: X}
+  // entries in the live tipsData probe - the game emits HP and ATK at equal
+  // raw values per slot, so the ATK + HP pair below is the actual per-stat
+  // split, NOT a 50/50 approximation. Slots 5-7 are positional (posBuffs across
+  // 5 formation positions) and the weights sum the per-position buff values
+  // - the ATK / HP equality there is again the game's own design, not a guess.
+  // (Combat Bonus 990202 was not encountered in Field 2 slots during the
+  //  probe; if it appears in future re-probes it should weight as DEF, not
+  //  ATK + HP.) Field 3 Navy entries (slots 3, 5) were inferred from sibling
+  // Army / Air patterns because Tex has not unlocked Navy equip - the slot
+  // structure is identical, only targetUnit changes. Fields 4-5 slots 7-9 are
+  // TG-refinement-driven and capture Tex's actual gear refinement values
+  // (player-specific; the optimizer scores Tex's armory so this is correct
+  // for him).
   var BO_RARITY_BUFF_TABLE = {
     1: {
       1: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 0.30 }, { statKey: 'hp',  targetUnit: 0, weightRatio: 0.30 }],
@@ -15819,10 +15831,25 @@
   }
 
   var BO_MAX_STAR_BY_Q = { 3: 5, 4: 5, 5: 5 };
-  var BO_MAX_LV_BY_Q   = { 3: 60, 4: 70, 5: 80 };
+  // In-game level caps per rarity: Rare 60, Epic 80, Legendary 100 (verified
+  // by Tex). Previous values (4: 70, 5: 80) projected beasts beyond their
+  // real cap, which surfaced as "Lv 100" labels on Epic beasts.
+  var BO_MAX_LV_BY_Q   = { 3: 60, 4: 80, 5: 100 };
+  // Same-rarity fodder beasts needed to upgrade an enigma beast to N stars
+  // (cumulative cost is the sum from stars+1 up to target). Verified by Tex.
+  var BO_STAR_UP_FODDER = { 1: 0, 2: 2, 3: 4, 4: 6, 5: 8 };
 
   function boMaxStarFor(beast) { return BO_MAX_STAR_BY_Q[beast.q || 5] || 5; }
-  function boMaxLevelFor(beast) { return BO_MAX_LV_BY_Q[beast.q || 5] || 80; }
+  function boMaxLevelFor(beast) { return BO_MAX_LV_BY_Q[beast.q || 5] || 100; }
+
+  // Fodder needed to bring a beast from its current stars up to targetStars.
+  function boFodderForStarUp(fromStars, toStars) {
+    var total = 0;
+    for (var s = (fromStars | 0) + 1; s <= (toStars | 0); s++) {
+      total += BO_STAR_UP_FODDER[s] || 0;
+    }
+    return total;
+  }
 
   // Reference data state, populated by boLoadOptimizerData.
   // boEnhData is re-keyed by enhanceRowId (source JSON is keyed by holeId).
@@ -15951,14 +15978,88 @@
     return plan;
   }
 
-  // Walk every condition row and emit one entry per matched (fieldId, conditionId).
-  // Real data shape: conditions[id] = { id, conditionType, conditionPara1/2/3,
-  // descRendered, descLoc, ... }. There is NO buffId/buffValue on conditions —
-  // they're pure gating descriptions. The deployed beast supplies the buff.
-  //
+  // Condition rows are numbered 1..36 globally and align to fields in the
+  // same cumulative order the slots are: Field 1 owns ids 1..5, Field 2 owns
+  // 6..12, Field 3 owns 13..18, Field 4 owns 19..27, Field 5 owns 28..36.
+  // Verified against data/enigma-field-conditions.json + EB_FIELD_SLOT_COUNTS.
+  // Each slot has exactly one condition (1:1 mapping). The condition is the
+  // unlock gate for that slot's rarity bonus contribution; when unmet, the
+  // slot still holds its beast but its rarity bonus deactivates. (The beast's
+  // main / sub buffs still count - only the slot-level rarity bonus is gated.)
+  var BO_FIELD_CONDITION_OFFSETS = { 1: 0, 2: 5, 3: 12, 4: 18, 5: 27 };
+  function boConditionIdForSlot(fieldId, slotOrder) {
+    var off = BO_FIELD_CONDITION_OFFSETS[fieldId];
+    return off == null ? null : (off + Number(slotOrder));
+  }
+  function boSlotForConditionId(conditionId) {
+    var cid = Number(conditionId);
+    if (cid >= 1 && cid <= 5) return { fieldId: 1, slotOrder: cid };
+    if (cid >= 6 && cid <= 12) return { fieldId: 2, slotOrder: cid - 5 };
+    if (cid >= 13 && cid <= 18) return { fieldId: 3, slotOrder: cid - 12 };
+    if (cid >= 19 && cid <= 27) return { fieldId: 4, slotOrder: cid - 18 };
+    if (cid >= 28 && cid <= 36) return { fieldId: 5, slotOrder: cid - 27 };
+    return null;
+  }
+
+  // Test a single condition row against a single field's beasts.
   //   conditionType 0 = Fill All Slots
   //   conditionType 1 = deploy N (para1) at rarity para2 or higher
   //   conditionType 6 = deploy N (para1) at >= stars (para2) at rarity (para3)
+  function boConditionMatches(c, fieldBeasts, allFilled) {
+    if (!c) return false;
+    if (c.conditionType === 0) return allFilled;
+    if (c.conditionType === 1) {
+      var need = Number(c.conditionPara1 || 0);
+      var rar  = Number(c.conditionPara2 || 0);
+      var have = fieldBeasts.filter(function(b) { return b.q >= rar; }).length;
+      return allFilled && have >= need;
+    }
+    if (c.conditionType === 6) {
+      var need6 = Number(c.conditionPara1 || 0);
+      var star6 = Number(c.conditionPara2 || 0);
+      var rar6  = Number(c.conditionPara3 || 0);
+      var have6 = fieldBeasts.filter(function(b) {
+        return b.q >= rar6 && b.st >= star6;
+      }).length;
+      return allFilled && have6 >= need6;
+    }
+    return false;
+  }
+
+  // Build { "fieldId:slotOrder": metBoolean } for a plan. A slot's condition is
+  // tested against the same field's beasts only (per condition→slot mapping).
+  function boBuildConditionMetMap(plan, beasts) {
+    if (!boFieldConditions) return null;
+    var byId = {};
+    beasts.forEach(function(b) { if (b.id) byId[b.id] = b; });
+    var out = {};
+    Object.keys(plan).forEach(function(fidStr) {
+      var fid = Number(fidStr);
+      var slots = plan[fid] || {};
+      var slotKeys = Object.keys(slots);
+      var fieldBeasts = [];
+      var filled = 0, total = 0;
+      slotKeys.forEach(function(k) {
+        total++;
+        var bId = slots[k];
+        if (bId) { filled++; if (byId[bId]) fieldBeasts.push(byId[bId]); }
+      });
+      var allFilled = filled === total && total > 0;
+      slotKeys.forEach(function(k) {
+        var slotOrder = Number(k);
+        var cid = boConditionIdForSlot(fid, slotOrder);
+        if (cid == null) { out[fid + ':' + slotOrder] = true; return; }
+        var c = boFieldConditions[cid];
+        out[fid + ':' + slotOrder] = boConditionMatches(c, fieldBeasts, allFilled);
+      });
+    });
+    return out;
+  }
+
+  // Legacy: walk every condition row and emit one entry per matched
+  // (fieldId, conditionId). Now properly scoped per the slot-to-condition
+  // mapping above so each condition is only tested against the field it
+  // belongs to (was previously checking every condition against every field).
   function boComputeActiveConditions(plan, beasts) {
     if (!boFieldConditions) return [];
     var byId = {};
@@ -15979,29 +16080,16 @@
       var allFilled = filledCount === totalCount && totalCount > 0;
       var fieldBeasts = fieldBeastIds.map(function(id) { return byId[id]; }).filter(Boolean);
 
-      Object.keys(boFieldConditions).forEach(function(cId) {
-        var c = boFieldConditions[cId];
+      Object.keys(slots).forEach(function(slotKey) {
+        var slotOrder = Number(slotKey);
+        var cid = boConditionIdForSlot(fid, slotOrder);
+        if (cid == null) return;
+        var c = boFieldConditions[cid];
         if (!c) return;
-        var matched = false;
-        if (c.conditionType === 0) {
-          matched = allFilled;
-        } else if (c.conditionType === 1) {
-          var needCount = Number(c.conditionPara1 || 0);
-          var needRarity = Number(c.conditionPara2 || 0);
-          var have = fieldBeasts.filter(function(b) { return b.q >= needRarity; }).length;
-          matched = allFilled && have >= needCount;
-        } else if (c.conditionType === 6) {
-          var needCount6 = Number(c.conditionPara1 || 0);
-          var needStars = Number(c.conditionPara2 || 0);
-          var needRarity6 = Number(c.conditionPara3 || 0);
-          var have6 = fieldBeasts.filter(function(b) {
-            return b.q >= needRarity6 && b.st >= needStars;
-          }).length;
-          matched = allFilled && have6 >= needCount6;
-        }
-        if (matched) {
+        if (boConditionMatches(c, fieldBeasts, allFilled)) {
           active.push({
             fieldId: fid,
+            slotOrder: slotOrder,
             conditionId: c.id,
             conditionName: c.descRendered || c.descLoc,
             conditionType: c.conditionType,
@@ -16206,15 +16294,18 @@
       });
     }
 
-    // Pass 4: field-condition guard. If a previously-active condition is no
-    // longer met after the proposed swaps, weigh the lost condition buff
-    // against the field-level score gain and roll back the field if the
-    // tradeoff is net-negative.
+    // Pass 4: field-condition awareness.
     //
-    // NOTE: conditions don't surface buffId/buffValue in the current data
-    // set, so lostScore is effectively 0 and Pass 4 currently acts as a
-    // warning-only check via conditionWarnings. Wire real activation buffs
-    // in Phase 5.
+    // Each slot has a 1:1 unlock condition (see boConditionIdForSlot). When a
+    // condition is unmet, the slot's RARITY BONUS deactivates - the slot
+    // stays filled and the beast's main / sub buffs still count, but the
+    // rarity bonus contributes nothing. Pass 5 picks this up automatically
+    // because boBeastScore receives the proposed-plan condition map and
+    // subtracts the rarity bonus when conditionMet is false. We do NOT
+    // hard-revert a field: the natural score comparison in Pass 5 already
+    // filters out swaps where the lost rarity bonus outweighs the gain, and
+    // Tex's rule is "a filled slot stays filled; the only cost of breaking a
+    // condition is the deactivated rarity bonus."
     var proposedPlan = {};
     Object.keys(currentPlan).forEach(function(fid) {
       proposedPlan[fid] = {};
@@ -16223,49 +16314,37 @@
         proposedPlan[fid][order] = assignment[key] || null;
       });
     });
+    var currentCondMet  = boBuildConditionMetMap(currentPlan,  ownedBeasts) || {};
+    var proposedCondMet = boBuildConditionMetMap(proposedPlan, ownedBeasts) || {};
     var newActive = boComputeActiveConditions(proposedPlan, ownedBeasts);
     var newActiveSet = {};
     newActive.forEach(function(c) { newActiveSet[c.fieldId + ':' + c.conditionId] = true; });
 
-    // brokeMap[slotKey] = [conditionName, ...] for any slot that changed
-    // assignment AND sat in a field whose previously-active condition is no
-    // longer met. Pass 5 attaches these names to each rec so the UI can warn
-    // the player that the swap costs a field-condition buff.
+    // brokeMap[slotKey] = ['Field N Slot M', ...] for every slot whose
+    // unlock condition flipped from met to unmet under the proposed plan.
+    // We tag every CHANGED slot in the affected field, not just the gated
+    // slot itself, because the player needs to see "this rec deactivates
+    // Slot Y" on the rec card for the slot they're swapping (which may be
+    // a different slot in the same field). Surfaced via short field+slot
+    // labels - the raw condition text ("deploy 4 Legendary...") was
+    // confusing because it described the requirement, not which slot
+    // dropped its rarity bonus.
     var brokeMap = {};
-    activeConditions.forEach(function(c) {
-      if (newActiveSet[c.fieldId + ':' + c.conditionId]) return;
-      var cls = boClassifyBuff(c.buffId, true);
-      var lostScore = 0;
-      if (cls && cls.statKey !== 'elemental') {
-        lostScore = (c.buffValue || 0)
-          * BO_STAT_WEIGHTS[cls.statKey]
-          * BO_SCOPE_MULT[cls.scope]
-          * boPlaystyleMult(cls.targetUnit, playstyle);
-      }
-      var fieldGain = 0;
-      slots.filter(function(s) { return s.fieldType === c.fieldId; }).forEach(function(s) {
-        var oldB = ownedBeasts.find(function(b) { return b.id === currentPlan[c.fieldId][s.order]; });
-        var newB = ownedBeasts.find(function(b) { return b.id === assignment[s.key]; });
-        var oldS = oldB ? boBeastScore(oldB, 'maxOut', s.desc, playstyle) : 0;
-        var newS = newB ? boBeastScore(newB, 'maxOut', s.desc, playstyle) : 0;
-        fieldGain += (newS - oldS);
+    Object.keys(currentCondMet).forEach(function(slotKey) {
+      if (currentCondMet[slotKey] === false) return;
+      if (proposedCondMet[slotKey] !== false) return;
+      var parts = slotKey.split(':');
+      var fid = Number(parts[0]);
+      var order = Number(parts[1]);
+      var label = 'Field ' + fid + ' Slot ' + order;
+      // Tag every slot in the affected field that changed assignment, so the
+      // card warning surfaces wherever the player is reading.
+      slots.filter(function(s) { return s.fieldType === fid; }).forEach(function(s) {
+        var orig = currentPlan[fid] && currentPlan[fid][s.order];
+        if (orig && assignment[s.key] !== orig) {
+          brokeMap[s.key] = (brokeMap[s.key] || []).concat([label]);
+        }
       });
-      if (fieldGain < lostScore) {
-        slots.filter(function(s) { return s.fieldType === c.fieldId; }).forEach(function(s) {
-          var orig = currentPlan[c.fieldId][s.order];
-          if (orig && assignment[s.key] !== orig) {
-            assignment[s.key] = orig;
-          }
-        });
-      } else {
-        // Swap survives the cost/benefit check — tag every changed slot in
-        // this field with the condition that's about to drop.
-        slots.filter(function(s) { return s.fieldType === c.fieldId; }).forEach(function(s) {
-          if (assignment[s.key] !== currentPlan[c.fieldId][s.order]) {
-            brokeMap[s.key] = (brokeMap[s.key] || []).concat([c.conditionName]);
-          }
-        });
-      }
     });
 
     // Pass 5: build the recommendation list. A recommendation is emitted
@@ -16281,16 +16360,19 @@
       var newBeast = newId ? beastById[newId] : null;
       if (!newBeast) return;
 
-      // Both states for both beasts. gainAtMax MUST compare max-vs-max so a
-      // recommendation like "swap Lion 3* Lv70 for Lion 5* Lv80" doesn't get
-      // a free pass on max-out: at max-out both project to 5* Lv80 and the
-      // delta correctly collapses to ~0 if the two beasts are structurally
-      // equivalent. Previously gainAtMax mixed scoreMaxNew - scoreNowCur
-      // which made every higher-tier-same-type swap look great at max.
-      var scoreNowCur = origBeast ? boBeastScore(origBeast, 'current', s.desc, playstyle) : 0;
-      var scoreNowNew = boBeastScore(newBeast, 'current', s.desc, playstyle);
-      var scoreMaxCur = origBeast ? boBeastScore(origBeast, 'maxOut', s.desc, playstyle) : 0;
-      var scoreMaxNew = boBeastScore(newBeast, 'maxOut', s.desc, playstyle);
+      // Both states for both beasts, condition-aware so the rec correctly
+      // reflects any rarity-bonus deactivation under the proposed plan vs the
+      // current plan. gainAtMax MUST compare max-vs-max so "swap Lion 3* Lv70
+      // for Lion 5* Lv80" doesn't get a free pass on max-out: at max-out both
+      // project to 5* Lv80 and the delta correctly collapses to ~0 if the
+      // two beasts are structurally equivalent.
+      var slotKey = s.fieldType + ':' + s.order;
+      var curMet = currentCondMet[slotKey] !== false;
+      var newMet = proposedCondMet[slotKey] !== false;
+      var scoreNowCur = origBeast ? boBeastScore(origBeast, 'current', s.desc, playstyle, curMet) : 0;
+      var scoreNowNew = boBeastScore(newBeast, 'current', s.desc, playstyle, newMet);
+      var scoreMaxCur = origBeast ? boBeastScore(origBeast, 'maxOut', s.desc, playstyle, curMet) : 0;
+      var scoreMaxNew = boBeastScore(newBeast, 'maxOut', s.desc, playstyle, newMet);
 
       // Recommend the swap only if EITHER state shows a meaningful gain.
       // Half-a-point epsilon to filter noise from near-equal candidates.
@@ -16299,6 +16381,23 @@
       var threshold = null;
       if (scoreNowNew <= scoreNowCur) {
         threshold = boUpgradeThreshold(newBeast, scoreNowCur, s.desc, playstyle);
+      }
+
+      // Bench-fodder feasibility for the recommended star upgrade. To bump a
+      // beast from X stars to Y stars the player burns (X+1..Y) sums of
+      // BO_STAR_UP_FODDER same-rarity beasts. We count same-rarity beasts the
+      // player owns minus the new beast itself and minus the ones the
+      // proposed plan deploys (those are committed to slots, not free fodder).
+      if (threshold && threshold.starsFromCurrent > 0) {
+        var fodderNeeded = boFodderForStarUp(newBeast.st || 0, threshold.star);
+        var deployedAfter = {};
+        Object.keys(assignment).forEach(function(k) { deployedAfter[assignment[k]] = true; });
+        var fodderHave = ownedBeasts.filter(function(b) {
+          return b.q === newBeast.q && !deployedAfter[b.id] && b.id !== newBeast.id;
+        }).length;
+        threshold.fodderNeeded = fodderNeeded;
+        threshold.fodderHave = fodderHave;
+        threshold.fodderFeasible = fodderHave >= fodderNeeded;
       }
 
       recs.push({
@@ -16433,7 +16532,7 @@
     statBlock.appendChild(statValue);
     var statHelp = document.createElement('div');
     statHelp.style.cssText = 'font-size:.68rem;color:var(--muted);margin-top:.2rem;max-width:380px;line-height:1.35;';
-    statHelp.textContent = 'Each point is one ATK-equivalent percent for your playstyle. +1 March = 30 pts (highest), 1% DEF = 25.5 pts, 1% DMG = 9 pts, 1% HP = 1.5 pts. March is also a hard floor: no swap will ever reduce march at a slot. "Today" compares both beasts at their current stars/levels; "At max-out" compares both at 5-star Lv 80 so the swap is judged fairly even when the proposed beast is currently leveled higher than the one it would replace.';
+    statHelp.textContent = 'Each point is one ATK-equivalent percent for your playstyle. +1 March = 30 pts (highest), 1% DEF = 25.5 pts, 1% DMG = 9 pts, 1% HP = 1.5 pts. March is also a hard floor: no swap will ever reduce march at a slot. "Today" compares both beasts at their current stars/levels; "At max-out" compares both at 5-star at their rarity\'s level cap (Lv 80 Epic, Lv 100 Legendary) so the swap is judged fairly even when the proposed beast is currently leveled higher than the one it would replace.';
     statBlock.appendChild(statHelp);
     hRow.appendChild(statBlock);
 
@@ -16752,7 +16851,11 @@
     todayBtn.textContent = 'Today (current stars/levels)';
     var maxBtn = document.createElement('button');
     maxBtn.type = 'button';
-    maxBtn.textContent = 'After upgrades (5★ Lv 80)';
+    // The "After upgrades" label is rarity-aware (Epic max Lv 80, Legendary
+    // max Lv 100). Show the new beast's actual max when available so the
+    // label tracks the rec at hand; fall back to a generic label otherwise.
+    var maxCap = rec && rec.to ? boMaxLevelFor(rec.to) : null;
+    maxBtn.textContent = maxCap ? ('After upgrades (5★ Lv ' + maxCap + ')') : 'After upgrades';
     [todayBtn, maxBtn].forEach(function(b) {
       b.style.cssText = 'flex:1;padding:.4rem .35rem;font-size:.72rem;border:0;background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit;border-right:1px solid var(--border);';
     });
@@ -16809,9 +16912,16 @@
       if (rec.threshold && role === 'to') {
         var t = document.createElement('div');
         t.style.cssText = 'font-size:.78rem;color:#d29922;background:rgba(210,153,34,0.1);border-left:3px solid #d29922;padding:.4rem .6rem;border-radius:4px;margin-top:.5rem;';
-        t.textContent = 'This beast needs ' + rec.threshold.starsFromCurrent + ' more star' + (rec.threshold.starsFromCurrent === 1 ? '' : 's') +
+        var modalTxt = 'This beast needs ' + rec.threshold.starsFromCurrent + ' more star' + (rec.threshold.starsFromCurrent === 1 ? '' : 's') +
           ' and ' + rec.threshold.levelsFromCurrent + ' more level' + (rec.threshold.levelsFromCurrent === 1 ? '' : 's') +
           ' to beat the current placement. The "After upgrades" view above shows the projected stats.';
+        if (rec.threshold.fodderNeeded != null) {
+          var f = rec.threshold;
+          modalTxt += ' Star-up costs ' + f.fodderNeeded + ' same-rarity beast' + (f.fodderNeeded === 1 ? '' : 's') +
+            ' as fodder; you have ' + f.fodderHave + ' free on the bench' +
+            (f.fodderFeasible ? '.' : ' (not enough fodder yet).');
+        }
+        t.textContent = modalTxt;
         dyn.appendChild(t);
       }
     }
@@ -17188,16 +17298,31 @@
     if (rec.threshold) {
       var t = document.createElement('div');
       t.style.cssText = 'font-size:.78rem;color:#d29922;background:rgba(210,153,34,0.1);border-left:3px solid #d29922;padding:.4rem .6rem;border-radius:4px;margin-top:.4rem;';
-      t.textContent = 'Needs ' + rec.threshold.starsFromCurrent + ' more star' + (rec.threshold.starsFromCurrent === 1 ? '' : 's') +
+      var txt = 'Needs ' + rec.threshold.starsFromCurrent + ' more star' + (rec.threshold.starsFromCurrent === 1 ? '' : 's') +
         ' and ' + rec.threshold.levelsFromCurrent + ' more level' + (rec.threshold.levelsFromCurrent === 1 ? '' : 's') +
         ' before this beats your current placement.';
+      if (rec.threshold.fodderNeeded != null) {
+        var f = rec.threshold;
+        txt += ' Star-up costs ' + f.fodderNeeded + ' same-rarity beast' + (f.fodderNeeded === 1 ? '' : 's') + ' as fodder; you have ' + f.fodderHave + ' free on the bench.';
+        if (!f.fodderFeasible) {
+          txt += ' Not enough fodder yet to reach the target stars.';
+        }
+      }
+      t.textContent = txt;
       card.appendChild(t);
     }
 
     if (rec.brokeConditions && rec.brokeConditions.length) {
+      // Dedupe — the same affected slot may be tagged on multiple swap recs
+      // within the same field.
+      var uniqLabels = [];
+      var seenLabels = {};
+      rec.brokeConditions.forEach(function(label) {
+        if (!seenLabels[label]) { seenLabels[label] = true; uniqLabels.push(label); }
+      });
       var pill = document.createElement('div');
       pill.style.cssText = 'font-size:.74rem;color:#f85149;background:rgba(248,81,73,0.1);border-left:3px solid #f85149;padding:.4rem .6rem;border-radius:4px;margin-top:.4rem;';
-      pill.textContent = 'This swap will block future upgrades to platforms gated by: ' + rec.brokeConditions.join(', ') + '. Existing platform levels stay.';
+      pill.textContent = 'Deactivates the rarity bonus on ' + uniqLabels.join(', ') + '. The beast in that slot stays placed; only the slot bonus drops until you re-meet its unlock condition.';
       card.appendChild(pill);
     }
 
