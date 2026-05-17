@@ -24166,6 +24166,49 @@
         codeChip.textContent = entry.code;
         codeChip.title = 'Plan code — share the link to re-open with the advisor';
         hdr.appendChild(codeChip);
+
+        // Owner-only delete. Works at any status (open / planned / applied)
+        // because the worker's purgeAdvisorRecord cascades request + plan +
+        // index entry. Backend already enforces siteKey-match, so a guest or
+        // a different player viewing this card via deep link sees no button
+        // because their token won't verify on the server even if they spoof
+        // the call. We still gate at the UI level for clarity.
+        var delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'adv-plan-card-delete';
+        delBtn.style.cssText = 'margin-left:auto;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:.18rem .55rem;font-size:.72rem;cursor:pointer;';
+        delBtn.textContent = 'Delete';
+        delBtn.title = entry.status === 'open'
+          ? 'Cancel this request — the share link will stop working.'
+          : 'Remove this request and all advisor plans attached to it.';
+        delBtn.addEventListener('click', async function() {
+          var confirmMsg = entry.status === 'open'
+            ? 'Cancel advisor request ' + entry.code + '? The share link will stop working.'
+            : 'Delete advisor request ' + entry.code + '? This removes the request, every advisor plan attached to it, and clears it from your tab.';
+          if (!confirm(confirmMsg)) return;
+          delBtn.disabled = true;
+          var prevTxt = delBtn.textContent;
+          delBtn.textContent = 'Deleting…';
+          try {
+            if (typeof _ar_ensureSupplementToken === 'function') {
+              await _ar_ensureSupplementToken(siteKey);
+            }
+            if (!_ar_supplementToken) throw new Error('no upload token; re-verify UID');
+            var rr = await fetch(SUPPLEMENT_WORKER + '/advisor/request/' + entry.code, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken }
+            });
+            if (!rr.ok) throw new Error('http ' + rr.status);
+            // Refresh + re-render so the tab matches truth on the worker.
+            await _ar_refreshAdvisorIndex(siteKey);
+            renderMyAdvisorPlansTab(siteKey, merged);
+          } catch (e) {
+            alert('Delete failed: ' + (e && e.message || 'unknown error'));
+            delBtn.disabled = false;
+            delBtn.textContent = prevTxt;
+          }
+        });
+        hdr.appendChild(delBtn);
         card.appendChild(hdr);
 
         if (entry.note) {
