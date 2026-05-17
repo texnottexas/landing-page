@@ -16272,12 +16272,21 @@
   // boLookupHole() for the underlying hole row (hole.minQuality, hole.faction,
   // hole.maxEnhanceValue, hole.id). Either source can be missing; callers
   // should treat a null return as "no platform data, skip this slot."
-  function boBeastEligibleForSlot(beast, slotDesc) {
+  // Lynx (type 5) is the only beast whose rising_star_type transforms it into
+  // a different beast type at 5★. Per enigma_beast_type row 5, rising_star_type
+  // is "1|2|3|4|6|7|8|9" - it can become any of the other 8 types. The optimizer
+  // therefore treats a non-5★ Lynx as eligible for any beast-type slot when
+  // scoring at max-out (because the player can choose the transformation type
+  // when promoting). For "today" scoring the strict type check still applies.
+  function boBeastEligibleForSlot(beast, slotDesc, opts) {
     if (!beast || !slotDesc) return false;
     if (beast.q < (slotDesc.minQuality || 1)) return false;
     if (slotDesc.faction && beast.fac !== slotDesc.faction) return false;
     if (slotDesc.beastTypeIds && slotDesc.beastTypeIds.length) {
-      if (slotDesc.beastTypeIds.indexOf(beast.type) < 0) return false;
+      var typeOk = slotDesc.beastTypeIds.indexOf(beast.type) >= 0;
+      var maxOut = opts && opts.maxOut;
+      var lynxFlex = maxOut && beast.type === 5 && (beast.st || 0) < 5;
+      if (!typeOk && !lynxFlex) return false;
     }
     if (slotDesc.qualityCap && beast.q > slotDesc.qualityCap) return false;
     return true;
@@ -16381,7 +16390,7 @@
     slots.forEach(function(s) {
       var best = 0;
       ownedBeasts.forEach(function(b) {
-        if (!boBeastEligibleForSlot(b, s.desc)) return;
+        if (!boBeastEligibleForSlot(b, s.desc, { maxOut: true })) return;
         if (!boMarchEligible(s, b)) return;
         var sc = boBeastScore(b, 'maxOut', s.desc, playstyle);
         if (sc > best) best = sc;
@@ -16397,7 +16406,7 @@
       var bestBeast = null;
       var bestScore = -Infinity;
       ownedBeasts.forEach(function(b) {
-        if (!boBeastEligibleForSlot(b, s.desc)) return;
+        if (!boBeastEligibleForSlot(b, s.desc, { maxOut: true })) return;
         if (!boMarchEligible(s, b)) return;
         var sc = boBeastScore(b, 'maxOut', s.desc, playstyle);
         if (sc > bestScore) { bestScore = sc; bestBeast = b; }
@@ -16427,7 +16436,7 @@
           var runnerUp = 0;
           ownedBeasts.forEach(function(other) {
             if (other.id === bId) return;
-            if (!boBeastEligibleForSlot(other, s.desc)) return;
+            if (!boBeastEligibleForSlot(other, s.desc, { maxOut: true })) return;
             if (counts[other.id] === 1) return;
             var sc = boBeastScore(other, 'maxOut', s.desc, playstyle);
             if (sc > runnerUp) runnerUp = sc;
@@ -16446,7 +16455,7 @@
           var bestScore = -Infinity;
           ownedBeasts.forEach(function(other) {
             if (alreadyClaimed[other.id]) return;
-            if (!boBeastEligibleForSlot(other, s.desc)) return;
+            if (!boBeastEligibleForSlot(other, s.desc, { maxOut: true })) return;
             if (!boMarchEligible(s, other)) return;
             var sc = boBeastScore(other, 'maxOut', s.desc, playstyle);
             if (sc > bestScore) { bestScore = sc; bestBeast = other; }
@@ -16499,7 +16508,10 @@
       var parts = slotKey.split(':');
       var fid = Number(parts[0]);
       var order = Number(parts[1]);
-      var label = 'Field ' + fid + ' Slot ' + order;
+      var cid = boConditionIdForSlot(fid, order);
+      var cond = cid != null && boFieldConditions ? boFieldConditions[cid] : null;
+      var reqText = cond ? (cond.descRendered || cond.descLoc || '') : '';
+      var label = { fieldId: fid, slotOrder: order, slotLabel: 'Field ' + fid + ' Slot ' + order, reqText: reqText };
       // Tag every slot in the affected field that changed assignment, so the
       // card warning surfaces wherever the player is reading.
       slots.filter(function(s) { return s.fieldType === fid; }).forEach(function(s) {
@@ -17479,16 +17491,37 @@
     }
 
     if (rec.brokeConditions && rec.brokeConditions.length) {
-      // Dedupe — the same affected slot may be tagged on multiple swap recs
-      // within the same field.
-      var uniqLabels = [];
-      var seenLabels = {};
-      rec.brokeConditions.forEach(function(label) {
-        if (!seenLabels[label]) { seenLabels[label] = true; uniqLabels.push(label); }
+      // Dedupe by slot label (the same affected slot may be tagged on
+      // multiple swap recs within the same field).
+      var uniq = [];
+      var seen = {};
+      rec.brokeConditions.forEach(function(entry) {
+        // Accept either the legacy string shape or the new object shape.
+        var label = typeof entry === 'string' ? { slotLabel: entry, reqText: '' } : entry;
+        var key = label.slotLabel || '';
+        if (!seen[key]) { seen[key] = true; uniq.push(label); }
       });
       var pill = document.createElement('div');
       pill.style.cssText = 'font-size:.74rem;color:#f85149;background:rgba(248,81,73,0.1);border-left:3px solid #f85149;padding:.4rem .6rem;border-radius:4px;margin-top:.4rem;';
-      pill.textContent = 'Deactivates the rarity bonus on ' + uniqLabels.join(', ') + '. The beast in that slot stays placed; only the slot bonus drops until you re-meet its unlock condition.';
+      var head = document.createElement('div');
+      head.style.cssText = 'font-weight:600;margin-bottom:.2rem;';
+      var slotNames = uniq.map(function(l) { return l.slotLabel; }).join(', ');
+      head.textContent = 'Deactivates the rarity bonus on ' + slotNames + '.';
+      pill.appendChild(head);
+      // Per-slot unlock requirement (e.g. "All slots filled, deploy 4 Enigma
+      // Beasts of Legendary rarity or higher."). Helps the player decide
+      // whether the swap is worth it once they see the gate text.
+      uniq.forEach(function(l) {
+        if (!l.reqText) return;
+        var row = document.createElement('div');
+        row.style.cssText = 'font-size:.66rem;color:#f85149;opacity:.85;line-height:1.35;';
+        row.textContent = l.slotLabel + ': ' + l.reqText;
+        pill.appendChild(row);
+      });
+      var tail = document.createElement('div');
+      tail.style.cssText = 'font-size:.66rem;color:#f85149;opacity:.7;margin-top:.2rem;';
+      tail.textContent = 'The beast in that slot stays placed; only the slot bonus drops until you re-meet its unlock condition.';
+      pill.appendChild(tail);
       card.appendChild(pill);
     }
 
