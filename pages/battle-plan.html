@@ -132,6 +132,25 @@ h4.r11-sub svg{color:var(--red);}
 .r11-decl-spec{font-size:.66rem;color:var(--muted);}
 .r11-decl-locked{margin-left:auto;font-size:.55rem;padding:.1rem .35rem;border-radius:4px;background:rgba(248,81,73,.14);color:var(--red);border:1px solid rgba(248,81,73,.4);font-weight:800;letter-spacing:.04em;text-transform:uppercase;}
 .r11-decl-via{font-size:.7rem;color:var(--muted);display:flex;flex-wrap:wrap;align-items:center;gap:.25rem;}
+/* Buff cap row modal — wasteland breakdown */
+.buff-row:hover{border-color:var(--accent);background:rgba(121,192,255,.04);}
+.buff-modal-list{display:flex;flex-direction:column;gap:.3rem;max-height:260px;overflow-y:auto;}
+.buff-modal-row{display:flex;align-items:center;gap:.4rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.3rem .55rem;font-size:.74rem;flex-wrap:wrap;}
+.buff-modal-row .bm-seq{font-family:'SF Mono',Consolas,monospace;font-weight:800;color:var(--text);}
+.buff-modal-row .bm-lvl{font-size:.55rem;padding:.1rem .35rem;border-radius:4px;font-weight:800;}
+.buff-modal-row .bm-lvl.l3{background:rgba(248,81,73,.14);color:var(--red);}
+.buff-modal-row .bm-lvl.l2{background:rgba(210,153,34,.14);color:var(--yellow);}
+.buff-modal-row .bm-lvl.l1{background:rgba(121,192,255,.1);color:var(--accent);}
+.buff-modal-row .bm-spec{color:var(--text);font-weight:600;flex:1;min-width:0;}
+.buff-modal-row .bm-tags{display:flex;gap:.25rem;flex-wrap:wrap;}
+.buff-modal-row .bm-tag{font-size:.58rem;padding:.1rem .35rem;border-radius:4px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
+.buff-modal-row .bm-tag.tag-r11{background:rgba(248,81,73,.12);color:var(--red);border:1px solid rgba(248,81,73,.35);}
+.buff-modal-row .bm-tag.tag-contested{background:rgba(210,153,34,.12);color:var(--yellow);border:1px solid rgba(210,153,34,.35);}
+.buff-modal-row .bm-tag.tag-uncontested{background:rgba(63,185,80,.1);color:var(--green);border:1px solid rgba(63,185,80,.3);}
+.buff-modal-row .bm-via{font-size:.66rem;color:var(--muted);display:flex;flex-wrap:wrap;align-items:center;gap:.25rem;}
+.buff-modal-row .bm-via-pill{font-family:'SF Mono',Consolas,monospace;background:var(--card);border:1px solid var(--border);border-radius:4px;padding:.05rem .3rem;color:var(--text);font-size:.62rem;font-weight:700;}
+.buff-modal-row .bm-via-pill.curated{background:rgba(248,81,73,.1);border-color:rgba(248,81,73,.4);color:var(--red);}
+.bm-empty{font-size:.72rem;color:var(--muted);font-style:italic;padding:.5rem;text-align:center;}
 /* Priority flag on focus rows */
 .focus-row.r11-prio{box-shadow:inset 4px 0 0 var(--red);}
 .focus-row .r11-prio-badge{display:inline-flex;align-items:center;gap:.25rem;background:rgba(248,81,73,.12);color:var(--red);border:1px solid rgba(248,81,73,.35);padding:.05rem .4rem;border-radius:4px;font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;margin-left:.4rem;}
@@ -1184,6 +1203,40 @@ body{top:0!important;}
       sections.forEach(function(s){ io.observe(s); });
     }
   }
+  // Make every major nav section collapsible — wraps body in .sect-body,
+  // adds chevron + click handler. Skips sections already collapsible (Power).
+  function makeAllSectionsCollapsible(root){
+    var sections = root.querySelectorAll('section[data-nav-label]');
+    sections.forEach(function(section){
+      if (section.classList.contains('sect-collapsible')) return; // already wired
+      var title = section.querySelector('.sect-title');
+      if (!title) return;
+      // Gather everything after the title into a body wrap
+      var bodyWrap = document.createElement('div');
+      bodyWrap.className = 'sect-body';
+      var movable = Array.prototype.slice.call(section.children).filter(function(n){ return n !== title; });
+      movable.forEach(function(n){ bodyWrap.appendChild(n); });
+      section.appendChild(bodyWrap);
+      section.classList.add('sect-collapsible');
+      title.classList.add('sect-toggle');
+      title.style.cursor = 'pointer';
+      title.style.userSelect = 'none';
+      title.setAttribute('role', 'button');
+      title.setAttribute('aria-expanded', 'true');
+      // Chevron on the right edge (uses CSS .sect-chev rotation when collapsed)
+      var chev = el('span', 'sect-chev');
+      chev.style.marginLeft = 'auto';
+      chev.appendChild(makeIcon('chevron-down', 16));
+      title.appendChild(chev);
+      title.addEventListener('click', function(){
+        var isOpen = !section.classList.toggle('sect-collapsed');
+        bodyWrap.style.display = isOpen ? '' : 'none';
+        title.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        chev.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(-90deg)';
+      });
+    });
+  }
+
   function ensureBackToTop(){
     if (document.getElementById('back-to-top')) return;
     var btn = document.createElement('button');
@@ -1798,9 +1851,8 @@ body{top:0!important;}
     var section = el('section', 'sect');
     var curated = strat.curated || [];
     var auto1 = strat.auto1Hop || [];
-    var auto2 = strat.auto2Hop || [];
     var ncs = strat.ncTargets || [];
-    var totalPri = curated.length + auto1.length + auto2.length + ncs.length;
+    var totalPri = curated.length + auto1.length + ncs.length;
     tagSection(section, 'R11 Setup', 'flame', totalPri);
 
     var t = el('div', 'sect-title');
@@ -1831,7 +1883,11 @@ body{top:0!important;}
         hopRow.appendChild(document.createTextNode('opens '));
         hops.forEach(function(h, i){
           if (i > 0) hopRow.appendChild(document.createTextNode(' · '));
-          hopRow.appendChild(el('b', 'r11-hop-pill', 'W-' + h.seq));
+          var pill = el('b', 'r11-hop-pill', 'W-' + h.seq);
+          if (h.specName){
+            pill.appendChild(document.createTextNode(' · ' + h.specName));
+          }
+          hopRow.appendChild(pill);
         });
         card.appendChild(hopRow);
       }
@@ -1845,7 +1901,9 @@ body{top:0!important;}
       card.appendChild(foot);
     }
 
-    // Curated block
+    // Curated block — only one declaration phase left this week, so 2-hop
+    // chains are irrelevant. Curated picks without a 1-hop combat neighbour
+    // (e.g. W-177, W-318) still render so the alliance pick is preserved.
     if (curated.length){
       var sub = el('h4', 'r11-sub');
       sub.appendChild(makeIcon('sword', 14));
@@ -1857,13 +1915,6 @@ body{top:0!important;}
         if (!w) return;
         var card = el('div', 'r11-wl-card curated');
         renderWasteland(card, w, c.oneHop || []);
-        if (!c.oneHop || !c.oneHop.length){
-          if (c.twoHop && c.twoHop.length){
-            var hint = el('div', 'r11-wl-hint');
-            hint.appendChild(document.createTextNode('2-hop chain via W-' + c.twoHop[0].viaSeq + ' → W-' + c.twoHop[0].comboSeq));
-            card.appendChild(hint);
-          }
-        }
         grid.appendChild(card);
       });
       section.appendChild(grid);
@@ -1887,48 +1938,6 @@ body{top:0!important;}
       section.appendChild(grid2);
     }
 
-    // Auto 2-hop block
-    if (auto2.length){
-      var sub3 = el('h4', 'r11-sub r11-sub-auto');
-      sub3.appendChild(makeIcon('compass', 14));
-      sub3.appendChild(document.createTextNode(' 2-hop chains — declared → undeclared → combat wasteland (R12 setup)'));
-      sub3.appendChild(el('span', 'r11-sub-count', auto2.length + ' chains'));
-      section.appendChild(sub3);
-      var grid3 = el('div', 'r11-wl-grid');
-      auto2.forEach(function(c){
-        var w = warByseq[c.seq];
-        if (!w) return;
-        var card = el('div', 'r11-wl-card auto2');
-        var head = el('div', 'r11-wl-head');
-        head.appendChild(el('span', 'r11-wl-seq', 'W-' + w.seq));
-        head.appendChild(el('span', 'r11-wl-lvl l' + w.level, 'Lv.' + w.level));
-        var specName = SPEC_NAMES[w.specId] || ('Spec ' + w.specId);
-        head.appendChild(el('span', 'r11-wl-spec', specName));
-        card.appendChild(head);
-        var hopRow = el('div', 'r11-wl-hops');
-        hopRow.appendChild(document.createTextNode('chain '));
-        (c.twoHop || []).slice(0, 3).forEach(function(h, i){
-          if (i > 0) hopRow.appendChild(document.createTextNode(' · '));
-          hopRow.appendChild(el('b', 'r11-hop-pill via', 'W-' + h.viaSeq));
-          hopRow.appendChild(document.createTextNode(' → '));
-          hopRow.appendChild(el('b', 'r11-hop-pill', 'W-' + h.comboSeq));
-        });
-        if ((c.twoHop || []).length > 3){
-          hopRow.appendChild(el('span', 'r11-more', ' +' + (c.twoHop.length - 3) + ' more'));
-        }
-        card.appendChild(hopRow);
-        var foot = el('div', 'r11-wl-foot');
-        if (w.isContested){
-          foot.appendChild(el('span', 'r11-wl-contest', 'Contested vs ' + (w.contestedBy || []).map(function(s){ return 'S' + s; }).join(', ')));
-        } else {
-          foot.appendChild(el('span', 'r11-wl-uncontested', 'Uncontested'));
-        }
-        card.appendChild(foot);
-        grid3.appendChild(card);
-      });
-      section.appendChild(grid3);
-    }
-
     // R11-declarable combat wastelands (inverse view): the combat wastelands we
     // CAN'T declare this round, but would unlock for R11 if we win the listed
     // R10 declarations.
@@ -1945,7 +1954,8 @@ body{top:0!important;}
         var card = el('div', 'r11-decl-card' + (d.lockedByCurated ? ' locked' : ''));
         var head = el('div', 'r11-decl-head');
         head.appendChild(el('span', 'r11-decl-seq', 'W-' + d.seq));
-        head.appendChild(el('span', 'r11-decl-spec', 'Combat L3 · ' + d.landType));
+        var specLabel = d.specName ? ('L3 · ' + d.specName) : ('Combat L3 · ' + (d.landType || ''));
+        head.appendChild(el('span', 'r11-decl-spec', specLabel));
         if (d.lockedByCurated){
           head.appendChild(el('span', 'r11-decl-locked', 'LOCKED IN'));
         }
@@ -2593,6 +2603,138 @@ body{top:0!important;}
     root.appendChild(section);
   }
 
+  // Buff cap row modal — wastelands feeding this buff this round + R11 candidates
+  function openBuffModal(b, rd){
+    var overlay = document.getElementById('oppModalOverlay');
+    if (!overlay){
+      overlay = document.createElement('div');
+      overlay.id = 'oppModalOverlay';
+      overlay.className = 'opp-modal-overlay';
+      document.body.appendChild(overlay);
+      overlay.addEventListener('click', function(e){ if (e.target === overlay) closeOppModal(); });
+      document.addEventListener('keydown', function(e){
+        if (e.key === 'Escape' && overlay.classList.contains('active')) closeOppModal();
+      });
+    }
+    while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
+    overlay.appendChild(buildBuffModalContent(b, rd));
+    overlay.classList.add('active');
+  }
+  function buildBuffModalContent(b, rd){
+    var modal = el('div', 'opp-modal');
+    // Header
+    var head = el('div', 'opp-modal-head');
+    var title = el('div', 'opp-modal-title');
+    title.appendChild(makeIcon(b.ico, 18));
+    title.appendChild(el('span', null, b.desc));
+    head.appendChild(title);
+    var closeBtn = el('button', 'opp-modal-close');
+    closeBtn.type = 'button';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.appendChild(document.createTextNode('×'));
+    closeBtn.addEventListener('click', closeOppModal);
+    head.appendChild(closeBtn);
+    modal.appendChild(head);
+
+    function fmtVal(v, pt){ if (pt === 2) return (v/100) + '%'; return v + ''; }
+
+    // Stat grid: live / declared / projected total / cap
+    var grid = el('div', 'opp-stat-grid');
+    [
+      { lbl: 'Live (owned now)', val: fmtVal(b.rawLive, b.paraType) },
+      { lbl: 'Projected from R10 decs', val: fmtVal(b.rawDeclared, b.paraType) },
+      { lbl: 'After all wins', val: fmtVal(b.rawCur, b.paraType),
+        sub: (b.rawMax > 0 ? Math.round(b.pct) + '% of cap' : 'round pool') },
+      { lbl: 'Cap', val: b.rawMax === 0 && b.eff === 11080 ? 'pool (no fixed cap)' : fmtVal(b.rawMax, b.paraType),
+        sub: b.over ? 'OVER cap by ' + fmtVal(b.rawCur - b.rawMax, b.paraType) : null }
+    ].forEach(function(s){
+      var st = el('div', 'opp-stat');
+      st.appendChild(el('div', 'lbl', s.lbl));
+      st.appendChild(el('div', 'val', s.val));
+      if (s.sub) st.appendChild(el('div', 'sub', s.sub));
+      grid.appendChild(st);
+    });
+    modal.appendChild(grid);
+
+    // R10 declarations contributing to this buff
+    var contribs = (rd.warTargets || []).filter(function(w){
+      var conf = SPEC_LEVEL_CONTRIB[w.specId];
+      if (!conf) return false;
+      var lvl = w.level || 3;
+      var c = conf.byLevel ? (conf.byLevel[lvl] || {}) : Object.keys(conf.perStack||{}).reduce(function(o,k){ o[k]=conf.perStack[k]; return o; }, {});
+      return c[b.eff] !== undefined;
+    });
+    var r11Set = new Set(((rd.r11StrategyTargets || {}).combatBuffSetupSeqs) || []);
+    var contestedSeqs = new Set((rd.contestedRanked || []).map(function(c){ return c.seq; }));
+
+    var sect = el('div', 'opp-card-section');
+    sect.appendChild(el('h5', null, 'R10 declarations feeding this buff (' + contribs.length + ')'));
+    if (contribs.length){
+      var list = el('div', 'buff-modal-list');
+      contribs.sort(function(a,b){ return (b.level||0) - (a.level||0) || a.seq - b.seq; }).forEach(function(w){
+        var row = el('div', 'buff-modal-row');
+        var seq = el('span', 'bm-seq', 'W-' + w.seq);
+        row.appendChild(seq);
+        row.appendChild(el('span', 'bm-lvl l' + w.level, 'L' + w.level));
+        row.appendChild(el('span', 'bm-spec', w.specName || ('Spec ' + w.specId)));
+        var tags = el('span', 'bm-tags');
+        if (r11Set.has(w.seq)){
+          var b1 = el('span', 'bm-tag tag-r11', 'R11 setup');
+          tags.appendChild(b1);
+        }
+        if (w.isContested){
+          var atk = (w.contestedBy || []).map(function(s){ return 'S' + s; }).join(', ');
+          var b2 = el('span', 'bm-tag tag-contested', 'vs ' + atk);
+          tags.appendChild(b2);
+        } else {
+          tags.appendChild(el('span', 'bm-tag tag-uncontested', 'uncontested'));
+        }
+        row.appendChild(tags);
+        list.appendChild(row);
+      });
+      sect.appendChild(list);
+    } else {
+      sect.appendChild(el('div', 'bm-empty', 'No R10 declarations feed this buff.'));
+    }
+    modal.appendChild(sect);
+
+    // R11 declarable combat — only relevant if this buff is one of the combat effects (11001..11006)
+    if ([11001,11002,11003,11004,11006].indexOf(b.eff) >= 0){
+      var SPEC_FOR_EFFECT = { 11001:4001, 11002:4006, 11003:4007, 11004:4008, 11006:4010 };
+      var targetSpec = SPEC_FOR_EFFECT[b.eff];
+      var r11matches = (rd.r11DeclarableCombat || []).filter(function(d){ return d.specId === targetSpec; });
+      var sect2 = el('div', 'opp-card-section');
+      sect2.appendChild(el('h5', null, 'R11 wastelands that would feed THIS buff (' + r11matches.length + ')'));
+      if (r11matches.length){
+        var list2 = el('div', 'buff-modal-list');
+        r11matches.forEach(function(d){
+          var row = el('div', 'buff-modal-row');
+          row.appendChild(el('span', 'bm-seq', 'W-' + d.seq));
+          row.appendChild(el('span', 'bm-lvl l3', 'L3'));
+          row.appendChild(el('span', 'bm-spec', d.specName || 'Combat L3'));
+          var via = el('span', 'bm-via');
+          via.appendChild(document.createTextNode('via '));
+          d.viaWastelands.forEach(function(v, i){
+            if (i > 0) via.appendChild(document.createTextNode(', '));
+            var isCur = (d.viaCurated || []).indexOf(v) >= 0;
+            via.appendChild(el('b', 'bm-via-pill' + (isCur ? ' curated' : ''), (isCur ? '★ ' : '') + 'W-' + v));
+          });
+          row.appendChild(via);
+          if (d.lockedByCurated){
+            row.appendChild(el('span', 'bm-tag tag-r11', 'LOCKED IN'));
+          }
+          list2.appendChild(row);
+        });
+        sect2.appendChild(list2);
+      } else {
+        sect2.appendChild(el('div', 'bm-empty', 'No R11 wastelands match this combat sub-type.'));
+      }
+      modal.appendChild(sect2);
+    }
+
+    return modal;
+  }
+
   // Open the storm-duel-style modal for any sector sid (not tied to a fight)
   function openSidModal(sid, rd){
     var pow = (rd.sectorPower || []).find(function(p){ return p.sid === sid; }) || {};
@@ -2663,6 +2805,11 @@ body{top:0!important;}
     var list = el('div', 'buff-list');
     enriched.forEach(function(b){
       var row = el('div', 'buff-row');
+      row.style.cursor = 'pointer';
+      row.title = 'Click for wasteland breakdown';
+      row.addEventListener('click', function(){
+        openBuffModal(b, rd);
+      });
       var head = el('div', 'buff-head');
       var desc = el('span', 'desc');
       desc.appendChild(makeIcon(b.ico, 14));
@@ -3371,6 +3518,7 @@ body{top:0!important;}
     buildAssignment(rd, root);
     buildFoot(rd, root);
     buildSectionNav(root);
+    makeAllSectionsCollapsible(root);
     ensureBackToTop();
     // NC plan default view
     var hasNc = buildNCPlan(rd);
