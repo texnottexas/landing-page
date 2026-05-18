@@ -1562,6 +1562,20 @@
     document.getElementById('modal').addEventListener('click', closeModal);
     document.getElementById('modal-close-btn').addEventListener('click', closeModal);
 
+    function renderDescriptionWithValues(text, row) {
+      // Substitute {0}, {1}, {2}, {3} with skill_num1 / skill_num2 / effect bonus values
+      if (!text || !row) return text;
+      const vals = [];
+      if (row.val1_pct) {
+        row.val1_pct.split(' / ').forEach(v => vals.push(v));
+      }
+      if (row.val2_pct) {
+        row.val2_pct.split(' / ').forEach(v => vals.push(v));
+      }
+      if (row.bonus) vals.push(row.bonus);
+      return text.replace(/\{(\d+)\}/g, (m, i) => vals[Number(i)] || m);
+    }
+
     function openSkillModal(hero, skill) {
       const box = document.getElementById('skill-modal-box');
       const lvls = skill.levelTable || [];
@@ -1634,18 +1648,35 @@
           )
         ),
 
-        el('div', { class: 'sm-section' },
+        skill.descriptionLv1 || skill.descriptionLv2_5 || skill.effectAtLv6 ? el('div', { class: 'sm-section' },
+          el('h4', null, 'Skill description'),
+          skill.descriptionLv1 ? el('div', { style: 'margin-bottom:8px' },
+            el('div', { style: 'font-size:.58rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:2px' }, 'Lv.1 baseline'),
+            el('p', { style: 'font-size:.78rem; line-height:1.55' }, renderDescriptionWithValues(skill.descriptionLv1, lvls[0]))
+          ) : null,
+          skill.descriptionLv2_5 && skill.descriptionLv2_5 !== skill.descriptionLv1 ? el('div', { style: 'margin-bottom:8px' },
+            el('div', { style: 'font-size:.58rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:2px' }, 'Lv.2–5 (carry-over bonus active)'),
+            el('p', { style: 'font-size:.78rem; line-height:1.55' }, renderDescriptionWithValues(skill.descriptionLv2_5, lvls[1] || lvls[0]))
+          ) : null,
+          skill.descriptionLv6_plus ? el('div', { style: 'margin-bottom:8px' },
+            el('div', { style: 'font-size:.58rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:2px' }, 'Lv.6–10 (post-unlock formula)'),
+            el('p', { style: 'font-size:.78rem; line-height:1.55' }, renderDescriptionWithValues(skill.descriptionLv6_plus, lvls[lvls.length - 1]))
+          ) : null,
+          skill.effectAtLv6 ? el('div', { class: 'sm-note', style: 'border-left-color:var(--gold)' },
+            el('strong', { style: 'color:var(--gold)' }, 'Lv.6 unlock: '),
+            renderDescriptionWithValues(skill.effectAtLv6.replace(/^Unlocks at Lv\.\s*6:\s*/, ''), lvls[5])
+          ) : null,
+          skill.descriptionEs7 && skill.descriptionEs7 !== skill.descriptionLv1 ? el('div', { style: 'margin-top:8px; padding:8px 10px; background:var(--surface); border-left:3px solid var(--purple); border-radius:4px' },
+            el('div', { style: 'font-size:.58rem; color:var(--purple); text-transform:uppercase; letter-spacing:.05em; margin-bottom:2px' }, 'Exclusive Skill Lv.7 variant'),
+            el('p', { style: 'font-size:.74rem; line-height:1.55' }, renderDescriptionWithValues(skill.descriptionEs7, lvls[lvls.length - 1]))
+          ) : null
+        ) : el('div', { class: 'sm-section' },
           el('h4', null, 'Skill description (lang status)'),
           el('p', null, 'Description lang keys are referenced by the awakening_skill row (',
             el('code', null, 'hero_awake_skill_' + hero.id + '_*'),
             '), but the player-facing text has not been pushed to ',
             el('code', null, '_langData'),
-            ' yet. Only the skill name (',
-            el('code', null, 'hero_awake_kill_name' + hero.id + '_' + skill.index),
-            ') resolves in this patch — full description text should ship in the next localization round.'
-          ),
-          el('div', { class: 'sm-note' },
-            'Workaround: the val1/val2 columns above show the raw per-level percentages the engine applies, and the buff IDs let you cross-reference behavior with the live battle log.'
+            ' yet. Full description text should ship in the next localization round.'
           )
         )
       ];
