@@ -49,6 +49,15 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 .sect-title{display:flex;align-items:center;gap:.5rem;font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.65rem;padding-bottom:.4rem;border-bottom:1px solid var(--border);}
 .sect-title .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
 .sect-title .tag{margin-left:auto;font-size:.6rem;color:var(--muted);font-weight:500;letter-spacing:.02em;text-transform:none;}
+.sect-title .tag + .tag{margin-left:.25rem;}
+.sect-title .tag-accent{background:rgba(121,192,255,.08);border:1px solid rgba(121,192,255,.3);color:var(--accent);padding:.12rem .4rem;border-radius:5px;}
+.sect-title.sect-toggle{transition:opacity .15s;}
+.sect-title.sect-toggle:hover{opacity:.85;}
+.sect-chev{display:inline-flex;align-items:center;color:var(--muted);transition:transform .15s;}
+table.power tbody tr{transition:background .1s;}
+table.power tbody tr:hover{background:rgba(121,192,255,.06);}
+table.power tbody tr.us:hover{background:rgba(63,185,80,.1);}
+td.power-top-merit{font-size:.72rem;color:var(--muted);}
 
 .rule-box{background:rgba(163,113,247,.06);border:1px solid rgba(163,113,247,.28);border-radius:10px;padding:.85rem 1rem;margin-bottom:1.1rem;display:flex;gap:.7rem;align-items:flex-start;}
 .rule-box svg{flex-shrink:0;color:var(--purple);margin-top:.15rem;}
@@ -683,7 +692,8 @@ body{top:0!important;}
     compass: { parts: [ ['circle', { cx:'12', cy:'12', r:'10' }], ['polygon', { points:'16 8 14 14 8 16 10 10' }] ] },
     users: { parts: [ ['path', { d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' }], ['circle', { cx:'9', cy:'7', r:'4' }], ['path', { d: 'M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75' }] ] },
     globe: { parts: [ ['circle', { cx:'12', cy:'12', r:'10' }], ['line', { x1:'2', y1:'12', x2:'22', y2:'12' }], ['path', { d: 'M12 2a15 15 0 0 1 0 20a15 15 0 0 1 0-20' }] ] },
-    search: { parts: [ ['circle', { cx:'11', cy:'11', r:'7' }], ['line', { x1:'16.5', y1:'16.5', x2:'21', y2:'21' }] ] }
+    search: { parts: [ ['circle', { cx:'11', cy:'11', r:'7' }], ['line', { x1:'16.5', y1:'16.5', x2:'21', y2:'21' }] ] },
+    'chevron-down': { parts: [ ['polyline', { points:'6 9 12 15 18 9' }] ] }
   };
 
   // ===== LANG SWITCHER (kept simple, matches other pages) =====
@@ -2144,38 +2154,50 @@ body{top:0!important;}
   function buildPower(rd, root){
     var pow = rd.sectorPower || [];
     if (!pow.length) return;
-    var section = el('section', 'sect');
+    var section = el('section', 'sect sect-collapsible');
     tagSection(section, 'Power', 'flag', pow.length);
-    var t = el('div', 'sect-title');
+    var t = el('div', 'sect-title sect-toggle');
+    t.setAttribute('role', 'button');
+    t.setAttribute('aria-expanded', 'true');
+    t.style.cursor = 'pointer';
+    t.style.userSelect = 'none';
     var dot = el('span', 'dot'); dot.style.background = 'var(--accent)';
     t.appendChild(dot);
     t.appendChild(el('span', null, 'Sector ' + rd.sector + ' Power Index'));
     t.appendChild(el('span', 'tag', pow.length + ' servers'));
+    var ours = pow.find(function(p){ return p.sid === 2864; });
+    if (ours){
+      t.appendChild(el('span', 'tag tag-accent', 'S2864 #' + ours.sectorRank + ' · PI ' + ours.powerIndex));
+    }
+    var chev = el('span', 'sect-chev');
+    chev.style.marginLeft = 'auto';
+    chev.appendChild(makeIcon('chevron-down', 16));
+    t.appendChild(chev);
     section.appendChild(t);
+
+    var bodyWrap = el('div', 'sect-body');
 
     var note = el('div', 'rule-box accent');
     note.appendChild(makeIcon('chart', 18));
-    var body = el('div', 'body');
-    body.appendChild(el('strong', null, 'PI'));
-    body.appendChild(document.createTextNode(' = 0.4 × round_score + 0.6 × event_fame, normalized 0–100 within sector. '));
-    var ours = pow.find(function(p){ return p.sid === 2864; });
-    if (ours){
-      var b = el('b', null, 'S2864 ranked #' + ours.sectorRank + ' (PI ' + ours.powerIndex + ')');
-      body.appendChild(b);
-      body.appendChild(document.createTextNode(' — we outpower every opponent except the top 2 in head-to-head fights.'));
-    }
-    note.appendChild(body);
-    section.appendChild(note);
+    var nbody = el('div', 'body');
+    nbody.appendChild(el('strong', null, 'PI'));
+    nbody.appendChild(document.createTextNode(' = (0.40 · meritNorm + 0.25 · top5Norm + 0.15 · wzNorm + 0.10 · depthNorm) × 100, normalised across the sector. Click any row to view that server’s top merit roster.'));
+    note.appendChild(nbody);
+    bodyWrap.appendChild(note);
 
     var table = el('table', 'power power-collapsed');
     var thead = el('thead');
     var trh = el('tr');
-    ['Tier','Sec#','SID','Score','Fame','Global','PI'].forEach(function(h){ trh.appendChild(el('th', null, h)); });
+    ['Tier','Sec#','SID','Score','Fame','Global','PI','Top merit'].forEach(function(h){ trh.appendChild(el('th', null, h)); });
     thead.appendChild(trh);
     table.appendChild(thead);
     var tbody = el('tbody');
+    var cards = rd.sectorServerCards || [];
+    var cardBySid = {};
+    cards.forEach(function(c){ cardBySid[c.sid] = c; });
     pow.forEach(function(p, idx){
       var tr = el('tr');
+      tr.style.cursor = 'pointer';
       if (p.sid === 2864) tr.classList.add('us');
       if (idx >= 12) tr.classList.add('hidden-row');
       var tdTier = el('td');
@@ -2197,12 +2219,43 @@ body{top:0!important;}
       bar.appendChild(fill);
       tdPi.appendChild(bar);
       tr.appendChild(tdPi);
+      // Top merit cell
+      var card = cardBySid[p.sid];
+      var tdTop = el('td', 'power-top-merit');
+      if (card && card.topPlayer){
+        var av = makeAvatar(safeAvatarUrl(card.topPlayer.avatar), card.topPlayer.name || 'P');
+        av.style.width = '18px'; av.style.height = '18px';
+        var line = el('span', 'power-top-merit-line');
+        line.style.display = 'inline-flex';
+        line.style.alignItems = 'center';
+        line.style.gap = '.35rem';
+        line.appendChild(av);
+        var nm = el('span', null, card.topPlayer.name || ('UID ' + card.topPlayer.uid));
+        nm.style.maxWidth = '8rem';
+        nm.style.overflow = 'hidden';
+        nm.style.textOverflow = 'ellipsis';
+        nm.style.whiteSpace = 'nowrap';
+        line.appendChild(nm);
+        line.appendChild(el('span', null, ' · ' + meritShort(card.topPlayer.score || 0)));
+        tdTop.appendChild(line);
+      } else {
+        tdTop.appendChild(document.createTextNode('—'));
+      }
+      tr.appendChild(tdTop);
+
+      // Click row → open modal with synthetic fight
+      (function(sid){
+        tr.addEventListener('click', function(){
+          openSidModal(sid, rd);
+        });
+      })(p.sid);
+
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
     var tableWrap = el('div', 'power-wrap');
     tableWrap.appendChild(table);
-    section.appendChild(tableWrap);
+    bodyWrap.appendChild(tableWrap);
 
     var hidden = Math.max(0, pow.length - 12);
     if (hidden > 0){
@@ -2211,9 +2264,39 @@ body{top:0!important;}
         var col = table.classList.toggle('power-collapsed');
         btn.textContent = col ? ('Show all ' + pow.length + ' servers (' + hidden + ' hidden)') : ('Hide bottom ' + hidden + ' servers');
       });
-      section.appendChild(btn);
+      bodyWrap.appendChild(btn);
     }
+    section.appendChild(bodyWrap);
+
+    // Section-level collapse: clicking the title hides the bodyWrap
+    section.classList.add('sect-collapsed');
+    bodyWrap.style.display = 'none';
+    t.setAttribute('aria-expanded', 'false');
+    t.addEventListener('click', function(){
+      var isOpen = !section.classList.toggle('sect-collapsed');
+      bodyWrap.style.display = isOpen ? '' : 'none';
+      t.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      chev.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(-90deg)';
+    });
+
     root.appendChild(section);
+  }
+
+  // Open the storm-duel-style modal for any sector sid (not tied to a fight)
+  function openSidModal(sid, rd){
+    var pow = (rd.sectorPower || []).find(function(p){ return p.sid === sid; }) || {};
+    var synth = {
+      seq: null, level: null, specId: null,
+      opponent: sid,
+      opFame: pow.score2 || 0,
+      opScore: pow.score || 0,
+      opPI: pow.powerIndex || 0,
+      sectorRank: pow.sectorRank || 999,
+      tier: pow.tier || 'C',
+      is3way: false,
+      sidOnly: true
+    };
+    openOppModal(synth, rd);
   }
 
   function buildBuffs(rd, root){
@@ -2963,6 +3046,7 @@ body{top:0!important;}
     }
     document.getElementById('hdrSub').textContent = ' · R' + roundKey;
     buildHero(rd, roundKey, root);
+    buildPower(rd, root);
     buildRules(root);
     buildPillagePriority(rd, root);
     buildFocus(rd, root);
@@ -2971,7 +3055,6 @@ body{top:0!important;}
     buildNcFlow(rd, root);
     buildTwoHopFlow(rd, root);
     buildThreeHopFlow(rd, root);
-    buildPower(rd, root);
     buildBuffs(rd, root);
     buildAssignment(rd, root);
     buildFoot(rd, root);
