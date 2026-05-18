@@ -58,6 +58,31 @@ table.power tbody tr{transition:background .1s;}
 table.power tbody tr:hover{background:rgba(121,192,255,.06);}
 table.power tbody tr.us:hover{background:rgba(63,185,80,.1);}
 td.power-top-merit{font-size:.72rem;color:var(--muted);}
+/* Power Index methodology — shimmer card */
+.pi-method-wrap{margin-bottom:1rem;}
+.pi-method-header{display:flex;align-items:center;gap:.5rem;cursor:pointer;user-select:none;padding:.7rem 1rem;background:var(--card);border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-weight:700;transition:background .15s;animation:pi-method-border 6s ease-in-out infinite;}
+.pi-method-header:hover{animation:none;border-color:var(--accent);box-shadow:0 0 16px rgba(121,192,255,.3);background:var(--surface);}
+.pi-method-header .htext{animation:pi-method-text 6s ease-in-out infinite;}
+.pi-method-header:hover .htext{animation:none;color:var(--accent);}
+.pi-method-header .chev{font-size:.7rem;transition:transform .2s;color:var(--muted);margin-left:auto;}
+.pi-method-header.closed .chev{transform:rotate(-90deg);}
+.pi-method-body{background:var(--card);border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;padding:1rem 1.25rem;display:none;}
+.pi-method-body.open{display:block;}
+.pi-method-body p{font-size:.82rem;line-height:1.6;color:var(--muted);margin:.3rem 0 .6rem;}
+.pi-method-body p:last-child{margin-bottom:0;}
+.pi-method-body .formula{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.7rem .9rem;margin:.4rem 0;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:.78rem;color:var(--text);line-height:1.7;overflow-x:auto;}
+.pi-method-body .formula .w{color:var(--accent);font-weight:700;}
+.pi-method-body ul{font-size:.82rem;line-height:1.6;color:var(--muted);margin:.4em 0 .75rem 1.2em;padding:0;}
+.pi-method-body ul li b{color:var(--text);}
+@keyframes pi-method-border{
+  0%{border-color:var(--accent);box-shadow:0 0 12px rgba(121,192,255,.2);}
+  33%{border-color:var(--green);box-shadow:0 0 12px rgba(63,185,80,.2);}
+  66%{border-color:var(--yellow);box-shadow:0 0 12px rgba(210,153,34,.2);}
+  100%{border-color:var(--accent);box-shadow:0 0 12px rgba(121,192,255,.2);}
+}
+@keyframes pi-method-text{
+  0%{color:var(--accent);} 33%{color:var(--green);} 66%{color:var(--yellow);} 100%{color:var(--accent);}
+}
 
 .rule-box{background:rgba(163,113,247,.06);border:1px solid rgba(163,113,247,.28);border-radius:10px;padding:.85rem 1rem;margin-bottom:1.1rem;display:flex;gap:.7rem;align-items:flex-start;}
 .rule-box svg{flex-shrink:0;color:var(--purple);margin-top:.15rem;}
@@ -2154,13 +2179,55 @@ body{top:0!important;}
 
     var bodyWrap = el('div', 'sect-body');
 
-    var note = el('div', 'rule-box accent');
-    note.appendChild(makeIcon('chart', 18));
-    var nbody = el('div', 'body');
-    nbody.appendChild(el('strong', null, 'PI'));
-    nbody.appendChild(document.createTextNode(' = (0.40 · meritNorm + 0.25 · top5Norm + 0.15 · wzNorm + 0.10 · depthNorm) × 100, normalised across the sector. Click any row to view that server’s top merit roster.'));
-    note.appendChild(nbody);
-    bodyWrap.appendChild(note);
+    // "How the Power Index works" shimmer card (collapsible, closed by default)
+    var methodWrap = el('div', 'pi-method-wrap');
+    var methodHead = el('div', 'pi-method-header closed');
+    methodHead.appendChild(el('span', 'htext', 'How the Power Index works'));
+    methodHead.appendChild(el('span', 'chev', '▼'));
+    methodWrap.appendChild(methodHead);
+
+    var methodBody = el('div', 'pi-method-body');
+    var p1 = el('p');
+    p1.appendChild(document.createTextNode('Every sector server gets a single '));
+    p1.appendChild(el('b', null, 'Power Index'));
+    p1.appendChild(document.createTextNode(' score (0–100) so any two opponents can be compared at a glance. The blend rewards roster depth and the strength of the top end, with a smaller weight on this season’s SSC scoreboard so a hot recent run doesn’t outweigh sustained merit.'));
+    methodBody.appendChild(p1);
+
+    var formula = el('div', 'formula');
+    formula.appendChild(document.createTextNode('score = ( '));
+    formula.appendChild(el('span', 'w', '0.40'));
+    formula.appendChild(document.createTextNode(' · meritNorm + '));
+    formula.appendChild(el('span', 'w', '0.25'));
+    formula.appendChild(document.createTextNode(' · top5Norm + '));
+    formula.appendChild(el('span', 'w', '0.15'));
+    formula.appendChild(document.createTextNode(' · wzNorm + '));
+    formula.appendChild(el('span', 'w', '0.10'));
+    formula.appendChild(document.createTextNode(' · depthNorm ) × 100'));
+    methodBody.appendChild(formula);
+
+    var ul = el('ul');
+    function addBullet(boldTxt, restTxt){
+      var li = el('li');
+      li.appendChild(el('b', null, boldTxt));
+      li.appendChild(document.createTextNode(' — ' + restTxt));
+      ul.appendChild(li);
+    }
+    addBullet('meritNorm', 'that server’s Total Merit sum (top-12k merit ranking), divided by the highest in our sector. Heaviest weight because merit is the best proxy for what an opponent can field on the battlefield.');
+    addBullet('top5Norm', 'mean merit of their top 5 ranked players, normalised the same way. Catches servers whose top end punches above their headline rank.');
+    addBullet('wzNorm', 'their UD/Seal Stone warzone score for the current event. Captures how the sector has been performing this season.');
+    addBullet('depthNorm', 'how many of their players show up in the cross-server merit rankings (top-12k). Wide rosters mean the opponent still functions when a star or two no-shows.');
+    methodBody.appendChild(ul);
+
+    var p2 = el('p');
+    p2.appendChild(document.createTextNode('This is a quick weighted average, not the literal in-game battle outcome — the actual fight is wasteland-by-wasteland march vs march, so timezone overlap and committed combat buffs matter too. Use the index to triage targets, not as a verdict.'));
+    methodBody.appendChild(p2);
+
+    methodWrap.appendChild(methodBody);
+    methodHead.addEventListener('click', function(){
+      methodHead.classList.toggle('closed');
+      methodBody.classList.toggle('open');
+    });
+    bodyWrap.appendChild(methodWrap);
 
     var table = el('table', 'power power-collapsed');
     var thead = el('thead');
