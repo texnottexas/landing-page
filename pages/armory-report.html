@@ -16525,6 +16525,36 @@
     var newActiveSet = {};
     newActive.forEach(function(c) { newActiveSet[c.fieldId + ':' + c.conditionId] = true; });
 
+    // Same-type / same-rarity swap predicate. Per Tex 2026-05-18: if the
+    // proposed beast matches the current beast on both type AND rarity, the
+    // player can star-up the new beast with 1★ same-type, same-rarity fodder
+    // until it reaches the current beast's exact specs. For warning purposes
+    // (threshold + condition-break), these swaps should be silent — the slot
+    // will never actually lose its rarity bonus or fail a star/rarity gate.
+    function isInterchangeableSwap(origId, newId) {
+      if (!origId || !newId || origId === newId) return false;
+      var ob = beastById[origId], nb = beastById[newId];
+      if (!ob || !nb) return false;
+      return ob.type === nb.type && ob.q === nb.q;
+    }
+
+    // Build a virtualized proposed plan for the condition-warning check that
+    // pretends every interchangeable swap is still the current beast. This
+    // means slot-unlock conditions stay met under the proposed plan when the
+    // only thing changing is which specific same-type, same-rarity beast
+    // sits there, since the player can level the new one up. Scoring still
+    // uses the real proposedCondMet — only the warning path uses this view.
+    var virtualPlanForWarnings = {};
+    Object.keys(proposedPlan).forEach(function(fid) {
+      virtualPlanForWarnings[fid] = {};
+      Object.keys(proposedPlan[fid] || {}).forEach(function(order) {
+        var origId = currentPlan[fid] && currentPlan[fid][order];
+        var newId = proposedPlan[fid][order];
+        virtualPlanForWarnings[fid][order] = isInterchangeableSwap(origId, newId) ? origId : newId;
+      });
+    });
+    var warningCondMet = boBuildConditionMetMap(virtualPlanForWarnings, ownedBeasts) || {};
+
     // brokeMap[slotKey] = ['Field N Slot M', ...] for every slot whose
     // unlock condition flipped from met to unmet under the proposed plan.
     // We tag every CHANGED slot in the affected field, not just the gated
@@ -16537,7 +16567,11 @@
     var brokeMap = {};
     Object.keys(currentCondMet).forEach(function(slotKey) {
       if (currentCondMet[slotKey] === false) return;
-      if (proposedCondMet[slotKey] !== false) return;
+      // Use warningCondMet here (built from virtualPlanForWarnings) so an
+      // interchangeable same-type, same-rarity swap doesn't spuriously flip
+      // a condition unmet just because the new beast is 1★ Lv1 today — the
+      // player can level it back to the current beast's specs.
+      if (warningCondMet[slotKey] !== false) return;
       var parts = slotKey.split(':');
       var fid = Number(parts[0]);
       var order = Number(parts[1]);
@@ -16545,13 +16579,15 @@
       var cond = cid != null && boFieldConditions ? boFieldConditions[cid] : null;
       var reqText = cond ? (cond.descRendered || cond.descLoc || '') : '';
       var label = { fieldId: fid, slotOrder: order, slotLabel: 'Field ' + fid + ' Slot ' + order, reqText: reqText };
-      // Tag every slot in the affected field that changed assignment, so the
-      // card warning surfaces wherever the player is reading.
+      // Tag every slot in the affected field whose swap is NOT interchangeable
+      // — the actual responsibility for the break belongs to a real beast
+      // change, not a same-type, same-rarity reshuffle.
       slots.filter(function(s) { return s.fieldType === fid; }).forEach(function(s) {
         var orig = currentPlan[fid] && currentPlan[fid][s.order];
-        if (orig && assignment[s.key] !== orig) {
-          brokeMap[s.key] = (brokeMap[s.key] || []).concat([label]);
-        }
+        if (!orig) return;
+        if (assignment[s.key] === orig) return;
+        if (isInterchangeableSwap(orig, assignment[s.key])) return;
+        brokeMap[s.key] = (brokeMap[s.key] || []).concat([label]);
       });
     });
 
@@ -16587,21 +16623,30 @@
       if (scoreMaxNew <= scoreMaxCur + 0.5 && scoreNowNew <= scoreNowCur + 0.5) return;
 
       var threshold = null;
-      if (scoreNowNew <= scoreNowCur) {
+      // Interchangeable swaps (same type + same rarity as the current beast)
+      // don't need a threshold warning: the player can fodder the new beast
+      // up to the current beast's exact specs with 1★ same-type, same-rarity
+      // beasts, so the slot's stat ceiling never regresses during the swap.
+      if (scoreNowNew <= scoreNowCur && !isInterchangeableSwap(origId, newId)) {
         threshold = boUpgradeThreshold(newBeast, scoreNowCur, s.desc, playstyle);
       }
 
-      // Bench-fodder feasibility for the recommended star upgrade. To bump a
-      // beast from X stars to Y stars the player burns (X+1..Y) sums of
-      // BO_STAR_UP_FODDER same-rarity beasts. We count same-rarity beasts the
-      // player owns minus the new beast itself and minus the ones the
-      // proposed plan deploys (those are committed to slots, not free fodder).
+      // Bench-fodder feasibility for the recommended star upgrade. Per Tex's
+      // 2026-05-18 clarification: a beast can only be star-upgraded by sacrificing
+      // 1★ beasts of the SAME type AND SAME rarity (bear-bear, lion-lion, etc.).
+      // Higher-star beasts on the bench aren't eligible fodder — they're either
+      // worth deploying or worth saving. We also exclude beasts the proposed
+      // plan commits to slots, plus the new beast itself.
       if (threshold && threshold.starsFromCurrent > 0) {
         var fodderNeeded = boFodderForStarUp(newBeast.st || 0, threshold.star);
         var deployedAfter = {};
         Object.keys(assignment).forEach(function(k) { deployedAfter[assignment[k]] = true; });
         var fodderHave = ownedBeasts.filter(function(b) {
-          return b.q === newBeast.q && !deployedAfter[b.id] && b.id !== newBeast.id;
+          return b.q === newBeast.q
+              && b.type === newBeast.type
+              && (b.st || 0) <= 1
+              && !deployedAfter[b.id]
+              && b.id !== newBeast.id;
         }).length;
         threshold.fodderNeeded = fodderNeeded;
         threshold.fodderHave = fodderHave;
@@ -17201,7 +17246,11 @@
     var rec = swapCtx.rec;
     var role = swapCtx.role;
     var FIELD_NAMES = ['', 'CPNT Mastery', 'Formation', 'Equip', 'Defense', 'Offense'];
-    var atState = rec.threshold ? 'maxOut' : 'current';
+    // Always open the modal at the 5★ Lv-cap projection per Tex 2026-05-18 —
+    // most useful comparison is the eventual state once both beasts are
+    // brought to their respective rarity caps. The Today / After-upgrades
+    // toggle below still lets you flip back if needed.
+    var atState = 'maxOut';
 
     var section = document.createElement('div');
     section.className = 'eb-detail-section';
@@ -17290,7 +17339,7 @@
           ' to beat the current placement. The "After upgrades" view above shows the projected stats.';
         if (rec.threshold.fodderNeeded != null) {
           var f = rec.threshold;
-          modalTxt += ' Star-up costs ' + f.fodderNeeded + ' same-rarity beast' + (f.fodderNeeded === 1 ? '' : 's') +
+          modalTxt += ' Star-up costs ' + f.fodderNeeded + ' 1★ same-type, same-rarity beast' + (f.fodderNeeded === 1 ? '' : 's') +
             ' as fodder; you have ' + f.fodderHave + ' free on the bench' +
             (f.fodderFeasible ? '.' : ' (not enough fodder yet).');
         }
@@ -17679,7 +17728,7 @@
         ' before this beats your current placement.';
       if (rec.threshold.fodderNeeded != null) {
         var f = rec.threshold;
-        txt += ' Star-up costs ' + f.fodderNeeded + ' same-rarity beast' + (f.fodderNeeded === 1 ? '' : 's') + ' as fodder; you have ' + f.fodderHave + ' free on the bench.';
+        txt += ' Star-up costs ' + f.fodderNeeded + ' 1★ same-type, same-rarity beast' + (f.fodderNeeded === 1 ? '' : 's') + ' as fodder; you have ' + f.fodderHave + ' free on the bench.';
         if (!f.fodderFeasible) {
           txt += ' Not enough fodder yet to reach the target stars.';
         }
