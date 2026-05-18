@@ -10816,7 +10816,23 @@
       return;
     }
 
-    var heroes = supp.list.slice();
+    // Per-ID source freshness: each hero in the supp roster gets refreshed
+    // from the newest battle report that contains it (if newer than the
+    // supplement upload). Heroes not touched by any report stay verbatim.
+    var suppTsMs = (supp && supp.ts) ? new Date(supp.ts).getTime() : 0;
+    var reportsForHeroes = (typeof wizardState !== 'undefined' && wizardState.reportData) ? wizardState.reportData : [];
+    var perHeroTs = _ar_perEntityReportTs(reportsForHeroes, 'heroes', 'id');
+    var heroes = _ar_overlayHeroesWithReports(supp.list, suppTsMs, perHeroTs);
+    var freshness = _ar_buildSourceFreshness({ suppTs: suppTsMs, reports: reportsForHeroes, perEntityTs: perHeroTs });
+    var fbHeroes = _ar_renderFreshnessBanner({
+      suppLabel: 'Hero roster from bookmarklet',
+      suppTs: freshness.suppTs,
+      reportTs: freshness.latestReportTs,
+      reportId: freshness.latestReportId,
+      staleCount: freshness.staleEntityCount,
+      suppEntityLabel: freshness.staleEntityCount === 1 ? 'hero' : 'heroes'
+    });
+    if (fbHeroes) container.appendChild(fbHeroes);
     // Filter/sort state. `branch` and `quality` are pill toggles (single-select),
     // `effects` is a multi-select set of effectTags driven by the heroes.html
     // catalog (loaded via window._allHeroesById). `quality` = 'Decor' adds the
@@ -25154,6 +25170,26 @@
     });
     window._enigmaTabActive = true;
 
+    // Freshness banner: enigma deployed-fields snapshot lives on battle
+    // reports; the bench supplement covers the bench beasts. Populations
+    // don't overlap so no per-ID merge is meaningful — just surface both
+    // ages so players can see which feed is fresh.
+    var enigmaSiteKey = (wizardState && wizardState.player && wizardState.player.siteKey) || null;
+    var benchSupp = null;
+    try { benchSupp = enigmaSiteKey ? ArmoryIdentity.getSupplement('bench', enigmaSiteKey) : null; } catch (e) {}
+    var benchTs = (benchSupp && benchSupp.ts) ? new Date(benchSupp.ts).getTime() : 0;
+    var reportsForEnigma = (typeof wizardState !== 'undefined' && wizardState.reportData) ? wizardState.reportData : [];
+    var enigmaFresh = _ar_buildSourceFreshness({ suppTs: benchTs, reports: reportsForEnigma, perEntityTs: {} });
+    var fbEnigma = _ar_renderFreshnessBanner({
+      suppLabel: 'Bench beasts from bookmarklet',
+      suppTs: enigmaFresh.suppTs,
+      reportTs: enigmaFresh.latestReportTs,
+      reportId: enigmaFresh.latestReportId,
+      staleCount: 0,
+      suppEntityLabel: 'beasts'
+    });
+    if (fbEnigma) container.appendChild(fbEnigma);
+
     if (!merged.enigmas || (!merged.enigmas.beastDatas && !merged.enigmas.fields)) {
       var empty = document.createElement('p');
       empty.className = 'empty-tab';
@@ -26045,11 +26081,33 @@
     var container = document.getElementById('tab-chips');
     while (container.firstChild) container.removeChild(container.firstChild);
 
-    var mechasWithChips = (merged.mechas || []).filter(function(m) {
-      return m.chips && m.chips.length > 0;
-    });
-
     var siteKey = (wizardState && wizardState.player && wizardState.player.siteKey) || null;
+    // Pull the chips supplement synchronously from localStorage so the per-mecha
+    // overlay (supp vs battle report) runs before tab rendering. The async
+    // `_ar_loadChipsSupplement` path further down still handles cross-device
+    // share codes where the supp lives on the worker only.
+    var chipsSupp = null;
+    try { chipsSupp = siteKey ? ArmoryIdentity.getSupplement('chips', siteKey) : null; } catch (e) {}
+    var chipsSuppTs = (chipsSupp && chipsSupp.ts) ? new Date(chipsSupp.ts).getTime() : 0;
+    var reportsForChips = (typeof wizardState !== 'undefined' && wizardState.reportData) ? wizardState.reportData : [];
+    var perMechaTs = _ar_perEntityReportTs(reportsForChips, 'mechas', 'mechaId');
+    var overlaidMechas = _ar_overlayMechasWithChips(merged.mechas, perMechaTs, chipsSupp, chipsSuppTs);
+    var mechasWithChips = overlaidMechas.filter(function(m) { return m.chips && m.chips.length > 0; });
+
+    // Banner: surface both source ages + a count of mechas where the chosen
+    // source differs from the battle-report-only view. Skipped when nothing
+    // is loaded (empty-state rendering below handles that).
+    var freshChips = _ar_buildSourceFreshness({ suppTs: chipsSuppTs, reports: reportsForChips, perEntityTs: perMechaTs });
+    var fbChips = _ar_renderFreshnessBanner({
+      suppLabel: 'HT chips snapshot from bookmarklet',
+      suppTs: freshChips.suppTs,
+      reportTs: freshChips.latestReportTs,
+      reportId: freshChips.latestReportId,
+      staleCount: freshChips.staleEntityCount,
+      suppEntityLabel: freshChips.staleEntityCount === 1 ? 'mecha' : 'mechas'
+    });
+    if (fbChips) container.appendChild(fbChips);
+
     var unlocked = siteKey ? _ar_isUnlocked(siteKey) : false;
     var canUpload = !wizardState._viewOnly && siteKey && _ar_rosterMap && _ar_rosterMap[siteKey] && unlocked;
 
@@ -28684,6 +28742,192 @@
     return Object.keys(totals).map(function(id) {
       return { id: id, name: nameMap[id] || id, value: totals[id] };
     });
+  }
+
+  // ── Source freshness helpers (heroes / chips / enigma) ───────────────────
+  // Players using both the bookmarklet AND battle reports got confused about
+  // which source was current. Each kind carries its own timestamp; we expose
+  // helpers + a small banner so each tab can declare what it's actually
+  // showing and per-ID overlays prefer the newer source.
+
+  // Build a Map<entityId, {ts, reportId}> tracking the latest battle-report
+  // timestamp (ms) that contained each entity. `srcKey` chooses heroes vs
+  // mechas; `idKey` is the field that identifies entities ('id' for heroes,
+  // 'mechaId' for mechas). Returns an object (not Map) for old-iOS safety.
+  function _ar_perEntityReportTs(reports, srcKey, idKey) {
+    var out = {};
+    (reports || []).forEach(function(r) {
+      var ex = r && r.extracted;
+      if (!ex) return;
+      var tsMs = ex.logtime ? ex.logtime * 1000 : 0;
+      if (!tsMs) return;
+      var arr = ex[srcKey];
+      if (!Array.isArray(arr)) return;
+      arr.forEach(function(e) {
+        if (!e) return;
+        var id = e[idKey];
+        if (id == null) return;
+        if (!out[id] || tsMs > out[id].ts) out[id] = { ts: tsMs, reportId: r.id, entry: e };
+      });
+    });
+    return out;
+  }
+
+  // Aggregate source freshness for a tab. Returns the metadata the banner
+  // needs without making any decision on which side to render — callers
+  // decide per-tab how to apply the result.
+  function _ar_buildSourceFreshness(opts) {
+    var suppTs = (opts && opts.suppTs) || 0;
+    var reports = opts && opts.reports;
+    var perEntity = opts && opts.perEntityTs; // object from _ar_perEntityReportTs
+    var latestReportTs = 0, latestReportId = null;
+    (reports || []).forEach(function(r) {
+      var t = (r && r.extracted && r.extracted.logtime) ? r.extracted.logtime * 1000 : 0;
+      if (t > latestReportTs) { latestReportTs = t; latestReportId = r.id; }
+    });
+    var staleEntityCount = 0;
+    if (perEntity && suppTs > 0) {
+      Object.keys(perEntity).forEach(function(id) {
+        if (perEntity[id].ts > suppTs) staleEntityCount++;
+      });
+    }
+    return {
+      suppTs: suppTs,
+      latestReportTs: latestReportTs,
+      latestReportId: latestReportId,
+      suppIsNewer: suppTs >= latestReportTs,
+      staleEntityCount: staleEntityCount
+    };
+  }
+
+  // Humanize a Unix-ms timestamp into "Nh ago" / "Nd ago" / explicit date.
+  function _ar_freshnessAge(tsMs) {
+    if (!tsMs) return 'unknown';
+    var diff = Date.now() - tsMs;
+    if (diff < 60000) return 'just now';
+    var mins = Math.floor(diff / 60000);
+    if (mins < 60) return mins + 'm ago';
+    var hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + 'h ago';
+    var days = Math.floor(hrs / 24);
+    if (days < 30) return days + 'd ago';
+    return new Date(tsMs).toLocaleDateString();
+  }
+
+  // Small banner element. opts: { kind, suppLabel, suppTs, reportTs, reportId,
+  // staleCount, suppEntityLabel }. Returns null when nothing useful to say.
+  function _ar_renderFreshnessBanner(opts) {
+    if (!opts) return null;
+    var suppTs = opts.suppTs || 0;
+    var reportTs = opts.reportTs || 0;
+    if (!suppTs && !reportTs) return null;
+    var box = document.createElement('div');
+    box.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:6px;padding:.5rem .7rem;margin-bottom:.7rem;font-size:.74rem;color:var(--muted);line-height:1.45;';
+    var line = document.createElement('div');
+    var parts = [];
+    if (suppTs) parts.push((opts.suppLabel || 'Bookmarklet snapshot') + ' ' + _ar_freshnessAge(suppTs));
+    if (reportTs) {
+      var rl = 'Latest battle report' + (opts.reportId ? ' "' + opts.reportId + '"' : '') + ' ' + _ar_freshnessAge(reportTs);
+      parts.push(rl);
+    }
+    line.textContent = 'Sources: ' + parts.join(' · ');
+    box.appendChild(line);
+    if (opts.staleCount > 0 && suppTs > 0 && reportTs > suppTs) {
+      var stale = document.createElement('div');
+      stale.style.cssText = 'margin-top:.25rem;color:var(--text);';
+      var noun = opts.suppEntityLabel || 'entries';
+      stale.textContent = 'Newer data from your battle report overlays ' + opts.staleCount + ' ' + noun + ' below. Re-run the bookmarklet to refresh everything in one shot.';
+      box.appendChild(stale);
+    } else if (reportTs > 0 && suppTs > 0 && suppTs > reportTs) {
+      var nt = document.createElement('div');
+      nt.style.cssText = 'margin-top:.25rem;color:var(--muted);';
+      nt.textContent = 'Your bookmarklet snapshot is newer than your latest battle report — supplement wins everywhere.';
+      box.appendChild(nt);
+    }
+    return box;
+  }
+
+  // Heroes overlay: supp.list entries are the base (full roster). Heroes that
+  // also appear in a battle report newer than supp.ts get their lv/star fields
+  // refreshed from the battle report and gain a heroEquips overlay so the
+  // gear modal can pull from the same row. Non-overlapping fields are
+  // preserved on both sides. Each entry is tagged with `_sourceTs` so
+  // downstream UI can show "from battle report N" badges.
+  function _ar_overlayHeroesWithReports(suppList, suppTs, perHeroReportTs) {
+    if (!Array.isArray(suppList)) return [];
+    return suppList.map(function(h) {
+      var id = h && h.id;
+      var byReport = id != null ? perHeroReportTs[id] : null;
+      if (!byReport || !(byReport.ts > suppTs)) {
+        var stable = Object.assign({}, h);
+        stable._sourceTs = suppTs;
+        stable._source = 'supp';
+        return stable;
+      }
+      var rh = byReport.entry || {};
+      var out = Object.assign({}, h);
+      // Battle-report field name is `level` (full word). Supp uses `lv`. Map.
+      if (rh.level != null) out.lv = rh.level;
+      if (rh.star != null) out.star = rh.star;
+      if (rh.heroEquips) out.heroEquips = rh.heroEquips;
+      if (rh.skills) out.battleSkills = rh.skills;
+      if (rh.nonActiveSkills) out.battleNonActiveSkills = rh.nonActiveSkills;
+      out._sourceTs = byReport.ts;
+      out._source = 'report';
+      out._sourceReportId = byReport.reportId;
+      return out;
+    });
+  }
+
+  // Chips per-mecha overlay: for each mecha, pick chips from the source with
+  // the newer timestamp. Returns a list of mechas in the same shape battle
+  // reports produce ({mechaId, chips: [...]}) so renderChipsTab can consume
+  // it without reshaping. When the chips supplement is newer than every
+  // matching battle report, mechas that only exist in the supp also appear.
+  function _ar_overlayMechasWithChips(mergedMechas, perMechaReportTs, chipsSupp, suppTs) {
+    var byId = {};
+    (mergedMechas || []).forEach(function(m) {
+      if (!m || m.mechaId == null) return;
+      var t = (perMechaReportTs[m.mechaId] && perMechaReportTs[m.mechaId].ts) || 0;
+      byId[m.mechaId] = { mechaId: m.mechaId, chips: m.chips || [], _sourceTs: t, _source: 'report' };
+    });
+    if (chipsSupp && Array.isArray(chipsSupp.chips) && suppTs > 0) {
+      // Bucket supp chips by mechaId; chip.m === 0 means bag pool (not bound).
+      var suppByMecha = {};
+      chipsSupp.chips.forEach(function(c) {
+        if (!c || !c.m) return;
+        if (!suppByMecha[c.m]) suppByMecha[c.m] = [];
+        suppByMecha[c.m].push(c);
+      });
+      Object.keys(suppByMecha).forEach(function(midStr) {
+        var mid = Number(midStr);
+        var existing = byId[mid];
+        if (!existing || suppTs > existing._sourceTs) {
+          // Supp wins. Reshape supp chip rows into the battle-report shape.
+          var chips = suppByMecha[mid].map(function(c) {
+            return {
+              chipId: c.c, level: c.lv || 0,
+              rndAttrs: c.r || '', otherRndAttrs: c.o || null,
+              refineTimes: c.rt || 0, reservation: c.rs || 0
+            };
+          });
+          byId[mid] = { mechaId: mid, chips: chips, _sourceTs: suppTs, _source: 'supp' };
+        }
+      });
+    }
+    // Preserve the battle-report ordering where possible; new supp-only mechas
+    // append at the end sorted by mechaId.
+    var seen = {};
+    var ordered = [];
+    (mergedMechas || []).forEach(function(m) {
+      if (!m || m.mechaId == null || seen[m.mechaId]) return;
+      seen[m.mechaId] = true;
+      if (byId[m.mechaId]) ordered.push(byId[m.mechaId]);
+    });
+    Object.keys(byId).map(Number).sort(function(a, b) { return a - b; }).forEach(function(mid) {
+      if (!seen[mid]) ordered.push(byId[mid]);
+    });
+    return ordered;
   }
 
   // ── Data merge engine ─────────────────────────────────────────────────────
