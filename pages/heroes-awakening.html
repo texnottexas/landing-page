@@ -824,8 +824,8 @@
     </section>
 
     <section>
-      <h2>Phase exchange pools <span class="h2-tag live">live</span></h2>
-      <p class="muted" style="margin-bottom:10px">Each Phase has its own pool of 8 donor heroes you can convert FROM. Decoded from <code>hero_exchange</code> rows 1/2/3.</p>
+      <h2>Awakening phases &amp; swap targets <span class="h2-tag live">live</span></h2>
+      <p class="muted" style="margin-bottom:10px">The Hero Swap event unlocks alongside the awakening rollout — the 6 target heroes available each phase are the same 6 heroes whose awakening goes live that phase. Mirrors the Hyper Awakening tab grouping.</p>
       <div id="exchange-pools"></div>
     </section>
 
@@ -1244,23 +1244,31 @@
     function renderExchangePools() {
       const wrap = document.getElementById('exchange-pools');
       const phases = DATA.hyperAwakening.phases;
-      // exchangePool already has all 24 heroes; the hero_exchange table maps them to phases (pool 1 = batch 1)
-      // pool 1 donors: 162|166|168|167|171|160|156|159 (Army)
-      //              + 236|229|233|238|230|231|235|228 (Navy)
-      //              + 328|327|329|331|335|326|330|325 (Air)
-      // ALL 24 are in pool — but the hero_exchange.row[N].consume_hero array tells us the 8 donors per pool
-      // Each pool maps to a Phase batch (1 → Phase I, 2 → Phase II, 3 → Phase III)
-      const poolDonors = [
-        { phase: 1, label: 'Phase I exchange pool (LIVE)', donors: ['162','166','168','167','171','160','156','159', '236','229','233','238','230','231','235','228', '328','327','329','331','335','326','330','325'] },
-      ];
-      // All 24 donors are eligible to convert into any Phase I target. Render the eligible donors.
+      const phaseLine = (p) => {
+        const heroes = (p.heroes || []).map(h => h.name).join(' · ');
+        const status = p.status === 'LIVE'
+          ? el('span', { class: 'live-badge', style: 'margin-left:6px' }, 'LIVE')
+          : el('span', { class: 'cs-badge', style: 'margin-left:6px' }, p.status);
+        return el('p', null,
+          el('strong', null, 'Phase ' + (['I','II','III'][p.phase - 1] || p.phase) + ' targets'),
+          status, ': ', heroes
+        );
+      };
       const sections = [
         el('div', { class: 'card', style: 'margin-bottom:14px' },
           el('h3', null, 'How the pool works'),
-          el('p', null, 'The full 24-donor Exchange Pool is shared across all 3 Phases. A donor can be used ONCE per phase, into ONE target of the same army type. The target list for each Phase is fixed (decoded from <code>hero_exchange</code> table — 6 targets per Phase).'),
-          el('p', null, 'Phase I targets: ', el('strong', null, '170 Rohr · 174 Ella · 169 Sara · 165 Marvingt · 173 Tannis · 172 Nova')),
-          el('p', null, 'Phase II targets: ', el('strong', null, '332 Vivian · 338 Franziska · 334 Jett · 337 Heid · 336 Joan Mature · 333 Carna')),
-          el('p', null, 'Phase III targets: ', el('strong', null, '240 Sinope · 241 Margaretha · 234 Shen Suyu · 237 Alvida · 232 Lilia · 239 Lophy'))
+          el('p', null, 'The 24-donor Exchange Pool is shared across all 3 Awakening Phases. The 6 target slots for each Phase are fixed and match the same Phase I / II / III batches shown on the Hyper Awakening tab. Each phase ',
+            el('strong', null, 'unlocks alongside its awakening batch'),
+            ' — Phase I is live now, II and III are server-gated.'
+          ),
+          el('p', { class: 'muted', style: 'font-size:.74rem; margin-top:6px' },
+            'Eligibility rule: any donor in the pool can be redeemed for any target of the ',
+            el('strong', null, 'same army type'),
+            ' (Army↔Army, Navy↔Navy, Air↔Air). The 24 donors split 8/8/8 by army type; each Phase\'s 6 targets always mix 2 Army + 2 Navy + 2 Air.'
+          ),
+          el('div', { style: 'margin-top:10px' },
+            ...phases.map(p => phaseLine(p))
+          )
         )
       ];
       replace(wrap, ...sections);
