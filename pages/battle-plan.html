@@ -1893,8 +1893,13 @@ body{top:0!important;}
       }
       var foot = el('div', 'r11-wl-foot');
       if (w.isContested){
-        var atks = (w.contestedBy || []).map(function(s){ return 'S' + s; }).join(', ');
-        foot.appendChild(el('span', 'r11-wl-contest', 'Contested vs ' + atks));
+        var fcontest = el('span', 'r11-wl-contest');
+        fcontest.appendChild(document.createTextNode('Contested vs '));
+        (w.contestedBy || []).forEach(function(s, i){
+          if (i > 0) fcontest.appendChild(document.createTextNode(', '));
+          fcontest.appendChild(makeSidPill(s, rd));
+        });
+        foot.appendChild(fcontest);
       } else {
         foot.appendChild(el('span', 'r11-wl-uncontested', 'Uncontested'));
       }
@@ -1986,7 +1991,16 @@ body{top:0!important;}
         var head = el('div', 'r11-nc-head');
         head.appendChild(el('span', 'r11-nc-lvl l' + n.level, 'Lv.' + n.level));
         head.appendChild(el('span', 'r11-nc-name', n.nc.replace(/^Lv\.\s*\d+\s*/, '')));
-        if (n.r != null) head.appendChild(el('span', 'r11-nc-pos', '@(' + n.r + ',' + n.c + ') · S' + n.sid));
+        if (n.r != null){
+          var ncPos = el('span', 'r11-nc-pos');
+          ncPos.appendChild(document.createTextNode('@(' + n.r + ',' + n.c + ') · '));
+          if (n.sid){
+            ncPos.appendChild(makeSidPill(n.sid, rd));
+          } else {
+            ncPos.appendChild(document.createTextNode('unclaimed'));
+          }
+          head.appendChild(ncPos);
+        }
         var prioTag = el('span', 'r11-nc-prio ' + (n.priority === 'lock' ? 'lock' : 'target'),
           n.priority === 'lock' ? 'LOCK IN' : 'TARGET');
         head.appendChild(prioTag);
@@ -2140,8 +2154,14 @@ body{top:0!important;}
       name.appendChild(el('span', 'nc-lvl l' + lvl, 'Lv.' + lvl));
       name.appendChild(document.createTextNode(' ' + nc.nc.replace(/^Lv\.\s*\d+\s*/, '')));
       if (isTarget) name.appendChild(el('span', 'nc-target-badge', 'TARGET'));
-      var ownerStr = nc.sid ? 'S' + nc.sid : 'unclaimed';
-      name.appendChild(el('span', 'nc-pos', '@(' + nc.r + ',' + nc.c + ') · ' + ownerStr));
+      var ncFlowPos = el('span', 'nc-pos');
+      ncFlowPos.appendChild(document.createTextNode('@(' + nc.r + ',' + nc.c + ') · '));
+      if (nc.sid){
+        ncFlowPos.appendChild(makeSidPill(nc.sid, rd));
+      } else {
+        ncFlowPos.appendChild(document.createTextNode('unclaimed'));
+      }
+      name.appendChild(ncFlowPos);
       row.appendChild(name);
       var via = el('div', 'nc-via');
       var hasW = (nc.viaWastelands || []).length > 0;
@@ -2247,8 +2267,14 @@ body{top:0!important;}
       var name = el('div', 'nc-name');
       name.appendChild(el('span', 'nc-lvl l' + lvl, 'Lv.' + lvl));
       name.appendChild(document.createTextNode(' ' + p.ncName.replace(/^Lv\.\s*\d+\s*/, '')));
-      var ownerStr = p.sid ? 'S' + p.sid : 'unclaimed';
-      name.appendChild(el('span', 'nc-pos', '@(' + p.r + ',' + p.c + ') · ' + ownerStr));
+      var twoHopPos = el('span', 'nc-pos');
+      twoHopPos.appendChild(document.createTextNode('@(' + p.r + ',' + p.c + ') · '));
+      if (p.sid){
+        twoHopPos.appendChild(makeSidPill(p.sid, rd));
+      } else {
+        twoHopPos.appendChild(document.createTextNode('unclaimed'));
+      }
+      name.appendChild(twoHopPos);
       row.appendChild(name);
       var via = el('div', 'nc-via two-hop-via');
       p.paths.forEach(function(path, i){
@@ -2395,8 +2421,14 @@ body{top:0!important;}
       var name = el('div', 'nc-name');
       name.appendChild(el('span', 'nc-lvl l' + lvl, 'Lv.' + lvl));
       name.appendChild(document.createTextNode(' ' + p.ncName.replace(/^Lv\.\s*\d+\s*/, '')));
-      var ownerStr = p.sid ? 'S' + p.sid : 'unclaimed';
-      name.appendChild(el('span', 'nc-pos', '@(' + p.r + ',' + p.c + ') · ' + ownerStr));
+      var threeHopPos = el('span', 'nc-pos');
+      threeHopPos.appendChild(document.createTextNode('@(' + p.r + ',' + p.c + ') · '));
+      if (p.sid){
+        threeHopPos.appendChild(makeSidPill(p.sid, rd));
+      } else {
+        threeHopPos.appendChild(document.createTextNode('unclaimed'));
+      }
+      name.appendChild(threeHopPos);
       row.appendChild(name);
       var via = el('div', 'nc-via two-hop-via');
       p.paths.forEach(function(path, i){
@@ -2525,8 +2557,13 @@ body{top:0!important;}
       tr.appendChild(tdTier);
       tr.appendChild(el('td', null, '#' + p.sectorRank));
       var tdSid = el('td');
-      var sidB = el('b', null, p.sid === 2864 ? ('S' + p.sid + ' (us)') : ('S' + p.sid));
-      tdSid.appendChild(sidB);
+      if (p.sid === 2864){
+        tdSid.appendChild(el('b', null, 'S' + p.sid + ' (us)'));
+      } else {
+        // Visual pill — row click already opens the modal, so render
+        // as a non-button span styled like enemy-pill for affordance.
+        tdSid.appendChild(el('span', 'enemy-pill', 'S' + p.sid));
+      }
       tr.appendChild(tdSid);
       tr.appendChild(el('td', null, p.score || 0));
       tr.appendChild(el('td', null, fmtNum(p.score2 || 0)));
@@ -2683,8 +2720,12 @@ body{top:0!important;}
           tags.appendChild(b1);
         }
         if (w.isContested){
-          var atk = (w.contestedBy || []).map(function(s){ return 'S' + s; }).join(', ');
-          var b2 = el('span', 'bm-tag tag-contested', 'vs ' + atk);
+          var b2 = el('span', 'bm-tag tag-contested');
+          b2.appendChild(document.createTextNode('vs '));
+          (w.contestedBy || []).forEach(function(s, i){
+            if (i > 0) b2.appendChild(document.createTextNode(', '));
+            b2.appendChild(makeSidPill(s, rd));
+          });
           tags.appendChild(b2);
         } else {
           tags.appendChild(el('span', 'bm-tag tag-uncontested', 'uncontested'));
@@ -2750,6 +2791,27 @@ body{top:0!important;}
       sidOnly: true
     };
     openOppModal(synth, rd);
+  }
+
+  // Helper: build a clickable pill for any enemy server SID. Opens the same
+  // modal the Power Index uses. S2864 returns plain bold text (no modal).
+  function makeSidPill(sid, rd, label){
+    var text = label || ('S' + sid);
+    if (sid === 2864){
+      var us = document.createElement('b');
+      us.textContent = text;
+      return us;
+    }
+    var pill = document.createElement('button');
+    pill.type = 'button';
+    pill.className = 'enemy-pill';
+    pill.textContent = text;
+    pill.title = 'Open sector intel for S' + sid;
+    pill.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      openSidModal(sid, rd);
+    });
+    return pill;
   }
 
   function buildBuffs(rd, root){
@@ -3490,6 +3552,7 @@ body{top:0!important;}
 
   var _bpTiers = null;
   var _bpRoundKey = null;
+  var _bpRoundData = null;
 
   function render(data){
     var root = document.getElementById('root');
@@ -3497,6 +3560,7 @@ body{top:0!important;}
     var roundKey = String(data.currentRound);
     _bpRoundKey = roundKey;
     var rd = data.rounds[roundKey];
+    _bpRoundData = rd;
     if (!rd){
       var e = el('div', 'error', 'No data for current round ' + roundKey);
       root.appendChild(e);
@@ -3653,9 +3717,17 @@ body{top:0!important;}
         var meta2 = el('div', 'pm-buff-meta');
         if (e.threat) {
           meta2.appendChild(el('span', null, '⚠ Real threat'));
-          if (e.opp) meta2.appendChild(el('span', null, ' · vs S' + e.opp.opponent));
+          if (e.opp){
+            var vs1 = el('span');
+            vs1.appendChild(document.createTextNode(' · vs '));
+            vs1.appendChild(makeSidPill(e.opp.opponent, _bpRoundData));
+            meta2.appendChild(vs1);
+          }
         } else if (e.opp) {
-          meta2.appendChild(el('span', null, 'vs S' + e.opp.opponent));
+          var vs2 = el('span');
+          vs2.appendChild(document.createTextNode('vs '));
+          vs2.appendChild(makeSidPill(e.opp.opponent, _bpRoundData));
+          meta2.appendChild(vs2);
         } else {
           meta2.appendChild(el('span', null, 'Uncontested'));
         }
