@@ -29902,19 +29902,24 @@
     return { beastDatas: beastDatas, fields: fields };
   }
 
-  // Build a merged.decorations-shaped array from the decor supplement.
-  // Reports carry `effectDecorations` as `[{id, level, ...}]`. We mirror that
-  // minimal shape (id, level, group, type, quality, buff_id) so the decor tab
-  // and stats-comparison modal can consume either source without branching.
+  // Build a merged.decorations-shaped object from the decor supplement.
+  // Battle reports' merged.decorations is { ids:[buildingId,...], suit:[suitId,...],
+  // suitLevelBuff:{ suitId: rewardedLevel } } — NOT a flat list. The decor tab
+  // reads .ids.length to decide whether to render, .suit for the sets header,
+  // and .suitLevelBuff for per-set level callouts. Match that shape exactly so
+  // the tab works whether the data came from a report or the bookmarklet.
   function _ar_synthDecorationsFromSupp(supp) {
     if (!supp || !Array.isArray(supp.active)) return null;
-    return supp.active.map(function(d) {
-      return {
-        id: d.id, group: d.group, level: d.level,
-        type: d.type, quality: d.quality, buff_id: d.buff_id,
-        pos: d.pos
-      };
+    var ids = supp.active.map(function(d) { return d.id; });
+    var suitArr = Array.isArray(supp.suits) ? supp.suits : [];
+    var suit = [];
+    var suitLevelBuff = {};
+    suitArr.forEach(function(s) {
+      if (!s || s.suitId == null) return;
+      if (s.rewarded) suit.push(s.suitId);
+      if (s.rewardedLevel != null) suitLevelBuff[String(s.suitId)] = s.rewardedLevel;
     });
+    return { ids: ids, suit: suit, suitLevelBuff: suitLevelBuff };
   }
 
   // Build a merged.skins-shaped object from the skin supplement. Reports
