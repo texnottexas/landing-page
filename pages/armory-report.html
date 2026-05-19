@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com https://www.clarity.ms https://*.clarity.ms https://c.bing.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; img-src https://knight-cdn.akamaized.net https://h5.topwargame.com https://raw.githubusercontent.com data: https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://fonts.gstatic.com https://www.google.com https://*.clarity.ms https://c.bing.com; connect-src 'self' https://fight-report-va.oss-accelerate.aliyuncs.com https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com https://push-worker.27tb8s6fct.workers.dev https://*.clarity.ms https://c.bing.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'; frame-src https://translate.google.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com https://www.clarity.ms https://*.clarity.ms https://c.bing.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; img-src https://knight-cdn.akamaized.net https://h5.topwargame.com https://raw.githubusercontent.com data: https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://fonts.gstatic.com https://www.google.com https://*.clarity.ms https://c.bing.com; connect-src 'self' https://fight-report-va.oss-accelerate.aliyuncs.com https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com https://push-worker.27tb8s6fct.workers.dev https://*.clarity.ms https://c.bing.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'; frame-src https://translate.google.com https://www.youtube-nocookie.com;">
 <title>Armory Report — Server 2864</title>
 <style>
   :root {
@@ -25157,6 +25157,111 @@
   // ── Combined "Import TopWar Data" modal ──────────────────────────────────
   // Single entry point for the consolidated all-bookmarklet (v=2 envelope).
   // Shows per-section progress and refreshes every cloud-sync pill on the page.
+  // Unlisted YouTube walkthroughs Tex recorded 2026-05-19. Two browsers,
+  // since the bookmark-management UX is meaningfully different on each:
+  //   Safari (iOS / macOS) — uoAbjuFlIJ8
+  //   Chrome  (Android / desktop) — zK-jdYCSss4
+  // Returning users who already have an armory set up and a TW session
+  // alive in the browser can skip the intro by jumping to 3:20 (=200s).
+  var _AR_WALKTHROUGH_VIDEOS = {
+    safari: { id: 'uoAbjuFlIJ8', label: 'Safari (iOS / macOS)' },
+    chrome: { id: 'zK-jdYCSss4', label: 'Chrome (Android / desktop)' }
+  };
+  var _AR_WALKTHROUGH_SKIP_SECONDS = 200; // 3:20 — past the basic armory setup
+
+  // Embeds the bookmarklet walkthrough at the top of the Import modal.
+  // Detects the player's browser to pick a sensible default (Safari for
+  // iOS, Chrome for everything else) and offers a one-tap toggle to the
+  // other version. The "Skip to 3:20" link reloads the same iframe with
+  // a ?start= query so returning users don't have to scrub. Privacy-mode
+  // embed (youtube-nocookie.com) is on the CSP allowlist, so the iframe
+  // loads without tracking cookies set against this origin.
+  function _ar_buildWalkthroughVideoCard() {
+    var plat = _ar_detectPlatform();
+    var current = plat.isIOS ? 'safari' : 'chrome';
+
+    var card = document.createElement('div');
+    card.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.7rem .85rem;margin:0 0 .9rem;';
+
+    var head = document.createElement('div');
+    head.style.cssText = 'display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:.5rem;margin-bottom:.5rem;';
+    var title = document.createElement('div');
+    title.style.cssText = 'font-size:.85rem;font-weight:600;color:var(--text);';
+    title.textContent = 'Watch the walkthrough';
+    head.appendChild(title);
+    var sub = document.createElement('div');
+    sub.style.cssText = 'font-size:.7rem;color:var(--muted);';
+    sub.textContent = 'Full setup, paste, and save — about 6 minutes.';
+    head.appendChild(sub);
+    card.appendChild(head);
+
+    // Toggle row: pick which version of the video. Defaults match the
+    // detected browser; players who land on the "wrong" video flip it
+    // with one tap.
+    var toggleRow = document.createElement('div');
+    toggleRow.style.cssText = 'display:flex;gap:.4rem;margin-bottom:.55rem;flex-wrap:wrap;';
+    function makeToggle(key) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.dataset.video = key;
+      btn.style.cssText = 'padding:.3rem .65rem;font-size:.72rem;border-radius:6px;cursor:pointer;border:1px solid var(--border);font-family:inherit;';
+      btn.textContent = _AR_WALKTHROUGH_VIDEOS[key].label;
+      btn.onclick = function() { paint(key, 0); };
+      return btn;
+    }
+    var btnSafari = makeToggle('safari');
+    var btnChrome = makeToggle('chrome');
+    toggleRow.appendChild(btnSafari);
+    toggleRow.appendChild(btnChrome);
+    card.appendChild(toggleRow);
+
+    // Skip hint — shown above the player so first-time viewers see what
+    // the "Skip to 3:20" button does without having to discover it.
+    var hint = document.createElement('div');
+    hint.style.cssText = 'font-size:.72rem;color:var(--muted);margin-bottom:.55rem;line-height:1.45;';
+    var hintTxt = document.createElement('span');
+    hintTxt.textContent = 'Already set up your armory and signed into Top War in this browser? ';
+    hint.appendChild(hintTxt);
+    var skipBtn = document.createElement('button');
+    skipBtn.type = 'button';
+    skipBtn.style.cssText = 'background:none;border:none;padding:0;color:var(--accent);text-decoration:underline;cursor:pointer;font-size:inherit;font-family:inherit;';
+    skipBtn.textContent = 'Skip to 3:20 →';
+    skipBtn.onclick = function() { paint(current, _AR_WALKTHROUGH_SKIP_SECONDS); };
+    hint.appendChild(skipBtn);
+    card.appendChild(hint);
+
+    // 16:9 responsive frame. The iframe gets recreated on each paint so
+    // ?start= changes don't get cached by the embed player.
+    var frameWrap = document.createElement('div');
+    frameWrap.style.cssText = 'position:relative;width:100%;padding-bottom:56.25%;background:#000;border-radius:6px;overflow:hidden;';
+    card.appendChild(frameWrap);
+
+    function paint(which, startSec) {
+      current = which;
+      // Style the active toggle.
+      [btnSafari, btnChrome].forEach(function(b) {
+        var on = b.dataset.video === which;
+        b.style.background = on ? 'var(--accent)' : 'var(--card)';
+        b.style.color = on ? '#0d1117' : 'var(--text)';
+        b.style.fontWeight = on ? '700' : '500';
+        b.style.borderColor = on ? 'var(--accent)' : 'var(--border)';
+      });
+      // Replace iframe so the embed reloads cleanly with the new src.
+      while (frameWrap.firstChild) frameWrap.removeChild(frameWrap.firstChild);
+      var iframe = document.createElement('iframe');
+      var src = 'https://www.youtube-nocookie.com/embed/' + _AR_WALKTHROUGH_VIDEOS[which].id + '?rel=0';
+      if (startSec > 0) src += '&start=' + startSec;
+      iframe.src = src;
+      iframe.title = _AR_WALKTHROUGH_VIDEOS[which].label + ' walkthrough';
+      iframe.allow = 'accelerometer; encrypted-media; picture-in-picture';
+      iframe.allowFullscreen = true;
+      iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;';
+      frameWrap.appendChild(iframe);
+    }
+    paint(current, 0);
+    return card;
+  }
+
   function _ar_openImportModal(siteKey, onSaved) {
     var bg = document.createElement('div');
     bg.className = 'modal-bg show';
@@ -25173,6 +25278,12 @@
     var p = document.createElement('p');
     p.textContent = 'One tap on h5.topwargame.com snapshots every supplement; paste the JSON below to upload them.';
     modal.appendChild(p);
+
+    // Bookmarklet walkthrough videos (Safari / Chrome). Sits at the top of
+    // the modal so first-time players see it before the paste box; the
+    // detected browser's version loads by default with a one-tap toggle
+    // to the other.
+    modal.appendChild(_ar_buildWalkthroughVideoCard());
 
     modal.appendChild(_ar_buildBookmarkletPanel({
       fileName: 'all-bookmarklet.txt',
