@@ -4696,7 +4696,17 @@
     var tabs = raw.tabs || {};
     ['item', 'cpnt'].forEach(function(tabKey) {
       (tabs[tabKey] || []).forEach(function(it) {
-        var cfg = lk.item[String(it.id)] || {};
+        var cfgRaw = lk.item[String(it.id)];
+        var cfg = cfgRaw || {};
+        // Silent-fallback detection: data/item-table.json has no row for
+        // this id. The cell will render "#<id>" with no icon. Queue the id
+        // to KV so the next extraction pass can pull it from the live game
+        // (TableManager + LocalManager.getText) and patch item-table.json.
+        if (!cfgRaw) {
+          _ar_reportMissingLookup('item', it.id, 'armory-report/inventory/' + tabKey, {
+            tab: tabKey, level: it.l || null, group: it.g || null, amount: it.a || 0
+          });
+        }
         var icoInfo = _ar_resolveItemIcon(cfg.i);
         // Type 153 = unequipped Titan rune. Inventory atlas doesn't include
         // them — redirect to the existing assets/rune-icons/ files keyed by
@@ -4802,8 +4812,19 @@
       });
     });
     (tabs.unit || []).forEach(function(it) {
-      var cfg = lk.army[String(it.id)] || {};
-      var itemCfg = lk.item[String(it.id)] || {};
+      var cfgRaw = lk.army[String(it.id)];
+      var itemCfgRaw = lk.item[String(it.id)];
+      var cfg = cfgRaw || {};
+      var itemCfg = itemCfgRaw || {};
+      // Silent-fallback detection: army-icon-map.json doesn't know this
+      // unit id. Cell falls back to "Unit #<id>" with no icon. Patch path
+      // is to rerun the army-icon extraction pass after the game adds the
+      // unit prefab and re-publish army-icon-map.json + the icon PNG.
+      if (!cfgRaw) {
+        _ar_reportMissingLookup('army', it.id, 'armory-report/inventory/unit', {
+          tab: 'unit', level: it.l || null, group: it.g || null, amount: it.a || 0
+        });
+      }
       // Unit display names from the game are Chinese-derived asset keys (e.g.
       // "army_baseV6_name04") and don't translate cleanly. Show level only.
       var lv = cfg.level || it.l;
@@ -4824,7 +4845,17 @@
       }
     }
     (tabs.decor || []).forEach(function(it) {
-      var cfg = lk.building[String(it.id)] || {};
+      var cfgRaw = lk.building[String(it.id)];
+      var cfg = cfgRaw || {};
+      // Silent-fallback detection: building-table.json is stale for this
+      // decor id. Cell falls back to "Decor #<id>" with no icon. Patch
+      // path is the building TABLE extract — group/level hint helps
+      // narrow the in-game lookup (groups cluster by suit / category).
+      if (!cfgRaw) {
+        _ar_reportMissingLookup('building', it.id, 'armory-report/inventory/decor', {
+          tab: 'decor', level: it.l || null, group: it.g || null, amount: it.a || 0
+        });
+      }
       var grp = cfg.g || it.g;
       var icon = (grp && cfg.n) ? grp + '_' + _ar_sanitizeName(cfg.n) + '.png' : null;
       var inSuit = grp && suitGroupSet[String(grp)];
@@ -4839,7 +4870,16 @@
       });
     });
     (tabs.hero || []).forEach(function(it) {
-      var cfg = lk.item[String(it.id)] || {};
+      var cfgRaw = lk.item[String(it.id)];
+      var cfg = cfgRaw || {};
+      // Silent-fallback detection. Hero-tab cells route through the item
+      // table (hero shards / skill cards live there too). Missing row
+      // means item-table.json is stale — same patch path as the item tab.
+      if (!cfgRaw) {
+        _ar_reportMissingLookup('item', it.id, 'armory-report/inventory/hero', {
+          tab: 'hero', level: it.l || null, group: it.g || null, amount: it.a || 0
+        });
+      }
       var icoInfo = _ar_resolveItemIcon(cfg.i);
       // Type 31 hero shards: same CDN-redirect rule as the Item tab. The
       // inventory atlas doesn't ship hero portraits, but the public game
@@ -20094,6 +20134,44 @@
     } catch (e) {}
   }
 
+  // Distinct from missing-icon: this fires when the LOOKUP TABLE ROW itself
+  // is absent — the item shows as "#1234567" because data/item-table.json
+  // (or building-table / army-icon-map / all-heroes) doesn't have a row for
+  // that id. A new game patch adds an item, the supplement payload carries
+  // its id, but no name / type / group / icon ever resolves on this page.
+  // Reports land in KV alongside missing-icon so the extraction pass can
+  // patch both the table json + the icon file in one sweep.
+  //
+  // Dedup is per (kind, id) per browser session — the worker still bumps
+  // count + lastSeen on every POST so cross-device reports aggregate.
+  var _ar_misslookupReported = (function() {
+    try {
+      var s = JSON.parse(localStorage.getItem('armory_misslookup_reported') || '{}');
+      return s && typeof s === 'object' ? s : {};
+    } catch (e) { return {}; }
+  })();
+  function _ar_reportMissingLookup(kind, id, source, hint) {
+    if (!kind || id == null) return;
+    var key = kind + '_' + id;
+    if (_ar_misslookupReported[key]) return;
+    _ar_misslookupReported[key] = Date.now();
+    try { localStorage.setItem('armory_misslookup_reported', JSON.stringify(_ar_misslookupReported)); } catch (e) {}
+    try {
+      fetch(PUSH_WORKER + '/feedback/missing-lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: kind,
+          id: id,
+          source: source || '',
+          hint: hint || {},
+          page: 'armory-report/inventory'
+        }),
+        keepalive: true
+      }).catch(function() {});
+    } catch (e) {}
+  }
+
   // Synthetic aggregate cell (Gems / Odinium / Food / Oil). Click → modal
   // showing every contributing pack with per-pack value × amount × total.
   function _ar_buildAggregateCell(kind, data) {
@@ -20286,7 +20364,14 @@
       ph.className = 'placeholder';
       ph.textContent = '?';
       wrap.appendChild(ph);
-      _ar_reportMissingIcon(it, 'inv-noicon');
+      // No icon path at all — usually because cfg.i is absent. If cfg.t is
+      // also missing the rehydrate pass already filed a missing-lookup; if
+      // only the icon path is missing we still want to nudge the extraction
+      // pass to fill cfg.i. ('inv-noicon' previously routed to
+      // /feedback/missing-icon but failed the kind regex and was dropped.)
+      _ar_reportMissingLookup('icon-path', it.id, 'armory-report/inventory/' + (it.type || 'unknown'), {
+        name: it.name || '', type: it.type || null, group: it.group || null
+      });
     }
     c.appendChild(wrap);
     var statsRow = document.createElement('div');
