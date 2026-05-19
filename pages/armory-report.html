@@ -16796,6 +16796,154 @@
     };
   }
 
+  // Breeding suggestions: for each (beast type, element) combination that
+  // multiple platform slots accept, compare against the player's roster and
+  // surface combos that lack Q5 5-star coverage. The score is simply the
+  // gap between slot demand (how many slots accept this combo) and supply
+  // (how many Q5 5-star beasts the player owns). Niche combos accepted by
+  // only one slot are filtered out — they're rarely worth a hatch.
+  function boBreedingAnalysis(ownedBeasts) {
+    if (!boPlatforms || !Array.isArray(boPlatforms.holes)) return [];
+
+    var demand = {};
+    boPlatforms.holes.forEach(function(h) {
+      if (!h || !h.faction) return;
+      var typeIds = h.beastTypeIds || [];
+      if (!typeIds.length) return;
+      typeIds.forEach(function(t) {
+        if (!t) return;
+        var key = t + ':' + h.faction;
+        demand[key] = (demand[key] || 0) + 1;
+      });
+    });
+
+    var supply = {};
+    (ownedBeasts || []).forEach(function(b) {
+      if (!b || !b.type || !b.fac) return;
+      var key = b.type + ':' + b.fac;
+      (supply[key] = supply[key] || []).push(b);
+    });
+
+    var results = [];
+    Object.keys(demand).forEach(function(key) {
+      var parts = key.split(':');
+      var type = Number(parts[0]);
+      var element = Number(parts[1]);
+      var slotCount = demand[key];
+      if (slotCount < 2) return; // skip niche combos
+      var owned = supply[key] || [];
+      var anyCount = owned.length;
+      var q5 = 0, q5Hi = 0, q5Max = 0;
+      owned.forEach(function(b) {
+        if (b.q >= 5) {
+          q5 += 1;
+          var st = b.st || 0;
+          if (st >= 4) q5Hi += 1;
+          if (st >= 5) q5Max += 1;
+        }
+      });
+      var gap = slotCount - q5Max;
+      if (gap <= 0) return;
+      results.push({
+        type: type, element: element,
+        slotCount: slotCount,
+        ownedAny: anyCount,
+        ownedQ5: q5,
+        ownedQ5Hi: q5Hi,
+        ownedQ5Max: q5Max,
+        gap: gap
+      });
+    });
+
+    results.sort(function(a, b) {
+      if (b.gap !== a.gap) return b.gap - a.gap;
+      return b.slotCount - a.slotCount;
+    });
+    return results.slice(0, 10);
+  }
+
+  // Render the breeding-priorities card. Returns the element, or null if
+  // there's nothing meaningful to suggest.
+  function boRenderBreedingPriorities(ownedBeasts) {
+    var suggestions = boBreedingAnalysis(ownedBeasts);
+    if (!suggestions.length) return null;
+
+    var box = document.createElement('div');
+    box.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.75rem 1rem;margin-top:1rem;';
+
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:baseline;justify-content:space-between;margin-bottom:.35rem;gap:.5rem;';
+    var hdrTitle = document.createElement('strong');
+    hdrTitle.style.cssText = 'font-size:.9rem;color:var(--text);';
+    hdrTitle.textContent = 'Breeding Priorities';
+    hdr.appendChild(hdrTitle);
+    var hdrCount = document.createElement('span');
+    hdrCount.style.cssText = 'font-size:.7rem;color:var(--muted);';
+    hdrCount.textContent = suggestions.length + ' combo' + (suggestions.length === 1 ? '' : 's');
+    hdr.appendChild(hdrCount);
+    box.appendChild(hdr);
+
+    var sub = document.createElement('p');
+    sub.style.cssText = 'font-size:.7rem;color:var(--muted);margin:0 0 .6rem;line-height:1.4;';
+    sub.textContent = 'Type / Element combinations accepted by multiple platforms where your roster lacks Q5 5-star coverage. Hatch toward these to widen the optimizer\'s placement options.';
+    box.appendChild(sub);
+
+    var list = document.createElement('div');
+    list.style.cssText = 'display:flex;flex-direction:column;gap:.35rem;';
+
+    suggestions.forEach(function(sg) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:.6rem;padding:.4rem .55rem;background:var(--cards);border-radius:4px;border:1px solid var(--border);';
+
+      var iconWrap = document.createElement('div');
+      iconWrap.style.cssText = 'position:relative;width:36px;height:36px;flex-shrink:0;';
+      var icon = document.createElement('img');
+      icon.src = ebBeastIconUrl(sg.type, sg.element, 5);
+      icon.alt = '';
+      icon.style.cssText = 'width:36px;height:36px;border-radius:4px;object-fit:cover;';
+      icon.onerror = function() { icon.style.visibility = 'hidden'; };
+      iconWrap.appendChild(icon);
+      var elementName = EB_ELEMENTS[sg.element] || '';
+      if (elementName) {
+        var elemBadge = document.createElement('img');
+        elemBadge.src = EB_ICON_BASE + 'element_' + elementName + '.png';
+        elemBadge.alt = '';
+        elemBadge.style.cssText = 'position:absolute;bottom:-2px;right:-2px;width:16px;height:16px;';
+        elemBadge.onerror = function() { elemBadge.style.display = 'none'; };
+        iconWrap.appendChild(elemBadge);
+      }
+      row.appendChild(iconWrap);
+
+      var info = document.createElement('div');
+      info.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:.12rem;min-width:0;';
+      var nameLine = document.createElement('div');
+      nameLine.style.cssText = 'font-size:.82rem;color:var(--text);font-weight:500;';
+      nameLine.textContent = elementName + ' ' + (EB_TYPES[sg.type] || ('Beast ' + sg.type));
+      info.appendChild(nameLine);
+      var statLine = document.createElement('div');
+      statLine.style.cssText = 'font-size:.66rem;color:var(--muted);line-height:1.3;';
+      var parts = [
+        sg.ownedQ5Max + ' at Q5 5★',
+        sg.ownedQ5Hi + ' at Q5 4★+',
+        sg.ownedQ5 + ' at Q5 any',
+        sg.ownedAny + ' total'
+      ];
+      statLine.textContent = parts.join(' • ');
+      info.appendChild(statLine);
+      row.appendChild(info);
+
+      var coverage = document.createElement('span');
+      coverage.style.cssText = 'flex-shrink:0;font-size:.7rem;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.2rem .55rem;font-variant-numeric:tabular-nums;';
+      coverage.textContent = sg.ownedQ5Max + ' / ' + sg.slotCount + ' platforms';
+      row.appendChild(coverage);
+
+      list.appendChild(row);
+    });
+
+    box.appendChild(list);
+    return box;
+  }
+
   // Find the smallest (stars, level) increment from a beast's current state
   // that pushes its score above targetScore. Returns null if even the
   // fully-maxed beast can't beat the target.
@@ -17176,6 +17324,9 @@
         container.appendChild(boRenderSwapCard(rec, prefs, result.conditionWarnings, openDetail));
       });
     });
+
+    var breedingPanel = boRenderBreedingPriorities(owned);
+    if (breedingPanel) container.appendChild(breedingPanel);
 
     // Honest disclaimer block. The optimizer is still missing several inputs
     // that affect placement value in the real game; surface them so the
