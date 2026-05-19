@@ -17624,7 +17624,7 @@
       var tgLink = boGetTgLinkForSlot(slot.fieldType, slot.order);
       if (tgLink) {
         var tgRow = document.createElement('div');
-        tgRow.style.cssText = 'display:flex;justify-content:space-between;gap:.4rem;font-size:.66rem;line-height:1.3;padding:.3rem 0;border-top:1px dashed var(--border);color:var(--muted);';
+        tgRow.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:space-between;gap:.4rem;font-size:.66rem;line-height:1.3;padding:.3rem 0;border-top:1px dashed var(--border);color:var(--muted);';
         var tgLeft = document.createElement('div');
         tgLeft.style.cssText = 'flex:1;min-width:0;';
         var tgName = document.createElement('div');
@@ -17652,7 +17652,29 @@
           tgWarn.style.color = '#d29922';
           tgWarn.textContent = 'no gear loaded';
         }
+
+        // Contributor breakdown: when the dynamic override is active, list
+        // each contributing stat with its raw % value and the hero whose
+        // gear is supplying it. This is the bit players were missing —
+        // "live from your gear" was just a status pill with no numbers
+        // anywhere on the row. Lives on its own full-width line below the
+        // name+status so the layout doesn't get cramped.
         tgRow.appendChild(tgWarn);
+        if (tgDyn && BO_TG_DYNAMIC_OVERRIDES[tgSlotKey].length) {
+          var contribsLine = document.createElement('div');
+          contribsLine.style.cssText = 'flex-basis:100%;font-size:.6rem;color:var(--muted);line-height:1.45;margin-top:.25rem;';
+          var STAT_LABEL = { atk: 'ATK', hp: 'HP', def: 'DEF', dmgInc: 'DMG Inc', dmgDec: 'DMG Dec', march: 'March' };
+          var UNIT_LABEL = { 0: '', 1: ' (Army)', 2: ' (Navy)', 3: ' (Air)' };
+          var contribParts = BO_TG_DYNAMIC_OVERRIDES[tgSlotKey].map(function(w) {
+            var lbl = STAT_LABEL[w.statKey] || w.statKey;
+            var unit = UNIT_LABEL[w.targetUnit] || '';
+            var pct = (w.weightRatio * 100).toFixed(2).replace(/\.?0+$/, '');
+            var who = (w.heroId != null && typeof heroName === 'function') ? (' via ' + heroName(w.heroId)) : '';
+            return '+' + pct + '% ' + lbl + unit + who;
+          });
+          contribsLine.textContent = 'Active: ' + contribParts.join(' · ');
+          tgRow.appendChild(contribsLine);
+        }
         panel.appendChild(tgRow);
       }
     }
@@ -18069,7 +18091,11 @@
     BO_TG_DYNAMIC_OVERRIDES = null;
     if (!merged || !merged.heroes || !merged.heroes.length) return {};
 
-    // Per-tgSlot aggregators. Keyed by "statKey|targetUnit" -> max value.
+    // Per-tgSlot aggregators. Keyed by "statKey|targetUnit" -> { value, heroId }.
+    // Tracking the contributing hero id alongside the winning value lets the
+    // TG Linkage row in the optimizer modal name the gear's source ("+15%
+    // atk via Sasha") so players can see why a slot is active and what to
+    // refine next.
     var aggrType11 = {};  // refined random attributes 70%+
     var aggrType10 = {};  // base attributes from equip.enhanceValue
 
@@ -18088,7 +18114,11 @@
           if (pct < 70) return;
           var key = cls.statKey + '|' + cls.targetUnit;
           aggrType11[tgSlot] = aggrType11[tgSlot] || {};
-          aggrType11[tgSlot][key] = Math.max(aggrType11[tgSlot][key] || 0, info.buffValue || 0);
+          var prev11 = aggrType11[tgSlot][key];
+          var val11 = info.buffValue || 0;
+          if (!prev11 || val11 > prev11.value) {
+            aggrType11[tgSlot][key] = { value: val11, heroId: h.id };
+          }
         });
 
         // Type 10: base attributes from gear's enhanceValue map.
@@ -18100,12 +18130,17 @@
           if (!val) return;
           var key = cls.statKey + '|' + cls.targetUnit;
           aggrType10[tgSlot] = aggrType10[tgSlot] || {};
-          aggrType10[tgSlot][key] = Math.max(aggrType10[tgSlot][key] || 0, val);
+          var prev10 = aggrType10[tgSlot][key];
+          if (!prev10 || val > prev10.value) {
+            aggrType10[tgSlot][key] = { value: val, heroId: h.id };
+          }
         });
       });
     });
 
-    // Project to enigma slots via the linkage table.
+    // Project to enigma slots via the linkage table. Each weight carries the
+    // statKey, targetUnit, weightRatio (used by the scoring path), AND the
+    // contributing hero id so the UI can attribute "+X% atk via <hero>".
     var overrides = {};
     Object.keys(BO_TG_REFINEMENT_LINK).forEach(function(fid) {
       var fieldLink = BO_TG_REFINEMENT_LINK[fid];
@@ -18119,7 +18154,8 @@
           return {
             statKey: parts[0],
             targetUnit: parseInt(parts[1], 10),
-            weightRatio: aggr[k] / 10000
+            weightRatio: aggr[k].value / 10000,
+            heroId: aggr[k].heroId
           };
         });
         if (weights.length) {
