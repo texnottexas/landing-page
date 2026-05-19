@@ -18104,7 +18104,14 @@
       equips.forEach(function(equip, idx) {
         var tgSlot = idx + 1;
 
-        // Type 11: random attrs refined to 70%+
+        // Type 11: random attrs refined to 70%+. The 70% gate is on the
+        // random attribute's roll quality (info.buffValue / cls.max), but
+        // the value that actually flows into the linked enigma slot is the
+        // ENHANCEMENT CHIP — info.enhanceValue, which activates (enhanceShow
+        // === 2) once the roll crosses 70%. Previous code stored buffValue
+        // (the base random-attribute roll) and over-reported the linkage
+        // contribution by 5-10x. enhanceValue matches the "+X%" chip the
+        // gear card displays alongside each random stat in the armory.
         var infos = equip.infos || [];
         infos.forEach(function(info) {
           if (info.type !== 1) return;
@@ -18112,10 +18119,15 @@
           if (!cls || !cls.statKey || !cls.max) return;
           var pct = (info.buffValue || 0) / cls.max * 100;
           if (pct < 70) return;
+          // Defensive: enhanceShow === 2 is the explicit "chip active" flag.
+          // pct >= 70 implies it, but the game can clear enhanceShow if the
+          // gear was just rerolled and the chip hasn't been (re)applied.
+          if (info.enhanceShow != null && info.enhanceShow !== 2) return;
+          var val11 = info.enhanceValue || 0;
+          if (val11 <= 0) return;
           var key = cls.statKey + '|' + cls.targetUnit;
           aggrType11[tgSlot] = aggrType11[tgSlot] || {};
           var prev11 = aggrType11[tgSlot][key];
-          var val11 = info.buffValue || 0;
           if (!prev11 || val11 > prev11.value) {
             aggrType11[tgSlot][key] = { value: val11, heroId: h.id };
           }
