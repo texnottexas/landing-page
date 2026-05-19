@@ -16590,6 +16590,37 @@
       });
     }
 
+    // Pass 3.5: no-vacancy enforcement.
+    //
+    // Hard invariant from Tex: a previously-filled slot must stay filled.
+    // Pass 2/3 can produce assignments that leave a slot empty when the
+    // bench has no eligible alternative — typically when the only eligible
+    // beast for slot A is also the best for higher-impact slot B, so the
+    // beast moves to B and A is stranded with no backfill candidate.
+    // Walk the slot list and revert any such stranding by restoring the
+    // original beast at the vacated slot, evicting it from wherever it
+    // landed. Iterate because reverting one slot can cascade into another.
+    var vacancyIters = slots.length + 4;
+    for (var vIter = 0; vIter < vacancyIters; vIter++) {
+      var didRevert = false;
+      for (var vi = 0; vi < slots.length; vi++) {
+        var vs = slots[vi];
+        var vsOrig = currentPlan[vs.fieldType] && currentPlan[vs.fieldType][vs.order];
+        if (!vsOrig) continue;            // slot was empty originally — empty stays empty
+        if (assignment[vs.key]) continue; // slot has an assignment — fine
+        // Slot was filled and is now stranded. Restore the original beast.
+        var holderKey = null;
+        var aKeys = Object.keys(assignment);
+        for (var ak = 0; ak < aKeys.length; ak++) {
+          if (assignment[aKeys[ak]] === vsOrig) { holderKey = aKeys[ak]; break; }
+        }
+        if (holderKey) delete assignment[holderKey];
+        assignment[vs.key] = vsOrig;
+        didRevert = true;
+      }
+      if (!didRevert) break;
+    }
+
     // Pass 4: field-condition awareness.
     //
     // Each slot has a 1:1 unlock condition (see boConditionIdForSlot). When a
