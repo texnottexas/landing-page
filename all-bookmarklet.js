@@ -572,6 +572,159 @@
     }
 
     // ─── Formation V2 (3 formations + 50-node talent tree) ──────────────
+    // ─── Enigma platform deployment + full beast roster (Phase 3a) ──────
+    // Reads EnigmaBeastController.getInstance() directly — the controller
+    // is populated at login and exposes both the deployed field/hole map
+    // and the player's complete owned beast roster (deployed + bench).
+    // No panel-open needed. Produces a self-contained snapshot the armory
+    // can use to render the enigma tab and run the beast optimizer
+    // without any battle report present.
+    async function extractEnigmaState() {
+      stepHook && stepHook('Enigma state…');
+      var EC;
+      try {
+        var emod = req('EnigmaBeastController');
+        EC = emod && emod.default;
+      } catch (e) { throw new Error('EnigmaBeastController not available'); }
+      var inst = EC && (typeof EC.getInstance === 'function' ? EC.getInstance() : EC._instance);
+      if (!inst) throw new Error('EnigmaBeastController.getInstance returned null');
+
+      // Field deployment: 5 fields, each with N holes carrying enhancement
+      // level + deployed beast id (null when empty).
+      var fields = [];
+      var fdArr = inst._fieldData || [];
+      for (var fi = 0; fi < fdArr.length; fi++) {
+        var f = fdArr[fi];
+        if (!f) continue;
+        var fid = (f._data && f._data.fid) || (f.cfg && (f.cfg.id || f.cfg)) || (fi + 1);
+        var holes = [];
+        var hArr = f.holes || [];
+        for (var hi = 0; hi < hArr.length; hi++) {
+          var h = hArr[hi];
+          if (!h) continue;
+          holes.push({
+            hid: h.id != null ? h.id : (hi + 1),
+            lv: h.lv != null ? h.lv : 0,
+            beastId: h.beastId != null ? String(h.beastId) : null
+          });
+        }
+        fields.push({ fid: Number(fid), holes: holes });
+      }
+
+      // Full beast roster (deployed + bench). Each beast carries the same
+      // compact shape the bench supplement uses today so downstream
+      // consumers can ingest either source identically.
+      var beasts = [];
+      var bArr = inst._beastData || [];
+      for (var bi = 0; bi < bArr.length; bi++) {
+        var w = bArr[bi];
+        if (!w || !w.data) continue;
+        // Skip very-low-quality beasts (matches existing extractBeasts threshold).
+        var q = (w._cfg && w._cfg.quality != null) ? w._cfg.quality : (w.data && w.data.quality);
+        if (q != null && q < 3) continue;
+        var d = w.data;
+        beasts.push({
+          id: w.strId != null ? String(w.strId) : (d.id != null ? String(d.id) : null),
+          cfgId: d.cfgId, lv: d.level, st: d.star,
+          pot: d.potential != null ? String(d.potential) : null,
+          mb: d.mainBuff, bb: d.baseBuff || null,
+          q: (w._cfg && w._cfg.quality) || null,
+          type: (w._cfg && w._cfg.type) || null,
+          fac: (w._cfg && w._cfg.faction) || null
+        });
+      }
+
+      // beast id → field placement (just the {fid,hid} pair — saves the
+      // armory walking every field when only one beast's placement is
+      // needed).
+      var beast2field = {};
+      if (inst._beast2filed && typeof inst._beast2filed.forEach === 'function') {
+        inst._beast2filed.forEach(function (v, k) {
+          if (!v) return;
+          beast2field[String(k)] = { fid: v.fid, hid: v.hid };
+        });
+      }
+
+      return {
+        v: 1, ts: new Date().toISOString(),
+        src: 'EnigmaBeastController._instance',
+        fields: fields,
+        beasts: beasts,
+        beast2field: beast2field
+      };
+    }
+
+    // ─── Active decorations + suits (Phase 3b) ──────────────────────────
+    // Reads from the live UserData reference captured during extractInventory().
+    // Filters _buildings to type 4/5 (the decoration types per the building
+    // TABLE) and surfaces the same shape battle reports embed as
+    // effectDecorations, so the armory decor tab can render without one.
+    async function extractDecor() {
+      stepHook && stepHook('Decorations…');
+      var ud = window.__capturedUD;
+      if (!ud) throw new Error('UserData reference not captured (run inventory first)');
+      var src = ud._buildings;
+      if (!Array.isArray(src)) throw new Error('UserData._buildings missing');
+      var active = [];
+      for (var i = 0; i < src.length; i++) {
+        var b = src[i];
+        if (!b || !b._Data) continue;
+        var d = b._Data;
+        // Only decoration-class buildings — type 4 (regular decor) and type 5
+        // (path / boundary tiles that also contribute buffs).
+        if (d.type !== 4 && d.type !== 5) continue;
+        active.push({
+          id: d.id,                      // building TABLE id (group * 100 + level effectively)
+          group: d.group,
+          level: d.level,
+          type: d.type,
+          quality: d.quality != null ? d.quality : 0,
+          buff_id: d.buff_id || '',
+          pos: b._pos != null ? b._pos : 0
+        });
+      }
+      var suits = [];
+      if (Array.isArray(ud._DecorationSuits)) {
+        for (var s = 0; s < ud._DecorationSuits.length; s++) {
+          var ds = ud._DecorationSuits[s];
+          if (!ds) continue;
+          suits.push({
+            suitId: ds._suitId,
+            rewarded: ds._rewarded ? 1 : 0,
+            rewardedLevel: ds.rewardedLevel || 0
+          });
+        }
+      }
+      return {
+        v: 1, ts: new Date().toISOString(),
+        active: active,
+        suits: suits,
+        totalExp: ud._decorationTotalExp != null ? ud._decorationTotalExp : 0
+      };
+    }
+
+    // ─── Active base skin + collection arrays (Phase 3c) ────────────────
+    // Tiny payload — just the active castle skin id plus the owned + collect
+    // arrays so the armory bases page can render the right skin without a
+    // battle report. Nameplate / castle effect arrays are included when the
+    // player has any.
+    async function extractBaseSkin() {
+      stepHook && stepHook('Base skin…');
+      var ud = window.__capturedUD;
+      if (!ud) throw new Error('UserData reference not captured (run inventory first)');
+      function arr(v) { return Array.isArray(v) ? v.filter(function (x) { return Number.isInteger(x); }) : []; }
+      return {
+        v: 1, ts: new Date().toISOString(),
+        activeSkinId: Number.isInteger(ud._hSkinId) ? ud._hSkinId : null,
+        ownedSkins: arr(ud._myCastleSkinShowArray),
+        collectSkins: arr(ud._myCastleSkinCollectArray),
+        ownedNameplates: arr(ud._myCastleNameShowArray),
+        collectNameplates: arr(ud._myCastleNameCollectArray),
+        ownedEffects: arr(ud._myCastleEffectShowArray),
+        collectEffects: arr(ud._myCastleEffectCollectArray)
+      };
+    }
+
     // Read-only snapshot. Pulls the controller singleton via the static
     // `Instance` GETTER (capital I, non-enumerable — `_instance` stays null
     // until something touches the getter, hence "controller missing"
@@ -647,6 +800,66 @@
       try { if (typeof FC.getAllFormationTalentPower === 'function')    pwrCur = FC.getAllFormationTalentPower(); }    catch (e) {}
       try { if (typeof FC.getAllFormationTalentPowerMax === 'function') pwrMax = FC.getAllFormationTalentPowerMax(); } catch (e) {}
 
+      // Phase 3d: capture the 8 march presets (slot positions + heroes +
+      // formation V2 choice) so the armory can render every deployment the
+      // player has saved, not just the one the most recent battle report
+      // happens to carry. Reads from UserData._PresetMarchData which the
+      // BagPanel UpdateView path already warms up.
+      var presets = [];
+      var defenceFormationV2 = 0;
+      try {
+        var ud3 = window.__capturedUD;
+        if (!ud3) {
+          try {
+            var UDC3 = req('UserData');
+            ud3 = UDC3 && UDC3.default && (UDC3.default.Instance || (UDC3.default.getInstance && UDC3.default.getInstance()));
+          } catch (e) {}
+        }
+        if (ud3) {
+          var pmd = ud3._PresetMarchData;
+          var mList = pmd && pmd._MarchList;
+          var fv2List = pmd && pmd._formationV2List;
+          var fv1List = pmd && pmd._formationList;
+          if (Array.isArray(mList)) {
+            for (var pi = 0; pi < mList.length; pi++) {
+              var pp = mList[pi];
+              if (!pp) { presets.push(null); continue; }
+              var slots = [];
+              var aArr = pp._Armys || [];
+              for (var si = 0; si < aArr.length; si++) {
+                var a = aArr[si];
+                if (!a) continue;
+                var slot = {
+                  pos: a.Pos != null ? a.Pos : si,
+                  armyId: a.ArmyId || 0,
+                  num: a.Num || 0,
+                  heroCap: a.heroCap || 0
+                };
+                if (a.isMecha) { slot.isMecha = true; slot.mechaId = a.mechaId; }
+                slots.push(slot);
+              }
+              var extraArmy = [];
+              if (Array.isArray(pp._extraArmy)) {
+                for (var ei = 0; ei < pp._extraArmy.length; ei++) {
+                  var ea = pp._extraArmy[ei];
+                  if (!ea) continue;
+                  extraArmy.push({ pos: ea.Pos, armyId: ea.ArmyId, num: ea.Num });
+                }
+              }
+              presets.push({
+                icon: pp.icon || 0,
+                slots: slots,
+                heroIds: Array.isArray(pp._HeroIds) ? pp._HeroIds.slice() : [],
+                extraArmy: extraArmy,
+                formationV1: Array.isArray(fv1List) ? (fv1List[pi] || 0) : 0,
+                formationV2: Array.isArray(fv2List) ? (fv2List[pi] || 0) : 0
+              });
+            }
+          }
+          defenceFormationV2 = Number(ud3._defenceFormationV2) || 0;
+        }
+      } catch (e) {}
+
       return {
         v: 1,
         ts: new Date().toISOString(),
@@ -654,20 +867,34 @@
         formations: perF,
         currencies: { '2800000': f101 },
         power: { cur: pwrCur, max: pwrMax },
+        presets: presets,
+        defenceFormationV2: defenceFormationV2,
       };
     }
 
     return (async function () {
       var errors = [];
       var inv = null, beasts = null, chips = null, gear = null, heroes = null, formation = null;
+      var enigmaState = null, decorations = null, baseSkin = null;
+      // inventory FIRST — its BagPanel UpdateView is what captures the live
+      // UserData reference into window.__capturedUD, which decor/skin/formation
+      // presets all read from. If inventory fails, those downstream
+      // extractors will surface their own error rather than silently
+      // crashing.
       try { inv = await extractInventory(); } catch (e) { errors.push({ section: 'inventory', message: e.message }); }
+      try { enigmaState = await extractEnigmaState(); } catch (e) { errors.push({ section: 'enigmaState', message: e.message }); }
       try { beasts = await extractBeasts(); } catch (e) { errors.push({ section: 'beasts', message: e.message }); }
       try { chips = await extractChips(); } catch (e) { errors.push({ section: 'chips', message: e.message }); }
       try { gear = await extractGear(); } catch (e) { errors.push({ section: 'gear', message: e.message }); }
       try { heroes = await extractHeroes(); } catch (e) { errors.push({ section: 'heroes', message: e.message }); }
+      try { decorations = await extractDecor(); } catch (e) { errors.push({ section: 'decorations', message: e.message }); }
+      try { baseSkin = await extractBaseSkin(); } catch (e) { errors.push({ section: 'baseSkin', message: e.message }); }
       try { formation = await extractFormation(); } catch (e) { errors.push({ section: 'formation', message: e.message }); }
       return {
-        v: 2,
+        // Envelope v3 — adds enigmaState, decorations, baseSkin top-level
+        // sections plus formation.presets[]. The receiver in armory-report.html
+        // accepts both v2 and v3 so users mid-rollout don't lose imports.
+        v: 3,
         ts: new Date().toISOString(),
         meta: inv ? inv.meta : null,  // mirror the meta block to the envelope so the receiver doesn't need to dig into inventory just for {uid, lvl, sid, pwr}
         inventory: inv,
@@ -676,6 +903,9 @@
         gear: gear,
         heroes: heroes,
         formation: formation,
+        enigmaState: enigmaState,
+        decorations: decorations,
+        baseSkin: baseSkin,
         errors: errors,
       };
     })();

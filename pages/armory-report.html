@@ -4983,7 +4983,7 @@
     return null;
   }
 
-  // Formation V2: { v:1, ts, talents:[infoIds], formations:{1001:{lv,quality,...},...}, currencies, power }
+  // Formation V2: { v:1, ts, talents:[infoIds], formations:{1001:{lv,quality,...},...}, currencies, power, presets?, defenceFormationV2? }
   function _ar_validateFormationJson(raw) {
     if (!raw || typeof raw !== 'object') return 'Not an object';
     if (raw.v !== 1) return 'Unknown schema version (expected v:1)';
@@ -4994,6 +4994,56 @@
       if (typeof id !== 'number' || id < 1000000 || id > 9999999) return 'Talent at ' + i + ' has bad info id';
     }
     if (raw.formations && typeof raw.formations !== 'object') return 'formations must be object';
+    if (raw.presets != null && !Array.isArray(raw.presets)) return 'presets must be array';
+    return null;
+  }
+
+  // Phase 3a — Enigma platform deployment + full beast roster.
+  // { v:1, ts, fields:[{fid, holes:[{hid, lv, beastId|null}]}],
+  //   beasts:[{id, cfgId, type, fac, q, lv, st, pot, mb, bb}],
+  //   beast2field:{ beastId: { fid, hid } } }
+  function _ar_validateEnigmaJson(raw) {
+    if (!raw || typeof raw !== 'object') return 'Not an object';
+    if (raw.v !== 1) return 'Unknown schema version (expected v:1)';
+    if (!Array.isArray(raw.fields)) return 'Missing fields array';
+    if (raw.fields.length > 8) return 'Too many fields (>8)';
+    for (var i = 0; i < raw.fields.length && i < 5; i++) {
+      var f = raw.fields[i];
+      if (!f || typeof f !== 'object') return 'fields[' + i + '] not object';
+      if (typeof f.fid !== 'number') return 'fields[' + i + '] bad fid';
+      if (!Array.isArray(f.holes)) return 'fields[' + i + '].holes missing';
+    }
+    if (!Array.isArray(raw.beasts)) return 'Missing beasts array';
+    if (raw.beasts.length > 800) return 'Too many beasts (>800)';
+    return null;
+  }
+
+  // Phase 3b — Active decorations + suit rewards.
+  // { v:1, ts, active:[{id, group, level, type, quality, buff_id, pos}], suits:[...], totalExp }
+  function _ar_validateDecorJson(raw) {
+    if (!raw || typeof raw !== 'object') return 'Not an object';
+    if (raw.v !== 1) return 'Unknown schema version (expected v:1)';
+    if (!Array.isArray(raw.active)) return 'Missing active array';
+    if (raw.active.length > 600) return 'Too many active decor (>600)';
+    for (var i = 0; i < raw.active.length && i < 4; i++) {
+      var d = raw.active[i];
+      if (!d || typeof d !== 'object') return 'active[' + i + '] not object';
+      if (typeof d.id !== 'number') return 'active[' + i + '] bad id';
+    }
+    return null;
+  }
+
+  // Phase 3c — Base castle skin snapshot.
+  // { v:1, ts, activeSkinId, ownedSkins:[ids], collectSkins:[ids], ... }
+  function _ar_validateSkinJson(raw) {
+    if (!raw || typeof raw !== 'object') return 'Not an object';
+    if (raw.v !== 1) return 'Unknown schema version (expected v:1)';
+    if (raw.activeSkinId != null && typeof raw.activeSkinId !== 'number') return 'activeSkinId bad';
+    var arrs = ['ownedSkins', 'collectSkins', 'ownedNameplates', 'ownedEffects'];
+    for (var k = 0; k < arrs.length; k++) {
+      var name = arrs[k];
+      if (raw[name] != null && !Array.isArray(raw[name])) return name + ' not array';
+    }
     return null;
   }
 
@@ -5479,6 +5529,14 @@
   }
 
   function ebDecodeCfg(cfg) {
+    // Phase 3a fast-path: supplement-synth assigns each owned beast a
+    // sidecar entry on window._enigmaSuppDecode so we can recover the real
+    // (type, faction, quality) triplet even when the cfg falls outside the
+    // existing Q4/Q5 encoding range (Q3 bench beasts in particular).
+    if (window._enigmaSuppDecode && cfg != null) {
+      var hit = window._enigmaSuppDecode[cfg];
+      if (hit) return hit;
+    }
     for (var t = 1; t <= 9; t++) {
       for (var f = 1; f <= 4; f++) {
         var q5 = (t - 1) * 20 + f * 5;
@@ -5829,6 +5887,39 @@
       codeInput.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') loadFromShortcode();
       });
+
+      // Phase 4: bookmarklet-only setup path. Gated to S2864 players who
+      // have already verified their UID against the public roster — for
+      // anyone else this section simply does not render. Battle-report
+      // paste stays as the primary default above.
+      try {
+        var bmIdent = (typeof getStoredIdentity === 'function') ? getStoredIdentity() : null;
+        var bmSiteKey = bmIdent && bmIdent.siteKey;
+        var bmInRoster = bmSiteKey && _ar_rosterMap && _ar_rosterMap[bmSiteKey];
+        if (bmInRoster) {
+          var bmDivider = document.createElement('div');
+          bmDivider.className = 'wizard-divider';
+          var bmDL = document.createElement('div'); bmDL.className = 'wizard-divider-line';
+          var bmDR = document.createElement('div'); bmDR.className = 'wizard-divider-line';
+          bmDivider.appendChild(bmDL);
+          bmDivider.appendChild(document.createTextNode('or skip reports entirely'));
+          bmDivider.appendChild(bmDR);
+          container.appendChild(bmDivider);
+
+          var bmBtn = document.createElement('button');
+          bmBtn.className = 'btn-secondary';
+          bmBtn.style.cssText = 'width:100%;margin-top:.25rem;';
+          bmBtn.textContent = 'Use bookmarklet snapshot';
+          bmBtn.title = 'Paste a bookmarklet snapshot to set up your armory report without any battle reports. Available to verified S2864 players only.';
+          bmBtn.addEventListener('click', function() { _ar_openWizardBookmarkletEntry(bmIdent); });
+          container.appendChild(bmBtn);
+
+          var bmHint = document.createElement('div');
+          bmHint.style.cssText = 'font-size:.7rem;color:var(--muted);margin-top:.35rem;line-height:1.4;text-align:center;';
+          bmHint.textContent = 'Builds your armory from the live game state. Battle-report paste above is still the default and most players will use it.';
+          container.appendChild(bmHint);
+        }
+      } catch (_bmE) {}
     }
 
     // Auto-focus
@@ -5836,6 +5927,43 @@
       var inp = document.getElementById('wizard-report-input');
       if (inp) inp.focus();
     }, 100);
+  }
+
+  // Phase 4: bookmarklet-only wizard entry for verified S2864 players. Opens
+  // the existing v3-envelope paste modal, then on a successful import jumps
+  // straight to the rendered report — no battle report ID required.
+  function _ar_openWizardBookmarkletEntry(identity) {
+    if (!identity || !identity.siteKey) {
+      alert('Verify your UID first (Settings → Identity).');
+      return;
+    }
+    // Resolve the friendly player record from the public roster so the
+    // header shows the player's in-game name, not just a hex siteKey.
+    var rosterEntry = _ar_rosterMap && _ar_rosterMap[identity.siteKey];
+    var pseudoPlayer = {
+      uid: '',                   // never persisted; reports use UID strings, supplements use siteKey
+      name: (rosterEntry && rosterEntry.name) || identity.name || 'You',
+      siteKey: identity.siteKey,
+      sid: 2864
+    };
+
+    // Run the standard envelope paste modal scoped to the player's siteKey.
+    // Once at least one section uploads successfully, set wizardState.player
+    // and render the full report without going through the report-input step.
+    _ar_openPasteModal({
+      kind: 'bench',
+      siteKey: identity.siteKey,
+      validate: _ar_validateBenchJson,
+      lsKey: 'armory_bench_',
+      tsPath: 'ts',
+      staleLabel: 'bench snapshot'
+    }, function() {
+      wizardState.player = pseudoPlayer;
+      wizardState.step = 'building';
+      try { saveState(); } catch (_e) {}
+      try { closeWizard(); } catch (_e) {}
+      renderFullReport();
+    });
   }
 
   // ── CDN fetch ─────────────────────────────────────────────────────────────
@@ -7277,6 +7405,77 @@
         identPanel.appendChild(verifyRow);
       }
 
+      // ── Data source priority (Phase 1) ──
+      // Only surfaced for verified S2864 players who can actually upload a
+      // bookmarklet snapshot. For everyone else the toggle would be a dead
+      // option — the only feed they have is battle reports.
+      var srcGate = identity && identity.siteKey && _ar_rosterMap && _ar_rosterMap[identity.siteKey] && _ar_isUnlocked(identity.siteKey);
+      if (srcGate) {
+        var srcRow = document.createElement('div');
+        srcRow.style.cssText = 'margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:.4rem;';
+
+        var srcHdr = document.createElement('div');
+        srcHdr.style.cssText = 'font-size:.78rem;font-weight:600;color:var(--text);';
+        srcHdr.textContent = 'Data source priority';
+        srcRow.appendChild(srcHdr);
+
+        var srcHint = document.createElement('div');
+        srcHint.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;';
+        srcHint.textContent = 'Pick whether your battle reports or your bookmarklet snapshot wins when both have data for the same tab. Most players can leave this on Auto.';
+        srcRow.appendChild(srcHint);
+
+        var srcOptions = [
+          { v: 'auto',        label: 'Auto (recommended)', desc: 'Battle reports drive whatever they cover; the bookmarklet fills any gap they leave (today\'s behavior).' },
+          { v: 'bookmarklet', label: 'Bookmarklet first',  desc: 'When both sources have the same data, the bookmarklet snapshot wins. Useful when reports are stale.' },
+          { v: 'reports',     label: 'Reports first',      desc: 'Battle reports always win; the bookmarklet only fills gaps the reports never carry (bench, full hero roster, etc.).' }
+        ];
+        var srcCur = _ar_getSourcePriority();
+        var srcGroupName = 'armory-src-pri-' + Math.random().toString(36).slice(2, 8);
+        srcOptions.forEach(function(opt) {
+          var lblEl = document.createElement('label');
+          lblEl.style.cssText = 'display:flex;align-items:flex-start;gap:.5rem;padding:.4rem .55rem;background:var(--card);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:.75rem;line-height:1.35;';
+          var radio = document.createElement('input');
+          radio.type = 'radio';
+          radio.name = srcGroupName;
+          radio.value = opt.v;
+          radio.checked = (srcCur === opt.v);
+          radio.style.cssText = 'margin-top:.1rem;flex-shrink:0;';
+          radio.addEventListener('change', function() {
+            if (!radio.checked) return;
+            try { localStorage.setItem('armory_source_priority', opt.v); } catch (_e) {}
+          });
+          lblEl.appendChild(radio);
+          var txt = document.createElement('div');
+          txt.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:.15rem;';
+          var n = document.createElement('div');
+          n.style.cssText = 'color:var(--text);font-weight:500;';
+          n.textContent = opt.label;
+          txt.appendChild(n);
+          var d = document.createElement('div');
+          d.style.cssText = 'color:var(--muted);font-size:.68rem;';
+          d.textContent = opt.desc;
+          txt.appendChild(d);
+          lblEl.appendChild(txt);
+          srcRow.appendChild(lblEl);
+        });
+
+        var srcApply = document.createElement('div');
+        srcApply.style.cssText = 'font-size:.66rem;color:var(--muted);line-height:1.4;margin-top:.2rem;';
+        srcApply.textContent = 'Closes this panel and reloads the report to apply.';
+        srcRow.appendChild(srcApply);
+
+        var srcReload = document.createElement('button');
+        srcReload.className = 'rh-prefs-btn';
+        srcReload.style.cssText = 'align-self:flex-start;';
+        srcReload.textContent = 'Apply now';
+        srcReload.addEventListener('click', function() {
+          try { renderFullReport(); } catch (_e) {}
+        });
+        srcRow.appendChild(srcReload);
+
+        identPanel.appendChild(srcRow);
+      }
+
       // ── Force refresh (clear caches + reload) ──
       // Installed PWA + iOS Safari hold HTTP responses harder than the browser
       // tab. This wipes Cache Storage, updates the service worker, and forces
@@ -7846,6 +8045,16 @@
     }
 
     var merged = mergeReportData(wizardState.reportData);
+    // Phase 3: when a player has uploaded the consolidated bookmarklet
+    // (envelope v3), fill enigmas / decorations / skins from the live
+    // supplement only if the battle reports didn't supply them. That way
+    // legacy report-only users see zero change while Phase-4 "bookmarklet
+    // only" users get a fully populated armory. Phase 1's source-priority
+    // toggle can later force supplement-over-report.
+    try {
+      var _supSiteKey = (wizardState.player && wizardState.player.siteKey) || null;
+      if (_supSiteKey) _ar_applySupplementsToMerged(merged, _supSiteKey);
+    } catch (_e) {}
     window._mergedData = merged;
 
     var app = document.getElementById('app');
@@ -21102,16 +21311,25 @@
   // route them unchanged. We detect, validate, save locally, and upload all
   // sections in one shot.
   var _AR_ENVELOPE_KINDS = [
-    { kind: 'inv',       field: 'inventory', validate: _ar_validateInvJson,       lsKey: 'armory_inv_',       tsPath: 'meta.ts' },
-    { kind: 'bench',     field: 'beasts',    validate: _ar_validateBenchJson,     lsKey: 'armory_bench_',     tsPath: 'ts'      },
-    { kind: 'chips',     field: 'chips',     validate: _ar_validateChipsJson,     lsKey: 'armory_chips_',     tsPath: 'ts'      },
-    { kind: 'gear',      field: 'gear',      validate: _ar_validateGearJson,      lsKey: 'armory_gear_',      tsPath: 'meta.ts' },
-    { kind: 'heroes',    field: 'heroes',    validate: _ar_validateHeroesJson,    lsKey: 'armory_heroes_',    tsPath: 'ts'      },
-    { kind: 'formation', field: 'formation', validate: _ar_validateFormationJson, lsKey: 'armory_formation_', tsPath: 'ts'      }
+    { kind: 'inv',       field: 'inventory',    validate: _ar_validateInvJson,       lsKey: 'armory_inv_',       tsPath: 'meta.ts' },
+    { kind: 'bench',     field: 'beasts',       validate: _ar_validateBenchJson,     lsKey: 'armory_bench_',     tsPath: 'ts'      },
+    { kind: 'chips',     field: 'chips',        validate: _ar_validateChipsJson,     lsKey: 'armory_chips_',     tsPath: 'ts'      },
+    { kind: 'gear',      field: 'gear',         validate: _ar_validateGearJson,      lsKey: 'armory_gear_',      tsPath: 'meta.ts' },
+    { kind: 'heroes',    field: 'heroes',       validate: _ar_validateHeroesJson,    lsKey: 'armory_heroes_',    tsPath: 'ts'      },
+    { kind: 'formation', field: 'formation',    validate: _ar_validateFormationJson, lsKey: 'armory_formation_', tsPath: 'ts'      },
+    // Envelope v3 additions — Phases 3a/3b/3c. v2 envelopes will simply lack
+    // these fields, so _ar_handleEnvelope's no-data filter skips them
+    // automatically when reading older paste payloads.
+    { kind: 'enigma',    field: 'enigmaState',  validate: _ar_validateEnigmaJson,    lsKey: 'armory_enigma_',    tsPath: 'ts'      },
+    { kind: 'decor',     field: 'decorations',  validate: _ar_validateDecorJson,     lsKey: 'armory_decor_',     tsPath: 'ts'      },
+    { kind: 'skin',      field: 'baseSkin',     validate: _ar_validateSkinJson,      lsKey: 'armory_skin_',      tsPath: 'ts'      }
   ];
 
   function _ar_isEnvelope(obj) {
-    return !!(obj && typeof obj === 'object' && obj.v === 2 && (obj.inventory || obj.beasts || obj.chips || obj.gear || obj.heroes || obj.formation));
+    if (!obj || typeof obj !== 'object') return false;
+    if (obj.v !== 2 && obj.v !== 3) return false;
+    return !!(obj.inventory || obj.beasts || obj.chips || obj.gear || obj.heroes ||
+              obj.formation || obj.enigmaState || obj.decorations || obj.baseSkin);
   }
 
   // Drives one section through the same validate → sanitize → store → upload
@@ -29481,6 +29699,165 @@
       if (!seen[mid]) ordered.push(byId[mid]);
     });
     return ordered;
+  }
+
+  // Source priority — see /docs/superpowers/specs/2026-05-19-bookmarklet-
+  // full-fidelity-design.md. 'auto' is today's behavior (reports fill what
+  // they can, supplements fill what reports don't). Phase 1 surfaces this as
+  // a Settings toggle; until then the helper is wired and defaults to 'auto'.
+  function _ar_getSourcePriority() {
+    try {
+      var v = localStorage.getItem('armory_source_priority');
+      if (v === 'bookmarklet' || v === 'reports') return v;
+    } catch (_e) {}
+    return 'auto';
+  }
+
+  // Synthesize merged.enigmas / merged.decorations / merged.skins from the
+  // Phase-3 supplements when the battle reports didn't carry them (or when
+  // the user explicitly prefers the bookmarklet). Mutates `merged` in place.
+  //
+  // Rules (Auto today; toggle-aware once Phase 1 lands):
+  //   - bookmarklet-first  → supplement always wins when present
+  //   - reports-first      → supplement only fills empty merged fields
+  //   - auto (default)     → supplement fills empty merged fields; if both
+  //                          have data, supplement still wins because the
+  //                          live snapshot is strictly more current than
+  //                          any report's frozen-in-time view
+  function _ar_applySupplementsToMerged(merged, siteKey) {
+    if (!merged || !siteKey) return;
+    var pri = _ar_getSourcePriority();
+    function getSupp(kind) {
+      try { return ArmoryIdentity.getSupplement(kind, siteKey); }
+      catch (_e) { return null; }
+    }
+    function shouldUseSupp(field) {
+      if (pri === 'bookmarklet') return true;
+      // 'reports' and today's 'auto' both leave existing merged data alone
+      // so report-only users see zero regression. The supplement only fills
+      // gaps where merged didn't carry data (the Phase 4 use case).
+      return merged[field] == null;
+    }
+
+    var enigmaSupp = getSupp('enigma');
+    if (enigmaSupp && shouldUseSupp('enigmas')) {
+      var synth = _ar_synthEnigmasFromSupp(enigmaSupp);
+      if (synth) merged.enigmas = synth;
+    }
+
+    var decorSupp = getSupp('decor');
+    if (decorSupp && shouldUseSupp('decorations')) {
+      var synthD = _ar_synthDecorationsFromSupp(decorSupp);
+      if (synthD) merged.decorations = synthD;
+    }
+
+    var skinSupp = getSupp('skin');
+    if (skinSupp && shouldUseSupp('skins')) {
+      var synthS = _ar_synthSkinsFromSupp(skinSupp);
+      if (synthS) merged.skins = synthS;
+    }
+  }
+
+  // Build a merged.enigmas-shaped object from the live enigma supplement so
+  // existing ebResolveBeasts + downstream tabs and the optimizer all work
+  // unchanged. The supplement carries (id, cfgId, lv, st, pot, mb, bb,
+  // q, type, fac) per beast plus per-field per-hole deployment.
+  function _ar_synthEnigmasFromSupp(supp) {
+    if (!supp || !Array.isArray(supp.fields)) return null;
+    // Helper to encode the cfg field the way ebDecodeCfg expects. The
+    // existing encoding is opaque, so we pass a synthetic cfg that
+    // ebDecodeCfg will fail on. To work around that, set type/faction/quality
+    // on the resolved beasts directly via ebResolveBeasts's beastMap reads —
+    // we synthesize each beast with cfg = an integer the decoder can parse.
+    // Simpler: bypass ebDecodeCfg by stamping the resolved shape directly via
+    // a parallel id→{type,faction,quality} map the resolver can consult.
+    // Since ebResolveBeasts looks up via ebDecodeCfg(b.cfg), and we know each
+    // beast's type/faction/quality, we pre-cache them on a sidecar before
+    // calling. Easiest: invent a cfg that lets ebDecodeCfg recover the
+    // fields. ebDecodeCfg's reverse format is documented in EB_*; for our
+    // path it's enough to put { cfg } as the original cfgId — the resolver
+    // tolerates it because ebDecodeCfg falls back to the supplied type/fac/q
+    // if it can't decode. As a belt-and-braces measure we also pre-publish
+    // a cfgHint map the resolver can consult via window._enigmaSuppDecode.
+    // Decode hint is keyed by cfgId (the value we pass through as `cfg` on
+    // each beastData). Multiple owned beasts share a cfgId so this map
+    // collapses naturally — every beast of the same template carries the
+    // same (type, faction, quality) triplet.
+    var decodeHint = {};
+    var beastDatas = supp.beasts.map(function(b) {
+      if (b.cfgId != null && b.type != null && b.fac != null && b.q != null) {
+        decodeHint[b.cfgId] = { type: b.type, faction: b.fac, quality: b.q };
+      }
+      return {
+        id: b.id,
+        cfg: b.cfgId,
+        star: b.st || 0,
+        level: b.lv || 0,
+        potential: Number(b.pot) || 0,
+        power: 0,
+        mainBuff: b.mb,
+        baseBuff: (b.bb || []).map(function(x) { return (x && typeof x === 'object') ? x.id : x; })
+      };
+    });
+    // Merge into any existing hint map so multiple synth calls (e.g. if a
+    // user re-paints between Auto and Bookmarklet-first) don't blow away
+    // earlier decodes.
+    if (!window._enigmaSuppDecode) window._enigmaSuppDecode = {};
+    Object.keys(decodeHint).forEach(function(k) { window._enigmaSuppDecode[k] = decodeHint[k]; });
+
+    var fields = supp.fields.map(function(f) {
+      // Slots come back as { hid, lv, beastId }. ebResolveBeasts wants
+      // { id, beastId, level, potential, buffs } — fill what we know,
+      // leave slot-level buffs empty (those are derived from the deployed
+      // beast against the slot's _tipsData live in the enigma tab).
+      var slots = (f.holes || []).map(function(h) {
+        return {
+          id: h.hid,
+          beastId: h.beastId != null ? String(h.beastId) : '0',
+          level: h.lv || 0,
+          potential: 0,
+          buffs: []
+        };
+      });
+      return {
+        cfg: f.fid,
+        active: 1,            // supplement-derived; assume the field is active
+        slots: slots
+      };
+    });
+
+    return { beastDatas: beastDatas, fields: fields };
+  }
+
+  // Build a merged.decorations-shaped array from the decor supplement.
+  // Reports carry `effectDecorations` as `[{id, level, ...}]`. We mirror that
+  // minimal shape (id, level, group, type, quality, buff_id) so the decor tab
+  // and stats-comparison modal can consume either source without branching.
+  function _ar_synthDecorationsFromSupp(supp) {
+    if (!supp || !Array.isArray(supp.active)) return null;
+    return supp.active.map(function(d) {
+      return {
+        id: d.id, group: d.group, level: d.level,
+        type: d.type, quality: d.quality, buff_id: d.buff_id,
+        pos: d.pos
+      };
+    });
+  }
+
+  // Build a merged.skins-shaped object from the skin supplement. Reports
+  // carry .activeSkin (single id) plus owned arrays. The bases page reads
+  // .activeSkin first.
+  function _ar_synthSkinsFromSupp(supp) {
+    if (!supp) return null;
+    return {
+      activeSkin: supp.activeSkinId || 0,
+      ownedSkins: supp.ownedSkins || [],
+      collectSkins: supp.collectSkins || [],
+      activeNameplate: 0,
+      ownedNameplates: supp.ownedNameplates || [],
+      activeEffect: 0,
+      ownedEffects: supp.ownedEffects || []
+    };
   }
 
   // ── Data merge engine ─────────────────────────────────────────────────────
