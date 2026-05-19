@@ -5929,9 +5929,14 @@
     }, 100);
   }
 
-  // Phase 4: bookmarklet-only wizard entry for verified S2864 players. Opens
-  // the existing v3-envelope paste modal, then on a successful import jumps
-  // straight to the rendered report — no battle report ID required.
+  // Phase 4: bookmarklet-only wizard entry for verified S2864 players. The
+  // paste modal lives at z-index 850 and the wizard overlay sits above it
+  // at z-index 1000, so we close the wizard FIRST and then open the paste
+  // modal — otherwise the paste UI mounts behind the wizard and the user
+  // can't interact with it. On a successful paste we hydrate
+  // wizardState.player from the verified identity and jump straight to the
+  // rendered report; if the user cancels the paste they end up on the
+  // empty-state landing and can re-launch the wizard from there.
   function _ar_openWizardBookmarkletEntry(identity) {
     if (!identity || !identity.siteKey) {
       alert('Verify your UID first (Settings → Identity).');
@@ -5947,9 +5952,12 @@
       sid: 2864
     };
 
-    // Run the standard envelope paste modal scoped to the player's siteKey.
-    // Once at least one section uploads successfully, set wizardState.player
-    // and render the full report without going through the report-input step.
+    // Tear down the wizard overlay before showing the paste modal so the
+    // modal isn't trapped beneath it. closeWizard also clears wizardState
+    // back to its initial shape — we re-hydrate it after a successful
+    // paste, before renderFullReport runs.
+    try { closeWizard(); } catch (_e) {}
+
     _ar_openPasteModal({
       kind: 'bench',
       siteKey: identity.siteKey,
@@ -5961,7 +5969,6 @@
       wizardState.player = pseudoPlayer;
       wizardState.step = 'building';
       try { saveState(); } catch (_e) {}
-      try { closeWizard(); } catch (_e) {}
       renderFullReport();
     });
   }
