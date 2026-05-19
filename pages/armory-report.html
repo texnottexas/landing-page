@@ -5317,6 +5317,24 @@
   // did not exist in the game and has been removed - the in-game UI uses
   // name2 across all star tiers, so we do the same.
   var EB_TYPES = {1:'Gleamdeer',2:'Dreadray',3:'Tornadeagle',4:'Grizzroar',5:'Skynx',6:'Rageroo',7:'Riftsteed',8:'Umbralion',9:'Phoenigret'};
+
+  // Deployed PNG filenames in assets/beast-icons/ use older base+evolved
+  // names for five beast types (Tex 2026-05-18: Swiftsteed / Phoenigret
+  // icons missing at max-out). EB_TYPES carries the in-game display name
+  // sourced from the game tables; this lookup carries the filename prefix
+  // so ebBeastIconUrl resolves a real PNG even when the display name and
+  // filename diverge. Types 1-4 already match in both places.
+  var EB_ICON_NAMES = {
+    1: 'Gleamdeer',
+    2: 'Dreadray',
+    3: 'Tornadeagle',
+    4: 'Grizzroar',
+    5: 'Fluffynx',    // display: Skynx
+    6: 'Bounceroo',   // display: Rageroo
+    7: 'Swiftsteed',  // display: Riftsteed
+    8: 'Dusklion',    // display: Umbralion
+    9: 'Crestegret'   // display: Phoenigret
+  };
   var EB_ELEMENTS = {1:'Fire',2:'Water',3:'Wind',4:'Ground'};
   var EB_FIELD_NAMES = {1:'CPNT Mastery',2:'Formation',3:'Equip',4:'Defense',5:'Offense'};
   var EB_FIELD_SLOT_COUNTS = {1:5,2:7,3:6,4:9,5:9};
@@ -5438,7 +5456,10 @@
   function ebBuffName(id) { return EB_BUFF_NAMES[id] || EB_FIELD_BUFF_NAMES[id] || ('Buff #' + id); }
 
   function ebBeastIconUrl(type, faction, star) {
-    var name = EB_TYPES[type] || 'Unknown';
+    // Resolve to the icon-file prefix (which can differ from the display
+    // name — see EB_ICON_NAMES). Falls back to EB_TYPES when no override
+    // exists so this stays compatible with any future beast types added.
+    var name = EB_ICON_NAMES[type] || EB_TYPES[type] || 'Unknown';
     var elem = EB_ELEMENTS[faction] || 'Unknown';
     var tier = star >= 5 ? 'evolved' : 'base';
     return EB_ICON_BASE + name + '_' + elem + '_' + tier + '.png';
@@ -15508,12 +15529,11 @@
 
   var BO_STAT_WEIGHTS = {
     atk:        1.0,
-    hp:         1.2,  // tuned down 1.5 → 1.2 per Tex 2026-05-16: the strict
-                      // equivalency (1 march = 13.5% ATK = 9% HP → 1% HP = 1.5x
-                      // 1% ATK) was overriding ATK on slots that emit equal raw
-                      // ratios (e.g. F1 slot 1 = 0.151515 ATK + 0.151515 HP).
-                      // 1.2 preserves a small HP premium but lets a strong ATK
-                      // main buff still tip the score.
+    hp:         1.05, // trimmed again 1.2 → 1.05 per Tex 2026-05-18: HP was
+                      // still slightly overriding ATK on equal-emission slots
+                      // (F1 slot 1 = 0.151515 ATK + 0.151515 HP). 1.05 keeps a
+                      // small HP edge consistent with the equivalency intent
+                      // without letting it dominate identical raw ratios.
     dmgInc:     9.0,
     dmgDec:     9.0,
     def:       20.0,  // 1% DEF ≈ 13.3% HP per Tex's revised equivalence (was 25.5)
@@ -15566,10 +15586,17 @@
     if (id >= 520020 && id <= 520023) return { statKey: 'dmgDec', scope: 'always', targetUnit: targetUnit };
     if (id >= 520030 && id <= 520033) return { statKey: 'def', scope: 'always', targetUnit: targetUnit };
 
-    // ATK/HP main buffs (520040-520073). Phase 0 splits these into ATK and HP.
-    if (id >= 520040 && id <= 520073) {
-      var statKey = BO_ATKHP_MAP[id] || 'atk';
-      return { statKey: statKey, scope: 'always', targetUnit: targetUnit };
+    // ATK/HP main buffs 520040-073 are the "(off)" and "(def)" labeled
+    // variants in EB_BUFF_NAMES. Per Tex 2026-05-18: anything labeled
+    // "(on the offensive)" or "(on the defensive)" only fires in one
+    // direction so it gets the 0.5 scope multiplier.
+    //   520040-053 → (off) → offensive scope (half)
+    //   520060-073 → (def) → defensive scope (half)
+    if (id >= 520040 && id <= 520053) {
+      return { statKey: BO_ATKHP_MAP[id] || 'atk', scope: 'offensive', targetUnit: targetUnit };
+    }
+    if (id >= 520060 && id <= 520073) {
+      return { statKey: BO_ATKHP_MAP[id] || 'atk', scope: 'defensive', targetUnit: targetUnit };
     }
 
     // 520100-103 = Suppression DEF: cross-faction DEF that benefits the
@@ -15585,9 +15612,12 @@
     if (id === 520102) return { statKey: 'def', scope: 'always', targetUnit: 3 };
     if (id === 520103) return { statKey: 'def', scope: 'always', targetUnit: 1 };
 
-    // 520110-113 = ATK (offensive scope), 520120-123 = HP Boost (offensive).
-    if (id >= 520110 && id <= 520113) return { statKey: 'atk', scope: 'offensive', targetUnit: targetUnit };
-    if (id >= 520120 && id <= 520123) return { statKey: 'hp',  scope: 'offensive', targetUnit: targetUnit };
+    // 520110-113 = "All/Army/Navy/Air ATK" (no qualifier in EB_BUFF_NAMES)
+    // and 520120-123 = "All/Army/Navy/Air HP Boost" (no qualifier). These
+    // are the normal always-on variants — full weight. Previous version
+    // had them as offensive scope, which inverted Tex's intent.
+    if (id >= 520110 && id <= 520113) return { statKey: 'atk', scope: 'always', targetUnit: targetUnit };
+    if (id >= 520120 && id <= 520123) return { statKey: 'hp',  scope: 'always', targetUnit: targetUnit };
 
     // 520130-143 = Elemental Enhance / Elemental RES. Per Tex's stat
     // equivalencies, elemental stats are useless in the optimizer (weight 0).
@@ -16207,10 +16237,15 @@
     if (!c) return false;
     if (c.conditionType === 0) return allFilled;
     if (c.conditionType === 1) {
+      // Per Tex 2026-05-18: the in-game gate is JUST the legendary count —
+      // "deploy N at rarity ≥ R". Field-wide "fill all slots" is its own
+      // type-0 condition on a different slot, not a prerequisite for the
+      // count check. Previous coupling of allFilled into types 1/6 was
+      // hiding slot 3 unlit for Pete even though he had 3 legendaries.
       var need = Number(c.conditionPara1 || 0);
       var rar  = Number(c.conditionPara2 || 0);
       var have = fieldBeasts.filter(function(b) { return b.q >= rar; }).length;
-      return allFilled && have >= need;
+      return have >= need;
     }
     if (c.conditionType === 6) {
       var need6 = Number(c.conditionPara1 || 0);
@@ -16219,7 +16254,7 @@
       var have6 = fieldBeasts.filter(function(b) {
         return b.q >= rar6 && b.st >= star6;
       }).length;
-      return allFilled && have6 >= need6;
+      return have6 >= need6;
     }
     return false;
   }
@@ -17350,9 +17385,16 @@
       if (rec.threshold && role === 'to') {
         var t = document.createElement('div');
         t.style.cssText = 'font-size:.78rem;color:#d29922;background:rgba(210,153,34,0.1);border-left:3px solid #d29922;padding:.4rem .6rem;border-radius:4px;margin-top:.5rem;';
-        var modalTxt = 'This beast needs ' + rec.threshold.starsFromCurrent + ' more star' + (rec.threshold.starsFromCurrent === 1 ? '' : 's') +
-          ' and ' + rec.threshold.levelsFromCurrent + ' more level' + (rec.threshold.levelsFromCurrent === 1 ? '' : 's') +
-          ' to beat the current placement. The "After upgrades" view above shows the projected stats.';
+        // Surface the FINAL target state (Y★ Lv X) rather than the
+        // cumulative levels-from-current figure. The cumulative number
+        // sums level gains across multiple star tiers, so for a Q5 beast
+        // it could read "114 more levels" even though no individual star
+        // tier exceeds the Q5 level cap of 100. The target framing is
+        // clearer and matches what the player has to actually navigate
+        // to in-game ("reach 5★ Lv 14").
+        var modalTxt = 'This beast needs to reach ' + rec.threshold.star + '★ Lv ' + rec.threshold.level +
+          ' (max ' + boMaxStarFor(rec.to) + '★ Lv ' + boMaxLevelFor(rec.to) + ' for Q' + rec.to.q + ') to beat the current placement.' +
+          ' The "After upgrades" view above shows the projected stats.';
         if (rec.threshold.fodderNeeded != null) {
           var f = rec.threshold;
           modalTxt += ' Star-up costs ' + f.fodderNeeded + ' 1★ same-type, same-rarity beast' + (f.fodderNeeded === 1 ? '' : 's') +
@@ -17739,8 +17781,11 @@
     if (rec.threshold) {
       var t = document.createElement('div');
       t.style.cssText = 'font-size:.78rem;color:#d29922;background:rgba(210,153,34,0.1);border-left:3px solid #d29922;padding:.4rem .6rem;border-radius:4px;margin-top:.4rem;';
-      var txt = 'Needs ' + rec.threshold.starsFromCurrent + ' more star' + (rec.threshold.starsFromCurrent === 1 ? '' : 's') +
-        ' and ' + rec.threshold.levelsFromCurrent + ' more level' + (rec.threshold.levelsFromCurrent === 1 ? '' : 's') +
+      // See modal tooltip note: surface the final target state instead of
+      // cumulative levels-from-current, since the latter sums across star
+      // tiers and can read above the per-rarity level cap.
+      var txt = 'Needs to reach ' + rec.threshold.star + '★ Lv ' + rec.threshold.level +
+        ' (Q' + rec.to.q + ' caps at ' + boMaxStarFor(rec.to) + '★ Lv ' + boMaxLevelFor(rec.to) + ')' +
         ' before this beats your current placement.';
       if (rec.threshold.fodderNeeded != null) {
         var f = rec.threshold;
