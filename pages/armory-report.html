@@ -17645,12 +17645,22 @@
         if (tgDyn) {
           tgWarn.style.color = 'var(--green)';
           tgWarn.textContent = 'live from your gear';
-        } else if (tgLink.type === 11) {
-          tgWarn.style.color = '#d29922';
-          tgWarn.textContent = 'no qualifying refines';
-        } else {
+        } else if (!BO_TG_HAS_GEAR_DATA) {
+          // Truly no gear data anywhere — neither battle-report heroEquips
+          // nor a gear supplement on disk. Same message for both link types
+          // so the row pairs stop looking inconsistent (one type-10 slot
+          // saying "no gear loaded" while a sibling type-11 said "no
+          // qualifying refines" even though the root state was identical).
           tgWarn.style.color = '#d29922';
           tgWarn.textContent = 'no gear loaded';
+        } else if (tgLink.type === 11) {
+          // Gear data exists, just nothing refined ≥70% on this TG slot.
+          tgWarn.style.color = '#d29922';
+          tgWarn.textContent = 'no qualifying refines on TG slot ' + tgLink.tgSlot;
+        } else {
+          // Gear data exists, just no base-attribute enhancement on this TG slot.
+          tgWarn.style.color = '#d29922';
+          tgWarn.textContent = 'no base attrs on TG slot ' + tgLink.tgSlot;
         }
 
         // Contributor breakdown: when the dynamic override is active, list
@@ -18087,9 +18097,16 @@
   // through every call site.
   var BO_TG_DYNAMIC_OVERRIDES = null;
 
+  // True once boReadTgRefinement has seen any gear data this render (either
+  // battle-report heroEquips on merged.heroes OR pieces from the gear supp).
+  // The TG Linkage row reads this to choose between "no gear loaded" and
+  // a slot-specific "no qualifying refines / no base attrs" message.
+  var BO_TG_HAS_GEAR_DATA = false;
+
   function boReadTgRefinement(merged, siteKey) {
     BO_TG_DYNAMIC_OVERRIDES = null;
-    if (!merged || !merged.heroes || !merged.heroes.length) return {};
+    BO_TG_HAS_GEAR_DATA = false;
+    if (!merged) return {};
 
     // Per-tgSlot aggregators. Keyed by "statKey|targetUnit" -> { value, heroId }.
     // Tracking the contributing hero id alongside the winning value lets the
@@ -18099,8 +18116,9 @@
     var aggrType11 = {};  // refined random attributes 70%+
     var aggrType10 = {};  // base attributes from equip.enhanceValue
 
-    merged.heroes.forEach(function(h) {
+    (merged.heroes || []).forEach(function(h) {
       var equips = h.heroEquips || [];
+      if (equips.length > 0) BO_TG_HAS_GEAR_DATA = true;
       equips.forEach(function(equip, idx) {
         var tgSlot = idx + 1;
 
@@ -18149,6 +18167,62 @@
         });
       });
     });
+
+    // Second source: gear supplement (from bookmarklet). Battle-report
+    // heroEquips can be sparse — only the marching heroes carry full equip
+    // data — so cross-device shared views often have a full gear supp but
+    // empty heroEquips. The supp shape per piece is documented in
+    // all-bookmarklet.js (~L463-490): { slot, heroId, buffs: [{ type:'stat',
+    // templateId, rawValue, rawEnhance, enhanceShow, max, rollPercent }, ...],
+    // enhance: { buffGroupId: { rawValue, percent, statName } } }.
+    var gearSupp = null;
+    try { gearSupp = siteKey ? ArmoryIdentity.getSupplement('gear', siteKey) : null; } catch (e) {}
+    if (gearSupp) {
+      var pieces = (gearSupp.goldGear || [])
+        .concat(gearSupp.equippedNonGold || [])
+        .concat(gearSupp.presetOnly || []);
+      if (pieces.length > 0) BO_TG_HAS_GEAR_DATA = true;
+      pieces.forEach(function(p) {
+        if (!p || p.slot == null) return;
+        var tgSlot = p.slot;
+        var hid = p.heroId || p.directHeroId || 0;
+
+        // Type 11: random attrs refined to 70%+, contribution = rawEnhance.
+        (p.buffs || []).forEach(function(b) {
+          if (!b || b.type !== 'stat') return;
+          if (b.rollPercent == null || b.rollPercent < 70) return;
+          if (b.enhanceShow != null && b.enhanceShow !== 2) return;
+          var enhVal = Number(b.rawEnhance) || 0;
+          if (enhVal <= 0) return;
+          var cls = boGearTemplateClassify(b.templateId);
+          if (!cls || !cls.statKey) return;
+          var key = cls.statKey + '|' + cls.targetUnit;
+          aggrType11[tgSlot] = aggrType11[tgSlot] || {};
+          var prev = aggrType11[tgSlot][key];
+          if (!prev || enhVal > prev.value) {
+            aggrType11[tgSlot][key] = { value: enhVal, heroId: hid };
+          }
+        });
+
+        // Type 10: piece.enhance map (parsed into objects on the supp side).
+        var enhMap = p.enhance || {};
+        Object.keys(enhMap).forEach(function(buffGroupId) {
+          var cls = BO_ENHANCE_BUFF_CLASS[buffGroupId];
+          if (!cls) return;
+          var rawEntry = enhMap[buffGroupId];
+          var val = (rawEntry && typeof rawEntry === 'object')
+            ? Number(rawEntry.rawValue) || 0
+            : Number(rawEntry) || 0;
+          if (val <= 0) return;
+          var key = cls.statKey + '|' + cls.targetUnit;
+          aggrType10[tgSlot] = aggrType10[tgSlot] || {};
+          var prev10 = aggrType10[tgSlot][key];
+          if (!prev10 || val > prev10.value) {
+            aggrType10[tgSlot][key] = { value: val, heroId: hid };
+          }
+        });
+      });
+    }
 
     // Project to enigma slots via the linkage table. Each weight carries the
     // statKey, targetUnit, weightRatio (used by the scoring path), AND the
