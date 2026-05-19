@@ -29738,12 +29738,18 @@
       try { return ArmoryIdentity.getSupplement(kind, siteKey); }
       catch (_e) { return null; }
     }
+    function isEmpty(v) {
+      if (v == null) return true;
+      if (Array.isArray(v)) return v.length === 0;
+      if (typeof v === 'object') return Object.keys(v).length === 0;
+      return false;
+    }
     function shouldUseSupp(field) {
       if (pri === 'bookmarklet') return true;
       // 'reports' and today's 'auto' both leave existing merged data alone
       // so report-only users see zero regression. The supplement only fills
       // gaps where merged didn't carry data (the Phase 4 use case).
-      return merged[field] == null;
+      return isEmpty(merged[field]);
     }
 
     var enigmaSupp = getSupp('enigma');
@@ -29763,6 +29769,66 @@
       var synthS = _ar_synthSkinsFromSupp(skinSupp);
       if (synthS) merged.skins = synthS;
     }
+
+    // Phase 4 needs merged.heroes populated so the overview cards and the
+    // Heroes / Gear tabs render even when the user has no battle reports.
+    // The heroes supplement gives us per-hero level/star/quality/skills;
+    // the gear supplement (when present) gives us the equipped pieces,
+    // which we attach as `heroEquips` keyed by heroId — mirroring the
+    // battle-report shape that downstream consumers already expect.
+    if (shouldUseSupp('heroes')) {
+      var heroesSupp = getSupp('heroes');
+      if (heroesSupp) {
+        var gearSupp = getSupp('gear');
+        var synthH = _ar_synthHeroesFromSupp(heroesSupp, gearSupp);
+        if (synthH && synthH.length) merged.heroes = synthH;
+      }
+    }
+  }
+
+  // Convert a heroes supplement (and optionally a gear supplement) into a
+  // merged.heroes-shaped array. Reports' shape carries (id, _type, _level,
+  // _star, _quality, _power, heroEquips) at minimum; we mirror that so the
+  // overview, Heroes tab, and Gear tab all read the same fields whether
+  // the source was a battle report or a live bookmarklet snapshot.
+  function _ar_synthHeroesFromSupp(supp, gearSupp) {
+    if (!supp || !Array.isArray(supp.list)) return null;
+    var gearByHero = {};
+    if (gearSupp) {
+      var allPieces = [].concat(
+        gearSupp.goldGear || [],
+        gearSupp.equippedNonGold || [],
+        gearSupp.presetOnly || []
+      );
+      allPieces.forEach(function(p) {
+        if (!p || p.heroId == null) return;
+        (gearByHero[p.heroId] = gearByHero[p.heroId] || []).push(p);
+      });
+    }
+    return supp.list.map(function(h) {
+      var equips = gearByHero[h.id] || [];
+      return {
+        id: h.id,
+        _id: h.id,
+        _type: h.t != null ? h.t : null,
+        _level: h.lv != null ? h.lv : 0,
+        level: h.lv != null ? h.lv : 0,
+        _star: h.st != null ? h.st : 0,
+        star: h.st != null ? h.st : 0,
+        _quality: h.q != null ? h.q : 0,
+        quality: h.q != null ? h.q : 0,
+        _maxLevel: h.ml != null ? h.ml : 0,
+        _exp: h.x != null ? h.x : 0,
+        _power: h.pwr != null ? h.pwr : 0,
+        power: h.pwr != null ? h.pwr : 0,
+        heroEquips: equips,
+        // Preserve preset skill blocks — the Heroes tab reads p1/p2 directly.
+        p1: h.p1 || null,
+        p2: h.p2 || null,
+        activePreset: h.ap != null ? h.ap : 1,
+        _supplemental: true
+      };
+    });
   }
 
   // Build a merged.enigmas-shaped object from the live enigma supplement so

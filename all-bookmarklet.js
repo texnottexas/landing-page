@@ -930,7 +930,7 @@
     bg.appendChild(hdr);
     var sub = document.createElement('div');
     sub.style.cssText = 'color:#8b949e;font-size:12px;margin-bottom:10px;text-align:center;';
-    sub.textContent = 'Inventory · Beasts · HT chips · Titan gear · Heroes · Formation';
+    sub.textContent = 'Inventory · Enigma · Beasts · HT chips · Titan gear · Heroes · Decor · Skin · Formation';
     bg.appendChild(sub);
     document.body.appendChild(bg);
     return {
@@ -1097,11 +1097,24 @@
       var json = JSON.stringify(dump);
       var sections = [];
       if (dump.inventory) sections.push((dump.inventory.tabs ? Object.keys(dump.inventory.tabs).reduce(function (s, k) { return s + (dump.inventory.tabs[k] || []).length; }, 0) : 0) + ' inv');
-      if (dump.beasts) sections.push(dump.beasts.kept + ' beasts');
+      if (dump.enigmaState) {
+        var deployedHoles = (dump.enigmaState.fields || []).reduce(function (s, f) {
+          return s + ((f && f.holes) || []).filter(function (h) { return h && h.beastId; }).length;
+        }, 0);
+        sections.push(deployedHoles + ' deployed / ' + (dump.enigmaState.beasts ? dump.enigmaState.beasts.length : 0) + ' beasts');
+      } else if (dump.beasts) {
+        sections.push(dump.beasts.kept + ' beasts');
+      }
       if (dump.chips) sections.push(dump.chips.total + ' chips');
       if (dump.gear) sections.push(dump.gear.summary.goldCount + ' gold gear');
       if (dump.heroes) sections.push(dump.heroes.list.length + ' heroes');
-      if (dump.formation) sections.push((dump.formation.talents ? dump.formation.talents.length : 0) + ' formation talents');
+      if (dump.decorations) sections.push((dump.decorations.active ? dump.decorations.active.length : 0) + ' decor');
+      if (dump.baseSkin && dump.baseSkin.activeSkinId) sections.push('skin ' + dump.baseSkin.activeSkinId);
+      if (dump.formation) {
+        sections.push((dump.formation.talents ? dump.formation.talents.length : 0) + ' formation talents');
+        var presetCount = (dump.formation.presets || []).filter(function (p) { return p && p.slots && p.slots.some(function (s) { return s.armyId; }); }).length;
+        if (presetCount) sections.push(presetCount + ' march presets');
+      }
       var summary = sections.join(' · ') + ' — ' + fmtBytes(json.length);
       if (dump.errors && dump.errors.length) {
         summary += ' · ' + dump.errors.length + ' section(s) failed';
