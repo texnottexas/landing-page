@@ -1222,11 +1222,18 @@ body{top:0!important;}
       title.style.cursor = 'pointer';
       title.style.userSelect = 'none';
       title.setAttribute('role', 'button');
-      title.setAttribute('aria-expanded', 'true');
+      // Sections opting in via data-default-collapsed start closed
+      var startCollapsed = section.hasAttribute('data-default-collapsed');
+      title.setAttribute('aria-expanded', startCollapsed ? 'false' : 'true');
+      if (startCollapsed){
+        section.classList.add('sect-collapsed');
+        bodyWrap.style.display = 'none';
+      }
       // Chevron on the right edge (uses CSS .sect-chev rotation when collapsed)
       var chev = el('span', 'sect-chev');
       chev.style.marginLeft = 'auto';
       chev.appendChild(makeIcon('chevron-down', 16));
+      if (startCollapsed) chev.style.transform = 'rotate(-90deg)';
       title.appendChild(chev);
       title.addEventListener('click', function(){
         var isOpen = !section.classList.toggle('sect-collapsed');
@@ -2244,18 +2251,32 @@ body{top:0!important;}
     if (!paths.length) return;
     var section = el('section', 'sect');
     tagSection(section, '2-Hop', 'compass', paths.length);
+    // Last wasteland cycle of the week → no second declaration to chain
+    // through, so this section is moot. Render collapsed by default.
+    if (rd.isLastWastelandCycle){
+      section.setAttribute('data-default-collapsed', '');
+    }
     var t = el('div', 'sect-title');
     var dot = el('span', 'dot'); dot.style.background = 'var(--purple)';
     t.appendChild(dot);
     t.appendChild(el('span', null, '2-Hop NC Pathways — Reachable in 2 Rounds'));
-    t.appendChild(el('span', 'tag', paths.length + ' additional NCs'));
+    var tag = el('span', 'tag', paths.length + ' additional NCs');
+    if (rd.isLastWastelandCycle){
+      tag.textContent = paths.length + ' NCs · not actionable — no 2nd cycle this week';
+    }
+    t.appendChild(tag);
     section.appendChild(t);
 
     var note = el('div', 'rule-box');
     note.appendChild(makeIcon('compass', 18));
     var body = el('div', 'body');
-    body.appendChild(el('strong', null, 'Speculative — map reshuffles next round. '));
-    body.appendChild(document.createTextNode('NCs that would need 2 captures to reach IF the map persisted. It doesn\'t — wasteland IDs and positions reshuffle every round. Read this as cluster geometry (which directions hold dense NC reach), not as a literal capture chain. Only NC ownership persists.'));
+    if (rd.isLastWastelandCycle){
+      body.appendChild(el('strong', null, 'Not actionable this week. '));
+      body.appendChild(document.createTextNode('This is the last wasteland declaration cycle before NC battle and Realm battle. There is no second wasteland phase to use as the second hop, so these chains cannot be executed. Kept for reference and reopens automatically next round.'));
+    } else {
+      body.appendChild(el('strong', null, 'Speculative — map reshuffles next round. '));
+      body.appendChild(document.createTextNode('NCs that would need 2 captures to reach IF the map persisted. It doesn\'t — wasteland IDs and positions reshuffle every round. Read this as cluster geometry (which directions hold dense NC reach), not as a literal capture chain. Only NC ownership persists.'));
+    }
     note.appendChild(body);
     section.appendChild(note);
 
