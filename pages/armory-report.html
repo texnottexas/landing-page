@@ -17407,9 +17407,52 @@
     statValue.textContent = '+' + Math.round(result.totalGainToday) +
       ' today, +' + Math.round(result.totalGainAtMax) + ' at max-out';
     statBlock.appendChild(statValue);
+    // Replaces the prior wall of text. Same content, but structured so
+    // players can skim: a pill row of stat weights, then two crisp lines
+    // telling them what "Today" vs "At max-out" actually means.
     var statHelp = document.createElement('div');
-    statHelp.style.cssText = 'font-size:.68rem;color:var(--muted);margin-top:.2rem;max-width:380px;line-height:1.35;';
-    statHelp.textContent = 'Each point is one ATK-equivalent percent for your playstyle. +1 March = 30 pts (highest), 1% DEF = 20 pts, 1% DMG = 9 pts, 1% HP = 1.2 pts. March is also a hard floor: no swap will ever reduce march at a slot. "Today" compares both beasts at their current stars/levels; "At max-out" compares both at 5-star at their rarity\'s level cap (Lv 80 Epic, Lv 100 Legendary) so the swap is judged fairly even when the proposed beast is currently leveled higher than the one it would replace. Platform levels stay at their current state on both views - upgrading platforms costs too many repeaters to assume max in projections.';
+    statHelp.style.cssText = 'margin-top:.45rem;max-width:420px;display:flex;flex-direction:column;gap:.35rem;';
+
+    var statHelpLead = document.createElement('div');
+    statHelpLead.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.35;';
+    statHelpLead.textContent = 'One point = one ATK-equivalent percent for your playstyle.';
+    statHelp.appendChild(statHelpLead);
+
+    var pillRow = document.createElement('div');
+    pillRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:.3rem;';
+    var pillData = [
+      { label: '+1 March', val: '30', tone: '#3fb950' },
+      { label: '1% DEF',   val: '20', tone: '#79c0ff' },
+      { label: '1% DMG',   val: '9',  tone: '#d29922' },
+      { label: '1% HP',    val: '1.2', tone: '#a371f7' },
+      { label: '1% ATK',   val: '1',  tone: '#8b949e' }
+    ];
+    pillData.forEach(function(p) {
+      var pill = document.createElement('span');
+      pill.style.cssText = 'font-size:.66rem;color:var(--text);background:var(--surface);border:1px solid ' + p.tone + '55;border-left:3px solid ' + p.tone + ';padding:.18rem .45rem;border-radius:3px;font-variant-numeric:tabular-nums;line-height:1.2;';
+      pill.appendChild(document.createTextNode(p.label + ' = '));
+      var v = document.createElement('strong');
+      v.style.color = p.tone;
+      v.textContent = p.val + ' pts';
+      pill.appendChild(v);
+      pillRow.appendChild(pill);
+    });
+    statHelp.appendChild(pillRow);
+
+    function addHelpLine(label, body) {
+      var line = document.createElement('div');
+      line.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;';
+      var lbl = document.createElement('strong');
+      lbl.style.color = 'var(--text)';
+      lbl.textContent = label + ': ';
+      line.appendChild(lbl);
+      line.appendChild(document.createTextNode(body));
+      statHelp.appendChild(line);
+    }
+    addHelpLine('Today',      'compares both beasts at their current stars and levels.');
+    addHelpLine('At max-out', 'compares both at 5★ Lv 100 (or Lv 80 for Epic), so a freshly-leveled new beast is judged fairly.');
+    addHelpLine('Floors',     'march never drops at a slot; platform levels stay where they are today.');
+
     statBlock.appendChild(statHelp);
     hRow.appendChild(statBlock);
 
@@ -17470,6 +17513,21 @@
       boRenderWizard(container, merged, siteKey);
     };
     actions.appendChild(rerun);
+
+    // Breeding Priorities button — only renders when the analysis actually
+    // has something to suggest. Hides entirely for fully-supplied rosters
+    // so we don't dangle a button that opens to an empty modal.
+    var breedingSuggestions = boBreedingAnalysis(owned);
+    if (breedingSuggestions && breedingSuggestions.length) {
+      var breedBtn = document.createElement('button');
+      breedBtn.type = 'button';
+      breedBtn.className = 'secondary';
+      breedBtn.style.cssText = 'padding:.35rem .75rem;font-size:.78rem;';
+      breedBtn.textContent = 'Breeding priorities (' + breedingSuggestions.length + ')';
+      breedBtn.onclick = function() { _ar_openBreedingModal(owned); };
+      actions.appendChild(breedBtn);
+    }
+
     header.appendChild(actions);
 
     // Foundation context row (Component Mastery + talent-tree baseline).
@@ -17557,38 +17615,88 @@
       });
     });
 
-    var breedingPanel = boRenderBreedingPriorities(owned);
-    if (breedingPanel) container.appendChild(breedingPanel);
+    // Breeding priorities used to render inline beneath the rec cards;
+    // moved to a header modal button so the recommendations stay the
+    // focus and the breeding view is one click away when wanted.
+    //
+    // Internal note (kept here for the team, NOT rendered to players —
+    // the prior "Known gaps in this plan" disclaimer was confusing and
+    // most players glazed past it):
+    //   - Slot rarity bonus is wired for all 36 slots across all 5
+    //     fields, weights pulled live from in-game tooltip data and the
+    //     formula ceil(pot/16) * slot_cap / 100000 verified against the
+    //     game UI. Fields 4 and 5 slots 7-9 reflect Tex's TG refinement
+    //     values; other players with different TG would see different
+    //     weights at those six slots.
+    //   - Titan Gear contributions are computed live from the loaded
+    //     hero gear for Fields 4 and 5 slots 4-9. Slots 4-6 use base
+    //     attributes (enhanceValue per piece), 7-9 use random attrs
+    //     refined to >=70%. Missing gear data falls back to
+    //     captured-Tex defaults.
+    //   - Field activation conditions (Fill All Slots, Deploy N Legendary,
+    //     etc.) gate further platform upgrades, NOT a separate buff. A
+    //     condition-warning chip on a swap card means the player will
+    //     temporarily lose the ability to upgrade that platform until
+    //     the condition is re-satisfied. Existing platform levels are
+    //     preserved.
+    //   - Elemental damage triangles, situational defending-buildings
+    //     buffs, and shard/F101 upgrade costs are intentionally out of
+    //     scope.
+  }
 
-    // Honest disclaimer block. The optimizer is still missing several inputs
-    // that affect placement value in the real game; surface them so the
-    // player can sanity-check recommendations against what they know.
-    var discBox = document.createElement('div');
-    discBox.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.6rem .75rem;margin-top:1rem;';
+  // Modal-ize the breeding priorities so it lives one click away from
+  // the header instead of dangling below the rec list (most players were
+  // scrolling past it). Same content the inline panel renders, wrapped
+  // in the standard modal-bg / modal pattern other panels use.
+  function _ar_openBreedingModal(ownedBeasts) {
+    var bg = document.createElement('div');
+    bg.className = 'modal-bg show';
+    bg.style.zIndex = '900';
+    function closeNow() {
+      if (bg.parentNode) bg.parentNode.removeChild(bg);
+      document.removeEventListener('keydown', onEsc);
+    }
+    function onEsc(e) { if (e.key === 'Escape') closeNow(); }
+    document.addEventListener('keydown', onEsc);
+    bg.addEventListener('click', function(e) { if (e.target === bg) closeNow(); });
 
-    var discTitle = document.createElement('div');
-    discTitle.style.cssText = 'font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-bottom:.3rem;';
-    discTitle.textContent = 'Known gaps in this plan';
-    discBox.appendChild(discTitle);
+    var modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.cssText = 'max-width:520px;width:100%;max-height:calc(100vh - 2rem);overflow-y:auto;padding:1.25rem 1.25rem 1rem;';
+    bg.appendChild(modal);
 
-    var gaps = [
-      'Slot rarity bonus is fully wired for all 36 slots across all 5 fields. Weights were extracted live from the in-game tooltip data and the formula ceil(pot/16) * slot_cap / 100000 has been verified against the game UI. Fields 4 and 5 slots 7 to 9 reflect Tex\'s specific Titan Gear refinement values; another player with different TG refinement would see different weights at those six slots.',
-      'Titan Gear contributions are now computed live from your loaded hero gear for Fields 4 and 5 slots 4 to 9. Slots 4 to 6 use the gear\'s base attributes (the enhanceValue map on each piece, surfaced in the Heroes tab as the orange "enigma platform bonus" row). Slots 7 to 9 use the gear\'s random attributes refined to 70 percent or higher. Slots with no gear data loaded fall back to the captured-Tex defaults.',
-      'Field activation conditions (Fill All Slots, Deploy N Legendary, etc.) gate the ability to upgrade a platform further. They do not grant a separate buff. The warning on a swap card indicates you will lose the ability to upgrade the affected platform until the condition is satisfied again. Existing platform levels are preserved.',
-      'Elemental beast attributes for combat damage triangles, situational buffs (defending buildings etc.), and shard or F101 upgrade costs are intentionally out of scope.'
-    ];
-    gaps.forEach(function(g) {
-      var p = document.createElement('p');
-      p.style.cssText = 'font-size:.72rem;color:var(--text);margin:.2rem 0 0;line-height:1.4;';
-      var bullet = document.createElement('span');
-      bullet.style.color = '#d29922';
-      bullet.style.marginRight = '.35rem';
-      bullet.textContent = '•';
-      p.appendChild(bullet);
-      p.appendChild(document.createTextNode(g));
-      discBox.appendChild(p);
-    });
-    container.appendChild(discBox);
+    var head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;margin-bottom:.5rem;';
+    var h = document.createElement('h2');
+    h.style.cssText = 'margin:0;font-size:1.05rem;color:var(--text);';
+    h.textContent = 'Breeding Priorities';
+    head.appendChild(h);
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.style.cssText = 'background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer;padding:.1rem .3rem;line-height:1;';
+    close.textContent = '✕';
+    close.setAttribute('aria-label', 'Close');
+    close.onclick = closeNow;
+    head.appendChild(close);
+    modal.appendChild(head);
+
+    var inner = boRenderBreedingPriorities(ownedBeasts);
+    if (inner) {
+      // Strip the inner card's own outer chrome since the modal already
+      // gives us padding + border. Lift only the rows inside.
+      inner.style.background = 'transparent';
+      inner.style.border = '0';
+      inner.style.padding = '0';
+      inner.style.margin = '0';
+      modal.appendChild(inner);
+    } else {
+      var none = document.createElement('div');
+      none.style.cssText = 'font-size:.78rem;color:var(--muted);';
+      none.textContent = 'Roster looks fully covered for every type and element your platforms accept. Nice work.';
+      modal.appendChild(none);
+    }
+
+    document.body.appendChild(bg);
   }
 
   function boPlaystyleLabel(prefs) {
