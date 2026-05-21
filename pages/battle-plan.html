@@ -155,10 +155,14 @@ h4.r11-sub svg{color:var(--red);}
 .focus-row.r11-prio{box-shadow:inset 4px 0 0 var(--red);}
 .focus-row .r11-prio-badge{display:inline-flex;align-items:center;gap:.25rem;background:rgba(248,81,73,.12);color:var(--red);border:1px solid rgba(248,81,73,.35);padding:.05rem .4rem;border-radius:4px;font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;margin-left:.4rem;}
 .focus-row .fr-pin-badge{display:inline-flex;align-items:center;gap:.25rem;background:rgba(255,200,55,.16);color:#ffc837;border:1px solid rgba(255,200,55,.45);padding:.05rem .4rem;border-radius:4px;font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;margin-left:.4rem;}
+.focus-row .fr-aprio-badge{display:inline-flex;align-items:center;gap:.25rem;background:rgba(56,139,253,.14);color:var(--navy);border:1px solid rgba(56,139,253,.45);padding:.05rem .4rem;border-radius:4px;font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;margin-left:.4rem;}
 .focus-row .fr-demote-badge{display:inline-flex;align-items:center;gap:.25rem;background:rgba(139,148,158,.12);color:var(--muted);border:1px solid rgba(139,148,158,.35);padding:.05rem .4rem;border-radius:4px;font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-left:.4rem;}
 .focus-row.pinned{border-left-color:#ffc837;box-shadow:inset 3px 0 0 #ffc837;background:rgba(255,200,55,.04);}
+.focus-row.alliance-priority{border-left-color:var(--navy);box-shadow:inset 3px 0 0 var(--navy);background:rgba(56,139,253,.04);}
 .focus-row.demoted{opacity:.65;}
 .focus-row.demoted .fr-w{color:var(--muted);}
+.focus-row .fr-alliance-note{display:flex;align-items:flex-start;gap:.35rem;color:#79c0ff;font-size:.7rem;font-style:italic;padding:.25rem 0 .1rem;}
+.focus-row .fr-alliance-note svg{flex-shrink:0;margin-top:.15rem;}
 
 .rule-box{background:rgba(163,113,247,.06);border:1px solid rgba(163,113,247,.28);border-radius:10px;padding:.85rem 1rem;margin-bottom:1.1rem;display:flex;gap:.7rem;align-items:flex-start;}
 .rule-box svg{flex-shrink:0;color:var(--purple);margin-top:.15rem;}
@@ -1628,12 +1632,23 @@ body{top:0!important;}
     });
     tD.sort(function(a,b){ return (b.droppable?1:0) - (a.droppable?1:0) || a.seq - b.seq; });
 
-    // Apply alliance focus overrides (pinTop + demote) — drives manual
-    // reordering when leadership wants to elevate or sideline specific
-    // declarations regardless of automated tier logic.
+    // Apply alliance focus overrides — drives manual reordering when
+    // leadership wants to elevate or sideline specific declarations
+    // regardless of automated tier logic. Order applied:
+    //   1. pinTop (lock-in lanes) — top of Tier A
+    //   2. alliancePriority (this-week alliance picks) — right below pinTop
+    //   3. demote — pushed to end of Tier D
     var fo = rd.focusOverrides || {};
     var pinSet = new Set(fo.pinTop || []);
+    var aprioSet = new Set(fo.alliancePriority || []);
     var demoteSet = new Set(fo.demote || []);
+    var seqNotes = fo.seqNotes || {};
+    // Apply seq-level notes onto each entry up front
+    [tA, tB, tC, tD].forEach(function(tier){
+      tier.forEach(function(e){
+        if (seqNotes[String(e.seq)]) e.allianceNote = seqNotes[String(e.seq)];
+      });
+    });
     function pluck(list, set){
       var kept = [], pulled = [];
       list.forEach(function(e){
@@ -1642,35 +1657,37 @@ body{top:0!important;}
       });
       return [kept, pulled];
     }
-    if (pinSet.size){
-      var pinned = [];
+    function pullFromTiers(set, marker){
+      var collected = [];
       [tA, tB, tC, tD].forEach(function(tier, idx){
-        var pair = pluck(tier, pinSet);
-        // mutate original arrays
+        var pair = pluck(tier, set);
         if (idx === 0) { tA.length = 0; pair[0].forEach(function(e){ tA.push(e); }); }
         if (idx === 1) { tB.length = 0; pair[0].forEach(function(e){ tB.push(e); }); }
         if (idx === 2) { tC.length = 0; pair[0].forEach(function(e){ tC.push(e); }); }
         if (idx === 3) { tD.length = 0; pair[0].forEach(function(e){ tD.push(e); }); }
-        pair[1].forEach(function(e){ e.pinned = true; pinned.push(e); });
+        pair[1].forEach(function(e){ e[marker] = true; collected.push(e); });
       });
-      // Honour the order in fo.pinTop
+      return collected;
+    }
+    if (pinSet.size){
+      var pinned = pullFromTiers(pinSet, 'pinned');
       pinned.sort(function(a,b){
         return (fo.pinTop || []).indexOf(a.seq) - (fo.pinTop || []).indexOf(b.seq);
       });
-      // Prepend to Tier A
       pinned.reverse().forEach(function(e){ tA.unshift(e); });
     }
-    if (demoteSet.size){
-      var demoted = [];
-      [tA, tB, tC, tD].forEach(function(tier, idx){
-        var pair = pluck(tier, demoteSet);
-        if (idx === 0) { tA.length = 0; pair[0].forEach(function(e){ tA.push(e); }); }
-        if (idx === 1) { tB.length = 0; pair[0].forEach(function(e){ tB.push(e); }); }
-        if (idx === 2) { tC.length = 0; pair[0].forEach(function(e){ tC.push(e); }); }
-        if (idx === 3) { tD.length = 0; pair[0].forEach(function(e){ tD.push(e); }); }
-        pair[1].forEach(function(e){ e.demoted = true; demoted.push(e); });
+    if (aprioSet.size){
+      var aprio = pullFromTiers(aprioSet, 'alliancePriority');
+      aprio.sort(function(a,b){
+        return (fo.alliancePriority || []).indexOf(a.seq) - (fo.alliancePriority || []).indexOf(b.seq);
       });
-      // Append to end of Tier D (in fo.demote order)
+      // Insert right after pinned entries at top of Tier A
+      var pinCount = (fo.pinTop || []).filter(function(s){ return pinSet.has(s); }).length;
+      // Reverse so unshift preserves order — actually use splice
+      tA.splice.apply(tA, [pinCount, 0].concat(aprio));
+    }
+    if (demoteSet.size){
+      var demoted = pullFromTiers(demoteSet, 'demoted');
       demoted.sort(function(a,b){
         return (fo.demote || []).indexOf(a.seq) - (fo.demote || []).indexOf(b.seq);
       });
@@ -1754,6 +1771,7 @@ body{top:0!important;}
         if (opps.length >= 2) rowEl.classList.add('threeway');
         if (e.hasNc) rowEl.classList.add('with-nc');
         if (e.pinned) rowEl.classList.add('pinned');
+        if (e.alliancePriority) rowEl.classList.add('alliance-priority');
         if (e.demoted) rowEl.classList.add('demoted');
         var isR11 = r11Set.has(e.seq);
         if (isR11) rowEl.classList.add('r11-prio');
@@ -1766,6 +1784,12 @@ body{top:0!important;}
           pb.appendChild(makeIcon('flame', 10));
           pb.appendChild(document.createTextNode('Alliance lock-in'));
           head.appendChild(pb);
+        }
+        if (e.alliancePriority){
+          var ab = el('span', 'fr-aprio-badge');
+          ab.appendChild(makeIcon('users', 10));
+          ab.appendChild(document.createTextNode('Alliance pick'));
+          head.appendChild(ab);
         }
         if (e.demoted){
           var db = el('span', 'fr-demote-badge');
@@ -1780,6 +1804,13 @@ body{top:0!important;}
           head.appendChild(badge);
         }
         rowEl.appendChild(head);
+        // Alliance note row (per-seq strategic note)
+        if (e.allianceNote){
+          var noteRow = el('div', 'fr-row fr-alliance-note');
+          noteRow.appendChild(makeIcon('info', 12));
+          noteRow.appendChild(el('span', null, e.allianceNote));
+          rowEl.appendChild(noteRow);
+        }
         // Enemies row — clickable pills per server
         var enRow = el('div', 'fr-row');
         enRow.appendChild(el('span', 'fr-label', 'Enemy'));
@@ -3208,8 +3239,16 @@ body{top:0!important;}
       var maxAdjLevel = adjNcs.reduce(function(m, n){ return Math.max(m, n.level); }, 0);
       return { d: d, atkFames: atkFames, topFame: topFame, march: march, adjNcs: adjNcs, maxAdjLevel: maxAdjLevel };
     });
-    // Sort: protect higher-level NCs first, then by attacker fame desc, then 3-way first
+    // Sort: alliance defense priority (if set) wins, then protect higher-
+    // level NCs, then attacker fame desc, then 3-way first.
+    var defPrio = (rd.focusOverrides && rd.focusOverrides.alliancePriorityDefense) || [];
+    var defPrioIdx = {};
+    defPrio.forEach(function(seq, i){ defPrioIdx[seq] = i; });
     enriched.sort(function(a,b){
+      var ai = defPrioIdx[a.d.seq], bi = defPrioIdx[b.d.seq];
+      if (ai != null && bi != null) return ai - bi;
+      if (ai != null) return -1;
+      if (bi != null) return 1;
       if (b.maxAdjLevel !== a.maxAdjLevel) return b.maxAdjLevel - a.maxAdjLevel;
       if (b.topFame !== a.topFame) return b.topFame - a.topFame;
       return (b.d.attackerSids.length) - (a.d.attackerSids.length);

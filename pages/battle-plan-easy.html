@@ -114,10 +114,14 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 .f-pill.nc{background:rgba(63,185,80,.16);color:var(--green);border:1px solid rgba(63,185,80,.4);}
 .f-pill.skip{background:rgba(139,148,158,.12);color:var(--muted);border:1px solid var(--border);}
 .f-pill.pin{background:rgba(255,200,55,.16);color:#ffc837;border:1px solid rgba(255,200,55,.45);}
+.f-pill.aprio{background:rgba(56,139,253,.14);color:var(--navy);border:1px solid rgba(56,139,253,.45);}
 .f-pill.demote{background:rgba(139,148,158,.12);color:var(--muted);border:1px solid var(--border);}
 .fight.pinned{box-shadow:inset 4px 0 0 #ffc837;}
+.fight.alliance-priority{box-shadow:inset 4px 0 0 var(--navy);}
 .fight.demoted{opacity:.6;}
 .fight.demoted .f-num{color:var(--muted);}
+.f-note{grid-column:1/-1;display:flex;align-items:flex-start;gap:.35rem;color:#79c0ff;font-size:.78rem;font-style:italic;padding:.4rem .85rem 0 .85rem;}
+.f-note svg{flex-shrink:0;margin-top:.15rem;color:#79c0ff;}
 
 @media (max-width:560px){
   .fight{grid-template-columns:auto auto auto 1fr;gap:.5rem;padding:.7rem .85rem;}
@@ -477,28 +481,37 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     tC.sort(function(a,b){return ncMaxLvl(b.ncs)-ncMaxLvl(a.ncs)||a.seq-b.seq;});
     tD.sort(function(a,b){return (a.droppable?1:0)-(b.droppable?1:0)||a.seq-b.seq;});
 
-    // Apply alliance focus overrides (pinTop + demote)
+    // Apply alliance focus overrides: pinTop > alliancePriority > demote
     var fo=rd.focusOverrides||{};
     var pinSet=new Set(fo.pinTop||[]);
+    var aprioSet=new Set(fo.alliancePriority||[]);
     var demoteSet=new Set(fo.demote||[]);
+    var seqNotes=fo.seqNotes||{};
+    // Attach per-seq notes
+    [tA,tB,tC,tD].forEach(function(tier){tier.forEach(function(e){if(seqNotes[String(e.seq)])e.allianceNote=seqNotes[String(e.seq)];});});
     function pluck(list,set){var kept=[],pulled=[];list.forEach(function(e){(set.has(e.seq)?pulled:kept).push(e);});return [kept,pulled];}
-    if(pinSet.size){
-      var pinned=[];
+    function pullFromTiers(set,marker){
+      var collected=[];
       [['A',tA],['B',tB],['C',tC],['D',tD]].forEach(function(t){
-        var pair=pluck(t[1],pinSet);
+        var pair=pluck(t[1],set);
         t[1].length=0; pair[0].forEach(function(e){t[1].push(e);});
-        pair[1].forEach(function(e){e.pinned=true;pinned.push(e);});
+        pair[1].forEach(function(e){e[marker]=true;collected.push(e);});
       });
+      return collected;
+    }
+    if(pinSet.size){
+      var pinned=pullFromTiers(pinSet,'pinned');
       pinned.sort(function(a,b){return (fo.pinTop||[]).indexOf(a.seq)-(fo.pinTop||[]).indexOf(b.seq);});
       pinned.reverse().forEach(function(e){tA.unshift(e);});
     }
+    if(aprioSet.size){
+      var aprio=pullFromTiers(aprioSet,'alliancePriority');
+      aprio.sort(function(a,b){return (fo.alliancePriority||[]).indexOf(a.seq)-(fo.alliancePriority||[]).indexOf(b.seq);});
+      var pinCount=(fo.pinTop||[]).filter(function(s){return pinSet.has(s);}).length;
+      tA.splice.apply(tA,[pinCount,0].concat(aprio));
+    }
     if(demoteSet.size){
-      var demoted=[];
-      [['A',tA],['B',tB],['C',tC],['D',tD]].forEach(function(t){
-        var pair=pluck(t[1],demoteSet);
-        t[1].length=0; pair[0].forEach(function(e){t[1].push(e);});
-        pair[1].forEach(function(e){e.demoted=true;demoted.push(e);});
-      });
+      var demoted=pullFromTiers(demoteSet,'demoted');
       demoted.sort(function(a,b){return (fo.demote||[]).indexOf(a.seq)-(fo.demote||[]).indexOf(b.seq);});
       demoted.forEach(function(e){tD.push(e);});
     }
@@ -540,6 +553,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     var card=el('div','fight cat-'+(SPEC_CAT[e.specId]||'special')+' tier-'+tier.toLowerCase());
     if(e.threat)card.classList.add('threat');
     if(e.pinned)card.classList.add('pinned');
+    if(e.alliancePriority)card.classList.add('alliance-priority');
     if(e.demoted)card.classList.add('demoted');
     if(isDone(e.seq))card.classList.add('done');
 
@@ -575,12 +589,23 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
       var pp=el('span','f-pill pin','★ Lock-in');
       tag.appendChild(pp);
     }
+    if(e.alliancePriority){
+      var apl=el('span','f-pill aprio','Alliance');
+      tag.appendChild(apl);
+    }
     if(e.demoted){
       var dp=el('span','f-pill demote','Skip');
       tag.appendChild(dp);
     }
     tag.appendChild(tagPill(e,tier));
     card.appendChild(tag);
+    // Per-seq alliance note (e.g. backup plans)
+    if(e.allianceNote){
+      var noteRow=el('div','f-note');
+      noteRow.appendChild(makeIcon('info',12));
+      noteRow.appendChild(el('span',null,e.allianceNote));
+      card.appendChild(noteRow);
+    }
     return card;
   }
 
