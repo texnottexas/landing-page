@@ -154,6 +154,11 @@ h4.r11-sub svg{color:var(--red);}
 /* Priority flag on focus rows */
 .focus-row.r11-prio{box-shadow:inset 4px 0 0 var(--red);}
 .focus-row .r11-prio-badge{display:inline-flex;align-items:center;gap:.25rem;background:rgba(248,81,73,.12);color:var(--red);border:1px solid rgba(248,81,73,.35);padding:.05rem .4rem;border-radius:4px;font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;margin-left:.4rem;}
+.focus-row .fr-pin-badge{display:inline-flex;align-items:center;gap:.25rem;background:rgba(255,200,55,.16);color:#ffc837;border:1px solid rgba(255,200,55,.45);padding:.05rem .4rem;border-radius:4px;font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;margin-left:.4rem;}
+.focus-row .fr-demote-badge{display:inline-flex;align-items:center;gap:.25rem;background:rgba(139,148,158,.12);color:var(--muted);border:1px solid rgba(139,148,158,.35);padding:.05rem .4rem;border-radius:4px;font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-left:.4rem;}
+.focus-row.pinned{border-left-color:#ffc837;box-shadow:inset 3px 0 0 #ffc837;background:rgba(255,200,55,.04);}
+.focus-row.demoted{opacity:.65;}
+.focus-row.demoted .fr-w{color:var(--muted);}
 
 .rule-box{background:rgba(163,113,247,.06);border:1px solid rgba(163,113,247,.28);border-radius:10px;padding:.85rem 1rem;margin-bottom:1.1rem;display:flex;gap:.7rem;align-items:flex-start;}
 .rule-box svg{flex-shrink:0;color:var(--purple);margin-top:.15rem;}
@@ -1623,6 +1628,55 @@ body{top:0!important;}
     });
     tD.sort(function(a,b){ return (b.droppable?1:0) - (a.droppable?1:0) || a.seq - b.seq; });
 
+    // Apply alliance focus overrides (pinTop + demote) — drives manual
+    // reordering when leadership wants to elevate or sideline specific
+    // declarations regardless of automated tier logic.
+    var fo = rd.focusOverrides || {};
+    var pinSet = new Set(fo.pinTop || []);
+    var demoteSet = new Set(fo.demote || []);
+    function pluck(list, set){
+      var kept = [], pulled = [];
+      list.forEach(function(e){
+        if (set.has(e.seq)) pulled.push(e);
+        else kept.push(e);
+      });
+      return [kept, pulled];
+    }
+    if (pinSet.size){
+      var pinned = [];
+      [tA, tB, tC, tD].forEach(function(tier, idx){
+        var pair = pluck(tier, pinSet);
+        // mutate original arrays
+        if (idx === 0) { tA.length = 0; pair[0].forEach(function(e){ tA.push(e); }); }
+        if (idx === 1) { tB.length = 0; pair[0].forEach(function(e){ tB.push(e); }); }
+        if (idx === 2) { tC.length = 0; pair[0].forEach(function(e){ tC.push(e); }); }
+        if (idx === 3) { tD.length = 0; pair[0].forEach(function(e){ tD.push(e); }); }
+        pair[1].forEach(function(e){ e.pinned = true; pinned.push(e); });
+      });
+      // Honour the order in fo.pinTop
+      pinned.sort(function(a,b){
+        return (fo.pinTop || []).indexOf(a.seq) - (fo.pinTop || []).indexOf(b.seq);
+      });
+      // Prepend to Tier A
+      pinned.reverse().forEach(function(e){ tA.unshift(e); });
+    }
+    if (demoteSet.size){
+      var demoted = [];
+      [tA, tB, tC, tD].forEach(function(tier, idx){
+        var pair = pluck(tier, demoteSet);
+        if (idx === 0) { tA.length = 0; pair[0].forEach(function(e){ tA.push(e); }); }
+        if (idx === 1) { tB.length = 0; pair[0].forEach(function(e){ tB.push(e); }); }
+        if (idx === 2) { tC.length = 0; pair[0].forEach(function(e){ tC.push(e); }); }
+        if (idx === 3) { tD.length = 0; pair[0].forEach(function(e){ tD.push(e); }); }
+        pair[1].forEach(function(e){ e.demoted = true; demoted.push(e); });
+      });
+      // Append to end of Tier D (in fo.demote order)
+      demoted.sort(function(a,b){
+        return (fo.demote || []).indexOf(a.seq) - (fo.demote || []).indexOf(b.seq);
+      });
+      demoted.forEach(function(e){ tD.push(e); });
+    }
+
     // Expose tiers for player-search modal
     _bpTiers = { A: tA, B: tB, C: tC, D: tD };
 
@@ -1699,12 +1753,26 @@ body{top:0!important;}
         if (e.threat) rowEl.classList.add('threat');
         if (opps.length >= 2) rowEl.classList.add('threeway');
         if (e.hasNc) rowEl.classList.add('with-nc');
+        if (e.pinned) rowEl.classList.add('pinned');
+        if (e.demoted) rowEl.classList.add('demoted');
         var isR11 = r11Set.has(e.seq);
         if (isR11) rowEl.classList.add('r11-prio');
         // Head: W# + Lv + buff
         var head = el('div', 'fr-head');
         head.appendChild(el('span', 'fr-w', 'W-' + e.seq));
         head.appendChild(el('span', 'fr-buff', 'L' + e.level + ' · ' + (e.specName || '?')));
+        if (e.pinned){
+          var pb = el('span', 'fr-pin-badge');
+          pb.appendChild(makeIcon('flame', 10));
+          pb.appendChild(document.createTextNode('Alliance lock-in'));
+          head.appendChild(pb);
+        }
+        if (e.demoted){
+          var db = el('span', 'fr-demote-badge');
+          db.appendChild(makeIcon('arrow', 10));
+          db.appendChild(document.createTextNode('Deprioritized'));
+          head.appendChild(db);
+        }
         if (isR11){
           var badge = el('span', 'r11-prio-badge');
           badge.appendChild(makeIcon('flame', 10));

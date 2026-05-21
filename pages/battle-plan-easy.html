@@ -113,6 +113,11 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 .f-pill.combat{background:rgba(210,153,34,.16);color:var(--yellow);border:1px solid rgba(210,153,34,.4);}
 .f-pill.nc{background:rgba(63,185,80,.16);color:var(--green);border:1px solid rgba(63,185,80,.4);}
 .f-pill.skip{background:rgba(139,148,158,.12);color:var(--muted);border:1px solid var(--border);}
+.f-pill.pin{background:rgba(255,200,55,.16);color:#ffc837;border:1px solid rgba(255,200,55,.45);}
+.f-pill.demote{background:rgba(139,148,158,.12);color:var(--muted);border:1px solid var(--border);}
+.fight.pinned{box-shadow:inset 4px 0 0 #ffc837;}
+.fight.demoted{opacity:.6;}
+.fight.demoted .f-num{color:var(--muted);}
 
 @media (max-width:560px){
   .fight{grid-template-columns:auto auto auto 1fr;gap:.5rem;padding:.7rem .85rem;}
@@ -471,6 +476,33 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     function ncMaxLvl(arr){if(!arr.length)return 0;var m=0;arr.forEach(function(n){var mt=String(n).match(/L(\d)/);if(mt){var v=parseInt(mt[1],10);if(v>m)m=v;}});return m;}
     tC.sort(function(a,b){return ncMaxLvl(b.ncs)-ncMaxLvl(a.ncs)||a.seq-b.seq;});
     tD.sort(function(a,b){return (a.droppable?1:0)-(b.droppable?1:0)||a.seq-b.seq;});
+
+    // Apply alliance focus overrides (pinTop + demote)
+    var fo=rd.focusOverrides||{};
+    var pinSet=new Set(fo.pinTop||[]);
+    var demoteSet=new Set(fo.demote||[]);
+    function pluck(list,set){var kept=[],pulled=[];list.forEach(function(e){(set.has(e.seq)?pulled:kept).push(e);});return [kept,pulled];}
+    if(pinSet.size){
+      var pinned=[];
+      [['A',tA],['B',tB],['C',tC],['D',tD]].forEach(function(t){
+        var pair=pluck(t[1],pinSet);
+        t[1].length=0; pair[0].forEach(function(e){t[1].push(e);});
+        pair[1].forEach(function(e){e.pinned=true;pinned.push(e);});
+      });
+      pinned.sort(function(a,b){return (fo.pinTop||[]).indexOf(a.seq)-(fo.pinTop||[]).indexOf(b.seq);});
+      pinned.reverse().forEach(function(e){tA.unshift(e);});
+    }
+    if(demoteSet.size){
+      var demoted=[];
+      [['A',tA],['B',tB],['C',tC],['D',tD]].forEach(function(t){
+        var pair=pluck(t[1],demoteSet);
+        t[1].length=0; pair[0].forEach(function(e){t[1].push(e);});
+        pair[1].forEach(function(e){e.demoted=true;demoted.push(e);});
+      });
+      demoted.sort(function(a,b){return (fo.demote||[]).indexOf(a.seq)-(fo.demote||[]).indexOf(b.seq);});
+      demoted.forEach(function(e){tD.push(e);});
+    }
+
     return {A:tA,B:tB,C:tC,D:tD};
   }
 
@@ -507,6 +539,8 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     _lastNumMap[e.seq]={num:num,tier:tier,entry:e};
     var card=el('div','fight cat-'+(SPEC_CAT[e.specId]||'special')+' tier-'+tier.toLowerCase());
     if(e.threat)card.classList.add('threat');
+    if(e.pinned)card.classList.add('pinned');
+    if(e.demoted)card.classList.add('demoted');
     if(isDone(e.seq))card.classList.add('done');
 
     var L=t();
@@ -537,6 +571,14 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     mid.appendChild(meta);
     card.appendChild(mid);
     var tag=el('div','f-tag');
+    if(e.pinned){
+      var pp=el('span','f-pill pin','★ Lock-in');
+      tag.appendChild(pp);
+    }
+    if(e.demoted){
+      var dp=el('span','f-pill demote','Skip');
+      tag.appendChild(dp);
+    }
     tag.appendChild(tagPill(e,tier));
     card.appendChild(tag);
     return card;
@@ -872,7 +914,10 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     });
   }
 
-  fetch('https://raw.githubusercontent.com/texnottexas/landing-page/main/data/ssc-map.json?_t='+Date.now(),{cache:'no-store'})
+  var DATA_URL=(location.hostname==='localhost'||location.hostname==='127.0.0.1')
+    ? '../data/ssc-map.json?_t='+Date.now()
+    : 'https://raw.githubusercontent.com/texnottexas/landing-page/main/data/ssc-map.json?_t='+Date.now();
+  fetch(DATA_URL,{cache:'no-store'})
     .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
     .then(render)
     .catch(function(err){showError(err.message);});
