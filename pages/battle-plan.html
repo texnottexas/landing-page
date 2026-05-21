@@ -252,6 +252,14 @@ table.power.power-collapsed .hidden-row{display:none;}
 .opp-other-pill{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:.15rem .45rem;color:var(--text);font-family:'SF Mono',Consolas,monospace;}
 .opp-card-section{margin-top:.85rem;padding-top:.65rem;border-top:1px solid var(--border);}
 .opp-card-section h5{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-bottom:.5rem;}
+.opp-buff-list{display:flex;flex-direction:column;gap:.35rem;}
+.opp-buff-row{display:flex;align-items:center;gap:.45rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.35rem .55rem;font-size:.74rem;}
+.opp-buff-row .opp-buff-name{flex:1;font-weight:600;color:var(--text);}
+.opp-buff-row .opp-buff-val{color:var(--yellow);font-weight:800;font-family:'SF Mono',Consolas,monospace;}
+.opp-buff-row .opp-buff-pct{color:var(--muted);font-size:.62rem;font-family:'SF Mono',Consolas,monospace;margin-left:.25rem;}
+.opp-buff-row.combat .opp-buff-val{color:var(--red);}
+.opp-buff-empty{color:var(--muted);font-style:italic;font-size:.72rem;text-align:center;padding:.4rem;border:1px dashed var(--border);border-radius:6px;}
+.opp-buff-note{font-size:.66rem;color:var(--muted);font-style:italic;margin-top:.35rem;line-height:1.35;}
 .opp-headline{display:flex;align-items:center;gap:.55rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.5rem .6rem;margin-bottom:.5rem;}
 .opp-headline .av{width:34px;height:34px;border-radius:50%;background:var(--card);border:1px solid var(--border);object-fit:cover;flex-shrink:0;}
 .opp-headline .av-fb{width:34px;height:34px;border-radius:50%;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;color:var(--muted);flex-shrink:0;}
@@ -1088,6 +1096,9 @@ body{top:0!important;}
       modal.appendChild(ofSect);
     }
 
+    // Their projected buffs (from owned wastelands' specId × level contribution)
+    appendOpponentBuffSection(modal, fight.opponent, rd);
+
     // Storm-duel-style server intel — top merit player + roster
     var card = (rd.sectorServerCards || []).find(function(c){ return c.sid === fight.opponent; });
     if (card){
@@ -1095,6 +1106,62 @@ body{top:0!important;}
     }
 
     return modal;
+  }
+
+  // === Opponent buff projection section ===
+  // Reads rd.serverBuffProjections[sid] (computed offline from cells × known specs).
+  // Renders combat buffs first (with %-of-cap), then a few economy/utility lines.
+  var OPP_EFFECT_LABELS = {
+    11001:'All Units ATK', 11002:'All Units HP', 11003:'All Units DMG Inc',
+    11004:'All Units DMG Reduction', 11006:'All Units DEF',
+    11011:'Truck Seal +', 11012:'Heist Seal +', 11015:'Realm Thief',
+    11017:'Daily Task Seal +', 11020:'SS Train Capacity',
+    11023:'Realm March Speed', 11080:'Treasury Reward +'
+  };
+  var OPP_EFFECT_CAP = { 11001:1800, 11002:1800, 11003:300, 11004:300, 11006:100 };
+  var OPP_EFFECT_PCT = { 11001:1, 11002:1, 11003:1, 11004:1, 11006:1 };
+  var OPP_COMBAT = { 11001:1, 11002:1, 11003:1, 11004:1, 11006:1 };
+  function fmtOppBuff(eff, raw){
+    if (OPP_EFFECT_PCT[eff]) return (raw/100).toFixed(0) + '%';
+    return String(raw);
+  }
+  function appendOpponentBuffSection(modal, sid, rd){
+    var buffs = (rd.serverBuffProjections || {})[String(sid)];
+    if (!buffs || !buffs.ownedCount) return;
+    var sect = el('div', 'opp-card-section');
+    var head = document.createElement('h5');
+    head.appendChild(document.createTextNode('Their current buffs — projected from ' + buffs.knownSpecCount + ' of ' + buffs.ownedCount + ' wastelands'));
+    sect.appendChild(head);
+    var list = el('div', 'opp-buff-list');
+    var COMBAT_ORDER = [11001, 11002, 11003, 11004, 11006];
+    var OTHER_ORDER  = [11023, 11080, 11011, 11012, 11015, 11017, 11020];
+    var rendered = 0;
+    function row(effId){
+      var raw = (buffs.byEffect || {})[String(effId)] || 0;
+      if (!raw) return;
+      rendered++;
+      var r = el('div', 'opp-buff-row' + (OPP_COMBAT[effId] ? ' combat' : ''));
+      r.appendChild(el('span', 'opp-buff-name', OPP_EFFECT_LABELS[effId] || ('Effect ' + effId)));
+      r.appendChild(el('span', 'opp-buff-val', fmtOppBuff(effId, raw)));
+      var cap = OPP_EFFECT_CAP[effId];
+      if (cap){
+        var pct = Math.round(100 * raw / cap);
+        r.appendChild(el('span', 'opp-buff-pct', pct + '% of cap'));
+      }
+      list.appendChild(r);
+    }
+    COMBAT_ORDER.forEach(row);
+    OTHER_ORDER.forEach(row);
+    if (!rendered){
+      list.appendChild(el('div', 'opp-buff-empty', 'None of their owned wastelands have observed specs.'));
+    }
+    sect.appendChild(list);
+    if (buffs.unknownSpecCount > 0 && rendered){
+      var note = el('div', 'opp-buff-note');
+      note.textContent = 'Spec only revealed when we fight or own the wasteland. ' + buffs.unknownSpecCount + ' of their wastelands have unobserved specs, so actuals are higher.';
+      sect.appendChild(note);
+    }
+    modal.appendChild(sect);
   }
   function safeAvatarUrl(v){
     if (!v) return null;
@@ -3501,6 +3568,22 @@ body{top:0!important;}
       return m ? m[1] : o;
     }).join(', ');
   }
+  // Render opponents as clickable pills (NC battle plan).
+  // Falls back to plain text if rd context is missing.
+  function ncOppPills(front, rd){
+    var wrap = document.createElement('span');
+    wrap.className = 'nc-opp-pills';
+    var sids = (front.opponents || []).map(function(o){
+      var m = String(o).match(/^S?(\d+)/);
+      return m ? parseInt(m[1], 10) : null;
+    }).filter(function(x){ return x != null; });
+    sids.forEach(function(sid, i){
+      if (i > 0) wrap.appendChild(document.createTextNode(' '));
+      var pill = makeSidPill(sid, rd);
+      wrap.appendChild(pill);
+    });
+    return wrap;
+  }
 
   function ncFrontMascotSrc(key){
     if (key === 'storm') return '../assets/caveman/caveman-primal-idle.webp';
@@ -3541,12 +3624,14 @@ body{top:0!important;}
     bigRow.appendChild(pwBadge);
     card.appendChild(bigRow);
 
-    // Smash these dum-dums (opponents — stripped to just SIDs)
-    var oppText = ncOppList(front);
-    if (oppText){
+    // Smash these dum-dums (opponents — clickable server pills now)
+    var oppCount = (front.opponents || []).length;
+    if (oppCount){
       var oppRow = el('div', 'nc-front-line');
       oppRow.appendChild(el('b', null, 'Smash:'));
-      oppRow.appendChild(document.createTextNode(' ' + oppText));
+      oppRow.appendChild(document.createTextNode(' '));
+      // Pull rd from outer closure via global rendered round data
+      oppRow.appendChild(ncOppPills(front, _bpRoundData));
       card.appendChild(oppRow);
     }
 
