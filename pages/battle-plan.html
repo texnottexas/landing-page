@@ -1111,40 +1111,34 @@ body{top:0!important;}
     return modal;
   }
 
-  // === Opponent buff projection section ===
-  // Reads rd.serverBuffProjections[sid] (computed offline from cells × known specs).
-  // Renders combat buffs first (with %-of-cap), then a few economy/utility lines.
+  // === Opponent buff projection section (combat only) ===
+  // Reads rd.serverBuffProjections[sid] (computed offline from the full
+  // CQ25 wastelandMap — every wasteland's specId is known). Levels for
+  // our own wastelands come from occupyInfos; opponent levels are
+  // assumed L3 (worst-case overestimate for planning).
   var OPP_EFFECT_LABELS = {
     11001:'All Units ATK', 11002:'All Units HP', 11003:'All Units DMG Inc',
-    11004:'All Units DMG Reduction', 11006:'All Units DEF',
-    11011:'Truck Seal +', 11012:'Heist Seal +', 11015:'Realm Thief',
-    11017:'Daily Task Seal +', 11020:'SS Train Capacity',
-    11023:'Realm March Speed', 11080:'Treasury Reward +'
+    11004:'All Units DMG Reduction', 11006:'All Units DEF'
   };
-  var OPP_EFFECT_CAP = { 11001:1800, 11002:1800, 11003:300, 11004:300, 11006:100 };
-  var OPP_EFFECT_PCT = { 11001:1, 11002:1, 11003:1, 11004:1, 11006:1 };
-  var OPP_COMBAT = { 11001:1, 11002:1, 11003:1, 11004:1, 11006:1 };
-  function fmtOppBuff(eff, raw){
-    if (OPP_EFFECT_PCT[eff]) return (raw/100).toFixed(0) + '%';
-    return String(raw);
-  }
+  // Caps as raw (display × 100), since byEffect totals are also raw.
+  var OPP_EFFECT_CAP = { 11001:180000, 11002:180000, 11003:30000, 11004:30000, 11006:10000 };
+  function fmtOppBuff(eff, raw){ return (raw/100).toFixed(0) + '%'; }
   function appendOpponentBuffSection(modal, sid, rd){
     var buffs = (rd.serverBuffProjections || {})[String(sid)];
-    if (!buffs || !buffs.ownedCount) return;
+    if (!buffs || !buffs.combatCount) return;
     var sect = el('div', 'opp-card-section');
     var head = document.createElement('h5');
-    head.appendChild(document.createTextNode('Their current buffs — projected from ' + buffs.knownSpecCount + ' of ' + buffs.ownedCount + ' wastelands'));
+    head.appendChild(document.createTextNode('Their current combat buffs — ' + buffs.combatCount + ' combat wastelands of ' + buffs.ownedCount + ' owned'));
     sect.appendChild(head);
     var list = el('div', 'opp-buff-list');
     var COMBAT_ORDER = [11001, 11002, 11003, 11004, 11006];
-    var OTHER_ORDER  = [11023, 11080, 11011, 11012, 11015, 11017, 11020];
     var rendered = 0;
-    function row(effId){
+    COMBAT_ORDER.forEach(function(effId){
       var raw = (buffs.byEffect || {})[String(effId)] || 0;
       if (!raw) return;
       rendered++;
-      var r = el('div', 'opp-buff-row' + (OPP_COMBAT[effId] ? ' combat' : ''));
-      r.appendChild(el('span', 'opp-buff-name', OPP_EFFECT_LABELS[effId] || ('Effect ' + effId)));
+      var r = el('div', 'opp-buff-row combat');
+      r.appendChild(el('span', 'opp-buff-name', OPP_EFFECT_LABELS[effId]));
       r.appendChild(el('span', 'opp-buff-val', fmtOppBuff(effId, raw)));
       var cap = OPP_EFFECT_CAP[effId];
       if (cap){
@@ -1152,16 +1146,14 @@ body{top:0!important;}
         r.appendChild(el('span', 'opp-buff-pct', pct + '% of cap'));
       }
       list.appendChild(r);
-    }
-    COMBAT_ORDER.forEach(row);
-    OTHER_ORDER.forEach(row);
+    });
     if (!rendered){
-      list.appendChild(el('div', 'opp-buff-empty', 'None of their owned wastelands have observed specs.'));
+      list.appendChild(el('div', 'opp-buff-empty', 'No combat wastelands owned.'));
     }
     sect.appendChild(list);
-    if (buffs.unknownSpecCount > 0 && rendered){
+    if (sid !== 2864 && rendered){
       var note = el('div', 'opp-buff-note');
-      note.textContent = 'Spec only revealed when we fight or own the wasteland. ' + buffs.unknownSpecCount + ' of their wastelands have unobserved specs, so actuals are higher.';
+      note.textContent = 'Opponent wasteland levels assumed L3 (worst-case for planning). Our owned wastelands use exact level.';
       sect.appendChild(note);
     }
     modal.appendChild(sect);
