@@ -395,6 +395,8 @@ section.sect{scroll-margin-top:120px;}
 .fr-meta{color:var(--muted);font-size:.65rem;}
 .enemy-pill{font-family:inherit;font-size:.7rem;font-weight:700;padding:.1rem .45rem;border-radius:5px;background:rgba(121,192,255,.08);border:1px solid rgba(121,192,255,.3);color:var(--accent);cursor:pointer;transition:all .12s;}
 .enemy-pill:hover{background:rgba(121,192,255,.18);border-color:var(--accent);color:var(--text);}
+.enemy-pill.us-pill{background:rgba(63,185,80,.1);border-color:rgba(63,185,80,.4);color:var(--green);}
+.enemy-pill.us-pill:hover{background:rgba(63,185,80,.2);border-color:var(--green);color:var(--text);}
 .focus-row.threat .enemy-pill{background:rgba(248,81,73,.08);border-color:rgba(248,81,73,.35);color:var(--red);}
 .focus-row.threat .enemy-pill:hover{background:rgba(248,81,73,.18);}
 .focus-row.threeway .enemy-pill{background:rgba(210,153,34,.1);border-color:rgba(210,153,34,.4);color:var(--yellow);}
@@ -3007,6 +3009,21 @@ body{top:0!important;}
     return pill;
   }
 
+  // Same shape as makeSidPill but ALWAYS clickable — used on NC fronts
+  // for our own S2864 pill so players can self-check the same stats.
+  function makeUsSidPill(rd){
+    var pill = document.createElement('button');
+    pill.type = 'button';
+    pill.className = 'enemy-pill us-pill';
+    pill.textContent = 'S2864';
+    pill.title = 'Open sector intel for S2864 (us)';
+    pill.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      openSidModal(2864, rd);
+    });
+    return pill;
+  }
+
   function buildBuffs(rd, root){
     var buffs = rd.buffOverview || [];
     if (!buffs.length) return;
@@ -3621,13 +3638,20 @@ body{top:0!important;}
     bigRow.appendChild(pwBadge);
     card.appendChild(bigRow);
 
+    // Win row — our side. Clickable S2864 pill opens the same modal so
+    // players can self-check our combat-buff totals before fight time.
+    var winRow = el('div', 'nc-front-line');
+    winRow.appendChild(el('b', null, 'Win:'));
+    winRow.appendChild(document.createTextNode(' '));
+    winRow.appendChild(makeUsSidPill(_bpRoundData));
+    card.appendChild(winRow);
+
     // Smash these dum-dums (opponents — clickable server pills now)
     var oppCount = (front.opponents || []).length;
     if (oppCount){
       var oppRow = el('div', 'nc-front-line');
       oppRow.appendChild(el('b', null, 'Smash:'));
       oppRow.appendChild(document.createTextNode(' '));
-      // Pull rd from outer closure via global rendered round data
       oppRow.appendChild(ncOppPills(front, _bpRoundData));
       card.appendChild(oppRow);
     }
