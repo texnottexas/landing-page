@@ -737,6 +737,24 @@
     </section>
 
     <section>
+      <h2>Hero Grand Slam — the Awakening Stone delivery event <span class="h2-tag live">live on newer servers</span></h2>
+      <p class="muted" style="margin-bottom:10px">Extracted from S4455 on 2026-05-21 (server-gated on S2864). Internal codename <code>ActAureole1</code> — second iteration of the Castle Halo / Aureole board-game framework (the first iteration shipped as Good Luck Rush). This is the event that actually puts Awakening Stones into players' bags via its Exchange Store.</p>
+      <div id="grand-slam-block"></div>
+    </section>
+
+    <section>
+      <h2>Hero Grand Slam Exchange Store <span class="h2-tag live">live extract</span></h2>
+      <p class="muted" style="margin-bottom:10px">Full <code>convert</code> table for group <code>260512001</code> — every redemption available with Grand Slam Vouchers and Tokens. The Awakening Stone redemption sits at the top: <strong>1 Voucher = 1 Stone, up to 6,000 stones per event</strong>. Hero Shards (10 each) and ES Skill chips (800 each) round out the cosmetic carry-over rewards.</p>
+      <div id="grand-slam-store"></div>
+    </section>
+
+    <section>
+      <h2>Phase II/III ES Skill chip rule <span class="h2-tag live">verified on S4455</span></h2>
+      <p class="muted" style="margin-bottom:10px">All 12 Phase II/III heroes now have resolved chip-item descriptions: each Exclusive Skill unlocks at <strong>10 chips of that hero's dedicated ES Skill item</strong> (<code>38001&lt;heroId&gt;</code>). This is the deferred-hero cost gate that S2864 hadn't surfaced yet.</p>
+      <div id="es-chip-rule"></div>
+    </section>
+
+    <section>
       <h2>Awakening Stone reward bundles <span class="h2-tag live">extracted</span></h2>
       <p class="muted" style="margin-bottom:10px">Three reward bundles in the <code>reward</code> table grant Awakening Stones (item 44301001). No client shop or chest table references them yet — they are most likely delivered server-side via Awakening Time event milestones, mail or a future store entry. Pack contents fully decoded below.</p>
       <div id="stone-packs"></div>
@@ -1220,7 +1238,8 @@
               el('span', { class: 'type-badge ' + typeClass(h.type), style: 'font-size:.5rem' }, h.type),
               ' · #', String(h.id)
             ),
-            h.bioReady ? el('div', { class: 'queue-meta', style: 'margin-top:4px; color:var(--accent)' }, 'Bio in patch') : null
+            h.bioReady ? el('div', { class: 'queue-meta', style: 'margin-top:4px; color:var(--accent)' }, 'Bio in patch') : null,
+            h.awakeningDesc ? el('div', { class: 'queue-meta', style: 'margin-top:6px; color:var(--gold); font-size:.6rem; line-height:1.3; text-align:left; padding:6px; background:rgba(210,153,34,.06); border-radius:4px; max-height:90px; overflow-y:auto' }, h.awakeningDesc) : null
           );
         });
         return el('div', { class: 'phase-section' },
@@ -1459,6 +1478,127 @@
       });
 
       replace(tbl, head, el('tbody', null, ...rows));
+    }
+
+    // ============================================================
+    // HERO GRAND SLAM — Awakening Stone source event
+    // ============================================================
+    function renderGrandSlamBlock() {
+      const wrap = document.getElementById('grand-slam-block');
+      if (!wrap) return;
+      const gs = DATA.hyperAwakening.heroGrandSlam;
+      if (!gs) return;
+
+      const currencyCards = Object.entries(gs.currencies || {}).map(([id, c]) => {
+        const iconEl = c.icon
+          ? el('img', { class: 'item-card-icon', src: '../' + c.icon, alt: c.name, loading: 'lazy', style: 'width:42px; height:42px; flex:none' })
+          : el('div', { class: 'placeholder', style: 'width:42px; height:42px; flex:none' }, '?');
+        return el('div', { class: 'queue-card', style: 'display:flex; gap:10px; align-items:flex-start; padding:8px' },
+          iconEl,
+          el('div', { style: 'flex:1; min-width:0' },
+            el('div', { style: 'font-weight:700; font-size:.82rem' }, c.name),
+            el('div', { class: 'muted', style: 'font-size:.68rem; margin-bottom:4px' }, 'Item ID ' + id),
+            el('div', { style: 'font-size:.74rem' }, c.role)
+          )
+        );
+      });
+
+      const tileCards = (gs.tileEventTypes || []).map(t => {
+        const iconEl = t.icon
+          ? el('img', { class: 'item-card-icon', src: '../' + t.icon, alt: t.name, loading: 'lazy', style: 'width:42px; height:42px; flex:none' })
+          : el('div', { class: 'placeholder', style: 'width:42px; height:42px; flex:none' }, t.name.slice(0,2).toUpperCase());
+        return el('div', { class: 'queue-card', style: 'display:flex; gap:10px; align-items:flex-start; padding:8px' },
+          iconEl,
+          el('div', { style: 'flex:1; min-width:0' },
+            el('div', { style: 'font-weight:700; font-size:.78rem' }, t.name),
+            el('div', { style: 'font-size:.72rem' }, t.desc)
+          )
+        );
+      });
+
+      const intro = el('div', { class: 'card' },
+        el('h3', null, 'How the event works'),
+        el('p', null, gs.description),
+        el('p', { style: 'margin-top:6px' }, el('strong', null, 'Genre: '), gs.genre),
+        el('p', { class: 'muted', style: 'margin-top:6px; font-size:.7rem' },
+          'Event ID ', el('code', null, gs.eventId), ' · Store activity ', el('code', null, gs.storeActivityId),
+          ' · Codename ', el('code', null, 'ActAureole1')
+        )
+      );
+
+      const currencyCard = el('div', { class: 'card' },
+        el('h3', null, 'Currencies'),
+        el('div', { class: 'queue-grid', style: 'grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:8px' }, ...currencyCards)
+      );
+
+      const tilesCard = el('div', { class: 'card' },
+        el('h3', null, 'Board tile events'),
+        el('p', { class: 'muted', style: 'font-size:.72rem; margin-bottom:8px' }, 'Squares the Soldier piece can land on (from <code>castle_halo_activity_event</code> rows 101-108):'),
+        el('div', { class: 'queue-grid', style: 'grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:8px' }, ...tileCards)
+      );
+
+      wrap.classList.add('grid-2');
+      replace(wrap, intro, currencyCard);
+      const tail = el('div', { style: 'margin-top:12px' });
+      tail.appendChild(tilesCard);
+      wrap.appendChild(tail);
+    }
+
+    function renderGrandSlamStore() {
+      const wrap = document.getElementById('grand-slam-store');
+      if (!wrap) return;
+      const gs = DATA.hyperAwakening.heroGrandSlam;
+      if (!gs || !gs.exchangeStore) return;
+
+      // Build the table
+      const head = el('thead', null, el('tr', null,
+        el('th', null, '#'),
+        el('th', null, 'Cost'),
+        el('th', null, 'Reward'),
+        el('th', null, 'Stock')
+      ));
+
+      const rows = (gs.exchangeStore.entries || []).map((e, idx) => {
+        const isStone = (e.rewardItems || []).some(it => it.id === '44301001');
+        const trStyle = isStone ? 'background:rgba(210,153,34,.08)' : '';
+        return el('tr', { style: trStyle },
+          el('td', { class: 'lvl-cell' }, String(idx + 1)),
+          el('td', null, e.cost),
+          el('td', null, e.reward + (isStone ? '  ' : '')),
+          el('td', { class: 'num-cell' }, String(e.stock))
+        );
+      });
+
+      const tbl = el('table', { class: 'buff-table' }, head, el('tbody', null, ...rows));
+      const noteCard = el('div', { class: 'card', style: 'border-color:rgba(210,153,34,.4); margin-bottom:10px' },
+        el('p', { style: 'font-size:.78rem; margin:0' },
+          el('strong', null, 'Alfred note: '),
+          gs.exchangeStore.highlight || 'Vouchers buy stones; Tokens buy hero shards and skill chips.'
+        )
+      );
+      const wrapTbl = el('div', { class: 'card buff-table-wrap', style: 'padding:0' }, tbl);
+      replace(wrap, noteCard, wrapTbl);
+    }
+
+    function renderEsChipRule() {
+      const wrap = document.getElementById('es-chip-rule');
+      if (!wrap) return;
+      const rule = DATA.hyperAwakening.phase23EsSkillRule;
+      if (!rule) return;
+      const cards = Object.entries(rule.chipIds || {}).map(([hid, c]) => {
+        return el('div', { class: 'queue-card', style: 'padding:8px' },
+          el('div', { style: 'font-weight:700; font-size:.82rem' }, c.name),
+          el('div', { class: 'muted', style: 'font-size:.66rem; margin-bottom:4px' },
+            'Hero #' + hid + ' · ES chip ', el('code', null, c.chip)
+          ),
+          el('div', { style: 'font-size:.74rem' }, c.desc)
+        );
+      });
+      const noteCard = el('div', { class: 'card', style: 'margin-bottom:10px' },
+        el('p', null, el('strong', null, 'Confirmed mechanic: '), rule.rule)
+      );
+      const grid = el('div', { class: 'queue-grid', style: 'grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:8px' }, ...cards);
+      replace(wrap, noteCard, grid);
     }
 
     // ============================================================
@@ -1996,7 +2136,7 @@
     // ============================================================
     // LOAD
     // ============================================================
-    fetch('../data/heroes-awakening.json?v=20260521b')
+    fetch('../data/heroes-awakening.json?v=20260521c')
       .then(r => r.json())
       .then(d => {
         DATA = d;
@@ -2013,6 +2153,9 @@
         renderBuffReference();
         renderQueuePhases();
         renderAwakeEventBlock();
+        renderGrandSlamBlock();
+        renderGrandSlamStore();
+        renderEsChipRule();
         renderStonePacks();
         renderLevelCostTable();
         renderPerHeroItemsTable();
