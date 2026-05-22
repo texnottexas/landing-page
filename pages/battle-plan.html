@@ -3901,6 +3901,78 @@ body{top:0!important;}
     bpSearchResults.classList.add('active');
   }
 
+  // Render NC-mode pick into the player search modal
+  function renderNcPick(player, fightsContainer){
+    var plan = (_bpRoundData && _bpRoundData.neutralCityPlan) || {};
+    var fronts = plan.fronts || [];
+    var name = (player.name || '').trim();
+    // Find which front (if any) has this player assigned
+    var match = null;
+    for (var i = 0; i < fronts.length; i++){
+      var pl = fronts[i].players || [];
+      for (var j = 0; j < pl.length; j++){
+        if (pl[j].name === name){
+          match = { front: fronts[i], rank: j + 1, total: pl.length };
+          break;
+        }
+      }
+      if (match) break;
+    }
+    if (!match){
+      var empty = el('div', 'pm-empty');
+      empty.appendChild(document.createTextNode(name + ' is not on the NC plan this week.'));
+      var sub = el('div');
+      sub.style.cssText = 'margin-top:.4rem;font-size:.78rem;color:var(--muted);';
+      sub.textContent = 'Sitout or unassigned — go help where the alliance needs you.';
+      empty.appendChild(sub);
+      fightsContainer.appendChild(empty);
+      return;
+    }
+    var f = match.front;
+    var row = el('div', 'pm-fight');
+    // City label
+    var label = (f.level || '') + (f.showNum ? ' #' + f.showNum : '');
+    row.appendChild(el('span', 'pm-w', label));
+    var buff = el('div', 'pm-buff');
+    buff.appendChild(el('div', 'pm-buff-name', f.name || (f.level + ' Neutral City')));
+    var meta2 = el('div', 'pm-buff-meta');
+    var opps = (f.opponents || []).filter(Boolean);
+    if (opps.length){
+      var vs = el('span');
+      vs.appendChild(document.createTextNode('vs '));
+      opps.forEach(function(o, i){
+        if (i > 0) vs.appendChild(document.createTextNode(', '));
+        var m = String(o).match(/^S?(\d+)/);
+        if (m) vs.appendChild(makeSidPill(parseInt(m[1], 10), _bpRoundData));
+        else vs.appendChild(document.createTextNode(o));
+      });
+      meta2.appendChild(vs);
+    } else {
+      meta2.appendChild(el('span', null, 'Separate event — see Storm’s Eye page'));
+    }
+    meta2.appendChild(el('span', null, ' · #' + match.rank + ' of ' + match.total));
+    if (f.tactic){
+      var tac = el('div');
+      tac.style.cssText = 'margin-top:.35rem;font-size:.74rem;color:var(--muted);font-style:italic;';
+      tac.textContent = f.tactic;
+      buff.appendChild(meta2);
+      buff.appendChild(tac);
+    } else {
+      buff.appendChild(meta2);
+    }
+    row.appendChild(buff);
+    var tierLabel = (f.key === 'storm') ? 'STORM' :
+                    (f.key === 'lv3' ? 'LV3' :
+                     (f.key === 'lv2' ? 'LV2' :
+                      (f.key === 'lv1' ? 'LV1' : f.key)));
+    var tierClass = (f.key === 'storm') ? 'tA' :
+                    (f.key === 'lv3' ? 'tA' :
+                     (f.key === 'lv2' ? 'tB' :
+                      (f.key === 'lv1' ? 'tC' : 'tD')));
+    row.appendChild(el('span', 'pm-tier ' + tierClass, tierLabel));
+    fightsContainer.appendChild(row);
+  }
+
   function bpPickFights(p){
     if (!_bpTiers) return [];
     var pc = bpProfCode(p);
@@ -3946,6 +4018,16 @@ body{top:0!important;}
 
     var fights = document.getElementById('bpPmFights');
     while (fights.firstChild) fights.removeChild(fights.firstChild);
+
+    // === NC mode: show alliance NC assignment instead of wasteland tiers ===
+    var ncRoot = document.getElementById('ncRoot');
+    var inNcMode = ncRoot && ncRoot.style.display !== 'none';
+    if (inNcMode && _bpRoundData && _bpRoundData.neutralCityPlan){
+      renderNcPick(p, fights);
+      bpPmEl.classList.add('active');
+      return;
+    }
+
     var picks = bpPickFights(p);
     if (!picks.length){
       fights.appendChild(el('div', 'pm-empty', 'Nothing assigned this round — go help where the alliance needs you.'));
