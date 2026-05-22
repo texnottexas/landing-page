@@ -692,35 +692,76 @@
     .gate-options {
       display: flex; flex-direction: column; gap: .55rem;
     }
+    /* Shimmer border technique (mirrors .bp-search-input on battle-plan.html):
+       two-layer background — solid fill for the padding-box, animated linear
+       gradient for the border-box — with border: 2px solid transparent so the
+       gradient shows through as a "border". Background-size 100% / 300% on the
+       second layer + background-position keyframes drives the shimmer. */
+    @keyframes gate-shimmer { 0% { background-position: 0% 0, -200% 0; } 100% { background-position: 0% 0, 200% 0; } }
+
     .gate-option {
       width: 100%;
-      background: var(--card);
-      border: 1px solid var(--border);
       color: var(--text);
-      border-radius: 10px;
+      border: 2px solid transparent;
+      border-radius: 12px;
       padding: .85rem 1.1rem;
       font-size: .98rem; font-weight: 600;
       letter-spacing: .02em;
       cursor: pointer;
-      transition: all .18s ease;
+      transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
       font-family: inherit;
       display: flex; align-items: center; justify-content: center;
       gap: .55rem;
+      background-color: var(--card);
+      background-origin: border-box;
+      background-clip: padding-box, border-box;
+      background-size: 100% 100%, 300% auto;
+      animation: gate-shimmer 6s linear infinite;
     }
-    .gate-option:hover {
-      background: rgba(121,192,255,.08);
-      border-color: var(--accent);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 16px rgba(121,192,255,.12);
+
+    /* fk boats — full multi-color shimmer (accent blue / green / gold / purple). */
+    .gate-option[data-choice="boats"] {
+      background-image:
+        linear-gradient(var(--card), var(--card)),
+        linear-gradient(90deg, var(--accent) 0%, #3fb950 20%, #d29922 40%, #a371f7 60%, #3fb950 80%, var(--accent) 100%);
     }
-    .gate-option:active { transform: translateY(0); }
+    .gate-option[data-choice="boats"]:hover {
+      transform: translateY(-2px);
+      filter: brightness(1.08);
+      box-shadow: 0 6px 24px rgba(121,192,255,.22);
+    }
+
+    /* fk tanks / fk planes — red-only shimmer (subtle hint NOT to pick these). */
+    .gate-option[data-choice="tanks"],
+    .gate-option[data-choice="planes"] {
+      background-image:
+        linear-gradient(var(--card), var(--card)),
+        linear-gradient(90deg, rgba(248,81,73,.35) 0%, #f85149 25%, rgba(248,81,73,.5) 50%, #ff7b72 75%, rgba(248,81,73,.35) 100%);
+    }
+    .gate-option[data-choice="tanks"]:hover,
+    .gate-option[data-choice="planes"]:hover {
+      transform: translateY(-2px);
+      filter: brightness(1.08);
+      box-shadow: 0 6px 24px rgba(248,81,73,.22);
+    }
+
+    .gate-option:active { transform: translateY(0); filter: brightness(.96); }
+
     .gate-option .gate-bullet {
       width: 14px; height: 14px; border-radius: 50%;
       border: 1.5px solid var(--muted);
       flex: none;
       transition: all .18s ease;
     }
-    .gate-option:hover .gate-bullet { border-color: var(--accent); box-shadow: inset 0 0 0 3px var(--accent); }
+    .gate-option[data-choice="boats"]:hover .gate-bullet {
+      border-color: var(--accent);
+      box-shadow: inset 0 0 0 3px var(--accent);
+    }
+    .gate-option[data-choice="tanks"]:hover .gate-bullet,
+    .gate-option[data-choice="planes"]:hover .gate-bullet {
+      border-color: #f85149;
+      box-shadow: inset 0 0 0 3px #f85149;
+    }
 
     /* Animation stage (shown after a choice is made) */
     .gate-stage {
