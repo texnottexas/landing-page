@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com https://www.clarity.ms https://*.clarity.ms https://c.bing.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; img-src 'self' data: https://h5.topwargame.com https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://fonts.gstatic.com https://www.google.com https://*.clarity.ms https://c.bing.com; connect-src 'self' https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com https://*.clarity.ms https://c.bing.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'; frame-src https://translate.google.com;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com https://www.clarity.ms https://*.clarity.ms https://c.bing.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; img-src 'self' data: https://h5.topwargame.com https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://fonts.gstatic.com https://www.google.com https://*.clarity.ms https://c.bing.com; connect-src 'self' https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com https://*.clarity.ms https://c.bing.com https://rickroll-counter.27tb8s6fct.workers.dev; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'; frame-src https://translate.google.com;">
   <title>Hyper Awakening &amp; Hero Swap — New Hero System</title>
   <meta name="theme-color" content="#0d1117">
   <meta name="description" content="Top War's Hyper Awakening + Hero Swap. Live patch data — Phase I awakened personas, 24 awakening skills, 40+ Hero Swap UI rules + tooltips. Decoded from the live game client 2026-05-15.">
@@ -655,9 +655,220 @@
     .gs-pm-conv { color: var(--muted); }
     .gs-pm-save { color: var(--green); font-size: .72rem; font-weight: 600; }
     .gs-pm-note { font-size: .67rem; color: var(--muted); margin-top: .75rem; line-height: 1.5; }
+
+    /* ======================================================================
+       ENTRY GATE — fk boats / fk tanks / fk planes survey
+       Mirrors the armory-report particle animation and wizard styling.
+       ====================================================================== */
+    .gate-overlay {
+      position: fixed; inset: 0; z-index: 10000;
+      background: radial-gradient(ellipse at center, rgba(13,17,23,0.96) 0%, rgba(0,0,0,0.99) 80%);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 1.5rem;
+      animation: gate-fade-in .35s ease both;
+    }
+    @keyframes gate-fade-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes gate-card-rise { from { opacity: 0; transform: translateY(28px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    .gate-card {
+      background: linear-gradient(160deg, var(--surface) 0%, var(--card) 100%);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.2rem 1.6rem 1.8rem;
+      max-width: 460px; width: 100%;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(121,192,255,0.05);
+      animation: gate-card-rise .55s cubic-bezier(.2,.7,.2,1) .12s both;
+      text-align: center;
+    }
+    .gate-eyebrow {
+      font-size: .65rem; letter-spacing: .15em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: .55rem; font-weight: 600;
+    }
+    .gate-title {
+      font-size: 1.18rem; font-weight: 700; color: var(--text);
+      margin: 0 0 1.4rem; line-height: 1.4;
+    }
+    .gate-options {
+      display: flex; flex-direction: column; gap: .55rem;
+    }
+    .gate-option {
+      width: 100%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 10px;
+      padding: .85rem 1.1rem;
+      font-size: .98rem; font-weight: 600;
+      letter-spacing: .02em;
+      cursor: pointer;
+      transition: all .18s ease;
+      font-family: inherit;
+      display: flex; align-items: center; justify-content: center;
+      gap: .55rem;
+    }
+    .gate-option:hover {
+      background: rgba(121,192,255,.08);
+      border-color: var(--accent);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(121,192,255,.12);
+    }
+    .gate-option:active { transform: translateY(0); }
+    .gate-option .gate-bullet {
+      width: 14px; height: 14px; border-radius: 50%;
+      border: 1.5px solid var(--muted);
+      flex: none;
+      transition: all .18s ease;
+    }
+    .gate-option:hover .gate-bullet { border-color: var(--accent); box-shadow: inset 0 0 0 3px var(--accent); }
+
+    /* Animation stage (shown after a choice is made) */
+    .gate-stage {
+      position: relative; width: 200px; height: 200px;
+    }
+    .gate-particle {
+      position: absolute; top: 50%; left: 50%;
+      width: 10px; height: 10px; border-radius: 50%;
+      margin: -5px 0 0 -5px;
+      pointer-events: none;
+      box-shadow: 0 0 8px 3px currentColor;
+    }
+    .gate-particle::after {
+      content: ''; position: absolute; inset: 0; border-radius: 50%;
+      background: currentColor; filter: blur(3px); opacity: .65;
+    }
+    .gate-particle.p1 { color: var(--accent);    animation: p1 1.5s ease-out both; }
+    .gate-particle.p2 { color: #3fb950;          animation: p2 1.5s ease-out .05s both; }
+    .gate-particle.p3 { color: #d29922;          animation: p3 1.5s ease-out .1s both; }
+    .gate-particle.p4 { color: var(--accent);    animation: p4 1.5s ease-out .03s both; }
+    .gate-particle.p5 { color: #3fb950;          animation: p5 1.5s ease-out .08s both; }
+    .gate-particle.p6 { color: #d29922;          animation: p6 1.5s ease-out .12s both; }
+    .gate-particle.p7 { color: #a371f7;          animation: p7 1.5s ease-out .02s both; }
+    .gate-particle.p8 { color: #f0883e;          animation: p8 1.5s ease-out .07s both; }
+    .gate-pretext {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 1.4rem; font-weight: 800; letter-spacing: .15em; text-transform: lowercase;
+      text-align: center; line-height: 1.25; white-space: nowrap;
+      pointer-events: none;
+      animation: pretext-flash 1.2s ease .5s both;
+      color: var(--accent);
+    }
+    .gate-pretext.wrong { color: #f85149; animation: pretext-flash 1.4s ease .25s forwards; }
+    /* Reuse the existing p1..p8 + pretext-flash keyframes already defined globally elsewhere if present;
+       otherwise inline them here so the gate is self-contained. */
+    @keyframes p1 { 0%{opacity:0;transform:translate(-160px,-100px) scale(.4);} 15%{opacity:1;transform:translate(-90px,50px) scale(.7);} 35%{transform:translate(30px,-40px) scale(.6);} 55%{transform:translate(-20px,20px) scale(.5);} 75%{opacity:1;transform:translate(0,0) scale(.3);} 100%{opacity:0;transform:translate(0,0) scale(0);} }
+    @keyframes p2 { 0%{opacity:0;transform:translate(140px,-90px) scale(.3);} 12%{opacity:1;transform:translate(60px,70px) scale(.6);} 30%{transform:translate(-50px,-20px) scale(.7);} 55%{transform:translate(15px,30px) scale(.5);} 75%{opacity:1;transform:translate(0,0) scale(.3);} 100%{opacity:0;transform:translate(0,0) scale(0);} }
+    @keyframes p3 { 0%{opacity:0;transform:translate(120px,110px) scale(.5);} 18%{opacity:1;transform:translate(-40px,50px) scale(.6);} 40%{transform:translate(50px,-60px) scale(.7);} 60%{transform:translate(-10px,-15px) scale(.4);} 75%{opacity:1;transform:translate(0,0) scale(.3);} 100%{opacity:0;transform:translate(0,0) scale(0);} }
+    @keyframes p4 { 0%{opacity:0;transform:translate(-130px,80px) scale(.3);} 14%{opacity:1;transform:translate(40px,60px) scale(.5);} 32%{transform:translate(70px,-50px) scale(.7);} 55%{transform:translate(-25px,-10px) scale(.4);} 75%{opacity:1;transform:translate(0,0) scale(.3);} 100%{opacity:0;transform:translate(0,0) scale(0);} }
+    @keyframes p5 { 0%{opacity:0;transform:translate(50px,-140px) scale(.4);} 16%{opacity:1;transform:translate(-70px,-40px) scale(.6);} 38%{transform:translate(40px,60px) scale(.5);} 58%{transform:translate(10px,-20px) scale(.4);} 75%{opacity:1;transform:translate(0,0) scale(.3);} 100%{opacity:0;transform:translate(0,0) scale(0);} }
+    @keyframes p6 { 0%{opacity:0;transform:translate(-60px,-130px) scale(.5);} 20%{opacity:1;transform:translate(80px,-30px) scale(.7);} 42%{transform:translate(-30px,70px) scale(.5);} 60%{transform:translate(20px,-5px) scale(.4);} 75%{opacity:1;transform:translate(0,0) scale(.3);} 100%{opacity:0;transform:translate(0,0) scale(0);} }
+    @keyframes p7 { 0%{opacity:0;transform:translate(-150px,0) scale(.3);} 17%{opacity:1;transform:translate(-30px,-70px) scale(.6);} 36%{transform:translate(60px,40px) scale(.7);} 56%{transform:translate(-15px,5px) scale(.5);} 75%{opacity:1;transform:translate(0,0) scale(.3);} 100%{opacity:0;transform:translate(0,0) scale(0);} }
+    @keyframes p8 { 0%{opacity:0;transform:translate(100px,60px) scale(.4);} 13%{opacity:1;transform:translate(-60px,-60px) scale(.5);} 34%{transform:translate(-20px,80px) scale(.6);} 54%{transform:translate(5px,-10px) scale(.4);} 75%{opacity:1;transform:translate(0,0) scale(.3);} 100%{opacity:0;transform:translate(0,0) scale(0);} }
+    @keyframes pretext-flash { 0%{opacity:0;transform:translate(-50%,-50%) scale(.7);filter:blur(4px);} 25%{opacity:1;transform:translate(-50%,-50%) scale(1);filter:blur(0);} 80%{opacity:1;transform:translate(-50%,-50%) scale(1);filter:blur(0);} 100%{opacity:1;transform:translate(-50%,-50%) scale(1.05);filter:blur(0);} }
+
+    @media (min-width: 640px) {
+      .gate-title { font-size: 1.32rem; }
+      .gate-option { font-size: 1.05rem; padding: .95rem 1.25rem; }
+      .gate-pretext { font-size: 1.7rem; }
+    }
   </style>
 </head>
 <body>
+
+  <!-- Entry gate — survey + fk boats / nope-dummy animation -->
+  <div class="gate-overlay" id="entryGate" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
+    <div class="gate-card" id="gateCard">
+      <div class="gate-eyebrow">Verification required</div>
+      <h2 class="gate-title notranslate" id="gateTitle">Select the correct option to enter:</h2>
+      <div class="gate-options">
+        <button class="gate-option notranslate" type="button" data-choice="boats" aria-label="fk boats"><span class="gate-bullet"></span><span>fk boats</span></button>
+        <button class="gate-option notranslate" type="button" data-choice="tanks" aria-label="fk tanks"><span class="gate-bullet"></span><span>fk tanks</span></button>
+        <button class="gate-option notranslate" type="button" data-choice="planes" aria-label="fk planes"><span class="gate-bullet"></span><span>fk planes</span></button>
+      </div>
+    </div>
+    <div class="gate-stage" id="gateStage" style="display:none">
+      <div class="gate-particle p1"></div>
+      <div class="gate-particle p2"></div>
+      <div class="gate-particle p3"></div>
+      <div class="gate-particle p4"></div>
+      <div class="gate-particle p5"></div>
+      <div class="gate-particle p6"></div>
+      <div class="gate-particle p7"></div>
+      <div class="gate-particle p8"></div>
+      <div class="gate-pretext notranslate" id="gatePretext">fk<br>boats</div>
+    </div>
+  </div>
+
+  <script>
+    // Entry gate handler — runs before any page logic.
+    // Correct answer (fk boats): play the particle animation, then reveal the page.
+    // Wrong answer (fk tanks / fk planes): play the particle animation with "nope, dummy",
+    // ping the rickroll counter, and redirect to passwords.html after ~1s.
+    (function() {
+      var COUNTER_URL = 'https://rickroll-counter.27tb8s6fct.workers.dev';
+      var gate = document.getElementById('entryGate');
+      var card = document.getElementById('gateCard');
+      var stage = document.getElementById('gateStage');
+      var pretext = document.getElementById('gatePretext');
+      var locked = false;
+
+      // Lock scroll while the gate is up
+      try { document.documentElement.style.overflow = 'hidden'; } catch(e) {}
+
+      function playStage(text, wrong) {
+        if (locked) return;
+        locked = true;
+        pretext.innerHTML = text;
+        pretext.classList.toggle('wrong', !!wrong);
+        // Re-trigger the particle animations by forcing reflow
+        var particles = stage.querySelectorAll('.gate-particle');
+        particles.forEach(function(p) {
+          p.style.animation = 'none';
+          // force reflow
+          void p.offsetWidth;
+          p.style.animation = '';
+        });
+        card.style.display = 'none';
+        stage.style.display = 'block';
+      }
+
+      function dismissGate() {
+        try { document.documentElement.style.overflow = ''; } catch(e) {}
+        if (gate && gate.parentNode) {
+          gate.style.transition = 'opacity .35s ease';
+          gate.style.opacity = '0';
+          setTimeout(function() {
+            if (gate.parentNode) gate.parentNode.removeChild(gate);
+          }, 380);
+        }
+      }
+
+      function handleChoice(choice) {
+        if (choice === 'boats') {
+          playStage('fk<br>boats', false);
+          // Particle animation runs ~1.5s, text peaks at ~1.2s; give a moment for it to land then fade.
+          setTimeout(dismissGate, 2200);
+        } else {
+          // Wrong answer — ping the counter (fire and forget), play the nope animation, redirect.
+          try {
+            fetch(COUNTER_URL, { method: 'POST', mode: 'cors' }).catch(function() {});
+          } catch(e) {}
+          playStage('nope,<br>dummy', true);
+          setTimeout(function() {
+            window.location.href = 'passwords.html';
+          }, 1000);
+        }
+      }
+
+      var options = document.querySelectorAll('.gate-option');
+      options.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          handleChoice(btn.getAttribute('data-choice'));
+        });
+      });
+    })();
+  </script>
 
   <header>
     <a href="https://2864tw.com/index.html" class="home-btn" title="Home">
