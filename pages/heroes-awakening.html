@@ -656,6 +656,7 @@
   <nav class="tabs" role="tablist">
     <button class="tab-btn active" data-tab="tab-awakening" role="tab">Hyper Awakening<span class="tab-tag">live</span></button>
     <button class="tab-btn" data-tab="tab-swap" role="tab">Hero Swap<span class="tab-tag">live</span></button>
+    <button class="tab-btn" data-tab="tab-grandslam" role="tab">Grand Slam<span class="tab-tag">stones</span></button>
     <button class="tab-btn" data-tab="tab-spotlights" role="tab">Spotlights &amp; History<span class="tab-tag">discord</span></button>
   </nav>
 
@@ -737,20 +738,8 @@
     </section>
 
     <section>
-      <h2>Hero Grand Slam — the Awakening Stone delivery event <span class="h2-tag live">live on newer servers</span></h2>
-      <p class="muted" style="margin-bottom:10px">Extracted from S4455 on 2026-05-21 (server-gated on S2864). Internal codename <code>ActAureole1</code> — second iteration of the Castle Halo / Aureole board-game framework (the first iteration shipped as Good Luck Rush). This is the event that actually puts Awakening Stones into players' bags via its Exchange Store.</p>
-      <div id="grand-slam-block"></div>
-    </section>
-
-    <section>
-      <h2>Hero Grand Slam Exchange Store <span class="h2-tag live">live extract</span></h2>
-      <p class="muted" style="margin-bottom:10px">Full <code>convert</code> table for group <code>260512001</code> — every redemption available with Grand Slam Vouchers and Tokens. The Awakening Stone redemption sits at the top: <strong>1 Voucher = 1 Stone, up to 6,000 stones per event</strong>. Hero Shards (10 each) and ES Skill chips (800 each) round out the cosmetic carry-over rewards.</p>
-      <div id="grand-slam-store"></div>
-    </section>
-
-    <section>
       <h2>Phase II/III ES Skill chip rule <span class="h2-tag live">verified on S4455</span></h2>
-      <p class="muted" style="margin-bottom:10px">All 12 Phase II/III heroes now have resolved chip-item descriptions: each Exclusive Skill unlocks at <strong>10 chips of that hero's dedicated ES Skill item</strong> (<code>38001&lt;heroId&gt;</code>). This is the deferred-hero cost gate that S2864 hadn't surfaced yet.</p>
+      <p class="muted" style="margin-bottom:10px">All 12 Phase II/III heroes now have resolved chip-item descriptions: each Exclusive Skill unlocks at <strong>10 chips of that hero's dedicated ES Skill item</strong> (<code>38001&lt;heroId&gt;</code>). This is the deferred-hero cost gate that S2864 hadn't surfaced yet. The full Grand Slam event that funnels Awakening Stones in is on its own tab.</p>
       <div id="es-chip-rule"></div>
     </section>
 
@@ -881,7 +870,26 @@
    </div><!-- /tab-swap -->
 
    <!-- ================================================================ -->
-   <!-- TAB 3 — SPOTLIGHTS + HISTORY -->
+   <!-- TAB 3 — HERO GRAND SLAM (Awakening Stone delivery event) -->
+   <!-- ================================================================ -->
+   <div id="tab-grandslam" class="tab-panel">
+
+    <section>
+      <h2>Hero Grand Slam — the Awakening Stone delivery event <span class="h2-tag live">live on newer servers</span></h2>
+      <p class="muted" style="margin-bottom:10px">Extracted from S4455 on 2026-05-21 (server-gated on S2864). Internal codename <code>ActAureole1</code> — second iteration of the Castle Halo / Aureole board-game framework (the first iteration shipped as Good Luck Rush). This is the event that actually puts Awakening Stones into players' bags via its Exchange Store.</p>
+      <div id="grand-slam-block"></div>
+    </section>
+
+    <section>
+      <h2>Hero Grand Slam Exchange Store <span class="h2-tag live">live extract</span></h2>
+      <p class="muted" style="margin-bottom:10px">Full <code>convert</code> table for group <code>260512001</code> — every redemption available with Grand Slam Vouchers and Tokens. The Awakening Stone redemption sits at the top: <strong>1 Voucher = 1 Stone, up to 6,000 stones per event</strong>. Hero Shards (10 each) and ES Skill chips (800 each) round out the cosmetic carry-over rewards.</p>
+      <div id="grand-slam-store"></div>
+    </section>
+
+   </div><!-- /tab-grandslam -->
+
+   <!-- ================================================================ -->
+   <!-- TAB 4 — SPOTLIGHTS + HISTORY -->
    <!-- ================================================================ -->
    <div id="tab-spotlights" class="tab-panel">
 
@@ -1489,10 +1497,15 @@
       const gs = DATA.hyperAwakening.heroGrandSlam;
       if (!gs) return;
 
+      function makeIcon(src, label, size) {
+        const ph = el('div', { class: 'placeholder', style: 'width:' + size + 'px; height:' + size + 'px; flex:none; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,.06); border-radius:6px; font-size:.6rem; color:var(--muted); text-align:center; padding:2px' }, (label || '').slice(0, 3).toUpperCase());
+        if (!src) return ph;
+        const img = el('img', { class: 'item-card-icon', src: '../' + src, alt: label || '', loading: 'lazy', style: 'width:' + size + 'px; height:' + size + 'px; flex:none; object-fit:contain' });
+        img.addEventListener('error', () => img.replaceWith(ph), { once: true });
+        return img;
+      }
       const currencyCards = Object.entries(gs.currencies || {}).map(([id, c]) => {
-        const iconEl = c.icon
-          ? el('img', { class: 'item-card-icon', src: '../' + c.icon, alt: c.name, loading: 'lazy', style: 'width:42px; height:42px; flex:none' })
-          : el('div', { class: 'placeholder', style: 'width:42px; height:42px; flex:none' }, '?');
+        const iconEl = makeIcon(c.icon, c.name, 42);
         return el('div', { class: 'queue-card', style: 'display:flex; gap:10px; align-items:flex-start; padding:8px' },
           iconEl,
           el('div', { style: 'flex:1; min-width:0' },
@@ -1504,9 +1517,7 @@
       });
 
       const tileCards = (gs.tileEventTypes || []).map(t => {
-        const iconEl = t.icon
-          ? el('img', { class: 'item-card-icon', src: '../' + t.icon, alt: t.name, loading: 'lazy', style: 'width:42px; height:42px; flex:none' })
-          : el('div', { class: 'placeholder', style: 'width:42px; height:42px; flex:none' }, t.name.slice(0,2).toUpperCase());
+        const iconEl = makeIcon(t.icon, t.name, 42);
         return el('div', { class: 'queue-card', style: 'display:flex; gap:10px; align-items:flex-start; padding:8px' },
           iconEl,
           el('div', { style: 'flex:1; min-width:0' },
@@ -2136,7 +2147,7 @@
     // ============================================================
     // LOAD
     // ============================================================
-    fetch('../data/heroes-awakening.json?v=20260521c')
+    fetch('../data/heroes-awakening.json?v=20260521d')
       .then(r => r.json())
       .then(d => {
         DATA = d;
