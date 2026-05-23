@@ -4010,9 +4010,13 @@ body{top:0!important;}
 
   // ===== Attendance check-in (NC battle) — worker-backed =====
   // Honor-system: any visitor can mark any name. Reads/writes go to
-  // push-worker /nc-attend, scoped by round key. Local in-memory cache
-  // is the source of truth for render; bootstrap fetch fills it on load.
+  // push-worker /nc-attend, scoped by round key. Cloudflare KV is
+  // eventually consistent (~60s) — a fresh GET after a DELETE can
+  // still echo the old name, which made unchecking feel broken. We
+  // overlay a client-side "pending" map on top of the worker response
+  // for 2 minutes so user intent always wins until KV settles.
   var NC_ATTEND_WORKER = 'https://push-worker.27tb8s6fct.workers.dev/nc-attend';
+  var NC_PENDING_TTL_MS = 120 * 1000;
   var _ncAttendCache = {}; // name -> true
   var _ncAttendLoaded = false;
   function ncAttendRoundKey(){
@@ -4020,23 +4024,57 @@ body{top:0!important;}
   }
   function loadAttending(){ return _ncAttendCache; }
   function isAttending(name){ return !!_ncAttendCache[name]; }
+  function pendingStorageKey(){ return 'nc-attend-pending:' + ncAttendRoundKey(); }
+  function getPending(){
+    try {
+      var raw = localStorage.getItem(pendingStorageKey());
+      var p = raw ? JSON.parse(raw) : {};
+      var now = Date.now();
+      var changed = false;
+      // Auto-expire stale entries so the overlay doesn't drift forever
+      Object.keys(p).forEach(function(k){
+        if (!p[k] || (now - p[k].ts) > NC_PENDING_TTL_MS){ delete p[k]; changed = true; }
+      });
+      if (changed) try { localStorage.setItem(pendingStorageKey(), JSON.stringify(p)); } catch(e){}
+      return p;
+    } catch(e){ return {}; }
+  }
+  function setPending(name, state){
+    try {
+      var p = getPending();
+      p[name] = { state: !!state, ts: Date.now() };
+      localStorage.setItem(pendingStorageKey(), JSON.stringify(p));
+    } catch(e){}
+  }
+  function applyPendingOverlay(map){
+    var p = getPending();
+    var now = Date.now();
+    Object.keys(p).forEach(function(name){
+      if (!p[name] || (now - p[name].ts) > NC_PENDING_TTL_MS) return;
+      if (p[name].state) map[name] = true;
+      else delete map[name];
+    });
+    return map;
+  }
   function refreshAttending(){
     return fetch(NC_ATTEND_WORKER + '?round=' + encodeURIComponent(ncAttendRoundKey()) + '&_=' + Date.now(),
       { cache: 'no-store' })
       .then(function(r){ return r.json(); })
       .then(function(d){
-        _ncAttendCache = {};
+        var next = {};
         if (d && d.ok && Array.isArray(d.names)){
-          d.names.forEach(function(n){ if (n) _ncAttendCache[n] = true; });
+          d.names.forEach(function(n){ if (n) next[n] = true; });
         }
+        _ncAttendCache = applyPendingOverlay(next);
         _ncAttendLoaded = true;
       })
       .catch(function(){ _ncAttendLoaded = true; });
   }
   function setAttending(name, on){
-    // Optimistic local update + worker write
+    // Optimistic local update + pending-overlay write + worker POST
     if (on) _ncAttendCache[name] = true;
     else delete _ncAttendCache[name];
+    setPending(name, !!on);
     return fetch(NC_ATTEND_WORKER, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
