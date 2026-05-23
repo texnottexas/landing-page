@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com https://www.clarity.ms https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; connect-src 'self' https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com https://raw.githubusercontent.com https://*.clarity.ms https://c.bing.com; img-src 'self' https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com data: https://knight-cdn.akamaized.net https://h5.topwargame.com https://*.clarity.ms https://c.bing.com; frame-ancestors 'none'; frame-src https://translate.google.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com https://www.clarity.ms https://*.clarity.ms https://c.bing.com; style-src 'self' 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; connect-src 'self' https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com https://raw.githubusercontent.com https://push-worker.27tb8s6fct.workers.dev https://*.clarity.ms https://c.bing.com; img-src 'self' https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com data: https://knight-cdn.akamaized.net https://h5.topwargame.com https://*.clarity.ms https://c.bing.com; frame-ancestors 'none'; frame-src https://translate.google.com;">
 <title>S2864 Battle Plan</title>
 <style>
 :root{
@@ -3899,6 +3899,11 @@ body{top:0!important;}
     // NC plan default view
     var hasNc = buildNCPlan(rd);
     wireModeToggle(hasNc);
+    // Bootstrap attendance cache once, then re-render the NC plan so any
+    // already-attending players get the green chip on first paint.
+    if (hasNc){
+      refreshAttending().then(function(){ buildNCPlan(rd); });
+    }
     // Reveal player search bar after data + tiers are populated
     var sh = document.getElementById('bpSearchHost');
     if (sh) sh.style.display = '';
@@ -3971,37 +3976,40 @@ body{top:0!important;}
     bpSearchResults.classList.add('active');
   }
 
-  // ===== Attendance check-in (NC battle) =====
-  // localStorage key is per round so a fresh week starts clean.
-  function attendingStorageKey(){
-    var rk = (_bpRoundData && (_bpRoundKey || _bpRoundData._roundKey)) || _bpRoundKey || 'unknown';
-    return 'bp:nc-attending:' + rk;
+  // ===== Attendance check-in (NC battle) — worker-backed =====
+  // Honor-system: any visitor can mark any name. Reads/writes go to
+  // push-worker /nc-attend, scoped by round key. Local in-memory cache
+  // is the source of truth for render; bootstrap fetch fills it on load.
+  var NC_ATTEND_WORKER = 'https://push-worker.27tb8s6fct.workers.dev/nc-attend';
+  var _ncAttendCache = {}; // name -> true
+  var _ncAttendLoaded = false;
+  function ncAttendRoundKey(){
+    return _bpRoundKey || (_bpRoundData && _bpRoundData._roundKey) || '10.5';
   }
-  function loadAttending(){
-    try {
-      var raw = localStorage.getItem(attendingStorageKey());
-      if (!raw) return {};
-      var arr = JSON.parse(raw);
-      if (!Array.isArray(arr)) return {};
-      var m = {};
-      arr.forEach(function(n){ if (n) m[n] = true; });
-      return m;
-    } catch(e){ return {}; }
-  }
-  function saveAttending(map){
-    try {
-      var arr = Object.keys(map).filter(function(k){ return map[k]; });
-      localStorage.setItem(attendingStorageKey(), JSON.stringify(arr));
-    } catch(e){}
+  function loadAttending(){ return _ncAttendCache; }
+  function isAttending(name){ return !!_ncAttendCache[name]; }
+  function refreshAttending(){
+    return fetch(NC_ATTEND_WORKER + '?round=' + encodeURIComponent(ncAttendRoundKey()) + '&_=' + Date.now(),
+      { cache: 'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        _ncAttendCache = {};
+        if (d && d.ok && Array.isArray(d.names)){
+          d.names.forEach(function(n){ if (n) _ncAttendCache[n] = true; });
+        }
+        _ncAttendLoaded = true;
+      })
+      .catch(function(){ _ncAttendLoaded = true; });
   }
   function setAttending(name, on){
-    var m = loadAttending();
-    if (on) m[name] = true;
-    else delete m[name];
-    saveAttending(m);
-  }
-  function isAttending(name){
-    return !!loadAttending()[name];
+    // Optimistic local update + worker write
+    if (on) _ncAttendCache[name] = true;
+    else delete _ncAttendCache[name];
+    return fetch(NC_ATTEND_WORKER, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ round: ncAttendRoundKey(), name: name, attending: !!on }),
+    }).then(function(r){ return r.json().catch(function(){ return null; }); });
   }
   function makeCheckmark(size){
     var s = svgEl('svg', { width: size || 10, height: size || 10, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '3.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
@@ -4092,7 +4100,7 @@ body{top:0!important;}
     box.checked = attending;
     box.className = 'pm-attend-box';
     label.appendChild(box);
-    var txt = el('span', 'pm-attend-txt', attending ? 'You\'re marked as attending' : 'I\'ll be there for this fight');
+    var txt = el('span', 'pm-attend-txt', attending ? 'Me fight (signed up).' : 'Me fight.');
     label.appendChild(txt);
     checkBox.appendChild(label);
     var btn = document.createElement('button');
@@ -4101,13 +4109,31 @@ body{top:0!important;}
     btn.textContent = attending ? 'Update' : 'Submit';
     var statusMsg = el('span', 'pm-attend-status', '');
     btn.addEventListener('click', function(){
-      setAttending(player.name, box.checked);
       var nowOn = box.checked;
-      statusMsg.textContent = nowOn ? '✓ Saved — marked attending' : '✓ Saved — removed';
-      statusMsg.classList.toggle('on', nowOn);
-      txt.textContent = nowOn ? 'You\'re marked as attending' : 'I\'ll be there for this fight';
-      checkBox.classList.toggle('on', nowOn);
-      btn.textContent = nowOn ? 'Update' : 'Submit';
+      statusMsg.textContent = '… saving';
+      statusMsg.classList.remove('on');
+      btn.disabled = true;
+      setAttending(player.name, nowOn).then(function(resp){
+        btn.disabled = false;
+        if (resp && resp.ok){
+          statusMsg.textContent = nowOn ? '✓ Saved — me fight.' : '✓ Saved — no fight.';
+          statusMsg.classList.toggle('on', nowOn);
+          txt.textContent = nowOn ? 'Me fight (signed up).' : 'Me fight.';
+          checkBox.classList.toggle('on', nowOn);
+          btn.textContent = nowOn ? 'Update' : 'Submit';
+          // Re-render NC fronts so the player chip turns green now.
+          if (_bpRoundData && _bpRoundData.neutralCityPlan){
+            var ncRoot = document.getElementById('ncRoot');
+            if (ncRoot) buildNCPlan(_bpRoundData);
+          }
+        } else {
+          statusMsg.textContent = '⚠ Save failed — try again';
+          statusMsg.classList.remove('on');
+          // Revert optimistic cache flip
+          if (nowOn) delete _ncAttendCache[player.name];
+          else _ncAttendCache[player.name] = true;
+        }
+      });
     });
     checkBox.appendChild(btn);
     checkBox.appendChild(statusMsg);
