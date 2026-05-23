@@ -3814,15 +3814,26 @@ body{top:0!important;}
     root.appendChild(box);
   }
 
+  // Stash the search wrap once so subsequent NC re-renders can re-attach
+  // the same element instead of losing it when ncRoot is cleared.
+  var _bpSearchWrap = null;
   function buildNCPlan(rd){
     var ncRoot = document.getElementById('ncRoot');
+    // Detach the search wrap before clearing so it survives the rebuild.
+    if (!_bpSearchWrap) _bpSearchWrap = document.querySelector('.bp-search-wrap');
+    if (_bpSearchWrap && _bpSearchWrap.parentNode){
+      _bpSearchWrap.parentNode.removeChild(_bpSearchWrap);
+    }
     while (ncRoot.firstChild) ncRoot.removeChild(ncRoot.firstChild);
     var plan = rd.neutralCityPlan;
-    if (!plan || !plan.fronts || !plan.fronts.length){ return false; }
+    if (!plan || !plan.fronts || !plan.fronts.length){
+      // Put the search wrap back where we found it (if it had a home) or
+      // leave it detached — page won't render NC anyway.
+      return false;
+    }
     window.__ncPlanTotal__ = plan.fronts.reduce(function(a, f){ return a + (f.count || 0); }, 0) || 1;
     buildNcHero(rd, ncRoot, plan);
-    var bpSw = document.querySelector('.bp-search-wrap');
-    if (bpSw) ncRoot.appendChild(bpSw);
+    if (_bpSearchWrap) ncRoot.appendChild(_bpSearchWrap);
     buildNcRules(ncRoot);
     buildNcAltNote(plan, ncRoot);
     var fronts = el('div', 'nc-fronts');
