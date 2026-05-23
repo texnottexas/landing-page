@@ -676,6 +676,16 @@ body{top:0!important;}
 .nc-anchor.alli-DOG{border-color:rgba(63,185,80,.4);}
 .nc-anchor.alli-MSS{border-color:rgba(56,139,253,.4);}
 .nc-anchor.alli-Cat{border-color:rgba(210,153,34,.35);}
+.nc-fighting-pill{display:inline-flex;align-items:center;gap:.4rem;background:linear-gradient(135deg,rgba(63,185,80,.25),rgba(63,185,80,.1));border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:.78rem;font-weight:800;padding:.35rem .75rem;border-radius:999px;cursor:pointer;margin-top:.55rem;transition:all .12s;letter-spacing:.02em;}
+.nc-fighting-pill:hover{background:rgba(63,185,80,.3);color:#fff;}
+.nc-fighting-pill .nc-fp-count{font-family:'SF Mono',Consolas,monospace;font-size:.95rem;color:var(--text);}
+.nc-fighting-pill .nc-fp-label{text-transform:uppercase;letter-spacing:.08em;font-size:.7rem;}
+.nc-fight-list{display:flex;flex-direction:column;gap:.25rem;}
+.nc-fight-row{display:flex;align-items:center;gap:.5rem;padding:.3rem .55rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:.78rem;}
+.nc-fight-row .attend-check{color:var(--green);flex-shrink:0;}
+.nc-fight-row .nc-fight-name{flex:1;font-weight:600;color:var(--text);}
+.nc-fight-row .nc-fight-alli{font-size:.6rem;font-weight:800;letter-spacing:.05em;color:var(--muted);}
+.nc-fight-row .nc-fight-pw{font-family:'SF Mono',Consolas,monospace;font-size:.7rem;color:var(--muted);}
 .nc-anchor.attending{background:rgba(63,185,80,.18);border-color:var(--green);box-shadow:0 0 0 1px rgba(63,185,80,.35);color:var(--text);}
 .nc-anchor.attending .attend-check{color:var(--green);flex-shrink:0;}
 .nc-roster-name.attending{background:rgba(63,185,80,.1);border-radius:4px;padding-left:.25rem;}
@@ -3543,6 +3553,7 @@ body{top:0!important;}
     if (startTs){
       textWrap.appendChild(buildNcCountdown(startTs));
     }
+    textWrap.appendChild(buildFightingPill(rd));
     hero.appendChild(textWrap);
     var mascot = el('div', 'nc-hero-mascot');
     var img = el('img');
@@ -4022,6 +4033,161 @@ body{top:0!important;}
       body: JSON.stringify({ round: ncAttendRoundKey(), name: name, attending: !!on }),
     }).then(function(r){ return r.json().catch(function(){ return null; }); });
   }
+  // ===== Fighting pill =====
+  // Surfaces the live attending count in the NC hero. Click to open a
+  // modal listing each attendee grouped by their assigned NC front.
+  function attendingCount(){
+    var n = 0;
+    for (var k in _ncAttendCache){ if (_ncAttendCache[k]) n++; }
+    return n;
+  }
+  function buildFightingPill(rd){
+    var pill = document.createElement('button');
+    pill.type = 'button';
+    pill.className = 'nc-fighting-pill';
+    pill.title = 'Show everyone who has confirmed attendance';
+    var ck = makeCheckmark(12);
+    pill.appendChild(ck);
+    var countSpan = el('span', 'nc-fp-count', String(attendingCount()));
+    pill.appendChild(countSpan);
+    pill.appendChild(el('span', 'nc-fp-label', 'Fighting'));
+    pill.addEventListener('click', function(){ openFightingModal(rd); });
+    return pill;
+  }
+
+  function openFightingModal(rd){
+    var overlay = document.getElementById('fightingModalOverlay');
+    if (!overlay){
+      overlay = document.createElement('div');
+      overlay.id = 'fightingModalOverlay';
+      overlay.className = 'opp-modal-overlay';
+      document.body.appendChild(overlay);
+      overlay.addEventListener('click', function(e){
+        if (e.target === overlay) overlay.classList.remove('active');
+      });
+      document.addEventListener('keydown', function(e){
+        if (e.key === 'Escape' && overlay.classList.contains('active')) overlay.classList.remove('active');
+      });
+    }
+    while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
+    overlay.appendChild(buildFightingModalContent(rd));
+    overlay.classList.add('active');
+  }
+
+  function buildFightingModalContent(rd){
+    var modal = el('div', 'opp-modal');
+    // Header
+    var head = el('div', 'opp-modal-head');
+    var title = el('div', 'opp-modal-title');
+    title.appendChild(makeCheckmark(16));
+    var n = attendingCount();
+    title.appendChild(el('span', null, n + ' Fighting'));
+    head.appendChild(title);
+    var closeBtn = el('button', 'opp-modal-close');
+    closeBtn.type = 'button';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.appendChild(document.createTextNode('×'));
+    closeBtn.addEventListener('click', function(){
+      document.getElementById('fightingModalOverlay').classList.remove('active');
+    });
+    head.appendChild(closeBtn);
+    modal.appendChild(head);
+
+    if (n === 0){
+      var empty = el('div', 'opp-card-section');
+      var p = document.createElement('p');
+      p.style.cssText = 'color:var(--muted);font-size:.85rem;text-align:center;padding:1rem 0;';
+      p.textContent = 'No one has signed up yet. Find your name in search and check the box.';
+      empty.appendChild(p);
+      modal.appendChild(empty);
+      return modal;
+    }
+
+    // Group attending names by their assigned NC front. Unassigned = sitouts
+    // who self-signed-up despite not being on the alliance roster.
+    var plan = (rd.neutralCityPlan || {});
+    var fronts = plan.fronts || [];
+    var nameToFront = {};
+    var nameToPlayer = {};
+    fronts.forEach(function(f){
+      (f.players || []).forEach(function(p){
+        nameToFront[p.name] = f;
+        nameToPlayer[p.name] = p;
+      });
+    });
+    var groups = {};
+    var unassigned = [];
+    Object.keys(_ncAttendCache).forEach(function(name){
+      if (!_ncAttendCache[name]) return;
+      var f = nameToFront[name];
+      if (!f){ unassigned.push(name); return; }
+      if (!groups[f.key]) groups[f.key] = { front: f, names: [] };
+      groups[f.key].names.push(name);
+    });
+
+    // Stable front order
+    var KEY_ORDER = ['storm', 'lv3', 'lv2', 'lv1'];
+    var orderedKeys = KEY_ORDER.filter(function(k){ return groups[k]; });
+    Object.keys(groups).forEach(function(k){ if (KEY_ORDER.indexOf(k) < 0) orderedKeys.push(k); });
+
+    orderedKeys.forEach(function(k){
+      var g = groups[k];
+      var sect = el('div', 'opp-card-section');
+      var h5 = document.createElement('h5');
+      var label = g.front.name || (g.front.level + ' Neutral City' + (g.front.showNum ? ' #' + g.front.showNum : ''));
+      h5.appendChild(document.createTextNode(label + ' — ' + g.names.length + ' of ' + (g.front.players || []).length));
+      sect.appendChild(h5);
+      var list = el('div', 'nc-fight-list');
+      // Sort within group by roster rank if available, else alphabetical
+      g.names.sort(function(a, b){
+        var ra = nameToPlayer[a] ? nameToPlayer[a].rank : 9999;
+        var rb = nameToPlayer[b] ? nameToPlayer[b].rank : 9999;
+        return ra - rb;
+      });
+      g.names.forEach(function(nm){
+        var pl = nameToPlayer[nm];
+        var row = el('div', 'nc-fight-row');
+        row.appendChild(makeCheckmark(10));
+        row.appendChild(el('span', 'nc-fight-name', nm));
+        if (pl){
+          if (pl.alliance) row.appendChild(el('span', 'nc-fight-alli', pl.alliance));
+          if (pl.power)    row.appendChild(el('span', 'nc-fight-pw', fmtPower(pl.power)));
+        }
+        list.appendChild(row);
+      });
+      sect.appendChild(list);
+      modal.appendChild(sect);
+    });
+
+    if (unassigned.length){
+      var sect = el('div', 'opp-card-section');
+      var h5 = document.createElement('h5');
+      h5.appendChild(document.createTextNode('Unassigned — ' + unassigned.length));
+      sect.appendChild(h5);
+      var sub = document.createElement('p');
+      sub.style.cssText = 'font-size:.7rem;color:var(--muted);margin-bottom:.4rem;font-style:italic;';
+      sub.textContent = 'Signed up but not on the alliance roster. Sitouts who flipped or names entered without a match.';
+      sect.appendChild(sub);
+      var list = el('div', 'nc-fight-list');
+      unassigned.sort();
+      unassigned.forEach(function(nm){
+        var row = el('div', 'nc-fight-row');
+        row.appendChild(makeCheckmark(10));
+        row.appendChild(el('span', 'nc-fight-name', nm));
+        list.appendChild(row);
+      });
+      sect.appendChild(list);
+      modal.appendChild(sect);
+    }
+
+    return modal;
+  }
+
+  function refreshFightingPillCount(){
+    var pill = document.querySelector('.nc-fighting-pill .nc-fp-count');
+    if (pill) pill.textContent = String(attendingCount());
+  }
+
   function makeCheckmark(size){
     var s = svgEl('svg', { width: size || 10, height: size || 10, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '3.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
     s.appendChild(svgEl('polyline', { points: '20 6 9 17 4 12' }));
@@ -4132,11 +4298,13 @@ body{top:0!important;}
           txt.textContent = nowOn ? 'Me fight (signed up).' : 'Me fight.';
           checkBox.classList.toggle('on', nowOn);
           btn.textContent = nowOn ? 'Update' : 'Submit';
-          // Re-render NC fronts so the player chip turns green now.
+          // Re-render NC fronts so the player chip turns green now,
+          // and bump the Fighting pill count.
           if (_bpRoundData && _bpRoundData.neutralCityPlan){
             var ncRoot = document.getElementById('ncRoot');
             if (ncRoot) buildNCPlan(_bpRoundData);
           }
+          refreshFightingPillCount();
         } else {
           statusMsg.textContent = '⚠ Save failed — try again';
           statusMsg.classList.remove('on');
