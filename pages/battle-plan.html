@@ -697,10 +697,16 @@ body{top:0!important;}
 .nc-alt-icon{flex-shrink:0;width:34px;height:34px;border-radius:10px;background:rgba(210,153,34,.18);border:1px solid rgba(210,153,34,.4);display:flex;align-items:center;justify-content:center;color:var(--yellow);}
 .nc-alt-text{flex:1;font-size:.9rem;font-weight:700;color:var(--text);line-height:1.4;}
 .nc-alt-text .nc-alt-tag{display:inline-block;font-size:.65rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--yellow);background:rgba(210,153,34,.15);border:1px solid rgba(210,153,34,.35);padding:.1rem .4rem;border-radius:6px;margin-right:.5rem;vertical-align:middle;}
-.nc-alt-defenses{margin-top:.5rem;display:flex;flex-direction:column;gap:.3rem;font-weight:600;}
+.nc-alt-defenses{display:flex;flex-direction:column;gap:.3rem;font-weight:600;}
 .nc-alt-def-row{display:flex;align-items:center;flex-wrap:wrap;gap:.35rem;font-size:.78rem;color:var(--text);}
 .nc-alt-def-lbl{font-family:'SF Mono',Consolas,monospace;font-weight:800;color:var(--muted);min-width:88px;}
 .nc-alt-def-opps{display:inline-flex;flex-wrap:wrap;gap:.25rem;}
+.nc-alt-cols{margin-top:.55rem;display:flex;align-items:flex-start;gap:.85rem;flex-wrap:wrap;}
+.nc-alt-col{flex:1 1 220px;min-width:180px;}
+.nc-alt-col-head{font-size:.6rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:.3rem;}
+.nc-alt-col-l1 .nc-alt-col-head{color:var(--accent);}
+.nc-alt-sep{width:1px;align-self:stretch;background:rgba(210,153,34,.3);min-height:60px;}
+@media (max-width:560px){.nc-alt-sep{width:100%;height:1px;min-height:0;}.nc-alt-cols{gap:.55rem;}}
 
 /* Caveman mascots */
 .nc-hero{display:flex;align-items:flex-start;gap:1rem;}
@@ -3754,7 +3760,8 @@ body{top:0!important;}
   function buildNcAltNote(plan, root){
     var hasNote = !!plan.altNote;
     var defenses = plan.defensiveNcContests || [];
-    if (!hasNote && !defenses.length) return;
+    var defensesL1 = plan.defensiveNcContestsL1 || [];
+    if (!hasNote && !defenses.length && !defensesL1.length) return;
 
     var box = el('div', 'nc-alt');
     var icon = el('div', 'nc-alt-icon');
@@ -3765,10 +3772,10 @@ body{top:0!important;}
     var text = el('div', 'nc-alt-text');
     text.appendChild(el('span', 'nc-alt-tag', 'Alt?'));
     if (hasNote) text.appendChild(document.createTextNode(plan.altNote));
-    // Defensive NC contests — compact list, L2/L3 only
-    if (defenses.length){
+
+    function renderDefList(arr){
       var list = el('div', 'nc-alt-defenses');
-      defenses.forEach(function(d){
+      arr.forEach(function(d){
         var row = el('div', 'nc-alt-def-row');
         row.appendChild(el('span', 'nc-alt-def-lbl', 'L' + d.level + ' NC #' + d.num));
         row.appendChild(document.createTextNode(' vs '));
@@ -3781,7 +3788,27 @@ body{top:0!important;}
         row.appendChild(pillWrap);
         list.appendChild(row);
       });
-      text.appendChild(list);
+      return list;
+    }
+
+    if (defenses.length || defensesL1.length){
+      var cols = el('div', 'nc-alt-cols');
+      if (defenses.length){
+        var leftCol = el('div', 'nc-alt-col');
+        leftCol.appendChild(el('div', 'nc-alt-col-head', 'L2 / L3 defending'));
+        leftCol.appendChild(renderDefList(defenses));
+        cols.appendChild(leftCol);
+      }
+      if (defenses.length && defensesL1.length){
+        cols.appendChild(el('div', 'nc-alt-sep'));
+      }
+      if (defensesL1.length){
+        var rightCol = el('div', 'nc-alt-col nc-alt-col-l1');
+        rightCol.appendChild(el('div', 'nc-alt-col-head', 'L1 defending'));
+        rightCol.appendChild(renderDefList(defensesL1));
+        cols.appendChild(rightCol);
+      }
+      text.appendChild(cols);
     }
     box.appendChild(text);
     root.appendChild(box);
