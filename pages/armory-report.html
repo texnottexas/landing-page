@@ -11370,6 +11370,123 @@
     };
   }
 
+  // msComputeTarget: given one target { heroId, rarity, currentLevel } and the
+  // built pool, return walk-down breakdown. Each upgrade needs 3 same-level
+  // cards; player has 1 equipped, so needs 2 more. Shortage at L cascades to
+  // L-1 (each Lv L card needs 3 Lv L-1 cards to craft).
+  function msComputeTarget(target, pool) {
+    var rarity = target.rarity;
+    var levelPool = (pool[rarity] || {});
+    var startLevel = target.currentLevel;
+    var maxLv = MS_MAX_LEVEL[rarity];
+
+    if (startLevel >= maxLv) {
+      return {
+        targetLevel: startLevel,
+        goalLevel: null,
+        maxedOut: true,
+        status: 'ready',
+        walkDown: [],
+        bottomShortage: 0,
+      };
+    }
+
+    var have = function (lv) { return levelPool[lv] || 0; };
+    var needed = 2;
+    var walkDown = [];
+
+    var shortage = Math.max(0, needed - have(startLevel));
+    walkDown.push({
+      level: startLevel,
+      need: needed,
+      have: have(startLevel),
+      shortage: shortage,
+    });
+    if (shortage === 0) {
+      return {
+        targetLevel: startLevel,
+        goalLevel: startLevel + 1,
+        maxedOut: false,
+        status: 'ready',
+        walkDown: walkDown,
+        bottomShortage: 0,
+      };
+    }
+
+    for (var L = startLevel - 1; L >= 1; L--) {
+      var needHere = shortage * 3;
+      var haveHere = have(L);
+      var shortHere = Math.max(0, needHere - haveHere);
+      walkDown.push({ level: L, need: needHere, have: haveHere, shortage: shortHere });
+      if (shortHere === 0) {
+        shortage = 0;
+        break;
+      }
+      shortage = shortHere;
+    }
+
+    return {
+      targetLevel: startLevel,
+      goalLevel: startLevel + 1,
+      maxedOut: false,
+      status: shortage === 0 ? 'almost' : 'short',
+      walkDown: walkDown,
+      bottomShortage: shortage,
+    };
+  }
+
+  // msAllocateAcross: greedy allocator for the "upgrade ALL targets" footer.
+  // Sorts targets by single-target shortage ascending (cheapest first), then
+  // consumes the pool. Remaining shortages aggregate into residualShortage.
+  function msAllocateAcross(targets, initialPool) {
+    var pool = { rare: {}, normal: {} };
+    Object.keys(initialPool.rare || {}).forEach(function (lv) { pool.rare[lv] = initialPool.rare[lv]; });
+    Object.keys(initialPool.normal || {}).forEach(function (lv) { pool.normal[lv] = initialPool.normal[lv]; });
+
+    var withPreviews = targets.map(function (t, idx) {
+      return { idx: idx, target: t, preview: msComputeTarget(t, pool) };
+    });
+    withPreviews.sort(function (a, b) {
+      if (a.preview.maxedOut && !b.preview.maxedOut) return 1;
+      if (!a.preview.maxedOut && b.preview.maxedOut) return -1;
+      return (a.preview.bottomShortage || 0) - (b.preview.bottomShortage || 0);
+    });
+
+    var spentPerTarget = [];
+    var residual = { rare: {}, normal: {} };
+
+    withPreviews.forEach(function (entry) {
+      var t = entry.target;
+      var rarity = t.rarity;
+      if (entry.preview.maxedOut) {
+        spentPerTarget.push({ targetIdx: entry.idx, walkDown: [], spent: {}, maxedOut: true });
+        return;
+      }
+      var live = msComputeTarget(t, pool);
+      var spent = {};
+      live.walkDown.forEach(function (row) {
+        var avail = pool[rarity][row.level] || 0;
+        var take = Math.min(avail, row.need);
+        if (take > 0) {
+          pool[rarity][row.level] = avail - take;
+          spent[row.level] = (spent[row.level] || 0) + take;
+        }
+      });
+      if (live.bottomShortage > 0) {
+        var deepest = live.walkDown[live.walkDown.length - 1];
+        residual[rarity][deepest.level] = (residual[rarity][deepest.level] || 0) + live.bottomShortage;
+      }
+      spentPerTarget.push({
+        targetIdx: entry.idx,
+        walkDown: live.walkDown,
+        spent: spent,
+        maxedOut: false,
+      });
+    });
+
+    return { spentPerTarget: spentPerTarget, residualShortage: residual };
+  }
+
   // msSelfTest: console-based assertions. Gated by ?msSelfTest=1 in the URL.
   // Throws on first failure so devtools shows a clean stack.
   function msSelfTest() {
@@ -11417,6 +11534,60 @@
     assertEq(built.pool.rare[5], 10, 'pool.rare[5] = 7 bag + 2 chest + 1 premium');
     assertEq(built.pool.rare[1], 4,  'pool.rare[1] = 4 from Lv 1 chests');
     assertEq(built.breakdown.benchEquipped.length, 1, 'benchEquipped only hero 102 (dedup)');
+
+    // msComputeTarget — ready case
+    var t1 = msComputeTarget(
+      { rarity: 'rare', currentLevel: 5 },
+      { rare: { 5: 4 } }
+    );
+    assertEq(t1.status, 'ready', 'msComputeTarget ready status');
+    assertEq(t1.bottomShortage, 0, 'msComputeTarget ready no shortage');
+
+    // msComputeTarget — almost case (walk-down covers)
+    var t2 = msComputeTarget(
+      { rarity: 'rare', currentLevel: 6 },
+      { rare: { 6: 1, 5: 5 } }
+    );
+    assertEq(t2.status, 'almost', 'msComputeTarget almost status');
+    assertEq(t2.bottomShortage, 0, 'msComputeTarget almost covered');
+    assertEq(t2.walkDown.length, 2, 'msComputeTarget walkDown depth');
+
+    // msComputeTarget — short case (runs out at Lv 1)
+    var t3 = msComputeTarget(
+      { rarity: 'rare', currentLevel: 3 },
+      { rare: {} }
+    );
+    assertEq(t3.status, 'short', 'msComputeTarget short status');
+    assertEq(t3.bottomShortage, 18, 'msComputeTarget short bottom shortage');
+
+    // msComputeTarget — maxed out
+    var t4 = msComputeTarget(
+      { rarity: 'rare', currentLevel: MS_MAX_LEVEL.rare },
+      { rare: { 99: 1 } }
+    );
+    assertEq(t4.maxedOut, true, 'msComputeTarget maxedOut');
+
+    // msAllocateAcross — two cheap targets share a pool that covers them both
+    var a1 = msAllocateAcross(
+      [
+        { rarity: 'rare', currentLevel: 5 },
+        { rarity: 'rare', currentLevel: 5 },
+      ],
+      { rare: { 5: 4 } }
+    );
+    assertEq(a1.residualShortage, { rare: {}, normal: {} }, 'allocate two cheap covered');
+    assertEq(a1.spentPerTarget[0].spent[5] + a1.spentPerTarget[1].spent[5], 4, 'allocate spent total');
+
+    // msAllocateAcross — one target eats the cheap pool, the other walks deeper
+    var a2 = msAllocateAcross(
+      [
+        { rarity: 'rare', currentLevel: 4 },
+        { rarity: 'rare', currentLevel: 4 },
+      ],
+      { rare: { 4: 2 } }
+    );
+    assertEq(a2.spentPerTarget[0].spent[4], 2, 'allocate cheapest takes all Lv4');
+    assertEq(Object.keys(a2.residualShortage.rare).length, 1, 'allocate second target residual');
 
     console.log('msSelfTest: all assertions passed');
   }
