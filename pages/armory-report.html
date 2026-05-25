@@ -11238,6 +11238,36 @@
     return null;
   }
 
+  // msEnumerateBenchSkills: walks every owned hero's p1.b[0] + p2.b[0] and
+  // returns an array of { heroId, presetIdx, rarity, level } entries for every
+  // march-size buff equipped. Inactive preset's buff IS included.
+  function msEnumerateBenchSkills(heroesSupp) {
+    if (!heroesSupp || !Array.isArray(heroesSupp.list)) return [];
+    var out = [];
+    for (var i = 0; i < heroesSupp.list.length; i++) {
+      var h = heroesSupp.list[i];
+      if (!h || !h.id) continue;
+      var presets = [
+        { idx: 1, p: h.p1 },
+        { idx: 2, p: h.p2 },
+      ];
+      for (var k = 0; k < presets.length; k++) {
+        var p = presets[k].p;
+        if (!p || !Array.isArray(p.b)) continue;
+        var resolved = msResolveMarchSize(p.b[0]);
+        if (resolved) {
+          out.push({
+            heroId: h.id,
+            presetIdx: presets[k].idx,
+            rarity: resolved.rarity,
+            level: resolved.level,
+          });
+        }
+      }
+    }
+    return out;
+  }
+
   function renderHeroBenchSubTab(container, siteKey) {
     while (container.firstChild) container.removeChild(container.firstChild);
 
