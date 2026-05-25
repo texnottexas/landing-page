@@ -13080,8 +13080,16 @@
       var pl = (typeof PL !== 'undefined' && PL && PL[groupKey]) || null;
       var maxLevelMap = (typeof MAX_LEVEL !== 'undefined' && MAX_LEVEL) ? MAX_LEVEL : null;
       var maxLevel = (maxLevelMap && maxLevelMap[groupKey]) || (pl && pl.sc && pl.sc.length) || 15;
+      // Compute three buff snapshots so each ownership state gets a useful
+      // comparison line:
+      //   buffsAtCur — value at the player's current placed level (placed only)
+      //   buffsAtL1  — base buff per piece (used for not-placed / not-owned)
+      //   buffsAtMax — what the decor would give at its true max level
       var buffsAtCur = (pl && pl.b1 && curLevel > 0) ? pl.b1.map(function (b) {
         return { i: b[0], v: b[1] * curLevel, t: b[2] };
+      }) : [];
+      var buffsAtL1 = (pl && pl.b1) ? pl.b1.map(function (b) {
+        return { i: b[0], v: b[1], t: b[2] };
       }) : [];
       var buffsAtMax = (pl && pl.b1) ? pl.b1.map(function (b) {
         return { i: b[0], v: b[1] * maxLevel, t: b[2] };
@@ -13134,21 +13142,27 @@
       titleLine.appendChild(levelEl);
       body.appendChild(titleLine);
 
-      // Buffs — only render when we actually have per-level data for this
-      // group AND know the level. Older decors that pre-date our extracted
-      // PL map (most suits prior to ~5985) have no PL entry, so we skip the
-      // buff line for them rather than show misleading "Lv.1 / Lv.15" math.
-      if (buffsAtCur.length || (ownedComp === false && buffsAtMax.length)) {
+      // Buffs — render whenever we have per-level data for the group. The
+      // displayed "current" value depends on ownership state:
+      //   Placed         -> buffs at the actual placed level (buffsAtCur)
+      //   Owned in stock -> L1 buffs (player owns the piece but we don't
+      //                     know what level they have stored)
+      //   Not owned      -> L1 buffs (what they'd get with one piece at L1)
+      // We always pair that with the max-level cap so the player sees the
+      // upgrade headroom. Older decors with no PL entry (most pre-5985
+      // suits) still get skipped — there's nothing to display for them.
+      var basis = buffsAtCur.length ? buffsAtCur : buffsAtL1;
+      var basisLabel = buffsAtCur.length ? ('Lv.' + curLevel) : 'Lv.1';
+      if (basis.length) {
         var buffLine = document.createElement('div');
         buffLine.style.cssText = 'font-size:.72rem;color:var(--muted);line-height:1.45;';
-        var basis = buffsAtCur.length ? buffsAtCur : buffsAtMax;
         var parts = basis.map(function (b, i) {
           var max = buffsAtMax[i] || b;
           var nm = (typeof BUFF_NAMES_DECOR !== 'undefined' && BUFF_NAMES_DECOR[String(b.i)]) || ('Buff ' + b.i);
           var curStr = formatDecorBuffVal(b);
           var maxStr = formatDecorBuffVal(max);
           if (curStr === maxStr) return nm + ': ' + curStr + ' (max)';
-          return nm + ': ' + curStr + ' (max ' + maxStr + ')';
+          return nm + ': ' + basisLabel + ' ' + curStr + ', max Lv.' + maxLevel + ' ' + maxStr;
         });
         buffLine.textContent = parts.join('  ·  ');
         body.appendChild(buffLine);
