@@ -11933,6 +11933,70 @@
       modal.appendChild(empty);
     }
 
+    // Pool consulted — once, above the target rows. Same pool feeds every row
+    // (per-target rows show "what would it take if I focus on JUST this one"),
+    // so repeating per row would just be noise.
+    if (result.targets.length > 0) {
+      var poolBlock = document.createElement('div');
+      poolBlock.className = 'ms-pool-block';
+      var ptitle = document.createElement('div');
+      ptitle.style.cssText = 'font-weight:600;color:var(--text);margin-bottom:.25rem;';
+      ptitle.textContent = 'Pool consulted';
+      poolBlock.appendChild(ptitle);
+
+      function appendPoolLine(label, value) {
+        var row = document.createElement('div');
+        row.className = 'ms-pool-row';
+        var lbl = document.createElement('span'); lbl.className = 'ms-pool-label'; lbl.textContent = label;
+        var val = document.createElement('span'); val.textContent = value;
+        row.appendChild(lbl); row.appendChild(val);
+        poolBlock.appendChild(row);
+      }
+      function summarizeLevelMap(levelMap, rarityLabel) {
+        var parts = Object.keys(levelMap || {})
+          .map(Number).sort(function (a, b) { return a - b; })
+          .map(function (lv) { return levelMap[lv] + ' x Lv ' + lv + ' ' + rarityLabel; });
+        return parts.length ? parts.join(', ') : 'none';
+      }
+
+      var bag = result.breakdown.bag || { rare: {}, normal: {} };
+      appendPoolLine('Bag (Rare):', summarizeLevelMap(bag.rare, 'Rare'));
+      appendPoolLine('Bag (Normal):', summarizeLevelMap(bag.normal, 'Normal'));
+
+      var benchList = result.breakdown.benchEquipped || [];
+      if (benchList.length === 0) {
+        appendPoolLine('Bench-equipped:', 'none');
+      } else {
+        var benchRow = document.createElement('div');
+        benchRow.className = 'ms-pool-row';
+        var benchLbl = document.createElement('span'); benchLbl.className = 'ms-pool-label';
+        benchLbl.textContent = 'Bench-equipped:';
+        benchRow.appendChild(benchLbl);
+        var benchVal = document.createElement('span');
+        benchVal.textContent = benchList.length + ' card' + (benchList.length === 1 ? '' : 's') +
+          ' (unequip required: ' +
+          benchList.map(function (b) {
+            return msHeroName(b.heroId) + ' Lv ' + b.level + ' ' + (b.rarity === 'rare' ? 'Rare' : 'Normal');
+          }).join('; ') + ')';
+        benchRow.appendChild(benchVal);
+        poolBlock.appendChild(benchRow);
+      }
+
+      var chests = result.breakdown.directChests || {};
+      appendPoolLine('Choice chests (Rare):', summarizeLevelMap(chests, 'Rare'));
+
+      var premium = (result.breakdown.premiumPotential && result.breakdown.premiumPotential.rareLv5) || 0;
+      if (premium > 0) {
+        appendPoolLine('Premium Purchase chests:', premium + ' x potential Lv 5 Rare');
+        var disclaimer = document.createElement('div');
+        disclaimer.className = 'ms-pool-disclaimer';
+        disclaimer.textContent = 'Premium Purchase chests offer multiple rewards; the Rare skill choice is one option.';
+        poolBlock.appendChild(disclaimer);
+      }
+
+      modal.appendChild(poolBlock);
+    }
+
     result.perTarget.forEach(function (entry) {
       var t = entry.target;
       var c = entry.compute;
@@ -11982,10 +12046,12 @@
       modal.appendChild(card);
     });
 
-    if (result.targets.length > 1) {
+    if (result.targets.length > 0) {
       var footer = document.createElement('div'); footer.className = 'ms-footer-block';
       var ft = document.createElement('div'); ft.className = 'ms-footer-title';
-      ft.textContent = 'If you upgrade every target above (proper pool allocation):';
+      ft.textContent = result.targets.length === 1
+        ? 'Total cards still needed for this upgrade:'
+        : 'If you upgrade every target above (proper pool allocation):';
       footer.appendChild(ft);
       var residRare = result.allocation.residualShortage.rare || {};
       var residNorm = result.allocation.residualShortage.normal || {};
