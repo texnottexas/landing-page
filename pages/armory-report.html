@@ -11268,6 +11268,108 @@
     return out;
   }
 
+  // msEnumerateBagSkills: returns { rare: {level: count, ...}, normal: {...} }
+  // from the inv supplement's tabs.hero entries that match the march-size item
+  // IDs. Each (rarity, level) has a distinct item id (probed 2026-05-25).
+  function msEnumerateBagSkills(invSupp) {
+    var out = { rare: {}, normal: {} };
+    if (!invSupp || !invSupp.tabs || !Array.isArray(invSupp.tabs.hero)) return out;
+    var heroTab = invSupp.tabs.hero;
+    for (var i = 0; i < heroTab.length; i++) {
+      var it = heroTab[i];
+      if (!it || !it.id || !it.a) continue;
+      var matched = null;
+      var matchedLevel = null;
+      for (var lvR in MS_BAG_ITEM_ID.rare) {
+        if (MS_BAG_ITEM_ID.rare[lvR] === it.id) { matched = 'rare'; matchedLevel = Number(lvR); break; }
+      }
+      if (!matched) {
+        for (var lvN in MS_BAG_ITEM_ID.normal) {
+          if (MS_BAG_ITEM_ID.normal[lvN] === it.id) { matched = 'normal'; matchedLevel = Number(lvN); break; }
+        }
+      }
+      if (!matched || !matchedLevel) continue;
+      out[matched][matchedLevel] = (out[matched][matchedLevel] || 0) + it.a;
+    }
+    return out;
+  }
+
+  // msEnumerateChests: counts rare-only choice chests + premium chests.
+  // Returns: { directRare: { level: count }, premiumRareLv5: count }
+  // No Normal march-size choice chest exists in-game.
+  function msEnumerateChests(invSupp) {
+    var out = { directRare: {}, premiumRareLv5: 0 };
+    if (!invSupp || !invSupp.tabs || !Array.isArray(invSupp.tabs.item)) return out;
+    var itemTab = invSupp.tabs.item;
+    for (var i = 0; i < itemTab.length; i++) {
+      var it = itemTab[i];
+      if (!it || !it.id || !it.a) continue;
+      var direct = MS_CHEST_RARE[String(it.id)];
+      if (direct) {
+        out.directRare[direct.level] = (out.directRare[direct.level] || 0) + it.a;
+        continue;
+      }
+      if (MS_CHEST_PREMIUM[String(it.id)]) {
+        out.premiumRareLv5 += it.a;
+      }
+    }
+    return out;
+  }
+
+  // msBuildPool: combine bag + non-excluded bench + chests into a per-rarity
+  // per-level pool. Returns { pool, breakdown } where breakdown carries the
+  // raw source counts so the UI can show "unequip from X" friction tags.
+  function msBuildPool(opts) {
+    var heroesSupp = opts.heroesSupp;
+    var invSupp = opts.invSupp;
+    var excluded = opts.excludedHeroIds || new Set();
+    var marched = opts.marchedHeroIds || new Set();
+
+    var pool = { rare: {}, normal: {} };
+
+    var bag = msEnumerateBagSkills(invSupp);
+    Object.keys(bag.rare).forEach(function (lv) {
+      pool.rare[lv] = (pool.rare[lv] || 0) + bag.rare[lv];
+    });
+    Object.keys(bag.normal).forEach(function (lv) {
+      pool.normal[lv] = (pool.normal[lv] || 0) + bag.normal[lv];
+    });
+
+    // Bench equipped — only from heroes NOT excluded and NOT in the march.
+    // Dedupe: same hero with same (rarity, level) on both presets counts once.
+    var allBench = msEnumerateBenchSkills(heroesSupp);
+    var benchEquipped = [];
+    var dedupeKey = {};
+    for (var i = 0; i < allBench.length; i++) {
+      var b = allBench[i];
+      if (excluded.has(b.heroId)) continue;
+      if (marched.has(b.heroId)) continue;
+      var key = b.heroId + '|' + b.rarity + '|' + b.level;
+      if (dedupeKey[key]) continue;
+      dedupeKey[key] = true;
+      benchEquipped.push(b);
+      pool[b.rarity][b.level] = (pool[b.rarity][b.level] || 0) + 1;
+    }
+
+    var chests = msEnumerateChests(invSupp);
+    Object.keys(chests.directRare).forEach(function (lv) {
+      pool.rare[lv] = (pool.rare[lv] || 0) + chests.directRare[lv];
+    });
+    if (chests.premiumRareLv5) {
+      pool.rare[5] = (pool.rare[5] || 0) + chests.premiumRareLv5;
+    }
+
+    return {
+      pool: pool,
+      breakdown: {
+        bag: bag,
+        benchEquipped: benchEquipped,
+        directChests: chests.directRare,
+        premiumPotential: { rareLv5: chests.premiumRareLv5 },
+      },
+    };
+  }
+
   function renderHeroBenchSubTab(container, siteKey) {
     while (container.firstChild) container.removeChild(container.firstChild);
 
