@@ -11996,38 +11996,55 @@
     setTimeout(tick, 200);
   }
 
-  // msRunAnalysis: collects targets from the 3 marched heroes, builds the pool,
-  // computes per-target results, runs allocation.
+  // msRunAnalysis: collects every equipped march-size SLOT across the 3 marched
+  // heroes, then picks ONE recommendation per rarity: the hero+slot with the
+  // lowest current level (upgrading the weakest link is cheapest and most
+  // impactful for the march). Ties resolve to the first hero in march order,
+  // then the first preset+slot encountered.
   //
-  // Targets: each equipped march-size SLOT on a marched hero is a separate
-  // upgrade target. Slot-aware dedup means the same slot on both presets at
-  // the same level collapses to one target (it's the same card), but two
-  // different slots at the same level produce two targets.
+  // We still build the full pool (excluding all 3 marched heroes + step-1
+  // exclusions) so the recommended-target walk-down sees the right fodder.
   function msRunAnalysis(state) {
     var heroesById = {};
     state.heroesSupp.list.forEach(function (h) { heroesById[h.id] = h; });
 
-    var allBench = msEnumerateBenchSkills(state.heroesSupp);
     var marchedSet = new Set(state.marchedHeroIds);
-    var targets = [];
-    var seen = {};
-    allBench.forEach(function (e) {
-      if (!marchedSet.has(e.heroId)) return;
-      var key = e.heroId + '|' + e.slotKind + '|' + e.slotIdx + '|' + e.rarity + '|' + e.level;
-      if (seen[key]) {
-        seen[key].presets.push(e.presetIdx);
-        return;
+    var allBench = msEnumerateBenchSkills(state.heroesSupp);
+
+    // Group: for each marched hero, collect every equipped march-size slot.
+    // marchOrder is the order in which the player picked the 3 heroes in
+    // Step 2; we iterate in that order so first-tie selection is stable.
+    var instancesPerRarity = { rare: [], normal: [] };
+    state.marchedHeroIds.forEach(function (hid) {
+      var heroHits = allBench.filter(function (e) { return e.heroId === hid; });
+      // Slot-aware dedup within the same hero (P1.x[2] + P2.x[2] same level = 1)
+      var seen = {};
+      heroHits.forEach(function (e) {
+        var key = e.heroId + '|' + e.slotKind + '|' + e.slotIdx + '|' + e.rarity + '|' + e.level;
+        if (seen[key]) { seen[key].presets.push(e.presetIdx); return; }
+        var inst = {
+          heroId: e.heroId,
+          presets: [e.presetIdx],
+          rarity: e.rarity,
+          currentLevel: e.level,
+          slotKind: e.slotKind,
+          slotIdx: e.slotIdx,
+        };
+        seen[key] = inst;
+        instancesPerRarity[e.rarity].push(inst);
+      });
+    });
+
+    // Pick the lowest-level instance per rarity (first-tie wins by iteration order).
+    var recommendations = [];
+    ['rare', 'normal'].forEach(function (rar) {
+      var list = instancesPerRarity[rar];
+      if (!list.length) return;
+      var pick = list[0];
+      for (var i = 1; i < list.length; i++) {
+        if (list[i].currentLevel < pick.currentLevel) pick = list[i];
       }
-      var target = {
-        heroId: e.heroId,
-        presets: [e.presetIdx],
-        rarity: e.rarity,
-        currentLevel: e.level,
-        slotKind: e.slotKind,
-        slotIdx: e.slotIdx,
-      };
-      seen[key] = target;
-      targets.push(target);
+      recommendations.push(pick);
     });
 
     var built = msBuildPool({
@@ -12037,17 +12054,25 @@
       marchedHeroIds: marchedSet,
     });
 
-    var perTarget = targets.map(function (t) {
+    var perTarget = recommendations.map(function (t) {
       return { target: t, compute: msComputeTarget(t, built.pool) };
     });
-    var alloc = msAllocateAcross(targets, built.pool);
+
+    // marchHasRarity tells the UI which rarities at least appear among the
+    // marched heroes' equipment, so the bottom summary can say "no Rare
+    // march-size in the analysis" vs "covered".
+    var marchHasRarity = {
+      rare: instancesPerRarity.rare.length > 0,
+      normal: instancesPerRarity.normal.length > 0,
+    };
 
     return {
-      targets: targets,
+      recommendations: recommendations,
+      perTarget: perTarget,
       pool: built.pool,
       breakdown: built.breakdown,
-      perTarget: perTarget,
-      allocation: alloc,
+      marchHasRarity: marchHasRarity,
+      allInstances: instancesPerRarity,
     };
   }
 
@@ -12066,72 +12091,137 @@
     sub.textContent = state.marchedHeroIds.map(function (id) { return msHeroName(id); }).join(' · ');
     modal.appendChild(sub);
 
-    if (result.targets.length === 0) {
+    if (result.recommendations.length === 0) {
       var empty = document.createElement('p');
       empty.style.color = 'var(--muted)';
       empty.textContent = 'None of the 3 marched heroes have a march-size skill equipped.';
       modal.appendChild(empty);
     }
 
-    // Pool consulted — once, above the target rows. Same pool feeds every row
-    // (per-target rows show "what would it take if I focus on JUST this one"),
-    // so repeating per row would just be noise.
-    if (result.targets.length > 0) {
+    // Intro line above the pool block: explains the recommendation framing.
+    if (result.recommendations.length > 0) {
+      var intro = document.createElement('p');
+      intro.style.cssText = 'color:var(--muted);font-size:.78rem;margin:0 0 .85rem;line-height:1.5;';
+      intro.textContent = 'Showing the cheapest march-size upgrade per rarity (the lowest-level instance across the 3 marched heroes - the weakest link bottlenecks the march bonus).';
+      modal.appendChild(intro);
+    }
+
+    // Pool consulted — once, above the target rows. Each source gets a row;
+    // level breakdowns render as compact pills so the eye can scan instead
+    // of parsing comma-separated prose. The bench-equipped list (often 20-30
+    // cards) collapses into a native <details> disclosure to keep the
+    // header tight.
+    if (result.recommendations.length > 0) {
       var poolBlock = document.createElement('div');
       poolBlock.className = 'ms-pool-block';
       var ptitle = document.createElement('div');
-      ptitle.style.cssText = 'font-weight:600;color:var(--text);margin-bottom:.25rem;';
+      ptitle.style.cssText = 'font-weight:600;color:var(--text);margin-bottom:.45rem;font-size:.82rem;';
       ptitle.textContent = 'Pool consulted';
       poolBlock.appendChild(ptitle);
 
-      function appendPoolLine(label, value) {
+      function appendPoolRow(label, valueNode, opts) {
         var row = document.createElement('div');
-        row.className = 'ms-pool-row';
-        var lbl = document.createElement('span'); lbl.className = 'ms-pool-label'; lbl.textContent = label;
-        var val = document.createElement('span'); val.textContent = value;
-        row.appendChild(lbl); row.appendChild(val);
+        row.style.cssText = 'display:flex;gap:.6rem;align-items:flex-start;padding:.25rem 0;border-top:1px solid var(--border);';
+        var lbl = document.createElement('span');
+        lbl.style.cssText = 'color:var(--muted);font-size:.7rem;min-width:140px;flex-shrink:0;line-height:1.5;';
+        lbl.textContent = label;
+        row.appendChild(lbl);
+        if (valueNode instanceof Node) row.appendChild(valueNode);
+        else {
+          var span = document.createElement('span');
+          span.style.cssText = 'font-size:.72rem;color:var(--text);line-height:1.5;';
+          span.textContent = valueNode;
+          row.appendChild(span);
+        }
         poolBlock.appendChild(row);
       }
-      function summarizeLevelMap(levelMap, rarityLabel) {
-        var parts = Object.keys(levelMap || {})
-          .map(Number).sort(function (a, b) { return a - b; })
-          .map(function (lv) { return levelMap[lv] + ' x Lv ' + lv + ' ' + rarityLabel; });
-        return parts.length ? parts.join(', ') : 'none';
+
+      // Build a row of small "N x LvL" pills from a {level: count} map.
+      function buildLevelPills(levelMap, rarityHint) {
+        var wrap = document.createElement('div');
+        wrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:.25rem;line-height:1.6;';
+        var levels = Object.keys(levelMap || {}).map(Number).sort(function (a, b) { return a - b; });
+        if (levels.length === 0) {
+          var none = document.createElement('span');
+          none.style.cssText = 'color:var(--muted);font-size:.72rem;font-style:italic;';
+          none.textContent = 'none';
+          wrap.appendChild(none);
+          return wrap;
+        }
+        var bgRare = 'rgba(210,153,34,.14)';
+        var bgNormal = 'rgba(121,192,255,.12)';
+        levels.forEach(function (lv) {
+          var pill = document.createElement('span');
+          pill.style.cssText = 'background:' + (rarityHint === 'rare' ? bgRare : bgNormal) +
+            ';color:var(--text);font-size:.7rem;padding:1px 7px;border-radius:999px;font-weight:600;';
+          pill.textContent = levelMap[lv] + ' x Lv ' + lv;
+          wrap.appendChild(pill);
+        });
+        return wrap;
       }
 
       var bag = result.breakdown.bag || { rare: {}, normal: {} };
-      appendPoolLine('Bag (Rare):', summarizeLevelMap(bag.rare, 'Rare'));
-      appendPoolLine('Bag (Normal):', summarizeLevelMap(bag.normal, 'Normal'));
+      appendPoolRow('Bag - Rare', buildLevelPills(bag.rare, 'rare'));
+      appendPoolRow('Bag - Normal', buildLevelPills(bag.normal, 'normal'));
 
+      // Bench-equipped: summary on the header, full list collapsed inside <details>.
       var benchList = result.breakdown.benchEquipped || [];
       if (benchList.length === 0) {
-        appendPoolLine('Bench-equipped:', 'none');
+        appendPoolRow('Bench-equipped', 'none');
       } else {
-        var benchRow = document.createElement('div');
-        benchRow.className = 'ms-pool-row';
-        var benchLbl = document.createElement('span'); benchLbl.className = 'ms-pool-label';
-        benchLbl.textContent = 'Bench-equipped:';
-        benchRow.appendChild(benchLbl);
-        var benchVal = document.createElement('span');
-        benchVal.textContent = benchList.length + ' card' + (benchList.length === 1 ? '' : 's') +
-          ' (unequip required: ' +
-          benchList.map(function (b) {
-            return msHeroName(b.heroId) + ' Lv ' + b.level + ' ' + (b.rarity === 'rare' ? 'Rare' : 'Normal');
-          }).join('; ') + ')';
-        benchRow.appendChild(benchVal);
-        poolBlock.appendChild(benchRow);
+        // Group cards by hero so the disclosure list is one row per hero.
+        var byHero = {};
+        benchList.forEach(function (b) {
+          if (!byHero[b.heroId]) byHero[b.heroId] = { rare: [], normal: [] };
+          byHero[b.heroId][b.rarity].push(b.level);
+        });
+        var heroCount = Object.keys(byHero).length;
+
+        var details = document.createElement('details');
+        details.style.cssText = 'flex:1;';
+        var summary = document.createElement('summary');
+        summary.style.cssText = 'cursor:pointer;font-size:.72rem;color:var(--text);line-height:1.5;outline:none;';
+        summary.textContent = benchList.length + ' card' + (benchList.length === 1 ? '' : 's') +
+          ' across ' + heroCount + ' hero' + (heroCount === 1 ? '' : 'es') +
+          ' (unequip to harvest)';
+        details.appendChild(summary);
+
+        var list = document.createElement('div');
+        list.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:.2rem .8rem;margin-top:.4rem;padding-left:.4rem;';
+        Object.keys(byHero).sort(function (a, b) { return Number(a) - Number(b); }).forEach(function (hid) {
+          var bucket = byHero[hid];
+          var parts = [];
+          if (bucket.rare.length)   parts.push('Rare: '   + bucket.rare.sort(function(a,b){return a-b;}).map(function(l){return 'Lv ' + l;}).join(', '));
+          if (bucket.normal.length) parts.push('Normal: ' + bucket.normal.sort(function(a,b){return a-b;}).map(function(l){return 'Lv ' + l;}).join(', '));
+          var row = document.createElement('div');
+          row.style.cssText = 'font-size:.68rem;color:var(--muted);';
+          var name = document.createElement('span');
+          name.style.cssText = 'color:var(--text);font-weight:600;';
+          name.textContent = msHeroName(Number(hid));
+          row.appendChild(name);
+          row.appendChild(document.createTextNode(' - ' + parts.join(' / ')));
+          list.appendChild(row);
+        });
+        details.appendChild(list);
+        appendPoolRow('Bench-equipped', details);
       }
 
       var chests = result.breakdown.directChests || {};
-      appendPoolLine('Choice chests (Rare):', summarizeLevelMap(chests, 'Rare'));
+      appendPoolRow('Choice chests', buildLevelPills(chests, 'rare'));
 
       var premium = (result.breakdown.premiumPotential && result.breakdown.premiumPotential.rareLv5) || 0;
       if (premium > 0) {
-        appendPoolLine('Premium Purchase chests:', premium + ' x potential Lv 5 Rare');
-        var disclaimer = document.createElement('div');
-        disclaimer.className = 'ms-pool-disclaimer';
-        disclaimer.textContent = 'Premium Purchase chests offer multiple rewards; the Rare skill choice is one option.';
-        poolBlock.appendChild(disclaimer);
+        var premWrap = document.createElement('div');
+        premWrap.style.cssText = 'display:flex;flex-direction:column;gap:.2rem;';
+        var premPill = document.createElement('span');
+        premPill.style.cssText = 'background:rgba(210,153,34,.14);color:var(--text);font-size:.7rem;padding:1px 7px;border-radius:999px;font-weight:600;align-self:flex-start;';
+        premPill.textContent = premium + ' x potential Lv 5 Rare';
+        premWrap.appendChild(premPill);
+        var disc = document.createElement('span');
+        disc.style.cssText = 'color:#d29922;font-size:.65rem;font-style:italic;';
+        disc.textContent = 'Multi-reward chest - the Rare skill choice is one option.';
+        premWrap.appendChild(disc);
+        appendPoolRow('Premium Purchase', premWrap);
       }
 
       modal.appendChild(poolBlock);
@@ -12182,91 +12272,54 @@
           line.appendChild(lbl); line.appendChild(rt);
           wd.appendChild(line);
         });
+        // Lv 1 equivalent for THIS target: convert each row's shortage down
+        // via the 3:1 chain. shortage at Lv L = shortage * 3^(L-1) Lv 1 cards.
+        // bottomShortage already represents the final cards-needed count at
+        // whatever level the walk-down terminated at — convert that to Lv 1.
+        var rarityLabel = t.rarity === 'rare' ? 'Rare' : 'Normal';
+        var totalLine = document.createElement('div');
+        totalLine.style.cssText = 'display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:.4rem;padding-top:.4rem;font-size:.74rem;font-weight:600;color:var(--text);';
+        var tlbl = document.createElement('span');
+        tlbl.textContent = 'Raw Lv 1 ' + rarityLabel + ' cards needed';
+        var tval = document.createElement('span');
+        if (c.bottomShortage === 0) {
+          tval.style.color = 'var(--green)';
+          tval.textContent = '0 - pool covers this upgrade';
+        } else {
+          var deepest = c.walkDown[c.walkDown.length - 1];
+          var lv1Equiv = c.bottomShortage * Math.pow(3, deepest.level - 1);
+          tval.style.color = 'var(--red)';
+          tval.textContent = lv1Equiv.toLocaleString();
+        }
+        totalLine.appendChild(tlbl); totalLine.appendChild(tval);
+        wd.appendChild(totalLine);
         card.appendChild(wd);
       }
       modal.appendChild(card);
     });
 
-    if (result.targets.length > 0) {
-      var footer = document.createElement('div'); footer.className = 'ms-footer-block';
-      var ft = document.createElement('div'); ft.className = 'ms-footer-title';
-      ft.textContent = result.targets.length === 1
-        ? 'Total cards still needed for this upgrade:'
-        : 'If you upgrade every target above (proper pool allocation):';
-      footer.appendChild(ft);
-
-      var rarities = ['rare', 'normal'];
-      // Per-rarity residual breakdown — always show BOTH so the player sees
-      // the Rare picture even when no Rare target was analyzed.
-      rarities.forEach(function (rarity) {
-        var label = rarity === 'rare' ? 'Rare' : 'Normal';
-        var resid = (result.allocation.residualShortage[rarity]) || {};
-        var levels = Object.keys(resid).map(Number).sort(function (a, b) { return a - b; });
-
-        var sub = document.createElement('div');
-        sub.style.cssText = 'font-size:.78rem;margin-top:.4rem;';
-        var head = document.createElement('div');
-        head.style.cssText = 'color:var(--text);font-weight:600;margin-bottom:.15rem;';
-        head.textContent = label + ' march size';
-        sub.appendChild(head);
-
-        if (levels.length === 0) {
-          var ok = document.createElement('div');
-          ok.style.color = 'var(--muted)';
-          ok.style.fontSize = '.72rem';
-          // Distinguish "no target of this rarity" vs "pool covered everything"
-          var anyTargetOfRarity = result.targets.some(function (t) { return t.rarity === rarity; });
-          ok.textContent = anyTargetOfRarity
-            ? 'Pool already covers every ' + label + ' upgrade.'
-            : 'No ' + label + ' march-size target in this analysis.';
-          sub.appendChild(ok);
-        } else {
-          var ul = document.createElement('ul');
-          ul.style.cssText = 'margin:.1rem 0 0 1rem;padding:0;font-size:.72rem;color:var(--muted);';
-          levels.forEach(function (lv) {
-            var li = document.createElement('li');
-            li.textContent = resid[lv] + ' x Lv ' + lv + ' ' + label + ' card still needed';
-            ul.appendChild(li);
-          });
-          sub.appendChild(ul);
+    // Bottom summary — call out rarities that were NOT in the analysis, so
+    // the player understands why a section is missing (e.g. Rare isn't shown
+    // because none of the 3 marched heroes equip a Rare march-size).
+    if (result.recommendations.length > 0) {
+      var note = document.createElement('div');
+      note.className = 'ms-footer-block';
+      var notes = [];
+      ['rare', 'normal'].forEach(function (rar) {
+        if (!result.marchHasRarity[rar]) {
+          var label = rar === 'rare' ? 'Rare' : 'Normal';
+          notes.push('No ' + label + ' march-size equipped on the marched heroes - no recommendation for ' + label + '.');
         }
-        footer.appendChild(sub);
       });
-
-      // Lv 1 equivalent total — converts every residual into raw Lv 1 cards
-      // by walking the 3:1 chain. Lv L shortage of N = N * 3^(L-1) Lv 1 cards.
-      var lv1Totals = { rare: 0, normal: 0 };
-      rarities.forEach(function (rarity) {
-        var resid = result.allocation.residualShortage[rarity] || {};
-        Object.keys(resid).forEach(function (lv) {
-          var L = Number(lv);
-          lv1Totals[rarity] += resid[lv] * Math.pow(3, L - 1);
+      if (notes.length) {
+        notes.forEach(function (txt) {
+          var p = document.createElement('div');
+          p.style.cssText = 'color:var(--muted);font-size:.72rem;margin-bottom:.2rem;';
+          p.textContent = txt;
+          note.appendChild(p);
         });
-      });
-      var grandTotal = lv1Totals.rare + lv1Totals.normal;
-      if (grandTotal > 0) {
-        var lv1Wrap = document.createElement('div');
-        lv1Wrap.style.cssText = 'margin-top:.7rem;padding-top:.55rem;border-top:1px solid var(--border);font-size:.78rem;';
-        var lv1Head = document.createElement('div');
-        lv1Head.style.cssText = 'color:var(--text);font-weight:600;margin-bottom:.2rem;';
-        lv1Head.textContent = 'Lv 1 card equivalent (if you crafted from scratch)';
-        lv1Wrap.appendChild(lv1Head);
-        var lv1Body = document.createElement('div');
-        lv1Body.style.cssText = 'color:var(--muted);font-size:.72rem;line-height:1.5;';
-        var parts = [];
-        if (lv1Totals.rare > 0)   parts.push(lv1Totals.rare.toLocaleString()   + ' x Lv 1 Rare');
-        if (lv1Totals.normal > 0) parts.push(lv1Totals.normal.toLocaleString() + ' x Lv 1 Normal');
-        lv1Body.textContent = parts.join(' + ');
-        lv1Wrap.appendChild(lv1Body);
-        footer.appendChild(lv1Wrap);
-      } else {
-        var allCovered = document.createElement('div');
-        allCovered.style.cssText = 'margin-top:.7rem;color:var(--green);font-size:.78rem;font-weight:600;';
-        allCovered.textContent = 'Your pool already covers every upgrade above.';
-        footer.appendChild(allCovered);
+        modal.appendChild(note);
       }
-
-      modal.appendChild(footer);
     }
 
     var src = document.createElement('div'); src.className = 'ms-sources-block';
