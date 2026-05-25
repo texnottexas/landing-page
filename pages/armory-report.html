@@ -11370,6 +11370,60 @@
     };
   }
 
+  // msSelfTest: console-based assertions. Gated by ?msSelfTest=1 in the URL.
+  // Throws on first failure so devtools shows a clean stack.
+  function msSelfTest() {
+    function assertEq(actual, expected, label) {
+      var ok = JSON.stringify(actual) === JSON.stringify(expected);
+      if (!ok) throw new Error('FAIL ' + label + '\n  expected: ' + JSON.stringify(expected) + '\n  actual:   ' + JSON.stringify(actual));
+      console.log('PASS', label);
+    }
+
+    assertEq(msResolveMarchSize(null), null, 'msResolveMarchSize null');
+    assertEq(msResolveMarchSize({}), null, 'msResolveMarchSize empty');
+    assertEq(msResolveMarchSize({ id: 21116, lv: 8 }), { rarity: 'rare', level: 8 }, 'msResolveMarchSize rare');
+    assertEq(msResolveMarchSize({ id: 20116, lv: 5 }), { rarity: 'normal', level: 5 }, 'msResolveMarchSize normal');
+    assertEq(msResolveMarchSize({ id: 99999, lv: 3 }), null, 'msResolveMarchSize unrelated');
+
+    var heroesFixture = {
+      list: [
+        { id: 101, p1: { b: [{ id: 21116, lv: 8 }] }, p2: { b: [{ id: 20116, lv: 5 }] } },
+        { id: 102, p1: { b: [{ id: 21116, lv: 6 }] }, p2: { b: [{ id: 21116, lv: 6 }] } },
+        { id: 103, p1: { b: [{ id: 99, lv: 1 }] },    p2: { b: [] } },
+      ],
+    };
+    var bench = msEnumerateBenchSkills(heroesFixture);
+    assertEq(bench.length, 4, 'msEnumerateBenchSkills total entries (pre-dedup)');
+
+    var invFixture = {
+      tabs: {
+        hero: [
+          { id: MS_BAG_ITEM_ID.rare[5], l: 5, a: 7 },
+        ],
+        item: [
+          { id: 20220307, a: 4 },
+          { id: 39200159, a: 2 },
+          { id: 39200250, a: 1 },
+        ],
+      },
+    };
+    var built = msBuildPool({
+      heroesSupp: heroesFixture,
+      invSupp: invFixture,
+      excludedHeroIds: new Set([101]),
+      marchedHeroIds: new Set([103]),
+    });
+    assertEq(built.pool.rare[6], 1,  'pool.rare[6] = 1 from hero 102');
+    assertEq(built.pool.rare[5], 10, 'pool.rare[5] = 7 bag + 2 chest + 1 premium');
+    assertEq(built.pool.rare[1], 4,  'pool.rare[1] = 4 from Lv 1 chests');
+    assertEq(built.breakdown.benchEquipped.length, 1, 'benchEquipped only hero 102 (dedup)');
+
+    console.log('msSelfTest: all assertions passed');
+  }
+  if (typeof location !== 'undefined' && location.search && location.search.indexOf('msSelfTest=1') >= 0) {
+    try { msSelfTest(); } catch (e) { console.error(e); }
+  }
+
   function renderHeroBenchSubTab(container, siteKey) {
     while (container.firstChild) container.removeChild(container.firstChild);
 
