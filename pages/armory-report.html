@@ -5353,6 +5353,12 @@
   // Upgrade types: 0=shards, 1=unique fragments, 2=self-upgrade, 3=cannot upgrade
   var UT = {};
 
+  // Per-group max level — populated from data/decor-lookups.json. Sourced from
+  // the in-game building.max_level field, so the decor set modal can show the
+  // true cap (e.g. 2 for the Travel set, 1 for Commander Stories, 15 for older
+  // groups). Falls back to 15 when a group is missing from the map.
+  var MAX_LEVEL = {};
+
 
   // DECOR_BASE_TO_GROUP (baseId → group) — populated by _ar_decorLoad after
   // data/decor-lookups.json arrives. Empty until then; render paths await
@@ -5387,6 +5393,7 @@
         fill(ME_LOOKUP, j.ME_LOOKUP);
         fill(PL, j.PL);
         fill(UT, j.UT);
+        fill(MAX_LEVEL, j.MAX_LEVEL);
         // Build BASE_TO_GROUP from the now-populated GROUP_BASE.
         for (var _gbk in DECOR_GROUP_BASE) {
           DECOR_BASE_TO_GROUP[DECOR_GROUP_BASE[_gbk]] = parseInt(_gbk);
@@ -13006,6 +13013,24 @@
     modal.style.cssText = 'max-width:680px;width:100%;max-height:calc(100vh - 2rem);overflow-y:auto;padding:1.25rem 1.25rem 1rem;';
     bg.appendChild(modal);
 
+    // Per-component owned + placed flags.
+    //
+    // A suit appearing in merged.decorations.suit (`owned == true`) means the
+    // player has fully assembled the set, even if some components are in
+    // storage rather than actively placed on the map. Battle reports only
+    // surface placed buildings (via merged.decorations.ids -> playerGroupMap),
+    // so for an OWNED set we trust set-membership: every component is owned;
+    // playerGroupMap then tells us which are also currently placed.
+    //
+    // For NOT-OWNED sets the player may still have some components placed —
+    // those count as owned-and-placed; the rest are genuinely missing.
+    function compFlags(g) {
+      var key = String(g);
+      var placed = !!playerGroupMap[key];
+      var ownedComp = owned ? true : placed;
+      return { placed: placed, ownedComp: ownedComp };
+    }
+
     // Header
     var head = document.createElement('div');
     head.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;margin-bottom:.35rem;';
@@ -13017,9 +13042,17 @@
     var subt = document.createElement('div');
     subt.style.cssText = 'font-size:.7rem;color:var(--muted);margin-top:.15rem;';
     var ownedCount = 0;
-    suitGroupIds.forEach(function (g) { if (playerGroupMap[String(g)]) ownedCount++; });
+    var placedCount = 0;
+    suitGroupIds.forEach(function (g) {
+      var f = compFlags(g);
+      if (f.ownedComp) ownedCount++;
+      if (f.placed) placedCount++;
+    });
     var subParts = ['Set #' + suitId, ownedCount + ' / ' + suitGroupIds.length + ' owned'];
-    if (owned) subParts.push(suitLevel > 0 ? ('Set Lv.' + suitLevel) : 'Complete');
+    if (owned) {
+      subParts.push(placedCount + ' / ' + suitGroupIds.length + ' placed');
+      subParts.push(suitLevel > 0 ? ('Set Lv.' + suitLevel) : 'Complete');
+    }
     subt.textContent = subParts.join('  ·  ');
     titleWrap.appendChild(subt);
     head.appendChild(titleWrap);
@@ -13039,29 +13072,41 @@
     suitGroupIds.forEach(function (compG) {
       var groupKey = String(compG);
       var name = (DECOR_GROUPS[groupKey]) || ('Decoration #' + compG);
-      var isOwned = !!playerGroupMap[groupKey];
+      var f = compFlags(compG);
+      var placed = f.placed;
+      var ownedComp = f.ownedComp;
       var owningEntry = allGroups[compG] || allGroups[groupKey];
-      var curLevel = isOwned && owningEntry ? decorLevel(owningEntry.maxId, owningEntry.groupId || compG) : 0;
+      var curLevel = placed && owningEntry ? decorLevel(owningEntry.maxId, owningEntry.groupId || compG) : 0;
       var pl = (typeof PL !== 'undefined' && PL && PL[groupKey]) || null;
-      var maxLevel = pl && pl.sc ? pl.sc.length : 15;
-      // Some new groups cap at 1 or 2 levels; use DECOR_EXTRACTED_LVL as a soft hint
-      // when the sc array is the default 15. We still fall back to 15 if nothing else
-      // is known.
-      var info = (typeof DECOR_DATA !== 'undefined' && DECOR_DATA && DECOR_DATA[groupKey]) || null;
-      var buffsAtCur = (pl && pl.b1) ? pl.b1.map(function (b) {
-        return { i: b[0], v: b[1] * Math.max(curLevel || 1, 1), t: b[2] };
+      var maxLevelMap = (typeof MAX_LEVEL !== 'undefined' && MAX_LEVEL) ? MAX_LEVEL : null;
+      var maxLevel = (maxLevelMap && maxLevelMap[groupKey]) || (pl && pl.sc && pl.sc.length) || 15;
+      var buffsAtCur = (pl && pl.b1 && curLevel > 0) ? pl.b1.map(function (b) {
+        return { i: b[0], v: b[1] * curLevel, t: b[2] };
       }) : [];
       var buffsAtMax = (pl && pl.b1) ? pl.b1.map(function (b) {
         return { i: b[0], v: b[1] * maxLevel, t: b[2] };
       }) : [];
 
+      // Status pill colour + text per ownership state.
+      var statusColor, statusText;
+      if (placed) {
+        statusColor = 'var(--green)';
+        statusText = 'Lv.' + curLevel + ' / Lv.' + maxLevel + '  ·  Placed';
+      } else if (ownedComp) {
+        statusColor = 'var(--yellow)';
+        statusText = 'Owned (in stock)';
+      } else {
+        statusColor = 'var(--muted)';
+        statusText = 'Not owned';
+      }
+
       var row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:flex-start;gap:.7rem;padding:.5rem .6rem;background:var(--card);border:1px solid var(--border);border-radius:6px;' +
-        (isOwned ? '' : 'opacity:.6;filter:grayscale(.4);');
+        (ownedComp ? '' : 'opacity:.55;filter:grayscale(.4);');
 
       // Icon
       var iconWrap = document.createElement('div');
-      iconWrap.style.cssText = 'flex-shrink:0;width:48px;height:48px;border-radius:4px;background:var(--surface);display:flex;align-items:center;justify-content:center;border:1px solid ' + (isOwned ? 'var(--green)' : 'var(--border)') + ';';
+      iconWrap.style.cssText = 'flex-shrink:0;width:48px;height:48px;border-radius:4px;background:var(--surface);display:flex;align-items:center;justify-content:center;border:1px solid ' + statusColor + ';';
       var iconUrl = decorIconUrl(compG);
       if (iconUrl) {
         var img = document.createElement('img');
@@ -13084,25 +13129,24 @@
       nameEl.textContent = name;
       titleLine.appendChild(nameEl);
       var levelEl = document.createElement('span');
-      levelEl.style.cssText = 'font-size:.7rem;color:' + (isOwned ? 'var(--green)' : 'var(--muted)') + ';';
-      levelEl.textContent = isOwned ? ('Lv.' + curLevel + ' / Lv.' + maxLevel) : 'Not owned';
+      levelEl.style.cssText = 'font-size:.7rem;color:' + statusColor + ';';
+      levelEl.textContent = statusText;
       titleLine.appendChild(levelEl);
       body.appendChild(titleLine);
 
-      // Buffs
-      if (buffsAtCur.length) {
+      // Buffs — only render when we actually have per-level data for this
+      // group AND know the level. Older decors that pre-date our extracted
+      // PL map (most suits prior to ~5985) have no PL entry, so we skip the
+      // buff line for them rather than show misleading "Lv.1 / Lv.15" math.
+      if (buffsAtCur.length || (ownedComp === false && buffsAtMax.length)) {
         var buffLine = document.createElement('div');
         buffLine.style.cssText = 'font-size:.72rem;color:var(--muted);line-height:1.45;';
-        var parts = buffsAtCur.map(function (b, i) {
-          var max = buffsAtMax[i];
+        var basis = buffsAtCur.length ? buffsAtCur : buffsAtMax;
+        var parts = basis.map(function (b, i) {
+          var max = buffsAtMax[i] || b;
           var nm = (typeof BUFF_NAMES_DECOR !== 'undefined' && BUFF_NAMES_DECOR[String(b.i)]) || ('Buff ' + b.i);
           var curStr = formatDecorBuffVal(b);
           var maxStr = formatDecorBuffVal(max);
-          if (!isOwned) {
-            // Not owned: show what L1 base value would be + what max is
-            return nm + ': ' + formatDecorBuffVal({ i: b.i, v: b.v / Math.max(curLevel || 1, 1), t: b.t }) +
-              ' (max ' + maxStr + ')';
-          }
           if (curStr === maxStr) return nm + ': ' + curStr + ' (max)';
           return nm + ': ' + curStr + ' (max ' + maxStr + ')';
         });
