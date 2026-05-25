@@ -7569,20 +7569,15 @@
       // Only surfaced for verified S2864 players who can actually upload a
       // bookmarklet snapshot. For everyone else the toggle would be a dead
       // option — the only feed they have is battle reports.
+      //
+      // Collapsed by default with the current selection shown on the header
+      // (e.g. "Data source priority: Auto (recommended)"). Auto is the default
+      // and right answer for ~everyone, so we don't want a giant radio list
+      // squatting on the Identity panel every time it opens.
       var srcGate = identity && identity.siteKey && _ar_rosterMap && _ar_rosterMap[identity.siteKey] && _ar_isUnlocked(identity.siteKey);
       if (srcGate) {
         var srcRow = document.createElement('div');
         srcRow.style.cssText = 'margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:.4rem;';
-
-        var srcHdr = document.createElement('div');
-        srcHdr.style.cssText = 'font-size:.78rem;font-weight:600;color:var(--text);';
-        srcHdr.textContent = 'Data source priority';
-        srcRow.appendChild(srcHdr);
-
-        var srcHint = document.createElement('div');
-        srcHint.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;';
-        srcHint.textContent = 'Pick whether your battle reports or your bookmarklet snapshot wins when both have data for the same tab. Most players can leave this on Auto.';
-        srcRow.appendChild(srcHint);
 
         var srcOptions = [
           { v: 'auto',        label: 'Auto (recommended)', desc: 'Battle reports drive whatever they cover; the bookmarklet fills any gap they leave (today\'s behavior).' },
@@ -7590,6 +7585,35 @@
           { v: 'reports',     label: 'Reports first',      desc: 'Battle reports always win; the bookmarklet only fills gaps the reports never carry (bench, full hero roster, etc.).' }
         ];
         var srcCur = _ar_getSourcePriority();
+        function labelForValue(v) {
+          for (var i = 0; i < srcOptions.length; i++) if (srcOptions[i].v === v) return srcOptions[i].label;
+          return 'Auto (recommended)';
+        }
+
+        var srcHdr = document.createElement('button');
+        srcHdr.type = 'button';
+        srcHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:0;color:var(--text);font-size:.78rem;font-weight:600;cursor:pointer;width:100%;text-align:left;';
+        var srcHdrLabel = document.createElement('span');
+        srcHdrLabel.textContent = 'Data source priority: ';
+        var srcHdrValue = document.createElement('span');
+        srcHdrValue.style.cssText = 'color:var(--muted);font-weight:500;';
+        srcHdrValue.textContent = labelForValue(srcCur);
+        srcHdrLabel.appendChild(srcHdrValue);
+        srcHdr.appendChild(srcHdrLabel);
+        var srcCaret = document.createElement('span');
+        srcCaret.style.cssText = 'color:var(--muted);font-size:.7rem;margin-left:.5rem;transition:transform .15s;display:inline-block;';
+        srcCaret.textContent = '▾'; // ▾
+        srcHdr.appendChild(srcCaret);
+        srcRow.appendChild(srcHdr);
+
+        var srcBody = document.createElement('div');
+        srcBody.style.cssText = 'display:none;flex-direction:column;gap:.4rem;margin-top:.3rem;';
+
+        var srcHint = document.createElement('div');
+        srcHint.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;';
+        srcHint.textContent = 'Pick whether your battle reports or your bookmarklet snapshot wins when both have data for the same tab. Most players can leave this on Auto.';
+        srcBody.appendChild(srcHint);
+
         var srcGroupName = 'armory-src-pri-' + Math.random().toString(36).slice(2, 8);
         srcOptions.forEach(function(opt) {
           var lblEl = document.createElement('label');
@@ -7603,6 +7627,7 @@
           radio.addEventListener('change', function() {
             if (!radio.checked) return;
             try { localStorage.setItem('armory_source_priority', opt.v); } catch (_e) {}
+            srcHdrValue.textContent = opt.label;
           });
           lblEl.appendChild(radio);
           var txt = document.createElement('div');
@@ -7616,13 +7641,13 @@
           d.textContent = opt.desc;
           txt.appendChild(d);
           lblEl.appendChild(txt);
-          srcRow.appendChild(lblEl);
+          srcBody.appendChild(lblEl);
         });
 
         var srcApply = document.createElement('div');
         srcApply.style.cssText = 'font-size:.66rem;color:var(--muted);line-height:1.4;margin-top:.2rem;';
         srcApply.textContent = 'Closes this panel and reloads the report to apply.';
-        srcRow.appendChild(srcApply);
+        srcBody.appendChild(srcApply);
 
         var srcReload = document.createElement('button');
         srcReload.className = 'rh-prefs-btn';
@@ -7631,7 +7656,15 @@
         srcReload.addEventListener('click', function() {
           try { renderFullReport(); } catch (_e) {}
         });
-        srcRow.appendChild(srcReload);
+        srcBody.appendChild(srcReload);
+
+        srcRow.appendChild(srcBody);
+
+        srcHdr.addEventListener('click', function() {
+          var open = srcBody.style.display !== 'none';
+          srcBody.style.display = open ? 'none' : 'flex';
+          srcCaret.style.transform = open ? '' : 'rotate(180deg)';
+        });
 
         identPanel.appendChild(srcRow);
       }
