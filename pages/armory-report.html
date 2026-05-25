@@ -14718,6 +14718,95 @@
 
       container.appendChild(setsGrid);
     }
+
+    // ── Not Yet Collected sets section ───────────────────────────────────
+    // Any suit registered in DECOR_SUITS that the player hasn't fully
+    // assembled (so it's absent from merged.decorations.suit) renders here
+    // with greyed-out component icons. Pieces the player already owns
+    // (even partial) get the green border so they can see how close they
+    // are to completing the set.
+    if (typeof DECOR_SUITS === 'object' && DECOR_SUITS) {
+      var ownedSuitSet = {};
+      suitIds.forEach(function(sid) { ownedSuitSet[String(sid)] = true; });
+      var missingSuitIds = Object.keys(DECOR_SUITS).filter(function(sid) {
+        return !ownedSuitSet[String(sid)];
+      }).map(Number).sort(function(a, b) { return a - b; });
+
+      if (missingSuitIds.length) {
+        var notOwnedHeader = document.createElement('h3');
+        notOwnedHeader.style.cssText = 'color:var(--text);font-size:.9rem;margin:1.5rem 0 .75rem;padding-bottom:.4rem;border-bottom:1px solid var(--border);';
+        notOwnedHeader.textContent = 'Not Yet Collected (' + missingSuitIds.length + ')';
+        container.appendChild(notOwnedHeader);
+
+        var notOwnedGrid = document.createElement('div');
+        notOwnedGrid.className = 'deco-set-grid';
+
+        missingSuitIds.forEach(function(sid) {
+          var suitData = DECOR_SUITS[String(sid)];
+          var suitName = suitData ? suitData.n : ('Set #' + sid);
+          var suitGroupIds = DECOR_SUIT_GROUPS[String(sid)] || [];
+
+          var setCard = document.createElement('div');
+          setCard.className = 'deco-set-card';
+          setCard.style.opacity = '.8';
+
+          var nameRow = document.createElement('div');
+          nameRow.className = 'deco-set-name-row';
+          var setNameEl = document.createElement('span');
+          setNameEl.className = 'deco-set-name';
+          setNameEl.textContent = suitName;
+          nameRow.appendChild(setNameEl);
+          setCard.appendChild(nameRow);
+
+          // Owned-pieces count for the progress hint.
+          var ownedCount = 0;
+          suitGroupIds.forEach(function(g) { if (playerGroupMap[String(g)]) ownedCount++; });
+          var piecesEl = document.createElement('div');
+          piecesEl.className = 'deco-set-pieces';
+          var progressTag = document.createElement('span');
+          progressTag.style.cssText = (ownedCount > 0 ? 'color:var(--yellow);' : 'color:var(--muted);') + 'font-weight:600;margin-right:.4rem;';
+          progressTag.textContent = ownedCount + ' / ' + suitGroupIds.length + ' owned';
+          piecesEl.appendChild(progressTag);
+          setCard.appendChild(piecesEl);
+
+          // Component icons — owned pieces full opacity with green border,
+          // missing pieces dimmed.
+          if (suitGroupIds.length) {
+            var compRow = document.createElement('div');
+            compRow.className = 'deco-set-comp-row';
+            suitGroupIds.forEach(function(compG) {
+              var comp = document.createElement('div');
+              comp.className = 'deco-set-comp';
+              var compUrl = decorIconUrl(compG);
+              var compImg = document.createElement('img');
+              if (compUrl) {
+                compImg.src = compUrl;
+                compImg.onerror = function() { this.style.opacity = '0.15'; };
+              }
+              compImg.alt = '';
+              if (playerGroupMap[String(compG)]) {
+                compImg.className = 'deco-comp-owned';
+              } else {
+                compImg.style.cssText = 'opacity:.35;filter:grayscale(.6);';
+                compImg.title = 'Not yet owned';
+              }
+              comp.appendChild(compImg);
+              var compName = document.createElement('div');
+              compName.className = 'deco-set-comp-name';
+              compName.textContent = DECOR_GROUPS[String(compG)] || '';
+              compName.title = DECOR_GROUPS[String(compG)] || ('Decoration #' + compG);
+              comp.appendChild(compName);
+              compRow.appendChild(comp);
+            });
+            setCard.appendChild(compRow);
+          }
+
+          notOwnedGrid.appendChild(setCard);
+        });
+
+        container.appendChild(notOwnedGrid);
+      }
+    }
   }
 
   // ── Skin data cache + loader ───────────────────────────────────────────────
