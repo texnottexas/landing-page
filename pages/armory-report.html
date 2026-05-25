@@ -11602,30 +11602,23 @@
   }
 
   function msOpenChecker(siteKey) {
-    var heroesSupp = ArmoryIdentity.getSupplement('heroes', siteKey);
-    var invSupp    = ArmoryIdentity.getSupplement('inv', siteKey);
-    if (!heroesSupp) {
-      alert('March Size Checker needs the Heroes supplement. Run the bookmarklet first.');
-      return;
-    }
-    if (!invSupp) {
-      alert('March Size Checker needs the Inventory supplement. Run the bookmarklet first.');
-      return;
-    }
-
+    // Open modal shell immediately with a loading state, then fetch fresh
+    // heroes + inv supplements from the worker. localStorage may carry a
+    // stale snapshot from before the bookmarklet captured buff-slot data,
+    // so we always reconcile with the worker before showing the hero grid.
     var state = {
-      step: 1,
-      heroesSupp: heroesSupp,
-      invSupp: invSupp,
+      step: 0, // 0 = loading, 1-4 = wizard steps
+      heroesSupp: null,
+      invSupp: null,
       siteKey: siteKey,
       excludedHeroIds: new Set(),
       marchedHeroIds: [],
       result: null,
+      loadError: null,
     };
 
     var bg = document.createElement('div');
     bg.className = 'modal-bg show';
-
     var modal = document.createElement('div');
     modal.className = 'ms-modal';
     bg.appendChild(modal);
@@ -11640,28 +11633,99 @@
 
     function repaint() {
       while (modal.firstChild) modal.removeChild(modal.firstChild);
-      if (state.step === 1) msStep1HeroExclude(modal, state, repaint, close);
+      if (state.step === 0) msStepLoadSupp(modal, state, repaint, close);
+      else if (state.step === 1) msStep1HeroExclude(modal, state, repaint, close);
       else if (state.step === 2) msStep2HeroPick(modal, state, repaint, close);
       else if (state.step === 3) msStep3LoadingWizard(modal, state, repaint, close);
       else if (state.step === 4) msStep4Results(modal, state, repaint, close);
     }
     repaint();
-
     document.body.appendChild(bg);
 
-    // Dev hook: ?msDevOpen=1 auto-jumps to step 3 with marched = first 3 hero ids.
-    // Safe to ship — no-op without the query flag.
-    if (location.search.indexOf('msDevOpen=1') >= 0 && heroesSupp.list && heroesSupp.list.length >= 3) {
-      var allBench = msEnumerateBenchSkills(heroesSupp);
-      var pickable = {};
-      allBench.forEach(function (e) { pickable[e.heroId] = true; });
-      var pickableIds = Object.keys(pickable).map(Number).slice(0, 3);
-      if (pickableIds.length === 3) {
-        state.marchedHeroIds = pickableIds;
-        state.step = 3;
-        repaint();
-      }
+    // Reconcile local + remote supplements. Prefer the source that actually
+    // has march-size data; fall back to whichever is non-null.
+    function pickFreshest(kind, local, remote) {
+      if (remote && remote.__private) return local; // private — use local if any
+      if (!local && !remote) return null;
+      if (!local) return remote;
+      if (!remote) return local;
+      // Compare timestamps when both present
+      var lts = local.ts ? new Date(local.ts).getTime() : 0;
+      var rts = remote.ts ? new Date(remote.ts).getTime() : 0;
+      return rts > lts ? remote : local;
     }
+
+    Promise.all([
+      _ar_fetchSupplement('heroes', siteKey).catch(function () { return null; }),
+      _ar_fetchSupplement('inv', siteKey).catch(function () { return null; }),
+    ]).then(function (arr) {
+      var heroesRemote = arr[0], invRemote = arr[1];
+      var heroesLocal = ArmoryIdentity.getSupplement('heroes', siteKey);
+      var invLocal    = ArmoryIdentity.getSupplement('inv', siteKey);
+      var heroes = pickFreshest('heroes', heroesLocal, heroesRemote);
+      var inv    = pickFreshest('inv',    invLocal,    invRemote);
+      // Persist the fresher copy so subsequent reads (and other tabs) see it.
+      if (heroes && heroes !== heroesLocal) ArmoryIdentity.setSupplement('heroes', siteKey, heroes);
+      if (inv && inv !== invLocal) ArmoryIdentity.setSupplement('inv', siteKey, inv);
+
+      if (!heroes || !Array.isArray(heroes.list) || heroes.list.length === 0) {
+        state.loadError = 'Heroes supplement not found. Run the consolidated bookmarklet on h5.topwargame.com, then come back.';
+        repaint();
+        return;
+      }
+      if (!inv) {
+        state.loadError = 'Inventory supplement not found. Run the consolidated bookmarklet on h5.topwargame.com, then come back.';
+        repaint();
+        return;
+      }
+      state.heroesSupp = heroes;
+      state.invSupp = inv;
+      state.step = 1;
+
+      // Dev hook: ?msDevOpen=1 auto-jumps to step 3 with marched = first 3
+      // march-size-equipped hero ids. Safe to ship — no-op without the flag.
+      if (location.search.indexOf('msDevOpen=1') >= 0) {
+        var allBench = msEnumerateBenchSkills(heroes);
+        var seen = {};
+        var pickableIds = [];
+        allBench.forEach(function (e) {
+          if (!seen[e.heroId] && pickableIds.length < 3) {
+            seen[e.heroId] = true;
+            pickableIds.push(e.heroId);
+          }
+        });
+        if (pickableIds.length === 3) {
+          state.marchedHeroIds = pickableIds;
+          state.step = 3;
+        }
+      }
+      repaint();
+    });
+  }
+
+  function msStepLoadSupp(modal, state, repaint, close) {
+    var wrap = document.createElement('div');
+    wrap.className = 'ms-loader';
+    if (state.loadError) {
+      var err = document.createElement('div');
+      err.style.cssText = 'color:var(--red);font-size:.9rem;max-width:380px;margin:0 auto 1rem;';
+      err.textContent = state.loadError;
+      wrap.appendChild(err);
+      var closeBtn = document.createElement('button');
+      closeBtn.className = 'bo-btn';
+      closeBtn.textContent = 'Close';
+      closeBtn.onclick = close;
+      wrap.appendChild(closeBtn);
+    } else {
+      var line = document.createElement('div');
+      line.className = 'ms-loader-line';
+      line.textContent = 'Fetching your roster + inventory...';
+      wrap.appendChild(line);
+      var bar = document.createElement('div'); bar.className = 'ms-loader-bar';
+      var fill = document.createElement('div'); fill.style.width = '40%'; bar.appendChild(fill);
+      wrap.appendChild(bar);
+    }
+    modal.appendChild(wrap);
   }
 
   function msStep1HeroExclude(modal, state, repaint, close) {
