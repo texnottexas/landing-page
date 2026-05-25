@@ -13085,15 +13085,25 @@
       //   buffsAtCur — value at the player's current placed level (placed only)
       //   buffsAtL1  — base buff per piece (used for not-placed / not-owned)
       //   buffsAtMax — what the decor would give at its true max level
-      var buffsAtCur = (pl && pl.b1 && curLevel > 0) ? pl.b1.map(function (b) {
-        return { i: b[0], v: b[1] * curLevel, t: b[2] };
-      }) : [];
-      var buffsAtL1 = (pl && pl.b1) ? pl.b1.map(function (b) {
-        return { i: b[0], v: b[1], t: b[2] };
-      }) : [];
-      var buffsAtMax = (pl && pl.b1) ? pl.b1.map(function (b) {
-        return { i: b[0], v: b[1] * maxLevel, t: b[2] };
-      }) : [];
+      //
+      // Buffs at a given level prefer explicit per-level data (PL[g].bs)
+      // when the decor's scaling is non-linear (e.g. World Tour Travel
+      // Trunk: Lv.1 +10 capacity, Lv.2 +15 — not 10x2 = 20). Otherwise
+      // fall back to linear b1 * level, matching what the rest of the
+      // armory already assumes.
+      function _buffsAtLevel(level) {
+        if (!pl || !level) return [];
+        if (Array.isArray(pl.bs) && pl.bs[level - 1]) {
+          return pl.bs[level - 1].map(function (b) { return { i: b[0], v: b[1], t: b[2] }; });
+        }
+        if (pl.b1) {
+          return pl.b1.map(function (b) { return { i: b[0], v: b[1] * level, t: b[2] }; });
+        }
+        return [];
+      }
+      var buffsAtCur = curLevel > 0 ? _buffsAtLevel(curLevel) : [];
+      var buffsAtL1  = _buffsAtLevel(1);
+      var buffsAtMax = _buffsAtLevel(maxLevel);
 
       // Status pill colour + text per ownership state.
       var statusColor, statusText;
