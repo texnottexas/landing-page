@@ -12561,7 +12561,8 @@
       });
       return row;
     }
-    function buildEffectsRow() {
+    var BENCH_EFFECTS_INITIAL = 5;
+    function buildEffectsRow(expanded) {
       var row = document.createElement('div');
       row.className = 'bench-filter-row';
       var lbl = document.createElement('span');
@@ -12589,13 +12590,39 @@
       var prio = PRIORITY.filter(function(t) { return freq[t]; });
       var rest = tags.filter(function(t) { return PRIORITY.indexOf(t) === -1; }).sort();
       var ordered = prio.concat(rest);
-      ordered.forEach(function(t) {
+
+      // Pull currently-selected effects to the front so they stay visible when
+      // the row is collapsed — otherwise the user couldn't unselect a filter
+      // that fell below the cutoff.
+      var selected   = ordered.filter(function(t) { return state.effects[t]; });
+      var unselected = ordered.filter(function(t) { return !state.effects[t]; });
+      var arranged = selected.concat(unselected);
+
+      var shown = expanded ? arranged : arranged.slice(0, BENCH_EFFECTS_INITIAL);
+      shown.forEach(function(t) {
         row.appendChild(makePill(t + ' · ' + freq[t], 'eff', !!state.effects[t], function() {
           if (state.effects[t]) delete state.effects[t];
           else state.effects[t] = true;
           rerender();
         }));
       });
+
+      if (arranged.length > BENCH_EFFECTS_INITIAL) {
+        var toggle = document.createElement('span');
+        toggle.className = 'bench-fpill';
+        toggle.style.cssText = 'cursor:pointer;font-style:italic;background:transparent;border:1px dashed var(--border);color:var(--muted);';
+        if (expanded) {
+          toggle.textContent = 'Show less';
+        } else {
+          toggle.textContent = '+' + (arranged.length - BENCH_EFFECTS_INITIAL) + ' more';
+        }
+        toggle.addEventListener('click', function() {
+          var nextRow = buildEffectsRow(!expanded);
+          bar.replaceChild(nextRow, effectsRow);
+          effectsRow = nextRow;
+        });
+        row.appendChild(toggle);
+      }
       return row;
     }
 
