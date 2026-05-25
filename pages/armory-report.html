@@ -16159,31 +16159,43 @@
     defensive:   0.5,
   };
 
+  // Resolve per-unit weights for a playstyle. Modern prefs carry
+  // playstyle.weights[] parallel to playstyle.units[]. Older prefs (saved
+  // before ADO #172) carry only playstyle.balance — we synthesize weights
+  // from that for back-compat so existing players keep their setup.
+  function boResolveWeights(playstyle) {
+    if (playstyle.weights && playstyle.weights.length === (playstyle.units || []).length) {
+      return playstyle.weights;
+    }
+    var n = (playstyle.units || []).length;
+    if (playstyle.mode === 'mono') return [1.0];
+    if (playstyle.mode === 'triple') return [1.0, 1.0, 1.0].slice(0, n || 3);
+    if (playstyle.balance === 'primarySecondary') return [1.0, 0.75];
+    return [1.0, 1.0];
+  }
+
   // targetUnit: 0 = all, 1 = Army, 2 = Navy, 3 = Air
   // All-units buffs (targetUnit=0) stack across every unit type in the
-  // playstyle. Dual primary+secondary gives 1.75x (1.0 + 0.75), dual even
-  // gives 2.0x, triple gives 3.0x. Mono is bumped above a unit-specific stat
-  // (1.5x rather than 1.0x) because the player's roster grows over time and
-  // an all-units buff carries forward as they branch into a second unit type.
+  // playstyle: their multiplier is the SUM of per-unit weights so picking
+  // tighter weighting (e.g. 1.0 + 0.5) tightens all-units rewards too.
+  // Mono is bumped above a unit-specific stat (1.5x rather than 1.0x)
+  // because the player's roster grows over time and an all-units buff
+  // carries forward as they branch into a second unit type.
+  // Unit-specific buffs (targetUnit 1/2/3) use the weight for that unit
+  // if it's in the playstyle, else 0.
   function boPlaystyleMult(targetUnit, playstyle) {
+    var weights = boResolveWeights(playstyle);
     if (targetUnit === 0) {
       if (playstyle.mode === 'mono') return 1.5;
-      if (playstyle.mode === 'triple') return 3.0;
-      return playstyle.balance === 'even' ? 2.0 : 1.75;
+      var sum = 0;
+      for (var i = 0; i < weights.length; i++) sum += weights[i];
+      return sum;
     }
-    var mode = playstyle.mode;
-    if (mode === 'triple') return 1.0;
-    var primary = playstyle.units[0];
-    var secondary = playstyle.units[1];
-    if (mode === 'mono') {
-      return targetUnit === primary ? 1.0 : 0.0;
+    var units = playstyle.units || [];
+    for (var j = 0; j < units.length; j++) {
+      if (units[j] === targetUnit) return weights[j] || 0;
     }
-    if (playstyle.balance === 'even') {
-      return (targetUnit === primary || targetUnit === secondary) ? 1.0 : 0.0;
-    }
-    if (targetUnit === primary) return 1.0;
-    if (targetUnit === secondary) return 0.75;
-    return 0.0;
+    return 0;
   }
 
   // Map a buff_id to { statKey, scope, targetUnit }.
@@ -18054,13 +18066,21 @@
 
   function boPlaystyleLabel(prefs) {
     var UNITS = { 1: 'Army', 2: 'Navy', 3: 'Air' };
-    if (prefs.mode === 'triple') return 'Balanced (all 3 units)';
     if (prefs.mode === 'mono') return 'Mono ' + UNITS[prefs.units[0]];
-    var names = prefs.units.map(function(u) { return UNITS[u]; });
-    if (prefs.balance === 'primarySecondary') {
-      return 'Dual ' + names[0] + ' + ' + names[1] + ' (primary ' + names[0] + ')';
+    var weights = boResolveWeights(prefs);
+    var allEqual = weights.every(function(w) { return w === weights[0]; });
+    var parts = prefs.units.map(function(u, i) {
+      var w = weights[i];
+      var wStr = (w === Math.floor(w)) ? w.toFixed(1) : w.toString();
+      return UNITS[u] + ' ' + wStr + 'x';
+    });
+    var prefix = prefs.mode === 'triple' ? 'Triple' : 'Dual';
+    if (allEqual) {
+      var w0 = weights[0];
+      var w0Str = (w0 === Math.floor(w0)) ? w0.toFixed(1) : w0.toString();
+      return prefix + ' ' + prefs.units.map(function(u) { return UNITS[u]; }).join(' + ') + ' (even, ' + w0Str + 'x each)';
     }
-    return 'Dual ' + names.join(' + ') + ' (even balance)';
+    return prefix + ' ' + parts.join(' + ');
   }
 
   // Per-stat raw contribution a beast brings at given star/level/potential at a slot
@@ -19160,7 +19180,9 @@
   }
 
   function boRenderWizard(container, merged, siteKey) {
-    var state = { step: 1, mode: null, units: [], balance: 'even' };
+    var state = { step: 1, mode: null, units: [], balance: 'even', weights: null };
+    // Allowed per-unit weight choices for the dropdown (Meliodas / ADO #172).
+    var BO_WEIGHT_CHOICES = [1.0, 0.75, 0.5, 0.25];
 
     function repaint() {
       while (container.firstChild) container.removeChild(container.firstChild);
@@ -19205,13 +19227,14 @@
         card.onclick = function() {
           state.mode = opt.mode;
           if (opt.mode === 'triple') {
+            // Pre-select all three units; user still gets step 2 to pick weights.
             state.units = [1, 2, 3];
-            boSavePrefs(siteKey, state);
-            boRenderPlan(container, merged, siteKey, state);
+            state.weights = [1.0, 1.0, 1.0];
           } else {
-            state.step = 2;
-            repaint();
+            state.weights = null;
           }
+          state.step = 2;
+          repaint();
         };
         grid.appendChild(card);
       });
@@ -19220,18 +19243,34 @@
     }
 
     function renderStep2() {
+      var UNIT_LABELS = { 1: 'Army', 2: 'Navy', 3: 'Air Force' };
+      var cap = state.mode === 'mono' ? 1 : state.mode === 'dual' ? 2 : 3;
+      // Picker selection: ordered list of unit IDs the player picked.
+      // Triple pre-fills with [1,2,3] but the user can still re-order by
+      // toggling. For mono/dual it starts empty (or from previous state).
+      var selectedDisplay = (state.units && state.units.length) ? state.units.slice() : [];
+      // Per-unit weights aligned to selectedDisplay (used for dual/triple only).
+      // Default: 1.0 for the first pick, 1.0 for the rest (i.e. even).
+      var weights = (state.weights && state.weights.length === selectedDisplay.length)
+        ? state.weights.slice()
+        : selectedDisplay.map(function() { return 1.0; });
+
       var wrap = document.createElement('div');
       wrap.style.cssText = 'max-width:520px;margin:0 auto;padding:1rem;';
 
       var h = document.createElement('h2');
       h.style.cssText = 'margin:0 0 .25rem;color:var(--text);';
-      h.textContent = state.mode === 'mono' ? 'Which unit?' : 'Which two units?';
+      h.textContent = state.mode === 'mono'
+        ? 'Which unit?'
+        : (state.mode === 'dual' ? 'Which two units?' : 'Set per-unit weighting');
       wrap.appendChild(h);
 
-      if (state.mode === 'dual') {
+      if (state.mode !== 'mono') {
         var sub = document.createElement('p');
         sub.style.cssText = 'color:var(--muted);font-size:.85rem;margin:0 0 1rem;';
-        sub.textContent = 'Pick two. If you choose Primary / Secondary weighting below, you can set which one is primary.';
+        sub.textContent = state.mode === 'dual'
+          ? 'Pick two units, then set how much each one counts.'
+          : 'Tighten the weight on units you march less so the optimizer prioritizes your mains.';
         wrap.appendChild(sub);
       }
 
@@ -19239,7 +19278,6 @@
       picker.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:1rem;';
       wrap.appendChild(picker);
 
-      var selectedDisplay = state.units.slice();
       function paintPicker() {
         while (picker.firstChild) picker.removeChild(picker.firstChild);
         [
@@ -19251,24 +19289,25 @@
           btn.type = 'button';
           var idx = selectedDisplay.indexOf(u.id);
           var on = idx >= 0;
-          var isPrimary = on && idx === 0;
-          var showPrimaryBadge = on && state.mode === 'dual' && state.balance === 'primarySecondary' && selectedDisplay.length === 2;
           btn.style.cssText = 'background:' + (on ? 'var(--accent)' : 'var(--surface)') +
-            ';border:2px solid ' + (showPrimaryBadge && isPrimary ? 'var(--green)' : on ? 'var(--accent)' : 'var(--border)') +
+            ';border:2px solid ' + (on ? 'var(--accent)' : 'var(--border)') +
             ';border-radius:8px;padding:.85rem;color:' + (on ? '#0d1117' : 'var(--text)') +
             ';font-weight:600;cursor:pointer;';
-          btn.textContent = u.label + (showPrimaryBadge ? (isPrimary ? ' (Primary)' : ' (Secondary)') : '');
+          btn.textContent = u.label;
           btn.onclick = function() {
             if (idx >= 0) {
               selectedDisplay.splice(idx, 1);
+              weights.splice(idx, 1);
             } else {
-              var cap = state.mode === 'mono' ? 1 : 2;
-              if (selectedDisplay.length >= cap) selectedDisplay.shift();
+              if (selectedDisplay.length >= cap) {
+                selectedDisplay.shift();
+                weights.shift();
+              }
               selectedDisplay.push(u.id);
+              weights.push(1.0);
             }
             paintPicker();
-            paintBalanceToggle();
-            paintPrimarySwap();
+            paintWeights();
             clearWizardErr();
           };
           picker.appendChild(btn);
@@ -19276,75 +19315,81 @@
       }
       paintPicker();
 
-      var primarySwapBox = document.createElement('div');
-      primarySwapBox.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.75rem;margin-bottom:1rem;display:none;';
-      wrap.appendChild(primarySwapBox);
+      // Per-unit weight dropdowns. Only shown for dual + triple (mono has
+      // no concept of weighting). Updates the `weights` array in place.
+      var weightsBox = document.createElement('div');
+      weightsBox.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.75rem;margin-bottom:1rem;display:none;';
+      wrap.appendChild(weightsBox);
 
-      function paintPrimarySwap() {
-        if (state.mode !== 'dual' || state.balance !== 'primarySecondary' || selectedDisplay.length !== 2) {
-          primarySwapBox.style.display = 'none';
+      function paintWeights() {
+        if (state.mode === 'mono' || selectedDisplay.length !== cap) {
+          weightsBox.style.display = 'none';
           return;
         }
-        primarySwapBox.style.display = '';
-        while (primarySwapBox.firstChild) primarySwapBox.removeChild(primarySwapBox.firstChild);
-        var UNIT_LABELS = { 1: 'Army', 2: 'Navy', 3: 'Air Force' };
-        var primaryUnit = selectedDisplay[0];
-        var secondaryUnit = selectedDisplay[1];
-        var head = document.createElement('div');
-        head.style.cssText = 'font-size:.78rem;color:var(--muted);margin-bottom:.5rem;';
-        head.textContent = 'Primary: ' + UNIT_LABELS[primaryUnit] + ' (1.0x) | Secondary: ' + UNIT_LABELS[secondaryUnit] + ' (0.75x)';
-        primarySwapBox.appendChild(head);
-        var swapBtn = document.createElement('button');
-        swapBtn.type = 'button';
-        swapBtn.style.cssText = 'background:var(--card);border:1px solid var(--border);color:var(--text);padding:.4rem .75rem;font-size:.8rem;border-radius:6px;cursor:pointer;';
-        swapBtn.textContent = 'Swap: make ' + UNIT_LABELS[secondaryUnit] + ' primary';
-        swapBtn.onclick = function() {
-          selectedDisplay = [secondaryUnit, primaryUnit];
-          paintPicker();
-          paintBalanceToggle();
-          paintPrimarySwap();
-        };
-        primarySwapBox.appendChild(swapBtn);
-      }
-      paintPrimarySwap();
+        weightsBox.style.display = '';
+        while (weightsBox.firstChild) weightsBox.removeChild(weightsBox.firstChild);
 
-      var balanceBox = document.createElement('div');
-      balanceBox.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.75rem;margin-bottom:1rem;display:none;';
-      wrap.appendChild(balanceBox);
-
-      function paintBalanceToggle() {
-        if (state.mode !== 'dual' || selectedDisplay.length !== 2) {
-          balanceBox.style.display = 'none';
-          return;
-        }
-        balanceBox.style.display = '';
-        while (balanceBox.firstChild) balanceBox.removeChild(balanceBox.firstChild);
         var head = document.createElement('div');
-        head.style.cssText = 'font-size:.78rem;color:var(--muted);margin-bottom:.4rem;';
-        head.textContent = 'How are these two units weighted?';
-        balanceBox.appendChild(head);
-        [
-          { val: 'even', label: 'Even balance, both count equally (1.0x each)' },
-          { val: 'primarySecondary', label: 'Primary / Secondary, first pick 1.0x, second pick 0.75x' }
-        ].forEach(function(opt) {
-          var lbl = document.createElement('label');
-          lbl.style.cssText = 'display:block;font-size:.82rem;color:var(--text);margin-bottom:.3rem;cursor:pointer;';
-          var radio = document.createElement('input');
-          radio.type = 'radio';
-          radio.name = 'bo-balance';
-          radio.value = opt.val;
-          radio.checked = state.balance === opt.val;
-          radio.onchange = function() {
-            state.balance = opt.val;
-            paintPicker();
-            paintPrimarySwap();
+        head.style.cssText = 'font-size:.78rem;color:var(--muted);margin-bottom:.6rem;';
+        head.textContent = 'Weight each unit (higher = optimizer prefers buffs for that unit).';
+        weightsBox.appendChild(head);
+
+        selectedDisplay.forEach(function(unitId, i) {
+          var row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem;';
+          var name = document.createElement('span');
+          name.style.cssText = 'color:var(--text);font-size:.85rem;';
+          name.textContent = UNIT_LABELS[unitId];
+          row.appendChild(name);
+
+          var sel = document.createElement('select');
+          sel.style.cssText = 'background:var(--card);border:1px solid var(--border);color:var(--text);padding:.3rem .6rem;font-size:.82rem;border-radius:6px;cursor:pointer;';
+          BO_WEIGHT_CHOICES.forEach(function(w) {
+            var opt = document.createElement('option');
+            opt.value = String(w);
+            opt.textContent = w.toFixed(2) + 'x';
+            if (Math.abs(w - weights[i]) < 1e-6) opt.selected = true;
+            sel.appendChild(opt);
+          });
+          sel.onchange = function() {
+            weights[i] = parseFloat(sel.value);
           };
-          lbl.appendChild(radio);
-          lbl.appendChild(document.createTextNode(' ' + opt.label));
-          balanceBox.appendChild(lbl);
+          row.appendChild(sel);
+          weightsBox.appendChild(row);
         });
+
+        // Quick presets for the common shapes.
+        var presets = document.createElement('div');
+        presets.style.cssText = 'display:flex;gap:.4rem;margin-top:.4rem;flex-wrap:wrap;';
+        var presetDefs = state.mode === 'dual'
+          ? [
+              { label: 'Even (1.0 / 1.0)',         vals: [1.0, 1.0] },
+              { label: 'Primary 1.0 / 0.75',       vals: [1.0, 0.75] },
+              { label: 'Primary 1.0 / 0.5',        vals: [1.0, 0.5] },
+              { label: 'Primary 1.0 / 0.25',       vals: [1.0, 0.25] }
+            ]
+          : [
+              { label: 'Even (1.0 / 1.0 / 1.0)',   vals: [1.0, 1.0, 1.0] },
+              { label: 'Main 1.0 / 0.75 / 0.75',   vals: [1.0, 0.75, 0.75] },
+              { label: 'Main 1.0 / 0.5 / 0.5',     vals: [1.0, 0.5, 0.5] },
+              { label: 'Tiered 1.0 / 0.75 / 0.5',  vals: [1.0, 0.75, 0.5] },
+              { label: 'Tiered 1.0 / 0.5 / 0.25',  vals: [1.0, 0.5, 0.25] }
+            ];
+        presetDefs.forEach(function(p) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'bo-btn';
+          b.style.fontSize = '.72rem';
+          b.textContent = p.label;
+          b.onclick = function() {
+            weights = p.vals.slice();
+            paintWeights();
+          };
+          presets.appendChild(b);
+        });
+        weightsBox.appendChild(presets);
       }
-      paintBalanceToggle();
+      paintWeights();
 
       function clearWizardErr() {
         var existing = wrap.querySelector('.bo-wizard-err');
@@ -19364,7 +19409,6 @@
       go.className = 'bo-btn bo-btn-primary';
       go.textContent = 'Optimize';
       go.onclick = function() {
-        var cap = state.mode === 'mono' ? 1 : 2;
         if (selectedDisplay.length !== cap) {
           clearWizardErr();
           var errEl = document.createElement('div');
@@ -19375,6 +19419,11 @@
           return;
         }
         state.units = selectedDisplay.slice();
+        state.weights = state.mode === 'mono' ? null : weights.slice();
+        // Keep balance in sync for back-compat consumers (Identity panel label etc).
+        if (state.mode === 'dual' && state.weights) {
+          state.balance = (state.weights[0] === state.weights[1]) ? 'even' : 'primarySecondary';
+        }
         boSavePrefs(siteKey, state);
         boRenderPlan(container, merged, siteKey, state);
       };
@@ -19392,6 +19441,7 @@
       mode: state.mode,
       units: state.units,
       balance: state.balance,
+      weights: state.weights || null,
       savedAt: new Date().toISOString()
     };
     try { localStorage.setItem('beast_optimizer_prefs_' + siteKey, JSON.stringify(prefs)); } catch (e) {}
@@ -26225,13 +26275,13 @@
     // Hidden manual textarea — shown when player toggles "Paste manually".
     var ta = document.createElement('textarea');
     ta.style.cssText = 'width:100%;min-height:120px;max-height:240px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-family:monospace;font-size:11px;resize:vertical;display:none;margin-bottom:6px;';
-    ta.placeholder = '{"v":2,"ts":"...","inventory":{...},"beasts":{...},"chips":{...},"gear":{...},"heroes":{...},"formation":{...}}';
+    ta.placeholder = '{"v":3,"ts":"...","inventory":{...},"beasts":{...},"chips":{...},"gear":{...},"heroes":{...},"formation":{...},"enigmaState":{...},"decorations":{...},"baseSkin":{...}}';
     modal.appendChild(ta);
 
     function describeLoaded(raw) {
       try {
         var j = JSON.parse(raw);
-        if (j && typeof j === 'object' && j.v === 2) {
+        if (j && typeof j === 'object' && (j.v === 2 || j.v === 3)) {
           var bits = [];
           if (j.inventory) bits.push('inventory');
           if (j.beasts) bits.push('beasts');
@@ -26239,9 +26289,13 @@
           if (j.gear) bits.push('gear');
           if (j.heroes) bits.push('heroes');
           if (j.formation) bits.push('formation');
-          return (bits.length ? ('v2 envelope · ' + bits.join(' + ')) : 'v2 envelope (empty?)');
+          if (j.enigmaState) bits.push('enigmaState');
+          if (j.decorations) bits.push('decorations');
+          if (j.baseSkin) bits.push('baseSkin');
+          var label = 'v' + j.v + ' envelope';
+          return (bits.length ? (label + ' · ' + bits.join(' + ')) : (label + ' (empty?)'));
         }
-        return 'Parsed (' + (j && typeof j === 'object' ? Object.keys(j).length : 0) + ' keys) but not a v=2 envelope';
+        return 'Parsed (' + (j && typeof j === 'object' ? Object.keys(j).length : 0) + ' keys) but not a bookmarklet envelope';
       } catch (e) { return 'Not JSON yet — ' + (e.message || e); }
     }
     function markLoaded(src, txt) {
