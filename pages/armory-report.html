@@ -5359,6 +5359,13 @@
   // groups). Falls back to 15 when a group is missing from the map.
   var MAX_LEVEL = {};
 
+  // Direct id -> level lookup. Older decoration groups don't use a contiguous
+  // id sequence (e.g. Cracked Coffin L1=46400, L2=4640002), so the arithmetic
+  // `id - baseId + 1` formula returned millions for placed L2 buildings. This
+  // map is sourced straight from building.level so decorLevel() always picks
+  // the exact level regardless of the in-game id encoding.
+  var LV_BY_ID = {};
+
 
   // DECOR_BASE_TO_GROUP (baseId → group) — populated by _ar_decorLoad after
   // data/decor-lookups.json arrives. Empty until then; render paths await
@@ -5394,6 +5401,7 @@
         fill(PL, j.PL);
         fill(UT, j.UT);
         fill(MAX_LEVEL, j.MAX_LEVEL);
+        fill(LV_BY_ID, j.LV_BY_ID);
         // Build BASE_TO_GROUP from the now-populated GROUP_BASE.
         for (var _gbk in DECOR_GROUP_BASE) {
           DECOR_BASE_TO_GROUP[DECOR_GROUP_BASE[_gbk]] = parseInt(_gbk);
@@ -12981,9 +12989,19 @@
   }
 
   function decorLevel(id, groupId) {
+    // Prefer the authoritative id -> level map from the game's building TABLE.
+    // Old decoration groups use a non-contiguous id encoding (Cracked Coffin
+    // L1=46400, L2=4640002) that breaks the linear "id - baseId + 1" formula.
+    if (LV_BY_ID && LV_BY_ID[id] != null) return LV_BY_ID[id];
+    if (LV_BY_ID && LV_BY_ID[String(id)] != null) return LV_BY_ID[String(id)];
     var baseId = DECOR_GROUP_BASE[String(groupId)];
     if (!baseId) return 1; // default to level 1 if no base found
-    return Math.max(1, id - baseId + 1); // 1-indexed: base item = Lv.1
+    var delta = id - baseId + 1;
+    // Guard against absurd results from the linear fallback so a stray
+    // non-contiguous id can't blow up the modal arithmetic (we cap at the
+    // group's known max level, defaulting to 15).
+    var cap = (MAX_LEVEL && MAX_LEVEL[String(groupId)]) || 15;
+    return Math.max(1, Math.min(cap, delta));
   }
 
   // Decoration Set detail modal — opened from a set card on the Decorations tab.
