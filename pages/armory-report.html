@@ -11239,9 +11239,13 @@
     return null;
   }
 
-  // msEnumerateBenchSkills: walks every owned hero's p1.b[0] + p2.b[0] and
-  // returns an array of { heroId, presetIdx, rarity, level } entries for every
-  // march-size buff equipped. Inactive preset's buff IS included.
+  // msEnumerateBenchSkills: walks every owned hero's equipped skill slots and
+  // returns an array of { heroId, presetIdx, slotKind, slotIdx, rarity, level }
+  // for every march-size skill equipped. We scan BOTH the buff slot b[0] AND
+  // the supportive slots x[1..3] — the game allows type-4 buff skills (like
+  // March Size) to be equipped in either kind of slot, and most players use
+  // the supportive slots to stack extra march-size on the same hero.
+  // x[0] is skipped (reserved for the hero's exclusive skill, type 3).
   function msEnumerateBenchSkills(heroesSupp) {
     if (!heroesSupp || !Array.isArray(heroesSupp.list)) return [];
     var out = [];
@@ -11254,15 +11258,26 @@
       ];
       for (var k = 0; k < presets.length; k++) {
         var p = presets[k].p;
-        if (!p || !Array.isArray(p.b)) continue;
-        var resolved = msResolveMarchSize(p.b[0]);
-        if (resolved) {
-          out.push({
-            heroId: h.id,
-            presetIdx: presets[k].idx,
-            rarity: resolved.rarity,
-            level: resolved.level,
+        if (!p) continue;
+        // Buff slot b[0]
+        if (Array.isArray(p.b)) {
+          var r = msResolveMarchSize(p.b[0]);
+          if (r) out.push({
+            heroId: h.id, presetIdx: presets[k].idx,
+            slotKind: 'b', slotIdx: 0,
+            rarity: r.rarity, level: r.level,
           });
+        }
+        // Supportive slots x[1..3] (skip x[0] = exclusive)
+        if (Array.isArray(p.x)) {
+          for (var xi = 1; xi < p.x.length; xi++) {
+            var rx = msResolveMarchSize(p.x[xi]);
+            if (rx) out.push({
+              heroId: h.id, presetIdx: presets[k].idx,
+              slotKind: 'x', slotIdx: xi,
+              rarity: rx.rarity, level: rx.level,
+            });
+          }
         }
       }
     }
@@ -11337,7 +11352,9 @@
     });
 
     // Bench equipped — only from heroes NOT excluded and NOT in the march.
-    // Dedupe: same hero with same (rarity, level) on both presets counts once.
+    // Dedupe per slot, NOT per (rarity, level): the same slot across both
+    // presets is the same physical card, but different slots (e.g. b[0] +
+    // x[2]) on the same hero hold different cards even if levels match.
     var allBench = msEnumerateBenchSkills(heroesSupp);
     var benchEquipped = [];
     var dedupeKey = {};
@@ -11345,7 +11362,7 @@
       var b = allBench[i];
       if (excluded.has(b.heroId)) continue;
       if (marched.has(b.heroId)) continue;
-      var key = b.heroId + '|' + b.rarity + '|' + b.level;
+      var key = b.heroId + '|' + b.slotKind + '|' + b.slotIdx + '|' + b.rarity + '|' + b.level;
       if (dedupeKey[key]) continue;
       dedupeKey[key] = true;
       benchEquipped.push(b);
@@ -11505,13 +11522,22 @@
 
     var heroesFixture = {
       list: [
-        { id: 101, p1: { b: [{ id: 21116, lv: 8 }] }, p2: { b: [{ id: 20116, lv: 5 }] } },
-        { id: 102, p1: { b: [{ id: 21116, lv: 6 }] }, p2: { b: [{ id: 21116, lv: 6 }] } },
-        { id: 103, p1: { b: [{ id: 99, lv: 1 }] },    p2: { b: [] } },
+        // Hero 101: P1 b[0] = Rare Lv 8, P2 b[0] = Normal Lv 5 — 2 hits
+        { id: 101, p1: { b: [{ id: 21116, lv: 8 }], x: [] }, p2: { b: [{ id: 20116, lv: 5 }], x: [] } },
+        // Hero 102: P1+P2 b[0] same Rare Lv 6 — 2 raw hits, dedupes to 1 card in pool
+        { id: 102, p1: { b: [{ id: 21116, lv: 6 }], x: [] }, p2: { b: [{ id: 21116, lv: 6 }], x: [] } },
+        // Hero 103: unrelated skill in b[0], march-size in x[2] + x[3] = 2 raw hits, 2 cards
+        { id: 103,
+          p1: { b: [{ id: 99, lv: 1 }], x: [{ id: 0, lv: 0 }, { id: 0, lv: 0 }, { id: 20116, lv: 4 }, { id: 21116, lv: 4 }] },
+          p2: { b: [], x: [{ id: 0, lv: 0 }, { id: 0, lv: 0 }, { id: 20116, lv: 4 }, { id: 21116, lv: 4 }] } },
       ],
     };
     var bench = msEnumerateBenchSkills(heroesFixture);
-    assertEq(bench.length, 4, 'msEnumerateBenchSkills total entries (pre-dedup)');
+    // 101: 2 hits (b on both presets, different rarities)
+    // 102: 2 hits (b on both presets, same rarity+level)
+    // 103: 4 hits (x[2] + x[3] on both presets)
+    // Total raw enumerator hits = 8
+    assertEq(bench.length, 8, 'msEnumerateBenchSkills total entries (pre-dedup, includes x-slot)');
 
     var invFixture = {
       tabs: {
@@ -11531,10 +11557,26 @@
       excludedHeroIds: new Set([101]),
       marchedHeroIds: new Set([103]),
     });
-    assertEq(built.pool.rare[6], 1,  'pool.rare[6] = 1 from hero 102');
+    assertEq(built.pool.rare[6], 1,  'pool.rare[6] = 1 from hero 102 b-slot dedup');
     assertEq(built.pool.rare[5], 10, 'pool.rare[5] = 7 bag + 2 chest + 1 premium');
     assertEq(built.pool.rare[1], 4,  'pool.rare[1] = 4 from Lv 1 chests');
-    assertEq(built.breakdown.benchEquipped.length, 1, 'benchEquipped only hero 102 (dedup)');
+    assertEq(built.breakdown.benchEquipped.length, 1, 'benchEquipped only hero 102 (101 excluded, 103 marched)');
+
+    // x-slot scanning: hero 103's x[2] (Normal Lv 4) + x[3] (Rare Lv 4) on both
+    // presets dedup to one card per slot → 2 bench-equipped cards when 103 is
+    // neither excluded nor marched.
+    var benchPool = msBuildPool({
+      heroesSupp: heroesFixture,
+      invSupp: { tabs: { hero: [], item: [] } },
+      excludedHeroIds: new Set(),
+      marchedHeroIds: new Set(),
+    });
+    assertEq(benchPool.pool.rare[4],   1, 'x-slot: hero 103 x[3] Rare Lv 4 dedups across presets');
+    assertEq(benchPool.pool.normal[4], 1, 'x-slot: hero 103 x[2] Normal Lv 4 dedups across presets');
+    // Hero 101: P1.b[0] Rare 8 + P2.b[0] Normal 5 — same slot, different
+    // (rarity, level) pairs → 2 separate cards (you swap when switching presets).
+    // Hero 102: P1+P2 b[0] same Rare 6 → 1 card. Hero 103: 2 cards in x[2] + x[3].
+    assertEq(benchPool.breakdown.benchEquipped.length, 5, 'benchPool: 2 (101 b diff levels) + 1 (102 b same) + 2 (103 x[2]+x[3]) = 5 cards');
 
     // msComputeTarget — ready case
     var t1 = msComputeTarget(
@@ -11956,36 +11998,38 @@
 
   // msRunAnalysis: collects targets from the 3 marched heroes, builds the pool,
   // computes per-target results, runs allocation.
+  //
+  // Targets: each equipped march-size SLOT on a marched hero is a separate
+  // upgrade target. Slot-aware dedup means the same slot on both presets at
+  // the same level collapses to one target (it's the same card), but two
+  // different slots at the same level produce two targets.
   function msRunAnalysis(state) {
     var heroesById = {};
     state.heroesSupp.list.forEach(function (h) { heroesById[h.id] = h; });
 
+    var allBench = msEnumerateBenchSkills(state.heroesSupp);
+    var marchedSet = new Set(state.marchedHeroIds);
     var targets = [];
-    state.marchedHeroIds.forEach(function (hid) {
-      var h = heroesById[hid];
-      if (!h) return;
-      var seen = {};
-      [{ idx: 1, p: h.p1 }, { idx: 2, p: h.p2 }].forEach(function (entry) {
-        var slot = entry.p && entry.p.b && entry.p.b[0];
-        var resolved = msResolveMarchSize(slot);
-        if (!resolved) return;
-        var key = resolved.rarity + '|' + resolved.level;
-        if (seen[key]) {
-          seen[key].presets.push(entry.idx);
-          return;
-        }
-        var target = {
-          heroId: hid,
-          presets: [entry.idx],
-          rarity: resolved.rarity,
-          currentLevel: resolved.level,
-        };
-        seen[key] = target;
-        targets.push(target);
-      });
+    var seen = {};
+    allBench.forEach(function (e) {
+      if (!marchedSet.has(e.heroId)) return;
+      var key = e.heroId + '|' + e.slotKind + '|' + e.slotIdx + '|' + e.rarity + '|' + e.level;
+      if (seen[key]) {
+        seen[key].presets.push(e.presetIdx);
+        return;
+      }
+      var target = {
+        heroId: e.heroId,
+        presets: [e.presetIdx],
+        rarity: e.rarity,
+        currentLevel: e.level,
+        slotKind: e.slotKind,
+        slotIdx: e.slotIdx,
+      };
+      seen[key] = target;
+      targets.push(target);
     });
 
-    var marchedSet = new Set(state.marchedHeroIds);
     var built = msBuildPool({
       heroesSupp: state.heroesSupp,
       invSupp: state.invSupp,
@@ -12109,7 +12153,8 @@
       hwrap.appendChild(hname);
       var meta = document.createElement('div'); meta.className = 'ms-target-meta';
       var presetLabel = t.presets.length === 2 ? 'Preset 1 + 2' : ('Preset ' + t.presets[0]);
-      meta.textContent = presetLabel + (c.maxedOut ? ' · Already at max level' : (' · Goal: Lv ' + c.goalLevel));
+      var slotLabel = t.slotKind === 'b' ? 'Buff slot' : ('Supportive slot ' + t.slotIdx);
+      meta.textContent = presetLabel + ' · ' + slotLabel + (c.maxedOut ? ' · Already at max level' : (' · Goal: Lv ' + c.goalLevel));
       hwrap.appendChild(meta);
       head.appendChild(hwrap);
 
@@ -12149,28 +12194,78 @@
         ? 'Total cards still needed for this upgrade:'
         : 'If you upgrade every target above (proper pool allocation):';
       footer.appendChild(ft);
-      var residRare = result.allocation.residualShortage.rare || {};
-      var residNorm = result.allocation.residualShortage.normal || {};
-      var anyResid = Object.keys(residRare).length + Object.keys(residNorm).length > 0;
-      if (!anyResid) {
-        var ok = document.createElement('div');
-        ok.style.color = 'var(--green)';
-        ok.style.fontSize = '.78rem';
-        ok.textContent = 'Your pool already covers every upgrade above.';
-        footer.appendChild(ok);
-      } else {
-        var ul = document.createElement('ul');
-        ul.style.cssText = 'margin:.3rem 0 0 1rem;padding:0;font-size:.75rem;color:var(--muted);';
-        ['rare', 'normal'].forEach(function (rarity) {
-          var resid = result.allocation.residualShortage[rarity] || {};
-          Object.keys(resid).sort(function (a, b) { return Number(a) - Number(b); }).forEach(function (lv) {
+
+      var rarities = ['rare', 'normal'];
+      // Per-rarity residual breakdown — always show BOTH so the player sees
+      // the Rare picture even when no Rare target was analyzed.
+      rarities.forEach(function (rarity) {
+        var label = rarity === 'rare' ? 'Rare' : 'Normal';
+        var resid = (result.allocation.residualShortage[rarity]) || {};
+        var levels = Object.keys(resid).map(Number).sort(function (a, b) { return a - b; });
+
+        var sub = document.createElement('div');
+        sub.style.cssText = 'font-size:.78rem;margin-top:.4rem;';
+        var head = document.createElement('div');
+        head.style.cssText = 'color:var(--text);font-weight:600;margin-bottom:.15rem;';
+        head.textContent = label + ' march size';
+        sub.appendChild(head);
+
+        if (levels.length === 0) {
+          var ok = document.createElement('div');
+          ok.style.color = 'var(--muted)';
+          ok.style.fontSize = '.72rem';
+          // Distinguish "no target of this rarity" vs "pool covered everything"
+          var anyTargetOfRarity = result.targets.some(function (t) { return t.rarity === rarity; });
+          ok.textContent = anyTargetOfRarity
+            ? 'Pool already covers every ' + label + ' upgrade.'
+            : 'No ' + label + ' march-size target in this analysis.';
+          sub.appendChild(ok);
+        } else {
+          var ul = document.createElement('ul');
+          ul.style.cssText = 'margin:.1rem 0 0 1rem;padding:0;font-size:.72rem;color:var(--muted);';
+          levels.forEach(function (lv) {
             var li = document.createElement('li');
-            li.textContent = resid[lv] + ' x Lv ' + lv + ' ' + (rarity === 'rare' ? 'Rare' : 'Normal') + ' card still needed';
+            li.textContent = resid[lv] + ' x Lv ' + lv + ' ' + label + ' card still needed';
             ul.appendChild(li);
           });
+          sub.appendChild(ul);
+        }
+        footer.appendChild(sub);
+      });
+
+      // Lv 1 equivalent total — converts every residual into raw Lv 1 cards
+      // by walking the 3:1 chain. Lv L shortage of N = N * 3^(L-1) Lv 1 cards.
+      var lv1Totals = { rare: 0, normal: 0 };
+      rarities.forEach(function (rarity) {
+        var resid = result.allocation.residualShortage[rarity] || {};
+        Object.keys(resid).forEach(function (lv) {
+          var L = Number(lv);
+          lv1Totals[rarity] += resid[lv] * Math.pow(3, L - 1);
         });
-        footer.appendChild(ul);
+      });
+      var grandTotal = lv1Totals.rare + lv1Totals.normal;
+      if (grandTotal > 0) {
+        var lv1Wrap = document.createElement('div');
+        lv1Wrap.style.cssText = 'margin-top:.7rem;padding-top:.55rem;border-top:1px solid var(--border);font-size:.78rem;';
+        var lv1Head = document.createElement('div');
+        lv1Head.style.cssText = 'color:var(--text);font-weight:600;margin-bottom:.2rem;';
+        lv1Head.textContent = 'Lv 1 card equivalent (if you crafted from scratch)';
+        lv1Wrap.appendChild(lv1Head);
+        var lv1Body = document.createElement('div');
+        lv1Body.style.cssText = 'color:var(--muted);font-size:.72rem;line-height:1.5;';
+        var parts = [];
+        if (lv1Totals.rare > 0)   parts.push(lv1Totals.rare.toLocaleString()   + ' x Lv 1 Rare');
+        if (lv1Totals.normal > 0) parts.push(lv1Totals.normal.toLocaleString() + ' x Lv 1 Normal');
+        lv1Body.textContent = parts.join(' + ');
+        lv1Wrap.appendChild(lv1Body);
+        footer.appendChild(lv1Wrap);
+      } else {
+        var allCovered = document.createElement('div');
+        allCovered.style.cssText = 'margin-top:.7rem;color:var(--green);font-size:.78rem;font-weight:600;';
+        allCovered.textContent = 'Your pool already covers every upgrade above.';
+        footer.appendChild(allCovered);
       }
+
       modal.appendChild(footer);
     }
 
