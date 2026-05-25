@@ -12979,6 +12979,154 @@
     return Math.max(1, id - baseId + 1); // 1-indexed: base item = Lv.1
   }
 
+  // Decoration Set detail modal — opened from a set card on the Decorations tab.
+  // Lists every component decor in the suit with its icon, current owned level,
+  // max level, and the per-decor buff at the player's current level (or base
+  // level for not-yet-owned pieces). Mirrors the standard modal-bg pattern.
+  function _ar_showDecoSetModal(opts) {
+    var suitId = opts.suitId, suitName = opts.suitName;
+    var suitLevel = opts.suitLevel || 0, owned = !!opts.owned;
+    var suitGroupIds = opts.suitGroupIds || [];
+    var allGroups = opts.allGroups || {};
+    var playerGroupMap = opts.playerGroupMap || {};
+
+    var bg = document.createElement('div');
+    bg.className = 'modal-bg show';
+    bg.style.zIndex = '900';
+    function closeNow() {
+      if (bg.parentNode) bg.parentNode.removeChild(bg);
+      document.removeEventListener('keydown', onEsc);
+    }
+    function onEsc(e) { if (e.key === 'Escape') closeNow(); }
+    document.addEventListener('keydown', onEsc);
+    bg.addEventListener('click', function (e) { if (e.target === bg) closeNow(); });
+
+    var modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.cssText = 'max-width:680px;width:100%;max-height:calc(100vh - 2rem);overflow-y:auto;padding:1.25rem 1.25rem 1rem;';
+    bg.appendChild(modal);
+
+    // Header
+    var head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;margin-bottom:.35rem;';
+    var titleWrap = document.createElement('div');
+    var h = document.createElement('h2');
+    h.style.cssText = 'margin:0;font-size:1.05rem;color:var(--text);';
+    h.textContent = suitName;
+    titleWrap.appendChild(h);
+    var subt = document.createElement('div');
+    subt.style.cssText = 'font-size:.7rem;color:var(--muted);margin-top:.15rem;';
+    var ownedCount = 0;
+    suitGroupIds.forEach(function (g) { if (playerGroupMap[String(g)]) ownedCount++; });
+    var subParts = ['Set #' + suitId, ownedCount + ' / ' + suitGroupIds.length + ' owned'];
+    if (owned) subParts.push(suitLevel > 0 ? ('Set Lv.' + suitLevel) : 'Complete');
+    subt.textContent = subParts.join('  ·  ');
+    titleWrap.appendChild(subt);
+    head.appendChild(titleWrap);
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.style.cssText = 'background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer;padding:.1rem .3rem;line-height:1;';
+    close.textContent = '✕';
+    close.setAttribute('aria-label', 'Close');
+    close.onclick = closeNow;
+    head.appendChild(close);
+    modal.appendChild(head);
+
+    // Component grid — one row per decor in the suit.
+    var list = document.createElement('div');
+    list.style.cssText = 'display:flex;flex-direction:column;gap:.4rem;margin-top:.5rem;';
+
+    suitGroupIds.forEach(function (compG) {
+      var groupKey = String(compG);
+      var name = (DECOR_GROUPS[groupKey]) || ('Decoration #' + compG);
+      var isOwned = !!playerGroupMap[groupKey];
+      var owningEntry = allGroups[compG] || allGroups[groupKey];
+      var curLevel = isOwned && owningEntry ? decorLevel(owningEntry.maxId, owningEntry.groupId || compG) : 0;
+      var pl = (typeof PL !== 'undefined' && PL && PL[groupKey]) || null;
+      var maxLevel = pl && pl.sc ? pl.sc.length : 15;
+      // Some new groups cap at 1 or 2 levels; use DECOR_EXTRACTED_LVL as a soft hint
+      // when the sc array is the default 15. We still fall back to 15 if nothing else
+      // is known.
+      var info = (typeof DECOR_DATA !== 'undefined' && DECOR_DATA && DECOR_DATA[groupKey]) || null;
+      var buffsAtCur = (pl && pl.b1) ? pl.b1.map(function (b) {
+        return { i: b[0], v: b[1] * Math.max(curLevel || 1, 1), t: b[2] };
+      }) : [];
+      var buffsAtMax = (pl && pl.b1) ? pl.b1.map(function (b) {
+        return { i: b[0], v: b[1] * maxLevel, t: b[2] };
+      }) : [];
+
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:flex-start;gap:.7rem;padding:.5rem .6rem;background:var(--card);border:1px solid var(--border);border-radius:6px;' +
+        (isOwned ? '' : 'opacity:.6;filter:grayscale(.4);');
+
+      // Icon
+      var iconWrap = document.createElement('div');
+      iconWrap.style.cssText = 'flex-shrink:0;width:48px;height:48px;border-radius:4px;background:var(--surface);display:flex;align-items:center;justify-content:center;border:1px solid ' + (isOwned ? 'var(--green)' : 'var(--border)') + ';';
+      var iconUrl = decorIconUrl(compG);
+      if (iconUrl) {
+        var img = document.createElement('img');
+        img.src = iconUrl;
+        img.alt = '';
+        img.style.cssText = 'max-width:46px;max-height:46px;display:block;';
+        img.onerror = function () { this.style.display = 'none'; };
+        iconWrap.appendChild(img);
+      }
+      row.appendChild(iconWrap);
+
+      // Text block
+      var body = document.createElement('div');
+      body.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:.15rem;min-width:0;';
+
+      var titleLine = document.createElement('div');
+      titleLine.style.cssText = 'display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap;';
+      var nameEl = document.createElement('span');
+      nameEl.style.cssText = 'font-weight:600;color:var(--text);font-size:.85rem;';
+      nameEl.textContent = name;
+      titleLine.appendChild(nameEl);
+      var levelEl = document.createElement('span');
+      levelEl.style.cssText = 'font-size:.7rem;color:' + (isOwned ? 'var(--green)' : 'var(--muted)') + ';';
+      levelEl.textContent = isOwned ? ('Lv.' + curLevel + ' / Lv.' + maxLevel) : 'Not owned';
+      titleLine.appendChild(levelEl);
+      body.appendChild(titleLine);
+
+      // Buffs
+      if (buffsAtCur.length) {
+        var buffLine = document.createElement('div');
+        buffLine.style.cssText = 'font-size:.72rem;color:var(--muted);line-height:1.45;';
+        var parts = buffsAtCur.map(function (b, i) {
+          var max = buffsAtMax[i];
+          var nm = (typeof BUFF_NAMES_DECOR !== 'undefined' && BUFF_NAMES_DECOR[String(b.i)]) || ('Buff ' + b.i);
+          var curStr = formatDecorBuffVal(b);
+          var maxStr = formatDecorBuffVal(max);
+          if (!isOwned) {
+            // Not owned: show what L1 base value would be + what max is
+            return nm + ': ' + formatDecorBuffVal({ i: b.i, v: b.v / Math.max(curLevel || 1, 1), t: b.t }) +
+              ' (max ' + maxStr + ')';
+          }
+          if (curStr === maxStr) return nm + ': ' + curStr + ' (max)';
+          return nm + ': ' + curStr + ' (max ' + maxStr + ')';
+        });
+        buffLine.textContent = parts.join('  ·  ');
+        body.appendChild(buffLine);
+      }
+
+      row.appendChild(body);
+      list.appendChild(row);
+    });
+    modal.appendChild(list);
+
+    // Footer hint
+    if (info && info.c != null && DECO_CAT_NAMES && DECO_CAT_NAMES[info.c]) { /* unused */ }
+    var foot = document.createElement('div');
+    foot.style.cssText = 'font-size:.65rem;color:var(--muted);margin-top:.7rem;line-height:1.45;';
+    foot.textContent = owned
+      ? 'Click outside or press Esc to close.'
+      : 'Collect every piece to activate the set bonus. Greyed pieces are not in your reports yet.';
+    modal.appendChild(foot);
+
+    document.body.appendChild(bg);
+  }
+
   function formatDecorBuffVal(buff) {
     // t=1 means additive integer (March Size, Garage Capacity); t=10000 means percentage
     if (buff.t === 1) return '+' + buff.v;
@@ -14637,6 +14785,16 @@
 
         var setCard = document.createElement('div');
         setCard.className = 'deco-set-card';
+        setCard.style.cursor = 'pointer';
+        (function (capSid, capName, capLevel, capGroups, capOwned) {
+          setCard.addEventListener('click', function () {
+            _ar_showDecoSetModal({
+              suitId: capSid, suitName: capName, suitLevel: capLevel,
+              suitGroupIds: capGroups || [], owned: capOwned,
+              allGroups: allGroups, playerGroupMap: playerGroupMap
+            });
+          });
+        })(sid, suitName, suitLevel, suitGroupIds, true);
 
         // Name row with level
         var nameRow = document.createElement('div');
@@ -14749,6 +14907,16 @@
           var setCard = document.createElement('div');
           setCard.className = 'deco-set-card';
           setCard.style.opacity = '.8';
+          setCard.style.cursor = 'pointer';
+          (function (capSid, capName, capGroups) {
+            setCard.addEventListener('click', function () {
+              _ar_showDecoSetModal({
+                suitId: capSid, suitName: capName, suitLevel: 0,
+                suitGroupIds: capGroups, owned: false,
+                allGroups: allGroups, playerGroupMap: playerGroupMap
+              });
+            });
+          })(sid, suitName, suitGroupIds);
 
           var nameRow = document.createElement('div');
           nameRow.className = 'deco-set-name-row';
