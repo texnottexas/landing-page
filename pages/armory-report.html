@@ -7329,13 +7329,18 @@
     hdr.appendChild(closeX);
     modal.appendChild(hdr);
 
-    // Tab bar — Advisor tab is gated to verified S2864 members and only shows
-    // when there's something to display (own requests OR opened advisor codes).
+    // Tab bar — Advisor + Power-User Tools tabs are gated to verified
+    // S2864 members. Advisor only shows when there's something to display
+    // (own requests OR opened advisor codes); Power-User Tools shows for
+    // any verified member since the tools inside have their own per-feature
+    // gating where it matters.
     var tabBar = document.createElement('div');
-    tabBar.style.cssText = 'display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:.75rem;';
+    tabBar.style.cssText = 'display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:.75rem;flex-wrap:wrap;';
     var showAdvisorTab = (typeof isVerifiedS2864Member === 'function') && isVerifiedS2864Member();
+    var showPowerToolsTab = showAdvisorTab;
     var tabs = ['Identity', 'Armory Report'];
     if (showAdvisorTab) tabs.push('Advisor');
+    if (showPowerToolsTab) tabs.push('Power-User Tools');
     var tabBtns = [];
     var tabPanels = [];
     tabs.forEach(function(t, i) {
@@ -7355,6 +7360,10 @@
           _ar_renderAdvisorSettingsPanel();
           // Opening the tab is the "I've seen this" signal.
           _ar_dismissAdvisorBadge();
+        } else if (t === 'Power-User Tools') {
+          // Render on click — cheap to rebuild and picks up the latest
+          // source-priority selection if the user changed it elsewhere.
+          if (typeof _ar_renderPowerUserPanel === 'function') _ar_renderPowerUserPanel();
         }
       });
       tabBtns.push(btn);
@@ -7382,6 +7391,15 @@
       advisorPanel.style.display = 'none';
       tabPanels.push(advisorPanel);
       modal.appendChild(advisorPanel);
+    }
+
+    // Power-User Tools panel (verified S2864 only)
+    if (showPowerToolsTab) {
+      var powerPanel = document.createElement('div');
+      powerPanel.id = 'rh-prefs-power-tools';
+      powerPanel.style.display = 'none';
+      tabPanels.push(powerPanel);
+      modal.appendChild(powerPanel);
     }
 
     overlay.appendChild(modal);
@@ -7565,205 +7583,8 @@
         identPanel.appendChild(verifyRow);
       }
 
-      // ── Data source priority (Phase 1) ──
-      // Only surfaced for verified S2864 players who can actually upload a
-      // bookmarklet snapshot. For everyone else the toggle would be a dead
-      // option — the only feed they have is battle reports.
-      //
-      // Collapsed by default with the current selection shown on the header
-      // (e.g. "Data source priority: Auto (recommended)"). Auto is the default
-      // and right answer for ~everyone, so we don't want a giant radio list
-      // squatting on the Identity panel every time it opens.
-      var srcGate = identity && identity.siteKey && _ar_rosterMap && _ar_rosterMap[identity.siteKey] && _ar_isUnlocked(identity.siteKey);
-      if (srcGate) {
-        var srcRow = document.createElement('div');
-        srcRow.style.cssText = 'margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:.4rem;';
-
-        var srcOptions = [
-          { v: 'auto',        label: 'Auto (recommended)', desc: 'Battle reports drive whatever they cover; the bookmarklet fills any gap they leave (today\'s behavior).' },
-          { v: 'bookmarklet', label: 'Bookmarklet first',  desc: 'When both sources have the same data, the bookmarklet snapshot wins. Useful when reports are stale.' },
-          { v: 'reports',     label: 'Reports first',      desc: 'Battle reports always win; the bookmarklet only fills gaps the reports never carry (bench, full hero roster, etc.).' }
-        ];
-        var srcCur = _ar_getSourcePriority();
-        function labelForValue(v) {
-          for (var i = 0; i < srcOptions.length; i++) if (srcOptions[i].v === v) return srcOptions[i].label;
-          return 'Auto (recommended)';
-        }
-
-        var srcHdr = document.createElement('button');
-        srcHdr.type = 'button';
-        srcHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:0;color:var(--text);font-size:.78rem;font-weight:600;cursor:pointer;width:100%;text-align:left;';
-        var srcHdrLabel = document.createElement('span');
-        srcHdrLabel.textContent = 'Data source priority: ';
-        var srcHdrValue = document.createElement('span');
-        srcHdrValue.style.cssText = 'color:var(--muted);font-weight:500;';
-        srcHdrValue.textContent = labelForValue(srcCur);
-        srcHdrLabel.appendChild(srcHdrValue);
-        srcHdr.appendChild(srcHdrLabel);
-        var srcCaret = document.createElement('span');
-        srcCaret.style.cssText = 'color:var(--muted);font-size:.7rem;margin-left:.5rem;transition:transform .15s;display:inline-block;';
-        srcCaret.textContent = '▾'; // ▾
-        srcHdr.appendChild(srcCaret);
-        srcRow.appendChild(srcHdr);
-
-        var srcBody = document.createElement('div');
-        srcBody.style.cssText = 'display:none;flex-direction:column;gap:.4rem;margin-top:.3rem;';
-
-        var srcHint = document.createElement('div');
-        srcHint.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;';
-        srcHint.textContent = 'Pick whether your battle reports or your bookmarklet snapshot wins when both have data for the same tab. Most players can leave this on Auto.';
-        srcBody.appendChild(srcHint);
-
-        var srcGroupName = 'armory-src-pri-' + Math.random().toString(36).slice(2, 8);
-        srcOptions.forEach(function(opt) {
-          var lblEl = document.createElement('label');
-          lblEl.style.cssText = 'display:flex;align-items:flex-start;gap:.5rem;padding:.4rem .55rem;background:var(--card);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:.75rem;line-height:1.35;';
-          var radio = document.createElement('input');
-          radio.type = 'radio';
-          radio.name = srcGroupName;
-          radio.value = opt.v;
-          radio.checked = (srcCur === opt.v);
-          radio.style.cssText = 'margin-top:.1rem;flex-shrink:0;';
-          radio.addEventListener('change', function() {
-            if (!radio.checked) return;
-            try { localStorage.setItem('armory_source_priority', opt.v); } catch (_e) {}
-            srcHdrValue.textContent = opt.label;
-          });
-          lblEl.appendChild(radio);
-          var txt = document.createElement('div');
-          txt.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:.15rem;';
-          var n = document.createElement('div');
-          n.style.cssText = 'color:var(--text);font-weight:500;';
-          n.textContent = opt.label;
-          txt.appendChild(n);
-          var d = document.createElement('div');
-          d.style.cssText = 'color:var(--muted);font-size:.68rem;';
-          d.textContent = opt.desc;
-          txt.appendChild(d);
-          lblEl.appendChild(txt);
-          srcBody.appendChild(lblEl);
-        });
-
-        var srcApply = document.createElement('div');
-        srcApply.style.cssText = 'font-size:.66rem;color:var(--muted);line-height:1.4;margin-top:.2rem;';
-        srcApply.textContent = 'Closes this panel and reloads the report to apply.';
-        srcBody.appendChild(srcApply);
-
-        var srcReload = document.createElement('button');
-        srcReload.className = 'rh-prefs-btn';
-        srcReload.style.cssText = 'align-self:flex-start;';
-        srcReload.textContent = 'Apply now';
-        srcReload.addEventListener('click', function() {
-          try { renderFullReport(); } catch (_e) {}
-        });
-        srcBody.appendChild(srcReload);
-
-        srcRow.appendChild(srcBody);
-
-        srcHdr.addEventListener('click', function() {
-          var open = srcBody.style.display !== 'none';
-          srcBody.style.display = open ? 'none' : 'flex';
-          srcCaret.style.transform = open ? '' : 'rotate(180deg)';
-        });
-
-        identPanel.appendChild(srcRow);
-      }
-
-      // ── Power-User Tools ──
-      // Same S2864-verified gate as Data source priority. Surfaces tools
-      // that exist outside the normal Import TopWar Data flow — currently
-      // just the standalone Skill Dismantle bookmarklet for players who
-      // want to scrap skill items without re-running the full snapshot.
-      var powerGate = identity && identity.siteKey && _ar_rosterMap && _ar_rosterMap[identity.siteKey] && _ar_isUnlocked(identity.siteKey);
-      if (powerGate) {
-        var puRow = document.createElement('div');
-        puRow.style.cssText = 'margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:.4rem;';
-
-        var puHdr = document.createElement('button');
-        puHdr.type = 'button';
-        puHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:0;color:var(--text);font-size:.78rem;font-weight:600;cursor:pointer;width:100%;text-align:left;';
-        var puHdrLabel = document.createElement('span');
-        puHdrLabel.textContent = 'Power-User Tools';
-        puHdr.appendChild(puHdrLabel);
-        var puCaret = document.createElement('span');
-        puCaret.style.cssText = 'color:var(--muted);font-size:.7rem;margin-left:.5rem;transition:transform .15s;display:inline-block;';
-        puCaret.textContent = '▾';
-        puHdr.appendChild(puCaret);
-        puRow.appendChild(puHdr);
-
-        var puBody = document.createElement('div');
-        puBody.style.cssText = 'display:none;flex-direction:column;gap:.6rem;margin-top:.4rem;';
-
-        var puIntro = document.createElement('div');
-        puIntro.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;';
-        puIntro.textContent = 'Standalone bookmarklets that skip the full snapshot flow. Save each URL as a bookmark on this page (drag to the bookmarks bar, or create a new bookmark and paste the URL).';
-        puBody.appendChild(puIntro);
-
-        // Card per power-user tool. Today: Skill Dismantle.
-        function _ar_buildPowerToolCard(opts) {
-          var card = document.createElement('div');
-          card.style.cssText = 'display:flex;flex-direction:column;gap:.35rem;padding:.55rem .65rem;background:var(--card);border:1px solid var(--border);border-radius:6px;';
-          var title = document.createElement('div');
-          title.style.cssText = 'color:var(--text);font-weight:600;font-size:.75rem;';
-          title.textContent = opts.title;
-          card.appendChild(title);
-          var desc = document.createElement('div');
-          desc.style.cssText = 'color:var(--muted);font-size:.68rem;line-height:1.4;';
-          desc.textContent = opts.desc;
-          card.appendChild(desc);
-          var ta = document.createElement('textarea');
-          ta.readOnly = true;
-          ta.value = opts.url;
-          ta.style.cssText = 'width:100%;min-height:3.2em;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.4rem;font-family:monospace;font-size:.62rem;resize:vertical;box-sizing:border-box;';
-          ta.addEventListener('click', function() { try { ta.select(); ta.setSelectionRange(0, ta.value.length); } catch (_e) {} });
-          card.appendChild(ta);
-          var btnRow = document.createElement('div');
-          btnRow.style.cssText = 'display:flex;align-items:center;gap:.5rem;';
-          var copy = document.createElement('button');
-          copy.className = 'rh-prefs-btn';
-          copy.style.cssText = 'font-size:.7rem;padding:.35rem .7rem;';
-          copy.textContent = 'Copy URL';
-          var status = document.createElement('span');
-          status.style.cssText = 'color:var(--muted);font-size:.65rem;';
-          copy.addEventListener('click', function() {
-            function ok() { status.style.color = 'var(--green)'; status.textContent = 'Copied — paste into a new bookmark.'; }
-            function fail(reason) { status.style.color = 'var(--red)'; status.textContent = 'Auto-copy blocked' + (reason ? ' (' + reason + ')' : '') + '. Tap the box above, select all, copy manually.'; }
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-              navigator.clipboard.writeText(opts.url).then(ok).catch(function(e) {
-                try {
-                  ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
-                  if (document.execCommand('copy')) ok(); else fail('execCommand');
-                } catch (e2) { fail(e2 && e2.message); }
-              });
-            } else {
-              try {
-                ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
-                if (document.execCommand('copy')) ok(); else fail('execCommand');
-              } catch (e3) { fail(e3 && e3.message); }
-            }
-          });
-          btnRow.appendChild(copy);
-          btnRow.appendChild(status);
-          card.appendChild(btnRow);
-          return card;
-        }
-
-        puBody.appendChild(_ar_buildPowerToolCard({
-          title: 'Skill Dismantle (standalone)',
-          desc: 'Same bulk-dismantle wizard available inside Import TopWar Data. Use this when you only want to scrap skill items and skip the full snapshot extract.',
-          url: 'javascript:(function(){var s=document.createElement(\'script\');s.src=\'https://2864tw.com/dismantle-bookmarklet.js?_=\'+Date.now();s.onerror=function(){alert(\'Bookmarklet load failed. Check internet + try again.\');};document.body.appendChild(s);})();'
-        }));
-
-        puRow.appendChild(puBody);
-
-        puHdr.addEventListener('click', function() {
-          var open = puBody.style.display !== 'none';
-          puBody.style.display = open ? 'none' : 'flex';
-          puCaret.style.transform = open ? '' : 'rotate(180deg)';
-        });
-
-        identPanel.appendChild(puRow);
-      }
+      // Data source priority + Power-User Tools moved into their own
+      // "Power-User Tools" tab (rendered by _ar_renderPowerUserPanel below).
 
       // ── Force refresh (clear caches + reload) ──
       // Installed PWA + iOS Safari hold HTTP responses harder than the browser
@@ -8315,6 +8136,150 @@
 
     var el = document.getElementById('rh-prefs-overlay');
     if (el) el.classList.add('active');
+  }
+
+  // Populate the Power-User Tools tab content. Called lazily when the
+  // tab is clicked so the modal opens fast. Contains two sections today:
+  //   1. Data Source Priority — radio cards + Apply.
+  //   2. Standalone Bookmarklets — card per tool (Skill Dismantle so far).
+  // Both sections are gated to verified S2864 + unlocked identity at the
+  // tab-visibility level (see buildIdentityPrefsModal), so we can render
+  // assuming the gate already passed.
+  function _ar_renderPowerUserPanel() {
+    var panel = document.getElementById('rh-prefs-power-tools');
+    if (!panel) return;
+    while (panel.firstChild) panel.removeChild(panel.firstChild);
+
+    // ── Section 1: Data Source Priority ──
+    var dspWrap = document.createElement('div');
+    dspWrap.style.cssText = 'display:flex;flex-direction:column;gap:.45rem;';
+    var dspTitle = document.createElement('div');
+    dspTitle.style.cssText = 'color:var(--text);font-weight:600;font-size:.85rem;';
+    dspTitle.textContent = 'Data source priority';
+    dspWrap.appendChild(dspTitle);
+    var dspHint = document.createElement('div');
+    dspHint.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;';
+    dspHint.textContent = 'Pick whether your battle reports or your bookmarklet snapshot wins when both have data for the same tab. Most players can leave this on Auto.';
+    dspWrap.appendChild(dspHint);
+
+    var srcOptions = [
+      { v: 'auto',        label: 'Auto (recommended)', desc: 'Battle reports drive whatever they cover; the bookmarklet fills any gap they leave (today\'s behavior).' },
+      { v: 'bookmarklet', label: 'Bookmarklet first',  desc: 'When both sources have the same data, the bookmarklet snapshot wins. Useful when reports are stale.' },
+      { v: 'reports',     label: 'Reports first',      desc: 'Battle reports always win; the bookmarklet only fills gaps the reports never carry (bench, full hero roster, etc.).' }
+    ];
+    var srcCur = _ar_getSourcePriority();
+    var srcGroupName = 'armory-src-pri-' + Math.random().toString(36).slice(2, 8);
+    srcOptions.forEach(function(opt) {
+      var lblEl = document.createElement('label');
+      lblEl.style.cssText = 'display:flex;align-items:flex-start;gap:.5rem;padding:.4rem .55rem;background:var(--card);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:.75rem;line-height:1.35;';
+      var radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = srcGroupName;
+      radio.value = opt.v;
+      radio.checked = (srcCur === opt.v);
+      radio.style.cssText = 'margin-top:.1rem;flex-shrink:0;';
+      radio.addEventListener('change', function() {
+        if (!radio.checked) return;
+        try { localStorage.setItem('armory_source_priority', opt.v); } catch (_e) {}
+      });
+      lblEl.appendChild(radio);
+      var txt = document.createElement('div');
+      txt.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:.15rem;';
+      var n = document.createElement('div');
+      n.style.cssText = 'color:var(--text);font-weight:500;';
+      n.textContent = opt.label;
+      txt.appendChild(n);
+      var d = document.createElement('div');
+      d.style.cssText = 'color:var(--muted);font-size:.68rem;';
+      d.textContent = opt.desc;
+      txt.appendChild(d);
+      lblEl.appendChild(txt);
+      dspWrap.appendChild(lblEl);
+    });
+
+    var srcApply = document.createElement('div');
+    srcApply.style.cssText = 'font-size:.66rem;color:var(--muted);line-height:1.4;margin-top:.2rem;';
+    srcApply.textContent = 'Closes this panel and reloads the report to apply.';
+    dspWrap.appendChild(srcApply);
+
+    var srcReload = document.createElement('button');
+    srcReload.className = 'rh-prefs-btn';
+    srcReload.style.cssText = 'align-self:flex-start;';
+    srcReload.textContent = 'Apply now';
+    srcReload.addEventListener('click', function() {
+      try { renderFullReport(); } catch (_e) {}
+    });
+    dspWrap.appendChild(srcReload);
+
+    panel.appendChild(dspWrap);
+
+    // ── Section 2: Standalone Bookmarklets ──
+    var bmWrap = document.createElement('div');
+    bmWrap.style.cssText = 'margin-top:1.1rem;padding-top:.75rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:.5rem;';
+    var bmTitle = document.createElement('div');
+    bmTitle.style.cssText = 'color:var(--text);font-weight:600;font-size:.85rem;';
+    bmTitle.textContent = 'Standalone bookmarklets';
+    bmWrap.appendChild(bmTitle);
+    var bmIntro = document.createElement('div');
+    bmIntro.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;';
+    bmIntro.textContent = 'Skip the full snapshot flow. Save each URL as a bookmark on this page (drag to the bookmarks bar, or create a new bookmark and paste the URL).';
+    bmWrap.appendChild(bmIntro);
+
+    function _ar_buildPowerToolCard(opts) {
+      var card = document.createElement('div');
+      card.style.cssText = 'display:flex;flex-direction:column;gap:.35rem;padding:.55rem .65rem;background:var(--card);border:1px solid var(--border);border-radius:6px;';
+      var title = document.createElement('div');
+      title.style.cssText = 'color:var(--text);font-weight:600;font-size:.75rem;';
+      title.textContent = opts.title;
+      card.appendChild(title);
+      var desc = document.createElement('div');
+      desc.style.cssText = 'color:var(--muted);font-size:.68rem;line-height:1.4;';
+      desc.textContent = opts.desc;
+      card.appendChild(desc);
+      var ta = document.createElement('textarea');
+      ta.readOnly = true;
+      ta.value = opts.url;
+      ta.style.cssText = 'width:100%;min-height:3.2em;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.4rem;font-family:monospace;font-size:.62rem;resize:vertical;box-sizing:border-box;';
+      ta.addEventListener('click', function() { try { ta.select(); ta.setSelectionRange(0, ta.value.length); } catch (_e) {} });
+      card.appendChild(ta);
+      var btnRow = document.createElement('div');
+      btnRow.style.cssText = 'display:flex;align-items:center;gap:.5rem;';
+      var copy = document.createElement('button');
+      copy.className = 'rh-prefs-btn';
+      copy.style.cssText = 'font-size:.7rem;padding:.35rem .7rem;';
+      copy.textContent = 'Copy URL';
+      var status = document.createElement('span');
+      status.style.cssText = 'color:var(--muted);font-size:.65rem;';
+      copy.addEventListener('click', function() {
+        function ok() { status.style.color = 'var(--green)'; status.textContent = 'Copied — paste into a new bookmark.'; }
+        function fail(reason) { status.style.color = 'var(--red)'; status.textContent = 'Auto-copy blocked' + (reason ? ' (' + reason + ')' : '') + '. Tap the box above, select all, copy manually.'; }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(opts.url).then(ok).catch(function(e) {
+            try {
+              ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
+              if (document.execCommand('copy')) ok(); else fail('execCommand');
+            } catch (e2) { fail(e2 && e2.message); }
+          });
+        } else {
+          try {
+            ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
+            if (document.execCommand('copy')) ok(); else fail('execCommand');
+          } catch (e3) { fail(e3 && e3.message); }
+        }
+      });
+      btnRow.appendChild(copy);
+      btnRow.appendChild(status);
+      card.appendChild(btnRow);
+      return card;
+    }
+
+    bmWrap.appendChild(_ar_buildPowerToolCard({
+      title: 'Skill Dismantle (standalone)',
+      desc: 'Same bulk-dismantle wizard available inside Import TopWar Data. Use this when you only want to scrap skill items and skip the full snapshot extract.',
+      url: 'javascript:(function(){var s=document.createElement(\'script\');s.src=\'https://2864tw.com/dismantle-bookmarklet.js?_=\'+Date.now();s.onerror=function(){alert(\'Bookmarklet load failed. Check internet + try again.\');};document.body.appendChild(s);})();'
+    }));
+
+    panel.appendChild(bmWrap);
   }
 
   function closeIdentityPrefs() {
