@@ -10,6 +10,10 @@
 // Each section preserves the v=1 shape produced by the existing single-purpose
 // bookmarklets so the wizard's existing handlers can route them unchanged.
 (function () {
+  // Captured during inventory extraction so the dismantle wizard can
+  // refresh inventory after a run without re-running every section.
+  var sharedExtractInventory = null;
+
   function buildDump(stepHook) {
     var req = window.__require;
     if (!req) throw new Error('Game not loaded — wait for the game to finish loading, then retry');
@@ -96,6 +100,8 @@
     }
 
     // ─── Inventory ────────────────────────────────────────────────────────
+    // Reference exposed to the dismantle wizard via sharedExtractInventory
+    // so it can refresh the snapshot's inventory section in place.
     async function extractInventory() {
       stepHook && stepHook('Inventory…');
       var UD = req('UserData').default;
@@ -154,6 +160,7 @@
       await closePanel(UIDataInfo.BagPanel, bagPath);
       return dump;
     }
+    sharedExtractInventory = extractInventory;
 
     // ─── Bench beasts (Q3+ unplaced) ──────────────────────────────────────
     async function extractBeasts() {
@@ -949,11 +956,546 @@
     return (n / (1024 * 1024)).toFixed(2) + ' MB';
   }
 
-  function attachCopyUI(overlay, text, summary) {
+  // ───────────────────────────────────────────────────────────────────────
+  // Skill Dismantle wizard — same logic as the standalone
+  // dismantle-bookmarklet.js (kept as a power-user fallback at
+  // https://2864tw.com/dismantle-bookmarklet.txt). Surfaced here as a
+  // "Dismantle skills" step inside the post-snapshot overlay so players
+  // can scrap stale skill items and re-copy the updated JSON in one flow.
+  //
+  // Protocol (verified):
+  //   Lv 1 -> chips:  NET.send(886, {itemId, num}, this, cb)            (JSON)
+  //   Lv N -> Lv 1:   NET.sendPB(4189, {header:{}, levelDownHeroSkill: {itemId, num}}, this, cb)  (protobuf)
+  //
+  // Memory reference: reference_skill_dismantle_protocol.md
+  // ───────────────────────────────────────────────────────────────────────
+  var DIS_QUALITY_LABEL = { 1: 'Normal', 2: 'Rare', 3: 'Epic', 4: 'Legendary', 5: 'Mythic' };
+  var DIS_QUALITY_COLOR = { 1: '#8b949e', 2: '#79c0ff', 3: '#bc8cff', 4: '#d29922', 5: '#ff7b72' };
+  // March Size — never auto-dismantle. 20116 Normal / 21116 Rare.
+  var DIS_SKILL_BLACKLIST = { 20116: true, 21116: true };
+
+  function disDisplayName(name) {
+    if (!name) return name;
+    return name.replace(/\bProtection\b/gi, 'Damage Decrease');
+  }
+
+  function disEl(tag, css, text) {
+    var n = document.createElement(tag);
+    if (css) n.style.cssText = css;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function disClearChildren(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  function disDelay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  function disEnumerateFamilies(req, ud) {
+    var TABLE = req('TableManager').TABLE;
+    var LOCAL = req('LocalManager').LOCAL;
+    var list = ud.getItemListByBagType(4) || [];
+    var groups = {};
+    for (var i = 0; i < list.length; i++) {
+      var it = list[i];
+      if (!it || !it._itemId || !it._amount) continue;
+      var row;
+      try { row = TABLE.getTableDataById('item', String(it._itemId)); } catch (e) { row = null; }
+      if (!row || row.type !== 42) continue;
+      var skillId = Number(row.para1);
+      if (!skillId) continue;
+      if (DIS_SKILL_BLACKLIST[skillId]) continue;
+      var level = Number(row.level) || 1;
+      var skillRow;
+      try { skillRow = TABLE.getTableDataById('hero_skill', String(skillId)); } catch (e) { skillRow = null; }
+      if (!skillRow) continue;
+      if (!skillRow.decomposition || skillRow.decomposition === '') continue;
+      var decompParts = String(skillRow.decomposition).split('|');
+      var chipId = Number(decompParts[0]);
+      var perLv1 = Number(decompParts[1]) || 1;
+      var rawName;
+      try { rawName = LOCAL.getText(skillRow.name) || skillRow.name; } catch (e) { rawName = skillRow.name; }
+      var name = disDisplayName(rawName);
+      var quality = Number(skillRow.quality) || 1;
+      var skillType = Number(skillRow.skill_type) || 0;
+      var heroBound = (skillType === 3) || (Number(skillRow.hero_id) > 0);
+      var familyKey = name + '|' + skillType + '|' + (heroBound ? '1' : '0');
+
+      if (!groups[familyKey]) {
+        groups[familyKey] = {
+          familyKey: familyKey, name: name, heroBound: heroBound,
+          skillTypes: [skillType], maxQuality: quality, variants: {},
+        };
+      } else {
+        if (groups[familyKey].skillTypes.indexOf(skillType) < 0) groups[familyKey].skillTypes.push(skillType);
+        if (quality > groups[familyKey].maxQuality) groups[familyKey].maxQuality = quality;
+        if (heroBound) groups[familyKey].heroBound = true;
+      }
+      if (!groups[familyKey].variants[quality]) {
+        groups[familyKey].variants[quality] = {
+          skillId: skillId, quality: quality,
+          decompChipId: chipId, decompPerLv1: perLv1, levels: {},
+        };
+      }
+      groups[familyKey].variants[quality].levels[level] = { itemId: Number(it._itemId), amount: Number(it._amount) };
+    }
+    return Object.values(groups);
+  }
+
+  function disLookupLv1ItemId(req, skillId) {
+    try {
+      var TABLE = req('TableManager').TABLE;
+      var rows = TABLE.getTableByKey('item', 'para1', skillId, 'level', 1, 'type', 42);
+      if (rows && rows.length) return Number(rows[0].id);
+    } catch (e) {}
+    return null;
+  }
+
+  function disBuildPlan(req, family) {
+    var qualities = Object.keys(family.variants).map(Number).sort(function (a, b) { return b - a; });
+    if (!qualities.length) return null;
+    var steps = [];
+    var totalChips = 0;
+    for (var q = 0; q < qualities.length; q++) {
+      var quality = qualities[q];
+      var variant = family.variants[quality];
+      var lvKeys = Object.keys(variant.levels).map(Number).sort(function (a, b) { return a - b; });
+      if (!lvKeys.length) continue;
+      var lv1Existing = (variant.levels[1] && variant.levels[1].amount) || 0;
+      var lv1ItemId = (variant.levels[1] && variant.levels[1].itemId) || disLookupLv1ItemId(req, variant.skillId);
+      var totalLv1Equiv = lv1Existing;
+      for (var i = 0; i < lvKeys.length; i++) {
+        var lvl = lvKeys[i];
+        if (lvl === 1) continue;
+        var entry = variant.levels[lvl];
+        if (!entry || !entry.amount) continue;
+        var yieldLv1 = entry.amount * Math.pow(3, lvl - 1);
+        steps.push({ kind: 'levelDown', level: lvl, quality: quality, itemId: entry.itemId, num: entry.amount, yieldsLv1: yieldLv1 });
+        totalLv1Equiv += yieldLv1;
+      }
+      if (totalLv1Equiv > 0) {
+        if (!lv1ItemId) continue;
+        steps.push({ kind: 'chip', quality: quality, itemId: lv1ItemId, num: totalLv1Equiv, chipsYielded: totalLv1Equiv * variant.decompPerLv1 });
+        totalChips += totalLv1Equiv * variant.decompPerLv1;
+      }
+    }
+    if (!steps.length) return null;
+    return { family: family, steps: steps, totalChips: totalChips };
+  }
+
+  function disSendStep(NET, step) {
+    return new Promise(function (resolve) {
+      var settled = false;
+      function done(ok, info) { if (!settled) { settled = true; resolve({ ok: ok, info: info }); } }
+      setTimeout(function () { done(false, { reason: 'timeout' }); }, 8000);
+      try {
+        if (step.kind === 'chip') {
+          NET.send(886, { itemId: step.itemId, num: step.num }, null, function (resp) { done(!!(resp && resp.s === 0), { resp: resp }); });
+        } else if (step.kind === 'levelDown') {
+          NET.sendPB(4189, { header: {}, levelDownHeroSkill: { itemId: step.itemId, num: step.num } }, null, function (resp) {
+            var ack = resp && resp.pbAck;
+            done(!!(ack && ack.header && ack.header.s === 0), { resp: resp });
+          });
+        } else {
+          done(false, { reason: 'unknown-step' });
+        }
+      } catch (e) { done(false, { reason: 'throw', message: e && e.message }); }
+    });
+  }
+
+  function disJitterMs() { return 400 + Math.floor(Math.random() * 400); }
+
+  async function disExecutePlans(req, plans, opts) {
+    var NET = req('NetMgr').NET;
+    var totalSteps = 0;
+    for (var i = 0; i < plans.length; i++) totalSteps += plans[i].steps.length;
+    var done = 0, errored = null;
+    for (var f = 0; f < plans.length; f++) {
+      var plan = plans[f];
+      if (opts.abort && opts.abort.aborted) return { aborted: true, done: done, total: totalSteps };
+      for (var s = 0; s < plan.steps.length; s++) {
+        if (opts.abort && opts.abort.aborted) return { aborted: true, done: done, total: totalSteps };
+        var step = plan.steps[s];
+        if (opts.onStep) opts.onStep({ family: plan.family, step: step, doneSoFar: done, total: totalSteps });
+        var res = await disSendStep(NET, step);
+        done++;
+        if (opts.onStepResult) opts.onStepResult({ family: plan.family, step: step, ok: res.ok, info: res.info, doneSoFar: done, total: totalSteps });
+        if (!res.ok) { errored = { family: plan.family, step: step, info: res.info }; return { errored: errored, done: done, total: totalSteps }; }
+        if (!(f === plans.length - 1 && s === plan.steps.length - 1)) await disDelay(disJitterMs());
+      }
+    }
+    return { done: done, total: totalSteps };
+  }
+
+  function disFmtLevels(family) {
+    var qs = Object.keys(family.variants).map(Number).sort(function (a, b) { return b - a; });
+    var sections = [];
+    for (var qi = 0; qi < qs.length; qi++) {
+      var q = qs[qi];
+      var v = family.variants[q];
+      var keys = Object.keys(v.levels).map(Number).sort(function (a, b) { return a - b; });
+      if (!keys.length) continue;
+      var inner = [];
+      for (var i = 0; i < keys.length; i++) inner.push('Lv ' + keys[i] + '×' + v.levels[keys[i]].amount);
+      var prefix = qs.length > 1 ? (DIS_QUALITY_LABEL[q] || ('Q' + q)) + ': ' : '';
+      sections.push(prefix + inner.join(' '));
+    }
+    return sections.join(' · ');
+  }
+
+  function disTotalItems(family) {
+    var n = 0;
+    var qs = Object.keys(family.variants);
+    for (var qi = 0; qi < qs.length; qi++) {
+      var v = family.variants[qs[qi]];
+      var keys = Object.keys(v.levels);
+      for (var i = 0; i < keys.length; i++) n += v.levels[keys[i]].amount;
+    }
+    return n;
+  }
+
+  // spawnDismantleWizard — opens a NEW fullscreen overlay above the
+  // existing snapshot overlay. Runs the same list -> confirm -> progress ->
+  // summary flow as the standalone bookmarklet, then calls onDone() so the
+  // parent UI can refresh its JSON textarea + summary line.
+  function spawnDismantleWizard(req, opts) {
+    var bg = disEl('div', 'position:fixed;inset:0;background:rgba(13,17,23,.96);z-index:2147483647;display:flex;flex-direction:column;align-items:stretch;padding:14px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;');
+    var hdr = disEl('div', 'color:#79c0ff;font-size:15px;font-weight:600;text-align:center;', 'Skill Dismantle');
+    var sub = disEl('div', 'color:#8b949e;font-size:12px;margin:4px 0 10px;text-align:center;', 'Loading bag…');
+    bg.appendChild(hdr); bg.appendChild(sub);
+    var body = disEl('div', 'flex:1;display:flex;flex-direction:column;min-height:0;');
+    bg.appendChild(body);
+    document.body.appendChild(bg);
+
+    var overlay = {
+      root: bg, hdr: hdr, sub: sub, body: body,
+      setHeader: function (t, color) { hdr.textContent = t; if (color) hdr.style.color = color; },
+      setSub: function (t, color) { sub.textContent = t; if (color) sub.style.color = color; },
+      remove: function () { try { document.body.removeChild(bg); } catch (_) {} },
+    };
+
+    var ud = window.__capturedUD;
+    if (!ud) {
+      overlay.setHeader('Bag not ready', '#f85149');
+      overlay.setSub('UserData not captured — re-run the snapshot first.', '#f85149');
+      var bk = disEl('button', 'padding:12px;background:transparent;color:#fff;border:1px solid #30363d;border-radius:6px;font-size:13px;', 'Close');
+      bk.addEventListener('click', function () { overlay.remove(); });
+      var br = disEl('div', 'display:flex;justify-content:center;margin-top:12px;');
+      br.appendChild(bk); overlay.body.appendChild(br);
+      return;
+    }
+
+    var families = disEnumerateFamilies(req, ud).filter(function (f) {
+      var p = disBuildPlan(req, f); return p && p.steps.length > 0;
+    });
+
+    overlay.setSub(families.length + ' famil' + (families.length === 1 ? 'y' : 'ies') + ' in bag · pick which to dismantle');
+
+    showList();
+
+    function showList() {
+      disClearChildren(overlay.body);
+      overlay.setHeader('Skill Dismantle', '#79c0ff');
+      overlay.setSub(families.length + ' famil' + (families.length === 1 ? 'y' : 'ies') + ' in bag · pick which to dismantle', '#8b949e');
+      renderList(overlay.body, families, {
+        onClose: function () { overlay.remove(); },
+        onRun: function (plans) {
+          showConfirm(plans, function () {
+            var totalSteps = plans.reduce(function (s, p) { return s + p.steps.length; }, 0);
+            var progress = showProgress(totalSteps);
+            var beforeFamilies = families.map(function (f) { return JSON.parse(JSON.stringify(f)); });
+            disExecutePlans(req, plans, {
+              abort: progress.abort, onStep: progress.onStep, onStepResult: progress.onResult,
+            }).then(function (result) {
+              showSummary(beforeFamilies, result, plans);
+            }, function (err) { showWizardError(err && err.message ? err.message : String(err)); });
+          }, showList);
+        },
+      });
+    }
+
+    function renderList(container, families, listOpts) {
+      var state = { rareOnly: false, showHeroBound: false, selected: {} };
+      function isVisible(f) {
+        if (state.rareOnly && f.maxQuality < 2) return false;
+        if (!state.showHeroBound && f.heroBound) return false;
+        return true;
+      }
+
+      var toggleRow = disEl('div', 'display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px;color:#e6edf3;font-size:12px;');
+      var rareCb = disEl('input'); rareCb.type = 'checkbox';
+      var rareLbl = disEl('label', 'display:flex;align-items:center;gap:6px;cursor:pointer;');
+      rareLbl.appendChild(rareCb); rareLbl.appendChild(disEl('span', '', 'Rare only'));
+      rareCb.addEventListener('change', function () { state.rareOnly = rareCb.checked; render(); });
+      toggleRow.appendChild(rareLbl);
+
+      var heroCb = disEl('input'); heroCb.type = 'checkbox';
+      var heroLbl = disEl('label', 'display:flex;align-items:center;gap:6px;cursor:pointer;');
+      heroLbl.appendChild(heroCb); heroLbl.appendChild(disEl('span', '', 'Show hero-specific skills'));
+      heroCb.addEventListener('change', function () { state.showHeroBound = heroCb.checked; render(); });
+      toggleRow.appendChild(heroLbl);
+
+      var COMMON_MATCHERS = [
+        function (n) { return /^(Army|Navy|Air Force)\s+HP$/i.test(n); },
+        function (n) { return /^(Army|Navy|Air Force)\s+dodge$/i.test(n); },
+        function (n) { return /^(Army|Navy|Air Force)\s+Hit$/i.test(n); },
+        function (n) { return /^(Army|Navy|Air Force)\s+INV$/i.test(n); },
+        function (n) { return n === 'Gold Mine Production'; },
+        function (n) { return n === 'Unit Load Increase'; },
+        function (n) { return n === 'Gold Gathering Speed'; },
+      ];
+      function isCommon(f) { for (var i = 0; i < COMMON_MATCHERS.length; i++) if (COMMON_MATCHERS[i](f.name)) return true; return false; }
+      var commonBtn = disEl('button', 'background:transparent;color:#79c0ff;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Select common');
+      commonBtn.title = 'Selects HP, Dodge, Hit, INV (Army/Navy/Air Force) + Gold Mine Production, Unit Load Increase, Gold Gathering Speed';
+      commonBtn.addEventListener('click', function () {
+        var visible = families.filter(isVisible);
+        var commonVisible = visible.filter(isCommon);
+        if (!commonVisible.length) return;
+        var allSelected = commonVisible.every(function (f) { return state.selected[f.familyKey]; });
+        commonVisible.forEach(function (f) { state.selected[f.familyKey] = !allSelected; });
+        render();
+      });
+      toggleRow.appendChild(commonBtn);
+      var clearBtn = disEl('button', 'background:transparent;color:#8b949e;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Clear');
+      clearBtn.addEventListener('click', function () { state.selected = {}; render(); });
+      toggleRow.appendChild(clearBtn);
+      container.appendChild(toggleRow);
+
+      var list = disEl('div', 'flex:1;overflow-y:auto;border:1px solid #30363d;border-radius:6px;background:#0d1117;');
+      container.appendChild(list);
+
+      var footer = disEl('div', 'display:flex;flex-direction:column;gap:8px;margin-top:10px;');
+      var summaryText = disEl('div', 'color:#8b949e;font-size:12px;text-align:center;', '');
+      var runBtn = disEl('button', 'padding:14px;background:#3fb950;color:#0d1117;border:none;border-radius:6px;font-weight:600;font-size:14px;', 'Dismantle selected');
+      runBtn.disabled = true; runBtn.style.opacity = '.5';
+      var backBtn = disEl('button', 'padding:12px;background:transparent;color:#8b949e;border:1px solid #30363d;border-radius:6px;font-size:13px;', 'Back to snapshot');
+      backBtn.addEventListener('click', function () { listOpts.onClose(); });
+      footer.appendChild(summaryText); footer.appendChild(runBtn); footer.appendChild(backBtn);
+      container.appendChild(footer);
+
+      function selectedPlans() {
+        var plans = [];
+        var sel = families.filter(function (f) { return state.selected[f.familyKey]; });
+        for (var i = 0; i < sel.length; i++) { var p = disBuildPlan(req, sel[i]); if (p && p.steps.length) plans.push(p); }
+        return plans;
+      }
+      function refreshSummary() {
+        var plans = selectedPlans();
+        var totalChips = plans.reduce(function (s, p) { return s + p.totalChips; }, 0);
+        var totalSteps = plans.reduce(function (s, p) { return s + p.steps.length; }, 0);
+        if (plans.length === 0) {
+          summaryText.textContent = ''; runBtn.disabled = true; runBtn.style.opacity = '.5'; runBtn.textContent = 'Dismantle selected';
+        } else {
+          summaryText.textContent = plans.length + ' famil' + (plans.length === 1 ? 'y' : 'ies') + ' · ' + totalSteps + ' WS call' + (totalSteps === 1 ? '' : 's') + ' · +' + totalChips + ' chip' + (totalChips === 1 ? '' : 's');
+          runBtn.disabled = false; runBtn.style.opacity = '1'; runBtn.textContent = 'Dismantle selected (' + plans.length + ')';
+        }
+      }
+      runBtn.addEventListener('click', function () { var plans = selectedPlans(); if (plans.length) listOpts.onRun(plans); });
+
+      function render() {
+        disClearChildren(list);
+        var visible = families.filter(isVisible);
+        visible.sort(function (a, b) {
+          if (a.maxQuality !== b.maxQuality) return b.maxQuality - a.maxQuality;
+          return (a.name || '').localeCompare(b.name || '');
+        });
+        if (!visible.length) {
+          list.appendChild(disEl('div', 'color:#8b949e;font-size:12px;padding:12px;text-align:center;', 'No dismantleable skill items in bag.'));
+          refreshSummary(); return;
+        }
+        for (var i = 0; i < visible.length; i++) {
+          (function (family) {
+            var plan = disBuildPlan(req, family);
+            var row = disEl('div', 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #21262d;cursor:pointer;');
+            var cb = disEl('input'); cb.type = 'checkbox'; cb.checked = !!state.selected[family.familyKey];
+            cb.style.flex = '0 0 auto'; cb.style.transform = 'scale(1.2)';
+            cb.addEventListener('click', function (e) { e.stopPropagation(); });
+            cb.addEventListener('change', function () { state.selected[family.familyKey] = cb.checked; refreshSummary(); });
+            row.appendChild(cb);
+            row.addEventListener('click', function () { state.selected[family.familyKey] = !state.selected[family.familyKey]; cb.checked = !!state.selected[family.familyKey]; refreshSummary(); });
+
+            var info = disEl('div', 'flex:1;min-width:0;');
+            var line1 = disEl('div', 'display:flex;align-items:center;gap:6px;font-size:13px;color:#e6edf3;flex-wrap:wrap;');
+            var qs = Object.keys(family.variants).map(Number).sort(function (a, b) { return b - a; });
+            for (var qi = 0; qi < qs.length; qi++) {
+              var q = qs[qi];
+              line1.appendChild(disEl('span', 'display:inline-block;padding:1px 6px;border-radius:9px;font-size:10px;font-weight:600;background:' + (DIS_QUALITY_COLOR[q] || '#30363d') + ';color:#0d1117;', DIS_QUALITY_LABEL[q] || ('Q' + q)));
+            }
+            line1.appendChild(disEl('span', 'font-weight:600;', family.name));
+            info.appendChild(line1);
+            var line2 = disEl('div', 'color:#8b949e;font-size:11px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', disFmtLevels(family));
+            info.appendChild(line2);
+            row.appendChild(info);
+            var yieldBox = disEl('div', 'color:' + (plan && plan.totalChips > 0 ? '#3fb950' : '#6e7681') + ';font-size:12px;font-weight:600;text-align:right;flex:0 0 auto;', plan ? ('+' + plan.totalChips + ' chip' + (plan.totalChips === 1 ? '' : 's')) : '—');
+            row.appendChild(yieldBox);
+            list.appendChild(row);
+          })(visible[i]);
+        }
+        refreshSummary();
+      }
+      render();
+    }
+
+    function showConfirm(plans, onProceed, onCancel) {
+      disClearChildren(overlay.body);
+      overlay.setHeader('Confirm dismantle', '#d29922');
+      overlay.setSub('Review and tap Proceed to fire WS calls', '#8b949e');
+      var summary = disEl('div', 'flex:1;overflow-y:auto;border:1px solid #30363d;border-radius:6px;background:#0d1117;padding:10px;color:#e6edf3;font-size:12px;');
+      var totalChips = 0, totalSteps = 0;
+      for (var i = 0; i < plans.length; i++) {
+        var p = plans[i]; totalChips += p.totalChips; totalSteps += p.steps.length;
+        var famRow = disEl('div', 'margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #21262d;');
+        var head = disEl('div', 'display:flex;justify-content:space-between;font-weight:600;');
+        var qs = Object.keys(p.family.variants).map(Number).sort(function (a, b) { return b - a; });
+        var tierLabel = qs.map(function (q) { return DIS_QUALITY_LABEL[q] || ('Q' + q); }).join(' + ');
+        head.appendChild(disEl('span', '', p.family.name + ' (' + tierLabel + ')'));
+        head.appendChild(disEl('span', 'color:#3fb950;', '+' + p.totalChips + ' chip' + (p.totalChips === 1 ? '' : 's')));
+        famRow.appendChild(head);
+        for (var s = 0; s < p.steps.length; s++) {
+          var step = p.steps[s];
+          var qPrefix = (step.quality && qs.length > 1) ? ((DIS_QUALITY_LABEL[step.quality] || ('Q' + step.quality)) + ' ') : '';
+          var line;
+          if (step.kind === 'levelDown') line = disEl('div', 'color:#8b949e;font-size:11px;padding-left:8px;', '· ' + qPrefix + 'Lv ' + step.level + ' × ' + step.num + ' → ' + step.yieldsLv1 + ' Lv 1');
+          else line = disEl('div', 'color:#8b949e;font-size:11px;padding-left:8px;', '· ' + qPrefix + 'Lv 1 × ' + step.num + ' → ' + step.chipsYielded + ' chips');
+          famRow.appendChild(line);
+        }
+        summary.appendChild(famRow);
+      }
+      overlay.body.appendChild(summary);
+      overlay.body.appendChild(disEl('div', 'color:#79c0ff;font-size:12px;text-align:center;margin:8px 0 6px;', 'Total: ' + totalSteps + ' WS call' + (totalSteps === 1 ? '' : 's') + ' · +' + totalChips + ' chip' + (totalChips === 1 ? '' : 's')));
+      var row = disEl('div', 'display:flex;gap:8px;');
+      var proceed = disEl('button', 'flex:1;padding:14px;background:#3fb950;color:#0d1117;border:none;border-radius:6px;font-weight:600;font-size:14px;', 'Proceed');
+      var cancel = disEl('button', 'padding:14px 18px;background:transparent;color:#8b949e;border:1px solid #30363d;border-radius:6px;font-size:13px;', 'Cancel');
+      proceed.addEventListener('click', onProceed); cancel.addEventListener('click', onCancel);
+      row.appendChild(proceed); row.appendChild(cancel); overlay.body.appendChild(row);
+    }
+
+    function showProgress(totalSteps) {
+      disClearChildren(overlay.body);
+      overlay.setHeader('Dismantling…', '#d29922');
+      overlay.setSub('0 / ' + totalSteps + ' calls', '#8b949e');
+      var barWrap = disEl('div', 'height:8px;background:#0d1117;border:1px solid #30363d;border-radius:4px;overflow:hidden;margin-bottom:10px;');
+      var bar = disEl('div', 'height:100%;background:#3fb950;width:0%;transition:width .2s;');
+      barWrap.appendChild(bar); overlay.body.appendChild(barWrap);
+      var current = disEl('div', 'flex:1;overflow-y:auto;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px;color:#e6edf3;font-size:11px;font-family:monospace;');
+      overlay.body.appendChild(current);
+      var abortBtn = disEl('button', 'padding:12px;background:transparent;color:#f85149;border:1px solid #f85149;border-radius:6px;font-size:13px;margin-top:10px;', 'Abort after current call');
+      overlay.body.appendChild(abortBtn);
+      var abort = { aborted: false };
+      abortBtn.addEventListener('click', function () { abort.aborted = true; abortBtn.disabled = true; abortBtn.textContent = 'Aborting after current call…'; });
+      return {
+        abort: abort,
+        onStep: function (info) {
+          var qLabel = info.step.quality ? (DIS_QUALITY_LABEL[info.step.quality] || ('Q' + info.step.quality)) + ' ' : '';
+          var desc = info.step.kind === 'chip' ? 'chip ' + qLabel + 'Lv 1 ×' + info.step.num : 'levelDown ' + qLabel + 'Lv ' + info.step.level + ' ×' + info.step.num;
+          var line = disEl('div', 'color:#8b949e;', info.family.name + ' · ' + desc);
+          current.appendChild(line); current.scrollTop = current.scrollHeight;
+        },
+        onResult: function (info) {
+          var pct = Math.round((info.doneSoFar / info.total) * 100);
+          bar.style.width = pct + '%';
+          overlay.setSub(info.doneSoFar + ' / ' + info.total + ' calls' + (info.ok ? '' : ' — last failed'), info.ok ? '#8b949e' : '#f85149');
+          if (!info.ok) { current.appendChild(disEl('div', 'color:#f85149;', '  → FAILED: ' + JSON.stringify(info.info && info.info.resp && info.info.resp.s))); }
+        },
+      };
+    }
+
+    function showSummary(beforeFamilies, runResult, plans) {
+      disClearChildren(overlay.body);
+      var headerText = runResult.errored ? 'Stopped on error' : runResult.aborted ? 'Aborted' : 'Done';
+      var headerColor = runResult.errored ? '#f85149' : runResult.aborted ? '#d29922' : '#3fb950';
+      overlay.setHeader(headerText, headerColor);
+      overlay.setSub(runResult.done + ' of ' + runResult.total + ' calls completed', '#8b949e');
+
+      var ud = window.__capturedUD;
+      var afterFamilies = disEnumerateFamilies(req, ud);
+      var beforeByKey = {}; beforeFamilies.forEach(function (f) { beforeByKey[f.familyKey] = f; });
+      var afterByKey = {}; afterFamilies.forEach(function (f) { afterByKey[f.familyKey] = f; });
+      var itemList = ud.getItemListByBagType(1) || [];
+      var chipCounts = {};
+      for (var i = 0; i < itemList.length; i++) { var it = itemList[i]; if (it && it._itemId) chipCounts[it._itemId] = it._amount; }
+
+      var body = disEl('div', 'flex:1;overflow-y:auto;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px;color:#e6edf3;font-size:12px;');
+      if (runResult.errored && runResult.errored.step) {
+        var errBlock = disEl('div', 'margin-bottom:10px;padding:8px;background:#3f1818;border:1px solid #f85149;border-radius:4px;color:#ff7b72;font-size:11px;');
+        errBlock.appendChild(disEl('div', 'font-weight:600;margin-bottom:4px;', 'Error on:'));
+        errBlock.appendChild(disEl('div', '', runResult.errored.family.name + ' · ' + (runResult.errored.step.kind === 'chip' ? 'chip ×' + runResult.errored.step.num : 'levelDown Lv ' + runResult.errored.step.level + ' ×' + runResult.errored.step.num)));
+        body.appendChild(errBlock);
+      }
+      body.appendChild(disEl('div', 'font-weight:600;margin-bottom:6px;color:#79c0ff;', 'Per-family deltas:'));
+      var anyChange = false;
+      for (var j = 0; j < plans.length; j++) {
+        var plan = plans[j]; var fam = plan.family;
+        var before = beforeByKey[fam.familyKey]; var after = afterByKey[fam.familyKey];
+        var beforeTotal = before ? disTotalItems(before) : 0;
+        var afterTotal = after ? disTotalItems(after) : 0;
+        if (beforeTotal === afterTotal && beforeTotal === 0) continue;
+        anyChange = true;
+        var qs2 = Object.keys(fam.variants).map(Number).sort(function (a, b) { return b - a; });
+        var tierLabel2 = qs2.map(function (q) { return DIS_QUALITY_LABEL[q] || ('Q' + q); }).join(' + ');
+        var line = disEl('div', 'padding:4px 0;border-bottom:1px solid #21262d;display:flex;justify-content:space-between;');
+        line.appendChild(disEl('span', '', fam.name + ' (' + tierLabel2 + ')'));
+        line.appendChild(disEl('span', (afterTotal < beforeTotal ? 'color:#3fb950' : 'color:#8b949e') + ';', beforeTotal + ' → ' + afterTotal));
+        body.appendChild(line);
+      }
+      if (!anyChange) body.appendChild(disEl('div', 'color:#8b949e;', '(no bag changes detected)'));
+      var chipId = 2550001;
+      if (plans[0]) { var firstQ = Object.keys(plans[0].family.variants)[0]; if (firstQ && plans[0].family.variants[firstQ]) chipId = plans[0].family.variants[firstQ].decompChipId || chipId; }
+      var chipNow = chipCounts[chipId] != null ? chipCounts[chipId] : null;
+      if (chipNow != null) body.appendChild(disEl('div', 'margin-top:10px;color:#3fb950;font-weight:600;text-align:center;font-size:13px;', 'Skill Chip total now: ' + chipNow));
+      overlay.body.appendChild(body);
+      var row = disEl('div', 'display:flex;gap:8px;margin-top:10px;');
+      var doneBtn = disEl('button', 'flex:1;padding:14px;background:#3fb950;color:#0d1117;border:none;border-radius:6px;font-weight:600;font-size:14px;', 'Back to snapshot (refresh JSON)');
+      doneBtn.addEventListener('click', function () { overlay.remove(); if (opts && opts.onDone) opts.onDone({ runResult: runResult }); });
+      row.appendChild(doneBtn);
+      overlay.body.appendChild(row);
+    }
+
+    function showWizardError(message) {
+      disClearChildren(overlay.body);
+      overlay.setHeader('Failed', '#f85149');
+      overlay.setSub(message, '#f85149');
+      var btn = disEl('button', 'padding:12px 18px;background:transparent;color:#fff;border:1px solid #30363d;border-radius:6px;font-size:14px;', 'Close');
+      btn.addEventListener('click', function () { overlay.remove(); });
+      var row = disEl('div', 'display:flex;justify-content:center;margin-top:10px;');
+      row.appendChild(btn); overlay.body.appendChild(row);
+    }
+  }
+
+  // Builds the human-readable "summary" line (Y inv · N chips · …) from a
+  // dump + JSON byte size. Extracted so the dismantle refresh path can
+  // recompute it after mutating dump.inventory in place.
+  function summarizeDump(dump, jsonLength) {
+    var sections = [];
+    if (dump.inventory) sections.push((dump.inventory.tabs ? Object.keys(dump.inventory.tabs).reduce(function (s, k) { return s + (dump.inventory.tabs[k] || []).length; }, 0) : 0) + ' inv');
+    if (dump.enigmaState) {
+      var deployedHoles = (dump.enigmaState.fields || []).reduce(function (s, f) {
+        return s + ((f && f.holes) || []).filter(function (h) { return h && h.beastId; }).length;
+      }, 0);
+      sections.push(deployedHoles + ' deployed / ' + (dump.enigmaState.beasts ? dump.enigmaState.beasts.length : 0) + ' beasts');
+    } else if (dump.beasts) {
+      sections.push(dump.beasts.kept + ' beasts');
+    }
+    if (dump.chips) sections.push(dump.chips.total + ' chips');
+    if (dump.gear) sections.push(dump.gear.summary.goldCount + ' gold gear');
+    if (dump.heroes) sections.push(dump.heroes.list.length + ' heroes');
+    if (dump.decorations) sections.push((dump.decorations.active ? dump.decorations.active.length : 0) + ' decor');
+    if (dump.baseSkin && dump.baseSkin.activeSkinId) sections.push('skin ' + dump.baseSkin.activeSkinId);
+    if (dump.formation) {
+      sections.push((dump.formation.talents ? dump.formation.talents.length : 0) + ' formation talents');
+      var presetCount = (dump.formation.presets || []).filter(function (p) { return p && p.slots && p.slots.some(function (s) { return s.armyId; }); }).length;
+      if (presetCount) sections.push(presetCount + ' march presets');
+    }
+    var summary = sections.join(' · ') + ' — ' + fmtBytes(jsonLength);
+    if (dump.errors && dump.errors.length) summary += ' · ' + dump.errors.length + ' section(s) failed';
+    return summary;
+  }
+
+  function attachCopyUI(overlay, dump) {
     var bg = overlay.root;
-    overlay.sub.textContent = summary;
+    var currentText = JSON.stringify(dump);
+    overlay.sub.textContent = summarizeDump(dump, currentText.length);
     var ta = document.createElement('textarea');
-    ta.value = text;
+    ta.value = currentText;
     ta.readOnly = true;
     ta.style.cssText = 'flex:1;width:100%;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:8px;font-family:monospace;font-size:11px;min-height:160px;box-sizing:border-box;';
     bg.appendChild(ta);
@@ -987,21 +1529,21 @@
         status.style.color = '#f85149';
         status.textContent = 'Couldn’t auto-copy' + (reason ? ' (' + reason + ')' : '') + '. Long-press the JSON above → Select All → Copy.';
         // Pre-select so manual copy is one tap easier
-        try { ta.readOnly = false; ta.focus(); ta.select(); ta.setSelectionRange(0, text.length); ta.readOnly = true; } catch (_) {}
+        try { ta.readOnly = false; ta.focus(); ta.select(); ta.setSelectionRange(0, currentText.length); ta.readOnly = true; } catch (_) {}
       }
       function execFallback() {
         try {
           ta.readOnly = false;
           ta.focus();
           ta.select();
-          ta.setSelectionRange(0, text.length);
+          ta.setSelectionRange(0, currentText.length);
           var did = document.execCommand('copy');
           ta.readOnly = true;
           if (did) ok(); else fail('execCommand returned false');
         } catch (e) { fail(e && e.message); }
       }
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text)
+        navigator.clipboard.writeText(currentText)
           .then(ok)
           .catch(function (e) {
             // Fall back to execCommand path on permission/secure-context refusal
@@ -1012,12 +1554,61 @@
       }
     };
     var closeBtn = document.createElement('button');
-    closeBtn.textContent = 'Close without copying';
+    closeBtn.textContent = 'Close';
     closeBtn.style.cssText = 'padding:14px 18px;background:transparent;color:#8b949e;border:1px solid #30363d;border-radius:6px;font-size:13px;';
     closeBtn.onclick = function () { try { document.body.removeChild(bg); } catch (_) {} };
     row.appendChild(copyBtn);
     row.appendChild(closeBtn);
     bg.appendChild(row);
+
+    // Dismantle hand-off — only enabled when the inventory section
+    // captured a UserData reference (sharedExtractInventory is set).
+    var dismantleRow = document.createElement('div');
+    dismantleRow.style.cssText = 'display:flex;margin-top:8px;';
+    var dismantleBtn = document.createElement('button');
+    dismantleBtn.textContent = 'Dismantle skills (optional)';
+    dismantleBtn.style.cssText = 'flex:1;padding:12px;background:transparent;color:#79c0ff;border:1px solid #30363d;border-radius:6px;font-size:13px;cursor:pointer;';
+    dismantleBtn.onclick = function () {
+      var req = window.__require;
+      if (!req || !window.__capturedUD) {
+        status.style.color = '#f85149';
+        status.textContent = 'Bag reference missing — re-run the snapshot first.';
+        return;
+      }
+      spawnDismantleWizard(req, {
+        onDone: function () {
+          // Refresh inventory (the only section dismantle actually mutates)
+          // and update the textarea + summary in place so the player can
+          // copy the updated JSON without re-running the whole bookmarklet.
+          if (!sharedExtractInventory) return;
+          status.style.color = '#79c0ff';
+          status.textContent = 'Refreshing inventory…';
+          sharedExtractInventory().then(function (inv) {
+            try {
+              dump.inventory = inv;
+              dump.meta = inv ? inv.meta : dump.meta;
+              currentText = JSON.stringify(dump);
+              ta.value = currentText;
+              overlay.sub.textContent = summarizeDump(dump, currentText.length);
+              // Reset copy button so the user can re-copy
+              copyBtn.disabled = false;
+              copyBtn.textContent = 'Copy combined JSON';
+              copyBtn.style.background = '#3fb950';
+              status.style.color = '#3fb950';
+              status.textContent = 'Snapshot refreshed. Tap Copy to grab the updated JSON.';
+            } catch (e) {
+              status.style.color = '#f85149';
+              status.textContent = 'Refresh failed: ' + (e && e.message ? e.message : e);
+            }
+          }).catch(function (e) {
+            status.style.color = '#f85149';
+            status.textContent = 'Refresh failed: ' + (e && e.message ? e.message : e);
+          });
+        },
+      });
+    };
+    dismantleRow.appendChild(dismantleBtn);
+    bg.appendChild(dismantleRow);
   }
 
   function showError(message, diagText) {
@@ -1094,37 +1685,13 @@
     // UI fails to render, the snapshot itself is already in `dump`, so we
     // fall back to alert with the JSON exposed via window.__snapshot.
     try {
-      var json = JSON.stringify(dump);
-      var sections = [];
-      if (dump.inventory) sections.push((dump.inventory.tabs ? Object.keys(dump.inventory.tabs).reduce(function (s, k) { return s + (dump.inventory.tabs[k] || []).length; }, 0) : 0) + ' inv');
-      if (dump.enigmaState) {
-        var deployedHoles = (dump.enigmaState.fields || []).reduce(function (s, f) {
-          return s + ((f && f.holes) || []).filter(function (h) { return h && h.beastId; }).length;
-        }, 0);
-        sections.push(deployedHoles + ' deployed / ' + (dump.enigmaState.beasts ? dump.enigmaState.beasts.length : 0) + ' beasts');
-      } else if (dump.beasts) {
-        sections.push(dump.beasts.kept + ' beasts');
-      }
-      if (dump.chips) sections.push(dump.chips.total + ' chips');
-      if (dump.gear) sections.push(dump.gear.summary.goldCount + ' gold gear');
-      if (dump.heroes) sections.push(dump.heroes.list.length + ' heroes');
-      if (dump.decorations) sections.push((dump.decorations.active ? dump.decorations.active.length : 0) + ' decor');
-      if (dump.baseSkin && dump.baseSkin.activeSkinId) sections.push('skin ' + dump.baseSkin.activeSkinId);
-      if (dump.formation) {
-        sections.push((dump.formation.talents ? dump.formation.talents.length : 0) + ' formation talents');
-        var presetCount = (dump.formation.presets || []).filter(function (p) { return p && p.slots && p.slots.some(function (s) { return s.armyId; }); }).length;
-        if (presetCount) sections.push(presetCount + ' march presets');
-      }
-      var summary = sections.join(' · ') + ' — ' + fmtBytes(json.length);
-      if (dump.errors && dump.errors.length) {
-        summary += ' · ' + dump.errors.length + ' section(s) failed';
-      }
       if (overlay) {
         overlay.setHeader(dump.errors && dump.errors.length ? 'Partial snapshot' : 'Snapshot ready');
         overlay.setHeaderColor(dump.errors && dump.errors.length ? '#d29922' : '#3fb950');
-        attachCopyUI(overlay, json, summary);
+        attachCopyUI(overlay, dump);
       } else {
-        try { alert('Snapshot: ' + summary); } catch (_) {}
+        var jsonAlt = JSON.stringify(dump);
+        try { alert('Snapshot: ' + summarizeDump(dump, jsonAlt.length)); } catch (_) {}
       }
     } catch (uiErr) {
       // Last-ditch surface — still expose the JSON so the run isn't wasted
