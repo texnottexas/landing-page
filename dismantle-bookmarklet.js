@@ -143,6 +143,11 @@
         groups[skillId] = {
           skillId: skillId, name: name, quality: quality,
           decompChipId: chipId, decompPerLv1: perLv1,
+          // skill_type 3 + hero_id != 0 are the hero-exclusive skills (awakening etc).
+          // Track both so the UI can filter independently if needed; in practice
+          // skill_type === 3 is the cleaner signal.
+          heroBound: (Number(skillRow.skill_type) === 3) || (Number(skillRow.hero_id) > 0),
+          skillType: Number(skillRow.skill_type) || 0,
           levels: {},
         };
       }
@@ -303,21 +308,38 @@
 
   function renderFamilyList(req, container, families, opts) {
     clearChildren(container);
-    var state = { showNormal: false, selected: {} };
+    // Defaults Tex requested: show Rare + Normal in one combined view by
+    // default; hide hero-specific (awakening etc.) skills by default.
+    var state = { rareOnly: false, showHeroBound: false, selected: {} };
+
+    function isVisible(f) {
+      if (state.rareOnly && f.quality < 2) return false;
+      if (!state.showHeroBound && f.heroBound) return false;
+      return true;
+    }
 
     // Filter toggle row
     var toggleRow = el('div', 'display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px;color:#e6edf3;font-size:12px;');
-    var normalCb = el('input');
-    normalCb.type = 'checkbox';
-    var normalLbl = el('label', 'display:flex;align-items:center;gap:6px;cursor:pointer;');
-    normalLbl.appendChild(normalCb);
-    normalLbl.appendChild(el('span', '', 'Show Normal tier too'));
-    normalCb.addEventListener('change', function () { state.showNormal = normalCb.checked; render(); });
-    toggleRow.appendChild(normalLbl);
+
+    var rareOnlyCb = el('input');
+    rareOnlyCb.type = 'checkbox';
+    var rareLbl = el('label', 'display:flex;align-items:center;gap:6px;cursor:pointer;');
+    rareLbl.appendChild(rareOnlyCb);
+    rareLbl.appendChild(el('span', '', 'Rare only'));
+    rareOnlyCb.addEventListener('change', function () { state.rareOnly = rareOnlyCb.checked; render(); });
+    toggleRow.appendChild(rareLbl);
+
+    var heroCb = el('input');
+    heroCb.type = 'checkbox';
+    var heroLbl = el('label', 'display:flex;align-items:center;gap:6px;cursor:pointer;');
+    heroLbl.appendChild(heroCb);
+    heroLbl.appendChild(el('span', '', 'Show hero-specific skills'));
+    heroCb.addEventListener('change', function () { state.showHeroBound = heroCb.checked; render(); });
+    toggleRow.appendChild(heroLbl);
 
     var selectAllBtn = el('button', 'background:transparent;color:#79c0ff;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Select all visible');
     selectAllBtn.addEventListener('click', function () {
-      var visible = families.filter(function (f) { return state.showNormal || f.quality >= 2; });
+      var visible = families.filter(isVisible);
       var allSelected = visible.every(function (f) { return state.selected[f.skillId]; });
       visible.forEach(function (f) { state.selected[f.skillId] = !allSelected; });
       render();
@@ -387,7 +409,7 @@
 
     function render() {
       clearChildren(list);
-      var visible = families.filter(function (f) { return state.showNormal || f.quality >= 2; });
+      var visible = families.filter(isVisible);
       // Sort: highest quality first, then by name
       visible.sort(function (a, b) {
         if (a.quality !== b.quality) return b.quality - a.quality;
