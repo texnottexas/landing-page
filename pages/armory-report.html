@@ -7669,6 +7669,102 @@
         identPanel.appendChild(srcRow);
       }
 
+      // ── Power-User Tools ──
+      // Same S2864-verified gate as Data source priority. Surfaces tools
+      // that exist outside the normal Import TopWar Data flow — currently
+      // just the standalone Skill Dismantle bookmarklet for players who
+      // want to scrap skill items without re-running the full snapshot.
+      var powerGate = identity && identity.siteKey && _ar_rosterMap && _ar_rosterMap[identity.siteKey] && _ar_isUnlocked(identity.siteKey);
+      if (powerGate) {
+        var puRow = document.createElement('div');
+        puRow.style.cssText = 'margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:.4rem;';
+
+        var puHdr = document.createElement('button');
+        puHdr.type = 'button';
+        puHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:0;color:var(--text);font-size:.78rem;font-weight:600;cursor:pointer;width:100%;text-align:left;';
+        var puHdrLabel = document.createElement('span');
+        puHdrLabel.textContent = 'Power-User Tools';
+        puHdr.appendChild(puHdrLabel);
+        var puCaret = document.createElement('span');
+        puCaret.style.cssText = 'color:var(--muted);font-size:.7rem;margin-left:.5rem;transition:transform .15s;display:inline-block;';
+        puCaret.textContent = '▾';
+        puHdr.appendChild(puCaret);
+        puRow.appendChild(puHdr);
+
+        var puBody = document.createElement('div');
+        puBody.style.cssText = 'display:none;flex-direction:column;gap:.6rem;margin-top:.4rem;';
+
+        var puIntro = document.createElement('div');
+        puIntro.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;';
+        puIntro.textContent = 'Standalone bookmarklets that skip the full snapshot flow. Save each URL as a bookmark on this page (drag to the bookmarks bar, or create a new bookmark and paste the URL).';
+        puBody.appendChild(puIntro);
+
+        // Card per power-user tool. Today: Skill Dismantle.
+        function _ar_buildPowerToolCard(opts) {
+          var card = document.createElement('div');
+          card.style.cssText = 'display:flex;flex-direction:column;gap:.35rem;padding:.55rem .65rem;background:var(--card);border:1px solid var(--border);border-radius:6px;';
+          var title = document.createElement('div');
+          title.style.cssText = 'color:var(--text);font-weight:600;font-size:.75rem;';
+          title.textContent = opts.title;
+          card.appendChild(title);
+          var desc = document.createElement('div');
+          desc.style.cssText = 'color:var(--muted);font-size:.68rem;line-height:1.4;';
+          desc.textContent = opts.desc;
+          card.appendChild(desc);
+          var ta = document.createElement('textarea');
+          ta.readOnly = true;
+          ta.value = opts.url;
+          ta.style.cssText = 'width:100%;min-height:3.2em;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.4rem;font-family:monospace;font-size:.62rem;resize:vertical;box-sizing:border-box;';
+          ta.addEventListener('click', function() { try { ta.select(); ta.setSelectionRange(0, ta.value.length); } catch (_e) {} });
+          card.appendChild(ta);
+          var btnRow = document.createElement('div');
+          btnRow.style.cssText = 'display:flex;align-items:center;gap:.5rem;';
+          var copy = document.createElement('button');
+          copy.className = 'rh-prefs-btn';
+          copy.style.cssText = 'font-size:.7rem;padding:.35rem .7rem;';
+          copy.textContent = 'Copy URL';
+          var status = document.createElement('span');
+          status.style.cssText = 'color:var(--muted);font-size:.65rem;';
+          copy.addEventListener('click', function() {
+            function ok() { status.style.color = 'var(--green)'; status.textContent = 'Copied — paste into a new bookmark.'; }
+            function fail(reason) { status.style.color = 'var(--red)'; status.textContent = 'Auto-copy blocked' + (reason ? ' (' + reason + ')' : '') + '. Tap the box above, select all, copy manually.'; }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(opts.url).then(ok).catch(function(e) {
+                try {
+                  ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
+                  if (document.execCommand('copy')) ok(); else fail('execCommand');
+                } catch (e2) { fail(e2 && e2.message); }
+              });
+            } else {
+              try {
+                ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
+                if (document.execCommand('copy')) ok(); else fail('execCommand');
+              } catch (e3) { fail(e3 && e3.message); }
+            }
+          });
+          btnRow.appendChild(copy);
+          btnRow.appendChild(status);
+          card.appendChild(btnRow);
+          return card;
+        }
+
+        puBody.appendChild(_ar_buildPowerToolCard({
+          title: 'Skill Dismantle (standalone)',
+          desc: 'Same bulk-dismantle wizard available inside Import TopWar Data. Use this when you only want to scrap skill items and skip the full snapshot extract.',
+          url: 'javascript:(function(){var s=document.createElement(\'script\');s.src=\'https://2864tw.com/dismantle-bookmarklet.js?_=\'+Date.now();s.onerror=function(){alert(\'Bookmarklet load failed. Check internet + try again.\');};document.body.appendChild(s);})();'
+        }));
+
+        puRow.appendChild(puBody);
+
+        puHdr.addEventListener('click', function() {
+          var open = puBody.style.display !== 'none';
+          puBody.style.display = open ? 'none' : 'flex';
+          puCaret.style.transform = open ? '' : 'rotate(180deg)';
+        });
+
+        identPanel.appendChild(puRow);
+      }
+
       // ── Force refresh (clear caches + reload) ──
       // Installed PWA + iOS Safari hold HTTP responses harder than the browser
       // tab. This wipes Cache Storage, updates the service worker, and forces
