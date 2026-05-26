@@ -416,14 +416,37 @@
     heroCb.addEventListener('change', function () { state.showHeroBound = heroCb.checked; render(); });
     toggleRow.appendChild(heroLbl);
 
-    var selectAllBtn = el('button', 'background:transparent;color:#79c0ff;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Select all visible');
-    selectAllBtn.addEventListener('click', function () {
+    // Preset: the skill families players commonly want to scrap. Strict
+    // matchers — "INV" must be the trailing word so "Invincible" doesn't
+    // accidentally join the selection. Branch stats apply to Army/Navy/Air
+    // Force; the three economy skills are global.
+    var COMMON_MATCHERS = [
+      function (n) { return /^(Army|Navy|Air Force)\s+HP$/i.test(n); },
+      function (n) { return /^(Army|Navy|Air Force)\s+dodge$/i.test(n); },
+      function (n) { return /^(Army|Navy|Air Force)\s+Hit$/i.test(n); },
+      function (n) { return /^(Army|Navy|Air Force)\s+INV$/i.test(n); },
+      function (n) { return n === 'Gold Mine Production'; },
+      function (n) { return n === 'Unit Load Increase'; },
+      function (n) { return n === 'Gold Gathering Speed'; },
+    ];
+    function isCommon(family) {
+      for (var i = 0; i < COMMON_MATCHERS.length; i++) {
+        if (COMMON_MATCHERS[i](family.name)) return true;
+      }
+      return false;
+    }
+
+    var commonBtn = el('button', 'background:transparent;color:#79c0ff;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Select common');
+    commonBtn.title = 'Selects HP, Dodge, Hit, INV (Army/Navy/Air Force) + Gold Mine Production, Unit Load Increase, Gold Gathering Speed';
+    commonBtn.addEventListener('click', function () {
       var visible = families.filter(isVisible);
-      var allSelected = visible.every(function (f) { return state.selected[f.familyKey]; });
-      visible.forEach(function (f) { state.selected[f.familyKey] = !allSelected; });
+      var commonVisible = visible.filter(isCommon);
+      if (!commonVisible.length) return;
+      var allSelected = commonVisible.every(function (f) { return state.selected[f.familyKey]; });
+      commonVisible.forEach(function (f) { state.selected[f.familyKey] = !allSelected; });
       render();
     });
-    toggleRow.appendChild(selectAllBtn);
+    toggleRow.appendChild(commonBtn);
 
     var clearBtn = el('button', 'background:transparent;color:#8b949e;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Clear');
     clearBtn.addEventListener('click', function () { state.selected = {}; render(); });
