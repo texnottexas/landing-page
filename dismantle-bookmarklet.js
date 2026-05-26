@@ -111,8 +111,32 @@
   }
 
   // ─── Family enumeration ───────────────────────────────────────────────
-  // Returns array of { skillId, name, quality, decompChipId, decompPerLv1,
-  //                    levels: { [lvl]: { itemId, amount } } }
+  // Group by skill NAME so Rare + Normal of the same skill (e.g. Army HP
+  // skillId 20104 + 21104) collapse into one row. Each family carries a
+  // `variants` map keyed by quality with that tier's skillId + decomp +
+  // per-level inventory. Dismantle plans iterate variants independently
+  // since each tier has its own item IDs and chip yields.
+  //
+  // Family shape:
+  // {
+  //   familyKey: <string>,       // grouping key (name)
+  //   name: <string>,            // localized display
+  //   heroBound: <bool>,         // true if any variant is hero-exclusive
+  //   skillTypes: [<num>...],    // distinct skill_type values across variants
+  //   maxQuality: <num>,         // highest tier owned (drives sorting + filtering)
+  //   variants: {
+  //     [quality]: {
+  //       skillId, decompChipId, decompPerLv1,
+  //       levels: { [lvl]: { itemId, amount } },
+  //     }
+  //   }
+  // }
+  // Skill IDs we never want a player to dismantle even if the bag has them.
+  // Currently just March Size (20116 Normal, 21116 Rare) — the table also
+  // calls these "March size" but losing them is irrecoverable + nobody
+  // wants to chip them.
+  var SKILL_BLACKLIST = { 20116: true, 21116: true };
+
   function enumerateFamilies(req, ud) {
     var TABLE = req('TableManager').TABLE;
     var LOCAL = req('LocalManager').LOCAL;
@@ -126,6 +150,7 @@
       if (!row || row.type !== 42) continue;
       var skillId = Number(row.para1);
       if (!skillId) continue;
+      if (SKILL_BLACKLIST[skillId]) continue;
       var level = Number(row.level) || 1;
       var skillRow;
       try { skillRow = TABLE.getTableDataById('hero_skill', String(skillId)); } catch (e) { skillRow = null; }
@@ -135,23 +160,38 @@
       var decompParts = String(skillRow.decomposition).split('|');
       var chipId = Number(decompParts[0]);
       var perLv1 = Number(decompParts[1]) || 1;
-      var name;
-      try { name = LOCAL.getText(skillRow.name) || skillRow.name; } catch (e) { name = skillRow.name; }
+      var rawName;
+      try { rawName = LOCAL.getText(skillRow.name) || skillRow.name; } catch (e) { rawName = skillRow.name; }
+      var name = displayName(rawName);
       var quality = Number(skillRow.quality) || 1;
+      var skillType = Number(skillRow.skill_type) || 0;
+      var heroBound = (skillType === 3) || (Number(skillRow.hero_id) > 0);
+      // Use skill_type + heroBound as a soft disambiguator so two skills
+      // that happen to share an English name don't accidentally merge.
+      var familyKey = name + '|' + skillType + '|' + (heroBound ? '1' : '0');
 
-      if (!groups[skillId]) {
-        groups[skillId] = {
-          skillId: skillId, name: name, quality: quality,
+      if (!groups[familyKey]) {
+        groups[familyKey] = {
+          familyKey: familyKey,
+          name: name,
+          heroBound: heroBound,
+          skillTypes: [skillType],
+          maxQuality: quality,
+          variants: {},
+        };
+      } else {
+        if (groups[familyKey].skillTypes.indexOf(skillType) < 0) groups[familyKey].skillTypes.push(skillType);
+        if (quality > groups[familyKey].maxQuality) groups[familyKey].maxQuality = quality;
+        if (heroBound) groups[familyKey].heroBound = true;
+      }
+      if (!groups[familyKey].variants[quality]) {
+        groups[familyKey].variants[quality] = {
+          skillId: skillId, quality: quality,
           decompChipId: chipId, decompPerLv1: perLv1,
-          // skill_type 3 + hero_id != 0 are the hero-exclusive skills (awakening etc).
-          // Track both so the UI can filter independently if needed; in practice
-          // skill_type === 3 is the cleaner signal.
-          heroBound: (Number(skillRow.skill_type) === 3) || (Number(skillRow.hero_id) > 0),
-          skillType: Number(skillRow.skill_type) || 0,
           levels: {},
         };
       }
-      groups[skillId].levels[level] = { itemId: Number(it._itemId), amount: Number(it._amount) };
+      groups[familyKey].variants[quality].levels[level] = { itemId: Number(it._itemId), amount: Number(it._amount) };
     }
     return Object.values(groups);
   }
@@ -168,43 +208,53 @@
     return null;
   }
 
-  // Build a dismantle plan for one family: ordered steps + projected
-  // chip yield. Returns null if there's nothing to do.
+  // Build a dismantle plan for one family. Each variant (quality tier) is
+  // resolved independently — its level-downs roll into its own Lv 1 stack,
+  // and its chip step uses its own itemId + per-Lv1 decomp ratio. Steps are
+  // emitted variant-by-variant in descending quality order so the dismantle
+  // log shows Rare progress before Normal.
   function buildPlan(req, family) {
-    var lvKeys = Object.keys(family.levels).map(Number).sort(function (a, b) { return a - b; });
-    if (!lvKeys.length) return null;
+    var qualities = Object.keys(family.variants).map(Number).sort(function (a, b) { return b - a; });
+    if (!qualities.length) return null;
     var steps = [];
-    var lv1Existing = (family.levels[1] && family.levels[1].amount) || 0;
-    var lv1ItemId = (family.levels[1] && family.levels[1].itemId) || lookupLv1ItemId(req, family.skillId);
-    var totalLv1Equiv = lv1Existing;
+    var totalChips = 0;
 
-    for (var i = 0; i < lvKeys.length; i++) {
-      var lvl = lvKeys[i];
-      if (lvl === 1) continue;
-      var entry = family.levels[lvl];
-      if (!entry || !entry.amount) continue;
-      var yieldLv1 = entry.amount * Math.pow(3, lvl - 1);
-      steps.push({
-        kind: 'levelDown', level: lvl,
-        itemId: entry.itemId, num: entry.amount,
-        yieldsLv1: yieldLv1,
-      });
-      totalLv1Equiv += yieldLv1;
+    for (var q = 0; q < qualities.length; q++) {
+      var quality = qualities[q];
+      var variant = family.variants[quality];
+      var lvKeys = Object.keys(variant.levels).map(Number).sort(function (a, b) { return a - b; });
+      if (!lvKeys.length) continue;
+      var lv1Existing = (variant.levels[1] && variant.levels[1].amount) || 0;
+      var lv1ItemId = (variant.levels[1] && variant.levels[1].itemId) || lookupLv1ItemId(req, variant.skillId);
+      var totalLv1Equiv = lv1Existing;
+
+      for (var i = 0; i < lvKeys.length; i++) {
+        var lvl = lvKeys[i];
+        if (lvl === 1) continue;
+        var entry = variant.levels[lvl];
+        if (!entry || !entry.amount) continue;
+        var yieldLv1 = entry.amount * Math.pow(3, lvl - 1);
+        steps.push({
+          kind: 'levelDown', level: lvl, quality: quality,
+          itemId: entry.itemId, num: entry.amount,
+          yieldsLv1: yieldLv1,
+        });
+        totalLv1Equiv += yieldLv1;
+      }
+
+      if (totalLv1Equiv > 0) {
+        if (!lv1ItemId) continue; // can't chip without Lv 1 itemId — skip this tier
+        steps.push({
+          kind: 'chip', quality: quality,
+          itemId: lv1ItemId, num: totalLv1Equiv,
+          chipsYielded: totalLv1Equiv * variant.decompPerLv1,
+        });
+        totalChips += totalLv1Equiv * variant.decompPerLv1;
+      }
     }
 
-    if (totalLv1Equiv > 0) {
-      if (!lv1ItemId) return null; // can't chip without Lv 1 itemId
-      steps.push({
-        kind: 'chip',
-        itemId: lv1ItemId, num: totalLv1Equiv,
-        chipsYielded: totalLv1Equiv * family.decompPerLv1,
-      });
-    }
-
-    return {
-      family: family, steps: steps,
-      totalChips: totalLv1Equiv * family.decompPerLv1,
-    };
+    if (!steps.length) return null;
+    return { family: family, steps: steps, totalChips: totalChips };
   }
 
   // ─── WS execution ─────────────────────────────────────────────────────
@@ -270,6 +320,14 @@
   var QUALITY_LABEL = { 1: 'Normal', 2: 'Rare', 3: 'Epic', 4: 'Legendary', 5: 'Mythic' };
   var QUALITY_COLOR = { 1: '#8b949e', 2: '#79c0ff', 3: '#bc8cff', 4: '#d29922', 5: '#ff7b72' };
 
+  // The localized table calls Army/Navy/Air Force defensive skills
+  // "Protection", but every player in chat calls them "Damage Decrease".
+  // Display only — the underlying skill IDs stay the same.
+  function displayName(name) {
+    if (!name) return name;
+    return name.replace(/\bProtection\b/gi, 'Damage Decrease');
+  }
+
   function el(tag, css, text) {
     var n = document.createElement(tag);
     if (css) n.style.cssText = css;
@@ -294,14 +352,35 @@
     };
   }
 
+  // Per-variant level breakdown ("Rare: Lv1×1 · Normal: Lv2×3 Lv4×1"). Skips
+  // variants with empty inventory + collapses to "Lv N×X" when only one tier.
   function fmtLevels(family) {
-    var parts = [];
-    var keys = Object.keys(family.levels).map(Number).sort(function (a, b) { return a - b; });
-    for (var i = 0; i < keys.length; i++) {
-      var k = keys[i];
-      parts.push('Lv ' + k + '×' + family.levels[k].amount);
+    var qs = Object.keys(family.variants).map(Number).sort(function (a, b) { return b - a; });
+    var sections = [];
+    for (var qi = 0; qi < qs.length; qi++) {
+      var q = qs[qi];
+      var v = family.variants[q];
+      var keys = Object.keys(v.levels).map(Number).sort(function (a, b) { return a - b; });
+      if (!keys.length) continue;
+      var inner = [];
+      for (var i = 0; i < keys.length; i++) {
+        inner.push('Lv ' + keys[i] + '×' + v.levels[keys[i]].amount);
+      }
+      var prefix = qs.length > 1 ? (QUALITY_LABEL[q] || ('Q' + q)) + ': ' : '';
+      sections.push(prefix + inner.join(' '));
     }
-    return parts.join(', ');
+    return sections.join(' · ');
+  }
+
+  function totalItemsInFamily(family) {
+    var n = 0;
+    var qs = Object.keys(family.variants);
+    for (var qi = 0; qi < qs.length; qi++) {
+      var v = family.variants[qs[qi]];
+      var keys = Object.keys(v.levels);
+      for (var i = 0; i < keys.length; i++) n += v.levels[keys[i]].amount;
+    }
+    return n;
   }
 
   function clearChildren(node) { while (node.firstChild) node.removeChild(node.firstChild); }
@@ -313,7 +392,7 @@
     var state = { rareOnly: false, showHeroBound: false, selected: {} };
 
     function isVisible(f) {
-      if (state.rareOnly && f.quality < 2) return false;
+      if (state.rareOnly && f.maxQuality < 2) return false;
       if (!state.showHeroBound && f.heroBound) return false;
       return true;
     }
@@ -340,8 +419,8 @@
     var selectAllBtn = el('button', 'background:transparent;color:#79c0ff;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Select all visible');
     selectAllBtn.addEventListener('click', function () {
       var visible = families.filter(isVisible);
-      var allSelected = visible.every(function (f) { return state.selected[f.skillId]; });
-      visible.forEach(function (f) { state.selected[f.skillId] = !allSelected; });
+      var allSelected = visible.every(function (f) { return state.selected[f.familyKey]; });
+      visible.forEach(function (f) { state.selected[f.familyKey] = !allSelected; });
       render();
     });
     toggleRow.appendChild(selectAllBtn);
@@ -371,7 +450,7 @@
     container.appendChild(footer);
 
     function selectedFamilies() {
-      return families.filter(function (f) { return state.selected[f.skillId]; });
+      return families.filter(function (f) { return state.selected[f.familyKey]; });
     }
 
     function plansForSelected() {
@@ -410,9 +489,9 @@
     function render() {
       clearChildren(list);
       var visible = families.filter(isVisible);
-      // Sort: highest quality first, then by name
+      // Sort: highest max quality first, then by name
       visible.sort(function (a, b) {
-        if (a.quality !== b.quality) return b.quality - a.quality;
+        if (a.maxQuality !== b.maxQuality) return b.maxQuality - a.maxQuality;
         return (a.name || '').localeCompare(b.name || '');
       });
       if (!visible.length) {
@@ -426,25 +505,29 @@
           var row = el('div', 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #21262d;cursor:pointer;');
           var cb = el('input');
           cb.type = 'checkbox';
-          cb.checked = !!state.selected[family.skillId];
+          cb.checked = !!state.selected[family.familyKey];
           cb.style.flex = '0 0 auto';
           cb.style.transform = 'scale(1.2)';
           cb.addEventListener('click', function (e) { e.stopPropagation(); });
           cb.addEventListener('change', function () {
-            state.selected[family.skillId] = cb.checked;
+            state.selected[family.familyKey] = cb.checked;
             refreshSummary();
           });
           row.appendChild(cb);
           row.addEventListener('click', function () {
-            state.selected[family.skillId] = !state.selected[family.skillId];
-            cb.checked = !!state.selected[family.skillId];
+            state.selected[family.familyKey] = !state.selected[family.familyKey];
+            cb.checked = !!state.selected[family.familyKey];
             refreshSummary();
           });
 
           var info = el('div', 'flex:1;min-width:0;');
-          var line1 = el('div', 'display:flex;align-items:center;gap:8px;font-size:13px;color:#e6edf3;');
-          var qChip = el('span', 'display:inline-block;padding:1px 6px;border-radius:9px;font-size:10px;font-weight:600;background:' + (QUALITY_COLOR[family.quality] || '#30363d') + ';color:#0d1117;', QUALITY_LABEL[family.quality] || ('Q' + family.quality));
-          line1.appendChild(qChip);
+          var line1 = el('div', 'display:flex;align-items:center;gap:6px;font-size:13px;color:#e6edf3;flex-wrap:wrap;');
+          // Tier pills — one per owned variant, highest quality first
+          var qs = Object.keys(family.variants).map(Number).sort(function (a, b) { return b - a; });
+          for (var qi = 0; qi < qs.length; qi++) {
+            var q = qs[qi];
+            line1.appendChild(el('span', 'display:inline-block;padding:1px 6px;border-radius:9px;font-size:10px;font-weight:600;background:' + (QUALITY_COLOR[q] || '#30363d') + ';color:#0d1117;', QUALITY_LABEL[q] || ('Q' + q)));
+          }
           line1.appendChild(el('span', 'font-weight:600;', family.name));
           info.appendChild(line1);
 
@@ -480,16 +563,19 @@
       totalSteps += p.steps.length;
       var famRow = el('div', 'margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #21262d;');
       var head = el('div', 'display:flex;justify-content:space-between;font-weight:600;');
-      head.appendChild(el('span', '', p.family.name + ' (' + (QUALITY_LABEL[p.family.quality] || 'Q' + p.family.quality) + ')'));
+      var qs = Object.keys(p.family.variants).map(Number).sort(function (a, b) { return b - a; });
+      var tierLabel = qs.map(function (q) { return QUALITY_LABEL[q] || ('Q' + q); }).join(' + ');
+      head.appendChild(el('span', '', p.family.name + ' (' + tierLabel + ')'));
       head.appendChild(el('span', 'color:#3fb950;', '+' + p.totalChips + ' chip' + (p.totalChips === 1 ? '' : 's')));
       famRow.appendChild(head);
       for (var s = 0; s < p.steps.length; s++) {
         var step = p.steps[s];
+        var qPrefix = (step.quality && qs.length > 1) ? ((QUALITY_LABEL[step.quality] || ('Q' + step.quality)) + ' ') : '';
         var stepLine;
         if (step.kind === 'levelDown') {
-          stepLine = el('div', 'color:#8b949e;font-size:11px;padding-left:8px;', '· Lv ' + step.level + ' × ' + step.num + ' → ' + step.yieldsLv1 + ' Lv 1');
+          stepLine = el('div', 'color:#8b949e;font-size:11px;padding-left:8px;', '· ' + qPrefix + 'Lv ' + step.level + ' × ' + step.num + ' → ' + step.yieldsLv1 + ' Lv 1');
         } else {
-          stepLine = el('div', 'color:#8b949e;font-size:11px;padding-left:8px;', '· Lv 1 × ' + step.num + ' → ' + step.chipsYielded + ' chips');
+          stepLine = el('div', 'color:#8b949e;font-size:11px;padding-left:8px;', '· ' + qPrefix + 'Lv 1 × ' + step.num + ' → ' + step.chipsYielded + ' chips');
         }
         famRow.appendChild(stepLine);
       }
@@ -536,7 +622,11 @@
     return {
       abort: abort,
       onStep: function (info) {
-        var line = el('div', 'color:#8b949e;', info.family.name + ' · ' + (info.step.kind === 'chip' ? 'chip Lv 1 ×' + info.step.num : 'levelDown Lv ' + info.step.level + ' ×' + info.step.num));
+        var qLabel = info.step.quality ? (QUALITY_LABEL[info.step.quality] || ('Q' + info.step.quality)) + ' ' : '';
+        var desc = info.step.kind === 'chip'
+          ? 'chip ' + qLabel + 'Lv 1 ×' + info.step.num
+          : 'levelDown ' + qLabel + 'Lv ' + info.step.level + ' ×' + info.step.num;
+        var line = el('div', 'color:#8b949e;', info.family.name + ' · ' + desc);
         current.appendChild(line);
         current.scrollTop = current.scrollHeight;
       },
@@ -562,8 +652,8 @@
     // Re-enumerate to compute deltas
     var ud = window.__capturedUD;
     var afterFamilies = enumerateFamilies(req, ud);
-    var beforeBySkill = {}; beforeFamilies.forEach(function (f) { beforeBySkill[f.skillId] = f; });
-    var afterBySkill = {}; afterFamilies.forEach(function (f) { afterBySkill[f.skillId] = f; });
+    var beforeByKey = {}; beforeFamilies.forEach(function (f) { beforeByKey[f.familyKey] = f; });
+    var afterByKey = {}; afterFamilies.forEach(function (f) { afterByKey[f.familyKey] = f; });
 
     // Find chip count delta — chip ID is on family.decompChipId (typically 2550001)
     var itemList = ud.getItemListByBagType(1) || [];
@@ -588,22 +678,27 @@
     for (var i = 0; i < plans.length; i++) {
       var plan = plans[i];
       var fam = plan.family;
-      var before = beforeBySkill[fam.skillId];
-      var after = afterBySkill[fam.skillId];
-      var beforeTotal = 0, afterTotal = 0;
-      if (before) Object.keys(before.levels).forEach(function (k) { beforeTotal += before.levels[k].amount; });
-      if (after) Object.keys(after.levels).forEach(function (k) { afterTotal += after.levels[k].amount; });
+      var before = beforeByKey[fam.familyKey];
+      var after = afterByKey[fam.familyKey];
+      var beforeTotal = before ? totalItemsInFamily(before) : 0;
+      var afterTotal = after ? totalItemsInFamily(after) : 0;
       if (beforeTotal === afterTotal && beforeTotal === 0) continue;
       anyChange = true;
+      var qs = Object.keys(fam.variants).map(Number).sort(function (a, b) { return b - a; });
+      var tierLabel = qs.map(function (q) { return QUALITY_LABEL[q] || ('Q' + q); }).join(' + ');
       var line = el('div', 'padding:4px 0;border-bottom:1px solid #21262d;display:flex;justify-content:space-between;');
-      line.appendChild(el('span', '', fam.name + ' (' + (QUALITY_LABEL[fam.quality] || 'Q' + fam.quality) + ')'));
+      line.appendChild(el('span', '', fam.name + ' (' + tierLabel + ')'));
       line.appendChild(el('span', (afterTotal < beforeTotal ? 'color:#3fb950' : 'color:#8b949e') + ';', beforeTotal + ' → ' + afterTotal));
       body.appendChild(line);
     }
     if (!anyChange) body.appendChild(el('div', 'color:#8b949e;', '(no bag changes detected)'));
 
-    // Chip totals — best-effort: look up decompChipId from first plan
-    var chipId = (plans[0] && plans[0].family.decompChipId) || 2550001;
+    // Chip totals — best-effort: walk variants of first plan for chip ID
+    var chipId = 2550001;
+    if (plans[0]) {
+      var firstQ = Object.keys(plans[0].family.variants)[0];
+      if (firstQ && plans[0].family.variants[firstQ]) chipId = plans[0].family.variants[firstQ].decompChipId || chipId;
+    }
     var chipNow = chipCounts[chipId] != null ? chipCounts[chipId] : null;
     if (chipNow != null) {
       body.appendChild(el('div', 'margin-top:10px;color:#3fb950;font-weight:600;text-align:center;font-size:13px;', 'Skill Chip total now: ' + chipNow));
