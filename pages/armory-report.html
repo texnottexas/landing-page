@@ -31355,15 +31355,19 @@
     specHead.appendChild(specLbl);
     var specTotal = document.createElement('span');
     specTotal.style.cssText = 'font-size:.7rem;color:var(--accent);';
-    var rawTotal = 0, unlockedSlots = 0;
+    var rawTotal = 0;
     var masterys = formationData.masterys || {};
+    // The Specialization +1 talent caps at the per-slot max (Lv 5), so a
+    // slot already at 5 sees no bump. Only count the bonus for slots below
+    // the cap; otherwise the total ran over 45 for any player with all
+    // slots maxed.
+    var boostBonus = 0;
     FORMATION_SLOT_ORDER.forEach(function(s) {
-      if (masterys[s] != null) {
-        rawTotal += masterys[s];
-        unlockedSlots++;
-      }
+      var lv = masterys[s];
+      if (lv == null) return;
+      rawTotal += Number(lv);
+      if (formationData.formationMasteryUp && Number(lv) < 5) boostBonus++;
     });
-    var boostBonus = formationData.formationMasteryUp ? unlockedSlots : 0;
     specTotal.textContent = (rawTotal + boostBonus) + '/45';
     specHead.appendChild(specTotal);
     specBlock.appendChild(specHead);
@@ -31374,7 +31378,10 @@
       var lv = masterys[s];
       var cell = document.createElement('div');
       var lvNum = lv != null ? Number(lv) : null;
-      var eff = lvNum != null ? lvNum + (formationData.formationMasteryUp ? 1 : 0) : null;
+      // The +1 talent only applies when the slot is below cap (Lv 5). A slot
+      // already at 5 stays at 5 — no green bump on the cell, no +1 tag.
+      var boostApplies = lvNum != null && lvNum < 5 && formationData.formationMasteryUp;
+      var eff = lvNum != null ? lvNum + (boostApplies ? 1 : 0) : null;
       var bg = '#0d1117', border = 'var(--border)', txt = 'var(--muted)';
       if (eff === 5) { bg = '#103d1c'; border = 'var(--green)'; txt = 'var(--green)'; }
       else if (eff === 4) { bg = '#0e2a16'; border = '#3fb950cc'; txt = 'var(--text)'; }
@@ -31388,13 +31395,13 @@
       lvSpan.style.cssText = 'font-size:.95rem;font-weight:700;line-height:1.1;';
       if (lvNum != null) {
         lvSpan.textContent = String(lvNum);
-        if (formationData.formationMasteryUp) {
+        if (boostApplies) {
           var p = document.createElement('span');
           p.style.cssText = 'color:var(--green);font-size:.6rem;margin-left:1px;';
           p.textContent = ' +1';
           lvSpan.appendChild(p);
         }
-        cell.title = 'Slot ' + FORMATION_SLOT_DISPLAY[s] + ' (raw ' + s + ') — Lv ' + lvNum + (formationData.formationMasteryUp ? ' +1 → effective ' + eff : '') + '/5';
+        cell.title = 'Slot ' + FORMATION_SLOT_DISPLAY[s] + ' (raw ' + s + ') — Lv ' + lvNum + (boostApplies ? ' +1 → effective ' + eff : (lvNum === 5 && formationData.formationMasteryUp ? ' (at cap, +1 has no effect)' : '')) + '/5';
       } else {
         lvSpan.textContent = '—';
         cell.title = 'Slot ' + FORMATION_SLOT_DISPLAY[s] + ' — locked';
