@@ -1214,19 +1214,40 @@
     }
 
     function renderList(container, families, listOpts) {
-      var state = { rareOnly: false, showHeroBound: false, selected: {} };
+      // splitTiers = render each (family, quality) as its own row instead
+      // of merging tiers under one row. Selection state is keyed on
+      // familyKey (combined) or familyKey|quality (split), so toggling
+      // the mode clears the prior picks to avoid mismatch.
+      var state = { splitTiers: false, showHeroBound: false, selected: {} };
       function isVisible(f) {
-        if (state.rareOnly && f.maxQuality < 2) return false;
         if (!state.showHeroBound && f.heroBound) return false;
         return true;
       }
+      function renderableFamilies() {
+        if (!state.splitTiers) return families.slice();
+        var out = [];
+        for (var i = 0; i < families.length; i++) {
+          var f = families[i];
+          var qs = Object.keys(f.variants).map(Number).sort(function (a, b) { return b - a; });
+          for (var qi = 0; qi < qs.length; qi++) {
+            var q = qs[qi];
+            var subVariants = {}; subVariants[q] = f.variants[q];
+            out.push({
+              familyKey: f.familyKey + '|' + q,
+              name: f.name, heroBound: f.heroBound, skillTypes: f.skillTypes,
+              maxQuality: q, variants: subVariants,
+            });
+          }
+        }
+        return out;
+      }
 
       var toggleRow = disEl('div', 'display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px;color:#e6edf3;font-size:12px;');
-      var rareCb = disEl('input'); rareCb.type = 'checkbox';
-      var rareLbl = disEl('label', 'display:flex;align-items:center;gap:6px;cursor:pointer;');
-      rareLbl.appendChild(rareCb); rareLbl.appendChild(disEl('span', '', 'Rare only'));
-      rareCb.addEventListener('change', function () { state.rareOnly = rareCb.checked; render(); });
-      toggleRow.appendChild(rareLbl);
+      var splitCb = disEl('input'); splitCb.type = 'checkbox';
+      var splitLbl = disEl('label', 'display:flex;align-items:center;gap:6px;cursor:pointer;');
+      splitLbl.appendChild(splitCb); splitLbl.appendChild(disEl('span', '', 'Separate Rare/Normal'));
+      splitCb.addEventListener('change', function () { state.splitTiers = splitCb.checked; state.selected = {}; render(); });
+      toggleRow.appendChild(splitLbl);
 
       var heroCb = disEl('input'); heroCb.type = 'checkbox';
       var heroLbl = disEl('label', 'display:flex;align-items:center;gap:6px;cursor:pointer;');
@@ -1247,7 +1268,7 @@
       var commonBtn = disEl('button', 'background:transparent;color:#79c0ff;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Select common');
       commonBtn.title = 'Selects HP, Dodge, Hit, INV (Army/Navy/Air Force) + Gold Mine Production, Unit Load Increase, Gold Gathering Speed';
       commonBtn.addEventListener('click', function () {
-        var visible = families.filter(isVisible);
+        var visible = renderableFamilies().filter(isVisible);
         var commonVisible = visible.filter(isCommon);
         if (!commonVisible.length) return;
         var allSelected = commonVisible.every(function (f) { return state.selected[f.familyKey]; });
@@ -1274,7 +1295,8 @@
 
       function selectedPlans() {
         var plans = [];
-        var sel = families.filter(function (f) { return state.selected[f.familyKey]; });
+        var pool = renderableFamilies();
+        var sel = pool.filter(function (f) { return state.selected[f.familyKey]; });
         for (var i = 0; i < sel.length; i++) { var p = disBuildPlan(req, sel[i]); if (p && p.steps.length) plans.push(p); }
         return plans;
       }
@@ -1293,7 +1315,7 @@
 
       function render() {
         disClearChildren(list);
-        var visible = families.filter(isVisible);
+        var visible = renderableFamilies().filter(isVisible);
         visible.sort(function (a, b) {
           if (a.maxQuality !== b.maxQuality) return b.maxQuality - a.maxQuality;
           return (a.name || '').localeCompare(b.name || '');

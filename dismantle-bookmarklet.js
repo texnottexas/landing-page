@@ -387,26 +387,45 @@
 
   function renderFamilyList(req, container, families, opts) {
     clearChildren(container);
-    // Defaults Tex requested: show Rare + Normal in one combined view by
-    // default; hide hero-specific (awakening etc.) skills by default.
-    var state = { rareOnly: false, showHeroBound: false, selected: {} };
+    // splitTiers off by default — families render with Rare + Normal merged
+    // under one row. Toggle on to break each variant into its own row.
+    // Selection state keys swap between familyKey and familyKey|quality,
+    // so the picks reset whenever the mode flips.
+    var state = { splitTiers: false, showHeroBound: false, selected: {} };
 
     function isVisible(f) {
-      if (state.rareOnly && f.maxQuality < 2) return false;
       if (!state.showHeroBound && f.heroBound) return false;
       return true;
+    }
+    function renderableFamilies() {
+      if (!state.splitTiers) return families.slice();
+      var out = [];
+      for (var i = 0; i < families.length; i++) {
+        var f = families[i];
+        var qs = Object.keys(f.variants).map(Number).sort(function (a, b) { return b - a; });
+        for (var qi = 0; qi < qs.length; qi++) {
+          var q = qs[qi];
+          var subVariants = {}; subVariants[q] = f.variants[q];
+          out.push({
+            familyKey: f.familyKey + '|' + q,
+            name: f.name, heroBound: f.heroBound, skillTypes: f.skillTypes,
+            maxQuality: q, variants: subVariants,
+          });
+        }
+      }
+      return out;
     }
 
     // Filter toggle row
     var toggleRow = el('div', 'display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px;color:#e6edf3;font-size:12px;');
 
-    var rareOnlyCb = el('input');
-    rareOnlyCb.type = 'checkbox';
-    var rareLbl = el('label', 'display:flex;align-items:center;gap:6px;cursor:pointer;');
-    rareLbl.appendChild(rareOnlyCb);
-    rareLbl.appendChild(el('span', '', 'Rare only'));
-    rareOnlyCb.addEventListener('change', function () { state.rareOnly = rareOnlyCb.checked; render(); });
-    toggleRow.appendChild(rareLbl);
+    var splitCb = el('input');
+    splitCb.type = 'checkbox';
+    var splitLbl = el('label', 'display:flex;align-items:center;gap:6px;cursor:pointer;');
+    splitLbl.appendChild(splitCb);
+    splitLbl.appendChild(el('span', '', 'Separate Rare/Normal'));
+    splitCb.addEventListener('change', function () { state.splitTiers = splitCb.checked; state.selected = {}; render(); });
+    toggleRow.appendChild(splitLbl);
 
     var heroCb = el('input');
     heroCb.type = 'checkbox';
@@ -439,7 +458,7 @@
     var commonBtn = el('button', 'background:transparent;color:#79c0ff;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Select common');
     commonBtn.title = 'Selects HP, Dodge, Hit, INV (Army/Navy/Air Force) + Gold Mine Production, Unit Load Increase, Gold Gathering Speed';
     commonBtn.addEventListener('click', function () {
-      var visible = families.filter(isVisible);
+      var visible = renderableFamilies().filter(isVisible);
       var commonVisible = visible.filter(isCommon);
       if (!commonVisible.length) return;
       var allSelected = commonVisible.every(function (f) { return state.selected[f.familyKey]; });
@@ -473,7 +492,7 @@
     container.appendChild(footer);
 
     function selectedFamilies() {
-      return families.filter(function (f) { return state.selected[f.familyKey]; });
+      return renderableFamilies().filter(function (f) { return state.selected[f.familyKey]; });
     }
 
     function plansForSelected() {
@@ -511,7 +530,7 @@
 
     function render() {
       clearChildren(list);
-      var visible = families.filter(isVisible);
+      var visible = renderableFamilies().filter(isVisible);
       // Sort: highest max quality first, then by name
       visible.sort(function (a, b) {
         if (a.maxQuality !== b.maxQuality) return b.maxQuality - a.maxQuality;
