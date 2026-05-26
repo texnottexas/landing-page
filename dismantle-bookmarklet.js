@@ -455,7 +455,7 @@
       return false;
     }
 
-    var commonBtn = el('button', 'background:transparent;color:#79c0ff;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Select common');
+    var commonBtn = el('button', 'background:transparent;color:#79c0ff;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Select commonly dismantled skills');
     commonBtn.title = 'Selects HP, Dodge, Hit, INV (Army/Navy/Air Force) + Gold Mine Production, Unit Load Increase, Gold Gathering Speed';
     commonBtn.addEventListener('click', function () {
       var visible = renderableFamilies().filter(isVisible);
