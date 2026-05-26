@@ -7334,8 +7334,12 @@
     // (own requests OR opened advisor codes); Power-User Tools shows for
     // any verified member since the tools inside have their own per-feature
     // gating where it matters.
+    // Single-row tab bar that scrolls horizontally rather than wrapping —
+    // with 4 tabs (Identity / Armory Report / Advisor / Power-User Tools)
+    // wrapping left a lone underlined tab dangling on its own line. nowrap
+    // + overflow-x keeps them aligned and lets narrow phones swipe.
     var tabBar = document.createElement('div');
-    tabBar.style.cssText = 'display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:.75rem;flex-wrap:wrap;';
+    tabBar.style.cssText = 'display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:.75rem;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;';
     var showAdvisorTab = (typeof isVerifiedS2864Member === 'function') && isVerifiedS2864Member();
     var showPowerToolsTab = showAdvisorTab;
     var tabs = ['Identity', 'Armory Report'];
@@ -7345,7 +7349,7 @@
     var tabPanels = [];
     tabs.forEach(function(t, i) {
       var btn = document.createElement('button');
-      btn.style.cssText = 'padding:.4rem .75rem;color:var(--muted);font-size:.78rem;font-weight:500;cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .2s,border-color .2s;position:relative;';
+      btn.style.cssText = 'flex:0 0 auto;white-space:nowrap;padding:.4rem .6rem;color:var(--muted);font-size:.78rem;font-weight:500;cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .2s,border-color .2s;position:relative;';
       if (i === 0) { btn.style.color = 'var(--accent)'; btn.style.borderBottomColor = 'var(--accent)'; }
       btn.textContent = t;
       // Mark the Advisor tab so the dirty-state badge can attach.
@@ -8150,13 +8154,37 @@
     if (!panel) return;
     while (panel.firstChild) panel.removeChild(panel.firstChild);
 
+    // Collapsible section helper — clickable header + chevron, body hidden
+    // by default. Returns the body element to fill. Sections start collapsed
+    // so the panel opens compact (matches the old in-Identity behavior).
+    function makeSection(titleText) {
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'display:flex;flex-direction:column;gap:.4rem;padding:.6rem 0;border-bottom:1px solid var(--border);';
+      var hdr = document.createElement('button');
+      hdr.type = 'button';
+      hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:0;color:var(--text);font-size:.85rem;font-weight:600;cursor:pointer;width:100%;text-align:left;';
+      var hdrLabel = document.createElement('span');
+      hdrLabel.textContent = titleText;
+      hdr.appendChild(hdrLabel);
+      var caret = document.createElement('span');
+      caret.style.cssText = 'color:var(--muted);font-size:.7rem;margin-left:.5rem;transition:transform .15s;display:inline-block;';
+      caret.textContent = '▾';
+      hdr.appendChild(caret);
+      wrap.appendChild(hdr);
+      var body = document.createElement('div');
+      body.style.cssText = 'display:none;flex-direction:column;gap:.45rem;margin-top:.3rem;';
+      wrap.appendChild(body);
+      hdr.addEventListener('click', function() {
+        var open = body.style.display !== 'none';
+        body.style.display = open ? 'none' : 'flex';
+        caret.style.transform = open ? '' : 'rotate(180deg)';
+      });
+      panel.appendChild(wrap);
+      return body;
+    }
+
     // ── Section 1: Data Source Priority ──
-    var dspWrap = document.createElement('div');
-    dspWrap.style.cssText = 'display:flex;flex-direction:column;gap:.45rem;';
-    var dspTitle = document.createElement('div');
-    dspTitle.style.cssText = 'color:var(--text);font-weight:600;font-size:.85rem;';
-    dspTitle.textContent = 'Data source priority';
-    dspWrap.appendChild(dspTitle);
+    var dspWrap = makeSection('Data source priority');
     var dspHint = document.createElement('div');
     dspHint.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;';
     dspHint.textContent = 'Pick whether your battle reports or your bookmarklet snapshot wins when both have data for the same tab. Most players can leave this on Auto.';
@@ -8211,15 +8239,8 @@
     });
     dspWrap.appendChild(srcReload);
 
-    panel.appendChild(dspWrap);
-
     // ── Section 2: Standalone Bookmarklets ──
-    var bmWrap = document.createElement('div');
-    bmWrap.style.cssText = 'margin-top:1.1rem;padding-top:.75rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:.5rem;';
-    var bmTitle = document.createElement('div');
-    bmTitle.style.cssText = 'color:var(--text);font-weight:600;font-size:.85rem;';
-    bmTitle.textContent = 'Standalone bookmarklets';
-    bmWrap.appendChild(bmTitle);
+    var bmWrap = makeSection('Standalone bookmarklets');
     var bmIntro = document.createElement('div');
     bmIntro.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;';
     bmIntro.textContent = 'Skip the full snapshot flow. Save each URL as a bookmark on this page (drag to the bookmarks bar, or create a new bookmark and paste the URL).';
@@ -8278,8 +8299,6 @@
       desc: 'Same bulk-dismantle wizard available inside Import TopWar Data. Use this when you only want to scrap skill items and skip the full snapshot extract.',
       url: 'javascript:(function(){var s=document.createElement(\'script\');s.src=\'https://2864tw.com/dismantle-bookmarklet.js?_=\'+Date.now();s.onerror=function(){alert(\'Bookmarklet load failed. Check internet + try again.\');};document.body.appendChild(s);})();'
     }));
-
-    panel.appendChild(bmWrap);
   }
 
   function closeIdentityPrefs() {
