@@ -18587,25 +18587,49 @@
       });
     });
 
-    // Pass 5: build the recommendation list. A recommendation is emitted
-    // only when the swap will eventually pay off (scoreMaxNew > scoreNowCur);
-    // if the new beast isn't ready today, attach the upgrade threshold so
-    // the UI can tell the player "needs N stars / M levels first."
-    var recs = [];
-    slots.forEach(function(s) {
+    // Pass 5: build the recommendation list as net-positive MOVE CHAINS.
+    //
+    // The target `assignment` is already a complete plan — Pass 3.5 guarantees
+    // every originally-filled slot stays filled. The danger is that a beast can
+    // move FROM one deployed slot TO another (it scores better there), which
+    // vacates its origin and forces a backfill. The old logic scored each slot
+    // in isolation and dropped any slot whose own gain was non-positive, which
+    // HID those backfill legs: the player was told "put X in slot B", pulled X
+    // out of slot A, and slot A went empty — and the whole reshuffle could even
+    // be a net loss. Tex's rule: a move is only worth recommending when the
+    // SUMMED gain across every slot it touches is positive, and a move must
+    // never be surfaced without its backfill.
+    //
+    // Approach: diff current vs target, group the changed slots into connected
+    // "chains" (slot X links to slot Y when X's incoming beast currently sits
+    // in slot Y), score each chain as a whole, and emit a chain only when its
+    // net gain clears the bar. Every leg of an emitted chain is shown — even a
+    // backfill leg whose own delta is negative — so no slot is ever stranded.
+    // Singleton chains (a bench beast filling one slot) collapse to the old
+    // per-slot behavior.
+
+    // Current slot of each currently-deployed beast, for chain linking.
+    var curSlotOfBeast = {};
+    Object.keys(currentPlan).forEach(function(fid) {
+      Object.keys(currentPlan[fid] || {}).forEach(function(order) {
+        var bId = currentPlan[fid][order];
+        if (bId) curSlotOfBeast[bId] = fid + ':' + order;
+      });
+    });
+
+    // Score one changed slot ("leg"). Mirrors the prior per-slot computation:
+    // both states for both beasts, condition-aware, with upgrade threshold +
+    // bench-fodder feasibility attached. Returns null for unchanged / empty.
+    // gainAtMax compares max-vs-max so "swap Lion 3* Lv70 for Lion 5* Lv80"
+    // collapses to ~0 when the two beasts are structurally equivalent.
+    function boScoreLeg(s) {
       var origId = currentPlan[s.fieldType] && currentPlan[s.fieldType][s.order];
       var newId = assignment[s.key];
-      if (origId === newId) return;
+      if (!newId || origId === newId) return null;
       var origBeast = origId ? beastById[origId] : null;
-      var newBeast = newId ? beastById[newId] : null;
-      if (!newBeast) return;
+      var newBeast = beastById[newId];
+      if (!newBeast) return null;
 
-      // Both states for both beasts, condition-aware so the rec correctly
-      // reflects any rarity-bonus deactivation under the proposed plan vs the
-      // current plan. gainAtMax MUST compare max-vs-max so "swap Lion 3* Lv70
-      // for Lion 5* Lv80" doesn't get a free pass on max-out: at max-out both
-      // project to 5* Lv80 and the delta correctly collapses to ~0 if the
-      // two beasts are structurally equivalent.
       var slotKey = s.fieldType + ':' + s.order;
       var curMet = currentCondMet[slotKey] !== false;
       var newMet = proposedCondMet[slotKey] !== false;
@@ -18613,10 +18637,6 @@
       var scoreNowNew = boBeastScore(newBeast, 'current', s.desc, playstyle, newMet);
       var scoreMaxCur = origBeast ? boBeastScore(origBeast, 'maxOut', s.desc, playstyle, curMet) : 0;
       var scoreMaxNew = boBeastScore(newBeast, 'maxOut', s.desc, playstyle, newMet);
-
-      // Recommend the swap only if EITHER state shows a meaningful gain.
-      // Half-a-point epsilon to filter noise from near-equal candidates.
-      if (scoreMaxNew <= scoreMaxCur + 0.5 && scoreNowNew <= scoreNowCur + 0.5) return;
 
       var threshold = null;
       // Interchangeable swaps (same type + same rarity as the current beast)
@@ -18626,7 +18646,6 @@
       if (scoreNowNew <= scoreNowCur && !isInterchangeableSwap(origId, newId)) {
         threshold = boUpgradeThreshold(newBeast, scoreNowCur, s.desc, playstyle);
       }
-
       // Bench-fodder feasibility for the recommended star upgrade. Per Tex's
       // 2026-05-18 clarification: a beast can only be star-upgraded by sacrificing
       // 1★ beasts of the SAME type AND SAME rarity (bear-bear, lion-lion, etc.).
@@ -18649,14 +18668,78 @@
         threshold.fodderFeasible = fodderHave >= fodderNeeded;
       }
 
-      recs.push({
-        slot: { fieldType: s.fieldType, order: s.order, holeId: s.desc.holeId },
-        from: origBeast,
-        to: newBeast,
+      return {
+        s: s, key: s.key, origId: origId, newId: newId,
+        from: origBeast, to: newBeast,
         gainToday: scoreNowNew - scoreNowCur,
         gainAtMax: scoreMaxNew - scoreMaxCur,
         threshold: threshold,
         brokeConditions: brokeMap[s.key] || []
+      };
+    }
+
+    var legs = [];
+    var legByKey = {};
+    slots.forEach(function(s) {
+      var leg = boScoreLeg(s);
+      if (leg) { legs.push(leg); legByKey[s.key] = leg; }
+    });
+
+    // Union-find over changed-slot keys. Link a leg to the current slot of its
+    // incoming beast: a move A->B (B's new beast currently sits at A) joins
+    // slots A and B into one chain. Cycles (A->B->C->A) and paths (bench->A,
+    // A's beast->B, B's beast->bench) both fall out of this single edge rule.
+    var parent = {};
+    function boFind(k) { while (parent[k] !== k) { parent[k] = parent[parent[k]]; k = parent[k]; } return k; }
+    function boUnion(a, b) { var ra = boFind(a), rb = boFind(b); if (ra !== rb) parent[ra] = rb; }
+    legs.forEach(function(leg) { parent[leg.key] = leg.key; });
+    legs.forEach(function(leg) {
+      var src = curSlotOfBeast[leg.newId];
+      if (src && src !== leg.key && legByKey[src]) boUnion(leg.key, src);
+    });
+
+    // Aggregate legs into chains and sum each chain's net gain.
+    var chains = {};
+    legs.forEach(function(leg) {
+      var root = boFind(leg.key);
+      var c = chains[root] || (chains[root] = { legs: [], today: 0, max: 0 });
+      c.legs.push(leg);
+      c.today += leg.gainToday;
+      c.max += leg.gainAtMax;
+    });
+
+    // Emit only chains whose summed gain clears the bar, and emit EVERY leg of
+    // an emitted chain so no slot is stranded. Gate: the chain must improve the
+    // durable max-out total (net > 0.5), OR show a real "today" win that does
+    // not sacrifice max-out value (so deploying an already-leveled, structurally
+    // equivalent beast still surfaces, but trading long-term value for a short-
+    // term bump never does). Half-point epsilons filter near-equal noise.
+    var recs = [];
+    var chainSeq = 0;
+    Object.keys(chains).forEach(function(root) {
+      var c = chains[root];
+      var netOK = (c.max > 0.5) || (c.today > 0.5 && c.max > -0.5);
+      if (!netOK) return;
+      chainSeq += 1;
+      var multi = c.legs.length > 1;
+      c.legs.forEach(function(leg) {
+        // A leg is a "backfill" when it only exists to keep a vacated slot
+        // filled: part of a multi-leg chain and not a standalone win itself.
+        var isBackfill = multi && leg.gainAtMax <= 0.5 && leg.gainToday <= 0.5;
+        recs.push({
+          slot: { fieldType: leg.s.fieldType, order: leg.s.order, holeId: leg.s.desc.holeId },
+          from: leg.from,
+          to: leg.to,
+          gainToday: leg.gainToday,
+          gainAtMax: leg.gainAtMax,
+          threshold: leg.threshold,
+          brokeConditions: leg.brokeConditions,
+          chainId: chainSeq,
+          chainSize: c.legs.length,
+          chainNetToday: c.today,
+          chainNetMax: c.max,
+          isBackfill: isBackfill
+        });
       });
     });
 
@@ -19140,8 +19223,13 @@
         var fromName = rec.from ? boBeastDisplayName(rec.from) + ' (Q' + rec.from.q + ' ' + rec.from.st + '★ Lv ' + rec.from.lv + ')' : 'empty';
         var toName = boBeastDisplayName(rec.to) + ' (Q' + rec.to.q + ' ' + rec.to.st + '★ Lv ' + rec.to.lv + ')';
         var note = rec.threshold ? (' [upgrade to ' + rec.threshold.star + '★ Lv ' + rec.threshold.level + ' first]') : '';
+        var chainTag = rec.chainSize > 1
+          ? (rec.isBackfill
+              ? ' [backfill — keep slot filled, chain #' + rec.chainId + ']'
+              : ' [chain #' + rec.chainId + ', net ' + (rec.chainNetMax >= 0 ? '+' : '') + Math.round(rec.chainNetMax) + ' at max]')
+          : '';
         return (i + 1) + '. Field ' + rec.slot.fieldType + ' (' + fieldNames[rec.slot.fieldType] + ') Slot ' + rec.slot.order +
-          ': ' + fromName + ' -> ' + toName + note;
+          ': ' + fromName + ' -> ' + toName + note + chainTag;
       });
       var text = lines.join('\n');
       function flash(msg) {
@@ -20022,12 +20110,35 @@
     statMaxLbl.style.color = 'var(--muted)';
     statMaxLbl.textContent = 'At max-out: ';
     var statMaxVal = document.createElement('strong');
-    statMaxVal.style.color = 'var(--green)';
-    statMaxVal.textContent = '+' + Math.round(rec.gainAtMax) + ' pts';
+    // A backfill leg can be flat or negative on its own — color/sign honestly
+    // instead of always rendering green with a leading '+'.
+    statMaxVal.style.color = rec.gainAtMax >= 0 ? 'var(--green)' : '#d29922';
+    statMaxVal.textContent = (rec.gainAtMax >= 0 ? '+' : '') + Math.round(rec.gainAtMax) + ' pts';
     statMax.appendChild(statMaxLbl);
     statMax.appendChild(statMaxVal);
     stats.appendChild(statMax);
     card.appendChild(stats);
+
+    // Multi-slot move: explain that this card is one leg of a coordinated
+    // chain whose NET gain is what matters. A backfill leg may look flat or
+    // negative alone, but dropping it would empty the slot a moved beast left.
+    if (rec.chainSize > 1) {
+      var chainNote = document.createElement('div');
+      chainNote.style.cssText = 'font-size:.72rem;color:#79c0ff;background:rgba(121,192,255,0.08);border-left:3px solid #79c0ff;padding:.4rem .6rem;border-radius:4px;margin-bottom:.45rem;line-height:1.4;';
+      var cTitle = document.createElement('strong');
+      cTitle.style.color = '#79c0ff';
+      cTitle.textContent = (rec.isBackfill ? 'Backfill leg' : 'Move chain') + ' #' + rec.chainId;
+      chainNote.appendChild(cTitle);
+      var netStr = (rec.chainNetMax >= 0 ? '+' : '') + Math.round(rec.chainNetMax);
+      chainNote.appendChild(document.createTextNode(
+        ' — one of ' + rec.chainSize + ' linked moves that together net ' + netStr +
+        ' pts at max-out. ' +
+        (rec.isBackfill
+          ? 'On its own this leg is flat or negative, but it keeps this slot filled after a beast moves out. Apply the whole chain, not just the winning leg.'
+          : 'Apply every leg of chain #' + rec.chainId + ' together so no slot is left empty.')
+      ));
+      card.appendChild(chainNote);
+    }
 
     var deltaTable = boRenderStatDeltaTable(rec, prefs);
     if (deltaTable) card.appendChild(deltaTable);
