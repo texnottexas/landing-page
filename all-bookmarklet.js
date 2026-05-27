@@ -1282,7 +1282,7 @@
       container.appendChild(toggleRow);
 
       // Plain-language note of exactly what the preset button selects.
-      var commonNote = disEl('div', 'color:#8b949e;font-size:11px;line-height:1.4;margin:0 0 8px;', 'Selects HP, Dodge, Hit, INV + Gold Mine Production, Unit Load Increase, Gold Gathering Speed.');
+      var commonNote = disEl('div', 'color:#8b949e;font-size:11px;line-height:1.4;margin:0 0 8px;', 'Commonly Dismantled Skills = HP, Dodge, Hit, INV + Gold Mine Production, Unit Load Increase, Gold Gathering Speed.');
       container.appendChild(commonNote);
 
       var list = disEl('div', 'flex:1;overflow-y:auto;border:1px solid #30363d;border-radius:6px;background:#0d1117;');

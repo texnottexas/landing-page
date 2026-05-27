@@ -474,7 +474,7 @@
     container.appendChild(toggleRow);
 
     // Plain-language note of exactly what the preset button selects.
-    var commonNote = el('div', 'color:#8b949e;font-size:11px;line-height:1.4;margin:0 0 8px;', 'Selects HP, Dodge, Hit, INV + Gold Mine Production, Unit Load Increase, Gold Gathering Speed.');
+    var commonNote = el('div', 'color:#8b949e;font-size:11px;line-height:1.4;margin:0 0 8px;', 'Commonly Dismantled Skills = HP, Dodge, Hit, INV + Gold Mine Production, Unit Load Increase, Gold Gathering Speed.');
     container.appendChild(commonNote);
 
     // Scrollable family list
