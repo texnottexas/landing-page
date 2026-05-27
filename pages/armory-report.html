@@ -18710,16 +18710,17 @@
 
     // Emit only chains whose summed gain clears the bar, and emit EVERY leg of
     // an emitted chain so no slot is stranded. Gate: the chain must improve the
-    // durable max-out total (net > 0.5), OR show a real "today" win that does
-    // not sacrifice max-out value (so deploying an already-leveled, structurally
-    // equivalent beast still surfaces, but trading long-term value for a short-
-    // term bump never does). Half-point epsilons filter near-equal noise.
+    // durable MAX-OUT total (net > 0.5). We deliberately do NOT recommend
+    // "better today / flat-or-worse at max-out" shuffles — they net ~0 once
+    // everything is leveled, so a multi-leg chain there is just busywork (this
+    // is what produced the confusing "net +0 pts at max-out" recs). Upgrade
+    // paths (worse today, better at max) still pass because their max-out net
+    // is positive; their per-leg threshold tells the player what to level.
     var recs = [];
     var chainSeq = 0;
     Object.keys(chains).forEach(function(root) {
       var c = chains[root];
-      var netOK = (c.max > 0.5) || (c.today > 0.5 && c.max > -0.5);
-      if (!netOK) return;
+      if (c.max <= 0.5) return;
       chainSeq += 1;
       var multi = c.legs.length > 1;
       c.legs.forEach(function(leg) {
