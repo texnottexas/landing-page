@@ -162,7 +162,7 @@
     }
     sharedExtractInventory = extractInventory;
 
-    // ─── Bench beasts (Q3+ unplaced) ──────────────────────────────────────
+    // ─── Bench beasts (Q4+ purple/gold unplaced) ─────────────────────────
     async function extractBeasts() {
       stepHook && stepHook('Beasts…');
       var beastPath = 'UICanvas/PopLayer/UIFrameScreenWithBottom/CONTENT/EnigmaBeastListPanel';
@@ -192,7 +192,13 @@
       for (var k = 0; k < arr.length; k++) {
         var w = arr[k];
         if (!w || !w.data || !w._cfg) continue;
-        if ((w._cfg.quality || 0) < 3) continue;
+        // Purple (Q4) + Gold (Q5) only. Q3 (blue) and below were dropped
+        // because heavy spenders carry 1000-1400+ Q3+ bench beasts, which
+        // overflowed the receiver's 800-beast cap on the enigmaState section
+        // and bloated localStorage / KV payloads. Lower-quality beasts are
+        // not real platform candidates anyway, so the optimizer doesn't miss
+        // anything by ignoring them.
+        if ((w._cfg.quality || 0) < 4) continue;
         if (deployed[w.strId]) { skipped++; continue; }
         var b = w.data;
         out.push({
@@ -626,9 +632,11 @@
       for (var bi = 0; bi < bArr.length; bi++) {
         var w = bArr[bi];
         if (!w || !w.data) continue;
-        // Skip very-low-quality beasts (matches existing extractBeasts threshold).
+        // Keep only purple (Q4) + gold (Q5), matching extractBeasts. Blue
+        // and below would push heavy spenders past the receiver's 800-beast
+        // cap and bloat the supplement payload for no real optimizer value.
         var q = (w._cfg && w._cfg.quality != null) ? w._cfg.quality : (w.data && w.data.quality);
-        if (q != null && q < 3) continue;
+        if (q != null && q < 4) continue;
         var d = w.data;
         beasts.push({
           id: w.strId != null ? String(w.strId) : (d.id != null ? String(d.id) : null),
