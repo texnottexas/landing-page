@@ -4382,12 +4382,6 @@
     return String(n || '').replace(/[^a-zA-Z0-9 ]/g, '').replace(/ /g, '_');
   }
 
-  function _ar_itemIconFile(i) {
-    if (!i || !i.startsWith('image/')) return null;
-    var s = i.slice(6).replace(/\//g, '__');
-    if (!s.endsWith('.png')) s += '.png';
-    return 'image__' + s;
-  }
 
   // Item table uses two prefix schemes for icons:
   //   image/<path>     -> assets/inventory-icons/image__<path>.png  (atlas-extracted)
@@ -8735,45 +8729,6 @@
 
   // ── Overview / Dashboard tab ───────────────────────────────────────────────
   // SVG donut chart helper
-  function buildDonutChart(segments, size, innerRatio) {
-    size = size || 120;
-    innerRatio = innerRatio || 0.62;
-    var total = 0;
-    segments.forEach(function(s) { total += s.value; });
-    if (total === 0) return null;
-    var svgNS = SVG_NS;
-    var svg = document.createElementNS(svgNS, 'svg');
-    svg.setAttribute('width', size);
-    svg.setAttribute('height', size);
-    svg.setAttribute('viewBox', '0 0 ' + size + ' ' + size);
-    var cx = size / 2, cy = size / 2;
-    var r = size / 2 - 2;
-    var innerR = r * innerRatio;
-    var cumAngle = -Math.PI / 2; // start at top
-    segments.forEach(function(seg) {
-      var angle = (seg.value / total) * Math.PI * 2;
-      var a0 = cumAngle, a1 = cumAngle + angle;
-      var x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
-      var x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
-      var xi1 = cx + innerR * Math.cos(a1), yi1 = cy + innerR * Math.sin(a1);
-      var xi0 = cx + innerR * Math.cos(a0), yi0 = cy + innerR * Math.sin(a0);
-      var large = angle > Math.PI ? 1 : 0;
-      var d = 'M ' + x0 + ' ' + y0 +
-              ' A ' + r + ' ' + r + ' 0 ' + large + ' 1 ' + x1 + ' ' + y1 +
-              ' L ' + xi1 + ' ' + yi1 +
-              ' A ' + innerR + ' ' + innerR + ' 0 ' + large + ' 0 ' + xi0 + ' ' + yi0 +
-              ' Z';
-      var path = document.createElementNS(svgNS, 'path');
-      path.setAttribute('d', d);
-      path.setAttribute('fill', seg.color);
-      path.setAttribute('fill-opacity', '0.85');
-      path.setAttribute('stroke', 'var(--bg)');
-      path.setAttribute('stroke-width', '2');
-      svg.appendChild(path);
-      cumAngle = a1;
-    });
-    return svg;
-  }
 
   function renderOverviewTab(merged, counts) {
     var container = document.getElementById('tab-overview');
@@ -9462,79 +9417,6 @@
 
   // Gear score breakdown tooltip — click on a hero's progress bar to see
   // Refine / Rune / Total with %-of-max, which used to live inline and crowded the legend.
-  function showGearScoreBreakdownTooltip(e, data) {
-    e.stopPropagation();
-    dismissRuneTooltip();
-    var bd = data.bd, gs = data.gs, name = data.name;
-    var refinePct = Math.round(bd.refineTotal / 2400 * 100);
-    var runePct = Math.round(bd.runeTotal / 3600 * 100);
-    var totalPct = Math.round(gs / 6000 * 100);
-
-    var tip = document.createElement('div');
-    tip.className = 'rune-tooltip';
-    tip.id = 'rune-tooltip-active';
-
-    var hdr = document.createElement('div');
-    hdr.className = 'rune-tooltip-header';
-    var nameEl = document.createElement('span');
-    nameEl.className = 'rune-tooltip-name';
-    nameEl.textContent = name + ' \u2014 Gear Score';
-    hdr.appendChild(nameEl);
-    tip.appendChild(hdr);
-
-    var body = document.createElement('div');
-    body.style.cssText = 'display:flex;flex-direction:column;gap:.35rem;font-size:.72rem;';
-
-    function mkRow(label, val, max, color) {
-      var row = document.createElement('div');
-      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:.75rem;';
-      var lbl = document.createElement('span');
-      lbl.style.cssText = 'display:inline-flex;align-items:center;gap:.3rem;color:var(--text);';
-      var dot = document.createElement('span');
-      dot.style.cssText = 'width:8px;height:8px;border-radius:2px;background:' + color + ';display:inline-block;';
-      lbl.appendChild(dot);
-      lbl.appendChild(document.createTextNode(label));
-      row.appendChild(lbl);
-      var v = document.createElement('span');
-      v.style.cssText = 'color:var(--muted);font-variant-numeric:tabular-nums;';
-      var pct = max > 0 ? Math.round(val / max * 100) : 0;
-      v.textContent = val + ' / ' + max + ' (' + pct + '%)';
-      row.appendChild(v);
-      return row;
-    }
-
-    body.appendChild(mkRow('Refine', bd.refineTotal, 2400, '#3fb950'));
-    body.appendChild(mkRow('Rune',   bd.runeTotal,   3600, '#a371f7'));
-
-    var divider = document.createElement('div');
-    divider.style.cssText = 'height:1px;background:var(--border);margin:.1rem 0;';
-    body.appendChild(divider);
-
-    var totalRow = document.createElement('div');
-    totalRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:.75rem;font-weight:600;';
-    var tl = document.createElement('span');
-    tl.style.color = 'var(--text)';
-    tl.textContent = 'Total';
-    totalRow.appendChild(tl);
-    var tv = document.createElement('span');
-    tv.style.cssText = 'color:var(--accent);font-variant-numeric:tabular-nums;';
-    tv.textContent = gs + ' / 6000 (' + totalPct + '%)';
-    totalRow.appendChild(tv);
-    body.appendChild(totalRow);
-
-    tip.appendChild(body);
-    document.body.appendChild(tip);
-
-    var rect = e.currentTarget.getBoundingClientRect();
-    var tw = tip.offsetWidth, th = tip.offsetHeight;
-    var left = rect.left + rect.width / 2 - tw / 2;
-    var top = rect.bottom + 8;
-    if (left < 8) left = 8;
-    if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
-    if (top + th > window.innerHeight - 8) top = rect.top - th - 8;
-    tip.style.left = left + 'px';
-    tip.style.top = top + 'px';
-  }
 
   document.addEventListener('click', function(e) {
     if (!e.target.closest('.rune-tooltip') && !e.target.closest('.gear-rune-wrap')) {
@@ -9875,21 +9757,6 @@
     } catch(e) {}
   }
 
-  function gearSlotName(equipId) {
-    // equipId format is typically XXYYYY where XX encodes slot
-    // Detect by last digit of first two digits, or use modulo approach
-    // From battle report data, slot is encoded in the equip config
-    // Simplest reliable approach: use slot index order (1-6)
-    var slot = equipId % 10;
-    if (slot >= 1 && slot <= 6) return GEAR_SLOT_NAMES[slot] || ('Slot ' + slot);
-    // fallback: try first digit of 6-digit ID
-    var asStr = String(equipId);
-    if (asStr.length >= 6) {
-      var prefix = parseInt(asStr.charAt(0), 10);
-      if (prefix >= 1 && prefix <= 6) return GEAR_SLOT_NAMES[prefix] || ('Slot ' + prefix);
-    }
-    return 'Gear';
-  }
 
   // ── toggleHero ────────────────────────────────────────────────────────────
   function toggleHero(headerEl) {
@@ -11567,57 +11434,6 @@
     };
   }
 
-  // msAllocateAcross: greedy allocator for the "upgrade ALL targets" footer.
-  // Sorts targets by single-target shortage ascending (cheapest first), then
-  // consumes the pool. Remaining shortages aggregate into residualShortage.
-  function msAllocateAcross(targets, initialPool) {
-    var pool = { rare: {}, normal: {} };
-    Object.keys(initialPool.rare || {}).forEach(function (lv) { pool.rare[lv] = initialPool.rare[lv]; });
-    Object.keys(initialPool.normal || {}).forEach(function (lv) { pool.normal[lv] = initialPool.normal[lv]; });
-
-    var withPreviews = targets.map(function (t, idx) {
-      return { idx: idx, target: t, preview: msComputeTarget(t, pool) };
-    });
-    withPreviews.sort(function (a, b) {
-      if (a.preview.maxedOut && !b.preview.maxedOut) return 1;
-      if (!a.preview.maxedOut && b.preview.maxedOut) return -1;
-      return (a.preview.bottomShortage || 0) - (b.preview.bottomShortage || 0);
-    });
-
-    var spentPerTarget = [];
-    var residual = { rare: {}, normal: {} };
-
-    withPreviews.forEach(function (entry) {
-      var t = entry.target;
-      var rarity = t.rarity;
-      if (entry.preview.maxedOut) {
-        spentPerTarget.push({ targetIdx: entry.idx, walkDown: [], spent: {}, maxedOut: true });
-        return;
-      }
-      var live = msComputeTarget(t, pool);
-      var spent = {};
-      live.walkDown.forEach(function (row) {
-        var avail = pool[rarity][row.level] || 0;
-        var take = Math.min(avail, row.need);
-        if (take > 0) {
-          pool[rarity][row.level] = avail - take;
-          spent[row.level] = (spent[row.level] || 0) + take;
-        }
-      });
-      if (live.bottomShortage > 0) {
-        var deepest = live.walkDown[live.walkDown.length - 1];
-        residual[rarity][deepest.level] = (residual[rarity][deepest.level] || 0) + live.bottomShortage;
-      }
-      spentPerTarget.push({
-        targetIdx: entry.idx,
-        walkDown: live.walkDown,
-        spent: spent,
-        maxedOut: false,
-      });
-    });
-
-    return { spentPerTarget: spentPerTarget, residualShortage: residual };
-  }
 
   // msSelfTest: console-based assertions. Gated by ?msSelfTest=1 in the URL.
   // Throws on first failure so devtools shows a clean stack.
@@ -11724,27 +11540,6 @@
     );
     assertEq(t4.maxedOut, true, 'msComputeTarget maxedOut');
 
-    // msAllocateAcross — two cheap targets share a pool that covers them both
-    var a1 = msAllocateAcross(
-      [
-        { rarity: 'rare', currentLevel: 5 },
-        { rarity: 'rare', currentLevel: 5 },
-      ],
-      { rare: { 5: 4 } }
-    );
-    assertEq(a1.residualShortage, { rare: {}, normal: {} }, 'allocate two cheap covered');
-    assertEq(a1.spentPerTarget[0].spent[5] + a1.spentPerTarget[1].spent[5], 4, 'allocate spent total');
-
-    // msAllocateAcross — one target eats the cheap pool, the other walks deeper
-    var a2 = msAllocateAcross(
-      [
-        { rarity: 'rare', currentLevel: 4 },
-        { rarity: 'rare', currentLevel: 4 },
-      ],
-      { rare: { 4: 2 } }
-    );
-    assertEq(a2.spentPerTarget[0].spent[4], 2, 'allocate cheapest takes all Lv4');
-    assertEq(Object.keys(a2.residualShortage.rare).length, 1, 'allocate second target residual');
 
     console.log('msSelfTest: all assertions passed');
   }
@@ -14671,10 +14466,6 @@
 
   // ── Decoration category names ─────────────────────────────────────────────
   var DECO_CAT_NAMES = ['March Size', 'Defense', 'Damage Boost', 'Others'];
-  var DECO_CAT_COLORS = ['var(--blue)', 'var(--green)', 'var(--red)', 'var(--muted)'];
-
-  // Sub-category buff ID sets (mirrors decor-index.html)
-  var DMG_INC_IDS = {1001001:1,980101:1,980102:1,980103:1,29801011:1,29801021:1};
   var DMG_DEC_IDS = {980204:1,1003020:1,1003021:1,1003022:1,990143:1,990221:1,29901301:1,29902211:1,10030201:1,20030201:1,21010161:1,98020501:1,980201:1,980202:1,980203:1};
   var HP_BUFF_IDS = {930000:1,930001:1,930002:1,930003:1,9301170:1,9301171:1,9301172:1,9301173:1,9301174:1,93011701:1,9990769:1};
   var ATK_BUFF_IDS = {930100:1,930101:1,930102:1,930103:1,9301160:1,9301161:1,9301162:1,9301163:1,9301164:1,93011601:1,990100:1};
@@ -18132,15 +17923,6 @@
   function boConditionIdForSlot(fieldId, slotOrder) {
     var off = BO_FIELD_CONDITION_OFFSETS[fieldId];
     return off == null ? null : (off + Number(slotOrder));
-  }
-  function boSlotForConditionId(conditionId) {
-    var cid = Number(conditionId);
-    if (cid >= 1 && cid <= 5) return { fieldId: 1, slotOrder: cid };
-    if (cid >= 6 && cid <= 12) return { fieldId: 2, slotOrder: cid - 5 };
-    if (cid >= 13 && cid <= 18) return { fieldId: 3, slotOrder: cid - 12 };
-    if (cid >= 19 && cid <= 27) return { fieldId: 4, slotOrder: cid - 18 };
-    if (cid >= 28 && cid <= 36) return { fieldId: 5, slotOrder: cid - 27 };
-    return null;
   }
 
   // Test a single condition row against a single field's beasts.
@@ -31448,22 +31230,6 @@
   }
 
   // Sum cumulative buff values up through level `lv` for a given army_type code.
-  function computeArmyMasteryCumulative(ref, typeCode, lv) {
-    var levels = ref.army_mastery && ref.army_mastery.levels && ref.army_mastery.levels[typeCode];
-    if (!levels) return [];
-    var totals = {};
-    var nameMap = {};
-    levels.forEach(function(entry) {
-      if (entry.level > lv) return;
-      (entry.buffs || []).forEach(function(b) {
-        totals[b.buff_id] = (totals[b.buff_id] || 0) + b.buff_value;
-        nameMap[b.buff_id] = b.buff_name;
-      });
-    });
-    return Object.keys(totals).map(function(id) {
-      return { id: id, name: nameMap[id] || id, value: totals[id] };
-    });
-  }
 
   // ── Source freshness helpers (heroes / chips / enigma) ───────────────────
   // Players using both the bookmarklet AND battle reports got confused about
@@ -32404,7 +32170,6 @@
     Promise.all([migrationDone, _ar_decorReady.catch(function() { return null; })]).finally(function() { normalInit(); });
   })();
 
-  function detectCurrentLang(){var m=document.cookie.match(/googtrans=\/en\/([a-zA-Z-]{2,10})/);return m&&m[1]?m[1]:'en';}
   function applyLangToCombo(code,delay){var a=0;var p=setInterval(function(){var c=document.querySelector('.goog-te-combo');if(c){c.value=code;c.dispatchEvent(new Event('change'));clearInterval(p);}if(++a>30)clearInterval(p);},delay||200);}
   function googleTranslateElementInit(){window._gtLoaded=true;new google.translate.TranslateElement({pageLanguage:'en',autoDisplay:false},'google_translate_element');var p=sessionStorage.getItem('pendingLang');if(p){sessionStorage.removeItem('pendingLang');applyLangToCombo(p,250);}else{var lo=localStorage.getItem('langOverride');if(lo&&lo!=='en')applyLangToCombo(lo,250);}}
 </script>
