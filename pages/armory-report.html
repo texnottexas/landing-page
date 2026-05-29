@@ -3635,23 +3635,10 @@
   }
 
   function _ar_openWhatsNewModal() {
-    var bg = document.createElement('div');
-    bg.className = 'modal-bg show';
-    bg.style.zIndex = '900';
-    bg.addEventListener('click', function(e) { if (e.target === bg) closeNow(); });
-
-    var modal = document.createElement('div');
-    modal.className = 'modal whats-new-modal-card';
-    bg.appendChild(modal);
-
-    function closeNow() {
-      // Persistent pill: just close the modal; do not remove the pill or
-      // mark dismissed. Players can revisit the callout any time.
-      if (bg.parentNode) bg.parentNode.removeChild(bg);
-      document.removeEventListener('keydown', onEsc);
-    }
-    function onEsc(e) { if (e.key === 'Escape') closeNow(); }
-    document.addEventListener('keydown', onEsc);
+    // Persistent pill: closing just hides the modal; the pill stays and is not
+    // marked dismissed, so players can revisit the callout any time.
+    var m = openModal({ zIndex: '900', modalClass: 'modal whats-new-modal-card', esc: true, backdropClose: true });
+    var bg = m.bg, modal = m.modal, closeNow = m.close;
 
     // Hero
     var hero = document.createElement('div');
@@ -3829,12 +3816,10 @@
   }
 
   function _ar_openUnlockModal(siteKey, playerName, onUnlock) {
-    var bg = document.createElement('div');
-    bg.className = 'modal-bg show';
-    bg.style.zIndex = '120';
-    var modal = document.createElement('div');
-    modal.className = 'modal sup-unlock-modal';
-    bg.appendChild(modal);
+    // No Esc / backdrop close here by design - keep the three inline removeChild
+    // teardowns (cancel / unlock-success / roster-heal) exactly as they are.
+    var m = openModal({ zIndex: '120', modalClass: 'modal sup-unlock-modal', esc: false, backdropClose: false });
+    var bg = m.bg, modal = m.modal;
 
     var h = document.createElement('h2');
     h.textContent = 'Unlock S2864 features for ' + playerName;
@@ -9562,6 +9547,47 @@
     return modal;
   }
 
+  // Shared opener for the "create-and-remove" modal pattern (the 'modal-bg show'
+  // backdrop + inner card). Creates the backdrop and card, wires ONLY the close
+  // affordances each caller opts into, and returns { bg, modal, close }. Does NOT
+  // append bg to document.body - the caller keeps its own appendChild(bg) line so
+  // mount timing is unchanged (repaint-loop modals build content before mounting).
+  // close() is a parentNode-guarded removeChild plus teardown of the Escape
+  // listener this helper itself added (and nothing else). Per-site opts:
+  //   zIndex       - string set on bg.style.zIndex (omit to inherit .modal-bg CSS)
+  //   modalClass   - card className (default 'modal')
+  //   modalStyle   - full cssText for the card  (mutually exclusive with maxWidth)
+  //   maxWidth     - card max-width only         (mutually exclusive with modalStyle)
+  //   esc          - true to close on Escape (must match the site's prior behavior)
+  //   backdropClose- true to close on backdrop click (must match prior behavior)
+  function openModal(opts) {
+    opts = opts || {};
+    var bg = document.createElement('div');
+    bg.className = 'modal-bg show';
+    if (opts.zIndex != null) bg.style.zIndex = opts.zIndex;
+
+    var modal = document.createElement('div');
+    modal.className = opts.modalClass || 'modal';
+    if (opts.modalStyle) modal.style.cssText = opts.modalStyle;
+    else if (opts.maxWidth) modal.style.maxWidth = opts.maxWidth;
+    bg.appendChild(modal);
+
+    var onEsc = null;
+    function close() {
+      if (bg.parentNode) bg.parentNode.removeChild(bg);
+      if (onEsc) document.removeEventListener('keydown', onEsc);
+    }
+    if (opts.esc) {
+      onEsc = function (e) { if (e.key === 'Escape') close(); };
+      document.addEventListener('keydown', onEsc);
+    }
+    if (opts.backdropClose) {
+      bg.addEventListener('click', function (e) { if (e.target === bg) close(); });
+    }
+
+    return { bg: bg, modal: modal, close: close };
+  }
+
   // "How is this calculated?" modal for gear score
   function buildGearScoreModal() {
     var modal = modalShell({ overlayId: 'gs-modal-overlay', overlayClass: 'gs-modal-overlay', modalClass: 'gs-modal', closeClass: 'gs-close', titleId: 'gs-modal-title' });
@@ -11547,19 +11573,8 @@
       loadError: null,
     };
 
-    var bg = document.createElement('div');
-    bg.className = 'modal-bg show';
-    var modal = document.createElement('div');
-    modal.className = 'ms-modal';
-    bg.appendChild(modal);
-
-    function close() {
-      bg.remove();
-      document.removeEventListener('keydown', onEsc);
-    }
-    function onEsc(e) { if (e.key === 'Escape') close(); }
-    document.addEventListener('keydown', onEsc);
-    bg.addEventListener('click', function (e) { if (e.target === bg) close(); });
+    var m = openModal({ modalClass: 'ms-modal', esc: true, backdropClose: true });
+    var bg = m.bg, modal = m.modal, close = m.close;
 
     function repaint() {
       while (modal.firstChild) modal.removeChild(modal.firstChild);
@@ -12902,17 +12917,8 @@
     var placements = _bench_collectSkillPlacements(heroes);
     var state = { query: '', quality: 'all' }; // quality: all | 1 (normal) | 2 (rare) | exc
 
-    var bg = document.createElement('div');
-    bg.className = 'modal-bg show';
-    bg.style.zIndex = '870';
-    function closeModal() { try { document.body.removeChild(bg); } catch (e) {} document.removeEventListener('keydown', escHandler); }
-    function escHandler(e) { if (e.key === 'Escape') closeModal(); }
-    document.addEventListener('keydown', escHandler);
-    bg.addEventListener('click', function(e) { if (e.target === bg) closeModal(); });
-
-    var modal = document.createElement('div');
-    modal.className = 'modal bench-modal bench-finder-modal';
-    bg.appendChild(modal);
+    var m = openModal({ zIndex: '870', modalClass: 'modal bench-modal bench-finder-modal', esc: true, backdropClose: true });
+    var bg = m.bg, modal = m.modal, closeModal = m.close;
 
     var close = document.createElement('button');
     close.className = 'bench-modal-close';
@@ -13104,17 +13110,8 @@
   function _bench_openHeroModal(h, readOnly) {
     var meta = (window._allHeroesById && window._allHeroesById[h.id]) || null;
 
-    var bg = document.createElement('div');
-    bg.className = 'modal-bg show';
-    bg.style.zIndex = '860';
-    function closeModal() { try { document.body.removeChild(bg); } catch (e) {} document.removeEventListener('keydown', escHandler); }
-    function escHandler(e) { if (e.key === 'Escape') closeModal(); }
-    document.addEventListener('keydown', escHandler);
-    bg.addEventListener('click', function(e) { if (e.target === bg) closeModal(); });
-
-    var modal = document.createElement('div');
-    modal.className = 'modal bench-modal';
-    bg.appendChild(modal);
+    var m = openModal({ zIndex: '860', modalClass: 'modal bench-modal', esc: true, backdropClose: true });
+    var bg = m.bg, modal = m.modal, closeModal = m.close;
 
     var close = document.createElement('button');
     close.className = 'bench-modal-close';
@@ -14203,21 +14200,8 @@
     var allGroups = opts.allGroups || {};
     var playerGroupMap = opts.playerGroupMap || {};
 
-    var bg = document.createElement('div');
-    bg.className = 'modal-bg show';
-    bg.style.zIndex = '900';
-    function closeNow() {
-      if (bg.parentNode) bg.parentNode.removeChild(bg);
-      document.removeEventListener('keydown', onEsc);
-    }
-    function onEsc(e) { if (e.key === 'Escape') closeNow(); }
-    document.addEventListener('keydown', onEsc);
-    bg.addEventListener('click', function (e) { if (e.target === bg) closeNow(); });
-
-    var modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.style.cssText = 'max-width:680px;width:100%;max-height:calc(100vh - 2rem);overflow-y:auto;padding:1.25rem 1.25rem 1rem;';
-    bg.appendChild(modal);
+    var m = openModal({ zIndex: '900', modalStyle: 'max-width:680px;width:100%;max-height:calc(100vh - 2rem);overflow-y:auto;padding:1.25rem 1.25rem 1rem;', esc: true, backdropClose: true });
+    var bg = m.bg, modal = m.modal, closeNow = m.close;
 
     // Per-component owned + placed flags.
     //
@@ -19101,21 +19085,8 @@
   // scrolling past it). Same content the inline panel renders, wrapped
   // in the standard modal-bg / modal pattern other panels use.
   function _ar_openBreedingModal(ownedBeasts) {
-    var bg = document.createElement('div');
-    bg.className = 'modal-bg show';
-    bg.style.zIndex = '900';
-    function closeNow() {
-      if (bg.parentNode) bg.parentNode.removeChild(bg);
-      document.removeEventListener('keydown', onEsc);
-    }
-    function onEsc(e) { if (e.key === 'Escape') closeNow(); }
-    document.addEventListener('keydown', onEsc);
-    bg.addEventListener('click', function(e) { if (e.target === bg) closeNow(); });
-
-    var modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.style.cssText = 'max-width:520px;width:100%;max-height:calc(100vh - 2rem);overflow-y:auto;padding:1.25rem 1.25rem 1rem;';
-    bg.appendChild(modal);
+    var m = openModal({ zIndex: '900', modalStyle: 'max-width:520px;width:100%;max-height:calc(100vh - 2rem);overflow-y:auto;padding:1.25rem 1.25rem 1rem;', esc: true, backdropClose: true });
+    var bg = m.bg, modal = m.modal, closeNow = m.close;
 
     var head = document.createElement('div');
     head.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;margin-bottom:.5rem;';
@@ -22334,13 +22305,11 @@
   }
 
   function _ar_openAggregateModal(kind, data) {
-    var bg = document.createElement('div');
-    bg.className = 'modal-bg show';
-    bg.style.zIndex = '120';
-    var modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.style.maxWidth = '640px';
-    bg.appendChild(modal);
+    // Strict refactor: helper only builds the elements. The X-button and backdrop
+    // teardowns below stay as their original bare removeChild calls (esc/backdrop
+    // not delegated to the helper) to preserve exact behavior.
+    var m = openModal({ zIndex: '120', modalClass: 'modal', maxWidth: '640px', esc: false, backdropClose: false });
+    var bg = m.bg, modal = m.modal;
 
     var close = document.createElement('button');
     close.style.cssText = 'float:right;background:none;border:none;color:var(--muted);cursor:pointer;font-size:22px;line-height:1;padding:0 4px;';
@@ -23156,13 +23125,10 @@
   // Phase 3 advisor builder will round-trip with full per-star fidelity from
   // the live gear supplement when costs need to be precise.
   function _ar_openRunepoolEditModal(siteKey, initialBag, initialGear, catalog, onSaved) {
-    var bg = document.createElement('div');
-    bg.className = 'modal-bg show';
-    bg.style.zIndex = '850';
-    var modal = document.createElement('div');
-    modal.className = 'modal sup-unlock-modal';
-    modal.style.maxWidth = '720px';
-    bg.appendChild(modal);
+    // No Esc / backdrop close by design - keep the inline removeChild teardowns
+    // (cancel / save-success / reset-success) exactly as they are below.
+    var m = openModal({ zIndex: '850', modalClass: 'modal sup-unlock-modal', maxWidth: '720px', esc: false, backdropClose: false });
+    var bg = m.bg, modal = m.modal;
 
     var h = document.createElement('h2');
     h.textContent = 'Edit Rune Pool';
@@ -24824,15 +24790,10 @@
     // saveStatus / repaint so the user can fire-and-forget add steps without
     // crossing scopes.
     function _ar_openLegendaryRecoverModal(srcPiece) {
-      var bg = document.createElement('div');
-      bg.className = 'modal-bg show';
-      bg.style.zIndex = '870';
-      bg.addEventListener('click', function(e) { if (e.target === bg) document.body.removeChild(bg); });
-
-      var modal = document.createElement('div');
-      modal.className = 'modal adv-lgp-modal';
-      modal.style.maxWidth = '740px';
-      bg.appendChild(modal);
+      // Helper owns the backdrop click only; the in-body close handlers below
+      // keep their original bare removeChild calls (esc not used here).
+      var m = openModal({ zIndex: '870', modalClass: 'modal adv-lgp-modal', maxWidth: '740px', esc: false, backdropClose: true });
+      var bg = m.bg, modal = m.modal;
 
       var slotName = (typeof GEAR_SLOT_NAMES === 'object' && GEAR_SLOT_NAMES[srcPiece.slot]) || ('Slot ' + srcPiece.slot);
       var rune = (srcPiece.buffs || []).find(function(b) { return b && b.type === 'rune'; });
@@ -25547,13 +25508,10 @@
   // ctx: { merged, catalog, runeIdx, state: { pool, gearByHero } }
   // onSave(step) — called when user clicks Add to Plan with a valid step.
   function _ar_openAdvisorStepBuilder(ctx, onSave) {
-    var bg = document.createElement('div');
-    bg.className = 'modal-bg show';
-    bg.style.zIndex = '850';
-    var modal = document.createElement('div');
-    modal.className = 'modal sup-unlock-modal adv-builder-modal';
-    modal.style.maxWidth = '560px';
-    bg.appendChild(modal);
+    // No Esc / backdrop close by design - the inline removeChild teardowns
+    // (cancel / save-on-valid) below stay verbatim.
+    var m = openModal({ zIndex: '850', modalClass: 'modal sup-unlock-modal adv-builder-modal', maxWidth: '560px', esc: false, backdropClose: false });
+    var bg = m.bg, modal = m.modal;
 
     var prefill = ctx.prefill || null;
 
@@ -30121,15 +30079,8 @@
     var viewLv = Math.max(opts.level || 0, 1); // levels start at 1 (lv 0 == not researched)
     if (viewLv > max) viewLv = max;
 
-    var bg = document.createElement('div');
-    bg.className = 'modal-bg show';
-    bg.style.zIndex = '900';
-    var modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.style.cssText = 'max-width:560px;';
-    bg.appendChild(modal);
-    function close() { if (document.body.contains(bg)) document.body.removeChild(bg); }
-    bg.addEventListener('click', function(e) { if (e.target === bg) close(); });
+    var m = openModal({ zIndex: '900', modalStyle: 'max-width:560px;', esc: false, backdropClose: true });
+    var bg = m.bg, modal = m.modal, close = m.close;
 
     function paint() {
       while (modal.firstChild) modal.removeChild(modal.firstChild);
@@ -30667,15 +30618,8 @@
     var isSwitch = !!n.is_switch;
     var variantTracks = isSwitch ? groupVariantLevels(n) : null;
 
-    var bg = document.createElement('div');
-    bg.className = 'modal-bg show';
-    bg.style.zIndex = '900';
-    var modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.style.cssText = 'max-width:480px;';
-    bg.appendChild(modal);
-    function close() { if (document.body.contains(bg)) document.body.removeChild(bg); }
-    bg.addEventListener('click', function(e) { if (e.target === bg) close(); });
+    var m = openModal({ zIndex: '900', modalStyle: 'max-width:480px;', esc: false, backdropClose: true });
+    var bg = m.bg, modal = m.modal, close = m.close;
 
     function paint() {
       var levels = planning ? state.planner.levels : state.currentLevels;
