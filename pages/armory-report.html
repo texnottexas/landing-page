@@ -6342,36 +6342,11 @@
       });
 
       // Avatar container (relative positioning for fallback overlay)
-      var avatarWrap = document.createElement('div');
-      avatarWrap.style.cssText = 'position:relative;width:56px;height:56px;flex-shrink:0;';
-
-      var avatarUrl = getAvatar(pi);
-      var fallbackLetter = (pi.username || '?').charAt(0).toUpperCase();
-
-      // Letter fallback div (always present, shown when img errors)
-      var fallbackDiv = document.createElement('div');
-      fallbackDiv.style.cssText = [
-        'position:absolute;inset:0;border-radius:50%;',
-        'background:var(--surface);border:2px solid ' + side.color + ';',
-        'display:none;align-items:center;justify-content:center;',
-        'font-size:1.5rem;font-weight:700;color:' + side.color + ';'
-      ].join('');
-      fallbackDiv.textContent = fallbackLetter;
-
-      if (avatarUrl) {
-        var img = document.createElement('img');
-        img.src = avatarUrl;
-        img.alt = '';
-        img.style.cssText = 'width:56px;height:56px;border-radius:50%;object-fit:cover;display:block;border:2px solid ' + side.color + ';';
-        img.onerror = function() {
-          img.style.display = 'none';
-          fallbackDiv.style.display = 'flex';
-        };
-        avatarWrap.appendChild(img);
-      } else {
-        fallbackDiv.style.display = 'flex';
-      }
-      avatarWrap.appendChild(fallbackDiv);
+      var avatarWrap = avatarEl({
+        url: getAvatar(pi),
+        initial: (pi.username || '?').charAt(0).toUpperCase(),
+        size: 56, borderColor: side.color, fontSize: '1.5rem'
+      });
       card.appendChild(avatarWrap);
 
       // Player name
@@ -6717,6 +6692,54 @@
     });
   }
 
+  // ── Shared UI primitive: player avatar with letter fallback ───────────────
+  // Image with an onerror swap to an initial-letter fallback. Two modes (both
+  // exist and must stay visually distinct):
+  //   class mode (opts.imgClass + opts.fallbackClass): CSS-class sized; returns a
+  //     fragment [img?, fallback] to append into the caller's container
+  //     (dashboard, manage-identity — keep their own CSS sizing).
+  //   wrap mode (opts.size): returns a positioned wrapper [img?, fallback] styled
+  //     inline — opts.borderColor, opts.glow (bool), opts.fontSize, opts.wrapStyle
+  //     (extra wrapper css) — for the header welcome glow + player-select border.
+  // opts.url (image src), opts.initial (already-uppercased letter).
+  function avatarEl(opts) {
+    var initial = opts.initial || '?';
+    if (opts.imgClass) {
+      var frag = document.createDocumentFragment();
+      var cfb = document.createElement('div');
+      cfb.className = opts.fallbackClass;
+      cfb.textContent = initial;
+      if (opts.url) {
+        var cimg = document.createElement('img');
+        cimg.className = opts.imgClass;
+        cimg.src = opts.url; cimg.alt = '';
+        cimg.onerror = function () { cimg.style.display = 'none'; cfb.style.display = 'flex'; };
+        cfb.style.display = 'none';
+        frag.appendChild(cimg);
+      }
+      frag.appendChild(cfb);
+      return frag;
+    }
+    var border = opts.borderColor || 'var(--green)';
+    var glow = opts.glow ? 'box-shadow:0 0 16px rgba(63,185,80,0.35);' : '';
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;width:' + opts.size + 'px;height:' + opts.size + 'px;' + (opts.wrapStyle || '') + 'flex-shrink:0;';
+    var fb = document.createElement('div');
+    fb.style.cssText = 'position:absolute;inset:0;border-radius:50%;background:var(--surface);border:2px solid ' + border + ';display:none;align-items:center;justify-content:center;font-size:' + (opts.fontSize || '1.5rem') + ';font-weight:700;color:' + border + ';' + glow;
+    fb.textContent = initial;
+    if (opts.url) {
+      var img = document.createElement('img');
+      img.src = opts.url; img.alt = '';
+      img.style.cssText = 'width:' + opts.size + 'px;height:' + opts.size + 'px;border-radius:50%;object-fit:cover;display:block;border:2px solid ' + border + ';' + glow;
+      img.onerror = function () { img.style.display = 'none'; fb.style.display = 'flex'; };
+      wrap.appendChild(img);
+    } else {
+      fb.style.display = 'flex';
+    }
+    wrap.appendChild(fb);
+    return wrap;
+  }
+
   // ── Step 3: Capture summary ───────────────────────────────────────────────
   function renderStepSummary(container) {
     loadHeroData(function() {
@@ -6732,36 +6755,11 @@
     var reportCount = wizardState.reportData.length;
 
     // ── Avatar (72px with green glow) ──
-    var avatarWrap = document.createElement('div');
-    avatarWrap.style.cssText = 'position:relative;width:72px;height:72px;margin:0 auto .75rem;flex-shrink:0;';
-
-    var fallbackLetter = (player.avatarFallback || (player.name || '?').charAt(0)).toUpperCase();
-
-    var fallbackDiv = document.createElement('div');
-    fallbackDiv.style.cssText = [
-      'position:absolute;inset:0;border-radius:50%;',
-      'background:var(--surface);border:2px solid var(--green);',
-      'display:none;align-items:center;justify-content:center;',
-      'font-size:2rem;font-weight:700;color:var(--green);',
-      'box-shadow:0 0 16px rgba(63,185,80,0.35);'
-    ].join('');
-    fallbackDiv.textContent = fallbackLetter;
-
-    if (player.avatar) {
-      var img = document.createElement('img');
-      img.src = player.avatar;
-      img.alt = '';
-      img.style.cssText = [
-        'width:72px;height:72px;border-radius:50%;object-fit:cover;display:block;',
-        'border:2px solid var(--green);',
-        'box-shadow:0 0 16px rgba(63,185,80,0.35);'
-      ].join('');
-      img.onerror = function() { img.style.display = 'none'; fallbackDiv.style.display = 'flex'; };
-      avatarWrap.appendChild(img);
-    } else {
-      fallbackDiv.style.display = 'flex';
-    }
-    avatarWrap.appendChild(fallbackDiv);
+    var avatarWrap = avatarEl({
+      url: player.avatar,
+      initial: (player.avatarFallback || (player.name || '?').charAt(0)).toUpperCase(),
+      size: 72, borderColor: 'var(--green)', glow: true, fontSize: '2rem', wrapStyle: 'margin:0 auto .75rem;'
+    });
     container.appendChild(avatarWrap);
 
     // ── Welcome heading ──
@@ -8382,26 +8380,11 @@
     dash.appendChild(header);
 
     // Avatar / fallback
-    var avatarUrl = player.avatar || null;
-    var fallbackLetter = (player.avatarFallback || (player.name || '?').charAt(0)).toUpperCase();
-
-    if (avatarUrl) {
-      var avatarImg = document.createElement('img');
-      avatarImg.className = 'dashboard-avatar';
-      avatarImg.src = avatarUrl;
-      avatarImg.alt = '';
-      avatarImg.onerror = function() {
-        avatarImg.style.display = 'none';
-        fallbackEl.style.display = 'flex';
-      };
-      header.appendChild(avatarImg);
-    }
-
-    var fallbackEl = document.createElement('div');
-    fallbackEl.className = 'dashboard-avatar-fallback';
-    fallbackEl.textContent = fallbackLetter;
-    if (avatarUrl) fallbackEl.style.display = 'none';
-    header.appendChild(fallbackEl);
+    header.appendChild(avatarEl({
+      url: player.avatar || null,
+      initial: (player.avatarFallback || (player.name || '?').charAt(0)).toUpperCase(),
+      imgClass: 'dashboard-avatar', fallbackClass: 'dashboard-avatar-fallback'
+    }));
 
     // Info block
     var info = document.createElement('div');
@@ -29542,26 +29525,11 @@
     var identityDiv = document.createElement('div');
     identityDiv.className = 'manage-identity';
 
-    var avatarUrl = player.avatar || null;
-    var fallbackLetter = (player.avatarFallback || (player.name || '?').charAt(0)).toUpperCase();
-
-    if (avatarUrl) {
-      var avatarImg = document.createElement('img');
-      avatarImg.className = 'manage-identity-avatar';
-      avatarImg.src = avatarUrl;
-      avatarImg.alt = '';
-      avatarImg.onerror = function() {
-        avatarImg.style.display = 'none';
-        fallbackDiv.style.display = 'flex';
-      };
-      identityDiv.appendChild(avatarImg);
-    }
-
-    var fallbackDiv = document.createElement('div');
-    fallbackDiv.className = 'manage-identity-fallback';
-    fallbackDiv.textContent = fallbackLetter;
-    if (avatarUrl) fallbackDiv.style.display = 'none';
-    identityDiv.appendChild(fallbackDiv);
+    identityDiv.appendChild(avatarEl({
+      url: player.avatar || null,
+      initial: (player.avatarFallback || (player.name || '?').charAt(0)).toUpperCase(),
+      imgClass: 'manage-identity-avatar', fallbackClass: 'manage-identity-fallback'
+    }));
 
     var identInfo = document.createElement('div');
     var identName = document.createElement('div');
