@@ -5373,6 +5373,10 @@
       });
   }
 
+  // Defense-in-depth: only numeric 10-25 digit report IDs may reach a CDN URL
+  // (mirrors the direct-entry validation at wizardLoadReport). Skips malformed ids.
+  function _ar_validReportId(id) { return /^\d{10,25}$/.test(String(id)); }
+
   function applyShortcodeConfig(playerName, ids, persistToStorage, siteKey) {
     // Preserve marchGroups + shortcode that were just written by saveMarches /
     // a prior session — fakeSaved would otherwise clobber them on setItem below.
@@ -5394,7 +5398,7 @@
     if (siteKey) playerObj.siteKey = siteKey;
     var fakeSaved = {
       player: playerObj,
-      reportIds: ids,
+      reportIds: (ids || []).filter(_ar_validReportId),
       marchGroups: priorMarches,
       _viewOnly: persistToStorage === false
     };
@@ -7015,8 +7019,12 @@
     });
     bnpWrap.appendChild(bnpPop);
     left.appendChild(bnpWrap);
-    // Close popover on outside click
-    document.addEventListener('click', function(e) { if (!e.target.closest('.bnp-wrap')) { var pop = document.getElementById('bnpPop'); if (pop) pop.classList.remove('open'); } });
+    // Close popover on outside click — bind ONCE (header is rebuilt per report
+    // render; the handler is DOM-only so a single page-lifetime listener suffices).
+    if (!window._ar_bnpClickBound) {
+      window._ar_bnpClickBound = true;
+      document.addEventListener('click', function(e) { if (!e.target.closest('.bnp-wrap')) { var pop = document.getElementById('bnpPop'); if (pop) pop.classList.remove('open'); } });
+    }
 
     // Identity greeting or view-only indicator
     var storedId = getStoredIdentity();
@@ -8535,7 +8543,16 @@
     // after the active tab scrolls into view.
     window._ar_updateTabScrollState = _ar_updateTabScrollState;
     tabBar.addEventListener('scroll', _ar_updateTabScrollState, { passive: true });
-    window.addEventListener('resize', _ar_updateTabScrollState);
+    // Register the resize listener ONCE (page-lifetime). It delegates to the
+    // current render's closure via window._ar_updateTabScrollState (reassigned
+    // each render just above), so it never points at detached nodes and never
+    // stacks up on re-render.
+    if (!window._ar_resizeBound) {
+      window._ar_resizeBound = true;
+      window.addEventListener('resize', function () {
+        if (typeof window._ar_updateTabScrollState === 'function') window._ar_updateTabScrollState();
+      });
+    }
     // Initial check after layout settles + scroll-into-view of active tab
     setTimeout(_ar_updateTabScrollState, 50);
     setTimeout(_ar_updateTabScrollState, 400);
@@ -29815,7 +29832,10 @@
   function loadFormationRef() {
     if (_formationRef) return Promise.resolve(_formationRef);
     if (_formationRefPromise) return _formationRefPromise;
-    _formationRefPromise = fetch('data/formation-v2.json').then(function(r) { return r.json(); }).then(function(j) { _formationRef = j; return j; });
+    _formationRefPromise = fetch('data/formation-v2.json')
+      .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function(j) { _formationRef = j; return j; })
+      .catch(function(e) { _formationRefPromise = null; throw e; }); // don't cache a rejected promise — allow retry
     return _formationRefPromise;
   }
 
@@ -31888,7 +31908,7 @@
     var cache = {};
     try { cache = JSON.parse(localStorage.getItem('playerReportData')) || {}; } catch(e) {}
 
-    var ids = saved.reportIds || [];
+    var ids = (saved.reportIds || []).filter(_ar_validReportId);
     var pending = ids.length;
     var results = [];
 
