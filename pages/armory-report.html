@@ -6674,19 +6674,47 @@
   }
 
   // ── Shared helper: SVG checkmark ──────────────────────────────────────────
-  function makeCheckSvg(color) {
-    var svgNS = SVG_NS;
-    var svg = document.createElementNS(svgNS, 'svg');
-    svg.setAttribute('width', '18'); svg.setAttribute('height', '18');
-    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none');
-    svg.setAttribute('stroke', color || 'var(--green)'); svg.setAttribute('stroke-width', '2.5');
-    svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
-    svg.style.flexShrink = '0';
-    svg.style.marginTop = '1px';
-    var poly = document.createElementNS(svgNS, 'polyline');
-    poly.setAttribute('points', '20 6 9 17 4 12');
-    svg.appendChild(poly);
+  // ── Shared UI primitive: stroked SVG icon factory ─────────────────────────
+  // Builds an <svg> with the project's stroked-line icon defaults and appends
+  // child shapes. Replaces repeated createElementNS boilerplate. opts:
+  //   size | width/height (default 14), viewBox ('0 0 24 24'), fill ('none'),
+  //   stroke ('currentColor'; pass null to omit all stroke-* attrs for fills),
+  //   strokeWidth (2), linecap, linejoin (applied only when provided),
+  //   style {} (assigned to svg.style), className,
+  //   children [[tag, attrs], ...] (e.g. [['path',{d:'…'}], ['polyline',{points:'…'}]]).
+  function svgIcon(opts) {
+    opts = opts || {};
+    var svg = document.createElementNS(SVG_NS, 'svg');
+    var w = opts.width != null ? opts.width : (opts.size != null ? opts.size : 14);
+    var h = opts.height != null ? opts.height : (opts.size != null ? opts.size : 14);
+    svg.setAttribute('width', w);
+    svg.setAttribute('height', h);
+    svg.setAttribute('viewBox', opts.viewBox || '0 0 24 24');
+    svg.setAttribute('fill', opts.fill != null ? opts.fill : 'none');
+    if (opts.stroke !== null) {
+      svg.setAttribute('stroke', opts.stroke || 'currentColor');
+      svg.setAttribute('stroke-width', opts.strokeWidth != null ? opts.strokeWidth : 2);
+      if (opts.linecap) svg.setAttribute('stroke-linecap', opts.linecap);
+      if (opts.linejoin) svg.setAttribute('stroke-linejoin', opts.linejoin);
+    }
+    (opts.children || []).forEach(function (c) {
+      var el = document.createElementNS(SVG_NS, c[0]);
+      var a = c[1] || {};
+      for (var k in a) if (a.hasOwnProperty(k)) el.setAttribute(k, a[k]);
+      svg.appendChild(el);
+    });
+    if (opts.style) for (var s in opts.style) if (opts.style.hasOwnProperty(s)) svg.style[s] = opts.style[s];
+    if (opts.className) svg.setAttribute('class', opts.className);
     return svg;
+  }
+
+  // Thin wrapper: the green check used in capture summaries / verified states.
+  function makeCheckSvg(color) {
+    return svgIcon({
+      size: 18, viewBox: '0 0 24 24', stroke: color || 'var(--green)', strokeWidth: '2.5',
+      linecap: 'round', linejoin: 'round', style: { flexShrink: '0', marginTop: '1px' },
+      children: [['polyline', { points: '20 6 9 17 4 12' }]]
+    });
   }
 
   // ── Step 3: Capture summary ───────────────────────────────────────────────
@@ -9601,21 +9629,53 @@
     container.appendChild(row);
   }
 
+  // \u2500\u2500 Shared UI primitive: build-once modal scaffold \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // Creates an overlay + dialog with a close button, backdrop click-to-close,
+  // Esc-to-close, and dialog a11y (role=dialog, aria-modal, aria-labelledby,
+  // close aria-label). Build-once: returns the modal element to append content
+  // into, or null if it already exists. Show via the overlayId + classList 'active'.
+  var _ar_modalEscBound = false;
+  function _ar_bindModalEscOnce() {
+    if (_ar_modalEscBound) return;
+    _ar_modalEscBound = true;
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      var open = document.querySelector('[data-ar-modal].active');
+      if (open) open.classList.remove('active');
+    });
+  }
+  function modalShell(opts) {
+    if (document.getElementById(opts.overlayId)) return null; // build-once
+    var overlay = document.createElement('div');
+    overlay.className = opts.overlayClass;
+    overlay.id = opts.overlayId;
+    overlay.setAttribute('data-ar-modal', '');
+    var modal = document.createElement('div');
+    modal.className = opts.modalClass;
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    if (opts.titleId) modal.setAttribute('aria-labelledby', opts.titleId);
+    var close = document.createElement('button');
+    close.className = opts.closeClass;
+    close.setAttribute('type', 'button');
+    close.setAttribute('aria-label', 'Close');
+    close.textContent = '\u2715';
+    close.addEventListener('click', function () { overlay.classList.remove('active'); });
+    modal.appendChild(close);
+    overlay.appendChild(modal);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.classList.remove('active'); });
+    _ar_bindModalEscOnce();
+    document.body.appendChild(overlay);
+    return modal;
+  }
+
   // "How is this calculated?" modal for gear score
   function buildGearScoreModal() {
-    if (document.getElementById('gs-modal-overlay')) return;
-    var overlay = document.createElement('div');
-    overlay.className = 'gs-modal-overlay';
-    overlay.id = 'gs-modal-overlay';
-    var modal = document.createElement('div');
-    modal.className = 'gs-modal';
-    var close = document.createElement('button');
-    close.className = 'gs-close';
-    close.textContent = '\u2715';
-    close.addEventListener('click', function() { overlay.classList.remove('active'); });
-    modal.appendChild(close);
+    var modal = modalShell({ overlayId: 'gs-modal-overlay', overlayClass: 'gs-modal-overlay', modalClass: 'gs-modal', closeClass: 'gs-close', titleId: 'gs-modal-title' });
+    if (!modal) return;
 
     var title = document.createElement('h3');
+    title.id = 'gs-modal-title';
     title.textContent = 'How Gear Score is Calculated';
     modal.appendChild(title);
 
@@ -9663,12 +9723,6 @@
     exTotal.appendChild(el1); exTotal.appendChild(el2);
     ex.appendChild(exTotal);
     modal.appendChild(ex);
-
-    overlay.appendChild(modal);
-    overlay.addEventListener('click', function(e) {
-      if (e.target === overlay) overlay.classList.remove('active');
-    });
-    document.body.appendChild(overlay);
   }
   function showGearScoreModal() {
     buildGearScoreModal();
@@ -9677,19 +9731,11 @@
 
   // "How is this calculated?" modal for rune progress
   function buildRuneProgressModal() {
-    if (document.getElementById('rp-modal-overlay')) return;
-    var overlay = document.createElement('div');
-    overlay.className = 'gs-modal-overlay';
-    overlay.id = 'rp-modal-overlay';
-    var modal = document.createElement('div');
-    modal.className = 'gs-modal';
-    var close = document.createElement('button');
-    close.className = 'gs-close';
-    close.textContent = '\u2715';
-    close.addEventListener('click', function() { overlay.classList.remove('active'); });
-    modal.appendChild(close);
+    var modal = modalShell({ overlayId: 'rp-modal-overlay', overlayClass: 'gs-modal-overlay', modalClass: 'gs-modal', closeClass: 'gs-close', titleId: 'rp-modal-title' });
+    if (!modal) return;
 
     var title = document.createElement('h3');
+    title.id = 'rp-modal-title';
     title.textContent = 'How Rune Progress is Calculated';
     modal.appendChild(title);
 
@@ -9739,12 +9785,6 @@
     var p2 = document.createElement('p');
     p2.textContent = 'Overall Progress applies the same formula across all heroes combined. Maxed Runes counts individual runes where current stars equal max stars. Runes Equipped shows how many gear slots have a rune vs total gear slots.';
     modal.appendChild(p2);
-
-    overlay.appendChild(modal);
-    overlay.addEventListener('click', function(e) {
-      if (e.target === overlay) overlay.classList.remove('active');
-    });
-    document.body.appendChild(overlay);
   }
   function showRuneProgressModal() {
     buildRuneProgressModal();
