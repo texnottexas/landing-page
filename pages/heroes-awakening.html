@@ -600,13 +600,19 @@
       background: var(--text); border: 3px solid var(--gold);
       cursor: pointer;
     }
+    /* Tick anchors positioned absolutely so each label lines up with the
+       slider thumb's true position (1 at left edge, 10 at right edge, with
+       additional anchors at intermediate levels). */
     .sm-slider-ticks {
-      display: flex; justify-content: space-between; font-size: .55rem;
-      color: var(--muted); margin-top: 4px; padding: 0 6px;
+      position: relative; height: 16px; margin: 4px 10px 0; /* 10px = thumb radius */
+      font-size: .56rem; color: var(--muted);
     }
-    .sm-slider-ticks span.tick-active {
-      color: var(--gold); font-weight: 700;
+    .sm-slider-ticks span {
+      position: absolute; top: 0;
+      transform: translateX(-50%);
+      white-space: nowrap;
     }
+    .sm-slider-ticks span.tick-active { color: var(--gold); font-weight: 700; }
     .sm-vals-grid {
       display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
       gap: 8px; margin-top: 10px;
@@ -2674,18 +2680,24 @@
         class: 'sm-slider', 'aria-label': 'Skill level'
       });
 
+      // Render a minimal anchor set (1, mid, 6 = Lv. 6 unlock, max) so each label
+      // sits under the thumb's true position. Each tick is absolutely positioned
+      // at its percent — i.e. value=1 → 0%, value=max → 100%.
       const ticksHost = el('div', { class: 'sm-slider-ticks' });
+      const anchorLevels = Array.from(new Set([1, 6, maxLevel])).sort((a, b) => a - b);
       const tickEls = [];
-      for (let i = 1; i <= maxLevel; i++) {
-        const t = el('span', null, String(i));
-        if (i === startLevel) t.className = 'tick-active';
+      anchorLevels.forEach(lv => {
+        const pct = ((lv - 1) / (maxLevel - 1)) * 100;
+        const t = el('span', { style: 'left:' + pct + '%' }, lv === 6 ? 'Lv. 6 unlock' : 'Lv. ' + lv);
+        t._lv = lv;
+        if (lv === startLevel) t.className = 'tick-active';
         tickEls.push(t);
         ticksHost.appendChild(t);
-      }
+      });
 
       function renderForLevel(level) {
         sliderCurrent.textContent = 'Lv. ' + level;
-        tickEls.forEach((t, i) => t.className = (i + 1 === level ? 'tick-active' : ''));
+        tickEls.forEach(t => t.className = (t._lv === level ? 'tick-active' : ''));
         const row = lvls[level - 1] || {};
 
         // Value cards. Some skills pack multiple values into val1 (compound skills with
@@ -2771,9 +2783,13 @@
       slider.addEventListener('input', e => renderForLevel(Number(e.target.value)));
 
       const sliderSection = el('div', { class: 'sm-section' },
-        el('h4', null, 'Level explorer — drag to scale'),
+        el('h4', null, 'Skill Level explorer — drag to scale'),
         el('p', { class: 'muted', style: 'font-size:.7rem; margin-bottom:8px' },
-          'Slide to see the skill effect rebuilt with the actual values for that level. The Lv. 6 unlock and Exclusive Skill Lv. 7 variant appear when they kick in.'
+          'This is the ',
+          el('strong', null, 'per-skill'),
+          ' level (1 to 10). Each of the 4 awakening skills has its own 10-level ladder driven by Awakening Stones. Separately, the hero has an ',
+          el('strong', null, 'overall Awakening Level 1 to 40'),
+          ' driven by Hero Shards + Exclusive Skill chips — see the "Awakening Level Cost" ladder lower on the page.'
         ),
         el('div', { class: 'sm-slider-wrap' },
           el('div', { class: 'sm-slider-row' },
@@ -2871,7 +2887,7 @@
     // ============================================================
     // LOAD
     // ============================================================
-    fetch('../data/heroes-awakening.json?v=20260530a')
+    fetch('../data/heroes-awakening.json?v=20260530b')
       .then(r => r.json())
       .then(d => {
         DATA = d;
