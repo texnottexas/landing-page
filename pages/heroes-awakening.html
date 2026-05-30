@@ -601,18 +601,30 @@
       cursor: pointer;
     }
     /* Tick anchors positioned absolutely so each label lines up with the
-       slider thumb's true position (1 at left edge, 10 at right edge, with
-       additional anchors at intermediate levels). */
+       slider thumb's true position. The thumb's effective travel is
+       (trackWidth - 2 * thumbRadius), which means thumb at value=1 sits
+       10px from the slider's left edge, and value=max sits 10px from the
+       right edge. We mirror that with 10px horizontal margin on the ticks
+       container, then anchor each tick by its CORRECT edge:
+       - tick 1: text starts at left:0 (left-aligned)
+       - tick max: text ends at left:100% (right-aligned via translateX(-100%))
+       - middle ticks: centered (translateX(-50%))
+       The active tick highlights in gold; tick 6 always shows gold as the
+       Lv. 6 unlock marker. */
     .sm-slider-ticks {
-      position: relative; height: 16px; margin: 4px 10px 0; /* 10px = thumb radius */
-      font-size: .56rem; color: var(--muted);
+      position: relative; height: 14px; margin: 4px 10px 0;
+      font-size: .58rem; color: var(--muted);
     }
     .sm-slider-ticks span {
       position: absolute; top: 0;
-      transform: translateX(-50%);
       white-space: nowrap;
+      font-family: 'SF Mono', Menlo, monospace;
     }
-    .sm-slider-ticks span.tick-active { color: var(--gold); font-weight: 700; }
+    .sm-slider-ticks span.tick-mid { transform: translateX(-50%); }
+    .sm-slider-ticks span.tick-end { transform: translateX(-100%); }
+    .sm-slider-ticks span.tick-unlock { color: var(--gold); font-weight: 700; }
+    .sm-slider-ticks span.tick-active { color: var(--accent); font-weight: 700; text-decoration: underline; }
+    .sm-slider-ticks span.tick-unlock.tick-active { color: var(--gold); }
     .sm-vals-grid {
       display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
       gap: 8px; margin-top: 10px;
@@ -1084,11 +1096,27 @@
     <div class="banner-row" id="phase-banner-row"></div>
 
     <section>
-      <h2>What is Hyper Awakening? <span class="h2-tag live">live patch 2026-05-15</span></h2>
+      <h2>What is Awakening? <span class="h2-tag live">live on Server 2864</span></h2>
       <div class="card">
         <p id="ha-summary"></p>
-        <p style="margin-top:8px"><strong>Researcher:</strong> <span id="ha-researcher"></span></p>
-        <p class="muted" style="margin-top:8px">Patch landed for server 2864 on 2026-05-15. Later servers begin Phase I beta on Sunday after this date. Phase II/III banners + heroes exist in client tables; lang text + lineup is gated behind a server flag.</p>
+        <div style="margin-top:14px; display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px">
+          <div style="background:var(--surface); border:1px solid var(--gold); border-radius:8px; padding:10px 12px">
+            <div style="font-size:.58rem; text-transform:uppercase; letter-spacing:.06em; color:var(--gold); font-weight:700">Requirements</div>
+            <div style="margin-top:4px; font-size:.82rem">5★ &middot; Lv. 120 &middot; Exclusive Skill Lv. 5</div>
+          </div>
+          <div style="background:var(--surface); border:1px solid var(--accent); border-radius:8px; padding:10px 12px">
+            <div style="font-size:.58rem; text-transform:uppercase; letter-spacing:.06em; color:var(--accent); font-weight:700">Phase I — live now</div>
+            <div style="margin-top:4px; font-size:.82rem">Sara, Nova, Shen Suyu, Carna, Jett, Lophy</div>
+          </div>
+          <div style="background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px 12px">
+            <div style="font-size:.58rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700">Phase II + III — coming</div>
+            <div style="margin-top:4px; font-size:.82rem">12 more heroes in 2 future batches</div>
+          </div>
+          <div style="background:var(--surface); border:1px solid var(--purple); border-radius:8px; padding:10px 12px">
+            <div style="font-size:.58rem; text-transform:uppercase; letter-spacing:.06em; color:var(--purple); font-weight:700">Max gain per hero</div>
+            <div style="margin-top:4px; font-size:.82rem">+80,000 Fight Power &middot; 4 new buffs &middot; combo bonus</div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -1511,8 +1539,8 @@
     }
 
     function renderHaSummary() {
-      document.getElementById('ha-summary').textContent = DATA.hyperAwakening.summary;
-      document.getElementById('ha-researcher').textContent = DATA.hyperAwakening.researcher;
+      const el = document.getElementById('ha-summary');
+      if (el) el.textContent = DATA.hyperAwakening.summary;
     }
 
     function renderCurrency() {
@@ -2680,24 +2708,30 @@
         class: 'sm-slider', 'aria-label': 'Skill level'
       });
 
-      // Render a minimal anchor set (1, mid, 6 = Lv. 6 unlock, max) so each label
-      // sits under the thumb's true position. Each tick is absolutely positioned
-      // at its percent — i.e. value=1 → 0%, value=max → 100%.
+      // Show every level 1..maxLevel beneath the slider. Each tick is absolutely
+      // positioned at its true thumb position (with end-anchored alignment for
+      // ticks 1 and max, centered alignment for the middle).
       const ticksHost = el('div', { class: 'sm-slider-ticks' });
-      const anchorLevels = Array.from(new Set([1, 6, maxLevel])).sort((a, b) => a - b);
       const tickEls = [];
-      anchorLevels.forEach(lv => {
+      for (let lv = 1; lv <= maxLevel; lv++) {
         const pct = ((lv - 1) / (maxLevel - 1)) * 100;
-        const t = el('span', { style: 'left:' + pct + '%' }, lv === 6 ? 'Lv. 6 unlock' : 'Lv. ' + lv);
+        const classes = [];
+        if (lv === 1) {/* left-aligned */}
+        else if (lv === maxLevel) classes.push('tick-end');
+        else classes.push('tick-mid');
+        if (lv === 6) classes.push('tick-unlock');
+        const t = el('span', { style: 'left:' + pct + '%', class: classes.join(' ') }, String(lv));
         t._lv = lv;
-        if (lv === startLevel) t.className = 'tick-active';
+        if (lv === startLevel) t.classList.add('tick-active');
         tickEls.push(t);
         ticksHost.appendChild(t);
-      });
+      }
 
       function renderForLevel(level) {
         sliderCurrent.textContent = 'Lv. ' + level;
-        tickEls.forEach(t => t.className = (t._lv === level ? 'tick-active' : ''));
+        tickEls.forEach(t => {
+          t.classList.toggle('tick-active', t._lv === level);
+        });
         const row = lvls[level - 1] || {};
 
         // Value cards. Some skills pack multiple values into val1 (compound skills with
@@ -2887,7 +2921,7 @@
     // ============================================================
     // LOAD
     // ============================================================
-    fetch('../data/heroes-awakening.json?v=20260530b')
+    fetch('../data/heroes-awakening.json?v=20260530c')
       .then(r => r.json())
       .then(d => {
         DATA = d;
