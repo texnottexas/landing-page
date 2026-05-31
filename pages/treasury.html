@@ -1220,8 +1220,12 @@ function renderModalCumulativeTab(d) {
   body.innerHTML = '';
   if (!distData) return;
 
-  /* Aggregate across all rounds */
-  var rewardMap = {};
+  /* Aggregate across all rounds. Mirror buildCumulativeDistributions' merge
+     logic: match by itemId when BOTH sides have one, else fall back to name.
+     A simple `itemId || name` key splits Seal Stone Badge into two buckets
+     because R3-R8 published with itemId=null while R2 and R9+ have
+     itemId=41136 — the per-player modal totals were undercounted. */
+  var aggRewards = [];
   var roundsParticipated = [];
   getAvailableRounds().forEach(function(r) {
     var rdata = distData.rounds[String(r)];
@@ -1230,11 +1234,19 @@ function renderModalCumulativeTab(d) {
     if (!entry) return;
     roundsParticipated.push(r);
     (entry.rewards || []).forEach(function(rw) {
-      var k = rw.itemId || rw.name;
-      if (!rewardMap[k]) {
-        rewardMap[k] = {itemId: rw.itemId, name: rw.name, count: 0, tier: rw.tier, icon: rw.icon};
+      var ex = aggRewards.find(function(x) {
+        if (rw.itemId != null && x.itemId != null) return x.itemId === rw.itemId;
+        return x.name === rw.name;
+      });
+      if (ex) {
+        ex.count += rw.count;
+        /* Backfill missing itemId/tier/icon from any round that has them */
+        if (ex.itemId == null && rw.itemId != null) ex.itemId = rw.itemId;
+        if (!ex.tier && rw.tier) ex.tier = rw.tier;
+        if (!ex.icon && rw.icon) ex.icon = rw.icon;
+      } else {
+        aggRewards.push({itemId: rw.itemId, name: rw.name, count: rw.count, tier: rw.tier, icon: rw.icon});
       }
-      rewardMap[k].count += rw.count;
     });
   });
 
@@ -1264,7 +1276,7 @@ function renderModalCumulativeTab(d) {
   body.appendChild(roundsList);
 
   /* Aggregated rewards */
-  var rewardArr = Object.values(rewardMap).sort(function(a, b) {
+  var rewardArr = aggRewards.sort(function(a, b) {
     var order = {T1: 0, T2: 1, T3: 2, T4: 3};
     return (order[a.tier] || 3) - (order[b.tier] || 3);
   });
