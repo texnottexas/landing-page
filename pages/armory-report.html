@@ -5310,21 +5310,25 @@
 
   function loadFromShortcode() {
     var input = document.getElementById('wizard-code-input');
+    if (!input) return;
+    // errDiv is optional — a missing status line must NOT silently abort the
+    // load (that was issue #106 on the Welcome Back step). Show messages when
+    // it exists; otherwise still proceed.
     var errDiv = document.getElementById('wizard-error');
-    if (!input || !errDiv) return;
+    function setErr(m) { if (errDiv) errDiv.textContent = m; }
 
     var code = (input.value || '').trim().toUpperCase();
     if (!/^[0-9A-Z]{4}$/.test(code)) {
-      errDiv.textContent = 'Enter a 4-character code.';
+      setErr('Enter a 4-character code.');
       return;
     }
 
-    errDiv.textContent = 'Loading...';
+    setErr('Loading...');
     fetch(PUSH_WORKER + '/report-config?code=' + code)
       .then(function(r) { return r.json(); })
       .then(function(result) {
         if (!result || !result.ok) {
-          errDiv.textContent = 'Code not found.';
+          setErr('Code not found.');
           return;
         }
         var ids = result.reportIds.split(',').filter(Boolean);
@@ -5354,7 +5358,7 @@
         applyShortcodeConfig(result.playerName, ids, isSamePlayer, result.siteKey);
       })
       .catch(function() {
-        errDiv.textContent = 'Failed to load config.';
+        setErr('Failed to load config.');
       });
   }
 
@@ -5866,6 +5870,14 @@
     codeInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') loadFromShortcode();
     });
+
+    // Status/error line for the shortcode loader. loadFromShortcode() requires
+    // #wizard-error to exist; without it the "Load" button silently no-ops
+    // (issue #106 — the Welcome Back step previously omitted this element).
+    var codeErr = document.createElement('div');
+    codeErr.className = 'wizard-error';
+    codeErr.id = 'wizard-error';
+    container.appendChild(codeErr);
 
     var codeHint = document.createElement('p');
     codeHint.style.cssText = 'font-size:.7rem;color:var(--muted);margin-top:.35rem;';
