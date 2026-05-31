@@ -2053,6 +2053,83 @@ body{top:0!important;}
     root.appendChild(section);
   }
 
+  // ===== L3 NC BUFFER STRATEGY — surface owned Lv.3 NCs and their adjacent wastelands =====
+  // Drives R12 (new sector) opening declarations: claim every wasteland adjacent to an
+  // owned Lv.3 NC so enemies can't stage attacks against it. Hostile-NC adjacency =
+  // higher threat level.
+  function buildL3BufferStrategy(rd, root){
+    var strat = (rd && rd.l3BufferStrategy) || [];
+    if (!strat.length) return;
+    var section = el('section', 'sect');
+    var totalBuf = 0;
+    strat.forEach(function(s){ totalBuf += (s.bufferWastelands || []).length; });
+    tagSection(section, 'L3 NC Buffers', 'shield', strat.length);
+
+    var t = el('div', 'sect-title');
+    var dot = el('span', 'dot'); dot.style.background = 'var(--red)';
+    t.appendChild(dot);
+    t.appendChild(el('span', null, 'L3 Neutral City Buffer Strategy — Protect Owned Lv.3 NCs'));
+    t.appendChild(el('span', 'tag', strat.length + ' L3 NC' + (strat.length === 1 ? '' : 's') + ' · ' + totalBuf + ' buffer wastelands'));
+    section.appendChild(t);
+
+    var note = el('div', 'rule-box');
+    note.appendChild(makeIcon('shield', 18));
+    var body = el('div', 'body');
+    body.appendChild(document.createTextNode(
+      'Each Lv.3 NC can be attacked from any directly-adjacent wasteland. Claim the four neighbours to deny staging ground. Threat level is HIGH when a hostile server already controls an adjacent neutral city.'
+    ));
+    note.appendChild(body);
+    section.appendChild(note);
+
+    var grid = el('div', 'r11-curated-grid');
+    strat.forEach(function(s){
+      var card = el('div', 'r11-curated-card');
+
+      var head = el('div', 'r11-wl-head');
+      head.appendChild(el('span', 'r11-wl-seq', '#' + s.showNum));
+      head.appendChild(el('span', 'r11-wl-lvl l3', 'Lv.3 NC'));
+      var threatClass = s.threatLevel === 'HIGH' ? 'r11-wl-contest' : (s.threatLevel === 'MEDIUM' ? 'r11-wl-spec' : 'r11-wl-uncontested');
+      head.appendChild(el('span', threatClass, s.threatLevel + ' threat'));
+      card.appendChild(head);
+
+      // Buffer wastelands needed
+      var bufRow = el('div', 'r11-wl-hops');
+      bufRow.appendChild(document.createTextNode('Declare to buffer: '));
+      var bufs = s.adjacentWastelands || [];
+      if (!bufs.length) bufRow.appendChild(document.createTextNode('(no adjacent wastelands)'));
+      bufs.forEach(function(w, i){
+        if (i > 0) bufRow.appendChild(document.createTextNode(' · '));
+        var pill = el('b', 'r11-hop-pill');
+        if (w.ownerSid === 2864) pill.style.opacity = '0.55';
+        var spec = SPEC_NAMES[w.specId] || ('Spec ' + w.specId);
+        pill.appendChild(document.createTextNode('W-' + w.seq + ' · ' + spec));
+        if (w.ownerSid === 2864) pill.appendChild(document.createTextNode(' (ours)'));
+        else if (w.ownerSid && w.ownerSid !== 0) pill.appendChild(document.createTextNode(' (S' + w.ownerSid + ')'));
+        bufRow.appendChild(pill);
+      });
+      card.appendChild(bufRow);
+
+      // Hostile adjacency note
+      var foot = el('div', 'r11-wl-foot');
+      var hostileNcs = (s.adjacentNCs || []).filter(function(n){ return n.ownerSid && n.ownerSid !== 0 && n.ownerSid !== 2864; });
+      if (hostileNcs.length){
+        var warn = el('span', 'r11-wl-contest');
+        warn.appendChild(document.createTextNode('Hostile NC adjacent: '));
+        hostileNcs.forEach(function(n, i){
+          if (i > 0) warn.appendChild(document.createTextNode(', '));
+          warn.appendChild(document.createTextNode(n.name + ' (S' + n.ownerSid + ')'));
+        });
+        foot.appendChild(warn);
+      } else {
+        foot.appendChild(el('span', 'r11-wl-uncontested', 'No hostile NCs adjacent'));
+      }
+      card.appendChild(foot);
+      grid.appendChild(card);
+    });
+    section.appendChild(grid);
+    root.appendChild(section);
+  }
+
   // ===== PILLAGE PRIORITY — top-of-plan: enemy NCs we plan to take =====
   // Round 11 Setup — alliance-curated + auto-detected declarations that open
   // R11 combat-buff declarations, plus NC strategic targets for this week.
@@ -3913,6 +3990,7 @@ body{top:0!important;}
     document.getElementById('hdrSub').textContent = ' · R' + roundKey;
     buildHero(rd, roundKey, root);
     buildPower(rd, root);
+    buildL3BufferStrategy(rd, root);
     buildR11Setup(rd, root);
     buildRules(root);
     buildPillagePriority(rd, root);
