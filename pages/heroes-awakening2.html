@@ -1,0 +1,1158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Heroes Awakening — v2 Preview</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --card: #1c2128; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #79c0ff; --gold: #d29922;
+    --green: #3fb950; --purple: #957cff; --red: #f85149; --navy: #388bfd;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 1.45; }
+  a { color: var(--accent); }
+  code { font-family: 'SF Mono', Menlo, monospace; background: var(--surface); padding: 1px 5px; border-radius: 4px; font-size: .92em; color: var(--accent); }
+  h1, h2, h3, h4 { color: var(--text); margin: 0; }
+
+  /* page chrome */
+  .topbar { display:flex; align-items:center; gap:10px; padding:14px 18px; border-bottom:1px solid var(--border); background:var(--surface); position:sticky; top:0; z-index:20; }
+  .topbar h1 { font-size: 1.1rem; flex:1; }
+  .topbar .badge { padding:3px 8px; border-radius:4px; font-size:.62rem; text-transform:uppercase; letter-spacing:.05em; font-weight:700; background:rgba(149,124,255,.18); color:var(--purple); border:1px solid rgba(149,124,255,.45); }
+  .topbar .badge.audit { background:rgba(63,185,80,.18); color:var(--green); border-color:rgba(63,185,80,.45); }
+  .container { max-width: 1280px; margin: 0 auto; padding: 0 18px 80px; }
+  section { padding: 28px 0; border-bottom: 1px solid var(--border); }
+  section:last-of-type { border-bottom: none; }
+  section > h2 { font-size: 1.25rem; margin-bottom: 4px; }
+  section > .lede { color: var(--muted); margin-bottom: 16px; font-size: .9rem; }
+
+  /* cards + grids */
+  .grid-2 { display:grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid-3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .grid-4 { display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
+  @media (max-width: 800px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .card.tint-green { border-color: rgba(63,185,80,.45); background: rgba(63,185,80,.05); }
+  .card.tint-gold { border-color: rgba(210,153,34,.45); background: rgba(210,153,34,.05); }
+  .card.tint-purple { border-color: rgba(149,124,255,.45); background: rgba(149,124,255,.05); }
+  .card.tint-blue { border-color: rgba(121,192,255,.45); background: rgba(121,192,255,.05); }
+  .card.tint-red { border-color: rgba(248,81,73,.45); background: rgba(248,81,73,.05); }
+  .card-eyebrow { font-size:.58rem; text-transform: uppercase; letter-spacing:.06em; font-weight:700; color: var(--muted); margin-bottom: 4px; }
+  .card-value { font-size: 1rem; font-weight: 700; color: var(--text); }
+  .card-value.big { font-size: 1.4rem; }
+  .stat-row { display:flex; gap:14px; flex-wrap: wrap; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; min-width: 140px; flex:1; }
+  .stat .stat-label { font-size:.56rem; text-transform: uppercase; letter-spacing:.06em; color: var(--muted); font-weight:700; }
+  .stat .stat-num { font-family:'SF Mono', Menlo, monospace; font-size: 1.3rem; font-weight: 700; color: var(--gold); margin-top: 2px; }
+  .stat .stat-sub { color: var(--muted); font-size:.7rem; margin-top:2px; }
+
+  /* badge pills */
+  .pill { display:inline-block; padding: 2px 8px; border-radius: 10px; font-size:.58rem; font-weight: 700; letter-spacing:.04em; }
+  .pill.green { background: rgba(63,185,80,.18); color: var(--green); border:1px solid rgba(63,185,80,.45); }
+  .pill.navy  { background: rgba(56,139,253,.18); color: var(--navy); border:1px solid rgba(56,139,253,.45); }
+  .pill.air   { background: rgba(210,153,34,.18); color: var(--gold); border:1px solid rgba(210,153,34,.45); }
+  .pill.army  { background: rgba(63,185,80,.18); color: var(--green); border:1px solid rgba(63,185,80,.45); }
+  .pill.purple { background: rgba(149,124,255,.18); color: var(--purple); border:1px solid rgba(149,124,255,.45); }
+  .pill.p1, .pill.live { background: var(--green); color:#0d1117; border:none; }
+  .pill.p2 { background: rgba(56,139,253,.18); color: var(--navy); border:1px solid rgba(56,139,253,.45); }
+  .pill.p3 { background: rgba(149,124,255,.18); color: var(--purple); border:1px solid rgba(149,124,255,.45); }
+
+  /* hero showcase */
+  .hero-showcase { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+  .hero-tile {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 0; overflow: hidden; cursor: pointer; transition: transform .2s, border-color .2s, box-shadow .2s;
+    display: flex; flex-direction: column;
+  }
+  .hero-tile:hover { transform: translateY(-2px); border-color: var(--accent); }
+  .hero-tile.p1 { border-color: rgba(63,185,80,.45); }
+  .hero-tile.active { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(210,153,34,.25); }
+  .hero-tile .hero-portrait {
+    width: 100%; aspect-ratio: 1/1; background: var(--surface);
+    background-size: cover; background-position: center top;
+  }
+  .hero-tile .hero-info { padding: 8px 10px; }
+  .hero-tile .hero-name { font-size: .92rem; font-weight: 700; color: var(--text); line-height: 1.2; }
+  .hero-tile .hero-label { font-size: .7rem; color: var(--gold); margin-top: 2px; min-height: 1em; font-weight: 600; }
+  .hero-tile .hero-meta { display:flex; gap:4px; margin-top: 6px; flex-wrap:wrap; }
+
+  /* detail panel (inline) */
+  .hero-detail {
+    background: var(--surface); border: 1px solid var(--gold); border-radius: 12px;
+    padding: 18px; margin: 14px 0 4px; display: none;
+  }
+  .hero-detail.open { display: block; }
+  .hd-head { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+  .hd-portrait { width: 110px; aspect-ratio: 1/1; border-radius: 8px; background: var(--card) center/cover no-repeat; flex-shrink: 0; border: 1px solid var(--border); }
+  .hd-meta { flex: 1; min-width: 240px; }
+  .hd-name { font-size: 1.4rem; font-weight: 800; }
+  .hd-label { color: var(--gold); font-weight: 600; font-size: 1rem; margin-top: 2px; }
+  .hd-pills { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
+  .hd-bio { color: var(--muted); margin-top: 10px; font-size: .82rem; line-height: 1.5; max-height: 5.5em; overflow: hidden; transition: max-height .3s; }
+  .hd-bio.expanded { max-height: 60em; }
+  .hd-bio-toggle { background: none; border: none; color: var(--accent); cursor: pointer; padding: 4px 0; font-size: .72rem; }
+  .hd-combo {
+    background: var(--card); border: 1px solid var(--gold); border-radius: 8px;
+    padding: 10px 12px; margin-top: 14px;
+  }
+  .hd-combo .combo-title { font-size: .58rem; color: var(--gold); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+  .hd-combo .combo-body { font-size: .85rem; margin-top: 4px; }
+  .hd-combo b { color: var(--gold); }
+
+  /* skill grid */
+  .skill-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+  @media (max-width: 700px) { .skill-grid { grid-template-columns: 1fr 1fr; } }
+  .skill-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px; cursor: pointer; transition: border-color .15s; }
+  .skill-card:hover { border-color: var(--accent); }
+  .skill-card.active { border-color: var(--gold); }
+  .skill-card img { width: 52px; height: 52px; display: block; margin: 0 auto 6px; border-radius: 6px; }
+  .skill-card .sn { font-size: .76rem; font-weight: 700; text-align: center; }
+  .skill-card .ss { font-size: .58rem; color: var(--muted); text-align: center; margin-top: 2px; }
+
+  /* skill explorer with slider */
+  .skill-explorer { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 14px; }
+  .se-head { display:flex; align-items:center; gap:10px; margin-bottom: 10px; }
+  .se-head .se-title { font-size: 1.05rem; font-weight: 700; color: var(--gold); }
+  .se-head .se-id { color: var(--muted); font-size: .7rem; }
+
+  .slider-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .slider-row { display:flex; align-items:center; gap: 14px; flex-wrap: wrap; }
+  .slider-label { font-size:.62rem; text-transform: uppercase; letter-spacing:.06em; color: var(--muted); font-weight:700; }
+  .slider-current { font-size: 1.4rem; font-weight: 800; color: var(--gold); font-family:'SF Mono', Menlo, monospace; min-width: 80px; text-align: center; }
+  input[type="range"].main-slider {
+    flex: 1; min-width: 200px;
+    -webkit-appearance: none; appearance: none;
+    height: 8px; border-radius: 4px;
+    background: linear-gradient(to right, var(--accent) 0%, var(--gold) 50%, var(--purple) 100%);
+    outline: none; cursor: pointer; padding: 0;
+  }
+  input[type="range"].main-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--text); border: 3px solid var(--gold);
+    cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.5);
+  }
+  input[type="range"].main-slider::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: var(--text); border: 3px solid var(--gold); cursor: pointer; }
+
+  .ticks { position: relative; height: 16px; margin: 6px 12px 0; font-size: .58rem; color: var(--muted); }
+  .ticks span { position: absolute; top: 0; white-space: nowrap; font-family: 'SF Mono', Menlo, monospace; }
+  .ticks span.tick-mid { transform: translateX(-50%); }
+  .ticks span.tick-end { transform: translateX(-100%); }
+  .ticks span.tick-unlock { color: var(--gold); font-weight: 700; }
+  .ticks span.tick-active { color: var(--accent); font-weight: 700; text-decoration: underline; }
+
+  .val-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 12px; }
+  .val { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; text-align: center; }
+  .val .vl { font-size: .54rem; text-transform: uppercase; letter-spacing:.06em; color: var(--muted); font-weight: 700; }
+  .val .vn { font-family:'SF Mono', Menlo, monospace; font-size: 1.05rem; font-weight: 700; margin-top: 3px; color: var(--text); }
+  .val.gold .vn { color: var(--gold); }
+  .val.green .vn { color: var(--green); }
+  .val.blue .vn { color: var(--accent); }
+  .val.purple .vn { color: var(--purple); }
+
+  .desc-card { background: var(--bg); border: 1px solid var(--accent); border-radius: 8px; padding: 14px; margin-top: 12px; line-height: 1.6; font-size: .9rem; }
+  .desc-card .desc-unlock { margin-top: 10px; padding: 10px 12px; background: rgba(210,153,34,.08); border-left: 3px solid var(--gold); border-radius: 4px; font-size: .82rem; }
+  .desc-card .desc-es7 { margin-top: 10px; padding: 10px 12px; background: rgba(149,124,255,.08); border-left: 3px solid var(--purple); border-radius: 4px; font-size: .82rem; }
+  .desc-card .label { font-size: .56rem; text-transform: uppercase; letter-spacing:.06em; font-weight: 700; margin-bottom: 4px; display: block; }
+  .desc-card .label.gold { color: var(--gold); }
+  .desc-card .label.purple { color: var(--purple); }
+  .desc-card .token { color: var(--accent); font-weight: 600; }
+
+  /* calculator tabs */
+  .calc-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 14px; }
+  .calc-tab {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; cursor: pointer; font-size: .8rem; font-weight: 600;
+    color: var(--text); transition: all .15s;
+    min-height: 44px; display: inline-flex; align-items: center;
+  }
+  .calc-tab:hover { border-color: var(--accent); }
+  .calc-tab.active { background: var(--accent); color: #0d1117; border-color: var(--accent); }
+  .calc-panel { display: none; }
+  .calc-panel.active { display: block; }
+  .calc-input { display: flex; flex-direction: column; gap: 4px; }
+  .calc-input label { font-size: .62rem; text-transform: uppercase; letter-spacing:.05em; color: var(--muted); font-weight: 700; }
+  .calc-input input, .calc-input select {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 10px 12px; font-size: .9rem; font-family: inherit;
+    min-height: 44px;
+  }
+  .calc-input input:focus, .calc-input select:focus { outline: none; border-color: var(--accent); }
+  .calc-result {
+    background: var(--bg); border: 1px solid var(--green); border-radius: 8px;
+    padding: 14px; margin-top: 14px; font-size: .9rem;
+  }
+  .calc-result .big-num { font-family:'SF Mono', Menlo, monospace; font-size: 1.6rem; font-weight: 800; color: var(--gold); }
+  .calc-result .row { display: flex; justify-content: space-between; gap: 12px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+  .calc-result .row:first-child { padding-top: 0; border-top: none; }
+  .calc-result .row .label { color: var(--muted); }
+  .calc-result .row .value { font-family:'SF Mono', Menlo, monospace; color: var(--text); font-weight: 700; }
+
+  /* tables */
+  table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { font-size: .58rem; text-transform: uppercase; letter-spacing:.05em; color: var(--muted); background: var(--surface); }
+  td.num { font-family:'SF Mono', Menlo, monospace; text-align: right; color: var(--gold); }
+  td.lvl { color: var(--purple); font-weight: 700; }
+  tr:hover { background: rgba(121,192,255,.04); }
+
+  /* swap section */
+  .swap-army { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+  .swap-army.army { border-color: rgba(63,185,80,.45); }
+  .swap-army.air { border-color: rgba(210,153,34,.45); }
+  .swap-army.navy { border-color: rgba(56,139,253,.45); }
+  .swap-army-head { display: flex; align-items: center; gap: 10px; padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+  .swap-army-head h3 { margin: 0; font-size: 1rem; }
+  .swap-army-head .tally { margin-left: auto; font-size: .68rem; color: var(--muted); }
+  .donor-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+  .donor { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 6px; text-align: center; font-size: .7rem; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+  .donor img, .donor .placeholder { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; background: var(--surface); }
+  .donor .placeholder { display: flex; align-items: center; justify-content: center; color: var(--muted); font-weight: 700; font-size: .56rem; border: 1px solid var(--border); }
+  .combo-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; margin-top: 14px; }
+  .combo-card { background: var(--card); border: 1px solid var(--gold); border-radius: 10px; padding: 12px; }
+  .combo-card .combo-buff { font-size: .68rem; color: var(--gold); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding-bottom: 6px; border-bottom: 1px solid rgba(210,153,34,.25); margin-bottom: 10px; }
+  .combo-card .combo-buff span { color: var(--text); font-weight: 600; text-transform: none; letter-spacing: 0; font-size: .92rem; display: block; margin-top: 2px; }
+  .combo-heroes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .combo-hero { text-align: center; font-size: .68rem; padding: 6px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); }
+  .combo-hero.live { border-color: var(--green); }
+  .combo-hero img, .combo-hero .ph { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; background: var(--card); margin: 0 auto 4px; display: block; }
+  .combo-hero .ph { display: flex; align-items: center; justify-content: center; color: var(--muted); font-weight: 700; font-size: .58rem; border: 1px solid var(--border); }
+  .combo-hero .ch-name { font-weight: 700; color: var(--text); }
+  .combo-hero .ch-meta { display: flex; gap: 3px; justify-content: center; margin-top: 4px; }
+
+  /* misc */
+  .lede { color: var(--muted); font-size: .9rem; }
+  .footnote { color: var(--muted); font-size: .72rem; margin-top: 8px; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+
+  .audit-note {
+    background: var(--card); border: 1px solid var(--green); border-radius: 8px;
+    padding: 12px 14px; font-size: .8rem; line-height: 1.5;
+  }
+  .audit-note .audit-label { font-size: .58rem; color: var(--green); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; margin-bottom: 4px; display:block; }
+  .audit-note.warn { border-color: var(--gold); }
+  .audit-note.warn .audit-label { color: var(--gold); }
+
+  .anchor { color: var(--accent); text-decoration: none; font-size: .7rem; }
+  .anchor:hover { text-decoration: underline; }
+
+  /* honor wall track */
+  .honor-tracks { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  @media (max-width: 600px) { .honor-tracks { grid-template-columns: 1fr; } }
+  .honor-track { background: var(--surface); border: 1px solid var(--purple); border-radius: 8px; padding: 12px; }
+  .honor-bar {
+    height: 14px; background: var(--bg); border-radius: 7px; overflow: hidden; margin-top: 8px;
+    border: 1px solid var(--border);
+  }
+  .honor-bar > div {
+    height: 100%; background: linear-gradient(to right, var(--purple), var(--gold));
+    transition: width .2s;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Heroes Awakening <span class="badge">v2 preview</span></h1>
+  <span class="badge audit">audit applied · 2026-05-30</span>
+</div>
+
+<div class="container">
+
+<section>
+  <h2>What is Awakening?</h2>
+  <p class="lede">A new progression layer on top of 5★ Lv. 120 heroes. Awaken a hero with their Awakening Card to unlock a new persona, 4 stackable Awakening Skills, an ultimate kill-name skill, and the post-cap Honor Wall — for a total of up to <strong>+240,000 Fight Power</strong> per hero. Awakening rolls out in 3 phases of 6 heroes each.</p>
+
+  <div class="grid-4" style="margin-top: 14px">
+    <div class="card tint-gold">
+      <div class="card-eyebrow">Requirements</div>
+      <div class="card-value">5★ · Lv. 120 · ES Lv. 5</div>
+      <div class="footnote">Plus 1 Awakening Card for that specific hero.</div>
+    </div>
+    <div class="card tint-green">
+      <div class="card-eyebrow">Phase I — live now</div>
+      <div class="card-value">6 heroes</div>
+      <div class="footnote">Sara, Nova, Shen Suyu, Carna, Jett, Lophy</div>
+    </div>
+    <div class="card tint-purple">
+      <div class="card-eyebrow">Phase II + III — gated</div>
+      <div class="card-value">12 heroes</div>
+      <div class="footnote">Banners + roster known; awakening locked server-side until phase rolls out</div>
+    </div>
+    <div class="card tint-blue">
+      <div class="card-eyebrow">Max gain per hero</div>
+      <div class="card-value big" style="font-family:'SF Mono', Menlo, monospace; color: var(--gold)">+240,000 FP</div>
+      <div class="footnote">80k Awakening Level · 120k skills · 40k Honor Wall</div>
+    </div>
+  </div>
+</section>
+
+<section id="overview">
+  <h2>Cost overview</h2>
+  <p class="lede">Three separate currencies feed three separate ladders. Don't mix them up.</p>
+
+  <div class="grid-3">
+    <div class="card tint-gold">
+      <div class="card-eyebrow">Awakening Stones</div>
+      <div class="card-value big" style="font-family:'SF Mono', Menlo, monospace">9,000<span style="font-size:.7rem; color: var(--muted)"> / hero</span></div>
+      <div class="footnote">Universal currency. Powers the 4 skills' 1–10 ladders. 54,000 stones to max Phase I (6 heroes × 9,000).</div>
+    </div>
+    <div class="card tint-purple">
+      <div class="card-eyebrow">Per-hero Hero Shards + ES chips</div>
+      <div class="card-value big" style="font-family:'SF Mono', Menlo, monospace">1,140 + 740</div>
+      <div class="footnote">Drives the per-hero 1–40 Awakening Level ladder. +80,000 Fight Power at Lv. 40.</div>
+    </div>
+    <div class="card tint-blue">
+      <div class="card-eyebrow">Honor Wall stones</div>
+      <div class="card-value big" style="font-family:'SF Mono', Menlo, monospace">39,900</div>
+      <div class="footnote">Post-cap. 200 sub-levels × 2 sub-tracks = 400 sub-levels per hero. +40,000 FP per hero.</div>
+    </div>
+  </div>
+
+  <div class="audit-note" style="margin-top: 14px">
+    <span class="audit-label">Audit fixes vs production</span>
+    <ul style="margin: 0; padding-left: 18px">
+      <li><strong>Skill stone cost ladder</strong> — production says "2–10 per level", real cost is <strong>15/15/30/30/45/45/60/80/130 per pull</strong> × 5 pulls = <strong>75/75/150/150/225/225/300/400/650 per level</strong>.</li>
+      <li><strong>Per-hero max</strong> — production never surfaces this. Real: <strong>9,000 stones</strong> to max all 4 skills. <strong>54,000</strong> for Phase I.</li>
+      <li><strong>Awakening Level cumulative shards</strong> — production says 1,090 + 700, real <strong>1,140 + 740</strong> (Tier 4 covers Lv. 30–40, 11 levels, not 10).</li>
+      <li><strong>Max FP per hero</strong> — production says +80,000; real <strong>+240,000</strong> (80k ladder + 120k skills + 40k Honor Wall).</li>
+      <li><strong>ES7 buff IDs</strong> — production says <code>21x101 → 21x1101</code>; real is 7-digit IDs where digit 3 flips 0→1 (e.g. Sara skill 1 <code>2201101 → 2211101</code>).</li>
+      <li><strong>Honor Wall</strong> — not on production at all. Added as its own section with calculator.</li>
+      <li><strong>Item naming</strong> — production switches between "Gold Shard" and "Hero Shard". Game lang only uses <strong>Hero Shard</strong> (e.g. "Sara Shard", "Marvingt Shard").</li>
+    </ul>
+  </div>
+</section>
+
+<section id="heroes">
+  <h2>Hero showcase <a class="anchor" href="#heroes">#</a></h2>
+  <p class="lede">Click a hero to expand their detail panel inline. Phase I heroes are <span class="pill green">live</span>.</p>
+
+  <div class="hero-showcase" id="heroShowcase"></div>
+
+  <div class="hero-detail" id="heroDetail"></div>
+</section>
+
+<section id="calc">
+  <h2>Calculator toolbox <a class="anchor" href="#calc">#</a></h2>
+  <p class="lede">All numbers verified against the live game tables (hero_awakening_skill, hero_awakening_level, hero_awakening_maxUpgrade).</p>
+
+  <div class="calc-tabs" id="calcTabs">
+    <div class="calc-tab active" data-calc="skills">Skill stones</div>
+    <div class="calc-tab" data-calc="wholehero">Whole-hero stones</div>
+    <div class="calc-tab" data-calc="awake">Awakening Level 0→40</div>
+    <div class="calc-tab" data-calc="honor">Honor Wall</div>
+    <div class="calc-tab" data-calc="phase">Phase budget</div>
+    <div class="calc-tab" data-calc="es7">ES7 swap reference</div>
+  </div>
+
+  <!-- Calc: Stones to skill target -->
+  <div class="calc-panel active" data-panel="skills">
+    <div class="card">
+      <h3 style="font-size: .94rem; margin-bottom: 10px">Stones from skill Lv. <em>X</em> → Lv. <em>Y</em></h3>
+      <div class="grid-2" style="margin-bottom: 10px">
+        <div class="calc-input">
+          <label>Current skill level</label>
+          <input type="number" id="skCur" min="0" max="9" value="0">
+        </div>
+        <div class="calc-input">
+          <label>Target skill level</label>
+          <input type="number" id="skTgt" min="1" max="10" value="10">
+        </div>
+      </div>
+      <div class="calc-result" id="skResult"></div>
+      <p class="footnote">Per-pull cost: 15 / 15 / 30 / 30 / 45 / 45 / 60 / 80 / 130 stones (Lv. 1→10). 5 pulls per level. Lv. 10 is the cap; no cost beyond.</p>
+    </div>
+  </div>
+
+  <!-- Calc: Whole hero stones -->
+  <div class="calc-panel" data-panel="wholehero">
+    <div class="card">
+      <h3 style="font-size: .94rem; margin-bottom: 10px">Whole-hero stones — all 4 skills together</h3>
+      <div class="grid-4" style="margin-bottom: 10px">
+        <div class="calc-input">
+          <label>Skill 1 current Lv.</label>
+          <input type="number" class="wh-cur" data-i="0" min="0" max="10" value="0">
+        </div>
+        <div class="calc-input">
+          <label>Skill 2 current Lv.</label>
+          <input type="number" class="wh-cur" data-i="1" min="0" max="10" value="0">
+        </div>
+        <div class="calc-input">
+          <label>Skill 3 current Lv.</label>
+          <input type="number" class="wh-cur" data-i="2" min="0" max="10" value="0">
+        </div>
+        <div class="calc-input">
+          <label>Skill 4 current Lv.</label>
+          <input type="number" class="wh-cur" data-i="3" min="0" max="10" value="0">
+        </div>
+      </div>
+      <div class="grid-2" style="margin-bottom: 10px">
+        <div class="calc-input">
+          <label>Target each skill to Lv.</label>
+          <input type="number" id="whTgt" min="1" max="10" value="10">
+        </div>
+        <div class="calc-input">
+          <label>How many heroes are you maxing?</label>
+          <input type="number" id="whHeroes" min="1" max="18" value="1">
+        </div>
+      </div>
+      <div class="calc-result" id="whResult"></div>
+      <p class="footnote">Max one hero (0→10 on all 4 skills): 9,000 stones. Max all 6 Phase I heroes: 54,000 stones. Max all 18 awakening heroes: 162,000 stones.</p>
+    </div>
+  </div>
+
+  <!-- Calc: awakening level -->
+  <div class="calc-panel" data-panel="awake">
+    <div class="card">
+      <h3 style="font-size: .94rem; margin-bottom: 10px">Awakening Level 0 → 40 — Hero Shards + Exclusive Skill chips per hero</h3>
+      <div class="grid-2" style="margin-bottom: 10px">
+        <div class="calc-input">
+          <label>Current awakening level</label>
+          <input type="number" id="awCur" min="0" max="39" value="0">
+        </div>
+        <div class="calc-input">
+          <label>Target awakening level</label>
+          <input type="number" id="awTgt" min="1" max="40" value="40">
+        </div>
+      </div>
+      <div class="calc-result" id="awResult"></div>
+      <p class="footnote">Each level needs 100 EXP, gained 20 per pull → 5 pulls per level. Per-pull cost is tier-based: Lv. 1–9 = 2 shards, Lv. 10–19 = 4 shards + 2 chips, Lv. 20–29 = 6 + 4, Lv. 30–39 = 10 + 8. Hero Shards and ES chips are <em>per-hero</em> items (e.g. "Sara Shard", "Sara Skill chip").</p>
+    </div>
+  </div>
+
+  <!-- Calc: honor wall -->
+  <div class="calc-panel" data-panel="honor">
+    <div class="card">
+      <h3 style="font-size: .94rem; margin-bottom: 10px">Honor Wall — post-Lv. 10 skill extension</h3>
+      <p class="lede">After a skill hits Lv. 10, the Honor Wall opens. Each of the 4 skills has 2 sub-tracks of 200 sub-levels each. Costs ramp in tiers of 50, then 80, 120, 150; free at 200.</p>
+      <div class="grid-2" style="margin-bottom: 10px">
+        <div class="calc-input">
+          <label>Current sub-level (0–199)</label>
+          <input type="number" id="hwCur" min="0" max="199" value="0">
+        </div>
+        <div class="calc-input">
+          <label>Target sub-level (1–200)</label>
+          <input type="number" id="hwTgt" min="1" max="200" value="200">
+        </div>
+      </div>
+      <div class="calc-result" id="hwResult"></div>
+      <div class="honor-tracks" style="margin-top: 14px">
+        <div class="honor-track">
+          <div class="card-eyebrow">Sub-track 1</div>
+          <div style="font-family:'SF Mono', Menlo, monospace; font-size: 1.2rem; color: var(--gold)">19,950 stones · +20,000 FP</div>
+          <div class="honor-bar"><div id="hwBar1" style="width: 0%"></div></div>
+        </div>
+        <div class="honor-track">
+          <div class="card-eyebrow">Sub-track 2</div>
+          <div style="font-family:'SF Mono', Menlo, monospace; font-size: 1.2rem; color: var(--gold)">19,950 stones · +20,000 FP</div>
+          <div class="honor-bar"><div id="hwBar2" style="width: 0%"></div></div>
+        </div>
+      </div>
+      <p class="footnote" style="margin-top: 10px">Full Honor Wall per hero: <strong>39,900 stones</strong> for <strong>+40,000 FP</strong>. Across all 6 Phase I heroes: 239,400 stones for +240,000 FP. Same Awakening Stone currency as the 1–10 skill ladders.</p>
+    </div>
+  </div>
+
+  <!-- Calc: phase budget -->
+  <div class="calc-panel" data-panel="phase">
+    <div class="card">
+      <h3 style="font-size: .94rem; margin-bottom: 10px">Phase budget planner</h3>
+      <p class="lede">Total stones (skills + Honor Wall) and per-hero shard / chip totals.</p>
+      <table style="margin-top: 10px">
+        <thead><tr>
+          <th>Goal</th><th class="num">Stones (skills)</th><th class="num">Stones (Honor Wall)</th><th class="num">Total stones</th><th class="num">FP gain</th>
+        </tr></thead>
+        <tbody>
+          <tr><td>1 hero to Lv. 10 on all 4 skills</td><td class="num">9,000</td><td class="num">0</td><td class="num">9,000</td><td class="num">+120,000</td></tr>
+          <tr><td>1 hero full Honor Wall (after Lv. 10)</td><td class="num">0</td><td class="num">39,900</td><td class="num">39,900</td><td class="num">+40,000</td></tr>
+          <tr><td>1 hero everything (skills + Honor Wall)</td><td class="num">9,000</td><td class="num">39,900</td><td class="num">48,900</td><td class="num">+160,000</td></tr>
+          <tr><td>6 Phase I heroes — skills to Lv. 10</td><td class="num">54,000</td><td class="num">0</td><td class="num">54,000</td><td class="num">+720,000</td></tr>
+          <tr><td>6 Phase I heroes — everything</td><td class="num">54,000</td><td class="num">239,400</td><td class="num">293,400</td><td class="num">+960,000</td></tr>
+          <tr><td>All 18 awakening heroes — skills only</td><td class="num">162,000</td><td class="num">0</td><td class="num">162,000</td><td class="num">+2,160,000</td></tr>
+        </tbody>
+      </table>
+      <p class="footnote">Plus a separate <strong>1,140 Hero Shards + 740 Exclusive Skill chips</strong> per hero to take their Awakening Level from 0 to 40 (+80,000 FP). Those are per-hero items, not interchangeable.</p>
+    </div>
+  </div>
+
+  <!-- Calc: ES7 -->
+  <div class="calc-panel" data-panel="es7">
+    <div class="card">
+      <h3 style="font-size: .94rem; margin-bottom: 10px">Exclusive Skill Lv. 7 buff swap reference</h3>
+      <p class="lede">When a hero's existing Exclusive Skill hits Lv. 7+, every Awakening Skill swaps its applied buff family. Same skill description, different numerical scaling.</p>
+      <p class="footnote">ID pattern is 7 digits: <code>AABCCDD</code> where <strong>B</strong> = 0 (base) or 1 (ES7 swap). Production page incorrectly describes this as <code>21x101 → 21x1101</code>.</p>
+      <table style="margin-top: 12px" id="es7Table">
+        <thead><tr><th>Hero</th><th>Skill 1</th><th>Skill 2</th><th>Skill 3</th><th>Skill 4</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="honor">
+  <h2>Honor Wall — late-game skill extension <a class="anchor" href="#honor">#</a></h2>
+  <p class="lede">When you push a skill past Lv. 10, the Honor Wall opens. This system isn't surfaced anywhere on the production page; it's a major chunk of late-game Fight Power.</p>
+
+  <div class="grid-3">
+    <div class="card tint-purple">
+      <div class="card-eyebrow">Per-hero size</div>
+      <div class="card-value big" style="font-family:'SF Mono', Menlo, monospace">400 sub-levels</div>
+      <div class="footnote">2 sub-tracks × 200 sub-levels each.</div>
+    </div>
+    <div class="card tint-gold">
+      <div class="card-eyebrow">Cost per hero</div>
+      <div class="card-value big" style="font-family:'SF Mono', Menlo, monospace">39,900 stones</div>
+      <div class="footnote">Awakening Stones. Same currency as the 1–10 skill ladders.</div>
+    </div>
+    <div class="card tint-green">
+      <div class="card-eyebrow">FP gain</div>
+      <div class="card-value big" style="font-family:'SF Mono', Menlo, monospace">+40,000 FP</div>
+      <div class="footnote">+100 Fight Power per sub-level × 400 sub-levels.</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 14px">
+    <table>
+      <thead><tr><th>Sub-level range</th><th class="num">Stones / sub-level</th><th class="num">Sub-levels</th><th class="num">Stones in range</th><th class="num">FP in range</th></tr></thead>
+      <tbody>
+        <tr><td>1 – 49</td><td class="num">50</td><td class="num">49</td><td class="num">2,450</td><td class="num">+4,900</td></tr>
+        <tr><td>50 – 99</td><td class="num">80</td><td class="num">50</td><td class="num">4,000</td><td class="num">+5,000</td></tr>
+        <tr><td>100 – 149</td><td class="num">120</td><td class="num">50</td><td class="num">6,000</td><td class="num">+5,000</td></tr>
+        <tr><td>150 – 199</td><td class="num">150</td><td class="num">50</td><td class="num">7,500</td><td class="num">+5,000</td></tr>
+        <tr><td>200 (free)</td><td class="num">0</td><td class="num">1</td><td class="num">0</td><td class="num">+100</td></tr>
+        <tr style="background: rgba(63,185,80,.08); font-weight: 700"><td>One sub-track total</td><td>—</td><td class="num">200</td><td class="num">19,950</td><td class="num">+20,000</td></tr>
+        <tr style="background: rgba(63,185,80,.12); font-weight: 700"><td>Both sub-tracks (full Honor Wall)</td><td>—</td><td class="num">400</td><td class="num">39,900</td><td class="num">+40,000</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="swap">
+  <h2>Hero Swap — donor → target by army type <a class="anchor" href="#swap">#</a></h2>
+  <p class="lede">Three pools, one per army type. 8 donors and 6 awakening targets per pool. Targets are grouped into 2 combo trios per pool — when you deploy all 3 members of a trio together, the boost listed on the trio card activates.</p>
+  <div id="swapSections"></div>
+</section>
+
+<section id="rules">
+  <h2>Hero Swap rules <a class="anchor" href="#rules">#</a></h2>
+  <div class="grid-2">
+    <div class="card">
+      <h3 style="font-size: .9rem; margin-bottom: 6px">What transfers</h3>
+      <ul style="margin: 0; padding-left: 18px">
+        <li>Hero level + star count + Exclusive Skill level <em>fully convert</em> to the target hero.</li>
+        <li>Hero Shards above 10 transfer 1-for-1 in the target's Shard.</li>
+        <li>Talents inherit bidirectionally — both heroes pick up each other's talents (untransferred talents reset, materials not refunded).</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="font-size: .9rem; margin-bottom: 6px">What you give up</h3>
+      <ul style="margin: 0; padding-left: 18px">
+        <li>Donor is reset to <strong>1★ Lv. 1</strong> with 10 base Shards retained — you keep access to them.</li>
+        <li>Heroes must be in Base (not on march, not on task) to swap.</li>
+        <li>Each target hero can only be swapped TO once.</li>
+        <li>Same army type only: Army↔Army, Navy↔Navy, Air↔Air.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</div><!-- /.container -->
+
+<script>
+const HERO_AWAKENING_DATA_URL = '../data/heroes-awakening.json?v=20260530d';
+
+// ───────── Audit-derived constants (verified vs game tables) ─────────
+const STONE_PER_PULL = [null, 15, 15, 30, 30, 45, 45, 60, 80, 130, 0]; // per pull at level N
+const STONE_PER_LEVEL = [null, 75, 75, 150, 150, 225, 225, 300, 400, 650, 0]; // per level N (5 pulls)
+const STONES_TO_MAX_ONE_SKILL = 2250;
+const STONES_TO_MAX_ONE_HERO = 9000;
+const PULLS_PER_LEVEL = 5;
+
+// Per-pull cost arrays — null at Lv. 0 since no cost to go FROM 0
+const AWAKE_TIER = [
+  { tier: 1, levels: [1,9],   heroShardPerPull: 2,  esChipPerPull: 0 },
+  { tier: 2, levels: [10,19], heroShardPerPull: 4,  esChipPerPull: 2 },
+  { tier: 3, levels: [20,29], heroShardPerPull: 6,  esChipPerPull: 4 },
+  { tier: 4, levels: [30,40], heroShardPerPull: 10, esChipPerPull: 8 }
+];
+const HONOR_TIER = [
+  { range: [1, 49],     perLevel: 50  },
+  { range: [50, 99],    perLevel: 80  },
+  { range: [100, 149],  perLevel: 120 },
+  { range: [150, 199],  perLevel: 150 },
+  { range: [200, 200],  perLevel: 0   }
+];
+
+const ID_TOKEN_MAP = {
+  '5':'Indestructible','9':'Silence','10':'Heavy Armor','13':'HP Boost','18':'Abnormal Status','19':'Hostile',
+  '46':'Ignition','47':'Splash','52':'Combo Attack','72':'Magnetic Pulse','77':'Light Armor'
+};
+
+const ES7_BUFF_SWAPS = {
+  // hero_id: [skill1, skill2, skill3, skill4] each [baseBuffId, es7BuffId]
+  '169': [['2201101','2211101'],['2202102','2212102'],['2203101','2213101'],['2204101','2214101']],
+  '172': [['2101101','2111101'],['2102102','2112102'],['2103101','2113101'],['2104101','2114101']],
+  '234': [['2401101','2411101'],['2402102','2412102'],['2403101','2413101'],['2404101','2414101']],
+  '239': [['2501101','2511101'],['2502102','2512102'],['2503101','2513101'],['2504101','2514101']],
+  '333': [['2301101','2311101'],['2302102','2312102'],['2303101','2313101'],['2304101','2314101']],
+  '334': [['2601101','2611101'],['2602102','2612102'],['2603101','2613101'],['2604101','2614101']]
+};
+
+const LOCAL_PORTRAIT = {
+  165: 'marvingt_portrait.jpeg', 169: 'sara_portrait.png',      170: 'rohr_portrait.jpeg',
+  172: 'nova_portrait.jpeg',     173: 'tannis_portrait.jpeg',   174: 'ella_portrait.jpeg',
+  232: 'lilia_portrait.jpeg',    234: 'shensuyu_portrait.png',  237: 'alvida_portrait.jpg',
+  239: 'lophy_portrait.jpeg',    240: 'sinope_portrait.jpeg',   241: 'margaretha_portrait.jpeg',
+  332: 'vivian_portrait.jpeg',   333: 'carna_portrait.png',     334: 'jett_portrait.jpeg',
+  336: 'joanmature_portrait.jpg', 337: 'heid_portrait.jpg',     338: 'franziska_portrait.jpeg'
+};
+
+const DATA = { ready: false };
+
+function $(sel, parent = document) { return parent.querySelector(sel); }
+function el(tag, attrs, ...children) {
+  const e = document.createElement(tag);
+  if (attrs) {
+    for (const k in attrs) {
+      if (k === 'class') e.className = attrs[k];
+      else if (k === 'style' && typeof attrs[k] === 'string') e.setAttribute('style', attrs[k]);
+      else if (k === 'data' && typeof attrs[k] === 'object') Object.entries(attrs[k]).forEach(([n,v]) => e.dataset[n] = v);
+      else if (k === 'on' && typeof attrs[k] === 'object') Object.entries(attrs[k]).forEach(([ev, fn]) => e.addEventListener(ev, fn));
+      else if (k.startsWith('aria-') || k === 'role' || k === 'title' || k === 'href' || k === 'src' || k === 'alt' || k === 'loading' || k === 'type' || k === 'min' || k === 'max' || k === 'value' || k === 'id') e.setAttribute(k, attrs[k]);
+      else e[k] = attrs[k];
+    }
+  }
+  for (const c of children.flat(99)) {
+    if (c == null || c === false) continue;
+    if (typeof c === 'string' || typeof c === 'number') e.appendChild(document.createTextNode(String(c)));
+    else e.appendChild(c);
+  }
+  return e;
+}
+function replace(parent, ...children) { while (parent.firstChild) parent.removeChild(parent.firstChild); for (const c of children) if (c) parent.appendChild(c); }
+
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+
+function iconCdn(id) { return `https://h5.topwargame.com/DynRes/images/headpic/hero_icon${id}_global.png`; }
+function localPortrait(id) { const f = LOCAL_PORTRAIT[id]; return f ? '../assets/heroes-awakening/' + f : null; }
+function fallbackImg(id, name) {
+  const cdn = iconCdn(id); const local = localPortrait(id);
+  const img = el('img', { src: cdn, alt: name, loading: 'lazy' });
+  img.onerror = () => {
+    if (img.src.indexOf('headpic') !== -1 && local) { img.src = local; img.onerror = makePlaceholder; }
+    else makePlaceholder();
+  };
+  function makePlaceholder() {
+    const ph = el('div', { class: 'ph placeholder' }, name ? name.slice(0, 2).toUpperCase() : '?');
+    img.replaceWith(ph);
+  }
+  return img;
+}
+
+// ───────── Stone math ─────────
+function stonesBetweenSkillLevels(cur, tgt) {
+  // cur=0..9, tgt=1..10. Cost from i→i+1 lives at STONE_PER_LEVEL[i+1] (since Lv. 1 onwards costs).
+  cur = Math.max(0, Math.min(10, cur|0));
+  tgt = Math.max(0, Math.min(10, tgt|0));
+  if (tgt <= cur) return 0;
+  let total = 0;
+  for (let lv = cur + 1; lv <= tgt; lv++) {
+    total += STONE_PER_LEVEL[lv] || 0;
+  }
+  return total;
+}
+
+function awakeShardsBetween(cur, tgt) {
+  cur = Math.max(0, Math.min(40, cur|0));
+  tgt = Math.max(0, Math.min(40, tgt|0));
+  if (tgt <= cur) return { hero: 0, es: 0 };
+  let hero = 0, es = 0;
+  for (let lv = cur + 1; lv <= tgt; lv++) {
+    const t = AWAKE_TIER.find(t => lv >= t.levels[0] && lv <= t.levels[1]);
+    if (!t) continue;
+    hero += t.heroShardPerPull * PULLS_PER_LEVEL;
+    es += t.esChipPerPull * PULLS_PER_LEVEL;
+  }
+  return { hero, es };
+}
+
+function honorStonesBetween(cur, tgt) {
+  cur = Math.max(0, Math.min(200, cur|0));
+  tgt = Math.max(0, Math.min(200, tgt|0));
+  if (tgt <= cur) return 0;
+  let total = 0;
+  for (let lv = cur + 1; lv <= tgt; lv++) {
+    const tier = HONOR_TIER.find(t => lv >= t.range[0] && lv <= t.range[1]);
+    if (tier) total += tier.perLevel;
+  }
+  return total;
+}
+
+// ───────── Token resolution (defense-in-depth XSS escaping) ─────────
+function resolveTokens(text, opts) {
+  if (!text) return '';
+  opts = opts || {};
+  let s = text;
+  if (opts.values) {
+    s = s.replace(/\{(\d+)\}/g, (m, i) => opts.values[Number(i)] != null ? opts.values[Number(i)] : m);
+  }
+  const slots = [];
+  s = s.replace(/<id=(\d+)>/g, (m, id) => {
+    const name = ID_TOKEN_MAP[id] || ('id=' + id);
+    slots.push('<span class="token">[' + escapeHtml(name) + ']</span>');
+    return 'S' + (slots.length - 1) + '';
+  });
+  s = s.replace(/\[([^\]]+)\]/g, (m, name) => {
+    slots.push('<span class="token">[' + escapeHtml(name) + ']</span>');
+    return 'S' + (slots.length - 1) + '';
+  });
+  s = escapeHtml(s);
+  s = s.replace(/S(\d+)/g, (m, i) => slots[Number(i)] || '');
+  return s;
+}
+
+// ───────── Renderers ─────────
+function typeClass(t) { if (t === 'Air' || t === 'Air Force') return 'air'; return (t || '').toLowerCase(); }
+function phaseRoman(p) { return ['I','II','III'][p-1] || ('Phase ' + p); }
+
+function renderShowcase() {
+  const host = $('#heroShowcase');
+  const phases = DATA.hyperAwakening.phases;
+  const live = new Set(DATA.hyperAwakening.awakenedHeroes.map(h => h.id));
+  const allHeroes = [];
+  phases.forEach(p => p.heroes.forEach(h => allHeroes.push({ ...h, phase: p.phase })));
+
+  const detailMap = new Map();
+  DATA.hyperAwakening.awakenedHeroes.forEach(h => detailMap.set(h.id, h));
+
+  const tiles = allHeroes.map(h => {
+    const detail = detailMap.get(h.id) || {};
+    const portrait = localPortrait(h.id) || iconCdn(h.id);
+    const isLive = live.has(h.id);
+    return el('div', {
+      class: 'hero-tile' + (isLive ? ' p1' : ''),
+      data: { id: h.id },
+      on: { click: () => openHeroDetail(h.id) }
+    },
+      el('div', { class: 'hero-portrait', style: 'background-image:url(' + portrait + ')' }),
+      el('div', { class: 'hero-info' },
+        el('div', { class: 'hero-name' }, h.name),
+        el('div', { class: 'hero-label' }, detail.awakenedLabel || ''),
+        el('div', { class: 'hero-meta' },
+          el('span', { class: 'pill ' + typeClass(h.type) }, h.type),
+          el('span', { class: 'pill p' + h.phase }, 'Phase ' + phaseRoman(h.phase)),
+          isLive ? el('span', { class: 'pill live' }, 'LIVE') : null
+        )
+      )
+    );
+  });
+  replace(host, ...tiles);
+}
+
+let activeHeroId = null;
+let activeSkillIdx = 1;
+let activeSkillLv = 7;
+
+function openHeroDetail(id) {
+  if (activeHeroId === id) { closeHeroDetail(); return; }
+  activeHeroId = id;
+  activeSkillIdx = 1;
+  activeSkillLv = 7;
+  document.querySelectorAll('.hero-tile').forEach(t => t.classList.toggle('active', String(t.dataset.id) === String(id)));
+  renderHeroDetail();
+  $('#heroDetail').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+function closeHeroDetail() {
+  activeHeroId = null;
+  document.querySelectorAll('.hero-tile').forEach(t => t.classList.remove('active'));
+  $('#heroDetail').className = 'hero-detail';
+  $('#heroDetail').innerHTML = '';
+}
+
+function renderHeroDetail() {
+  const host = $('#heroDetail');
+  host.classList.add('open');
+
+  const detail = DATA.hyperAwakening.awakenedHeroes.find(h => h.id === activeHeroId);
+  const phaseEntry = DATA.hyperAwakening.phases.flatMap(p => p.heroes.map(h => ({ ...h, phase: p.phase }))).find(h => h.id === activeHeroId);
+
+  if (!detail) {
+    // Phase II/III placeholder
+    const h = phaseEntry;
+    replace(host,
+      el('div', { class: 'hd-head' },
+        (() => { const portrait = localPortrait(h.id) || iconCdn(h.id); return el('div', { class: 'hd-portrait', style: 'background-image:url(' + portrait + ')' }); })(),
+        el('div', { class: 'hd-meta' },
+          el('div', { class: 'hd-name' }, h.name),
+          el('div', { class: 'hd-label' }, 'Phase ' + phaseRoman(h.phase) + ' — awakening locked'),
+          el('div', { class: 'hd-pills' },
+            el('span', { class: 'pill ' + typeClass(h.type) }, h.type),
+            el('span', { class: 'pill p' + h.phase }, 'Phase ' + phaseRoman(h.phase))
+          ),
+          el('p', { class: 'hd-bio' },
+            'This hero is on the awakening roster but their phase is gated server-side. ' +
+            'The Hero Swap event already lists them as a valid swap TARGET in the ' + h.type + ' pool — ' +
+            'so you can swap toward them now, they\'ll just sit at Lv. 120 unawakened until Phase ' + phaseRoman(h.phase) + ' opens.')
+        )
+      ),
+      el('button', { class: 'hd-bio-toggle', on: { click: closeHeroDetail } }, 'Close')
+    );
+    return;
+  }
+
+  // Phase I hero with full data
+  const portrait = localPortrait(detail.id) || iconCdn(detail.id);
+  const head = el('div', { class: 'hd-head' },
+    el('div', { class: 'hd-portrait', style: 'background-image:url(' + portrait + ')' }),
+    el('div', { class: 'hd-meta' },
+      el('div', { class: 'hd-name' }, detail.name),
+      el('div', { class: 'hd-label' }, detail.awakenedLabel || ''),
+      el('div', { class: 'hd-pills' },
+        el('span', { class: 'pill ' + typeClass(detail.type) }, detail.type),
+        el('span', { class: 'pill p1' }, 'Phase I — LIVE'),
+        el('span', { class: 'pill purple' }, 'Ultimate: ' + (detail.ultimateSkillName || '—'))
+      ),
+      el('p', { class: 'hd-bio', id: 'heroBio' }, detail.bio || ''),
+      el('button', { class: 'hd-bio-toggle', on: { click: () => $('#heroBio').classList.toggle('expanded') } }, 'Read more / less')
+    )
+  );
+  host.innerHTML = '';
+  host.appendChild(head);
+
+  if (detail.comboTrio) {
+    const ct = detail.comboTrio;
+    host.appendChild(el('div', { class: 'hd-combo' },
+      el('div', { class: 'combo-title' }, '3-Hero Combo'),
+      el('div', { class: 'combo-body' },
+        'When ',
+        el('b', null, ct.partners[0]), ', ',
+        el('b', null, ct.partners[1]), ', and ',
+        el('b', null, ct.partners[2]),
+        ' are deployed together, this hero\'s ',
+        el('b', null, ct.buff),
+        ' synergy activates and boosts the group.'
+      )
+    ));
+  }
+
+  // Skill cards
+  const sg = el('div', { class: 'skill-grid' });
+  detail.skills.forEach(sk => {
+    const card = el('div', {
+      class: 'skill-card' + (sk.index === activeSkillIdx ? ' active' : ''),
+      data: { idx: sk.index },
+      on: { click: () => { activeSkillIdx = sk.index; renderHeroDetail(); } }
+    },
+      el('img', { src: '../' + sk.icon, alt: sk.name, loading: 'lazy' }),
+      el('div', { class: 'sn' }, sk.name),
+      el('div', { class: 'ss' }, 'Skill ' + sk.index)
+    );
+    sg.appendChild(card);
+  });
+  host.appendChild(sg);
+
+  // Skill explorer
+  const skill = detail.skills.find(s => s.index === activeSkillIdx);
+  host.appendChild(renderSkillExplorer(detail, skill));
+
+  // Close button
+  host.appendChild(el('div', { style: 'margin-top: 14px; text-align: right' },
+    el('button', { class: 'hd-bio-toggle', on: { click: closeHeroDetail } }, 'Close detail')
+  ));
+}
+
+function renderSkillExplorer(hero, skill) {
+  const wrap = el('div', { class: 'skill-explorer' });
+  wrap.appendChild(el('div', { class: 'se-head' },
+    el('img', { src: '../' + skill.icon, style: 'width: 44px; height: 44px; border-radius: 6px', alt: skill.name }),
+    el('div', null,
+      el('div', { class: 'se-title' }, skill.name),
+      el('div', { class: 'se-id' }, 'Hero #' + hero.id + ' · Skill ' + skill.index + ' of 4 · Buff ' + (skill.appliedBuff || '?'))
+    )
+  ));
+
+  const maxLevel = 10;
+  const sliderCurrent = el('div', { class: 'slider-current' }, 'Lv. ' + activeSkillLv);
+  const slider = el('input', { type: 'range', class: 'main-slider', min: '1', max: '10', value: String(activeSkillLv), 'aria-label': 'Skill level' });
+  const ticksHost = el('div', { class: 'ticks' });
+  const tickEls = [];
+  for (let lv = 1; lv <= maxLevel; lv++) {
+    const pct = ((lv - 1) / (maxLevel - 1)) * 100;
+    const cls = [];
+    if (lv === 1) {} else if (lv === maxLevel) cls.push('tick-end'); else cls.push('tick-mid');
+    if (lv === 6) cls.push('tick-unlock');
+    const span = el('span', { class: cls.join(' '), style: 'left:' + pct + '%' }, String(lv));
+    span._lv = lv;
+    if (lv === activeSkillLv) span.classList.add('tick-active');
+    tickEls.push(span);
+    ticksHost.appendChild(span);
+  }
+  const valGrid = el('div', { class: 'val-grid' });
+  const descCard = el('div', { class: 'desc-card' });
+
+  function repaint() {
+    const lv = activeSkillLv;
+    sliderCurrent.textContent = 'Lv. ' + lv;
+    tickEls.forEach(t => t.classList.toggle('tick-active', t._lv === lv));
+
+    const row = skill.levelTable ? skill.levelTable[lv - 1] : null;
+    const v1 = row && row.val1_pct ? row.val1_pct.split(' / ').filter(Boolean) : [];
+    const v2 = row && row.val2_pct ? row.val2_pct.split(' / ').filter(Boolean) : [];
+
+    // values
+    valGrid.innerHTML = '';
+    if (v1.length === 1) valGrid.appendChild(el('div', { class: 'val gold' }, el('div', { class: 'vl' }, 'Primary'), el('div', { class: 'vn' }, v1[0])));
+    else if (v1.length > 1) valGrid.appendChild(el('div', { class: 'val gold' }, el('div', { class: 'vl' }, 'Skill values'), el('div', { class: 'vn' }, v1.join(' · '))));
+    if (v2.length === 1) valGrid.appendChild(el('div', { class: 'val purple' }, el('div', { class: 'vl' }, v1.length > 1 ? 'ES7 swap' : 'Secondary'), el('div', { class: 'vn' }, v2[0])));
+    else if (v2.length > 1) valGrid.appendChild(el('div', { class: 'val purple' }, el('div', { class: 'vl' }, 'ES7 swap values'), el('div', { class: 'vn' }, v2.join(' · '))));
+    valGrid.appendChild(el('div', { class: 'val' },
+      el('div', { class: 'vl' }, 'Stones · this level'),
+      el('div', { class: 'vn' }, (STONE_PER_LEVEL[lv] != null ? STONE_PER_LEVEL[lv] + ' × ' : '— ') + (lv === 10 ? '(free)' : 'stones'))
+    ));
+    valGrid.appendChild(el('div', { class: 'val blue' },
+      el('div', { class: 'vl' }, 'Stones · cumulative'),
+      el('div', { class: 'vn' }, stonesBetweenSkillLevels(0, lv).toLocaleString())
+    ));
+    valGrid.appendChild(el('div', { class: 'val green' },
+      el('div', { class: 'vl' }, 'Fight Power · this level'),
+      el('div', { class: 'vn' }, row && row.power ? row.power.toLocaleString() : '—')
+    ));
+
+    // description
+    descCard.innerHTML = '';
+    const baseText = lv >= 6 && skill.descriptionLv2_5 ? skill.descriptionLv2_5 : (skill.descriptionLv1 || skill.descriptionLv2_5 || '');
+    const baseHTML = resolveTokens(baseText, { values: v1 });
+    const baseEl = document.createElement('div');
+    baseEl.innerHTML = baseHTML || '<em style="color:var(--muted)">Description not yet localized.</em>';
+    descCard.appendChild(baseEl);
+
+    if (lv < 6 && skill.effectAtLv6 && row && row.bonus && row.bonus.indexOf(',') >= 0) {
+      const previewVals = row.bonus.split(',');
+      const unlockText = skill.effectAtLv6.replace(/^Unlocks at Lv\.\s*6:\s*/, '');
+      const unlockHTML = resolveTokens(unlockText, { values: previewVals });
+      const box = el('div', { class: 'desc-unlock' });
+      box.appendChild(el('span', { class: 'label gold' }, 'Unlocks at Lv. 6 — preview'));
+      const u = document.createElement('div');
+      u.innerHTML = unlockHTML;
+      box.appendChild(u);
+      descCard.appendChild(box);
+    }
+    if (skill.descriptionEs7 && skill.descriptionEs7 !== skill.descriptionLv1) {
+      const es7HTML = resolveTokens(skill.descriptionEs7, { values: v1 });
+      const box = el('div', { class: 'desc-es7' });
+      box.appendChild(el('span', { class: 'label purple' }, 'Exclusive Skill Lv. 7 variant'));
+      const u = document.createElement('div');
+      u.innerHTML = es7HTML;
+      box.appendChild(u);
+      descCard.appendChild(box);
+    }
+  }
+
+  slider.addEventListener('input', e => { activeSkillLv = Number(e.target.value); repaint(); });
+
+  wrap.appendChild(el('div', { class: 'slider-wrap' },
+    el('div', { class: 'slider-row' },
+      el('span', { class: 'slider-label' }, 'Skill Level'),
+      sliderCurrent,
+      slider
+    ),
+    ticksHost,
+    valGrid
+  ));
+  wrap.appendChild(descCard);
+
+  repaint();
+  return wrap;
+}
+
+// ───────── Calculators ─────────
+function setupCalculators() {
+  // Tab switching
+  document.querySelectorAll('.calc-tab').forEach(t => t.addEventListener('click', () => {
+    const k = t.dataset.calc;
+    document.querySelectorAll('.calc-tab').forEach(x => x.classList.toggle('active', x === t));
+    document.querySelectorAll('.calc-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === k));
+  }));
+
+  // Skill stones
+  function runSkillCalc() {
+    const cur = parseInt($('#skCur').value || 0);
+    const tgt = parseInt($('#skTgt').value || 10);
+    const stones = stonesBetweenSkillLevels(cur, tgt);
+    const pulls = stones > 0 ? Math.ceil(stones / 15) /* approx, since per-pull cost varies */ : 0;
+    const lvs = Math.max(0, tgt - cur);
+    const totalPulls = lvs * PULLS_PER_LEVEL;
+    replace($('#skResult'),
+      el('div', { class: 'big-num' }, stones.toLocaleString() + ' stones'),
+      el('div', { class: 'row' }, el('div', { class: 'label' }, 'Levels gained'), el('div', { class: 'value' }, String(lvs))),
+      el('div', { class: 'row' }, el('div', { class: 'label' }, 'Total pulls (5 per level)'), el('div', { class: 'value' }, String(totalPulls))),
+      el('div', { class: 'row' }, el('div', { class: 'label' }, 'Comparable to'), el('div', { class: 'value' }, stones > 0 ? (stones / STONES_TO_MAX_ONE_HERO * 100).toFixed(1) + '% of one full hero' : '—'))
+    );
+  }
+  ['skCur','skTgt'].forEach(id => $('#' + id).addEventListener('input', runSkillCalc));
+  runSkillCalc();
+
+  // Whole hero
+  function runWholeHero() {
+    const curs = Array.from(document.querySelectorAll('.wh-cur')).map(x => parseInt(x.value || 0));
+    const tgt = parseInt($('#whTgt').value || 10);
+    const heroes = parseInt($('#whHeroes').value || 1);
+    let perHero = 0;
+    curs.forEach(c => { perHero += stonesBetweenSkillLevels(c, tgt); });
+    const total = perHero * heroes;
+    replace($('#whResult'),
+      el('div', { class: 'big-num' }, total.toLocaleString() + ' stones'),
+      el('div', { class: 'row' }, el('div', { class: 'label' }, 'Per hero (4 skills)'), el('div', { class: 'value' }, perHero.toLocaleString())),
+      el('div', { class: 'row' }, el('div', { class: 'label' }, 'Heroes'), el('div', { class: 'value' }, String(heroes))),
+      el('div', { class: 'row' }, el('div', { class: 'label' }, 'Comparable to'), el('div', { class: 'value' }, total > 0 ? (total / 9000).toFixed(2) + ' full-maxed heroes' : '—'))
+    );
+  }
+  document.querySelectorAll('.wh-cur').forEach(x => x.addEventListener('input', runWholeHero));
+  ['whTgt','whHeroes'].forEach(id => $('#' + id).addEventListener('input', runWholeHero));
+  runWholeHero();
+
+  // Awakening level
+  function runAwakeCalc() {
+    const cur = parseInt($('#awCur').value || 0);
+    const tgt = parseInt($('#awTgt').value || 40);
+    const r = awakeShardsBetween(cur, tgt);
+    const fpGain = (tgt - cur) * 2000;
+    replace($('#awResult'),
+      el('div', { class: 'big-num' }, r.hero.toLocaleString() + ' shards · ' + r.es.toLocaleString() + ' chips'),
+      el('div', { class: 'row' }, el('div', { class: 'label' }, 'Hero Shards (per-hero)'), el('div', { class: 'value' }, r.hero.toLocaleString())),
+      el('div', { class: 'row' }, el('div', { class: 'label' }, 'Exclusive Skill chips (per-hero)'), el('div', { class: 'value' }, r.es.toLocaleString())),
+      el('div', { class: 'row' }, el('div', { class: 'label' }, 'Fight Power gain'), el('div', { class: 'value' }, '+' + fpGain.toLocaleString() + ' FP'))
+    );
+  }
+  ['awCur','awTgt'].forEach(id => $('#' + id).addEventListener('input', runAwakeCalc));
+  runAwakeCalc();
+
+  // Honor wall
+  function runHonorCalc() {
+    const cur = parseInt($('#hwCur').value || 0);
+    const tgt = parseInt($('#hwTgt').value || 200);
+    const stones = honorStonesBetween(cur, tgt);
+    const fpGain = (tgt - cur) * 100;
+    replace($('#hwResult'),
+      el('div', { class: 'big-num' }, stones.toLocaleString() + ' stones'),
+      el('div', { class: 'row' }, el('div', { class: 'label' }, 'Sub-levels gained'), el('div', { class: 'value' }, String(tgt - cur))),
+      el('div', { class: 'row' }, el('div', { class: 'label' }, 'Fight Power gain'), el('div', { class: 'value' }, '+' + fpGain.toLocaleString() + ' FP')),
+      el('div', { class: 'row' }, el('div', { class: 'label' }, '% of one full sub-track'), el('div', { class: 'value' }, (stones / 19950 * 100).toFixed(1) + '%'))
+    );
+    $('#hwBar1').style.width = Math.min(100, (tgt / 200) * 100) + '%';
+    $('#hwBar2').style.width = '0%';
+  }
+  ['hwCur','hwTgt'].forEach(id => $('#' + id).addEventListener('input', runHonorCalc));
+  runHonorCalc();
+
+  // ES7 table
+  const heroNames = {
+    169:'Sara', 172:'Nova', 234:'Shen Suyu', 239:'Lophy', 333:'Carna', 334:'Jett'
+  };
+  const tbody = $('#es7Table tbody');
+  Object.entries(ES7_BUFF_SWAPS).forEach(([hid, skills]) => {
+    const row = el('tr', null,
+      el('td', null, el('strong', null, heroNames[hid])),
+      ...skills.map(pair => el('td', null,
+        el('code', null, pair[0]),
+        ' → ',
+        el('code', { style: 'color: var(--purple)' }, pair[1])
+      ))
+    );
+    tbody.appendChild(row);
+  });
+}
+
+// ───────── Hero Swap ─────────
+function renderSwap() {
+  const host = $('#swapSections');
+  const ARMIES = [
+    { key: 'Army', label: 'Army',      cls: 'army' },
+    { key: 'Air',  label: 'Air Force', cls: 'air' },
+    { key: 'Navy', label: 'Navy',      cls: 'navy' }
+  ];
+  const donors = DATA.exchangePool ? DATA.exchangePool.heroes : [];
+  const live = new Set(DATA.hyperAwakening.awakenedHeroes.map(h => h.id));
+  const allTargets = [];
+  DATA.hyperAwakening.phases.forEach(p => p.heroes.forEach(h => allTargets.push({ ...h, phase: p.phase })));
+
+  const combosByType = { Army: [], Air: [], Navy: [] };
+  DATA.hyperAwakening.awakenedHeroes.forEach(h => {
+    if (!h.comboTrio) return;
+    const k = typeClass(h.type) === 'air' ? 'Air' : h.type;
+    combosByType[k] = combosByType[k] || [];
+    combosByType[k].push({ anchor: h, partners: h.comboTrio.partners, buff: h.comboTrio.buff });
+  });
+
+  const sections = ARMIES.map(a => {
+    const sectionDonors = donors.filter(d => (typeClass(d.type) === 'air' ? 'Air' : d.type) === a.key);
+    const combos = combosByType[a.key] || [];
+    const targets = combos.reduce((s, c) => s + c.partners.length, 0);
+
+    return el('div', { class: 'swap-army ' + a.cls },
+      el('div', { class: 'swap-army-head' },
+        el('span', { class: 'pill ' + a.cls }, a.label),
+        el('h3', null, a.label + ' Hero Swap'),
+        el('span', { class: 'tally' }, sectionDonors.length + ' donors → ' + targets + ' targets · 2 combo trios')
+      ),
+      el('div', { style: 'font-size: .58rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-bottom: 6px' }, 'Eligible donors'),
+      el('div', { class: 'donor-row' },
+        ...sectionDonors.map(d => el('div', { class: 'donor', title: d.name },
+          fallbackImg(d.id, d.name),
+          el('div', null, d.name)
+        ))
+      ),
+      el('div', { style: 'font-size: .58rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-top: 14px; margin-bottom: 6px' }, 'Awakening targets — grouped by 3-hero combo'),
+      el('div', { class: 'combo-row' },
+        ...combos.map(c => el('div', { class: 'combo-card' },
+          el('div', { class: 'combo-buff' },
+            c.partners[0] + ' + ' + c.partners[1] + ' + ' + c.partners[2],
+            el('span', null, '↳ ' + c.buff + ' boost')
+          ),
+          el('div', { class: 'combo-heroes' },
+            ...c.partners.map(name => {
+              const t = allTargets.find(x => x.name === name);
+              if (!t) return el('div', { class: 'combo-hero' },
+                el('div', { class: 'ph' }, name.slice(0, 2).toUpperCase()),
+                el('div', { class: 'ch-name' }, name)
+              );
+              const isLive = live.has(t.id);
+              return el('div', { class: 'combo-hero' + (isLive ? ' live' : '') },
+                fallbackImg(t.id, t.name),
+                el('div', { class: 'ch-name' }, t.name),
+                el('div', { class: 'ch-meta' },
+                  el('span', { class: 'pill p' + t.phase }, 'Phase ' + phaseRoman(t.phase)),
+                  isLive ? el('span', { class: 'pill live' }, 'LIVE') : null
+                )
+              );
+            })
+          )
+        ))
+      )
+    );
+  });
+  replace(host, ...sections);
+}
+
+// ───────── Boot ─────────
+fetch(HERO_AWAKENING_DATA_URL)
+  .then(r => r.json())
+  .then(d => {
+    DATA.hyperAwakening = d.hyperAwakening;
+    DATA.exchangePool = d.exchangePool;
+    DATA.coreLineup = d.coreLineup;
+    DATA.heroSwap = d.heroSwap;
+    DATA.ready = true;
+    renderShowcase();
+    setupCalculators();
+    renderSwap();
+  })
+  .catch(err => {
+    console.error('Failed to load data', err);
+    $('#heroShowcase').innerHTML = '<p style="color: var(--red)">Failed to load heroes-awakening.json. Check the network tab.</p>';
+  });
+</script>
+
+</body>
+</html>
