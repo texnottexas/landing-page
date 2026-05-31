@@ -5332,7 +5332,6 @@
           return;
         }
         var ids = result.reportIds.split(',').filter(Boolean);
-        if (result.marchGroups) saveMarches(result.marchGroups);
         // Persist to localStorage (so the next reload prompts "Load <name>'s
         // report") only when this shortcode belongs to the current viewer.
         // Otherwise loading Wonka's code would clobber Tex's saved report
@@ -5348,13 +5347,23 @@
         var resultSiteKey = result.siteKey || null;
         function _norm(s) { return String(s || '').trim().toLowerCase(); }
         var isSamePlayer;
-        if (!currentName && !ownIdent) {
-          isSamePlayer = true;
-        } else if (currentSiteKey && resultSiteKey) {
+        // Default to view-only when ambiguous (bug #107). Brand-new visitors
+        // and users without identity used to default to isSamePlayer=true,
+        // which persisted the foreign player's data into localStorage as if
+        // it were their own. The Welcome Back dialog then permanently showed
+        // the foreign player's name. Safer to start in view-only and let the
+        // user set up their own report via Start Fresh.
+        if (currentSiteKey && resultSiteKey) {
           isSamePlayer = currentSiteKey === resultSiteKey;
-        } else {
+        } else if (currentName || (ownIdent && ownIdent.name)) {
           isSamePlayer = _norm(currentName || (ownIdent && ownIdent.name)) === _norm(result.playerName);
+        } else {
+          isSamePlayer = false;
         }
+        // Only persist server-side marchGroups when this is the viewer's own
+        // shortcode. Otherwise an in-memory load of someone else's report
+        // would silently overwrite the viewer's saved marches.
+        if (isSamePlayer && result.marchGroups) saveMarches(result.marchGroups);
         applyShortcodeConfig(result.playerName, ids, isSamePlayer, result.siteKey);
       })
       .catch(function() {
@@ -8345,14 +8354,19 @@
     badge.textContent = reportCount + '/' + getReportCap() + ' reports';
     actions.appendChild(badge);
 
-    var manageBtn = document.createElement('button');
-    manageBtn.className = 'reports-badge';
-    manageBtn.style.cssText = 'cursor:pointer;border:1px solid var(--border);transition:all .15s;';
-    manageBtn.textContent = 'Manage Reports';
-    manageBtn.addEventListener('click', openManageModal);
-    manageBtn.addEventListener('mouseenter', function() { manageBtn.style.borderColor = 'var(--accent)'; manageBtn.style.color = 'var(--accent)'; });
-    manageBtn.addEventListener('mouseleave', function() { manageBtn.style.borderColor = 'var(--border)'; manageBtn.style.color = ''; });
-    actions.appendChild(manageBtn);
+    // Manage Reports is owner-only — in view-only mode, clicking Done would
+    // call saveState() which persists the foreign player's identity into
+    // localStorage (bug #107 surface).
+    if (!wizardState._viewOnly) {
+      var manageBtn = document.createElement('button');
+      manageBtn.className = 'reports-badge';
+      manageBtn.style.cssText = 'cursor:pointer;border:1px solid var(--border);transition:all .15s;';
+      manageBtn.textContent = 'Manage Reports';
+      manageBtn.addEventListener('click', openManageModal);
+      manageBtn.addEventListener('mouseenter', function() { manageBtn.style.borderColor = 'var(--accent)'; manageBtn.style.color = 'var(--accent)'; });
+      manageBtn.addEventListener('mouseleave', function() { manageBtn.style.borderColor = 'var(--border)'; manageBtn.style.color = ''; });
+      actions.appendChild(manageBtn);
+    }
 
     // Save and Share buttons (hidden in view-only mode)
     if (!wizardState._viewOnly) {
@@ -31667,8 +31681,13 @@
       if (_ownId && saved.player) {
         function _normName(s) { return String(s || '').trim().toLowerCase(); }
         var _isOwn = false;
-        if (_ownId.siteKey && saved.player.siteKey && _ownId.siteKey === saved.player.siteKey) {
-          _isOwn = true;
+        // siteKey is authoritative. When both sides have one, ONLY siteKey decides —
+        // do NOT fall through to a name match on siteKey mismatch (bug #107
+        // surface where a different player with a matching display name would
+        // get marked as own, flip _viewOnly to false, and persist OTHER's
+        // identity into localStorage).
+        if (_ownId.siteKey && saved.player.siteKey) {
+          _isOwn = _ownId.siteKey === saved.player.siteKey;
         } else if (_ownId.name && saved.player.name && _normName(_ownId.name) === _normName(saved.player.name)) {
           _isOwn = true;
         }
@@ -31817,8 +31836,13 @@
     }
 
     if (valid.length === 0) {
-      localStorage.removeItem('playerReport');
-      localStorage.removeItem('playerReportData');
+      // In view-only mode (foreign shortcode load), DO NOT wipe localStorage —
+      // the viewer's own saved report must survive a failed foreign load
+      // (bug #107). Just render the empty state for this session.
+      if (!saved._viewOnly) {
+        localStorage.removeItem('playerReport');
+        localStorage.removeItem('playerReportData');
+      }
       renderEmptyState();
       return;
     }
@@ -31950,15 +31974,23 @@
             var resultSiteKey = result.siteKey || null;
             function _norm(s) { return String(s || '').trim().toLowerCase(); }
             var isSamePlayer;
-            if (!currentPlayer && !ownIdent) {
-              isSamePlayer = true;
-            } else if (currentSiteKey && resultSiteKey) {
+            // Default to view-only when ambiguous (bug #107). New visitors
+            // hitting a foreign ?code= link used to default to isSamePlayer=true
+            // and persist the foreign player's identity into localStorage —
+            // the Welcome Back dialog would then permanently show the wrong
+            // player. Safer to start in view-only; the user can Start Fresh
+            // to set up their own report.
+            if (currentSiteKey && resultSiteKey) {
               isSamePlayer = currentSiteKey === resultSiteKey;
+            } else if (currentPlayer || (ownIdent && ownIdent.name)) {
+              isSamePlayer = _norm(currentPlayer || (ownIdent && ownIdent.name)) === _norm(result.playerName);
             } else {
-              isSamePlayer = _norm(currentPlayer) === _norm(result.playerName);
+              isSamePlayer = false;
             }
-            // Load server-stored march groupings into localStorage for this session
-            if (result.marchGroups) saveMarches(result.marchGroups);
+            // Only persist server-side marchGroups when this is the viewer's
+            // own shortcode. Otherwise a view-only load would overwrite the
+            // viewer's saved marches in localStorage.
+            if (isSamePlayer && result.marchGroups) saveMarches(result.marchGroups);
             applyShortcodeConfig(result.playerName, ids, isSamePlayer, result.siteKey);
           } else {
             normalInit();
