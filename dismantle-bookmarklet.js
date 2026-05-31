@@ -137,6 +137,30 @@
   // wants to chip them.
   var SKILL_BLACKLIST = { 20116: true, 21116: true };
 
+  // ─── Hero-bound skill config (ADO #176) ───────────────────────────────
+  // Per-hero curation built in skill-dismantle-config.html (2026-05-31).
+  // HERO_PROTECT: heroes whose bound skills give a non-combat / no-battle
+  //   benefit — given March-Size-grade protection (never surfaced).
+  // HERO_DISMANTLE_COMMON: skill-research-card heroes whose bound skills give
+  //   no non-combat benefit — targeted by the "commonly dismantled hero
+  //   skills" preset.
+  var HERO_PROTECT = {316:1,306:1,321:1,318:1,312:1,317:1,315:1,117:1,150:1,143:1,140:1,155:1,116:1,135:1,158:1,152:1,129:1,163:1,164:1,119:1,104:1,216:1,217:1,205:1,206:1,219:1,146:1,218:1};
+  var HERO_DISMANTLE_COMMON = {310:1,314:1,308:1,304:1,320:1,309:1,307:1,313:1,105:1,110:1,120:1,112:1,114:1,109:1,108:1,215:1,213:1,211:1,207:1,212:1,220:1,1209:1,204:1,208:1,214:1};
+  var HERO_NAMES = {310:"Arthur Harris",314:"Dante",308:"Hartman",304:"Nadia",320:"Saker",309:"Sauvage",307:"Tian Mu",313:"Tsuru",105:"Alex",110:"Bradley",120:"Fahed",112:"Friedman Hertz",114:"Gira",109:"Katyusha",108:"Li Hongyu",215:"914",213:"Bassel",211:"Bellevue",207:"Chloe",212:"Lee Yewon",220:"Nemo",1209:"Nimitz",204:"Sid",208:"Teresa",214:"Violet",316:"Aya",306:"Lady Zizak",321:"Lancaster",318:"Maximo",312:"Rockfield",317:"Selina",315:"Villiers",117:"Amalia",150:"Cherno Alpha",143:"Comedy Consortium",140:"Ghost",155:"Kaworu Nagisa",116:"Kuruzo",135:"Mei",158:"Mercury",152:"Pop",129:"Preycis",163:"Roadblock",164:"Shifu",119:"Silence",104:"Tywin",216:"Akatora",217:"Bailos",205:"Ganso",206:"Merida",219:"Nereid",146:"Shaquille O'Neal",218:"Yuu"};
+
+  // Resolve a hero display name: curated map first, then the live hero table
+  // (best-effort), else a "#id" fallback.
+  function resolveHeroName(req, heroId, fallback) {
+    if (HERO_NAMES[heroId]) return HERO_NAMES[heroId];
+    try {
+      var TABLE = req('TableManager').TABLE;
+      var LOCAL = req('LocalManager').LOCAL;
+      var hr = TABLE.getTableDataById('hero', String(heroId));
+      if (hr && hr.name) { var t = LOCAL.getText(hr.name); if (t) return t; }
+    } catch (e) {}
+    return fallback || ('Hero #' + heroId);
+  }
+
   function enumerateFamilies(req, ud) {
     var TABLE = req('TableManager').TABLE;
     var LOCAL = req('LocalManager').LOCAL;
@@ -165,16 +189,22 @@
       var name = displayName(rawName);
       var quality = Number(skillRow.quality) || 1;
       var skillType = Number(skillRow.skill_type) || 0;
-      var heroBound = (skillType === 3) || (Number(skillRow.hero_id) > 0);
+      var heroId = Number(skillRow.hero_id) || 0;
+      var heroBound = (skillType === 3) || (heroId > 0);
+      // ADO #176: protected heroes get March-Size-grade protection — drop
+      // their bound skills at enumeration so they are never surfaced.
+      if (heroBound && heroId && HERO_PROTECT[heroId]) continue;
       // Use skill_type + heroBound as a soft disambiguator so two skills
-      // that happen to share an English name don't accidentally merge.
-      var familyKey = name + '|' + skillType + '|' + (heroBound ? '1' : '0');
+      // that happen to share an English name don't accidentally merge. For
+      // hero-bound skills also key on heroId so different heroes never merge.
+      var familyKey = name + '|' + skillType + '|' + (heroBound ? '1' : '0') + (heroBound && heroId ? '|h' + heroId : '');
 
       if (!groups[familyKey]) {
         groups[familyKey] = {
           familyKey: familyKey,
           name: name,
           heroBound: heroBound,
+          heroId: (heroBound ? heroId : 0),
           skillTypes: [skillType],
           maxQuality: quality,
           variants: {},
@@ -408,7 +438,7 @@
           var subVariants = {}; subVariants[q] = f.variants[q];
           out.push({
             familyKey: f.familyKey + '|' + q,
-            name: f.name, heroBound: f.heroBound, skillTypes: f.skillTypes,
+            name: f.name, heroBound: f.heroBound, heroId: f.heroId, skillTypes: f.skillTypes,
             maxQuality: q, variants: subVariants,
           });
         }
@@ -454,6 +484,10 @@
       }
       return false;
     }
+    // ADO #176: hero-bound families belonging to the curated dismantle list.
+    function isCommonHero(family) {
+      return !!(family.heroBound && family.heroId && HERO_DISMANTLE_COMMON[family.heroId]);
+    }
 
     var commonBtn = el('button', 'background:transparent;color:#79c0ff;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Select commonly dismantled skills');
     commonBtn.title = 'Selects HP, Dodge, Hit, INV (Army/Navy/Air Force) + Gold Mine Production, Unit Load Increase, Gold Gathering Speed';
@@ -467,6 +501,23 @@
     });
     toggleRow.appendChild(commonBtn);
 
+    // ADO #176: hero-skill preset. Hero-bound skills are hidden by default, so
+    // clicking this reveals them first (per request), then toggles selection
+    // of every curated dismantle-list hero in view. Protected heroes were
+    // already dropped at enumeration so they can never appear here.
+    var heroCommonBtn = el('button', 'background:transparent;color:#79c0ff;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Select commonly dismantled hero skills');
+    heroCommonBtn.title = 'Reveals hero-specific skills and selects the curated set of skill-research-card heroes whose skills give no non-combat benefit. Protected heroes are never shown.';
+    heroCommonBtn.addEventListener('click', function () {
+      if (!state.showHeroBound) { state.showHeroBound = true; heroCb.checked = true; }
+      var visible = renderableFamilies().filter(isVisible);
+      var heroVisible = visible.filter(isCommonHero);
+      if (!heroVisible.length) { render(); return; }
+      var allSelected = heroVisible.every(function (f) { return state.selected[f.familyKey]; });
+      heroVisible.forEach(function (f) { state.selected[f.familyKey] = !allSelected; });
+      render();
+    });
+    toggleRow.appendChild(heroCommonBtn);
+
     var clearBtn = el('button', 'background:transparent;color:#8b949e;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Clear');
     clearBtn.addEventListener('click', function () { state.selected = {}; render(); });
     toggleRow.appendChild(clearBtn);
@@ -474,7 +525,7 @@
     container.appendChild(toggleRow);
 
     // Plain-language note of exactly what the preset button selects.
-    var commonNote = el('div', 'color:#8b949e;font-size:11px;line-height:1.4;margin:0 0 8px;', 'Commonly Dismantled Skills = HP, Dodge, Hit, INV + Gold Mine Production, Unit Load Increase, Gold Gathering Speed.');
+    var commonNote = el('div', 'color:#8b949e;font-size:11px;line-height:1.4;margin:0 0 8px;', 'Commonly Dismantled Skills = HP, Dodge, Hit, INV + Gold Mine Production, Unit Load Increase, Gold Gathering Speed. Commonly Dismantled Hero Skills = curated skill-card heroes with no non-combat benefit (protected heroes are never shown).');
     container.appendChild(commonNote);
 
     // Scrollable family list
@@ -575,6 +626,9 @@
             line1.appendChild(el('span', 'display:inline-block;padding:1px 6px;border-radius:9px;font-size:10px;font-weight:600;background:' + (QUALITY_COLOR[q] || '#30363d') + ';color:#0d1117;', QUALITY_LABEL[q] || ('Q' + q)));
           }
           line1.appendChild(el('span', 'font-weight:600;', family.name));
+          if (family.heroBound && family.heroId) {
+            line1.appendChild(el('span', 'color:#8b949e;font-weight:400;font-size:11px;', '· ' + resolveHeroName(req, family.heroId, family.name)));
+          }
           info.appendChild(line1);
 
           var line2 = el('div', 'color:#8b949e;font-size:11px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', fmtLevels(family));
