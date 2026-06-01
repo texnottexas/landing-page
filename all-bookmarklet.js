@@ -572,6 +572,15 @@
         if (h._dressId)       o.dr = h._dressId;
         if (h._awakenLevel)   o.aw = h._awakenLevel;
         if (h._fullAwaken)    o.fa = 1;
+        if (h._awakenSkills && typeof h._awakenSkills === 'object') {
+          var aws = {};
+          Object.keys(h._awakenSkills).forEach(function (k) {
+            var lv = h._awakenSkills[k] && h._awakenSkills[k].level;
+            if (lv) aws[k] = lv;            // level only; drop exp
+          });
+          if (Object.keys(aws).length) o.aws = aws;
+        }
+        if (h._awakenPower)   o.awp = h._awakenPower;
         // Frontend derives the equipped-exclusive state by checking
         // p1.x[0]/p2.x[0] against the hero's predefined exclusive skillId
         // (in landing-page/data/all-heroes.json). No TABLE walk here — the
