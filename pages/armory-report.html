@@ -12845,12 +12845,23 @@
     card.setAttribute('role', 'button');
     card.setAttribute('tabindex', '0');
 
+    var awakened = !!h.aw;
     var img = document.createElement('img');
     img.className = 'bench-hero-img';
-    img.src = heroIconUrl(h.id);
     img.alt = '';
-    img.onerror = function() { this.style.display = 'none'; };
-    card.appendChild(img);
+    if (awakened) {
+      img.src = heroAwakenIconUrl(h.id);
+      img.onerror = function() { this.onerror = function(){ this.style.display = 'none'; }; this.src = heroIconUrl(h.id); };
+      var imgWrap = document.createElement('div');
+      imgWrap.className = 'awaken-portrait-wrap';
+      imgWrap.appendChild(img);
+      imgWrap.appendChild(buildAwakenDiamond(h.aw));
+      card.appendChild(imgWrap);
+    } else {
+      img.src = heroIconUrl(h.id);
+      img.onerror = function() { this.style.display = 'none'; };
+      card.appendChild(img);
+    }
 
     var topRight = document.createElement('div');
     topRight.className = 'bench-top-right';
@@ -12867,13 +12878,7 @@
           : 'Exclusive skill level';
       topRight.appendChild(exLv);
     }
-    if (h.aw) {
-      var aw = document.createElement('span');
-      aw.className = 'bench-awaken';
-      aw.textContent = 'Awk ' + h.aw;
-      aw.title = 'Awaken tier';
-      topRight.appendChild(aw);
-    }
+    // (awakened heroes show the diamond overlay on the portrait instead of an "Awk" pill)
     if (DECOR_HERO_IDS_GLOBAL[h.id]) {
       var decTag = document.createElement('span');
       decTag.className = 'bench-decor-tag';
@@ -12900,13 +12905,16 @@
       brBadge.textContent = br;
       metaRow.appendChild(brBadge);
     }
-    var lvl = document.createElement('span');
-    lvl.className = 'bench-lvl';
-    lvl.textContent = 'Lv.' + (h.lv || 0) + (h.mlv ? '/' + h.mlv : '');
-    metaRow.appendChild(lvl);
+    // Awakened heroes are always Lv.120/5★ — featured via the diamond, so omit here.
+    if (!awakened) {
+      var lvl = document.createElement('span');
+      lvl.className = 'bench-lvl';
+      lvl.textContent = 'Lv.' + (h.lv || 0) + (h.mlv ? '/' + h.mlv : '');
+      metaRow.appendChild(lvl);
+    }
     info.appendChild(metaRow);
 
-    info.appendChild(_bench_starRow(h.star, 5));
+    if (!awakened) info.appendChild(_bench_starRow(h.star, 5));
 
     var pw = document.createElement('div');
     pw.className = 'bench-pw';
