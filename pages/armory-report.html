@@ -2337,12 +2337,13 @@
   .awaken-skill-eff{font-size:11px;color:#8b949e;line-height:1.4;margin-top:2px}
   /* Awakening diamond overlay (Combat Heroes + Bench cards) */
   .awaken-portrait-wrap{position:relative;display:inline-block;line-height:0}
-  .awaken-diamond{position:absolute;left:50%;bottom:-6px;transform:translateX(-50%) rotate(45deg);
-    width:26px;height:26px;background:linear-gradient(135deg,#ffd34d,#d29922);
-    border:2px solid #161b22;border-radius:5px;display:flex;align-items:center;justify-content:center;
-    box-shadow:0 1px 3px rgba(0,0,0,.5);z-index:2}
-  .awaken-diamond-num{transform:rotate(-45deg);font-size:12px;font-weight:800;color:#0d1117;line-height:1}
-  .awaken-diamond-ico{position:absolute;top:-9px;left:50%;width:16px;height:11px;transform:translateX(-50%) rotate(-45deg)}
+  /* small gold corner badge — must NOT cover the portrait/face */
+  .awaken-diamond{position:absolute;right:-4px;bottom:-4px;transform:rotate(45deg);
+    width:18px;height:18px;background:linear-gradient(135deg,#ffd34d,#d29922);
+    border:1.5px solid #161b22;border-radius:4px;display:flex;align-items:center;justify-content:center;
+    box-shadow:0 1px 2px rgba(0,0,0,.6);z-index:2}
+  .awaken-diamond-num{transform:rotate(-45deg);font-size:9px;font-weight:800;color:#0d1117;line-height:1}
+  .awaken-diamond-ico{display:none}
   .bench-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .bench-hero-name {
     font-weight: 600; color: var(--text); font-size: .8rem; line-height: 1.2;
@@ -6530,14 +6531,28 @@
     81000203: { yieldsLevel: 5, kind: 'premium' },  // Premium Purchase Choice Chest (variant B)
   };
 
-  function heroIconUrl(heroId) {
+  // The player's own awakened hero ids (populated per report-merge / bench load).
+  // Drives the awaken-aware heroIconUrl so awakened heroes show their awakened
+  // portrait everywhere, not just on the dedicated card renderers.
+  window._awakenedHeroIds = window._awakenedHeroIds || {};
+  function _ar_markAwakened(list) {
+    if (!Array.isArray(list)) return;
+    list.forEach(function (h) {
+      if (h && h.id != null && ((h.awakenLevel || 0) > 0 || (h.aw || 0) > 0)) window._awakenedHeroIds[h.id] = true;
+    });
+  }
+
+  function heroBaseIconUrl(heroId) {
     var catalog = HERO_ICON_OVERRIDE[heroId] || heroId;
     return 'https://h5.topwargame.com/DynRes/images/headpic/hero_icon' + catalog + '_global.png?t=22.jpg';
   }
-
   function heroAwakenIconUrl(heroId) {
     var catalog = HERO_ICON_OVERRIDE[heroId] || heroId;
     return 'https://h5.topwargame.com/DynRes/images/headpic/hero_awakeicon' + catalog + '_global.png?t=22.jpg';
+  }
+  // Awaken-aware resolver used everywhere a hero portrait renders.
+  function heroIconUrl(heroId) {
+    return window._awakenedHeroIds[heroId] ? heroAwakenIconUrl(heroId) : heroBaseIconUrl(heroId);
   }
 
   // Build the in-game-style gold awakening diamond (number + small tank glyph).
@@ -8351,6 +8366,7 @@
       if (_supSiteKey) _ar_applySupplementsToMerged(merged, _supSiteKey);
     } catch (_e) {}
     window._mergedData = merged;
+    _ar_markAwakened(merged.heroes);
 
     var app = document.getElementById('app');
     while (app.firstChild) app.removeChild(app.firstChild);
@@ -9851,7 +9867,7 @@
     iconImg.alt = '';
     if (awakened) {
       iconImg.src = heroAwakenIconUrl(id);
-      iconImg.onerror = function() { this.onerror = function(){ this.style.display = 'none'; }; this.src = heroIconUrl(id); };
+      iconImg.onerror = function() { this.onerror = function(){ this.style.display = 'none'; }; this.src = heroBaseIconUrl(id); };
       var iconWrap = document.createElement('div');
       iconWrap.className = 'awaken-portrait-wrap';
       iconWrap.appendChild(iconImg);
@@ -9911,9 +9927,10 @@
       metaLine.appendChild(starsSpan);
     }
 
-    // gear count
+    // gear count \u2014 only prefix the separator when there's preceding meta
     if (equips.length > 0) {
-      var gearText = document.createTextNode(' \u00b7 ' + equips.length + '/6 gear');
+      var gearSep = metaLine.textContent ? ' \u00b7 ' : '';
+      var gearText = document.createTextNode(gearSep + equips.length + '/6 gear');
       metaLine.appendChild(gearText);
     }
 
@@ -12345,6 +12362,7 @@
 
     var supp = null;
     try { supp = ArmoryIdentity.getSupplement('heroes', siteKey); } catch (e) {}
+    if (supp && Array.isArray(supp.list)) _ar_markAwakened(supp.list);
     if (!supp || !Array.isArray(supp.list) || supp.list.length === 0) {
       var emp = document.createElement('p');
       emp.className = 'empty-tab';
@@ -12851,7 +12869,7 @@
     img.alt = '';
     if (awakened) {
       img.src = heroAwakenIconUrl(h.id);
-      img.onerror = function() { this.onerror = function(){ this.style.display = 'none'; }; this.src = heroIconUrl(h.id); };
+      img.onerror = function() { this.onerror = function(){ this.style.display = 'none'; }; this.src = heroBaseIconUrl(h.id); };
       var imgWrap = document.createElement('div');
       imgWrap.className = 'awaken-portrait-wrap';
       imgWrap.appendChild(img);
