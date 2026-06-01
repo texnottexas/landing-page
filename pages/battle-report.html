@@ -2947,6 +2947,66 @@
     return img;
   }
 
+  // Awakening detail panel for one hero. Portable raw-DOM (lives verbatim in
+  // battle-report.html and armory-report.html). awakeRef = hero-awakening-skills.json.
+  // skillLevels = { "<awakeningSkillId>": level } from awakenSkillMap or supplement aws.
+  function renderHeroAwakening(heroId, awakenLevel, fullAwaken, skillLevels, awakeRef, iconBase) {
+    if (!awakeRef || !awakeRef.heroes) return null;
+    var ref = awakeRef.heroes[String(heroId)];
+    if (!ref) return null;
+    if (!(awakenLevel > 0)) return null;
+    var wrap = document.createElement('div');
+    wrap.className = 'awaken-panel';
+    var hdr = document.createElement('div');
+    hdr.className = 'awaken-hdr';
+    var lvl = document.createElement('span');
+    lvl.className = 'awaken-lvl';
+    lvl.textContent = 'Awaken Lv ' + awakenLevel + '/' + (ref.maxAwakenLevel || 40);
+    hdr.appendChild(lvl);
+    if (ref.awakenLabel) {
+      var lab = document.createElement('span');
+      lab.className = 'awaken-label';
+      lab.textContent = ref.awakenLabel;
+      hdr.appendChild(lab);
+    }
+    if (fullAwaken) {
+      var fa = document.createElement('span');
+      fa.className = 'awaken-full';
+      fa.textContent = 'Full Awaken';
+      hdr.appendChild(fa);
+    }
+    wrap.appendChild(hdr);
+    (ref.skills || []).forEach(function (sk) {
+      var lv = skillLevels ? (skillLevels[String(sk.awakeningSkillId)] || 0) : 0;
+      var rowEl = document.createElement('div');
+      rowEl.className = 'awaken-skill' + (lv > 0 ? '' : ' locked');
+      var img = document.createElement('img');
+      img.className = 'awaken-skill-icon';
+      img.src = (iconBase || '') + sk.icon;
+      img.alt = '';
+      img.onerror = function () { this.style.visibility = 'hidden'; };
+      rowEl.appendChild(img);
+      var txt = document.createElement('div');
+      txt.className = 'awaken-skill-txt';
+      var nm = document.createElement('div');
+      nm.className = 'awaken-skill-name';
+      nm.textContent = sk.name || '';
+      if (sk.name) txt.appendChild(nm);
+      var lvLine = document.createElement('div');
+      lvLine.className = 'awaken-skill-lvl';
+      lvLine.textContent = 'Lv ' + lv + '/' + (sk.maxLevel || 10);
+      txt.appendChild(lvLine);
+      var effLine = document.createElement('div');
+      effLine.className = 'awaken-skill-eff';
+      var entry = (sk.levels && lv > 0) ? sk.levels[lv - 1] : (sk.levels ? sk.levels[0] : null);
+      effLine.textContent = entry ? entry.effect : '';
+      txt.appendChild(effLine);
+      rowEl.appendChild(txt);
+      wrap.appendChild(rowEl);
+    });
+    return wrap;
+  }
+
   /** Build hero portrait row for one side */
   function buildHeroPortraits(heroList, side) {
     if (!heroList || heroList.length === 0) return null;
