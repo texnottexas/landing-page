@@ -216,42 +216,6 @@ h4.r11-sub svg{color:var(--red);}
 .nct-threat-row{cursor:pointer;transition:background .12s ease;border-radius:4px;padding:.25rem .35rem !important;}
 .nct-threat-row:hover{background:rgba(121,192,255,.06);}
 .nct-threat-row.active-link{background:rgba(248,81,73,.08);outline:1px solid rgba(248,81,73,.35);}
-/* Buff plan progress ring */
-.cbp-ring-wrap{display:flex;align-items:center;gap:.55rem;margin-top:.15rem;}
-.cbp-ring{width:46px;height:46px;flex-shrink:0;}
-.cbp-ring .cbp-ring-bg{fill:none;stroke:var(--surface);stroke-width:5;}
-.cbp-ring .cbp-ring-fg{fill:none;stroke-width:5;stroke-linecap:round;transition:stroke-dashoffset .6s ease;transform:rotate(-90deg);transform-origin:center;}
-.cbp-ring .cbp-ring-fg.combat{stroke:#f85149;}
-.cbp-ring .cbp-ring-fg.utility{stroke:#a371f7;}
-.cbp-ring .cbp-ring-fg.economy{stroke:#3fb950;}
-.cbp-ring .cbp-ring-fg.special{stroke:#d29922;}
-.cbp-ring text{font-family:'SF Mono',Consolas,monospace;font-size:10px;font-weight:800;fill:var(--text);text-anchor:middle;dominant-baseline:central;}
-.cbp-progress-dots{display:flex;gap:.18rem;flex-wrap:wrap;}
-.cbp-progress-dots .cbp-dot{width:9px;height:9px;border-radius:50%;background:var(--surface);border:1px solid var(--border);transition:transform .2s ease;}
-.cbp-progress-dots .cbp-dot.needed{background:rgba(248,81,73,.18);border-color:rgba(248,81,73,.55);}
-.cbp-card.cat-utility .cbp-progress-dots .cbp-dot.needed{background:rgba(163,113,247,.18);border-color:rgba(163,113,247,.55);}
-.cbp-card.cat-economy .cbp-progress-dots .cbp-dot.needed{background:rgba(63,185,80,.18);border-color:rgba(63,185,80,.55);}
-.cbp-card.cat-special .cbp-progress-dots .cbp-dot.needed{background:rgba(210,153,34,.18);border-color:rgba(210,153,34,.55);}
-.cbp-card:hover .cbp-progress-dots .cbp-dot.needed{transform:scale(1.15);}
-/* Combat buff plan (gap-to-cap recommendations) */
-.cbp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.5rem;}
-.cbp-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.55rem .7rem;display:flex;flex-direction:column;gap:.25rem;}
-.cbp-card.cat-combat{border-color:rgba(248,81,73,.32);}
-.cbp-card.cat-utility{border-color:rgba(163,113,247,.3);}
-.cbp-card.cat-economy{border-color:rgba(63,185,80,.3);}
-.cbp-card.cat-special{border-color:rgba(210,153,34,.3);}
-.cbp-head{display:flex;align-items:center;gap:.4rem;}
-.cbp-head .cbp-cat{font-size:.55rem;padding:.08rem .35rem;border-radius:3px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;}
-.cbp-head .cbp-cat.combat{background:rgba(248,81,73,.14);color:var(--red);}
-.cbp-head .cbp-cat.utility{background:rgba(163,113,247,.12);color:#a371f7;}
-.cbp-head .cbp-cat.economy{background:rgba(63,185,80,.1);color:var(--green);}
-.cbp-head .cbp-cat.special{background:rgba(210,153,34,.12);color:var(--yellow);}
-.cbp-desc{font-size:.78rem;color:var(--text);font-weight:600;line-height:1.3;}
-.cbp-recipe{font-size:.7rem;color:var(--muted);}
-.cbp-recipe .cbp-num{color:var(--accent);font-weight:800;}
-.cbp-recipe .cbp-spec{color:var(--text);font-weight:600;}
-.cbp-foot{font-size:.62rem;color:var(--muted);display:flex;gap:.45rem;flex-wrap:wrap;}
-.cbp-foot .cbp-pill{padding:.06rem .35rem;border-radius:3px;background:var(--surface);border:1px solid var(--border);}
 /* Buff cap row modal — wasteland breakdown */
 .buff-row:hover{border-color:var(--accent);background:rgba(121,192,255,.04);}
 .buff-modal-list{display:flex;flex-direction:column;gap:.3rem;max-height:260px;overflow-y:auto;}
@@ -568,6 +532,10 @@ section.sect{scroll-margin-top:120px;}
 .buff-head .vals b{color:var(--text);}
 .buff-head .vals .over{color:var(--red);font-weight:700;margin-left:.3rem;}
 .buff-proj{font-size:.62rem;color:var(--muted);margin-top:.2rem;font-style:italic;}
+.buff-recipe{font-size:.66rem;color:var(--muted);margin-top:.25rem;display:flex;align-items:center;gap:.25rem;flex-wrap:wrap;}
+.buff-recipe-num{color:var(--accent);font-weight:800;font-family:'SF Mono',Consolas,monospace;}
+.buff-recipe-spec{color:var(--text);font-weight:700;}
+.buff-recipe-elig{color:var(--muted);font-size:.62rem;}
 .buff-bar{height:7px;background:var(--surface);border-radius:4px;overflow:hidden;margin-top:.3rem;}
 .buff-fill{height:100%;border-radius:4px;}
 .buff-fill.combat{background:linear-gradient(90deg,var(--red),var(--yellow));}
@@ -2288,6 +2256,14 @@ body{top:0!important;}
     section.appendChild(t);
 
     var bodyWrap = el('div', 'sect-body');
+    // Click handler — pre-claimed sect-collapsible skips the auto-wirer, so
+    // we wire toggle manually (same pattern as buildPower).
+    t.addEventListener('click', function(){
+      var isOpen = !section.classList.toggle('sect-collapsed');
+      bodyWrap.style.display = isOpen ? '' : 'none';
+      t.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      chev.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(-90deg)';
+    });
     var note = el('div', 'rule-box');
     note.appendChild(makeIcon('compass', 18));
     var noteBody = el('div', 'body');
@@ -2909,146 +2885,6 @@ body{top:0!important;}
     4015:'DT', 4016:'ST', 4017:'RE', 4018:'RT', 4080:'TR'
   };
   function specAbbr(sid){ return SPEC_ABBR[sid] || '·'; }
-
-  // ===== COMBAT BUFF PLAN — gap-to-cap with feeding-spec recipe =====
-  // Reads rd.strategicRecommendations (combat first). Tells players how many
-  // Lv.3 wastelands of which spec to declare to fully fill each buff line.
-  function buildCombatBuffPlan(rd, root){
-    var recs = (rd && rd.strategicRecommendations) || [];
-    if (!recs.length) return;
-    var section = el('section', 'sect sect-collapsible');
-    tagSection(section, 'Buff Plan', 'sword', recs.length);
-    var t = el('div', 'sect-title sect-toggle');
-    t.setAttribute('role', 'button');
-    t.setAttribute('aria-expanded', 'true');
-    t.style.cursor = 'pointer';
-    t.style.userSelect = 'none';
-    var dot = el('span', 'dot'); dot.style.background = 'var(--accent)';
-    t.appendChild(dot);
-    t.appendChild(el('span', null, 'Combat Buff Plan — Wastelands Needed to Max'));
-    t.appendChild(el('span', 'tag', recs.length + ' effects'));
-    var chev = el('span', 'sect-chev'); chev.style.marginLeft = 'auto';
-    chev.appendChild(makeIcon('chevron-down', 16));
-    t.appendChild(chev);
-    section.appendChild(t);
-
-    var bodyWrap = el('div', 'sect-body');
-    var note = el('div', 'rule-box');
-    note.appendChild(makeIcon('target', 18));
-    var nb = el('div', 'body');
-    nb.appendChild(document.createTextNode(
-      'Each card shows the gap-to-cap and which spec feeds it. Counts assume Lv.3 wastelands ' +
-      '(best case). Combat lines come first — these convert directly into march wins.'
-    ));
-    note.appendChild(nb);
-    bodyWrap.appendChild(note);
-
-    // Project current+declared from rd.warTargets (uses existing computeProjection)
-    var proj = computeProjection(rd);
-    var grid = el('div', 'cbp-grid');
-    recs.forEach(function(r){
-      var card = el('div', 'cbp-card cat-' + (r.category || 'special'));
-      var head = el('div', 'cbp-head');
-      head.appendChild(makeIcon(SPEC_ICON[r.feedingSpec] || 'target', 16));
-      head.appendChild(el('span', 'cbp-cat ' + (r.category || 'special'), r.category || 'special'));
-      card.appendChild(head);
-      card.appendChild(el('div', 'cbp-desc', r.description || ('Effect ' + r.effectType)));
-
-      var recipe = el('div', 'cbp-recipe');
-      recipe.appendChild(el('span', 'cbp-num', String(r.wastelandsToMax)));
-      recipe.appendChild(document.createTextNode(' × Lv.3 '));
-      recipe.appendChild(el('span', 'cbp-spec', r.feedingSpecName || ('Spec ' + r.feedingSpec)));
-      recipe.appendChild(document.createTextNode(' → max'));
-      card.appendChild(recipe);
-
-      // ── Progress ring + dots ─────────────────────────────────
-      // Ring shows "fill % of cap" using live + projected values; dots
-      // visualise the remaining Lv.3 wastelands needed to top off.
-      var live = (r.rawCurrent || 0);
-      var declared = proj[String(r.effectType)] || 0;
-      var rawCur = live + declared;
-      var pct = r.rawMax > 0 ? Math.min(100, 100 * rawCur / r.rawMax) : 0;
-      var ringWrap = el('div', 'cbp-ring-wrap');
-      var R = 18, CIRC = 2 * Math.PI * R;
-      var svgNS = 'http://www.w3.org/2000/svg';
-      var ring = document.createElementNS(svgNS, 'svg');
-      ring.setAttribute('class', 'cbp-ring');
-      ring.setAttribute('viewBox', '0 0 46 46');
-      var bg = document.createElementNS(svgNS, 'circle');
-      bg.setAttribute('class', 'cbp-ring-bg');
-      bg.setAttribute('cx', 23); bg.setAttribute('cy', 23); bg.setAttribute('r', R);
-      ring.appendChild(bg);
-      var fg = document.createElementNS(svgNS, 'circle');
-      fg.setAttribute('class', 'cbp-ring-fg ' + (r.category || 'special'));
-      fg.setAttribute('cx', 23); fg.setAttribute('cy', 23); fg.setAttribute('r', R);
-      fg.setAttribute('stroke-dasharray', CIRC.toFixed(2));
-      // Start fully empty, then animate to target in next tick
-      fg.setAttribute('stroke-dashoffset', CIRC.toFixed(2));
-      ring.appendChild(fg);
-      var rtxt = document.createElementNS(svgNS, 'text');
-      rtxt.setAttribute('x', 23); rtxt.setAttribute('y', 23);
-      rtxt.textContent = Math.round(pct) + '%';
-      ring.appendChild(rtxt);
-      ringWrap.appendChild(ring);
-      // Animate after layout
-      requestAnimationFrame(function(){
-        fg.setAttribute('stroke-dashoffset', (CIRC * (1 - pct / 100)).toFixed(2));
-      });
-
-      // Dots: one per Lv.3 wasteland needed; filled = still needed (red-ish),
-      // empty = already covered by declarations. Caps at 14 to stay tidy.
-      var maxNeeded = r.wastelandsToMax || 0;
-      var covered = (r.perLv3Contribution > 0) ? Math.min(maxNeeded, Math.floor(rawCur / r.perLv3Contribution)) : 0;
-      var displayDots = Math.min(maxNeeded, 14);
-      var coveredDots = Math.round(displayDots * (covered / Math.max(1, maxNeeded)));
-      var dotsWrap = el('div', 'cbp-progress-dots');
-      for (var i = 0; i < displayDots; i++){
-        var dot = el('span', 'cbp-dot' + (i < (displayDots - coveredDots) ? ' needed' : ''));
-        dotsWrap.appendChild(dot);
-      }
-      if (maxNeeded > 14){
-        var more = el('span', 'cbp-dot');
-        more.style.width = 'auto';
-        more.style.padding = '0 .25rem';
-        more.style.background = 'transparent';
-        more.style.border = 'none';
-        more.style.color = 'var(--muted)';
-        more.style.fontSize = '.55rem';
-        more.style.fontWeight = '700';
-        more.style.fontFamily = "'SF Mono',Consolas,monospace";
-        more.textContent = '+' + (maxNeeded - 14);
-        dotsWrap.appendChild(more);
-      }
-
-      var ringMeta = el('div');
-      ringMeta.style.display = 'flex';
-      ringMeta.style.flexDirection = 'column';
-      ringMeta.style.gap = '.18rem';
-      ringMeta.style.flex = '1';
-      ringMeta.style.minWidth = '0';
-      ringMeta.appendChild(dotsWrap);
-      var dotsLabel = el('span');
-      dotsLabel.style.fontSize = '.6rem';
-      dotsLabel.style.color = 'var(--muted)';
-      dotsLabel.textContent = maxNeeded + ' Lv.3 needed · ' + covered + ' covered';
-      ringMeta.appendChild(dotsLabel);
-      ringWrap.appendChild(ringMeta);
-      card.appendChild(ringWrap);
-
-      var foot = el('div', 'cbp-foot');
-      foot.appendChild(el('span', 'cbp-pill', (r.eligibleTargetCount || 0) + ' eligible in sector'));
-      var paraType = (rd.buffOverview || []).find(function(b){ return b.effectType === r.effectType; });
-      paraType = paraType ? paraType.paraType : 1;
-      var fmt = function(v){ return paraType === 2 ? (v/100) + '%' : v; };
-      foot.appendChild(el('span', 'cbp-pill', 'cap ' + fmt(r.rawMax)));
-      card.appendChild(foot);
-
-      grid.appendChild(card);
-    });
-    bodyWrap.appendChild(grid);
-    section.appendChild(bodyWrap);
-    root.appendChild(section);
-  }
 
   // ===== PILLAGE PRIORITY — top-of-plan: enemy NCs we plan to take =====
   // Round 11 Setup — alliance-curated + auto-detected declarations that open
@@ -4131,6 +3967,10 @@ body{top:0!important;}
       return v + '';
     }
 
+    // Lookup: effectType → strategic recommendation (carries wastelandsToMax + feedingSpec)
+    var recBySid = {};
+    (rd.strategicRecommendations || []).forEach(function(r){ recBySid[r.effectType] = r; });
+
     var list = el('div', 'buff-list');
     enriched.forEach(function(b){
       var row = el('div', 'buff-row');
@@ -4180,6 +4020,21 @@ body{top:0!important;}
           }).length + ' declaration(s)';
         }
         row.appendChild(sub);
+      }
+      // Recipe annotation — how many Lv.3 wastelands of which spec close the gap.
+      // Pulled from strategicRecommendations (rendered iff there's a gap to close).
+      if (!hideMax && b.rawCur < b.rawMax){
+        var rec = recBySid[b.eff];
+        if (rec && rec.wastelandsToMax > 0){
+          var recipe = el('div', 'buff-recipe');
+          var num = el('b', 'buff-recipe-num', String(rec.wastelandsToMax));
+          recipe.appendChild(num);
+          recipe.appendChild(document.createTextNode(' × Lv.3 '));
+          recipe.appendChild(el('b', 'buff-recipe-spec', rec.feedingSpecName || ('Spec ' + rec.feedingSpec)));
+          recipe.appendChild(document.createTextNode(' to max · '));
+          recipe.appendChild(el('span', 'buff-recipe-elig', (rec.eligibleTargetCount || 0) + ' eligible in sector'));
+          row.appendChild(recipe);
+        }
       }
       // Bar: hide for round-pool effect; otherwise normal
       if (!hideMax){
@@ -4935,7 +4790,6 @@ body{top:0!important;}
     } else {
       buildL3BufferStrategy(rd, root);
     }
-    buildCombatBuffPlan(rd, root);
     buildR11Setup(rd, root);
     buildRules(root);
     buildPillagePriority(rd, root);
