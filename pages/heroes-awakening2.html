@@ -1455,23 +1455,23 @@
 
       <div class="grid-2" style="margin-top:14px; gap:14px">
         <div class="field" id="wifS1Box">
-          <label>Skill 1 — <span id="wifS1Name" style="color:var(--accent)"></span> · Tier <span id="wifS1Read" style="color:var(--gold); font-family:var(--mono); font-weight:700">0</span></label>
-          <input type="range" id="wifS1" min="0" max="10" value="0" style="width:100%">
+          <label>Skill 1 — <span id="wifS1Name" style="color:var(--accent)"></span> · Tier <span id="wifS1Read" style="color:var(--gold); font-family:var(--mono); font-weight:700">1</span></label>
+          <input type="range" id="wifS1" min="1" max="10" value="1" style="width:100%">
           <div id="wifS1Gate" style="font-size:.7rem; color:var(--muted)">Unlocks at Awakening Lv. 1</div>
         </div>
         <div class="field" id="wifS2Box">
-          <label>Skill 2 — <span id="wifS2Name" style="color:var(--accent)"></span> · Tier <span id="wifS2Read" style="color:var(--gold); font-family:var(--mono); font-weight:700">0</span></label>
-          <input type="range" id="wifS2" min="0" max="10" value="0" style="width:100%">
+          <label>Skill 2 — <span id="wifS2Name" style="color:var(--accent)"></span> · Tier <span id="wifS2Read" style="color:var(--gold); font-family:var(--mono); font-weight:700">1</span></label>
+          <input type="range" id="wifS2" min="1" max="10" value="1" style="width:100%">
           <div id="wifS2Gate" style="font-size:.7rem; color:var(--muted)">Unlocks at Awakening Lv. 10</div>
         </div>
         <div class="field" id="wifS3Box">
-          <label>Skill 3 — <span id="wifS3Name" style="color:var(--accent)"></span> · Tier <span id="wifS3Read" style="color:var(--gold); font-family:var(--mono); font-weight:700">0</span></label>
-          <input type="range" id="wifS3" min="0" max="10" value="0" style="width:100%">
+          <label>Skill 3 — <span id="wifS3Name" style="color:var(--accent)"></span> · Tier <span id="wifS3Read" style="color:var(--gold); font-family:var(--mono); font-weight:700">1</span></label>
+          <input type="range" id="wifS3" min="1" max="10" value="1" style="width:100%">
           <div id="wifS3Gate" style="font-size:.7rem; color:var(--muted)">Unlocks at Awakening Lv. 20</div>
         </div>
         <div class="field" id="wifS4Box">
-          <label>Skill 4 — <span id="wifS4Name" style="color:var(--accent)"></span> · Tier <span id="wifS4Read" style="color:var(--gold); font-family:var(--mono); font-weight:700">0</span></label>
-          <input type="range" id="wifS4" min="0" max="10" value="0" style="width:100%">
+          <label>Skill 4 — <span id="wifS4Name" style="color:var(--accent)"></span> · Tier <span id="wifS4Read" style="color:var(--gold); font-family:var(--mono); font-weight:700">1</span></label>
+          <input type="range" id="wifS4" min="1" max="10" value="1" style="width:100%">
           <div id="wifS4Gate" style="font-size:.7rem; color:var(--muted)">Unlocks at Awakening Lv. 30</div>
         </div>
       </div>
@@ -1630,7 +1630,7 @@
 </main>
 
 <script>
-const HERO_DATA_URL = '../data/heroes-awakening.json?v=20260601m';
+const HERO_DATA_URL = '../data/heroes-awakening.json?v=20260601n';
 
 // ───── Audit-correct constants ─────
 const STONE_PER_LEVEL = [null, 75, 75, 150, 150, 225, 225, 300, 400, 650, 0];
@@ -2254,23 +2254,29 @@ function setupWhatIf() {
 
     $('#wifAwakeReadout').textContent = 'Lv. ' + awakeLv;
 
-    // Update each skill row: name, tier readout, gate label, disabled state, clamp value when locked
+    // Update each skill row: name, tier readout, gate label, disabled state, clamp value when locked.
+    // A skill that's unlocked is always at least Tier 1 (no such thing as Tier 0 on an unlocked skill).
     h.skills.forEach((sk, i) => {
       const n = i + 1;
       $('#wifS' + n + 'Name').textContent = sk.name || ('Skill ' + n);
-      $('#wifS' + n + 'Read').textContent = tiers[i];
       const unlocked = awakeLv >= GATES[i];
       const range = $('#wifS' + n);
-      range.disabled = !unlocked;
       const gateLbl = $('#wifS' + n + 'Gate');
       if (unlocked) {
-        gateLbl.textContent = 'Available now (unlocked at Awakening Lv. ' + GATES[i] + ')';
+        range.disabled = false;
+        range.min = '1';
+        if (Number(range.value) < 1) { range.value = 1; tiers[i] = 1; }
+        gateLbl.textContent = 'Active (unlocks at Awakening Lv. ' + GATES[i] + ', minimum Tier 1)';
         gateLbl.style.color = 'var(--green)';
       } else {
+        range.disabled = true;
+        range.min = '0';
+        range.value = 0;
+        tiers[i] = 0;
         gateLbl.textContent = 'Locked. Unlocks at Awakening Lv. ' + GATES[i];
         gateLbl.style.color = 'var(--muted)';
-        if (Number(range.value) > 0) { range.value = 0; tiers[i] = 0; $('#wifS' + n + 'Read').textContent = 0; }
       }
+      $('#wifS' + n + 'Read').textContent = tiers[i];
       $('#wifS' + n + 'Box').style.opacity = unlocked ? '1' : '.5';
     });
 
@@ -2294,25 +2300,28 @@ function setupWhatIf() {
       }
     });
 
-    // Applied buffs at the current tier for each unlocked skill
-    const appliedBuffs = [];
+    // Applied skill descriptions at the current tier for each unlocked skill.
+    // Resolve the in-game text using the skill's per-tier value table, exactly
+    // like the standalone skill detail viewer does — no raw buff IDs in the UI.
+    const appliedSkills = [];
     h.skills.forEach((sk, i) => {
       const t = tiers[i];
       if (t < 1) return;
-      const lvlData = sk.levels && sk.levels[t - 1];
-      const baseBuff = sk.appliedBuff;
-      const es7Buff = sk.exclusive7Buff;
-      // Buff applied depends on ES level: if ES >= 7, use ES7 variant
-      const buffId = (es >= 7 && es7Buff) ? es7Buff : baseBuff;
-      const val1 = lvlData && lvlData.val1_pct;
-      const val2 = lvlData && lvlData.val2_pct;
-      appliedBuffs.push({
-        skill: sk.name,
+      const row = sk.levelTable && sk.levelTable[t - 1];
+      const v1 = row && row.val1_pct ? row.val1_pct.split(' / ').filter(Boolean) : [];
+      // Pick the right template by tier band (Tier 1 vs Tier 2-5 vs Tier 6+)
+      const baseTpl = (t >= 6 && sk.descriptionLv2_5) ? sk.descriptionLv2_5
+                   : (t >= 2 && sk.descriptionLv2_5) ? sk.descriptionLv2_5
+                   : (sk.descriptionLv1 || sk.descriptionLv2_5 || '');
+      const es7Tpl  = (es >= 7 && sk.descriptionEs7 && sk.descriptionEs7 !== sk.descriptionLv1) ? sk.descriptionEs7 : null;
+      const tierBonusTpl = (t >= 6 && sk.effectAtLv6Fix) ? sk.effectAtLv6Fix : null;
+      const tierBonusVals = (row && row.bonus && row.bonus.indexOf(',') >= 0) ? row.bonus.split(',') : null;
+      appliedSkills.push({
+        name: sk.name,
         tier: t,
-        buffId,
-        es7: es >= 7,
-        val1, val2,
-        unlockAtLv6: t >= 6 ? (sk.effectAtLv6 || 'Tier 6 bonus active') : null
+        baseHTML: resolveTokens(baseTpl, { values: v1 }),
+        es7HTML:  es7Tpl ? resolveTokens(es7Tpl, { values: v1 }) : null,
+        tierBonusHTML: tierBonusTpl ? resolveTokens(tierBonusTpl.replace(/^Unlocks at Tier\s*6:\s*/, ''), { values: tierBonusVals || v1 }) : null
       });
     });
 
@@ -2357,40 +2366,48 @@ function setupWhatIf() {
     });
     res.appendChild(costs);
 
-    // Applied buffs panel
-    if (appliedBuffs.length) {
+    // Applied skills panel — shows the resolved game description at the
+    // selected tier, with the ES7 variant and Tier 6 bonus inline when they apply.
+    if (appliedSkills.length) {
       const bp = el('div', { style: 'background:var(--bg-elev); padding:12px 14px; border-radius:8px; border-left:3px solid var(--accent)' });
       bp.appendChild(el('div', { style: 'font-size:.6rem; text-transform:uppercase; letter-spacing:.08em; color:var(--accent); font-weight:800; margin-bottom:10px' },
-        'Applied skills (' + appliedBuffs.length + ' active' + (es >= 7 ? ', ES7 variants on' : '') + ')'
+        'Active skills (' + appliedSkills.length + (es >= 7 ? ', ES7 variants on' : '') + ')'
       ));
-      appliedBuffs.forEach(ab => {
-        const row = el('div', { style: 'padding:8px 10px; border-bottom:1px solid var(--border)' });
-        row.appendChild(el('div', { style: 'display:flex; justify-content:space-between; gap:10px; align-items:baseline; flex-wrap:wrap' },
-          el('div', null,
-            el('strong', { style: 'color:var(--gold)' }, ab.skill || ('Skill')),
-            el('span', { style: 'color:var(--muted); font-size:.78rem; margin-left:6px' }, 'Tier ' + ab.tier)
-          ),
-          el('code', { style: 'font-size:.75rem; color:' + (ab.es7 ? 'var(--purple)' : 'var(--accent)') }, 'buff ' + ab.buffId)
+      appliedSkills.forEach(ab => {
+        const row = el('div', { style: 'padding:10px 4px; border-bottom:1px solid var(--border)' });
+        row.appendChild(el('div', { style: 'margin-bottom:6px' },
+          el('strong', { style: 'color:var(--gold)' }, ab.name || 'Skill'),
+          el('span', { style: 'color:var(--muted); font-size:.78rem; margin-left:8px' }, 'Tier ' + ab.tier)
         ));
-        const vals = [];
-        if (ab.val1) vals.push(ab.val1);
-        if (ab.val2) vals.push(ab.val2);
-        if (vals.length) {
-          row.appendChild(el('div', { style: 'font-size:.78rem; color:var(--muted); margin-top:4px' },
-            'Effect values: ' + vals.join(' / ')
-          ));
+        if (ab.baseHTML) {
+          const d = document.createElement('div');
+          d.style.fontSize = '.85rem';
+          d.style.lineHeight = '1.45';
+          d.innerHTML = ab.baseHTML;
+          row.appendChild(d);
         }
-        if (ab.unlockAtLv6) {
-          row.appendChild(el('div', { style: 'font-size:.74rem; color:var(--green); margin-top:4px' },
-            '+ Tier 6 bonus effect active'
-          ));
+        if (ab.tierBonusHTML) {
+          const box = document.createElement('div');
+          box.style.marginTop = '6px';
+          box.style.fontSize = '.78rem';
+          box.style.color = 'var(--green)';
+          box.innerHTML = '<strong>Tier 6 bonus:</strong> ' + ab.tierBonusHTML;
+          row.appendChild(box);
+        }
+        if (ab.es7HTML) {
+          const box = document.createElement('div');
+          box.style.marginTop = '6px';
+          box.style.fontSize = '.78rem';
+          box.style.color = 'var(--purple)';
+          box.innerHTML = '<strong>Exclusive Skill 7 variant:</strong> ' + ab.es7HTML;
+          row.appendChild(box);
         }
         bp.appendChild(row);
       });
       res.appendChild(bp);
     } else {
       res.appendChild(el('div', { style: 'padding:14px; background:var(--bg-elev); border-radius:8px; color:var(--muted); font-size:.85rem; text-align:center' },
-        'No skills active yet. Set at least one skill tier above 0.'
+        'No skills active yet. Raise Awakening Level to unlock skills.'
       ));
     }
   }
