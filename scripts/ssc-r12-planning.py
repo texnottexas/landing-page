@@ -18,6 +18,7 @@ NC threat model:
   - We cut paths through hostile-owned cells (BFS only walks neutrals).
 """
 import json
+import re
 import sys
 from collections import deque, defaultdict
 from pathlib import Path
@@ -87,6 +88,14 @@ LV3_CONTRIB = {
 }
 
 OWN_SID = 2864
+
+def wasteland_seq(cell):
+    """Extract the in-game wasteland number (the digits after '#' in cell.name)
+       so labels read 'W-421' instead of the sector-encoded cell.id (40900xxx).
+       Returns None for non-wasteland cells / unrecognised names."""
+    name = cell.get("name") or ""
+    m = re.search(r"#(\d+)", name)
+    return int(m.group(1)) if m else None
 
 def four_neighbors(r, c, nrows, ncols, grid):
     out = []
@@ -172,7 +181,8 @@ def main():
             cell = grid[nb]
             if cell.get("type") == 3:
                 adj_wls.append({
-                    "seq": cell.get("id"),
+                    "seq": wasteland_seq(cell),
+                    "id": cell.get("id"),
                     "r": cell["r"], "c": cell["c"],
                     "specId": cell.get("specId"),
                     "landType": cell.get("landType"),
@@ -199,6 +209,7 @@ def main():
                 cell = grid[ic]
                 interm_desc.append({
                     "r": cell["r"], "c": cell["c"],
+                    "seq": wasteland_seq(cell),
                     "type": cell.get("type"),
                     "specId": cell.get("specId"),
                     "landType": cell.get("landType"),
@@ -246,7 +257,7 @@ def main():
             "threeHopCount": sum(1 for t in threats if t["dist"] == 3),
             "adjacentWastelands": adj_wls,
             "adjacentNCs": adj_ncs,
-            "blockerWastelands": [{"r": b["r"], "c": b["c"], "seq": b["seq"],
+            "blockerWastelands": [{"r": b["r"], "c": b["c"], "seq": b["seq"], "id": b["id"],
                                     "specId": b["specId"], "landType": b["landType"],
                                     "landCat": b["landCat"]} for b in blockers],
             "threats": threats,
@@ -280,7 +291,8 @@ def main():
         if sp is None:
             continue
         eligible_by_spec[sp].append({
-            "seq": c.get("id"), "r": c["r"], "c": c["c"], "specId": sp,
+            "seq": wasteland_seq(c), "id": c.get("id"),
+            "r": c["r"], "c": c["c"], "specId": sp,
             "landType": c.get("landType"), "landCat": c.get("landCat"),
         })
     # eligibleTargets keyed by spec for backward-compat lookup
