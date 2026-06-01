@@ -1993,7 +1993,8 @@ body{top:0!important;}
       });
       body.appendChild(desc);
       var rowsBox = el('div', 'focus-rows');
-      var r11Set = new Set(((rd.r11StrategyTargets || {}).combatBuffSetupSeqs) || []);
+      var _stratForBuff = (typeof _bpRoundKey === 'string' && rd['r' + _bpRoundKey + 'StrategyTargets']) || rd.r11StrategyTargets || {};
+      var r11Set = new Set(_stratForBuff.combatBuffSetupSeqs || []);
       tc.tier.forEach(function(e){
         var opps = oppListBySeq[String(e.seq)] || [];
         var rowEl = el('div', 'focus-row');
@@ -3053,10 +3054,19 @@ body{top:0!important;}
   // Round 11 Setup — alliance-curated + auto-detected declarations that open
   // R11 combat-buff declarations, plus NC strategic targets for this week.
   function buildR11Setup(rd, root){
-    var strat = rd.r11StrategyTargets;
+    // Round-agnostic: look up "r{currentRound}StrategyTargets" first, then fall
+    // back to the legacy r11StrategyTargets for older rounds.
+    var roundKey = String(_bpRoundKey || '');
+    var strat = (roundKey && rd['r' + roundKey + 'StrategyTargets']) || rd.r11StrategyTargets;
     if (!strat) return;
     var warByseq = {};
     (rd.warTargets || []).forEach(function(w){ warByseq[w.seq] = w; });
+    // In declaration-phase rounds (e.g. R12) there are no warTargets yet, so
+    // synthesize lookup entries from the curated/auto1Hop arrays themselves —
+    // they already carry seq/specId/level/contested fields in the same shape.
+    [].concat(strat.curated || [], strat.auto1Hop || []).forEach(function(w){
+      if (w && w.seq && !warByseq[w.seq]) warByseq[w.seq] = w;
+    });
 
     var section = el('section', 'sect');
     var curated = strat.curated || [];
@@ -3065,7 +3075,8 @@ body{top:0!important;}
     var totalPri = curated.length + auto1.length + ncs.length;
     if (!totalPri) return; // nothing to show — skip the section entirely
     var lastCycle = !!rd.isLastWastelandCycle;
-    var navLabel = lastCycle ? 'Priority NCs' : 'R11 Setup';
+    var roundLabel = roundKey ? ('R' + roundKey) : 'R11';
+    var navLabel = lastCycle ? 'Priority NCs' : (roundLabel + ' Setup');
     tagSection(section, navLabel, 'flame', totalPri);
 
     var t = el('div', 'sect-title');
@@ -3073,7 +3084,7 @@ body{top:0!important;}
     t.appendChild(dot);
     var headline = lastCycle
       ? 'Priority NC Targets — Lock-Ins for Saturday\'s NC Battle'
-      : 'Round 11 Setup — Priority Targets';
+      : ('Round ' + (roundKey || '11') + ' Setup — Priority Targets');
     t.appendChild(el('span', null, headline));
     var tagText = lastCycle
       ? (ncs.length + ' NC pick' + (ncs.length === 1 ? '' : 's'))

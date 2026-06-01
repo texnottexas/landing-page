@@ -339,6 +339,120 @@ def main():
     cat_rank = {"combat": 0, "utility": 1, "economy": 2, "special": 3}
     strategic.sort(key=lambda s: (cat_rank.get(s["category"], 9), -s["rawGap"]))
 
+    # ── R12 wasteland declaration plan ──────────────────────────
+    # The historical "R11 Setup" section (curated + auto1Hop + ncTargets) drove
+    # the "what to declare this round" view in older rounds. Without an
+    # equivalent for R12, the round renders without a setup plan. We auto-seed:
+    #   * curated:   neutral wastelands adjacent to our L2/L3 NCs (defense-
+    #                priority blockers — see ncThreatAnalysis)
+    #   * auto1Hop:  combat wastelands within 1 hop of our footprint, sorted by
+    #                spec priority (ATK > HP > DMG Inc > DMG Red > DEF)
+    # For each pick we also list the 1-hop combat wastelands it would OPEN
+    # for R13 once we own it.
+    def neutral_4adj(rr, cc):
+        out = []
+        for nb in four_neighbors(rr, cc, nrows, ncols, grid):
+            cell = grid[nb]
+            if cell.get("ownerSid", 0) == 0 and cell.get("type") == 3:
+                out.append(cell)
+        return out
+
+    def synth_war(cell, hops_combat):
+        return {
+            "seq": wasteland_seq(cell),
+            "id": cell.get("id"),
+            "r": cell["r"], "c": cell["c"],
+            "level": 3,            # actual level not known pre-declaration
+            "specId": cell.get("specId"),
+            "landType": cell.get("landType"),
+            "landCat": cell.get("landCat"),
+            "isContested": False,
+            "contestedBy": [],
+            "oneHop": [
+                {
+                    "seq": wasteland_seq(h),
+                    "id": h.get("id"),
+                    "specId": h.get("specId"),
+                    "specName": SPEC_NAMES.get(h.get("specId"), str(h.get("specId"))),
+                    "landCat": h.get("landCat"),
+                }
+                for h in hops_combat
+            ],
+        }
+
+    seen_seqs = set()
+    curated = []
+    for nc in nc_threat:
+        for b in nc["blockerWastelands"]:
+            seq = b.get("seq")
+            if not seq or seq in seen_seqs:
+                continue
+            seen_seqs.add(seq)
+            cell = grid[(b["r"], b["c"])]
+            adj_combat = [c for c in neutral_4adj(b["r"], b["c"])
+                           if c.get("landCat") == "combat"]
+            curated.append(synth_war(cell, adj_combat))
+
+    # auto1Hop = combat wastelands 1 hop from any S2864-owned cell, excluding
+    # cells already in curated. Sorted by combat-spec priority then by score.
+    own_set = set((c["r"], c["c"]) for c in cells if c.get("sid") == OWN_SID)
+    reachable = set()
+    for orc in own_set:
+        for nb in four_neighbors(orc[0], orc[1], nrows, ncols, grid):
+            cc = grid[nb]
+            if cc.get("type") == 3 and cc.get("ownerSid", 0) == 0:
+                reachable.add(nb)
+    SPEC_PRIORITY = {4001: 0, 4006: 1, 4007: 2, 4008: 3, 4010: 4}
+    auto1 = []
+    candidates = []
+    for rc in reachable:
+        cell = grid[rc]
+        seq = wasteland_seq(cell)
+        if not seq or seq in seen_seqs:
+            continue
+        if cell.get("landCat") != "combat":
+            continue
+        candidates.append(cell)
+    candidates.sort(key=lambda c: (SPEC_PRIORITY.get(c.get("specId"), 99), c["r"], c["c"]))
+    for cell in candidates:
+        seen_seqs.add(wasteland_seq(cell))
+        adj_combat = [c for c in neutral_4adj(cell["r"], cell["c"])
+                       if c.get("landCat") == "combat"]
+        auto1.append(synth_war(cell, adj_combat))
+
+    nc_targets_for_plan = []
+    for nc in nc_threat:
+        if nc["threatTier"] in ("HIGH", "MEDIUM"):
+            nameMatch = re.search(r"#(\d+)", nc["name"] or "")
+            nc_targets_for_plan.append({
+                "nc": nc["name"],
+                "r": nc["r"], "c": nc["c"],
+                "level": nc["level"],
+                "sid": 2864,
+                "priority": "lock",
+                "rationale": (
+                    f"Our own Lv.{nc['level']} NC — {nc['threatTier'].lower()} threat. "
+                    f"{nc['directThreatCount']} direct, {nc['twoHopCount']} 2-hop, "
+                    f"{nc['threeHopCount']} 3-hop attackers within reach. "
+                    f"Claim adjacent wastelands to deny staging."
+                ),
+            })
+
+    r12_strategy = {
+        "note": (
+            f"Round 12 declaration phase — {len(curated)} blocker pick(s) "
+            f"(defense) + {len(auto1)} combat opener(s) within 1 hop. "
+            "Curated list = neutral wastelands adjacent to our L2/L3 NCs; "
+            "auto1Hop = combat wastelands reachable from our footprint, "
+            "prioritised ATK > HP > DMG Inc > DMG Red > DEF."
+        ),
+        "combatBuffSetupSeqs": [w["seq"] for w in curated + auto1],
+        "ncTargets": nc_targets_for_plan,
+        "curated": curated,
+        "auto1Hop": auto1,
+        "auto2Hop": [],
+    }
+
     # ── Persist ──────────────────────────────────────────────────
     r12["buffOverview"] = buff_overview
     r12["specToEffectTypeMap"] = SPEC_TO_EFFECT
@@ -347,6 +461,8 @@ def main():
     r12["strategicRecommendations"] = strategic
     r12["projectedBuffsFromDeclarations"] = {}  # empty until warTargets populate
     r12["ncThreatAnalysis"] = nc_threat
+    r12["r12StrategyTargets"] = r12_strategy
+    r12["isLastWastelandCycle"] = False  # R13 follows before NC battle
 
     # Match the existing on-disk format (single-line compact JSON) so git diffs
     # only show the actual delta rather than full reformatting churn.
