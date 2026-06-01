@@ -584,6 +584,12 @@
   'use strict';
 
   var CDN_BASE = 'https://fight-report-va.oss-accelerate.aliyuncs.com/prod/';
+  var _awakeningRef = null;
+  function loadAwakeningRef() {
+    if (_awakeningRef) return Promise.resolve(_awakeningRef);
+    return fetch('data/hero-awakening-skills.json').then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { _awakeningRef = j; return j; }).catch(function () { return null; });
+  }
   var ASSET_BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/';
 
   // 1-indexed, alphabetically sorted ISO 3166-1 alpha-2 codes (249 total)
@@ -3063,6 +3069,25 @@
         }
       }
 
+      // Awakening: click portrait to expand the 4 awakening skills + levels + effects
+      var awSkillMap = hero.awakenSkillMap;
+      if (hero.awakenLevel > 0 && awSkillMap) {
+        portrait.style.cursor = 'pointer';
+        portrait.title = 'Tap for awakening detail';
+        var awLevels = {};
+        Object.keys(awSkillMap).forEach(function (k) { awLevels[k] = (awSkillMap[k] && awSkillMap[k].level) || 0; });
+        var awPanel = null;
+        portrait.addEventListener('click', function () {
+          if (awPanel) { awPanel.remove(); awPanel = null; return; }
+          loadAwakeningRef().then(function (ref) {
+            if (!ref || awPanel) return;
+            awPanel = renderHeroAwakening(hero.id, hero.awakenLevel, !!hero.fullAwaken, awLevels, ref,
+              'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/hero-awake-skills/');
+            if (awPanel) portrait.appendChild(awPanel);
+          });
+        });
+      }
+
       wrap.appendChild(portrait);
     });
 
@@ -4296,6 +4321,7 @@
       })
       .then(function(data) {
         if (!data.battle) throw new Error('Invalid report format');
+        loadAwakeningRef();
         statusEl.textContent = '';
         renderReport(data);
         var params = new URLSearchParams(window.location.search);
