@@ -2335,6 +2335,14 @@
   .awaken-skill-name{font-size:12px;font-weight:600;color:#e6edf3}
   .awaken-skill-lvl{font-size:11px;font-weight:600;color:#79c0ff}
   .awaken-skill-eff{font-size:11px;color:#8b949e;line-height:1.4;margin-top:2px}
+  /* Awakening diamond overlay (Combat Heroes + Bench cards) */
+  .awaken-portrait-wrap{position:relative;display:inline-block;line-height:0}
+  .awaken-diamond{position:absolute;left:50%;bottom:-6px;transform:translateX(-50%) rotate(45deg);
+    width:26px;height:26px;background:linear-gradient(135deg,#ffd34d,#d29922);
+    border:2px solid #161b22;border-radius:5px;display:flex;align-items:center;justify-content:center;
+    box-shadow:0 1px 3px rgba(0,0,0,.5);z-index:2}
+  .awaken-diamond-num{transform:rotate(-45deg);font-size:12px;font-weight:800;color:#0d1117;line-height:1}
+  .awaken-diamond-ico{position:absolute;top:-9px;left:50%;width:16px;height:11px;transform:translateX(-50%) rotate(-45deg)}
   .bench-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .bench-hero-name {
     font-weight: 600; color: var(--text); font-size: .8rem; line-height: 1.2;
@@ -6524,6 +6532,37 @@
   function heroIconUrl(heroId) {
     var catalog = HERO_ICON_OVERRIDE[heroId] || heroId;
     return 'https://h5.topwargame.com/DynRes/images/headpic/hero_icon' + catalog + '_global.png?t=22.jpg';
+  }
+
+  function heroAwakenIconUrl(heroId) {
+    var catalog = HERO_ICON_OVERRIDE[heroId] || heroId;
+    return 'https://h5.topwargame.com/DynRes/images/headpic/hero_awakeicon' + catalog + '_global.png?t=22.jpg';
+  }
+
+  // Build the in-game-style gold awakening diamond (number + small tank glyph).
+  // Returned node is overlaid on a position:relative portrait wrapper.
+  function buildAwakenDiamond(level) {
+    var d = document.createElement('div');
+    d.className = 'awaken-diamond';
+    d.title = 'Awakening level ' + level;
+    var svgNS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('class', 'awaken-diamond-ico');
+    svg.setAttribute('viewBox', '0 0 24 16');
+    function rect(x, y, w, h, rx) { var r = document.createElementNS(svgNS, 'rect'); r.setAttribute('x', x); r.setAttribute('y', y); r.setAttribute('width', w); r.setAttribute('height', h); if (rx) r.setAttribute('rx', rx); r.setAttribute('fill', '#0d1117'); return r; }
+    function circ(cx, cy, r2) { var c = document.createElementNS(svgNS, 'circle'); c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', r2); c.setAttribute('fill', '#0d1117'); return c; }
+    svg.appendChild(rect(3, 7, 14, 5, 1));   // hull
+    svg.appendChild(rect(7, 4, 6, 4, 1));    // turret
+    svg.appendChild(rect(13, 5, 8, 1.5));    // barrel
+    svg.appendChild(circ(5, 13, 1.6));
+    svg.appendChild(circ(9, 13, 1.6));
+    svg.appendChild(circ(13, 13, 1.6));
+    d.appendChild(svg);
+    var num = document.createElement('span');
+    num.className = 'awaken-diamond-num';
+    num.textContent = String(level);
+    d.appendChild(num);
+    return d;
   }
 
   // ── Mecha names ───────────────────────────────────────────────────────────
