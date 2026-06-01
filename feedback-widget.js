@@ -4,15 +4,16 @@
   var PUSH_WORKER = 'https://push-worker.27tb8s6fct.workers.dev';
 
   var PAGE_LIST = [
-    { label: 'Home',             path: '/' },
-    { label: 'Bases',            path: '/bases.html' },
-    { label: 'Battle Report',    path: '/battle-report.html' },
-    { label: 'Heroes',           path: '/heroes.html' },
-    { label: 'Decoration Index', path: '/decor-index.html' },
-    { label: 'Armory Report',    path: '/armory-report.html' },
-    { label: 'Roadmap',          path: '/roadmap.html' },
-    { label: 'UD Sector Map',    path: '/ssc-map.html' },
-    { label: 'UD Treasury',      path: '/treasury.html' },
+    { label: 'Home',              path: '/' },
+    { label: 'Bases',             path: '/bases.html' },
+    { label: 'Battle Report',     path: '/battle-report.html' },
+    { label: 'Heroes',            path: '/heroes.html' },
+    { label: 'Heroes Awakening',  path: '/heroes-awakening.html' },
+    { label: 'Decoration Index',  path: '/decor-index.html' },
+    { label: 'Armory Report',     path: '/armory-report.html' },
+    { label: 'Roadmap',           path: '/roadmap.html' },
+    { label: 'UD Sector Map',     path: '/ssc-map.html' },
+    { label: 'UD Treasury',       path: '/treasury.html' },
   ];
 
   // --- SVG helpers (safe DOM-based creation, no innerHTML) ---
