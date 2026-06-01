@@ -31481,6 +31481,34 @@
         if (synthH && synthH.length) merged.heroes = synthH;
       }
     }
+
+    // Awakening is account-level LIVE truth. A battle report only carries
+    // awakenLevel when the hero was actually deployed in that battle, so a
+    // player's own awakened heroes routinely arrive with awakenLevel:0 from
+    // reports. The bookmarklet snapshot always knows the real awakening
+    // state, so overlay it onto merged.heroes here (matched by hero id),
+    // regardless of how merged.heroes was built. This keeps the Overview +
+    // Combat Heroes cards (which read merged.heroes / _awakenedHeroIds) in
+    // sync with the Bench (which already reads the supplement's aw/aws/fa).
+    // Awakening only ever increases, so Auto + Bookmarklet let the supplement
+    // win; an explicit 'reports' pin only gap-fills missing/zero values.
+    if (Array.isArray(merged.heroes)) {
+      var awSupp = getSupp('heroes');
+      if (awSupp && Array.isArray(awSupp.list)) {
+        var awById = {};
+        awSupp.list.forEach(function (h) { if (h && h.id != null) awById[h.id] = h; });
+        var awWins = (pri !== 'reports');
+        merged.heroes.forEach(function (mh) {
+          var s = mh && awById[mh.id];
+          if (!s || !((s.aw || 0) > 0)) return;
+          if (awWins || !((mh.awakenLevel || 0) > 0)) {
+            mh.awakenLevel = s.aw;
+            mh.fullAwaken = !!s.fa;
+            if (s.aws) mh.aws = s.aws;
+          }
+        });
+      }
+    }
   }
 
   // Convert a heroes supplement (and optionally a gear supplement) into a
