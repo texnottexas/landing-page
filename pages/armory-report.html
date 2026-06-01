@@ -6272,7 +6272,8 @@
         return {
           id: h.id, heroEquips: h.heroEquips || [],
           skills: h.skills || [], nonActiveSkills: h.nonActiveSkills || [],
-          star: h.star || 0, level: h.level || 0
+          star: h.star || 0, level: h.level || 0,
+          awakenLevel: h.awakenLevel || 0, fullAwaken: !!h.fullAwaken
         };
       }),
       decorations: player0.effectDecorations || null,
@@ -9832,6 +9833,7 @@
     var nonActive = hero.nonActiveSkills || [];
     var hasExcl = nonActive.length > 0;
     var gearScore = heroGearScore(hero);
+    var awakened = (hero.awakenLevel || 0) > 0;
 
     var card = document.createElement('div');
     card.className = 'hero-card';
@@ -9843,13 +9845,23 @@
     header.className = 'hero-header';
     header.addEventListener('click', function() { toggleHero(header); });
 
-    // Icon
+    // Icon (awakened heroes use the awakened portrait + diamond overlay)
     var iconImg = document.createElement('img');
     iconImg.className = 'hero-icon ' + bc + '-border';
-    iconImg.src = heroIconUrl(id);
     iconImg.alt = '';
-    iconImg.onerror = function() { iconImg.style.display = 'none'; };
-    header.appendChild(iconImg);
+    if (awakened) {
+      iconImg.src = heroAwakenIconUrl(id);
+      iconImg.onerror = function() { this.onerror = function(){ this.style.display = 'none'; }; this.src = heroIconUrl(id); };
+      var iconWrap = document.createElement('div');
+      iconWrap.className = 'awaken-portrait-wrap';
+      iconWrap.appendChild(iconImg);
+      iconWrap.appendChild(buildAwakenDiamond(hero.awakenLevel));
+      header.appendChild(iconWrap);
+    } else {
+      iconImg.src = heroIconUrl(id);
+      iconImg.onerror = function() { iconImg.style.display = 'none'; };
+      header.appendChild(iconImg);
+    }
 
     // Info block
     var info = document.createElement('div');
@@ -9885,12 +9897,13 @@
     var metaLine = document.createElement('div');
     metaLine.className = 'hero-meta';
 
+    // Awakened heroes are always Lv.120/5\u2605 \u2014 featured via the diamond, so omit here.
     var metaParts = [];
-    if (level) metaParts.push('Lv. ' + level);
+    if (!awakened && level) metaParts.push('Lv. ' + level);
     var metaText = document.createTextNode(metaParts.join(' '));
     metaLine.appendChild(metaText);
 
-    if (star > 0) {
+    if (!awakened && star > 0) {
       var starsSpan = document.createElement('span');
       starsSpan.className = 'hero-stars';
       starsSpan.style.marginLeft = metaParts.length ? '.35rem' : '0';
