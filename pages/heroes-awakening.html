@@ -1844,10 +1844,10 @@
 </main>
 
 <script>
-const HERO_DATA_URL = '../data/heroes-awakening.json?v=20260601w';
+const HERO_DATA_URL = '../data/heroes-awakening.json?v=20260601x';
 // Page build timestamp — rendered into the alpha banner in the viewer's local timezone.
 // IMPORTANT: this must be set to the actual UTC time of the commit. Get it with `date -u +%Y-%m-%dT%H:%M:%SZ`.
-const PAGE_BUILD_ISO = '2026-06-01T10:14:55Z';
+const PAGE_BUILD_ISO = '2026-06-01T10:16:08Z';
 (function paintLastUpdated() {
   try {
     const stamp = document.getElementById('lastUpdatedStamp');
@@ -2775,29 +2775,40 @@ function renderSwap() {
       ),
       el('div', { style: 'font-size:.58rem; text-transform: uppercase; letter-spacing:.08em; color: var(--muted); font-weight: 800; margin-top: 16px; margin-bottom: 8px' }, 'Awakening targets, grouped by 3-hero combo'),
       el('div', { class: 'combo-set' },
-        ...combos.map(c => el('div', { class: 'swap-trio' },
-          el('div', { class: 'swap-buff' },
-            c.partners.join(' + '),
-            el('span', null, '↳ ' + c.buff + ' boost')
-          ),
-          el('div', { class: 'swap-trio-row' },
-            ...c.partners.map(name => {
-              const t = allTargets.find(x => x.name === name);
-              if (!t) return el('div', { class: 'swap-trio-hero' },
-                el('div', { class: 'ph' }, name.slice(0, 2).toUpperCase()),
-                el('div', { class: 'nm' }, name)
-              );
-              return el('div', { class: 'swap-trio-hero' + (t.isLive ? ' live' : '') },
-                imgWithFallback(t.id, t.name),
-                el('div', { class: 'nm' }, t.name),
-                el('div', { class: 'mb' },
-                  el('span', { class: 'pill p' + t.phase }, 'P' + phaseRoman(t.phase)),
-                  t.isLive ? el('span', { class: 'pill live' }, 'LIVE') : null
-                )
-              );
-            })
-          )
-        ))
+        ...combos.map(c => {
+          // Sort the 3 partner heroes by phase so they always read P1 → P2 → P3.
+          // Unknown / missing-from-allTargets heroes sort to the end.
+          const orderedPartners = c.partners.slice().sort((a, b) => {
+            const ta = allTargets.find(x => x.name === a);
+            const tb = allTargets.find(x => x.name === b);
+            const pa = ta ? ta.phase : 99;
+            const pb = tb ? tb.phase : 99;
+            return pa - pb;
+          });
+          return el('div', { class: 'swap-trio' },
+            el('div', { class: 'swap-buff' },
+              orderedPartners.join(' + '),
+              el('span', null, '↳ ' + c.buff + ' boost')
+            ),
+            el('div', { class: 'swap-trio-row' },
+              ...orderedPartners.map(name => {
+                const t = allTargets.find(x => x.name === name);
+                if (!t) return el('div', { class: 'swap-trio-hero' },
+                  el('div', { class: 'ph' }, name.slice(0, 2).toUpperCase()),
+                  el('div', { class: 'nm' }, name)
+                );
+                return el('div', { class: 'swap-trio-hero' + (t.isLive ? ' live' : '') },
+                  imgWithFallback(t.id, t.name),
+                  el('div', { class: 'nm' }, t.name),
+                  el('div', { class: 'mb' },
+                    el('span', { class: 'pill p' + t.phase }, 'P' + t.phase),
+                    t.isLive ? el('span', { class: 'pill live' }, 'LIVE') : null
+                  )
+                );
+              })
+            )
+          );
+        })
       )
     );
   });
