@@ -1666,13 +1666,11 @@
 
   <div class="calc-tabs" id="calcTabs">
     <button class="calc-tab on" data-c="whatif" type="button">What if (build a hero)</button>
-    <button class="calc-tab" data-c="skill" type="button">Skill stones</button>
-    <button class="calc-tab" data-c="whole" type="button">Awakening Stones</button>
-    <button class="calc-tab" data-c="awake" type="button">Awakening Level 0 to 40</button>
+    <button class="calc-tab" data-c="whole" type="button">Awakening Stones (skill tiers)</button>
+    <button class="calc-tab" data-c="awake" type="button">Shards &amp; Lv. 1 Skills (awakening levels)</button>
     <button class="calc-tab" data-c="honor" type="button">Beyond Tier 10</button>
     <button class="calc-tab" data-c="compare" type="button">Compare heroes</button>
     <button class="calc-tab" data-c="phase" type="button">Phase budget</button>
-    <button class="calc-tab" data-c="es7" type="button">ES7 swap table</button>
   </div>
 
   <!-- What if (build a hero) -->
@@ -1724,18 +1722,6 @@
     </div>
   </div>
 
-  <!-- skill stones -->
-  <div class="calc-panel" data-p="skill">
-    <div class="panel">
-      <h3>Stones from skill Lv. <em>X</em> → Lv. <em>Y</em></h3>
-      <p class="sub">Real per-pull ladder: 15 / 15 / 30 / 30 / 45 / 45 / 60 / 80 / 130 stones (Lv. 1→10). 5 pulls per level. Lv. 10 = Level Maxed (no further cost).</p>
-      <div class="grid-2">
-        <div class="field"><label>Current skill level (0–9)</label><input type="number" id="skCur" min="0" max="9" value="0"></div>
-        <div class="field"><label>Target skill level (1–10)</label><input type="number" id="skTgt" min="1" max="10" value="10"></div>
-      </div>
-      <div class="result-box" id="skResult"></div>
-    </div>
-  </div>
 
   <!-- whole hero -->
   <div class="calc-panel" data-p="whole">
@@ -1873,18 +1859,6 @@
     </div>
   </div>
 
-  <!-- es7 -->
-  <div class="calc-panel" data-p="es7">
-    <div class="panel">
-      <h3>Exclusive Skill Lv. 7 buff swap</h3>
-      <p class="sub">When the hero's existing Exclusive Skill hits Lv. 7+, every Awakening Skill swaps its applied buff family. Same description text, stronger scaling.</p>
-      <p class="footnote">ID format: 7 digits <code>AABCCDD</code> where <strong>B</strong> = 0 (base) or 1 (ES7). Production page incorrectly writes <code>21x101 → 21x1101</code>.</p>
-      <table id="es7Table" style="margin-top: 14px">
-        <thead><tr><th>Hero</th><th>Skill 1</th><th>Skill 2</th><th>Skill 3</th><th>Skill 4</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </div>
 </section>
 
 </div><!-- /tab calculators -->
@@ -1892,10 +1866,10 @@
 </main>
 
 <script>
-const HERO_DATA_URL = '../data/heroes-awakening.json?v=20260602b';
+const HERO_DATA_URL = '../data/heroes-awakening.json?v=20260602c';
 // Page build timestamp — rendered into the alpha banner in the viewer's local timezone.
 // IMPORTANT: this must be set to the actual UTC time of the commit. Get it with `date -u +%Y-%m-%dT%H:%M:%SZ`.
-const PAGE_BUILD_ISO = '2026-06-02T03:39:07Z';
+const PAGE_BUILD_ISO = '2026-06-02T03:54:40Z';
 (function paintLastUpdated() {
   try {
     const stamp = document.getElementById('lastUpdatedStamp');
@@ -1964,14 +1938,6 @@ const HONOR_TIER = [
 const ID_TOKEN_MAP = {
   '5':'Indestructible','9':'Silence','10':'Heavy Armor','13':'HP Boost','18':'Abnormal Status','19':'Hostile',
   '46':'Ignition','47':'Splash','52':'Combo Attack','72':'Magnetic Pulse','77':'Light Armor'
-};
-const ES7_SWAPS = {
-  '169': [['2201101','2211101'],['2202102','2212102'],['2203101','2213101'],['2204101','2214101']],
-  '172': [['2101101','2111101'],['2102102','2112102'],['2103101','2113101'],['2104101','2114101']],
-  '234': [['2401101','2411101'],['2402102','2412102'],['2403101','2413101'],['2404101','2414101']],
-  '239': [['2501101','2511101'],['2502102','2512102'],['2503101','2513101'],['2504101','2514101']],
-  '333': [['2301101','2311101'],['2302102','2312102'],['2303101','2313101'],['2304101','2314101']],
-  '334': [['2601101','2611101'],['2602102','2612102'],['2603101','2613101'],['2604101','2614101']]
 };
 const LOCAL_PORTRAIT = {
   165:'marvingt_portrait.jpeg', 169:'sara_portrait.png',     170:'rohr_portrait.jpeg',
@@ -2452,24 +2418,7 @@ function setupCalcs() {
     $$('.calc-panel').forEach(p => p.classList.toggle('on', p.dataset.p === k));
   }));
 
-  // Skill stones
-  const skUpd = () => {
-    const cur = parseInt($('#skCur').value || 0);
-    const tgt = parseInt($('#skTgt').value || 10);
-    const stones = stonesBetweenSkill(cur, tgt);
-    const lvs = Math.max(0, tgt - cur);
-    const fp = lvs * SKILL_FP_PER_LEVEL;
-    replace($('#skResult'),
-      el('div', { class: 'big' }, fmt(stones) + ' Awakening Stones'),
-      el('div', { class: 'row' }, el('div', { class: 'lbl' }, 'Skill levels gained'), el('div', { class: 'val' }, String(lvs))),
-      el('div', { class: 'row' }, el('div', { class: 'lbl' }, 'Total pulls (5 / level)'), el('div', { class: 'val' }, String(lvs * PULLS_PER_LEVEL))),
-      el('div', { class: 'row' }, el('div', { class: 'lbl' }, 'Combat Power gain'), el('div', { class: 'val' }, '+' + fmt(fp))),
-      el('div', { class: 'row' }, el('div', { class: 'lbl' }, '% of one full hero (9,000 stones)'), el('div', { class: 'val' }, (stones / 9000 * 100).toFixed(1) + '%'))
-    );
-  };
-  ['skCur','skTgt'].forEach(i => $('#' + i).addEventListener('input', skUpd)); skUpd();
-
-  // Whole hero
+  // Awakening stones (per-hero, 4 skills)
   const whUpd = () => {
     const curs = $$('.whCur').map(x => parseInt(x.value || 0));
     const tgt = parseInt($('#whTgt').value || 10);
@@ -2524,20 +2473,6 @@ function setupCalcs() {
     $('#hwBar2').style.width = '0%';
   };
   ['hwCur','hwTgt'].forEach(i => $('#' + i).addEventListener('input', hwUpd)); hwUpd();
-
-  // ES7 table
-  const heroNames = { 169:'Sara', 172:'Nova', 234:'Shen Suyu', 239:'Lophy', 333:'Carna', 334:'Jett' };
-  const tbody = $('#es7Table tbody');
-  Object.entries(ES7_SWAPS).forEach(([hid, skills]) => {
-    tbody.appendChild(el('tr', null,
-      el('td', null, el('strong', null, heroNames[hid])),
-      ...skills.map(p => el('td', null,
-        el('code', null, p[0]),
-        ' → ',
-        el('code', { style: 'color: var(--purple)' }, p[1])
-      ))
-    ));
-  });
 
   setupCompare();
   setupWhatIf();
