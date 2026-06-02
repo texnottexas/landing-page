@@ -565,6 +565,59 @@ def main():
     r12["ncCaptureFlow"] = nc_capture_flow
     r12["declarationNcUnlocks"] = declaration_nc_unlocks
 
+    # ── R13 combat-buff unlocks ─────────────────────────────────
+    # Neutral combat wastelands 4-adjacent to a wasteland we declared this
+    # round. After we win R12, these become 1-hop declarable in R13. Helps the
+    # alliance plan the R13 set (the more combat unlocks we line up here, the
+    # more we can fill in next round). One unlock can have multiple openers
+    # (more = harder for the enemy to deny the chain by blocking a single
+    # R12 fight).
+    COMBAT_SPEC_NAMES = {
+        4001: "ATK Buff", 4006: "HP Buff", 4007: "DMG Inc",
+        4008: "DMG Red", 4010: "DEF Buff",
+    }
+    SPEC_PRIORITY_R13 = {4001: 0, 4006: 1, 4007: 2, 4008: 3, 4010: 4}
+    declared_seq_set = {w["seq"] for w in r12.get("warTargets", [])}
+    seq_to_cell = {}
+    for c in cells:
+        if c.get("type") == 3:
+            sq = wasteland_seq(c)
+            if sq is not None:
+                seq_to_cell[sq] = c
+    unlock_openers = defaultdict(list)  # neutral_seq -> [opener_seq, ...]
+    for d_seq in declared_seq_set:
+        d_cell = seq_to_cell.get(d_seq)
+        if not d_cell:
+            continue
+        for nb in four_neighbors(d_cell["r"], d_cell["c"], nrows, ncols, grid):
+            n_cell = grid[nb]
+            if n_cell.get("type") != 3 or n_cell.get("ownerSid", 0) != 0:
+                continue
+            n_seq = wasteland_seq(n_cell)
+            if not n_seq or n_seq in declared_seq_set:
+                continue
+            if n_cell.get("specId") not in COMBAT_SPEC_NAMES:
+                continue
+            unlock_openers[n_seq].append(d_seq)
+    r13_declarable = []
+    for n_seq, openers in unlock_openers.items():
+        n_cell = seq_to_cell[n_seq]
+        sp = n_cell.get("specId")
+        r13_declarable.append({
+            "seq": n_seq,
+            "r": n_cell["r"], "c": n_cell["c"],
+            "specId": sp,
+            "specName": COMBAT_SPEC_NAMES.get(sp, str(sp)),
+            "landCat": "combat",
+            "viaWastelands": sorted(set(openers)),
+        })
+    r13_declarable.sort(key=lambda x: (
+        SPEC_PRIORITY_R13.get(x["specId"], 99),
+        -len(x["viaWastelands"]),
+        x["seq"],
+    ))
+    r12["r13DeclarableCombat"] = r13_declarable
+
     # ── contestedRanked + s2864.contestedDeclarations ───────────
     # Built from warTargets.contestedBy + sectorPower (tier/PI) +
     # sectorServerCards (fame). Drives the Contested section and the
