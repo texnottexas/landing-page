@@ -351,8 +351,8 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
       cheer:'Done with the hard part — bonus rounds below!',
       step3Title:'Bonus — Extra wins', step3Sub:'Hit these in order if you still have troops left. Wastelands that open new cities first, then everything else.', step3Empty:'No bonus fights this round.',
       divCity:'Open new cities — hit these next', divFiller:'Everything else — only if troops left',
-      setupTitle:'Set Up Next Round', setupSub:'Win these R12 picks → these combat-buff wastelands open up for R13. More opens = more buffs next round.',
-      setupUnlocks:function(n){return n+' combat unlocks for R13';},
+      setupTitle:'Set Up Next Round', setupSub:'Win these R12 picks → these combat-buff wastelands open up for R12.5 (next wasteland round). More opens = more buffs next round.',
+      setupUnlocks:function(n){return n+' combat unlocks for R12.5';},
       setupVia:'opens after we win', setupRedundant:'(multiple paths — safer)',
       pillBully:'Bully!', pillPower:'Power-up', pillCity:'Opens new city', pillSkip:'Skip if busy', pillFiller:'Extra',
       vsEasy:' Easy take', vsBully:function(s){return ' Bully S'+s+' — really strong';}, vsMulti:function(n){return ' '+n+'-way fight';}, vsSingle:function(s){return ' vs S'+s;},
@@ -382,8 +382,8 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
       cheer:'STRONG ENEMY DEAD. SCRAPS BELOW.',
       step3Title:'3. SCRAPS', step3Sub:'TROOP LEFT? KILL MORE. NEW CITY FIRST. REST AFTER.', step3Empty:'NO SCRAPS.',
       divCity:'OPEN NEW CITY. KILL FIRST.', divFiller:'REST. ONLY IF TROOP LEFT.',
-      setupTitle:'SET UP NEXT', setupSub:'WIN R12. THESE BUFF UNLOCK FOR R13. MORE OPEN = MORE BUFF.',
-      setupUnlocks:function(n){return n+' BUFF UNLOCK';},
+      setupTitle:'SET UP NEXT', setupSub:'WIN R12. THESE BUFF UNLOCK FOR R12.5 (NEXT LAND ROUND). MORE OPEN = MORE BUFF.',
+      setupUnlocks:function(n){return n+' BUFF UNLOCK FOR R12.5';},
       setupVia:'OPEN AFTER WIN', setupRedundant:'(MANY PATH — SAFE)',
       pillBully:'STRONG', pillPower:'POWER', pillCity:'NEW CITY', pillSkip:'SKIP', pillFiller:'SCRAPS',
       vsEasy:' EASY KILL', vsBully:function(s){return ' STRONG S'+s+'. SMASH HARD.';}, vsMulti:function(n){return ' '+n+'-WAY FIGHT';}, vsSingle:function(s){return ' VS S'+s;},
@@ -405,15 +405,26 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 
   // Local-only "done" tracking, scoped per round. Reset by round change.
   var DONE_PREFIX='bp-easy-done-r';
+  var SETUP_PREFIX='bp-easy-setup-r';   // next-round unlock checkmarks, separate ns
   var doneSet={};
+  var setupSet={};
   function loadDone(roundKey){
     try{
       var raw=localStorage.getItem(DONE_PREFIX+roundKey);
-      if(!raw){doneSet={};return;}
-      var arr=JSON.parse(raw);
-      doneSet={};
-      if(Array.isArray(arr))arr.forEach(function(s){doneSet[s]=true;});
+      if(raw){
+        var arr=JSON.parse(raw);
+        doneSet={};
+        if(Array.isArray(arr))arr.forEach(function(s){doneSet[s]=true;});
+      }else doneSet={};
     }catch(e){doneSet={};}
+    try{
+      var raw2=localStorage.getItem(SETUP_PREFIX+roundKey);
+      if(raw2){
+        var arr2=JSON.parse(raw2);
+        setupSet={};
+        if(Array.isArray(arr2))arr2.forEach(function(s){setupSet[s]=true;});
+      }else setupSet={};
+    }catch(e){setupSet={};}
   }
   function saveDone(roundKey){
     try{
@@ -422,10 +433,22 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
       else localStorage.removeItem(DONE_PREFIX+roundKey);
     }catch(e){}
   }
+  function saveSetup(roundKey){
+    try{
+      var arr=Object.keys(setupSet);
+      if(arr.length)localStorage.setItem(SETUP_PREFIX+roundKey,JSON.stringify(arr));
+      else localStorage.removeItem(SETUP_PREFIX+roundKey);
+    }catch(e){}
+  }
   function isDone(seq){return !!doneSet[seq];}
   function setDone(seq,v,roundKey){
     if(v)doneSet[seq]=true;else delete doneSet[seq];
     saveDone(roundKey);
+  }
+  function isSetupDone(seq){return !!setupSet[seq];}
+  function setSetupDone(seq,v,roundKey){
+    if(v)setupSet[seq]=true;else delete setupSet[seq];
+    saveSetup(roundKey);
   }
 
   var LANGUAGES=[
@@ -731,7 +754,25 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
       var listEl=el('div','setup-list');
       group.forEach(function(u){
         var redundant=(u.viaWastelands||[]).length>=2;
-        var row=el('div','setup-row'+(redundant?' redundant':''));
+        var done=isSetupDone(u.seq);
+        var row=el('div','setup-row'+(redundant?' redundant':'')+(done?' done':''));
+        // Same .f-check button shape as fight cards, but routed to the
+        // setupSet namespace so the current-round fight checks and the
+        // next-round unlock checks don't collide in localStorage.
+        var check=document.createElement('button');
+        check.type='button';
+        check.className='f-check'+(done?' checked':'');
+        check.setAttribute('aria-label','Mark W-'+u.seq+' as picked for next round');
+        check.title='Tap when planning to declare W-'+u.seq+' next round';
+        check.appendChild(makeIcon('check',16));
+        check.addEventListener('click',function(ev){
+          ev.stopPropagation();
+          var nowDone=!isSetupDone(u.seq);
+          setSetupDone(u.seq,nowDone,roundKey);
+          row.classList.toggle('done',nowDone);
+          check.classList.toggle('checked',nowDone);
+        });
+        row.appendChild(check);
         var target=el('span','setup-target','W-'+u.seq);
         row.appendChild(target);
         row.appendChild(el('span','setup-via-label',L.setupVia));
@@ -779,7 +820,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     // Setup-Next step: combat-buff wastelands that become 1-hop declarable in R{N+1}
     // if we win our current R12 declarations. Hidden when no unlocks exist
     // (e.g. last cycle of the week) or when the data wasn't generated.
-    var unlocks=rd.r13DeclarableCombat||rd.r12DeclarableCombat||[];
+    var unlocks=rd.nextRoundCombatUnlocks||rd.r13DeclarableCombat||rd.r12DeclarableCombat||[];
     if(unlocks.length){
       root.appendChild(buildSetupNext(unlocks,roundKey,L));
     }
@@ -825,8 +866,10 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     resetBtn.textContent=L.resetBtn;
     resetBtn.addEventListener('click',function(){
       doneSet={};
+      setupSet={};
       try{localStorage.removeItem(DONE_PREFIX+roundKey);}catch(e){}
-      document.querySelectorAll('.fight.done').forEach(function(c){c.classList.remove('done');});
+      try{localStorage.removeItem(SETUP_PREFIX+roundKey);}catch(e){}
+      document.querySelectorAll('.fight.done, .setup-row.done').forEach(function(c){c.classList.remove('done');});
       document.querySelectorAll('.f-check.checked').forEach(function(c){c.classList.remove('checked');});
     });
     foot.appendChild(resetBtn);

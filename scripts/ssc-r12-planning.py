@@ -565,13 +565,14 @@ def main():
     r12["ncCaptureFlow"] = nc_capture_flow
     r12["declarationNcUnlocks"] = declaration_nc_unlocks
 
-    # ── R13 combat-buff unlocks ─────────────────────────────────
+    # ── Next-round combat-buff unlocks ──────────────────────────
     # Neutral combat wastelands 4-adjacent to a wasteland we declared this
-    # round. After we win R12, these become 1-hop declarable in R13. Helps the
-    # alliance plan the R13 set (the more combat unlocks we line up here, the
-    # more we can fill in next round). One unlock can have multiple openers
-    # (more = harder for the enemy to deny the chain by blocking a single
-    # R12 fight).
+    # round. After we win R12, these become 1-hop declarable in the NEXT
+    # wasteland cycle (R12.5 this week — naming follows the .5 mid-cycle
+    # convention seen in R10.5). Helps the alliance plan the follow-up set:
+    # the more combat unlocks we line up here, the more we can fill in
+    # next round. One unlock can have multiple openers (more = harder for
+    # the enemy to deny the chain by blocking a single R12 fight).
     COMBAT_SPEC_NAMES = {
         4001: "ATK Buff", 4006: "HP Buff", 4007: "DMG Inc",
         4008: "DMG Red", 4010: "DEF Buff",
@@ -616,7 +617,10 @@ def main():
         -len(x["viaWastelands"]),
         x["seq"],
     ))
-    r12["r13DeclarableCombat"] = r13_declarable
+    # Stored under both names so old + new readers work; the field is the
+    # round-agnostic "next wasteland round" — labelled R12.5 in-game this week.
+    r12["nextRoundCombatUnlocks"] = r13_declarable
+    r12["r13DeclarableCombat"] = r13_declarable  # legacy alias
 
     # ── contestedRanked + s2864.contestedDeclarations ───────────
     # Built from warTargets.contestedBy + sectorPower (tier/PI) +
