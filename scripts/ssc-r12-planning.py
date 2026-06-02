@@ -463,6 +463,63 @@ def main():
         "auto2Hop": [],
     }
 
+    # ── NC capture flow ─────────────────────────────────────────
+    # For each enemy-owned NC (type=2 cell with sid != 2864), figure out HOW
+    # we can attack it at the upcoming NC battle:
+    #   * viaOwnedNCs: our existing NCs that already sit 4-adjacent to this
+    #     enemy NC (attackable NOW — no R12 wasteland win required).
+    #   * viaWastelands: declared R12 wastelands 4-adjacent to it (capturing
+    #     the wasteland this round unlocks the NC for the NC battle).
+    # Anything reachable via neither path is omitted (out of 2-hop reach).
+    declared_seqs = {w["seq"] for w in (r12.get("warTargets") or [])}
+    seq_by_rc = {}
+    nc_by_rc = {}
+    for c in cells:
+        if c.get("type") == 3:
+            sq = wasteland_seq(c)
+            if sq is not None:
+                seq_by_rc[(c["r"], c["c"])] = sq
+        elif c.get("type") == 2:
+            nc_by_rc[(c["r"], c["c"])] = c
+
+    nc_capture_flow = []
+    declaration_nc_unlocks = defaultdict(list)
+    for (rc, cell) in nc_by_rc.items():
+        sid = cell.get("sid") or 0
+        if sid == 0 or sid == OWN_SID:
+            continue
+        via_owned_ncs = []
+        via_wastelands = []
+        for nb in four_neighbors(rc[0], rc[1], nrows, ncols, grid):
+            ncell = grid[nb]
+            # Friendly NC adjacency → attackable now
+            if ncell.get("type") == 2 and ncell.get("sid") == OWN_SID:
+                via_owned_ncs.append(ncell.get("name") or "")
+            # Declared wasteland adjacency → unlocks after R12 win
+            elif ncell.get("type") == 3:
+                sq = seq_by_rc.get(nb)
+                if sq in declared_seqs:
+                    via_wastelands.append(sq)
+                    declaration_nc_unlocks[sq].append(cell.get("name") or "")
+        if not via_owned_ncs and not via_wastelands:
+            continue
+        nc_capture_flow.append({
+            "nc": cell.get("name") or "",
+            "r": rc[0], "c": rc[1],
+            "sid": sid,
+            "level": str(cell.get("level") or 1),
+            "viaWastelands": sorted(set(via_wastelands)),
+            "viaOwnedNCs": list(dict.fromkeys(via_owned_ncs)),
+        })
+    # Sort: higher level first, then "attackable now" first
+    nc_capture_flow.sort(
+        key=lambda x: (-int(x["level"] or 1), 0 if x["viaOwnedNCs"] else 1)
+    )
+    declaration_nc_unlocks = {
+        str(k): list(dict.fromkeys(v))
+        for k, v in declaration_nc_unlocks.items()
+    }
+
     # ── Persist ──────────────────────────────────────────────────
     r12["buffOverview"] = buff_overview
     r12["specToEffectTypeMap"] = SPEC_TO_EFFECT
@@ -473,13 +530,17 @@ def main():
     r12["ncThreatAnalysis"] = nc_threat
     r12["r12StrategyTargets"] = r12_strategy
     r12["isLastWastelandCycle"] = False  # R13 follows before NC battle
+    r12["ncCaptureFlow"] = nc_capture_flow
+    r12["declarationNcUnlocks"] = declaration_nc_unlocks
 
     # Match the existing on-disk format (single-line compact JSON) so git diffs
     # only show the actual delta rather than full reformatting churn.
     DATA.write_text(json.dumps(data, ensure_ascii=False))
     print(f"OK — updated rounds['12']: ncThreatAnalysis={len(nc_threat)}, "
           f"buffOverview={len(buff_overview)}, strategicRecs={len(strategic)}, "
-          f"candidatesByCat={candidates_by_cat}")
+          f"candidatesByCat={candidates_by_cat}, "
+          f"ncCaptureFlow={len(nc_capture_flow)}, "
+          f"declarationNcUnlocks={len(declaration_nc_unlocks)}")
 
 def _fmt_val(v, paraType):
     if paraType == 2:
