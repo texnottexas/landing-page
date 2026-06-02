@@ -268,17 +268,23 @@ def main():
     nc_threat.sort(key=lambda x: (-x["level"], tier_rank[x["threatTier"]], -x["threatCount"]))
 
     # ── Buff planning sections ──────────────────────────────────
-    # R12 = declaration phase, 0 owned wastelands → all rawCurrent = 0.
-    buff_overview = []
-    for cap in BUFF_CAPS:
-        buff_overview.append({
-            **cap,
-            "current": _fmt_val(0, cap["paraType"]),
-            "max": _fmt_val(cap["rawMax"], cap["paraType"]),
-            "rawCurrent": 0,
-            "wastelandCount": 0,
-            "wastelands": [],
-        })
+    # Prefer live buffOverview (caps differ per sector — sector 90 has
+    # ATK/HP/DMG/DEF caps different from older sectors). Fall back to
+    # BUFF_CAPS defaults only if no live data was extracted yet.
+    existing_buff = r12.get("buffOverview") or []
+    if existing_buff and all("rawMax" in b for b in existing_buff):
+        buff_overview = existing_buff
+    else:
+        buff_overview = []
+        for cap in BUFF_CAPS:
+            buff_overview.append({
+                **cap,
+                "current": _fmt_val(0, cap["paraType"]),
+                "max": _fmt_val(cap["rawMax"], cap["paraType"]),
+                "rawCurrent": 0,
+                "wastelandCount": 0,
+                "wastelands": [],
+            })
 
     # eligibleTargets, candidatesByCat — count cells by spec category
     eligible_by_spec = defaultdict(list)
@@ -311,26 +317,30 @@ def main():
         for eff in contrib:
             effect_to_spec.setdefault(eff, sp)
 
-    for cap in BUFF_CAPS:
-        eff = cap["effectType"]
+    # Use the live rawMax from buff_overview (now authoritative) so recipe
+    # counts ("X x Lv.3 SPEC → max") reflect sector-specific caps.
+    for b in buff_overview:
+        eff = b["effectType"]
         sp = effect_to_spec.get(eff)
         if sp is None:
             continue
         per_l3 = LV3_CONTRIB[sp].get(eff, 0)
         if per_l3 <= 0:
             continue
-        gap = cap["rawMax"]
-        ws_to_max = -(-gap // per_l3) if per_l3 > 0 else 0  # ceil div
+        live_max = b.get("rawMax", 0)
+        live_cur = b.get("rawCurrent", 0)
+        gap = max(0, live_max - live_cur)
+        ws_to_max = -(-gap // per_l3) if (per_l3 > 0 and gap > 0) else 0
         strategic.append({
             "effectType": eff,
-            "description": cap["description"],
+            "description": b.get("description", ""),
             "category": SPEC_CAT.get(sp, "special"),
             "feedingSpec": sp,
             "feedingSpecName": SPEC_NAMES.get(sp, f"Spec {sp}"),
-            "rawCurrent": 0,
-            "rawMax": cap["rawMax"],
+            "rawCurrent": live_cur,
+            "rawMax": live_max,
             "rawGap": gap,
-            "gapPct": 100.0,
+            "gapPct": (100.0 * gap / live_max) if live_max > 0 else 0.0,
             "perLv3Contribution": per_l3,
             "wastelandsToMax": ws_to_max,
             "eligibleTargetCount": len(eligible_by_spec.get(sp, [])),
