@@ -564,6 +564,62 @@ def main():
     r12["isLastWastelandCycle"] = False  # R13 follows before NC battle
     r12["ncCaptureFlow"] = nc_capture_flow
     r12["declarationNcUnlocks"] = declaration_nc_unlocks
+
+    # ── contestedRanked + s2864.contestedDeclarations ───────────
+    # Built from warTargets.contestedBy + sectorPower (tier/PI) +
+    # sectorServerCards (fame). Drives the Contested section and the
+    # easy-mode opponent labels.
+    power_by_sid = {p["sid"]: p for p in r12.get("sectorPower", [])}
+    card_by_sid = {c["sid"]: c for c in r12.get("sectorServerCards", [])}
+    contested_ranked = []
+    for w in r12.get("warTargets", []):
+        others = w.get("contestedBy") or []
+        if not others:
+            continue
+        is3way = len(w.get("fightSids", [])) >= 3
+        for opp_sid in others:
+            pw = power_by_sid.get(opp_sid, {})
+            cd = card_by_sid.get(opp_sid, {})
+            contested_ranked.append({
+                "seq": w["seq"],
+                "level": w.get("level"),
+                "specId": w.get("specId"),
+                "opponent": opp_sid,
+                "tier": pw.get("tier", "C"),
+                "sectorRank": pw.get("sectorRank", 0),
+                "opFame": cd.get("fame", 0),
+                "opScore": pw.get("score", 0),
+                "opPI": pw.get("powerIndex", 0.0),
+                "is3way": is3way,
+            })
+    contested_ranked.sort(key=lambda x: (-(x["opPI"] or 0), x["seq"]))
+    r12["contestedRanked"] = contested_ranked
+    if r12.get("s2864") is not None:
+        # Distinct contested seqs (3-way fights count once)
+        distinct = len({c["seq"] for c in contested_ranked})
+        r12["s2864"]["contestedDeclarations"] = distinct
+
+    # ── focusOverrides (R12 must-win pin list + per-seq notes) ───
+    # Tex's alliance hard picks for this round (priority over auto-derived):
+    #   W-89  DMG Inc combat + L3 #3003 pathway + contested vs S593
+    #   W-375 Truck Transport + L3 #3008 pathway
+    #   W-210 Truck Heist + L3 #3005 defense ring
+    #   W-356 DMG Reduction combat + FEINT vs S386's L2 #2017
+    #   W-65  HP Buff combat + L3 #3001 defense ring
+    #   W-331 DEF Buff combat + L2 #2014 defense ring
+    r12["focusOverrides"] = {
+        "alliancePriority": [89, 375, 210, 356, 65, 331],
+        "pinTop": [],
+        "demote": [],
+        "seqNotes": {
+            "89":  "Combat buff (DMG Inc) AND L3 #3003 pathway. Contested vs S593 — winnable, S593 is sector rank 13, fame ~55K.",
+            "375": "L3 #3008 pathway (R13 chain to W-376 DEF or W-392 Mining Hub).",
+            "210": "L3 #3005 defense ring — denies enemy staging next to our #3005.",
+            "356": "Combat buff (DMG Red) AND feint vs S386 — 2-hop pressure on their L2 #2017. Doubles as real combat fill.",
+            "65":  "Combat buff (HP) AND L3 #3001 defense ring.",
+            "331": "Combat buff (DEF) AND L2 #2014 defense ring.",
+        },
+    }
     # Surface the hard NC picks at the top level so buildPillagePriority +
     # buildNcFlow can highlight them with TARGET badges throughout the page.
     r12["ncTargets"] = [
