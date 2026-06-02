@@ -430,34 +430,66 @@ def main():
                        if c.get("landCat") == "combat"]
         auto1.append(synth_war(cell, adj_combat))
 
-    nc_targets_for_plan = []
-    for nc in nc_threat:
-        if nc["threatTier"] in ("HIGH", "MEDIUM"):
-            nameMatch = re.search(r"#(\d+)", nc["name"] or "")
-            nc_targets_for_plan.append({
-                "nc": nc["name"],
-                "r": nc["r"], "c": nc["c"],
-                "level": nc["level"],
-                "sid": 2864,
-                "priority": "lock",
-                "rationale": (
-                    f"Our own Lv.{nc['level']} NC — {nc['threatTier'].lower()} threat. "
-                    f"{nc['directThreatCount']} direct, {nc['twoHopCount']} 2-hop, "
-                    f"{nc['threeHopCount']} 3-hop attackers within reach. "
-                    f"Claim adjacent wastelands to deny staging."
-                ),
-            })
+    # Alliance hard NC targets for this round (manually curated each week).
+    # The pathway wastelands listed below need to win in R12 so we can chain
+    # one more wasteland capture in R13 and land 1-hop on the NC for Saturday.
+    HARD_NC_TARGETS = {
+        3003: {
+            "pathwayWastelands": [89, 105],
+            "rationale": (
+                "Owned by S386 (r18c21). Win W-89 (DMG Inc) and/or W-105 (ATK) "
+                "in R12 → declare W-88 (Realm Thief) or W-104 (Mining Hub) in "
+                "R13 → 1-hop on #3003 for Saturday's NC battle. Both pathway "
+                "picks are combat buffs — they fill ATK / DMG Inc gaps."
+            ),
+        },
+        3008: {
+            "pathwayWastelands": [357, 375],
+            "rationale": (
+                "Owned by S386 (r2c12). Win W-357 (Truck Heist) + W-375 (Truck "
+                "Transport) in R12 → declare W-376 (DEF Buff) or W-392 (Mining "
+                "Hub) in R13 → 1-hop on #3008. W-376 in R13 doubles as a DEF "
+                "combat buff."
+            ),
+        },
+    }
+
+    nc_hard_targets = []
+    pathway_seqs = set()
+    for nc_seq, info in HARD_NC_TARGETS.items():
+        nc_cell = next(
+            (c for c in cells if c.get("type") == 2 and (c.get("name") or "").endswith(f"#{nc_seq}")),
+            None,
+        )
+        if not nc_cell:
+            continue
+        nc_hard_targets.append({
+            "nc": nc_cell.get("name"),
+            "ncNum": nc_seq,
+            "r": nc_cell["r"], "c": nc_cell["c"],
+            "level": nc_cell.get("level") or 3,
+            "sid": nc_cell.get("sid") or 0,
+            "priority": "lock",
+            "pathwayWastelands": info["pathwayWastelands"],
+            "rationale": info["rationale"],
+        })
+        pathway_seqs.update(info["pathwayWastelands"])
+
+    # Pathway wastelands get the ★ R12 curated badge in the buff/focus modals
+    # so they show up as "must-win" picks even if they're not strictly blockers
+    # or combat openers (W-357 / W-375 are economy but ladder to #3008).
+    combat_buff_setup = sorted({w["seq"] for w in curated + auto1} | pathway_seqs)
 
     r12_strategy = {
         "note": (
-            f"Round 12 declaration phase — {len(curated)} blocker pick(s) "
-            f"(defense) + {len(auto1)} combat opener(s) within 1 hop. "
-            "Curated list = neutral wastelands adjacent to our L2/L3 NCs; "
-            "auto1Hop = combat wastelands reachable from our footprint, "
-            "prioritised ATK > HP > DMG Inc > DMG Red > DEF."
+            "Round 12 declaration phase. Alliance hard NC targets: "
+            "L3 #3003 (path via W-89, W-105) and L3 #3008 (path via W-357, "
+            "W-375). Curated list = blocker wastelands defending our L2/L3 "
+            "NCs; auto1Hop = combat openers within 1 hop, ATK > HP > DMG "
+            "Inc > DMG Red > DEF."
         ),
-        "combatBuffSetupSeqs": [w["seq"] for w in curated + auto1],
-        "ncTargets": nc_targets_for_plan,
+        "combatBuffSetupSeqs": combat_buff_setup,
+        "ncTargets": nc_hard_targets,
         "curated": curated,
         "auto1Hop": auto1,
         "auto2Hop": [],
@@ -532,6 +564,25 @@ def main():
     r12["isLastWastelandCycle"] = False  # R13 follows before NC battle
     r12["ncCaptureFlow"] = nc_capture_flow
     r12["declarationNcUnlocks"] = declaration_nc_unlocks
+    # Surface the hard NC picks at the top level so buildPillagePriority +
+    # buildNcFlow can highlight them with TARGET badges throughout the page.
+    r12["ncTargets"] = [
+        {
+            "nc": nc["nc"], "ncNum": nc["ncNum"],
+            "level": nc["level"], "sid": nc["sid"],
+            "pathwayWastelands": nc["pathwayWastelands"],
+            "rationale": nc["rationale"],
+        }
+        for nc in nc_hard_targets
+    ]
+    r12["ncTargetsRule"] = (
+        "Alliance hard picks for this week: secure pathway wastelands in R12 → "
+        "land 1-hop in R13 → capture on Saturday's NC battle. One unowned NC "
+        "per level per week (game rule)."
+    )
+    # Drop stale fields — l3BufferStrategy was the predecessor to
+    # ncThreatAnalysis and carries last-round threat tiers.
+    r12.pop("l3BufferStrategy", None)
 
     # Match the existing on-disk format (single-line compact JSON) so git diffs
     # only show the actual delta rather than full reformatting churn.
