@@ -30349,7 +30349,13 @@
         block.style.cssText = 'margin-top:.5rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem .65rem;';
         var lbl = document.createElement('div');
         lbl.style.cssText = 'font-size:.72rem;color:var(--muted);margin-bottom:.25rem;';
-        lbl.textContent = row.label + ' (slots ' + row.id + ')';
+        // Show the numpad display slots (1-9), not the raw positional codes
+        // (1/2/3/11/12/13/21/22/23) or the internal bucket id (front/mid/back).
+        var _rowBucket = FORMATION_ROW_BUCKETS.filter(function(b) { return b.id === row.id; })[0];
+        var _rowDispSlots = _rowBucket
+          ? _rowBucket.slots.map(function(s) { return FORMATION_SLOT_DISPLAY[Number(s)] || s; }).join(', ')
+          : row.id;
+        lbl.textContent = row.label + ' (slots ' + _rowDispSlots + ')';
         block.appendChild(lbl);
         if (!row.present) {
           var none = document.createElement('div');
@@ -30372,7 +30378,9 @@
             sl.style.cssText = 'display:flex;gap:.35rem;align-items:center;font-size:.75rem;margin-top:.15rem;';
             var sLbl = document.createElement('span');
             sLbl.style.cssText = 'color:var(--muted);min-width:60px;';
-            sLbl.textContent = 'Slot ' + slot.slot;
+            // Map the raw positional code (11/12/13/21/22/23) to the 1-9 numpad
+            // display used everywhere else (hero formation grid, FORMATION_SLOT_DISPLAY).
+            sLbl.textContent = 'Slot ' + (FORMATION_SLOT_DISPLAY[Number(slot.slot)] || slot.slot);
             sl.appendChild(sLbl);
             if (!slot.buffs.length) {
               var dash = document.createElement('span');
