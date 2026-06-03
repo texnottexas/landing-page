@@ -1972,10 +1972,10 @@
 </main>
 
 <script>
-const HERO_DATA_URL = '../data/heroes-awakening.json?v=20260603c';
+const HERO_DATA_URL = '../data/heroes-awakening.json?v=20260603d';
 // Page build timestamp — rendered into the alpha banner in the viewer's local timezone.
 // IMPORTANT: this must be set to the actual UTC time of the commit. Get it with `date -u +%Y-%m-%dT%H:%M:%SZ`.
-const PAGE_BUILD_ISO = '2026-06-03T01:11:25Z';
+const PAGE_BUILD_ISO = '2026-06-03T02:05:10Z';
 (function paintLastUpdated() {
   try {
     const stamp = document.getElementById('lastUpdatedStamp');
@@ -2113,12 +2113,19 @@ function imgWithFallback(id, name, attrs) {
 }
 
 // ───── Math ─────
+// stonesBetweenSkill(curTier, tgtTier): cost to upgrade a skill from
+// curTier to tgtTier (both 1-10, or 0 = not unlocked yet).
+// STONE_PER_LEVEL[N] is the cost of the upgrade that LEAVES Tier N
+// (Tier N -> Tier N+1). So summing indexes [cur..tgt-1] gives the
+// total. Loop bound is `lv < tgt`, not `lv <= tgt` - the old version
+// had an off-by-one that overcounted by one tier upgrade for non-max
+// targets (e.g. reaching Tier 6 reported 900 instead of 675).
 function stonesBetweenSkill(cur, tgt) {
   cur = Math.max(0, Math.min(10, cur|0));
   tgt = Math.max(0, Math.min(10, tgt|0));
   if (tgt <= cur) return 0;
   let t = 0;
-  for (let lv = cur + 1; lv <= tgt; lv++) t += STONE_PER_LEVEL[lv] || 0;
+  for (let lv = cur; lv < tgt; lv++) t += STONE_PER_LEVEL[lv] || 0;
   return t;
 }
 function awakeShardsBetween(cur, tgt) {
