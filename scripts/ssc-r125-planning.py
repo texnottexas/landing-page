@@ -385,13 +385,61 @@ def main():
                 'rationale': rationale,
             })
 
-    # focusOverrides — keep empty for R12.5; alliance can pin specific
-    # picks manually in a follow-up edit.
+    # ── focusOverrides for R12.5 ────────────────────────────────
+    # Tex's R12.5 priority directive:
+    #   P1 — secure our L3 NCs (highest priority, defense ring picks)
+    #   P2 — secure our L2 NCs (defense ring picks)
+    #   P3 — combat buffs everywhere we declared on one
+    # Each pinned pick gets a one-line rationale so the alliance knows
+    # why it matters.
+    own_l3 = [c for c in cells if c.get('sid') == OWN_SID and c.get('type') == 2 and (c.get('level') or 0) == 3]
+    own_l2 = [c for c in cells if c.get('sid') == OWN_SID and c.get('type') == 2 and (c.get('level') or 0) == 2]
+    declared_by_seq = {w['seq']: w for w in r.get('warTargets', [])}
+    def _collect_nc_defense(ncs, label):
+        rows = []  # (seq, nc_name)
+        for nc in ncs:
+            for nb in adj4((nc['r'], nc['c']), nrows, ncols, grid):
+                cell = grid.get(nb)
+                if not cell or cell.get('type') != 3: continue
+                sq = wseq(cell)
+                if sq and sq in declared_by_seq:
+                    rows.append((sq, nc.get('name'), label))
+        return rows
+    l3_def_rows = _collect_nc_defense(own_l3, 'L3 NC defense')
+    l2_def_rows = _collect_nc_defense(own_l2, 'L2 NC defense')
+    seen_seq = set()
+    pin_order = []  # list of (seq, note)
+    for sq, nc_name, _ in l3_def_rows:
+        if sq in seen_seq: continue
+        seen_seq.add(sq)
+        w = declared_by_seq[sq]
+        cont = (' contested vs S' + ','.join(map(str, w['contestedBy']))) if w.get('isContested') else ''
+        pin_order.append((sq, f'Defends our {nc_name} — neutral wasteland adjacent to it; win to deny enemy chain.{cont}'))
+    for sq, nc_name, _ in l2_def_rows:
+        if sq in seen_seq: continue
+        seen_seq.add(sq)
+        w = declared_by_seq[sq]
+        cont = (' contested vs S' + ','.join(map(str, w['contestedBy']))) if w.get('isContested') else ''
+        pin_order.append((sq, f'Defends our {nc_name} — neutral wasteland adjacent to it.{cont}'))
+    # Combat buffs (sort by spec priority then by seq for stability)
+    COMBAT_PRI = {4001: 0, 4006: 1, 4007: 2, 4008: 3, 4010: 4}
+    COMBAT_LABEL = {4001: 'ATK', 4006: 'HP', 4007: 'DMG Inc', 4008: 'DMG Red', 4010: 'DEF'}
+    combat_remaining = []
+    for sq, w in declared_by_seq.items():
+        if sq in seen_seq: continue
+        if w.get('specId') in COMBAT_PRI:
+            combat_remaining.append(w)
+    combat_remaining.sort(key=lambda w: (COMBAT_PRI[w['specId']], w['seq']))
+    for w in combat_remaining:
+        seen_seq.add(w['seq'])
+        cont = (' contested vs S' + ','.join(map(str, w['contestedBy']))) if w.get('isContested') else ''
+        pin_order.append((w['seq'], f'Combat buff ({COMBAT_LABEL[w["specId"]]}) — fills the sector cap.{cont}'))
+
     focus_overrides = {
-        'alliancePriority': [],
+        'alliancePriority': [sq for sq, _ in pin_order],
         'pinTop': [],
         'demote': [],
-        'seqNotes': {},
+        'seqNotes': {str(sq): note for sq, note in pin_order},
     }
 
     # Strategy targets — combatBuffSetupSeqs derived from our declarations
