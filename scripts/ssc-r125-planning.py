@@ -409,18 +409,23 @@ def main():
     l2_def_rows = _collect_nc_defense(own_l2, 'L2 NC defense')
     seen_seq = set()
     pin_order = []  # list of (seq, note)
+    # A defense pin only makes the priority list if an enemy is ACTIVELY
+    # contesting it. Uncontested adjacents don't deny any current attack
+    # chain — keep them in the broader Tier B/C/D pool, not the pin list.
     for sq, nc_name, _ in l3_def_rows:
         if sq in seen_seq: continue
-        seen_seq.add(sq)
         w = declared_by_seq[sq]
-        cont = (' contested vs S' + ','.join(map(str, w['contestedBy']))) if w.get('isContested') else ''
-        pin_order.append((sq, f'Defends our {nc_name} — neutral wasteland adjacent to it; win to deny enemy chain.{cont}'))
+        if not w.get('isContested'): continue
+        seen_seq.add(sq)
+        cont = ' contested vs S' + ','.join(map(str, w['contestedBy']))
+        pin_order.append((sq, f'Defends our {nc_name} — enemy chaining through this wasteland;{cont}.'))
     for sq, nc_name, _ in l2_def_rows:
         if sq in seen_seq: continue
-        seen_seq.add(sq)
         w = declared_by_seq[sq]
-        cont = (' contested vs S' + ','.join(map(str, w['contestedBy']))) if w.get('isContested') else ''
-        pin_order.append((sq, f'Defends our {nc_name} — neutral wasteland adjacent to it.{cont}'))
+        if not w.get('isContested'): continue
+        seen_seq.add(sq)
+        cont = ' contested vs S' + ','.join(map(str, w['contestedBy']))
+        pin_order.append((sq, f'Defends our {nc_name} — enemy chaining through this wasteland;{cont}.'))
     # Combat buffs (sort by spec priority then by seq for stability)
     COMBAT_PRI = {4001: 0, 4006: 1, 4007: 2, 4008: 3, 4010: 4}
     COMBAT_LABEL = {4001: 'ATK', 4006: 'HP', 4007: 'DMG Inc', 4008: 'DMG Red', 4010: 'DEF'}
