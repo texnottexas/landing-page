@@ -2246,10 +2246,15 @@ body{top:0!important;}
     t.style.userSelect = 'none';
     var dot = el('span', 'dot'); dot.style.background = 'var(--red)';
     t.appendChild(dot);
-    t.appendChild(el('span', null, 'L2/L3 NC Threat Analysis — 2 Wasteland Rounds Left'));
+    var threatHeadline = rd.isLastWastelandCycle
+      ? 'L2/L3 NC Threat Analysis — Last Wasteland Round Before NC Battle'
+      : 'L2/L3 NC Threat Analysis — 2 Wasteland Rounds Left';
+    t.appendChild(el('span', null, threatHeadline));
     t.appendChild(el('span', 'tag', data.length + ' NC' + (data.length === 1 ? '' : 's')));
-    t.appendChild(el('span', 'tag tag-accent',
-      totalDirect + ' direct · ' + totalTwo + ' 2-hop · ' + totalThree + ' 3-hop'));
+    var threatTagText = rd.isLastWastelandCycle
+      ? totalDirect + ' direct · ' + totalTwo + ' setup (win this round)'
+      : totalDirect + ' direct · ' + totalTwo + ' 2-hop · ' + totalThree + ' 3-hop';
+    t.appendChild(el('span', 'tag tag-accent', threatTagText));
     var chev = el('span', 'sect-chev'); chev.style.marginLeft = 'auto';
     chev.appendChild(makeIcon('chevron-down', 16));
     t.appendChild(chev);
@@ -2267,12 +2272,22 @@ body{top:0!important;}
     var note = el('div', 'rule-box');
     note.appendChild(makeIcon('compass', 18));
     var noteBody = el('div', 'body');
-    noteBody.appendChild(document.createTextNode(
-      'Each enemy needs path distance ≤ 3 (through neutral wastelands only) to attack our NC at the R14 NC battle. ' +
-      '1-hop = locked-in direct threat (defend at NC battle). 2-hop = one capture lands them. ' +
-      '3-hop = they need both wasteland rounds to reach. Capturing any neutral wasteland adjacent ' +
-      'to our NC (blocker) cuts every 2-hop/3-hop path that runs through that cell.'
-    ));
+    if (rd.isLastWastelandCycle){
+      noteBody.appendChild(document.createTextNode(
+        'Last wasteland round before NC battle. ' +
+        '1-hop direct = enemy already owns an adjacent cell — locked in, defend at NC battle. ' +
+        '2-hop setup = enemy can declare on an adjacent neutral wasteland THIS round; ' +
+        'if they win, they reach 1-hop. Blockers we declared ourselves are covered (we win → no setup). ' +
+        'Uncovered blockers = neutrals we didn\'t declare on; an enemy could grab them.'
+      ));
+    } else {
+      noteBody.appendChild(document.createTextNode(
+        'Each enemy needs path distance ≤ 3 (through neutral wastelands only) to attack our NC at the R14 NC battle. ' +
+        '1-hop = locked-in direct threat (defend at NC battle). 2-hop = one capture lands them. ' +
+        '3-hop = they need both wasteland rounds to reach. Capturing any neutral wasteland adjacent ' +
+        'to our NC (blocker) cuts every 2-hop/3-hop path that runs through that cell.'
+      ));
+    }
     note.appendChild(noteBody);
     bodyWrap.appendChild(note);
 
