@@ -693,6 +693,41 @@
     return f ? (ASSET_BASE + 'assets/rune-icons/' + f + '.png') : null;
   }
 
+  // ── Missing-icon telemetry ────────────────────────────────────────────────
+  // Mirror of armory-report's reporter (_ar_reportMissingIcon). When a report
+  // icon 404s, queue it on the worker so the next extraction pass can find and
+  // add it. Before this, battle-report silently hid broken icons (onerror →
+  // hide), so gaps like Franziska's missing exc-skill-338.png (#109) only
+  // surfaced via a manual bug report. Session-deduped per (kind, id); the
+  // worker aggregates count + firstSeen/lastSeen under _missicon_<kind>_<id>.
+  var _br_missiconReported = (function () {
+    try { var s = JSON.parse(localStorage.getItem('br_missicon_reported') || '{}'); return (s && typeof s === 'object') ? s : {}; }
+    catch (e) { return {}; }
+  })();
+  function brReportMissingIcon(kind, id, info) {
+    if (!kind || id == null) return;
+    var key = kind + '_' + id;
+    if (_br_missiconReported[key]) return;
+    _br_missiconReported[key] = Date.now();
+    try { localStorage.setItem('br_missicon_reported', JSON.stringify(_br_missiconReported)); } catch (e) {}
+    info = info || {};
+    try {
+      fetch('https://push-worker.27tb8s6fct.workers.dev/feedback/missing-icon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: kind, id: id,
+          name: info.name || '',
+          type: info.type != null ? info.type : '',
+          group: info.group != null ? info.group : '',
+          iconPath: info.iconPath || '',
+          page: 'battle-report'
+        }),
+        keepalive: true
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
   /** Resolve exclusive skill icon URL */
   function exclSkillIconUrl(heroId) {
     return ASSET_BASE + 'assets/exclusive-skill-icons/exc-skill-' + heroId + '.png';
@@ -712,10 +747,15 @@
     if (s.length === 6 && s.substring(0, 2) === '90') {
       var typeCode = s.substring(0, 3);
       var map = {
+        // Valhalla typeCode (3rd digit) encodes branch + mode: odd = offense,
+        // even = defense. 901/902 Army, 903/904 Navy, 905/906 Air Force.
+        // Offense/defense is a property of the UNIT id, not the player's side —
+        // a defender can field offensive Valhalla (#110). 903/904 were
+        // previously swapped, mislabeling attacker Navy offense as defense.
         '901': { file: 'ultra_valhalla_army_offense', label: 'Army, Valhalla - ATK' },
         '902': { file: 'ultra_valhalla_army_defense', label: 'Army, Valhalla - DEF' },
-        '903': { file: 'ultra_valhalla_nary_defense', label: 'Navy, Valhalla - DEF' },
-        '904': { file: 'ultra_valhalla_navy_offense', label: 'Navy, Valhalla - ATK' },
+        '903': { file: 'ultra_valhalla_navy_offense', label: 'Navy, Valhalla - ATK' },
+        '904': { file: 'ultra_valhalla_nary_defense', label: 'Navy, Valhalla - DEF' },
         '905': { file: 'ultra_valhalla_airforce_offense', label: 'Air Force, Valhalla - ATK' },
         '906': { file: 'ultra_valhalla_airforce_defense', label: 'Air Force, Valhalla - DEF' }
       };
@@ -2240,7 +2280,7 @@
           if (exclInfo) {
             var exclRow = el('div', {className: 'attr-excl'});
             var exclImg = el('img', {src: exclSkillIconUrl(heroId), width:'22', height:'22'});
-            exclImg.onerror = function(){ this.style.display='none'; };
+            exclImg.onerror = (function(hid, nm){ return function(){ this.style.display='none'; brReportMissingIcon('exclskill', hid, { name: nm, iconPath: 'assets/exclusive-skill-icons/exc-skill-' + hid + '.png' }); }; })(heroId, exclInfo.n);
             exclRow.appendChild(exclImg);
             var exclNameSpan = el('span', {className: 'attr-excl-name'});
             exclNameSpan.textContent = exclInfo.n;
@@ -2259,7 +2299,7 @@
             equippedSkills.forEach(function(s) {
               var chip = el('div', {className: 'attr-skill-chip'});
               var sImg = el('img', {src: skillIconUrl(s.skillId), width:'18', height:'18'});
-              sImg.onerror = function(){ this.style.display='none'; };
+              sImg.onerror = (function(sid){ return function(){ this.style.display='none'; brReportMissingIcon('skill', sid, { iconPath: 'assets/skill-icons/skill_icon' + sid + '.png' }); }; })(s.skillId);
               chip.appendChild(sImg);
               var sLv = el('span', {className: 'attr-skill-lv'});
               sLv.textContent = 'Lv' + s.level;
@@ -3130,9 +3170,12 @@
   }
 
   /** Build a unit icon img with onerror fallback */
-  function unitIconImg(src, alt) {
+  function unitIconImg(src, alt, meta) {
     var img = el('img', { src: src, className: 'unit-icon', alt: alt, width: '40', height: '40' });
-    img.onerror = function() { this.style.display = 'none'; };
+    img.onerror = function() {
+      this.style.display = 'none';
+      if (meta && meta.id != null) brReportMissingIcon(meta.kind || 'unit', meta.id, { name: meta.name || alt, iconPath: src });
+    };
     return img;
   }
 
@@ -3166,11 +3209,11 @@
         labelSpan.textContent = label;
         if (isAtt) {
           unitInfo.appendChild(labelSpan);
-          if (icon) unitInfo.appendChild(unitIconImg(icon, label));
+          if (icon) unitInfo.appendChild(unitIconImg(icon, label, { kind: 'unit', id: a.armyId, name: label }));
           li.appendChild(numSpan);
           li.appendChild(unitInfo);
         } else {
-          if (icon) unitInfo.appendChild(unitIconImg(icon, label));
+          if (icon) unitInfo.appendChild(unitIconImg(icon, label, { kind: 'unit', id: a.armyId, name: label }));
           unitInfo.appendChild(labelSpan);
           li.appendChild(unitInfo);
           li.appendChild(numSpan);
