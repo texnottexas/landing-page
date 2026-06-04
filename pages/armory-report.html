@@ -3615,6 +3615,78 @@
     overlay.appendChild(m); document.body.appendChild(overlay);
   }
 
+  // Power-user "Advise history": players this advisor has set up reports for.
+  // Default view = last 14 days, not dismissed; toggles reveal older + dismissed.
+  function _imp_openHistory() {
+    var id = getStoredIdentity();
+    if (!id || !id.siteKey || !_ar_supplementToken) { alert('Verify your identity first.'); return; }
+    var DAY = 86400000, showOlder = false, showDismissed = false;
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1001;display:flex;align-items:center;justify-content:center;';
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) document.body.removeChild(overlay); });
+    var m = document.createElement('div');
+    m.style.cssText = 'background:var(--card,#1c2128);border:1px solid var(--border,#30363d);border-radius:8px;padding:1rem;width:min(520px,94vw);display:flex;flex-direction:column;gap:.5rem;max-height:85vh;overflow:auto;';
+    var h = document.createElement('h2'); h.style.cssText = 'margin:0;font-size:1rem;color:var(--text,#e6edf3);'; h.textContent = 'Advise history'; m.appendChild(h);
+    var listWrap = document.createElement('div'); listWrap.style.cssText = 'display:flex;flex-direction:column;gap:.4rem;'; m.appendChild(listWrap);
+    var entries = [];
+    function hide(code, hidden) {
+      fetch(PUSH_WORKER + '/advisor/onbehalf/hide', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
+        body: JSON.stringify({ adviseCode: code, hidden: hidden }),
+      }).then(function () { load(); }).catch(function () {});
+    }
+    function row(e) {
+      var r = document.createElement('div');
+      r.style.cssText = 'background:var(--surface,#161b22);border:1px solid var(--border,#30363d);border-radius:6px;padding:.45rem .55rem;display:flex;flex-direction:column;gap:.25rem;' + (e.hidden ? 'opacity:.55;' : '');
+      var top = document.createElement('div'); top.style.cssText = 'display:flex;align-items:center;gap:.4rem;';
+      var nm = document.createElement('span'); nm.style.cssText = 'font-weight:600;color:var(--text,#e6edf3);font-size:.85rem;'; nm.textContent = e.targetName || '(unknown)'; top.appendChild(nm);
+      var dt = document.createElement('span'); dt.style.cssText = 'font-size:.68rem;color:var(--muted,#8b949e);'; dt.textContent = e.ts ? new Date(e.ts).toLocaleDateString() : ''; top.appendChild(dt);
+      var act = document.createElement('button'); act.type = 'button'; act.textContent = e.hidden ? 'Restore' : '✕';
+      act.title = e.hidden ? 'Restore to the list' : 'Dismiss from the list';
+      act.style.cssText = 'margin-left:auto;background:none;border:1px solid var(--border,#30363d);border-radius:4px;color:var(--muted,#8b949e);cursor:pointer;font-size:.72rem;padding:.1rem .45rem;';
+      act.addEventListener('click', function () { hide(e.adviseCode || ('ts' + e.ts), !e.hidden); });
+      top.appendChild(act);
+      r.appendChild(top);
+      function copyRow(label, value) {
+        if (!value) return;
+        var cr = document.createElement('div'); cr.style.cssText = 'display:flex;align-items:center;gap:.4rem;font-size:.72rem;';
+        var l = document.createElement('span'); l.style.color = 'var(--muted,#8b949e)'; l.textContent = label; cr.appendChild(l);
+        var v = document.createElement('span'); v.style.cssText = 'color:var(--accent,#79c0ff);word-break:break-all;'; v.textContent = value; cr.appendChild(v);
+        var cp = document.createElement('button'); cp.type = 'button'; cp.textContent = 'Copy'; cp.style.cssText = 'margin-left:auto;background:none;border:1px solid var(--border,#30363d);border-radius:4px;color:var(--text,#e6edf3);cursor:pointer;font-size:.68rem;padding:.05rem .4rem;';
+        cp.addEventListener('click', function () { try { navigator.clipboard.writeText(value); cp.textContent = 'Copied'; setTimeout(function(){ cp.textContent='Copy'; }, 1200); } catch (x) {} });
+        cr.appendChild(cp); r.appendChild(cr);
+      }
+      if (e.adviseCode) copyRow('Advise link:', 'https://2864tw.com/armory-report.html?advise=' + e.adviseCode);
+      if (e.shortcode) copyRow('Shortcode:', e.shortcode);
+      return r;
+    }
+    function render() {
+      while (listWrap.firstChild) listWrap.removeChild(listWrap.firstChild);
+      var now = Date.now();
+      var recent = entries.filter(function (e) { return !e.hidden && (now - (e.ts || 0)) < 14 * DAY; });
+      var older = entries.filter(function (e) { return !e.hidden && (now - (e.ts || 0)) >= 14 * DAY; });
+      var dismissed = entries.filter(function (e) { return e.hidden; });
+      var shown = recent.concat(showOlder ? older : []).concat(showDismissed ? dismissed : []);
+      if (!shown.length) { var em = document.createElement('div'); em.style.cssText = 'color:var(--muted,#8b949e);font-size:.8rem;padding:.5rem;'; em.textContent = 'No advise activity in the last 14 days.'; listWrap.appendChild(em); }
+      shown.forEach(function (e) { listWrap.appendChild(row(e)); });
+      var toggles = document.createElement('div'); toggles.style.cssText = 'display:flex;gap:.5rem;margin-top:.3rem;';
+      if (older.length) { var o = document.createElement('button'); o.type = 'button'; o.style.cssText = 'background:none;border:1px solid var(--border,#30363d);border-radius:4px;color:var(--muted,#8b949e);cursor:pointer;font-size:.72rem;padding:.15rem .5rem;'; o.textContent = (showOlder ? 'Hide older' : 'Show older (' + older.length + ')'); o.addEventListener('click', function () { showOlder = !showOlder; render(); }); toggles.appendChild(o); }
+      if (dismissed.length) { var d = document.createElement('button'); d.type = 'button'; d.style.cssText = 'background:none;border:1px solid var(--border,#30363d);border-radius:4px;color:var(--muted,#8b949e);cursor:pointer;font-size:.72rem;padding:.15rem .5rem;'; d.textContent = (showDismissed ? 'Hide dismissed' : 'Show dismissed (' + dismissed.length + ')'); d.addEventListener('click', function () { showDismissed = !showDismissed; render(); }); toggles.appendChild(d); }
+      listWrap.appendChild(toggles);
+    }
+    function load() {
+      fetch(PUSH_WORKER + '/advisor/onbehalf/' + id.siteKey, { headers: { 'Authorization': 'Bearer ' + _ar_supplementToken } })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { entries = (j && Array.isArray(j.entries)) ? j.entries : []; render(); })
+        .catch(function () { entries = []; render(); });
+    }
+    var close = document.createElement('button'); close.className = 'btn-secondary'; close.style.cssText = 'width:100%;margin-top:.3rem;'; close.textContent = 'Close';
+    close.addEventListener('click', function () { document.body.removeChild(overlay); });
+    m.appendChild(close);
+    overlay.appendChild(m); document.body.appendChild(overlay);
+    load();
+  }
+
   // ── Flag utilities ────────────────────────────────────────────────────────
   var SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -7404,6 +7476,13 @@
         adBtn.textContent = 'Advise a player';
         adBtn.addEventListener('click', function () { openImpersonationPicker(advisorName); });
         right.appendChild(adBtn);
+        var histBtn = document.createElement('button');
+        histBtn.className = 'rh-btn';
+        histBtn.type = 'button';
+        histBtn.title = 'Players you have set up reports for (on behalf)';
+        histBtn.textContent = 'Advise history';
+        histBtn.addEventListener('click', function () { _imp_openHistory(); });
+        right.appendChild(histBtn);
       });
     }
 
