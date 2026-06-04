@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>R12.5 Deployment Review — S2864</title>
+<style>
+:root {
+  --bg:#0d1117; --surf:#161b22; --card:#1c2128; --border:#30363d;
+  --text:#e6edf3; --muted:#8b949e; --accent:#79c0ff;
+  --green:#3fb950; --navy:#388bfd; --red:#f85149; --amber:#d29922;
+}
+* { box-sizing:border-box }
+body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+.wrap { max-width:1280px; margin:0 auto; padding:24px; }
+h1 { margin:0 0 6px; font-size:24px; }
+.sub { color:var(--muted); margin-bottom:24px; font-size:13px; }
+h2 { font-size:18px; margin:32px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+h3 { font-size:15px; margin:20px 0 10px; color:var(--accent); }
+.count { color:var(--muted); font-weight:normal; font-size:13px; }
+
+.kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:24px; }
+.kpi { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:14px 16px; }
+.kpi .lbl { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
+.kpi .val { font-size:22px; font-weight:700; margin-top:4px; }
+.kpi .sub2 { color:var(--muted); font-size:12px; }
+
+.cap-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
+.cap-card { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:12px; }
+.cap-card.capped { border-color:var(--red); }
+.cap-card.near   { border-color:var(--amber); }
+.cap-name { font-weight:700; font-size:14px; }
+.cap-desc { color:var(--muted); font-size:11px; margin:2px 0 8px; height:30px; line-height:1.3; }
+.cap-bar { background:#0d1117; border-radius:6px; height:8px; overflow:hidden; border:1px solid var(--border); }
+.cap-fill { height:100%; background:var(--green); transition:width .3s; }
+.cap-fill.near { background:var(--amber); }
+.cap-fill.capped { background:var(--red); }
+.cap-vals { margin-top:6px; font-size:12px; }
+.cap-status { float:right; font-size:11px; font-weight:700; }
+.cap-status.capped { color:var(--red); }
+.cap-status.near   { color:var(--amber); }
+.cap-status.ok     { color:var(--green); }
+
+table.dep { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+table.dep th, table.dep td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+table.dep th { background:var(--surf); color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.4px; }
+table.dep tr:last-child td { border-bottom:none; }
+table.dep td.num { text-align:right; font-variant-numeric:tabular-nums; }
+table.dep td.seq { font-weight:700; color:var(--accent); }
+table.dep tr.reallocate { background:rgba(248,81,73,.06); }
+table.dep tr.consider   { background:rgba(210,153,34,.07); }
+
+.side { display:inline-block; padding:1px 7px; border-radius:4px; font-size:11px; font-weight:700; }
+.side-atk { background:rgba(248,81,73,.15); color:var(--red); }
+.side-def { background:rgba(56,139,253,.18); color:var(--navy); }
+.chip { display:inline-block; padding:1px 6px; border-radius:4px; font-size:11px; font-weight:600; margin-right:3px; }
+.chip.us   { background:rgba(63,185,80,.18); color:var(--green); }
+.chip.them { background:rgba(248,81,73,.15); color:var(--red); }
+.chip.mine { background:rgba(248,81,73,.25); color:var(--red); border:1px solid var(--red); }
+.nc { display:inline-block; padding:1px 6px; border-radius:4px; font-size:10px; font-weight:700; margin-right:4px; }
+.nc.l3 { background:rgba(248,81,73,.25); color:#ffbac3; }
+.nc.l2 { background:rgba(210,153,34,.22); color:#f0d281; }
+.nc.l1 { background:rgba(56,139,253,.18); color:var(--navy); }
+.flag { display:inline-block; padding:2px 7px; border-radius:4px; font-size:11px; font-weight:700; margin-right:5px; }
+.flag-capped { background:rgba(248,81,73,.22); color:#ffbac3; border:1px solid var(--red); }
+.flag-near   { background:rgba(210,153,34,.18); color:#f0d281; border:1px solid var(--amber); }
+.protect { display:inline-block; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; margin-right:5px; letter-spacing:.3px; }
+.protect-high { background:rgba(63,185,80,.20); color:var(--green); border:1px solid var(--green); }
+.protect-med  { background:rgba(56,139,253,.18); color:var(--navy); border:1px solid var(--navy); }
+.protect-low  { background:rgba(56,139,253,.10); color:var(--navy); border:1px solid rgba(56,139,253,.4); }
+.notes { margin:6px 0 0 0; padding-left:18px; color:var(--muted); font-size:12px; }
+.notes li { margin-bottom:3px; }
+.muted { color:var(--muted); }
+.cat { color:var(--muted); font-size:12px; text-transform:capitalize; }
+.ncs { font-size:11px; color:var(--muted); }
+.rec-pill { font-weight:700; font-size:11px; }
+.rec-reallocate { color:var(--red); }
+.rec-consider   { color:var(--amber); }
+.rec-keep       { color:var(--green); }
+.legend { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:14px 16px; margin-bottom:24px; }
+.legend p { margin:4px 0; font-size:13px; }
+.legend b.reall { color:var(--red); }
+.legend b.cons  { color:var(--amber); }
+.legend b.keep  { color:var(--green); }
+
+.l3-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.l3-card { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:12px; }
+.l3-name { font-weight:700; color:var(--amber); margin-bottom:8px; }
+.l3-tbl { width:100%; font-size:12px; }
+.l3-tbl td { padding:3px 6px; }
+
+footer { margin-top:32px; color:var(--muted); font-size:12px; text-align:center; }
+.empty-note { background:var(--card); border:1px solid var(--border); border-left:4px solid var(--green); border-radius:6px; padding:10px 14px; color:var(--muted); font-size:13px; margin-bottom:8px; }
+</style>
+</head><body>
+<div class="wrap">
+<h1>R12.5 Deployment Review</h1>
+<div class="sub">Round 12 Wasteland Publicity (last cycle) • S2864 • Generated 2026-06-04 01:15 UTC</div>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="lbl">Attack declarations</div><div class="val">60</div><div class="sub2">216 player-slots → ~432 marches</div></div>
+  <div class="kpi"><div class="lbl">Defense declarations</div><div class="val">17</div><div class="sub2">150 player-slots → ~300 marches</div></div>
+  <div class="kpi"><div class="lbl">Owned wastelands</div><div class="val">20</div><div class="sub2">Score 6000 • Rank 38</div></div>
+  <div class="kpi"><div class="lbl">Reallocate pool</div><div class="val" style="color:var(--red)">2 m</div><div class="sub2">0 capped + 1 near-cap (after NC protection)</div></div>
+</div>
+
+<div class="legend">
+  <p><b>What this report does:</b> Cross-references R12.5 deployment counts (from the in-game War Declaration Info panel) against current buff-cap state and which wastelands unlock Level 2 / Level 3 Neutral City declarations next round.</p>
+  <p><b>Player → march conversion:</b> Panel shows player count out of 200, but each player has 2 marches. Marches shown here = panel-num × 2.</p>
+  <p><b>NC declaration cap (this round only):</b> Next wasteland round we can declare on at most <b>1 L1 + 1 L2 + 1 L3</b> NC. Unlocking multiple L3 NCs is redundant for declarations (only useful as insurance).</p>
+  <p><b>Owned NC protection check:</b> Any wasteland that, if lost or not won, opens a 1-2 hop threat path to one of our owned L2/L3 NCs is marked <span class="protect protect-high">PROTECTS Lx NC #N</span> and kept regardless of buff cap. Losing a protector means the enemy can declare on our NC next round.</p>
+  <p><b>Recommendation key:</b> <b class="reall">REALLOCATE</b> — buff is fully capped, no L2/L3 NC unlock, and not a protector. <b class="cons">CONSIDER</b> — buff near cap, low NC value, not a protector. <b class="keep">KEEP</b> — strategic, buff has headroom, or NC protector.</p>
+</div>
+
+<h2>Buff Cap Status (combat + key support)</h2>
+<div class="cap-grid">
+
+    <div class="cap-card ok">
+      <div class="cap-name">ATK</div>
+      <div class="cap-desc">All Units ATK</div>
+      <div class="cap-bar"><div class="cap-fill ok" style="width:15.0%"></div></div>
+      <div class="cap-vals"><b>270%</b> / 1800%  <span class="cap-status ok">~6 to cap</span></div>
+    </div>
+    <div class="cap-card near">
+      <div class="cap-name">HP</div>
+      <div class="cap-desc">All Units HP</div>
+      <div class="cap-bar"><div class="cap-fill near" style="width:90.0%"></div></div>
+      <div class="cap-vals"><b>1620%</b> / 1800%  <span class="cap-status near">~1 to cap</span></div>
+    </div>
+    <div class="cap-card ok">
+      <div class="cap-name">DMG Inc</div>
+      <div class="cap-desc">All Units DMG Increase</div>
+      <div class="cap-bar"><div class="cap-fill ok" style="width:45.0%"></div></div>
+      <div class="cap-vals"><b>135%</b> / 300%  <span class="cap-status ok">~4 to cap</span></div>
+    </div>
+    <div class="cap-card ok">
+      <div class="cap-name">DMG Red</div>
+      <div class="cap-desc">All Units Decreased DMG Taken</div>
+      <div class="cap-bar"><div class="cap-fill ok" style="width:45.0%"></div></div>
+      <div class="cap-vals"><b>135%</b> / 300%  <span class="cap-status ok">~4 to cap</span></div>
+    </div>
+    <div class="cap-card ok">
+      <div class="cap-name">DEF</div>
+      <div class="cap-desc">All Units DEF</div>
+      <div class="cap-bar"><div class="cap-fill ok" style="width:30.0%"></div></div>
+      <div class="cap-vals"><b>30%</b> / 100%  <span class="cap-status ok">~5 to cap</span></div>
+    </div>
+    <div class="cap-card capped">
+      <div class="cap-name">Truck Transport</div>
+      <div class="cap-desc">Extra Wasteland Seal Stones from completing Truck Transport</div>
+      <div class="cap-bar"><div class="cap-fill capped" style="width:100.0%"></div></div>
+      <div class="cap-vals"><b>6</b> / 6  <span class="cap-status capped">CAPPED</span></div>
+    </div>
+    <div class="cap-card near">
+      <div class="cap-name">Truck Heist</div>
+      <div class="cap-desc">Extra Wasteland Seal Stones from intercepting Truck successfully</div>
+      <div class="cap-bar"><div class="cap-fill near" style="width:50.0%"></div></div>
+      <div class="cap-vals"><b>3</b> / 6  <span class="cap-status near">~1 to cap</span></div>
+    </div>
+    <div class="cap-card ok">
+      <div class="cap-name">Daily Tasks</div>
+      <div class="cap-desc">Extra Wasteland Seal Stones from daily tasks</div>
+      <div class="cap-bar"><div class="cap-fill ok" style="width:0.0%"></div></div>
+      <div class="cap-vals"><b>0</b> / 20  <span class="cap-status ok">~3 to cap</span></div>
+    </div>
+    <div class="cap-card ok">
+      <div class="cap-name">Realm</div>
+      <div class="cap-desc">Increased march speed in the Realm</div>
+      <div class="cap-bar"><div class="cap-fill ok" style="width:40.0%"></div></div>
+      <div class="cap-vals"><b>40%</b> / 100%  <span class="cap-status ok">~3 to cap</span></div>
+    </div>
+    <div class="cap-card ok">
+      <div class="cap-name">Realm Thief</div>
+      <div class="cap-desc">Reduced Treasury Pass drop rate when defeated in the Realm</div>
+      <div class="cap-bar"><div class="cap-fill ok" style="width:0.0%"></div></div>
+      <div class="cap-vals"><b>0%</b> / 50%  <span class="cap-status ok">~5 to cap</span></div>
+    </div>
+</div>
+
+<h2>Reallocation Candidates</h2>
+<h3>Reallocate — buff CAPPED, not an NC protector, no L2/L3 unlock</h3>
+<div class="empty-note">After the NC protection check, no committed marches are eligible for reallocation.</div>
+
+<h3>Consider — buff near cap, no L2/L3 NC unlock, not a protector <span class="count">(1)</span></h3>
+<table class="dep">
+<thead><tr><th>W#</th><th>Side</th><th>Spec</th><th>Cat</th><th>Players</th><th>Marches</th><th>Fight</th><th>NC Unlock</th><th>Recommendation</th></tr></thead>
+<tbody>
+<tr class="consider">
+          <td class="seq">W-188</td>
+          <td><span class="side side-atk">ATK</span></td>
+          <td>HP Buff</td>
+          <td class="cat">combat</td>
+          <td class="num">1</td>
+          <td class="num">2</td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S2036</span><span class="chip mine">S4078</span></td>
+          <td> <span class="muted">—</span></td>
+          <td class="rec"><span class="flag flag-near">BUFF NEAR CAP</span><ul class="notes"><li>Buff at 1620%/1800%; only ~0.7 more L3 wins fit. Excess capped.</li></ul></td>
+        </tr></tbody></table>
+
+
+<h2>L3 NC Coverage</h2>
+<h3>L3 NC unlock paths (you only need ONE next round)</h3>
+<div class="l3-grid"><div class="l3-card"><div class="l3-name">Lv. 3 Neutral City #3008</div><table class="l3-tbl"><tr><td>W-376</td><td>DEF Buff</td><td class="num">39p</td><td class="num"><b>78m</b></td><td class="fight"><span class="chip us">S2864</span><span class="chip them">S4058</span><span class="chip mine">S386</span></td></tr><tr><td>W-392</td><td>Mining Hub</td><td class="num">0p</td><td class="num"><b>0m</b></td><td class="fight"><span class="chip us">S2864</span><span class="chip them">S386</span></td></tr></table></div><div class="l3-card"><div class="l3-name">Lv. 3 Neutral City #3003</div><table class="l3-tbl"><tr><td>W-104</td><td>Mining Hub</td><td class="num">35p</td><td class="num"><b>70m</b></td><td class="fight"><span class="chip us">S2864</span><span class="chip mine">S386</span></td></tr><tr><td>W-88</td><td>Realm Thief</td><td class="num">0p</td><td class="num"><b>0m</b></td><td class="fight"><span class="chip us">S2864</span><span class="chip them">S593</span><span class="chip them">S386</span><span class="chip them">S1494</span></td></tr></table></div></div>
+
+<h2>All Deployments With Marches</h2>
+<h3>All committed deployments <span class="count">(29 with marches)</span></h3>
+<table class="dep">
+<thead><tr><th>W#</th><th>Side</th><th>Spec</th><th>Cat</th><th>Players</th><th>Marches</th><th>Fight</th><th>NC Unlocks</th><th>Protects</th><th>Status</th></tr></thead>
+<tbody>
+<tr class="consider">
+          <td class="seq">W-188</td>
+          <td><span class="side side-atk">ATK</span></td>
+          <td>HP Buff</td>
+          <td class="cat">combat</td>
+          <td class="num">1</td>
+          <td class="num"><b>2</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S2036</span><span class="chip mine">S4078</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-consider">CONSIDER</td>
+        </tr><tr class="keep">
+          <td class="seq">W-376</td>
+          <td><span class="side side-atk">ATK</span></td>
+          <td>DEF Buff</td>
+          <td class="cat">combat</td>
+          <td class="num">39</td>
+          <td class="num"><b>78</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S4058</span><span class="chip mine">S386</span></td>
+          <td><span class="nc l3">L3 NC</span> <span class="ncs">Lv. 3 Neutral City #3008</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-104</td>
+          <td><span class="side side-atk">ATK</span></td>
+          <td>Mining Hub</td>
+          <td class="cat">economy</td>
+          <td class="num">35</td>
+          <td class="num"><b>70</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip mine">S386</span></td>
+          <td><span class="nc l3">L3 NC</span> <span class="ncs">Lv. 3 Neutral City #3003</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-374</td>
+          <td><span class="side side-atk">ATK</span></td>
+          <td>DMG Increase</td>
+          <td class="cat">combat</td>
+          <td class="num">34</td>
+          <td class="num"><b>68</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip mine">S386</span></td>
+          <td><span class="nc l2">L2 NC</span> <span class="ncs">Lv. 1 Neutral City #1069</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-224</td>
+          <td><span class="side side-atk">ATK</span></td>
+          <td>Realm Thief</td>
+          <td class="cat">utility</td>
+          <td class="num">30</td>
+          <td class="num"><b>60</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S2036</span><span class="chip them">S4078</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td><span class="protect protect-low" title="Lv. 3 Neutral City #3005 threat tier LOW">PROTECTS L3 NC #3005</span></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-98</td>
+          <td><span class="side side-atk">ATK</span></td>
+          <td>Truck Heist</td>
+          <td class="cat">economy</td>
+          <td class="num">27</td>
+          <td class="num"><b>54</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S2036</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td><span class="protect protect-low" title="Lv. 3 Neutral City #3001 threat tier LOW">PROTECTS L3 NC #3001</span></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-91</td>
+          <td><span class="side side-atk">ATK</span></td>
+          <td>Realm Thief</td>
+          <td class="cat">utility</td>
+          <td class="num">15</td>
+          <td class="num"><b>30</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S2036</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td><span class="protect protect-high" title="Lv. 2 Neutral City #2005 threat tier HIGH">PROTECTS L2 NC #2005</span></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-1</td>
+          <td><span class="side side-atk">ATK</span></td>
+          <td>DMG Reduction</td>
+          <td class="cat">combat</td>
+          <td class="num">10</td>
+          <td class="num"><b>20</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S2242</span><span class="chip mine">S2197</span></td>
+          <td><span class="nc l1">L1 NC</span> <span class="ncs">Lv. 1 Neutral City #1001</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-311</td>
+          <td><span class="side side-atk">ATK</span></td>
+          <td>DMG Reduction</td>
+          <td class="cat">combat</td>
+          <td class="num">10</td>
+          <td class="num"><b>20</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip mine">S593</span><span class="chip them">S126</span></td>
+          <td><span class="nc l1">L1 NC</span> <span class="ncs">Lv. 1 Neutral City #1061</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-209</td>
+          <td><span class="side side-atk">ATK</span></td>
+          <td>DEF Buff</td>
+          <td class="cat">combat</td>
+          <td class="num">5</td>
+          <td class="num"><b>10</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip mine">S4078</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-243</td>
+          <td><span class="side side-atk">ATK</span></td>
+          <td>Realm Thief</td>
+          <td class="cat">utility</td>
+          <td class="num">5</td>
+          <td class="num"><b>10</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S4207</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td><span class="protect protect-low" title="Lv. 3 Neutral City #3005 threat tier LOW">PROTECTS L3 NC #3005</span></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-404</td>
+          <td><span class="side side-atk">ATK</span></td>
+          <td>Truck Transport</td>
+          <td class="cat">economy</td>
+          <td class="num">3</td>
+          <td class="num"><b>6</b></td>
+          <td class="fight"><span class="chip them">S808</span><span class="chip us">S2864</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td><span class="protect protect-high" title="Lv. 3 Neutral City #3007 threat tier HIGH">PROTECTS L3 NC #3007</span></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-244</td>
+          <td><span class="side side-atk">ATK</span></td>
+          <td>DEF Buff</td>
+          <td class="cat">combat</td>
+          <td class="num">1</td>
+          <td class="num"><b>2</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip mine">S4207</span></td>
+          <td><span class="nc l1">L1 NC</span> <span class="ncs">Lv. 1 Neutral City #1047</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-106</td>
+          <td><span class="side side-atk">ATK</span></td>
+          <td>DMG Increase</td>
+          <td class="cat">combat</td>
+          <td class="num">1</td>
+          <td class="num"><b>2</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip mine">S2197</span></td>
+          <td><span class="nc l1">L1 NC</span> <span class="ncs">Lv. 1 Neutral City #1024</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-83</td>
+          <td><span class="side side-def">DEF</span></td>
+          <td>Realm</td>
+          <td class="cat">utility</td>
+          <td class="num">28</td>
+          <td class="num"><b>56</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S2036</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-72</td>
+          <td><span class="side side-def">DEF</span></td>
+          <td>DMG Increase</td>
+          <td class="cat">combat</td>
+          <td class="num">15</td>
+          <td class="num"><b>30</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S2036</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-369</td>
+          <td><span class="side side-def">DEF</span></td>
+          <td>Truck Transport</td>
+          <td class="cat">economy</td>
+          <td class="num">15</td>
+          <td class="num"><b>30</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S805</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-105</td>
+          <td><span class="side side-def">DEF</span></td>
+          <td>ATK Buff</td>
+          <td class="cat">combat</td>
+          <td class="num">10</td>
+          <td class="num"><b>20</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S386</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-331</td>
+          <td><span class="side side-def">DEF</span></td>
+          <td>DEF Buff</td>
+          <td class="cat">combat</td>
+          <td class="num">10</td>
+          <td class="num"><b>20</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S805</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-89</td>
+          <td><span class="side side-def">DEF</span></td>
+          <td>DMG Increase</td>
+          <td class="cat">combat</td>
+          <td class="num">10</td>
+          <td class="num"><b>20</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S593</span><span class="chip them">S386</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-70</td>
+          <td><span class="side side-def">DEF</span></td>
+          <td>HP Buff</td>
+          <td class="cat">combat</td>
+          <td class="num">10</td>
+          <td class="num"><b>20</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S593</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-292</td>
+          <td><span class="side side-def">DEF</span></td>
+          <td>HP Buff</td>
+          <td class="cat">combat</td>
+          <td class="num">10</td>
+          <td class="num"><b>20</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S593</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-312</td>
+          <td><span class="side side-def">DEF</span></td>
+          <td>HP Buff</td>
+          <td class="cat">combat</td>
+          <td class="num">10</td>
+          <td class="num"><b>20</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S593</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-420</td>
+          <td><span class="side side-def">DEF</span></td>
+          <td>DEF Buff</td>
+          <td class="cat">combat</td>
+          <td class="num">9</td>
+          <td class="num"><b>18</b></td>
+          <td class="fight"><span class="chip them">S608</span><span class="chip us">S2864</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-234</td>
+          <td><span class="side side-def">DEF</span></td>
+          <td>DMG Reduction</td>
+          <td class="cat">combat</td>
+          <td class="num">5</td>
+          <td class="num"><b>10</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S466</span><span class="chip them">S2036</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-421</td>
+          <td><span class="side side-def">DEF</span></td>
+          <td>HP Buff</td>
+          <td class="cat">combat</td>
+          <td class="num">5</td>
+          <td class="num"><b>10</b></td>
+          <td class="fight"><span class="chip them">S608</span><span class="chip us">S2864</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-225</td>
+          <td><span class="side side-def">DEF</span></td>
+          <td>Realm</td>
+          <td class="cat">utility</td>
+          <td class="num">5</td>
+          <td class="num"><b>10</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S4207</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-210</td>
+          <td><span class="side side-def">DEF</span></td>
+          <td>Truck Heist</td>
+          <td class="cat">economy</td>
+          <td class="num">5</td>
+          <td class="num"><b>10</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S4078</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr><tr class="keep">
+          <td class="seq">W-65</td>
+          <td><span class="side side-def">DEF</span></td>
+          <td>HP Buff</td>
+          <td class="cat">combat</td>
+          <td class="num">3</td>
+          <td class="num"><b>6</b></td>
+          <td class="fight"><span class="chip us">S2864</span><span class="chip them">S3406</span></td>
+          <td> <span class="ncs">—</span></td>
+          <td></td>
+          <td class="rec-pill rec-keep">OK</td>
+        </tr></tbody></table>
+
+
+<footer>
+Source: in-game CQ25MainPanel → Wasteland → War Declaration Info<br>
+Built by Alfred for Tex • S2864
+</footer>
+</div></body></html>
