@@ -26640,18 +26640,36 @@
       var prefillHasRune = !!(prefill && prefill.rune && prefill.rune.runeName);
       if (prefill && prefill.slot) {
         srcSlotSel.value = String(prefill.slot);
-        srcSlotSel.disabled = true;
+        srcSlotSel.disabled = true; // slot is locked — inherit is same-slot only
+      }
+      // Pre-select the clicked hero as a STARTING POINT, but keep BOTH hero
+      // selects enabled so the advisor can freely flip source/destination.
+      // (Disabling a pinned select traps the advisor when the prefill heroId
+      // doesn't resolve to an option — the "source hero empty" bug.) Always
+      // fall back to a valid option so neither side is left blank.
+      function _ensureHeroSel(sel, val) {
+        if (val != null) sel.value = String(val);
+        if (!sel.value && sel.options.length) sel.value = sel.options[0].value;
       }
       if (prefill && prefillHasRune) {
-        // Clicked slot has a rune → it's the source.
-        srcHeroSel.value = String(prefill.heroId);
-        srcHeroSel.disabled = true;
+        // Clicked slot already holds a rune → default the clicked hero as source.
+        _ensureHeroSel(srcHeroSel, prefill.heroId);
+        // Default the destination to another hero who owns this slot, if any.
+        var defDst = null;
+        var gMapD = ctx.state && ctx.state.gearByHero;
+        if (gMapD) {
+          Object.keys(gMapD).some(function(k) {
+            var hh = parseInt(k, 10);
+            if (!hh || hh === prefill.heroId) return false;
+            if (gMapD[k] && Object.prototype.hasOwnProperty.call(gMapD[k], prefill.slot)) { defDst = hh; return true; }
+            return false;
+          });
+        }
+        _ensureHeroSel(dstHeroSel, defDst);
       } else if (prefill && prefill.heroId) {
-        // Clicked slot is empty → it's the destination. Pick a default
-        // source from any other hero that has a rune in this same slot, so
-        // the modal opens with a valid step instead of an immediate error.
-        dstHeroSel.value = String(prefill.heroId);
-        dstHeroSel.disabled = true;
+        // Clicked slot is empty → default the clicked hero as destination, and
+        // pick a default source from any other hero that has a rune in this slot.
+        _ensureHeroSel(dstHeroSel, prefill.heroId);
         var defaultSrcHero = null;
         var gMap = ctx.state && ctx.state.gearByHero;
         if (gMap) {
@@ -26663,11 +26681,10 @@
             if (r2 && r2.runeName) { defaultSrcHero = hid2; break; }
           }
         }
-        if (defaultSrcHero) srcHeroSel.value = String(defaultSrcHero);
-        // Re-label the "auto-locked" hint so the advisor sees which side is
-        // pinned to the clicked tile.
-        dstSlotLbl.textContent = 'Destination slot (locked to clicked tile)';
-        dstHeroLbl.textContent = 'Destination hero (locked to clicked tile)';
+        _ensureHeroSel(srcHeroSel, defaultSrcHero);
+      } else {
+        _ensureHeroSel(srcHeroSel, null);
+        _ensureHeroSel(dstHeroSel, null);
       }
       refresh();
       refs.srcHeroSel = srcHeroSel; refs.srcSlotSel = srcSlotSel; refs.dstHeroSel = dstHeroSel;
