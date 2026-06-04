@@ -7117,20 +7117,26 @@
 
   // ── Persist + render full report ──────────────────────────────────────────
   function saveAndRenderReport() {
-    var saved = {
-      player: wizardState.player,
-      reportIds: wizardState.reportData.map(function(r) { return r.id; }),
-      marchGroups: loadMarches()
-    };
-    try {
-      var prior = JSON.parse(localStorage.getItem('playerReport') || '{}');
-      if (prior.shortcode) saved.shortcode = prior.shortcode;
-    } catch(e) {}
-    localStorage.setItem('playerReport', JSON.stringify(saved));
+    // On-behalf impersonation: render the target's report from in-memory
+    // wizardState only — NEVER write the advisor's own playerReport /
+    // playerReportData (the isolation guarantee). renderFullReport() reads
+    // from wizardState, so the report still renders fully.
+    if (!_imp()) {
+      var saved = {
+        player: wizardState.player,
+        reportIds: wizardState.reportData.map(function(r) { return r.id; }),
+        marchGroups: loadMarches()
+      };
+      try {
+        var prior = JSON.parse(localStorage.getItem('playerReport') || '{}');
+        if (prior.shortcode) saved.shortcode = prior.shortcode;
+      } catch(e) {}
+      localStorage.setItem('playerReport', JSON.stringify(saved));
 
-    var cache = {};
-    wizardState.reportData.forEach(function(r) { cache[r.id] = r.extracted; });
-    localStorage.setItem('playerReportData', JSON.stringify(cache));
+      var cache = {};
+      wizardState.reportData.forEach(function(r) { cache[r.id] = r.extracted; });
+      localStorage.setItem('playerReportData', JSON.stringify(cache));
+    }
 
     closeWizard();
     renderFullReport();
