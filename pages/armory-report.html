@@ -3569,8 +3569,9 @@
     if (!hasReports) { b1.disabled = true; b1.textContent = 'Load a battle report first, then save the shortcode'; }
     b1.addEventListener('click', function () {
       b1.disabled = true; setStatus('Saving shortcode…');
-      saveConfig(false).then(function (res) {
-        if (res && res.shortcode) { state.shortcode = res.shortcode; resultRow('Shortcode:', res.shortcode); setStatus('Shortcode saved.'); recordHistory(); }
+      // saveConfig resolves to the shortcode STRING (not an object).
+      saveConfig(false).then(function (code) {
+        if (code) { state.shortcode = code; resultRow('Shortcode:', code); setStatus('Shortcode saved.'); recordHistory(); }
         else { setStatus('Shortcode save failed.', true); b1.disabled = false; }
       }).catch(function (e) { setStatus('Shortcode save failed: ' + (e && e.message ? e.message : e), true); b1.disabled = false; });
     });
@@ -3580,10 +3581,13 @@
     var b2 = document.createElement('button'); b2.className = 'btn-secondary'; b2.style.width = '100%';
     b2.textContent = '2. Create advise link';
     b2.addEventListener('click', function () {
+      // The advise link's plan builder loads the player's report via this
+      // shortcode, so it must be a real saved code — never a placeholder.
+      if (!state.shortcode) { setStatus('Save the report shortcode first (step 1).', true); return; }
       b2.disabled = true; setStatus('Creating advise link…');
       fetch(PUSH_WORKER + '/advisor/request', {
         method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, _imp_authHeader()),
-        body: JSON.stringify({ reportShortcode: state.shortcode || 'onbehalf', note: 'Set up on behalf' }),
+        body: JSON.stringify({ reportShortcode: state.shortcode, note: 'Set up on behalf' }),
       }).then(function (r) { return r.json().then(function (j) { return { status: r.status, j: j }; }); })
         .then(function (res) {
           if (res.status === 200 && res.j && res.j.code) {
