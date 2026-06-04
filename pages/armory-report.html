@@ -5478,7 +5478,10 @@
         reportIds: reportIds,
         marchGroups: loadMarches()
       };
-      if (endpoint) body.endpoint = endpoint;
+      // On-behalf: stamp who set it up; do NOT attach the advisor's own push
+      // endpoint (it would fail the worker's identity check against the target).
+      if (_imp()) body.createdByAdvisor = _imp().advisorName;
+      if (endpoint && !_imp()) body.endpoint = endpoint;
 
       return fetch(PUSH_WORKER + '/report-config', {
         method: 'POST',
@@ -5675,6 +5678,7 @@
         // shortcode. Otherwise an in-memory load of someone else's report
         // would silently overwrite the viewer's saved marches.
         if (isSamePlayer && result.marchGroups) saveMarches(result.marchGroups);
+        window._ar_setupBy = (result && result.createdByAdvisor) || null;
         applyShortcodeConfig(result.playerName, ids, isSamePlayer, result.siteKey);
       })
       .catch(function() {
@@ -7458,6 +7462,16 @@
       title.className = 'rh-title notranslate';
       title.textContent = 'Armory Report';
       left.appendChild(title);
+    }
+    // Attribution: when this report's shortcode was set up by an advisor on the
+    // player's behalf, surface a small "Set up by «advisor»" note. Not shown
+    // while the advisor is themselves impersonating.
+    if (!_imp() && window._ar_setupBy) {
+      var setupNote = document.createElement('span');
+      setupNote.className = 'rh-title';
+      setupNote.style.cssText = 'font-size:.68rem;color:var(--muted);opacity:.85;';
+      setupNote.textContent = 'Set up by ' + window._ar_setupBy;
+      left.appendChild(setupNote);
     }
     hdr.appendChild(left);
 
@@ -32579,6 +32593,7 @@
             // own shortcode. Otherwise a view-only load would overwrite the
             // viewer's saved marches in localStorage.
             if (isSamePlayer && result.marchGroups) saveMarches(result.marchGroups);
+            window._ar_setupBy = (result && result.createdByAdvisor) || null;
             applyShortcodeConfig(result.playerName, ids, isSamePlayer, result.siteKey);
           } else {
             normalInit();
