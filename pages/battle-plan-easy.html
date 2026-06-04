@@ -87,6 +87,8 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 .fight.cat-special::before{background:linear-gradient(180deg,var(--yellow),var(--green));}
 .fight:hover{transform:translateX(4px);border-color:var(--accent);}
 .fight.threat{background:linear-gradient(135deg,rgba(248,81,73,.10),var(--card));border-color:rgba(248,81,73,.4);}
+.fight.defense{background:linear-gradient(135deg,rgba(56,139,253,.08),var(--card));border-left:5px solid var(--navy);}
+.fight.defense::before{background:linear-gradient(180deg,var(--navy),var(--accent));}
 .fight.done{opacity:.45;padding:.4rem .85rem;background:var(--surface);}
 .fight.done:hover{opacity:.7;transform:translateX(2px);}
 .fight.done .f-icon-wrap{width:32px;height:32px;border-radius:8px;}
@@ -125,11 +127,13 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
 .f-vs.threat{color:var(--red);font-weight:700;}
 .f-vs.easy{color:var(--green);font-weight:700;}
 .f-vs.contest{color:var(--yellow);font-weight:700;}
+.f-vs.defense{color:var(--navy);font-weight:800;}
 .f-vs svg{flex-shrink:0;}
 
 .f-tag{flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:.2rem;}
 .f-pill{font-size:.6rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:.2rem .5rem;border-radius:999px;white-space:nowrap;}
 .f-pill.threat{background:rgba(248,81,73,.18);color:var(--red);border:1px solid rgba(248,81,73,.4);}
+.f-pill.defense{background:rgba(56,139,253,.18);color:var(--navy);border:1px solid rgba(56,139,253,.45);}
 .f-pill.combat{background:rgba(210,153,34,.16);color:var(--yellow);border:1px solid rgba(210,153,34,.4);}
 .f-pill.nc{background:rgba(63,185,80,.16);color:var(--green);border:1px solid rgba(63,185,80,.4);}
 .f-pill.skip{background:rgba(139,148,158,.12);color:var(--muted);border:1px solid var(--border);}
@@ -356,6 +360,10 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
       setupVia:'opens after we win', setupRedundant:'(multiple paths — safer)',
       pillBully:'Bully!', pillPower:'Power-up', pillCity:'Opens new city', pillSkip:'Skip if busy', pillFiller:'Extra',
       vsEasy:' Easy take', vsBully:function(s){return ' Bully S'+s+' — really strong';}, vsMulti:function(n){return ' '+n+'-way fight';}, vsSingle:function(s){return ' vs S'+s;},
+      vsDefendBully:function(s){return ' DEFEND vs Bully S'+s;},
+      vsDefendSingle:function(s){return ' DEFEND vs S'+s;},
+      vsDefendMulti:function(n){return ' DEFEND vs '+n+' servers';},
+      pillDefend:'Defend',
       checkTitle:'Tap when this wasteland is done', checkAria:function(s){return 'Mark W-'+s+' done';},
       footFights:function(n){return ' · '+n+' fights · ';}, resetBtn:'Clear my checks',
       loading:'Loading battle plan…', errPrefix:'Could not load battle plan: ',
@@ -387,6 +395,10 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
       setupVia:'OPEN AFTER WIN', setupRedundant:'(MANY PATH — SAFE)',
       pillBully:'STRONG', pillPower:'POWER', pillCity:'NEW CITY', pillSkip:'SKIP', pillFiller:'SCRAPS',
       vsEasy:' EASY KILL', vsBully:function(s){return ' STRONG S'+s+'. SMASH HARD.';}, vsMulti:function(n){return ' '+n+'-WAY FIGHT';}, vsSingle:function(s){return ' VS S'+s;},
+      vsDefendBully:function(s){return ' DEFEND VS STRONG S'+s;},
+      vsDefendSingle:function(s){return ' DEFEND VS S'+s;},
+      vsDefendMulti:function(n){return ' DEFEND VS '+n+' SERVERS';},
+      pillDefend:'DEFEND',
       checkTitle:'TAP WHEN DEAD', checkAria:function(s){return 'MARK W-'+s+' DEAD';},
       footFights:function(n){return ' · '+n+' FIGHT · ';}, resetBtn:'CLEAR',
       loading:'LOADING…', errPrefix:'BROKE. ',
@@ -521,6 +533,45 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
       else if(hasNc)tC.push(entry);
       else tD.push(entry);
     });
+
+    // ── Defense fights — wastelands WE own that an enemy is attacking ──
+    // Without this pass, all 17 of our R12.5 defenses (W-72, W-89, W-65,
+    // etc.) were invisible in easy mode. Each defense gets a synthetic opp
+    // entry so vsLine / threat detection still works against the attackers.
+    var defenseTargets = rd.defenseTargets || [];
+    var powerBySid = {};
+    (rd.sectorPower || []).forEach(function(p){ powerBySid[p.sid] = p; });
+    var cardBySid = {};
+    (rd.sectorServerCards || []).forEach(function(c){ cardBySid[c.sid] = c; });
+    defenseTargets.forEach(function(w){
+      var attackers = (w.attackerSids || w.fightSids || []).filter(function(s){ return s !== 2864; });
+      var opps = attackers.map(function(sid){
+        var p = powerBySid[sid] || {};
+        var c = cardBySid[sid] || {};
+        return {
+          opponent: sid, seq: w.seq,
+          opFame: c.fame || 0,
+          opPI: p.powerIndex || 0,
+          sectorRank: p.sectorRank || 0,
+          tier: p.tier || 'C',
+        };
+      });
+      // Take the strongest attacker as the headline opp (matches the warTarget code path)
+      var opp = opps.slice().sort(function(a,b){ return (b.opFame||0) - (a.opFame||0); })[0] || null;
+      var isCombat = !!COMBAT_SPECS[w.specId];
+      var threat = !!(opp && opp.opFame >= FAME_THREAT_THRESHOLD);
+      var entry = {
+        seq: w.seq, level: w.level, specId: w.specId, specName: w.specName,
+        opp: opp, opps: opps,
+        ncs: [], hasNc: false,
+        isCombat: isCombat, threat: threat, droppable: false,
+        isDefense: true,
+        attackerSids: attackers,
+      };
+      if (threat) tA.push(entry);
+      else if (isCombat && w.level === 3) tB.push(entry);
+      else tD.push(entry);
+    });
     // Sort threat tier by opponent PI desc (alliance picks get pinned later via focusOverrides).
     tA.sort(function(a,b){
       return (b.opp?b.opp.opPI||0:0)-(a.opp?a.opp.opPI||0:0)||a.seq-b.seq;
@@ -571,6 +622,18 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
   function vsLine(e){
     var opps=e.opps||[];
     var L=t();
+    // Defense fights — flip the framing so the row reads "DEFEND vs <attackers>"
+    if(e.isDefense){
+      var atks = e.attackerSids || opps.map(function(o){ return o.opponent; });
+      var span = el('span','f-vs defense');
+      span.appendChild(makeIcon('shield',12));
+      var label;
+      if (e.threat && opps[0]) label = L.vsDefendBully(opps[0].opponent);
+      else if (atks.length >= 2) label = L.vsDefendMulti(atks.length);
+      else label = L.vsDefendSingle(atks[0]);
+      span.appendChild(document.createTextNode(label));
+      return span;
+    }
     if(!opps.length){
       var s=el('span','f-vs easy');
       s.appendChild(makeIcon('star',12));
@@ -591,6 +654,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
   }
   function tagPill(e,tier){
     var L=t();
+    if(e.isDefense)return el('span','f-pill defense',L.pillDefend);
     if(e.threat)return el('span','f-pill threat',L.pillBully);
     if(tier==='B')return el('span','f-pill combat',L.pillPower);
     if(tier==='C')return el('span','f-pill nc',L.pillCity);
@@ -601,6 +665,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     _lastNumMap[e.seq]={num:num,tier:tier,entry:e};
     var card=el('div','fight cat-'+(SPEC_CAT[e.specId]||'special')+' tier-'+tier.toLowerCase());
     if(e.threat)card.classList.add('threat');
+    if(e.isDefense)card.classList.add('defense');
     if(e.pinned)card.classList.add('pinned');
     if(e.alliancePriority)card.classList.add('alliance-priority');
     if(e.demoted)card.classList.add('demoted');

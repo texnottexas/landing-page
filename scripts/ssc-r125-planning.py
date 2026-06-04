@@ -405,30 +405,61 @@ def main():
                 if sq and sq in declared_by_seq:
                     rows.append((sq, nc.get('name'), label))
         return rows
-    l3_def_rows = _collect_nc_defense(own_l3, 'L3 NC defense')
-    l2_def_rows = _collect_nc_defense(own_l2, 'L2 NC defense')
+    l3_def_attack_rows = _collect_nc_defense(own_l3, 'L3 NC defense (attack-side)')
+    l2_def_attack_rows = _collect_nc_defense(own_l2, 'L2 NC defense (attack-side)')
+
+    # Defense side: owned wastelands under attack, adjacent to our NCs
+    defense_by_seq = {w['seq']: w for w in r.get('defenseTargets', [])}
+    def _collect_owned_defense_for_nc(ncs):
+        rows = []
+        for nc in ncs:
+            for nb in adj4((nc['r'], nc['c']), nrows, ncols, grid):
+                cell = grid.get(nb)
+                if not cell or cell.get('type') != 3: continue
+                if cell.get('sid') != OWN_SID and cell.get('ownerSid') != OWN_SID:
+                    continue
+                sq = wseq(cell)
+                if sq and sq in defense_by_seq:
+                    rows.append((sq, nc.get('name')))
+        return rows
+    l3_def_owned_rows = _collect_owned_defense_for_nc(own_l3)
+    l2_def_owned_rows = _collect_owned_defense_for_nc(own_l2)
+
     seen_seq = set()
     pin_order = []  # list of (seq, note)
-    # A defense pin only makes the priority list if an enemy is ACTIVELY
-    # contesting it. Uncontested adjacents don't deny any current attack
-    # chain — keep them in the broader Tier B/C/D pool, not the pin list.
-    for sq, nc_name, _ in l3_def_rows:
-        if sq in seen_seq: continue
-        w = declared_by_seq[sq]
-        if not w.get('isContested'): continue
-        seen_seq.add(sq)
-        cont = ' contested vs S' + ','.join(map(str, w['contestedBy']))
-        pin_order.append((sq, f'Defends our {nc_name} — enemy chaining through this wasteland;{cont}.'))
-    for sq, nc_name, _ in l2_def_rows:
-        if sq in seen_seq: continue
-        w = declared_by_seq[sq]
-        if not w.get('isContested'): continue
-        seen_seq.add(sq)
-        cont = ' contested vs S' + ','.join(map(str, w['contestedBy']))
-        pin_order.append((sq, f'Defends our {nc_name} — enemy chaining through this wasteland;{cont}.'))
-    # Combat buffs (sort by spec priority then by seq for stability)
     COMBAT_PRI = {4001: 0, 4006: 1, 4007: 2, 4008: 3, 4010: 4}
     COMBAT_LABEL = {4001: 'ATK', 4006: 'HP', 4007: 'DMG Inc', 4008: 'DMG Red', 4010: 'DEF'}
+
+    # Tex's R12.5 priority order:
+    #   P1 — secure L3 NCs (attack-side defense ring + owned defenses)
+    #   P2 — secure L2 NCs (same)
+    #   P3 — combat buffs (our attacks)
+    #   P4 — combat buffs (owned, under attack)
+    # Defense pins (attack-side) require an actively contested wasteland;
+    # uncontested adjacents stay in the lower tier pool.
+    def push_attack_def(sq, nc_name):
+        if sq in seen_seq: return
+        w = declared_by_seq.get(sq)
+        if not w or not w.get('isContested'): return
+        seen_seq.add(sq)
+        cont = ' contested vs S' + ','.join(map(str, w['contestedBy']))
+        pin_order.append((sq, f'Defends our {nc_name} — enemy chaining through this wasteland;{cont}.'))
+    def push_owned_def(sq, nc_name):
+        if sq in seen_seq: return
+        d = defense_by_seq.get(sq)
+        if not d: return
+        seen_seq.add(sq)
+        atks = ','.join('S' + str(s) for s in (d.get('attackerSids') or d.get('fightSids') or []) if s != 2864)
+        pin_order.append((sq, f'Defends our {nc_name} (we own this wasteland) — under attack from {atks}; hold to stop the chain.'))
+
+    # P1: L3 — attack-side + owned defenses
+    for sq, nc_name, _ in l3_def_attack_rows: push_attack_def(sq, nc_name)
+    for sq, nc_name in l3_def_owned_rows: push_owned_def(sq, nc_name)
+    # P2: L2 — attack-side + owned defenses
+    for sq, nc_name, _ in l2_def_attack_rows: push_attack_def(sq, nc_name)
+    for sq, nc_name in l2_def_owned_rows: push_owned_def(sq, nc_name)
+
+    # P3: combat buffs — our attacks (warTargets)
     combat_remaining = []
     for sq, w in declared_by_seq.items():
         if sq in seen_seq: continue
@@ -439,6 +470,18 @@ def main():
         seen_seq.add(w['seq'])
         cont = (' contested vs S' + ','.join(map(str, w['contestedBy']))) if w.get('isContested') else ''
         pin_order.append((w['seq'], f'Combat buff ({COMBAT_LABEL[w["specId"]]}) — fills the sector cap.{cont}'))
+
+    # P4: combat buffs — owned wastelands under attack
+    combat_defense_remaining = []
+    for sq, d in defense_by_seq.items():
+        if sq in seen_seq: continue
+        if d.get('specId') in COMBAT_PRI:
+            combat_defense_remaining.append(d)
+    combat_defense_remaining.sort(key=lambda d: (COMBAT_PRI[d['specId']], d['seq']))
+    for d in combat_defense_remaining:
+        seen_seq.add(d['seq'])
+        atks = ','.join('S' + str(s) for s in (d.get('attackerSids') or d.get('fightSids') or []) if s != 2864)
+        pin_order.append((d['seq'], f'Combat buff ({COMBAT_LABEL[d["specId"]]}) — defend ours under attack from {atks}.'))
 
     focus_overrides = {
         'alliancePriority': [sq for sq, _ in pin_order],
