@@ -4197,14 +4197,22 @@
   }
 
   async function _ar_supplementUpload(kind, json, siteKey) {
-    try {
-      await _ar_ensureSupplementToken(siteKey);
-    } catch (e) {
-      throw e;
+    var _authHeader;
+    if (_imp() && siteKey === _imp().targetSiteKey) {
+      // On-behalf: authenticate with the short-lived delegated token (scoped to
+      // runepool for the target). Never touch the advisor's own supplement token.
+      _authHeader = 'Bearer ' + _imp().delegatedToken;
+    } else {
+      try {
+        await _ar_ensureSupplementToken(siteKey);
+      } catch (e) {
+        throw e;
+      }
+      _authHeader = 'Bearer ' + _ar_supplementToken;
     }
     var r = await fetch(SUPPLEMENT_WORKER + '/supplement/upload', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
+      headers: { 'Content-Type': 'application/json', 'Authorization': _authHeader },
       body: JSON.stringify({ kind: kind, json: json })
     });
     if (!r.ok) {
@@ -21370,6 +21378,48 @@
     sub.textContent = 'Available runes — your bag plus runes on unequipped gold pieces.';
     toolbar.appendChild(sub);
 
+    // On-behalf (impersonation): the advisor edits the TARGET's rune pool using
+    // the same editor. Save routes through _ar_supplementUpload with the
+    // delegated token. No privacy/advice controls — just the editor.
+    if (!isOwnerVerified && _imp() && siteKey === _imp().targetSiteKey) {
+      var obEdit = document.createElement('button');
+      obEdit.className = 'runepool-edit-btn';
+      obEdit.type = 'button';
+      obEdit.style.marginLeft = 'auto';
+      obEdit.title = "Edit and save " + _imp().targetName + "'s rune pool on their behalf.";
+      obEdit.textContent = 'Edit Pool (on behalf)';
+      obEdit.onclick = function() {
+        obEdit.disabled = true;
+        Promise.all([
+          _ar_loadInvLookups().catch(function() { return null; }),
+          _ar_loadRuneTypes().catch(function() { return null; })
+        ]).then(function(arr) {
+          obEdit.disabled = false;
+          var lookups = arr[0];
+          var catalog = arr[1];
+          var savedNow = ArmoryIdentity.getSupplement('runepool', siteKey);
+          var bagCounts0 = {};
+          var gearCounts0 = {};
+          if (savedNow && savedNow.pool) {
+            for (var nm in savedNow.pool) {
+              bagCounts0[nm] = savedNow.pool[nm][0] || 0;
+              var sg = 0;
+              for (var k0 = 1; k0 <= 6; k0++) sg += (savedNow.pool[nm][k0] || 0);
+              gearCounts0[nm] = sg;
+            }
+          } else {
+            var ext = _ar_extractRunePool(inv, gear, lookups);
+            bagCounts0 = ext.bagCounts;
+            gearCounts0 = ext.gearCounts;
+          }
+          _ar_openRunepoolEditModal(siteKey, bagCounts0, gearCounts0, catalog, function() {
+            renderRunePoolTab(siteKey, _ar_isUnlocked(siteKey));
+          });
+        });
+      };
+      toolbar.appendChild(obEdit);
+    }
+
     if (isOwnerVerified) {
       var editBtn = document.createElement('button');
       editBtn.className = 'runepool-edit-btn';
@@ -23654,7 +23704,7 @@
         v: 1,
         meta: { ts: nowIso },
         pool: pool,
-        source: 'manual'
+        source: _imp() ? 'advisor-onbehalf' : 'manual'
       };
       var serialized = JSON.stringify(payload);
       if (serialized.length > _AR_SUP_MAX_BYTES) {
