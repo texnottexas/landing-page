@@ -26299,14 +26299,32 @@
     actions.appendChild(save);
     modal.appendChild(actions);
 
-    // Sorted hero list — heroes with at least 1 gear piece bubble first.
-    var heroes = ((ctx.merged && ctx.merged.heroes) || []).slice().sort(function(a, b) {
-      var ag = (a.heroEquips || []).length, bg = (b.heroEquips || []).length;
-      if (ag !== bg) return bg - ag;
-      var an = (typeof heroName === 'function') ? heroName(a.id) : ('Hero ' + a.id);
-      var bn = (typeof heroName === 'function') ? heroName(b.id) : ('Hero ' + b.id);
-      return an.localeCompare(bn);
-    });
+    // Sorted hero list for the source/destination dropdowns. MUST be the UNION
+    // of merged.heroes (battle report) AND every hero present in gearByHero
+    // (which also includes gear-supplement heroes) — otherwise a hero shown in
+    // the gear gallery (built from gearByHero) can't be selected as a source or
+    // destination, and clicking that hero's tile silently falls back to another
+    // hero (the "Astrid clickable in gallery but not in the dropdown" bug).
+    var heroes = (function() {
+      var byId = {};
+      ((ctx.merged && ctx.merged.heroes) || []).forEach(function(h) { if (h && h.id != null) byId[h.id] = h; });
+      var g = (ctx.state && ctx.state.gearByHero) || {};
+      Object.keys(g).forEach(function(k) {
+        var hid = parseInt(k, 10);
+        if (!hid || byId[hid]) return;
+        var slots = g[k] || {};
+        var n = 0;
+        for (var s = 1; s <= 6; s++) { if (Object.prototype.hasOwnProperty.call(slots, s)) n++; }
+        byId[hid] = { id: hid, heroEquips: new Array(n) }; // synthetic — heroOpt only reads .length
+      });
+      return Object.keys(byId).map(function(k) { return byId[k]; }).sort(function(a, b) {
+        var ag = (a.heroEquips || []).length, bg = (b.heroEquips || []).length;
+        if (ag !== bg) return bg - ag;
+        var an = (typeof heroName === 'function') ? heroName(a.id) : ('Hero ' + a.id);
+        var bn = (typeof heroName === 'function') ? heroName(b.id) : ('Hero ' + b.id);
+        return an.localeCompare(bn);
+      });
+    })();
     function heroOpt(h) {
       var opt = document.createElement('option');
       opt.value = String(h.id);
