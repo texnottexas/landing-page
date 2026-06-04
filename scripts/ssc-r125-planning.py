@@ -430,13 +430,31 @@ def main():
     COMBAT_PRI = {4001: 0, 4006: 1, 4007: 2, 4008: 3, 4010: 4}
     COMBAT_LABEL = {4001: 'ATK', 4006: 'HP', 4007: 'DMG Inc', 4008: 'DMG Red', 4010: 'DEF'}
 
+    # NC capture priority: wastelands to WIN this round so we can declare on
+    # the corresponding NC next round (1 L1 + 1 L2 + 1 L3 declaration cap).
+    # W-376 chosen for #3008 over W-104/#3003 because W-376 also gives a DEF
+    # combat buff (vs Mining Hub on W-104) and is highly contested but winnable.
+    NC_CAPTURE_TARGETS = [
+        ('Lv. 3 Neutral City #3008', 376, 3),
+        ('Lv. 2 Neutral City #2017', 374, 2),
+    ]
+
     # Tex's R12.5 priority order:
-    #   P1 — secure L3 NCs (attack-side defense ring + owned defenses)
-    #   P2 — secure L2 NCs (same)
+    #   P0 — NC capture (win primary unlocks for next round's L3/L2 declarations)
+    #   P1 — secure owned L3 NCs (attack-side defense ring + owned defenses)
+    #   P2 — secure owned L2 NCs (same)
     #   P3 — combat buffs (our attacks)
     #   P4 — combat buffs (owned, under attack)
     # Defense pins (attack-side) require an actively contested wasteland;
     # uncontested adjacents stay in the lower tier pool.
+    def push_nc_capture(sq, nc_name, level):
+        if sq in seen_seq: return
+        w = declared_by_seq.get(sq)
+        if not w: return
+        seen_seq.add(sq)
+        cont = (' contested vs S' + ','.join(map(str, w['contestedBy']))) if w.get('isContested') else ''
+        pin_order.append((sq, f'Capture path to {nc_name} — primary unlock for our L{level} NC declaration next round.{cont}'))
+
     def push_attack_def(sq, nc_name):
         if sq in seen_seq: return
         w = declared_by_seq.get(sq)
@@ -451,6 +469,10 @@ def main():
         seen_seq.add(sq)
         atks = ','.join('S' + str(s) for s in (d.get('attackerSids') or d.get('fightSids') or []) if s != 2864)
         pin_order.append((sq, f'Defends our {nc_name} (we own this wasteland) — under attack from {atks}; hold to stop the chain.'))
+
+    # P0: NC capture — primary unlocks for next round's NC declarations.
+    for nc_name, sq, level in NC_CAPTURE_TARGETS:
+        push_nc_capture(sq, nc_name, level)
 
     # P1: L3 — attack-side + owned defenses
     for sq, nc_name, _ in l3_def_attack_rows: push_attack_def(sq, nc_name)
