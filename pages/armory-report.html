@@ -3413,6 +3413,113 @@
   var ASSET_BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/';
   var PUSH_WORKER = 'https://push-worker.27tb8s6fct.workers.dev';
 
+  // ── Advisor "on-behalf" impersonation session (in-memory only; never persisted) ──
+  // When active, the advisor acts as `targetSiteKey` using a short-lived delegated
+  // token, and wizardState._viewOnly stays true so NONE of the advisor's own
+  // localStorage (playerReport/playerIdentity) is ever written.
+  window._impersonation = null; // { active, targetSiteKey, targetName, delegatedToken, advisorName, expires }
+  function _imp() { return (window._impersonation && window._impersonation.active) ? window._impersonation : null; }
+  // Authorization header for on-behalf calls: delegated token while impersonating, else the owner token.
+  function _imp_authHeader() {
+    var i = _imp();
+    if (i && i.delegatedToken) return { 'Authorization': 'Bearer ' + i.delegatedToken };
+    return _ar_supplementToken ? { 'Authorization': 'Bearer ' + _ar_supplementToken } : {};
+  }
+  function _imp_actingSiteKey() {
+    var i = _imp();
+    if (i) return i.targetSiteKey;
+    var id = getStoredIdentity();
+    return id ? id.siteKey : null;
+  }
+  // Is the logged-in user an allowlisted advisor? cb(allowed, advisorName).
+  function _imp_checkAllowed(cb) {
+    if (!_ar_supplementToken) { cb(false, ''); return; }
+    fetch(PUSH_WORKER + '/advisor/allowlist/check', { headers: { 'Authorization': 'Bearer ' + _ar_supplementToken } })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { cb(!!(j && j.allowed), (j && j.name) || ''); })
+      .catch(function () { cb(false, ''); });
+  }
+
+  // Roster-search modal → pick a target → start the impersonation session.
+  function openImpersonationPicker(advisorName) {
+    _ar_getRosterMap();
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:flex;align-items:center;justify-content:center;';
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) document.body.removeChild(overlay); });
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:var(--card,#1c2128);border:1px solid var(--border,#30363d);border-radius:8px;padding:1rem;width:min(420px,92vw);max-height:80vh;display:flex;flex-direction:column;gap:.6rem;';
+    var h = document.createElement('h2'); h.style.cssText = 'margin:0;font-size:1rem;color:var(--text,#e6edf3);'; h.textContent = 'Advise a player'; modal.appendChild(h);
+    var sub = document.createElement('div'); sub.style.cssText = 'font-size:.72rem;color:var(--muted,#8b949e);'; sub.textContent = 'Search the roster. You will build their report on their behalf — your own report stays untouched.'; modal.appendChild(sub);
+    var input = document.createElement('input'); input.type = 'text'; input.placeholder = 'Search name…';
+    input.style.cssText = 'padding:.5rem;border:1px solid var(--border,#30363d);border-radius:6px;background:var(--surface,#161b22);color:var(--text,#e6edf3);'; modal.appendChild(input);
+    var list = document.createElement('div'); list.style.cssText = 'overflow:auto;display:flex;flex-direction:column;gap:.25rem;'; modal.appendChild(list);
+    function render() {
+      while (list.firstChild) list.removeChild(list.firstChild);
+      var q = input.value.trim().toLowerCase();
+      if (q.length < 2 || !_ar_rosterByName) return;
+      var seen = 0;
+      Object.keys(_ar_rosterByName).forEach(function (nm) {
+        if (seen >= 30 || nm.indexOf(q) === -1) return;
+        var p = _ar_rosterByName[nm]; if (!p || !p.siteKey) return;
+        var ownId = getStoredIdentity();
+        if (ownId && p.siteKey === ownId.siteKey) return; // can't advise self
+        seen++;
+        var row = document.createElement('button'); row.type = 'button';
+        row.style.cssText = 'text-align:left;padding:.4rem .5rem;border:1px solid var(--border,#30363d);border-radius:6px;background:var(--surface,#161b22);color:var(--text,#e6edf3);cursor:pointer;';
+        row.textContent = p.name;
+        row.addEventListener('click', function () { document.body.removeChild(overlay); _imp_start(p.siteKey, p.name, advisorName); });
+        list.appendChild(row);
+      });
+    }
+    input.addEventListener('input', render);
+    overlay.appendChild(modal); document.body.appendChild(overlay); input.focus();
+  }
+
+  // Call /advisor/delegate, then enter the in-memory session.
+  function _imp_start(targetSiteKey, targetName, advisorName) {
+    if (!_ar_supplementToken) { alert('Your own identity must be verified first.'); return; }
+    fetch(PUSH_WORKER + '/advisor/delegate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
+      body: JSON.stringify({ targetSiteKey: targetSiteKey }),
+    }).then(function (r) { return r.json().then(function (j) { return { status: r.status, j: j }; }); })
+      .then(function (res) {
+        if (res.status !== 200 || !res.j || !res.j.token) {
+          alert('Could not start advise session: ' + ((res.j && res.j.error) || ('HTTP ' + res.status)));
+          return;
+        }
+        var j = res.j;
+        window._impersonation = {
+          active: true, targetSiteKey: j.targetSiteKey, targetName: j.targetName || targetName,
+          delegatedToken: j.token, advisorName: j.advisorName || advisorName, expires: j.expires,
+        };
+        wizardState._viewOnly = true;                 // reuse #107 own-data write-suppression
+        wizardState.player = { name: window._impersonation.targetName, siteKey: j.targetSiteKey };
+        wizardState.reportData = [];
+        _imp_renderBanner();
+        // Open the report-ID input wizard so the advisor can paste the target's report(s).
+        wizardState.step = 'input';
+        document.getElementById('wizard').classList.add('open');
+        renderWizardStep();
+      })
+      .catch(function () { alert('Could not start advise session (network error).'); });
+  }
+
+  function _imp_renderBanner() {
+    var i = _imp(); if (!i) return;
+    var b = document.getElementById('imp-banner');
+    if (!b) { b = document.createElement('div'); b.id = 'imp-banner'; document.body.insertBefore(b, document.body.firstChild); }
+    b.style.cssText = 'position:sticky;top:0;z-index:960;background:#d29922;color:#0d1117;padding:.4rem .8rem;font-size:.8rem;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:.5rem;';
+    while (b.firstChild) b.removeChild(b.firstChild);
+    var msg = document.createElement('span');
+    msg.textContent = 'Acting as ' + i.targetName + ' on behalf — your own report is untouched';
+    b.appendChild(msg);
+    var ex = document.createElement('button'); ex.type = 'button'; ex.textContent = 'Exit';
+    ex.style.cssText = 'background:#0d1117;color:#d29922;border:none;border-radius:4px;padding:.2rem .6rem;cursor:pointer;font-weight:700;';
+    ex.addEventListener('click', function () { window._impersonation = null; location.href = location.pathname; });
+    b.appendChild(ex);
+  }
+
   // ── Flag utilities ────────────────────────────────────────────────────────
   var SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -7146,6 +7253,20 @@
     // ── Right side: lang, feedback, settings, share ──
     var right = document.createElement('div');
     right.className = 'rh-right';
+
+    // ── Advisor "Advise a player" button — shown async if allowlisted ──
+    if (!_imp()) {
+      _imp_checkAllowed(function (allowed, advisorName) {
+        if (!allowed || _imp()) return;
+        var adBtn = document.createElement('button');
+        adBtn.className = 'rh-btn';
+        adBtn.type = 'button';
+        adBtn.title = 'Generate a report on behalf of another player';
+        adBtn.textContent = 'Advise a player';
+        adBtn.addEventListener('click', function () { openImpersonationPicker(advisorName); });
+        right.appendChild(adBtn);
+      });
+    }
 
     // What's New (S2864 beta callout) — for verified S2864 members viewing
     // their own report (not view-only / shortcode-share). Persistent: stays
