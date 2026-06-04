@@ -6311,6 +6311,29 @@
         if (loadBtn) { loadBtn.disabled = false; loadBtn.textContent = 'Load'; }
         return;
       }
+      // Recover the player's avatar from this report when we don't have one
+      // yet — same source as the shortcode-load path (the battle report's own
+      // playerInfo). Impersonation pre-sets player as {name, siteKey} with no
+      // avatar, so without this the dashboard shows the initial fallback.
+      if (!wizardState.player.avatar) {
+        try {
+          var _sides = [data.battle.attacker, data.battle.defender];
+          for (var _si = 0; _si < _sides.length && !wizardState.player.avatar; _si++) {
+            var _pl = (_sides[_si] && _sides[_si].players) || [];
+            for (var _pj = 0; _pj < _pl.length; _pj++) {
+              var _info = JSON.parse(_pl[_pj].playerInfo || '{}');
+              if (_info.username === wizardState.player.name) {
+                var _av = getAvatar(_info);
+                if (_av) {
+                  wizardState.player.avatar = _av;
+                  wizardState.player.avatarFallback = (_info.username || '?').charAt(0).toUpperCase();
+                }
+                break;
+              }
+            }
+          }
+        } catch (e) {}
+      }
       wizardState.reportData.push({ id: id, extracted: extracted });
       wizardState.step = 'summary';
       renderWizardStep();
