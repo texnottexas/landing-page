@@ -3514,10 +3514,105 @@
     var msg = document.createElement('span');
     msg.textContent = 'Acting as ' + i.targetName + ' on behalf — your own report is untouched';
     b.appendChild(msg);
+    var btns = document.createElement('span');
+    btns.style.cssText = 'display:flex;gap:.4rem;align-items:center;flex-shrink:0;';
+    var hand = document.createElement('button'); hand.type = 'button'; hand.textContent = 'Handoff';
+    hand.title = 'Generate the report shortcode + advise link for ' + i.targetName;
+    hand.style.cssText = 'background:#0d1117;color:#d29922;border:none;border-radius:4px;padding:.2rem .6rem;cursor:pointer;font-weight:700;';
+    hand.addEventListener('click', function () { _imp_openHandoff(); });
+    btns.appendChild(hand);
     var ex = document.createElement('button'); ex.type = 'button'; ex.textContent = 'Exit';
     ex.style.cssText = 'background:#0d1117;color:#d29922;border:none;border-radius:4px;padding:.2rem .6rem;cursor:pointer;font-weight:700;';
     ex.addEventListener('click', function () { window._impersonation = null; location.href = location.pathname; });
-    b.appendChild(ex);
+    btns.appendChild(ex);
+    b.appendChild(btns);
+  }
+
+  // On-behalf handoff: mint the target's report shortcode, create an advise
+  // link (delegated), optionally notify, and record to the advisor's history.
+  function _imp_openHandoff() {
+    var i = _imp(); if (!i) return;
+    var state = { shortcode: '', adviseCode: '' };
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1001;display:flex;align-items:center;justify-content:center;';
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) document.body.removeChild(overlay); });
+    var m = document.createElement('div');
+    m.style.cssText = 'background:var(--card,#1c2128);border:1px solid var(--border,#30363d);border-radius:8px;padding:1rem;width:min(480px,94vw);display:flex;flex-direction:column;gap:.6rem;max-height:85vh;overflow:auto;';
+    var h = document.createElement('h2'); h.style.cssText = 'margin:0;font-size:1rem;color:var(--text,#e6edf3);'; h.textContent = 'Hand off to ' + i.targetName; m.appendChild(h);
+    var note = document.createElement('div'); note.style.cssText = 'font-size:.72rem;color:var(--muted,#8b949e);'; note.textContent = 'Everything here is saved under ' + i.targetName + "'s account. They log in, verify their UID, and load their shortcode to receive it."; m.appendChild(note);
+    var status = document.createElement('div'); status.style.cssText = 'font-size:.75rem;color:var(--muted,#8b949e);min-height:1em;';
+    function setStatus(t, err) { status.textContent = t; status.style.color = err ? 'var(--red,#f85149)' : 'var(--muted,#8b949e)'; }
+
+    function resultRow(label, value, hrefBuild) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:.4rem;font-size:.8rem;background:var(--surface,#161b22);border:1px solid var(--border,#30363d);border-radius:6px;padding:.4rem .5rem;';
+      var lab = document.createElement('span'); lab.style.cssText = 'color:var(--muted,#8b949e);'; lab.textContent = label; row.appendChild(lab);
+      var val = document.createElement('span'); val.style.cssText = 'color:var(--accent,#79c0ff);font-weight:600;word-break:break-all;'; val.textContent = value; row.appendChild(val);
+      var copy = document.createElement('button'); copy.type = 'button'; copy.textContent = 'Copy';
+      copy.style.cssText = 'margin-left:auto;background:var(--surface,#161b22);border:1px solid var(--border,#30363d);border-radius:4px;color:var(--text,#e6edf3);padding:.15rem .5rem;cursor:pointer;font-size:.72rem;';
+      copy.addEventListener('click', function () { try { navigator.clipboard.writeText(hrefBuild ? hrefBuild(value) : value); copy.textContent = 'Copied'; setTimeout(function(){ copy.textContent='Copy'; }, 1200); } catch (e) {} });
+      row.appendChild(copy);
+      m.appendChild(row);
+    }
+    function recordHistory() {
+      if (!_ar_supplementToken) return;
+      fetch(PUSH_WORKER + '/advisor/onbehalf/record', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
+        body: JSON.stringify({ targetSiteKey: i.targetSiteKey, targetName: i.targetName, adviseCode: state.adviseCode, shortcode: state.shortcode }),
+      }).catch(function () {});
+    }
+
+    // 1. Save report shortcode (uses target siteKey via saveConfig _imp() branch)
+    var b1 = document.createElement('button'); b1.className = 'btn-primary'; b1.style.width = '100%';
+    b1.textContent = '1. Save ' + i.targetName + "'s report shortcode";
+    var hasReports = wizardState.reportData && wizardState.reportData.length > 0;
+    if (!hasReports) { b1.disabled = true; b1.textContent = 'Load a battle report first, then save the shortcode'; }
+    b1.addEventListener('click', function () {
+      b1.disabled = true; setStatus('Saving shortcode…');
+      saveConfig(false).then(function (res) {
+        if (res && res.shortcode) { state.shortcode = res.shortcode; resultRow('Shortcode:', res.shortcode); setStatus('Shortcode saved.'); recordHistory(); }
+        else { setStatus('Shortcode save failed.', true); b1.disabled = false; }
+      }).catch(function (e) { setStatus('Shortcode save failed: ' + (e && e.message ? e.message : e), true); b1.disabled = false; });
+    });
+    m.appendChild(b1);
+
+    // 2. Create advise link (delegated /advisor/request)
+    var b2 = document.createElement('button'); b2.className = 'btn-secondary'; b2.style.width = '100%';
+    b2.textContent = '2. Create advise link';
+    b2.addEventListener('click', function () {
+      b2.disabled = true; setStatus('Creating advise link…');
+      fetch(PUSH_WORKER + '/advisor/request', {
+        method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, _imp_authHeader()),
+        body: JSON.stringify({ reportShortcode: state.shortcode || 'onbehalf', note: 'Set up on behalf' }),
+      }).then(function (r) { return r.json().then(function (j) { return { status: r.status, j: j }; }); })
+        .then(function (res) {
+          if (res.status === 200 && res.j && res.j.code) {
+            state.adviseCode = res.j.code;
+            resultRow('Advise link:', res.j.url || ('https://2864tw.com/armory-report.html?advise=' + res.j.code));
+            setStatus('Advise link created. Open it yourself to build the plan steps, then share it with ' + i.targetName + '.');
+            recordHistory();
+          } else { setStatus('Advise link failed: ' + ((res.j && res.j.error) || ('HTTP ' + res.status)), true); b2.disabled = false; }
+        }).catch(function (e) { setStatus('Advise link failed (network).', true); b2.disabled = false; });
+    });
+    m.appendChild(b2);
+
+    // 3. Notify the target (delegated /advisor/notify)
+    var b3 = document.createElement('button'); b3.className = 'btn-secondary'; b3.style.width = '100%';
+    b3.textContent = '3. Notify ' + i.targetName + ' (if subscribed)';
+    b3.addEventListener('click', function () {
+      b3.disabled = true; setStatus('Sending notification…');
+      fetch(PUSH_WORKER + '/advisor/notify', { method: 'POST', headers: _imp_authHeader() })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { setStatus(j && j.ok ? ('Notification sent (' + (j.sent || 0) + ' device' + ((j.sent === 1) ? '' : 's') + ').') : 'Notify failed.', !(j && j.ok)); })
+        .catch(function () { setStatus('Notify failed (network).', true); b3.disabled = false; });
+    });
+    m.appendChild(b3);
+
+    m.appendChild(status);
+    var close = document.createElement('button'); close.className = 'btn-secondary'; close.style.width = '100%'; close.textContent = 'Done';
+    close.addEventListener('click', function () { document.body.removeChild(overlay); });
+    m.appendChild(close);
+    overlay.appendChild(m); document.body.appendChild(overlay);
   }
 
   // ── Flag utilities ────────────────────────────────────────────────────────
@@ -5286,7 +5381,10 @@
   function saveConfig(showToast) {
     var identity = getStoredIdentity();
     var deviceId = getDeviceId();
-    var siteKey = (identity && identity.siteKey) ? identity.siteKey : ('guest_' + deviceId);
+    // On-behalf: mint the shortcode under the TARGET's siteKey (so the player
+    // can load it later) — not the advisor's own.
+    var siteKey = _imp() ? _imp().targetSiteKey
+                : ((identity && identity.siteKey) ? identity.siteKey : ('guest_' + deviceId));
     var playerName = (wizardState.player && wizardState.player.name) || (identity && identity.name) || 'Guest';
     var reportIds = wizardState.reportData.map(function(r) { return r.id; }).join(',');
 
@@ -5317,12 +5415,16 @@
       }).then(function(r) { return r.json(); });
     }).then(function(result) {
       if (result && result.ok) {
-        // Cache shortcode in localStorage
-        try {
-          var saved = JSON.parse(localStorage.getItem('playerReport') || '{}');
-          saved.shortcode = result.shortcode;
-          localStorage.setItem('playerReport', JSON.stringify(saved));
-        } catch(e) {}
+        // Cache shortcode in localStorage — but NEVER while impersonating
+        // (that would write the advisor's own playerReport). On-behalf, the
+        // shortcode is surfaced in the handoff card instead.
+        if (!_imp()) {
+          try {
+            var saved = JSON.parse(localStorage.getItem('playerReport') || '{}');
+            saved.shortcode = result.shortcode;
+            localStorage.setItem('playerReport', JSON.stringify(saved));
+          } catch(e) {}
+        }
         // Update displayed shortcode in header if exists
         var codeDisplay = document.getElementById('header-shortcode');
         if (codeDisplay) codeDisplay.textContent = result.shortcode;
