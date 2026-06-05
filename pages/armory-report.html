@@ -3521,6 +3521,11 @@
     hand.style.cssText = 'background:#0d1117;color:#d29922;border:none;border-radius:4px;padding:.2rem .6rem;cursor:pointer;font-weight:700;';
     hand.addEventListener('click', function () { _imp_openHandoff(); });
     btns.appendChild(hand);
+    var histB = document.createElement('button'); histB.type = 'button'; histB.textContent = 'History';
+    histB.title = 'Players you have set up reports for (on behalf) — reopen any of them';
+    histB.style.cssText = 'background:#0d1117;color:#d29922;border:none;border-radius:4px;padding:.2rem .6rem;cursor:pointer;font-weight:700;';
+    histB.addEventListener('click', function () { _imp_openHistory(); });
+    btns.appendChild(histB);
     var ex = document.createElement('button'); ex.type = 'button'; ex.textContent = 'Exit';
     ex.style.cssText = 'background:#0d1117;color:#d29922;border:none;border-radius:4px;padding:.2rem .6rem;cursor:pointer;font-weight:700;';
     ex.addEventListener('click', function () { window._impersonation = null; location.href = location.pathname; });
@@ -3633,10 +3638,12 @@
     var h = document.createElement('h2'); h.style.cssText = 'margin:0;font-size:1rem;color:var(--text,#e6edf3);'; h.textContent = 'Advise history'; m.appendChild(h);
     var listWrap = document.createElement('div'); listWrap.style.cssText = 'display:flex;flex-direction:column;gap:.4rem;'; m.appendChild(listWrap);
     var entries = [];
-    function hide(code, hidden) {
+    function hide(e, hidden) {
+      // Send BOTH adviseCode and ts so entries without an advise code (pool-only
+      // auto-records) can still be dismissed — the worker matches on either.
       fetch(PUSH_WORKER + '/advisor/onbehalf/hide', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
-        body: JSON.stringify({ adviseCode: code, hidden: hidden }),
+        body: JSON.stringify({ adviseCode: e.adviseCode || '', ts: e.ts, hidden: hidden }),
       }).then(function () { load(); }).catch(function () {});
     }
     function row(e) {
@@ -3645,10 +3652,18 @@
       var top = document.createElement('div'); top.style.cssText = 'display:flex;align-items:center;gap:.4rem;';
       var nm = document.createElement('span'); nm.style.cssText = 'font-weight:600;color:var(--text,#e6edf3);font-size:.85rem;'; nm.textContent = e.targetName || '(unknown)'; top.appendChild(nm);
       var dt = document.createElement('span'); dt.style.cssText = 'font-size:.68rem;color:var(--muted,#8b949e);'; dt.textContent = e.ts ? new Date(e.ts).toLocaleDateString() : ''; top.appendChild(dt);
+      var res = null;
+      if (!e.hidden) {
+        res = document.createElement('button'); res.type = 'button'; res.textContent = 'Resume';
+        res.title = 'Reopen ' + (e.targetName || 'this player') + "'s report on their behalf";
+        res.style.cssText = 'margin-left:auto;background:var(--accent,#79c0ff);color:#0d1117;border:none;border-radius:4px;cursor:pointer;font-size:.72rem;font-weight:700;padding:.12rem .55rem;';
+        res.addEventListener('click', function () { try { document.body.removeChild(overlay); } catch (x) {} _imp_resume(e); });
+        top.appendChild(res);
+      }
       var act = document.createElement('button'); act.type = 'button'; act.textContent = e.hidden ? 'Restore' : '✕';
       act.title = e.hidden ? 'Restore to the list' : 'Dismiss from the list';
-      act.style.cssText = 'margin-left:auto;background:none;border:1px solid var(--border,#30363d);border-radius:4px;color:var(--muted,#8b949e);cursor:pointer;font-size:.72rem;padding:.1rem .45rem;';
-      act.addEventListener('click', function () { hide(e.adviseCode || ('ts' + e.ts), !e.hidden); });
+      act.style.cssText = (res ? 'margin-left:.35rem;' : 'margin-left:auto;') + 'background:none;border:1px solid var(--border,#30363d);border-radius:4px;color:var(--muted,#8b949e);cursor:pointer;font-size:.72rem;padding:.1rem .45rem;';
+      act.addEventListener('click', function () { hide(e, !e.hidden); });
       top.appendChild(act);
       r.appendChild(top);
       function copyRow(label, value) {
@@ -3689,6 +3704,84 @@
     m.appendChild(close);
     overlay.appendChild(m); document.body.appendChild(overlay);
     load();
+  }
+
+  // Auto-record the current on-behalf target to the advisor's history. Called
+  // after an on-behalf rune-pool save so the advisor's work is tracked even
+  // before they run Handoff. When a battle report is loaded, also persist the
+  // target's report-config (same shortcode each time per device+siteKey) so a
+  // later Resume can rebuild the report without re-entering report IDs.
+  function _imp_autoRecord() {
+    var i = _imp(); if (!i || !_ar_supplementToken) return;
+    function postRecord(shortcode) {
+      fetch(PUSH_WORKER + '/advisor/onbehalf/record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
+        body: JSON.stringify({ targetSiteKey: i.targetSiteKey, targetName: i.targetName, shortcode: shortcode || '' }),
+      }).catch(function () {});
+    }
+    var hasReports = wizardState.reportData && wizardState.reportData.length > 0;
+    if (hasReports) {
+      // saveConfig resolves to the shortcode string (target siteKey + no advisor endpoint when _imp()).
+      saveConfig(false).then(function (code) { postRecord(typeof code === 'string' ? code : ''); })
+        .catch(function () { postRecord(''); });
+    } else {
+      postRecord('');
+    }
+  }
+
+  // Resume an on-behalf session from a history entry: re-mint a delegated token
+  // for that target, then rebuild their report from the saved shortcode (no
+  // report-ID re-entry). Falls back to the report-ID input wizard when the
+  // entry has no shortcode yet (pool-only auto-record before any report load).
+  function _imp_resume(entry) {
+    if (!entry || !entry.targetSiteKey) return;
+    if (!_ar_supplementToken) { alert('Verify your own identity first.'); return; }
+    fetch(PUSH_WORKER + '/advisor/delegate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
+      body: JSON.stringify({ targetSiteKey: entry.targetSiteKey }),
+    }).then(function (r) { return r.json().then(function (j) { return { status: r.status, j: j }; }); })
+      .then(function (res) {
+        if (res.status !== 200 || !res.j || !res.j.token) {
+          alert('Could not resume advise session: ' + ((res.j && res.j.error) || ('HTTP ' + res.status)));
+          return;
+        }
+        var j = res.j;
+        window._impersonation = {
+          active: true, targetSiteKey: j.targetSiteKey, targetName: j.targetName || entry.targetName,
+          delegatedToken: j.token, advisorName: j.advisorName || '', expires: j.expires,
+        };
+        wizardState._viewOnly = true;
+        wizardState.player = { name: window._impersonation.targetName, siteKey: j.targetSiteKey };
+        _imp_renderBanner();
+        if (entry.shortcode) {
+          fetch(PUSH_WORKER + '/report-config?code=' + encodeURIComponent(String(entry.shortcode)).toUpperCase())
+            .then(function (r) { return r.json(); })
+            .then(function (cfg) {
+              if (cfg && cfg.ok && cfg.reportIds) {
+                window._ar_setupBy = cfg.createdByAdvisor || null;
+                applyShortcodeConfig(cfg.playerName || window._impersonation.targetName,
+                  cfg.reportIds.split(',').filter(Boolean), false, j.targetSiteKey);
+              } else {
+                _imp_openInputWizard();
+              }
+            })
+            .catch(function () { _imp_openInputWizard(); });
+        } else {
+          _imp_openInputWizard();
+        }
+      })
+      .catch(function () { alert('Could not resume advise session (network error).'); });
+  }
+
+  // Open the report-ID input wizard for the active on-behalf session.
+  function _imp_openInputWizard() {
+    wizardState.reportData = [];
+    wizardState.step = 'input';
+    var wz = document.getElementById('wizard');
+    if (wz) wz.classList.add('open');
+    renderWizardStep();
   }
 
   // ── Flag utilities ────────────────────────────────────────────────────────
@@ -23932,6 +24025,9 @@
         save.disabled = false; cancel.disabled = false;
         return;
       }
+      // On-behalf: track this target in the advisor's history right away (and
+      // persist the report-config so Resume works) — no need to wait for Handoff.
+      if (_imp()) { try { _imp_autoRecord(); } catch (e) {} }
       document.body.removeChild(bg);
       if (typeof onSaved === 'function') onSaved();
     };
