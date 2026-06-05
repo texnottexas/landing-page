@@ -3597,8 +3597,9 @@
         .then(function (res) {
           if (res.status === 200 && res.j && res.j.code) {
             state.adviseCode = res.j.code;
-            resultRow('Advise link:', res.j.url || ('https://2864tw.com/armory-report.html?advise=' + res.j.code));
-            setStatus('Advise link created. Open it yourself to build the plan steps, then share it with ' + i.targetName + '.');
+            resultRow('Advise link (you build here):', res.j.url || ('https://2864tw.com/armory-report.html?advise=' + res.j.code));
+            resultRow('Player view (send to ' + i.targetName + '):', 'https://2864tw.com/armory-report.html?code=' + state.shortcode + '&plan=' + res.j.code);
+            setStatus('Open the advise link yourself to build the plan steps. Then send the Player view link to ' + i.targetName + ' — it opens their report straight to the plan, no login or typing needed.');
             recordHistory();
           } else { setStatus('Advise link failed: ' + ((res.j && res.j.error) || ('HTTP ' + res.status)), true); b2.disabled = false; }
         }).catch(function (e) { setStatus('Advise link failed (network).', true); b2.disabled = false; });
@@ -3675,6 +3676,7 @@
         cp.addEventListener('click', function () { try { navigator.clipboard.writeText(value); cp.textContent = 'Copied'; setTimeout(function(){ cp.textContent='Copy'; }, 1200); } catch (x) {} });
         cr.appendChild(cp); r.appendChild(cr);
       }
+      if (e.shortcode && e.adviseCode) copyRow('Player view:', 'https://2864tw.com/armory-report.html?code=' + e.shortcode + '&plan=' + e.adviseCode);
       if (e.adviseCode) copyRow('Advise link:', 'https://2864tw.com/armory-report.html?advise=' + e.adviseCode);
       if (e.shortcode) copyRow('Shortcode:', e.shortcode);
       return r;
@@ -9026,6 +9028,13 @@
     // declarations moved above the tab list.
     var ownIdentityForTabs = getStoredIdentity();
     var isOwnReport = _ar_isOwnReport(siteKey);
+    // Player-view deep link (?plan=<code>): an advisor hands this to the player
+    // so their report opens straight onto the Advisor Plans tab. Surface that
+    // tab even on a view-only (no-identity) load — the plan/index reads are
+    // public, and the tab renders read-only for anyone who isn't the verified
+    // owner (see renderMyAdvisorPlansTab / _ar_renderPlanStepList).
+    var hasPlanDeepLink = false;
+    try { hasPlanDeepLink = /^[a-z0-9]{6}$/.test((new URLSearchParams(location.search).get('plan') || '').toLowerCase()); } catch (e) {}
     var tabDefs = [
       { id: 'overview', label: 'Overview' },
       { id: 'heroes', label: 'Heroes & Gear' },
@@ -9038,11 +9047,11 @@
     if (inS2864) {
       tabDefs.push({ id: 'inventory', label: 'Inventory' });
       tabDefs.push({ id: 'runepool', label: 'Rune Pool' });
-      // Player-side accept/skip viewer (Phase 4) — only on the player's own
-      // report. Advisor index fetch happens during hydrate; tab stays empty
-      // until the player creates a request, but is always visible to keep
-      // the feature discoverable.
-      if (isOwnReport && !window._adviseCode) {
+      // Player-side accept/skip viewer (Phase 4) — on the player's own report,
+      // OR when an advisor handed them a ?plan= player-view link. Advisor index
+      // fetch happens during hydrate; tab stays empty until a request exists,
+      // but is always visible to keep the feature discoverable.
+      if ((isOwnReport || hasPlanDeepLink) && !window._adviseCode) {
         tabDefs.push({ id: 'myadvisorplans', label: 'Advisor Plans' });
       }
     }
@@ -9149,7 +9158,8 @@
       });
       // Phase 4: fetch advisor index in parallel so the Advisor Plans tab
       // badges with the count of planned (unapplied) plans + an indicator dot.
-      if (_ar_isOwnReport(wizardState.player.siteKey) && !window._adviseCode) {
+      // Also fetch for a ?plan= player-view link so a link-only viewer sees it.
+      if ((_ar_isOwnReport(wizardState.player.siteKey) || hasPlanDeepLink) && !window._adviseCode) {
         _ar_refreshAdvisorIndex(wizardState.player.siteKey);
       }
     }
@@ -27073,6 +27083,12 @@
     if (!container) return;
     container.replaceChildren();
 
+    // Read-only viewer = anyone who isn't the verified owner (e.g. a player who
+    // opened an advisor's ?plan= link without verifying their UID). They can SEE
+    // and follow the plan; accept / apply / delete (which need the owner token)
+    // are hidden. The owner keeps the full interactive view.
+    var _roViewer = !(_ar_isOwnReport(siteKey) && _ar_isUnlocked(siteKey));
+
     var header = document.createElement('div');
     header.className = 'adv-plan-section';
     var title = document.createElement('div');
@@ -27081,7 +27097,9 @@
     header.appendChild(title);
     var blurb = document.createElement('div');
     blurb.style.cssText = 'font-size:.78rem;color:var(--muted);line-height:1.5;';
-    blurb.textContent = 'Plans your advisors have saved for you. Expand a plan to walk through the steps in-game, mark each as accepted or skipped, then Apply Accepted Steps to update your rune pool.';
+    blurb.textContent = _roViewer
+      ? 'This is the rune plan your advisor built for you. Expand it to see every step, then make the changes in-game. To tick steps off and roll them into your saved rune pool here, open this on your own device after verifying your in-game UID.'
+      : 'Plans your advisors have saved for you. Expand a plan to walk through the steps in-game, mark each as accepted or skipped, then Apply Accepted Steps to update your rune pool.';
     header.appendChild(blurb);
     container.appendChild(header);
 
@@ -27213,7 +27231,7 @@
             delBtn.textContent = prevTxt;
           }
         });
-        hdr.appendChild(delBtn);
+        if (!_roViewer) hdr.appendChild(delBtn);
         card.appendChild(hdr);
 
         if (entry.note) {
@@ -27338,6 +27356,9 @@
 
   function _ar_renderPlanStepList(host, entry, plan, siteKey, merged, catalog, lookups) {
     var alreadyApplied = entry.status === 'applied';
+    // Read-only when the viewer isn't the verified owner (e.g. a ?plan= link
+    // viewer): show the steps to follow in-game, but no Accept/Apply controls.
+    var _roViewer = !(_ar_isOwnReport(siteKey) && _ar_isUnlocked(siteKey));
     // Per-step accept state. Default all checked unless plan was already applied.
     // Steps that no longer validate against the player's current state (rune
     // already merged, fodder spent elsewhere, slot now empty, etc.) start
@@ -27666,23 +27687,38 @@
         stalePill.title = validation.errors.join('. ') || 'No longer valid against current pool/gear.';
         li.appendChild(stalePill);
       }
-      var lbl = document.createElement('label');
-      lbl.className = 'as-accept-toggle';
-      var cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = accepted[i];
-      cb.disabled = alreadyApplied;
-      cb.onchange = function() {
-        accepted[i] = cb.checked;
-        updateApplySummary();
-      };
-      lbl.appendChild(cb);
-      var lblText = document.createTextNode(' Accept');
-      lbl.appendChild(lblText);
-      li.appendChild(lbl);
+      if (!_roViewer) {
+        var lbl = document.createElement('label');
+        lbl.className = 'as-accept-toggle';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = accepted[i];
+        cb.disabled = alreadyApplied;
+        cb.onchange = function() {
+          accepted[i] = cb.checked;
+          updateApplySummary();
+        };
+        lbl.appendChild(cb);
+        var lblText = document.createTextNode(' Accept');
+        lbl.appendChild(lblText);
+        li.appendChild(lbl);
+      }
       list.appendChild(li);
     });
     host.appendChild(list);
+
+    // Read-only (link) viewer: no accept/apply controls — just a note to follow
+    // the steps in-game. Everything below (summary + apply row) is owner-only.
+    if (_roViewer) {
+      var roNote = document.createElement('div');
+      roNote.className = 'adv-apply-summary';
+      roNote.style.cssText = 'font-size:.74rem;color:var(--muted);line-height:1.5;margin-top:.4rem;';
+      roNote.textContent = alreadyApplied
+        ? 'Your advisor already applied this plan to your rune pool.'
+        : 'Follow these steps in your game, in order. Nothing here changes your account — this is just the plan to follow.';
+      host.appendChild(roNote);
+      return;
+    }
 
     var summary = document.createElement('div');
     summary.className = 'adv-apply-summary';
