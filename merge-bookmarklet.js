@@ -9,8 +9,9 @@
 //                              then AWARD_DONATE_ITEM_TREASURE_MAP (1684) {id}
 //   type 2  Treasure Guard   → TreasureMapChooseBoss (1686) {id,quality}
 //                              quality 2 = Rare, 0 = Common (or Skip = leave it)
-//   type 3  Treasure Wheel   → LOTTERY_TURN_TABLE_TREASURE_MAP (1685) {id}
-//   type 4  Treasure Store   → nothing to collect (shop), skipped
+//   type 3  Treasure Store   → nothing to collect (shop), skipped
+//   type 4  Treasure Wheel   → LOTTERY_TURN_TABLE_TREASURE_MAP (1685) {id}
+//                              one call = the FREE spin (never the paid/gem spins)
 //
 // These are the EXACT request IDs + payloads the in-game buttons fire (captured
 // live), called through NET.send — NOT hand-crafted binary packets. Boss summon
@@ -30,8 +31,8 @@
   // Acceptable Repair-Equipment contribute items, tried in order until one works.
   var DONATE_ITEMS = [300001, 301001, 302001, 303001, 310001, 311001, 312001, 313001, 320001, 321001, 322001, 323001];
   var DONATE_NUM = 100;
-  // type → scenario
-  var TYPE = { 1: 'donate', 2: 'boss', 3: 'wheel', 4: 'store' };
+  // type → scenario (verified live: 1=donate, 2=boss, 3=store, 4=wheel)
+  var TYPE = { 1: 'donate', 2: 'boss', 3: 'store', 4: 'wheel' };
 
   // ─── tuning ───────────────────────────────────────────────────────────
   var T = { subCall: [120, 100], betweenMerge: [300, 200] };
