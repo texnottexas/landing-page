@@ -3506,6 +3506,10 @@
         wizardState._viewOnly = true;                 // reuse #107 own-data write-suppression
         wizardState.player = { name: window._impersonation.targetName, siteKey: j.targetSiteKey };
         wizardState.reportData = [];
+        // Start the target's marches blank (advisor sets them up fresh; a later
+        // Resume restores whatever was saved). loadMarches() now reads this
+        // override exclusively while _imp() is active.
+        window._advisorOverrideMarches = [];
         _imp_renderBanner();
         // Open the report-ID input wizard so the advisor can paste the target's report(s).
         wizardState.step = 'input';
@@ -3538,7 +3542,7 @@
     btns.appendChild(histB);
     var ex = document.createElement('button'); ex.type = 'button'; ex.textContent = 'Exit';
     ex.style.cssText = 'background:#0d1117;color:#d29922;border:none;border-radius:4px;padding:.2rem .6rem;cursor:pointer;font-weight:700;';
-    ex.addEventListener('click', function () { window._impersonation = null; location.href = location.pathname; });
+    ex.addEventListener('click', function () { window._impersonation = null; window._advisorOverrideMarches = null; location.href = location.pathname; });
     btns.appendChild(ex);
     b.appendChild(btns);
   }
@@ -3766,6 +3770,7 @@
         };
         wizardState._viewOnly = true;
         wizardState.player = { name: window._impersonation.targetName, siteKey: j.targetSiteKey };
+        window._advisorOverrideMarches = [];   // replaced below once the config loads
         _imp_renderBanner();
         if (entry.shortcode) {
           fetch(PUSH_WORKER + '/report-config?code=' + encodeURIComponent(String(entry.shortcode)).toUpperCase())
@@ -3773,6 +3778,9 @@
             .then(function (cfg) {
               if (cfg && cfg.ok && cfg.reportIds) {
                 window._ar_setupBy = cfg.createdByAdvisor || null;
+                // Surface the target's saved marches so the advisor edits the
+                // real state (not their own marches).
+                window._advisorOverrideMarches = Array.isArray(cfg.marchGroups) ? cfg.marchGroups.slice() : [];
                 applyShortcodeConfig(cfg.playerName || window._impersonation.targetName,
                   cfg.reportIds.split(',').filter(Boolean), false, j.targetSiteKey);
               } else {
@@ -5787,6 +5795,10 @@
         // shortcode. Otherwise an in-memory load of someone else's report
         // would silently overwrite the viewer's saved marches.
         if (isSamePlayer && result.marchGroups) saveMarches(result.marchGroups);
+        // View-only load (e.g. a player-view ?code=&plan= link the advisor sent):
+        // surface the server marches in-memory so the plan + grouped views render
+        // with the advisor's grouping, without writing the viewer's localStorage.
+        else if (Array.isArray(result.marchGroups) && result.marchGroups.length) window._advisorOverrideMarches = result.marchGroups.slice();
         window._ar_setupBy = (result && result.createdByAdvisor) || null;
         applyShortcodeConfig(result.playerName, ids, isSamePlayer, result.siteKey);
       })
@@ -10309,6 +10321,13 @@
   // saved marches) is never clobbered. Non-advisor reads fall through to
   // the device's saved marchGroups.
   function loadMarches() {
+    // During impersonation the target's marches live ONLY in the in-memory
+    // override (kept current by saveMarches). Never fall through to the
+    // advisor's own device localStorage — even when the target has none yet
+    // (empty array must stay empty, not leak the advisor's saved marches).
+    if (_imp()) {
+      return Array.isArray(window._advisorOverrideMarches) ? window._advisorOverrideMarches : [];
+    }
     if (Array.isArray(window._advisorOverrideMarches) && window._advisorOverrideMarches.length > 0) {
       return window._advisorOverrideMarches;
     }
@@ -10320,11 +10339,34 @@
   }
 
   function saveMarches(marches) {
+    // On-behalf: mutate the in-memory override and stop — the authoritative
+    // persist is saveConfig() under the target's siteKey. Never write the
+    // advisor's own device localStorage while impersonating.
+    if (_imp()) {
+      window._advisorOverrideMarches = Array.isArray(marches) ? marches.slice() : [];
+      return;
+    }
     try {
       var saved = JSON.parse(localStorage.getItem('playerReport')) || {};
       saved.marchGroups = marches;
       localStorage.setItem('playerReport', JSON.stringify(saved));
     } catch(e) {}
+  }
+
+  // On-behalf march persist: round-trip the target's marches to their
+  // report-config (saveConfig reads loadMarches()). Debounced so rapid
+  // add/delete/reorder/rename edits collapse into one POST.
+  var _marchPersistTimer = null;
+  function _persistMarchesOnBehalf() {
+    if (!_imp()) return;
+    if (_marchPersistTimer) clearTimeout(_marchPersistTimer);
+    _marchPersistTimer = setTimeout(function () {
+      _marchPersistTimer = null;
+      // saveConfig rejects when no report is loaded yet (no reportIds). That's
+      // fine — the edits live in the in-memory override and persist on the next
+      // successful save / Handoff. Swallow the rejection to avoid console noise.
+      try { var _p = saveConfig(false); if (_p && typeof _p.catch === 'function') _p.catch(function () {}); } catch (e) {}
+    }, 900);
   }
 
 
@@ -10834,6 +10876,32 @@
     if (overlay) overlay.classList.remove('open');
   }
 
+  // Edit-in-place state: index of the march being edited (null = add mode).
+  var _marchEditIndex = null;
+  function _exitMarchEditMode() {
+    _marchEditIndex = null;
+    var addBtn = document.getElementById('march-add-btn');
+    if (addBtn) addBtn.textContent = 'Add March';
+  }
+  function _beginEditMarch(idx, heroes) {
+    var marches = loadMarches();
+    var m = marches[idx];
+    if (!m) return;
+    _marchEditIndex = idx;
+    var nameInput = document.getElementById('march-name-input');
+    if (nameInput) nameInput.value = m.name || '';
+    for (var i = 1; i <= 3; i++) {
+      var sel = document.getElementById('march-hero-' + i);
+      if (sel) sel.value = (m.heroIds && m.heroIds[i - 1] != null) ? String(m.heroIds[i - 1]) : '';
+    }
+    var firstSel = document.getElementById('march-hero-1');
+    if (firstSel) { try { firstSel.dispatchEvent(new Event('change')); } catch (e) {} }
+    var addBtn = document.getElementById('march-add-btn');
+    if (addBtn) addBtn.textContent = 'Save Changes';
+    var err = document.getElementById('march-form-error'); if (err) err.style.display = 'none';
+    if (nameInput) { try { nameInput.focus(); nameInput.scrollIntoView({ block: 'nearest' }); } catch (e) {} }
+  }
+
   function renderMarchList(heroes) {
     var container = document.getElementById('march-list');
     if (!container) return;
@@ -10846,6 +10914,20 @@
       container.appendChild(empty);
       return;
     }
+    function ctrlBtn(label, title, disabled) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.textContent = label; b.title = title; b.disabled = !!disabled;
+      b.style.cssText = 'background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;font-size:.8rem;line-height:1;padding:.12rem .42rem;font-family:inherit;' + (disabled ? 'opacity:.35;cursor:default;' : '');
+      return b;
+    }
+    function commit(cur) {
+      _exitMarchEditMode();          // a structural change cancels any in-progress edit
+      saveMarches(cur);
+      _persistMarchesOnBehalf();     // round-trip to the target's config when impersonating
+      renderMarchList(heroes);
+      populateMarchFilter(heroes);
+      renderHeroGrid(heroes);
+    }
     marches.forEach(function(m, i) {
       var row = document.createElement('div');
       row.className = 'march-row';
@@ -10857,21 +10939,30 @@
       heroSpan.className = 'march-row-heroes';
       heroSpan.textContent = m.heroIds.map(function(hid) { return heroName(hid); }).join(', ');
       row.appendChild(heroSpan);
-      var delBtn = document.createElement('button');
-      delBtn.className = 'march-delete-btn';
-      delBtn.textContent = '\u00d7';
-      delBtn.title = 'Delete march';
+
+      // Right-aligned action cluster: reorder up/down, edit (rename + reassign), delete.
+      var actions = document.createElement('span');
+      actions.style.cssText = 'margin-left:auto;display:flex;gap:.2rem;flex-shrink:0;';
+      var upBtn = ctrlBtn('\u2191', 'Move up', i === 0);
+      var downBtn = ctrlBtn('\u2193', 'Move down', i === marches.length - 1);
+      var editBtn = ctrlBtn('\u270e', 'Edit name and heroes');
+      var delBtn = ctrlBtn('\u00d7', 'Delete march');
       (function(idx) {
+        upBtn.addEventListener('click', function() {
+          var cur = loadMarches(); if (idx <= 0) return;
+          var t = cur[idx]; cur[idx] = cur[idx - 1]; cur[idx - 1] = t; commit(cur);
+        });
+        downBtn.addEventListener('click', function() {
+          var cur = loadMarches(); if (idx >= cur.length - 1) return;
+          var t = cur[idx]; cur[idx] = cur[idx + 1]; cur[idx + 1] = t; commit(cur);
+        });
+        editBtn.addEventListener('click', function() { _beginEditMarch(idx, heroes); });
         delBtn.addEventListener('click', function() {
-          var cur = loadMarches();
-          cur.splice(idx, 1);
-          saveMarches(cur);
-          renderMarchList(heroes);
-          populateMarchFilter(heroes);
-          renderHeroGrid(heroes);
+          var cur = loadMarches(); cur.splice(idx, 1); commit(cur);
         });
       })(i);
-      row.appendChild(delBtn);
+      actions.appendChild(upBtn); actions.appendChild(downBtn); actions.appendChild(editBtn); actions.appendChild(delBtn);
+      row.appendChild(actions);
       container.appendChild(row);
     });
   }
@@ -10931,6 +11022,7 @@
   }
 
   function resetMarchForm() {
+    _exitMarchEditMode();
     var nameInput = document.getElementById('march-name-input');
     if (nameInput) nameInput.value = '';
     for (var i = 1; i <= 3; i++) {
@@ -10959,11 +11051,17 @@
 
     if (errEl) errEl.style.display = 'none';
     var marches = loadMarches();
-    marches.push({ name: name, heroIds: ids });
+    if (_marchEditIndex !== null && _marchEditIndex >= 0 && _marchEditIndex < marches.length) {
+      marches[_marchEditIndex] = { name: name, heroIds: ids };   // rename / re-assign in place
+    } else {
+      marches.push({ name: name, heroIds: ids });
+    }
     saveMarches(marches);
+    _persistMarchesOnBehalf();
     renderMarchList(heroes);
     populateMarchFilter(heroes);
-    resetMarchForm();
+    renderHeroGrid(heroes);
+    resetMarchForm();   // also exits edit mode (relabels button to "Add March")
   }
 
   function buildMarchModal(heroes) {
@@ -11016,6 +11114,7 @@
     btnRow.className = 'march-form-row';
     var addBtn = document.createElement('button');
     addBtn.className = 'march-btn march-btn-add';
+    addBtn.id = 'march-add-btn';
     addBtn.textContent = 'Add March';
     addBtn.addEventListener('click', function() { addMarch(heroes); });
     btnRow.appendChild(addBtn);
@@ -26449,6 +26548,17 @@
     // the gear gallery (built from gearByHero) can't be selected as a source or
     // destination, and clicking that hero's tile silently falls back to another
     // hero (the "Astrid clickable in gallery but not in the dropdown" bug).
+    // March-aware ordering for the step pickers — same grouping/order the gear
+    // gallery uses, so dropdowns mirror the gallery instead of going alphabetical.
+    var _stepHeroMarch = {};
+    (function() {
+      var ms = (typeof loadMarches === 'function') ? loadMarches() : [];
+      (ms || []).forEach(function(mm, mi) {
+        ((mm && mm.heroIds) || []).forEach(function(hid, pos) {
+          if (_stepHeroMarch[hid] == null) _stepHeroMarch[hid] = { name: mm.name, marchIdx: mi, pos: pos };
+        });
+      });
+    })();
     var heroes = (function() {
       var byId = {};
       ((ctx.merged && ctx.merged.heroes) || []).forEach(function(h) { if (h && h.id != null) byId[h.id] = h; });
@@ -26462,6 +26572,12 @@
         byId[hid] = { id: hid, heroEquips: new Array(n) }; // synthetic — heroOpt only reads .length
       });
       return Object.keys(byId).map(function(k) { return byId[k]; }).sort(function(a, b) {
+        // march order first (marchIdx -> position in march), then the prior
+        // gear-count-desc -> alphabetical fallback for unassigned heroes.
+        var am = _stepHeroMarch[a.id], bm = _stepHeroMarch[b.id];
+        var ai = am ? am.marchIdx : 9999, bi = bm ? bm.marchIdx : 9999;
+        if (ai !== bi) return ai - bi;
+        if (ai !== 9999) { var ap = am ? am.pos : 0, bp = bm ? bm.pos : 0; if (ap !== bp) return ap - bp; }
         var ag = (a.heroEquips || []).length, bg = (b.heroEquips || []).length;
         if (ag !== bg) return bg - ag;
         var an = (typeof heroName === 'function') ? heroName(a.id) : ('Hero ' + a.id);
@@ -26474,7 +26590,8 @@
       opt.value = String(h.id);
       var name = (typeof heroName === 'function') ? heroName(h.id) : ('Hero ' + h.id);
       var slotsFilled = (h.heroEquips || []).length;
-      opt.textContent = name + (slotsFilled ? ' (' + slotsFilled + '/6)' : ' (no gear)');
+      var mm = _stepHeroMarch[h.id];
+      opt.textContent = (mm ? '[' + mm.name + '] ' : '') + name + (slotsFilled ? ' (' + slotsFilled + '/6)' : ' (no gear)');
       return opt;
     }
 
@@ -30378,6 +30495,11 @@
   }
 
   function saveState() {
+    // Never write device localStorage while impersonating or in any view-only
+    // load — that would leak the target/foreign identity + marches into the
+    // viewer's own playerReport (bug #107 surface). On-behalf persistence goes
+    // through saveConfig() under the target's siteKey instead.
+    if (_imp() || (wizardState && wizardState._viewOnly)) return;
     var saved = {
       player: wizardState.player,
       reportIds: wizardState.reportData.map(function(r) { return r.id; }),
@@ -32801,6 +32923,9 @@
             // own shortcode. Otherwise a view-only load would overwrite the
             // viewer's saved marches in localStorage.
             if (isSamePlayer && result.marchGroups) saveMarches(result.marchGroups);
+            // View-only load (player-view link): surface server marches in-memory
+            // so grouped views render without writing the viewer's localStorage.
+            else if (Array.isArray(result.marchGroups) && result.marchGroups.length) window._advisorOverrideMarches = result.marchGroups.slice();
             window._ar_setupBy = (result && result.createdByAdvisor) || null;
             applyShortcodeConfig(result.playerName, ids, isSamePlayer, result.siteKey);
           } else {
