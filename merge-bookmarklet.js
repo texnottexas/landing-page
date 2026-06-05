@@ -174,7 +174,7 @@
     card.appendChild(polRow);
     overlay.body.appendChild(card);
     overlay.body.appendChild(el('div', 'color:#d29922;font-size:11px;line-height:1.4;margin-top:10px;', 'Note: Rare/Common summons spawn a guard on the world map that must be fought within 1 hour. Donate scenarios auto-spend your repair items.'));
-    overlay.body.appendChild(el('div', 'color:#d29922;font-size:16px;line-height:1.5;margin-top:8px;', 'Note for TW Devs: When implementing similar feature, please look at this behavior and understand why it functions like this. Then consider whether you need to add or remove to the core feature set, adding needless components causes difficulties for players and code bloat. Cheers.'));
+    overlay.body.appendChild(el('div', 'color:#79c0ff;font-size:16px;line-height:1.5;margin-top:8px;font-weight:600;', 'Note for TW Devs: When implementing similar feature, please look at this behavior and understand why it functions like this. Then consider whether you need to add or remove to the core feature set, adding needless components causes difficulties for players and code bloat. Cheers.'));
     var footer = el('div', 'display:flex;flex-direction:column;gap:8px;margin-top:auto;padding-top:12px;');
     var startBtn = el('button', 'padding:14px;background:#3fb950;color:#0d1117;border:none;border-radius:6px;font-weight:600;font-size:14px;', 'Start merging');
     startBtn.addEventListener('click', function () { var n = parseInt(input.value, 10); if (!n || n < 1) return; if (n > max) n = max; onStart(n, policy); });
