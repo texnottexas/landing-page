@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en" style="--hue:200">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>S2864 // R12 Neutral City Battle — Threat Briefing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* structural */
+  --ink:#0b0e16; --ink2:#0f1320; --panel:#141a2a; --panel2:#1a2236;
+  --line:rgba(255,255,255,.10); --line2:rgba(255,255,255,.06);
+  --tx:#e8ecf4; --tx2:#aeb7c8; --tx3:#9aa3b4;
+  --accent:#7cf6e3;
+  --serif:'Archivo','Helvetica Neue',Arial,sans-serif;
+  --body:'Archivo','Helvetica Neue',Arial,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  /* unified tactical severity scale */
+  --crit:#f85149; --crit-tx:#ffb3b0;
+  --watch:#d29922; --watch-tx:#ffe1a0;
+  --info:#388bfd; --info-tx:#a8d4ff;
+  --ok:#46d39a;
+  --us:#7cf6e3;
+  --violet:#a371f7;
+  --map-bg1:#0e1632; --map-bg2:#060a1a; --scan:#00f0c8;
+  --hue:200;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;overflow:hidden;}
+body{
+  font-family:var(--body); color:var(--tx); background:var(--ink);
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+em{font-style:normal;}
+
+/* ── atmosphere ── */
+.bg,.grid-ov,.grain{position:fixed;inset:0;pointer-events:none;}
+.bg{z-index:0;transition:background .6s ease;
+  background:
+    radial-gradient(60% 50% at 78% 12%, hsla(var(--hue),80%,55%,.13), transparent 60%),
+    radial-gradient(55% 60% at 8% 92%, hsla(calc(var(--hue) + 40),75%,55%,.10), transparent 60%),
+    linear-gradient(160deg,#0b0e16,#0a0c14 60%,#080a11);}
+.grid-ov{z-index:1;opacity:.32;
+  background-image:linear-gradient(var(--line2) 1px,transparent 1px),linear-gradient(90deg,var(--line2) 1px,transparent 1px);
+  background-size:64px 64px;
+  -webkit-mask-image:radial-gradient(110% 110% at 50% 45%,#000 55%,transparent 100%);
+          mask-image:radial-gradient(110% 110% at 50% 45%,#000 55%,transparent 100%);}
+.grain{z-index:1;opacity:.05;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+
+/* ── top bar ── */
+.bar{position:fixed;top:0;left:0;right:0;height:54px;z-index:30;display:flex;align-items:center;justify-content:space-between;padding:0 6vw;
+  background:linear-gradient(180deg,rgba(8,10,17,.92),rgba(8,10,17,.55) 70%,transparent);}
+.brand{display:flex;align-items:center;gap:10px;}
+.mark{width:22px;height:22px;border-radius:6px;
+  background:conic-gradient(from 210deg,hsl(var(--hue),85%,60%),hsl(calc(var(--hue) + 60),85%,62%),hsl(var(--hue),85%,60%));
+  box-shadow:0 0 18px hsla(var(--hue),85%,60%,.5);}
+.brand-tx{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--tx2);}
+.bar-mid{display:flex;align-items:center;gap:10px;}
+.classif{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--watch-tx);
+  border:1px solid rgba(210,153,34,.4);background:rgba(210,153,34,.08);border-radius:20px;padding:3px 10px;}
+.bar-r{display:flex;align-items:center;gap:8px;}
+.counter{font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--tx3);}
+.counter b{color:var(--tx);font-weight:600;}
+.nav-btn,.menu-btn{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--tx2);
+  background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:8px;padding:5px 11px;cursor:pointer;transition:.15s;}
+.nav-btn:hover,.menu-btn:hover{border-color:hsl(var(--hue),70%,55%);color:hsl(var(--hue),70%,72%);}
+.progress{position:fixed;top:0;left:0;height:2px;z-index:31;width:11%;
+  background:linear-gradient(90deg,hsl(var(--hue),85%,60%),hsl(calc(var(--hue) + 60),85%,62%));
+  box-shadow:0 0 10px hsla(var(--hue),85%,60%,.8);transition:width .4s cubic-bezier(.4,0,.1,1);}
+
+/* ── deck / slides ── */
+.deck{position:relative;height:100%;z-index:2;}
+.slide{position:absolute;inset:0;padding:84px 6vw 60px;opacity:0;visibility:hidden;
+  transform:translateY(16px) scale(.99);transition:opacity .5s ease,transform .5s cubic-bezier(.2,.7,.2,1),visibility .5s;
+  overflow-y:auto;overflow-x:hidden;}
+.slide.active{opacity:1;visibility:visible;transform:none;}
+.slide::-webkit-scrollbar{width:8px;}
+.slide::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px;}
+
+/* typography */
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:hsl(var(--hue),66%,73%);margin-bottom:14px;}
+.div-part{font-family:var(--mono);font-size:13px;letter-spacing:.3em;text-transform:uppercase;color:hsl(var(--hue),66%,73%);}
+h1.display{font-family:var(--serif);font-weight:800;font-size:clamp(40px,8.5vw,104px);letter-spacing:-.025em;line-height:.95;margin:0;}
+h2{font-family:var(--serif);font-weight:700;font-size:clamp(24px,3.5vw,42px);letter-spacing:-.01em;line-height:1.05;margin:0 0 10px;}
+h1 em,h2 em{color:hsl(var(--hue),68%,72%);}
+.lede{font-size:clamp(15px,1.6vw,21px);line-height:1.5;color:var(--tx2);max-width:64ch;margin:14px 0 0;}
+.cat-desc{font-size:clamp(13px,1.1vw,15px);line-height:1.55;color:var(--tx2);max-width:96ch;margin:8px 0 22px;}
+.slide-head{margin-bottom:8px;}
+
+/* KPIs / stat boxes */
+.title-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:38px;max-width:920px;}
+.kpi{border:1px solid var(--line);border-radius:14px;background:linear-gradient(165deg,var(--panel),var(--ink2));padding:18px 18px 16px;}
+.kpi .v{font-family:var(--serif);font-weight:700;font-size:clamp(26px,3vw,42px);line-height:1;font-variant-numeric:tabular-nums;}
+.kpi .k{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);margin-top:8px;}
+.kpi .s{font-family:var(--mono);font-size:10px;letter-spacing:.04em;color:var(--tx3);margin-top:3px;}
+.v-us{color:var(--us);} .v-crit{color:var(--crit);} .v-watch{color:var(--watch);} .v-ok{color:var(--ok);} .v-info{color:var(--info);}
+.title-foot{margin-top:30px;font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--tx3);display:flex;gap:18px;flex-wrap:wrap;}
+kbd{font-family:var(--mono);font-size:.78em;background:rgba(255,255,255,.08);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--tx2);}
+
+.stat-grid{display:grid;gap:12px;grid-template-columns:repeat(3,1fr);}
+.stat{border:1px solid var(--line);border-radius:12px;background:linear-gradient(165deg,var(--panel),var(--ink2));padding:14px 16px;}
+.stat .sl{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);}
+.stat .sv{font-family:var(--serif);font-weight:700;font-size:22px;font-variant-numeric:tabular-nums;margin-top:6px;line-height:1.05;}
+.stat .ss{font-family:var(--mono);font-size:10.5px;color:var(--tx3);margin-top:4px;}
+
+/* verdict card */
+.verdict{border:1px solid var(--line);border-left:4px solid var(--tx3);border-radius:12px;padding:16px 18px;background:rgba(255,255,255,.015);}
+.verdict.big{padding:20px 22px;}
+.verdict .vk{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;margin-bottom:10px;color:var(--tx3);}
+.verdict p{margin:0 0 9px;font-size:13.5px;line-height:1.5;color:var(--tx2);}
+.verdict p:last-child{margin-bottom:0;}
+.verdict b{color:var(--tx);font-weight:600;}
+.verdict.threat{border-left-color:var(--crit);background:rgba(248,81,73,.06);} .verdict.threat .vk{color:var(--crit-tx);}
+.verdict.watch{border-left-color:var(--watch);background:rgba(210,153,34,.06);} .verdict.watch .vk{color:var(--watch-tx);}
+.verdict.ok{border-left-color:var(--ok);background:rgba(70,211,154,.06);} .verdict.ok .vk{color:var(--ok);}
+.verdict.info{border-left-color:var(--info);background:rgba(56,139,253,.06);} .verdict.info .vk{color:var(--info-tx);}
+.verdict ol{margin:4px 0 0;padding-left:20px;} .verdict ol li{font-size:13.5px;line-height:1.5;color:var(--tx2);margin-bottom:8px;}
+.verdict ol li b{color:var(--tx);}
+
+/* buff bars */
+.buffwrap{border:1px solid var(--line);border-top:2px solid hsl(var(--hue),80%,58%);border-radius:14px;
+  background:linear-gradient(165deg,var(--panel),var(--ink2));padding:18px 20px;}
+.buffwrap h4{font-family:var(--serif);font-size:16px;font-weight:600;margin:0 0 4px;display:flex;align-items:center;gap:8px;}
+.buffwrap .bsub{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;color:var(--tx3);margin-bottom:14px;}
+.buffrow{display:grid;grid-template-columns:96px 1fr 86px;align-items:center;gap:12px;margin-bottom:10px;}
+.buffrow:last-child{margin-bottom:0;}
+.buff-name{font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--tx2);}
+.buff-track{position:relative;height:11px;border-radius:6px;background:var(--ink2);border:1px solid var(--line);overflow:visible;}
+.buff-fill{position:absolute;left:0;top:0;height:100%;border-radius:6px 6px 6px 6px;transition:width .8s cubic-bezier(.3,.7,.2,1);}
+.buff-cap-tick{position:absolute;right:1px;top:-3px;bottom:-3px;width:2px;background:var(--tx2);opacity:1;border-radius:2px;}
+.buff-val{font-family:var(--mono);font-size:11.5px;font-weight:600;text-align:right;font-variant-numeric:tabular-nums;color:var(--tx);}
+.buff-val .pct{font-size:9.5px;color:var(--tx3);display:block;font-weight:400;}
+.buff-over{font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;color:var(--watch);border:1px solid rgba(210,153,34,.5);border-radius:4px;padding:0 4px;margin-left:5px;}
+.buffrow.zero .buff-track{opacity:.45;} .buffrow.zero .buff-val{color:var(--tx3);}
+
+/* paired comparison */
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+.cmp-col h4 .who{font-family:var(--mono);font-size:11px;letter-spacing:.1em;padding:2px 8px;border-radius:5px;}
+
+/* spec composition stacked bar */
+.specbar-row{display:grid;grid-template-columns:90px 1fr;align-items:center;gap:14px;margin-bottom:16px;}
+.specbar-lab{font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--tx2);}
+.specbar-lab b{display:block;font-family:var(--serif);font-size:20px;color:var(--tx);font-weight:700;}
+.specbar{display:flex;height:30px;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:var(--ink2);}
+.specseg{display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:600;color:#06101a;min-width:18px;}
+.specseg.empty{background:repeating-linear-gradient(45deg,rgba(248,81,73,.12),rgba(248,81,73,.12) 5px,transparent 5px,transparent 10px);color:var(--crit-tx);border:1px dashed rgba(248,81,73,.5);flex:0 0 70px;}
+.spec-legend{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:10.5px;color:var(--tx3);margin-top:6px;}
+.spec-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle;}
+
+/* pitfall / fix */
+.pf{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px;}
+.pf-card{border:1px solid var(--line);border-radius:12px;padding:15px 17px;background:linear-gradient(165deg,var(--panel),var(--ink2));}
+.pf-bad{border-left:4px solid var(--crit);} .pf-fix{border-left:4px solid var(--ok);}
+.pf-k{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;}
+.pf-bad .pf-k{color:var(--crit-tx);} .pf-fix .pf-k{color:var(--ok);}
+.pf-card p{margin:0;font-size:13px;line-height:1.5;color:var(--tx2);} .pf-card b{color:var(--tx);}
+
+/* hex maps */
+.map-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:16px;}
+.mapcard{border:1px solid var(--line);border-top:2px solid hsl(var(--hue),80%,58%);border-radius:14px;overflow:hidden;
+  background:radial-gradient(120% 100% at 50% 0%,var(--map-bg1),var(--map-bg2));}
+.mapcard .maphd{display:flex;align-items:center;justify-content:space-between;padding:11px 14px 0;}
+.mapcard .mt{font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--tx);}
+.mapcard .mtier{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border-radius:5px;}
+.tier-NONE{color:var(--us);border:1px solid rgba(124,246,227,.45);background:rgba(124,246,227,.1);}
+.tier-LOW{color:var(--info-tx);border:1px solid rgba(56,139,253,.45);background:rgba(56,139,253,.1);}
+.tier-MED{color:var(--watch-tx);border:1px solid rgba(210,153,34,.45);background:rgba(210,153,34,.1);}
+.tier-NAP{color:var(--info-tx);border:1px solid rgba(56,139,253,.45);background:rgba(56,139,253,.1);}
+.mapcard svg{width:100%;height:auto;display:block;}
+.mapcard .mapfoot{padding:0 14px 12px;font-family:var(--mono);font-size:10.5px;color:var(--tx2);line-height:1.45;}
+.mapcard .mapfoot b{color:var(--tx);}
+/* ── radial threat radar ── */
+.radar{width:100%;height:auto;display:block;overflow:visible;}
+.rdr-ring{fill:none;stroke:rgba(100,160,255,.16);stroke-width:.6;stroke-dasharray:2 5;}
+.rdr-corner{fill:none;stroke:rgba(100,180,255,.30);stroke-width:1;}
+.rdr-conn{stroke-width:1.3;opacity:.55;}
+.rdr-conn.us{stroke:var(--us);} .rdr-conn.enemy{stroke:var(--crit);stroke-dasharray:4 3;}
+.rdr-glow{fill:none;stroke-width:.6;opacity:.45;}
+.rdr-glow.us{stroke:var(--us);} .rdr-glow.enemy{stroke:var(--crit);}
+.rdr-hex{stroke-width:1.6;}
+.rdr-hex.us{fill:rgba(124,246,227,.16);stroke:var(--us);}
+.rdr-hex.enemy{fill:rgba(248,81,73,.18);stroke:var(--crit);}
+.rdr-node-lab{font-family:'IBM Plex Mono',monospace;font-size:8.5px;font-weight:700;text-anchor:middle;}
+.rdr-node-role{font-family:'IBM Plex Mono',monospace;font-size:6.5px;font-weight:700;letter-spacing:.1em;text-anchor:middle;opacity:.75;}
+.rdr-center-glow{fill:none;stroke-width:.8;opacity:.5;animation:rdrpulse 2.4s ease-in-out infinite;}
+.rdr-center{fill:rgba(10,16,30,.9);stroke-width:2;}
+.rdr-center-mesh{fill:none;stroke-width:.5;opacity:.4;}
+.rdr-star{font-size:16px;font-weight:900;text-anchor:middle;}
+.rdr-center-lab{font-family:'IBM Plex Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.08em;text-anchor:middle;}
+@keyframes rdrpulse{0%,100%{opacity:.25;}50%{opacity:.8;}}
+.radarcard{border:1px solid var(--line);border-top:2px solid hsl(var(--hue),80%,58%);border-radius:14px;overflow:hidden;
+  background:radial-gradient(120% 100% at 50% 0%,var(--map-bg1),var(--map-bg2));}
+.radarcard .rc-hd{display:flex;align-items:center;justify-content:space-between;padding:11px 14px 0;}
+.radarcard .rc-t{font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--tx);}
+.radarcard .rc-badge{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:5px;}
+.rc-contested{color:var(--crit-tx);border:1px solid rgba(248,81,73,.45);background:rgba(248,81,73,.12);}
+.rc-target{color:var(--watch-tx);border:1px solid rgba(210,153,34,.45);background:rgba(210,153,34,.12);}
+.rc-secure{color:var(--us);border:1px solid rgba(124,246,227,.4);background:rgba(124,246,227,.1);}
+.radarcard .rc-foot{padding:2px 14px 13px;font-family:var(--mono);font-size:10.5px;color:var(--tx2);line-height:1.45;}
+.radarcard .rc-foot b{color:var(--tx);}
+/* secure NC chips */
+.secure-grid{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;}
+.secure-chip{border:1px solid rgba(124,246,227,.3);background:rgba(124,246,227,.06);border-radius:10px;padding:10px 14px;min-width:120px;}
+.secure-chip .sc-nc{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--us);}
+.secure-chip .sc-s{font-family:var(--mono);font-size:10px;color:var(--tx3);margin-top:3px;letter-spacing:.04em;}
+
+/* feature cards (offense) */
+.feat-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+.feat{border:1px solid var(--line);border-top:2px solid hsl(var(--hue),80%,58%);border-radius:14px;
+  background:linear-gradient(165deg,var(--panel),var(--ink2));padding:18px 20px;}
+.feat .tag{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:hsl(var(--hue),66%,73%);}
+.feat h3{font-family:var(--serif);font-size:24px;font-weight:700;margin:8px 0 4px;}
+.feat .fbody{font-size:13px;line-height:1.5;color:var(--tx2);margin:0 0 14px;} .feat .fbody b{color:var(--tx);}
+
+/* focus order + tiers */
+.focus-order{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;}
+.fo-step{flex:1;min-width:150px;border:1px solid var(--line);border-top:3px solid var(--tx3);border-radius:10px;padding:12px 14px;background:linear-gradient(165deg,var(--panel),var(--ink2));position:relative;}
+.fo-step .fo-l{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);}
+.fo-step .fo-t{font-family:var(--serif);font-weight:600;font-size:15px;margin-top:5px;color:var(--tx);}
+.fo-step .fo-d2{font-size:11.5px;color:var(--tx2);margin-top:4px;line-height:1.4;}
+.fo-a{border-top-color:var(--crit);} .fo-b{border-top-color:var(--watch);} .fo-c{border-top-color:var(--ok);} .fo-d{border-top-color:var(--info);}
+.focus-tiers{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;}
+.ftier{border:1px solid var(--line);border-left:4px solid var(--tx3);border-radius:12px;padding:14px 16px;background:linear-gradient(165deg,var(--panel),var(--ink2));}
+.ftier.fa{border-left-color:var(--crit);} .ftier.fb{border-left-color:var(--watch);} .ftier.fc{border-left-color:var(--ok);} .ftier.fd{border-left-color:var(--info);}
+.ftier h4{font-family:var(--serif);font-size:15px;font-weight:600;margin:0 0 6px;}
+.ftier p{font-size:12.5px;line-height:1.5;color:var(--tx2);margin:0 0 10px;} .ftier p b{color:var(--tx);}
+.seq-pills{display:flex;gap:6px;flex-wrap:wrap;}
+.seq-pill{font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 9px;border-radius:6px;border:1px solid var(--line);color:var(--tx2);background:rgba(255,255,255,.03);}
+.seq-pill.threat{border-color:rgba(248,81,73,.5);background:rgba(248,81,73,.1);color:var(--crit-tx);}
+.seq-pill.watch{border-color:rgba(210,153,34,.5);background:rgba(210,153,34,.1);color:var(--watch-tx);}
+.seq-pill.ok{border-color:rgba(70,211,154,.5);background:rgba(70,211,154,.1);color:var(--ok);}
+
+/* layout helpers */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;}
+.stack-lg{display:flex;flex-direction:column;gap:18px;}
+.mt16{margin-top:16px;} .mt20{margin-top:20px;}
+.chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
+.chip{font-family:var(--mono);font-size:11px;letter-spacing:.04em;padding:4px 10px;border-radius:6px;border:1px solid var(--line);color:var(--tx2);background:rgba(255,255,255,.03);}
+.chip.nap{border-color:rgba(56,139,253,.4);color:var(--info-tx);background:rgba(56,139,253,.08);}
+.ratio-chip{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--crit);border:1px solid rgba(248,81,73,.45);background:rgba(248,81,73,.1);border-radius:6px;padding:3px 10px;}
+.todo-box{border:1px dashed rgba(210,153,34,.5);border-radius:10px;background:rgba(210,153,34,.05);padding:13px 16px;font-size:12.5px;line-height:1.5;color:var(--tx2);margin-top:18px;}
+.todo-box b{color:var(--watch-tx);}
+.closing-foot{font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--tx3);margin-top:20px;border-top:1px solid var(--line2);padding-top:14px;}
+.glossary{font-size:12.5px;line-height:1.5;color:var(--tx2);background:rgba(255,255,255,.025);border:1px solid var(--line2);border-left:3px solid hsl(var(--hue),70%,55%);border-radius:8px;padding:10px 14px;margin:14px 0 4px;}
+.glossary b{color:var(--tx);}
+
+/* order-of-battle table */
+.oob{width:100%;border-collapse:collapse;font-size:13px;}
+.oob th{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);}
+.oob td{padding:9px 10px;border-bottom:1px solid var(--line2);vertical-align:middle;}
+.oob td.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;}
+.oob tr.us{background:rgba(124,246,227,.06);} .oob tr.us .sid{color:var(--us);font-weight:700;}
+.oob .sid{font-family:var(--mono);font-weight:600;}
+.oob .rk{font-family:var(--mono);color:var(--tx3);}
+.mini-bar{display:inline-block;width:54px;height:7px;border-radius:4px;background:var(--ink2);border:1px solid var(--line);position:relative;vertical-align:middle;overflow:hidden;}
+.mini-bar i{position:absolute;left:0;top:0;height:100%;}
+.tag-b{font-family:var(--mono);font-size:8.5px;letter-spacing:.06em;padding:1px 6px;border-radius:4px;margin-right:3px;}
+.tb-us{color:var(--us);border:1px solid rgba(124,246,227,.45);} .tb-l4{color:var(--watch-tx);border:1px solid rgba(210,153,34,.45);}
+.tb-nap{color:var(--info-tx);border:1px solid rgba(56,139,253,.45);} .tb-elig{color:var(--crit-tx);border:1px solid rgba(248,81,73,.45);}
+
+/* menu / hint */
+.menu{position:fixed;inset:0;z-index:40;background:rgba(6,8,13,.94);backdrop-filter:blur(10px);display:none;padding:8vh 8vw;}
+.menu.open{display:block;}
+.menu h3{font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--tx3);margin:0 0 24px;}
+.menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;}
+.menu-item{display:flex;align-items:baseline;gap:12px;border:1px solid var(--line);border-radius:10px;padding:14px 16px;cursor:pointer;background:linear-gradient(165deg,var(--panel),var(--ink2));transition:.15s;}
+.menu-item:hover{border-color:var(--accent);color:var(--tx);background:rgba(124,246,227,.06);}
+.menu-item.cur{border-color:var(--accent);background:rgba(124,246,227,.05);}
+.menu-item.cur .mi-n{color:var(--accent);}
+.menu-item .mi-n{font-family:var(--mono);font-size:12px;color:var(--tx3);}
+.menu-item .mi-t{font-family:var(--serif);font-size:15px;color:var(--tx);}
+.hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:25;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--tx3);background:rgba(8,10,17,.6);border:1px solid var(--line2);border-radius:20px;padding:5px 14px;}
+
+/* subtle tactile hover on content cards (honor "subtle animations only") */
+.kpi,.stat,.mapcard,.feat,.buffwrap,.verdict,.ftier{transition:border-color .2s ease,box-shadow .2s ease,transform .2s ease;}
+.kpi:hover,.stat:hover,.mapcard:hover,.feat:hover,.buffwrap:hover,.ftier:hover{
+  transform:translateY(-2px);border-color:hsla(var(--hue),80%,60%,.5);
+  box-shadow:0 12px 36px -20px hsla(var(--hue),85%,50%,.55);}
+button:focus-visible,.menu-item:focus-visible,.nav-btn:focus-visible,a:focus-visible,[role=button]:focus-visible{outline:2px solid hsl(var(--hue),80%,62%);outline-offset:2px;}
+
+@media (max-width:1100px){
+  .slide{padding:74px 5vw 52px;}
+  .title-stats{grid-template-columns:repeat(2,1fr);}
+  .cmp,.pf,.feat-grid,.two-col,.focus-tiers{grid-template-columns:1fr;}
+  .stat-grid{grid-template-columns:1fr;}
+}
+@media (max-width:600px){
+  .classif{display:none;}
+  .focus-order{flex-direction:column;}
+  .oob{font-size:11px;} .oob th,.oob td{padding:7px 6px;}
+  .oob .tag-b{display:inline-block;margin-bottom:2px;}
+}
+@media (max-width:760px){
+  .slide{overflow-x:auto;}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation:none!important;}
+}
+@media print{
+  @page{size:A4 landscape;margin:9mm;}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
+  html,body{height:auto;overflow:visible;background:#0b0e16;}
+  .bar,.progress,.hint,.menu,.bg,.grid-ov,.grain{display:none!important;}
+  .deck{height:auto;}
+  .slide{position:static!important;opacity:1!important;visibility:visible!important;transform:none!important;
+    page-break-after:always;min-height:auto;padding:18px 16px;overflow:visible;}
+}
+</style>
+</head>
+<body>
+<div class="bg"></div><div class="grid-ov"></div><div class="grain"></div>
+<div class="progress" id="prog"></div>
+
+<div class="bar">
+  <div class="brand"><div class="mark"></div><span class="brand-tx">S2864 // R12 INTEL</span></div>
+  <div class="bar-mid"><span class="classif">CONFIDENTIAL · SECTOR 90</span></div>
+  <div class="bar-r">
+    <span class="counter"><b id="cur">01</b> / 09</span>
+    <button class="nav-btn" id="prev">‹ Prev</button>
+    <button class="nav-btn" id="next">Next ›</button>
+    <button class="menu-btn" id="menuBtn">☰ Menu</button>
+  </div>
+</div>
+
+<div class="deck" id="deck">
+  <section class="slide" data-hue="200" data-title="Cover" id="s1"></section>
+  <section class="slide" data-hue="38"  data-title="The Verdict" id="s2"></section>
+  <section class="slide" data-hue="12"  data-title="L4 Three-Way" id="s3"></section>
+  <section class="slide" data-hue="5"   data-title="Zero-ATK Gap" id="s4"></section>
+  <section class="slide" data-hue="220" data-title="Order of Battle" id="s5"></section>
+  <section class="slide" data-hue="265" data-title="NC Defense" id="s6"></section>
+  <section class="slide" data-hue="38"  data-title="Our Offense" id="s7"></section>
+  <section class="slide" data-hue="30"  data-title="NAP & Coalition" id="s8"></section>
+  <section class="slide" data-hue="150" data-title="The Plan" id="s9"></section>
+</div>
+
+<div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="Slide navigation" aria-hidden="true"><h3>Jump to slide</h3><div class="menu-grid" id="menuGrid"></div></div>
+<div class="hint">← → navigate · M menu · F fullscreen · P print</div>
+
+<script>
+const RD = {"servers": {"2864": {"sid": 2864, "pi": 90.0, "tier": "S", "rank": 1, "fame": 244260, "wl": 32, "cb": 21, "nc3": 3, "nc2": 3, "nc1": 4, "merit": 350, "proj": {"11001": {"name": "ATK", "raw": 0, "capped": 0, "cap": 1800, "count": 0}, "11002": {"name": "HP", "raw": 1620, "capped": 1620, "cap": 1800, "count": 6}, "11003": {"name": "DMG Inc", "raw": 270, "capped": 270, "cap": 300, "count": 6}, "11004": {"name": "DMG Red", "raw": 135, "capped": 135, "cap": 300, "count": 3}, "11006": {"name": "DEF", "raw": 90, "capped": 90, "cap": 100, "count": 6}}}, "386": {"sid": 386, "pi": 30.4, "tier": "A", "rank": 2, "fame": 170070, "wl": 57, "cb": 36, "nc3": 3, "nc2": 5, "nc1": 7, "merit": 173, "proj": {"11001": {"name": "ATK", "raw": 2160, "capped": 1800, "cap": 1800, "count": 8}, "11002": {"name": "HP", "raw": 2160, "capped": 1800, "cap": 1800, "count": 8}, "11003": {"name": "DMG Inc", "raw": 270, "capped": 270, "cap": 300, "count": 6}, "11004": {"name": "DMG Red", "raw": 270, "capped": 270, "cap": 300, "count": 6}, "11006": {"name": "DEF", "raw": 120, "capped": 100, "cap": 100, "count": 8}}}, "2036": {"sid": 2036, "pi": 22.3, "tier": "A", "rank": 3, "fame": 151810, "wl": 29, "cb": 11, "nc3": 1, "nc2": 2, "nc1": 6, "merit": 190, "proj": {"11001": {"name": "ATK", "raw": 0, "capped": 0, "cap": 1800, "count": 0}, "11002": {"name": "HP", "raw": 1350, "capped": 1350, "cap": 1800, "count": 5}, "11003": {"name": "DMG Inc", "raw": 135, "capped": 135, "cap": 300, "count": 3}, "11004": {"name": "DMG Red", "raw": 135, "capped": 135, "cap": 300, "count": 3}, "11006": {"name": "DEF", "raw": 0, "capped": 0, "cap": 100, "count": 0}}}, "2197": {"sid": 2197, "pi": 17.3, "tier": "A", "rank": 4, "fame": 105450, "wl": 21, "cb": 12, "nc3": 0, "nc2": 1, "nc1": 6, "merit": 173, "proj": {"11001": {"name": "ATK", "raw": 270, "capped": 270, "cap": 1800, "count": 1}, "11002": {"name": "HP", "raw": 810, "capped": 810, "cap": 1800, "count": 3}, "11003": {"name": "DMG Inc", "raw": 135, "capped": 135, "cap": 300, "count": 3}, "11004": {"name": "DMG Red", "raw": 0, "capped": 0, "cap": 300, "count": 0}, "11006": {"name": "DEF", "raw": 75, "capped": 75, "cap": 100, "count": 5}}}, "2693": {"sid": 2693, "pi": 14.2, "tier": "A", "rank": 5, "fame": 80510, "wl": 8, "cb": 3, "nc3": 0, "nc2": 2, "nc1": 5, "merit": 128, "proj": {"11001": {"name": "ATK", "raw": 540, "capped": 540, "cap": 1800, "count": 2}, "11002": {"name": "HP", "raw": 0, "capped": 0, "cap": 1800, "count": 0}, "11003": {"name": "DMG Inc", "raw": 0, "capped": 0, "cap": 300, "count": 0}, "11004": {"name": "DMG Red", "raw": 0, "capped": 0, "cap": 300, "count": 0}, "11006": {"name": "DEF", "raw": 15, "capped": 15, "cap": 100, "count": 1}}}, "2253": {"sid": 2253, "pi": 13.2, "tier": "B", "rank": 6, "fame": 109590, "wl": 19, "cb": 12, "nc3": 0, "nc2": 0, "nc1": 6, "merit": 265, "proj": {"11001": {"name": "ATK", "raw": 810, "capped": 810, "cap": 1800, "count": 3}, "11002": {"name": "HP", "raw": 540, "capped": 540, "cap": 1800, "count": 2}, "11003": {"name": "DMG Inc", "raw": 90, "capped": 90, "cap": 300, "count": 2}, "11004": {"name": "DMG Red", "raw": 90, "capped": 90, "cap": 300, "count": 2}, "11006": {"name": "DEF", "raw": 45, "capped": 45, "cap": 100, "count": 3}}}, "126": {"sid": 126, "pi": 14.7, "tier": "B", "rank": 7, "fame": 138410, "wl": 12, "cb": 6, "nc3": 0, "nc2": 1, "nc1": 5, "merit": 299, "proj": {"11001": {"name": "ATK", "raw": 270, "capped": 270, "cap": 1800, "count": 1}, "11002": {"name": "HP", "raw": 0, "capped": 0, "cap": 1800, "count": 0}, "11003": {"name": "DMG Inc", "raw": 90, "capped": 90, "cap": 300, "count": 2}, "11004": {"name": "DMG Red", "raw": 90, "capped": 90, "cap": 300, "count": 2}, "11006": {"name": "DEF", "raw": 15, "capped": 15, "cap": 100, "count": 1}}}, "654": {"sid": 654, "pi": 9.2, "tier": "B", "rank": 8, "fame": 51860, "wl": 13, "cb": 4, "nc3": 0, "nc2": 0, "nc1": 7, "merit": 97, "proj": {"11001": {"name": "ATK", "raw": 270, "capped": 270, "cap": 1800, "count": 1}, "11002": {"name": "HP", "raw": 0, "capped": 0, "cap": 1800, "count": 0}, "11003": {"name": "DMG Inc", "raw": 0, "capped": 0, "cap": 300, "count": 0}, "11004": {"name": "DMG Red", "raw": 45, "capped": 45, "cap": 300, "count": 1}, "11006": {"name": "DEF", "raw": 30, "capped": 30, "cap": 100, "count": 2}}}, "2116": {"sid": 2116, "pi": 11.2, "tier": "B", "rank": 9, "fame": 99640, "wl": 13, "cb": 5, "nc3": 0, "nc2": 0, "nc1": 6, "merit": 159, "proj": {"11001": {"name": "ATK", "raw": 270, "capped": 270, "cap": 1800, "count": 1}, "11002": {"name": "HP", "raw": 540, "capped": 540, "cap": 1800, "count": 2}, "11003": {"name": "DMG Inc", "raw": 0, "capped": 0, "cap": 300, "count": 0}, "11004": {"name": "DMG Red", "raw": 0, "capped": 0, "cap": 300, "count": 0}, "11006": {"name": "DEF", "raw": 30, "capped": 30, "cap": 100, "count": 2}}}, "2494": {"sid": 2494, "pi": 4.2, "tier": "C", "rank": 25, "fame": 47170, "wl": 7, "cb": 5, "nc3": 0, "nc2": 0, "nc1": 1, "merit": 38, "proj": {"11001": {"name": "ATK", "raw": 0, "capped": 0, "cap": 1800, "count": 0}, "11002": {"name": "HP", "raw": 270, "capped": 270, "cap": 1800, "count": 1}, "11003": {"name": "DMG Inc", "raw": 90, "capped": 90, "cap": 300, "count": 2}, "11004": {"name": "DMG Red", "raw": 0, "capped": 0, "cap": 300, "count": 0}, "11006": {"name": "DEF", "raw": 30, "capped": 30, "cap": 100, "count": 2}}}, "4137": {"sid": 4137, "pi": 2.2, "tier": "C", "rank": 24, "fame": 23730, "wl": 5, "cb": 1, "nc3": 0, "nc2": 0, "nc1": 1, "merit": 30, "proj": {"11001": {"name": "ATK", "raw": 0, "capped": 0, "cap": 1800, "count": 0}, "11002": {"name": "HP", "raw": 0, "capped": 0, "cap": 1800, "count": 0}, "11003": {"name": "DMG Inc", "raw": 0, "capped": 0, "cap": 300, "count": 0}, "11004": {"name": "DMG Red", "raw": 0, "capped": 0, "cap": 300, "count": 0}, "11006": {"name": "DEF", "raw": 15, "capped": 15, "cap": 100, "count": 1}}}}, "catalog": {"4001": {"name": "ATK", "l3": 270, "cap": 1800, "eff": 11001}, "4006": {"name": "HP", "l3": 270, "cap": 1800, "eff": 11002}, "4007": {"name": "DMG Inc", "l3": 45, "cap": 300, "eff": 11003}, "4008": {"name": "DMG Red", "l3": 45, "cap": 300, "eff": 11004}, "4010": {"name": "DEF", "l3": 15, "cap": 100, "eff": 11006}}, "real": {"defense": [{"nc": "#3001", "level": 3, "attackers": [2036], "pos": {"r": 19, "c": 13, "owner": 2864, "level": 3}}], "safe": [{"nc": "#3005", "level": 3}, {"nc": "#3007", "level": 3}, {"nc": "#2005", "level": 2}, {"nc": "#2014", "level": 2}, {"nc": "#2016", "level": 2}], "offense": [{"nc": "L4 throne", "level": 4, "owner": 0, "others": [386, 2036], "contestants": [386, 2036, 2864], "pos": null}, {"nc": "#3008", "level": 3, "owner": 386, "others": [], "contestants": [2864], "pos": {"r": 2, "c": 12, "owner": 386, "level": 3}}, {"nc": "#2017", "level": 2, "owner": 386, "others": [], "contestants": [2864], "pos": {"r": 3, "c": 9, "owner": 386, "level": 2}}, {"nc": "#1069", "level": 1, "owner": 3722, "others": [], "contestants": [2864], "pos": {"r": 2, "c": 10, "owner": 3722, "level": 1}}], "wastelandDefCount": 17}, "meta": {"round": 12, "sector": 90, "ownSid": 2864, "naps": [126, 654, 2197, 2253], "l4Contestants": [2864, 386, 2036]}};
+
+/* ── helpers ── */
+const SVGNS='http://www.w3.org/2000/svg';
+function el(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;}
+function svg(tag,attrs){const e=document.createElementNS(SVGNS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);return e;}
+function htmlEsc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+const COMBAT_ORDER=['11001','11002','11003','11004','11006'];
+const SEV_BY_EFF={'11001':'crit','11002':'info','11003':'watch','11004':'violet','11006':'ok'};
+const SEVHEX={crit:'#f85149',info:'#388bfd',watch:'#d29922',violet:'#a371f7',ok:'#46d39a',us:'#7cf6e3'};
+function ncTag(name){const m=name.match(/#\d+/);return m?m[0]:name;}
+
+/* ── buff bars ── */
+function buffBars(proj,color,opts){
+  opts=opts||{};
+  const wrap=el('div','buffbars');
+  COMBAT_ORDER.forEach(eff=>{
+    const b=proj[eff];if(!b)return;
+    const pct=b.cap?Math.round(100*b.capped/b.cap):0;
+    const over=b.raw>b.cap;
+    const row=el('div','buffrow'+(b.raw===0?' zero':''));
+    row.appendChild(el('span','buff-name',b.name));
+    const track=el('div','buff-track');
+    const fill=el('div','buff-fill');
+    fill.style.width=pct+'%';
+    const c=color||SEVHEX[SEV_BY_EFF[eff]];
+    fill.style.background='linear-gradient(90deg,'+c+','+c+'cc)';
+    if(over)fill.style.boxShadow='0 0 8px '+c;
+    track.appendChild(fill);
+    track.appendChild(el('div','buff-cap-tick'));
+    track.setAttribute('role','img');
+    track.setAttribute('aria-label',b.name+' zone buff, '+pct+' percent of cap');
+    row.appendChild(track);
+    const val=el('div','buff-val');
+    val.innerHTML='+'+b.capped+'%'+(over?'<span class="buff-over">AT CAP</span>':'')+'<span class="pct">'+pct+'% of +'+b.cap+'% cap</span>';
+    row.appendChild(val);
+    wrap.appendChild(row);
+  });
+  return wrap;
+}
+
+/* ── radial threat radar (battle-plan style) ──
+   opts: {tag, level, side:'defense'|'offense', centerOwner, nodes:[{sid,kind:'us'|'enemy'}], statusLine}
+   centre = the contested Neutral City; ring nodes = the servers fighting over it. */
+let RADAR_UID=0;
+function hexPoints(cx,cy,r){let p=[];for(let i=0;i<6;i++){const a=-Math.PI/2+i*Math.PI/3;p.push((cx+r*Math.cos(a)).toFixed(2)+','+(cy+r*Math.sin(a)).toFixed(2));}return p.join(' ');}
+function ncRadar(opts){
+  const W=320,H=300,CX=W/2,CY=H/2+4;
+  const RING=[48,82,114], HEXR=15, CR=22;
+  const s=svg('svg',{viewBox:'0 0 '+W+' '+H,class:'radar',role:'img','aria-label':'Threat radar for '+opts.tag});
+  const uid='rdr'+(RADAR_UID++);
+  const defs=svg('defs',{});
+  const g=svg('linearGradient',{id:uid,x1:'0',y1:'0.5',x2:'1',y2:'0.5'});
+  [['0','rgba(0,240,200,0)'],['65%','rgba(0,240,200,.22)'],['100%','rgba(0,240,200,0)']].forEach(([o,c])=>{const st=svg('stop',{offset:o});st.setAttribute('stop-color',c);g.appendChild(st);});
+  defs.appendChild(g);s.appendChild(defs);
+  // corner brackets (decorative, no text)
+  [[8,8,1,1],[W-8,8,-1,1],[8,H-8,1,-1],[W-8,H-8,-1,-1]].forEach(([x,y,dx,dy])=>{s.appendChild(svg('path',{class:'rdr-corner',d:'M '+(x+dx*10)+' '+y+' L '+x+' '+y+' L '+x+' '+(y+dy*10)}));});
+  // sonar range rings (dashed)
+  RING.forEach(rr=>s.appendChild(svg('circle',{cx:CX,cy:CY,r:rr,class:'rdr-ring'})));
+  // rotating scan arm
+  const scanLen=RING[2]+8;
+  const arm=svg('path',{class:'rdr-arm',d:'M '+CX+' '+CY+' L '+(CX+scanLen)+' '+(CY-1)+' A '+scanLen+' '+scanLen+' 0 0 1 '+(CX+scanLen*0.94)+' '+(CY+scanLen*0.34)+' Z',fill:'url(#'+uid+')'});
+  const rot=svg('animateTransform',{attributeName:'transform',type:'rotate',from:'0 '+CX+' '+CY,to:'360 '+CX+' '+CY,dur:'7s',repeatCount:'indefinite'});
+  arm.appendChild(rot);s.appendChild(arm);
+  // ring nodes (the contestant servers)
+  const nodes=opts.nodes||[];
+  const n=nodes.length;
+  // place: single node upper-right; multiple evenly spaced from top
+  nodes.forEach((nd,i)=>{
+    const ang=n===1?(-Math.PI/3):(-Math.PI/2+i*2*Math.PI/n);
+    const x=CX+RING[0]*Math.cos(ang), y=CY+RING[0]*Math.sin(ang);
+    const isUs=nd.kind==='us';
+    const col=isUs?'#7cf6e3':'#f85149';
+    // connector
+    s.appendChild(svg('line',{x1:CX,y1:CY,x2:x,y2:y,class:'rdr-conn '+(isUs?'us':'enemy')}));
+    // glow + hex
+    s.appendChild(svg('polygon',{points:hexPoints(x,y,HEXR+3),class:'rdr-glow '+(isUs?'us':'enemy')}));
+    s.appendChild(svg('polygon',{points:hexPoints(x,y,HEXR),class:'rdr-hex '+(isUs?'us':'enemy')}));
+    const lab=svg('text',{x:x,y:y+2.5,class:'rdr-node-lab',fill:col});lab.textContent='S'+nd.sid;s.appendChild(lab);
+    const role=svg('text',{x:x,y:y+HEXR+9,class:'rdr-node-role',fill:col});role.textContent=isUs?'US':(opts.side==='defense'?'ATTACKER':'RIVAL');s.appendChild(role);
+  });
+  // centre NC hex
+  const ours=opts.side==='defense'; // defense = our NC is the centre
+  const cc=ours?'#7cf6e3':(opts.level===4?'#d29922':'#f85149');
+  s.appendChild(svg('polygon',{points:hexPoints(CX,CY,CR+5),class:'rdr-center-glow',style:'stroke:'+cc}));
+  s.appendChild(svg('polygon',{points:hexPoints(CX,CY,CR),class:'rdr-center',style:'stroke:'+cc+';filter:drop-shadow(0 0 9px '+cc+')'}));
+  s.appendChild(svg('polygon',{points:hexPoints(CX,CY,CR*0.55),class:'rdr-center-mesh',style:'stroke:'+cc}));
+  const star=svg('text',{x:CX,y:CY+5,class:'rdr-star',fill:cc});star.textContent=ours?'★':'⚑';s.appendChild(star);
+  const clab=svg('text',{x:CX,y:CY+CR+13,class:'rdr-center-lab',fill:cc});clab.textContent='L'+opts.level+' '+opts.tag;s.appendChild(clab);
+  return s;
+}
+
+/* ── stat box ── */
+function statBox(label,value,sub,vcls){
+  const b=el('div','stat');
+  b.appendChild(el('div','sl',label));
+  const v=el('div','sv'+(vcls?' '+vcls:''));v.textContent=value;b.appendChild(v);
+  if(sub)b.appendChild(el('div','ss',sub));
+  return b;
+}
+function verdict(kind,kicker,nodes){
+  const v=el('div','verdict '+kind);
+  v.appendChild(el('div','vk',kicker));
+  (Array.isArray(nodes)?nodes:[nodes]).forEach(n=>{if(typeof n==='string'){const p=el('p');p.innerHTML=n;v.appendChild(p);}else v.appendChild(n);});
+  return v;
+}
+function slideHead(parent,kicker,title,desc){
+  const h=el('div','slide-head');
+  h.appendChild(el('div','kicker',kicker));
+  const h2=el('h2');h2.innerHTML=title;h.appendChild(h2);
+  if(desc){const d=el('div','cat-desc');d.innerHTML=desc;h.appendChild(d);}
+  parent.appendChild(h);
+}
+
+/* ════ SLIDE BUILDERS ════ */
+const S=RD.servers;
+function S_(id){return S[String(id)];}
+
+function build1(s){
+  const k=el('div','kicker','S2864 · SEAL STONE CHAOS · SECTOR 90');s.appendChild(k);
+  const h1=el('h1','display');h1.innerHTML='R12 Neutral City Battle<br><em>Threat Briefing</em>';s.appendChild(h1);
+  const l=el('div','lede');l.innerHTML='Tonight we fight a forced <b>3-way for the Level-4 Neutral City</b> (the “throne”) against S386 and S2036. Our edge is the roster; their edge is the ground. This deck is the plan — start with the next slide.';s.appendChild(l);
+  const leg=el('div','glossary');
+  leg.innerHTML='<b>NC</b> = Neutral City. Levels <b>L1</b> (smallest) → <b>L4</b> (the throne); higher level = bigger buffs and a harder fight. Each server may declare on at most one NC of each level.';
+  s.appendChild(leg);
+  const g=el('div','title-stats');
+  [['#1','SECTOR RANK','strongest roster of 36 servers','v-us'],
+   ['16.5M','OUR TOP-5 AVG MERIT','≈5× any rival server','v-us'],
+   ['1 of 6','OUR NCs UNDER ATTACK','only L3 #3001 drew a declaration','v-ok'],
+   ['3-WAY','L4 THRONE — FORCED','we face S386 + S2036 together','v-watch']].forEach(([v,kk,ss,c])=>{
+    const kp=el('div','kpi');const vv=el('div','v'+(c?' '+c:''));vv.textContent=v;kp.appendChild(vv);
+    kp.appendChild(el('div','k',kk));kp.appendChild(el('div','s',ss));g.appendChild(kp);});
+  s.appendChild(g);
+  const f=el('div','title-foot');
+  f.innerHTML='<span>Live game data · extracted 2026-06-05</span><span style="opacity:.6"><kbd>←</kbd> <kbd>→</kbd> slides · <kbd>P</kbd> print</span>';
+  s.appendChild(f);
+}
+
+function build2(s){
+  slideHead(s,'READ FIRST // BOTTOM LINE','The <em>bottom line</em>',
+    'Our edge is the <b>roster</b> — our top-5 players average <b>16.5M merit, roughly 5× any rival</b>. S386’s edge is the <b>ground</b> — about twice our territory and zone combat buffs near the cap. The L4 throne pits our player quality against their buff advantage.');
+  const gl=el('div','glossary');
+  gl.innerHTML='<b>Merit</b> = a player’s cumulative event score (our top-5 average is our headline strength). <b>Power Index (PI)</b> = our 0–100 overall-strength score per server (merit + top players + warzone + depth): S2864&nbsp;90, S386&nbsp;30, S2036&nbsp;22 — but the real driver is the merit gap above.';
+  s.appendChild(gl);
+  const v=verdict('threat','VERDICT // R12 NEUTRAL CITY BATTLE',[]);
+  const ol=el('ol');
+  ['<b>The L4 throne is a forced 3-way.</b> We engage <b>both S386 and S2036</b> there no matter what — no choice of opponent. The open question is whether they also turn their full force on us or split it fighting each other.',
+   '<b>We own ZERO attack-buff (ATK) wastelands</b> — 0% ATK zone buff while S386 sits at the cap. Our single biggest structural gap, in the stat that matters most for taking a city.',
+   '<b>Defense is nearly clean.</b> Of our six Level-2/3 NCs, only <b>L3 #3001 was declared on</b> (by S2036). The other five drew no attackers — our blocking this week held.',
+   '<b>Offense is locked and uncontested:</b> we are the <b>only</b> server that declared on L3 #3008 and L2 #2017 (both S386’s). #3008 is the hardest fight in the sector.'].forEach(t=>{const li=el('li');li.innerHTML=t;ol.appendChild(li);});
+  v.appendChild(ol);v.style.marginBottom='20px';s.appendChild(v);
+  const g=el('div','stat-grid');
+  g.appendChild(statBox('S2864 — US','RANK #1','350 active players · top-5 avg 16.5M merit (~5× rivals)','v-us'));
+  g.appendChild(statBox('S386 — OPPONENT 1','BUFFS ~96%','combat buffs near cap (ATK/HP/DEF at max) · 57 wastelands, 2× ours','v-crit'));
+  g.appendChild(statBox('S2036 — OPPONENT 2','BUFFS ~33%','light combat buffs (no ATK, no DEF) · 29 wastelands','v-watch'));
+  s.appendChild(g);
+}
+
+function build3(s){
+  slideHead(s,'OBJECTIVE 1 // L4 THRONE','L4 throne — <em>quality vs. zone buffs</em>',
+    'The Level-4 Neutral City (the “throne”) is contested by exactly three servers — us, S386, S2036 — and we fight both at once. Each bar shows a server’s zone combat buff against the hard sector cap. “Zone” buffs apply to every one of that server’s marches in this event.');
+  const cmp=el('div','cmp');
+  const c1=el('div','cmp-col buffwrap');
+  const h1=el('h4');h1.innerHTML='<span class="who" style="background:rgba(124,246,227,.14);color:#7cf6e3">S2864 · US</span>';c1.appendChild(h1);
+  c1.appendChild(el('div','bsub','Sector #1 · top-5 avg 16.5M merit · strongest players'));
+  c1.appendChild(buffBars(S_(2864).proj,'#7cf6e3'));s.appendChild(c1);
+  const c2=el('div','cmp-col buffwrap');
+  const h2=el('h4');h2.innerHTML='<span class="who" style="background:rgba(248,81,73,.16);color:#ffb3b0">S386 · OPPONENT 1</span>';c2.appendChild(h2);
+  c2.appendChild(el('div','bsub','Sector #2 · 57 wastelands (2× ours) · buffs near cap'));
+  c2.appendChild(buffBars(S_(386).proj,'#f85149'));
+  cmp.appendChild(c1);cmp.appendChild(c2);s.appendChild(cmp);
+  const c3=el('div','cmp-col buffwrap');c3.style.marginTop='16px';
+  const h3=el('h4');h3.innerHTML='<span class="who" style="background:rgba(210,153,34,.16);color:#ffe1a0">S2036 · OPPONENT 2</span>';c3.appendChild(h3);
+  c3.appendChild(el('div','bsub','Sector #3 · 29 wastelands · no ATK, no DEF — the lighter opponent'));
+  c3.appendChild(buffBars(S_(2036).proj,'#d29922'));s.appendChild(c3);
+  s.appendChild(verdict('threat','VERDICT // WE FIGHT BOTH AT ONCE',
+    'S386’s ATK/HP/DEF zone buffs are <b>at the cap</b>; ours are not (and our ATK is 0). S2036 is the lighter opponent. We don’t get to pick — both hit the throne with us. <b>Our player-quality edge has to carry this fight</b>; send your strongest marches, not your buffed ones.'));
+  const note=el('div','closing-foot');
+  note.textContent='Buffs are shown worst-case (every owned wasteland counted as Level 3), so real enemy buffs may be a little lower — the gap, not the exact %, is the point.';
+  s.appendChild(note);
+}
+
+const SPEC_COLOR={ATK:'#f85149',HP:'#388bfd','DMG Inc':'#d29922','DMG Red':'#a371f7',DEF:'#46d39a'};
+function specStack(label,total,segs,note){
+  const row=el('div','specbar-row');
+  const lab=el('div','specbar-lab');lab.innerHTML='<b>'+total+'</b>'+label+(note?'<br><span style="color:var(--tx3);font-size:10px">'+note+'</span>':'');row.appendChild(lab);
+  const bar=el('div','specbar');
+  segs.forEach(([name,n])=>{
+    if(n===0){const e=el('div','specseg empty');e.textContent='0 '+name;bar.appendChild(e);return;}
+    const seg=el('div','specseg');seg.style.flex=n;seg.style.background=SPEC_COLOR[name];seg.title=name+' ×'+n;seg.textContent=n;bar.appendChild(seg);
+  });
+  row.appendChild(bar);return row;
+}
+function build4(s){
+  slideHead(s,'STRUCTURAL GAP // OFFENSE','We own <em>zero ATK</em> wastelands',
+    'A raw "combat wastelands" count hides what each one actually grants. Broken down by buff type (ATK / HP / DMG Increase / DMG Reduction / DEF), our 21 combat wastelands include <b>no ATK</b> at all — while S386 stacks 8 ATK wastelands past the cap.');
+  const wrap=el('div','buffwrap');
+  wrap.appendChild(specStack('COMBAT — S2864',21,[['ATK',0],['HP',6],['DMG Inc',6],['DMG Red',3],['DEF',6]],'US · note the empty ATK slot'));
+  wrap.appendChild(specStack('COMBAT — S386',36,[['ATK',8],['HP',8],['DMG Inc',6],['DMG Red',6],['DEF',8]],'8 ATK + 8 HP push ATK/HP over cap'));
+  wrap.appendChild(specStack('COMBAT — S2036',11,[['ATK',0],['HP',5],['DMG Inc',3],['DMG Red',3],['DEF',0]],'no ATK, no DEF'));
+  const leg=el('div','spec-legend');
+  [['ATK','#f85149'],['HP','#388bfd'],['DMG Inc','#d29922'],['DMG Red','#a371f7'],['DEF','#46d39a']].forEach(([n,c])=>{
+    const sp=el('span');sp.innerHTML='<i style="background:'+c+'"></i>'+n;leg.appendChild(sp);});
+  wrap.appendChild(leg);s.appendChild(wrap);
+  const pf=el('div','pf');pf.style.marginTop='18px';
+  const bad=el('div','pf-card pf-bad');bad.innerHTML='<div class="pf-k">PITFALL — COMBAT COUNT AS A SCALAR</div><p>21 vs 36 looks like a 1.7× gap. It hides that we have <b>0% ATK zone buff</b> while S386 sits at the 1800 ATK cap — invisible in any single "combat wastelands" number.</p>';
+  const fix=el('div','pf-card pf-fix');fix.innerHTML='<div class="pf-k">DO THIS INSTEAD</div><p>On the <b>#3008 and L4 spearhead marches</b>, stack maximum ATK-side hero / gear / beast investment to manually offset the missing zone ATK buff. Put our best ATK formations on the front line.</p>';
+  pf.appendChild(bad);pf.appendChild(fix);s.appendChild(pf);
+}
+
+function build5(s){
+  slideHead(s,'SITUATION // SECTOR 90','Order of <em>battle</em>',
+    'Of the 36 servers in the sector, only a handful can actually reach our priorities. Ranked by strength, with non-aggression-pact partners and L4 opponents flagged. Real threat is the ability to declare on us — not raw strength.');
+  const rows=[
+    [1,2864,'90.0','S',244260,32,21,['US']],
+    [2,386,'30.4','A',170070,57,36,['L4']],
+    [3,2036,'22.3','A',151810,29,11,['L4','ELIG']],
+    [4,2197,'17.3','A',105450,21,12,['NAP']],
+    [5,2693,'14.2','A',80510,8,3,[]],
+    [6,2253,'13.2','B',109590,19,12,['NAP']],
+    [7,126,'14.7','B',138410,12,6,['NAP']],
+    [8,654,'9.2','B',51860,13,4,['NAP']],
+    [9,2116,'11.2','B',99640,13,5,[]],
+  ];
+  const tbl=el('table','oob');
+  tbl.innerHTML='<thead><tr><th>Rank</th><th>Server</th><th>Strength</th><th class="num">Event fame</th><th class="num">Wastelands</th><th>Standing with us</th></tr></thead>';
+  const tb=el('tbody');
+  const TAGCLS={US:'tb-us',L4:'tb-l4',NAP:'tb-nap',ELIG:'tb-elig'};
+  const TAGTX={US:'US',L4:'L4 OPPONENT',NAP:'PACT (TRUCE)',ELIG:'ATTACKING OUR #3001'};
+  rows.forEach(r=>{
+    const tr=el('tr',r[0]===1?'us':'');
+    let tags=r[7].map(t=>'<span class="tag-b '+TAGCLS[t]+'">'+TAGTX[t]+'</span>').join('');
+    tr.innerHTML='<td class="rk">#'+r[0]+'</td><td class="sid">S'+r[1]+'</td><td><span style="font-family:var(--mono)">'+r[2]+'</span> <span style="color:var(--tx3)">/ tier '+r[3]+'</span></td>'+
+      '<td class="num">'+r[4].toLocaleString()+'</td><td class="num">'+r[5]+' <span style="color:var(--tx3)">('+r[6]+' combat)</span></td><td>'+(tags||'<span style="color:var(--tx3)">neutral</span>')+'</td>';
+    tb.appendChild(tr);
+  });
+  tbl.appendChild(tb);s.appendChild(tbl);
+  const ex=el('div','closing-foot');ex.innerHTML='Strength = Power Index (0–100, see slide 2); tier S = 50+, A = 15–49, B = under 15. Servers ranked #10 and below are omitted — none declared on our priority cities. Only S2036 (our L4 opponent) declared on one of our NCs (#3001).';s.appendChild(ex);
+}
+
+function build6(s){
+  const R=RD.real;
+  slideHead(s,'OBJECTIVE 2 // DEFEND','What is actually <em>being declared on us</em>',
+    'Declarations are locked, so this is the real picture — not a guess. Of our six Level-2 and Level-3 Neutral Cities, <b>exactly one drew an attacker</b>. Our wasteland blocking this week did its job.');
+  const def=R.defense[0]; // #3001
+  const wrap=el('div','two-col');wrap.style.alignItems='start';
+  // left: the one contested NC radar
+  const card=el('div','radarcard');
+  const hd=el('div','rc-hd');hd.appendChild(el('div','rc-t','L'+def.level+' '+def.nc+' · OUR CITY'));
+  hd.appendChild(el('div','rc-badge rc-contested','UNDER ATTACK'));card.appendChild(hd);
+  card.appendChild(ncRadar({tag:def.nc,level:def.level,side:'defense',nodes:def.attackers.map(a=>({sid:a,kind:'enemy'}))}));
+  const ft=el('div','rc-foot');ft.innerHTML='Attacked by <b>S2036</b> — also one of our two L4 opponents. Its single Level-3 declaration is spent here, so it can’t also push another of our cities. <b>Garrison #3001.</b>';card.appendChild(ft);
+  wrap.appendChild(card);
+  // right: secure list + verdict
+  const right=el('div','stack-lg');
+  const sec=el('div');
+  sec.appendChild(el('div','kicker','SECURE — NO DECLARATION'));
+  const sg=el('div','secure-grid');
+  R.safe.forEach(n=>{const c=el('div','secure-chip');c.innerHTML='<div class="sc-nc">L'+n.level+' '+n.nc+'</div><div class="sc-s">no attacker · hold</div>';sg.appendChild(c);});
+  sec.appendChild(sg);right.appendChild(sec);
+  right.appendChild(verdict('ok','VERDICT // DEFENSE IS NEARLY CLEAN',
+    'Five of our six L2/L3 cities were not declared on at all — nothing to defend there. Put defensive marches on <b>#3001 vs S2036</b> and send everything else to the offense and the L4. (We also have 17 wasteland defenses, separate from these cities.)'));
+  wrap.appendChild(right);
+  s.appendChild(wrap);
+}
+
+function build7(s){
+  const R=RD.real;
+  slideHead(s,'OBJECTIVE 3 // STRIKE','Where we <em>declare</em>',
+    'Our declarations are locked: one city at each level, in priority order (throne first). Every one of our high-value targets is <b>uncontested — we are the only server that declared on it</b>.');
+  // L4 throne radar (big, top)
+  const l4=R.offense.find(o=>o.level===4);
+  const top=el('div','radarcard');top.style.marginBottom='16px';
+  const hd0=el('div','rc-hd');hd0.appendChild(el('div','rc-t','L4 THRONE · PRIORITY 1'));hd0.appendChild(el('div','rc-badge rc-target','3-WAY FIGHT'));top.appendChild(hd0);
+  const row=el('div');row.style.cssText='display:grid;grid-template-columns:300px 1fr;gap:6px;align-items:center;';
+  row.appendChild(ncRadar({tag:'THRONE',level:4,side:'offense',nodes:[{sid:2864,kind:'us'},{sid:386,kind:'enemy'},{sid:2036,kind:'enemy'}]}));
+  const l4txt=el('div','rc-foot');l4txt.style.padding='14px';l4txt.innerHTML='The Level-4 city is unclaimed and contested by <b>us, S386 and S2036 together</b> — we fight both. This is the round’s biggest prize and biggest fight (see slide 3). Lead with our strongest marches.';row.appendChild(l4txt);
+  top.appendChild(row);s.appendChild(top);
+  // L3/L2/L1 targets
+  const grid=el('div','feat-grid');
+  const targets=[
+    {o:R.offense.find(o=>o.nc==='#3008'),pr:'PRIORITY 2 · L3',hue:38,
+     body:'Owned by <b>S386</b>. <b>We are the only server that declared</b> — it cannot be taken from us before the fight.',
+     verdictKind:'threat',verdictKick:'VERDICT // HARDEST DEFENDER IN SECTOR',
+     verdictTxt:'S386 defends its own Level-3 city with combat buffs at the cap while our ATK buff is 0. Bring maximum attack-side heroes, gear and beasts. A real fight, not a formality.'},
+    {o:R.offense.find(o=>o.nc==='#2017'),pr:'PRIORITY 3 · L2',hue:200,
+     body:'Owned by <b>S386</b>. <b>Also solely ours</b> — no other server declared on it. A clean Level-2 pickup.',
+     verdictKind:'ok',verdictKick:'VERDICT // CLEAN PICKUP',
+     verdictTxt:'Uncontested. Send a force that can beat S386’s city defense and bank the Level-2 reward.'},
+    {o:R.offense.find(o=>o.nc==='#1069'),pr:'PRIORITY 4 · L1',hue:150,
+     body:'Owned by <b>S3722</b>. Our Level-1 declaration — <b>solely ours</b>. Nice-to-have, lowest priority.',
+     verdictKind:'ok',verdictKick:'VERDICT // FREE IF SPARE MARCHES',
+     verdictTxt:'Only take it with marches not needed at the throne, #3008 or #3001. Do not pull force off the real fights for an L1.'},
+  ];
+  targets.forEach(t=>{
+    if(!t.o)return;
+    const f=el('div','feat');f.style.borderTop='2px solid hsl('+t.hue+',80%,58%)';
+    f.innerHTML='<div class="tag" style="color:hsl('+t.hue+',66%,73%)">'+t.pr+' · SOLELY OURS</div><h3>L'+t.o.level+' '+t.o.nc+'</h3><div class="fbody">'+t.body+'</div>';
+    f.appendChild(verdict(t.verdictKind,t.verdictKick,t.verdictTxt));
+    grid.appendChild(f);
+  });
+  s.appendChild(grid);
+}
+
+function build8(s){
+  slideHead(s,'CONTINGENCY // WATCH','The things that could <em>still flip it</em>',
+    'The declarations are locked, but two things are still uncertain on the night.');
+  const tc=el('div','two-col');
+  const coal=verdict('threat','WATCH 1 // DO S386 + S2036 FOCUS US AT THE THRONE?',
+    'We engage both at the throne no matter what. What we don’t know: do they spend their force fighting <b>each other</b> (which relieves us), or do they <b>both turn on us</b>? If both-on-us, we face combined event fame <b>321,880 — about 1.32× ours (244,260)</b> plus S386’s near-cap buffs. <b>Plan for both-on-us</b> and read their opening moves.');
+  const nap=verdict('ok','WATCH 2 // WHY OUR DEFENSE IS CLEAN',
+    'Four servers (S126, S654, S2197, S2253) are on a <b>non-aggression pact</b> (truce) with us, and none of them declared on our cities — that’s a big reason only #3001 is contested. If a truce breaks in a future round those flanks reopen, but for tonight they hold.');
+  const cr=el('div','chip-row');cr.style.marginTop='10px';['S126','S654','S2197','S2253'].forEach(c=>{cr.appendChild(el('span','chip nap',c+' · truce'));});
+  nap.appendChild(cr);
+  tc.appendChild(coal);tc.appendChild(nap);s.appendChild(tc);
+  const todo=el('div','todo-box');
+  todo.innerHTML='<b>CONFIRM IN-GAME:</b> the exact L4 throne opening time. Be staged and ready before the window — the throne fight is where the round is won or lost.';
+  s.appendChild(todo);
+}
+
+function build9(s){
+  slideHead(s,'DECISION // GO PLAN','The <em>plan</em>',
+    'Four moves tonight, in order. The whole plan is built around one fact: we have no attack-buff edge, so player quality and march placement have to win the hard fights.');
+  const fo=el('div','focus-order');
+  [['1','fo-a','L4 throne','fight S386 + S2036 — our strongest marches'],
+   ['2','fo-c','Declare L3 #3008','solely ours, but S386’s hardest defense'],
+   ['3','fo-b','Defend L3 #3001','the one city under attack (S2036)'],
+   ['4','fo-d','Bank #2017 + #1069','clean L2 + L1 with spare force']].forEach(([l,c,t,d])=>{
+    const st=el('div','fo-step '+c);st.innerHTML='<div class="fo-l">STEP '+l+'</div><div class="fo-t">'+t+'</div><div class="fo-d2">'+d+'</div>';fo.appendChild(st);});
+  s.appendChild(fo);
+  const ft=el('div','focus-tiers');
+  const tiers=[
+    ['fa','The two hard fights — win these','L4 throne + L3 #3008, both S386-grade. <b>Stack attack-side heroes, gear and beasts</b> to offset our zero ATK zone buff. These are won by roster, not buffs.',[['L4 throne','threat'],['#3008','threat']]],
+    ['fb','The one defense','<b>#3001 vs S2036.</b> Garrison it. S2036’s only L3 declaration is spent here, so it’s a single, containable fight.',[['#3001','watch']]],
+    ['fc','Already safe — no action','Our other five L2/L3 cities drew no attacker. Hold; don’t over-commit marches to them.',[['#3005','ok'],['#3007','ok'],['#2005','ok'],['#2014','ok'],['#2016','ok']]],
+    ['fd','Bonus pickups','<b>#2017 (L2)</b> and <b>#1069 (L1)</b> are both solely ours — bank them only with marches not needed above.',[['#2017','ok'],['#1069','ok']]],
+  ];
+  tiers.forEach(([c,h,p,pills])=>{
+    const t=el('div','ftier '+c);t.appendChild(Object.assign(el('h4'),{textContent:h}));
+    const pp=el('p');pp.innerHTML=p;t.appendChild(pp);
+    const sp=el('div','seq-pills');pills.forEach(([n,cls])=>sp.appendChild(el('span','seq-pill'+(cls?' '+cls:''),n)));t.appendChild(sp);
+    ft.appendChild(t);
+  });
+  s.appendChild(ft);
+}
+
+const BUILDERS=[build1,build2,build3,build4,build5,build6,build7,build8,build9];
+
+/* ── deck nav ── */
+const slides=[...document.querySelectorAll('.slide')];
+const TOTAL=slides.length;let idx=0;
+function build(n){const s=slides[n];if(s.dataset.built)return;BUILDERS[n](s);s.dataset.built='1';}
+function show(n){
+  n=Math.max(0,Math.min(TOTAL-1,n));idx=n;build(n);
+  slides.forEach((s,i)=>{s.classList.toggle('active',i===n);s.setAttribute('aria-hidden',i!==n);});
+  const hue=slides[n].dataset.hue;document.documentElement.style.setProperty('--hue',hue);
+  document.getElementById('prog').style.width=((n+1)/TOTAL*100)+'%';
+  document.getElementById('cur').textContent=String(n+1).padStart(2,'0');
+  try{history.replaceState(null,'','#s'+(n+1));}catch(e){location.hash='#s'+(n+1);}
+  menuItems.forEach((m,i)=>m.classList.toggle('cur',i===n));
+}
+document.getElementById('next').onclick=()=>show(idx+1);
+document.getElementById('prev').onclick=()=>show(idx-1);
+const menu=document.getElementById('menu');
+let menuOpener=null;
+function menuIsOpen(){return menu.classList.contains('open');}
+function toggleMenu(f){
+  menu.classList.toggle('open',f);
+  menu.setAttribute('aria-hidden',!f);
+  if(f){menuOpener=document.activeElement;menuItems[idx]&&menuItems[idx].focus();}
+  else if(menuOpener){try{menuOpener.focus();}catch(e){}}
+}
+document.getElementById('menuBtn').onclick=()=>toggleMenu(!menuIsOpen());
+const mg=document.getElementById('menuGrid');const menuItems=[];
+slides.forEach((s,i)=>{const it=el('div','menu-item');it.setAttribute('tabindex','0');it.setAttribute('role','button');
+  it.setAttribute('aria-label','Go to slide '+(i+1)+': '+s.dataset.title);
+  it.innerHTML='<span class="mi-n">'+String(i+1).padStart(2,'0')+'</span><span class="mi-t">'+s.dataset.title+'</span>';
+  it.onclick=()=>{toggleMenu(false);show(i);};
+  it.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggleMenu(false);show(i);}};
+  menuItems.push(it);mg.appendChild(it);});
+window.addEventListener('keydown',e=>{
+  if(/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))return;
+  if(menuIsOpen()){ // trap: only Escape/Tab/Enter/Space operate inside the menu
+    if(e.key==='Escape'){toggleMenu(false);e.preventDefault();}
+    return;
+  }
+  if(e.key==='ArrowRight'||e.key==='ArrowDown'||e.key==='PageDown'||e.key===' '){show(idx+1);e.preventDefault();}
+  else if(e.key==='ArrowLeft'||e.key==='ArrowUp'||e.key==='PageUp'){show(idx-1);e.preventDefault();}
+  else if(e.key==='Home'){show(0);}else if(e.key==='End'){show(TOTAL-1);}
+  else if(/^[1-9]$/.test(e.key)){show(+e.key-1);}
+  else if(e.key.toLowerCase()==='m'){toggleMenu(true);}
+  else if(e.key.toLowerCase()==='f'){if(!document.fullscreenElement)document.documentElement.requestFullscreen();else document.exitFullscreen();}
+  else if(e.key.toLowerCase()==='p'){window.print();}
+});
+let tx=0,ty=0;window.addEventListener('touchstart',e=>{tx=e.changedTouches[0].clientX;ty=e.changedTouches[0].clientY;},{passive:true});
+window.addEventListener('touchend',e=>{const dx=e.changedTouches[0].clientX-tx,dy=e.changedTouches[0].clientY-ty;
+  if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy)*1.5){show(idx+(dx<0?1:-1));}},{passive:true});
+window.addEventListener('hashchange',()=>{const m=(location.hash.match(/^#s(\d+)$/)||[])[1];if(m&&+m-1!==idx)show(+m-1);});
+// build all for print
+window.addEventListener('beforeprint',()=>{for(let i=0;i<TOTAL;i++)build(i);});
+const start=(location.hash.match(/^#s(\d+)$/)||[])[1];
+show(start?Math.min(TOTAL,+start)-1:0);
+</script>
+</body>
+</html>
