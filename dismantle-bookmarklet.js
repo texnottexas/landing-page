@@ -346,6 +346,51 @@
     return { done: done, total: totalSteps };
   }
 
+  // ─── Shard compose (merge all shards → skills) ─────────────────────────
+  // Skill shards are item type 46; each shard row's para1 = the produced
+  // skill itemId. 10 shards → 1 Lv 1 skill. The game fires one batched
+  // sendPBV2(245, {consumeItems, composeItems}) (captured live) that consumes
+  // 10×n of each shard and grants n of each skill. We rebuild that map from
+  // the player's owned shards (>=10) and send it; the new skills then flow
+  // into the normal dismantle enumeration.
+  function enumerateShardSets(req, ud) {
+    var TABLE = req('TableManager').TABLE;
+    var list = ud.getItemListByBagType(4) || [];
+    var consume = {}, compose = {}, sets = 0, skillCount = 0, types = 0;
+    for (var i = 0; i < list.length; i++) {
+      var it = list[i];
+      if (!it || !it._itemId || !it._amount) continue;
+      var row; try { row = TABLE.getTableDataById('item', String(it._itemId)); } catch (e) { row = null; }
+      if (!row || row.type !== 46) continue; // shards only
+      var skillId = Number(row.para1);
+      if (!skillId) continue;
+      var n = Math.floor(Number(it._amount) / 10); // 10 shards -> 1 skill
+      if (n < 1) continue;
+      consume[it._itemId] = n * 10;
+      compose[skillId] = (compose[skillId] || 0) + n;
+      sets += n; skillCount += n; types++;
+    }
+    return { consume: consume, compose: compose, sets: sets, skillCount: skillCount, types: types };
+  }
+
+  function composeAllShards(req, ud) {
+    return new Promise(function (resolve) {
+      var plan;
+      try { plan = enumerateShardSets(req, ud); } catch (e) { resolve({ ok: false, reason: e && e.message, sets: 0 }); return; }
+      if (plan.sets < 1) { resolve({ ok: true, sets: 0, skillCount: 0 }); return; }
+      var NET = req('NetMgr').NET;
+      var settled = false;
+      setTimeout(function () { if (!settled) { settled = true; resolve({ ok: false, reason: 'timeout', sets: plan.sets }); } }, 8000);
+      try {
+        NET.sendPBV2(245, { consumeItems: plan.consume, composeItems: plan.compose }, null, function (resp) {
+          if (settled) return; settled = true;
+          var ok = !!(resp && (resp.s === 0 || (resp.pbAck && resp.pbAck.header && resp.pbAck.header.s === 0)));
+          resolve({ ok: ok, sets: plan.sets, skillCount: plan.skillCount, types: plan.types, respS: resp && resp.s });
+        });
+      } catch (e) { if (!settled) { settled = true; resolve({ ok: false, reason: 'throw:' + (e && e.message), sets: plan.sets }); } }
+    });
+  }
+
   // ─── UI ────────────────────────────────────────────────────────────────
   var QUALITY_LABEL = { 1: 'Normal', 2: 'Rare', 3: 'Epic', 4: 'Legendary', 5: 'Mythic' };
   var QUALITY_COLOR = { 1: '#8b949e', 2: '#79c0ff', 3: '#bc8cff', 4: '#d29922', 5: '#ff7b72' };
@@ -517,6 +562,18 @@
       render();
     });
     toggleRow.appendChild(heroCommonBtn);
+
+    // Merge all shards (10 shards -> 1 skill) then refresh so the new skills
+    // join the dismantle pool. Only shown if the host wired onMergeShards.
+    if (opts.onMergeShards) {
+      var mergeShardsBtn = el('button', 'background:transparent;color:#3fb950;border:1px solid #3fb950;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Merge all shards');
+      mergeShardsBtn.title = 'Combine every 10 skill shards into a Lv.1 skill, then refresh the list so they join the dismantle pool';
+      mergeShardsBtn.addEventListener('click', function () {
+        mergeShardsBtn.disabled = true; mergeShardsBtn.textContent = 'Merging shards…';
+        opts.onMergeShards();
+      });
+      toggleRow.appendChild(mergeShardsBtn);
+    }
 
     var clearBtn = el('button', 'background:transparent;color:#8b949e;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Clear');
     clearBtn.addEventListener('click', function () { state.selected = {}; render(); });
@@ -841,12 +898,21 @@
         return p && p.steps.length > 0;
       });
       if (overlay) {
-        function showList() {
+        function showList(statusMsg) {
           clearChildren(overlay.body);
           overlay.setHeader('Skill Dismantle', '#79c0ff');
-          overlay.setSub(families.length + ' famil' + (families.length === 1 ? 'y' : 'ies') + ' in bag · pick which to dismantle', '#8b949e');
+          overlay.setSub(statusMsg || (families.length + ' famil' + (families.length === 1 ? 'y' : 'ies') + ' in bag · pick which to dismantle'), '#8b949e');
           renderFamilyList(req, overlay.body, families, {
             onClose: function () { overlay.remove(); },
+            onMergeShards: async function () {
+              overlay.setSub('Merging shards…', '#d29922');
+              var res = await composeAllShards(req, ud);
+              if (!res.ok) { showList('Shard merge failed' + (res.respS != null ? ' (status ' + res.respS + ')' : (res.reason ? ' (' + res.reason + ')' : '')) + '. Pick which to dismantle.'); return; }
+              if (res.sets < 1) { showList('No complete shard sets to merge (need 10+ of a shard). Pick which to dismantle.'); return; }
+              await delay(500);
+              families = enumerateFamilies(req, ud).filter(function (f) { var p = buildPlan(req, f); return p && p.steps.length > 0; });
+              showList('Merged ' + res.skillCount + ' skill' + (res.skillCount === 1 ? '' : 's') + ' from ' + res.types + ' shard type' + (res.types === 1 ? '' : 's') + '. Pick which to dismantle.');
+            },
             onRun: function (plans) {
               showConfirm(overlay, plans,
                 async function () {
