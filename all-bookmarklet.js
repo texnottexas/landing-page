@@ -1162,6 +1162,45 @@
     return { done: done, total: totalSteps };
   }
 
+  // Shard compose: skill shards are item type 46 (row.para1 = produced skill
+  // itemId), 10 shards -> 1 Lv 1 skill. The game batches it via
+  // NET.sendPBV2(245, {consumeItems, composeItems}) (captured live). Rebuild
+  // that map from owned shards (>=10) so produced skills join the dismantle pool.
+  function disEnumerateShardSets(req, ud) {
+    var TABLE = req('TableManager').TABLE;
+    var list = ud.getItemListByBagType(4) || [];
+    var consume = {}, compose = {}, sets = 0, skillCount = 0, types = 0;
+    for (var i = 0; i < list.length; i++) {
+      var it = list[i];
+      if (!it || !it._itemId || !it._amount) continue;
+      var row; try { row = TABLE.getTableDataById('item', String(it._itemId)); } catch (e) { row = null; }
+      if (!row || row.type !== 46) continue; // shards only
+      var skillId = Number(row.para1); if (!skillId) continue;
+      var n = Math.floor(Number(it._amount) / 10); if (n < 1) continue;
+      consume[it._itemId] = n * 10;
+      compose[skillId] = (compose[skillId] || 0) + n;
+      sets += n; skillCount += n; types++;
+    }
+    return { consume: consume, compose: compose, sets: sets, skillCount: skillCount, types: types };
+  }
+
+  function disComposeAllShards(req, ud) {
+    return new Promise(function (resolve) {
+      var plan; try { plan = disEnumerateShardSets(req, ud); } catch (e) { resolve({ ok: false, reason: e && e.message, sets: 0 }); return; }
+      if (plan.sets < 1) { resolve({ ok: true, sets: 0, skillCount: 0 }); return; }
+      var NET = req('NetMgr').NET;
+      var settled = false;
+      setTimeout(function () { if (!settled) { settled = true; resolve({ ok: false, reason: 'timeout', sets: plan.sets }); } }, 8000);
+      try {
+        NET.sendPBV2(245, { consumeItems: plan.consume, composeItems: plan.compose }, null, function (resp) {
+          if (settled) return; settled = true;
+          var ok = !!(resp && (resp.s === 0 || (resp.pbAck && resp.pbAck.header && resp.pbAck.header.s === 0)));
+          resolve({ ok: ok, sets: plan.sets, skillCount: plan.skillCount, types: plan.types, respS: resp && resp.s });
+        });
+      } catch (e) { if (!settled) { settled = true; resolve({ ok: false, reason: 'throw:' + (e && e.message), sets: plan.sets }); } }
+    });
+  }
+
   function disFmtLevels(family) {
     var qs = Object.keys(family.variants).map(Number).sort(function (a, b) { return b - a; });
     var sections = [];
@@ -1220,18 +1259,25 @@
       return;
     }
 
-    var families = disEnumerateFamilies(req, ud).filter(function (f) {
-      var p = disBuildPlan(req, f); return p && p.steps.length > 0;
-    });
+    var families = [];
 
-    overlay.setSub(families.length + ' famil' + (families.length === 1 ? 'y' : 'ies') + ' in bag · pick which to dismantle');
+    // Auto-merge all full shard sets (10 shards -> 1 skill) on open, then
+    // enumerate so the produced skills are already in the dismantle pool.
+    overlay.setSub('Merging shards…', '#d29922');
+    (async function () {
+      var mergeMsg = '';
+      try {
+        var mres = await disComposeAllShards(req, ud);
+        if (mres && mres.ok && mres.sets > 0) { await disDelay(500); mergeMsg = 'Merged ' + mres.skillCount + ' skill' + (mres.skillCount === 1 ? '' : 's') + ' from ' + mres.types + ' shard type' + (mres.types === 1 ? '' : 's') + ' · '; }
+      } catch (_e) {}
+      families = disEnumerateFamilies(req, ud).filter(function (f) { var p = disBuildPlan(req, f); return p && p.steps.length > 0; });
+      showList(mergeMsg);
+    })();
 
-    showList();
-
-    function showList() {
+    function showList(statusMsg) {
       disClearChildren(overlay.body);
       overlay.setHeader('Skill Dismantle', '#79c0ff');
-      overlay.setSub(families.length + ' famil' + (families.length === 1 ? 'y' : 'ies') + ' in bag · pick which to dismantle', '#8b949e');
+      overlay.setSub((statusMsg || '') + families.length + ' famil' + (families.length === 1 ? 'y' : 'ies') + ' in bag · pick which to dismantle', '#8b949e');
       renderList(overlay.body, families, {
         onClose: function () { overlay.remove(); },
         onRun: function (plans) {
