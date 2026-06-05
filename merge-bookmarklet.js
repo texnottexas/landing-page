@@ -19,18 +19,41 @@
 //                    Summoning jumps to the world map → reopen guild via
 //                    UIManager.OpenUI(UIDataInfo.TreasureMapTaskNode).
 //        - dismiss any reward overlays + close the Info Board.
-//   4. Human-like jitter between every action. Abort at any time.
+//   4. Light human-like jitter between actions. Abort at any time.
 //
 // Everything is driven through the game's own button handlers / panel
 // methods (clickEvents.emit, onContributeClick, onGetRewardClick,
 // onTurnClick, onSelectClick) — NO hand-crafted WS packets.
 //
-// ⚠️ Boss = Rare summons a Rare Treasure Guard onto the world map (200B
-// coin each) that you must fight manually within 1 hour or it expires.
+// Boss = Rare summons a Rare Treasure Guard onto the world map (200B
+// coin each) that someone must fight within 1 hour or it expires.
 
 (function () {
   'use strict';
   var cc = window.cc;
+
+  // ─── Delay tuning (ms) ────────────────────────────────────────────────
+  // Lower = faster. Functional waits (wheel spin, map jump, server
+  // round-trips) keep safe minimums; everything else is trimmed close to
+  // ~0.5s. [base, jitterSpread] → base + rand(0..spread).
+  var T = {
+    afterMerge:      [450, 250],   // merge emit → scenario panel appears
+    detectPoll:      300,          // poll interval while waiting for a scenario
+    storeClose:      [300, 200],
+    wheelAnim:       [1400, 400],  // spin animation must finish before dismiss
+    dismissGap:      [300, 200],
+    donateClaimPoll: 350,          // poll interval for Claim unlock (server round-trip)
+    donatePreClaim:  [300, 150],
+    donatePostClaim: [600, 300],   // reward fly-in after claim
+    donatePreClose:  [220, 150],
+    bossSummon:      [1200, 400],  // summon + world-map jump
+    ensureGuild:     [900, 350],
+    cleanup:         [250, 150],
+    postRead:        [300, 150],
+    interCycle:      [400, 350],   // gap between merges
+  };
+  function jit(p) { return p[0] + Math.floor(Math.random() * p[1]); }
+  function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
   // ─── Game-side wiring ─────────────────────────────────────────────────
   function getRequire() {
@@ -46,8 +69,6 @@
     try { return req('UIDataInfo').UIDataInfo; }
     catch (e) { throw new Error('UIDataInfo not ready — wait a moment and retry'); }
   }
-  function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-  function jitter(base, spread) { return base + Math.floor(Math.random() * spread); }
 
   // ─── Scene-graph helpers ──────────────────────────────────────────────
   var GUILD_MERGE = 'UICanvas/PopLayer/TreasureMapTaskNode/CONTENT/TreasureMapTaskNode/bottom/button';
@@ -140,7 +161,7 @@
         if (has) { var fc = (ch._components || []).find(function (c) { return typeof c.close === 'function'; }); if (fc) { try { fc.close(); did = true; } catch (e) {} } }
       });
       if (!did) break;
-      await delay(jitter(600, 300));
+      await delay(jit(T.dismissGap));
     }
   }
 
@@ -148,22 +169,22 @@
     for (var i = 0; i < 3; i++) {
       if (mergeBtnNode()) return true;
       try { getUIMgr(req).OpenUI(getUIDataInfo(req).TreasureMapTaskNode); } catch (e) {}
-      await delay(jitter(1400, 600));
+      await delay(jit(T.ensureGuild));
     }
     return !!mergeBtnNode();
   }
 
   // ─── Scenario handlers ────────────────────────────────────────────────
   async function handleStore() {
-    await delay(jitter(700, 400));
+    await delay(jit(T.storeClose));
     return closePanelByClass('TreasureMapShopPanel');
   }
 
   async function handleWheel() {
     var spun = emitBtn(findNodeByName('drawone', true));
-    await delay(jitter(2800, 800)); // wheel animation
+    await delay(jit(T.wheelAnim)); // wheel animation
     await dismissRewards();
-    await delay(jitter(400, 300));
+    await delay(jit(T.dismissGap));
     closePanelByClass('TreasureMapTurnTablePanel');
     return spun;
   }
@@ -177,27 +198,27 @@
     try { comp.onContributeClick(); } catch (e) { return { err: 'donate:' + (e && e.message) }; }
     // wait for the Claim (decomposeButton) to unlock
     var claimReady = false;
-    for (var i = 0; i < 14; i++) {
-      await delay(500);
+    for (var i = 0; i < 16; i++) {
+      await delay(T.donateClaimPoll);
       var b = findNodeByName('decomposeButton', true);
       if (b) { var bc = b.getComponent(cc.Button); if (bc && bc.interactable) { claimReady = true; break; } }
     }
     var claimed = false;
     if (claimReady) {
-      await delay(jitter(600, 400));
+      await delay(jit(T.donatePreClaim));
       var node = findNodeByName('decomposeButton', true);
       if (node) { var nb = node.getComponent(cc.Button); if (nb && nb.interactable) { claimed = emitBtn(node); } }
-      await delay(jitter(1500, 700));
+      await delay(jit(T.donatePostClaim));
       await dismissRewards();
     }
-    await delay(jitter(400, 300));
+    await delay(jit(T.donatePreClose));
     closePanelByClass('TreasureMapContributePanel');
     return { claimReady: claimReady, claimed: claimed };
   }
 
   // policy: 'rare' (bossType 2) | 'common' (bossType 0) | 'skip'
   async function handleBoss(req, policy) {
-    if (policy === 'skip') { closePanelByClass('TreasureMapChooseBossPanel'); await delay(jitter(600, 300)); return 'skipped'; }
+    if (policy === 'skip') { closePanelByClass('TreasureMapChooseBossPanel'); await delay(jit(T.storeClose)); return 'skipped'; }
     var wantType = policy === 'common' ? 0 : 2;
     var panel = findPanel('TreasureMapChooseBossPanel');
     if (!panel) return 'panel-gone';
@@ -211,9 +232,8 @@
     var buyBtn = null;
     (function bf(n) { if (!n || buyBtn) return; if (n.name === 'buyButton' && n.activeInHierarchy) { buyBtn = n; return; } (n.children || []).forEach(bf); })(cell);
     var ok = emitBtn(buyBtn);
-    await delay(jitter(2200, 800)); // summon + map jump
+    await delay(jit(T.bossSummon)); // summon + map jump
     await ensureGuild(req); // summoning kicks us to the map — reopen the guild
-    await delay(jitter(400, 300));
     return ok ? 'summoned' : 'no-btn';
   }
 
@@ -225,7 +245,7 @@
       await ensureGuild(req);
       await dismissRewards();
       closePanelByClass('TreasureMapMsgListPanel');
-      await delay(jitter(450, 300));
+      await delay(jit(T.cleanup));
 
       var pre = readMergeCount();
       if (!pre) { stats.lastError = 'Hunting Guild not open'; break; }
@@ -233,10 +253,10 @@
       if (pre.stars < pre.per) { stats.lastError = 'Out of stars (' + pre.stars + '/' + pre.per + ')'; break; }
 
       emitBtn(mergeBtnNode());
-      await delay(jitter(1200, 600));
+      await delay(jit(T.afterMerge));
 
       var scenario = 'none';
-      for (var i = 0; i < 12; i++) { scenario = detectScenario(); if (scenario !== 'none') break; await delay(500); }
+      for (var i = 0; i < 14; i++) { scenario = detectScenario(); if (scenario !== 'none') break; await delay(T.detectPoll); }
 
       try {
         if (scenario === 'store') await handleStore();
@@ -250,20 +270,21 @@
       stats.byScenario[key] = (stats.byScenario[key] || 0) + 1;
 
       closePanelByClass('TreasureMapMsgListPanel');
-      await delay(jitter(600, 400));
+      await delay(jit(T.postRead));
 
       var post = readMergeCount();
       if (post) stats.endStars = post.stars;
       stats.done++;
       if (opts.onProgress) opts.onProgress({ stats: stats, cycle: cyc, scenario: scenario, post: post });
 
-      if (cyc !== opts.count) await delay(jitter(1600, 1300));
+      if (cyc !== opts.count) await delay(jit(T.interCycle));
     }
     return stats;
   }
 
   // ─── UI ───────────────────────────────────────────────────────────────
-  var SCEN_COLOR = { donate: '#3fb950', wheel: '#79c0ff', store: '#d29922', boss: '#ff7b72', none: '#6e7681', bossreward: '#ff7b72' };
+  // Every handled scenario reads as a success (green); only "no scenario" is grey.
+  var SCEN_COLOR = { donate: '#3fb950', wheel: '#3fb950', store: '#3fb950', boss: '#3fb950', none: '#6e7681', bossreward: '#3fb950' };
   var SCEN_LABEL = { donate: 'Repair Equipment', wheel: 'Treasure Wheel', store: 'Treasure Store', boss: 'Treasure Guard', none: '(no scenario)', bossreward: 'Boss Reward' };
 
   function el(tag, css, text) { var n = document.createElement(tag); if (css) n.style.cssText = css; if (text != null) n.textContent = text; return n; }
@@ -317,7 +338,7 @@
 
     overlay.body.appendChild(card);
 
-    var warn = el('div', 'color:#d29922;font-size:11px;line-height:1.4;margin-top:10px;', '⚠ Rare/Common summons spawn a guard on the world map that you must fight within 1 hour or it expires. Donate scenarios auto-spend your repair items.');
+    var warn = el('div', 'color:#d29922;font-size:11px;line-height:1.4;margin-top:10px;', 'Note: Rare/Common summons spawn a guard on the world map that must be fought within 1 hour or it expires. Donate scenarios auto-spend your repair items.');
     overlay.body.appendChild(warn);
 
     var footer = el('div', 'display:flex;flex-direction:column;gap:8px;margin-top:auto;padding-top:12px;');
@@ -361,7 +382,6 @@
         var pct = Math.round((info.cycle / total) * 100);
         bar.style.width = pct + '%';
         overlay.setSub(info.cycle + ' / ' + total + ' merges' + (info.stats.bossSummoned ? ' · ' + info.stats.bossSummoned + ' guards summoned' : ''), '#8b949e');
-        // scenario tally chips
         clearChildren(counts);
         Object.keys(SCEN_LABEL).forEach(function (k) {
           if (k === 'bossreward' || k === 'none') return;
@@ -400,7 +420,7 @@
     });
 
     if (stats.bossSummoned) {
-      body.appendChild(el('div', 'margin-top:10px;color:#ff7b72;font-weight:600;', '⚔ ' + stats.bossSummoned + ' Treasure Guard' + (stats.bossSummoned === 1 ? '' : 's') + ' summoned on your map — go fight them within 1 hour!'));
+      body.appendChild(el('div', 'margin-top:10px;color:#3fb950;font-weight:600;', '⚔ ' + stats.bossSummoned + ' Treasure Guard' + (stats.bossSummoned === 1 ? '' : 's') + ' summoned on the world map (fight within 1 hour).'));
     }
     overlay.body.appendChild(body);
 
