@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com https://www.clarity.ms https://*.clarity.ms https://c.bing.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; img-src 'self' https://knight-cdn.akamaized.net https://h5.topwargame.com https://raw.githubusercontent.com data: https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://*.clarity.ms https://c.bing.com; connect-src 'self' https://fight-report-va.oss-accelerate.aliyuncs.com https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com https://push-worker.27tb8s6fct.workers.dev https://*.clarity.ms https://c.bing.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src https://translate.google.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com https://www.clarity.ms https://*.clarity.ms https://c.bing.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; img-src 'self' https://knight-cdn.akamaized.net https://h5.topwargame.com https://raw.githubusercontent.com data: https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://*.clarity.ms https://c.bing.com; connect-src 'self' https://fight-report-va.oss-accelerate.aliyuncs.com https://fight-report.oss-accelerate.aliyuncs.com https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com https://push-worker.27tb8s6fct.workers.dev https://*.clarity.ms https://c.bing.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src https://translate.google.com;">
 <title>Battle Report Viewer — 2864</title>
 <style>
   :root {
@@ -584,6 +584,16 @@
   'use strict';
 
   var CDN_BASE = 'https://fight-report-va.oss-accelerate.aliyuncs.com/prod/';
+  // Chinese-server reports live on the same path under a different OSS host
+  // (no "-va"). Same JSON shape — try the global host, fall back to CN.
+  var CDN_BASE_CN = 'https://fight-report.oss-accelerate.aliyuncs.com/prod/';
+  function fetchReportResponse(id) {
+    var suffix = id.substring(0, 4) + '/' + id + '.json';
+    return fetch(CDN_BASE + suffix).then(function(r) {
+      if (r.ok) return r;
+      return fetch(CDN_BASE_CN + suffix).then(function(r2) { return r2.ok ? r2 : r; });
+    }).catch(function() { return fetch(CDN_BASE_CN + suffix); });
+  }
   var _awakeningRef = null;
   function loadAwakeningRef() {
     if (_awakeningRef) return Promise.resolve(_awakeningRef);
@@ -4354,10 +4364,7 @@
     var reportEl = document.getElementById('report');
     while (reportEl.firstChild) reportEl.removeChild(reportEl.firstChild);
 
-    var prefix = id.substring(0, 4);
-    var url = CDN_BASE + prefix + '/' + id + '.json';
-
-    fetch(url)
+    fetchReportResponse(id)
       .then(function(r) {
         if (!r.ok) throw new Error('Report not found (HTTP ' + r.status + ')');
         return r.json();

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com https://www.clarity.ms https://*.clarity.ms https://c.bing.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; img-src 'self' https://knight-cdn.akamaized.net https://h5.topwargame.com https://raw.githubusercontent.com data: https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://fonts.gstatic.com https://www.google.com https://*.clarity.ms https://c.bing.com; connect-src 'self' https://fight-report-va.oss-accelerate.aliyuncs.com https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com https://push-worker.27tb8s6fct.workers.dev https://*.clarity.ms https://c.bing.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src https://translate.google.com https://www.youtube-nocookie.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com https://www.clarity.ms https://*.clarity.ms https://c.bing.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; img-src 'self' https://knight-cdn.akamaized.net https://h5.topwargame.com https://raw.githubusercontent.com data: https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://fonts.gstatic.com https://www.google.com https://*.clarity.ms https://c.bing.com; connect-src 'self' https://fight-report-va.oss-accelerate.aliyuncs.com https://fight-report.oss-accelerate.aliyuncs.com https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com https://push-worker.27tb8s6fct.workers.dev https://*.clarity.ms https://c.bing.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src https://translate.google.com https://www.youtube-nocookie.com;">
 <title>Armory Report — Server 2864</title>
 <style>
   :root {
@@ -3410,6 +3410,16 @@
 <script>
   (function () {
   var CDN_BASE = 'https://fight-report-va.oss-accelerate.aliyuncs.com/prod/';
+  // Chinese-server reports live on the same path under a different OSS host
+  // (no "-va"). Same JSON shape — try the global host, fall back to CN.
+  var CDN_BASE_CN = 'https://fight-report.oss-accelerate.aliyuncs.com/prod/';
+  function fetchReportResponse(id) {
+    var suffix = id.substring(0, 4) + '/' + id + '.json';
+    return fetch(CDN_BASE + suffix).then(function(r) {
+      if (r.ok) return r;
+      return fetch(CDN_BASE_CN + suffix).then(function(r2) { return r2.ok ? r2 : r; });
+    }).catch(function() { return fetch(CDN_BASE_CN + suffix); });
+  }
   var ASSET_BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/';
   var PUSH_WORKER = 'https://push-worker.27tb8s6fct.workers.dev';
 
@@ -6546,9 +6556,7 @@
     loadBtn.appendChild(spinner);
     loadBtn.appendChild(document.createTextNode('Loading\u2026'));
 
-    var url = CDN_BASE + id.substring(0, 4) + '/' + id + '.json';
-
-    fetch(url)
+    fetchReportResponse(id)
       .then(function(res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
@@ -32550,8 +32558,7 @@
         return;
       }
 
-      var prefix = id.substring(0, 4);
-      fetch(CDN_BASE + prefix + '/' + id + '.json')
+      fetchReportResponse(id)
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
           if (data && data.battle) {
