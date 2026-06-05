@@ -563,18 +563,6 @@
     });
     toggleRow.appendChild(heroCommonBtn);
 
-    // Merge all shards (10 shards -> 1 skill) then refresh so the new skills
-    // join the dismantle pool. Only shown if the host wired onMergeShards.
-    if (opts.onMergeShards) {
-      var mergeShardsBtn = el('button', 'background:transparent;color:#3fb950;border:1px solid #3fb950;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Merge all shards');
-      mergeShardsBtn.title = 'Combine every 10 skill shards into a Lv.1 skill, then refresh the list so they join the dismantle pool';
-      mergeShardsBtn.addEventListener('click', function () {
-        mergeShardsBtn.disabled = true; mergeShardsBtn.textContent = 'Merging shards…';
-        opts.onMergeShards();
-      });
-      toggleRow.appendChild(mergeShardsBtn);
-    }
-
     var clearBtn = el('button', 'background:transparent;color:#8b949e;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;', 'Clear');
     clearBtn.addEventListener('click', function () { state.selected = {}; render(); });
     toggleRow.appendChild(clearBtn);
@@ -890,6 +878,17 @@
       var req = getRequire();
       if (overlay) overlay.setSub('Opening bag…');
       var ud = await captureUserData(req);
+      // Auto-merge all full shard sets (10 shards -> 1 skill) on open, so the
+      // produced skills are already in the dismantle pool when the list renders.
+      if (overlay) overlay.setSub('Merging shards…');
+      var mergeMsg = '';
+      try {
+        var mres = await composeAllShards(req, ud);
+        if (mres && mres.ok && mres.sets > 0) {
+          await delay(500); // let the bag reflect the new skills
+          mergeMsg = 'Merged ' + mres.skillCount + ' skill' + (mres.skillCount === 1 ? '' : 's') + ' from ' + mres.types + ' shard type' + (mres.types === 1 ? '' : 's') + ' · ';
+        }
+      } catch (_e) {}
       if (overlay) overlay.setSub('Reading bag…');
       var families = enumerateFamilies(req, ud);
       // Filter to families with at least one dismantleable step
@@ -904,15 +903,6 @@
           overlay.setSub(statusMsg || (families.length + ' famil' + (families.length === 1 ? 'y' : 'ies') + ' in bag · pick which to dismantle'), '#8b949e');
           renderFamilyList(req, overlay.body, families, {
             onClose: function () { overlay.remove(); },
-            onMergeShards: async function () {
-              overlay.setSub('Merging shards…', '#d29922');
-              var res = await composeAllShards(req, ud);
-              if (!res.ok) { showList('Shard merge failed' + (res.respS != null ? ' (status ' + res.respS + ')' : (res.reason ? ' (' + res.reason + ')' : '')) + '. Pick which to dismantle.'); return; }
-              if (res.sets < 1) { showList('No complete shard sets to merge (need 10+ of a shard). Pick which to dismantle.'); return; }
-              await delay(500);
-              families = enumerateFamilies(req, ud).filter(function (f) { var p = buildPlan(req, f); return p && p.steps.length > 0; });
-              showList('Merged ' + res.skillCount + ' skill' + (res.skillCount === 1 ? '' : 's') + ' from ' + res.types + ' shard type' + (res.types === 1 ? '' : 's') + '. Pick which to dismantle.');
-            },
             onRun: function (plans) {
               showConfirm(overlay, plans,
                 async function () {
@@ -935,7 +925,7 @@
             },
           });
         }
-        showList();
+        showList(mergeMsg ? (mergeMsg + families.length + ' famil' + (families.length === 1 ? 'y' : 'ies') + ' in bag · pick which to dismantle') : undefined);
       }
     } catch (err) {
       if (overlay) showError(overlay, err && err.message ? err.message : String(err));
