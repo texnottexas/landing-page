@@ -3530,6 +3530,16 @@
     b.appendChild(msg);
     var btns = document.createElement('span');
     btns.style.cssText = 'display:flex;gap:.4rem;align-items:center;flex-shrink:0;';
+    // Manage Marches right on the banner — set up the player's named groups
+    // without leaving the screen; Handoff (next) saves + copies the link.
+    var marchB = document.createElement('button'); marchB.type = 'button'; marchB.textContent = 'Marches';
+    marchB.title = 'Set up ' + i.targetName + "'s march groups (names + heroes), then Handoff to send";
+    marchB.style.cssText = 'background:#0d1117;color:#d29922;border:none;border-radius:4px;padding:.2rem .6rem;cursor:pointer;font-weight:700;';
+    marchB.addEventListener('click', function () {
+      var m = null; try { m = mergeReportData(wizardState.reportData); } catch (e) {}
+      openMarchModal((m && m.heroes) || []);
+    });
+    btns.appendChild(marchB);
     var hand = document.createElement('button'); hand.type = 'button'; hand.textContent = 'Handoff';
     hand.title = 'Generate the report shortcode + advise link for ' + i.targetName;
     hand.style.cssText = 'background:#0d1117;color:#d29922;border:none;border-radius:4px;padding:.2rem .6rem;cursor:pointer;font-weight:700;';
@@ -5570,9 +5580,16 @@
   function saveConfig(showToast) {
     var identity = getStoredIdentity();
     var deviceId = getDeviceId();
-    // On-behalf: mint the shortcode under the TARGET's siteKey (so the player
-    // can load it later) — not the advisor's own.
+    // On-behalf: write under the PLAYER's siteKey, not the advisor's own.
+    //  - impersonation: the delegated target.
+    //  - ?advise= builder / any view-only load with a resolved 16-hex player
+    //    siteKey: the loaded player (so an advisor on the plan screen who edits
+    //    marches persists them to that player's config).
+    var _foreignPlayerKey = ((window._adviseCode || (wizardState && wizardState._viewOnly))
+      && wizardState.player && /^[a-f0-9]{16}$/.test(String(wizardState.player.siteKey || '')))
+      ? wizardState.player.siteKey : null;
     var siteKey = _imp() ? _imp().targetSiteKey
+                : _foreignPlayerKey ? _foreignPlayerKey
                 : ((identity && identity.siteKey) ? identity.siteKey : ('guest_' + deviceId));
     var playerName = (wizardState.player && wizardState.player.name) || (identity && identity.name) || 'Guest';
     var reportIds = wizardState.reportData.map(function(r) { return r.id; }).join(',');
@@ -5598,7 +5615,10 @@
       // On-behalf: stamp who set it up; do NOT attach the advisor's own push
       // endpoint (it would fail the worker's identity check against the target).
       if (_imp()) body.createdByAdvisor = _imp().advisorName;
-      if (endpoint && !_imp()) body.endpoint = endpoint;
+      else if (_foreignPlayerKey) body.createdByAdvisor = (identity && identity.name) || 'An advisor';
+      // Never attach the advisor's own push endpoint when saving for another
+      // player — the worker's identity check would 403 it.
+      if (endpoint && !_imp() && !_foreignPlayerKey) body.endpoint = endpoint;
 
       return fetch(PUSH_WORKER + '/report-config', {
         method: 'POST',
@@ -5607,10 +5627,11 @@
       }).then(function(r) { return r.json(); });
     }).then(function(result) {
       if (result && result.ok) {
-        // Cache shortcode in localStorage — but NEVER while impersonating
-        // (that would write the advisor's own playerReport). On-behalf, the
-        // shortcode is surfaced in the handoff card instead.
-        if (!_imp()) {
+        // Cache shortcode in localStorage — but NEVER when saving for another
+        // player (impersonation or advise/view-only), which would write the
+        // advisor's own playerReport. On-behalf, the shortcode is surfaced in
+        // the handoff card instead.
+        if (!_imp() && !_foreignPlayerKey) {
           try {
             var saved = JSON.parse(localStorage.getItem('playerReport') || '{}');
             saved.shortcode = result.shortcode;
@@ -10320,12 +10341,17 @@
   // window-scoped override so the device's localStorage (the advisor's own
   // saved marches) is never clobbered. Non-advisor reads fall through to
   // the device's saved marchGroups.
+  // Any advisor / view-only context (impersonation, ?advise= builder, or any
+  // view-only foreign load) is NOT the viewer's own report.
+  function _marchNonOwner() {
+    return !!(_imp() || window._adviseCode || (typeof wizardState !== 'undefined' && wizardState && wizardState._viewOnly));
+  }
   function loadMarches() {
-    // During impersonation the target's marches live ONLY in the in-memory
-    // override (kept current by saveMarches). Never fall through to the
-    // advisor's own device localStorage — even when the target has none yet
-    // (empty array must stay empty, not leak the advisor's saved marches).
-    if (_imp()) {
+    // In any advisor / view-only context the player's marches live ONLY in the
+    // in-memory override. Never fall through to the viewer's own device
+    // localStorage — even when the override is empty. This is what stops
+    // "advising Wonka shows my own personal marches".
+    if (_marchNonOwner()) {
       return Array.isArray(window._advisorOverrideMarches) ? window._advisorOverrideMarches : [];
     }
     if (Array.isArray(window._advisorOverrideMarches) && window._advisorOverrideMarches.length > 0) {
@@ -10339,10 +10365,10 @@
   }
 
   function saveMarches(marches) {
-    // On-behalf: mutate the in-memory override and stop — the authoritative
-    // persist is saveConfig() under the target's siteKey. Never write the
-    // advisor's own device localStorage while impersonating.
-    if (_imp()) {
+    // Advisor / view-only: mutate the in-memory override only; never write the
+    // viewer's own device localStorage. (Authoritative persist to the player is
+    // saveConfig() via _persistMarchesOnBehalf, gated to real advisor contexts.)
+    if (_marchNonOwner()) {
       window._advisorOverrideMarches = Array.isArray(marches) ? marches.slice() : [];
       return;
     }
@@ -10353,12 +10379,13 @@
     } catch(e) {}
   }
 
-  // On-behalf march persist: round-trip the target's marches to their
-  // report-config (saveConfig reads loadMarches()). Debounced so rapid
-  // add/delete/reorder/rename edits collapse into one POST.
+  // Persist the player's marches to THEIR report-config (saveConfig reads
+  // loadMarches()). Debounced. Gated to REAL advisor contexts only —
+  // impersonation or an advise link the player shared — so a random view-only
+  // viewer who opens someone's report can't rewrite that player's marches.
   var _marchPersistTimer = null;
   function _persistMarchesOnBehalf() {
-    if (!_imp()) return;
+    if (!_imp() && !window._adviseCode) return;
     if (_marchPersistTimer) clearTimeout(_marchPersistTimer);
     _marchPersistTimer = setTimeout(function () {
       _marchPersistTimer = null;
@@ -10863,8 +10890,12 @@
   }
 
   function openMarchModal(heroes) {
+    heroes = heroes || [];
     var overlay = document.getElementById('march-modal-overlay');
-    if (!overlay) return;
+    // Build the modal on demand if the Heroes & Gear tab hasn't rendered it yet
+    // (e.g. opened from the impersonation banner or the advisor plan screen).
+    // Single instance only — buildHeroesUI also guards on this id.
+    if (!overlay) { overlay = buildMarchModal(heroes); document.body.appendChild(overlay); }
     overlay.classList.add('open');
     renderMarchList(heroes);
     resetMarchForm();
@@ -11215,7 +11246,9 @@
     container.appendChild(filterBar);
 
     // March modal
-    container.appendChild(buildMarchModal(heroes));
+    // Single modal instance (fixed ids) — skip if the banner/advisor screen
+    // already built one on document.body.
+    if (!document.getElementById('march-modal-overlay')) container.appendChild(buildMarchModal(heroes));
 
     // Populate march filter
     populateMarchFilter(heroes);
