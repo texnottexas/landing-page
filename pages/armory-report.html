@@ -10902,9 +10902,17 @@
     populateMarchHeroSelects(heroes);
   }
 
+  // Optional one-shot callback fired after the march modal closes — lets the
+  // surface that opened it (e.g. the advisor plan screen) re-render so its
+  // gallery / step pickers pick up the new grouping/order.
+  var _marchModalOnClose = null;
   function closeMarchModal() {
     var overlay = document.getElementById('march-modal-overlay');
     if (overlay) overlay.classList.remove('open');
+    if (typeof _marchModalOnClose === 'function') {
+      var cb = _marchModalOnClose; _marchModalOnClose = null;
+      try { cb(); } catch (e) {}
+    }
   }
 
   // Edit-in-place state: index of the march being edited (null = add mode).
@@ -25535,7 +25543,28 @@
     gallerySec.className = 'adv-plan-section';
     var galleryTitle = document.createElement('div');
     galleryTitle.className = 'adv-plan-section-title';
-    galleryTitle.textContent = 'Hero gear';
+    galleryTitle.style.display = 'flex';
+    galleryTitle.style.alignItems = 'center';
+    galleryTitle.style.gap = '.6rem';
+    galleryTitle.style.flexWrap = 'wrap';
+    var galleryTitleText = document.createElement('span');
+    galleryTitleText.textContent = 'Hero gear';
+    galleryTitle.appendChild(galleryTitleText);
+    // Manage Marches right here on the advise screen — so an advisor working
+    // from the advise link sets up the player's groups without navigating away.
+    // Edits persist to the player's config (saveConfig via _persistMarchesOnBehalf
+    // in advise mode); on close the plan re-renders so the gallery/pickers regroup.
+    var mmBtn = document.createElement('button');
+    mmBtn.type = 'button';
+    mmBtn.textContent = 'Manage Marches';
+    mmBtn.title = "Set up this player's march groups (names + heroes) — grouped here and saved into their report";
+    mmBtn.style.cssText = 'margin-left:auto;background:var(--surface,#161b22);border:1px solid var(--border,#30363d);color:var(--accent,#79c0ff);border-radius:6px;padding:.22rem .6rem;cursor:pointer;font-size:.72rem;font-weight:600;font-family:inherit;';
+    mmBtn.addEventListener('click', function() {
+      var _sk = (wizardState.player && wizardState.player.siteKey) || null;
+      _marchModalOnClose = function() { try { renderAdvisorPlanTab(_sk, merged); } catch (e) {} };
+      openMarchModal((merged && merged.heroes) || []);
+    });
+    galleryTitle.appendChild(mmBtn);
     gallerySec.appendChild(galleryTitle);
     var galleryHelp = document.createElement('div');
     galleryHelp.className = 'adv-gallery-help';
