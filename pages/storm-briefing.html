@@ -183,8 +183,8 @@ kbd{font-family:var(--mono);font-size:.78em;background:rgba(255,255,255,.08);bor
 .rdr-hex{stroke-width:1.6;}
 .rdr-hex.us{fill:rgba(124,246,227,.16);stroke:var(--us);}
 .rdr-hex.enemy{fill:rgba(248,81,73,.18);stroke:var(--crit);}
-.rdr-node-lab{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;text-anchor:middle;}
-.rdr-node-role{font-family:'IBM Plex Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.08em;text-anchor:middle;opacity:.8;}
+.rdr-node-lab{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;text-anchor:middle;}
+.rdr-node-role{font-family:'IBM Plex Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.08em;text-anchor:middle;opacity:.8;}
 .rdr-center-glow{fill:none;stroke-width:.8;opacity:.5;animation:rdrpulse 2.4s ease-in-out infinite;}
 .rdr-center{fill:rgba(10,16,30,.9);stroke-width:2;}
 .rdr-center-mesh{fill:none;stroke-width:.5;opacity:.4;}
@@ -409,8 +409,8 @@ function buffBars(proj,color,opts){
 let RADAR_UID=0;
 function hexPoints(cx,cy,r){let p=[];for(let i=0;i<6;i++){const a=-Math.PI/2+i*Math.PI/3;p.push((cx+r*Math.cos(a)).toFixed(2)+','+(cy+r*Math.sin(a)).toFixed(2));}return p.join(' ');}
 function ncRadar(opts){
-  const W=320,H=300,CX=W/2,CY=H/2+4;
-  const RING=[80,110,136], HEXR=15, CR=22;
+  const W=340,H=320,CX=W/2,CY=H/2+4;
+  const RING=[92,120,146], HEXR=27, CR=30;
   const s=svg('svg',{viewBox:'0 0 '+W+' '+H,class:'radar',role:'img','aria-label':'Threat radar for '+opts.tag});
   const uid='rdr'+(RADAR_UID++);
   const defs=svg('defs',{});
@@ -435,13 +435,15 @@ function ncRadar(opts){
     const x=CX+RING[0]*Math.cos(ang), y=CY+RING[0]*Math.sin(ang);
     const isUs=nd.kind==='us';
     const col=isUs?'#7cf6e3':'#f85149';
-    // connector
-    s.appendChild(svg('line',{x1:CX,y1:CY,x2:x,y2:y,class:'rdr-conn '+(isUs?'us':'enemy')}));
+    // connector — trimmed to the gap between the centre hex and the node hex (no crossing through either)
+    const lx1=CX+(CR+6)*Math.cos(ang), ly1=CY+(CR+6)*Math.sin(ang);
+    const lx2=CX+(RING[0]-HEXR-6)*Math.cos(ang), ly2=CY+(RING[0]-HEXR-6)*Math.sin(ang);
+    s.appendChild(svg('line',{x1:lx1,y1:ly1,x2:lx2,y2:ly2,class:'rdr-conn '+(isUs?'us':'enemy')}));
     // glow + hex
     s.appendChild(svg('polygon',{points:hexPoints(x,y,HEXR+3),class:'rdr-glow '+(isUs?'us':'enemy')}));
     s.appendChild(svg('polygon',{points:hexPoints(x,y,HEXR),class:'rdr-hex '+(isUs?'us':'enemy')}));
-    const lab=svg('text',{x:x,y:y+2.5,class:'rdr-node-lab',fill:col});lab.textContent='S'+nd.sid;s.appendChild(lab);
-    const role=svg('text',{x:x,y:y+HEXR+9,class:'rdr-node-role',fill:col});role.textContent=isUs?'US':(opts.side==='defense'?'ATTACKER':'RIVAL');s.appendChild(role);
+    const lab=svg('text',{x:x,y:y+3,class:'rdr-node-lab',fill:col});lab.textContent='S'+nd.sid;s.appendChild(lab);
+    const role=svg('text',{x:x,y:y+HEXR+11,class:'rdr-node-role',fill:col});role.textContent=isUs?'US':(opts.side==='defense'?'ATTACKER':'RIVAL');s.appendChild(role);
   });
   // centre NC hex
   const ours=opts.side==='defense'; // defense = our NC is the centre
