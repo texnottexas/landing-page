@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; font-src 'self' data: https://fonts.gstatic.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://translate.googleapis.com https://www.gstatic.com; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; img-src 'self' data: https:; connect-src 'self' https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; font-src 'self' data: https://fonts.gstatic.com; frame-src https://translate.google.com;">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SSC Combat Assessment · S2864</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -94,6 +94,57 @@
     transition:all .15s ease;cursor:pointer;
   }
   .nav-btn:hover{color:var(--us);border-color:var(--us);background:rgba(63,185,80,.06);}
+
+  /* === Language switcher === */
+  .lang-row{display:flex;justify-content:flex-end;margin:8px 0 14px;}
+  .lang-btn{
+    display:inline-flex;align-items:center;gap:8px;
+    background:transparent;border:1px solid var(--border);border-radius:0;
+    padding:6px 10px;cursor:pointer;
+    font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--text-dim);transition:all .15s ease;
+  }
+  .lang-btn:hover{color:var(--us);border-color:var(--us);background:rgba(63,185,80,.06);}
+  .lang-btn .flag{font-size:1rem;letter-spacing:0;line-height:1;}
+  .lang-btn .code{font-size:.7rem;letter-spacing:.18em;}
+  #google_translate_element{position:absolute;left:-9999px;opacity:0;pointer-events:none;}
+  /* Hide Google's injected top frame so the cls-bar isn't pushed down */
+  body{top:0 !important;}
+  .skiptranslate{display:none !important;}
+  font[style*="vertical-align"]{vertical-align:baseline !important;}
+
+  .lang-modal-overlay{
+    display:none;position:fixed;inset:0;z-index:400;
+    background:rgba(7,10,13,.78);
+    align-items:center;justify-content:center;padding:1rem;
+    backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  }
+  .lang-modal-overlay.active{display:flex;}
+  .lang-modal{
+    position:relative;background:var(--panel);border:1px solid var(--border);
+    padding:22px;max-width:460px;width:100%;max-height:80vh;overflow-y:auto;
+  }
+  .lang-modal::before, .lang-modal::after, .lang-modal > .bracket-bl, .lang-modal > .bracket-br{
+    content:"";position:absolute;width:14px;height:14px;border:1px solid var(--classified);
+  }
+  .lang-modal::before{top:-1px;left:-1px;border-right:0;border-bottom:0;}
+  .lang-modal::after{top:-1px;right:-1px;border-left:0;border-bottom:0;}
+  .lang-modal > .bracket-bl{bottom:-1px;left:-1px;border-right:0;border-top:0;}
+  .lang-modal > .bracket-br{bottom:-1px;right:-1px;border-left:0;border-top:0;}
+  .lang-modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px;}
+  .lang-modal-title{font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.32em;text-transform:uppercase;color:var(--classified);}
+  .lang-modal-close{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1rem;padding:.2rem 6px;font-family:'JetBrains Mono',monospace;}
+  .lang-modal-close:hover{color:var(--us);}
+  .lang-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;}
+  .lang-option{
+    display:flex;align-items:center;gap:8px;
+    padding:8px 10px;border:1px solid var(--border);background:var(--bg-tint);
+    cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--text);
+    transition:border-color .15s,color .15s,background .15s;text-align:left;
+  }
+  .lang-option:hover{border-color:var(--us);background:rgba(63,185,80,.05);}
+  .lang-option.active{border-color:var(--us);color:var(--us);background:rgba(63,185,80,.08);}
+  .lang-option .lang-flag{font-size:1.05rem;letter-spacing:0;line-height:1;}
 
   /* === Panel chrome (corner brackets) === */
   .panel{position:relative;background:var(--panel);border:1px solid var(--border);padding:22px;margin-bottom:18px;}
@@ -358,6 +409,13 @@
 
   <div class="cls-bar reveal" style="animation-delay:0s">
     <span class="cls-line">// SEAL STONE CHAOS <span class="dot"></span> MERIT RANKINGS</span>
+  </div>
+
+  <div class="lang-row reveal notranslate" style="animation-delay:.03s">
+    <button class="lang-btn notranslate" id="langBtn" aria-label="Change language">
+      <span class="flag" id="langFlag">&#127482;&#127480;</span>
+      <span class="code" id="langCode">/EN</span>
+    </button>
   </div>
 
   <header class="reveal" style="animation-delay:.05s">
@@ -1144,5 +1202,52 @@ load();
 
 })();
 </script>
+
+<!-- Google Translate + language modal -->
+<div id="google_translate_element"></div>
+
+<div class="lang-modal-overlay notranslate" id="langModal">
+  <div class="lang-modal">
+    <span class="bracket-bl"></span><span class="bracket-br"></span>
+    <div class="lang-modal-header">
+      <span class="lang-modal-title">// Select Language</span>
+      <button class="lang-modal-close" id="langModalClose" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="lang-grid" id="langGrid"></div>
+  </div>
+</div>
+
+<script>
+  (function(){
+    var esc=function(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
+    var LANGUAGES=[
+      {code:'en',flag:'🇺🇸',name:'English'},{code:'es',flag:'🇪🇸',name:'Español'},
+      {code:'fr',flag:'🇫🇷',name:'Français'},{code:'de',flag:'🇩🇪',name:'Deutsch'},
+      {code:'pt',flag:'🇧🇷',name:'Português'},{code:'it',flag:'🇮🇹',name:'Italiano'},
+      {code:'ru',flag:'🇷🇺',name:'Русский'},{code:'ja',flag:'🇯🇵',name:'日本語'},
+      {code:'ko',flag:'🇰🇷',name:'한국어'},{code:'zh-CN',flag:'🇨🇳',name:'中文'},
+      {code:'ar',flag:'🇸🇦',name:'العربية'},{code:'tr',flag:'🇹🇷',name:'Türkçe'},
+      {code:'vi',flag:'🇻🇳',name:'Tiếng Việt'},{code:'th',flag:'🇹🇭',name:'ไทย'},
+      {code:'hi',flag:'🇮🇳',name:'हिन्दी'},{code:'pl',flag:'🇵🇱',name:'Polski'},
+      {code:'uk',flag:'🇺🇦',name:'Українська'},{code:'id',flag:'🇮🇩',name:'Indonesia'}
+    ];
+    function getLangData(c){var b=c.split('-')[0];return LANGUAGES.find(function(l){return l.code===c||l.code===b;})||null;}
+    function detectCurrentLang(){var m=document.cookie.match(/googtrans=\/en\/([a-zA-Z-]{2,10})/);return m&&m[1]?m[1]:'en';}
+    function updateLangBtn(code){var d=getLangData(code);var f=document.getElementById('langFlag');var c=document.getElementById('langCode');if(d&&f){f.textContent=d.flag;c.textContent='/'+d.code.toUpperCase();}else if(f){f.textContent='🌐';c.textContent='/'+code.toUpperCase();}document.querySelectorAll('.lang-option').forEach(function(o){o.classList.toggle('active',o.dataset.lang===code);});}
+    function applyLangToCombo(code,delay){var a=0;var p=setInterval(function(){var c=document.querySelector('.goog-te-combo');if(c){c.value=code;c.dispatchEvent(new Event('change'));clearInterval(p);updateLangBtn(code);}if(++a>30)clearInterval(p);},delay||200);}
+    function selectLanguage(code){if(code==='en'){sessionStorage.removeItem('pendingLang');document.cookie='googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax; Secure';document.cookie='googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.2864tw.com; SameSite=Lax; Secure';closeLangModal();location.reload();return;}sessionStorage.setItem('pendingLang',code);applyLangToCombo(code,200);closeLangModal();}
+    var langModalEl=document.getElementById('langModal');
+    function openLangModal(){if(langModalEl)langModalEl.classList.add('active');}
+    function closeLangModal(){if(langModalEl)langModalEl.classList.remove('active');}
+    (function(){var g=document.getElementById('langGrid');if(!g)return;var det=detectCurrentLang();LANGUAGES.forEach(function(l){var b=document.createElement('button');b.className='lang-option'+(l.code===det?' active':'');b.dataset.lang=l.code;b.innerHTML='<span class="lang-flag">'+l.flag+'</span><span class="lang-name">'+esc(l.name)+'</span>';b.addEventListener('click',function(){selectLanguage(l.code);});g.appendChild(b);});updateLangBtn(det);})();
+    var lb=document.getElementById('langBtn');if(lb)lb.addEventListener('click',openLangModal);
+    var lmc=document.getElementById('langModalClose');if(lmc)lmc.addEventListener('click',closeLangModal);
+    if(langModalEl)langModalEl.addEventListener('click',function(e){if(e.target===langModalEl)closeLangModal();});
+    document.addEventListener('keydown',function(e){if(e.key==='Escape'&&langModalEl&&langModalEl.classList.contains('active')){closeLangModal();e.stopPropagation();}});
+    setTimeout(function(){if(!window._gtLoaded){var b=document.getElementById('langBtn');if(b){b.style.opacity='0.5';b.title='Translation unavailable';}}},15000);
+    window.googleTranslateElementInit=function(){window._gtLoaded=true;new google.translate.TranslateElement({pageLanguage:'en',autoDisplay:false},'google_translate_element');var p=sessionStorage.getItem('pendingLang');if(p){sessionStorage.removeItem('pendingLang');applyLangToCombo(p,250);}else{var lo=localStorage.getItem('langOverride');if(lo&&lo!=='en')applyLangToCombo(lo,250);var d=detectCurrentLang();if(d!=='en')updateLangBtn(d);}};
+  })();
+</script>
+<script src="https://translate.googleapis.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
 </body>
 </html>
