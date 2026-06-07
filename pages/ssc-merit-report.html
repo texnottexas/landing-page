@@ -208,14 +208,30 @@
     width:14px;height:22px;background:var(--us);border:none;border-radius:0;
     box-shadow:0 0 12px var(--us-glow),0 0 0 1px var(--bg) inset;cursor:grab;
   }
-  .preset-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;}
-  .preset-row button{
+  /* preset-row: even-sized tiles in a single grid (incl. the custom input) */
+  .preset-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:6px;margin-top:14px;}
+  .preset-row button,
+  .preset-row .topn-input{
     font-family:'JetBrains Mono',monospace;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;
-    background:transparent;color:var(--text-dim);border:1px solid var(--border);padding:5px 10px;cursor:pointer;
-    transition:all .15s ease;border-radius:0;
+    background:transparent;color:var(--text-dim);border:1px solid var(--border);
+    padding:0 8px;height:30px;line-height:1;cursor:pointer;
+    transition:all .15s ease;border-radius:0;min-width:0;text-align:center;
+    display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;
   }
   .preset-row button:hover{color:var(--text);border-color:var(--border-bright);background:rgba(63,185,80,.04);}
   .preset-row button.active{color:var(--bg);background:var(--us);border-color:var(--us);box-shadow:0 0 12px var(--us-glow);}
+  .preset-row .topn-input{
+    cursor:text;color:var(--text);text-transform:none;letter-spacing:.04em;font-size:.78rem;
+    -moz-appearance:textfield;-webkit-appearance:none;appearance:none;
+  }
+  .preset-row .topn-input::-webkit-outer-spin-button,
+  .preset-row .topn-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+  .preset-row .topn-input::placeholder{color:var(--muted);letter-spacing:.18em;text-transform:uppercase;font-size:.66rem;}
+  .preset-row .topn-input:focus{outline:none;border-color:var(--us);color:var(--us);}
+  @media(max-width:480px){
+    .preset-row{grid-template-columns:repeat(auto-fit,minmax(60px,1fr));gap:5px;}
+    .preset-row button,.preset-row .topn-input{font-size:.66rem;height:28px;padding:0 6px;letter-spacing:.1em;}
+  }
 
   /* === Search + dossier === */
   .lookup-grid{display:grid;grid-template-columns:1fr;gap:18px;}
@@ -544,7 +560,7 @@
 (function(){
 
 const US_SID = 2864;
-const PRESETS = [20, 25, 75, 150, 500, 1000, 4000, 10000, 25000];
+const PRESETS = [20, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 10000, 25000, 50000];
 const DEFAULT_TOPN = 20;
 
 let DATA = null, META = null;
@@ -642,7 +658,30 @@ function init(){
 
   // Presets — keep button refs so setTopN can toggle .active without a per-render querySelectorAll.
   const pr = document.getElementById('preset-row');
+  pr.innerHTML = '';
   PRESET_BUTTONS = [];
+
+  // Custom-N input: first cell of the grid so it sits even with the buttons.
+  // Enter or blur commits whatever the user typed (clamped to [1, DATA.length]).
+  const customInput = document.createElement('input');
+  customInput.type = 'number';
+  customInput.className = 'topn-input';
+  customInput.id = 'topn-custom';
+  customInput.min = '1';
+  customInput.max = String(DATA.length);
+  customInput.inputMode = 'numeric';
+  customInput.placeholder = 'GO TO';
+  customInput.setAttribute('aria-label', 'Custom top N');
+  const commitCustom = () => {
+    const v = parseInt(customInput.value, 10);
+    if (!isNaN(v) && v >= 1) setTopN(v);
+  };
+  customInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { commitCustom(); customInput.blur(); }
+  });
+  customInput.addEventListener('change', commitCustom);
+  pr.appendChild(customInput);
+
   PRESETS.forEach(n => {
     const b = document.createElement('button');
     b.textContent = (n >= 1000 ? 'TOP ' + (n/1000) + 'K' : 'TOP ' + n);
