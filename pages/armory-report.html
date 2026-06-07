@@ -25550,6 +25550,33 @@
     var galleryTitleText = document.createElement('span');
     galleryTitleText.textContent = 'Hero gear';
     galleryTitle.appendChild(galleryTitleText);
+    // Gear-snapshot age badge. The gallery draws heroes from the player's
+    // uploaded gear supplement as well as battle reports, so a stale upload
+    // can surface heroes the player has since traded or sold (e.g. for
+    // awakening) that refreshing battle reports won't clear. Surfacing the
+    // snapshot date lets the advisor spot stale data and ask for a refresh.
+    (function() {
+      var _sk = (wizardState.player && wizardState.player.siteKey) || null;
+      if (!_sk) return;
+      var gs = null;
+      try { gs = ArmoryIdentity.getSupplement('gear', _sk); } catch (e) {}
+      var ts = gs && gs.meta && gs.meta.ts;
+      if (!ts) return;
+      var when = new Date(ts);
+      if (isNaN(when.getTime())) return;
+      var ageDays = Math.floor((Date.now() - when.getTime()) / 86400000);
+      var stale = ageDays >= 14;
+      var dateStr = when.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+      var ageStr = ageDays <= 0 ? 'today' : ageDays === 1 ? '1 day old' : ageDays + ' days old';
+      var badge = document.createElement('span');
+      badge.textContent = 'Gear snapshot: ' + dateStr + ' · ' + ageStr;
+      badge.style.cssText = 'font-size:.68rem;font-weight:600;padding:.18rem .5rem;border-radius:10px;white-space:nowrap;border:1px solid '
+        + (stale ? 'rgba(210,153,34,.5);color:#d29922;background:rgba(210,153,34,.12);' : 'var(--border,#30363d);color:var(--muted,#8b949e);background:var(--surface,#161b22);');
+      badge.title = stale
+        ? 'This player last uploaded gear data on ' + dateStr + ' (' + ageStr + '). The gallery reflects that snapshot, so heroes they have since traded or sold (e.g. for awakening) can still appear with gear until they re-run the bookmarklet and re-import their data.'
+        : 'Gear data the player uploaded on ' + dateStr + '. The gallery reflects this snapshot.';
+      galleryTitle.appendChild(badge);
+    })();
     // Manage Marches right here on the advise screen — so an advisor working
     // from the advise link sets up the player's groups without navigating away.
     // Edits persist to the player's config (saveConfig via _persistMarchesOnBehalf
