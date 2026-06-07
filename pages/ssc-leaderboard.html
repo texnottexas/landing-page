@@ -246,6 +246,43 @@
     .threat-row .bar, .threat-row.head .bar-h{display:none;}
   }
 
+  /* === Allocation donut === */
+  .alloc-grid{display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:32px;align-items:center;}
+  @media(max-width:760px){.alloc-grid{grid-template-columns:1fr;gap:20px;}}
+  .donut-wrap{position:relative;width:100%;max-width:360px;margin:0 auto;aspect-ratio:1;}
+  .donut-wrap svg{width:100%;height:100%;display:block;overflow:visible;}
+  .donut-wrap .ticks line{stroke:var(--border-bright);stroke-width:1;opacity:.6;}
+  .donut-wrap .ticks line.major{stroke:var(--text-dim);stroke-width:1.2;opacity:.9;}
+  .donut-wrap path.wedge{cursor:pointer;transition:opacity .18s ease, filter .18s ease;}
+  .donut-wrap.has-hover path.wedge:not(.hov){opacity:.32;}
+  .donut-wrap path.wedge.hov, .donut-wrap path.wedge.is-selected{filter:drop-shadow(0 0 12px currentColor) brightness(1.15);}
+  .donut-wrap path.wedge.is-pinned-stroke{stroke:var(--threat);stroke-width:1.5;}
+  .donut-wrap path.wedge.is-us-stroke{stroke:#0d1117;stroke-width:1.2;}
+  .donut-wrap .donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none;}
+  .donut-wrap .dc-eyebrow{font-family:'JetBrains Mono',monospace;font-size:.62rem;letter-spacing:.28em;color:var(--text-dim);text-transform:uppercase;}
+  .donut-wrap .dc-sid{font-family:'Major Mono Display',monospace;font-size:1.5rem;letter-spacing:-.02em;line-height:1;margin-top:2px;color:var(--us);}
+  .donut-wrap .dc-sid.threat{color:var(--threat);}
+  .donut-wrap .dc-sid.others{color:var(--text-dim);}
+  .donut-wrap .dc-pct{font-family:'Major Mono Display',monospace;font-size:2.6rem;line-height:1;letter-spacing:-.04em;color:var(--text);margin-top:8px;}
+  .donut-wrap .dc-pct .pp{font-family:'JetBrains Mono',monospace;font-size:.95rem;letter-spacing:.05em;color:var(--text-dim);margin-left:2px;font-weight:300;}
+  .donut-wrap .dc-foot{font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.04em;color:var(--text-dim);margin-top:6px;}
+  .donut-wrap .dc-foot b{color:var(--text);font-weight:500;}
+  .donut-wedge-label{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.04em;fill:var(--text);pointer-events:none;font-weight:500;text-anchor:middle;dominant-baseline:central;}
+  .alloc-legend{display:flex;flex-direction:column;gap:0;}
+  .alloc-legend .row{display:grid;grid-template-columns:14px 1fr 70px 60px;gap:10px;align-items:center;padding:7px 4px;border-bottom:1px solid #131c28;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:.84rem;}
+  .alloc-legend .row:last-child{border-bottom:none;}
+  .alloc-legend .row:hover{background:rgba(63,185,80,.04);}
+  .alloc-legend .sw{width:11px;height:11px;border-radius:1px;border:1px solid rgba(255,255,255,.18);}
+  .alloc-legend .name{color:var(--text);letter-spacing:.04em;display:flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .alloc-legend .name .tag{font-size:.6rem;letter-spacing:.22em;text-transform:uppercase;color:var(--us);}
+  .alloc-legend .name .tag.threat{color:var(--threat);}
+  .alloc-legend .name.others{color:var(--text-dim);font-style:italic;}
+  .alloc-legend .ct{text-align:right;color:var(--text);font-variant-numeric:tabular-nums;}
+  .alloc-legend .pc{text-align:right;color:var(--text-dim);font-variant-numeric:tabular-nums;}
+  .alloc-legend .row.is-selected{background:rgba(63,185,80,.07);}
+  .alloc-legend .row.is-us{background:linear-gradient(to right,rgba(63,185,80,.10),rgba(63,185,80,0) 90%);}
+  .alloc-legend .row.is-us .ct{color:var(--us);font-weight:500;}
+
   /* === Loading + error === */
   .booting{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;color:var(--us);}
   .booting .ring{
@@ -339,11 +376,27 @@
       </div>
     </section>
 
-    <!-- Lookup / dossier -->
+    <!-- Allocation donut -->
     <section class="panel reveal" style="animation-delay:.2s">
       <span class="bracket-bl"></span><span class="bracket-br"></span>
       <div class="panel-head">
-        <div class="panel-title"><span class="id">03·</span> Sector lookup</div>
+        <div class="panel-title"><span class="id">03·</span> Allocation</div>
+        <div class="panel-meta">share of cutoff · click a wedge</div>
+      </div>
+      <div class="alloc-grid">
+        <div class="donut-wrap" id="donut-wrap">
+          <svg id="donut" viewBox="0 0 360 360" aria-hidden="true"></svg>
+          <div class="donut-center" id="donut-center"></div>
+        </div>
+        <div class="alloc-legend" id="alloc-legend"></div>
+      </div>
+    </section>
+
+    <!-- Lookup / dossier -->
+    <section class="panel reveal" style="animation-delay:.25s">
+      <span class="bracket-bl"></span><span class="bracket-br"></span>
+      <div class="panel-head">
+        <div class="panel-title"><span class="id">04·</span> Sector lookup</div>
         <div class="panel-meta">enter server number</div>
       </div>
       <div class="lookup-grid">
@@ -364,10 +417,10 @@
     </section>
 
     <!-- Threat board -->
-    <section class="panel reveal" style="animation-delay:.25s">
+    <section class="panel reveal" style="animation-delay:.3s">
       <span class="bracket-bl"></span><span class="bracket-br"></span>
       <div class="panel-head">
-        <div class="panel-title"><span class="id">04·</span> Hostile concentrations</div>
+        <div class="panel-title"><span class="id">05·</span> Hostile concentrations</div>
         <div class="panel-meta">servers ranked by share of cutoff</div>
       </div>
       <div class="threat-row head">
@@ -518,6 +571,231 @@ function getPlayersForSid(sid, topN){
   return out;
 }
 
+// ── Donut allocation ────────────────────────────────────────────
+// Restrained tactical palette — distinguishable on dark, low-saturation
+// outside US-green / threat-amber. US is always green. Largest non-us
+// hostile is amber. Then the desat ramp.
+const WEDGE_PALETTE = ['#79c0ff','#56d4dd','#b392f0','#f47067','#7ee787','#d4af37','#db61a2','#58a6ff','#ffa657','#a371f7','#39c5cf','#e3b341'];
+const COLOR_US = '#3fb950';
+const COLOR_THREAT = '#f0a020';
+const COLOR_OTHERS = '#2c3d54';
+const MAX_WEDGES = 10;        // visible discrete wedges before collapsing tail
+const MIN_LABEL_SLICE = 0.05; // 5% — show label only if slice is at least this fraction
+
+function buildAllocation(counts, total, sorted){
+  // sorted: [[sid,count],...] desc
+  // Take top MAX_WEDGES.
+  let kept = sorted.slice(0, MAX_WEDGES).map(([sid,count]) => ({sid, count}));
+  const keptIds = new Set(kept.map(k => k.sid));
+
+  // Guarantee US in the wedge set even if it falls outside top MAX_WEDGES.
+  if (!keptIds.has(US_SID)) {
+    const us = sorted.find(([s]) => s === US_SID);
+    if (us) { kept.pop(); kept.push({sid: US_SID, count: us[1]}); keptIds.add(US_SID); }
+  }
+  // Include any pinned servers that are in cutoff but not yet kept (replace tail).
+  PINNED.forEach(p => {
+    if (keptIds.has(p)) return;
+    const e = sorted.find(([s]) => s === p);
+    if (e && e[1] > 0) {
+      // Replace the smallest non-us, non-pinned wedge to make room
+      let smallestIdx = -1;
+      for (let i = kept.length - 1; i >= 0; i--) {
+        if (kept[i].sid === US_SID) continue;
+        if (PINNED.has(kept[i].sid)) continue;
+        smallestIdx = i; break;
+      }
+      if (smallestIdx >= 0) {
+        kept.splice(smallestIdx, 1);
+        kept.push({sid: p, count: e[1]});
+        keptIds.add(p);
+      }
+    }
+  });
+
+  // Re-sort kept by count desc for stable wedge order
+  kept.sort((a,b) => b.count - a.count || a.sid - b.sid);
+  const keptCount = kept.reduce((s,k) => s + k.count, 0);
+  const othersCount = total - keptCount;
+  const othersServers = sorted.length - kept.length;
+
+  // Assign colors. US gets green. Largest non-us-non-pinned gets threat amber.
+  let paletteIdx = 0;
+  let threatUsed = false;
+  kept.forEach(k => {
+    if (k.sid === US_SID) { k.color = COLOR_US; return; }
+    if (!threatUsed && !PINNED.has(k.sid)) { k.color = COLOR_THREAT; threatUsed = true; return; }
+    k.color = WEDGE_PALETTE[paletteIdx % WEDGE_PALETTE.length];
+    paletteIdx++;
+  });
+
+  if (othersCount > 0 && othersServers > 0) {
+    kept.push({sid: '_others', count: othersCount, color: COLOR_OTHERS, isOthers: true, serverCount: othersServers});
+  }
+  return kept;
+}
+
+function arcPath(start, end, total, cx, cy, ro, ri, gap){
+  // gap in radians — small visual gap between wedges
+  if (total === 0 || end - start === 0) return '';
+  const fracStart = start / total, fracEnd = end / total;
+  // Full-circle special case
+  if (fracEnd - fracStart >= 0.999999) {
+    return `M ${cx-ro} ${cy} A ${ro} ${ro} 0 1 1 ${cx+ro} ${cy} A ${ro} ${ro} 0 1 1 ${cx-ro} ${cy} ` +
+           `M ${cx-ri} ${cy} A ${ri} ${ri} 0 1 0 ${cx+ri} ${cy} A ${ri} ${ri} 0 1 0 ${cx-ri} ${cy} Z`;
+  }
+  const a1 = -Math.PI/2 + fracStart*2*Math.PI + gap;
+  const a2 = -Math.PI/2 + fracEnd*2*Math.PI - gap;
+  if (a2 <= a1) return ''; // gap ate the wedge
+  const large = (a2 - a1) > Math.PI ? 1 : 0;
+  const x1o = cx + ro*Math.cos(a1), y1o = cy + ro*Math.sin(a1);
+  const x2o = cx + ro*Math.cos(a2), y2o = cy + ro*Math.sin(a2);
+  const x1i = cx + ri*Math.cos(a1), y1i = cy + ri*Math.sin(a1);
+  const x2i = cx + ri*Math.cos(a2), y2i = cy + ri*Math.sin(a2);
+  return `M ${x1o} ${y1o} A ${ro} ${ro} 0 ${large} 1 ${x2o} ${y2o} L ${x2i} ${y2i} A ${ri} ${ri} 0 ${large} 0 ${x1i} ${y1i} Z`;
+}
+
+function renderDonut(segments, total){
+  const cx = 180, cy = 180, ro = 158, ri = 102;
+  const wedgeGap = segments.length > 1 ? 0.012 : 0;  // ~0.7°
+  let acc = 0;
+  // Build segments with start/end
+  segments.forEach(s => { s._start = acc; s._end = acc + s.count; acc += s.count; });
+
+  // Ticks: 10 marks (one per 10%) and 4 major marks (cardinals)
+  let ticks = '';
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI/2 + (i/10) * 2 * Math.PI;
+    const major = i % 5 === 0;
+    const rOuter = ro + (major ? 10 : 6);
+    const rInner = ro + 2;
+    const x1 = cx + rOuter*Math.cos(a), y1 = cy + rOuter*Math.sin(a);
+    const x2 = cx + rInner*Math.cos(a), y2 = cy + rInner*Math.sin(a);
+    ticks += `<line class="${major?'major':''}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
+  }
+
+  // Build path defs + labels
+  let wedges = '', labels = '';
+  segments.forEach((s, i) => {
+    const d = arcPath(s._start, s._end, total, cx, cy, ro, ri, wedgeGap);
+    if (!d) return;
+    const isUs = s.sid === US_SID;
+    const isPinnedNotUs = !s.isOthers && !isUs && PINNED.has(s.sid);
+    const isSel = (s.sid === SELECTED_SID) || (s.isOthers && SELECTED_SID === '_others');
+    const cls = [
+      'wedge',
+      isUs ? 'is-us-stroke' : '',
+      isPinnedNotUs ? 'is-pinned-stroke' : '',
+      isSel ? 'is-selected' : ''
+    ].filter(Boolean).join(' ');
+    const sidAttr = s.isOthers ? '_others' : s.sid;
+    wedges += `<path class="${cls}" d="${d}" fill="${s.color}" data-sid="${sidAttr}" style="color:${s.color}"></path>`;
+    // Label inside wedge if big enough
+    const frac = s.count / total;
+    if (frac >= MIN_LABEL_SLICE && !s.isOthers) {
+      const midA = -Math.PI/2 + (s._start + s._end) / 2 / total * 2 * Math.PI;
+      const r = (ro + ri) / 2;
+      const lx = cx + r*Math.cos(midA), ly = cy + r*Math.sin(midA);
+      const labelFill = s.color === COLOR_US ? '#0d1117' : (isPinnedNotUs ? '#0d1117' : 'rgba(255,255,255,.92)');
+      labels += `<text class="donut-wedge-label" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" style="fill:${labelFill}">S${s.sid}</text>`;
+    }
+  });
+
+  document.getElementById('donut').innerHTML =
+    `<g class="ticks">${ticks}</g>` + wedges + labels;
+
+  // Donut hover behaviour
+  const wrap = document.getElementById('donut-wrap');
+  const paths = wrap.querySelectorAll('path.wedge');
+  paths.forEach(p => {
+    p.addEventListener('mouseenter', () => {
+      wrap.classList.add('has-hover');
+      paths.forEach(q => q.classList.toggle('hov', q === p));
+    });
+    p.addEventListener('mouseleave', () => {
+      wrap.classList.remove('has-hover');
+      paths.forEach(q => q.classList.remove('hov'));
+    });
+    p.addEventListener('click', () => {
+      const sid = p.dataset.sid;
+      if (sid === '_others') {
+        SELECTED_SID = '_others';
+        render();
+      } else {
+        selectServer(+sid);
+      }
+    });
+  });
+}
+
+function renderAllocCenter(segments, total){
+  const center = document.getElementById('donut-center');
+  let target;
+  if (SELECTED_SID === '_others') {
+    target = segments.find(s => s.isOthers);
+  } else {
+    target = segments.find(s => s.sid === SELECTED_SID);
+  }
+  // Selected server may not be in cutoff
+  let sel = SELECTED_SID;
+  let pct, count, sidLabel, sidClass;
+  if (target) {
+    pct = target.count / total * 100;
+    count = target.count;
+    if (target.isOthers) {
+      sidLabel = '+' + target.serverCount + ' OTHERS';
+      sidClass = 'others';
+    } else {
+      sidLabel = 'S' + target.sid;
+      sidClass = (target.sid === US_SID) ? '' : (PINNED.has(target.sid) ? 'threat' : 'threat');
+      // Actually: if it's us-sid keep default green color; else use threat amber
+      sidClass = (target.sid === US_SID) ? '' : 'threat';
+    }
+  } else {
+    // selected sid not in cutoff
+    pct = 0; count = 0;
+    sidLabel = (SELECTED_SID === US_SID) ? 'S' + US_SID : 'S' + SELECTED_SID;
+    sidClass = (SELECTED_SID === US_SID) ? '' : 'threat';
+  }
+  const pctStr = (pct === 0) ? '0' : (pct < 0.1 ? pct.toFixed(2) : pct < 10 ? pct.toFixed(1) : Math.round(pct));
+  center.innerHTML =
+    '<div class="dc-eyebrow">share of cutoff</div>' +
+    '<div class="dc-sid '+sidClass+'">' + sidLabel + '</div>' +
+    '<div class="dc-pct">' + pctStr + '<span class="pp">%</span></div>' +
+    '<div class="dc-foot"><b>' + fmtNum(count) + '</b> · cut size <b>' + fmtNum(total) + '</b></div>';
+}
+
+function renderAllocLegend(segments, total){
+  const root = document.getElementById('alloc-legend');
+  const rows = segments.map(s => {
+    const isOthers = !!s.isOthers;
+    const isUs = !isOthers && s.sid === US_SID;
+    const isPinned = !isOthers && !isUs && PINNED.has(s.sid);
+    const isSel = (isOthers && SELECTED_SID === '_others') || (!isOthers && s.sid === SELECTED_SID);
+    const pct = s.count / total * 100;
+    const tag = isUs ? '<span class="tag">// us</span>' : isPinned ? '<span class="tag threat">// watch</span>' : '';
+    const name = isOthers
+      ? '<span class="name others">+ ' + s.serverCount + ' other servers</span>'
+      : '<span class="name">S' + s.sid + tag + '</span>';
+    const dataSid = isOthers ? '_others' : s.sid;
+    const cls = ['row', isUs?'is-us':'', isSel?'is-selected':''].filter(Boolean).join(' ');
+    return '<div class="'+cls+'" data-sid="'+dataSid+'">' +
+      '<div class="sw" style="background:'+s.color+'"></div>' +
+      name +
+      '<div class="ct">' + fmtNum(s.count) + '</div>' +
+      '<div class="pc">' + fmtPct(pct) + '</div>' +
+    '</div>';
+  }).join('');
+  root.innerHTML = rows;
+  root.querySelectorAll('.row[data-sid]').forEach(r => {
+    r.addEventListener('click', () => {
+      const sid = r.dataset.sid;
+      if (sid === '_others') { SELECTED_SID = '_others'; render(); }
+      else selectServer(+sid);
+    });
+  });
+}
+
 function pinServer(sid){
   PINNED.add(sid);
   selectServer(sid);
@@ -595,37 +873,55 @@ function render(){
     });
   });
 
+  // ── Allocation donut (segments computed off `sorted`)
+  const segments = buildAllocation(counts, total, sorted);
+  renderDonut(segments, total);
+  renderAllocCenter(segments, total);
+  renderAllocLegend(segments, total);
+
   // ── Dossier
-  const isUs = SELECTED_SID === US_SID;
   const dossierIdEl = document.getElementById('dossier-id');
-  dossierIdEl.textContent = 'S' + SELECTED_SID;
-  dossierIdEl.classList.toggle('us', isUs);
-  const players = getPlayersForSid(SELECTED_SID, CURRENT_TOPN);
-  const sidCount = players.length;
-  const totalPlayersThisSid = (function(){ // total presence anywhere in dataset
-    let n = 0;
-    for (let i = 0; i < DATA.length; i++) if (DATA[i].sid === SELECTED_SID) n++;
-    return n;
-  })();
   const sumEl = document.getElementById('dossier-sum');
-  if (sidCount === 0) {
-    sumEl.innerHTML = 'no presence in cutoff · <b>' + fmtNum(totalPlayersThisSid) + '</b> total ranked';
-  } else {
-    sumEl.innerHTML = '<b>' + fmtNum(sidCount) + '</b> in cut (' + fmtPct(sidCount/total*100) + ') · top #' + players[0].rank + ' · <b>' + fmtNum(totalPlayersThisSid) + '</b> total ranked';
-  }
   const listEl = document.getElementById('dossier-list');
-  if (players.length === 0) {
-    listEl.innerHTML = '<div class="dossier-empty">// no operatives within cutoff //</div>';
+  if (SELECTED_SID === '_others') {
+    const othersSeg = segments.find(s => s.isOthers);
+    dossierIdEl.textContent = '+ others';
+    dossierIdEl.classList.remove('us');
+    if (othersSeg) {
+      sumEl.innerHTML = '<b>' + fmtNum(othersSeg.serverCount) + '</b> other servers · <b>' + fmtNum(othersSeg.count) + '</b> players (' + fmtPct(othersSeg.count/total*100) + ' of cutoff)';
+    } else {
+      sumEl.innerHTML = 'no others in cutoff';
+    }
+    listEl.innerHTML = '<div class="dossier-empty">// click an individual server wedge or row to drill in //</div>';
   } else {
-    const limit = 200;
-    const html = players.slice(0, limit).map(p =>
-      '<div class="dossier-row">' +
-        '<div class="r">#' + p.rank + '</div>' +
-        '<div class="n">' + escapeHtml(p.name||'—') + '</div>' +
-        '<div class="sc">' + fmtNum(p.score) + '</div>' +
-      '</div>'
-    ).join('');
-    listEl.innerHTML = html + (players.length > limit ? '<div class="dossier-empty">+ ' + fmtNum(players.length - limit) + ' more not shown</div>' : '');
+    const isUs = SELECTED_SID === US_SID;
+    dossierIdEl.textContent = 'S' + SELECTED_SID;
+    dossierIdEl.classList.toggle('us', isUs);
+    const players = getPlayersForSid(SELECTED_SID, CURRENT_TOPN);
+    const sidCount = players.length;
+    const totalPlayersThisSid = (function(){
+      let n = 0;
+      for (let i = 0; i < DATA.length; i++) if (DATA[i].sid === SELECTED_SID) n++;
+      return n;
+    })();
+    if (sidCount === 0) {
+      sumEl.innerHTML = 'no presence in cutoff · <b>' + fmtNum(totalPlayersThisSid) + '</b> total ranked';
+    } else {
+      sumEl.innerHTML = '<b>' + fmtNum(sidCount) + '</b> in cut (' + fmtPct(sidCount/total*100) + ') · top #' + players[0].rank + ' · <b>' + fmtNum(totalPlayersThisSid) + '</b> total ranked';
+    }
+    if (players.length === 0) {
+      listEl.innerHTML = '<div class="dossier-empty">// no operatives within cutoff //</div>';
+    } else {
+      const limit = 200;
+      const html = players.slice(0, limit).map(p =>
+        '<div class="dossier-row">' +
+          '<div class="r">#' + p.rank + '</div>' +
+          '<div class="n">' + escapeHtml(p.name||'—') + '</div>' +
+          '<div class="sc">' + fmtNum(p.score) + '</div>' +
+        '</div>'
+      ).join('');
+      listEl.innerHTML = html + (players.length > limit ? '<div class="dossier-empty">+ ' + fmtNum(players.length - limit) + ' more not shown</div>' : '');
+    }
   }
 
   // ── Threat board (top 30 + pinned/us)
