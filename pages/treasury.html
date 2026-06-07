@@ -359,6 +359,8 @@
       <option value="fame-asc">Fame ↑</option>
       <option value="merit-desc">Merit ↓</option>
       <option value="merit-asc">Merit ↑</option>
+      <option value="nc-desc">NC ↓</option>
+      <option value="nc-asc">NC ↑</option>
       <option value="power-desc">Power ↓</option>
       <option value="power-asc">Power ↑</option>
       <option value="name-asc">Name A→Z</option>
@@ -395,6 +397,7 @@
           <th class="sortable" onclick="setSort('fame')" id="thFame">Fame <span class="sort-arrow">↕</span></th>
           <th class="sortable" onclick="setSort('merit')" id="thMerit">Merit <span class="sort-arrow">↕</span></th>
           <th class="sortable" onclick="setSort('power')" id="thPower">Power <span class="sort-arrow">↕</span></th>
+          <th class="sortable" onclick="setSort('nc')" id="thNc" title="Neutral City points — this round in Round view, cumulative in Cumulative view">NC <span class="sort-arrow">↕</span></th>
           <th>Rewards</th>
         </tr>
       </thead>
@@ -520,13 +523,15 @@ function buildCumulativeDistributions() {
     rdata.distributions.forEach(function(d) {
       var k = d.siteKey;
       if (!playerMap[k]) {
-        playerMap[k] = { siteKey: d.siteKey, name: d.name, playerTier: d.playerTier, fame: d.fame, merit: d.merit, power: d.power, avatarurl: d.avatarurl, rewards: [] };
+        playerMap[k] = { siteKey: d.siteKey, name: d.name, playerTier: d.playerTier, fame: d.fame, merit: d.merit, power: d.power, ncScore: d.ncScore, ncRound: d.ncRound, avatarurl: d.avatarurl, rewards: [] };
       } else {
         playerMap[k].name = d.name;
         playerMap[k].fame = d.fame;
         playerMap[k].merit = d.merit;
         playerMap[k].power = d.power;
         playerMap[k].playerTier = d.playerTier;
+        /* cumulative NC score is a lifetime total (same value any round it appears); keep it when present */
+        if (d.ncScore != null) playerMap[k].ncScore = d.ncScore;
         /* Prefer the most recent round's avatar, but keep an older one if this entry has none */
         if (d.avatarurl) playerMap[k].avatarurl = d.avatarurl;
       }
@@ -648,9 +653,11 @@ function renderSummary(summary) {
 function sortDistributions(dists) {
   var parts = document.getElementById('sortSelect').value.split('-');
   var field = parts[0], dir = parts[1];
+  function ncVal(x){ return (currentView === 'cumulative') ? (x.ncScore || 0) : (x.ncRound || 0); }
+  function fieldVal(x){ return field === 'name' ? (x.name || '').toLowerCase() : (field === 'nc' ? ncVal(x) : (x[field] || 0)); }
   return dists.slice().sort(function(a, b) {
-    var av = field === 'name' ? (a.name || '').toLowerCase() : (a[field] || 0);
-    var bv = field === 'name' ? (b.name || '').toLowerCase() : (b[field] || 0);
+    var av = fieldVal(a);
+    var bv = fieldVal(b);
     if (av < bv) return dir === 'desc' ? 1 : -1;
     if (av > bv) return dir === 'desc' ? -1 : 1;
     return 0;
@@ -745,6 +752,16 @@ function buildRow(d, rank, roundStatus) {
   tdPower.appendChild(spPower);
   tr.appendChild(tdPower);
 
+  /* neutral-city score: this round in Round view, cumulative in Cumulative view */
+  var tdNc = document.createElement('td');
+  tdNc.className = 'num';
+  var spNc = document.createElement('span');
+  spNc.className = 'num-val';
+  var ncv = (currentView === 'cumulative') ? d.ncScore : d.ncRound;
+  spNc.textContent = (ncv == null) ? '–' : fmtNum(ncv);
+  tdNc.appendChild(spNc);
+  tr.appendChild(tdNc);
+
   /* rewards */
   var tdRewards = document.createElement('td');
   tdRewards.className = 'rewards-cell';
@@ -805,7 +822,7 @@ function renderTable() {
   dists = sortDistributions(dists);
 
   /* Update sort header indicators */
-  ['fame', 'merit', 'power'].forEach(function(f) {
+  ['fame', 'merit', 'power', 'nc'].forEach(function(f) {
     var cap = f.charAt(0).toUpperCase() + f.slice(1);
     var th = document.getElementById('th' + cap);
     if (!th) return;
@@ -822,7 +839,7 @@ function renderTable() {
   if (!dists.length) {
     var noRow = document.createElement('tr');
     var noTd = document.createElement('td');
-    noTd.colSpan = 7;
+    noTd.colSpan = 8;
     noTd.className = 'no-results';
     noTd.textContent = search ? 'No players match your search.' : 'No distribution data for this round.';
     noRow.appendChild(noTd);
@@ -1142,6 +1159,7 @@ function renderModalCurrentTab(d) {
   [
     {label: 'Fame', value: fmtNum(d.fame)},
     {label: 'Merit', value: fmtNum(d.merit)},
+    {label: (currentView === 'cumulative' ? 'NC (cumulative)' : 'NC (round)'), value: (function(){ var v = (currentView === 'cumulative') ? d.ncScore : d.ncRound; return v == null ? '–' : fmtNum(v); })()},
     {label: 'Power', value: fmtPower(d.power)}
   ].forEach(function(s) {
     var card = document.createElement('div');
