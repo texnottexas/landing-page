@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; font-src 'self' data: https://fonts.gstatic.com;">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSC Threat Assessment · S2864</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Major+Mono+Display&family=JetBrains+Mono:wght@300;400;500;700;800&family=Syne:wght@600;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#070a0d;
+    --bg-tint:#0c1218;
+    --panel:#0f1620;
+    --panel-2:#131c28;
+    --border:#1f2a3a;
+    --border-bright:#2c3d54;
+    --grid:rgba(63,185,80,.045);
+    --text:#dfe7f0;
+    --text-dim:#7a8a9d;
+    --muted:#4f5d72;
+    --us:#3fb950;          /* friendly forces */
+    --us-glow:rgba(63,185,80,.35);
+    --hostile:#f85149;     /* contested */
+    --threat:#f0a020;      /* threat amber */
+    --intel:#79c0ff;       /* informational */
+    --classified:#d4af37;  /* signal gold */
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'JetBrains Mono','SF Mono',Consolas,monospace;line-height:1.5;font-weight:400;-webkit-font-smoothing:antialiased;}
+
+  /* Atmospheric base */
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:
+      radial-gradient(ellipse 90% 60% at 50% -10%,rgba(63,185,80,.07),transparent 60%),
+      radial-gradient(ellipse 70% 60% at 95% 100%,rgba(240,160,32,.06),transparent 60%),
+      linear-gradient(to bottom,var(--bg),var(--bg) 60%,#040608);
+  }
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background-image:
+      linear-gradient(var(--grid) 1px,transparent 1px),
+      linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+    background-size:48px 48px;
+    mask-image:radial-gradient(ellipse 100% 80% at 50% 30%,#000 30%,transparent 90%);
+    -webkit-mask-image:radial-gradient(ellipse 100% 80% at 50% 30%,#000 30%,transparent 90%);
+  }
+  /* Scanlines */
+  .scanlines{position:fixed;inset:0;pointer-events:none;z-index:1;
+    background:repeating-linear-gradient(to bottom,transparent 0,transparent 3px,rgba(255,255,255,.012) 3px,rgba(255,255,255,.012) 4px);
+    mix-blend-mode:overlay;}
+
+  a{color:var(--intel);text-decoration:none}
+  a:hover{color:var(--text);text-decoration:none}
+
+  .shell{position:relative;z-index:2;max-width:1240px;margin:0 auto;padding:24px 20px 80px;}
+
+  /* === Classification strip === */
+  .cls-bar{
+    display:flex;align-items:center;justify-content:space-between;
+    font-family:'JetBrains Mono',monospace;
+    font-size:.65rem;letter-spacing:.32em;color:var(--classified);text-transform:uppercase;
+    border-top:1px solid var(--classified);border-bottom:1px solid var(--classified);
+    padding:5px 10px;margin-bottom:22px;background:rgba(212,175,55,.04);
+  }
+  .cls-bar .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--classified);box-shadow:0 0 8px var(--classified);margin:0 8px;vertical-align:middle;animation:beacon 2s ease-in-out infinite;}
+  @keyframes beacon{0%,100%{opacity:.5}50%{opacity:1}}
+
+  /* === Header === */
+  header{display:grid;grid-template-columns:1fr auto;gap:16px;margin-bottom:28px;align-items:end;}
+  .title-block .eyebrow{
+    font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.4em;
+    color:var(--us);text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:10px;
+  }
+  .title-block .eyebrow::before{content:"";display:inline-block;width:24px;height:1px;background:var(--us);box-shadow:0 0 6px var(--us-glow);}
+  .title-block h1{
+    margin:0;font-family:'Major Mono Display','JetBrains Mono',monospace;
+    font-size:clamp(1.9rem,4.4vw,3.1rem);font-weight:400;letter-spacing:-.02em;line-height:1;
+    color:var(--text);text-transform:lowercase;
+  }
+  .title-block h1 .accent{color:var(--us);}
+  .title-block .subline{
+    margin-top:10px;font-size:.85rem;color:var(--text-dim);letter-spacing:.05em;
+    font-family:'JetBrains Mono',monospace;
+  }
+  .title-block .subline b{color:var(--text);font-weight:500;}
+  .nav-block{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
+  .nav-btn{
+    display:inline-flex;align-items:center;gap:6px;
+    font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;
+    padding:7px 12px;color:var(--text-dim);background:transparent;border:1px solid var(--border);border-radius:0;
+    transition:all .15s ease;cursor:pointer;
+  }
+  .nav-btn:hover{color:var(--us);border-color:var(--us);background:rgba(63,185,80,.06);}
+
+  /* === Panel chrome (corner brackets) === */
+  .panel{position:relative;background:var(--panel);border:1px solid var(--border);padding:22px;margin-bottom:18px;}
+  .panel.bordered{border-color:var(--border-bright);}
+  .panel::before, .panel::after, .panel > .bracket-bl, .panel > .bracket-br{
+    content:"";position:absolute;width:14px;height:14px;border:1.5px solid var(--us);pointer-events:none;
+  }
+  .panel::before{top:-1px;left:-1px;border-right:none;border-bottom:none;}
+  .panel::after{top:-1px;right:-1px;border-left:none;border-bottom:none;}
+  .panel > .bracket-bl{bottom:-1px;left:-1px;border-right:none;border-top:none;}
+  .panel > .bracket-br{bottom:-1px;right:-1px;border-left:none;border-top:none;}
+
+  .panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap;}
+  .panel-title{
+    font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.32em;text-transform:uppercase;
+    color:var(--us);font-weight:500;display:flex;align-items:center;gap:10px;
+  }
+  .panel-title .id{color:var(--muted);}
+  .panel-title::after{content:"";flex:1;height:1px;background:linear-gradient(to right,var(--border),transparent);min-width:30px;}
+  .panel-meta{font-family:'JetBrains Mono',monospace;font-size:.7rem;letter-spacing:.18em;color:var(--text-dim);text-transform:uppercase;}
+
+  /* === Hero brief === */
+  .brief{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);}
+  .brief .cell{background:var(--panel);padding:18px 18px 18px;position:relative;}
+  .brief .cell .lbl{font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.24em;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;}
+  .brief .cell .val{font-family:'Major Mono Display','JetBrains Mono',monospace;font-size:2.6rem;line-height:1;letter-spacing:-.04em;color:var(--text);font-weight:400;}
+  .brief .cell .val.us{color:var(--us);text-shadow:0 0 24px var(--us-glow);}
+  .brief .cell .val.threat{color:var(--threat);}
+  .brief .cell .sub{font-family:'JetBrains Mono',monospace;font-size:.74rem;color:var(--text-dim);margin-top:6px;letter-spacing:.02em;}
+  .brief .cell.primary{background:linear-gradient(180deg,rgba(63,185,80,.08),rgba(63,185,80,0));}
+  .brief .cell.primary::after{content:"";position:absolute;top:0;left:0;width:3px;height:24px;background:var(--us);box-shadow:0 0 8px var(--us-glow);}
+  @media(max-width:780px){.brief{grid-template-columns:repeat(2,1fr);}}
+
+  /* === Threshold === */
+  .threshold-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:24px;align-items:start;}
+  @media(max-width:760px){.threshold-grid{grid-template-columns:1fr;}}
+  .threshold-num{font-family:'Major Mono Display',monospace;font-size:clamp(3rem,8vw,5.5rem);line-height:.95;letter-spacing:-.05em;color:var(--us);text-shadow:0 0 32px var(--us-glow);font-weight:400;}
+  .threshold-num.flash{animation:flash .35s ease;}
+  @keyframes flash{0%{opacity:.4}100%{opacity:1}}
+  .threshold-cap{font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.22em;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;}
+  .threshold-foot{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--text-dim);margin-top:8px;}
+  .threshold-foot b{color:var(--threat);font-weight:500;}
+
+  .slider-wrap{padding-top:8px;}
+  .slider-readout{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:.65rem;letter-spacing:.18em;color:var(--muted);text-transform:uppercase;margin-bottom:6px;}
+  input[type=range].mil{
+    -webkit-appearance:none;appearance:none;width:100%;background:transparent;height:32px;cursor:pointer;margin:0;
+  }
+  input[type=range].mil:focus{outline:none;}
+  input[type=range].mil::-webkit-slider-runnable-track{
+    height:2px;background:linear-gradient(to right,var(--us),var(--border-bright));border:none;
+  }
+  input[type=range].mil::-moz-range-track{
+    height:2px;background:linear-gradient(to right,var(--us),var(--border-bright));border:none;
+  }
+  input[type=range].mil::-webkit-slider-thumb{
+    -webkit-appearance:none;width:14px;height:22px;background:var(--us);border:none;border-radius:0;margin-top:-10px;
+    box-shadow:0 0 12px var(--us-glow),0 0 0 1px var(--bg) inset;cursor:grab;
+  }
+  input[type=range].mil::-moz-range-thumb{
+    width:14px;height:22px;background:var(--us);border:none;border-radius:0;
+    box-shadow:0 0 12px var(--us-glow),0 0 0 1px var(--bg) inset;cursor:grab;
+  }
+  .preset-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;}
+  .preset-row button{
+    font-family:'JetBrains Mono',monospace;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;
+    background:transparent;color:var(--text-dim);border:1px solid var(--border);padding:5px 10px;cursor:pointer;
+    transition:all .15s ease;border-radius:0;
+  }
+  .preset-row button:hover{color:var(--text);border-color:var(--border-bright);background:rgba(63,185,80,.04);}
+  .preset-row button.active{color:var(--bg);background:var(--us);border-color:var(--us);box-shadow:0 0 12px var(--us-glow);}
+
+  /* === Search + dossier === */
+  .lookup-grid{display:grid;grid-template-columns:1fr;gap:18px;}
+  .search-line{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;}
+  .search-line .label{font-family:'JetBrains Mono',monospace;font-size:.7rem;letter-spacing:.22em;text-transform:uppercase;color:var(--us);}
+  .search-line input{
+    width:100%;background:var(--bg-tint);color:var(--text);
+    border:1px solid var(--border);border-radius:0;padding:10px 14px;
+    font-family:'JetBrains Mono',monospace;font-size:1.05rem;letter-spacing:.05em;
+  }
+  .search-line input::placeholder{color:var(--muted);}
+  .search-line input:focus{outline:none;border-color:var(--us);box-shadow:0 0 0 1px var(--us);}
+  .search-line .submit{
+    font-family:'JetBrains Mono',monospace;font-size:.7rem;letter-spacing:.22em;text-transform:uppercase;
+    padding:11px 16px;background:transparent;border:1px solid var(--us);color:var(--us);cursor:pointer;
+  }
+  .search-line .submit:hover{background:var(--us);color:var(--bg);}
+
+  .watchlist{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;}
+  .watch-chip{
+    display:inline-flex;align-items:center;gap:8px;padding:5px 4px 5px 10px;
+    font-family:'JetBrains Mono',monospace;font-size:.78rem;
+    background:var(--bg-tint);border:1px solid var(--border);color:var(--text);cursor:pointer;
+    transition:all .15s ease;letter-spacing:.04em;
+  }
+  .watch-chip:hover{border-color:var(--threat);color:var(--text);}
+  .watch-chip .c{color:var(--text-dim);}
+  .watch-chip .x{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;color:var(--muted);font-size:.9rem;}
+  .watch-chip:hover .x{color:var(--hostile);}
+  .watch-chip.is-us{border-color:var(--us);background:rgba(63,185,80,.07);}
+  .watch-chip.is-us .c{color:var(--us);}
+  .watch-chip.is-selected{outline:1px solid var(--threat);outline-offset:-2px;}
+  .watch-chip.is-us.is-selected{outline-color:var(--us);}
+
+  /* Dossier */
+  .dossier{margin-top:18px;background:var(--bg-tint);border:1px solid var(--border);}
+  .dossier-head{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;}
+  .dossier-head .id{font-family:'Major Mono Display',monospace;font-size:1.8rem;letter-spacing:-.02em;color:var(--threat);}
+  .dossier-head .id.us{color:var(--us);}
+  .dossier-head .sum{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--text-dim);letter-spacing:.04em;}
+  .dossier-head .sum b{color:var(--text);font-weight:500;}
+  .dossier-list{max-height:380px;overflow-y:auto;}
+  .dossier-list::-webkit-scrollbar{width:8px;}
+  .dossier-list::-webkit-scrollbar-track{background:transparent;}
+  .dossier-list::-webkit-scrollbar-thumb{background:var(--border-bright);}
+  .dossier-row{display:grid;grid-template-columns:62px 1fr 130px;gap:12px;padding:8px 16px;font-family:'JetBrains Mono',monospace;font-size:.85rem;border-bottom:1px solid #161e2a;align-items:center;}
+  .dossier-row:last-child{border-bottom:none;}
+  .dossier-row:hover{background:rgba(63,185,80,.04);}
+  .dossier-row .r{color:var(--muted);font-variant-numeric:tabular-nums;font-size:.78rem;}
+  .dossier-row .n{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.01em;}
+  .dossier-row .sc{text-align:right;color:var(--us);font-variant-numeric:tabular-nums;font-weight:500;}
+  .dossier-empty{padding:24px 16px;text-align:center;color:var(--muted);font-style:italic;font-size:.85rem;letter-spacing:.05em;}
+
+  /* === Threat table === */
+  .threat-row{display:grid;grid-template-columns:46px 1.2fr 1.1fr 1.1fr 3fr;gap:14px;align-items:center;padding:11px 16px;border-bottom:1px solid #131c28;font-family:'JetBrains Mono',monospace;}
+  .threat-row.head{
+    border-bottom:1px solid var(--border-bright);background:rgba(255,255,255,.015);
+    font-size:.68rem;letter-spacing:.2em;color:var(--text-dim);text-transform:uppercase;padding-top:12px;padding-bottom:12px;
+  }
+  .threat-row:not(.head){cursor:pointer;transition:background .15s ease;}
+  .threat-row:not(.head):hover{background:rgba(63,185,80,.04);}
+  .threat-row.is-us{background:linear-gradient(to right,rgba(63,185,80,.10),rgba(63,185,80,0) 70%);}
+  .threat-row.is-us:hover{background:linear-gradient(to right,rgba(63,185,80,.16),rgba(63,185,80,.02) 70%);}
+  .threat-row.is-pinned:not(.is-us){background:linear-gradient(to right,rgba(240,160,32,.06),rgba(240,160,32,0) 70%);}
+  .threat-row .rk{font-family:'Major Mono Display',monospace;font-size:1.15rem;color:var(--muted);letter-spacing:-.02em;}
+  .threat-row.is-us .rk{color:var(--us);}
+  .threat-row.is-pinned:not(.is-us) .rk{color:var(--threat);}
+  .threat-row .sid{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:1rem;letter-spacing:.04em;color:var(--text);}
+  .threat-row.is-us .sid{color:var(--us);}
+  .threat-row .sid .tag{font-weight:400;font-size:.65rem;letter-spacing:.2em;color:var(--us);text-transform:uppercase;margin-left:6px;}
+  .threat-row .sid .tag.threat{color:var(--threat);}
+  .threat-row .ct{font-variant-numeric:tabular-nums;font-size:1.05rem;font-weight:500;color:var(--text);}
+  .threat-row .pc{font-variant-numeric:tabular-nums;font-size:.9rem;color:var(--text-dim);}
+  .threat-row .bar{position:relative;height:8px;background:rgba(255,255,255,.04);border:1px solid var(--border);overflow:hidden;}
+  .threat-row .bar .fill{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--threat),var(--hostile));transition:width .25s ease;}
+  .threat-row.is-us .bar .fill{background:linear-gradient(90deg,var(--us),#2ea043);}
+  @media(max-width:680px){
+    .threat-row{grid-template-columns:36px 1fr 70px 70px;gap:10px;font-size:.82rem;}
+    .threat-row .bar, .threat-row.head .bar-h{display:none;}
+  }
+
+  /* === Loading + error === */
+  .booting{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;color:var(--us);}
+  .booting .ring{
+    width:60px;height:60px;border:2px solid var(--border);border-top-color:var(--us);border-right-color:var(--us);
+    border-radius:50%;animation:spin 1.2s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .booting .ln{font-family:'JetBrains Mono',monospace;font-size:.78rem;letter-spacing:.32em;text-transform:uppercase;color:var(--us);}
+  .booting .ln::after{content:"_";animation:blink 1s steps(1) infinite;}
+  @keyframes blink{50%{opacity:0}}
+  .booting .progress{font-family:'JetBrains Mono',monospace;font-size:.7rem;letter-spacing:.18em;color:var(--text-dim);text-transform:uppercase;}
+
+  /* === Footer === */
+  .footer{margin-top:36px;text-align:center;color:var(--muted);font-size:.7rem;letter-spacing:.15em;line-height:2;text-transform:uppercase;font-family:'JetBrains Mono',monospace;}
+  .footer .fk{color:var(--us);opacity:.6;font-style:italic;text-transform:none;letter-spacing:.04em;animation:pulse 6s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:.4}50%{opacity:.75}}
+
+  /* Stagger fade-in */
+  .reveal{opacity:0;transform:translateY(8px);animation:rise .55s cubic-bezier(.2,.7,.2,1) forwards;}
+  @keyframes rise{to{opacity:1;transform:none;}}
+
+  /* readout flash */
+  .flash-once{animation:flashIn .3s ease;}
+  @keyframes flashIn{0%{background:rgba(63,185,80,.18)}100%{background:transparent}}
+</style>
+</head>
+<body>
+<div class="scanlines"></div>
+
+<div class="shell">
+
+  <div class="cls-bar reveal" style="animation-delay:0s">
+    <span>// FILE 2864 <span class="dot"></span> SECTOR DOSSIER</span>
+    <span id="cls-mid">// SEAL STONE CHAOS · R<span id="cls-round">12</span></span>
+    <span>// CLEARANCE: ALLIANCE</span>
+  </div>
+
+  <header class="reveal" style="animation-delay:.05s">
+    <div class="title-block">
+      <div class="eyebrow">Threat Assessment</div>
+      <h1>how hard<br>are <span class="accent">we</span> fighting.</h1>
+      <div class="subline" id="meta-line">— transmission incoming —</div>
+    </div>
+    <div class="nav-block">
+      <a href="index.html" class="nav-btn">⟵ Home</a>
+      <a href="ssc-map.html" class="nav-btn">SSC Map</a>
+      <a href="storm-duel.html" class="nav-btn">Storm Duel</a>
+    </div>
+  </header>
+
+  <div id="loading" class="booting">
+    <div class="ring"></div>
+    <div class="ln">decrypting roster</div>
+    <div class="progress">est. payload 2.5 MB</div>
+  </div>
+
+  <main id="content" style="display:none;">
+
+    <!-- Brief -->
+    <section class="panel reveal" style="animation-delay:.1s">
+      <span class="bracket-bl"></span><span class="bracket-br"></span>
+      <div class="panel-head">
+        <div class="panel-title"><span class="id">01·</span> Brief</div>
+        <div class="panel-meta">live · round 12</div>
+      </div>
+      <div class="brief" id="brief"></div>
+    </section>
+
+    <!-- Threshold -->
+    <section class="panel reveal" style="animation-delay:.15s">
+      <span class="bracket-bl"></span><span class="bracket-br"></span>
+      <div class="panel-head">
+        <div class="panel-title"><span class="id">02·</span> Engagement threshold</div>
+        <div class="panel-meta">drag to set cutoff</div>
+      </div>
+      <div class="threshold-grid">
+        <div>
+          <div class="threshold-cap">Players within cutoff</div>
+          <div class="threshold-num" id="threshold-num">75</div>
+          <div class="threshold-foot">score floor: <b id="threshold-floor">—</b> · serverless rank cutoff</div>
+        </div>
+        <div class="slider-wrap">
+          <div class="slider-readout">
+            <span>min · 5</span>
+            <span id="slider-current">75</span>
+            <span id="slider-max">56,387</span>
+          </div>
+          <input type="range" class="mil" id="topN-slider" min="0" max="1000" value="0" step="1">
+          <div class="preset-row" id="preset-row"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Lookup / dossier -->
+    <section class="panel reveal" style="animation-delay:.2s">
+      <span class="bracket-bl"></span><span class="bracket-br"></span>
+      <div class="panel-head">
+        <div class="panel-title"><span class="id">03·</span> Sector lookup</div>
+        <div class="panel-meta">enter server number</div>
+      </div>
+      <div class="lookup-grid">
+        <div class="search-line">
+          <div class="label">S/</div>
+          <input id="search" type="text" inputmode="numeric" placeholder="e.g. 3223, 1175, 341 — enter to pin">
+          <button class="submit" id="pin-btn">Pin</button>
+        </div>
+        <div class="watchlist" id="watchlist"></div>
+        <div class="dossier" id="dossier-wrap">
+          <div class="dossier-head">
+            <div class="id us" id="dossier-id">S2864</div>
+            <div class="sum" id="dossier-sum">—</div>
+          </div>
+          <div class="dossier-list" id="dossier-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Threat board -->
+    <section class="panel reveal" style="animation-delay:.25s">
+      <span class="bracket-bl"></span><span class="bracket-br"></span>
+      <div class="panel-head">
+        <div class="panel-title"><span class="id">04·</span> Hostile concentrations</div>
+        <div class="panel-meta">servers ranked by share of cutoff</div>
+      </div>
+      <div class="threat-row head">
+        <div>Rk</div>
+        <div>Server</div>
+        <div style="text-align:left">Count</div>
+        <div style="text-align:left">% of cut</div>
+        <div class="bar-h">Share</div>
+      </div>
+      <div id="threat-body"></div>
+    </section>
+
+  </main>
+
+  <div class="footer">
+    <div>FILE 2864 · alfred analysis suite · round 12 dossier</div>
+    <div class="fk">Brought to you by supporters of the fk boats movement</div>
+    <div><a href="changelog.html">changelog</a></div>
+  </div>
+
+</div>
+
+<script>
+'use strict';
+(function(){
+
+const US_SID = 2864;
+const PRESETS = [25, 75, 150, 500, 1000, 4000, 10000, 25000];
+
+let DATA = null, META = null;
+let CURRENT_TOPN = 75;
+let PINNED = new Set([US_SID]);
+let SELECTED_SID = US_SID;
+let SLIDER_TIMER = null;
+
+const SLIDER_MAX = 1000;
+function sliderToN(v){
+  const total = DATA ? DATA.length : 56387;
+  const lo = Math.log(5), hi = Math.log(total);
+  const t = v / SLIDER_MAX;
+  return Math.max(5, Math.min(total, Math.round(Math.exp(lo + (hi-lo)*t))));
+}
+function nToSlider(n){
+  const total = DATA ? DATA.length : 56387;
+  const lo = Math.log(5), hi = Math.log(total);
+  const t = (Math.log(Math.max(5, n)) - lo) / (hi - lo);
+  return Math.round(t * SLIDER_MAX);
+}
+
+function fmtNum(n){ return (typeof n === 'number') ? n.toLocaleString('en-US') : n; }
+function fmtPct(p){
+  if (p < 0.01 && p > 0) return p.toFixed(3) + '%';
+  if (p < 1) return p.toFixed(2) + '%';
+  return p.toFixed(1) + '%';
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function load(){
+  try {
+    const res = await fetch('data/ssc-merit-leaderboard.json');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    DATA = json.entries;
+    META = json.metadata;
+    document.getElementById('cls-round').textContent = META.round;
+    document.getElementById('meta-line').innerHTML =
+      'round ' + META.round + ' · <b>' + fmtNum(META.total_entries) + '</b> ranked combatants · <b>' + fmtNum(META.unique_servers) + '</b> servers represented';
+    document.getElementById('slider-max').textContent = fmtNum(META.total_entries);
+    init();
+  } catch(e) {
+    document.getElementById('loading').innerHTML =
+      '<div class="ln" style="color:var(--hostile)">// transmission lost //</div>' +
+      '<div class="progress">' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+function init(){
+  document.getElementById('content').style.display = '';
+  document.getElementById('loading').style.display = 'none';
+
+  // Presets
+  const pr = document.getElementById('preset-row');
+  PRESETS.forEach(n => {
+    const b = document.createElement('button');
+    b.textContent = (n >= 1000 ? 'TOP ' + (n/1000) + 'K' : 'TOP ' + n);
+    b.dataset.n = n;
+    b.addEventListener('click', () => setTopN(n));
+    pr.appendChild(b);
+  });
+
+  // Slider
+  const slider = document.getElementById('topN-slider');
+  slider.value = nToSlider(75);
+  slider.addEventListener('input', e => {
+    const n = sliderToN(+e.target.value);
+    setTopN(n, true);
+  });
+
+  // Search
+  const search = document.getElementById('search');
+  search.addEventListener('input', e => {
+    const v = e.target.value.trim();
+    if (!v) { selectServer(US_SID); return; }
+    const n = parseInt(v, 10);
+    if (!isNaN(n)) selectServer(n);
+  });
+  search.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const n = parseInt(e.target.value.trim(), 10);
+      if (!isNaN(n)) { pinServer(n); }
+    }
+  });
+  document.getElementById('pin-btn').addEventListener('click', () => {
+    const n = parseInt(search.value.trim(), 10);
+    if (!isNaN(n)) pinServer(n);
+  });
+
+  setTopN(75);
+}
+
+function setTopN(n, fromSlider){
+  CURRENT_TOPN = Math.max(1, Math.min(DATA.length, n|0));
+  const sliderEl = document.getElementById('topN-slider');
+  if (!fromSlider) sliderEl.value = nToSlider(CURRENT_TOPN);
+  document.querySelectorAll('#preset-row button').forEach(b => {
+    b.classList.toggle('active', +b.dataset.n === CURRENT_TOPN);
+  });
+  // Light debounce on big-data re-render when dragging
+  if (SLIDER_TIMER) clearTimeout(SLIDER_TIMER);
+  SLIDER_TIMER = setTimeout(render, fromSlider ? 30 : 0);
+}
+
+function getSidCounts(topN){
+  const counts = new Map();
+  for (let i = 0; i < topN; i++) {
+    const sid = DATA[i].sid;
+    counts.set(sid, (counts.get(sid)||0) + 1);
+  }
+  return counts;
+}
+function getPlayersForSid(sid, topN){
+  const out = [];
+  for (let i = 0; i < topN; i++) {
+    if (DATA[i].sid === sid) out.push({rank: i+1, name: DATA[i].name, score: DATA[i].score});
+  }
+  return out;
+}
+
+function pinServer(sid){
+  PINNED.add(sid);
+  selectServer(sid);
+  render();
+}
+function unpinServer(sid){
+  if (sid === US_SID) return;
+  PINNED.delete(sid);
+  if (SELECTED_SID === sid) SELECTED_SID = US_SID;
+  render();
+}
+function selectServer(sid){ SELECTED_SID = sid; render(); }
+
+function render(){
+  const counts = getSidCounts(CURRENT_TOPN);
+  const total = CURRENT_TOPN;
+  const usCount = counts.get(US_SID) || 0;
+  const sorted = [...counts.entries()].sort((a,b) => b[1]-a[1] || a[0]-b[0]);
+  const usRankAmongServers = sorted.findIndex(([s]) => s === US_SID);
+  const usRank = usRankAmongServers >= 0 ? usRankAmongServers + 1 : null;
+  const totalServers = sorted.length;
+  const top1 = sorted[0];
+
+  // ── Threshold numbers
+  const tn = document.getElementById('threshold-num');
+  tn.textContent = fmtNum(total);
+  tn.classList.remove('flash'); void tn.offsetWidth; tn.classList.add('flash');
+  document.getElementById('threshold-floor').textContent = fmtNum(DATA[total-1].score);
+  document.getElementById('slider-current').textContent = fmtNum(total);
+
+  // ── Brief stats
+  const briefHtml =
+    '<div class="cell primary">' +
+      '<div class="lbl">S' + US_SID + ' inside cut</div>' +
+      '<div class="val us">' + fmtNum(usCount) + '</div>' +
+      '<div class="sub">' + fmtPct(usCount/total*100) + ' of cutoff</div>' +
+    '</div>' +
+    '<div class="cell">' +
+      '<div class="lbl">S2864 server rank</div>' +
+      '<div class="val">' + (usRank ? '#'+usRank : '—') + '</div>' +
+      '<div class="sub">of ' + fmtNum(totalServers) + ' represented</div>' +
+    '</div>' +
+    '<div class="cell">' +
+      '<div class="lbl">Dominant force</div>' +
+      '<div class="val threat">S' + (top1?top1[0]:'—') + '</div>' +
+      '<div class="sub">' + (top1 ? fmtNum(top1[1]) + ' players · ' + fmtPct(top1[1]/total*100) : '') + '</div>' +
+    '</div>' +
+    '<div class="cell">' +
+      '<div class="lbl">Score floor</div>' +
+      '<div class="val">' + fmtCompact(DATA[total-1].score) + '</div>' +
+      '<div class="sub">rank #' + fmtNum(total) + ' value</div>' +
+    '</div>';
+  document.getElementById('brief').innerHTML = briefHtml;
+
+  // ── Watchlist
+  const wl = document.getElementById('watchlist');
+  wl.innerHTML = [...PINNED].sort((a,b)=>a===US_SID?-1:b===US_SID?1:0).map(sid => {
+    const c = counts.get(sid)||0;
+    const isUs = sid === US_SID;
+    const isSel = sid === SELECTED_SID;
+    const x = isUs ? '' : '<span class="x" data-unpin="'+sid+'">×</span>';
+    return '<span class="watch-chip '+(isUs?'is-us':'')+' '+(isSel?'is-selected':'')+'" data-select="'+sid+'">' +
+      '<span>S' + sid + '</span>' +
+      '<span class="c">' + fmtNum(c) + '</span>' +
+      x +
+    '</span>';
+  }).join('');
+  wl.querySelectorAll('[data-select]').forEach(el => {
+    el.addEventListener('click', e => {
+      if (e.target && e.target.dataset && e.target.dataset.unpin) {
+        unpinServer(+e.target.dataset.unpin);
+      } else {
+        selectServer(+el.dataset.select);
+      }
+    });
+  });
+
+  // ── Dossier
+  const isUs = SELECTED_SID === US_SID;
+  const dossierIdEl = document.getElementById('dossier-id');
+  dossierIdEl.textContent = 'S' + SELECTED_SID;
+  dossierIdEl.classList.toggle('us', isUs);
+  const players = getPlayersForSid(SELECTED_SID, CURRENT_TOPN);
+  const sidCount = players.length;
+  const totalPlayersThisSid = (function(){ // total presence anywhere in dataset
+    let n = 0;
+    for (let i = 0; i < DATA.length; i++) if (DATA[i].sid === SELECTED_SID) n++;
+    return n;
+  })();
+  const sumEl = document.getElementById('dossier-sum');
+  if (sidCount === 0) {
+    sumEl.innerHTML = 'no presence in cutoff · <b>' + fmtNum(totalPlayersThisSid) + '</b> total ranked';
+  } else {
+    sumEl.innerHTML = '<b>' + fmtNum(sidCount) + '</b> in cut (' + fmtPct(sidCount/total*100) + ') · top #' + players[0].rank + ' · <b>' + fmtNum(totalPlayersThisSid) + '</b> total ranked';
+  }
+  const listEl = document.getElementById('dossier-list');
+  if (players.length === 0) {
+    listEl.innerHTML = '<div class="dossier-empty">// no operatives within cutoff //</div>';
+  } else {
+    const limit = 200;
+    const html = players.slice(0, limit).map(p =>
+      '<div class="dossier-row">' +
+        '<div class="r">#' + p.rank + '</div>' +
+        '<div class="n">' + escapeHtml(p.name||'—') + '</div>' +
+        '<div class="sc">' + fmtNum(p.score) + '</div>' +
+      '</div>'
+    ).join('');
+    listEl.innerHTML = html + (players.length > limit ? '<div class="dossier-empty">+ ' + fmtNum(players.length - limit) + ' more not shown</div>' : '');
+  }
+
+  // ── Threat board (top 30 + pinned/us)
+  const topShow = 30;
+  const visible = new Map();
+  sorted.slice(0, topShow).forEach(([s], i) => visible.set(s, i+1));
+  PINNED.forEach(s => {
+    if (!visible.has(s)) {
+      const idx = sorted.findIndex(([ss]) => ss === s);
+      if (idx >= 0) visible.set(s, idx+1);
+    }
+  });
+  const maxCount = sorted.length ? sorted[0][1] : 1;
+  const visibleSorted = [...visible.entries()].sort((a,b) => a[1]-b[1]);
+
+  const body = document.getElementById('threat-body');
+  body.innerHTML = visibleSorted.map(([sid, lbRank]) => {
+    const c = counts.get(sid) || 0;
+    const pct = c/total*100;
+    const isUsRow = sid === US_SID;
+    const isPinnedRow = !isUsRow && PINNED.has(sid);
+    const cls = isUsRow ? 'is-us' : (isPinnedRow ? 'is-pinned' : '');
+    const barPct = (c/maxCount*100).toFixed(1);
+    const tag = isUsRow ? '<span class="tag">// us</span>' : (isPinnedRow ? '<span class="tag threat">// watch</span>' : '');
+    return '<div class="threat-row '+cls+'" data-sid="'+sid+'">' +
+      '<div class="rk">' + String(lbRank).padStart(2,'0') + '</div>' +
+      '<div class="sid">S' + sid + tag + '</div>' +
+      '<div class="ct">' + fmtNum(c) + '</div>' +
+      '<div class="pc">' + fmtPct(pct) + '</div>' +
+      '<div class="bar"><div class="fill" style="width:'+barPct+'%"></div></div>' +
+    '</div>';
+  }).join('') || '<div class="dossier-empty">// no servers in cutoff //</div>';
+  body.querySelectorAll('.threat-row[data-sid]').forEach(tr => {
+    tr.addEventListener('click', () => selectServer(+tr.dataset.sid));
+  });
+}
+
+function fmtCompact(n){
+  if (n >= 1e9) return (n/1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return (n/1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return String(n);
+}
+
+load();
+
+})();
+</script>
+</body>
+</html>
