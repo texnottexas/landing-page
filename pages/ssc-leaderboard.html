@@ -248,17 +248,20 @@
   }
 
   /* === Allocation donut === */
-  .alloc-grid{display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:32px;align-items:center;}
+  .alloc-grid{display:grid;grid-template-columns:minmax(300px,440px) 1fr;gap:32px;align-items:center;}
   @media(max-width:760px){.alloc-grid{grid-template-columns:1fr;gap:20px;}}
-  .donut-wrap{position:relative;width:100%;max-width:360px;margin:0 auto;aspect-ratio:1;}
+  .donut-wrap{position:relative;width:100%;max-width:440px;margin:0 auto;aspect-ratio:1;}
   .donut-wrap svg{width:100%;height:100%;display:block;overflow:visible;}
-  .donut-wrap .ticks line{stroke:var(--border-bright);stroke-width:1;opacity:.6;}
-  .donut-wrap .ticks line.major{stroke:var(--text-dim);stroke-width:1.2;opacity:.9;}
+  .donut-wrap .ticks line{stroke:var(--border-bright);stroke-width:1;opacity:.55;}
+  .donut-wrap .ticks line.major{stroke:var(--text-dim);stroke-width:1.2;opacity:.85;}
   .donut-wrap path.wedge{cursor:pointer;transition:opacity .18s ease, filter .18s ease;}
   .donut-wrap.has-hover path.wedge:not(.hov){opacity:.32;}
-  .donut-wrap path.wedge.hov, .donut-wrap path.wedge.is-selected{filter:drop-shadow(0 0 12px currentColor) brightness(1.15);}
-  .donut-wrap path.wedge.is-pinned-stroke{stroke:var(--threat);stroke-width:1.5;}
-  .donut-wrap path.wedge.is-us-stroke{stroke:#0d1117;stroke-width:1.2;}
+  .donut-wrap.has-hover .donut-callout-line:not(.hov),
+  .donut-wrap.has-hover .donut-label-out:not(.hov),
+  .donut-wrap.has-hover .donut-label-in:not(.hov){opacity:.25;}
+  .donut-wrap path.wedge.hov, .donut-wrap path.wedge.is-selected{filter:drop-shadow(0 0 12px currentColor) brightness(1.12);}
+  .donut-wrap path.wedge.is-pinned-stroke{stroke:var(--threat);stroke-width:1.4;}
+  .donut-wrap path.wedge.is-us-stroke{stroke:rgba(13,17,23,.85);stroke-width:.8;}
   .donut-wrap .donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none;}
   .donut-wrap .dc-eyebrow{font-family:'JetBrains Mono',monospace;font-size:.62rem;letter-spacing:.28em;color:var(--text-dim);text-transform:uppercase;}
   .donut-wrap .dc-sid{font-family:'Major Mono Display',monospace;font-size:1.5rem;letter-spacing:-.02em;line-height:1;margin-top:2px;color:var(--us);}
@@ -268,7 +271,21 @@
   .donut-wrap .dc-pct .pp{font-family:'JetBrains Mono',monospace;font-size:.95rem;letter-spacing:.05em;color:var(--text-dim);margin-left:2px;font-weight:300;}
   .donut-wrap .dc-foot{font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.04em;color:var(--text-dim);margin-top:6px;}
   .donut-wrap .dc-foot b{color:var(--text);font-weight:500;}
-  .donut-wedge-label{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.04em;fill:var(--text);pointer-events:none;font-weight:500;text-anchor:middle;dominant-baseline:central;}
+  /* In-wedge label: outlined white text — readable on any wedge color */
+  .donut-label-in{
+    font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.04em;
+    fill:#fff;stroke:rgba(7,10,13,.85);stroke-width:3;paint-order:stroke fill;
+    text-anchor:middle;dominant-baseline:central;pointer-events:none;
+    transition:opacity .18s ease;
+  }
+  /* Outside callout: thin line in wedge color + label in cool text */
+  .donut-callout-line{stroke-width:.8;opacity:.65;fill:none;pointer-events:none;transition:opacity .18s ease;}
+  .donut-label-out{
+    font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.04em;
+    fill:var(--text);font-weight:500;
+    dominant-baseline:central;pointer-events:none;
+    transition:opacity .18s ease;
+  }
   .alloc-legend{display:flex;flex-direction:column;gap:0;}
   .alloc-legend .row{display:grid;grid-template-columns:14px 1fr 70px 60px;gap:10px;align-items:center;padding:7px 4px;border-bottom:1px solid #131c28;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:.84rem;}
   .alloc-legend .row:last-child{border-bottom:none;}
@@ -382,7 +399,7 @@
       </div>
       <div class="alloc-grid">
         <div class="donut-wrap" id="donut-wrap">
-          <svg id="donut" viewBox="0 0 360 360" aria-hidden="true"></svg>
+          <svg id="donut" viewBox="0 0 420 420" aria-hidden="true"></svg>
           <div class="donut-center" id="donut-center"></div>
         </div>
         <div class="alloc-legend" id="alloc-legend"></div>
@@ -578,7 +595,6 @@ const COLOR_THREAT = '#f0a020';
 const COLOR_OTHERS = '#2c3d54';
 const MAX_WEDGES = 18;        // visible discrete wedges before collapsing tail
 const TAIL_MIN = 3;           // never collapse to "+others" if the tail has fewer than this many servers — just show them all
-const MIN_LABEL_SLICE = 0.04; // 4% — show inline sid label if slice is at least this fraction
 
 function buildAllocation(counts, total, sorted){
   // sorted: [[sid,count],...] desc
@@ -656,13 +672,15 @@ function arcPath(start, end, total, cx, cy, ro, ri, gap){
 }
 
 function renderDonut(segments, total){
-  const cx = 180, cy = 180, ro = 158, ri = 102;
-  const wedgeGap = segments.length > 1 ? 0.012 : 0;  // ~0.7°
+  // Bigger viewBox to leave room for outside callout labels
+  const cx = 210, cy = 210, ro = 158, ri = 102;
+  // Tiny gap — used to be 0.012 (0.7°) which visually shrank small wedges
+  // ~8% but big wedges only ~1.5%, making the user-side perception off.
+  const wedgeGap = segments.length > 1 ? 0.003 : 0;  // ~0.17°
   let acc = 0;
-  // Build segments with start/end
   segments.forEach(s => { s._start = acc; s._end = acc + s.count; acc += s.count; });
 
-  // Ticks: 10 marks (one per 10%) and 4 major marks (cardinals)
+  // Tick marks
   let ticks = '';
   for (let i = 0; i < 10; i++) {
     const a = -Math.PI/2 + (i/10) * 2 * Math.PI;
@@ -674,9 +692,17 @@ function renderDonut(segments, total){
     ticks += `<line class="${major?'major':''}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
   }
 
-  // Build path defs + labels
+  // Build wedge paths + labels.
+  // Label policy:
+  //   slice ≥ 10% → outlined label inside the wedge (white fill + dark stroke; reads on any color)
+  //   3% ≤ slice < 10% → callout line + label outside the donut
+  //   slice < 3% → no label; the legend has it covered
+  // "+others" wedge is never labeled — the legend row is the canonical reference.
   let wedges = '', labels = '';
-  segments.forEach((s, i) => {
+  const LABEL_IN_MIN = 0.10;
+  const LABEL_OUT_MIN = 0.03;
+
+  segments.forEach(s => {
     const d = arcPath(s._start, s._end, total, cx, cy, ro, ri, wedgeGap);
     if (!d) return;
     const isUs = s.sid === US_SID;
@@ -690,40 +716,60 @@ function renderDonut(segments, total){
     ].filter(Boolean).join(' ');
     const sidAttr = s.isOthers ? '_others' : s.sid;
     wedges += `<path class="${cls}" d="${d}" fill="${s.color}" data-sid="${sidAttr}" style="color:${s.color}"></path>`;
-    // Label inside wedge if big enough
+
+    if (s.isOthers) return;
     const frac = s.count / total;
-    if (frac >= MIN_LABEL_SLICE && !s.isOthers) {
-      const midA = -Math.PI/2 + (s._start + s._end) / 2 / total * 2 * Math.PI;
+    const midA = -Math.PI/2 + (s._start + s._end) / 2 / total * 2 * Math.PI;
+    const cosA = Math.cos(midA), sinA = Math.sin(midA);
+
+    if (frac >= LABEL_IN_MIN) {
       const r = (ro + ri) / 2;
-      const lx = cx + r*Math.cos(midA), ly = cy + r*Math.sin(midA);
-      const labelFill = s.color === COLOR_US ? '#0d1117' : (isPinnedNotUs ? '#0d1117' : 'rgba(255,255,255,.92)');
-      labels += `<text class="donut-wedge-label" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" style="fill:${labelFill}">S${s.sid}</text>`;
+      const lx = cx + r*cosA, ly = cy + r*sinA;
+      labels += `<text class="donut-label-in" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" data-sid="${s.sid}">S${s.sid}</text>`;
+    } else if (frac >= LABEL_OUT_MIN) {
+      const r1 = ro - 4, r2 = ro + 12;
+      const x1 = cx + r1*cosA, y1 = cy + r1*sinA;
+      const x2 = cx + r2*cosA, y2 = cy + r2*sinA;
+      const onRight = cosA > 0.18;
+      const onLeft = cosA < -0.18;
+      const anchor = onRight ? 'start' : onLeft ? 'end' : 'middle';
+      const tx = x2 + (onRight ? 4 : onLeft ? -4 : 0);
+      const ty = y2;
+      labels += `<line class="donut-callout-line" data-sid="${s.sid}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${s.color}"/>`;
+      labels += `<text class="donut-label-out" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="${anchor}" data-sid="${s.sid}">S${s.sid}</text>`;
     }
   });
 
   document.getElementById('donut').innerHTML =
     `<g class="ticks">${ticks}</g>` + wedges + labels;
 
-  // Donut hover behaviour
+  // Donut hover behaviour — also dims callout lines & labels for the same wedge.
   const wrap = document.getElementById('donut-wrap');
   const paths = wrap.querySelectorAll('path.wedge');
+  const callouts = wrap.querySelectorAll('.donut-callout-line');
+  const outLabels = wrap.querySelectorAll('.donut-label-out');
+  const inLabels = wrap.querySelectorAll('.donut-label-in');
+  const matchSid = (el, sid) => el.dataset.sid === sid;
   paths.forEach(p => {
     p.addEventListener('mouseenter', () => {
       wrap.classList.add('has-hover');
+      const sid = p.dataset.sid;
       paths.forEach(q => q.classList.toggle('hov', q === p));
+      callouts.forEach(c => c.classList.toggle('hov', matchSid(c, sid)));
+      outLabels.forEach(l => l.classList.toggle('hov', matchSid(l, sid)));
+      inLabels.forEach(l => l.classList.toggle('hov', matchSid(l, sid)));
     });
     p.addEventListener('mouseleave', () => {
       wrap.classList.remove('has-hover');
       paths.forEach(q => q.classList.remove('hov'));
+      callouts.forEach(c => c.classList.remove('hov'));
+      outLabels.forEach(l => l.classList.remove('hov'));
+      inLabels.forEach(l => l.classList.remove('hov'));
     });
     p.addEventListener('click', () => {
       const sid = p.dataset.sid;
-      if (sid === '_others') {
-        SELECTED_SID = '_others';
-        render();
-      } else {
-        selectServer(+sid);
-      }
+      if (sid === '_others') { SELECTED_SID = '_others'; render(); }
+      else { selectServer(+sid); }
     });
   });
 }
