@@ -276,10 +276,12 @@
   .donut-wrap .dc-pct .pp{font-family:'JetBrains Mono',monospace;font-size:.95rem;letter-spacing:.05em;color:var(--text-dim);margin-left:2px;font-weight:300;}
   .donut-wrap .dc-foot{font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.04em;color:var(--text-dim);margin-top:6px;}
   .donut-wrap .dc-foot b{color:var(--text);font-weight:500;}
-  /* In-wedge label: outlined white text — readable on any wedge color */
+  /* In-wedge label: muted dark text. Only used on wedges ≥ 10%, which
+     for this dataset are bright colors (US green, threat amber) where a
+     dark fill reads cleanly without resorting to an outline. */
   .donut-label-in{
-    font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.04em;
-    fill:#fff;stroke:rgba(7,10,13,.85);stroke-width:3;paint-order:stroke fill;
+    font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;letter-spacing:.04em;
+    fill:rgba(13,17,23,.78);
     text-anchor:middle;dominant-baseline:central;pointer-events:none;
     transition:opacity .18s ease;
   }
@@ -748,30 +750,42 @@ function renderDonut(segments, total){
   document.getElementById('donut').innerHTML =
     `<g class="ticks">${ticks}</g>` + wedges + labels;
 
-  // Donut hover behaviour — also dims callout lines & labels for the same wedge.
+  // Hover dim only on devices whose primary input can hover (desktop with a
+  // mouse). On touch devices, hovering a wedge on tap and never clearing it
+  // leaves the donut stuck in its muted state.
   const wrap = document.getElementById('donut-wrap');
   const paths = wrap.querySelectorAll('path.wedge');
   const callouts = wrap.querySelectorAll('.donut-callout-line');
   const outLabels = wrap.querySelectorAll('.donut-label-out');
   const inLabels = wrap.querySelectorAll('.donut-label-in');
   const matchSid = (el, sid) => el.dataset.sid === sid;
+  const canHover = window.matchMedia && window.matchMedia('(hover: hover)').matches;
+
+  const clearHoverState = () => {
+    wrap.classList.remove('has-hover');
+    paths.forEach(q => q.classList.remove('hov'));
+    callouts.forEach(c => c.classList.remove('hov'));
+    outLabels.forEach(l => l.classList.remove('hov'));
+    inLabels.forEach(l => l.classList.remove('hov'));
+  };
+
   paths.forEach(p => {
-    p.addEventListener('mouseenter', () => {
-      wrap.classList.add('has-hover');
-      const sid = p.dataset.sid;
-      paths.forEach(q => q.classList.toggle('hov', q === p));
-      callouts.forEach(c => c.classList.toggle('hov', matchSid(c, sid)));
-      outLabels.forEach(l => l.classList.toggle('hov', matchSid(l, sid)));
-      inLabels.forEach(l => l.classList.toggle('hov', matchSid(l, sid)));
-    });
-    p.addEventListener('mouseleave', () => {
-      wrap.classList.remove('has-hover');
-      paths.forEach(q => q.classList.remove('hov'));
-      callouts.forEach(c => c.classList.remove('hov'));
-      outLabels.forEach(l => l.classList.remove('hov'));
-      inLabels.forEach(l => l.classList.remove('hov'));
-    });
+    if (canHover) {
+      p.addEventListener('mouseenter', () => {
+        wrap.classList.add('has-hover');
+        const sid = p.dataset.sid;
+        paths.forEach(q => q.classList.toggle('hov', q === p));
+        callouts.forEach(c => c.classList.toggle('hov', matchSid(c, sid)));
+        outLabels.forEach(l => l.classList.toggle('hov', matchSid(l, sid)));
+        inLabels.forEach(l => l.classList.toggle('hov', matchSid(l, sid)));
+      });
+      p.addEventListener('mouseleave', clearHoverState);
+    }
     p.addEventListener('click', () => {
+      // Commit clears any hover state — covers touch (where mouseleave
+      // never fires) and desktop (where the dim shouldn't linger after
+      // the selection is locked in).
+      clearHoverState();
       const sid = p.dataset.sid;
       if (sid === '_others') { SELECTED_SID = '_others'; render(); }
       else { selectServer(+sid); }
