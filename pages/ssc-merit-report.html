@@ -17,8 +17,8 @@
     --border-bright:#2c3d54;
     --grid:rgba(63,185,80,.045);
     --text:#dfe7f0;
-    --text-dim:#7a8a9d;
-    --muted:#4f5d72;
+    --text-dim:#8698ad;
+    --muted:#57667d;
     --us:#3fb950;          /* friendly forces */
     --us-glow:rgba(63,185,80,.35);
     --hostile:#f85149;     /* contested */
@@ -302,7 +302,17 @@
     transition:opacity .18s ease;
   }
   .alloc-legend{display:flex;flex-direction:column;gap:0;}
-  .alloc-legend .row{display:grid;grid-template-columns:14px 1fr 70px 60px;gap:10px;align-items:center;padding:7px 4px;border-bottom:1px solid #131c28;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:.84rem;}
+  .alloc-legend .head{
+    display:grid;grid-template-columns:14px 1fr 56px 78px 56px;gap:10px;align-items:center;
+    padding:6px 4px;border-bottom:1px solid var(--border);
+    font-family:'JetBrains Mono',monospace;font-size:.66rem;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--text-dim);
+  }
+  .alloc-legend .head .col-svr{grid-column:2}
+  .alloc-legend .head .col-ct,
+  .alloc-legend .head .col-mt,
+  .alloc-legend .head .col-pc{text-align:right;}
+  .alloc-legend .row{display:grid;grid-template-columns:14px 1fr 56px 78px 56px;gap:10px;align-items:center;padding:7px 4px;border-bottom:1px solid #131c28;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:.84rem;}
   .alloc-legend .row:last-child{border-bottom:none;}
   .alloc-legend .row:hover{background:rgba(63,185,80,.04);}
   .alloc-legend .sw{width:11px;height:11px;border-radius:1px;border:1px solid rgba(255,255,255,.18);}
@@ -311,10 +321,13 @@
   .alloc-legend .name .tag.threat{color:var(--threat);}
   .alloc-legend .name.others{color:var(--text-dim);font-style:italic;}
   .alloc-legend .ct{text-align:right;color:var(--text);font-variant-numeric:tabular-nums;}
+  .alloc-legend .mt{text-align:right;color:var(--text);font-variant-numeric:tabular-nums;}
+  .alloc-legend .mt .unit{font-size:.78em;color:var(--text-dim);margin-left:1px;letter-spacing:.04em;}
   .alloc-legend .pc{text-align:right;color:var(--text-dim);font-variant-numeric:tabular-nums;}
   .alloc-legend .row.is-selected{background:rgba(63,185,80,.07);}
   .alloc-legend .row.is-us{background:linear-gradient(to right,rgba(63,185,80,.10),rgba(63,185,80,0) 90%);}
   .alloc-legend .row.is-us .ct{color:var(--us);font-weight:500;}
+  .alloc-legend .row.is-us .mt{color:var(--us);font-weight:500;}
 
   /* === Loading + error === */
   .booting{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;color:var(--us);}
@@ -621,13 +634,16 @@ function setTopN(n, fromSlider){
   SLIDER_TIMER = setTimeout(render, fromSlider ? 30 : 0);
 }
 
-function getSidCounts(topN){
+function getSidAggregates(topN){
+  // Single pass — count and in-cutoff merit per sid for the current cutoff.
   const counts = new Map();
+  const merit = new Map();
   for (let i = 0; i < topN; i++) {
     const sid = DATA[i].sid;
     counts.set(sid, (counts.get(sid)||0) + 1);
+    merit.set(sid, (merit.get(sid)||0) + (+DATA[i].score || 0));
   }
-  return counts;
+  return {counts, merit};
 }
 function getPlayersForSid(sid, topN){
   const out = [];
@@ -874,14 +890,26 @@ function renderAllocCenter(segments, total){
     '<div class="dc-foot"><b>' + fmtNum(count) + '</b> · cut size <b>' + fmtNum(total) + '</b></div>';
 }
 
-function renderAllocLegend(segments, total){
+function renderAllocLegend(segments, total, meritByCut){
   const root = EL.allocLegend;
+  // "+others" merit = total in-cut merit minus the merit of every kept wedge.
+  // We need this because meritByCut only has per-sid entries.
+  let othersMerit = 0;
+  const othersSeg = segments.find(s => s.isOthers);
+  if (othersSeg) {
+    let keptMerit = 0;
+    segments.forEach(s => { if (!s.isOthers) keptMerit += (meritByCut.get(s.sid) || 0); });
+    let totalMerit = 0;
+    meritByCut.forEach(v => { totalMerit += v; });
+    othersMerit = Math.max(0, totalMerit - keptMerit);
+  }
   const rows = segments.map(s => {
     const isOthers = !!s.isOthers;
     const isUs = !isOthers && s.sid === US_SID;
     const isPinned = !isOthers && !isUs && PINNED.has(s.sid);
     const isSel = (isOthers && SELECTED_SID === '_others') || (!isOthers && s.sid === SELECTED_SID);
     const pct = s.count / total * 100;
+    const meritVal = isOthers ? othersMerit : (meritByCut.get(s.sid) || 0);
     const tag = isUs ? '<span class="tag">// us</span>' : isPinned ? '<span class="tag threat">// watch</span>' : '';
     const name = isOthers
       ? '<span class="name others">+ ' + s.serverCount + ' other servers</span>'
@@ -892,10 +920,19 @@ function renderAllocLegend(segments, total){
       '<div class="sw" style="background:'+s.color+'"></div>' +
       name +
       '<div class="ct">' + fmtNum(s.count) + '</div>' +
+      '<div class="mt">' + fmtCompact(meritVal) + '</div>' +
       '<div class="pc">' + fmtPct(pct) + '</div>' +
     '</div>';
   }).join('');
-  root.innerHTML = rows;
+  const head =
+    '<div class="head">' +
+      '<div></div>' +
+      '<div class="col-svr">Server</div>' +
+      '<div class="col-ct">Count</div>' +
+      '<div class="col-mt">Merit</div>' +
+      '<div class="col-pc">% cut</div>' +
+    '</div>';
+  root.innerHTML = head + rows;
   root.querySelectorAll('.row[data-sid]').forEach(r => {
     r.addEventListener('click', () => {
       const sid = r.dataset.sid;
@@ -919,7 +956,7 @@ function unpinServer(sid){
 function selectServer(sid){ SELECTED_SID = sid; render(); }
 
 function render(){
-  const counts = getSidCounts(CURRENT_TOPN);
+  const {counts, merit: meritByCut} = getSidAggregates(CURRENT_TOPN);
   const total = CURRENT_TOPN;
   const usCount = counts.get(US_SID) || 0;
   const sorted = [...counts.entries()].sort((a,b) => b[1]-a[1] || a[0]-b[0]);
@@ -986,7 +1023,7 @@ function render(){
   const segments = buildAllocation(counts, total, sorted);
   renderDonut(segments, total);
   renderAllocCenter(segments, total);
-  renderAllocLegend(segments, total);
+  renderAllocLegend(segments, total, meritByCut);
 
   // ── Dossier
   const dossierIdEl = EL.dossierId;
@@ -998,7 +1035,13 @@ function render(){
     dossierIdEl.classList.remove('us');
     dossierIdEl.classList.add('others');
     if (othersSeg) {
-      sumEl.innerHTML = '<b>' + fmtNum(othersSeg.serverCount) + '</b> other servers · <b>' + fmtNum(othersSeg.count) + '</b> players (' + fmtPct(othersSeg.count/total*100) + ' of cutoff)';
+      // In-cut merit for "others" = total in-cut merit minus kept-wedge merit.
+      let totalCutMerit = 0;
+      meritByCut.forEach(v => { totalCutMerit += v; });
+      let keptMerit = 0;
+      segments.forEach(s => { if (!s.isOthers) keptMerit += (meritByCut.get(s.sid) || 0); });
+      const othersMerit = Math.max(0, totalCutMerit - keptMerit);
+      sumEl.innerHTML = '<b>' + fmtNum(othersSeg.serverCount) + '</b> other servers · <b>' + fmtNum(othersSeg.count) + '</b> players (' + fmtPct(othersSeg.count/total*100) + ' of cutoff) · <b>' + fmtCompact(othersMerit) + '</b> merit';
     } else {
       sumEl.innerHTML = 'no others in cutoff';
     }
@@ -1012,10 +1055,11 @@ function render(){
     const sidCount = players.length;
     // Per-sid totals are immutable after load; precomputed once in load().
     const totalPlayersThisSid = TOTAL_BY_SID.get(SELECTED_SID) || 0;
+    const cutMerit = meritByCut.get(SELECTED_SID) || 0;
     if (sidCount === 0) {
       sumEl.innerHTML = 'no presence in cutoff · <b>' + fmtNum(totalPlayersThisSid) + '</b> total ranked';
     } else {
-      sumEl.innerHTML = '<b>' + fmtNum(sidCount) + '</b> in cut (' + fmtPct(sidCount/total*100) + ') · top #' + players[0].rank + ' · <b>' + fmtNum(totalPlayersThisSid) + '</b> total ranked';
+      sumEl.innerHTML = '<b>' + fmtNum(sidCount) + '</b> in cut (' + fmtPct(sidCount/total*100) + ') · top #' + players[0].rank + ' · <b>' + fmtCompact(cutMerit) + '</b> merit in cut · <b>' + fmtNum(totalPlayersThisSid) + '</b> total ranked';
     }
     if (players.length === 0) {
       listEl.innerHTML = '<div class="dossier-empty">// no operatives within cutoff //</div>';
