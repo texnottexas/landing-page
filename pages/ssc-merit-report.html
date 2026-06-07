@@ -7,13 +7,12 @@
 <title>SSC Combat Assessment · S2864</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Major+Mono+Display&family=JetBrains+Mono:wght@300;400;500;700;800&family=Syne:wght@600;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Major+Mono+Display&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#070a0d;
     --bg-tint:#0c1218;
     --panel:#0f1620;
-    --panel-2:#131c28;
     --border:#1f2a3a;
     --border-bright:#2c3d54;
     --grid:rgba(63,185,80,.045);
@@ -65,7 +64,7 @@
     border-top:1px solid var(--classified);border-bottom:1px solid var(--classified);
     padding:6px 10px;margin-bottom:22px;background:rgba(212,175,55,.04);
   }
-  .cls-bar .cls-line{display:inline-flex;align-items:center;gap:0;}
+  .cls-bar .cls-line{display:inline-flex;align-items:center;}
   .cls-bar .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--classified);box-shadow:0 0 8px var(--classified);margin:0 12px;vertical-align:middle;animation:beacon 2s ease-in-out infinite;}
   @keyframes beacon{0%,100%{opacity:.5}50%{opacity:1}}
 
@@ -98,7 +97,6 @@
 
   /* === Panel chrome (corner brackets) === */
   .panel{position:relative;background:var(--panel);border:1px solid var(--border);padding:22px;margin-bottom:18px;}
-  .panel.bordered{border-color:var(--border-bright);}
   .panel::before, .panel::after, .panel > .bracket-bl, .panel > .bracket-br{
     content:"";position:absolute;width:14px;height:14px;border:1.5px solid var(--us);pointer-events:none;
   }
@@ -152,7 +150,7 @@
     height:2px;background:linear-gradient(to right,var(--us),var(--border-bright));border:none;
   }
   input[type=range].mil::-webkit-slider-thumb{
-    -webkit-appearance:none;width:14px;height:22px;background:var(--us);border:none;border-radius:0;margin-top:-10px;
+    -webkit-appearance:none;appearance:none;width:14px;height:22px;background:var(--us);border:none;border-radius:0;margin-top:-10px;
     box-shadow:0 0 12px var(--us-glow),0 0 0 1px var(--bg) inset;cursor:grab;
   }
   input[type=range].mil::-moz-range-thumb{
@@ -338,10 +336,6 @@
   /* Stagger fade-in */
   .reveal{opacity:0;transform:translateY(8px);animation:rise .55s cubic-bezier(.2,.7,.2,1) forwards;}
   @keyframes rise{to{opacity:1;transform:none;}}
-
-  /* readout flash */
-  .flash-once{animation:flashIn .3s ease;}
-  @keyframes flashIn{0%{background:rgba(63,185,80,.18)}100%{background:transparent}}
 </style>
 </head>
 <body>
@@ -483,22 +477,29 @@ const PRESETS = [20, 25, 75, 150, 500, 1000, 4000, 10000, 25000];
 const DEFAULT_TOPN = 20;
 
 let DATA = null, META = null;
+let TOTAL_BY_SID = null;             // sid -> total presence in DATA (computed once)
 let CURRENT_TOPN = DEFAULT_TOPN;
 let PINNED = new Set([US_SID]);
 let SELECTED_SID = US_SID;
 let SLIDER_TIMER = null;
 
+// Element cache (populated in init) — avoids ~15 getElementById calls per render.
+let EL = null;
+// Preset button refs (populated in init) — avoids per-render querySelectorAll.
+let PRESET_BUTTONS = [];
+
 const SLIDER_MAX = 1000;
+// Slider log-scale bounds: defaults preserve behaviour before DATA loads;
+// load() recomputes against the real DATA.length once the payload arrives.
+let SLIDER_LO = Math.log(5);
+let SLIDER_HI = Math.log(56387);
 function sliderToN(v){
   const total = DATA ? DATA.length : 56387;
-  const lo = Math.log(5), hi = Math.log(total);
   const t = v / SLIDER_MAX;
-  return Math.max(5, Math.min(total, Math.round(Math.exp(lo + (hi-lo)*t))));
+  return Math.max(5, Math.min(total, Math.round(Math.exp(SLIDER_LO + (SLIDER_HI - SLIDER_LO) * t))));
 }
 function nToSlider(n){
-  const total = DATA ? DATA.length : 56387;
-  const lo = Math.log(5), hi = Math.log(total);
-  const t = (Math.log(Math.max(5, n)) - lo) / (hi - lo);
+  const t = (Math.log(Math.max(5, n)) - SLIDER_LO) / (SLIDER_HI - SLIDER_LO);
   return Math.round(t * SLIDER_MAX);
 }
 
@@ -517,11 +518,26 @@ async function load(){
     const res = await fetch('data/ssc-merit-leaderboard.json');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
+    if (!json || !Array.isArray(json.entries) || json.entries.length === 0) {
+      throw new Error('malformed payload: entries missing or empty');
+    }
     DATA = json.entries;
-    META = json.metadata;
+    META = json.metadata || {};
+
+    // One-time aggregates over DATA (immutable after load).
+    TOTAL_BY_SID = new Map();
+    for (let i = 0; i < DATA.length; i++) {
+      const s = DATA[i].sid;
+      TOTAL_BY_SID.set(s, (TOTAL_BY_SID.get(s) || 0) + 1);
+    }
+    SLIDER_HI = Math.log(DATA.length);
+
+    const totalEntries = (META.total_entries != null) ? META.total_entries : DATA.length;
+    const uniqueServers = (META.unique_servers != null) ? META.unique_servers : (TOTAL_BY_SID.size);
     document.getElementById('meta-line').innerHTML =
-      'round ' + META.round + ' · <b>' + fmtNum(META.total_entries) + '</b> ranked combatants · <b>' + fmtNum(META.unique_servers) + '</b> servers represented';
-    document.getElementById('slider-max').textContent = fmtNum(META.total_entries);
+      'round ' + escapeHtml(META.round != null ? META.round : '—') +
+      ' · <b>' + fmtNum(totalEntries) + '</b> ranked combatants · <b>' + fmtNum(uniqueServers) + '</b> servers represented';
+    document.getElementById('slider-max').textContent = fmtNum(totalEntries);
     init();
   } catch(e) {
     document.getElementById('loading').innerHTML =
@@ -534,22 +550,41 @@ function init(){
   document.getElementById('content').style.display = '';
   document.getElementById('loading').style.display = 'none';
 
-  // Presets
+  // Cache every element render() / renderDonut() / renderAllocCenter() touches.
+  // None of these IDs ever move, so we do the DOM lookup once.
+  EL = {
+    thresholdNum:   document.getElementById('threshold-num'),
+    thresholdFloor: document.getElementById('threshold-floor'),
+    sliderCurrent:  document.getElementById('slider-current'),
+    brief:          document.getElementById('brief'),
+    watchlist:      document.getElementById('watchlist'),
+    dossierId:      document.getElementById('dossier-id'),
+    dossierSum:     document.getElementById('dossier-sum'),
+    dossierList:    document.getElementById('dossier-list'),
+    threatBody:     document.getElementById('threat-body'),
+    donut:          document.getElementById('donut'),
+    donutWrap:      document.getElementById('donut-wrap'),
+    donutCenter:    document.getElementById('donut-center'),
+    allocLegend:    document.getElementById('alloc-legend'),
+    slider:         document.getElementById('topN-slider'),
+  };
+
+  // Presets — keep button refs so setTopN can toggle .active without a per-render querySelectorAll.
   const pr = document.getElementById('preset-row');
+  PRESET_BUTTONS = [];
   PRESETS.forEach(n => {
     const b = document.createElement('button');
     b.textContent = (n >= 1000 ? 'TOP ' + (n/1000) + 'K' : 'TOP ' + n);
     b.dataset.n = n;
     b.addEventListener('click', () => setTopN(n));
     pr.appendChild(b);
+    PRESET_BUTTONS.push(b);
   });
 
   // Slider
-  const slider = document.getElementById('topN-slider');
-  slider.value = nToSlider(DEFAULT_TOPN);
-  slider.addEventListener('input', e => {
-    const n = sliderToN(+e.target.value);
-    setTopN(n, true);
+  EL.slider.value = nToSlider(DEFAULT_TOPN);
+  EL.slider.addEventListener('input', e => {
+    setTopN(sliderToN(+e.target.value), true);
   });
 
   // Search
@@ -576,11 +611,11 @@ function init(){
 
 function setTopN(n, fromSlider){
   CURRENT_TOPN = Math.max(1, Math.min(DATA.length, n|0));
-  const sliderEl = document.getElementById('topN-slider');
-  if (!fromSlider) sliderEl.value = nToSlider(CURRENT_TOPN);
-  document.querySelectorAll('#preset-row button').forEach(b => {
+  if (!fromSlider) EL.slider.value = nToSlider(CURRENT_TOPN);
+  for (let i = 0; i < PRESET_BUTTONS.length; i++) {
+    const b = PRESET_BUTTONS[i];
     b.classList.toggle('active', +b.dataset.n === CURRENT_TOPN);
-  });
+  }
   // Light debounce on big-data re-render when dragging
   if (SLIDER_TIMER) clearTimeout(SLIDER_TIMER);
   SLIDER_TIMER = setTimeout(render, fromSlider ? 30 : 0);
@@ -612,6 +647,24 @@ const COLOR_THREAT = '#f0a020';
 const COLOR_OTHERS = '#2c3d54';
 const MAX_WEDGES = 18;        // visible discrete wedges before collapsing tail
 const TAIL_MIN = 3;           // never collapse to "+others" if the tail has fewer than this many servers — just show them all
+
+// Donut geometry — viewBox is 420×420; cx/cy = 210, ro/ri are the ring radii.
+// Held in module scope so tick marks (which are a pure function of these
+// constants) can be precomputed once instead of on every render.
+const DONUT_CX = 210, DONUT_CY = 210, DONUT_RO = 158, DONUT_RI = 102;
+const DONUT_TICKS_HTML = (() => {
+  let s = '';
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI/2 + (i/10) * 2 * Math.PI;
+    const major = i % 5 === 0;
+    const rOuter = DONUT_RO + (major ? 10 : 6);
+    const rInner = DONUT_RO + 2;
+    const x1 = DONUT_CX + rOuter*Math.cos(a), y1 = DONUT_CY + rOuter*Math.sin(a);
+    const x2 = DONUT_CX + rInner*Math.cos(a), y2 = DONUT_CY + rInner*Math.sin(a);
+    s += `<line class="${major?'major':''}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
+  }
+  return s;
+})();
 
 function buildAllocation(counts, total, sorted){
   // sorted: [[sid,count],...] desc
@@ -689,25 +742,13 @@ function arcPath(start, end, total, cx, cy, ro, ri, gap){
 }
 
 function renderDonut(segments, total){
-  // Bigger viewBox to leave room for outside callout labels
-  const cx = 210, cy = 210, ro = 158, ri = 102;
+  // Donut geometry — geometry consts at module scope; aliased locally for terseness.
+  const cx = DONUT_CX, cy = DONUT_CY, ro = DONUT_RO, ri = DONUT_RI;
   // Tiny gap — used to be 0.012 (0.7°) which visually shrank small wedges
   // ~8% but big wedges only ~1.5%, making the user-side perception off.
   const wedgeGap = segments.length > 1 ? 0.003 : 0;  // ~0.17°
   let acc = 0;
   segments.forEach(s => { s._start = acc; s._end = acc + s.count; acc += s.count; });
-
-  // Tick marks
-  let ticks = '';
-  for (let i = 0; i < 10; i++) {
-    const a = -Math.PI/2 + (i/10) * 2 * Math.PI;
-    const major = i % 5 === 0;
-    const rOuter = ro + (major ? 10 : 6);
-    const rInner = ro + 2;
-    const x1 = cx + rOuter*Math.cos(a), y1 = cy + rOuter*Math.sin(a);
-    const x2 = cx + rInner*Math.cos(a), y2 = cy + rInner*Math.sin(a);
-    ticks += `<line class="${major?'major':''}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
-  }
 
   // Build wedge paths + labels.
   // Label policy:
@@ -757,13 +798,13 @@ function renderDonut(segments, total){
     }
   });
 
-  document.getElementById('donut').innerHTML =
-    `<g class="ticks">${ticks}</g>` + wedges + labels;
+  EL.donut.innerHTML =
+    `<g class="ticks">${DONUT_TICKS_HTML}</g>` + wedges + labels;
 
   // Hover dim only on devices whose primary input can hover (desktop with a
   // mouse). On touch devices, hovering a wedge on tap and never clearing it
   // leaves the donut stuck in its muted state.
-  const wrap = document.getElementById('donut-wrap');
+  const wrap = EL.donutWrap;
   const paths = wrap.querySelectorAll('path.wedge');
   const callouts = wrap.querySelectorAll('.donut-callout-line');
   const outLabels = wrap.querySelectorAll('.donut-label-out');
@@ -804,15 +845,9 @@ function renderDonut(segments, total){
 }
 
 function renderAllocCenter(segments, total){
-  const center = document.getElementById('donut-center');
-  let target;
-  if (SELECTED_SID === '_others') {
-    target = segments.find(s => s.isOthers);
-  } else {
-    target = segments.find(s => s.sid === SELECTED_SID);
-  }
-  // Selected server may not be in cutoff
-  let sel = SELECTED_SID;
+  const target = (SELECTED_SID === '_others')
+    ? segments.find(s => s.isOthers)
+    : segments.find(s => s.sid === SELECTED_SID);
   let pct, count, sidLabel, sidClass;
   if (target) {
     pct = target.count / total * 100;
@@ -822,18 +857,17 @@ function renderAllocCenter(segments, total){
       sidClass = 'others';
     } else {
       sidLabel = 'S' + target.sid;
-      sidClass = (target.sid === US_SID) ? '' : (PINNED.has(target.sid) ? 'threat' : 'threat');
-      // Actually: if it's us-sid keep default green color; else use threat amber
+      // us-sid keeps the default green; everything else gets threat amber
       sidClass = (target.sid === US_SID) ? '' : 'threat';
     }
   } else {
-    // selected sid not in cutoff
+    // selected sid is not in the cutoff
     pct = 0; count = 0;
-    sidLabel = (SELECTED_SID === US_SID) ? 'S' + US_SID : 'S' + SELECTED_SID;
+    sidLabel = 'S' + SELECTED_SID;
     sidClass = (SELECTED_SID === US_SID) ? '' : 'threat';
   }
   const pctStr = (pct === 0) ? '0' : (pct < 0.1 ? pct.toFixed(2) : pct < 10 ? pct.toFixed(1) : Math.round(pct));
-  center.innerHTML =
+  EL.donutCenter.innerHTML =
     '<div class="dc-eyebrow">share of cutoff</div>' +
     '<div class="dc-sid '+sidClass+'">' + sidLabel + '</div>' +
     '<div class="dc-pct">' + pctStr + '<span class="pp">%</span></div>' +
@@ -841,7 +875,7 @@ function renderAllocCenter(segments, total){
 }
 
 function renderAllocLegend(segments, total){
-  const root = document.getElementById('alloc-legend');
+  const root = EL.allocLegend;
   const rows = segments.map(s => {
     const isOthers = !!s.isOthers;
     const isUs = !isOthers && s.sid === US_SID;
@@ -873,8 +907,8 @@ function renderAllocLegend(segments, total){
 
 function pinServer(sid){
   PINNED.add(sid);
+  // selectServer already triggers a render — no need to fire a second one.
   selectServer(sid);
-  render();
 }
 function unpinServer(sid){
   if (sid === US_SID) return;
@@ -895,11 +929,11 @@ function render(){
   const top1 = sorted[0];
 
   // ── Threshold numbers
-  const tn = document.getElementById('threshold-num');
+  const tn = EL.thresholdNum;
   tn.textContent = fmtNum(total);
   tn.classList.remove('flash'); void tn.offsetWidth; tn.classList.add('flash');
-  document.getElementById('threshold-floor').textContent = fmtNum(DATA[total-1].score);
-  document.getElementById('slider-current').textContent = fmtNum(total);
+  EL.thresholdFloor.textContent = fmtNum(DATA[total-1].score);
+  EL.sliderCurrent.textContent = fmtNum(total);
 
   // ── Brief stats
   const briefHtml =
@@ -923,10 +957,10 @@ function render(){
       '<div class="val">' + fmtCompact(DATA[total-1].score) + '</div>' +
       '<div class="sub">rank #' + fmtNum(total) + ' value</div>' +
     '</div>';
-  document.getElementById('brief').innerHTML = briefHtml;
+  EL.brief.innerHTML = briefHtml;
 
   // ── Watchlist
-  const wl = document.getElementById('watchlist');
+  const wl = EL.watchlist;
   wl.innerHTML = [...PINNED].sort((a,b)=>a===US_SID?-1:b===US_SID?1:0).map(sid => {
     const c = counts.get(sid)||0;
     const isUs = sid === US_SID;
@@ -955,9 +989,9 @@ function render(){
   renderAllocLegend(segments, total);
 
   // ── Dossier
-  const dossierIdEl = document.getElementById('dossier-id');
-  const sumEl = document.getElementById('dossier-sum');
-  const listEl = document.getElementById('dossier-list');
+  const dossierIdEl = EL.dossierId;
+  const sumEl = EL.dossierSum;
+  const listEl = EL.dossierList;
   if (SELECTED_SID === '_others') {
     const othersSeg = segments.find(s => s.isOthers);
     dossierIdEl.textContent = '+ others';
@@ -976,11 +1010,8 @@ function render(){
     dossierIdEl.classList.toggle('us', isUs);
     const players = getPlayersForSid(SELECTED_SID, CURRENT_TOPN);
     const sidCount = players.length;
-    const totalPlayersThisSid = (function(){
-      let n = 0;
-      for (let i = 0; i < DATA.length; i++) if (DATA[i].sid === SELECTED_SID) n++;
-      return n;
-    })();
+    // Per-sid totals are immutable after load; precomputed once in load().
+    const totalPlayersThisSid = TOTAL_BY_SID.get(SELECTED_SID) || 0;
     if (sidCount === 0) {
       sumEl.innerHTML = 'no presence in cutoff · <b>' + fmtNum(totalPlayersThisSid) + '</b> total ranked';
     } else {
@@ -1014,7 +1045,7 @@ function render(){
   const maxCount = sorted.length ? sorted[0][1] : 1;
   const visibleSorted = [...visible.entries()].sort((a,b) => a[1]-b[1]);
 
-  const body = document.getElementById('threat-body');
+  const body = EL.threatBody;
   body.innerHTML = visibleSorted.map(([sid, lbRank]) => {
     const c = counts.get(sid) || 0;
     const pct = c/total*100;
