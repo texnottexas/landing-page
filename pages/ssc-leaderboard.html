@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; font-src 'self' data: https://fonts.gstatic.com;">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SSC Threat Assessment · S2864</title>
+<title>SSC Combat Assessment · S2864</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Major+Mono+Display&family=JetBrains+Mono:wght@300;400;500;700;800&family=Syne:wght@600;800&display=swap" rel="stylesheet">
@@ -59,13 +59,14 @@
 
   /* === Classification strip === */
   .cls-bar{
-    display:flex;align-items:center;justify-content:space-between;
+    display:flex;align-items:center;justify-content:center;
     font-family:'JetBrains Mono',monospace;
-    font-size:.65rem;letter-spacing:.32em;color:var(--classified);text-transform:uppercase;
+    font-size:.7rem;letter-spacing:.36em;color:var(--classified);text-transform:uppercase;
     border-top:1px solid var(--classified);border-bottom:1px solid var(--classified);
-    padding:5px 10px;margin-bottom:22px;background:rgba(212,175,55,.04);
+    padding:6px 10px;margin-bottom:22px;background:rgba(212,175,55,.04);
   }
-  .cls-bar .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--classified);box-shadow:0 0 8px var(--classified);margin:0 8px;vertical-align:middle;animation:beacon 2s ease-in-out infinite;}
+  .cls-bar .cls-line{display:inline-flex;align-items:center;gap:0;}
+  .cls-bar .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--classified);box-shadow:0 0 8px var(--classified);margin:0 12px;vertical-align:middle;animation:beacon 2s ease-in-out infinite;}
   @keyframes beacon{0%,100%{opacity:.5}50%{opacity:1}}
 
   /* === Header === */
@@ -315,21 +316,17 @@
 <div class="shell">
 
   <div class="cls-bar reveal" style="animation-delay:0s">
-    <span>// FILE 2864 <span class="dot"></span> SECTOR DOSSIER</span>
-    <span id="cls-mid">// SEAL STONE CHAOS · R<span id="cls-round">12</span></span>
-    <span>// CLEARANCE: ALLIANCE</span>
+    <span class="cls-line">// SEAL STONE CHAOS <span class="dot"></span> MERIT RANKINGS</span>
   </div>
 
   <header class="reveal" style="animation-delay:.05s">
     <div class="title-block">
-      <div class="eyebrow">Threat Assessment</div>
+      <div class="eyebrow">Combat Assessment</div>
       <h1>how hard<br>are <span class="accent">we</span> fighting.</h1>
       <div class="subline" id="meta-line">— transmission incoming —</div>
     </div>
     <div class="nav-block">
       <a href="index.html" class="nav-btn">⟵ Home</a>
-      <a href="ssc-map.html" class="nav-btn">SSC Map</a>
-      <a href="storm-duel.html" class="nav-btn">Storm Duel</a>
     </div>
   </header>
 
@@ -448,10 +445,11 @@
 (function(){
 
 const US_SID = 2864;
-const PRESETS = [25, 75, 150, 500, 1000, 4000, 10000, 25000];
+const PRESETS = [20, 25, 75, 150, 500, 1000, 4000, 10000, 25000];
+const DEFAULT_TOPN = 20;
 
 let DATA = null, META = null;
-let CURRENT_TOPN = 75;
+let CURRENT_TOPN = DEFAULT_TOPN;
 let PINNED = new Set([US_SID]);
 let SELECTED_SID = US_SID;
 let SLIDER_TIMER = null;
@@ -487,7 +485,6 @@ async function load(){
     const json = await res.json();
     DATA = json.entries;
     META = json.metadata;
-    document.getElementById('cls-round').textContent = META.round;
     document.getElementById('meta-line').innerHTML =
       'round ' + META.round + ' · <b>' + fmtNum(META.total_entries) + '</b> ranked combatants · <b>' + fmtNum(META.unique_servers) + '</b> servers represented';
     document.getElementById('slider-max').textContent = fmtNum(META.total_entries);
@@ -515,7 +512,7 @@ function init(){
 
   // Slider
   const slider = document.getElementById('topN-slider');
-  slider.value = nToSlider(75);
+  slider.value = nToSlider(DEFAULT_TOPN);
   slider.addEventListener('input', e => {
     const n = sliderToN(+e.target.value);
     setTopN(n, true);
@@ -540,7 +537,7 @@ function init(){
     if (!isNaN(n)) pinServer(n);
   });
 
-  setTopN(75);
+  setTopN(DEFAULT_TOPN);
 }
 
 function setTopN(n, fromSlider){
@@ -579,13 +576,16 @@ const WEDGE_PALETTE = ['#79c0ff','#56d4dd','#b392f0','#f47067','#7ee787','#d4af3
 const COLOR_US = '#3fb950';
 const COLOR_THREAT = '#f0a020';
 const COLOR_OTHERS = '#2c3d54';
-const MAX_WEDGES = 10;        // visible discrete wedges before collapsing tail
-const MIN_LABEL_SLICE = 0.05; // 5% — show label only if slice is at least this fraction
+const MAX_WEDGES = 18;        // visible discrete wedges before collapsing tail
+const TAIL_MIN = 3;           // never collapse to "+others" if the tail has fewer than this many servers — just show them all
+const MIN_LABEL_SLICE = 0.04; // 4% — show inline sid label if slice is at least this fraction
 
 function buildAllocation(counts, total, sorted){
   // sorted: [[sid,count],...] desc
-  // Take top MAX_WEDGES.
-  let kept = sorted.slice(0, MAX_WEDGES).map(([sid,count]) => ({sid, count}));
+  // If the tail is small enough, don't collapse — show everything individually.
+  // This avoids a misleading gray wedge when only 1–2 stragglers exist.
+  const wedgeCap = (sorted.length - MAX_WEDGES) < TAIL_MIN ? sorted.length : MAX_WEDGES;
+  let kept = sorted.slice(0, wedgeCap).map(([sid,count]) => ({sid, count}));
   const keptIds = new Set(kept.map(k => k.sid));
 
   // Guarantee US in the wedge set even if it falls outside top MAX_WEDGES.
