@@ -1096,14 +1096,16 @@ function render(){
     const isUsRow = sid === US_SID;
     const isPinnedRow = !isUsRow && PINNED.has(sid);
     const cls = isUsRow ? 'is-us' : (isPinnedRow ? 'is-pinned' : '');
-    const barPct = (c/maxCount*100).toFixed(1);
+    const ratio = maxCount > 0 ? Math.max(0, Math.min(1, c / maxCount)) : 0;
+    const barPct = (ratio * 100).toFixed(1);
     const tag = isUsRow ? '<span class="tag">// us</span>' : (isPinnedRow ? '<span class="tag threat">// watch</span>' : '');
+    const barStyle = 'width:' + barPct + '%' + (isUsRow ? '' : ';' + threatBarBackground(ratio));
     return '<div class="threat-row '+cls+'" data-sid="'+sid+'">' +
       '<div class="rk">' + String(lbRank).padStart(2,'0') + '</div>' +
       '<div class="sid">S' + sid + tag + '</div>' +
       '<div class="ct">' + fmtNum(c) + '</div>' +
       '<div class="pc">' + fmtPct(pct) + '</div>' +
-      '<div class="bar"><div class="fill" style="width:'+barPct+'%"></div></div>' +
+      '<div class="bar"><div class="fill" style="'+barStyle+'"></div></div>' +
     '</div>';
   }).join('') || '<div class="dossier-empty">// no servers in cutoff //</div>';
   body.querySelectorAll('.threat-row[data-sid]').forEach(tr => {
@@ -1119,6 +1121,23 @@ function fmtCompact(n){
   if (n >= 1e6) return (n/1e6).toFixed(2) + '<span class="unit">M</span>';
   if (n >= 1e3) return (n/1e3).toFixed(1) + '<span class="unit">K</span>';
   return String(n);
+}
+
+// Heat-scaled threat-bar gradient — bar's color tracks its size so the
+// strongest bar reads as the most dangerous and the weakest fades into
+// the panel. t = c/maxCount among non-us bars (0..1).
+//   t=1  → amber → vivid red  (current full intensity)
+//   t=.5 → softer amber → orange
+//   t=0  → muted yellow-amber, low saturation
+function threatBarBackground(t){
+  t = Math.max(0, Math.min(1, t));
+  const hueA = (36 + (1 - t) * 8).toFixed(0);
+  const hueB = (5  + (1 - t) * 30).toFixed(0);
+  const satA = (60 + t * 25).toFixed(0);
+  const satB = (55 + t * 35).toFixed(0);
+  const litA = (48 + t * 4).toFixed(0);
+  const litB = (50 + t * 12).toFixed(0);
+  return 'background:linear-gradient(90deg,hsl(' + hueA + ' ' + satA + '% ' + litA + '%),hsl(' + hueB + ' ' + satB + '% ' + litB + '%))';
 }
 
 load();
