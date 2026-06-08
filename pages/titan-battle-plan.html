@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="no-referrer" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'self' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; connect-src 'self' https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; img-src https://i.ibb.co https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com; frame-src https://translate.google.com; object-src 'none'; base-uri 'self'; form-action 'none'; font-src https://fonts.gstatic.com;" />
+  <title>Battle Plan – Server 2864</title>
+  <style>
+    :root[data-theme="dark"] {
+      --bg: #0d1117; --bg2: #161b22; --card: #1c2128; --border: #30363d;
+      --text: #e6edf3; --muted: #8b949e; --accent: #79c0ff;
+      --army: #3fb950; --navy: #388bfd; --air: #d29922;
+      --ce: #e3b341; --mm: #bc8cff; --tag: #21262d;
+      --shadow: rgba(0,0,0,.45);
+    }
+    :root[data-theme="light"] {
+      --bg: #f6f8fa; --bg2: #ffffff; --card: #ffffff; --border: #d0d7de;
+      --text: #1f2328; --muted: #656d76; --accent: #1f75d4;
+      --army: #1a7f37; --navy: #0550ae; --air: #9a6700;
+      --ce: #7d4e00; --mm: #6e40c9; --tag: #eaeef2;
+      --shadow: rgba(140,149,159,.2);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    header {
+      background: var(--bg2); border-bottom: 1px solid var(--border);
+      padding: .85rem 2rem; display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 200; box-shadow: 0 1px 0 var(--border);
+    }
+    .header-left { display: flex; align-items: center; gap: 1.2rem; }
+    .header-title { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+    .header-sub { font-size: .75rem; color: var(--muted); margin-top: 3px; }
+    .nav-link {
+      font-size: .8rem; color: var(--muted); text-decoration: none; padding: .35rem .8rem;
+      border: 1px solid var(--border); border-radius: 7px; transition: all .15s;
+    }
+    .nav-link:hover { border-color: var(--accent); color: var(--accent); }
+    .hdr-btn {
+      background: var(--tag); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 8px; padding: .38rem .9rem; cursor: pointer; font-size: .8rem;
+      display: flex; align-items: center; gap: .4rem; transition: all .15s; white-space: nowrap;
+    }
+    .hdr-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    main { max-width: 1440px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
+
+    .squad-tabs {
+      display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1.5rem;
+      padding: .9rem 1.25rem; background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; align-items: center;
+    }
+    .squad-tabs-label {
+      font-size: .72rem; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .06em; margin-right: .25rem;
+    }
+    .tab-btn {
+      padding: .4rem 1rem; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--tag); color: var(--muted); cursor: pointer;
+      font-size: .82rem; font-weight: 500; transition: all .15s;
+    }
+    .tab-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .tab-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+    .empty-state {
+      text-align: center; padding: 4rem 2rem; color: var(--muted);
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    }
+    .empty-state h3 { font-size: 1rem; margin-bottom: .5rem; color: var(--text); }
+
+    .plan-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+    @media (max-width: 960px) { .plan-layout { grid-template-columns: 1fr; } }
+
+    .panel {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem;
+    }
+    .panel h3 {
+      font-size: .72rem; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .06em; margin-bottom: 1rem;
+    }
+
+    /* Diamond Map */
+    .diamond-grid { position: relative; width: 100%; max-width: 420px; margin: 0 auto; aspect-ratio: 1; }
+    .map-node {
+      position: absolute; transform: translate(-50%,-50%);
+      width: 22%; height: 18%; background: var(--bg2); border: 2px solid var(--border);
+      border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 4px; transition: all .15s;
+    }
+    .map-node.filled { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg2)); }
+    .map-node .num { font-weight: 700; font-size: .9rem; color: var(--accent); line-height: 1; }
+    .map-node .role { font-size: .5rem; color: var(--muted); line-height: 1.1; margin-top: 1px; }
+    .map-node .player { font-size: .6rem; font-weight: 600; color: var(--text); margin-top: 2px; }
+    .map-hub {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+      width: 28%; height: 28%; background: var(--tag); border: 1px dashed var(--border); border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      font-size: .6rem; color: var(--muted); padding: 4px; line-height: 1.2;
+    }
+
+    /* Roster sections */
+    .assign-section { margin-bottom: 1rem; }
+    .assign-section:last-child { margin-bottom: 0; }
+    .assign-title {
+      font-size: .78rem; font-weight: 700; color: var(--text); margin-bottom: .4rem;
+      padding-bottom: .3rem; border-bottom: 1px solid var(--border);
+    }
+    .assign-note { font-size: .68rem; color: var(--muted); font-style: italic; margin-top: .25rem; }
+    .assign-list { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+    .assign-item {
+      display: flex; align-items: center; gap: .5rem; padding: .3rem .6rem;
+      border-radius: 6px; font-size: .8rem; background: var(--bg2); border: 1px solid var(--border);
+    }
+    .slot-label { color: var(--muted); font-size: .68rem; min-width: 1.4rem; font-weight: 600; }
+    .slot-player { font-weight: 600; }
+    .slot-empty { color: var(--muted); font-style: italic; font-size: .75rem; }
+
+    /* Notes */
+    .notes-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem;
+    }
+    .notes-card h3 {
+      font-size: .72rem; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .06em; margin-bottom: .8rem;
+    }
+    .notes-body { font-size: .85rem; line-height: 1.5; white-space: pre-wrap; color: var(--text); min-height: 40px; }
+    .notes-empty { color: var(--muted); font-style: italic; }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    @media (max-width: 640px) {
+      main { padding: 1rem 1rem 2rem; }
+      header { padding: .7rem 1rem; flex-wrap: wrap; gap: .5rem; }
+    }
+    .ref-map-wrap {
+      margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border);
+      text-align: center;
+    }
+    .ref-map-thumb {
+      display: block; margin: 0 auto; max-width: 420px; width: 100%;
+      border-radius: 6px; border: 1px solid var(--border); cursor: pointer;
+      opacity: .75; transition: opacity .15s;
+    }
+    .ref-map-thumb:hover { opacity: 1; }
+    .ref-map-label {
+      font-size: .6rem; color: var(--muted); margin-top: .4rem;
+      cursor: pointer;
+    }
+    .ref-modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.8); z-index: 500;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity .2s;
+    }
+    .ref-modal-overlay.open { opacity: 1; pointer-events: auto; }
+    .ref-modal-overlay img {
+      max-width: 90vw; max-height: 90vh; border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.6);
+    }
+    .site-footer { text-align: center; padding: 1.5rem 2rem; font-size: .75rem; color: var(--muted); border-top: 1px solid var(--border); }
+    .site-footer a { color: var(--accent); text-decoration: none; }
+    .site-footer a:hover { text-decoration: underline; }
+    /* Google Translate overrides */
+    body { top: 0 !important; }
+    body > .skiptranslate { display: none !important; }
+    #google_translate_element { position: absolute; left: -9999px; opacity: 0; pointer-events: none; }
+    .lang-btn {
+      background: var(--tag); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 8px; padding: .38rem .7rem; cursor: pointer; font-size: .8rem;
+      display: flex; align-items: center; gap: .35rem; font-family: inherit;
+      font-weight: 600; letter-spacing: .02em; white-space: nowrap; transition: border-color .2s;
+    }
+    .lang-btn:hover { border-color: var(--accent); color: var(--text); }
+    .lang-modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 400;
+      background: rgba(0,0,0,0.6); align-items: center; justify-content: center; padding: 1rem;
+    }
+    .lang-modal-overlay.active { display: flex; }
+    .lang-modal {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      padding: 1.25rem; max-width: 400px; width: 100%; max-height: 80vh; overflow-y: auto;
+      box-shadow: 0 8px 32px var(--shadow);
+    }
+    .lang-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    .lang-modal-title { font-size: 1rem; font-weight: 700; color: var(--text); }
+    .lang-modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.2rem; padding: .2rem; line-height: 1; }
+    .lang-modal-close:hover { color: var(--text); }
+    .lang-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .5rem; }
+    .lang-option {
+      display: flex; align-items: center; gap: .5rem; padding: .5rem .65rem;
+      border-radius: 8px; border: 1px solid transparent; background: var(--bg);
+      cursor: pointer; font-size: .82rem; color: var(--text); font-family: inherit;
+      transition: border-color .15s, background .15s;
+    }
+    .lang-option:hover { border-color: var(--accent); background: var(--tag); }
+    .lang-option.active { border-color: var(--accent); background: var(--tag); }
+    .lang-option .lang-flag { font-size: 1.1rem; }
+    .lang-option .lang-name { flex: 1; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div>
+      <div class="header-title notranslate">&#9876; Battle Plan</div>
+      <div class="header-sub">Server 2864 &ndash; Titan Canyon</div>
+    </div>
+    <a href="titan-roster.html" class="nav-link" title="Home" style="padding:.35rem .6rem;display:inline-flex;align-items:center"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L10 3.5l7 7"/><path d="M5 9v7a1 1 0 001 1h3v-4h2v4h3a1 1 0 001-1V9"/></svg></a>
+    <a href="titan-roster.html" class="nav-link">&larr; Rosters</a>
+  </div>
+  <div style="display:flex;gap:.6rem;align-items:center">
+    <button class="lang-btn notranslate" id="langBtn" aria-label="Change language">
+      <span id="langFlag">&#127482;&#127480;</span>
+      <span id="langCode">/en</span>
+    </button>
+    <div id="google_translate_element"></div>
+    <button class="hdr-btn" onclick="toggleTheme()">
+      <span id="themeIcon">&#9728;&#65039;</span>
+      <span id="themeLabel">Light Mode</span>
+    </button>
+  </div>
+</header>
+
+<main>
+  <div class="squad-tabs">
+    <span class="squad-tabs-label">Squad</span>
+  </div>
+  <div id="content"></div>
+</main>
+
+<div class="ref-modal-overlay" id="refModal" onclick="this.classList.remove('open')">
+  <img src="https://i.ibb.co/HTM5MTLn/TC-Reference-Map.png" alt="Formation Reference Map" />
+</div>
+
+<div class="lang-modal-overlay" id="langModal">
+  <div class="lang-modal">
+    <div class="lang-modal-header">
+      <span class="lang-modal-title">Select Language</span>
+      <button class="lang-modal-close" id="langModalClose" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="lang-grid" id="langGrid"></div>
+  </div>
+</div>
+
+<footer class="site-footer">
+  Brought to you by supporters of the fk boats movement<br>
+  <a href="https://github.com/texnottexas/titan-canyon-rosters" target="_blank" rel="noopener noreferrer">GitHub</a>
+</footer>
+
+<script>
+var TITAN_API = 'https://push-worker.27tb8s6fct.workers.dev';
+const SQUADS = ["Dog Squad A","Dog Squad B","MSS Squad A","MSS Squad B","PRU Squad A","Cat Squad A"];
+const SQUAD_SHORT = {"Dog Squad A":"Dog A (+10)","Dog Squad B":"Dog B (-2)","MSS Squad A":"MSS A (+2)","MSS Squad B":"MSS B (+10)","PRU Squad A":"PRU A (-6)","Cat Squad A":"Cat A (-2)"};
+
+const POSITIONS = [
+  { num: 1, role: "Bigger CE", color: "#3fb950", x: 22, y: 22 },
+  { num: 2, role: "Medium-strong CE", color: "#3fb950", x: 78, y: 78 },
+  { num: 3, role: "MM + Urgent Care", color: "#d29922", x: 5, y: 50 },
+  { num: 4, role: "MM + Urgent Care", color: "#d29922", x: 50, y: 5 },
+  { num: 5, role: "MM + Urgent Care", color: "#d29922", x: 50, y: 95 },
+  { num: 6, role: "MM + Urgent Care", color: "#d29922", x: 95, y: 50 },
+  { num: 7, role: "Any MM, no urgent care (4 towers)", color: "#3fb950", x: 22, y: 78 },
+  { num: 8, role: "Any MM, no urgent care (4 towers)", color: "#d29922", x: 78, y: 22 },
+];
+
+const POS_GROUPS = [
+  { title: "CE Positions (Map #1–2)", nums: [1, 2] },
+  { title: "MM Positions (Map #3–8)", nums: [3, 4, 5, 6, 7, 8] },
+];
+
+const SECTIONS = [
+  { key: "goon", title: "CE Goon Squad", note: "Go on offense / run around freely" },
+  { key: "standby", title: "Standby (Fill as Needed)" },
+  { key: "hover", title: "Hover Captains", note: "Make sure people get to hover station every round / notify when it's bounty time" },
+  { key: "crystal", title: "Crystal Lab Captains", note: "Track open labs, share labs that need help" },
+];
+
+let planData = {};
+let activeSquad = "";
+
+const ESC_MAP = {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"};
+function esc(s) { return String(s??"").replace(/[&<>"']/g, c => ESC_MAP[c]); }
+
+function toggleTheme() {
+  const d = document.documentElement.getAttribute("data-theme") === "dark";
+  document.documentElement.setAttribute("data-theme", d ? "light" : "dark");
+  document.getElementById("themeIcon").textContent = d ? "\uD83C\uDF19" : "\u2600\uFE0F";
+  document.getElementById("themeLabel").textContent = d ? "Dark Mode" : "Light Mode";
+}
+
+function buildTabs() {
+  const container = document.querySelector(".squad-tabs");
+  SQUADS.forEach(sq => {
+    const btn = document.createElement("button");
+    btn.className = "tab-btn";
+    btn.textContent = SQUAD_SHORT[sq];
+    btn.dataset.squad = sq;
+    btn.onclick = () => selectSquad(sq);
+    container.appendChild(btn);
+  });
+}
+
+function selectSquad(sq) {
+  activeSquad = sq;
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.squad === sq));
+  render();
+}
+
+function render() {
+  const el = document.getElementById("content");
+  const data = planData[activeSquad];
+
+  if (!data || !hasAnyData(data)) {
+    el.innerHTML = `<div class="empty-state"><h3>No battle plan yet</h3><p>No plan has been configured for ${esc(SQUAD_SHORT[activeSquad])} yet.</p></div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="plan-layout">
+      <div class="panel">
+        <h3>Battle Map &mdash; ${esc(SQUAD_SHORT[activeSquad])}</h3>
+        <div class="diamond-grid" id="mapGrid"></div>
+        <div class="ref-map-wrap">
+          <img src="https://i.ibb.co/HTM5MTLn/TC-Reference-Map.png" alt="Formation Reference" loading="lazy" class="ref-map-thumb" onclick="document.getElementById('refModal').classList.add('open')" />
+          <div class="ref-map-label" onclick="document.getElementById('refModal').classList.add('open')">Formation Reference (click to expand)</div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Roster Assignments</h3>
+        ${SECTIONS.map(s => renderSection(s, data)).join("")}
+        ${renderPositionSections(data)}
+      </div>
+    </div>
+    ${data.notes ? `<div class="notes-card"><h3>Squad Notes</h3><div class="notes-body">${esc(data.notes)}</div></div>` : ""}
+  `;
+
+  renderMap(data);
+}
+
+function hasAnyData(d) {
+  if (!d) return false;
+  if (d.notes) return true;
+  if (d.positions && Object.values(d.positions).some(v => v)) return true;
+  for (const s of SECTIONS) { if (d[s.key] && d[s.key].some(v => v)) return true; }
+  return false;
+}
+
+function renderMap(data) {
+  const grid = document.getElementById("mapGrid");
+  if (!grid) return;
+
+  const hub = document.createElement("div");
+  hub.className = "map-hub";
+  hub.textContent = "Discarded Repository / Nexus Hub";
+  grid.appendChild(hub);
+
+  POSITIONS.forEach(pos => {
+    const assigned = data.positions?.[pos.num] || "";
+    const node = document.createElement("div");
+    node.className = "map-node" + (assigned ? " filled" : "");
+    node.style.left = pos.x + "%";
+    node.style.top = pos.y + "%";
+    node.innerHTML = `
+      <span class="num">${pos.num}</span>
+      <span class="role">${esc(pos.role)}</span>
+      ${assigned ? `<span class="player notranslate">${esc(assigned)}</span>` : ""}
+    `;
+    grid.appendChild(node);
+  });
+}
+
+function renderPositionSections(data) {
+  if (!data.positions) return "";
+  return POS_GROUPS.map(g => {
+    const filled = g.nums.filter(n => data.positions[n]);
+    if (!filled.length) return "";
+    const posInfo = POSITIONS.filter(p => g.nums.includes(p.num));
+    return `
+      <div class="assign-section">
+        <div class="assign-title">${esc(g.title)}</div>
+        <ul class="assign-list">
+          ${posInfo.filter(p => data.positions[p.num]).map(p => `
+            <li class="assign-item">
+              <span class="slot-label">#${p.num}</span>
+              <span class="slot-player notranslate">${esc(data.positions[p.num])}</span>
+            </li>
+          `).join("")}
+        </ul>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderSection(sec, data) {
+  const slots = data[sec.key] || [];
+  const filled = slots.filter(v => v);
+  if (!filled.length) return "";
+  return `
+    <div class="assign-section">
+      <div class="assign-title">${esc(sec.title)}</div>
+      <ul class="assign-list">
+        ${slots.filter(v=>v).map((v, i) => `
+          <li class="assign-item">
+            <span class="slot-label">#${i + 1}</span>
+            <span class="slot-player">${esc(v)}</span>
+          </li>
+        `).join("")}
+      </ul>
+      ${sec.note ? `<div class="assign-note">${esc(sec.note)}</div>` : ""}
+    </div>
+  `;
+}
+
+async function loadData() {
+  try {
+    const parsed = await fetch(TITAN_API + '/titan/battleplan')
+      .then(function (r) { if (!r.ok) throw new Error('worker'); return r.json(); })
+      .catch(function () { return fetch('data/titan-battle-plan.json').then(function (r) { return r.json(); }); });
+    planData = (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ? parsed : {};
+  } catch (e) { console.warn("Could not load plan data", e); }
+}
+
+async function init() {
+  buildTabs();
+  await loadData();
+  if (SQUADS.length) selectSquad(SQUADS[0]);
+}
+
+init();
+</script>
+<script>
+(function() {
+  var LANGUAGES = [
+    { code: 'en', flag: '\u{1F1FA}\u{1F1F8}', name: 'English' },
+    { code: 'es', flag: '\u{1F1EA}\u{1F1F8}', name: 'Espa\u00f1ol' },
+    { code: 'fr', flag: '\u{1F1EB}\u{1F1F7}', name: 'Fran\u00e7ais' },
+    { code: 'de', flag: '\u{1F1E9}\u{1F1EA}', name: 'Deutsch' },
+    { code: 'pt', flag: '\u{1F1E7}\u{1F1F7}', name: 'Portugu\u00eas' },
+    { code: 'it', flag: '\u{1F1EE}\u{1F1F9}', name: 'Italiano' },
+    { code: 'ru', flag: '\u{1F1F7}\u{1F1FA}', name: '\u0420\u0443\u0441\u0441\u043a\u0438\u0439' },
+    { code: 'ja', flag: '\u{1F1EF}\u{1F1F5}', name: '\u65E5\u672C\u8A9E' },
+    { code: 'ko', flag: '\u{1F1F0}\u{1F1F7}', name: '\uD55C\uAD6D\uC5B4' },
+    { code: 'zh-CN', flag: '\u{1F1E8}\u{1F1F3}', name: '\u4E2D\u6587' },
+    { code: 'ar', flag: '\u{1F1F8}\u{1F1E6}', name: '\u0627\u0644\u0639\u0631\u0628\u064A\u0629' },
+    { code: 'tr', flag: '\u{1F1F9}\u{1F1F7}', name: 'T\u00fcrk\u00e7e' },
+    { code: 'vi', flag: '\u{1F1FB}\u{1F1F3}', name: 'Ti\u1EBFng Vi\u1EC7t' },
+    { code: 'th', flag: '\u{1F1F9}\u{1F1ED}', name: '\u0E44\u0E17\u0E22' },
+    { code: 'hi', flag: '\u{1F1EE}\u{1F1F3}', name: '\u0939\u093F\u0928\u094D\u0926\u0940' },
+    { code: 'pl', flag: '\u{1F1F5}\u{1F1F1}', name: 'Polski' },
+    { code: 'uk', flag: '\u{1F1FA}\u{1F1E6}', name: '\u0423\u043a\u0440\u0430\u0457\u043d\u0441\u044c\u043a\u0430' },
+    { code: 'id', flag: '\u{1F1EE}\u{1F1E9}', name: 'Indonesia' }
+  ];
+  window._gtLoaded = false;
+  function getLangData(code) {
+    var base = code.split('-')[0];
+    for (var i = 0; i < LANGUAGES.length; i++) {
+      if (LANGUAGES[i].code === code || LANGUAGES[i].code === base) return LANGUAGES[i];
+    }
+    return null;
+  }
+  window.updateLangBtn = function(code) {
+    var data = getLangData(code);
+    var flagEl = document.getElementById('langFlag');
+    var codeEl = document.getElementById('langCode');
+    if (data && flagEl && codeEl) { flagEl.textContent = data.flag; codeEl.textContent = '/' + data.code; }
+    else if (flagEl && codeEl) { flagEl.textContent = '\u{1F310}'; codeEl.textContent = '/' + code; }
+    var options = document.querySelectorAll('.lang-option');
+    for (var i = 0; i < options.length; i++) options[i].classList.toggle('active', options[i].getAttribute('data-lang') === code);
+  };
+  window.detectCurrentLang = function() {
+    var match = document.cookie.match(/googtrans=\/en\/([a-zA-Z-]{2,10})/);
+    if (match && match[1]) return match[1];
+    return 'en';
+  };
+  function applyLangToCombo(code, delay, onSuccess) {
+    var attempts = 0;
+    var poll = setInterval(function() {
+      var combo = document.querySelector('.goog-te-combo');
+      if (combo) {
+        combo.value = code; combo.dispatchEvent(new Event('change')); clearInterval(poll); window.updateLangBtn(code);
+        if (onSuccess) onSuccess();
+      }
+      if (++attempts > 30) clearInterval(poll);
+    }, delay || 200);
+  }
+  function selectLanguage(code) {
+    if (code === 'en') { restoreEnglish(); return; }
+    try { sessionStorage.setItem('pendingLang', code); } catch(e) {}
+    applyLangToCombo(code, 200, closeLangModal);
+  }
+  function restoreEnglish() {
+    try { sessionStorage.removeItem('pendingLang'); } catch(e) {}
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax; Secure';
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.titan.2864tw.com; SameSite=Lax; Secure';
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.2864tw.com; SameSite=Lax; Secure';
+    closeLangModal(); location.reload();
+  }
+  var langModalEl = document.getElementById('langModal');
+  function openLangModal() { if (langModalEl) langModalEl.classList.add('active'); }
+  function closeLangModal() { if (langModalEl) langModalEl.classList.remove('active'); }
+  var grid = document.getElementById('langGrid');
+  if (grid) {
+    var detected = window.detectCurrentLang();
+    for (var i = 0; i < LANGUAGES.length; i++) {
+      var l = LANGUAGES[i];
+      var btn = document.createElement('button');
+      btn.className = 'lang-option' + (l.code === detected ? ' active' : '');
+      btn.setAttribute('data-lang', l.code);
+      var flagSpan = document.createElement('span'); flagSpan.className = 'lang-flag'; flagSpan.textContent = l.flag;
+      var nameSpan = document.createElement('span'); nameSpan.className = 'lang-name'; nameSpan.textContent = l.name;
+      btn.appendChild(flagSpan); btn.appendChild(nameSpan);
+      btn.addEventListener('click', (function(code) { return function() { selectLanguage(code); }; })(l.code));
+      grid.appendChild(btn);
+    }
+    window.updateLangBtn(detected);
+  }
+  var langBtn = document.getElementById('langBtn');
+  if (langBtn) langBtn.addEventListener('click', openLangModal);
+  var langModalClose = document.getElementById('langModalClose');
+  if (langModalClose) langModalClose.addEventListener('click', closeLangModal);
+  if (langModalEl) langModalEl.addEventListener('click', function(e) { if (e.target === langModalEl) closeLangModal(); });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && langModalEl && langModalEl.classList.contains('active')) { closeLangModal(); e.stopPropagation(); }
+  });
+  setTimeout(function() {
+    if (!window._gtLoaded) { var btn = document.getElementById('langBtn'); if (btn) { btn.style.opacity = '0.5'; btn.style.cursor = 'default'; btn.title = 'Translation unavailable'; btn.removeEventListener('click', openLangModal); } }
+  }, 15000);
+})();
+function googleTranslateElementInit() {
+  window._gtLoaded = true;
+  new google.translate.TranslateElement({ pageLanguage: 'en', autoDisplay: false }, 'google_translate_element');
+  var pendingLang = null;
+  try { pendingLang = sessionStorage.getItem('pendingLang'); sessionStorage.removeItem('pendingLang'); } catch(e) {}
+  if (pendingLang) {
+    applyLangToCombo(pendingLang, 250);
+  } else {
+    try {
+      var dismissed = localStorage.getItem('translate-dismissed');
+      if (!dismissed) {
+        var lang = (navigator.language || navigator.userLanguage || 'en').split('-')[0];
+        if (lang !== 'en') applyLangToCombo(lang, 250);
+      }
+    } catch(e) {}
+    var detected = window.detectCurrentLang();
+    if (detected !== 'en') window.updateLangBtn(detected);
+  }
+}
+</script>
+<script src="https://translate.googleapis.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+</body>
+</html>
