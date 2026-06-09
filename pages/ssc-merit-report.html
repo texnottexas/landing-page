@@ -379,6 +379,25 @@
   .alloc-legend .head .col-ct,
   .alloc-legend .head .col-mt,
   .alloc-legend .head .col-pc{text-align:right;}
+  /* Sortable headers — keep header tile chrome flat (no rounded buttons) */
+  .alloc-legend .head .col-svr,
+  .alloc-legend .head .col-ct,
+  .alloc-legend .head .col-mt,
+  .alloc-legend .head .col-pc{
+    cursor:pointer;user-select:none;
+    font-family:'JetBrains Mono',monospace;font-size:.66rem;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--text-dim);
+    transition:color .15s ease;
+    display:inline-flex;align-items:center;gap:4px;
+  }
+  .alloc-legend .head .col-svr{justify-content:flex-start;}
+  .alloc-legend .head .col-ct,
+  .alloc-legend .head .col-mt,
+  .alloc-legend .head .col-pc{justify-content:flex-end;}
+  .alloc-legend .head [data-sortcol]:hover{color:var(--text);}
+  .alloc-legend .head [data-sortcol].active{color:var(--us);}
+  .alloc-legend .head .sort-arrow{font-size:.55rem;opacity:.55;letter-spacing:0;}
+  .alloc-legend .head [data-sortcol].active .sort-arrow{opacity:1;}
   .alloc-legend .row{display:grid;grid-template-columns:14px 1fr 56px 78px 56px;gap:10px;align-items:center;padding:7px 4px;border-bottom:1px solid #131c28;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:.84rem;}
   .alloc-legend .row:last-child{border-bottom:none;}
   .alloc-legend .row:hover{background:rgba(63,185,80,.04);}
@@ -565,6 +584,9 @@ const DEFAULT_TOPN = 20;
 
 let DATA = null, META = null;
 let TOTAL_BY_SID = null;             // sid -> total presence in DATA (computed once)
+// Allocation-legend sort. Default matches the donut wedge order so the
+// page lands exactly as before; users can flip via the column headers.
+let LEGEND_SORT = {col: 'count', dir: 'desc'};
 let CURRENT_TOPN = DEFAULT_TOPN;
 let PINNED = new Set([US_SID]);
 let SELECTED_SID = US_SID;
@@ -1000,7 +1022,27 @@ function renderAllocLegend(segments, total, meritByCut){
     meritByCut.forEach(v => { totalMerit += v; });
     othersMerit = Math.max(0, totalMerit - keptMerit);
   }
-  const rows = segments.map(s => {
+  // Sort kept (non-others) segments by the active column. "+others" always
+  // pins to the bottom regardless of sort direction.
+  const kept = segments.filter(s => !s.isOthers);
+  const sortKey = s => {
+    switch (LEGEND_SORT.col) {
+      case 'sid':   return s.sid;
+      case 'merit': return meritByCut.get(s.sid) || 0;
+      case 'pct':   // monotonic w/ count given a fixed total; kept distinct for click intent
+      case 'count':
+      default:      return s.count;
+    }
+  };
+  const dirMul = LEGEND_SORT.dir === 'asc' ? 1 : -1;
+  kept.sort((a, b) => {
+    const av = sortKey(a), bv = sortKey(b);
+    if (av < bv) return -1 * dirMul;
+    if (av > bv) return  1 * dirMul;
+    return a.sid - b.sid;  // stable tiebreak by sid asc
+  });
+  const orderedSegments = othersSeg ? kept.concat(othersSeg) : kept;
+  const rows = orderedSegments.map(s => {
     const isOthers = !!s.isOthers;
     const isUs = !isOthers && s.sid === US_SID;
     const isPinned = !isOthers && !isUs && PINNED.has(s.sid);
@@ -1021,13 +1063,22 @@ function renderAllocLegend(segments, total, meritByCut){
       '<div class="pc">' + fmtPct(pct) + '</div>' +
     '</div>';
   }).join('');
+  const arrow = col => {
+    if (LEGEND_SORT.col !== col) return '<span class="sort-arrow">↕</span>';
+    return '<span class="sort-arrow">' + (LEGEND_SORT.dir === 'asc' ? '▲' : '▼') + '</span>';
+  };
+  const headCell = (col, label) => {
+    const active = LEGEND_SORT.col === col ? ' active' : '';
+    return '<div class="col-' + col2css(col) + ' sort-col' + active + '" data-sortcol="' + col + '" role="button" tabindex="0">' +
+      '<span>' + label + '</span>' + arrow(col) + '</div>';
+  };
   const head =
     '<div class="head">' +
       '<div></div>' +
-      '<div class="col-svr">Server</div>' +
-      '<div class="col-ct">Count</div>' +
-      '<div class="col-mt">Merit</div>' +
-      '<div class="col-pc">% cut</div>' +
+      headCell('sid',   'Server') +
+      headCell('count', 'Count')  +
+      headCell('merit', 'Merit')  +
+      headCell('pct',   '% cut')  +
     '</div>';
   root.innerHTML = head + rows;
   root.querySelectorAll('.row[data-sid]').forEach(r => {
@@ -1037,6 +1088,30 @@ function renderAllocLegend(segments, total, meritByCut){
       else selectServer(+sid);
     });
   });
+  root.querySelectorAll('[data-sortcol]').forEach(h => {
+    const onSort = () => {
+      const col = h.dataset.sortcol;
+      if (LEGEND_SORT.col === col) {
+        LEGEND_SORT.dir = LEGEND_SORT.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        LEGEND_SORT.col = col;
+        // New column defaults to desc for the numeric columns (most useful
+        // "biggest first" reading); server-id column defaults to asc so
+        // S100 lands above S2864.
+        LEGEND_SORT.dir = (col === 'sid') ? 'asc' : 'desc';
+      }
+      render();
+    };
+    h.addEventListener('click', onSort);
+    h.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSort(); }
+    });
+  });
+}
+
+// Map LEGEND_SORT keys to the existing legend CSS column class suffixes.
+function col2css(col){
+  return col === 'sid' ? 'svr' : col === 'count' ? 'ct' : col === 'merit' ? 'mt' : 'pc';
 }
 
 function pinServer(sid){
