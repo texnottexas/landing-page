@@ -1,0 +1,37 @@
+name: Snapshot Titan Data
+
+on:
+  schedule:
+    - cron: '30 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch Titan data from worker
+        run: |
+          mkdir -p data
+          curl -sf https://push-worker.27tb8s6fct.workers.dev/titan/roster      -o data/titan-roster.json       || echo "[]" > data/titan-roster.json
+          curl -sf https://push-worker.27tb8s6fct.workers.dev/titan/battleplan  -o data/titan-battle-plan.json  || echo "{}" > data/titan-battle-plan.json
+          curl -sf https://push-worker.27tb8s6fct.workers.dev/titan/changelog   -o data/titan-changelog.json    || echo "[]" > data/titan-changelog.json
+
+      - name: Commit changed files via API
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for f in data/titan-roster.json data/titan-battle-plan.json data/titan-changelog.json; do
+            git diff --quiet "$f" && continue
+            FILE_SHA=$(gh api repos/${{ github.repository }}/contents/$f --jq '.sha' 2>/dev/null || echo "")
+            CONTENT=$(base64 -w 0 "$f")
+            PAYLOAD=$(jq -n --arg msg "chore: snapshot titan data from KV" --arg content "$CONTENT" --arg sha "$FILE_SHA" \
+              '{message: $msg, content: $content} + (if $sha != "" then {sha: $sha} else {} end)')
+            gh api repos/${{ github.repository }}/contents/$f --method PUT --input - <<< "$PAYLOAD"
+          done
