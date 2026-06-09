@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="no-referrer" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'self' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; img-src 'self' data: https://i.ibb.co https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com; frame-src https://translate.google.com; object-src 'none'; base-uri 'self'; form-action 'none'; font-src https://fonts.gstatic.com;" />
+  <title>Admin – Battle Plan Editor</title>
+  <style>
+    :root[data-theme="dark"] {
+      --bg: #0d1117; --bg2: #161b22; --card: #1c2128; --border: #30363d;
+      --text: #e6edf3; --muted: #8b949e; --accent: #79c0ff;
+      --army: #3fb950; --navy: #388bfd; --air: #d29922;
+      --ce: #e3b341; --mm: #bc8cff; --tag: #21262d;
+      --shadow: rgba(0,0,0,.45); --success: #3fb950; --danger: #f85149;
+    }
+    :root[data-theme="light"] {
+      --bg: #f6f8fa; --bg2: #ffffff; --card: #ffffff; --border: #d0d7de;
+      --text: #1f2328; --muted: #656d76; --accent: #1f75d4;
+      --army: #1a7f37; --navy: #0550ae; --air: #9a6700;
+      --ce: #7d4e00; --mm: #6e40c9; --tag: #eaeef2;
+      --shadow: rgba(140,149,159,.2); --success: #1a7f37; --danger: #cf222e;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    header {
+      background: var(--bg2); border-bottom: 1px solid var(--border);
+      padding: .85rem 2rem; display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 200; box-shadow: 0 1px 0 var(--border);
+    }
+    .header-left { display: flex; align-items: center; gap: 1.2rem; }
+    .header-title { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+    .header-sub { font-size: .75rem; color: var(--muted); margin-top: 3px; }
+    .nav-link {
+      font-size: .8rem; color: var(--muted); text-decoration: none; padding: .35rem .8rem;
+      border: 1px solid var(--border); border-radius: 7px; transition: all .15s;
+    }
+    .nav-link:hover { border-color: var(--accent); color: var(--accent); }
+    .header-actions { display: flex; gap: .6rem; align-items: center; }
+    .hdr-btn {
+      background: var(--tag); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 8px; padding: .38rem .9rem; cursor: pointer; font-size: .8rem;
+      display: flex; align-items: center; gap: .4rem; transition: all .15s; white-space: nowrap;
+    }
+    .hdr-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .save-btn {
+      background: var(--accent); border: 1px solid var(--accent); color: #fff;
+      border-radius: 8px; padding: .45rem 1.2rem; cursor: pointer; font-size: .82rem;
+      font-weight: 600; transition: all .15s; white-space: nowrap;
+    }
+    .save-btn:hover { filter: brightness(1.15); }
+    .save-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    main { max-width: 1440px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
+
+    /* Name prompt modal */
+    .name-modal-bg {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+      z-index: 300; align-items: center; justify-content: center;
+    }
+    .name-modal-bg.open { display: flex; }
+    .name-modal {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 1.5rem; width: 380px; max-width: 95vw;
+      box-shadow: 0 20px 60px var(--shadow); text-align: center;
+    }
+    .name-modal h3 { font-size: .95rem; font-weight: 700; margin-bottom: .6rem; color: var(--accent); }
+    .name-modal p { font-size: .8rem; color: var(--muted); margin-bottom: 1rem; line-height: 1.4; }
+    .name-modal input {
+      width: 100%; background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 8px; padding: .6rem 1rem; color: var(--text); font-size: .85rem; outline: none;
+    }
+    .name-modal input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+    .name-modal-actions { display: flex; gap: .6rem; justify-content: center; margin-top: 1rem; }
+    .name-modal-actions button {
+      padding: .45rem 1.2rem; border-radius: 8px; font-size: .82rem; font-weight: 600;
+      cursor: pointer; transition: all .15s;
+    }
+    .nm-cancel { background: var(--tag); border: 1px solid var(--border); color: var(--muted); }
+    .nm-cancel:hover { border-color: var(--accent); color: var(--accent); }
+    .nm-confirm { background: var(--accent); border: 1px solid var(--accent); color: #fff; }
+    .nm-confirm:hover { filter: brightness(1.15); }
+
+    .squad-tabs {
+      display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1.5rem;
+      padding: .9rem 1.25rem; background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; align-items: center;
+    }
+    .squad-tabs-label {
+      font-size: .72rem; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .06em; margin-right: .25rem;
+    }
+    .tab-btn {
+      padding: .4rem 1rem; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--tag); color: var(--muted); cursor: pointer;
+      font-size: .82rem; font-weight: 500; transition: all .15s;
+    }
+    .tab-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .tab-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+    .plan-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+    @media (max-width: 960px) { .plan-layout { grid-template-columns: 1fr; } }
+
+    .panel {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem;
+    }
+    .panel h3 {
+      font-size: .72rem; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .06em; margin-bottom: 1rem;
+    }
+
+    /* Diamond Map */
+    .diamond-grid { position: relative; width: 100%; max-width: 420px; margin: 0 auto; aspect-ratio: 1; }
+    .map-node {
+      position: absolute; transform: translate(-50%,-50%);
+      width: 22%; height: 18%; background: var(--bg2); border: 2px solid var(--border);
+      border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 4px; transition: all .15s; cursor: pointer;
+    }
+    .map-node:hover { border-color: var(--accent); }
+    .map-node.filled { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg2)); }
+    .map-node .num { font-weight: 700; font-size: .9rem; color: var(--accent); line-height: 1; }
+    .map-node .role { font-size: .5rem; color: var(--muted); line-height: 1.1; margin-top: 1px; }
+    .map-node .player { font-size: .6rem; font-weight: 600; color: var(--text); margin-top: 2px; }
+    .map-node .fdot { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; }
+    .map-hub {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+      width: 28%; height: 28%; background: var(--tag); border: 1px dashed var(--border); border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      font-size: .6rem; color: var(--muted); padding: 4px; line-height: 1.2;
+    }
+
+    /* Reference Map */
+    .ref-map-wrap { margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid var(--border); text-align: center; }
+    .ref-map-thumb { max-width: 420px; width: 100%; border-radius: 8px; cursor: pointer; transition: opacity .15s; }
+    .ref-map-thumb:hover { opacity: .85; }
+    .ref-map-label { font-size: .7rem; color: var(--muted); margin-top: .4rem; cursor: pointer; }
+    .ref-modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+      z-index: 9999; align-items: center; justify-content: center; cursor: zoom-out;
+    }
+    .ref-modal-overlay.open { display: flex; }
+    .ref-modal-overlay img { max-width: 95vw; max-height: 95vh; border-radius: 8px; }
+    .map-select-overlay {
+      position: absolute; transform: translate(-50%,-50%); width: 28%; z-index: 10;
+    }
+    .map-select-overlay select {
+      width: 100%; background: var(--bg2); border: 2px solid var(--accent);
+      border-radius: 6px; color: var(--text); padding: .35rem .3rem; font-size: .68rem;
+      outline: none; cursor: pointer;
+    }
+    .assign-item.highlight { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg2)); }
+    .pos-role-label { font-size: .62rem; color: var(--muted); flex-shrink: 0; }
+
+    /* Assignment editor */
+    .assign-section { margin-bottom: 1.1rem; }
+    .assign-section:last-child { margin-bottom: 0; }
+    .assign-header {
+      font-size: .78rem; font-weight: 700; color: var(--text); margin-bottom: .5rem;
+      padding-bottom: .35rem; border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .add-btn {
+      background: var(--tag); border: 1px solid var(--border); color: var(--accent);
+      border-radius: 6px; padding: 2px 8px; cursor: pointer; font-size: .7rem; transition: all .15s;
+    }
+    .add-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .assign-note { font-size: .68rem; color: var(--muted); font-style: italic; margin-top: .3rem; }
+    .assign-list { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+    .assign-item {
+      display: flex; align-items: center; gap: .5rem; padding: .3rem .6rem;
+      border-radius: 6px; font-size: .8rem; background: var(--bg2); border: 1px solid var(--border);
+    }
+    .slot-label { color: var(--muted); font-size: .68rem; min-width: 1.4rem; font-weight: 600; }
+    .player-select {
+      flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
+      color: var(--text); padding: .25rem .5rem; font-size: .78rem; outline: none;
+      appearance: none; -webkit-appearance: none; cursor: pointer;
+    }
+    .player-select:focus { border-color: var(--accent); }
+    .remove-btn {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font-size: .85rem; padding: 0 2px; transition: color .15s;
+    }
+    .remove-btn:hover { color: var(--danger); }
+
+    .notes-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .notes-card h3 {
+      font-size: .72rem; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .06em; margin-bottom: .8rem;
+    }
+    .notes-card textarea {
+      width: 100%; min-height: 100px; background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 8px; padding: .7rem; color: var(--text); font-size: .82rem;
+      font-family: inherit; outline: none; resize: vertical;
+    }
+    .notes-card textarea:focus { border-color: var(--accent); }
+
+    /* Status bar */
+    .status-bar {
+      position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg2);
+      border-top: 1px solid var(--border); padding: .6rem 2rem;
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: .78rem; z-index: 100;
+    }
+    .status-bar.hidden { display: none; }
+    .status-text { color: var(--muted); }
+    .status-text.saving { color: var(--accent); }
+    .status-text.saved { color: var(--success); }
+    .status-text.error { color: var(--danger); }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* Roster Manager */
+    .roster-mgr { margin-top: 2rem; }
+    .roster-mgr-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 1rem;
+    }
+    .roster-mgr-header h3 {
+      font-size: .85rem; font-weight: 700; color: var(--accent);
+    }
+    .roster-search {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 6px;
+      color: var(--text); padding: .35rem .7rem; font-size: .78rem; outline: none; width: 180px;
+    }
+    .roster-search:focus { border-color: var(--accent); }
+    .roster-table-wrap {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+      overflow: auto; max-height: 520px;
+    }
+    .roster-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+    .roster-table th {
+      position: sticky; top: 0; background: var(--bg2); color: var(--muted);
+      font-size: .65rem; text-transform: uppercase; letter-spacing: .05em;
+      padding: .55rem .7rem; text-align: left; border-bottom: 1px solid var(--border);
+    }
+    .roster-table td { padding: .5rem .7rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .roster-table tbody tr { transition: background .1s; }
+    .roster-table tbody tr:last-child td { border-bottom: none; }
+    .roster-table tbody tr:hover td { background: var(--tag); }
+    .roster-table .move-row td { background: rgba(210,153,34,.07); }
+    .roster-table .move-row { border-left: 2px solid var(--air); }
+    .pname { font-weight: 600; }
+    .badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 12px; font-size: .68rem; font-weight: 500; }
+    .b-army { background: rgba(63,185,80,.13); color: var(--army); }
+    .b-navy { background: rgba(56,139,253,.13); color: var(--navy); }
+    .b-air  { background: rgba(210,153,34,.13); color: var(--air); }
+    .b-ce   { background: rgba(227,179,65,.11); color: var(--ce); }
+    .b-mm   { background: rgba(188,140,255,.13); color: var(--mm); }
+    .cp-wrap { display: flex; align-items: center; gap: 6px; }
+    .cp-bar { width: 44px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; flex-shrink: 0; }
+    .cp-fill { height: 100%; background: var(--accent); border-radius: 2px; }
+    .avail { display: flex; gap: 4px; align-items: center; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; }
+    .dot.y { background: var(--army); }
+    .dot.n { background: var(--border); }
+    .move-tag {
+      display: inline-block; padding: 1px 5px; border-radius: 4px;
+      font-size: .63rem; background: rgba(210,153,34,.18); color: var(--air); margin-left: 4px; font-weight: 600;
+    }
+    .roster-actions { display: flex; gap: 4px; }
+    .roster-actions button {
+      background: var(--tag); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 5px; padding: 3px 8px; cursor: pointer; font-size: .68rem; transition: all .15s;
+    }
+    .roster-actions button:hover { border-color: var(--accent); color: var(--accent); }
+    .roster-actions .del-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+    /* Player Modal */
+    .player-modal-bg {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+      z-index: 300; align-items: center; justify-content: center;
+    }
+    .player-modal-bg.open { display: flex; }
+    .player-modal {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 1.5rem; width: 480px; max-width: 95vw; max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 20px 60px var(--shadow);
+    }
+    .player-modal h3 { font-size: .95rem; font-weight: 700; margin-bottom: 1rem; color: var(--accent); }
+    .pm-row { display: flex; gap: .8rem; margin-bottom: .7rem; }
+    .pm-field { display: flex; flex-direction: column; flex: 1; }
+    .pm-field label { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+    .pm-field input, .pm-field select {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 6px;
+      color: var(--text); padding: .4rem .6rem; font-size: .8rem; outline: none;
+    }
+    .pm-field input:focus, .pm-field select:focus { border-color: var(--accent); }
+    .pm-checks { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .pm-check { display: flex; align-items: center; gap: .3rem; font-size: .78rem; }
+    .pm-check input { accent-color: var(--accent); }
+    .pm-actions { display: flex; gap: .6rem; justify-content: flex-end; margin-top: 1.2rem; }
+    .pm-actions button {
+      padding: .45rem 1.2rem; border-radius: 8px; font-size: .82rem; font-weight: 600;
+      cursor: pointer; transition: all .15s;
+    }
+    .pm-cancel { background: var(--tag); border: 1px solid var(--border); color: var(--muted); }
+    .pm-cancel:hover { border-color: var(--accent); color: var(--accent); }
+    .pm-save { background: var(--accent); border: 1px solid var(--accent); color: #fff; }
+    .pm-save:hover { filter: brightness(1.15); }
+
+    @media (max-width: 640px) {
+      main { padding: 1rem 1rem 2rem; }
+      header { padding: .7rem 1rem; flex-wrap: wrap; gap: .5rem; }
+    }
+    .site-footer { text-align: center; padding: 1.5rem 2rem; font-size: .75rem; color: var(--muted); border-top: 1px solid var(--border); }
+    .site-footer a { color: var(--accent); text-decoration: none; }
+    .site-footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div>
+      <div class="header-title">&#9876; Battle Plan Editor</div>
+      <div class="header-sub">Admin &ndash; Server 2864</div>
+    </div>
+    <a href="https://2864tw.com" class="nav-link" title="Home" style="padding:.35rem .6rem;display:inline-flex;align-items:center"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L10 3.5l7 7"/><path d="M5 9v7a1 1 0 001 1h3v-4h2v4h3a1 1 0 001-1V9"/></svg></a>
+    <a href="titan-roster.html" class="nav-link">Rosters</a>
+    <a href="titan-battle-plan.html" class="nav-link">View Plan &rarr;</a>
+  </div>
+  <div class="header-actions">
+    <button class="hdr-btn" onclick="toggleTheme()">
+      <span id="themeIcon">&#9728;&#65039;</span>
+      <span id="themeLabel">Light Mode</span>
+    </button>
+    <button class="save-btn" id="saveBtn" onclick="promptSave()">Save &amp; Publish</button>
+  </div>
+</header>
+
+<main>
+  <!-- Editor -->
+  <div id="editor">
+    <div class="squad-tabs" id="squadTabs">
+      <span class="squad-tabs-label">Squad</span>
+    </div>
+    <div id="editorContent"></div>
+
+    <!-- Roster Manager -->
+    <div class="roster-mgr" id="rosterMgr">
+      <div class="roster-mgr-header">
+        <h3>Manage Roster</h3>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <input class="roster-search" id="rosterSearch" placeholder="Search players..." oninput="renderRosterTable()">
+          <button class="add-btn" style="padding:4px 12px;font-size:.75rem" onclick="openPlayerModal(-1)">+ Add Player</button>
+        </div>
+      </div>
+      <div class="roster-table-wrap">
+        <table class="roster-table">
+          <thead><tr>
+            <th>Name</th><th>Squad</th><th>Unit</th><th>Prof</th><th>March CP</th><th>Avail</th><th>Alliance</th><th></th>
+          </tr></thead>
+          <tbody id="rosterBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+<div class="ref-modal-overlay" id="refModal" onclick="this.classList.remove('open')">
+  <img src="https://i.ibb.co/HTM5MTLn/TC-Reference-Map.png" alt="Formation Reference Map" />
+</div>
+</main>
+
+<footer class="site-footer">
+  Brought to you by supporters of the fk boats movement<br>
+  <a href="https://github.com/texnottexas/titan-canyon-rosters" target="_blank" rel="noopener noreferrer">GitHub</a>
+</footer>
+
+<!-- Player Add/Edit Modal -->
+<div class="player-modal-bg" id="playerModalBg" onclick="if(event.target===this)closePlayerModal()">
+  <div class="player-modal">
+    <h3 id="pmTitle">Add Player</h3>
+    <input type="hidden" id="pmIdx" value="-1">
+    <div class="pm-row">
+      <div class="pm-field"><label>Name</label><input id="pmName" maxlength="30"></div>
+      <div class="pm-field"><label>Squad</label>
+        <select id="pmSquad">
+          <option value="Dog Squad A">Dog Squad A</option>
+          <option value="Dog Squad B">Dog Squad B</option>
+          <option value="MSS Squad A">MSS Squad A</option>
+          <option value="MSS Squad B">MSS Squad B</option>
+          <option value="PRU Squad A">PRU Squad A</option>
+          <option value="Cat Squad A">Cat Squad A</option>
+        </select>
+      </div>
+    </div>
+    <div class="pm-row">
+      <div class="pm-field"><label>Alliance</label>
+        <select id="pmAlliance">
+          <option value="DOG">DOG</option>
+          <option value="MSS">MSS</option>
+          <option value="Cat+">Cat+</option>
+        </select>
+      </div>
+      <div class="pm-field"><label>Unit</label>
+        <select id="pmUnit">
+          <option value="Army">Army</option>
+          <option value="Navy">Navy</option>
+          <option value="Air Force">Air Force</option>
+        </select>
+      </div>
+    </div>
+    <div class="pm-row">
+      <div class="pm-field"><label>Profession</label>
+        <select id="pmProf">
+          <option value="CE">CE</option>
+          <option value="MM">MM</option>
+        </select>
+      </div>
+      <div class="pm-field"><label>March CP</label><input id="pmCP" type="number" min="0"></div>
+      <div class="pm-field"><label>UC Level</label><input id="pmUC" placeholder="0-5 or blank" maxlength="5"></div>
+    </div>
+    <div class="pm-row">
+      <div class="pm-field" style="flex:2"><label>Notes (e.g. "Move to PRU by Thu +10")</label><input id="pmNotes" maxlength="200"></div>
+    </div>
+    <div class="pm-row">
+      <div class="pm-field">
+        <label>Availability</label>
+        <div class="pm-checks">
+          <label class="pm-check"><input type="checkbox" id="pmS6"> -6</label>
+          <label class="pm-check"><input type="checkbox" id="pmS2n"> -2</label>
+          <label class="pm-check"><input type="checkbox" id="pmS2p"> +2</label>
+          <label class="pm-check"><input type="checkbox" id="pmS10"> +10</label>
+        </div>
+      </div>
+    </div>
+    <div class="pm-actions">
+      <button class="pm-cancel" onclick="closePlayerModal()">Cancel</button>
+      <button class="pm-save" onclick="savePlayer()">Save Player</button>
+    </div>
+  </div>
+</div>
+
+<!-- Name Prompt Modal -->
+<div class="name-modal-bg" id="nameModalBg" onclick="if(event.target===this)closeNameModal()">
+  <div class="name-modal">
+    <h3>Publish Changes</h3>
+    <p>Enter your name so we can track who made this update.</p>
+    <input type="text" id="editorNameInput" placeholder="Your name" autocomplete="off" maxlength="50">
+    <div class="name-modal-actions">
+      <button class="nm-cancel" onclick="closeNameModal()">Cancel</button>
+      <button class="nm-confirm" onclick="confirmSave()">Publish</button>
+    </div>
+  </div>
+</div>
+
+<div class="status-bar" id="statusBar">
+  <span class="status-text" id="statusText"></span>
+</div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+var TITAN_API = 'https://push-worker.27tb8s6fct.workers.dev';
+var titanEditPw = localStorage.getItem('titanEditPw') || '';
+
+// ── PLAYER DATA (loaded dynamically) ──────────────────────────────────────────
+let RAW = [];
+let players = [];
+
+function rebuildPlayers() {
+  players = RAW.map(r=>({name:r[0],notes:r[1],unit:r[7],cp:r[8],prof:r[9],ucLvl:r[10],squad:r[11],alliance:r[6]}));
+}
+
+async function loadRoster() {
+  try {
+    const parsed = await fetch(TITAN_API + "/titan/roster")
+      .then(function (r) { if (!r.ok) throw new Error("worker"); return r.json(); })
+      .catch(function () { return fetch("data/titan-roster.json").then(function (r) { return r.json(); }); });
+    RAW = Array.isArray(parsed) ? parsed : [];
+  } catch {}
+  rebuildPlayers();
+}
+
+const SQUADS = ["Dog Squad A","Dog Squad B","MSS Squad A","MSS Squad B","PRU Squad A","Cat Squad A"];
+const SQUAD_SHORT = {"Dog Squad A":"Dog A (+10)","Dog Squad B":"Dog B (-2)","MSS Squad A":"MSS A (+2)","MSS Squad B":"MSS B (+10)","PRU Squad A":"PRU A (-6)","Cat Squad A":"Cat A (-2)"};
+
+const POSITIONS = [
+  { num:1, role:"Bigger CE", color:"#3fb950", x:22, y:22 },
+  { num:2, role:"Medium-strong CE", color:"#3fb950", x:78, y:78 },
+  { num:3, role:"MM + Urgent Care", color:"#d29922", x:5, y:50 },
+  { num:4, role:"MM + Urgent Care", color:"#d29922", x:50, y:5 },
+  { num:5, role:"MM + Urgent Care", color:"#d29922", x:50, y:95 },
+  { num:6, role:"MM + Urgent Care", color:"#d29922", x:95, y:50 },
+  { num:7, role:"Any MM, no urgent care (4 towers)", color:"#3fb950", x:22, y:78 },
+  { num:8, role:"Any MM, no urgent care (4 towers)", color:"#d29922", x:78, y:22 },
+];
+
+const POS_GROUPS = [
+  { title:"CE Positions (Map #1–2)", nums:[1,2], prof:"CE" },
+  { title:"MM Positions (Map #3–8)", nums:[3,4,5,6,7,8], prof:"MM" },
+];
+
+const SECTIONS = [
+  { key:"goon", title:"CE Goon Squad", defaults:4, note:"Go on offense / run around freely" },
+  { key:"standby", title:"Standby (Fill as Needed)", defaults:5 },
+  { key:"hover", title:"Hover Captains", defaults:2, note:"Make sure people get to hover station every round / notify when it's bounty time" },
+  { key:"crystal", title:"Crystal Lab Captains", defaults:2, note:"Track open labs, share labs that need help" },
+];
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let planData = {};
+let planSnapshot = {};     // deep copy taken after each load/save for diffing
+let activeSquad = "";
+let dirty = false;
+let dirtySquads = new Set(); // tracks which squads were actually edited
+let pendingSaveType = ""; // "plan" or "roster"
+let pendingDetail = "";   // detail string for changelog
+let pendingRosterChange = null; // stashed roster mutation until user confirms
+
+const ESC_MAP = {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"};
+function esc(s) { return String(s??"").replace(/[&<>"']/g, c => ESC_MAP[c]); }
+
+function toggleTheme() {
+  const d = document.documentElement.getAttribute("data-theme") === "dark";
+  document.documentElement.setAttribute("data-theme", d ? "light" : "dark");
+  document.getElementById("themeIcon").textContent = d ? "\uD83C\uDF19" : "\u2600\uFE0F";
+  document.getElementById("themeLabel").textContent = d ? "Dark Mode" : "Light Mode";
+}
+
+// ── INIT (no auth gate — load editor immediately) ────────────────────────────
+(async function init() {
+  await Promise.all([loadData(), loadRoster()]);
+  buildTabs();
+  selectSquad(SQUADS[0]);
+  renderRosterTable();
+})();
+
+// ── WORKER API ────────────────────────────────────────────────────────────────
+async function loadData() {
+  setStatus("Loading data...", "saving");
+  try {
+    const res = await fetch(TITAN_API + "/titan/battleplan");
+    if (res.ok) {
+      const result = await res.json();
+      planData = (result && typeof result === "object" && !Array.isArray(result)) ? result : {};
+    } else {
+      planData = {};
+    }
+    setStatus("Loaded", "saved");
+  } catch (e) {
+    setStatus("Failed to load: " + e.message, "error");
+    planData = {};
+  }
+  planSnapshot = JSON.parse(JSON.stringify(planData));
+}
+
+// ── NAME PROMPT & SAVE ────────────────────────────────────────────────────────
+function promptSave() {
+  pendingSaveType = "plan";
+  const nameInput = document.getElementById("editorNameInput");
+  nameInput.value = localStorage.getItem("editor_name") || "";
+  document.getElementById("nameModalBg").classList.add("open");
+  nameInput.focus();
+}
+
+function closeNameModal() {
+  document.getElementById("nameModalBg").classList.remove("open");
+  pendingRosterChange = null;
+}
+
+async function confirmSave() {
+  const name = document.getElementById("editorNameInput").value.trim().slice(0, 50);
+  if (!name) { alert("Please enter your name."); return; }
+  localStorage.setItem("editor_name", name);
+  closeNameModal();
+
+  if (pendingSaveType === "roster") {
+    await doSaveRoster(name);
+  } else {
+    await doSavePlan(name);
+  }
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && document.getElementById("nameModalBg").classList.contains("open")) confirmSave();
+  if (e.key === "Escape") document.getElementById("refModal").classList.remove("open");
+});
+
+async function doSavePlan(editorName) {
+  const btn = document.getElementById("saveBtn");
+  btn.disabled = true;
+  setStatus("Saving & publishing...", "saving");
+  collectNotes();
+
+  try {
+    // Re-fetch latest data to avoid overwriting other squads
+    let latestData = {};
+    try {
+      const freshRes = await fetch(TITAN_API + "/titan/battleplan");
+      if (freshRes.ok) {
+        const freshResult = await freshRes.json();
+        latestData = (freshResult && typeof freshResult === "object" && !Array.isArray(freshResult)) ? freshResult : {};
+      }
+    } catch {}
+
+    // Merge: only overwrite squads that were actually edited
+    const mergedData = JSON.parse(JSON.stringify(latestData));
+    dirtySquads.forEach(sq => {
+      if (planData[sq]) mergedData[sq] = JSON.parse(JSON.stringify(planData[sq]));
+    });
+
+    const res = await fetch(TITAN_API + "/titan/battleplan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Titan-Edit-Password": titanEditPw },
+      body: JSON.stringify({ data: mergedData })
+    });
+    if (!res.ok) {
+      const result = await res.json().catch(() => ({}));
+      throw new Error(result.error || "Save failed");
+    }
+
+    // Update local state with merged data
+    planData = mergedData;
+    const details = buildPlanDetails();
+    await appendChangelog(editorName, "Updated battle plan", details || "No detected changes (full re-save)");
+    dirty = false;
+    dirtySquads.clear();
+    setStatus("Published! GitHub Pages will update in ~1 min.", "saved");
+  } catch (e) {
+    setStatus("Error: " + e.message, "error");
+  }
+  btn.disabled = false;
+}
+
+function buildPlanDetails() {
+  const lines = [];
+  const old = planSnapshot;
+  SQUADS.forEach(sq => {
+    const cur = planData[sq] || {};
+    const prev = old[sq] || {};
+    const sqLines = [];
+    // Diff positions
+    POSITIONS.forEach(p => {
+      const was = prev.positions?.[p.num] || "";
+      const now = cur.positions?.[p.num] || "";
+      if (was !== now) {
+        if (was && now) sqLines.push("#" + p.num + ": " + was + " → " + now);
+        else if (now) sqLines.push("#" + p.num + ": + " + now);
+        else sqLines.push("#" + p.num + ": − " + was);
+      }
+    });
+    // Diff sections
+    SECTIONS.forEach(s => {
+      const wasSet = new Set((prev[s.key] || []).filter(Boolean));
+      const nowSet = new Set((cur[s.key] || []).filter(Boolean));
+      const label = s.title.split(" (")[0];
+      nowSet.forEach(n => { if (!wasSet.has(n)) sqLines.push(label + ": + " + n); });
+      wasSet.forEach(n => { if (!nowSet.has(n)) sqLines.push(label + ": − " + n); });
+    });
+    // Diff notes
+    const oldNotes = (prev.notes || "").trim();
+    const newNotes = (cur.notes || "").trim();
+    if (oldNotes !== newNotes && newNotes) sqLines.push("Notes updated");
+    if (sqLines.length) {
+      lines.push("── " + (SQUAD_SHORT[sq] || sq) + " ──");
+      lines.push(...sqLines);
+      lines.push("");
+    }
+  });
+  if (!lines.length) lines.push("No detected changes (full re-save)");
+  planSnapshot = JSON.parse(JSON.stringify(planData));
+  return lines.join("\n").trim();
+}
+
+async function appendChangelog(editorName, action, details) {
+  // Worker stamps the timestamp, unshifts, and caps at 200 server-side.
+  try {
+    const res = await fetch(TITAN_API + "/titan/changelog", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Titan-Edit-Password": titanEditPw },
+      body: JSON.stringify({
+        editor: editorName,
+        action: action,
+        details: details || "No additional details recorded"
+      })
+    });
+  } catch {}
+}
+
+function setStatus(msg, cls) {
+  const el = document.getElementById("statusText");
+  el.textContent = msg;
+  el.className = "status-text " + (cls || "");
+}
+
+// ── SQUAD DATA ────────────────────────────────────────────────────────────────
+function getSquadData(sq) {
+  if (!planData[sq]) {
+    planData[sq] = { positions: {} };
+    SECTIONS.forEach(s => { planData[sq][s.key] = Array(s.defaults).fill(""); });
+    planData[sq].notes = "";
+  }
+  return planData[sq];
+}
+
+function getSquadPlayers(sq) {
+  return players.filter(p => p.squad === sq).sort((a, b) => b.cp - a.cp);
+}
+
+function getUsedNames(data, excludeKey, excludeIdx) {
+  const used = new Set();
+  // Positions
+  if (data.positions) {
+    Object.entries(data.positions).forEach(([k, v]) => {
+      if (v && !(excludeKey === "pos" && String(excludeIdx) === String(k))) used.add(v);
+    });
+  }
+  // Sections
+  SECTIONS.forEach(s => {
+    (data[s.key] || []).forEach((v, i) => {
+      if (v && !(excludeKey === s.key && excludeIdx === i)) used.add(v);
+    });
+  });
+  return used;
+}
+
+function playerOptHtml(sqPlayers, selected, filterProf, usedNames) {
+  let h = '<option value="">-- Select --</option>';
+  const list = filterProf ? sqPlayers.filter(p => p.prof === filterProf) : sqPlayers;
+  list.forEach(p => {
+    if (usedNames && usedNames.has(p.name) && p.name !== selected) return;
+    const sel = p.name === selected ? " selected" : "";
+    h += `<option value="${esc(p.name)}"${sel}>${esc(p.name)} (${esc(p.cp)} ${esc(p.prof)} ${esc(p.unit)})</option>`;
+  });
+  return h;
+}
+
+// ── UI ────────────────────────────────────────────────────────────────────────
+function buildTabs() {
+  const c = document.getElementById("squadTabs");
+  SQUADS.forEach(sq => {
+    const btn = document.createElement("button");
+    btn.className = "tab-btn";
+    btn.textContent = SQUAD_SHORT[sq];
+    btn.dataset.squad = sq;
+    btn.onclick = () => selectSquad(sq);
+    c.appendChild(btn);
+  });
+}
+
+function selectSquad(sq) {
+  collectNotes(); // save notes from previous squad
+  activeSquad = sq;
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.squad === sq));
+  renderEditor();
+}
+
+function collectNotes() {
+  if (!activeSquad) return;
+  const ta = document.getElementById("squadNotes");
+  if (ta) { getSquadData(activeSquad).notes = ta.value; }
+}
+
+function markDirty() { dirty = true; if (activeSquad) dirtySquads.add(activeSquad); setStatus("Unsaved changes", ""); }
+
+function renderEditor() {
+  const data = getSquadData(activeSquad);
+  const sqPlayers = getSquadPlayers(activeSquad);
+  const el = document.getElementById("editorContent");
+
+  el.innerHTML = `
+    <div class="plan-layout">
+      <div class="panel">
+        <h3>Battle Map &mdash; ${esc(SQUAD_SHORT[activeSquad])}</h3>
+        <div class="diamond-grid" id="mapGrid"></div>
+        <div class="ref-map-wrap">
+          <img src="https://i.ibb.co/HTM5MTLn/TC-Reference-Map.png" alt="Formation Reference" loading="lazy" class="ref-map-thumb" onclick="document.getElementById('refModal').classList.add('open')" />
+          <div class="ref-map-label" onclick="document.getElementById('refModal').classList.add('open')">Formation Reference (click to expand)</div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Roster Assignments</h3>
+        ${POS_GROUPS.map(g => `
+          <div class="assign-section">
+            <div class="assign-header">${esc(g.title)}</div>
+            <ul class="assign-list" id="list_pos_${g.prof}"></ul>
+          </div>
+        `).join("")}
+        ${SECTIONS.map(s => `
+          <div class="assign-section">
+            <div class="assign-header">${esc(s.title)} <button class="add-btn" onclick="addSlot('${s.key}')">+ Add</button></div>
+            <ul class="assign-list" id="list_${s.key}"></ul>
+            ${s.note ? `<div class="assign-note">${esc(s.note)}</div>` : ""}
+          </div>
+        `).join("")}
+      </div>
+    </div>
+    <div class="notes-card">
+      <h3>Squad Notes &amp; Instructions</h3>
+      <textarea id="squadNotes" placeholder="Add battle plan notes, reminders, or instructions..." maxlength="1000">${esc(data.notes || "")}</textarea>
+    </div>
+  `;
+
+  document.getElementById("squadNotes").addEventListener("input", markDirty);
+  renderMap(data, sqPlayers);
+  renderAllSlots(data, sqPlayers);
+}
+
+function posProf(num) { return num <= 2 ? "CE" : "MM"; }
+
+function renderMap(data, sqPlayers) {
+  const grid = document.getElementById("mapGrid");
+  grid.innerHTML = "";
+
+  const hub = document.createElement("div");
+  hub.className = "map-hub";
+  hub.textContent = "Discarded Repository / Nexus Hub";
+  grid.appendChild(hub);
+
+  POSITIONS.forEach(pos => {
+    const assigned = data.positions[pos.num] || "";
+    const node = document.createElement("div");
+    node.className = "map-node" + (assigned ? " filled" : "");
+    node.style.left = pos.x + "%";
+    node.style.top = pos.y + "%";
+    node.innerHTML = `
+      <span class="num">${pos.num}</span>
+      <span class="role">${esc(pos.role)}</span>
+      ${assigned ? `<span class="player">${esc(assigned)}</span>` : ""}
+    `;
+    node.onclick = (e) => {
+      e.stopPropagation();
+      // Remove any existing map select overlay
+      document.querySelectorAll(".map-select-overlay").forEach(el => el.remove());
+      // Create floating select
+      const wrap = document.createElement("div");
+      wrap.className = "map-select-overlay";
+      wrap.style.left = pos.x + "%";
+      wrap.style.top = pos.y + "%";
+      const sel = document.createElement("select");
+      sel.innerHTML = playerOptHtml(sqPlayers, assigned, posProf(pos.num), getUsedNames(data, "pos", pos.num));
+      sel.onchange = () => {
+        data.positions[pos.num] = sel.value;
+        markDirty();
+        wrap.remove();
+        renderMap(data, sqPlayers);
+        renderAllSlots(data, sqPlayers);
+      };
+      sel.onblur = () => wrap.remove();
+      wrap.appendChild(sel);
+      grid.appendChild(wrap);
+      sel.focus();
+      // Highlight corresponding roster row
+      highlightPosRow(pos.num);
+    };
+    grid.appendChild(node);
+  });
+
+  // Close overlay on outside click
+  grid.onclick = (e) => {
+    if (e.target === grid) {
+      document.querySelectorAll(".map-select-overlay").forEach(el => el.remove());
+    }
+  };
+}
+
+function highlightPosRow(num) {
+  document.querySelectorAll(".assign-item.highlight").forEach(el => el.classList.remove("highlight"));
+  const row = document.getElementById("pos_row_" + num);
+  if (row) {
+    row.classList.add("highlight");
+    row.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    setTimeout(() => row.classList.remove("highlight"), 1500);
+  }
+}
+
+function renderPositionSlots(data, sqPlayers) {
+  POS_GROUPS.forEach(g => {
+    const list = document.getElementById("list_pos_" + g.prof);
+    const posInfo = POSITIONS.filter(p => g.nums.includes(p.num));
+    list.innerHTML = posInfo.map(pos => {
+      const used = getUsedNames(data, "pos", pos.num);
+      return `
+      <li class="assign-item" id="pos_row_${pos.num}">
+        <span class="slot-label">#${pos.num}</span>
+        <span class="pos-role-label">${esc(pos.role)}</span>
+        <select class="player-select" onchange="updatePosition(${pos.num},this.value)">
+          ${playerOptHtml(sqPlayers, data.positions[pos.num] || "", g.prof, used)}
+        </select>
+      </li>`;
+    }).join("");
+  });
+}
+
+function rerenderCurrent() {
+  const data = getSquadData(activeSquad);
+  const sp = getSquadPlayers(activeSquad);
+  renderMap(data, sp);
+  renderAllSlots(data, sp);
+}
+
+function updatePosition(num, val) {
+  getSquadData(activeSquad).positions[num] = val;
+  markDirty();
+  rerenderCurrent();
+}
+
+function renderAllSlots(data, sqPlayers) {
+  renderPositionSlots(data, sqPlayers);
+  SECTIONS.forEach(s => {
+    const list = document.getElementById("list_" + s.key);
+    const slots = data[s.key] || [];
+    list.innerHTML = slots.map((val, i) => {
+      const used = getUsedNames(data, s.key, i);
+      return `
+      <li class="assign-item">
+        <span class="slot-label">#${i + 1}</span>
+        <select class="player-select" onchange="updateSlot('${s.key}',${i},this.value)">
+          ${playerOptHtml(sqPlayers, val, null, used)}
+        </select>
+        <button class="remove-btn" onclick="removeSlot('${s.key}',${i})" title="Remove">&times;</button>
+      </li>
+    `;
+    }).join("");
+  });
+}
+
+function updateSlot(key, idx, val) {
+  getSquadData(activeSquad)[key][idx] = val;
+  markDirty();
+  rerenderCurrent();
+}
+
+function addSlot(key) {
+  if (!activeSquad) return;
+  getSquadData(activeSquad)[key].push("");
+  markDirty();
+  rerenderCurrent();
+}
+
+function removeSlot(key, idx) {
+  if (!activeSquad) return;
+  getSquadData(activeSquad)[key].splice(idx, 1);
+  markDirty();
+  rerenderCurrent();
+}
+
+// ── ROSTER MANAGEMENT ─────────────────────────────────────────────────────────
+const TANK = "\u{1F6E1}\uFE0F";
+function unitBadge(u) {
+  if (u === "Army") return `<span class="badge b-army">${TANK} Army</span>`;
+  return u === "Navy"
+    ? `<span class="badge b-navy">&#9875;&#65039; Navy</span>`
+    : `<span class="badge b-air">&#9992;&#65039; Air</span>`;
+}
+function profBadge(p) {
+  return p === "CE" ? `<span class="badge b-ce">&#9876; CE</span>` : `<span class="badge b-mm">&#128295; MM</span>`;
+}
+function moveTag(n) {
+  const m = n && n.match(/Move to (\w+) by/i);
+  return m ? `<span class="move-tag">&#8594; ${esc(m[1])}</span>` : "";
+}
+
+function renderRosterTable() {
+  const q = (document.getElementById("rosterSearch").value || "").toLowerCase();
+  const body = document.getElementById("rosterBody");
+  const filtered = RAW.map((r, i) => [r, i]).filter(([r]) =>
+    !q || r[0].toLowerCase().includes(q) || r[11].toLowerCase().includes(q) || r[1].toLowerCase().includes(q)
+  );
+  const maxCP = RAW.length ? Math.max(...RAW.map(r => r[8])) : 1;
+  body.innerHTML = filtered.map(([r, i]) => {
+    const isMove = /move to/i.test(r[1]);
+    const nameHtml = `<span class="pname">${esc(r[0])}</span>${isMove ? moveTag(r[1]) : ""}`;
+    const cp = r[8];
+    const cpHtml = `<div class="cp-wrap"><span style="min-width:2rem;font-weight:600">${esc(cp)}</span><div class="cp-bar"><div class="cp-fill" style="width:${Math.round((cp/maxCP)*100)}%"></div></div></div>`;
+    const dots = [{v:r[2],l:"-6"},{v:r[3],l:"-2"},{v:r[4],l:"+2"},{v:r[5],l:"+10"}]
+      .map(s => `<div title="Sat ${s.l}" class="dot ${s.v==="y"?"y":"n"}"></div>`).join("");
+    return `<tr class="${isMove ? "move-row" : ""}">
+      <td>${nameHtml}</td>
+      <td style="font-size:.78rem;color:var(--muted)">${esc(r[11])}</td>
+      <td>${unitBadge(r[7])}</td>
+      <td>${profBadge(r[9])}</td>
+      <td>${cpHtml}</td>
+      <td><div class="avail">${dots}</div></td>
+      <td><span style="font-size:.74rem;color:var(--muted)">${esc(r[6])}</span></td>
+      <td class="roster-actions">
+        <button onclick="openPlayerModal(${i})">Edit</button>
+        <button class="del-btn" onclick="deletePlayer(${i})">Del</button>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+function openPlayerModal(idx) {
+  document.getElementById("pmIdx").value = idx;
+  if (idx >= 0 && RAW[idx]) {
+    const r = RAW[idx];
+    document.getElementById("pmTitle").textContent = "Edit Player";
+    document.getElementById("pmName").value = r[0];
+    document.getElementById("pmNotes").value = r[1];
+    document.getElementById("pmS6").checked = r[2] === "y";
+    document.getElementById("pmS2n").checked = r[3] === "y";
+    document.getElementById("pmS2p").checked = r[4] === "y";
+    document.getElementById("pmS10").checked = r[5] === "y";
+    document.getElementById("pmAlliance").value = r[6];
+    document.getElementById("pmUnit").value = r[7];
+    document.getElementById("pmCP").value = r[8];
+    document.getElementById("pmProf").value = r[9];
+    document.getElementById("pmUC").value = r[10];
+    document.getElementById("pmSquad").value = r[11];
+  } else {
+    document.getElementById("pmTitle").textContent = "Add Player";
+    document.getElementById("pmName").value = "";
+    document.getElementById("pmNotes").value = "";
+    document.getElementById("pmS6").checked = false;
+    document.getElementById("pmS2n").checked = false;
+    document.getElementById("pmS2p").checked = false;
+    document.getElementById("pmS10").checked = false;
+    document.getElementById("pmAlliance").value = "DOG";
+    document.getElementById("pmUnit").value = "Army";
+    document.getElementById("pmCP").value = "";
+    document.getElementById("pmProf").value = "CE";
+    document.getElementById("pmUC").value = "";
+    document.getElementById("pmSquad").value = "Dog Squad A";
+  }
+  document.getElementById("playerModalBg").classList.add("open");
+  document.getElementById("pmName").focus();
+}
+
+function closePlayerModal() {
+  document.getElementById("playerModalBg").classList.remove("open");
+}
+
+function savePlayer() {
+  const name = document.getElementById("pmName").value.trim().slice(0, 30);
+  if (!name) { alert("Name is required"); return; }
+  const row = [
+    name,
+    document.getElementById("pmNotes").value.trim().slice(0, 200),
+    document.getElementById("pmS6").checked ? "y" : "n",
+    document.getElementById("pmS2n").checked ? "y" : "n",
+    document.getElementById("pmS2p").checked ? "y" : "n",
+    document.getElementById("pmS10").checked ? "y" : "n",
+    document.getElementById("pmAlliance").value,
+    document.getElementById("pmUnit").value,
+    parseInt(document.getElementById("pmCP").value) || 0,
+    document.getElementById("pmProf").value,
+    document.getElementById("pmUC").value.trim().slice(0, 5),
+    document.getElementById("pmSquad").value,
+  ];
+  const idx = parseInt(document.getElementById("pmIdx").value);
+  const isEdit = idx >= 0 && RAW[idx];
+  pendingDetail = (isEdit ? "Edited" : "Added") + " player: " + name + " (" + row[11] + ", " + row[9] + ", " + row[8] + " CP)";
+  pendingRosterChange = { type: isEdit ? "edit" : "add", idx, row };
+  closePlayerModal();
+  saveRosterToWorker();
+}
+
+function deletePlayer(idx) {
+  const delName = RAW[idx][0];
+  if (!confirm(`Delete ${delName}?`)) return;
+  pendingDetail = "Deleted player: " + delName;
+  pendingRosterChange = { type: "delete", idx };
+  saveRosterToWorker();
+}
+
+function saveRosterToWorker() {
+  // Prompt for editor name before saving roster
+  pendingSaveType = "roster";
+  const nameInput = document.getElementById("editorNameInput");
+  nameInput.value = localStorage.getItem("editor_name") || "";
+  document.getElementById("nameModalBg").classList.add("open");
+  nameInput.focus();
+}
+
+async function doSaveRoster(editorName) {
+  // Apply stashed roster mutation now that user confirmed
+  if (pendingRosterChange) {
+    const c = pendingRosterChange;
+    if (c.type === "edit") RAW[c.idx] = c.row;
+    else if (c.type === "add") RAW.push(c.row);
+    else if (c.type === "delete") RAW.splice(c.idx, 1);
+    RAW.sort((a, b) => a[0].localeCompare(b[0], undefined, { sensitivity: "base" }));
+    rebuildPlayers();
+    renderRosterTable();
+    if (activeSquad) renderEditor();
+    pendingRosterChange = null;
+  }
+  setStatus("Saving roster...", "saving");
+  try {
+    const res = await fetch(TITAN_API + "/titan/roster", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Titan-Edit-Password": titanEditPw },
+      body: JSON.stringify({ data: RAW })
+    });
+    if (!res.ok) {
+      const result = await res.json().catch(() => ({}));
+      throw new Error(result.error || "Roster save failed");
+    }
+    await appendChangelog(editorName, "Updated roster", pendingDetail);
+    setStatus("Roster saved! Main page will update in ~1 min.", "saved");
+  } catch (e) {
+    setStatus("Roster error: " + e.message, "error");
+  }
+}
+
+// Warn on leave with unsaved changes
+window.addEventListener("beforeunload", e => {
+  if (dirty) { e.preventDefault(); e.returnValue = ""; }
+});
+</script>
+</body>
+</html>
