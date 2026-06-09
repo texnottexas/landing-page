@@ -1,10 +1,10 @@
 // 2864tw.com — Hunting Guild Bulk Merge bookmarklet (full-API turbo build).
 // Standalone. Spends Hunting Guild merge stars and resolves every treasure
-// scenario through the game's OWN network API — no panels, no animations.
+// scenario through the game's own native functions.
 //
 // Each merge = NET.send(CREATE_TREASURE_MAP_DATA) which returns the new
-// treasure {id, type, ...}. We then resolve it by type via the same request
-// the game's own handlers use:
+// treasure {id, type, ...}. Resolve it by type via the same request
+// the game's handlers use:
 //   type 1  Repair Equipment → DONATE_TREASURE_MAP_ITEM (1683) {id,itemId,num:100}
 //                              then AWARD_DONATE_ITEM_TREASURE_MAP (1684) {id}
 //   type 2  Treasure Guard   → TreasureMapChooseBoss (1686) {id,quality}
@@ -17,7 +17,7 @@
 // live), called through NET.send — NOT hand-crafted binary packets. Boss summon
 // via API does NOT navigate to the world map, so the loop never leaves the guild.
 //
-// Light jitter between calls keeps a human-ish cadence. Abort any time.
+// Light jitter between calls keeps a normal cadence. Abort any time.
 //
 // Treasure Guard summons (Rare/Common) still spawn a guard on the world map that
 // must be fought within 1 hour or it expires.
@@ -26,7 +26,7 @@
   'use strict';
   var cc = window.cc;
 
-  // ─── request IDs (verified live) ──────────────────────────────────────
+  // ─── request IDs ──────────────────────────────────────
   var RID = { create: 1682, donate: 1683, claim: 1684, lottery: 1685, summonBoss: 1686 };
   // Acceptable Repair-Equipment contribute items, tried in order until one works.
   var DONATE_ITEMS = [300001, 301001, 302001, 303001, 310001, 311001, 312001, 313001, 320001, 321001, 322001, 323001];
