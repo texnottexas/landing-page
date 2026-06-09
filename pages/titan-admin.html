@@ -306,6 +306,41 @@
     .pm-save { background: var(--accent); border: 1px solid var(--accent); color: #fff; }
     .pm-save:hover { filter: brightness(1.15); }
 
+    /* Signups + slot config */
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+      padding: 1.25rem; margin-bottom: 1.5rem;
+    }
+    .card > strong { display: block; font-size: .85rem; color: var(--accent); margin-bottom: .9rem; }
+    .muted { color: var(--muted); font-size: .75rem; }
+    #su-table { width: 100%; border-collapse: collapse; font-size: .8rem; margin-top: 1rem; }
+    #su-table th {
+      background: var(--bg2); color: var(--muted); font-size: .65rem; text-transform: uppercase;
+      letter-spacing: .05em; padding: .55rem .7rem; text-align: left; border-bottom: 1px solid var(--border);
+    }
+    #su-table td { padding: .5rem .7rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    #su-table tbody tr:last-child td { border-bottom: none; }
+    #su-table tbody tr:hover td { background: var(--tag); }
+    #sc-editor { display: flex; flex-direction: column; gap: .6rem; margin-bottom: .9rem; }
+    .sc-meta-row { display: flex; gap: .8rem; flex-wrap: wrap; }
+    .sc-field { display: flex; flex-direction: column; gap: 3px; }
+    .sc-field label { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .sc-slot-row {
+      display: flex; gap: .6rem; align-items: flex-end; flex-wrap: wrap;
+      padding: .6rem; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+    }
+    .sc-input {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 6px;
+      color: var(--text); padding: .4rem .6rem; font-size: .8rem; outline: none;
+    }
+    .sc-input:focus { border-color: var(--accent); }
+    .sc-slot-row .sc-input { background: var(--bg); }
+    .sc-del {
+      background: var(--tag); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 6px; padding: .4rem .7rem; cursor: pointer; font-size: .8rem; transition: all .15s;
+    }
+    .sc-del:hover { border-color: var(--danger); color: var(--danger); }
+
     @media (max-width: 640px) {
       main { padding: 1rem 1rem 2rem; }
       header { padding: .7rem 1rem; flex-wrap: wrap; gap: .5rem; }
@@ -337,6 +372,13 @@
 </header>
 
 <main>
+  <!-- Top-level view tabs -->
+  <div class="squad-tabs" id="viewTabs" style="margin-bottom:1.25rem">
+    <span class="squad-tabs-label">View</span>
+    <button class="tab-btn active" id="viewTabEditor" data-view="editor" onclick="switchView('editor')">Battle Plan &amp; Roster</button>
+    <button class="tab-btn" id="viewTabSignups" data-view="signups" onclick="switchView('signups')">Signups</button>
+  </div>
+
   <!-- Editor -->
   <div id="editor">
     <div class="squad-tabs" id="squadTabs">
@@ -363,6 +405,28 @@
       </div>
     </div>
   </div>
+
+  <!-- Signups review + slot config -->
+  <section id="titan-signups-tab" style="display:none">
+    <div class="card">
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+        <strong>Week:</strong> <span id="su-week">&mdash;</span>
+        <button id="su-refresh" class="hdr-btn">Refresh</button>
+        <button id="su-export" class="hdr-btn">Copy as JSON</button>
+        <span id="su-count" class="muted"></span>
+      </div>
+      <table id="su-table"><thead><tr>
+        <th>Player</th><th>Alliance</th><th>Available</th><th>Preferred</th><th>Swap?</th><th>Notes</th><th>Submitted</th><th></th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    <div class="card">
+      <strong>Weekly slot config</strong>
+      <div id="sc-editor"></div>
+      <button id="sc-add-slot" class="hdr-btn">+ Add slot</button>
+      <button id="sc-save" class="hdr-btn">Save slot config</button>
+      <span id="sc-status" class="muted"></span>
+    </div>
+  </section>
 <div class="ref-modal-overlay" id="refModal" onclick="this.classList.remove('open')">
   <img src="https://i.ibb.co/HTM5MTLn/TC-Reference-Map.png" alt="Formation Reference Map" />
 </div>
@@ -1127,6 +1191,141 @@ async function doSaveRoster(editorName) {
 window.addEventListener("beforeunload", e => {
   if (dirty) { e.preventDefault(); e.returnValue = ""; }
 });
+
+// ── TOP-LEVEL VIEW SWITCHING ──────────────────────────────────────────────────
+var titanSignupsLoaded = false;
+function switchView(view) {
+  var showSignups = view === "signups";
+  document.getElementById("editor").style.display = showSignups ? "none" : "";
+  document.getElementById("titan-signups-tab").style.display = showSignups ? "" : "none";
+  document.getElementById("saveBtn").style.display = showSignups ? "none" : "";
+  document.querySelectorAll("#viewTabs .tab-btn").forEach(function (b) {
+    b.classList.toggle("active", b.dataset.view === view);
+  });
+  if (showSignups && !titanSignupsLoaded) {
+    titanSignupsLoaded = true;
+    loadTitanSignups();
+    loadSlotConfig();
+  }
+}
+
+// ── SIGNUPS REVIEW ────────────────────────────────────────────────────────────
+function loadTitanSignups() {
+  ensureTitanEditPw();
+  fetch(TITAN_API + '/titan/signups', { headers: { 'X-Titan-Edit-Password': titanEditPw } })
+    .then(function (r) { if (r.status === 401) { clearTitanEditPw(); throw new Error('auth'); } return r.json(); })
+    .then(function (resp) {
+      if (!resp.ok) throw new Error(resp.error || 'failed');
+      document.getElementById('su-week').textContent = resp.week;
+      renderTitanSignups(resp.signups || []);
+    })
+    .catch(function (e) { document.getElementById('su-count').textContent = 'Could not load (' + e.message + ')'; });
+}
+function renderTitanSignups(rows) {
+  var tb = document.querySelector('#su-table tbody'); tb.innerHTML = '';
+  document.getElementById('su-count').textContent = rows.length + ' signups';
+  rows.sort(function (a, b) { return (a.preferredSlot || '').localeCompare(b.preferredSlot || ''); });
+  rows.forEach(function (s) {
+    var tr = document.createElement('tr');
+    function td(t) { var d = document.createElement('td'); d.textContent = t; return d; }
+    tr.appendChild(td(s.name)); tr.appendChild(td(s.alliance || ''));
+    tr.appendChild(td((s.availableSlots || []).join(', '))); tr.appendChild(td(s.preferredSlot || ''));
+    tr.appendChild(td(s.canSwap ? 'yes' : '')); tr.appendChild(td([s.questions, s.notes].filter(Boolean).join(' | ')));
+    tr.appendChild(td((s.submittedAt || '').slice(0, 16).replace('T', ' ')));
+    var act = document.createElement('td');
+    var del = document.createElement('button'); del.textContent = '✕'; del.className = 'hdr-btn';
+    del.onclick = function () {
+      if (!confirm('Remove signup for ' + s.name + '?')) return;
+      var slug = s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'anon';
+      var idk = /^[a-f0-9]{16}$/.test(s.siteKey) ? s.siteKey : 'n_' + slug;
+      var key = 'titan_signup_' + s.week + '_' + idk;
+      fetch(TITAN_API + '/titan/signup?key=' + encodeURIComponent(key), { method: 'DELETE', headers: { 'X-Titan-Edit-Password': titanEditPw } })
+        .then(function () { loadTitanSignups(); });
+    };
+    act.appendChild(del); tr.appendChild(act); tb.appendChild(tr);
+  });
+}
+document.getElementById('su-refresh').onclick = loadTitanSignups;
+document.getElementById('su-export').onclick = function () {
+  fetch(TITAN_API + '/titan/signups', { headers: { 'X-Titan-Edit-Password': titanEditPw } })
+    .then(function (r) { return r.json(); })
+    .then(function (resp) { navigator.clipboard.writeText(JSON.stringify(resp.signups || [], null, 2)); document.getElementById('su-count').textContent = 'Copied JSON'; });
+};
+
+// ── SLOT CONFIG EDITOR ────────────────────────────────────────────────────────
+function makeSlotRow(slot) {
+  slot = slot || { id: '', label: '', alliances: [] };
+  var row = document.createElement('div');
+  row.className = 'sc-slot-row';
+  function field(labelText, value, key, width) {
+    var wrap = document.createElement('div'); wrap.className = 'sc-field'; wrap.style.flex = '1';
+    var lab = document.createElement('label'); lab.textContent = labelText; wrap.appendChild(lab);
+    var inp = document.createElement('input'); inp.className = 'sc-input'; inp.value = value;
+    inp.dataset.key = key; if (width) inp.style.minWidth = width;
+    wrap.appendChild(inp); return wrap;
+  }
+  row.appendChild(field('Slot ID', slot.id || '', 'id', '90px'));
+  row.appendChild(field('Label', slot.label || '', 'label', '120px'));
+  row.appendChild(field('Alliances (comma-separated)', (slot.alliances || []).join(', '), 'alliances', '160px'));
+  var del = document.createElement('button'); del.className = 'sc-del'; del.type = 'button'; del.textContent = 'Remove';
+  del.onclick = function () { row.remove(); };
+  row.appendChild(del);
+  return row;
+}
+function renderSlotEditor(cfg) {
+  cfg = cfg || {};
+  var ed = document.getElementById('sc-editor');
+  ed.innerHTML = '';
+  var meta = document.createElement('div'); meta.className = 'sc-meta-row';
+  function metaField(labelText, value, id, type) {
+    var wrap = document.createElement('div'); wrap.className = 'sc-field';
+    var lab = document.createElement('label'); lab.textContent = labelText; wrap.appendChild(lab);
+    var inp = document.createElement('input'); inp.className = 'sc-input'; inp.id = id;
+    inp.type = type || 'text'; inp.value = value || '';
+    wrap.appendChild(inp); return wrap;
+  }
+  meta.appendChild(metaField('Week', cfg.week || '', 'sc-week'));
+  meta.appendChild(metaField('Closes at', cfg.closesAt || '', 'sc-closesAt'));
+  ed.appendChild(meta);
+  var slotsWrap = document.createElement('div'); slotsWrap.id = 'sc-slots';
+  slotsWrap.style.display = 'flex'; slotsWrap.style.flexDirection = 'column'; slotsWrap.style.gap = '.6rem';
+  (cfg.slots || []).forEach(function (s) { slotsWrap.appendChild(makeSlotRow(s)); });
+  ed.appendChild(slotsWrap);
+}
+function readSlotEditor() {
+  var weekEl = document.getElementById('sc-week');
+  var closesEl = document.getElementById('sc-closesAt');
+  var slots = [];
+  document.querySelectorAll('#sc-slots .sc-slot-row').forEach(function (row) {
+    var vals = {};
+    row.querySelectorAll('input.sc-input').forEach(function (inp) { vals[inp.dataset.key] = inp.value; });
+    slots.push({
+      id: (vals.id || '').trim(),
+      label: (vals.label || '').trim(),
+      alliances: (vals.alliances || '').split(',').map(function (a) { return a.trim(); }).filter(Boolean)
+    });
+  });
+  return {
+    week: (weekEl && weekEl.value || '').trim(),
+    closesAt: (closesEl && closesEl.value || '').trim(),
+    slots: slots
+  };
+}
+function loadSlotConfig() {
+  fetch(TITAN_API + '/titan/slotconfig').then(function (r) { return r.json(); }).then(function (cfg) { renderSlotEditor(cfg); })
+    .catch(function (e) { document.getElementById('sc-status').textContent = 'Could not load config (' + e.message + ')'; renderSlotEditor({}); });
+}
+document.getElementById('sc-add-slot').onclick = function () {
+  var slotsWrap = document.getElementById('sc-slots');
+  if (slotsWrap) slotsWrap.appendChild(makeSlotRow());
+};
+document.getElementById('sc-save').onclick = function () {
+  ensureTitanEditPw();
+  var cfg = readSlotEditor();
+  fetch(TITAN_API + '/titan/slotconfig', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Titan-Edit-Password': titanEditPw }, body: JSON.stringify(cfg) })
+    .then(function (r) { if (r.status === 401) { clearTitanEditPw(); } return r.json(); })
+    .then(function (resp) { document.getElementById('sc-status').textContent = resp.ok ? ('Saved week ' + resp.week) : ('Error: ' + resp.error); });
+};
 </script>
 </body>
 </html>
