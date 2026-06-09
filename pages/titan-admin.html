@@ -458,7 +458,17 @@
 <script>
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 var TITAN_API = 'https://push-worker.27tb8s6fct.workers.dev';
+
+// ── EDITOR PASSWORD GATE ──────────────────────────────────────────────────────
 var titanEditPw = localStorage.getItem('titanEditPw') || '';
+function ensureTitanEditPw() {
+  if (!titanEditPw) {
+    titanEditPw = (window.prompt('Enter the Titan editor password to save changes:') || '').trim();
+    if (titanEditPw) localStorage.setItem('titanEditPw', titanEditPw);
+  }
+  return titanEditPw;
+}
+function clearTitanEditPw() { localStorage.removeItem('titanEditPw'); titanEditPw = ''; }
 
 // ── PLAYER DATA (loaded dynamically) ──────────────────────────────────────────
 let RAW = [];
@@ -571,6 +581,9 @@ async function confirmSave() {
   localStorage.setItem("editor_name", name);
   closeNameModal();
 
+  // Editor password is separate from the changelog attribution name above.
+  if (!ensureTitanEditPw()) { setStatus("Editor password required to save.", "error"); return; }
+
   if (pendingSaveType === "roster") {
     await doSaveRoster(name);
   } else {
@@ -611,6 +624,10 @@ async function doSavePlan(editorName) {
       headers: { "Content-Type": "application/json", "X-Titan-Edit-Password": titanEditPw },
       body: JSON.stringify({ data: mergedData })
     });
+    if (res.status === 401) {
+      clearTitanEditPw();
+      throw new Error("wrong editor password — try again");
+    }
     if (!res.ok) {
       const result = await res.json().catch(() => ({}));
       throw new Error(result.error || "Save failed");
@@ -681,6 +698,7 @@ async function appendChangelog(editorName, action, details) {
         details: details || "No additional details recorded"
       })
     });
+    if (res.status === 401) clearTitanEditPw();
   } catch {}
 }
 
@@ -1090,6 +1108,10 @@ async function doSaveRoster(editorName) {
       headers: { "Content-Type": "application/json", "X-Titan-Edit-Password": titanEditPw },
       body: JSON.stringify({ data: RAW })
     });
+    if (res.status === 401) {
+      clearTitanEditPw();
+      throw new Error("wrong editor password — try again");
+    }
     if (!res.ok) {
       const result = await res.json().catch(() => ({}));
       throw new Error(result.error || "Roster save failed");
