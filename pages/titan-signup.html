@@ -7,76 +7,216 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev; img-src 'self' data:; base-uri 'self'; form-action 'none'; object-src 'none';">
 <title>Titan Canyon Signup — Server 2864</title>
 <style>
-  :root[data-theme="dark"]{--bg:#0d1117;--bg2:#161b22;--card:#1c2128;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#79c0ff;--army:#3fb950;--red:#f85149;}
+  :root{
+    --bg:#080b11; --surface:#0e1420; --card:#141b28; --card2:#19212f;
+    --border:#26303f; --border2:#323e50;
+    --text:#e8eef6; --muted:#8a97a8; --faint:#5b6675;
+    --green:#3fb950; --green-soft:rgba(63,185,80,.14); --green-glow:rgba(63,185,80,.45);
+    --blue:#58a6ff; --gold:#e3b341; --gold-soft:rgba(227,179,65,.14); --red:#f85149;
+    --mono:'SF Mono',ui-monospace,'JetBrains Mono',Menlo,Monaco,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+  }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;line-height:1.5}
-  header{display:flex;align-items:center;gap:.75rem;padding:.9rem 1rem;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
-  header h1{font-size:1rem;margin:0;font-weight:600}
-  .home-btn{color:var(--text);display:flex}
-  main{max-width:640px;margin:0 auto;padding:1.2rem 1rem 4rem}
-  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1rem;margin-bottom:1rem}
-  label{display:block;font-weight:600;margin:.6rem 0 .25rem}
-  .hint{color:var(--muted);font-size:.8rem;font-weight:400}
-  select,input[type=text],textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:.55rem .6rem;font-size:.95rem;font-family:inherit}
-  textarea{min-height:70px;resize:vertical}
-  .slot{display:flex;align-items:center;gap:.55rem;background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:.55rem .6rem;margin:.35rem 0;cursor:pointer}
-  .slot input{accent-color:var(--accent)}
-  .slot .lbl{flex:1}
-  .slot .all{color:var(--muted);font-size:.78rem}
-  .btn{background:var(--accent);color:#08111d;border:none;border-radius:8px;padding:.7rem 1.1rem;font-weight:700;font-size:.95rem;cursor:pointer;width:100%}
-  .btn[disabled]{opacity:.5;cursor:not-allowed}
-  .status{margin-top:.7rem;font-size:.9rem;min-height:1.2em}
-  .ok{color:var(--army)} .err{color:var(--red)}
-  footer{text-align:center;color:var(--muted);font-size:.75rem;padding:1.5rem 1rem}
-  footer a{color:var(--muted)}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; color:var(--text); font-family:var(--sans); line-height:1.5;
+    background:
+      radial-gradient(900px 500px at 12% -8%, rgba(63,185,80,.10), transparent 60%),
+      radial-gradient(800px 600px at 100% 110%, rgba(88,166,255,.09), transparent 55%),
+      var(--bg);
+    min-height:100vh;
+  }
+  /* faint grain overlay */
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.035;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  header{
+    position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:.8rem;
+    padding:.85rem 1.1rem; background:rgba(8,11,17,.72); backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--border);
+  }
+  .home-btn{color:var(--muted); display:flex; transition:color .15s, transform .15s}
+  .home-btn:hover{color:var(--green); transform:translateX(-2px)}
+  .wordmark{display:flex; align-items:baseline; gap:.55rem; font-weight:800; letter-spacing:.14em; font-size:.82rem; text-transform:uppercase}
+  .wordmark .t{color:var(--text)}
+  .wordmark .s{color:var(--green); font-family:var(--mono); letter-spacing:.05em; font-weight:600}
+  .wordmark .dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green-glow);align-self:center}
+
+  main{position:relative; z-index:1; max-width:600px; margin:0 auto; padding:1.4rem 1.05rem 5rem}
+
+  .reveal{opacity:0; transform:translateY(14px); animation:rise .55s cubic-bezier(.2,.7,.2,1) forwards}
+  @keyframes rise{to{opacity:1; transform:none}}
+  @media (prefers-reduced-motion:reduce){ .reveal{animation:none; opacity:1; transform:none} }
+
+  /* briefing banner */
+  .briefing{
+    position:relative; overflow:hidden; border:1px solid var(--border); border-radius:16px;
+    background:linear-gradient(135deg,var(--card),var(--surface)); padding:1.15rem 1.2rem 1.2rem;
+    margin-bottom:1.15rem;
+  }
+  .briefing::before{content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:linear-gradient(var(--green),rgba(63,185,80,.2))}
+  .brief-kicker{font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; text-transform:uppercase; color:var(--green); margin-bottom:.35rem}
+  .brief-week{font-size:1.7rem; font-weight:800; letter-spacing:-.01em; font-family:var(--mono); line-height:1.1}
+  .brief-sub{color:var(--muted); font-size:.82rem; margin-top:.4rem; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap}
+  .pill{display:inline-flex; align-items:center; gap:.35rem; font-size:.68rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:.2rem .55rem; border-radius:999px; border:1px solid}
+  .pill.open{color:var(--green); border-color:rgba(63,185,80,.4); background:var(--green-soft)}
+  .pill.closed{color:var(--red); border-color:rgba(248,81,73,.4); background:rgba(248,81,73,.1)}
+  .pill.soon{color:var(--gold); border-color:rgba(227,179,65,.4); background:var(--gold-soft)}
+
+  .field{margin-bottom:1.3rem}
+  .field-label{font-size:.74rem; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:var(--text); margin-bottom:.5rem; display:flex; align-items:center; gap:.5rem}
+  .field-label .num{font-family:var(--mono); color:var(--green); font-size:.72rem; opacity:.8}
+  .hint{color:var(--faint); font-size:.74rem; font-weight:500; letter-spacing:0; text-transform:none}
+
+  /* selects + text inputs + textareas */
+  .input,select,input[type=text],textarea{
+    width:100%; background:var(--card); color:var(--text); border:1px solid var(--border2);
+    border-radius:11px; padding:.7rem .8rem; font-size:.95rem; font-family:inherit; transition:border-color .15s, box-shadow .15s;
+  }
+  select{appearance:none; -webkit-appearance:none; cursor:pointer; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 12 12'%3E%3Cpath fill='%238a97a8' d='M6 8.5 1.5 4h9z'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right .8rem center; padding-right:2.2rem}
+  select:focus,input[type=text]:focus,textarea:focus{outline:none; border-color:var(--green); box-shadow:0 0 0 3px var(--green-soft)}
+  textarea{min-height:74px; resize:vertical}
+  #player-fallback{margin-top:.5rem}
+
+  /* time-slot toggle cards */
+  .slots{display:flex; flex-direction:column; gap:.55rem}
+  .slot-card{
+    position:relative; display:flex; align-items:center; gap:.9rem; padding:.85rem .95rem;
+    border:1.5px solid var(--border2); border-radius:13px; cursor:pointer; user-select:none;
+    background:linear-gradient(180deg,var(--card2),var(--card)); transition:transform .16s, border-color .16s, box-shadow .16s, background .16s;
+  }
+  .slot-card:hover{border-color:#46566c; transform:translateY(-1px); box-shadow:0 8px 20px -14px rgba(0,0,0,.9)}
+  .slot-card:active{transform:translateY(0)}
+  .slot-cb{position:absolute; opacity:0; width:1px; height:1px; pointer-events:none}
+  .slot-box{flex:none; width:24px; height:24px; border-radius:8px; border:2px solid var(--faint); display:grid; place-items:center; transition:all .16s; background:rgba(255,255,255,.02)}
+  .slot-box svg{width:13px; height:13px; opacity:0; transform:scale(.5); transition:all .18s}
+  .slot-text{flex:1; min-width:0}
+  .slot-name{font-weight:650; font-size:.92rem; display:block}
+  .slot-all{font-family:var(--mono); font-size:.72rem; color:var(--muted); margin-top:.15rem; display:block}
+  .slot-card:has(.slot-cb:checked){
+    border-color:var(--green); background:linear-gradient(180deg,rgba(63,185,80,.16),rgba(63,185,80,.06));
+    box-shadow:0 0 0 1px rgba(63,185,80,.35), 0 10px 26px -16px var(--green-glow);
+  }
+  .slot-card:has(.slot-cb:checked) .slot-box{background:var(--green); border-color:var(--green)}
+  .slot-card:has(.slot-cb:checked) .slot-box svg{opacity:1; transform:scale(1)}
+  .slot-card:has(.slot-cb:focus-visible){outline:2px solid var(--blue); outline-offset:2px}
+  .slots-hint{font-size:.74rem; color:var(--faint); margin-top:.55rem; display:flex; align-items:center; gap:.4rem}
+
+  /* preferred pills */
+  .pref-wrap{margin-top:1rem; padding-top:1rem; border-top:1px dashed var(--border); display:none}
+  .pref-wrap.show{display:block; animation:rise .4s ease forwards}
+  .pref-pills{display:flex; flex-wrap:wrap; gap:.5rem}
+  .pref-pill{position:relative; display:inline-flex; align-items:center; gap:.4rem; padding:.5rem .85rem; border:1.5px solid var(--border2); border-radius:999px; cursor:pointer; font-size:.85rem; font-weight:600; transition:all .15s}
+  .pref-pill input{position:absolute; opacity:0; pointer-events:none}
+  .pref-pill .star{color:var(--faint); transition:color .15s; font-size:.9rem}
+  .pref-pill:hover{border-color:var(--gold)}
+  .pref-pill:has(input:checked){border-color:var(--gold); background:var(--gold-soft); color:#f1d8a0}
+  .pref-pill:has(input:checked) .star{color:var(--gold); text-shadow:0 0 10px rgba(227,179,65,.5)}
+
+  /* swap toggle switch */
+  .switch-row{display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.85rem .95rem; border:1px solid var(--border2); border-radius:13px; background:var(--card); cursor:pointer}
+  .switch-row .q{font-size:.9rem; font-weight:600}
+  .switch{position:relative; flex:none; width:50px; height:28px}
+  .switch input{position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer}
+  .track{position:absolute; inset:0; border-radius:999px; background:var(--border2); transition:background .2s}
+  .knob{position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%; background:#cfd7e2; transition:transform .2s, background .2s; box-shadow:0 1px 3px rgba(0,0,0,.5)}
+  .switch input:checked ~ .track{background:var(--green)}
+  .switch input:checked ~ .knob{transform:translateX(22px); background:#fff}
+  .switch-no,.switch-yes{font-family:var(--mono); font-size:.68rem; color:var(--faint); letter-spacing:.1em}
+
+  /* submit */
+  .submit{
+    width:100%; margin-top:.4rem; border:none; border-radius:13px; padding:.95rem 1rem; cursor:pointer;
+    font-size:.95rem; font-weight:800; letter-spacing:.04em; color:#06140a;
+    background:linear-gradient(180deg,#46c95b,#34a546); box-shadow:0 10px 30px -12px var(--green-glow);
+    transition:transform .14s, box-shadow .14s, filter .14s; display:flex; align-items:center; justify-content:center; gap:.5rem;
+  }
+  .submit:hover{transform:translateY(-1px); filter:brightness(1.06); box-shadow:0 14px 34px -12px var(--green-glow)}
+  .submit:active{transform:translateY(0)}
+  .submit:disabled{opacity:.55; cursor:not-allowed; filter:grayscale(.3)}
+  .status{margin-top:.85rem; font-size:.88rem; min-height:1.2em; text-align:center; transition:color .15s}
+  .status.ok{color:var(--green)} .status.err{color:var(--red)}
+  .status.ok::before{content:"✓ "; font-weight:800}
+
+  footer{position:relative; z-index:1; text-align:center; color:var(--faint); font-size:.72rem; padding:1.6rem 1rem}
 </style>
 </head>
 <body>
 <header>
   <a href="https://2864tw.com" class="home-btn" title="Back to 2864tw.com" aria-label="Home">
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2.5l-8 7h3v6a1 1 0 001 1h3v-4h2v4h3a1 1 0 001-1v-6h3z"/></svg>
+    <svg width="19" height="19" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2.5l-8 7h3v6a1 1 0 001 1h3v-4h2v4h3a1 1 0 001-1v-6h3z"/></svg>
   </a>
-  <h1>Titan Canyon Signup</h1>
+  <div class="wordmark"><span class="dot"></span><span class="t">Titan Canyon</span><span class="s">/ signup</span></div>
 </header>
-<main>
-  <div class="card" id="intro">
-    <div id="su-week-line" class="hint">Loading this week's slots…</div>
-  </div>
 
-  <form id="signup-form" class="card" autocomplete="off">
-    <label for="player">Your in-game name <span class="hint">(required)</span></label>
-    <select id="player"><option value="">— select your name —</option></select>
-    <div id="player-fallback" style="display:none;margin-top:.4rem">
-      <input type="text" id="player-typed" placeholder="Type your in-game name" maxlength="50">
+<main>
+  <section class="briefing reveal" id="briefing" style="animation-delay:.02s">
+    <div class="brief-kicker">Deployment window</div>
+    <div class="brief-week" id="su-week">…</div>
+    <div class="brief-sub" id="su-sub"><span id="su-close" class="hint">Loading this week's slots…</span></div>
+  </section>
+
+  <form id="signup-form" autocomplete="off">
+    <div class="field reveal" style="animation-delay:.08s">
+      <div class="field-label"><span class="num">01</span> Your in-game name <span class="hint">required</span></div>
+      <select id="player" class="input"><option value="">— select your name —</option></select>
+      <div id="player-fallback" style="display:none">
+        <input type="text" id="player-typed" placeholder="Type your in-game name" maxlength="50">
+      </div>
     </div>
 
-    <label>Times you can play <span class="hint">(check all that apply)</span></label>
-    <div id="slots"></div>
+    <div class="field reveal" style="animation-delay:.14s">
+      <div class="field-label"><span class="num">02</span> Times you can play</div>
+      <div class="slots" id="slots"></div>
+      <div class="slots-hint">
+        <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 6v8M6 10h8"/><circle cx="10" cy="10" r="8.2"/></svg>
+        Tap any time you could show up — pick as many as you can.
+      </div>
 
-    <label for="preferred">Preferred time <span class="hint">(pick one of the times you checked)</span></label>
-    <select id="preferred"><option value="">— select preferred —</option></select>
+      <div class="pref-wrap" id="preferred-wrap">
+        <div class="field-label" style="margin-bottom:.55rem"><span class="num">★</span> Your top pick <span class="hint">which of those is best?</span></div>
+        <div class="pref-pills" id="preferred"></div>
+      </div>
+    </div>
 
-    <label for="canswap">Willing to swap squad/alliance this week if needed?</label>
-    <select id="canswap"><option value="no">No</option><option value="yes">Yes</option></select>
+    <div class="field reveal" style="animation-delay:.2s">
+      <div class="field-label"><span class="num">03</span> Flexible on squad / alliance?</div>
+      <label class="switch-row">
+        <span class="q">I can swap squad or alliance this week if the roster needs it</span>
+        <span class="switch">
+          <input type="checkbox" id="canswap-toggle" aria-label="Willing to swap">
+          <span class="track"></span><span class="knob"></span>
+        </span>
+      </label>
+    </div>
 
-    <label for="questions">Any TC gameplay questions? <span class="hint">(optional)</span></label>
-    <textarea id="questions" maxlength="1000" placeholder="Bounty scoring, where to park, etc."></textarea>
+    <div class="field reveal" style="animation-delay:.26s">
+      <div class="field-label"><span class="num">04</span> TC gameplay questions <span class="hint">optional</span></div>
+      <textarea id="questions" maxlength="1000" placeholder="Bounty scoring, where to park your base, anything you're unsure about…"></textarea>
+    </div>
 
-    <label for="notes">Notes for the roster team <span class="hint">(optional)</span></label>
-    <textarea id="notes" maxlength="500"></textarea>
+    <div class="field reveal" style="animation-delay:.32s">
+      <div class="field-label"><span class="num">05</span> Notes for the roster team <span class="hint">optional</span></div>
+      <textarea id="notes" maxlength="500" placeholder="Anything the captains should know"></textarea>
+    </div>
 
-    <div style="margin-top:1rem"><button type="submit" class="btn" id="submit-btn">Submit signup</button></div>
-    <div class="status" id="status"></div>
+    <div class="reveal" style="animation-delay:.38s">
+      <button type="submit" class="submit" id="submit-btn">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M3 10l4 4 10-10"/></svg>
+        Submit signup
+      </button>
+      <div class="status" id="status"></div>
+    </div>
   </form>
 </main>
-<footer>
-  <span>Brought to you by supporters of the fk boats movement</span>
-</footer>
+<footer><span>Brought to you by supporters of the fk boats movement</span></footer>
 
 <script>
 (function () {
   var TITAN_API = 'https://push-worker.27tb8s6fct.workers.dev';
   var cfg = null, players = [];
+  var CHECK = '<svg viewBox="0 0 20 20" fill="none" stroke="#06140a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>';
 
   function stripSymbols(s){ return String(s||'').replace(/^[^\w]+/, ''); }
 
@@ -90,17 +230,22 @@
   });
 
   function renderWeek() {
-    var line = document.getElementById('su-week-line');
+    var weekEl = document.getElementById('su-week');
+    var subEl = document.getElementById('su-sub');
+    var closeEl = document.getElementById('su-close');
     if (cfg.week && cfg.week !== 'unset') {
-      var txt = 'Signing up for the week of ' + cfg.week + '.';
-      if (cfg.closesAt) txt += ' Signups close ' + new Date(cfg.closesAt).toLocaleString() + '.';
-      line.textContent = txt;
-      if (cfg.closesAt && Date.now() > Date.parse(cfg.closesAt)) {
-        var c = document.createElement('span'); c.className = 'err'; c.textContent = ' Signups are closed for this week.';
-        line.appendChild(c);
-      }
+      weekEl.textContent = cfg.week;
+      var closed = cfg.closesAt && Date.now() > Date.parse(cfg.closesAt);
+      var soon = cfg.closesAt && !closed && (Date.parse(cfg.closesAt) - Date.now() < 36*3600*1000);
+      closeEl.textContent = cfg.closesAt ? ('Closes ' + new Date(cfg.closesAt).toLocaleString([], {weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'})) : 'Open for signups';
+      var pill = document.createElement('span');
+      pill.className = 'pill ' + (closed ? 'closed' : soon ? 'soon' : 'open');
+      pill.textContent = closed ? 'Closed' : soon ? 'Closing soon' : 'Open';
+      subEl.appendChild(pill);
     } else {
-      line.textContent = 'Signups are not open yet. Check back soon.';
+      weekEl.textContent = 'Not open yet';
+      weekEl.style.fontSize = '1.25rem';
+      closeEl.textContent = 'Signups for the next Titan Canyon will appear here soon.';
     }
   }
 
@@ -133,26 +278,41 @@
     var box = document.getElementById('slots');
     box.innerHTML = '';
     (cfg.slots || []).forEach(function (s) {
-      var lab = document.createElement('label'); lab.className = 'slot';
+      var lab = document.createElement('label'); lab.className = 'slot-card';
       var cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = s.id; cb.className = 'slot-cb';
-      var name = document.createElement('span'); name.className = 'lbl'; name.textContent = s.label;
-      var all = document.createElement('span'); all.className = 'all'; all.textContent = (s.alliances && s.alliances.length) ? ('(' + s.alliances.join(', ') + ')') : '';
-      lab.appendChild(cb); lab.appendChild(name); lab.appendChild(all);
+      var bx = document.createElement('span'); bx.className = 'slot-box'; bx.innerHTML = CHECK;
+      var txt = document.createElement('span'); txt.className = 'slot-text';
+      var nm = document.createElement('span'); nm.className = 'slot-name'; nm.textContent = s.label;
+      txt.appendChild(nm);
+      if (s.alliances && s.alliances.length) {
+        var al = document.createElement('span'); al.className = 'slot-all'; al.textContent = s.alliances.join(' · ');
+        txt.appendChild(al);
+      }
+      lab.appendChild(cb); lab.appendChild(bx); lab.appendChild(txt);
       box.appendChild(lab);
       cb.addEventListener('change', syncPreferred);
     });
   }
 
+  // Rebuild the single-select "top pick" pills from the currently checked slots.
   function syncPreferred() {
-    var pref = document.getElementById('preferred');
+    var wrap = document.getElementById('preferred-wrap');
+    var pills = document.getElementById('preferred');
     var chosen = Array.prototype.map.call(document.querySelectorAll('.slot-cb:checked'), function (c){ return c.value; });
-    var cur = pref.value;
-    pref.innerHTML = '<option value="">— select preferred —</option>';
+    var cur = (document.querySelector('input[name="preferred"]:checked') || {}).value;
+    pills.innerHTML = '';
+    if (!chosen.length) { wrap.classList.remove('show'); return; }
+    wrap.classList.add('show');
     chosen.forEach(function (id) {
       var s = (cfg.slots || []).find(function (x){ return x.id === id; });
-      var o = document.createElement('option'); o.value = id; o.textContent = s ? s.label : id; pref.appendChild(o);
+      var pill = document.createElement('label'); pill.className = 'pref-pill';
+      var r = document.createElement('input'); r.type = 'radio'; r.name = 'preferred'; r.value = id;
+      if (id === cur || chosen.length === 1) r.checked = true;
+      var star = document.createElement('span'); star.className = 'star'; star.textContent = '★';
+      var t = document.createElement('span'); t.textContent = s ? s.label : id;
+      pill.appendChild(r); pill.appendChild(star); pill.appendChild(t);
+      pills.appendChild(pill);
     });
-    if (chosen.indexOf(cur) !== -1) pref.value = cur;
   }
 
   document.getElementById('signup-form').addEventListener('submit', function (e) {
@@ -176,26 +336,27 @@
 
     var available = Array.prototype.map.call(document.querySelectorAll('.slot-cb:checked'), function (c){ return c.value; });
     if (!available.length) { statusEl.textContent = 'Pick at least one time you can play.'; statusEl.className = 'status err'; return; }
-    var preferred = document.getElementById('preferred').value;
-    if (!preferred) { statusEl.textContent = 'Pick your preferred time.'; statusEl.className = 'status err'; return; }
+    var prefEl = document.querySelector('input[name="preferred"]:checked');
+    var preferred = prefEl ? prefEl.value : '';
+    if (!preferred) { statusEl.textContent = 'Choose your top-pick time.'; statusEl.className = 'status err'; return; }
 
     var payload = {
       name: name, siteKey: siteKey, alliance: alliance,
       availableSlots: available, preferredSlot: preferred,
-      canSwap: document.getElementById('canswap').value === 'yes',
+      canSwap: document.getElementById('canswap-toggle').checked,
       questions: document.getElementById('questions').value,
       notes: document.getElementById('notes').value
     };
 
     var btn = document.getElementById('submit-btn'); btn.disabled = true;
-    statusEl.textContent = 'Submitting…';
+    statusEl.className = 'status'; statusEl.textContent = 'Submitting…';
     fetch(TITAN_API + '/titan/signup', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
     }).then(function (r){ return r.json().then(function (j){ return { status: r.status, j: j }; }); })
       .then(function (res) {
         btn.disabled = false;
         if (res.j && res.j.ok) {
-          statusEl.textContent = 'Thanks ' + name + ' — your signup is in! You can re-submit to update it.';
+          statusEl.textContent = 'Locked in, ' + name + '! You can re-submit any time to update it.';
           statusEl.className = 'status ok';
         } else if (res.status === 429) {
           statusEl.textContent = 'Please wait a moment before submitting again.'; statusEl.className = 'status err';
