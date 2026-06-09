@@ -77,7 +77,6 @@
   select{appearance:none; -webkit-appearance:none; cursor:pointer; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 12 12'%3E%3Cpath fill='%238a97a8' d='M6 8.5 1.5 4h9z'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right .8rem center; padding-right:2.2rem}
   select:focus,input[type=text]:focus,textarea:focus{outline:none; border-color:var(--green); box-shadow:0 0 0 3px var(--green-soft)}
   textarea{min-height:74px; resize:vertical}
-  #player-fallback{margin-top:.5rem}
 
   /* time-slot toggle cards */
   .slots{display:flex; flex-direction:column; gap:.55rem}
@@ -161,9 +160,7 @@
     <div class="field reveal" style="animation-delay:.08s">
       <div class="field-label"><span class="num">01</span> Your in-game name <span class="hint">required</span></div>
       <select id="player" class="input"><option value="">— select your name —</option></select>
-      <div id="player-fallback" style="display:none">
-        <input type="text" id="player-typed" placeholder="Type your in-game name" maxlength="50">
-      </div>
+      <div id="player-hint" class="hint" style="margin-top:.5rem; display:none">Don't see your name? Ping a captain so we can add you to the roster.</div>
     </div>
 
     <div class="field reveal" style="animation-delay:.14s">
@@ -270,7 +267,7 @@
     } catch (e) {}
 
     sel.addEventListener('change', function () {
-      document.getElementById('player-fallback').style.display = (sel.value === '__notlisted__') ? 'block' : 'none';
+      document.getElementById('player-hint').style.display = (sel.value === '__notlisted__') ? 'block' : 'none';
     });
   }
 
@@ -322,17 +319,15 @@
 
     var sel = document.getElementById('player');
     var name = '', siteKey = '', alliance = '';
-    if (sel.value === '__notlisted__') {
-      name = (document.getElementById('player-typed').value || '').trim();
-    } else if (sel.value.indexOf('name:') === 0) {
+    // Picking a real name from the roster list is required. The empty placeholder
+    // and the "not listed" notice are not valid selections.
+    if (sel.value && sel.value !== '__notlisted__') {
       var opt = sel.options[sel.selectedIndex];
-      name = opt.getAttribute('data-name'); alliance = opt.getAttribute('data-alliance');
-    } else if (sel.value) {
-      var opt2 = sel.options[sel.selectedIndex];
-      name = opt2.getAttribute('data-name'); alliance = opt2.getAttribute('data-alliance');
+      name = (opt.getAttribute('data-name') || '').trim();
+      alliance = opt.getAttribute('data-alliance') || '';
       siteKey = /^[a-f0-9]{16}$/.test(sel.value) ? sel.value : '';
     }
-    if (!name) { statusEl.textContent = 'Please select or type your name.'; statusEl.className = 'status err'; return; }
+    if (!name) { statusEl.textContent = 'Please pick your name from the list.'; statusEl.className = 'status err'; return; }
 
     var available = Array.prototype.map.call(document.querySelectorAll('.slot-cb:checked'), function (c){ return c.value; });
     if (!available.length) { statusEl.textContent = 'Pick at least one time you can play.'; statusEl.className = 'status err'; return; }
