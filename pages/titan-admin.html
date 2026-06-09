@@ -1323,8 +1323,12 @@ document.getElementById('sc-save').onclick = function () {
   ensureTitanEditPw();
   var cfg = readSlotEditor();
   fetch(TITAN_API + '/titan/slotconfig', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Titan-Edit-Password': titanEditPw }, body: JSON.stringify(cfg) })
-    .then(function (r) { if (r.status === 401) { clearTitanEditPw(); } return r.json(); })
-    .then(function (resp) { document.getElementById('sc-status').textContent = resp.ok ? ('Saved week ' + resp.week) : ('Error: ' + resp.error); });
+    .then(function (r) { var was401 = r.status === 401; if (was401) clearTitanEditPw(); return r.json().then(function (resp) { return { resp: resp, was401: was401 }; }); })
+    .then(function (o) {
+      if (o.was401) { document.getElementById('sc-status').textContent = 'Wrong editor password — click Save again to retry'; return; }
+      document.getElementById('sc-status').textContent = o.resp.ok ? ('Saved week ' + o.resp.week) : ('Error: ' + o.resp.error);
+    })
+    .catch(function (e) { document.getElementById('sc-status').textContent = 'Save failed (' + e.message + ')'; });
 };
 </script>
 </body>
