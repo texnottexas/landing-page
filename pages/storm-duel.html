@@ -314,6 +314,13 @@
   .pl-mini .name { font-weight: 600; max-width: 7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pl-mini .pwr { font-family: 'SF Mono', Menlo, monospace; color: var(--muted); font-size: .65rem; }
   .tgt-monitor-note { font-size: .7rem; color: var(--muted); font-style: italic; padding: .25rem .35rem; line-height: 1.4; background: rgba(217,153,34,.06); border-left: 2px solid #d29922; border-radius: 3px; }
+  .blocked-banner { padding: 1rem 1.25rem; border: 1px dashed var(--border); background: var(--surface); border-radius: 8px; color: var(--muted); margin: 1rem 0; }
+  .blocked-banner .blocked-title { color: var(--text); font-weight: 600; margin-bottom: .25rem; }
+  .blocked-banner .blocked-sub { font-size: .85rem; color: var(--muted); }
+  .ref-banner { padding: .5rem .85rem; background: var(--card); border-left: 3px solid #d29922; color: var(--text); font-size: .85rem; margin-bottom: .75rem; border-radius: 0 6px 6px 0; }
+  .ov-kpi.blocked .kpi-dash { color: var(--muted); font-weight: 600; }
+  .ov-kpi .kpi-blocked-note { font-size: .6rem; color: var(--muted); margin-top: .25rem; text-transform: uppercase; letter-spacing: .04em; }
+  .team-stats .pf-dash { color: var(--muted); font-weight: 500; }
   .pin-note { font-size: .7rem; padding: .35rem .5rem; border-radius: 4px; margin: .35rem 0 .55rem; line-height: 1.35; }
   .pin-note.pin { background: rgba(63,185,80,.08); border-left: 2px solid var(--ally); color: var(--text); }
   .pin-note.flex { background: rgba(217,153,34,.08); border-left: 2px solid #d29922; color: var(--text); }
@@ -563,7 +570,7 @@
   (function setupIntro(){
     const overlay = document.getElementById('intro-overlay');
     if (!overlay) return;
-    const SEEN_KEY = 'storm-duel.r9.intro.seen.v1';
+    const SEEN_KEY = 'storm-duel.r13.intro.seen.v1';
     try {
       if (localStorage.getItem(SEEN_KEY) === '1') {
         overlay.classList.add('skip');
@@ -659,32 +666,42 @@
     const o = data.opp.totals;
     const aMP = a.march_power_sum.Army + a.march_power_sum.Navy + a.march_power_sum.AirForce;
     const oMP = o.march_power_sum.Army + o.march_power_sum.Navy + o.march_power_sum.AirForce;
+    // Pre-fight guards: round_score / event_fame / march_power all read 0 until
+    // the live event populates them. Show an em-dash + label instead of 0 so
+    // the strip doesn't look broken during the pre-fight window.
+    const status = (data.metadata && data.metadata.data_status) || {};
+    const fameBlocked = status.fame === 'blocked-until-live';
+    const marchesBlocked = status.marches === 'blocked-until-forces-assemble';
+    const stat = (label, value, blocked) =>
+      el('span', null, label + ' ',
+        blocked ? el('b', { class:'pf-dash' }, '—') : el('b', null, fmtNum(value))
+      );
     // Scoreboard is a second 3-tap unlock surface (same counter as the
     // Overview tab — taps stack across both targets).
     return el('div', { class:'scoreboard', onclick: bumpOverviewTap },
       el('div', { class:'team-summary ally' },
         el('div', { class:'team-name ally' }, ALLY_LABEL),
         el('div', { class:'team-stats' },
-          el('span', null, 'Round ', el('b', null, fmtNum(a.round_score_sum))),
-          el('span', null, 'Fame ',  el('b', null, fmtNum(a.event_fame_sum))),
-          el('span', null, 'Top10 Merit ', el('b', null, fmtNum(a.merit_top10_sum))),
-          el('span', null, 'March power ', el('b', null, fmtNum(aMP)))
+          stat('Round',       a.round_score_sum, fameBlocked),
+          stat('Fame',        a.event_fame_sum,  fameBlocked),
+          stat('Top10 Merit', a.merit_top10_sum, false),
+          stat('March power', aMP,               marchesBlocked)
         )
       ),
       el('div', { class:'vs' }, 'VS'),
       el('div', { class:'team-summary opp' },
         el('div', { class:'team-name opp' }, OPP_LABEL),
         el('div', { class:'team-stats' },
-          el('span', null, 'Round ', el('b', null, fmtNum(o.round_score_sum))),
-          el('span', null, 'Fame ',  el('b', null, fmtNum(o.event_fame_sum))),
-          el('span', null, 'Top10 Merit ', el('b', null, fmtNum(o.merit_top10_sum))),
-          el('span', null, 'March power ', el('b', null, fmtNum(oMP)))
+          stat('Round',       o.round_score_sum, fameBlocked),
+          stat('Fame',        o.event_fame_sum,  fameBlocked),
+          stat('Top10 Merit', o.merit_top10_sum, false),
+          stat('March power', oMP,               marchesBlocked)
         )
       )
     );
   }
 
-  function serverCard(z, side, isLeader) {
+  function serverCard(z, side, isLeader, data) {
     const sq = z.squad || {};
     const f = z.fame || {};
     const m = z.individual_merit;
@@ -692,6 +709,12 @@
     const ka = z.kartz_alliances;
     const cb = z.combat_buffs_L3;
     const fSum = (z.formations ? (sumPower(z.formations.Army)+sumPower(z.formations.Navy)+sumPower(z.formations.AirForce)) : 0);
+    // Pre-fight guards: fame and march power read 0 until the live event
+    // populates them. Show '—' with an 'awaits live' subtitle so a 0 doesn't
+    // read as 'finished with zero score'.
+    const status = (data && data.metadata && data.metadata.data_status) || {};
+    const fameBlocked = (f && f._blocked === true) || status.fame === 'blocked-until-live';
+    const marchesBlocked = status.marches === 'blocked-until-forces-assemble';
     const wrap = el('div', { class: 'scard ' + side + (isLeader ? ' is-leader' : '') });
     const head = el('div', { class:'scard-head' },
       el('div', { class:'scard-sid' }, 'S'+z.sid),
@@ -703,13 +726,13 @@
     );
     // Base stats — shown in every mode (facade-mutated values are still consistent).
     const baseStats = [
-      statBox('Fame Rank', f.rank ? '#'+f.rank : '—', 'event ' + fmtNum(f.event_fame)),
-      statBox('Round Score', fmtNum(f.round_score), null),
+      statBox('Fame Rank', f.rank ? '#'+f.rank : '—', fameBlocked ? 'awaits live' : ('event ' + fmtNum(f.event_fame))),
+      statBox('Round Score', fameBlocked ? '—' : fmtNum(f.round_score), fameBlocked ? 'awaits live' : null),
       statBox('Combat ATK', cb ? (Math.min(cb.L3_pct['All Units ATK'], 1800).toFixed(0)+'%' + (cb.L3_pct['All Units ATK'] > 1800 ? ' MAX' : '')) : '—', cb ? cb.combatWLs+' wl' : null),
       statBox('Top Player Merit', m && m.top[0] ? fmtNum(m.top[0].merit) : '—', m && m.top[0] ? wastedSubNode(m.top[0].username) : null),
       statBox('Kartz Best', ki && ki.top[0] ? '#'+ki.top[0].rank : '—', ki && ki.top[0] ? wastedSubNode(ki.top[0].username) : null),
       statBox('Top Alliance', ka && ka.alliances[0] ? ('['+ka.alliances[0].tag+']') : '—', ka && ka.alliances[0] ? '#'+ka.alliances[0].rank : null),
-      statBox('March Power', fmtNum(fSum), 'top 30'),
+      statBox('March Power', marchesBlocked ? '—' : fmtNum(fSum), marchesBlocked ? 'awaits Forces Assemble' : 'top 30'),
       statBox('Wastelands', cb ? cb.wastelandTotal : '—', cb ? cb.combatWLs+' combat' : null)
     ];
     // Deeper stats from the storm-duel-selection card-modal — gated to real mode
@@ -721,8 +744,8 @@
       statBox('Top Merit Player',
               m && m.top[0] ? ('#' + m.top[0].rank + ' · ' + (m.top[0].username || '?')) : '—',
               m && m.top[0] ? fmtNum(m.top[0].merit) + ' merit' : null),
-      statBox('UD / Storm Score', fmtNum(f.round_score),
-              f.rank ? ('global #' + f.rank) : null)
+      statBox('UD / Storm Score', fameBlocked ? '—' : fmtNum(f.round_score),
+              fameBlocked ? 'awaits live' : (f.rank ? ('global #' + f.rank) : null))
     ] : [];
     const body = el('div', { class:'scard-body' },
       el('div', { class:'scard-stats' }, ...baseStats, ...realStats)
@@ -746,11 +769,11 @@
   function renderServers(data) {
     const ally = el('div', { class:'server-col ally' },
       el('h3', null, ALLY_LABEL),
-      ...data.ally.warzones.map((z, i) => serverCard(z, 'ally', i===0))
+      ...data.ally.warzones.map((z, i) => serverCard(z, 'ally', i===0, data))
     );
     const opp = el('div', { class:'server-col opp' },
       el('h3', null, OPP_LABEL),
-      ...data.opp.warzones.map((z, i) => serverCard(z, 'opp', i===0))
+      ...data.opp.warzones.map((z, i) => serverCard(z, 'opp', i===0, data))
     );
     return el('div', { class:'servers' }, ally, opp);
   }
@@ -827,8 +850,21 @@
     const iv = setInterval(tick, 1000);
     // weak cleanup — when tab/page hidden continue is fine; persistent bound to DOM lifecycle isn't critical here.
 
-    function kpi(lab, aV, oV, fmt) {
+    const dataStatus = (data.metadata && data.metadata.data_status) || {};
+    const fameBlocked    = dataStatus.fame === 'blocked-until-live';
+    const marchesBlocked = dataStatus.marches === 'blocked-until-forces-assemble';
+    function kpi(lab, aV, oV, fmt, blocked) {
       fmt = fmt || fmtNum;
+      if (blocked) {
+        const dashAlly = el('b', { class:'kpi-dash' }, '—');
+        const dashOpp  = el('b', { class:'kpi-dash' }, '—');
+        return el('div', { class:'ov-kpi blocked' },
+          el('div', { class:'lab' }, lab),
+          el('div', { class:'row ally' }, el('span', null, ALLY_LABEL), dashAlly),
+          el('div', { class:'row opp'  }, el('span', null, OPP_LABEL),  dashOpp),
+          el('div', { class:'kpi-blocked-note' }, 'awaits live')
+        );
+      }
       const aB = el('b', null, fmt(aV));
       const oB = el('b', null, fmt(oV));
       return el('div', { class:'ov-kpi' },
@@ -838,12 +874,13 @@
       );
     }
     const kpis = el('div', { class:'ov-kpis' },
-      kpi('Round Score',   a.round_score_sum,  o.round_score_sum),
-      kpi('Event Fame',    a.event_fame_sum,   o.event_fame_sum),
+      kpi('Round Score',   a.round_score_sum,  o.round_score_sum, null, fameBlocked),
+      kpi('Event Fame',    a.event_fame_sum,   o.event_fame_sum,  null, fameBlocked),
       kpi('Top10 Merit',   a.merit_top10_sum,  o.merit_top10_sum),
       kpi('March Power',
         (a.march_power_sum.Army + a.march_power_sum.Navy + a.march_power_sum.AirForce),
-        (o.march_power_sum.Army + o.march_power_sum.Navy + o.march_power_sum.AirForce))
+        (o.march_power_sum.Army + o.march_power_sum.Navy + o.march_power_sum.AirForce),
+        null, marchesBlocked)
     );
 
     return el('div', null, timerRow, stripEl, kpis);
@@ -851,6 +888,16 @@
 
   // ----- TAB: Fame -----
   function tabFame(data) {
+    // R13 guard: fame unlocks when the battle begins.
+    const dataStatus = (data.metadata && data.metadata.data_status) || {};
+    if (dataStatus.fame === 'blocked-until-live') {
+      const sched = (data.metadata && data.metadata.schedule) || {};
+      const when = sched.fightBeginTime ? fmtDate(sched.fightBeginTime) : 'battle start';
+      return el('div', { class:'blocked-banner', 'data-blocked':'true' },
+        el('div', { class:'blocked-title' }, 'Fame rankings unlock when the battle starts'),
+        el('div', { class:'blocked-sub' }, 'Per-server fame and round_score populate live during the battle window. Estimated unlock: ' + when + '.')
+      );
+    }
     const all = [];
     for (const z of data.ally.warzones) all.push({ ...z, side:'ally' });
     for (const z of data.opp.warzones)  all.push({ ...z, side:'opp' });
@@ -964,6 +1011,13 @@
     const wrap = el('div', null);
     const body = el('div', null);
     const toggle = makeViewToggle(mode, m => { mode = m; render(); });
+    const dataStatus = (data.metadata && data.metadata.data_status) || {};
+    const meritBlank = dataStatus.merit_current_round === 'blank-until-live';
+    if (meritBlank) {
+      wrap.appendChild(el('div', { class:'ref-banner', 'data-reference-round':'12' },
+        'SSC R12 reference — current-round merit not yet live.'
+      ));
+    }
     function combinedCol(side, zones) {
       const all = [];
       for (const z of zones) for (const r of (z.individual_merit?.top || [])) all.push({...r, _sid: z.sid});
@@ -986,10 +1040,13 @@
       const blocks = zones.map(z => {
         const m = z.individual_merit;
         const sq = z.squad || {};
+        const pillText = meritBlank
+          ? 'SSC R12 reference — current-round merit not yet live'
+          : (m ? (m.count + ' ranked') : 'no data');
         const head = el('div', { class:'wz-head' },
           el('span', { class:'wz-tag' }, 'S'+z.sid),
           el('span', { class:'wz-meta', translate:'no' }, sq.leader || '—'),
-          el('span', { class:'meta-pill' }, m ? (m.count + ' ranked') : 'no data')
+          el('span', { class:'meta-pill' }, pillText)
         );
         if (!m) return el('div', { class:'wz-block '+side }, head);
         const rows = (m.top || []).slice(0, 10).map(p => markWasted(el('div', { class:'pl-row' },
@@ -1027,9 +1084,23 @@
 
   // ----- TAB: Kartz -----
   function tabKartz(data) {
+    // R13: current-round kartz is empty; show R11 reference archive if present.
+    const kartzRef = (data.metadata && data.metadata.kartz_reference) || null;
+    const usingRef = !!kartzRef;
     let subtab = 'individual';
     let mode = 'combined';
     const wrap = el('div', null);
+    if (usingRef) {
+      const refRound = kartzRef.round || 11;
+      const r11A = (kartzRef.r11_ally_sids || []).map(s => 'S'+s).join(', ');
+      const r11O = (kartzRef.r11_opp_sids  || []).map(s => 'S'+s).join(', ');
+      const sideNote = (r11A && r11O)
+        ? ' Columns split by R' + refRound + ' team membership (left = ' + r11A + '; right = ' + r11O + '), not R13 teams.'
+        : '';
+      wrap.appendChild(el('div', { class:'ref-banner', 'data-reference-round': String(refRound) },
+        'Showing R' + refRound + ' kartz reference — current-round damage leaderboard not yet live.' + sideNote
+      ));
+    }
     const subnav = el('div', { class:'subnav' },
       el('span', { class:'sb active', 'data-s':'individual' }, 'Individual'),
       el('span', { class:'sb', 'data-s':'alliance' }, 'Alliance')
@@ -1037,23 +1108,54 @@
     const toggle = makeViewToggle(mode, m => { mode = m; render(); });
     const body = el('div', null);
 
+    // Column label override: when showing R11 reference data, the columns
+    // represent R11 ally/opp servers (which don't map cleanly onto R13 teams),
+    // so override the R13 ALLY_LABEL/OPP_LABEL to "R11 Allies"/"R11 Opponents".
+    const refRoundForLabel = (kartzRef && kartzRef.round) || 11;
+    const kartzColLabel = side =>
+      usingRef
+        ? ('R' + refRoundForLabel + ' ' + (side === 'ally' ? 'Allies' : 'Opponents'))
+        : (side === 'ally' ? ALLY_LABEL : OPP_LABEL);
+
+    // When reading from R11 reference, the data shape collapses to flat top
+    // lists keyed by side; per-warzone (server) breakdown isn't available, so
+    // server view falls back to the same combined list with a note.
+    function refIndividualList(side) {
+      const list = (kartzRef && kartzRef.individual && kartzRef.individual[side]) || [];
+      return list.map(p => ({...p}));
+    }
+    function refAllianceList(side) {
+      const list = (kartzRef && kartzRef.alliances && kartzRef.alliances[side]) || [];
+      return list.map(a => ({...a}));
+    }
+
     function combinedIndividual(side, zones) {
-      const all = [];
-      for (const z of zones) for (const r of (z.kartz_individual?.top || [])) all.push({...r, _sid: z.sid});
-      all.sort((a,b) => (a.rank||9999)-(b.rank||9999));
+      let all;
+      if (usingRef) {
+        all = refIndividualList(side);
+        all.sort((a,b) => (a.rank||9999)-(b.rank||9999));
+      } else {
+        all = [];
+        for (const z of zones) for (const r of (z.kartz_individual?.top || [])) all.push({...r, _sid: z.sid});
+        all.sort((a,b) => (a.rank||9999)-(b.rank||9999));
+      }
       return el('div', { class:'col '+side },
-        el('h4', null, side==='ally' ? ALLY_LABEL : OPP_LABEL, el('span', null, all.length+' players')),
+        el('h4', null, kartzColLabel(side), el('span', null, all.length+' players')),
         ...all.map((p) => markWasted(el('div', { class:'pl-row' },
           el('div', { class:'rk' }, '#'+p.rank),
           avatarImg(p, p.username),
           el('div', { class:'info' },
-            el('span', { class:'stag '+side }, 'S'+p._sid),
+            p._sid != null ? el('span', { class:'stag '+side }, 'S'+p._sid) : null,
             el('span', { class:'name' }, p.username || '—')
           )
         ), p.username))
       );
     }
     function serverIndividual(side, zones) {
+      if (usingRef) {
+        // No per-server breakdown in reference data; show combined list.
+        return combinedIndividual(side, zones);
+      }
       const blocks = zones.map(z => {
         const k = z.kartz_individual;
         const sq = z.squad || {};
@@ -1071,21 +1173,27 @@
         return el('div', { class:'wz-block '+side }, head, ...rows);
       });
       return el('div', { class:'col '+side },
-        el('h4', null, side==='ally' ? ALLY_LABEL : OPP_LABEL),
+        el('h4', null, kartzColLabel(side)),
         ...blocks
       );
     }
     function combinedAlliance(side, zones) {
-      const all = [];
-      for (const z of zones) for (const a of (z.kartz_alliances?.alliances || [])) all.push({...a, _sid: z.sid});
-      all.sort((a,b) => (a.rank||9999)-(b.rank||9999));
+      let all;
+      if (usingRef) {
+        all = refAllianceList(side);
+        all.sort((a,b) => (a.rank||9999)-(b.rank||9999));
+      } else {
+        all = [];
+        for (const z of zones) for (const a of (z.kartz_alliances?.alliances || [])) all.push({...a, _sid: z.sid});
+        all.sort((a,b) => (a.rank||9999)-(b.rank||9999));
+      }
       return el('div', { class:'col '+side },
-        el('h4', null, side==='ally' ? ALLY_LABEL : OPP_LABEL, el('span', null, all.length+' alliances')),
+        el('h4', null, kartzColLabel(side), el('span', null, all.length+' alliances')),
         ...all.map(a => el('div', { class:'pl-row' },
           el('div', { class:'rk' }, '#'+a.rank),
           el('span', { class:'av', style:'display:flex;align-items:center;justify-content:center;font-size:.6rem;color:var(--muted);font-weight:700' }, (a.tag||'?').slice(0,2)),
           el('div', { class:'info' },
-            el('span', { class:'stag '+side }, 'S'+a._sid),
+            a._sid != null ? el('span', { class:'stag '+side }, 'S'+a._sid) : null,
             el('span', { class:'name' }, '['+a.tag+'] '+a.name)
           ),
           el('div', { class:'score' }, fmtNum(a.score))
@@ -1093,6 +1201,10 @@
       );
     }
     function serverAlliance(side, zones) {
+      if (usingRef) {
+        // No per-server breakdown in reference data; show combined list.
+        return combinedAlliance(side, zones);
+      }
       const blocks = zones.map(z => {
         const ka = z.kartz_alliances;
         const sq = z.squad || {};
@@ -1111,7 +1223,7 @@
         return el('div', { class:'wz-block '+side }, head, ...rows);
       });
       return el('div', { class:'col '+side },
-        el('h4', null, side==='ally' ? ALLY_LABEL : OPP_LABEL),
+        el('h4', null, kartzColLabel(side)),
         ...blocks
       );
     }
@@ -1145,6 +1257,16 @@
 
   // ----- TAB: Marches -----
   function tabMarches(data) {
+    // R13 guard: marches lock until Forces Assemble fires.
+    const dataStatus = (data.metadata && data.metadata.data_status) || {};
+    if (dataStatus.marches === 'blocked-until-forces-assemble') {
+      const sched = (data.metadata && data.metadata.schedule) || {};
+      const when = sched.waitFightBeginTime ? fmtDate(sched.waitFightBeginTime) : 'Forces Assemble';
+      return el('div', { class:'blocked-banner', 'data-blocked':'true' },
+        el('div', { class:'blocked-title' }, 'Marches lock until Forces Assemble'),
+        el('div', { class:'blocked-sub' }, 'Allied marches publish after the Forces Assemble phase tick. Check back near ' + when + '.')
+      );
+    }
     let unit = 'Army';
     let mode = 'combined';
     const wrap = el('div', null);
@@ -1399,16 +1521,16 @@
       return { sid: z.sid, leader: z.squad?.leader, buffSum, top10Pwr,
                wlTotal: (cb.wastelandTotal||0), combatWLs: (cb.combatWLs||0) };
     });
-    // R9 directive (Tex): explicit 3-defend / 2-attack split — S655, S1421,
-    // S2474 defend; S3885 and S2864 attack. Overrides the auto buff-stack
-    // logic for this round.
+    // R13 directive (Tex): S2864 is the core on DEFENSE this round. Lane
+    // assignments will be finalized after Forces Assemble; placeholder split
+    // pins the core defender and leaves picks unassigned until then.
     const HOME_SID = 2864;
-    const R9_DEFEND_SIDS = new Set([655, 1421, 2474]);
-    const R9_ATTACK_SIDS = new Set([3885, 2864]);
+    const R13_DEFEND_SIDS = new Set([2864]);
+    const R13_ATTACK_SIDS = new Set([]);
     serverRoles.forEach(s => {
-      if (R9_DEFEND_SIDS.has(s.sid))      s.role = 'DEFEND';
-      else if (R9_ATTACK_SIDS.has(s.sid)) s.role = 'ATTACK';
-      else                                s.role = 'ATTACK'; // fallback
+      if (R13_DEFEND_SIDS.has(s.sid))      s.role = 'DEFEND';
+      else if (R13_ATTACK_SIDS.has(s.sid)) s.role = 'ATTACK';
+      else                                 s.role = 'DEFEND'; // R13 default: S2864 core is DEFENSE
     });
     // Display order: defenders first (sorted by buff stack desc), then
     // attackers (sorted by buff stack desc).
@@ -1444,12 +1566,10 @@
     let baseOffense = ranked.filter(p => attackSids.has(p.sid));
     let baseDefense = ranked.filter(p => defendSids.has(p.sid));
 
-    // R9 defense pins — explicit name list. Tex / PeeWee / Mephisto live on
-    // the attack server (S2864) and get pulled across; the other three are
-    // already on defending servers but are listed here as confirmed home
-    // defenders. 8960mr and Sparta🥕 stay on attack (intentionally NOT in
-    // this list).
-    const DEFENSE_PIN_NAMES = ['Tex', 'PeeWee', 'Mephisto', '所詮一般人🚩', 'すず', 'Msk𓃱'];
+    // R13 defense pins — TBD. S2864 is core defender this round, so most of
+    // the home roster stays on the home lane by default. Adjust after Forces
+    // Assemble fires and we see allied picks' march loadouts.
+    const DEFENSE_PIN_NAMES = [];
     const movedToDefense = [];
     DEFENSE_PIN_NAMES.forEach(nm => {
       const idx = baseOffense.findIndex(p => p.name === nm);
@@ -1918,10 +2038,10 @@
     const assignSection = el('div', { class:'strat-section' },
       el('h4', null, 'Server Lane Assignment'),
       el('div', { class:'strat-note' }, '3 servers DEFEND, 2 ATTACK. ',
-        el('b', null, 'R9: S655 + S1421 + S2474 → DEFEND, S3885 + S2864 → ATTACK'),
+        el('b', null, 'R13: S2864 (core) → DEFEND. Allied picks pending Forces Assemble.'),
         ' (close matchup with S3051, push the bulk forward with S2864 + S3885 power). ',
-        el('b', null, 'Home defense pins: Tex, PeeWee, Mephisto, 所詮一般人🚩, すず, Msk𓃱'),
-        '. 8960mr and Sparta🥕 stay on attack with the rest of S2864. Cross-server Roving fills the remaining defense slots.'
+        el('b', null, 'Home defense pins: TBD — finalize after Forces Assemble'),
+        '. S2864 holds core defense; cross-server allies will be lane-assigned once their marches publish.'
       ),
       srvRoleHost,
       el('h4', { style:'margin-top:.85rem' }, 'Suggested Stage Assignment'),
@@ -1999,8 +2119,9 @@
   // weaker so an enemy scouting the page assumes they have the favor. Three
   // quick taps on the Overview tab toggle the real data (sessionStorage-gated).
   const REAL_KEY = 'sd-real-v1';
-  // R11+: always render real data — the 3-tap facade gate is paused while the
-  // matchup is public-friendly. Restore by returning sessionStorage check.
+  // R13: still always-real. Facade gate stays paused while the page is
+  // public-friendly during pre-fight publicity. Restore by returning the
+  // sessionStorage check.
   function isRealMode() { return true; }
   function setRealMode(v) {
     try { v ? sessionStorage.setItem(REAL_KEY, '1') : sessionStorage.removeItem(REAL_KEY); }
@@ -2141,7 +2262,7 @@
       const tabs = { 'Overview': () => tabOverview(data) };
       // Strategy is only revealed after the 3-tap unlock — keeps lane plans
       // and key-target lists out of scout view.
-      // Strategy tab hidden for R11 — surface again next round.
+      // Strategy tab still hidden for R13 — surface once Forces Assemble fires and march/lane data lands.
       // if (REAL) tabs['Strategy'] = () => tabStrategy(data);
       tabs['Fame']    = () => tabFame(data);
       tabs['Buffs']   = () => tabBuffs(data);
