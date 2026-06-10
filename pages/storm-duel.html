@@ -321,6 +321,22 @@
   .ov-kpi.blocked .kpi-dash { color: var(--muted); font-weight: 600; }
   .ov-kpi .kpi-blocked-note { font-size: .6rem; color: var(--muted); margin-top: .25rem; text-transform: uppercase; letter-spacing: .04em; }
   .team-stats .pf-dash { color: var(--muted); font-weight: 500; }
+
+  /* 50K+ Merit Depth — simple side-by-side tables (Merit tab header) */
+  .depth-tables { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; margin: 0 0 1rem; }
+  @media (max-width: 640px) { .depth-tables { grid-template-columns: 1fr; } }
+  .depth-tbl { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .6rem .75rem; }
+  .depth-tbl .dt-cap { font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; margin-bottom: .4rem; }
+  .depth-tbl.ally .dt-cap { color: var(--ally); }
+  .depth-tbl.opp  .dt-cap { color: var(--opp);  }
+  .depth-tbl table { width: 100%; border-collapse: collapse; font-family: 'SF Mono', Menlo, monospace; font-size: .78rem; }
+  .depth-tbl th { text-align: right; font-weight: 600; font-size: .62rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: .15rem .3rem .3rem; border-bottom: 1px solid var(--border); }
+  .depth-tbl th:first-child { text-align: left; }
+  .depth-tbl td { padding: .25rem .3rem; text-align: right; color: var(--text); border-bottom: 1px dashed rgba(255,255,255,.04); }
+  .depth-tbl td:first-child { text-align: left; color: var(--text); font-weight: 600; }
+  .depth-tbl tr:last-child td { border-bottom: none; }
+  .depth-tbl tr.dt-total td { border-top: 1px solid var(--border); border-bottom: none; font-weight: 700; padding-top: .35rem; }
+  .depth-tbl tr.dt-total td:first-child { color: var(--muted); font-size: .62rem; text-transform: uppercase; letter-spacing: .05em; }
   .pin-note { font-size: .7rem; padding: .35rem .5rem; border-radius: 4px; margin: .35rem 0 .55rem; line-height: 1.35; }
   .pin-note.pin { background: rgba(63,185,80,.08); border-left: 2px solid var(--ally); color: var(--text); }
   .pin-note.flex { background: rgba(217,153,34,.08); border-left: 2px solid #d29922; color: var(--text); }
@@ -1016,6 +1032,43 @@
     if (meritBlank) {
       wrap.appendChild(el('div', { class:'ref-banner', 'data-reference-round':'12' },
         'SSC R12 reference — current-round merit not yet live.'
+      ));
+    }
+
+    // 50K+ Merit Depth — simple side-by-side tables. Uses
+    // metadata.merit_depth.threshold (default 50000) and per-warzone
+    // individual_merit.above_50k populated at build time from
+    // ssc-merit-leaderboard.json.
+    const depth = (data.metadata && data.metadata.merit_depth) || {};
+    const threshold = depth.threshold || 50000;
+    const tLab = (threshold >= 1000) ? (threshold/1000) + 'K' : String(threshold);
+    function depthTable(side, zones, totals) {
+      const rows = zones.map(z => el('tr', null,
+        el('td', null, 'S' + z.sid),
+        el('td', null, fmtNum((z.individual_merit || {}).above_50k || 0)),
+        el('td', null, fmtNum((z.individual_merit || {}).count || 0))
+      ));
+      const totalRow = el('tr', { class:'dt-total' },
+        el('td', null, 'Total'),
+        el('td', null, fmtNum(totals.above_50k_sum || 0)),
+        el('td', null, fmtNum(totals.merit_ranked_sum || 0))
+      );
+      return el('div', { class:'depth-tbl ' + side },
+        el('div', { class:'dt-cap' }, side === 'ally' ? ALLY_LABEL : OPP_LABEL),
+        el('table', null,
+          el('thead', null, el('tr', null,
+            el('th', null, 'Server'),
+            el('th', null, '≥ ' + tLab),
+            el('th', null, 'Ranked')
+          )),
+          el('tbody', null, ...rows, totalRow)
+        )
+      );
+    }
+    if (data.ally.totals.above_50k_sum != null && data.opp.totals.above_50k_sum != null) {
+      wrap.appendChild(el('div', { class:'depth-tables' },
+        depthTable('ally', data.ally.warzones, data.ally.totals),
+        depthTable('opp',  data.opp.warzones,  data.opp.totals)
       ));
     }
     function combinedCol(side, zones) {
