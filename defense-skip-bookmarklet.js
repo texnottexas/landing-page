@@ -73,7 +73,7 @@
     (function walk(n, d) {
       if (found || !n || d > 18 || !n.active) return;
       var btn = n.getComponent(cc.Button);
-      if (btn && btn.clickEvents) {
+      if (btn && btn.clickEvents && btn.interactable !== false) {
         for (var i = 0; i < btn.clickEvents.length; i++) {
           if (btn.clickEvents[i].handler === handler) { found = { node: n, btn: btn }; return; }
         }
@@ -82,6 +82,21 @@
       for (var j = 0; j < ch.length; j++) walk(ch[j], d + 1);
     })(root, 0);
     return found;
+  }
+
+  // The skip button blinks in and out while the wave state machine settles.
+  // Clicking on first sighting gets swallowed, so require it present on
+  // several consecutive polls before treating it as clickable.
+  async function waitForStableBtn(rootPath, handler, timeoutMs, abort) {
+    var stable = 0, found = null;
+    var deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline && !(abort && abort.aborted)) {
+      var f = findBtnByHandler(rootPath, handler);
+      if (f) { found = f; stable++; if (stable >= 5) return found; }
+      else { found = null; stable = 0; }
+      await delay(150);
+    }
+    return null;
   }
 
   function emitBtn(found) { found.btn.clickEvents.forEach(function (e) { e.emit([found.node]); }); }
@@ -129,30 +144,16 @@
         if (!getPanel()) { stats.lastError = 'Fortress panel did not reopen'; break; }
       }
 
-      // Wait for the Skip button (covers the wave transition animation)
-      var skip = null;
-      var sd = Date.now() + 15000;
-      while (Date.now() < sd && !opts.abort.aborted) {
-        skip = findBtnByHandler(PANEL, SKIP_HANDLER);
-        if (skip) break;
-        await delay(100);
-      }
+      // Wait for the Skip button to be present AND stable (covers the wave
+      // transition animation plus the blink-in window)
+      var skip = await waitForStableBtn(PANEL, SKIP_HANDLER, 20000, opts.abort);
       if (opts.abort.aborted) { stats.aborted = true; break; }
       if (!skip) { stats.friction.noSkip++; opts.onProgress(stats, 'waiting on skip button'); continue; }
 
-      // The button can appear a few hundred ms before the game accepts
-      // clicks. Settle, and if it blinks out, poll for it to come back
-      // rather than burning the whole cycle.
-      await delay(300);
-      skip = findBtnByHandler(PANEL, SKIP_HANDLER);
-      if (!skip) {
-        var rd = Date.now() + 2500;
-        while (Date.now() < rd && !skip) { await delay(150); skip = findBtnByHandler(PANEL, SKIP_HANDLER); }
-        if (skip) { await delay(300); skip = findBtnByHandler(PANEL, SKIP_HANDLER); }
-      }
-      if (!skip) { stats.friction.skipVanished++; opts.onProgress(stats, 'skip button not settled'); continue; }
-
-      emitBtn(skip);
+      // Re-find right before clicking so the emitted node is fresh
+      var fresh = findBtnByHandler(PANEL, SKIP_HANDLER);
+      if (!fresh) { stats.friction.skipVanished++; opts.onProgress(stats, 'skip button not settled'); continue; }
+      emitBtn(fresh);
 
       // Confirm dialog; if the click was swallowed, re-click once
       var cf = null;
@@ -171,8 +172,9 @@
       if (!cf) { stats.friction.noConfirm++; opts.onProgress(stats, 'no confirm dialog'); await delay(1200); continue; }
       emitBtn(cf);
 
-      // Wait for the wave label to actually advance (authoritative)
-      var adl = Date.now() + 8000;
+      // Wait for the wave label to actually advance (authoritative). The
+      // live transition animation can run well past 8s, so give it room.
+      var adl = Date.now() + 15000;
       var newWave = lastWave;
       while (Date.now() < adl) {
         var w = readWave();
@@ -184,6 +186,8 @@
         stats.lastWave = newWave;
         stats.advanced++;
         opts.onProgress(stats, 'wave ' + newWave);
+        // small breather so the next cycle starts after the new wave settles
+        await delay(500);
       } else {
         stats.friction.noAdvance++;
         opts.onProgress(stats, 'wave did not advance yet');
