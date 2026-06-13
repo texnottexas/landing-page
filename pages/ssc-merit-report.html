@@ -107,6 +107,20 @@
   .lang-btn:hover{color:var(--us);border-color:var(--us);background:rgba(63,185,80,.06);}
   .lang-btn .flag{font-size:1rem;letter-spacing:0;line-height:1;}
   .lang-btn .code{font-size:.7rem;letter-spacing:.18em;}
+  .round-toggle{
+    display:inline-flex;gap:0;margin-top:14px;
+    border:1px solid var(--border);width:max-content;
+  }
+  .round-btn{
+    background:transparent;border:0;color:var(--text-dim);cursor:pointer;
+    padding:6px 12px;font-family:'JetBrains Mono',monospace;font-size:.7rem;
+    letter-spacing:.18em;text-transform:uppercase;line-height:1;
+    transition:color .15s ease,background .15s ease;
+  }
+  .round-btn + .round-btn{border-left:1px solid var(--border);}
+  .round-btn:hover{color:var(--us);background:rgba(63,185,80,.06);}
+  .round-btn.active{color:var(--us);background:rgba(63,185,80,.10);box-shadow:inset 0 -2px 0 var(--us);}
+  .round-btn[disabled]{opacity:.5;cursor:wait;}
   #google_translate_element{position:absolute;left:-9999px;opacity:0;pointer-events:none;}
   /* Hide Google's injected top frame so the cls-bar isn't pushed down */
   body{top:0 !important;}
@@ -464,6 +478,10 @@
       <div class="eyebrow">Combat Assessment</div>
       <h1>how hard<br>are <span class="accent">we</span> fighting.</h1>
       <div class="subline" id="meta-line">— transmission incoming —</div>
+      <div class="round-toggle" id="round-toggle" role="tablist" aria-label="Round dataset">
+        <button type="button" class="round-btn active" data-round="13" role="tab" aria-selected="true">R13 · live</button>
+        <button type="button" class="round-btn" data-round="12" role="tab" aria-selected="false">R12</button>
+      </div>
     </div>
     <div class="nav-block">
       <a href="index.html" class="nav-btn">⟵ Home</a>
@@ -483,7 +501,7 @@
       <span class="bracket-bl"></span><span class="bracket-br"></span>
       <div class="panel-head">
         <div class="panel-title"><span class="id">01·</span> Brief</div>
-        <div class="panel-meta">live · round 12</div>
+        <div class="panel-meta"><span id="brief-round-label">live · round 13</span></div>
       </div>
       <div class="brief" id="brief"></div>
     </section>
@@ -573,7 +591,7 @@
   </main>
 
   <div class="footer">
-    <div>FILE 2864 · alfred analysis suite · round 12 dossier</div>
+    <div>FILE 2864 · alfred analysis suite · <span id="footer-round-label">round 13</span> dossier</div>
     <div class="fk">Brought to you by supporters of the fk boats movement</div>
     <div><a href="roadmap.html">roadmap</a></div>
   </div>
@@ -628,9 +646,22 @@ function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-async function load(){
+// Map of round → data file. Default round (13) uses the canonical filename so
+// any other consumer can keep fetching it. Earlier rounds get suffixed siblings.
+const ROUND_FILES = {
+  13: 'data/ssc-merit-leaderboard.json',
+  12: 'data/ssc-merit-leaderboard-r12.json',
+};
+const DEFAULT_ROUND = 13;
+let CURRENT_ROUND = DEFAULT_ROUND;
+let INITIALIZED = false;
+
+async function load(round){
+  const target = round || DEFAULT_ROUND;
+  const url = ROUND_FILES[target];
+  if (!url) throw new Error('unknown round: ' + target);
   try {
-    const res = await fetch('data/ssc-merit-leaderboard.json');
+    const res = await fetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
     if (!json || !Array.isArray(json.entries) || json.entries.length === 0) {
@@ -638,6 +669,7 @@ async function load(){
     }
     DATA = json.entries;
     META = json.metadata || {};
+    CURRENT_ROUND = target;
 
     // One-time aggregates over DATA (immutable after load).
     TOTAL_BY_SID = new Map();
@@ -647,18 +679,64 @@ async function load(){
     }
     SLIDER_HI = Math.log(DATA.length);
 
-    const totalEntries = (META.total_entries != null) ? META.total_entries : DATA.length;
-    const uniqueServers = (META.unique_servers != null) ? META.unique_servers : (TOTAL_BY_SID.size);
-    document.getElementById('meta-line').innerHTML =
-      'round ' + escapeHtml(META.round != null ? META.round : '—') +
-      ' · <b>' + fmtNum(totalEntries) + '</b> ranked combatants · <b>' + fmtNum(uniqueServers) + '</b> servers represented';
-    document.getElementById('slider-max').textContent = fmtNum(totalEntries);
-    init();
+    applyRoundLabels();
+    if (!INITIALIZED) {
+      init();
+      INITIALIZED = true;
+    } else {
+      // Re-bind for new dataset without rebuilding the page chrome.
+      PINNED = new Set([US_SID]);
+      SELECTED_SID = US_SID;
+      CURRENT_TOPN = DEFAULT_TOPN;
+      LEGEND_SORT = {col: 'count', dir: 'desc'};
+      const customInput = document.getElementById('topn-custom');
+      if (customInput) customInput.max = String(DATA.length);
+      setTopN(DEFAULT_TOPN);
+    }
   } catch(e) {
     document.getElementById('loading').innerHTML =
       '<div class="ln" style="color:var(--hostile)">// transmission lost //</div>' +
       '<div class="progress">' + escapeHtml(e.message) + '</div>';
   }
+}
+
+function applyRoundLabels(){
+  const totalEntries = (META.total_entries != null) ? META.total_entries : DATA.length;
+  const uniqueServers = (META.unique_servers != null) ? META.unique_servers : (TOTAL_BY_SID.size);
+  const roundN = (META.round != null) ? META.round : CURRENT_ROUND;
+  document.getElementById('meta-line').innerHTML =
+    'round ' + escapeHtml(roundN) +
+    ' · <b>' + fmtNum(totalEntries) + '</b> ranked combatants · <b>' + fmtNum(uniqueServers) + '</b> servers represented';
+  document.getElementById('slider-max').textContent = fmtNum(totalEntries);
+  const briefLabel = document.getElementById('brief-round-label');
+  if (briefLabel) {
+    briefLabel.textContent = (CURRENT_ROUND === DEFAULT_ROUND ? 'live · ' : 'archive · ') + 'round ' + roundN;
+  }
+  const footerLabel = document.getElementById('footer-round-label');
+  if (footerLabel) footerLabel.textContent = 'round ' + roundN;
+}
+
+function wireRoundToggle(){
+  const wrap = document.getElementById('round-toggle');
+  if (!wrap) return;
+  const btns = Array.from(wrap.querySelectorAll('.round-btn'));
+  btns.forEach(b => {
+    b.addEventListener('click', async () => {
+      const r = parseInt(b.dataset.round, 10);
+      if (!r || r === CURRENT_ROUND) return;
+      btns.forEach(x => { x.disabled = true; });
+      try {
+        await load(r);
+        btns.forEach(x => {
+          const isActive = parseInt(x.dataset.round, 10) === CURRENT_ROUND;
+          x.classList.toggle('active', isActive);
+          x.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+      } finally {
+        btns.forEach(x => { x.disabled = false; });
+      }
+    });
+  });
 }
 
 function init(){
@@ -1335,7 +1413,8 @@ function threatBarBackground(t){
   return 'background:linear-gradient(90deg,hsl(' + hueA + ' ' + satA + '% ' + litA + '%),hsl(' + hueB + ' ' + satB + '% ' + litB + '%))';
 }
 
-load();
+wireRoundToggle();
+load(DEFAULT_ROUND);
 
 })();
 </script>
