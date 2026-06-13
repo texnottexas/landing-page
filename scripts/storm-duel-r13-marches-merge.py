@@ -21,9 +21,12 @@ Re-run after a fresh extraction: python3 scripts/storm-duel-r13-marches-merge.py
 import json, os, collections
 
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
-MARCHES = os.path.join(DATA, "storm-duel-r13-marches.json")
-MERIT = os.path.join(DATA, "ssc-merit-leaderboard.json")
+MARCHES = os.path.join(DATA, "storm-duel-r13-marches.json")   # LOCAL/private (carries UIDs, gitignored)
+MERIT = os.path.join(DATA, "ssc-merit-leaderboard.json")      # public, UIDs stripped, {sid,score,name}
+UD2864 = os.path.join(DATA, "ud-round12-merit.json")          # LOCAL/private: UID-keyed merit for S2864
 TARGET = os.path.join(DATA, "storm-duel.json")
+# Privacy: UIDs are used only at build time (UID-stable merit join, robust to renames).
+# They are NOT written into the public TARGET output.
 UNIT_KEY = {1: "Army", 2: "Navy", 3: "AirForce"}
 SIDE_KEY = {"ally": "ally", "enemy": "opp"}
 
@@ -44,7 +47,16 @@ def build_merit_index():
     return idx
 
 
-def to_march(rec, rank, merit_idx):
+def build_ud_uid_index():
+    """For S2864: uid -> (rank_within_2864, score). Same SSC merit metric as the
+    leaderboard but UID-keyed, so it survives in-game renames (Tex->NotTex etc.)."""
+    if not os.path.exists(UD2864):
+        return {}
+    ud = json.load(open(UD2864, encoding="utf-8"))
+    return {str(p["uid"]): (p.get("rank"), p["score"]) for p in ud.get("players", []) if p.get("uid")}
+
+
+def to_march(rec, rank, merit_idx, ud_by_uid):
     # aggregate per-position units by armyId
     agg = collections.OrderedDict()
     for u in (rec.get("units") or []):
@@ -59,12 +71,17 @@ def to_march(rec, rank, merit_idx):
         if h.get("awakenLevel"):
             hh["awakenLevel"] = h["awakenLevel"]; hh["fullAwaken"] = h.get("fullAwaken", False)
         heroes.append(hh)
+    # Merit join: prefer UID for S2864 (rename-proof); else fall back to (sid, name).
     merit = merit_rank = None
-    hit = merit_idx.get(rec["sid"], {}).get((rec.get("name") or "").strip().lower())
-    if hit:
-        merit_rank, merit = hit[0], hit[1]
+    uid = str(rec.get("uid") or "")
+    if rec["sid"] == 2864 and uid in ud_by_uid:
+        merit_rank, merit = ud_by_uid[uid]
+    else:
+        hit = merit_idx.get(rec["sid"], {}).get((rec.get("name") or "").strip().lower())
+        if hit:
+            merit_rank, merit = hit[0], hit[1]
     return {
-        "username": rec.get("name"), "uid": rec.get("uid"), "sid": rec["sid"],
+        "username": rec.get("name"), "sid": rec["sid"],   # NO uid in public output
         "power": rec.get("power"), "rank": rank,
         "avatar_url": rec.get("avatar"), "flag": rec.get("flag"),
         "heroes": heroes, "march_size": march_size, "armyId": lead_army, "units": units,
@@ -75,6 +92,7 @@ def to_march(rec, rank, merit_idx):
 def main():
     marches = json.load(open(MARCHES, encoding="utf-8"))["marches"]
     merit_idx = build_merit_index()
+    ud_by_uid = build_ud_uid_index()
     tgt = json.load(open(TARGET, encoding="utf-8"))
 
     # group extraction: side -> unit -> sid -> [recs] (power desc)
@@ -93,7 +111,7 @@ def main():
             for unit in ("Army", "Navy", "AirForce"):
                 recs = grouped[ext_side][unit].get(sid, [])
                 recs.sort(key=lambda r: (r.get("power") or 0), reverse=True)
-                out = [to_march(r, i + 1, merit_idx) for i, r in enumerate(recs)]
+                out = [to_march(r, i + 1, merit_idx, ud_by_uid) for i, r in enumerate(recs)]
                 z["formations"][unit] = out
                 for o in out:
                     psum[unit] += o["power"] or 0
@@ -103,6 +121,18 @@ def main():
         side_obj["totals"]["march_power_sum"] = psum
         side_obj["totals"]["total_marches"] = nmarch
         side_obj["totals"]["total_power"] = tpow
+
+    # Privacy sweep: drop every "uid" key anywhere in the public output (page never
+    # reads uid; pre-existing sections like individual_merit.top also carried them).
+    def strip_uids(o):
+        if isinstance(o, dict):
+            o.pop("uid", None)
+            for v in o.values():
+                strip_uids(v)
+        elif isinstance(o, list):
+            for v in o:
+                strip_uids(v)
+    strip_uids(tgt)
 
     ds = tgt["metadata"].setdefault("data_status", {})
     ds["marches"] = "live"
