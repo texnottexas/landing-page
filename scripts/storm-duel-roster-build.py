@@ -24,9 +24,9 @@ LB = os.path.join(DATA, "ssc-merit-leaderboard.json")
 OUT = os.path.join(DATA, "storm-duel-roster.json")
 
 THRESHOLD = 50000
+TARGET_HOLD = 240                      # bring total home-defense roster to ~240
 ALLY_SIDS = [2864, 271, 3407, 4108, 3088]
 OFFENSE_SIDS = {2864, 3407}            # invade S4197
-SPLIT_SIDS = {2864}                    # majority offense, ~20% rotate to home defense
 ANCHORS = {2864: {"tex", "peewee"}}    # forced DEFENSE (lower-cased name match)
 
 
@@ -53,9 +53,20 @@ def main():
         rec = {"name": name, "sid": sid, "merit": score, "role": role}
         if anchor:
             rec["anchor"] = True
-        if sid in SPLIT_SIDS and not anchor:
-            rec["split"] = True   # default invade, may be tapped for home defense
         players.append(rec)
+
+    # Home-defense rotation: pull the lowest-merit non-anchor S2864 players from
+    # invade -> hold until total defense reaches TARGET_HOLD (~20% of S2864). Keeps
+    # the big hitters attacking; the smaller home accounts hold our battlefield.
+    cur_hold = sum(1 for p in players if p["role"] == "hold")
+    need = max(0, TARGET_HOLD - cur_hold)
+    if need:
+        cand = sorted(
+            (p for p in players if p["sid"] == 2864 and p["role"] == "invade" and not p.get("anchor")),
+            key=lambda p: p["merit"])
+        for p in cand[:need]:
+            p["role"] = "hold"
+            p["home_rotation"] = True
 
     players.sort(key=lambda p: p["merit"], reverse=True)
 
