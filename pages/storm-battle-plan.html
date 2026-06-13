@@ -134,6 +134,41 @@ h2.sec .num{display:inline-flex;align-items:center;justify-content:center;width:
 .note{font-size:.78rem;color:var(--muted);margin-top:.5rem;}
 .note b{color:var(--yellow);}
 
+/* Searchable roster */
+.find{background:linear-gradient(135deg,rgba(56,139,253,.10),rgba(121,192,255,.06));border:1px solid var(--border);border-radius:16px;padding:1.1rem 1.1rem 1.2rem;}
+.find h2{font-size:1.1rem;font-weight:900;letter-spacing:-.01em;margin-bottom:.25rem;}
+.find .fsub{color:var(--muted);font-size:.86rem;margin-bottom:.85rem;}
+.search-wrap{position:relative;margin-bottom:.6rem;}
+.search-input{width:100%;background:var(--card);border:2px solid var(--border);border-radius:13px;color:var(--text);font-size:1rem;font-weight:600;padding:.8rem 2.4rem .8rem 2.5rem;font-family:inherit;transition:border-color .15s,background .15s;}
+.search-input:focus{outline:none;border-color:var(--accent);background:var(--surface);}
+.search-input::placeholder{color:var(--muted);font-weight:500;}
+.search-ic{position:absolute;left:.85rem;top:50%;transform:translateY(-50%);color:var(--muted);font-size:1.05rem;pointer-events:none;}
+.search-clear{position:absolute;right:.7rem;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer;line-height:1;padding:.2rem;display:none;}
+.search-clear.show{display:block;}
+.roster-meta{font-size:.74rem;color:var(--muted);margin-bottom:.6rem;}
+.roster-meta b{color:var(--text);}
+.roster{max-height:380px;overflow-y:auto;border:1px solid var(--border);border-radius:12px;background:var(--bg);-webkit-overflow-scrolling:touch;}
+.rrow{display:flex;align-items:center;gap:.6rem;padding:.55rem .75rem;border-bottom:1px solid var(--border);}
+.rrow:last-child{border-bottom:none;}
+.rrow .rname{font-weight:700;font-size:.92rem;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.rrow .rsrv{font-size:.68rem;color:var(--muted);font-weight:700;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.12rem .4rem;flex:none;}
+.rrow .rmerit{font-size:.68rem;color:var(--muted);font-variant-numeric:tabular-nums;flex:none;min-width:3.2rem;text-align:right;}
+.rbadge{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.03em;border-radius:6px;padding:.2rem .5rem;flex:none;}
+.rbadge.invade{background:rgba(248,81,73,.16);color:var(--invade);}
+.rbadge.hold{background:rgba(63,185,80,.16);color:var(--hold);}
+.rrow.anchor{background:rgba(210,153,34,.08);}
+.rrow.anchor .rname::after{content:' \2693';color:var(--yellow);}
+.roster-empty{padding:1.4rem;text-align:center;color:var(--muted);font-size:.86rem;}
+.you{margin-top:.7rem;border-radius:13px;padding:.9rem 1rem;display:none;}
+.you.show{display:block;}
+.you.invade{background:rgba(248,81,73,.12);border:1px solid rgba(248,81,73,.35);}
+.you.hold{background:rgba(63,185,80,.12);border:1px solid rgba(63,185,80,.35);}
+.you .yt{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-bottom:.2rem;}
+.you .yh{font-size:1.05rem;font-weight:900;margin-bottom:.2rem;}
+.you.invade .yh{color:var(--invade);}.you.hold .yh{color:var(--hold);}
+.you .yd{font-size:.86rem;color:var(--text);}
+.you .yd .nm{font-weight:800;}
+
 footer{text-align:center;padding:1.4rem 1rem 2rem;color:var(--muted);font-size:.72rem;}
 </style>
 </head>
@@ -171,6 +206,22 @@ footer{text-align:center;padding:1.4rem 1rem 2rem;color:var(--muted);font-size:.
       <span class="hl-inv">offense invades S4197</span> to rack up points, while
       <span class="hl-hold">defense holds S2864</span> so the enemy can't score on us.
       When the <b>Capital</b> opens, that's the prize &mdash; lock it down and don't let go.
+    </div>
+  </section>
+
+  <!-- FIND YOUR NAME -->
+  <section>
+    <div class="find">
+      <h2>&#128269; Find your assignment</h2>
+      <div class="fsub">Type your in-game name &mdash; see your battlefield and what to do.</div>
+      <div class="search-wrap">
+        <span class="search-ic">&#128269;</span>
+        <input id="rSearch" class="search-input notranslate" type="text" placeholder="Your name&hellip;" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <button id="rClear" class="search-clear" aria-label="clear">&times;</button>
+      </div>
+      <div class="you" id="rYou"></div>
+      <div class="roster-meta" id="rMeta">Loading roster&hellip;</div>
+      <div class="roster" id="rList"><div class="roster-empty">Loading&hellip;</div></div>
     </div>
   </section>
 
@@ -343,6 +394,74 @@ function tick(){
   }
 }
 tick(); setInterval(tick,1000);
+
+// ---- Searchable roster ----
+(function(){
+  var ROLE={
+    invade:{badge:'Invade S4197',cls:'invade',head:'Offense — Invade S4197',
+      desc:'Push the enemy battlefield. Storm their ruins early, stack score, then drive on their Capital.'},
+    hold:{badge:'Hold S2864',cls:'hold',head:'Defense — Hold S2864',
+      desc:'Stay on our home battlefield. Keep our Capital and ruins ours — deny them every point.'}
+  };
+  var DATA_URL=(location.hostname==='localhost'||location.hostname==='127.0.0.1')
+    ? '../data/storm-duel-roster.json?_t='+Date.now()
+    : 'https://raw.githubusercontent.com/texnottexas/landing-page/main/data/storm-duel-roster.json?_t='+Date.now();
+  var listEl=document.getElementById('rList'),metaEl=document.getElementById('rMeta'),
+      inp=document.getElementById('rSearch'),clr=document.getElementById('rClear'),youEl=document.getElementById('rYou');
+  var PLAYERS=[];
+  function fmtMerit(n){ if(n>=1e6)return (n/1e6).toFixed(1).replace(/\.0$/,'')+'M'; if(n>=1e3)return Math.round(n/1e3)+'K'; return ''+n; }
+  function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+  fetch(DATA_URL,{cache:'no-store'})
+    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+    .then(function(d){
+      PLAYERS=d.players||[];
+      var m=d.meta||{};
+      metaEl.innerHTML='<b>'+(m.total||PLAYERS.length)+'</b> eligible players (50K+ merit) across '+
+        ((m.ally_sids||[]).length)+' allied servers · '+
+        '<b>'+((m.by_role||{}).invade||0)+'</b> invade · <b>'+((m.by_role||{}).hold||0)+'</b> hold';
+      render('');
+    })
+    .catch(function(err){ listEl.innerHTML='<div class="roster-empty">Could not load roster: '+esc(err.message)+'</div>'; metaEl.textContent=''; });
+
+  function render(q){
+    q=(q||'').trim().toLowerCase();
+    var rows=PLAYERS;
+    if(q) rows=PLAYERS.filter(function(p){return (p.name||'').toLowerCase().indexOf(q)>-1;});
+    // exact-ish single match -> show the "you" card
+    showYou(q,rows);
+    if(!rows.length){ listEl.innerHTML='<div class="roster-empty">No player matches “'+esc(q)+'”. Check spelling, or browse the assignments above.</div>'; return; }
+    var cap=q?rows.length:Math.min(rows.length,600);
+    var html='';
+    for(var i=0;i<cap;i++){
+      var p=rows[i],R=ROLE[p.role]||ROLE.invade;
+      html+='<div class="rrow'+(p.anchor?' anchor':'')+'">'+
+        '<span class="rname notranslate">'+esc(p.name)+'</span>'+
+        '<span class="rsrv">S'+p.sid+'</span>'+
+        '<span class="rmerit">'+fmtMerit(p.merit)+'</span>'+
+        '<span class="rbadge '+R.cls+'">'+R.badge+'</span>'+
+      '</div>';
+    }
+    listEl.innerHTML=html;
+  }
+  function showYou(q,rows){
+    if(!q||rows.length===0||rows.length>6){ youEl.className='you'; youEl.innerHTML=''; return; }
+    // pick exact match if present, else the top (highest-merit) match
+    var p=null,i;
+    for(i=0;i<rows.length;i++){ if((rows[i].name||'').toLowerCase()===q){p=rows[i];break;} }
+    if(!p) p=rows[0];
+    var R=ROLE[p.role]||ROLE.invade;
+    var extra='';
+    if(p.anchor) extra=' You’re a <b>defensive anchor</b> — hold the home Capital + key ruins.';
+    else if(p.split) extra=' Most of S2864 invades; a ~20% rotation may be tapped for home defense — watch alliance calls.';
+    youEl.className='you show '+R.cls;
+    youEl.innerHTML='<div class="yt">Your assignment</div>'+
+      '<div class="yh">'+R.head+'</div>'+
+      '<div class="yd"><span class="nm notranslate">'+esc(p.name)+'</span> · S'+p.sid+' — '+R.desc+extra+'</div>';
+  }
+  function onInput(){ var v=inp.value; clr.classList.toggle('show',!!v); render(v); }
+  inp.addEventListener('input',onInput);
+  clr.addEventListener('click',function(){ inp.value=''; clr.classList.remove('show'); render(''); inp.focus(); });
+})();
 </script>
 </body>
 </html>
