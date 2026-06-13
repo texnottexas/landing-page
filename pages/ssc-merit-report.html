@@ -370,7 +370,7 @@
   }
   .alloc-legend{display:flex;flex-direction:column;gap:0;}
   .alloc-legend .head{
-    display:grid;grid-template-columns:14px 1fr 56px 78px 56px;gap:10px;align-items:center;
+    display:grid;grid-template-columns:14px 1fr 48px 70px 60px 48px;gap:9px;align-items:center;
     padding:6px 4px;border-bottom:1px solid var(--border);
     font-family:'JetBrains Mono',monospace;font-size:.66rem;letter-spacing:.18em;
     text-transform:uppercase;color:var(--text-dim);
@@ -378,11 +378,13 @@
   .alloc-legend .head .col-svr{grid-column:2}
   .alloc-legend .head .col-ct,
   .alloc-legend .head .col-mt,
+  .alloc-legend .head .col-av,
   .alloc-legend .head .col-pc{text-align:right;}
   /* Sortable headers — keep header tile chrome flat (no rounded buttons) */
   .alloc-legend .head .col-svr,
   .alloc-legend .head .col-ct,
   .alloc-legend .head .col-mt,
+  .alloc-legend .head .col-av,
   .alloc-legend .head .col-pc{
     cursor:pointer;user-select:none;
     font-family:'JetBrains Mono',monospace;font-size:.66rem;letter-spacing:.18em;
@@ -393,12 +395,13 @@
   .alloc-legend .head .col-svr{justify-content:flex-start;}
   .alloc-legend .head .col-ct,
   .alloc-legend .head .col-mt,
+  .alloc-legend .head .col-av,
   .alloc-legend .head .col-pc{justify-content:flex-end;}
   .alloc-legend .head [data-sortcol]:hover{color:var(--text);}
   .alloc-legend .head [data-sortcol].active{color:var(--us);}
   .alloc-legend .head .sort-arrow{font-size:.55rem;opacity:.55;letter-spacing:0;}
   .alloc-legend .head [data-sortcol].active .sort-arrow{opacity:1;}
-  .alloc-legend .row{display:grid;grid-template-columns:14px 1fr 56px 78px 56px;gap:10px;align-items:center;padding:7px 4px;border-bottom:1px solid #131c28;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:.84rem;}
+  .alloc-legend .row{display:grid;grid-template-columns:14px 1fr 48px 70px 60px 48px;gap:9px;align-items:center;padding:7px 4px;border-bottom:1px solid #131c28;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:.84rem;}
   .alloc-legend .row:last-child{border-bottom:none;}
   .alloc-legend .row:hover{background:rgba(63,185,80,.04);}
   .alloc-legend .sw{width:11px;height:11px;border-radius:1px;border:1px solid rgba(255,255,255,.18);}
@@ -408,12 +411,15 @@
   .alloc-legend .name.others{color:var(--text-dim);font-style:italic;}
   .alloc-legend .ct{text-align:right;color:var(--text);font-variant-numeric:tabular-nums;}
   .alloc-legend .mt{text-align:right;color:var(--text);font-variant-numeric:tabular-nums;}
-  .alloc-legend .mt .unit{font-size:.78em;color:var(--text-dim);margin-left:1px;letter-spacing:.04em;}
+  .alloc-legend .mt .unit,
+  .alloc-legend .av .unit{font-size:.78em;color:var(--text-dim);margin-left:1px;letter-spacing:.04em;}
+  .alloc-legend .av{text-align:right;color:var(--text-dim);font-variant-numeric:tabular-nums;}
   .alloc-legend .pc{text-align:right;color:var(--text-dim);font-variant-numeric:tabular-nums;}
   .alloc-legend .row.is-selected{background:rgba(63,185,80,.07);}
   .alloc-legend .row.is-us{background:linear-gradient(to right,rgba(63,185,80,.10),rgba(63,185,80,0) 90%);}
   .alloc-legend .row.is-us .ct{color:var(--us);font-weight:500;}
   .alloc-legend .row.is-us .mt{color:var(--us);font-weight:500;}
+  .alloc-legend .row.is-us .av{color:var(--us);font-weight:500;}
 
   /* === Loading + error === */
   .booting{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;color:var(--us);}
@@ -1025,10 +1031,15 @@ function renderAllocLegend(segments, total, meritByCut){
   // Sort kept (non-others) segments by the active column. "+others" always
   // pins to the bottom regardless of sort direction.
   const kept = segments.filter(s => !s.isOthers);
+  // For the average-merit-per-player sort, "+others" uses othersMerit /
+  // count; per-server segments use meritByCut[sid] / s.count.
+  const meritOf = s => s.isOthers ? othersMerit : (meritByCut.get(s.sid) || 0);
+  const avgOf   = s => s.count > 0 ? meritOf(s) / s.count : 0;
   const sortKey = s => {
     switch (LEGEND_SORT.col) {
       case 'sid':   return s.sid;
       case 'merit': return meritByCut.get(s.sid) || 0;
+      case 'avg':   return avgOf(s);
       case 'pct':   // monotonic w/ count given a fixed total; kept distinct for click intent
       case 'count':
       default:      return s.count;
@@ -1055,11 +1066,13 @@ function renderAllocLegend(segments, total, meritByCut){
       : '<span class="name">S' + s.sid + tag + '</span>';
     const dataSid = isOthers ? '_others' : s.sid;
     const cls = ['row', isUs?'is-us':'', isSel?'is-selected':''].filter(Boolean).join(' ');
+    const avgVal = s.count > 0 ? meritVal / s.count : 0;
     return '<div class="'+cls+'" data-sid="'+dataSid+'">' +
       '<div class="sw" style="background:'+s.color+'"></div>' +
       name +
       '<div class="ct">' + fmtNum(s.count) + '</div>' +
       '<div class="mt">' + fmtCompact(meritVal) + '</div>' +
+      '<div class="av">' + (s.count > 0 ? fmtCompact(avgVal) : '—') + '</div>' +
       '<div class="pc">' + fmtPct(pct) + '</div>' +
     '</div>';
   }).join('');
@@ -1078,6 +1091,7 @@ function renderAllocLegend(segments, total, meritByCut){
       headCell('sid',   'Server') +
       headCell('count', 'Count')  +
       headCell('merit', 'Merit')  +
+      headCell('avg',   'Avg')    +
       headCell('pct',   '% cut')  +
     '</div>';
   root.innerHTML = head + rows;
@@ -1111,7 +1125,13 @@ function renderAllocLegend(segments, total, meritByCut){
 
 // Map LEGEND_SORT keys to the existing legend CSS column class suffixes.
 function col2css(col){
-  return col === 'sid' ? 'svr' : col === 'count' ? 'ct' : col === 'merit' ? 'mt' : 'pc';
+  switch (col) {
+    case 'sid':   return 'svr';
+    case 'count': return 'ct';
+    case 'merit': return 'mt';
+    case 'avg':   return 'av';
+    default:      return 'pc';
+  }
 }
 
 function pinServer(sid){
