@@ -40,6 +40,20 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 1.5; min-height: 100vh; }
 
+  /* Perf: freeze every infinite animation while the tab is backgrounded so a
+     foreground video call doesn't fight this page for the GPU. JS sets the
+     .is-hidden class on visibilitychange. */
+  html.is-hidden *, html.is-hidden *::before, html.is-hidden *::after {
+    animation-play-state: paused !important;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important;
+    }
+  }
+
   /* Cinematic backdrop */
   body {
     background:
@@ -333,6 +347,7 @@
   /* ── Phase rail ───────────────────────────────── */
   .phase-rail { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 28px; }
   @media (max-width: 800px) { .phase-rail { grid-template-columns: 1fr; } }
+  .phase-tile { content-visibility: auto; contain-intrinsic-size: 200px 280px; }
   .phase-tile {
     position: relative; padding: 14px 14px 12px;
     border-radius: 14px; border: 1px solid var(--border); background: var(--card);
@@ -432,6 +447,9 @@
     border: 1px solid var(--border); background: var(--card);
     cursor: pointer; isolation: isolate;
     transition: transform .35s cubic-bezier(.2,.7,.2,1), border-color .25s, box-shadow .35s;
+    /* Skip layout/paint for cards outside the viewport. */
+    content-visibility: auto;
+    contain-intrinsic-size: 320px 440px;
   }
   /* Per-type ambient glow — army/navy/air */
   .hero-card[data-type="army"] {
@@ -502,8 +520,11 @@
   .hero-portrait.unawake { filter: grayscale(.6) brightness(.55) contrast(1.05); }
   .hero-portrait.awake { opacity: 0; filter: brightness(1.05) saturate(1.18) drop-shadow(0 0 18px rgba(149,124,255,.45)); }
   .hero-card:hover .hero-portrait.unawake, .hero-card.is-open .hero-portrait.unawake { opacity: 0; }
-  .hero-card:hover .hero-portrait.awake, .hero-card.is-open .hero-portrait.awake {
-    opacity: 1; animation: awakenPulse 2.4s ease-in-out infinite;
+  .hero-card:hover .hero-portrait.awake, .hero-card.is-open .hero-portrait.awake { opacity: 1; }
+  /* Only run the expensive pulse animation on cards actually in the viewport. */
+  .hero-card.in-view:hover .hero-portrait.awake,
+  .hero-card.in-view.is-open .hero-portrait.awake {
+    animation: awakenPulse 2.4s ease-in-out infinite;
   }
   @keyframes awakenPulse {
     0%, 100% { filter: brightness(1.05) saturate(1.15) drop-shadow(0 0 14px rgba(149,124,255,.45)); }
@@ -521,6 +542,8 @@
     background:
       radial-gradient(circle at 50% 28%, rgba(255,255,255,.3) 0%, rgba(149,124,255,.18) 25%, rgba(121,192,255,.08) 45%, transparent 70%),
       conic-gradient(from 90deg at 50% 28%, rgba(149,124,255,0) 0deg, rgba(149,124,255,.35) 60deg, rgba(149,124,255,0) 120deg);
+  }
+  .hero-card.in-view:hover .awaken-burst, .hero-card.in-view.is-open .awaken-burst {
     animation: burstSweep 4s linear infinite;
   }
   @keyframes burstSweep { to { transform: rotate(360deg); } }
@@ -529,8 +552,8 @@
     position: absolute; top: 10px; z-index: 4;
     padding: 4px 9px; border-radius: 999px;
     font-size: .55rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
-    background: rgba(13,17,23,.78); color: var(--text);
-    backdrop-filter: blur(4px); border: 1px solid var(--border);
+    background: rgba(13,17,23,.92); color: var(--text);
+    border: 1px solid var(--border);
   }
   .hero-type-tag { left: 10px; }
   .hero-phase-tag { right: 10px; color: var(--muted); }
@@ -2411,7 +2434,7 @@
 const HERO_DATA_URL = '../data/heroes-awakening.json?v=20260606b';
 // Page build timestamp — rendered into the alpha banner in the viewer's local timezone.
 // IMPORTANT: this must be set to the actual UTC time of the commit. Get it with `date -u +%Y-%m-%dT%H:%M:%SZ`.
-const PAGE_BUILD_ISO = '2026-06-11T22:30:00Z';
+const PAGE_BUILD_ISO = '2026-06-13T00:00:00Z';
 (function paintLastUpdated() {
   try {
     const stamp = document.getElementById('lastUpdatedStamp');
@@ -2743,6 +2766,34 @@ function renderHeroGrid() {
   });
 
   replace(host, ...sections);
+  observeHeroCardsInView();
+}
+
+// Pause every infinite CSS animation when the tab is backgrounded so a video
+// call (or any other foreground app) doesn't fight this page for the GPU.
+function setupVisibilityPause() {
+  const root = document.documentElement;
+  const update = () => root.classList.toggle('is-hidden', document.visibilityState === 'hidden');
+  document.addEventListener('visibilitychange', update);
+  update();
+}
+
+// Only animate hero cards (awakenPulse + burstSweep) while they are actually in
+// view — keeps the heaviest filter/box-shadow paint work off the GPU for cards
+// that scrolled off. Lazily created on first call.
+let _heroCardIO = null;
+function observeHeroCardsInView() {
+  if (!('IntersectionObserver' in window)) {
+    document.querySelectorAll('.hero-card').forEach(c => c.classList.add('in-view'));
+    return;
+  }
+  if (!_heroCardIO) {
+    _heroCardIO = new IntersectionObserver(entries => {
+      entries.forEach(e => e.target.classList.toggle('in-view', e.isIntersecting));
+    }, { rootMargin: '120px' });
+  }
+  _heroCardIO.disconnect();
+  document.querySelectorAll('.hero-card').forEach(c => _heroCardIO.observe(c));
 }
 
 function makeHeroCard(h) {
@@ -3422,6 +3473,7 @@ fetch(HERO_DATA_URL)
     setupCalcs();
     renderSwap();
     setupMainTabs();
+    setupVisibilityPause();
   })
   .catch(err => {
     console.error('Failed to load data', err);
