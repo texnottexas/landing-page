@@ -11,13 +11,16 @@ from two real inputs:
      {rank (seal-stone), score (seal stones), sid, score2 (fame), serverFlag}.
 
 Outputs:
-  * sectorPower / sectorServerCards  — fame-driven server cards.
-        sectorRank = fame rank (1..36), tier = fame-rank band
-        (S=1, A=2-5, B=6-15, C=16+), powerIndex = fame normalised to 0-90.
-        NOTE: powerIndex here is a FAME PROXY, not the merit-based PI used in
-        R12/R12.5 (which needs the 56K-entry individual-merit pump). Per-server
-        top-player merit cards (topPlayer/meritTop10/totalMerit) are NOT included
-        — run the merit pump to add those. The page renders those columns as "—".
+  * sectorPower / sectorServerCards  — merit-driven server cards.
+        sectorRank = seal-stone rank (rankList.rank), tier = rank band
+        (S=1, A=2-5, B=6-15, C=16+). powerIndex is the merit composite
+        reverse-engineered from R12 (max err 0.135 PI over 36 servers):
+          PI = 90 * (0.443*meritNorm + 0.275*top5Norm + 0.171*wzNorm + 0.110*depthNorm)
+        Rich cards (topPlayer/meritTop10/totalMerit/meritPlayerCount/meritTop5Avg
+        + *All variants) are built from data/ssc-merit-leaderboard.json (the
+        round-13 game-wide merit pump, 58,878 entries). UIDs/avatars were stripped
+        for privacy, so player rows render with name + global merit rank + score
+        (avatar falls back to initials).
   * contestedRanked        — drives the contested-fights view (3 contested 3-way
         declarations this round: seq257 vs S3800, seq381 vs S1547, seq33 vs S3540).
   * enriched warTargets    — adds contestedBy / isContested / wastelandId / r,c /
@@ -35,6 +38,7 @@ from collections import defaultdict
 
 DATA = Path('/Users/shivabezwada/tw-projects/landing-page/data/ssc-map.json')
 RANKS = Path('/tmp/sector110_ranks.json')
+MERIT = Path('/Users/shivabezwada/tw-projects/landing-page/data/ssc-merit-leaderboard.json')
 OWN_SID = 2864
 ROUND_KEY = '14'
 # Captured from CQ25MainProgressComp during the R14 extraction (7-day window).
@@ -99,50 +103,95 @@ def main():
             if s in spec_by_seq and spec_by_seq[s] is not None:
                 c['specId'] = spec_by_seq[s]
 
-    # ── sectorPower / sectorServerCards from live sector rankings ─────
+    # ── sectorPower / sectorServerCards from live rankings + merit pump ──
+    # sectorRank = seal-stone rank (rankList.rank); tier = rank band.
+    # powerIndex = merit-based composite (formula reverse-engineered from R12):
+    #   PI = 90 * (0.443*meritNorm + 0.275*top5Norm + 0.171*wzNorm + 0.110*depthNorm)
+    # each norm = value / sector-max; merit stats filtered to >= MERIT_FLOOR.
+    PI_W = {'merit': 0.443, 'top5': 0.275, 'wz': 0.171, 'depth': 0.110}
+    MERIT_FLOOR = 100000
     ranks = json.loads(RANKS.read_text())
-    by_fame = sorted(ranks, key=lambda e: -(e.get('score2') or 0))
-    max_fame = max((e.get('score2') or 0) for e in ranks) or 1
+    rank_by_sid = {e['sid']: e for e in ranks}
+    sector_sids = set(rank_by_sid)
+
+    # Group the game-wide merit pump by server (entries are globally sorted desc,
+    # so list index + 1 = the player's global merit rank).
+    merit = json.loads(MERIT.read_text())
+    entries = merit['entries']
+    per_server = defaultdict(list)
+    for gi, p in enumerate(entries):
+        sid = p.get('sid')
+        if sid in sector_sids:
+            per_server[sid].append({'rank': gi + 1, 'name': p.get('name'), 'score': p.get('score', 0)})
+
+    stats = {}
+    for sid in sector_sids:
+        plist = per_server.get(sid, [])  # already globally sorted -> per-server sorted
+        filt = [p for p in plist if p['score'] >= MERIT_FLOOR]
+        top5 = filt[:5] if filt else plist[:5]
+        t5avg = round(sum(p['score'] for p in top5) / len(top5)) if top5 else 0
+        stats[sid] = {
+            'totalMerit': sum(p['score'] for p in filt),
+            'totalMeritAll': sum(p['score'] for p in plist),
+            'meritPlayerCount': len(filt),
+            'meritPlayerCountAll': len(plist),
+            'meritTop5Avg': t5avg,
+            'meritTop10': plist[:10],
+        }
+    max_merit = max((s['totalMerit'] for s in stats.values()), default=1) or 1
+    max_top5 = max((s['meritTop5Avg'] for s in stats.values()), default=1) or 1
+    max_depth = max((s['meritPlayerCount'] for s in stats.values()), default=1) or 1
+    max_wz = max((e.get('score') or 0 for e in ranks), default=1) or 1
+
     sector_power = []
     sector_cards = []
-    for i, e in enumerate(by_fame):
-        sr = i + 1
-        fame = e.get('score2') or 0
-        pi = round(90.0 * fame / max_fame, 1)
-        tier = tier_for_rank(sr)
+    # iterate by seal-stone rank order for stable output
+    for e in sorted(ranks, key=lambda x: x.get('rank', 999)):
         sid = e['sid']
+        sr = e.get('rank', 0)                # seal-stone sector rank
+        fame = e.get('score2') or 0
+        score = e.get('score') or 0
+        st = stats.get(sid, {'totalMerit':0,'totalMeritAll':0,'meritPlayerCount':0,
+                             'meritPlayerCountAll':0,'meritTop5Avg':0,'meritTop10':[]})
+        merit_norm = st['totalMerit'] / max_merit
+        top5_norm = st['meritTop5Avg'] / max_top5
+        wz_norm = score / max_wz
+        depth_norm = st['meritPlayerCount'] / max_depth
+        pi = round(90.0 * (PI_W['merit']*merit_norm + PI_W['top5']*top5_norm +
+                           PI_W['wz']*wz_norm + PI_W['depth']*depth_norm), 1)
+        tier = tier_for_rank(sr)
+        pic = {'meritNorm': round(merit_norm,3), 'top5Norm': round(top5_norm,3),
+               'wzNorm': round(wz_norm,3), 'depthNorm': round(depth_norm,3)}
         sector_power.append({
-            'sid': sid,
-            'rank': e.get('rank', 0),          # live seal-stone sector rank
-            'score': e.get('score', 0),        # seal stones captured this round
-            'score2': fame,                    # fame (threat metric)
-            'serverFlag': e.get('serverFlag', 0),
-            'sectorRank': sr,                  # fame position in sector
-            'powerIndex': pi,                  # FAME PROXY (see module docstring)
-            'tier': tier,
-            'piComponents': {'fameNorm': round(fame / max_fame, 4)},
-            'piMethod': 'fame-proxy',
+            'sid': sid, 'rank': sr, 'score': score, 'score2': fame,
+            'serverFlag': e.get('serverFlag', 0), 'sectorRank': sr,
+            'powerIndex': pi, 'tier': tier, 'piComponents': pic,
         })
+        top10 = st['meritTop10']
         sector_cards.append({
-            'sid': sid,
-            'sectorRank': sr,
-            'overallRank': e.get('rank', 0),
-            'warzoneScore': e.get('score', 0),
-            'fame': fame,
-            'serverFlag': e.get('serverFlag', 0),
-            'powerIndex': pi,
-            'tier': tier,
-            'isUs': sid == OWN_SID,
+            'sid': sid, 'sectorRank': sr, 'overallRank': sr,
+            'warzoneScore': score, 'fame': fame, 'serverFlag': e.get('serverFlag', 0),
+            'powerIndex': pi, 'tier': tier, 'isUs': sid == OWN_SID,
+            'topPlayer': top10[0] if top10 else None,
+            'meritTop10': top10,
+            'meritPlayerCount': st['meritPlayerCount'],
+            'meritPlayerCountAll': st['meritPlayerCountAll'],
+            'totalMerit': st['totalMerit'], 'totalMeritAll': st['totalMeritAll'],
+            'meritTop5Avg': st['meritTop5Avg'],
+            'piComponents': pic,
         })
     r['sectorPower'] = sector_power
     r['sectorServerCards'] = sector_cards
     r['rankingCoverage'] = {
         'sectorServerCount': len(ranks),
         'serversInRanking': len(ranks),
-        'piMethod': 'fame-proxy',
-        'note': ('Power Index is a fame proxy this round (powerIndex = fame '
-                 'normalised to 0-90). Per-server merit cards (top players, '
-                 'total merit) are not loaded for R14.'),
+        'topMeritScanned': merit['metadata'].get('total_entries', len(entries)),
+        'meritFloor': MERIT_FLOOR,
+        'meritRound': merit['metadata'].get('round'),
+        'note': ('Total Merit / Active Fighters / Top-5 Avg are filtered to players '
+                 'with >= 100,000 merit. Merit data from the round-%s game-wide pump '
+                 '(UIDs/avatars stripped for privacy). Unfiltered values in *All fields.'
+                 % merit['metadata'].get('round')),
     }
     power_by_sid = {p['sid']: p for p in sector_power}
 
@@ -402,10 +451,20 @@ def main():
     DATA.write_text(json.dumps(data, ensure_ascii=False))
 
     import datetime
+    def meritShort(n):
+        if n >= 1e9: return '%.1fB' % (n/1e9)
+        if n >= 1e6: return '%.1fM' % (n/1e6)
+        if n >= 1e3: return '%.0fK' % (n/1e3)
+        return str(n)
     print('R14 enrichment written (sector %s)' % r.get('sector'))
-    print('  sectorPower/cards: %d servers (fame-proxy PI)' % len(sector_power))
-    top5 = [(p['sid'], p['score2'], p['tier']) for p in sector_power[:5]]
-    print('  top fame: ' + ', '.join('S%s(%s,%s)' % t for t in top5))
+    print('  sectorPower/cards: %d servers (merit-based PI, round-%s merit pump)' % (
+        len(sector_power), merit['metadata'].get('round')))
+    for p in sector_power[:6]:
+        c = next(x for x in sector_cards if x['sid'] == p['sid'])
+        tp = (c.get('topPlayer') or {}).get('name', '—')
+        print('    #%-2d S%-5d %s PI=%-5s fame=%-7s fighters=%-3d topMerit=%s (%s)' % (
+            p['sectorRank'], p['sid'], p['tier'], p['powerIndex'], p['score2'],
+            c['meritPlayerCount'], meritShort(c['totalMerit']) if (c['totalMerit']) else '0', tp))
     print('  contestedRanked: %d entries (%d distinct seqs)' % (len(contested_ranked), len({c['seq'] for c in contested_ranked})))
     for c in contested_ranked:
         print('    seq%s L%s %s vs S%s [%s rank#%s fame=%s PI=%s]' % (c['seq'], c['level'], SPEC_NAMES.get(c['specId'],'?'), c['opponent'], c['tier'], c['sectorRank'], c['opFame'], c['opPI']))
