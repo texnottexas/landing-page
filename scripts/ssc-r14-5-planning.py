@@ -91,6 +91,29 @@ def main():
             w['wastelandId'] = cell.get('id'); w['r'] = cell['r']; w['c'] = cell['c']
             w['landType'] = cell.get('landType'); w['landCat'] = cell.get('landCat')
 
+    # ── Enrich defenseTargets (our owned wastelands under attack) ──
+    # attackerSids already present from the base build. Add geometry + which
+    # of our NCs each defense protects (an adjacent owned NC we'd expose if lost).
+    own_nc_cells = [c for c in cells if c.get('type') == 2 and c.get('sid') == OWN_SID]
+    def protects_ncs(seq):
+        cell = cell_by_seq.get(seq)
+        if not cell: return []
+        out = []
+        for nb in adj4((cell['r'], cell['c']), grid):
+            n = grid[nb]
+            if n.get('type') == 2 and n.get('sid') == OWN_SID:
+                out.append({'name': n.get('name'), 'level': n.get('level'), 'r': n['r'], 'c': n['c']})
+        return out
+    for d in r.get('defenseTargets', []):
+        cell = cell_by_seq.get(d['seq'])
+        if cell:
+            d['wastelandId'] = cell.get('id'); d['r'] = cell['r']; d['c'] = cell['c']
+            d['landType'] = cell.get('landType'); d['landCat'] = cell.get('landCat')
+        d.setdefault('attackerSids', [s for s in d.get('fightSids', []) if s != OWN_SID])
+        prot = protects_ncs(d['seq'])
+        d['protectsNcs'] = prot
+        d['protectsNcMaxLevel'] = max([p['level'] or 0 for p in prot], default=0)
+
     # ── contestedRanked ──
     contested_ranked = []
     for w in r.get('warTargets', []):
@@ -250,7 +273,14 @@ def main():
         seen_seq.add(w['seq'])
         cont = (' contested vs S' + ','.join(map(str, w['contestedBy']))) if w.get('isContested') else ''
         pin_order.append((w['seq'], 'Combat buff (%s) — final-battle pickup.%s' % (COMBAT_LABEL[w['specId']], cont)))
+    # Defense priority: owned wastelands under attack, NC-protecting first,
+    # then by strongest attacker fame.
+    def def_key(d):
+        atk_fame = max([power_by_sid.get(s, {}).get('score2', 0) for s in d.get('attackerSids', [])], default=0)
+        return (-(d.get('protectsNcMaxLevel') or 0), -atk_fame)
+    def_sorted = sorted(r.get('defenseTargets', []), key=def_key)
     r['focusOverrides'] = {'alliancePriority': [sq for sq, _ in pin_order], 'pinTop': [], 'demote': [],
+        'alliancePriorityDefense': [d['seq'] for d in def_sorted],
         'seqNotes': {str(sq): note for sq, note in pin_order}}
 
     # ── Lean mode: NO buff-cap optimization sections ──
