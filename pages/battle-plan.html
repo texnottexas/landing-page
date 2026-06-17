@@ -4803,6 +4803,75 @@ body{top:0!important;}
   var _bpRoundKey = null;
   var _bpRoundData = null;
 
+  // Truce / non-aggression reference card (round-specific). Lists in-play
+  // wastelands (our attacks + our defenses) where a truce server is involved;
+  // ones where a truce server is the ONLY opposition are flagged likely-empty.
+  // Renders near the top, only for rounds that carry truceWastelands data.
+  function buildTruceCard(rd, root){
+    var tw = (rd.truceWastelands || []);
+    if (!tw.length) return;
+    var empties = tw.filter(function(w){ return w.likelyEmpty; });
+    var contested = tw.filter(function(w){ return !w.likelyEmpty; });
+    var section = el('section', 'sect');
+    tagSection(section, 'Truce', 'users', tw.length);
+    var t = el('div', 'sect-title');
+    var dot = el('span', 'dot'); dot.style.background = 'var(--green)';
+    t.appendChild(dot);
+    t.appendChild(el('span', null, 'Truce / Non-Aggression — Likely Empty Wastelands'));
+    t.appendChild(el('span', 'tag', empties.length + ' likely empty · ' + tw.length + ' in play'));
+    section.appendChild(t);
+
+    // Note + active truce servers
+    var note = el('div', 'rule-box green');
+    note.appendChild(makeIcon('info', 18));
+    var nb = el('div', 'body');
+    nb.appendChild(el('strong', null, 'No-march pact: '));
+    nb.appendChild(document.createTextNode(rd.truceNote || ''));
+    note.appendChild(nb);
+    section.appendChild(note);
+
+    var srv = el('div');
+    srv.style.cssText = 'display:flex;flex-wrap:wrap;gap:.3rem;align-items:center;font-size:.72rem;color:var(--muted);margin:.1rem 0 .6rem;';
+    srv.appendChild(el('span', null, 'Truce servers in play:'));
+    (rd.truceServers || []).forEach(function(s){ srv.appendChild(makeSidPill(s, rd)); });
+    section.appendChild(srv);
+
+    function row(w){
+      var r = el('div');
+      r.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:.4rem;padding:.4rem .55rem;border:1px solid var(--border);border-radius:7px;margin-bottom:.3rem;background:rgba(255,255,255,.02);';
+      var id = el('span', null, 'W-' + w.seq); id.style.fontWeight = '800';
+      r.appendChild(id);
+      r.appendChild(el('span', 'lvl', 'Lv.' + w.level));
+      var side = el('span', 'lvl', w.side === 'attack' ? 'WE ATTACK' : 'WE HOLD');
+      side.style.color = (w.side === 'attack') ? 'var(--accent)' : 'var(--navy)';
+      side.style.borderColor = 'currentColor';
+      r.appendChild(side);
+      var spec = el('span', null, w.specName || ('Spec ' + w.specId));
+      spec.style.fontSize = '.74rem';
+      r.appendChild(spec);
+      var lbl = el('span', null, w.side === 'attack' ? '· vs' : '· attacked by');
+      lbl.style.cssText = 'color:var(--muted);font-size:.7rem;'; r.appendChild(lbl);
+      (w.truceInvolved || []).forEach(function(s){ r.appendChild(makeSidPill(s, rd)); });
+      if (w.otherOpponents && w.otherOpponents.length){
+        var ol = el('span', null, '+ still contested by'); ol.style.cssText = 'color:var(--red);font-size:.7rem;font-weight:700;';
+        r.appendChild(ol);
+        w.otherOpponents.forEach(function(s){ r.appendChild(makeSidPill(s, rd)); });
+      }
+      return r;
+    }
+    function group(title, list, accent){
+      if (!list.length) return;
+      var h = el('div', null, title);
+      h.style.cssText = 'font-size:.72rem;font-weight:800;color:' + accent + ';margin:.5rem 0 .35rem;';
+      section.appendChild(h);
+      list.forEach(function(w){ section.appendChild(row(w)); });
+    }
+    group('✓ Likely empty — truce server is the only opposition (walk in / hold free)', empties, 'var(--green)');
+    group('⚠ Truce involved but still contested — a non-truce opponent is also in', contested, 'var(--yellow)');
+
+    root.appendChild(section);
+  }
+
   function render(data){
     var root = document.getElementById('root');
     while (root.firstChild) root.removeChild(root.firstChild);
@@ -4817,6 +4886,7 @@ body{top:0!important;}
     }
     document.getElementById('hdrSub').textContent = ' · R' + roundKey;
     buildHero(rd, roundKey, root);
+    buildTruceCard(rd, root);
     buildPower(rd, root);
     // ncThreatAnalysis supersedes l3BufferStrategy (richer: covers L2+L3 NCs
     // with attacker chains). Fall back to the older renderer for legacy rounds.

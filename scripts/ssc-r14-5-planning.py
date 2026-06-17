@@ -283,6 +283,53 @@ def main():
         'alliancePriorityDefense': [d['seq'] for d in def_sorted],
         'seqNotes': {str(sq): note for sq, note in pin_order}}
 
+    # ── Truce / non-aggression servers (R14.5 only) ──────────────────
+    # These servers agreed not to send opposing marches this round. Any in-play
+    # wasteland (our attack OR our defense) whose ONLY opposition is a truce
+    # server is likely to be empty/uncontested. Cross-reference both directions:
+    #   attack  — a war target whose current owner and/or co-attackers are truce
+    #   defense — an owned wasteland whose attacker(s) are truce
+    TRUCE_SIDS = {233, 623, 805, 884, 1547, 2311, 2748, 2988, 3800, 3855, 4169, 4184}
+    truce_wl = []
+    for w in r.get('warTargets', []):
+        owner = w.get('currentOwner') or 0
+        truce_in = set(); other = set()
+        if owner and owner != OWN_SID:
+            (truce_in if owner in TRUCE_SIDS else other).add(owner)
+        for s in (w.get('contestedBy') or []):
+            (truce_in if s in TRUCE_SIDS else other).add(s)
+        if not truce_in: continue
+        truce_wl.append({'seq': w['seq'], 'level': w.get('level'), 'specId': w.get('specId'),
+            'specName': w.get('specName'), 'side': 'attack', 'r': w.get('r'), 'c': w.get('c'),
+            'landType': w.get('landType'), 'currentOwner': owner,
+            'truceInvolved': sorted(truce_in), 'otherOpponents': sorted(other),
+            'likelyEmpty': len(other) == 0})
+    for d in r.get('defenseTargets', []):
+        atk = d.get('attackerSids') or []
+        truce_in = [s for s in atk if s in TRUCE_SIDS]
+        other = [s for s in atk if s not in TRUCE_SIDS]
+        if not truce_in: continue
+        truce_wl.append({'seq': d['seq'], 'level': d.get('level'), 'specId': d.get('specId'),
+            'specName': d.get('specName'), 'side': 'defense', 'r': d.get('r'), 'c': d.get('c'),
+            'landType': d.get('landType'), 'protectsNcs': d.get('protectsNcs', []),
+            'truceInvolved': sorted(truce_in), 'otherOpponents': sorted(other),
+            'likelyEmpty': len(other) == 0})
+    # likely-empty first, then by level desc
+    truce_wl.sort(key=lambda x: (0 if x['likelyEmpty'] else 1, -(x['level'] or 0), x['seq']))
+    # Only surface truce servers that actually intersect an in-play wasteland;
+    # exclude any of the 12 with no overlap.
+    truce_active = sorted({s for wl in truce_wl for s in wl['truceInvolved']})
+    by_server = {}
+    for wl in truce_wl:
+        for s in wl['truceInvolved']:
+            by_server.setdefault(s, set()).add(wl['seq'])
+    r['truceServersAll'] = sorted(TRUCE_SIDS)
+    r['truceServers'] = truce_active
+    r['truceByServer'] = {str(s): sorted(by_server[s]) for s in truce_active}
+    r['truceNote'] = ('These servers agreed not to send opposing marches this round. '
+                      'Wastelands where a truce server is the ONLY opposition are likely empty / uncontested.')
+    r['truceWastelands'] = truce_wl
+
     # ── Lean mode: NO buff-cap optimization sections ──
     r['strategicRecommendations'] = []
     r['candidatesByCat'] = {}
