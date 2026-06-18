@@ -335,6 +335,23 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
   var SPEC_ICON={4001:'sword',4006:'heart',4007:'flame',4008:'shield',4010:'shield',4002:'truck',4003:'truck',4004:'pickaxe',4015:'list',4016:'train',4017:'compass',4018:'ghost',4080:'treasure'};
   var FAME_THREAT_THRESHOLD=100000;
   var COMBAT_SPECS={4001:1,4006:1,4007:1,4008:1,4010:1};
+  // Buff each wasteland grants, by spec + level — shown on every card.
+  var BUFF_VALUE={
+    4001:{1:'+90% ATK',2:'+180% ATK',3:'+270% ATK'},
+    4006:{1:'+90% HP',2:'+180% HP',3:'+270% HP'},
+    4007:{1:'+15% DMG',2:'+30% DMG',3:'+45% DMG'},
+    4008:{1:'-15% DMG taken',2:'-30% DMG taken',3:'-45% DMG taken'},
+    4010:{1:'+5% DEF',2:'+10% DEF',3:'+15% DEF'},
+    4002:{1:'+1 Truck Seal',2:'+2 Truck Seal',3:'+3 Truck Seal'},
+    4003:{1:'+1 Heist Seal',2:'+2 Heist Seal',3:'+3 Heist Seal'},
+    4004:{1:'+5% Gather',2:'Warehouse Lv +1',3:'Gather Lv +1'},
+    4015:{1:'+2 Task Seal',2:'+4 Task Seal',3:'+6 Task Seal'},
+    4016:{1:'Train +1 Seat',2:'Train Refresh -2',3:'Train Rarity +1'},
+    4017:{1:'+10% March Spd',2:'+20% March Spd',3:'+1 Enigma Beast'},
+    4018:{1:'-10% Pass Drop',2:'+10% Pass Gain',3:'+20% Pass Gain'},
+    4080:{1:'Treasury +1',2:'Treasury +2',3:'Treasury +3'}
+  };
+  function buffVal(specId,level){var m=BUFF_VALUE[specId];if(!m)return '';return m[level]||m[3]||'';}
 
   // ===== MODE (easy | caveman) — caveman is the default; users who
   // previously picked easy or who toggle to easy still keep their pref =====
@@ -528,8 +545,9 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
       var threat=opp&&opp.opFame>=FAME_THREAT_THRESHOLD;
       var droppable=(w.specId===4003&&w.level===1);
       var entry={seq:w.seq,level:w.level,specId:w.specId,specName:w.specName,opp:opp,opps:oppListBySeq[seqStr]||[],ncs:ncs,hasNc:hasNc,isCombat:isCombat,threat:threat,droppable:droppable};
-      if(threat)tA.push(entry);
-      else if(isCombat&&w.level===3)tB.push(entry);
+      // Combat buffs are the top priority (never conceded) → Steps 1-2.
+      // Non-combat land is bonus/filler regardless of opponent → Step 3.
+      if(isCombat){ if(threat)tA.push(entry); else tB.push(entry); }
       else if(hasNc)tC.push(entry);
       else tD.push(entry);
     });
@@ -568,8 +586,9 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
         isDefense: true,
         attackerSids: attackers,
       };
-      if (threat) tA.push(entry);
-      else if (isCombat && w.level === 3) tB.push(entry);
+      // Same rule for defenses: holding combat-buff land is top priority;
+      // non-combat land we own is bonus/filler.
+      if (isCombat){ if (threat) tA.push(entry); else tB.push(entry); }
       else tD.push(entry);
     });
     // Sort threat tier by opponent PI desc (alliance picks get pinned later via focusOverrides).
@@ -581,10 +600,16 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     tC.sort(function(a,b){return ncMaxLvl(b.ncs)-ncMaxLvl(a.ncs)||a.seq-b.seq;});
     tD.sort(function(a,b){return (a.droppable?1:0)-(b.droppable?1:0)||a.seq-b.seq;});
 
-    // Apply alliance focus overrides: pinTop > alliancePriority > demote
+    // Apply alliance focus overrides: pinTop > alliancePriority > demote.
+    // Pins only apply to combat buffs so non-combat land can't jump into Steps 1-2.
+    var combatSeqSet=new Set();
+    warTargets.forEach(function(w){if(COMBAT_SPECS[w.specId])combatSeqSet.add(w.seq);});
+    defenseTargets.forEach(function(w){if(COMBAT_SPECS[w.specId])combatSeqSet.add(w.seq);});
     var fo=rd.focusOverrides||{};
-    var pinSet=new Set(fo.pinTop||[]);
-    var aprioSet=new Set(fo.alliancePriority||[]);
+    var pinSet=new Set((fo.pinTop||[]).filter(function(s){return combatSeqSet.has(s);}));
+    // Easy view: skip the auto alliancePriority list (built for the detailed page) —
+    // it muddies the simple steps. Natural tiering sorts hardest combat → easy → bonus.
+    var aprioSet=new Set();
     var demoteSet=new Set(fo.demote||[]);
     var seqNotes=fo.seqNotes||{};
     // Attach per-seq notes
@@ -694,7 +719,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:.
     var mid=el('div','f-mid');
     mid.appendChild(el('div','f-buff','W-'+e.seq));
     var meta=el('div','f-meta');
-    meta.appendChild(el('span','f-buffname',(SPEC_NAMES[e.specId]||'Spec '+e.specId)+(e.level?' · Lv'+e.level:'')));
+    meta.appendChild(el('span','f-buffname',buffVal(e.specId,e.level)||(SPEC_NAMES[e.specId]||'Spec '+e.specId)));
     meta.appendChild(vsLine(e));
     mid.appendChild(meta);
     card.appendChild(mid);
