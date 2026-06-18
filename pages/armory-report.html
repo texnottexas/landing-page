@@ -2335,6 +2335,9 @@
   .awaken-skill-name{font-size:12px;font-weight:600;color:#e6edf3}
   .awaken-skill-lvl{font-size:11px;font-weight:600;color:#79c0ff}
   .awaken-skill-eff{font-size:11px;color:#8b949e;line-height:1.4;margin-top:2px}
+  /* Awakening section inside an expanded Combat Hero card (mirrors the Bench detail pane) */
+  .hero-awaken-section{padding:0 1rem .75rem}
+  .hero-awaken-label{font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
   /* Awakening diamond overlay (Combat Heroes + Bench cards) */
   .awaken-portrait-wrap{position:relative;display:inline-block;line-height:0}
   /* small gold corner badge — must NOT cover the portrait/face */
@@ -10724,6 +10727,28 @@
       gearPanel.appendChild(gearGrid);
     }
 
+    // ── Awakening section ──
+    // For awakened heroes whose live awakening state is known (overlaid onto
+    // merged.heroes from the heroes supplement: awakenLevel / fullAwaken / aws),
+    // show the same skill panel the Bench detail uses. The reference data may
+    // still be in-flight, so build the section once it resolves and append it
+    // below the gear grid inside the (collapsible) expand panel.
+    if ((hero.awakenLevel || 0) > 0) {
+      _ensureHeroAwakeningData(function() {
+        var awPanel = renderHeroAwakening(id, hero.awakenLevel, !!hero.fullAwaken,
+          hero.aws || {}, window._heroAwakeningData, ASSET_BASE + 'assets/hero-awake-skills/');
+        if (!awPanel) return;
+        var awSec = document.createElement('div');
+        awSec.className = 'hero-awaken-section';
+        var awLbl = document.createElement('div');
+        awLbl.className = 'hero-awaken-label';
+        awLbl.textContent = 'Awakening';
+        awSec.appendChild(awLbl);
+        awSec.appendChild(awPanel);
+        gearPanel.appendChild(awSec);
+      });
+    }
+
     card.appendChild(gearPanel);
     return card;
   }
@@ -14057,6 +14082,22 @@
       wrap.appendChild(rowEl);
     });
     return wrap;
+  }
+
+  // Idempotent loader for the awakening reference data. The Bench sub-tab also
+  // fetches this, but the Combat Heroes grid can render first, so any caller
+  // that needs awakening skills routes through here: resolves immediately when
+  // already cached, otherwise shares one in-flight fetch.
+  var _heroAwakeningDataPromise = null;
+  function _ensureHeroAwakeningData(cb) {
+    if (window._heroAwakeningData) { cb(); return; }
+    if (!_heroAwakeningDataPromise) {
+      _heroAwakeningDataPromise = fetch('data/hero-awakening-skills.json')
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(j) { if (j) window._heroAwakeningData = j; })
+        .catch(function() {});
+    }
+    _heroAwakeningDataPromise.then(function() { cb(); });
   }
 
   // SKILLS pane — heroes.html-style overview: native skill (icon + name + sub-skills
