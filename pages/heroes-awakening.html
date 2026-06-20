@@ -2313,11 +2313,12 @@
   <div class="calc-panel" data-p="honor">
     <div class="panel">
       <div style="display:flex; align-items:center; gap:10px; flex-wrap: wrap; margin-bottom: 10px">
-        <span style="font-size:.62rem; font-weight:800; letter-spacing:.14em; text-transform: uppercase; padding: 5px 11px; border-radius: 999px; background: rgba(210,153,34,.18); color: var(--gold); border: 1px solid rgba(210,153,34,.5);">Partially verified</span>
-        <span style="font-size:.7rem; color: var(--muted); font-weight: 600">In-game system named "<strong>Honor Wall</strong>". Buff names + gating taken from in-game labels. Stacking rules across multiple heroes still need live play-test.</span>
+        <span style="font-size:.62rem; font-weight:800; letter-spacing:.14em; text-transform: uppercase; padding: 5px 11px; border-radius: 999px; background: rgba(63,185,80,.18); color: var(--green); border: 1px solid rgba(63,185,80,.5);">Mostly verified</span>
+        <span style="font-size:.7rem; color: var(--muted); font-weight: 600">System, buffs, upgrade flow, and WebSocket endpoint all confirmed in client code. Stacking rules across multiple heroes still need live play-test.</span>
       </div>
       <h3>Honor Wall. Beyond Tier 10.</h3>
-      <p class="sub">Past Tier 10, each hero's first two awakening skills get a 200-level <strong>Honor Wall</strong> upgrade track, called "Skill Promotion" in the in-game button copy. Each track adds two buffs: a <strong>Global Bonus</strong> that always applies, and a <strong>Deployment Bonus</strong> that only counts when the hero is deployed in your march. Same Awakening Stones currency as the Tier 1 to 10 ladder. Buffs are scoped to the hero's unit type (Army, Navy, or Air Force).</p>
+      <p class="sub">Past Tier 10, each hero's first two awakening skills get a 200-level <strong>Honor Wall</strong> upgrade track. The "Advance" button on the hero detail awakening tab opens it. Each sub-level adds two buffs: a <strong>Global Bonus</strong> (the +ATK or +HP curve) and a <strong>Deployment Bonus</strong> (the +DMG Increase or +DMG Reduction curve, only active when the hero is in your march). Same Awakening Stones currency as Tier 1 to 10. Buffs are scoped to the hero's unit type (Army, Navy, or Air Force).</p>
+      <p class="sub" style="margin-top:8px"><strong>Upgrades are one sub-level at a time.</strong> Unlike the Tier 1 to 10 system which allows 10x batch upgrades, the Honor Wall's WebSocket endpoint accepts only a single-level bump per request — so the cost-per-level numbers below are exactly what you pay each tap.</p>
 
       <div class="honor-tracks" style="margin-top:14px">
         <div style="background: var(--surface); border: 1px solid rgba(63,185,80,.45); border-radius: 10px; padding: 14px">
@@ -2398,12 +2399,14 @@
         </div>
       </div>
 
-      <div style="margin-top: 22px; padding: 14px 16px; background: rgba(210,153,34,.07); border: 1px solid rgba(210,153,34,.3); border-radius: 10px">
-        <div style="font-size:.62rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); margin-bottom: 8px">What's verified vs still open</div>
+      <div style="margin-top: 22px; padding: 14px 16px; background: rgba(63,185,80,.07); border: 1px solid rgba(63,185,80,.3); border-radius: 10px">
+        <div style="font-size:.62rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--green); margin-bottom: 8px">What's verified vs still open</div>
         <div style="font-size: .85rem; color: var(--muted); line-height: 1.6">
-          <strong style="color: var(--text)">Verified (game tables + in-game labels):</strong> The system is called "<strong>Honor Wall</strong>" in-game. Each of the first two awakening skills gets a 200-level track. The two buff classes are labeled "<strong>Global Bonus</strong>" (primary, always active) and "<strong>Deployment Bonus</strong>" (secondary, requires the hero to be deployed in a march). Cost curve (50 / 80 / 120 / 150 stones per sub-level). All 12 buff IDs and their per-level formulas. Buffs scoped to the hero's unit type.
+          <strong style="color: var(--text)">Verified (game tables + in-game labels + client code):</strong> The system is called "<strong>Honor Wall</strong>" in-game (internal code name "Wall Skill" / "Advance Skill"). Each of the first two awakening skills gets a 200-level track. The two buff classes are labeled "<strong>Global Bonus</strong>" (primary, always active) and "<strong>Deployment Bonus</strong>" (secondary, requires the hero deployed in a march). Cost curve (50 / 80 / 120 / 150 stones per sub-level), 19,950 stones per sub-track total. All 12 buff IDs resolve through the <code>effect_buff</code> table to their unit-type-scoped buff names. The UI consumer is <code>HeroAwakenAdvancePop</code>, which renders both buff slots side by side with current value and delta to next. Upgrade sends WS cmd <strong>9810</strong> (<code>HERO_AWAKEN_WALL_SKILL_UPGRADE</code>) with payload <code>{heroId, position: skillIndex}</code>.
           <br><br>
-          <strong style="color: var(--text)">Still open:</strong> Whether Global Bonuses stack across all 6 heroes of the same unit type (so 6 maxed Army heroes would mean +120% Army ATK), or whether only the highest hero's bonus applies per unit type. Whether Deployment Bonuses from multiple heroes in the same march stack additively. The Honor Wall UI is loaded into Server 2864's client code only partially — the localization strings are shipped but no class on this server consumes them yet, suggesting the feature may have rolled out to newer servers first.
+          <strong style="color: var(--text)">Confirmed quirk: one level per tap.</strong> The upgrade WebSocket call has no batch-count parameter, so each press of the Advance button costs exactly the listed stones for one sub-level — no 10x shortcut like the Tier system.
+          <br><br>
+          <strong style="color: var(--text)">Still open (needs live play-test):</strong> Whether Global Bonuses stack across all 6 heroes of the same unit type (so 6 maxed Army heroes would mean +120% Army ATK), or whether only the highest hero's bonus applies per unit type. Whether Deployment Bonuses from multiple heroes in the same march stack additively. The exact "Hero Deployed" gating mechanism (is it a battle-time check, a march-assignment check, or a passive buff toggle when the hero is in any active march).
         </div>
       </div>
 
@@ -2484,7 +2487,7 @@
 const HERO_DATA_URL = '../data/heroes-awakening.json?v=20260606b';
 // Page build timestamp — rendered into the alpha banner in the viewer's local timezone.
 // IMPORTANT: this must be set to the actual UTC time of the commit. Get it with `date -u +%Y-%m-%dT%H:%M:%SZ`.
-const PAGE_BUILD_ISO = '2026-06-20T03:30:00Z';
+const PAGE_BUILD_ISO = '2026-06-20T03:50:00Z';
 (function paintLastUpdated() {
   try {
     const stamp = document.getElementById('lastUpdatedStamp');
