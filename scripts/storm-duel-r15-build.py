@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+"""
+Build data/storm-duel-round15.json for the Storm Duel Selection page (R15, cid 4).
+
+Inputs:
+  - Live game extraction (cores + 16 candidates + 20-sector wasteland sweep) embedded
+    below, captured 2026-06-22 ~17:10 UTC during the random/selection window. Sectors for
+    this round are groups 102-121 (our home sector = 110). Per-warzone wasteland holdings
+    captured as a specId histogram and classified by conqueror_2025_landtype.
+  - data/ssc-merit-leaderboard.json — game-wide SSC personal merit (R14, {sid,score,name}).
+
+Output:
+  - data/storm-duel-round15.json — per-warzone merit aggregates + Power Index v3, baked.
+
+Power Index v3 (merit leads, combat-buffs are a strong secondary factor):
+  score = (0.32*meritNorm + 0.22*top5Norm + 0.13*wzNorm + 0.08*depthNorm + 0.25*combatNorm)
+          * 100 * costMul
+  *Norm = candidate value / pool max ; costMul = 1 + (300 - ticket)/300 * 0.15
+
+Notes:
+  - We (S2864) are the DEFENSE core and won the dice 55-16, so we pick first.
+  - In-game the S2864 warzone leader is temporarily "Jerky" during selections; per Tex the
+    page displays him as "Tex" (DISPLAY_OVERRIDE).
+
+Re-run after any refresh:  python3 scripts/storm-duel-r15-build.py
+"""
+import json, os, collections
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+DATA = os.path.join(HERE, "..", "data")
+MERIT_PATH = os.path.join(DATA, "ssc-merit-leaderboard.json")
+OUT_PATH = os.path.join(DATA, "storm-duel-round15.json")
+
+EXTRACTED_AT = 1782234600  # 2026-06-22 ~17:10 UTC (approx snapshot time)
+
+# conqueror_2025_landtype: specId -> category
+CAT = {
+    4001: "combat", 4006: "combat", 4007: "combat", 4008: "combat", 4010: "combat",
+    4002: "econ", 4003: "econ", 4004: "econ", 4015: "econ",
+    4016: "util", 4017: "util", 4018: "util",
+    4080: "special",
+}
+
+META = {
+    "extractedAt": EXTRACTED_AT,
+    "cid": 4,
+    "round": 15,
+    "status": 30,
+    "phase": "selection (random pool drawn, ally picks open Jun 25)",
+    "budget": 1000,
+    "ourCoreSid": 2864,
+    "oppCoreSid": 3436,
+    "ourSide": "defense",
+    "dice": {"us": 55, "opp": 16, "winnerSid": 2864, "wePickFirst": True},
+    "roundPicks": [1, 2, 2, 2, 1],
+    "diceWinnerRounds": [0, 2, 4],
+    "diceWinnerSide": "ally",
+    "tierCosts": [320, 300, 200, 100],
+    "sectorGroups": list(range(102, 122)),
+    "timestamps": {
+        "allBeginTime": 1781452800,
+        "randomBeginTime": 1782144000,    # Jun 22 16:00 UTC (pool draw open)
+        "randomEndTime": 1782208800,      # Jun 23 10:00 UTC (pool draw closes)
+        "viewTime": 1782316800,
+        "selectAreaTime": 1782403200,     # Jun 25 16:00 UTC (ally selection opens)
+        "waitFightBeginTime": 1782489600, # Jun 26 16:00 UTC
+        "fightBeginTime": 1782568800,     # Jun 27 14:00 UTC
+        "fightEndTime": 1782572400,       # Jun 27 15:00 UTC
+    },
+    "combatSpecIds": [4001, 4006, 4007, 4008, 4010],
+    "buffLabels": {
+        "4001": "All Units ATK", "4006": "All Units HP", "4007": "All Units DMG+",
+        "4008": "All Units DMG-", "4010": "All Units DEF",
+    },
+    "powerIndexFormula": {
+        "description": "Composite 0-100 score blending player strength (merit) with the "
+                       "warzone's home-sector combat wasteland buffs. Cheaper tickets get a "
+                       "small discount so affordable allies are not penalised.",
+        "weights": {"merit": 0.32, "top5avg": 0.22, "warzoneScore": 0.13,
+                    "rankedDepth": 0.08, "combat": 0.25},
+        "costMulFormula": "1 + (300 - ticket)/300 * 0.15",
+        "normalization": "max-in-candidate-pool",
+        "version": 3,
+        "combatNote": "Combat buffs are an honest COUNT of combat wastelands (specId in "
+                      "[ATK,HP,DMG+,DMG-,DEF]) the warzone holds in its home sector. The game "
+                      "does not expose wasteland upgrade level in bulk, so counts are not "
+                      "tier-weighted.",
+    },
+}
+
+CDN = "https://knight-cdn.akamaized.net/headimg/"
+TEX_AVATAR = CDN + "2df7bb0a6e87f111c639de52ca69f570_1743783669.jpg?v=1743783670942"
+
+# Per-warzone home sector group + wasteland specId histogram (from the 102-121 sweep).
+SWEEP = {
+    2864: {"group": 110, "spec": {4001:4,4003:2,4006:6,4007:8,4008:4,4010:7,4016:1,4017:1,4018:1,4080:1}},
+    3436: {"group": 113, "spec": {4001:2,4002:3,4003:3,4004:1,4006:4,4007:3,4008:2,4010:3,4015:4,4016:2,4017:3,4018:3}},
+    3088: {"group": 105, "spec": {4001:2,4002:1,4004:1,4006:5,4008:9,4010:6,4015:2,4016:3,4018:1}},
+    216:  {"group": 117, "spec": {4001:3,4003:4,4006:4,4007:4,4008:1,4010:6,4015:2,4016:5,4017:1,4018:6}},
+    1281: {"group": 117, "spec": {4001:3,4002:6,4004:1,4006:2,4007:6,4008:2,4010:3,4015:3,4016:4,4018:1}},
+    1607: {"group": 110, "spec": {4001:2,4002:3,4003:4,4004:1,4006:2,4007:3,4008:3,4010:3,4015:2,4016:6,4017:3,4018:3}},
+    2781: {"group": 119, "spec": {4001:1,4006:3,4007:1,4010:3,4016:2,4018:2}},
+    1257: {"group": 118, "spec": {4002:1,4003:2,4004:1,4006:1,4007:1,4008:1,4015:1,4016:1,4018:3,4080:2}},
+    1508: {"group": 120, "spec": {4001:6,4002:2,4003:1,4004:3,4006:2,4007:3,4008:7,4010:4,4015:1,4016:3,4017:3,4018:3}},
+    1692: {"group": 120, "spec": {4001:1,4002:1,4004:1,4006:2,4008:2,4010:1,4016:1,4017:1,4018:1,4080:2}},
+    2116: {"group": 111, "spec": {4001:1,4002:2,4003:3,4004:2,4006:2,4008:1,4010:1,4015:1,4016:1,4017:1}},
+    2735: {"group": 111, "spec": {4001:1,4002:1,4003:3,4004:2,4006:2,4007:1,4008:1,4015:1,4016:2,4017:2,4018:1}},
+    3766: {"group": 121, "spec": {4001:1,4002:3,4003:2,4006:1,4007:2,4008:1,4015:1,4016:4,4017:2}},
+    654:  {"group": 119, "spec": {4001:1,4002:4,4004:1,4006:1,4008:2,4010:1,4015:1,4016:1}},
+    973:  {"group": 116, "spec": {4002:1,4004:1,4006:2,4016:1,4017:2,4018:1}},
+    3343: {"group": 119, "spec": {4002:3,4003:1,4004:2,4015:1,4016:2,4017:1,4018:2}},
+    3646: {"group": 120, "spec": {4002:1,4004:1,4006:3,4007:3,4008:2,4010:1,4017:1}},
+    3852: {"group": 112, "spec": {4003:2,4004:1,4006:2,4010:1,4018:2}},
+}
+
+# Selection state (cores + 16 candidates) from viewTeam, captured 2026-06-22.
+CORES = {
+    "us":  {"sid": 2864, "name": "Tex",  "flag": 233, "leaderAvatar": TEX_AVATAR, "warzoneScore": 1875},
+    "opp": {"sid": 3436, "name": "PP",   "flag": 122, "leaderAvatar": CDN + "785e8fe38359402c27943cd8baa607ff_1744125282.jpg?v=1744125284079", "warzoneScore": 854},
+}
+
+CANDIDATES = [
+    {"sid": 3088, "leaderName": "구니🎀",     "leaderFlag": 122, "leaderAvatar": CDN + "6f2e3ebf1d8d9fc49c86641a33450308_1775388856.png?v=1775388857551", "cost": 320, "warzoneScore": 1043},
+    {"sid": 216,  "leaderName": "れいrei",    "leaderFlag": 43,  "leaderAvatar": CDN + "410af3d2ebc518f24dedb5e39311507d_1745188681.jpg?v=1745188681618", "cost": 300, "warzoneScore": 782},
+    {"sid": 1281, "leaderName": "🦅吉田くん",  "leaderFlag": 114, "leaderAvatar": CDN + "86f577e4b77b024d259e402a2ba15de6_1744570257.jpg?v=1744570258884", "cost": 300, "warzoneScore": 658},
+    {"sid": 1607, "leaderName": "DANTE",     "leaderFlag": 110, "leaderAvatar": CDN + "243a87448d0de59272a16f97d2ce0ef6_1766450069.png?v=1766450072380", "cost": 300, "warzoneScore": 823},
+    {"sid": 2781, "leaderName": "Hallmake",  "leaderFlag": 233, "leaderAvatar": CDN + "14b113cf6e0fd4ec01634e423ea6ae5c_1751925135.jpg?v=1751925138146", "cost": 300, "warzoneScore": 464},
+    {"sid": 1257, "leaderName": "Cardinal",  "leaderFlag": 233, "leaderAvatar": CDN + "299e2f914d2d4534bd6aad4ff38c3534_1762613281.png?v=1762613283474", "cost": 200, "warzoneScore": 153},
+    {"sid": 1508, "leaderName": "McFarm😑",   "leaderFlag": 233, "leaderAvatar": CDN + "572af47bb6e28662f7e14a2c92420693_1752976737.jpg?v=1752976739697", "cost": 200, "warzoneScore": 818},
+    {"sid": 1692, "leaderName": "深雪",       "leaderFlag": 114, "leaderAvatar": CDN + "169e2ccc4804f48c3d29574cf1a56079_1765123651.png?v=1765123651808", "cost": 200, "warzoneScore": 525},
+    {"sid": 2116, "leaderName": "Wrangler",  "leaderFlag": 233, "leaderAvatar": CDN + "6c8909f9e4a1fd7399c0f9e249a5f974_1745415952.jpg?v=1745415954839", "cost": 200, "warzoneScore": 149},
+    {"sid": 2735, "leaderName": "SoulleSs",  "leaderFlag": 225, "leaderAvatar": CDN + "416895145308.jpg?v=1704226304467", "cost": 200, "warzoneScore": 275},
+    {"sid": 3766, "leaderName": "Lee³⁷⁶⁶",    "leaderFlag": 77,  "leaderAvatar": CDN + "e9a99ab30f0b13c25c625a9f4210c3dd_1774954159.png?v=1774954161598", "cost": 200, "warzoneScore": 521},
+    {"sid": 654,  "leaderName": "hinagiku",  "leaderFlag": 48,  "leaderAvatar": CDN + "47bc7f4b78c8f5edc38298e9d1c0c274.jpg?v=1696886579363", "cost": 100, "warzoneScore": 168},
+    {"sid": 973,  "leaderName": "Mimi☕️",    "leaderFlag": 118, "leaderAvatar": CDN + "7b7ac4dc5c815ffb2f4df8192a3cf94d_1745336015.jpg?v=1745336017869", "cost": 100, "warzoneScore": 141},
+    {"sid": 3343, "leaderName": "Audi",      "leaderFlag": 57,  "leaderAvatar": CDN + "44930e2808a73eed941e3b127a8a834c_1746433889.jpg?v=1746433892106", "cost": 100, "warzoneScore": 133},
+    {"sid": 3646, "leaderName": "TERU",      "leaderFlag": 114, "leaderAvatar": CDN + "c381a89922529a7c8a18d104a6128968_1781086817.png?v=1781086817863", "cost": 100, "warzoneScore": 157},
+    {"sid": 3852, "leaderName": "Garuda",    "leaderFlag": 105, "leaderAvatar": CDN + "2bde33b122523a8a53162c4f852891c6_1744205807.jpg?v=1744205810214", "cost": 100, "warzoneScore": 145},
+]
+
+
+def attach_wl(d):
+    """Attach group + wasteland category counts + spec breakdown from the sweep."""
+    sw = SWEEP.get(d["sid"], {"group": 0, "spec": {}})
+    spec = sw["spec"]
+    cats = {"combat": 0, "econ": 0, "util": 0, "special": 0}
+    for sp, n in spec.items():
+        cats[CAT.get(sp, "special")] += n
+    d["group"] = sw["group"]
+    d["combat"] = cats["combat"]
+    d["econ"] = cats["econ"]
+    d["util"] = cats["util"]
+    d["special"] = cats["special"]
+    d["totalWL"] = sum(spec.values())
+    d["spec"] = {str(k): v for k, v in sorted(spec.items())}
+    return d
+
+
+def load_merit_by_sid():
+    with open(MERIT_PATH, encoding="utf-8") as f:
+        lb = json.load(f)
+    entries = lb["entries"]
+    ranked = sorted(enumerate(entries), key=lambda kv: kv[1]["score"], reverse=True)
+    by_sid = collections.defaultdict(list)
+    for gr, (_, e) in enumerate(ranked, start=1):
+        by_sid[e["sid"]].append((gr, e.get("name") or "", e["score"]))
+    return lb.get("metadata", {}), by_sid
+
+
+def merit_aggregate(sid, by_sid):
+    players = by_sid.get(sid, [])
+    scores = [p[2] for p in players]
+    top5 = scores[:5]
+    return {
+        "totalWarzoneMerit": sum(scores),
+        "meritPlayerCount": len(players),
+        "meritTop5Avg": round(sum(top5) / len(top5)) if top5 else 0,
+        "meritTop1": scores[0] if scores else 0,
+        "meritTop10": [{"rank": r, "name": n, "score": s} for (r, n, s) in players[:10]],
+    }
+
+
+def main():
+    merit_meta, by_sid = load_merit_by_sid()
+    META["meritExtractedAt"] = merit_meta.get("extracted_at")
+    META["meritUnit"] = "SSC personal merit (game-wide, R%s dump)" % merit_meta.get("round")
+
+    out_us = attach_wl(dict(CORES["us"])); out_us.update(merit_aggregate(out_us["sid"], by_sid))
+    out_opp = attach_wl(dict(CORES["opp"])); out_opp.update(merit_aggregate(out_opp["sid"], by_sid))
+
+    cands = []
+    for c in CANDIDATES:
+        d = attach_wl(dict(c))
+        d.update(merit_aggregate(c["sid"], by_sid))
+        cands.append(d)
+
+    mx_merit = max(c["totalWarzoneMerit"] for c in cands) or 1
+    mx_top5 = max(c["meritTop5Avg"] for c in cands) or 1
+    mx_wz = max(c["warzoneScore"] for c in cands) or 1
+    mx_depth = max(c["meritPlayerCount"] for c in cands) or 1
+    mx_combat = max(c["combat"] for c in cands) or 1
+    W = META["powerIndexFormula"]["weights"]
+
+    for c in cands:
+        c["meritNorm"] = round(c["totalWarzoneMerit"] / mx_merit, 4)
+        c["top5Norm"] = round(c["meritTop5Avg"] / mx_top5, 4)
+        c["wzNorm"] = round(c["warzoneScore"] / mx_wz, 4)
+        c["depthNorm"] = round(c["meritPlayerCount"] / mx_depth, 4)
+        c["combatNorm"] = round(c["combat"] / mx_combat, 4)
+        c["costMul"] = round(1 + (300 - c["cost"]) / 300 * 0.15, 4)
+        base = (W["merit"] * c["meritNorm"] + W["top5avg"] * c["top5Norm"] +
+                W["warzoneScore"] * c["wzNorm"] + W["rankedDepth"] * c["depthNorm"] +
+                W["combat"] * c["combatNorm"])
+        c["powerIndex"] = round(base * 100 * c["costMul"], 1)
+        c["valuePerTicket"] = round(c["totalWarzoneMerit"] / c["cost"])
+
+    for rank, c in enumerate(sorted(cands, key=lambda x: x["powerIndex"], reverse=True), start=1):
+        c["powerRank"] = rank
+
+    out = {"meta": META, "us": out_us, "opp": out_opp, "candidates": cands}
+    with open(OUT_PATH, "w", encoding="utf-8") as f:
+        json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
+
+    print(f"Wrote {OUT_PATH}  ({os.path.getsize(OUT_PATH)} bytes)")
+    print(f"Merit dump: round {merit_meta.get('round')} / {merit_meta.get('total_entries')} entries")
+    print(f"\n{'sid':>5} {'leader':12} {'cost':>4} {'wz':>4} {'comb':>4} {'merit(M)':>8} {'top5(M)':>7} {'depth':>5} {'PI':>5} {'rk':>3}")
+    for c in sorted(cands, key=lambda x: x["powerIndex"], reverse=True):
+        print(f"{c['sid']:>5} {c['leaderName'][:12]:12} {c['cost']:>4} {c['warzoneScore']:>4} "
+              f"{c['combat']:>4} {c['totalWarzoneMerit']/1e6:>8.1f} {c['meritTop5Avg']/1e6:>7.2f} "
+              f"{c['meritPlayerCount']:>5} {c['powerIndex']:>5} {c['powerRank']:>3}")
+    print(f"\nCores:  us S2864 merit {out_us['totalWarzoneMerit']/1e6:.0f}M combat {out_us['combat']}"
+          f"  |  opp S3436 merit {out_opp['totalWarzoneMerit']/1e6:.0f}M combat {out_opp['combat']}")
+
+
+if __name__ == "__main__":
+    main()
