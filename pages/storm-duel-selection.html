@@ -328,6 +328,33 @@
   .wl-detail .wl-buffs{margin-bottom:.2rem}
   .wl-detail .wl-chip{font-size:.72rem;padding:.25rem .55rem}
 
+  /* Combat buff comparison (us vs opponent core) */
+  .bc-wrap{margin:0 0 1.1rem}
+  .bc-title{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0 0 .55rem}
+  .buffcmp{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+  @media(max-width:560px){.buffcmp{grid-template-columns:1fr}}
+  .bc-col{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.7rem .8rem}
+  .bc-col.us{border-top:3px solid var(--ally)}
+  .bc-col.opp{border-top:3px solid var(--opp)}
+  .bc-head{display:flex;align-items:baseline;justify-content:space-between;gap:.4rem;margin-bottom:.55rem}
+  .bc-sid{font-weight:800;font-size:.95rem;font-family:'SF Mono',Menlo,monospace}
+  .bc-col.us .bc-sid{color:var(--ally)} .bc-col.opp .bc-sid{color:var(--opp)}
+  .bc-pill{font-size:.64rem;color:var(--muted);font-family:'SF Mono',Menlo,monospace;text-align:right}
+  .bc-pill b{color:var(--combat)}
+  .bc-line{display:grid;grid-template-columns:60px 1fr 92px;gap:.45rem;align-items:center;font-size:.72rem;margin:.3rem 0}
+  .bc-lab{color:var(--muted);font-weight:700}
+  .bc-track{height:8px;background:var(--border);border-radius:4px;overflow:hidden}
+  .bc-fill{height:100%;border-radius:4px}
+  .bc-fill.atk{background:linear-gradient(90deg,#ef4444,#dc2626)}
+  .bc-fill.hp{background:linear-gradient(90deg,#10b981,#059669)}
+  .bc-fill.dmgp{background:linear-gradient(90deg,#f59e0b,#d97706)}
+  .bc-fill.dmgm{background:linear-gradient(90deg,#8b5cf6,#7c3aed)}
+  .bc-fill.def{background:linear-gradient(90deg,#3b82f6,#2563eb)}
+  .bc-v{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+  .bc-v.capped{color:var(--gold)}
+  .bc-v .cnt{color:var(--muted);font-weight:500}
+  .bc-note{font-size:.66rem;color:var(--muted);margin-top:.5rem;line-height:1.45;grid-column:1/-1}
+
   /* Compare modal layout */
   .cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:.65rem}
   .cmp-grid .col{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.65rem .7rem;min-width:0}
@@ -418,6 +445,11 @@
       <div class="stat" id="oppStat"></div>
     </div>
   </div>
+</div>
+
+<div class="bc-wrap" id="buffCmpWrap" style="display:none">
+  <div class="bc-title">Combat buff comparison &mdash; our core vs theirs</div>
+  <div class="buffcmp" id="buffCmp"></div>
 </div>
 
 <div class="countdown" id="countdown">
@@ -662,6 +694,7 @@ function init(){
   $('#bnOppSid').textContent = 'S' + DATA.opp.sid;
   setSide('ally', DATA.us);
   setSide('opp', DATA.opp);
+  renderBuffCompare(DATA.us, DATA.opp);
 
   // dice / pick-order labels
   var weWon = DATA.meta.dice && DATA.meta.dice.wePickFirst;
@@ -708,6 +741,52 @@ function init(){
       $('#compareOverlay').classList.remove('show');
     }
   });
+}
+
+// Combat buff comparison between the two cores (us vs opp), styled like storm-duel.html.
+// Each combat wasteland gives a flat % per L3 (game values); bars scale to the in-battle cap.
+var BC_BUFFS = [
+  { spec:'4001', lab:'All ATK',  cls:'atk',  per:270, cap:1800 },
+  { spec:'4006', lab:'All HP',   cls:'hp',   per:270, cap:1800 },
+  { spec:'4007', lab:'All DMG+', cls:'dmgp', per:45,  cap:300  },
+  { spec:'4008', lab:'All DMG-', cls:'dmgm', per:45,  cap:300  },
+  { spec:'4010', lab:'All DEF',  cls:'def',  per:15,  cap:100  },
+];
+function renderBuffCompare(us, opp){
+  var host = $('#buffCmp'); if (!host) return;
+  host.textContent = '';
+  function col(side, s){
+    var c = document.createElement('div'); c.className = 'bc-col ' + side;
+    var combat = s.combat || 0, total = s.totalWL || 0;
+    var pctCombat = total ? Math.round(combat / total * 100) : 0;
+    var head = document.createElement('div'); head.className = 'bc-head';
+    var sid = document.createElement('span'); sid.className = 'bc-sid';
+    sid.textContent = 'S' + s.sid + (side === 'us' ? ' (us)' : '');
+    var pill = document.createElement('span'); pill.className = 'bc-pill';
+    pill.innerHTML = '<b>' + combat + '</b> combat / ' + total + ' wl<br>' + pctCombat + '% combat of total';
+    head.appendChild(sid); head.appendChild(pill); c.appendChild(head);
+    BC_BUFFS.forEach(function(bf){
+      var n = (s.spec && s.spec[bf.spec]) || 0;
+      var raw = n * bf.per, eff = Math.min(raw, bf.cap), over = raw > bf.cap;
+      var line = document.createElement('div'); line.className = 'bc-line';
+      var lab = document.createElement('span'); lab.className = 'bc-lab'; lab.textContent = bf.lab;
+      var track = document.createElement('div'); track.className = 'bc-track';
+      var fill = document.createElement('div'); fill.className = 'bc-fill ' + bf.cls;
+      fill.style.width = (bf.cap ? (eff / bf.cap * 100) : 0) + '%';
+      track.appendChild(fill);
+      var v = document.createElement('span'); v.className = 'bc-v' + (over ? ' capped' : '');
+      v.innerHTML = (over ? bf.cap + '% <span class="cnt">max</span>' : raw + '%') + ' <span class="cnt">&times;' + n + '</span>';
+      if (over) v.title = 'Raw ' + raw + '% capped at ' + bf.cap + '% in battle';
+      line.appendChild(lab); line.appendChild(track); line.appendChild(v);
+      c.appendChild(line);
+    });
+    return c;
+  }
+  host.appendChild(col('us', us));
+  host.appendChild(col('opp', opp));
+  var note = document.createElement('div'); note.className = 'bc-note';
+  note.textContent = 'Combat wastelands held in each core’s home sector. Per L3 wasteland: ATK / HP +270%, DMG+ / DMG- +45%, DEF +15%. Bars scale to the in-battle cap (ATK / HP 1800%, DMG+ / DMG- 300%, DEF 100%); ×N = wastelands of that type. Buffs apply to that warzone only — not pooled.';
+  var wrap = $('#buffCmpWrap'); if (wrap){ var old = wrap.querySelector('.bc-note'); if (old) old.remove(); wrap.appendChild(note); wrap.style.display = ''; }
 }
 
 function setSide(which, s){
