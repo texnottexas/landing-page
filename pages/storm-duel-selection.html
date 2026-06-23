@@ -324,6 +324,21 @@
   .det-stat .s{font-size:.65rem;color:var(--muted);margin-top:.05rem}
   .det-section{margin-bottom:1rem}
   .det-section h4{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:.5rem;font-weight:700}
+  /* Kartz Trial */
+  .kz-sub{font-size:.62rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;margin-bottom:.3rem}
+  .kz-none{font-size:.7rem;color:var(--muted);padding:.4rem;text-align:center;background:var(--card);border:1px solid var(--border);border-radius:5px}
+  .mrow .kz-tag{font-family:'SF Mono',Menlo,monospace;font-size:.66rem;font-weight:700;color:var(--gold);min-width:42px;flex-shrink:0}
+  /* Kartz summary card on each candidate card */
+  .kz-card{background:rgba(210,153,34,.06);border:1px solid rgba(210,153,34,.3);border-radius:6px;padding:.4rem .5rem;margin-bottom:.55rem}
+  .kz-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:.3rem}
+  .kz-head .kz-ttl{font-size:.6rem;text-transform:uppercase;letter-spacing:.05em;font-weight:700;color:var(--gold)}
+  .kz-head .kz-hint{font-size:.55rem;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);opacity:.8}
+  .kz-row{display:flex;align-items:center;gap:.4rem;font-size:.7rem;padding:.12rem 0}
+  .kz-row.dim .kz-nm{color:var(--muted);font-style:italic}
+  .kz-row .kz-lbl{font-size:.55rem;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);font-weight:700;min-width:48px;flex-shrink:0}
+  .kz-row .kz-nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .kz-row .kz-rk{font-family:'SF Mono',Menlo,monospace;color:var(--muted);font-weight:700;flex-shrink:0}
+  .kz-row .kz-val{font-family:'SF Mono',Menlo,monospace;font-weight:700;color:var(--gold);flex-shrink:0}
   .wl-detail{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.7rem .8rem}
   .wl-detail .wl-buffs{margin-bottom:.2rem}
   .wl-detail .wl-chip{font-size:.72rem;padding:.25rem .55rem}
@@ -465,9 +480,9 @@
     <span class="chev">&#x25BC;</span>
   </div>
   <div class="method-body" id="methodBody">
-    <p>Every candidate gets a single <b>Power Index</b> score (0&ndash;100) so two warzones can be compared at a glance. The blend rewards <b>player strength</b> (merit) and the <b>combat buffs</b> a warzone brings from the wastelands it holds in its home sector, while giving a small discount to cheaper tickets so affordable allies aren&rsquo;t penalised.</p>
+    <p>Every candidate gets a single <b>Power Index</b> score (0&ndash;100) so two warzones can be compared at a glance. The blend rewards <b>player strength</b> (merit) and the <b>combat buffs</b> a warzone brings from the wastelands it holds in its home sector, plus a light read on current <b>Kartz Trial form</b>, while giving a small discount to cheaper tickets so affordable allies aren&rsquo;t penalised.</p>
     <div class="formula">
-      score = ( <span class="w">0.32</span> &middot; meritNorm + <span class="w">0.22</span> &middot; top5Norm + <span class="w">0.13</span> &middot; wzNorm + <span class="w">0.08</span> &middot; depthNorm + <span class="w">0.25</span> &middot; combatNorm ) &times; 100 &times; costMul
+      score = ( <span class="w">0.296</span> &middot; meritNorm + <span class="w">0.22</span> &middot; top5Norm + <span class="w">0.13</span> &middot; wzNorm + <span class="w">0.064</span> &middot; depthNorm + <span class="w">0.25</span> &middot; combatNorm + <span class="w">0.04</span> &middot; kartzNorm ) &times; 100 &times; costMul
     </div>
     <ul>
       <li><b>meritNorm</b> - that warzone&rsquo;s <i>total Seal Stone merit</i> across its ranked players, divided by the highest in the candidate pool. Heaviest weight because merit is the best proxy for what an ally can put on the battlefield.</li>
@@ -475,6 +490,7 @@
       <li><b>combatNorm</b> - how many <i>combat wastelands</i> (All Units ATK / HP / DMG+ / DMG&minus; / DEF) the warzone holds in its home sector, divided by the pool max. Each warzone fights as its home sector and brings those passive buffs into the duel, so this is a real second factor. It is an honest <b>count</b> - the game does not expose wasteland upgrade level in bulk, so counts are not tier-weighted.</li>
       <li><b>wzNorm</b> - their Storm Duel / Seal Stone <i>warzone score</i>. Captures how the whole sector has been performing this season.</li>
       <li><b>depthNorm</b> - how many of their players show up in the cross-server merit rankings. Wide rosters mean the ally still functions when a star or two no-shows.</li>
+      <li><b>kartzNorm</b> - a light read on <i>current Kartz Trial form</i>: <code>0.6 &times;</code> their strongest alliance&rsquo;s score <code>+ 0.4 &times;</code> their best player&rsquo;s standing in the global top 500, normalised to the pool. Carries the smallest weight (0.04) on purpose &mdash; just enough to break near-ties toward warzones showing strong live form, added for R15.</li>
       <li><b>costMul</b> - <code>1 + (300 &minus; ticket) / 300 &times; 0.15</code>, so <code>1.00</code> at 300 tickets, <code>1.05</code> at 200, <code>1.10</code> at 100. A small nudge so the cheap tier doesn&rsquo;t look worse than it really is.</li>
     </ul>
     <p>The simulator surfaces <b>two</b> recommendations on every turn:</p>
@@ -683,6 +699,72 @@ function attachImgFallback(img, name){
     img.src = name ? initialsAvatar(name) : fallbackAv;
     img.dataset.fallbackUsed = '1';
   }
+}
+
+// nationalflag int → flag emoji (1-indexed into sorted ISO 3166-1 alpha-2; -1 = none)
+var ISO_CODES = 'AD,AE,AF,AG,AI,AL,AM,AO,AQ,AR,AS,AT,AU,AW,AX,AZ,BA,BB,BD,BE,BF,BG,BH,BI,BJ,BL,BM,BN,BO,BQ,BR,BS,BT,BV,BW,BY,BZ,CA,CC,CD,CF,CG,CH,CI,CK,CL,CM,CN,CO,CR,CU,CV,CW,CX,CY,CZ,DE,DJ,DK,DM,DO,DZ,EC,EE,EG,EH,ER,ES,ET,FI,FJ,FK,FM,FO,FR,GA,GB,GD,GE,GF,GG,GH,GI,GL,GM,GN,GP,GQ,GR,GS,GT,GU,GW,GY,HK,HM,HN,HR,HT,HU,ID,IE,IL,IM,IN,IO,IQ,IR,IS,IT,JE,JM,JO,JP,KE,KG,KH,KI,KM,KN,KP,KR,KW,KY,KZ,LA,LB,LC,LI,LK,LR,LS,LT,LU,LV,LY,MA,MC,MD,ME,MF,MG,MH,MK,ML,MM,MN,MO,MP,MQ,MR,MS,MT,MU,MV,MW,MX,MY,MZ,NA,NC,NE,NF,NG,NI,NL,NO,NP,NR,NU,NZ,OM,PA,PE,PF,PG,PH,PK,PL,PM,PN,PR,PS,PT,PW,PY,QA,RE,RO,RS,RU,RW,SA,SB,SC,SD,SE,SG,SH,SI,SJ,SK,SL,SM,SN,SO,SR,SS,ST,SV,SX,SY,SZ,TC,TD,TF,TG,TH,TJ,TK,TL,TM,TN,TO,TR,TT,TV,TW,TZ,UA,UG,UM,US,UY,UZ,VA,VC,VE,VG,VI,VN,VU,WF,WS,YE,YT,ZA,ZM,ZW'.split(',');
+function flagEmoji(n){
+  if (n === -1) return '\u{1F1FA}\u{1F1F3}';
+  var code = (n > 0 && n <= ISO_CODES.length) ? ISO_CODES[n - 1] : null;
+  if (!code || code.length !== 2) return '';
+  return String.fromCodePoint(0x1F1E6 + code.charCodeAt(0) - 65, 0x1F1E6 + code.charCodeAt(1) - 65);
+}
+
+// Kartz Trial (Endless PVE) per-server snapshot lookup
+function kartzFor(sid){
+  return (DATA.kartz && DATA.kartz.perServer && DATA.kartz.perServer[String(sid)]) || null;
+}
+// Build the Kartz Trial section (top individuals + top alliances) for a server's detail modal
+function buildKartzSection(sid){
+  var k = kartzFor(sid);
+  if (!k) return null;
+  var sec = document.createElement('div'); sec.className = 'det-section';
+  var h = document.createElement('h4'); h.textContent = 'Kartz Trial standing'; sec.appendChild(h);
+
+  // ---- individuals ----
+  var iLab = document.createElement('div'); iLab.className = 'kz-sub';
+  iLab.textContent = 'Top players (global top ' + (DATA.kartz.individualCap || 500) + ')';
+  sec.appendChild(iLab);
+  var il = document.createElement('div'); il.className = 'mlist';
+  if (k.topIndividuals && k.topIndividuals.length){
+    k.topIndividuals.forEach(function(p){
+      var row = document.createElement('div'); row.className = 'mrow';
+      var av = document.createElement('img'); av.className = 'av';
+      av.src = safeUrl(p.avatar) || initialsAvatar(p.name || '?');
+      attachImgFallback(av, p.name); av.alt = ''; row.appendChild(av);
+      var rk = document.createElement('span'); rk.className = 'rk'; rk.textContent = '#' + p.rank; row.appendChild(rk);
+      var nm = document.createElement('span'); nm.className = 'nm';
+      var fl = flagEmoji(p.flag); nm.textContent = (fl ? fl + ' ' : '') + (p.name || '?'); row.appendChild(nm);
+      var sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = p.damage ? p.damage : '—'; row.appendChild(sc);
+      il.appendChild(row);
+    });
+  } else {
+    var noneI = document.createElement('div'); noneI.className = 'kz-none';
+    noneI.textContent = 'No players in the global top ' + (DATA.kartz.individualCap || 500);
+    il.appendChild(noneI);
+  }
+  sec.appendChild(il);
+
+  // ---- alliances ----
+  var aLab = document.createElement('div'); aLab.className = 'kz-sub'; aLab.style.marginTop = '.6rem';
+  aLab.textContent = 'Top alliances' + (k.allianceCount ? ' (' + k.allianceCount + ' ranked)' : '');
+  sec.appendChild(aLab);
+  var al = document.createElement('div'); al.className = 'mlist';
+  if (k.topAlliances && k.topAlliances.length){
+    k.topAlliances.forEach(function(a){
+      var row = document.createElement('div'); row.className = 'mrow';
+      var tg = document.createElement('span'); tg.className = 'kz-tag'; tg.textContent = '[' + (a.tag || '?') + ']'; row.appendChild(tg);
+      var rk = document.createElement('span'); rk.className = 'rk'; rk.textContent = '#' + a.rank; row.appendChild(rk);
+      var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = a.name || '?'; row.appendChild(nm);
+      var sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = fmt(a.score); row.appendChild(sc);
+      al.appendChild(row);
+    });
+  } else {
+    var noneA = document.createElement('div'); noneA.className = 'kz-none'; noneA.textContent = 'No alliances ranked';
+    al.appendChild(noneA);
+  }
+  sec.appendChild(al);
+  return sec;
 }
 
 function init(){
@@ -1183,6 +1265,42 @@ function renderCandidates(){
     card.appendChild(stats);
 
     var body = document.createElement('div'); body.className='cbody';
+
+    // Kartz Trial summary card (best player + best alliance; full top-5 / top-2 in the detail modal)
+    var kz = kartzFor(c.sid);
+    if (kz){
+      var kc = document.createElement('div'); kc.className='kz-card';
+      var kh = document.createElement('div'); kh.className='kz-head';
+      var kt = document.createElement('span'); kt.className='kz-ttl'; kt.textContent='Kartz Trial'; kh.appendChild(kt);
+      var khint = document.createElement('span'); khint.className='kz-hint'; khint.textContent='tap for top 5'; kh.appendChild(khint);
+      kc.appendChild(kh);
+
+      var kbi = (kz.topIndividuals && kz.topIndividuals[0]) || null;
+      var kba = (kz.topAlliances && kz.topAlliances[0]) || null;
+
+      function kzRow(lbl, nameHtml, rank, val, dim){
+        var r = document.createElement('div'); r.className = 'kz-row' + (dim ? ' dim' : '');
+        var l = document.createElement('span'); l.className='kz-lbl'; l.textContent = lbl; r.appendChild(l);
+        var nm = document.createElement('span'); nm.className='kz-nm'; nm.textContent = nameHtml; r.appendChild(nm);
+        if (rank != null){ var rk = document.createElement('span'); rk.className='kz-rk'; rk.textContent = '#'+rank; r.appendChild(rk); }
+        if (val != null){ var v = document.createElement('span'); v.className='kz-val'; v.textContent = val; r.appendChild(v); }
+        return r;
+      }
+
+      if (kbi){
+        var fl = flagEmoji(kbi.flag);
+        kc.appendChild(kzRow('Player', (fl?fl+' ':'') + (kbi.name||'?'), kbi.rank, kbi.damage || '—'));
+      } else {
+        kc.appendChild(kzRow('Player', 'none in top ' + (DATA.kartz.individualCap||500), null, null, true));
+      }
+      if (kba){
+        kc.appendChild(kzRow('Alliance', '[' + (kba.tag||'?') + '] ' + (kba.name||'?'), kba.rank, fmt(kba.score)));
+      } else {
+        kc.appendChild(kzRow('Alliance', 'none ranked', null, null, true));
+      }
+      body.appendChild(kc);
+    }
+
     var bh = document.createElement('div'); bh.className='cbody-head'; bh.textContent = 'Top merit players'; body.appendChild(bh);
     var mlist = document.createElement('div'); mlist.className='mlist';
     var top = (c.meritTop10 || []).slice(0, 5);
@@ -1204,6 +1322,7 @@ function renderCandidates(){
       mlist.appendChild(none);
     }
     body.appendChild(mlist);
+
     card.appendChild(body);
 
     var cact = document.createElement('div'); cact.className='cact';
@@ -1403,6 +1522,11 @@ function openDetailModal(sidOrServer, opts){
     sec.appendChild(ml);
     body.appendChild(sec);
   }
+
+  // Kartz Trial standing (top players + top alliances for this server)
+  var kz = buildKartzSection(c.sid);
+  if (kz) body.appendChild(kz);
+
   $('#detailOverlay').classList.add('show');
 }
 function closeDetailModal(e){

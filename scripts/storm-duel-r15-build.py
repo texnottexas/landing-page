@@ -32,6 +32,9 @@ MERIT_PATH = os.path.join(DATA, "ssc-merit-leaderboard.json")
 # Private raw dump (carries uid + avatar + nationalflag). Used ONLY to attach public
 # avatars/flags to the merit Top-10 rows — UIDs are never written to the public output.
 RAW_MERIT_PATH = os.path.join(HERE, "..", "..", "s2864-playerdata", "ssc-merit-leaderboard-r14-raw.json")
+# Private Kartz Trial (Endless PVE) dump — carries uid on individuals. Used ONLY to build
+# the public per-server top-5 individuals / top-2 alliances; UIDs never reach public output.
+KARTZ_RAW_PATH = os.path.join(HERE, "..", "..", "s2864-playerdata", "kartz-trial-r15-raw.json")
 OUT_PATH = os.path.join(DATA, "storm-duel-round15.json")
 
 EXTRACTED_AT = 1782234600  # 2026-06-22 ~17:10 UTC (approx snapshot time)
@@ -77,17 +80,22 @@ META = {
     },
     "powerIndexFormula": {
         "description": "Composite 0-100 score blending player strength (merit) with the "
-                       "warzone's home-sector combat wasteland buffs. Cheaper tickets get a "
-                       "small discount so affordable allies are not penalised.",
-        "weights": {"merit": 0.32, "top5avg": 0.22, "warzoneScore": 0.13,
-                    "rankedDepth": 0.08, "combat": 0.25},
+                       "warzone's home-sector combat wasteland buffs and current Kartz Trial "
+                       "form. Cheaper tickets get a small discount so affordable allies are not "
+                       "penalised.",
+        "weights": {"merit": 0.296, "top5avg": 0.22, "warzoneScore": 0.13,
+                    "rankedDepth": 0.064, "combat": 0.25, "kartz": 0.04},
         "costMulFormula": "1 + (300 - ticket)/300 * 0.15",
         "normalization": "max-in-candidate-pool",
-        "version": 3,
+        "version": 4,
         "combatNote": "Combat buffs are an honest COUNT of combat wastelands (specId in "
                       "[ATK,HP,DMG+,DMG-,DEF]) the warzone holds in its home sector. The game "
                       "does not expose wasteland upgrade level in bulk, so counts are not "
                       "tier-weighted.",
+        "kartzNote": "R15 addition: a light Kartz Trial form factor (top-end signal = 0.6 best "
+                     "alliance score + 0.4 best player standing in the global top 500, "
+                     "normalised to the pool). Weighted 0.04 - just enough to break near-ties "
+                     "toward warzones showing strong current Kartz form, not to dominate.",
     },
 }
 
@@ -211,6 +219,44 @@ def merit_aggregate(sid, by_sid, av_lookup):
     }
 
 
+def load_kartz(sel_sids):
+    """Build the public Kartz Trial per-server block (top-5 individuals, top-2 alliances)
+    for the servers in our storm-duel selection. Strips uid; keeps public avatar/flag."""
+    if not os.path.exists(KARTZ_RAW_PATH):
+        print("WARN: kartz raw not found (%s) -- skipping kartz block" % KARTZ_RAW_PATH)
+        return None
+    with open(KARTZ_RAW_PATH, encoding="utf-8") as f:
+        raw = json.load(f)
+    ind = raw.get("individual", [])
+    alli = raw.get("alliance", [])
+
+    def pind(r):
+        return {"rank": r["rank"], "name": r.get("username", ""), "flag": r.get("nationalflag", 0),
+                "avatar": r.get("avatar") or "", "damage": r.get("damageShow")}
+
+    def palli(r):
+        return {"rank": r["rank"], "tag": r.get("aTag", ""), "name": r.get("aName", ""), "score": r.get("score", 0)}
+
+    per = {}
+    for s in sel_sids:
+        si = sorted([r for r in ind if r.get("sid") == s], key=lambda z: z["rank"])
+        sa = sorted([r for r in alli if r.get("sid") == s], key=lambda z: z["rank"])
+        per[str(s)] = {
+            "topIndividuals": [pind(r) for r in si[:5]],
+            "indivInTop500": len(si),
+            "topAlliances": [palli(r) for r in sa[:2]],
+            "allianceCount": len(sa),
+        }
+    block = {
+        "asOf": raw.get("asOf"),
+        "individualCap": raw.get("individualCap", 500),
+        "allianceTotal": raw.get("allianceTotal", len(alli)),
+        "perServer": per,
+    }
+    assert "uid" not in json.dumps(block), "UID leaked into public kartz block"
+    return block
+
+
 def main():
     merit_meta, by_sid = load_merit_by_sid()
     av_lookup = load_avatar_lookup()
@@ -225,6 +271,37 @@ def main():
         d = attach_wl(dict(c))
         d.update(merit_aggregate(c["sid"], by_sid, av_lookup))
         cands.append(d)
+
+    # Kartz Trial per-server data point (selection servers only): top-5 players + top-2 alliances.
+    # Loaded before the Power Index so its top-end form can feed a light R15-only PI factor.
+    sel_sids = [out_us["sid"], out_opp["sid"]] + [c["sid"] for c in CANDIDATES]
+    kartz = load_kartz(sel_sids)
+
+    # Per-candidate Kartz form metric: 0.6 * best alliance score + 0.4 * best player standing
+    # (501 - global rank, 0 if none in the top 500). Top-end signal, not breadth.
+    def kartz_raw(sid):
+        if not kartz:
+            return 0.0
+        e = kartz["perServer"].get(str(sid), {})
+        ti = e.get("topIndividuals") or []
+        ta = e.get("topAlliances") or []
+        best_alli = ta[0]["score"] if ta else 0
+        best_indiv = (501 - ti[0]["rank"]) if ti else 0
+        return best_alli, best_indiv
+
+    if kartz:
+        mxa = max((kartz_raw(c["sid"])[0] for c in cands), default=0) or 1
+        mxi = max((kartz_raw(c["sid"])[1] for c in cands), default=0) or 1
+        for c in cands:
+            a, i = kartz_raw(c["sid"])
+            c["_kartzRaw"] = 0.6 * (a / mxa) + 0.4 * (i / mxi)
+        mx_kartz_raw = max((c["_kartzRaw"] for c in cands), default=0) or 1
+        for c in cands:
+            c["kartzNorm"] = round(c["_kartzRaw"] / mx_kartz_raw, 4)
+            del c["_kartzRaw"]
+    else:
+        for c in cands:
+            c["kartzNorm"] = 0.0
 
     mx_merit = max(c["totalWarzoneMerit"] for c in cands) or 1
     mx_top5 = max(c["meritTop5Avg"] for c in cands) or 1
@@ -242,7 +319,7 @@ def main():
         c["costMul"] = round(1 + (300 - c["cost"]) / 300 * 0.15, 4)
         base = (W["merit"] * c["meritNorm"] + W["top5avg"] * c["top5Norm"] +
                 W["warzoneScore"] * c["wzNorm"] + W["rankedDepth"] * c["depthNorm"] +
-                W["combat"] * c["combatNorm"])
+                W["combat"] * c["combatNorm"] + W.get("kartz", 0) * c["kartzNorm"])
         c["powerIndex"] = round(base * 100 * c["costMul"], 1)
         c["valuePerTicket"] = round(c["totalWarzoneMerit"] / c["cost"])
 
@@ -250,6 +327,9 @@ def main():
         c["powerRank"] = rank
 
     out = {"meta": META, "us": out_us, "opp": out_opp, "candidates": cands}
+    if kartz:
+        out["kartz"] = kartz
+
     with open(OUT_PATH, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
 
