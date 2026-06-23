@@ -68,7 +68,7 @@ META = {
         "randomBeginTime": 1782144000,    # Jun 22 16:00 UTC (pool draw open)
         "randomEndTime": 1782208800,      # Jun 23 10:00 UTC (pool draw closes)
         "viewTime": 1782316800,
-        "selectAreaTime": 1782403200,     # Jun 25 16:00 UTC (ally selection opens)
+        "selectAreaTime": 1782223200,     # Tue Jun 23 14:00 UTC = 10:00 AM EDT (ally selection opens, per in-game timer)
         "waitFightBeginTime": 1782489600, # Jun 26 16:00 UTC
         "fightBeginTime": 1782568800,     # Jun 27 14:00 UTC
         "fightEndTime": 1782572400,       # Jun 27 15:00 UTC
