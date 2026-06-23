@@ -29,6 +29,9 @@ import json, os, collections
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "..", "data")
 MERIT_PATH = os.path.join(DATA, "ssc-merit-leaderboard.json")
+# Private raw dump (carries uid + avatar + nationalflag). Used ONLY to attach public
+# avatars/flags to the merit Top-10 rows — UIDs are never written to the public output.
+RAW_MERIT_PATH = os.path.join(HERE, "..", "..", "s2864-playerdata", "ssc-merit-leaderboard-r14-raw.json")
 OUT_PATH = os.path.join(DATA, "storm-duel-round15.json")
 
 EXTRACTED_AT = 1782234600  # 2026-06-22 ~17:10 UTC (approx snapshot time)
@@ -156,6 +159,24 @@ def attach_wl(d):
     return d
 
 
+def load_avatar_lookup():
+    """(sid, name, score) -> {avatar, flag} from the private raw dump. Avatars/flags are
+    public game data; uid is intentionally NOT carried through. Best-effort — returns {}
+    if the raw dump isn't present."""
+    if not os.path.exists(RAW_MERIT_PATH):
+        print("  (raw merit dump not found — Top-10 avatars will fall back to initials)")
+        return {}
+    with open(RAW_MERIT_PATH, encoding="utf-8") as f:
+        raw = json.load(f)
+    entries = raw["entries"] if isinstance(raw, dict) and "entries" in raw else raw
+    look = {}
+    for e in entries:
+        look[(e["sid"], e.get("name") or "", e["score"])] = {
+            "avatar": e.get("avatar"), "flag": e.get("nationalflag"),
+        }
+    return look
+
+
 def load_merit_by_sid():
     with open(MERIT_PATH, encoding="utf-8") as f:
         lb = json.load(f)
@@ -167,31 +188,42 @@ def load_merit_by_sid():
     return lb.get("metadata", {}), by_sid
 
 
-def merit_aggregate(sid, by_sid):
+def merit_aggregate(sid, by_sid, av_lookup):
     players = by_sid.get(sid, [])
     scores = [p[2] for p in players]
     top5 = scores[:5]
+    top10 = []
+    for (r, n, s) in players[:10]:
+        row = {"rank": r, "name": n, "score": s}
+        a = av_lookup.get((sid, n, s))
+        if a:
+            if a.get("avatar"):
+                row["avatar"] = a["avatar"]
+            if a.get("flag") is not None:
+                row["flag"] = a["flag"]
+        top10.append(row)
     return {
         "totalWarzoneMerit": sum(scores),
         "meritPlayerCount": len(players),
         "meritTop5Avg": round(sum(top5) / len(top5)) if top5 else 0,
         "meritTop1": scores[0] if scores else 0,
-        "meritTop10": [{"rank": r, "name": n, "score": s} for (r, n, s) in players[:10]],
+        "meritTop10": top10,
     }
 
 
 def main():
     merit_meta, by_sid = load_merit_by_sid()
+    av_lookup = load_avatar_lookup()
     META["meritExtractedAt"] = merit_meta.get("extracted_at")
     META["meritUnit"] = "SSC personal merit (game-wide, R%s dump)" % merit_meta.get("round")
 
-    out_us = attach_wl(dict(CORES["us"])); out_us.update(merit_aggregate(out_us["sid"], by_sid))
-    out_opp = attach_wl(dict(CORES["opp"])); out_opp.update(merit_aggregate(out_opp["sid"], by_sid))
+    out_us = attach_wl(dict(CORES["us"])); out_us.update(merit_aggregate(out_us["sid"], by_sid, av_lookup))
+    out_opp = attach_wl(dict(CORES["opp"])); out_opp.update(merit_aggregate(out_opp["sid"], by_sid, av_lookup))
 
     cands = []
     for c in CANDIDATES:
         d = attach_wl(dict(c))
-        d.update(merit_aggregate(c["sid"], by_sid))
+        d.update(merit_aggregate(c["sid"], by_sid, av_lookup))
         cands.append(d)
 
     mx_merit = max(c["totalWarzoneMerit"] for c in cands) or 1
