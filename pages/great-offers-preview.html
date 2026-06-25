@@ -50,6 +50,13 @@
   /* Pricing button */
   .price-btn{background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.3);color:var(--army);border-radius:8px;padding:.25rem .6rem;cursor:pointer;font-size:.72rem;font-weight:600;font-family:inherit;display:flex;align-items:center;gap:.35rem;transition:all .15s;}
   .price-btn:hover{background:rgba(63,185,80,.2);border-color:var(--army);}
+  /* Price-changes button */
+  .changes-btn{background:rgba(121,192,255,.1);border:1px solid rgba(121,192,255,.3);color:var(--accent);border-radius:8px;padding:.25rem .6rem;cursor:pointer;font-size:.72rem;font-weight:600;font-family:inherit;display:flex;align-items:center;gap:.35rem;transition:all .15s;}
+  .changes-btn:hover{background:rgba(121,192,255,.2);border-color:var(--accent);}
+  /* Price-change cells */
+  .cm-down{color:var(--army);font-weight:700;white-space:nowrap;}
+  .cm-up{color:var(--red);font-weight:700;white-space:nowrap;}
+  .cm-same{color:var(--muted);}
   /* Item money row */
   .money-row{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin-top:.2rem;font-size:.65rem;}
   .money-usd{color:#4caf50;font-weight:600;}
@@ -176,6 +183,10 @@
       <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M4 10.781c.148 1.667 1.513 2.85 3.591 3.003V15h1.043v-1.216c2.27-.179 3.678-1.438 3.678-3.3 0-1.59-.947-2.51-2.956-3.028l-.722-.187V3.467c1.122.11 1.879.714 2.07 1.616h1.47c-.166-1.6-1.54-2.748-3.54-2.875V1H7.591v1.233c-1.939.23-3.27 1.472-3.27 3.156 0 1.454.966 2.483 2.661 2.917l.61.162v4.031c-1.149-.17-1.94-.8-2.07-1.718zm3.391-3.836c-1.043-.263-1.6-.825-1.6-1.616 0-.944.704-1.641 1.8-1.828v3.495l-.2-.051zm1.591 1.872c1.287.323 1.852.859 1.852 1.769 0 1.097-.826 1.828-2.2 1.939V8.73z"/></svg>
       Real Cost
     </button>
+    <button class="changes-btn" id="changesBtn">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M.5 1a.5.5 0 0 1 .5.5v11h13.5a.5.5 0 0 1 0 1H.5a.5.5 0 0 1-.5-.5V1.5A.5.5 0 0 1 .5 1zm13.854 2.354a.5.5 0 0 0-.708-.708L10 6.293 7.854 4.146a.5.5 0 0 0-.708 0L3.146 8.146a.5.5 0 1 0 .708.708L7.5 5.207l2.146 2.147a.5.5 0 0 0 .708 0l4-4z"/></svg>
+      Price Changes
+    </button>
   </div>
   <div style="background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.3);border-radius:8px;padding:.55rem .8rem;margin-bottom:1rem;font-size:.74rem;color:var(--gold);line-height:1.4;">
     <strong>Preview of the upcoming rotation.</strong> Items are pulled from the game's data files. The exact rotation and start date are predicted and not final until the event goes live in the game.
@@ -224,6 +235,32 @@
           </div>
           <p class="pm-note">Min costs use fewest packs to cover the diamond price exactly (greedy, largest pack first). Savings = USD minus JPY-in-USD cost.</p>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Price Changes Modal -->
+  <div class="pm-overlay" id="cmOverlay">
+    <div class="pm-modal">
+      <div class="pm-header">
+        <div class="pm-title">Price Changes vs Last Round</div>
+        <button class="pm-close" id="cmClose">&times;</button>
+      </div>
+      <div class="pm-body">
+        <p class="pm-note" style="margin-top:0;margin-bottom:.75rem;">Final diamond price: last rotation (#5015819) &rarr; this rotation (#5015822). Matched by game item ID. Cheaper in <span style="color:var(--army);font-weight:700;">green</span>, pricier in <span style="color:var(--red);font-weight:700;">red</span>.</p>
+        <div class="pm-table-wrap">
+        <table class="pm-items-table" id="cmTable">
+          <thead><tr>
+            <th>Item</th>
+            <th>Was &#9830;</th>
+            <th>Now &#9830;</th>
+            <th>Change</th>
+          </tr></thead>
+          <tbody id="cmBody"></tbody>
+        </table>
+        </div>
+        <p class="pm-note">Several items also had their <strong>purchase limit reduced</strong> (e.g. Universal Exclusive Skill Shard &amp; Universal Decor Shard: 20 &rarr; 10), so the most you can buy at the discount is lower even where the unit price dropped.</p>
+        <p class="pm-note" id="cmDecorNote"></p>
       </div>
     </div>
   </div>
@@ -507,5 +544,65 @@ fetch('/cdn-cgi/trace').then(function(r){return r.text();}).then(function(t){
   function googleTranslateElementInit(){window._gtLoaded=true;new google.translate.TranslateElement({pageLanguage:'en',autoDisplay:false},'google_translate_element');var p=sessionStorage.getItem('pendingLang');if(p){sessionStorage.removeItem('pendingLang');applyLangToCombo(p,250);}else{var lo=localStorage.getItem('langOverride');if(lo&&lo!=='en')applyLangToCombo(lo,250);var d=detectCurrentLang();if(d!=='en')updateLangBtn(d);}}
 </script>
 <script src="https://translate.googleapis.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+<script>
+// ── Price Changes modal (last rotation #5015819 → this rotation #5015822) ──
+(function(){
+  var CHANGES = [
+    {name:'Resonator Choice Chest', qty:10, old:4800, now:3600},
+    {name:'Shark Resonator', qty:10, old:4000, now:3000},
+    {name:'Universal Exclusive Skill Shard', qty:500, old:4500, now:3500},
+    {name:'Golden Warship', qty:1, old:4480, now:3500},
+    {name:'Lv. 5 Rare Skill Choice Chest', qty:1, old:2880, now:2160},
+    {name:'Base Skin Box', qty:1, old:3600, now:2997, note:'Different skin set (item 56000148 → 56000147)'},
+    {name:'Eagle Resonator', qty:10, old:4000, now:3600},
+    {name:'Universal Decor Shard', qty:500, old:4000, now:3750},
+    {name:'Remould Blueprint', qty:10, old:1000, now:896},
+    {name:'Enigma Repeater', qty:10, old:750, now:700},
+    {name:'Pro HT Chip Chest', qty:4, old:8000, now:8400},
+    {name:'Decor Shard Lucky Chest', qty:1, old:150, now:160},
+    {name:'Skill Shard Lucky Chest', qty:1, old:150, now:160},
+    {name:'"Infinity" HT Chip Chest', qty:4, old:1280, now:1280},
+    {name:'Full Defense Formation Breakdown', qty:40, old:2400, now:2400},
+    {name:'Legendary Beast Chest', qty:2, old:4200, now:4200},
+    {name:'Top-tier Catalyst', qty:3, old:3600, now:3600},
+    {name:'Base Effect Chest', qty:1, old:1000, now:1000},
+    {name:'Orange Universal Shard', qty:20, old:1800, now:1800},
+    {name:'Expert HT Chip Chest', qty:1, old:350, now:350},
+    {name:'Deluxe Queue Skin Choice Chest', qty:1, old:700, now:700},
+    {name:'Superior Queue Skin Choice Chest', qty:1, old:2093, now:2093}
+  ];
+  var DECOR_OUT = ['Lucky & Lovely','Sorcery Box','Gravitic Wave Radar','Lovable & Huggable','Hologram Choice Chest','Cranes in Clouds','Pint-Sized Fortress','Timber Titan','Guardian Lion'];
+  var DECOR_IN = ['Penguin Home','Set Sail','Prosperity & Harmony','Big Glowy Bitey','Lunar Fairy',"That's the Vibe",'Refreshing Water Bar','Hippie Dragon'];
+  function cell(text, cls){var el=document.createElement('td');el.textContent=text;if(cls)el.className=cls;return el;}
+  function buildChangesTable(){
+    var body=document.getElementById('cmBody'); if(!body) return;
+    body.innerHTML='';
+    var rows=CHANGES.slice().sort(function(a,b){return (a.now-a.old)/a.old-(b.now-b.old)/b.old;});
+    rows.forEach(function(it){
+      var diff=it.now-it.old, pct=it.old?Math.round(diff/it.old*100):0;
+      var tr=document.createElement('tr');
+      var nameTd=document.createElement('td');
+      nameTd.textContent=it.name+(it.qty>1?' ×'+it.qty:'')+(it.note?' *':'');
+      if(it.note) nameTd.title=it.note;
+      tr.appendChild(nameTd);
+      tr.appendChild(cell(it.old.toLocaleString()));
+      tr.appendChild(cell(it.now.toLocaleString()));
+      if(diff<0) tr.appendChild(cell('↓ '+pct+'% ('+diff.toLocaleString()+')','cm-down'));
+      else if(diff>0) tr.appendChild(cell('↑ +'+pct+'% (+'+diff.toLocaleString()+')','cm-up'));
+      else tr.appendChild(cell('no change','cm-same'));
+      body.appendChild(tr);
+    });
+    var dn=document.getElementById('cmDecorNote');
+    if(dn) dn.textContent='Decor lineup also swapped — out: '+DECOR_OUT.join(', ')+'. In: '+DECOR_IN.join(', ')+'.';
+  }
+  var built=false;
+  function openChanges(){ if(!built){buildChangesTable();built=true;} var o=document.getElementById('cmOverlay'); if(o) o.classList.add('show'); }
+  function closeChanges(){ var o=document.getElementById('cmOverlay'); if(o) o.classList.remove('show'); }
+  var cbn=document.getElementById('changesBtn'); if(cbn) cbn.addEventListener('click',openChanges);
+  var ccl=document.getElementById('cmClose'); if(ccl) ccl.addEventListener('click',closeChanges);
+  var cov=document.getElementById('cmOverlay'); if(cov) cov.addEventListener('click',function(e){if(e.target===cov)closeChanges();});
+  document.addEventListener('keydown',function(e){var o=document.getElementById('cmOverlay');if(e.key==='Escape'&&o&&o.classList.contains('show'))closeChanges();});
+})();
+</script>
 </body>
 </html>
