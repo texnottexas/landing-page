@@ -826,28 +826,29 @@
   }
   .main-tab.on .sub { color: var(--accent); }
 
-  /* Mobile: force a 2x2 grid so the 4 tabs lay out evenly instead of wrapping
-     into an awkward 1 + 2 + 1 pattern. */
+  /* Mobile: force a 2-col grid so the tabs lay out evenly across rows.
+     Currently 6 tabs = 3 rows. Update :nth-child(-n+N) if tab count changes:
+     N = (rowCount - 1) * 2 so the last row drops its bottom divider. */
   @media (max-width: 700px) {
     .main-tabs {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 0;
-      padding-top: 8px;
+      padding-top: 6px;
     }
     .main-tab {
-      padding: 12px 10px;
+      padding: 8px 10px;
       font-size: .88rem;
       border-bottom: 2px solid transparent;
       border-right: 1px solid var(--border);
     }
     .main-tab:nth-child(2n) { border-right: none; }
-    .main-tab:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+    .main-tab:nth-child(-n+4) { border-bottom: 1px solid var(--border); }
     .main-tab.on { border-bottom-color: var(--gold); }
     .main-tab .sub {
       font-size: .52rem;
-      line-height: 1.25;
-      margin-top: 3px;
+      line-height: 1.2;
+      margin-top: 2px;
     }
   }
   .main-tab-panel { display: none; }
@@ -897,6 +898,74 @@
   .cost-card .placeholder-body {
     font-size: .85rem; color: var(--muted); line-height: 1.55;
   }
+  .cost-card.crowdsource {
+    grid-column: 1 / -1;
+    border-color: rgba(121,192,255,.35);
+    background: linear-gradient(135deg, rgba(121,192,255,.04), transparent);
+  }
+  .gs-intro {
+    font-size: .85rem; color: var(--muted); line-height: 1.55; margin: 0 0 14px;
+  }
+  .gs-intro strong { color: var(--text); }
+  .gs-form { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px 14px; }
+  @media (max-width: 600px) { .gs-form { grid-template-columns: 1fr; } }
+  .gs-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .gs-field.full { grid-column: 1 / -1; }
+  .gs-field label {
+    font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); font-weight: 600;
+  }
+  .gs-field label .opt { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 4px; font-size: .68rem; }
+  .gs-field input[type="number"] {
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-family: var(--mono); font-size: .9rem;
+    width: 100%; box-sizing: border-box;
+  }
+  .gs-field input[type="number"]:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(121,192,255,.18);
+  }
+  .gs-tier-row {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px;
+  }
+  .gs-tier {
+    flex: 0 0 auto;
+    background: var(--bg); color: var(--muted);
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 6px 11px; font-size: .78rem; font-family: var(--mono);
+    cursor: pointer; transition: all .15s;
+    user-select: none;
+  }
+  .gs-tier:hover { color: var(--text); border-color: var(--accent); }
+  .gs-tier.active {
+    background: rgba(121,192,255,.12); color: var(--accent);
+    border-color: rgba(121,192,255,.55); font-weight: 700;
+  }
+  .gs-actions {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-top: 6px;
+  }
+  .gs-submit {
+    background: var(--accent); color: #0d1117;
+    border: 0; border-radius: 8px;
+    padding: 9px 18px; font-size: .9rem; font-weight: 700;
+    cursor: pointer; transition: filter .15s, opacity .15s;
+    font-family: inherit;
+  }
+  .gs-submit:hover { filter: brightness(1.1); }
+  .gs-submit:disabled { opacity: .55; cursor: not-allowed; }
+  .gs-who { font-size: .75rem; color: var(--muted); }
+  .gs-who strong { color: var(--text); font-weight: 600; }
+  .gs-msg {
+    grid-column: 1 / -1;
+    font-size: .82rem; padding: 9px 12px; border-radius: 8px;
+    margin-top: 2px; display: none;
+  }
+  .gs-msg.ok    { display: block; color: var(--green); background: rgba(63,185,80,.08); border: 1px solid rgba(63,185,80,.25); }
+  .gs-msg.err   { display: block; color: #ff7b72;    background: rgba(255,123,114,.08); border: 1px solid rgba(255,123,114,.3); }
+  .gs-msg.info  { display: block; color: var(--muted); background: rgba(255,255,255,.02); border: 1px solid var(--border); }
 
   .qa-card {
     background: var(--card); border: 1px solid var(--border); border-radius: 12px;
@@ -2495,12 +2564,62 @@
       <p class="card-foot">Every tier is 2.5x to 4x the $4.99 Path of Awakening rate. The smallest pack ($4.99) has the best per-stone price within this bundle.</p>
     </div>
 
-    <!-- Card 4: Hero Grand Slam (placeholder) -->
-    <div class="cost-card placeholder">
+    <!-- Card 4: Hero Grand Slam (crowdsourced) -->
+    <div class="cost-card crowdsource" id="grand-slam-card">
       <h3>Hero Grand Slam</h3>
-      <p class="card-meta">Event · voucher redeem</p>
-      <p class="placeholder-body">Vouchers earned during Hero Grand Slam redeem <strong>1-for-1</strong> for Awakening Stones, up to <strong>6,000 stones</strong> per event. Concrete pricing tiers and total spend breakdown coming as we collect data.</p>
-      <p class="card-foot">Placeholder card; will fill in once we have firm numbers.</p>
+      <p class="card-meta">Event · voucher redeem · help us measure</p>
+      <p class="gs-intro">
+        Vouchers earned during Hero Grand Slam redeem <strong>1-for-1</strong> for Awakening Stones, up to <strong>6,000 stones</strong> per event. Per-pack voucher counts are not published in-game — tell us what you bought and how many vouchers you received, and once we have enough submissions we'll publish averages here.
+      </p>
+
+      <form class="gs-form" id="gs-form" autocomplete="off" novalidate>
+
+        <div class="gs-field">
+          <label for="gs-day">Day of event</label>
+          <input type="number" id="gs-day" min="1" max="31" step="1" placeholder="1, 2, 3...">
+        </div>
+
+        <div class="gs-field">
+          <label for="gs-vouchers">Total Grand Slam Vouchers received</label>
+          <input type="number" id="gs-vouchers" min="0" max="50000" step="1" placeholder="e.g. 145">
+        </div>
+
+        <div class="gs-field full">
+          <label>Highest pack purchased today <span class="opt">(includes everything cheaper than it)</span></label>
+          <div class="gs-tier-row" id="gs-tiers" role="radiogroup" aria-label="Highest pack tier purchased">
+            <button type="button" class="gs-tier active" data-tier="">None</button>
+            <button type="button" class="gs-tier" data-tier="0.99">$0.99</button>
+            <button type="button" class="gs-tier" data-tier="1.99">$1.99</button>
+            <button type="button" class="gs-tier" data-tier="4.99">$4.99</button>
+            <button type="button" class="gs-tier" data-tier="8.99">$8.99</button>
+            <button type="button" class="gs-tier" data-tier="19.99">$19.99</button>
+            <button type="button" class="gs-tier" data-tier="49.99">$49.99</button>
+          </div>
+        </div>
+
+        <div class="gs-field full">
+          <label for="gs-extra99">Additional $99.99 packs bought today <span class="opt">(only tier that allows multiple purchases per day)</span></label>
+          <input type="number" id="gs-extra99" min="0" max="50" step="1" placeholder="0">
+        </div>
+
+        <div class="gs-field">
+          <label for="gs-bal-before">Voucher balance <em>before</em> today <span class="opt">(optional)</span></label>
+          <input type="number" id="gs-bal-before" min="0" max="1000000" step="1" placeholder="optional">
+        </div>
+
+        <div class="gs-field">
+          <label for="gs-bal-after">Voucher balance <em>after</em> today <span class="opt">(optional)</span></label>
+          <input type="number" id="gs-bal-after" min="0" max="1000000" step="1" placeholder="optional">
+        </div>
+
+        <div class="gs-msg" id="gs-msg" role="status" aria-live="polite"></div>
+
+        <div class="gs-actions">
+          <span class="gs-who" id="gs-who">Submitting anonymously</span>
+          <button type="submit" class="gs-submit" id="gs-submit">Submit</button>
+        </div>
+
+      </form>
     </div>
 
   </div>
@@ -2552,7 +2671,7 @@
 const HERO_DATA_URL = '../data/heroes-awakening.json?v=20260606b';
 // Page build timestamp — rendered into the alpha banner in the viewer's local timezone.
 // IMPORTANT: this must be set to the actual UTC time of the commit. Get it with `date -u +%Y-%m-%dT%H:%M:%SZ`.
-const PAGE_BUILD_ISO = '2026-06-20T16:00:00Z';
+const PAGE_BUILD_ISO = '2026-06-25T17:00:00Z';
 (function paintLastUpdated() {
   try {
     const stamp = document.getElementById('lastUpdatedStamp');
@@ -3567,11 +3686,155 @@ fetch(HERO_DATA_URL)
     setupCalcs();
     renderSwap();
     setupMainTabs();
+    setupGrandSlamForm();
   })
   .catch(err => {
     console.error('Failed to load data', err);
     $('#heroGrid').innerHTML = '<p style="color: var(--red)">Failed to load heroes-awakening.json. Check the network tab.</p>';
   });
+
+// ---------------------------------------------------------------------------
+// Grand Slam crowdsourced data form
+// ---------------------------------------------------------------------------
+const GS_PUSH_WORKER = 'https://push-worker.27tb8s6fct.workers.dev';
+
+function gsGetIdentity() {
+  try {
+    const raw = localStorage.getItem('playerIdentity');
+    if (!raw || raw === 'anonymous') return null;
+    const id = JSON.parse(raw);
+    return (id && id.name && !id.guest) ? id : null;
+  } catch (e) { return null; }
+}
+
+function setupGrandSlamForm() {
+  const form = document.getElementById('gs-form');
+  if (!form) return;
+
+  const tierRow = document.getElementById('gs-tiers');
+  const dayInput = document.getElementById('gs-day');
+  const extra99Input = document.getElementById('gs-extra99');
+  const vouchersInput = document.getElementById('gs-vouchers');
+  const balBeforeInput = document.getElementById('gs-bal-before');
+  const balAfterInput = document.getElementById('gs-bal-after');
+  const submitBtn = document.getElementById('gs-submit');
+  const whoEl = document.getElementById('gs-who');
+  const msgEl = document.getElementById('gs-msg');
+
+  let selectedTier = '';
+
+  tierRow.addEventListener('click', (e) => {
+    const btn = e.target.closest('.gs-tier');
+    if (!btn) return;
+    tierRow.querySelectorAll('.gs-tier').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedTier = btn.getAttribute('data-tier') || '';
+  });
+
+  function refreshIdentity() {
+    const id = gsGetIdentity();
+    if (id) {
+      whoEl.innerHTML = 'Submitting as <strong></strong>';
+      whoEl.querySelector('strong').textContent = id.name;
+    } else {
+      whoEl.textContent = 'Submitting anonymously';
+    }
+  }
+  refreshIdentity();
+
+  function setMsg(kind, text) {
+    msgEl.className = 'gs-msg ' + kind;
+    msgEl.textContent = text;
+  }
+  function clearMsg() {
+    msgEl.className = 'gs-msg';
+    msgEl.textContent = '';
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearMsg();
+
+    const day = parseInt(dayInput.value, 10);
+    if (!Number.isFinite(day) || day < 1 || day > 31) {
+      setMsg('err', 'Pick a day of the event (1 to 31).');
+      dayInput.focus();
+      return;
+    }
+    const totalVouchers = parseInt(vouchersInput.value, 10);
+    if (!Number.isFinite(totalVouchers) || totalVouchers < 0) {
+      setMsg('err', 'Enter the total Grand Slam Vouchers received today.');
+      vouchersInput.focus();
+      return;
+    }
+    const extra99Raw = extra99Input.value.trim();
+    const extra99 = extra99Raw === '' ? 0 : parseInt(extra99Raw, 10);
+    if (!Number.isFinite(extra99) || extra99 < 0) {
+      setMsg('err', 'Additional $99.99 packs must be 0 or more.');
+      extra99Input.focus();
+      return;
+    }
+    if (!selectedTier && extra99 === 0) {
+      setMsg('err', 'Pick at least one pack tier, or enter $99.99 packs bought.');
+      return;
+    }
+
+    function optInt(v) {
+      const s = String(v == null ? '' : v).trim();
+      if (s === '') return null;
+      const n = parseInt(s, 10);
+      return Number.isFinite(n) && n >= 0 ? n : null;
+    }
+    const balanceBefore = optInt(balBeforeInput.value);
+    const balanceAfter  = optInt(balAfterInput.value);
+
+    const identity = gsGetIdentity();
+    const payload = {
+      day,
+      highestTier: selectedTier || null,
+      extra99,
+      totalVouchers,
+      balanceBefore,
+      balanceAfter,
+      siteKey: identity ? identity.siteKey : null,
+      name: identity ? identity.name : null,
+    };
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting...';
+    setMsg('info', 'Sending...');
+
+    try {
+      const res = await fetch(GS_PUSH_WORKER + '/grand-slam/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      let data = null;
+      try { data = await res.json(); } catch (e) {}
+      if (res.ok && data && data.ok) {
+        setMsg('ok', 'Thanks! Submission recorded. Feel free to log another day or correction.');
+        form.reset();
+        tierRow.querySelectorAll('.gs-tier').forEach(b => b.classList.remove('active'));
+        tierRow.querySelector('.gs-tier[data-tier=""]').classList.add('active');
+        selectedTier = '';
+      } else if (res.status === 429) {
+        setMsg('err', (data && data.message) || 'Please wait a moment before submitting again.');
+      } else if (data && data.message) {
+        setMsg('err', data.message);
+      } else if (data && data.error) {
+        setMsg('err', 'Submission rejected (' + data.error + ').');
+      } else {
+        setMsg('err', 'Submission failed. Please try again.');
+      }
+    } catch (err) {
+      setMsg('err', 'Network error. Please try again.');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit';
+    }
+  });
+}
 </script>
 
 <!-- Language picker modal (same UX as bases.html and decor-index.html) -->
