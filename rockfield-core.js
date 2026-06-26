@@ -31,7 +31,7 @@
   function sumStacks(unit) {
     var t = 0;
     for (var k in unit) {
-      if (k.charAt(0) === 's' && typeof unit[k] === 'number') t += unit[k];
+      if (/^s\d+$/.test(k) && typeof unit[k] === 'number') t += unit[k];
     }
     return t;
   }

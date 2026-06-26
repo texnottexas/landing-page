@@ -51,3 +51,8 @@ test('compute: not allAir => zero', () => {
   assert.strictEqual(r.effectivePct, 0);
   assert.strictEqual(r.unitsNow, 0);
 });
+
+test('summarizeArmy ignores non-stack s-prefixed keys', () => {
+  const s = RC.summarizeArmy([{ armyId: 905103, s0: 100, s1: 80, speed: 999 }]);
+  assert.strictEqual(s.troops, 180);
+});
