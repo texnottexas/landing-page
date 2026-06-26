@@ -85,3 +85,16 @@ test('advice: sub-ES5 pushes to ES5; air fail message', () => {
   assert.match(texts, /Get Rockfield to ES5/);
   assert.match(texts, /Island Store/);
 });
+
+test('null levels do not trigger a false level deficit', () => {
+  const r = RC.compute({ basePct: 24, esLevel: 5, yourLvl: null, enemyLvl: null, yourTroops: 300, enemyTroops: 300, allAir: true });
+  const level = r.checks.find(c => c.key === 'level');
+  assert.strictEqual(level.ok, true);
+  assert.ok(!r.advice.some(a => /level\(s\) below/.test(a.text)), 'no bogus level-deficit advice');
+});
+
+test('march advice pct is sane when enemyTroops is 0', () => {
+  const r = RC.compute({ basePct: 24, esLevel: 5, yourLvl: 103, enemyLvl: 103, yourTroops: 0, enemyTroops: 0, allAir: true });
+  const texts = r.advice.map(a => a.text).join(' ');
+  assert.ok(!/NaN|Infinity/.test(texts), 'no NaN/Infinity in advice');
+});

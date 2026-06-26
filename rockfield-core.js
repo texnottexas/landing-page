@@ -69,7 +69,7 @@
       advice.push({ kind: 'fix', text: 'Your units are ' + deficit + ' level(s) below the enemy, which halves damage per level. Use L103 (Valhalla or free +2 unit cards) instead of L101 Heavy Troopers.' });
     }
     if (!march.ok) {
-      var pct = Math.round((1 - o.yourTroops / o.enemyTroops) * 100);
+      var pct = o.enemyTroops ? Math.round((1 - o.yourTroops / o.enemyTroops) * 100) : 0;
       advice.push({ kind: 'fix', text: 'Your march is ' + pct + '% smaller than the enemy\'s, which is the whole march penalty. It scales 1 for 1, so any gain helps. Grow march size over time with Kuruzo as your 2nd hero at 5 stars and March Size skills (Rare + Normal) equipped.' });
     }
     var es = o.esLevel | 0;
@@ -100,7 +100,7 @@
     var checks = [
       { key: 'air', ok: !!o.allAir, label: 'All Air Force',
         detail: o.allAir ? 'skill fires' : 'non-air units present', mult: airMult },
-      { key: 'level', ok: (o.yourLvl >= o.enemyLvl), label: 'Your level ≥ enemy',
+      { key: 'level', ok: (o.yourLvl == null || o.enemyLvl == null) ? true : (o.yourLvl >= o.enemyLvl), label: 'Your level ≥ enemy',
         detail: fmtLvl(o.yourLvl) + ' vs ' + fmtLvl(o.enemyLvl), mult: levelPenalty },
       { key: 'march', ok: (o.yourTroops >= o.enemyTroops), label: 'Your march ≥ enemy',
         detail: o.yourTroops + ' vs ' + o.enemyTroops +
