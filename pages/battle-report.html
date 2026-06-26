@@ -526,7 +526,24 @@
   .lang-option.active { border-color: var(--accent); background: rgba(121,192,255,.08); }
   .lang-option .lang-flag { font-size: 1.1rem; }
   @media (max-width: 480px) { .lang-grid { grid-template-columns: 1fr; } }
+
+  /* Rockfield panel */
+  .rf-panel { background: var(--card); border: 1px solid var(--yellow); border-radius: 12px; overflow: hidden; margin-top: 1.25rem; }
+  .rf-panel-head { background: rgba(210,153,34,.10); padding: .6rem .85rem; display: flex; align-items: center; gap: .55rem; border-bottom: 1px solid var(--border); }
+  .rf-panel-head img { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--yellow); flex-shrink: 0; }
+  .rf-panel-head b { font-weight: 700; font-size: .9rem; }
+  .rf-panel-body { padding: .85rem; }
+  .rf-eff { font-size: .9rem; margin-bottom: .75rem; }
+  .rfp-chk { display: grid; grid-template-columns: 1.2rem 1fr auto; gap: .5rem; align-items: center; padding: .35rem .1rem; font-size: .82rem; border-bottom: 1px solid var(--border); }
+  .rfp-chk:last-of-type { border-bottom: none; }
+  .rfp-chk.ok span:first-child { color: var(--green); }
+  .rfp-chk.bad span:first-child { color: var(--red); }
+  .rfp-chk span:last-child { color: var(--muted); font-size: .78rem; }
+  .rfp-chk.bad span:last-child { color: var(--red); font-weight: 600; }
+  .rf-panel-link { display: block; text-align: center; margin-top: .75rem; padding: .5rem .75rem; border: 1px solid var(--border); border-radius: 8px; background: #21262d; color: var(--accent); font-size: .82rem; text-decoration: none; }
+  .rf-panel-link:hover { border-color: var(--accent); }
 </style>
+<script src="rockfield-core.js"></script>
 <!-- Microsoft Clarity -->
 <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
@@ -3881,6 +3898,9 @@
 
     // 4. Raw JSON
     container.appendChild(buildRawJSON(data));
+
+    // 5. Rockfield panel (additive; no-op if Rockfield not present)
+    injectRockfieldPanel(data, container);
   }
 
   // ── Formation comparison modal ────────────────────────────────────────────
@@ -4394,6 +4414,50 @@
   document.getElementById('report-id').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') loadReport();
   });
+
+  // ---- Rockfield panel injection ----
+
+  function rfEsc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  var RF_CHECK_SVG = '<svg viewBox="0 0 16 16" width="14" height="14" style="color:var(--green,#3fb950)"><path fill="currentColor" d="M6.5 12L2 7.5l1.4-1.4L6.5 9.2 12.6 3 14 4.4z"/></svg>';
+  var RF_CROSS_SVG = '<svg viewBox="0 0 16 16" width="14" height="14" style="color:var(--red,#f85149)"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" fill="none"/></svg>';
+
+  function injectRockfieldPanel(json, mountEl) {
+    if (!window.RockfieldCore) return;
+    var p = RockfieldCore.parseReport(json);
+    if (!p.found) return;
+    var c = RockfieldCore.compute({
+      basePct: p.you.basePct, esLevel: p.you.esLevel,
+      yourLvl: p.you.avgLvl, enemyLvl: p.enemy.avgLvl,
+      yourTroops: p.you.troops, enemyTroops: p.enemy.troops,
+      allAir: p.you.allAir
+    });
+    var id = p.reportId || (json && json.reportId) || '';
+    var checks = c.checks.map(function(ch) {
+      return '<div class="rfp-chk ' + (ch.ok ? 'ok' : 'bad') + '">' +
+        '<span>' + (ch.ok ? RF_CHECK_SVG : RF_CROSS_SVG) + '</span>' +
+        '<span>' + rfEsc(ch.label) + '</span>' +
+        '<span>' + rfEsc('×' + (Math.round(ch.mult * 100) / 100).toFixed(2)) + '</span>' +
+        '</div>';
+    }).join('');
+    var div = document.createElement('div');
+    div.className = 'rf-panel';
+    div.innerHTML =
+      '<div class="rf-panel-head">' +
+        '<img src="assets/rockfield/rockfield-face.png" alt="">' +
+        '<b>Rockfield Optimization</b>' +
+      '</div>' +
+      '<div class="rf-panel-body">' +
+        '<div class="rf-eff">Landed ~' + rfEsc(c.unitsNow) + ' of a possible ~' + rfEsc(c.unitsCeiling) + ' kills (' + rfEsc(Math.round(c.efficiency * 100)) + '% efficiency)</div>' +
+        checks +
+        '<a class="rf-panel-link" href="rockfield-optimizer.html?id=' + encodeURIComponent(id) + '">Open full breakdown in Rockfield Optimizer</a>' +
+      '</div>';
+    mountEl.appendChild(div);
+  }
 
   // Auto-load from URL param
   var params = new URLSearchParams(window.location.search);
