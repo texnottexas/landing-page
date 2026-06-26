@@ -98,3 +98,53 @@ test('march advice pct is sane when enemyTroops is 0', () => {
   const texts = r.advice.map(a => a.text).join(' ');
   assert.ok(!/NaN|Infinity/.test(texts), 'no NaN/Infinity in advice');
 });
+
+const fs = require('node:fs');
+const path = require('node:path');
+function fixture(id) {
+  return JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', id + '.json'), 'utf8'));
+}
+
+test('parseReport: march-deficit report', () => {
+  const p = RC.parseReport(fixture('4724763863828291593'));
+  assert.strictEqual(p.found, true);
+  assert.strictEqual(p.side, 'attacker');
+  assert.strictEqual(p.you.war, 33214);
+  assert.strictEqual(p.you.esLevel, 5);
+  assert.strictEqual(p.you.troops, 280);
+  assert.strictEqual(Math.round(p.you.avgLvl), 103);
+  assert.strictEqual(p.you.allAir, true);
+  assert.strictEqual(p.enemy.troops, 382);
+  assert.strictEqual(Math.round(p.enemy.avgLvl), 103);
+  assert.ok(p.actualPunisherDamage > 0);
+
+  const r = RC.compute({
+    basePct: p.you.basePct, esLevel: p.you.esLevel,
+    yourLvl: p.you.avgLvl, enemyLvl: p.enemy.avgLvl,
+    yourTroops: p.you.troops, enemyTroops: p.enemy.troops, allAir: p.you.allAir
+  });
+  assert.strictEqual(r.unitsNow, 74);
+  assert.strictEqual(r.unitsCeiling, 102);
+});
+
+test('parseReport: ES4 full-march report', () => {
+  const p = RC.parseReport(fixture('4724810303346728960'));
+  assert.strictEqual(p.you.war, 24395);
+  assert.strictEqual(p.you.esLevel, 4);
+  assert.strictEqual(p.you.troops, 215);
+  assert.strictEqual(p.enemy.troops, 174);
+  const r = RC.compute({ basePct: p.you.basePct, esLevel: p.you.esLevel, yourLvl: p.you.avgLvl, enemyLvl: p.enemy.avgLvl, yourTroops: p.you.troops, enemyTroops: p.enemy.troops, allAir: p.you.allAir });
+  assert.strictEqual(r.unitsNow, 40);
+});
+
+test('parseReport: ES0 report', () => {
+  const p = RC.parseReport(fixture('4725121119006646276'));
+  assert.strictEqual(p.you.esLevel, 0);
+  assert.strictEqual(p.you.war, 40392);
+  const r = RC.compute({ basePct: p.you.basePct, esLevel: p.you.esLevel, yourLvl: p.you.avgLvl, enemyLvl: p.enemy.avgLvl, yourTroops: p.you.troops, enemyTroops: p.enemy.troops, allAir: p.you.allAir });
+  assert.strictEqual(r.unitsNow, 63);
+});
+
+test('parseReport: missing Rockfield', () => {
+  assert.strictEqual(RC.parseReport({ battle: { fightMarches: [{}], attacker: { players: [{ heroList: [{ id: 999 }] }] }, defender: { players: [{ heroList: [] }] } } }).found, false);
+});

@@ -117,9 +117,54 @@
     return result;
   }
 
+  function parseReport(json) {
+    var b = (json && json.battle) ? json.battle : json;
+    if (!b || !b.fightMarches || !b.fightMarches[0]) return { found: false };
+    var fm = b.fightMarches[0];
+    var sides = ['attacker', 'defender'], side = null, hero = null;
+    for (var i = 0; i < sides.length; i++) {
+      var pl = b[sides[i]] && b[sides[i]].players && b[sides[i]].players[0];
+      if (pl && pl.heroList) {
+        for (var j = 0; j < pl.heroList.length; j++) {
+          if (pl.heroList[j].id === CONST.HERO_ID) { side = sides[i]; hero = pl.heroList[j]; break; }
+        }
+      }
+      if (side) break;
+    }
+    if (!side) return { found: false };
+
+    var es = 0, nas = hero.nonActiveSkills || [];
+    for (var k = 0; k < nas.length; k++) {
+      if (nas[k].skillId === CONST.ES_SKILL_ID) { es = nas[k].level || 0; break; }
+    }
+
+    var youKey = side === 'attacker' ? 'attPutArmyV2' : 'defPutArmyV2';
+    var enemyKey = side === 'attacker' ? 'defPutArmyV2' : 'attPutArmyV2';
+    var youLegacy = side === 'attacker' ? 'attPutArmy' : 'defPutArmy';
+    var enemyLegacy = side === 'attacker' ? 'defPutArmy' : 'attPutArmy';
+    var you = summarizeArmy(fm[youKey] || fm[youLegacy]);
+    var enemy = summarizeArmy(fm[enemyKey] || fm[enemyLegacy]);
+
+    var dmg = 0, proc = b.process || [];
+    for (var p = 0; p < proc.length; p++) {
+      if (proc[p].t === 10 && String(proc[p].skill) === String(CONST.SKILL_ID)) dmg += (proc[p].val || 0);
+    }
+
+    var attackerWon = b.result === 2;
+    return {
+      found: true, side: side,
+      reportId: (json && json.reportId) || b.reportId || null,
+      result: b.result, won: side === 'attacker' ? attackerWon : !attackerWon,
+      fightType: b.fightType,
+      you: { war: hero.war || 0, esLevel: es, avgLvl: you.avgLvl, troops: you.troops, allAir: you.allAir, units: you.units, basePct: basePctFromWar(hero.war || 0) },
+      enemy: { avgLvl: enemy.avgLvl, troops: enemy.troops, hasMecha: enemy.mecha > 0, units: enemy.units },
+      actualPunisherDamage: dmg || null
+    };
+  }
+
   var RockfieldCore = {
     CONST: CONST, basePctFromWar: basePctFromWar, esMult: esMult,
-    decodeArmy: decodeArmy, summarizeArmy: summarizeArmy, compute: compute, buildAdvice: buildAdvice
+    decodeArmy: decodeArmy, summarizeArmy: summarizeArmy, compute: compute, buildAdvice: buildAdvice, parseReport: parseReport
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = RockfieldCore;
