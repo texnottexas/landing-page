@@ -1,0 +1,53 @@
+const test = require('node:test');
+const assert = require('node:assert');
+const RC = require('../rockfield-core.js');
+
+const close = (a, b, eps = 0.05) => assert.ok(Math.abs(a - b) <= eps, `${a} ~= ${b}`);
+
+test('basePctFromWar matches game renderer', () => {
+  close(RC.basePctFromWar(0), 14.0);
+  close(RC.basePctFromWar(30000), 23.0);
+  close(RC.basePctFromWar(33214), 23.9642);
+});
+
+test('esMult from ES_TABLE', () => {
+  close(RC.esMult(0), 1.0);
+  close(RC.esMult(5), 1.11);
+  close(RC.esMult(6), 1.16);   // NOT 1.18
+  close(RC.esMult(10), 1.46);
+  close(RC.esMult(99), 1.46);  // clamps to 10
+});
+
+test('decodeArmy: branch, level, air, mecha', () => {
+  assert.deepStrictEqual(RC.decodeArmy(905103), { branch: '905', level: 103, isAir: true, isMecha: false });
+  assert.deepStrictEqual(RC.decodeArmy(902103), { branch: '902', level: 103, isAir: false, isMecha: false });
+  assert.strictEqual(RC.decodeArmy(507241).isMecha, true);
+});
+
+test('summarizeArmy excludes mecha from troops + level', () => {
+  const s = RC.summarizeArmy([{ armyId: 905103, s0: 100, s1: 80 }, { armyId: 507241, s0: 25 }]);
+  assert.strictEqual(s.troops, 180);
+  assert.strictEqual(s.mecha, 25);
+  assert.strictEqual(s.avgLvl, 103);
+  assert.strictEqual(s.allAir, false);
+});
+
+test('summarizeArmy not allAir when mecha present in own march', () => {
+  const s = RC.summarizeArmy([{ armyId: 905103, s0: 100 }, { armyId: 507241, s0: 25 }]);
+  assert.strictEqual(s.allAir, false);
+});
+
+test('compute core math (march deficit, no level deficit)', () => {
+  const r = RC.compute({ basePct: 23.9642, esLevel: 5, yourLvl: 103, enemyLvl: 103, yourTroops: 280, enemyTroops: 382, allAir: true });
+  close(r.effectivePct, 19.50, 0.1);
+  close(r.ceilingPct, 26.60, 0.1);
+  assert.strictEqual(r.unitsNow, 74);
+  assert.strictEqual(r.unitsCeiling, 102);
+  close(r.efficiency, 0.733, 0.01);
+});
+
+test('compute: not allAir => zero', () => {
+  const r = RC.compute({ basePct: 23, esLevel: 5, yourLvl: 103, enemyLvl: 103, yourTroops: 300, enemyTroops: 300, allAir: false });
+  assert.strictEqual(r.effectivePct, 0);
+  assert.strictEqual(r.unitsNow, 0);
+});
