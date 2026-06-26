@@ -130,8 +130,15 @@ def fame_obj(sid):
 
 
 def to_march(rec, rank):
+    # The 3x3 grid lives at pos 1-3 / 11-13 / 21-23 (9 stacks). A "shark formation"
+    # adds an extra reinforcement slot at pos -1 (~17-40 units) that inflates the
+    # displayed army count but is NOT part of the real march size — exclude it.
+    raw = rec.get("units") or []
+    reinforcement = sum((u.get("num") or 0) for u in raw if (u.get("pos", 0) or 0) < 0)
     agg = collections.OrderedDict()
-    for u in (rec.get("units") or []):
+    for u in raw:
+        if (u.get("pos", 0) or 0) < 0:
+            continue
         agg[u["armyId"]] = agg.get(u["armyId"], 0) + (u.get("num") or 0)
     units = [{"armyId": aid, "num": num, "skinId": 0} for aid, num in agg.items()]
     march_size = sum(u["num"] for u in units)
@@ -151,6 +158,7 @@ def to_march(rec, rank):
         "username": rec.get("name"), "sid": rec["sid"], "power": rec.get("power"), "rank": rank,
         "avatar_url": rec.get("avatar"), "flag": rec.get("flag"),
         "heroes": heroes, "march_size": march_size, "armyId": lead_army, "units": units,
+        "reinforcement": reinforcement,  # shark-formation extra (excluded from march_size)
         "merit": merit, "merit_rank": merit_rank,
     }
 
