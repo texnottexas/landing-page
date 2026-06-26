@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="no-referrer" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'self' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; connect-src 'self' https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com https://fight-report-va.oss-accelerate.aliyuncs.com; img-src 'self' data: https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com; frame-src https://translate.google.com; object-src 'none'; base-uri 'self'; form-action 'none'; font-src https://fonts.gstatic.com;" />
+  <title>Rockfield Optimizer &ndash; Server 2864</title>
+  <style>
+    :root[data-theme="dark"] {
+      --bg: #0d1117;
+      --bg2: #161b22;
+      --card: #1c2128;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #79c0ff;
+      --army: #3fb950;
+      --navy: #388bfd;
+      --air: #d29922;
+      --tag: #21262d;
+      --red: #f85149;
+      --shadow: rgba(0,0,0,.45);
+    }
+    :root[data-theme="light"] {
+      --bg: #f6f8fa;
+      --bg2: #ffffff;
+      --card: #ffffff;
+      --border: #d0d7de;
+      --text: #1f2328;
+      --muted: #656d76;
+      --accent: #1f75d4;
+      --army: #1a7f37;
+      --navy: #0550ae;
+      --air: #9a6700;
+      --tag: #eaeef2;
+      --red: #cf222e;
+      --shadow: rgba(140,149,159,.2);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh; transition: background .2s, color .2s;
+      padding-bottom: 3rem;
+    }
+
+    /* HEADER */
+    header {
+      background: var(--bg2); border-bottom: 1px solid var(--border);
+      padding: .85rem 2rem; display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 200; box-shadow: 0 1px 0 var(--border);
+    }
+    .header-title { font-size: 1.1rem; font-weight: 700; color: var(--accent); letter-spacing: -.01em; }
+    .header-sub { font-size: .75rem; color: var(--muted); margin-top: 3px; }
+    .header-actions { display: flex; gap: .6rem; align-items: center; }
+    .hdr-btn {
+      background: var(--tag); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 8px; padding: .38rem .9rem; cursor: pointer; font-size: .8rem;
+      display: flex; align-items: center; gap: .4rem; transition: all .15s; white-space: nowrap;
+      text-decoration: none; font-family: inherit;
+    }
+    .hdr-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Google Translate overrides */
+    body { top: 0 !important; }
+    body > .skiptranslate { display: none !important; }
+    #google_translate_element { position: absolute; left: -9999px; opacity: 0; pointer-events: none; }
+    .lang-btn {
+      background: var(--tag); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 8px; padding: .38rem .7rem; cursor: pointer; font-size: .8rem;
+      display: flex; align-items: center; gap: .35rem; font-family: inherit;
+      font-weight: 600; letter-spacing: .02em; white-space: nowrap; transition: border-color .2s;
+    }
+    .lang-btn:hover { border-color: var(--accent); color: var(--text); }
+    .lang-modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 400;
+      background: rgba(0,0,0,0.6); align-items: center; justify-content: center; padding: 1rem;
+    }
+    .lang-modal-overlay.active { display: flex; }
+    .lang-modal {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      padding: 1.25rem; max-width: 400px; width: 100%; max-height: 80vh; overflow-y: auto;
+      box-shadow: 0 8px 32px var(--shadow);
+    }
+    .lang-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    .lang-modal-title { font-size: 1rem; font-weight: 700; color: var(--text); }
+    .lang-modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.2rem; padding: .2rem; line-height: 1; }
+    .lang-modal-close:hover { color: var(--text); }
+    .lang-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .5rem; }
+    .lang-option {
+      display: flex; align-items: center; gap: .5rem; padding: .5rem .65rem;
+      border-radius: 8px; border: 1px solid transparent; background: var(--bg);
+      cursor: pointer; font-size: .82rem; color: var(--text); font-family: inherit;
+      transition: border-color .15s, background .15s;
+    }
+    .lang-option:hover { border-color: var(--accent); background: var(--tag); }
+    .lang-option.active { border-color: var(--accent); background: var(--tag); }
+    .lang-option .lang-flag { font-size: 1.1rem; }
+    .lang-option .lang-name { flex: 1; }
+
+    /* BANNER */
+    .rf-banner {
+      position: relative; height: 120px; overflow: hidden;
+      background: linear-gradient(to right, var(--bg2) 0%, transparent 60%),
+                  url('assets/rockfield/rockfield-banner.jpg') right 13% / cover no-repeat;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; padding: 0 2rem;
+    }
+    .rf-banner-text { position: relative; z-index: 1; }
+    .rf-banner-title {
+      font-size: 1.6rem; font-weight: 800; color: var(--text); line-height: 1.15;
+    }
+    .rf-banner-sub { font-size: .8rem; color: var(--muted); margin-top: .25rem; }
+
+    /* MAIN */
+    main { max-width: 760px; margin: 0 auto; padding: 1.3rem 1rem 3rem; }
+
+    /* TABS */
+    .tabs { display: flex; gap: .4rem; margin-bottom: 1.1rem; }
+    .tab {
+      flex: 1; text-align: center; padding: .5rem;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: var(--tag); color: var(--muted); font-size: .82rem;
+      cursor: pointer; font-family: inherit; transition: all .15s;
+    }
+    .tab:hover { border-color: var(--accent); color: var(--text); }
+    .tab.active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+
+    /* INPUT BAR */
+    .inputbar { display: flex; gap: .5rem; margin-bottom: 1.2rem; }
+    .inputbar input {
+      flex: 1; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); padding: .6rem .7rem; font-size: .9rem; font-family: inherit;
+      transition: border-color .15s; outline: none;
+    }
+    .inputbar input:focus { border-color: var(--accent); }
+    .inputbar input::placeholder { color: var(--muted); }
+    .inputbar button {
+      background: var(--army); color: #fff; border: none; border-radius: 8px;
+      padding: .6rem 1.1rem; font-weight: 600; cursor: pointer; font-family: inherit;
+      font-size: .9rem; transition: opacity .15s;
+    }
+    .inputbar button:hover { opacity: .85; }
+
+    /* SCORECARD: MATCHUP */
+    .matchup {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+      padding: .7rem .9rem; margin-bottom: 1rem; font-size: .85rem;
+    }
+    .side-you { display: flex; align-items: center; gap: .65rem; }
+    .avatar {
+      width: 44px; height: 44px; border-radius: 50%; object-fit: cover;
+      border: 2px solid var(--air); box-shadow: 0 0 9px rgba(210,153,34,.45);
+      flex-shrink: 0; background: #000;
+    }
+    .matchup .side { display: flex; flex-direction: column; gap: 2px; }
+    .matchup .who { color: var(--muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; }
+    .matchup .vs { color: var(--muted); font-weight: 700; }
+    .win { color: var(--army); font-weight: 700; font-size: .78rem; border: 1px solid var(--army); border-radius: 6px; padding: .15rem .5rem; }
+    .win.l { color: var(--red); border-color: var(--red); }
+    .win.w { color: var(--army); border-color: var(--army); }
+
+    /* BEFORE / AFTER */
+    .ba {
+      display: grid; grid-template-columns: 1fr auto 1fr;
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      overflow: hidden; margin-bottom: 1rem;
+    }
+    .ba-col { padding: 1.1rem 1rem; }
+    .ba-col.now { background: var(--card); }
+    .ba-col.max { background: rgba(63,185,80,.06); }
+    .ba-mid {
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted); background: var(--bg2);
+      border-left: 1px solid var(--border); border-right: 1px solid var(--border);
+      padding: 0 .6rem;
+    }
+    .ba-label { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: .7rem; }
+    .ba-col.max .ba-label { color: var(--army); }
+    .big { font-size: 2.1rem; font-weight: 800; line-height: 1; }
+    .big small { font-size: .8rem; font-weight: 600; color: var(--muted); }
+    .now .big { color: var(--air); }
+    .max .big { color: var(--army); }
+    .sub2 { font-size: .8rem; color: var(--muted); margin-top: .35rem; }
+
+    /* CHECKS */
+    .checks {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: .4rem .2rem; margin-bottom: 1rem;
+    }
+    .chk {
+      display: grid; grid-template-columns: 1.4rem 1fr auto auto;
+      gap: .6rem; align-items: center; padding: .55rem .9rem;
+      font-size: .88rem; border-bottom: 1px solid var(--border);
+    }
+    .chk:last-child { border-bottom: none; }
+    .chk .ic { display: flex; align-items: center; }
+    .chk.ok .ic { color: var(--army); }
+    .chk.bad .ic { color: var(--red); }
+    .chk .detail { color: var(--muted); font-size: .82rem; }
+    .chk .mult { font-variant-numeric: tabular-nums; color: var(--muted); font-size: .8rem; }
+    .chk.bad .mult { color: var(--red); font-weight: 600; }
+
+    /* NOTES */
+    .notes {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+      padding: 1rem;
+    }
+    .notes h4 { font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: .5rem; }
+    .notes .fix { display: flex; gap: .55rem; align-items: flex-start; font-size: .88rem; margin-bottom: .5rem; line-height: 1.4; }
+    .notes .fix .dot { color: var(--accent); flex-shrink: 0; margin-top: .1rem; }
+    .notes .fix.up .dot { color: var(--army); }
+    .notes .upside { border-top: 1px dashed var(--border); margin-top: .6rem; padding-top: .6rem; }
+    .pill {
+      display: inline-block; background: var(--tag); border: 1px solid var(--border);
+      border-radius: 5px; padding: 0 .35rem; font-size: .78rem; color: var(--text);
+    }
+
+    /* MESSAGES */
+    .rf-msg {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+      padding: 1.2rem 1rem; color: var(--muted); font-size: .9rem; text-align: center;
+    }
+    .rf-foot {
+      text-align: center; font-size: .78rem; color: var(--muted);
+      margin-top: .75rem; font-style: italic;
+    }
+
+    /* PLACEHOLDER TABS */
+    .tab-placeholder {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 2.5rem 1rem; text-align: center; color: var(--muted); font-size: .9rem;
+    }
+
+    /* COMPARE TABLE */
+    .cmp { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .cmp th { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; padding: .5rem .75rem; border-bottom: 2px solid var(--border); text-align: left; background: var(--bg2); }
+    .cmp td { padding: .55rem .75rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .cmp tbody tr:last-child td { border-bottom: none; }
+    .cmp tbody tr:hover { background: var(--tag); }
+    .cmp-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 1rem; }
+
+    /* FOOTER */
+    footer { text-align: center; padding: 1.5rem 1rem 2rem; font-size: .7rem; }
+    footer a { color: var(--muted); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+    @keyframes footer-shimmer {
+      0% { background-position: -200% center; }
+      100% { background-position: 200% center; }
+    }
+    .shimmer-text {
+      background-image: linear-gradient(90deg, var(--muted) 0%, var(--accent) 25%, var(--muted) 50%, var(--accent) 75%, var(--muted) 100%);
+      background-size: 200% auto; -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent; animation: footer-shimmer 6s linear infinite;
+    }
+
+    @media (max-width: 600px) {
+      header { padding: .6rem 1rem; }
+      .header-title { font-size: .95rem; }
+      .header-actions { gap: .35rem; }
+      .lang-btn #langCode { display: none; }
+      .lang-grid { grid-template-columns: 1fr; }
+      main { padding: 1rem .75rem 2.5rem; }
+      .rf-banner { height: 90px; padding: 0 1rem; }
+      .rf-banner-title { font-size: 1.2rem; }
+      .ba { grid-template-columns: 1fr; }
+      .ba-mid { border-left: none; border-right: none; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: .5rem 1rem; justify-content: flex-start; }
+      .chk { grid-template-columns: 1.4rem 1fr auto; }
+      .chk .mult { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="header-title notranslate">Rockfield Optimizer</div>
+    <div class="header-sub notranslate">Server 2864 &bull; 2864tw.com</div>
+  </div>
+  <div class="header-actions">
+    <a href="https://2864tw.com" class="hdr-btn" title="Back to Landing Page"><svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" stroke="none"><path d="M10 2.5l-8 7h3v6a1 1 0 001 1h3v-4h2v4h3a1 1 0 001-1v-6h3z"/></svg></a>
+    <a href="rockfield.html" class="hdr-btn notranslate" title="Strategy guide">Strategy guide</a>
+    <button class="lang-btn notranslate" id="langBtn" aria-label="Change language">
+      <span id="langFlag">&#127482;&#127480;</span>
+      <span id="langCode">/en</span>
+    </button>
+    <div id="google_translate_element"></div>
+    <button class="hdr-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Toggle theme">
+      <span id="themeIcon">&#9728;&#65039;</span>
+    </button>
+  </div>
+</header>
+
+<div class="rf-banner">
+  <div class="rf-banner-text">
+    <div class="rf-banner-title notranslate">Rockfield Optimizer</div>
+    <div class="rf-banner-sub">Analyze your Rockfield march performance</div>
+  </div>
+</div>
+
+<main>
+
+  <div class="tabs">
+    <button class="tab active" id="tab-analyze" aria-pressed="true">Analyze Report</button>
+    <button class="tab" id="tab-whatif" aria-pressed="false">What-If</button>
+    <button class="tab" id="tab-compare" aria-pressed="false">Compare</button>
+  </div>
+
+  <!-- Analyze Report tab -->
+  <div id="pane-analyze">
+    <div class="inputbar">
+      <input id="report-id" type="text" placeholder="Battle report ID (e.g. 4724763863828291593)" autocomplete="off" spellcheck="false" inputmode="numeric" />
+      <button id="analyze-btn">Analyze</button>
+    </div>
+    <div id="analyze-out">
+      <div class="rf-msg">Enter a battle report ID above and click Analyze.</div>
+    </div>
+  </div>
+
+  <!-- What-If tab (Task 6) -->
+  <div id="pane-whatif" style="display:none">
+    <div class="notes" style="margin-bottom:1.1rem">
+      <h4>What-If Simulator</h4>
+      <div class="fix" style="margin-top:.4rem"><div class="dot" style="color:var(--accent);margin-top:.1rem">
+        <svg viewBox="0 0 16 16" width="14" height="14"><circle cx="8" cy="8" r="3" fill="currentColor"/></svg>
+      </div><span>Enter your march parameters manually to see the scorecard without a battle report.</span></div>
+    </div>
+
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1.1rem 1rem;margin-bottom:1rem">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+
+        <div>
+          <label for="wi-base" style="display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:.3rem">Base Damage %</label>
+          <input id="wi-base" type="number" min="1" max="100" step="0.1" value="23"
+            style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:.5rem .65rem;font-size:.9rem;font-family:inherit;outline:none;transition:border-color .15s"
+            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" />
+          <div style="font-size:.7rem;color:var(--muted);margin-top:.25rem">% shown on Rockfield's skill page</div>
+        </div>
+
+        <div>
+          <label for="wi-es" style="display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:.3rem">ES Level</label>
+          <select id="wi-es"
+            style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:.5rem .65rem;font-size:.9rem;font-family:inherit;outline:none;transition:border-color .15s"
+            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+            <option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option>
+            <option value="4">4</option><option value="5" selected>5</option><option value="6">6</option>
+            <option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="wi-ylvl" style="display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:.3rem">Your Level</label>
+          <select id="wi-ylvl"
+            style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:.5rem .65rem;font-size:.9rem;font-family:inherit;outline:none;transition:border-color .15s"
+            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+            <option value="100">100</option><option value="101">101</option><option value="102">102</option><option value="103" selected>103</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="wi-elvl" style="display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:.3rem">Enemy Level</label>
+          <select id="wi-elvl"
+            style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:.5rem .65rem;font-size:.9rem;font-family:inherit;outline:none;transition:border-color .15s"
+            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+            <option value="100">100</option><option value="101">101</option><option value="102">102</option><option value="103" selected>103</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="wi-ymarch" style="display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:.3rem">Your March</label>
+          <input id="wi-ymarch" type="number" min="1" step="1" placeholder="e.g. 280"
+            style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:.5rem .65rem;font-size:.9rem;font-family:inherit;outline:none;transition:border-color .15s"
+            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" />
+        </div>
+
+        <div>
+          <label for="wi-emarch" style="display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:.3rem">Enemy March</label>
+          <input id="wi-emarch" type="number" min="1" step="1" placeholder="e.g. 382"
+            style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:.5rem .65rem;font-size:.9rem;font-family:inherit;outline:none;transition:border-color .15s"
+            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" />
+        </div>
+
+      </div>
+
+      <button id="whatif-btn"
+        style="margin-top:1rem;width:100%;background:var(--army);color:#fff;border:none;border-radius:8px;padding:.6rem 1.1rem;font-weight:600;cursor:pointer;font-family:inherit;font-size:.9rem;transition:opacity .15s"
+        onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+        Calculate
+      </button>
+    </div>
+
+    <div id="whatif-out"></div>
+  </div>
+
+  <!-- Compare tab (Task 7) -->
+  <div id="pane-compare" style="display:none">
+    <div class="notes" style="margin-bottom:1.1rem">
+      <h4>Compare Reports</h4>
+      <div class="fix" style="margin-top:.4rem"><div class="dot" style="color:var(--accent);margin-top:.1rem">
+        <svg viewBox="0 0 16 16" width="14" height="14"><circle cx="8" cy="8" r="3" fill="currentColor"/></svg>
+      </div><span>Paste one or more battle report IDs (one per line) to compare Rockfield performance across marches.</span></div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1.1rem 1rem;margin-bottom:1rem">
+      <label for="cmp-ids" style="display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:.45rem">Report IDs (one per line)</label>
+      <textarea id="cmp-ids" rows="5" placeholder="4724763863828291593&#10;4724810303346728960&#10;4725121119006646276"
+        style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:.6rem .7rem;font-size:.88rem;font-family:inherit;resize:vertical;outline:none;transition:border-color .15s"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+      <button id="cmp-btn"
+        style="margin-top:.75rem;width:100%;background:var(--army);color:#fff;border:none;border-radius:8px;padding:.6rem 1.1rem;font-weight:600;cursor:pointer;font-family:inherit;font-size:.9rem;transition:opacity .15s"
+        onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+        Compare
+      </button>
+    </div>
+    <div id="cmp-out"></div>
+  </div>
+
+</main>
+
+<!-- Language Picker Modal -->
+<div class="lang-modal-overlay" id="langModal">
+  <div class="lang-modal">
+    <div class="lang-modal-header">
+      <span class="lang-modal-title">Select Language</span>
+      <button class="lang-modal-close" id="langModalClose" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="lang-grid" id="langGrid"></div>
+  </div>
+</div>
+
+<footer>
+  <div style="margin-bottom:.3rem"><a href="https://2864tw.com">2864tw.com</a></div>
+  <a href="https://github.com/texnottexas/landing-page" class="shimmer-text">Brought to you by supporters of the fk boats movement</a>
+</footer>
+
+<script>
+// THEME
+(function() {
+  var saved = null;
+  try { saved = localStorage.getItem('theme'); } catch(e) {}
+  if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  updateThemeIcon();
+})();
+function toggleTheme() {
+  var root = document.documentElement;
+  var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  root.setAttribute('data-theme', next);
+  try { localStorage.setItem('theme', next); } catch(e) {}
+  updateThemeIcon();
+}
+function updateThemeIcon() {
+  var icon = document.getElementById('themeIcon');
+  if (icon) icon.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️' : '🌙';
+}
+</script>
+
+<script src="rockfield-core.js"></script>
+
+<script>
+// ANALYZE TAB LOGIC
+function fmtPct(n){ return (Math.round(n*10)/10).toFixed(1) + '%'; }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+async function fetchReport(id){
+  id = (id||'').trim();
+  var url = 'https://fight-report-va.oss-accelerate.aliyuncs.com/prod/' + id.slice(0,4) + '/' + id + '.json';
+  var res = await fetch(url);
+  if(!res.ok) throw new Error('http '+res.status);
+  return await res.json();
+}
+
+async function analyzeReport(id){
+  var out = document.getElementById('analyze-out');
+  id = (id||'').trim();
+  if(!/^\d{6,}$/.test(id)){ out.innerHTML = msg('Enter a valid battle report ID.'); return; }
+  out.innerHTML = msg('Loading report...');
+  var json;
+  try {
+    json = await fetchReport(id);
+  } catch(e){ out.innerHTML = msg('Could not load that report. PvP reports only.'); return; }
+  var p = RockfieldCore.parseReport(json);
+  if(!p.found){ out.innerHTML = msg('No Rockfield found in this report.'); return; }
+  var c = RockfieldCore.compute({
+    basePct: p.you.basePct, esLevel: p.you.esLevel,
+    yourLvl: p.you.avgLvl, enemyLvl: p.enemy.avgLvl,
+    yourTroops: p.you.troops, enemyTroops: p.enemy.troops, allAir: p.you.allAir
+  });
+  renderScorecard(out, p, c);
+}
+
+function msg(t){ return '<div class="rf-msg">'+t+'</div>'; }
+
+function renderScorecard(el, p, c){
+  var checks = c.checks.map(function(ch){
+    return '<div class="chk '+(ch.ok?'ok':'bad')+'">'+
+      svgIcon(ch.ok?'check':'x')+'<span>'+esc(ch.label)+'</span>'+
+      '<span class="detail">'+esc(ch.detail)+'</span>'+
+      '<span class="mult">&times;'+(Math.round(ch.mult*100)/100).toFixed(2)+'</span></div>';
+  }).join('');
+  var fixes = c.advice.filter(function(a){return a.kind==='fix';}).map(adviceRow).join('');
+  var upside = c.advice.filter(function(a){return a.kind==='upside';}).map(adviceRow).join('');
+  el.innerHTML =
+    matchupHTML(p) +
+    '<div class="ba">'+
+      '<div class="ba-col now"><div class="ba-label">This march</div><div class="big">~'+c.unitsNow+'<small> units</small></div><div class="sub2">'+fmtPct(c.effectivePct)+' of each stack</div></div>'+
+      '<div class="ba-mid">'+svgIcon('arrow')+'</div>'+
+      '<div class="ba-col max"><div class="ba-label">Ceiling (match march + level)</div><div class="big">~'+c.unitsCeiling+'<small> units</small></div><div class="sub2">'+fmtPct(c.ceilingPct)+' of each stack</div></div>'+
+    '</div>'+
+    '<div class="checks">'+checks+'</div>'+
+    '<div class="notes"><h4>Where you\'re losing damage</h4>'+(fixes||'<div class="fix">'+svgIcon('dot')+'<span>You are hitting maximum conditions for this matchup. Nice.</span></div>')+
+      '<div class="upside"><h4>Long-term upside</h4>'+upside+'</div></div>' +
+    (p.actualPunisherDamage ? '<div class="rf-foot">Report confirms the opening hit landed.</div>' : '');
+}
+
+function adviceRow(a){ return '<div class="fix '+(a.kind==='upside'?'up':'')+'">'+svgIcon(a.kind==='upside'?'star':'arrow-r')+'<span>'+esc(a.text)+'</span></div>'; }
+
+function matchupHTML(p){
+  return '<div class="matchup"><div class="side-you">'+
+    '<img class="avatar" src="assets/rockfield/rockfield-face.png" alt="Rockfield">'+
+    '<div class="side"><span class="who">You &middot; Rockfield</span><span>'+svgIcon('air')+' All-Air L'+esc(Math.round(p.you.avgLvl||0))+' &times;'+esc(p.you.troops)+'</span></div></div>'+
+    '<span class="vs">VS</span>'+
+    '<div class="side" style="text-align:right"><span class="who">Enemy</span><span>'+svgIcon('army')+' L'+esc(Math.round(p.enemy.avgLvl||0))+' &times;'+esc(p.enemy.troops)+'</span></div>'+
+    (p.won===null ? '' : '<span class="win '+(p.won?'w':'l')+'">'+(p.won?'WIN':'LOSS')+'</span>')+'</div>';
+}
+
+function svgIcon(kind){
+  var s = {
+    check:'<svg class="ic" viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M6.5 12L2 7.5l1.4-1.4L6.5 9.2 12.6 3 14 4.4z"/></svg>',
+    x:'<svg class="ic" viewBox="0 0 16 16" width="16" height="16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" fill="none"/></svg>',
+    arrow:'<svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M4 11h12l-4-4 1.4-1.4L21 12l-7.6 6.4L12 17l4-4H4z"/></svg>',
+    'arrow-r':'<svg class="dot" viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M5 3l6 5-6 5z"/></svg>',
+    star:'<svg class="dot" viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M8 1l2 5 5 .4-3.8 3.3 1.2 4.9L8 12l-4.6 2.6 1.2-4.9L.8 6.4 6 6z"/></svg>',
+    dot:'<svg class="dot" viewBox="0 0 16 16" width="14" height="14"><circle cx="8" cy="8" r="3" fill="currentColor"/></svg>',
+    air:'<svg style="display:inline;vertical-align:middle" viewBox="0 0 16 16" width="13" height="13"><path fill="currentColor" d="M8 1L3 9h3.5v5h3V9H13z"/></svg>',
+    army:'<svg style="display:inline;vertical-align:middle" viewBox="0 0 16 16" width="13" height="13"><rect x="2" y="5" width="12" height="7" rx="1" fill="currentColor"/><path d="M5 5V4a3 3 0 016 0v1" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>'
+  };
+  return s[kind] || '';
+}
+
+// WHAT-IF HANDLER
+(function(){
+  var btn = document.getElementById('whatif-btn');
+  if(!btn) return;
+  btn.addEventListener('click', function(){
+    var v = function(id){ return parseFloat(document.getElementById(id).value); };
+    var ym = v('wi-ymarch');
+    var em = v('wi-emarch');
+    if(!ym || ym < 1 || !em || em < 1){
+      document.getElementById('whatif-out').innerHTML = '<div class="rf-msg">Enter your march size and enemy march size before calculating.</div>';
+      return;
+    }
+    var c = RockfieldCore.compute({
+      basePct: v('wi-base'), esLevel: parseInt(document.getElementById('wi-es').value, 10),
+      yourLvl: v('wi-ylvl'), enemyLvl: v('wi-elvl'),
+      yourTroops: ym, enemyTroops: em, allAir: true
+    });
+    var p = { won: null, you:{avgLvl:v('wi-ylvl'), troops:ym}, enemy:{avgLvl:v('wi-elvl'), troops:em}, actualPunisherDamage:null };
+    renderScorecard(document.getElementById('whatif-out'), p, c);
+  });
+})();
+
+// COMPARE HANDLER
+(function(){
+  var btn=document.getElementById('cmp-btn'); if(!btn) return;
+  btn.addEventListener('click', async function(){
+    var ids=document.getElementById('cmp-ids').value.split(/\s+/).filter(function(x){return /^\d{6,}$/.test(x);});
+    var out=document.getElementById('cmp-out');
+    if(!ids.length){ out.innerHTML=msg('Paste one or more battle report IDs.'); return; }
+    out.innerHTML=msg('Loading '+ids.length+' report'+(ids.length===1?'':'s')+'...');
+    var rows=[];
+    for(var i=0;i<ids.length;i++){
+      try{
+        var p=RockfieldCore.parseReport(await fetchReport(ids[i]));
+        if(!p.found){ rows.push({id:ids[i], err:'no Rockfield'}); continue; }
+        var c=RockfieldCore.compute({basePct:p.you.basePct,esLevel:p.you.esLevel,yourLvl:p.you.avgLvl,enemyLvl:p.enemy.avgLvl,yourTroops:p.you.troops,enemyTroops:p.enemy.troops,allAir:p.you.allAir});
+        var worst=c.checks.filter(function(ch){return !ch.ok;}).sort(function(a,b){return a.mult-b.mult;})[0];
+        rows.push({id:ids[i], es:p.you.esLevel, eff:c.effectivePct, units:c.unitsNow, ceil:c.unitsCeiling, effi:c.efficiency, limit:worst?worst.label:'none'});
+      }catch(e){ rows.push({id:ids[i], err:'load failed'}); }
+    }
+    out.innerHTML=renderCompare(rows);
+  });
+})();
+
+function renderCompare(rows){
+  var body=rows.map(function(r){
+    if(r.err) return '<tr><td>'+esc(r.id)+'</td><td colspan="5" style="color:var(--muted)">'+esc(r.err)+'</td></tr>';
+    return '<tr><td class="notranslate">'+esc(r.id)+'</td><td>ES'+esc(r.es)+'</td><td>'+fmtPct(r.eff)+'</td><td>~'+esc(r.units)+' / '+esc(r.ceil)+'</td><td>'+Math.round(r.effi*100)+'%</td><td>'+esc(r.limit)+'</td></tr>';
+  }).join('');
+  return '<div class="cmp-wrap"><table class="cmp"><thead><tr><th>Report</th><th>ES</th><th>Effective</th><th>Units (now / ceiling)</th><th>Efficiency</th><th>Limiting condition</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+}
+
+// Wire up: input button + ?id= deep link
+(function(){
+  var btn = document.getElementById('analyze-btn');
+  var inp = document.getElementById('report-id');
+  if(btn) btn.addEventListener('click', function(){ analyzeReport(inp.value); });
+  if(inp) inp.addEventListener('keydown', function(e){ if(e.key==='Enter') analyzeReport(inp.value); });
+  var qid = new URLSearchParams(location.search).get('id');
+  if(qid && inp){ inp.value = qid; analyzeReport(qid); }
+})();
+
+// Tab switching
+(function(){
+  var tabs = [
+    { btn: document.getElementById('tab-analyze'), pane: document.getElementById('pane-analyze') },
+    { btn: document.getElementById('tab-whatif'),  pane: document.getElementById('pane-whatif') },
+    { btn: document.getElementById('tab-compare'), pane: document.getElementById('pane-compare') }
+  ];
+  tabs.forEach(function(t, i){
+    t.btn.addEventListener('click', function(){
+      tabs.forEach(function(x){
+        x.btn.classList.remove('active');
+        x.btn.setAttribute('aria-pressed', 'false');
+        x.pane.style.display = 'none';
+      });
+      t.btn.classList.add('active');
+      t.btn.setAttribute('aria-pressed', 'true');
+      t.pane.style.display = '';
+    });
+  });
+})();
+</script>
+
+<script>
+// LANGUAGE PICKER
+(function() {
+  var LANGUAGES = [
+    { code: 'en', flag: '\u{1F1FA}\u{1F1F8}', name: 'English' },
+    { code: 'es', flag: '\u{1F1EA}\u{1F1F8}', name: 'Español' },
+    { code: 'fr', flag: '\u{1F1EB}\u{1F1F7}', name: 'Français' },
+    { code: 'de', flag: '\u{1F1E9}\u{1F1EA}', name: 'Deutsch' },
+    { code: 'pt', flag: '\u{1F1E7}\u{1F1F7}', name: 'Português' },
+    { code: 'it', flag: '\u{1F1EE}\u{1F1F9}', name: 'Italiano' },
+    { code: 'ru', flag: '\u{1F1F7}\u{1F1FA}', name: 'Русский' },
+    { code: 'ja', flag: '\u{1F1EF}\u{1F1F5}', name: '日本語' },
+    { code: 'ko', flag: '\u{1F1F0}\u{1F1F7}', name: '한국어' },
+    { code: 'zh-CN', flag: '\u{1F1E8}\u{1F1F3}', name: '中文' },
+    { code: 'ar', flag: '\u{1F1F8}\u{1F1E6}', name: 'العربية' },
+    { code: 'tr', flag: '\u{1F1F9}\u{1F1F7}', name: 'Türkçe' },
+    { code: 'vi', flag: '\u{1F1FB}\u{1F1F3}', name: 'Tiếng Việt' },
+    { code: 'th', flag: '\u{1F1F9}\u{1F1ED}', name: 'ไทย' },
+    { code: 'hi', flag: '\u{1F1EE}\u{1F1F3}', name: 'हिन्दी' },
+    { code: 'pl', flag: '\u{1F1F5}\u{1F1F1}', name: 'Polski' },
+    { code: 'uk', flag: '\u{1F1FA}\u{1F1E6}', name: 'Українська' },
+    { code: 'id', flag: '\u{1F1EE}\u{1F1E9}', name: 'Indonesia' }
+  ];
+
+  window._gtLoaded = false;
+
+  function getLangData(code) {
+    var base = code.split('-')[0];
+    for (var i = 0; i < LANGUAGES.length; i++) {
+      if (LANGUAGES[i].code === code || LANGUAGES[i].code === base) return LANGUAGES[i];
+    }
+    return null;
+  }
+
+  window.updateLangBtn = function(code) {
+    var data = getLangData(code);
+    var flagEl = document.getElementById('langFlag');
+    var codeEl = document.getElementById('langCode');
+    if (data && flagEl && codeEl) {
+      flagEl.textContent = data.flag;
+      codeEl.textContent = '/' + data.code;
+    } else if (flagEl && codeEl) {
+      flagEl.textContent = '\u{1F310}';
+      codeEl.textContent = '/' + code;
+    }
+    var options = document.querySelectorAll('.lang-option');
+    for (var i = 0; i < options.length; i++) {
+      options[i].classList.toggle('active', options[i].getAttribute('data-lang') === code);
+    }
+  };
+
+  window.detectCurrentLang = function() {
+    var match = document.cookie.match(/googtrans=\/en\/([a-zA-Z-]{2,10})/);
+    if (match && match[1]) return match[1];
+    return 'en';
+  };
+
+  function applyLangToCombo(code, delay, onSuccess) {
+    var attempts = 0;
+    var poll = setInterval(function() {
+      var combo = document.querySelector('.goog-te-combo');
+      if (combo) {
+        combo.value = code;
+        combo.dispatchEvent(new Event('change'));
+        clearInterval(poll);
+        window.updateLangBtn(code);
+        if (onSuccess) onSuccess();
+      }
+      if (++attempts > 30) clearInterval(poll);
+    }, delay || 200);
+  }
+  window.applyLangToCombo = applyLangToCombo;
+
+  function selectLanguage(code) {
+    if (code === 'en') { restoreEnglish(); return; }
+    try { sessionStorage.setItem('pendingLang', code); } catch(e) {}
+    applyLangToCombo(code, 200, closeLangModal);
+  }
+
+  function restoreEnglish() {
+    try { sessionStorage.removeItem('pendingLang'); } catch(e) {}
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax; Secure';
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.2864tw.com; SameSite=Lax; Secure';
+    closeLangModal();
+    location.reload();
+  }
+
+  var langModalEl = document.getElementById('langModal');
+  function openLangModal() { if (langModalEl) langModalEl.classList.add('active'); }
+  function closeLangModal() { if (langModalEl) langModalEl.classList.remove('active'); }
+
+  var grid = document.getElementById('langGrid');
+  if (grid) {
+    var detected = window.detectCurrentLang();
+    for (var i = 0; i < LANGUAGES.length; i++) {
+      var l = LANGUAGES[i];
+      var btn = document.createElement('button');
+      btn.className = 'lang-option' + (l.code === detected ? ' active' : '');
+      btn.setAttribute('data-lang', l.code);
+      var flagSpan = document.createElement('span');
+      flagSpan.className = 'lang-flag';
+      flagSpan.textContent = l.flag;
+      var nameSpan = document.createElement('span');
+      nameSpan.className = 'lang-name';
+      nameSpan.textContent = l.name;
+      btn.appendChild(flagSpan);
+      btn.appendChild(nameSpan);
+      btn.addEventListener('click', (function(code) {
+        return function() { selectLanguage(code); };
+      })(l.code));
+      grid.appendChild(btn);
+    }
+    window.updateLangBtn(detected);
+  }
+
+  var langBtn = document.getElementById('langBtn');
+  if (langBtn) langBtn.addEventListener('click', openLangModal);
+  var langModalClose = document.getElementById('langModalClose');
+  if (langModalClose) langModalClose.addEventListener('click', closeLangModal);
+  if (langModalEl) {
+    langModalEl.addEventListener('click', function(e) { if (e.target === langModalEl) closeLangModal(); });
+  }
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && langModalEl && langModalEl.classList.contains('active')) { closeLangModal(); e.stopPropagation(); }
+  });
+
+  setTimeout(function() {
+    if (!window._gtLoaded) {
+      var btn = document.getElementById('langBtn');
+      if (btn) { btn.style.opacity = '0.5'; btn.style.cursor = 'default'; btn.title = 'Translation unavailable'; btn.removeEventListener('click', openLangModal); }
+    }
+  }, 15000);
+})();
+
+function googleTranslateElementInit() {
+  window._gtLoaded = true;
+  new google.translate.TranslateElement({ pageLanguage: 'en', autoDisplay: false }, 'google_translate_element');
+  var pendingLang = null;
+  try { pendingLang = sessionStorage.getItem('pendingLang'); sessionStorage.removeItem('pendingLang'); } catch(e) {}
+  if (pendingLang) {
+    window.applyLangToCombo(pendingLang, 250);
+  } else {
+    try {
+      var dismissed = localStorage.getItem('translate-dismissed');
+      if (!dismissed) {
+        var lang = (navigator.language || navigator.userLanguage || 'en').split('-')[0];
+        if (lang !== 'en') window.applyLangToCombo(lang, 250);
+      }
+    } catch(e) {}
+    var detected = window.detectCurrentLang();
+    if (detected !== 'en') window.updateLangBtn(detected);
+  }
+}
+</script>
+<script src="https://translate.googleapis.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+</body>
+</html>
