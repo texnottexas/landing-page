@@ -56,3 +56,32 @@ test('summarizeArmy ignores non-stack s-prefixed keys', () => {
   const s = RC.summarizeArmy([{ armyId: 905103, s0: 100, s1: 80, speed: 999 }]);
   assert.strictEqual(s.troops, 180);
 });
+
+test('checks reflect each condition', () => {
+  const r = RC.compute({ basePct: 24, esLevel: 5, yourLvl: 103, enemyLvl: 103, yourTroops: 280, enemyTroops: 382, allAir: true });
+  const byKey = Object.fromEntries(r.checks.map(c => [c.key, c]));
+  assert.strictEqual(byKey.air.ok, true);
+  assert.strictEqual(byKey.level.ok, true);
+  assert.strictEqual(byKey.march.ok, false);
+  close(byKey.march.mult, 0.733, 0.01);
+});
+
+test('advice: march deficit fix + ES5 baseline upside', () => {
+  const r = RC.compute({ basePct: 24, esLevel: 5, yourLvl: 103, enemyLvl: 103, yourTroops: 280, enemyTroops: 382, allAir: true });
+  const texts = r.advice.map(a => a.text).join(' | ');
+  assert.match(texts, /march is 27% smaller/);
+  assert.match(texts, /Kuruzo/);
+  assert.match(texts, /March Size skills/);
+  assert.match(texts, /ES5 baseline/);
+  assert.match(texts, /ES7/);
+  assert.ok(!/—/.test(texts), 'no em dashes in advice');
+});
+
+test('advice: sub-ES5 pushes to ES5; air fail message', () => {
+  const r = RC.compute({ basePct: 24, esLevel: 2, yourLvl: 101, enemyLvl: 103, yourTroops: 300, enemyTroops: 300, allAir: false });
+  const texts = r.advice.map(a => a.text).join(' | ');
+  assert.match(texts, /not 100% air force/);
+  assert.match(texts, /below the enemy/);
+  assert.match(texts, /Get Rockfield to ES5/);
+  assert.match(texts, /Island Store/);
+});

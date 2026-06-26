@@ -56,6 +56,33 @@
     };
   }
 
+  function fmtLvl(l) { return l == null ? '?' : (Math.round(l * 10) / 10); }
+
+  function buildAdvice(o, checks) {
+    var advice = [];
+    var air = checks[0], level = checks[1], march = checks[2];
+    if (!air.ok) {
+      advice.push({ kind: 'fix', text: 'This march was not 100% air force, so Punisher did nothing. Send only air force units (no Heavy Troopers).' });
+    }
+    if (!level.ok) {
+      var deficit = Math.ceil((o.enemyLvl || 0) - (o.yourLvl || 0));
+      advice.push({ kind: 'fix', text: 'Your units are ' + deficit + ' level(s) below the enemy, which halves damage per level. Use L103 (Valhalla or free +2 unit cards) instead of L101 Heavy Troopers.' });
+    }
+    if (!march.ok) {
+      var pct = Math.round((1 - o.yourTroops / o.enemyTroops) * 100);
+      advice.push({ kind: 'fix', text: 'Your march is ' + pct + '% smaller than the enemy\'s, which is the whole march penalty. It scales 1 for 1, so any gain helps. Grow march size over time with Kuruzo as your 2nd hero at 5 stars and March Size skills (Rare + Normal) equipped.' });
+    }
+    var es = o.esLevel | 0;
+    if (es < 5) {
+      advice.push({ kind: 'upside', text: 'Get Rockfield to ES5, your baseline target. Shards are free from the Island Store.' });
+    } else if (es < 7) {
+      advice.push({ kind: 'upside', text: 'You are at the ES5 baseline. Aim for ES7 over time (free Island Store shards) for a bit more.' });
+    } else {
+      advice.push({ kind: 'upside', text: 'Your exclusive skill is strong.' });
+    }
+    return advice;
+  }
+
   function compute(o) {
     var basePct = o.basePct;
     var mult = esMult(o.esLevel);
@@ -70,18 +97,29 @@
     var unitsCeiling = Math.round(ceilingPct / 100 * (o.enemyTroops || 0));
     var efficiency = ceilingPct > 0 ? effectivePct / ceilingPct : 0;
 
+    var checks = [
+      { key: 'air', ok: !!o.allAir, label: 'All Air Force',
+        detail: o.allAir ? 'skill fires' : 'non-air units present', mult: airMult },
+      { key: 'level', ok: (o.yourLvl >= o.enemyLvl), label: 'Your level ≥ enemy',
+        detail: fmtLvl(o.yourLvl) + ' vs ' + fmtLvl(o.enemyLvl), mult: levelPenalty },
+      { key: 'march', ok: (o.yourTroops >= o.enemyTroops), label: 'Your march ≥ enemy',
+        detail: o.yourTroops + ' vs ' + o.enemyTroops +
+          (o.yourTroops < o.enemyTroops ? ' (' + Math.round((o.yourTroops / o.enemyTroops - 1) * 100) + '%)' : ''),
+        mult: marchPenalty }
+    ];
+
     var result = {
       basePct: basePct, esMult: mult, levelPenalty: levelPenalty, marchPenalty: marchPenalty,
       effectivePct: effectivePct, ceilingPct: ceilingPct,
       unitsNow: unitsNow, unitsCeiling: unitsCeiling, efficiency: efficiency,
-      checks: null, advice: null
+      checks: checks, advice: buildAdvice(o, checks)
     };
     return result;
   }
 
   var RockfieldCore = {
     CONST: CONST, basePctFromWar: basePctFromWar, esMult: esMult,
-    decodeArmy: decodeArmy, summarizeArmy: summarizeArmy, compute: compute
+    decodeArmy: decodeArmy, summarizeArmy: summarizeArmy, compute: compute, buildAdvice: buildAdvice
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = RockfieldCore;
