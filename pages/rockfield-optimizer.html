@@ -234,6 +234,14 @@
       padding: 2.5rem 1rem; text-align: center; color: var(--muted); font-size: .9rem;
     }
 
+    /* COMPARE TABLE */
+    .cmp { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .cmp th { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; padding: .5rem .75rem; border-bottom: 2px solid var(--border); text-align: left; background: var(--bg2); }
+    .cmp td { padding: .55rem .75rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .cmp tbody tr:last-child td { border-bottom: none; }
+    .cmp tbody tr:hover { background: var(--tag); }
+    .cmp-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 1rem; }
+
     /* FOOTER */
     footer { text-align: center; padding: 1.5rem 1rem 2rem; font-size: .7rem; }
     footer a { color: var(--muted); text-decoration: none; }
@@ -385,9 +393,26 @@
     <div id="whatif-out"></div>
   </div>
 
-  <!-- Compare tab (placeholder, Task 7) -->
+  <!-- Compare tab (Task 7) -->
   <div id="pane-compare" style="display:none">
-    <div class="tab-placeholder">Compare tool coming soon.</div>
+    <div class="notes" style="margin-bottom:1.1rem">
+      <h4>Compare Reports</h4>
+      <div class="fix" style="margin-top:.4rem"><div class="dot" style="color:var(--accent);margin-top:.1rem">
+        <svg viewBox="0 0 16 16" width="14" height="14"><circle cx="8" cy="8" r="3" fill="currentColor"/></svg>
+      </div><span>Paste one or more battle report IDs (one per line) to compare Rockfield performance across marches.</span></div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1.1rem 1rem;margin-bottom:1rem">
+      <label for="cmp-ids" style="display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:.45rem">Report IDs (one per line)</label>
+      <textarea id="cmp-ids" rows="5" placeholder="4724763863828291593&#10;4724810303346728960&#10;4725121119006646276"
+        style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:.6rem .7rem;font-size:.88rem;font-family:inherit;resize:vertical;outline:none;transition:border-color .15s"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+      <button id="cmp-btn"
+        style="margin-top:.75rem;width:100%;background:var(--army);color:#fff;border:none;border-radius:8px;padding:.6rem 1.1rem;font-weight:600;cursor:pointer;font-family:inherit;font-size:.9rem;transition:opacity .15s"
+        onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+        Compare
+      </button>
+    </div>
+    <div id="cmp-out"></div>
   </div>
 
 </main>
@@ -436,17 +461,22 @@ function updateThemeIcon() {
 function fmtPct(n){ return (Math.round(n*10)/10).toFixed(1) + '%'; }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 
+async function fetchReport(id){
+  id = (id||'').trim();
+  var url = 'https://fight-report-va.oss-accelerate.aliyuncs.com/prod/' + id.slice(0,4) + '/' + id + '.json';
+  var res = await fetch(url);
+  if(!res.ok) throw new Error('http '+res.status);
+  return await res.json();
+}
+
 async function analyzeReport(id){
   var out = document.getElementById('analyze-out');
   id = (id||'').trim();
   if(!/^\d{6,}$/.test(id)){ out.innerHTML = msg('Enter a valid battle report ID.'); return; }
   out.innerHTML = msg('Loading report...');
-  var url = 'https://fight-report-va.oss-accelerate.aliyuncs.com/prod/' + id.slice(0,4) + '/' + id + '.json';
   var json;
   try {
-    var res = await fetch(url);
-    if(!res.ok) throw new Error('http '+res.status);
-    json = await res.json();
+    json = await fetchReport(id);
   } catch(e){ out.innerHTML = msg('Could not load that report. PvP reports only.'); return; }
   var p = RockfieldCore.parseReport(json);
   if(!p.found){ out.innerHTML = msg('No Rockfield found in this report.'); return; }
@@ -528,6 +558,36 @@ function svgIcon(kind){
     renderScorecard(document.getElementById('whatif-out'), p, c);
   });
 })();
+
+// COMPARE HANDLER
+(function(){
+  var btn=document.getElementById('cmp-btn'); if(!btn) return;
+  btn.addEventListener('click', async function(){
+    var ids=document.getElementById('cmp-ids').value.split(/\s+/).filter(function(x){return /^\d{6,}$/.test(x);});
+    var out=document.getElementById('cmp-out');
+    if(!ids.length){ out.innerHTML=msg('Paste one or more battle report IDs.'); return; }
+    out.innerHTML=msg('Loading '+ids.length+' report'+(ids.length===1?'':'s')+'...');
+    var rows=[];
+    for(var i=0;i<ids.length;i++){
+      try{
+        var p=RockfieldCore.parseReport(await fetchReport(ids[i]));
+        if(!p.found){ rows.push({id:ids[i], err:'no Rockfield'}); continue; }
+        var c=RockfieldCore.compute({basePct:p.you.basePct,esLevel:p.you.esLevel,yourLvl:p.you.avgLvl,enemyLvl:p.enemy.avgLvl,yourTroops:p.you.troops,enemyTroops:p.enemy.troops,allAir:p.you.allAir});
+        var worst=c.checks.filter(function(ch){return !ch.ok;}).sort(function(a,b){return a.mult-b.mult;})[0];
+        rows.push({id:ids[i], es:p.you.esLevel, eff:c.effectivePct, units:c.unitsNow, ceil:c.unitsCeiling, effi:c.efficiency, limit:worst?worst.label:'none'});
+      }catch(e){ rows.push({id:ids[i], err:'load failed'}); }
+    }
+    out.innerHTML=renderCompare(rows);
+  });
+})();
+
+function renderCompare(rows){
+  var body=rows.map(function(r){
+    if(r.err) return '<tr><td>'+esc(r.id)+'</td><td colspan="5" style="color:var(--muted)">'+esc(r.err)+'</td></tr>';
+    return '<tr><td class="notranslate">'+esc(r.id)+'</td><td>ES'+esc(r.es)+'</td><td>'+fmtPct(r.eff)+'</td><td>~'+esc(r.units)+' / '+esc(r.ceil)+'</td><td>'+Math.round(r.effi*100)+'%</td><td>'+esc(r.limit)+'</td></tr>';
+  }).join('');
+  return '<div class="cmp-wrap"><table class="cmp"><thead><tr><th>Report</th><th>ES</th><th>Effective</th><th>Units (now / ceiling)</th><th>Efficiency</th><th>Limiting condition</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+}
 
 // Wire up: input button + ?id= deep link
 (function(){
