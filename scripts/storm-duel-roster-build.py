@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 Build data/storm-duel-roster.json — the searchable player->assignment roster for
-the R13 Storm Battle Plan page.
+the R15 Storm Battle Plan page.
 
 Eligibility (per Tex): any player on an ALLIED server with SSC merit >= 50000
 (the project's established merit_depth threshold) can be placed.
 
-Assignment model (R13 — S2864 defense core vs S4197 attack core):
-  OFFENSE / invade S4197  -> S2864 (majority of bigs) + S3407
-  DEFENSE / hold  S2864   -> S271 + S4108 + S3088 (+ ~20% of S2864 rotate home)
+Assignment model (R15 — S2864 defense core vs S3436 attack core):
+  OFFENSE / invade S3436  -> S2864 (majority of bigs) + S1281
+  DEFENSE / hold  S2864   -> S1508 + S2781 + S2735 (+ ~20% of S2864 rotate home)
   Anchors (always defense): Tex & PeeWee on S2864 hold the home Capital + key ruins.
 
 S2864 is SPLIT: defaulted to offense, flagged split=true so the page can note the
@@ -24,9 +24,10 @@ LB = os.path.join(DATA, "ssc-merit-leaderboard.json")
 OUT = os.path.join(DATA, "storm-duel-roster.json")
 
 THRESHOLD = 50000
-TARGET_HOLD = 240                      # bring total home-defense roster to ~240
-ALLY_SIDS = [2864, 271, 3407, 4108, 3088]
-OFFENSE_SIDS = {2864, 3407}            # invade S4197
+TARGET_HOLD = 240                      # floor for home-defense roster (no-op when 3 def servers already exceed it)
+ALLY_SIDS = [2864, 1508, 1281, 2781, 2735]
+OFFENSE_SIDS = {2864, 1281}           # invade S3436
+OPP_CORE_SID = 3436
 ANCHORS = {2864: {"tex", "peewee"}}    # forced DEFENSE (lower-cased name match)
 
 
@@ -75,11 +76,11 @@ def main():
 
     out = {
         "meta": {
-            "round": 13,
+            "round": 15,
             "threshold": THRESHOLD,
-            "source": lb.get("metadata", {}).get("round_label") or "SSC R12 leaderboard",
+            "source": "SSC R%s merit leaderboard" % (lb.get("metadata", {}).get("round") or "?"),
             "ally_sids": ALLY_SIDS,
-            "opp_core_sid": 4197,
+            "opp_core_sid": OPP_CORE_SID,
             "self_core_sid": 2864,
             "offense_sids": sorted(OFFENSE_SIDS),
             "total": len(players),

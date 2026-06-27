@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'self' 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; img-src 'self' https: data:; connect-src 'self' https://raw.githubusercontent.com https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; frame-src https://translate.google.com; frame-ancestors 'none';">
-<title>Storm Battle Plan &middot; R13 &middot; S2864</title>
+<title>Storm Battle Plan &middot; R15 &middot; S2864</title>
 <style>
 :root{
   --bg:#0d1117; --surface:#161b22; --card:#1c2128; --border:#30363d;
@@ -247,7 +247,7 @@ footer{text-align:center;padding:1.4rem 1rem 2rem;color:var(--muted);font-size:.
 </head>
 <body>
 <header>
-  <span class="hdr-title">Storm Battle Plan<span class="dim">&middot; R13</span></span>
+  <span class="hdr-title">Storm Battle Plan<span class="dim">&middot; R15</span></span>
   <div class="hdr-right">
     <button class="lang-btn notranslate" id="langBtn" title="Language"><span id="langFlag">&#127482;&#127480;</span><span id="langCode">/en</span></button>
     <a class="home-btn" href="https://2864tw.com/index.html">&#8962; Home</a>
@@ -271,10 +271,10 @@ footer{text-align:center;padding:1.4rem 1rem 2rem;color:var(--muted);font-size:.
       <img class="hero-img" src="https://2864tw.com/assets/caveman/caveman-primal-battle.webp" alt="" onerror="this.style.display='none'">
       <div class="hero-text">
         <h1>Two battlefields. <span class="em">Split the squad.</span></h1>
-        <div class="sub">Storm Duel &middot; Round 13 &mdash; one map on our turf, one on theirs.</div>
+        <div class="sub">Storm Duel &middot; Round 15 &mdash; one map on our turf, one on theirs.</div>
         <div class="pills">
           <span class="pill core">&#128737; S2864 &mdash; Defense Core</span>
-          <span class="pill opp">&#9876; vs S4197 &mdash; Attack Core</span>
+          <span class="pill opp">&#9876; vs S3436 &mdash; Attack Core</span>
         </div>
         <div class="cd" id="cd">
           <span class="clk" id="cdClk">--:--:--</span>
@@ -338,7 +338,7 @@ footer{text-align:center;padding:1.4rem 1rem 2rem;color:var(--muted);font-size:.
   <div id="strategyRoot"><div class="strat-loading">Loading battle plan&hellip;</div></div>
 
   <footer>
-    Storm Duel R13 battle plan &middot; built by Alfred for S2864<br>
+    Storm Duel R15 battle plan &middot; built by Alfred for S2864<br>
     Brought to you by supporters of the fk boats movement
   </footer>
 
@@ -346,8 +346,8 @@ footer{text-align:center;padding:1.4rem 1rem 2rem;color:var(--muted);font-size:.
 
 <script>
 // ===== Fight window countdown =====
-var FIGHT_BEGIN = 1781359200 * 1000;   // Sat 2026-06-13 14:00 UTC
-var FIGHT_END   = 1781362800 * 1000;   // 15:00 UTC
+var FIGHT_BEGIN = 1782568800 * 1000;   // Sat 2026-06-27 14:00 UTC
+var FIGHT_END   = 1782572400 * 1000;   // 15:00 UTC
 function pad(n){return (n<10?'0':'')+n;}
 function tick(){
   var cd=document.getElementById('cd'), clk=document.getElementById('cdClk'), lbl=document.getElementById('cdLbl');
@@ -360,7 +360,7 @@ function tick(){
     var s2=Math.floor((FIGHT_END-now)/1000);
     clk.textContent='● LIVE — '+pad(Math.floor(s2/60))+':'+pad(s2%60)+' left';
     lbl.textContent='battle in progress'; cd.classList.add('live');
-  } else { clk.textContent='Battle ended'; lbl.textContent='Storm Duel R13 complete'; cd.classList.remove('live'); }
+  } else { clk.textContent='Battle ended'; lbl.textContent='Storm Duel R15 complete'; cd.classList.remove('live'); }
 }
 tick(); setInterval(tick,1000);
 
@@ -505,14 +505,14 @@ function buildCaptureFlow(){
 // ===== R13 assignment engine — pool = full 50K+ roster, enriched w/ march power =====
 function buildAssignments(rosterPlayers, data){
   var ally=data.ally.warzones;
-  var R13_ATTACK=new Set([2864,3407]);          // S2864 (core) + S3407 invade
+  var OFFENSE_SIDS=new Set([2864,1281]);        // S2864 (core) + S1281 join offense
   var serverRoles=ally.map(function(z){
     var cb=z.combat_buffs_L3||{L3_pct:{}};
     var L3=cb.L3_pct||{};
     var buffSum=(L3['All Units ATK']||0)+(L3['All Units DEF']||0)+(L3['All Units HP']||0);
     return {sid:z.sid, leader:z.squad&&z.squad.leader, buffSum:buffSum, wlTotal:(cb.wastelandTotal||0)};
   });
-  serverRoles.forEach(function(s){ s.role=R13_ATTACK.has(s.sid)?'ATTACK':'DEFEND'; });
+  serverRoles.forEach(function(s){ s.role=OFFENSE_SIDS.has(s.sid)?'ATTACK':'DEFEND'; });
   serverRoles.sort(function(a,b){ if(a.role!==b.role)return a.role==='DEFEND'?-1:1; return (b.buffSum-a.buffSum)||(b.wlTotal-a.wlTotal); });
   var defSorted=serverRoles.filter(function(s){return s.role==='DEFEND';}).sort(function(a,b){return (b.buffSum-a.buffSum)||(b.wlTotal-a.wlTotal);});
   var anchorSid=(defSorted[0]||serverRoles[0]).sid;
@@ -669,9 +669,11 @@ function renderStrategy(data, rosterPlayers){
       el('div',{class:'sr-buff'},'buffs '+s.buffSum.toFixed(0)+'%'),
       s.sid===a.anchorSid?el('div',{class:'sr-anchor'},'★ DEFENSIVE ANCHOR'):null));
   });
+  var _atkS=a.serverRoles.filter(function(x){return x.role==='ATTACK';}).map(function(x){return 'S'+x.sid;});
+  var _defS=a.serverRoles.filter(function(x){return x.role==='DEFEND';}).map(function(x){return 'S'+x.sid;});
   var assign=el('div',{class:'strat-section'},
     el('h4',null,'Server Lane Assignment'),
-    el('div',{class:'strat-note'},'2 servers ATTACK, 3 DEFEND. ',el('b',null,'R13: S2864 (core) + S3407 push the enemy map; S271 / S4108 / S3088 hold home.'),' Tex & PeeWee anchor the home Capital + key ruins; a ~20% slice of S2864 rotates back for home defense.'),
+    el('div',{class:'strat-note'},_atkS.length+' server'+(_atkS.length===1?'':'s')+' ATTACK, '+_defS.length+' DEFEND. ',el('b',null,_atkS.join(' + ')+' push the enemy map; '+_defS.join(' / ')+' hold home.'),' Tex & PeeWee anchor the home Capital + key ruins; the rest of S2864 pushes offense.'),
     srvHost,
     el('h4',{style:'margin-top:.85rem'},'Suggested Stage Assignment'),
     el('div',{class:'strat-note'},'Auto-filled from the full 50K+ roster within each lane — highest march power first, then by merit. Each L1 grouping seats 8. Strike Team (top 5 march power) shows separately and also flexes into slots. Numbers show power where known, otherwise merit.'),
@@ -706,9 +708,14 @@ var ROSTER_PROMISE=fetch(dataUrl('storm-duel-roster.json'),{cache:'no-store'})
 // Searchable roster
 (function(){
   var ROLE={
-    invade:{badge:'Invade S4197',cls:'invade',head:'Offense — Invade S4197',desc:'Push the enemy battlefield. Storm their ruins early, stack score, then drive on their Capital.'},
+    invade:{badge:'Invade S3436',cls:'invade',head:'Offense — Invade S3436',desc:'Push the enemy battlefield. Storm their ruins early, stack score, then drive on their Capital.'},
     hold:{badge:'Hold S2864',cls:'hold',head:'Defense — Hold S2864',desc:'Stay on our home battlefield. Keep our Capital and ruins ours — deny them every point.'}
   };
+  function applyRoleTargets(m){   // labels follow roster meta so the invade/hold target tracks the round
+    var opp=(m&&m.opp_core_sid)||4197, home=(m&&m.self_core_sid)||2864;
+    ROLE.invade.badge='Invade S'+opp; ROLE.invade.head='Offense — Invade S'+opp;
+    ROLE.hold.badge='Hold S'+home;   ROLE.hold.head='Defense — Hold S'+home;
+  }
   var listEl=document.getElementById('rList'),metaEl=document.getElementById('rMeta'),inp=document.getElementById('rSearch'),clr=document.getElementById('rClear'),youEl=document.getElementById('rYou'),toggleEl=document.getElementById('rToggle');
   var PLAYERS=[], expanded=false, COLLAPSED_ROWS=5;
   function fmtMerit(n){ if(n>=1e6)return (n/1e6).toFixed(1).replace(/\.0$/,'')+'M'; if(n>=1e3)return Math.round(n/1e3)+'K'; return ''+n; }
@@ -716,6 +723,7 @@ var ROSTER_PROMISE=fetch(dataUrl('storm-duel-roster.json'),{cache:'no-store'})
   ROSTER_PROMISE
     .then(function(d){
       PLAYERS=d.players||[]; var m=d.meta||{};
+      applyRoleTargets(m);
       metaEl.innerHTML='<b>'+(m.total||PLAYERS.length)+'</b> eligible players (50K+ merit) across '+((m.ally_sids||[]).length)+' allied servers · <b>'+((m.by_role||{}).invade||0)+'</b> invade · <b>'+((m.by_role||{}).hold||0)+'</b> hold';
       render('');
     })
