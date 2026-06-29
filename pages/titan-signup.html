@@ -104,6 +104,16 @@
   .slot-card:has(.slot-cb:focus-visible){outline:2px solid var(--blue); outline-offset:2px}
   .slots-hint{font-size:.74rem; color:var(--faint); margin-top:.55rem; display:flex; align-items:center; gap:.4rem}
 
+  /* segmented controls (profession / unit / UC) */
+  .sub-label{font-size:.78rem; color:var(--muted); font-weight:600; margin-bottom:.4rem}
+  .seg{display:flex; gap:.4rem; flex-wrap:wrap}
+  .seg label{flex:1 1 auto; min-width:64px; text-align:center; position:relative; border:1.5px solid var(--border2); border-radius:11px; padding:.6rem .5rem; cursor:pointer; font-size:.85rem; font-weight:600; background:linear-gradient(180deg,var(--card2),var(--card)); transition:transform .14s, border-color .14s, background .14s; user-select:none}
+  .seg label:hover{border-color:#46566c; transform:translateY(-1px)}
+  .seg input{position:absolute; opacity:0; width:1px; height:1px; pointer-events:none}
+  .seg label:has(input:checked){border-color:var(--green); background:linear-gradient(180deg,rgba(63,185,80,.18),rgba(63,185,80,.06)); color:#cdebd2; box-shadow:0 0 0 1px rgba(63,185,80,.35)}
+  .seg label:has(input:focus-visible){outline:2px solid var(--blue); outline-offset:2px}
+  .seg.uc label{min-width:40px; flex:0 0 auto; padding:.5rem .6rem; font-family:var(--mono)}
+
   /* preferred pills */
   .pref-wrap{margin-top:1rem; padding-top:1rem; border-top:1px dashed var(--border); display:none}
   .pref-wrap.show{display:block; animation:rise .4s ease forwards}
@@ -165,8 +175,34 @@
       <div id="player-hint" class="hint" style="margin-top:.5rem; display:none">Don't see your name? Ping a captain so we can add you to the roster.</div>
     </div>
 
+    <div class="field reveal" style="animation-delay:.11s">
+      <div class="field-label"><span class="num">02</span> Your setup <span class="hint">auto-filled from the roster — change it if it's out of date</span></div>
+      <div class="sub-label">Profession <span class="hint">required</span></div>
+      <div class="seg" id="seg-profession">
+        <label><input type="radio" name="profession" value="CE"><span>Combat Elite (CE)</span></label>
+        <label><input type="radio" name="profession" value="MM"><span>Mechanical Master (MM)</span></label>
+      </div>
+      <div class="sub-label" style="margin-top:.75rem">Primary unit <span class="hint">required</span></div>
+      <div class="seg" id="seg-unit">
+        <label><input type="radio" name="unit" value="Army"><span>Army</span></label>
+        <label><input type="radio" name="unit" value="Navy"><span>Navy</span></label>
+        <label><input type="radio" name="unit" value="Air Force"><span>Air Force</span></label>
+      </div>
+      <div id="field-uc" style="display:none; margin-top:.75rem">
+        <div class="sub-label">Urgent Care facility level <span class="hint">Mechanical Masters only · 0 = not unlocked</span></div>
+        <div class="seg uc" id="seg-uc">
+          <label><input type="radio" name="uc" value="0"><span>0</span></label>
+          <label><input type="radio" name="uc" value="1"><span>1</span></label>
+          <label><input type="radio" name="uc" value="2"><span>2</span></label>
+          <label><input type="radio" name="uc" value="3"><span>3</span></label>
+          <label><input type="radio" name="uc" value="4"><span>4</span></label>
+          <label><input type="radio" name="uc" value="5"><span>5</span></label>
+        </div>
+      </div>
+    </div>
+
     <div class="field reveal" style="animation-delay:.14s">
-      <div class="field-label"><span class="num">02</span> Times you can play</div>
+      <div class="field-label"><span class="num">03</span> Times you can play</div>
       <div class="slots" id="slots"></div>
       <div class="slots-hint">
         <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 6v8M6 10h8"/><circle cx="10" cy="10" r="8.2"/></svg>
@@ -180,7 +216,7 @@
     </div>
 
     <div class="field reveal" style="animation-delay:.2s">
-      <div class="field-label"><span class="num">03</span> Flexible on squad / alliance?</div>
+      <div class="field-label"><span class="num">04</span> Flexible on squad / alliance?</div>
       <label class="switch-row">
         <span class="q">I can swap squad or alliance this week if the roster needs it</span>
         <span class="switch">
@@ -191,12 +227,12 @@
     </div>
 
     <div class="field reveal" style="animation-delay:.26s">
-      <div class="field-label"><span class="num">04</span> TC gameplay questions <span class="hint">optional</span></div>
+      <div class="field-label"><span class="num">05</span> TC gameplay questions <span class="hint">optional</span></div>
       <textarea id="questions" maxlength="1000" placeholder="Bounty scoring, where to park your base, anything you're unsure about…"></textarea>
     </div>
 
     <div class="field reveal" style="animation-delay:.32s">
-      <div class="field-label"><span class="num">05</span> Notes for the roster team <span class="hint">optional</span></div>
+      <div class="field-label"><span class="num">06</span> Notes for the roster team <span class="hint">optional</span></div>
       <textarea id="notes" maxlength="500" placeholder="Anything the captains should know"></textarea>
     </div>
 
@@ -266,14 +302,69 @@
   }
   var localTZ = (function(){ try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { return ''; } })();
 
+  // name (lowercase+trim) -> { role:'CE'|'MM', unit:'Army'|'Navy'|'Air Force' }
+  // from the Titan roster, used to auto-fill the player's setup on name pick.
+  var rosterLookup = {};
+  function normName(s){ return String(s || '').toLowerCase().trim(); }
+
   Promise.all([
     fetch(TITAN_API + '/titan/slotconfig').then(function (r){ return r.json(); }).catch(function(){ return null; }),
-    fetch('player-data.json').then(function (r){ return r.json(); }).catch(function(){ return []; })
+    fetch('player-data.json').then(function (r){ return r.json(); }).catch(function(){ return []; }),
+    fetch(TITAN_API + '/titan/roster').then(function (r){ return r.json(); }).catch(function(){ return []; })
   ]).then(function (res) {
     cfg = res[0] || { week:'unset', slots:[] };
     players = Array.isArray(res[1]) ? res[1] : (res[1].players || []);
+    var roster = Array.isArray(res[2]) ? res[2] : [];
+    roster.forEach(function (rrow) {
+      if (!Array.isArray(rrow)) return;
+      var k = normName(rrow[0]);                        // [0]=name, [7]=unit, [9]=role
+      if (k && !rosterLookup[k]) rosterLookup[k] = { role: rrow[9], unit: rrow[7] };
+    });
     renderWeek(); renderPlayers(); renderSlots();
   });
+
+  // --- "Your setup" fields: auto-fill from roster, remember the player's own
+  // override for next time (roster can lag behind in-game changes) ------------
+  var SIGNUP_PREFS_KEY = 'titanSignupPrefs';
+  function loadAllPrefs(){ try { return JSON.parse(localStorage.getItem(SIGNUP_PREFS_KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function prefKeyFor(name, siteKey){ return siteKey ? siteKey : ('n:' + normName(name)); }
+  function savePrefs(name, siteKey, data){
+    try { var all = loadAllPrefs(); all[prefKeyFor(name, siteKey)] = data; localStorage.setItem(SIGNUP_PREFS_KEY, JSON.stringify(all)); } catch (e) {}
+  }
+  function setSeg(name, value){
+    document.querySelectorAll('input[name="' + name + '"]').forEach(function (x){ x.checked = false; });
+    if (value == null || value === '') return;
+    var r = document.querySelector('input[name="' + name + '"][value="' + value + '"]');
+    if (r) r.checked = true;
+  }
+  function getSeg(name){ var r = document.querySelector('input[name="' + name + '"]:checked'); return r ? r.value : ''; }
+  var PROFS = { CE: 'CE', MM: 'MM' };
+  var UNITS = { 'Army': 'Army', 'Navy': 'Navy', 'Air Force': 'Air Force' };
+  var autoUc = 0; // UC level to pre-select when MM is (re)shown
+
+  function updateUcVisibility(){
+    var field = document.getElementById('field-uc');
+    if (getSeg('profession') === 'MM') {
+      field.style.display = '';
+      if (!getSeg('uc')) setSeg('uc', String(autoUc != null ? autoUc : 0));
+    } else {
+      field.style.display = 'none';
+      setSeg('uc', '');
+    }
+  }
+
+  function applyPlayerDefaults(name, siteKey){
+    var saved = loadAllPrefs()[prefKeyFor(name, siteKey)] || {};
+    var ros = rosterLookup[normName(name)] || {};
+    var prof = PROFS[(saved.profession || '').toUpperCase()] || PROFS[String(ros.role || '').toUpperCase()] || '';
+    var unit = UNITS[saved.unitType] || UNITS[ros.unit] || '';
+    autoUc = (saved.ucFacility != null) ? saved.ucFacility : 0;
+    setSeg('profession', prof);
+    setSeg('unit', unit);
+    updateUcVisibility();
+  }
+
+  document.getElementById('seg-profession').addEventListener('change', updateUcVisibility);
 
   var countdownTimer = null;
 
@@ -386,6 +477,12 @@
     notListed.value = '__notlisted__'; notListed.textContent = "My name isn't listed…";
     sel.appendChild(notListed);
 
+    function selectedPlayer() {
+      var opt = sel.options[sel.selectedIndex];
+      if (!opt || !sel.value || sel.value === '__notlisted__') return null;
+      return { name: (opt.getAttribute('data-name') || '').trim(), siteKey: /^[a-f0-9]{16}$/.test(sel.value) ? sel.value : '' };
+    }
+
     try {
       var id = JSON.parse(localStorage.getItem('playerIdentity') || 'null');
       if (id && id.siteKey) { sel.value = id.siteKey; }
@@ -393,7 +490,13 @@
 
     sel.addEventListener('change', function () {
       document.getElementById('player-hint').style.display = (sel.value === '__notlisted__') ? 'block' : 'none';
+      var p = selectedPlayer();
+      if (p) applyPlayerDefaults(p.name, p.siteKey);
     });
+
+    // Apply defaults for a pre-selected player (returning visitor).
+    var pre = selectedPlayer();
+    if (pre) applyPlayerDefaults(pre.name, pre.siteKey);
   }
 
   function renderSlots() {
@@ -468,6 +571,13 @@
     }
     if (!name) { statusEl.textContent = 'Please pick your name from the list.'; statusEl.className = 'status err'; return; }
 
+    var profession = getSeg('profession');
+    if (!profession) { statusEl.textContent = 'Pick your profession (Combat Elite or Mechanical Master).'; statusEl.className = 'status err'; return; }
+    var unitType = getSeg('unit');
+    if (!unitType) { statusEl.textContent = 'Pick your primary unit.'; statusEl.className = 'status err'; return; }
+    var ucFacility = null;
+    if (profession === 'MM') { var ucv = getSeg('uc'); ucFacility = ucv === '' ? 0 : parseInt(ucv, 10); }
+
     var available = Array.prototype.map.call(document.querySelectorAll('.slot-cb:checked'), function (c){ return c.value; });
     if (!available.length) { statusEl.textContent = 'Pick at least one time you can play.'; statusEl.className = 'status err'; return; }
     var prefEl = document.querySelector('input[name="preferred"]:checked');
@@ -476,11 +586,15 @@
 
     var payload = {
       name: name, siteKey: siteKey, alliance: alliance,
+      profession: profession, unitType: unitType,
       availableSlots: available, preferredSlot: preferred,
       canSwap: document.getElementById('canswap-toggle').checked,
       questions: document.getElementById('questions').value,
       notes: document.getElementById('notes').value
     };
+    if (profession === 'MM') payload.ucFacility = ucFacility;
+    // Remember this player's setup for next signup (roster can lag in-game changes).
+    savePrefs(name, siteKey, { profession: profession, unitType: unitType, ucFacility: profession === 'MM' ? ucFacility : null });
 
     var btn = document.getElementById('submit-btn'); btn.disabled = true;
     statusEl.className = 'status'; statusEl.textContent = 'Submitting…';

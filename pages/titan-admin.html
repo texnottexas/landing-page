@@ -1387,6 +1387,15 @@ function buildRosterLookup() {
   return map;
 }
 
+// Profession/unit shown on the board prefer the player's self-reported value
+// from their signup (current as of signup time) over the roster (can be stale).
+function effRole(s, info) {
+  var p = String((s && s.profession) || '').toUpperCase();
+  if (p === 'CE' || p === 'MM') return p;
+  return (info && info.role) || '';
+}
+function effUnit(s, info) { return (s && s.unitType) || (info && info.unit) || ''; }
+
 // Union of eligible alliances for the week (normalized, DEV excluded).
 function eligibleAlliances() {
   var set = {};
@@ -1489,10 +1498,9 @@ function renderTitanBoard() {
     var ceCount = 0, mmCount = 0, totalPow = 0;
     inSlot.forEach(function (s) {
       var info = lookup[String(s.name || '').trim().toLowerCase()];
-      if (info) {
-        if (info.role === 'CE') ceCount++; else if (info.role === 'MM') mmCount++;
-        totalPow += info.power;
-      }
+      var r = effRole(s, info);
+      if (r === 'CE') ceCount++; else if (r === 'MM') mmCount++;
+      if (info) totalPow += info.power;
     });
     var head = document.createElement('div');
     head.className = 'slot-group-head';
@@ -1527,10 +1535,10 @@ function renderTitanBoard() {
       var members = byAlly[ally];
       var ce = [], mm = [], other = [];
       members.forEach(function (s) {
-        var info = lookup[String(s.name || '').trim().toLowerCase()];
-        if (!info) other.push({ s: s, info: null });
-        else if (info.role === 'CE') ce.push({ s: s, info: info });
-        else if (info.role === 'MM') mm.push({ s: s, info: info });
+        var info = lookup[String(s.name || '').trim().toLowerCase()] || null;
+        var r = effRole(s, info);
+        if (r === 'CE') ce.push({ s: s, info: info });
+        else if (r === 'MM') mm.push({ s: s, info: info });
         else other.push({ s: s, info: info });
       });
       var blk = document.createElement('div');
@@ -1564,11 +1572,18 @@ function roleColumn(title, entries) {
     chip.className = 'su-chip' + (e.info ? '' : ' su-miss');
     var nm = document.createElement('span'); nm.className = 'su-name'; nm.textContent = e.s.name;
     chip.appendChild(nm);
-    if (e.info) {
+    var role = effRole(e.s, e.info);
+    var unit = effUnit(e.s, e.info);
+    var bits = [];
+    if (unit) bits.push(unit);
+    if (e.info) bits.push(e.info.power.toLocaleString());
+    if (role === 'MM' && e.s.ucFacility != null) bits.push('UC ' + e.s.ucFacility);
+    if (bits.length) {
       var pow = document.createElement('span'); pow.className = 'su-pow';
-      pow.textContent = (e.info.unit || '') + ' · ' + e.info.power.toLocaleString();
+      pow.textContent = bits.join(' · ');
       chip.appendChild(pow);
-    } else {
+    }
+    if (!e.info) {
       var miss = document.createElement('span'); miss.className = 'miss-badge'; miss.textContent = 'not in roster';
       chip.appendChild(miss);
     }
