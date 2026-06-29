@@ -908,7 +908,9 @@ function toggleTheme() {
 
 // ── INIT (no auth gate — load editor immediately) ────────────────────────────
 (async function init() {
-  await Promise.all([loadData(), loadRoster()]);
+  // loadSquadPlayers() pulls player-data.json — needed up front so the battle-plan
+  // editor's dropdowns can resolve each squad member's power/profession/unit.
+  await Promise.all([loadData(), loadRoster(), loadSquadPlayers()]);
   buildTabs();
   selectSquad(SQUADS[0]);
   renderRosterTable();
@@ -1092,8 +1094,40 @@ function getSquadData(sq) {
   return planData[sq];
 }
 
+// Candidate players for a squad's battle-plan dropdowns = that squad's CURRENT
+// members in the auto-built plan (planData[sq] positions + support buckets), NOT
+// the legacy titan_roster (which is frozen and disconnected from self-service —
+// it leaks players who have since moved to another squad sharing the same slot).
+// Metadata (power/profession/unit) is resolved from buildRosterLookup()
+// (player-data.json merged over the legacy roster); a positioned member's role is
+// taken from its slot (1-2 = CE, 3-8 = MM) so the CE/MM dropdown filters work even
+// when a recent signup isn't yet in player-data.json.
 function getSquadPlayers(sq) {
-  return players.filter(p => p.squad === sq).sort((a, b) => b.cp - a.cp);
+  const data = planData[sq];
+  if (!data) return [];
+  const lookup = buildRosterLookup();
+  const seen = {};
+  const out = [];
+  function add(name, roleHint) {
+    if (!name) return;
+    const key = String(name).trim().toLowerCase();
+    if (seen[key]) return;
+    seen[key] = true;
+    const info = lookup[key] || {};
+    out.push({
+      name: name,
+      cp: info.power || 0,
+      prof: roleHint || info.role || "",
+      unit: info.unit || "",
+      alliance: info.alliance || "",
+      squad: sq,
+    });
+  }
+  if (data.positions) {
+    Object.keys(data.positions).forEach(num => add(data.positions[num], posProf(Number(num))));
+  }
+  ["goon", "standby", "hover", "crystal"].forEach(k => (data[k] || []).forEach(n => add(n, "")));
+  return out.sort((a, b) => b.cp - a.cp);
 }
 
 function getUsedNames(data, excludeKey, excludeIdx) {
