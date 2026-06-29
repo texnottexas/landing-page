@@ -179,6 +179,10 @@
     .trade-row:first-of-type { border-top: none; }
     .trade-row button { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: .25rem .65rem; cursor: pointer; font-size: .76rem; }
     .trade-row button:hover { border-color: var(--accent); }
+    .trade-badge { display: inline-block; font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: .12rem .42rem; border-radius: 5px; white-space: nowrap; }
+    .trade-badge.pending { background: rgba(210,153,34,.16); color: var(--air); border: 1px solid rgba(210,153,34,.35); }
+    .trade-badge.accepted { background: rgba(63,185,80,.15); color: var(--army); border: 1px solid rgba(63,185,80,.35); }
+    .trade-when { font-size: .72rem; }
 
     /* ---- Roster card (collapsed by default) ---- */
     .roster-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 2px 8px var(--shadow); overflow: hidden; }
@@ -448,6 +452,15 @@ function fmtAbbrev(n) {
   if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
   if (n >= 1e3) return (n / 1e3).toFixed(2) + 'K';
   return fmtNum(n);
+}
+function fmtAgo(ts) {
+  ts = Number(ts) || 0;
+  if (!ts) return '';
+  var s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return 'just now';
+  var m = Math.floor(s / 60); if (m < 60) return m + 'm ago';
+  var h = Math.floor(m / 60); if (h < 24) return h + 'h ago';
+  return Math.floor(h / 24) + 'd ago';
 }
 
 /* ---------- Theme ---------- */
@@ -1163,25 +1176,39 @@ function tradeErrText(code) {
 }
 
 /* ---------- Trades panel (editor only) ---------- */
+/* Public trade log: pending + accepted, visible to everyone. Editors get
+   Accept/Reject buttons on pending rows; the worker only returns pending +
+   accepted to non-editors. */
 function renderTrades() {
   var el = document.getElementById('tradesPanel');
-  if (!EDITOR.on) { el.style.display = 'none'; return; }
   el.style.display = '';
-  var pending = STATE.trades.filter(function (t) { return t.status === 'pending'; });
-  if (!pending.length) {
-    el.innerHTML = '<div class="panel"><b>Pending trade requests</b><br><span class="muted" style="font-size:.82rem">None right now.</span></div>';
-    return;
-  }
-  el.innerHTML = '<div class="panel"><b>Pending trade requests</b>' + pending.map(function (t) {
+  var shown = (STATE.trades || []).filter(function (t) { return t && (t.status === 'pending' || t.status === 'accepted'); });
+  shown.sort(function (a, b) {
+    if (a.status !== b.status) return a.status === 'pending' ? -1 : 1;   // pending first
+    return (b.resolvedTs || b.ts || 0) - (a.resolvedTs || a.ts || 0);    // newest first
+  });
+  var rows = shown.map(function (t) {
     var from = (rosterBySiteKey(t.fromSiteKey) || {}).name || t.fromSiteKey;
     var to = (rosterBySiteKey(t.toSiteKey) || {}).name || t.toSiteKey;
-    var conflict = currentPkgOf(t.toSiteKey) ? ' <span style="color:var(--danger)">(recipient already holds a package, free it first)</span>' : '';
-    var tid = String(t.id).replace(/[^a-zA-Z0-9\-]/g, '');
-    return '<div class="trade-row">' + esc(from) + ' &#8594; ' + esc(to) + ' : <b>' + esc(pkgName(t.packageId)) + '</b>' +
-      (t.note ? ' <span class="muted">"' + esc(t.note) + '"</span>' : '') + conflict +
-      ' <button onclick="resolveTradeReq(\'' + tid + '\',\'accept\')">Accept</button>' +
-      ' <button onclick="resolveTradeReq(\'' + tid + '\',\'reject\')">Reject</button></div>';
-  }).join('') + '</div>';
+    var accepted = t.status === 'accepted';
+    var badge = '<span class="trade-badge ' + (accepted ? 'accepted' : 'pending') + '">' + (accepted ? 'Accepted' : 'Pending') + '</span>';
+    var note = t.note ? ' <span class="muted">"' + esc(t.note) + '"</span>' : '';
+    var when = fmtAgo(t.resolvedTs || t.ts);
+    var actions = '';
+    if (EDITOR.on && t.status === 'pending') {
+      var conflict = currentPkgOf(t.toSiteKey) ? ' <span style="color:var(--danger)">(recipient already holds a package, free it first)</span>' : '';
+      var tid = String(t.id).replace(/[^a-zA-Z0-9\-]/g, '');
+      actions = conflict +
+        ' <button onclick="resolveTradeReq(\'' + tid + '\',\'accept\')">Accept</button>' +
+        ' <button onclick="resolveTradeReq(\'' + tid + '\',\'reject\')">Reject</button>';
+    }
+    return '<div class="trade-row">' + badge +
+      '<span>' + esc(from) + ' &#8594; ' + esc(to) + ' : <b>' + esc(pkgName(t.packageId)) + '</b></span>' +
+      note + (when ? ' <span class="trade-when muted">' + esc(when) + '</span>' : '') + actions + '</div>';
+  }).join('');
+  el.innerHTML =
+    '<div class="sec-head"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M11 1.5 14.5 5 11 8.5V6H4.5V4H11V1.5zM5 7.5V10h6.5v2H5v2.5L1.5 11 5 7.5z"/></svg><h2>Trade Requests</h2></div>' +
+    '<div class="panel">' + (rows || '<span class="muted" style="font-size:.82rem">No trade requests yet.</span>') + '</div>';
 }
 async function resolveTradeReq(id, action) {
   var r = await fetch(WORKER + '/finalrewards/trade/resolve', {
