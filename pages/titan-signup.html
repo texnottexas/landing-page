@@ -92,6 +92,7 @@
   .slot-box svg{width:13px; height:13px; opacity:0; transform:scale(.5); transition:all .18s}
   .slot-text{flex:1; min-width:0}
   .slot-name{font-weight:650; font-size:.92rem; display:block}
+  .slot-when{font-size:.8rem; color:var(--text); margin-top:.18rem; display:block}
   .slot-all{font-family:var(--mono); font-size:.72rem; color:var(--muted); margin-top:.15rem; display:block}
   .slot-card:has(.slot-cb:checked){
     border-color:var(--green); background:linear-gradient(180deg,rgba(63,185,80,.16),rgba(63,185,80,.06));
@@ -217,6 +218,53 @@
 
   function stripSymbols(s){ return String(s||'').replace(/^[^\w]+/, ''); }
 
+  // --- Time helpers -------------------------------------------------------
+  // The game resets at 12:00 PM Eastern; each slot id is the hour offset from
+  // that reset (e.g. "-6" = 6 AM ET, "+10" = 10 PM ET). We compute every slot's
+  // absolute instant in America/New_York (DST-safe) and render it in the
+  // viewer's own time zone, so it's correct everywhere on Earth.
+  var RESET_HOUR_ET = 12;
+
+  // Convert an Eastern wall-clock time on a given date to a real Date (UTC
+  // instant), DST-safe, with no external library (two-pass offset solve).
+  function etToDate(y, m, d, hh) {
+    var guess = Date.UTC(y, m - 1, d, hh, 0, 0);
+    var p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: false }).formatToParts(new Date(guess));
+    var o = {}; p.forEach(function (x){ o[x.type] = x.value; });
+    var hour = o.hour === '24' ? 0 : o.hour;
+    var asUtc = Date.UTC(+o.year, +o.month - 1, +o.day, +hour, +o.minute);
+    return new Date(guess + (guess - asUtc));
+  }
+
+  // The battle Saturday for the active week. Prefer the week label when it's an
+  // ISO date (we store it as the Saturday); else fall back to the Saturday on/
+  // after the close date (Thursday close -> +2 days).
+  function battleSaturday() {
+    if (cfg && typeof cfg.week === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(cfg.week)) {
+      var a = cfg.week.split('-');
+      return { y: +a[0], m: +a[1], d: +a[2] };
+    }
+    if (cfg && cfg.closesAt) {
+      var c = new Date(cfg.closesAt);
+      if (!isNaN(c.getTime())) {
+        var parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'numeric', day: 'numeric', weekday: 'short' }).formatToParts(c);
+        var o = {}; parts.forEach(function (x){ o[x.type] = x.value; });
+        var dow = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 }[o.weekday];
+        var base = new Date(Date.UTC(+o.year, +o.month - 1, +o.day));
+        var add = (6 - dow + 7) % 7; // days until Saturday
+        base.setUTCDate(base.getUTCDate() + add);
+        return { y: base.getUTCFullYear(), m: base.getUTCMonth() + 1, d: base.getUTCDate() };
+      }
+    }
+    return null;
+  }
+
+  function fmt(instant, tz, opts) {
+    var o = Object.assign({}, opts); if (tz) o.timeZone = tz;
+    return new Intl.DateTimeFormat([], o).format(instant);
+  }
+  var localTZ = (function(){ try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { return ''; } })();
+
   Promise.all([
     fetch(TITAN_API + '/titan/slotconfig').then(function (r){ return r.json(); }).catch(function(){ return null; }),
     fetch('player-data.json').then(function (r){ return r.json(); }).catch(function(){ return []; })
@@ -226,24 +274,85 @@
     renderWeek(); renderPlayers(); renderSlots();
   });
 
+  var countdownTimer = null;
+
   function renderWeek() {
     var weekEl = document.getElementById('su-week');
-    var subEl = document.getElementById('su-sub');
     var closeEl = document.getElementById('su-close');
     if (cfg.week && cfg.week !== 'unset') {
-      weekEl.textContent = cfg.week;
-      var closed = cfg.closesAt && Date.now() > Date.parse(cfg.closesAt);
-      var soon = cfg.closesAt && !closed && (Date.parse(cfg.closesAt) - Date.now() < 36*3600*1000);
-      closeEl.textContent = cfg.closesAt ? ('Closes ' + new Date(cfg.closesAt).toLocaleString([], {weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'})) : 'Open for signups';
-      var pill = document.createElement('span');
-      pill.className = 'pill ' + (closed ? 'closed' : soon ? 'soon' : 'open');
-      pill.textContent = closed ? 'Closed' : soon ? 'Closing soon' : 'Open';
-      subEl.appendChild(pill);
+      var wl = cfg.week;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(cfg.week)) {
+        var a = cfg.week.split('-');
+        wl = fmt(new Date(Date.UTC(+a[0], +a[1] - 1, +a[2])), 'UTC', { weekday: 'long', month: 'long', day: 'numeric' });
+      }
+      weekEl.textContent = wl;
+      startCountdown();
     } else {
       weekEl.textContent = 'Not open yet';
       weekEl.style.fontSize = '1.25rem';
+      closeEl.classList.remove('hint');
       closeEl.textContent = 'Signups for the next Titan Canyon will appear here soon.';
     }
+  }
+
+  function fmtCountdown(ms) {
+    var s = Math.max(0, Math.floor(ms / 1000));
+    var d = Math.floor(s / 86400); s -= d * 86400;
+    var h = Math.floor(s / 3600); s -= h * 3600;
+    var m = Math.floor(s / 60); s -= m * 60;
+    var out = [];
+    if (d) out.push(d + 'd');
+    if (d || h) out.push(h + 'h');
+    out.push(m + 'm');
+    if (!d) out.push(s + 's'); // seconds only matter when under a day out
+    return out.join(' ');
+  }
+
+  // Live, universal countdown to the absolute close instant (same for everyone).
+  function startCountdown() {
+    var closeEl = document.getElementById('su-close');
+    var subEl = document.getElementById('su-sub');
+    closeEl.classList.remove('hint');
+    function render() {
+      var pill = subEl.querySelector('.pill');
+      if (!pill) { pill = document.createElement('span'); pill.className = 'pill'; subEl.appendChild(pill); }
+      if (!cfg.closesAt) { closeEl.textContent = 'Open for signups'; pill.className = 'pill open'; pill.textContent = 'Open'; return; }
+      var when = new Date(cfg.closesAt);
+      var ms = when.getTime() - Date.now();
+      var closed = ms <= 0;
+      var soon = !closed && ms < 36 * 3600 * 1000;
+      var localClose = fmt(when, null, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      var etClose = fmt(when, 'America/New_York', { hour: 'numeric', minute: '2-digit' });
+      if (closed) {
+        closeEl.textContent = 'Signups closed for this week';
+        if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+      } else {
+        closeEl.textContent = 'Closes in ' + fmtCountdown(ms) + ' · ' + localClose + ' your time (' + etClose + ' ET)';
+      }
+      pill.className = 'pill ' + (closed ? 'closed' : soon ? 'soon' : 'open');
+      pill.textContent = closed ? 'Closed' : soon ? 'Closing soon' : 'Open';
+    }
+    render();
+    if (countdownTimer) clearInterval(countdownTimer);
+    countdownTimer = setInterval(render, 1000);
+  }
+
+  // Computed display strings for one slot (battle date + ET + the viewer's local
+  // time). Shared by the slot cards and the "top pick" pills.
+  function slotMeta(s) {
+    var offset = parseInt(s.id, 10);
+    var m = { id: s.id, ba: '', alliances: (s.alliances || []).join(' · '), hasTime: false, dateLabel: s.label || s.id, etTime: '', localTime: '', localDow: '' };
+    if (!isNaN(offset)) m.ba = offset < 0 ? 'Before Reset' : 'After Reset';
+    var sat = battleSaturday();
+    if (sat && !isNaN(offset)) {
+      var inst = etToDate(sat.y, sat.m, sat.d, RESET_HOUR_ET + offset);
+      m.hasTime = true;
+      m.dateLabel = fmt(inst, 'America/New_York', { weekday: 'long', month: 'long', day: 'numeric' });
+      m.etTime = fmt(inst, 'America/New_York', { hour: 'numeric', minute: '2-digit' });
+      m.localTime = fmt(inst, null, { hour: 'numeric', minute: '2-digit' });
+      m.localDow = fmt(inst, null, { weekday: 'short' });
+    }
+    return m;
   }
 
   function renderPlayers() {
@@ -275,16 +384,28 @@
     var box = document.getElementById('slots');
     box.innerHTML = '';
     (cfg.slots || []).forEach(function (s) {
+      var m = slotMeta(s);
       var lab = document.createElement('label'); lab.className = 'slot-card';
       var cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = s.id; cb.className = 'slot-cb';
       var bx = document.createElement('span'); bx.className = 'slot-box'; bx.innerHTML = CHECK;
       var txt = document.createElement('span'); txt.className = 'slot-text';
-      var nm = document.createElement('span'); nm.className = 'slot-name'; nm.textContent = s.label;
+
+      var nm = document.createElement('span'); nm.className = 'slot-name'; nm.textContent = m.dateLabel;
       txt.appendChild(nm);
-      if (s.alliances && s.alliances.length) {
-        var al = document.createElement('span'); al.className = 'slot-all'; al.textContent = s.alliances.join(' · ');
-        txt.appendChild(al);
+
+      if (m.hasTime) {
+        var when = document.createElement('span'); when.className = 'slot-when';
+        when.textContent = m.id + ' · ' + m.ba + ' · ' + m.localDow + ' ' + m.localTime + ' your time';
+        txt.appendChild(when);
       }
+
+      var meta = document.createElement('span'); meta.className = 'slot-all';
+      var bits = [];
+      if (m.hasTime) bits.push(m.etTime + ' ET');
+      if (m.alliances) bits.push(m.alliances);
+      meta.textContent = bits.join(' · ');
+      if (bits.length) txt.appendChild(meta);
+
       lab.appendChild(cb); lab.appendChild(bx); lab.appendChild(txt);
       box.appendChild(lab);
       cb.addEventListener('change', syncPreferred);
@@ -306,7 +427,9 @@
       var r = document.createElement('input'); r.type = 'radio'; r.name = 'preferred'; r.value = id;
       if (id === cur || chosen.length === 1) r.checked = true;
       var star = document.createElement('span'); star.className = 'star'; star.textContent = '★';
-      var t = document.createElement('span'); t.textContent = s ? s.label : id;
+      var t = document.createElement('span');
+      if (s) { var pm = slotMeta(s); t.textContent = pm.hasTime ? (pm.localDow + ' ' + pm.localTime + ' · ' + pm.id) : (s.label || id); }
+      else { t.textContent = id; }
       pill.appendChild(r); pill.appendChild(star); pill.appendChild(t);
       pills.appendChild(pill);
     });
