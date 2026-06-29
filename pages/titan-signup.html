@@ -59,6 +59,7 @@
   .brief-kicker{font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; text-transform:uppercase; color:var(--green); margin-bottom:.35rem}
   .brief-week{font-size:1.7rem; font-weight:800; letter-spacing:-.01em; font-family:var(--mono); line-height:1.1}
   .brief-sub{color:var(--muted); font-size:.82rem; margin-top:.4rem; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap}
+  .brief-battle{color:var(--faint); font-size:.78rem; margin-top:.45rem}
   .pill{display:inline-flex; align-items:center; gap:.35rem; font-size:.68rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:.2rem .55rem; border-radius:999px; border:1px solid}
   .pill.open{color:var(--green); border-color:rgba(63,185,80,.4); background:var(--green-soft)}
   .pill.closed{color:var(--red); border-color:rgba(248,81,73,.4); background:rgba(248,81,73,.1)}
@@ -152,7 +153,7 @@
 
 <main>
   <section class="briefing reveal" id="briefing" style="animation-delay:.02s">
-    <div class="brief-kicker">Deployment window</div>
+    <div class="brief-kicker">Signup window ends</div>
     <div class="brief-week" id="su-week">…</div>
     <div class="brief-sub" id="su-sub"><span id="su-close" class="hint">Loading this week's slots…</span></div>
   </section>
@@ -276,20 +277,35 @@
 
   var countdownTimer = null;
 
+  function battleDayLabel() {
+    if (cfg && /^\d{4}-\d{2}-\d{2}$/.test(cfg.week || '')) {
+      var a = cfg.week.split('-');
+      return fmt(new Date(Date.UTC(+a[0], +a[1] - 1, +a[2])), 'UTC', { weekday: 'long', month: 'long', day: 'numeric' });
+    }
+    return cfg ? cfg.week : '';
+  }
+
   function renderWeek() {
     var weekEl = document.getElementById('su-week');
     var closeEl = document.getElementById('su-close');
+    var battleEl = document.getElementById('su-battle');
+    if (!battleEl) {
+      battleEl = document.createElement('div'); battleEl.id = 'su-battle'; battleEl.className = 'brief-battle';
+      document.getElementById('briefing').appendChild(battleEl);
+    }
     if (cfg.week && cfg.week !== 'unset') {
-      var wl = cfg.week;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(cfg.week)) {
-        var a = cfg.week.split('-');
-        wl = fmt(new Date(Date.UTC(+a[0], +a[1] - 1, +a[2])), 'UTC', { weekday: 'long', month: 'long', day: 'numeric' });
-      }
-      weekEl.textContent = wl;
+      // Headline is WHEN SIGNUPS CLOSE (viewer's local date) — not the battle day,
+      // so nobody mistakes the battle Saturday for the signup deadline.
+      weekEl.textContent = cfg.closesAt
+        ? fmt(new Date(cfg.closesAt), null, { weekday: 'long', month: 'long', day: 'numeric' })
+        : 'Open for signups';
+      battleEl.textContent = 'Battle day: ' + battleDayLabel();
+      battleEl.style.display = '';
       startCountdown();
     } else {
       weekEl.textContent = 'Not open yet';
       weekEl.style.fontSize = '1.25rem';
+      battleEl.style.display = 'none';
       closeEl.classList.remove('hint');
       closeEl.textContent = 'Signups for the next Titan Canyon will appear here soon.';
     }
@@ -321,7 +337,7 @@
       var ms = when.getTime() - Date.now();
       var closed = ms <= 0;
       var soon = !closed && ms < 36 * 3600 * 1000;
-      var localClose = fmt(when, null, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      var localClose = fmt(when, null, { hour: 'numeric', minute: '2-digit' });
       var etClose = fmt(when, 'America/New_York', { hour: 'numeric', minute: '2-digit' });
       if (closed) {
         closeEl.textContent = 'Signups closed for this week';
