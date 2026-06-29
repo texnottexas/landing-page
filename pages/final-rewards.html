@@ -104,6 +104,7 @@
     .site-footer { text-align: center; padding: 1.5rem 2rem; font-size: .75rem; color: var(--muted); border-top: 1px solid var(--border); }
     .site-footer a { color: var(--accent); text-decoration: none; }
     .site-footer a:hover { text-decoration: underline; }
+    .trade-row{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;padding:.35rem 0;border-top:1px solid var(--border);font-size:.85rem}
 
     .roster{width:100%;border-collapse:collapse}.roster th{cursor:pointer;text-align:left;color:var(--muted);font-size:.78rem;border-bottom:1px solid var(--border);padding:.3rem}.roster td{padding:.3rem;border-bottom:1px solid var(--border);font-size:.82rem}.roster td.num{text-align:right}.roster tr.hl{background:color-mix(in srgb,var(--accent) 12%,var(--bg2))}
 
@@ -175,10 +176,11 @@ async function loadAll() {
   STATE.remaining = fr.remaining || {}; STATE.trades = fr.trades || []; STATE.serverNow = fr.serverNow || Date.now();
   STATE.roster = Array.isArray(roster) ? roster : (roster.players || []);
   STATE.metrics = computeMetrics(dist);
-  renderPackages(); renderRoster(); renderCountdowns(); renderTrades(); renderTradeForm();
-  // Restore stored editor token
+  // Restore stored editor token BEFORE renders so editor-dependent UI (assign dropdowns, chip-x, trades panel) is correct on first paint
   var stored = (function () { try { return JSON.parse(localStorage.getItem('frToken') || 'null'); } catch (e) { return null; } })();
-  if (stored && stored.expires > Date.now()) { EDITOR = { on: !!stored.isEditor, siteKey: stored.siteKey, isEditor: stored.isEditor }; renderEditorBar(); }
+  if (stored && stored.expires > Date.now()) { EDITOR = { on: !!stored.isEditor, siteKey: stored.siteKey, isEditor: stored.isEditor }; }
+  renderPackages(); renderRoster(); renderCountdowns(); renderTrades(); renderTradeForm();
+  renderEditorBar();
 }
 document.addEventListener('DOMContentLoaded', function () {
   loadAll().catch(function (e) {
@@ -310,8 +312,7 @@ async function verifyUidFlow() {
     if (!d.ok) { alert(d.error === 'not_in_roster' ? 'That UID does not match a roster player.' : 'Verification failed.'); return; }
     frSetToken({ token: d.token, expires: d.expires, siteKey: d.siteKey, isEditor: d.isEditor });
     EDITOR = { on: !!d.isEditor, siteKey: d.siteKey, isEditor: d.isEditor };
-    await loadAll();  // reload with editor headers (reveals editor-only trades)
-    if (EDITOR.on) renderEditorBar();
+    await loadAll();  // reload with editor headers (reveals editor-only trades); loadAll restores EDITOR + calls renderEditorBar internally
     if (!d.isEditor) alert('Verified — but only Tex, Gary, and 8960mr can edit assignments. You can still request a trade.');
   } catch (e) { alert('Worker unreachable: ' + e.message); }
 }
@@ -385,7 +386,9 @@ function swapsClosed() { return Date.now() >= STATE.config.tradeLockAt; }
 function renderTradeForm() {
   var el = document.getElementById('tradeForm');
   if (swapsClosed()) { el.innerHTML = '<div class="panel"><b>Swap requests are now closed.</b></div>'; return; }
-  var tok = frToken(), my = tok ? (JSON.parse(localStorage.getItem('frToken')).siteKey) : null;
+  var tok = frToken();
+  var stored = tok ? JSON.parse(localStorage.getItem('frToken') || 'null') : null;
+  var my = stored ? stored.siteKey : null;
   var myPkg = my ? currentPkgOf(my) : '';
   if (!tok) { el.innerHTML = '<div class="panel"><b>Request a trade</b><br><button onclick="verifyUidFlow()">Verify your UID to request a trade</button></div>'; return; }
   if (!myPkg) { el.innerHTML = '<div class="panel"><b>Request a trade</b><br>You are not assigned a package — there is nothing to trade.</div>'; return; }
@@ -416,10 +419,11 @@ function renderTrades() {
     var from = (rosterBySiteKey(t.fromSiteKey) || {}).name || t.fromSiteKey;
     var to = (rosterBySiteKey(t.toSiteKey) || {}).name || t.toSiteKey;
     var conflict = currentPkgOf(t.toSiteKey) ? ' <span style="color:var(--danger)">(recipient already holds a package — free it first)</span>' : '';
+    var tid = String(t.id).replace(/[^a-zA-Z0-9\-]/g, '');
     return '<div class="trade-row">' + esc(from) + ' → ' + esc(to) + ' : <b>' + esc(pkgName(t.packageId)) + '</b>' +
       (t.note ? ' <span class="muted">"' + esc(t.note) + '"</span>' : '') + conflict +
-      ' <button onclick="resolveTradeReq(\'' + t.id + '\',\'accept\')">Accept</button>' +
-      ' <button onclick="resolveTradeReq(\'' + t.id + '\',\'reject\')">Reject</button></div>';
+      ' <button onclick="resolveTradeReq(\'' + tid + '\',\'accept\')">Accept</button>' +
+      ' <button onclick="resolveTradeReq(\'' + tid + '\',\'reject\')">Reject</button></div>';
   }).join('') + '</div>';
 }
 async function resolveTradeReq(id, action) {
