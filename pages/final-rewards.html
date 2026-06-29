@@ -204,6 +204,10 @@
     .roster thead th.sorted .sort-arrow { opacity: 1; }
     .roster td { padding: .4rem .45rem; border-bottom: 1px solid var(--border); font-size: .8rem; }
     .roster td.num, .roster thead th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    .fr-toast { position: fixed; left: 50%; bottom: 1.5rem; transform: translateX(-50%) translateY(8px); background: var(--card); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: .6rem 1rem; font-size: .85rem; font-weight: 600; display: inline-flex; align-items: center; gap: .5rem; box-shadow: 0 6px 24px var(--shadow); opacity: 0; pointer-events: none; transition: opacity .18s ease, transform .18s ease; z-index: 400; }
+    .fr-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .fr-toast svg { width: 15px; height: 15px; color: var(--success); }
     .roster tbody tr { cursor: pointer; transition: background .12s; }
     .roster tbody tr:hover { background: rgba(121,192,255,.06); }
     .roster tr.hl { background: color-mix(in srgb, var(--accent) 14%, var(--card)); }
@@ -1022,6 +1026,17 @@ function renderEditorBar() {
     '<span style="color:var(--muted)">into</span> <select id="batchPkg">' + pkgOpts + '</select>' +
     '<button onclick="batchPreview()">Preview</button> <span id="batchPreviewOut" style="color:var(--muted)"></span>';
 }
+var _frToastTimer = null;
+function showToast(msg) {
+  var t = document.getElementById('frToast');
+  if (!t) { t = document.createElement('div'); t.id = 'frToast'; t.className = 'fr-toast'; document.body.appendChild(t); }
+  t.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg><span></span>';
+  t.querySelector('span').textContent = msg;
+  void t.offsetWidth;
+  t.classList.add('show');
+  if (_frToastTimer) clearTimeout(_frToastTimer);
+  _frToastTimer = setTimeout(function () { t.classList.remove('show'); }, 2000);
+}
 async function frAssignOps(ops) {
   var r = await fetch(WORKER + '/finalrewards/assign', {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + frToken() },
@@ -1035,6 +1050,7 @@ async function frAssignOps(ops) {
   }
   STATE.assignments = d.assignments; STATE.remaining = d.remaining; STATE._rmap = null;
   renderPackages(); renderRoster(); renderYourReward();
+  showToast('Saved');
   return true;
 }
 function assignPlayer(sk, pkgId) { frAssignOps([{ siteKey: sk, packageId: pkgId || null }]); }
