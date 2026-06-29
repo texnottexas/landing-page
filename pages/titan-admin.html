@@ -1549,7 +1549,11 @@ function normAlliance(a) {
 }
 function isDevAlliance(a) { return String(a || '').trim().toLowerCase().indexOf('dev') === 0; }
 
-// name (lowercase + trim) -> roster row info
+// name (lowercase + trim) -> roster row info. The real server roster
+// (player-data.json, sqPlayers) is the live pool and takes precedence; the legacy
+// migrated titan_roster (RAW) is merged underneath so older names still resolve.
+// A signup only shows "not in roster" when its name is in neither (e.g. a
+// "my name isn't listed" free-text signup).
 function buildRosterLookup() {
   var map = {};
   RAW.forEach(function (r) {
@@ -1558,6 +1562,16 @@ function buildRosterLookup() {
     map[key] = {
       name: r[0], alliance: r[6], unit: r[7],
       power: Number(r[8]) || 0, role: r[9] || '', squad: r[11] || ''
+    };
+  });
+  sqPlayers.forEach(function (p) {
+    var key = String(p.name || '').trim().toLowerCase();
+    if (!key) return;
+    var prof = String(p.profession || '').toLowerCase();
+    var role = prof.indexOf('combat') === 0 ? 'CE' : prof.indexOf('mechanical') === 0 ? 'MM' : '';
+    map[key] = {
+      name: p.name, alliance: p.alliance || '', unit: '',
+      power: Number(p.power) || 0, role: role, squad: ''
     };
   });
   return map;
@@ -1593,6 +1607,11 @@ function loadTitanSignups() {
       titanWeek = resp.week || '';
       titanSignups = resp.signups || [];
       document.getElementById('su-week').textContent = titanWeek || '—';
+      // Ensure the real server roster (player-data.json) is loaded so the board's
+      // "in roster" check uses it, not just the legacy migrated list.
+      return loadSquadPlayers();
+    })
+    .then(function () {
       renderTitanSignups(titanSignups);
       renderTitanBoard();
       renderNotSignedUp();
