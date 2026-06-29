@@ -91,9 +91,10 @@
     }
 
     /* Countdowns */
-    .countdowns { margin-bottom: 1rem; }
+    .countdowns{display:flex;gap:1rem;flex-wrap:wrap;margin:.5rem 0}.cd{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.5rem .8rem}.cd-label{display:block;font-size:.72rem;color:var(--muted)}.cd-val{font-size:1.1rem;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
 
     /* Trades panel */
+    .panel{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.8rem;margin:.8rem 0}
     #tradesPanel { margin-top: 1.5rem; }
     #tradeForm { margin-top: 1rem; }
 
@@ -363,10 +364,73 @@ function batchPreview() {
 }
 async function batchCommit() { if (STATE._batch && await frAssignOps(STATE._batch)) { document.getElementById('batchPreviewOut').textContent = 'Done.'; STATE._batch = null; } }
 
-/* ── Task-14 stubs (countdowns / trades / trade form) ── */
-function renderCountdowns() {}
-function renderTrades() {}
-function renderTradeForm() {}
+/* ── Task-14: Countdowns + trade-request form + pending-trades panel ── */
+function fmtRemaining(ms) {
+  if (ms <= 0) return null;
+  var s = Math.floor(ms / 1000), d = Math.floor(s / 86400); s -= d * 86400;
+  var h = Math.floor(s / 3600); s -= h * 3600; var m = Math.floor(s / 60); s -= m * 60;
+  return (d ? d + 'd ' : '') + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+function renderCountdowns() {
+  var el = document.getElementById('countdowns');
+  var now = Date.now();
+  var swap = fmtRemaining(STATE.config.tradeLockAt - now);
+  var dist = fmtRemaining(STATE.config.distributeAt - now);
+  el.innerHTML =
+    '<div class="cd"><span class="cd-label">Time remaining for swap requests</span><span class="cd-val">' + (swap || 'Closed') + '</span></div>' +
+    '<div class="cd"><span class="cd-label">Time remaining until rewards distributed</span><span class="cd-val">' + (dist || 'Rewards distributed') + '</span></div>';
+}
+setInterval(function () { if (STATE.config) renderCountdowns(); }, 1000);
+function swapsClosed() { return Date.now() >= STATE.config.tradeLockAt; }
+function renderTradeForm() {
+  var el = document.getElementById('tradeForm');
+  if (swapsClosed()) { el.innerHTML = '<div class="panel"><b>Swap requests are now closed.</b></div>'; return; }
+  var tok = frToken(), my = tok ? (JSON.parse(localStorage.getItem('frToken')).siteKey) : null;
+  var myPkg = my ? currentPkgOf(my) : '';
+  if (!tok) { el.innerHTML = '<div class="panel"><b>Request a trade</b><br><button onclick="verifyUidFlow()">Verify your UID to request a trade</button></div>'; return; }
+  if (!myPkg) { el.innerHTML = '<div class="panel"><b>Request a trade</b><br>You are not assigned a package — there is nothing to trade.</div>'; return; }
+  var opts = STATE.roster.filter(function (p) { return shortKey(p.siteKey) !== shortKey(my); })
+    .map(function (p) { return '<option value="' + shortKey(p.siteKey) + '">' + esc(p.name) + ' (' + esc(p.alliance || '') + ')</option>'; }).join('');
+  el.innerHTML = '<div class="panel"><b>Request a trade</b><br>' +
+    'Give your <b>' + esc(pkgName(myPkg)) + '</b> to: <select id="tradeTo">' + opts + '</select> ' +
+    '<input id="tradeNote" placeholder="optional note" maxlength="200" style="width:14rem"/> ' +
+    '<button onclick="submitTrade()">Submit request</button> <span id="tradeOut"></span></div>';
+}
+async function submitTrade() {
+  var to = document.getElementById('tradeTo').value, note = document.getElementById('tradeNote').value;
+  var r = await fetch(WORKER + '/finalrewards/trade', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + frToken() },
+    body: JSON.stringify({ toSiteKey: to, note: note })
+  });
+  var d = await r.json();
+  document.getElementById('tradeOut').textContent = d.ok ? 'Request submitted — pending editor approval.' : ('Error: ' + d.error);
+  if (d.ok) { await loadAll(); }
+}
+function renderTrades() {
+  var el = document.getElementById('tradesPanel');
+  if (!EDITOR.on) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  var pending = STATE.trades.filter(function (t) { return t.status === 'pending'; });
+  if (!pending.length) { el.innerHTML = '<div class="panel"><b>Pending Trades</b><br><span class="muted">none</span></div>'; return; }
+  el.innerHTML = '<div class="panel"><b>Pending Trades</b>' + pending.map(function (t) {
+    var from = (rosterBySiteKey(t.fromSiteKey) || {}).name || t.fromSiteKey;
+    var to = (rosterBySiteKey(t.toSiteKey) || {}).name || t.toSiteKey;
+    var conflict = currentPkgOf(t.toSiteKey) ? ' <span style="color:var(--danger)">(recipient already holds a package — free it first)</span>' : '';
+    return '<div class="trade-row">' + esc(from) + ' → ' + esc(to) + ' : <b>' + esc(pkgName(t.packageId)) + '</b>' +
+      (t.note ? ' <span class="muted">"' + esc(t.note) + '"</span>' : '') + conflict +
+      ' <button onclick="resolveTradeReq(\'' + t.id + '\',\'accept\')">Accept</button>' +
+      ' <button onclick="resolveTradeReq(\'' + t.id + '\',\'reject\')">Reject</button></div>';
+  }).join('') + '</div>';
+}
+async function resolveTradeReq(id, action) {
+  var r = await fetch(WORKER + '/finalrewards/trade/resolve', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + frToken() },
+    body: JSON.stringify({ tradeId: id, action: action })
+  });
+  var d = await r.json();
+  if (!d.ok) alert(d.error === 'recipient_has_package' ? 'Recipient already holds a package — unassign them first, then accept.' : ('Could not resolve: ' + d.error));
+  await loadAll();
+}
 </script>
 </body>
 </html>
