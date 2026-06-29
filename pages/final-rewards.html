@@ -182,7 +182,7 @@ async function loadAll() {
 document.addEventListener('DOMContentLoaded', function () {
   loadAll().catch(function (e) {
     var main = document.querySelector('main');
-    if (main) main.insertAdjacentHTML('afterbegin', '<div style="background:var(--danger);color:#fff;border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem">Failed to load page data: ' + String(e.message || e) + '</div>');
+    if (main) main.insertAdjacentHTML('afterbegin', '<div style="background:var(--danger);color:#fff;border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem">Failed to load page data: ' + esc(String(e.message || e)) + '</div>');
   });
 });
 
@@ -258,12 +258,13 @@ function renderRoster() {
     if (av > bv) return rosterSort.dir === 'desc' ? -1 : 1;
     return 0;
   });
-  var pkgOpts = STATE.config.packages.map(function (p) { return '<option value="' + p.id + '">' + esc(p.name) + '</option>'; }).join('');
   var body = rows.map(function (p) {
     var sk = shortKey(p.siteKey), cur = currentPkgOf(sk);
     var assignCell = EDITOR.on
       ? '<select onchange="assignPlayer(\'' + sk + '\', this.value)"><option value="">— none —</option>' +
-        pkgOpts.replace('value="' + cur + '"', 'value="' + cur + '" selected') + '</select>'
+        STATE.config.packages.map(function (p) {
+          return '<option value="' + p.id + '"' + (p.id === cur ? ' selected' : '') + '>' + esc(p.name) + '</option>';
+        }).join('') + '</select>'
       : (cur ? esc(pkgName(cur)) : '<span class="muted">—</span>');
     return '<tr id="rrow_' + sk + '"><td>' + esc(p.name) + '</td><td class="muted">' + esc(p.alliance || '') + '</td>' +
       '<td class="muted">' + esc(p.profession || '') + '</td>' +
@@ -309,7 +310,7 @@ async function verifyUidFlow() {
     frSetToken({ token: d.token, expires: d.expires, siteKey: d.siteKey, isEditor: d.isEditor });
     EDITOR = { on: !!d.isEditor, siteKey: d.siteKey, isEditor: d.isEditor };
     await loadAll();  // reload with editor headers (reveals editor-only trades)
-    renderEditorBar();
+    if (EDITOR.on) renderEditorBar();
     if (!d.isEditor) alert('Verified — but only Tex, Gary, and 8960mr can edit assignments. You can still request a trade.');
   } catch (e) { alert('Worker unreachable: ' + e.message); }
 }
