@@ -184,6 +184,20 @@
     .lang-option.active { border-color: var(--accent); background: var(--tag); }
     .lang-option .lang-flag { font-size: 1.1rem; }
     .lang-option .lang-name { flex: 1; }
+    /* "Who are you?" identity prompt (mirrors the homepage) */
+    .who-overlay { display:none; position:fixed; inset:0; z-index:500; background:rgba(0,0,0,.7); align-items:center; justify-content:center; padding:1rem; }
+    .who-overlay.active { display:flex; }
+    .who-modal { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:1.5rem; max-width:420px; width:100%; max-height:82vh; overflow-y:auto; box-shadow:0 18px 50px -18px rgba(0,0,0,.85); }
+    .who-modal h2 { font-size:1.2rem; font-weight:800; margin-bottom:.4rem; }
+    .who-sub { font-size:.82rem; color:var(--muted); margin-bottom:1rem; }
+    .who-search { width:100%; padding:.65rem .8rem; border-radius:10px; border:1px solid var(--border); background:var(--bg2); color:var(--text); font-size:.9rem; margin-bottom:.7rem; outline:none; font-family:inherit; }
+    .who-search:focus { border-color:var(--accent); }
+    .who-list { max-height:46vh; overflow-y:auto; display:flex; flex-direction:column; gap:.3rem; }
+    .who-item { text-align:left; padding:.55rem .7rem; border-radius:8px; border:1px solid transparent; background:var(--bg2); color:var(--text); cursor:pointer; font-size:.88rem; display:flex; justify-content:space-between; align-items:center; gap:.5rem; font-family:inherit; }
+    .who-item:hover { border-color:var(--accent); }
+    .who-item .a { color:var(--muted); font-size:.72rem; }
+    .who-skip { margin-top:.9rem; width:100%; background:none; border:none; color:var(--muted); cursor:pointer; font-size:.82rem; padding:.4rem; font-family:inherit; }
+    .who-skip:hover { color:var(--text); }
   </style>
 </head>
 <body>
@@ -213,6 +227,16 @@
   <div class="loading" id="loading">Loading your Titan Canyon dashboard&hellip;</div>
   <div id="dash" style="display:none"></div>
 </main>
+
+<div class="who-overlay" id="who-modal" role="dialog" aria-modal="true" aria-label="Who are you?">
+  <div class="who-modal">
+    <h2>Who are you? &#129686;</h2>
+    <p class="who-sub">Pick your in-game name so we can show your squad and battle time.</p>
+    <input type="text" id="who-search" class="who-search" placeholder="Search your name..." autocomplete="off" spellcheck="false">
+    <div class="who-list" id="who-list"></div>
+    <button class="who-skip" id="who-skip">Skip for now</button>
+  </div>
+</div>
 
 <div class="lang-modal-overlay" id="langModal">
   <div class="lang-modal">
@@ -532,7 +556,7 @@ function getJSON(url) { return fetch(url).then(function (r) { if (!r.ok) throw n
 function loadMine() {
   state.me = resolveMe();
   state.signup = null;
-  if (!state.me) { render(); return; }
+  if (!state.me) { render(); openWho(); return; }
   var week = (state.cfg && state.cfg.week) || '';
   var q = '?week=' + encodeURIComponent(week);
   if (state.me.siteKey) q += '&siteKey=' + encodeURIComponent(state.me.siteKey);
@@ -555,6 +579,46 @@ function init() {
     loadMine();
   });
 }
+// "Who are you?" identity prompt — auto-shown when no playerIdentity/choice is
+// set. Picking a name writes the site-wide playerIdentity (same shape the
+// homepage uses) so the player is recognized across 2864tw.com.
+function buildWhoList(filter) {
+  var list = document.getElementById('who-list');
+  if (!list) return;
+  var f = normName(filter || '');
+  var items = state.players.filter(function (p) { return !f || normName(p.name).indexOf(f) !== -1; }).slice(0, 60);
+  list.innerHTML = items.map(function (p) {
+    return '<button class="who-item" data-name="' + esc(p.name) + '" data-sk="' + esc(p.siteKey || '') + '" data-all="' + esc(p.alliance || '') + '">' +
+      '<span class="notranslate">' + esc(p.name) + '</span><span class="a">' + esc(p.alliance || '') + '</span></button>';
+  }).join('') || '<div class="who-sub" style="margin:0">No matches.</div>';
+}
+function openWho() {
+  buildWhoList('');
+  var s = document.getElementById('who-search'); if (s) s.value = '';
+  var o = document.getElementById('who-modal'); if (o) o.classList.add('active');
+  if (s) { try { s.focus(); } catch (e) {} }
+}
+function closeWho() { var o = document.getElementById('who-modal'); if (o) o.classList.remove('active'); }
+function pickWho(name, sk, all) {
+  var siteKey = /^[a-f0-9]{16}$/.test(sk || '') ? sk : null;
+  try { localStorage.setItem('playerIdentity', JSON.stringify({ name: name, siteKey: siteKey, alliance: all || null, guest: false })); } catch (e) {}
+  setPickedChoice(siteKey ? siteKey : 'name:' + name);
+  closeWho();
+  loadMine();
+}
+(function () {
+  var s = document.getElementById('who-search');
+  if (s) s.addEventListener('input', function () { buildWhoList(s.value); });
+  var list = document.getElementById('who-list');
+  if (list) list.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.who-item') : null;
+    if (b) pickWho(b.getAttribute('data-name'), b.getAttribute('data-sk'), b.getAttribute('data-all'));
+  });
+  var skip = document.getElementById('who-skip');
+  if (skip) skip.addEventListener('click', closeWho);
+  var ov = document.getElementById('who-modal');
+  if (ov) ov.addEventListener('click', function (e) { if (e.target === ov) closeWho(); });
+})();
 init();
 </script>
 <script>
