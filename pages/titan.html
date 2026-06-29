@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="referrer" content="no-referrer" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'self' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; img-src 'self' data: https://i.ibb.co https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com; frame-src https://translate.google.com; object-src 'none'; base-uri 'self'; form-action 'none'; font-src https://fonts.gstatic.com;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'self' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; img-src 'self' data: https://i.ibb.co https://knight-cdn.akamaized.net https://h5.topwargame.com https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com; frame-src https://translate.google.com; object-src 'none'; base-uri 'self'; form-action 'none'; font-src https://fonts.gstatic.com;" />
   <title>Titan Canyon - Server 2864</title>
   <style>
     :root[data-theme="dark"] {
@@ -66,7 +66,9 @@
       width: 46px; height: 46px; border-radius: 50%; background: var(--tag);
       border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
       font-weight: 700; font-size: 1.1rem; color: var(--accent);
+      position: relative; overflow: hidden; flex-shrink: 0;
     }
+    .id-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
     .id-name { font-size: 1.15rem; font-weight: 700; }
     .id-meta { font-size: .78rem; color: var(--muted); margin-top: 2px; }
     .pill {
@@ -278,6 +280,13 @@ function normName(s) { return String(s == null ? '' : s).toLowerCase().trim(); }
 function allianceDisplay(a) { return ALL_DISPLAY[a] || a || ''; }
 function allianceClass(a) { return a === 'DOG' ? 'dog' : a === 'MSS' ? 'mss' : a === 'PRU' ? 'pru' : a === 'Cat+' ? 'cat' : ''; }
 function normAll(a) { var u = String(a == null ? '' : a).trim().toUpperCase(); if (u === 'DOG') return 'DOG'; if (u === 'MSS') return 'MSS'; if (u === 'PRU') return 'PRU'; if (u === 'CAT' || u === 'CAT+') return 'Cat+'; return u; }
+// Resolve a player's avatarurl to an image URL (full URLs pass through; sprite
+// keys map to the Top War headpic CDN). Mirrors the homepage resolver.
+function resolveAvatar(url) {
+  if (!url || typeof url !== 'string') return null;
+  if (url.indexOf('http') === 0) return url;
+  return 'https://h5.topwargame.com/DynRes/images/headpic/' + url + '.png?t=21.jpg';
+}
 
 function toggleTheme() {
   var d = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -335,13 +344,13 @@ function resolveMe() {
   var choice = getPickedChoice();
   if (choice) {
     var p = choice.indexOf('name:') === 0 ? findPlayer('', choice.slice(5)) : findPlayer(choice, '');
-    if (p) return { name: p.name, siteKey: p.siteKey || '', alliance: p.alliance || '' };
+    if (p) return { name: p.name, siteKey: p.siteKey || '', alliance: p.alliance || '', avatarurl: p.avatarurl || '' };
     if (choice.indexOf('name:') === 0) return { name: choice.slice(5), siteKey: '', alliance: '' };
   }
   var id = getStoredIdentity();
   if (id && (id.siteKey || id.name) && !id.guest) {
     var pp = findPlayer(id.siteKey, id.name);
-    return { name: (pp && pp.name) || id.name, siteKey: (pp && pp.siteKey) || (/^[a-f0-9]{16}$/.test(id.siteKey || '') ? id.siteKey : ''), alliance: (pp && pp.alliance) || id.alliance || '' };
+    return { name: (pp && pp.name) || id.name, siteKey: (pp && pp.siteKey) || (/^[a-f0-9]{16}$/.test(id.siteKey || '') ? id.siteKey : ''), alliance: (pp && pp.alliance) || id.alliance || '', avatarurl: (pp && pp.avatarurl) || '' };
   }
   return null;
 }
@@ -414,6 +423,7 @@ function render() {
 function renderIdentityBar() {
   var me = state.me;
   var initial = me && me.name ? esc(me.name.trim().charAt(0).toUpperCase()) : '?';
+  var avatarSrc = me ? resolveAvatar(me.avatarurl) : null;
   var allianceTag = (me && me.alliance) ? '<span class="pill ' + allianceClass(me.alliance) + '">' + esc(allianceDisplay(me.alliance)) + '</span>' : '';
   var options = ['<option value="">Change player&hellip;</option>'];
   var meChoice = me ? (me.siteKey ? me.siteKey : 'name:' + me.name) : '';
@@ -424,7 +434,7 @@ function renderIdentityBar() {
   return '' +
     '<div class="card"><div class="id-bar">' +
       '<div class="id-who">' +
-        '<div class="id-avatar notranslate">' + initial + '</div>' +
+        '<div class="id-avatar"><span class="id-avatar-init notranslate">' + initial + '</span>' + (avatarSrc ? '<img src="' + esc(avatarSrc) + '" alt="" onerror="this.style.display=\'none\'">' : '') + '</div>' +
         '<div>' +
           '<div class="id-name notranslate">' + (me ? esc(me.name) : 'Welcome') + '</div>' +
           '<div class="id-meta">' + (me ? allianceTag : 'Server 2864 Titan Canyon') + '</div>' +
