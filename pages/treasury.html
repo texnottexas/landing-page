@@ -523,10 +523,11 @@ function buildCumulativeDistributions() {
     rdata.distributions.forEach(function(d) {
       var k = d.siteKey;
       if (!playerMap[k]) {
-        playerMap[k] = { siteKey: d.siteKey, name: d.name, playerTier: d.playerTier, fame: d.fame, merit: d.merit, power: d.power, ncScore: d.ncScore, ncRound: d.ncRound, avatarurl: d.avatarurl, rewards: [] };
+        playerMap[k] = { siteKey: d.siteKey, name: d.name, playerTier: d.playerTier, fame: d.fame, fameCumulative: d.fame, merit: d.merit, power: d.power, ncScore: d.ncScore, ncRound: d.ncRound, avatarurl: d.avatarurl, rewards: [] };
       } else {
         playerMap[k].name = d.name;
         playerMap[k].fame = d.fame;
+        playerMap[k].fameCumulative = (playerMap[k].fameCumulative || 0) + (d.fame || 0);
         playerMap[k].merit = d.merit;
         playerMap[k].power = d.power;
         playerMap[k].playerTier = d.playerTier;
@@ -654,7 +655,8 @@ function sortDistributions(dists) {
   var parts = document.getElementById('sortSelect').value.split('-');
   var field = parts[0], dir = parts[1];
   function ncVal(x){ return (currentView === 'cumulative') ? (x.ncScore || 0) : (x.ncRound || 0); }
-  function fieldVal(x){ return field === 'name' ? (x.name || '').toLowerCase() : (field === 'nc' ? ncVal(x) : (x[field] || 0)); }
+  function fameVal(x){ return (currentView === 'cumulative') ? (x.fameCumulative || 0) : (x.fame || 0); }
+  function fieldVal(x){ return field === 'name' ? (x.name || '').toLowerCase() : (field === 'nc' ? ncVal(x) : (field === 'fame' ? fameVal(x) : (x[field] || 0))); }
   return dists.slice().sort(function(a, b) {
     var av = fieldVal(a);
     var bv = fieldVal(b);
@@ -730,7 +732,7 @@ function buildRow(d, rank, roundStatus) {
   tdFame.className = 'num';
   var spFame = document.createElement('span');
   spFame.className = 'num-val';
-  spFame.textContent = fmtNum(d.fame);
+  spFame.textContent = fmtNum((currentView === 'cumulative') ? (d.fameCumulative || 0) : d.fame);
   tdFame.appendChild(spFame);
   tr.appendChild(tdFame);
 
@@ -1292,6 +1294,11 @@ function renderModalCumulativeTab(d) {
     roundsList.appendChild(chip);
   });
   body.appendChild(roundsList);
+
+  var fameLine = document.createElement('div');
+  fameLine.className = 'modal-section-label';
+  fameLine.textContent = 'Cumulative Fame: ' + fmtNum((function(){ var t=0; getAvailableRounds().forEach(function(r){ var rd=distData.rounds[String(r)]; if(!rd) return; var e=rd.distributions.find(function(x){return x.siteKey===d.siteKey;}); if(e) t+=(e.fame||0); }); return t; })());
+  body.appendChild(fameLine);
 
   /* Aggregated rewards */
   var rewardArr = aggRewards.sort(function(a, b) {
