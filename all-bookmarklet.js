@@ -642,8 +642,8 @@
         var w = bArr[bi];
         if (!w || !w.data) continue;
         // Keep only purple (Q4) + gold (Q5), matching extractBeasts. Blue
-        // and below would push heavy spenders past the receiver's 800-beast
-        // cap and bloat the supplement payload for no real optimizer value.
+        // and below would bloat the supplement payload for no real optimizer
+        // value (the receiver caps the array at the in-game max of 5000).
         var q = (w._cfg && w._cfg.quality != null) ? w._cfg.quality : (w.data && w.data.quality);
         if (q != null && q < 4) continue;
         var d = w.data;
