@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev; img-src 'self' data:; base-uri 'self'; form-action 'none'; object-src 'none';">
-<title>Titan Canyon Signup — Server 2864</title>
+<title>Titan Canyon Signup - Server 2864</title>
 <style>
   :root{
     --bg:#080b11; --surface:#0e1420; --card:#141b28; --card2:#19212f;
@@ -151,6 +151,36 @@
   .status.ok::before{content:"✓ "; font-weight:800}
 
   footer{position:relative; z-index:1; text-align:center; color:var(--faint); font-size:.72rem; padding:1.6rem 1rem}
+
+  /* "View your current registration" link + modal */
+  .view-reg-row{margin-bottom:1.15rem; display:flex}
+  .view-reg-btn{
+    appearance:none; -webkit-appearance:none; font-family:inherit; cursor:pointer;
+    display:inline-flex; align-items:center; gap:.45rem; padding:.55rem .85rem;
+    border:1px solid var(--border2); border-radius:11px; background:var(--card); color:var(--text);
+    font-size:.82rem; font-weight:600; transition:border-color .15s, color .15s, opacity .15s;
+  }
+  .view-reg-btn:hover{border-color:var(--green); color:#cdebd2}
+  .view-reg-btn:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+  .view-reg-btn.muted{opacity:.6}
+  .view-reg-btn svg{flex:none}
+
+  .reg-modal-overlay{display:none; position:fixed; inset:0; z-index:400; background:rgba(0,0,0,.62); align-items:center; justify-content:center; padding:1rem}
+  .reg-modal-overlay.active{display:flex}
+  .reg-modal{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:1.25rem 1.3rem; max-width:440px; width:100%; max-height:82vh; overflow-y:auto; box-shadow:0 18px 50px -18px rgba(0,0,0,.85)}
+  .reg-modal-header{display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1rem}
+  .reg-modal-title{font-size:1rem; font-weight:800; color:var(--text); letter-spacing:.01em}
+  .reg-modal-close{background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.25rem; line-height:1; padding:.2rem}
+  .reg-modal-close:hover{color:var(--text)}
+  .reg-modal-sub{font-family:var(--mono); font-size:.7rem; letter-spacing:.14em; text-transform:uppercase; color:var(--green); margin-bottom:.75rem}
+  .reg-kv{display:grid; grid-template-columns:max-content 1fr; gap:.5rem 1rem; font-size:.88rem}
+  .reg-kv dt{color:var(--muted); font-weight:600}
+  .reg-kv dd{font-weight:650; color:var(--text); margin:0}
+  .reg-note{margin-top:1rem; padding-top:.85rem; border-top:1px dashed var(--border); font-size:.82rem; color:var(--muted)}
+  .reg-note b{color:var(--text)}
+  .reg-empty{font-size:.9rem; color:var(--text)}
+  .reg-empty .hint{display:block; margin-top:.5rem; color:var(--faint); font-size:.8rem}
+  .reg-loading{font-size:.88rem; color:var(--muted)}
 </style>
 </head>
 <body>
@@ -168,15 +198,22 @@
     <div class="brief-sub" id="su-sub"><span id="su-close" class="hint">Loading this week's slots…</span></div>
   </section>
 
+  <div class="view-reg-row reveal" style="animation-delay:.05s">
+    <button type="button" class="view-reg-btn muted" id="view-reg-btn">
+      <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="3.2"/><path d="M1.5 10S4.5 4 10 4s8.5 6 8.5 6-3 6-8.5 6-8.5-6-8.5-6z"/></svg>
+      View your current registration
+    </button>
+  </div>
+
   <form id="signup-form" autocomplete="off">
     <div class="field reveal" style="animation-delay:.08s">
       <div class="field-label"><span class="num">01</span> Your in-game name <span class="hint">required</span></div>
-      <select id="player" class="input"><option value="">— select your name —</option></select>
+      <select id="player" class="input"><option value="">select your name</option></select>
       <div id="player-hint" class="hint" style="margin-top:.5rem; display:none">Don't see your name? Ping a captain so we can add you to the roster.</div>
     </div>
 
     <div class="field reveal" style="animation-delay:.11s">
-      <div class="field-label"><span class="num">02</span> Your setup <span class="hint">auto-filled from the roster — change it if it's out of date</span></div>
+      <div class="field-label"><span class="num">02</span> Your setup <span class="hint">auto-filled, change it if it's out of date</span></div>
       <div class="sub-label">Profession <span class="hint">required</span></div>
       <div class="seg" id="seg-profession">
         <label><input type="radio" name="profession" value="CE"><span>Combat Elite (CE)</span></label>
@@ -206,7 +243,7 @@
       <div class="slots" id="slots"></div>
       <div class="slots-hint">
         <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 6v8M6 10h8"/><circle cx="10" cy="10" r="8.2"/></svg>
-        Tap any time you could show up — pick as many as you can.
+        Tap any time you could show up. Pick as many as you can.
       </div>
 
       <div class="pref-wrap" id="preferred-wrap">
@@ -245,6 +282,16 @@
     </div>
   </form>
 </main>
+<div class="reg-modal-overlay" id="reg-modal" role="dialog" aria-modal="true" aria-labelledby="reg-modal-title">
+  <div class="reg-modal">
+    <div class="reg-modal-header">
+      <span class="reg-modal-title" id="reg-modal-title">Your registration</span>
+      <button type="button" class="reg-modal-close" id="reg-modal-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div id="reg-modal-body"></div>
+  </div>
+</div>
+
 <footer><span>Brought to you by supporters of the fk boats movement</span></footer>
 
 <script>
@@ -302,23 +349,28 @@
   }
   var localTZ = (function(){ try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { return ''; } })();
 
-  // name (lowercase+trim) -> { role:'CE'|'MM', unit:'Army'|'Navy'|'Air Force' }
-  // from the Titan roster, used to auto-fill the player's setup on name pick.
-  var rosterLookup = {};
   function normName(s){ return String(s || '').toLowerCase().trim(); }
+
+  // name (lowercase+trim) -> { alliance, profession('CE'|'MM'|'') } from
+  // player-data.json, used to auto-fill the player's setup on name pick. The
+  // public roster maps "Combat Elite" -> CE and "Mechanical Master" -> MM.
+  var playerLookup = {};
+  function profFromRecord(p){
+    var pr = String((p && p.profession) || '').toLowerCase();
+    if (pr.indexOf('combat elite') === 0 || pr === 'ce') return 'CE';
+    if (pr.indexOf('mechanical master') === 0 || pr === 'mm') return 'MM';
+    return '';
+  }
 
   Promise.all([
     fetch(TITAN_API + '/titan/slotconfig').then(function (r){ return r.json(); }).catch(function(){ return null; }),
-    fetch('player-data.json').then(function (r){ return r.json(); }).catch(function(){ return []; }),
-    fetch(TITAN_API + '/titan/roster').then(function (r){ return r.json(); }).catch(function(){ return []; })
+    fetch('player-data.json').then(function (r){ return r.json(); }).catch(function(){ return []; })
   ]).then(function (res) {
     cfg = res[0] || { week:'unset', slots:[] };
     players = Array.isArray(res[1]) ? res[1] : (res[1].players || []);
-    var roster = Array.isArray(res[2]) ? res[2] : [];
-    roster.forEach(function (rrow) {
-      if (!Array.isArray(rrow)) return;
-      var k = normName(rrow[0]);                        // [0]=name, [7]=unit, [9]=role
-      if (k && !rosterLookup[k]) rosterLookup[k] = { role: rrow[9], unit: rrow[7] };
+    players.forEach(function (p) {
+      var k = normName(p && p.name);
+      if (k && !playerLookup[k]) playerLookup[k] = { alliance: (p && p.alliance) || '', profession: profFromRecord(p) };
     });
     renderWeek(); renderPlayers(); renderSlots();
   });
@@ -355,9 +407,13 @@
 
   function applyPlayerDefaults(name, siteKey){
     var saved = loadAllPrefs()[prefKeyFor(name, siteKey)] || {};
-    var ros = rosterLookup[normName(name)] || {};
-    var prof = PROFS[(saved.profession || '').toUpperCase()] || PROFS[String(ros.role || '').toUpperCase()] || '';
-    var unit = UNITS[saved.unitType] || UNITS[ros.unit] || '';
+    var pd = playerLookup[normName(name)] || {};
+    // Profession + alliance come from player-data.json (the public roster); the
+    // player's own saved override wins so in-game changes the roster hasn't
+    // caught up with still pre-fill correctly. Unit + UC aren't in the public
+    // roster, so they rely solely on the saved override (else blank/default).
+    var prof = PROFS[(saved.profession || '').toUpperCase()] || PROFS[String(pd.profession || '').toUpperCase()] || '';
+    var unit = UNITS[saved.unitType] || '';
     autoUc = (saved.ucFacility != null) ? saved.ucFacility : 0;
     setSeg('profession', prof);
     setSeg('unit', unit);
@@ -468,7 +524,7 @@
       .forEach(function (p) {
         var o = document.createElement('option');
         o.value = p.siteKey || ('name:' + p.name);
-        o.textContent = p.name + ' — ' + (p.alliance || '');
+        o.textContent = p.name + (p.alliance ? ' (' + p.alliance + ')' : '');
         o.setAttribute('data-name', p.name);
         o.setAttribute('data-alliance', p.alliance || '');
         sel.appendChild(o);
@@ -492,11 +548,13 @@
       document.getElementById('player-hint').style.display = (sel.value === '__notlisted__') ? 'block' : 'none';
       var p = selectedPlayer();
       if (p) applyPlayerDefaults(p.name, p.siteKey);
+      refreshViewRegBtn();
     });
 
     // Apply defaults for a pre-selected player (returning visitor).
     var pre = selectedPlayer();
     if (pre) applyPlayerDefaults(pre.name, pre.siteKey);
+    refreshViewRegBtn();
   }
 
   function renderSlots() {
@@ -553,6 +611,118 @@
       pills.appendChild(pill);
     });
   }
+
+  // --- "View your current registration" modal ----------------------------
+  var ESC_MAP = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function (c){ return ESC_MAP[c]; }); }
+
+  // Resolve the player the viewer means right now: the dropdown selection if it
+  // is a real roster name, else a stored playerIdentity (non-guest). Returns
+  // { name, siteKey } or null.
+  function currentViewer() {
+    var sel = document.getElementById('player');
+    if (sel && sel.value && sel.value !== '__notlisted__') {
+      var opt = sel.options[sel.selectedIndex];
+      var nm = (opt.getAttribute('data-name') || '').trim();
+      if (nm) return { name: nm, siteKey: /^[a-f0-9]{16}$/.test(sel.value) ? sel.value : '' };
+    }
+    try {
+      var id = JSON.parse(localStorage.getItem('playerIdentity') || 'null');
+      if (id && !id.guest && (id.siteKey || id.name)) {
+        return { name: (id.name || '').trim(), siteKey: /^[a-f0-9]{16}$/.test(id.siteKey || '') ? id.siteKey : '' };
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  // Make the button subtle until the viewer is identifiable.
+  function refreshViewRegBtn() {
+    var btn = document.getElementById('view-reg-btn');
+    if (!btn) return;
+    btn.classList.toggle('muted', !currentViewer());
+  }
+
+  function slotLabelFor(id) {
+    var s = (cfg && cfg.slots || []).find(function (x){ return x.id === id; });
+    if (s) {
+      var m = slotMeta(s);
+      if (m.hasTime) return m.dateLabel + ' · ' + m.localDow + ' ' + m.localTime + ' your time (' + m.etTime + ' ET)';
+      return s.label || id;
+    }
+    return id;
+  }
+
+  var regModal = document.getElementById('reg-modal');
+  function openRegModal(){ if (regModal) regModal.classList.add('active'); }
+  function closeRegModal(){ if (regModal) regModal.classList.remove('active'); }
+
+  function renderRegBody(signup) {
+    var body = document.getElementById('reg-modal-body');
+    if (!signup) {
+      body.innerHTML = '<div class="reg-empty">No registration found for this week yet.' +
+        '<span class="hint">Fill out the form below to lock in your spot.</span></div>';
+      return;
+    }
+    var prof = signup.profession === 'CE' ? 'Combat Elite (CE)' : signup.profession === 'MM' ? 'Mechanical Master (MM)' : '-';
+    var rows = '';
+    rows += '<dt>Name</dt><dd class="notranslate">' + esc(signup.name) + '</dd>';
+    rows += '<dt>Profession</dt><dd>' + prof + '</dd>';
+    rows += '<dt>Primary unit</dt><dd>' + (esc(signup.unitType) || '-') + '</dd>';
+    if (signup.profession === 'MM' && signup.ucFacility != null) {
+      rows += '<dt>Urgent Care</dt><dd>Level ' + esc(signup.ucFacility) + '</dd>';
+    }
+    var avail = (signup.availableSlots || []).map(function (id){ return '<div>' + esc(slotLabelFor(id)) + '</div>'; }).join('') || '-';
+    rows += '<dt>Times available</dt><dd>' + avail + '</dd>';
+    rows += '<dt>Top pick</dt><dd>' + (signup.preferredSlot ? esc(slotLabelFor(signup.preferredSlot)) : '-') + '</dd>';
+    rows += '<dt>Can swap</dt><dd>' + (signup.canSwap ? 'Yes' : 'No') + '</dd>';
+
+    var notes = '';
+    if (signup.questions) notes += '<div class="reg-note"><b>Questions:</b><br>' + esc(signup.questions) + '</div>';
+    if (signup.notes) notes += '<div class="reg-note"><b>Notes:</b><br>' + esc(signup.notes) + '</div>';
+
+    body.innerHTML = '<dl class="reg-kv">' + rows + '</dl>' + notes +
+      '<div class="reg-note">Re-submit the form below any time to update this.</div>';
+  }
+
+  function loadAndShowRegistration() {
+    var viewer = currentViewer();
+    var body = document.getElementById('reg-modal-body');
+    var title = document.getElementById('reg-modal-title');
+    title.textContent = 'Your registration';
+    if (!viewer) {
+      body.innerHTML = '<div class="reg-empty">Pick your in-game name first.' +
+        '<span class="hint">Choose your name from the list below, then check your registration here.</span></div>';
+      openRegModal();
+      return;
+    }
+    if (cfg && cfg.week && cfg.week !== 'unset') {
+      var wk = battleDayLabel();
+      if (wk) title.textContent = 'Your registration · ' + wk;
+    }
+    body.innerHTML = '<div class="reg-loading">Loading your registration…</div>';
+    openRegModal();
+
+    var week = (cfg && cfg.week) || '';
+    var q = '?week=' + encodeURIComponent(week);
+    if (viewer.siteKey) q += '&siteKey=' + encodeURIComponent(viewer.siteKey);
+    if (viewer.name) q += '&name=' + encodeURIComponent(viewer.name);
+    fetch(TITAN_API + '/titan/my-signup' + q)
+      .then(function (r){ return r.json(); })
+      .then(function (d){ renderRegBody((d && d.signup) || null); })
+      .catch(function (){
+        body.innerHTML = '<div class="reg-empty">Could not load your registration right now.' +
+          '<span class="hint">Check your connection and try again.</span></div>';
+      });
+  }
+
+  (function wireRegModal(){
+    var btn = document.getElementById('view-reg-btn');
+    if (btn) btn.addEventListener('click', loadAndShowRegistration);
+    var closeBtn = document.getElementById('reg-modal-close');
+    if (closeBtn) closeBtn.addEventListener('click', closeRegModal);
+    if (regModal) regModal.addEventListener('click', function (e){ if (e.target === regModal) closeRegModal(); });
+    document.addEventListener('keydown', function (e){ if (e.key === 'Escape' && regModal && regModal.classList.contains('active')) closeRegModal(); });
+  })();
 
   document.getElementById('signup-form').addEventListener('submit', function (e) {
     e.preventDefault();
