@@ -104,6 +104,8 @@
     .site-footer a { color: var(--accent); text-decoration: none; }
     .site-footer a:hover { text-decoration: underline; }
 
+    .roster{width:100%;border-collapse:collapse}.roster th{cursor:pointer;text-align:left;color:var(--muted);font-size:.78rem;border-bottom:1px solid var(--border);padding:.3rem}.roster td{padding:.3rem;border-bottom:1px solid var(--border);font-size:.82rem}.roster td.num{text-align:right}.roster tr.hl{background:color-mix(in srgb,var(--accent) 12%,var(--bg2))}
+
     @media (max-width: 640px) {
       .wrap { padding: 1rem 1rem 2rem; }
       header { padding: .7rem 1rem; flex-wrap: wrap; gap: .5rem; }
@@ -121,6 +123,7 @@
     <a href="https://2864tw.com" class="nav-link" title="Home" style="padding:.35rem .6rem;display:inline-flex;align-items:center"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L10 3.5l7 7"/><path d="M5 9v7a1 1 0 001 1h3v-4h2v4h3a1 1 0 001-1V9"/></svg></a>
   </div>
   <div class="header-actions">
+    <button class="hdr-btn" onclick="verifyUidFlow()">Unlock Editor</button>
     <button class="hdr-btn" onclick="(function(){var t=document.documentElement;var next=t.getAttribute('data-theme')==='dark'?'light':'dark';t.setAttribute('data-theme',next);})()">
       <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="10" y1="16" x2="10" y2="18"/><line x1="2" y1="10" x2="4" y2="10"/><line x1="16" y1="10" x2="18" y2="10"/></svg>
       Theme
@@ -159,7 +162,7 @@ function shortKey(full) {  // ud-distributions uses sha256:<hex>; roster uses 16
 function fmtNum(n) { n = Number(n) || 0; return n.toLocaleString('en-US'); }
 
 async function loadAll() {
-  var token = frToken();  // defined in Task 13; returns '' before then
+  var token = frToken();
   var headers = token ? { 'Authorization': 'Bearer ' + token } : {};
   var results = await Promise.all([
     fetch(WORKER + '/finalrewards', { headers: headers }).then(function (r) { return r.json(); }),
@@ -170,10 +173,18 @@ async function loadAll() {
   STATE.config = fr.config; STATE.assignments = fr.assignments || {};
   STATE.remaining = fr.remaining || {}; STATE.trades = fr.trades || []; STATE.serverNow = fr.serverNow || Date.now();
   STATE.roster = Array.isArray(roster) ? roster : (roster.players || []);
-  STATE.metrics = computeMetrics(dist);          // Task 13 defines computeMetrics
+  STATE.metrics = computeMetrics(dist);
   renderPackages(); renderRoster(); renderCountdowns(); renderTrades(); renderTradeForm();
+  // Restore stored editor token
+  var stored = (function () { try { return JSON.parse(localStorage.getItem('frToken') || 'null'); } catch (e) { return null; } })();
+  if (stored && stored.expires > Date.now()) { EDITOR = { on: !!stored.isEditor, siteKey: stored.siteKey, isEditor: stored.isEditor }; renderEditorBar(); }
 }
-document.addEventListener('DOMContentLoaded', loadAll);
+document.addEventListener('DOMContentLoaded', function () {
+  loadAll().catch(function (e) {
+    var main = document.querySelector('main');
+    if (main) main.insertAdjacentHTML('afterbegin', '<div style="background:var(--danger);color:#fff;border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem">Failed to load page data: ' + String(e.message || e) + '</div>');
+  });
+});
 
 function assignedTo(pkgId) {
   return Object.keys(STATE.assignments)
@@ -206,16 +217,155 @@ function renderPackages() {
 }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
 
-/* ── Task-12 stubs (replaced by Tasks 13 & 14) ── */
-var EDITOR = { on: false, siteKey: null };
-function computeMetrics() { return {}; }
-function renderRoster() {}
+/* ── EDITOR state ── */
+var EDITOR = { on: false, siteKey: null, isEditor: false };
+
+/* ── Step 1: computeMetrics + metricOf ── */
+function computeMetrics(dist) {
+  var rounds = Object.keys(dist.rounds);
+  var m = {}; // shortKey -> {merit, fameCum, power, nc}
+  rounds.forEach(function (r) {
+    var rd = dist.rounds[r]; if (!rd) return;
+    rd.distributions.forEach(function (d) {
+      var k = shortKey(d.siteKey);
+      if (!m[k]) m[k] = { merit: 0, fameCum: 0, power: 0, nc: 0 };
+      m[k].fameCum += (d.fame || 0);                 // SUM across rounds
+      if (r === '15') {                              // latest-round snapshots
+        m[k].merit = d.merit || 0;
+        m[k].power = d.power || 0;
+        m[k].nc = d.ncScore || 0;                    // lifetime cumulative NC
+      }
+    });
+  });
+  return m;
+}
+function metricOf(sk, field) { var x = STATE.metrics[shortKey(sk)]; return x ? (x[field] || 0) : 0; }
+
+/* ── Step 2: Roster table ── */
+var rosterSort = { field: 'power', dir: 'desc' };
+function setSort(f) { if (rosterSort.field === f) rosterSort.dir = rosterSort.dir === 'desc' ? 'asc' : 'desc'; else { rosterSort.field = f; rosterSort.dir = 'desc'; } renderRoster(); }
+function currentPkgOf(sk) { var a = STATE.assignments[shortKey(sk)]; return a ? a.packageId : ''; }
+function renderRoster() {
+  var q = (document.getElementById('rosterSearch').value || '').toLowerCase();
+  var rows = STATE.roster.filter(function (p) { return !q || (p.name || '').toLowerCase().indexOf(q) >= 0; });
+  rows.sort(function (a, b) {
+    var f = rosterSort.field, av, bv;
+    if (f === 'name') { av = (a.name || '').toLowerCase(); bv = (b.name || '').toLowerCase(); }
+    else if (f === 'pkg') { av = currentPkgOf(a.siteKey); bv = currentPkgOf(b.siteKey); }
+    else if (f === 'power') { av = a.power || 0; bv = b.power || 0; }
+    else { av = metricOf(a.siteKey, f); bv = metricOf(b.siteKey, f); }
+    if (av < bv) return rosterSort.dir === 'desc' ? 1 : -1;
+    if (av > bv) return rosterSort.dir === 'desc' ? -1 : 1;
+    return 0;
+  });
+  var pkgOpts = STATE.config.packages.map(function (p) { return '<option value="' + p.id + '">' + esc(p.name) + '</option>'; }).join('');
+  var body = rows.map(function (p) {
+    var sk = shortKey(p.siteKey), cur = currentPkgOf(sk);
+    var assignCell = EDITOR.on
+      ? '<select onchange="assignPlayer(\'' + sk + '\', this.value)"><option value="">— none —</option>' +
+        pkgOpts.replace('value="' + cur + '"', 'value="' + cur + '" selected') + '</select>'
+      : (cur ? esc(pkgName(cur)) : '<span class="muted">—</span>');
+    return '<tr id="rrow_' + sk + '"><td>' + esc(p.name) + '</td><td class="muted">' + esc(p.alliance || '') + '</td>' +
+      '<td class="muted">' + esc(p.profession || '') + '</td>' +
+      '<td class="num">' + fmtNum(p.power) + '</td>' +
+      '<td class="num">' + fmtNum(metricOf(sk, 'merit')) + '</td>' +
+      '<td class="num">' + fmtNum(metricOf(sk, 'fameCum')) + '</td>' +
+      '<td class="num">' + fmtNum(metricOf(sk, 'nc')) + '</td>' +
+      '<td>' + assignCell + '</td></tr>';
+  }).join('');
+  document.getElementById('rosterTableWrap').innerHTML =
+    '<table class="roster"><thead><tr>' +
+    '<th onclick="setSort(\'name\')">Name</th><th>Alliance</th><th>Prof</th>' +
+    '<th onclick="setSort(\'power\')">Power</th><th onclick="setSort(\'merit\')">Merit</th>' +
+    '<th onclick="setSort(\'fameCum\')">Fame (cum)</th><th onclick="setSort(\'nc\')">NC (cum)</th>' +
+    '<th>Package</th></tr></thead><tbody>' + body + '</tbody></table>';
+}
+function pkgName(id) { var p = STATE.config.packages.find(function (x) { return x.id === id; }); return p ? p.name : id; }
+function focusRoster(sk) {
+  var row = document.getElementById('rrow_' + shortKey(sk));
+  if (row) { row.classList.add('hl'); row.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(function () { row.classList.remove('hl'); }, 1500); }
+}
+
+/* ── Step 3: UID-handshake editor unlock ── */
+async function frSha256Hex(s) {
+  var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(s)));
+  return Array.from(new Uint8Array(buf)).map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+}
+function frToken() { try { var t = JSON.parse(localStorage.getItem('frToken') || 'null'); return (t && t.expires > Date.now()) ? t.token : ''; } catch (e) { return ''; } }
+function frSetToken(o) { try { localStorage.setItem('frToken', JSON.stringify(o)); } catch (e) {} }
+
+async function verifyUidFlow() {
+  var raw = window.prompt('Enter your in-game UID to unlock editor mode:');
+  if (!raw) return;
+  var digits = String(raw).replace(/\D/g, '');
+  if (digits.length < 10 || digits.length > 14) { alert('UID should be 12–13 digits — copy it from your in-game profile.'); return; }
+  var hash = await frSha256Hex(digits);
+  try {
+    var r = await fetch(WORKER + '/finalrewards/handshake', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uidHash: hash })
+    });
+    var d = await r.json();
+    if (!d.ok) { alert(d.error === 'not_in_roster' ? 'That UID does not match a roster player.' : 'Verification failed.'); return; }
+    frSetToken({ token: d.token, expires: d.expires, siteKey: d.siteKey, isEditor: d.isEditor });
+    EDITOR = { on: !!d.isEditor, siteKey: d.siteKey, isEditor: d.isEditor };
+    await loadAll();  // reload with editor headers (reveals editor-only trades)
+    renderEditorBar();
+    if (!d.isEditor) alert('Verified — but only Tex, Gary, and 8960mr can edit assignments. You can still request a trade.');
+  } catch (e) { alert('Worker unreachable: ' + e.message); }
+}
+function renderEditorBar() {
+  var bar = document.getElementById('editorBar');
+  if (!EDITOR.on) { bar.style.display = 'none'; document.getElementById('tradesPanel').style.display = 'none'; return; }
+  bar.style.display = ''; document.getElementById('tradesPanel').style.display = '';
+  var pkgOpts = STATE.config.packages.map(function (p) { return '<option value="' + p.id + '">' + esc(p.name) + '</option>'; }).join('');
+  var metricOpts = '<option value="merit">Merit (R15)</option><option value="fameCum">Cumulative Fame</option><option value="power">Power</option><option value="nc">Cumulative NC</option>';
+  bar.innerHTML = '<b>Editor mode — ' + esc((rosterBySiteKey(EDITOR.siteKey) || {}).name || EDITOR.siteKey) + '</b> · ' +
+    'Top <input id="batchN" type="number" min="1" value="10" style="width:4rem"/> by ' +
+    '<select id="batchMetric">' + metricOpts + '</select> → <select id="batchPkg">' + pkgOpts + '</select> ' +
+    '<button onclick="batchPreview()">Preview</button> <span id="batchPreviewOut"></span>';
+}
+
+/* ── Step 4: assign / unassign / batch ── */
+async function frAssignOps(ops) {
+  var r = await fetch(WORKER + '/finalrewards/assign', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + frToken() },
+    body: JSON.stringify({ ops: ops })
+  });
+  var d = await r.json();
+  if (!d.ok) { alert('Assign rejected: ' + (d.failures ? JSON.stringify(d.failures) : d.error)); return false; }
+  STATE.assignments = d.assignments; STATE.remaining = d.remaining; STATE._rmap = null;
+  renderPackages(); renderRoster(); return true;
+}
+function assignPlayer(sk, pkgId) { frAssignOps([{ siteKey: sk, packageId: pkgId || null }]); }
+function unassign(sk) { frAssignOps([{ siteKey: sk, packageId: null }]); }
+
+function batchPreview() {
+  var n = Math.max(1, parseInt(document.getElementById('batchN').value, 10) || 0);
+  var field = document.getElementById('batchMetric').value;
+  var pkgId = document.getElementById('batchPkg').value;
+  var ranked = STATE.roster.slice().sort(function (a, b) {
+    var av = field === 'power' ? (a.power || 0) : metricOf(a.siteKey, field);
+    var bv = field === 'power' ? (b.power || 0) : metricOf(b.siteKey, field);
+    return bv - av;
+  }).slice(0, n);
+  var rem = STATE.remaining[pkgId] || 0;
+  // account for selected players already on this package (no-op) and moves
+  var willMove = ranked.filter(function (p) { var c = currentPkgOf(p.siteKey); return c && c !== pkgId; }).length;
+  var netNeeded = ranked.filter(function (p) { return currentPkgOf(p.siteKey) !== pkgId; }).length;
+  var fits = netNeeded <= rem;
+  var names = ranked.map(function (p) { return esc(p.name); }).join(', ');
+  document.getElementById('batchPreviewOut').innerHTML =
+    (fits ? '' : '<span style="color:var(--danger)">over capacity (' + netNeeded + ' need slots, ' + rem + ' left) — </span>') +
+    'would assign: ' + names + ' (' + willMove + ' moved) ' +
+    '<button onclick="batchCommit()" ' + (fits ? '' : 'disabled') + '>Assign</button>';
+  STATE._batch = fits ? ranked.map(function (p) { return { siteKey: shortKey(p.siteKey), packageId: pkgId }; }) : null;
+}
+async function batchCommit() { if (STATE._batch && await frAssignOps(STATE._batch)) { document.getElementById('batchPreviewOut').textContent = 'Done.'; STATE._batch = null; } }
+
+/* ── Task-14 stubs (countdowns / trades / trade form) ── */
 function renderCountdowns() {}
 function renderTrades() {}
 function renderTradeForm() {}
-function focusRoster() {}
-function unassign() {}
-function frToken() { return ''; }
 </script>
 </body>
 </html>
