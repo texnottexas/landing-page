@@ -369,6 +369,14 @@ function slotLocalTime(weekISO, slotId) {
 
 // Role label for a position number: 1-2 = CE (Combat Elite), 3-8 = MM (Mechanical Master).
 function posRole(pos) { var n = parseInt(pos, 10); return (n === 1 || n === 2) ? 'CE' : 'MM'; }
+// CE / MM(-uc) tag for a member, from the battleplan meta (prof + UC). Used for
+// support members (positioned members derive CE/MM from their slot). '' if unknown.
+function memberTag(data, name) {
+  var m = (data && data.meta && data.meta[name]) || null;
+  if (!m || !m.prof) return '';
+  if (m.prof === 'MM') return ' <span class="role-tag mm">MM' + (m.uc != null ? '-' + m.uc : '') + '</span>';
+  return ' <span class="role-tag ce">CE</span>';
+}
 function slotLabelFor(slotId) {
   var slots = (state.cfg && state.cfg.slots) || [];
   for (var i = 0; i < slots.length; i++) if (slots[i].id === slotId) return slots[i].label;
@@ -634,11 +642,13 @@ function renderSquadCard(sq, data, myName) {
       var nm = data.positions[String(i)];
       if (!nm) continue;
       var role = posRole(i);
+      var mt = (data.meta && data.meta[nm]) || {};
+      var roleLabel = role === 'MM' ? ('MM' + (mt.uc != null ? '-' + mt.uc : '')) : 'CE';
       var isMe = myName && normName(nm) === myName;
       posRows += '<li class="pos-row' + (isMe ? ' me' : '') + '" data-name="' + esc(normName(nm)) + '">' +
         '<span class="pos-num">' + i + '</span>' +
         '<span class="pos-name notranslate' + (isMe ? ' me' : '') + '">' + esc(nm) + '</span>' +
-        '<span class="role-tag ' + role.toLowerCase() + '">' + role + '</span>' +
+        '<span class="role-tag ' + role.toLowerCase() + '">' + roleLabel + '</span>' +
       '</li>';
     }
   }
@@ -652,7 +662,7 @@ function renderSquadCard(sq, data, myName) {
     if (!arr.length) continue;
     var items = arr.map(function (n) {
       var isMe2 = myName && normName(n) === myName;
-      return '<li class="' + (isMe2 ? 'me ' : '') + 'notranslate" data-name="' + esc(normName(n)) + '">' + esc(n) + '</li>';
+      return '<li class="' + (isMe2 ? 'me ' : '') + 'notranslate" data-name="' + esc(normName(n)) + '">' + esc(n) + memberTag(data, n) + '</li>';
     }).join('');
     supSection += '<div class="sq-sec-label">' + esc(BUCKET_LABEL[bucket]) + '</div><ul class="sup-list">' + items + '</ul>';
   }

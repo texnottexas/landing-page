@@ -142,6 +142,9 @@
       background: var(--bg2); border: 1px solid var(--border);
     }
     .mates li.me { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+    .role-tag { font-size: .62rem; font-weight: 700; padding: .05rem .35rem; border-radius: 4px; margin-left: .3rem; }
+    .role-tag.ce { background: rgba(227,179,65,.13); color: var(--ce); }
+    .role-tag.mm { background: rgba(188,140,255,.13); color: var(--mm); }
 
     .cta-wrap { text-align: center; padding: 1rem 0 .25rem; }
     .cta-sub { font-size: .85rem; color: var(--muted); margin-top: .8rem; }
@@ -285,6 +288,13 @@ function normName(s) { return String(s == null ? '' : s).toLowerCase().trim(); }
 function allianceDisplay(a) { return ALL_DISPLAY[a] || a || ''; }
 function allianceClass(a) { return a === 'DOG' ? 'dog' : a === 'MSS' ? 'mss' : a === 'PRU' ? 'pru' : a === 'Cat+' ? 'cat' : ''; }
 function normAll(a) { var u = String(a == null ? '' : a).trim().toUpperCase(); if (u === 'DOG') return 'DOG'; if (u === 'MSS') return 'MSS'; if (u === 'PRU') return 'PRU'; if (u === 'CAT' || u === 'CAT+') return 'Cat+'; return u; }
+// CE / MM(-uc) profession tag for a squad member, from the battleplan meta. '' if unknown.
+function memberTag(meta, name) {
+  var m = (meta && meta[name]) || null;
+  if (!m || !m.prof) return '';
+  if (m.prof === 'MM') return '<span class="role-tag mm">MM' + (m.uc != null ? '-' + m.uc : '') + '</span>';
+  return '<span class="role-tag ce">CE</span>';
+}
 // Resolve a player's avatarurl to an image URL (full URLs pass through; sprite
 // keys map to the Top War headpic CDN). Mirrors the homepage resolver.
 function resolveAvatar(url) {
@@ -495,9 +505,10 @@ function renderSquadCard(a) {
     '</div>';
   }
 
+  var sqMeta = (state.plan[a.squad] && state.plan[a.squad].meta) || {};
   var mates = a.mates.filter(function (n) { return normName(n) !== normName(state.me.name); });
-  var matesHtml = '<ul class="mates"><li class="me notranslate">' + esc(state.me.name) + ' (you)</li>' +
-    mates.map(function (n) { return '<li class="notranslate">' + esc(n) + '</li>'; }).join('') + '</ul>';
+  var matesHtml = '<ul class="mates"><li class="me notranslate">' + esc(state.me.name) + ' (you)' + memberTag(sqMeta, state.me.name) + '</li>' +
+    mates.map(function (n) { return '<li class="notranslate">' + esc(n) + memberTag(sqMeta, n) + '</li>'; }).join('') + '</ul>';
 
   return '' +
     '<div class="card">' +
