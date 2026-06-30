@@ -108,6 +108,10 @@
     .btn-register:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(121,192,255,.3); animation: none; border-color: var(--accent); color: var(--text); }
     .btn-block { display: block; width: 100%; text-align: center; }
     a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: .45rem; justify-content: center; }
+    .btn-cancel { color: var(--muted); }
+    .btn-cancel:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
+    .btn-cancel:disabled { opacity: .45; cursor: not-allowed; }
+    .cancel-note { font-size: .72rem; color: var(--muted); text-align: center; margin-top: .4rem; }
 
     .kv { display: grid; grid-template-columns: max-content 1fr; gap: .45rem 1rem; font-size: .88rem; }
     .kv dt { color: var(--muted); }
@@ -526,7 +530,22 @@ function renderSignupCard(assignment) {
       '</dl>' +
       pendingNote +
       '<div style="margin-top:1.1rem"><a class="btn btn-block" href="titan-signup.html">Edit / re-submit registration</a></div>' +
+      renderCancelButton() +
     '</div>';
+}
+
+// Cancel button for the registration card. Follows the same deadline as signups:
+// enabled while registration is open, greyed out (disabled) once it has closed.
+function renderCancelButton() {
+  var cfg = state.cfg || {};
+  var open = cfg.week && cfg.week !== 'unset' && !(cfg.closesAt && Date.now() > Date.parse(cfg.closesAt));
+  if (open) {
+    return '<div style="margin-top:.6rem">' +
+      '<button id="cancelRegBtn" type="button" class="btn btn-block btn-cancel" onclick="cancelRegistration()">Cancel my registration</button></div>';
+  }
+  return '<div style="margin-top:.6rem">' +
+    '<button type="button" class="btn btn-block btn-cancel" disabled>Cancel my registration</button>' +
+    '<div class="cancel-note">Registration is closed for this week, so it can no longer be cancelled here. Reach out to your squad leader if you cannot make it.</div></div>';
 }
 
 function renderRegisterCta() {
@@ -576,6 +595,38 @@ function loadMine() {
     .then(function (d) { state.signup = (d && d.signup) || null; })
     .catch(function () {})
     .then(function () { render(); });
+}
+
+// Player self-cancel: removes their own registration (the "can't make it" path).
+// Gated to the signup deadline server-side and client-side (button greys out).
+function cancelRegistration() {
+  if (!state.me) return;
+  if (!window.confirm('Cancel your Titan Canyon registration for this week? Your squad spot will be freed up. You can register again anytime while signups are open.')) return;
+  var week = (state.cfg && state.cfg.week) || (state.signup && state.signup.week) || '';
+  var btn = document.getElementById('cancelRegBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Cancelling...'; }
+  fetch(TITAN_API + '/titan/cancel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ week: week, siteKey: state.me.siteKey || '', name: state.me.name || '' })
+  })
+    .then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; });
+    })
+    .then(function (res) {
+      if (!res.ok || !res.j || !res.j.ok) throw new Error((res.j && res.j.message) || 'Cancel failed');
+      // The battleplan was rebuilt — refetch it, then re-resolve my signup (now gone).
+      return getJSON(TITAN_API + '/titan/battleplan')
+        .catch(function () { return {}; })
+        .then(function (bp) {
+          state.plan = (bp && typeof bp === 'object' && !Array.isArray(bp)) ? bp : {};
+          loadMine();
+        });
+    })
+    .catch(function (e) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Cancel my registration'; }
+      window.alert('Could not cancel your registration: ' + (e && e.message ? e.message : 'please try again.'));
+    });
 }
 
 function init() {
