@@ -135,6 +135,8 @@
       font-size: .85rem; color: var(--text); display: flex; gap: .6rem; align-items: flex-start;
     }
     .swap-banner svg { flex-shrink: 0; margin-top: 1px; color: var(--gold); }
+    .swap-deadline { margin-top: .55rem; padding-top: .55rem; border-top: 1px solid color-mix(in srgb, var(--gold) 28%, var(--border)); font-size: .8rem; }
+    .swap-deadline.closed { color: var(--muted); border-top-color: var(--border); }
 
     .mates { list-style: none; display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .9rem; }
     .mates li {
@@ -330,9 +332,29 @@ function slotLocalTime(weekISO, slotId) {
   } catch (e) { return ''; }
 }
 
+// Alliance-swap deadline = in-game alliance registration, Thursday before the
+// battle Saturday at the +10 slot (noon-ET reset + 10h = 10 PM ET). After this
+// you can no longer swap alliances for the week. Returns a UTC instant (ms).
+var SWAP_DEADLINE_DAYS_BEFORE = 2;   // Saturday battle -> Thursday
+var SWAP_DEADLINE_SLOT = 10;         // +10 (10 PM ET)
+function swapDeadlineUTC(weekISO) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(weekISO || ''));
+  if (!m) return null;
+  // Date.UTC inside etWallToUTC normalizes day underflow, so (day - 2) is safe.
+  return etWallToUTC(+m[1], +m[2], (+m[3]) - SWAP_DEADLINE_DAYS_BEFORE, RESET_HOUR_ET + SWAP_DEADLINE_SLOT);
+}
+function swapDeadlineLocal(weekISO) {
+  var utc = swapDeadlineUTC(weekISO);
+  if (utc == null) return '';
+  try {
+    return new Date(utc).toLocaleString(undefined, { weekday: 'long', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  } catch (e) { return ''; }
+}
+
 // --- State ------------------------------------------------------------------
 var state = { cfg: null, plan: {}, players: [], me: null, signup: null };
 var countdownTimer = null;
+var swapCountdownTimer = null;
 
 function getStoredIdentity() {
   try {
@@ -407,6 +429,7 @@ function render() {
   document.getElementById('loading').style.display = 'none';
   el.style.display = 'block';
   if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+  if (swapCountdownTimer) { clearInterval(swapCountdownTimer); swapCountdownTimer = null; }
 
   var html = renderIdentityBar();
 
@@ -435,6 +458,7 @@ function render() {
   el.innerHTML = html;
   wireIdentityPicker();
   startCountdown();
+  startSwapCountdown();
 }
 
 function renderIdentityBar() {
@@ -489,6 +513,25 @@ function startCountdown() {
   countdownTimer = setInterval(tick, 1000);
 }
 
+// Live countdown to the alliance-swap deadline inside the swap banner. Only the
+// players who need to swap (home alliance != squad alliance) render #swapcd.
+function startSwapCountdown() {
+  var cfg = state.cfg || {};
+  var elc = document.getElementById('swapcd');
+  if (!elc) return;
+  var dl = swapDeadlineUTC(cfg.week);
+  if (dl == null) return;
+  function tick() {
+    var ms = dl - Date.now();
+    if (isNaN(ms)) { elc.textContent = ''; return; }
+    if (ms <= 0) { elc.textContent = 'closed'; if (swapCountdownTimer) clearInterval(swapCountdownTimer); return; }
+    var d = Math.floor(ms / 86400000), h = Math.floor(ms % 86400000 / 3600000), m = Math.floor(ms % 3600000 / 60000), s = Math.floor(ms % 60000 / 1000);
+    elc.textContent = (d ? d + 'd ' : '') + h + 'h ' + m + 'm ' + s + 's';
+  }
+  tick();
+  swapCountdownTimer = setInterval(tick, 1000);
+}
+
 function renderSquadCard(a) {
   var meta = SQUAD_META[a.squad] || {};
   var cfg = state.cfg || {};
@@ -499,9 +542,18 @@ function renderSquadCard(a) {
   var swap = '';
   var homeAll = normAll(state.me.alliance || (state.signup && state.signup.alliance) || '');
   if (homeAll && meta.alliance && homeAll !== meta.alliance) {
+    var dlUTC = swapDeadlineUTC(cfg.week);
+    var dlLocal = swapDeadlineLocal(cfg.week);
+    var dlPassed = dlUTC != null && Date.now() > dlUTC;
+    var dlLine = '';
+    if (dlLocal) {
+      dlLine = dlPassed
+        ? '<div class="swap-deadline closed">Alliance registration has closed (was ' + esc(dlLocal) + ' your time). If you still need to swap, reach out to your squad leader.</div>'
+        : '<div class="swap-deadline">Swap before alliance registration closes: <b>' + esc(dlLocal) + '</b> your time &middot; <span class="countdown" id="swapcd">&hellip;</span> left</div>';
+    }
     swap = '<div class="swap-banner">' +
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>' +
-      '<div>This squad fights in the <b>' + esc(allianceDisplay(meta.alliance)) + '</b> timeslot. You will need to swap to <b>' + esc(allianceDisplay(meta.alliance)) + '</b> before battle.</div>' +
+      '<div>This squad fights in the <b>' + esc(allianceDisplay(meta.alliance)) + '</b> timeslot. You will need to swap to <b>' + esc(allianceDisplay(meta.alliance)) + '</b> before battle.' + dlLine + '</div>' +
     '</div>';
   }
 
