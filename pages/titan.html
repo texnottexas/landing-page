@@ -485,17 +485,20 @@ function renderIdentityBar() {
     '</div></div>';
 }
 
+function signupsOpen() { var cfg = state.cfg || {}; return !!(cfg.week && cfg.week !== 'unset' && !(cfg.closesAt && Date.now() > Date.parse(cfg.closesAt))); }
+
 function renderStatus() {
   var cfg = state.cfg || {};
   if (!cfg.week || cfg.week === 'unset') {
     return '<div class="card"><div class="status-line">Signups for the next Titan Canyon are <b>not open yet</b>. Check back soon.</div></div>';
   }
-  var closed = cfg.closesAt && Date.now() > Date.parse(cfg.closesAt);
-  if (closed) {
+  if (!signupsOpen()) {
     return '<div class="card"><div class="status-line">Signups for <b>' + esc(cfg.week) + '</b> are <b>closed</b>. Your assignment is below.</div></div>';
   }
   return '<div class="card"><div class="status-line">Signups for <b>' + esc(cfg.week) + '</b> are open, closing in <span class="countdown" id="cd">&hellip;</span></div></div>';
 }
+
+function fmtCountdown(ms) { var d = Math.floor(ms / 86400000), h = Math.floor(ms % 86400000 / 3600000), m = Math.floor(ms % 3600000 / 60000), s = Math.floor(ms % 60000 / 1000); return (d ? d + 'd ' : '') + h + 'h ' + m + 'm ' + s + 's'; }
 
 function startCountdown() {
   var cfg = state.cfg || {};
@@ -506,8 +509,7 @@ function startCountdown() {
     var ms = Date.parse(cfg.closesAt) - Date.now();
     if (isNaN(ms)) { elc.textContent = ''; return; }
     if (ms <= 0) { elc.textContent = 'closed'; clearInterval(countdownTimer); return; }
-    var d = Math.floor(ms / 86400000), h = Math.floor(ms % 86400000 / 3600000), m = Math.floor(ms % 3600000 / 60000), s = Math.floor(ms % 60000 / 1000);
-    elc.textContent = (d ? d + 'd ' : '') + h + 'h ' + m + 'm ' + s + 's';
+    elc.textContent = fmtCountdown(ms);
   }
   tick();
   countdownTimer = setInterval(tick, 1000);
@@ -525,8 +527,7 @@ function startSwapCountdown() {
     var ms = dl - Date.now();
     if (isNaN(ms)) { elc.textContent = ''; return; }
     if (ms <= 0) { elc.textContent = 'closed'; if (swapCountdownTimer) clearInterval(swapCountdownTimer); return; }
-    var d = Math.floor(ms / 86400000), h = Math.floor(ms % 86400000 / 3600000), m = Math.floor(ms % 3600000 / 60000), s = Math.floor(ms % 60000 / 1000);
-    elc.textContent = (d ? d + 'd ' : '') + h + 'h ' + m + 'm ' + s + 's';
+    elc.textContent = fmtCountdown(ms);
   }
   tick();
   swapCountdownTimer = setInterval(tick, 1000);
@@ -602,8 +603,7 @@ function renderSignupCard(assignment) {
 // Cancel button for the registration card. Follows the same deadline as signups:
 // enabled while registration is open, greyed out (disabled) once it has closed.
 function renderCancelButton() {
-  var cfg = state.cfg || {};
-  var open = cfg.week && cfg.week !== 'unset' && !(cfg.closesAt && Date.now() > Date.parse(cfg.closesAt));
+  var open = signupsOpen();
   if (open) {
     return '<div style="margin-top:.6rem">' +
       '<button id="cancelRegBtn" type="button" class="btn btn-block btn-cancel" onclick="cancelRegistration()">Cancel my registration</button></div>';
@@ -614,8 +614,7 @@ function renderCancelButton() {
 }
 
 function renderRegisterCta() {
-  var cfg = state.cfg || {};
-  var open = cfg.week && cfg.week !== 'unset' && !(cfg.closesAt && Date.now() > Date.parse(cfg.closesAt));
+  var open = signupsOpen();
   return '' +
     '<div class="card"><div class="cta-wrap">' +
       (open

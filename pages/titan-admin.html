@@ -1154,13 +1154,7 @@ function renderMap(data, sqPlayers) {
       wrap.style.top = pos.y + "%";
       const sel = document.createElement("select");
       sel.innerHTML = playerOptHtml(sqPlayers, assigned, posProf(pos.num), buildPlacedLabels(data));
-      sel.onchange = () => {
-        data.positions[pos.num] = sel.value;
-        if (sel.value) dedupeAssign(data, sel.value, "pos", pos.num);
-        markDirty();
-        wrap.remove();
-        rerenderCurrent();
-      };
+      sel.onchange = () => { updatePosition(pos.num, sel.value); wrap.remove(); };
       sel.onblur = () => wrap.remove();
       wrap.appendChild(sel);
       grid.appendChild(wrap);
@@ -1189,11 +1183,10 @@ function highlightPosRow(num) {
   }
 }
 
-function renderPositionSlots(data, sqPlayers) {
+function renderPositionSlots(data, sqPlayers, placed) {
   POS_GROUPS.forEach(g => {
     const list = document.getElementById("list_pos_" + g.prof);
     const posInfo = POSITIONS.filter(p => g.nums.includes(p.num));
-    const placed = buildPlacedLabels(data);
     list.innerHTML = posInfo.map(pos => {
       return `
       <li class="assign-item" id="pos_row_${pos.num}">
@@ -1223,8 +1216,8 @@ function updatePosition(num, val) {
 }
 
 function renderAllSlots(data, sqPlayers) {
-  renderPositionSlots(data, sqPlayers);
   const placed = buildPlacedLabels(data);
+  renderPositionSlots(data, sqPlayers, placed);
   SECTIONS.forEach(s => {
     const list = document.getElementById("list_" + s.key);
     const slots = data[s.key] || [];
@@ -1276,7 +1269,7 @@ function switchView(view) {
   var showSignups = view === "signups";
   var showDraft = view === "draft";
   var showSquads = view === "squads";
-  var showEditor = !showSignups && !showDraft && !showSquads;
+  var showEditor = view === 'editor';
   document.getElementById("editor").style.display = showEditor ? "" : "none";
   document.getElementById("titan-signups-tab").style.display = showSignups ? "" : "none";
   document.getElementById("titan-draft-tab").style.display = showDraft ? "" : "none";
@@ -1314,7 +1307,6 @@ function normAlliance(a) {
   if (low === 'cat' || low === 'cat+') return 'Cat+';
   return s;
 }
-function isDevAlliance(a) { return String(a || '').trim().toLowerCase().indexOf('dev') === 0; }
 
 // name (lowercase + trim) -> roster row info. The real server roster
 // (player-data.json, sqPlayers) is the live pool and takes precedence; the legacy
@@ -1576,7 +1568,7 @@ function renderNotSignedUp() {
   var total = 0;
   RAW.forEach(function (r) {
     var ally = normAlliance(r[6]);
-    if (isDevAlliance(r[6])) return;
+    if (ally === 'DEV') return;
     if (eligible.indexOf(ally) === -1) return;
     var nk = String(r[0] || '').trim().toLowerCase();
     if (signedNames[nk]) return;
@@ -2014,8 +2006,8 @@ var SQUAD_META = {
   'Cat Squad A': { alliance: 'Cat+', slot: '+2'  },
   'Cat Squad B': { alliance: 'Cat+', slot: '-2'  }
 };
-var SQ_NAMES = ['Dog Squad A', 'Dog Squad B', 'MSS Squad A', 'MSS Squad B', 'PRU Squad A', 'Cat Squad A', 'Cat Squad B'];
-var SQ_BUCKETS = ['goon', 'standby', 'hover', 'crystal'];
+var SQ_NAMES = SQUADS;
+var SQ_BUCKETS = SECTIONS.map(s => s.key);
 var SQ_BUCKET_LABEL = { goon: 'Goon Squad', standby: 'Standby', hover: 'Hover Captain', crystal: 'Crystal Lab Captain' };
 var ALL_DISPLAY = { 'DOG': 'Dog', 'MSS': 'MSS', 'PRU': 'PRU', 'Cat+': 'Cat' };
 function allianceDisplay(a) { return ALL_DISPLAY[a] || a || ''; }

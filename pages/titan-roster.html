@@ -369,12 +369,13 @@ function slotLocalTime(weekISO, slotId) {
 
 // Role label for a position number: 1-2 = CE (Combat Elite), 3-8 = MM (Mechanical Master).
 function posRole(pos) { var n = parseInt(pos, 10); return (n === 1 || n === 2) ? 'CE' : 'MM'; }
+function roleLabelFor(prof, uc) { return prof === 'MM' ? 'MM' + (uc != null ? '-' + esc(uc) : '') : 'CE'; }
 // CE / MM(-uc) tag for a member, from the battleplan meta (prof + UC). Used for
 // support members (positioned members derive CE/MM from their slot). '' if unknown.
 function memberTag(data, name) {
   var m = (data && data.meta && data.meta[name]) || null;
   if (!m || !m.prof) return '';
-  if (m.prof === 'MM') return ' <span class="role-tag mm">MM' + (m.uc != null ? '-' + m.uc : '') + '</span>';
+  if (m.prof === 'MM') return ' <span class="role-tag mm">' + roleLabelFor('MM', m.uc) + '</span>';
   return ' <span class="role-tag ce">CE</span>';
 }
 function slotLabelFor(slotId) {
@@ -466,13 +467,9 @@ function squadCERatio(data) {
 }
 
 // Is the whole plan empty (no squads, or every squad has 0 members)?
+function nonEmptySquadNames() { var out = []; for (var sq in state.plan) { if (!state.plan.hasOwnProperty(sq)) continue; if (squadCount(state.plan[sq]) > 0) out.push(sq); } return out; }
 function planIsEmpty() {
-  var any = false;
-  for (var sq in state.plan) {
-    if (!state.plan.hasOwnProperty(sq)) continue;
-    if (squadCount(state.plan[sq]) > 0) { any = true; break; }
-  }
-  return !any;
+  return nonEmptySquadNames().length === 0;
 }
 
 // --- Render -----------------------------------------------------------------
@@ -592,12 +589,7 @@ function renderSearchBar() {
 
 // Sort squads by slot offset ascending, then alliance name.
 function sortedSquadNames() {
-  var names = [];
-  for (var sq in state.plan) {
-    if (!state.plan.hasOwnProperty(sq)) continue;
-    if (squadCount(state.plan[sq]) > 0) names.push(sq);
-  }
-  names.sort(function (x, y) {
+  return nonEmptySquadNames().sort(function (x, y) {
     var mx = SQUAD_META[x] || {}, my = SQUAD_META[y] || {};
     var sx = parseInt(mx.slot, 10), sy = parseInt(my.slot, 10);
     if (isNaN(sx)) sx = 9999;
@@ -606,7 +598,6 @@ function sortedSquadNames() {
     var ax = mx.alliance || '', ay = my.alliance || '';
     return ax < ay ? -1 : ax > ay ? 1 : 0;
   });
-  return names;
 }
 
 function renderAllSquads() {
@@ -643,7 +634,7 @@ function renderSquadCard(sq, data, myName) {
       if (!nm) continue;
       var role = posRole(i);
       var mt = (data.meta && data.meta[nm]) || {};
-      var roleLabel = role === 'MM' ? ('MM' + (mt.uc != null ? '-' + mt.uc : '')) : 'CE';
+      var roleLabel = roleLabelFor(role, mt.uc);
       var isMe = myName && normName(nm) === myName;
       posRows += '<li class="pos-row' + (isMe ? ' me' : '') + '" data-name="' + esc(normName(nm)) + '">' +
         '<span class="pos-num">' + i + '</span>' +
