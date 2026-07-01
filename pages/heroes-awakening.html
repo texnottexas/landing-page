@@ -2470,21 +2470,19 @@
         </div>
 
         <div class="gs-field full">
-          <label>Highest pack purchased today <span class="opt">(includes everything cheaper than it)</span></label>
-          <div class="gs-tier-row" id="gs-tiers" role="radiogroup" aria-label="Highest pack tier purchased">
-            <button type="button" class="gs-tier active" data-tier="">None</button>
-            <button type="button" class="gs-tier" data-tier="0.99">$0.99</button>
-            <button type="button" class="gs-tier" data-tier="1.99">$1.99</button>
-            <button type="button" class="gs-tier" data-tier="4.99">$4.99</button>
-            <button type="button" class="gs-tier" data-tier="8.99">$8.99</button>
-            <button type="button" class="gs-tier" data-tier="19.99">$19.99</button>
-            <button type="button" class="gs-tier" data-tier="49.99">$49.99</button>
+          <label>Which packs did you buy today? <span class="opt">(tap all that apply · each is one purchase max)</span></label>
+          <div class="gs-tier-row" id="gs-tiers" role="group" aria-label="Packs bought today">
+            <button type="button" class="gs-tier" data-tier="0.99" aria-pressed="false">$0.99</button>
+            <button type="button" class="gs-tier" data-tier="4.99" aria-pressed="false">$4.99</button>
+            <button type="button" class="gs-tier" data-tier="8.99" aria-pressed="false">$8.99</button>
+            <button type="button" class="gs-tier" data-tier="19.99" aria-pressed="false">$19.99</button>
+            <button type="button" class="gs-tier" data-tier="49.99" aria-pressed="false">$49.99</button>
           </div>
         </div>
 
         <div class="gs-field full">
-          <label for="gs-extra99">Additional $99.99 packs bought today <span class="opt">(only tier that allows multiple purchases per day)</span></label>
-          <input type="number" id="gs-extra99" min="0" max="50" step="1" placeholder="0">
+          <label for="gs-qty99">$99.99 packs bought today <span class="opt">(0 to 6 · the only tier that allows multiple)</span></label>
+          <input type="number" id="gs-qty99" min="0" max="6" step="1" placeholder="0">
         </div>
 
         <div class="gs-field">
@@ -2556,7 +2554,7 @@
 const HERO_DATA_URL = '../data/heroes-awakening.json?v=20260606b';
 // Page build timestamp — rendered into the alpha banner in the viewer's local timezone.
 // IMPORTANT: this must be set to the actual UTC time of the commit. Get it with `date -u +%Y-%m-%dT%H:%M:%SZ`.
-const PAGE_BUILD_ISO = '2026-06-25T17:30:00Z';
+const PAGE_BUILD_ISO = '2026-06-25T18:00:00Z';
 (function paintLastUpdated() {
   try {
     const stamp = document.getElementById('lastUpdatedStamp');
@@ -3582,7 +3580,7 @@ function setupGrandSlamForm() {
 
   const tierRow = document.getElementById('gs-tiers');
   const dayInput = document.getElementById('gs-day');
-  const extra99Input = document.getElementById('gs-extra99');
+  const qty99Input = document.getElementById('gs-qty99');
   const vouchersInput = document.getElementById('gs-vouchers');
   const balBeforeInput = document.getElementById('gs-bal-before');
   const balAfterInput = document.getElementById('gs-bal-after');
@@ -3590,14 +3588,23 @@ function setupGrandSlamForm() {
   const whoEl = document.getElementById('gs-who');
   const msgEl = document.getElementById('gs-msg');
 
-  let selectedTier = '';
+  const TOGGLE_TIERS = ['0.99', '4.99', '8.99', '19.99', '49.99'];
+  const selectedTiers = new Set();
 
   tierRow.addEventListener('click', (e) => {
     const btn = e.target.closest('.gs-tier');
     if (!btn) return;
-    tierRow.querySelectorAll('.gs-tier').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    selectedTier = btn.getAttribute('data-tier') || '';
+    const tier = btn.getAttribute('data-tier') || '';
+    if (!TOGGLE_TIERS.includes(tier)) return;
+    if (selectedTiers.has(tier)) {
+      selectedTiers.delete(tier);
+      btn.classList.remove('active');
+      btn.setAttribute('aria-pressed', 'false');
+    } else {
+      selectedTiers.add(tier);
+      btn.classList.add('active');
+      btn.setAttribute('aria-pressed', 'true');
+    }
   });
 
   function refreshIdentity() {
@@ -3636,15 +3643,15 @@ function setupGrandSlamForm() {
       vouchersInput.focus();
       return;
     }
-    const extra99Raw = extra99Input.value.trim();
-    const extra99 = extra99Raw === '' ? 0 : parseInt(extra99Raw, 10);
-    if (!Number.isFinite(extra99) || extra99 < 0) {
-      setMsg('err', 'Additional $99.99 packs must be 0 or more.');
-      extra99Input.focus();
+    const qty99Raw = qty99Input.value.trim();
+    const qty99 = qty99Raw === '' ? 0 : parseInt(qty99Raw, 10);
+    if (!Number.isFinite(qty99) || qty99 < 0 || qty99 > 6) {
+      setMsg('err', '$99.99 packs must be between 0 and 6.');
+      qty99Input.focus();
       return;
     }
-    if (!selectedTier && extra99 === 0) {
-      setMsg('err', 'Pick at least one pack tier, or enter $99.99 packs bought.');
+    if (selectedTiers.size === 0 && qty99 === 0) {
+      setMsg('err', 'Select at least one pack you bought today.');
       return;
     }
 
@@ -3657,11 +3664,14 @@ function setupGrandSlamForm() {
     const balanceBefore = optInt(balBeforeInput.value);
     const balanceAfter  = optInt(balAfterInput.value);
 
+    const packs = {};
+    TOGGLE_TIERS.forEach(t => { packs[t] = selectedTiers.has(t) ? 1 : 0; });
+    packs['99.99'] = qty99;
+
     const identity = gsGetIdentity();
     const payload = {
       day,
-      highestTier: selectedTier || null,
-      extra99,
+      packs,
       totalVouchers,
       balanceBefore,
       balanceAfter,
@@ -3684,9 +3694,11 @@ function setupGrandSlamForm() {
       if (res.ok && data && data.ok) {
         setMsg('ok', 'Thanks! Submission recorded. Feel free to log another day or correction.');
         form.reset();
-        tierRow.querySelectorAll('.gs-tier').forEach(b => b.classList.remove('active'));
-        tierRow.querySelector('.gs-tier[data-tier=""]').classList.add('active');
-        selectedTier = '';
+        tierRow.querySelectorAll('.gs-tier').forEach(b => {
+          b.classList.remove('active');
+          b.setAttribute('aria-pressed', 'false');
+        });
+        selectedTiers.clear();
       } else if (res.status === 429) {
         setMsg('err', (data && data.message) || 'Please wait a moment before submitting again.');
       } else if (data && data.message) {
