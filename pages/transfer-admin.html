@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev; img-src 'self' data:; base-uri 'self'; form-action 'none'; object-src 'none';">
+<title>Transfer Planner - Server 2864</title>
+<style>
+  :root{
+    --bg:#0d1117; --surface:#161b22; --card:#1c2128; --card2:#20262e;
+    --border:#30363d; --border2:#3a424d;
+    --text:#e6edf3; --muted:#8b949e; --faint:#5b6675;
+    --green:#3fb950; --green-soft:rgba(63,185,80,.14);
+    --accent:#79c0ff; --gold:#d29922; --gold-soft:rgba(210,153,34,.14); --red:#f85149; --red-soft:rgba(248,81,73,.14);
+    --mono:'SF Mono',ui-monospace,'JetBrains Mono',Menlo,Monaco,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; color:var(--text); font-family:var(--sans); line-height:1.5;
+    background:var(--bg); min-height:100vh;
+  }
+  header{
+    position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:.8rem;
+    padding:.85rem 1.1rem; background:rgba(13,17,23,.92); backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--border); flex-wrap:wrap;
+  }
+  .home-btn{color:var(--muted); display:flex; transition:color .15s, transform .15s}
+  .home-btn:hover{color:var(--accent); transform:translateX(-2px)}
+  .wordmark{display:flex; align-items:baseline; gap:.55rem; font-weight:800; letter-spacing:.14em; font-size:.82rem; text-transform:uppercase}
+  .wordmark .t{color:var(--text)}
+  .wordmark .s{color:var(--accent); font-family:var(--mono); letter-spacing:.05em; font-weight:600}
+  .wordmark .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px rgba(121,192,255,.5);align-self:center}
+  nav.tabs{display:flex; gap:.4rem; margin-left:auto; flex-wrap:wrap}
+  .tab-btn{
+    appearance:none; -webkit-appearance:none; font-family:inherit; cursor:pointer;
+    display:inline-flex; align-items:center; gap:.4rem; padding:.45rem .8rem;
+    border:1px solid var(--border2); border-radius:9px; background:var(--card); color:var(--muted);
+    font-size:.78rem; font-weight:700; letter-spacing:.02em; transition:border-color .15s, color .15s, background .15s;
+    white-space:nowrap;
+  }
+  .tab-btn:hover{border-color:var(--accent); color:var(--text)}
+  .tab-btn.active{border-color:var(--green); color:#cdebd2; background:var(--green-soft)}
+
+  main{position:relative; max-width:1500px; margin:0 auto; padding:1.2rem 1.1rem 4rem}
+  .view{display:none}
+  .view.active{display:block}
+
+  .toolbar{display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; margin-bottom:1rem}
+  .toolbar .input, .toolbar select{width:auto; min-width:160px}
+  .input, select, textarea{
+    background:var(--card); color:var(--text); border:1px solid var(--border2);
+    border-radius:9px; padding:.5rem .7rem; font-size:.85rem; font-family:inherit; outline:none;
+  }
+  .input:focus, select:focus, textarea:focus{border-color:var(--accent); box-shadow:0 0 0 3px rgba(121,192,255,.14)}
+  .btn{
+    appearance:none; -webkit-appearance:none; cursor:pointer; font-family:inherit;
+    display:inline-flex; align-items:center; gap:.4rem; padding:.5rem .9rem;
+    border:1px solid var(--border2); border-radius:9px; background:var(--card2); color:var(--text);
+    font-size:.82rem; font-weight:700; transition:border-color .15s, background .15s, opacity .15s;
+    white-space:nowrap;
+  }
+  .btn:hover{border-color:var(--accent)}
+  .btn:disabled{opacity:.5; cursor:default}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#0d1117}
+  .btn.primary:hover{filter:brightness(1.08)}
+  .btn.danger{color:var(--red); border-color:rgba(248,81,73,.4)}
+  .btn.danger:hover{border-color:var(--red)}
+  .btn.small{padding:.32rem .6rem; font-size:.74rem}
+
+  /* Board */
+  .board-wrap{overflow-x:auto; padding-bottom:1rem; -webkit-overflow-scrolling:touch}
+  .board{display:flex; gap:.9rem; align-items:flex-start; min-height:200px}
+  .column{
+    flex:0 0 270px; width:270px; background:var(--surface); border:1px solid var(--border);
+    border-radius:12px; padding:.7rem; display:flex; flex-direction:column; gap:.55rem;
+    min-height:120px;
+  }
+  .column.dragover{border-color:var(--accent); box-shadow:0 0 0 2px rgba(121,192,255,.25) inset}
+  .col-head{display:flex; align-items:center; justify-content:space-between; gap:.4rem; padding:0 .2rem}
+  .col-title{font-size:.78rem; font-weight:800; letter-spacing:.03em}
+  .col-count{
+    font-family:var(--mono); font-size:.72rem; font-weight:700; color:var(--muted);
+    background:var(--card); border:1px solid var(--border2); border-radius:999px; padding:.1rem .5rem;
+  }
+  .col-count.over{color:var(--red); border-color:rgba(248,81,73,.5); background:var(--red-soft)}
+  .col-body{display:flex; flex-direction:column; gap:.5rem; min-height:60px}
+
+  .card{
+    background:var(--card); border:1px solid var(--border2); border-radius:10px; padding:.55rem .65rem;
+    cursor:grab; transition:border-color .15s, transform .1s; user-select:none;
+  }
+  .card:hover{border-color:var(--accent)}
+  .card.dragging{opacity:.4}
+  .card-top{display:flex; align-items:center; justify-content:space-between; gap:.4rem}
+  .card-name{font-weight:700; font-size:.86rem}
+  .card-meta{display:flex; align-items:center; gap:.35rem; margin-top:.3rem; flex-wrap:wrap}
+  .badge{
+    font-size:.66rem; font-weight:700; letter-spacing:.02em; border-radius:999px; padding:.1rem .45rem;
+    border:1px solid var(--border2); color:var(--muted); background:var(--card2);
+  }
+  .badge.server{font-family:var(--mono)}
+  .badge.group{color:#fff}
+  .badge.cp{color:var(--gold); border-color:rgba(210,153,34,.4); background:var(--gold-soft)}
+  .badge.warn{color:var(--gold); border-color:rgba(210,153,34,.5); background:var(--gold-soft); display:inline-flex; align-items:center; gap:.2rem}
+
+  .empty-col{color:var(--faint); font-size:.76rem; text-align:center; padding:1rem .5rem}
+
+  /* Drawer */
+  .drawer-bg{display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:400; align-items:stretch; justify-content:flex-end}
+  .drawer-bg.open{display:flex}
+  .drawer{
+    width:420px; max-width:94vw; background:var(--surface); border-left:1px solid var(--border);
+    height:100%; overflow-y:auto; padding:1.1rem 1.1rem 3rem; animation:slidein .18s ease-out;
+  }
+  @keyframes slidein{from{transform:translateX(24px); opacity:.4} to{transform:none; opacity:1}}
+  .drawer h2{font-size:1rem; margin-bottom:.2rem}
+  .drawer .sub{color:var(--muted); font-size:.78rem; margin-bottom:1rem}
+  .drawer-close{float:right; background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.1rem; line-height:1}
+  .drawer-close:hover{color:var(--text)}
+  .drawer section{margin-bottom:1.1rem; padding-top:.9rem; border-top:1px solid var(--border)}
+  .drawer section:first-of-type{border-top:none; padding-top:0}
+  .drawer label{display:block; font-size:.72rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.3rem}
+  .player-edit-row{display:grid; grid-template-columns:1fr 1fr; gap:.4rem; margin-bottom:.5rem; padding:.55rem; border:1px solid var(--border); border-radius:9px; background:var(--card)}
+  .player-edit-row .full{grid-column:1/-1}
+  .player-edit-row input{width:100%; font-size:.8rem; padding:.4rem .55rem}
+  .player-edit-row .pname{grid-column:1/-1; font-weight:700; font-size:.85rem; margin-bottom:.15rem}
+  textarea#notes-input{width:100%; min-height:90px; resize:vertical}
+  .drawer-actions{display:flex; gap:.5rem; flex-wrap:wrap}
+  .reissue-code{
+    font-family:var(--mono); font-size:1.3rem; letter-spacing:.15em; font-weight:800; color:var(--green);
+    background:var(--green-soft); border:1px solid rgba(63,185,80,.4); border-radius:9px; padding:.5rem .8rem;
+    text-align:center; margin-top:.5rem; display:none;
+  }
+  .reissue-code.show{display:block}
+
+  /* Cycles tab */
+  .cycles-table{width:100%; border-collapse:collapse; margin-bottom:1rem}
+  .cycles-table th{text-align:left; font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); padding:.4rem .5rem; border-bottom:1px solid var(--border)}
+  .cycles-table td{padding:.4rem .5rem; border-bottom:1px solid var(--border)}
+  .cycles-table input{width:100%}
+  .cycles-note{color:var(--faint); font-size:.76rem; margin-bottom:.8rem}
+  #cycles-status{font-size:.8rem; margin-top:.5rem; min-height:1.2em}
+  #cycles-status.err{color:var(--red)}
+  #cycles-status.ok{color:var(--green)}
+
+  /* Changelog */
+  .log-row{padding:.5rem 0; border-bottom:1px solid var(--border); font-size:.82rem}
+  .log-row:last-child{border-bottom:none}
+  .log-meta{color:var(--muted); font-size:.72rem; margin-top:.15rem}
+
+  /* Password gate */
+  .gate-bg{position:fixed; inset:0; background:var(--bg); z-index:600; display:flex; align-items:center; justify-content:center}
+  .gate-bg.hide{display:none}
+  .gate-card{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:1.6rem; width:320px; text-align:center}
+  .gate-card h3{margin-bottom:.5rem; color:var(--accent)}
+  .gate-card p{color:var(--muted); font-size:.82rem; margin-bottom:1rem}
+
+  .toast{
+    position:fixed; bottom:1.2rem; left:50%; transform:translateX(-50%); background:var(--card2);
+    border:1px solid var(--border2); border-radius:9px; padding:.6rem 1rem; font-size:.82rem;
+    z-index:700; opacity:0; pointer-events:none; transition:opacity .2s;
+  }
+  .toast.show{opacity:1}
+
+  @media (max-width:640px){
+    .drawer{width:100vw}
+  }
+</style>
+</head>
+<body>
+
+<div class="gate-bg" id="gate-bg">
+  <div class="gate-card">
+    <h3>Transfer Planner</h3>
+    <p>Leadership access only. Enter the editor password to continue.</p>
+    <button type="button" class="btn primary" id="gate-btn">Enter password</button>
+  </div>
+</div>
+
+<header>
+  <a href="https://2864tw.com" class="home-btn" title="Back to 2864tw.com" aria-label="Home">
+    <svg width="19" height="19" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2.5l-8 7h3v6a1 1 0 001 1h3v-4h2v4h3a1 1 0 001-1v-6h3z"/></svg>
+  </a>
+  <div class="wordmark notranslate"><span class="dot"></span><span class="t">Server 2864</span><span class="s">/ transfer admin</span></div>
+  <nav class="tabs">
+    <button type="button" class="tab-btn active" data-view="board">Board</button>
+    <button type="button" class="tab-btn" data-view="cycles">Cycles</button>
+    <button type="button" class="tab-btn" data-view="changelog">Changelog</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ===================== BOARD VIEW ===================== -->
+  <section class="view active" id="view-board">
+    <div class="toolbar">
+      <input type="text" class="input" id="search-input" placeholder="Search name / server / group">
+      <select id="status-filter">
+        <option value="">All statuses</option>
+        <option value="pending">Pending</option>
+        <option value="waitlist">Waitlist</option>
+        <option value="approved">Approved</option>
+        <option value="rejected">Rejected</option>
+      </select>
+      <select id="sort-select">
+        <option value="">Sort: default</option>
+        <option value="name">Sort: name</option>
+        <option value="server">Sort: server</option>
+        <option value="cp">Sort: CP</option>
+      </select>
+      <button type="button" class="btn" id="refresh-btn">
+        <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 2a8 8 0 0 1 8 8"/></svg>
+        Refresh
+      </button>
+      <button type="button" class="btn" id="export-btn">Copy queue for Discord</button>
+    </div>
+    <div class="board-wrap">
+      <div class="board" id="board"></div>
+    </div>
+  </section>
+
+  <!-- ===================== CYCLES VIEW ===================== -->
+  <section class="view" id="view-cycles">
+    <p class="cycles-note">Times are entered and displayed in your browser's local time. The seeded schedule uses America/New_York (Eastern). Saving converts each time to a fixed UTC instant.</p>
+    <table class="cycles-table" id="cycles-table">
+      <thead>
+        <tr><th>ID</th><th>Label</th><th>Opens</th><th>Closes</th><th>Capacity</th><th></th></tr>
+      </thead>
+      <tbody id="cycles-tbody"></tbody>
+    </table>
+    <div class="drawer-actions">
+      <button type="button" class="btn" id="add-cycle-btn">Add wave</button>
+      <button type="button" class="btn primary" id="save-cycles-btn">Save cycles</button>
+    </div>
+    <div id="cycles-status"></div>
+  </section>
+
+  <!-- ===================== CHANGELOG VIEW ===================== -->
+  <section class="view" id="view-changelog">
+    <div id="changelog-list"></div>
+  </section>
+
+</main>
+
+<!-- Applicant detail drawer -->
+<div class="drawer-bg" id="drawer-bg">
+  <div class="drawer">
+    <button type="button" class="drawer-close" id="drawer-close" aria-label="Close">&times;</button>
+    <h2 id="drawer-title"></h2>
+    <div class="sub" id="drawer-sub"></div>
+
+    <section>
+      <label>Players</label>
+      <div id="drawer-players"></div>
+    </section>
+
+    <section>
+      <label for="notes-input">Admin notes</label>
+      <textarea id="notes-input" placeholder="Internal notes, not visible to the applicant"></textarea>
+      <div id="notes-status" class="log-meta"></div>
+    </section>
+
+    <section>
+      <div class="drawer-actions">
+        <button type="button" class="btn danger" id="reject-btn">Reject application</button>
+        <button type="button" class="btn" id="reissue-btn">Reissue edit code</button>
+      </div>
+      <div class="reissue-code" id="reissue-code"></div>
+    </section>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+'use strict';
+
+// ── CONFIG ───────────────────────────────────────────────────────────────
+var API_BASE = 'https://push-worker.27tb8s6fct.workers.dev';
+
+// ── ESCAPE HELPER (never trust server strings in innerHTML) ────────────────
+var ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ESC_MAP[c]; }); }
+
+// ── PASSWORD GATE (memory only — never localStorage) ────────────────────
+var editPw = '';
+
+function promptForPw() {
+  var v = (window.prompt('Enter the Transfer editor password:') || '').trim();
+  if (v) { editPw = v; document.getElementById('gate-bg').classList.add('hide'); return true; }
+  return false;
+}
+
+document.getElementById('gate-btn').addEventListener('click', function () {
+  if (promptForPw()) init();
+});
+
+// api(path, opts) -> parsed JSON body. Attaches the editor header on every call.
+// On 401, clears the in-memory password and re-prompts, then retries once.
+function api(path, opts) {
+  opts = opts || {};
+  var method = opts.method || 'GET';
+  var headers = { 'X-Transfer-Edit-Password': editPw };
+  var body;
+  if (opts.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    body = JSON.stringify(opts.body);
+  }
+  return fetch(API_BASE + path, { method: method, headers: headers, body: body }).then(function (r) {
+    if (r.status === 401) {
+      editPw = '';
+      var ok = promptForPw();
+      if (!ok) return Promise.reject(new Error('unauthorized'));
+      return api(path, opts);
+    }
+    return r.json().then(function (j) { return { status: r.status, json: j }; });
+  });
+}
+
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function () { t.classList.remove('show'); }, 2600);
+}
+
+// ── STATE ────────────────────────────────────────────────────────────────
+var STATE = {
+  apps: [],
+  cycles: [],
+  counts: {},
+  activeAppId: null,
+  search: '',
+  statusFilter: '',
+  sortBy: '',
+};
+
+// Deterministic color per appId for the group badge.
+var GROUP_COLORS = ['#79c0ff', '#3fb950', '#d29922', '#f778ba', '#a371f7', '#56d4dd', '#ff9a5a'];
+function colorForApp(appId) {
+  var h = 0;
+  for (var i = 0; i < appId.length; i++) h = (h * 31 + appId.charCodeAt(i)) >>> 0;
+  return GROUP_COLORS[h % GROUP_COLORS.length];
+}
+
+// ── TABS ─────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
+    document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById('view-' + btn.dataset.view).classList.add('active');
+    if (btn.dataset.view === 'changelog') loadChangelog();
+  });
+});
+
+// ── LOAD ─────────────────────────────────────────────────────────────────
+function loadAll() {
+  return Promise.all([
+    api('/transfer/apps'),
+    fetch(API_BASE + '/transfer/cycles').then(function (r) { return r.json(); }),
+  ]).then(function (results) {
+    var appsRes = results[0];
+    var cyclesRes = results[1];
+    if (appsRes.status !== 200 || !appsRes.json.ok) throw new Error('failed to load apps');
+    STATE.apps = appsRes.json.apps || [];
+    STATE.counts = appsRes.json.counts || {};
+    STATE.cycles = (cyclesRes && cyclesRes.cycles) || [];
+    renderBoard();
+  }).catch(function (e) {
+    showToast('Load failed: ' + (e && e.message ? e.message : 'error'));
+  });
+}
+
+document.getElementById('refresh-btn').addEventListener('click', loadAll);
+
+// ── SEARCH / FILTER / SORT ───────────────────────────────────────────────
+document.getElementById('search-input').addEventListener('input', function (e) {
+  STATE.search = e.target.value.trim().toLowerCase();
+  renderBoard();
+});
+document.getElementById('status-filter').addEventListener('change', function (e) {
+  STATE.statusFilter = e.target.value;
+  renderBoard();
+});
+document.getElementById('sort-select').addEventListener('change', function (e) {
+  STATE.sortBy = e.target.value;
+  renderBoard();
+});
+
+function matchesFilters(app, player) {
+  if (STATE.statusFilter && player.status !== STATE.statusFilter) return false;
+  if (STATE.search) {
+    var hay = (player.name + ' ' + player.server + ' ' + (app.groupName || '')).toLowerCase();
+    if (hay.indexOf(STATE.search) === -1) return false;
+  }
+  return true;
+}
+
+function sortPlayers(rows) {
+  if (!STATE.sortBy) return rows;
+  var key = STATE.sortBy;
+  return rows.slice().sort(function (a, b) {
+    if (key === 'cp') return (b.player.cp || 0) - (a.player.cp || 0);
+    var av = String(a.player[key] || '').toLowerCase();
+    var bv = String(b.player[key] || '').toLowerCase();
+    return av < bv ? -1 : av > bv ? 1 : 0;
+  });
+}
+
+// ── BOARD RENDER ─────────────────────────────────────────────────────────
+function columnsSpec() {
+  var cols = [
+    { id: 'pending', label: 'Pending', status: 'pending', cycleId: '' },
+    { id: 'waitlist', label: 'Waitlist', status: 'waitlist', cycleId: '' },
+  ];
+  STATE.cycles.forEach(function (c) {
+    cols.push({ id: 'cycle:' + c.id, label: c.label, status: 'approved', cycleId: c.id, capacity: c.capacity });
+  });
+  cols.push({ id: 'rejected', label: 'Rejected', status: 'rejected', cycleId: '' });
+  return cols;
+}
+
+function playerRows() {
+  var rows = [];
+  STATE.apps.forEach(function (app) {
+    (app.players || []).forEach(function (p) {
+      if (!matchesFilters(app, p)) return;
+      rows.push({ app: app, player: p });
+    });
+  });
+  return rows;
+}
+
+function renderBoard() {
+  var board = document.getElementById('board');
+  board.innerHTML = '';
+  var cols = columnsSpec();
+  var rows = playerRows();
+
+  cols.forEach(function (col) {
+    var colRows = rows.filter(function (r) {
+      return r.player.status === col.status && (col.status !== 'approved' || r.player.cycleId === col.cycleId);
+    });
+    colRows = sortPlayers(colRows);
+
+    var count = col.status === 'approved' ? (STATE.counts[col.cycleId] || 0) : colRows.length;
+    var over = col.capacity != null && count > col.capacity;
+
+    var colEl = document.createElement('div');
+    colEl.className = 'column';
+    colEl.dataset.colId = col.id;
+
+    var head = document.createElement('div');
+    head.className = 'col-head';
+    var title = document.createElement('div');
+    title.className = 'col-title';
+    title.textContent = col.label;
+    var countEl = document.createElement('div');
+    countEl.className = 'col-count' + (over ? ' over' : '');
+    countEl.textContent = col.capacity != null ? (count + '/' + col.capacity) : String(count);
+    head.appendChild(title);
+    head.appendChild(countEl);
+    colEl.appendChild(head);
+
+    var body = document.createElement('div');
+    body.className = 'col-body';
+
+    if (colRows.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'empty-col';
+      empty.textContent = 'No players';
+      body.appendChild(empty);
+    } else {
+      colRows.forEach(function (row) {
+        body.appendChild(makeCard(row.app, row.player));
+      });
+    }
+
+    colEl.appendChild(body);
+    attachColumnDropHandlers(colEl, col);
+    board.appendChild(colEl);
+  });
+}
+
+function makeCard(app, player) {
+  var card = document.createElement('div');
+  card.className = 'card';
+  card.draggable = true;
+  card.dataset.appId = app.id;
+  card.dataset.pid = player.pid;
+
+  var top = document.createElement('div');
+  top.className = 'card-top';
+  var nameEl = document.createElement('div');
+  nameEl.className = 'card-name';
+  nameEl.textContent = player.name;
+  top.appendChild(nameEl);
+  card.appendChild(top);
+
+  var meta = document.createElement('div');
+  meta.className = 'card-meta';
+
+  var serverBadge = document.createElement('span');
+  serverBadge.className = 'badge server';
+  serverBadge.textContent = 'S' + player.server;
+  meta.appendChild(serverBadge);
+
+  if (app.type === 'group' && app.groupName) {
+    var groupBadge = document.createElement('span');
+    groupBadge.className = 'badge group';
+    groupBadge.style.background = colorForApp(app.id);
+    groupBadge.style.borderColor = colorForApp(app.id);
+    groupBadge.textContent = app.groupName;
+    meta.appendChild(groupBadge);
+  }
+
+  if (player.cp) {
+    var cpBadge = document.createElement('span');
+    cpBadge.className = 'badge cp';
+    cpBadge.textContent = 'CP ' + player.cp;
+    meta.appendChild(cpBadge);
+  }
+
+  if (app.split) {
+    var warnBadge = document.createElement('span');
+    warnBadge.className = 'badge warn';
+    warnBadge.title = 'This group is split across multiple waves';
+    warnBadge.textContent = '⚠ split';
+    meta.appendChild(warnBadge);
+  }
+
+  card.appendChild(meta);
+
+  card.addEventListener('click', makeCardClickHandler(app.id));
+
+  attachCardDragHandlers(card);
+  return card;
+}
+
+// Per-card closure for click — never a bare loop variable.
+function makeCardClickHandler(appId) {
+  return function () { openDrawer(appId); };
+}
+
+// ── DRAG AND DROP ────────────────────────────────────────────────────────
+var dragData = null; // { appId, pid }
+
+function attachCardDragHandlers(card) {
+  card.addEventListener('dragstart', makeDragStartHandler(card));
+  card.addEventListener('dragend', makeDragEndHandler(card));
+}
+
+function makeDragStartHandler(card) {
+  return function (e) {
+    dragData = { appId: card.dataset.appId, pid: card.dataset.pid };
+    card.classList.add('dragging');
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+  };
+}
+function makeDragEndHandler(card) {
+  return function () { card.classList.remove('dragging'); dragData = null; };
+}
+
+function attachColumnDropHandlers(colEl, col) {
+  colEl.addEventListener('dragover', function (e) {
+    e.preventDefault();
+    colEl.classList.add('dragover');
+  });
+  colEl.addEventListener('dragleave', function () {
+    colEl.classList.remove('dragover');
+  });
+  colEl.addEventListener('drop', makeDropHandler(colEl, col));
+}
+
+function makeDropHandler(colEl, col) {
+  return function (e) {
+    e.preventDefault();
+    colEl.classList.remove('dragover');
+    if (!dragData) return;
+    assignPlayer(dragData.appId, dragData.pid, col.status, col.cycleId, false);
+  };
+}
+
+function assignPlayer(appId, pid, status, cycleId, force) {
+  var payload = { appId: appId, pid: pid, status: status, cycleId: cycleId || '' };
+  if (force) payload.force = true;
+  api('/transfer/assign', { method: 'POST', body: payload }).then(function (res) {
+    if (res.status === 409 && res.json.error === 'cycle_full') {
+      var ok = window.confirm('Wave is at capacity (' + res.json.count + '/' + res.json.capacity + '). Override?');
+      if (ok) return assignPlayer(appId, pid, status, cycleId, true);
+      return;
+    }
+    if (res.status !== 200 || !res.json.ok) {
+      showToast('Assign failed: ' + (res.json && res.json.error ? res.json.error : 'error'));
+      return;
+    }
+    showToast('Updated');
+    loadAll();
+  });
+}
+
+// ── DRAWER ───────────────────────────────────────────────────────────────
+var notesDebounce = null;
+
+function openDrawer(appId) {
+  var app = STATE.apps.find(function (a) { return a.id === appId; });
+  if (!app) return;
+  STATE.activeAppId = appId;
+
+  document.getElementById('drawer-title').textContent = app.type === 'group' ? (app.groupName || 'Group') : (app.players[0] ? app.players[0].name : 'Applicant');
+  document.getElementById('drawer-sub').textContent = app.type === 'group' ? ('Group · ' + app.players.length + ' player(s)') : 'Individual applicant';
+
+  var playersEl = document.getElementById('drawer-players');
+  playersEl.innerHTML = '';
+  app.players.forEach(function (p) {
+    var row = document.createElement('div');
+    row.className = 'player-edit-row';
+
+    var nameEl = document.createElement('div');
+    nameEl.className = 'pname';
+    nameEl.textContent = p.name + ' (S' + p.server + ')';
+    row.appendChild(nameEl);
+
+    var uidWrap = document.createElement('div');
+    var uidLabel = document.createElement('label');
+    uidLabel.textContent = 'UID';
+    var uidInput = document.createElement('input');
+    uidInput.type = 'text';
+    uidInput.value = p.uid || '';
+    uidInput.readOnly = true;
+    uidInput.title = 'UID is set by the applicant';
+    uidWrap.appendChild(uidLabel);
+    uidWrap.appendChild(uidInput);
+    row.appendChild(uidWrap);
+
+    var cpWrap = document.createElement('div');
+    var cpLabel = document.createElement('label');
+    cpLabel.textContent = 'CP';
+    var cpInput = document.createElement('input');
+    cpInput.type = 'number';
+    cpInput.min = '0';
+    cpInput.value = p.cp != null ? p.cp : '';
+    cpInput.addEventListener('change', makeCpChangeHandler(appId, p.pid, cpInput));
+    cpWrap.appendChild(cpLabel);
+    cpWrap.appendChild(cpInput);
+    row.appendChild(cpWrap);
+
+    playersEl.appendChild(row);
+  });
+
+  var notesInput = document.getElementById('notes-input');
+  notesInput.value = app.adminNotes || '';
+  notesInput.oninput = function () {
+    clearTimeout(notesDebounce);
+    var val = notesInput.value;
+    document.getElementById('notes-status').textContent = 'Saving…';
+    notesDebounce = setTimeout(function () {
+      api('/transfer/notes', { method: 'POST', body: { appId: appId, notes: val } }).then(function (res) {
+        document.getElementById('notes-status').textContent = (res.status === 200 && res.json.ok) ? 'Saved' : 'Save failed';
+      });
+    }, 600);
+  };
+
+  document.getElementById('reissue-code').classList.remove('show');
+  document.getElementById('reissue-code').textContent = '';
+
+  document.getElementById('drawer-bg').classList.add('open');
+}
+
+function makeCpChangeHandler(appId, pid, input) {
+  return function () {
+    var val = input.value === '' ? null : Number(input.value);
+    api('/transfer/cp', { method: 'POST', body: { appId: appId, pid: pid, cp: val } }).then(function (res) {
+      if (res.status === 200 && res.json.ok) { showToast('CP saved'); loadAll(); }
+      else showToast('CP save failed');
+    });
+  };
+}
+
+document.getElementById('drawer-close').addEventListener('click', closeDrawer);
+document.getElementById('drawer-bg').addEventListener('click', function (e) {
+  if (e.target.id === 'drawer-bg') closeDrawer();
+});
+function closeDrawer() {
+  document.getElementById('drawer-bg').classList.remove('open');
+  STATE.activeAppId = null;
+}
+
+document.getElementById('reject-btn').addEventListener('click', function () {
+  if (!STATE.activeAppId) return;
+  if (!window.confirm('Reject this whole application? Every player will move to Rejected.')) return;
+  api('/transfer/reject', { method: 'POST', body: { appId: STATE.activeAppId } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) { showToast('Application rejected'); closeDrawer(); loadAll(); }
+    else showToast('Reject failed');
+  });
+});
+
+document.getElementById('reissue-btn').addEventListener('click', function () {
+  if (!STATE.activeAppId) return;
+  if (!window.confirm('Reissue the edit code? The old code will stop working.')) return;
+  api('/transfer/reissue', { method: 'POST', body: { appId: STATE.activeAppId } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) {
+      var el = document.getElementById('reissue-code');
+      el.textContent = res.json.shortCode;
+      el.classList.add('show');
+      showToast('New code issued');
+    } else {
+      showToast('Reissue failed');
+    }
+  });
+});
+
+// ── CYCLES TAB ───────────────────────────────────────────────────────────
+var cyclesDraft = [];
+
+function loadCyclesTab() {
+  fetch(API_BASE + '/transfer/cycles').then(function (r) { return r.json(); }).then(function (j) {
+    cyclesDraft = (j && j.cycles ? j.cycles : []).map(function (c) { return Object.assign({}, c); });
+    renderCyclesTable();
+  });
+}
+
+function toLocalInputValue(ms) {
+  if (!ms) return '';
+  var d = new Date(ms);
+  var pad = function (n) { return String(n).padStart(2, '0'); };
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+function renderCyclesTable() {
+  var tbody = document.getElementById('cycles-tbody');
+  tbody.innerHTML = '';
+  cyclesDraft.forEach(function (c, idx) {
+    var tr = document.createElement('tr');
+
+    var idTd = document.createElement('td');
+    var idInput = document.createElement('input');
+    idInput.type = 'text';
+    idInput.value = c.id || '';
+    idInput.addEventListener('input', makeCycleFieldHandler(idx, 'id'));
+    idTd.appendChild(idInput);
+    tr.appendChild(idTd);
+
+    var labelTd = document.createElement('td');
+    var labelInput = document.createElement('input');
+    labelInput.type = 'text';
+    labelInput.value = c.label || '';
+    labelInput.addEventListener('input', makeCycleFieldHandler(idx, 'label'));
+    labelTd.appendChild(labelInput);
+    tr.appendChild(labelTd);
+
+    var opensTd = document.createElement('td');
+    var opensInput = document.createElement('input');
+    opensInput.type = 'datetime-local';
+    opensInput.value = toLocalInputValue(c.opensAt);
+    opensInput.addEventListener('input', makeCycleDateHandler(idx, 'opensAt'));
+    opensTd.appendChild(opensInput);
+    tr.appendChild(opensTd);
+
+    var closesTd = document.createElement('td');
+    var closesInput = document.createElement('input');
+    closesInput.type = 'datetime-local';
+    closesInput.value = toLocalInputValue(c.closesAt);
+    closesInput.addEventListener('input', makeCycleDateHandler(idx, 'closesAt'));
+    closesTd.appendChild(closesInput);
+    tr.appendChild(closesTd);
+
+    var capTd = document.createElement('td');
+    var capInput = document.createElement('input');
+    capInput.type = 'number';
+    capInput.min = '1';
+    capInput.max = '200';
+    capInput.value = c.capacity != null ? c.capacity : '';
+    capInput.addEventListener('input', makeCycleFieldHandler(idx, 'capacity', true));
+    capTd.appendChild(capInput);
+    tr.appendChild(capTd);
+
+    var removeTd = document.createElement('td');
+    var removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn small danger';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', makeCycleRemoveHandler(idx));
+    removeTd.appendChild(removeBtn);
+    tr.appendChild(removeTd);
+
+    tbody.appendChild(tr);
+  });
+}
+
+function makeCycleFieldHandler(idx, field, isNumber) {
+  return function (e) {
+    cyclesDraft[idx][field] = isNumber ? Number(e.target.value) : e.target.value;
+  };
+}
+function makeCycleDateHandler(idx, field) {
+  return function (e) {
+    var v = e.target.value;
+    cyclesDraft[idx][field] = v ? new Date(v).getTime() : 0;
+  };
+}
+function makeCycleRemoveHandler(idx) {
+  return function () {
+    cyclesDraft.splice(idx, 1);
+    renderCyclesTable();
+  };
+}
+
+document.getElementById('add-cycle-btn').addEventListener('click', function () {
+  cyclesDraft.push({ id: 'c' + (cyclesDraft.length + 1), label: 'New wave', opensAt: Date.now(), closesAt: Date.now() + 86400000, capacity: 30 });
+  renderCyclesTable();
+});
+
+document.getElementById('save-cycles-btn').addEventListener('click', function () {
+  var statusEl = document.getElementById('cycles-status');
+  statusEl.className = '';
+  statusEl.textContent = 'Saving…';
+  api('/transfer/cycles', { method: 'POST', body: { cycles: cyclesDraft } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) {
+      statusEl.className = 'ok';
+      statusEl.textContent = 'Saved';
+      STATE.cycles = res.json.cycles || cyclesDraft;
+      renderBoard();
+    } else {
+      statusEl.className = 'err';
+      statusEl.textContent = 'Error: ' + (res.json && res.json.error ? res.json.error : 'save failed');
+    }
+  });
+});
+
+document.querySelector('[data-view="cycles"]').addEventListener('click', loadCyclesTab);
+
+// ── CHANGELOG TAB ────────────────────────────────────────────────────────
+function loadChangelog() {
+  api('/transfer/changelog').then(function (res) {
+    var list = document.getElementById('changelog-list');
+    list.innerHTML = '';
+    if (res.status !== 200 || !res.json.ok) {
+      list.textContent = 'Failed to load changelog.';
+      return;
+    }
+    (res.json.log || []).forEach(function (entry) {
+      var row = document.createElement('div');
+      row.className = 'log-row';
+      var main = document.createElement('div');
+      main.textContent = esc(entry.action) + (entry.detail ? (': ' + esc(entry.detail)) : '');
+      var meta = document.createElement('div');
+      meta.className = 'log-meta';
+      var when = entry.at ? new Date(entry.at).toLocaleString() : '';
+      meta.textContent = when + ' · ' + esc(entry.actor || 'Admin');
+      row.appendChild(main);
+      row.appendChild(meta);
+      list.appendChild(row);
+    });
+    if (!res.json.log || res.json.log.length === 0) {
+      list.textContent = 'No changelog entries yet.';
+    }
+  });
+}
+
+// ── EXPORT — Copy queue for Discord ──────────────────────────────────────
+document.getElementById('export-btn').addEventListener('click', function () {
+  var lines = [];
+  STATE.cycles.forEach(function (c) {
+    var count = STATE.counts[c.id] || 0;
+    lines.push('**' + c.label + ' (' + count + '/' + c.capacity + ')**');
+    var rows = playerRows().filter(function (r) { return r.player.status === 'approved' && r.player.cycleId === c.id; });
+    if (rows.length === 0) {
+      lines.push('- (none yet)');
+    } else {
+      rows.forEach(function (r) {
+        var groupTag = r.app.type === 'group' && r.app.groupName ? (' [' + r.app.groupName + ']') : '';
+        lines.push('- ' + r.player.name + ' (server ' + r.player.server + ')' + groupTag);
+      });
+    }
+    lines.push('');
+  });
+  var text = lines.join('\n').trim();
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () {
+      showToast('Copied queue to clipboard');
+    }).catch(function () {
+      showToast('Copy failed. Select and copy manually');
+    });
+  } else {
+    showToast('Clipboard not available');
+  }
+});
+
+// ── INIT ─────────────────────────────────────────────────────────────────
+function init() {
+  loadAll();
+  loadCyclesTab();
+}
+
+if (!promptForPw()) {
+  // Leave the gate visible; user can click the button to retry.
+} else {
+  init();
+}
+
+})();
+</script>
+</body>
+</html>
