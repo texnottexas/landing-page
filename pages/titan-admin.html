@@ -388,6 +388,9 @@
       border-radius: 999px; background: var(--bg2); border: 1px solid var(--border); color: var(--text);
     }
     .sq-count.full { background: rgba(248,81,73,.14); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+    .sq-count.over { background: rgba(248,81,73,.24); color: var(--danger); border-color: var(--danger); font-weight: 700; }
+    .sq-overwarn { display: flex; align-items: center; gap: .35rem; font-size: .7rem; color: var(--danger); background: rgba(248,81,73,.1); border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border)); border-radius: 6px; padding: .3rem .5rem; margin-bottom: .5rem; }
+    .sq-overwarn svg { flex-shrink: 0; }
     .sq-sec-title {
       font-size: .64rem; text-transform: uppercase; letter-spacing: .05em;
       color: var(--muted); margin: .7rem 0 .3rem;
@@ -486,7 +489,7 @@
         <span id="sq-status" class="muted"></span>
       </div>
       <div class="muted" style="margin-top:.5rem">
-        Signups auto-build the battle plan on the server. Move or add a player here to create a lock that survives rebuilds. Each squad seats up to 35.
+        Signups auto-build the battle plan on the server. Move or add a player here to create a lock that survives rebuilds. Squads seat 35; you can exceed that to force a placement, and the squad will flag as over-allocated so you know to move someone out.
       </div>
     </div>
     <div id="sq-report"></div>
@@ -983,30 +986,66 @@ function getSquadPlayers(sq) {
   return out.sort((a, b) => b.cp - a.cp);
 }
 
-function getUsedNames(data, excludeKey, excludeIdx) {
-  const used = new Set();
-  // Positions
-  if (data.positions) {
-    Object.entries(data.positions).forEach(([k, v]) => {
-      if (v && !(excludeKey === "pos" && String(excludeIdx) === String(k))) used.add(v);
-    });
-  }
-  // Sections
-  SECTIONS.forEach(s => {
-    (data[s.key] || []).forEach((v, i) => {
-      if (v && !(excludeKey === s.key && excludeIdx === i)) used.add(v);
-    });
-  });
-  return used;
+// Format march combat power compactly: 60621460 -> "60.62M" (max 2 decimals,
+// trailing zeros trimmed). '?' when unknown (0 / not in player-data).
+const SUPPORT_SHORT = { goon: "Goon", standby: "Standby", hover: "Hover", crystal: "Crystal" };
+function fmtPower(cp) {
+  const n = Number(cp) || 0;
+  if (n <= 0) return "?";
+  if (n >= 1e6) return (n / 1e6).toFixed(2).replace(/\.?0+$/, "") + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(2).replace(/\.?0+$/, "") + "K";
+  return String(n);
 }
 
-function playerOptHtml(sqPlayers, selected, filterProf, usedNames) {
+// name(lowercased) -> short label of the slot they currently occupy in THIS squad.
+// Lets the dropdowns show members already placed elsewhere in the squad (e.g. a
+// goon-squad CE) as selectable options annotated with where they sit now, so an
+// editor can pull them into a numbered position (the move is de-duped on assign).
+function buildPlacedLabels(data) {
+  const m = {};
+  if (data.positions) {
+    Object.keys(data.positions).forEach(num => {
+      const nm = data.positions[num];
+      if (nm) m[String(nm).trim().toLowerCase()] = "#" + num;
+    });
+  }
+  SECTIONS.forEach(s => {
+    (data[s.key] || []).forEach(nm => {
+      if (nm) { const k = String(nm).trim().toLowerCase(); if (!m[k]) m[k] = SUPPORT_SHORT[s.key] || s.title; }
+    });
+  });
+  return m;
+}
+
+// Assigning a name to a slot removes them from every OTHER slot in the squad, so
+// picking a player who's already placed MOVES them instead of double-booking.
+function dedupeAssign(data, name, keepKind, keepIdx) {
+  if (!name) return;
+  const key = String(name).trim().toLowerCase();
+  if (data.positions) {
+    Object.keys(data.positions).forEach(num => {
+      if (keepKind === "pos" && String(keepIdx) === String(num)) return;
+      const v = data.positions[num];
+      if (v && String(v).trim().toLowerCase() === key) data.positions[num] = "";
+    });
+  }
+  SECTIONS.forEach(s => {
+    (data[s.key] || []).forEach((v, i) => {
+      if (keepKind === s.key && keepIdx === i) return;
+      if (v && String(v).trim().toLowerCase() === key) data[s.key][i] = "";
+    });
+  });
+}
+
+function playerOptHtml(sqPlayers, selected, filterProf, placedLabels) {
   let h = '<option value="">-- Select --</option>';
   const list = filterProf ? sqPlayers.filter(p => p.prof === filterProf) : sqPlayers;
   list.forEach(p => {
-    if (usedNames && usedNames.has(p.name) && p.name !== selected) return;
-    const sel = p.name === selected ? " selected" : "";
-    h += `<option value="${esc(p.name)}"${sel}>${esc(p.name)} (${esc(p.cp)} ${esc(p.prof)} ${esc(p.unit)})</option>`;
+    const key = String(p.name).trim().toLowerCase();
+    const isSel = p.name === selected;
+    const where = (!isSel && placedLabels && placedLabels[key]) ? " · in " + placedLabels[key] : "";
+    const sel = isSel ? " selected" : "";
+    h += `<option value="${esc(p.name)}"${sel}>${esc(p.name)} (${esc(fmtPower(p.cp))} ${esc(p.prof)}${p.unit ? " " + esc(p.unit) : ""})${esc(where)}</option>`;
   });
   return h;
 }
@@ -1114,13 +1153,13 @@ function renderMap(data, sqPlayers) {
       wrap.style.left = pos.x + "%";
       wrap.style.top = pos.y + "%";
       const sel = document.createElement("select");
-      sel.innerHTML = playerOptHtml(sqPlayers, assigned, posProf(pos.num), getUsedNames(data, "pos", pos.num));
+      sel.innerHTML = playerOptHtml(sqPlayers, assigned, posProf(pos.num), buildPlacedLabels(data));
       sel.onchange = () => {
         data.positions[pos.num] = sel.value;
+        if (sel.value) dedupeAssign(data, sel.value, "pos", pos.num);
         markDirty();
         wrap.remove();
-        renderMap(data, sqPlayers);
-        renderAllSlots(data, sqPlayers);
+        rerenderCurrent();
       };
       sel.onblur = () => wrap.remove();
       wrap.appendChild(sel);
@@ -1154,14 +1193,14 @@ function renderPositionSlots(data, sqPlayers) {
   POS_GROUPS.forEach(g => {
     const list = document.getElementById("list_pos_" + g.prof);
     const posInfo = POSITIONS.filter(p => g.nums.includes(p.num));
+    const placed = buildPlacedLabels(data);
     list.innerHTML = posInfo.map(pos => {
-      const used = getUsedNames(data, "pos", pos.num);
       return `
       <li class="assign-item" id="pos_row_${pos.num}">
         <span class="slot-label">#${pos.num}</span>
         <span class="pos-role-label">${esc(pos.role)}</span>
         <select class="player-select" onchange="updatePosition(${pos.num},this.value)">
-          ${playerOptHtml(sqPlayers, data.positions[pos.num] || "", g.prof, used)}
+          ${playerOptHtml(sqPlayers, data.positions[pos.num] || "", g.prof, placed)}
         </select>
       </li>`;
     }).join("");
@@ -1176,23 +1215,25 @@ function rerenderCurrent() {
 }
 
 function updatePosition(num, val) {
-  getSquadData(activeSquad).positions[num] = val;
+  const data = getSquadData(activeSquad);
+  data.positions[num] = val;
+  if (val) dedupeAssign(data, val, "pos", num);
   markDirty();
   rerenderCurrent();
 }
 
 function renderAllSlots(data, sqPlayers) {
   renderPositionSlots(data, sqPlayers);
+  const placed = buildPlacedLabels(data);
   SECTIONS.forEach(s => {
     const list = document.getElementById("list_" + s.key);
     const slots = data[s.key] || [];
     list.innerHTML = slots.map((val, i) => {
-      const used = getUsedNames(data, s.key, i);
       return `
       <li class="assign-item">
         <span class="slot-label">#${i + 1}</span>
         <select class="player-select" onchange="updateSlot('${s.key}',${i},this.value)">
-          ${playerOptHtml(sqPlayers, val, null, used)}
+          ${playerOptHtml(sqPlayers, val, null, placed)}
         </select>
         <button class="remove-btn" onclick="removeSlot('${s.key}',${i})" title="Remove">&times;</button>
       </li>
@@ -1202,7 +1243,9 @@ function renderAllSlots(data, sqPlayers) {
 }
 
 function updateSlot(key, idx, val) {
-  getSquadData(activeSquad)[key][idx] = val;
+  const data = getSquadData(activeSquad);
+  data[key][idx] = val;
+  if (val) dedupeAssign(data, val, key, idx);
   markDirty();
   rerenderCurrent();
 }
@@ -2152,10 +2195,18 @@ function renderSquads(report) {
     card.className = 'sq-card';
 
     var head = document.createElement('div'); head.className = 'sq-card-head';
+    var countCls = count > SQUAD_CAP ? ' over' : count >= SQUAD_CAP ? ' full' : '';
     head.innerHTML = '<span class="sq-name notranslate">' + esc(sq) + '</span>' +
       '<span class="sq-slot">' + esc(allianceDisplay(meta.alliance)) + ' · ' + esc(meta.slot || '') + '</span>' +
-      '<span class="sq-count' + (count >= SQUAD_CAP ? ' full' : '') + '">' + count + ' / ' + SQUAD_CAP + '</span>';
+      '<span class="sq-count' + countCls + '">' + count + ' / ' + SQUAD_CAP + '</span>';
     card.appendChild(head);
+    if (count > SQUAD_CAP) {
+      var over = count - SQUAD_CAP;
+      var warn = document.createElement('div'); warn.className = 'sq-overwarn';
+      warn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' +
+        '<span>Over cap by ' + over + '. Move ' + over + ' player' + (over > 1 ? 's' : '') + ' out.</span>';
+      card.appendChild(warn);
+    }
 
     var posTitle = document.createElement('div'); posTitle.className = 'sq-sec-title'; posTitle.textContent = 'Positions';
     card.appendChild(posTitle);
