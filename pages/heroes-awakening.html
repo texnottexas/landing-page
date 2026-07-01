@@ -2554,7 +2554,7 @@
 const HERO_DATA_URL = '../data/heroes-awakening.json?v=20260606b';
 // Page build timestamp — rendered into the alpha banner in the viewer's local timezone.
 // IMPORTANT: this must be set to the actual UTC time of the commit. Get it with `date -u +%Y-%m-%dT%H:%M:%SZ`.
-const PAGE_BUILD_ISO = '2026-06-25T18:00:00Z';
+const PAGE_BUILD_ISO = '2026-06-25T18:30:00Z';
 (function paintLastUpdated() {
   try {
     const stamp = document.getElementById('lastUpdatedStamp');
@@ -3537,9 +3537,14 @@ function renderSwap() {
 }
 
 // ───── Boot ─────
-// Install the visibility-based animation pause eagerly so it still works even
-// if the data fetch fails — it only touches document, not DATA.
+// Install visibility-pause + main-tabs + Grand Slam form eagerly. None of
+// these depend on the fetched hero data, and gating them on the fetch caused
+// deep-link users (e.g. #costs) to see the default Swap panel until the
+// network round-trip completed — noticeable on slow mobile connections and
+// broken entirely if the fetch failed.
 setupVisibilityPause();
+setupMainTabs();
+setupGrandSlamForm();
 
 fetch(HERO_DATA_URL)
   .then(r => r.json())
@@ -3552,8 +3557,6 @@ fetch(HERO_DATA_URL)
     renderHeroGrid();
     setupCalcs();
     renderSwap();
-    setupMainTabs();
-    setupGrandSlamForm();
   })
   .catch(err => {
     console.error('Failed to load data', err);
