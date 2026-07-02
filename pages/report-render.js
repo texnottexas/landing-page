@@ -121,8 +121,12 @@ window.ReportRender = (function () {
     var pi = getPlayerInfo2(player);
     var name = nameOverride || pi.username || 'Unknown player';
     var cpRaw = march ? (side === 'att' ? march.attBattlePower : march.defBattlePower) : null;
+    var avatarUrl = getAvatar(pi);
+    var avatar = el('img', { className: 'ta-ov-avatar', alt: '', referrerpolicy: 'no-referrer' });
+    if (avatarUrl) avatar.src = avatarUrl;
+    avatar.onerror = function () { this.style.visibility = 'hidden'; };
     var card = el('div', { className: 'ta-overview' }, [
-      el('img', { className: 'ta-ov-avatar', src: getAvatar(pi), alt: '', referrerpolicy: 'no-referrer' }),
+      avatar,
       el('div', { className: 'ta-ov-main' }, [
         el('div', { className: 'ta-ov-name notranslate' }, name),
         el('div', { className: 'ta-ov-sub' }, serverOverride ? ('Server ' + serverOverride) : ''),
