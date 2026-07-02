@@ -506,10 +506,288 @@ window.ReportRender = (function () {
     return col;
   }
 
+  // --- copied verbatim from battle-report.html (Task 3: Enigma Beasts) ---
+  // Lookup tables (free-var deps of ebBeastName/ebBuffName/ebBeastIconUrl/ebResolveBeasts/buildEnigmaSide):
+  // battle-report.html:2457-2463
+  var EB_TYPES = {1:'Gleamdeer',2:'Dreadray',3:'Tornadeagle',4:'Grizzroar',5:'Fluffynx',6:'Bounceroo',7:'Swiftsteed',8:'Dusklion',9:'Crestegret'};
+  var EB_TYPES_5STAR = {1:'Lumideer',2:'Doomray',3:'Stormpeagle',4:'Ironclaw',5:'Shadowlynx',6:'Thunderoo',7:'Blazesteed',8:'Dawnlion',9:'Royalegret'};
+  var EB_ELEMENTS = {1:'Fire',2:'Water',3:'Wind',4:'Ground'};
+  var EB_FIELD_NAMES = {1:'CPNT Mastery',2:'Formation',3:'Equip',4:'Defense',5:'Offense'};
+  var EB_FIELD_SLOT_COUNTS = {1:5,2:7,3:6,4:9,5:9};
+  var EB_ICON_BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/beast-icons/';
+  var EB_ELEM_CHARS = {1:'\uD83D\uDD25',2:'\uD83C\uDF2C\uFE0F',3:'\uD83D\uDCA7',4:'\u26F0\uFE0F'};
+
+  // battle-report.html:2465-2489
+  var EB_BUFF_NAMES = {
+    520000:'March Size',
+    520010:'All DMG Increase',520011:'Army DMG Increase',520012:'Navy DMG Increase',520013:'Air DMG Increase',
+    520020:'All Decreased DMG Taken',520021:'Army Decreased DMG Taken',520022:'Navy Decreased DMG Taken',520023:'Air Decreased DMG Taken',
+    520030:'All DEF Increase',520031:'Army DEF Increase',520032:'Navy DEF Increase',520033:'Air DEF Increase',
+    520040:'All ATK (off)',520041:'Army ATK (off)',520042:'Navy ATK (off)',520043:'Air ATK (off)',
+    520050:'All HP (off)',520051:'Army HP (off)',520052:'Navy HP (off)',520053:'Air HP (off)',
+    520060:'All ATK (def)',520061:'Army ATK (def)',520062:'Navy ATK (def)',520063:'Air ATK (def)',
+    520070:'All HP (def)',520071:'Army HP (def)',520072:'Navy HP (def)',520073:'Air HP (def)',
+    520100:'Suppression DEF',520101:'Navy DEF vs Army',520102:'Air DEF vs Navy',520103:'Army DEF vs Air',
+    520110:'All ATK (off)',520111:'Army ATK (off)',520112:'Navy ATK (off)',520113:'Air ATK (off)',
+    520120:'All HP (off)',520121:'Army HP (off)',520122:'Navy HP (off)',520123:'Air HP (off)',
+    520130:'All ATK (def)',520131:'Army ATK (def)',520132:'Navy ATK (def)',520133:'Air ATK (def)',
+    520140:'All HP (def)',520141:'Army HP (def)',520142:'Navy HP (def)',520143:'Air HP (def)'
+  };
+  var EB_FIELD_BUFF_NAMES = {
+    9301160:'All ATK (field)',9301161:'Army ATK (field)',9301162:'Navy ATK (field)',9301163:'Air ATK (field)',
+    9301170:'All HP (field)',9301171:'Army HP (field)',9301172:'Navy HP (field)',9301173:'Air HP (field)',
+    1131001:'All Units DMG Increase',1131002:'All Units Decreased DMG Taken',
+    980101:'Army DMG Increase',980102:'Navy DMG Increase',980103:'Air Force DMG Increase',
+    990203:'Army DEF Increase',990204:'Navy DEF Increase',990205:'Air Force DEF Increase',
+    1101015:'Army Decreased DMG Taken',1101016:'Navy Decreased DMG Taken',1101017:'Air Force Decreased DMG Taken',
+    1000021:'Formation Bonus',1000022:'Formation Bonus',
+    990202:'Combat Bonus'
+  };
+
+  // ebDecodeCfg: battle-report.html:2491-2501
+  function ebDecodeCfg(cfg) {
+    for (var t = 1; t <= 9; t++) {
+      for (var f = 1; f <= 4; f++) {
+        var q5 = (t - 1) * 20 + f * 5;
+        if (q5 === cfg) return { type: t, faction: f, quality: 5 };
+        if (q5 - 1 === cfg) return { type: t, faction: f, quality: 4 };
+      }
+    }
+    return { type: 0, faction: 0, quality: 5 };
+  }
+
+  // ebBeastName: battle-report.html:2502-2506
+  function ebBeastName(type, star) {
+    if (star >= 5 && EB_TYPES_5STAR[type]) return EB_TYPES_5STAR[type];
+    return EB_TYPES[type] || ('Beast #' + type);
+  }
+
+  // ebBuffName: battle-report.html:2507-2508
+  function ebBuffName(id) { return EB_BUFF_NAMES[id] || EB_FIELD_BUFF_NAMES[id] || ('Buff #' + id); }
+
+  // ebBeastIconUrl: battle-report.html:2509-2515
+  function ebBeastIconUrl(type, faction, star) {
+    var name = EB_TYPES[type] || 'Unknown';
+    var elem = EB_ELEMENTS[faction] || 'Unknown';
+    var tier = star >= 5 ? 'evolved' : 'base';
+    return EB_ICON_BASE + name + '_' + elem + '_' + tier + '.png';
+  }
+
+  // ebStarStr: battle-report.html:2516-2522
+  function ebStarStr(n) {
+    var s = '';
+    for (var i = 0; i < n; i++) s += '\u2605';
+    for (var j = n; j < 5; j++) s += '\u2606';
+    return s;
+  }
+
+  // ebResolveBeasts: battle-report.html:2523-2570
+  function ebResolveBeasts(enigmas) {
+    if (!enigmas || !enigmas.beastDatas) return { beasts: [], fields: [] };
+    var beastMap = {};
+    var beasts = enigmas.beastDatas.map(function(b) {
+      var info = ebDecodeCfg(b.cfg);
+      var resolved = {
+        id: b.id, cfg: b.cfg, type: info.type, faction: info.faction,
+        quality: info.quality, element: EB_ELEMENTS[info.faction] || 'Unknown',
+        name: ebBeastName(info.type, b.star), star: b.star, level: b.level,
+        potential: b.potential, maxPotential: info.quality === 4 ? 8000 : 16000,
+        power: b.power, mainBuff: b.mainBuff, mainBuffName: ebBuffName(b.mainBuff),
+        baseBuff: (b.baseBuff || []).map(function(id) { return { id: id, name: ebBuffName(id) }; }),
+        fieldCfg: null, fieldName: null, slotId: null, fieldSlotNum: null, slotLevel: null, slotBuffs: []
+      };
+      beastMap[b.id] = resolved;
+      return resolved;
+    });
+
+    var fields = (enigmas.fields || []).map(function(f) {
+      var slots = (f.slots || []).map(function(s, idx) {
+        var fieldSlotNum = idx + 1;
+        var beast = beastMap[s.beastId];
+        if (beast && s.beastId !== '0') {
+          beast.fieldCfg = f.cfg;
+          beast.fieldName = EB_FIELD_NAMES[f.cfg] || ('Field ' + f.cfg);
+          beast.slotId = s.id;
+          beast.fieldSlotNum = fieldSlotNum;
+          beast.slotLevel = s.level;
+          beast.slotBuffs = (s.buffs || []).map(function(sb) {
+            return { id: sb.id, name: ebBuffName(sb.id), val: sb.val };
+          });
+        }
+        return {
+          id: s.id, fieldSlotNum: fieldSlotNum, beastId: s.beastId, level: s.level, potential: s.potential,
+          buffs: (s.buffs || []).map(function(sb) { return { id: sb.id, name: ebBuffName(sb.id), val: sb.val }; }),
+          beast: (s.beastId !== '0' && beast) ? beast : null
+        };
+      });
+      return {
+        cfg: f.cfg, name: EB_FIELD_NAMES[f.cfg] || ('Field ' + f.cfg), active: f.active,
+        expectedSlots: EB_FIELD_SLOT_COUNTS[f.cfg] || slots.length,
+        slots: slots, deployedCount: slots.filter(function(s) { return s.beast; }).length
+      };
+    });
+
+    return { beasts: beasts, fields: fields };
+  }
+
+  // buildEnigmaSide: battle-report.html:2585-2736 (lifted out of buildEnigmaModal to module top-level).
+  function buildEnigmaSide(players, sideLabel) {
+    var col = el('div');
+    var lbl = el('div', {className: 'enigma-side-label'});
+    lbl.textContent = sideLabel;
+    col.appendChild(lbl);
+
+    // Gather all enigma data across rally players
+    var allResolved = [];
+    (players || []).forEach(function(player) {
+      if (player.enigmas && player.enigmas.beastDatas && player.enigmas.beastDatas.length > 0) {
+        allResolved.push(ebResolveBeasts(player.enigmas));
+      }
+    });
+
+    if (allResolved.length === 0) {
+      col.appendChild(el('div', {className: 'enigma-no-data'}, 'No enigma data'));
+      return col;
+    }
+
+    // Summary stats across all players
+    var totalBeasts = 0, fiveStarCount = 0, activeFields = 0, totalPower = 0;
+    allResolved.forEach(function(r) {
+      r.beasts.forEach(function(b) {
+        totalBeasts++;
+        if (b.star >= 5) fiveStarCount++;
+        totalPower += (b.power || 0);
+      });
+      r.fields.forEach(function(f) {
+        if (f.active) activeFields++;
+      });
+    });
+
+    var summaryDiv = el('div', {className: 'enigma-summary'});
+    var mkStat = function(label, val) {
+      var item = el('div', {className: 'enigma-summary-item'});
+      item.appendChild(document.createTextNode(label + ' '));
+      var s = el('strong');
+      s.textContent = val;
+      item.appendChild(s);
+      return item;
+    };
+    summaryDiv.appendChild(mkStat('Beasts:', String(totalBeasts)));
+    summaryDiv.appendChild(mkStat('5\u2605:', String(fiveStarCount)));
+    summaryDiv.appendChild(mkStat('Active Fields:', String(activeFields)));
+    if (totalPower > 0) summaryDiv.appendChild(mkStat('Power:', totalPower.toLocaleString()));
+    col.appendChild(summaryDiv);
+
+    // Render fields
+    allResolved.forEach(function(resolved) {
+      resolved.fields.forEach(function(field) {
+        var fieldDiv = el('div', {className: 'enigma-field'});
+        var fieldHdr = el('div', {className: 'enigma-field-hdr'});
+        var fieldName = el('span', {className: 'enigma-field-name'});
+        fieldName.textContent = field.name;
+        fieldHdr.appendChild(fieldName);
+
+        var badge = el('span', {className: 'enigma-field-badge ' + (field.active ? 'active' : 'inactive')});
+        badge.textContent = field.active ? 'Active' : 'Inactive';
+        fieldHdr.appendChild(badge);
+
+        var countSpan = el('span', {style: 'font-size:.65rem;color:var(--muted);'});
+        countSpan.textContent = field.deployedCount + '/' + field.expectedSlots;
+        fieldHdr.appendChild(countSpan);
+
+        var toggle = el('span', {className: 'enigma-field-toggle'}, '\u25BC');
+        fieldHdr.appendChild(toggle);
+
+        var fieldBody = el('div', {className: 'enigma-field-body'});
+
+        // Click to expand/collapse
+        fieldHdr.addEventListener('click', function() {
+          var isOpen = fieldBody.classList.contains('open');
+          fieldBody.classList.toggle('open');
+          toggle.textContent = isOpen ? '\u25BC' : '\u25B2';
+        });
+
+        // Render each slot
+        field.slots.forEach(function(slot) {
+          var slotDiv = el('div', {className: 'enigma-slot'});
+          var numSpan = el('span', {className: 'enigma-slot-num'});
+          numSpan.textContent = '#' + slot.fieldSlotNum;
+          slotDiv.appendChild(numSpan);
+
+          if (slot.beast) {
+            var b = slot.beast;
+            // Icon wrapper
+            var iconWrap = el('div', {className: 'enigma-beast-icon-wrap'});
+            var img = el('img', {
+              className: 'enigma-beast-icon ' + (b.quality >= 5 ? 'q5' : 'q4'),
+              src: ebBeastIconUrl(b.type, b.faction, b.star),
+              width: '28', height: '28'
+            });
+            img.onerror = function() { this.style.display = 'none'; };
+            iconWrap.appendChild(img);
+
+            // Element overlay
+            var elemOverlay = el('span', {className: 'enigma-elem-overlay'});
+            elemOverlay.textContent = EB_ELEM_CHARS[b.faction] || '?';
+            iconWrap.appendChild(elemOverlay);
+            slotDiv.appendChild(iconWrap);
+
+            // Beast info
+            var infoDiv = el('div', {className: 'enigma-beast-info'});
+            var nameSpan = el('span', {className: 'enigma-beast-name'});
+            nameSpan.textContent = b.name;
+            infoDiv.appendChild(nameSpan);
+
+            var metaLine = el('div', {style: 'display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;'});
+            var starsSpan = el('span', {className: 'enigma-beast-stars'});
+            starsSpan.textContent = ebStarStr(b.star);
+            metaLine.appendChild(starsSpan);
+            var lvSpan = el('span', {className: 'enigma-beast-lv'});
+            lvSpan.textContent = 'Lv.' + b.level;
+            metaLine.appendChild(lvSpan);
+            var potPct = Math.round((b.potential / b.maxPotential) * 100);
+            var potSpan = el('span', {style: 'font-size:.62rem;color:' + (potPct >= 85 ? 'var(--green)' : potPct >= 65 ? 'var(--yellow)' : 'var(--red)') + ';'});
+            potSpan.textContent = potPct + '%';
+            metaLine.appendChild(potSpan);
+            infoDiv.appendChild(metaLine);
+
+            // Main buff
+            var mainDiv = el('div', {className: 'enigma-beast-main'});
+            mainDiv.textContent = b.mainBuffName;
+            infoDiv.appendChild(mainDiv);
+
+            // Slot buffs
+            if (slot.buffs && slot.buffs.length > 0) {
+              var buffsDiv = el('div', {className: 'enigma-slot-buffs'});
+              slot.buffs.forEach(function(sb) {
+                var chip = el('span', {className: 'enigma-slot-buff'});
+                var valStr = Number(sb.id) === 520000 ? ('+' + Math.round(sb.val)) : ('+' + (Number(sb.val) / 100).toFixed(2) + '%');
+                chip.textContent = sb.name + ' ' + valStr;
+                buffsDiv.appendChild(chip);
+              });
+              infoDiv.appendChild(buffsDiv);
+            }
+
+            slotDiv.appendChild(infoDiv);
+          } else {
+            slotDiv.appendChild(el('span', {className: 'enigma-empty-slot'}, '\u2014 empty'));
+          }
+          fieldBody.appendChild(slotDiv);
+        });
+
+        fieldDiv.appendChild(fieldHdr);
+        fieldDiv.appendChild(fieldBody);
+        col.appendChild(fieldDiv);
+      });
+    });
+
+    return col;
+  }
+
   return {
     el: el, fetchReportResponse: fetchReportResponse, loadAwakeningRef: loadAwakeningRef,
     sha256hex: sha256hex, getAvatar: getAvatar, getPlayerInfoRaw: getPlayerInfo2,
     formatPower: formatPower, stripUIDs: stripUIDs, renderOverview: renderOverview,
-    buildHeroGearSide: buildHeroGearSide
+    buildHeroGearSide: buildHeroGearSide, buildEnigmaSide: buildEnigmaSide
   };
 })();
