@@ -770,7 +770,7 @@ window.ReportRender = (function () {
 
             slotDiv.appendChild(infoDiv);
           } else {
-            slotDiv.appendChild(el('span', {className: 'enigma-empty-slot'}, '\u2014 empty'));
+            slotDiv.appendChild(el('span', {className: 'enigma-empty-slot'}, '- empty'));
           }
           fieldBody.appendChild(slotDiv);
         });
@@ -966,7 +966,7 @@ window.ReportRender = (function () {
     var badge = el('div', { className: 'bskin-badge' });
     if (isEquipped) { badge.className += ' equipped'; badge.textContent = '\u2605 Equipped'; }
     else if (isOwned) { badge.className += ' owned'; badge.textContent = '\u2713 Owned'; }
-    else { badge.className += ' notowned'; badge.textContent = '\u2014 Not owned'; }
+    else { badge.className += ' notowned'; badge.textContent = '- Not owned'; }
     info.appendChild(badge);
     cell.appendChild(info);
     return cell;
