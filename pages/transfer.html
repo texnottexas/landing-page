@@ -360,6 +360,11 @@
     b.addEventListener('click', function () { location.hash = '#' + b.getAttribute('data-view'); });
   });
   window.addEventListener('hashchange', function () { showView(currentView()); });
+  // Declared before the initial showView() so a deep-link straight to #queue
+  // (which runs loadQueueView -> clearQueueTimers at load) doesn't hit an
+  // undefined timers array. The `var` at the queue section is hoisted, but its
+  // [] assignment used to run only AFTER this init call.
+  var queueTimers = [];
   showView(currentView());
 
   // --- Register view: type toggle -----------------------------------------
@@ -662,7 +667,7 @@
   });
 
   // --- Queue view -----------------------------------------------------------
-  var queueTimers = [];
+  // (queueTimers is declared up near the init call so a #queue deep-link is safe)
   function clearQueueTimers() { queueTimers.forEach(function (t) { clearInterval(t); }); queueTimers = []; }
 
   function renderCountdown(el, opensAt, closesAt) {
