@@ -405,6 +405,10 @@
     }
     .sq-row .sq-pos.ce { color: var(--ce); }
     .sq-row .sq-pos.mm { color: var(--mm); }
+    /* Split label (e.g. an MM in a CE slot): #num keeps the slot color, the role
+       part carries the player's real-profession color. */
+    .sq-row .sq-pos .ce { color: var(--ce); }
+    .sq-row .sq-pos .mm { color: var(--mm); }
     .sq-row .sq-player { font-weight: 600; flex: 1; min-width: 0; word-break: break-word; }
     .sq-row .sq-empty { color: var(--muted); font-style: italic; font-weight: 400; }
     /* Move / Unlock stack vertically so the name column keeps its width. */
@@ -2162,7 +2166,21 @@ function moveSvg() {
 function sqMemberRow(name, posLabel, posClass, squad, position, bucket) {
   var lockKey = sqLockKeyFor(name, squad, position, bucket);
   var row = document.createElement('div'); row.className = 'sq-row';
-  var pos = document.createElement('span'); pos.className = 'sq-pos ' + posClass; pos.textContent = posLabel;
+  var pos = document.createElement('span'); pos.className = 'sq-pos';
+  if (Array.isArray(posLabel)) {
+    // Multi-part label — each part keeps its own color (see the MM-in-CE-slot case
+    // in renderSquads): the slot number stays the slot's color, the role part
+    // reflects the player's actual profession.
+    posLabel.forEach(function (part, idx) {
+      var sp = document.createElement('span');
+      sp.className = part.cls || '';
+      sp.textContent = (idx ? ' ' : '') + part.t;
+      pos.appendChild(sp);
+    });
+  } else {
+    if (posClass) pos.className += ' ' + posClass;
+    pos.textContent = posLabel;
+  }
   row.appendChild(pos);
   var nm = document.createElement('span'); nm.className = 'sq-player notranslate'; nm.textContent = name;
   row.appendChild(nm);
@@ -2189,6 +2207,16 @@ function sqMemberRow(name, posLabel, posClass, squad, position, bucket) {
   return row;
 }
 
+// A member's real profession for the squad-card label: the roster
+// (player-data.json) is the ground truth; the titan signup's self-reported prof
+// is the fallback. Returns 'CE' | 'MM' | ''. (A player can sign up as CE — and so
+// be auto-seated in a CE slot — while their roster profession is MM.)
+function sqRealProf(name, mt, lookup) {
+  var ri = lookup[String(name || '').trim().toLowerCase()];
+  if (ri && (ri.role === 'CE' || ri.role === 'MM')) return ri.role;
+  return (mt && (mt.prof === 'CE' || mt.prof === 'MM')) ? mt.prof : '';
+}
+
 function renderSquads(report) {
   var host = document.getElementById('sq-squads');
   if (!host) return;
@@ -2196,6 +2224,7 @@ function renderSquads(report) {
 
   var grid = document.createElement('div');
   grid.className = 'sq-grid';
+  var lookup = buildRosterLookup();
 
   SQ_NAMES.forEach(function (sq) {
     var data = sqPlan[sq] || {};
@@ -2222,15 +2251,22 @@ function renderSquads(report) {
     card.appendChild(posTitle);
     for (var i = 1; i <= 8; i++) {
       var nm = (data.positions && data.positions[i]) || '';
-      var cls = i <= 2 ? 'ce' : 'mm';
+      var slotCls = i <= 2 ? 'ce' : 'mm';   // color of the slot (its position number)
       if (nm) {
         var mt = (data.meta && data.meta[nm]) || {};
-        var prof = i <= 2 ? 'CE' : ('MM' + (mt.uc != null ? '-' + mt.uc : ''));
-        card.appendChild(sqMemberRow(nm, '#' + i + ' ' + prof, cls, sq, String(i), null));
+        var ucSuffix = mt.uc != null ? '-' + mt.uc : '';
+        if (i <= 2 && sqRealProf(nm, mt, lookup) === 'MM') {
+          // An MM seated in a CE slot: keep #i in the slot's gold, but show the
+          // real MM role in purple (MM / MM-<uc>) like MM positions elsewhere.
+          card.appendChild(sqMemberRow(nm, [{ t: '#' + i, cls: 'ce' }, { t: 'MM' + ucSuffix, cls: 'mm' }], '', sq, String(i), null));
+        } else {
+          var prof = i <= 2 ? 'CE' : ('MM' + ucSuffix);
+          card.appendChild(sqMemberRow(nm, '#' + i + ' ' + prof, slotCls, sq, String(i), null));
+        }
       } else {
         var baseProf = i <= 2 ? 'CE' : 'MM';
         var er = document.createElement('div'); er.className = 'sq-row';
-        er.innerHTML = '<span class="sq-pos ' + cls + '">#' + i + ' ' + baseProf + '</span>' +
+        er.innerHTML = '<span class="sq-pos ' + slotCls + '">#' + i + ' ' + baseProf + '</span>' +
           '<span class="sq-player sq-empty">empty</span>';
         card.appendChild(er);
       }
