@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; img-src 'self' data: https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com; frame-src https://translate.google.com; font-src https://fonts.gstatic.com; base-uri 'self'; form-action 'none'; object-src 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; img-src 'self' data: https://knight-cdn.akamaized.net https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com; frame-src https://translate.google.com; font-src https://fonts.gstatic.com; base-uri 'self'; form-action 'none'; object-src 'none';">
 <title>Server 2864 · Transfer Registration</title>
 <style>
   :root{
@@ -251,6 +251,16 @@
   .lang-option.active{border-color:var(--accent); background:var(--card)}
   .lang-option .lang-flag{font-size:1.1rem}
   .lang-option .lang-name{flex:1}
+  .lp-row{display:grid; grid-template-columns:auto 1fr auto auto; gap:.6rem; align-items:center; padding:.5rem .6rem; border:1px solid var(--border); border-radius:10px; margin-bottom:.5rem; background:var(--surface)}
+  .lp-av{width:34px; height:34px; border-radius:8px; object-fit:cover; display:inline-flex; align-items:center; justify-content:center}
+  .lp-av-ph{background:var(--green-soft); color:#cdebd2; font-weight:700}
+  .lp-name{font-weight:600; font-size:.9rem}
+  .lp-meta{display:flex; gap:.4rem; margin-top:.15rem; flex-wrap:wrap}
+  .lp-cp,.lp-prof{font-size:.7rem; color:var(--muted); background:var(--card); border:1px solid var(--border); border-radius:6px; padding:.05rem .35rem}
+  .lp-report{max-width:170px; font-size:.82rem; padding:.4rem .5rem}
+  .lp-remove{background:none; border:1px solid var(--border); color:var(--muted); border-radius:8px; width:30px; height:30px; cursor:pointer; font-size:1.1rem; line-height:1}
+  .lp-remove:hover{border-color:#f85149; color:#f85149}
+  @media(max-width:560px){.lp-row{grid-template-columns:auto 1fr auto} .lp-report{grid-column:2 / 4; max-width:none}}
 </style>
 </head>
 <body>
@@ -378,6 +388,25 @@
       <div class="brief-sub">This updates as leadership plans each wave. Your own status is on the Manage tab.</div>
     </div>
     <div id="queue-content"></div>
+  </section>
+
+  <!-- ===================== LEADER (COHORT) VIEW ===================== -->
+  <section class="view" id="view-leader">
+    <div class="briefing reveal">
+      <div class="brief-kicker">Group builder</div>
+      <div class="brief-title" id="lead-title">Transfer group</div>
+      <div class="brief-sub">Add everyone transferring with you. Pick each name from the list and their CP, profession, and picture fill in automatically. Add a battle report ID for anyone who has one.</div>
+    </div>
+    <div class="field reveal">
+      <div class="field-label">Add a player <span class="hint">start typing a name</span></div>
+      <input type="text" list="roster-datalist" id="lead-add-input" class="input" placeholder="Search your server's players" autocomplete="off">
+      <datalist id="roster-datalist"></datalist>
+    </div>
+    <div class="field reveal">
+      <div class="field-label">Your group <span class="hint"><span id="lead-count">0</span> players</span></div>
+      <div id="lead-players"></div>
+      <div class="status" id="lead-status"></div>
+    </div>
   </section>
 
 </main>
@@ -978,6 +1007,125 @@
   if (langModalEl) langModalEl.addEventListener('click', function(e) { if (e.target === langModalEl) closeLangModal(); });
   document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && langModalEl && langModalEl.classList.contains('active')) { closeLangModal(); e.stopPropagation(); } });
   setTimeout(function() { if (!window._gtLoaded) { var btn = document.getElementById('langBtn'); if (btn) { btn.style.opacity = '0.5'; btn.style.cursor = 'default'; btn.title = 'Translation unavailable'; btn.removeEventListener('click', openLangModal); } } }, 15000);
+
+  // ── Leader (cohort) mode ─────────────────────────────────────────────────
+  var LEAD_KEY = 'transfer_lead_v1';
+  function leadToken() { try { return (JSON.parse(localStorage.getItem(LEAD_KEY)) || {}).token || ''; } catch (e) { return ''; } }
+  function saveLeadToken(t) { try { localStorage.setItem(LEAD_KEY, JSON.stringify({ token: t })); } catch (e) {} }
+
+  var ROSTER_BY_NAME = {};
+  var LEAD_PLAYERS = [];
+  var leadSaveTimer = null;
+
+  function cpM(cp) { return (cp == null || cp === '') ? '' : (cp / 1e6).toFixed(2) + 'M'; }
+
+  function avatarHtml(p) {
+    if (p.avatar && /^https?:\/\//.test(p.avatar)) {
+      return '<img class="lp-av" src="' + esc(p.avatar) + '" alt="" referrerpolicy="no-referrer">';
+    }
+    var initial = (p.name || '?').trim().charAt(0).toUpperCase();
+    return '<span class="lp-av lp-av-ph">' + esc(initial) + '</span>';
+  }
+
+  function renderLeadPlayers() {
+    var wrap = document.getElementById('lead-players');
+    wrap.innerHTML = '';
+    document.getElementById('lead-count').textContent = LEAD_PLAYERS.length;
+    LEAD_PLAYERS.forEach(function (p, i) {
+      var row = document.createElement('div');
+      row.className = 'lp-row';
+      row.innerHTML =
+        avatarHtml(p) +
+        '<div class="lp-main">' +
+          '<div class="lp-name notranslate">' + esc(p.name) + '</div>' +
+          '<div class="lp-meta">' +
+            (p.cp != null ? ('<span class="lp-cp">' + cpM(p.cp) + '</span>') : '') +
+            (p.profession ? ('<span class="lp-prof">' + esc(p.profession) + '</span>') : '') +
+          '</div>' +
+        '</div>' +
+        '<input type="text" class="input lp-report" inputmode="numeric" placeholder="Battle report ID" value="' + esc(p.reportId) + '">' +
+        '<button type="button" class="lp-remove" title="Remove">&times;</button>';
+      row.querySelector('.lp-report').addEventListener('input', function (e) { p.reportId = e.target.value; scheduleLeadSave(); });
+      row.querySelector('.lp-remove').addEventListener('click', function () { LEAD_PLAYERS.splice(i, 1); renderLeadPlayers(); scheduleLeadSave(); });
+      wrap.appendChild(row);
+    });
+  }
+
+  function addLeadPlayerByName(name) {
+    var row = ROSTER_BY_NAME[name];
+    if (!row) return false;
+    var key = row.siteKey || (row.name + '|' + row.server);
+    var dup = LEAD_PLAYERS.some(function (p) { return (p.siteKey || (p.name + '|' + p.server)) === key; });
+    if (dup) return false;
+    LEAD_PLAYERS.push({ siteKey: row.siteKey || '', name: row.name, server: row.server, cp: row.cp, profession: row.profession || '', avatar: row.avatar || '', reportId: '' });
+    renderLeadPlayers();
+    scheduleLeadSave();
+    return true;
+  }
+
+  function scheduleLeadSave() {
+    clearTimeout(leadSaveTimer);
+    document.getElementById('lead-status').textContent = 'Saving...';
+    leadSaveTimer = setTimeout(saveLeadGroup, 700);
+  }
+
+  function saveLeadGroup() {
+    var token = leadToken();
+    var players = LEAD_PLAYERS.map(function (p) {
+      return { siteKey: p.siteKey, name: p.name, server: p.server, cp: p.cp, profession: p.profession, avatar: p.avatar, reportId: p.reportId };
+    });
+    fetch(API + '/transfer/cohort/roster', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lead: token, players: players })
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      document.getElementById('lead-status').textContent = (j && j.ok) ? 'Saved' : ('Save failed' + (j && j.error ? (': ' + j.error) : ''));
+    }).catch(function () { document.getElementById('lead-status').textContent = 'Save failed (network)'; });
+  }
+
+  function loadLeaderGroup(token) {
+    fetch(API + '/transfer/my?lead=' + encodeURIComponent(token)).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j || !j.ok) { document.getElementById('lead-status').textContent = 'This link is no longer valid.'; return; }
+      document.getElementById('lead-title').textContent = j.app.groupName || 'Transfer group';
+      LEAD_PLAYERS = (j.app.players || []).map(function (p) {
+        return { siteKey: p.siteKey || '', name: p.name, server: p.server, cp: p.cp, profession: p.profession || '', avatar: p.avatar || '', reportId: p.reportId || '' };
+      });
+      renderLeadPlayers();
+    }).catch(function () { document.getElementById('lead-status').textContent = 'Network error.'; });
+  }
+
+  function initLeaderMode() {
+    var token = '';
+    var m = (location.search || '').match(/[?&]lead=([^&]+)/);
+    if (m) { token = decodeURIComponent(m[1]); saveLeadToken(token); history.replaceState(null, '', location.pathname + location.hash); }
+    else { token = leadToken(); }
+    if (!token) return;
+
+    var nav = document.querySelector('.tabs'); if (nav) nav.style.display = 'none';
+    document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
+    document.getElementById('view-leader').classList.add('active');
+
+    var addInput = document.getElementById('lead-add-input');
+    addInput.addEventListener('change', function () {
+      var name = addInput.value.trim();
+      if (addLeadPlayerByName(name)) { addInput.value = ''; }
+      else { document.getElementById('lead-status').textContent = ROSTER_BY_NAME[name] ? 'Already added.' : 'Pick a name from the list.'; }
+    });
+
+    fetch('data/transfer-roster-1805.json').then(function (r) { return r.json(); }).then(function (rows) {
+      var dl = document.getElementById('roster-datalist');
+      dl.innerHTML = '';
+      (Array.isArray(rows) ? rows : []).forEach(function (row) {
+        if (!ROSTER_BY_NAME[row.name]) ROSTER_BY_NAME[row.name] = row;
+        var opt = document.createElement('option');
+        opt.value = row.name;
+        opt.textContent = cpM(row.cp) + (row.profession ? (' · ' + row.profession) : '');
+        dl.appendChild(opt);
+      });
+      loadLeaderGroup(token);
+    }).catch(function () { document.getElementById('lead-status').textContent = 'Could not load the player roster.'; });
+  }
+
+  initLeaderMode();
 })();
 function googleTranslateElementInit() {
   window._gtLoaded = true;
