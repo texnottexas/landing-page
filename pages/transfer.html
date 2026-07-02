@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev; img-src 'self' data:; frame-src 'none'; base-uri 'self'; form-action 'none'; object-src 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; img-src 'self' data: https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com; frame-src https://translate.google.com; font-src https://fonts.gstatic.com; base-uri 'self'; form-action 'none'; object-src 'none';">
 <title>Server 2864 · Transfer Registration</title>
 <style>
   :root{
@@ -75,12 +75,13 @@
   .field-label{font-size:.74rem; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--text); margin-bottom:.5rem; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap}
   .hint{color:var(--faint); font-size:.74rem; font-weight:500; letter-spacing:0; text-transform:none}
 
-  .input,select,input[type=text],input[type=number],textarea{
+  .input,select,input[type=text],input[type=number],input[type=date],textarea{
     width:100%; background:var(--card); color:var(--text); border:1px solid var(--border2);
     border-radius:11px; padding:.7rem .8rem; font-size:.95rem; font-family:inherit; transition:border-color .15s, box-shadow .15s;
   }
   select{appearance:none; -webkit-appearance:none; cursor:pointer; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 12 12'%3E%3Cpath fill='%238b949e' d='M6 8.5 1.5 4h9z'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right .8rem center; padding-right:2.2rem}
   select:focus,input:focus,textarea:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(121,192,255,.14)}
+  textarea{min-height:70px; resize:vertical}
 
   .seg{display:flex; gap:.5rem}
   .seg label{flex:1; text-align:center; border:1.5px solid var(--border2); border-radius:11px; padding:.65rem .5rem; cursor:pointer; font-size:.88rem; font-weight:650; background:linear-gradient(180deg,var(--card2),var(--card)); transition:transform .14s, border-color .14s, background .14s; user-select:none}
@@ -88,8 +89,6 @@
   .seg input{position:absolute; opacity:0; width:1px; height:1px; pointer-events:none}
   .seg label:has(input:checked){border-color:var(--green); background:linear-gradient(180deg,rgba(63,185,80,.18),rgba(63,185,80,.06)); color:#cdebd2; box-shadow:0 0 0 1px rgba(63,185,80,.35)}
 
-  .uid-row{display:flex; gap:.5rem; align-items:flex-start}
-  .uid-row .input{flex:1}
   .lookup-btn{
     flex:none; display:inline-flex; align-items:center; gap:.4rem; padding:.7rem .9rem;
     border:1px solid var(--border2); border-radius:11px; background:var(--card2); color:var(--text);
@@ -100,7 +99,7 @@
   .lookup-btn svg{flex:none}
 
   .member-row{
-    display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:.5rem; align-items:center;
+    display:grid; grid-template-columns:1fr 1fr auto; gap:.5rem; align-items:center;
     margin-bottom:.55rem; padding:.6rem; border:1px solid var(--border); border-radius:11px; background:var(--card);
   }
   .member-row input{padding:.55rem .6rem; font-size:.88rem}
@@ -205,13 +204,41 @@
 
   footer{position:relative; z-index:1; text-align:center; color:var(--faint); font-size:.72rem; padding:1.6rem 1rem}
 
+  .char-count{text-align:right; font-size:.72rem; color:var(--faint); margin-top:.35rem; font-family:var(--mono)}
+  .date-input-wrap{margin-top:.6rem; display:none}
+  .date-input-wrap.show{display:block; animation:rise .3s ease forwards}
+
   @media (max-width:520px){
-    .member-row{grid-template-columns:1fr 1fr; grid-template-rows:auto auto}
-    .member-row .m-uid,.member-row .member-remove{grid-row:2}
+    .member-row{grid-template-columns:1fr 1fr auto}
     nav.tabs{gap:.3rem}
     .tab-btn{padding:.4rem .55rem; font-size:.72rem}
     .code-big{font-size:1.9rem}
   }
+
+  /* Google Translate overrides */
+  body{top:0 !important}
+  body > .skiptranslate{display:none !important}
+  #google_translate_element{position:absolute; left:-9999px; opacity:0; pointer-events:none}
+  .lang-btn{
+    background:var(--card); border:1px solid var(--border2); color:var(--muted);
+    border-radius:8px; padding:.38rem .7rem; cursor:pointer; font-size:.8rem;
+    display:flex; align-items:center; gap:.35rem; font-family:inherit;
+    font-weight:600; letter-spacing:.02em; white-space:nowrap; transition:border-color .2s, color .2s;
+  }
+  .lang-btn:hover{border-color:var(--accent); color:var(--text)}
+  .lang-modal-overlay{display:none; position:fixed; inset:0; z-index:400; background:rgba(0,0,0,.6); align-items:center; justify-content:center; padding:1rem}
+  .lang-modal-overlay.active{display:flex}
+  .lang-modal{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:1.25rem; max-width:400px; width:100%; max-height:80vh; overflow-y:auto; box-shadow:0 18px 50px -18px rgba(0,0,0,.85)}
+  .lang-modal-header{display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem}
+  .lang-modal-title{font-size:1rem; font-weight:700; color:var(--text)}
+  .lang-modal-close{background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.2rem; padding:.2rem; line-height:1}
+  .lang-modal-close:hover{color:var(--text)}
+  .lang-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:.5rem}
+  .lang-option{display:flex; align-items:center; gap:.5rem; padding:.5rem .65rem; border-radius:8px; border:1px solid transparent; background:var(--bg); cursor:pointer; font-size:.82rem; color:var(--text); font-family:inherit; transition:border-color .15s, background .15s}
+  .lang-option:hover{border-color:var(--accent); background:var(--card)}
+  .lang-option.active{border-color:var(--accent); background:var(--card)}
+  .lang-option .lang-flag{font-size:1.1rem}
+  .lang-option .lang-name{flex:1}
 </style>
 </head>
 <body>
@@ -225,6 +252,11 @@
     <button type="button" class="tab-btn" data-view="manage">Manage</button>
     <button type="button" class="tab-btn" data-view="queue">Queue</button>
   </nav>
+  <button class="lang-btn notranslate" id="langBtn" aria-label="Change language">
+    <span id="langFlag">&#127482;&#127480;</span>
+    <span id="langCode">/en</span>
+  </button>
+  <div id="google_translate_element"></div>
 </header>
 
 <main>
@@ -258,10 +290,6 @@
           <div class="field-label" style="margin-bottom:.4rem">Current server <span class="hint">required</span></div>
           <input type="text" id="leader-server" class="input" maxlength="20" placeholder="e.g. 1234">
         </div>
-        <div style="margin-top:.6rem">
-          <div class="field-label" style="margin-bottom:.4rem">UID <span class="hint">optional</span></div>
-          <input type="text" id="leader-uid" class="input" maxlength="20" placeholder="Your in-game UID (optional)" inputmode="numeric">
-        </div>
       </div>
 
       <div class="field reveal" id="members-block" style="display:none; animation-delay:.14s">
@@ -271,6 +299,23 @@
           <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v12M4 10h12"/></svg>
           Add member
         </button>
+      </div>
+
+      <div class="field reveal" style="animation-delay:.16s">
+        <div class="field-label">Preferred transfer date</div>
+        <div class="seg" id="seg-preferred-date">
+          <label><input type="radio" name="preferreddate" value="asap" checked><span>As soon as possible</span></label>
+          <label><input type="radio" name="preferreddate" value="specific"><span>A specific date</span></label>
+        </div>
+        <div class="date-input-wrap" id="date-input-wrap">
+          <input type="date" id="preferred-date-input" class="input">
+        </div>
+      </div>
+
+      <div class="field reveal" style="animation-delay:.18s">
+        <div class="field-label">Notes <span class="hint">optional</span></div>
+        <textarea id="reg-notes" class="input" maxlength="200" placeholder="Anything else we should know"></textarea>
+        <div class="char-count"><span id="reg-notes-count">0</span>/200</div>
       </div>
 
       <div class="reveal" style="animation-delay:.2s">
@@ -326,6 +371,16 @@
 </main>
 
 <footer><span>Brought to you by supporters of the fk boats movement</span></footer>
+
+<div class="lang-modal-overlay" id="langModal">
+  <div class="lang-modal">
+    <div class="lang-modal-header">
+      <span class="lang-modal-title">Select Language</span>
+      <button class="lang-modal-close" id="langModalClose" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="lang-grid" id="langGrid"></div>
+  </div>
+</div>
 
 <script>
 (function () {
@@ -386,7 +441,6 @@
       '<div class="member-row" data-idx="' + idx + '">' +
       '  <input type="text" class="input m-name" maxlength="40" placeholder="Member name">' +
       '  <input type="text" class="input m-server" maxlength="20" placeholder="Server">' +
-      '  <input type="text" class="input m-uid" maxlength="20" placeholder="UID (optional)" inputmode="numeric">' +
       '  <button type="button" class="member-remove" title="Remove member">' +
       '    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l10 10M15 5L5 15"/></svg>' +
       '  </button>' +
@@ -404,6 +458,32 @@
   }
   document.getElementById('add-member-btn').addEventListener('click', addMemberRow);
 
+  // --- Register view: preferred transfer date toggle -----------------------
+  function wirePreferredDateToggle(segName, dateWrapId, dateInputId) {
+    var wrap = document.getElementById(dateWrapId);
+    document.querySelectorAll('input[name="' + segName + '"]').forEach(function (r) {
+      r.addEventListener('change', function () {
+        var specific = (document.querySelector('input[name="' + segName + '"]:checked') || {}).value === 'specific';
+        wrap.classList.toggle('show', specific);
+      });
+    });
+  }
+  wirePreferredDateToggle('preferreddate', 'date-input-wrap', 'preferred-date-input');
+
+  function preferredDateValue(segName, dateInputId) {
+    var choice = (document.querySelector('input[name="' + segName + '"]:checked') || {}).value || 'asap';
+    if (choice === 'asap') return 'asap';
+    return (document.getElementById(dateInputId).value || '').trim();
+  }
+
+  // --- Register view: notes character counter -------------------------------
+  (function wireNotesCounter() {
+    var ta = document.getElementById('reg-notes');
+    var countEl = document.getElementById('reg-notes-count');
+    if (!ta || !countEl) return;
+    ta.addEventListener('input', function () { countEl.textContent = ta.value.length; });
+  })();
+
   // --- Register view: submit ----------------------------------------------
   document.getElementById('register-form').addEventListener('submit', function (e) {
     e.preventDefault();
@@ -413,12 +493,18 @@
     var type = (document.querySelector('input[name="regtype"]:checked') || {}).value || 'individual';
     var name = (document.getElementById('leader-name').value || '').trim();
     var server = (document.getElementById('leader-server').value || '').trim();
-    var uid = (document.getElementById('leader-uid').value || '').trim();
 
     if (!name) { statusEl.textContent = 'Please enter your in-game name.'; statusEl.className = 'status err'; return; }
     if (!server) { statusEl.textContent = 'Please enter your current server.'; statusEl.className = 'status err'; return; }
 
-    var payload = { type: type, name: name, server: server, uid: uid };
+    var preferredDate = preferredDateValue('preferreddate', 'preferred-date-input');
+    if (preferredDate !== 'asap' && !preferredDate) {
+      statusEl.textContent = 'Please pick a specific date, or choose "As soon as possible".';
+      statusEl.className = 'status err'; return;
+    }
+    var notes = (document.getElementById('reg-notes').value || '').trim();
+
+    var payload = { type: type, name: name, server: server, preferredDate: preferredDate, notes: notes };
 
     if (type === 'group') {
       var groupName = (document.getElementById('group-name').value || '').trim();
@@ -429,10 +515,7 @@
         var mName = (row.querySelector('.m-name').value || '').trim();
         var mServer = (row.querySelector('.m-server').value || '').trim();
         if (!mName) return;
-        members.push({
-          name: mName, server: mServer,
-          uid: (row.querySelector('.m-uid').value || '').trim()
-        });
+        members.push({ name: mName, server: mServer });
       });
       payload.members = members;
     }
@@ -479,6 +562,15 @@
   // --- Manage view ---------------------------------------------------------
   var STATUS_LABEL = { pending: 'Pending', waitlist: 'Waitlisted', approved: 'Approved', rejected: 'Not selected' };
 
+  // 'asap' -> friendly label; a YYYY-MM-DD string -> localized date; anything
+  // else/missing -> a dash.
+  function formatPreferredDate(v) {
+    if (!v || v === 'asap') return 'As soon as possible';
+    var d = new Date(v + 'T00:00:00');
+    if (isNaN(d.getTime())) return esc(v);
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+
   function renderPlayerRow(p) {
     var status = p.status || 'pending';
     var avatar = p.avatar ? '<img src="' + esc(p.avatar) + '" alt="">' : '<div style="width:34px;height:34px;border-radius:8px;background:var(--card2);flex:none"></div>';
@@ -498,7 +590,6 @@
       '<div class="member-row" data-edit-row>' +
       '  <input type="text" class="input em-name" maxlength="40" placeholder="Name" value="' + esc(p.name || '') + '">' +
       '  <input type="text" class="input em-server" maxlength="20" placeholder="Server" value="' + esc(p.server || '') + '">' +
-      '  <input type="hidden" class="em-uid" value="' + esc(p.uid || '') + '">' +
       '  <button type="button" class="member-remove" title="Remove member">' +
       '    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l10 10M15 5L5 15"/></svg>' +
       '  </button>' +
@@ -510,6 +601,8 @@
     var players = app.players || [];
     var isGroup = app.type === 'group';
     var leader = players[0] || {};
+    var preferredDate = app.preferredDate || 'asap';
+    var isSpecificDate = preferredDate !== 'asap';
     var html = '<div class="app-card">' +
       '<div class="field">' +
       '  <div class="field-label">' + (isGroup ? 'Group leader name' : 'Your in-game name') + '</div>' +
@@ -517,10 +610,6 @@
       '  <div style="margin-top:.6rem">' +
       '    <div class="field-label" style="margin-bottom:.4rem">Current server</div>' +
       '    <input type="text" id="edit-leader-server" class="input" maxlength="20" value="' + esc(leader.server || '') + '">' +
-      '  </div>' +
-      '  <div style="margin-top:.6rem">' +
-      '    <div class="field-label" style="margin-bottom:.4rem">UID <span class="hint">optional</span></div>' +
-      '    <input type="text" id="edit-leader-uid" class="input" maxlength="20" value="' + esc(leader.uid || '') + '">' +
       '  </div>' +
       '</div>' +
       (isGroup ? (
@@ -537,6 +626,21 @@
         '  </button>' +
         '</div>'
       ) : '') +
+      '<div class="field">' +
+      '  <div class="field-label">Preferred transfer date</div>' +
+      '  <div class="seg" id="edit-seg-preferred-date">' +
+      '    <label><input type="radio" name="edit-preferreddate" value="asap"' + (isSpecificDate ? '' : ' checked') + '><span>As soon as possible</span></label>' +
+      '    <label><input type="radio" name="edit-preferreddate" value="specific"' + (isSpecificDate ? ' checked' : '') + '><span>A specific date</span></label>' +
+      '  </div>' +
+      '  <div class="date-input-wrap' + (isSpecificDate ? ' show' : '') + '" id="edit-date-input-wrap">' +
+      '    <input type="date" id="edit-preferred-date-input" class="input" value="' + (isSpecificDate ? esc(preferredDate) : '') + '">' +
+      '  </div>' +
+      '</div>' +
+      '<div class="field">' +
+      '  <div class="field-label">Notes <span class="hint">optional</span></div>' +
+      '  <textarea id="edit-notes" class="input" maxlength="200">' + esc(app.notes || '') + '</textarea>' +
+      '  <div class="char-count"><span id="edit-notes-count">' + (app.notes || '').length + '</span>/200</div>' +
+      '</div>' +
       '<div class="action-row">' +
       '  <button type="button" class="btn-secondary" id="save-edit-btn">Save changes</button>' +
       '  <button type="button" class="btn-secondary" id="cancel-edit-btn">Cancel</button>' +
@@ -559,6 +663,14 @@
       b.addEventListener('click', function () { b.closest('[data-edit-row]').remove(); });
     });
 
+    wirePreferredDateToggle('edit-preferreddate', 'edit-date-input-wrap', 'edit-preferred-date-input');
+    (function wireEditNotesCounter() {
+      var ta = document.getElementById('edit-notes');
+      var countEl = document.getElementById('edit-notes-count');
+      if (!ta || !countEl) return;
+      ta.addEventListener('input', function () { countEl.textContent = ta.value.length; });
+    })();
+
     document.getElementById('cancel-edit-btn').addEventListener('click', function () { renderManageApp(app); });
 
     document.getElementById('save-edit-btn').addEventListener('click', function () {
@@ -567,9 +679,14 @@
       if (!id || !id.appId) { statusEl.textContent = 'Missing identity. Reload your registration with your code.'; statusEl.className = 'status err'; return; }
       var name = (document.getElementById('edit-leader-name').value || '').trim();
       var server = (document.getElementById('edit-leader-server').value || '').trim();
-      var uid = (document.getElementById('edit-leader-uid').value || '').trim();
       if (!name || !server) { statusEl.textContent = 'Name and server are required.'; statusEl.className = 'status err'; return; }
-      var registration = { type: app.type, name: name, server: server, uid: uid };
+      var editPreferredDate = preferredDateValue('edit-preferreddate', 'edit-preferred-date-input');
+      if (editPreferredDate !== 'asap' && !editPreferredDate) {
+        statusEl.textContent = 'Please pick a specific date, or choose "As soon as possible".';
+        statusEl.className = 'status err'; return;
+      }
+      var editNotes = (document.getElementById('edit-notes').value || '').trim();
+      var registration = { type: app.type, name: name, server: server, preferredDate: editPreferredDate, notes: editNotes };
       if (isGroup) {
         registration.groupName = (document.getElementById('edit-group-name').value || '').trim();
         var members = [];
@@ -577,7 +694,7 @@
           var mName = (row.querySelector('.em-name').value || '').trim();
           var mServer = (row.querySelector('.em-server').value || '').trim();
           if (!mName) return;
-          members.push({ name: mName, server: mServer, uid: (row.querySelector('.em-uid').value || '').trim() });
+          members.push({ name: mName, server: mServer });
         });
         registration.members = members;
       }
@@ -603,10 +720,17 @@
       return;
     }
     var players = app.players || [];
+    var extras = '';
+    extras += '<div class="pr-meta" style="margin-top:.7rem; padding-top:.7rem; border-top:1px solid var(--border)">' +
+      'Preferred transfer date: <strong style="color:var(--text)">' + formatPreferredDate(app.preferredDate) + '</strong></div>';
+    if (app.notes) {
+      extras += '<div class="pr-meta" style="margin-top:.4rem">Notes: <span style="color:var(--text)">' + esc(app.notes) + '</span></div>';
+    }
     var html = '<div class="app-card">' +
       '<div class="ac-head"><span class="ac-title notranslate">' + esc(app.groupName || (players[0] && players[0].name) || 'Your registration') + '</span>' +
       '<span class="ac-badge">' + (app.type === 'group' ? 'Group' : 'Individual') + '</span></div>' +
       players.map(renderPlayerRow).join('') +
+      extras +
       '<div class="action-row">' +
       '  <button type="button" class="btn-secondary" id="edit-app-btn">Edit registration</button>' +
       '  <button type="button" class="btn-danger" id="withdraw-app-btn">Withdraw</button>' +
@@ -736,5 +860,110 @@
   }
 })();
 </script>
+<script>
+(function() {
+  var LANGUAGES = [
+    { code: 'en', flag: '\u{1F1FA}\u{1F1F8}', name: 'English' },
+    { code: 'es', flag: '\u{1F1EA}\u{1F1F8}', name: 'Español' },
+    { code: 'fr', flag: '\u{1F1EB}\u{1F1F7}', name: 'Français' },
+    { code: 'de', flag: '\u{1F1E9}\u{1F1EA}', name: 'Deutsch' },
+    { code: 'pt', flag: '\u{1F1E7}\u{1F1F7}', name: 'Português' },
+    { code: 'it', flag: '\u{1F1EE}\u{1F1F9}', name: 'Italiano' },
+    { code: 'ru', flag: '\u{1F1F7}\u{1F1FA}', name: 'Русский' },
+    { code: 'ja', flag: '\u{1F1EF}\u{1F1F5}', name: '日本語' },
+    { code: 'ko', flag: '\u{1F1F0}\u{1F1F7}', name: '한국어' },
+    { code: 'zh-CN', flag: '\u{1F1E8}\u{1F1F3}', name: '中文' },
+    { code: 'ar', flag: '\u{1F1F8}\u{1F1E6}', name: 'العربية' },
+    { code: 'tr', flag: '\u{1F1F9}\u{1F1F7}', name: 'Türkçe' },
+    { code: 'vi', flag: '\u{1F1FB}\u{1F1F3}', name: 'Tiếng Việt' },
+    { code: 'th', flag: '\u{1F1F9}\u{1F1ED}', name: 'ไทย' },
+    { code: 'hi', flag: '\u{1F1EE}\u{1F1F3}', name: 'हिन्दी' },
+    { code: 'pl', flag: '\u{1F1F5}\u{1F1F1}', name: 'Polski' },
+    { code: 'uk', flag: '\u{1F1FA}\u{1F1E6}', name: 'Українська' },
+    { code: 'id', flag: '\u{1F1EE}\u{1F1E9}', name: 'Indonesia' }
+  ];
+  window._gtLoaded = false;
+  function getLangData(code) {
+    var base = code.split('-')[0];
+    for (var i = 0; i < LANGUAGES.length; i++) { if (LANGUAGES[i].code === code || LANGUAGES[i].code === base) return LANGUAGES[i]; }
+    return null;
+  }
+  window.updateLangBtn = function(code) {
+    var data = getLangData(code);
+    var flagEl = document.getElementById('langFlag'); var codeEl = document.getElementById('langCode');
+    if (data && flagEl && codeEl) { flagEl.textContent = data.flag; codeEl.textContent = '/' + data.code; }
+    else if (flagEl && codeEl) { flagEl.textContent = '\u{1F310}'; codeEl.textContent = '/' + code; }
+    var options = document.querySelectorAll('.lang-option');
+    for (var i = 0; i < options.length; i++) options[i].classList.toggle('active', options[i].getAttribute('data-lang') === code);
+  };
+  window.detectCurrentLang = function() {
+    var match = document.cookie.match(/googtrans=\/en\/([a-zA-Z-]{2,10})/);
+    if (match && match[1]) return match[1];
+    return 'en';
+  };
+  function applyLangToCombo(code, delay, onSuccess) {
+    var attempts = 0;
+    var poll = setInterval(function() {
+      var combo = document.querySelector('.goog-te-combo');
+      if (combo) { combo.value = code; combo.dispatchEvent(new Event('change')); clearInterval(poll); window.updateLangBtn(code); if (onSuccess) onSuccess(); }
+      if (++attempts > 30) clearInterval(poll);
+    }, delay || 200);
+  }
+  function selectLanguage(code) {
+    if (code === 'en') { restoreEnglish(); return; }
+    try { sessionStorage.setItem('pendingLang', code); } catch(e) {}
+    applyLangToCombo(code, 200, closeLangModal);
+  }
+  function restoreEnglish() {
+    try { sessionStorage.removeItem('pendingLang'); } catch(e) {}
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax; Secure';
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.2864tw.com; SameSite=Lax; Secure';
+    closeLangModal(); location.reload();
+  }
+  var langModalEl = document.getElementById('langModal');
+  function openLangModal() { if (langModalEl) langModalEl.classList.add('active'); }
+  function closeLangModal() { if (langModalEl) langModalEl.classList.remove('active'); }
+  var grid = document.getElementById('langGrid');
+  if (grid) {
+    var detected = window.detectCurrentLang();
+    for (var i = 0; i < LANGUAGES.length; i++) {
+      var l = LANGUAGES[i];
+      var btn = document.createElement('button');
+      btn.className = 'lang-option' + (l.code === detected ? ' active' : '');
+      btn.setAttribute('data-lang', l.code);
+      var flagSpan = document.createElement('span'); flagSpan.className = 'lang-flag'; flagSpan.textContent = l.flag;
+      var nameSpan = document.createElement('span'); nameSpan.className = 'lang-name'; nameSpan.textContent = l.name;
+      btn.appendChild(flagSpan); btn.appendChild(nameSpan);
+      btn.addEventListener('click', (function(code) { return function() { selectLanguage(code); }; })(l.code));
+      grid.appendChild(btn);
+    }
+    window.updateLangBtn(detected);
+  }
+  var langBtn = document.getElementById('langBtn');
+  if (langBtn) langBtn.addEventListener('click', openLangModal);
+  var langModalClose = document.getElementById('langModalClose');
+  if (langModalClose) langModalClose.addEventListener('click', closeLangModal);
+  if (langModalEl) langModalEl.addEventListener('click', function(e) { if (e.target === langModalEl) closeLangModal(); });
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && langModalEl && langModalEl.classList.contains('active')) { closeLangModal(); e.stopPropagation(); } });
+  setTimeout(function() { if (!window._gtLoaded) { var btn = document.getElementById('langBtn'); if (btn) { btn.style.opacity = '0.5'; btn.style.cursor = 'default'; btn.title = 'Translation unavailable'; btn.removeEventListener('click', openLangModal); } } }, 15000);
+})();
+function googleTranslateElementInit() {
+  window._gtLoaded = true;
+  new google.translate.TranslateElement({ pageLanguage: 'en', autoDisplay: false }, 'google_translate_element');
+  var pendingLang = null;
+  try { pendingLang = sessionStorage.getItem('pendingLang'); sessionStorage.removeItem('pendingLang'); } catch(e) {}
+  if (pendingLang) {
+    var a = 0; var poll = setInterval(function () { var c = document.querySelector('.goog-te-combo'); if (c) { c.value = pendingLang; c.dispatchEvent(new Event('change')); clearInterval(poll); window.updateLangBtn(pendingLang); } if (++a > 30) clearInterval(poll); }, 250);
+  } else {
+    try {
+      var dismissed = localStorage.getItem('translate-dismissed');
+      if (!dismissed) { var lang = (navigator.language || navigator.userLanguage || 'en').split('-')[0]; if (lang !== 'en') { var a2 = 0; var p2 = setInterval(function () { var c = document.querySelector('.goog-te-combo'); if (c) { c.value = lang; c.dispatchEvent(new Event('change')); clearInterval(p2); window.updateLangBtn(lang); } if (++a2 > 30) clearInterval(p2); }, 250); } }
+    } catch(e) {}
+    var detected = window.detectCurrentLang();
+    if (detected !== 'en') window.updateLangBtn(detected);
+  }
+}
+</script>
+<script src="https://translate.googleapis.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
 </body>
 </html>
