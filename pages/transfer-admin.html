@@ -125,8 +125,14 @@
   .drawer label{display:block; font-size:.72rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.3rem}
   .player-edit-row{display:grid; grid-template-columns:1fr 1fr; gap:.4rem; margin-bottom:.5rem; padding:.55rem; border:1px solid var(--border); border-radius:9px; background:var(--card)}
   .player-edit-row .full{grid-column:1/-1}
-  .player-edit-row input{width:100%; font-size:.8rem; padding:.4rem .55rem}
+  .player-edit-row input, .player-edit-row select{width:100%; font-size:.8rem; padding:.4rem .55rem}
   .player-edit-row .pname{grid-column:1/-1; font-weight:700; font-size:.85rem; margin-bottom:.15rem}
+  .applicant-info{font-size:.82rem; background:var(--card); border:1px solid var(--border); border-radius:9px; padding:.55rem .65rem}
+  .applicant-info .row{display:flex; gap:.4rem; margin-bottom:.3rem}
+  .applicant-info .row:last-child{margin-bottom:0}
+  .applicant-info .k{color:var(--muted); font-weight:700; flex:0 0 auto; white-space:nowrap}
+  .applicant-info .v{color:var(--text)}
+  .applicant-info .v.muted{color:var(--faint)}
   textarea#notes-input{width:100%; min-height:90px; resize:vertical}
   .drawer-actions{display:flex; gap:.5rem; flex-wrap:wrap}
   .reissue-code{
@@ -167,6 +173,12 @@
 
   @media (max-width:640px){
     .drawer{width:100vw}
+  }
+
+  @media (max-width:760px){
+    .board-wrap{overflow-x:visible}
+    .board{flex-direction:column; align-items:stretch}
+    .column{flex:1 1 auto; width:100%; min-width:0}
   }
 </style>
 </head>
@@ -251,6 +263,11 @@
     <button type="button" class="drawer-close" id="drawer-close" aria-label="Close">&times;</button>
     <h2 id="drawer-title"></h2>
     <div class="sub" id="drawer-sub"></div>
+
+    <section>
+      <label>Applicant info</label>
+      <div id="drawer-applicant-info"></div>
+    </section>
 
     <section>
       <label>Players</label>
@@ -615,6 +632,19 @@ function openDrawer(appId) {
   document.getElementById('drawer-title').textContent = app.type === 'group' ? (app.groupName || 'Group') : (app.players[0] ? app.players[0].name : 'Applicant');
   document.getElementById('drawer-sub').textContent = app.type === 'group' ? ('Group · ' + app.players.length + ' player(s)') : 'Individual applicant';
 
+  var infoEl = document.getElementById('drawer-applicant-info');
+  var preferredDateHtml = app.preferredDate === 'asap'
+    ? 'As soon as possible'
+    : esc(app.preferredDate || 'Not set');
+  var notesHtml = app.notes ? esc(app.notes) : '<span class="v muted">None</span>';
+  infoEl.innerHTML =
+    '<div class="applicant-info">' +
+      '<div class="row"><span class="k">Preferred date:</span><span class="v">' + preferredDateHtml + '</span></div>' +
+      '<div class="row"><span class="k">Applicant notes:</span><span class="v">' + notesHtml + '</span></div>' +
+    '</div>';
+
+  var bucketOptions = columnsSpec();
+
   var playersEl = document.getElementById('drawer-players');
   playersEl.innerHTML = '';
   app.players.forEach(function (p) {
@@ -625,18 +655,6 @@ function openDrawer(appId) {
     nameEl.className = 'pname';
     nameEl.textContent = p.name + ' (S' + p.server + ')';
     row.appendChild(nameEl);
-
-    var uidWrap = document.createElement('div');
-    var uidLabel = document.createElement('label');
-    uidLabel.textContent = 'UID';
-    var uidInput = document.createElement('input');
-    uidInput.type = 'text';
-    uidInput.value = p.uid || '';
-    uidInput.readOnly = true;
-    uidInput.title = 'UID is set by the applicant';
-    uidWrap.appendChild(uidLabel);
-    uidWrap.appendChild(uidInput);
-    row.appendChild(uidWrap);
 
     var cpWrap = document.createElement('div');
     var cpLabel = document.createElement('label');
@@ -649,6 +667,25 @@ function openDrawer(appId) {
     cpWrap.appendChild(cpLabel);
     cpWrap.appendChild(cpInput);
     row.appendChild(cpWrap);
+
+    var bucketWrap = document.createElement('div');
+    bucketWrap.className = 'full';
+    var bucketLabel = document.createElement('label');
+    bucketLabel.textContent = 'Move to';
+    var bucketSelect = document.createElement('select');
+    bucketOptions.forEach(function (col) {
+      var opt = document.createElement('option');
+      opt.value = col.id;
+      opt.textContent = col.label;
+      if (p.status === col.status && (col.status !== 'approved' || p.cycleId === col.cycleId)) {
+        opt.selected = true;
+      }
+      bucketSelect.appendChild(opt);
+    });
+    bucketSelect.addEventListener('change', makeBucketChangeHandler(appId, p.pid, bucketOptions, bucketSelect));
+    bucketWrap.appendChild(bucketLabel);
+    bucketWrap.appendChild(bucketSelect);
+    row.appendChild(bucketWrap);
 
     playersEl.appendChild(row);
   });
@@ -679,6 +716,17 @@ function makeCpChangeHandler(appId, pid, input) {
       if (res.status === 200 && res.json.ok) { showToast('CP saved'); loadAll(); }
       else showToast('CP save failed');
     });
+  };
+}
+
+// Per-row closure for the mobile bucket selector — never a bare loop variable.
+// Mirrors columnsSpec()'s { status, cycleId } mapping and reuses assignPlayer,
+// which already handles the 409 cycle_full override confirm + board reload.
+function makeBucketChangeHandler(appId, pid, bucketOptions, selectEl) {
+  return function () {
+    var col = bucketOptions.filter(function (c) { return c.id === selectEl.value; })[0];
+    if (!col) return;
+    assignPlayer(appId, pid, col.status, col.cycleId, false);
   };
 }
 
