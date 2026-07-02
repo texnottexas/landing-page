@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://www.google.com https://www.gstatic.com; style-src 'unsafe-inline'; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev https://knight-us-platform.rivergameapp.com https://www.google.com https://www.gstatic.com; img-src 'self' data: https://knight-cdn.akamaized.net https://www.gstatic.com https://www.google.com; frame-src https://www.google.com; base-uri 'self'; form-action 'none'; object-src 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev; img-src 'self' data:; frame-src 'none'; base-uri 'self'; form-action 'none'; object-src 'none';">
 <title>Server 2864 · Transfer Registration</title>
 <style>
   :root{
@@ -98,20 +98,9 @@
   .lookup-btn:hover{border-color:var(--accent)}
   .lookup-btn:disabled{opacity:.55; cursor:default}
   .lookup-btn svg{flex:none}
-  .spin{animation:spin .9s linear infinite}
-  @keyframes spin{to{transform:rotate(360deg)}}
-
-  .verified-card{
-    display:none; align-items:center; gap:.7rem; margin-top:.6rem; padding:.6rem .75rem;
-    border:1px solid rgba(63,185,80,.35); border-radius:11px; background:var(--green-soft);
-  }
-  .verified-card.show{display:flex}
-  .verified-card img{width:38px; height:38px; border-radius:8px; object-fit:cover; background:var(--card2); flex:none}
-  .verified-card .vc-text{font-size:.82rem; line-height:1.4}
-  .verified-card .vc-text b{color:var(--text)}
 
   .member-row{
-    display:grid; grid-template-columns:1fr 1fr auto auto; gap:.5rem; align-items:center;
+    display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:.5rem; align-items:center;
     margin-bottom:.55rem; padding:.6rem; border:1px solid var(--border); border-radius:11px; background:var(--card);
   }
   .member-row input{padding:.55rem .6rem; font-size:.88rem}
@@ -120,11 +109,6 @@
     border:1px solid var(--border2); border-radius:9px; background:var(--card2); color:var(--red); cursor:pointer;
   }
   .member-remove:hover{border-color:var(--red)}
-  .member-lookup{
-    flex:none; display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px;
-    border:1px solid var(--border2); border-radius:9px; background:var(--card2); color:var(--text); cursor:pointer;
-  }
-  .member-lookup:hover{border-color:var(--accent)}
   .add-member-btn{
     display:inline-flex; align-items:center; gap:.4rem; padding:.55rem .85rem; margin-top:.3rem;
     border:1px dashed var(--border2); border-radius:11px; background:transparent; color:var(--muted);
@@ -222,7 +206,7 @@
 
   @media (max-width:520px){
     .member-row{grid-template-columns:1fr 1fr; grid-template-rows:auto auto}
-    .member-row .member-lookup,.member-row .member-remove{grid-row:2}
+    .member-row .m-uid,.member-row .member-remove{grid-row:2}
     nav.tabs{gap:.3rem}
     .tab-btn{padding:.4rem .55rem; font-size:.72rem}
     .code-big{font-size:1.9rem}
@@ -274,18 +258,8 @@
           <input type="text" id="leader-server" class="input" maxlength="20" placeholder="e.g. 1234">
         </div>
         <div style="margin-top:.6rem">
-          <div class="field-label" style="margin-bottom:.4rem">UID <span class="hint">optional, for faster verification</span></div>
-          <div class="uid-row">
-            <input type="text" id="leader-uid" class="input" maxlength="20" placeholder="Your in-game UID" inputmode="numeric">
-            <button type="button" class="lookup-btn" id="leader-lookup-btn">
-              <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="6.2"/><path d="M17.5 17.5l-4-4"/></svg>
-              Look up
-            </button>
-          </div>
-          <div class="verified-card" id="leader-verified">
-            <img id="leader-verified-avatar" alt="">
-            <div class="vc-text">Verified <b id="leader-verified-name"></b> · server <b id="leader-verified-server"></b></div>
-          </div>
+          <div class="field-label" style="margin-bottom:.4rem">UID <span class="hint">optional</span></div>
+          <input type="text" id="leader-uid" class="input" maxlength="20" placeholder="Your in-game UID (optional)" inputmode="numeric">
         </div>
       </div>
 
@@ -352,12 +326,9 @@
 
 <footer><span>Brought to you by supporters of the fk boats movement</span></footer>
 
-<script src="https://www.google.com/recaptcha/api.js?render=6Lc6ao0rAAAAACAw6td0IJDvh7s5R9t65LGulR6I"></script>
 <script>
 (function () {
   var API = 'https://push-worker.27tb8s6fct.workers.dev';
-  var RECAPTCHA_SITE = '6Lc6ao0rAAAAACAw6td0IJDvh7s5R9t65LGulR6I';
-  var LOGIN_URL = 'https://knight-us-platform.rivergameapp.com/officePaymentLoginServlet';
   var LS_KEY = 'transfer_identity_v1';
 
   function ident() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || null; } catch (e) { return null; } }
@@ -390,45 +361,6 @@
   window.addEventListener('hashchange', function () { showView(currentView()); });
   showView(currentView());
 
-  // --- UID lookup (reCAPTCHA + officePaymentLoginServlet) -----------------
-  // PRIVACY: we only ever read name / belongSid / headUrl from the response,
-  // then throw the rest away. The session token and any payment/money fields
-  // are never stored or sent anywhere.
-  function lookupUid(uid, onDone) {
-    if (!uid) { onDone(null); return; }
-    if (typeof grecaptcha === 'undefined' || !grecaptcha.execute) { onDone(null); return; }
-    try {
-      grecaptcha.ready(function () {
-        grecaptcha.execute(RECAPTCHA_SITE, { action: 'login' }).then(function (token) {
-          var url = LOGIN_URL + '?uid=' + encodeURIComponent(uid) + '&loginToken=' + encodeURIComponent(token);
-          fetch(url, { mode: 'cors', credentials: 'omit' })
-            .then(function (r) { return r.json(); })
-            .then(function (j) {
-              var r2 = (j && j.result) || null;
-              if (!r2 || !r2.name) { onDone(null); return; }
-              onDone({ name: r2.name, server: String(r2.belongSid || ''), avatar: r2.headUrl || '' });
-            })
-            .catch(function () { onDone(null); });
-        }).catch(function () { onDone(null); });
-      });
-    } catch (e) { onDone(null); }
-  }
-
-  function wireLookupButton(btn, uidInput, onResult) {
-    btn.addEventListener('click', function () {
-      var uid = (uidInput.value || '').trim();
-      if (!uid) return;
-      var original = btn.innerHTML;
-      btn.disabled = true;
-      btn.innerHTML = '<svg class="spin" width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 2a8 8 0 0 1 8 8"/></svg> Looking up…';
-      lookupUid(uid, function (result) {
-        btn.disabled = false;
-        btn.innerHTML = original;
-        onResult(result); // null on any failure — caller falls back silently to manual entry
-      });
-    });
-  }
-
   // --- Register view: type toggle -----------------------------------------
   var memberCount = 0;
   function updateTypeUi() {
@@ -448,15 +380,10 @@
       '<div class="member-row" data-idx="' + idx + '">' +
       '  <input type="text" class="input m-name" maxlength="40" placeholder="Member name">' +
       '  <input type="text" class="input m-server" maxlength="20" placeholder="Server">' +
-      '  <button type="button" class="member-lookup" title="Look up by UID">' +
-      '    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="6.2"/><path d="M17.5 17.5l-4-4"/></svg>' +
-      '  </button>' +
+      '  <input type="text" class="input m-uid" maxlength="20" placeholder="UID (optional)" inputmode="numeric">' +
       '  <button type="button" class="member-remove" title="Remove member">' +
       '    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l10 10M15 5L5 15"/></svg>' +
       '  </button>' +
-      '  <input type="hidden" class="m-uid">' +
-      '  <input type="hidden" class="m-avatar">' +
-      '  <input type="hidden" class="m-verified">' +
       '</div>';
   }
 
@@ -468,48 +395,8 @@
     var row = div.firstElementChild;
     wrap.appendChild(row);
     row.querySelector('.member-remove').addEventListener('click', function () { row.remove(); });
-    var lookupBtn = row.querySelector('.member-lookup');
-    var uidField = row.querySelector('.m-uid');
-    // Members don't have a visible UID input in the compact row; use a prompt
-    // so we can still offer the lookup without cluttering the grid layout.
-    lookupBtn.addEventListener('click', function () {
-      var uid = window.prompt('Enter this member\'s UID to auto-fill their name and server:');
-      if (!uid) return;
-      uidField.value = uid.trim();
-      var original = lookupBtn.innerHTML;
-      lookupBtn.disabled = true;
-      lookupBtn.innerHTML = '<svg class="spin" width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 2a8 8 0 0 1 8 8"/></svg>';
-      lookupUid(uid.trim(), function (result) {
-        lookupBtn.disabled = false;
-        lookupBtn.innerHTML = original;
-        if (!result) return; // silent fallback — manual entry stays available
-        row.querySelector('.m-name').value = result.name;
-        row.querySelector('.m-server').value = result.server;
-        row.querySelector('.m-avatar').value = result.avatar;
-        row.querySelector('.m-verified').value = result.name;
-      });
-    });
   }
   document.getElementById('add-member-btn').addEventListener('click', addMemberRow);
-
-  // --- Register view: leader UID lookup -----------------------------------
-  var leaderVerified = null;
-  wireLookupButton(
-    document.getElementById('leader-lookup-btn'),
-    document.getElementById('leader-uid'),
-    function (result) {
-      if (!result) return; // silent fallback — manual entry stays available
-      leaderVerified = result;
-      document.getElementById('leader-name').value = result.name;
-      document.getElementById('leader-server').value = result.server;
-      var vc = document.getElementById('leader-verified');
-      vc.classList.add('show');
-      document.getElementById('leader-verified-name').textContent = result.name;
-      document.getElementById('leader-verified-server').textContent = result.server;
-      var av = document.getElementById('leader-verified-avatar');
-      if (result.avatar) av.src = result.avatar;
-    }
-  );
 
   // --- Register view: submit ----------------------------------------------
   document.getElementById('register-form').addEventListener('submit', function (e) {
@@ -525,11 +412,7 @@
     if (!name) { statusEl.textContent = 'Please enter your in-game name.'; statusEl.className = 'status err'; return; }
     if (!server) { statusEl.textContent = 'Please enter your current server.'; statusEl.className = 'status err'; return; }
 
-    var payload = {
-      type: type, name: name, server: server, uid: uid,
-      avatar: leaderVerified ? leaderVerified.avatar : '',
-      verifiedName: leaderVerified ? leaderVerified.name : ''
-    };
+    var payload = { type: type, name: name, server: server, uid: uid };
 
     if (type === 'group') {
       var groupName = (document.getElementById('group-name').value || '').trim();
@@ -542,9 +425,7 @@
         if (!mName) return;
         members.push({
           name: mName, server: mServer,
-          uid: (row.querySelector('.m-uid').value || '').trim(),
-          avatar: row.querySelector('.m-avatar').value || '',
-          verifiedName: row.querySelector('.m-verified').value || ''
+          uid: (row.querySelector('.m-uid').value || '').trim()
         });
       });
       payload.members = members;
