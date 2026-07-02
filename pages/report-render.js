@@ -929,7 +929,7 @@ window.ReportRender = (function () {
       var name = DECOR_GROUPS[String(variant)] || DECOR_GROUPS[String(grp)] || ('Decor #' + grp);
       var dd = DECOR_DATA[String(grp)] || DECOR_DATA[String(variant)];
       var buffDesc = dd ? decorBuffDesc(dd.b) : '';
-      var lvl = decorLevel(grp, placedId);
+      var lvl = decorLevel(variant, placedId);
       wrap.appendChild(el('div', { className: 'ta-decor-row' }, [
         decorIconImg(variant),                     // may be null; el() skips null children
         el('span', { className: 'ta-decor-name notranslate' }, name),
