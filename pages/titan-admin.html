@@ -437,6 +437,23 @@
     .sq-flag-list li.warn { border-left: 2px solid var(--air); }
     .sq-flag-list li.err { border-left: 2px solid var(--danger); }
 
+    /* Collapsible validation sections */
+    #sq-report details { border: 1px solid var(--border); border-radius: 8px; margin-bottom: .5rem; background: var(--bg2); }
+    #sq-report summary { cursor: pointer; padding: .5rem .7rem; font-weight: 700; font-size: .77rem; color: var(--text); list-style: none; display: flex; align-items: center; gap: .5rem; user-select: none; }
+    #sq-report summary::-webkit-details-marker { display: none; }
+    #sq-report summary::before { content: '\25B8'; color: var(--muted); font-size: .7rem; transition: transform .15s; }
+    #sq-report details[open] > summary::before { transform: rotate(90deg); }
+    #sq-report summary:hover { color: var(--accent); }
+    .flag-sum-count { margin-left: auto; background: var(--tag); border: 1px solid var(--border); border-radius: 999px; padding: .05rem .55rem; font-size: .7rem; color: var(--muted); font-weight: 600; }
+    .flag-body { padding: .1rem .7rem .7rem; }
+    .flag-body > .flag-copy { margin: .1rem 0 .5rem; }
+    .sq-flag-list.cols { display: block; columns: 168px; column-gap: 1rem; }
+    .sq-flag-list.cols li { break-inside: avoid; margin-bottom: 3px; }
+    .swap-group { margin-top: .5rem; }
+    .swap-group-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font-size: .74rem; color: var(--text); margin: .5rem 0 .25rem; }
+    .flag-copy { background: var(--tag); border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: .18rem .55rem; font-size: .68rem; cursor: pointer; transition: all .15s; white-space: nowrap; font-family: inherit; }
+    .flag-copy:hover { border-color: var(--accent); color: var(--accent); }
+
     @media (max-width: 640px) {
       main { padding: 1rem 1rem 2rem; }
       header { padding: .7rem 1rem; flex-wrap: wrap; gap: .5rem; }
@@ -2252,6 +2269,10 @@ document.getElementById('sq-squads').addEventListener('click', function (e) {
   }
 });
 
+// Remembers which validation sections the editor expanded, so a re-render
+// (after a move/add/rebuild) doesn't collapse a list they're working through.
+var sqFlagOpen = {};
+
 function sqRenderReport(report) {
   var host = document.getElementById('sq-report');
   if (!host) return;
@@ -2283,22 +2304,68 @@ function sqRenderReport(report) {
     card.appendChild(grid); host.appendChild(card);
   }
 
-  // Flags
+  // Flags (validation) — each section is a collapsible <details>; long lists
+  // collapse by default. Expand state persists across re-renders (sqFlagOpen).
   var flagCard = document.createElement('div'); flagCard.className = 'card';
   var anyFlag = false;
-  function flagSection(title, items, cls, fmt) {
+  var COLLAPSE_OVER = 12; // sections longer than this start collapsed
+
+  // A small "Copy names" button (comma-joined) for pasting into a broadcast/chat.
+  function copyBtn(text) {
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'flag-copy'; b.textContent = 'Copy names';
+    b.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var done = function (ok) { b.textContent = ok ? 'Copied!' : 'Copy failed'; setTimeout(function () { b.textContent = 'Copy names'; }, 1200); };
+      try { navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); }); }
+      catch (_) { done(false); }
+    });
+    return b;
+  }
+  function flagDetails(title, count) {
+    var d = document.createElement('details');
+    d.open = (title in sqFlagOpen) ? sqFlagOpen[title] : (count <= COLLAPSE_OVER);
+    d.addEventListener('toggle', function () { sqFlagOpen[title] = d.open; });
+    var sum = document.createElement('summary');
+    sum.innerHTML = '<span class="flag-sum-title">' + esc(title) + '</span><span class="flag-sum-count">' + count + '</span>';
+    d.appendChild(sum);
+    return d;
+  }
+  function listOf(items, cls, fmt) {
+    var ul = document.createElement('ul'); ul.className = 'sq-flag-list cols';
+    items.forEach(function (it) { var li = document.createElement('li'); if (cls) li.className = cls; li.textContent = fmt(it); ul.appendChild(li); });
+    return ul;
+  }
+  // Plain collapsible section (Unplaced / Willing to swap / Unknown labels).
+  function flagSection(title, items, cls, fmt, nameOf) {
     if (!items || !items.length) return;
     anyFlag = true;
-    var sec = document.createElement('div'); sec.style.marginBottom = '1rem';
-    var h = document.createElement('strong'); h.textContent = title + ' (' + items.length + ')';
-    h.style.display = 'block'; h.style.marginBottom = '.3rem'; sec.appendChild(h);
-    var ul = document.createElement('ul'); ul.className = 'sq-flag-list';
-    items.forEach(function (it) {
-      var li = document.createElement('li'); if (cls) li.className = cls;
-      li.textContent = fmt(it);
-      ul.appendChild(li);
+    var d = flagDetails(title, items.length);
+    var body = document.createElement('div'); body.className = 'flag-body';
+    if (nameOf) { var names = items.map(nameOf).filter(Boolean); if (names.length) body.appendChild(copyBtn(names.join(', '))); }
+    body.appendChild(listOf(items, cls, fmt));
+    d.appendChild(body); flagCard.appendChild(d);
+  }
+  // "Needs to swap" grouped by DESTINATION alliance — each group has its own
+  // copy button (the exact list the admin pastes to tell those players to swap).
+  function swapSection(title, items) {
+    if (!items || !items.length) return;
+    anyFlag = true;
+    var d = flagDetails(title, items.length);
+    var body = document.createElement('div'); body.className = 'flag-body';
+    var groups = {};
+    items.forEach(function (m) { var to = m.swapTo ? allianceDisplay(m.swapTo) : '(unassigned)'; (groups[to] = groups[to] || []).push(m.name || m); });
+    Object.keys(groups).sort().forEach(function (to) {
+      var names = groups[to];
+      var g = document.createElement('div'); g.className = 'swap-group';
+      var gh = document.createElement('div'); gh.className = 'swap-group-head';
+      var lbl = document.createElement('span'); lbl.innerHTML = 'Swap to <b>' + esc(to) + '</b> (' + names.length + ')';
+      gh.appendChild(lbl); gh.appendChild(copyBtn(names.join(', ')));
+      g.appendChild(gh);
+      var ul = document.createElement('ul'); ul.className = 'sq-flag-list cols';
+      names.forEach(function (n) { var li = document.createElement('li'); li.className = 'warn'; li.textContent = n; ul.appendChild(li); });
+      g.appendChild(ul); body.appendChild(g);
     });
-    sec.appendChild(ul); flagCard.appendChild(sec);
+    d.appendChild(body); flagCard.appendChild(d);
   }
   var reasonMap = {
     no_time: 'no eligible slot for their availability',
@@ -2310,11 +2377,9 @@ function sqRenderReport(report) {
     var who = u.name || u;
     var reason = u.reason ? (reasonMap[u.reason] || u.reason) : '';
     return who + (reason ? ' - ' + reason : '');
-  });
-  flagSection('Needs to swap', report.swaps, 'warn', function (m) {
-    return (m.name || m) + (m.swapTo ? ' -> ' + allianceDisplay(m.swapTo) : '');
-  });
-  flagSection('Willing to swap', report.canSwap, '', function (m) { return (m.name || m); });
+  }, function (u) { return u.name || u; });
+  swapSection('Needs to swap', report.swaps);
+  flagSection('Willing to swap', report.canSwap, '', function (m) { return (m.name || m); }, function (m) { return (m.name || m); });
   flagSection('Unknown alliance labels', report.unknownAlliances, 'warn', function (a) { return (a.alliance || a); });
 
   if (anyFlag) {
