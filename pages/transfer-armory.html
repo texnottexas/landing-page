@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transfer Armory - Server 2864</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' https://knight-cdn.akamaized.net https://h5.topwargame.com https://raw.githubusercontent.com data:; connect-src 'self' https://fight-report-va.oss-accelerate.aliyuncs.com https://fight-report.oss-accelerate.aliyuncs.com; base-uri 'self'; form-action 'none'; object-src 'none';">
+<style>
+  :root{--bg:#0d1117;--surface:#161b22;--card:#1c2128;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#79c0ff;--green:#3fb950}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:1rem}
+  .ta-wrap{max-width:900px;margin:0 auto}
+  .ta-status{color:var(--muted);font-size:.85rem;padding:1rem 0}
+  .ta-status.error{color:#f85149}
+  .ta-overview{display:flex;gap:.8rem;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:.9rem 1rem;margin-bottom:1rem}
+  .ta-ov-avatar{width:56px;height:56px;border-radius:10px;object-fit:cover;background:var(--surface)}
+  .ta-ov-name{font-size:1.05rem;font-weight:700}
+  .ta-ov-sub{font-size:.75rem;color:var(--muted)}
+  .ta-ov-cp{font-size:.85rem;color:var(--accent);font-weight:600;margin-top:.15rem}
+  .ta-section{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:.9rem 1rem;margin-bottom:1rem}
+  .ta-section-title{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:.6rem}
+  .ta-empty{color:var(--muted);font-size:.8rem}
+  .ta-picker button{display:block;width:100%;text-align:left;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:.6rem .8rem;margin-bottom:.5rem;cursor:pointer}
+  .ta-picker button:hover{border-color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="ta-wrap">
+  <div id="ta-status" class="ta-status">Loading report...</div>
+  <div id="ta-body"></div>
+</div>
+<script src="report-render.js"></script>
+<script>
+(function () {
+  'use strict';
+  var R = window.ReportRender;
+  var params = new URLSearchParams(location.search);
+  var id = (params.get('id') || '').trim();
+  var sk = (params.get('sk') || '').trim().toLowerCase();
+  var nameOverride = params.get('n') || '';
+  var serverOverride = params.get('sv') || '';
+  var statusEl = document.getElementById('ta-status');
+  var bodyEl = document.getElementById('ta-body');
+
+  function fail(msg) { statusEl.textContent = msg; statusEl.className = 'ta-status error'; }
+
+  if (!id || !/^\d{14,22}$/.test(id)) { fail('Missing or invalid report id.'); return; }
+
+  // Collect {player, side, index} for every player on both sides.
+  function allPlayers(battle) {
+    var out = [];
+    ['attacker', 'defender'].forEach(function (sideName) {
+      var side = battle[sideName];
+      var players = (side && side.players) || [];
+      var tag = sideName === 'attacker' ? 'att' : 'def';
+      players.forEach(function (p, i) { out.push({ player: p, side: tag, index: i }); });
+    });
+    return out;
+  }
+
+  // Render the chosen player: Overview now; sections wired in later tasks.
+  function renderPlayer(battle, entry) {
+    statusEl.textContent = '';
+    bodyEl.innerHTML = '';
+    var march = (battle.fightMarches && battle.fightMarches[0]) || null;
+    bodyEl.appendChild(R.renderOverview(entry.player, entry.side, march, nameOverride, serverOverride));
+    // SECTION HOOKS (later tasks append here):
+    // appendSection('Heroes & Gear', R.buildHeroGearSide([entry.player], '', ''));
+    // appendSection('Enigma Beasts', R.buildEnigmaSide([entry.player], ''));
+    // appendSection('Decorations', R.buildDecorationSide(entry.player));
+    // appendSection('Bases', R.buildBaseSkinSide(entry.player));
+  }
+
+  function appendSection(title, node) {
+    var sec = R.el('div', { className: 'ta-section' }, [
+      R.el('div', { className: 'ta-section-title' }, title),
+      node || R.el('div', { className: 'ta-empty' }, 'No data in this report.')
+    ]);
+    bodyEl.appendChild(sec);
+  }
+  window._taAppendSection = appendSection; // used by section-render steps
+
+  function showPicker(battle, entries) {
+    statusEl.textContent = 'Could not auto-identify this player. Choose who to view:';
+    bodyEl.innerHTML = '';
+    var wrap = R.el('div', { className: 'ta-picker' });
+    entries.forEach(function (e) {
+      var pi = R.getPlayerInfoRaw(e.player);
+      var label = (pi.username || ('Player ' + (e.index + 1))) + ' (' + (e.side === 'att' ? 'attacker' : 'defender') + ')';
+      var btn = R.el('button', {}, label);
+      btn.addEventListener('click', function () { renderPlayer(battle, e); });
+      wrap.appendChild(btn);
+    });
+    bodyEl.appendChild(wrap);
+  }
+
+  R.fetchReportResponse(id)
+    .then(function (r) { if (!r.ok) throw new Error('Report not found (HTTP ' + r.status + ')'); return r.json(); })
+    .then(function (data) {
+      if (!data.battle) throw new Error('Invalid report format');
+      R.loadAwakeningRef();
+      var entries = allPlayers(data.battle);
+      if (!entries.length) throw new Error('No players in report');
+      if (!sk) { showPicker(data.battle, entries); return; }
+      // Hash each player's uid; first match wins.
+      Promise.all(entries.map(function (e) { return R.sha256hex(e.player.uid == null ? '' : e.player.uid); }))
+        .then(function (hashes) {
+          var idx = hashes.indexOf(sk);
+          if (idx === -1) { showPicker(data.battle, entries); return; }
+          renderPlayer(data.battle, entries[idx]);
+        });
+    })
+    .catch(function (err) { fail(err.message); });
+})();
+</script>
+</body>
+</html>
