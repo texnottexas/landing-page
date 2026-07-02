@@ -105,6 +105,13 @@
   .badge.group{color:#fff}
   .badge.cp{color:var(--gold); border-color:rgba(210,153,34,.4); background:var(--gold-soft)}
   .badge.warn{color:var(--gold); border-color:rgba(210,153,34,.5); background:var(--gold-soft); display:inline-flex; align-items:center; gap:.2rem}
+  .badge.ts-pending{color:var(--gold); border-color:rgba(210,153,34,.4); background:var(--gold-soft)}
+  .badge.ts-completed{color:var(--green); border-color:rgba(63,185,80,.4); background:var(--green-soft)}
+  .badge.group-count{color:var(--text); background:var(--card2); border-color:var(--border2); font-family:var(--mono)}
+
+  /* Group card (collapsed group representation on the board) */
+  .card.group-card{border-left:3px solid var(--accent)}
+  .group-leader{font-size:.72rem; color:var(--muted); margin-top:.15rem}
 
   .empty-col{color:var(--faint); font-size:.76rem; text-align:center; padding:1rem .5rem}
 
@@ -188,7 +195,9 @@
   <div class="gate-card">
     <h3>Transfer Planner</h3>
     <p>Leadership access only. Enter the editor password to continue.</p>
-    <button type="button" class="btn primary" id="gate-btn">Enter password</button>
+    <input type="password" class="input" id="gate-input" placeholder="Editor password" autocomplete="current-password" style="width:100%; margin-bottom:.6rem; text-align:center">
+    <button type="button" class="btn primary" id="gate-submit" style="width:100%">Continue</button>
+    <div id="gate-error" style="color:var(--red); font-size:.76rem; margin-top:.55rem; min-height:1em"></div>
   </div>
 </div>
 
@@ -303,21 +312,42 @@ var API_BASE = 'https://push-worker.27tb8s6fct.workers.dev';
 var ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ESC_MAP[c]; }); }
 
-// ── PASSWORD GATE (memory only — never localStorage) ────────────────────
-var editPw = '';
-
-function promptForPw() {
-  var v = (window.prompt('Enter the Transfer editor password:') || '').trim();
-  if (v) { editPw = v; document.getElementById('gate-bg').classList.add('hide'); return true; }
-  return false;
+// CP is stored raw (e.g. 73120000) but players think in millions. Show/enter it
+// as "73.12M". cpLabelM -> "73.12M" (display); mToCP("73.12M"|"73.12") -> 73120000 (store).
+function cpToM(cp) { return (cp == null || cp === '') ? '' : (cp / 1e6).toFixed(2); }
+function cpLabelM(cp) { var m = cpToM(cp); return m === '' ? '' : m + 'M'; }
+function mToCP(str) {
+  var n = parseFloat(String(str).replace(/[^0-9.]/g, ''));
+  return isNaN(n) ? null : Math.round(n * 1e6);
 }
 
-document.getElementById('gate-btn').addEventListener('click', function () {
-  if (promptForPw()) init();
-});
+// ── PASSWORD GATE (persisted in localStorage, masked input — same UX as titan-admin) ──
+var PW_KEY = 'transferEditPw';
+var editPw = localStorage.getItem(PW_KEY) || '';
+
+function showGate(msg) {
+  document.getElementById('gate-bg').classList.remove('hide');
+  document.getElementById('gate-error').textContent = msg || '';
+  var inp = document.getElementById('gate-input');
+  inp.value = '';
+  inp.focus();
+}
+function hideGate() { document.getElementById('gate-bg').classList.add('hide'); }
+
+function submitPw() {
+  var v = (document.getElementById('gate-input').value || '').trim();
+  if (!v) { document.getElementById('gate-error').textContent = 'Please enter the password.'; return; }
+  editPw = v;
+  try { localStorage.setItem(PW_KEY, editPw); } catch (e) {}
+  hideGate();
+  init();
+}
+
+document.getElementById('gate-submit').addEventListener('click', submitPw);
+document.getElementById('gate-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') submitPw(); });
 
 // api(path, opts) -> parsed JSON body. Attaches the editor header on every call.
-// On 401, clears the in-memory password and re-prompts, then retries once.
+// On 401, forgets the stored password and re-shows the gate for a fresh entry.
 function api(path, opts) {
   opts = opts || {};
   var method = opts.method || 'GET';
@@ -330,9 +360,9 @@ function api(path, opts) {
   return fetch(API_BASE + path, { method: method, headers: headers, body: body }).then(function (r) {
     if (r.status === 401) {
       editPw = '';
-      var ok = promptForPw();
-      if (!ok) return Promise.reject(new Error('unauthorized'));
-      return api(path, opts);
+      try { localStorage.removeItem(PW_KEY); } catch (e) {}
+      showGate('That password was rejected. Please try again.');
+      return Promise.reject(new Error('unauthorized'));
     }
     return r.json().then(function (j) { return { status: r.status, json: j }; });
   });
@@ -434,12 +464,21 @@ function columnsSpec() {
   var cols = [
     { id: 'pending', label: 'Pending', status: 'pending', cycleId: '' },
     { id: 'waitlist', label: 'Waitlist', status: 'waitlist', cycleId: '' },
+    // Accepted = approved but not yet slotted into a wave (shows on the public queue).
+    { id: 'accepted', label: 'Accepted', status: 'approved', cycleId: '' },
   ];
   STATE.cycles.forEach(function (c) {
     cols.push({ id: 'cycle:' + c.id, label: c.label, status: 'approved', cycleId: c.id, capacity: c.capacity });
   });
   cols.push({ id: 'rejected', label: 'Rejected', status: 'rejected', cycleId: '' });
   return cols;
+}
+
+// Effective transfer status for a player (defaults legacy rows with no field).
+function transferStatusOf(player) {
+  if (player.status !== 'approved') return '';
+  if (player.transferStatus) return player.transferStatus;
+  return player.cycleId ? 'pending' : 'accepted';
 }
 
 function playerRows() {
@@ -465,7 +504,9 @@ function renderBoard() {
     });
     colRows = sortPlayers(colRows);
 
-    var count = col.status === 'approved' ? (STATE.counts[col.cycleId] || 0) : colRows.length;
+    // Wave columns use the server's per-cycle count; every other column (incl.
+    // Accepted = approved with no cycle) counts the players shown here.
+    var count = (col.status === 'approved' && col.cycleId) ? (STATE.counts[col.cycleId] || 0) : colRows.length;
     var over = col.capacity != null && count > col.capacity;
 
     var colEl = document.createElement('div');
@@ -493,8 +534,19 @@ function renderBoard() {
       empty.textContent = 'No players';
       body.appendChild(empty);
     } else {
+      // Group applications collapse to ONE card per column (group name + leader +
+      // how many members are in this column). Individuals render one card each.
+      // First-seen order preserves the active sort.
+      var seenGroup = {};
       colRows.forEach(function (row) {
-        body.appendChild(makeCard(row.app, row.player));
+        if (row.app.type === 'group') {
+          if (seenGroup[row.app.id]) return;
+          seenGroup[row.app.id] = true;
+          var groupPlayers = colRows.filter(function (r) { return r.app.id === row.app.id; }).map(function (r) { return r.player; });
+          body.appendChild(makeGroupCard(row.app, groupPlayers));
+        } else {
+          body.appendChild(makeCard(row.app, row.player));
+        }
       });
     }
 
@@ -539,7 +591,7 @@ function makeCard(app, player) {
   if (player.cp) {
     var cpBadge = document.createElement('span');
     cpBadge.className = 'badge cp';
-    cpBadge.textContent = 'CP ' + player.cp;
+    cpBadge.textContent = 'CP ' + cpLabelM(player.cp);
     meta.appendChild(cpBadge);
   }
 
@@ -551,12 +603,80 @@ function makeCard(app, player) {
     meta.appendChild(warnBadge);
   }
 
+  appendTransferStatusBadge(meta, transferStatusOf(player));
+
   card.appendChild(meta);
 
   card.addEventListener('click', makeCardClickHandler(app.id));
 
   attachCardDragHandlers(card);
   return card;
+}
+
+// One card representing a whole group's players within a single column.
+// Shows group name + leader + how many members are here; opens the drawer on
+// click (members + operations live there); dragging moves this column's members.
+function makeGroupCard(app, players) {
+  var card = document.createElement('div');
+  card.className = 'card group-card';
+  card.draggable = true;
+  card.dataset.appId = app.id;
+  card.dataset.group = '1';
+
+  var top = document.createElement('div');
+  top.className = 'card-top';
+  var nameEl = document.createElement('div');
+  nameEl.className = 'card-name';
+  nameEl.textContent = app.groupName || 'Group';
+  var countBadge = document.createElement('span');
+  countBadge.className = 'badge group-count';
+  var total = (app.players || []).length;
+  countBadge.textContent = '👥 ' + players.length + (players.length !== total ? ' of ' + total : '');
+  countBadge.title = players.length + ' of ' + total + ' member(s) in this column';
+  top.appendChild(nameEl);
+  top.appendChild(countBadge);
+  card.appendChild(top);
+
+  var leaderEl = document.createElement('div');
+  leaderEl.className = 'group-leader';
+  var leader = app.players && app.players[0];
+  leaderEl.textContent = 'Leader: ' + (leader ? (leader.name + ' (S' + leader.server + ')') : '—');
+  card.appendChild(leaderEl);
+
+  var meta = document.createElement('div');
+  meta.className = 'card-meta';
+  var groupBadge = document.createElement('span');
+  groupBadge.className = 'badge group';
+  groupBadge.style.background = colorForApp(app.id);
+  groupBadge.style.borderColor = colorForApp(app.id);
+  groupBadge.textContent = 'Group';
+  meta.appendChild(groupBadge);
+  if (app.split) {
+    var warnBadge = document.createElement('span');
+    warnBadge.className = 'badge warn';
+    warnBadge.title = 'This group is split across multiple waves';
+    warnBadge.textContent = '⚠ split';
+    meta.appendChild(warnBadge);
+  }
+  // If every shown member shares a transfer status, summarise it on the card.
+  var tset = {};
+  players.forEach(function (p) { var t = transferStatusOf(p); if (t) tset[t] = true; });
+  var tkeys = Object.keys(tset);
+  if (tkeys.length === 1) appendTransferStatusBadge(meta, tkeys[0]);
+  card.appendChild(meta);
+
+  card.addEventListener('click', makeCardClickHandler(app.id));
+  attachGroupDragHandlers(card, app, players);
+  return card;
+}
+
+// Adds a Pending Transfer / Completed pill (Accepted is implied by the column).
+function appendTransferStatusBadge(meta, ts) {
+  if (ts !== 'pending' && ts !== 'completed') return;
+  var b = document.createElement('span');
+  b.className = 'badge ' + (ts === 'completed' ? 'ts-completed' : 'ts-pending');
+  b.textContent = ts === 'completed' ? 'Completed' : 'Pending Transfer';
+  meta.appendChild(b);
 }
 
 // Per-card closure for click — never a bare loop variable.
@@ -583,6 +703,17 @@ function makeDragEndHandler(card) {
   return function () { card.classList.remove('dragging'); dragData = null; };
 }
 
+// Group card drag carries every member shown on it (this column's members).
+function attachGroupDragHandlers(card, app, players) {
+  var pids = players.map(function (p) { return p.pid; });
+  card.addEventListener('dragstart', function (e) {
+    dragData = { appId: app.id, group: true, pids: pids };
+    card.classList.add('dragging');
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+  });
+  card.addEventListener('dragend', function () { card.classList.remove('dragging'); dragData = null; });
+}
+
 function attachColumnDropHandlers(colEl, col) {
   colEl.addEventListener('dragover', function (e) {
     e.preventDefault();
@@ -599,7 +730,8 @@ function makeDropHandler(colEl, col) {
     e.preventDefault();
     colEl.classList.remove('dragover');
     if (!dragData) return;
-    assignPlayer(dragData.appId, dragData.pid, col.status, col.cycleId, false);
+    if (dragData.group) assignGroup(dragData.appId, dragData.pids, col.status, col.cycleId, false);
+    else assignPlayer(dragData.appId, dragData.pid, col.status, col.cycleId, false);
   };
 }
 
@@ -617,7 +749,48 @@ function assignPlayer(appId, pid, status, cycleId, force) {
       return;
     }
     showToast('Updated');
-    loadAll();
+    refreshAll();
+  });
+}
+
+// Move several players (a whole group, or a group's members in one column) to the
+// same bucket. Assigns sequentially; the first at-capacity wave asks once, then
+// forces the rest so a group isn't left half-moved.
+function assignGroup(appId, pids, status, cycleId, force) {
+  var list = (pids || []).slice();
+  if (!list.length) return;
+  var forced = !!force;
+  var idx = 0;
+  function step() {
+    if (idx >= list.length) { showToast('Group updated'); refreshAll(); return; }
+    var payload = { appId: appId, pid: list[idx], status: status, cycleId: cycleId || '' };
+    if (forced) payload.force = true;
+    api('/transfer/assign', { method: 'POST', body: payload }).then(function (res) {
+      if (res.status === 409 && res.json.error === 'cycle_full') {
+        if (!forced) {
+          if (!window.confirm('Wave is at capacity (' + res.json.count + '/' + res.json.capacity + '). Override for the whole group?')) { refreshAll(); return; }
+          forced = true;
+        }
+        payload.force = true;
+        api('/transfer/assign', { method: 'POST', body: payload }).then(function (r2) {
+          if (r2.status !== 200 || !r2.json.ok) { showToast('Group move failed'); refreshAll(); return; }
+          idx++; step();
+        });
+        return;
+      }
+      if (res.status !== 200 || !res.json.ok) { showToast('Group move failed: ' + (res.json && res.json.error ? res.json.error : 'error')); refreshAll(); return; }
+      idx++; step();
+    });
+  }
+  step();
+}
+
+// Reload the board, and if the drawer is open, re-render it against fresh data.
+function refreshAll() {
+  return loadAll().then(function () {
+    if (STATE.activeAppId && document.getElementById('drawer-bg').classList.contains('open')) {
+      openDrawer(STATE.activeAppId);
+    }
   });
 }
 
@@ -647,6 +820,34 @@ function openDrawer(appId) {
 
   var playersEl = document.getElementById('drawer-players');
   playersEl.innerHTML = '';
+
+  // Whole-group operations (groups only): move every member to one bucket at once.
+  if (app.type === 'group') {
+    var groupOps = document.createElement('div');
+    groupOps.className = 'player-edit-row';
+    var gName = document.createElement('div');
+    gName.className = 'pname';
+    gName.textContent = 'Whole group (' + app.players.length + ' players)';
+    groupOps.appendChild(gName);
+    var gWrap = document.createElement('div');
+    gWrap.className = 'full';
+    var gLabel = document.createElement('label');
+    gLabel.textContent = 'Move entire group to';
+    var gSelect = document.createElement('select');
+    var gPlaceholder = document.createElement('option');
+    gPlaceholder.value = ''; gPlaceholder.textContent = 'Choose a bucket…';
+    gSelect.appendChild(gPlaceholder);
+    bucketOptions.forEach(function (col) {
+      var opt = document.createElement('option');
+      opt.value = col.id; opt.textContent = col.label;
+      gSelect.appendChild(opt);
+    });
+    gSelect.addEventListener('change', makeGroupMoveHandler(appId, app, bucketOptions, gSelect));
+    gWrap.appendChild(gLabel); gWrap.appendChild(gSelect);
+    groupOps.appendChild(gWrap);
+    playersEl.appendChild(groupOps);
+  }
+
   app.players.forEach(function (p) {
     var row = document.createElement('div');
     row.className = 'player-edit-row';
@@ -658,11 +859,12 @@ function openDrawer(appId) {
 
     var cpWrap = document.createElement('div');
     var cpLabel = document.createElement('label');
-    cpLabel.textContent = 'CP';
+    cpLabel.textContent = 'CP (M)';
     var cpInput = document.createElement('input');
-    cpInput.type = 'number';
-    cpInput.min = '0';
-    cpInput.value = p.cp != null ? p.cp : '';
+    cpInput.type = 'text';
+    cpInput.inputMode = 'decimal';
+    cpInput.placeholder = 'e.g. 73.12M';
+    cpInput.value = cpLabelM(p.cp);
     cpInput.addEventListener('change', makeCpChangeHandler(appId, p.pid, cpInput));
     cpWrap.appendChild(cpLabel);
     cpWrap.appendChild(cpInput);
@@ -686,6 +888,25 @@ function openDrawer(appId) {
     bucketWrap.appendChild(bucketLabel);
     bucketWrap.appendChild(bucketSelect);
     row.appendChild(bucketWrap);
+
+    // Transfer status — only meaningful once a player is slotted into a wave.
+    if (p.status === 'approved' && p.cycleId) {
+      var tsWrap = document.createElement('div');
+      tsWrap.className = 'full';
+      var tsLabel = document.createElement('label');
+      tsLabel.textContent = 'Transfer status';
+      var tsSelect = document.createElement('select');
+      [['pending', 'Pending Transfer'], ['completed', 'Completed']].forEach(function (o) {
+        var opt = document.createElement('option');
+        opt.value = o[0]; opt.textContent = o[1];
+        if (transferStatusOf(p) === o[0]) opt.selected = true;
+        tsSelect.appendChild(opt);
+      });
+      tsSelect.addEventListener('change', makeTransferStatusHandler(appId, p.pid, tsSelect));
+      tsWrap.appendChild(tsLabel);
+      tsWrap.appendChild(tsSelect);
+      row.appendChild(tsWrap);
+    }
 
     playersEl.appendChild(row);
   });
@@ -711,15 +932,16 @@ function openDrawer(appId) {
 
 function makeCpChangeHandler(appId, pid, input) {
   return function () {
-    var val = input.value === '' ? null : Number(input.value);
+    // Input is in millions ("73.12M" or "73.12"); store raw CP.
+    var val = input.value.trim() === '' ? null : mToCP(input.value);
     api('/transfer/cp', { method: 'POST', body: { appId: appId, pid: pid, cp: val } }).then(function (res) {
-      if (res.status === 200 && res.json.ok) { showToast('CP saved'); loadAll(); }
+      if (res.status === 200 && res.json.ok) { showToast('CP saved'); refreshAll(); }
       else showToast('CP save failed');
     });
   };
 }
 
-// Per-row closure for the mobile bucket selector — never a bare loop variable.
+// Per-row closure for the bucket selector — never a bare loop variable.
 // Mirrors columnsSpec()'s { status, cycleId } mapping and reuses assignPlayer,
 // which already handles the 409 cycle_full override confirm + board reload.
 function makeBucketChangeHandler(appId, pid, bucketOptions, selectEl) {
@@ -727,6 +949,25 @@ function makeBucketChangeHandler(appId, pid, bucketOptions, selectEl) {
     var col = bucketOptions.filter(function (c) { return c.id === selectEl.value; })[0];
     if (!col) return;
     assignPlayer(appId, pid, col.status, col.cycleId, false);
+  };
+}
+
+// Per-member transfer-status flip (Pending Transfer / Completed) via the drawer.
+function makeTransferStatusHandler(appId, pid, selectEl) {
+  return function () {
+    api('/transfer/transfer-status', { method: 'POST', body: { appId: appId, pid: pid, transferStatus: selectEl.value } }).then(function (res) {
+      if (res.status === 200 && res.json.ok) { showToast('Transfer status updated'); refreshAll(); }
+      else showToast('Update failed: ' + (res.json && res.json.error ? res.json.error : 'error'));
+    });
+  };
+}
+
+// Whole-group move from the drawer — moves every member to the chosen bucket.
+function makeGroupMoveHandler(appId, app, bucketOptions, selectEl) {
+  return function () {
+    var col = bucketOptions.filter(function (c) { return c.id === selectEl.value; })[0];
+    if (!col) return;
+    assignGroup(appId, app.players.map(function (p) { return p.pid; }), col.status, col.cycleId, false);
   };
 }
 
@@ -946,11 +1187,10 @@ function init() {
   loadCyclesTab();
 }
 
-if (!promptForPw()) {
-  // Leave the gate visible; user can click the button to retry.
-} else {
-  init();
-}
+// A stored password (from a previous visit) loads straight in; a 401 later will
+// clear it and re-show the gate. No stored password → show the gate.
+if (editPw) { hideGate(); init(); }
+else { showGate(); }
 
 })();
 </script>
