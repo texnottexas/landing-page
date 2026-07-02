@@ -338,7 +338,37 @@
     .ns-ally-group { margin-bottom: .7rem; }
     .ns-ally-group strong { display: block; font-size: .72rem; color: var(--text); margin-bottom: .35rem; }
 
+    /* Editor identity bar */
+    .id-admin-bar {
+      display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+      padding: .55rem .8rem; margin-bottom: 1rem; font-size: .82rem;
+    }
+    .id-admin-bar.unset { border-color: color-mix(in srgb, var(--air) 55%, var(--border)); background: color-mix(in srgb, var(--air) 8%, var(--card)); }
+    .id-admin-bar .id-avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--tag); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: .8rem; overflow: hidden; flex-shrink: 0; }
+    .id-admin-bar .id-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .id-admin-bar .id-who { font-weight: 600; }
+    .id-admin-bar .id-src { color: var(--muted); font-size: .72rem; }
+    .id-admin-bar .id-set { margin-left: auto; }
+
+    /* Changelog */
+    .cl-entry {
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      padding: .55rem .75rem; margin-bottom: .45rem;
+    }
+    .cl-entry .cl-head { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
+    .cl-entry .cl-who { font-weight: 700; color: var(--accent); }
+    .cl-entry .cl-action { font-weight: 600; }
+    .cl-entry .cl-time { color: var(--muted); font-size: .72rem; margin-left: auto; }
+    .cl-entry .cl-detail { white-space: pre-wrap; font-size: .78rem; color: var(--text); margin-top: .3rem; }
+    .cl-entry.system .cl-who { color: var(--muted); }
+
     /* Draft board report */
+    .dr-diff { margin-bottom: 1.1rem; }
+    .dr-diff .dr-diff-line { font-size: .78rem; padding: .28rem .55rem; border-radius: 6px; background: var(--bg2); border: 1px solid var(--border); margin-bottom: 3px; }
+    .dr-diff .dr-diff-line.moved { border-left: 2px solid var(--accent); }
+    .dr-diff .dr-diff-line.added { border-left: 2px solid var(--army); }
+    .dr-diff .dr-diff-line.removed { border-left: 2px solid var(--danger); }
     .dr-section { margin-bottom: 1.25rem; }
     .dr-flag-list { list-style: none; display: flex; flex-direction: column; gap: 3px; margin-top: .4rem; }
     .dr-flag-list li {
@@ -488,6 +518,9 @@
 </header>
 
 <main>
+  <!-- Editor identity (attribution + gate). Uses your site login if present. -->
+  <div id="identityBar" class="id-admin-bar"></div>
+
   <!-- Top-level view tabs -->
   <div class="squad-tabs" id="viewTabs" style="margin-bottom:1.25rem">
     <span class="squad-tabs-label">View</span>
@@ -495,6 +528,7 @@
     <button class="tab-btn" id="viewTabEditor" data-view="editor" onclick="switchView('editor')">Battle Plan &amp; Roster</button>
     <button class="tab-btn" id="viewTabSignups" data-view="signups" onclick="switchView('signups')">Signups</button>
     <button class="tab-btn" id="viewTabDraft" data-view="draft" onclick="switchView('draft')">Draft Board</button>
+    <button class="tab-btn" id="viewTabChangelog" data-view="changelog" onclick="switchView('changelog')">Changelog</button>
   </div>
 
   <!-- Squads (auto-build management) -->
@@ -505,11 +539,10 @@
         <span class="sq-week-pill">Week: <span id="sq-week">&mdash;</span></span>
         <button id="sq-refresh" class="hdr-btn" type="button">Refresh</button>
         <button id="sq-addbtn" class="hdr-btn" type="button">+ Add player</button>
-        <button id="sq-rebuild" class="hdr-btn" type="button">Rebuild now</button>
         <span id="sq-status" class="muted"></span>
       </div>
       <div class="muted" style="margin-top:.5rem">
-        Signups auto-build the battle plan on the server. Move or add a player here to create a lock that survives rebuilds. Squads seat 35; you can exceed that to force a placement, and the squad will flag as over-allocated so you know to move someone out.
+        Signups auto-build the battle plan on the server. Move or add a player here to create a lock that survives rebuilds. Squads seat 35; you can exceed that to force a placement, and the squad will flag as over-allocated so you know to move someone out. To re-run the allocation, use the <b>Draft Board</b> tab &mdash; it previews every change before you publish.
       </div>
     </div>
     <div id="sq-report"></div>
@@ -574,21 +607,37 @@
     </div>
   </section>
 
-  <!-- Draft Board (auto-assembly preview) -->
+  <!-- Draft Board (auto-assembly preview) — the only place a rebuild happens -->
   <section id="titan-draft-tab" style="display:none">
     <div class="card">
       <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-        <strong style="margin-bottom:0">Draft Board</strong>
-        <button id="dr-propose" class="hdr-btn">Build draft from signups</button>
+        <strong style="margin-bottom:0">Draft Board &middot; Rebuild</strong>
+        <button id="dr-propose" class="hdr-btn">Preview rebuild from signups</button>
         <button id="dr-publish" class="save-btn" style="display:none">Approve &amp; Publish</button>
         <span id="dr-status" class="muted"></span>
       </div>
       <div class="muted" style="margin-top:.5rem">
-        Builds a proposed battle plan from this week's signups, first come first served. Review below, then approve to publish. Nothing publishes automatically.
+        This is the only place a rebuild happens. It re-runs the allocation from this week's signups (first come first served), <b>keeping every locked player</b> in place. Review the change summary below, then approve to publish. Nothing publishes automatically.
       </div>
     </div>
+    <div id="dr-diff"></div>
     <div id="dr-report"></div>
     <div id="dr-plan"></div>
+  </section>
+
+  <!-- Changelog -->
+  <section id="titan-changelog-tab" style="display:none">
+    <div class="card">
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+        <strong style="margin-bottom:0">Changelog</strong>
+        <button id="cl-refresh" class="hdr-btn" type="button">Refresh</button>
+        <span id="cl-status" class="muted"></span>
+      </div>
+      <div class="muted" style="margin-top:.5rem">
+        Every edit is logged with who made it. Set your identity (top of page) so your changes are attributed to you.
+      </div>
+    </div>
+    <div id="cl-list"></div>
   </section>
 <div class="ref-modal-overlay" id="refModal" onclick="this.classList.remove('open')">
   <img src="https://i.ibb.co/HTM5MTLn/TC-Reference-Map.png" alt="Formation Reference Map" />
@@ -791,6 +840,8 @@ function toggleTheme() {
 
 // ── INIT (no auth gate — load editor immediately) ────────────────────────────
 (async function init() {
+  syncEditorIdentity();
+  renderIdentityBar();
   // loadSquadPlayers() pulls player-data.json — needed up front so the battle-plan
   // editor's dropdowns can resolve each squad member's power/profession/unit.
   await Promise.all([loadData(), loadRoster(), loadSquadPlayers()]);
@@ -799,6 +850,69 @@ function toggleTheme() {
   // Squads is the primary roster-management view; show it first.
   switchView('squads');
 })();
+
+// ── EDITOR IDENTITY (attribution + gate) ──────────────────────────────────────
+// Prefer the site login (localStorage.playerIdentity, shared with 2864tw.com). If
+// present, every changelog entry is attributed to that player. If not, the editor
+// must set a name before making changes — that name is stored as editor_name.
+function getSiteIdentity() {
+  try {
+    var v = localStorage.getItem('playerIdentity');
+    if (!v || v === 'anonymous') return null;
+    var o = JSON.parse(v);
+    if (o && typeof o.name === 'string' && o.name.trim()) return { name: o.name.trim().slice(0, 50), siteKey: (typeof o.siteKey === 'string' ? o.siteKey : ''), avatarurl: o.avatarurl || null };
+    return null;
+  } catch (e) { return null; }
+}
+// Mirror the site login into editor_name so all attribution reads pick it up.
+function syncEditorIdentity() {
+  var site = getSiteIdentity();
+  if (site) localStorage.setItem('editor_name', site.name);
+}
+// The name changes are attributed to. '' when nothing is set (edits are blocked).
+function getEditorName() {
+  var site = getSiteIdentity();
+  if (site) return site.name;
+  var n = (localStorage.getItem('editor_name') || '').trim();
+  return n;
+}
+// Gate: return the editor name, or open the identity prompt and return '' (caller
+// should abort). Site-logged-in users always pass.
+function requireEditorIdentity() {
+  var n = getEditorName();
+  if (n) return n;
+  promptSetIdentity();
+  return '';
+}
+function promptSetIdentity() {
+  var cur = (localStorage.getItem('editor_name') || '').trim();
+  var name = window.prompt('Set your name so your Titan admin changes are attributed to you:', cur);
+  if (name == null) return '';
+  name = name.trim().slice(0, 50);
+  if (!name) return '';
+  localStorage.setItem('editor_name', name);
+  renderIdentityBar();
+  return name;
+}
+function renderIdentityBar() {
+  var bar = document.getElementById('identityBar');
+  if (!bar) return;
+  var site = getSiteIdentity();
+  var name = getEditorName();
+  if (!name) {
+    bar.className = 'id-admin-bar unset';
+    bar.innerHTML = '<div class="id-avatar">?</div>' +
+      '<div><div class="id-who">No identity set</div><div class="id-src">Set your name so edits are attributed to you.</div></div>' +
+      '<button class="hdr-btn id-set" type="button" onclick="promptSetIdentity()">Set identity</button>';
+    return;
+  }
+  var initial = esc(name.charAt(0).toUpperCase());
+  var avatarSrc = site && site.avatarurl && String(site.avatarurl).indexOf('http') === 0 ? site.avatarurl : null;
+  bar.className = 'id-admin-bar';
+  bar.innerHTML = '<div class="id-avatar">' + (avatarSrc ? '<img src="' + esc(avatarSrc) + '" alt="" onerror="this.style.display=\'none\'">' : initial) + '</div>' +
+    '<div><div class="id-who notranslate">' + esc(name) + '</div><div class="id-src">' + (site ? 'from your site login' : 'editor name &middot; not signed in on the site') + '</div></div>' +
+    '<button class="hdr-btn id-set" type="button" onclick="promptSetIdentity()">Change</button>';
+}
 
 // ── WORKER API ────────────────────────────────────────────────────────────────
 async function loadData() {
@@ -821,6 +935,14 @@ async function loadData() {
 
 // ── NAME PROMPT & SAVE ────────────────────────────────────────────────────────
 function promptSave() {
+  // If identity is already known (site login or a previously-set name), save
+  // straight away — no need to re-ask. Otherwise open the name modal to set one.
+  const ed = getEditorName();
+  if (ed) {
+    if (!ensureTitanEditPw()) { setStatus("Editor password required to save.", "error"); return; }
+    doSavePlan(ed);
+    return;
+  }
   const nameInput = document.getElementById("editorNameInput");
   nameInput.value = localStorage.getItem("editor_name") || "";
   document.getElementById("nameModalBg").classList.add("open");
@@ -835,6 +957,7 @@ async function confirmSave() {
   const name = document.getElementById("editorNameInput").value.trim().slice(0, 50);
   if (!name) { alert("Please enter your name."); return; }
   localStorage.setItem("editor_name", name);
+  renderIdentityBar();
   closeNameModal();
 
   // Editor password is separate from the changelog attribution name above.
@@ -871,10 +994,12 @@ async function doSavePlan(editorName) {
       if (planData[sq]) mergedData[sq] = JSON.parse(JSON.stringify(planData[sq]));
     });
 
+    // autolock:true pins every role assignment (positions + captain buckets) in
+    // the saved plan so a later Rebuild can't scatter them. Goon stays fluid.
     const res = await fetch(TITAN_API + "/titan/battleplan", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Titan-Edit-Password": titanEditPw },
-      body: JSON.stringify({ data: mergedData })
+      body: JSON.stringify({ data: mergedData, autolock: true, editor: editorName, week: titanWeek })
     });
     if (res.status === 401) {
       clearTitanEditPw();
@@ -1290,10 +1415,12 @@ function switchView(view) {
   var showDraft = view === "draft";
   var showSquads = view === "squads";
   var showEditor = view === 'editor';
+  var showChangelog = view === 'changelog';
   document.getElementById("editor").style.display = showEditor ? "" : "none";
   document.getElementById("titan-signups-tab").style.display = showSignups ? "" : "none";
   document.getElementById("titan-draft-tab").style.display = showDraft ? "" : "none";
   document.getElementById("titan-squads-tab").style.display = showSquads ? "" : "none";
+  document.getElementById("titan-changelog-tab").style.display = showChangelog ? "" : "none";
   document.getElementById("saveBtn").style.display = showEditor ? "" : "none";
   document.querySelectorAll("#viewTabs .tab-btn").forEach(function (b) {
     b.classList.toggle("active", b.dataset.view === view);
@@ -1307,6 +1434,7 @@ function switchView(view) {
     titanSquadsLoaded = true;
     loadSquads();
   }
+  if (showChangelog) loadChangelog();
 }
 
 // ── SIGNUPS REVIEW ────────────────────────────────────────────────────────────
@@ -1771,25 +1899,75 @@ var draftPlan = null;  // last proposed plan, awaiting approval
 document.getElementById('dr-propose').onclick = function () {
   ensureTitanEditPw();
   var status = document.getElementById('dr-status');
-  status.textContent = 'Building draft...';
+  status.textContent = 'Building preview...';
   document.getElementById('dr-publish').style.display = 'none';
+  document.getElementById('dr-diff').innerHTML = '';
   draftPlan = null;
-  fetch(TITAN_API + '/titan/propose', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Titan-Edit-Password': titanEditPw },
-    body: JSON.stringify({})
-  })
-    .then(function (r) { if (r.status === 401) { clearTitanEditPw(); throw new Error('auth'); } return r.json(); })
-    .then(function (resp) {
+  // Fetch the current live plan (for the change summary) and the proposal together.
+  Promise.all([
+    fetch(TITAN_API + '/titan/battleplan').then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; }),
+    fetch(TITAN_API + '/titan/propose', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Titan-Edit-Password': titanEditPw },
+      body: JSON.stringify({})
+    }).then(function (r) { if (r.status === 401) { clearTitanEditPw(); throw new Error('auth'); } return r.json(); })
+  ])
+    .then(function (res) {
+      var current = (res[0] && typeof res[0] === 'object' && !Array.isArray(res[0])) ? res[0] : {};
+      var resp = res[1];
       if (!resp.ok) throw new Error(resp.error || 'failed');
       draftPlan = resp.plan || {};
-      status.textContent = 'Draft for ' + (resp.week || '') + '. Review below.';
+      status.textContent = 'Preview for ' + (resp.week || '') + '. Review the change summary, then Approve & Publish.';
+      renderDraftDiff(current, draftPlan);
       renderDraftReport(resp.report || {});
       renderDraftPlan(draftPlan);
       document.getElementById('dr-publish').style.display = (draftPlan && Object.keys(draftPlan).length) ? '' : 'none';
     })
     .catch(function (e) { status.textContent = 'Build failed: ' + e.message; });
 };
+
+// Flatten a plan to { playerName -> "Squad · role" } for diffing current vs proposed.
+function planPlacements(plan) {
+  var map = {};
+  if (!plan || typeof plan !== 'object' || Array.isArray(plan)) return map;
+  Object.keys(plan).forEach(function (sq) {
+    var s = plan[sq]; if (!s || typeof s !== 'object') return;
+    var pos = s.positions || {};
+    Object.keys(pos).forEach(function (n) { if (pos[n]) map[pos[n]] = sq + ' · #' + n; });
+    ['goon', 'standby', 'hover', 'crystal'].forEach(function (b) {
+      (s[b] || []).forEach(function (nm) { if (nm) map[nm] = sq + ' · ' + (SQ_BUCKET_LABEL[b] || b); });
+    });
+  });
+  return map;
+}
+// Change summary: who moves squad/role, who's added, who's dropped, vs the live plan.
+function renderDraftDiff(current, proposed) {
+  var host = document.getElementById('dr-diff'); if (!host) return;
+  host.innerHTML = '';
+  var cur = planPlacements(current), nxt = planPlacements(proposed);
+  var moved = [], added = [], removed = [];
+  Object.keys(nxt).forEach(function (n) {
+    if (!(n in cur)) added.push(n + ' → ' + nxt[n]);
+    else if (cur[n] !== nxt[n]) moved.push(n + ': ' + cur[n] + ' → ' + nxt[n]);
+  });
+  Object.keys(cur).forEach(function (n) { if (!(n in nxt)) removed.push(n + ' (was ' + cur[n] + ')'); });
+  var card = document.createElement('div'); card.className = 'card';
+  var st = document.createElement('strong'); st.textContent = 'Change summary'; card.appendChild(st);
+  if (!moved.length && !added.length && !removed.length) {
+    var p = document.createElement('div'); p.className = 'muted'; p.style.marginTop = '.4rem';
+    p.textContent = 'No changes — this rebuild would leave every player exactly where they are.';
+    card.appendChild(p); host.appendChild(card); return;
+  }
+  function section(title, arr, cls) {
+    if (!arr.length) return;
+    var h = document.createElement('div'); h.style.cssText = 'font-size:.74rem;color:var(--muted);margin:.55rem 0 .25rem'; h.textContent = title + ' (' + arr.length + ')'; card.appendChild(h);
+    arr.forEach(function (t) { var d = document.createElement('div'); d.className = 'dr-diff-line ' + cls; d.textContent = t; card.appendChild(d); });
+  }
+  section('Moved', moved, 'moved');
+  section('Added', added, 'added');
+  section('Removed', removed, 'removed');
+  host.appendChild(card);
+}
 
 function renderDraftReport(report) {
   var host = document.getElementById('dr-report');
@@ -1907,7 +2085,9 @@ function renderDraftPlan(plan) {
 
 document.getElementById('dr-publish').onclick = function () {
   if (!draftPlan || !Object.keys(draftPlan).length) { document.getElementById('dr-status').textContent = 'Build a draft first.'; return; }
-  if (!confirm('Publish this auto-assembled plan as the live battle plan? This REPLACES all squad positions and clears existing squad notes for this week. Review carefully first.')) return;
+  var ed = requireEditorIdentity();
+  if (!ed) { document.getElementById('dr-status').textContent = 'Set your identity first (top of page).'; return; }
+  if (!confirm('Publish this rebuilt plan as the live battle plan? Locked players keep their spots; unlocked players are re-seated per the change summary above.')) return;
   ensureTitanEditPw();
   var btn = document.getElementById('dr-publish'); btn.disabled = true;
   document.getElementById('dr-status').textContent = 'Publishing...';
@@ -1922,12 +2102,50 @@ document.getElementById('dr-publish').onclick = function () {
       if (!o.ok || (o.j && o.j.ok === false)) throw new Error((o.j && o.j.error) || 'publish failed');
       document.getElementById('dr-status').textContent = 'Published. The battle plan page will update shortly.';
       // Log the publish for the changelog (best-effort).
-      appendChangelog(localStorage.getItem('editor_name') || 'Editor', 'Published draft roster', 'Auto-assembled from signups for ' + (titanWeek || 'this week'));
+      appendChangelog(ed, 'Rebuilt roster', 'Re-ran allocation from signups for ' + (titanWeek || 'this week') + ' (locked players preserved)');
       // Refresh the editor's view of the plan so it reflects the publish.
       loadData().then(function () { if (activeSquad) renderEditor(); });
     })
     .catch(function (e) { btn.disabled = false; document.getElementById('dr-status').textContent = 'Publish failed: ' + e.message; });
 };
+
+// ── CHANGELOG ─────────────────────────────────────────────────────────────────
+var CL_GENERIC = { 'Editor': 1, 'Admin': 1, 'Unknown': 1, 'restore': 1, 'verify-bot': 1, 'Player': 1 };
+function loadChangelog() {
+  var status = document.getElementById('cl-status');
+  if (status) status.textContent = 'Loading...';
+  fetch(TITAN_API + '/titan/changelog')
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var entries = Array.isArray(d) ? d : (d && Array.isArray(d.changelog) ? d.changelog : []);
+      renderChangelog(entries);
+      if (status) status.textContent = entries.length + ' entries';
+    })
+    .catch(function (e) { if (status) status.textContent = 'Could not load (' + e.message + ')'; });
+}
+function fmtClTime(iso) {
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+  catch (e) { return iso; }
+}
+function renderChangelog(entries) {
+  var host = document.getElementById('cl-list'); if (!host) return;
+  host.innerHTML = '';
+  if (!entries.length) { host.innerHTML = '<div class="card"><span class="muted">No changelog entries yet.</span></div>'; return; }
+  entries.forEach(function (e) {
+    var who = e.editor || 'Unknown';
+    var div = document.createElement('div'); div.className = 'cl-entry' + (CL_GENERIC[who] ? ' system' : '');
+    var head = document.createElement('div'); head.className = 'cl-head';
+    var w = document.createElement('span'); w.className = 'cl-who notranslate'; w.textContent = who;
+    var a = document.createElement('span'); a.className = 'cl-action'; a.textContent = e.action || '';
+    var t = document.createElement('span'); t.className = 'cl-time'; t.textContent = fmtClTime(e.timestamp);
+    head.appendChild(w); head.appendChild(a); head.appendChild(t);
+    div.appendChild(head);
+    if (e.details) { var dt = document.createElement('div'); dt.className = 'cl-detail notranslate'; dt.textContent = e.details; div.appendChild(dt); }
+    host.appendChild(div);
+  });
+}
+document.getElementById('cl-refresh').onclick = loadChangelog;
 
 // ── SLOT CONFIG EDITOR ────────────────────────────────────────────────────────
 function makeSlotRow(slot) {
@@ -2489,6 +2707,8 @@ function sqFindPlayer(name) {
 }
 function sqMoveConfirm() {
   if (!sqMoveCtx) return;
+  var ed = requireEditorIdentity();
+  if (!ed) { document.getElementById('sqMoveStatus').textContent = 'Set your identity first (top of page).'; return; }
   if (!ensureTitanEditPw()) { document.getElementById('sqMoveStatus').textContent = 'Editor password required.'; return; }
   var squad = document.getElementById('sqMoveSquad').value;
   var spot = sqSpotPayload(document.getElementById('sqMoveSpot').value);
@@ -2498,7 +2718,7 @@ function sqMoveConfirm() {
     alliance: sqMoveCtx.alliance,
     squad: squad,
     playerKey: sqMoveCtx.playerKey,
-    editor: localStorage.getItem('editor_name') || 'Editor'
+    editor: ed
   }, spot);
   if (sqMoveCtx.siteKey) body.siteKey = sqMoveCtx.siteKey;
   var btn = document.getElementById('sqMoveSave'); btn.disabled = true;
@@ -2561,6 +2781,8 @@ function closeSqAddModal() {
   document.getElementById('sqAddModalBg').classList.remove('open');
 }
 function sqAddConfirm() {
+  var ed = requireEditorIdentity();
+  if (!ed) { document.getElementById('sqAddStatus').textContent = 'Set your identity first (top of page).'; return; }
   if (!ensureTitanEditPw()) { document.getElementById('sqAddStatus').textContent = 'Editor password required.'; return; }
   var name = (document.getElementById('sqAddPlayer').value || '').trim();
   if (!name) { document.getElementById('sqAddStatus').textContent = 'Pick a player.'; return; }
@@ -2576,7 +2798,7 @@ function sqAddConfirm() {
     unitType: p.unitType || '',
     squad: squad,
     slot: (SQUAD_META[squad] || {}).slot || '',
-    editor: localStorage.getItem('editor_name') || 'Editor'
+    editor: ed
   }, spot);
   if (p.siteKey) body.siteKey = p.siteKey;
   if (p.ucFacility != null) body.ucFacility = p.ucFacility;
@@ -2609,33 +2831,11 @@ document.getElementById('sqAddPlayer').addEventListener('input', function () {
     : '';
 });
 
-// ── Rebuild ────────────────────────────────────────────────────────────────────
-function sqRebuild() {
-  if (!confirm('Rebuild the battle plan from this week\'s signups? Locked players keep their spots; everyone else is re-seated.')) return;
-  if (!ensureTitanEditPw()) { sqSetStatus('Editor password required.', 'error'); return; }
-  var btn = document.getElementById('sq-rebuild'); btn.disabled = true;
-  sqSetStatus('Rebuilding...', '');
-  fetch(TITAN_API + '/titan/rebuild', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Titan-Edit-Password': titanEditPw },
-    body: JSON.stringify({ week: sqWeek })
-  })
-    .then(function (r) {
-      if (r.status === 401) { clearTitanEditPw(); throw new Error('wrong editor password'); }
-      return r.json().then(function (j) { return { status: r.status, j: j }; });
-    })
-    .then(function (o) {
-      btn.disabled = false;
-      if (o.j && o.j.ok === false) throw new Error(sqErrText(o.j.error));
-      sqSetStatus('Rebuilt from signups.', 'ok');
-      return sqApplyResult(o.j);
-    })
-    .catch(function (e) { btn.disabled = false; sqSetStatus('Rebuild failed: ' + e.message, 'error'); });
-}
+// Rebuild now lives on the Draft Board (Preview rebuild → Approve & Publish), so
+// it always shows a change summary before it commits — no one-click rebuild here.
 
 document.getElementById('sq-refresh').onclick = function () { sqPlayers = []; loadSquads(); };
 document.getElementById('sq-addbtn').onclick = sqOpenAdd;
-document.getElementById('sq-rebuild').onclick = sqRebuild;
 </script>
 </body>
 </html>
