@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev; img-src 'self' data:; base-uri 'self'; form-action 'none'; object-src 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev; img-src 'self' data: https://knight-cdn.akamaized.net; base-uri 'self'; form-action 'none'; object-src 'none';">
 <title>Transfer Planner - Server 2864</title>
 <style>
   :root{
@@ -187,6 +187,18 @@
     .board{flex-direction:column; align-items:stretch}
     .column{flex:1 1 auto; width:100%; min-width:0}
   }
+
+  #cohort-panel{margin-top:.6rem; padding:.7rem .8rem; border:1px solid var(--border); border-radius:10px; background:var(--card); display:flex; flex-direction:column; gap:.55rem; max-width:640px}
+  #cohort-panel .cohort-title{font-size:.8rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em}
+  .cohort-link-note{font-size:.75rem; color:var(--muted); margin-bottom:.2rem}
+  .cohort-link{display:flex; gap:.4rem; align-items:center; margin-bottom:.35rem}
+  .cohort-link span{font-size:.72rem; color:var(--muted); min-width:58px}
+  .cohort-link input{flex:1; font-size:.72rem; font-family:'SF Mono',Monaco,monospace}
+  .pname .pn-av{width:26px; height:26px; border-radius:6px; object-fit:cover; vertical-align:middle; margin-right:.4rem; display:inline-block}
+  .pname .pn-av-ph{width:26px; height:26px; border-radius:6px; background:var(--green-soft,#1c3324); color:#cdebd2; font-weight:700; display:inline-flex; align-items:center; justify-content:center; margin-right:.4rem; font-size:.75rem; vertical-align:middle}
+  .pname .pn-prof{font-size:.68rem; color:var(--muted); border:1px solid var(--border); border-radius:6px; padding:.02rem .3rem; margin-left:.4rem}
+  a.report-link{color:var(--accent); font-size:.82rem; text-decoration:none}
+  a.report-link:hover{text-decoration:underline}
 </style>
 </head>
 <body>
@@ -237,6 +249,14 @@
         Refresh
       </button>
       <button type="button" class="btn" id="export-btn">Copy queue for Discord</button>
+      <button type="button" class="btn" id="cohort-btn">1805 Cohort</button>
+    </div>
+    <div id="cohort-panel" style="display:none">
+      <div class="cohort-title">1805 transfer cohort</div>
+      <button type="button" class="btn primary" id="cohort-create-btn">Create cohort + generate 2 leader links</button>
+      <div id="cohort-links"></div>
+      <button type="button" class="btn danger" id="cohort-wipe-btn">Wipe 1805 cohort</button>
+      <div id="cohort-status" class="log-meta"></div>
     </div>
     <div class="board-wrap">
       <div class="board" id="board"></div>
@@ -319,6 +339,14 @@ function cpLabelM(cp) { var m = cpToM(cp); return m === '' ? '' : m + 'M'; }
 function mToCP(str) {
   var n = parseFloat(String(str).replace(/[^0-9.]/g, ''));
   return isNaN(n) ? null : Math.round(n * 1e6);
+}
+
+function drawerAvatarHtml(p) {
+  if (p.avatar && /^https?:\/\//.test(p.avatar)) {
+    return '<img class="pn-av" src="' + esc(p.avatar) + '" alt="" referrerpolicy="no-referrer">';
+  }
+  var initial = (p.name || '?').trim().charAt(0).toUpperCase();
+  return '<span class="pn-av-ph">' + esc(initial) + '</span>';
 }
 
 // ── PASSWORD GATE (persisted in localStorage, masked input — same UX as titan-admin) ──
@@ -424,6 +452,37 @@ function loadAll() {
 }
 
 document.getElementById('refresh-btn').addEventListener('click', loadAll);
+
+document.getElementById('cohort-btn').addEventListener('click', function () {
+  var p = document.getElementById('cohort-panel');
+  p.style.display = p.style.display === 'none' ? '' : 'none';
+});
+
+document.getElementById('cohort-create-btn').addEventListener('click', function () {
+  if (!confirm('Create a NEW 1805 cohort group and generate two leader links?')) return;
+  api('/transfer/cohort/create', { method: 'POST', body: { cohort: '1805', groupName: 'Transfer cohort 1805' } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) {
+      var links = res.json.leaderTokens.map(function (t) { return 'https://2864tw.com/transfer.html?lead=' + t; });
+      document.getElementById('cohort-links').innerHTML =
+        '<div class="cohort-link-note">Two leader links (both open the SAME group). Send one to each leader:</div>' +
+        links.map(function (u, i) {
+          return '<div class="cohort-link"><span>Leader ' + (i + 1) + '</span><input readonly value="' + esc(u) + '"><button type="button" class="btn" data-copy="' + i + '">Copy</button></div>';
+        }).join('');
+      Array.prototype.forEach.call(document.querySelectorAll('#cohort-links [data-copy]'), function (b) {
+        b.addEventListener('click', function () { navigator.clipboard.writeText(links[+b.getAttribute('data-copy')]); showToast('Link copied'); });
+      });
+      showToast('Cohort created'); refreshAll();
+    } else { showToast('Create failed: ' + (res.json && res.json.error ? res.json.error : 'error')); }
+  });
+});
+
+document.getElementById('cohort-wipe-btn').addEventListener('click', function () {
+  if (!confirm('Wipe ALL 1805 cohort data (group + leader links)? This cannot be undone.')) return;
+  api('/transfer/cohort/wipe', { method: 'POST', body: { cohort: '1805' } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) { showToast('Wiped ' + res.json.wiped + ' record(s)'); document.getElementById('cohort-links').innerHTML = ''; refreshAll(); }
+    else showToast('Wipe failed');
+  });
+});
 
 // ── SEARCH / FILTER / SORT ───────────────────────────────────────────────
 document.getElementById('search-input').addEventListener('input', function (e) {
@@ -854,7 +913,13 @@ function openDrawer(appId) {
 
     var nameEl = document.createElement('div');
     nameEl.className = 'pname';
-    nameEl.textContent = p.name + ' (S' + p.server + ')';
+    if (app.cohort) {
+      nameEl.innerHTML = drawerAvatarHtml(p) +
+        '<span class="pn-txt">' + esc(p.name) + ' (S' + esc(p.server) + ')</span>' +
+        (p.profession ? ('<span class="pn-prof">' + esc(p.profession) + '</span>') : '');
+    } else {
+      nameEl.textContent = p.name + ' (S' + p.server + ')';
+    }
     row.appendChild(nameEl);
 
     var cpWrap = document.createElement('div');
@@ -906,6 +971,15 @@ function openDrawer(appId) {
       tsWrap.appendChild(tsLabel);
       tsWrap.appendChild(tsSelect);
       row.appendChild(tsWrap);
+    }
+
+    if (app.cohort) {
+      var repWrap = document.createElement('div');
+      repWrap.className = 'full';
+      repWrap.innerHTML = p.reportId
+        ? '<label>Battle report</label><a class="report-link" href="battle-report.html?id=' + encodeURIComponent(p.reportId) + '" target="_blank" rel="noopener">View report</a>'
+        : '<label>Battle report</label><span class="muted">None</span>';
+      row.appendChild(repWrap);
     }
 
     playersEl.appendChild(row);
