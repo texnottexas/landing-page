@@ -193,7 +193,8 @@
   .cycle-count.full{color:var(--red)}
   .cycle-countdown{font-size:.82rem; color:var(--accent); font-family:var(--mono); margin-bottom:.7rem}
   .cycle-state{display:inline-flex; align-items:center; gap:.35rem; font-size:.68rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:.2rem .55rem; border-radius:999px; border:1px solid; margin-bottom:.7rem}
-  .cycle-state.open{color:var(--green); border-color:rgba(63,185,80,.4); background:var(--green-soft)}
+  .cycle-state.open,.cycle-state.available{color:var(--green); border-color:rgba(63,185,80,.4); background:var(--green-soft)}
+  .cycle-state.full{color:var(--gold); border-color:rgba(210,153,34,.4); background:var(--gold-soft)}
   .cycle-state.closed{color:var(--red); border-color:rgba(248,81,73,.4); background:rgba(248,81,73,.1)}
   .queue-list{display:flex; flex-direction:column; gap:.4rem}
   .queue-row{display:flex; align-items:center; gap:.6rem; padding:.4rem 0}
@@ -700,7 +701,11 @@
           var n = counts[c.id] || 0;
           var full = c.capacity && n >= c.capacity;
           var now = Date.now();
-          var state = (c.closesAt && now > c.closesAt) ? 'closed' : 'open';
+          var closed = c.closesAt && now > c.closesAt;
+          // Availability pill — NOT a "window is open" claim. The countdown line
+          // below conveys timing (Opens in / Open now / Closed); this reflects slots.
+          var stateClass = closed ? 'closed' : (full ? 'full' : 'available');
+          var stateLabel = closed ? 'Closed' : (full ? 'Full' : 'Slots available');
           var inWave = players.filter(function (p) { return p.cycleId === c.id; });
           var rows = inWave.map(function (p) {
             var avatar = p.avatar ? '<img src="' + esc(p.avatar) + '" alt="">' : '<div style="width:28px;height:28px;border-radius:7px;background:var(--card2);flex:none"></div>';
@@ -713,7 +718,7 @@
           return '<div class="cycle-card">' +
             '<div class="cycle-head"><span class="cycle-label">' + esc(c.label) + '</span>' +
             '<span class="cycle-count' + (full ? ' full' : '') + '">' + n + ' / ' + (c.capacity || '-') + '</span></div>' +
-            '<span class="cycle-state ' + state + '">' + (state === 'open' ? 'Open' : 'Closed') + '</span>' +
+            '<span class="cycle-state ' + stateClass + '">' + stateLabel + '</span>' +
             '<div class="cycle-countdown" data-opens="' + (c.opensAt || '') + '" data-closes="' + (c.closesAt || '') + '"></div>' +
             '<div class="queue-list">' + rows + '</div>' +
             '</div>';
