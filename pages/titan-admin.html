@@ -407,20 +407,19 @@
     .sq-row .sq-pos.mm { color: var(--mm); }
     .sq-row .sq-player { font-weight: 600; flex: 1; min-width: 0; word-break: break-word; }
     .sq-row .sq-empty { color: var(--muted); font-style: italic; font-weight: 400; }
-    .sq-lock {
-      display: inline-flex; align-items: center; gap: 2px; padding: 1px 5px;
-      border-radius: 8px; font-size: .6rem; font-weight: 600; flex-shrink: 0;
-      background: rgba(210,153,34,.16); color: var(--air);
-    }
-    .sq-lock svg { width: 9px; height: 9px; }
+    /* Move / Unlock stack vertically so the name column keeps its width. */
+    .sq-rowbtns { display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; }
     .sq-rowbtn {
       background: var(--tag); border: 1px solid var(--border); color: var(--muted);
       border-radius: 5px; padding: 2px 8px; cursor: pointer; font-size: .66rem; transition: all .15s; flex-shrink: 0;
-      display: inline-flex; align-items: center; gap: 3px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 3px; white-space: nowrap;
     }
     .sq-rowbtn svg { width: 11px; height: 11px; flex-shrink: 0; }
     .sq-rowbtn:hover { border-color: var(--accent); color: var(--accent); }
-    .sq-rowbtn.unlock:hover { border-color: var(--danger); color: var(--danger); }
+    /* A locked row shows no separate badge — the Unlock button itself carries the
+       yellow "locked" signal; hovering it shifts to red (the unlock action). */
+    .sq-rowbtn.unlock { background: rgba(210,153,34,.13); border-color: color-mix(in srgb, var(--air) 55%, var(--border)); color: var(--air); }
+    .sq-rowbtn.unlock:hover { border-color: var(--danger); color: var(--danger); background: rgba(248,81,73,.12); }
 
     /* Squads report panel */
     .sq-report-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: .7rem; }
@@ -2151,11 +2150,11 @@ function sqCountMembers(data) {
   return n;
 }
 
-function lockSvg() {
-  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>';
-}
 function unlockSvg() {
   return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 019.9-1"/></svg>';
+}
+function moveSvg() {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>';
 }
 
 // Build one member row as a DOM node. Uses data attributes + event delegation
@@ -2167,24 +2166,26 @@ function sqMemberRow(name, posLabel, posClass, squad, position, bucket) {
   row.appendChild(pos);
   var nm = document.createElement('span'); nm.className = 'sq-player notranslate'; nm.textContent = name;
   row.appendChild(nm);
-  if (lockKey) {
-    var lk = document.createElement('span'); lk.className = 'sq-lock'; lk.title = 'Locked (preserved across rebuilds)';
-    lk.innerHTML = lockSvg() + 'lock'; row.appendChild(lk);
-  }
+
+  // Move + Unlock stacked vertically (keeps the name column wide). No separate
+  // lock badge — a locked row is signalled by the yellow Unlock button.
+  var btns = document.createElement('div'); btns.className = 'sq-rowbtns';
   var moveBtn = document.createElement('button');
-  moveBtn.type = 'button'; moveBtn.className = 'sq-rowbtn'; moveBtn.innerHTML = lockSvg() + 'Move';
+  moveBtn.type = 'button'; moveBtn.className = 'sq-rowbtn'; moveBtn.innerHTML = moveSvg() + 'Move';
   moveBtn.title = 'Move + lock this player (stays put across rebuilds)';
   moveBtn.dataset.act = 'move';
   moveBtn.dataset.name = name; moveBtn.dataset.squad = squad;
   if (position != null) moveBtn.dataset.position = position;
   if (bucket != null) moveBtn.dataset.bucket = bucket;
-  row.appendChild(moveBtn);
+  btns.appendChild(moveBtn);
   if (lockKey) {
     var unlockBtn = document.createElement('button');
     unlockBtn.type = 'button'; unlockBtn.className = 'sq-rowbtn unlock'; unlockBtn.innerHTML = unlockSvg() + 'Unlock';
+    unlockBtn.title = 'Locked — preserved across rebuilds. Click to unlock.';
     unlockBtn.dataset.act = 'unlock'; unlockBtn.dataset.name = name; unlockBtn.dataset.lockkey = lockKey;
-    row.appendChild(unlockBtn);
+    btns.appendChild(unlockBtn);
   }
+  row.appendChild(btns);
   return row;
 }
 
