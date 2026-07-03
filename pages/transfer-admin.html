@@ -385,12 +385,21 @@ function submitPw() {
 document.getElementById('gate-submit').addEventListener('click', submitPw);
 document.getElementById('gate-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') submitPw(); });
 
+// Editor name for changelog attribution — shared site-wide with titan-admin
+// (localStorage.editor_name). Sent on every write so the log shows who acted.
+function editorName() { try { return (localStorage.getItem('editor_name') || '').trim(); } catch (e) { return ''; } }
+function ensureEditorName() {
+  if (editorName()) return;
+  var n = (window.prompt('Your name (for the changelog, so edits are attributed to you):') || '').trim();
+  if (n) { try { localStorage.setItem('editor_name', n); } catch (e) {} }
+}
+
 // api(path, opts) -> parsed JSON body. Attaches the editor header on every call.
 // On 401, forgets the stored password and re-shows the gate for a fresh entry.
 function api(path, opts) {
   opts = opts || {};
   var method = opts.method || 'GET';
-  var headers = { 'X-Transfer-Edit-Password': editPw };
+  var headers = { 'X-Transfer-Edit-Password': editPw, 'X-Editor-Name': editorName() };
   var body;
   if (opts.body !== undefined) {
     headers['Content-Type'] = 'application/json';
@@ -1009,6 +1018,25 @@ function openDrawer(appId) {
       row.appendChild(tsWrap);
     }
 
+    // Alliance placement (DOG / MSS / Cat) — available once a player is approved.
+    if (p.status === 'approved') {
+      var alWrap = document.createElement('div');
+      alWrap.className = 'full';
+      var alLabel = document.createElement('label');
+      alLabel.textContent = 'Alliance';
+      var alSelect = document.createElement('select');
+      [['', '— none —'], ['DOG', 'DOG'], ['MSS', 'MSS'], ['Cat', 'Cat']].forEach(function (o) {
+        var opt = document.createElement('option');
+        opt.value = o[0]; opt.textContent = o[1];
+        if ((p.alliance || '') === o[0]) opt.selected = true;
+        alSelect.appendChild(opt);
+      });
+      alSelect.addEventListener('change', makeAllianceHandler(appId, p.pid, alSelect));
+      alWrap.appendChild(alLabel);
+      alWrap.appendChild(alSelect);
+      row.appendChild(alWrap);
+    }
+
     if (app.cohort) {
       var repWrap = document.createElement('div');
       repWrap.className = 'full';
@@ -1067,6 +1095,16 @@ function makeTransferStatusHandler(appId, pid, selectEl) {
   return function () {
     api('/transfer/transfer-status', { method: 'POST', body: { appId: appId, pid: pid, transferStatus: selectEl.value } }).then(function (res) {
       if (res.status === 200 && res.json.ok) { showToast('Transfer status updated'); refreshAll(); }
+      else showToast('Update failed: ' + (res.json && res.json.error ? res.json.error : 'error'));
+    });
+  };
+}
+
+// Per-member alliance placement (DOG / MSS / Cat / none) via the drawer.
+function makeAllianceHandler(appId, pid, selectEl) {
+  return function () {
+    api('/transfer/alliance', { method: 'POST', body: { appId: appId, pid: pid, alliance: selectEl.value } }).then(function (res) {
+      if (res.status === 200 && res.json.ok) { showToast('Alliance updated'); refreshAll(); }
       else showToast('Update failed: ' + (res.json && res.json.error ? res.json.error : 'error'));
     });
   };
@@ -1307,6 +1345,7 @@ document.getElementById('export-btn').addEventListener('click', function () {
 
 // ── INIT ─────────────────────────────────────────────────────────────────
 function init() {
+  ensureEditorName();
   loadAll();
   loadCyclesTab();
 }

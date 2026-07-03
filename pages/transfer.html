@@ -197,15 +197,20 @@
   .cycle-state.full{color:var(--gold); border-color:rgba(210,153,34,.4); background:var(--gold-soft)}
   .cycle-state.closed{color:var(--red); border-color:rgba(248,81,73,.4); background:rgba(248,81,73,.1)}
   .queue-list{display:flex; flex-direction:column; gap:.4rem}
-  .queue-row{display:flex; align-items:center; gap:.6rem; padding:.4rem 0}
-  .queue-row img{width:28px; height:28px; border-radius:7px; object-fit:cover; background:var(--card2); flex:none}
-  .queue-name{font-weight:650; font-size:.88rem}
-  .queue-server{font-size:.76rem; color:var(--muted)}
-  .group-badge{font-size:.68rem; font-weight:700; padding:.12rem .5rem; border-radius:999px; background:var(--card2); color:var(--accent); border:1px solid var(--border2)}
-  .q-ts{margin-left:auto; flex:none; font-size:.62rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; padding:.15rem .5rem; border-radius:999px; border:1px solid; white-space:nowrap}
+  .queue-row{display:flex; align-items:center; gap:.6rem; padding:.5rem 0}
+  .queue-row img{width:34px; height:34px; border-radius:7px; object-fit:cover; background:var(--card2); flex:none}
+  .queue-main{flex:1 1 auto; min-width:0}
+  .queue-name{font-weight:650; font-size:.88rem; line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .queue-sub{font-size:.72rem; color:var(--muted); line-height:1.2}
+  .queue-pills{display:flex; flex-wrap:wrap; gap:.3rem; justify-content:flex-end; align-items:center; flex:0 1 auto; min-width:0}
+  .q-pill{flex:none; font-size:.62rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; padding:.15rem .5rem; border-radius:999px; border:1px solid; text-align:center}
+  .group-badge{max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background:var(--card2); color:var(--accent); border-color:var(--border2); text-transform:none; letter-spacing:0}
   .q-ts.pending{color:var(--gold); border-color:rgba(210,153,34,.4); background:var(--gold-soft)}
   .q-ts.completed{color:var(--green); border-color:rgba(63,185,80,.4); background:var(--green-soft)}
   .q-ts.accepted{color:var(--accent); border-color:var(--border2); background:var(--card2)}
+  .q-alliance.DOG{color:#56d364; border-color:rgba(63,185,80,.45); background:rgba(63,185,80,.12)}
+  .q-alliance.MSS{color:#f0883e; border-color:rgba(240,136,62,.45); background:rgba(240,136,62,.12)}
+  .q-alliance.Cat{color:#a371f7; border-color:rgba(163,113,247,.45); background:rgba(163,113,247,.12)}
   .cycle-sub{font-size:.8rem; color:var(--muted); margin-bottom:.6rem}
 
   footer{position:relative; z-index:1; text-align:center; color:var(--faint); font-size:.72rem; padding:1.6rem 1rem}
@@ -424,6 +429,9 @@
     </div>
     <div class="field reveal">
       <div class="field-label">Your group <span class="hint"><span id="lead-count">0</span> players</span></div>
+      <div id="lead-search-wrap" style="display:none; margin-bottom:.55rem">
+        <input type="text" id="lead-search" class="input" placeholder="Search your group by name" autocomplete="off">
+      </div>
       <div id="lead-players"></div>
       <div class="status" id="lead-status"></div>
     </div>
@@ -891,12 +899,17 @@
         // One row builder for both the accepted list and each wave. `badge` is the
         // trailing status pill (Accepted / Pending Transfer / Completed).
         function queueRowHtml(p, badgeClass, badgeLabel) {
-          var avatar = p.avatar ? '<img src="' + esc(p.avatar) + '" alt="">' : '<div style="width:28px;height:28px;border-radius:7px;background:var(--card2);flex:none"></div>';
+          var avatar = p.avatar ? '<img src="' + esc(p.avatar) + '" alt="">' : '<div style="width:34px;height:34px;border-radius:7px;background:var(--card2);flex:none"></div>';
+          var pills = '';
+          if (p.alliance) pills += '<span class="q-pill q-alliance ' + esc(p.alliance) + '">' + esc(p.alliance) + '</span>';
+          if (p.groupName) pills += '<span class="q-pill group-badge notranslate">' + esc(p.groupName) + '</span>';
+          pills += '<span class="q-pill q-ts ' + badgeClass + '">' + badgeLabel + '</span>';
           return '<div class="queue-row">' + avatar +
-            '<span class="queue-name notranslate">' + esc(p.name) + '</span>' +
-            '<span class="queue-server">Server ' + esc(p.server || '-') + '</span>' +
-            (p.groupName ? '<span class="group-badge notranslate">' + esc(p.groupName) + '</span>' : '') +
-            '<span class="q-ts ' + badgeClass + '">' + badgeLabel + '</span>' +
+            '<div class="queue-main">' +
+              '<div class="queue-name notranslate">' + esc(p.name) + '</div>' +
+              '<div class="queue-sub">S' + esc(p.server || '-') + '</div>' +
+            '</div>' +
+            '<div class="queue-pills">' + pills + '</div>' +
             '</div>';
         }
         // Accepted-but-not-yet-scheduled players get their own card at the top.
@@ -960,11 +973,28 @@
     return '<span class="lp-av lp-av-ph">' + esc(initial) + '</span>';
   }
 
+  var LEAD_SEARCH = '';
+
   function renderLeadPlayers() {
     var wrap = document.getElementById('lead-players');
     wrap.innerHTML = '';
     document.getElementById('lead-count').textContent = LEAD_PLAYERS.length;
-    LEAD_PLAYERS.forEach(function (p, i) {
+
+    // Show the search box only once the list is long enough to be worth filtering.
+    var searchWrap = document.getElementById('lead-search-wrap');
+    if (searchWrap) searchWrap.style.display = LEAD_PLAYERS.length > 6 ? '' : 'none';
+
+    // Always display alphabetically (ignoring leading symbols); filter by search.
+    var q = LEAD_SEARCH.trim().toLowerCase();
+    var rows = LEAD_PLAYERS.slice().sort(function (a, b) { return stripSym(a.name).localeCompare(stripSym(b.name)); });
+    if (q) rows = rows.filter(function (p) { return (p.name || '').toLowerCase().indexOf(q) !== -1; });
+
+    if (!rows.length) {
+      wrap.innerHTML = '<div class="empty-state" style="padding:1rem 0">' +
+        (LEAD_PLAYERS.length ? ('No players match “' + esc(LEAD_SEARCH) + '”.') : 'No players added yet.') + '</div>';
+      return;
+    }
+    rows.forEach(function (p) {
       var row = document.createElement('div');
       row.className = 'lp-row';
       row.innerHTML =
@@ -979,7 +1009,11 @@
         '<input type="text" class="input lp-report" inputmode="numeric" placeholder="Battle report ID" value="' + esc(p.reportId) + '">' +
         '<button type="button" class="lp-remove" title="Remove">&times;</button>';
       row.querySelector('.lp-report').addEventListener('input', function (e) { p.reportId = e.target.value; scheduleLeadSave(); });
-      row.querySelector('.lp-remove').addEventListener('click', function () { LEAD_PLAYERS.splice(i, 1); renderLeadPlayers(); scheduleLeadSave(); });
+      row.querySelector('.lp-remove').addEventListener('click', function () {
+        var idx = LEAD_PLAYERS.indexOf(p);            // remove by identity, not display index
+        if (idx !== -1) LEAD_PLAYERS.splice(idx, 1);
+        renderLeadPlayers(); scheduleLeadSave();
+      });
       wrap.appendChild(row);
     });
   }
@@ -1137,6 +1171,9 @@
         else document.getElementById('lead-status').textContent = 'No matching player.';
       }
     });
+
+    var leadSearch = document.getElementById('lead-search');
+    if (leadSearch) leadSearch.addEventListener('input', function () { LEAD_SEARCH = leadSearch.value; renderLeadPlayers(); });
 
     fetch('data/transfer-roster-1805.json').then(function (r) { return r.json(); }).then(function (rows) {
       ROSTER_ROWS = (Array.isArray(rows) ? rows : []);
