@@ -255,6 +255,13 @@
       <div class="cohort-title">1805 transfer cohort</div>
       <button type="button" class="btn primary" id="cohort-create-btn">Create cohort + generate 2 leader links</button>
       <div id="cohort-links"></div>
+      <div class="cohort-link-note" style="margin-top:.4rem">Group leaders (shown on the cohort card):</div>
+      <div class="cohort-link">
+        <span>Leaders</span>
+        <input type="text" id="cohort-leader-1" placeholder="Leader 1 (e.g. Hawks)">
+        <input type="text" id="cohort-leader-2" placeholder="Leader 2 (e.g. Verka)">
+        <button type="button" class="btn" id="cohort-leaders-save">Save</button>
+      </div>
       <button type="button" class="btn danger" id="cohort-wipe-btn">Wipe 1805 cohort</button>
       <div id="cohort-status" class="log-meta"></div>
     </div>
@@ -455,7 +462,27 @@ document.getElementById('refresh-btn').addEventListener('click', loadAll);
 
 document.getElementById('cohort-btn').addEventListener('click', function () {
   var p = document.getElementById('cohort-panel');
-  p.style.display = p.style.display === 'none' ? '' : 'none';
+  var opening = p.style.display === 'none';
+  p.style.display = opening ? '' : 'none';
+  if (opening) prefillCohortLeaders();
+});
+
+// Prefill the leader inputs from the existing cohort record (if loaded).
+function prefillCohortLeaders() {
+  var c = (STATE.apps || []).filter(function (a) { return a.cohort === '1805'; })[0];
+  var ls = (c && Array.isArray(c.leaders)) ? c.leaders : [];
+  document.getElementById('cohort-leader-1').value = ls[0] || '';
+  document.getElementById('cohort-leader-2').value = ls[1] || '';
+}
+
+document.getElementById('cohort-leaders-save').addEventListener('click', function () {
+  var l1 = document.getElementById('cohort-leader-1').value.trim();
+  var l2 = document.getElementById('cohort-leader-2').value.trim();
+  var leaders = [l1, l2].filter(Boolean);
+  api('/transfer/cohort/leaders', { method: 'POST', body: { cohort: '1805', leaders: leaders } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) { showToast('Leaders saved'); refreshAll(); }
+    else showToast('Save failed: ' + (res.json && res.json.error ? res.json.error : 'error'));
+  });
 });
 
 document.getElementById('cohort-create-btn').addEventListener('click', function () {
@@ -698,8 +725,13 @@ function makeGroupCard(app, players) {
 
   var leaderEl = document.createElement('div');
   leaderEl.className = 'group-leader';
-  var leader = app.players && app.players[0];
-  leaderEl.textContent = 'Leader: ' + (leader ? (leader.name + ' (S' + leader.server + ')') : '—');
+  if (app.cohort && Array.isArray(app.leaders) && app.leaders.length) {
+    // Cohort groups have designated leaders (the link holders), not a players[0] "leader".
+    leaderEl.textContent = 'Leaders: ' + app.leaders.join(' & ');
+  } else {
+    var leader = app.players && app.players[0];
+    leaderEl.textContent = 'Leader: ' + (leader ? (leader.name + ' (S' + leader.server + ')') : '—');
+  }
   card.appendChild(leaderEl);
 
   var meta = document.createElement('div');
