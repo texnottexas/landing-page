@@ -322,6 +322,10 @@
         <button type="button" class="btn" id="reissue-btn">Reissue edit code</button>
       </div>
       <div class="reissue-code" id="reissue-code"></div>
+      <div class="cohort-link-note" style="margin-top:.9rem">Permanently remove this application (unlike Reject, which keeps the record). A justification is required and logged.</div>
+      <div class="drawer-actions">
+        <button type="button" class="btn danger" id="delete-btn">Delete application</button>
+      </div>
     </section>
   </div>
 </div>
@@ -1092,6 +1096,20 @@ document.getElementById('reject-btn').addEventListener('click', function () {
   api('/transfer/reject', { method: 'POST', body: { appId: STATE.activeAppId } }).then(function (res) {
     if (res.status === 200 && res.json.ok) { showToast('Application rejected'); closeDrawer(); loadAll(); }
     else showToast('Reject failed');
+  });
+});
+
+document.getElementById('delete-btn').addEventListener('click', function () {
+  if (!STATE.activeAppId) return;
+  var app = (STATE.apps || []).filter(function (a) { return a.id === STATE.activeAppId; })[0];
+  var who = app ? (app.type === 'group' ? ('the group "' + (app.groupName || '') + '" (' + (app.players || []).length + ' players)') : (app.players && app.players[0] ? app.players[0].name : 'this applicant')) : 'this application';
+  var reason = window.prompt('Permanently DELETE ' + who + '?\n\nThis removes the record entirely (Reject keeps it). Enter a justification — required, and logged to the changelog:');
+  if (reason == null) return;                 // cancelled
+  reason = reason.trim();
+  if (!reason) { showToast('A justification is required to delete.'); return; }
+  api('/transfer/delete', { method: 'POST', body: { appId: STATE.activeAppId, reason: reason } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) { showToast('Application deleted'); closeDrawer(); loadAll(); }
+    else showToast('Delete failed: ' + (res.json && res.json.error ? res.json.error : 'error'));
   });
 });
 
