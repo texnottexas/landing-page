@@ -916,8 +916,14 @@ window.ReportRender = (function () {
     return parts.join(', ');
   }
 
+  // Decoration category names — DECOR_DATA[grp].c indexes into this (copied from
+  // armory-report.html, which groups its decor list the same way).
+  var DECO_CAT_NAMES = ['March Size', 'Defense', 'Damage Boost', 'Others'];
+
   // NEW: single-player placed-decorations list, factored from buildDecorationModal's att column.
-  // One row per placed decoration group: icon + name + level + buff description.
+  // Grouped under category headers (March Size / Defense / Damage Boost / Others),
+  // mirroring the armory report, instead of one long flat list. Rows within a
+  // category are ordered by level (highest first), then name.
   function buildDecorationSide(player) {
     var decos = (player && player.effectDecorations) || null;
     var ids = (decos && decos.ids) || [];
@@ -925,7 +931,9 @@ window.ReportRender = (function () {
     var placed = idsToGroups(ids);                // {groups, variants, unmapped}
     var canonKeys = Object.keys(placed.groups);
     if (!canonKeys.length) return null;
-    var wrap = el('div', { className: 'ta-decor' });
+
+    // Bucket every placed decoration by its category index (dd.c); -1 = unknown.
+    var buckets = {};
     canonKeys.forEach(function (canonStr) {
       var grp = parseInt(canonStr);
       var placedId = placed.groups[canonStr];
@@ -934,12 +942,48 @@ window.ReportRender = (function () {
       var dd = DECOR_DATA[String(grp)] || DECOR_DATA[String(variant)];
       var buffDesc = dd ? decorBuffDesc(dd.b) : '';
       var lvl = decorLevel(variant, placedId);
-      wrap.appendChild(el('div', { className: 'ta-decor-row' }, [
-        decorIconImg(variant),                     // may be null; el() skips null children
-        el('span', { className: 'ta-decor-name notranslate' }, name),
-        el('span', { className: 'ta-decor-lvl' }, lvl > 0 ? ('Lv.' + lvl) : ''),
-        el('span', { className: 'ta-decor-buff' }, buffDesc)
-      ]));
+      var catIdx = (dd && typeof dd.c === 'number') ? dd.c : -1;
+      (buckets[catIdx] = buckets[catIdx] || []).push({ variant: variant, name: name, lvl: lvl, buffDesc: buffDesc });
+    });
+
+    var wrap = el('div', { className: 'ta-decor' });
+    var expandedOne = false;                       // only the first non-empty section opens by default
+    [0, 1, 2, 3, -1].forEach(function (catIdx) {   // known categories in order, unknown last
+      var rows = buckets[catIdx];
+      if (!rows || !rows.length) return;
+      rows.sort(function (a, b) { return (b.lvl - a.lvl) || a.name.localeCompare(b.name); });
+      var label = catIdx === -1 ? 'Uncategorized' : (DECO_CAT_NAMES[catIdx] || 'Other');
+
+      // Collapsible category section (mirrors the armory report's decor list). The
+      // header + count is a clean summary; click to expand. Exactly one section
+      // (the first) starts open so the list doesn't take up much room.
+      var startOpen = !expandedOne;
+      expandedOne = true;
+      var group = el('div', { className: 'ta-decor-group' + (startOpen ? '' : ' collapsed') });
+      var header = el('div', { className: 'ta-decor-cat', role: 'button', tabindex: '0', 'aria-expanded': startOpen ? 'true' : 'false' }, [
+        el('span', { className: 'ta-decor-cat-label' }, label + ' (' + rows.length + ')'),
+        el('span', { className: 'ta-decor-chev' }, '▸')
+      ]);
+      var body = el('div', { className: 'ta-decor-rows' });
+      rows.forEach(function (r) {
+        body.appendChild(el('div', { className: 'ta-decor-row' }, [
+          decorIconImg(r.variant),                 // may be null; el() skips null children
+          el('span', { className: 'ta-decor-name notranslate' }, r.name),
+          el('span', { className: 'ta-decor-lvl' }, r.lvl > 0 ? ('Lv.' + r.lvl) : ''),
+          el('span', { className: 'ta-decor-buff' }, r.buffDesc)
+        ]));
+      });
+      function toggle() {
+        var open = group.classList.toggle('collapsed') === false;
+        header.setAttribute('aria-expanded', open ? 'true' : 'false');
+      }
+      header.addEventListener('click', toggle);
+      header.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+      });
+      group.appendChild(header);
+      group.appendChild(body);
+      wrap.appendChild(group);
     });
     return wrap;
   }
