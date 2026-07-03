@@ -130,6 +130,9 @@
   .drawer section{margin-bottom:1.1rem; padding-top:.9rem; border-top:1px solid var(--border)}
   .drawer section:first-of-type{border-top:none; padding-top:0}
   .drawer label{display:block; font-size:.72rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.3rem}
+  .drawer-filters{display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:.6rem}
+  .drawer-filters input{flex:1 1 100%; font-size:.8rem; padding:.4rem .55rem}
+  .drawer-filters select{flex:1 1 45%; min-width:0; font-size:.78rem; padding:.4rem .5rem}
   .player-edit-row{display:grid; grid-template-columns:1fr 1fr; gap:.4rem; margin-bottom:.5rem; padding:.55rem; border:1px solid var(--border); border-radius:9px; background:var(--card)}
   .player-edit-row .full{grid-column:1/-1}
   .player-edit-row input, .player-edit-row select{width:100%; font-size:.8rem; padding:.4rem .55rem}
@@ -952,102 +955,34 @@ function openDrawer(appId) {
     playersEl.appendChild(groupOps);
   }
 
-  app.players.forEach(function (p) {
-    var row = document.createElement('div');
-    row.className = 'player-edit-row';
-
-    var nameEl = document.createElement('div');
-    nameEl.className = 'pname';
-    if (app.cohort) {
-      nameEl.innerHTML = drawerAvatarHtml(p) +
-        '<span class="pn-txt">' + esc(p.name) + ' (S' + esc(p.server) + ')</span>' +
-        (p.profession ? ('<span class="pn-prof">' + esc(p.profession) + '</span>') : '');
-    } else {
-      nameEl.textContent = p.name + ' (S' + p.server + ')';
-    }
-    row.appendChild(nameEl);
-
-    var cpWrap = document.createElement('div');
-    var cpLabel = document.createElement('label');
-    cpLabel.textContent = 'CP (M)';
-    var cpInput = document.createElement('input');
-    cpInput.type = 'text';
-    cpInput.inputMode = 'decimal';
-    cpInput.placeholder = 'e.g. 73.12M';
-    cpInput.value = cpLabelM(p.cp);
-    cpInput.addEventListener('change', makeCpChangeHandler(appId, p.pid, cpInput));
-    cpWrap.appendChild(cpLabel);
-    cpWrap.appendChild(cpInput);
-    row.appendChild(cpWrap);
-
-    var bucketWrap = document.createElement('div');
-    bucketWrap.className = 'full';
-    var bucketLabel = document.createElement('label');
-    bucketLabel.textContent = 'Move to';
-    var bucketSelect = document.createElement('select');
+  // Filter / sort bar — shown for groups big enough that a flat list is unwieldy.
+  var showFilters = app.type === 'group' && app.players.length > 6;
+  var listWrap = document.createElement('div');
+  listWrap.id = 'dp-list';
+  if (showFilters) {
+    var bar = document.createElement('div');
+    bar.className = 'drawer-filters';
+    var search = document.createElement('input');
+    search.type = 'text'; search.id = 'dp-search'; search.placeholder = 'Search players by name';
+    var statusSel = document.createElement('select'); statusSel.id = 'dp-status';
+    var allOpt = document.createElement('option'); allOpt.value = ''; allOpt.textContent = 'All statuses'; statusSel.appendChild(allOpt);
     bucketOptions.forEach(function (col) {
-      var opt = document.createElement('option');
-      opt.value = col.id;
-      opt.textContent = col.label;
-      if (p.status === col.status && (col.status !== 'approved' || p.cycleId === col.cycleId)) {
-        opt.selected = true;
-      }
-      bucketSelect.appendChild(opt);
+      var o = document.createElement('option'); o.value = col.id; o.textContent = col.label; statusSel.appendChild(o);
     });
-    bucketSelect.addEventListener('change', makeBucketChangeHandler(appId, p.pid, bucketOptions, bucketSelect));
-    bucketWrap.appendChild(bucketLabel);
-    bucketWrap.appendChild(bucketSelect);
-    row.appendChild(bucketWrap);
-
-    // Transfer status — only meaningful once a player is slotted into a wave.
-    if (p.status === 'approved' && p.cycleId) {
-      var tsWrap = document.createElement('div');
-      tsWrap.className = 'full';
-      var tsLabel = document.createElement('label');
-      tsLabel.textContent = 'Transfer status';
-      var tsSelect = document.createElement('select');
-      [['pending', 'Pending Transfer'], ['completed', 'Completed']].forEach(function (o) {
-        var opt = document.createElement('option');
-        opt.value = o[0]; opt.textContent = o[1];
-        if (transferStatusOf(p) === o[0]) opt.selected = true;
-        tsSelect.appendChild(opt);
-      });
-      tsSelect.addEventListener('change', makeTransferStatusHandler(appId, p.pid, tsSelect));
-      tsWrap.appendChild(tsLabel);
-      tsWrap.appendChild(tsSelect);
-      row.appendChild(tsWrap);
-    }
-
-    // Alliance placement (DOG / MSS / Cat) — available once a player is approved.
-    if (p.status === 'approved') {
-      var alWrap = document.createElement('div');
-      alWrap.className = 'full';
-      var alLabel = document.createElement('label');
-      alLabel.textContent = 'Alliance';
-      var alSelect = document.createElement('select');
-      [['', '— none —'], ['DOG', 'DOG'], ['MSS', 'MSS'], ['Cat', 'Cat']].forEach(function (o) {
-        var opt = document.createElement('option');
-        opt.value = o[0]; opt.textContent = o[1];
-        if ((p.alliance || '') === o[0]) opt.selected = true;
-        alSelect.appendChild(opt);
-      });
-      alSelect.addEventListener('change', makeAllianceHandler(appId, p.pid, alSelect));
-      alWrap.appendChild(alLabel);
-      alWrap.appendChild(alSelect);
-      row.appendChild(alWrap);
-    }
-
-    if (app.cohort) {
-      var repWrap = document.createElement('div');
-      repWrap.className = 'full';
-      repWrap.innerHTML = p.reportId
-        ? '<label>Battle report</label><a class="report-link" href="transfer-armory.html?id=' + encodeURIComponent(p.reportId) + '&sk=' + encodeURIComponent(p.siteKey || '') + '&n=' + encodeURIComponent(p.name || '') + '&sv=' + encodeURIComponent(p.server || '') + '" target="_blank" rel="noopener">View armory</a>'
-        : '<label>Battle report</label><span class="muted">None</span>';
-      row.appendChild(repWrap);
-    }
-
-    playersEl.appendChild(row);
-  });
+    var sortSel = document.createElement('select'); sortSel.id = 'dp-sort';
+    [['name', 'Sort: name A–Z'], ['name-desc', 'Sort: name Z–A'], ['status', 'Sort: status'], ['cp', 'Sort: CP']].forEach(function (o) {
+      var opt = document.createElement('option'); opt.value = o[0]; opt.textContent = o[1]; sortSel.appendChild(opt);
+    });
+    function rerenderList() { renderDrawerPlayerList(app, appId, bucketOptions, listWrap, search.value, statusSel.value, sortSel.value); }
+    search.addEventListener('input', rerenderList);
+    statusSel.addEventListener('change', rerenderList);
+    sortSel.addEventListener('change', rerenderList);
+    bar.appendChild(search); bar.appendChild(statusSel); bar.appendChild(sortSel);
+    playersEl.appendChild(bar);
+  }
+  playersEl.appendChild(listWrap);
+  // Big groups default to name A–Z (easier to scan); small groups keep roster order.
+  renderDrawerPlayerList(app, appId, bucketOptions, listWrap, '', '', showFilters ? 'name' : '');
 
   var notesInput = document.getElementById('notes-input');
   notesInput.value = app.adminNotes || '';
@@ -1066,6 +1001,135 @@ function openDrawer(appId) {
   document.getElementById('reissue-code').textContent = '';
 
   document.getElementById('drawer-bg').classList.add('open');
+}
+
+// Name key for sorting (case-insensitive, ignoring leading symbols).
+function dpNameKey(p) { return String(p.name == null ? '' : p.name).replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase(); }
+var DP_STATUS_RANK = { pending: 0, waitlist: 1, approved: 2, rejected: 3 };
+
+// Render (or re-render) the drawer's player list with the given filter/sort.
+function renderDrawerPlayerList(app, appId, bucketOptions, listWrap, q, statusId, sortKey) {
+  listWrap.innerHTML = '';
+  var list = (app.players || []).slice();
+  q = (q || '').trim().toLowerCase();
+  if (q) list = list.filter(function (p) { return String(p.name || '').toLowerCase().indexOf(q) !== -1; });
+  if (statusId) {
+    var col = bucketOptions.filter(function (c) { return c.id === statusId; })[0];
+    if (col) list = list.filter(function (p) { return p.status === col.status && (col.status !== 'approved' || (p.cycleId || '') === (col.cycleId || '')); });
+  }
+  if (sortKey === 'name') list.sort(function (a, b) { return dpNameKey(a).localeCompare(dpNameKey(b)); });
+  else if (sortKey === 'name-desc') list.sort(function (a, b) { return dpNameKey(b).localeCompare(dpNameKey(a)); });
+  else if (sortKey === 'cp') list.sort(function (a, b) { return (b.cp || 0) - (a.cp || 0); });
+  else if (sortKey === 'status') list.sort(function (a, b) {
+    var ra = (DP_STATUS_RANK[a.status] != null ? DP_STATUS_RANK[a.status] : 9);
+    var rb = (DP_STATUS_RANK[b.status] != null ? DP_STATUS_RANK[b.status] : 9);
+    return ra - rb || dpNameKey(a).localeCompare(dpNameKey(b));
+  });
+
+  if (!list.length) {
+    listWrap.innerHTML = '<div class="empty-col" style="text-align:left">No players match.</div>';
+    return;
+  }
+  list.forEach(function (p) { listWrap.appendChild(buildPlayerRow(app, p, bucketOptions, appId)); });
+}
+
+// Build one editable player row for the drawer (CP / bucket / transfer status /
+// alliance / battle report), with change handlers bound to the player's pid.
+function buildPlayerRow(app, p, bucketOptions, appId) {
+  var row = document.createElement('div');
+  row.className = 'player-edit-row';
+
+  var nameEl = document.createElement('div');
+  nameEl.className = 'pname';
+  if (app.cohort) {
+    nameEl.innerHTML = drawerAvatarHtml(p) +
+      '<span class="pn-txt">' + esc(p.name) + ' (S' + esc(p.server) + ')</span>' +
+      (p.profession ? ('<span class="pn-prof">' + esc(p.profession) + '</span>') : '');
+  } else {
+    nameEl.textContent = p.name + ' (S' + p.server + ')';
+  }
+  row.appendChild(nameEl);
+
+  var cpWrap = document.createElement('div');
+  var cpLabel = document.createElement('label');
+  cpLabel.textContent = 'CP (M)';
+  var cpInput = document.createElement('input');
+  cpInput.type = 'text';
+  cpInput.inputMode = 'decimal';
+  cpInput.placeholder = 'e.g. 73.12M';
+  cpInput.value = cpLabelM(p.cp);
+  cpInput.addEventListener('change', makeCpChangeHandler(appId, p.pid, cpInput));
+  cpWrap.appendChild(cpLabel);
+  cpWrap.appendChild(cpInput);
+  row.appendChild(cpWrap);
+
+  var bucketWrap = document.createElement('div');
+  bucketWrap.className = 'full';
+  var bucketLabel = document.createElement('label');
+  bucketLabel.textContent = 'Move to';
+  var bucketSelect = document.createElement('select');
+  bucketOptions.forEach(function (col) {
+    var opt = document.createElement('option');
+    opt.value = col.id;
+    opt.textContent = col.label;
+    if (p.status === col.status && (col.status !== 'approved' || p.cycleId === col.cycleId)) {
+      opt.selected = true;
+    }
+    bucketSelect.appendChild(opt);
+  });
+  bucketSelect.addEventListener('change', makeBucketChangeHandler(appId, p.pid, bucketOptions, bucketSelect));
+  bucketWrap.appendChild(bucketLabel);
+  bucketWrap.appendChild(bucketSelect);
+  row.appendChild(bucketWrap);
+
+  // Transfer status — only meaningful once a player is slotted into a wave.
+  if (p.status === 'approved' && p.cycleId) {
+    var tsWrap = document.createElement('div');
+    tsWrap.className = 'full';
+    var tsLabel = document.createElement('label');
+    tsLabel.textContent = 'Transfer status';
+    var tsSelect = document.createElement('select');
+    [['pending', 'Pending Transfer'], ['completed', 'Completed']].forEach(function (o) {
+      var opt = document.createElement('option');
+      opt.value = o[0]; opt.textContent = o[1];
+      if (transferStatusOf(p) === o[0]) opt.selected = true;
+      tsSelect.appendChild(opt);
+    });
+    tsSelect.addEventListener('change', makeTransferStatusHandler(appId, p.pid, tsSelect));
+    tsWrap.appendChild(tsLabel);
+    tsWrap.appendChild(tsSelect);
+    row.appendChild(tsWrap);
+  }
+
+  // Alliance placement (DOG / MSS / Cat) — available once a player is approved.
+  if (p.status === 'approved') {
+    var alWrap = document.createElement('div');
+    alWrap.className = 'full';
+    var alLabel = document.createElement('label');
+    alLabel.textContent = 'Alliance';
+    var alSelect = document.createElement('select');
+    [['', '— none —'], ['DOG', 'DOG'], ['MSS', 'MSS'], ['Cat', 'Cat']].forEach(function (o) {
+      var opt = document.createElement('option');
+      opt.value = o[0]; opt.textContent = o[1];
+      if ((p.alliance || '') === o[0]) opt.selected = true;
+      alSelect.appendChild(opt);
+    });
+    alSelect.addEventListener('change', makeAllianceHandler(appId, p.pid, alSelect));
+    alWrap.appendChild(alLabel);
+    alWrap.appendChild(alSelect);
+    row.appendChild(alWrap);
+  }
+
+  if (app.cohort) {
+    var repWrap = document.createElement('div');
+    repWrap.className = 'full';
+    repWrap.innerHTML = p.reportId
+      ? '<label>Battle report</label><a class="report-link" href="transfer-armory.html?id=' + encodeURIComponent(p.reportId) + '&sk=' + encodeURIComponent(p.siteKey || '') + '&n=' + encodeURIComponent(p.name || '') + '&sv=' + encodeURIComponent(p.server || '') + '" target="_blank" rel="noopener">View armory</a>'
+      : '<label>Battle report</label><span class="muted">None</span>';
+    row.appendChild(repWrap);
+  }
+
+  return row;
 }
 
 function makeCpChangeHandler(appId, pid, input) {
