@@ -54,7 +54,7 @@
   .tab-btn:hover{border-color:var(--accent); color:var(--text)}
   .tab-btn.active{border-color:var(--green); color:#cdebd2; background:var(--green-soft)}
 
-  main{position:relative; z-index:1; max-width:640px; margin:0 auto; padding:1.4rem 1.05rem 5rem}
+  main{position:relative; z-index:2; max-width:640px; margin:0 auto; padding:1.4rem 1.05rem 5rem}
   .view{display:none}
   .view.active{display:block}
 
@@ -261,6 +261,19 @@
   .lp-remove{background:none; border:1px solid var(--border); color:var(--muted); border-radius:8px; width:30px; height:30px; cursor:pointer; font-size:1.1rem; line-height:1}
   .lp-remove:hover{border-color:#f85149; color:#f85149}
   @media(max-width:560px){.lp-row{grid-template-columns:auto 1fr auto} .lp-report{grid-column:2 / 4; max-width:none}}
+  /* lift the add-player field above the following group field so the dropdown isn't covered
+     (each .reveal field is its own stacking context, so the dropdown's z-index alone is not enough) */
+  #lead-add-field{position:relative; z-index:30}
+  .lead-picker{position:relative}
+  .lead-roster{position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:40; max-height:280px; overflow-y:auto; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,.45); padding:.25rem}
+  .lead-roster[hidden]{display:none}
+  .lead-ri{display:flex; align-items:center; gap:.6rem; padding:.4rem .5rem; border-radius:8px; cursor:pointer}
+  .lead-ri:hover{background:var(--card)}
+  .lead-ri .lp-av{width:30px; height:30px; flex:none}
+  .lead-ri-main{min-width:0}
+  .lead-ri-name{font-weight:600; font-size:.88rem}
+  .lead-ri-meta{font-size:.7rem; color:var(--muted)}
+  .lead-roster-empty{padding:.55rem; font-size:.75rem; color:var(--muted); text-align:center}
 </style>
 </head>
 <body>
@@ -397,10 +410,12 @@
       <div class="brief-title" id="lead-title">Transfer group</div>
       <div class="brief-sub">Add everyone transferring with you. Pick each name from the list and their CP, profession, and picture fill in automatically. Add a battle report ID for anyone who has one.</div>
     </div>
-    <div class="field reveal">
+    <div class="field reveal" id="lead-add-field">
       <div class="field-label">Add a player <span class="hint">start typing a name</span></div>
-      <input type="text" list="roster-datalist" id="lead-add-input" class="input" placeholder="Search your server's players" autocomplete="off">
-      <datalist id="roster-datalist"></datalist>
+      <div class="lead-picker">
+        <input type="text" id="lead-add-input" class="input" placeholder="Search your server's players" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list">
+        <div id="lead-roster-results" class="lead-roster" role="listbox" hidden></div>
+      </div>
     </div>
     <div class="field reveal">
       <div class="field-label">Your group <span class="hint"><span id="lead-count">0</span> players</span></div>
@@ -925,14 +940,16 @@
   function saveLeadToken(t) { try { localStorage.setItem(LEAD_KEY, JSON.stringify({ token: t })); } catch (e) {} }
 
   var ROSTER_BY_NAME = {};
+  var ROSTER_ROWS = [];
+  var rosterFiltered = [];
   var LEAD_PLAYERS = [];
   var leadSaveTimer = null;
 
   function cpM(cp) { return (cp == null || cp === '') ? '' : (cp / 1e6).toFixed(2) + 'M'; }
 
-  function avatarHtml(p) {
+  function avatarHtml(p, lazy) {
     if (p.avatar && /^https?:\/\//.test(p.avatar)) {
-      return '<img class="lp-av" src="' + esc(p.avatar) + '" alt="" referrerpolicy="no-referrer">';
+      return '<img class="lp-av" src="' + esc(p.avatar) + '" alt="" referrerpolicy="no-referrer"' + (lazy ? ' loading="lazy"' : '') + '>';
     }
     var initial = (p.name || '?').trim().charAt(0).toUpperCase();
     return '<span class="lp-av lp-av-ph">' + esc(initial) + '</span>';
@@ -962,16 +979,74 @@
     });
   }
 
-  function addLeadPlayerByName(name) {
-    var row = ROSTER_BY_NAME[name];
+  function rosterKey(row) { return row.siteKey || (row.name + '|' + row.server); }
+  function stripSym(s) { return String(s == null ? '' : s).replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase(); }
+
+  function addLeadPlayerByRow(row) {
     if (!row) return false;
-    var key = row.siteKey || (row.name + '|' + row.server);
+    var key = rosterKey(row);
     var dup = LEAD_PLAYERS.some(function (p) { return (p.siteKey || (p.name + '|' + p.server)) === key; });
     if (dup) return false;
     LEAD_PLAYERS.push({ siteKey: row.siteKey || '', name: row.name, server: row.server, cp: row.cp, profession: row.profession || '', avatar: row.avatar || '', reportId: '' });
     renderLeadPlayers();
     scheduleLeadSave();
     return true;
+  }
+
+  // Custom avatar search-list picker (mirrors the landing page identity modal).
+  function renderRosterResults(query) {
+    var box = document.getElementById('lead-roster-results');
+    if (!box) return;
+    var q = String(query || '').trim().toLowerCase();
+    var added = {};
+    LEAD_PLAYERS.forEach(function (p) { added[p.siteKey || (p.name + '|' + p.server)] = true; });
+    rosterFiltered = ROSTER_ROWS.filter(function (r) {
+      if (added[rosterKey(r)]) return false;
+      return !q || r.name.toLowerCase().indexOf(q) !== -1;
+    }).sort(function (a, b) { return stripSym(a.name).localeCompare(stripSym(b.name)); });
+
+    box.innerHTML = '';
+    if (!rosterFiltered.length) {
+      box.innerHTML = '<div class="lead-roster-empty">No players found</div>';
+      box.hidden = false;
+      return;
+    }
+    rosterFiltered.forEach(function (r, i) {
+      var parts = [];
+      var cp = cpM(r.cp); if (cp) parts.push(cp);
+      if (r.profession) parts.push(esc(r.profession));
+      var item = document.createElement('div');
+      item.className = 'lead-ri';
+      item.setAttribute('role', 'option');
+      item.innerHTML =
+        avatarHtml(r, true) +
+        '<div class="lead-ri-main">' +
+          '<div class="lead-ri-name notranslate">' + esc(r.name) + '</div>' +
+          '<div class="lead-ri-meta">' + parts.join(' · ') + '</div>' +
+        '</div>';
+      // mousedown (not click) so selection fires before the input's blur hides the list.
+      item.addEventListener('mousedown', function (e) { e.preventDefault(); pickRoster(r); });
+      box.appendChild(item);
+    });
+    box.hidden = false;
+    var input = document.getElementById('lead-add-input');
+    if (input) input.setAttribute('aria-expanded', 'true');
+  }
+
+  function pickRoster(row) {
+    var input = document.getElementById('lead-add-input');
+    if (!addLeadPlayerByRow(row)) {
+      document.getElementById('lead-status').textContent = 'Already added.';
+    }
+    if (input) { input.value = ''; input.focus(); }
+    hideRosterResults();
+  }
+
+  function hideRosterResults() {
+    var box = document.getElementById('lead-roster-results');
+    if (box) box.hidden = true;
+    var input = document.getElementById('lead-add-input');
+    if (input) input.setAttribute('aria-expanded', 'false');
   }
 
   function scheduleLeadSave() {
@@ -1017,22 +1092,21 @@
     document.getElementById('view-leader').classList.add('active');
 
     var addInput = document.getElementById('lead-add-input');
-    addInput.addEventListener('change', function () {
-      var name = addInput.value.trim();
-      if (addLeadPlayerByName(name)) { addInput.value = ''; }
-      else { document.getElementById('lead-status').textContent = ROSTER_BY_NAME[name] ? 'Already added.' : 'Pick a name from the list.'; }
+    addInput.addEventListener('input', function () { renderRosterResults(addInput.value); });
+    addInput.addEventListener('focus', function () { renderRosterResults(addInput.value); });
+    addInput.addEventListener('blur', function () { setTimeout(hideRosterResults, 150); });
+    addInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { hideRosterResults(); }
+      else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (rosterFiltered[0]) pickRoster(rosterFiltered[0]);
+        else document.getElementById('lead-status').textContent = 'No matching player.';
+      }
     });
 
     fetch('data/transfer-roster-1805.json').then(function (r) { return r.json(); }).then(function (rows) {
-      var dl = document.getElementById('roster-datalist');
-      dl.innerHTML = '';
-      (Array.isArray(rows) ? rows : []).forEach(function (row) {
-        if (!ROSTER_BY_NAME[row.name]) ROSTER_BY_NAME[row.name] = row;
-        var opt = document.createElement('option');
-        opt.value = row.name;
-        opt.textContent = cpM(row.cp) + (row.profession ? (' · ' + row.profession) : '');
-        dl.appendChild(opt);
-      });
+      ROSTER_ROWS = (Array.isArray(rows) ? rows : []);
+      ROSTER_ROWS.forEach(function (row) { if (!ROSTER_BY_NAME[row.name]) ROSTER_BY_NAME[row.name] = row; });
       loadLeaderGroup(token);
     }).catch(function () { document.getElementById('lead-status').textContent = 'Could not load the player roster.'; });
   }
