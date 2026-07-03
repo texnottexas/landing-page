@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; img-src 'self' data: https://knight-cdn.akamaized.net https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com; frame-src https://translate.google.com; font-src https://fonts.gstatic.com; base-uri 'self'; form-action 'none'; object-src 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev https://rickroll-counter.27tb8s6fct.workers.dev https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; img-src 'self' data: https://knight-cdn.akamaized.net https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com; frame-src https://translate.google.com; font-src https://fonts.gstatic.com; base-uri 'self'; form-action 'none'; object-src 'none';">
 <title>Server 2864 · Transfer Registration</title>
 <style>
   :root{
@@ -274,6 +274,11 @@
   .lead-ri-name{font-weight:600; font-size:.88rem}
   .lead-ri-meta{font-size:.7rem; color:var(--muted)}
   .lead-roster-empty{padding:.55rem; font-size:.75rem; color:var(--muted); text-align:center}
+  .egg-overlay{position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.72); backdrop-filter:blur(2px); padding:1rem}
+  .egg-box{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:1.5rem 1.7rem; text-align:center; box-shadow:0 24px 64px rgba(0,0,0,.6); max-width:88vw}
+  .egg-msg{font-size:1.25rem; font-weight:800; color:var(--text); margin-bottom:1.1rem}
+  .egg-btn{background:#f85149; border:none; color:#fff; font-weight:700; border-radius:10px; padding:.55rem 1.5rem; font-size:.95rem; cursor:pointer; font-family:inherit}
+  .egg-btn:hover{filter:brightness(1.08)}
 </style>
 </head>
 <body>
@@ -1033,8 +1038,37 @@
     if (input) input.setAttribute('aria-expanded', 'true');
   }
 
+  // Easter egg: these players can't be added — show a refusal, then rickroll.
+  var EGG_KEYS = {
+    '21acf9a5ee7f1a2495fd271d57d6f92f9d45b4007dbbc8696e1dfa865e346fad': 1, // Drogon
+    'a95bb227d694cf1ea56f56de28d02fd33a3387a8a6af02515004a919ce021ce2': 1  // Dragone
+  };
+  function isEggPlayer(row) {
+    if (row && row.siteKey && EGG_KEYS[row.siteKey]) return true;
+    var n = String((row && row.name) || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    return n === 'drogon' || n === 'dragone';
+  }
+  function rickroll() {
+    try { fetch('https://rickroll-counter.27tb8s6fct.workers.dev', { method: 'POST', mode: 'cors' }).catch(function () {}); } catch (e) {}
+    window.location.href = 'passwords.html';
+  }
+  function showEgg() {
+    var ov = document.getElementById('egg-overlay');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'egg-overlay';
+      ov.className = 'egg-overlay';
+      ov.innerHTML = '<div class="egg-box"><div class="egg-msg notranslate">Nah, fuck that noise</div><button type="button" class="egg-btn">OK</button></div>';
+      document.body.appendChild(ov);
+      ov.addEventListener('click', function (e) { if (e.target === ov) rickroll(); });
+      ov.querySelector('.egg-btn').addEventListener('click', rickroll);
+    }
+    ov.style.display = 'flex';
+  }
+
   function pickRoster(row) {
     var input = document.getElementById('lead-add-input');
+    if (isEggPlayer(row)) { if (input) input.value = ''; hideRosterResults(); showEgg(); return; }
     if (!addLeadPlayerByRow(row)) {
       document.getElementById('lead-status').textContent = 'Already added.';
     }
