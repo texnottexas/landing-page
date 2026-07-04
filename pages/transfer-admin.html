@@ -174,6 +174,29 @@
   .gate-card h3{margin-bottom:.5rem; color:var(--accent)}
   .gate-card p{color:var(--muted); font-size:.82rem; margin-bottom:1rem}
 
+  /* Players section header (label + Summary button) */
+  .players-head{display:flex; align-items:center; justify-content:space-between; gap:.5rem}
+  .players-head label{margin-bottom:0}
+
+  /* Group summary modal — quick reference of member names + statuses */
+  .summary-bg{display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:500; align-items:center; justify-content:center; padding:1rem}
+  .summary-bg.open{display:flex}
+  .summary-card{background:var(--surface); border:1px solid var(--border); border-radius:12px; width:460px; max-width:96vw; max-height:88vh; overflow-y:auto; padding:1.2rem 1.2rem 1.4rem; position:relative}
+  .summary-card h3{color:var(--accent); font-size:1rem; margin-bottom:.1rem; padding-right:1.4rem}
+  .summary-sub{color:var(--muted); font-size:.76rem; margin-bottom:.7rem}
+  .summary-close{position:absolute; top:.7rem; right:.9rem; background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.2rem; line-height:1}
+  .summary-close:hover{color:var(--text)}
+  .summary-actions{display:flex; gap:.5rem; margin-bottom:.6rem}
+  .summary-cat{display:flex; align-items:baseline; gap:.4rem; font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--faint); font-weight:700; margin:.85rem 0 .25rem; padding-bottom:.2rem; border-bottom:1px solid var(--border)}
+  .summary-cat:first-child{margin-top:0}
+  .summary-cat .cat-n{color:var(--muted); font-weight:700}
+  .summary-row{display:flex; align-items:center; justify-content:space-between; gap:.5rem; padding:.28rem .1rem}
+  .summary-row .s-name{font-size:.86rem; font-weight:600; min-width:0; overflow-wrap:anywhere}
+  .summary-row .s-name .s-server{color:var(--faint); font-weight:400; font-size:.74rem; margin-left:.3rem}
+  .s-pill{font-size:.64rem; font-weight:700; border-radius:999px; padding:.1rem .45rem; border:1px solid var(--border2); color:var(--muted); background:var(--card2); white-space:nowrap; flex:none}
+  .s-pill.ts-pending{color:var(--gold); border-color:rgba(210,153,34,.4); background:var(--gold-soft)}
+  .s-pill.ts-completed{color:var(--green); border-color:rgba(63,185,80,.4); background:var(--green-soft)}
+
   .toast{
     position:fixed; bottom:1.2rem; left:50%; transform:translateX(-50%); background:var(--card2);
     border:1px solid var(--border2); border-radius:9px; padding:.6rem 1rem; font-size:.82rem;
@@ -309,7 +332,10 @@
     </section>
 
     <section>
-      <label>Players</label>
+      <div class="players-head">
+        <label>Players</label>
+        <button type="button" class="btn small" id="group-summary-btn" style="display:none">Summary</button>
+      </div>
       <div id="drawer-players"></div>
     </section>
 
@@ -330,6 +356,18 @@
         <button type="button" class="btn danger" id="delete-btn">Delete application</button>
       </div>
     </section>
+  </div>
+</div>
+
+<div class="summary-bg" id="summary-bg">
+  <div class="summary-card">
+    <button type="button" class="summary-close" id="summary-close" aria-label="Close">&times;</button>
+    <h3 id="summary-title"></h3>
+    <div class="summary-sub" id="summary-sub"></div>
+    <div class="summary-actions">
+      <button type="button" class="btn small" id="summary-copy">Copy list</button>
+    </div>
+    <div id="summary-body"></div>
   </div>
 </div>
 
@@ -925,6 +963,16 @@ function openDrawer(appId, bucketId) {
   document.getElementById('drawer-title').textContent = app.type === 'group' ? (app.groupName || 'Group') : (app.players[0] ? app.players[0].name : 'Applicant');
   document.getElementById('drawer-sub').textContent = app.type === 'group' ? ('Group · ' + app.players.length + ' player(s)') : 'Individual applicant';
 
+  // Summary button — groups only; opens a clean names + statuses quick-reference.
+  var summaryBtn = document.getElementById('group-summary-btn');
+  if (app.type === 'group') {
+    summaryBtn.style.display = '';
+    summaryBtn.onclick = function () { openGroupSummary(app); };
+  } else {
+    summaryBtn.style.display = 'none';
+    summaryBtn.onclick = null;
+  }
+
   var infoEl = document.getElementById('drawer-applicant-info');
   var preferredDateHtml = app.preferredDate === 'asap'
     ? 'As soon as possible'
@@ -1218,6 +1266,93 @@ function closeDrawer() {
   document.getElementById('drawer-bg').classList.remove('open');
   STATE.activeAppId = null;
 }
+
+// ── GROUP SUMMARY MODAL ──────────────────────────────────────────────────
+// Quick reference: every member grouped by bucket, name + transfer status.
+var SUMMARY_APP = null;
+
+// Transfer-state pill descriptor (Pending Transfer / Completed), or null.
+function tsPill(ts) {
+  if (ts === 'completed') return { cls: 'ts-completed', label: 'Completed' };
+  if (ts === 'pending') return { cls: 'ts-pending', label: 'Pending Transfer' };
+  return null;
+}
+
+function openGroupSummary(app) {
+  SUMMARY_APP = app;
+  var bucketOptions = columnsSpec();
+  var total = (app.players || []).length;
+  document.getElementById('summary-title').textContent = app.groupName || 'Group';
+  document.getElementById('summary-sub').textContent =
+    total + ' member' + (total === 1 ? '' : 's') +
+    (app.cohort ? ' · cohort ' + app.cohort : '') +
+    (Array.isArray(app.leaders) && app.leaders.length ? ' · leaders: ' + app.leaders.join(' & ') : '');
+
+  var body = document.getElementById('summary-body');
+  body.innerHTML = '';
+  bucketOptions.forEach(function (col) {
+    var members = playersInBucket(app.players, col).slice().sort(function (a, b) { return dpNameKey(a).localeCompare(dpNameKey(b)); });
+    if (!members.length) return;
+
+    var cat = document.createElement('div');
+    cat.className = 'summary-cat';
+    var catLabel = document.createElement('span'); catLabel.textContent = col.label;
+    var catN = document.createElement('span'); catN.className = 'cat-n'; catN.textContent = '(' + members.length + ')';
+    cat.appendChild(catLabel); cat.appendChild(catN);
+    body.appendChild(cat);
+
+    members.forEach(function (p) {
+      var row = document.createElement('div');
+      row.className = 'summary-row';
+      var name = document.createElement('div');
+      name.className = 's-name';
+      name.appendChild(document.createTextNode(p.name || '(no name)'));  // textNode: safe with decorative fonts
+      var srv = document.createElement('span');
+      srv.className = 's-server'; srv.textContent = 'S' + (p.server || '?');
+      name.appendChild(srv);
+      row.appendChild(name);
+      var pill = tsPill(transferStatusOf(p));
+      if (pill) {
+        var b = document.createElement('span');
+        b.className = 's-pill ' + pill.cls; b.textContent = pill.label;
+        row.appendChild(b);
+      }
+      body.appendChild(row);
+    });
+  });
+  if (!body.children.length) body.innerHTML = '<div class="empty-col" style="text-align:left">No members.</div>';
+
+  document.getElementById('summary-bg').classList.add('open');
+}
+
+// Plain-text version of the summary for the Copy button (Discord / notes friendly).
+function buildSummaryText(app) {
+  var bucketOptions = columnsSpec();
+  var total = (app.players || []).length;
+  var lines = [(app.groupName || 'Group') + ' — ' + total + ' member' + (total === 1 ? '' : 's'), ''];
+  bucketOptions.forEach(function (col) {
+    var members = playersInBucket(app.players, col).slice().sort(function (a, b) { return dpNameKey(a).localeCompare(dpNameKey(b)); });
+    if (!members.length) return;
+    lines.push(col.label + ' (' + members.length + ')');
+    members.forEach(function (p) {
+      var pill = tsPill(transferStatusOf(p));
+      lines.push('  ' + (p.name || '(no name)') + ' (S' + (p.server || '?') + ')' + (pill ? ' — ' + pill.label : ''));
+    });
+    lines.push('');
+  });
+  return lines.join('\n').trim();
+}
+
+function closeSummary() { document.getElementById('summary-bg').classList.remove('open'); }
+document.getElementById('summary-close').addEventListener('click', closeSummary);
+document.getElementById('summary-bg').addEventListener('click', function (e) { if (e.target.id === 'summary-bg') closeSummary(); });
+document.getElementById('summary-copy').addEventListener('click', function () {
+  if (!SUMMARY_APP) return;
+  var text = buildSummaryText(SUMMARY_APP);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () { showToast('Summary copied'); }, function () { showToast('Copy failed'); });
+  } else { showToast('Clipboard not available'); }
+});
 
 document.getElementById('reject-btn').addEventListener('click', function () {
   if (!STATE.activeAppId) return;
