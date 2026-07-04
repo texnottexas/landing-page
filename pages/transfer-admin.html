@@ -1082,17 +1082,21 @@ function buildPlayerRow(app, p, bucketOptions, appId) {
   bucketWrap.appendChild(bucketSelect);
   row.appendChild(bucketWrap);
 
-  // Transfer status — only meaningful once a player is slotted into a wave.
-  if (p.status === 'approved' && p.cycleId) {
+  // Transfer status — Completed can be marked for ANY approved player, even
+  // before a specific wave is chosen. The "not completed" option reflects the
+  // player's current stage (Pending Transfer in a wave, else Accepted).
+  if (p.status === 'approved') {
+    var inWave = !!p.cycleId;
+    var isDone = transferStatusOf(p) === 'completed';
     var tsWrap = document.createElement('div');
     tsWrap.className = 'full';
     var tsLabel = document.createElement('label');
     tsLabel.textContent = 'Transfer status';
     var tsSelect = document.createElement('select');
-    [['pending', 'Pending Transfer'], ['completed', 'Completed']].forEach(function (o) {
+    [['pending', inWave ? 'Pending Transfer' : 'Accepted (awaiting wave)'], ['completed', 'Completed']].forEach(function (o) {
       var opt = document.createElement('option');
       opt.value = o[0]; opt.textContent = o[1];
-      if (transferStatusOf(p) === o[0]) opt.selected = true;
+      if ((isDone && o[0] === 'completed') || (!isDone && o[0] === 'pending')) opt.selected = true;
       tsSelect.appendChild(opt);
     });
     tsSelect.addEventListener('change', makeTransferStatusHandler(appId, p.pid, tsSelect));
