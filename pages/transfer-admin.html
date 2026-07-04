@@ -432,6 +432,7 @@ var STATE = {
   cycles: [],
   counts: {},
   activeAppId: null,
+  drawerBucketId: '',
   search: '',
   statusFilter: '',
   sortBy: '',
@@ -645,9 +646,9 @@ function renderBoard() {
           if (seenGroup[row.app.id]) return;
           seenGroup[row.app.id] = true;
           var groupPlayers = colRows.filter(function (r) { return r.app.id === row.app.id; }).map(function (r) { return r.player; });
-          body.appendChild(makeGroupCard(row.app, groupPlayers));
+          body.appendChild(makeGroupCard(row.app, groupPlayers, col.id));
         } else {
-          body.appendChild(makeCard(row.app, row.player));
+          body.appendChild(makeCard(row.app, row.player, col.id));
         }
       });
     }
@@ -658,7 +659,7 @@ function renderBoard() {
   });
 }
 
-function makeCard(app, player) {
+function makeCard(app, player, colId) {
   var card = document.createElement('div');
   card.className = 'card';
   card.draggable = true;
@@ -709,7 +710,7 @@ function makeCard(app, player) {
 
   card.appendChild(meta);
 
-  card.addEventListener('click', makeCardClickHandler(app.id));
+  card.addEventListener('click', makeCardClickHandler(app.id, colId));
 
   attachCardDragHandlers(card);
   return card;
@@ -718,7 +719,7 @@ function makeCard(app, player) {
 // One card representing a whole group's players within a single column.
 // Shows group name + leader + how many members are here; opens the drawer on
 // click (members + operations live there); dragging moves this column's members.
-function makeGroupCard(app, players) {
+function makeGroupCard(app, players, colId) {
   var card = document.createElement('div');
   card.className = 'card group-card';
   card.draggable = true;
@@ -772,7 +773,7 @@ function makeGroupCard(app, players) {
   if (tkeys.length === 1) appendTransferStatusBadge(meta, tkeys[0]);
   card.appendChild(meta);
 
-  card.addEventListener('click', makeCardClickHandler(app.id));
+  card.addEventListener('click', makeCardClickHandler(app.id, colId));
   attachGroupDragHandlers(card, app, players);
   return card;
 }
@@ -786,9 +787,10 @@ function appendTransferStatusBadge(meta, ts) {
   meta.appendChild(b);
 }
 
-// Per-card closure for click — never a bare loop variable.
-function makeCardClickHandler(appId) {
-  return function () { openDrawer(appId); };
+// Per-card closure for click — never a bare loop variable. bucketId is the
+// column the card was clicked in, so the drawer can default its filter to it.
+function makeCardClickHandler(appId, bucketId) {
+  return function () { openDrawer(appId, bucketId); };
 }
 
 // ── DRAG AND DROP ────────────────────────────────────────────────────────
@@ -904,10 +906,21 @@ function refreshAll() {
 // ── DRAWER ───────────────────────────────────────────────────────────────
 var notesDebounce = null;
 
-function openDrawer(appId) {
+// Which of app.players fall in a given bucket column (mirrors renderBoard's filter).
+function playersInBucket(players, col) {
+  return (players || []).filter(function (p) {
+    return p.status === col.status && (col.status !== 'approved' || (p.cycleId || '') === (col.cycleId || ''));
+  });
+}
+
+// bucketId: the column the card was clicked in. When provided, the drawer defaults
+// its status filter to that bucket so you only see the members from that column.
+// Omitted on refreshAll() re-opens so the admin's current filter is preserved.
+function openDrawer(appId, bucketId) {
   var app = STATE.apps.find(function (a) { return a.id === appId; });
   if (!app) return;
   STATE.activeAppId = appId;
+  if (bucketId !== undefined) STATE.drawerBucketId = bucketId || '';
 
   document.getElementById('drawer-title').textContent = app.type === 'group' ? (app.groupName || 'Group') : (app.players[0] ? app.players[0].name : 'Applicant');
   document.getElementById('drawer-sub').textContent = app.type === 'group' ? ('Group · ' + app.players.length + ' player(s)') : 'Individual applicant';
@@ -955,8 +968,16 @@ function openDrawer(appId) {
     playersEl.appendChild(groupOps);
   }
 
-  // Filter / sort bar — shown for groups big enough that a flat list is unwieldy.
-  var showFilters = app.type === 'group' && app.players.length > 6;
+  // Default the list to the bucket the card was clicked in (if it's a real column).
+  var defaultBucketId = STATE.drawerBucketId || '';
+  var defaultCol = defaultBucketId ? bucketOptions.filter(function (c) { return c.id === defaultBucketId; })[0] : null;
+  // Would defaulting to that bucket hide some of the group's members?
+  var hidesMembers = !!defaultCol && playersInBucket(app.players, defaultCol).length < (app.players || []).length;
+
+  // Filter / sort bar — shown for big groups (flat list unwieldy) OR whenever the
+  // bucket default would hide members, so "All statuses" is always reachable.
+  var showFilters = app.type === 'group' && ((app.players || []).length > 6 || hidesMembers);
+  var initialStatusId = (showFilters && defaultCol) ? defaultBucketId : '';
   var listWrap = document.createElement('div');
   listWrap.id = 'dp-list';
   if (showFilters) {
@@ -969,11 +990,13 @@ function openDrawer(appId) {
     bucketOptions.forEach(function (col) {
       var o = document.createElement('option'); o.value = col.id; o.textContent = col.label; statusSel.appendChild(o);
     });
+    statusSel.value = initialStatusId;
     var sortSel = document.createElement('select'); sortSel.id = 'dp-sort';
     [['name', 'Sort: name A–Z'], ['name-desc', 'Sort: name Z–A'], ['status', 'Sort: status'], ['cp', 'Sort: CP']].forEach(function (o) {
       var opt = document.createElement('option'); opt.value = o[0]; opt.textContent = o[1]; sortSel.appendChild(opt);
     });
-    function rerenderList() { renderDrawerPlayerList(app, appId, bucketOptions, listWrap, search.value, statusSel.value, sortSel.value); }
+    // Persist the chosen filter so a refresh (after a move) keeps the same view.
+    function rerenderList() { STATE.drawerBucketId = statusSel.value; renderDrawerPlayerList(app, appId, bucketOptions, listWrap, search.value, statusSel.value, sortSel.value); }
     search.addEventListener('input', rerenderList);
     statusSel.addEventListener('change', rerenderList);
     sortSel.addEventListener('change', rerenderList);
@@ -982,7 +1005,7 @@ function openDrawer(appId) {
   }
   playersEl.appendChild(listWrap);
   // Big groups default to name A–Z (easier to scan); small groups keep roster order.
-  renderDrawerPlayerList(app, appId, bucketOptions, listWrap, '', '', showFilters ? 'name' : '');
+  renderDrawerPlayerList(app, appId, bucketOptions, listWrap, '', initialStatusId, showFilters ? 'name' : '');
 
   var notesInput = document.getElementById('notes-input');
   notesInput.value = app.adminNotes || '';
