@@ -1,0 +1,1836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heroes Awakening — Stat Spreadsheet (V2)</title>
+<meta name="theme-color" content="#0d1117">
+<meta name="description" content="Power-user spreadsheet for Top War Heroes Awakening: stones-to-target calculator, awakening level shard budget, team fight-power gain, combo trio planner, side-by-side skill compare, ES7 swap table, honor wall projector.">
+<style>
+:root{
+  --bg:#0d1117; --surface:#161b22; --card:#1c2128;
+  --border:#30363d; --border2:#21262d; --text:#e6edf3; --muted:#8b949e;
+  --accent:#79c0ff; --green:#3fb950; --gold:#d29922; --purple:#957cff;
+  --red:#f85149; --orange:#ff9655;
+  --army:#3fb950; --navy:#388bfd; --air:#d29922;
+  --mono:'JetBrains Mono','SF Mono','Menlo','Consolas',ui-monospace,monospace;
+  --shadow:0 1px 0 rgba(255,255,255,0.02) inset, 0 1px 2px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);min-height:100%}
+body{
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;
+  padding:0 0 80px;
+}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* ===== ENTRY GATE ===== */
+.gate-overlay{position:fixed;inset:0;z-index:10000;background:radial-gradient(ellipse at center,rgba(13,17,23,.96) 0%,rgba(0,0,0,.99) 80%);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:1.5rem;animation:gfade .35s ease both}
+@keyframes gfade{from{opacity:0}to{opacity:1}}
+@keyframes grise{from{opacity:0;transform:translateY(28px) scale(.96)}to{opacity:1;transform:none}}
+.gate-card{background:linear-gradient(160deg,var(--surface) 0%,var(--card) 100%);border:1px solid var(--border);border-radius:16px;padding:2.2rem 1.6rem 1.8rem;max-width:460px;width:100%;box-shadow:0 24px 80px rgba(0,0,0,.7),0 0 0 1px rgba(121,192,255,.05);animation:grise .55s cubic-bezier(.2,.7,.2,1) .12s both;text-align:center}
+.gate-eyebrow{font-size:.65rem;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:.55rem;font-weight:600}
+.gate-title{font-size:1.18rem;font-weight:700;color:var(--text);margin:0 0 1.4rem;line-height:1.4}
+.gate-options{display:flex;flex-direction:column;gap:.55rem}
+@keyframes gshim{0%{background-position:0% 0,-200% 0}100%{background-position:0% 0,200% 0}}
+.gate-option{width:100%;color:var(--text);border:2px solid transparent;border-radius:12px;padding:.85rem 1.1rem;font-size:.98rem;font-weight:600;letter-spacing:.02em;cursor:pointer;transition:transform .18s ease,box-shadow .18s ease,filter .18s ease;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:.55rem;background-color:var(--card);background-origin:border-box;background-clip:padding-box,border-box;background-size:100% 100%,300% auto;animation:gshim 6s linear infinite}
+.gate-option[data-choice="boats"]{background-image:linear-gradient(var(--card),var(--card)),linear-gradient(90deg,var(--accent) 0%,#3fb950 20%,#d29922 40%,#a371f7 60%,#3fb950 80%,var(--accent) 100%)}
+.gate-option[data-choice="boats"]:hover{transform:translateY(-2px);filter:brightness(1.08);box-shadow:0 6px 24px rgba(121,192,255,.22)}
+.gate-option[data-choice="tanks"],.gate-option[data-choice="planes"]{background-image:linear-gradient(var(--card),var(--card)),linear-gradient(90deg,rgba(248,81,73,.35) 0%,#f85149 25%,rgba(248,81,73,.5) 50%,#ff7b72 75%,rgba(248,81,73,.35) 100%)}
+.gate-option[data-choice="tanks"]:hover,.gate-option[data-choice="planes"]:hover{transform:translateY(-2px);filter:brightness(1.08);box-shadow:0 6px 24px rgba(248,81,73,.22)}
+.gate-option:active{transform:translateY(0);filter:brightness(.96)}
+.gate-option .gate-bullet{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--muted);flex:none;transition:all .18s ease}
+.gate-stage{position:relative;width:200px;height:200px}
+.gate-pretext{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:1.4rem;font-weight:800;letter-spacing:.15em;text-transform:lowercase;text-align:center;line-height:1.25;white-space:nowrap;color:var(--accent)}
+.gate-pretext.wrong{color:#f85149}
+
+/* ===== HEADER ===== */
+header.appbar{
+  position:sticky;top:0;z-index:90;background:rgba(13,17,23,.92);
+  backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--border);
+  padding:8px 14px;
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700}
+.brand .logo{
+  width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#79c0ff 0%, #957cff 100%);
+  color:#0d1117;font-weight:900;font-family:var(--mono);font-size:11px;
+}
+.brand .ttl{font-size:13px;color:var(--text)}
+.brand .ttl .v{color:var(--muted);font-weight:500;font-size:11px;margin-left:6px}
+.appbar .spacer{flex:1}
+.appbar .badge{font-size:10px;padding:3px 7px;border:1px solid var(--border);border-radius:999px;color:var(--muted);background:var(--card);font-family:var(--mono)}
+.appbar .badge b{color:var(--accent);font-weight:700}
+.home-link{font-size:11px;color:var(--muted);border:1px solid var(--border);background:var(--card);padding:5px 9px;border-radius:6px}
+.home-link:hover{color:var(--accent);border-color:var(--accent);text-decoration:none}
+
+/* ===== HERO SELECTOR (sticky) ===== */
+.hero-bar{
+  position:sticky;top:39px;z-index:80;background:rgba(13,17,23,.92);
+  backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--border);
+  padding:8px 14px;display:flex;align-items:center;gap:6px;overflow-x:auto;
+  scrollbar-width:thin;
+}
+.hero-bar::-webkit-scrollbar{height:6px}
+.hero-bar::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.hero-bar .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-weight:700;white-space:nowrap;padding-right:4px}
+.hchip{
+  display:inline-flex;align-items:center;gap:6px;padding:4px 9px 4px 5px;
+  border:1px solid var(--border);background:var(--card);border-radius:999px;cursor:pointer;
+  font-size:12px;color:var(--text);white-space:nowrap;transition:all .12s;
+  font-family:inherit;
+}
+.hchip:hover{border-color:var(--accent);background:#1f2733}
+.hchip.active{background:linear-gradient(135deg,rgba(121,192,255,.18),rgba(149,124,255,.12));border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.hchip img{width:20px;height:20px;border-radius:50%;background:#0d1117;object-fit:cover}
+.hchip .tdot{width:6px;height:6px;border-radius:50%;display:inline-block}
+.hchip.tArmy .tdot{background:var(--army)}
+.hchip.tNavy .tdot{background:var(--navy)}
+.hchip.tAir .tdot{background:var(--air)}
+.hchip .ph{font-size:9px;color:var(--muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em}
+
+/* ===== MAIN LAYOUT ===== */
+main{max-width:1400px;margin:0 auto;padding:18px 14px 0}
+section{margin-bottom:24px}
+.sec-head{display:flex;align-items:baseline;gap:10px;margin:6px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.sec-head h2{font-size:13px;color:var(--text);font-weight:700;letter-spacing:.02em;text-transform:uppercase;margin:0}
+.sec-head .sec-id{font-family:var(--mono);font-size:10px;color:var(--muted);padding:1px 5px;background:var(--card);border:1px solid var(--border);border-radius:3px}
+.sec-head .sec-sub{font-size:11px;color:var(--muted);margin-left:auto}
+
+/* ===== HERO HEADER CARD (selected hero summary) ===== */
+.hero-summary{
+  background:linear-gradient(135deg,var(--surface) 0%,var(--card) 100%);
+  border:1px solid var(--border);border-radius:8px;padding:14px 16px;
+  display:grid;grid-template-columns:64px 1fr auto;gap:16px;align-items:center;
+}
+.hero-summary .portrait{width:64px;height:64px;border-radius:8px;background:#0d1117;object-fit:cover;border:1px solid var(--border)}
+.hero-summary .placeholder{width:64px;height:64px;border-radius:8px;background:linear-gradient(135deg,#1c2128,#0d1117);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:800;color:var(--muted);border:1px solid var(--border)}
+.hero-summary .meta h3{font-size:18px;font-weight:700;margin:0 0 2px}
+.hero-summary .meta .label{font-size:11px;color:var(--gold);font-style:italic}
+.hero-summary .meta .row{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}
+.tagbox{font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em}
+.tagbox.tArmy{color:var(--army);border-color:var(--army)}
+.tagbox.tNavy{color:var(--navy);border-color:var(--navy)}
+.tagbox.tAir{color:var(--air);border-color:var(--air)}
+.tagbox.live{color:var(--green);border-color:var(--green)}
+.tagbox.cs{color:var(--muted)}
+.tagbox.gold{color:var(--gold);border-color:var(--gold)}
+.hero-summary .quickstats{display:flex;gap:14px;align-items:flex-end}
+.qs{text-align:right}
+.qs .k{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.qs .v{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--accent);line-height:1.1}
+.qs .v.gold{color:var(--gold)}
+.qs .v.green{color:var(--green)}
+.qs .v.purple{color:var(--purple)}
+
+/* ===== GRIDS ===== */
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(2,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+.g6{grid-template-columns:repeat(6,1fr)}
+@media (max-width:900px){
+  .g2,.g3,.g4{grid-template-columns:1fr}
+  .g6{grid-template-columns:repeat(3,1fr)}
+}
+
+/* ===== CARDS / PANELS ===== */
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0;overflow:hidden}
+.panel-head{padding:9px 12px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text)}
+.panel-head .ic{width:14px;height:14px;color:var(--accent)}
+.panel-head .tag{margin-left:auto;font-size:9px;font-family:var(--mono);color:var(--muted);text-transform:none;letter-spacing:0;padding:2px 6px;border:1px solid var(--border);border-radius:3px;background:var(--bg);font-weight:500}
+.panel-body{padding:12px}
+.panel-foot{padding:8px 12px;background:var(--card);border-top:1px solid var(--border);font-size:11px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap}
+.panel-foot strong{color:var(--text);font-family:var(--mono)}
+
+/* ===== TABLES ===== */
+table.t{border-collapse:collapse;width:100%;font-size:12px}
+table.t th,table.t td{padding:5px 8px;text-align:right;border-bottom:1px solid var(--border2);font-variant-numeric:tabular-nums;font-family:var(--mono)}
+table.t th{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:700;background:var(--card);position:sticky;top:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;text-align:right;border-bottom:1px solid var(--border)}
+table.t th:first-child,table.t td:first-child{text-align:left}
+table.t tbody tr:hover{background:rgba(121,192,255,.04)}
+table.t tbody tr.row-hi{background:rgba(63,185,80,.07)}
+table.t tbody tr.row-mid{background:rgba(210,153,34,.05)}
+table.t .delta-pos{color:var(--green)}
+table.t .delta-neg{color:var(--red)}
+table.t .accent{color:var(--accent)}
+table.t .gold{color:var(--gold)}
+table.t .purple{color:var(--purple)}
+table.t .muted{color:var(--muted)}
+table.t .freeL{color:var(--green);font-weight:700}
+.tbl-wrap{max-height:420px;overflow:auto;border:1px solid var(--border);border-radius:6px;background:var(--bg)}
+.tbl-wrap.no-scroll{max-height:none}
+
+/* compact alt-style stripe table (single panel) */
+table.tt{width:100%;border-collapse:collapse;font-size:12px}
+table.tt th,table.tt td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2)}
+table.tt th{font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;background:var(--card);letter-spacing:.04em}
+table.tt td.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ===== SPINNERS / INPUTS ===== */
+.spin{
+  display:inline-flex;align-items:center;gap:0;background:var(--bg);border:1px solid var(--border);border-radius:6px;overflow:hidden;
+  font-family:var(--mono);height:28px;
+}
+.spin button{
+  background:var(--card);border:none;color:var(--muted);cursor:pointer;width:24px;height:100%;font-size:14px;font-weight:700;font-family:inherit;
+  display:flex;align-items:center;justify-content:center;transition:all .12s;
+}
+.spin button:hover{background:#252b33;color:var(--accent)}
+.spin input{
+  width:44px;text-align:center;background:transparent;color:var(--text);border:none;
+  font-family:inherit;font-size:13px;font-variant-numeric:tabular-nums;font-weight:700;
+  -moz-appearance:textfield;
+}
+.spin input::-webkit-outer-spin-button,.spin input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.spin input:focus{outline:none;color:var(--accent)}
+.spin.from input{color:var(--muted)}
+.spin.to input{color:var(--accent)}
+.spin.disabled{opacity:.4;pointer-events:none}
+.fieldset{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--border2)}
+.fieldset:last-child{border-bottom:none}
+.fieldset .fk{font-size:12px;display:flex;align-items:center;gap:8px}
+.fieldset .fk img{width:18px;height:18px;border-radius:3px}
+.fieldset .fk .fname{font-weight:600}
+.fieldset .fk .fhint{font-size:10px;color:var(--muted);font-family:var(--mono)}
+.fieldset .sep{font-family:var(--mono);color:var(--muted);font-size:14px;text-align:center;padding:0 4px}
+
+/* totals box */
+.totals{
+  background:linear-gradient(135deg,rgba(121,192,255,.08),rgba(149,124,255,.05));
+  border:1px solid var(--accent);border-radius:6px;padding:12px;margin-top:12px;
+  display:grid;grid-template-columns:repeat(4,1fr);gap:12px;
+}
+.totals.warn{background:linear-gradient(135deg,rgba(248,81,73,.06),rgba(255,150,85,.05));border-color:var(--red)}
+.totals.green{background:linear-gradient(135deg,rgba(63,185,80,.06),rgba(63,185,80,.03));border-color:var(--green)}
+.totals .tt-row{display:flex;flex-direction:column;gap:2px}
+.totals .tt-k{font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:.08em;font-weight:600}
+.totals .tt-v{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--text);line-height:1}
+.totals .tt-v.accent{color:var(--accent)}
+.totals .tt-v.gold{color:var(--gold)}
+.totals .tt-v.green{color:var(--green)}
+.totals .tt-v.red{color:var(--red)}
+.totals .tt-v.purple{color:var(--purple)}
+.totals .tt-sub{font-size:10px;color:var(--muted);font-family:var(--mono)}
+
+/* progress bar */
+.pbar{height:6px;background:var(--bg);border:1px solid var(--border);border-radius:3px;overflow:hidden;position:relative;margin-top:6px}
+.pbar > span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--purple));transition:width .25s ease}
+.pbar.green > span{background:linear-gradient(90deg,var(--green),var(--accent))}
+.pbar.gold > span{background:linear-gradient(90deg,var(--gold),var(--orange))}
+
+/* skill icons */
+.sk-ic{width:28px;height:28px;border-radius:6px;background:#0d1117;border:1px solid var(--border);object-fit:contain;padding:2px}
+.sk-ic.lg{width:38px;height:38px}
+.sk-name{font-weight:600;font-size:12px}
+.sk-num{font-size:9px;color:var(--muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em}
+
+/* Tab strip for tools */
+.toolbar{
+  display:flex;gap:4px;margin-bottom:14px;border-bottom:1px solid var(--border);overflow-x:auto;
+  scrollbar-width:none;
+}
+.toolbar::-webkit-scrollbar{display:none}
+.tool-btn{
+  background:transparent;border:none;border-bottom:2px solid transparent;color:var(--muted);
+  font-family:inherit;font-size:12px;padding:8px 12px;cursor:pointer;white-space:nowrap;
+  font-weight:600;display:flex;align-items:center;gap:6px;
+}
+.tool-btn:hover{color:var(--text)}
+.tool-btn.active{color:var(--accent);border-color:var(--accent)}
+.tool-btn .tnum2{font-family:var(--mono);font-size:10px;color:var(--muted);background:var(--card);padding:1px 5px;border-radius:3px;border:1px solid var(--border)}
+.tool-btn.active .tnum2{color:var(--accent);border-color:var(--accent)}
+.tool-pane{display:none}
+.tool-pane.active{display:block}
+
+/* ===== TEAM / COMBO BUILDER ===== */
+.slotrow{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+@media (max-width:900px){.slotrow{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:560px){.slotrow{grid-template-columns:repeat(2,1fr)}}
+.slot{
+  background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:10px 8px;
+  display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;transition:all .12s;
+  min-height:118px;justify-content:center;text-align:center;
+}
+.slot:hover{border-style:solid;border-color:var(--accent)}
+.slot.filled{border-style:solid;background:var(--card);border-color:var(--border)}
+.slot .sp{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+.slot img{width:42px;height:42px;border-radius:50%;background:#0d1117;border:1px solid var(--border);object-fit:cover}
+.slot .nm{font-size:11px;font-weight:600}
+.slot .ph{font-size:9px;color:var(--muted);font-family:var(--mono)}
+.slot .lvspin{margin-top:2px}
+.slot .x{position:absolute;top:4px;right:6px;color:var(--red);font-size:10px;font-weight:700;cursor:pointer;display:none}
+.slot.filled{position:relative}
+.slot.filled .x{display:block}
+
+/* ===== HERO PICKER MODAL ===== */
+.modal-overlay{
+  position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);
+  display:none;align-items:flex-start;justify-content:center;padding:60px 14px 14px;overflow-y:auto;
+}
+.modal-overlay.active{display:flex}
+.modal{
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  max-width:680px;width:100%;padding:18px;
+}
+.modal h3{font-size:14px;margin-bottom:10px}
+.modal .picker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
+.modal .pick{display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:var(--card);transition:all .12s;text-align:center}
+.modal .pick:hover{border-color:var(--accent);transform:translateY(-1px)}
+.modal .pick img{width:42px;height:42px;border-radius:50%;background:#0d1117}
+.modal .pick .nm{font-size:11px;font-weight:600}
+.modal .pick .meta{font-size:9px;color:var(--muted);font-family:var(--mono)}
+.modal-close{background:var(--card);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;font-family:inherit;margin-bottom:10px}
+.modal-close:hover{color:var(--red);border-color:var(--red)}
+
+/* ===== COMBO ROW PRESET ===== */
+.combo-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.combo-pill{
+  border:1px solid var(--border);background:var(--card);padding:4px 9px;border-radius:999px;font-size:11px;cursor:pointer;color:var(--text);
+  display:inline-flex;align-items:center;gap:5px;font-family:inherit;
+}
+.combo-pill:hover{border-color:var(--accent);color:var(--accent)}
+.combo-pill.active{background:linear-gradient(135deg,rgba(121,192,255,.15),rgba(149,124,255,.1));border-color:var(--accent);color:var(--accent)}
+.combo-pill .buf{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.combo-pill.active .buf{color:var(--gold)}
+
+/* ===== COMPARE SIDE-BY-SIDE ===== */
+.cmp-grid{display:grid;grid-template-columns:1fr 60px 1fr;gap:8px;align-items:start}
+@media (max-width:760px){.cmp-grid{grid-template-columns:1fr;gap:14px}.cmp-vs{display:none}}
+.cmp-col{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px}
+.cmp-col .h{display:flex;align-items:center;gap:8px;padding-bottom:8px;border-bottom:1px solid var(--border2);margin-bottom:8px}
+.cmp-col .h img{width:34px;height:34px;border-radius:6px}
+.cmp-col .h .nm{font-weight:700;font-size:13px}
+.cmp-col .h .ph{font-size:10px;color:var(--muted);font-family:var(--mono)}
+.cmp-vs{display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:14px;color:var(--purple);font-weight:800;padding-top:32px}
+.skill-strip{display:grid;grid-template-columns:30px 1fr 50px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--border2);font-size:11px}
+.skill-strip:last-child{border-bottom:none}
+.skill-strip .ssval{text-align:right;font-family:var(--mono);font-weight:700;color:var(--accent)}
+.skill-strip .ssname{font-weight:600}
+.skill-strip .ssdesc{color:var(--muted);font-size:10px;line-height:1.35;margin-top:2px;font-family:var(--mono)}
+
+/* compare select */
+.cmp-pick{font-size:11px;font-family:inherit;color:var(--text);background:var(--card);border:1px solid var(--border);border-radius:4px;padding:4px 6px}
+
+/* utility */
+.kbd{font-family:var(--mono);font-size:10px;padding:1px 5px;border-radius:3px;background:var(--card);border:1px solid var(--border);color:var(--muted)}
+.note{font-size:11px;color:var(--muted);background:var(--card);border-left:3px solid var(--gold);padding:8px 12px;border-radius:0 6px 6px 0;margin-top:10px;line-height:1.5}
+.note strong{color:var(--text)}
+.note.red{border-left-color:var(--red)}
+.note.green{border-left-color:var(--green)}
+.note.purple{border-left-color:var(--purple)}
+
+.foot{text-align:center;color:var(--muted);font-size:10px;padding:20px 0;border-top:1px solid var(--border);margin-top:30px;font-family:var(--mono)}
+.foot a{color:var(--muted)}
+
+/* ES7 swap table */
+.es7-tbl{font-family:var(--mono);font-size:11px}
+.es7-tbl td.fam{color:var(--accent)}
+.es7-tbl td.arrow{color:var(--purple);text-align:center;font-weight:700}
+.es7-tbl td.fam7{color:var(--gold)}
+
+/* skill desc */
+.sk-desc{font-size:11px;color:var(--text);line-height:1.55;background:var(--bg);border:1px solid var(--border);padding:9px 11px;border-radius:6px;margin-top:8px}
+.sk-desc .tk{color:var(--gold);font-weight:600}
+.sk-desc .v{color:var(--accent);font-weight:700;font-family:var(--mono)}
+
+/* segmented control */
+.seg{display:inline-flex;background:var(--bg);border:1px solid var(--border);border-radius:6px;overflow:hidden;height:28px}
+.seg button{background:transparent;border:none;color:var(--muted);font-family:inherit;font-size:11px;padding:0 10px;cursor:pointer;font-weight:600}
+.seg button:hover{color:var(--text)}
+.seg button.active{background:var(--card);color:var(--accent)}
+
+/* misc */
+.hidden{display:none !important}
+
+</style>
+</head>
+<body>
+
+<!-- Entry gate -->
+<div class="gate-overlay" id="entryGate" role="dialog" aria-modal="true">
+  <div class="gate-card" id="gateCard">
+    <div class="gate-eyebrow">Verification required</div>
+    <h2 class="gate-title">Select the correct option to enter:</h2>
+    <div class="gate-options">
+      <button class="gate-option" type="button" data-choice="boats"><span class="gate-bullet"></span><span>fk boats</span></button>
+      <button class="gate-option" type="button" data-choice="tanks"><span class="gate-bullet"></span><span>fk tanks</span></button>
+      <button class="gate-option" type="button" data-choice="planes"><span class="gate-bullet"></span><span>fk planes</span></button>
+    </div>
+  </div>
+  <div class="gate-stage" id="gateStage" style="display:none">
+    <div class="gate-pretext" id="gatePretext">fk<br>boats</div>
+  </div>
+</div>
+
+<header class="appbar">
+  <div class="brand">
+    <div class="logo">V2</div>
+    <div class="ttl">heroes-awakening<span class="v">/ stat-spreadsheet</span></div>
+  </div>
+  <div class="spacer"></div>
+  <span class="badge" id="bd-hero">hero <b>—</b></span>
+  <span class="badge" id="bd-phase">phase <b>I</b></span>
+  <span class="badge" id="bd-stones">stones/max <b>9,000</b></span>
+  <a class="home-link" href="../../index.html">home</a>
+</header>
+
+<!-- Hero selector strip -->
+<div class="hero-bar" id="heroBar">
+  <span class="lbl">Hero</span>
+  <span class="mono" style="font-size:11px;color:var(--muted)">loading…</span>
+</div>
+
+<main>
+
+  <!-- SECTION A: Selected hero summary -->
+  <section>
+    <div class="hero-summary" id="hero-summary"></div>
+  </section>
+
+  <!-- SECTION B: Skill Explorer -->
+  <section>
+    <div class="sec-head">
+      <span class="sec-id">§B</span>
+      <h2>Skill Explorer — selected hero × 4 skills × 10 levels</h2>
+      <span class="sec-sub" id="sk-explorer-sub">Click any row to seed the calculator below.</span>
+    </div>
+    <div class="grid g4" id="skill-explorer"></div>
+    <div class="note" id="skill-note"></div>
+  </section>
+
+  <!-- SECTION C: Calculator toolbox -->
+  <section>
+    <div class="sec-head">
+      <span class="sec-id">§C</span>
+      <h2>Calculator Toolbox</h2>
+      <span class="sec-sub">Six interactive tools — values rendered from the authoritative game tables.</span>
+    </div>
+
+    <div class="toolbar" id="toolbar">
+      <button class="tool-btn active" data-tool="t-stones">Stones → Target <span class="tnum2" id="ct-stones">0</span></button>
+      <button class="tool-btn" data-tool="t-level">Awake Level 0→40 <span class="tnum2" id="ct-level">0</span></button>
+      <button class="tool-btn" data-tool="t-team">Team FP Gain <span class="tnum2" id="ct-team">0</span></button>
+      <button class="tool-btn" data-tool="t-combo">Combo Trio Planner</button>
+      <button class="tool-btn" data-tool="t-compare">Compare 2 Heroes</button>
+      <button class="tool-btn" data-tool="t-honor">Honor Wall <span class="tnum2" id="ct-honor">0</span></button>
+    </div>
+
+    <!-- TOOL: Stones-to-target -->
+    <div class="tool-pane active" id="t-stones">
+      <div class="grid g2">
+        <div class="panel">
+          <div class="panel-head">
+            <span>Inputs</span>
+            <span class="tag" id="t-stones-hero-tag">— Sara · Phase I</span>
+          </div>
+          <div class="panel-body">
+            <div id="t-stones-fields"></div>
+            <div class="totals">
+              <div class="tt-row">
+                <div class="tt-k">Total Awakening Stones</div>
+                <div class="tt-v accent mono" id="t-stones-total">0</div>
+                <div class="tt-sub" id="t-stones-pulls">0 pulls</div>
+              </div>
+              <div class="tt-row">
+                <div class="tt-k">Fight-Power Gain</div>
+                <div class="tt-v green mono" id="t-stones-fp">+0</div>
+                <div class="tt-sub" id="t-stones-tfp">team FP +0</div>
+              </div>
+              <div class="tt-row">
+                <div class="tt-k">@ 200 stones/day</div>
+                <div class="tt-v gold mono" id="t-stones-days">— d</div>
+                <div class="tt-sub">≈ weeks at chest cadence</div>
+              </div>
+              <div class="tt-row">
+                <div class="tt-k">@ 6,000/event</div>
+                <div class="tt-v purple mono" id="t-stones-events">—</div>
+                <div class="tt-sub">Grand Slam events</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <span>Per-level breakdown</span>
+            <span class="tag">15 / 15 / 30 / 30 / 45 / 45 / 60 / 80 / 130 / free</span>
+          </div>
+          <div class="panel-body" style="padding:0">
+            <div class="tbl-wrap no-scroll">
+              <table class="t" id="t-stones-tbl"></table>
+            </div>
+          </div>
+          <div class="panel-foot">
+            <span><strong id="t-stones-budgetSkill">0</strong> stones · max all 4 skills (one hero)</span>
+            <span><strong>54,000</strong> stones · all 6 Phase I heroes</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOOL: Awake Level 0->40 -->
+    <div class="tool-pane" id="t-level">
+      <div class="grid g2">
+        <div class="panel">
+          <div class="panel-head">
+            <span>Inputs</span>
+            <span class="tag" id="t-level-hero-tag">— Sara</span>
+          </div>
+          <div class="panel-body">
+            <div class="fieldset">
+              <div class="fk"><span class="fname">Current Awakening Level</span><span class="fhint">0–40</span></div>
+              <div class="sep">→</div>
+              <div class="spin from" data-lv-from><button data-d="-1">−</button><input id="lv-from" type="number" min="0" max="40" value="0"><button data-d="1">+</button></div>
+            </div>
+            <div class="fieldset">
+              <div class="fk"><span class="fname">Target Awakening Level</span><span class="fhint">1–40</span></div>
+              <div class="sep">→</div>
+              <div class="spin to" data-lv-to><button data-d="-1">−</button><input id="lv-to" type="number" min="0" max="40" value="40"><button data-d="1">+</button></div>
+            </div>
+            <div class="totals green">
+              <div class="tt-row">
+                <div class="tt-k">Hero Shards needed</div>
+                <div class="tt-v accent mono" id="lv-shards">0</div>
+                <div class="tt-sub" id="lv-shards-name">— Shard</div>
+              </div>
+              <div class="tt-row">
+                <div class="tt-k">ES Skill Chips needed</div>
+                <div class="tt-v gold mono" id="lv-chips">0</div>
+                <div class="tt-sub" id="lv-chips-id">38003xxx</div>
+              </div>
+              <div class="tt-row">
+                <div class="tt-k">Pulls (5 / lv)</div>
+                <div class="tt-v purple mono" id="lv-pulls">0</div>
+                <div class="tt-sub">20 EXP each</div>
+              </div>
+              <div class="tt-row">
+                <div class="tt-k">Fight-Power Gain</div>
+                <div class="tt-v green mono" id="lv-fp">+0</div>
+                <div class="tt-sub">2 000 / level</div>
+              </div>
+            </div>
+            <div class="note green"><strong>Audit fix:</strong> the live page rounds totals down. Authoritative cap is <b>1,140 Hero Shards + 740 ES chips</b> for L1→L40 (200 pulls), not 1,090 + 700. Tier IV is 11 levels (30–40), not 10.</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><span>Tier breakdown</span><span class="tag">Tier I / II / III / IV</span></div>
+          <div class="panel-body" style="padding:0">
+            <table class="t" id="t-level-tier-tbl"></table>
+          </div>
+          <div class="panel-foot">
+            <span>FP @ Lv.40: <strong>+80,000</strong></span>
+            <span>Per-pull cost: <strong>2|0 / 4|2 / 6|4 / 10|8</strong></span>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:14px">
+        <div class="panel-head"><span>Full 40-level ladder</span><span class="tag">cumulative shards + chips + FP</span></div>
+        <div class="panel-body" style="padding:0">
+          <div class="tbl-wrap"><table class="t" id="t-level-full-tbl"></table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOOL: Team FP Gain -->
+    <div class="tool-pane" id="t-team">
+      <div class="panel">
+        <div class="panel-head"><span>Pick up to 6 heroes — set awakening level + skill levels</span><span class="tag" id="t-team-count">0 / 6 selected</span></div>
+        <div class="panel-body">
+          <div class="slotrow" id="team-slots"></div>
+          <div class="totals" style="margin-top:14px;grid-template-columns:repeat(5,1fr)">
+            <div class="tt-row">
+              <div class="tt-k">Team Fight Power</div>
+              <div class="tt-v accent mono" id="team-fp-total">+0</div>
+              <div class="tt-sub" id="team-fp-sub">awakening + skill FP</div>
+            </div>
+            <div class="tt-row">
+              <div class="tt-k">From 40-level ladder</div>
+              <div class="tt-v green mono" id="team-fp-ladder">+0</div>
+              <div class="tt-sub">2,000 × Σ levels</div>
+            </div>
+            <div class="tt-row">
+              <div class="tt-k">From skill levels</div>
+              <div class="tt-v gold mono" id="team-fp-skill">+0</div>
+              <div class="tt-sub">3,000 × Σ skill levels</div>
+            </div>
+            <div class="tt-row">
+              <div class="tt-k">Hero Shards needed</div>
+              <div class="tt-v purple mono" id="team-shards">0</div>
+              <div class="tt-sub" id="team-shards-sub">across selected</div>
+            </div>
+            <div class="tt-row">
+              <div class="tt-k">Stones needed (skills)</div>
+              <div class="tt-v red mono" id="team-stones">0</div>
+              <div class="tt-sub">to reach selected skill lvs</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOOL: Combo Trio Planner -->
+    <div class="tool-pane" id="t-combo">
+      <div class="panel">
+        <div class="panel-head"><span>Pick a trio · simulate combined awakening level</span><span class="tag">6 trios · 1 buff each</span></div>
+        <div class="panel-body">
+          <div class="combo-row" id="combo-pills"></div>
+          <div id="combo-view"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOOL: Compare -->
+    <div class="tool-pane" id="t-compare">
+      <div class="panel">
+        <div class="panel-head"><span>Side-by-side · all 4 skills at chosen level</span><span class="tag">A vs B</span></div>
+        <div class="panel-body">
+          <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+            <span class="kbd">A</span><select class="cmp-pick" id="cmp-a"></select>
+            <span class="kbd">B</span><select class="cmp-pick" id="cmp-b"></select>
+            <span class="kbd">at Skill Lv.</span>
+            <div class="seg" id="cmp-lvseg">
+              <button data-lv="1">1</button><button data-lv="3">3</button><button data-lv="5">5</button>
+              <button data-lv="7">7</button><button data-lv="9">9</button><button class="active" data-lv="10">10</button>
+            </div>
+          </div>
+          <div class="cmp-grid">
+            <div class="cmp-col" id="cmp-col-a"></div>
+            <div class="cmp-vs">VS</div>
+            <div class="cmp-col" id="cmp-col-b"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOOL: Honor Wall -->
+    <div class="tool-pane" id="t-honor">
+      <div class="grid g2">
+        <div class="panel">
+          <div class="panel-head">
+            <span>Honor Wall · per sub-track</span>
+            <span class="tag">2 sub-tracks × 200 levels</span>
+          </div>
+          <div class="panel-body">
+            <div class="fieldset">
+              <div class="fk"><span class="fname">Sub-track</span><span class="fhint">1 or 2</span></div>
+              <div class="sep">→</div>
+              <div class="seg"><button class="active" data-sub="1">Track 1</button><button data-sub="2">Track 2</button></div>
+            </div>
+            <div class="fieldset">
+              <div class="fk"><span class="fname">Current sub-level</span><span class="fhint">0–200</span></div>
+              <div class="sep">→</div>
+              <div class="spin from" data-honor-from><button data-d="-1">−</button><input id="honor-from" type="number" min="0" max="200" value="0"><button data-d="1">+</button></div>
+            </div>
+            <div class="fieldset">
+              <div class="fk"><span class="fname">Target sub-level</span><span class="fhint">1–200</span></div>
+              <div class="sep">→</div>
+              <div class="spin to" data-honor-to><button data-d="-1">−</button><input id="honor-to" type="number" min="0" max="200" value="200"><button data-d="1">+</button></div>
+            </div>
+            <div class="totals">
+              <div class="tt-row">
+                <div class="tt-k">Stones</div>
+                <div class="tt-v accent mono" id="honor-stones">0</div>
+                <div class="tt-sub" id="honor-stones-sub">this sub-track</div>
+              </div>
+              <div class="tt-row">
+                <div class="tt-k">Fight-Power</div>
+                <div class="tt-v green mono" id="honor-fp">+0</div>
+                <div class="tt-sub">100 / sub-level</div>
+              </div>
+              <div class="tt-row">
+                <div class="tt-k">@ 200/day</div>
+                <div class="tt-v gold mono" id="honor-days">— d</div>
+                <div class="tt-sub">avg cadence</div>
+              </div>
+              <div class="tt-row">
+                <div class="tt-k">% of full wall</div>
+                <div class="tt-v purple mono" id="honor-pct">0%</div>
+                <div class="tt-sub">39,900 to max</div>
+              </div>
+            </div>
+            <div class="note purple"><strong>Why this matters:</strong> Honor Wall is the silent post-40 sink the live page skips. Per hero: <b>+40,000 FP</b> (2 sub-tracks × 200 levels). Per Phase I hero: <b>39,900 stones</b> = ~4.4× the cost of all 4 skills combined.</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><span>Stone-cost cliff</span><span class="tag">50 → 80 → 120 → 150 → free</span></div>
+          <div class="panel-body" style="padding:0">
+            <table class="t" id="honor-tier-tbl"></table>
+          </div>
+          <div class="panel-foot">
+            <span>Per sub-track total: <strong>19,950</strong> stones</span>
+            <span>Full Honor Wall: <strong>39,900</strong> stones</span>
+            <span>+ 4 skills: <strong>48,900</strong> per hero</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION D: Reference tables -->
+  <section>
+    <div class="sec-head">
+      <span class="sec-id">§D</span>
+      <h2>Reference Tables — economy &amp; rules</h2>
+      <span class="sec-sub">Authoritative numbers re-extracted from <span class="mono">hero_awakening_*</span></span>
+    </div>
+
+    <div class="grid g2">
+      <div class="panel">
+        <div class="panel-head"><span>Stone cost ladder (per skill level)</span><span class="tag">5 pulls per level</span></div>
+        <div class="panel-body" style="padding:0">
+          <table class="t" id="stone-ladder-tbl"></table>
+        </div>
+        <div class="panel-foot">
+          <span>Max one skill: <strong>2,250</strong></span>
+          <span>Max one hero (4 skills): <strong>9,000</strong></span>
+          <span>Max all Phase I (6 heroes): <strong>54,000</strong></span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><span>ES7 buff-family swap · selected hero</span><span class="tag">7-digit family · digit 3 flips 0→1</span></div>
+        <div class="panel-body" style="padding:0">
+          <table class="t es7-tbl" id="es7-tbl"></table>
+        </div>
+        <div class="panel-foot">
+          <span>Applies to <strong>all 4</strong> awakening skills</span>
+          <span>ES7 column is <strong>constant L1–L10</strong></span>
+        </div>
+      </div>
+    </div>
+    <div class="note red" style="margin-top:14px"><strong>Audit fix surfaced:</strong> the live heroes-awakening page describes the ES7 swap as <span class="kbd">21x101 → 21x1101</span> (same string both sides). Actual rule is 7-digit IDs with digit 3 flipping 0→1, e.g. Sara skill 1: <span class="kbd">2201101 → 2211101</span>. The full mapping for the selected hero is above.</div>
+  </section>
+
+  <!-- SECTION E: Hero swap context -->
+  <section>
+    <div class="sec-head">
+      <span class="sec-id">§E</span>
+      <h2>Hero Swap · donor pool for selected hero</h2>
+      <span class="sec-sub">100% material conversion · talents two-way · donor reset to 1★ Lv.1</span>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <span id="swap-target-name">Eligible donors for —</span>
+        <span class="tag" id="swap-target-type">Army pool</span>
+      </div>
+      <div class="panel-body">
+        <div id="swap-donors" class="grid g4"></div>
+        <div class="note"><strong>Reminder:</strong> donor's 10 unlock-shards stay on the donor. Donor's equipped Exclusive Skill returns to inventory. Swap is <b>FREE</b> and <b>irreversible</b>.</div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Hero picker modal (for team builder) -->
+<div class="modal-overlay" id="picker-modal">
+  <div class="modal">
+    <button class="modal-close" id="picker-close">close</button>
+    <h3>Select a hero for slot <span id="picker-slot-idx">1</span></h3>
+    <div class="picker-grid" id="picker-grid"></div>
+  </div>
+</div>
+
+<div class="foot">v2-stat-spreadsheet · powered by hero_awakening_* · brought to you by supporters of the fk boats movement</div>
+
+<script>
+// ============================================================
+//   GATE LOGIC
+// ============================================================
+(function(){
+  var COUNTER_URL='https://rickroll-counter.27tb8s6fct.workers.dev';
+  var gate=document.getElementById('entryGate');
+  var card=document.getElementById('gateCard');
+  var stage=document.getElementById('gateStage');
+  var pretext=document.getElementById('gatePretext');
+  var locked=false;
+  if(localStorage.getItem('heroesAwakeningGate')==='passed'){
+    gate.remove(); return;
+  }
+  try{document.documentElement.style.overflow='hidden';}catch(e){}
+  function playStage(t,wrong){if(locked)return;locked=true;pretext.innerHTML=t;pretext.classList.toggle('wrong',!!wrong);card.style.display='none';stage.style.display='block';}
+  function dismiss(){try{document.documentElement.style.overflow='';}catch(e){}gate.style.transition='opacity .35s';gate.style.opacity='0';setTimeout(function(){if(gate.parentNode)gate.parentNode.removeChild(gate);},380);}
+  function pick(c){
+    if(c==='boats'){
+      try{localStorage.setItem('heroesAwakeningGate','passed');}catch(e){}
+      playStage('fk<br>boats',false);setTimeout(dismiss,1400);
+    }else{
+      try{fetch(COUNTER_URL,{method:'POST',mode:'cors'}).catch(function(){});}catch(e){}
+      playStage('nope,<br>dummy',true);setTimeout(function(){window.location.href='../passwords.html';},1000);
+    }
+  }
+  document.querySelectorAll('.gate-option').forEach(function(b){b.addEventListener('click',function(){pick(b.getAttribute('data-choice'));});});
+})();
+
+// ============================================================
+//   AUTHORITATIVE CONSTANTS (from AUDIT.json)
+// ============================================================
+const STONE_PER_PULL = {1:15,2:15,3:30,4:30,5:45,6:45,7:60,8:80,9:130,10:0};
+const STONE_PER_LEVEL = {1:75,2:75,3:150,4:150,5:225,6:225,7:300,8:400,9:650,10:0};
+const STONES_MAX_ONE_SKILL = 2250;
+const STONES_MAX_ONE_HERO = 9000;
+const STONES_MAX_PHASE_I = 54000;
+const FP_PER_SKILL_LEVEL = 3000;
+const TFP_AT_L10 = 8594;
+const FP_PER_AWAKE_LEVEL = 2000;
+
+const AWAKE_LEVELS = (() => {
+  // Per audit JSON: tier 1 = 10/0 per lv (lv1-9), tier 2 = 20/10 (10-19), tier 3 = 30/20 (20-29), tier 4 = 50/40 (30-40)
+  const rows = []; let cs=0,cc=0;
+  for(let lv=1; lv<=40; lv++){
+    let shard, chip;
+    if(lv<=9){shard=10;chip=0;}
+    else if(lv<=19){shard=20;chip=10;}
+    else if(lv<=29){shard=30;chip=20;}
+    else{shard=50;chip=40;}
+    cs+=shard; cc+=chip;
+    rows.push({level:lv,shard,chip,cumShard:cs,cumChip:cc,fp:lv*FP_PER_AWAKE_LEVEL});
+  }
+  return rows;
+})();
+
+const TIER_DATA = [
+  {tier:'I', range:'1-9',  count:9,  shardLv:10, chipLv:0,  shardTier:90,  chipTier:0,   fp:18000},
+  {tier:'II',range:'10-19',count:10, shardLv:20, chipLv:10, shardTier:200, chipTier:100, fp:20000},
+  {tier:'III',range:'20-29',count:10,shardLv:30, chipLv:20, shardTier:300, chipTier:200, fp:20000},
+  {tier:'IV', range:'30-40',count:11,shardLv:50, chipLv:40, shardTier:550, chipTier:440, fp:22000}
+];
+
+const HONOR_TIERS = [
+  {range:'1-50',    perLv:50,  levels:50, total:2500},
+  {range:'51-100',  perLv:80,  levels:50, total:4000},
+  {range:'101-150', perLv:120, levels:50, total:6000},
+  {range:'151-199', perLv:150, levels:49, total:7350},
+  {range:'200',     perLv:0,   levels:1,  total:0}
+];
+const HONOR_TOTAL_SUB = 19950;
+
+function honorCostFor(from,to){
+  if(to<=from)return 0;
+  let s=0;
+  for(let lv=from+1; lv<=to; lv++){
+    if(lv<=50)s+=50;
+    else if(lv<=100)s+=80;
+    else if(lv<=150)s+=120;
+    else if(lv<=199)s+=150;
+    else s+=0;
+  }
+  return s;
+}
+
+// ID->name resolver for <id=N> tokens (from audit + extras)
+const ID_TOKEN_MAP = {
+  "5":"Indestructible","6":"Strike","7":"Stun","8":"Chaos","9":"Silence","10":"Heavy Armor",
+  "11":"Iron Resolve","12":"Berserker","13":"Active Skill","14":"Active Skill Damage","15":"Active Skill DMG",
+  "16":"Active Skill Hit","18":"Resist","19":"Hostile","20":"Counterattack","21":"Counterattack Damage",
+  "22":"Counterattack Hit","23":"Counterattack Resist","24":"Counterattack Stack",
+  "46":"Ignition","47":"Splash","48":"Splash Damage","49":"Splash Hit","50":"Splash Resist",
+  "51":"Magnetic Pulse","52":"Combo Attack","54":"Combo Damage","55":"Combo Hit","56":"Combo Resist",
+  "60":"Flammable","61":"Flammable Damage","63":"Burn","64":"Burn Damage","68":"Impact","69":"Impact Damage",
+  "70":"Impact Hit","71":"Impact Resist","72":"Magnetic Pulse","73":"Magnetic Pulse Damage",
+  "74":"Magnetic Pulse Hit","75":"Magnetic Pulse Resist","76":"Magnetic Pulse Duration",
+  "77":"Status Damage","78":"Status Resist","85":"Damage Reduction","88":"Final Damage",
+  "91":"Critical Rate","92":"Critical Damage"
+};
+
+// Local portrait fallback (from existing page)
+const LOCAL_PORTRAIT = {
+  165:'marvingt_portrait.jpeg',169:'sara_portrait.png',170:'rohr_portrait.jpeg',
+  172:'nova_portrait.jpeg',173:'tannis_portrait.jpeg',174:'ella_portrait.jpeg',
+  232:'lilia_portrait.jpeg',234:'shensuyu_portrait.png',237:'alvida_portrait.jpg',
+  239:'lophy_portrait.jpeg',240:'sinope_portrait.jpeg',241:'margaretha_portrait.jpeg',
+  332:'vivian_portrait.jpeg',333:'carna_portrait.png',334:'jett_portrait.jpeg',
+  336:'joanmature_portrait.jpg',337:'heid_portrait.jpg',338:'franziska_portrait.jpeg'
+};
+const cdnFor = id => `https://h5.topwargame.com/DynRes/images/headpic/hero_icon${id}_global.png`;
+const localPortraitFor = id => LOCAL_PORTRAIT[id] ? '../../assets/heroes-awakening/'+LOCAL_PORTRAIT[id] : null;
+
+// Hero swap pool (from audit JSON heroSwap.armyPools)
+const SWAP_POOLS = {
+  Army:[
+    {id:162,name:'Quily'},{id:166,name:'Leon S. Kennedy'},{id:168,name:'Chris Redfield'},
+    {id:167,name:'Binary'},{id:171,name:'Astrid'},{id:160,name:'Po'},
+    {id:156,name:'Snake Eyes'},{id:159,name:'Nelle'}
+  ],
+  Navy:[
+    {id:236,name:'Stoick'},{id:229,name:'Zhen'},{id:233,name:'Ada Wong'},{id:238,name:'Valka'},
+    {id:230,name:'Meowzilla'},{id:231,name:'Jester'},{id:235,name:'Jill Valentine'},{id:228,name:'Duke'}
+  ],
+  Air:[
+    {id:328,name:'Abad'},{id:327,name:'Kai'},{id:329,name:'Storm Shadow'},{id:331,name:'Lin'},
+    {id:335,name:'Hiccup'},{id:326,name:'Cranston'},{id:330,name:'Tigress'},{id:325,name:'Brady'}
+  ]
+};
+
+const COMBO_TRIOS = [
+  {id:'army-dyn', label:"Army's Dynamic Attack",   buff:'Magnetic Pulse',                       members:[169,174,170], type:'Army', anchor:169},
+  {id:'army-ctr', label:"Army's Counter-Attack",   buff:'Hostile',                              members:[172,173,165], type:'Army', anchor:172},
+  {id:'navy-ctl', label:"Navy's Control Tactic",   buff:'Active Skill DMG / Abnormal Status',   members:[234,241,240], type:'Navy', anchor:234},
+  {id:'navy-def', label:"Navy's Defense Tactic",   buff:'Splash',                                members:[239,232,237], type:'Navy', anchor:239},
+  {id:'air-ign',  label:"Air Force's Ignition",    buff:'Ignition',                              members:[334,338,332], type:'Air',  anchor:334},
+  {id:'air-reg',  label:"Air Force's Regular Atk", buff:'Combo Attack',                          members:[333,336,337], type:'Air',  anchor:333}
+];
+
+// ============================================================
+//   STATE
+// ============================================================
+const STATE = {
+  data:null,
+  heroes:[],            // all 18 from data.hyperAwakening.awakenedHeroes + queuedHeroes
+  awakenedHeroes:[],    // 6 phase-I with full skill data
+  byId:new Map(),       // id -> hero record (full)
+  selectedId:169,
+  // calculators
+  stonesCurrent:[0,0,0,0],
+  stonesTarget:[10,10,10,10],
+  team:[],
+  comboId:'army-dyn',
+  comboLv:40,
+  cmpA:169, cmpB:172, cmpLv:10,
+  honorSub:1, honorFrom:0, honorTo:200,
+  pickerSlot:0
+};
+
+// ============================================================
+//   HELPERS
+// ============================================================
+function esc(s){
+  if(s==null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function resolveTokens(s){
+  // Replace <id=N> with [Name] (HTML-safe). Input is escaped first to be safe.
+  if(s==null) return '';
+  const escaped = esc(s);
+  return escaped.replace(/&lt;id=(\d+)&gt;/g, (_,n)=>{
+    const nm = ID_TOKEN_MAP[n] || ('id='+n);
+    return '<span class="tk">['+esc(nm)+']</span>';
+  });
+}
+function highlightDesc(s){
+  // After tokens are resolved, highlight {N} placeholders and bare percentages.
+  return s.replace(/\{(\d+)\}/g,'<span class="v">{$1}</span>');
+}
+function fmt(n){
+  if(n==null||isNaN(n)) return '0';
+  return Number(n).toLocaleString('en-US');
+}
+function fmtSign(n){
+  const s = fmt(Math.abs(n));
+  if(n>0)return '+'+s;
+  if(n<0)return '-'+s;
+  return '0';
+}
+function typeKey(t){return (t==='Air'||t==='Air Force')?'Air':t;}
+function typeCls(t){return 't'+typeKey(t);}
+function el(tag, attrs, ...children){
+  const n=document.createElement(tag);
+  if(attrs){
+    for(const k in attrs){
+      if(k==='class')n.className=attrs[k];
+      else if(k==='style')n.setAttribute('style',attrs[k]);
+      else if(k.startsWith('on') && typeof attrs[k]==='function')n.addEventListener(k.slice(2).toLowerCase(),attrs[k]);
+      else if(attrs[k]!=null)n.setAttribute(k,attrs[k]);
+    }
+  }
+  for(const c of children.flat(Infinity)){
+    if(c==null||c===false)continue;
+    if(c instanceof Node)n.appendChild(c);
+    else n.appendChild(document.createTextNode(String(c)));
+  }
+  return n;
+}
+function clear(p){while(p.firstChild)p.removeChild(p.firstChild);}
+function makeImg(id, sz, klass){
+  const img = el('img', {class:klass||'', alt:'hero '+id, loading:'lazy'});
+  img.style.width=sz+'px'; img.style.height=sz+'px';
+  img.src = cdnFor(id);
+  img.addEventListener('error', function once(){
+    const lp = localPortraitFor(id);
+    if(lp && img.src.indexOf('headpic')!==-1){ img.src = lp; }
+    else {
+      const ph = document.createElement('div');
+      ph.className='placeholder';
+      ph.style.cssText='width:'+sz+'px;height:'+sz+'px;border-radius:'+(klass&&klass.indexOf('portrait')!==-1?'8px':'50%')+';background:linear-gradient(135deg,#1c2128,#0d1117);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:800;color:#8b949e;font-size:'+(sz/3)+'px;border:1px solid #30363d';
+      const h = STATE.byId.get(id);
+      ph.textContent = h && h.name ? h.name.slice(0,2).toUpperCase() : '?';
+      img.replaceWith(ph);
+    }
+  }, {once:true});
+  return img;
+}
+
+// stone cost from currentLv to targetLv (1 skill)
+function skillStoneCost(from, to){
+  if(to<=from)return 0;
+  let s=0;
+  for(let lv=from+1; lv<=to; lv++){ s += STONE_PER_LEVEL[lv]||0; }
+  return s;
+}
+function skillPulls(from, to){
+  if(to<=from)return 0;
+  return Math.max(0,(to-from))*5;
+}
+// FP delta for skill levels
+function skillFpDelta(from, to){return (to-from)*FP_PER_SKILL_LEVEL;}
+function skillTfpDelta(from, to){
+  // Use the level table from data when available, else linear interpolation to 8594 at L10.
+  const map = [0,430,859,1289,1934,2578,3545,4512,5801,7090,8594];
+  return (map[to]||0) - (map[from]||0);
+}
+
+// hero shard / chip cost from awake level a -> b
+function awakeCost(from, to){
+  if(to<=from) return {shards:0, chips:0, pulls:0, fp:0};
+  let shards=0, chips=0;
+  for(let lv=from+1; lv<=to; lv++){
+    const r = AWAKE_LEVELS[lv-1];
+    shards += r.shard; chips += r.chip;
+  }
+  return {shards, chips, pulls:(to-from)*5, fp:(to-from)*FP_PER_AWAKE_LEVEL};
+}
+
+// ============================================================
+//   BOOT
+// ============================================================
+fetch('../../data/heroes-awakening.json?v=20260530d')
+  .then(r=>r.json())
+  .then(data => {
+    STATE.data = data;
+    // 6 awakened phase-I heroes (full data)
+    STATE.awakenedHeroes = (data.hyperAwakening.awakenedHeroes||[]);
+    // merge: 6 awakened + 12 queued (Phase II/III) = 18
+    const queued = (data.hyperAwakening.queuedHeroes||[]).map(q => ({
+      id:q.id, name:q.name, type:q.type, phase:q.phase, awakenedLabel:null, skills:null,
+      cardItemId:q.cardItemId, shardItemId:q.shardItemId
+    }));
+    const all = [...STATE.awakenedHeroes, ...queued];
+    STATE.heroes = all;
+    all.forEach(h => STATE.byId.set(h.id, h));
+    boot();
+  })
+  .catch(err => {
+    document.body.innerHTML = '<div style="padding:40px;color:#f85149">Failed to load data: '+esc(String(err))+'</div>';
+  });
+
+function boot(){
+  renderHeroBar();
+  // default cmp pair
+  STATE.cmpA = 169; STATE.cmpB = 172;
+  selectHero(169);
+  renderStoneLadder();
+  renderHonorTierTbl();
+  renderLevelTierTbl();
+  renderLevelFullTbl();
+  renderTeam();
+  renderComboPills();
+  renderComboView();
+  renderCmpPickers();
+  renderCompare();
+
+  // tool tabs
+  document.querySelectorAll('#toolbar .tool-btn').forEach(b=>{
+    b.addEventListener('click',()=>{
+      document.querySelectorAll('#toolbar .tool-btn').forEach(x=>x.classList.remove('active'));
+      document.querySelectorAll('.tool-pane').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      document.getElementById(b.dataset.tool).classList.add('active');
+    });
+  });
+
+  // honor wall events
+  document.querySelectorAll('#t-honor .seg button').forEach(b=>{
+    b.addEventListener('click',()=>{
+      document.querySelectorAll('#t-honor .seg button').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      STATE.honorSub = parseInt(b.dataset.sub,10);
+      renderHonor();
+    });
+  });
+  bindSpin('lv-from', v=>{STATE.lvFrom=v; renderLevel();});
+  bindSpin('lv-to',   v=>{STATE.lvTo=v;   renderLevel();});
+  bindSpin('honor-from', v=>{STATE.honorFrom=v; renderHonor();});
+  bindSpin('honor-to',   v=>{STATE.honorTo=v;   renderHonor();});
+  STATE.lvFrom=0; STATE.lvTo=40;
+  renderLevel();
+  renderHonor();
+
+  // compare seg
+  document.querySelectorAll('#cmp-lvseg button').forEach(b=>{
+    b.addEventListener('click',()=>{
+      document.querySelectorAll('#cmp-lvseg button').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      STATE.cmpLv = parseInt(b.dataset.lv,10);
+      renderCompare();
+    });
+  });
+  document.getElementById('cmp-a').addEventListener('change', e=>{STATE.cmpA=parseInt(e.target.value,10);renderCompare();});
+  document.getElementById('cmp-b').addEventListener('change', e=>{STATE.cmpB=parseInt(e.target.value,10);renderCompare();});
+
+  // picker modal close
+  document.getElementById('picker-close').addEventListener('click',closePicker);
+  document.getElementById('picker-modal').addEventListener('click', e=>{ if(e.target.id==='picker-modal') closePicker(); });
+}
+
+// ============================================================
+//   HERO BAR
+// ============================================================
+function renderHeroBar(){
+  const bar = document.getElementById('heroBar');
+  clear(bar);
+  bar.appendChild(el('span',{class:'lbl'},'Hero'));
+  // sort: phase 1 first, by type, then 2, then 3
+  const sorted = [...STATE.heroes].sort((a,b)=>{
+    if(a.phase!==b.phase) return a.phase-b.phase;
+    const tOrder={Army:1,Navy:2,Air:3,'Air Force':3};
+    return (tOrder[a.type]||9)-(tOrder[b.type]||9);
+  });
+  sorted.forEach(h=>{
+    const chip = el('button',{class:'hchip '+typeCls(h.type)+(h.id===STATE.selectedId?' active':''), onclick:()=>selectHero(h.id)},
+      makeImg(h.id, 20, ''),
+      el('span',{class:'tdot'}),
+      el('span',null, h.name),
+      el('span',{class:'ph'}, 'P'+h.phase)
+    );
+    bar.appendChild(chip);
+  });
+}
+
+// ============================================================
+//   HERO SELECTION
+// ============================================================
+function selectHero(id){
+  STATE.selectedId = id;
+  // reset stones calc to L1 -> L10 on each skill for full hero
+  STATE.stonesCurrent = [0,0,0,0];
+  STATE.stonesTarget  = [10,10,10,10];
+
+  // update hero bar active state
+  document.querySelectorAll('#heroBar .hchip').forEach(c=>c.classList.remove('active'));
+  const idx = [...document.querySelectorAll('#heroBar .hchip')].findIndex(c=>{
+    const nm = c.querySelector('span:nth-child(3)');
+    return nm && STATE.byId.get(id) && nm.textContent === STATE.byId.get(id).name;
+  });
+
+  renderHeroBar();
+  renderHeroSummary();
+  renderSkillExplorer();
+  renderStonesCalc();
+  renderLevel();
+  renderEs7();
+  renderSwap();
+  updateBadges();
+}
+
+function updateBadges(){
+  const h = STATE.byId.get(STATE.selectedId);
+  if(!h)return;
+  document.querySelector('#bd-hero b').textContent = h.name;
+  document.querySelector('#bd-phase b').textContent = ['—','I','II','III'][h.phase]||'—';
+  document.querySelector('#bd-stones b').textContent = fmt(STONES_MAX_ONE_HERO);
+}
+
+// ============================================================
+//   HERO SUMMARY CARD
+// ============================================================
+function renderHeroSummary(){
+  const wrap = document.getElementById('hero-summary');
+  clear(wrap);
+  const h = STATE.byId.get(STATE.selectedId);
+  if(!h) return;
+  const live = !!h.skills;
+  const phaseTxt = ['—','I','II','III'][h.phase];
+
+  const portrait = makeImg(h.id, 64, 'portrait');
+  portrait.classList.add('portrait');
+
+  const trio = COMBO_TRIOS.find(t=>t.anchor===h.id);
+  const partOfTrio = COMBO_TRIOS.find(t=>t.members.includes(h.id) && t.anchor!==h.id);
+
+  const meta = el('div',{class:'meta'},
+    el('h3',null, h.name),
+    el('div',{class:'label'}, h.awakenedLabel || (live?'':'Coming Soon')),
+    el('div',{class:'row'},
+      el('span',{class:'tagbox '+typeCls(h.type)}, h.type),
+      el('span',{class:'tagbox '+(live?'live':'cs')}, live?'PHASE '+phaseTxt+' · LIVE':'PHASE '+phaseTxt+' · CS'),
+      h.cardItemId ? el('span',{class:'tagbox gold'}, 'CARD #'+h.cardItemId) : null,
+      h.shardItemId ? el('span',{class:'tagbox'}, 'SHARD #'+h.shardItemId) : null,
+      trio ? el('span',{class:'tagbox gold'}, 'TRIO ANCHOR · '+trio.label) : null,
+      partOfTrio ? el('span',{class:'tagbox'}, 'TRIO MEMBER · '+partOfTrio.label) : null
+    )
+  );
+
+  const fp = live ? 80000 + 4*30000 : 0;
+  const stones = live ? STONES_MAX_ONE_HERO : 0;
+  const totalFp = fp + 40000; // + honor wall
+
+  wrap.appendChild(portrait);
+  wrap.appendChild(meta);
+  wrap.appendChild(el('div',{class:'quickstats'},
+    el('div',{class:'qs'},
+      el('div',{class:'k'},'max stones (skills)'),
+      el('div',{class:'v gold'}, fmt(stones))
+    ),
+    el('div',{class:'qs'},
+      el('div',{class:'k'},'max FP (skills+ladder)'),
+      el('div',{class:'v'}, '+'+fmt(fp))
+    ),
+    el('div',{class:'qs'},
+      el('div',{class:'k'},'+ honor wall'),
+      el('div',{class:'v purple'}, '+'+fmt(totalFp))
+    )
+  ));
+}
+
+// ============================================================
+//   SKILL EXPLORER (4 cards)
+// ============================================================
+function renderSkillExplorer(){
+  const wrap = document.getElementById('skill-explorer');
+  clear(wrap);
+  const h = STATE.byId.get(STATE.selectedId);
+  const sub = document.getElementById('sk-explorer-sub');
+  const note = document.getElementById('skill-note');
+  if(!h || !h.skills){
+    sub.textContent = 'Phase II/III heroes — skills not yet live on server.';
+    note.innerHTML = '<strong>Coming Soon.</strong> Phase II/III heroes (12 of 18) have their card item IDs and trio assignments locked in <span class="kbd">hero_awakening_batch</span>, but skill tables use a sentinel cost ladder of 1/2/3/.../10 stones — meaning the rows are placeholder until the server flips them on.';
+    return;
+  }
+  sub.textContent = 'Click any row to seed the calculator below.';
+  note.innerHTML = '<strong>Per-level rule.</strong> Lv.1–5 carry a single buff + the (vestigial) <span class="kbd">skill_effect_add</span> bonus. From Lv.6 onward the buff becomes a pipe-pair (<span class="kbd">2201101|2201201</span>) — the small line disappears and the main effect absorbs it. Hitting <strong>Exclusive Skill Lv.7</strong> swaps the entire family to the ES7 column (see §D · ES7 swap).';
+
+  h.skills.forEach((sk, i) => {
+    const card = el('div',{class:'panel'},
+      el('div',{class:'panel-head'},
+        el('img',{class:'sk-ic lg', src:'../../'+sk.icon, alt:sk.name, loading:'lazy', onerror:function(){this.style.opacity=.3;this.src='../../assets/hero-awake-items/item_44301001.png';}}),
+        el('div',{style:'display:flex;flex-direction:column;line-height:1.2'},
+          el('span',{class:'sk-num'},'Skill #'+sk.index),
+          el('span',{class:'sk-name'}, sk.name||'—')
+        ),
+        el('span',{class:'tag'}, 'family '+(sk.appliedBuff||'—'))
+      )
+    );
+
+    // level table
+    const tblWrap = el('div',{class:'tbl-wrap no-scroll'});
+    const tbl = el('table',{class:'t'});
+    tbl.innerHTML = '<thead><tr><th>Lv</th><th>Value</th><th>Bonus L1-5</th><th>Stones</th><th>+FP</th><th>+TeamFP</th></tr></thead>';
+    const tbody = el('tbody');
+    (sk.levelTable||[]).forEach(r => {
+      const stones = STONE_PER_LEVEL[r.level]||0;
+      const tr = el('tr',{onclick:()=>{ seedFromSkill(i, r.level); }, style:'cursor:pointer'},
+        el('td',{class:'accent'}, 'L'+r.level),
+        el('td',null, esc(r.val1_pct||'—')),
+        el('td',{class:'muted'}, r.bonus ? esc(r.bonus) : '—'),
+        el('td',{class: stones===0?'freeL':'gold'}, stones===0?'FREE':fmt(stones)),
+        el('td',{class:'accent'}, '+'+fmt(r.power||0)),
+        el('td',{class:'purple'}, '+'+fmt(r.team_power||0))
+      );
+      if(r.level===10) tr.classList.add('row-hi');
+      if(r.level===6) tr.classList.add('row-mid');
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);
+    tblWrap.appendChild(tbl);
+
+    // description for current target Lv
+    const targetLv = STATE.stonesTarget[i] || 10;
+    let desc;
+    if(targetLv>=6 && sk.descriptionLv6_plus) desc = sk.descriptionLv6_plus;
+    else if(targetLv>=2 && sk.descriptionLv2_5) desc = sk.descriptionLv2_5;
+    else desc = sk.descriptionLv1;
+
+    card.appendChild(el('div',{class:'panel-body',style:'padding:10px'},
+      tblWrap,
+      el('div',{class:'sk-desc'},
+        el('div',{style:'font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px'},'desc @ Lv.'+targetLv),
+        (() => { const span = document.createElement('span'); span.innerHTML = highlightDesc(resolveTokens(desc||'—')); return span; })()
+      )
+    ));
+    wrap.appendChild(card);
+  });
+}
+
+function seedFromSkill(skillIdx, lv){
+  STATE.stonesCurrent[skillIdx] = Math.max(0, lv-1);
+  STATE.stonesTarget[skillIdx] = lv;
+  renderStonesCalc();
+  // jump to tool 1
+  document.querySelectorAll('#toolbar .tool-btn').forEach(x=>x.classList.remove('active'));
+  document.querySelector('#toolbar .tool-btn[data-tool="t-stones"]').classList.add('active');
+  document.querySelectorAll('.tool-pane').forEach(x=>x.classList.remove('active'));
+  document.getElementById('t-stones').classList.add('active');
+  document.getElementById('t-stones').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+// ============================================================
+//   TOOL 1 — STONES TO TARGET (per-skill, 4 spinners)
+// ============================================================
+function renderStonesCalc(){
+  const h = STATE.byId.get(STATE.selectedId);
+  document.getElementById('t-stones-hero-tag').textContent = (h.name||'—') + ' · Phase ' + (['—','I','II','III'][h.phase]||'—');
+  const fieldsWrap = document.getElementById('t-stones-fields');
+  clear(fieldsWrap);
+  const live = !!(h.skills);
+  for(let i=0;i<4;i++){
+    const sk = live ? h.skills[i] : null;
+    const skName = sk?sk.name:'Skill #'+(i+1);
+    const skIcon = sk?'../../'+sk.icon:'../../assets/hero-awake-items/item_44301001.png';
+    const fs = el('div',{class:'fieldset'});
+    fs.appendChild(el('div',{class:'fk'},
+      el('img',{src:skIcon, alt:skName, onerror:function(){this.style.opacity=.3;}}),
+      el('div',null,
+        el('div',{class:'fname'}, skName||('Skill #'+(i+1))),
+        el('div',{class:'fhint'},'Skill '+(i+1)+' · 10 levels')
+      )
+    ));
+    fs.appendChild(el('div',{class:'sep'},'→'));
+    fs.appendChild(el('div',{style:'display:flex;gap:6px;align-items:center'},
+      makeSpin(STATE.stonesCurrent[i], 0, 10, v=>{
+        STATE.stonesCurrent[i] = Math.min(v, STATE.stonesTarget[i]);
+        renderStonesCalc();
+      }, 'from'),
+      el('span',{class:'mono',style:'color:var(--muted);font-size:11px'},'→'),
+      makeSpin(STATE.stonesTarget[i], 0, 10, v=>{
+        STATE.stonesTarget[i] = Math.max(v, STATE.stonesCurrent[i]);
+        renderStonesCalc();
+      }, 'to')
+    ));
+    fieldsWrap.appendChild(fs);
+  }
+
+  // per-skill total
+  let totalStones=0, totalPulls=0, totalFp=0, totalTfp=0;
+  const perSkill = [];
+  for(let i=0;i<4;i++){
+    const s = skillStoneCost(STATE.stonesCurrent[i], STATE.stonesTarget[i]);
+    const p = skillPulls(STATE.stonesCurrent[i], STATE.stonesTarget[i]);
+    const f = skillFpDelta(STATE.stonesCurrent[i], STATE.stonesTarget[i]);
+    const tf = skillTfpDelta(STATE.stonesCurrent[i], STATE.stonesTarget[i]);
+    totalStones+=s; totalPulls+=p; totalFp+=f; totalTfp+=tf;
+    perSkill.push({i,s,p,f,tf});
+  }
+  document.getElementById('t-stones-total').textContent = fmt(totalStones);
+  document.getElementById('t-stones-pulls').textContent = fmt(totalPulls)+' pulls · 5 per level';
+  document.getElementById('t-stones-fp').textContent = fmtSign(totalFp);
+  document.getElementById('t-stones-tfp').textContent = 'team FP '+fmtSign(totalTfp);
+  document.getElementById('t-stones-days').textContent = totalStones===0 ? '0 d' : Math.ceil(totalStones/200)+' d';
+  document.getElementById('t-stones-events').textContent = totalStones===0 ? '0' : (totalStones/6000).toFixed(1);
+  document.getElementById('ct-stones').textContent = fmt(totalStones);
+  document.getElementById('t-stones-budgetSkill').textContent = fmt(STONES_MAX_ONE_HERO);
+
+  // per-skill table
+  const tbl = document.getElementById('t-stones-tbl');
+  tbl.innerHTML = '<thead><tr><th>Skill</th><th>From → To</th><th>Pulls</th><th>Stones</th><th>+FP</th><th>+TeamFP</th><th>%</th></tr></thead>';
+  const tbody = el('tbody');
+  perSkill.forEach(r=>{
+    const sk = live ? h.skills[r.i] : null;
+    const pct = totalStones===0?0:(r.s/totalStones*100);
+    tbody.appendChild(el('tr',null,
+      el('td',null, sk?esc(sk.name):'Skill #'+(r.i+1)),
+      el('td',{class:'muted'}, 'L'+STATE.stonesCurrent[r.i]+' → L'+STATE.stonesTarget[r.i]),
+      el('td',null, fmt(r.p)),
+      el('td',{class:'gold'}, fmt(r.s)),
+      el('td',{class:'accent'}, fmtSign(r.f)),
+      el('td',{class:'purple'}, fmtSign(r.tf)),
+      el('td',{class:'muted'}, pct.toFixed(0)+'%')
+    ));
+  });
+  // total row
+  tbody.appendChild(el('tr',{style:'border-top:2px solid var(--accent);font-weight:700'},
+    el('td',null,'TOTAL'),
+    el('td',{class:'muted'}, ''),
+    el('td',null, fmt(totalPulls)),
+    el('td',{class:'gold'}, fmt(totalStones)),
+    el('td',{class:'accent'}, fmtSign(totalFp)),
+    el('td',{class:'purple'}, fmtSign(totalTfp)),
+    el('td',{class:'muted'}, '100%')
+  ));
+  tbl.appendChild(tbody);
+
+  // also refresh the skill explorer desc since target Lvs changed
+  renderSkillExplorer();
+}
+
+// generic spinner factory
+function makeSpin(value, min, max, onChange, klass){
+  const wrap = el('div',{class:'spin '+(klass||'')});
+  const dec = el('button',null,'−'); dec.type='button';
+  const inp = document.createElement('input'); inp.type='number'; inp.min=min; inp.max=max; inp.value=value;
+  const inc = el('button',null,'+'); inc.type='button';
+  function apply(v){
+    let n = parseInt(v,10);
+    if(isNaN(n)) n=min;
+    n = Math.max(min, Math.min(max,n));
+    inp.value=n;
+    onChange(n);
+  }
+  dec.addEventListener('click', ()=>apply(parseInt(inp.value,10)-1));
+  inc.addEventListener('click', ()=>apply(parseInt(inp.value,10)+1));
+  inp.addEventListener('change', ()=>apply(inp.value));
+  inp.addEventListener('input', ()=>apply(inp.value));
+  wrap.append(dec, inp, inc);
+  return wrap;
+}
+
+function bindSpin(id, cb){
+  const wrap = document.getElementById(id).parentElement;
+  const inp = document.getElementById(id);
+  const min = parseInt(inp.min,10), max = parseInt(inp.max,10);
+  function apply(v){
+    let n = parseInt(v,10); if(isNaN(n)) n=min;
+    n = Math.max(min, Math.min(max,n));
+    inp.value=n; cb(n);
+  }
+  wrap.querySelectorAll('button').forEach(b=>{
+    b.addEventListener('click', ()=>apply(parseInt(inp.value,10)+parseInt(b.dataset.d,10)));
+  });
+  inp.addEventListener('input', ()=>apply(inp.value));
+}
+
+// stone ladder table (reference)
+function renderStoneLadder(){
+  const tbl = document.getElementById('stone-ladder-tbl');
+  tbl.innerHTML = '<thead><tr><th>Lv</th><th>per pull</th><th>per level</th><th>cum.</th><th>+FP</th><th>+TeamFP</th></tr></thead>';
+  const tbody = el('tbody');
+  let cum=0;
+  const tfp=[0,430,859,1289,1934,2578,3545,4512,5801,7090,8594];
+  for(let lv=1; lv<=10; lv++){
+    const pp=STONE_PER_PULL[lv], pl=STONE_PER_LEVEL[lv];
+    cum+=pl;
+    const tr = el('tr',null,
+      el('td',{class:'accent'}, 'L'+lv),
+      el('td',{class: pp===0?'freeL':'muted'}, pp===0?'FREE':fmt(pp)),
+      el('td',{class: pl===0?'freeL':'gold'}, pl===0?'FREE':fmt(pl)),
+      el('td',null, fmt(cum)),
+      el('td',{class:'accent'}, '+'+fmt(lv*3000)),
+      el('td',{class:'purple'}, '+'+fmt(tfp[lv]))
+    );
+    if(lv===6) tr.classList.add('row-mid');
+    if(lv===10) tr.classList.add('row-hi');
+    tbody.appendChild(tr);
+  }
+  tbl.appendChild(tbody);
+}
+
+// ============================================================
+//   TOOL 2 — AWAKE LEVEL 0->40
+// ============================================================
+function renderLevel(){
+  const h = STATE.byId.get(STATE.selectedId);
+  document.getElementById('t-level-hero-tag').textContent = h.name||'—';
+  const from = STATE.lvFrom||0, to = STATE.lvTo||0;
+  if(to<from){ STATE.lvTo = from; document.getElementById('lv-to').value = from; }
+  const c = awakeCost(from, to);
+  document.getElementById('lv-shards').textContent = fmt(c.shards);
+  document.getElementById('lv-chips').textContent = fmt(c.chips);
+  document.getElementById('lv-pulls').textContent = fmt(c.pulls);
+  document.getElementById('lv-fp').textContent = fmtSign(c.fp);
+  document.getElementById('lv-shards-name').textContent = (h.name||'—')+' Shard · #'+(h.shardItemId||'38002xxx');
+  document.getElementById('lv-chips-id').textContent = h.esChipItemId ? ('ES Chip #'+h.esChipItemId) : '38003xxx';
+  document.getElementById('ct-level').textContent = fmt(c.shards);
+}
+
+function renderLevelTierTbl(){
+  const tbl = document.getElementById('t-level-tier-tbl');
+  tbl.innerHTML = '<thead><tr><th>Tier</th><th>Range</th><th># Lv</th><th>Shard/Lv</th><th>Chip/Lv</th><th>Σ Shards</th><th>Σ Chips</th><th>+FP</th></tr></thead>';
+  const tbody = el('tbody');
+  TIER_DATA.forEach((t,i)=>{
+    tbody.appendChild(el('tr',null,
+      el('td',{class:'accent'}, t.tier),
+      el('td',null, t.range),
+      el('td',null, t.count),
+      el('td',null, fmt(t.shardLv)),
+      el('td',null, fmt(t.chipLv)),
+      el('td',{class:'gold'}, fmt(t.shardTier)),
+      el('td',{class:'purple'}, fmt(t.chipTier)),
+      el('td',{class:'accent'}, '+'+fmt(t.fp))
+    ));
+  });
+  tbody.appendChild(el('tr',{style:'border-top:2px solid var(--accent);font-weight:700'},
+    el('td',null,'TOTAL'),
+    el('td',{class:'muted'},'1-40'),
+    el('td',null,'40'),
+    el('td',{class:'muted'},'—'),
+    el('td',{class:'muted'},'—'),
+    el('td',{class:'gold'},'1,140'),
+    el('td',{class:'purple'},'740'),
+    el('td',{class:'accent'},'+80,000')
+  ));
+  tbl.appendChild(tbody);
+}
+
+function renderLevelFullTbl(){
+  const tbl = document.getElementById('t-level-full-tbl');
+  tbl.innerHTML = '<thead><tr><th>Lv</th><th>Tier</th><th>Shard/Lv</th><th>Chip/Lv</th><th>Σ Shards</th><th>Σ Chips</th><th>Σ Pulls</th><th>Σ FP</th></tr></thead>';
+  const tbody = el('tbody');
+  AWAKE_LEVELS.forEach(r=>{
+    let tier='I'; if(r.level>=10&&r.level<=19)tier='II'; else if(r.level>=20&&r.level<=29)tier='III'; else if(r.level>=30)tier='IV';
+    const cls = r.level%10===0?'row-hi':'';
+    tbody.appendChild(el('tr',{class:cls},
+      el('td',{class:'accent'}, 'L'+r.level),
+      el('td',null, tier),
+      el('td',null, fmt(r.shard)),
+      el('td',null, fmt(r.chip)),
+      el('td',{class:'gold'}, fmt(r.cumShard)),
+      el('td',{class:'purple'}, fmt(r.cumChip)),
+      el('td',{class:'muted'}, fmt(r.level*5)),
+      el('td',{class:'accent'}, '+'+fmt(r.fp))
+    ));
+  });
+  tbl.appendChild(tbody);
+}
+
+// ============================================================
+//   TOOL 3 — TEAM FIGHT POWER GAIN
+// ============================================================
+function renderTeam(){
+  const wrap = document.getElementById('team-slots');
+  clear(wrap);
+  const live = STATE.team.filter(t=>t);
+  document.getElementById('t-team-count').textContent = live.length+' / 6 selected';
+  document.getElementById('ct-team').textContent = live.length;
+  for(let i=0;i<6;i++){
+    const slot = STATE.team[i];
+    if(slot){
+      const h = STATE.byId.get(slot.id);
+      const cell = el('div',{class:'slot filled'},
+        el('div',{class:'x', onclick:e=>{ e.stopPropagation(); STATE.team[i]=null; renderTeam(); }},'✕'),
+        el('div',{class:'sp'}, 'slot '+(i+1)),
+        makeImg(h.id, 42, ''),
+        el('div',{class:'nm'}, h.name),
+        el('div',{class:'ph'}, 'P'+h.phase+' · '+h.type),
+        el('div',{class:'lvspin',style:'display:flex;flex-direction:column;gap:4px;align-items:center;width:100%'},
+          el('div',{style:'display:flex;align-items:center;gap:4px'},
+            el('span',{style:'font-size:9px;color:var(--muted);font-family:var(--mono)'},'AwkLv'),
+            makeSpin(slot.awakeLv, 0, 40, v=>{ slot.awakeLv=v; computeTeam(); }, 'to')
+          ),
+          el('div',{style:'display:flex;align-items:center;gap:4px'},
+            el('span',{style:'font-size:9px;color:var(--muted);font-family:var(--mono)'},'SkLv'),
+            makeSpin(slot.skLv, 0, 40, v=>{ slot.skLv=v; computeTeam(); }, 'to')
+          )
+        )
+      );
+      wrap.appendChild(cell);
+    } else {
+      wrap.appendChild(el('div',{class:'slot', onclick:()=>openPicker(i)},
+        el('div',{class:'sp'}, 'slot '+(i+1)),
+        el('div',{style:'font-size:24px;color:var(--muted)'},'+'),
+        el('div',{class:'ph'}, 'tap to pick')
+      ));
+    }
+  }
+  computeTeam();
+}
+function computeTeam(){
+  let fpLadder=0, fpSkill=0, shards=0, stones=0;
+  STATE.team.forEach(t=>{
+    if(!t)return;
+    fpLadder += (t.awakeLv||0) * FP_PER_AWAKE_LEVEL;
+    fpSkill  += (t.skLv||0) * FP_PER_SKILL_LEVEL;
+    // shards across to current awakeLv from 0
+    const c = awakeCost(0, t.awakeLv||0);
+    shards += c.shards;
+    // stones to reach skill avg lv across 4 skills: assume skLv = total spread equally
+    const avg = Math.floor((t.skLv||0)/4);
+    const rem = (t.skLv||0) - avg*4;
+    let st = 0;
+    for(let i=0;i<4;i++){
+      const lv = avg + (i<rem?1:0);
+      st += skillStoneCost(0, Math.min(10,lv));
+    }
+    stones += st;
+  });
+  document.getElementById('team-fp-total').textContent = fmtSign(fpLadder+fpSkill);
+  document.getElementById('team-fp-ladder').textContent = fmtSign(fpLadder);
+  document.getElementById('team-fp-skill').textContent = fmtSign(fpSkill);
+  document.getElementById('team-shards').textContent = fmt(shards);
+  document.getElementById('team-shards-sub').textContent = STATE.team.filter(Boolean).length+' heroes';
+  document.getElementById('team-stones').textContent = fmt(stones);
+}
+function openPicker(slotIdx){
+  STATE.pickerSlot = slotIdx;
+  document.getElementById('picker-slot-idx').textContent = slotIdx+1;
+  const grid = document.getElementById('picker-grid');
+  clear(grid);
+  STATE.heroes.forEach(h=>{
+    const alreadyPicked = STATE.team.some(t=>t && t.id===h.id);
+    if(alreadyPicked) return;
+    grid.appendChild(el('div',{class:'pick', onclick:()=>{
+      STATE.team[slotIdx] = {id:h.id, awakeLv:40, skLv:40};
+      closePicker(); renderTeam();
+    }},
+      makeImg(h.id, 42, ''),
+      el('div',{class:'nm'}, h.name),
+      el('div',{class:'meta'}, 'P'+h.phase+' · '+h.type)
+    ));
+  });
+  document.getElementById('picker-modal').classList.add('active');
+}
+function closePicker(){
+  document.getElementById('picker-modal').classList.remove('active');
+}
+
+// ============================================================
+//   TOOL 4 — COMBO TRIO PLANNER
+// ============================================================
+function renderComboPills(){
+  const wrap = document.getElementById('combo-pills');
+  clear(wrap);
+  COMBO_TRIOS.forEach(tr=>{
+    const p = el('button',{class:'combo-pill '+(STATE.comboId===tr.id?'active':''), onclick:()=>{STATE.comboId=tr.id; renderComboPills(); renderComboView();}},
+      el('span',null, tr.label),
+      el('span',{class:'buf'}, '+'+tr.buff)
+    );
+    wrap.appendChild(p);
+  });
+}
+function renderComboView(){
+  const wrap = document.getElementById('combo-view');
+  clear(wrap);
+  const trio = COMBO_TRIOS.find(t=>t.id===STATE.comboId);
+  if(!trio) return;
+
+  // Slot row showing 3 members + global lv slider
+  const slots = el('div',{class:'slotrow', style:'grid-template-columns:repeat(3,1fr)'});
+  trio.members.forEach((mid, idx)=>{
+    const h = STATE.byId.get(mid);
+    slots.appendChild(el('div',{class:'slot filled', style:'min-height:140px'},
+      el('div',{class:'sp'}, idx===0?'anchor · P1':'partner · P'+(idx===1?'3':'2')),
+      makeImg(h.id,42,''),
+      el('div',{class:'nm'}, h.name),
+      el('div',{class:'ph'}, h.type+' · #'+h.id),
+      el('div',{class:'lvspin'},
+        el('div',{style:'display:flex;align-items:center;gap:4px;justify-content:center'},
+          el('span',{style:'font-size:9px;color:var(--muted);font-family:var(--mono)'},'Lv'),
+          makeSpin(STATE.comboLv, 1, 40, v=>{STATE.comboLv=v; renderComboView();}, 'to')
+        )
+      )
+    ));
+  });
+
+  // Buff growth at the chosen level
+  // Each row buff (front/mid/back) scales 300/300/450/450/600/600/750/750/900/900 across 10 tiers (every 4 levels)
+  // Global scales 1200/1200/1800/1800/2400/2400/3000/3000/3600/3600
+  // We compute the tier index = Math.min(9, Math.floor((lv-1)/4))
+  const rowScale =    [300,300,450,450,600,600,750,750,900,900];
+  const globalScale = [1200,1200,1800,1800,2400,2400,3000,3000,3600,3600];
+  const tierIdx = Math.min(9, Math.max(0, Math.floor((STATE.comboLv-1)/4)));
+  const perRow = rowScale[tierIdx];
+  const perGlobal = globalScale[tierIdx];
+
+  // Each combo grants 3 row buffs (front/mid/back) per hero + 1 global per hero
+  const heroes = trio.members.length;
+  const fpLadder = STATE.comboLv * FP_PER_AWAKE_LEVEL * heroes;
+  const buffGrowthTbl = el('table',{class:'tt'});
+  buffGrowthTbl.innerHTML = '<thead><tr><th>Awakening Lv</th><th>Row buff (each row)</th><th>Global buff</th><th>Σ for trio · per row</th><th>Σ for trio · global</th></tr></thead>';
+  const tb = el('tbody');
+  [1,5,10,15,20,25,30,35,40].forEach(lv=>{
+    const ti = Math.min(9, Math.floor((lv-1)/4));
+    const pr = rowScale[ti], pg = globalScale[ti];
+    const cls = lv===STATE.comboLv?'row-hi':'';
+    tb.appendChild(el('tr',{class:cls},
+      el('td',null, 'L'+lv),
+      el('td',{class:'num'}, '+'+fmt(pr)),
+      el('td',{class:'num'}, '+'+fmt(pg)),
+      el('td',{class:'num accent'}, '+'+fmt(pr*heroes)),
+      el('td',{class:'num purple'}, '+'+fmt(pg*heroes))
+    ));
+  });
+  buffGrowthTbl.appendChild(tb);
+
+  wrap.appendChild(el('div',{style:'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;flex-wrap:wrap'},
+    el('div',null,
+      el('div',{style:'font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700'},'Combo'),
+      el('div',{style:'font-size:16px;font-weight:700;color:var(--accent)'}, trio.label),
+      el('div',{style:'font-size:11px;color:var(--gold);margin-top:2px'},'Shared buff: '+trio.buff)
+    ),
+    el('div',{style:'text-align:right'},
+      el('div',{style:'font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em'},'Combined awakening level'),
+      el('div',{style:'font-family:var(--mono);font-size:22px;font-weight:700;color:var(--accent)'}, 'Lv.'+STATE.comboLv),
+      el('div',{style:'font-size:11px;color:var(--muted)'}, 'tier '+(tierIdx+1)+' of 10')
+    )
+  ));
+  wrap.appendChild(slots);
+
+  // Summary totals
+  wrap.appendChild(el('div',{class:'totals',style:'margin-top:14px;grid-template-columns:repeat(4,1fr)'},
+    el('div',{class:'tt-row'}, el('div',{class:'tt-k'},'Per-row buff'), el('div',{class:'tt-v accent mono'},'+'+fmt(perRow)), el('div',{class:'tt-sub'},'each of front/mid/back row')),
+    el('div',{class:'tt-row'}, el('div',{class:'tt-k'},'Global buff'), el('div',{class:'tt-v gold mono'},'+'+fmt(perGlobal)), el('div',{class:'tt-sub'},trio.type+' DMG global')),
+    el('div',{class:'tt-row'}, el('div',{class:'tt-k'},'Trio sum · per row'), el('div',{class:'tt-v purple mono'},'+'+fmt(perRow*heroes)), el('div',{class:'tt-sub'},'3 heroes × row buff')),
+    el('div',{class:'tt-row'}, el('div',{class:'tt-k'},'Trio sum · ladder FP'), el('div',{class:'tt-v green mono'},'+'+fmt(fpLadder)), el('div',{class:'tt-sub'},'2,000 × ' + (STATE.comboLv*heroes)))
+  ));
+
+  wrap.appendChild(el('div',{style:'margin-top:14px'},
+    el('div',{style:'font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px'},'Buff growth ladder · select any level row to preview'),
+    buffGrowthTbl
+  ));
+
+  // Phase availability note
+  wrap.appendChild(el('div',{class:'note '+(trio.members.every(m=>{const h=STATE.byId.get(m); return h && h.phase===1;})?'green':'purple')},
+    el('strong',null,'Phase reach: '),
+    'Anchor is live now (Phase I). ',
+    el('span',{class:'mono'}, trio.members.map(m=>{const h=STATE.byId.get(m);return h.name+'·P'+h.phase;}).join('  ·  ')),
+    '. The trio buff only triggers when all three are at Awakening Lv.1 or higher.'
+  ));
+}
+
+// ============================================================
+//   TOOL 5 — COMPARE 2 HEROES
+// ============================================================
+function renderCmpPickers(){
+  const a = document.getElementById('cmp-a'), b = document.getElementById('cmp-b');
+  [a,b].forEach(sel => { clear(sel); });
+  STATE.awakenedHeroes.forEach(h=>{
+    a.appendChild(el('option',{value:h.id, selected:h.id===STATE.cmpA?'':null}, h.name+' · '+h.type));
+    b.appendChild(el('option',{value:h.id, selected:h.id===STATE.cmpB?'':null}, h.name+' · '+h.type));
+  });
+  a.value = STATE.cmpA; b.value = STATE.cmpB;
+}
+function renderCompare(){
+  ['a','b'].forEach((side, idx)=>{
+    const id = side==='a'?STATE.cmpA:STATE.cmpB;
+    const h = STATE.byId.get(id);
+    const col = document.getElementById('cmp-col-'+side);
+    clear(col);
+    if(!h||!h.skills){
+      col.appendChild(el('div',{class:'muted'}, 'No live skill data.'));
+      return;
+    }
+    col.appendChild(el('div',{class:'h'},
+      makeImg(h.id, 34, ''),
+      el('div',null,
+        el('div',{class:'nm'}, h.name),
+        el('div',{class:'ph'}, h.type+' · '+(h.awakenedLabel||''))
+      )
+    ));
+    h.skills.forEach(sk=>{
+      const lvRow = (sk.levelTable||[]).find(r=>r.level===STATE.cmpLv) || {};
+      const desc = STATE.cmpLv>=6 ? sk.descriptionLv6_plus : (STATE.cmpLv>=2 ? sk.descriptionLv2_5 : sk.descriptionLv1);
+      const ds = highlightDesc(resolveTokens(desc||''));
+      col.appendChild(el('div',{class:'skill-strip'},
+        el('img',{class:'sk-ic', src:'../../'+sk.icon, alt:sk.name, onerror:function(){this.style.opacity=.3;}}),
+        el('div',null,
+          el('div',{class:'ssname'}, sk.name||'Skill #'+sk.index),
+          (() => {const d = document.createElement('div'); d.className='ssdesc'; d.innerHTML=ds; return d;})()
+        ),
+        el('div',{class:'ssval'}, esc(lvRow.val1_pct||'—'))
+      ));
+    });
+    // totals at chosen lv
+    const skSum = (h.skills||[]).reduce((s,sk)=>{
+      const r = (sk.levelTable||[]).find(rr=>rr.level===STATE.cmpLv);
+      return s + (r?r.power:0);
+    }, 0);
+    const tfpSum = (h.skills||[]).reduce((s,sk)=>{
+      const r = (sk.levelTable||[]).find(rr=>rr.level===STATE.cmpLv);
+      return s + (r?r.team_power:0);
+    }, 0);
+    col.appendChild(el('div',{style:'border-top:1px solid var(--border);margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px'},
+      el('span',{class:'muted'},'Σ @ Lv.'+STATE.cmpLv),
+      el('span',{class:'accent'}, '+'+fmt(skSum)+' FP'),
+      el('span',{class:'purple'}, '+'+fmt(tfpSum)+' TeamFP')
+    ));
+  });
+}
+
+// ============================================================
+//   TOOL 6 — HONOR WALL
+// ============================================================
+function renderHonor(){
+  const from = STATE.honorFrom||0, to = STATE.honorTo||0;
+  if(to<from){ STATE.honorTo=from; document.getElementById('honor-to').value=from; }
+  const stones = honorCostFor(from, to);
+  const fp = (to-from)*100;
+  document.getElementById('honor-stones').textContent = fmt(stones);
+  document.getElementById('honor-stones-sub').textContent = 'sub-track '+STATE.honorSub+' · '+(to-from)+' levels';
+  document.getElementById('honor-fp').textContent = fmtSign(fp);
+  document.getElementById('honor-days').textContent = stones===0 ? '0 d' : Math.ceil(stones/200)+' d';
+  document.getElementById('honor-pct').textContent = ((stones/39900)*100).toFixed(1)+'%';
+  document.getElementById('ct-honor').textContent = fmt(stones);
+}
+function renderHonorTierTbl(){
+  const tbl = document.getElementById('honor-tier-tbl');
+  tbl.innerHTML = '<thead><tr><th>Range</th><th># Lv</th><th>per lv</th><th>Σ stones</th><th>+FP</th></tr></thead>';
+  const tbody = el('tbody');
+  HONOR_TIERS.forEach(t=>{
+    tbody.appendChild(el('tr',null,
+      el('td',{class:'accent'}, t.range),
+      el('td',null, t.levels),
+      el('td',{class: t.perLv===0?'freeL':'gold'}, t.perLv===0?'FREE':fmt(t.perLv)),
+      el('td',null, fmt(t.total)),
+      el('td',{class:'accent'}, '+'+fmt(t.levels*100))
+    ));
+  });
+  tbody.appendChild(el('tr',{style:'border-top:2px solid var(--accent);font-weight:700'},
+    el('td',null,'TOTAL'),
+    el('td',null,'200'),
+    el('td',{class:'muted'},'—'),
+    el('td',{class:'gold'}, fmt(HONOR_TOTAL_SUB)),
+    el('td',{class:'accent'},'+20,000')
+  ));
+  tbl.appendChild(tbody);
+}
+
+// ============================================================
+//   ES7 SWAP TABLE (per selected hero)
+// ============================================================
+function renderEs7(){
+  const tbl = document.getElementById('es7-tbl');
+  tbl.innerHTML = '<thead><tr><th>Skill</th><th>Base buff family</th><th></th><th>ES7 buff family</th><th>Δ digit 3</th></tr></thead>';
+  const tbody = el('tbody');
+  const h = STATE.byId.get(STATE.selectedId);
+  if(!h||!h.skills){
+    tbody.appendChild(el('tr',null, el('td',{class:'muted',colspan:5},'No live skill data for this hero (Phase II/III).')));
+    tbl.appendChild(tbody);
+    return;
+  }
+  h.skills.forEach(sk=>{
+    const base = sk.appliedBuff||'';
+    const swap = sk.exclusive7Buff||'';
+    tbody.appendChild(el('tr',null,
+      el('td',null, sk.name||'Skill #'+sk.index),
+      el('td',{class:'fam'}, base),
+      el('td',{class:'arrow'}, '→'),
+      el('td',{class:'fam7'}, swap),
+      el('td',{class:'muted'}, base && swap ? base[2]+'→'+swap[2] : '—')
+    ));
+  });
+  tbl.appendChild(tbody);
+}
+
+// ============================================================
+//   HERO SWAP DONOR POOL (selected hero)
+// ============================================================
+function renderSwap(){
+  const h = STATE.byId.get(STATE.selectedId);
+  document.getElementById('swap-target-name').textContent = 'Eligible donors for · '+(h.name||'—');
+  const tk = typeKey(h.type);
+  document.getElementById('swap-target-type').textContent = tk+' pool · '+SWAP_POOLS[tk].length+' donors';
+  const wrap = document.getElementById('swap-donors');
+  clear(wrap);
+  SWAP_POOLS[tk].forEach(d=>{
+    const card = el('div',{class:'panel', style:'padding:0'});
+    card.appendChild(el('div',{class:'panel-head', style:'gap:8px;padding:8px 10px'},
+      makeImg(d.id, 28, ''),
+      el('div',{style:'display:flex;flex-direction:column;line-height:1.1'},
+        el('span',{style:'font-size:12px;font-weight:600'}, d.name),
+        el('span',{style:'font-size:10px;color:var(--muted);font-family:var(--mono)'}, '#'+d.id)
+      )
+    ));
+    card.appendChild(el('div',{class:'panel-foot',style:'font-size:10px;border-top:1px solid var(--border);background:var(--bg);justify-content:space-between'},
+      el('span',null,'→ '+esc(h.name||'')),
+      el('span',{class:'mono accent'},'100% conv')
+    ));
+    wrap.appendChild(card);
+  });
+}
+</script>
+</body>
+</html>

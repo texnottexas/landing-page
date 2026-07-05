@@ -1,0 +1,1757 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="referrer" content="no-referrer" />
+<title>V4 · Visual Hero Cards — Hyper Awakening</title>
+<style>
+  /* =========================================================================
+     V4 — VISUAL HERO CARDS
+     Big-bust portrait grid · inline expand panels · animated Unawakened →
+     Awakened transitions · glowing-arc combo trio · heavy CSS choreography.
+     Palette: GitHub dark with army-green / sky-accent / gold / purple accents.
+     ========================================================================= */
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --card: #1c2128;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #79c0ff;
+    --green: #3fb950;
+    --gold: #d29922;
+    --purple: #957cff;
+    --orange: #f0883e;
+    --red: #f85149;
+    --army: #c5d977;
+    --navy: #79c0ff;
+    --air: #d29922;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-feature-settings: "ss01", "ss02";
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  /* Cinematic backdrop: layered radial glows, conic sweep, soft noise */
+  body::before {
+    content: ""; position: fixed; inset: -10%;
+    background:
+      radial-gradient(ellipse at 18% 22%, rgba(121,192,255,.12), transparent 55%),
+      radial-gradient(ellipse at 82% 10%, rgba(149,124,255,.10), transparent 60%),
+      radial-gradient(ellipse at 50% 95%, rgba(63,185,80,.08), transparent 55%),
+      radial-gradient(ellipse at 90% 80%, rgba(210,153,34,.07), transparent 60%);
+    z-index: -2; pointer-events: none;
+    animation: drift 28s ease-in-out infinite alternate;
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,.012) 0 1px, transparent 1px 3px);
+    z-index: -1; pointer-events: none; mix-blend-mode: overlay;
+  }
+  @keyframes drift {
+    0%   { transform: translate(0,0) scale(1); }
+    50%  { transform: translate(-2%, 1.5%) scale(1.05); }
+    100% { transform: translate(2%, -1.5%) scale(1.02); }
+  }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .notranslate { unicode-bidi: isolate; }
+
+  /* ========== Hero header ========== */
+  header {
+    position: relative; z-index: 5;
+    padding: 1.6rem 1.4rem 1.1rem;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(13,17,23,.85), rgba(13,17,23,.4));
+    backdrop-filter: blur(6px);
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  }
+  .home-btn {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: var(--card); border: 1px solid var(--border);
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--accent); transition: all .18s ease;
+  }
+  .home-btn:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(121,192,255,.18); }
+  .home-btn svg { width: 18px; height: 18px; fill: currentColor; }
+
+  .title-block { flex: 1; min-width: 220px; }
+  .eyebrow {
+    font-size: .58rem; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 4px; font-weight: 700;
+  }
+  .eyebrow .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-right: 6px; box-shadow: 0 0 8px var(--green); animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:.55;} 50%{opacity:1;} }
+  h1 {
+    font-size: clamp(1.4rem, 2.6vw, 2.0rem);
+    margin: 0; line-height: 1.1;
+    background: linear-gradient(90deg, #fff 0%, var(--accent) 35%, var(--purple) 60%, var(--gold) 90%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    background-size: 220% 100%;
+    animation: titleShimmer 11s ease infinite;
+    letter-spacing: -.01em; font-weight: 800;
+  }
+  @keyframes titleShimmer { 0%,100%{background-position:0% 50%;} 50%{background-position:100% 50%;} }
+  h1 small { display: block; font-size: .68rem; color: var(--muted); -webkit-text-fill-color: var(--muted); margin-top: 4px; font-weight: 500; letter-spacing: 0; }
+
+  .hdr-meta { display: flex; gap: .55rem; align-items: center; flex-wrap: wrap; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--border);
+    color: var(--muted); font-size: .68rem; font-weight: 600;
+    letter-spacing: .04em; text-transform: uppercase;
+  }
+  .pill.live { color: var(--green); border-color: var(--green); }
+  .pill.live::before { content:""; width:6px; height:6px; border-radius:50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .pill.alt { color: var(--purple); border-color: rgba(149,124,255,.4); }
+
+  /* ========== Layout ========== */
+  main { max-width: 1480px; margin: 0 auto; padding: 1.5rem 1rem 4rem; position: relative; z-index: 2; }
+
+  /* ========== Phase rail (banners) ========== */
+  .phase-rail {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+    margin-bottom: 2rem;
+  }
+  .phase-tile {
+    position: relative;
+    height: 110px; border-radius: 14px; overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--card);
+    box-shadow: 0 8px 32px rgba(0,0,0,.45);
+    transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+  }
+  .phase-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: brightness(.78) saturate(1.05); transition: transform .8s ease, filter .35s ease; }
+  .phase-tile:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 18px 48px rgba(121,192,255,.18); }
+  .phase-tile:hover img { transform: scale(1.05); filter: brightness(.92) saturate(1.2); }
+  .phase-tile-tag {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 10px 14px;
+    background: linear-gradient(180deg, transparent, rgba(0,0,0,.85));
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .phase-tile-tag .pn { font-size: .95rem; font-weight: 700; }
+  .phase-tile-tag .ps {
+    font-size: .58rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--muted); padding: 3px 7px; border-radius: 999px; border: 1px solid var(--border); background: rgba(13,17,23,.7);
+  }
+  .phase-tile.live .ps { color: var(--green); border-color: var(--green); }
+  .phase-tile.live::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(circle at 50% 100%, rgba(63,185,80,.28), transparent 60%);
+    pointer-events: none; z-index: 1;
+  }
+  @media (max-width: 720px) { .phase-rail { grid-template-columns: 1fr; } .phase-tile { height: 92px; } }
+
+  /* ========== Filter chips ========== */
+  .toolbar {
+    display: flex; align-items: center; gap: .65rem; flex-wrap: wrap;
+    margin-bottom: 1.2rem;
+  }
+  .chips { display: inline-flex; background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 3px; }
+  .chip {
+    appearance: none; border: 0; background: transparent; color: var(--muted);
+    padding: 7px 14px; border-radius: 999px; cursor: pointer; font-size: .76rem; font-weight: 600;
+    letter-spacing: .02em; transition: all .18s ease; font-family: inherit;
+  }
+  .chip.on, .chip:hover { color: var(--text); background: rgba(255,255,255,.05); }
+  .chip[data-type="Army"].on { color: #fff; background: rgba(63,185,80,.22); box-shadow: inset 0 0 0 1px var(--green); }
+  .chip[data-type="Navy"].on { color: #fff; background: rgba(121,192,255,.22); box-shadow: inset 0 0 0 1px var(--accent); }
+  .chip[data-type="Air"].on  { color: #fff; background: rgba(210,153,34,.22); box-shadow: inset 0 0 0 1px var(--gold); }
+  .chip[data-type="all"].on { color: #fff; background: rgba(149,124,255,.22); box-shadow: inset 0 0 0 1px var(--purple); }
+
+  .toolbar .spacer { flex: 1; }
+  .toolbar .hint { font-size: .7rem; color: var(--muted); }
+  .toolbar .hint b { color: var(--accent); }
+
+  /* ========== Hero card grid ========== */
+  .hero-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+    gap: 18px;
+    margin-bottom: 2.4rem;
+  }
+  .hero-card {
+    position: relative; overflow: hidden;
+    aspect-ratio: 3 / 4.4;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    cursor: pointer;
+    transform-style: preserve-3d;
+    transition: transform .35s cubic-bezier(.2,.7,.2,1), border-color .25s ease, box-shadow .35s ease;
+    isolation: isolate;
+  }
+  .hero-card[data-phase="2"], .hero-card[data-phase="3"] { opacity: .85; }
+  .hero-card:hover {
+    transform: translateY(-6px) rotate3d(1,0,0,0deg);
+    border-color: rgba(255,255,255,.18);
+    box-shadow: 0 30px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.06);
+  }
+  .hero-card.is-open { transform: translateY(0); border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 24px 60px rgba(121,192,255,.25); }
+
+  .hero-portrait {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top;
+    transition: transform .8s cubic-bezier(.2,.7,.2,1), filter .5s ease;
+    z-index: 1;
+  }
+  .hero-card:hover .hero-portrait { transform: scale(1.06); }
+  /* Unawakened layer = desaturated, dim. Awakened layer = the awake-icon vignette glow. */
+  .hero-portrait.unawake {
+    filter: grayscale(.65) brightness(.55) contrast(1.05);
+  }
+  .hero-portrait.awake {
+    opacity: 0;
+    filter: brightness(1.05) saturate(1.15) drop-shadow(0 0 20px rgba(149,124,255,.45));
+    animation: none;
+  }
+  .hero-card:hover .hero-portrait.unawake { opacity: 0; }
+  .hero-card:hover .hero-portrait.awake { opacity: 1; animation: awakenPulse 2.4s ease-in-out infinite; }
+  @keyframes awakenPulse {
+    0%,100% { filter: brightness(1.05) saturate(1.15) drop-shadow(0 0 16px rgba(149,124,255,.4)); }
+    50%     { filter: brightness(1.15) saturate(1.3)  drop-shadow(0 0 30px rgba(149,124,255,.7)); }
+  }
+
+  /* Awakening burst — circular flare that flashes on hover */
+  .awaken-burst {
+    position: absolute; inset: 0; pointer-events: none; z-index: 2;
+    background:
+      radial-gradient(circle at 50% 30%, rgba(255,255,255,.0) 0%, rgba(149,124,255,.0) 35%, transparent 60%);
+    opacity: 0; transition: opacity .4s ease;
+  }
+  .hero-card:hover .awaken-burst {
+    opacity: 1;
+    background:
+      radial-gradient(circle at 50% 28%, rgba(255,255,255,.32) 0%, rgba(149,124,255,.18) 25%, rgba(121,192,255,.08) 45%, transparent 70%),
+      conic-gradient(from 90deg at 50% 28%, rgba(149,124,255,0) 0deg, rgba(149,124,255,.35) 60deg, rgba(149,124,255,0) 120deg);
+    animation: burstSweep 4s linear infinite;
+  }
+  @keyframes burstSweep { to { transform: rotate(360deg); } }
+
+  /* Top-corner type tag */
+  .hero-type-tag {
+    position: absolute; top: 10px; left: 10px; z-index: 4;
+    padding: 4px 9px; border-radius: 999px; font-size: .55rem; font-weight: 800;
+    letter-spacing: .14em; text-transform: uppercase;
+    background: rgba(13,17,23,.78); color: var(--text);
+    backdrop-filter: blur(4px); border: 1px solid var(--border);
+  }
+  .hero-type-tag.Army { color: var(--army); border-color: rgba(197,217,119,.4); }
+  .hero-type-tag.Navy { color: var(--navy); border-color: rgba(121,192,255,.4); }
+  .hero-type-tag.Air  { color: var(--air);  border-color: rgba(210,153,34,.4); }
+
+  .hero-phase-tag {
+    position: absolute; top: 10px; right: 10px; z-index: 4;
+    padding: 4px 9px; border-radius: 999px;
+    font-size: .55rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+    background: rgba(13,17,23,.78); color: var(--muted);
+    backdrop-filter: blur(4px); border: 1px solid var(--border);
+  }
+  .hero-phase-tag.live { color: var(--green); border-color: var(--green); }
+
+  /* Bottom name plate */
+  .hero-plate {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
+    padding: 60px 14px 14px;
+    background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,.65) 50%, rgba(0,0,0,.92) 100%);
+  }
+  .hero-name { font-size: 1.18rem; font-weight: 800; line-height: 1.1; letter-spacing: -.01em; margin-bottom: 3px; }
+  .hero-label { font-size: .72rem; color: var(--gold); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .hero-label.empty { color: var(--muted); font-weight: 500; text-transform: none; letter-spacing: 0; font-style: italic; }
+  .hero-meta-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .meta-bit { font-size: .58rem; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
+  .meta-bit b { color: var(--text); font-weight: 800; }
+  .meta-bit.ult { color: var(--purple); }
+  .meta-bit.ult b { color: var(--purple); }
+
+  /* Small awake-icon stamp (top-right of card, behind phase tag) */
+  .awake-stamp {
+    position: absolute; right: 10px; bottom: 92px; z-index: 4;
+    width: 54px; height: 54px; border-radius: 50%;
+    overflow: hidden;
+    border: 2px solid var(--purple);
+    background: radial-gradient(circle, rgba(149,124,255,.25), rgba(13,17,23,.85));
+    box-shadow: 0 0 24px rgba(149,124,255,.35);
+    opacity: 0; transform: translateY(10px) scale(.85);
+    transition: all .4s cubic-bezier(.2,.7,.2,1);
+  }
+  .awake-stamp img { width: 100%; height: 100%; object-fit: cover; }
+  .hero-card:hover .awake-stamp { opacity: 1; transform: translateY(0) scale(1); }
+
+  /* ===== Inline expansion panel ===== */
+  .expand-panel {
+    grid-column: 1 / -1;
+    background: linear-gradient(180deg, var(--surface) 0%, var(--card) 100%);
+    border: 1px solid var(--border); border-radius: 22px;
+    padding: 22px; overflow: hidden;
+    animation: expandIn .45s cubic-bezier(.2,.7,.2,1);
+    position: relative;
+  }
+  @keyframes expandIn {
+    from { opacity: 0; transform: translateY(-12px); max-height: 0; padding: 0 22px; }
+    to   { opacity: 1; transform: translateY(0);     max-height: 4000px; padding: 22px; }
+  }
+  .expand-panel::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: 22px;
+    background: radial-gradient(ellipse at 80% -20%, rgba(149,124,255,.15), transparent 60%);
+  }
+  .expand-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.6fr);
+    gap: 22px;
+  }
+  @media (max-width: 1024px) { .expand-grid { grid-template-columns: 1fr; } }
+
+  /* Left: hero hero portrait + name */
+  .ep-hero {
+    position: relative;
+    border-radius: 16px; overflow: hidden;
+    aspect-ratio: 4/5;
+    min-height: 380px;
+    border: 1px solid var(--border);
+    background: var(--card);
+  }
+  .ep-hero img.full { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+  .ep-hero .awakening-ring {
+    position: absolute; inset: 6%; border-radius: 50%;
+    border: 1px dashed rgba(149,124,255,.4);
+    animation: ringRotate 18s linear infinite;
+    pointer-events: none;
+  }
+  .ep-hero .awakening-ring.b { animation-direction: reverse; animation-duration: 26s; inset: 14%; border-color: rgba(121,192,255,.4); }
+  @keyframes ringRotate { to { transform: rotate(360deg); } }
+  .ep-hero .ep-titleblock {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 16px 18px 18px;
+    background: linear-gradient(180deg, transparent, rgba(0,0,0,.93));
+  }
+  .ep-hero .ep-ult-tag {
+    position: absolute; top: 14px; left: 14px;
+    padding: 6px 12px; border-radius: 999px;
+    background: rgba(149,124,255,.18); border: 1px solid rgba(149,124,255,.6);
+    color: var(--purple); font-size: .65rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+  }
+  .ep-hero .ep-name { font-size: 1.7rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: 2px; }
+  .ep-hero .ep-label { font-size: .8rem; color: var(--gold); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+  .ep-hero .ep-bio { font-size: .76rem; color: var(--muted); line-height: 1.55; margin-top: 8px; max-height: 4.5em; overflow: hidden; }
+
+  /* Right: skills + combo + slider */
+  .ep-right { display: flex; flex-direction: column; gap: 18px; }
+
+  /* Skill icons row */
+  .skill-row {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  }
+  .skill-tile {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 12px; cursor: pointer; position: relative;
+    transition: all .25s ease;
+    overflow: hidden;
+  }
+  .skill-tile::before {
+    content: ""; position: absolute; inset: 0; opacity: 0; transition: opacity .25s ease;
+    background: radial-gradient(circle at 50% 0%, rgba(121,192,255,.25), transparent 70%);
+  }
+  .skill-tile.on::before { opacity: 1; }
+  .skill-tile.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 12px 24px rgba(121,192,255,.18); }
+  .skill-tile:hover { border-color: var(--accent); }
+  .skill-icon-wrap {
+    width: 100%; aspect-ratio: 1/1; border-radius: 10px; overflow: hidden;
+    background: radial-gradient(circle, rgba(149,124,255,.2), rgba(13,17,23,.65));
+    border: 1px solid rgba(149,124,255,.3);
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .skill-icon-wrap img { width: 88%; height: 88%; object-fit: contain; filter: drop-shadow(0 0 6px rgba(149,124,255,.4)); }
+  .skill-tile.on .skill-icon-wrap::after {
+    content: ""; position: absolute; inset: -2px; border-radius: inherit;
+    background: conic-gradient(from 0deg, transparent, var(--accent), transparent 30%);
+    animation: skillSpin 3s linear infinite; z-index: -1;
+  }
+  @keyframes skillSpin { to { transform: rotate(360deg); } }
+  .skill-tile .skill-name {
+    font-size: .72rem; font-weight: 700; margin-top: 6px; line-height: 1.2; text-align: center;
+    letter-spacing: 0;
+  }
+  .skill-tile .skill-tag {
+    position: absolute; top: 8px; right: 8px;
+    font-size: .55rem; font-weight: 800; color: var(--accent);
+    background: rgba(13,17,23,.78); padding: 2px 5px; border-radius: 6px;
+  }
+
+  /* Slider */
+  .slider-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px;
+  }
+  .slider-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
+  }
+  .slider-title { font-size: .68rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .slider-title b { color: var(--text); }
+  .slider-value {
+    font-size: 2.2rem; font-weight: 800; line-height: 1; letter-spacing: -.02em;
+    background: linear-gradient(90deg, var(--accent), var(--purple));
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .slider-value small { font-size: .58rem; color: var(--muted); -webkit-text-fill-color: var(--muted); margin-left: 4px; font-weight: 600; }
+  input[type=range].lvl-slider {
+    width: 100%; appearance: none; height: 6px; border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--purple) 50%, var(--gold) 100%);
+    outline: none;
+  }
+  input[type=range].lvl-slider::-webkit-slider-thumb {
+    appearance: none; width: 22px; height: 22px; border-radius: 50%;
+    background: radial-gradient(circle, #fff, var(--accent));
+    border: 2px solid var(--bg); cursor: grab;
+    box-shadow: 0 0 0 1px var(--accent), 0 0 24px rgba(121,192,255,.6);
+    transition: transform .15s ease;
+  }
+  input[type=range].lvl-slider::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.15); }
+  input[type=range].lvl-slider::-moz-range-thumb {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: radial-gradient(circle, #fff, var(--accent));
+    border: 2px solid var(--bg); cursor: grab;
+    box-shadow: 0 0 0 1px var(--accent), 0 0 24px rgba(121,192,255,.6);
+  }
+  .slider-ticks { display: flex; justify-content: space-between; margin-top: 6px; font-size: .58rem; color: var(--muted); font-weight: 700; }
+  .slider-ticks span { width: 0; text-align: center; }
+
+  /* Stat readouts */
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-top: 14px; }
+  .stat-cell {
+    background: rgba(13,17,23,.5); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px;
+  }
+  .stat-cell .lbl { font-size: .55rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .stat-cell .val { font-size: 1.05rem; font-weight: 800; margin-top: 4px; letter-spacing: -.01em; }
+  .stat-cell .val small { color: var(--muted); font-size: .65rem; font-weight: 600; margin-left: 4px; }
+  .stat-cell .val.accent { color: var(--accent); }
+  .stat-cell .val.purple { color: var(--purple); }
+  .stat-cell .val.green { color: var(--green); }
+  .stat-cell .val.gold { color: var(--gold); }
+  .stat-cell .sub { font-size: .65rem; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+
+  /* Skill description card */
+  .desc-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px;
+    position: relative; overflow: hidden;
+  }
+  .desc-card::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(135deg, transparent 60%, rgba(149,124,255,.06));
+  }
+  .desc-card .dc-title {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+  }
+  .desc-card .dc-title .dc-num {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: .68rem; font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--purple));
+    color: #fff; box-shadow: 0 0 18px rgba(121,192,255,.4);
+  }
+  .desc-card .dc-name { font-size: 1rem; font-weight: 800; }
+  .desc-card .dc-body { font-size: .85rem; line-height: 1.6; color: var(--text); }
+  .desc-card .dc-body .token { color: var(--accent); font-weight: 700; }
+  .desc-card .dc-body .token-combo { color: var(--purple); font-weight: 700; }
+  .desc-card .dc-body .v { color: var(--gold); font-weight: 800; padding: 0 2px; }
+  .desc-card .dc-meta {
+    margin-top: 10px; font-size: .68rem; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap;
+  }
+  .desc-card .dc-meta b { color: var(--text); }
+  .desc-card .es7-line {
+    margin-top: 10px; padding: 8px 10px; border-radius: 8px;
+    background: rgba(210,153,34,.08); border: 1px solid rgba(210,153,34,.3);
+    color: var(--gold); font-size: .7rem; line-height: 1.5;
+  }
+  .desc-card .es7-line b { color: var(--text); }
+
+  /* Combo trio gallery */
+  .combo-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 18px; position: relative;
+    overflow: hidden;
+  }
+  .combo-card .combo-eyebrow {
+    font-size: .58rem; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-bottom: 4px;
+  }
+  .combo-card .combo-title { font-size: 1.05rem; font-weight: 800; margin-bottom: 16px; }
+  .combo-card .combo-title b { color: var(--purple); }
+  .trio-spread {
+    display: grid; grid-template-columns: 1fr 1.15fr 1fr; gap: 18px; align-items: end;
+    position: relative;
+    padding-bottom: 6px;
+    min-height: 230px;
+  }
+  .trio-card {
+    position: relative; aspect-ratio: 3/4.4;
+    border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--card);
+    transition: transform .35s ease, border-color .25s ease, box-shadow .25s ease;
+    z-index: 2;
+  }
+  .trio-card.anchor { transform: translateY(-22px) scale(1.08); border-color: var(--purple); box-shadow: 0 0 0 1px var(--purple), 0 18px 36px rgba(149,124,255,.35); z-index: 3; }
+  .trio-card:not(.anchor) { transform: translateY(0); }
+  .trio-card.missing { filter: grayscale(.7); opacity: .65; border-style: dashed; }
+  .trio-card:hover { transform: translateY(-26px) scale(1.06); border-color: var(--accent); z-index: 4; }
+  .trio-card.anchor:hover { transform: translateY(-28px) scale(1.10); }
+  .trio-card img.tp { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+  .trio-card .tp-plate {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 12px 10px 8px;
+    background: linear-gradient(180deg, transparent, rgba(0,0,0,.92));
+  }
+  .trio-card .tp-name { font-size: .8rem; font-weight: 800; line-height: 1.05; }
+  .trio-card .tp-phase {
+    display: inline-block; margin-top: 3px;
+    font-size: .5rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--muted); padding: 2px 6px; border-radius: 999px; background: rgba(13,17,23,.6); border: 1px solid var(--border);
+  }
+  .trio-card.anchor .tp-phase { color: var(--purple); border-color: var(--purple); }
+
+  /* Glowing arc connector */
+  .trio-arc {
+    position: absolute; inset: 0; pointer-events: none; z-index: 1;
+    width: 100%; height: 100%;
+  }
+  .trio-arc path.arc {
+    fill: none; stroke: url(#trioGradient); stroke-width: 2;
+    stroke-dasharray: 7 5; stroke-linecap: round;
+    filter: drop-shadow(0 0 5px rgba(149,124,255,.7));
+    animation: arcDash 3s linear infinite;
+  }
+  .trio-arc path.arc.dim { stroke: var(--border); opacity: .45; filter: none; animation: none; }
+  @keyframes arcDash { to { stroke-dashoffset: -36; } }
+
+  /* Combo hover popup */
+  .combo-popover {
+    position: absolute; left: 18px; right: 18px; bottom: 18px;
+    background: rgba(13,17,23,.96); border: 1px solid var(--purple);
+    border-radius: 12px; padding: 12px 14px;
+    backdrop-filter: blur(6px);
+    opacity: 0; transform: translateY(8px); transition: all .25s ease;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .combo-card.peek .combo-popover { opacity: 1; transform: translateY(0); }
+  .combo-popover .cp-title { font-size: .72rem; font-weight: 800; color: var(--purple); margin-bottom: 4px; }
+  .combo-popover .cp-body { font-size: .7rem; color: var(--text); line-height: 1.5; }
+  .combo-popover .cp-body b { color: var(--gold); }
+
+  .combo-rules { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+  .combo-rule {
+    background: rgba(13,17,23,.5); border: 1px solid var(--border);
+    border-radius: 10px; padding: 8px 10px;
+  }
+  .combo-rule .crl { font-size: .55rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .combo-rule .crv { font-size: .85rem; font-weight: 800; margin-top: 2px; }
+  .combo-rule .crv.purple { color: var(--purple); }
+  .combo-rule .crv.green { color: var(--green); }
+
+  /* ========== Calculator section ========== */
+  .calc-section { margin-top: 3rem; }
+  .calc-section h2 {
+    font-size: 1.3rem; margin: 0 0 14px;
+    background: linear-gradient(90deg, var(--text), var(--accent));
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    font-weight: 800; letter-spacing: -.01em;
+  }
+  .calc-section .sub { color: var(--muted); font-size: .8rem; margin-bottom: 14px; }
+  .calc-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  }
+  @media (max-width: 980px) { .calc-grid { grid-template-columns: 1fr; } }
+  .calc-card {
+    background: linear-gradient(180deg, var(--surface) 0%, var(--card) 100%);
+    border: 1px solid var(--border); border-radius: 18px; padding: 20px;
+    position: relative; overflow: hidden;
+  }
+  .calc-card::after {
+    content: ""; position: absolute; inset: -1px; border-radius: 18px; padding: 1px;
+    background: linear-gradient(135deg, rgba(121,192,255,.2), transparent 40%, rgba(149,124,255,.2));
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
+  }
+  .calc-card h3 { margin: 0 0 4px; font-size: 1rem; font-weight: 800; letter-spacing: -.01em; }
+  .calc-card .calc-desc { font-size: .72rem; color: var(--muted); margin-bottom: 14px; line-height: 1.5; }
+  .calc-card label { display: block; font-size: .58rem; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; font-weight: 700; margin-bottom: 4px; }
+  .calc-card select, .calc-card input[type=number] {
+    width: 100%; padding: 9px 11px; border-radius: 9px;
+    background: rgba(13,17,23,.6); border: 1px solid var(--border); color: var(--text);
+    font-size: .82rem; font-family: inherit;
+  }
+  .calc-card select:focus, .calc-card input[type=number]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(121,192,255,.2); }
+  .calc-grid-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .calc-grid-inputs.three { grid-template-columns: 1fr 1fr 1fr; }
+  .calc-result-grand {
+    margin: 14px 0 4px;
+    padding: 14px;
+    background: rgba(13,17,23,.55);
+    border-radius: 12px; border: 1px solid rgba(149,124,255,.3);
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  }
+  .calc-result-grand .label { font-size: .6rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .calc-result-grand .big {
+    font-size: 2.2rem; font-weight: 800; line-height: 1;
+    background: linear-gradient(90deg, var(--purple), var(--accent), var(--gold));
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    letter-spacing: -.02em;
+  }
+  .calc-result-grand .big small { font-size: .58rem; color: var(--muted); -webkit-text-fill-color: var(--muted); margin-left: 6px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+  .calc-detail { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-top: 8px; }
+  .calc-detail .d { background: rgba(13,17,23,.4); border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; }
+  .calc-detail .d .lbl { font-size: .55rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .calc-detail .d .val { font-size: .9rem; font-weight: 800; margin-top: 2px; }
+
+  /* Combo planner */
+  .planner-trios { display: grid; gap: 12px; margin-top: 12px; }
+  .planner-trio {
+    background: rgba(13,17,23,.4);
+    border: 1px solid var(--border); border-radius: 12px; padding: 12px;
+    display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center;
+  }
+  .planner-trio:hover { border-color: var(--accent); }
+  .planner-mini { display: flex; gap: 8px; align-items: center; }
+  .planner-mini .pm { position: relative; width: 44px; height: 44px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); background: var(--card); }
+  .planner-mini .pm img { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+  .planner-mini .pm.have { border-color: var(--green); box-shadow: 0 0 0 1px var(--green); }
+  .planner-mini .pm.miss { filter: grayscale(.8); opacity: .55; border-style: dashed; }
+  .planner-mini .pm-arrow { color: var(--muted); font-weight: 700; }
+  .planner-info .pi-label { font-size: .55rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .planner-info .pi-name { font-size: .85rem; font-weight: 800; }
+  .planner-info .pi-buff { font-size: .72rem; color: var(--purple); font-weight: 700; }
+  .planner-status {
+    text-align: right;
+  }
+  .planner-status .ps-have { font-size: 1.1rem; font-weight: 800; }
+  .planner-status .ps-have.complete { color: var(--green); }
+  .planner-status .ps-have.partial { color: var(--gold); }
+  .planner-status .ps-have.locked { color: var(--muted); }
+  .planner-status .ps-desc { font-size: .58rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .planner-toggle { display: inline-flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .planner-toggle button {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    padding: 4px 9px; border-radius: 999px; cursor: pointer; font-size: .58rem; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase; transition: all .18s ease;
+    font-family: inherit;
+  }
+  .planner-toggle button.on { color: var(--green); border-color: var(--green); background: rgba(63,185,80,.12); }
+  .planner-toggle button:hover { color: var(--text); }
+
+  /* ===== Honor wall extension callout ===== */
+  .honor-wall {
+    margin-top: 28px;
+    padding: 20px 22px;
+    border-radius: 18px;
+    background:
+      linear-gradient(135deg, rgba(210,153,34,.08), rgba(149,124,255,.06)),
+      var(--card);
+    border: 1px solid rgba(210,153,34,.35);
+    position: relative; overflow: hidden;
+  }
+  .honor-wall::before {
+    content: ""; position: absolute; inset: -40%;
+    background: conic-gradient(from 0deg, transparent 0deg, rgba(210,153,34,.18) 30deg, transparent 60deg);
+    animation: ringRotate 20s linear infinite;
+    pointer-events: none;
+  }
+  .honor-wall h3 { margin: 0 0 6px; font-size: 1.1rem; color: var(--gold); letter-spacing: -.01em; position: relative; }
+  .honor-wall p { margin: 0; font-size: .82rem; color: var(--muted); line-height: 1.6; position: relative; }
+  .honor-wall .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 14px; position: relative; }
+  .honor-wall .stats .h-stat { background: rgba(13,17,23,.5); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+  .honor-wall .stats .h-stat .lbl { font-size: .55rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .honor-wall .stats .h-stat .val { font-size: 1.1rem; font-weight: 800; color: var(--gold); margin-top: 2px; }
+
+  /* Footer */
+  footer {
+    text-align: center; padding: 2.6rem 1rem 1.6rem;
+    font-size: .68rem; color: var(--muted);
+    border-top: 1px solid var(--border); margin-top: 3rem;
+  }
+  footer a { color: var(--accent); }
+
+  /* ====== Entry gate (mirrors site) ====== */
+  .gate-overlay {
+    position: fixed; inset: 0; z-index: 10000;
+    background: radial-gradient(ellipse at center, rgba(13,17,23,.96) 0%, rgba(0,0,0,.99) 80%);
+    backdrop-filter: blur(12px);
+    display: flex; align-items: center; justify-content: center;
+    padding: 1.5rem;
+    animation: gate-fade-in .35s ease both;
+  }
+  @keyframes gate-fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes gate-card-rise { from { opacity: 0; transform: translateY(28px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  .gate-card {
+    background: linear-gradient(160deg, var(--surface) 0%, var(--card) 100%);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2.2rem 1.6rem 1.8rem;
+    max-width: 460px; width: 100%;
+    box-shadow: 0 24px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(121,192,255,.05);
+    animation: gate-card-rise .55s cubic-bezier(.2,.7,.2,1) .12s both;
+    text-align: center;
+  }
+  .gate-eyebrow { font-size: .65rem; letter-spacing: .15em; text-transform: uppercase; color: var(--muted); margin-bottom: .55rem; font-weight: 600; }
+  .gate-title { font-size: 1.18rem; font-weight: 700; color: var(--text); margin: 0 0 1.4rem; line-height: 1.4; }
+  .gate-options { display: flex; flex-direction: column; gap: .55rem; }
+  @keyframes gate-shimmer { 0% { background-position: 0% 0, -200% 0; } 100% { background-position: 0% 0, 200% 0; } }
+  .gate-option {
+    width: 100%;
+    color: var(--text);
+    border: 2px solid transparent;
+    border-radius: 12px;
+    padding: .85rem 1.1rem;
+    font-size: .98rem; font-weight: 600;
+    letter-spacing: .02em;
+    cursor: pointer;
+    transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+    font-family: inherit;
+    display: flex; align-items: center; justify-content: center;
+    gap: .55rem;
+    background-color: var(--card);
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
+    background-size: 100% 100%, 300% auto;
+    animation: gate-shimmer 6s linear infinite;
+  }
+  .gate-option[data-choice="boats"] {
+    background-image:
+      linear-gradient(var(--card), var(--card)),
+      linear-gradient(90deg, var(--accent) 0%, var(--green) 20%, var(--gold) 40%, var(--purple) 60%, var(--green) 80%, var(--accent) 100%);
+  }
+  .gate-option[data-choice="boats"]:hover { transform: translateY(-2px); filter: brightness(1.08); box-shadow: 0 6px 24px rgba(121,192,255,.22); }
+  .gate-option[data-choice="tanks"],
+  .gate-option[data-choice="planes"] {
+    background-image:
+      linear-gradient(var(--card), var(--card)),
+      linear-gradient(90deg, rgba(248,81,73,.35) 0%, var(--red) 25%, rgba(248,81,73,.5) 50%, #ff7b72 75%, rgba(248,81,73,.35) 100%);
+  }
+  .gate-option[data-choice="tanks"]:hover,
+  .gate-option[data-choice="planes"]:hover { transform: translateY(-2px); filter: brightness(1.08); box-shadow: 0 6px 24px rgba(248,81,73,.22); }
+  .gate-option:active { transform: translateY(0); filter: brightness(.96); }
+  .gate-option .gate-bullet { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--muted); flex: none; transition: all .18s ease; }
+  .gate-option[data-choice="boats"]:hover .gate-bullet { border-color: var(--accent); box-shadow: inset 0 0 0 3px var(--accent); }
+  .gate-option[data-choice="tanks"]:hover .gate-bullet,
+  .gate-option[data-choice="planes"]:hover .gate-bullet { border-color: var(--red); box-shadow: inset 0 0 0 3px var(--red); }
+  .gate-stage { position: relative; width: 200px; height: 200px; }
+  .gate-particle { position: absolute; top: 50%; left: 50%; width: 10px; height: 10px; border-radius: 50%; margin: -5px 0 0 -5px; pointer-events: none; box-shadow: 0 0 8px 3px currentColor; }
+  .gate-particle::after { content:''; position:absolute; inset:0; border-radius:50%; background: currentColor; filter: blur(3px); opacity: .65; }
+  .gate-particle.p1 { color: var(--accent); animation: p1 1.5s ease-out both; }
+  .gate-particle.p2 { color: var(--green);  animation: p2 1.5s ease-out .05s both; }
+  .gate-particle.p3 { color: var(--gold);   animation: p3 1.5s ease-out .1s both; }
+  .gate-particle.p4 { color: var(--accent); animation: p4 1.5s ease-out .03s both; }
+  .gate-particle.p5 { color: var(--green);  animation: p5 1.5s ease-out .08s both; }
+  .gate-particle.p6 { color: var(--gold);   animation: p6 1.5s ease-out .12s both; }
+  .gate-particle.p7 { color: var(--purple); animation: p7 1.5s ease-out .02s both; }
+  .gate-particle.p8 { color: var(--orange); animation: p8 1.5s ease-out .07s both; }
+  .gate-pretext { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 1.4rem; font-weight: 800; letter-spacing: .15em; text-transform: lowercase; text-align: center; line-height: 1.25; white-space: nowrap; pointer-events: none; animation: pretext-flash 1.2s ease .5s both; color: var(--accent); }
+  .gate-pretext.wrong { color: var(--red); animation: pretext-flash 1.4s ease .25s forwards; }
+  @keyframes p1 { 0%{opacity:0;transform:translate(-160px,-100px) scale(.4);} 15%{opacity:1;transform:translate(-90px,50px) scale(.7);} 35%{transform:translate(30px,-40px) scale(.6);} 55%{transform:translate(-20px,20px) scale(.5);} 75%{opacity:1;transform:translate(0,0) scale(.3);} 100%{opacity:0;transform:translate(0,0) scale(0);} }
+  @keyframes p2 { 0%{opacity:0;transform:translate(140px,-90px) scale(.3);} 12%{opacity:1;transform:translate(60px,70px) scale(.6);} 30%{transform:translate(-50px,-20px) scale(.7);} 55%{transform:translate(15px,30px) scale(.5);} 75%{opacity:1;transform:translate(0,0) scale(.3);} 100%{opacity:0;transform:translate(0,0) scale(0);} }
+  @keyframes p3 { 0%{opacity:0;transform:translate(120px,110px) scale(.5);} 18%{opacity:1;transform:translate(-40px,50px) scale(.6);} 40%{transform:translate(50px,-60px) scale(.7);} 60%{transform:translate(-10px,-15px) scale(.4);} 75%{opacity:1;transform:translate(0,0) scale(.3);} 100%{opacity:0;transform:translate(0,0) scale(0);} }
+  @keyframes p4 { 0%{opacity:0;transform:translate(-130px,80px) scale(.3);} 14%{opacity:1;transform:translate(40px,60px) scale(.5);} 32%{transform:translate(70px,-50px) scale(.7);} 55%{transform:translate(-25px,-10px) scale(.4);} 75%{opacity:1;transform:translate(0,0) scale(.3);} 100%{opacity:0;transform:translate(0,0) scale(0);} }
+  @keyframes p5 { 0%{opacity:0;transform:translate(50px,-140px) scale(.4);} 16%{opacity:1;transform:translate(-70px,-40px) scale(.6);} 38%{transform:translate(40px,60px) scale(.5);} 58%{transform:translate(10px,-20px) scale(.4);} 75%{opacity:1;transform:translate(0,0) scale(.3);} 100%{opacity:0;transform:translate(0,0) scale(0);} }
+  @keyframes p6 { 0%{opacity:0;transform:translate(-60px,-130px) scale(.5);} 20%{opacity:1;transform:translate(80px,-30px) scale(.7);} 42%{transform:translate(-30px,70px) scale(.5);} 60%{transform:translate(20px,-5px) scale(.4);} 75%{opacity:1;transform:translate(0,0) scale(.3);} 100%{opacity:0;transform:translate(0,0) scale(0);} }
+  @keyframes p7 { 0%{opacity:0;transform:translate(-150px,0) scale(.3);} 17%{opacity:1;transform:translate(-30px,-70px) scale(.6);} 36%{transform:translate(60px,40px) scale(.7);} 56%{transform:translate(-15px,5px) scale(.5);} 75%{opacity:1;transform:translate(0,0) scale(.3);} 100%{opacity:0;transform:translate(0,0) scale(0);} }
+  @keyframes p8 { 0%{opacity:0;transform:translate(100px,60px) scale(.4);} 13%{opacity:1;transform:translate(-60px,-60px) scale(.5);} 34%{transform:translate(-20px,80px) scale(.6);} 54%{transform:translate(5px,-10px) scale(.4);} 75%{opacity:1;transform:translate(0,0) scale(.3);} 100%{opacity:0;transform:translate(0,0) scale(0);} }
+  @keyframes pretext-flash { 0%{opacity:0;transform:translate(-50%,-50%) scale(.7);filter:blur(4px);} 25%{opacity:1;transform:translate(-50%,-50%) scale(1);filter:blur(0);} 80%{opacity:1;transform:translate(-50%,-50%) scale(1);filter:blur(0);} 100%{opacity:1;transform:translate(-50%,-50%) scale(1.05);filter:blur(0);} }
+
+  /* Misc utilities */
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- Entry gate -->
+<div class="gate-overlay" id="entryGate" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
+  <div class="gate-card" id="gateCard">
+    <div class="gate-eyebrow">Verification required</div>
+    <h2 class="gate-title notranslate" id="gateTitle">Select the correct option to enter:</h2>
+    <div class="gate-options">
+      <button class="gate-option notranslate" type="button" data-choice="boats" aria-label="fk boats"><span class="gate-bullet"></span><span>fk boats</span></button>
+      <button class="gate-option notranslate" type="button" data-choice="tanks" aria-label="fk tanks"><span class="gate-bullet"></span><span>fk tanks</span></button>
+      <button class="gate-option notranslate" type="button" data-choice="planes" aria-label="fk planes"><span class="gate-bullet"></span><span>fk planes</span></button>
+    </div>
+  </div>
+  <div class="gate-stage" id="gateStage" style="display:none">
+    <div class="gate-particle p1"></div><div class="gate-particle p2"></div><div class="gate-particle p3"></div><div class="gate-particle p4"></div>
+    <div class="gate-particle p5"></div><div class="gate-particle p6"></div><div class="gate-particle p7"></div><div class="gate-particle p8"></div>
+    <div class="gate-pretext notranslate" id="gatePretext">fk<br>boats</div>
+  </div>
+</div>
+
+<script>
+  // Entry gate
+  (function() {
+    var COUNTER_URL = 'https://rickroll-counter.27tb8s6fct.workers.dev';
+    var gate = document.getElementById('entryGate');
+    var card = document.getElementById('gateCard');
+    var stage = document.getElementById('gateStage');
+    var pretext = document.getElementById('gatePretext');
+    var locked = false;
+    // Bypass if already passed
+    try {
+      if (localStorage.getItem('heroesAwakeningGate') === 'passed') {
+        if (gate && gate.parentNode) gate.parentNode.removeChild(gate);
+        return;
+      }
+    } catch(e) {}
+    try { document.documentElement.style.overflow = 'hidden'; } catch(e) {}
+    function playStage(text, wrong) {
+      if (locked) return; locked = true;
+      pretext.innerHTML = text;
+      pretext.classList.toggle('wrong', !!wrong);
+      stage.querySelectorAll('.gate-particle').forEach(function(p) { p.style.animation='none'; void p.offsetWidth; p.style.animation=''; });
+      card.style.display = 'none';
+      stage.style.display = 'block';
+    }
+    function dismiss() {
+      try { document.documentElement.style.overflow = ''; } catch(e) {}
+      if (gate && gate.parentNode) {
+        gate.style.transition = 'opacity .35s ease'; gate.style.opacity = '0';
+        setTimeout(function() { if (gate.parentNode) gate.parentNode.removeChild(gate); }, 380);
+      }
+    }
+    function handleChoice(choice) {
+      if (choice === 'boats') {
+        try { localStorage.setItem('heroesAwakeningGate', 'passed'); } catch(e) {}
+        playStage('fk<br>boats', false);
+        setTimeout(dismiss, 2200);
+      } else {
+        try { fetch(COUNTER_URL, { method: 'POST', mode: 'cors' }).catch(function() {}); } catch(e) {}
+        playStage('nope,<br>dummy', true);
+        setTimeout(function() { window.location.href = '../passwords.html'; }, 1000);
+      }
+    }
+    document.querySelectorAll('.gate-option').forEach(function(btn) {
+      btn.addEventListener('click', function() { handleChoice(btn.getAttribute('data-choice')); });
+    });
+  })();
+</script>
+
+<header>
+  <a href="https://2864tw.com/index.html" class="home-btn" title="Home">
+    <svg viewBox="0 0 16 16"><path d="M6.5 14.5v-3.505c0-.245.25-.495.5-.495h2c.25 0 .5.25.5.5v3.5a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5v-7a.5.5 0 0 0-.146-.354L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293L8.354 1.146a.5.5 0 0 0-.708 0l-6 6A.5.5 0 0 0 1.5 7.5v7a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5z"/></svg>
+  </a>
+  <div class="title-block">
+    <div class="eyebrow"><span class="dot"></span>V4 · Visual Hero Cards · Experiment</div>
+    <h1>Hyper Awakening, Cinematic Mode<small>Big bust portraits · animated awaken transitions · glowing-arc combo trios · live calculators</small></h1>
+  </div>
+  <div class="hdr-meta">
+    <span class="pill live">Phase I live</span>
+    <span class="pill alt">6 anchors · 12 partners</span>
+    <span class="pill">40 lv · 4 skills · 9000 stones/hero</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- Phase banners -->
+  <div class="phase-rail" id="phaseRail"></div>
+
+  <!-- Filter chips -->
+  <div class="toolbar">
+    <div class="chips" id="typeChips">
+      <button class="chip on" data-type="all" type="button">All</button>
+      <button class="chip" data-type="Army" type="button">Army</button>
+      <button class="chip" data-type="Navy" type="button">Navy</button>
+      <button class="chip" data-type="Air" type="button">Air</button>
+    </div>
+    <div class="chips" id="phaseChips">
+      <button class="chip on" data-phase="all" type="button">All phases</button>
+      <button class="chip" data-phase="1" type="button">Phase I</button>
+      <button class="chip" data-phase="2" type="button">Phase II</button>
+      <button class="chip" data-phase="3" type="button">Phase III</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="hint">Hover a card to <b>awaken</b>. Click to expand. Drag the slider in the panel to see Fight Power scale.</div>
+  </div>
+
+  <!-- Hero card grid -->
+  <div class="hero-grid" id="heroGrid"></div>
+
+  <!-- Calculators -->
+  <section class="calc-section">
+    <h2>Live calculators</h2>
+    <p class="sub">Calculator data is bound to the same TABLE rows the game uses. Move sliders or pick heroes to recalc.</p>
+    <div class="calc-grid">
+
+      <!-- ============== Calculator 1: Stones-to-target per-skill ============== -->
+      <div class="calc-card" id="calcStones">
+        <h3>Stones-to-target · per skill</h3>
+        <div class="calc-desc">Pick a Phase I hero + skill, set <b>current</b> and <b>target</b> levels. Math uses the real <b>15/15/30/30/45/45/60/80/130 stones-per-pull</b> ladder × 5 pulls per level. Lv. 10 is free.</div>
+        <div class="calc-grid-inputs">
+          <div>
+            <label for="csHero">Hero</label>
+            <select id="csHero"></select>
+          </div>
+          <div>
+            <label for="csSkill">Skill</label>
+            <select id="csSkill">
+              <option value="1">Skill 1</option><option value="2">Skill 2</option>
+              <option value="3">Skill 3</option><option value="4">Skill 4</option>
+            </select>
+          </div>
+        </div>
+        <div class="calc-grid-inputs">
+          <div>
+            <label for="csCur">Current Lv. (0–10)</label>
+            <input type="number" id="csCur" min="0" max="10" value="0" />
+          </div>
+          <div>
+            <label for="csTgt">Target Lv. (1–10)</label>
+            <input type="number" id="csTgt" min="1" max="10" value="10" />
+          </div>
+        </div>
+        <div class="calc-result-grand">
+          <div>
+            <div class="label">Awakening Stones needed</div>
+            <div class="big" id="csStones">0</div>
+          </div>
+          <div>
+            <div class="label">Fight Power gain</div>
+            <div class="big" id="csFp" style="font-size:1.6rem">+0</div>
+          </div>
+        </div>
+        <div class="calc-detail" id="csDetail"></div>
+      </div>
+
+      <!-- ============== Calculator 2: Combo Trio Planner ============== -->
+      <div class="calc-card" id="calcCombo">
+        <h3>Combo trio planner</h3>
+        <div class="calc-desc">All 6 combo trios in one view. Toggle which heroes you own; the planner tells you what's <b>complete</b>, <b>partial</b>, or <b>locked</b>. Anchors are the live Phase I awakened heroes; partners unlock in Phase II / III.</div>
+        <div class="planner-trios" id="plannerTrios"></div>
+      </div>
+
+      <!-- ============== Calculator 3: 40-level shard budget ============== -->
+      <div class="calc-card" id="calcShards">
+        <h3>40-level shard budget</h3>
+        <div class="calc-desc">Per-hero <b>Hero Shards + ES Skill chips</b> needed from current → target Awakening Level. Drives the slider with the real tier ladder (2|0, 4|2, 6|4, 10|8 per pull × 5).</div>
+        <div class="calc-grid-inputs three">
+          <div>
+            <label for="alHero">Hero</label>
+            <select id="alHero"></select>
+          </div>
+          <div>
+            <label for="alCur">Current Lv. (0–40)</label>
+            <input type="number" id="alCur" min="0" max="40" value="0" />
+          </div>
+          <div>
+            <label for="alTgt">Target Lv. (1–40)</label>
+            <input type="number" id="alTgt" min="1" max="40" value="40" />
+          </div>
+        </div>
+        <div class="calc-result-grand">
+          <div>
+            <div class="label">Hero Shards</div>
+            <div class="big" id="alShards">0</div>
+          </div>
+          <div>
+            <div class="label">ES Skill chips</div>
+            <div class="big" id="alChips" style="font-size:1.6rem">0</div>
+          </div>
+        </div>
+        <div class="calc-detail" id="alDetail"></div>
+      </div>
+
+      <!-- ============== Calculator 4: Honor Wall extension ============== -->
+      <div class="calc-card" id="calcHonor">
+        <h3>Honor Wall extension</h3>
+        <div class="calc-desc">Hidden post-40 stone sink — <b>2 sub-tracks × 200 sub-levels</b> per hero. Cost ramps 50 → 80 → 120 → 150 stones/sub-level, drops to 0 at L200. Full Honor Wall = <b>39,900 stones</b> and +40,000 Fight Power per hero.</div>
+        <div class="calc-grid-inputs three">
+          <div>
+            <label for="hwTrack">Sub-track</label>
+            <select id="hwTrack"><option value="1">Track 1</option><option value="2">Track 2</option></select>
+          </div>
+          <div>
+            <label for="hwCur">Current sub-Lv. (0–200)</label>
+            <input type="number" id="hwCur" min="0" max="200" value="0" />
+          </div>
+          <div>
+            <label for="hwTgt">Target sub-Lv. (1–200)</label>
+            <input type="number" id="hwTgt" min="1" max="200" value="200" />
+          </div>
+        </div>
+        <div class="calc-result-grand">
+          <div>
+            <div class="label">Stones needed</div>
+            <div class="big" id="hwStones">0</div>
+          </div>
+          <div>
+            <div class="label">Fight Power gain</div>
+            <div class="big" id="hwFp" style="font-size:1.6rem">+0</div>
+          </div>
+        </div>
+        <div class="calc-detail" id="hwDetail"></div>
+      </div>
+
+    </div>
+
+    <!-- Honor Wall surface callout -->
+    <div class="honor-wall">
+      <h3>Honor Wall extension is real, hidden on the old page</h3>
+      <p>Beyond Lv. 40, every Phase I hero gains a 400-step Honor Wall (2 sub-tracks × 200 sub-levels). Full wall = <b>39,900 Awakening Stones</b> and <b>+40,000 Fight Power</b> per hero. Combined with the four maxed skills, true max gain per hero is <b>+240,000 FP</b>, not the +80,000 the old page advertised.</p>
+      <div class="stats">
+        <div class="h-stat"><div class="lbl">40-lv ladder</div><div class="val">+80,000 FP</div></div>
+        <div class="h-stat"><div class="lbl">4 maxed skills</div><div class="val">+120,000 FP</div></div>
+        <div class="h-stat"><div class="lbl">Full Honor Wall</div><div class="val">+40,000 FP</div></div>
+        <div class="h-stat"><div class="lbl">True peak / hero</div><div class="val">+240,000 FP</div></div>
+        <div class="h-stat"><div class="lbl">Stones for all 4 skills</div><div class="val">9,000</div></div>
+        <div class="h-stat"><div class="lbl">Stones for Honor Wall</div><div class="val">39,900</div></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Server 2864 · TW Awakening · Experiment V4 — Visual Hero Cards. Data: <code>../data/heroes-awakening.json</code>. Assets: <code>../assets/heroes-awakening/</code>, <code>../assets/hero-awake-icons/</code>, <code>../assets/hero-awake-skills/</code>.
+</footer>
+
+<!-- Reusable SVG defs (combo arc gradient) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="trioGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#79c0ff"/>
+      <stop offset="50%"  stop-color="#957cff"/>
+      <stop offset="100%" stop-color="#d29922"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<script>
+  // ===================================================================
+  // V4 — Visual Hero Cards engine
+  // ===================================================================
+  'use strict';
+
+  // ---- DOM helpers (tiny, used everywhere) ----
+  function $(sel, ctx) { return (ctx || document).querySelector(sel); }
+  function $all(sel, ctx) { return Array.from((ctx || document).querySelectorAll(sel)); }
+  function el(tag, attrs, ...kids) {
+    var n = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === 'class') n.className = attrs[k];
+      else if (k === 'html') n.innerHTML = attrs[k];
+      else if (k === 'on') for (var ev in attrs.on) n.addEventListener(ev, attrs.on[ev]);
+      else if (k === 'style' && typeof attrs[k] === 'object') Object.assign(n.style, attrs[k]);
+      else if (attrs[k] !== null && attrs[k] !== undefined) n.setAttribute(k, attrs[k]);
+    }
+    for (var k2 of kids.flat(Infinity)) {
+      if (k2 == null || k2 === false) continue;
+      n.append(k2 instanceof Node ? k2 : document.createTextNode(String(k2)));
+    }
+    return n;
+  }
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+    });
+  }
+
+  // Local-portrait fallback (from the existing site)
+  var LOCAL_PORTRAIT = {
+    165: 'marvingt_portrait.jpeg', 169: 'sara_portrait.png',     170: 'rohr_portrait.jpeg',
+    172: 'nova_portrait.jpeg',     173: 'tannis_portrait.jpeg',  174: 'ella_portrait.jpeg',
+    232: 'lilia_portrait.jpeg',    234: 'shensuyu_portrait.png', 237: 'alvida_portrait.jpg',
+    239: 'lophy_portrait.jpeg',    240: 'sinope_portrait.jpeg',  241: 'margaretha_portrait.jpeg',
+    332: 'vivian_portrait.jpeg',   333: 'carna_portrait.png',    334: 'jett_portrait.jpeg',
+    336: 'joanmature_portrait.jpg', 337: 'heid_portrait.jpg',    338: 'franziska_portrait.jpeg'
+  };
+  function portraitFor(h) {
+    var f = LOCAL_PORTRAIT[h.id];
+    return f ? '../../assets/heroes-awakening/' + f : iconFor(h);
+  }
+  function iconFor(h) { return h && h.id ? 'https://h5.topwargame.com/DynRes/images/headpic/hero_icon' + h.id + '_global.png' : ''; }
+  function awakeIconFor(id) { return '../../assets/hero-awake-icons/hero_awakeicon' + id + '.png'; }
+  function skillIconFor(heroId, idx) { return '../../assets/hero-awake-skills/hero_awake' + heroId + '_' + idx + '.png'; }
+  function itemIconFor(id) { return '../../assets/hero-awake-items/item_' + id + '.png'; }
+  function bannerFor(p) { return '../../assets/hero-awake-bgs/hero_awaken_bg_' + (p - 1) + '.png'; }
+
+  // Token resolver (defense-in-depth HTML escaping)
+  function resolveTokens(text, idMap) {
+    if (text == null) return '';
+    idMap = idMap || (DATA && DATA.hyperAwakening && DATA.hyperAwakening.idTokenMap) || {};
+    var slots = [];
+    var s = String(text);
+    s = s.replace(/<id=(\d+)>/g, function(m, id) {
+      var name = idMap[id] || ('id=' + id);
+      slots.push('<span class="token">[' + escapeHtml(name) + ']</span>');
+      return '' + (slots.length - 1) + '';
+    });
+    s = s.replace(/\[([^\]]+)\]/g, function(m, name) {
+      slots.push('<span class="token">[' + escapeHtml(name) + ']</span>');
+      return '' + (slots.length - 1) + '';
+    });
+    s = escapeHtml(s);
+    s = s.replace(/(\d+)/g, function(m, i) { return slots[Number(i)] || ''; });
+    return s;
+  }
+  function fillValues(text, row) {
+    if (!row || !text) return text;
+    var v1 = row.val1_pct || '';
+    var v2 = row.val2_pct || '';
+    // Some lv10 rows have "20.0% / 10.0%" — split for {0}/{1} mapping
+    var parts = String(v1).split('/').map(function(s){ return s.trim(); });
+    var p0 = escapeHtml(parts[0] || v1);
+    var p1 = escapeHtml(parts[1] || v2 || v1);
+    var p2 = escapeHtml(parts[2] || v2 || v1);
+    var out = text;
+    out = out.replace(/\{0\}/g, '<span class="v">' + p0 + '</span>');
+    out = out.replace(/\{1\}/g, '<span class="v">' + p1 + '</span>');
+    out = out.replace(/\{2\}/g, '<span class="v">' + p2 + '</span>');
+    return out;
+  }
+
+  // ---- Awakening cost ladder (per AUDIT.json) ----
+  var STONE_PER_PULL = { 1:15, 2:15, 3:30, 4:30, 5:45, 6:45, 7:60, 8:80, 9:130, 10:0 };
+  var STONE_PER_LEVEL = { 1:75, 2:75, 3:150, 4:150, 5:225, 6:225, 7:300, 8:400, 9:650, 10:0 };
+  var SKILL_FP_PER_LEVEL = 3000;
+  // 40-level ladder per-tier costs (per pull, 5 pulls = 1 level)
+  function shardCostForLevel(level) {
+    if (level >= 1 && level <= 9)   return { shard: 10, chip: 0 };
+    if (level >= 10 && level <= 19) return { shard: 20, chip: 10 };
+    if (level >= 20 && level <= 29) return { shard: 30, chip: 20 };
+    if (level >= 30 && level <= 40) return { shard: 50, chip: 40 };
+    return { shard: 0, chip: 0 };
+  }
+  function honorStoneForLevel(level) {
+    if (level >= 1 && level <= 50)    return 50;
+    if (level >= 51 && level <= 100)  return 80;
+    if (level >= 101 && level <= 150) return 120;
+    if (level >= 151 && level <= 199) return 150;
+    if (level === 200) return 0;
+    return 0;
+  }
+
+  // ---- State ----
+  var DATA = null;
+  var ALL_HEROES = []; // unified hero list (all 18)
+  var openHeroId = null;
+  var filterType = 'all', filterPhase = 'all';
+  var sliderState = {}; // heroId -> { level, skillIdx }
+  var ownedHeroIds = new Set();
+
+  // Try to restore ownership from localStorage
+  try {
+    var raw = localStorage.getItem('hawV4_owned');
+    if (raw) JSON.parse(raw).forEach(function(id){ ownedHeroIds.add(Number(id)); });
+  } catch(e) {}
+  function persistOwned() {
+    try { localStorage.setItem('hawV4_owned', JSON.stringify(Array.from(ownedHeroIds))); } catch(e) {}
+  }
+
+  // =========================================================
+  // Boot
+  // =========================================================
+  fetch('../../data/heroes-awakening.json?v=20260530d')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      DATA = d;
+      buildHeroList();
+      renderPhases();
+      renderHeroGrid();
+      renderCalculators();
+      wireFilters();
+    });
+
+  // Build a unified hero list from awakened (phase 1) + queued (phase 2/3) sources.
+  function buildHeroList() {
+    var ha = DATA.hyperAwakening;
+    var heroes = [];
+    // Phase I awakened heroes
+    ha.awakenedHeroes.forEach(function(h) {
+      heroes.push({
+        id: h.id, name: h.name, type: h.type, phase: 1,
+        label: h.awakenedLabel, ultimateSkillName: h.ultimateSkillName,
+        bio: h.bio, skills: h.skills,
+        cardItemId: h.cardItemId, comboTrio: h.comboTrio
+      });
+    });
+    // Phase II/III queued heroes (from the awakeningLevels heroes list in AUDIT — we mirror from the heroSwap army pools)
+    var phaseMap = {};
+    (ha.phases || []).forEach(function(p) {
+      (p.heroIdsInOrder || []).forEach(function(id) { phaseMap[id] = p.phase; });
+    });
+    var seenIds = new Set(heroes.map(function(h){ return h.id; }));
+    // Pull queued heroes from the hero-swap target lists across army pools (hits Phase II/III partners)
+    var hs = DATA.heroSwap || {};
+    (hs.armyPools || []).forEach(function(pool) {
+      (pool.targets || []).forEach(function(t) {
+        (t.members || []).forEach(function(m) {
+          if (!seenIds.has(m.id)) {
+            heroes.push({
+              id: m.id, name: m.name, type: pool.type, phase: m.phase || phaseMap[m.id] || 2,
+              label: null, ultimateSkillName: null, bio: null, skills: null,
+              cardItemId: null, comboTrio: null
+            });
+            seenIds.add(m.id);
+          }
+        });
+      });
+    });
+    // Sort: Phase 1 first (by type Army/Navy/Air), then phase 2, then phase 3
+    var typeOrder = { Army: 0, Navy: 1, Air: 2, 'Air Force': 2 };
+    heroes.sort(function(a, b) {
+      if (a.phase !== b.phase) return a.phase - b.phase;
+      var ta = typeOrder[a.type] || 9, tb = typeOrder[b.type] || 9;
+      if (ta !== tb) return ta - tb;
+      return a.name.localeCompare(b.name);
+    });
+    ALL_HEROES = heroes;
+  }
+
+  // ===== Phase banners =====
+  function renderPhases() {
+    var rail = $('#phaseRail');
+    (DATA.hyperAwakening.phases || []).forEach(function(p) {
+      var live = p.status === 'LIVE';
+      var bn = bannerFor(p.phase);
+      rail.appendChild(el('div', { class: 'phase-tile' + (live ? ' live' : '') },
+        el('img', { src: bn, alt: p.label, loading: 'lazy', on: { error: function(ev){ ev.target.style.display='none'; } } }),
+        el('div', { class: 'phase-tile-tag' },
+          el('div', { class: 'pn' }, p.label),
+          el('div', { class: 'ps' }, p.status)
+        )
+      ));
+    });
+  }
+
+  // ===== Hero grid =====
+  function renderHeroGrid() {
+    var grid = $('#heroGrid');
+    grid.innerHTML = '';
+    ALL_HEROES.forEach(function(h) {
+      // Apply filter
+      var typeMatch = (filterType === 'all') || (h.type === filterType) || (filterType === 'Air' && h.type === 'Air Force');
+      var phaseMatch = (filterPhase === 'all') || (String(h.phase) === String(filterPhase));
+      if (!typeMatch || !phaseMatch) return;
+      grid.appendChild(buildHeroCard(h));
+      if (openHeroId === h.id) {
+        grid.appendChild(buildExpandPanel(h));
+      }
+    });
+  }
+
+  function buildHeroCard(h) {
+    var typeKey = (h.type === 'Air Force') ? 'Air' : h.type;
+    var typeClass = typeKey;
+    var live = h.phase === 1;
+    var card = el('div', {
+      class: 'hero-card' + (openHeroId === h.id ? ' is-open' : ''),
+      'data-id': h.id, 'data-phase': h.phase, 'data-type': typeKey,
+      on: { click: function() { toggleHero(h.id); } }
+    });
+
+    // Unawakened layer (default — desaturated)
+    var pimg = el('img', { class: 'hero-portrait unawake', src: portraitFor(h), alt: h.name, loading: 'lazy', on: {
+      error: function(ev) { ev.target.src = iconFor(h); }
+    }});
+    // Awakened layer (vibrant, fades in on hover)
+    var aimg = el('img', { class: 'hero-portrait awake', src: portraitFor(h), alt: h.name + ' awakened', loading: 'lazy' });
+    card.appendChild(pimg);
+    card.appendChild(aimg);
+
+    card.appendChild(el('div', { class: 'awaken-burst' }));
+    card.appendChild(el('div', { class: 'hero-type-tag ' + typeClass }, typeKey));
+    card.appendChild(el('div', { class: 'hero-phase-tag' + (live ? ' live' : '') }, live ? 'Phase I · LIVE' : 'Phase ' + (h.phase === 2 ? 'II' : 'III')));
+
+    // Awake stamp (only for live heroes — uses the actual awake-icon)
+    if (live) {
+      var stamp = el('div', { class: 'awake-stamp' },
+        el('img', { src: awakeIconFor(h.id), alt: h.label, on: { error: function(ev){ ev.target.style.display='none'; } } })
+      );
+      card.appendChild(stamp);
+    }
+
+    // Bottom plate
+    var labelEl = h.label
+      ? el('div', { class: 'hero-label' }, h.label)
+      : el('div', { class: 'hero-label empty' }, 'Awakening pending');
+    var metaBits = el('div', { class: 'hero-meta-row' });
+    if (h.ultimateSkillName) {
+      metaBits.appendChild(el('div', { class: 'meta-bit ult' }, 'Ult ', el('b', null, h.ultimateSkillName)));
+    }
+    if (h.comboTrio) {
+      metaBits.appendChild(el('div', { class: 'meta-bit' }, 'Combo ', el('b', null, h.comboTrio.buff)));
+    } else if (h.phase >= 2) {
+      metaBits.appendChild(el('div', { class: 'meta-bit' }, 'Trio partner'));
+    }
+    card.appendChild(el('div', { class: 'hero-plate' },
+      el('div', { class: 'hero-name' }, h.name),
+      labelEl,
+      metaBits
+    ));
+    return card;
+  }
+
+  function toggleHero(id) {
+    openHeroId = (openHeroId === id) ? null : id;
+    renderHeroGrid();
+    if (openHeroId === id) {
+      // Smooth scroll the expand panel into view
+      setTimeout(function() {
+        var p = $('.expand-panel[data-id="' + id + '"]');
+        if (p && p.scrollIntoView) p.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 60);
+    }
+  }
+
+  // ====== Expand panel ======
+  function buildExpandPanel(h) {
+    var panel = el('div', { class: 'expand-panel', 'data-id': h.id });
+    var grid = el('div', { class: 'expand-grid' });
+
+    // Left: big hero portrait + bio
+    var heroBox = el('div', { class: 'ep-hero' },
+      el('img', { class: 'full', src: portraitFor(h), alt: h.name, on: { error: function(ev){ ev.target.src = iconFor(h); } } }),
+      el('div', { class: 'awakening-ring' }),
+      el('div', { class: 'awakening-ring b' }),
+      h.ultimateSkillName ? el('div', { class: 'ep-ult-tag' }, 'Ult · ' + h.ultimateSkillName) : null,
+      el('div', { class: 'ep-titleblock' },
+        el('div', { class: 'ep-name' }, h.name),
+        h.label ? el('div', { class: 'ep-label' }, h.label) : el('div', { class: 'ep-label', style: 'color:var(--muted)' }, 'Phase ' + (h.phase === 2 ? 'II' : h.phase === 3 ? 'III' : 'I') + ' · awakening pending'),
+        h.bio ? el('div', { class: 'ep-bio' }, h.bio) : null
+      )
+    );
+
+    // Right: skills + slider + desc + combo
+    var right = el('div', { class: 'ep-right' });
+
+    if (!h.skills) {
+      // Phase II/III placeholder
+      var p23 = el('div', { class: 'desc-card' });
+      p23.innerHTML = '<div class="dc-title"><div class="dc-num">' + (h.phase === 2 ? 'II' : 'III') + '</div><div class="dc-name">Awakening coming with Phase ' + (h.phase === 2 ? 'II' : 'III') + '</div></div>' +
+        '<div class="dc-body" style="color:var(--muted)">This hero is a <b style="color:var(--text)">partner</b> in a combo trio. Once Phase ' + (h.phase === 2 ? 'II' : 'III') + ' goes live, ' + escapeHtml(h.name) + ' will receive 4 awakening skills + an ultimate kill name. Card item IDs already exist in <code>hero_awakening_batch</code> (44300007–44300018) but the per-hero buff tables ship empty.</div>';
+      right.appendChild(p23);
+      // If this partner has a combo trio they belong to (find anchor)
+      var partnerTrio = findTrioContaining(h.id);
+      if (partnerTrio) right.appendChild(buildComboCard(partnerTrio, h.id));
+      grid.appendChild(heroBox);
+      grid.appendChild(right);
+      panel.appendChild(grid);
+      return panel;
+    }
+
+    // ---- Skill row ----
+    if (!sliderState[h.id]) sliderState[h.id] = { skillIdx: 1, level: 1 };
+    var state = sliderState[h.id];
+
+    var skillRow = el('div', { class: 'skill-row' });
+    h.skills.forEach(function(s) {
+      var tile = el('div', {
+        class: 'skill-tile' + (s.index === state.skillIdx ? ' on' : ''),
+        'data-skill-idx': s.index,
+        on: { click: function() {
+          state.skillIdx = s.index;
+          rerenderExpand(h);
+        }}
+      },
+        el('div', { class: 'skill-tag' }, 'S' + s.index),
+        el('div', { class: 'skill-icon-wrap' },
+          el('img', { src: skillIconFor(h.id, s.index), alt: s.name, on: { error: function(ev){ ev.target.style.display='none'; } } })
+        ),
+        el('div', { class: 'skill-name' }, s.name || 'Skill ' + s.index)
+      );
+      skillRow.appendChild(tile);
+    });
+    right.appendChild(skillRow);
+
+    // ---- Slider card ----
+    var skill = h.skills.find(function(s) { return s.index === state.skillIdx; }) || h.skills[0];
+    var sliderCard = el('div', { class: 'slider-card' });
+    sliderCard.appendChild(el('div', { class: 'slider-header' },
+      el('div', null,
+        el('div', { class: 'slider-title' }, 'Skill level · ', el('b', null, skill.name || 'Skill ' + state.skillIdx))
+      ),
+      el('div', { class: 'slider-value' }, 'Lv. ', String(state.level), el('small', null, '/ 10'))
+    ));
+    var slider = el('input', {
+      type: 'range', min: '1', max: '10', step: '1', value: String(state.level),
+      class: 'lvl-slider',
+      'aria-label': 'Skill level'
+    });
+    slider.addEventListener('input', function() {
+      state.level = Number(slider.value);
+      // Update only the relevant subtree (cheap rerender)
+      rerenderExpand(h);
+    });
+    sliderCard.appendChild(slider);
+    var ticks = el('div', { class: 'slider-ticks' });
+    for (var i = 1; i <= 10; i++) ticks.appendChild(el('span', null, String(i)));
+    sliderCard.appendChild(ticks);
+
+    // Stat readouts
+    var row = (skill.levelTable && skill.levelTable[state.level - 1]) || null;
+    var fp = row ? row.power : 0;
+    var teamFp = row ? row.team_power : 0;
+    var bonus = row ? row.bonus : '';
+    var val1 = row ? row.val1_pct : '';
+    var stoneCostThisLevel = STONE_PER_LEVEL[state.level] || 0;
+    var stonesToLvl = 0;
+    for (var L = 1; L <= state.level; L++) stonesToLvl += (STONE_PER_LEVEL[L] || 0);
+
+    var statRow = el('div', { class: 'stat-row' },
+      el('div', { class: 'stat-cell' },
+        el('div', { class: 'lbl' }, 'Skill FP at Lv.'),
+        el('div', { class: 'val accent' }, '+' + (fp || 0).toLocaleString(), el('small', null, 'FP'))
+      ),
+      el('div', { class: 'stat-cell' },
+        el('div', { class: 'lbl' }, 'Team FP at Lv.'),
+        el('div', { class: 'val purple' }, '+' + (teamFp || 0).toLocaleString(), el('small', null, 'FP'))
+      ),
+      el('div', { class: 'stat-cell' },
+        el('div', { class: 'lbl' }, 'Stones spent to here'),
+        el('div', { class: 'val green' }, stonesToLvl.toLocaleString())
+      ),
+      el('div', { class: 'stat-cell' },
+        el('div', { class: 'lbl' }, 'This level cost'),
+        el('div', { class: 'val gold' }, stoneCostThisLevel ? stoneCostThisLevel + ' stones' : '—')
+      )
+    );
+    sliderCard.appendChild(statRow);
+    right.appendChild(sliderCard);
+
+    // ---- Skill description ----
+    var descText = pickDescription(skill, state.level);
+    var resolved = resolveTokens(descText);
+    var html = fillValues(resolved, row);
+    var descCard = el('div', { class: 'desc-card' });
+    descCard.innerHTML = '<div class="dc-title">' +
+      '<div class="dc-num">' + state.skillIdx + '</div>' +
+      '<div class="dc-name">' + escapeHtml(skill.name || 'Skill ' + state.skillIdx) + '</div>' +
+      '</div>' +
+      '<div class="dc-body">' + html + '</div>' +
+      '<div class="dc-meta">' +
+        '<span>Base buff <b>' + escapeHtml(skill.appliedBuff) + '</b></span>' +
+        '<span>ES7-swap buff <b>' + escapeHtml(skill.exclusive7Buff) + '</b></span>' +
+        (bonus ? '<span>Lv.6 unlock <b>' + escapeHtml(bonus) + '</b></span>' : '') +
+      '</div>' +
+      (state.level >= 7 && skill.exclusive7Buff && skill.exclusive7Buff !== skill.appliedBuff
+        ? '<div class="es7-line">With <b>Exclusive Skill Lv. 7+</b> the base buff family <b>' + escapeHtml(skill.appliedBuff) + '</b> swaps to <b>' + escapeHtml(skill.exclusive7Buff) + '</b> — a single-line ES7 buff replaces the paired family from Lv.6 onward.</div>'
+        : '');
+    right.appendChild(descCard);
+
+    // ---- Combo trio (if this hero is an anchor) ----
+    if (h.comboTrio) {
+      right.appendChild(buildComboCard(h.comboTrio, h.id));
+    }
+
+    grid.appendChild(heroBox);
+    grid.appendChild(right);
+    panel.appendChild(grid);
+    return panel;
+  }
+
+  function pickDescription(skill, level) {
+    if (level >= 6 && skill.descriptionLv2_5) return skill.descriptionLv2_5;
+    return skill.descriptionLv1 || skill.descriptionLv2_5 || '';
+  }
+
+  function rerenderExpand(h) {
+    var panel = $('.expand-panel[data-id="' + h.id + '"]');
+    if (!panel) return;
+    var fresh = buildExpandPanel(h);
+    panel.parentNode.replaceChild(fresh, panel);
+  }
+
+  // Find a combo trio that contains a partner heroId (when an anchor isn't open)
+  function findTrioContaining(id) {
+    var anchor = (DATA.hyperAwakening.awakenedHeroes || []).find(function(h) {
+      return h.comboTrio && (h.comboTrio.partners || []).some(function(n) {
+        var match = ALL_HEROES.find(function(x){ return x.name === n; });
+        return match && match.id === id;
+      });
+    });
+    if (anchor) return anchor.comboTrio;
+    return null;
+  }
+
+  // ===== Combo card =====
+  function buildComboCard(trio, highlightId) {
+    // Resolve partner heroes by name
+    var members = (trio.partners || []).map(function(n) {
+      var x = ALL_HEROES.find(function(h){ return h.name === n; });
+      return x || { id: 0, name: n };
+    });
+    // Anchor is the first (Phase I); other two are partners
+    var card = el('div', { class: 'combo-card' });
+    card.appendChild(el('div', { class: 'combo-eyebrow' }, 'Combo trio'));
+    card.appendChild(el('div', { class: 'combo-title' }, 'Triggers ', el('b', null, trio.buff || '—')));
+
+    // SVG arc connecting the three card centers
+    var arc = el('div', { class: 'trio-arc' });
+    arc.innerHTML = '<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="none">' +
+      '<path class="arc" d="M 90 220 Q 300 40 510 220" />' +
+      '</svg>';
+
+    var spread = el('div', { class: 'trio-spread' });
+    spread.appendChild(arc);
+
+    // Reorder so anchor (phase 1) is in the middle visually
+    var order = [members[2], members[0], members[1]]; // [partner-mid, anchor, partner-back]
+    order.forEach(function(m, idx) {
+      var isAnchor = (m === members[0]);
+      var owned = ownedHeroIds.has(m.id);
+      var cls = 'trio-card' + (isAnchor ? ' anchor' : '') + (!owned && !isAnchor ? ' missing' : '');
+      var tc = el('div', {
+        class: cls,
+        on: {
+          mouseenter: function() { card.classList.add('peek'); updateBuffPopover(card, trio, m); },
+          mouseleave: function() { card.classList.remove('peek'); }
+        }
+      });
+      var heroObj = ALL_HEROES.find(function(x){ return x.id === m.id; }) || m;
+      tc.appendChild(el('img', { class: 'tp', src: portraitFor(heroObj), alt: m.name, on: { error: function(ev){ ev.target.src = iconFor(heroObj); } } }));
+      tc.appendChild(el('div', { class: 'tp-plate' },
+        el('div', { class: 'tp-name' }, m.name),
+        el('div', { class: 'tp-phase' }, isAnchor ? 'Anchor · Live' : 'Phase ' + (heroObj.phase === 2 ? 'II' : heroObj.phase === 3 ? 'III' : '?'))
+      ));
+      spread.appendChild(tc);
+    });
+
+    card.appendChild(spread);
+
+    // Combo rules grid
+    card.appendChild(el('div', { class: 'combo-rules' },
+      el('div', { class: 'combo-rule' },
+        el('div', { class: 'crl' }, 'Trio buff'),
+        el('div', { class: 'crv purple' }, trio.buff || '—')
+      ),
+      el('div', { class: 'combo-rule' },
+        el('div', { class: 'crl' }, 'Token ID'),
+        el('div', { class: 'crv' }, trio.buff_token || '—')
+      ),
+      el('div', { class: 'combo-rule' },
+        el('div', { class: 'crl' }, 'Partners'),
+        el('div', { class: 'crv' }, (members[1] ? members[1].name : '?') + ' + ' + (members[2] ? members[2].name : '?'))
+      ),
+      el('div', { class: 'combo-rule' },
+        el('div', { class: 'crl' }, 'Unlock'),
+        el('div', { class: 'crv green' }, 'Phase I + II + III')
+      )
+    ));
+
+    // Combo popover (revealed on member hover) — start hidden
+    var popover = el('div', { class: 'combo-popover' });
+    popover.innerHTML = '<div class="cp-title">Hover a card</div><div class="cp-body">Buff growth scales with each member\'s skill level — once all three are awakened, the trio buff activates for the whole army type.</div>';
+    card.appendChild(popover);
+
+    return card;
+  }
+
+  function updateBuffPopover(card, trio, hoveredMember) {
+    var po = card.querySelector('.combo-popover');
+    if (!po) return;
+    var owned = ownedHeroIds.has(hoveredMember.id);
+    var phase = (ALL_HEROES.find(function(h){return h.id===hoveredMember.id;}) || {}).phase || hoveredMember.phase || 1;
+    var status = (phase === 1) ? 'Anchor · awakening live now' : (owned ? 'Partner — owned' : 'Partner — not yet owned');
+    po.innerHTML = '<div class="cp-title">' + escapeHtml(hoveredMember.name) + ' · ' + escapeHtml(status) + '</div>' +
+      '<div class="cp-body">Contributes to the <b>' + escapeHtml(trio.buff || '—') + '</b> trio buff. Each row scales <b>300 → 900</b> per level tier; full Lv.40 awakening = <b>+900 per row + +3,600 global</b>.</div>';
+  }
+
+  // ====================================================
+  // Calculators
+  // ====================================================
+  function renderCalculators() {
+    var ha = DATA.hyperAwakening;
+    var phase1 = ALL_HEROES.filter(function(h){ return h.phase === 1; });
+
+    // --- Stones-to-target ---
+    var csHero = $('#csHero'), csSkill = $('#csSkill'), csCur = $('#csCur'), csTgt = $('#csTgt');
+    phase1.forEach(function(h) { csHero.appendChild(el('option', { value: h.id }, h.name + ' · ' + h.type)); });
+    function recalcStones() {
+      var heroId = Number(csHero.value);
+      var hero = ALL_HEROES.find(function(h){ return h.id === heroId; });
+      var skillIdx = Number(csSkill.value);
+      var cur = Math.max(0, Math.min(10, Number(csCur.value)));
+      var tgt = Math.max(1, Math.min(10, Number(csTgt.value)));
+      if (tgt < cur) { tgt = cur; csTgt.value = cur; }
+      var stones = 0;
+      for (var L = cur + 1; L <= tgt; L++) stones += (STONE_PER_LEVEL[L] || 0);
+      var levelsGained = Math.max(0, tgt - cur);
+      var fpGain = levelsGained * SKILL_FP_PER_LEVEL;
+      var teamFpStart = (hero && hero.skills) ? ((hero.skills[skillIdx-1] && hero.skills[skillIdx-1].levelTable[cur]?.team_power) || 0) : 0;
+      var teamFpEnd = (hero && hero.skills) ? ((hero.skills[skillIdx-1] && hero.skills[skillIdx-1].levelTable[tgt-1]?.team_power) || 0) : 0;
+      var teamFpGain = Math.max(0, teamFpEnd - (cur === 0 ? 0 : teamFpStart));
+      $('#csStones').textContent = stones.toLocaleString();
+      $('#csFp').textContent = '+' + fpGain.toLocaleString();
+      var detail = $('#csDetail');
+      detail.innerHTML = '';
+      detail.appendChild(el('div', { class: 'd' }, el('div', { class: 'lbl' }, 'Levels gained'), el('div', { class: 'val' }, String(levelsGained))));
+      detail.appendChild(el('div', { class: 'd' }, el('div', { class: 'lbl' }, 'Pulls needed'), el('div', { class: 'val' }, (levelsGained * 5).toLocaleString())));
+      detail.appendChild(el('div', { class: 'd' }, el('div', { class: 'lbl' }, 'Stones / pull (next)'), el('div', { class: 'val' }, (STONE_PER_PULL[Math.min(10, cur+1)] || 0) + (cur >= 10 ? ' — maxed' : ''))));
+      detail.appendChild(el('div', { class: 'd' }, el('div', { class: 'lbl' }, 'Team FP gain'), el('div', { class: 'val' }, '+' + teamFpGain.toLocaleString())));
+    }
+    [csHero, csSkill, csCur, csTgt].forEach(function(e) { e.addEventListener('input', recalcStones); e.addEventListener('change', recalcStones); });
+    csHero.value = phase1[0] ? phase1[0].id : '';
+    recalcStones();
+
+    // --- Combo trio planner ---
+    var pcWrap = $('#plannerTrios');
+    pcWrap.innerHTML = '';
+    (DATA.hyperAwakening.awakenedHeroes || []).forEach(function(anchor) {
+      if (!anchor.comboTrio) return;
+      var members = (anchor.comboTrio.partners || []).map(function(n) {
+        return ALL_HEROES.find(function(h){ return h.name === n; }) || { id: 0, name: n };
+      });
+      var ownedCount = members.filter(function(m){ return m.id === anchor.id || ownedHeroIds.has(m.id); }).length;
+      var total = members.length;
+      var status, sclass;
+      if (ownedCount === total) { status = 'COMPLETE'; sclass = 'complete'; }
+      else if (ownedCount >= 1) { status = ownedCount + ' / ' + total; sclass = 'partial'; }
+      else { status = 'LOCKED'; sclass = 'locked'; }
+
+      var row = el('div', { class: 'planner-trio' });
+      var mini = el('div', { class: 'planner-mini' });
+      members.forEach(function(m, idx) {
+        var isAnchor = m.id === anchor.id;
+        var have = isAnchor || ownedHeroIds.has(m.id);
+        mini.appendChild(el('div', { class: 'pm ' + (have ? 'have' : 'miss') },
+          el('img', { src: portraitFor(m), alt: m.name, on: { error: function(ev){ ev.target.src = iconFor(m); } } })
+        ));
+        if (idx < members.length - 1) mini.appendChild(el('span', { class: 'pm-arrow' }, '+'));
+      });
+
+      var info = el('div', { class: 'planner-info' },
+        el('div', { class: 'pi-label' }, anchor.type + ' · Combo'),
+        el('div', { class: 'pi-name' }, anchor.comboTrio.buff + ' trio'),
+        el('div', { class: 'pi-buff' }, anchor.name + ' + ' + members.slice(1).map(function(m){return m.name;}).join(' + '))
+      );
+
+      var leftBlock = el('div', null, info, buildPlannerToggle(members, anchor));
+
+      var statusBlock = el('div', { class: 'planner-status' },
+        el('div', { class: 'ps-have ' + sclass }, status),
+        el('div', { class: 'ps-desc' }, anchor.comboTrio.buff_token ? 'token ' + anchor.comboTrio.buff_token : 'trio buff')
+      );
+
+      row.appendChild(leftBlock);
+      row.appendChild(statusBlock);
+      row.insertBefore(mini, leftBlock);
+      // Layout: mini on its own row, info+status side-by-side -> use grid simpler:
+      row.innerHTML = '';
+      row.appendChild(mini);
+      row.appendChild(statusBlock);
+      // Re-add info row beneath via grid trick — simpler: stack with a child wrapper
+      var wrap = el('div', { style: 'grid-column: 1 / -1' }, info, buildPlannerToggle(members, anchor));
+      row.appendChild(wrap);
+      // Tweak grid for this row
+      row.style.gridTemplateColumns = '1fr auto';
+
+      pcWrap.appendChild(row);
+    });
+
+    // --- 40-level shard budget ---
+    var alHero = $('#alHero'), alCur = $('#alCur'), alTgt = $('#alTgt');
+    ALL_HEROES.forEach(function(h) { alHero.appendChild(el('option', { value: h.id }, h.name + ' · ' + h.type + ' · P' + (h.phase === 2 ? 'II' : h.phase === 3 ? 'III' : 'I'))); });
+    function recalcShards() {
+      var cur = Math.max(0, Math.min(40, Number(alCur.value)));
+      var tgt = Math.max(1, Math.min(40, Number(alTgt.value)));
+      if (tgt < cur) { tgt = cur; alTgt.value = cur; }
+      var shard = 0, chip = 0, pulls = 0;
+      var tierBreak = { 1: 0, 2: 0, 3: 0, 4: 0 };
+      for (var L = cur + 1; L <= tgt; L++) {
+        var c = shardCostForLevel(L);
+        shard += c.shard; chip += c.chip; pulls += 5;
+        var tier = (L <= 9) ? 1 : (L <= 19) ? 2 : (L <= 29) ? 3 : 4;
+        tierBreak[tier] += c.shard;
+      }
+      var fpGain = (tgt - cur) * 2000;
+      $('#alShards').textContent = shard.toLocaleString();
+      $('#alChips').textContent = chip.toLocaleString();
+      var detail = $('#alDetail');
+      detail.innerHTML = '';
+      detail.appendChild(el('div', { class: 'd' }, el('div', { class: 'lbl' }, 'Levels gained'), el('div', { class: 'val' }, String(tgt - cur))));
+      detail.appendChild(el('div', { class: 'd' }, el('div', { class: 'lbl' }, 'Pulls needed'), el('div', { class: 'val' }, pulls.toLocaleString())));
+      detail.appendChild(el('div', { class: 'd' }, el('div', { class: 'lbl' }, 'FP gain'), el('div', { class: 'val' }, '+' + fpGain.toLocaleString())));
+      detail.appendChild(el('div', { class: 'd' }, el('div', { class: 'lbl' }, 'Tier IV shards'), el('div', { class: 'val' }, tierBreak[4].toLocaleString())));
+    }
+    [alHero, alCur, alTgt].forEach(function(e) { e.addEventListener('input', recalcShards); e.addEventListener('change', recalcShards); });
+    recalcShards();
+
+    // --- Honor Wall ---
+    var hwCur = $('#hwCur'), hwTgt = $('#hwTgt');
+    function recalcHonor() {
+      var cur = Math.max(0, Math.min(200, Number(hwCur.value)));
+      var tgt = Math.max(1, Math.min(200, Number(hwTgt.value)));
+      if (tgt < cur) { tgt = cur; hwTgt.value = cur; }
+      var stones = 0;
+      for (var L = cur + 1; L <= tgt; L++) stones += honorStoneForLevel(L);
+      var fp = (tgt - cur) * 100;
+      $('#hwStones').textContent = stones.toLocaleString();
+      $('#hwFp').textContent = '+' + fp.toLocaleString();
+      var detail = $('#hwDetail');
+      detail.innerHTML = '';
+      detail.appendChild(el('div', { class: 'd' }, el('div', { class: 'lbl' }, 'Sub-levels gained'), el('div', { class: 'val' }, String(tgt - cur))));
+      detail.appendChild(el('div', { class: 'd' }, el('div', { class: 'lbl' }, '% of full track'), el('div', { class: 'val' }, Math.round((stones / 19950) * 100) + '%')));
+      detail.appendChild(el('div', { class: 'd' }, el('div', { class: 'lbl' }, 'Both tracks needs'), el('div', { class: 'val' }, (stones * 2).toLocaleString() + ' stones')));
+      detail.appendChild(el('div', { class: 'd' }, el('div', { class: 'lbl' }, 'Both-track FP'), el('div', { class: 'val' }, '+' + (fp * 2).toLocaleString())));
+    }
+    [hwCur, hwTgt].forEach(function(e) { e.addEventListener('input', recalcHonor); e.addEventListener('change', recalcHonor); });
+    recalcHonor();
+  }
+
+  function buildPlannerToggle(members, anchor) {
+    var box = el('div', { class: 'planner-toggle' });
+    members.forEach(function(m) {
+      var isAnchor = m.id === anchor.id;
+      var owned = isAnchor || ownedHeroIds.has(m.id);
+      var btn = el('button', {
+        type: 'button',
+        class: owned ? 'on' : '',
+        title: isAnchor ? 'Anchor is live by default' : (owned ? 'Owned — click to remove' : 'Not owned — click to mark as owned'),
+        on: { click: function(ev) {
+          ev.stopPropagation();
+          if (isAnchor) return;
+          if (ownedHeroIds.has(m.id)) ownedHeroIds.delete(m.id);
+          else ownedHeroIds.add(m.id);
+          persistOwned();
+          renderCalculators(); // rebuild planner status
+        }}
+      }, (isAnchor ? '★ ' : '') + m.name);
+      box.appendChild(btn);
+    });
+    return box;
+  }
+
+  // ====================================================
+  // Filters
+  // ====================================================
+  function wireFilters() {
+    $all('#typeChips .chip').forEach(function(c) {
+      c.addEventListener('click', function() {
+        $all('#typeChips .chip').forEach(function(x){ x.classList.remove('on'); });
+        c.classList.add('on');
+        filterType = c.getAttribute('data-type');
+        openHeroId = null;
+        renderHeroGrid();
+      });
+    });
+    $all('#phaseChips .chip').forEach(function(c) {
+      c.addEventListener('click', function() {
+        $all('#phaseChips .chip').forEach(function(x){ x.classList.remove('on'); });
+        c.classList.add('on');
+        filterPhase = c.getAttribute('data-phase');
+        openHeroId = null;
+        renderHeroGrid();
+      });
+    });
+  }
+
+</script>
+
+</body>
+</html>

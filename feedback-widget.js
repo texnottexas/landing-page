@@ -12,8 +12,6 @@
     { label: 'Decoration Index',  path: '/decor-index.html' },
     { label: 'Armory Report',     path: '/armory-report.html' },
     { label: 'Roadmap',           path: '/roadmap.html' },
-    { label: 'UD Sector Map',     path: '/ssc-map.html' },
-    { label: 'UD Treasury',       path: '/treasury.html' },
   ];
 
   // --- SVG helpers (safe DOM-based creation, no innerHTML) ---
