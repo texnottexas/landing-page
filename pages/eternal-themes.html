@@ -482,7 +482,14 @@
   function retract(entryId) {
     api('/themes/retract', { method: 'POST', body: JSON.stringify({
       name: state.identity.name, siteKey: state.identity.siteKey, entryId: entryId,
-    }) }).then(function () { refresh(); });
+    }) }).then(function (r) {
+      if (!r.ok) {
+        alert(r.error === 'rate_limited'
+          ? 'Please wait a few seconds and try again.'
+          : 'Could not remove the theme (' + (r.error || 'error') + '). Try again.');
+      }
+      refresh();
+    });
   }
 
   function adminDelete(entryId) {
@@ -542,7 +549,7 @@
       var labels = { submit: 'submitted', retract: 'removed their theme', 'admin-delete': 'removed by admin', 'auto-hide': 'auto-hidden (no votes after 72h)', config: 'settings updated' };
       $('log-list').innerHTML = (r.changelog || []).map(function (e) {
         return '<div class="log-row"><span class="lt">' + new Date(e.at).toLocaleDateString() + '</span>' +
-          '<span>' + esc(e.by) + ': "' + esc(e.title) + '" ' + (labels[e.type] || e.type) + '</span></div>';
+          '<span>' + esc(e.by) + ': "' + esc(e.title) + '" ' + (labels[e.type] || esc(e.type)) + '</span></div>';
       }).join('') || '<div class="hint">Nothing yet.</div>';
       $('log-modal').hidden = false;
     });
