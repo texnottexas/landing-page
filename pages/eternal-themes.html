@@ -142,7 +142,7 @@
   .row .bar{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--green),var(--gold));width:0;transition:width .7s cubic-bezier(.2,.7,.2,1)}
   .row .right{display:flex;flex-direction:column;align-items:center;gap:.15rem}
   .vote-btn{background:none;border:1px solid var(--border);border-radius:50%;width:38px;height:38px;display:flex;align-items:center;justify-content:center;color:var(--muted);cursor:pointer;transition:all .15s}
-  .vote-btn:hover{border-color:var(--green);color:var(--green)}
+  .vote-btn:hover{border-color:var(--green)}
   .vote-btn.on{border-color:var(--green);color:var(--green);background:var(--green-soft)}
   .vote-btn:disabled{opacity:.35;cursor:not-allowed}
   .vote-count{font-family:var(--mono);font-size:.74rem;color:var(--muted)}
@@ -198,7 +198,7 @@
   <section class="briefing reveal">
     <div class="event-kicker">ETERNAL LANDS</div>
     <h1 id="event-title">Server Theme Vote</h1>
-    <p class="event-sub">Propose a fun profile picture theme for the server. Vote for up to 3 favorites. Top theme wins.</p>
+    <p class="event-sub">Propose a fun profile picture theme for the server. Vote for up to 3 favorites. Top theme wins. If a theme does not receive any votes within 72 hours, it will automatically be removed from the list.</p>
     <div id="countdown" class="countdown" hidden>
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
       <span id="countdown-text"></span>
@@ -296,7 +296,7 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ESC[c]; }); }
   function $(id) { return document.getElementById(id); }
 
-  var state = { data: null, identity: null, clockSkew: 0, adminPw: sessionStorage.getItem('themeAdminPw') || '', pendingSubmit: null };
+  var state = { data: null, identity: null, clockSkew: 0, adminPw: sessionStorage.getItem('themeAdminPw') || '', pendingSubmit: null, myVotes: null, lastActionAt: 0 };
 
   // Default site identity wins when set (Tex request 2026-07-05); the roster
   // picker only appears when there is no stored non-guest identity. Roster-only
@@ -327,10 +327,54 @@
            '&name=' + encodeURIComponent(state.identity.name || '');
   }
 
+  // The client is the source of truth for the viewer's OWN ballot right after
+  // an action: KV edge reads can lag our own write by up to ~60s, so a refetch
+  // could otherwise "undo" a vote we just cast (heart flicks off, count drops).
+  // state.myVotes is set from every vote POST response (authoritative) and only
+  // re-synced from GET when we have not acted recently.
+  var BALLOT_TRUST_MS = 90000;
+
+  function reconcile(d) {
+    if (!state.identity) return d;
+    var server = d.yourVotes || [];
+    if (state.myVotes === null || (Date.now() - state.lastActionAt) > BALLOT_TRUST_MS) {
+      state.myVotes = server.slice();
+      return d;
+    }
+    // Filter our cached ballot to entries that still exist — the server's
+    // yourVotes is already visibility-filtered, and a vote on a since-deleted
+    // theme must not inflate the ballot count or block the budget.
+    var liveIds = {};
+    d.entries.forEach(function (e) { liveIds[e.id] = true; });
+    var mine = state.myVotes.filter(function (id) { return liveIds[id]; });
+    state.myVotes = mine.slice();
+    d.yourVotes = mine.slice();
+    var myName = state.identity.name;
+    d.entries.forEach(function (e) {
+      var sHas = server.indexOf(e.id) !== -1;
+      var mHas = mine.indexOf(e.id) !== -1;
+      e.voters = e.voters || [];
+      if (mHas && !sHas) { e.votes += 1; e.voters.push(myName); }
+      if (!mHas && sHas) {
+        e.votes = Math.max(0, e.votes - 1);
+        var i = e.voters.indexOf(myName);
+        if (i !== -1) e.voters.splice(i, 1);
+      }
+    });
+    sortEntries(d.entries);
+    return d;
+  }
+
+  function sortEntries(list) {
+    list.sort(function (a, b) {
+      return (b.votes - a.votes) || (a.createdAt - b.createdAt) || String(a.id).localeCompare(String(b.id));
+    });
+  }
+
   function refresh() {
     return api('/themes' + identityQS()).then(function (d) {
       if (!d.ok) return;
-      state.data = d;
+      state.data = reconcile(d);
       state.clockSkew = d.serverNow - Date.now();
       render();
     }).catch(function () { $('submit-msg').textContent = 'Could not reach the server. Try again shortly.'; });
@@ -474,6 +518,31 @@
     voteMsgTimer = setTimeout(function () { el.textContent = ''; }, 2500);
   }
 
+  // Apply the confirmed ballot from a vote POST straight to local state and
+  // re-render — no refetch. The POST response is authoritative for our own
+  // ballot; a refetch could read a stale KV copy and visually undo the action.
+  function applyBallot(newVotes) {
+    var old = state.myVotes !== null ? state.myVotes : (state.data.yourVotes || []);
+    var myName = state.identity.name;
+    state.data.entries.forEach(function (e) {
+      var had = old.indexOf(e.id) !== -1;
+      var has = newVotes.indexOf(e.id) !== -1;
+      if (had === has) return;
+      e.voters = e.voters || [];
+      if (has) { e.votes += 1; e.voters.push(myName); }
+      else {
+        e.votes = Math.max(0, e.votes - 1);
+        var i = e.voters.indexOf(myName);
+        if (i !== -1) e.voters.splice(i, 1);
+      }
+    });
+    state.myVotes = newVotes.slice();
+    state.lastActionAt = Date.now();
+    state.data.yourVotes = newVotes.slice();
+    sortEntries(state.data.entries);
+    render();
+  }
+
   function toggleVote(entryId, action) {
     if (!state.identity || state.busy) return;
     state.busy = true;
@@ -482,8 +551,7 @@
     }) }).then(function (r) {
       state.busy = false;
       if (r.ok) {
-        state.data.yourVotes = r.yourVotes;
-        refresh();
+        applyBallot(r.yourVotes || []);
       } else if (r.error === 'rate_limited') {
         voteMsg('One second... then tap the heart again.');
       } else if (r.error === 'vote_budget') {
@@ -503,7 +571,7 @@
       name: state.identity.name, siteKey: state.identity.siteKey, action: 'clear',
     }) }).then(function (r) {
       state.busy = false;
-      if (r.ok) { state.data.yourVotes = []; refresh(); }
+      if (r.ok) { applyBallot([]); }
       else if (r.error === 'rate_limited') { voteMsg('One second... then try again.'); }
       else refresh();
     }).catch(function () { state.busy = false; });
