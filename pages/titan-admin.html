@@ -822,6 +822,7 @@ const SECTIONS = [
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let planData = {};
+let showAllRoles = {};   // per-squad: true = position dropdowns ignore the CE/MM filter
 let planSnapshot = {};     // deep copy taken after each load/save for diffing
 let activeSquad = "";
 let dirty = false;
@@ -1115,10 +1116,11 @@ function getSquadPlayers(sq) {
     if (seen[key]) return;
     seen[key] = true;
     const info = lookup[key] || {};
+    const metaProf = (data.meta && data.meta[name] && (data.meta[name].prof === "CE" || data.meta[name].prof === "MM")) ? data.meta[name].prof : "";
     out.push({
       name: name,
       cp: info.power || 0,
-      prof: roleHint || info.role || "",
+      prof: metaProf || info.role || roleHint || "",
       unit: info.unit || "",
       alliance: info.alliance || "",
       squad: sq,
@@ -1240,6 +1242,9 @@ function renderEditor() {
       </div>
       <div class="panel">
         <h3>Roster Assignments</h3>
+        <label class="showall-toggle" style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;color:var(--muted);margin:-.2rem 0 .6rem;cursor:pointer">
+          <input type="checkbox" id="showAllRoles" ${showAllRoles[activeSquad] ? "checked" : ""} onchange="toggleShowAll(this.checked)"> Show all roles (ignore the CE/MM filter)
+        </label>
         ${POS_GROUPS.map(g => `
           <div class="assign-section">
             <div class="assign-header">${esc(g.title)}</div>
@@ -1298,7 +1303,7 @@ function renderMap(data, sqPlayers) {
       wrap.style.left = pos.x + "%";
       wrap.style.top = pos.y + "%";
       const sel = document.createElement("select");
-      sel.innerHTML = playerOptHtml(sqPlayers, assigned, posProf(pos.num), buildPlacedLabels(data));
+      sel.innerHTML = playerOptHtml(sqPlayers, assigned, showAllRoles[activeSquad] ? null : posProf(pos.num), buildPlacedLabels(data));
       sel.onchange = () => { updatePosition(pos.num, sel.value); wrap.remove(); };
       sel.onblur = () => wrap.remove();
       wrap.appendChild(sel);
@@ -1338,7 +1343,7 @@ function renderPositionSlots(data, sqPlayers, placed) {
         <span class="slot-label">#${pos.num}</span>
         <span class="pos-role-label">${esc(pos.role)}</span>
         <select class="player-select" onchange="updatePosition(${pos.num},this.value)">
-          ${playerOptHtml(sqPlayers, data.positions[pos.num] || "", g.prof, placed)}
+          ${playerOptHtml(sqPlayers, data.positions[pos.num] || "", showAllRoles[activeSquad] ? null : g.prof, placed)}
         </select>
       </li>`;
     }).join("");
@@ -1357,6 +1362,12 @@ function updatePosition(num, val) {
   data.positions[num] = val;
   if (val) dedupeAssign(data, val, "pos", num);
   markDirty();
+  rerenderCurrent();
+}
+
+function toggleShowAll(on) {
+  if (!activeSquad) return;
+  showAllRoles[activeSquad] = !!on;
   rerenderCurrent();
 }
 
