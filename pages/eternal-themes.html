@@ -210,12 +210,10 @@
     <span class="ballot-meters"><span id="ballot-votes"></span> · <span id="ballot-entries"></span></span>
   </section>
 
-  <!-- identity picker (only when no stored identity) -->
+  <!-- identity picker (only when no stored identity; roster players only) -->
   <section id="picker" class="card reveal" hidden>
     <label class="lbl" for="player">Who are you?</label>
     <select id="player"><option value="">Select your name…</option></select>
-    <div id="player-hint" class="hint" style="display:none">Type your in-game name below instead.</div>
-    <input id="freename" type="text" maxlength="50" placeholder="Your in-game name" style="display:none">
   </section>
 
   <!-- rankings -->
@@ -294,12 +292,14 @@
   var state = { data: null, identity: null, clockSkew: 0, adminPw: sessionStorage.getItem('themeAdminPw') || '', pendingSubmit: null };
 
   // Default site identity wins when set (Tex request 2026-07-05); the roster
-  // picker only appears when there is no stored non-guest identity.
+  // picker only appears when there is no stored non-guest identity. Roster-only
+  // (2026-07-06): a valid 16-hex siteKey is required — name-only identities are
+  // treated as unidentified so the picker shows and the server accepts writes.
   function loadIdentity() {
     try {
       var id = JSON.parse(localStorage.getItem('playerIdentity') || 'null');
-      if (id && !id.guest && (id.siteKey || id.name)) {
-        return { name: (id.name || '').trim(), siteKey: /^[a-f0-9]{16}$/.test(id.siteKey || '') ? id.siteKey : '' };
+      if (id && !id.guest && /^[a-f0-9]{16}$/.test(id.siteKey || '')) {
+        return { name: (id.name || '').trim(), siteKey: id.siteKey };
       }
     } catch (e) {}
     return null;
@@ -483,6 +483,8 @@
         $('submit-msg').textContent = 'That theme already exists: "' + r.existing.title + '" by ' + r.existing.by + '. Vote for it instead!';
       } else if (r.error === 'entry_budget') {
         $('submit-msg').textContent = 'You already have 3 themes. Remove one to submit another.';
+      } else if (r.error === 'roster_only') {
+        $('submit-msg').textContent = 'Only rostered players can take part. Pick your name from the list above.';
       } else if (r.error === 'rate_limited') {
         $('submit-msg').textContent = 'Easy there! Wait a minute and try again.';
       } else if (r.error === 'closed') {
@@ -514,33 +516,27 @@
       });
   }
 
-  // ── identity picker (no stored identity only) ────────────────────────────
+  // ── identity picker (no stored identity only; roster players only) ───────
+  // The free-text "name isn't listed" path was removed 2026-07-06 (Tex):
+  // only roster identities (valid siteKey) may submit or vote.
   function buildPicker() {
     fetch('player-data.json').then(function (r) { return r.json(); }).then(function (players) {
       var sel = $('player');
-      players.sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (p) {
-        var o = document.createElement('option');
-        o.value = p.siteKey || '';
-        o.textContent = p.name + (p.alliance ? ' (' + p.alliance + ')' : '');
-        o.setAttribute('data-name', p.name);
-        sel.appendChild(o);
-      });
-      var nl = document.createElement('option');
-      nl.value = '__notlisted__'; nl.textContent = "My name isn't listed…";
-      sel.appendChild(nl);
+      players.filter(function (p) { return /^[a-f0-9]{16}$/.test(p.siteKey || ''); })
+        .sort(function (a, b) { return a.name.localeCompare(b.name); })
+        .forEach(function (p) {
+          var o = document.createElement('option');
+          o.value = p.siteKey;
+          o.textContent = p.name + (p.alliance ? ' (' + p.alliance + ')' : '');
+          o.setAttribute('data-name', p.name);
+          sel.appendChild(o);
+        });
       sel.addEventListener('change', function () {
-        var free = sel.value === '__notlisted__';
-        $('player-hint').style.display = free ? 'block' : 'none';
-        $('freename').style.display = free ? 'block' : 'none';
-        if (!free && sel.value !== '') {
+        if (sel.value !== '') {
           var opt = sel.options[sel.selectedIndex];
-          state.identity = { name: opt.getAttribute('data-name'), siteKey: /^[a-f0-9]{16}$/.test(sel.value) ? sel.value : '' };
+          state.identity = { name: opt.getAttribute('data-name'), siteKey: sel.value };
           refresh();
         }
-      });
-      $('freename').addEventListener('change', function () {
-        var n = $('freename').value.trim();
-        if (n) { state.identity = { name: n, siteKey: '' }; refresh(); }
       });
     });
   }
