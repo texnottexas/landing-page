@@ -4,14 +4,20 @@
   var PUSH_WORKER = 'https://push-worker.27tb8s6fct.workers.dev';
 
   var PAGE_LIST = [
-    { label: 'Home',              path: '/' },
-    { label: 'Bases',             path: '/bases.html' },
-    { label: 'Battle Report',     path: '/battle-report.html' },
-    { label: 'Heroes',            path: '/heroes.html' },
-    { label: 'Heroes Awakening',  path: '/heroes-awakening.html' },
-    { label: 'Decoration Index',  path: '/decor-index.html' },
-    { label: 'Armory Report',     path: '/armory-report.html' },
-    { label: 'Roadmap',           path: '/roadmap.html' },
+    { label: 'Home',                path: '/' },
+    { label: 'Armory Report',       path: '/armory-report.html' },
+    { label: 'Auction House',       path: '/auction.html' },
+    { label: 'Bases',               path: '/bases.html' },
+    { label: 'Battle Report',       path: '/battle-report.html' },
+    { label: 'Decoration Index',    path: '/decor-index.html' },
+    { label: 'Enigma Beasts',       path: '/enigma-viewer.html' },
+    { label: 'Heroes',              path: '/heroes.html' },
+    { label: 'Heroes Awakening',    path: '/heroes-awakening.html' },
+    { label: 'HT Chips',            path: '/ht-chips.html' },
+    { label: 'Roadmap',             path: '/roadmap.html' },
+    { label: 'Rockfield Optimizer', path: '/rockfield-optimizer.html' },
+    { label: 'Theme Vote',          path: '/eternal-themes.html' },
+    { label: 'Titan Canyon',        path: '/titan.html' },
   ];
 
   // --- SVG helpers (safe DOM-based creation, no innerHTML) ---
