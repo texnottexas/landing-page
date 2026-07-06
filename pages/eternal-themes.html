@@ -121,6 +121,11 @@
 
   /* ballot meter */
   .ballot{display:flex;justify-content:space-between;align-items:center;gap:.6rem;border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:.5rem .8rem;font-size:.78rem;color:var(--muted);margin-bottom:1.1rem;flex-wrap:wrap}
+  .vote-msg{font-size:.72rem;color:var(--gold)}
+  .clear-votes{background:none;border:none;color:var(--faint);font-size:.68rem;cursor:pointer;text-decoration:underline;padding:0}
+  .clear-votes:hover{color:var(--muted)}
+  .row .mid{cursor:pointer}
+  .row .voters{font-size:.72rem;color:var(--muted);margin-top:.35rem;padding:.4rem .55rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;word-break:break-word}
   .ballot b{color:var(--text)}
   .ballot-meters{font-family:var(--mono)}
 
@@ -207,7 +212,9 @@
   <!-- ballot meter -->
   <section id="ballot" class="ballot reveal" hidden>
     <span id="ballot-who"></span>
+    <span id="vote-msg" class="vote-msg" role="status"></span>
     <span class="ballot-meters"><span id="ballot-votes"></span> · <span id="ballot-entries"></span></span>
+    <button id="clear-votes" class="clear-votes" type="button" hidden>clear my votes</button>
   </section>
 
   <!-- identity picker (only when no stored identity; roster players only) -->
@@ -397,6 +404,7 @@
     $('ballot-who').innerHTML = 'Voting as <b>' + esc(state.identity.name || 'you') + '</b>';
     $('ballot-votes').textContent = (d.yourVotes || []).length + '/3 votes';
     $('ballot-entries').textContent = (d.yourEntries || []).length + '/3 themes';
+    $('clear-votes').hidden = !((d.yourVotes || []).length > 0 && !isClosed());
   }
 
   function renderRows(rows, closed) {
@@ -413,11 +421,14 @@
       row.className = 'row';
       row.innerHTML =
         '<div class="rank">' + (idx + 1) + '</div>' +
-        '<div class="mid">' +
+        '<div class="mid" title="Tap to see who voted">' +
           '<div class="t">' + esc(e.title) + (mine ? '<span class="mine">yours</span>' : '') + '</div>' +
           (e.desc ? '<div class="d">' + esc(e.desc) + '</div>' : '') +
           '<div class="by">by ' + esc(e.by) + '</div>' +
           '<div class="bar-wrap"><div class="bar" data-w="' + Math.round(e.votes / maxV * 100) + '"></div></div>' +
+          '<div class="voters" hidden>' + (e.voters && e.voters.length
+            ? 'Voted by ' + e.voters.map(esc).join(', ')
+            : 'No votes yet') + '</div>' +
         '</div>' +
         '<div class="right">' +
           '<button class="vote-btn' + (voted ? ' on' : '') + '" type="button" aria-label="vote">' + HEART + '</button>' +
@@ -425,12 +436,17 @@
           (mine && !closed ? '<button class="retract-btn" type="button">remove</button>' : '') +
           (state.adminPw ? '<button class="admin-del" type="button">delete</button>' : '') +
         '</div>';
+      row.querySelector('.mid').addEventListener('click', function () {
+        var v = row.querySelector('.voters');
+        v.hidden = !v.hidden;
+      });
       var vb = row.querySelector('.vote-btn');
       if (closed || !state.identity || (!voted && budgetSpent)) {
         vb.disabled = true;
         if (!state.identity && !closed) vb.title = 'Pick your name below to vote';
-        if (budgetSpent && !voted) vb.title = 'All 3 votes used. Remove one first.';
+        if (budgetSpent && !voted) vb.title = 'All 3 votes used. Tap a green heart to take a vote back first.';
       } else {
+        vb.title = voted ? 'Tap again to remove your vote' : 'Vote for this theme';
         vb.addEventListener('click', function () { toggleVote(e.id, voted ? 'remove' : 'add'); });
       }
       var rb = row.querySelector('.retract-btn');
@@ -449,16 +465,50 @@
   }
 
   // ── actions ──────────────────────────────────────────────────────────────
+  var voteMsgTimer = null;
+  function voteMsg(text) {
+    var el = $('vote-msg');
+    if (!el) return;
+    el.textContent = text;
+    if (voteMsgTimer) clearTimeout(voteMsgTimer);
+    voteMsgTimer = setTimeout(function () { el.textContent = ''; }, 2500);
+  }
+
   function toggleVote(entryId, action) {
-    if (!state.identity) return;
+    if (!state.identity || state.busy) return;
+    state.busy = true;
     api('/themes/vote', { method: 'POST', body: JSON.stringify({
       name: state.identity.name, siteKey: state.identity.siteKey, entryId: entryId, action: action,
     }) }).then(function (r) {
-      if (r.ok) { state.data.yourVotes = r.yourVotes; refresh(); }
-      else if (r.error === 'rate_limited') { /* silent; next tap works */ }
-      else refresh();
-    });
+      state.busy = false;
+      if (r.ok) {
+        state.data.yourVotes = r.yourVotes;
+        refresh();
+      } else if (r.error === 'rate_limited') {
+        voteMsg('One second... then tap the heart again.');
+      } else if (r.error === 'vote_budget') {
+        voteMsg('All 3 votes used. Tap a green heart to take one back.');
+        refresh();
+      } else {
+        refresh();
+      }
+    }).catch(function () { state.busy = false; });
   }
+
+  function clearVotes() {
+    if (!state.identity || state.busy) return;
+    if (!confirm('Take back all of your votes?')) return;
+    state.busy = true;
+    api('/themes/vote', { method: 'POST', body: JSON.stringify({
+      name: state.identity.name, siteKey: state.identity.siteKey, action: 'clear',
+    }) }).then(function (r) {
+      state.busy = false;
+      if (r.ok) { state.data.yourVotes = []; refresh(); }
+      else if (r.error === 'rate_limited') { voteMsg('One second... then try again.'); }
+      else refresh();
+    }).catch(function () { state.busy = false; });
+  }
+  $('clear-votes').addEventListener('click', clearVotes);
 
   function submitTheme(confirmSimilar) {
     if (!state.identity) { $('submit-msg').textContent = 'Pick your name above first.'; return; }
