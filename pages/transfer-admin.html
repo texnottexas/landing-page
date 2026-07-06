@@ -903,16 +903,20 @@ function assignPlayer(appId, pid, status, cycleId, force) {
 // Move several players (a whole group, or a group's members in one column) to the
 // same bucket. Assigns sequentially; the first at-capacity wave asks once, then
 // forces the rest so a group isn't left half-moved.
-function assignGroup(appId, pids, status, cycleId, force) {
+function assignGroup(appId, pids, status, cycleId, force, ctx) {
   var list = (pids || []).slice();
-  if (!list.length) return;
+  if (!list.length) { showToast('Nothing in the current view to move'); return; }
   // Confirm bulk moves — one stray dropdown pick / drag shouldn't silently move a
   // whole group (this is what waitlisted an entire cohort by accident).
   var gApp = (STATE.apps || []).filter(function (a) { return a.id === appId; })[0];
   var gName = (gApp && gApp.groupName) ? gApp.groupName : 'this group';
   var gCol = columnsSpec().filter(function (c) { return c.status === status && (c.cycleId || '') === (cycleId || ''); })[0];
   var gLabel = gCol ? gCol.label : status;
-  if (!window.confirm('Move all ' + list.length + ' player(s) in "' + gName + '" to ' + gLabel + '?')) { refreshAll(); return; }
+  // When a drawer filter is active, say so and show the subset vs the group total.
+  var scope = (ctx && ctx.filtered)
+    ? ('the ' + list.length + ' filtered player(s) (of ' + ctx.total + ' in the group)')
+    : ('all ' + list.length + ' player(s)');
+  if (!window.confirm('Move ' + scope + ' in "' + gName + '" to ' + gLabel + '?')) { refreshAll(); return; }
   var forced = !!force;
   var idx = 0;
   function step() {
@@ -1002,12 +1006,12 @@ function openDrawer(appId, bucketId) {
     groupOps.className = 'player-edit-row';
     var gName = document.createElement('div');
     gName.className = 'pname';
-    gName.textContent = 'Whole group (' + app.players.length + ' players)';
+    gName.textContent = 'Bulk move (' + app.players.length + ' in group)';
     groupOps.appendChild(gName);
     var gWrap = document.createElement('div');
     gWrap.className = 'full';
     var gLabel = document.createElement('label');
-    gLabel.textContent = 'Move entire group to';
+    gLabel.textContent = 'Move shown players to';
     var gSelect = document.createElement('select');
     var gPlaceholder = document.createElement('option');
     gPlaceholder.value = ''; gPlaceholder.textContent = 'Choose a bucket…';
@@ -1086,15 +1090,29 @@ function dpNameKey(p) { return String(p.name == null ? '' : p.name).replace(/^[^
 var DP_STATUS_RANK = { pending: 0, waitlist: 1, approved: 2, rejected: 3 };
 
 // Render (or re-render) the drawer's player list with the given filter/sort.
-function renderDrawerPlayerList(app, appId, bucketOptions, listWrap, q, statusId, sortKey) {
-  listWrap.innerHTML = '';
-  var list = (app.players || []).slice();
+// Shared filter used by BOTH the drawer list and the "move shown players" action,
+// so a bulk move acts on exactly what's displayed when a filter is applied.
+function applyDrawerFilter(players, bucketOptions, q, statusId) {
+  var list = (players || []).slice();
   q = (q || '').trim().toLowerCase();
   if (q) list = list.filter(function (p) { return String(p.name || '').toLowerCase().indexOf(q) !== -1; });
   if (statusId) {
     var col = bucketOptions.filter(function (c) { return c.id === statusId; })[0];
     if (col) list = list.filter(function (p) { return p.status === col.status && (col.status !== 'approved' || (p.cycleId || '') === (col.cycleId || '')); });
   }
+  return list;
+}
+
+// Current values of the drawer's filter inputs (empty strings if no filter bar).
+function currentDrawerFilter() {
+  var s = document.getElementById('dp-search');
+  var st = document.getElementById('dp-status');
+  return { q: s ? s.value : '', statusId: st ? st.value : '' };
+}
+
+function renderDrawerPlayerList(app, appId, bucketOptions, listWrap, q, statusId, sortKey) {
+  listWrap.innerHTML = '';
+  var list = applyDrawerFilter(app.players, bucketOptions, q, statusId);
   if (sortKey === 'name') list.sort(function (a, b) { return dpNameKey(a).localeCompare(dpNameKey(b)); });
   else if (sortKey === 'name-desc') list.sort(function (a, b) { return dpNameKey(b).localeCompare(dpNameKey(a)); });
   else if (sortKey === 'cp') list.sort(function (a, b) { return (b.cp || 0) - (a.cp || 0); });
@@ -1260,9 +1278,15 @@ function makeAllianceHandler(appId, pid, selectEl) {
 function makeGroupMoveHandler(appId, app, bucketOptions, selectEl) {
   return function () {
     var col = bucketOptions.filter(function (c) { return c.id === selectEl.value; })[0];
-    if (!col) return;
-    assignGroup(appId, app.players.map(function (p) { return p.pid; }), col.status, col.cycleId, false);
     selectEl.value = '';  // reset to "Choose a bucket…" (whether confirmed or cancelled)
+    if (!col) return;
+    // Move only what the current filter is showing — not the whole group — so a
+    // filtered view (e.g. "Waitlist") moves just those members.
+    var f = currentDrawerFilter();
+    var shown = applyDrawerFilter(app.players, bucketOptions, f.q, f.statusId);
+    var isFiltered = !!(f.q || f.statusId);
+    assignGroup(appId, shown.map(function (p) { return p.pid; }), col.status, col.cycleId, false,
+      { filtered: isFiltered, total: (app.players || []).length });
   };
 }
 
