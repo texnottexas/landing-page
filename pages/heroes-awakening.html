@@ -2554,7 +2554,7 @@
 const HERO_DATA_URL = '../data/heroes-awakening.json?v=20260606b';
 // Page build timestamp — rendered into the alpha banner in the viewer's local timezone.
 // IMPORTANT: this must be set to the actual UTC time of the commit. Get it with `date -u +%Y-%m-%dT%H:%M:%SZ`.
-const PAGE_BUILD_ISO = '2026-06-25T18:30:00Z';
+const PAGE_BUILD_ISO = '2026-07-03T17:30:00Z';
 (function paintLastUpdated() {
   try {
     const stamp = document.getElementById('lastUpdatedStamp');
@@ -2713,12 +2713,16 @@ function stonesBetweenSkill(cur, tgt) {
   for (let lv = cur; lv < tgt; lv++) t += STONE_PER_LEVEL[lv] || 0;
   return t;
 }
+// The cost of an upgrade is set by your CURRENT (starting) level, not the
+// destination. So the 9 → 10 upgrade is still tier 1 (0 chips) — chips only
+// start applying once you're already at Lv. 10 and pushing to 11. Level 0 →
+// 1 is the Awakening Card (free in shard/chip terms) and is skipped.
 function awakeShardsBetween(cur, tgt) {
   cur = Math.max(0, Math.min(40, cur|0));
   tgt = Math.max(0, Math.min(40, tgt|0));
   if (tgt <= cur) return { hero: 0, es: 0 };
   let h = 0, e = 0;
-  for (let lv = cur + 1; lv <= tgt; lv++) {
+  for (let lv = Math.max(1, cur); lv < tgt; lv++) {
     const t = AWAKE_TIER.find(t => lv >= t.lv[0] && lv <= t.lv[1]);
     if (!t) continue;
     h += t.shardPerPull * PULLS_PER_LEVEL;
@@ -3268,11 +3272,14 @@ function setupWhatIf() {
     let stonesSpent = 0;
     tiers.forEach(t => { stonesSpent += stonesBetweenSkill(0, t); });
 
-    // Hero Shards + Hero Exclusive Skills spent on the Awakening Level meter
+    // Hero Shards + Hero Exclusive Skills spent on the Awakening Level meter.
+    // Upgrades performed = starting levels 1..awakeLv-1 (the 0→1 awakening is
+    // a card, not paid in shards/chips). Cost of each upgrade is set by the
+    // starting level, so the tier band `lo..hi` matches starting levels here.
     let shardSpent = 0, esSpent = 0;
     AWAKE_TIER.forEach(t => {
       const lo = t.lv[0], hi = t.lv[1];
-      const overlap = Math.max(0, Math.min(hi, awakeLv) - lo + 1);
+      const overlap = Math.max(0, Math.min(hi, awakeLv - 1) - lo + 1);
       if (overlap > 0) {
         shardSpent += overlap * t.shardPerPull * PULLS_PER_LEVEL;
         esSpent    += overlap * t.chipPerPull  * PULLS_PER_LEVEL;
