@@ -214,7 +214,10 @@
     .bell-btn.subscribed{border-color:var(--accent,#79c0ff)}
     .tc-install-banner{position:fixed;left:1rem;right:1rem;bottom:1rem;z-index:2000;display:flex;align-items:center;gap:.6rem;background:var(--card,#1c2128);border:1px solid var(--border,#30363d);border-radius:12px;padding:.7rem .9rem;box-shadow:0 10px 30px rgba(0,0,0,.5);max-width:520px;margin:0 auto}
     .tc-install-text{display:flex;flex-direction:column;flex:1;font-size:.8rem;color:var(--muted,#8b949e)}
-    .tc-install-text strong{color:var(--text,#e6edf3);font-size:.9rem}
+    .tc-install-text strong{color:var(--accent,#79c0ff);font-size:.9rem}
+    .tc-install-steps{font-size:.72rem;color:var(--muted,#8b949e);margin-top:.25rem}
+    .tc-install-steps strong{font-size:inherit}
+    .tc-install-note{font-size:.68rem;color:var(--muted,#8b949e);margin-top:.2rem}
     .tc-install-btn{background:var(--accent,#79c0ff);color:#0d1117;border:none;border-radius:8px;padding:.45rem 1rem;font-weight:700;cursor:pointer;font-family:inherit}
     .tc-install-dismiss{background:none;border:none;color:var(--muted,#8b949e);font-size:1.3rem;cursor:pointer;line-height:1}
   </style>
@@ -803,24 +806,39 @@ init();
         .catch(function(e){ console.warn('push subscribe failed:', e); });
     });
   }
-  if(bellBtn) bellBtn.addEventListener('click', subscribe);
-  var enableBtn=document.getElementById('tcInstallEnable'); if(enableBtn) enableBtn.addEventListener('click', subscribe);
-  var dismissBtn=document.getElementById('tcInstallDismiss'); if(dismissBtn) dismissBtn.addEventListener('click', function(){ hideBanner(); try{localStorage.setItem('tc_install_dismissed','1');}catch(e){} });
+  function detectPlatform(){ var ua=navigator.userAgent||''; return { isIOS:/iPad|iPhone|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1), isAndroid:/Android/.test(ua) }; }
+  function isStandalone(){ return (window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||window.navigator.standalone===true; }
+  function wasDismissed(){ try{return localStorage.getItem('tc_install_dismissed')==='1';}catch(e){return false;} }
+  function showBanner(){ var b=document.getElementById('tc-install-banner'); if(b) b.style.display='flex'; }
+  function dismissInstall(){ hideBanner(); try{localStorage.setItem('tc_install_dismissed','1');}catch(e){} }
+  // Build "Tap <action> then Add to Home Screen" + push note (safe DOM, mirrors landing page).
+  function buildHint(action){ var steps=document.getElementById('tcInstallSteps'); if(!steps) return; steps.textContent=''; steps.appendChild(document.createTextNode('Tap ')); var a=document.createElement('strong'); a.textContent=action; steps.appendChild(a); steps.appendChild(document.createTextNode(' then ')); var b=document.createElement('strong'); b.textContent='Add to Home Screen'; steps.appendChild(b); var note=document.createElement('div'); note.className='tc-install-note'; note.textContent='Enables push notifications and reminders'; steps.appendChild(note); }
+  var deferredPrompt=null;
+
+  // Bell subscribes (works once installed / on desktop).
   if('serviceWorker' in navigator && 'PushManager' in window){
-    if(bellBtn) bellBtn.style.display='';
+    if(bellBtn){ bellBtn.style.display=''; bellBtn.addEventListener('click', subscribe); }
     navigator.serviceWorker.register('/sw.js').then(function(reg){ swReg=reg; return reg.pushManager.getSubscription(); })
-      .then(function(sub){
-        if(sub){ pushSub=sub; setBell(true); }
-        else {
-          setBell(false);
-          // Prompt on mobile (or narrow screens) when not yet subscribed + not dismissed.
-          var dismissed=false; try{dismissed=localStorage.getItem('tc_install_dismissed')==='1';}catch(e){}
-          if(!dismissed && window.matchMedia && window.matchMedia('(max-width:768px)').matches){
-            var b=document.getElementById('tc-install-banner'); if(b) b.style.display='flex';
-          }
-        }
-      }).catch(function(){ if(bellBtn) bellBtn.style.display='none'; });
+      .then(function(sub){ if(sub){ pushSub=sub; setBell(true); } else setBell(false); })
+      .catch(function(){ if(bellBtn) bellBtn.style.display='none'; });
   }
+
+  // Install banner (platform-aware, mirrors the landing page). Deferred to
+  // DOMContentLoaded: this script is parsed BEFORE the banner markup near </body>.
+  function initInstallBanner(){
+    if(isStandalone() || wasDismissed()) return;
+    var btn=document.getElementById('tcInstallBtn');
+    var dm=document.getElementById('tcInstallDismiss'); if(dm) dm.addEventListener('click', dismissInstall);
+    var plat=detectPlatform();
+    if(plat.isIOS){
+      buildHint('Share ☝'); if(btn){ btn.textContent='Got it'; btn.addEventListener('click', dismissInstall); } showBanner();
+    } else if(plat.isAndroid){
+      window.addEventListener('beforeinstallprompt', function(e){ e.preventDefault(); deferredPrompt=e; var s=document.getElementById('tcInstallSteps'); if(s) s.textContent='Install this app for push notifications and reminders'; if(btn) btn.textContent='Install'; showBanner(); });
+      if(btn) btn.addEventListener('click', function(){ if(deferredPrompt){ deferredPrompt.prompt(); deferredPrompt.userChoice.then(function(){ deferredPrompt=null; dismissInstall(); }); } else { dismissInstall(); } });
+      setTimeout(function(){ if(!deferredPrompt && !isStandalone() && !wasDismissed()){ buildHint('⋮ Menu'); if(btn) btn.textContent='Got it'; showBanner(); } }, 3000);
+    }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', initInstallBanner); else initInstallBanner();
 })();
 </script>
 <script>
@@ -929,8 +947,8 @@ function googleTranslateElementInit() {
 </script>
 <script src="https://translate.googleapis.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
 <div id="tc-install-banner" class="tc-install-banner" role="banner" style="display:none">
-  <div class="tc-install-text"><strong>Get Titan Canyon reminders</strong><span>Add 2864tw.com to your home screen and enable notifications.</span></div>
-  <button class="tc-install-btn" id="tcInstallEnable">Enable</button>
+  <div class="tc-install-text"><strong>Add to Home Screen</strong><span class="tc-install-steps" id="tcInstallSteps"></span></div>
+  <button class="tc-install-btn" id="tcInstallBtn">Install</button>
   <button class="tc-install-dismiss" id="tcInstallDismiss" aria-label="Dismiss">&times;</button>
 </div>
 </body>
