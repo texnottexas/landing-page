@@ -238,6 +238,42 @@
     .rc-count { color: var(--muted); -webkit-text-fill-color: var(--muted); font-size: .65rem; font-weight: 600; opacity: 0; transition: opacity .2s; }
     .rc-count.visible { opacity: 1; }
 
+    /* Needs-to-move indicator + modal */
+    .swap-pill {
+      flex-shrink: 0; font-size: .62rem; font-weight: 700; padding: .08rem .42rem;
+      border-radius: 999px; white-space: nowrap; margin-left: .1rem;
+      background: color-mix(in srgb, var(--gold) 15%, transparent);
+      color: var(--gold); border: 1px solid color-mix(in srgb, var(--gold) 45%, var(--border));
+    }
+    .move-cta { margin: 0 0 1.25rem; }
+    .move-btn {
+      display: inline-flex; align-items: center; gap: .5rem; cursor: pointer;
+      font-family: inherit; font-size: .85rem; font-weight: 600;
+      padding: .55rem 1rem; border-radius: 9px;
+      background: color-mix(in srgb, var(--gold) 12%, var(--card));
+      border: 1px solid color-mix(in srgb, var(--gold) 45%, var(--border));
+      color: var(--gold); transition: all .15s;
+    }
+    .move-btn:hover { background: color-mix(in srgb, var(--gold) 20%, var(--card)); }
+    .move-btn svg { flex-shrink: 0; }
+    .move-count { background: var(--gold); color: #1a1200; border-radius: 999px; font-size: .72rem; padding: .05rem .45rem; font-weight: 800; }
+    .move-modal-overlay { display: none; position: fixed; inset: 0; z-index: 400; background: rgba(0,0,0,.6); align-items: center; justify-content: center; padding: 1rem; }
+    .move-modal-overlay.active { display: flex; }
+    .move-modal { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem; max-width: 460px; width: 100%; max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px var(--shadow); }
+    .move-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: .3rem; }
+    .move-modal-title { font-size: 1rem; font-weight: 700; color: var(--text); }
+    .move-modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.2rem; line-height: 1; padding: .2rem; }
+    .move-modal-close:hover { color: var(--text); }
+    .move-modal-sub { font-size: .78rem; margin-bottom: 1rem; }
+    .mv-group { margin-bottom: 1rem; }
+    .mv-group-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; }
+    .mv-group-count { font-size: .72rem; color: var(--muted); }
+    .mv-list { list-style: none; display: flex; flex-direction: column; gap: .35rem; }
+    .mv-row { display: flex; align-items: center; gap: .6rem; font-size: .82rem; padding: .35rem .55rem; border-radius: 7px; background: var(--bg2); border: 1px solid var(--border); flex-wrap: wrap; }
+    .mv-name { font-weight: 700; }
+    .mv-arrow { color: var(--gold); font-weight: 600; }
+    .mv-squad { color: var(--muted); margin-left: auto; font-size: .76rem; }
+
     /* Google Translate overrides */
     body { top: 0 !important; }
     body > .skiptranslate { display: none !important; }
@@ -378,6 +414,71 @@ function memberTag(data, name) {
   if (m.prof === 'MM') return ' <span class="role-tag mm">' + roleLabelFor('MM', m.uc) + '</span>';
   return ' <span class="role-tag ce">CE</span>';
 }
+// Alliance display order for the needs-to-move modal groups.
+var ALLIANCE_ORDER = ['DOG', 'MSS', 'PRU', 'Cat+'];
+// Swap ("needs to move") info for a member from the battleplan meta, or null.
+// { from, to } are normalized alliance codes; present only when the allocator
+// seated the player outside their signed-up alliance.
+function memberSwap(data, name) {
+  var m = (data && data.meta && data.meta[name]) || null;
+  return (m && m.swap && m.swap.to) ? m.swap : null;
+}
+// Amber "needs to move" pill for a row, or '' when no swap.
+function swapPill(sw) {
+  if (!sw) return '';
+  var to = esc(allianceDisplay(sw.to));
+  return ' <span class="swap-pill" title="Assigned to a ' + to + ' squad; switch to ' + to + ' before battle">⇄ to ' + to + '</span>';
+}
+// Every needs-move member across the plan: [{ name, from, to, squad }].
+function collectNeedsMove() {
+  var out = [];
+  for (var sq in state.plan) {
+    if (!state.plan.hasOwnProperty(sq)) continue;
+    var data = state.plan[sq];
+    if (!data) continue;
+    var names = squadMembers(data);
+    for (var i = 0; i < names.length; i++) {
+      var sw = memberSwap(data, names[i]);
+      if (sw) out.push({ name: names[i], from: sw.from, to: sw.to, squad: sq });
+    }
+  }
+  return out;
+}
+// Modal markup listing needs-move players grouped by original (signed-up) alliance.
+function renderMoveModal(moves) {
+  var groups = {};
+  moves.forEach(function (mv) { (groups[mv.from] = groups[mv.from] || []).push(mv); });
+  var order = ALLIANCE_ORDER.slice();
+  Object.keys(groups).forEach(function (al) { if (order.indexOf(al) === -1) order.push(al); });
+  var body = '';
+  order.forEach(function (al) {
+    var arr = groups[al];
+    if (!arr || !arr.length) return;
+    arr.sort(function (a, b) { return normName(a.name) < normName(b.name) ? -1 : normName(a.name) > normName(b.name) ? 1 : 0; });
+    var rows = arr.map(function (mv) {
+      return '<li class="mv-row">' +
+        '<span class="mv-name notranslate">' + esc(mv.name) + '</span>' +
+        '<span class="mv-arrow">→ ' + esc(allianceDisplay(mv.to)) + '</span>' +
+        '<span class="mv-squad notranslate">' + esc(mv.squad) + '</span>' +
+      '</li>';
+    }).join('');
+    body += '<div class="mv-group">' +
+      '<div class="mv-group-head"><span class="pill ' + allianceClass(al) + '">' + esc(allianceDisplay(al)) + '</span>' +
+        '<span class="mv-group-count">' + arr.length + '</span></div>' +
+      '<ul class="mv-list">' + rows + '</ul>' +
+    '</div>';
+  });
+  return '<div class="move-modal-overlay" id="moveModal">' +
+    '<div class="move-modal">' +
+      '<div class="move-modal-header">' +
+        '<span class="move-modal-title">Players who need to switch alliance</span>' +
+        '<button class="move-modal-close" id="moveModalClose" aria-label="Close">✕</button>' +
+      '</div>' +
+      '<p class="move-modal-sub muted">Grouped by the alliance you signed up in. Switch to the listed alliance before the battle so you are eligible for your squad.</p>' +
+      body +
+    '</div>' +
+  '</div>';
+}
 function slotLabelFor(slotId) {
   var slots = (state.cfg && state.cfg.slots) || [];
   for (var i = 0; i < slots.length; i++) if (slots[i].id === slotId) return slots[i].label;
@@ -483,14 +584,22 @@ function render() {
     return;
   }
 
+  var moves = collectNeedsMove();
   var html = '';
   html += renderFindMySquad();
+  if (moves.length) {
+    html += '<div class="move-cta"><button class="move-btn" id="moveBtn" type="button">' +
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>' +
+      'Needs to move? <span class="move-count">' + moves.length + '</span></button></div>';
+  }
   html += '<div class="sec-title">All Squads</div>';
   html += renderSearchBar();
   html += renderAllSquads();
+  if (moves.length) html += renderMoveModal(moves);
   el.innerHTML = html;
   wireIdentityPicker();
   wireSearch();
+  wireMoveModal();
 }
 
 function renderEmptyState() {
@@ -640,6 +749,7 @@ function renderSquadCard(sq, data, myName) {
         '<span class="pos-num">' + i + '</span>' +
         '<span class="pos-name notranslate' + (isMe ? ' me' : '') + '">' + esc(nm) + '</span>' +
         '<span class="role-tag ' + role.toLowerCase() + '">' + roleLabel + '</span>' +
+        swapPill(memberSwap(data, nm)) +
       '</li>';
     }
   }
@@ -653,7 +763,7 @@ function renderSquadCard(sq, data, myName) {
     if (!arr.length) continue;
     var items = arr.map(function (n) {
       var isMe2 = myName && normName(n) === myName;
-      return '<li class="' + (isMe2 ? 'me ' : '') + 'notranslate" data-name="' + esc(normName(n)) + '">' + esc(n) + memberTag(data, n) + '</li>';
+      return '<li class="' + (isMe2 ? 'me ' : '') + 'notranslate" data-name="' + esc(normName(n)) + '">' + esc(n) + memberTag(data, n) + swapPill(memberSwap(data, n)) + '</li>';
     }).join('');
     supSection += '<div class="sq-sec-label">' + esc(BUCKET_LABEL[bucket]) + '</div><ul class="sup-list">' + items + '</ul>';
   }
@@ -690,6 +800,19 @@ function wireSearch() {
   var input = document.getElementById('sqSearch');
   if (!input) return;
   input.addEventListener('input', function () { applySearch(input.value); });
+}
+
+function wireMoveModal() {
+  var btn = document.getElementById('moveBtn');
+  var modal = document.getElementById('moveModal');
+  if (!btn || !modal) return;
+  var close = document.getElementById('moveModalClose');
+  function open() { modal.classList.add('active'); }
+  function shut() { modal.classList.remove('active'); }
+  btn.addEventListener('click', open);
+  if (close) close.addEventListener('click', shut);
+  modal.addEventListener('click', function (e) { if (e.target === modal) shut(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && modal.classList.contains('active')) { shut(); } });
 }
 
 function applySearch(q) {
