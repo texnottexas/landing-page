@@ -131,6 +131,34 @@
     }
     .ref-link:hover { border-color: var(--accent); }
 
+    /* Signed-in "your spot" */
+    .me-banner {
+      display: flex; align-items: center; gap: .7rem; margin-bottom: 1.25rem;
+      background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent);
+      border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+      border-radius: 10px; padding: .65rem .95rem;
+    }
+    .me-av {
+      width: 36px; height: 36px; border-radius: 50%; background: var(--tag);
+      border: 1px solid var(--accent); display: flex; align-items: center; justify-content: center;
+      font-weight: 800; color: var(--accent); flex-shrink: 0;
+    }
+    .me-who { font-size: .85rem; color: var(--text); }
+    .me-who b { color: var(--accent); }
+    .me-squad { font-size: .7rem; color: var(--muted); margin-top: 1px; }
+    .me-go {
+      margin-left: auto; font-size: .7rem; color: var(--accent); cursor: pointer;
+      border: 1px solid var(--border); background: var(--bg2); border-radius: 999px;
+      padding: .32rem .75rem; font-family: inherit; white-space: nowrap;
+    }
+    .me-go:hover { border-color: var(--accent); }
+    .me-zone { outline: 2px solid var(--accent); outline-offset: 2px; animation: mePulse 2.4s ease-in-out infinite; }
+    .me-zone .player { background: var(--accent) !important; color: var(--bg) !important; border-color: var(--accent) !important; }
+    @keyframes mePulse {
+      0%, 100% { outline-color: color-mix(in srgb, var(--accent) 90%, transparent); }
+      50% { outline-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+    }
+
     /* Roster sections */
     .assign-section { margin-bottom: 1rem; }
     .assign-section:last-child { margin-bottom: 0; }
@@ -299,6 +327,97 @@ const SECTIONS = [
 let planData = {};
 let activeSquad = "";
 
+let players = [];   // player-data.json (identity resolution only)
+let me = null;      // { name } | null
+let myAssign = null; // { squad, position|null, bucket|null, slot? } | null
+
+function normName(s) { return String(s == null ? "" : s).toLowerCase().trim(); }
+function isMe(name) { return !!(me && normName(name) === normName(me.name)); }
+function isHexKey(s) { return typeof s === "string" && /^[a-f0-9]{16}$/.test(s); }
+
+function getStoredIdentity() {
+  try {
+    const v = localStorage.getItem("playerIdentity");
+    if (!v || v === "anonymous") return null;
+    const id = JSON.parse(v);
+    return (id && !id.guest && (id.siteKey || id.name)) ? id : null;
+  } catch (e) { return null; }
+}
+function getPickedChoice() {
+  try { return localStorage.getItem("titanRosterChoice") || ""; } catch (e) { return ""; }
+}
+function findPlayer(siteKey, name) {
+  if (isHexKey(siteKey)) { for (const p of players) if (p.siteKey === siteKey) return p; }
+  const nn = normName(name);
+  if (nn) { for (const p of players) if (normName(p.name) === nn) return p; }
+  return null;
+}
+// Same conventions as titan-roster.html: the explicit roster-page picker choice
+// wins, else the site identity. Only the name is needed on this page.
+function resolveMe() {
+  const choice = getPickedChoice();
+  if (choice) {
+    const p = choice.indexOf("name:") === 0 ? findPlayer("", choice.slice(5)) : findPlayer(choice, "");
+    if (p) return { name: p.name };
+    if (choice.indexOf("name:") === 0) return { name: choice.slice(5) };
+  }
+  const id = getStoredIdentity();
+  if (id) {
+    const p = findPlayer(id.siteKey, id.name);
+    if (p) return { name: p.name };
+    if (id.name) return { name: id.name };
+  }
+  return null;
+}
+// First hit across all squads: numbered position, else a support bucket (slot = 1-based index).
+function findMyAssignment(name) {
+  const nn = normName(name);
+  if (!nn) return null;
+  for (const sq of SQUADS) {
+    const d = planData[sq];
+    if (!d) continue;
+    if (d.positions) {
+      for (const pos in d.positions) {
+        if (d.positions.hasOwnProperty(pos) && normName(d.positions[pos]) === nn) {
+          return { squad: sq, position: pos, bucket: null };
+        }
+      }
+    }
+    for (const s of SECTIONS) {
+      const arr = (d[s.key] || []).filter(v => v);
+      for (let k = 0; k < arr.length; k++) {
+        if (normName(arr[k]) === nn) return { squad: sq, position: null, bucket: s.key, slot: k + 1 };
+      }
+    }
+  }
+  return null;
+}
+function zoneRole(num) { for (const z of ZONE_LAYOUT) if (String(z.num) === String(num)) return z.role; return ""; }
+function sectionTitle(key) { for (const s of SECTIONS) if (s.key === key) return s.title; return key; }
+
+function renderMeBanner() {
+  if (!me || !myAssign) return "";
+  const spot = myAssign.position
+    ? `Position ${esc(myAssign.position)} · ${esc(zoneRole(myAssign.position))}`
+    : `${esc(sectionTitle(myAssign.bucket))} #${myAssign.slot}`;
+  const initial = esc((normName(me.name).charAt(0) || "?").toUpperCase());
+  return `
+    <div class="me-banner">
+      <div class="me-av notranslate">${initial}</div>
+      <div>
+        <div class="me-who"><b class="notranslate">${esc(me.name)}</b> · your spot: <b>${spot}</b></div>
+        <div class="me-squad">${esc(SQUAD_SHORT[myAssign.squad] || myAssign.squad)}</div>
+      </div>
+      <button class="me-go" onclick="goToMySquad()">View on map</button>
+    </div>`;
+}
+function goToMySquad() {
+  if (!myAssign) return;
+  if (activeSquad !== myAssign.squad) selectSquad(myAssign.squad);
+  const el = document.querySelector(".dm-wrap");
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
 const ESC_MAP = {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"};
 function esc(s) { return String(s??"").replace(/[&<>"']/g, c => ESC_MAP[c]); }
 
@@ -332,11 +451,11 @@ function render() {
   const data = planData[activeSquad];
 
   if (!data || !hasAnyData(data)) {
-    el.innerHTML = `<div class="empty-state"><h3>No battle plan yet</h3><p>No plan has been configured for ${esc(SQUAD_SHORT[activeSquad])} yet.</p></div>`;
+    el.innerHTML = renderMeBanner() + `<div class="empty-state"><h3>No battle plan yet</h3><p>No plan has been configured for ${esc(SQUAD_SHORT[activeSquad])} yet.</p></div>`;
     return;
   }
 
-  el.innerHTML = `
+  el.innerHTML = renderMeBanner() + `
     <div class="plan-layout">
       <div class="panel">
         <h3>Battle Map &mdash; ${esc(SQUAD_SHORT[activeSquad])}</h3>
@@ -411,11 +530,12 @@ function renderMap(data) {
   let html = "";
   ZONE_LAYOUT.forEach(z => {
     const assigned = data.positions?.[z.num] || "";
-    html += `<div class="dm-cell dm-zone ${z.cls}${assigned ? "" : " empty"}" style="grid-area:${z.area}">` +
+    const mine = assigned && isMe(assigned);
+    html += `<div class="dm-cell dm-zone ${z.cls}${assigned ? "" : " empty"}${mine ? " me-zone" : ""}" style="grid-area:${z.area}">` +
       `<div class="dm-zc">` +
         `<span class="num">${z.num}</span>` +
         `<span class="role">${esc(z.role)}</span>` +
-        (assigned ? `<span class="player notranslate">${esc(assigned)}</span>` : "") +
+        (assigned ? `<span class="player notranslate">${esc(assigned)}${mine ? " (you)" : ""}</span>` : "") +
       `</div></div>`;
   });
   html += `<div class="dm-cell dm-hub" style="grid-area:${HUB_AREA}"><div class="dm-zc">DISCARDED<br>REPOSITORY /<br>NEXUS HUB</div></div>`;
@@ -477,8 +597,14 @@ async function loadData() {
 
 async function init() {
   buildTabs();
-  await loadData();
-  if (SQUADS.length) selectSquad(SQUADS[0]);
+  const results = await Promise.all([
+    loadData(),
+    fetch("player-data.json").then(r => r.json()).catch(() => [])
+  ]);
+  players = Array.isArray(results[1]) ? results[1] : [];
+  me = resolveMe();
+  myAssign = me ? findMyAssignment(me.name) : null;
+  if (SQUADS.length) selectSquad(myAssign ? myAssign.squad : SQUADS[0]);
 }
 
 init();
