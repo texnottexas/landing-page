@@ -155,39 +155,37 @@
       if (!fresh) { stats.friction.skipVanished++; opts.onProgress(stats, 'skip button not settled'); continue; }
       emitBtn(fresh);
 
-      // Confirm dialog; if the click was swallowed, re-click once
-      var cf = null;
-      for (var attempt = 0; attempt < 2 && !cf; attempt++) {
-        var cd = Date.now() + 3000;
-        while (Date.now() < cd) {
-          cf = findBtnByHandler(CONFIRM_ROOT, CONFIRM_HANDLER);
-          if (cf) break;
-          await delay(50);
-        }
-        if (!cf && attempt === 0) {
-          var again = findBtnByHandler(PANEL, SKIP_HANDLER);
-          if (again) { stats.friction.reclicks++; emitBtn(again); } else break;
-        }
-      }
-      if (!cf) { stats.friction.noConfirm++; opts.onProgress(stats, 'no confirm dialog'); await delay(1200); continue; }
-      emitBtn(cf);
-
-      // Wait for the wave label to actually advance (authoritative). The
-      // live transition animation can run well past 8s, so give it room.
-      var adl = Date.now() + 15000;
-      var newWave = lastWave;
-      while (Date.now() < adl) {
+      // After the click, some event configs pop a confirm dialog and some
+      // advance the wave directly. Watch for either; confirm is optional.
+      // Never blind re-click here: with no dialog in play a second click
+      // would spend a second skip.
+      var advanced = false;
+      var wd = Date.now() + 10000;
+      while (Date.now() < wd) {
         var w = readWave();
-        if (w !== null && w !== lastWave) { newWave = w; break; }
+        if (w !== null && w !== lastWave) { advanced = true; break; }
+        var cf = findBtnByHandler(CONFIRM_ROOT, CONFIRM_HANDLER);
+        if (cf) {
+          emitBtn(cf);
+          // confirmed; now wait for the wave label to actually advance
+          var adl = Date.now() + 15000;
+          while (Date.now() < adl) {
+            var w2 = readWave();
+            if (w2 !== null && w2 !== lastWave) { advanced = true; break; }
+            await delay(100);
+          }
+          break;
+        }
         await delay(100);
       }
-      if (newWave !== lastWave) {
-        lastWave = newWave;
-        stats.lastWave = newWave;
+      if (advanced) {
+        var wNow = readWave();
+        lastWave = (wNow !== null) ? wNow : lastWave + 1;
+        stats.lastWave = lastWave;
         stats.advanced++;
-        opts.onProgress(stats, 'wave ' + newWave);
-        // small breather so the next cycle starts after the new wave settles
-        await delay(500);
+        opts.onProgress(stats, 'wave ' + lastWave);
+        // breather between waves: keeps a steady, human-paced cadence
+        await delay(1500 + Math.floor(Math.random() * 1000));
       } else {
         stats.friction.noAdvance++;
         opts.onProgress(stats, 'wave did not advance yet');
@@ -250,10 +248,16 @@
     var abortBtn = el('button', 'padding:12px;background:transparent;color:#f85149;border:1px solid #f85149;border-radius:6px;font-size:13px;margin-top:10px;', 'Stop after current wave'); overlay.body.appendChild(abortBtn);
     var abort = { aborted: false };
     abortBtn.addEventListener('click', function () { abort.aborted = true; abortBtn.disabled = true; abortBtn.textContent = 'Stopping…'; });
+    // Console escape hatch: window.__defSkipStop() stops the loop even if
+    // the overlay is not reachable.
+    window.__defSkipStop = function () { abort.aborted = true; };
     var span = Math.max(1, target - startWave);
     return {
       abort: abort,
       update: function (stats, note) {
+        // The game occasionally rebuilds document.body children, which
+        // detaches the overlay. Re-attach so progress and Stop stay visible.
+        if (!overlay.root.isConnected) { try { document.body.appendChild(overlay.root); } catch (_) {} }
         var done = (stats.lastWave || startWave) - startWave;
         bar.style.width = Math.min(100, Math.round((done / span) * 100)) + '%';
         overlay.setSub('Wave ' + (stats.lastWave || startWave) + ' of ' + target, '#8b949e');
