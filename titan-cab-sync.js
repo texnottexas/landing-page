@@ -72,7 +72,15 @@
       var to = setTimeout(function () { reject(new Error('timeout: ' + rid)); }, 12000);
       NET.send(RID[rid], payload, {}, function (x) {
         clearTimeout(to);
-        try { resolve(x && x.d ? JSON.parse(x.d) : null); }
+        if (!x) { reject(new Error('no response: ' + rid)); return; }
+        // Non-zero status = game error; x.d is a localization key ("common_159995").
+        if (x.s && x.s !== 0) {
+          var msg = x.d;
+          try { msg = __require('LocalManager').LOCAL.getText(x.d) || x.d; } catch (e) {}
+          reject(new Error(msg + ' (' + rid + ')'));
+          return;
+        }
+        try { resolve(x.d ? JSON.parse(x.d) : null); }
         catch (e) { reject(new Error('bad response: ' + rid)); }
       });
     });
@@ -172,7 +180,10 @@
     net('NEW_CAB_GET_BASE_DATA', {}).then(function (base) {
       var idx = slotIndexFor(base, plan.week, slotId);
       if (idx < 0) throw new Error('no matching timeslot for ' + slotId);
-      var alreadySigned = (base.signedList || []).length > i; // corps i registered?
+      // signedList is pre-sized by corps count; a corps is registered only once
+      // its entry has a populated myAllianceInfo (empty {} = not yet signed).
+      var slEntry = (base.signedList || [])[i];
+      var alreadySigned = !!(slEntry && slEntry.myAllianceInfo && Object.keys(slEntry.myAllianceInfo).length > 0);
       var t = new Date((base.battleTimeArray[idx].time || 0) * 1000);
       var doSign = alreadySigned
         ? Promise.resolve({ ret: 0, skipped: true })
