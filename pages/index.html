@@ -1132,6 +1132,51 @@
     }
     .install-dismiss:hover { color: var(--text); }
 
+    /* Re-enable notifications banner — mirrors .install-banner, sits above it (z 260) */
+    .reenable-banner {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      padding: 1rem 1.25rem;
+      z-index: 260;
+      box-shadow: 0 -4px 16px var(--shadow);
+      align-items: center;
+      gap: .75rem;
+    }
+    .reenable-banner.visible { display: flex; }
+    .reenable-banner-text { flex: 1; font-size: .85rem; line-height: 1.4; }
+    .reenable-banner-text strong { color: var(--accent); }
+    .reenable-banner-text .reenable-sub { font-size: .75rem; color: var(--muted); margin-top: .25rem; }
+    .reenable-btn {
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      border-radius: 8px;
+      padding: .5rem 1rem;
+      font-size: .8rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity .15s;
+      flex-shrink: 0;
+    }
+    .reenable-btn:hover { opacity: .85; }
+    .reenable-dismiss {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 1.1rem;
+      cursor: pointer;
+      padding: .25rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .reenable-dismiss:hover { color: var(--text); }
+
     /* Shimmer text effect */
     @keyframes footer-shimmer {
       0%   { background-position: -200% center; }
@@ -2528,6 +2573,16 @@
     </div>
     <button class="install-btn" id="install-btn">Install</button>
     <button class="install-dismiss" id="install-dismiss" aria-label="Dismiss">&#10005;</button>
+  </div>
+
+  <!-- Re-enable notifications banner (shown when a prior subscription was lost) -->
+  <div id="reenable-banner" class="reenable-banner" role="banner">
+    <div class="reenable-banner-text">
+      <strong>Notifications turned off</strong>
+      <div class="reenable-sub" id="reenable-sub">Your alerts stopped working. Tap to turn them back on.</div>
+    </div>
+    <button class="reenable-btn" id="reenable-btn">Turn on</button>
+    <button class="reenable-dismiss" id="reenable-dismiss" aria-label="Dismiss">&#10005;</button>
   </div>
 
   <!-- Language Picker Modal -->
@@ -4618,6 +4673,66 @@
       }
       window._syncReminders = syncRemindersToWorker;
 
+      // --- Push subscription self-heal (Layer 2: page-load reconcile) ---
+      // Marker so we can tell "never subscribed" from "had a sub and lost it".
+      var PUSH_ENABLED_KEY = 'push_was_enabled_v1';
+      function _markPushEnabled() { try { localStorage.setItem(PUSH_ENABLED_KEY, new Date().toISOString()); } catch (e) {} }
+      function _clearPushEnabled() { try { localStorage.removeItem(PUSH_ENABLED_KEY); } catch (e) {} }
+      function _wasPushEnabled() { try { return !!localStorage.getItem(PUSH_ENABLED_KEY); } catch (e) { return false; } }
+
+      // Pure decision — unit-tested. Given the reconcile state, what to do:
+      //   ok     : a live local sub exists (re-sync, no prompt)
+      //   idle   : never subscribed (bell already invites them)
+      //   heal   : had a sub, lost it, permission still granted (silent re-subscribe)
+      //   banner : had a sub, lost it, permission not granted (ask to re-enable)
+      function _decidePushAction(state) {
+        if (state.hasLocalSub) return 'ok';
+        if (!state.wasEnabled) return 'idle';
+        return state.permission === 'granted' ? 'heal' : 'banner';
+      }
+      window._decidePushAction = _decidePushAction;
+
+      function showReenableBanner() { var b = document.getElementById('reenable-banner'); if (b) b.classList.add('visible'); }
+      function hideReenableBanner() { var b = document.getElementById('reenable-banner'); if (b) b.classList.remove('visible'); }
+
+      // Silent re-subscribe when the browser still has permission.
+      function _healPush() {
+        if (!swReg) { showReenableBanner(); return; }
+        swReg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY),
+        }).then(function(sub) {
+          pushSub = sub;
+          setBellState(true);
+          saveSubToWorker(sub);
+          _markPushEnabled();
+          hideReenableBanner();
+        }).catch(function() { showReenableBanner(); });
+      }
+
+      (function wireReenableBanner() {
+        var btn = document.getElementById('reenable-btn');
+        var dismiss = document.getElementById('reenable-dismiss');
+        var subEl = document.getElementById('reenable-sub');
+        if (btn) btn.addEventListener('click', function() {
+          subscribe(); // user gesture: requestPermission + subscribe; sets marker + bell on success
+          var tries = 0;
+          var iv = setInterval(function() {
+            tries++;
+            if (pushSub) { hideReenableBanner(); clearInterval(iv); return; }
+            if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+              if (subEl) subEl.textContent = 'Notifications are blocked for this site in your browser settings. Allow them for 2864tw.com, then tap Turn on.';
+              clearInterval(iv); return;
+            }
+            if (tries > 40) clearInterval(iv); // ~8s cap
+          }, 200);
+        });
+        if (dismiss) dismiss.addEventListener('click', function() {
+          hideReenableBanner();
+          _clearPushEnabled(); // acknowledge; show at most once per expiry episode
+        });
+      })();
+
       function subscribe() {
         var identity = getStoredIdentity();
         if (!identity) {
@@ -4636,6 +4751,8 @@
             pushSub = sub;
             setBellState(true);
             saveSubToWorker(sub);
+            _markPushEnabled();
+            hideReenableBanner();
           }).catch(function(e) {
             console.warn('Push subscribe failed:', e);
           });
@@ -4651,6 +4768,7 @@
         pushSub.unsubscribe().then(function() {
           pushSub = null;
           setBellState(false);
+          _clearPushEnabled();
           fetch(PUSH_WORKER + '/unsubscribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -5372,9 +5490,15 @@
           swReg = reg;
           return reg.pushManager.getSubscription();
         }).then(function(sub) {
-          if (sub) {
+          var action = _decidePushAction({
+            hasLocalSub: !!sub,
+            wasEnabled: _wasPushEnabled(),
+            permission: (typeof Notification !== 'undefined' && Notification.permission) || 'default'
+          });
+          if (action === 'ok') {
             pushSub = sub;
             setBellState(true);
+            _markPushEnabled(); // keep the marker fresh while a sub is live
             // Backfill: if local identity already has siteKey but the worker
             // record predates siteKey storage, re-sync now. Idempotent.
             try {
@@ -5383,6 +5507,9 @@
             } catch (e) {}
           } else {
             setBellState(false);
+            if (action === 'heal') _healPush();
+            else if (action === 'banner') showReenableBanner();
+            // 'idle' → never subscribed, do nothing
           }
           // Load notification inbox after pushSub is set
           loadInbox().then(function(items) {

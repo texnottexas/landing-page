@@ -29,8 +29,55 @@ function openInboxDB() {
 // Service worker for 2864tw.com push notifications
 // Minimal — no caching strategy (GitHub Pages CDN is fast enough)
 
+// Push subscription self-heal. Kept in sync with index.html's PUSH_WORKER +
+// VAPID_PUBLIC_KEY (the public key is safe to embed). When the browser rotates
+// or invalidates the push subscription it fires `pushsubscriptionchange`; we
+// mint a fresh subscription and re-register it so notifications keep working
+// with no player action. The SW can't read localStorage, so identity is posted
+// as null here and re-attached by index.html's saveSubToWorker on next load.
+var PUSH_WORKER = 'https://push-worker.27tb8s6fct.workers.dev';
+var VAPID_PUBLIC_KEY = 'BKbuearRTBpH6pAjoky9HVOYehah7lQ1Uti3APPMAYvdZJCUI8COAmVK7hym7zmefTGnI9_-vQY86IXa_nCHXHc';
+
+function swUrlB64ToUint8Array(b64) {
+  var pad = '='.repeat((4 - b64.length % 4) % 4);
+  var base64 = (b64 + pad).replace(/-/g, '+').replace(/_/g, '/');
+  var raw = atob(base64);
+  return Uint8Array.from(raw, function(c) { return c.charCodeAt(0); });
+}
+
+function swBufToB64u(buf) {
+  return btoa(String.fromCharCode.apply(null, new Uint8Array(buf)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+function swRegisterSub(sub) {
+  return fetch(PUSH_WORKER + '/subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      endpoint: sub.endpoint,
+      keys: { p256dh: swBufToB64u(sub.getKey('p256dh')), auth: swBufToB64u(sub.getKey('auth')) },
+      player: null,
+    }),
+  });
+}
+
 self.addEventListener('install', function(event) {
   self.skipWaiting();
+});
+
+self.addEventListener('pushsubscriptionchange', function(event) {
+  event.waitUntil(
+    Promise.resolve(event.newSubscription).then(function(fresh) {
+      if (fresh) return fresh;
+      return self.registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: swUrlB64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }).then(function(sub) {
+      return sub ? swRegisterSub(sub) : null;
+    }).catch(function() { /* best-effort; page-load reconcile is the fallback */ })
+  );
 });
 
 self.addEventListener('activate', function(event) {
