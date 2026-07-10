@@ -21,16 +21,21 @@
   window.__tcCabRunning = true;
 
   /* ---------- tiny overlay UI ---------- */
+  // Full-screen takeover panel, same convention as the other 2864tw bookmarklets.
+  var bg = document.createElement('div');
+  bg.style.cssText = 'position:fixed;inset:0;background:rgba(13,17,23,.94);z-index:2147483647;display:flex;' +
+    'align-items:center;justify-content:center;padding:20px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif';
   var ui = document.createElement('div');
-  ui.style.cssText = 'position:fixed;top:12px;right:12px;width:min(460px,94vw);max-height:84vh;overflow:auto;z-index:2147483647;' +
-    'background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:12px;padding:16px;' +
-    'font:14px/1.45 -apple-system,Segoe UI,Arial,sans-serif;box-shadow:0 8px 32px rgba(0,0,0,.6)';
-  ui.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
-    '<b style="color:#79c0ff;font-size:16px">TC Squad Sync</b><span id="tcx" style="cursor:pointer;color:#8b949e;font-size:18px;padding:2px 6px">✕</span></div>' +
-    '<div id="tclog"></div><div id="tcact" style="margin-top:10px"></div>';
-  document.body.appendChild(ui);
+  ui.style.cssText = 'width:min(680px,96vw);max-height:88vh;overflow:auto;background:#0d1117;color:#e6edf3;' +
+    'border:1px solid #30363d;border-radius:14px;padding:24px;font-size:16px;line-height:1.5;box-shadow:0 12px 48px rgba(0,0,0,.7)';
+  ui.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #30363d">' +
+    '<b style="color:#79c0ff;font-size:21px">⚔ TC Squad Sync</b>' +
+    '<button id="tcx" style="cursor:pointer;color:#e6edf3;background:#21262d;border:1px solid #30363d;border-radius:8px;font-size:15px;padding:7px 16px">Exit ✕</button></div>' +
+    '<div id="tclog"></div><div id="tcact" style="margin-top:14px"></div>';
+  bg.appendChild(ui);
+  document.body.appendChild(bg);
   var logEl = ui.querySelector('#tclog'), actEl = ui.querySelector('#tcact');
-  ui.querySelector('#tcx').onclick = function () { window.__tcCabRunning = false; ui.remove(); };
+  ui.querySelector('#tcx').onclick = function () { window.__tcCabRunning = false; bg.remove(); };
   function log(msg, color) {
     var d = document.createElement('div');
     d.style.cssText = 'margin:2px 0;color:' + (color || '#e6edf3');
@@ -42,7 +47,7 @@
     defs.forEach(function (b) {
       var el = document.createElement('button');
       el.textContent = b.label;
-      el.style.cssText = 'margin:0 8px 8px 0;padding:9px 16px;border-radius:8px;cursor:pointer;border:1px solid #30363d;font-size:14px;' +
+      el.style.cssText = 'margin:0 10px 10px 0;padding:11px 20px;border-radius:9px;cursor:pointer;border:1px solid #30363d;font-size:16px;' +
         (b.primary ? 'background:#238636;color:#fff;font-weight:600' : 'background:#21262d;color:#e6edf3');
       el.onclick = function () { actEl.innerHTML = ''; b.fn(); };
       actEl.appendChild(el);
@@ -156,7 +161,7 @@
       log('All done.', '#79c0ff');
       summary.forEach(function (s) { log(s, '#3fb950'); });
       log('Skipped players are not in your alliance yet (transfers pending).', '#8b949e');
-      buttons([{ label: 'Close', primary: true, fn: function () { done(); ui.remove(); } }]);
+      buttons([{ label: 'Close', primary: true, fn: function () { done(); bg.remove(); } }]);
       return;
     }
     var sq = squadNames[i];
@@ -215,13 +220,13 @@
               summary.push(sq + ': ' + matched.length + ' set' + (skipped.length ? ', ' + skipped.length + ' skipped' : ''));
               runSquads(squadNames, i + 1, summary);
             })
-            .catch(function (e) { log('Error: ' + e.message, '#f85149'); buttons([{ label: 'Close', fn: function () { done(); ui.remove(); } }]); });
+            .catch(function (e) { log('Error: ' + e.message, '#f85149'); buttons([{ label: 'Close', fn: function () { done(); bg.remove(); } }]); });
         } },
         { label: 'Skip squad', fn: function () { summary.push(sq + ': skipped by user'); runSquads(squadNames, i + 1, summary); } }
       ]);
     }).catch(function (e) {
       log('Error: ' + e.message, '#f85149');
-      buttons([{ label: 'Close', fn: function () { done(); ui.remove(); } }]);
+      buttons([{ label: 'Close', fn: function () { done(); bg.remove(); } }]);
     });
   }
 
