@@ -145,7 +145,7 @@
 
   function runSquads(squadNames, i, summary) {
     if (i >= squadNames.length) {
-      log('--- All done ---', '#79c0ff');
+      log('All done.', '#79c0ff');
       summary.forEach(function (s) { log(s, '#3fb950'); });
       log('Skipped players are not in your alliance yet (transfers pending).', '#8b949e');
       buttons([{ label: 'Close', primary: true, fn: function () { done(); ui.remove(); } }]);
@@ -154,7 +154,7 @@
     var sq = squadNames[i];
     var members = plan.squads[sq] || [];
     var slotId = plan.slots[sq];
-    log('— ' + sq + ' (slot ' + slotId + ', ' + members.length + ' on site) —', '#79c0ff');
+    log('» ' + sq + ' (slot ' + slotId + ', ' + members.length + ' on site)', '#79c0ff');
 
     net('NEW_CAB_GET_BASE_DATA', {}).then(function (base) {
       var idx = slotIndexFor(base, plan.week, slotId);
