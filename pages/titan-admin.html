@@ -1182,6 +1182,36 @@ function buildPlacedLabels(data) {
   return m;
 }
 
+// True when `key` (a lowercased name) currently sits in any position or support
+// slot of the squad.
+function isPlacedInSquad(data, key) {
+  if (data.positions) {
+    for (const num of Object.keys(data.positions)) {
+      const v = data.positions[num];
+      if (v && String(v).trim().toLowerCase() === key) return true;
+    }
+  }
+  for (const s of SECTIONS) {
+    const arr = data[s.key] || [];
+    for (const v of arr) if (v && String(v).trim().toLowerCase() === key) return true;
+  }
+  return false;
+}
+
+// When a slot's occupant is replaced by a DIFFERENT player, bump the displaced
+// occupant into the goon bucket instead of silently dropping them from the squad
+// (mirrors the server allocator's applyManualPlacement rule). No-op when the slot
+// was empty, unchanged, being cleared (val ""), or the displaced player still
+// sits somewhere else in the squad.
+function bumpDisplaced(data, prev, val) {
+  if (!prev || !val) return;
+  const pk = String(prev).trim().toLowerCase();
+  if (pk === String(val).trim().toLowerCase()) return;
+  if (isPlacedInSquad(data, pk)) return;
+  if (!Array.isArray(data.goon)) data.goon = [];
+  data.goon.push(prev);
+}
+
 // Assigning a name to a slot removes them from every OTHER slot in the squad, so
 // picking a player who's already placed MOVES them instead of double-booking.
 function dedupeAssign(data, name, keepKind, keepIdx) {
@@ -1204,7 +1234,8 @@ function dedupeAssign(data, name, keepKind, keepIdx) {
 
 function playerOptHtml(sqPlayers, selected, filterProf, placedLabels) {
   let h = '<option value="">-- Select --</option>';
-  const list = filterProf ? sqPlayers.filter(p => p.prof === filterProf) : sqPlayers;
+  const list = (filterProf ? sqPlayers.filter(p => p.prof === filterProf) : sqPlayers.slice())
+    .sort((a, b) => String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase()));
   list.forEach(p => {
     const key = String(p.name).trim().toLowerCase();
     const isSel = p.name === selected;
@@ -1377,8 +1408,10 @@ function rerenderCurrent() {
 
 function updatePosition(num, val) {
   const data = getSquadData(activeSquad);
+  const prev = data.positions[num] || "";
   data.positions[num] = val;
   if (val) dedupeAssign(data, val, "pos", num);
+  bumpDisplaced(data, prev, val);
   markDirty();
   rerenderCurrent();
 }
@@ -1411,8 +1444,10 @@ function renderAllSlots(data, sqPlayers) {
 
 function updateSlot(key, idx, val) {
   const data = getSquadData(activeSquad);
+  const prev = data[key][idx] || "";
   data[key][idx] = val;
   if (val) dedupeAssign(data, val, key, idx);
+  bumpDisplaced(data, prev, val);
   markDirty();
   rerenderCurrent();
 }
