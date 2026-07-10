@@ -67,6 +67,8 @@ a:hover { text-decoration: underline; }
 .card-title { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.4; flex: 1; }
 .card-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; white-space: nowrap; flex-shrink: 0; }
 .badge-doing { background: rgba(227,179,65,.15); color: var(--warn); border: 1px solid rgba(227,179,65,.3); }
+.badge-rejected { background: rgba(249,117,131,.15); color: var(--danger); border: 1px solid rgba(249,117,131,.3); }
+.item-card.rejected { border-left: 3px solid var(--danger); opacity: .82; }
 .badge-todo { background: rgba(56,139,253,.15); color: var(--blue); border: 1px solid rgba(56,139,253,.3); }
 .badge-done { background: rgba(86,211,100,.15); color: var(--good); border: 1px solid rgba(86,211,100,.3); }
 
@@ -340,7 +342,8 @@ function getVersionTag(item) {
 function renderCard(item, isGitHub) {
   var isEpic = item.workItemType === 'Epic';
   var isRel = isRelease(item);
-  var cls = 'item-card' + (isRel ? ' release' : isEpic ? ' epic' : '') + (item.state === 'Done' ? ' done' : item.state === 'Doing' ? ' doing' : '');
+  var isRej = item.tags && item.tags.indexOf('rejected') !== -1;
+  var cls = 'item-card' + (isRel ? ' release' : isEpic ? ' epic' : '') + (isRej ? ' rejected' : item.state === 'Done' ? ' done' : item.state === 'Doing' ? ' doing' : '');
   var card = makeEl('div', cls);
 
   var cardTop = makeEl('div', 'card-top');
@@ -367,7 +370,8 @@ function renderCard(item, isGitHub) {
   }
 
   var badge = makeEl('span', 'card-badge');
-  if (item.state === 'Done') { badge.className += ' badge-done'; badge.textContent = '\u2713 Done'; }
+  if (isRej) { badge.className += ' badge-rejected'; badge.textContent = '\u2715 Rejected'; }
+  else if (item.state === 'Done') { badge.className += ' badge-done'; badge.textContent = '\u2713 Done'; }
   else if (item.state === 'Doing') { badge.className += ' badge-doing'; badge.textContent = '\u25BA In Progress'; }
   else { badge.className += ' badge-todo'; badge.textContent = 'To Do'; }
   cardTop.appendChild(badge);
@@ -430,7 +434,8 @@ function openDetail(item, isGitHub) {
   }
 
   var stateBadge = makeEl('span', 'card-badge');
-  if (item.state === 'Done') { stateBadge.className += ' badge-done'; stateBadge.textContent = '\u2713 Done'; }
+  if (item.tags && item.tags.indexOf('rejected') !== -1) { stateBadge.className += ' badge-rejected'; stateBadge.textContent = '\u2715 Rejected'; }
+  else if (item.state === 'Done') { stateBadge.className += ' badge-done'; stateBadge.textContent = '\u2713 Done'; }
   else if (item.state === 'Doing') { stateBadge.className += ' badge-doing'; stateBadge.textContent = '\u25BA In Progress'; }
   else { stateBadge.className += ' badge-todo'; stateBadge.textContent = 'To Do'; }
   badgesRow.appendChild(stateBadge);
@@ -532,12 +537,25 @@ function renderRoadmap(data) {
   var planned = [];
   var completed = [];
   var userFeatures = [];
+  var rejected = [];
 
+  // Tag-driven triage: a `rejected` tag pulls an item into the Rejected
+  // section regardless of state; a `planned` tag promotes a raw user
+  // submission into Planned without needing to strip its origin tags
+  // (ADO's CLI can only add tags, not remove them). Everything without
+  // those tags follows the original state-based routing.
   adoItems.forEach(function(item) {
     if (childIdSet[item.id]) return; // shown inside parent Epic
-    var isUserFeature = item.tags && item.tags.indexOf('feature-request') !== -1 && item.tags.indexOf('user-submitted') !== -1;
-    if (item.state === 'Done') {
+    var tags = item.tags || [];
+    var isRejected = tags.indexOf('rejected') !== -1;
+    var isPlannedTag = tags.indexOf('planned') !== -1;
+    var isUserFeature = tags.indexOf('feature-request') !== -1 && tags.indexOf('user-submitted') !== -1;
+    if (isRejected) {
+      rejected.push(item);
+    } else if (item.state === 'Done') {
       completed.push(item);
+    } else if (isPlannedTag && (item.state === 'To Do' || item.state === 'Doing')) {
+      planned.push(item);
     } else if (isUserFeature && item.state === 'To Do') {
       userFeatures.push(item);
     } else if (item.state === 'To Do' || item.state === 'Doing') {
@@ -663,6 +681,23 @@ function renderRoadmap(data) {
     showMoreCompleted();
   }
   content.appendChild(completedSec);
+
+  // ---- Section 4: Rejected (only shown when non-empty) ----
+  if (rejected.length) {
+    var rejectedSec = makeEl('div', 'section');
+    var rejectedHdr = makeEl('div', 'section-header');
+    var rejectedTitle = makeEl('span', 'section-title');
+    rejectedTitle.style.color = 'var(--danger)';
+    rejectedTitle.textContent = '✕ Rejected';
+    rejectedHdr.appendChild(rejectedTitle);
+    var rejectedCount = makeEl('span', 'section-count');
+    rejectedCount.textContent = String(rejected.length);
+    rejectedHdr.appendChild(rejectedCount);
+    rejectedSec.appendChild(rejectedHdr);
+    rejected.sort(function(a, b) { return new Date(b.createdDate) - new Date(a.createdDate); });
+    rejected.forEach(function(item) { rejectedSec.appendChild(renderCard(item, item.source === 'github')); });
+    content.appendChild(rejectedSec);
+  }
 
   // Show content
   content.style.display = '';
