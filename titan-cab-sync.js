@@ -22,12 +22,12 @@
 
   /* ---------- tiny overlay UI ---------- */
   var ui = document.createElement('div');
-  ui.style.cssText = 'position:fixed;top:10px;right:10px;width:340px;max-height:80vh;overflow:auto;z-index:2147483647;' +
-    'background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:10px;padding:12px;' +
-    'font:12px -apple-system,Segoe UI,Arial,sans-serif;box-shadow:0 8px 32px rgba(0,0,0,.6)';
-  ui.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">' +
-    '<b style="color:#79c0ff">TC Squad Sync</b><span id="tcx" style="cursor:pointer;color:#8b949e">✕</span></div>' +
-    '<div id="tclog"></div><div id="tcact" style="margin-top:8px"></div>';
+  ui.style.cssText = 'position:fixed;top:12px;right:12px;width:min(460px,94vw);max-height:84vh;overflow:auto;z-index:2147483647;' +
+    'background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:12px;padding:16px;' +
+    'font:14px/1.45 -apple-system,Segoe UI,Arial,sans-serif;box-shadow:0 8px 32px rgba(0,0,0,.6)';
+  ui.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+    '<b style="color:#79c0ff;font-size:16px">TC Squad Sync</b><span id="tcx" style="cursor:pointer;color:#8b949e;font-size:18px;padding:2px 6px">✕</span></div>' +
+    '<div id="tclog"></div><div id="tcact" style="margin-top:10px"></div>';
   document.body.appendChild(ui);
   var logEl = ui.querySelector('#tclog'), actEl = ui.querySelector('#tcact');
   ui.querySelector('#tcx').onclick = function () { window.__tcCabRunning = false; ui.remove(); };
@@ -42,10 +42,18 @@
     defs.forEach(function (b) {
       var el = document.createElement('button');
       el.textContent = b.label;
-      el.style.cssText = 'margin-right:6px;padding:5px 12px;border-radius:7px;cursor:pointer;border:1px solid #30363d;' +
+      el.style.cssText = 'margin:0 8px 8px 0;padding:9px 16px;border-radius:8px;cursor:pointer;border:1px solid #30363d;font-size:14px;' +
         (b.primary ? 'background:#238636;color:#fff;font-weight:600' : 'background:#21262d;color:#e6edf3');
       el.onclick = function () { actEl.innerHTML = ''; b.fn(); };
       actEl.appendChild(el);
+    });
+  }
+  // sha256 hex prefix (16) of a string — the site's siteKey derivation from a UID.
+  function sha16(s) {
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(s))).then(function (buf) {
+      var out = '';
+      new Uint8Array(buf).forEach(function (b) { out += b.toString(16).padStart(2, '0'); });
+      return out.slice(0, 16);
     });
   }
   function done() { window.__tcCabRunning = false; }
@@ -170,12 +178,23 @@
         return net('NEW_CAB_GET_ALLIANCE_LIST', {});
       });
     }).then(function (poolRes) {
-      var idxMap = {};
-      (poolRes.members || []).forEach(function (m) { idxMap[nrm(poolName(m))] = String(m.uid); });
-      var matched = [], skipped = [];
+      var pool = (poolRes.members || []).map(function (m) { return { uid: String(m.uid), name: poolName(m) }; });
+      // Hash every pool UID so site siteKeys match players even after a rename.
+      return Promise.all(pool.map(function (m) { return sha16(m.uid); })).then(function (hashes) {
+        var bySk = {}, byName = {};
+        pool.forEach(function (m, k) { bySk[hashes[k]] = m; byName[nrm(m.name)] = m; });
+        return { bySk: bySk, byName: byName };
+      });
+    }).then(function (idx) {
+      var sks = plan.siteKeys || {};
+      var matched = [], skipped = [], used = {};
       members.forEach(function (n) {
-        var uid = idxMap[nrm(n)];
-        if (uid) matched.push({ name: n, uid: uid }); else skipped.push(n);
+        var m = (sks[n] && idx.bySk[sks[n]]) || idx.byName[nrm(n)];
+        if (m && !used[m.uid]) {
+          used[m.uid] = true;
+          var renamed = nrm(m.name) !== nrm(n);
+          matched.push({ name: n + (renamed ? ' (now ' + m.name + ')' : ''), uid: m.uid });
+        } else if (!m) skipped.push(n);
       });
       if (!matched.length) { log('No members matched in-alliance; skipping squad.', '#f85149'); runSquads(squadNames, i + 1, summary); return; }
       log('Matched ' + matched.length + ': ' + matched.map(function (m) { return m.name; }).join(', '));
