@@ -545,6 +545,21 @@
         Signups auto-build the battle plan on the server. Move or add a player here to create a lock that survives rebuilds. Squads seat 35; you can exceed that to force a placement, and the squad will flag as over-allocated so you know to move someone out. To re-run the allocation, use the <b>Draft Board</b> tab &mdash; it previews every change before you publish.
       </div>
     </div>
+
+    <!-- In-game CAB-sync bookmarklet (leader-runnable) -->
+    <div class="card" id="cab-bm-card">
+      <strong style="display:block;margin-bottom:.35rem">Push squads into the game (leader bookmarklet)</strong>
+      <div class="muted" style="line-height:1.5;margin-bottom:.7rem">
+        Save this as a bookmark, then click it while logged into the <b>alliance leader's</b> Top War game tab. It registers the timeslot and sets each squad's in-game Titan Canyon roster to match this page &mdash; players still transferring in are skipped automatically. Two-squad alliances (Dog / MSS / Cat) are handled one squad at a time. Copy the URL, make a new bookmark, and paste it in as the address.
+      </div>
+      <textarea id="cab-bm-url" readonly rows="3"
+        style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.5rem;font-family:monospace;font-size:.62rem;resize:vertical;box-sizing:border-box"></textarea>
+      <div style="display:flex;align-items:center;gap:.6rem;margin-top:.5rem">
+        <button id="cab-bm-copy" class="hdr-btn" type="button">Copy bookmarklet URL</button>
+        <span id="cab-bm-status" class="muted" style="font-size:.7rem"></span>
+      </div>
+    </div>
+
     <div id="sq-report"></div>
     <div id="sq-squads"></div>
   </section>
@@ -1420,6 +1435,30 @@ window.addEventListener("beforeunload", e => {
 
 // ── TOP-LEVEL VIEW SWITCHING ──────────────────────────────────────────────────
 var titanSignupsLoaded = false;
+// ── CAB-sync bookmarklet card ─────────────────────────────────────────────────
+// Same self-contained stub the site serves at /titan-cab-bookmarklet.txt: load
+// titan-cab-sync.js in the leader's game tab. Kept in sync with that file.
+var CAB_BOOKMARKLET_URL = "javascript:(function(){if(location.hostname!=='h5.topwargame.com'){alert('Open the Top War game first, then click this bookmarklet.');return;}var s=document.createElement('script');s.src='https://2864tw.com/titan-cab-sync.js?v='+Date.now();document.body.appendChild(s);})();";
+function initCabBookmarkletCard() {
+  var ta = document.getElementById('cab-bm-url');
+  var btn = document.getElementById('cab-bm-copy');
+  var status = document.getElementById('cab-bm-status');
+  if (!ta || !btn) return;
+  ta.value = CAB_BOOKMARKLET_URL;
+  ta.addEventListener('click', function () { try { ta.select(); ta.setSelectionRange(0, ta.value.length); } catch (e) {} });
+  btn.addEventListener('click', function () {
+    function ok() { status.style.color = 'var(--green, #3fb950)'; status.textContent = 'Copied. Make a new bookmark and paste as the URL.'; }
+    function fail() { status.style.color = 'var(--red, #f85149)'; status.textContent = 'Copy blocked. Tap the box, select all, copy manually.'; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(CAB_BOOKMARKLET_URL).then(ok).catch(function () {
+        try { ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length); document.execCommand('copy') ? ok() : fail(); } catch (e) { fail(); }
+      });
+    } else {
+      try { ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length); document.execCommand('copy') ? ok() : fail(); } catch (e) { fail(); }
+    }
+  });
+}
+
 var titanSquadsLoaded = false;
 function switchView(view) {
   var showSignups = view === "signups";
@@ -1443,6 +1482,7 @@ function switchView(view) {
   }
   if (showSquads && !titanSquadsLoaded) {
     titanSquadsLoaded = true;
+    initCabBookmarkletCard();
     loadSquads();
   }
   if (showChangelog) loadChangelog();
