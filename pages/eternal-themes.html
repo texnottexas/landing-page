@@ -170,9 +170,9 @@
     <button id="bnpBtn" title="All pages" onclick="document.getElementById('bnpPop').classList.toggle('open')"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zm8 0A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm-8 8A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm8 0A1.5 1.5 0 0 1 10.5 9h3A1.5 1.5 0 0 1 15 10.5v3A1.5 1.5 0 0 1 13.5 15h-3A1.5 1.5 0 0 1 9 13.5v-3z"/></svg></button>
     <div id="bnpPop">
       <a href="armory-report.html" class="bnp-link">Armory Report</a>
-      <a href="auction.html" class="bnp-link">Auction House</a>
       <a href="bases.html" class="bnp-link">Bases</a>
       <a href="battle-report.html" class="bnp-link">Battle Reports</a>
+      <a href="chaos-crafting.html" class="bnp-link">Chaos Crafting</a>
       <a href="decor-index.html" class="bnp-link">Decor Index</a>
       <a href="enigma-viewer.html" class="bnp-link">Enigma Beasts</a>
       <a href="heroes.html" class="bnp-link">Heroes</a>
@@ -198,7 +198,7 @@
   <section class="briefing reveal">
     <div class="event-kicker">ETERNAL LANDS</div>
     <h1 id="event-title">Server Theme Vote</h1>
-    <p class="event-sub">Propose a fun profile picture theme for the server. Vote for up to 3 favorites. Top theme wins. If a theme does not receive any votes within 72 hours, it will automatically be removed from the list.</p>
+    <p class="event-sub" id="event-sub">Propose a fun profile picture theme for the server. Vote for up to 3 favorites. Top theme wins. If a theme does not receive any votes within 72 hours, it will automatically be removed from the list.</p>
     <div id="countdown" class="countdown" hidden>
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
       <span id="countdown-text"></span>
@@ -397,7 +397,11 @@
     renderBallot();
     renderRows(d.entries, closed);
     $('empty').hidden = d.entries.length > 0;
-    $('submit-card').style.display = closed ? 'none' : '';
+    var subsClosed = !!d.config.submissionsClosed;
+    $('submit-card').style.display = (closed || subsClosed) ? 'none' : '';
+    if (subsClosed && !closed) {
+      $('event-sub').textContent = 'Theme submissions are closed. Vote for up to 3 favorites until the deadline. Top theme wins.';
+    }
     $('picker').hidden = !!state.identity;
   }
 
@@ -601,6 +605,9 @@
         $('submit-msg').textContent = 'That theme already exists: "' + r.existing.title + '" by ' + r.existing.by + '. Vote for it instead!';
       } else if (r.error === 'entry_budget') {
         $('submit-msg').textContent = 'You already have 3 themes. Remove one to submit another.';
+      } else if (r.error === 'submissions_closed') {
+        $('submit-msg').textContent = 'Theme submissions are closed. Voting stays open until the deadline.';
+        refresh();
       } else if (r.error === 'roster_only') {
         $('submit-msg').textContent = 'Only rostered players can take part. Pick your name from the list above.';
       } else if (r.error === 'rate_limited') {
