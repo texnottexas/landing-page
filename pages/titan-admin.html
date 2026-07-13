@@ -549,6 +549,7 @@
 
     <div id="sq-report"></div>
     <div id="sq-squads"></div>
+    <div id="sq-parking"></div>
   </section>
 
   <!-- Editor -->
@@ -754,6 +755,7 @@
     <div class="pm-row">
       <div class="pm-field"><label>Squad</label>
         <select id="sqMoveSquad">
+          <option value="__PARKED__">🅿️ Parking Lot (set aside)</option>
           <option value="Dog Squad A">Dog Squad A</option>
           <option value="Dog Squad B">Dog Squad B</option>
           <option value="MSS Squad A">MSS Squad A</option>
@@ -2602,7 +2604,60 @@ function renderSquads(report) {
 
   host.innerHTML = '';
   host.appendChild(grid);
+  sqRenderParking();
 }
+
+// Render the Parking Lot: players held out of all squads (parked locks). This is
+// the only place a parked player is visible (they are in no squad card). Each row
+// has a Move control to place them back into a squad.
+function sqRenderParking() {
+  var host = document.getElementById('sq-parking');
+  if (!host) return;
+  var parked = [];
+  for (var key in sqLocks) {
+    if (!sqLocks.hasOwnProperty(key)) continue;
+    var lk = sqLocks[key];
+    if (lk && lk.parked === true) parked.push(lk);
+  }
+  host.innerHTML = '';
+  if (!parked.length) return;
+  parked.sort(function (a, b) { return String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase()); });
+
+  var wrap = document.createElement('div'); wrap.className = 'sq-grid';
+  var card = document.createElement('div'); card.className = 'sq-card';
+  var head = document.createElement('div'); head.className = 'sq-card-head';
+  head.innerHTML = '<span class="sq-name">🅿️ Parking Lot</span>' +
+    '<span class="sq-count">' + parked.length + '</span>';
+  card.appendChild(head);
+  var note = document.createElement('div'); note.className = 'muted';
+  note.style.cssText = 'font-size:.8rem;margin:.3rem 0 .6rem';
+  note.textContent = 'Set aside and held out of all squads. Move a player to place them back.';
+  card.appendChild(note);
+
+  parked.forEach(function (lk) {
+    var row = document.createElement('div'); row.className = 'sq-row';
+    var who = document.createElement('span'); who.className = 'sq-player notranslate';
+    who.textContent = lk.name + (lk.alliance ? ' (' + allianceDisplay(lk.alliance) + ')' : '');
+    row.appendChild(who);
+    var btn = document.createElement('button');
+    btn.className = 'sq-rowbtn'; btn.type = 'button';
+    btn.dataset.act = 'move'; btn.dataset.name = lk.name; btn.dataset.squad = '__PARKED__';
+    btn.innerHTML = moveSvg() + ' Move';
+    row.appendChild(btn);
+    card.appendChild(row);
+  });
+
+  wrap.appendChild(card);
+  host.appendChild(wrap);
+}
+
+// Move button clicks inside the Parking Lot section (its own host, so it needs its
+// own delegation — the squads grid listener does not cover it).
+document.getElementById('sq-parking').addEventListener('click', function (e) {
+  var btn = e.target.closest ? e.target.closest('.sq-rowbtn') : null;
+  if (!btn || btn.dataset.act !== 'move') return;
+  sqOpenMove(btn.dataset.name, btn.dataset.squad, null, null);
+});
 
 // Event delegation for Move / Unlock buttons inside the squads grid.
 document.getElementById('sq-squads').addEventListener('click', function (e) {
@@ -2746,6 +2801,8 @@ function sqRenderReport(report) {
 // ── Spot pickers (shared by move + add modals) ─────────────────────────────────
 function sqFillSpotSelect(selectEl, squad, currentValue) {
   selectEl.innerHTML = '';
+  if (squad === '__PARKED__') { selectEl.disabled = true; return; }
+  selectEl.disabled = false;
   var data = sqPlan[squad] || {};
   function opt(val, label) {
     var o = document.createElement('option'); o.value = val; o.textContent = label;
@@ -2780,7 +2837,9 @@ function sqOpenMove(name, squad, position, bucket) {
     playerKey: sqPlayerKey((p && p.siteKey) || '', name)
   };
   document.getElementById('sqMoveTitle').textContent = 'Move ' + name;
-  document.getElementById('sqMoveSub').textContent = 'Currently in ' + squad + (position ? ' position #' + position : (bucket ? ' (' + (SQ_BUCKET_LABEL[bucket] || bucket) + ')' : '')) + '. Pick a new squad and spot.';
+  document.getElementById('sqMoveSub').textContent = (squad === '__PARKED__')
+    ? 'Currently parked (in no squad). Pick a squad and spot to place them back, or leave in the Parking Lot.'
+    : ('Currently in ' + squad + (position ? ' position #' + position : (bucket ? ' (' + (SQ_BUCKET_LABEL[bucket] || bucket) + ')' : '')) + '. Pick a new squad and spot, or move to the Parking Lot.');
   var squadSel = document.getElementById('sqMoveSquad');
   squadSel.value = squad;
   var spotSel = document.getElementById('sqMoveSpot');
@@ -2805,7 +2864,8 @@ function sqMoveConfirm() {
   if (!ed) { document.getElementById('sqMoveStatus').textContent = 'Set your identity first (top of page).'; return; }
   if (!ensureTitanEditPw()) { document.getElementById('sqMoveStatus').textContent = 'Editor password required.'; return; }
   var squad = document.getElementById('sqMoveSquad').value;
-  var spot = sqSpotPayload(document.getElementById('sqMoveSpot').value);
+  var parking = (squad === '__PARKED__');
+  var spot = parking ? {} : sqSpotPayload(document.getElementById('sqMoveSpot').value);
   var body = Object.assign({
     week: sqWeek,
     name: sqMoveCtx.name,
@@ -2830,7 +2890,7 @@ function sqMoveConfirm() {
       btn.disabled = false;
       if (o.status === 409 || (o.j && o.j.ok === false)) throw new Error(sqErrText(o.j && o.j.error));
       closeSqMoveModal();
-      sqSetStatus('Moved ' + body.name + ' to ' + squad + '.', 'ok');
+      sqSetStatus(parking ? ('Parked ' + body.name + '.') : ('Moved ' + body.name + ' to ' + squad + '.'), 'ok');
       return sqApplyResult(o.j);
     })
     .catch(function (e) { btn.disabled = false; document.getElementById('sqMoveStatus').textContent = e.message; });
