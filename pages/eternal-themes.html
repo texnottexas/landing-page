@@ -146,6 +146,13 @@
   .vote-btn.on{border-color:var(--green);color:var(--green);background:var(--green-soft)}
   .vote-btn:disabled{opacity:.35;cursor:not-allowed}
   .vote-count{font-family:var(--mono);font-size:.74rem;color:var(--muted)}
+  .snap-row{display:grid;grid-template-columns:1.6rem 1fr auto;gap:.6rem;align-items:start;padding:.5rem 0;border-bottom:1px solid var(--border)}
+  .snap-row:last-child{border-bottom:none}
+  .snap-row .rank{font-family:var(--mono);font-size:.8rem;color:var(--faint);text-align:right;padding-top:.1rem}
+  .snap-row .t{font-weight:700;font-size:.86rem;word-break:break-word}
+  .snap-row .by{font-size:.68rem;color:var(--faint)}
+  .snap-row .names{font-size:.72rem;color:var(--muted);margin-top:.25rem;word-break:break-word}
+  .snap-row .votes{font-family:var(--mono);font-size:.78rem;color:var(--muted);white-space:nowrap}
   .retract-btn,.admin-del{background:none;border:none;color:var(--faint);font-size:.66rem;cursor:pointer;text-decoration:underline;padding:0}
   .admin-del{color:var(--red)}
 
@@ -228,6 +235,13 @@
     <h2 class="sec-title">Current Rankings</h2>
     <div id="rows"></div>
     <div id="empty" class="hint" hidden>No themes yet. Be the first to suggest one below!</div>
+  </section>
+
+  <!-- historical snapshot: standings recorded before an admin vote reset -->
+  <section id="snapshot-card" class="card reveal" hidden>
+    <h2 class="sec-title">Earlier Standings</h2>
+    <div id="snapshot-when" class="hint" style="margin:0 0 .6rem"></div>
+    <div id="snapshot-rows"></div>
   </section>
 
   <!-- submit -->
@@ -387,6 +401,13 @@
     return !!c.closed;
   }
 
+  // Per-player vote budget from server config (final round drops it to 1).
+  function maxVotes() {
+    var c = state.data && state.data.config;
+    var n = c && Number(c.maxVotes);
+    return (n >= 1 && n <= 10) ? Math.floor(n) : 3;
+  }
+
   // ── rendering ────────────────────────────────────────────────────────────
   function render() {
     var d = state.data;
@@ -399,10 +420,33 @@
     $('empty').hidden = d.entries.length > 0;
     var subsClosed = !!d.config.submissionsClosed;
     $('submit-card').style.display = (closed || subsClosed) ? 'none' : '';
+    var mv = maxVotes();
+    var votePhrase = mv === 1 ? 'Vote for your favorite theme' : 'Vote for up to ' + mv + ' favorites';
     if (subsClosed && !closed) {
-      $('event-sub').textContent = 'Theme submissions are closed. Vote for up to 3 favorites until the deadline. Top theme wins.';
+      $('event-sub').textContent = 'Theme submissions are closed. ' + votePhrase + ' until the deadline. Top theme wins.';
+    } else if (!closed) {
+      $('event-sub').textContent = 'Propose a fun profile picture theme for the server. ' + votePhrase + '. Top theme wins. If a theme does not receive any votes within 72 hours, it will automatically be removed from the list.';
     }
+    renderSnapshot(d.snapshot);
     $('picker').hidden = !!state.identity;
+  }
+
+  // Frozen standings recorded before an admin vote reset: each theme with its
+  // vote count and voter names, plus the capture timestamp (viewer local time).
+  function renderSnapshot(snap) {
+    var card = $('snapshot-card');
+    if (!snap || !snap.entries || !snap.entries.length) { card.hidden = true; return; }
+    card.hidden = false;
+    $('snapshot-when').textContent = 'Recorded ' + new Date(snap.at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) + '. Votes were reset for the final round.';
+    $('snapshot-rows').innerHTML = snap.entries.map(function (e, i) {
+      return '<div class="snap-row">' +
+        '<div class="rank">' + (i + 1) + '</div>' +
+        '<div><div class="t">' + esc(e.title) + '</div>' +
+          '<div class="by">by ' + esc(e.by) + '</div>' +
+          (e.voters && e.voters.length ? '<div class="names">Voted by ' + e.voters.map(esc).join(', ') + '</div>' : '') +
+        '</div>' +
+        '<div class="votes">' + e.votes + (e.votes === 1 ? ' vote' : ' votes') + '</div></div>';
+    }).join('');
   }
 
   function renderCountdown(closed) {
@@ -450,9 +494,12 @@
     var d = state.data;
     b.hidden = false;
     $('ballot-who').innerHTML = 'Voting as <b>' + esc(state.identity.name || 'you') + '</b>';
-    $('ballot-votes').textContent = (d.yourVotes || []).length + '/3 votes';
+    var mv = maxVotes();
+    $('ballot-votes').textContent = (d.yourVotes || []).length + '/' + mv + (mv === 1 ? ' vote' : ' votes');
     $('ballot-entries').textContent = (d.yourEntries || []).length + '/3 themes';
-    $('clear-votes').hidden = !((d.yourVotes || []).length > 0 && !isClosed());
+    var cv = $('clear-votes');
+    cv.textContent = mv === 1 ? 'clear my vote' : 'clear my votes';
+    cv.hidden = !((d.yourVotes || []).length > 0 && !isClosed());
   }
 
   function renderRows(rows, closed) {
@@ -461,7 +508,7 @@
     var maxV = rows.length ? Math.max(rows[0].votes, 1) : 1;
     var yourVotes = state.data.yourVotes || [];
     var yourEntries = state.data.yourEntries || [];
-    var budgetSpent = yourVotes.length >= 3;
+    var budgetSpent = yourVotes.length >= maxVotes();
     rows.forEach(function (e, idx) {
       var mine = yourEntries.indexOf(e.id) !== -1;
       var voted = yourVotes.indexOf(e.id) !== -1;
@@ -492,7 +539,7 @@
       if (closed || !state.identity || (!voted && budgetSpent)) {
         vb.disabled = true;
         if (!state.identity && !closed) vb.title = 'Pick your name below to vote';
-        if (budgetSpent && !voted) vb.title = 'All 3 votes used. Tap a green heart to take a vote back first.';
+        if (budgetSpent && !voted) vb.title = maxVotes() === 1 ? 'Your vote is used. Tap the green heart to take it back first.' : 'All ' + maxVotes() + ' votes used. Tap a green heart to take a vote back first.';
       } else {
         vb.title = voted ? 'Tap again to remove your vote' : 'Vote for this theme';
         vb.addEventListener('click', function () { toggleVote(e.id, voted ? 'remove' : 'add'); });
@@ -559,7 +606,7 @@
       } else if (r.error === 'rate_limited') {
         voteMsg('One second... then tap the heart again.');
       } else if (r.error === 'vote_budget') {
-        voteMsg('All 3 votes used. Tap a green heart to take one back.');
+        voteMsg(maxVotes() === 1 ? 'Your vote is already used. Tap the green heart to take it back.' : 'All ' + maxVotes() + ' votes used. Tap a green heart to take one back.');
         refresh();
       } else {
         refresh();
@@ -569,7 +616,7 @@
 
   function clearVotes() {
     if (!state.identity || state.busy) return;
-    if (!confirm('Take back all of your votes?')) return;
+    if (!confirm(maxVotes() === 1 ? 'Take back your vote?' : 'Take back all of your votes?')) return;
     state.busy = true;
     api('/themes/vote', { method: 'POST', body: JSON.stringify({
       name: state.identity.name, siteKey: state.identity.siteKey, action: 'clear',
