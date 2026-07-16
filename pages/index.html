@@ -2538,7 +2538,7 @@
         <div class="cal-view-toggle">
           <button class="cal-view-btn active" id="cal-view-today"><span class="cal-btn-full">Today</span><span class="cal-btn-short">Today</span></button>
           <button class="cal-view-btn" id="cal-view-next3"><span class="cal-btn-full">Next 3 Days</span><span class="cal-btn-short">3 Days</span></button>
-          <button class="cal-view-btn" id="cal-view-round"><span class="cal-btn-full">Round (7 Days)</span><span class="cal-btn-short">Round</span></button>
+          <button class="cal-view-btn" id="cal-view-round"><span class="cal-btn-full">Next 7 Days</span><span class="cal-btn-short">7 Days</span></button>
           <button class="cal-view-btn" id="cal-view-all"><span class="cal-btn-full">All</span><span class="cal-btn-short">All</span></button>
         </div>
       </div>
@@ -2552,7 +2552,6 @@
       </div>
       <div class="cal-tag-row" id="cal-tag-row" style="display:none">
         <span class="cal-tag-pill active" data-tag="all" style="background:rgba(121,192,255,.15);color:#79c0ff">All</span>
-        <span class="cal-tag-pill" data-tag="UD" style="background:rgba(108,182,255,.15);color:#6cb6ff">UD</span>
         <span class="cal-tag-pill" data-tag="DOG" style="background:rgba(86,211,100,.15);color:#56d364">DOG</span>
         <span class="cal-tag-pill" data-tag="MSS" style="background:rgba(240,136,62,.15);color:#f0883e">MSS</span>
         <span class="cal-tag-pill" data-tag="Group Buffs" style="background:rgba(227,179,65,.15);color:#e3b341">Group Buffs</span>
@@ -3500,7 +3499,7 @@
           var tagRow = document.getElementById('cal-tag-row');
           if (!identity || identity.guest) {
             tagRow.style.display = 'none';
-            activeTags = ['UD', 'Eternal Land'];
+            activeTags = ['Eternal Land'];
             return;
           }
           tagRow.style.display = '';
@@ -3508,7 +3507,7 @@
           if (rank >= 4) {
             activeTags = ['all'];
           } else {
-            activeTags = ['UD', 'Group Buffs', 'fkboats', 'Eternal Land'];
+            activeTags = ['Group Buffs', 'fkboats', 'Eternal Land'];
             if (identity.alliance === 'DOG*' || identity.alliance === 'DOG') activeTags.push('DOG');
             else if (identity.alliance === 'MSS') activeTags.push('MSS');
           }
@@ -4342,6 +4341,65 @@
           });
         }
 
+        function renderWeek7(cachedReminders) {
+          if (!CAL_DATA && CUSTOM_EVENTS.length === 0) return;
+          $nav.style.display = 'none';
+          var now = new Date();
+          var end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 6);
+          $weekDates.textContent = formatLocalDate(now) + ' - ' + formatLocalDate(end) + ', ' + now.getFullYear();
+
+          var rangeEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 6, 23, 59, 59);
+          var allWeek = [];
+          var rounds = CAL_DATA ? CAL_DATA.rounds : [];
+          rounds.forEach(function(r) {
+            var year = getRoundYear(r);
+            r.events.forEach(function(evt) {
+              var evtStart = parseEventDT(evt.start, year);
+              var evtEnd = parseEventDT(evt.end, year);
+              if (evtStart <= rangeEnd && evtEnd >= now) {
+                allWeek.push({ evt: evt, year: year, round: r.round });
+              }
+            });
+          });
+          var customItems = expandRecurringForWindow(CUSTOM_EVENTS, now.getTime(), rangeEnd.getTime());
+          customItems.forEach(function(ce) {
+            allWeek.push({ evt: ce, year: new Date(ce.start).getUTCFullYear(), round: null });
+          });
+
+          allWeek.sort(function(a, b) {
+            return parseEventDT(a.evt.start, a.year).getTime() - parseEventDT(b.evt.start, b.year).getTime();
+          });
+
+          var weekDays = [];
+          for (var d = 0; d < 7; d++) {
+            var day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
+            weekDays.push(toDateKey(day));
+          }
+          buildDayFilterOptions(weekDays);
+
+          revokeBlobURLs(); $events.textContent = '';
+
+          var filtered = allWeek.filter(function(item) {
+            return matchesFilters(item.evt, item.year);
+          });
+
+          if (activeTags.indexOf('all') === -1) {
+            filtered = filtered.filter(function(item) {
+              var tags = item.evt.isCustom ? (item.evt.tags || []) : ['UD'];
+              return tags.some(function(t) { return activeTags.indexOf(t) !== -1; });
+            });
+          }
+
+          if (filtered.length === 0) {
+            renderNoEvents($events, 'in the next 7 days');
+            renderUpcomingPreview($events, cachedReminders);
+            return;
+          }
+          filtered.forEach(function(item) {
+            renderEventCard(item.evt, item.year, $events, cachedReminders);
+          });
+        }
+
         function renderAll(cachedReminders) {
           if (!CAL_DATA && CUSTOM_EVENTS.length === 0) return;
           $nav.style.display = 'none';
@@ -4418,6 +4476,7 @@
           if (viewMode === 'today') renderToday(_cachedReminders);
           else if (viewMode === 'next3') renderNext3(_cachedReminders);
           else if (viewMode === 'all') renderAll(_cachedReminders);
+          else if (viewMode === 'week') renderWeek7(_cachedReminders);
           else renderRound(currentRound, _cachedReminders);
           // Let GT translate the newly rendered calendar content
           setTimeout(nudgeTranslate, 200);
@@ -4441,8 +4500,7 @@
         viewTodayBtn.addEventListener('click', function() { setActiveView('today', viewTodayBtn); });
         viewNext3Btn.addEventListener('click', function() { setActiveView('next3', viewNext3Btn); });
         viewRoundBtn.addEventListener('click', function() {
-          currentRound = findCurrentRound();
-          setActiveView('round', viewRoundBtn);
+          setActiveView('week', viewRoundBtn);
         });
         viewAllBtn.addEventListener('click', function() {
           setActiveView('all', viewAllBtn);
