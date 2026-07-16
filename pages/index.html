@@ -4132,6 +4132,32 @@
           container.appendChild(msg);
         }
 
+        // When a day-scoped view is empty, show the next few upcoming events so
+        // the calendar is never a dead end (e.g. Eternal Land starting in 3 days).
+        function renderUpcomingPreview(container, cachedReminders) {
+          var now = Date.now();
+          var items = expandRecurringForWindow(CUSTOM_EVENTS, now, now + 35 * 86400000)
+            .map(function(ce) { return { evt: ce, year: new Date(ce.start).getUTCFullYear(), round: null }; })
+            .filter(function(item) { return parseEventDT(item.evt.start, item.year).getTime() > now; });
+          if (activeTags.indexOf('all') === -1) {
+            items = items.filter(function(item) {
+              var tags = item.evt.tags || [];
+              return tags.some(function(t) { return activeTags.indexOf(t) !== -1; });
+            });
+          }
+          items.sort(function(a, b) {
+            return parseEventDT(a.evt.start, a.year).getTime() - parseEventDT(b.evt.start, b.year).getTime();
+          });
+          if (items.length === 0) return;
+          var h = document.createElement('div');
+          h.style.cssText = 'margin:1rem 0 .4rem;font-size:.68rem;letter-spacing:1px;color:var(--muted);font-weight:700';
+          h.textContent = 'COMING UP';
+          container.appendChild(h);
+          items.slice(0, 3).forEach(function(item) {
+            renderEventCard(item.evt, item.year, container, cachedReminders);
+          });
+        }
+
         function renderToday(cachedReminders) {
           if (!CAL_DATA && CUSTOM_EVENTS.length === 0) return;
           $nav.style.display = 'none';
@@ -4182,6 +4208,7 @@
 
           if (filtered.length === 0) {
             renderNoEvents($events, 'for today');
+            renderUpcomingPreview($events, cachedReminders);
             return;
           }
           filtered.forEach(function(item) {
@@ -4234,6 +4261,7 @@
 
           if (filtered.length === 0) {
             renderNoEvents($events, 'in the next 3 days');
+            renderUpcomingPreview($events, cachedReminders);
             return;
           }
           filtered.forEach(function(item) {
@@ -4358,6 +4386,12 @@
               return tags.some(function(t) { return activeTags.indexOf(t) !== -1; });
             });
           }
+
+          // Hide concluded events — "All" is a forward-looking schedule, not history
+          var nowMsAll = Date.now();
+          allEvents = allEvents.filter(function(item) {
+            return parseEventDT(item.evt.end, item.year).getTime() > nowMsAll;
+          });
 
           if (allEvents.length === 0) {
             renderNoEvents($events, 'in the calendar');
