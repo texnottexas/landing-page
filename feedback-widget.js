@@ -11,6 +11,7 @@
     { label: 'Battle Report',       path: '/battle-report.html' },
     { label: 'Decoration Index',    path: '/decor-index.html' },
     { label: 'Enigma Beasts',       path: '/enigma-viewer.html' },
+    { label: 'Eternal Land Calendar', path: '/eternal-land-calendar.html' },
     { label: 'Heroes',              path: '/heroes.html' },
     { label: 'Heroes Awakening',    path: '/heroes-awakening.html' },
     { label: 'HT Chips',            path: '/ht-chips.html' },
