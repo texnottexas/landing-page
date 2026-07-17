@@ -202,6 +202,7 @@
   .cycle-label{font-weight:800; font-size:1.05rem}
   .cycle-count{font-family:var(--mono); font-size:.78rem; color:var(--muted)}
   .cycle-count.full{color:var(--red)}
+  .cycle-returning{font-family:var(--mono); font-size:.72rem; color:var(--accent); margin:-.2rem 0 .6rem}
   .cycle-countdown{font-size:.82rem; color:var(--accent); font-family:var(--mono); margin-bottom:.7rem}
   .cycle-state{display:inline-flex; align-items:center; gap:.35rem; font-size:.68rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:.2rem .55rem; border-radius:999px; border:1px solid; margin-bottom:.7rem}
   .cycle-state.open,.cycle-state.available{color:var(--green); border-color:rgba(63,185,80,.4); background:var(--green-soft)}
@@ -219,6 +220,7 @@
   .q-ts.pending{color:var(--gold); border-color:rgba(210,153,34,.4); background:var(--gold-soft)}
   .q-ts.completed{color:var(--green); border-color:rgba(63,185,80,.4); background:var(--green-soft)}
   .q-ts.accepted{color:var(--accent); border-color:var(--border2); background:var(--card2)}
+  .q-returning{color:var(--accent); border-color:rgba(121,192,255,.4); background:rgba(121,192,255,.12); text-transform:none; letter-spacing:0}
   .q-alliance.DOG{color:#56d364; border-color:rgba(63,185,80,.45); background:rgba(63,185,80,.12)}
   .q-alliance.MSS{color:#f0883e; border-color:rgba(240,136,62,.45); background:rgba(240,136,62,.12)}
   .q-alliance.Cat{color:#a371f7; border-color:rgba(163,113,247,.45); background:rgba(163,113,247,.12)}
@@ -925,6 +927,7 @@
         var cycles = j.cycles || [];
         var players = j.players || [];
         var counts = j.counts || {};
+        var returningCounts = j.returningCounts || {};
         if (!cycles.length) { wrap.innerHTML = '<div class="empty-state">No transfer waves are open yet.</div>'; return; }
         var accepted = j.accepted || [];
         // One row builder for both the accepted list and each wave. `badge` is the
@@ -933,6 +936,7 @@
           var avatar = p.avatar ? '<img src="' + esc(p.avatar) + '" alt="">' : '<div style="width:34px;height:34px;border-radius:7px;background:var(--card2);flex:none"></div>';
           var pills = '';
           if (p.alliance) pills += '<span class="q-pill q-alliance ' + esc(p.alliance) + '">' + esc(p.alliance) + '</span>';
+          if (p.returning) pills += '<span class="q-pill q-returning">Returning</span>';
           if (p.groupName) pills += '<span class="q-pill group-badge notranslate">' + esc(p.groupName) + '</span>';
           pills += '<span class="q-pill q-ts ' + badgeClass + '">' + badgeLabel + '</span>';
           return '<div class="queue-row">' + avatar +
@@ -968,9 +972,12 @@
             var done = p.transferStatus === 'completed';
             return queueRowHtml(p, done ? 'completed' : 'pending', done ? 'Completed' : 'Pending Transfer');
           }).join('') || '<div class="empty-state" style="padding:1rem 0">No approved players yet.</div>';
+          var ret = returningCounts[c.id] || 0;
+          var retLine = ret ? '<div class="cycle-returning">+' + ret + ' Returning Player' + (ret > 1 ? 's' : '') + '</div>' : '';
           return '<div class="cycle-card">' +
             '<div class="cycle-head"><span class="cycle-label">' + esc(c.label) + '</span>' +
             '<span class="cycle-count' + (full ? ' full' : '') + '">' + n + ' / ' + (c.capacity || '-') + '</span></div>' +
+            retLine +
             '<span class="cycle-state ' + stateClass + '">' + stateLabel + '</span>' +
             '<div class="cycle-countdown" data-opens="' + (c.opensAt || '') + '" data-closes="' + (c.closesAt || '') + '"></div>' +
             '<div class="queue-list">' + rows + '</div>' +

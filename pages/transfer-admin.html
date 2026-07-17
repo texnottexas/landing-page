@@ -104,6 +104,7 @@
   .badge.server{font-family:var(--mono)}
   .badge.group{color:#fff}
   .badge.cp{color:var(--gold); border-color:rgba(210,153,34,.4); background:var(--gold-soft)}
+  .badge.returning{color:var(--accent); border-color:rgba(121,192,255,.4); background:rgba(121,192,255,.12)}
   .badge.warn{color:var(--gold); border-color:rgba(210,153,34,.5); background:var(--gold-soft); display:inline-flex; align-items:center; gap:.2rem}
   .badge.ts-pending{color:var(--gold); border-color:rgba(210,153,34,.4); background:var(--gold-soft)}
   .badge.ts-completed{color:var(--green); border-color:rgba(63,185,80,.4); background:var(--green-soft)}
@@ -469,6 +470,7 @@ var STATE = {
   apps: [],
   cycles: [],
   counts: {},
+  returningCounts: {},
   activeAppId: null,
   drawerBucketId: '',
   search: '',
@@ -506,6 +508,7 @@ function loadAll() {
     if (appsRes.status !== 200 || !appsRes.json.ok) throw new Error('failed to load apps');
     STATE.apps = appsRes.json.apps || [];
     STATE.counts = appsRes.json.counts || {};
+    STATE.returningCounts = appsRes.json.returningCounts || {};
     STATE.cycles = (cyclesRes && cyclesRes.cycles) || [];
     renderBoard();
   }).catch(function (e) {
@@ -649,6 +652,8 @@ function renderBoard() {
     // Accepted = approved with no cycle) counts the players shown here.
     var count = (col.status === 'approved' && col.cycleId) ? (STATE.counts[col.cycleId] || 0) : colRows.length;
     var over = col.capacity != null && count > col.capacity;
+    // Returning players sit in the wave but are exempt from the cap (shown as "+N").
+    var retCount = (col.status === 'approved' && col.cycleId) ? (STATE.returningCounts[col.cycleId] || 0) : 0;
 
     var colEl = document.createElement('div');
     colEl.className = 'column';
@@ -661,7 +666,8 @@ function renderBoard() {
     title.textContent = col.label;
     var countEl = document.createElement('div');
     countEl.className = 'col-count' + (over ? ' over' : '');
-    countEl.textContent = col.capacity != null ? (count + '/' + col.capacity) : String(count);
+    countEl.textContent = col.capacity != null ? (count + '/' + col.capacity + (retCount ? ' +' + retCount : '')) : String(count);
+    if (retCount) countEl.title = retCount + ' returning player' + (retCount > 1 ? 's' : '') + ' (exempt from the ' + col.capacity + '-slot cap)';
     head.appendChild(title);
     head.appendChild(countEl);
     colEl.appendChild(head);
@@ -734,6 +740,14 @@ function makeCard(app, player, colId) {
     cpBadge.className = 'badge cp';
     cpBadge.textContent = 'CP ' + cpLabelM(player.cp);
     meta.appendChild(cpBadge);
+  }
+
+  if (player.returning) {
+    var retBadge = document.createElement('span');
+    retBadge.className = 'badge returning';
+    retBadge.textContent = 'Returning';
+    retBadge.title = 'Returning player — exempt from the wave slot cap';
+    meta.appendChild(retBadge);
   }
 
   if (app.split) {
@@ -1577,7 +1591,8 @@ document.getElementById('export-btn').addEventListener('click', function () {
   var lines = [];
   STATE.cycles.forEach(function (c) {
     var count = STATE.counts[c.id] || 0;
-    lines.push('**' + c.label + ' (' + count + '/' + c.capacity + ')**');
+    var ret = STATE.returningCounts[c.id] || 0;
+    lines.push('**' + c.label + ' (' + count + '/' + c.capacity + (ret ? ' +' + ret + ' returning' : '') + ')**');
     var rows = playerRows().filter(function (r) { return r.player.status === 'approved' && r.player.cycleId === c.id; });
     if (rows.length === 0) {
       lines.push('- (none yet)');
