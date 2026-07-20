@@ -103,6 +103,41 @@ test('advice: sub-ES5 pushes to ES5; air fail message', () => {
   assert.match(texts, /Island Store/);
 });
 
+test('advice: Kuruzo already at 5 stars -> congratulate, drop the "use Kuruzo" suggestion', () => {
+  const r = RC.compute({ basePct: 24, esLevel: 5, yourLvl: 103, enemyLvl: 103, yourTroops: 280, enemyTroops: 382, allAir: true, kuruzoStar: 5 });
+  const good = r.advice.filter(a => a.kind === 'good').map(a => a.text).join(' ');
+  const fixes = r.advice.filter(a => a.kind === 'fix').map(a => a.text).join(' ');
+  assert.match(good, /Kuruzo/);
+  assert.match(good, /5 stars/);
+  assert.ok(!/Kuruzo/.test(fixes), 'march fix must not suggest using Kuruzo when already at 5 stars');
+  assert.match(fixes, /March Size skills/, 'remaining march lever still surfaced');
+  assert.ok(!/—/.test(good + ' ' + fixes), 'no em dashes');
+});
+
+test('advice: Kuruzo present but under 5 stars -> nudge to 5 stars, still congratulate the pick', () => {
+  const r = RC.compute({ basePct: 24, esLevel: 5, yourLvl: 103, enemyLvl: 103, yourTroops: 280, enemyTroops: 382, allAir: true, kuruzoStar: 3 });
+  const good = r.advice.filter(a => a.kind === 'good').map(a => a.text).join(' ');
+  const fixes = r.advice.filter(a => a.kind === 'fix').map(a => a.text).join(' ');
+  assert.match(good, /Kuruzo/);
+  assert.match(good, /5 stars/, 'should nudge toward 5 stars');
+  assert.ok(!/Kuruzo as your 2nd hero/.test(fixes), 'march fix should not re-pitch Kuruzo when they already run it');
+});
+
+test('advice: no Kuruzo -> suggest adding it, no congrats line', () => {
+  const r = RC.compute({ basePct: 24, esLevel: 5, yourLvl: 103, enemyLvl: 103, yourTroops: 280, enemyTroops: 382, allAir: true });
+  const good = r.advice.filter(a => a.kind === 'good');
+  const fixes = r.advice.filter(a => a.kind === 'fix').map(a => a.text).join(' ');
+  assert.strictEqual(good.length, 0);
+  assert.match(fixes, /Kuruzo as your 2nd hero/);
+});
+
+test('parseReport: exposes Kuruzo star from the march heroList', () => {
+  const p1 = RC.parseReport(fixture('4760169710502699010'));
+  assert.strictEqual(p1.you.kuruzoStar, 5);   // report 1 runs 5-star Kuruzo
+  const p2 = RC.parseReport(fixture('4760173460764123139'));
+  assert.strictEqual(p2.you.kuruzoStar, null); // report 2 has no Kuruzo
+});
+
 test('null levels do not trigger a false level deficit', () => {
   const r = RC.compute({ basePct: 24, esLevel: 5, yourLvl: null, enemyLvl: null, yourTroops: 300, enemyTroops: 300, allAir: true });
   const level = r.checks.find(c => c.key === 'level');

@@ -211,6 +211,8 @@
     .notes .fix { display: flex; gap: .55rem; align-items: flex-start; font-size: .88rem; margin-bottom: .5rem; line-height: 1.4; }
     .notes .fix .dot { color: var(--accent); flex-shrink: 0; margin-top: .1rem; }
     .notes .fix.up .dot { color: var(--army); }
+    .notes .fix.good svg { color: var(--army); flex-shrink: 0; margin-top: .1rem; }
+    .notes .wins { border-bottom: 1px dashed var(--border); margin-bottom: .7rem; padding-bottom: .2rem; }
     .notes .upside { border-top: 1px dashed var(--border); margin-top: .6rem; padding-top: .6rem; }
     .pill {
       display: inline-block; background: var(--tag); border: 1px solid var(--border);
@@ -454,7 +456,7 @@ function updateThemeIcon() {
 }
 </script>
 
-<script src="rockfield-core.js?v=20260720"></script>
+<script src="rockfield-core.js?v=20260720b"></script>
 
 <script>
 // ANALYZE TAB LOGIC
@@ -483,7 +485,8 @@ async function analyzeReport(id){
   var c = RockfieldCore.compute({
     basePct: p.you.basePct, esLevel: p.you.esLevel,
     yourLvl: p.you.avgLvl, enemyLvl: p.enemy.avgLvl,
-    yourTroops: p.you.troops, enemyTroops: p.enemy.troops, allAir: p.you.allAir
+    yourTroops: p.you.troops, enemyTroops: p.enemy.troops, allAir: p.you.allAir,
+    kuruzoStar: p.you.kuruzoStar
   });
   renderScorecard(out, p, c);
 }
@@ -499,6 +502,7 @@ function renderScorecard(el, p, c){
   }).join('');
   var fixes = c.advice.filter(function(a){return a.kind==='fix';}).map(adviceRow).join('');
   var upside = c.advice.filter(function(a){return a.kind==='upside';}).map(adviceRow).join('');
+  var goods = c.advice.filter(function(a){return a.kind==='good';}).map(adviceRow).join('');
   el.innerHTML =
     matchupHTML(p) +
     '<div class="ba">'+
@@ -507,12 +511,18 @@ function renderScorecard(el, p, c){
       '<div class="ba-col max"><div class="ba-label">Ceiling (match march + level)</div><div class="big">~'+c.unitsCeiling+'<small> units</small></div><div class="sub2">'+fmtPct(c.ceilingPct)+' of each stack</div></div>'+
     '</div>'+
     '<div class="checks">'+checks+'</div>'+
-    '<div class="notes"><h4>Where you\'re losing damage</h4>'+(fixes||'<div class="fix">'+svgIcon('dot')+'<span>You are hitting maximum conditions for this matchup. Nice.</span></div>')+
+    '<div class="notes">'+
+      (goods ? '<div class="wins"><h4>What\'s working</h4>'+goods+'</div>' : '')+
+      '<h4>Where you\'re losing damage</h4>'+(fixes||'<div class="fix">'+svgIcon('dot')+'<span>You are hitting maximum conditions for this matchup. Nice.</span></div>')+
       '<div class="upside"><h4>Long-term upside</h4>'+upside+'</div></div>' +
     (p.actualPunisherDamage ? '<div class="rf-foot">Report confirms the opening hit landed.</div>' : '');
 }
 
-function adviceRow(a){ return '<div class="fix '+(a.kind==='upside'?'up':'')+'">'+svgIcon(a.kind==='upside'?'star':'arrow-r')+'<span>'+esc(a.text)+'</span></div>'; }
+function adviceRow(a){
+  var cls = a.kind==='upside'?'up':(a.kind==='good'?'good':'');
+  var ic = a.kind==='upside'?'star':(a.kind==='good'?'check':'arrow-r');
+  return '<div class="fix '+cls+'">'+svgIcon(ic)+'<span>'+esc(a.text)+'</span></div>';
+}
 
 function matchupHTML(p){
   return '<div class="matchup"><div class="side-you">'+
@@ -572,7 +582,7 @@ function svgIcon(kind){
       try{
         var p=RockfieldCore.parseReport(await fetchReport(ids[i]));
         if(!p.found){ rows.push({id:ids[i], err:'no Rockfield'}); continue; }
-        var c=RockfieldCore.compute({basePct:p.you.basePct,esLevel:p.you.esLevel,yourLvl:p.you.avgLvl,enemyLvl:p.enemy.avgLvl,yourTroops:p.you.troops,enemyTroops:p.enemy.troops,allAir:p.you.allAir});
+        var c=RockfieldCore.compute({basePct:p.you.basePct,esLevel:p.you.esLevel,yourLvl:p.you.avgLvl,enemyLvl:p.enemy.avgLvl,yourTroops:p.you.troops,enemyTroops:p.enemy.troops,allAir:p.you.allAir,kuruzoStar:p.you.kuruzoStar});
         var worst=c.checks.filter(function(ch){return !ch.ok;}).sort(function(a,b){return a.mult-b.mult;})[0];
         rows.push({id:ids[i], es:p.you.esLevel, eff:c.effectivePct, units:c.unitsNow, ceil:c.unitsCeiling, effi:c.efficiency, limit:worst?worst.label:'none'});
       }catch(e){ rows.push({id:ids[i], err:'load failed'}); }

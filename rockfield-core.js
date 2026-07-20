@@ -2,7 +2,7 @@
   'use strict';
 
   var CONST = {
-    HERO_ID: 312, SKILL_ID: 10312, ES_SKILL_ID: 20625,
+    HERO_ID: 312, SKILL_ID: 10312, ES_SKILL_ID: 20625, KURUZO_ID: 116,
     BASE_FLAT: 1400, WAR_FACTOR: 3, VALUE_TYPE: 10000,
     ES_TABLE: [0, 200, 400, 600, 800, 1100, 1600, 2200, 2900, 3700, 4600]
   };
@@ -80,7 +80,19 @@
     }
     if (!march.ok) {
       var pct = o.enemyTroops ? Math.round((1 - o.yourTroops / o.enemyTroops) * 100) : 0;
-      advice.push({ kind: 'fix', text: 'Your march is ' + pct + '% smaller than the enemy\'s, which is the whole march penalty. It scales 1 for 1, so any gain helps. Grow march size over time with Kuruzo as your 2nd hero at 5 stars and March Size skills (Rare + Normal) equipped.' });
+      var base = 'Your march is ' + pct + '% smaller than the enemy\'s, which is the whole march penalty. It scales 1 for 1, so any gain helps.';
+      // If they already run Kuruzo, do not re-pitch it here (a congrats line
+      // handles that below); the remaining lever is the March Size skills.
+      var lever = (o.kuruzoStar != null)
+        ? ' Keep growing march size with March Size skills (Rare + Normal) equipped.'
+        : ' Grow march size over time with Kuruzo as your 2nd hero at 5 stars and March Size skills (Rare + Normal) equipped.';
+      advice.push({ kind: 'fix', text: base + lever });
+    }
+    // Positive acknowledgement: they are already running Kuruzo, the march-size hero.
+    if (o.kuruzoStar != null && o.kuruzoStar >= 5) {
+      advice.push({ kind: 'good', text: 'You already run Kuruzo at 5 stars as your second hero, the right pick for march size. Nice work.' });
+    } else if (o.kuruzoStar != null) {
+      advice.push({ kind: 'good', text: 'Good call running Kuruzo for march size. Take it to 5 stars as your second hero for the full bonus.' });
     }
     var es = o.esLevel | 0;
     if (es < 5) {
@@ -148,6 +160,12 @@
       if (nas[k].skillId === CONST.ES_SKILL_ID) { es = nas[k].level || 0; break; }
     }
 
+    // Is Kuruzo (the march-size hero) in this march, and at what star?
+    var kuruzoStar = null, hl = (b[side].players[0].heroList) || [];
+    for (var h = 0; h < hl.length; h++) {
+      if (hl[h].id === CONST.KURUZO_ID) { kuruzoStar = hl[h].star != null ? hl[h].star : 0; break; }
+    }
+
     var youKey = side === 'attacker' ? 'attPutArmyV2' : 'defPutArmyV2';
     var enemyKey = side === 'attacker' ? 'defPutArmyV2' : 'attPutArmyV2';
     var youLegacy = side === 'attacker' ? 'attPutArmy' : 'defPutArmy';
@@ -166,7 +184,7 @@
       reportId: (json && json.reportId) || b.reportId || null,
       result: b.result, won: side === 'attacker' ? attackerWon : !attackerWon,
       fightType: b.fightType,
-      you: { war: hero.war || 0, esLevel: es, avgLvl: you.avgLvl, troops: you.troops, allAir: you.allAir, units: you.units, basePct: basePctFromWar(hero.war || 0) },
+      you: { war: hero.war || 0, esLevel: es, avgLvl: you.avgLvl, troops: you.troops, allAir: you.allAir, units: you.units, kuruzoStar: kuruzoStar, basePct: basePctFromWar(hero.war || 0) },
       enemy: { avgLvl: enemy.avgLvl, troops: enemy.troops, hasMecha: enemy.mecha > 0, units: enemy.units },
       actualPunisherDamage: dmg || null
     };
