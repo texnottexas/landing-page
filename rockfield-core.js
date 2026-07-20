@@ -17,15 +17,25 @@
     return 1 + CONST.ES_TABLE[clamp(esLevel | 0, 0, 10)] / CONST.VALUE_TYPE;
   }
 
+  // armyId encoding (matches battle-report.html resolveUnitIcon):
+  //   6-digit '50x'  = Mecha / Heavy Trooper (a type id, not branch+level)
+  //   6-digit '90x'  = Valhalla merged; 905/906 = Air Force, others Army/Navy
+  //   5-digit        = base troop; first digit 1=Army, 2=Navy, 3=Air Force
+  // For non-mecha units, level is always the last 3 digits.
   function decodeArmy(armyId) {
     var s = String(armyId);
-    if (s.length !== 6 || s[0] === '5') {
+    if (s.length === 6 && s.slice(0, 2) === '50') {
       return { branch: null, level: null, isAir: false, isMecha: true };
     }
-    var branch = s.slice(0, 3);
-    var level = parseInt(s.slice(3), 10);
-    var isAir = branch === '905' || branch === '906' || branch[0] === '3';
-    return { branch: branch, level: level, isAir: isAir, isMecha: false };
+    if (s.length === 6 && s.slice(0, 2) === '90') {
+      var tc = s.slice(0, 3);
+      return { branch: tc, level: parseInt(s.slice(-3), 10), isAir: tc === '905' || tc === '906', isMecha: false };
+    }
+    if (s.length === 5) {
+      var fd = s.charAt(0);
+      return { branch: fd, level: parseInt(s.slice(-3), 10), isAir: fd === '3', isMecha: false };
+    }
+    return { branch: null, level: null, isAir: false, isMecha: false };
   }
 
   function sumStacks(unit) {

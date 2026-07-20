@@ -24,6 +24,23 @@ test('decodeArmy: branch, level, air, mecha', () => {
   assert.strictEqual(RC.decodeArmy(507241).isMecha, true);
 });
 
+test('decodeArmy: 5-digit base troops (non-Valhalla) decode by first digit', () => {
+  // Air Force base troop, level = last 3 digits
+  assert.deepStrictEqual(RC.decodeArmy(30102), { branch: '3', level: 102, isAir: true, isMecha: false });
+  assert.deepStrictEqual(RC.decodeArmy(30103), { branch: '3', level: 103, isAir: true, isMecha: false });
+  // Army (1) and Navy (2) base troops are not air, not mecha
+  assert.deepStrictEqual(RC.decodeArmy(10103), { branch: '1', level: 103, isAir: false, isMecha: false });
+  assert.deepStrictEqual(RC.decodeArmy(20103), { branch: '2', level: 103, isAir: false, isMecha: false });
+});
+
+test('summarizeArmy: 5-digit air march is all-air with real troop count', () => {
+  const s = RC.summarizeArmy([{ armyId: 30102, s1: 152 }]);
+  assert.strictEqual(s.troops, 152);
+  assert.strictEqual(s.mecha, 0);
+  assert.strictEqual(s.avgLvl, 102);
+  assert.strictEqual(s.allAir, true);
+});
+
 test('summarizeArmy excludes mecha from troops + level', () => {
   const s = RC.summarizeArmy([{ armyId: 905103, s0: 100, s1: 80 }, { armyId: 507241, s0: 25 }]);
   assert.strictEqual(s.troops, 180);
@@ -143,6 +160,39 @@ test('parseReport: ES0 report', () => {
   assert.strictEqual(p.you.war, 40392);
   const r = RC.compute({ basePct: p.you.basePct, esLevel: p.you.esLevel, yourLvl: p.you.avgLvl, enemyLvl: p.enemy.avgLvl, yourTroops: p.you.troops, enemyTroops: p.enemy.troops, allAir: p.you.allAir });
   assert.strictEqual(r.unitsNow, 63);
+});
+
+test('parseReport: 5-digit air march (regression - was misread as mecha, 0 units)', () => {
+  const p = RC.parseReport(fixture('4760169710502699010'));
+  assert.strictEqual(p.found, true);
+  assert.strictEqual(p.side, 'attacker');
+  assert.strictEqual(p.you.war, 31294);
+  assert.strictEqual(p.you.esLevel, 4);
+  assert.strictEqual(p.you.troops, 152);
+  assert.strictEqual(p.you.allAir, true);
+  assert.strictEqual(Math.round(p.you.avgLvl), 102);
+  assert.strictEqual(p.enemy.troops, 320);
+  assert.strictEqual(p.enemy.hasMecha, true);
+  assert.strictEqual(Math.round(p.enemy.avgLvl), 103);
+
+  const r = RC.compute({
+    basePct: p.you.basePct, esLevel: p.you.esLevel,
+    yourLvl: p.you.avgLvl, enemyLvl: p.enemy.avgLvl,
+    yourTroops: p.you.troops, enemyTroops: p.enemy.troops, allAir: p.you.allAir
+  });
+  assert.ok(r.unitsNow > 0, 'units defeated must be > 0 for an all-air march');
+  assert.ok(r.checks.find(c => c.key === 'air').ok, 'air check must pass');
+});
+
+test('parseReport: second 5-digit air march (396 troops)', () => {
+  const p = RC.parseReport(fixture('4760173460764123139'));
+  assert.strictEqual(p.you.war, 43292);
+  assert.strictEqual(p.you.esLevel, 5);
+  assert.strictEqual(p.you.troops, 396);
+  assert.strictEqual(p.you.allAir, true);
+  assert.strictEqual(p.enemy.troops, 349);
+  const r = RC.compute({ basePct: p.you.basePct, esLevel: p.you.esLevel, yourLvl: p.you.avgLvl, enemyLvl: p.enemy.avgLvl, yourTroops: p.you.troops, enemyTroops: p.enemy.troops, allAir: p.you.allAir });
+  assert.ok(r.unitsNow > 0);
 });
 
 test('parseReport: missing Rockfield', () => {
