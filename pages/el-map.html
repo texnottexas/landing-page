@@ -2,7 +2,7 @@
 <html lang="en" data-theme="dark"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-src https://link.excalidraw.com; base-uri 'self'; form-action 'none'; object-src 'none'; manifest-src 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://translate.googleapis.com https://www.gstatic.com; connect-src 'self' https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; img-src 'self' data: https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://www.google.com https://fonts.gstatic.com; frame-src https://link.excalidraw.com https://translate.google.com; font-src https://fonts.gstatic.com; base-uri 'self'; form-action 'none'; object-src 'none'; manifest-src 'self';">
 <link rel="manifest" href="/manifest.json">
 <title>Zone 1 Map · Server 2864</title>
 <style>
@@ -24,11 +24,11 @@
   .wrap { max-width: 960px; margin: 0 auto; padding: 16px 14px 60px; }
   .embed { background:#161b22; border:1px solid #30363d; border-radius:10px; overflow:hidden; height:72vh; min-height:420px; margin-bottom:22px; }
   .embed iframe { width:100%; height:100%; border:none; display:block; }
-  .today-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .today-head { display:flex; align-items:center; gap:10px; max-width:640px; margin:0 auto 10px; }
   .today-title { font-size:.72rem; letter-spacing:1.5px; color:#8b949e; font-weight:700; }
   .calpill { display:inline-flex; align-items:center; gap:6px; border:1px solid #30363d; border-radius:20px; padding:3px 12px; color:#79c0ff; text-decoration:none; font-size:.76rem; white-space:nowrap; margin-left:auto; transition:border-color .15s; }
   .calpill:hover { border-color:#79c0ff; }
-  .grid.dayview { display:block; max-width:640px; margin:0; }
+  .grid.dayview { display:block; max-width:640px; margin:0 auto; }
   .grid.dayview .day { display:none; }
   .grid.dayview .day.current { display:block; }
   .day { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:14px; border-top:3px solid #30363d; }
@@ -62,6 +62,24 @@
   .cd.upcoming { color:#79c0ff; background:#0c2137; }
   .cd.live { color:#3fb950; background:#0d2818; }
   .cd.done { color:#8b949e; background:#21262d; }
+  /* Google Translate */
+  body { top:0 !important; }
+  body > .skiptranslate { display:none !important; }
+  #google_translate_element { position:absolute; left:-9999px; opacity:0; pointer-events:none; }
+  .lang-btn { background:#1c2128; border:1px solid #30363d; color:#8b949e; border-radius:8px; padding:.38rem .7rem; cursor:pointer; font-size:.8rem; display:flex; align-items:center; gap:.35rem; font-family:inherit; font-weight:600; letter-spacing:.02em; white-space:nowrap; transition:border-color .2s, color .2s; }
+  .lang-btn:hover { border-color:#79c0ff; color:#e6edf3; }
+  .lang-modal-overlay { display:none; position:fixed; inset:0; z-index:400; background:rgba(0,0,0,.6); align-items:center; justify-content:center; padding:1rem; }
+  .lang-modal-overlay.active { display:flex; }
+  .lang-modal { background:#1c2128; border:1px solid #30363d; border-radius:14px; padding:1.25rem; max-width:400px; width:100%; max-height:80vh; overflow-y:auto; box-shadow:0 18px 50px -18px rgba(0,0,0,.85); }
+  .lang-modal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem; }
+  .lang-modal-title { font-size:1rem; font-weight:700; color:#e6edf3; }
+  .lang-modal-close { background:none; border:none; color:#8b949e; cursor:pointer; font-size:1.2rem; padding:.2rem; line-height:1; }
+  .lang-modal-close:hover { color:#e6edf3; }
+  .lang-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:.5rem; }
+  .lang-option { display:flex; align-items:center; gap:.5rem; padding:.5rem .65rem; border-radius:8px; border:1px solid transparent; background:#0d1117; cursor:pointer; font-size:.82rem; color:#e6edf3; font-family:inherit; transition:border-color .15s, background .15s; }
+  .lang-option:hover, .lang-option.active { border-color:#79c0ff; background:#1c2128; }
+  .lang-option .lang-flag { font-size:1.1rem; }
+  .lang-option .lang-name { flex:1; }
 </style></head><body>
 <header>
   <div class="header-left">
@@ -90,6 +108,11 @@
       </div>
     </div>
   </div>
+  <button class="lang-btn notranslate" id="langBtn" aria-label="Change language">
+    <span id="langFlag">&#127482;&#127480;</span>
+    <span id="langCode">/en</span>
+  </button>
+  <div id="google_translate_element"></div>
 </header>
 <div class="wrap">
 <div class="embed"><iframe src="https://link.excalidraw.com/readonly/RYbin9mPQMFo0GCxCx2r?darkMode=true" title="Zone 1 map" allowfullscreen></iframe></div>
@@ -224,4 +247,118 @@ document.addEventListener('click', function (e) {
   if (pop && !pop.contains(e.target) && !e.target.closest('#bnpBtn')) pop.classList.remove('open');
 });
 </script>
+<div class="lang-modal-overlay" id="langModal">
+  <div class="lang-modal">
+    <div class="lang-modal-header">
+      <span class="lang-modal-title">Select Language</span>
+      <button class="lang-modal-close" id="langModalClose" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="lang-grid" id="langGrid"></div>
+  </div>
+</div>
+<script>
+(function() {
+  var LANGUAGES = [
+    { code: 'en', flag: '\u{1F1FA}\u{1F1F8}', name: 'English' },
+    { code: 'es', flag: '\u{1F1EA}\u{1F1F8}', name: 'Español' },
+    { code: 'fr', flag: '\u{1F1EB}\u{1F1F7}', name: 'Français' },
+    { code: 'de', flag: '\u{1F1E9}\u{1F1EA}', name: 'Deutsch' },
+    { code: 'pt', flag: '\u{1F1E7}\u{1F1F7}', name: 'Português' },
+    { code: 'it', flag: '\u{1F1EE}\u{1F1F9}', name: 'Italiano' },
+    { code: 'ru', flag: '\u{1F1F7}\u{1F1FA}', name: 'Русский' },
+    { code: 'ja', flag: '\u{1F1EF}\u{1F1F5}', name: '日本語' },
+    { code: 'ko', flag: '\u{1F1F0}\u{1F1F7}', name: '한국어' },
+    { code: 'zh-CN', flag: '\u{1F1E8}\u{1F1F3}', name: '中文' },
+    { code: 'ar', flag: '\u{1F1F8}\u{1F1E6}', name: 'العربية' },
+    { code: 'tr', flag: '\u{1F1F9}\u{1F1F7}', name: 'Türkçe' },
+    { code: 'vi', flag: '\u{1F1FB}\u{1F1F3}', name: 'Tiếng Việt' },
+    { code: 'th', flag: '\u{1F1F9}\u{1F1ED}', name: 'ไทย' },
+    { code: 'hi', flag: '\u{1F1EE}\u{1F1F3}', name: 'हिन्दी' },
+    { code: 'pl', flag: '\u{1F1F5}\u{1F1F1}', name: 'Polski' },
+    { code: 'uk', flag: '\u{1F1FA}\u{1F1E6}', name: 'Українська' },
+    { code: 'id', flag: '\u{1F1EE}\u{1F1E9}', name: 'Indonesia' }
+  ];
+  window._gtLoaded = false;
+  function getLangData(code) {
+    var base = code.split('-')[0];
+    for (var i = 0; i < LANGUAGES.length; i++) { if (LANGUAGES[i].code === code || LANGUAGES[i].code === base) return LANGUAGES[i]; }
+    return null;
+  }
+  window.updateLangBtn = function(code) {
+    var data = getLangData(code);
+    var flagEl = document.getElementById('langFlag'); var codeEl = document.getElementById('langCode');
+    if (data && flagEl && codeEl) { flagEl.textContent = data.flag; codeEl.textContent = '/' + data.code; }
+    else if (flagEl && codeEl) { flagEl.textContent = '\u{1F310}'; codeEl.textContent = '/' + code; }
+    var options = document.querySelectorAll('.lang-option');
+    for (var i = 0; i < options.length; i++) options[i].classList.toggle('active', options[i].getAttribute('data-lang') === code);
+  };
+  window.detectCurrentLang = function() {
+    var match = document.cookie.match(/googtrans=\/en\/([a-zA-Z-]{2,10})/);
+    if (match && match[1]) return match[1];
+    return 'en';
+  };
+  function applyLangToCombo(code, delay, onSuccess) {
+    var attempts = 0;
+    var poll = setInterval(function() {
+      var combo = document.querySelector('.goog-te-combo');
+      if (combo) { combo.value = code; combo.dispatchEvent(new Event('change')); clearInterval(poll); window.updateLangBtn(code); if (onSuccess) onSuccess(); }
+      if (++attempts > 30) clearInterval(poll);
+    }, delay || 200);
+  }
+  function selectLanguage(code) {
+    if (code === 'en') { restoreEnglish(); return; }
+    try { sessionStorage.setItem('pendingLang', code); } catch(e) {}
+    applyLangToCombo(code, 200, closeLangModal);
+  }
+  function restoreEnglish() {
+    try { sessionStorage.removeItem('pendingLang'); } catch(e) {}
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax; Secure';
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.2864tw.com; SameSite=Lax; Secure';
+    closeLangModal(); location.reload();
+  }
+  var langModalEl = document.getElementById('langModal');
+  function openLangModal() { if (langModalEl) langModalEl.classList.add('active'); }
+  function closeLangModal() { if (langModalEl) langModalEl.classList.remove('active'); }
+  var grid = document.getElementById('langGrid');
+  if (grid) {
+    var detected = window.detectCurrentLang();
+    for (var i = 0; i < LANGUAGES.length; i++) {
+      var l = LANGUAGES[i];
+      var btn = document.createElement('button');
+      btn.className = 'lang-option' + (l.code === detected ? ' active' : '');
+      btn.setAttribute('data-lang', l.code);
+      var flagSpan = document.createElement('span'); flagSpan.className = 'lang-flag'; flagSpan.textContent = l.flag;
+      var nameSpan = document.createElement('span'); nameSpan.className = 'lang-name'; nameSpan.textContent = l.name;
+      btn.appendChild(flagSpan); btn.appendChild(nameSpan);
+      btn.addEventListener('click', (function(code) { return function() { selectLanguage(code); }; })(l.code));
+      grid.appendChild(btn);
+    }
+    window.updateLangBtn(detected);
+  }
+  var langBtn = document.getElementById('langBtn');
+  if (langBtn) langBtn.addEventListener('click', openLangModal);
+  var langModalClose = document.getElementById('langModalClose');
+  if (langModalClose) langModalClose.addEventListener('click', closeLangModal);
+  if (langModalEl) langModalEl.addEventListener('click', function(e) { if (e.target === langModalEl) closeLangModal(); });
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && langModalEl && langModalEl.classList.contains('active')) { closeLangModal(); e.stopPropagation(); } });
+  setTimeout(function() { if (!window._gtLoaded) { var btn = document.getElementById('langBtn'); if (btn) { btn.style.opacity = '0.5'; btn.style.cursor = 'default'; btn.title = 'Translation unavailable'; btn.removeEventListener('click', openLangModal); } } }, 15000);
+})();
+function googleTranslateElementInit() {
+  window._gtLoaded = true;
+  new google.translate.TranslateElement({ pageLanguage: 'en', autoDisplay: false }, 'google_translate_element');
+  var pendingLang = null;
+  try { pendingLang = sessionStorage.getItem('pendingLang'); sessionStorage.removeItem('pendingLang'); } catch(e) {}
+  if (pendingLang) {
+    var a = 0; var poll = setInterval(function () { var c = document.querySelector('.goog-te-combo'); if (c) { c.value = pendingLang; c.dispatchEvent(new Event('change')); clearInterval(poll); window.updateLangBtn(pendingLang); } if (++a > 30) clearInterval(poll); }, 250);
+  } else {
+    try {
+      var dismissed = localStorage.getItem('translate-dismissed');
+      if (!dismissed) { var lang = (navigator.language || navigator.userLanguage || 'en').split('-')[0]; if (lang !== 'en') { var a2 = 0; var p2 = setInterval(function () { var c = document.querySelector('.goog-te-combo'); if (c) { c.value = lang; c.dispatchEvent(new Event('change')); clearInterval(p2); window.updateLangBtn(lang); } if (++a2 > 30) clearInterval(p2); }, 250); } }
+    } catch(e) {}
+    var detected = window.detectCurrentLang();
+    if (detected !== 'en') window.updateLangBtn(detected);
+  }
+}
+</script>
+<script src="https://translate.googleapis.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
 </body></html>
