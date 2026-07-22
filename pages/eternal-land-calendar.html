@@ -149,7 +149,8 @@
 <div class="stagebar"><div class="seg prep" data-stage="0" role="button" tabindex="0" style="flex:3"><b>Preparation</b><span>Jul 19 – Jul 22</span></div><div class="seg s1" data-stage="1" role="button" tabindex="0" style="flex:3"><b>Perimeter</b><span>Jul 22 – Jul 25</span></div><div class="seg s2" data-stage="2" role="button" tabindex="0" style="flex:4"><b>Entering</b><span>Jul 25 – Jul 29</span></div><div class="seg s3" data-stage="3" role="button" tabindex="0" style="flex:3"><b>Deep</b><span>Jul 29 – Aug 1</span></div><div class="seg s4" data-stage="4" role="button" tabindex="0" style="flex:5"><b>Battle</b><span>Aug 1 – Aug 6</span></div><div class="seg s5" data-stage="5" role="button" tabindex="0" style="flex:2"><b>Rewards</b><span>Aug 6 – Aug 8</span></div></div>
 <div class="rhythms"><div class="rhy-title">DAILY SCHEDULE</div>
   <div class="rhyrow"><svg class="ri" viewBox="0 0 24 24"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"/><path d="M13 19l6-6"/><path d="M16 16l4 4"/><path d="M19 21l2-2"/></svg>Ark Contest <b id="rhyArk"></b><span class="rhycd" id="cdArk"></span></div>
-  <div class="rhyrow"><svg class="ri" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-2.6-6.4"/><path d="M21 3v6h-6"/></svg>Day reset <b id="rhyReset"></b><span class="rhycd" id="cdReset"></span></div>
+  <div class="rhyrow"><svg class="ri" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-2.6-6.4"/><path d="M21 3v6h-6"/></svg>EL Reset <b id="rhyReset"></b><span class="rhycd" id="cdReset"></span></div>
+  <div class="rhyrow"><svg class="ri" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg>Standard Reset <b id="rhyStd"></b><span class="rhycd" id="cdStd"></span></div>
   <div class="rhyrow"><svg class="ri" viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20"/><path d="M12 21L8 9l4-6 4 6z"/></svg>Resource Areas <b id="rhySra"></b><span class="rhycd" id="cdSra"></span></div>
 </div>
 <div class="viewbar"><button class="navbtn" id="prevDay" aria-label="Previous day"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button><div class="viewlabel" id="viewLabel"></div><button class="navbtn" id="nextDay" aria-label="Next day"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button><button class="togglebtn" id="viewToggle">Show all days</button></div>
@@ -260,6 +261,7 @@
 var MILESTONES = [["Preparation Stage begins",1784469600000],["Prep Day 2: The Sentries",1784556000000],["Prep Day 3: Ultimate Arms Race",1784642400000],["Eternal Land map opens",1784728800000],["Expedition Outposts + first Ark battle",1784815200000],["Expedition Bases activate",1784901600000],["Lv.1 Gates + first Special Resource Areas",1784988000000],["Military Bases activate",1785160800000],["Military Fortresses activate",1785247200000],["Lv.2 Gates + Deep stage",1785333600000],["Research Facilities activate",1785506400000],["Lv.3 Gates + Battle stage",1785592800000],["ETERNAL CITY activates",1785679200000],["Claim Rewards stage",1786024800000],["Event ends",1786197600000]];
 var ARK_FIRST = 1784822400000, ARK_LAST = 1785945600000, DAY = 86400000, FIGHT = 3600000;
 var RESET_START = 1784469600000, EVENT_END = 1786197600000, SRA_FIRST = 1784988000000, SRA_LAST = 1785938400000;
+var STD_START = 1784476800000;  // 12:00 PM ET daily server reset, runs year-round
 var LOCAL_FMT = { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
 function fmt(ms) {
   if (ms < 0) ms = 0;
@@ -315,6 +317,11 @@ function tick() {
     if (nb > EVENT_END) return setCd('cdReset', { label: 'event over', live: false });
     setCd('cdReset', { label: 'in ' + fmt(nb - now), live: false });
   })();
+  (function () {
+    var since = now - STD_START;
+    var nb = since <= 0 ? STD_START : STD_START + Math.ceil(since / DAY) * DAY;
+    setCd('cdStd', { label: 'in ' + fmt(nb - now), live: false });
+  })();
 }
 tick();
 setInterval(tick, 1000);
@@ -327,6 +334,7 @@ document.querySelectorAll('.preptime').forEach(function (el) {
 });
 document.getElementById('rhyArk').textContent = lt(ARK_FIRST) + '–' + lt(ARK_FIRST + FIGHT);
 document.getElementById('rhyReset').textContent = lt(RESET_MS);
+document.getElementById('rhyStd').textContent = lt(STD_START);
 document.getElementById('rhySra').textContent = lt(RESET_MS) + '–' + lt(RESET_MS + 12 * 3600000);
 
 // ---- reminders modal ----
