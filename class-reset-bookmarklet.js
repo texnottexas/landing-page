@@ -15,7 +15,7 @@
   var C = {
     VOUCHER: 1600031, SPEEDUP: 550001, VOUCHER_SHOP: 100014, VOUCHER_COST: 5000,
     RESET_TAB: 1,
-    CMD: { READ: 1318, LEARN: 1314, RESET: 1315, SPEED: 1316, SAVE_DEF: 1321, EQUIP: 897, BUY: 818 }
+    CMD: { READ: 1318, LEARN: 1314, RESET: 1315, SPEED: 1316, SAVE_DEF: 1321, EQUIP: 897, BUY: 818, SWITCH_PRESET: 1345 }
   };
   var req = window.__require, NET, PC, ud, HC, DATA;
   function resolve() {
@@ -36,7 +36,7 @@
     HC.getHaveHeroList().forEach(function (h) {
       [[h._firstBuffList, 1], [h._secondBuffList, 2]].forEach(function (pr) {
         var slot = (pr[0] || [])[0];
-        if (slot && slot.skillId) { var itemId = null; try { itemId = HC.getItemIdByHeroSkill(slot.skillId, slot.level); } catch (e) {} extra.push({ heroId: h._id, skillsIndex: pr[1], skillId: slot.skillId, level: slot.level, itemId: itemId }); }
+        if (slot && slot.skillId) { var itemId = null; try { itemId = HC.getItemIdByHeroSkill(slot.skillId, slot.level); } catch (e) {} extra.push({ heroId: h._id, activePreset: h._skillsIndex, skillsIndex: pr[1], skillId: slot.skillId, level: slot.level, itemId: itemId }); }
       });
     });
     return {
@@ -64,17 +64,24 @@
     var targets = buildTargets(backupTree);
     var groups = Object.keys(targets).map(Number).filter(g => learnedOff(g) < offOf(targets[g])).sort((a, b) => a - b);
     var totalToDo = groups.length, done = [];
+    // Response-driven: sync local state from each learn/speedup response (PC.updateServerData)
+    // instead of a full 1318 refetch every step. Falls back to refresh() only when a response
+    // lacks the expected data or a learn appears blocked (prereq).
+    function sync(r) { if (r && (r.endowments || r.endowmentStudy)) { try { PC.updateServerData(r); return true; } catch (e) {} } return false; }
     async function completeGroup(g, targetId) {
       var toff = offOf(targetId);
-      for (var i = 0; i < 25; i++) {
-        await refresh();
+      for (var i = 0; i < 30; i++) {
         var st = studying(g);
-        if (st) { var rem = st.time - DATA.ServerTime; if (rem > 0) { var amt = Math.min(50000, Math.ceil(rem / 300) + 2); await send(C.CMD.SPEED, { isUseGold: 0, items: [{ itemid: C.SPEEDUP, amount: amt }], id: g }); continue; } else { await delay(250); continue; } }
+        if (st) {
+          var rem = st.time - DATA.ServerTime;
+          if (rem > 0) { var amt = Math.min(50000, Math.ceil(rem / 300) + 2); var sr = await send(C.CMD.SPEED, { isUseGold: 0, items: [{ itemid: C.SPEEDUP, amount: amt }], id: g }); if (!sync(sr)) await refresh(); continue; }
+          else { await refresh(); continue; }
+        }
         if (learnedOff(g) >= toff) return true;
         var before = learnedOff(g);
-        await send(C.CMD.LEARN, { id: g, useGold: 0 });
-        await delay(120); await refresh();
-        if (!studying(g) && learnedOff(g) <= before) return false;
+        var lr = await send(C.CMD.LEARN, { id: g, useGold: 0 });
+        if (!sync(lr)) await refresh();
+        if (!studying(g) && learnedOff(g) <= before) { await refresh(); if (!studying(g) && learnedOff(g) <= before) return false; }
       }
       return learnedOff(g) >= toff;
     }
@@ -100,15 +107,35 @@
     await delay(400); return true;
   }
 
+  function heroById(id) { return HC.getHaveHeroList().find(function (x) { return x._id === id; }); }
+  function buffSkill(id, p) { var h = heroById(id); var s = h ? ((p === 2 ? h._secondBuffList : h._firstBuffList) || [])[0] : null; return (s && s.skillId) ? s.skillId : 0; }
+  // Switch a hero's active preset and POLL until it actually lands (1345 is a server round-trip).
+  async function switchPreset(id, p) {
+    await send(C.CMD.SWITCH_PRESET, { heroId: id, skillsIndex: p });
+    for (var i = 0; i < 20; i++) { var h = heroById(id); if (h && h._skillsIndex === p) return true; await delay(70); }
+    var h2 = heroById(id); return !!(h2 && h2._skillsIndex === p);
+  }
   async function reapplyExtra(ui, extra) {
+    // Buff-slot equip (897) only works on the ACTIVE preset. Switch (1345) + poll until it
+    // lands, equip, verify, retry up to 3x; then restore each hero's original active preset.
     var done = 0, failed = [];
-    for (var i = 0; i < extra.length; i++) {
-      var e = extra[i], itemId = e.itemId; if (!itemId) { try { itemId = HC.getItemIdByHeroSkill(e.skillId, e.level); } catch (_) {} }
+    var origActive = {};
+    extra.forEach(function (e) { if (origActive[e.heroId] === undefined) origActive[e.heroId] = (e.activePreset || 1); });
+    var list = extra.slice().sort(function (a, b) { return (a.heroId - b.heroId) || (a.skillsIndex - b.skillsIndex); });
+    for (var i = 0; i < list.length; i++) {
+      var e = list[i], itemId = e.itemId; if (!itemId) { try { itemId = HC.getItemIdByHeroSkill(e.skillId, e.level); } catch (_) {} }
       if (!itemId) { failed.push(e); continue; }
-      var r = await send(C.CMD.EQUIP, { heroId: e.heroId, index: 0, itemId: itemId, isBuffSlot: true, skillsIndex: e.skillsIndex });
-      if (r === null) failed.push(e); else done++;
-      await delay(150); ui.sub.textContent = 'Reapplying extra skills ' + done + '/' + extra.length;
+      var ok = false;
+      for (var attempt = 0; attempt < 3 && !ok; attempt++) {
+        await switchPreset(e.heroId, e.skillsIndex);
+        await send(C.CMD.EQUIP, { heroId: e.heroId, index: 0, itemId: itemId, isBuffSlot: true, skillsIndex: e.skillsIndex });
+        await delay(280);
+        if (buffSkill(e.heroId, e.skillsIndex) === e.skillId) ok = true;
+      }
+      if (ok) done++; else failed.push(e);
+      ui.sub.textContent = 'Reapplying extra skills ' + done + '/' + list.length;
     }
+    for (var hid in origActive) { await switchPreset(+hid, origActive[hid]); }
     return { done: done, failed: failed };
   }
 
@@ -162,7 +189,7 @@
         line(ui, 'Resetting...'); await doReset();
         var rt = await retrain(ui, s.tree); line(ui, 'Retrain: ' + rt.done + '/' + rt.total + ' groups.');
         line(ui, 'Reapplying base defense...'); await reapplyDefense(s.defense);
-        if (s.extraSkills.length) { var rx = await reapplyExtra(ui, s.extraSkills); line(ui, 'Extra skills: ' + rx.done + '/' + s.extraSkills.length + (rx.failed.length ? ' (' + rx.failed.length + ' failed)' : '')); }
+        if (s.extraSkills.length) { var rx = await reapplyExtra(ui, s.extraSkills); line(ui, 'Extra skills: ' + rx.done + '/' + s.extraSkills.length + ' reapplied.'); if (rx.failed.length) line(ui, 'Could NOT reapply (equip manually): ' + rx.failed.map(function (f) { return 'hero ' + f.heroId + ' preset ' + f.skillsIndex + ' skill ' + f.skillId; }).join('; ')); }
         var v = await verify(s); ui.sub.textContent = '';
         if (v.treeOk && v.defOk && v.extraMissing === 0) { ui.hdr.style.color = '#3fb950'; line(ui, '\nDONE. Tree, defense' + (v.extraTotal ? ', and ' + v.extraTotal + ' extra skills' : '') + ' restored.'); }
         else { ui.hdr.style.color = '#d29922'; line(ui, '\nPARTIAL. tree=' + v.treeOk + ' defense=' + v.defOk + ' extraMissing=' + v.extraMissing + '/' + v.extraTotal + '. Backup is on your clipboard.'); }
