@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta name="robots" content="noindex, nofollow">
+<title>2864</title>
+<style>
+  :root{
+    --bg:#0d1117; --surface:#161b22; --card:#1c2128; --border:#30363d;
+    --text:#e6edf3; --muted:#8b949e; --accent:#79c0ff; --green:#3fb950; --red:#f85149; --yellow:#d29922;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;-webkit-text-size-adjust:100%}
+  .wrap{max-width:640px;margin:0 auto;padding:22px 16px 60px}
+  h1{font-size:1.15rem;font-weight:700;color:var(--accent);margin:.2rem 0 1rem}
+  .hidden{display:none!important}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px}
+  .muted{color:var(--muted);font-size:.85rem;line-height:1.5}
+  label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:.35rem}
+  input[type=password],input[type=text]{width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:12px 12px;font-size:16px;box-sizing:border-box}
+  .btn{margin-top:12px;padding:12px 18px;border:0;border-radius:9px;font-size:15px;font-weight:700;color:#0d1117;background:var(--green);cursor:pointer}
+  .btn.secondary{background:var(--card);color:var(--text);border:1px solid var(--border)}
+  .err{color:var(--red);font-size:.82rem;margin-top:.5rem;min-height:1.1em}
+  .ok{color:var(--green);font-size:.82rem;margin-top:.5rem}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px}
+  .card h3{margin:0 0 .35rem;font-size:.98rem;color:var(--text)}
+  .card .d{color:var(--muted);font-size:.8rem;line-height:1.45;margin-bottom:.6rem}
+  .card textarea{width:100%;min-height:3.4em;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:9px;font-family:ui-monospace,Menlo,monospace;font-size:.66rem;resize:vertical;box-sizing:border-box}
+  .card .row{display:flex;align-items:center;gap:.6rem;margin-top:.5rem;flex-wrap:wrap}
+  .copy{padding:9px 14px;border:0;border-radius:7px;font-size:.82rem;font-weight:700;color:#0d1117;background:var(--accent);cursor:pointer}
+  .hint{font-size:.72rem;color:var(--muted)}
+  .whoami{font-size:.8rem;color:var(--muted);margin-bottom:14px}
+  .whoami b{color:var(--text)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Gate 1: local password -->
+  <div id="g-pass" class="panel hidden">
+    <h1>Restricted</h1>
+    <label for="pw">Access code</label>
+    <input id="pw" type="password" autocomplete="off" inputmode="text" placeholder="Enter code">
+    <div><button id="pwBtn" class="btn">Unlock</button></div>
+    <div id="pwErr" class="err"></div>
+  </div>
+
+  <!-- Gate 2: S2864 UID verification -->
+  <div id="g-id" class="panel hidden">
+    <h1>Verify your account</h1>
+    <div class="muted" style="margin-bottom:12px">These tools are for Server 2864 members. Enter your Top War UID to continue. Your UID is hashed in your browser and never sent anywhere.</div>
+    <label for="uid">Top War UID</label>
+    <input id="uid" type="text" autocomplete="off" inputmode="numeric" placeholder="e.g. 7550807444272">
+    <div><button id="uidBtn" class="btn">Verify</button></div>
+    <div id="uidMsg" class="err"></div>
+  </div>
+
+  <!-- Gate 3: tools -->
+  <div id="g-tools" class="hidden">
+    <h1>Power User Tools</h1>
+    <div id="whoami" class="whoami"></div>
+    <div class="muted" style="margin-bottom:16px">Save each link as a bookmark (create a bookmark, then paste the link as its URL), then tap it while the Top War game page is open. On desktop you can drag the button to your bookmarks bar.</div>
+    <div id="cards"></div>
+    <div style="margin-top:8px"><button id="signout" class="btn secondary">Sign out of this device</button></div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var LS_PW = 'rr_unlocked_v1', LS_ID = 'rr_id_v1', PASSWORD = 'fkboats';
+  var ROSTER_URL = 'player-data.json';
+  var $ = function(id){ return document.getElementById(id); };
+  var show = function(id){ $(id).classList.remove('hidden'); };
+  var hide = function(id){ $(id).classList.add('hidden'); };
+
+  // --- bookmarklets (Class Reset first) ---
+  var LOADER = function(name){ return "javascript:(function(){var s=document.createElement('script');s.src='https://2864tw.com/" + name + ".js?_='+Date.now();s.onerror=function(){alert('Bookmarklet load failed. Check internet + try again.');};document.body.appendChild(s);})();"; };
+  var TOOLS = [
+    { title: 'Class Talent Reset + Retrain', file: 'class-reset-bookmarklet',
+      desc: 'One tap resets your Class Talent (profession) tree and retrains it back to the same point using 5 minute speedup items only, then restores your base defense and hero extra skill slots. Works for Combat Elite and Mechanical Master. Buys the voucher only after you press Confirm, and copies a full backup to your clipboard first.' },
+    { title: 'Skill Dismantle (standalone)', file: 'dismantle-bookmarklet',
+      desc: 'The bulk skill dismantle wizard. Use this when you only want to scrap skill items and skip the full snapshot extract.' },
+    { title: 'Hunting Guild Bulk Merge (standalone)', file: 'merge-bookmarklet',
+      desc: 'Runs the Hunting Guild Merge in a loop and auto handles every treasure popup it rolls (Repair Equipment, Treasure Wheel, Treasure Store, Treasure Guard). Pick how many merges and your Treasure Guard policy, then watch it go. Summoned guards spawn on your world map to fight within the hour.' },
+    { title: 'Alliance Defense Wave Skipper (standalone)', file: 'defense-skip-bookmarklet',
+      desc: 'Auto runs the Skip and Confirm loop on the Alliance Defense fortress so you can fast forward to a target wave. Click the defender monster to open its panel, run this, pick your stop wave, and watch it go. Each skip spends the normal in game skip cost, and you can stop after any wave.' }
+  ];
+
+  // --- crypto: siteKey = sha256(uid) first 16 hex (matches the armory) ---
+  async function sha256Hex(s){
+    var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(s)));
+    return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
+  }
+  async function siteKeyFromUid(uid){ return (await sha256Hex(String(uid).trim())).slice(0,16); }
+
+  var _roster = null;
+  async function getRoster(){
+    if (_roster) return _roster;
+    var r = await fetch(ROSTER_URL, { cache: 'no-cache' });
+    var arr = await r.json();
+    _roster = {};
+    (arr || []).forEach(function(p){ if (p && p.siteKey) _roster[p.siteKey] = p; });
+    return _roster;
+  }
+  async function rosterMember(siteKey){
+    if (!siteKey) return null;
+    try { var r = await getRoster(); return r[siteKey] || null; } catch(e){ return null; }
+  }
+
+  // --- render tools ---
+  function renderTools(member){
+    $('whoami').innerHTML = 'Verified: <b>' + escapeHtml(member && member.name ? member.name : 'S2864 member') + '</b>' + (member && member.alliance ? (' (' + escapeHtml(member.alliance) + ')') : '');
+    var host = $('cards'); host.innerHTML = '';
+    TOOLS.forEach(function(t){
+      var url = LOADER(t.file);
+      var card = document.createElement('div'); card.className = 'card';
+      var h = document.createElement('h3'); h.textContent = t.title; card.appendChild(h);
+      var d = document.createElement('div'); d.className = 'd'; d.textContent = t.desc; card.appendChild(d);
+      var ta = document.createElement('textarea'); ta.readOnly = true; ta.value = url;
+      ta.addEventListener('click', function(){ try{ ta.select(); ta.setSelectionRange(0, ta.value.length); }catch(e){} });
+      card.appendChild(ta);
+      var row = document.createElement('div'); row.className = 'row';
+      var copy = document.createElement('button'); copy.className = 'copy'; copy.textContent = 'Copy link';
+      copy.addEventListener('click', function(){
+        var done = function(ok){ copy.textContent = ok ? 'Copied' : 'Press and hold to copy'; setTimeout(function(){ copy.textContent = 'Copy link'; }, 1600); };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function(){ done(true); }, function(){ ta.focus(); ta.select(); done(false); });
+        else { ta.focus(); ta.select(); try{ document.execCommand('copy'); done(true); }catch(e){ done(false); } }
+      });
+      row.appendChild(copy);
+      var hint = document.createElement('span'); hint.className = 'hint'; hint.textContent = 'Save as a bookmark, then tap on the game page';
+      row.appendChild(hint);
+      card.appendChild(row);
+      host.appendChild(card);
+    });
+    hide('g-pass'); hide('g-id'); show('g-tools');
+  }
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  // --- gate flow ---
+  async function afterPassword(){
+    hide('g-pass');
+    // reuse an already-verified identity (armory playerIdentity, or this page's own)
+    var sk = null;
+    try { var pi = JSON.parse(localStorage.getItem('playerIdentity') || 'null'); if (pi && pi.siteKey) sk = pi.siteKey; } catch(e){}
+    if (!sk) { try { var rr = JSON.parse(localStorage.getItem(LS_ID) || 'null'); if (rr && rr.siteKey) sk = rr.siteKey; } catch(e){} }
+    if (sk) {
+      var m = await rosterMember(sk);
+      if (m) { renderTools(m); return; }
+    }
+    show('g-id'); $('uid').focus();
+  }
+
+  function initPassword(){
+    if (localStorage.getItem(LS_PW) === '1') { afterPassword(); return; }
+    show('g-pass'); $('pw').focus();
+    var submit = function(){
+      var v = $('pw').value;
+      if (v === PASSWORD) { try{ localStorage.setItem(LS_PW,'1'); }catch(e){} $('pwErr').textContent = ''; afterPassword(); }
+      else { $('pwErr').textContent = 'Incorrect code.'; $('pw').value = ''; $('pw').focus(); }
+    };
+    $('pwBtn').addEventListener('click', submit);
+    $('pw').addEventListener('keydown', function(e){ if (e.key === 'Enter') submit(); });
+  }
+
+  function initIdentity(){
+    var verify = async function(){
+      var uid = $('uid').value.trim();
+      if (!/^[0-9]{4,}$/.test(uid)) { $('uidMsg').textContent = 'Enter a valid numeric UID.'; return; }
+      $('uidMsg').style.color = 'var(--muted)'; $('uidMsg').textContent = 'Checking...';
+      try {
+        var sk = await siteKeyFromUid(uid);
+        var m = await rosterMember(sk);
+        if (m) { try{ localStorage.setItem(LS_ID, JSON.stringify({ siteKey: sk, name: m.name })); }catch(e){} $('uidMsg').textContent = ''; renderTools(m); }
+        else { $('uidMsg').style.color = 'var(--red)'; $('uidMsg').textContent = 'Not a verified Server 2864 member.'; }
+      } catch(e){ $('uidMsg').style.color = 'var(--red)'; $('uidMsg').textContent = 'Verification error. Try again.'; }
+    };
+    $('uidBtn').addEventListener('click', verify);
+    $('uid').addEventListener('keydown', function(e){ if (e.key === 'Enter') verify(); });
+  }
+
+  $('signout').addEventListener('click', function(){
+    try{ localStorage.removeItem(LS_PW); localStorage.removeItem(LS_ID); }catch(e){}
+    location.reload();
+  });
+
+  initPassword();
+  initIdentity();
+})();
+</script>
+</body>
+</html>
