@@ -39,7 +39,7 @@
       });
     });
     return {
-      ts: new Date().toISOString(), uid: ud._uid, sid: ud._serverId, profession: profName(),
+      ts: new Date().toISOString(), uid: ud._uid, name: ud._name, sid: ud._serverId, profession: profName(),
       voucher: ud.getItemAmount(C.VOUCHER), speedup: ud.getItemAmount(C.SPEEDUP), gems: ud._resourceData._gold,
       tree: clone(PC._serverTalentData), defense: clone(ud.DefenseArmyCandidateInfo), extraSkills: extra
     };
@@ -142,7 +142,7 @@
     var s = readState(); window.__crRunBackup = s;
     ui.body.textContent = '';
     var nodes = (s.tree || []).reduce((a, b) => a + (b ? b.length : 0), 0);
-    line(ui, s.profession + '   UID ' + s.uid + '  server ' + s.sid);
+    line(ui, s.profession + '   ' + (s.name || 'Player') + '  server ' + s.sid);
     line(ui, 'Voucher: ' + s.voucher + (s.voucher < 1 ? '  (will buy for ' + C.VOUCHER_COST + ' gems)' : '') + '   Gems: ' + s.gems);
     line(ui, '5-min speedups: ' + s.speedup);
     line(ui, 'Talent nodes to preserve/restore: ' + nodes + '  (branches ' + s.tree.map(b => b ? b.length : 0).join('/') + ')');
