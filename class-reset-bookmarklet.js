@@ -124,16 +124,16 @@
   // ---- overlay ----
   function overlay() {
     var bg = document.createElement('div');
-    bg.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(13,17,23,.96);color:#e6edf3;font:13px/1.5 -apple-system,system-ui,sans-serif;padding:16px;overflow:auto';
-    var hdr = document.createElement('div'); hdr.style.cssText = 'font-size:16px;font-weight:700;color:#79c0ff;margin-bottom:8px'; hdr.textContent = 'Class Talent Reset';
-    var sub = document.createElement('div'); sub.style.cssText = 'color:#8b949e;margin-bottom:10px';
-    var body = document.createElement('div'); body.style.cssText = 'white-space:pre-wrap;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px;margin-bottom:12px;font-family:ui-monospace,Menlo,monospace';
+    bg.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(13,17,23,.97);color:#e6edf3;font:19px/1.65 -apple-system,system-ui,sans-serif;padding:22px;overflow:auto;-webkit-text-size-adjust:100%';
+    var hdr = document.createElement('div'); hdr.style.cssText = 'font-size:28px;font-weight:800;color:#79c0ff;margin-bottom:14px'; hdr.textContent = 'Class Talent Reset';
+    var sub = document.createElement('div'); sub.style.cssText = 'font-size:18px;color:#8b949e;margin-bottom:14px';
+    var body = document.createElement('div'); body.style.cssText = 'white-space:pre-wrap;background:#161b22;border:1px solid #30363d;border-radius:10px;padding:18px;margin-bottom:16px;font-size:19px;line-height:1.7;font-family:ui-monospace,Menlo,monospace';
     var btns = document.createElement('div');
     bg.appendChild(hdr); bg.appendChild(sub); bg.appendChild(body); bg.appendChild(btns); document.body.appendChild(bg);
     return { bg: bg, hdr: hdr, sub: sub, body: body, btns: btns };
   }
   function line(ui, s) { ui.body.textContent += s + '\n'; ui.body.scrollTop = ui.body.scrollHeight; }
-  function mkBtn(label, color, fn) { var b = document.createElement('button'); b.textContent = label; b.style.cssText = 'margin:6px 8px 0 0;padding:10px 16px;border:0;border-radius:8px;font-weight:700;color:#0d1117;background:' + color + ';cursor:pointer'; b.onclick = fn; return b; }
+  function mkBtn(label, color, fn) { var b = document.createElement('button'); b.textContent = label; b.style.cssText = 'margin:8px 10px 0 0;padding:16px 26px;border:0;border-radius:10px;font-size:19px;font-weight:800;color:#0d1117;background:' + color + ';cursor:pointer'; b.onclick = fn; return b; }
 
   async function run() {
     try { resolve(); } catch (e) { alert('Class Talent modules not found: ' + e); return; }
