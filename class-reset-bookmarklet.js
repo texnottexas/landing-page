@@ -142,7 +142,7 @@
     var s = readState(); window.__crRunBackup = s;
     ui.body.textContent = '';
     var nodes = (s.tree || []).reduce((a, b) => a + (b ? b.length : 0), 0);
-    line(ui, s.profession + '   ' + (s.name || 'Player') + '  server ' + s.sid);
+    line(ui, 'Profession: ' + s.profession + '    Server: ' + s.sid);
     line(ui, 'Voucher: ' + s.voucher + (s.voucher < 1 ? '  (will buy for ' + C.VOUCHER_COST + ' gems)' : '') + '   Gems: ' + s.gems);
     line(ui, '5-min speedups: ' + s.speedup);
     line(ui, 'Talent nodes to preserve/restore: ' + nodes + '  (branches ' + s.tree.map(b => b ? b.length : 0).join('/') + ')');
