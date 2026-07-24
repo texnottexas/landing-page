@@ -28,6 +28,7 @@
   function send(cmd, p) { return new Promise(res => { var d = false; NET.send(cmd, p, {}, function (t) { if (d) return; d = true; var o; try { o = JSON.parse(t.d); } catch (e) { o = (t && typeof t.d === 'object') ? t.d : t; } res(o); }); setTimeout(() => { if (!d) { d = true; res(null); } }, 6000); }); }
   function refresh() { return new Promise(res => { try { PC.initLearnTalentData(() => res()); } catch (e) { res(); } }); }
   function profName() { return PC._professionFocusTalentId === 72002 ? 'Mechanical Master' : 'Combat Elite'; }
+  function playerName() { try { return ud._playerInfoData._playerInfo._data.username || ''; } catch (e) { return ''; } }
 
   // ---- reads ----
   function readState() {
@@ -39,7 +40,7 @@
       });
     });
     return {
-      ts: new Date().toISOString(), uid: ud._uid, name: ud._name, sid: ud._serverId, profession: profName(),
+      ts: new Date().toISOString(), uid: ud._uid, name: playerName(), sid: ud._serverId, profession: profName(),
       voucher: ud.getItemAmount(C.VOUCHER), speedup: ud.getItemAmount(C.SPEEDUP), gems: ud._resourceData._gold,
       tree: clone(PC._serverTalentData), defense: clone(ud.DefenseArmyCandidateInfo), extraSkills: extra
     };
@@ -142,7 +143,7 @@
     var s = readState(); window.__crRunBackup = s;
     ui.body.textContent = '';
     var nodes = (s.tree || []).reduce((a, b) => a + (b ? b.length : 0), 0);
-    line(ui, 'Profession: ' + s.profession + '    Server: ' + s.sid);
+    line(ui, 'Profession: ' + s.profession + (s.name ? ('    Player: ' + s.name) : '') + '    Server: ' + s.sid);
     line(ui, 'Voucher: ' + s.voucher + (s.voucher < 1 ? '  (will buy for ' + C.VOUCHER_COST + ' gems)' : '') + '   Gems: ' + s.gems);
     line(ui, '5-min speedups: ' + s.speedup);
     line(ui, 'Talent nodes to preserve/restore: ' + nodes + '  (branches ' + s.tree.map(b => b ? b.length : 0).join('/') + ')');
