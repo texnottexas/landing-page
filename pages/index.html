@@ -2358,9 +2358,11 @@
       <h2>&#8734; Eternal Lands</h2>
       <p class="modal-sub">Choose an option</p>
       <div class="tc-options">
-        <a href="el-map.html" class="tc-option">
+        <!-- 2864 players only (identity-gated visibility, deliberately not verified —
+             the real protection is the simulator's own password) -->
+        <a href="el-sim.html" class="tc-option" id="el-sim-opt" style="display:none">
           <span class="tc-opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></span>
-          <div>Builder Map<div class="tc-opt-desc">Zone 1 build plan + today's schedule</div></div>
+          <div>Build Simulator<div class="tc-opt-desc">Whole-map build planner &middot; ask in alliance chat for the password</div></div>
         </a>
         <a href="eternal-land-calendar.html" class="tc-option">
           <span class="tc-opt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
@@ -2939,6 +2941,8 @@
           var modal = document.getElementById(modalId);
           if (modal) {
             modal.classList.add('active');
+            // re-check on every open: the visitor may have picked their name since load
+            if (modalId === 'el-modal' && window._refreshElSimOpt) window._refreshElSimOpt();
             if (modalId === 'rockfield-modal') {
               var tv = document.getElementById('rf-text-view');
               var iv = document.getElementById('rf-img-view');
@@ -2956,6 +2960,25 @@
           }
         });
       });
+
+      // The Build Simulator entry is for 2864 players: shown only when the visitor has
+      // picked a roster name (guests and 'anonymous' don't see it). Visibility only —
+      // anyone with the URL still needs the simulator's password, which is the point of
+      // telling them to ask in alliance chat.
+      (function () {
+        var opt = document.getElementById('el-sim-opt');
+        if (!opt) return;
+        window._refreshElSimOpt = function () {
+          var id = null;
+          try {
+            var raw = localStorage.getItem('playerIdentity');
+            id = raw && raw !== 'anonymous' ? JSON.parse(raw) : null;
+          } catch (e) { id = null; }
+          var isOurs = !!(id && id.name && !id.guest && (id.alliance || id.siteKey));
+          opt.style.display = isOurs ? '' : 'none';
+        };
+        window._refreshElSimOpt();
+      })();
 
       // Modal close on overlay click
       document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
