@@ -325,6 +325,56 @@ function strokeAt(tx,ty,px){
   });
   return best;
 }
+// ---- staged placement (touch) ------------------------------------------------
+// On a phone there is no hover, so a tap used to commit a structure the moment it
+// landed — no preview, no way to nudge it. Now a tap STAGES the placement: the ghost
+// can be dragged around and only the Place button commits it.
+let pending = null, pendingFort = false;
+function pendingHit(tx,ty){
+  if(!pending) return false;
+  const rx=Math.round(tx), ry=Math.round(ty);
+  if(bodyTiles(pending[0],pending[1],pendingFort).some(([bx,by])=>bx===rx&&by===ry)) return true;
+  const d=(pending[0]-tx)**2+((pending[1]-ty)*0.7)**2;      // grab slack for fingers
+  return d < (pendingFort?16:9);
+}
+function setPending(x,y,isFort){
+  pending=[x,y]; pendingFort=!!isFort; renderPlaceBar(); draw();
+}
+function clearPending(){
+  if(!pending) return;
+  pending=null; renderPlaceBar(); draw();
+}
+function commitPending(){
+  if(!pending) return;
+  const [x,y]=pending, isFort=pendingFort;
+  const chk=validate(x,y,isFort);
+  if(!chk.ok){ flash('Cannot place: '+chk.reason); return; }
+  pushOps([{op:'add', kind:isFort?'fort':'ps', x, y, alli:planAlli}],
+          (applied)=>({op:'del', id:(applied[0]||{}).id}));
+  clearPending();
+}
+function renderPlaceBar(){
+  let bar=document.getElementById('placeBar');
+  if(!pending){ if(bar) bar.remove(); return; }
+  const [x,y]=pending, isFort=pendingFort;
+  const chk=validate(x,y,isFort);
+  if(!bar){
+    bar=document.createElement('div');
+    bar.id='placeBar';
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML='<div style="margin-bottom:6px"><b>'+(isFort?'Fort':'Power Station')+'</b> '
+    + x+';'+y+' <span style="color:var(--muted)">for</span> <b style="color:'+alliCol(planAlli)+'">'
+    + esc(planAlli)+'</b></div>'
+    +'<div style="font-size:11px;margin-bottom:8px;color:'+(chk.ok?'var(--green)':'var(--red)')+'">'
+    + (chk.ok?'Legal spot &middot; drag the ghost to nudge it':esc(chk.reason))+'</div>'
+    +'<div style="display:flex;gap:6px">'
+    +'<button type="button" class="tbtn pb-ok"'+(chk.ok?'':' disabled')
+    +' style="flex:1;'+(chk.ok?'border-color:var(--green);color:var(--green)':'opacity:.45')+'">Place here</button>'
+    +'<button type="button" class="tbtn pb-no" style="flex:1">Cancel</button></div>';
+  bar.querySelector('.pb-ok').onclick=commitPending;
+  bar.querySelector('.pb-no').onclick=clearPending;
+}
 // ---- planned item: hit-test + edit in place ---------------------------------
 // A planned structure is editable from the map itself, not just the sidebar row —
 // on a phone the sidebar is a sheet, so tapping the thing you just placed has to work.
@@ -914,21 +964,30 @@ function render(){
     ctx.textBaseline='alphabetic'; ctx.textAlign='left';
   }
   // ---- ghost ----
-  if((tool==='ps'||tool==='fort')&&hover){
-    const isFort=tool==='fort';
-    const chk=validate(hover[0],hover[1],isFort);
+  // `pending` is a staged placement waiting for confirmation (the touch flow: tap to
+  // stage, drag to nudge, tap Place to commit). Desktop still previews under the cursor.
+  const gt = pending || ((tool==='ps'||tool==='fort') ? hover : null);
+  if(gt){
+    const isFort = pending ? pendingFort : (tool==='fort');
+    const chk=validate(gt[0],gt[1],isFort);
     let color='#3fb950';
     if(!chk.ok) color='#f85149';
     else{
-      const extras=plan.map(p=>({x:p.x,y:p.y,fort:p.fort})).concat([{x:hover[0],y:hover[1],fort:isFort}]);
+      const extras=plan.map(p=>({x:p.x,y:p.y,fort:p.fort})).concat([{x:gt[0],y:gt[1],fort:isFort}]);
       if(!powerOf(D.myAid,extras).get(extras[extras.length-1])) color='#d29922';
     }
     ctx.globalAlpha=.85;
-    ctx.beginPath(); bodyTiles(hover[0],hover[1],isFort).forEach(([bx,by])=>tilePath(bx,by,0.95));
+    ctx.beginPath(); bodyTiles(gt[0],gt[1],isFort).forEach(([bx,by])=>tilePath(bx,by,0.95));
     ctx.fillStyle=color+'55'; ctx.fill(); ctx.strokeStyle=color; ctx.lineWidth=2; ctx.stroke();
-    ctx.strokeStyle=color+'99'; ctx.lineWidth=1.4; strokeZone(hover[0],hover[1],isFort);
+    ctx.strokeStyle=color+'99'; ctx.lineWidth=1.4; strokeZone(gt[0],gt[1],isFort);
+    if(pending){
+      // dashed halo so a staged placement reads as "not committed yet", and is easy to grab
+      ctx.setLineDash([6,5]); ctx.strokeStyle='#ffffffcc'; ctx.lineWidth=2;
+      ctx.beginPath(); bodyTiles(gt[0],gt[1],isFort).forEach(([bx,by])=>tilePath(bx,by,1.5));
+      ctx.stroke(); ctx.setLineDash([]);
+    }
     ctx.globalAlpha=1;
-    drawIcon(isFort?'fort':'ps',hover[0],hover[1],{alpha:.7});
+    drawIcon(isFort?'fort':'ps',gt[0],gt[1],{alpha:.7});
   }
 }
 function strokeZone(x,y,isFort){
@@ -1090,7 +1149,7 @@ cv.addEventListener('mousemove',e=>{
 });
 // ---- touch: one finger pans, two fingers pinch-zoom, a tap places or inspects.
 // The canvas sets touch-action:none so the browser never steals the gesture.
-let tPts = new Map(), tPinch = null, tMoved = false, tStart = 0;
+let tPts = new Map(), tPinch = null, tMoved = false, tStart = 0, pendDrag = false;
 function tXY(t){ const r=cv.getBoundingClientRect(); return [t.clientX-r.left, t.clientY-r.top]; }
 function zoomAt(mx,my,factor){
   const wx=mx/zoom+ox, wy=my/zoom+oy;
@@ -1103,7 +1162,9 @@ cv.addEventListener('touchstart',e=>{
   if(tPts.size===1){ tMoved=false; tStart=Date.now();
     const p0=[...tPts.values()][0];
     if(tool==='draw'){ inkPath=[tilePointAt.apply(null,p0)]; drawing=true; }
-    if(tool==='erase'){ erasing=true; eraseHits={}; eraseSweep(tilePointAt.apply(null,p0)); } }
+    if(tool==='erase'){ erasing=true; eraseHits={}; eraseSweep(tilePointAt.apply(null,p0)); }
+    // a drag that STARTS on a staged placement moves it instead of panning the map
+    pendDrag = pendingHit.apply(null, tilePointAt.apply(null,p0)); }
   if(tPts.size>1 && drawing){ drawing=false; inkPath=[]; }   // second finger => pinch, not ink
   if(tPts.size===2){
     const [a,b]=[...tPts.values()];
@@ -1114,7 +1175,12 @@ cv.addEventListener('touchmove',e=>{
   e.preventDefault();
   const prev=new Map(tPts);
   for(const t of e.changedTouches) if(tPts.has(t.identifier)) tPts.set(t.identifier, tXY(t));
-  if(tPts.size===1 && erasing){
+  if(tPts.size===1 && pendDrag){
+    // dragging the ghost: snap it to the tile under the finger, never pan
+    const t=tileAt.apply(null,[...tPts.values()][0]);
+    if(t && (t[0]!==pending[0] || t[1]!==pending[1])) setPending(t[0],t[1],pendingFort);
+    tMoved=true;
+  } else if(tPts.size===1 && erasing){
     eraseSweep(tilePointAt.apply(null,[...tPts.values()][0])); tMoved=true; draw();
   } else if(tPts.size===1 && drawing){
     const p=tilePointAt.apply(null,[...tPts.values()][0]);
@@ -1163,12 +1229,13 @@ cv.addEventListener('touchend',e=>{
     document.getElementById('coord').textContent = t ? t[0]+';'+t[1] : '-';
     if(t && (tool==='ps'||tool==='fort')){
       const already=planAt(t[0],t[1]);
-      if(already){ openItemEditor(already); draw(); return; }
+      if(already && !pending){ openItemEditor(already); draw(); return; }
       const isFort = tool==='fort';
-      const chk = validate(t[0],t[1],isFort);
-      if(chk.ok) pushOps([{op:'add', kind:isFort?'fort':'ps', x:t[0], y:t[1], alli:planAlli}],
-                         (applied)=>({op:'del', id:(applied[0]||{}).id}));
-      else flash('Cannot place: '+chk.reason);
+      // tap 1 stages it, a tap ON the staged ghost places it, a tap elsewhere moves it
+      const [fx,fy]=tilePointAt(pt[0],pt[1]);
+      if(pending && pendingHit(fx,fy)) commitPending();
+      else setPending(t[0],t[1],isFort);
+      return;
     } else if(t){
       flash(tileSummary(t));
     }
@@ -1447,14 +1514,17 @@ function flyTo(x,y,z){
 // document is the source of truth
 function savePlan(){ try{ localStorage.setItem('elSimPlan4',JSON.stringify({snapshot:D.snapshot,items:plan})); }catch(e){} }
 function setTool(t){
+  if(t!==tool) clearPending();          // a staged placement belongs to the tool that staged it
   tool=t;
   [['toolPan','pan'],['toolPS','ps'],['toolFort','fort'],['toolNote','note'],['toolDraw','draw'],['toolErase','erase']]
     .forEach(([id,name])=>{ const b=document.getElementById(id); if(b) b.classList.toggle('active',t===name); });
   cv.classList.toggle('placing',t!=='pan');
-  const bar=document.getElementById('inkbar');
-  // visibility, not display: showing the palette must not resize the header and
-  // shove the map out from under your finger
-  if(bar) bar.style.visibility=(t==='draw'||t==='note')?'visible':'hidden';
+  const bar=document.getElementById('inkbar'), inking=(t==='draw'||t==='note');
+  // desktop: visibility, not display — showing the palette must not resize the header and
+  // shove the map out from under your finger. phone: it is a fixed overlay (.hide toggles
+  // display), which is out of flow entirely so it cannot reflow anything either.
+  if(bar){ bar.style.visibility = inking?'visible':'hidden';
+           bar.classList.toggle('hide', !inking); }
 }
 document.getElementById('toolPan').onclick=()=>setTool('pan');
 document.getElementById('toolPS').onclick=()=>setTool('ps');

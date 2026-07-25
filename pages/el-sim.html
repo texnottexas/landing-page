@@ -62,13 +62,20 @@ header .sub{font-size:11px;color:var(--muted);}
 #zoompad .zsm{font-size:11px;}
 #sheetBtn{display:none;}
 #sheetGrab{display:none;}
+/* staged-placement confirm bar: sits clear of the zoom pad and the sheet toggle */
+#placeBar{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);z-index:14;
+          background:var(--card);border:1px solid var(--border);border-radius:10px;
+          padding:9px 11px;box-shadow:0 8px 24px #000a;font-size:12px;min-width:236px;max-width:94vw;}
+.tbtn .sm{display:none;}                     /* short labels swap in on narrow screens */
 @media (max-width:880px){
   body{overflow:hidden;}
   header{padding:6px 8px;gap:8px;align-items:flex-start;}
   header h1{font-size:13px;} header .sub{display:none;}
-  .toolbar{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:3px;width:100%;}
-  .toolbar::-webkit-scrollbar{height:0;}
-  .tbtn{padding:7px 12px;font-size:12.5px;white-space:nowrap;flex:0 0 auto;}
+  /* WRAP, never scroll. It used to be one nowrap row with the scrollbar hidden, so Undo
+     and "Jump to" sat off the right edge with nothing to hint they were there at all. */
+  .toolbar{flex-wrap:wrap;overflow-x:visible;width:100%;gap:5px;row-gap:5px;}
+  .tbtn{padding:7px 10px;font-size:12.5px;white-space:nowrap;flex:0 0 auto;}
+  .tbtn .lg{display:none;} .tbtn .sm{display:inline;}
   /* the phone toolbar only keeps what you act with; layers and jumps move into More */
   #moreBtn{display:inline-block;}
   #morePanel{display:none;position:fixed;left:8px;right:8px;top:auto;bottom:96px;z-index:12;
@@ -76,7 +83,13 @@ header .sub{font-size:11px;color:var(--muted);}
              padding:10px;box-shadow:0 -6px 22px #0009;max-height:52vh;overflow-y:auto;}
   #morePanel.open{display:flex;}
   #morePanel .tbtn{flex:1 1 44%;}
-  #nav,#planAlli{flex:0 0 auto;max-width:150px;padding:7px 8px;}
+  #nav,#planAlli{flex:0 0 auto;max-width:132px;padding:7px 6px;font-size:11px;}
+  /* the ink palette leaves the header on a phone: as a fixed overlay it cannot reflow the
+     layout at all (stricter than the visibility trick) and it stops reserving a whole row */
+  #inkbar{position:fixed;left:8px;right:8px;bottom:100px;z-index:11;justify-content:center;
+          background:#161b22f2;border:1px solid var(--border);border-radius:10px;
+          padding:8px 10px;box-shadow:0 -4px 18px #0008;}
+  #inkbar.hide{display:none;}
   /* bottom-LEFT, clear of the zoom pad on the right and the coord chip below it */
   #sheetBtn{display:inline-block;position:fixed;left:8px;right:auto;bottom:44px;z-index:13;padding:9px 15px;
             background:#161b22e6;border:1px solid var(--accent);color:var(--accent);border-radius:999px;font-size:12.5px;
@@ -108,12 +121,12 @@ header .sub{font-size:11px;color:var(--muted);}
   <div><h1>EL Build Simulator</h1><div class="sub">Whole Eternal Land map &middot; 8 warzones &middot; 262 terrain captures &middot; live structures + claims &middot; snapshot 2026-07-24</div></div>
   <div class="toolbar">
     <button class="tbtn" id="toolPan">Pan</button>
-    <button class="tbtn" id="toolPS">+ Power Station</button>
+    <button class="tbtn" id="toolPS"><span class="lg">+ Power Station</span><span class="sm">+ PS</span></button>
     <button class="tbtn" id="toolFort">+ Fort</button>
     <button class="tbtn" id="toolNote">Note</button>
     <button class="tbtn" id="toolDraw">Draw</button>
     <button class="tbtn" id="toolErase">Erase</button>
-    <span id="inkbar"></span>
+    <span id="inkbar" class="hide"></span>
     <span style="width:8px"></span>
     <select id="planAlli" title="Alliance for new placements"></select>
     <button class="tbtn" id="undoBtn" title="Undo (Ctrl+Z)">&#8630; Undo</button>
@@ -320,7 +333,7 @@ header .sub{font-size:11px;color:var(--muted);}
   function boot(payload){
     window.__EL_DATA = payload;
     var s = document.createElement('script');
-    s.src = 'el-sim-app.js?b=73dce034ae';
+    s.src = 'el-sim-app.js?b=5587431d6c';
     s.onerror = function(){ err.textContent = 'The app failed to load. Try a refresh.'; };
     document.body.appendChild(s);
     gate.classList.add('hide');
