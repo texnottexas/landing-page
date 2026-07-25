@@ -7,7 +7,7 @@
 
 <title>EL Build Simulator &middot; Server 2864</title>
 <style>
-:root{--bg:#0d1117;--surface:#161b22;--card:#1c2128;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#79c0ff;--green:#3fb950;--blue:#388bfd;--yellow:#d29922;--red:#f85149;--jump:#d2a8ff;}
+:root{--bg:#0d1117;--surface:#161b22;--card:#1c2128;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#79c0ff;--green:#3fb950;--blue:#388bfd;--yellow:#d29922;--red:#f85149;--jump:#d2a8ff;--sheetH:62vh;}
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;overflow:hidden;height:100vh;display:flex;flex-direction:column;}
 header{background:var(--surface);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;z-index:5;}
@@ -24,7 +24,7 @@ header .sub{font-size:11px;color:var(--muted);}
 #cv.placing{cursor:crosshair;}
 #side{width:308px;background:var(--surface);border-left:1px solid var(--border);overflow-y:auto;padding:12px;font-size:12px;flex-shrink:0;}
 #side h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px;}
-#side h3:first-child{margin-top:0;}
+#side h3:first-of-type{margin-top:0;}   /* first-child would miss it: the grab bar is first */
 .stat{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #21262d;}
 .stat b{color:var(--accent);font-variant-numeric:tabular-nums;}
 .legend{display:flex;flex-direction:column;gap:4px;}
@@ -61,6 +61,7 @@ header .sub{font-size:11px;color:var(--muted);}
 #zoompad button:active{background:#1f6feb44;}
 #zoompad .zsm{font-size:11px;}
 #sheetBtn{display:none;}
+#sheetGrab{display:none;}
 @media (max-width:880px){
   body{overflow:hidden;}
   header{padding:6px 8px;gap:8px;align-items:flex-start;}
@@ -77,15 +78,24 @@ header .sub{font-size:11px;color:var(--muted);}
   #morePanel .tbtn{flex:1 1 44%;}
   #nav,#planAlli{flex:0 0 auto;max-width:150px;padding:7px 8px;}
   /* bottom-LEFT, clear of the zoom pad on the right and the coord chip below it */
-  #sheetBtn{display:inline-block;position:fixed;left:8px;right:auto;bottom:44px;z-index:8;padding:9px 15px;
-            background:#161b22e6;border:1px solid var(--accent);color:var(--accent);border-radius:999px;font-size:12.5px;}
+  #sheetBtn{display:inline-block;position:fixed;left:8px;right:auto;bottom:44px;z-index:13;padding:9px 15px;
+            background:#161b22e6;border:1px solid var(--accent);color:var(--accent);border-radius:999px;font-size:12.5px;
+            transition:bottom .22s ease;}
+  /* the open sheet used to paint straight over its own toggle (sheet z-index beat the
+     button's), so every tap to close it landed on the sheet - lift the button clear */
+  body.sheetOpen #sheetBtn{bottom:calc(var(--sheetH) + 10px);}
   /* the panel becomes a sheet that slides up over the map instead of eating its width */
-  #side{position:fixed;left:0;right:0;bottom:0;width:auto;height:62vh;border-left:none;
+  #side{position:fixed;left:0;right:0;bottom:0;width:auto;height:var(--sheetH);border-left:none;
         border-top:1px solid var(--border);border-radius:14px 14px 0 0;z-index:9;
-        transform:translateY(100%);transition:transform .22s ease;box-shadow:0 -8px 24px #0009;padding-bottom:26px;}
+        transform:translateY(100%);transition:transform .22s ease;box-shadow:0 -8px 24px #0009;
+        padding:0 12px 26px;}
   #side.open{transform:translateY(0);}
-  #side::before{content:'';position:absolute;left:50%;top:6px;width:38px;height:4px;margin-left:-19px;
-                border-radius:2px;background:var(--border);}
+  /* a real element, not a ::before - it has to be draggable and tappable */
+  #sheetGrab{display:block;position:sticky;top:0;margin:0 -12px 8px;height:30px;z-index:2;
+             background:var(--surface);border-radius:14px 14px 0 0;touch-action:none;cursor:grab;}
+  #sheetGrab::after{content:'';position:absolute;left:50%;top:11px;width:44px;height:5px;margin-left:-22px;
+                    border-radius:3px;background:var(--muted);}
+  #sheetGrab:active::after{background:var(--text);}
   #coord{bottom:8px;left:8px;font-size:11px;padding:3px 8px;}
   #zoompad{bottom:64px;right:14px;}
   #zoompad button{width:46px;height:46px;font-size:21px;}
@@ -128,6 +138,7 @@ header .sub{font-size:11px;color:var(--muted);}
 <div id="wrap">
   <canvas id="cv"></canvas>
   <div id="side">
+    <div id="sheetGrab" title="Drag down or tap to close"></div>
     <h3>Wall jumps &rarr; zone 2</h3>
     <div id="jumps"></div>
     <div class="note">Both sides are drawn: <span style="color:#79c0ff">blue = the west tile a PS must sit on</span>, <span style="color:#d2a8ff">purple = the east tile it reaches</span>, dashed line = the pairing. Only crossings walk-reachable from one of our four Lv.1 Gates are listed; anything cut off by the mountain wall is excluded. West spots are already filtered to tiles where a new PS would be powered by our built network.</div>
@@ -308,7 +319,7 @@ header .sub{font-size:11px;color:var(--muted);}
   function boot(payload){
     window.__EL_DATA = payload;
     var s = document.createElement('script');
-    s.src = 'el-sim-app.js?b=33463f6264';
+    s.src = 'el-sim-app.js?b=e9d50732f2';
     s.onerror = function(){ err.textContent = 'The app failed to load. Try a refresh.'; };
     document.body.appendChild(s);
     gate.classList.add('hide');

@@ -1066,10 +1066,43 @@ document.getElementById('zIn').onclick =()=>zoomAt(cv.clientWidth/2, cv.clientHe
 document.getElementById('zOut').onclick=()=>zoomAt(cv.clientWidth/2, cv.clientHeight/2, 1/1.4);
 document.getElementById('zFit').onclick=fit;
 // ---- the panel is a slide-up sheet on narrow screens
+let sheetSetOpen = ()=>{};                    // the More flyout closes the sheet through this
 (function(){
-  const btn=document.getElementById('sheetBtn'), side=document.getElementById('side');
-  btn.onclick=()=>{ const open=side.classList.toggle('open');
-    btn.innerHTML = open ? 'Map &#9660;' : 'Info &#9650;'; };
+  const btn=document.getElementById('sheetBtn'), side=document.getElementById('side'),
+        grab=document.getElementById('sheetGrab');
+  const setOpen=(open)=>{
+    side.classList.toggle('open',open);
+    // body class, not a sibling selector: #side is nested in #wrap, the button is not
+    document.body.classList.toggle('sheetOpen',open);
+    side.style.transform=''; side.style.transition='';   // drop any drag-in-progress offset
+    btn.innerHTML = open ? 'Map &#9660;' : 'Info &#9650;';
+    if(open){ const p=document.getElementById('morePanel');   // never stack two sheets
+      p.classList.remove('open'); document.getElementById('moreBtn').innerHTML='More &#9662;'; }
+  };
+  sheetSetOpen = setOpen;
+  btn.onclick=()=>setOpen(!side.classList.contains('open'));
+  // drag the handle down to dismiss; the sheet follows your finger, and a tap closes it too
+  let y0=null, dy=0;
+  grab.addEventListener('pointerdown',e=>{
+    y0=e.clientY; dy=0; side.style.transition='none';
+    try{ grab.setPointerCapture(e.pointerId); }catch(err){}
+  });
+  grab.addEventListener('pointermove',e=>{
+    if(y0===null) return;
+    dy=Math.max(0,e.clientY-y0);
+    side.style.transform='translateY('+dy+'px)';
+  });
+  const settle=()=>{                          // let the CSS transition finish the motion
+    if(y0===null) return false;
+    y0=null; side.style.transition='';
+    if(dy>60){ setOpen(false); return true; }
+    side.style.transform='';
+    return false;
+  };
+  grab.addEventListener('pointerup',()=>{ const tap=dy<6; if(!settle() && tap) setOpen(false); });
+  grab.addEventListener('pointercancel',settle);
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape' && side.classList.contains('open')) setOpen(false); });
 })();
 cv.addEventListener('wheel',e=>{
   e.preventDefault();
@@ -1346,7 +1379,8 @@ document.getElementById('fit').onclick=fit;
 (function(){                                  // More flyout (phone only; inline on desktop)
   const btn=document.getElementById('moreBtn'), panel=document.getElementById('morePanel');
   btn.onclick=(e)=>{ e.stopPropagation(); const on=panel.classList.toggle('open');
-    btn.innerHTML = on ? 'More &#9652;' : 'More &#9662;'; };
+    btn.innerHTML = on ? 'More &#9652;' : 'More &#9662;';
+    if(on) sheetSetOpen(false); };            // one panel over the map at a time
   // any choice inside closes it, so it never sits over the map
   panel.addEventListener('click', (e)=>{ if(e.target.tagName==='BUTTON'){
     panel.classList.remove('open'); btn.innerHTML='More &#9662;'; } });
