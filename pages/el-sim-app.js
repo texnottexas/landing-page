@@ -12,11 +12,11 @@ const uv = (x,y)=> [(x+y)/2,(x-y)/2];
 const xy = (u,v)=> [u+v,u-v];
 const N = W*H;
 
-const ICONS_SRC = {"ps": "assets/el-sim/icon-ps.png", "fort": "assets/el-sim/icon-fort.png", "outpost": "assets/el-sim/icon-outpost.png", "base": "assets/el-sim/icon-base.png", "gate": "assets/el-sim/icon-gate.png", "mfort": "assets/el-sim/icon-mfort.png", "ark": "assets/el-sim/icon-ark.png", "research": "assets/el-sim/icon-research.png", "city": "assets/el-sim/icon-city.png", "gateh": "assets/el-sim/icon-gateh.png"};
+const ICONS_SRC = {"ps": "assets/el-sim/icon-ps.png?a=b53cd0a8", "fort": "assets/el-sim/icon-fort.png?a=8192c5d6", "outpost": "assets/el-sim/icon-outpost.png?a=f221094a", "base": "assets/el-sim/icon-base.png?a=0385f375", "gate": "assets/el-sim/icon-gate.png?a=7c2cb2fd", "mfort": "assets/el-sim/icon-mfort.png?a=f52afe38", "ark": "assets/el-sim/icon-ark.png?a=d1063a9e", "research": "assets/el-sim/icon-research.png?a=87e07768", "city": "assets/el-sim/icon-city.png?a=5019e1b3", "gateh": "assets/el-sim/icon-gateh.png?a=f319e736"};
 const ICONS = {};
 Object.keys(ICONS_SRC).forEach(k=>{const im=new Image();im.onload=()=>draw();im.src=ICONS_SRC[k];ICONS[k]=im;});
 // ---- terrain: one mosaic of the game's own render (see generator header) ----
-const TERR_SRC = {"world":{"w":2688,"h":3888,"worldPerPx":32,"x0":0,"y0":0,"img":"assets/el-sim/world-mosaic.jpg"},"district":{"w":2464,"h":5873,"worldPerPx":8,"x0":0,"y0":750,"img":"assets/el-sim/district-mosaic.jpg"}};
+const TERR_SRC = {"world":{"w":2688,"h":3888,"worldPerPx":32,"x0":0,"y0":0,"img":"assets/el-sim/world-mosaic.jpg?a=a9c70139"},"district":{"w":2464,"h":5873,"worldPerPx":8,"x0":0,"y0":750,"img":"assets/el-sim/district-mosaic.jpg?a=93c12ff2"}};
 // two sheets of the game's own render: the whole map at 32 world/px and the home
 // district at 8. Each maps 1 mosaic px -> worldPerPx/16 display px, so both land on
 // the tile lattice exactly; the finer sheet simply draws on top where it applies.
