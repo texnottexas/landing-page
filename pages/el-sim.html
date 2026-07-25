@@ -320,19 +320,34 @@ header .sub{font-size:11px;color:var(--muted);}
   function boot(payload){
     window.__EL_DATA = payload;
     var s = document.createElement('script');
-    s.src = 'el-sim-app.js?b=a7737fa0f0';
+    s.src = 'el-sim-app.js?b=73dce034ae';
     s.onerror = function(){ err.textContent = 'The app failed to load. Try a refresh.'; };
     document.body.appendChild(s);
     gate.classList.add('hide');
     chip();
     if (!identity()) setTimeout(openWho, 400);
   }
+  // A header value can only carry ISO-8859-1, and fetch() THROWS on any code point
+  // above U+00FF - so a player called "Livv👑" got "network error" and could not open
+  // the map at all. Send a stripped name in the plain header plus the full UTF-8 name
+  // base64'd alongside it; the worker prefers the base64 one.
+  function nameHeaders(name){
+    var h = {};
+    if (!name) return h;
+    h['X-Player-Name'] = name.replace(/[^\x20-\xFF]/g, '').trim() || 'player';
+    try {
+      var b = new TextEncoder().encode(name), s = '';
+      for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+      h['X-Player-Name-B64'] = btoa(s);
+    } catch (e) { /* plain header still carries a usable name */ }
+    return h;
+  }
   function open(pw, silent){
     var id = identity();
+    var hdrs = nameHeaders((id && id.name) || '');
+    hdrs['X-El-Sim-Password'] = pw;
     err.textContent = silent ? '' : 'Loading the map…';
-    return fetch(API + '/elsim/data', { headers: {
-      'X-El-Sim-Password': pw, 'X-Player-Name': (id && id.name) || ''
-    }}).then(function(r){
+    return fetch(API + '/elsim/data', { headers: hdrs }).then(function(r){
       if (r.status === 401) { try { localStorage.removeItem(PW_KEY); } catch(e){}
         err.textContent = silent ? '' : 'That password was not accepted.'; return null; }
       if (!r.ok) { err.textContent = 'Server said ' + r.status + '. Try again in a moment.'; return null; }
@@ -341,7 +356,15 @@ header .sub{font-size:11px;color:var(--muted);}
       if (!j) return false;
       try { localStorage.setItem(PW_KEY, pw); } catch(e){}
       boot(j); return true;
-    }).catch(function(){ err.textContent = 'Network error. Check your connection.'; return false; });
+    }).catch(function(e){
+      // this used to blame the network for ANY throw in the chain, which hid the real
+      // cause (a header the browser refused) behind "check your connection"
+      var m = (e && e.message) || '';
+      err.textContent = (!m || /fetch|network/i.test(m))
+        ? 'Network error. Check your connection.'
+        : 'Could not open the map: ' + m;
+      return false;
+    });
   }
   document.getElementById('gateGo').onclick = function(){
     var v = (document.getElementById('gatePw').value || '').trim();

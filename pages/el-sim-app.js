@@ -524,6 +524,17 @@ function whoAmI(){
         const j=JSON.parse(v); return (j&&j.name)||''; } catch(e){ return ''; }
 }
 function pw(){ try { return localStorage.getItem('elSimPw')||''; } catch(e){ return ''; } }
+// Names with emoji or a non-Latin script cannot go in a header value (fetch throws on
+// anything above U+00FF), so send a stripped form plus the real name as base64 UTF-8.
+function nameHeaders(name){
+  const h={};
+  if(!name) return h;
+  h['X-Player-Name'] = name.replace(/[^\x20-\xFF]/g,'').trim() || 'player';
+  try{ const b=new TextEncoder().encode(name); let s='';
+       for(let i=0;i<b.length;i++) s+=String.fromCharCode(b[i]);
+       h['X-Player-Name-B64']=btoa(s); }catch(e){}
+  return h;
+}
 
 function setShareState(msg, bad){
   const el=document.getElementById('shareState');
@@ -554,9 +565,9 @@ function pushOps(ops, undoOps){
   if(!shareOK){ flash('Shared plan is offline — edit not saved'); return Promise.resolve(false); }
   const me = whoAmI();
   if(!me){ flash('Pick your name first so edits are attributed'); openWhoFromApp(); return Promise.resolve(false); }
-  return fetch(API+'/elsim/plan', {method:'POST', headers:{
-      'Content-Type':'application/json','X-El-Sim-Password':pw(),'X-Player-Name':me
-    }, body: JSON.stringify({ops})})
+  const hdrs = Object.assign({'Content-Type':'application/json','X-El-Sim-Password':pw()},
+                             nameHeaders(me));
+  return fetch(API+'/elsim/plan', {method:'POST', headers:hdrs, body: JSON.stringify({ops})})
     .then(r=>r.json())
     .then(j=>{
       if(!j || !j.ok){ flash('Edit refused: '+((j&&j.error)||'unknown')); return false; }
