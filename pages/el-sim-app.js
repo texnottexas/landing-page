@@ -12,7 +12,7 @@ const uv = (x,y)=> [(x+y)/2,(x-y)/2];
 const xy = (u,v)=> [u+v,u-v];
 const N = W*H;
 
-const ICONS_SRC = {"ps": "assets/el-sim/icon-ps.png", "fort": "assets/el-sim/icon-fort.png", "outpost": "assets/el-sim/icon-outpost.png", "base": "assets/el-sim/icon-base.png", "gate": "assets/el-sim/icon-gate.png", "mfort": "assets/el-sim/icon-mfort.png", "ark": "assets/el-sim/icon-ark.png", "research": "assets/el-sim/icon-research.png", "city": "assets/el-sim/icon-city.png"};
+const ICONS_SRC = {"ps": "assets/el-sim/icon-ps.png", "fort": "assets/el-sim/icon-fort.png", "outpost": "assets/el-sim/icon-outpost.png", "base": "assets/el-sim/icon-base.png", "gate": "assets/el-sim/icon-gate.png", "mfort": "assets/el-sim/icon-mfort.png", "ark": "assets/el-sim/icon-ark.png", "research": "assets/el-sim/icon-research.png", "city": "assets/el-sim/icon-city.png", "gateh": "assets/el-sim/icon-gateh.png"};
 const ICONS = {};
 Object.keys(ICONS_SRC).forEach(k=>{const im=new Image();im.onload=()=>draw();im.src=ICONS_SRC[k];ICONS[k]=im;});
 // ---- terrain: one mosaic of the game's own render (see generator header) ----
@@ -65,6 +65,14 @@ function zoneTiles(px,py,isFort){
 function bodyTiles(px,py,isFort){
   return isFort? [[px,py],[px+1,py+1],[px-1,py+1],[px,py+2]] : [[px,py]];
 }
+// a fixed building's body is a w x w square in uv space with its anchor at the north
+// corner, so a 4-wide Eternal City covers 16 tiles, not the 4 a fort does
+function bodyTilesW(X,Y,w){
+  const [u0,v0]=uv(X,Y), out=[];
+  for(let du=0;du<w;du++) for(let dv=0;dv<w;dv++) out.push(xy(u0+du, v0-dv));
+  return out;
+}
+const fixCentre = (f)=> [f.X, f.Y + (f.w||2) - 1];
 function fixedBox(X,Y,w,lw){
   const l=X+1-lw, c=Y+w-1;
   const u0=(l+c)/2, v0=(l-c)/2;
@@ -84,7 +92,7 @@ S.forEach(s=>{
 // build_type -> sprite (from kvk_building.building_image)
 const FIXICON = {3:'outpost',4:'base',5:'ps',6:'mfort',7:'research',8:'city',9:'gate',10:'ark'};
 const FIX = D.fixed.map(f=>({X:f[0],Y:f[1],bt:f[2],w:f[3],lw:f[4],sid:f[5],tag:f[6],id:f[7],
-                             name:f[8], kind:'fixed', depth:(f[1]-Y0)*TH/2}));
+                             name:f[8], horiz:!!f[9], kind:'fixed', depth:(f[1]-Y0)*TH/2}));
 // gRing: the 1-tile border ring of a Lv.1 Gate WE own is placeable
 // (checkPosEnableInKVK) even though the square is claimed. No gate is ours in this
 // snapshot, so this is dormant but correct if one is captured.
@@ -105,7 +113,7 @@ FIX.forEach(f=>{
     if(f.sid){ if(!gClaim[i]) gClaim[i]=an; if(ownGate&&onRing) gRing[i]=1; }
     else gExcl[i]=1;
   }
-  bodyTiles(f.X,f.Y,true).forEach(([x,y])=>{ if(inCrop(x,y)) gBody[idx(x,y)]=1; });
+  bodyTilesW(f.X,f.Y,f.w||2).forEach(([x,y])=>{ if(inCrop(x,y)) gBody[idx(x,y)]=1; });
 });
 
 // ---- jump overlay: east landing tiles AND the west tiles that reach them ----
@@ -156,10 +164,23 @@ Object.keys(AIDN).forEach(k=>{ powerByAid[k]=powerOf(+k,null); });
 
 // ---- plan ----
 let plan=[];
+// which alliance a planned structure is for. Dog / MSS / Cat, sticky between placements.
+const PLAN_ALLI = ['Dog*','MSS*','Cat+'];
+let planAlli = (function(){ try{ const v=localStorage.getItem('elSimAlli'); return PLAN_ALLI.indexOf(v)>=0?v:'Dog*'; }catch(e){ return 'Dog*'; } })();
+const undoStack = [];                       // snapshots of the plan, newest last
+function pushUndo(){ undoStack.push(JSON.stringify(plan)); if(undoStack.length>60) undoStack.shift(); syncUndoBtn(); }
+function syncUndoBtn(){ const b=document.getElementById('undoBtn'); if(b) b.disabled=!undoStack.length; }
+function undo(){
+  if(!undoStack.length) return;
+  plan = JSON.parse(undoStack.pop());
+  savePlan(); rebuildPlanGrids(); invalidatePP(); renderPlan(); syncUndoBtn(); draw();
+  flash('Undone');
+}
 try{
   const st=JSON.parse(localStorage.getItem('elSimPlan4')||'null');
   const items=st&&Array.isArray(st.items)?st.items:(Array.isArray(st)?st:[]);
   plan=items.filter(p=>p&&Number.isInteger(p.x)&&Number.isInteger(p.y)&&(p.x+p.y)%2===0&&typeof p.fort==='boolean');
+  plan.forEach(p=>{ if(PLAN_ALLI.indexOf(p.alli)<0) p.alli='Dog*'; });
   if(st&&st.snapshot&&st.snapshot!==D.snapshot) setTimeout(()=>flash('Plan was made on the '+st.snapshot+' snapshot; territory has changed since'),600);
 }catch(e){ plan=[]; }
 const gPlanClaim=new Uint8Array(N), gPlanBody=new Uint8Array(N);
@@ -260,6 +281,8 @@ function visRange(){
           Math.max(Y0,Math.floor(oy/(TH/2))+Y0-2), Math.min(Y1,Math.ceil((oy+cssH/zoom)/(TH/2))+Y0+2)];
 }
 const ICON_SPEC = {ps:{w:1.7,cy:0,drop:.55}, fort:{w:2.6,cy:1,drop:1}, outpost:{w:2.3,cy:1,drop:1},
+                   gateh:{w:4.2,cy:0,drop:1.15},   // positive_level: east-west wall segment
+
                    base:{w:2.6,cy:1,drop:1}, gate:{w:2.0,cy:1,drop:1.55}, mfort:{w:2.6,cy:1,drop:1},
                    research:{w:2.6,cy:1,drop:1}, city:{w:3.4,cy:2,drop:1.2}, ark:{w:3.0,cy:4,drop:1.4}};
 function iconH(kind){
@@ -270,10 +293,13 @@ function iconH(kind){
 function drawIcon(kind,gx,gy,opts){
   opts=opts||{};
   const im=ICONS[kind], spec=ICON_SPEC[kind];
-  const w=spec.w*TW*zoom*devicePixelRatio;
+  if(!spec) return false;              // unknown kind: skip it, never throw mid-pass
+  const w=(opts.w||spec.w)*TW*zoom*devicePixelRatio;
   if(!im||!im.complete||!im.naturalWidth||w<13) return false;
   const h=w*im.naturalHeight/im.naturalWidth;
-  const [wx,wy]=px(gx,gy+spec.cy); const [sx,sy]=scr(wx,wy);
+  // opts.exact means gy is already the body centre (fixed buildings compute it from
+  // their own width), so don't add the per-kind nudge on top
+  const [wx,wy]=px(gx, opts.exact ? gy : gy+spec.cy); const [sx,sy]=scr(wx,wy);
   ctx.save();
   if(opts.gray) ctx.filter='grayscale(70%)';
   ctx.globalAlpha=opts.alpha!==undefined?opts.alpha:1;
@@ -398,28 +424,31 @@ function render(){
         ctx.fillText('FORT '+tagOf(s.owner)+(building?' (building)':''), sx, sy+TH*k*.9);
       }
     } else if(it.kind==='fixed'){
-      const f=it;
-      ctx.beginPath(); bodyTiles(f.X,f.Y,true).forEach(([bx,by])=>tilePath(bx,by,0.92));
+      const f=it, ctr=fixCentre(f);
+      ctx.beginPath(); bodyTilesW(f.X,f.Y,f.w||2).forEach(([bx,by])=>tilePath(bx,by,0.92));
       ctx.fillStyle=f.sid?'#3fb95055':'#6e768155'; ctx.fill();
       ctx.strokeStyle=f.sid?'#3fb950aa':'#f8514966'; ctx.lineWidth=1; ctx.stroke();
-      drawIcon(FIXICON[f.bt]||'outpost', f.X, f.Y, {});
+      // gates use the sprite that matches their wall: wide for east-west, tall for north-south
+      const kindIcon = f.bt===9 ? (f.horiz?'gateh':'gate') : (FIXICON[f.bt]||'outpost');
+      drawIcon(kindIcon, ctr[0], ctr[1], {exact:true, w: f.bt===9&&f.horiz ? 4.2 : undefined});
       if(zoom>.9){
-        const [wx,wy]=px(f.X,f.Y+2); const [sx,sy]=scr(wx,wy);
+        const [wx,wy]=px(ctr[0],ctr[1]+1); const [sx,sy]=scr(wx,wy);
         ctx.fillStyle='#e6edf3'; ctx.font=`${8.5*k*.7}px sans-serif`; ctx.textAlign='center';
         ctx.fillText(f.name+' '+f.X+';'+f.Y+(f.tag?' ['+f.tag+']':''), sx, sy+TH*k*1.3);
       }
     } else if(it.kind==='plan'){
       const p=it.p;
       ctx.beginPath(); bodyTiles(p.x,p.y,p.fort).forEach(([bx,by])=>tilePath(bx,by,0.95));
-      const stCol=pp.get(p)?'#3fb950':'#d29922';
-      ctx.fillStyle='#79c0ff44'; ctx.fill();
+      const aCol = p.alli==='MSS*'?'#388bfd':(p.alli==='Cat+'?'#d29922':'#3fb950');
+      const stCol=pp.get(p)?aCol:'#d29922';
+      ctx.fillStyle=aCol+'44'; ctx.fill();
       ctx.strokeStyle=stCol; ctx.lineWidth=2*k*.5; ctx.stroke();
-      ctx.strokeStyle='#79c0ff66'; ctx.lineWidth=1; strokeZone(p.x,p.y,p.fort);
+      ctx.strokeStyle=aCol+'88'; ctx.lineWidth=1.2*k*.5; strokeZone(p.x,p.y,p.fort);
       drawIcon(p.fort?'fort':'ps', p.x, p.y, {alpha:.92});
       if(zoom>.9){
         const [wx,wy]=px(p.x,p.y); const [sx,sy]=scr(wx,wy);
         ctx.fillStyle=stCol; ctx.font=`bold ${9.5*k*.7}px sans-serif`; ctx.textAlign='center';
-        ctx.fillText('#'+(it.i+1), sx, sy-iconH(p.fort?'fort':'ps'));
+        ctx.fillText('#'+(it.i+1)+' '+(p.alli||'Dog*'), sx, sy-iconH(p.fort?'fort':'ps'));
       }
     }
   });
@@ -519,9 +548,12 @@ function render(){
 function strokeZone(x,y,isFort){
   // true zone boundary: outer edge of the corner tiles, not their centres
   const b=zoneBoxUV(x,y,isFort);
+  // corner order below is WEST, SOUTH, EAST, NORTH - each must be pushed out along its
+  // own direction or the outline shears (it used to be off by one position, which drew
+  // a skewed rectangle around a square zone)
   const c=[xy(b[0],b[2]),xy(b[1],b[2]),xy(b[1],b[3]),xy(b[0],b[3])];
   const hw=TW/2*zoom*devicePixelRatio, hh=TH/2*zoom*devicePixelRatio;
-  const off=[[0,-hh],[hw,0],[0,hh],[-hw,0]];
+  const off=[[-hw,0],[0,hh],[hw,0],[0,-hh]];
   ctx.beginPath();
   c.forEach((t,i)=>{
     const [wx,wy]=px(t[0],t[1]); const [sx,sy]=scr(wx,wy);
@@ -539,7 +571,8 @@ window.addEventListener('mouseup',()=>{
     const isFort=tool==='fort';
     const chk=validate(hover[0],hover[1],isFort);
     if(chk.ok){
-      plan.push({x:hover[0],y:hover[1],fort:isFort});
+      pushUndo();
+      plan.push({x:hover[0],y:hover[1],fort:isFort,alli:planAlli});
       savePlan(); rebuildPlanGrids(); invalidatePP(); renderPlan(); draw();
     } else flash('Cannot place: '+chk.reason);
   }
@@ -557,13 +590,45 @@ function tileAt(mx,my){
   }
   return best;
 }
+// The game's own numbers for an objective building, read out of kvk_building and
+// localised by the client (LocalManager.LOCAL.getText / LocalUtils.getBuffShow).
+const KINDS = D.kinds || {};
+function kindOf(f){ return KINDS[f.bt+':'+f.name] || null; }
+function hms(sec){
+  sec = +sec || 0;
+  if(!sec) return '';
+  const h=Math.floor(sec/3600), m=Math.round(sec%3600/60);
+  return h ? (h+'h'+(m?' '+m+'m':'')) : (m+'m');
+}
+function kindLines(f){
+  const k = kindOf(f); if(!k) return [];
+  const out = [];
+  if(k.buff && k.buff!=='None') out.push('<span style="color:#3fb950">Buff:</span> '+k.buff);
+  if(k.honor){
+    const h = String(k.honor).split('|');
+    out.push('<span style="color:#d2a8ff">Honor:</span> '+h[0]+'/h to the holder'
+             + (h[1]&&h[1]!==h[0] ? ' ('+h[1]+' alliance)' : ''));
+  }
+  if(k.cap) out.push('Garrison capacity '+(+k.cap).toLocaleString());
+  if(k.firstCondition) out.push('First conquest: hold '+hms(k.firstCondition)+' for the bonus reward');
+  if(k.openCycle) out.push('Open cycle '+hms(k.openCycle)+(k.defenseCycle?' &middot; defence '+hms(k.defenseCycle):''));
+  if(k.armySpeed) out.push('March speed effect '+k.armySpeed);
+  if(k.durable) out.push('Durability '+(+k.durable).toLocaleString());
+  if(k.desc && k.desc!==k.name) out.push('<span style="color:#8b949e">'+k.desc+'</span>');
+  return out;
+}
 // one-line description of a tile, for the tap toast on touch devices
 function tileSummary(t){
   const i=inCrop(t[0],t[1])?idx(t[0],t[1]):-1;
   const s=S.find(s=>bodyTiles(s.x,s.y,s.fort).some(([bx,by])=>bx===t[0]&&by===t[1]));
   if(s) return (s.fort?'Fort':'PS')+' '+tagOf(s.owner)+' S'+(ASRV[s.owner]||'?')+' · '+t[0]+';'+t[1];
-  const f=FIX.find(f=>bodyTiles(f.X,f.Y,true).some(([bx,by])=>bx===t[0]&&by===t[1]));
-  if(f) return f.name+' '+f.X+';'+f.Y+(f.tag?' ['+f.tag+']':' (unowned)');
+  const f=FIX.find(f=>bodyTilesW(f.X,f.Y,f.w||2).some(([bx,by])=>bx===t[0]&&by===t[1]));
+  if(f){
+    const k=kindOf(f);
+    return f.name+' '+f.X+';'+f.Y+(f.tag?' ['+f.tag+']':' (unowned)')
+      + (k&&k.buff&&k.buff!=='None' ? ' · '+k.buff.replace(/<[^>]+>/g,'') : '')
+      + (k&&k.honor ? ' · '+String(k.honor).split('|')[0]+' honor/h' : '');
+  }
   if(i<0) return t[0]+';'+t[1];
   if(gBlock[i]) return 'Mountain · '+t[0]+';'+t[1];
   if(gJump[i]) return 'Wall-jump landing tile · '+t[0]+';'+t[1];
@@ -634,7 +699,7 @@ cv.addEventListener('touchend',e=>{
     if(t && (tool==='ps'||tool==='fort')){
       const isFort = tool==='fort';
       const chk = validate(t[0],t[1],isFort);
-      if(chk.ok){ plan.push({x:t[0],y:t[1],fort:isFort});
+      if(chk.ok){ pushUndo(); plan.push({x:t[0],y:t[1],fort:isFort,alli:planAlli});
         savePlan(); rebuildPlanGrids(); invalidatePP(); renderPlan(); }
       else flash('Cannot place: '+chk.reason);
     } else if(t){
@@ -672,8 +737,11 @@ function updateTip(e,t){
     bits.push(`<b>${s.fort?'Alliance Fort':'Power Station'}</b> &middot; ${tagOf(s.owner)} <span style="color:#8b949e">S${ASRV[s.owner]||'?'}</span> &middot; ${s.st===2?'under construction':'built'}`
       + (s.st===3?(powered?' &middot; powered':' &middot; <span style="color:#f85149">NO POWER (predicted)</span>'):'') + ` &middot; ${s.x};${s.y}`);
   }
-  const f=FIX.find(f=>bodyTiles(f.X,f.Y,true).some(([bx,by])=>bx===t[0]&&by===t[1]));
-  if(f) bits.push(`<b>${f.name}</b> ${f.X};${f.Y} &middot; ${f.tag?('held by '+f.tag):'unowned'}`);
+  const f=FIX.find(f=>bodyTilesW(f.X,f.Y,f.w||2).some(([bx,by])=>bx===t[0]&&by===t[1]));
+  if(f){
+    bits.push(`<b>${f.name}</b> ${f.X};${f.Y} &middot; ${f.tag?('held by '+f.tag+' (S'+f.sid+')'):'<span style="color:#d29922">unowned</span>'}`);
+    kindLines(f).forEach(l=>bits.push(l));
+  }
   if(i>=0){
     if(gJump[i]) bits.push('<span style="color:#d2a8ff">wall-jump landing tile</span>');
     if(gBlock[i]) bits.push('Blocked terrain');
@@ -814,14 +882,28 @@ function renderPlan(){
     zoneTiles(p.x,p.y,p.fort).forEach(([x,y])=>{ if(inCrop(x,y)){const j=idx(x,y); if(!claimed.has(j)){claimed.add(j);tiles++;}} });
     cost+=p.fort?10000:500; time+=p.fort?3:2;
     const div=document.createElement('div'); div.className='planitem';
-    div.innerHTML=`<span>#${i+1} ${p.fort?'Fort':'PS'} @ <b>${p.x};${p.y}</b> <span class="${pp.get(p)?'ok':'warn'}">${pp.get(p)?'powered':'no power (predicted)'}</span></span><span class="del" data-i="${i}">&times;</span>`;
+    const col = p.alli==='MSS*'?'#388bfd':(p.alli==='Cat+'?'#d29922':'#3fb950');
+    div.dataset.i = i;
+    div.innerHTML=`<span>#${i+1} ${p.fort?'Fort':'PS'} @ <b>${p.x};${p.y}</b> `
+      +`<button type="button" class="pa" data-i="${i}" style="background:${col}22;border:1px solid ${col};color:${col};border-radius:4px;font-size:10px;padding:1px 5px;cursor:pointer" title="Tap to change alliance">${p.alli||'Dog*'}</button> `
+      +`<span class="${pp.get(p)?'ok':'warn'}">${pp.get(p)?'powered':'no power (predicted)'}</span></span>`
+      +`<span class="del" data-i="${i}" title="Delete this one">&times;</span>`;
     el.appendChild(div);
   });
   document.getElementById('pTiles').textContent=tiles.toLocaleString();
   document.getElementById('pCost').textContent=cost.toLocaleString();
   document.getElementById('pTime').textContent=time+'h';
   document.getElementById('planEmpty').style.display=plan.length?'none':'block';
-  el.querySelectorAll('.del').forEach(d=>d.onclick=()=>{plan.splice(+d.dataset.i,1);savePlan();rebuildPlanGrids();invalidatePP();renderPlan();draw();});
+  el.querySelectorAll('.del').forEach(d=>d.onclick=(ev)=>{ev.stopPropagation();pushUndo();plan.splice(+d.dataset.i,1);savePlan();rebuildPlanGrids();invalidatePP();renderPlan();draw();});
+  el.querySelectorAll('.pa').forEach(b=>b.onclick=(ev)=>{
+    ev.stopPropagation(); pushUndo();
+    const i=+b.dataset.i, cur=PLAN_ALLI.indexOf(plan[i].alli||'Dog*');
+    plan[i].alli = PLAN_ALLI[(cur+1)%PLAN_ALLI.length];
+    savePlan(); renderPlan(); draw();
+  });
+  el.querySelectorAll('.planitem').forEach(d=>d.onclick=()=>{
+    const p=plan[+d.dataset.i]; if(p) flyTo(p.x,p.y,2.2);
+  });
   counts();
 }
 function renderJumps(){
@@ -880,7 +962,15 @@ tg('tgAreas',v=>showAreas=v,true);
 tg('tgLegal',v=>showLegal=v,false);
 tg('tgGridL',v=>showGrid=v,false);
 document.getElementById('fit').onclick=fit;
-document.getElementById('clearPlan').onclick=()=>{ if(plan.length&&confirm('Clear the whole plan?')){plan=[];savePlan();rebuildPlanGrids();invalidatePP();renderPlan();draw();} };
+(function(){
+  const sel=document.getElementById('planAlli');
+  sel.innerHTML=PLAN_ALLI.map(a=>`<option value="${a}"${a===planAlli?' selected':''}>for ${a}</option>`).join('');
+  sel.onchange=()=>{ planAlli=sel.value; try{localStorage.setItem('elSimAlli',planAlli);}catch(e){} draw(); };
+})();
+syncUndoBtn();
+document.getElementById('clearPlan').onclick=()=>{ if(plan.length&&confirm('Clear the whole plan? (Undo can bring it back)')){pushUndo();plan=[];savePlan();rebuildPlanGrids();invalidatePP();renderPlan();draw();} };
+document.getElementById('undoBtn').onclick=undo;
+window.addEventListener('keydown',e=>{ if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){ e.preventDefault(); undo(); } });
 document.getElementById('copyPlan').onclick=()=>{
   const pp=planPowered();
   const lines=plan.map((p,i)=>`#${i+1} ${p.fort?'Alliance Fort':'Power Station'} @ ${p.x};${p.y}${pp.get(p)?'':' (WARNING: not connected to the fort chain)'}`);
