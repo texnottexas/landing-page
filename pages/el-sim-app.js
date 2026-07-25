@@ -170,7 +170,8 @@ let planAlli = (function(){ try{ const v=localStorage.getItem('elSimAlli'); retu
 // Undo on a shared document can't be a snapshot restore — that would stamp on
 // whatever a co-planner did meanwhile. Each of my edits records its inverse op and
 // undo simply sends that.
-function syncUndoBtn(){ const b=document.getElementById('undoBtn'); if(b) b.disabled=!myOps.length; }
+function syncUndoBtn(){ const b=document.getElementById('undoBtn');
+  if(b) b.disabled = !myOps.length || (myPerm.checked && !myPerm.canEdit); }
 function undo(){
   if(!myOps.length) return flash('Nothing of yours left to undo');
   const inv = myOps.pop(); syncUndoBtn();
@@ -574,6 +575,40 @@ function whoAmI(){
         const j=JSON.parse(v); return (j&&j.name)||''; } catch(e){ return ''; }
 }
 function pw(){ try { return localStorage.getItem('elSimPw')||''; } catch(e){ return ''; } }
+function mySiteKey(){
+  try { const j=JSON.parse(localStorage.getItem('playerIdentity')||'null');
+        return (j&&j.siteKey)||''; } catch(e){ return ''; }
+}
+// Write access is R4+ in Dog/MSS (see the worker). The UI mirrors it so a read-only
+// viewer sees that up front, but the WORKER is what enforces it — this is presentation.
+let myPerm = {canEdit:false, reason:'Checking your rank…', checked:false};
+function pullPerm(){
+  return fetch(API+'/elsim/perm', {headers:{'X-El-Sim-Password':pw(),'X-Site-Key':mySiteKey()}})
+    .then(r=>r.json())
+    .then(j=>{ myPerm={canEdit:!!j.canEdit, reason:j.reason||'', rank:j.rank,
+                       alliance:j.alliance, degraded:!!j.degraded, checked:true};
+               applyPermUI(); return myPerm; })
+    .catch(()=>{ myPerm={canEdit:false, reason:'Could not check your rank; editing is paused.',
+                         checked:true}; applyPermUI(); return myPerm; });
+}
+const WRITE_TOOLS = ['toolPS','toolFort','toolNote','toolDraw','toolErase'];
+function applyPermUI(){
+  const ro = !myPerm.canEdit;
+  WRITE_TOOLS.concat(['undoBtn','clearPlan']).forEach(id=>{
+    const b=document.getElementById(id); if(!b) return;
+    b.disabled = ro && id!=='undoBtn' ? true : (id==='undoBtn' ? (ro || !myOps.length) : false);
+    b.style.opacity = ro ? .45 : '';
+    b.title = ro ? (myPerm.reason||'Read-only') : (b.title||'');
+  });
+  const sel=document.getElementById('planAlli'); if(sel) sel.disabled=ro;
+  if(ro && tool!=='pan') setTool('pan');
+  const el=document.getElementById('permState');
+  if(el) el.innerHTML = ro
+    ? '<b style="color:var(--yellow)">Read-only</b><br>'+esc(myPerm.reason)
+    : (myPerm.degraded ? '<span style="color:var(--muted)">Editing (roster check unavailable)</span>'
+                       : '<span style="color:var(--green)">You can edit the plan</span>'
+                         + (myPerm.rank?' <span style="color:var(--muted)">R'+myPerm.rank+' '+esc(myPerm.alliance||'')+'</span>':''));
+}
 // Names with emoji or a non-Latin script cannot go in a header value (fetch throws on
 // anything above U+00FF), so send a stripped form plus the real name as base64 UTF-8.
 function nameHeaders(name){
@@ -615,11 +650,17 @@ function pushOps(ops, undoOps){
   if(!shareOK){ flash('Shared plan is offline — edit not saved'); return Promise.resolve(false); }
   const me = whoAmI();
   if(!me){ flash('Pick your name first so edits are attributed'); openWhoFromApp(); return Promise.resolve(false); }
-  const hdrs = Object.assign({'Content-Type':'application/json','X-El-Sim-Password':pw()},
+  if(myPerm.checked && !myPerm.canEdit){ flash(myPerm.reason||'Read-only'); return Promise.resolve(false); }
+  const hdrs = Object.assign({'Content-Type':'application/json','X-El-Sim-Password':pw(),
+                              'X-Site-Key':mySiteKey()},
                              nameHeaders(me));
   return fetch(API+'/elsim/plan', {method:'POST', headers:hdrs, body: JSON.stringify({ops})})
     .then(r=>r.json())
     .then(j=>{
+      if(j && j.error==='read_only'){        // rank changed under us, or the UI was bypassed
+        myPerm={canEdit:false, reason:j.reason||'Read-only', rank:j.rank, alliance:j.alliance, checked:true};
+        applyPermUI(); flash(myPerm.reason); return false;
+      }
       if(!j || !j.ok){ flash('Edit refused: '+((j&&j.error)||'unknown')); return false; }
       (j.rejected||[]).forEach(r=>flash('Refused ('+r.op+'): '+r.reason));
       if(j.plan) adoptPlan(j.plan);
@@ -1660,6 +1701,7 @@ resize(); fit(); setTool('pan');
 // ---- shared plan: first load, one-time migration, then keep in step ----
 (function(){
   const localItems = plan.slice();          // whatever was in localStorage before sharing existed
+  pullPerm();
   pullPlan().then(()=>{
     if(!shareOK) return;
     const migrated = (function(){ try{ return localStorage.getItem('elSimMigrated')==='1'; }catch(e){ return true; } })();
@@ -1671,8 +1713,8 @@ resize(); fit(); setTool('pan');
   });
   // co-planners: refresh on a timer and whenever the tab comes back
   setInterval(()=>{ if(document.visibilityState==='visible' && !drawing) pullPlan(); }, 25000);
-  window.addEventListener('focus', ()=>{ if(!drawing) pullPlan(); });
+  window.addEventListener('focus', ()=>{ if(!drawing){ pullPlan(); pullPerm(); } });
 })();
 
-window.__el = {flyTo:flyTo, fit:fit, render:render, zoomNow:()=>zoom, D:D, S:S, FIX:FIX, JUMPS:JUMPS, TERR:TERR, validate:validate, selftest:window.__st, fortBudget:fortBudget, ourFortAt:ourFortAt, SP:()=>SP, plan:()=>plan};
+window.__el = {flyTo:flyTo, fit:fit, render:render, zoomNow:()=>zoom, D:D, S:S, FIX:FIX, JUMPS:JUMPS, TERR:TERR, validate:validate, selftest:window.__st, fortBudget:fortBudget, ourFortAt:ourFortAt, SP:()=>SP, plan:()=>plan, recheckPerm:pullPerm, perm:()=>myPerm};
 })();
