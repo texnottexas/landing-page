@@ -175,7 +175,8 @@ function undo(){
   if(!myOps.length) return flash('Nothing of yours left to undo');
   const inv = myOps.pop(); syncUndoBtn();
   if(!inv || !inv.op) return;
-  pushOps([inv]).then(ok=>{ if(ok) flash('Undone'); });
+  const ops = inv.op==='__batch' ? inv.ops : [inv];
+  pushOps(ops).then(ok=>{ if(ok) flash('Undone'); });
 }
 try{
   const st=JSON.parse(localStorage.getItem('elSimPlan4')||'null');
@@ -235,15 +236,17 @@ function drawInk(){
   const k=zoom*devicePixelRatio;
   (SP.strokes||[]).forEach(st=>{
     if(!st.pts||st.pts.length<2) return;
+    ctx.globalAlpha = isErasing(st.id,'s') ? 0.25 : 1;
     ctx.beginPath();
     st.pts.forEach((p,i)=>{ const [sx,sy]=tileToScr(p[0],p[1]); i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy); });
-    ctx.strokeStyle=st.color; ctx.lineWidth=Math.max(1.2, st.width*k*.55);
+    ctx.strokeStyle=st.color; ctx.lineWidth=Math.max(1.6, st.width*k*.95);
     ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+    ctx.globalAlpha = 1;
   });
   if(inkPath.length>1){                       // the stroke being drawn right now
     ctx.beginPath();
     inkPath.forEach((p,i)=>{ const [sx,sy]=tileToScr(p[0],p[1]); i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy); });
-    ctx.strokeStyle=inkColor; ctx.lineWidth=Math.max(1.2, inkWidth*k*.55);
+    ctx.strokeStyle=inkColor; ctx.lineWidth=Math.max(1.6, inkWidth*k*.95);
     ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
   }
 }
@@ -260,24 +263,44 @@ function drawNotes(){
       const t=n.text.length>34?n.text.slice(0,33)+'…':n.text;
       ctx.font=`${10.5*k*.7}px sans-serif`; ctx.textAlign='left';
       const w=ctx.measureText(t).width+8*k*.7, h=13*k*.7;
-      ctx.fillStyle='#0d1117cc'; ctx.fillRect(sx+r+2, sy-r*2.1-h*0.75, w, h);
-      ctx.fillStyle=n.color; ctx.fillText(t, sx+r+6, sy-r*2.1+h*0.1);
+      ctx.fillStyle='#0b0f14ee'; ctx.fillRect(sx+r+2, sy-r*2.1-h*0.75, w, h);
+      ctx.strokeStyle=n.color+'99'; ctx.lineWidth=1; ctx.strokeRect(sx+r+2, sy-r*2.1-h*0.75, w, h);
+      ctx.fillStyle='#f0f6fc'; ctx.fillText(t, sx+r+6, sy-r*2.1+h*0.1);
     }
   });
 }
-// nearest note / stroke to a tile point, for tap-to-open and the eraser
-function noteAt(tx,ty,tol){
-  tol = tol || 3;
+// Hit-testing is done in SCREEN distance, not tile distance: a fixed tile radius is
+// a huge target zoomed in and an unhittable one zoomed out. `px` is how close the
+// pointer has to be on screen; converted to tile units for the maths.
+function tolTiles(px){ return (px||22) / Math.max(0.05, zoom * TW / 2); }
+function noteAt(tx,ty,px){
+  const tol=tolTiles(px||22), t2=tol*tol;
   let best=null,bd=1e9;
-  (SP.notes||[]).forEach(n=>{ const d=(n.x-tx)**2+((n.y-ty)*0.7)**2; if(d<bd&&d<tol*tol*4){bd=d;best=n;} });
+  (SP.notes||[]).forEach(n=>{ const d=(n.x-tx)**2+((n.y-ty)*1.38)**2; if(d<bd&&d<t2){bd=d;best=n;} });
   return best;
 }
-function strokeAt(tx,ty,tol){
-  tol = tol || 3;
+// distance from a point to a segment, in tile units with y scaled to match x on screen
+function segDist2(px_,py_,ax,ay,bx,by){
+  const sy=1.38;                                  // TW/TH: makes y comparable to x
+  const Ax=ax, Ay=ay*sy, Bx=bx, By=by*sy, Px=px_, Py=py_*sy;
+  const dx=Bx-Ax, dy=By-Ay, L2=dx*dx+dy*dy;
+  let t = L2 ? ((Px-Ax)*dx + (Py-Ay)*dy) / L2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  const cx=Ax+t*dx, cy=Ay+t*dy;
+  return (Px-cx)**2 + (Py-cy)**2;
+}
+function strokeAt(tx,ty,px){
+  const tol=tolTiles(px||22), t2=tol*tol;
   let best=null,bd=1e9;
-  (SP.strokes||[]).forEach(st=>(st.pts||[]).forEach(p=>{
-    const d=(p[0]-tx)**2+((p[1]-ty)*0.7)**2; if(d<bd&&d<tol*tol*4){bd=d;best=st;}
-  }));
+  (SP.strokes||[]).forEach(st=>{
+    const pts=st.pts||[];
+    for(let i=1;i<pts.length;i++){
+      const d=segDist2(tx,ty,pts[i-1][0],pts[i-1][1],pts[i][0],pts[i][1]);
+      if(d<bd&&d<t2){ bd=d; best=st; }
+    }
+    if(pts.length===1){ const d=segDist2(tx,ty,pts[0][0],pts[0][1],pts[0][0],pts[0][1]);
+      if(d<bd&&d<t2){ bd=d; best=st; } }
+  });
   return best;
 }
 // ---- planned item: hit-test + edit in place ---------------------------------
@@ -293,6 +316,33 @@ function planAt(tx,ty){
   plan.forEach(p=>{ const d=(p.x-tx)**2+((p.y-ty)*0.7)**2; if(d<bd&&d<9){bd=d;best=p;} });
   return best;
 }
+// ---- eraser: a swipe, not a tap. Dragging never pans while Erase is selected, it
+// rubs out whatever it passes over — ink, notes, and planned structures — then sends
+// one batch so a sweep is a single shared edit (and a single undo).
+const ERASE_PX = 26;
+function eraseSweep(pt){
+  eraseCursor = pt;
+  const [tx,ty] = pt;
+  const st = strokeAt(tx,ty,ERASE_PX);
+  if(st && !eraseHits['s'+st.id]) eraseHits['s'+st.id] = {op:{op:'strokeDel', id:st.id},
+    undo:{op:'stroke', pts:st.pts, color:st.color, width:st.width}};
+  const n = noteAt(tx,ty,ERASE_PX);
+  if(n && !eraseHits['n'+n.id]) eraseHits['n'+n.id] = {op:{op:'noteDel', id:n.id},
+    undo:{op:'note', x:n.x, y:n.y, text:n.text, color:n.color}};
+  const it = planAt(tx,ty);
+  if(it && !eraseHits['i'+it.id]) eraseHits['i'+it.id] = {op:{op:'del', id:it.id},
+    undo:{op:'add', kind:it.fort?'fort':'ps', x:it.x, y:it.y, alli:it.alli}};
+}
+function eraseCommit(){
+  const hits = Object.values(eraseHits);
+  eraseHits = {}; eraseCursor = null;
+  if(!hits.length){ draw(); return flash('Nothing under the eraser — sweep across it'); }
+  const ops = hits.map(h=>h.op), undos = hits.map(h=>h.undo);
+  // one shared edit for the whole sweep; undo puts all of it back
+  pushOps(ops, ()=>({op:'__batch', ops:undos}));
+  draw();
+}
+function isErasing(id, kind){ return !!eraseHits[kind+id]; }
 let itemEditor=null;
 function closeItemEditor(){ if(itemEditor){ itemEditor.remove(); itemEditor=null; } }
 function openItemEditor(p){
@@ -492,6 +542,18 @@ const ICON_SPEC = {ps:{w:1.7,cy:0,drop:.55}, fort:{w:2.6,cy:1,drop:1}, outpost:{
 
                    base:{w:2.6,cy:1,drop:1}, gate:{w:2.0,cy:1,drop:1.55}, mfort:{w:2.6,cy:1,drop:1},
                    research:{w:2.6,cy:1,drop:1}, city:{w:3.4,cy:2,drop:1.2}, ark:{w:3.0,cy:4,drop:1.4}};
+// All on-map text goes through this. The terrain is pale green with white mountains,
+// so bright text alone disappears — every label gets a dark halo behind it.
+function mapLabel(text, sx, sy, color, sizePx, align, weight){
+  ctx.font = (weight||'600')+' '+sizePx+'px sans-serif';
+  ctx.textAlign = align || 'center';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(2.5, sizePx*0.42);
+  ctx.strokeStyle = '#0b0f14e6';
+  ctx.strokeText(text, sx, sy);
+  ctx.fillStyle = color;
+  ctx.fillText(text, sx, sy);
+}
 function iconH(kind){
   const im=ICONS[kind], spec=ICON_SPEC[kind];
   if(!im||!im.complete||!im.naturalWidth) return TH*zoom*devicePixelRatio;
@@ -627,8 +689,7 @@ function render(){
       drawIcon(s.fort?'fort':'ps', s.x, s.y, {alpha: building?.55:(powered?1:.5), gray: building});
       if(s.fort&&zoom>.8){
         const [wx,wy]=px(s.x,s.y+2); const [sx,sy]=scr(wx,wy);
-        ctx.fillStyle='#fff'; ctx.font=`${9*k*.7}px sans-serif`; ctx.textAlign='center';
-        ctx.fillText('FORT '+tagOf(s.owner)+(building?' (building)':''), sx, sy+TH*k*.9);
+        mapLabel('FORT '+tagOf(s.owner)+(building?' (building)':''), sx, sy+TH*k*.9, '#ffffff', 9.5*k*.7);
       }
     } else if(it.kind==='fixed'){
       const f=it, ctr=fixCentre(f);
@@ -640,8 +701,8 @@ function render(){
       drawIcon(kindIcon, ctr[0], ctr[1], {exact:true, w: f.bt===9&&f.horiz ? 4.2 : undefined});
       if(zoom>.9){
         const [wx,wy]=px(ctr[0],ctr[1]+1); const [sx,sy]=scr(wx,wy);
-        ctx.fillStyle='#e6edf3'; ctx.font=`${8.5*k*.7}px sans-serif`; ctx.textAlign='center';
-        ctx.fillText(f.name+' '+f.X+';'+f.Y+(f.tag?' ['+f.tag+']':''), sx, sy+TH*k*1.3);
+        mapLabel(f.name+' '+f.X+';'+f.Y+(f.tag?' ['+f.tag+']':''), sx, sy+TH*k*1.3,
+                 f.sid?'#7ee787':'#e6edf3', 9*k*.7);
       }
     } else if(it.kind==='plan'){
       const p=it.p;
@@ -654,8 +715,7 @@ function render(){
       drawIcon(p.fort?'fort':'ps', p.x, p.y, {alpha:.92});
       if(zoom>.9){
         const [wx,wy]=px(p.x,p.y); const [sx,sy]=scr(wx,wy);
-        ctx.fillStyle=stCol; ctx.font=`bold ${9.5*k*.7}px sans-serif`; ctx.textAlign='center';
-        ctx.fillText('#'+(it.i+1)+' '+(p.alli||'Dog*'), sx, sy-iconH(p.fort?'fort':'ps'));
+        mapLabel('#'+(it.i+1)+' '+(p.alli||'Dog*'), sx, sy-iconH(p.fort?'fort':'ps'), stCol, 10*k*.7, 'center', 'bold');
       }
     }
   });
@@ -678,8 +738,7 @@ function render(){
         const A=S2(h[0],h[1]), B=S2(t[0],t[1]);
         ctx.beginPath(); ctx.moveTo(A[0],A[1]); ctx.lineTo(B[0],B[1]); ctx.stroke();
         if(zoom>0.5){
-          ctx.fillStyle='#f0883e'; ctx.font=`600 ${9*k*.7}px sans-serif`; ctx.textAlign='center';
-          ctx.fillText('S'+a.sid, (A[0]+B[0])/2, (A[1]+B[1])/2-4*k*.7);
+          mapLabel('S'+a.sid, (A[0]+B[0])/2, (A[1]+B[1])/2-4*k*.7, '#ffb77c', 9.5*k*.7);
         }
       });
       ctx.restore();
@@ -699,24 +758,30 @@ function render(){
         ctx.fillStyle=c.westKind==='new'?'#79c0ff':'#3fb950'; ctx.fill();
         ctx.strokeStyle='#0d1117'; ctx.lineWidth=1.2*k*.4; ctx.stroke();
         if(zoom>.7){
-          ctx.fillStyle=c.westKind==='new'?'#79c0ff':'#3fb950'; ctx.font=`bold ${9*k*.7}px sans-serif`; ctx.textAlign='center';
-          ctx.fillText((c.westKind==='new'?'NEW PS ':'PS ')+c.bestWest[0]+';'+c.bestWest[1], asx, asy-8*k*.7);
+          mapLabel((c.westKind==='new'?'NEW PS ':'PS ')+c.bestWest[0]+';'+c.bestWest[1], asx, asy-8*k*.7,
+                   c.westKind==='new'?'#a5d6ff':'#7ee787', 9.5*k*.7, 'center', 'bold');
         }
       }
       // east marker
-      ctx.beginPath(); ctx.arc(sx,sy,5.5*k*.6,0,Math.PI*2);
+      ctx.beginPath(); ctx.arc(sx,sy,5.8*k*.6,0,Math.PI*2);
       ctx.fillStyle='#d2a8ff'; ctx.fill();
+      ctx.strokeStyle='#0b0f14'; ctx.lineWidth=1.6*k*.5; ctx.stroke();
       ctx.fillStyle='#0d1117'; ctx.font=`bold ${8*k*.6}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.fillText(String(ci+1), sx, sy);
       ctx.textBaseline='alphabetic';
       if(zoom>.7){
-        ctx.fillStyle='#d2a8ff'; ctx.font=`bold ${9.5*k*.7}px sans-serif`;
-        ctx.fillText('LAND '+bx+';'+by, sx, sy-9*k*.7);
+        mapLabel('LAND '+bx+';'+by, sx, sy-9*k*.7, '#e2c5ff', 10*k*.7, 'center', 'bold');
       }
     });
   }
   drawInk();
   drawNotes();
+  if(tool==='erase'&&eraseCursor){
+    const [ex,ey]=tileToScr(eraseCursor[0],eraseCursor[1]);
+    ctx.beginPath(); ctx.arc(ex,ey,ERASE_PX*devicePixelRatio,0,Math.PI*2);
+    ctx.strokeStyle='#f85149cc'; ctx.lineWidth=2*devicePixelRatio; ctx.setLineDash([5,4]);
+    ctx.stroke(); ctx.setLineDash([]);
+  }
   // ---- area labels, always legible, on top ----
   if(showAreas){
     ctx.textAlign='center'; ctx.textBaseline='middle';
@@ -773,8 +838,13 @@ function strokeZone(x,y,isFort){
 }
 
 // ---- interaction ----
-let dragging=false,lx=0,ly=0,moved=false,drawing=false;
+let dragging=false,lx=0,ly=0,moved=false,drawing=false,erasing=false;
+let eraseHits={}, eraseCursor=null;
 cv.addEventListener('mousedown',e=>{
+  if(tool==='erase'){
+    const r=cv.getBoundingClientRect();
+    erasing=true; eraseHits={}; eraseSweep(tilePointAt(e.clientX-r.left, e.clientY-r.top)); return;
+  }
   if(tool==='draw'){
     const r=cv.getBoundingClientRect();
     inkPath=[tilePointAt(e.clientX-r.left, e.clientY-r.top)];
@@ -783,6 +853,7 @@ cv.addEventListener('mousedown',e=>{
   dragging=true;moved=false;lx=e.clientX;ly=e.clientY;
 });
 window.addEventListener('mouseup',(e)=>{
+  if(erasing){ erasing=false; eraseCommit(); return; }
   if(drawing){
     drawing=false;
     if(inkPath.length>1) pushOps([{op:'stroke', pts:inkPath, color:inkColor, width:inkWidth}],
@@ -792,15 +863,6 @@ window.addEventListener('mouseup',(e)=>{
   if(dragging&&!moved&&tool==='note'&&hover){
     const r=cv.getBoundingClientRect();
     addNoteAt.apply(null, tilePointAt(lx-r.left, ly-r.top));
-    dragging=false; return;
-  }
-  if(dragging&&!moved&&tool==='erase'&&hover){
-    const r=cv.getBoundingClientRect();
-    const [tx,ty]=tilePointAt(lx-r.left, ly-r.top);
-    const n=noteAt(tx,ty), st=n?null:strokeAt(tx,ty);
-    if(n) pushOps([{op:'noteDel', id:n.id}], ()=>({op:'note', x:n.x, y:n.y, text:n.text, color:n.color}));
-    else if(st) pushOps([{op:'strokeDel', id:st.id}], ()=>({op:'stroke', pts:st.pts, color:st.color, width:st.width}));
-    else flash('Nothing to erase there');
     dragging=false; return;
   }
   if(dragging&&!moved&&tool==='pan'&&hover){
@@ -892,12 +954,14 @@ function tileSummary(t){
 }
 cv.addEventListener('mousemove',e=>{
   const r=cv.getBoundingClientRect();
+  if(erasing){ eraseSweep(tilePointAt(e.clientX-r.left, e.clientY-r.top)); draw(); return; }
   if(drawing){
     const p=tilePointAt(e.clientX-r.left, e.clientY-r.top);
     const last=inkPath[inkPath.length-1];
     if(!last || Math.abs(p[0]-last[0])+Math.abs(p[1]-last[1]) > 0.35) inkPath.push(p);
     draw(); return;
   }
+  if(tool==='erase'){ eraseCursor=tilePointAt(e.clientX-r.left, e.clientY-r.top); draw(); }
   if(dragging){
     const dx=e.clientX-lx, dy=e.clientY-ly;
     if(Math.abs(dx)+Math.abs(dy)>3) moved=true;
@@ -922,7 +986,9 @@ cv.addEventListener('touchstart',e=>{
   e.preventDefault();
   for(const t of e.changedTouches) tPts.set(t.identifier, tXY(t));
   if(tPts.size===1){ tMoved=false; tStart=Date.now();
-    if(tool==='draw'){ inkPath=[tilePointAt.apply(null,[...tPts.values()][0])]; drawing=true; } }
+    const p0=[...tPts.values()][0];
+    if(tool==='draw'){ inkPath=[tilePointAt.apply(null,p0)]; drawing=true; }
+    if(tool==='erase'){ erasing=true; eraseHits={}; eraseSweep(tilePointAt.apply(null,p0)); } }
   if(tPts.size>1 && drawing){ drawing=false; inkPath=[]; }   // second finger => pinch, not ink
   if(tPts.size===2){
     const [a,b]=[...tPts.values()];
@@ -933,7 +999,9 @@ cv.addEventListener('touchmove',e=>{
   e.preventDefault();
   const prev=new Map(tPts);
   for(const t of e.changedTouches) if(tPts.has(t.identifier)) tPts.set(t.identifier, tXY(t));
-  if(tPts.size===1 && drawing){
+  if(tPts.size===1 && erasing){
+    eraseSweep(tilePointAt.apply(null,[...tPts.values()][0])); tMoved=true; draw();
+  } else if(tPts.size===1 && drawing){
     const p=tilePointAt.apply(null,[...tPts.values()][0]);
     const last=inkPath[inkPath.length-1];
     if(!last || Math.abs(p[0]-last[0])+Math.abs(p[1]-last[1]) > 0.35) inkPath.push(p);
@@ -957,25 +1025,19 @@ cv.addEventListener('touchend',e=>{
   const pt = wasOne ? [...tPts.values()][0] : null;
   for(const t of e.changedTouches) tPts.delete(t.identifier);
   if(tPts.size<2) tPinch=null;
+  if(erasing){ erasing=false; eraseCommit(); return; }
   if(drawing){
     drawing=false;
     if(inkPath.length>1) pushOps([{op:'stroke', pts:inkPath, color:inkColor, width:inkWidth}],
                                  (applied)=>({op:'strokeDel', id:(applied[0]||{}).id}));
     inkPath=[]; draw(); return;
   }
-  if(wasOne && !tMoved && pt && Date.now()-tStart<600 && (tool==='note'||tool==='erase'||tool==='pan')){
+  if(wasOne && !tMoved && pt && Date.now()-tStart<600 && (tool==='note'||tool==='pan')){
     const [fx,fy]=tilePointAt(pt[0],pt[1]);
     const n=noteAt(fx,fy,2.5);
     const it=planAt(fx,fy);
     if(tool==='pan' && it){ openItemEditor(it); return; }
     if(tool==='note'){ addNoteAt(fx,fy); return; }
-    if(tool==='erase'){
-      const st=n?null:strokeAt(fx,fy,2.5);
-      if(n) pushOps([{op:'noteDel', id:n.id}], ()=>({op:'note', x:n.x, y:n.y, text:n.text, color:n.color}));
-      else if(st) pushOps([{op:'strokeDel', id:st.id}], ()=>({op:'stroke', pts:st.pts, color:st.color, width:st.width}));
-      else flash('Nothing to erase there');
-      return;
-    }
     if(n){ openNote(n); return; }
   }
   if(wasOne && !tMoved && pt && Date.now()-tStart<600){
