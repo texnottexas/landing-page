@@ -280,6 +280,52 @@ function strokeAt(tx,ty,tol){
   }));
   return best;
 }
+// ---- planned item: hit-test + edit in place ---------------------------------
+// A planned structure is editable from the map itself, not just the sidebar row —
+// on a phone the sidebar is a sheet, so tapping the thing you just placed has to work.
+function planAt(tx,ty){
+  const rx=Math.round(tx), ry=Math.round(ty);
+  for(const p of plan){
+    if(bodyTiles(p.x,p.y,p.fort).some(([bx,by])=>bx===rx&&by===ry)) return p;
+  }
+  // near miss: pick the closest within ~2 tiles so fat fingers still land
+  let best=null,bd=1e9;
+  plan.forEach(p=>{ const d=(p.x-tx)**2+((p.y-ty)*0.7)**2; if(d<bd&&d<9){bd=d;best=p;} });
+  return best;
+}
+let itemEditor=null;
+function closeItemEditor(){ if(itemEditor){ itemEditor.remove(); itemEditor=null; } }
+function openItemEditor(p){
+  closeItemEditor();
+  const box=document.createElement('div');
+  box.id='itemEdit';
+  box.style.cssText='position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:30;'
+    +'background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;'
+    +'box-shadow:0 8px 24px #000a;font-size:12px;max-width:94vw;';
+  const col=(a)=> a==='MSS*'?'#388bfd':(a==='Cat+'?'#d29922':'#3fb950');
+  box.innerHTML='<div style="margin-bottom:7px">'
+    +'<b>'+(p.fort?'Planned Fort':'Planned Power Station')+'</b> '+p.x+';'+p.y
+    +(p.by?' <span style="color:var(--muted)">by '+esc(p.by)+'</span>':'')+'</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
+    + PLAN_ALLI.map(a=>'<button type="button" class="tbtn ie-a" data-a="'+a+'" style="border-color:'+col(a)
+        +';color:'+col(a)+(a===(p.alli||'Dog*')?';background:'+col(a)+'22':'')+'">'+a+'</button>').join('')
+    +'<span style="width:8px"></span>'
+    +'<button type="button" class="tbtn danger ie-del">Delete</button>'
+    +'<button type="button" class="tbtn ie-close">Close</button></div>';
+  document.body.appendChild(box);
+  itemEditor=box;
+  box.querySelectorAll('.ie-a').forEach(b=>b.onclick=()=>{
+    const to=b.dataset.a, from=p.alli;
+    closeItemEditor();
+    if(to===from) return;
+    pushOps([{op:'setAlli', id:p.id, alli:to}], ()=>({op:'setAlli', id:p.id, alli:from}));
+  });
+  box.querySelector('.ie-del').onclick=()=>{
+    closeItemEditor();
+    pushOps([{op:'del', id:p.id}], ()=>({op:'add', kind:p.fort?'fort':'ps', x:p.x, y:p.y, alli:p.alli}));
+  };
+  box.querySelector('.ie-close').onclick=closeItemEditor;
+}
 // ---- note editor (small prompt-based flow; works the same on phone) ----
 function addNoteAt(tx,ty){
   const text=(window.prompt('Note for this spot (everyone sees it):')||'').trim();
@@ -760,10 +806,16 @@ window.addEventListener('mouseup',(e)=>{
   if(dragging&&!moved&&tool==='pan'&&hover){
     const r=cv.getBoundingClientRect();
     const [tx,ty]=tilePointAt(lx-r.left, ly-r.top);
+    const it=planAt(tx,ty);
+    if(it){ openItemEditor(it); dragging=false; return; }
     const n=noteAt(tx,ty,2);
     if(n){ openNote(n); dragging=false; return; }
+    closeItemEditor();
   }
   if(dragging&&!moved&&(tool==='ps'||tool==='fort')&&hover){
+    // tapping something already planned means "edit that", not "refuse the placement"
+    const already=planAt(hover[0],hover[1]);
+    if(already){ openItemEditor(already); dragging=false; return; }
     const isFort=tool==='fort';
     const chk=validate(hover[0],hover[1],isFort);
     if(chk.ok){
@@ -914,6 +966,8 @@ cv.addEventListener('touchend',e=>{
   if(wasOne && !tMoved && pt && Date.now()-tStart<600 && (tool==='note'||tool==='erase'||tool==='pan')){
     const [fx,fy]=tilePointAt(pt[0],pt[1]);
     const n=noteAt(fx,fy,2.5);
+    const it=planAt(fx,fy);
+    if(tool==='pan' && it){ openItemEditor(it); return; }
     if(tool==='note'){ addNoteAt(fx,fy); return; }
     if(tool==='erase'){
       const st=n?null:strokeAt(fx,fy,2.5);
@@ -930,6 +984,8 @@ cv.addEventListener('touchend',e=>{
     hover = t;
     document.getElementById('coord').textContent = t ? t[0]+';'+t[1] : '-';
     if(t && (tool==='ps'||tool==='fort')){
+      const already=planAt(t[0],t[1]);
+      if(already){ openItemEditor(already); draw(); return; }
       const isFort = tool==='fort';
       const chk = validate(t[0],t[1],isFort);
       if(chk.ok) pushOps([{op:'add', kind:isFort?'fort':'ps', x:t[0], y:t[1], alli:planAlli}],
@@ -1170,6 +1226,7 @@ function renderJumps(){
   });
 }
 function flyTo(x,y,z){
+  closeItemEditor();
   zoom=z||2.2;
   const [wx,wy]=px(x,y);
   ox=wx-cv.clientWidth/2/zoom; oy=wy-cv.clientHeight/2/zoom;
