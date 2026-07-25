@@ -42,6 +42,36 @@ header .sub{font-size:11px;color:var(--muted);}
 #coord{position:fixed;left:12px;bottom:10px;background:#161b22cc;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:12px;font-variant-numeric:tabular-nums;z-index:6;}
 .note{color:var(--muted);font-size:10.5px;line-height:1.55;margin-top:4px;}
 #nav{background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11.5px;max-width:190px;}
+#cv{touch-action:none;}
+/* zoom pad - always available, and the only sane way to zoom on a phone */
+#zoompad{position:fixed;right:14px;bottom:14px;display:flex;flex-direction:column;gap:6px;z-index:7;}
+#zoompad button{width:40px;height:40px;border-radius:9px;background:#161b22e6;border:1px solid var(--border);color:var(--text);font-size:19px;line-height:1;cursor:pointer;}
+#zoompad button:active{background:#1f6feb44;}
+#zoompad .zsm{font-size:11px;}
+#sheetBtn{display:none;}
+@media (max-width:880px){
+  body{overflow:hidden;}
+  header{padding:6px 8px;gap:8px;align-items:flex-start;}
+  header h1{font-size:13px;} header .sub{display:none;}
+  .toolbar{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:3px;width:100%;}
+  .toolbar::-webkit-scrollbar{height:0;}
+  .tbtn{padding:7px 12px;font-size:12.5px;white-space:nowrap;flex:0 0 auto;}
+  #nav{flex:0 0 auto;max-width:150px;padding:7px 8px;}
+  /* bottom-LEFT, clear of the zoom pad on the right and the coord chip below it */
+  #sheetBtn{display:inline-block;position:fixed;left:8px;right:auto;bottom:44px;z-index:8;padding:9px 15px;
+            background:#161b22e6;border:1px solid var(--accent);color:var(--accent);border-radius:999px;font-size:12.5px;}
+  /* the panel becomes a sheet that slides up over the map instead of eating its width */
+  #side{position:fixed;left:0;right:0;bottom:0;width:auto;height:62vh;border-left:none;
+        border-top:1px solid var(--border);border-radius:14px 14px 0 0;z-index:9;
+        transform:translateY(100%);transition:transform .22s ease;box-shadow:0 -8px 24px #0009;padding-bottom:26px;}
+  #side.open{transform:translateY(0);}
+  #side::before{content:'';position:absolute;left:50%;top:6px;width:38px;height:4px;margin-left:-19px;
+                border-radius:2px;background:var(--border);}
+  #coord{bottom:8px;left:8px;font-size:11px;padding:3px 8px;}
+  #zoompad{bottom:64px;right:14px;}
+  #zoompad button{width:46px;height:46px;font-size:21px;}
+  #tip{max-width:200px;font-size:10.5px;}
+}
 </style>
 </head>
 <body>
@@ -53,6 +83,7 @@ header .sub{font-size:11px;color:var(--muted);}
     <button class="tbtn" id="toolFort">+ Fort</button>
     <span style="width:8px"></span>
     <button class="tbtn jump" id="tgJump">Wall jumps</button>
+    <button class="tbtn" id="tgAlt">Other warzones</button>
     <button class="tbtn" id="tgClaims">Claims</button>
     <button class="tbtn" id="tgZones">Excl. zones</button>
     <button class="tbtn" id="tgMtn">Terrain art</button>
@@ -72,6 +103,9 @@ header .sub{font-size:11px;color:var(--muted);}
     <h3>Wall jumps &rarr; zone 2</h3>
     <div id="jumps"></div>
     <div class="note">Both sides are drawn: <span style="color:#79c0ff">blue = the west tile a PS must sit on</span>, <span style="color:#d2a8ff">purple = the east tile it reaches</span>, dashed line = the pairing. Only crossings walk-reachable from one of our four Lv.1 Gates are listed; anything cut off by the mountain wall is excluded. West spots are already filtered to tiles where a new PS would be powered by our built network.</div>
+    <h3>Wall jumps &middot; other warzones</h3>
+    <div id="altTable"></div>
+    <div class="note" id="altNote"></div>
     <h3>Warzones &middot; whole map</h3>
     <div id="srvTable"></div>
     <div class="note" id="srvNote"></div>
@@ -125,6 +159,12 @@ header .sub{font-size:11px;color:var(--muted);}
 </div>
 <div id="tip"></div>
 <div id="coord">-</div>
+<div id="zoompad">
+  <button type="button" id="zIn" title="Zoom in" aria-label="Zoom in">+</button>
+  <button type="button" id="zOut" title="Zoom out" aria-label="Zoom out">&minus;</button>
+  <button type="button" id="zFit" class="zsm" title="Fit the whole map">fit</button>
+</div>
+<button type="button" class="tbtn" id="sheetBtn">Info &#9650;</button>
 <style>
 .ov{position:fixed;inset:0;background:var(--bg);z-index:600;display:flex;align-items:center;justify-content:center;padding:16px;}
 .ov.hide{display:none;}

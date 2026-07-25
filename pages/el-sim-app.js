@@ -117,6 +117,24 @@ JUMPS.forEach(c=>{
   (c.west||[]).forEach(([x,y])=>{ if(inCrop(x,y)) gJumpW[idx(x,y)]=1; });
 });
 
+// ---- other warzones' crossings (surveyed, not oracle-verified) ----
+const WJ = D.jumpsAll || {gates:[], pockets:[]};
+const gAltHome = new Uint8Array(N), gAltTarget = new Uint8Array(N);
+const ALT = [];
+WJ.gates.forEach(g=>{
+  (g.corridors||[]).forEach(c=>{
+    if(c.sid === 2864) return;                   // ours is drawn from the detailed pass
+    ALT.push({gate:g.gate, name:g.name, sid:c.sid, tags:c.tags, pairs:c.pairs,
+              homeTiles:c.homeTiles, targetTiles:c.targetTiles, best:c.best, sample:c.sample});
+    (c.sample||[]).forEach(([hx,hy,tx,ty])=>{
+      if(inCrop(hx,hy)) gAltHome[idx(hx,hy)]=1;
+      if(inCrop(tx,ty)) gAltTarget[idx(tx,ty)]=1;
+    });
+  });
+});
+const POCKETS = WJ.pockets || [];
+const DEAD = POCKETS.filter(p=>!p.gates);        // no gate on it -> nobody can operate there
+
 // ---- power ----
 function boxesTouch(b1,b2){
   const du=Math.max(b1[0]-b2[1],b2[0]-b1[1],0);
@@ -196,7 +214,7 @@ function resize(){ cv.width=cv.clientWidth*devicePixelRatio; cv.height=cv.client
 window.addEventListener('resize',resize);
 const px=(x,y)=>[(x-X0)*TW/2,(y-Y0)*TH/2];
 const scr=(wx,wy)=>[(wx-ox)*zoom*devicePixelRatio,(wy-oy)*zoom*devicePixelRatio];
-let showClaims=true, showZones=true, showGrid=false, showMtn=true, showJump=true, showLegal=false, showBlock=false, showAreas=true;
+let showClaims=true, showZones=true, showGrid=false, showMtn=true, showJump=true, showLegal=false, showBlock=false, showAreas=true, showAlt=false;
 // ---- low-zoom sheet: one pixel per tile (cell x, tile y), blitted onto the map rect
 const LOD_Z=0.42, LODW=D.mask.cols, LODH=D.mask.rows;
 const lod=document.createElement('canvas'); lod.width=LODW; lod.height=LODH;
@@ -308,6 +326,8 @@ function render(){
       if(showClaims&&gPlanClaim[i]){ ctx.fillStyle='#79c0ff3d'; ctx.beginPath(); tilePath(x,y,1); ctx.fill(); }
       if(showZones&&gExcl[i]){ ctx.fillStyle='#f8514922'; ctx.beginPath(); tilePath(x,y,1); ctx.fill(); }
       if(showLegal&&gLegalV[i]&&!gClaim[i]){ ctx.fillStyle='#3fb95015'; ctx.beginPath(); tilePath(x,y,1); ctx.fill(); }
+      if(showAlt&&gAltTarget[i]){ ctx.fillStyle='#f0883e55'; ctx.beginPath(); tilePath(x,y,1); ctx.fill(); }
+      if(showAlt&&gAltHome[i]){ ctx.fillStyle='#39c5cf55'; ctx.beginPath(); tilePath(x,y,1); ctx.fill(); }
       if(showJump&&gJumpW[i]){ ctx.fillStyle='#79c0ff66'; ctx.beginPath(); tilePath(x,y,1); ctx.fill();
         ctx.strokeStyle='#79c0ff'; ctx.lineWidth=Math.max(1,.9*kx*.5); ctx.stroke(); }
       if(showJump&&gJump[i]){ ctx.fillStyle='#d2a8ff66'; ctx.beginPath(); tilePath(x,y,1); ctx.fill();
@@ -414,6 +434,20 @@ function render(){
       ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
     }));
     ctx.restore();
+    if(showAlt){
+      ctx.save(); ctx.setLineDash([5*k*.5,4*k*.5]); ctx.lineWidth=1.4*k*.5; ctx.strokeStyle='#f0883eaa';
+      ALT.forEach(a=>{
+        const h=a.best.home, t=a.best.target;
+        if(t[1]<y0-40||t[1]>y1+40) return;
+        const A=S2(h[0],h[1]), B=S2(t[0],t[1]);
+        ctx.beginPath(); ctx.moveTo(A[0],A[1]); ctx.lineTo(B[0],B[1]); ctx.stroke();
+        if(zoom>0.5){
+          ctx.fillStyle='#f0883e'; ctx.font=`600 ${9*k*.7}px sans-serif`; ctx.textAlign='center';
+          ctx.fillText('S'+a.sid, (A[0]+B[0])/2, (A[1]+B[1])/2-4*k*.7);
+        }
+      });
+      ctx.restore();
+    }
     JUMPS.forEach((c,ci)=>{
       const [bx,by]=c.best;
       if(bx<x0-24||bx>x1+24||by<y0-24||by>y1+24) return;
@@ -511,14 +545,9 @@ window.addEventListener('mouseup',()=>{
   }
   dragging=false;
 });
-cv.addEventListener('mousemove',e=>{
-  const r=cv.getBoundingClientRect();
-  if(dragging){
-    const dx=e.clientX-lx, dy=e.clientY-ly;
-    if(Math.abs(dx)+Math.abs(dy)>3) moved=true;
-    ox-=dx/zoom; oy-=dy/zoom; lx=e.clientX; ly=e.clientY; draw();
-  }
-  const wx=(e.clientX-r.left)/zoom+ox, wy=(e.clientY-r.top)/zoom+oy;
+// nearest lattice tile to a canvas-space point (shared by hover and tap)
+function tileAt(mx,my){
+  const wx=mx/zoom+ox, wy=my/zoom+oy;
   const gx=Math.round(wx/(TW/2))+X0, gy=Math.round(wy/(TH/2))+Y0;
   let best=null,bd=1e9;
   for(let cx=gx-2;cx<=gx+2;cx++)for(let cy=gy-1;cy<=gy+1;cy++){
@@ -526,18 +555,110 @@ cv.addEventListener('mousemove',e=>{
     const [twx,twy]=px(cx,cy); const d=(twx-wx)**2+((twy-wy)*(TW/TH))**2;
     if(d<bd){bd=d;best=[cx,cy];}
   }
+  return best;
+}
+// one-line description of a tile, for the tap toast on touch devices
+function tileSummary(t){
+  const i=inCrop(t[0],t[1])?idx(t[0],t[1]):-1;
+  const s=S.find(s=>bodyTiles(s.x,s.y,s.fort).some(([bx,by])=>bx===t[0]&&by===t[1]));
+  if(s) return (s.fort?'Fort':'PS')+' '+tagOf(s.owner)+' S'+(ASRV[s.owner]||'?')+' · '+t[0]+';'+t[1];
+  const f=FIX.find(f=>bodyTiles(f.X,f.Y,true).some(([bx,by])=>bx===t[0]&&by===t[1]));
+  if(f) return f.name+' '+f.X+';'+f.Y+(f.tag?' ['+f.tag+']':' (unowned)');
+  if(i<0) return t[0]+';'+t[1];
+  if(gBlock[i]) return 'Mountain · '+t[0]+';'+t[1];
+  if(gJump[i]) return 'Wall-jump landing tile · '+t[0]+';'+t[1];
+  if(gJumpW[i]) return 'Wall-jump west spot · '+t[0]+';'+t[1];
+  if(gClaim[i]) return tagOf(aidOfIdx[gClaim[i]])+' territory · '+t[0]+';'+t[1];
+  if(gExcl[i]) return 'Fixed-building zone · '+t[0]+';'+t[1];
+  return 'Open ground · '+t[0]+';'+t[1];
+}
+cv.addEventListener('mousemove',e=>{
+  const r=cv.getBoundingClientRect();
+  if(dragging){
+    const dx=e.clientX-lx, dy=e.clientY-ly;
+    if(Math.abs(dx)+Math.abs(dy)>3) moved=true;
+    ox-=dx/zoom; oy-=dy/zoom; lx=e.clientX; ly=e.clientY; draw();
+  }
+  const best=tileAt(e.clientX-r.left, e.clientY-r.top);
   hover=best;
   document.getElementById('coord').textContent = best? best[0]+';'+best[1] : '-';
   updateTip(e,best);
   if(tool!=='pan'||dragging) draw();
 });
+// ---- touch: one finger pans, two fingers pinch-zoom, a tap places or inspects.
+// The canvas sets touch-action:none so the browser never steals the gesture.
+let tPts = new Map(), tPinch = null, tMoved = false, tStart = 0;
+function tXY(t){ const r=cv.getBoundingClientRect(); return [t.clientX-r.left, t.clientY-r.top]; }
+function zoomAt(mx,my,factor){
+  const wx=mx/zoom+ox, wy=my/zoom+oy;
+  zoom=Math.max(.06,Math.min(8,zoom*factor));
+  ox=wx-mx/zoom; oy=wy-my/zoom; draw();
+}
+cv.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  for(const t of e.changedTouches) tPts.set(t.identifier, tXY(t));
+  if(tPts.size===1){ tMoved=false; tStart=Date.now(); }
+  if(tPts.size===2){
+    const [a,b]=[...tPts.values()];
+    tPinch={d:Math.hypot(a[0]-b[0],a[1]-b[1]), mid:[(a[0]+b[0])/2,(a[1]+b[1])/2]};
+  }
+},{passive:false});
+cv.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  const prev=new Map(tPts);
+  for(const t of e.changedTouches) if(tPts.has(t.identifier)) tPts.set(t.identifier, tXY(t));
+  if(tPts.size===1){
+    const id=[...tPts.keys()][0], p0=prev.get(id), p1=tPts.get(id);
+    const dx=p1[0]-p0[0], dy=p1[1]-p0[1];
+    if(Math.abs(dx)+Math.abs(dy)>4) tMoved=true;
+    ox-=dx/zoom; oy-=dy/zoom; draw();
+  } else if(tPts.size>=2 && tPinch){
+    const [a,b]=[...tPts.values()];
+    const d=Math.hypot(a[0]-b[0],a[1]-b[1]);
+    const mid=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+    if(tPinch.d>8){ zoomAt(mid[0],mid[1], d/tPinch.d); }
+    tPinch={d:d, mid:mid}; tMoved=true;
+  }
+},{passive:false});
+cv.addEventListener('touchend',e=>{
+  e.preventDefault();
+  const wasOne = tPts.size===1;
+  const pt = wasOne ? [...tPts.values()][0] : null;
+  for(const t of e.changedTouches) tPts.delete(t.identifier);
+  if(tPts.size<2) tPinch=null;
+  if(wasOne && !tMoved && pt && Date.now()-tStart<600){
+    // a tap: snap to the tile under the finger, then place or just inspect it
+    const t = tileAt(pt[0], pt[1]);
+    hover = t;
+    document.getElementById('coord').textContent = t ? t[0]+';'+t[1] : '-';
+    if(t && (tool==='ps'||tool==='fort')){
+      const isFort = tool==='fort';
+      const chk = validate(t[0],t[1],isFort);
+      if(chk.ok){ plan.push({x:t[0],y:t[1],fort:isFort});
+        savePlan(); rebuildPlanGrids(); invalidatePP(); renderPlan(); }
+      else flash('Cannot place: '+chk.reason);
+    } else if(t){
+      flash(tileSummary(t));
+    }
+    draw();
+  }
+},{passive:false});
+cv.addEventListener('touchcancel',()=>{ tPts.clear(); tPinch=null; },{passive:false});
+
+// ---- zoom pad (mouse + touch)
+document.getElementById('zIn').onclick =()=>zoomAt(cv.clientWidth/2, cv.clientHeight/2, 1.4);
+document.getElementById('zOut').onclick=()=>zoomAt(cv.clientWidth/2, cv.clientHeight/2, 1/1.4);
+document.getElementById('zFit').onclick=fit;
+// ---- the panel is a slide-up sheet on narrow screens
+(function(){
+  const btn=document.getElementById('sheetBtn'), side=document.getElementById('side');
+  btn.onclick=()=>{ const open=side.classList.toggle('open');
+    btn.innerHTML = open ? 'Map &#9660;' : 'Info &#9650;'; };
+})();
 cv.addEventListener('wheel',e=>{
   e.preventDefault();
   const r=cv.getBoundingClientRect();
-  const mx=e.clientX-r.left, my=e.clientY-r.top;
-  const wx=mx/zoom+ox, wy=my/zoom+oy;
-  zoom*=e.deltaY<0?1.15:0.87; zoom=Math.max(.3,Math.min(8,zoom));
-  ox=wx-mx/zoom; oy=wy-my/zoom; draw();
+  zoomAt(e.clientX-r.left, e.clientY-r.top, e.deltaY<0?1.15:0.87);
 },{passive:false});
 
 function updateTip(e,t){
@@ -619,6 +740,31 @@ function renderWorld(claimCounts){
       +`<b>${r.ps+r.fort} <span style="color:var(--muted);font-weight:400">(${r.fort}f)</span></b>`;
     el.appendChild(div);
   });
+  // ---- other warzones' crossings, grouped by server
+  var at=document.getElementById('altTable'); at.innerHTML='';
+  var bySid={};
+  ALT.forEach(function(a){ (bySid[a.sid]=bySid[a.sid]||[]).push(a); });
+  Object.keys(bySid).map(Number).sort(function(a,b){
+    return bySid[b].reduce(function(n,x){return n+x.pairs;},0) - bySid[a].reduce(function(n,x){return n+x.pairs;},0);
+  }).forEach(function(sid){
+    var list=bySid[sid];
+    var tiles={}; list.forEach(function(a){ (a.sample||[]).forEach(function(p){ tiles[p[2]+';'+p[3]]=1; }); });
+    var tags={}; list.forEach(function(a){ (a.tags||[]).forEach(function(t){ tags[t]=1; }); });
+    var div=document.createElement('div'); div.className='jrow'; div.style.borderLeftColor=D.srvColor[sid]||'#f0883e';
+    div.innerHTML='<div class="t" style="color:'+(D.srvColor[sid]||'#f0883e')+'">S'+sid+' &middot; '+list.length+' of 4 gates</div>'
+      +'<div class="d">'+Object.keys(tiles).length+' landing tiles &middot; '+Object.keys(tags).join(' ')+'<br>'
+      +list.map(function(a){ return 'gate '+a.gate[0]+';'+a.gate[1]+' &rarr; '+a.best.target[0]+';'+a.best.target[1]; }).join('<br>')+'</div>';
+    div.onclick=function(){ var b=list[0].best; flyTo(Math.round((b.home[0]+b.target[0])/2), b.home[1], 1.3); };
+    at.appendChild(div);
+  });
+  document.getElementById('altNote').innerHTML =
+    'Turn on <b>Other warzones</b> to draw these: <span style="color:#39c5cf">cyan = their side</span>, '
+    + '<span style="color:#f0883e">orange = where they land</span>. Surveyed within 34 tiles of each gate using the '
+    + 'same rules as ours, but <b>not</b> oracle-verified &mdash; treat them as estimates. '
+    + 'All 12 Lv.2 and 8 Lv.3 gates show nothing yet because no alliance has a powered network in the mid or inner '
+    + 'rings to jump from; they open up the moment someone establishes one. '
+    + DEAD.length + ' walkable pockets have no gate at all ('
+    + DEAD.reduce(function(n,p){return n+p.tiles;},0).toLocaleString() + ' tiles) &mdash; nobody can operate there.';
   document.getElementById('srvNote').innerHTML=
     `${S.length.toLocaleString()} structures, ${D.alliances.length} alliances, ${rows.length} warzones &mdash; harvested from a 159-stop entity sweep of the whole map. `
     +`Ours is <b style="color:var(--green)">S2864</b>. Other servers' per-alliance splits are live from the same sweep; only S2864's power state is authoritative.`;
@@ -635,7 +781,10 @@ function renderWorld(claimCounts){
 }
 function buildNav(){
   const sel=document.getElementById('nav');
-  const opts=[['','Jump to…'],['home','Our home (Dog*)']];
+  const opts=[['','Jump to\u2026'],['home','Our zone 1 (Dog*)'],
+              ['north','Zone 1 north (S2501)'],['mid','Past our gates (mid ring)'],
+              ['g836','Our gate 128;836'],['g904','Our gate 128;904'],
+              ['g988','Our gate 128;988'],['g1094','Our gate 128;1094']];
   ALAB.slice().sort((a,b)=>b[5]-a[5]).forEach(([a,cx,cy,tiles,dom,structs])=>{
     const nm=AREA_NAME(a,dom); if(!nm) return;
     opts.push(['a'+a, (a===31?'':(a<11?'Warzone ':'')) + nm + (structs?` (${structs})`:'') ]);
@@ -646,6 +795,9 @@ function buildNav(){
   sel.onchange=()=>{
     const v=sel.value; if(!v) return;
     if(v==='home'){ flyTo(60,1000,1.1); }
+    else if(v==='north'){ flyTo(60,600,1.0); }
+    else if(v==='mid'){ flyTo(160,900,0.9); }
+    else if(v[0]==='g'&&/^g\d+$/.test(v)){ flyTo(132, +v.slice(1), 2.2); }
     else if(v[0]==='a'){ const a=ALAB.find(l=>l[0]===+v.slice(1));
       if(a) flyTo(Math.round(a[1]*2), Math.round(a[2]*2), a[0]===31?0.9:0.5); }
     else if(v[0]==='f'){ const [x,y]=v.slice(1).split(',').map(Number); flyTo(x,y,1.6); }
@@ -719,6 +871,7 @@ function tg(id,fn,on){
   b.onclick=()=>{ b.classList.toggle('active'); fn(b.classList.contains('active')); lodDirty=true; draw(); };
 }
 tg('tgJump',v=>showJump=v,true);
+tg('tgAlt',v=>showAlt=v,false);
 tg('tgClaims',v=>showClaims=v,true);
 tg('tgZones',v=>showZones=v,true);
 tg('tgMtn',v=>showMtn=v,true);
@@ -790,5 +943,5 @@ window.__st = function(){
 };
 rebuildPlanGrids(); renderJumps(); buildNav(); renderPlan(); resize(); fit(); setTool('pan');
 
-window.__el = {flyTo:flyTo, fit:fit, render:render, D:D, S:S, FIX:FIX, JUMPS:JUMPS, TERR:TERR, validate:validate, selftest:window.__st};
+window.__el = {flyTo:flyTo, fit:fit, render:render, zoomNow:()=>zoom, D:D, S:S, FIX:FIX, JUMPS:JUMPS, TERR:TERR, validate:validate, selftest:window.__st};
 })();
