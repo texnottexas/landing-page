@@ -41,6 +41,14 @@ header .sub{font-size:11px;color:var(--muted);}
 #tip{position:fixed;pointer-events:none;background:#161b22ee;border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:11px;z-index:20;display:none;max-width:260px;line-height:1.5;}
 #coord{position:fixed;left:12px;bottom:10px;background:#161b22cc;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:12px;font-variant-numeric:tabular-nums;z-index:6;}
 .note{color:var(--muted);font-size:10.5px;line-height:1.55;margin-top:4px;}
+#inkbar{display:flex;gap:4px;align-items:center;}
+.swatch{width:20px;height:20px;border-radius:5px;border:2px solid transparent;cursor:pointer;}
+.swatch.on{border-color:var(--text);}
+.clogrow{font-size:10.5px;color:var(--muted);border-bottom:1px solid #21262d;padding:4px 0;line-height:1.45;}
+.clogrow b{color:var(--accent);font-weight:600;}
+.noterow{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--yellow);border-radius:6px;padding:6px 8px;margin-bottom:5px;font-size:11px;cursor:pointer;display:flex;justify-content:space-between;gap:6px;}
+.noterow .del{color:var(--muted);cursor:pointer;}
+.noterow .del:hover{color:var(--red);}
 #nav,#planAlli{background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11.5px;max-width:190px;}
 #undoBtn:disabled{opacity:.4;cursor:default;}
 .planitem{cursor:pointer;}
@@ -83,6 +91,10 @@ header .sub{font-size:11px;color:var(--muted);}
     <button class="tbtn" id="toolPan">Pan</button>
     <button class="tbtn" id="toolPS">+ Power Station</button>
     <button class="tbtn" id="toolFort">+ Fort</button>
+    <button class="tbtn" id="toolNote">Note</button>
+    <button class="tbtn" id="toolDraw">Draw</button>
+    <button class="tbtn" id="toolErase">Erase</button>
+    <span id="inkbar"></span>
     <span style="width:8px"></span>
     <button class="tbtn jump" id="tgJump">Wall jumps</button>
     <button class="tbtn" id="tgAlt">Other warzones</button>
@@ -125,12 +137,17 @@ header .sub{font-size:11px;color:var(--muted);}
     <div class="stat"><span>Forts used</span><b id="sFort">-</b></div>
     <div class="stat"><span>Power Stations / cap</span><b id="sPsCap">-</b></div>
     <div class="stat"><span>Your rank vs build right</span><b id="sRank">-</b></div>
-    <h3>Plan</h3>
+    <h3>Plan &middot; shared</h3>
+    <div class="note" id="shareState">Loading the shared plan&hellip;</div>
     <div class="stat"><span>New tiles claimed</span><b id="pTiles">0</b></div>
     <div class="stat"><span>Amethyst cost</span><b id="pCost">0</b></div>
     <div class="stat"><span>Build time (sum)</span><b id="pTime">0h</b></div>
     <div id="plan"></div>
     <div class="note" id="planEmpty">Pick a tool and click the map. Green ghost = valid &amp; powered, amber = valid but disconnected, red = illegal (reason on hover).</div>
+    <h3>Notes on the map</h3>
+    <div id="noteList"></div>
+    <h3>Changelog</h3>
+    <div id="clog"></div>
     <h3>Legend</h3>
     <div class="legend">
       <div class="lrow"><span class="sw" style="background:#3fb95055;border-color:#3fb950"></span>Dog* territory</div>
@@ -141,7 +158,9 @@ header .sub{font-size:11px;color:var(--muted);}
       <div class="lrow"><span class="sw" style="background:#f8514922;border-color:#f85149"></span>Fixed-building exclusion</div>
       <div class="lrow"><span class="sw" style="background:#79c0ff66;border-color:#79c0ff"></span>Wall jump: <b>west</b> spot (PS goes here)</div>
       <div class="lrow"><span class="sw" style="background:#d2a8ff66;border-color:#d2a8ff"></span>Wall jump: <b>east</b> landing tile</div>
-      <div class="lrow"><span class="sw" style="background:#79c0ff"></span>Planned structure</div>
+      <div class="lrow"><span class="sw" style="background:#3fb950"></span>Planned &mdash; Dog*</div>
+      <div class="lrow"><span class="sw" style="background:#388bfd"></span>Planned &mdash; MSS*</div>
+      <div class="lrow"><span class="sw" style="background:#d29922"></span>Planned &mdash; Cat+</div>
     </div>
     <h3>Rules (from game client)</h3>
     <div class="note">
@@ -275,7 +294,7 @@ header .sub{font-size:11px;color:var(--muted);}
   function boot(payload){
     window.__EL_DATA = payload;
     var s = document.createElement('script');
-    s.src = 'el-sim-app.js?b=18e2a51c58';
+    s.src = 'el-sim-app.js?b=88d3c65c49';
     s.onerror = function(){ err.textContent = 'The app failed to load. Try a refresh.'; };
     document.body.appendChild(s);
     gate.classList.add('hide');

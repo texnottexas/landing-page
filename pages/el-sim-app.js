@@ -167,14 +167,15 @@ let plan=[];
 // which alliance a planned structure is for. Dog / MSS / Cat, sticky between placements.
 const PLAN_ALLI = ['Dog*','MSS*','Cat+'];
 let planAlli = (function(){ try{ const v=localStorage.getItem('elSimAlli'); return PLAN_ALLI.indexOf(v)>=0?v:'Dog*'; }catch(e){ return 'Dog*'; } })();
-const undoStack = [];                       // snapshots of the plan, newest last
-function pushUndo(){ undoStack.push(JSON.stringify(plan)); if(undoStack.length>60) undoStack.shift(); syncUndoBtn(); }
-function syncUndoBtn(){ const b=document.getElementById('undoBtn'); if(b) b.disabled=!undoStack.length; }
+// Undo on a shared document can't be a snapshot restore — that would stamp on
+// whatever a co-planner did meanwhile. Each of my edits records its inverse op and
+// undo simply sends that.
+function syncUndoBtn(){ const b=document.getElementById('undoBtn'); if(b) b.disabled=!myOps.length; }
 function undo(){
-  if(!undoStack.length) return;
-  plan = JSON.parse(undoStack.pop());
-  savePlan(); rebuildPlanGrids(); invalidatePP(); renderPlan(); syncUndoBtn(); draw();
-  flash('Undone');
+  if(!myOps.length) return flash('Nothing of yours left to undo');
+  const inv = myOps.pop(); syncUndoBtn();
+  if(!inv || !inv.op) return;
+  pushOps([inv]).then(ok=>{ if(ok) flash('Undone'); });
 }
 try{
   const st=JSON.parse(localStorage.getItem('elSimPlan4')||'null');
@@ -226,6 +227,166 @@ function planPowered(){
   const extras=plan.map(p=>({x:p.x,y:p.y,fort:p.fort,__p:p}));
   const m=powerOf(D.myAid,extras);
   _pp=new Map(); extras.forEach(e=>_pp.set(e.__p,m.get(e))); return _pp;
+}
+
+// ---- notes + ink rendering / hit-testing -------------------------------------
+function tileToScr(tx,ty){ const [wx,wy]=[(tx-X0)*TW/2,(ty-Y0)*TH/2]; return scr(wx,wy); }
+function drawInk(){
+  const k=zoom*devicePixelRatio;
+  (SP.strokes||[]).forEach(st=>{
+    if(!st.pts||st.pts.length<2) return;
+    ctx.beginPath();
+    st.pts.forEach((p,i)=>{ const [sx,sy]=tileToScr(p[0],p[1]); i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy); });
+    ctx.strokeStyle=st.color; ctx.lineWidth=Math.max(1.2, st.width*k*.55);
+    ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+  });
+  if(inkPath.length>1){                       // the stroke being drawn right now
+    ctx.beginPath();
+    inkPath.forEach((p,i)=>{ const [sx,sy]=tileToScr(p[0],p[1]); i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy); });
+    ctx.strokeStyle=inkColor; ctx.lineWidth=Math.max(1.2, inkWidth*k*.55);
+    ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+  }
+}
+function drawNotes(){
+  const k=zoom*devicePixelRatio;
+  (SP.notes||[]).forEach(n=>{
+    const [sx,sy]=tileToScr(n.x,n.y);
+    if(sx<-80||sy<-40||sx>cv.width+80||sy>cv.height+40) return;
+    const r=Math.max(3.5, 5*k*.7);
+    ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(sx-r,sy-r*2.1); ctx.lineTo(sx+r,sy-r*2.1); ctx.closePath();
+    ctx.fillStyle=n.color; ctx.fill();
+    ctx.strokeStyle='#0d1117'; ctx.lineWidth=1; ctx.stroke();
+    if(zoom>0.55){
+      const t=n.text.length>34?n.text.slice(0,33)+'…':n.text;
+      ctx.font=`${10.5*k*.7}px sans-serif`; ctx.textAlign='left';
+      const w=ctx.measureText(t).width+8*k*.7, h=13*k*.7;
+      ctx.fillStyle='#0d1117cc'; ctx.fillRect(sx+r+2, sy-r*2.1-h*0.75, w, h);
+      ctx.fillStyle=n.color; ctx.fillText(t, sx+r+6, sy-r*2.1+h*0.1);
+    }
+  });
+}
+// nearest note / stroke to a tile point, for tap-to-open and the eraser
+function noteAt(tx,ty,tol){
+  tol = tol || 3;
+  let best=null,bd=1e9;
+  (SP.notes||[]).forEach(n=>{ const d=(n.x-tx)**2+((n.y-ty)*0.7)**2; if(d<bd&&d<tol*tol*4){bd=d;best=n;} });
+  return best;
+}
+function strokeAt(tx,ty,tol){
+  tol = tol || 3;
+  let best=null,bd=1e9;
+  (SP.strokes||[]).forEach(st=>(st.pts||[]).forEach(p=>{
+    const d=(p[0]-tx)**2+((p[1]-ty)*0.7)**2; if(d<bd&&d<tol*tol*4){bd=d;best=st;}
+  }));
+  return best;
+}
+// ---- note editor (small prompt-based flow; works the same on phone) ----
+function addNoteAt(tx,ty){
+  const text=(window.prompt('Note for this spot (everyone sees it):')||'').trim();
+  if(!text) return;
+  pushOps([{op:'note', x:+tx.toFixed(1), y:+ty.toFixed(1), text, color:inkColor}],
+          (applied)=>({op:'noteDel', id:(applied[0]||{}).id}));
+}
+function openNote(n){
+  const t=(window.prompt('Edit the note (empty deletes it):', n.text)||'').trim();
+  if(t===n.text) return;
+  if(!t){ pushOps([{op:'noteDel', id:n.id}], ()=>({op:'note', x:n.x, y:n.y, text:n.text, color:n.color})); return; }
+  pushOps([{op:'note', id:n.id, x:n.x, y:n.y, text:t, color:n.color}],
+          ()=>({op:'note', id:n.id, x:n.x, y:n.y, text:n.text, color:n.color}));
+}
+function renderNotes(){
+  const el=document.getElementById('noteList'); if(!el) return;
+  el.innerHTML='';
+  if(!(SP.notes||[]).length){ el.innerHTML='<div class="note">No notes yet. Pick <b>Note</b> and tap the map.</div>'; return; }
+  SP.notes.slice().sort((a,b)=>b.at-a.at).forEach(n=>{
+    const d=document.createElement('div'); d.className='noterow'; d.style.borderLeftColor=n.color;
+    d.innerHTML='<span>'+esc(n.text.slice(0,80))+'<br><span style="color:var(--muted);font-size:10px">'
+      +Math.round(n.x)+';'+Math.round(n.y)+' &middot; '+esc(n.by||'?')+'</span></span>'
+      +'<span class="del" title="Delete">&times;</span>';
+    d.onclick=()=>flyTo(Math.round(n.x),Math.round(n.y),2.2);
+    d.querySelector('.del').onclick=(ev)=>{ ev.stopPropagation();
+      pushOps([{op:'noteDel', id:n.id}], ()=>({op:'note', x:n.x, y:n.y, text:n.text, color:n.color})); };
+    el.appendChild(d);
+  });
+}
+function renderClog(){
+  const el=document.getElementById('clog'); if(!el) return;
+  el.innerHTML='';
+  const log=SP.changelog||[];
+  if(!log.length){ el.innerHTML='<div class="note">No edits recorded yet.</div>'; return; }
+  log.slice(0,40).forEach(e=>{
+    const d=document.createElement('div'); d.className='clogrow';
+    const t=e.at?new Date(e.at).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+    d.innerHTML='<b>'+esc(e.by||'?')+'</b> '+esc(e.what)+'<br><span style="opacity:.7">'+t+'</span>';
+    el.appendChild(d);
+  });
+}
+
+// ---- shared plan: the worker owns the document, we send ops -------------------
+// Several people plan at once, so nothing here PUTs a whole plan. Notes and ink are
+// kept in TILE space so they stay put at any zoom.
+const API = 'https://push-worker.27tb8s6fct.workers.dev';
+const INK = ['#f85149','#d29922','#3fb950','#39c5cf','#79c0ff','#a371f7','#ffffff','#0d1117'];
+let SP = {rev:-1, items:[], notes:[], strokes:[], changelog:[], counts:{}};
+let inkPath = [];
+let inkColor = (function(){ try{ const c=localStorage.getItem('elSimInk'); return INK.indexOf(c)>=0?c:INK[0]; }catch(e){ return INK[0]; } })();
+let inkWidth = 3, shareOK = false, myOps = [];   // myOps = local undo stack of {undo:op}
+
+function whoAmI(){
+  try { const v=localStorage.getItem('playerIdentity'); if(!v||v==='anonymous') return '';
+        const j=JSON.parse(v); return (j&&j.name)||''; } catch(e){ return ''; }
+}
+function pw(){ try { return localStorage.getItem('elSimPw')||''; } catch(e){ return ''; } }
+
+function setShareState(msg, bad){
+  const el=document.getElementById('shareState');
+  if(el) el.innerHTML = bad ? '<span style="color:var(--red)">'+msg+'</span>' : msg;
+}
+function adoptPlan(view){
+  SP = view;
+  // the rest of the app still thinks in {x,y,fort} — keep that shape, carry the id
+  plan = (view.items||[]).map(i=>({id:i.id, x:i.x, y:i.y, fort:i.kind==='fort', alli:i.alli, by:i.by, at:i.at}));
+  shareOK = true;
+  rebuildPlanGrids(); invalidatePP(); renderPlan(); renderNotes(); renderClog(); draw();
+  const when = view.updatedAt ? new Date(view.updatedAt).toLocaleTimeString() : '';
+  setShareState(`Shared with the alliance &middot; rev ${view.rev} &middot; ${view.counts.items} structures, `
+    + `${view.counts.notes} notes, ${view.counts.strokes} drawings`
+    + (view.updatedBy ? `<br>last edit by <b>${esc(view.updatedBy)}</b> at ${when}` : ''));
+}
+function esc(t){ return String(t==null?'':t).replace(/[<>&"]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+
+function pullPlan(){
+  return fetch(API+'/elsim/plan', {headers:{'X-El-Sim-Password':pw()}})
+    .then(r=>{ if(!r.ok) throw new Error('http '+r.status); return r.json(); })
+    .then(adoptPlan)
+    .catch(e=>{ shareOK=false; setShareState('Could not reach the shared plan ('+e.message+'). '
+      +'You can still look around; edits are paused.', true); });
+}
+function pushOps(ops, undoOps){
+  if(!shareOK){ flash('Shared plan is offline — edit not saved'); return Promise.resolve(false); }
+  const me = whoAmI();
+  if(!me){ flash('Pick your name first so edits are attributed'); openWhoFromApp(); return Promise.resolve(false); }
+  return fetch(API+'/elsim/plan', {method:'POST', headers:{
+      'Content-Type':'application/json','X-El-Sim-Password':pw(),'X-Player-Name':me
+    }, body: JSON.stringify({ops})})
+    .then(r=>r.json())
+    .then(j=>{
+      if(!j || !j.ok){ flash('Edit refused: '+((j&&j.error)||'unknown')); return false; }
+      (j.rejected||[]).forEach(r=>flash('Refused ('+r.op+'): '+r.reason));
+      if(j.plan) adoptPlan(j.plan);
+      if(undoOps && (j.applied||[]).length){
+        // remember how to reverse it, filling in ids the server just assigned
+        myOps.push(undoOps(j.applied));
+        if(myOps.length>40) myOps.shift();
+        syncUndoBtn();
+      }
+      return true;
+    })
+    .catch(e=>{ flash('Edit failed: '+e.message); return false; });
+}
+function openWhoFromApp(){
+  const w=document.getElementById('who'); if(w) w.classList.remove('hide');
+  const btn=document.getElementById('idchip'); if(btn) btn.click();
 }
 
 // ---- canvas ----
@@ -508,6 +669,8 @@ function render(){
       }
     });
   }
+  drawInk();
+  drawNotes();
   // ---- area labels, always legible, on top ----
   if(showAreas){
     ctx.textAlign='center'; ctx.textBaseline='middle';
@@ -564,20 +727,58 @@ function strokeZone(x,y,isFort){
 }
 
 // ---- interaction ----
-let dragging=false,lx=0,ly=0,moved=false;
-cv.addEventListener('mousedown',e=>{dragging=true;moved=false;lx=e.clientX;ly=e.clientY;});
-window.addEventListener('mouseup',()=>{
+let dragging=false,lx=0,ly=0,moved=false,drawing=false;
+cv.addEventListener('mousedown',e=>{
+  if(tool==='draw'){
+    const r=cv.getBoundingClientRect();
+    inkPath=[tilePointAt(e.clientX-r.left, e.clientY-r.top)];
+    drawing=true; return;
+  }
+  dragging=true;moved=false;lx=e.clientX;ly=e.clientY;
+});
+window.addEventListener('mouseup',(e)=>{
+  if(drawing){
+    drawing=false;
+    if(inkPath.length>1) pushOps([{op:'stroke', pts:inkPath, color:inkColor, width:inkWidth}],
+                                 (applied)=>({op:'strokeDel', id:(applied[0]||{}).id}));
+    inkPath=[]; draw(); return;
+  }
+  if(dragging&&!moved&&tool==='note'&&hover){
+    const r=cv.getBoundingClientRect();
+    addNoteAt.apply(null, tilePointAt(lx-r.left, ly-r.top));
+    dragging=false; return;
+  }
+  if(dragging&&!moved&&tool==='erase'&&hover){
+    const r=cv.getBoundingClientRect();
+    const [tx,ty]=tilePointAt(lx-r.left, ly-r.top);
+    const n=noteAt(tx,ty), st=n?null:strokeAt(tx,ty);
+    if(n) pushOps([{op:'noteDel', id:n.id}], ()=>({op:'note', x:n.x, y:n.y, text:n.text, color:n.color}));
+    else if(st) pushOps([{op:'strokeDel', id:st.id}], ()=>({op:'stroke', pts:st.pts, color:st.color, width:st.width}));
+    else flash('Nothing to erase there');
+    dragging=false; return;
+  }
+  if(dragging&&!moved&&tool==='pan'&&hover){
+    const r=cv.getBoundingClientRect();
+    const [tx,ty]=tilePointAt(lx-r.left, ly-r.top);
+    const n=noteAt(tx,ty,2);
+    if(n){ openNote(n); dragging=false; return; }
+  }
   if(dragging&&!moved&&(tool==='ps'||tool==='fort')&&hover){
     const isFort=tool==='fort';
     const chk=validate(hover[0],hover[1],isFort);
     if(chk.ok){
-      pushUndo();
-      plan.push({x:hover[0],y:hover[1],fort:isFort,alli:planAlli});
-      savePlan(); rebuildPlanGrids(); invalidatePP(); renderPlan(); draw();
+      pushOps([{op:'add', kind:isFort?'fort':'ps', x:hover[0], y:hover[1], alli:planAlli}],
+              (applied)=>({op:'del', id:(applied[0]||{}).id}));
     } else flash('Cannot place: '+chk.reason);
   }
   dragging=false;
 });
+// exact (fractional) tile position under a canvas point — notes and ink are
+// free-floating, so they must not snap to the lattice
+function tilePointAt(mx,my){
+  const wx=mx/zoom+ox, wy=my/zoom+oy;
+  return [wx/(TW/2)+X0, wy/(TH/2)+Y0];
+}
 // nearest lattice tile to a canvas-space point (shared by hover and tap)
 function tileAt(mx,my){
   const wx=mx/zoom+ox, wy=my/zoom+oy;
@@ -639,6 +840,12 @@ function tileSummary(t){
 }
 cv.addEventListener('mousemove',e=>{
   const r=cv.getBoundingClientRect();
+  if(drawing){
+    const p=tilePointAt(e.clientX-r.left, e.clientY-r.top);
+    const last=inkPath[inkPath.length-1];
+    if(!last || Math.abs(p[0]-last[0])+Math.abs(p[1]-last[1]) > 0.35) inkPath.push(p);
+    draw(); return;
+  }
   if(dragging){
     const dx=e.clientX-lx, dy=e.clientY-ly;
     if(Math.abs(dx)+Math.abs(dy)>3) moved=true;
@@ -662,7 +869,9 @@ function zoomAt(mx,my,factor){
 cv.addEventListener('touchstart',e=>{
   e.preventDefault();
   for(const t of e.changedTouches) tPts.set(t.identifier, tXY(t));
-  if(tPts.size===1){ tMoved=false; tStart=Date.now(); }
+  if(tPts.size===1){ tMoved=false; tStart=Date.now();
+    if(tool==='draw'){ inkPath=[tilePointAt.apply(null,[...tPts.values()][0])]; drawing=true; } }
+  if(tPts.size>1 && drawing){ drawing=false; inkPath=[]; }   // second finger => pinch, not ink
   if(tPts.size===2){
     const [a,b]=[...tPts.values()];
     tPinch={d:Math.hypot(a[0]-b[0],a[1]-b[1]), mid:[(a[0]+b[0])/2,(a[1]+b[1])/2]};
@@ -672,7 +881,12 @@ cv.addEventListener('touchmove',e=>{
   e.preventDefault();
   const prev=new Map(tPts);
   for(const t of e.changedTouches) if(tPts.has(t.identifier)) tPts.set(t.identifier, tXY(t));
-  if(tPts.size===1){
+  if(tPts.size===1 && drawing){
+    const p=tilePointAt.apply(null,[...tPts.values()][0]);
+    const last=inkPath[inkPath.length-1];
+    if(!last || Math.abs(p[0]-last[0])+Math.abs(p[1]-last[1]) > 0.35) inkPath.push(p);
+    tMoved=true; draw();
+  } else if(tPts.size===1){
     const id=[...tPts.keys()][0], p0=prev.get(id), p1=tPts.get(id);
     const dx=p1[0]-p0[0], dy=p1[1]-p0[1];
     if(Math.abs(dx)+Math.abs(dy)>4) tMoved=true;
@@ -691,6 +905,25 @@ cv.addEventListener('touchend',e=>{
   const pt = wasOne ? [...tPts.values()][0] : null;
   for(const t of e.changedTouches) tPts.delete(t.identifier);
   if(tPts.size<2) tPinch=null;
+  if(drawing){
+    drawing=false;
+    if(inkPath.length>1) pushOps([{op:'stroke', pts:inkPath, color:inkColor, width:inkWidth}],
+                                 (applied)=>({op:'strokeDel', id:(applied[0]||{}).id}));
+    inkPath=[]; draw(); return;
+  }
+  if(wasOne && !tMoved && pt && Date.now()-tStart<600 && (tool==='note'||tool==='erase'||tool==='pan')){
+    const [fx,fy]=tilePointAt(pt[0],pt[1]);
+    const n=noteAt(fx,fy,2.5);
+    if(tool==='note'){ addNoteAt(fx,fy); return; }
+    if(tool==='erase'){
+      const st=n?null:strokeAt(fx,fy,2.5);
+      if(n) pushOps([{op:'noteDel', id:n.id}], ()=>({op:'note', x:n.x, y:n.y, text:n.text, color:n.color}));
+      else if(st) pushOps([{op:'strokeDel', id:st.id}], ()=>({op:'stroke', pts:st.pts, color:st.color, width:st.width}));
+      else flash('Nothing to erase there');
+      return;
+    }
+    if(n){ openNote(n); return; }
+  }
   if(wasOne && !tMoved && pt && Date.now()-tStart<600){
     // a tap: snap to the tile under the finger, then place or just inspect it
     const t = tileAt(pt[0], pt[1]);
@@ -699,8 +932,8 @@ cv.addEventListener('touchend',e=>{
     if(t && (tool==='ps'||tool==='fort')){
       const isFort = tool==='fort';
       const chk = validate(t[0],t[1],isFort);
-      if(chk.ok){ pushUndo(); plan.push({x:t[0],y:t[1],fort:isFort,alli:planAlli});
-        savePlan(); rebuildPlanGrids(); invalidatePP(); renderPlan(); }
+      if(chk.ok) pushOps([{op:'add', kind:isFort?'fort':'ps', x:t[0], y:t[1], alli:planAlli}],
+                         (applied)=>({op:'del', id:(applied[0]||{}).id}));
       else flash('Cannot place: '+chk.reason);
     } else if(t){
       flash(tileSummary(t));
@@ -886,7 +1119,8 @@ function renderPlan(){
     div.dataset.i = i;
     div.innerHTML=`<span>#${i+1} ${p.fort?'Fort':'PS'} @ <b>${p.x};${p.y}</b> `
       +`<button type="button" class="pa" data-i="${i}" style="background:${col}22;border:1px solid ${col};color:${col};border-radius:4px;font-size:10px;padding:1px 5px;cursor:pointer" title="Tap to change alliance">${p.alli||'Dog*'}</button> `
-      +`<span class="${pp.get(p)?'ok':'warn'}">${pp.get(p)?'powered':'no power (predicted)'}</span></span>`
+      +`<span class="${pp.get(p)?'ok':'warn'}">${pp.get(p)?'powered':'no power (predicted)'}</span>`
+      +(p.by?` <span style="color:var(--muted);font-size:10px">by ${esc(p.by)}</span>`:'')+`</span>`
       +`<span class="del" data-i="${i}" title="Delete this one">&times;</span>`;
     el.appendChild(div);
   });
@@ -894,12 +1128,17 @@ function renderPlan(){
   document.getElementById('pCost').textContent=cost.toLocaleString();
   document.getElementById('pTime').textContent=time+'h';
   document.getElementById('planEmpty').style.display=plan.length?'none':'block';
-  el.querySelectorAll('.del').forEach(d=>d.onclick=(ev)=>{ev.stopPropagation();pushUndo();plan.splice(+d.dataset.i,1);savePlan();rebuildPlanGrids();invalidatePP();renderPlan();draw();});
+  el.querySelectorAll('.del').forEach(d=>d.onclick=(ev)=>{
+    ev.stopPropagation();
+    const p=plan[+d.dataset.i]; if(!p) return;
+    pushOps([{op:'del', id:p.id}],
+            ()=>({op:'add', kind:p.fort?'fort':'ps', x:p.x, y:p.y, alli:p.alli}));
+  });
   el.querySelectorAll('.pa').forEach(b=>b.onclick=(ev)=>{
-    ev.stopPropagation(); pushUndo();
-    const i=+b.dataset.i, cur=PLAN_ALLI.indexOf(plan[i].alli||'Dog*');
-    plan[i].alli = PLAN_ALLI[(cur+1)%PLAN_ALLI.length];
-    savePlan(); renderPlan(); draw();
+    ev.stopPropagation();
+    const p=plan[+b.dataset.i]; if(!p) return;
+    const cur=PLAN_ALLI.indexOf(p.alli||'Dog*'), to=PLAN_ALLI[(cur+1)%PLAN_ALLI.length], from=p.alli;
+    pushOps([{op:'setAlli', id:p.id, alli:to}], ()=>({op:'setAlli', id:p.id, alli:from}));
   });
   el.querySelectorAll('.planitem').forEach(d=>d.onclick=()=>{
     const p=plan[+d.dataset.i]; if(p) flyTo(p.x,p.y,2.2);
@@ -936,17 +1175,38 @@ function flyTo(x,y,z){
   ox=wx-cv.clientWidth/2/zoom; oy=wy-cv.clientHeight/2/zoom;
   draw();
 }
-function savePlan(){ localStorage.setItem('elSimPlan4',JSON.stringify({snapshot:D.snapshot,items:plan})); }
+// local copy is only a cache for a quick first paint / offline glance; the worker
+// document is the source of truth
+function savePlan(){ try{ localStorage.setItem('elSimPlan4',JSON.stringify({snapshot:D.snapshot,items:plan})); }catch(e){} }
 function setTool(t){
   tool=t;
-  document.getElementById('toolPan').classList.toggle('active',t==='pan');
-  document.getElementById('toolPS').classList.toggle('active',t==='ps');
-  document.getElementById('toolFort').classList.toggle('active',t==='fort');
+  [['toolPan','pan'],['toolPS','ps'],['toolFort','fort'],['toolNote','note'],['toolDraw','draw'],['toolErase','erase']]
+    .forEach(([id,name])=>{ const b=document.getElementById(id); if(b) b.classList.toggle('active',t===name); });
   cv.classList.toggle('placing',t!=='pan');
+  const bar=document.getElementById('inkbar');
+  if(bar) bar.style.display=(t==='draw'||t==='note')?'flex':'none';
 }
 document.getElementById('toolPan').onclick=()=>setTool('pan');
 document.getElementById('toolPS').onclick=()=>setTool('ps');
 document.getElementById('toolFort').onclick=()=>setTool('fort');
+document.getElementById('toolNote').onclick=()=>setTool('note');
+document.getElementById('toolDraw').onclick=()=>setTool('draw');
+document.getElementById('toolErase').onclick=()=>setTool('erase');
+(function(){                                  // colour + width picker for ink and notes
+  const bar=document.getElementById('inkbar');
+  INK.forEach(c=>{
+    const b=document.createElement('span'); b.className='swatch'+(c===inkColor?' on':'');
+    b.style.background=c; b.title=c; b.dataset.c=c;
+    b.onclick=()=>{ inkColor=c; try{localStorage.setItem('elSimInk',c);}catch(e){}
+      bar.querySelectorAll('.swatch').forEach(x=>x.classList.toggle('on',x.dataset.c===c)); };
+    bar.appendChild(b);
+  });
+  const w=document.createElement('input'); w.type='range'; w.min='1'; w.max='10'; w.value=String(inkWidth);
+  w.style.width='62px'; w.title='Pen width';
+  w.oninput=()=>{ inkWidth=+w.value; };
+  bar.appendChild(w);
+  bar.style.display='none';
+})();
 function tg(id,fn,on){
   const b=document.getElementById(id);
   if(on) b.classList.add('active');
@@ -968,9 +1228,17 @@ document.getElementById('fit').onclick=fit;
   sel.onchange=()=>{ planAlli=sel.value; try{localStorage.setItem('elSimAlli',planAlli);}catch(e){} draw(); };
 })();
 syncUndoBtn();
-document.getElementById('clearPlan').onclick=()=>{ if(plan.length&&confirm('Clear the whole plan? (Undo can bring it back)')){pushUndo();plan=[];savePlan();rebuildPlanGrids();invalidatePP();renderPlan();draw();} };
+document.getElementById('clearPlan').onclick=()=>{
+  const what = prompt('Clear what? Type: plan, notes, strokes, or all','plan');
+  if(!what) return;
+  if(['plan','notes','strokes','all'].indexOf(what)<0) return flash('Unknown target');
+  if(!confirm('Clear '+what+' for EVERYONE? This is the shared plan.')) return;
+  pushOps([{op:'clear', what}]);
+};
 document.getElementById('undoBtn').onclick=undo;
-window.addEventListener('keydown',e=>{ if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){ e.preventDefault(); undo(); } });
+window.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){ e.preventDefault(); undo(); }
+});
 document.getElementById('copyPlan').onclick=()=>{
   const pp=planPowered();
   const lines=plan.map((p,i)=>`#${i+1} ${p.fort?'Alliance Fort':'Power Station'} @ ${p.x};${p.y}${pp.get(p)?'':' (WARNING: not connected to the fort chain)'}`);
@@ -1031,7 +1299,25 @@ window.__st = function(){
   }
   return out;
 };
-rebuildPlanGrids(); renderJumps(); buildNav(); renderPlan(); resize(); fit(); setTool('pan');
+rebuildPlanGrids(); renderJumps(); buildNav(); renderPlan(); renderNotes(); renderClog();
+resize(); fit(); setTool('pan');
+
+// ---- shared plan: first load, one-time migration, then keep in step ----
+(function(){
+  const localItems = plan.slice();          // whatever was in localStorage before sharing existed
+  pullPlan().then(()=>{
+    if(!shareOK) return;
+    const migrated = (function(){ try{ return localStorage.getItem('elSimMigrated')==='1'; }catch(e){ return true; } })();
+    if(!migrated && localItems.length && !(SP.items||[]).length && whoAmI()){
+      const ops = localItems.slice(0,50).map(p=>({op:'add', kind:p.fort?'fort':'ps', x:p.x, y:p.y, alli:p.alli||'Dog*'}));
+      pushOps(ops).then(()=>{ try{ localStorage.setItem('elSimMigrated','1'); }catch(e){}
+        flash('Moved your '+ops.length+' local placements into the shared plan'); });
+    } else { try{ localStorage.setItem('elSimMigrated','1'); }catch(e){} }
+  });
+  // co-planners: refresh on a timer and whenever the tab comes back
+  setInterval(()=>{ if(document.visibilityState==='visible' && !drawing) pullPlan(); }, 25000);
+  window.addEventListener('focus', ()=>{ if(!drawing) pullPlan(); });
+})();
 
 window.__el = {flyTo:flyTo, fit:fit, render:render, zoomNow:()=>zoom, D:D, S:S, FIX:FIX, JUMPS:JUMPS, TERR:TERR, validate:validate, selftest:window.__st};
 })();
