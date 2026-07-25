@@ -1341,6 +1341,18 @@ tg('tgAreas',v=>showAreas=v,true);
 tg('tgLegal',v=>showLegal=v,false);
 tg('tgGridL',v=>showGrid=v,false);
 document.getElementById('fit').onclick=fit;
+(function(){                                  // More flyout (phone only; inline on desktop)
+  const btn=document.getElementById('moreBtn'), panel=document.getElementById('morePanel');
+  btn.onclick=(e)=>{ e.stopPropagation(); const on=panel.classList.toggle('open');
+    btn.innerHTML = on ? 'More &#9652;' : 'More &#9662;'; };
+  // any choice inside closes it, so it never sits over the map
+  panel.addEventListener('click', (e)=>{ if(e.target.tagName==='BUTTON'){
+    panel.classList.remove('open'); btn.innerHTML='More &#9662;'; } });
+  document.addEventListener('click',(e)=>{
+    if(panel.classList.contains('open') && !panel.contains(e.target) && e.target!==btn){
+      panel.classList.remove('open'); btn.innerHTML='More &#9662;'; }
+  });
+})();
 (function(){
   const sel=document.getElementById('planAlli');
   sel.innerHTML=PLAN_ALLI.map(a=>`<option value="${a}"${a===planAlli?' selected':''}>for ${a}</option>`).join('');
