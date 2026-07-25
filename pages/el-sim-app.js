@@ -1303,7 +1303,9 @@ function setTool(t){
     .forEach(([id,name])=>{ const b=document.getElementById(id); if(b) b.classList.toggle('active',t===name); });
   cv.classList.toggle('placing',t!=='pan');
   const bar=document.getElementById('inkbar');
-  if(bar) bar.style.display=(t==='draw'||t==='note')?'flex':'none';
+  // visibility, not display: showing the palette must not resize the header and
+  // shove the map out from under your finger
+  if(bar) bar.style.visibility=(t==='draw'||t==='note')?'visible':'hidden';
 }
 document.getElementById('toolPan').onclick=()=>setTool('pan');
 document.getElementById('toolPS').onclick=()=>setTool('ps');
@@ -1324,7 +1326,7 @@ document.getElementById('toolErase').onclick=()=>setTool('erase');
   w.style.width='62px'; w.title='Pen width';
   w.oninput=()=>{ inkWidth=+w.value; };
   bar.appendChild(w);
-  bar.style.display='none';
+  bar.style.visibility='hidden';
 })();
 function tg(id,fn,on){
   const b=document.getElementById(id);
