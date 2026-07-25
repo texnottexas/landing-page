@@ -620,7 +620,7 @@ function renderWorld(claimCounts){
     el.appendChild(div);
   });
   document.getElementById('srvNote').innerHTML=
-    `${S.length.toLocaleString()} structures, ${D.alliances.length} alliances, ${rows.length} warzones &mdash; harvested from 159 camera stops across the whole map. `
+    `${S.length.toLocaleString()} structures, ${D.alliances.length} alliances, ${rows.length} warzones &mdash; harvested from a 159-stop entity sweep of the whole map. `
     +`Ours is <b style="color:var(--green)">S2864</b>. Other servers' per-alliance splits are live from the same sweep; only S2864's power state is authoritative.`;
   // objectives
   const ot=document.getElementById('objTable'); ot.innerHTML='';
