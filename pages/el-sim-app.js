@@ -200,11 +200,33 @@ function zoneCovers(p,x,y){
 }
 const BAND=D.legalBand;
 function inBand(x,y){ return x>=BAND.x0&&x<=BAND.x1&&y>=BAND.y0&&y<=BAND.y1; }
-function fortsUsed(){ return S.filter(s=>s.owner===D.myAid&&s.fort).length + plan.filter(p=>p.fort).length; }
+// ---- fort budget -----------------------------------------------------------
+// The cap is per ALLIANCE, so Dog / MSS / Cat each get their own. This used to count
+// our own built forts plus EVERY planned fort against one number, so planning an MSS
+// fort ate Dog's slot. A fort marked for pickup stops counting as built (that is the
+// whole point of picking it up) — matched by tile, so the marker is authoritative.
+const OUR_AID = {};
+(function(){ const mySid = ASRV[D.myAid];
+  Object.keys(TAG).forEach(a=>{ if(ASRV[a]===mySid && PLAN_ALLI.indexOf(TAG[a])>=0) OUR_AID[TAG[a]]=+a; }); })();
+function isPickedUp(x,y){ return (SP.pickups||[]).some(p=>p.x===x&&p.y===y); }
+function ourForts(alli){ const aid=OUR_AID[alli]; return aid?S.filter(s=>s.fort&&s.owner===aid):[]; }
+function fortBudget(alli){
+  const own = ourForts(alli);
+  const dropped = own.filter(s=>isPickedUp(s.x,s.y)).length;
+  const built = own.length - dropped;
+  const planned = plan.filter(p=>p.fort && (p.alli||'Dog*')===alli).length;
+  const cap = D.live.maxForts;
+  return {built, dropped, planned, cap, free: Math.max(0, cap-built-planned)};
+}
 // mirrors NWorldAddingItem.UpdateGround's order per body tile
-function validate(px,py,isFort){
-  if(isFort && fortsUsed() >= D.live.maxForts)
-    return {ok:false,reason:'alliance fort cap reached ('+D.live.maxForts+', incl. any under construction)'};
+function validate(px,py,isFort,alli){
+  const forWhom = alli || planAlli;
+  if(isFort){
+    const b = fortBudget(forWhom);
+    if(b.free <= 0) return {ok:false, reason:forWhom+' fort cap reached ('+b.built+' built'
+      +(b.planned?' + '+b.planned+' planned':'')+' of '+b.cap
+      +(b.dropped?'; '+b.dropped+' already marked for pickup':'')+')'};
+  }
   for(const [x,y] of bodyTiles(px,py,isFort)){
     if(!inCrop(x,y)) return {ok:false,reason:'outside the mapped area'};
     const i=idx(x,y);
@@ -376,6 +398,49 @@ function openItemEditor(p){
   };
   box.querySelector('.ie-close').onclick=closeItemEditor;
 }
+// ---- existing fort: mark it as one we intend to pick up ----------------------
+// Picking a fort up before the battle frees its slot against that alliance's cap, so
+// the slot can be planned somewhere useful. This does NOT vacate its ground here: the
+// map still shows the fort and its zone from the live snapshot, and the power network
+// is still computed with it, because we only know it is *intended* to come down.
+function ourFortAt(tx,ty){
+  const rx=Math.round(tx), ry=Math.round(ty);
+  const own=S.filter(s=>s.fort && OUR_AID[tagOf(s.owner)]);
+  for(const s of own) if(bodyTiles(s.x,s.y,true).some(([bx,by])=>bx===rx&&by===ry)) return s;
+  let best=null,bd=1e9;                                    // near miss: fat fingers
+  own.forEach(s=>{ const d=(s.x-tx)**2+((s.y+1-ty)*0.7)**2; if(d<bd&&d<12){bd=d;best=s;} });
+  return best;
+}
+function openFortEditor(s){
+  closeItemEditor();
+  const tag=tagOf(s.owner), pu=(SP.pickups||[]).find(p=>p.x===s.x&&p.y===s.y), b=fortBudget(tag);
+  const box=document.createElement('div');
+  box.id='itemEdit';
+  box.style.cssText='position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:30;'
+    +'background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;'
+    +'box-shadow:0 8px 24px #000a;font-size:12px;max-width:94vw;';
+  box.innerHTML='<div style="margin-bottom:5px"><b style="color:'+alliCol(tag)+'">'+esc(tag)+' Fort</b> '
+    + s.x+';'+s.y+' <span style="color:var(--muted)">already built</span></div>'
+    +'<div class="note" style="margin:0 0 8px">'+esc(tag)+': '+b.built+' built'
+    + (b.planned?' + '+b.planned+' planned':'') + ' of '+b.cap+' &middot; <b style="color:'
+    + (b.free?'var(--green)':'var(--red)')+'">'+b.free+' free</b>'
+    + (pu?'<br>Marked for pickup by '+esc(pu.by||'?'):'')+'</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
+    + (pu ? '<button type="button" class="tbtn fe-keep">Keep this one after all</button>'
+          : '<button type="button" class="tbtn fe-pick" style="border-color:var(--jump);color:var(--jump)">'
+            +'We pick this one up</button>')
+    +'<button type="button" class="tbtn ie-close">Close</button></div>';
+  document.body.appendChild(box);
+  itemEditor=box;
+  const pick=box.querySelector('.fe-pick');
+  if(pick) pick.onclick=()=>{ closeItemEditor();
+    pushOps([{op:'pickup', x:s.x, y:s.y, alli:tag}],
+            (applied)=>({op:'pickupDel', id:(applied[0]||{}).id})); };
+  const keep=box.querySelector('.fe-keep');
+  if(keep) keep.onclick=()=>{ closeItemEditor();
+    pushOps([{op:'pickupDel', id:pu.id}], ()=>({op:'pickup', x:s.x, y:s.y, alli:pu.alli})); };
+  box.querySelector('.ie-close').onclick=closeItemEditor;
+}
 // ---- note editor (small prompt-based flow; works the same on phone) ----
 function addNoteAt(tx,ty){
   const text=(window.prompt('Note for this spot (everyone sees it):')||'').trim();
@@ -389,6 +454,32 @@ function openNote(n){
   if(!t){ pushOps([{op:'noteDel', id:n.id}], ()=>({op:'note', x:n.x, y:n.y, text:n.text, color:n.color})); return; }
   pushOps([{op:'note', id:n.id, x:n.x, y:n.y, text:t, color:n.color}],
           ()=>({op:'note', id:n.id, x:n.x, y:n.y, text:n.text, color:n.color}));
+}
+// ---- fort budget panel: each alliance's own cap, and what a pickup frees ----
+function alliCol(a){ return a==='MSS*'?'#388bfd':(a==='Cat+'?'#d29922':'#3fb950'); }
+function renderForts(){
+  const sf=document.getElementById('sFort');
+  if(sf){ const b=fortBudget('Dog*'); sf.textContent=(b.built+b.planned)+' / '+b.cap; }
+  const el=document.getElementById('fortBudget'); if(!el) return;
+  const rows = PLAN_ALLI.map(a=>{
+    const b=fortBudget(a);
+    const bits=[b.built+' built'];
+    if(b.planned) bits.push(b.planned+' planned');
+    if(b.dropped) bits.push('<span style="color:var(--jump)">'+b.dropped+' picking up</span>');
+    return '<div class="lrow" style="justify-content:space-between;gap:10px">'
+      +'<span><span class="sw" style="background:'+alliCol(a)+'"></span>'+a+'</span>'
+      +'<span>'+bits.join(' &middot; ')+' &rarr; <b style="color:'
+      + (b.free?'var(--green)':'var(--red)')+'">'+b.free+' free</b></span></div>';
+  }).join('');
+  const pus=(SP.pickups||[]).slice().sort((a,b)=>a.y-b.y);
+  const list = pus.length
+    ? '<div class="note">Being picked up: '+pus.map(p=>'<b class="pu-go" data-x="'+p.x+'" data-y="'+p.y
+        +'" style="color:var(--jump);cursor:pointer">'+esc(p.alli)+' '+p.x+';'+p.y+'</b>').join(', ')
+        +'. Tap a fort on the map to change it.</div>'
+    : '<div class="note">The cap is per alliance. Tap one of our forts on the map to mark it as one we will '
+      +'pick up &mdash; that frees its slot to plan somewhere else.</div>';
+  el.innerHTML = rows + list;
+  el.querySelectorAll('.pu-go').forEach(b=>b.onclick=()=>flyTo(+b.dataset.x,+b.dataset.y,2.2));
 }
 function renderNotes(){
   const el=document.getElementById('noteList'); if(!el) return;
@@ -423,7 +514,7 @@ function renderClog(){
 // kept in TILE space so they stay put at any zoom.
 const API = 'https://push-worker.27tb8s6fct.workers.dev';
 const INK = ['#f85149','#d29922','#3fb950','#39c5cf','#79c0ff','#a371f7','#ffffff','#0d1117'];
-let SP = {rev:-1, items:[], notes:[], strokes:[], changelog:[], counts:{}};
+let SP = {rev:-1, items:[], pickups:[], notes:[], strokes:[], changelog:[], counts:{}};
 let inkPath = [];
 let inkColor = (function(){ try{ const c=localStorage.getItem('elSimInk'); return INK.indexOf(c)>=0?c:INK[0]; }catch(e){ return INK[0]; } })();
 let inkWidth = 3, shareOK = false, myOps = [];   // myOps = local undo stack of {undo:op}
@@ -440,10 +531,11 @@ function setShareState(msg, bad){
 }
 function adoptPlan(view){
   SP = view;
+  if(!Array.isArray(SP.pickups)) SP.pickups = [];      // documents stored before pickups existed
   // the rest of the app still thinks in {x,y,fort} — keep that shape, carry the id
   plan = (view.items||[]).map(i=>({id:i.id, x:i.x, y:i.y, fort:i.kind==='fort', alli:i.alli, by:i.by, at:i.at}));
   shareOK = true;
-  rebuildPlanGrids(); invalidatePP(); renderPlan(); renderNotes(); renderClog(); draw();
+  rebuildPlanGrids(); invalidatePP(); renderPlan(); renderNotes(); renderClog(); renderForts(); draw();
   const when = view.updatedAt ? new Date(view.updatedAt).toLocaleTimeString() : '';
   setShareState(`Shared with the alliance &middot; rev ${view.rev} &middot; ${view.counts.items} structures, `
     + `${view.counts.notes} notes, ${view.counts.strokes} drawings`
@@ -653,7 +745,8 @@ function render(){
       if(sx<-8||sy<-8||sx>cv.width+8||sy>cv.height+8) return;
       ctx.beginPath(); ctx.arc(sx,sy,Math.max(2.2,3.4*kx),0,Math.PI*2);
       ctx.fillStyle=CL[AIDN[s.owner]]||'#8b949e'; ctx.fill();
-      ctx.strokeStyle='#0d1117'; ctx.lineWidth=1; ctx.stroke();
+      ctx.strokeStyle=isPickedUp(s.x,s.y)?'#d2a8ff':'#0d1117';   // purple = coming down
+      ctx.lineWidth=isPickedUp(s.x,s.y)?2:1; ctx.stroke();
     });
   }
   // ---- zone outlines for our own structures ----
@@ -686,10 +779,18 @@ function render(){
       ctx.beginPath(); bodyTiles(s.x,s.y,s.fort).forEach(([bx,by])=>tilePath(bx,by,0.92));
       ctx.fillStyle=col+(building?'44':'77'); ctx.fill();
       if(!powered&&!building){ ctx.strokeStyle='#f85149'; ctx.lineWidth=1.5*k*.5; ctx.stroke(); }
-      drawIcon(s.fort?'fort':'ps', s.x, s.y, {alpha: building?.55:(powered?1:.5), gray: building});
+      // a fort we intend to pick up: dashed purple body so it reads as "not staying"
+      const goingAway = s.fort && isPickedUp(s.x,s.y);
+      if(goingAway){
+        ctx.save(); ctx.setLineDash([5*k*.5,4*k*.5]);
+        ctx.strokeStyle='#d2a8ff'; ctx.lineWidth=2*k*.5; ctx.stroke(); ctx.restore();
+      }
+      drawIcon(s.fort?'fort':'ps', s.x, s.y,
+               {alpha: goingAway?.4:(building?.55:(powered?1:.5)), gray: building||goingAway});
       if(s.fort&&zoom>.8){
         const [wx,wy]=px(s.x,s.y+2); const [sx,sy]=scr(wx,wy);
         mapLabel('FORT '+tagOf(s.owner)+(building?' (building)':''), sx, sy+TH*k*.9, '#ffffff', 9.5*k*.7);
+        if(goingAway) mapLabel('picking up', sx, sy+TH*k*.9+11*k*.7, '#d2a8ff', 9*k*.7);
       }
     } else if(it.kind==='fixed'){
       const f=it, ctr=fixCentre(f);
@@ -872,6 +973,8 @@ window.addEventListener('mouseup',(e)=>{
     if(it){ openItemEditor(it); dragging=false; return; }
     const n=noteAt(tx,ty,2);
     if(n){ openNote(n); dragging=false; return; }
+    const f=ourFortAt(tx,ty);
+    if(f){ openFortEditor(f); dragging=false; return; }
     closeItemEditor();
   }
   if(dragging&&!moved&&(tool==='ps'||tool==='fort')&&hover){
@@ -936,7 +1039,8 @@ function kindLines(f){
 function tileSummary(t){
   const i=inCrop(t[0],t[1])?idx(t[0],t[1]):-1;
   const s=S.find(s=>bodyTiles(s.x,s.y,s.fort).some(([bx,by])=>bx===t[0]&&by===t[1]));
-  if(s) return (s.fort?'Fort':'PS')+' '+tagOf(s.owner)+' S'+(ASRV[s.owner]||'?')+' · '+t[0]+';'+t[1];
+  if(s) return (s.fort?'Fort':'PS')+' '+tagOf(s.owner)+' S'+(ASRV[s.owner]||'?')+' · '+t[0]+';'+t[1]
+    + (s.fort&&isPickedUp(s.x,s.y)?' · marked to be picked up':'');
   const f=FIX.find(f=>bodyTilesW(f.X,f.Y,f.w||2).some(([bx,by])=>bx===t[0]&&by===t[1]));
   if(f){
     const k=kindOf(f);
@@ -1039,6 +1143,7 @@ cv.addEventListener('touchend',e=>{
     if(tool==='pan' && it){ openItemEditor(it); return; }
     if(tool==='note'){ addNoteAt(fx,fy); return; }
     if(n){ openNote(n); return; }
+    if(tool==='pan'){ const f=ourFortAt(fx,fy); if(f){ openFortEditor(f); return; } }
   }
   if(wasOne && !tMoved && pt && Date.now()-tStart<600){
     // a tap: snap to the tile under the finger, then place or just inspect it
@@ -1162,7 +1267,7 @@ function counts(){
   renderWorld(c);
   document.getElementById('sAct').textContent=act.length+' / '+built.length;
   document.getElementById('sBld').textContent=mine.filter(s=>s.st===2).length;
-  document.getElementById('sFort').textContent=fortsUsed()+' / '+D.live.maxForts;
+  renderForts();                       // owns #sFort too, so it can't drift from the panel
   const cap=D.live.psCapBase+D.live.psCapBuff;
   document.getElementById('sPsCap').textContent=D.live.psBuilt+' / '+cap;
   const okRank=D.live.psJurisdiction.split(';').indexOf(String(D.live.rank))>=0;
@@ -1421,7 +1526,9 @@ function fit(){
 // ---- self test: does the captured terrain line up with the blocked-tile mask? ----
 window.__st = function(){
   const out={corridors:JUMPS.length, east:0, west:0, needNewPS:0,
-             forts:fortsUsed()+'/'+D.live.maxForts,
+             forts:PLAN_ALLI.map(a=>{ const b=fortBudget(a);
+               return a+' '+(b.built+b.planned)+'/'+b.cap+(b.dropped?' (-'+b.dropped+')':''); }).join(' · '),
+             fortsFree:PLAN_ALLI.map(a=>fortBudget(a).free).join('/'),
              structs:S.length, fixed:FIX.length, alliances:D.alliances.length,
              blocked:0, terrain:{world:!!TERR.world.im.naturalWidth, district:!!TERR.district.im.naturalWidth}};
   for(let i=0;i<N;i++) if(gBlock[i]) out.blocked++;
@@ -1486,5 +1593,5 @@ resize(); fit(); setTool('pan');
   window.addEventListener('focus', ()=>{ if(!drawing) pullPlan(); });
 })();
 
-window.__el = {flyTo:flyTo, fit:fit, render:render, zoomNow:()=>zoom, D:D, S:S, FIX:FIX, JUMPS:JUMPS, TERR:TERR, validate:validate, selftest:window.__st};
+window.__el = {flyTo:flyTo, fit:fit, render:render, zoomNow:()=>zoom, D:D, S:S, FIX:FIX, JUMPS:JUMPS, TERR:TERR, validate:validate, selftest:window.__st, fortBudget:fortBudget, ourFortAt:ourFortAt, SP:()=>SP, plan:()=>plan};
 })();
