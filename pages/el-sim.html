@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; manifest-src 'self';" />
+
+<title>EL Build Simulator &middot; Server 2864</title>
+<style>
+:root{--bg:#0d1117;--surface:#161b22;--card:#1c2128;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#79c0ff;--green:#3fb950;--blue:#388bfd;--yellow:#d29922;--red:#f85149;--jump:#d2a8ff;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;overflow:hidden;height:100vh;display:flex;flex-direction:column;}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;z-index:5;}
+header h1{font-size:15px;font-weight:600;}
+header .sub{font-size:11px;color:var(--muted);}
+.toolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.tbtn{background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 11px;font-size:12px;cursor:pointer;transition:all .15s;}
+.tbtn:hover{border-color:var(--accent);}
+.tbtn.active{background:#1f6feb33;border-color:var(--accent);color:var(--accent);}
+.tbtn.jump.active{background:#d2a8ff26;border-color:var(--jump);color:var(--jump);}
+.tbtn.danger:hover{border-color:var(--red);color:var(--red);}
+#wrap{flex:1;display:flex;min-height:0;}
+#cv{flex:1 1 0;min-width:0;width:100%;height:100%;display:block;cursor:grab;background:#0a0e14;}
+#cv.placing{cursor:crosshair;}
+#side{width:308px;background:var(--surface);border-left:1px solid var(--border);overflow-y:auto;padding:12px;font-size:12px;flex-shrink:0;}
+#side h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px;}
+#side h3:first-child{margin-top:0;}
+.stat{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #21262d;}
+.stat b{color:var(--accent);font-variant-numeric:tabular-nums;}
+.legend{display:flex;flex-direction:column;gap:4px;}
+.lrow{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px;}
+.sw{width:13px;height:13px;border-radius:3px;flex-shrink:0;border:1px solid #0006;}
+.jrow{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--jump);border-radius:6px;padding:7px 9px;margin-bottom:6px;cursor:pointer;}
+.jrow:hover{border-color:var(--jump);}
+.jrow .t{font-weight:600;color:var(--jump);}
+.jrow .d{color:var(--muted);font-size:10.5px;line-height:1.5;margin-top:2px;}
+.planitem{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;gap:6px;}
+.planitem .del{color:var(--muted);cursor:pointer;font-size:14px;padding:0 3px;}
+.planitem .del:hover{color:var(--red);}
+.ok{color:var(--green);font-size:10px;} .warn{color:var(--yellow);font-size:10px;}
+#tip{position:fixed;pointer-events:none;background:#161b22ee;border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:11px;z-index:20;display:none;max-width:260px;line-height:1.5;}
+#coord{position:fixed;left:12px;bottom:10px;background:#161b22cc;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:12px;font-variant-numeric:tabular-nums;z-index:6;}
+.note{color:var(--muted);font-size:10.5px;line-height:1.55;margin-top:4px;}
+#nav{background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11.5px;max-width:190px;}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>EL Build Simulator</h1><div class="sub">Whole Eternal Land map &middot; 8 warzones &middot; 247 terrain captures &middot; live structures + claims &middot; snapshot 2026-07-24</div></div>
+  <div class="toolbar">
+    <button class="tbtn" id="toolPan">Pan</button>
+    <button class="tbtn" id="toolPS">+ Power Station</button>
+    <button class="tbtn" id="toolFort">+ Fort</button>
+    <span style="width:8px"></span>
+    <button class="tbtn jump" id="tgJump">Wall jumps</button>
+    <button class="tbtn" id="tgClaims">Claims</button>
+    <button class="tbtn" id="tgZones">Excl. zones</button>
+    <button class="tbtn" id="tgMtn">Terrain art</button>
+    <button class="tbtn" id="tgBlock">Blocked mask</button>
+    <button class="tbtn" id="tgAreas">Districts</button>
+    <button class="tbtn" id="tgLegal">Verified legal</button>
+    <button class="tbtn" id="tgGridL">Grid</button>
+    <select id="nav" title="Jump to"></select>
+    <button class="tbtn" id="fit">Fit map</button>
+    <button class="tbtn danger" id="clearPlan">Clear plan</button>
+    <button class="tbtn" id="copyPlan">Copy plan</button>
+  </div>
+</header>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <div id="side">
+    <h3>Wall jumps &rarr; zone 2</h3>
+    <div id="jumps"></div>
+    <div class="note">Both sides are drawn: <span style="color:#79c0ff">blue = the west tile a PS must sit on</span>, <span style="color:#d2a8ff">purple = the east tile it reaches</span>, dashed line = the pairing. Only crossings walk-reachable from one of our four Lv.1 Gates are listed; anything cut off by the mountain wall is excluded. West spots are already filtered to tiles where a new PS would be powered by our built network.</div>
+    <h3>Warzones &middot; whole map</h3>
+    <div id="srvTable"></div>
+    <div class="note" id="srvNote"></div>
+    <h3>Objectives</h3>
+    <div id="objTable"></div>
+    <div class="note">Nothing in the middle of the map is owned yet: every Gate (52), Arsenal / Military Base (16), Military Fortress (4), Research Facility (12) and the Eternal City are unclaimed. Only the starting Expedition Outposts / Bases have owners &mdash; 3 + 1 per warzone.<br>    <b>Eternal City geometry, checked two ways:</b> its entity is <code>pt 384;756</code>, <code>rpt 384;762</code> &rarr; body centre <b>384;759</b>, and the fixed-building square spans y 750&ndash;768 (centre 759) &mdash; the two agree. The mountain ring around the centre zone is symmetric about <b>~383;766</b> (scanned from the blocked mask: 124 rows north vs 120 south, 60 x-units west vs 58 east). So the city really does sit about <b>7 rows north</b> of the centre of its own walled zone; it is the game&rsquo;s layout, not a drawing offset.</div>
+    <h3>Live territory &middot; S2864</h3>
+    <div class="stat"><span>Dog* claimed tiles</span><b id="sDog">-</b></div>
+    <div class="stat"><span>MSS* claimed tiles</span><b id="sMss">-</b></div>
+    <div class="stat"><span>Cat+ claimed tiles</span><b id="sCat">-</b></div>
+    <div class="stat"><span>Dog* PS active / built</span><b id="sAct">-</b></div>
+    <div class="stat"><span>Dog* under construction</span><b id="sBld">-</b></div>
+    <div class="stat"><span>Forts used</span><b id="sFort">-</b></div>
+    <div class="stat"><span>Power Stations / cap</span><b id="sPsCap">-</b></div>
+    <div class="stat"><span>Your rank vs build right</span><b id="sRank">-</b></div>
+    <h3>Plan</h3>
+    <div class="stat"><span>New tiles claimed</span><b id="pTiles">0</b></div>
+    <div class="stat"><span>Amethyst cost</span><b id="pCost">0</b></div>
+    <div class="stat"><span>Build time (sum)</span><b id="pTime">0h</b></div>
+    <div id="plan"></div>
+    <div class="note" id="planEmpty">Pick a tool and click the map. Green ghost = valid &amp; powered, amber = valid but disconnected, red = illegal (reason on hover).</div>
+    <h3>Legend</h3>
+    <div class="legend">
+      <div class="lrow"><span class="sw" style="background:#3fb95055;border-color:#3fb950"></span>Dog* territory</div>
+      <div class="lrow"><span class="sw" style="background:#388bfd45;border-color:#388bfd"></span>MSS* territory</div>
+      <div class="lrow"><span class="sw" style="background:#d2992245;border-color:#d29922"></span>Cat+ territory</div>
+      <div class="lrow"><span class="sw" style="background:#8b949e55;border-color:#8b949e"></span>Other server's alliances</div>
+      <div class="lrow"><span class="sw" style="background:#262c36"></span>Mountains (unbuildable) &mdash; "Blocked mask"</div>
+      <div class="lrow"><span class="sw" style="background:#f8514922;border-color:#f85149"></span>Fixed-building exclusion</div>
+      <div class="lrow"><span class="sw" style="background:#79c0ff66;border-color:#79c0ff"></span>Wall jump: <b>west</b> spot (PS goes here)</div>
+      <div class="lrow"><span class="sw" style="background:#d2a8ff66;border-color:#d2a8ff"></span>Wall jump: <b>east</b> landing tile</div>
+      <div class="lrow"><span class="sw" style="background:#79c0ff"></span>Planned structure</div>
+    </div>
+    <h3>Rules (from game client)</h3>
+    <div class="note">
+      &bull; PS: 1 tile body, 7&times;7 zone, 500 Amethyst, 2h. Fort: 2&times;2 body, 10&times;10 zone, 10K, 3h, max 3.<br>
+      &bull; Cannot place on claimed tiles (any alliance incl. ours), mountains, fixed-building zones, or on top of a base/city.<br>
+      &bull; <b>Powered</b> = zone chains edge-to-edge through <b>built</b> structures to a Fort. Under-construction structures claim land but do not conduct. Disconnected placement is legal, it just stays unpowered.<br>
+      &bull; Wall jumps work because two 7&times;7 zones only need to touch: centres up to 7 apart in u and v. So a wall up to ~5 tiles thick can be spanned.<br>
+      &bull; Our 4 Lv.1 Gates are all <b>unowned</b>, so the gate border-ring placement exception is not available to us yet. If we capture one, a PS (but never a Fort) can sit on its 1-tile border ring.<br>
+      &bull; Caps are alliance-wide and stage-based (not per player): fort cap comes from the server's own count, PS cap from the stage table plus alliance buff. Rank must appear in the building's jurisdiction list.<br>
+      &bull; Power is a <b>prediction</b>: the server decides connectivity, and the client never computes it. It has matched live status on every structure so far (96/96 today, 71/71 on the previous snapshot).
+    </div>
+    <h3>Where the terrain comes from</h3>
+    <div class="note">
+      The ground is <b>the game's own render</b>, not a reconstruction: the map camera was parked on 24 stops, the unit/territory/label layers were switched off, each stop was captured through a RenderTexture and edge-feathered into one mosaic at 8 world units per pixel &mdash; exactly half a display pixel, so it lands on the tile lattice with no fitting.<br>
+      The client draws terrain as 3D <code>MountainItem{n}_{v}</code> prefabs at node scale 1.4 over a chunked terrain mesh, which is why the earlier sprite-per-footprint version could never line up.<br>
+      Alignment is checked in code (<code>__st()</code> in the console): rock-coloured pixels land on <b>68.2%</b> of blocked tiles and only <b>2.2%</b> of open ones, and every deliberate &plusmn;4-tile shift of the mask scores worse on both counts. "Blocked mask" overlays the unbuildable tiles so you can see the data behind the art &mdash; the mask is wider than the visible rock in the district border bands, which carry no mountain art in the client either.
+    </div>
+  </div>
+</div>
+<div id="tip"></div>
+<div id="coord">-</div>
+<style>
+.ov{position:fixed;inset:0;background:var(--bg);z-index:600;display:flex;align-items:center;justify-content:center;padding:16px;}
+.ov.hide{display:none;}
+.ovcard{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px;width:340px;max-width:94vw;text-align:center;}
+.ovcard h2{font-size:16px;margin-bottom:6px;color:var(--accent);}
+.ovcard p{font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:14px;}
+.ovcard input{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px 10px;font-size:13px;text-align:center;margin-bottom:9px;}
+.ovcard input:focus{outline:none;border-color:var(--accent);}
+.ovbtn{width:100%;background:#1f6feb;border:1px solid #388bfd;color:#fff;border-radius:6px;padding:9px;font-size:13px;cursor:pointer;}
+.ovbtn:hover{background:#388bfd;}
+.overr{color:var(--red);font-size:11.5px;margin-top:9px;min-height:1em;}
+.whowrap{width:400px;max-width:94vw;text-align:left;}
+.wholist{max-height:46vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:8px;}
+.whorow{padding:8px 11px;font-size:12.5px;cursor:pointer;border-bottom:1px solid #21262d;display:flex;justify-content:space-between;gap:8px;}
+.whorow:last-child{border-bottom:none;}
+.whorow:hover{background:#1f6feb22;}
+.whorow .al{color:var(--muted);font-size:11px;}
+.idchip{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);background:var(--card);border:1px solid var(--border);border-radius:999px;padding:4px 10px;cursor:pointer;}
+.idchip b{color:var(--green);font-weight:600;}
+.idchip:hover{border-color:var(--accent);}
+.boot{font-size:12.5px;color:var(--muted);}
+</style>
+
+<div class="ov" id="gate">
+  <div class="ovcard">
+    <h2>EL Build Simulator</h2>
+    <p>Server 2864 planning tool. Enter the access password to load the live map.</p>
+    <input type="password" id="gatePw" placeholder="Password" autocomplete="current-password">
+    <button type="button" class="ovbtn" id="gateGo">Open</button>
+    <div class="overr" id="gateErr"></div>
+  </div>
+</div>
+
+<div class="ov hide" id="who">
+  <div class="ovcard whowrap">
+    <h2>Who are you?</h2>
+    <p>Pick your name so the tool knows you across 2864tw.com. Used for your own plan and nothing else.</p>
+    <input type="text" id="whoSearch" placeholder="Search the S2864 roster&hellip;" autocomplete="off">
+    <div class="wholist" id="whoList"></div>
+    <div class="overr" id="whoErr"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var API = 'https://push-worker.27tb8s6fct.workers.dev';
+  var PW_KEY = 'elSimPw';
+  var gate = document.getElementById('gate'), err = document.getElementById('gateErr');
+
+  function identity(){
+    try { var v = localStorage.getItem('playerIdentity');
+          if (!v || v === 'anonymous') return null; return JSON.parse(v); } catch(e){ return null; }
+  }
+  function chip(){
+    var id = identity(), h = document.querySelector('header');
+    if (!h) return;
+    var el = document.getElementById('idchip');
+    if (!el){ el = document.createElement('div'); el.id = 'idchip'; el.className = 'idchip';
+              el.title = 'Change who you are'; el.onclick = openWho; h.appendChild(el); }
+    el.innerHTML = id && id.name
+      ? 'Signed in as <b>' + String(id.name).replace(/[<>&]/g,'') + '</b>'
+        + (id.alliance ? ' <span class="al">' + String(id.alliance).replace(/[<>&]/g,'') + '</span>' : '')
+      : 'Not signed in &mdash; pick your name';
+  }
+
+  // ---- site identity: same localStorage key and roster as the rest of 2864tw.com
+  var roster = [];
+  function openWho(){
+    document.getElementById('who').classList.remove('hide');
+    if (roster.length) { drawWho(''); document.getElementById('whoSearch').focus(); return; }
+    fetch('player-data.json').then(function(r){ return r.json(); }).then(function(j){
+      roster = (j || []).slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+      drawWho(''); document.getElementById('whoSearch').focus();
+    }).catch(function(){ document.getElementById('whoErr').textContent = 'Could not load the roster.'; });
+  }
+  function drawWho(f){
+    f = (f || '').trim().toLowerCase();
+    var list = document.getElementById('whoList');
+    var rows = roster.filter(function(p){ return !f || (p.name||'').toLowerCase().indexOf(f) >= 0; }).slice(0, 80);
+    list.innerHTML = rows.map(function(p, i){
+      return '<div class="whorow" data-i="' + roster.indexOf(p) + '"><span>' + String(p.name).replace(/[<>&]/g,'')
+             + '</span><span class="al">' + String(p.alliance || '').replace(/[<>&]/g,'') + '</span></div>';
+    }).join('') || '<div class="whorow"><span class="al">No match</span></div>';
+    Array.prototype.forEach.call(list.querySelectorAll('.whorow[data-i]'), function(row){
+      row.onclick = function(){
+        var p = roster[+row.dataset.i]; if (!p) return;
+        try { localStorage.setItem('playerIdentity', JSON.stringify(
+          { name: p.name, siteKey: p.siteKey || '', alliance: p.alliance || '', guest: false })); } catch(e){}
+        document.getElementById('who').classList.add('hide');
+        chip();
+      };
+    });
+  }
+  document.getElementById('whoSearch').addEventListener('input', function(e){ drawWho(e.target.value); });
+  document.getElementById('who').addEventListener('click', function(e){
+    if (e.target === this) this.classList.add('hide');
+  });
+
+  // ---- gate -> worker -> boot
+  function boot(payload){
+    window.__EL_DATA = payload;
+    var s = document.createElement('script');
+    s.src = 'el-sim-app.js?v=' + (payload.snapshot || '1');
+    s.onerror = function(){ err.textContent = 'The app failed to load. Try a refresh.'; };
+    document.body.appendChild(s);
+    gate.classList.add('hide');
+    chip();
+    if (!identity()) setTimeout(openWho, 400);
+  }
+  function open(pw, silent){
+    var id = identity();
+    err.textContent = silent ? '' : 'Loading the map…';
+    return fetch(API + '/elsim/data', { headers: {
+      'X-El-Sim-Password': pw, 'X-Player-Name': (id && id.name) || ''
+    }}).then(function(r){
+      if (r.status === 401) { try { localStorage.removeItem(PW_KEY); } catch(e){}
+        err.textContent = silent ? '' : 'That password was not accepted.'; return null; }
+      if (!r.ok) { err.textContent = 'Server said ' + r.status + '. Try again in a moment.'; return null; }
+      return r.json();
+    }).then(function(j){
+      if (!j) return false;
+      try { localStorage.setItem(PW_KEY, pw); } catch(e){}
+      boot(j); return true;
+    }).catch(function(){ err.textContent = 'Network error. Check your connection.'; return false; });
+  }
+  document.getElementById('gateGo').onclick = function(){
+    var v = (document.getElementById('gatePw').value || '').trim();
+    if (!v) { err.textContent = 'Enter the password.'; return; }
+    open(v, false);
+  };
+  document.getElementById('gatePw').addEventListener('keydown', function(e){ if (e.key === 'Enter') document.getElementById('gateGo').click(); });
+
+  chip();
+  var saved = '';
+  try { saved = localStorage.getItem(PW_KEY) || ''; } catch(e){}
+  if (saved) open(saved, true);          // remembered password: open straight up
+  else document.getElementById('gatePw').focus();
+})();
+</script>
+
+</body>
+</html>
