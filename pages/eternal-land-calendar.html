@@ -68,15 +68,22 @@
   .remnote { font-size:.72rem; color:#8b949e; margin-top:6px; }
   .remhow { display:block; margin-top:4px; }
   .remhow b { color:#c9d1d9; }
-  .viewbar { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+  .viewbar { display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
   .navbtn { background:#21262d; border:1px solid #30363d; border-radius:8px; color:#79c0ff; cursor:pointer; padding:6px 14px; display:inline-flex; align-items:center; }
   .navbtn:disabled { opacity:.35; cursor:default; }
   .viewlabel { flex:1; text-align:center; font-size:.85rem; color:#8b949e; font-weight:600; }
   .togglebtn { background:#0c2137; border:1px solid #1f4e7a; border-radius:8px; color:#79c0ff; cursor:pointer; font-size:.78rem; font-weight:700; padding:6px 12px; white-space:nowrap; }
+  .togglebtn.ghost { background:#21262d; border-color:#30363d; color:#8b949e; font-weight:600; }
+  .togglebtn.ghost:hover { border-color:#8b949e; color:#c9d1d9; }
   .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:14px; align-items:start; }
   .grid.dayview { display:block; max-width:520px; margin:0 auto; }
   .grid.dayview .day { display:none; }
   .grid.dayview .day.current { display:block; }
+  /* all-days view starts at today; finished days collapse to the end of the page */
+  .grid:not(.dayview):not(.showpast) .day.past { display:none; }
+  .grid:not(.dayview) .day.past { order:2; }
+  .pastdiv { display:none; grid-column:1 / -1; order:1; font-size:.66rem; letter-spacing:1px; color:#8b949e; font-weight:700; border-top:1px dashed #30363d; padding-top:12px; margin-top:2px; }
+  .grid:not(.dayview).showpast .pastdiv { display:block; }
   .day { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:14px; border-top:3px solid #30363d; }
   .day.prep { border-top-color:#8b949e; } .day.s1 { border-top-color:#3fb950; } .day.s2 { border-top-color:#388bfd; }
   .day.s3 { border-top-color:#d29922; } .day.s4 { border-top-color:#f85149; } .day.s5 { border-top-color:#bc8cff; }
@@ -153,7 +160,7 @@
   <div class="rhyrow"><svg class="ri" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg>Standard Reset <b id="rhyStd"></b><span class="rhycd" id="cdStd"></span></div>
   <div class="rhyrow"><svg class="ri" viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20"/><path d="M12 21L8 9l4-6 4 6z"/></svg>Resource Areas <b id="rhySra"></b><span class="rhycd" id="cdSra"></span></div>
 </div>
-<div class="viewbar"><button class="navbtn" id="prevDay" aria-label="Previous day"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button><div class="viewlabel" id="viewLabel"></div><button class="navbtn" id="nextDay" aria-label="Next day"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button><button class="togglebtn" id="viewToggle">Show all days</button></div>
+<div class="viewbar"><button class="navbtn" id="prevDay" aria-label="Previous day"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button><div class="viewlabel" id="viewLabel"></div><button class="navbtn" id="nextDay" aria-label="Next day"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button><button class="togglebtn ghost" id="pastToggle" style="display:none">Show earlier days</button><button class="togglebtn" id="viewToggle">Show all days</button></div>
 <div class="grid" id="grid">
 <div class="day prep" data-epoch="1784469600000" data-next="1784556000000">
   <div class="dhead"><span class="dow">Sun</span><span class="dnum">Jul 19</span><span class="dsub">Prep Day 1</span></div>
@@ -239,7 +246,7 @@
   <div class="dhead"><span class="dow">Sat</span><span class="dnum">Aug 8</span><span class="dsub">Rewards</span></div>
   <div class="cdline"><span class="local"></span><span class="cd"></span></div>
   <div class="item"><span class="tag tag-stage">STAGE</span><div><div class="t">Event ends: everyone returns home</div><div class="note">Event items are deleted.</div></div></div>
-</div>
+</div><div class="pastdiv" id="pastDiv">EARLIER DAYS</div>
 </div>
 </div>
 </div>
@@ -363,6 +370,19 @@ var grid = document.getElementById('grid');
 var viewLabel = document.getElementById('viewLabel');
 var prevBtn = document.getElementById('prevDay'), nextBtn = document.getElementById('nextDay');
 var toggleBtn = document.getElementById('viewToggle');
+var pastBtn = document.getElementById('pastToggle');
+// a day is "past" once its 24h window has fully elapsed
+function markPast() {
+  var now = Date.now(), n = 0;
+  cards.forEach(function (c) {
+    var done = now >= +c.dataset.next;
+    c.classList.toggle('past', done);
+    if (done) n++;
+  });
+  return n;
+}
+var showPast;
+try { showPast = localStorage.getItem('elCalPast') === '1'; } catch (e) { showPast = false; }
 function todayIndex() {
   var now = Date.now();
   for (var i = 0; i < cards.length; i++) {
@@ -376,8 +396,10 @@ var mode;
 try { mode = localStorage.getItem('elCalView'); } catch (e) {}
 if (mode !== 'day' && mode !== 'all') mode = (window.innerWidth <= 700 ? 'day' : 'all');
 function applyView() {
+  var pastCount = markPast();
   if (mode === 'day') {
     grid.classList.add('dayview');
+    pastBtn.style.display = 'none';
     cards.forEach(function (c, i) { c.classList.toggle('current', i === curIdx); });
     var el = cards[curIdx];
     var dnum = el.querySelector('.dnum').textContent, dsub = el.querySelector('.dsub').textContent;
@@ -390,9 +412,22 @@ function applyView() {
   } else {
     grid.classList.remove('dayview');
     cards.forEach(function (c) { c.classList.remove('current'); });
-    viewLabel.textContent = 'All 21 days';
+    // nothing left to look forward to once the event is over: just show everything
+    var expanded = showPast || pastCount === cards.length;
+    grid.classList.toggle('showpast', expanded);
+    viewLabel.textContent = (expanded || !pastCount)
+      ? 'All ' + cards.length + ' days'
+      : (cards.length - pastCount) + ' days from today';
     viewLabel.style.textAlign = 'left';
     prevBtn.style.display = nextBtn.style.display = 'none';
+    if (pastCount && pastCount < cards.length) {
+      pastBtn.style.display = '';
+      pastBtn.textContent = showPast
+        ? 'Hide earlier days'
+        : 'Show ' + pastCount + (pastCount === 1 ? ' earlier day' : ' earlier days');
+    } else {
+      pastBtn.style.display = 'none';
+    }
     toggleBtn.textContent = 'Day view';
   }
 }
@@ -404,6 +439,12 @@ toggleBtn.addEventListener('click', function () {
   try { localStorage.setItem('elCalView', mode); } catch (e) {}
   applyView();
 });
+pastBtn.addEventListener('click', function () {
+  showPast = !showPast;
+  try { localStorage.setItem('elCalPast', showPast ? '1' : '0'); } catch (e) {}
+  applyView();
+  if (showPast) document.getElementById('pastDiv').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
 // swipe support in day view
 var touchX = null;
 grid.addEventListener('touchstart', function (e) { if (mode === 'day') touchX = e.touches[0].clientX; }, { passive: true });
@@ -414,6 +455,12 @@ grid.addEventListener('touchend', function (e) {
   else if (dx > 50 && curIdx > 0) { curIdx--; applyView(); }
 }, { passive: true });
 applyView();
+// re-collapse the day that just ended when the server resets mid-session
+var lastPastCount = markPast();
+setInterval(function () {
+  var pc = markPast();
+  if (pc !== lastPastCount) { lastPastCount = pc; applyView(); }
+}, 30000);
 
 // ---- push reminders ----
 (function () {
