@@ -1427,10 +1427,17 @@ function updateTip(e,t){
 }
 let flashT=null;
 function flash(msg){
-  const tip=document.getElementById('tip');
-  tip.innerHTML='<span style="color:#f85149">'+msg+'</span>';
-  tip.style.display='block';
-  clearTimeout(flashT); flashT=setTimeout(()=>tip.style.display='none',2000);
+  const t=document.getElementById('toast');
+  t.innerHTML=String(msg);
+  t.style.display='block';
+  // anchor to the canvas, not the viewport: clear of the header on any screen, and
+  // clear of the zoom pad / place bar / Info button along the bottom
+  const r=cv.getBoundingClientRect();
+  t.style.left='0px'; t.style.top='0px';              // measure at a known origin first
+  const w=t.offsetWidth, h=t.offsetHeight;
+  t.style.left=Math.round(Math.max(6, r.left+(r.width-w)/2))+'px';
+  t.style.top=Math.round(r.top+10)+'px';
+  clearTimeout(flashT); flashT=setTimeout(()=>t.style.display='none',2600);
 }
 
 // ---- side panel ----
