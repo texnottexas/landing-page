@@ -240,7 +240,11 @@ function validate(px,py,isFort,alli){
     if(gExcl[i]) return {ok:false,reason:'fixed-building zone'};
     // inside the wall corridor we probed the live client tile-by-tile, so its verdict
     // also applies: it catches bases/cities this static model cannot see
-    if(inBand(x,y) && !gLegalV[i]) return {ok:false,reason:'blocked in game (base, city or unit on the tile)'};
+    // SOFT refusal: the oracle probed this corridor live, so a tile reads illegal when a
+    // base/city/unit was standing there at probe time. That moves — unlike terrain or a
+    // built structure — so the player is allowed to override it (see placeBar).
+    if(inBand(x,y) && !gLegalV[i]) return {ok:false, soft:true,
+      reason:'the live probe saw a base, city or unit on this tile'};
   }
   return {ok:true};
 }
@@ -345,13 +349,15 @@ function clearPending(){
   if(!pending) return;
   pending=null; renderPlaceBar(); draw();
 }
-function commitPending(){
+function commitPending(force){
   if(!pending) return;
   const [x,y]=pending, isFort=pendingFort;
   const chk=validate(x,y,isFort);
-  if(!chk.ok){ flash('Cannot place: '+chk.reason); return; }
-  pushOps([{op:'add', kind:isFort?'fort':'ps', x, y, alli:planAlli}],
-          (applied)=>({op:'del', id:(applied[0]||{}).id}));
+  // only a SOFT refusal can be overridden; hard game rules still stop the placement
+  if(!chk.ok && !(force && chk.soft)){ flash('Cannot place: '+chk.reason); return; }
+  const op={op:'add', kind:isFort?'fort':'ps', x, y, alli:planAlli};
+  if(!chk.ok) op.forced=true;
+  pushOps([op], (applied)=>({op:'del', id:(applied[0]||{}).id}));
   clearPending();
 }
 function renderPlaceBar(){
@@ -364,16 +370,27 @@ function renderPlaceBar(){
     bar.id='placeBar';
     document.body.appendChild(bar);
   }
+  // three states: legal, SOFT (a transient in-game blocker — overridable), hard refusal
+  const soft = !chk.ok && chk.soft;
+  const col = chk.ok ? 'var(--green)' : (soft ? 'var(--yellow)' : 'var(--red)');
   bar.innerHTML='<div style="margin-bottom:6px"><b>'+(isFort?'Fort':'Power Station')+'</b> '
     + x+';'+y+' <span style="color:var(--muted)">for</span> <b style="color:'+alliCol(planAlli)+'">'
     + esc(planAlli)+'</b></div>'
-    +'<div style="font-size:11px;margin-bottom:8px;color:'+(chk.ok?'var(--green)':'var(--red)')+'">'
-    + (chk.ok?'Legal spot &middot; drag the ghost to nudge it':esc(chk.reason))+'</div>'
+    +'<div style="font-size:11px;margin-bottom:8px;color:'+col+'">'
+    + (chk.ok?'Legal spot &middot; drag the ghost to nudge it':esc(chk.reason))
+    + (soft?'<br><span style="color:var(--muted)">Bases, cities and units move. If the tile is '
+           +'clear in game you can place anyway &mdash; it will be flagged as an override.</span>':'')
+    +'</div>'
     +'<div style="display:flex;gap:6px">'
-    +'<button type="button" class="tbtn pb-ok"'+(chk.ok?'':' disabled')
-    +' style="flex:1;'+(chk.ok?'border-color:var(--green);color:var(--green)':'opacity:.45')+'">Place here</button>'
+    + (soft
+        ? '<button type="button" class="tbtn pb-force" style="flex:1;border-color:var(--yellow);'
+          +'color:var(--yellow)">Place anyway</button>'
+        : '<button type="button" class="tbtn pb-ok"'+(chk.ok?'':' disabled')
+          +' style="flex:1;'+(chk.ok?'border-color:var(--green);color:var(--green)':'opacity:.45')
+          +'">Place here</button>')
     +'<button type="button" class="tbtn pb-no" style="flex:1">Cancel</button></div>';
-  bar.querySelector('.pb-ok').onclick=commitPending;
+  const ok=bar.querySelector('.pb-ok'); if(ok) ok.onclick=()=>commitPending(false);
+  const fc=bar.querySelector('.pb-force'); if(fc) fc.onclick=()=>commitPending(true);
   bar.querySelector('.pb-no').onclick=clearPending;
 }
 // ---- planned item: hit-test + edit in place ---------------------------------
@@ -915,10 +932,15 @@ function render(){
       ctx.fillStyle=aCol+'44'; ctx.fill();
       ctx.strokeStyle=stCol; ctx.lineWidth=2*k*.5; ctx.stroke();
       ctx.strokeStyle=aCol+'88'; ctx.lineWidth=1.2*k*.5; strokeZone(p.x,p.y,p.fort);
+      if(p.forced){                       // placed over a transient in-game blocker
+        ctx.save(); ctx.setLineDash([5*k*.5,4*k*.5]);
+        ctx.strokeStyle='#d29922'; ctx.lineWidth=2.2*k*.5; ctx.stroke(); ctx.restore();
+      }
       drawIcon(p.fort?'fort':'ps', p.x, p.y, {alpha:.92});
       if(zoom>.9){
         const [wx,wy]=px(p.x,p.y); const [sx,sy]=scr(wx,wy);
         mapLabel('#'+(it.i+1)+' '+(p.alli||'Dog*'), sx, sy-iconH(p.fort?'fort':'ps'), stCol, 10*k*.7, 'center', 'bold');
+        if(p.forced) mapLabel('override', sx, sy-iconH(p.fort?'fort':'ps')+11*k*.7, '#d29922', 9*k*.7, 'center');
       }
     }
   });
@@ -1012,7 +1034,7 @@ function render(){
     const isFort = pending ? pendingFort : (tool==='fort');
     const chk=validate(gt[0],gt[1],isFort);
     let color='#3fb950';
-    if(!chk.ok) color='#f85149';
+    if(!chk.ok) color = chk.soft ? '#d29922' : '#f85149';   // amber = overridable
     else{
       const extras=plan.map(p=>({x:p.x,y:p.y,fort:p.fort})).concat([{x:gt[0],y:gt[1],fort:isFort}]);
       if(!powerOf(D.myAid,extras).get(extras[extras.length-1])) color='#d29922';
@@ -1097,6 +1119,9 @@ window.addEventListener('mouseup',(e)=>{
     if(chk.ok){
       pushOps([{op:'add', kind:isFort?'fort':'ps', x:hover[0], y:hover[1], alli:planAlli}],
               (applied)=>({op:'del', id:(applied[0]||{}).id}));
+    } else if(chk.soft){
+      setPending(hover[0],hover[1],isFort);      // offer "Place anyway" instead of a dead end
+      flash(chk.reason);
     } else flash('Cannot place: '+chk.reason);
   }
   dragging=false;
