@@ -84,11 +84,19 @@ const gExcl  = new Uint8Array(N);
 const gBody  = new Uint8Array(N);
 const S = D.structs.map((a,i)=>({x:a[0],y:a[1],fort:!!a[2],owner:a[3],st:a[4],st2:a[5],i,
                                  kind:'struct', depth:(a[1]-Y0)*TH/2}));
-S.forEach(s=>{
-  const an=AIDN[s.owner]; if(!an) return;
-  zoneTiles(s.x,s.y,s.fort).forEach(([x,y])=>{ if(inCrop(x,y)) gClaim[idx(x,y)]=an; });
-  bodyTiles(s.x,s.y,s.fort).forEach(([x,y])=>{ if(inCrop(x,y)) gBody[idx(x,y)]=1; });
-});
+// Rebuilt whenever a structure is marked/unmarked for removal: a marked one stops
+// contributing its body and its claimed zone, which is what frees the ground for
+// planning. Both grids come purely from S + FIX, so a rebuild is exact rather than
+// a subtraction that could strip tiles another structure still claims.
+function buildStructGrids(){
+  S.forEach(s=>{
+    const an=AIDN[s.owner]; if(!an) return;
+    if(isPickedUp(s.x,s.y)) return;                 // marked for removal: leaves no claim
+    zoneTiles(s.x,s.y,s.fort).forEach(([x,y])=>{ if(inCrop(x,y)) gClaim[idx(x,y)]=an; });
+    bodyTiles(s.x,s.y,s.fort).forEach(([x,y])=>{ if(inCrop(x,y)) gBody[idx(x,y)]=1; });
+  });
+}
+buildStructGrids();
 // build_type -> sprite (from kvk_building.building_image)
 const FIXICON = {3:'outpost',4:'base',5:'ps',6:'mfort',7:'research',8:'city',9:'gate',10:'ark'};
 const FIX = D.fixed.map(f=>({X:f[0],Y:f[1],bt:f[2],w:f[3],lw:f[4],sid:f[5],tag:f[6],id:f[7],
@@ -97,6 +105,7 @@ const FIX = D.fixed.map(f=>({X:f[0],Y:f[1],bt:f[2],w:f[3],lw:f[4],sid:f[5],tag:f
 // (checkPosEnableInKVK) even though the square is claimed. No gate is ours in this
 // snapshot, so this is dormant but correct if one is captured.
 const gRing = new Uint8Array(N);
+function buildFixedGrids(){
 FIX.forEach(f=>{
   const b=fixedBox(f.X,f.Y,f.w,f.lw);
   // integer bounds: (l+c) can be odd on some rows, which would put a naive
@@ -115,6 +124,14 @@ FIX.forEach(f=>{
   }
   bodyTilesW(f.X,f.Y,f.w||2).forEach(([x,y])=>{ if(inCrop(x,y)) gBody[idx(x,y)]=1; });
 });
+}
+buildFixedGrids();
+// full rebuild after the marked-for-removal set changes
+function rebuildBlockGrids(){
+  gClaim.fill(0); gExcl.fill(0); gBody.fill(0); gRing.fill(0);
+  buildStructGrids(); buildFixedGrids();
+  lodDirty=true; invalidatePP();
+}
 
 // ---- jump overlay: east landing tiles AND the west tiles that reach them ----
 const gJump  = new Uint8Array(N);   // east side, past the wall
@@ -209,7 +226,10 @@ function inBand(x,y){ return x>=BAND.x0&&x<=BAND.x1&&y>=BAND.y0&&y<=BAND.y1; }
 const OUR_AID = {};
 (function(){ const mySid = ASRV[D.myAid];
   Object.keys(TAG).forEach(a=>{ if(ASRV[a]===mySid && PLAN_ALLI.indexOf(TAG[a])>=0) OUR_AID[TAG[a]]=+a; }); })();
-function isPickedUp(x,y){ return (SP.pickups||[]).some(p=>p.x===x&&p.y===y); }
+function isPickedUp(x,y){
+  // called during the first grid build too, before SP is initialised
+  try { return (SP.pickups||[]).some(p=>p.x===x&&p.y===y); } catch(e){ return false; }
+}
 function ourForts(alli){ const aid=OUR_AID[alli]; return aid?S.filter(s=>s.fort&&s.owner===aid):[]; }
 function fortBudget(alli){
   const own = ourForts(alli);
@@ -472,41 +492,48 @@ function openItemEditor(p){
 // map still shows the fort and its zone from the live snapshot, and the power network
 // is still computed with it, because we only know it is *intended* to come down.
 function ourFortAt(tx,ty){
+  // any structure of ours — PS or fort. Either can be marked for removal, which frees
+  // its ground so something else can be planned there.
   const rx=Math.round(tx), ry=Math.round(ty);
-  const own=S.filter(s=>s.fort && OUR_AID[tagOf(s.owner)]);
-  for(const s of own) if(bodyTiles(s.x,s.y,true).some(([bx,by])=>bx===rx&&by===ry)) return s;
+  const own=S.filter(s=>OUR_AID[tagOf(s.owner)]);
+  for(const s of own) if(bodyTiles(s.x,s.y,s.fort).some(([bx,by])=>bx===rx&&by===ry)) return s;
   let best=null,bd=1e9;                                    // near miss: fat fingers
-  own.forEach(s=>{ const d=(s.x-tx)**2+((s.y+1-ty)*0.7)**2; if(d<bd&&d<12){bd=d;best=s;} });
+  own.forEach(s=>{ const cy=s.fort?s.y+1:s.y, r=s.fort?12:6;
+    const d=(s.x-tx)**2+((cy-ty)*0.7)**2; if(d<bd&&d<r){bd=d;best=s;} });
   return best;
 }
 function openFortEditor(s){
   closeItemEditor();
   const tag=tagOf(s.owner), pu=(SP.pickups||[]).find(p=>p.x===s.x&&p.y===s.y), b=fortBudget(tag);
+  const what = s.fort ? 'Fort' : 'Power Station';
   const box=document.createElement('div');
   box.id='itemEdit';
   box.style.cssText='position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:30;'
     +'background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;'
     +'box-shadow:0 8px 24px #000a;font-size:12px;max-width:94vw;';
-  box.innerHTML='<div style="margin-bottom:5px"><b style="color:'+alliCol(tag)+'">'+esc(tag)+' Fort</b> '
+  box.innerHTML='<div style="margin-bottom:5px"><b style="color:'+alliCol(tag)+'">'+esc(tag)+' '+what+'</b> '
     + s.x+';'+s.y+' <span style="color:var(--muted)">already built</span></div>'
-    +'<div class="note" style="margin:0 0 8px">'+esc(tag)+': '+b.built+' built'
-    + (b.planned?' + '+b.planned+' planned':'') + ' of '+b.cap+' &middot; <b style="color:'
-    + (b.free?'var(--green)':'var(--red)')+'">'+b.free+' free</b>'
-    + (pu?'<br>Marked for pickup by '+esc(pu.by||'?'):'')+'</div>'
+    +'<div class="note" style="margin:0 0 8px">'
+    + (s.fort ? esc(tag)+' forts: '+b.built+' built'
+        + (b.planned?' + '+b.planned+' planned':'') + ' of '+b.cap+' &middot; <b style="color:'
+        + (b.free?'var(--green)':'var(--red)')+'">'+b.free+' free</b>'
+      : 'Marking it for removal frees its tiles and its zone, so you can plan something here.')
+    + (pu?'<br><span style="color:var(--jump)">Marked for removal by '+esc(pu.by||'?')+'</span>':'')+'</div>'
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
-    + (pu ? '<button type="button" class="tbtn fe-keep">Keep this one after all</button>'
+    + (pu ? '<button type="button" class="tbtn fe-keep">Keep it after all</button>'
           : '<button type="button" class="tbtn fe-pick" style="border-color:var(--jump);color:var(--jump)">'
-            +'We pick this one up</button>')
+            +'Mark for removal</button>')
     +'<button type="button" class="tbtn ie-close">Close</button></div>';
   document.body.appendChild(box);
   itemEditor=box;
   const pick=box.querySelector('.fe-pick');
   if(pick) pick.onclick=()=>{ closeItemEditor();
-    pushOps([{op:'pickup', x:s.x, y:s.y, alli:tag}],
+    pushOps([{op:'pickup', kind:s.fort?'fort':'ps', x:s.x, y:s.y, alli:tag}],
             (applied)=>({op:'pickupDel', id:(applied[0]||{}).id})); };
   const keep=box.querySelector('.fe-keep');
   if(keep) keep.onclick=()=>{ closeItemEditor();
-    pushOps([{op:'pickupDel', id:pu.id}], ()=>({op:'pickup', x:s.x, y:s.y, alli:pu.alli})); };
+    pushOps([{op:'pickupDel', id:pu.id}],
+            ()=>({op:'pickup', kind:s.fort?'fort':'ps', x:s.x, y:s.y, alli:pu.alli})); };
   box.querySelector('.ie-close').onclick=closeItemEditor;
 }
 // ---- note editor (small prompt-based flow; works the same on phone) ----
@@ -541,11 +568,12 @@ function renderForts(){
   }).join('');
   const pus=(SP.pickups||[]).slice().sort((a,b)=>a.y-b.y);
   const list = pus.length
-    ? '<div class="note">Being picked up: '+pus.map(p=>'<b class="pu-go" data-x="'+p.x+'" data-y="'+p.y
-        +'" style="color:var(--jump);cursor:pointer">'+esc(p.alli)+' '+p.x+';'+p.y+'</b>').join(', ')
-        +'. Tap a fort on the map to change it.</div>'
-    : '<div class="note">The cap is per alliance. Tap one of our forts on the map to mark it as one we will '
-      +'pick up &mdash; that frees its slot to plan somewhere else.</div>';
+    ? '<div class="note">Marked for removal: '+pus.map(p=>'<b class="pu-go" data-x="'+p.x+'" data-y="'+p.y
+        +'" style="color:var(--jump);cursor:pointer">'+esc(p.alli)+' '
+        +(p.kind==='ps'?'PS':'Fort')+' '+p.x+';'+p.y+'</b>').join(', ')
+        +'. Their tiles and zones are free to plan over. Tap one on the map to change it.</div>'
+    : '<div class="note">The fort cap is per alliance. Tap any of our structures on the map to mark it for '
+      +'removal &mdash; its tiles and claimed zone free up so you can plan over them (a fort also frees a cap slot).</div>';
   el.innerHTML = rows + list;
   el.querySelectorAll('.pu-go').forEach(b=>b.onclick=()=>flyTo(+b.dataset.x,+b.dataset.y,2.2));
 }
@@ -583,6 +611,7 @@ function renderClog(){
 const API = 'https://push-worker.27tb8s6fct.workers.dev';
 const INK = ['#f85149','#d29922','#3fb950','#39c5cf','#79c0ff','#a371f7','#ffffff','#0d1117'];
 let SP = {rev:-1, items:[], pickups:[], notes:[], strokes:[], changelog:[], counts:{}};
+let _puKey = '';                        // last marked-for-removal set, to detect changes
 let inkPath = [];
 let inkColor = (function(){ try{ const c=localStorage.getItem('elSimInk'); return INK.indexOf(c)>=0?c:INK[0]; }catch(e){ return INK[0]; } })();
 let inkWidth = 3, shareOK = false, myOps = [];   // myOps = local undo stack of {undo:op}
@@ -645,6 +674,9 @@ function setShareState(msg, bad){
 function adoptPlan(view){
   SP = view;
   if(!Array.isArray(SP.pickups)) SP.pickups = [];      // documents stored before pickups existed
+  // a change to the marked-for-removal set changes what ground is blocked
+  const puKey=(SP.pickups||[]).map(p=>p.x+';'+p.y).sort().join('|');
+  if(puKey!==_puKey){ _puKey=puKey; rebuildBlockGrids(); }
   // the rest of the app still thinks in {x,y,fort} — keep that shape, carry the id
   plan = (view.items||[]).map(i=>({id:i.id, x:i.x, y:i.y, fort:i.kind==='fort', alli:i.alli, by:i.by, at:i.at}));
   shareOK = true;
@@ -898,8 +930,8 @@ function render(){
       ctx.beginPath(); bodyTiles(s.x,s.y,s.fort).forEach(([bx,by])=>tilePath(bx,by,0.92));
       ctx.fillStyle=col+(building?'44':'77'); ctx.fill();
       if(!powered&&!building){ ctx.strokeStyle='#f85149'; ctx.lineWidth=1.5*k*.5; ctx.stroke(); }
-      // a fort we intend to pick up: dashed purple body so it reads as "not staying"
-      const goingAway = s.fort && isPickedUp(s.x,s.y);
+      // marked for removal (PS or fort): dashed purple body so it reads as "not staying"
+      const goingAway = isPickedUp(s.x,s.y);
       if(goingAway){
         ctx.save(); ctx.setLineDash([5*k*.5,4*k*.5]);
         ctx.strokeStyle='#d2a8ff'; ctx.lineWidth=2*k*.5; ctx.stroke(); ctx.restore();
@@ -909,7 +941,10 @@ function render(){
       if(s.fort&&zoom>.8){
         const [wx,wy]=px(s.x,s.y+2); const [sx,sy]=scr(wx,wy);
         mapLabel('FORT '+tagOf(s.owner)+(building?' (building)':''), sx, sy+TH*k*.9, '#ffffff', 9.5*k*.7);
-        if(goingAway) mapLabel('picking up', sx, sy+TH*k*.9+11*k*.7, '#d2a8ff', 9*k*.7);
+        if(goingAway) mapLabel('removing', sx, sy+TH*k*.9+11*k*.7, '#d2a8ff', 9*k*.7);
+      } else if(goingAway&&zoom>1.1){
+        const [wx,wy]=px(s.x,s.y); const [sx,sy]=scr(wx,wy);
+        mapLabel('removing', sx, sy+TH*k*.7, '#d2a8ff', 8.5*k*.7);
       }
     } else if(it.kind==='fixed'){
       const f=it, ctr=fixCentre(f);
@@ -1176,7 +1211,7 @@ function tileSummary(t){
   const i=inCrop(t[0],t[1])?idx(t[0],t[1]):-1;
   const s=S.find(s=>bodyTiles(s.x,s.y,s.fort).some(([bx,by])=>bx===t[0]&&by===t[1]));
   if(s) return (s.fort?'Fort':'PS')+' '+tagOf(s.owner)+' S'+(ASRV[s.owner]||'?')+' · '+t[0]+';'+t[1]
-    + (s.fort&&isPickedUp(s.x,s.y)?' · marked to be picked up':'');
+    + (isPickedUp(s.x,s.y)?' · marked for removal':'');
   const f=FIX.find(f=>bodyTilesW(f.X,f.Y,f.w||2).some(([bx,by])=>bx===t[0]&&by===t[1]));
   if(f){
     const k=kindOf(f);
