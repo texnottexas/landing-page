@@ -9,6 +9,7 @@
     { label: 'Auction House',       path: '/auction.html' },
     { label: 'Bases',               path: '/bases.html' },
     { label: 'Battle Report',       path: '/battle-report.html' },
+    { label: 'Chaos Crafting',      path: '/chaos-crafting.html' },
     { label: 'Decoration Index',    path: '/decor-index.html' },
     { label: 'Enigma Beasts',       path: '/enigma-viewer.html' },
     { label: 'Eternal Land Calendar', path: '/eternal-land-calendar.html' },
