@@ -146,9 +146,25 @@ JUMPS.forEach(c=>{
 const WJ = D.jumpsAll || {gates:[], pockets:[]};
 const gAltHome = new Uint8Array(N), gAltTarget = new Uint8Array(N);
 const ALT = [];
+// OUR crossings at the Lv.2/Lv.3 gates — the next ring in. These used to be thrown away
+// with `if(c.sid===2864) return` on the assumption our own jumps came from the detailed
+// oracle pass, but that pass only covers our Lv.1 wall into zone 2. So the moment we
+// established a powered network past the Lv.1 gates, our Lv.2 options existed in the data
+// and were invisible on the page.
+const OURJ2 = [];
+const gJ2Home = new Uint8Array(N), gJ2Target = new Uint8Array(N);
 WJ.gates.forEach(g=>{
   (g.corridors||[]).forEach(c=>{
-    if(c.sid === 2864) return;                   // ours is drawn from the detailed pass
+    if(c.sid === 2864){
+      if(/Lv\.1/.test(g.name||'')) return;      // Lv.1 is the oracle-verified panel above
+      OURJ2.push({gate:g.gate, name:g.name, tags:c.tags, pairs:c.pairs,
+                  homeTiles:c.homeTiles, targetTiles:c.targetTiles, best:c.best, sample:c.sample});
+      (c.sample||[]).forEach(([hx,hy,tx,ty])=>{
+        if(inCrop(hx,hy)) gJ2Home[idx(hx,hy)]=1;
+        if(inCrop(tx,ty)) gJ2Target[idx(tx,ty)]=1;
+      });
+      return;
+    }
     ALT.push({gate:g.gate, name:g.name, sid:c.sid, tags:c.tags, pairs:c.pairs,
               homeTiles:c.homeTiles, targetTiles:c.targetTiles, best:c.best, sample:c.sample});
     (c.sample||[]).forEach(([hx,hy,tx,ty])=>{
@@ -157,6 +173,7 @@ WJ.gates.forEach(g=>{
     });
   });
 });
+OURJ2.sort((a,b)=>a.gate[1]-b.gate[1]);
 const POCKETS = WJ.pockets || [];
 const DEAD = POCKETS.filter(p=>!p.gates);        // no gate on it -> nobody can operate there
 
@@ -870,6 +887,11 @@ function render(){
         ctx.strokeStyle='#79c0ff'; ctx.lineWidth=Math.max(1,.9*kx*.5); ctx.stroke(); }
       if(showJump&&gJump[i]){ ctx.fillStyle='#d2a8ff66'; ctx.beginPath(); tilePath(x,y,1); ctx.fill();
         ctx.strokeStyle='#d2a8ff'; ctx.lineWidth=Math.max(1,.9*kx*.5); ctx.stroke(); }
+      // ours at the next ring in: same blue=our tile / purple=what it reaches convention
+      if(showJump&&gJ2Home[i]){ ctx.fillStyle='#79c0ff55'; ctx.beginPath(); tilePath(x,y,1); ctx.fill();
+        ctx.strokeStyle='#39c5cf'; ctx.lineWidth=Math.max(1,.9*kx*.5); ctx.stroke(); }
+      if(showJump&&gJ2Target[i]){ ctx.fillStyle='#d2a8ff55'; ctx.beginPath(); tilePath(x,y,1); ctx.fill();
+        ctx.strokeStyle='#39c5cf'; ctx.lineWidth=Math.max(1,.9*kx*.5); ctx.stroke(); }
     }
   }
   if(showGrid&&zoom>1.4){
@@ -1484,6 +1506,27 @@ function renderWorld(claimCounts){
       +`<b>${r.ps+r.fort} <span style="color:var(--muted);font-weight:400">(${r.fort}f)</span></b>`;
     el.appendChild(div);
   });
+  // ---- OUR crossings at the next ring in (Lv.2 / Lv.3 gates)
+  var j2=document.getElementById('j2Table'); j2.innerHTML='';
+  OURJ2.forEach(function(a){
+    var div=document.createElement('div'); div.className='jrow';
+    div.style.borderLeftColor='#39c5cf';
+    div.innerHTML='<div class="t" style="color:#39c5cf">'+a.name+' '+a.gate[0]+';'+a.gate[1]+'</div>'
+      +'<div class="d">'+a.targetTiles+' landing tiles &middot; '+a.homeTiles+' spots on our side &middot; '
+      +(a.tags||[]).join(' ')+'<br>'
+      +'place a NEW PS at <b style="color:var(--yellow)">'+a.best.home[0]+';'+a.best.home[1]+'</b>'
+      +' &rarr; reaches <b>'+a.best.target[0]+';'+a.best.target[1]+'</b><br>'
+      +'powered by '+a.best.anchor+'</div>';
+    div.onclick=function(){ flyTo(Math.round((a.best.home[0]+a.best.target[0])/2), a.best.home[1], 2.0); };
+    j2.appendChild(div);
+  });
+  document.getElementById('j2Note').innerHTML = OURJ2.length
+    ? 'Our own crossings into the next ring, from the network we now hold past the Lv.1 gates. '
+      + 'Same drawing as above (<span style="color:#79c0ff">blue = the tile our PS sits on</span>, '
+      + '<span style="color:#d2a8ff">purple = the tile it reaches</span>) and they turn on with the same '
+      + '<b>Wall jumps</b> toggle. Surveyed from the live structure data with the same rules as our Lv.1 wall, '
+      + 'but <b>not</b> oracle-probed &mdash; check the spot in game before committing.'
+    : 'None yet &mdash; these appear once we hold a powered network next to a Lv.2 gate.';
   // ---- other warzones' crossings, grouped by server
   var at=document.getElementById('altTable'); at.innerHTML='';
   var bySid={};
@@ -1505,8 +1548,7 @@ function renderWorld(claimCounts){
     'Turn on <b>Other warzones</b> to draw these: <span style="color:#39c5cf">cyan = their side</span>, '
     + '<span style="color:#f0883e">orange = where they land</span>. Surveyed within 34 tiles of each gate using the '
     + 'same rules as ours, but <b>not</b> oracle-verified &mdash; treat them as estimates. '
-    + 'All 12 Lv.2 and 8 Lv.3 gates show nothing yet because no alliance has a powered network in the mid or inner '
-    + 'rings to jump from; they open up the moment someone establishes one. '
+    + 'The 8 Lv.3 gates still show nothing &mdash; nobody holds a powered network beside the inner ring yet. '
     + DEAD.length + ' walkable pockets have no gate at all ('
     + DEAD.reduce(function(n,p){return n+p.tiles;},0).toLocaleString() + ' tiles) &mdash; nobody can operate there.';
   document.getElementById('srvNote').innerHTML=
@@ -1529,6 +1571,8 @@ function buildNav(){
               ['north','Zone 1 north (S2501)'],['mid','Past our gates (mid ring)'],
               ['g836','Our gate 128;836'],['g904','Our gate 128;904'],
               ['g988','Our gate 128;988'],['g1094','Our gate 128;1094']];
+  OURJ2.forEach(function(a){ opts.push(['j2_'+a.gate[0]+'_'+a.gate[1],
+    a.name+' '+a.gate[0]+';'+a.gate[1]+' (next ring)']); });
   ALAB.slice().sort((a,b)=>b[5]-a[5]).forEach(([a,cx,cy,tiles,dom,structs])=>{
     const nm=AREA_NAME(a,dom); if(!nm) return;
     opts.push(['a'+a, (a===31?'':(a<11?'Warzone ':'')) + nm + (structs?` (${structs})`:'') ]);
@@ -1544,6 +1588,10 @@ function buildNav(){
     else if(v[0]==='g'&&/^g\d+$/.test(v)){ flyTo(132, +v.slice(1), 2.2); }
     else if(v[0]==='a'){ const a=ALAB.find(l=>l[0]===+v.slice(1));
       if(a) flyTo(Math.round(a[1]*2), Math.round(a[2]*2), a[0]===31?0.9:0.5); }
+    else if(v.slice(0,3)==='j2_'){ const [gx,gy]=v.slice(3).split('_').map(Number);
+      const a=OURJ2.find(z=>z.gate[0]===gx&&z.gate[1]===gy);
+      if(a) flyTo(Math.round((a.best.home[0]+a.best.target[0])/2), a.best.home[1], 2.0);
+      else flyTo(gx,gy,2.0); }
     else if(v[0]==='f'){ const [x,y]=v.slice(1).split(',').map(Number); flyTo(x,y,1.6); }
     sel.value='';
   };
