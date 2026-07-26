@@ -462,7 +462,7 @@ function openItemEditor(p){
   box.style.cssText='position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:30;'
     +'background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;'
     +'box-shadow:0 8px 24px #000a;font-size:12px;max-width:94vw;';
-  const col=(a)=> a==='MSS*'?'#388bfd':(a==='Cat+'?'#d29922':'#3fb950');
+  const col=alliCol;
   box.innerHTML='<div style="margin-bottom:7px">'
     +'<b>'+(p.fort?'Planned Fort':'Planned Power Station')+'</b> '+p.x+';'+p.y
     +(p.by?' <span style="color:var(--muted)">by '+esc(p.by)+'</span>':'')+'</div>'
@@ -551,7 +551,7 @@ function openNote(n){
           ()=>({op:'note', id:n.id, x:n.x, y:n.y, text:n.text, color:n.color}));
 }
 // ---- fort budget panel: each alliance's own cap, and what a pickup frees ----
-function alliCol(a){ return a==='MSS*'?'#388bfd':(a==='Cat+'?'#d29922':'#3fb950'); }
+function alliCol(a){ return a==='MSS*'?'#db61a2':(a==='Cat+'?'#d29922':'#3fb950'); }
 function renderForts(){
   const sf=document.getElementById('sFort');
   if(sf){ const b=fortBudget('Dog*'); sf.textContent=(b.built+b.planned)+' / '+b.cap; }
@@ -903,10 +903,11 @@ function render(){
   // ---- zone outlines for our own structures ----
   if(showClaims){
     S.forEach(s=>{
-      if(s.owner!==D.myAid) return;
+      if(!OUR_AID[tagOf(s.owner)]) return;      // all three of ours, not just Dog
+      if(zoom<0.25) return;                     // sub-pixel at map zoom, and 3x the strokes
       if(s.x<x0-14||s.x>x1+14||s.y<y0-14||s.y>y1+14) return;
       const powered=powerByAid[s.owner]?powerByAid[s.owner].get(s):true;
-      ctx.strokeStyle=CL[1]+(powered?'88':'44');
+      ctx.strokeStyle=(CL[AIDN[s.owner]]||CL[1])+(powered?'88':'44');
       ctx.lineWidth=1.2*zoom*devicePixelRatio*.5;
       strokeZone(s.x,s.y,s.fort);
     });
@@ -962,7 +963,7 @@ function render(){
     } else if(it.kind==='plan'){
       const p=it.p;
       ctx.beginPath(); bodyTiles(p.x,p.y,p.fort).forEach(([bx,by])=>tilePath(bx,by,0.95));
-      const aCol = p.alli==='MSS*'?'#388bfd':(p.alli==='Cat+'?'#d29922':'#3fb950');
+      const aCol = alliCol(p.alli);
       const stCol=pp.get(p)?aCol:'#d29922';
       ctx.fillStyle=aCol+'44'; ctx.fill();
       ctx.strokeStyle=stCol; ctx.lineWidth=2*k*.5; ctx.stroke();
@@ -1550,7 +1551,7 @@ function renderPlan(){
     zoneTiles(p.x,p.y,p.fort).forEach(([x,y])=>{ if(inCrop(x,y)){const j=idx(x,y); if(!claimed.has(j)){claimed.add(j);tiles++;}} });
     cost+=p.fort?10000:500; time+=p.fort?3:2;
     const div=document.createElement('div'); div.className='planitem';
-    const col = p.alli==='MSS*'?'#388bfd':(p.alli==='Cat+'?'#d29922':'#3fb950');
+    const col = alliCol(p.alli);
     div.dataset.i = i;
     div.innerHTML=`<span>#${i+1} ${p.fort?'Fort':'PS'} @ <b>${p.x};${p.y}</b> `
       +`<button type="button" class="pa" data-i="${i}" style="background:${col}22;border:1px solid ${col};color:${col};border-radius:4px;font-size:10px;padding:1px 5px;cursor:pointer" title="Tap to change alliance">${p.alli||'Dog*'}</button> `
