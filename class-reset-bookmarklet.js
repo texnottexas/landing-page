@@ -14,7 +14,7 @@
   'use strict';
   var C = {
     VOUCHER: 1600031, SPEEDUP: 550001, VOUCHER_SHOP: 100014, VOUCHER_COST: 5000,
-    RESET_TAB: 1,
+    RESET_TAB: 1, WARBEAST_GROUP: 7031000,
     CMD: { READ: 1318, LEARN: 1314, RESET: 1315, SPEED: 1316, SAVE_DEF: 1321, EQUIP: 897, BUY: 818, SWITCH_PRESET: 1345 }
   };
   var req = window.__require, NET, PC, ud, HC, DATA;
@@ -23,6 +23,9 @@
     PC = req('ProfessionController').default.Instance; HC = req('HeroController').HeroController.getInstance();
   }
   var groupOf = id => Math.floor(id / 1000) * 1000, offOf = id => id - groupOf(id);
+  // War Beast = CE group 7031000 (final max-tier Battle Elite talent). Optional skip.
+  function hasWarBeast(tree) { return (tree || []).some(function (br) { return (br || []).some(function (id) { return groupOf(id) === C.WARBEAST_GROUP; }); }); }
+  function stripWarBeast(tree) { return (tree || []).map(function (br) { return (br || []).filter(function (id) { return groupOf(id) !== C.WARBEAST_GROUP; }); }); }
   var clone = o => { try { return JSON.parse(JSON.stringify(o)); } catch (e) { return null; } };
   var delay = ms => new Promise(f => setTimeout(f, ms));
   function send(cmd, p) { return new Promise(res => { var d = false; NET.send(cmd, p, {}, function (t) { if (d) return; d = true; var o; try { o = JSON.parse(t.d); } catch (e) { o = (t && typeof t.d === 'object') ? t.d : t; } res(o); }); setTimeout(() => { if (!d) { d = true; res(null); } }, 6000); }); }
@@ -236,17 +239,33 @@
     }
     if (s.voucher < 1 && s.gems < C.VOUCHER_COST) { ui.hdr.style.color = '#d29922'; line(ui, '\nNo voucher and only ' + s.gems + ' gems (< ' + C.VOUCHER_COST + '). Get gems or a voucher, then re-run.'); ui.btns.appendChild(mkBtn('Close', '#30363d', function () { document.body.removeChild(ui.bg); })); return; }
 
+    // War Beast skip (CE only, shown only when it is currently learned). Default off.
+    var wbCb = null;
+    if (hasWarBeast(s.tree)) {
+      var wbRow = document.createElement('label');
+      wbRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin:4px 0 12px;font-size:17px;color:#e6edf3;cursor:pointer';
+      wbCb = document.createElement('input'); wbCb.type = 'checkbox'; wbCb.style.cssText = 'width:22px;height:22px;flex:0 0 auto';
+      var wbTxt = document.createElement('span'); wbTxt.textContent = 'Skip War Beast (do not re-learn it)';
+      wbRow.appendChild(wbCb); wbRow.appendChild(wbTxt);
+      ui.bg.insertBefore(wbRow, ui.btns);
+    }
+
     ui.btns.appendChild(mkBtn(s.voucher < 1 ? ('Confirm (buy ' + C.VOUCHER_COST + ' gems + run)') : 'Confirm & run', '#3fb950', async function () {
       ui.btns.textContent = '';
-      try { await navigator.clipboard.writeText(JSON.stringify(s)); line(ui, 'Backup copied to clipboard.'); } catch (e) { line(ui, 'Clipboard failed; backup in window.__crRunBackup + console.'); }
+      // The full backup (with War Beast) always goes to the clipboard as a safety net.
+      // The RUN target (retrain/verify/resume) drops War Beast if the box is checked.
+      var doSkip = !!(wbCb && wbCb.checked);
+      var eff = doSkip ? Object.assign({}, s, { tree: stripWarBeast(s.tree) }) : s;
+      if (doSkip) line(ui, 'Skipping War Beast (group ' + C.WARBEAST_GROUP + '); it will be left un-learned.');
+      try { await navigator.clipboard.writeText(JSON.stringify(s)); line(ui, 'Full backup copied to clipboard.'); } catch (e) { line(ui, 'Clipboard failed; backup in window.__crRunBackup + console.'); }
       console.log('CR_BACKUP', JSON.stringify(s));
       // Persist a resume point BEFORE the irreversible reset, so a crash mid-retrain
       // can be finished later without buying/resetting again.
-      saveResume({ v: 1, ts: Date.now(), uid: s.uid, profession: s.profession, tree: s.tree, defense: s.defense, extraSkills: s.extraSkills });
+      saveResume({ v: 1, ts: Date.now(), uid: eff.uid, profession: eff.profession, tree: eff.tree, defense: eff.defense, extraSkills: eff.extraSkills });
       try {
         if (s.voucher < 1) { line(ui, 'Buying voucher (' + C.VOUCHER_COST + ' gems)...'); await buyVoucher(); }
         line(ui, 'Resetting...'); await doReset();
-        await runFromReset(ui, s);
+        await runFromReset(ui, eff);
       } catch (err) { ui.hdr.style.color = '#f85149'; line(ui, '\nERROR: ' + err + '\nBackup is on your clipboard. Re-run this bookmarklet to resume.'); ui.btns.appendChild(mkBtn('Close', '#30363d', function () { document.body.removeChild(ui.bg); })); }
     }));
     ui.btns.appendChild(mkBtn('Cancel', '#30363d', function () { document.body.removeChild(ui.bg); }));
