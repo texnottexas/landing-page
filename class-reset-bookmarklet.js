@@ -226,7 +226,14 @@
     ui.body.textContent = '';
     summarize(ui, s);
     var miss = targetComplete(s);
-    if (miss.length) { ui.hdr.style.color = '#f85149'; line(ui, '\nINCOMPLETE restore target: ' + miss.join(', ') + ' -> blocked.'); ui.btns.appendChild(mkBtn('Close', '#30363d', function () { document.body.removeChild(ui.bg); })); return; }
+    if (miss.length) {
+      ui.hdr.style.color = '#f85149';
+      line(ui, '\nBlocked: could not confirm a complete restore target, so NOTHING was reset (your account is unchanged).');
+      if (miss.indexOf('tree') >= 0) line(ui, '- Class Talent tree not readable. Fully reopen the game, then run this again.');
+      if (miss.indexOf('defense') >= 0) line(ui, '- No advanced base defense setup found (the More Options config). Open Base Defense, tap More Options, set your heroes and Save once, then run this again. If you do not use advanced base defense, you do not need this tool.');
+      ui.btns.appendChild(mkBtn('Close', '#30363d', function () { document.body.removeChild(ui.bg); }));
+      return;
+    }
     if (s.voucher < 1 && s.gems < C.VOUCHER_COST) { ui.hdr.style.color = '#d29922'; line(ui, '\nNo voucher and only ' + s.gems + ' gems (< ' + C.VOUCHER_COST + '). Get gems or a voucher, then re-run.'); ui.btns.appendChild(mkBtn('Close', '#30363d', function () { document.body.removeChild(ui.bg); })); return; }
 
     ui.btns.appendChild(mkBtn(s.voucher < 1 ? ('Confirm (buy ' + C.VOUCHER_COST + ' gems + run)') : 'Confirm & run', '#3fb950', async function () {
