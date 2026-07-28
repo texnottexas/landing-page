@@ -26,7 +26,7 @@
   var clone = o => { try { return JSON.parse(JSON.stringify(o)); } catch (e) { return null; } };
   var delay = ms => new Promise(f => setTimeout(f, ms));
   function send(cmd, p) { return new Promise(res => { var d = false; NET.send(cmd, p, {}, function (t) { if (d) return; d = true; var o; try { o = JSON.parse(t.d); } catch (e) { o = (t && typeof t.d === 'object') ? t.d : t; } res(o); }); setTimeout(() => { if (!d) { d = true; res(null); } }, 6000); }); }
-  function refresh() { return new Promise(res => { try { PC.initLearnTalentData(() => res()); } catch (e) { res(); } }); }
+  function refresh() { return new Promise(res => { var done = false; var fin = function () { if (done) return; done = true; res(); }; try { PC.initLearnTalentData(fin); } catch (e) { fin(); } setTimeout(fin, 4500); }); }
   function profName() { return PC._professionFocusTalentId === 72002 ? 'Mechanical Master' : 'Combat Elite'; }
   function playerName() { try { return ud._playerInfoData._playerInfo._data.username || ''; } catch (e) { return ''; } }
 
