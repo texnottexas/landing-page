@@ -30,6 +30,12 @@
   function profName() { return PC._professionFocusTalentId === 72002 ? 'Mechanical Master' : 'Combat Elite'; }
   function playerName() { try { return ud._playerInfoData._playerInfo._data.username || ''; } catch (e) { return ''; } }
 
+  // ---- resume (localStorage on the game origin; survives a crash mid-run) ----
+  var RESUME_KEY = 'cr_resume_v1';
+  function saveResume(o) { try { localStorage.setItem(RESUME_KEY, JSON.stringify(o)); } catch (e) {} }
+  function loadResume() { try { return JSON.parse(localStorage.getItem(RESUME_KEY) || 'null'); } catch (e) { return null; } }
+  function clearResume() { try { localStorage.removeItem(RESUME_KEY); } catch (e) {} }
+
   // ---- reads ----
   function readState() {
     var extra = [];
@@ -163,40 +169,80 @@
   function line(ui, s) { ui.body.textContent += s + '\n'; ui.body.scrollTop = ui.body.scrollHeight; }
   function mkBtn(label, color, fn) { var b = document.createElement('button'); b.textContent = label; b.style.cssText = 'margin:8px 10px 0 0;padding:16px 26px;border:0;border-radius:10px;font-size:19px;font-weight:800;color:#0d1117;background:' + color + ';cursor:pointer'; b.onclick = fn; return b; }
 
-  async function run() {
-    try { resolve(); } catch (e) { alert('Class Talent modules not found: ' + e); return; }
-    var ui = overlay();
-    line(ui, 'Reading state...'); await refresh();
-    var s = readState(); window.__crRunBackup = s;
-    ui.body.textContent = '';
-    var nodes = (s.tree || []).reduce((a, b) => a + (b ? b.length : 0), 0);
+  // Shared post-reset sequence (used by a fresh run AND by resume). Idempotent:
+  // retrain skips already-learned groups, reapply skips already-correct slots.
+  // Clears the saved resume point only on full success.
+  async function runFromReset(ui, backup) {
+    var rt = await retrain(ui, backup.tree); line(ui, 'Retrain: ' + rt.done + '/' + rt.total + ' groups.');
+    line(ui, 'Reapplying base defense...'); await reapplyDefense(backup.defense);
+    if (backup.extraSkills && backup.extraSkills.length) {
+      var rx = await reapplyExtra(ui, backup.extraSkills);
+      line(ui, 'Extra skills: ' + rx.done + '/' + backup.extraSkills.length + ' reapplied.');
+      if (rx.failed.length) line(ui, 'Could NOT reapply (equip manually): ' + rx.failed.map(function (f) { return 'hero ' + f.heroId + ' preset ' + f.skillsIndex + ' skill ' + f.skillId; }).join('; '));
+    }
+    var v = await verify(backup); ui.sub.textContent = '';
+    if (v.treeOk && v.defOk && v.extraMissing === 0) { clearResume(); ui.hdr.style.color = '#3fb950'; line(ui, '\nDONE. Tree, defense' + (v.extraTotal ? ', and ' + v.extraTotal + ' extra skills' : '') + ' restored.'); }
+    else { ui.hdr.style.color = '#d29922'; line(ui, '\nPARTIAL. tree=' + v.treeOk + ' defense=' + v.defOk + ' extraMissing=' + v.extraMissing + '/' + v.extraTotal + '. Re-run this bookmarklet to resume, or use the clipboard backup.'); }
+    ui.btns.appendChild(mkBtn('Close', '#30363d', function () { document.body.removeChild(ui.bg); }));
+  }
+
+  function summarize(ui, s) {
+    var nodes = (s.tree || []).reduce(function (a, b) { return a + (b ? b.length : 0); }, 0);
     line(ui, 'Profession: ' + s.profession + (s.name ? ('    Player: ' + s.name) : '') + '    Server: ' + s.sid);
     line(ui, 'Voucher: ' + s.voucher + (s.voucher < 1 ? '  (will buy for ' + C.VOUCHER_COST + ' gems)' : '') + '   Gems: ' + s.gems);
     line(ui, '5-min speedups: ' + s.speedup);
-    line(ui, 'Talent nodes to preserve/restore: ' + nodes + '  (branches ' + s.tree.map(b => b ? b.length : 0).join('/') + ')');
-    line(ui, 'Base defense: ' + s.defense.heroes.map(h => h.heroIds.length).join('/') + ' heroes/troop');
+    line(ui, 'Talent nodes to preserve/restore: ' + nodes + '  (branches ' + s.tree.map(function (b) { return b ? b.length : 0; }).join('/') + ')');
+    line(ui, 'Base defense: ' + s.defense.heroes.map(function (h) { return h.heroIds.length; }).join('/') + ' heroes/troop');
     line(ui, 'Hero extra skill slots: ' + s.extraSkills.length + (s.extraSkills.length ? '' : ' (none - CE only)'));
+  }
+
+  async function run() {
+    try { resolve(); } catch (e) { alert('Class Talent modules not found: ' + e); return; }
+    var ui = overlay();
+
+    // Resume path: an interrupted run for THIS account (e.g. a crash mid-retrain).
+    // Skips buy + reset entirely and finishes retrain + reapply against the saved target.
+    var pending = loadResume();
+    if (pending && pending.tree && pending.uid === ud._uid) {
+      ui.hdr.textContent = 'Class Talent Reset (resume)';
+      line(ui, 'Interrupted run found for this account.');
+      try { line(ui, 'Started: ' + new Date(pending.ts).toLocaleString()); } catch (e) {}
+      var pn = (pending.tree || []).reduce(function (a, b) { return a + (b ? b.length : 0); }, 0);
+      line(ui, 'Target: ' + pn + ' talent nodes, defense ' + pending.defense.heroes.map(function (h) { return h.heroIds.length; }).join('/') + ', ' + (pending.extraSkills ? pending.extraSkills.length : 0) + ' extra skills.');
+      line(ui, '\nResume finishes retraining + reapply. It will NOT buy or reset again.');
+      ui.btns.appendChild(mkBtn('Resume', '#3fb950', async function () {
+        ui.btns.textContent = ''; ui.body.textContent = ''; ui.hdr.style.color = '#79c0ff';
+        line(ui, 'Resuming (no buy, no reset)...');
+        try { await runFromReset(ui, pending); }
+        catch (err) { ui.hdr.style.color = '#f85149'; line(ui, '\nERROR: ' + err); ui.btns.appendChild(mkBtn('Close', '#30363d', function () { document.body.removeChild(ui.bg); })); }
+      }));
+      ui.btns.appendChild(mkBtn('Start over', '#d29922', function () { clearResume(); document.body.removeChild(ui.bg); run(); }));
+      ui.btns.appendChild(mkBtn('Discard', '#30363d', function () { clearResume(); document.body.removeChild(ui.bg); }));
+      return;
+    }
+
+    line(ui, 'Reading state...'); await refresh();
+    var s = readState(); window.__crRunBackup = s;
+    ui.body.textContent = '';
+    summarize(ui, s);
     var miss = targetComplete(s);
-    if (miss.length) { ui.hdr.style.color = '#f85149'; line(ui, '\nINCOMPLETE restore target: ' + miss.join(', ') + ' -> blocked.'); ui.btns.appendChild(mkBtn('Close', '#30363d', () => document.body.removeChild(ui.bg))); return; }
-    if (s.voucher < 1 && s.gems < C.VOUCHER_COST) { ui.hdr.style.color = '#d29922'; line(ui, '\nNo voucher and only ' + s.gems + ' gems (< ' + C.VOUCHER_COST + '). Get gems or a voucher, then re-run.'); ui.btns.appendChild(mkBtn('Close', '#30363d', () => document.body.removeChild(ui.bg))); return; }
+    if (miss.length) { ui.hdr.style.color = '#f85149'; line(ui, '\nINCOMPLETE restore target: ' + miss.join(', ') + ' -> blocked.'); ui.btns.appendChild(mkBtn('Close', '#30363d', function () { document.body.removeChild(ui.bg); })); return; }
+    if (s.voucher < 1 && s.gems < C.VOUCHER_COST) { ui.hdr.style.color = '#d29922'; line(ui, '\nNo voucher and only ' + s.gems + ' gems (< ' + C.VOUCHER_COST + '). Get gems or a voucher, then re-run.'); ui.btns.appendChild(mkBtn('Close', '#30363d', function () { document.body.removeChild(ui.bg); })); return; }
 
     ui.btns.appendChild(mkBtn(s.voucher < 1 ? ('Confirm (buy ' + C.VOUCHER_COST + ' gems + run)') : 'Confirm & run', '#3fb950', async function () {
       ui.btns.textContent = '';
       try { await navigator.clipboard.writeText(JSON.stringify(s)); line(ui, 'Backup copied to clipboard.'); } catch (e) { line(ui, 'Clipboard failed; backup in window.__crRunBackup + console.'); }
       console.log('CR_BACKUP', JSON.stringify(s));
+      // Persist a resume point BEFORE the irreversible reset, so a crash mid-retrain
+      // can be finished later without buying/resetting again.
+      saveResume({ v: 1, ts: Date.now(), uid: s.uid, profession: s.profession, tree: s.tree, defense: s.defense, extraSkills: s.extraSkills });
       try {
         if (s.voucher < 1) { line(ui, 'Buying voucher (' + C.VOUCHER_COST + ' gems)...'); await buyVoucher(); }
         line(ui, 'Resetting...'); await doReset();
-        var rt = await retrain(ui, s.tree); line(ui, 'Retrain: ' + rt.done + '/' + rt.total + ' groups.');
-        line(ui, 'Reapplying base defense...'); await reapplyDefense(s.defense);
-        if (s.extraSkills.length) { var rx = await reapplyExtra(ui, s.extraSkills); line(ui, 'Extra skills: ' + rx.done + '/' + s.extraSkills.length + ' reapplied.'); if (rx.failed.length) line(ui, 'Could NOT reapply (equip manually): ' + rx.failed.map(function (f) { return 'hero ' + f.heroId + ' preset ' + f.skillsIndex + ' skill ' + f.skillId; }).join('; ')); }
-        var v = await verify(s); ui.sub.textContent = '';
-        if (v.treeOk && v.defOk && v.extraMissing === 0) { ui.hdr.style.color = '#3fb950'; line(ui, '\nDONE. Tree, defense' + (v.extraTotal ? ', and ' + v.extraTotal + ' extra skills' : '') + ' restored.'); }
-        else { ui.hdr.style.color = '#d29922'; line(ui, '\nPARTIAL. tree=' + v.treeOk + ' defense=' + v.defOk + ' extraMissing=' + v.extraMissing + '/' + v.extraTotal + '. Backup is on your clipboard.'); }
-      } catch (err) { ui.hdr.style.color = '#f85149'; line(ui, '\nERROR: ' + err + '\nBackup is on your clipboard.'); }
-      ui.btns.appendChild(mkBtn('Close', '#30363d', () => document.body.removeChild(ui.bg)));
+        await runFromReset(ui, s);
+      } catch (err) { ui.hdr.style.color = '#f85149'; line(ui, '\nERROR: ' + err + '\nBackup is on your clipboard. Re-run this bookmarklet to resume.'); ui.btns.appendChild(mkBtn('Close', '#30363d', function () { document.body.removeChild(ui.bg); })); }
     }));
-    ui.btns.appendChild(mkBtn('Cancel', '#30363d', () => document.body.removeChild(ui.bg)));
+    ui.btns.appendChild(mkBtn('Cancel', '#30363d', function () { document.body.removeChild(ui.bg); }));
   }
   window.__crRun = run; run();
 })();
