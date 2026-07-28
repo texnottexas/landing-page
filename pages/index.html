@@ -6072,10 +6072,90 @@
         }
       }
 
+      // ── URL identity setter (?id=<siteKey|exactName>&n=<name>) ──────────────
+      // Fallback for players whose roster dropdown never populates (e.g. an
+      // ad-blocker or network block stops player-data.json from loading, so
+      // the picker list is empty). An admin hands them a link like
+      //   2864tw.com/?id=<siteKey>        (resolved against the roster)
+      //   2864tw.com/?id=<exactName>      (resolved against the roster)
+      //   2864tw.com/?id=<siteKey>&n=<name>  (STANDALONE — works even if the
+      //                                       roster fetch fails; name comes
+      //                                       from the URL, not the roster)
+      // Sets identity only (same as picking from the dropdown); the player
+      // still verifies their UID afterward. No new exposure — anyone could
+      // already pick any identity from the list; verification is the gate.
+      function _clearIdentityParams() {
+        try {
+          var u = new URL(location.href);
+          u.searchParams.delete('id'); u.searchParams.delete('n');
+          history.replaceState({}, '', u.pathname + (u.search || '') + (u.hash || ''));
+        } catch (e) {}
+      }
+      function _urlIdentityMsg(msg) {
+        try {
+          var el = document.getElementById('url-identity-msg');
+          if (!el) {
+            el = document.createElement('div');
+            el.id = 'url-identity-msg';
+            el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:20px;z-index:99999;background:var(--card,#1c2128);color:var(--text,#e6edf3);border:1px solid var(--accent,#79c0ff);border-radius:8px;padding:.6rem 1rem;font-size:.8rem;box-shadow:0 4px 16px rgba(0,0,0,.4);max-width:90vw;text-align:center;';
+            document.body.appendChild(el);
+          }
+          el.textContent = msg;
+          el.style.display = '';
+          clearTimeout(el._t);
+          el._t = setTimeout(function() { el.style.display = 'none'; }, 6000);
+        } catch (e) {}
+      }
+      function _applyUrlIdentity(roster) {
+        var params;
+        try { params = new URLSearchParams(location.search); } catch (e) { return false; }
+        var idVal = (params.get('id') || '').trim();
+        if (!idVal) return false;
+        var nameHint = (params.get('n') || '').trim();
+        var isSiteKey = /^[0-9a-f]{16}$/i.test(idVal);
+        var match = null;
+        if (roster && roster.length) {
+          if (isSiteKey) {
+            var sk = idVal.toLowerCase();
+            match = roster.find(function(p) { return p.siteKey && p.siteKey.toLowerCase() === sk; }) || null;
+          } else {
+            var exact = roster.filter(function(p) { return p.name === idVal; });
+            if (exact.length === 1) { match = exact[0]; }
+            else if (exact.length > 1) { _urlIdentityMsg('Name "' + idVal + '" matches multiple players — use a siteKey link instead.'); _clearIdentityParams(); return false; }
+            else {
+              var ci = roster.filter(function(p) { return (p.name || '').toLowerCase() === idVal.toLowerCase(); });
+              if (ci.length === 1) { match = ci[0]; }
+              else if (ci.length > 1) { _urlIdentityMsg('Name "' + idVal + '" is ambiguous — use a siteKey link instead.'); _clearIdentityParams(); return false; }
+            }
+          }
+        }
+        var identity = null;
+        if (match) {
+          identity = { name: match.name, alliance: match.alliance, rank: match.rank, profession: match.profession };
+          if (match.siteKey) identity.siteKey = match.siteKey;
+        } else if (isSiteKey && nameHint) {
+          identity = { name: nameHint, siteKey: idVal.toLowerCase() };
+        } else {
+          if (isSiteKey) _urlIdentityMsg('Could not resolve that siteKey. Add &n=YourName to the link to set it directly.');
+          else _urlIdentityMsg('Could not find "' + idVal + '". If the roster will not load, use a siteKey link with &n=YourName.');
+          _clearIdentityParams();
+          return false;
+        }
+        saveIdentity(identity);
+        showGreeting(identity);
+        if (window._getPushSub && window._getPushSub() && window._saveSubToWorker) {
+          try { window._saveSubToWorker(window._getPushSub()); } catch (e) {}
+        }
+        _urlIdentityMsg('Signed in as ' + identity.name + (identity.siteKey ? '' : ' (name only)'));
+        _clearIdentityParams();
+        return true;
+      }
+
       fetch('player-data.json')
         .then(function(r) { return r.json(); })
         .then(function(data) {
           allPlayers = data;
+          try { _applyUrlIdentity(data); } catch (e) {}
           // Migrate existing identity: add siteKey if missing
           var stored = getIdentity();
           if (stored && stored.name && !stored.siteKey && !stored.guest) {
@@ -6123,7 +6203,12 @@
           }
           showModalIfNeeded();
         })
-        .catch(function() {});
+        .catch(function() {
+          // Roster fetch failed (blocked/offline). Still honor a standalone
+          // ?id=<siteKey>&n=<name> link so identity can be set without it.
+          try { _applyUrlIdentity(null); } catch (e) {}
+          showModalIfNeeded();
+        });
 
       document.getElementById('identity-close').addEventListener('click', closeModal);
       document.getElementById('identity-skip').addEventListener('click', function() {
