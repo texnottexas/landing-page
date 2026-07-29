@@ -42,8 +42,6 @@ const gBlock = new Uint8Array(N);
     }
   }
 })();
-const gLegalV = new Uint8Array(N);
-D.legalV.forEach(s=>{const [x,y]=s.split(';').map(Number); if(inCrop(x,y)) gLegalV[idx(x,y)]=1;});
 // alliance table: index 1..31 in the claim grid, colour by server (our own three keep
 // their familiar green / blue / amber)
 const AIDN = {}, CL = {}, TAG = {}, ANAME = {}, ASRV = {};
@@ -240,8 +238,6 @@ function zoneCovers(p,x,y){
   const b=zoneBoxUV(p.x,p.y,p.fort); const [u,v]=uv(x,y);
   return u>=b[0]&&u<=b[1]&&v>=b[2]&&v<=b[3];
 }
-const BAND=D.legalBand;
-function inBand(x,y){ return x>=BAND.x0&&x<=BAND.x1&&y>=BAND.y0&&y<=BAND.y1; }
 // ---- fort budget -----------------------------------------------------------
 // The cap is per ALLIANCE, so Dog / MSS / Cat each get their own. This used to count
 // our own built forts plus EVERY planned fort against one number, so planning an MSS
@@ -282,13 +278,6 @@ function validate(px,py,isFort,alli){
     if(gRing[i]) continue;                       // own-gate ring: placeable
     if(gClaim[i]) return {ok:false,reason:tagOf(aidOfIdx[gClaim[i]])+' claimed tile'};
     if(gExcl[i]) return {ok:false,reason:'fixed-building zone'};
-    // inside the wall corridor we probed the live client tile-by-tile, so its verdict
-    // also applies: it catches bases/cities this static model cannot see
-    // SOFT refusal: the oracle probed this corridor live, so a tile reads illegal when a
-    // base/city/unit was standing there at probe time. That moves — unlike terrain or a
-    // built structure — so the player is allowed to override it (see placeBar).
-    if(inBand(x,y) && !gLegalV[i]) return {ok:false, soft:true,
-      reason:'the live probe saw a base, city or unit on this tile'};
   }
   return {ok:true};
 }
@@ -406,15 +395,15 @@ function clearPending(){
   if(!pending) return;
   pending=null; renderPlaceBar(); draw();
 }
-function commitPending(force){
+function commitPending(){
   if(!pending) return;
   const [x,y]=pending, isFort=pendingFort;
   const chk=validate(x,y,isFort);
-  // only a SOFT refusal can be overridden; hard game rules still stop the placement
-  if(!chk.ok && !(force && chk.soft)){ flash('Cannot place: '+chk.reason); return; }
-  const op={op:'add', kind:isFort?'fort':'ps', x, y, alli:planAlli};
-  if(!chk.ok) op.forced=true;
-  pushOps([op], (applied)=>({op:'del', id:(applied[0]||{}).id}));
+  // Every remaining refusal is a hard game rule (terrain, a built structure, a claim,
+  // the fort cap). The overridable case was the wall-corridor probe, dropped 2026-07-29.
+  if(!chk.ok){ flash('Cannot place: '+chk.reason); return; }
+  pushOps([{op:'add', kind:isFort?'fort':'ps', x, y, alli:planAlli}],
+          (applied)=>({op:'del', id:(applied[0]||{}).id}));
   clearPending();
 }
 function renderPlaceBar(){
@@ -427,27 +416,20 @@ function renderPlaceBar(){
     bar.id='placeBar';
     document.body.appendChild(bar);
   }
-  // three states: legal, SOFT (a transient in-game blocker — overridable), hard refusal
-  const soft = !chk.ok && chk.soft;
-  const col = chk.ok ? 'var(--green)' : (soft ? 'var(--yellow)' : 'var(--red)');
+  // two states now: legal, or a hard refusal (the overridable probe case is gone)
+  const col = chk.ok ? 'var(--green)' : 'var(--red)';
   bar.innerHTML='<div style="margin-bottom:6px"><b>'+(isFort?'Fort':'Power Station')+'</b> '
     + x+';'+y+' <span style="color:var(--muted)">for</span> <b style="color:'+alliCol(planAlli)+'">'
     + esc(planAlli)+'</b></div>'
     +'<div style="font-size:11px;margin-bottom:8px;color:'+col+'">'
     + (chk.ok?'Legal spot &middot; drag the ghost to nudge it':esc(chk.reason))
-    + (soft?'<br><span style="color:var(--muted)">Bases, cities and units move. If the tile is '
-           +'clear in game you can place anyway &mdash; it will be flagged as an override.</span>':'')
     +'</div>'
     +'<div style="display:flex;gap:6px">'
-    + (soft
-        ? '<button type="button" class="tbtn pb-force" style="flex:1;border-color:var(--yellow);'
-          +'color:var(--yellow)">Place anyway</button>'
-        : '<button type="button" class="tbtn pb-ok"'+(chk.ok?'':' disabled')
-          +' style="flex:1;'+(chk.ok?'border-color:var(--green);color:var(--green)':'opacity:.45')
-          +'">Place here</button>')
+    +'<button type="button" class="tbtn pb-ok"'+(chk.ok?'':' disabled')
+    +' style="flex:1;'+(chk.ok?'border-color:var(--green);color:var(--green)':'opacity:.45')
+    +'">Place here</button>'
     +'<button type="button" class="tbtn pb-no" style="flex:1">Cancel</button></div>';
-  const ok=bar.querySelector('.pb-ok'); if(ok) ok.onclick=()=>commitPending(false);
-  const fc=bar.querySelector('.pb-force'); if(fc) fc.onclick=()=>commitPending(true);
+  const ok=bar.querySelector('.pb-ok'); if(ok) ok.onclick=()=>commitPending();
   bar.querySelector('.pb-no').onclick=clearPending;
 }
 // ---- planned item: hit-test + edit in place ---------------------------------
@@ -772,7 +754,7 @@ function resize(){ cv.width=cv.clientWidth*devicePixelRatio; cv.height=cv.client
 window.addEventListener('resize',resize);
 const px=(x,y)=>[(x-X0)*TW/2,(y-Y0)*TH/2];
 const scr=(wx,wy)=>[(wx-ox)*zoom*devicePixelRatio,(wy-oy)*zoom*devicePixelRatio];
-let showClaims=true, showZones=true, showGrid=false, showMtn=true, showJump=true, showLegal=false, showBlock=false, showAreas=true, showAlt=false;
+let showClaims=true, showZones=true, showGrid=false, showMtn=true, showJump=true, showBlock=false, showAreas=true, showAlt=false;
 // ---- low-zoom sheet: one pixel per tile (cell x, tile y), blitted onto the map rect
 const LOD_Z=0.42, LODW=D.mask.cols, LODH=D.mask.rows;
 const lod=document.createElement('canvas'); lod.width=LODW; lod.height=LODH;
@@ -902,7 +884,6 @@ function render(){
       if(showClaims&&gPlanClaim[i]){ ctx.fillStyle=PLANFILL[gPlanClaim[i]]||PLANFILL[1];
         ctx.beginPath(); tilePath(x,y,1); ctx.fill(); }
       if(showZones&&gExcl[i]){ ctx.fillStyle='#f8514922'; ctx.beginPath(); tilePath(x,y,1); ctx.fill(); }
-      if(showLegal&&gLegalV[i]&&!gClaim[i]){ ctx.fillStyle='#3fb95015'; ctx.beginPath(); tilePath(x,y,1); ctx.fill(); }
       if(showAlt&&gAltTarget[i]){ ctx.fillStyle='#f0883e55'; ctx.beginPath(); tilePath(x,y,1); ctx.fill(); }
       if(showAlt&&gAltHome[i]){ ctx.fillStyle='#39c5cf55'; ctx.beginPath(); tilePath(x,y,1); ctx.fill(); }
       if(showJump&&gJumpW[i]){ ctx.fillStyle='#79c0ff66'; ctx.beginPath(); tilePath(x,y,1); ctx.fill();
@@ -1012,15 +993,10 @@ function render(){
       ctx.fillStyle=aCol+'44'; ctx.fill();
       ctx.strokeStyle=stCol; ctx.lineWidth=2*k*.5; ctx.stroke();
       ctx.strokeStyle=aCol+'88'; ctx.lineWidth=1.2*k*.5; strokeZone(p.x,p.y,p.fort);
-      if(p.forced){                       // placed over a transient in-game blocker
-        ctx.save(); ctx.setLineDash([5*k*.5,4*k*.5]);
-        ctx.strokeStyle='#d29922'; ctx.lineWidth=2.2*k*.5; ctx.stroke(); ctx.restore();
-      }
       drawIcon(p.fort?'fort':'ps', p.x, p.y, {alpha:.92});
       if(zoom>.9){
         const [wx,wy]=px(p.x,p.y); const [sx,sy]=scr(wx,wy);
         mapLabel('#'+(it.i+1)+' '+(p.alli||'Dog*'), sx, sy-iconH(p.fort?'fort':'ps'), stCol, 10*k*.7, 'center', 'bold');
-        if(p.forced) mapLabel('override', sx, sy-iconH(p.fort?'fort':'ps')+11*k*.7, '#d29922', 9*k*.7, 'center');
       }
     }
   });
@@ -1114,7 +1090,7 @@ function render(){
     const isFort = pending ? pendingFort : (tool==='fort');
     const chk=validate(gt[0],gt[1],isFort);
     let color='#3fb950';
-    if(!chk.ok) color = chk.soft ? '#d29922' : '#f85149';   // amber = overridable
+    if(!chk.ok) color = '#f85149';
     else{
       const extras=plan.map(p=>({x:p.x,y:p.y,fort:p.fort})).concat([{x:gt[0],y:gt[1],fort:isFort}]);
       if(!powerOf(D.myAid,extras).get(extras[extras.length-1])) color='#d29922';
@@ -1199,9 +1175,6 @@ window.addEventListener('mouseup',(e)=>{
     if(chk.ok){
       pushOps([{op:'add', kind:isFort?'fort':'ps', x:hover[0], y:hover[1], alli:planAlli}],
               (applied)=>({op:'del', id:(applied[0]||{}).id}));
-    } else if(chk.soft){
-      setPending(hover[0],hover[1],isFort);      // offer "Place anyway" instead of a dead end
-      flash(chk.reason);
     } else flash('Cannot place: '+chk.reason);
   }
   dragging=false;
@@ -1461,7 +1434,6 @@ function updateTip(e,t){
     if(gExcl[i]) bits.push('Fixed-building zone (no build)');
     if(gClaim[i]) bits.push(tagOf(aidOfIdx[gClaim[i]])+' territory');
     if(gPlanClaim[i]) bits.push('Planned zone');
-    if(gLegalV[i]&&!gClaim[i]&&!gBlock[i]) bits.push('<span style="color:#3fb950">verified placeable in game</span>');
   }
   if(!bits.length){tip.style.display='none';return;}
   tip.innerHTML=bits.join('<br>');
@@ -1547,8 +1519,9 @@ function renderWorld(claimCounts){
       + 'beside a gate. From the network we now hold past the Lv.1 gates. '
       + 'Same drawing as above (<span style="color:#79c0ff">blue = the tile our PS sits on</span>, '
       + '<span style="color:#d2a8ff">purple = the tile it reaches</span>) and they turn on with the same '
-      + '<b>Wall jumps</b> toggle. Surveyed from the live structure data with the same rules as our Lv.1 wall, '
-      + 'but <b>not</b> oracle-probed &mdash; check the spot in game before committing.'
+      + '<b>Wall jumps</b> toggle. Surveyed from the live structure data with the same rules as our Lv.1 wall '
+      + '&mdash; bases, cities and marching units are not in that data, so check the spot in game '
+      + 'before committing.'
     : 'None yet &mdash; these appear once we hold a powered network next to a Lv.2 gate.';
   // ---- other warzones' crossings, grouped by server
   var at=document.getElementById('altTable'); at.innerHTML='';
@@ -1570,7 +1543,7 @@ function renderWorld(claimCounts){
   document.getElementById('altNote').innerHTML =
     'Turn on <b>Other warzones</b> to draw these: <span style="color:#39c5cf">cyan = their side</span>, '
     + '<span style="color:#f0883e">orange = where they land</span>. Surveyed within 34 tiles of each gate using the '
-    + 'same rules as ours, but <b>not</b> oracle-verified &mdash; treat them as estimates. '
+    + 'same rules as ours, from structure data only &mdash; treat them as estimates. '
     + 'The 8 Lv.3 gates still show nothing &mdash; nobody holds a powered network beside the inner ring yet. '
     + DEAD.length + ' walkable pockets have no gate at all ('
     + DEAD.reduce(function(n,p){return n+p.tiles;},0).toLocaleString() + ' tiles) &mdash; nobody can operate there.';
@@ -1737,7 +1710,6 @@ tg('tgZones',v=>showZones=v,true);
 tg('tgMtn',v=>showMtn=v,true);
 tg('tgBlock',v=>showBlock=v,false);
 tg('tgAreas',v=>showAreas=v,true);
-tg('tgLegal',v=>showLegal=v,false);
 tg('tgGridL',v=>showGrid=v,false);
 (function(){                                   // which build am I actually running?
   const el=document.getElementById('buildTag'); if(!el) return;
