@@ -218,11 +218,21 @@ try{
   if(st&&st.snapshot&&st.snapshot!==D.snapshot) setTimeout(()=>flash('Plan was made on the '+st.snapshot+' snapshot; territory has changed since'),600);
 }catch(e){ plan=[]; }
 const gPlanClaim=new Uint8Array(N), gPlanBody=new Uint8Array(N);
+// planned zones are tinted per alliance from the same colours as the built ones, a touch
+// lighter so "planned" still reads as different from "already there"
+const PLANFILL={}, PLANRGB={};
+PLAN_ALLI.forEach((a,i)=>{
+  const hex=alliCol(a); PLANFILL[i+1]=hex+'4d';
+  PLANRGB[i+1]=[parseInt(hex.slice(1,3),16),parseInt(hex.slice(3,5),16),parseInt(hex.slice(5,7),16)];
+});
 function rebuildPlanGrids(){
   lodDirty=true;
   gPlanClaim.fill(0); gPlanBody.fill(0);
   plan.forEach(p=>{
-    zoneTiles(p.x,p.y,p.fort).forEach(([x,y])=>{ if(inCrop(x,y)) gPlanClaim[idx(x,y)]=1; });
+    // store WHICH alliance (1/2/3), not just "planned": one blue for all three was
+    // indistinguishable zoomed out, exactly like green-vs-navy was for built claims
+    const ai = PLAN_ALLI.indexOf(p.alli||'Dog*') + 1;
+    zoneTiles(p.x,p.y,p.fort).forEach(([x,y])=>{ if(inCrop(x,y)) gPlanClaim[idx(x,y)]=ai||1; });
     bodyTiles(p.x,p.y,p.fort).forEach(([x,y])=>{ if(inCrop(x,y)) gPlanBody[idx(x,y)]=1; });
   });
 }
@@ -316,10 +326,23 @@ function drawNotes(){
   (SP.notes||[]).forEach(n=>{
     const [sx,sy]=tileToScr(n.x,n.y);
     if(sx<-80||sy<-40||sx>cv.width+80||sy>cv.height+40) return;
-    const r=Math.max(3.5, 5*k*.7);
+    // zoomed out a 3.5px pin was invisible on the terrain; keep a usable floor and give
+    // it a dark halo so it reads over grass, rock and claim fills alike
+    // a note has to be findable at EVERY zoom: 3.5px was the old floor and it vanished
+    // anywhere below zoom ~1. Hard floor of 7px, and the halo + white core below zoom 1.
+    const wide = zoom < 1.0;
+    const r=Math.max(wide?9:7, 5*k*.7);
+    if(wide){
+      ctx.beginPath(); ctx.arc(sx, sy-r*1.15, r*1.15, 0, Math.PI*2);
+      ctx.fillStyle='#0d1117cc'; ctx.fill();
+    }
     ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(sx-r,sy-r*2.1); ctx.lineTo(sx+r,sy-r*2.1); ctx.closePath();
     ctx.fillStyle=n.color; ctx.fill();
-    ctx.strokeStyle='#0d1117'; ctx.lineWidth=1; ctx.stroke();
+    ctx.strokeStyle=wide?'#0d1117':'#0d1117'; ctx.lineWidth=wide?2:1; ctx.stroke();
+    if(wide){                                     // white core so it pops at any zoom
+      ctx.beginPath(); ctx.arc(sx, sy-r*1.25, Math.max(2,r*0.32), 0, Math.PI*2);
+      ctx.fillStyle='#ffffff'; ctx.fill();
+    }
     if(zoom>0.55){
       const t=n.text.length>34?n.text.slice(0,33)+'…':n.text;
       ctx.font=`${10.5*k*.7}px sans-serif`; ctx.textAlign='left';
@@ -764,7 +787,8 @@ function buildLOD(){
       const x=c*2+par; if(!inCrop(x,y)) continue;
       const i=idx(x,y), o=(y*LODW+c)*4;
       if(gBlock[i]){ d[o]=38;d[o+1]=44;d[o+2]=54;d[o+3]=showMtn?(showBlock?190:0):235; continue; }
-      if(showClaims&&gPlanClaim[i]){ d[o]=121;d[o+1]=192;d[o+2]=255;d[o+3]=190; continue; }
+      if(showClaims&&gPlanClaim[i]){ const pc=PLANRGB[gPlanClaim[i]]||PLANRGB[1];
+        d[o]=pc[0];d[o+1]=pc[1];d[o+2]=pc[2];d[o+3]=205; continue; }
       if(showClaims&&gClaim[i]){ const c3=CLRGB[gClaim[i]]||[139,148,158];
         d[o]=c3[0];d[o+1]=c3[1];d[o+2]=c3[2];d[o+3]=170; continue; }
       if(showZones&&gExcl[i]){ d[o]=248;d[o+1]=81;d[o+2]=73;d[o+3]=60; }
@@ -875,7 +899,8 @@ function render(){
         continue;
       }
       if(showClaims&&gClaim[i]){ ctx.fillStyle=CL[gClaim[i]]+(showMtn?'55':'3d'); ctx.beginPath(); tilePath(x,y,1); ctx.fill(); }
-      if(showClaims&&gPlanClaim[i]){ ctx.fillStyle='#79c0ff3d'; ctx.beginPath(); tilePath(x,y,1); ctx.fill(); }
+      if(showClaims&&gPlanClaim[i]){ ctx.fillStyle=PLANFILL[gPlanClaim[i]]||PLANFILL[1];
+        ctx.beginPath(); tilePath(x,y,1); ctx.fill(); }
       if(showZones&&gExcl[i]){ ctx.fillStyle='#f8514922'; ctx.beginPath(); tilePath(x,y,1); ctx.fill(); }
       if(showLegal&&gLegalV[i]&&!gClaim[i]){ ctx.fillStyle='#3fb95015'; ctx.beginPath(); tilePath(x,y,1); ctx.fill(); }
       if(showAlt&&gAltTarget[i]){ ctx.fillStyle='#f0883e55'; ctx.beginPath(); tilePath(x,y,1); ctx.fill(); }
@@ -1714,7 +1739,29 @@ tg('tgBlock',v=>showBlock=v,false);
 tg('tgAreas',v=>showAreas=v,true);
 tg('tgLegal',v=>showLegal=v,false);
 tg('tgGridL',v=>showGrid=v,false);
+(function(){                                   // which build am I actually running?
+  const el=document.getElementById('buildTag'); if(!el) return;
+  const sc=document.querySelector('script[src*="el-sim-app"]');
+  const m=sc && /\?b=([a-f0-9]+)/.exec(sc.getAttribute('src')||'');
+  if(m) el.innerHTML='&middot; build <b>'+m[1].slice(0,6)+'</b>';
+})();
 document.getElementById('fit').onclick=fit;
+// GitHub Pages' CDN can serve a stale shell for a while after a deploy, and a phone will
+// happily keep it for much longer. This drops the caches this page can reach and reloads
+// with a cache-buster. It deliberately does NOT touch the service worker registration —
+// that is the sitewide push subscription (sw.js), and unregistering it would silently
+// kill notifications.
+document.getElementById('hardReload').onclick=async ()=>{
+  flash('Fetching the latest version…');
+  try{
+    if(window.caches && caches.keys){
+      const ks=await caches.keys();
+      await Promise.all(ks.map(k=>caches.delete(k)));
+    }
+  }catch(e){}
+  const u=location.pathname+'?_nc='+Date.now();
+  location.replace(u);
+};
 (function(){                                  // More flyout (phone only; inline on desktop)
   const btn=document.getElementById('moreBtn'), panel=document.getElementById('morePanel');
   btn.onclick=(e)=>{ e.stopPropagation(); const on=panel.classList.toggle('open');
