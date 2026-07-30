@@ -1852,6 +1852,7 @@ resize(); fit(); setTool('pan');
 // arithmetic off the map, not a statistical fit.
 const HN = D.honor || null;
 let honorTabName = 'standings';
+let honorScope = 'warzone', honorMeTag = 'Dog*';
 
 function fmtHonor(n){ return (n===null||n===undefined) ? '-' : Math.round(n).toLocaleString(); }
 function rateHour(rpt, secs){ return rpt===null||rpt===undefined ? null : rpt*3600/secs; }
@@ -1895,8 +1896,154 @@ function honorStandings(){
     +'generate no honor at all, so taking one does nothing for the score.</div>';
   return h;
 }
-// TASK 9 REMOVES THIS STUB
-function honorOvertake(){ return ''; }
+// Mirror of el_honor.overtake. Same contract, because the what-if panel needs to recompute
+// interactively and cannot call Python. Rates and totals both come from the payload.
+function jsOvertake(ourTotal, ourRate, theirTotal, theirRate){
+  const gap = theirTotal - ourTotal, closing = ourRate - theirRate;
+  const out = {status:null, ticks:null, hoursMin:null, hoursMax:null, gap:gap, closingPerTick:closing};
+  if(closing === 0){ out.status = gap === 0 ? 'tied' : 'parallel'; return out; }
+  const t = gap / closing;
+  if(t <= 0){ out.status = 'widening'; return out; }
+  const b = tickBounds(), ticks = Math.ceil(t);
+  out.status = gap > 0 ? 'weOvertake' : 'theyOvertake';
+  out.ticks = ticks;
+  out.hoursMin = ticks * b.min / 3600;
+  out.hoursMax = ticks * b.max / 3600;
+  return out;
+}
+function durText(o){
+  if(o.ticks === null) return '-';
+  const b = tickBounds();
+  const f = h => h < 48 ? (h.toFixed(1)+' h') : ((h/24).toFixed(1)+' d');
+  return b.exact ? f(o.hoursMin) : f(o.hoursMin)+' to '+f(o.hoursMax);
+}
+// Scope/me/rivals/colour resolution shared by honorOvertake() (the table) and renderHonor()
+// (the chart), so the two never disagree about who "we" are or what colour a rival gets.
+function honorOvertakeCtx(){
+  const scope = honorScope;                       // 'warzone' | 'alliance'
+  const rows = scope === 'warzone' ? HN.warzones : HN.alliances;
+  const meKey = scope === 'warzone' ? (z => z.sid === 2864) : (a => a.tag === honorMeTag);
+  const me = rows.find(meKey);
+  if(!me) return null;
+  const label = r => scope === 'warzone' ? 'S'+r.sid : esc(r.tag || r.name);
+  const colourOf = scope === 'warzone'
+    ? (r => D.srvColor[r.sid] || '#8b949e')
+    : (r => r.sid === 2864 ? alliCol(r.tag || 'Dog*') : (D.srvColor[r.sid] || '#8b949e'));
+  const rivals = rows.filter(r => r !== me);
+  return {scope, rows, me, rivals, label, colourOf};
+}
+function honorOvertake(){
+  const ctx = honorOvertakeCtx();
+  if(!ctx) return '<div class="hNote">Cannot find our own row in this snapshot.</div>';
+  const scope = ctx.scope, me = ctx.me, rivals = ctx.rivals, label = ctx.label, colourOf = ctx.colourOf;
+  let h = '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">'
+    + '<button type="button" class="tbtn'+(scope==='warzone'?' on':'')+'" data-hscope="warzone">By warzone</button>'
+    + '<button type="button" class="tbtn'+(scope==='alliance'?' on':'')+'" data-hscope="alliance">By alliance</button>'
+    + (scope==='alliance' ? ['Dog*','MSS*','Cat+'].map(t=>'<button type="button" class="tbtn'
+        +(t===honorMeTag?' on':'')+'" data-hme="'+t+'" style="border-color:'+alliCol(t)+';color:'+alliCol(t)
+        +'">'+t+'</button>').join('') : '')
+    + '</div>';
+  h += '<div class="hNote" style="margin:0 0 10px">Comparing <b>'+label(me)+'</b> at '
+    + fmtHonor(me.honor)+' honor, earning '+fmtHonor(me.ratePerTick)+' per tick.</div>';
+  h += '<table class="hTable"><tr><th>Rival</th><th class="num">Honor</th><th class="num">Per tick</th>'
+    + '<th>Outcome</th><th class="num">When</th></tr>';
+  rivals.forEach(r => {
+    const o = jsOvertake(me.honor, me.ratePerTick || 0, r.honor, r.ratePerTick || 0);
+    let verdict, colour;
+    if(o.status === 'weOvertake'){ verdict = 'we pass them'; colour = 'var(--green)'; }
+    else if(o.status === 'theyOvertake'){ verdict = 'they pass us'; colour = 'var(--red)'; }
+    else if(o.status === 'tied'){ verdict = 'dead level'; colour = 'var(--muted)'; }
+    else if(o.status === 'parallel'){ verdict = (o.gap > 0 ? 'behind, never closes' : 'ahead, never caught');
+                                      colour = o.gap > 0 ? 'var(--yellow)' : 'var(--green)'; }
+    else { verdict = o.gap > 0 ? 'behind and falling further back' : 'ahead and pulling away';
+           colour = o.gap > 0 ? 'var(--red)' : 'var(--green)'; }
+    h += '<tr><td>'+label(r)+'</td><td class="num">'+fmtHonor(r.honor)+'</td>'
+      + '<td class="num">'+(r.ratePerTick===null?'?':fmtHonor(r.ratePerTick))+'</td>'
+      + '<td style="color:'+colour+'">'+verdict+'</td>'
+      + '<td class="num">'+durText(o)+'</td></tr>';
+  });
+  h += '</table>';
+  h += '<div class="hNote">Where a gap is widening no date is shown, because at current rates '
+    + 'the crossing never happens. Closing it needs more honor buildings, not more time.</div>';
+  h += '<canvas id="honorChart" style="width:100%;height:260px;margin:12px 0;max-width:100%"></canvas>';
+  // Legend swatches are dashed lines, not colour dots: colour alone cannot disambiguate two
+  // rivals sharing a warzone hue (e.g. 184R/184S both key off S184), so the legend has to
+  // show the same dash pattern the chart draws, not just a colour.
+  h += '<div id="honorLegend" style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted);align-items:center">'
+    + [me].concat(rivals).map(r => {
+        const isMine = r === me, dash = dashFor(isMine ? 'me' : entityKeyOf(r), isMine);
+        const sw = '<svg width="24" height="10" style="vertical-align:middle;margin-right:4px" aria-hidden="true">'
+          + '<line x1="1" y1="5" x2="23" y2="5" stroke="'+colourOf(r)+'" stroke-width="'+(isMine?3:2)+'"'
+          + (dash.length ? ' stroke-dasharray="'+dash.join(',')+'"' : '') + '/></svg>';
+        return '<span>'+sw+label(r)+'</span>';
+      }).join('')
+    + '</div>';
+  return h;
+}
+// Identity is carried by DASH PATTERN, not hue: the warzone palette has pairs a
+// colourblind viewer cannot separate (S2864 green vs S184 red is dE 2.2 deutan), and
+// those colours are shared with the map so they are deliberately not being changed.
+// Keyed by entity id so a line's style never shifts when the list changes.
+// entityKeyOf resolves the ENTITY id, not the row's rank/position: a warzone row only
+// carries `sid`, an alliance row carries both `sid` (its home warzone, shared by every
+// alliance that calls that warzone home) and `aid` (unique to the alliance) - using `aid`
+// for alliance rows is required, or co-located alliances (184R/184S, ffff/[Sc], MLRT/'Axi)
+// would collide on both colour AND dash and become indistinguishable.
+function entityKeyOf(r){ return ('aid' in r) ? 'a'+r.aid : 's'+r.sid; }
+const DASHES = [[], [8,4], [2,3], [12,4], [6,3,2,3], [2,6], [10,3,2,3], [4,2], [14,4], [1,3]];
+function dashFor(key, isMine){
+  if (isMine) return [];                       // ours is the only solid line
+  let h = 0; const s = String(key);
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 9973;
+  return DASHES[1 + (h % (DASHES.length - 1))];
+}
+function honorChart(me, rivals, labelOf, colourOf){
+  const cv=document.getElementById('honorChart'); if(!cv) return;
+  const dpr=window.devicePixelRatio||1, W=cv.clientWidth, H=260;
+  cv.width=W*dpr; cv.height=H*dpr;
+  const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+  const b=tickBounds();
+  // horizon: far enough to show the soonest crossing, else 3 days
+  let horizon=3*24*3600/b.max;
+  rivals.forEach(r=>{ const o=jsOvertake(me.honor, me.ratePerTick||0, r.honor, r.ratePerTick||0);
+    if(o.ticks) horizon=Math.max(horizon, o.ticks*1.35); });
+  const series=[{r:me, mine:true}].concat(rivals.map(r=>({r:r, mine:false})));
+  let maxY=0; series.forEach(s=>{ maxY=Math.max(maxY, s.r.honor + (s.r.ratePerTick||0)*horizon); });
+  const L=58, R=10, T=10, B=26, pw=W-L-R, ph=H-T-B;
+  const sx=t=>L+(t/horizon)*pw, sy=v=>T+ph-(v/maxY)*ph;
+  g.strokeStyle='#30363d'; g.lineWidth=1; g.fillStyle='#8b949e'; g.font='10px system-ui';
+  for(let i=0;i<=4;i++){ const v=maxY*i/4, y=sy(v);
+    g.beginPath(); g.moveTo(L,y); g.lineTo(W-R,y); g.stroke();
+    g.textAlign='right'; g.fillText((v/1e6).toFixed(2)+'M', L-6, y+3); }
+  g.textAlign='center';
+  for(let d=0; d<=Math.floor(horizon*b.max/86400); d++){
+    const t=d*86400/b.max; if(t>horizon) break;
+    g.fillText(d+'d', sx(t), H-8);
+  }
+  series.forEach(s=>{
+    const col=colourOf(s.r);
+    g.setLineDash(dashFor(s.mine ? 'me' : entityKeyOf(s.r), s.mine));
+    g.strokeStyle=col; g.lineWidth=s.mine?3:2; g.beginPath();
+    g.moveTo(sx(0), sy(s.r.honor));
+    g.lineTo(sx(horizon), sy(s.r.honor+(s.r.ratePerTick||0)*horizon));
+    g.stroke();
+    g.setLineDash([]);                          // reset so grid and markers stay solid
+  });
+  // crossings only
+  rivals.forEach(r=>{
+    const o=jsOvertake(me.honor, me.ratePerTick||0, r.honor, r.ratePerTick||0);
+    if(!o.ticks || o.ticks>horizon) return;
+    const x=sx(o.ticks), y=sy(me.honor+(me.ratePerTick||0)*o.ticks);
+    g.fillStyle='#0d1117'; g.beginPath(); g.arc(x,y,5,0,7); g.fill();
+    g.strokeStyle=colourOf(r); g.lineWidth=2; g.beginPath(); g.arc(x,y,5,0,7); g.stroke();
+  });
+  // direct labels for the 4 nearest rivals
+  rivals.slice(0,4).forEach(r=>{
+    const yEnd=sy(r.honor+(r.ratePerTick||0)*horizon);
+    g.fillStyle=colourOf(r); g.textAlign='right'; g.font='10px system-ui';
+    g.fillText(labelOf(r), W-R-2, yEnd-4);
+  });
+}
 // TASK 9 REMOVES THIS STUB
 function honorWhatIf(){ return ''; }
 // TASK 9 REMOVES THIS STUB
@@ -1916,6 +2063,10 @@ function renderHonor(){
   else if(honorTabName==='overtake') body.innerHTML = honorOvertake();
   else if(honorTabName==='whatif')  body.innerHTML = honorWhatIf();
   else body.innerHTML = honorLadder();
+  if(honorTabName==='overtake'){
+    const ctx = honorOvertakeCtx();
+    if(ctx) honorChart(ctx.me, ctx.rivals, ctx.label, ctx.colourOf);
+  }
 }
 function openHonor(){ document.getElementById('honorModal').classList.add('open');
   document.getElementById('morePanel').classList.remove('open'); renderHonor(); }
@@ -1927,8 +2078,18 @@ document.getElementById('honorModal').addEventListener('click', function(e){
 document.getElementById('honorTabs').addEventListener('click', function(e){
   const t=e.target.closest('[data-htab]'); if(!t) return;
   honorTabName=t.dataset.htab; renderHonor(); });
+document.getElementById('honorBody').addEventListener('click', function(e){
+  const s=e.target.closest('[data-hscope]'); if(s){ honorScope=s.dataset.hscope; renderHonor(); return; }
+  const m=e.target.closest('[data-hme]');    if(m){ honorMeTag=m.dataset.hme; renderHonor(); return; }
+});
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape' && document.getElementById('honorModal').classList.contains('open')) closeHonor(); });
+window.addEventListener('resize', function(){
+  // keep the crossing chart correctly scaled through a phone rotation or window resize
+  if(honorTabName==='overtake' && document.getElementById('honorModal').classList.contains('open')){
+    const ctx = honorOvertakeCtx(); if(ctx) honorChart(ctx.me, ctx.rivals, ctx.label, ctx.colourOf);
+  }
+});
 
 window.__el = {flyTo:flyTo, fit:fit, render:render, zoomNow:()=>zoom, D:D, S:S, FIX:FIX, JUMPS:JUMPS, TERR:TERR, validate:validate, selftest:window.__st, fortBudget:fortBudget, ourFortAt:ourFortAt, SP:()=>SP, plan:()=>plan, recheckPerm:pullPerm, perm:()=>myPerm, honor:()=>HN, openHonor:openHonor, honorTab:(t)=>{honorTabName=t; renderHonor();}};
 })();
