@@ -1964,7 +1964,10 @@ function capturedAgeText(){
   return p ? ('Captured '+p.rel+', '+p.abs+'.') : 'Capture time unknown.';
 }
 function rateHour(rpt, secs){ return rpt===null||rpt===undefined ? null : rpt*3600/secs; }
-function tickBounds(){ const t=(HN&&HN.tickSeconds)||{min:60,max:77,calibrated:null};
+// Fallback only fires when HN/tickSeconds is entirely absent (no honor data at all) - the
+// 77 here was the pre-calibration upper bound; the 2026-07-30 measurement calibrated the
+// tick at exactly 60s and falsified 77, so this literal is the last remnant of that era.
+function tickBounds(){ const t=(HN&&HN.tickSeconds)||{min:60,max:60,calibrated:null};
   return t.calibrated ? {min:t.calibrated, max:t.calibrated, exact:true} : {min:t.min, max:t.max, exact:false}; }
 function rateHourText(rpt){
   if(rpt===null||rpt===undefined) return '<span style="color:var(--muted)">unknown</span>';
@@ -2188,16 +2191,21 @@ function honorChartLegend(me, rivals, label, colourOf){
       }).join('')
     + '</div>';
 }
-// opts (new, What-if only - Overtake's call site never passes it, so its chart is
-// byte-for-byte unchanged):
-//   refRateOf(entity) - the rate WITHOUT the active selection (raw ratePerTick). When given,
-//     each series draws a faint reference line at this rate UNDER the normal (hypothetical)
-//     line, same colour/dash, so a diverging pair reads as one entity, not two. An entity the
-//     selection does not touch has refRateOf(e) === rateOf(e), so its two lines coincide
-//     exactly - correctly invisible.
-//   boundToEventEnd - caps the plotted horizon, and withholds a crossing marker, at the
-//     event's end (HN.eventEnd), so nothing implies honor still accrues after the event is
-//     over. Only engages when eventEnd and a numeric capturedAt are both known.
+// opts:
+//   refRateOf(entity) - the rate WITHOUT the active selection (raw ratePerTick). When given
+//     (What-if only), each series draws a faint reference line at this rate UNDER the normal
+//     (hypothetical) line, same colour/dash, so a diverging pair reads as one entity, not
+//     two. An entity the selection does not touch has refRateOf(e) === rateOf(e), so its two
+//     lines coincide exactly - correctly invisible.
+//   unbounded - opts OUT of the event-end bound. Bounded is the DEFAULT, not opt-in: a
+//     capture close to the event's end must stop EVERY caller, not just the ones that
+//     remembered to ask, from plotting honor still accruing after the event is over or
+//     marking a crossing that cannot arrive - durText() enforces the identical rule in the
+//     table beside either chart, and the two must never contradict each other the way the
+//     Overtake chart's un-bounded horizon once did against its own table (11.4 d plotted vs
+//     9.39 d of event remaining, wave re-review). Making this a default rather than a
+//     per-caller flag means a future call site cannot silently inherit the wrong (unbounded)
+//     behaviour by omission - it has to ask for it.
 function honorChart(me, rivals, labelOf, colourOf, rateOf, opts){
   const cv=document.getElementById('honorChart'); if(!cv) return;
   opts = opts || {};
@@ -2214,7 +2222,9 @@ function honorChart(me, rivals, labelOf, colourOf, rateOf, opts){
   rivals.forEach(r=>{ if(!hasRate(r)) return;
     const o=jsOvertake(me.honor, rateOf(me)||0, r.honor, rateOf(r));
     if(o.ticks) horizon=Math.max(horizon, o.ticks*1.35); });
-  if(opts.boundToEventEnd && HN && HN.eventEnd && typeof HN.capturedAt === 'number' && isFinite(HN.capturedAt)){
+  // Bounded by default (see opts doc above) - only engages when eventEnd and a numeric
+  // capturedAt are both known, exactly as unknowable as durText()'s own fallback otherwise.
+  if(!opts.unbounded && HN && HN.eventEnd && typeof HN.capturedAt === 'number' && isFinite(HN.capturedAt)){
     const secLeft = HN.eventEnd - HN.capturedAt/1000;
     if(secLeft > 0) horizon = Math.min(horizon, secLeft/b.max);
   }
@@ -2269,14 +2279,14 @@ function honorChart(me, rivals, labelOf, colourOf, rateOf, opts){
     g.setLineDash([]);                          // reset so grid and markers stay solid
   });
   // crossings only, and only for rivals whose rate we actually know - a marker here would
-  // assert a date derived from a rate we've admitted is unknown. opts.boundToEventEnd also
-  // withholds a marker for a crossing that cannot land before the event ends - a dot for a
-  // date that will never arrive is the same mistake durText() already refuses to print.
+  // assert a date derived from a rate we've admitted is unknown. Bounded by default (see
+  // opts doc above) also withholds a marker for a crossing that cannot land before the event
+  // ends - a dot for a date that will never arrive is the same mistake durText() refuses.
   rivals.forEach(r=>{
     if(!hasRate(r)) return;
     const o=jsOvertake(me.honor, rateOf(me)||0, r.honor, rateOf(r));
     if(!o.ticks || o.ticks>horizon) return;
-    if(opts.boundToEventEnd && crossingPastEventEnd(o)) return;
+    if(!opts.unbounded && crossingPastEventEnd(o)) return;
     const x=sx(o.ticks), y=sy(me.honor+(rateOf(me)||0)*o.ticks);
     g.fillStyle='#0d1117'; g.beginPath(); g.arc(x,y,5,0,7); g.fill();
     g.strokeStyle=colourOf(r); g.lineWidth=2; g.beginPath(); g.arc(x,y,5,0,7); g.stroke();
@@ -2637,7 +2647,7 @@ function renderHonor(){
     // renders the one-line invitation instead of the canvas), so calling it unconditionally
     // here is safe.
     if(ctx) honorChart(ctx.me, ctx.rivals, ctx.label, ctx.colourOf, r => effectiveRate(r, ctx),
-                        {refRateOf: r => r.ratePerTick, boundToEventEnd: true});
+                        {refRateOf: r => r.ratePerTick});
   }
   if(modalEl) modalEl.scrollTop = savedScroll;
 }
@@ -2685,7 +2695,7 @@ window.addEventListener('resize', function(){
   } else if(honorTabName==='whatif' && modalOpen){
     const ctx = honorOvertakeCtx();
     if(ctx) honorChart(ctx.me, ctx.rivals, ctx.label, ctx.colourOf, r => effectiveRate(r, ctx),
-                        {refRateOf: r => r.ratePerTick, boundToEventEnd: true});
+                        {refRateOf: r => r.ratePerTick});
   }
 });
 
