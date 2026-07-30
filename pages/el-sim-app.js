@@ -1842,11 +1842,21 @@ window.__st = function(){
     if(!HN || !HN.overtakeBaseline) return null;
     const me = HN.warzones.find(z => z.sid === 2864);
     if(!me) return null;
+    // Python and JS now both derive hoursMin/hoursMax from the same calibrated tick, but
+    // they're two different language runtimes doing the same ticks*60/3600 division - the
+    // raw floats can differ in the last bit or two, so these two fields are compared
+    // rounded (to the microsecond, 1e6) rather than with strict === on the raw float.
+    const hoursMatch = (a, b) => {
+      const an = (a===null||a===undefined), bn = (b===null||b===undefined);
+      if(an || bn) return an === bn;
+      return Math.round(a*1e6) === Math.round(b*1e6);
+    };
     return HN.warzones.filter(z => z.sid !== 2864).every(z => {
       const mine = jsOvertake(me.honor, me.ratePerTick||0, z.honor, z.ratePerTick||0);
       const theirs = HN.overtakeBaseline.warzone[String(z.sid)];
       return theirs && mine.status === theirs.status && mine.ticks === theirs.ticks
-             && mine.gap === theirs.gap && mine.closingPerTick === theirs.closingPerTick;
+             && mine.gap === theirs.gap && mine.closingPerTick === theirs.closingPerTick
+             && hoursMatch(mine.hoursMin, theirs.hoursMin) && hoursMatch(mine.hoursMax, theirs.hoursMax);
     });
   })();
   return out;
@@ -2292,19 +2302,41 @@ function honorWhatIf(){
     const more = holderInfo.length - shown.length;
     // Both rows must scale to the SAME maximum so the bar lengths are directly comparable.
     const scaleMax = Math.max(after, 1, ...holderInfo.map(x => x.before));
-    const pct = v => Math.max(0, Math.min(100, (v/scaleMax)*100));
+    // A segment worth only 6.5% of a shared scale (real case: a 20-point loss against a 310
+    // max) renders as a ~4px sliver at height:10px - unreadable, the same "loud element with
+    // no information" failure the earlier single-bar meter was rejected for. Every non-zero
+    // segment (gained tail, lost hollow, kept fill) gets a floor so it can never vanish.
+    // FLOOR_PCT approximates the required ~8px as a percentage of the narrowest supported
+    // track (this panel must work at 390px); the inline min-width added below is the real,
+    // viewport-accurate backstop, applied only when the value is non-zero (a true zero must
+    // still render as zero width, not an 8px sliver claiming a share that isn't there).
+    // rowPct() also guards the one way flooring could misbehave: if flooring both segments
+    // of a row would push their sum past 100% of that row's own track, both are rescaled
+    // down together so the row still fits and the trailing before/after numbers stay aligned.
+    const FLOOR_PCT = 4;
+    const rowPct = values => {
+      const raw = values.map(v => v>0 ? Math.max(FLOOR_PCT, (v/scaleMax)*100) : 0);
+      const sum = raw.reduce((a,b)=>a+b, 0);
+      const scale = sum > 100 ? 100/sum : 1;
+      return raw.map(v => v*scale);
+    };
+    const segStyle = (pct2, extra) => 'flex-basis:'+pct2+'%'+(pct2>0?';min-width:8px':'')+(extra?';'+extra:'');
     const ourColour = ctx.colourOf(me);
     const barRow = (label, colour, fillPct, extraHtml, nums) =>
       '<div class="wifBarRow"><span class="lbl" style="color:'+colour+'">'+esc(label)+'</span>'
-      + '<div class="wifBar"><div style="flex-basis:'+fillPct+'%;background:'+colour+'"></div>'
+      + '<div class="wifBar"><div style="'+segStyle(fillPct,'background:'+colour)+'"></div>'
       + extraHtml + '</div><span class="nums">'+nums+'</span></div>';
     let h2 = '<div class="wifBars">';
-    h2 += barRow(ctx.label(me), ourColour, pct(before),
-      wi.gain > 0 ? '<div class="wifTail" style="flex-basis:'+pct(wi.gain)+'%"></div>' : '',
-      wi.gain > 0 ? (fmtHonor(before)+' &rarr; '+fmtHonor(after)) : (fmtHonor(before)+' per tick'));
+    {
+      const [ourFillPct, ourTailPct] = rowPct([before, wi.gain]);
+      h2 += barRow(ctx.label(me), ourColour, ourFillPct,
+        wi.gain > 0 ? '<div class="wifTail" style="'+segStyle(ourTailPct)+'"></div>' : '',
+        wi.gain > 0 ? (fmtHonor(before)+' &rarr; '+fmtHonor(after)) : (fmtHonor(before)+' per tick'));
+    }
     shown.forEach(hI => {
-      h2 += barRow(hI.label, hI.colour, pct(hI.kept),
-        '<div class="wifHollow" style="flex-basis:'+pct(hI.loss)+'%"></div>',
+      const [keptPct, lossPct] = rowPct([hI.kept, hI.loss]);
+      h2 += barRow(hI.label, hI.colour, keptPct,
+        '<div class="wifHollow" style="'+segStyle(lossPct)+'"></div>',
         fmtHonor(hI.before)+' &rarr; '+fmtHonor(hI.kept));
     });
     if(more > 0) h2 += '<div class="wifMore">+'+more+' more</div>';
