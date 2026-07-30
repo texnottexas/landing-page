@@ -1213,8 +1213,14 @@ function kindLines(f){
   if(k.buff && k.buff!=='None') out.push('<span style="color:#3fb950">Buff:</span> '+k.buff);
   if(k.honor){
     const h = String(k.honor).split('|');
-    out.push('<span style="color:#d2a8ff">Honor:</span> '+h[0]+'/h to the holder'
-             + (h[1]&&h[1]!==h[0] ? ' ('+h[1]+' alliance)' : ''));
+    // Per-TICK, matching the honor modal's own vocabulary exactly - this used to say "/h"
+    // (per hour) while the modal treats these same kvk_building numbers as per-tick (i.e.
+    // per minute), a 60x understatement of objective value on the surface people tap while
+    // choosing targets (measured: 110/tick held for 7.4h gained 49,060, not the ~813 that
+    // 110/h would give). Spec: index 0 = ALLIANCE figure, index 1 = WARZONE figure - h[1]
+    // was mislabeled '(alliance)', invisible only because the two are equal this season.
+    out.push('<span style="color:#d2a8ff">Honor:</span> '+h[0]+' per tick to the holder'
+             + (h[1]&&h[1]!==h[0] ? ' ('+h[1]+' warzone)' : ''));
   }
   if(k.cap) out.push('Garrison capacity '+(+k.cap).toLocaleString());
   if(k.firstCondition) out.push('First conquest: hold '+hms(k.firstCondition)+' for the bonus reward');
@@ -1235,7 +1241,7 @@ function tileSummary(t){
     const k=kindOf(f);
     return f.name+' '+f.X+';'+f.Y+(f.tag?' ['+f.tag+']':' (unowned)')
       + (k&&k.buff&&k.buff!=='None' ? ' · '+k.buff.replace(/<[^>]+>/g,'') : '')
-      + (k&&k.honor ? ' · '+String(k.honor).split('|')[0]+' honor/h' : '');
+      + (k&&k.honor ? ' · '+String(k.honor).split('|')[0]+' honor per tick' : '');
   }
   if(i<0) return t[0]+';'+t[1];
   if(gBlock[i]) return 'Mountain · '+t[0]+';'+t[1];
@@ -1833,11 +1839,21 @@ window.__st = function(){
     const by={}; HN.alliances.forEach(a=>{ by[a.sid]=(by[a.sid]||0)+a.honor; });
     return HN.warzones.every(z => z.honor === (by[z.sid]||0));
   })();
+  // Honor modal DOM guard (item 7): this el-sim-app.js can run against an OLDER el-sim.html
+  // shell (GitHub Pages CDN lag - see hardReload's comment above), which would leave any of
+  // these ids missing. Guarded exactly like buildTag's lookup above so a stale shell makes
+  // selftest() report the gap instead of throwing and taking every other check in this
+  // function down with it.
+  out.honorDomOk = ['honorSub','honorBody','honorModal','honorTabs']
+    .every(id => !!document.getElementById(id));
   // DRIFT DETECTOR (Tex's ruling): the overtake formula exists in Python (build time,
-  // shipped as overtakeBaseline) and in JS (interactive what-ifs). If the two ever
-  // disagree the page says so, instead of quietly showing a wrong forecast. Reads the raw
-  // ratePerTick fields, never effectiveRate() - an active what-if selection must not be
-  // able to make this report drift.
+  // shipped as overtakeBaseline) and in JS (interactive what-ifs). This is a SELFTEST VALUE
+  // ONLY, reachable via window.__el.selftest() in the console - nothing in the rendered page
+  // reads honorDriftOk, so a disagreement here is a build-health signal for whoever runs
+  // selftest(), never something a player would see on screen. Reads the raw ratePerTick
+  // fields via jsPair, never effectiveRate() - an active what-if selection must not be able
+  // to make this report drift - and jsPair itself never coerces a missing rate to 0 on
+  // either side (item 6), mirroring el_honor._pair exactly.
   out.honorDriftOk = (function(){
     if(!HN || !HN.overtakeBaseline) return null;
     const me = HN.warzones.find(z => z.sid === 2864);
@@ -1851,13 +1867,36 @@ window.__st = function(){
       if(an || bn) return an === bn;
       return Math.round(a*1e6) === Math.round(b*1e6);
     };
-    return HN.warzones.filter(z => z.sid !== 2864).every(z => {
-      const mine = jsOvertake(me.honor, me.ratePerTick||0, z.honor, z.ratePerTick||0);
-      const theirs = HN.overtakeBaseline.warzone[String(z.sid)];
-      return theirs && mine.status === theirs.status && mine.ticks === theirs.ticks
+    // A baseline entry can defensively carry status:'unknown' (el_honor._pair, when a rate
+    // is genuinely missing on either side) - there is nothing to compare in that case, so
+    // it counts as a match rather than a drift failure.
+    const matches = (mine, theirs) => {
+      if(!theirs) return false;
+      if(theirs.status === 'unknown') return true;
+      return mine.status === theirs.status && mine.ticks === theirs.ticks
              && mine.gap === theirs.gap && mine.closingPerTick === theirs.closingPerTick
              && hoursMatch(mine.hoursMin, theirs.hoursMin) && hoursMatch(mine.hoursMax, theirs.hoursMax);
+    };
+    let ok = true, count = 0;
+    HN.warzones.filter(z => z.sid !== 2864).forEach(z => {
+      count++;
+      if(!matches(jsPair(me, z), HN.overtakeBaseline.warzone[String(z.sid)])) ok = false;
     });
+    // FIX (item 3): this used to loop ONLY the 7 warzone entries, all 'widening' with null
+    // ticks, so it compared null===null and hoursMatch could never fire. The 10 alliance
+    // entries with a real crossing (see overtakeBaseline.alliance) were never checked at
+    // all - extended to every one of OUR_TAGS against its own baseline row.
+    OUR_TAGS.forEach(tag => {
+      const mineRow = HN.alliances.find(a => a.tag === tag);
+      const forTag = HN.overtakeBaseline.alliance && HN.overtakeBaseline.alliance[tag];
+      if(!mineRow || !forTag){ ok = false; return; }
+      HN.alliances.filter(a => a.tag !== tag).forEach(a => {
+        count++;
+        if(!matches(jsPair(mineRow, a), forTag[String(a.aid)])) ok = false;
+      });
+    });
+    out.honorDriftCount = count;
+    return ok;
   })();
   return out;
 };
@@ -1892,8 +1931,38 @@ let honorScope = 'warzone', honorMeTag = 'Dog*';
 // honorTargets()'s self-holding exclusion (Finding 1, review round) both read this instead
 // of each carrying their own copy of the literal, so the two can never drift apart.
 const OUR_TAGS = ['Dog*','MSS*','Cat+'];
+// Our own warzone sid, derived from the PAYLOAD (D.myAid, our alliance id -> D.alliances,
+// which carries every alliance's home sid) rather than the literal 2864 used elsewhere on
+// this page. honorTargets()'s self-capture guard needs exactly this property: it must stay
+// correct even if an alliance id fails to resolve to a tag entirely, which a tag-based check
+// structurally cannot survive.
+const OUR_SID = ASRV[D.myAid] || null;
 
 function fmtHonor(n){ return (n===null||n===undefined) ? '-' : Math.round(n).toLocaleString(); }
+// Snapshot age: capturedAt is an epoch in milliseconds (see el_honor.py). Every total and
+// every "N d" crossing on this page is only true as of that instant - our warzone alone
+// accrues ~561,600 honor/day, so within a day the totals are out by six figures and a
+// crossing keeps reading its capture-time value forever if nothing says otherwise. Handles
+// a missing/non-numeric capturedAt explicitly rather than letting `Date.now()-NaN` print
+// "NaN days ago".
+function capturedAgeParts(){
+  const ts = HN && HN.capturedAt;
+  if(typeof ts !== 'number' || !isFinite(ts)) return null;
+  const mins = Math.max(0, Date.now() - ts) / 60000;
+  let rel;
+  if(mins < 1) rel = 'less than a minute ago';
+  else if(mins < 60){ const m = Math.round(mins); rel = m+' minute'+(m===1?'':'s')+' ago'; }
+  else if(mins < 1440){ const h = Math.round(mins/60); rel = h+' hour'+(h===1?'':'s')+' ago'; }
+  else { const d = Math.round(mins/144)/10; rel = d+' day'+(d===1?'':'s')+' ago'; }
+  const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const dt = new Date(ts), pad = n => String(n).padStart(2,'0');
+  const abs = pad(dt.getDate())+' '+MON[dt.getMonth()]+' '+pad(dt.getHours())+':'+pad(dt.getMinutes());
+  return {rel, abs};
+}
+function capturedAgeText(){
+  const p = capturedAgeParts();
+  return p ? ('Captured '+p.rel+', '+p.abs+'.') : 'Capture time unknown.';
+}
 function rateHour(rpt, secs){ return rpt===null||rpt===undefined ? null : rpt*3600/secs; }
 function tickBounds(){ const t=(HN&&HN.tickSeconds)||{min:60,max:77,calibrated:null};
   return t.calibrated ? {min:t.calibrated, max:t.calibrated, exact:true} : {min:t.min, max:t.max, exact:false}; }
@@ -1905,9 +1974,11 @@ function rateHourText(rpt){
 function holdText(h){
   const keys=Object.keys(h||{});
   if(!keys.length) return '<span style="color:var(--muted)">none</span>';
-  const SHORT={ExpeditionBase:'Base', Outpost:'Outpost', Arsenal:'Arsenal',
-               MilitaryFortress:'Fortress', ResearchFacility:'Research', EternalCity:'City'};
-  return keys.sort().map(k=>esc((SHORT[k]||k))+'&times;'+h[k]).join(' ');
+  // MUST FIX (item 11): this used to carry its own SHORT name map, a third copy alongside
+  // BUILDING_WORDS and the ladder's own NAMES - Outpost/type 44 read differently on
+  // different tabs. One canonical map now (BUILDING_WORDS/buildingWords, below), used
+  // everywhere a building name is shown.
+  return keys.sort().map(k=>esc(buildingWords(k))+'&times;'+h[k]).join(' ');
 }
 function honorStandings(){
   const wz=HN.warzones, al=HN.alliances;
@@ -1930,8 +2001,10 @@ function honorStandings(){
                     a.honor, a.ratePerTick, holdText(a.holdings), a.sid===2864)).join('')
     +'</table>';
   const unclaimed=(HN.unclaimed||[]).reduce((n,u)=>n+u.honorPerTick,0);
+  // MUST FIX (item 11): aligned with the What-if tab's noun for the exact same 13 targets -
+  // this used to say "buildings" here and "objectives" there for the identical count.
   h+='<div class="hNote"><b>'+fmtHonor(unclaimed)+' per tick is still unclaimed</b> across '
-    +(HN.unclaimed||[]).length+' buildings. Gates, Arks, Power Stations and Alliance Forts '
+    +(HN.unclaimed||[]).length+' objectives. Gates, Arks, Power Stations and Alliance Forts '
     +'generate no honor at all, so taking one does nothing for the score.</div>';
   return h;
 }
@@ -1950,8 +2023,31 @@ function jsOvertake(ourTotal, ourRate, theirTotal, theirRate){
   out.hoursMax = ticks * b.max / 3600;
   return out;
 }
+// Mirror of el_honor._pair: refuses to fabricate a rate on EITHER side. Exists so the drift
+// detector (see window.__st) never coerces a missing rate to 0 the way `someRate||0` would
+// (review item 6) - that fabricates a confident verdict from a number nobody actually has.
+function jsPair(mine, rival){
+  if(!hasRate(mine) || !hasRate(rival)){
+    return {status:'unknown', ticks:null, hoursMin:null, hoursMax:null,
+            gap:(rival.honor||0)-(mine.honor||0), closingPerTick:null};
+  }
+  return jsOvertake(mine.honor, mine.ratePerTick, rival.honor, rival.ratePerTick);
+}
+// A crossing this far out can still land after the event itself ends, at which point it
+// cannot happen - HN.eventEnd (added alongside eventStart, see gen_el_sim3.py) bounds it the
+// same way the widening case already gets no ETA instead of a date that never arrives. Uses
+// hoursMin (the EARLIEST possible arrival): only when even the fastest case is past the end
+// can we be certain the crossing is unreachable, matching the widening case's discipline of
+// only claiming something when it is actually true, not just plausible.
+function crossingPastEventEnd(o){
+  if(!o || o.ticks === null || !HN || !HN.eventEnd) return false;
+  const ts = HN.capturedAt;
+  if(typeof ts !== 'number' || !isFinite(ts)) return false;
+  return (ts + o.hoursMin * 3600000) > HN.eventEnd * 1000;
+}
 function durText(o){
   if(o.ticks === null) return '-';
+  if(crossingPastEventEnd(o)) return 'after the event ends';
   const b = tickBounds();
   const f = h => h < 48 ? (h.toFixed(1)+' h') : ((h/24).toFixed(1)+' d');
   return b.exact ? f(o.hoursMin) : f(o.hoursMin)+' to '+f(o.hoursMax);
@@ -2009,6 +2105,16 @@ function honorOvertake(){
       + '<button type="button" class="tbtn" data-wifclear>Clear</button></div>';
   }
   h += honorScopeSelector();
+  // MUST FIX (item 1): every projection below runs from the CAPTURE instant, not from now,
+  // and assumes no building changes hands before it arrives. Now that the tick is
+  // calibrated to a single figure (60s), that assumption - not the tick length - is the
+  // dominant source of error in a "when" column that used to show a range.
+  {
+    const p = capturedAgeParts();
+    h += '<div class="hNote" style="margin:0 0 10px">Projected from the snapshot taken '
+      + (p ? p.rel : 'at an unknown time') + ', assuming no building changes hands before '
+      + 'the projected date.</div>';
+  }
   const meRate = effectiveRate(me, ctx);
   h += '<div class="hNote" style="margin:0 0 10px">Comparing <b>'+label(me)+'</b> at '
     + fmtHonor(me.honor)+' honor, earning '+fmtHonor(meRate)+' per tick.</div>';
@@ -2017,13 +2123,17 @@ function honorOvertake(){
   rivals.forEach(r => {
     let verdict, colour, o = null;
     const rRate = effectiveRate(r, ctx);
-    if(!hasRate(r)){
-      // Never call jsOvertake with a fabricated rate - no status or date can be derived
-      // from a value we do not have, so this row skips the maths entirely. effectiveRate()
-      // already leaves an unknown rate as unknown, so rRate is null here too.
+    // DEFENSIVE (item 8): every rate is a known number today (el_honor.py FIX 4 -
+    // assert_closure proves closure over all 73 honor buildings, so an absence means a
+    // KNOWN 0, never an unknown rate) - this branch cannot fire on real data, but is kept
+    // rather than deleted in case a future payload legitimately carries a null rate. Also
+    // guards OUR OWN rate exactly like the rival's (item 6): `meRate || 0` would fabricate
+    // a confident verdict from a rate we do not have, the same mistake the rival-side check
+    // already refuses to make.
+    if(!hasRate(r) || meRate === null || meRate === undefined){
       verdict = 'rate unknown'; colour = 'var(--muted)';
     } else {
-      o = jsOvertake(me.honor, meRate || 0, r.honor, rRate);
+      o = jsOvertake(me.honor, meRate, r.honor, rRate);
       if(o.status === 'weOvertake'){ verdict = 'we pass them'; colour = 'var(--green)'; }
       else if(o.status === 'theyOvertake'){ verdict = 'they pass us'; colour = 'var(--red)'; }
       else if(o.status === 'tied'){ verdict = 'dead level'; colour = 'var(--muted)'; }
@@ -2039,22 +2149,9 @@ function honorOvertake(){
   });
   h += '</table>';
   h += '<div class="hNote">Where a gap is widening no date is shown, because at current rates '
-    + 'the crossing never happens. Closing it needs more honor buildings, not more time. '
-    + 'A rival marked rate unknown appears in the game rankings but not in our map sweep, '
-    + 'so we cannot project it.</div>';
+    + 'the crossing never happens. Closing it needs more honor buildings, not more time.</div>';
   h += '<canvas id="honorChart" style="width:100%;height:260px;margin:12px 0;max-width:100%"></canvas>';
-  // Legend swatches are dashed lines, not colour dots: colour alone cannot disambiguate two
-  // rivals sharing a warzone hue (e.g. 184R/184S both key off S184), so the legend has to
-  // show the same dash pattern the chart draws, not just a colour.
-  h += '<div id="honorLegend" style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted);align-items:center">'
-    + [me].concat(rivals).map(r => {
-        const isMine = r === me, dash = dashFor(isMine ? 'me' : entityKeyOf(r), isMine);
-        const sw = '<svg width="24" height="10" style="vertical-align:middle;margin-right:4px" aria-hidden="true">'
-          + '<line x1="1" y1="5" x2="23" y2="5" stroke="'+colourOf(r)+'" stroke-width="'+(isMine?3:2)+'"'
-          + (dash.length ? ' stroke-dasharray="'+dash.join(',')+'"' : '') + '/></svg>';
-        return '<span>'+sw+label(r)+'</span>';
-      }).join('')
-    + '</div>';
+  h += honorChartLegend(me, rivals, label, colourOf);
   return h;
 }
 // Identity is carried by DASH PATTERN, not hue: the warzone palette has pairs a
@@ -2074,8 +2171,37 @@ function dashFor(key, isMine){
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 9973;
   return DASHES[1 + (h % (DASHES.length - 1))];
 }
-function honorChart(me, rivals, labelOf, colourOf, rateOf){
+// Legend for the crossing chart AND the What-if before/after chart - same dash-carries-
+// identity rule (dashFor) as the chart itself, factored out once so the two legends can
+// never drift out of sync with each other or with the chart's own dash assignment.
+function honorChartLegend(me, rivals, label, colourOf){
+  // Legend swatches are dashed lines, not colour dots: colour alone cannot disambiguate two
+  // rivals sharing a warzone hue (e.g. 184R/184S both key off S184), so the legend has to
+  // show the same dash pattern the chart draws, not just a colour.
+  return '<div id="honorLegend" style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted);align-items:center">'
+    + [me].concat(rivals).map(r => {
+        const isMine = r === me, dash = dashFor(isMine ? 'me' : entityKeyOf(r), isMine);
+        const sw = '<svg width="24" height="10" style="vertical-align:middle;margin-right:4px" aria-hidden="true">'
+          + '<line x1="1" y1="5" x2="23" y2="5" stroke="'+colourOf(r)+'" stroke-width="'+(isMine?3:2)+'"'
+          + (dash.length ? ' stroke-dasharray="'+dash.join(',')+'"' : '') + '/></svg>';
+        return '<span>'+sw+label(r)+'</span>';
+      }).join('')
+    + '</div>';
+}
+// opts (new, What-if only - Overtake's call site never passes it, so its chart is
+// byte-for-byte unchanged):
+//   refRateOf(entity) - the rate WITHOUT the active selection (raw ratePerTick). When given,
+//     each series draws a faint reference line at this rate UNDER the normal (hypothetical)
+//     line, same colour/dash, so a diverging pair reads as one entity, not two. An entity the
+//     selection does not touch has refRateOf(e) === rateOf(e), so its two lines coincide
+//     exactly - correctly invisible.
+//   boundToEventEnd - caps the plotted horizon, and withholds a crossing marker, at the
+//     event's end (HN.eventEnd), so nothing implies honor still accrues after the event is
+//     over. Only engages when eventEnd and a numeric capturedAt are both known.
+function honorChart(me, rivals, labelOf, colourOf, rateOf, opts){
   const cv=document.getElementById('honorChart'); if(!cv) return;
+  opts = opts || {};
+  const refRateOf = opts.refRateOf || null;
   const dpr=window.devicePixelRatio||1, W=cv.clientWidth, H=260;
   cv.width=W*dpr; cv.height=H*dpr;
   const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
@@ -2088,8 +2214,18 @@ function honorChart(me, rivals, labelOf, colourOf, rateOf){
   rivals.forEach(r=>{ if(!hasRate(r)) return;
     const o=jsOvertake(me.honor, rateOf(me)||0, r.honor, rateOf(r));
     if(o.ticks) horizon=Math.max(horizon, o.ticks*1.35); });
+  if(opts.boundToEventEnd && HN && HN.eventEnd && typeof HN.capturedAt === 'number' && isFinite(HN.capturedAt)){
+    const secLeft = HN.eventEnd - HN.capturedAt/1000;
+    if(secLeft > 0) horizon = Math.min(horizon, secLeft/b.max);
+  }
   const series=[{r:me, mine:true}].concat(rivals.map(r=>({r:r, mine:false})));
-  let maxY=0; series.forEach(s=>{ maxY=Math.max(maxY, s.r.honor + (rateOf(s.r)||0)*horizon); });
+  // The reference line (What-if only) can slope UP FASTER than the hypothetical one - a
+  // holder who lost honor to the take has a HIGHER reference rate than its post-take rate -
+  // so the axis has to fit that too, or the faint line would draw off the top of the chart.
+  let maxY=0; series.forEach(s=>{
+    maxY=Math.max(maxY, s.r.honor + (rateOf(s.r)||0)*horizon);
+    if(refRateOf){ const rr=refRateOf(s.r); if(rr!==null && rr!==undefined) maxY=Math.max(maxY, s.r.honor+rr*horizon); }
+  });
   const L=58, R=10, T=10, B=26, pw=W-L-R, ph=H-T-B;
   const sx=t=>L+(t/horizon)*pw, sy=v=>T+ph-(v/maxY)*ph;
   g.strokeStyle='#30363d'; g.lineWidth=1; g.fillStyle='#8b949e'; g.font='10px system-ui';
@@ -2108,7 +2244,21 @@ function honorChart(me, rivals, labelOf, colourOf, rateOf){
     // projection the way a full-weight sloped line would be.
     const rateUnknown = !s.mine && !hasRate(s.r);
     const col=colourOf(s.r);
-    g.setLineDash(dashFor(s.mine ? 'me' : entityKeyOf(s.r), s.mine));
+    const dash = dashFor(s.mine ? 'me' : entityKeyOf(s.r), s.mine);
+    if(refRateOf){
+      const rr = refRateOf(s.r);
+      if(rr !== null && rr !== undefined){
+        g.setLineDash(dash);
+        g.strokeStyle=col; g.lineWidth = s.mine ? 3 : 2;
+        g.globalAlpha = 0.25;
+        g.beginPath();
+        g.moveTo(sx(0), sy(s.r.honor));
+        g.lineTo(sx(horizon), sy(s.r.honor + rr*horizon));
+        g.stroke();
+        g.globalAlpha = 1;
+      }
+    }
+    g.setLineDash(dash);
     g.strokeStyle=col; g.lineWidth = s.mine ? 3 : (rateUnknown ? 1 : 2);
     g.globalAlpha = rateUnknown ? 0.35 : 1;
     g.beginPath();
@@ -2119,11 +2269,14 @@ function honorChart(me, rivals, labelOf, colourOf, rateOf){
     g.setLineDash([]);                          // reset so grid and markers stay solid
   });
   // crossings only, and only for rivals whose rate we actually know - a marker here would
-  // assert a date derived from a rate we've admitted is unknown
+  // assert a date derived from a rate we've admitted is unknown. opts.boundToEventEnd also
+  // withholds a marker for a crossing that cannot land before the event ends - a dot for a
+  // date that will never arrive is the same mistake durText() already refuses to print.
   rivals.forEach(r=>{
     if(!hasRate(r)) return;
     const o=jsOvertake(me.honor, rateOf(me)||0, r.honor, rateOf(r));
     if(!o.ticks || o.ticks>horizon) return;
+    if(opts.boundToEventEnd && crossingPastEventEnd(o)) return;
     const x=sx(o.ticks), y=sy(me.honor+(rateOf(me)||0)*o.ticks);
     g.fillStyle='#0d1117'; g.beginPath(); g.arc(x,y,5,0,7); g.fill();
     g.strokeStyle=colourOf(r); g.lineWidth=2; g.beginPath(); g.arc(x,y,5,0,7); g.stroke();
@@ -2155,7 +2308,18 @@ function honorTargets(){
   const out = [];
   (HN.unclaimed||[]).forEach(u => out.push({type:u.type, name:u.name, x:u.x, y:u.y,
                                             honor:u.honorPerTick, holder:null, holderSid:null}));
-  (HN.heldTargets||[]).forEach(t => { if(!isOurs(t.holder)) out.push(t); });
+  (HN.heldTargets||[]).forEach(t => {
+    if(isOurs(t.holder)) return;
+    // Warzone scope must not depend on tag resolution alone: if an alliance id ever fails
+    // to resolve to a tag, el_honor.held_targets() falls back to str(aid), the isOurs(tag)
+    // check above misses it, and one of OUR buildings would appear as a takeable chip in
+    // our own colour - worse than the bug it re-enters, since effectiveRate() would add the
+    // "gain" to our own row with no offsetting loss. holderSid is a raw numeric field, so
+    // this exclusion survives a tag-resolution failure entirely, and also catches any other
+    // S2864 alliance outside our three tags (its honor is already inside our warzone total).
+    if(honorScope === 'warzone' && OUR_SID !== null && t.holderSid === OUR_SID) return;
+    out.push(t);
+  });
   return out;
 }
 // A selected key that no longer appears in honorTargets() - scope or identity changed under
@@ -2236,12 +2400,17 @@ function whatIfGroups(){
 }
 // One render path for every group (unclaimed and each holder) so the board can never show
 // them inconsistently. `colour`/`sidLabel` are null for the free Unclaimed block.
-function whatIfGroupBlock(title, colour, sidLabel, groupKey, targets, lossAmt){
+// MUST FIX (item 10): a holder group for one of OUR OTHER alliances (only ever reachable in
+// alliance scope, since warzone scope hides all three - see honorTargets()) rendered styled
+// identically to a rival, with nothing marking it as ours. isOurs adds a visible badge and
+// a left border in the same green used for "ours" everywhere else on this page.
+function whatIfGroupBlock(title, colour, sidLabel, groupKey, targets, lossAmt, isOurs){
   const total = targets.reduce((n,t)=>n+t.honor,0);
   const keys = targets.map(t => whatIfKey(t.type,t.x,t.y));
   const allOn = keys.length>0 && keys.every(k => whatIf.take.has(k));
-  return '<div class="wifGroup"><div class="hd">'
+  return '<div class="wifGroup'+(isOurs?' wifOurs':'')+'"><div class="hd">'
     + '<span class="name">'+(colour ? '<b style="color:'+colour+'">'+esc(title)+'</b>' : '<b>'+esc(title)+'</b>')
+    + (isOurs ? ' <span class="meta" style="color:var(--green)">your alliance</span>' : '')
     + (sidLabel ? ' <span class="meta">'+esc(sidLabel)+'</span>' : '') + '</span>'
     + '<span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
     + '<span class="meta">'+targets.length+' objective'+(targets.length===1?'':'s')+' &middot; '
@@ -2358,28 +2527,64 @@ function honorWhatIf(){
           + holderKeys.length+' holders. Relative swing '+fmtHonor(swing)+'.';
       }
       h += '<div class="hNote" style="margin-top:6px">'+caption+'</div>';
+      // MUST FIX (item 10): taking a target from one of our OTHER alliances (only reachable
+      // in alliance scope - warzone scope hides all three, see honorTargets()) is a
+      // legitimate move when that alliance is behind on the alliance board, but it is an
+      // internal shuffle: S2864's warzone total is the sum of all our alliances, so nothing
+      // changes there even though the alliance standings move.
+      if(holderKeys.some(k => OUR_TAGS.includes(k))){
+        h += '<div class="hNote" style="margin-top:4px;color:var(--yellow)">Moving buildings '
+          + 'between our own alliances changes the alliance standings but leaves our warzone '
+          + 'total unchanged.</div>';
+      }
     }
+  }
+
+  // ---- before/after chart: reuses the Overtake chart verbatim (same grid/dash/marker/
+  // label rules, same honesty rules), fed the SAME effectiveRate() the swing bars above use,
+  // so the two can never disagree. The swing bars answer "how much moves"; this answers
+  // "when does that change the standings" - only worth asking, and only rendered, once a
+  // selection actually exists. With nothing picked there is no "after" to project.
+  if(wi.count > 0){
+    h += '<h3 style="font-size:13px;margin:14px 0 6px">When does this change the standings?</h3>';
+    h += '<canvas id="honorChart" style="width:100%;height:260px;margin:4px 0 10px;max-width:100%"></canvas>';
+    h += honorChartLegend(me, ctx.rivals, ctx.label, ctx.colourOf);
+    h += '<div class="hNote" style="margin-top:8px">Faint line: the rate without this '
+      + 'selection. Solid line: the rate with it. Same rules as Overtake - no marker where a '
+      + 'gap is widening, nothing projected past the event end.</div>';
+  } else {
+    h += '<div class="hNote" style="margin-top:10px">Nothing to project yet - pick objectives '
+      + 'below and this chart will show when the selection changes the standings.</div>';
   }
 
   // ---- target board: one block per holder, unclaimed first, who-loses folded into headers
   if(unclaimed.length) h += whatIfGroupBlock('Unclaimed', null, null, '__unclaimed__', unclaimed, 0);
   groups.forEach(g => {
+    const isOurs = OUR_TAGS.includes(g.holder);
     h += whatIfGroupBlock(holderLabel(g.holder), holderColour(g.holder, g.sid), 'S'+g.sid,
-                          g.holder, g.targets, wi.loseByHolder[g.holder]||0);
+                          g.holder, g.targets, wi.loseByHolder[g.holder]||0, isOurs);
   });
 
-  h += '<div class="hNote" style="margin-top:14px">Gates, arks, power stations and alliance forts '
+  // MUST FIX (item 11): capitalisation now matches the Standings tab's identical footnote
+  // (both name the same four zero-honor building types).
+  h += '<div class="hNote" style="margin-top:14px">Gates, Arks, Power Stations and Alliance Forts '
     + 'score nothing, so taking one gains no honor.</div>';
   return h;
 }
 function honorLadder(){
-  const NAMES={'44':'Expedition Outpost','43':'Expedition Base','45':'Arsenal',
-               '46':'Military Fortress','47':'Research Facility','49':'Eternal City'};
   const now = Date.now()/1000, start = HN.eventStart;
+  // MUST FIX (item 11): this used to carry its own NAMES map keyed by type NUMBER, a fourth
+  // copy alongside the payload's typeNames, holdText's old SHORT map and BUILDING_WORDS -
+  // type 44 read "Outpost" on two tabs and "Expedition Outpost" here. Resolve the same way
+  // every other tab does: the payload's enum name (HN.typeNames) through the one canonical
+  // word map (BUILDING_WORDS/buildingWords, below).
   const rows = Object.keys(HN.unlocks||{}).map(k => ({
-    type:k, name:NAMES[k]||k, at:start + HN.unlocks[k], rate:(HN.buildingRates||{})[k]
+    type:k, name:buildingWords((HN.typeNames||{})[k] || k), at:start + HN.unlocks[k],
+    rate:(HN.buildingRates||{})[k]
   })).sort((a,b)=>a.at-b.at);
-  let h='<table class="hTable"><tr><th>Building</th><th class="num">Honor each</th>'
+  // MUST FIX (item 12): "Honor each" carried no unit while every other tab labels per tick
+  // or per hour.
+  let h='<table class="hTable"><tr><th>Building</th><th class="num">Honor each (per tick)</th>'
     +'<th>Opens</th><th>Status</th></tr>';
   rows.forEach(r => {
     const open = now >= r.at;
@@ -2388,21 +2593,37 @@ function honorLadder(){
       +'<td>'+d.toLocaleDateString()+' '+d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+'</td>'
       +'<td style="color:'+(open?'var(--green)':'var(--yellow)')+'">'+(open?'open':'not yet')+'</td></tr>';
   });
-  h+='</table><div class="hNote">Rates step up as buildings open, so a forecast that runs past '
-   +'one of these dates is conservative until that building is actually taken.</div>';
+  // MUST FIX (item 12): "conservative" was only true from OUR side - if a rival takes the
+  // Eternal City instead, the same forecast is optimistic (their rate rises, ours does not).
+  h+='</table><div class="hNote">Rates step up as buildings open, so a forecast that runs '
+   +'past one of these dates is conservative if we take the new building (the real rate ends '
+   +'up higher than projected) but optimistic if a rival takes it instead (their rate rises, '
+   +'not ours) - which one applies is not settled until whoever actually takes it does.</div>';
   return h;
 }
 function renderHonor(){
   if(!HN){ document.getElementById('honorBody').innerHTML=
     '<div class="hNote">This snapshot has no honor data. Refresh the map data to add it.</div>'; return; }
   const b=tickBounds();
+  // MUST FIX (item 1): the snapshot's age was rendered nowhere, so every total on Standings
+  // and every "N d" crossing on Overtake silently went stale - our warzone alone accrues
+  // ~561,600 honor/day, so within a day the totals are off by six figures and a "4.9 d"
+  // crossing still reads 4.9 d a week later. capturedAgeText() handles a missing/non-numeric
+  // capturedAt by saying the age is unknown, never NaN.
   document.getElementById('honorSub').innerHTML =
-    'Honor is generated by occupied buildings only. Tick is '
+    capturedAgeText() + ' Honor is generated by occupied buildings only. Tick is '
     + (b.exact ? b.min+' seconds' : b.min+' to '+b.max+' seconds, not yet calibrated, so hourly figures and '
       +'timings are shown as ranges') + '.';
   document.querySelectorAll('#honorTabs .tbtn').forEach(x =>
     x.classList.toggle('on', x.dataset.htab === honorTabName));
   const body=document.getElementById('honorBody');
+  // MUST FIX (item 9): every toggle rebuilds this innerHTML wholesale, so on a phone the
+  // chip you just tapped can jump away under your thumb the instant the tap registers -
+  // content above the board can grow or shrink (e.g. the what-if verdict hero appears with
+  // the first selection), moving everything below it even though scrollTop itself does not
+  // change. #honorModal is the scrolling element (overflow:auto), not #honorBody/#honorCard.
+  const modalEl = document.getElementById('honorModal');
+  const savedScroll = modalEl ? modalEl.scrollTop : 0;
   if(honorTabName==='standings') body.innerHTML = honorStandings();
   else if(honorTabName==='overtake') body.innerHTML = honorOvertake();
   else if(honorTabName==='whatif')  body.innerHTML = honorWhatIf();
@@ -2410,7 +2631,15 @@ function renderHonor(){
   if(honorTabName==='overtake'){
     const ctx = honorOvertakeCtx();
     if(ctx) honorChart(ctx.me, ctx.rivals, ctx.label, ctx.colourOf, r => effectiveRate(r, ctx));
+  } else if(honorTabName==='whatif'){
+    const ctx = honorOvertakeCtx();
+    // honorChart() no-ops if #honorChart isn't in the DOM (no selection -> honorWhatIf()
+    // renders the one-line invitation instead of the canvas), so calling it unconditionally
+    // here is safe.
+    if(ctx) honorChart(ctx.me, ctx.rivals, ctx.label, ctx.colourOf, r => effectiveRate(r, ctx),
+                        {refRateOf: r => r.ratePerTick, boundToEventEnd: true});
   }
+  if(modalEl) modalEl.scrollTop = savedScroll;
 }
 function openHonor(){ document.getElementById('honorModal').classList.add('open');
   document.getElementById('morePanel').classList.remove('open'); renderHonor(); }
@@ -2447,10 +2676,16 @@ document.getElementById('honorBody').addEventListener('click', function(e){
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape' && document.getElementById('honorModal').classList.contains('open')) closeHonor(); });
 window.addEventListener('resize', function(){
-  // keep the crossing chart correctly scaled through a phone rotation or window resize
-  if(honorTabName==='overtake' && document.getElementById('honorModal').classList.contains('open')){
+  // keep the crossing/before-after chart correctly scaled through a phone rotation or window
+  // resize
+  const modalOpen = document.getElementById('honorModal').classList.contains('open');
+  if(honorTabName==='overtake' && modalOpen){
     const ctx = honorOvertakeCtx();
     if(ctx) honorChart(ctx.me, ctx.rivals, ctx.label, ctx.colourOf, r => effectiveRate(r, ctx));
+  } else if(honorTabName==='whatif' && modalOpen){
+    const ctx = honorOvertakeCtx();
+    if(ctx) honorChart(ctx.me, ctx.rivals, ctx.label, ctx.colourOf, r => effectiveRate(r, ctx),
+                        {refRateOf: r => r.ratePerTick, boundToEventEnd: true});
   }
 });
 
