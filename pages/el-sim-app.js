@@ -1968,10 +1968,23 @@ function honorOvertakeCtx(){
   const rivals = rows.filter(r => r !== me);
   return {scope, rows, me, rivals, label, colourOf};
 }
+// Shared by Overtake and What-if: both scope off the same honorScope/honorMeTag state, and
+// the What-if tab was missing this entirely - it silently inherited whatever Overtake last
+// set, with nothing on screen saying which side the numbers applied to. One render function
+// means the two tabs can never show a different selector or drift out of sync.
+function honorScopeSelector(){
+  return '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">'
+    + '<button type="button" class="tbtn'+(honorScope==='warzone'?' on':'')+'" data-hscope="warzone">By warzone</button>'
+    + '<button type="button" class="tbtn'+(honorScope==='alliance'?' on':'')+'" data-hscope="alliance">By alliance</button>'
+    + (honorScope==='alliance' ? OUR_TAGS.map(t=>'<button type="button" class="tbtn'
+        +(t===honorMeTag?' on':'')+'" data-hme="'+t+'" style="border-color:'+alliCol(t)+';color:'+alliCol(t)
+        +'">'+t+'</button>').join('') : '')
+    + '</div>';
+}
 function honorOvertake(){
   const ctx = honorOvertakeCtx();
   if(!ctx) return '<div class="hNote">Cannot find our own row in this snapshot.</div>';
-  const scope = ctx.scope, me = ctx.me, rivals = ctx.rivals, label = ctx.label, colourOf = ctx.colourOf;
+  const me = ctx.me, rivals = ctx.rivals, label = ctx.label, colourOf = ctx.colourOf;
   // Linked to the What-if tab: the same selection that changes the What-if numbers also
   // changes what Overtake projects, via effectiveRate() below. A banner is mandatory
   // whenever a selection is live, so a hypothetical crossing can never be read as real.
@@ -1985,13 +1998,7 @@ function honorOvertake(){
       + (wi.count===1?'':'s')+' selected, plus '+fmtHonor(wi.gain)+' per tick for us.</span>'
       + '<button type="button" class="tbtn" data-wifclear>Clear</button></div>';
   }
-  h += '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">'
-    + '<button type="button" class="tbtn'+(scope==='warzone'?' on':'')+'" data-hscope="warzone">By warzone</button>'
-    + '<button type="button" class="tbtn'+(scope==='alliance'?' on':'')+'" data-hscope="alliance">By alliance</button>'
-    + (scope==='alliance' ? OUR_TAGS.map(t=>'<button type="button" class="tbtn'
-        +(t===honorMeTag?' on':'')+'" data-hme="'+t+'" style="border-color:'+alliCol(t)+';color:'+alliCol(t)
-        +'">'+t+'</button>').join('') : '')
-    + '</div>';
+  h += honorScopeSelector();
   const meRate = effectiveRate(me, ctx);
   h += '<div class="hNote" style="margin:0 0 10px">Comparing <b>'+label(me)+'</b> at '
     + fmtHonor(me.honor)+' honor, earning '+fmtHonor(meRate)+' per tick.</div>';
@@ -2177,43 +2184,133 @@ function effectiveRate(entity, ctx){
     : (loseByHolder[entity.tag || String(entity.aid)] || 0);
   return entity.ratePerTick - lost;
 }
-function honorWhatIf(){
-  const rows = honorScope === 'warzone' ? HN.warzones : HN.alliances;
-  const me = honorScope === 'warzone' ? rows.find(z=>z.sid===2864) : rows.find(a=>a.tag===honorMeTag);
+// Value tiers map straight onto the 5 palette tokens already used everywhere else in the
+// app - no new colours. Mapping (per the design ruling): 10 (Outpost) -> --muted,
+// 20/30 (Arsenal / Expedition Base) -> --accent, 50 (Research Facility) -> --yellow,
+// 80 (Military Fortress) -> --green, 300 (Eternal City) -> --red.
+function chipTierColour(honor){
+  if(honor >= 300) return 'var(--red)';
+  if(honor >= 80) return 'var(--green)';
+  if(honor >= 50) return 'var(--yellow)';
+  if(honor >= 20) return 'var(--accent)';
+  return 'var(--muted)';
+}
+// A board group's colour, independent of the active scope: a holder that is one of OUR_TAGS
+// (only ever visible in alliance scope, since warzone scope hides all three) gets alliCol(),
+// same as the rest of the app; every other holder is coloured by its home warzone via
+// D.srvColor, the same fallback used everywhere else a warzone colour is looked up.
+function holderColour(holder, sid){
+  if(OUR_TAGS.includes(holder)) return alliCol(holder);
+  return (D.srvColor && D.srvColor[sid]) || '#8b949e';
+}
+// Groups honorTargets() by holder for the board - unclaimed first (free), then one block per
+// rival ordered by total honor descending. This is the fix for "crush 1644 and take their
+// buildings" meaning 9 buttons scattered across 4 building-type sections: now it is one group.
+function whatIfGroups(){
   const targets = honorTargets();
-  const wi = whatIfTotals();
-  let h = '<div class="hNote" style="margin:0 0 10px">Tick a target to see what taking it does. '
-    + 'Taking a building that someone already holds moves the honor: we gain it and they lose it. '
-    + 'Your own holdings are not listed here, since taking what you already hold changes nothing.</div>';
-  h += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px">'
-    + '<div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">Our rate</div>'
-    + '<div style="font-size:18px"><b>'+fmtHonor(me.ratePerTick)+'</b> &rarr; '
-    + '<b style="color:var(--green)">'+fmtHonor((me.ratePerTick||0)+wi.gain)+'</b> per tick</div></div>'
-    + '<div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">Selected</div>'
-    + '<div style="font-size:18px"><b>+'+fmtHonor(wi.gain)+'</b> per tick</div></div></div>';
-  const byName = {};
-  targets.forEach(t => { (byName[t.name] = byName[t.name] || []).push(t); });
-  Object.keys(byName).sort().forEach(name => {
-    const list = byName[name];
-    h += '<div style="margin:8px 0 4px;font-size:12px"><b>'+esc(name)+'</b> '
-      + '<span style="color:var(--muted)">'+fmtHonor(list[0].honor)+' per tick each</span></div>'
-      + '<div style="display:flex;gap:5px;flex-wrap:wrap">';
-    list.forEach(t => {
-      const k = whatIfKey(t.type,t.x,t.y), on = whatIf.take.has(k);
-      h += '<button type="button" class="tbtn" data-wif="'+k+'"'
-        + ' style="'+(on?'border-color:var(--green);color:var(--green);background:#3fb95018':'')+'">'
-        + t.x+';'+t.y + (t.holder ? ' <span style="color:var(--muted)">'+esc(holderLabel(t.holder))+'</span>' : '')
-        + '</button>';
-    });
-    h += '</div>';
+  const unclaimed = targets.filter(t => !t.holder);
+  const by = {};
+  targets.filter(t => t.holder).forEach(t => {
+    (by[t.holder] = by[t.holder] || {holder:t.holder, sid:t.holderSid, targets:[]}).targets.push(t);
   });
-  if(Object.keys(wi.loseByHolder).length){
-    h += '<div class="hNote"><b>Who loses:</b> '
-      + Object.keys(wi.loseByHolder).map(k=>esc(holderLabel(k))+' -'+fmtHonor(wi.loseByHolder[k])+' per tick')
-          .join(', ') + '</div>';
+  const groups = Object.values(by).map(g => ({...g, total: g.targets.reduce((n,t)=>n+t.honor,0)}))
+    .sort((a,b) => b.total - a.total);
+  return {unclaimed, groups};
+}
+// One render path for every group (unclaimed and each holder) so the board can never show
+// them inconsistently. `colour`/`sidLabel` are null for the free Unclaimed block.
+function whatIfGroupBlock(title, colour, sidLabel, groupKey, targets, lossAmt){
+  const total = targets.reduce((n,t)=>n+t.honor,0);
+  const keys = targets.map(t => whatIfKey(t.type,t.x,t.y));
+  const allOn = keys.length>0 && keys.every(k => whatIf.take.has(k));
+  return '<div class="wifGroup"><div class="hd">'
+    + '<span class="name">'+(colour ? '<b style="color:'+colour+'">'+esc(title)+'</b>' : '<b>'+esc(title)+'</b>')
+    + (sidLabel ? ' <span class="meta">'+esc(sidLabel)+'</span>' : '') + '</span>'
+    + '<span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+    + '<span class="meta">'+targets.length+' objective'+(targets.length===1?'':'s')+' &middot; '
+    + fmtHonor(total)+' per tick'
+    + (lossAmt ? ' <span style="color:var(--red)">-'+fmtHonor(lossAmt)+' per tick</span>' : '') + '</span>'
+    + '<button type="button" class="tbtn" data-wifgroup="'+esc(groupKey)+'"'
+    + (allOn ? ' style="border-color:var(--green);color:var(--green)"' : '') + '>'
+    + (allOn ? 'Clear' : 'Take all') + '</button></span></div>'
+    + '<div class="wifChips">' + targets.map(t => {
+        const k = whatIfKey(t.type,t.x,t.y), on = whatIf.take.has(k);
+        return '<button type="button" class="wifChip'+(on?' on':'')+'" data-wif="'+k+'" '
+          + 'style="border-left-color:'+chipTierColour(t.honor)+'">'
+          + '<span class="nm">'+(on?'&check; ':'')+esc(t.name)+' '+fmtHonor(t.honor)+'</span>'
+          + '<span class="xy">'+t.x+';'+t.y+'</span></button>';
+      }).join('') + '</div></div>';
+}
+function honorWhatIf(){
+  const ctx = honorOvertakeCtx();
+  if(!ctx) return '<div class="hNote">Cannot find our own row in this snapshot.</div>';
+  const me = ctx.me;
+  const wi = whatIfTotals();
+  const before = me.ratePerTick || 0, after = before + wi.gain;
+  const {unclaimed, groups} = whatIfGroups();
+  // The tab has its own scope/identity selector now - it used to silently inherit whatever
+  // the Overtake tab last set, with nothing on screen saying which side the numbers were for.
+  let h = honorScopeSelector();
+
+  // ---- verdict hero: large tabular figures, not inline prose ---------------------------
+  h += '<div class="wifVerdict"><div class="who">If '+ctx.label(me)+' takes these</div>';
+  if(wi.count > 0){
+    h += '<div class="rate"><span class="big">'+fmtHonor(before)+'</span> '
+      + '<span class="arrow">&rarr;</span> '
+      + '<span class="big" style="color:var(--green)">'+fmtHonor(after)+'</span> '
+      + '<span class="delta" style="color:var(--green)">+'+fmtHonor(wi.gain)+'</span> '
+      + '<span class="unit">per tick</span></div>'
+      + '<div class="hNote" style="margin-top:2px">'+rateHourText(after)+' per hour</div>';
+  } else {
+    h += '<div class="rate"><span class="big">'+fmtHonor(before)+'</span> <span class="unit">per tick</span></div>'
+      + '<div class="hNote" style="margin-top:2px">'+rateHourText(before)+' per hour</div>'
+      + '<div class="hNote" style="margin-top:6px">Nothing selected yet. Pick objectives below.</div>';
   }
-  h += '<div class="hNote">Gates, Arks, Power Stations and Alliance Forts are not listed because '
-    + 'they generate no honor.</div>';
+  h += '</div>';
+
+  // ---- swing meter: the signature element, CSS only, no canvas -------------------------
+  if(wi.count > 0){
+    const holderKeys = Object.keys(wi.loseByHolder);
+    let dom = null;
+    if(holderKeys.length){
+      const bestKey = holderKeys.reduce((a,b) => wi.loseByHolder[a] >= wi.loseByHolder[b] ? a : b);
+      const domGroup = groups.find(g => g.holder === bestKey);
+      dom = {key: bestKey, loss: wi.loseByHolder[bestKey],
+             before: domGroup ? domGroup.total : wi.loseByHolder[bestKey],
+             sid: domGroup ? domGroup.sid : null};
+    }
+    const ourColour = ctx.colourOf(me);
+    const theirColour = dom ? holderColour(dom.key, dom.sid) : 'var(--muted)';
+    const theirRemaining = dom ? Math.max(0, dom.before - dom.loss) : 0;
+    const totalLoss = holderKeys.reduce((n,k) => n + wi.loseByHolder[k], 0);
+    const swing = wi.gain + totalLoss;
+    let caption;
+    if(holderKeys.length === 0){
+      caption = fmtHonor(wi.gain)+' per tick moves to '+ctx.label(me)+' from unclaimed ground. '
+        + 'Relative swing '+fmtHonor(swing)+'.';
+    } else if(holderKeys.length === 1){
+      caption = fmtHonor(wi.loseByHolder[holderKeys[0]])+' per tick moves from '
+        + esc(holderLabel(holderKeys[0]))+' to '+ctx.label(me)+'. Relative swing '+fmtHonor(swing)+'.';
+    } else {
+      caption = fmtHonor(totalLoss)+' per tick moves to '+ctx.label(me)+' from '
+        + holderKeys.length+' holders. Relative swing '+fmtHonor(swing)+'.';
+    }
+    h += '<div class="wifMeterWrap"><div class="wifMeter">'
+      + '<div class="wifSeg" style="background:'+ourColour+';flex-grow:'+(after||0)+'"></div>'
+      + '<div class="wifMid">+'+fmtHonor(wi.gain)+'</div>'
+      + '<div class="wifSeg" style="background:'+theirColour+';flex-grow:'+(theirRemaining||0)+'"></div>'
+      + '</div><div class="hNote" style="margin-top:6px">'+caption+'</div></div>';
+  }
+
+  // ---- target board: one block per holder, unclaimed first, who-loses folded into headers
+  if(unclaimed.length) h += whatIfGroupBlock('Unclaimed', null, null, '__unclaimed__', unclaimed, 0);
+  groups.forEach(g => {
+    h += whatIfGroupBlock(holderLabel(g.holder), holderColour(g.holder, g.sid), 'S'+g.sid,
+                          g.holder, g.targets, wi.loseByHolder[g.holder]||0);
+  });
+
+  h += '<div class="hNote" style="margin-top:14px">Gates, arks, power stations and alliance forts '
+    + 'score nothing, so taking one gains no honor.</div>';
   return h;
 }
 function honorLadder(){
@@ -2273,6 +2370,16 @@ document.getElementById('honorBody').addEventListener('click', function(e){
   const s=e.target.closest('[data-hscope]'); if(s){ honorScope=s.dataset.hscope; pruneWhatIf(); renderHonor(); return; }
   const m=e.target.closest('[data-hme]');    if(m){ honorMeTag=m.dataset.hme; pruneWhatIf(); renderHonor(); return; }
   const c=e.target.closest('[data-wifclear]'); if(c){ whatIf.take.clear(); renderHonor(); return; }
+  // Take all / Clear on a group header - the single click that replaces hunting down every
+  // objective a holder has across the board (Tex's "crush 1644" case: one click, not nine).
+  const g=e.target.closest('[data-wifgroup]');
+  if(g){ const key=g.dataset.wifgroup;
+    const {unclaimed, groups}=whatIfGroups();
+    const list = key==='__unclaimed__' ? unclaimed : ((groups.find(x=>x.holder===key)||{}).targets||[]);
+    const keys = list.map(t=>whatIfKey(t.type,t.x,t.y));
+    const allOn = keys.length>0 && keys.every(k=>whatIf.take.has(k));
+    keys.forEach(k=>{ if(allOn) whatIf.take.delete(k); else whatIf.take.add(k); });
+    renderHonor(); return; }
   const w=e.target.closest('[data-wif]');
   if(w){ const k=w.dataset.wif;
     if(whatIf.take.has(k)) whatIf.take.delete(k); else whatIf.take.add(k);
