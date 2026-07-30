@@ -2203,6 +2203,13 @@ function holderColour(holder, sid){
   if(OUR_TAGS.includes(holder)) return alliCol(holder);
   return (D.srvColor && D.srvColor[sid]) || '#8b949e';
 }
+// Display-only word split for the raw TYPE_NAMES strings the payload carries
+// (ExpeditionBase, MilitaryFortress, ResearchFacility, EternalCity are enum names, not
+// player-facing words). Never touches the payload or el_honor.py - the raw name stays the
+// matching/grouping key everywhere; this map only changes what gets rendered.
+const BUILDING_WORDS = {ExpeditionBase:'Expedition Base', Outpost:'Outpost', Arsenal:'Arsenal',
+  MilitaryFortress:'Military Fortress', ResearchFacility:'Research Facility', EternalCity:'Eternal City'};
+function buildingWords(name){ return BUILDING_WORDS[name] || name; }
 // Groups honorTargets() by holder for the board - unclaimed first (free), then one block per
 // rival ordered by total honor descending. This is the fix for "crush 1644 and take their
 // buildings" meaning 9 buttons scattered across 4 building-type sections: now it is one group.
@@ -2237,7 +2244,7 @@ function whatIfGroupBlock(title, colour, sidLabel, groupKey, targets, lossAmt){
         const k = whatIfKey(t.type,t.x,t.y), on = whatIf.take.has(k);
         return '<button type="button" class="wifChip'+(on?' on':'')+'" data-wif="'+k+'" '
           + 'style="border-left-color:'+chipTierColour(t.honor)+'">'
-          + '<span class="nm">'+(on?'&check; ':'')+esc(t.name)+' '+fmtHonor(t.honor)+'</span>'
+          + '<span class="nm">'+(on?'&check; ':'')+esc(buildingWords(t.name))+' '+fmtHonor(t.honor)+'</span>'
           + '<span class="xy">'+t.x+';'+t.y+'</span></button>';
       }).join('') + '</div></div>';
 }
@@ -2268,38 +2275,58 @@ function honorWhatIf(){
   }
   h += '</div>';
 
-  // ---- swing meter: the signature element, CSS only, no canvas -------------------------
-  if(wi.count > 0){
-    const holderKeys = Object.keys(wi.loseByHolder);
-    let dom = null;
-    if(holderKeys.length){
-      const bestKey = holderKeys.reduce((a,b) => wi.loseByHolder[a] >= wi.loseByHolder[b] ? a : b);
-      const domGroup = groups.find(g => g.holder === bestKey);
-      dom = {key: bestKey, loss: wi.loseByHolder[bestKey],
-             before: domGroup ? domGroup.total : wi.loseByHolder[bestKey],
-             sid: domGroup ? domGroup.sid : null};
-    }
+  // ---- swing meter: two paired bars on a shared scale, CSS only, no canvas -------------
+  // Signature element, redesigned per Tex's ruling: a single solid-looking bar read as a
+  // near-full progress bar and carried no information. Two rows on the SAME scale show the
+  // transfer directly - our row grows a yellow tail, a holder's row empties a hollow gap.
+  {
+    const holderKeys = Object.keys(wi.loseByHolder).sort((a,b) => wi.loseByHolder[b]-wi.loseByHolder[a]);
+    const holderInfo = holderKeys.map(key => {
+      const g = groups.find(x => x.holder === key);
+      const hBefore = g ? g.total : wi.loseByHolder[key];
+      const loss = wi.loseByHolder[key];
+      return {key, before: hBefore, loss, kept: Math.max(0, hBefore - loss),
+              colour: holderColour(key, g ? g.sid : null), label: holderLabel(key)};
+    });
+    const shown = holderInfo.slice(0, 3);
+    const more = holderInfo.length - shown.length;
+    // Both rows must scale to the SAME maximum so the bar lengths are directly comparable.
+    const scaleMax = Math.max(after, 1, ...holderInfo.map(x => x.before));
+    const pct = v => Math.max(0, Math.min(100, (v/scaleMax)*100));
     const ourColour = ctx.colourOf(me);
-    const theirColour = dom ? holderColour(dom.key, dom.sid) : 'var(--muted)';
-    const theirRemaining = dom ? Math.max(0, dom.before - dom.loss) : 0;
-    const totalLoss = holderKeys.reduce((n,k) => n + wi.loseByHolder[k], 0);
-    const swing = wi.gain + totalLoss;
-    let caption;
-    if(holderKeys.length === 0){
-      caption = fmtHonor(wi.gain)+' per tick moves to '+ctx.label(me)+' from unclaimed ground. '
-        + 'Relative swing '+fmtHonor(swing)+'.';
-    } else if(holderKeys.length === 1){
-      caption = fmtHonor(wi.loseByHolder[holderKeys[0]])+' per tick moves from '
-        + esc(holderLabel(holderKeys[0]))+' to '+ctx.label(me)+'. Relative swing '+fmtHonor(swing)+'.';
-    } else {
-      caption = fmtHonor(totalLoss)+' per tick moves to '+ctx.label(me)+' from '
-        + holderKeys.length+' holders. Relative swing '+fmtHonor(swing)+'.';
+    const barRow = (label, colour, fillPct, extraHtml, nums) =>
+      '<div class="wifBarRow"><span class="lbl" style="color:'+colour+'">'+esc(label)+'</span>'
+      + '<div class="wifBar"><div style="flex-basis:'+fillPct+'%;background:'+colour+'"></div>'
+      + extraHtml + '</div><span class="nums">'+nums+'</span></div>';
+    let h2 = '<div class="wifBars">';
+    h2 += barRow(ctx.label(me), ourColour, pct(before),
+      wi.gain > 0 ? '<div class="wifTail" style="flex-basis:'+pct(wi.gain)+'%"></div>' : '',
+      wi.gain > 0 ? (fmtHonor(before)+' &rarr; '+fmtHonor(after)) : (fmtHonor(before)+' per tick'));
+    shown.forEach(hI => {
+      h2 += barRow(hI.label, hI.colour, pct(hI.kept),
+        '<div class="wifHollow" style="flex-basis:'+pct(hI.loss)+'%"></div>',
+        fmtHonor(hI.before)+' &rarr; '+fmtHonor(hI.kept));
+    });
+    if(more > 0) h2 += '<div class="wifMore">+'+more+' more</div>';
+    h2 += '</div>';
+    h += h2;
+
+    if(wi.count > 0){
+      const totalLoss = holderKeys.reduce((n,k) => n + wi.loseByHolder[k], 0);
+      const swing = wi.gain + totalLoss;
+      let caption;
+      if(holderKeys.length === 0){
+        caption = fmtHonor(wi.gain)+' per tick moves to '+ctx.label(me)+' from unclaimed ground. '
+          + 'Relative swing '+fmtHonor(swing)+'.';
+      } else if(holderKeys.length === 1){
+        caption = fmtHonor(wi.loseByHolder[holderKeys[0]])+' per tick moves from '
+          + esc(holderLabel(holderKeys[0]))+' to '+ctx.label(me)+'. Relative swing '+fmtHonor(swing)+'.';
+      } else {
+        caption = fmtHonor(totalLoss)+' per tick moves to '+ctx.label(me)+' from '
+          + holderKeys.length+' holders. Relative swing '+fmtHonor(swing)+'.';
+      }
+      h += '<div class="hNote" style="margin-top:6px">'+caption+'</div>';
     }
-    h += '<div class="wifMeterWrap"><div class="wifMeter">'
-      + '<div class="wifSeg" style="background:'+ourColour+';flex-grow:'+(after||0)+'"></div>'
-      + '<div class="wifMid">+'+fmtHonor(wi.gain)+'</div>'
-      + '<div class="wifSeg" style="background:'+theirColour+';flex-grow:'+(theirRemaining||0)+'"></div>'
-      + '</div><div class="hNote" style="margin-top:6px">'+caption+'</div></div>';
   }
 
   // ---- target board: one block per holder, unclaimed first, who-loses folded into headers
