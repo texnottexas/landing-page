@@ -1824,6 +1824,31 @@ window.__st = function(){
     out.mask = {aligned: score(0,0), shiftX_minus4: score(-4,0), shiftX_plus4: score(4,0),
                 shiftY_minus4: score(0,-4), shiftY_plus4: score(0,4)};
   }
+  out.honorWarzones = HN ? HN.warzones.length : 0;
+  out.honorAlliances = HN ? HN.alliances.length : 0;
+  out.honorOurRate = HN ? (HN.warzones.find(z=>z.sid===2864)||{}).ratePerTick : null;
+  out.honorUnclaimed = HN ? HN.unclaimed.reduce((n,u)=>n+u.honorPerTick,0) : 0;
+  out.honorIdentityOk = (function(){
+    if(!HN) return null;
+    const by={}; HN.alliances.forEach(a=>{ by[a.sid]=(by[a.sid]||0)+a.honor; });
+    return HN.warzones.every(z => z.honor === (by[z.sid]||0));
+  })();
+  // DRIFT DETECTOR (Tex's ruling): the overtake formula exists in Python (build time,
+  // shipped as overtakeBaseline) and in JS (interactive what-ifs). If the two ever
+  // disagree the page says so, instead of quietly showing a wrong forecast. Reads the raw
+  // ratePerTick fields, never effectiveRate() - an active what-if selection must not be
+  // able to make this report drift.
+  out.honorDriftOk = (function(){
+    if(!HN || !HN.overtakeBaseline) return null;
+    const me = HN.warzones.find(z => z.sid === 2864);
+    if(!me) return null;
+    return HN.warzones.filter(z => z.sid !== 2864).every(z => {
+      const mine = jsOvertake(me.honor, me.ratePerTick||0, z.honor, z.ratePerTick||0);
+      const theirs = HN.overtakeBaseline.warzone[String(z.sid)];
+      return theirs && mine.status === theirs.status && mine.ticks === theirs.ticks
+             && mine.gap === theirs.gap && mine.closingPerTick === theirs.closingPerTick;
+    });
+  })();
   return out;
 };
 rebuildPlanGrids(); renderJumps(); buildNav(); renderPlan(); renderNotes(); renderClog();
@@ -2191,8 +2216,26 @@ function honorWhatIf(){
     + 'they generate no honor.</div>';
   return h;
 }
-// TASK 9 REMOVES THIS STUB
-function honorLadder(){ return ''; }
+function honorLadder(){
+  const NAMES={'44':'Expedition Outpost','43':'Expedition Base','45':'Arsenal',
+               '46':'Military Fortress','47':'Research Facility','49':'Eternal City'};
+  const now = Date.now()/1000, start = HN.eventStart;
+  const rows = Object.keys(HN.unlocks||{}).map(k => ({
+    type:k, name:NAMES[k]||k, at:start + HN.unlocks[k], rate:(HN.buildingRates||{})[k]
+  })).sort((a,b)=>a.at-b.at);
+  let h='<table class="hTable"><tr><th>Building</th><th class="num">Honor each</th>'
+    +'<th>Opens</th><th>Status</th></tr>';
+  rows.forEach(r => {
+    const open = now >= r.at;
+    const d = new Date(r.at*1000);
+    h+='<tr><td>'+esc(r.name)+'</td><td class="num">'+fmtHonor(r.rate)+'</td>'
+      +'<td>'+d.toLocaleDateString()+' '+d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+'</td>'
+      +'<td style="color:'+(open?'var(--green)':'var(--yellow)')+'">'+(open?'open':'not yet')+'</td></tr>';
+  });
+  h+='</table><div class="hNote">Rates step up as buildings open, so a forecast that runs past '
+   +'one of these dates is conservative until that building is actually taken.</div>';
+  return h;
+}
 function renderHonor(){
   if(!HN){ document.getElementById('honorBody').innerHTML=
     '<div class="hNote">This snapshot has no honor data. Refresh the map data to add it.</div>'; return; }
