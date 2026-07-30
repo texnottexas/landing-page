@@ -1853,6 +1853,10 @@ resize(); fit(); setTool('pan');
 const HN = D.honor || null;
 let honorTabName = 'standings';
 let honorScope = 'warzone', honorMeTag = 'Dog*';
+// Single source of truth for "our three alliances" - honorOvertake()'s scope buttons and
+// honorTargets()'s self-holding exclusion (Finding 1, review round) both read this instead
+// of each carrying their own copy of the literal, so the two can never drift apart.
+const OUR_TAGS = ['Dog*','MSS*','Cat+'];
 
 function fmtHonor(n){ return (n===null||n===undefined) ? '-' : Math.round(n).toLocaleString(); }
 function rateHour(rpt, secs){ return rpt===null||rpt===undefined ? null : rpt*3600/secs; }
@@ -1943,25 +1947,41 @@ function honorOvertake(){
   const ctx = honorOvertakeCtx();
   if(!ctx) return '<div class="hNote">Cannot find our own row in this snapshot.</div>';
   const scope = ctx.scope, me = ctx.me, rivals = ctx.rivals, label = ctx.label, colourOf = ctx.colourOf;
-  let h = '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">'
+  // Linked to the What-if tab: the same selection that changes the What-if numbers also
+  // changes what Overtake projects, via effectiveRate() below. A banner is mandatory
+  // whenever a selection is live, so a hypothetical crossing can never be read as real.
+  const wi = whatIfTotals();
+  let h = '';
+  if(wi.count > 0){
+    h += '<div class="hNote" style="display:flex;justify-content:space-between;align-items:center;'
+      + 'gap:10px;flex-wrap:wrap;margin:0 0 10px;padding:8px 10px;border:1px solid var(--yellow);'
+      + 'border-left:3px solid var(--yellow);border-radius:6px;background:#d2992218;color:var(--yellow)">'
+      + '<span>Showing a what-if, not the current standing. '+wi.count+' objective'
+      + (wi.count===1?'':'s')+' selected, plus '+fmtHonor(wi.gain)+' per tick for us.</span>'
+      + '<button type="button" class="tbtn" data-wifclear>Clear</button></div>';
+  }
+  h += '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">'
     + '<button type="button" class="tbtn'+(scope==='warzone'?' on':'')+'" data-hscope="warzone">By warzone</button>'
     + '<button type="button" class="tbtn'+(scope==='alliance'?' on':'')+'" data-hscope="alliance">By alliance</button>'
-    + (scope==='alliance' ? ['Dog*','MSS*','Cat+'].map(t=>'<button type="button" class="tbtn'
+    + (scope==='alliance' ? OUR_TAGS.map(t=>'<button type="button" class="tbtn'
         +(t===honorMeTag?' on':'')+'" data-hme="'+t+'" style="border-color:'+alliCol(t)+';color:'+alliCol(t)
         +'">'+t+'</button>').join('') : '')
     + '</div>';
+  const meRate = effectiveRate(me, ctx);
   h += '<div class="hNote" style="margin:0 0 10px">Comparing <b>'+label(me)+'</b> at '
-    + fmtHonor(me.honor)+' honor, earning '+fmtHonor(me.ratePerTick)+' per tick.</div>';
+    + fmtHonor(me.honor)+' honor, earning '+fmtHonor(meRate)+' per tick.</div>';
   h += '<table class="hTable"><tr><th>Rival</th><th class="num">Honor</th><th class="num">Per tick</th>'
     + '<th>Outcome</th><th class="num">When</th></tr>';
   rivals.forEach(r => {
     let verdict, colour, o = null;
+    const rRate = effectiveRate(r, ctx);
     if(!hasRate(r)){
       // Never call jsOvertake with a fabricated rate - no status or date can be derived
-      // from a value we do not have, so this row skips the maths entirely.
+      // from a value we do not have, so this row skips the maths entirely. effectiveRate()
+      // already leaves an unknown rate as unknown, so rRate is null here too.
       verdict = 'rate unknown'; colour = 'var(--muted)';
     } else {
-      o = jsOvertake(me.honor, me.ratePerTick || 0, r.honor, r.ratePerTick);
+      o = jsOvertake(me.honor, meRate || 0, r.honor, rRate);
       if(o.status === 'weOvertake'){ verdict = 'we pass them'; colour = 'var(--green)'; }
       else if(o.status === 'theyOvertake'){ verdict = 'they pass us'; colour = 'var(--red)'; }
       else if(o.status === 'tied'){ verdict = 'dead level'; colour = 'var(--muted)'; }
@@ -1971,7 +1991,7 @@ function honorOvertake(){
              colour = o.gap > 0 ? 'var(--red)' : 'var(--green)'; }
     }
     h += '<tr><td>'+label(r)+'</td><td class="num">'+fmtHonor(r.honor)+'</td>'
-      + '<td class="num">'+(hasRate(r)?fmtHonor(r.ratePerTick):'?')+'</td>'
+      + '<td class="num">'+(hasRate(r)?fmtHonor(rRate):'?')+'</td>'
       + '<td style="color:'+colour+'">'+verdict+'</td>'
       + '<td class="num">'+(o ? durText(o) : '-')+'</td></tr>';
   });
@@ -2012,7 +2032,7 @@ function dashFor(key, isMine){
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 9973;
   return DASHES[1 + (h % (DASHES.length - 1))];
 }
-function honorChart(me, rivals, labelOf, colourOf){
+function honorChart(me, rivals, labelOf, colourOf, rateOf){
   const cv=document.getElementById('honorChart'); if(!cv) return;
   const dpr=window.devicePixelRatio||1, W=cv.clientWidth, H=260;
   cv.width=W*dpr; cv.height=H*dpr;
@@ -2020,12 +2040,14 @@ function honorChart(me, rivals, labelOf, colourOf){
   const b=tickBounds();
   // horizon: far enough to show the soonest crossing, else 3 days. Rivals with an unknown
   // rate never contribute a crossing - jsOvertake is not called for them at all here either.
+  // rateOf() folds in the active what-if selection so the chart cannot disagree with the
+  // table above it - same effective rates, same crossings.
   let horizon=3*24*3600/b.max;
   rivals.forEach(r=>{ if(!hasRate(r)) return;
-    const o=jsOvertake(me.honor, me.ratePerTick||0, r.honor, r.ratePerTick);
+    const o=jsOvertake(me.honor, rateOf(me)||0, r.honor, rateOf(r));
     if(o.ticks) horizon=Math.max(horizon, o.ticks*1.35); });
   const series=[{r:me, mine:true}].concat(rivals.map(r=>({r:r, mine:false})));
-  let maxY=0; series.forEach(s=>{ maxY=Math.max(maxY, s.r.honor + (s.r.ratePerTick||0)*horizon); });
+  let maxY=0; series.forEach(s=>{ maxY=Math.max(maxY, s.r.honor + (rateOf(s.r)||0)*horizon); });
   const L=58, R=10, T=10, B=26, pw=W-L-R, ph=H-T-B;
   const sx=t=>L+(t/horizon)*pw, sy=v=>T+ph-(v/maxY)*ph;
   g.strokeStyle='#30363d'; g.lineWidth=1; g.fillStyle='#8b949e'; g.font='10px system-ui';
@@ -2039,7 +2061,7 @@ function honorChart(me, rivals, labelOf, colourOf){
   }
   series.forEach(s=>{
     // An unknown-rate rival still gets a line so its current position is visible, but it is
-    // drawn flat (ratePerTick||0 gives zero slope, which is the honest shape for "we don't
+    // drawn flat (rateOf()||0 gives zero slope, which is the honest shape for "we don't
     // know its rate") and visually subordinate - thinner, faded - never mistaken for a real
     // projection the way a full-weight sloped line would be.
     const rateUnknown = !s.mine && !hasRate(s.r);
@@ -2049,7 +2071,7 @@ function honorChart(me, rivals, labelOf, colourOf){
     g.globalAlpha = rateUnknown ? 0.35 : 1;
     g.beginPath();
     g.moveTo(sx(0), sy(s.r.honor));
-    g.lineTo(sx(horizon), sy(s.r.honor+(s.r.ratePerTick||0)*horizon));
+    g.lineTo(sx(horizon), sy(s.r.honor+(rateOf(s.r)||0)*horizon));
     g.stroke();
     g.globalAlpha = 1;
     g.setLineDash([]);                          // reset so grid and markers stay solid
@@ -2058,22 +2080,117 @@ function honorChart(me, rivals, labelOf, colourOf){
   // assert a date derived from a rate we've admitted is unknown
   rivals.forEach(r=>{
     if(!hasRate(r)) return;
-    const o=jsOvertake(me.honor, me.ratePerTick||0, r.honor, r.ratePerTick);
+    const o=jsOvertake(me.honor, rateOf(me)||0, r.honor, rateOf(r));
     if(!o.ticks || o.ticks>horizon) return;
-    const x=sx(o.ticks), y=sy(me.honor+(me.ratePerTick||0)*o.ticks);
+    const x=sx(o.ticks), y=sy(me.honor+(rateOf(me)||0)*o.ticks);
     g.fillStyle='#0d1117'; g.beginPath(); g.arc(x,y,5,0,7); g.fill();
     g.strokeStyle=colourOf(r); g.lineWidth=2; g.beginPath(); g.arc(x,y,5,0,7); g.stroke();
   });
   // direct labels for the 4 nearest rivals with a known rate - a flat unknown-rate line
   // isn't a projection, so it doesn't compete for one of the 4 label slots
   rivals.filter(hasRate).slice(0,4).forEach(r=>{
-    const yEnd=sy(r.honor+(r.ratePerTick||0)*horizon);
+    const yEnd=sy(r.honor+(rateOf(r)||0)*horizon);
     g.fillStyle=colourOf(r); g.textAlign='right'; g.font='10px system-ui';
     g.fillText(labelOf(r), W-R-2, yEnd-4);
   });
 }
-// TASK 9 REMOVES THIS STUB
-function honorWhatIf(){ return ''; }
+// A capture is a TWO-SIDED swing: we gain the honor and the current holder loses it. Pricing
+// only our gain understates a contested target by half, so both sides are shown.
+const whatIf = {take: new Set()};
+function whatIfKey(t,x,y){ return t+':'+x+':'+y; }
+// el_honor.py falls back to str(aid) for `holder` when no tag is known - a bare numeric
+// alliance id is meaningless on screen, so DISPLAY swaps it for a label. The raw value is
+// still used everywhere as the actual grouping/matching key; only what the player reads changes.
+function holderLabel(h){ return /^[0-9]+$/.test(String(h)) ? 'unknown alliance' : h; }
+// Our own holdings are excluded outright, not just left unmarked: taking what you already
+// hold is a no-op, and offering it as a button invites a "gain" that never really happens.
+// Which holdings count as "ours" depends on the active scope/identity, so this list changes
+// under those, not just under HN itself.
+function honorTargets(){
+  const isOurs = honorScope === 'warzone'
+    ? (h => OUR_TAGS.includes(h))              // the warzone rate is the sum of all 3 tags
+    : (h => h === honorMeTag);                 // alliance scope only hides the active tag
+  const out = [];
+  (HN.unclaimed||[]).forEach(u => out.push({type:u.type, name:u.name, x:u.x, y:u.y,
+                                            honor:u.honorPerTick, holder:null, holderSid:null}));
+  (HN.heldTargets||[]).forEach(t => { if(!isOurs(t.holder)) out.push(t); });
+  return out;
+}
+// A selected key that no longer appears in honorTargets() - scope or identity changed under
+// it - is dropped outright. Without this a stale selection would keep contributing an amount
+// with no button left on screen to explain it.
+function pruneWhatIf(){
+  const valid = new Set(honorTargets().map(t => whatIfKey(t.type, t.x, t.y)));
+  Array.from(whatIf.take).forEach(k => { if(!valid.has(k)) whatIf.take.delete(k); });
+}
+// Shared by the What-if panel (which renders these numbers) and Overtake's effectiveRate()
+// (which feeds them into the projection) - one computation, so the two tabs can never disagree.
+function whatIfTotals(){
+  const targets = honorTargets();
+  let gain = 0, count = 0;
+  const loseByHolder = {}, loseBySid = {};
+  targets.forEach(t => {
+    if(!whatIf.take.has(whatIfKey(t.type,t.x,t.y))) return;
+    count++;
+    gain += t.honor;
+    if(t.holder) loseByHolder[t.holder] = (loseByHolder[t.holder]||0) + t.honor;
+    if(t.holderSid) loseBySid[t.holderSid] = (loseBySid[t.holderSid]||0) + t.honor;
+  });
+  return {gain, count, loseByHolder, loseBySid};
+}
+// Adjusts one entity's RATE by the active what-if selection; the entity's honor TOTAL is
+// never touched, because honor already banked is not affected by a hypothetical capture.
+// An unknown rate stays unknown - a selection cannot manufacture a number for a rate we were
+// never told - which also keeps Task 9's drift check safe: it compares UNADJUSTED
+// ratePerTick against the Python overtakeBaseline, and this function never mutates that field.
+function effectiveRate(entity, ctx){
+  if(!hasRate(entity)) return entity.ratePerTick;
+  const {gain, loseByHolder, loseBySid} = whatIfTotals();
+  if(entity === ctx.me) return entity.ratePerTick + gain;
+  const lost = ctx.scope === 'warzone'
+    ? (loseBySid[entity.sid] || 0)
+    : (loseByHolder[entity.tag || String(entity.aid)] || 0);
+  return entity.ratePerTick - lost;
+}
+function honorWhatIf(){
+  const rows = honorScope === 'warzone' ? HN.warzones : HN.alliances;
+  const me = honorScope === 'warzone' ? rows.find(z=>z.sid===2864) : rows.find(a=>a.tag===honorMeTag);
+  const targets = honorTargets();
+  const wi = whatIfTotals();
+  let h = '<div class="hNote" style="margin:0 0 10px">Tick a target to see what taking it does. '
+    + 'Taking a building that someone already holds moves the honor: we gain it and they lose it. '
+    + 'Your own holdings are not listed here, since taking what you already hold changes nothing.</div>';
+  h += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px">'
+    + '<div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">Our rate</div>'
+    + '<div style="font-size:18px"><b>'+fmtHonor(me.ratePerTick)+'</b> &rarr; '
+    + '<b style="color:var(--green)">'+fmtHonor((me.ratePerTick||0)+wi.gain)+'</b> per tick</div></div>'
+    + '<div><div style="font-size:10px;color:var(--muted);text-transform:uppercase">Selected</div>'
+    + '<div style="font-size:18px"><b>+'+fmtHonor(wi.gain)+'</b> per tick</div></div></div>';
+  const byName = {};
+  targets.forEach(t => { (byName[t.name] = byName[t.name] || []).push(t); });
+  Object.keys(byName).sort().forEach(name => {
+    const list = byName[name];
+    h += '<div style="margin:8px 0 4px;font-size:12px"><b>'+esc(name)+'</b> '
+      + '<span style="color:var(--muted)">'+fmtHonor(list[0].honor)+' per tick each</span></div>'
+      + '<div style="display:flex;gap:5px;flex-wrap:wrap">';
+    list.forEach(t => {
+      const k = whatIfKey(t.type,t.x,t.y), on = whatIf.take.has(k);
+      h += '<button type="button" class="tbtn" data-wif="'+k+'"'
+        + ' style="'+(on?'border-color:var(--green);color:var(--green);background:#3fb95018':'')+'">'
+        + t.x+';'+t.y + (t.holder ? ' <span style="color:var(--muted)">'+esc(holderLabel(t.holder))+'</span>' : '')
+        + '</button>';
+    });
+    h += '</div>';
+  });
+  if(Object.keys(wi.loseByHolder).length){
+    h += '<div class="hNote"><b>Who loses:</b> '
+      + Object.keys(wi.loseByHolder).map(k=>esc(holderLabel(k))+' -'+fmtHonor(wi.loseByHolder[k])+' per tick')
+          .join(', ') + '</div>';
+  }
+  h += '<div class="hNote">Gates, Arks, Power Stations and Alliance Forts are not listed because '
+    + 'they generate no honor.</div>';
+  return h;
+}
 // TASK 9 REMOVES THIS STUB
 function honorLadder(){ return ''; }
 function renderHonor(){
@@ -2093,7 +2210,7 @@ function renderHonor(){
   else body.innerHTML = honorLadder();
   if(honorTabName==='overtake'){
     const ctx = honorOvertakeCtx();
-    if(ctx) honorChart(ctx.me, ctx.rivals, ctx.label, ctx.colourOf);
+    if(ctx) honorChart(ctx.me, ctx.rivals, ctx.label, ctx.colourOf, r => effectiveRate(r, ctx));
   }
 }
 function openHonor(){ document.getElementById('honorModal').classList.add('open');
@@ -2107,15 +2224,24 @@ document.getElementById('honorTabs').addEventListener('click', function(e){
   const t=e.target.closest('[data-htab]'); if(!t) return;
   honorTabName=t.dataset.htab; renderHonor(); });
 document.getElementById('honorBody').addEventListener('click', function(e){
-  const s=e.target.closest('[data-hscope]'); if(s){ honorScope=s.dataset.hscope; renderHonor(); return; }
-  const m=e.target.closest('[data-hme]');    if(m){ honorMeTag=m.dataset.hme; renderHonor(); return; }
+  // Scope/identity changes what "ours" means, so any now-hidden selection is pruned before
+  // the re-render - a stale selection must never keep contributing an amount nothing on
+  // screen explains.
+  const s=e.target.closest('[data-hscope]'); if(s){ honorScope=s.dataset.hscope; pruneWhatIf(); renderHonor(); return; }
+  const m=e.target.closest('[data-hme]');    if(m){ honorMeTag=m.dataset.hme; pruneWhatIf(); renderHonor(); return; }
+  const c=e.target.closest('[data-wifclear]'); if(c){ whatIf.take.clear(); renderHonor(); return; }
+  const w=e.target.closest('[data-wif]');
+  if(w){ const k=w.dataset.wif;
+    if(whatIf.take.has(k)) whatIf.take.delete(k); else whatIf.take.add(k);
+    renderHonor(); return; }
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape' && document.getElementById('honorModal').classList.contains('open')) closeHonor(); });
 window.addEventListener('resize', function(){
   // keep the crossing chart correctly scaled through a phone rotation or window resize
   if(honorTabName==='overtake' && document.getElementById('honorModal').classList.contains('open')){
-    const ctx = honorOvertakeCtx(); if(ctx) honorChart(ctx.me, ctx.rivals, ctx.label, ctx.colourOf);
+    const ctx = honorOvertakeCtx();
+    if(ctx) honorChart(ctx.me, ctx.rivals, ctx.label, ctx.colourOf, r => effectiveRate(r, ctx));
   }
 });
 
