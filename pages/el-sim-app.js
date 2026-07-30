@@ -1917,6 +1917,13 @@ function durText(o){
   const f = h => h < 48 ? (h.toFixed(1)+' h') : ((h/24).toFixed(1)+' d');
   return b.exact ? f(o.hoursMin) : f(o.hoursMin)+' to '+f(o.hoursMax);
 }
+// A rival present in the rankings capture but absent from the map sweep has
+// ratePerTick:null - we were never told its rate, not "its rate is zero". Coercing that
+// to 0 for jsOvertake would let a real crossing date fall out of a value we don't have
+// (if the unknown-rate rival ever leads on total while we hold a positive rate, closing =
+// ourRate - 0 > 0 gives a confident "we pass them" with a date). So this must gate every
+// call site that would otherwise feed a null rate into jsOvertake.
+function hasRate(r){ return r.ratePerTick !== null && r.ratePerTick !== undefined; }
 // Scope/me/rivals/colour resolution shared by honorOvertake() (the table) and renderHonor()
 // (the chart), so the two never disagree about who "we" are or what colour a rival gets.
 function honorOvertakeCtx(){
@@ -1948,23 +1955,31 @@ function honorOvertake(){
   h += '<table class="hTable"><tr><th>Rival</th><th class="num">Honor</th><th class="num">Per tick</th>'
     + '<th>Outcome</th><th class="num">When</th></tr>';
   rivals.forEach(r => {
-    const o = jsOvertake(me.honor, me.ratePerTick || 0, r.honor, r.ratePerTick || 0);
-    let verdict, colour;
-    if(o.status === 'weOvertake'){ verdict = 'we pass them'; colour = 'var(--green)'; }
-    else if(o.status === 'theyOvertake'){ verdict = 'they pass us'; colour = 'var(--red)'; }
-    else if(o.status === 'tied'){ verdict = 'dead level'; colour = 'var(--muted)'; }
-    else if(o.status === 'parallel'){ verdict = (o.gap > 0 ? 'behind, never closes' : 'ahead, never caught');
-                                      colour = o.gap > 0 ? 'var(--yellow)' : 'var(--green)'; }
-    else { verdict = o.gap > 0 ? 'behind and falling further back' : 'ahead and pulling away';
-           colour = o.gap > 0 ? 'var(--red)' : 'var(--green)'; }
+    let verdict, colour, o = null;
+    if(!hasRate(r)){
+      // Never call jsOvertake with a fabricated rate - no status or date can be derived
+      // from a value we do not have, so this row skips the maths entirely.
+      verdict = 'rate unknown'; colour = 'var(--muted)';
+    } else {
+      o = jsOvertake(me.honor, me.ratePerTick || 0, r.honor, r.ratePerTick);
+      if(o.status === 'weOvertake'){ verdict = 'we pass them'; colour = 'var(--green)'; }
+      else if(o.status === 'theyOvertake'){ verdict = 'they pass us'; colour = 'var(--red)'; }
+      else if(o.status === 'tied'){ verdict = 'dead level'; colour = 'var(--muted)'; }
+      else if(o.status === 'parallel'){ verdict = (o.gap > 0 ? 'behind, never closes' : 'ahead, never caught');
+                                        colour = o.gap > 0 ? 'var(--yellow)' : 'var(--green)'; }
+      else { verdict = o.gap > 0 ? 'behind and falling further back' : 'ahead and pulling away';
+             colour = o.gap > 0 ? 'var(--red)' : 'var(--green)'; }
+    }
     h += '<tr><td>'+label(r)+'</td><td class="num">'+fmtHonor(r.honor)+'</td>'
-      + '<td class="num">'+(r.ratePerTick===null?'?':fmtHonor(r.ratePerTick))+'</td>'
+      + '<td class="num">'+(hasRate(r)?fmtHonor(r.ratePerTick):'?')+'</td>'
       + '<td style="color:'+colour+'">'+verdict+'</td>'
-      + '<td class="num">'+durText(o)+'</td></tr>';
+      + '<td class="num">'+(o ? durText(o) : '-')+'</td></tr>';
   });
   h += '</table>';
   h += '<div class="hNote">Where a gap is widening no date is shown, because at current rates '
-    + 'the crossing never happens. Closing it needs more honor buildings, not more time.</div>';
+    + 'the crossing never happens. Closing it needs more honor buildings, not more time. '
+    + 'A rival marked rate unknown appears in the game rankings but not in our map sweep, '
+    + 'so we cannot project it.</div>';
   h += '<canvas id="honorChart" style="width:100%;height:260px;margin:12px 0;max-width:100%"></canvas>';
   // Legend swatches are dashed lines, not colour dots: colour alone cannot disambiguate two
   // rivals sharing a warzone hue (e.g. 184R/184S both key off S184), so the legend has to
@@ -2003,9 +2018,11 @@ function honorChart(me, rivals, labelOf, colourOf){
   cv.width=W*dpr; cv.height=H*dpr;
   const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
   const b=tickBounds();
-  // horizon: far enough to show the soonest crossing, else 3 days
+  // horizon: far enough to show the soonest crossing, else 3 days. Rivals with an unknown
+  // rate never contribute a crossing - jsOvertake is not called for them at all here either.
   let horizon=3*24*3600/b.max;
-  rivals.forEach(r=>{ const o=jsOvertake(me.honor, me.ratePerTick||0, r.honor, r.ratePerTick||0);
+  rivals.forEach(r=>{ if(!hasRate(r)) return;
+    const o=jsOvertake(me.honor, me.ratePerTick||0, r.honor, r.ratePerTick);
     if(o.ticks) horizon=Math.max(horizon, o.ticks*1.35); });
   const series=[{r:me, mine:true}].concat(rivals.map(r=>({r:r, mine:false})));
   let maxY=0; series.forEach(s=>{ maxY=Math.max(maxY, s.r.honor + (s.r.ratePerTick||0)*horizon); });
@@ -2021,24 +2038,35 @@ function honorChart(me, rivals, labelOf, colourOf){
     g.fillText(d+'d', sx(t), H-8);
   }
   series.forEach(s=>{
+    // An unknown-rate rival still gets a line so its current position is visible, but it is
+    // drawn flat (ratePerTick||0 gives zero slope, which is the honest shape for "we don't
+    // know its rate") and visually subordinate - thinner, faded - never mistaken for a real
+    // projection the way a full-weight sloped line would be.
+    const rateUnknown = !s.mine && !hasRate(s.r);
     const col=colourOf(s.r);
     g.setLineDash(dashFor(s.mine ? 'me' : entityKeyOf(s.r), s.mine));
-    g.strokeStyle=col; g.lineWidth=s.mine?3:2; g.beginPath();
+    g.strokeStyle=col; g.lineWidth = s.mine ? 3 : (rateUnknown ? 1 : 2);
+    g.globalAlpha = rateUnknown ? 0.35 : 1;
+    g.beginPath();
     g.moveTo(sx(0), sy(s.r.honor));
     g.lineTo(sx(horizon), sy(s.r.honor+(s.r.ratePerTick||0)*horizon));
     g.stroke();
+    g.globalAlpha = 1;
     g.setLineDash([]);                          // reset so grid and markers stay solid
   });
-  // crossings only
+  // crossings only, and only for rivals whose rate we actually know - a marker here would
+  // assert a date derived from a rate we've admitted is unknown
   rivals.forEach(r=>{
-    const o=jsOvertake(me.honor, me.ratePerTick||0, r.honor, r.ratePerTick||0);
+    if(!hasRate(r)) return;
+    const o=jsOvertake(me.honor, me.ratePerTick||0, r.honor, r.ratePerTick);
     if(!o.ticks || o.ticks>horizon) return;
     const x=sx(o.ticks), y=sy(me.honor+(me.ratePerTick||0)*o.ticks);
     g.fillStyle='#0d1117'; g.beginPath(); g.arc(x,y,5,0,7); g.fill();
     g.strokeStyle=colourOf(r); g.lineWidth=2; g.beginPath(); g.arc(x,y,5,0,7); g.stroke();
   });
-  // direct labels for the 4 nearest rivals
-  rivals.slice(0,4).forEach(r=>{
+  // direct labels for the 4 nearest rivals with a known rate - a flat unknown-rate line
+  // isn't a projection, so it doesn't compete for one of the 4 label slots
+  rivals.filter(hasRate).slice(0,4).forEach(r=>{
     const yEnd=sy(r.honor+(r.ratePerTick||0)*horizon);
     g.fillStyle=colourOf(r); g.textAlign='right'; g.font='10px system-ui';
     g.fillText(labelOf(r), W-R-2, yEnd-4);
