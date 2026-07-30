@@ -1860,7 +1860,7 @@ function tickBounds(){ const t=(HN&&HN.tickSeconds)||{min:60,max:77,calibrated:n
 function rateHourText(rpt){
   if(rpt===null||rpt===undefined) return '<span style="color:var(--muted)">unknown</span>';
   const b=tickBounds(), lo=rateHour(rpt,b.max), hi=rateHour(rpt,b.min);
-  return b.exact ? fmtHonor(lo) : fmtHonor(lo)+' to '+fmtHonor(hi);
+  return (b.exact || lo === hi) ? fmtHonor(lo) : fmtHonor(lo)+' to '+fmtHonor(hi);
 }
 function holdText(h){
   const keys=Object.keys(h||{});
