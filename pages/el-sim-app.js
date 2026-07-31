@@ -571,9 +571,25 @@ function openNote(n){
 }
 // ---- fort budget panel: each alliance's own cap, and what a pickup frees ----
 function alliCol(a){ return a==='MSS*'?'#db61a2':(a==='Cat+'?'#d29922':'#3fb950'); }
+// ---- our own power-station cap: base + alliance tribal-tech research, base stepped by an
+// absolute client-config timestamp, never a relative countdown (see gen_el_sim3.py
+// DATA['live']['psCap']) — a countdown would be wrong the instant it's read. allianceTech is
+// flat (the Lv.3 gate doesn't touch it); each entry in psCap.steps takes effect once
+// Date.now() passes its own absolute 'at', so the base that applies is whichever step has
+// already happened, not whichever is first in the list.
+function psCapNow(){
+  const pc = D.live.psCap;
+  if(!pc) return {base:null, allianceTech:null, cap:null, next:null};
+  const tech = pc.allianceTech||0;
+  let base = pc.base, next = null;
+  (pc.steps||[]).slice().sort((a,b)=>a.at-b.at).forEach(st=>{
+    if(st.at*1000 <= Date.now()) base = st.base; else if(!next) next = st;
+  });
+  return {base, allianceTech:tech, cap: base+tech, next: next ? {...next, cap: next.base+tech} : null};
+}
 // ---- per-alliance live territory table: PS active/built + under construction + forts,
-// for all three of ours, not just Dog. D.live (psCapBase/psCapBuff/maxForts/psBuilt) comes
-// from OUR client's own authoritative read, so caps only get printed on Dog's own row —
+// for all three of ours, not just Dog. D.live (psCap/maxForts/psBuilt) comes from OUR
+// client's own authoritative read, so caps only get printed on Dog's own row —
 // MSS*/Cat+ get counts derived from the sweep (S, via OUR_AID), never a number we can't see.
 function allyTerrStats(){
   return PLAN_ALLI.map(a=>{
@@ -594,7 +610,12 @@ function allyTerrStats(){
       row.fortsCap = fb.cap;
       row.psSweepTotal = psAll.length;
       row.psLiveTotal = D.live.psBuilt;
-      row.psCap = D.live.psCapBase + D.live.psCapBuff;
+      const capNow = psCapNow();
+      row.psBase = capNow.base;
+      row.psAllianceTech = capNow.allianceTech;
+      row.psCap = capNow.cap;
+      row.psFree = capNow.cap!=null ? capNow.cap - row.psLiveTotal : null;
+      row.psCapNext = capNow.next;
       row.psMismatch = row.psSweepTotal !== row.psLiveTotal;
     }
     return row;
@@ -609,8 +630,14 @@ function renderAllyTerr(){
       : '<div class="stat"><span>Forts used</span><b>'+r.fortsUsed+'</b></div>';
     const psCheckLine = r.alli==='Dog*'
       ? '<div class="stat"><span>Power Stations / cap</span><b>'+r.psLiveTotal+' / '+r.psCap
+        + ' <span style="color:'+(r.psFree>0?'var(--green)':'var(--red)')+';font-size:10px">('+r.psFree+' free)</span>'
         + (r.psMismatch ? ' <span style="color:var(--red)">(sweep says '+r.psSweepTotal+', disagrees)</span>' : '')
         + '</b></div>'
+        + '<div class="note" style="margin:2px 0 0">'+r.psCap+' = '+r.psBase+' base + '+r.psAllianceTech+' alliance tech</div>'
+        + (r.psCapNext ? '<div class="note" style="margin:2px 0 0">Base rises to '+r.psCapNext.base+' in '
+            + hms(Math.max(0, (r.psCapNext.at*1000 - Date.now())/1000))
+            + ' when '+esc(r.psCapNext.reason||'the next gate opens')+', taking the cap to '+r.psCapNext.cap+'.</div>' : '')
+        + '<div class="note" style="margin:2px 0 0">Cap as reported by Tex from the in-game display; not read from the client.</div>'
       : '';
     return '<div class="lrow" style="margin:6px 0 2px">'
       + '<span class="sw" style="background:'+col+'"></span><b style="color:'+col+'">'+esc(r.alli)+'</b></div>'
