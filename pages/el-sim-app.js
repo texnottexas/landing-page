@@ -588,9 +588,12 @@ function psCapNow(){
   return {base, allianceTech:tech, cap: base+tech, next: next ? {...next, cap: next.base+tech} : null};
 }
 // ---- per-alliance live territory table: PS active/built + under construction + forts,
-// for all three of ours, not just Dog. D.live (psCap/maxForts/psBuilt) comes from OUR
-// client's own authoritative read, so caps only get printed on Dog's own row —
-// MSS*/Cat+ get counts derived from the sweep (S, via OUR_AID), never a number we can't see.
+// for all three of ours. D.live (psCap/maxForts/psBuilt) is the sweeping client's own
+// authoritative read, and the PS cap is ALLIANCE-wide, so those numbers describe exactly
+// ONE alliance: whichever one that account is in. That is NOT always Dog — the account was
+// in Dog* on 2026-07-30 and in MSS* on 2026-07-31, and while this row was pinned to 'Dog*'
+// the page showed Dog MSS's 563/800 with a red "sweep says 630, disagrees". So the row is
+// chosen by D.myAid. Everyone else gets sweep-derived counts, never a limit we cannot see.
 function allyTerrStats(){
   return PLAN_ALLI.map(a=>{
     const aid=OUR_AID[a];
@@ -601,12 +604,13 @@ function allyTerrStats(){
     const psActive = pMap ? psBuilt.filter(s=>pMap.get(s)).length : 0;
     const underCon = own.filter(s=>s.st===2).length;
     const fb = aid!=null ? fortBudget(a) : {built:0, planned:0, cap:D.live.maxForts};
-    const row = {alli:a, psActive, psBuilt:psBuilt.length, underCon, fortsUsed:fb.built+fb.planned};
-    if(a==='Dog*'){
-      // authoritative cross-check: Dog's own structures are read straight into S from the
-      // same district call D.live.psBuilt comes from, so these should always agree — if they
-      // ever don't, the sweep missed something and both numbers get shown rather than one
-      // silently winning.
+    const row = {alli:a, psActive, psBuilt:psBuilt.length, underCon,
+                 fortsUsed:fb.built+fb.planned, isMine: aid===D.myAid};
+    if(row.isMine){
+      // authoritative cross-check: this alliance's own structures are read straight into S
+      // from the same district call D.live.psBuilt comes from, so these should always agree
+      // — if they ever don't, the sweep missed something and both numbers get shown rather
+      // than one silently winning.
       row.fortsCap = fb.cap;
       row.psSweepTotal = psAll.length;
       row.psLiveTotal = D.live.psBuilt;
@@ -625,10 +629,10 @@ function renderAllyTerr(){
   const el=document.getElementById('allyTerr'); if(!el) return;
   el.innerHTML = allyTerrStats().map(r=>{
     const col=alliCol(r.alli);
-    const fortsLine = r.alli==='Dog*'
+    const fortsLine = r.isMine
       ? '<div class="stat"><span>Forts used / cap</span><b>'+r.fortsUsed+' / '+r.fortsCap+'</b></div>'
       : '<div class="stat"><span>Forts used</span><b>'+r.fortsUsed+'</b></div>';
-    const psCheckLine = r.alli==='Dog*'
+    const psCheckLine = r.isMine
       ? '<div class="stat"><span>Power Stations / cap</span><b>'+r.psLiveTotal+' / '+r.psCap
         + ' <span style="color:'+(r.psFree>0?'var(--green)':'var(--red)')+';font-size:10px">('+r.psFree+' free)</span>'
         + (r.psMismatch ? ' <span style="color:var(--red)">(sweep says '+r.psSweepTotal+', disagrees)</span>' : '')
@@ -645,6 +649,70 @@ function renderAllyTerr(){
       + '<div class="stat"><span>Under construction</span><b>'+r.underCon+'</b></div>'
       + fortsLine + psCheckLine;
   }).join('');
+}
+// ---- power stations per warzone, with per-alliance fill against the cap ----------------
+// Tex asked for rival PS counts "against the cap". Two things have to stay straight or the
+// panel lies: (1) the cap is ALLIANCE-wide, so a warzone total is NOT comparable to it -
+// only an alliance's own count is, which is why the bar sits on the alliance rows and the
+// warzone row shows a bare total; (2) the cap we know is OURS (base + our alliance's tribal
+// tech). A rival's tech is not visible, so their real ceiling may differ - the note says so.
+// VBRO at 799 is the useful evidence that 800 is the common ceiling rather than just ours.
+function psRivalRows(){
+  const cap = psCapNow().cap;
+  const mySid = ASRV[D.myAid];
+  return (D.psByServer||[]).map(r=>{
+    const als = (r.alliances||[]).map(a=>({
+      tag:a.tag, ps:a.ps, forts:a.forts,
+      pct: cap ? Math.min(100, Math.round(a.ps/cap*100)) : null,
+      maxed: cap ? a.ps >= cap - 1 : false,
+    }));
+    return {sid:r.sid, ps:r.ps, forts:r.forts, ours:r.sid===mySid, cap, alliances:als};
+  });
+}
+function renderPsRivals(){
+  const el=document.getElementById('psRivals'); if(!el) return;
+  const rows=psRivalRows();
+  if(!rows.length){ el.innerHTML='<div class="note">No structure data in this snapshot.</div>'; return; }
+  const cap=rows[0].cap;
+  // only alliances with a real presence get a row, or S420's dozen 2-station squatters bury
+  // the ones that matter; whatever is dropped is counted so the total never looks wrong
+  const FLOOR=Math.max(20, Math.round((cap||800)*0.05));
+  el.innerHTML = rows.map(r=>{
+    const col=D.srvColor[r.sid]||'#8b949e';
+    const shown=r.alliances.filter(a=>a.ps>=FLOOR);
+    const hid=r.alliances.length-shown.length;
+    const hidPs=r.alliances.filter(a=>a.ps<FLOOR).reduce((n,a)=>n+a.ps,0);
+    return '<div class="lrow" style="margin:8px 0 2px;justify-content:space-between;gap:10px">'
+      + '<span><span class="sw" style="background:'+col+'"></span><b style="color:'+col+'">S'+r.sid+'</b>'
+      + (r.ours?' <span style="font-size:10px;color:var(--muted)">(ours)</span>':'')+'</span>'
+      + '<span><b>'+r.ps+'</b> <span style="font-size:10px;color:var(--muted)">PS &middot; '
+      + r.forts+' fort'+(r.forts===1?'':'s')+'</span></span></div>'
+      + shown.map(a=>
+          '<div class="stat" style="align-items:center"><span>'+esc(a.tag)
+          + (a.maxed?' <span style="color:var(--yellow);font-size:10px">maxed</span>':'')+'</span>'
+          + '<b style="display:flex;align-items:center;gap:6px">'
+          + '<span style="display:inline-block;width:46px;height:6px;border-radius:3px;background:#30363d;overflow:hidden">'
+          + '<span style="display:block;height:100%;border-radius:3px;width:'+(a.pct==null?0:a.pct)
+          + '%;background:'+(a.maxed?'var(--yellow)':col)+'"></span></span>'
+          + a.ps+(cap?' / '+cap:'')+'</b></div>').join('')
+      + (hid? '<div class="note" style="margin:1px 0 0">+ '+hid+' smaller alliance'+(hid===1?'':'s')
+              +' holding '+hidPs+' between them</div>' : '');
+  }).join('')
+  + '<div class="note" style="margin:6px 0 0">The cap is <b>alliance-wide</b>, not per warzone, so the bars sit on the alliance rows and the warzone figure is a plain total. '
+  + (cap? cap+' is <b>our</b> cap ('+psCapNow().base+' base + '+psCapNow().allianceTech
+      +' alliance tech); a rival\'s tribal tech is not visible to us, so theirs may differ. '
+      +'VBRO sitting on 799 is the best evidence '+cap+' is the common ceiling and not just ours.' : '')
+  + '</div>';
+}
+function renderTerrCapNote(){
+  const el=document.getElementById('terrCapNote'); if(!el) return;
+  const mine=(allyTerrStats().find(r=>r.isMine)||{}).alli;
+  const others=PLAN_ALLI.filter(a=>a!==mine);
+  el.innerHTML = mine
+    ? 'Caps and buffs are read from the sweeping account\'s own client, and that account is in <b>'
+      + esc(mine)+'</b> this snapshot, so only '+esc(mine)+' gets a cap here. '
+      + others.map(esc).join(' and ')+' show the counts we can actually see, never a limit we cannot.'
+    : 'Caps are read from the sweeping account\'s own client only, so the other alliances show counts, not limits.';
 }
 function renderForts(){
   const sf=document.getElementById('sFort');
@@ -1547,6 +1615,8 @@ function counts(){
   document.getElementById('sCat').textContent=tiles('Cat+');
   renderWorld(c);
   renderAllyTerr();
+  renderPsRivals();
+  renderTerrCapNote();
   renderForts();                       // owns #fortBudget; #sFort was retired with the per-alliance table
   const okRank=D.live.psJurisdiction.split(';').indexOf(String(D.live.rank))>=0;
   const el=document.getElementById('sRank');
@@ -2768,5 +2838,5 @@ window.addEventListener('resize', function(){
   }
 });
 
-window.__el = {flyTo:flyTo, fit:fit, render:render, zoomNow:()=>zoom, D:D, S:S, FIX:FIX, JUMPS:JUMPS, TERR:TERR, validate:validate, selftest:window.__st, fortBudget:fortBudget, ourFortAt:ourFortAt, SP:()=>SP, plan:()=>plan, recheckPerm:pullPerm, perm:()=>myPerm, honor:()=>HN, openHonor:openHonor, honorTab:(t)=>{honorTabName=t; renderHonor();}, allyTerrStats:allyTerrStats};
+window.__el = {flyTo:flyTo, fit:fit, render:render, zoomNow:()=>zoom, D:D, S:S, FIX:FIX, JUMPS:JUMPS, TERR:TERR, validate:validate, selftest:window.__st, fortBudget:fortBudget, ourFortAt:ourFortAt, SP:()=>SP, plan:()=>plan, recheckPerm:pullPerm, perm:()=>myPerm, honor:()=>HN, openHonor:openHonor, honorTab:(t)=>{honorTabName=t; renderHonor();}, allyTerrStats:allyTerrStats, psRivalRows:psRivalRows};
 })();
