@@ -571,6 +571,54 @@ function openNote(n){
 }
 // ---- fort budget panel: each alliance's own cap, and what a pickup frees ----
 function alliCol(a){ return a==='MSS*'?'#db61a2':(a==='Cat+'?'#d29922':'#3fb950'); }
+// ---- per-alliance live territory table: PS active/built + under construction + forts,
+// for all three of ours, not just Dog. D.live (psCapBase/psCapBuff/maxForts/psBuilt) comes
+// from OUR client's own authoritative read, so caps only get printed on Dog's own row —
+// MSS*/Cat+ get counts derived from the sweep (S, via OUR_AID), never a number we can't see.
+function allyTerrStats(){
+  return PLAN_ALLI.map(a=>{
+    const aid=OUR_AID[a];
+    const own = aid!=null ? S.filter(s=>s.owner===aid) : [];
+    const psAll = own.filter(s=>!s.fort);
+    const psBuilt = psAll.filter(s=>s.st===3);
+    const pMap = aid!=null ? powerByAid[aid] : null;
+    const psActive = pMap ? psBuilt.filter(s=>pMap.get(s)).length : 0;
+    const underCon = own.filter(s=>s.st===2).length;
+    const fb = aid!=null ? fortBudget(a) : {built:0, planned:0, cap:D.live.maxForts};
+    const row = {alli:a, psActive, psBuilt:psBuilt.length, underCon, fortsUsed:fb.built+fb.planned};
+    if(a==='Dog*'){
+      // authoritative cross-check: Dog's own structures are read straight into S from the
+      // same district call D.live.psBuilt comes from, so these should always agree — if they
+      // ever don't, the sweep missed something and both numbers get shown rather than one
+      // silently winning.
+      row.fortsCap = fb.cap;
+      row.psSweepTotal = psAll.length;
+      row.psLiveTotal = D.live.psBuilt;
+      row.psCap = D.live.psCapBase + D.live.psCapBuff;
+      row.psMismatch = row.psSweepTotal !== row.psLiveTotal;
+    }
+    return row;
+  });
+}
+function renderAllyTerr(){
+  const el=document.getElementById('allyTerr'); if(!el) return;
+  el.innerHTML = allyTerrStats().map(r=>{
+    const col=alliCol(r.alli);
+    const fortsLine = r.alli==='Dog*'
+      ? '<div class="stat"><span>Forts used / cap</span><b>'+r.fortsUsed+' / '+r.fortsCap+'</b></div>'
+      : '<div class="stat"><span>Forts used</span><b>'+r.fortsUsed+'</b></div>';
+    const psCheckLine = r.alli==='Dog*'
+      ? '<div class="stat"><span>Power Stations / cap</span><b>'+r.psLiveTotal+' / '+r.psCap
+        + (r.psMismatch ? ' <span style="color:var(--red)">(sweep says '+r.psSweepTotal+', disagrees)</span>' : '')
+        + '</b></div>'
+      : '';
+    return '<div class="lrow" style="margin:6px 0 2px">'
+      + '<span class="sw" style="background:'+col+'"></span><b style="color:'+col+'">'+esc(r.alli)+'</b></div>'
+      + '<div class="stat"><span>PS active / built</span><b>'+r.psActive+' / '+r.psBuilt+'</b></div>'
+      + '<div class="stat"><span>Under construction</span><b>'+r.underCon+'</b></div>'
+      + fortsLine + psCheckLine;
+  }).join('');
+}
 function renderForts(){
   const sf=document.getElementById('sFort');
   if(sf){ const b=fortBudget('Dog*'); sf.textContent=(b.built+b.planned)+' / '+b.cap; }
@@ -1466,19 +1514,13 @@ function flash(msg){
 function counts(){
   const c=new Array(D.alliances.length+1).fill(0);
   for(let i=0;i<N;i++) if(gClaim[i]) c[gClaim[i]]++;
-  const mine=S.filter(s=>s.owner===D.myAid);
-  const built=mine.filter(s=>!s.fort&&s.st===3);
-  const act=built.filter(s=>powerByAid[D.myAid].get(s));
   const tiles=(tag)=>{ const a=Object.keys(TAG).find(k=>TAG[k]===tag); return a?c[AIDN[a]].toLocaleString():'-'; };
   document.getElementById('sDog').textContent=tiles('Dog*');
   document.getElementById('sMss').textContent=tiles('MSS*');
   document.getElementById('sCat').textContent=tiles('Cat+');
   renderWorld(c);
-  document.getElementById('sAct').textContent=act.length+' / '+built.length;
-  document.getElementById('sBld').textContent=mine.filter(s=>s.st===2).length;
-  renderForts();                       // owns #sFort too, so it can't drift from the panel
-  const cap=D.live.psCapBase+D.live.psCapBuff;
-  document.getElementById('sPsCap').textContent=D.live.psBuilt+' / '+cap;
+  renderAllyTerr();
+  renderForts();                       // owns #fortBudget; #sFort was retired with the per-alliance table
   const okRank=D.live.psJurisdiction.split(';').indexOf(String(D.live.rank))>=0;
   const el=document.getElementById('sRank');
   el.textContent='rank '+D.live.rank+(okRank?' can build':' CANNOT build');
@@ -2699,5 +2741,5 @@ window.addEventListener('resize', function(){
   }
 });
 
-window.__el = {flyTo:flyTo, fit:fit, render:render, zoomNow:()=>zoom, D:D, S:S, FIX:FIX, JUMPS:JUMPS, TERR:TERR, validate:validate, selftest:window.__st, fortBudget:fortBudget, ourFortAt:ourFortAt, SP:()=>SP, plan:()=>plan, recheckPerm:pullPerm, perm:()=>myPerm, honor:()=>HN, openHonor:openHonor, honorTab:(t)=>{honorTabName=t; renderHonor();}};
+window.__el = {flyTo:flyTo, fit:fit, render:render, zoomNow:()=>zoom, D:D, S:S, FIX:FIX, JUMPS:JUMPS, TERR:TERR, validate:validate, selftest:window.__st, fortBudget:fortBudget, ourFortAt:ourFortAt, SP:()=>SP, plan:()=>plan, recheckPerm:pullPerm, perm:()=>myPerm, honor:()=>HN, openHonor:openHonor, honorTab:(t)=>{honorTabName=t; renderHonor();}, allyTerrStats:allyTerrStats};
 })();

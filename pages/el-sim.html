@@ -25,6 +25,10 @@ header .sub{font-size:11px;color:var(--muted);}
 #side{width:308px;background:var(--surface);border-left:1px solid var(--border);overflow-y:auto;padding:12px;font-size:12px;flex-shrink:0;}
 #side h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px;}
 #side h3:first-of-type{margin-top:0;}   /* first-child would miss it: the grab bar is first */
+/* #terrSection's own <h3> is also first-of-type relative to ITS parent, which would zero its
+   top margin here too - restore the normal gap on desktop; the mobile media query re-zeros it
+   only there, where the wrapper becomes the visually-first section. */
+#terrSection h3:first-of-type{margin-top:14px;}
 .stat{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #21262d;}
 .stat b{color:var(--accent);font-variant-numeric:tabular-nums;}
 .legend{display:flex;flex-direction:column;gap:4px;}
@@ -115,11 +119,19 @@ header .sub{font-size:11px;color:var(--muted);}
   #side{position:fixed;left:0;right:0;bottom:0;width:auto;height:var(--sheetH);border-left:none;
         border-top:1px solid var(--border);border-radius:14px 14px 0 0;z-index:9;
         transform:translateY(100%);transition:transform .22s ease;box-shadow:0 -8px 24px #0009;
-        padding:0 12px 26px;}
+        padding:0 12px 26px;
+        /* phone-only reorder: Live territory (#terrSection) surfaces above the long wall-jump
+           tables without touching the desktop layout or moving any markup. */
+        display:flex;flex-direction:column;}
   #side.open{transform:translateY(0);}
   /* a real element, not a ::before - it has to be draggable and tappable */
   #sheetGrab{display:block;position:sticky;top:0;margin:0 -12px 8px;height:30px;z-index:2;
-             background:var(--surface);border-radius:14px 14px 0 0;touch-action:none;cursor:grab;}
+             background:var(--surface);border-radius:14px 14px 0 0;touch-action:none;cursor:grab;
+             order:-2;}                  /* stays first: the drag handle, above the reordered section */
+  /* Live territory jumps to the top of the sheet on mobile only; every other section keeps
+     its default order (0) and therefore its existing relative order. */
+  #terrSection{order:-1;}
+  #terrSection h3:first-of-type{margin-top:0;}   /* sits right under the grab handle now */
   #sheetGrab::after{content:'';position:absolute;left:50%;top:11px;width:44px;height:5px;margin-left:-22px;
                     border-radius:3px;background:var(--muted);}
   #sheetGrab:active::after{background:var(--text);}
@@ -239,16 +251,16 @@ header .sub{font-size:11px;color:var(--muted);}
     <h3>Objectives</h3>
     <div id="objTable"></div>
     <div class="note">Nothing in the middle of the map is owned yet: every Gate (52), Arsenal / Military Base (16), Military Fortress (4), Research Facility (12) and the Eternal City are unclaimed. Only the starting Expedition Outposts / Bases have owners &mdash; 3 + 1 per warzone.<br>    <b>Eternal City geometry, checked two ways:</b> its entity is <code>pt 384;756</code>, <code>rpt 384;762</code> &rarr; body centre <b>384;759</b>, and the fixed-building square spans y 750&ndash;768 (centre 759) &mdash; the two agree. The mountain ring around the centre zone is symmetric about <b>~383;766</b> (scanned from the blocked mask: 124 rows north vs 120 south, 60 x-units west vs 58 east). So the city really does sit about <b>7 rows north</b> of the centre of its own walled zone; it is the game&rsquo;s layout, not a drawing offset.</div>
+    <div id="terrSection">
     <h3>Live territory &middot; S2864</h3>
     <div class="stat"><span>Dog* claimed tiles</span><b id="sDog">-</b></div>
     <div class="stat"><span>MSS* claimed tiles</span><b id="sMss">-</b></div>
     <div class="stat"><span>Cat+ claimed tiles</span><b id="sCat">-</b></div>
-    <div class="stat"><span>Dog* PS active / built</span><b id="sAct">-</b></div>
-    <div class="stat"><span>Dog* under construction</span><b id="sBld">-</b></div>
-    <div class="stat"><span>Forts &middot; Dog* used / cap</span><b id="sFort">-</b></div>
+    <div id="allyTerr"></div>
+    <div class="note">MSS* and Cat+ caps and buffs are read from OUR client only, so their limits aren't shown here, just the counts we can actually see.</div>
     <div id="fortBudget"></div>
-    <div class="stat"><span>Power Stations / cap</span><b id="sPsCap">-</b></div>
     <div class="stat"><span>Your rank vs build right</span><b id="sRank">-</b></div>
+    </div>
     <h3>Plan &middot; shared</h3>
     <div class="note" id="shareState">Loading the shared plan&hellip;</div>
     <div class="note" id="permState">Checking your rank&hellip;</div>
@@ -412,7 +424,7 @@ header .sub{font-size:11px;color:var(--muted);}
   function boot(payload){
     window.__EL_DATA = payload;
     var s = document.createElement('script');
-    s.src = 'el-sim-app.js?b=1a68557f75';
+    s.src = 'el-sim-app.js?b=066671d4ee';
     s.onerror = function(){ err.textContent = 'The app failed to load. Try a refresh.'; };
     document.body.appendChild(s);
     gate.classList.add('hide');
