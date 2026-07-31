@@ -714,6 +714,59 @@ function renderTerrCapNote(){
       + others.map(esc).join(' and ')+' show the counts we can actually see, never a limit we cannot.'
     : 'Caps are read from the sweeping account\'s own client only, so the other alliances show counts, not limits.';
 }
+// ---- collapsible sidebar sections -------------------------------------------------------
+// The wall-jump surveys are by far the longest thing in the panel (the whole-wall one alone
+// runs to 28 bands), and now that Live territory leads the sidebar they sat directly under it
+// and pushed Objectives, the plan and the notes out of reach. Each h3 becomes a disclosure
+// toggle over its own siblings up to the next h3, collapsed by default, remembered per
+// section. Bodies are re-parented rather than rebuilt, so #jumps/#j2Table/#altTable are the
+// same nodes their render functions already write to.
+const COLLAPSIBLE = ['jumps', 'j2Table', 'altTable'];
+function collapsibleFor(firstId){
+  const first=document.getElementById(firstId); if(!first) return null;
+  let h=first.previousElementSibling;
+  while(h && h.tagName!=='H3') h=h.previousElementSibling;
+  if(!h) return null;
+  if(h.dataset.sect) return {h, body:document.getElementById('sect_'+firstId), first};
+  // everything from `first` up to (not including) the next h3 belongs to this section
+  const nodes=[]; let n=first;
+  while(n && n.tagName!=='H3'){ nodes.push(n); n=n.nextElementSibling; }
+  const body=document.createElement('div');
+  body.id='sect_'+firstId; body.className='sectBody';
+  first.parentNode.insertBefore(body, first);
+  nodes.forEach(x=>body.appendChild(x));
+  h.dataset.sect=firstId; h.classList.add('sectHead');
+  h.setAttribute('role','button'); h.tabIndex=0;
+  const car=document.createElement('span'); car.className='caret';
+  h.insertBefore(car, h.firstChild);
+  const cnt=document.createElement('span'); cnt.className='sectCount';
+  h.appendChild(cnt);
+  const key='elsim_sect_'+firstId;
+  const set=open=>{
+    body.style.display = open ? '' : 'none';
+    h.setAttribute('aria-expanded', open?'true':'false');
+    car.textContent = open ? '\u25be' : '\u25b8';
+    try { localStorage.setItem(key, open?'1':'0'); } catch(e){}
+  };
+  h.addEventListener('click', ()=>set(body.style.display==='none'));
+  h.addEventListener('keydown', e=>{
+    if(e.key==='Enter'||e.key===' '){ e.preventDefault(); set(body.style.display==='none'); }
+  });
+  let open=false; try { open = localStorage.getItem(key)==='1'; } catch(e){}
+  set(open);
+  return {h, body, first};
+}
+// the count has to be refreshed after every render, because the render functions replace the
+// innerHTML of the tables inside these bodies. Counting rows and not characters: a closed
+// section still has to tell you whether it holds 3 crossings or 300.
+function refreshSectCounts(){
+  COLLAPSIBLE.forEach(id=>{
+    const c=collapsibleFor(id); if(!c) return;
+    const cnt=c.h.querySelector('.sectCount'); if(!cnt) return;
+    const rows=c.first.children.length;
+    cnt.textContent = rows ? rows+(rows===1?' row':' rows') : '';
+  });
+}
 function renderForts(){
   const sf=document.getElementById('sFort');
   if(sf){ const b=fortBudget('Dog*'); sf.textContent=(b.built+b.planned)+' / '+b.cap; }
@@ -1617,6 +1670,7 @@ function counts(){
   renderAllyTerr();
   renderPsRivals();
   renderTerrCapNote();
+  refreshSectCounts();
   renderForts();                       // owns #fortBudget; #sFort was retired with the per-alliance table
   const okRank=D.live.psJurisdiction.split(';').indexOf(String(D.live.rank))>=0;
   const el=document.getElementById('sRank');
@@ -2838,5 +2892,5 @@ window.addEventListener('resize', function(){
   }
 });
 
-window.__el = {flyTo:flyTo, fit:fit, render:render, zoomNow:()=>zoom, D:D, S:S, FIX:FIX, JUMPS:JUMPS, TERR:TERR, validate:validate, selftest:window.__st, fortBudget:fortBudget, ourFortAt:ourFortAt, SP:()=>SP, plan:()=>plan, recheckPerm:pullPerm, perm:()=>myPerm, honor:()=>HN, openHonor:openHonor, honorTab:(t)=>{honorTabName=t; renderHonor();}, allyTerrStats:allyTerrStats, psRivalRows:psRivalRows};
+window.__el = {flyTo:flyTo, fit:fit, render:render, zoomNow:()=>zoom, D:D, S:S, FIX:FIX, JUMPS:JUMPS, TERR:TERR, validate:validate, selftest:window.__st, fortBudget:fortBudget, ourFortAt:ourFortAt, SP:()=>SP, plan:()=>plan, recheckPerm:pullPerm, perm:()=>myPerm, honor:()=>HN, openHonor:openHonor, honorTab:(t)=>{honorTabName=t; renderHonor();}, allyTerrStats:allyTerrStats, psRivalRows:psRivalRows, refreshSectCounts:refreshSectCounts};
 })();
