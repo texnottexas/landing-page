@@ -288,6 +288,13 @@
   .lead-ri-name{font-weight:600; font-size:.88rem}
   .lead-ri-meta{font-size:.7rem; color:var(--muted)}
   .lead-roster-empty{padding:.55rem; font-size:.75rem; color:var(--muted); text-align:center}
+  .lead-ri-add{color:var(--accent); border-bottom:1px solid var(--border); border-radius:8px 8px 0 0; margin-bottom:.15rem; position:sticky; top:0; background:var(--surface); z-index:1}
+  .lead-ri-add .lead-ri-name{color:var(--accent)}
+  .lead-ri-plus{width:30px; height:30px; flex:none; display:flex; align-items:center; justify-content:center; border-radius:7px; color:var(--accent); background:rgba(121,192,255,.12); border:1px solid rgba(121,192,255,.3)}
+  .lead-manual{margin-top:.6rem; border:1px solid var(--border2); border-radius:11px; background:var(--card); padding:.75rem; display:grid; gap:.5rem}
+  .lead-manual[hidden]{display:none}
+  .lead-manual-title{font-size:.8rem; font-weight:800; color:var(--text)}
+  .lead-manual-actions{display:flex; gap:.5rem; justify-content:flex-end; margin-top:.1rem}
   .egg-overlay{position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.72); backdrop-filter:blur(2px); padding:1rem}
   .egg-box{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:1.5rem 1.7rem; text-align:center; box-shadow:0 24px 64px rgba(0,0,0,.6); max-width:88vw}
   .egg-msg{font-size:1.25rem; font-weight:800; color:var(--text); margin-bottom:1.1rem}
@@ -434,6 +441,21 @@
       <div class="lead-picker">
         <input type="text" id="lead-add-input" class="input" placeholder="Search your server's players" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list">
         <div id="lead-roster-results" class="lead-roster" role="listbox" hidden></div>
+      </div>
+      <div id="lead-manual" class="lead-manual" hidden>
+        <div class="lead-manual-title">Add a player who isn't on the list</div>
+        <input type="text" id="lm-name" class="input" maxlength="40" placeholder="In-game name" autocomplete="off">
+        <input type="text" id="lm-server" class="input" maxlength="20" placeholder="Current server (e.g. 1805)" autocomplete="off">
+        <input type="text" id="lm-cp" class="input" maxlength="16" placeholder="Combat power — optional (e.g. 85M)" autocomplete="off">
+        <select id="lm-prof" class="input">
+          <option value="">Profession — optional</option>
+          <option>Combat Elite</option>
+          <option>Mechanical Master</option>
+        </select>
+        <div class="lead-manual-actions">
+          <button type="button" class="lookup-btn" id="lm-cancel">Cancel</button>
+          <button type="button" class="lookup-btn" id="lm-add" style="border-color:var(--green); color:#cdebd2; background:var(--green-soft)">Add player</button>
+        </div>
       </div>
     </div>
     <div class="field reveal">
@@ -1057,6 +1079,69 @@
     return true;
   }
 
+  // Pinned first row of the picker: add a player who isn't in the roster.
+  function manualAddRow(q) {
+    var item = document.createElement('div');
+    item.className = 'lead-ri lead-ri-add';
+    item.setAttribute('role', 'option');
+    var label = q ? ('Add “' + esc(q) + '” — not on the list') : 'Player not listed? Add manually';
+    item.innerHTML =
+      '<div class="lead-ri-plus"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v12M4 10h12"/></svg></div>' +
+      '<div class="lead-ri-main"><div class="lead-ri-name">' + label + '</div>' +
+      '<div class="lead-ri-meta">Enter their name &amp; server yourself</div></div>';
+    item.addEventListener('mousedown', function (e) { e.preventDefault(); openManualAdd(q); });
+    return item;
+  }
+
+  function openManualAdd(q) {
+    hideRosterResults();
+    var form = document.getElementById('lead-manual');
+    if (!form) return;
+    var nm = document.getElementById('lm-name');
+    var input = document.getElementById('lead-add-input');
+    var seed = (q || (input && input.value) || '').trim();
+    if (nm) nm.value = seed;
+    document.getElementById('lm-server').value = '';
+    document.getElementById('lm-cp').value = '';
+    document.getElementById('lm-prof').value = '';
+    form.hidden = false;
+    if (input) input.value = '';
+    (seed ? document.getElementById('lm-server') : nm).focus();
+  }
+
+  // Lenient CP parse: "85M" / "85m" / "85000000" / "1.2b". Bare small number → millions.
+  function parseCpInput(s) {
+    s = String(s || '').trim().toLowerCase().replace(/[, ]/g, '');
+    if (!s) return null;
+    var m = s.match(/^([\d.]+)([kmb]?)$/);
+    if (!m) return null;
+    var n = parseFloat(m[1]); if (isNaN(n)) return null;
+    var suf = m[2];
+    if (suf === 'b') n *= 1e9; else if (suf === 'm') n *= 1e6; else if (suf === 'k') n *= 1e3;
+    else if (n < 10000) n *= 1e6;
+    return Math.round(n);
+  }
+
+  function addManualLeadPlayer() {
+    var name = (document.getElementById('lm-name').value || '').trim();
+    var server = (document.getElementById('lm-server').value || '').trim();
+    var status = document.getElementById('lead-status');
+    if (!name || !server) { status.textContent = 'Enter both a name and a current server.'; return; }
+    var key = name + '|' + server;
+    if (LEAD_PLAYERS.some(function (p) { return (p.siteKey || (p.name + '|' + p.server)) === key; })) {
+      status.textContent = 'That player is already in the group.'; return;
+    }
+    LEAD_PLAYERS.push({
+      siteKey: '', name: name, server: server,
+      cp: parseCpInput(document.getElementById('lm-cp').value),
+      profession: document.getElementById('lm-prof').value || '', avatar: '', reportId: ''
+    });
+    renderLeadPlayers(); scheduleLeadSave();
+    status.textContent = '';
+    document.getElementById('lead-manual').hidden = true;
+    var input = document.getElementById('lead-add-input'); if (input) input.focus();
+  }
+
   // Custom avatar search-list picker (mirrors the landing page identity modal).
   function renderRosterResults(query) {
     var box = document.getElementById('lead-roster-results');
@@ -1071,9 +1156,14 @@
     }).sort(function (a, b) { return stripSym(a.name).localeCompare(stripSym(b.name)); });
 
     box.innerHTML = '';
+    box.appendChild(manualAddRow(q));   // pinned first row — add a player not on the list
     if (!rosterFiltered.length) {
-      box.innerHTML = '<div class="lead-roster-empty">No players found</div>';
+      var empty = document.createElement('div');
+      empty.className = 'lead-roster-empty';
+      empty.textContent = q ? 'No matching players on the list' : 'Start typing a name';
+      box.appendChild(empty);
       box.hidden = false;
+      var inp = document.getElementById('lead-add-input'); if (inp) inp.setAttribute('aria-expanded', 'true');
       return;
     }
     rosterFiltered.forEach(function (r, i) {
@@ -1200,6 +1290,19 @@
 
     var leadSearch = document.getElementById('lead-search');
     if (leadSearch) leadSearch.addEventListener('input', function () { LEAD_SEARCH = leadSearch.value; renderLeadPlayers(); });
+
+    // Manual "player not listed" add
+    var lmAdd = document.getElementById('lm-add');
+    if (lmAdd) lmAdd.addEventListener('click', addManualLeadPlayer);
+    var lmCancel = document.getElementById('lm-cancel');
+    if (lmCancel) lmCancel.addEventListener('click', function () {
+      document.getElementById('lead-manual').hidden = true;
+      var input = document.getElementById('lead-add-input'); if (input) input.focus();
+    });
+    ['lm-server', 'lm-cp'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addManualLeadPlayer(); } });
+    });
 
     Promise.all([
       fetch('data/transfer-roster-1805.json').then(function (r) { return r.json(); }),
