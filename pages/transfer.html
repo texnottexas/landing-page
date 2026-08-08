@@ -72,17 +72,6 @@
   .brief-title{font-size:1.3rem; font-weight:800; letter-spacing:-.01em; line-height:1.2}
   .brief-sub{color:var(--muted); font-size:.85rem; margin-top:.5rem}
 
-  .closed-banner{
-    position:relative; overflow:hidden; border:1px solid var(--gold); border-radius:14px;
-    background:linear-gradient(135deg,var(--gold-soft),var(--surface)); padding:1rem 1.15rem;
-    margin-bottom:1rem; display:flex; gap:.85rem; align-items:flex-start;
-  }
-  .closed-banner::before{content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:linear-gradient(var(--gold),rgba(210,153,34,.2))}
-  .closed-banner .cb-icon{color:var(--gold); flex-shrink:0; margin-top:1px}
-  .closed-banner .cb-title{font-weight:800; font-size:1rem; color:#f0d38a; letter-spacing:-.01em}
-  .closed-banner .cb-body{color:var(--text); font-size:.86rem; margin-top:.35rem; line-height:1.55}
-  .closed-banner .cb-when{color:var(--gold); font-weight:700}
-
   .field{margin-bottom:1.2rem}
   .field-label{font-size:.74rem; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--text); margin-bottom:.5rem; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap}
   .hint{color:var(--faint); font-size:.74rem; font-weight:500; letter-spacing:0; text-transform:none}
@@ -199,7 +188,14 @@
   /* queue view */
   .cycle-card{border:1px solid var(--border); border-radius:14px; background:var(--card); padding:1.1rem 1.2rem; margin-bottom:1.1rem}
   .cycle-head{display:flex; align-items:center; justify-content:space-between; gap:.7rem; flex-wrap:wrap; margin-bottom:.5rem}
+  .cycle-head-left{display:flex; align-items:center; gap:.45rem; min-width:0}
   .cycle-label{font-weight:800; font-size:1.05rem}
+  .cycle-card.closed{background:var(--surface); border-color:var(--border)}
+  .cycle-card[data-collapsible] .cycle-head{cursor:pointer; margin-bottom:0}
+  .cycle-card[data-collapsible]:not(.collapsed) .cycle-head{margin-bottom:.5rem}
+  .cycle-card.collapsed .cycle-body{display:none}
+  .cycle-chevron{color:var(--muted); flex:none; transition:transform .15s}
+  .cycle-card[data-collapsible]:not(.collapsed) .cycle-chevron{transform:rotate(90deg)}
   .cycle-count{font-family:var(--mono); font-size:.78rem; color:var(--muted)}
   .cycle-count.full{color:var(--red)}
   .cycle-returning{font-family:var(--mono); font-size:.72rem; color:var(--accent); margin:-.2rem 0 .6rem}
@@ -321,13 +317,6 @@
 
   <!-- ===================== REGISTER VIEW ===================== -->
   <section class="view" id="view-register">
-    <div class="closed-banner reveal" role="status" style="animation-delay:.01s">
-      <svg class="cb-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg>
-      <div>
-        <div class="cb-title">Transfers are currently full</div>
-        <div class="cb-body">We're paused for new transfers through the end of the Eternal Lands event. Registration reopens <span class="cb-when" id="reopen-when">August 9</span>. Feel free to check back then.</div>
-      </div>
-    </div>
     <div class="briefing reveal" style="animation-delay:.02s">
       <div class="brief-kicker">Transfer registration</div>
       <div class="brief-title">Get on the list to transfer into Server 2864</div>
@@ -510,19 +499,6 @@
   // [] assignment used to run only AFTER this init call.
   var queueTimers = [];
   showView(currentView());
-
-  // Reopen notice — Aug 9 2026 12:00 PM ET, shown in the visitor's local time.
-  (function () {
-    var REOPEN_MS = 1786291200000;
-    var el = document.getElementById('reopen-when');
-    if (!el) return;
-    try {
-      el.textContent = new Date(REOPEN_MS).toLocaleString(undefined, {
-        weekday: 'short', month: 'long', day: 'numeric',
-        hour: 'numeric', minute: '2-digit', timeZoneName: 'short'
-      });
-    } catch (e) { /* keep the static "August 9" fallback */ }
-  })();
 
   // --- Register view: type toggle -----------------------------------------
   var memberCount = 0;
@@ -957,11 +933,12 @@
             '<div class="queue-list">' + accepted.map(function (p) { var done = p.transferStatus === 'completed'; return queueRowHtml(p, done ? 'completed' : 'accepted', done ? 'Completed' : 'Accepted'); }).join('') + '</div>' +
             '</div>';
         }
-        var cyclesHtml = cycles.map(function (c) {
+        var now = Date.now();
+        function isClosed(c) { return !!(c.closesAt && now > c.closesAt); }
+        function cycleCardHtml(c) {
           var n = counts[c.id] || 0;
           var full = c.capacity && n >= c.capacity;
-          var now = Date.now();
-          var closed = c.closesAt && now > c.closesAt;
+          var closed = isClosed(c);
           // Availability pill — NOT a "window is open" claim. The countdown line
           // below conveys timing (Opens in / Open now / Closed); this reflects slots.
           var stateClass = closed ? 'closed' : (full ? 'full' : 'available');
@@ -974,16 +951,25 @@
           }).join('') || '<div class="empty-state" style="padding:1rem 0">No approved players yet.</div>';
           var ret = returningCounts[c.id] || 0;
           var retLine = ret ? '<div class="cycle-returning">+' + ret + ' Returning Player' + (ret > 1 ? 's' : '') + '</div>' : '';
-          return '<div class="cycle-card">' +
-            '<div class="cycle-head"><span class="cycle-label">' + esc(c.label) + '</span>' +
-            '<span class="cycle-count' + (full ? ' full' : '') + '">' + n + ' / ' + (c.capacity || '-') + '</span></div>' +
-            retLine +
-            '<span class="cycle-state ' + stateClass + '">' + stateLabel + '</span>' +
-            '<div class="cycle-countdown" data-opens="' + (c.opensAt || '') + '" data-closes="' + (c.closesAt || '') + '"></div>' +
-            '<div class="queue-list">' + rows + '</div>' +
-            '</div>';
-        }).join('');
+          // Completed cycles collapse (and are moved to the bottom); the header toggles them open.
+          var chevron = closed ? '<svg class="cycle-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>' : '';
+          var head = '<div class="cycle-head">' +
+              '<span class="cycle-head-left">' + chevron + '<span class="cycle-label">' + esc(c.label) + '</span></span>' +
+              '<span class="cycle-count' + (full ? ' full' : '') + '">' + n + ' / ' + (c.capacity || '-') + '</span></div>';
+          var body = '<div class="cycle-body">' + retLine +
+              '<span class="cycle-state ' + stateClass + '">' + stateLabel + '</span>' +
+              '<div class="cycle-countdown" data-opens="' + (c.opensAt || '') + '" data-closes="' + (c.closesAt || '') + '"></div>' +
+              '<div class="queue-list">' + rows + '</div></div>';
+          return '<div class="cycle-card' + (closed ? ' closed collapsed' : '') + '"' + (closed ? ' data-collapsible="1"' : '') + '>' + head + body + '</div>';
+        }
+        // Active/upcoming waves first (in order); completed waves collapse to the bottom.
+        var activeCycles = cycles.filter(function (c) { return !isClosed(c); });
+        var doneCycles = cycles.filter(isClosed);
+        var cyclesHtml = activeCycles.map(cycleCardHtml).join('') + doneCycles.map(cycleCardHtml).join('');
         wrap.innerHTML = acceptedHtml + cyclesHtml;
+        document.querySelectorAll('.cycle-card[data-collapsible] .cycle-head').forEach(function (h) {
+          h.addEventListener('click', function () { h.parentElement.classList.toggle('collapsed'); });
+        });
         document.querySelectorAll('.cycle-countdown').forEach(function (el) {
           var opens = el.getAttribute('data-opens'); var closes = el.getAttribute('data-closes');
           renderCountdown(el, opens ? +opens : null, closes ? +closes : null);
