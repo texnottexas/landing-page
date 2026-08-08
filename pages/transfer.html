@@ -983,6 +983,7 @@
 
   var ROSTER_BY_NAME = {};
   var ROSTER_ROWS = [];
+  var TAKEN = {};          // siteKeys of already-completed transfers — hidden from the picker
   var rosterFiltered = [];
   var LEAD_PLAYERS = [];
   var leadSaveTimer = null;
@@ -1065,6 +1066,7 @@
     LEAD_PLAYERS.forEach(function (p) { added[p.siteKey || (p.name + '|' + p.server)] = true; });
     rosterFiltered = ROSTER_ROWS.filter(function (r) {
       if (added[rosterKey(r)]) return false;
+      if (r.siteKey && TAKEN[r.siteKey]) return false;  // already transferred (completed) — hide
       return !q || r.name.toLowerCase().indexOf(q) !== -1;
     }).sort(function (a, b) { return stripSym(a.name).localeCompare(stripSym(b.name)); });
 
@@ -1199,9 +1201,14 @@
     var leadSearch = document.getElementById('lead-search');
     if (leadSearch) leadSearch.addEventListener('input', function () { LEAD_SEARCH = leadSearch.value; renderLeadPlayers(); });
 
-    fetch('data/transfer-roster-1805.json').then(function (r) { return r.json(); }).then(function (rows) {
+    Promise.all([
+      fetch('data/transfer-roster-1805.json').then(function (r) { return r.json(); }),
+      fetch(API + '/transfer/taken').then(function (r) { return r.json(); }).catch(function () { return { siteKeys: [] }; })
+    ]).then(function (res) {
+      var rows = res[0]; var taken = res[1];
       ROSTER_ROWS = (Array.isArray(rows) ? rows : []);
       ROSTER_ROWS.forEach(function (row) { if (!ROSTER_BY_NAME[row.name]) ROSTER_BY_NAME[row.name] = row; });
+      ((taken && taken.siteKeys) || []).forEach(function (sk) { TAKEN[sk] = true; });
       loadLeaderGroup(token);
     }).catch(function () { document.getElementById('lead-status').textContent = 'Could not load the player roster.'; });
   }
