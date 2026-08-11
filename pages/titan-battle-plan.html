@@ -366,6 +366,14 @@ function findPlayer(siteKey, name) {
   if (nn) { for (const p of players) if (normName(p.name) === nn) return p; }
   return null;
 }
+// Resolve a plan's stored (signup-time) name to the player's CURRENT roster name
+// via the siteKey the worker stores in meta. Keeps battle plans fresh across
+// renames. Falls back to the stored name (name-only signups / pre-siteKey plans).
+function currentName(data, name) {
+  const m = data && data.meta && data.meta[name];
+  if (m && isHexKey(m.siteKey)) { const p = findPlayer(m.siteKey, name); if (p && p.name) return p.name; }
+  return name;
+}
 // Same conventions as titan-roster.html: the explicit roster-page picker choice
 // wins, else the site identity. Only the name is needed on this page.
 function resolveMe() {
@@ -392,7 +400,7 @@ function findMyAssignment(name) {
     if (!d) continue;
     if (d.positions) {
       for (const pos in d.positions) {
-        if (d.positions.hasOwnProperty(pos) && normName(d.positions[pos]) === nn) {
+        if (d.positions.hasOwnProperty(pos) && d.positions[pos] && normName(currentName(d, d.positions[pos])) === nn) {
           return { squad: sq, position: pos, bucket: null };
         }
       }
@@ -400,7 +408,7 @@ function findMyAssignment(name) {
     for (const s of SECTIONS) {
       const arr = (d[s.key] || []).filter(v => v);
       for (let k = 0; k < arr.length; k++) {
-        if (normName(arr[k]) === nn) return { squad: sq, position: null, bucket: s.key, slot: k + 1 };
+        if (normName(currentName(d, arr[k])) === nn) return { squad: sq, position: null, bucket: s.key, slot: k + 1 };
       }
     }
   }
@@ -551,7 +559,8 @@ function renderMap(data) {
   if (!grid) return;
   let html = "";
   ZONE_LAYOUT.forEach(z => {
-    const assigned = data.positions?.[z.num] || "";
+    const rawA = data.positions?.[z.num] || "";
+    const assigned = rawA ? currentName(data, rawA) : "";
     const mine = assigned && isMe(assigned);
     html += `<div class="dm-cell dm-zone ${z.cls}${assigned ? "" : " empty"}${mine ? " me-zone" : ""}" style="grid-area:${z.area}">` +
       `<div class="dm-zc">` +
@@ -595,12 +604,13 @@ function renderPositionSections(data) {
         <ul class="assign-list">
           ${nums.map(n => {
             const nm = data.positions[n];
+            const disp = currentName(data, nm);
             const m = memberMeta(data, nm) || {};
             const prof = m.prof || (n <= 2 ? "CE" : "MM");
             return `
-            <li class="assign-item${isMe(nm) ? " me" : ""}">
+            <li class="assign-item${isMe(disp) ? " me" : ""}">
               <span class="slot-num">${n}</span>
-              <span class="slot-player notranslate">${esc(nm)}</span>
+              <span class="slot-player notranslate">${esc(disp)}</span>
               ${roleTag(prof, m.uc)}${swapPill(data, nm)}
             </li>`;
           }).join("")}
@@ -619,11 +629,12 @@ function renderSection(sec, data) {
       <div class="assign-title">${esc(sec.title)} <span class="assign-count">${filled.length}</span></div>
       <ul class="assign-list">
         ${filled.map((v, i) => {
+          const disp = currentName(data, v);
           const m = memberMeta(data, v) || {};
           return `
-          <li class="assign-item${isMe(v) ? " me" : ""}">
+          <li class="assign-item${isMe(disp) ? " me" : ""}">
             <span class="slot-num">${i + 1}</span>
-            <span class="slot-player notranslate">${esc(v)}</span>
+            <span class="slot-player notranslate">${esc(disp)}</span>
             ${roleTag(m.prof, m.uc)}${swapPill(data, v)}
           </li>`;
         }).join("")}

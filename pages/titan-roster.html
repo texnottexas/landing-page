@@ -439,7 +439,7 @@ function collectNeedsMove() {
     var names = squadMembers(data);
     for (var i = 0; i < names.length; i++) {
       var sw = memberSwap(data, names[i]);
-      if (sw) out.push({ name: names[i], from: sw.from, to: sw.to, squad: sq });
+      if (sw) out.push({ name: currentName(data, names[i]), from: sw.from, to: sw.to, squad: sq });
     }
   }
   return out;
@@ -506,6 +506,17 @@ function findPlayer(siteKey, name) {
   var nn = normName(name);
   if (nn) { for (var j = 0; j < state.players.length; j++) if (normName(state.players[j].name) === nn) return state.players[j]; }
   return null;
+}
+// Resolve a plan's stored (signup-time) name to the player's CURRENT roster name
+// via the siteKey the worker stores in meta. Keeps squads fresh across renames.
+// Falls back to the stored name (name-only signups / pre-siteKey plans).
+function currentName(data, name) {
+  var m = (data && data.meta && data.meta[name]) || null;
+  if (m && typeof m.siteKey === 'string' && /^[a-f0-9]{16}$/.test(m.siteKey)) {
+    var p = findPlayer(m.siteKey, name);
+    if (p && p.name) return p.name;
+  }
+  return name;
 }
 
 // Resolve "me": explicit picker choice first, else the site identity.
@@ -741,13 +752,14 @@ function renderSquadCard(sq, data, myName) {
     for (var i = 1; i <= 8; i++) {
       var nm = data.positions[String(i)];
       if (!nm) continue;
+      var disp = currentName(data, nm);
       var role = posRole(i);
       var mt = (data.meta && data.meta[nm]) || {};
       var roleLabel = roleLabelFor(role, mt.uc);
-      var isMe = myName && normName(nm) === myName;
-      posRows += '<li class="pos-row' + (isMe ? ' me' : '') + '" data-name="' + esc(normName(nm)) + '">' +
+      var isMe = myName && normName(disp) === myName;
+      posRows += '<li class="pos-row' + (isMe ? ' me' : '') + '" data-name="' + esc(normName(disp)) + '">' +
         '<span class="pos-num">' + i + '</span>' +
-        '<span class="pos-name notranslate' + (isMe ? ' me' : '') + '">' + esc(nm) + '</span>' +
+        '<span class="pos-name notranslate' + (isMe ? ' me' : '') + '">' + esc(disp) + '</span>' +
         '<span class="role-tag ' + role.toLowerCase() + '">' + roleLabel + '</span>' +
         swapPill(memberSwap(data, nm)) +
       '</li>';
@@ -762,8 +774,9 @@ function renderSquadCard(sq, data, myName) {
     var arr = (data[bucket] || []).filter(function (n) { return n; });
     if (!arr.length) continue;
     var items = arr.map(function (n) {
-      var isMe2 = myName && normName(n) === myName;
-      return '<li class="' + (isMe2 ? 'me ' : '') + 'notranslate" data-name="' + esc(normName(n)) + '">' + esc(n) + memberTag(data, n) + swapPill(memberSwap(data, n)) + '</li>';
+      var disp2 = currentName(data, n);
+      var isMe2 = myName && normName(disp2) === myName;
+      return '<li class="' + (isMe2 ? 'me ' : '') + 'notranslate" data-name="' + esc(normName(disp2)) + '">' + esc(disp2) + memberTag(data, n) + swapPill(memberSwap(data, n)) + '</li>';
     }).join('');
     supSection += '<div class="sq-sec-label">' + esc(BUCKET_LABEL[bucket]) + '</div><ul class="sup-list">' + items + '</ul>';
   }

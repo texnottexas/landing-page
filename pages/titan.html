@@ -392,6 +392,17 @@ function findPlayer(siteKey, name) {
   if (nn) { for (var j = 0; j < state.players.length; j++) if (normName(state.players[j].name) === nn) return state.players[j]; }
   return null;
 }
+// Resolve a plan's stored (signup-time) name to the player's CURRENT roster name
+// via the siteKey the worker stores in meta. Keeps the hub fresh across renames.
+// Falls back to the stored name (name-only signups / pre-siteKey plans).
+function currentName(data, name) {
+  var m = (data && data.meta && data.meta[name]) || null;
+  if (m && typeof m.siteKey === 'string' && /^[a-f0-9]{16}$/.test(m.siteKey)) {
+    var p = findPlayer(m.siteKey, name);
+    if (p && p.name) return p.name;
+  }
+  return name;
+}
 
 // Resolve "me": explicit picker choice first, else the site identity.
 function resolveMe() {
@@ -419,12 +430,12 @@ function findAssignment(name) {
     var found = null;
     if (data.positions) {
       for (var pos in data.positions) {
-        if (data.positions.hasOwnProperty(pos) && normName(data.positions[pos]) === nn) found = { squad: sq, position: pos, bucket: null };
+        if (data.positions.hasOwnProperty(pos) && data.positions[pos] && normName(currentName(data, data.positions[pos])) === nn) found = { squad: sq, position: pos, bucket: null };
       }
     }
     for (var b = 0; b < SUPPORT_BUCKETS.length; b++) {
       var arr = data[SUPPORT_BUCKETS[b]] || [];
-      for (var k = 0; k < arr.length; k++) if (normName(arr[k]) === nn) found = { squad: sq, position: null, bucket: SUPPORT_BUCKETS[b] };
+      for (var k = 0; k < arr.length; k++) if (arr[k] && normName(currentName(data, arr[k])) === nn) found = { squad: sq, position: null, bucket: SUPPORT_BUCKETS[b] };
     }
     if (found) {
       found.mates = squadMembers(data);
@@ -598,10 +609,11 @@ function renderSquadCard(a) {
     '</div>';
   }
 
-  var sqMeta = (state.plan[a.squad] && state.plan[a.squad].meta) || {};
-  var mates = a.mates.filter(function (n) { return normName(n) !== normName(state.me.name); });
+  var sqData = state.plan[a.squad] || {};
+  var sqMeta = sqData.meta || {};
+  var mates = a.mates.filter(function (n) { return normName(currentName(sqData, n)) !== normName(state.me.name); });
   var matesHtml = '<ul class="mates"><li class="me notranslate">' + esc(state.me.name) + ' (you)' + memberTag(sqMeta, state.me.name) + '</li>' +
-    mates.map(function (n) { return '<li class="notranslate">' + esc(n) + memberTag(sqMeta, n) + '</li>'; }).join('') + '</ul>';
+    mates.map(function (n) { return '<li class="notranslate">' + esc(currentName(sqData, n)) + memberTag(sqMeta, n) + '</li>'; }).join('') + '</ul>';
 
   return '' +
     '<div class="card">' +
