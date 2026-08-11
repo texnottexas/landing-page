@@ -196,6 +196,15 @@
   .cycle-card.collapsed .cycle-body{display:none}
   .cycle-chevron{color:var(--muted); flex:none; transition:transform .15s}
   .cycle-card[data-collapsible]:not(.collapsed) .cycle-chevron{transform:rotate(90deg)}
+  .completed-section{border:1px solid var(--border); border-radius:14px; background:var(--surface); margin-top:.5rem; overflow:hidden}
+  .completed-head{display:flex; align-items:center; gap:.55rem; padding:.85rem 1rem; cursor:pointer; color:var(--muted); font-weight:700; user-select:none}
+  .completed-title{font-size:.95rem}
+  .completed-count{margin-left:auto; font-family:var(--mono); font-size:.72rem; background:var(--card2); border:1px solid var(--border2); border-radius:999px; padding:.05rem .55rem}
+  .completed-body{padding:0 .7rem .75rem}
+  .completed-section.collapsed .completed-body{display:none}
+  .completed-section:not(.collapsed) .completed-head .cycle-chevron{transform:rotate(90deg)}
+  .completed-section .cycle-card{background:var(--card); margin-bottom:.6rem}
+  .completed-section .cycle-card:last-child{margin-bottom:0}
   .cycle-count{font-family:var(--mono); font-size:.78rem; color:var(--muted)}
   .cycle-count.full{color:var(--red)}
   .cycle-returning{font-family:var(--mono); font-size:.72rem; color:var(--accent); margin:-.2rem 0 .6rem}
@@ -984,11 +993,30 @@
               '<div class="queue-list">' + rows + '</div></div>';
           return '<div class="cycle-card' + (closed ? ' closed collapsed' : '') + '"' + (closed ? ' data-collapsible="1"' : '') + '>' + head + body + '</div>';
         }
-        // Active/upcoming waves first (in order); completed waves collapse to the bottom.
+        // Active/upcoming waves at the very top (active first); completed waves are
+        // tucked into ONE collapsed "Completed cycles" section at the bottom.
         var activeCycles = cycles.filter(function (c) { return !isClosed(c); });
         var doneCycles = cycles.filter(isClosed);
-        var cyclesHtml = activeCycles.map(cycleCardHtml).join('') + doneCycles.map(cycleCardHtml).join('');
-        wrap.innerHTML = acceptedHtml + cyclesHtml;
+        var activeHtml = activeCycles.map(cycleCardHtml).join('');
+        var doneHtml = doneCycles.map(cycleCardHtml).join('');
+        var completedHtml = doneCycles.length
+          ? '<div class="completed-section collapsed" id="completed-section">' +
+              '<div class="completed-head" role="button" tabindex="0">' +
+                '<svg class="cycle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>' +
+                '<span class="completed-title">Completed cycles</span>' +
+                '<span class="completed-count">' + doneCycles.length + '</span>' +
+              '</div>' +
+              '<div class="completed-body">' + doneHtml + '</div>' +
+            '</div>'
+          : '';
+        // Order: active waves → accepted (awaiting a wave) → collapsed completed section.
+        wrap.innerHTML = activeHtml + acceptedHtml + completedHtml;
+        var cs = document.getElementById('completed-section');
+        if (cs) {
+          var csHead = cs.querySelector('.completed-head');
+          csHead.addEventListener('click', function () { cs.classList.toggle('collapsed'); });
+          csHead.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cs.classList.toggle('collapsed'); } });
+        }
         document.querySelectorAll('.cycle-card[data-collapsible] .cycle-head').forEach(function (h) {
           h.addEventListener('click', function () { h.parentElement.classList.toggle('collapsed'); });
         });

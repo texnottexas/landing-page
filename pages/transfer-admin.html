@@ -71,6 +71,9 @@
   .btn.small{padding:.32rem .6rem; font-size:.74rem}
 
   /* Board */
+  .board-toolbar{display:flex; gap:.5rem; margin-bottom:.7rem; flex-wrap:wrap}
+  .board-toolbar .btn.active{border-color:var(--accent); color:var(--text)}
+  .column.completed{opacity:.72}
   .board-wrap{overflow-x:auto; padding-bottom:1rem; -webkit-overflow-scrolling:touch}
   .board{display:flex; gap:.9rem; align-items:flex-start; min-height:200px}
   .column{
@@ -293,6 +296,7 @@
       <div id="cohort-status" class="log-meta"></div>
     </div>
     <div class="board-wrap">
+      <div class="board-toolbar" id="board-toolbar"></div>
       <div class="board" id="board"></div>
     </div>
   </section>
@@ -471,6 +475,7 @@ var STATE = {
   cycles: [],
   counts: {},
   returningCounts: {},
+  showCompleted: false,
   activeAppId: null,
   drawerBucketId: '',
   search: '',
@@ -604,6 +609,23 @@ function sortPlayers(rows) {
 }
 
 // ── BOARD RENDER ─────────────────────────────────────────────────────────
+function isCycleClosed(c) { return !!(c && c.closesAt && Date.now() > c.closesAt); }
+
+// Toggle to reveal the auto-hidden completed-cycle columns.
+function renderBoardToolbar() {
+  var bar = document.getElementById('board-toolbar');
+  if (!bar) return;
+  bar.innerHTML = '';
+  var closed = STATE.cycles.filter(isCycleClosed);
+  if (!closed.length) return;
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn' + (STATE.showCompleted ? ' active' : '');
+  btn.textContent = (STATE.showCompleted ? 'Hide' : 'Show') + ' completed cycles (' + closed.length + ')';
+  btn.addEventListener('click', function () { STATE.showCompleted = !STATE.showCompleted; renderBoard(); });
+  bar.appendChild(btn);
+}
+
 function columnsSpec() {
   var cols = [
     { id: 'pending', label: 'Pending', status: 'pending', cycleId: '' },
@@ -611,9 +633,18 @@ function columnsSpec() {
     // Accepted = approved but not yet slotted into a wave (shows on the public queue).
     { id: 'accepted', label: 'Accepted', status: 'approved', cycleId: '' },
   ];
-  STATE.cycles.forEach(function (c) {
+  // Active waves first (so the current cycle is the first cycle bucket); completed
+  // waves are auto-hidden unless the "Show completed" toggle is on.
+  var active = STATE.cycles.filter(function (c) { return !isCycleClosed(c); });
+  var closed = STATE.cycles.filter(isCycleClosed);
+  active.forEach(function (c) {
     cols.push({ id: 'cycle:' + c.id, label: c.label, status: 'approved', cycleId: c.id, capacity: c.capacity });
   });
+  if (STATE.showCompleted) {
+    closed.forEach(function (c) {
+      cols.push({ id: 'cycle:' + c.id, label: c.label, status: 'approved', cycleId: c.id, capacity: c.capacity, completed: true });
+    });
+  }
   cols.push({ id: 'rejected', label: 'Rejected', status: 'rejected', cycleId: '' });
   return cols;
 }
@@ -639,6 +670,7 @@ function playerRows() {
 function renderBoard() {
   var board = document.getElementById('board');
   board.innerHTML = '';
+  renderBoardToolbar();
   var cols = columnsSpec();
   var rows = playerRows();
 
@@ -656,7 +688,7 @@ function renderBoard() {
     var retCount = (col.status === 'approved' && col.cycleId) ? (STATE.returningCounts[col.cycleId] || 0) : 0;
 
     var colEl = document.createElement('div');
-    colEl.className = 'column';
+    colEl.className = 'column' + (col.completed ? ' completed' : '');
     colEl.dataset.colId = col.id;
 
     var head = document.createElement('div');
