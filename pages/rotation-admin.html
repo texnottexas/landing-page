@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev; img-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none';">
+<title>Rotation Admin - Server 2864</title>
+<style>
+  :root{
+    --bg:#0d1117; --surface:#161b22; --card:#1c2128; --card2:#20262e;
+    --border:#30363d; --border2:#3a424d;
+    --text:#e6edf3; --muted:#8b949e; --faint:#5b6675;
+    --green:#3fb950; --green-soft:rgba(63,185,80,.14);
+    --accent:#79c0ff; --accent-soft:rgba(121,192,255,.14);
+    --amber:#d29922; --amber-soft:rgba(210,153,34,.14);
+    --red:#f85149; --red-soft:rgba(248,81,73,.14);
+    --mono:'SF Mono',ui-monospace,'JetBrains Mono',Menlo,Monaco,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; color:var(--text); font-family:var(--sans); line-height:1.5;
+    background:var(--bg); min-height:100vh;
+  }
+  header{
+    position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:.8rem;
+    padding:.85rem 1.1rem; background:rgba(13,17,23,.92); backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--border); flex-wrap:wrap;
+  }
+  .home-btn{color:var(--muted); display:flex; transition:color .15s, transform .15s}
+  .home-btn:hover{color:var(--accent); transform:translateX(-2px)}
+  .wordmark{display:flex; align-items:baseline; gap:.55rem; font-weight:800; letter-spacing:.14em; font-size:.82rem; text-transform:uppercase}
+  .wordmark .t{color:var(--text)}
+  .wordmark .s{color:var(--accent); font-family:var(--mono); letter-spacing:.05em; font-weight:600}
+  .wordmark .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px rgba(121,192,255,.5);align-self:center}
+  nav.tabs{display:flex; gap:.4rem; margin-left:auto; flex-wrap:wrap; align-items:center}
+  .tab-btn{
+    appearance:none; -webkit-appearance:none; font-family:inherit; cursor:pointer;
+    display:inline-flex; align-items:center; gap:.4rem; padding:.45rem .8rem;
+    border:1px solid var(--border2); border-radius:9px; background:var(--card); color:var(--muted);
+    font-size:.78rem; font-weight:700; letter-spacing:.02em; transition:border-color .15s, color .15s, background .15s;
+    white-space:nowrap;
+  }
+  .tab-btn:hover{border-color:var(--accent); color:var(--text)}
+  .tab-btn.active{border-color:var(--green); color:#cdebd2; background:var(--green-soft)}
+
+  main{position:relative; max-width:1500px; margin:0 auto; padding:1.2rem 1.1rem 4rem}
+  .view{display:none}
+  .view.active{display:block}
+
+  .card{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:.9rem 1rem}
+
+  .toolbar{display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; margin-bottom:1rem}
+  .input, input, select, textarea{
+    background:var(--card); color:var(--text); border:1px solid var(--border2);
+    border-radius:9px; padding:.5rem .7rem; font-size:.85rem; font-family:inherit; outline:none;
+  }
+  .input:focus, input:focus, select:focus, textarea:focus{border-color:var(--accent); box-shadow:0 0 0 3px rgba(121,192,255,.14)}
+  .btn{
+    appearance:none; -webkit-appearance:none; cursor:pointer; font-family:inherit;
+    display:inline-flex; align-items:center; gap:.4rem; padding:.5rem .9rem;
+    border:1px solid var(--border2); border-radius:9px; background:var(--card2); color:var(--text);
+    font-size:.82rem; font-weight:700; transition:border-color .15s, background .15s, opacity .15s;
+    white-space:nowrap;
+  }
+  .btn:hover{border-color:var(--accent)}
+  .btn:disabled{opacity:.45; cursor:default}
+  .btn:disabled:hover{border-color:var(--border2)}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#0d1117}
+  .btn.primary:hover{filter:brightness(1.08)}
+  .btn.danger{color:var(--red); border-color:rgba(248,81,73,.4)}
+  .btn.danger:hover{border-color:var(--red)}
+  .btn.small{padding:.32rem .6rem; font-size:.74rem}
+
+  .badge{
+    display:inline-flex; align-items:center; font-size:.72rem; font-weight:700; letter-spacing:.02em;
+    border-radius:999px; padding:.15rem .55rem; border:1px solid var(--border2); color:var(--muted); background:var(--card2);
+  }
+
+  /* Wave tab: header + sizes */
+  .wave-header{margin-bottom:1rem; display:flex; flex-direction:column; gap:.5rem}
+  .sizes-row{display:flex; gap:.5rem; flex-wrap:wrap}
+  .size-pill{
+    font-family:var(--mono); font-size:.8rem; font-weight:700; border-radius:999px;
+    padding:.3rem .7rem; border:1px solid var(--border2); background:var(--card2); color:var(--text);
+  }
+  .size-pill b{margin-left:.3rem; color:var(--accent)}
+  .size-pill.size-pill-warn{border-color:rgba(210,153,34,.5); background:var(--amber-soft)}
+  .size-pill.size-pill-warn b{color:var(--amber)}
+  .sizes-note{color:var(--muted); font-size:.78rem; margin:0}
+  .sizes-note.warn{color:var(--amber); font-weight:700}
+
+  /* Shortfalls */
+  .shortfalls-box{
+    border:1px solid rgba(210,153,34,.5); background:var(--amber-soft); border-radius:10px;
+    padding:.7rem .9rem; margin-bottom:1rem;
+  }
+  .shortfalls-title{font-weight:800; color:var(--amber); font-size:.85rem; margin-bottom:.35rem}
+  .shortfall-row{font-size:.82rem; color:var(--text); padding:.15rem 0}
+
+  /* Flow board */
+  .board-wrap{overflow-x:auto; padding-bottom:1rem; -webkit-overflow-scrolling:touch}
+  .board{display:flex; gap:.9rem; align-items:flex-start; min-height:120px}
+  .flow-col{
+    flex:0 0 320px; width:320px; background:var(--surface); border:1px solid var(--border);
+    border-radius:12px; padding:.7rem; display:flex; flex-direction:column; gap:.55rem; min-height:100px;
+  }
+  .flow-head{display:flex; align-items:center; justify-content:space-between; gap:.4rem}
+  .flow-title{font-size:.82rem; font-weight:800; letter-spacing:.02em}
+  .flow-count{
+    font-family:var(--mono); font-size:.72rem; font-weight:700; color:var(--muted);
+    background:var(--card); border:1px solid var(--border2); border-radius:999px; padding:.1rem .5rem;
+  }
+  .flow-count.short{color:var(--amber); border-color:rgba(210,153,34,.5); background:var(--amber-soft)}
+  .flow-quota-row{display:flex; align-items:center; gap:.5rem}
+  .flow-quota-row label{font-size:.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em}
+  .flow-quota-input{width:64px; padding:.3rem .4rem; font-size:.78rem}
+  .flow-table-wrap{overflow-x:auto}
+  .flow-table{border-collapse:collapse; font-size:.7rem; min-width:520px}
+  .flow-table th{text-align:left; padding:.3rem .4rem; color:var(--muted); font-weight:700; border-bottom:1px solid var(--border); white-space:nowrap}
+  .flow-table td{padding:.3rem .4rem; border-bottom:1px solid var(--border); white-space:nowrap}
+  .role-badge{font-size:.66rem; font-weight:700; color:var(--muted); border:1px solid var(--border2); border-radius:999px; padding:.05rem .4rem}
+  .role-badge.leader{color:var(--amber); border-color:rgba(210,153,34,.5); background:var(--amber-soft)}
+  .status-badge{font-size:.66rem; font-weight:700; border-radius:999px; padding:.05rem .4rem; border:1px solid var(--border2); color:var(--muted); background:var(--card2)}
+  .status-badge.status-invited{color:var(--muted)}
+  .status-badge.status-declined{color:var(--amber); border-color:rgba(210,153,34,.5); background:var(--amber-soft)}
+  .status-badge.status-noshow{color:var(--red); border-color:rgba(248,81,73,.5); background:var(--red-soft)}
+  .status-badge.status-completed{color:var(--green); border-color:rgba(63,185,80,.5); background:var(--green-soft)}
+  .status-badge.status-voided{color:var(--faint); text-decoration:line-through}
+  .status-by{color:var(--faint); font-size:.64rem; margin-top:.15rem}
+  .row-actions{display:flex; gap:.25rem; flex-wrap:wrap}
+  .empty-col{color:var(--faint); font-size:.76rem; text-align:center; padding:1rem .5rem}
+
+  @media (max-width:760px){
+    .board-wrap{overflow-x:visible}
+    .board{flex-direction:column; align-items:stretch}
+    .flow-col{flex:1 1 auto; width:100%; min-width:0}
+  }
+
+  /* Add player control */
+  .addp-bar{margin-top:.4rem}
+  .addp-title, .excl-title{font-size:.78rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-bottom:.5rem}
+  .addp-row, .excl-row{display:flex; gap:.5rem; flex-wrap:wrap; align-items:center}
+  .addp-row select, .excl-row select{min-width:180px}
+
+  /* Coverage */
+  .cov-note{color:var(--muted); font-size:.85rem; max-width:760px; margin-bottom:.4rem}
+  .cov-started{color:var(--accent); font-size:.8rem; margin-bottom:.9rem; font-weight:700}
+  .table-scroll{overflow-x:auto}
+  .cov-table, .cycles-table{width:100%; border-collapse:collapse; margin-bottom:1rem; min-width:480px}
+  .cov-table th, .cycles-table th{
+    text-align:left; font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);
+    padding:.4rem .5rem; border-bottom:1px solid var(--border);
+  }
+  .cov-table th[data-sort]{cursor:pointer; user-select:none}
+  .cov-table th[data-sort]:hover{color:var(--text)}
+  .cov-table td, .cycles-table td{padding:.4rem .5rem; border-bottom:1px solid var(--border); font-size:.82rem}
+  .cov-check{text-align:center; font-weight:700}
+
+  /* Exclusions / Changelog rows */
+  .log-row{padding:.6rem 0; border-bottom:1px solid var(--border); font-size:.84rem}
+  .log-row:last-child{border-bottom:none}
+  .log-meta{color:var(--muted); font-size:.72rem; margin-top:.2rem}
+  #excl-status.err, #sched-status.err{color:var(--red)}
+  #excl-status.ok, #sched-status.ok{color:var(--green)}
+
+  /* Schedule */
+  .cycles-note{color:var(--muted); font-size:.8rem; max-width:760px; margin-bottom:.8rem}
+  .cycles-table input, .cycles-table select{width:100%}
+  .drawer-actions{display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:.6rem}
+  .active-week-row{display:flex; align-items:center; gap:.6rem; margin-top:1.2rem; flex-wrap:wrap}
+  .active-week-row label{font-size:.78rem; font-weight:700; color:var(--muted)}
+
+  /* Password gate */
+  .gate-bg{position:fixed; inset:0; background:var(--bg); z-index:600; display:flex; align-items:center; justify-content:center}
+  .gate-bg.hide{display:none}
+  .gate-card{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:1.6rem; width:320px; text-align:center}
+  .gate-card h3{margin-bottom:.5rem; color:var(--accent)}
+  .gate-card p{color:var(--muted); font-size:.82rem; margin-bottom:1rem}
+
+  .toast{
+    position:fixed; bottom:1.2rem; left:50%; transform:translateX(-50%); background:var(--card2);
+    border:1px solid var(--border2); border-radius:9px; padding:.6rem 1rem; font-size:.82rem;
+    z-index:700; opacity:0; pointer-events:none; transition:opacity .2s; max-width:90vw;
+  }
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<div class="gate-bg" id="gate-bg">
+  <div class="gate-card">
+    <h3>Rotation Admin</h3>
+    <p>Leadership access only. Enter the editor password to continue.</p>
+    <input type="password" class="input" id="gate-input" placeholder="Editor password" autocomplete="current-password" style="width:100%; margin-bottom:.6rem; text-align:center">
+    <button type="button" class="btn primary" id="gate-submit" style="width:100%">Continue</button>
+    <div id="gate-error" style="color:var(--red); font-size:.76rem; margin-top:.55rem; min-height:1em"></div>
+  </div>
+</div>
+
+<header>
+  <a href="https://2864tw.com" class="home-btn" title="Back to 2864tw.com" aria-label="Home">
+    <svg width="19" height="19" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2.5l-8 7h3v6a1 1 0 001 1h3v-4h2v4h3a1 1 0 001-1v-6h3z"/></svg>
+  </a>
+  <div class="wordmark notranslate"><span class="dot"></span><span class="t">Server 2864</span><span class="s">/ rotation admin</span></div>
+  <nav class="tabs">
+    <button type="button" class="tab-btn active" data-view="wave">Wave</button>
+    <button type="button" class="tab-btn" data-view="coverage">Coverage</button>
+    <button type="button" class="tab-btn" data-view="exclusions">Exclusions</button>
+    <button type="button" class="tab-btn" data-view="schedule">Schedule</button>
+    <button type="button" class="tab-btn" data-view="changelog">Changelog</button>
+    <button type="button" class="btn small" id="global-refresh-btn" title="Reload all data">Refresh</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ===================== WAVE VIEW ===================== -->
+  <section class="view active" id="view-wave">
+    <div class="wave-header card">
+      <div class="sizes-row">
+        <span class="size-pill">DOG<b id="size-dog">-</b></span>
+        <span class="size-pill">MSS<b id="size-mss">-</b></span>
+        <span class="size-pill" id="size-catplus-pill">Cat+<b id="size-catplus">-</b></span>
+      </div>
+      <p class="sizes-note" id="sizes-note">Cat+ crossing 120 players is the cue to revisit the flow volumes.</p>
+    </div>
+
+    <div id="shortfalls-box" class="shortfalls-box" style="display:none"></div>
+
+    <div class="toolbar">
+      <input type="text" class="input" id="wave-week-input" placeholder="Week (YYYY-MM-DD)" style="width:150px">
+      <button type="button" class="btn" id="wave-load-btn">Load week</button>
+      <button type="button" class="btn primary" id="wave-generate-btn">Generate</button>
+      <button type="button" class="btn" id="wave-reroll-btn">Re-roll</button>
+      <button type="button" class="btn" id="wave-publish-btn">Publish</button>
+      <button type="button" class="btn danger" id="wave-close-btn">Close week</button>
+      <span class="badge" id="wave-status-pill">no wave</span>
+    </div>
+
+    <div class="board-wrap">
+      <div class="board" id="flow-board"></div>
+    </div>
+
+    <div class="addp-bar card">
+      <div class="addp-title">Add specific player</div>
+      <div class="addp-row">
+        <select id="addp-player"><option value="">Choose a player...</option></select>
+        <select id="addp-flow"></select>
+        <select id="addp-role">
+          <option value="member">Member</option>
+          <option value="leader">Leader</option>
+        </select>
+        <button type="button" class="btn primary" id="addp-btn">Add</button>
+      </div>
+      <div id="addp-status" class="log-meta"></div>
+    </div>
+  </section>
+
+  <!-- ===================== COVERAGE VIEW ===================== -->
+  <section class="view" id="view-coverage">
+    <p class="cov-note">Rotation history starts with the first closed wave. Players with no checks simply have no recorded visits yet, it does not mean they have never participated.</p>
+    <p class="cov-started" id="cov-started" style="display:none"></p>
+    <div class="table-scroll">
+      <table class="cov-table" id="cov-table">
+        <thead>
+          <tr>
+            <th data-sort="name">Name</th>
+            <th data-sort="alliance">Home</th>
+            <th>DOG</th>
+            <th>MSS</th>
+            <th>Cat+</th>
+            <th data-sort="count">Coverage</th>
+          </tr>
+        </thead>
+        <tbody id="cov-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== EXCLUSIONS VIEW ===================== -->
+  <section class="view" id="view-exclusions">
+    <div class="card">
+      <div class="excl-title">Add exclusion</div>
+      <div class="excl-row">
+        <select id="excl-player"><option value="">Choose a player...</option></select>
+        <select id="excl-reason">
+          <option value="player_request">Player requested</option>
+          <option value="event_conflict">Event conflict</option>
+          <option value="leadership_hold">Leadership hold</option>
+          <option value="other">Other</option>
+        </select>
+        <input type="datetime-local" id="excl-until" title="Optional expiry, interpreted in your browser's local time. Leave blank for indefinite.">
+        <button type="button" class="btn primary" id="excl-add-btn">Add exclusion</button>
+      </div>
+      <div id="excl-status" class="log-meta"></div>
+    </div>
+    <div id="excl-list" style="margin-top:1rem"></div>
+  </section>
+
+  <!-- ===================== SCHEDULE VIEW ===================== -->
+  <section class="view" id="view-schedule">
+    <p class="cycles-note">The active week is what players see on the public rotation page. Skipping a week keeps its row but marks it paused, with a reason. Times are read as your browser's local time.</p>
+    <div class="table-scroll">
+      <table class="cycles-table" id="sched-table">
+        <thead>
+          <tr><th>Week</th><th>Status</th><th>Note</th><th></th></tr>
+        </thead>
+        <tbody id="sched-tbody"></tbody>
+      </table>
+    </div>
+    <div class="drawer-actions">
+      <button type="button" class="btn" id="sched-add-btn">Add week</button>
+      <button type="button" class="btn primary" id="sched-save-btn">Save schedule</button>
+    </div>
+    <div id="sched-status" class="log-meta"></div>
+    <div class="active-week-row">
+      <label for="active-week-select">Active week</label>
+      <select id="active-week-select"></select>
+      <button type="button" class="btn" id="active-week-save-btn">Set active week</button>
+    </div>
+  </section>
+
+  <!-- ===================== CHANGELOG VIEW ===================== -->
+  <section class="view" id="view-changelog">
+    <div id="changelog-list"></div>
+  </section>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+'use strict';
+
+// ── CONFIG ───────────────────────────────────────────────────────────────
+var API_BASE = 'https://push-worker.27tb8s6fct.workers.dev';
+var ALLIANCES = ['DOG', 'MSS', 'Cat+'];
+var ROT_REASONS = [
+  ['player_request', 'Player requested'],
+  ['event_conflict', 'Event conflict'],
+  ['leadership_hold', 'Leadership hold'],
+  ['other', 'Other'],
+];
+
+// Every backend error code this page's routes can return, mapped to a
+// sentence an operator understands. A 409 must never just read "Error 409".
+var ERROR_MESSAGES = {
+  unauthorized: 'That password was rejected.',
+  rate_limited: 'Too many failed attempts from this connection. Wait about 15 minutes and try again.',
+  bad_state: "That action is not allowed in this wave's current state (for example, it may already be announced or closed).",
+  already_closed: 'This week has already been closed and can no longer be changed.',
+  duplicate: 'That player is already assigned somewhere this week.',
+  not_assigned: 'That player is not currently assigned this week.',
+  no_wave: 'There is no wave for that week yet. Generate one first.',
+  wrong_home: "That player's home alliance does not match this flow.",
+  unknown_player: 'That player was not found in the current roster.',
+  bad_week: 'That week is not valid. Use the YYYY-MM-DD format.',
+  bad_role: 'Role must be Leader or Member.',
+  bad_flow: 'That flow is not recognized.',
+  bad_quota: 'Quota must be a whole number from 0 to 40.',
+  bad_reason: 'Choose one of the listed reasons.',
+  bad_alliance: 'That alliance is not recognized.',
+  bad_config: 'That configuration is not valid.',
+  bad_schedule: 'That schedule is not valid. Every week needs a valid date and a recognized status.',
+  bad_sitekey: 'That player could not be identified.',
+  bad_status: 'That status is not valid.',
+  bad_until: 'That expiry date is not valid.',
+  not_found: 'That request was not recognized by the server.',
+  internal_error: 'Something went wrong on the server side. Try again shortly.',
+  network_error: 'Could not reach the server. Check your connection and try again.',
+  header_encoding_error: 'Your editor name could not be sent safely this time. Try again in a moment.',
+  roster_unavailable: 'The player roster could not be loaded right now.',
+};
+
+function friendlyError(res) {
+  var code = res && res.json && res.json.error;
+  if (code && ERROR_MESSAGES[code]) return ERROR_MESSAGES[code];
+  if (code) return code + ' (server responded ' + (res ? res.status : '?') + ')';
+  return 'Something went wrong (server responded ' + (res ? res.status : '?') + ').';
+}
+
+// ── PASSWORD GATE (persisted in localStorage, masked input) ────────────────
+var PW_KEY = 'rotationEditPw';
+var editPw = localStorage.getItem(PW_KEY) || '';
+
+function showGate(msg) {
+  document.getElementById('gate-bg').classList.remove('hide');
+  document.getElementById('gate-error').textContent = msg || '';
+  var inp = document.getElementById('gate-input');
+  inp.value = '';
+  inp.focus();
+}
+function hideGate() { document.getElementById('gate-bg').classList.add('hide'); }
+
+function submitPw() {
+  var v = (document.getElementById('gate-input').value || '').trim();
+  if (!v) { document.getElementById('gate-error').textContent = 'Please enter the password.'; return; }
+  editPw = v;
+  try { localStorage.setItem(PW_KEY, editPw); } catch (e) {}
+  hideGate();
+  init();
+}
+
+document.getElementById('gate-submit').addEventListener('click', submitPw);
+document.getElementById('gate-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') submitPw(); });
+
+// Editor name for changelog attribution — shared site-wide with titan-admin
+// and transfer-admin (localStorage.editor_name).
+function editorName() { try { return (localStorage.getItem('editor_name') || '').trim(); } catch (e) { return ''; } }
+function ensureEditorName() {
+  if (editorName()) return;
+  var n = (window.prompt('Your name (for the changelog, so edits are attributed to you):') || '').trim();
+  if (n) { try { localStorage.setItem('editor_name', n); } catch (e) {} }
+}
+
+// Base64 of the UTF-8 bytes of a string, for the X-Editor-Name-B64 header.
+function utf8ToB64(str) {
+  var bytes;
+  try { bytes = new TextEncoder().encode(str); } catch (e) { return btoa(unescape(encodeURIComponent(str))); }
+  var bin = '';
+  for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+// An HTTP header value can only carry ISO-8859-1, and fetch() THROWS
+// SYNCHRONOUSLY on any code point above U+00FF — an editor named "Livv👑"
+// could not send a request at all, and that surfaced to the user as a bogus
+// "network error" with no explanation. We always send the UTF-8 name
+// base64'd in X-Editor-Name-B64 (which the worker prefers), and only attach
+// the plain X-Editor-Name header when the name is Latin-1-safe, since fetch()
+// throws on the header assignment itself, before any request is even made.
+function buildHeaders(extra) {
+  var headers = Object.assign({ 'X-Rotation-Edit-Password': editPw }, extra || {});
+  var name = editorName();
+  if (name) {
+    headers['X-Editor-Name-B64'] = utf8ToB64(name);
+    if (/^[\x00-\xff]*$/.test(name)) headers['X-Editor-Name'] = name;
+  }
+  return headers;
+}
+
+// api(path, opts) -> { status, json }. Never throws and never rejects — a
+// synchronous fetch() throw (see buildHeaders above) or an async network
+// failure both collapse into a normal { status: 0, json: { error: ... } }
+// result so every caller can handle it the same way as a real HTTP error.
+function api(path, opts) {
+  opts = opts || {};
+  var method = opts.method || 'GET';
+  var headers = buildHeaders();
+  var body;
+  if (opts.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    body = JSON.stringify(opts.body);
+  }
+  var p;
+  try {
+    p = fetch(API_BASE + path, { method: method, headers: headers, body: body });
+  } catch (e) {
+    return Promise.resolve({ status: 0, json: { ok: false, error: 'header_encoding_error' } });
+  }
+  return p.then(function (r) {
+    if (r.status === 401) {
+      editPw = '';
+      try { localStorage.removeItem(PW_KEY); } catch (e) {}
+      showGate('That password was rejected. Please try again.');
+    }
+    return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, json: j }; });
+  }).catch(function () {
+    return { status: 0, json: { ok: false, error: 'network_error' } };
+  });
+}
+
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function () { t.classList.remove('show'); }, 2600);
+}
+
+function mkBtn(label, onClick) {
+  var b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn small';
+  b.textContent = label;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+function fmtCp(cp) { return (cp == null) ? 'unknown' : (cp / 1e6).toFixed(2) + 'M'; }
+
+// ── STATE ────────────────────────────────────────────────────────────────
+var STATE = {
+  week: null,
+  wave: null,
+  sched: { activeWeek: null, weeks: [] },
+  config: { flows: {} },
+  exclusions: {},
+  homeMap: {},
+  changelog: [],
+  sizes: {},
+  coverage: { startedWeek: null, rows: [] },
+};
+
+var ROSTER = [];
+var ROSTER_INDEX = {};
+var COVERAGE_INDEX = {};
+
+function reindexCoverage() {
+  COVERAGE_INDEX = {};
+  ((STATE.coverage && STATE.coverage.rows) || []).forEach(function (r) { COVERAGE_INDEX[r.siteKey] = r; });
+}
+
+// Roster (name/alliance/profession/cp/rank/lastShowTime), used for the player
+// pickers (Add player / Exclusions) and to derive "last seen" for wave rows.
+// Same relative fetch pattern as titan-admin.html: resolves locally to
+// pages/player-data.json (404, harmless — ROSTER just stays empty), and to
+// the real file once the site's build flattens everything into one
+// directory on deploy.
+function loadRoster() {
+  return fetch('player-data.json').then(function (r) { return r.json(); }).then(function (list) {
+    ROSTER = Array.isArray(list) ? list : [];
+    ROSTER_INDEX = {};
+    ROSTER.forEach(function (p) { if (p && p.siteKey) ROSTER_INDEX[p.siteKey] = p; });
+  }).catch(function () { ROSTER = []; ROSTER_INDEX = {}; });
+}
+
+function loadAdmin(week) {
+  var qs = week ? ('?week=' + encodeURIComponent(week)) : '';
+  return api('/rotation/admin' + qs).then(function (res) {
+    if (res.status !== 200 || !res.json.ok) {
+      showToast('Load failed: ' + friendlyError(res));
+      return false;
+    }
+    var j = res.json;
+    STATE.week = j.week || null;
+    STATE.wave = j.wave || null;
+    STATE.sched = j.sched || { activeWeek: null, weeks: [] };
+    STATE.config = j.config || { flows: {} };
+    STATE.exclusions = j.exclusions || {};
+    STATE.homeMap = j.homeMap || {};
+    STATE.changelog = j.changelog || [];
+    STATE.sizes = j.sizes || {};
+    STATE.coverage = j.coverage || { startedWeek: null, rows: [] };
+    reindexCoverage();
+    return true;
+  });
+}
+
+function reloadAndRender(week) {
+  return loadAdmin(week != null ? week : STATE.week).then(function (ok) { if (ok) renderAll(); return ok; });
+}
+
+function renderAll() {
+  renderWave();
+  renderCoverage();
+  renderExclusions();
+  renderSchedule();
+  renderChangelogList();
+}
+
+// ── TABS ─────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
+    document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById('view-' + btn.dataset.view).classList.add('active');
+  });
+});
+
+document.getElementById('global-refresh-btn').addEventListener('click', function () {
+  Promise.all([loadRoster(), loadAdmin(STATE.week)]).then(function () { showToast('Refreshed'); renderAll(); });
+});
+
+// ── PLAYER PICKERS (shared by Add player + Exclusions) ─────────────────────
+function populatePlayerSelect(sel) {
+  var prevValue = sel.value;
+  sel.textContent = '';
+  var opt0 = document.createElement('option');
+  opt0.value = ''; opt0.textContent = 'Choose a player...';
+  sel.appendChild(opt0);
+  ROSTER.slice().sort(function (a, b) {
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  }).forEach(function (p) {
+    var opt = document.createElement('option');
+    opt.value = p.siteKey;
+    opt.textContent = (p.name || '(no name)') + ' - ' + (p.alliance || 'unknown');
+    sel.appendChild(opt);
+  });
+  sel.value = prevValue;
+}
+
+// ── WAVE TAB ─────────────────────────────────────────────────────────────
+function renderWave() {
+  document.getElementById('wave-week-input').value = STATE.week || '';
+  renderWaveHeader();
+  renderShortfalls();
+  updateWaveButtons();
+  renderFlowBoard();
+  renderAddPlayerControls();
+}
+
+function renderWaveHeader() {
+  var sizes = STATE.sizes || {};
+  document.getElementById('size-dog').textContent = sizes.DOG != null ? String(sizes.DOG) : '?';
+  document.getElementById('size-mss').textContent = sizes.MSS != null ? String(sizes.MSS) : '?';
+  document.getElementById('size-catplus').textContent = sizes['Cat+'] != null ? String(sizes['Cat+']) : '?';
+
+  var pill = document.getElementById('size-catplus-pill');
+  var note = document.getElementById('sizes-note');
+  var crossed = (sizes['Cat+'] || 0) >= 120;
+  pill.classList.toggle('size-pill-warn', crossed);
+  note.classList.toggle('warn', crossed);
+  note.textContent = crossed
+    ? ('Cat+ is at ' + sizes['Cat+'] + ' players, at or above the 120 threshold. This is the cue to revisit the flow volumes.')
+    : 'Cat+ crossing 120 players is the cue to revisit the flow volumes.';
+}
+
+function renderShortfalls() {
+  var box = document.getElementById('shortfalls-box');
+  box.textContent = '';
+  var wave = STATE.wave;
+  var list = (wave && Array.isArray(wave.shortfalls)) ? wave.shortfalls : [];
+  if (!list.length) { box.style.display = 'none'; return; }
+  box.style.display = '';
+
+  var title = document.createElement('div');
+  title.className = 'shortfalls-title';
+  title.textContent = 'This wave could not be fully filled:';
+  box.appendChild(title);
+
+  list.forEach(function (sf) {
+    var parts = String(sf.flow || '').split('>');
+    var from = parts[0] || 'unknown', to = parts[1] || 'unknown';
+    var row = document.createElement('div');
+    row.className = 'shortfall-row';
+    row.textContent = (sf.kind === 'leaders')
+      ? ('No leaders available for ' + from + ' → ' + to + ' (filled ' + sf.got + ' of ' + sf.want + ' required leader slots).')
+      : ('Could not fill the quota for ' + from + ' → ' + to + ' (got ' + sf.got + ' of ' + sf.want + ').');
+    box.appendChild(row);
+  });
+}
+
+function updateWaveButtons() {
+  var wave = STATE.wave;
+  var genBtn = document.getElementById('wave-generate-btn');
+  var rerollBtn = document.getElementById('wave-reroll-btn');
+  var pubBtn = document.getElementById('wave-publish-btn');
+  var closeBtn = document.getElementById('wave-close-btn');
+  var pill = document.getElementById('wave-status-pill');
+
+  var canGenerate = !wave || wave.status === 'draft';
+  var canReroll = !!wave && wave.status === 'draft';
+  var canPublish = !!wave && wave.status === 'draft';
+  var canClose = !!wave && wave.status === 'announced';
+
+  genBtn.disabled = !canGenerate;
+  genBtn.title = canGenerate ? '' : 'This week already has an announced or closed wave. Only a draft wave can be regenerated.';
+  rerollBtn.disabled = !canReroll;
+  rerollBtn.title = canReroll ? '' : 'Re-roll only works on a draft wave.';
+  pubBtn.disabled = !canPublish;
+  pubBtn.title = canPublish ? '' : 'Publish only works on a draft wave.';
+  closeBtn.disabled = !canClose;
+  closeBtn.title = canClose ? '' : 'Close only works on an announced wave.';
+
+  pill.textContent = wave ? wave.status : 'no wave';
+  pill.className = 'badge status-badge status-' + (wave ? wave.status : 'none');
+}
+
+// Best-effort "decision stats" for a wave row. The admin payload does not
+// carry raw per-week history (only the lifetime coverage.rows summary), so
+// lastRotated/rotations/visited are derived from coverage.rows[siteKey]:
+// visited = alliances other than home that the player has EVER completed a
+// visit to (lifetime, not this-wave-only). lastSeen comes from the live
+// roster's lastShowTime (unix seconds), joined separately, since that field
+// genuinely is available there.
+function statsFor(a) {
+  var cov = COVERAGE_INDEX[a.siteKey];
+  var visited = [];
+  if (cov && cov.covered) {
+    visited = ALLIANCES.filter(function (al) { return al !== cov.alliance && cov.covered[al]; });
+  }
+  var rp = ROSTER_INDEX[a.siteKey];
+  var lastSeen = (rp && rp.lastShowTime) ? new Date(rp.lastShowTime * 1000).toLocaleDateString() : 'unknown';
+  return {
+    lastRotated: visited.length ? 'previously' : 'never',
+    rotations: visited.length,
+    visited: visited,
+    lastSeen: lastSeen,
+  };
+}
+
+function statRow(a) {
+  var tr = document.createElement('tr');
+  var stats = statsFor(a);
+  var snap = a.snap || {};
+
+  var roleTd = document.createElement('td');
+  var roleBadge = document.createElement('span');
+  roleBadge.className = 'role-badge' + (a.role === 'leader' ? ' leader' : '');
+  roleBadge.textContent = a.role === 'leader' ? 'Leader' : 'Member';
+  roleTd.appendChild(roleBadge);
+  tr.appendChild(roleTd);
+
+  [
+    snap.name != null ? snap.name : '(unknown)',
+    snap.profession != null ? snap.profession : 'unknown',
+    fmtCp(snap.cp),
+    snap.rank != null ? ('R' + snap.rank) : 'unknown',
+    stats.lastRotated,
+    String(stats.rotations),
+    stats.visited.length ? stats.visited.join(' · ') : 'none',
+    stats.lastSeen,
+  ].forEach(function (v) {
+    var td = document.createElement('td');
+    td.textContent = v;
+    tr.appendChild(td);
+  });
+
+  var statusTd = document.createElement('td');
+  var statusBadge = document.createElement('span');
+  statusBadge.className = 'status-badge status-' + a.status;
+  statusBadge.textContent = a.status;
+  statusTd.appendChild(statusBadge);
+  if ((a.status === 'declined' || a.status === 'noshow') && a.statusBy) {
+    var by = document.createElement('div');
+    by.className = 'status-by';
+    // a.statusBy is editor-supplied text from a shared password — render as
+    // TEXT only, never markup.
+    by.textContent = 'by ' + a.statusBy;
+    statusTd.appendChild(by);
+  }
+  tr.appendChild(statusTd);
+
+  var act = document.createElement('td');
+  act.className = 'row-actions';
+  act.appendChild(mkBtn('Declined', function () { setStatus(a.siteKey, 'declined'); }));
+  act.appendChild(mkBtn("Didn't go", function () { setStatus(a.siteKey, 'noshow'); }));
+  act.appendChild(mkBtn('Remove', function () { unassign(a.siteKey); }));
+  tr.appendChild(act);
+
+  return tr;
+}
+
+function renderFlowBoard() {
+  var board = document.getElementById('flow-board');
+  board.textContent = '';
+  var cfg = STATE.config || { flows: {} };
+  var flowKeys = Object.keys(cfg.flows || {});
+  var wave = STATE.wave;
+
+  flowKeys.forEach(function (fk) {
+    var parts = fk.split('>');
+    var from = parts[0] || 'unknown', to = parts[1] || 'unknown';
+    var quota = cfg.flows[fk];
+    var rows = wave ? wave.assignments.filter(function (a) { return a.home === from && a.to === to; }) : [];
+    var got = rows.length;
+
+    var col = document.createElement('div');
+    col.className = 'flow-col';
+    col.dataset.flow = fk;
+
+    var head = document.createElement('div');
+    head.className = 'flow-head';
+    var title = document.createElement('div');
+    title.className = 'flow-title';
+    title.textContent = from + ' → ' + to;
+    var countBadge = document.createElement('span');
+    countBadge.className = 'flow-count' + (got < quota ? ' short' : '');
+    countBadge.textContent = got + '/' + quota;
+    head.appendChild(title);
+    head.appendChild(countBadge);
+    col.appendChild(head);
+
+    var quotaRow = document.createElement('div');
+    quotaRow.className = 'flow-quota-row';
+    var qLabel = document.createElement('label');
+    qLabel.textContent = 'Quota';
+    var qInput = document.createElement('input');
+    qInput.type = 'number'; qInput.min = '0'; qInput.max = '40'; qInput.value = quota;
+    qInput.className = 'flow-quota-input';
+    qInput.addEventListener('change', makeQuotaHandler(fk, qInput));
+    quotaRow.appendChild(qLabel);
+    quotaRow.appendChild(qInput);
+    col.appendChild(quotaRow);
+
+    if (!wave) {
+      var empty = document.createElement('div');
+      empty.className = 'empty-col';
+      empty.textContent = 'No wave generated for this week yet.';
+      col.appendChild(empty);
+    } else if (!rows.length) {
+      var empty2 = document.createElement('div');
+      empty2.className = 'empty-col';
+      empty2.textContent = 'Nobody assigned on this route.';
+      col.appendChild(empty2);
+    } else {
+      var wrap = document.createElement('div');
+      wrap.className = 'flow-table-wrap';
+      var table = document.createElement('table');
+      table.className = 'flow-table';
+      var thead = document.createElement('thead');
+      var htr = document.createElement('tr');
+      ['Role', 'Name', 'Prof', 'CP', 'Rank', 'Last rotated', 'Rotations', 'Visited', 'Last seen', 'Status', 'Actions'].forEach(function (h) {
+        var th = document.createElement('th');
+        th.textContent = h;
+        htr.appendChild(th);
+      });
+      thead.appendChild(htr);
+      table.appendChild(thead);
+      var tbody = document.createElement('tbody');
+      rows.forEach(function (a) { tbody.appendChild(statRow(a)); });
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      col.appendChild(wrap);
+    }
+
+    board.appendChild(col);
+  });
+}
+
+function makeQuotaHandler(fk, input) {
+  return function () {
+    var n = parseInt(input.value, 10);
+    if (!Number.isInteger(n) || n < 0 || n > 40) {
+      showToast('Quota must be a whole number from 0 to 40.');
+      input.value = STATE.config.flows[fk];
+      return;
+    }
+    api('/rotation/quota', { method: 'POST', body: { flow: fk, n: n } }).then(function (res) {
+      if (res.status === 200 && res.json.ok) {
+        showToast('Quota updated');
+        reloadAndRender(STATE.week);
+      } else {
+        showToast('Quota update failed: ' + friendlyError(res));
+        input.value = STATE.config.flows[fk];
+      }
+    });
+  };
+}
+
+function renderAddPlayerControls() {
+  populatePlayerSelect(document.getElementById('addp-player'));
+
+  var flowSel = document.getElementById('addp-flow');
+  flowSel.textContent = '';
+  Object.keys((STATE.config && STATE.config.flows) || {}).forEach(function (fk) {
+    var opt = document.createElement('option');
+    opt.value = fk;
+    var parts = fk.split('>');
+    opt.textContent = (parts[0] || '?') + ' → ' + (parts[1] || '?');
+    flowSel.appendChild(opt);
+  });
+}
+
+document.getElementById('addp-btn').addEventListener('click', function () {
+  var sk = document.getElementById('addp-player').value;
+  var flow = document.getElementById('addp-flow').value;
+  var role = document.getElementById('addp-role').value;
+  var statusEl = document.getElementById('addp-status');
+  if (!sk) { statusEl.textContent = 'Choose a player first.'; return; }
+  if (!flow) { statusEl.textContent = 'Choose a flow first.'; return; }
+  if (!STATE.week) { statusEl.textContent = 'Load or generate a week first.'; return; }
+  if (!STATE.wave) { statusEl.textContent = 'There is no wave for this week yet. Generate one first.'; return; }
+  statusEl.textContent = 'Adding...';
+  api('/rotation/assign', { method: 'POST', body: { week: STATE.week, siteKey: sk, flow: flow, role: role } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) {
+      statusEl.textContent = 'Added.';
+      reloadAndRender(STATE.week);
+    } else {
+      statusEl.textContent = 'Add failed: ' + friendlyError(res);
+    }
+  });
+});
+
+function setStatus(sk, status) {
+  api('/rotation/status', { method: 'POST', body: { week: STATE.week, siteKey: sk, status: status } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) { showToast('Status updated'); reloadAndRender(STATE.week); }
+    else showToast('Update failed: ' + friendlyError(res));
+  });
+}
+
+function unassign(sk) {
+  if (!window.confirm('Remove this player from the wave?')) return;
+  api('/rotation/unassign', { method: 'POST', body: { week: STATE.week, siteKey: sk } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) { showToast('Removed'); reloadAndRender(STATE.week); }
+    else showToast('Remove failed: ' + friendlyError(res));
+  });
+}
+
+function currentWeekInput() {
+  var v = (document.getElementById('wave-week-input').value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { showToast('Enter a week as YYYY-MM-DD.'); return null; }
+  STATE.week = v;
+  return v;
+}
+
+document.getElementById('wave-load-btn').addEventListener('click', function () {
+  var v = (document.getElementById('wave-week-input').value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { showToast('Enter a week as YYYY-MM-DD.'); return; }
+  reloadAndRender(v);
+});
+
+document.getElementById('wave-generate-btn').addEventListener('click', function () {
+  var week = currentWeekInput();
+  if (!week) return;
+  api('/rotation/generate', { method: 'POST', body: { week: week } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) { showToast('Generated'); reloadAndRender(week); }
+    else showToast('Generate failed: ' + friendlyError(res));
+  });
+});
+
+document.getElementById('wave-reroll-btn').addEventListener('click', function () {
+  var week = currentWeekInput();
+  if (!week) return;
+  if (!window.confirm('Re-roll this wave? The current draft assignments will be replaced.')) return;
+  api('/rotation/generate', { method: 'POST', body: { week: week, reroll: true } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) { showToast('Re-rolled'); reloadAndRender(week); }
+    else showToast('Re-roll failed: ' + friendlyError(res));
+  });
+});
+
+document.getElementById('wave-publish-btn').addEventListener('click', function () {
+  if (!STATE.week) { showToast('Load or generate a week first.'); return; }
+  if (!window.confirm('Publish this wave? Players will see it on the public rotation page.')) return;
+  api('/rotation/publish', { method: 'POST', body: { week: STATE.week } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) { showToast('Published'); reloadAndRender(STATE.week); }
+    else showToast('Publish failed: ' + friendlyError(res));
+  });
+});
+
+document.getElementById('wave-close-btn').addEventListener('click', function () {
+  if (!STATE.week) { showToast('Load or generate a week first.'); return; }
+  if (!window.confirm('Close this week? This freezes rotation history and cannot be undone.')) return;
+  api('/rotation/close', { method: 'POST', body: { week: STATE.week } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) { showToast('Closed'); reloadAndRender(STATE.week); }
+    else showToast('Close failed: ' + friendlyError(res));
+  });
+});
+
+// ── COVERAGE TAB ─────────────────────────────────────────────────────────
+var covSort = { key: 'count', dir: 'asc' }; // server already sorts most-incomplete first
+
+function renderCoverage() {
+  var startedEl = document.getElementById('cov-started');
+  if (STATE.coverage && STATE.coverage.startedWeek) {
+    startedEl.style.display = '';
+    startedEl.textContent = 'History starts ' + STATE.coverage.startedWeek + '.';
+  } else {
+    startedEl.style.display = 'none';
+    startedEl.textContent = '';
+  }
+
+  var rows = ((STATE.coverage && STATE.coverage.rows) || []).slice();
+  rows.sort(function (a, b) {
+    var av, bv;
+    if (covSort.key === 'name') { av = String(a.name || '').toLowerCase(); bv = String(b.name || '').toLowerCase(); }
+    else if (covSort.key === 'alliance') { av = String(a.alliance || ''); bv = String(b.alliance || ''); }
+    else { av = a.count; bv = b.count; }
+    var cmp = av < bv ? -1 : (av > bv ? 1 : 0);
+    return covSort.dir === 'asc' ? cmp : -cmp;
+  });
+
+  var tbody = document.getElementById('cov-tbody');
+  tbody.textContent = '';
+  rows.forEach(function (r) {
+    var tr = document.createElement('tr');
+
+    var nameTd = document.createElement('td');
+    nameTd.textContent = r.name != null ? r.name : '(unknown)';
+    tr.appendChild(nameTd);
+
+    var allTd = document.createElement('td');
+    allTd.textContent = r.alliance || 'unknown';
+    tr.appendChild(allTd);
+
+    ALLIANCES.forEach(function (al) {
+      var td = document.createElement('td');
+      td.className = 'cov-check';
+      td.textContent = (r.covered && r.covered[al]) ? '✓' : '-';
+      tr.appendChild(td);
+    });
+
+    var countTd = document.createElement('td');
+    countTd.textContent = r.count + '/' + ALLIANCES.length;
+    tr.appendChild(countTd);
+
+    tbody.appendChild(tr);
+  });
+
+  if (!rows.length) {
+    var tr2 = document.createElement('tr');
+    var td2 = document.createElement('td');
+    td2.colSpan = 6;
+    td2.className = 'empty-col';
+    td2.textContent = 'No players in the roster yet.';
+    tr2.appendChild(td2);
+    tbody.appendChild(tr2);
+  }
+}
+
+document.querySelectorAll('#cov-table th[data-sort]').forEach(function (th) {
+  th.addEventListener('click', function () {
+    var key = th.dataset.sort;
+    if (covSort.key === key) covSort.dir = covSort.dir === 'asc' ? 'desc' : 'asc';
+    else { covSort.key = key; covSort.dir = 'asc'; }
+    renderCoverage();
+  });
+});
+
+// ── EXCLUSIONS TAB ───────────────────────────────────────────────────────
+function reasonLabel(code) {
+  var found = ROT_REASONS.filter(function (r) { return r[0] === code; })[0];
+  return found ? found[1] : String(code || 'unknown');
+}
+
+function renderExclusions() {
+  populatePlayerSelect(document.getElementById('excl-player'));
+
+  var list = document.getElementById('excl-list');
+  list.textContent = '';
+  var ex = STATE.exclusions || {};
+  var keys = Object.keys(ex);
+  if (!keys.length) {
+    list.textContent = 'No active exclusions.';
+    return;
+  }
+
+  keys.forEach(function (sk) {
+    var e = ex[sk] || {};
+    var rp = ROSTER_INDEX[sk];
+    var row = document.createElement('div');
+    row.className = 'log-row';
+
+    var main = document.createElement('div');
+    var nameSpan = document.createElement('b');
+    nameSpan.textContent = (rp && rp.name) ? rp.name : sk;
+    main.appendChild(nameSpan);
+    main.appendChild(document.createTextNode(': ' + reasonLabel(e.reasonCode)));
+    row.appendChild(main);
+
+    var meta = document.createElement('div');
+    meta.className = 'log-meta';
+    // e.by is editor-supplied text from a shared password — render as TEXT.
+    var byText = 'Added by ' + (e.by || 'Admin');
+    if (e.at) byText += ' on ' + new Date(e.at).toLocaleString();
+    byText += e.until ? (', expires ' + new Date(e.until).toLocaleString()) : ', no expiry';
+    meta.textContent = byText;
+    row.appendChild(meta);
+
+    row.appendChild(mkBtn('Remove exclusion', function () { removeExclusion(sk); }));
+
+    list.appendChild(row);
+  });
+}
+
+function removeExclusion(sk) {
+  if (!window.confirm('Remove this exclusion?')) return;
+  api('/rotation/exclusions?siteKey=' + encodeURIComponent(sk), { method: 'DELETE' }).then(function (res) {
+    if (res.status === 200 && res.json.ok) { showToast('Exclusion removed'); reloadAndRender(STATE.week); }
+    else showToast('Remove failed: ' + friendlyError(res));
+  });
+}
+
+document.getElementById('excl-add-btn').addEventListener('click', function () {
+  var sk = document.getElementById('excl-player').value;
+  var reason = document.getElementById('excl-reason').value;
+  var untilStr = document.getElementById('excl-until').value;
+  var statusEl = document.getElementById('excl-status');
+  statusEl.className = '';
+  if (!sk) { statusEl.textContent = 'Choose a player first.'; return; }
+  var until = untilStr ? new Date(untilStr).getTime() : null;
+  statusEl.textContent = 'Saving...';
+  api('/rotation/exclusions', { method: 'POST', body: { siteKey: sk, reasonCode: reason, until: until } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) {
+      statusEl.className = 'ok';
+      statusEl.textContent = 'Added.';
+      document.getElementById('excl-until').value = '';
+      reloadAndRender(STATE.week);
+    } else {
+      statusEl.className = 'err';
+      statusEl.textContent = 'Add failed: ' + friendlyError(res);
+    }
+  });
+});
+
+// ── SCHEDULE TAB ─────────────────────────────────────────────────────────
+var scheduleDraft = { activeWeek: null, weeks: [] };
+
+function resetScheduleDraft() {
+  var s = STATE.sched || { activeWeek: null, weeks: [] };
+  scheduleDraft = {
+    activeWeek: s.activeWeek || null,
+    weeks: (s.weeks || []).map(function (w) { return Object.assign({}, w); }),
+  };
+}
+
+function renderSchedule() {
+  resetScheduleDraft();
+  renderScheduleTable();
+  renderActiveWeekSelect();
+}
+
+function renderScheduleTable() {
+  var tbody = document.getElementById('sched-tbody');
+  tbody.textContent = '';
+  scheduleDraft.weeks.forEach(function (w, idx) {
+    var tr = document.createElement('tr');
+
+    var weekTd = document.createElement('td');
+    var weekInput = document.createElement('input');
+    weekInput.type = 'text';
+    weekInput.value = w.week || '';
+    weekInput.placeholder = 'YYYY-MM-DD';
+    weekInput.addEventListener('input', function () { scheduleDraft.weeks[idx].week = weekInput.value.trim(); });
+    weekTd.appendChild(weekInput);
+    tr.appendChild(weekTd);
+
+    var statusTd = document.createElement('td');
+    var statusSel = document.createElement('select');
+    ['planned', 'skipped', 'active', 'closed'].forEach(function (s) {
+      var opt = document.createElement('option');
+      opt.value = s; opt.textContent = s;
+      if (w.status === s) opt.selected = true;
+      statusSel.appendChild(opt);
+    });
+    statusSel.addEventListener('change', function () { scheduleDraft.weeks[idx].status = statusSel.value; });
+    statusTd.appendChild(statusSel);
+    tr.appendChild(statusTd);
+
+    var noteTd = document.createElement('td');
+    var noteInput = document.createElement('input');
+    noteInput.type = 'text';
+    noteInput.maxLength = 200;
+    noteInput.value = w.note || '';
+    noteInput.addEventListener('input', function () { scheduleDraft.weeks[idx].note = noteInput.value; });
+    noteTd.appendChild(noteInput);
+    tr.appendChild(noteTd);
+
+    var actTd = document.createElement('td');
+    actTd.appendChild(mkBtn('Skip this week', function () { skipWeekPrompt(scheduleDraft.weeks[idx].week); }));
+    actTd.appendChild(mkBtn('Remove', function () {
+      scheduleDraft.weeks.splice(idx, 1);
+      renderScheduleTable();
+      renderActiveWeekSelect();
+    }));
+    tr.appendChild(actTd);
+
+    tbody.appendChild(tr);
+  });
+
+  if (!scheduleDraft.weeks.length) {
+    var tr2 = document.createElement('tr');
+    var td2 = document.createElement('td');
+    td2.colSpan = 4;
+    td2.className = 'empty-col';
+    td2.textContent = 'No weeks scheduled yet.';
+    tr2.appendChild(td2);
+    tbody.appendChild(tr2);
+  }
+}
+
+function renderActiveWeekSelect() {
+  var sel = document.getElementById('active-week-select');
+  sel.textContent = '';
+  var opt0 = document.createElement('option');
+  opt0.value = ''; opt0.textContent = '(none)';
+  sel.appendChild(opt0);
+  scheduleDraft.weeks.forEach(function (w) {
+    var opt = document.createElement('option');
+    opt.value = w.week;
+    opt.textContent = w.week + ' (' + w.status + ')';
+    if (scheduleDraft.activeWeek === w.week) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+document.getElementById('sched-add-btn').addEventListener('click', function () {
+  scheduleDraft.weeks.push({ week: '', status: 'planned', note: '' });
+  renderScheduleTable();
+  renderActiveWeekSelect();
+});
+
+document.getElementById('sched-save-btn').addEventListener('click', function () {
+  var statusEl = document.getElementById('sched-status');
+  for (var i = 0; i < scheduleDraft.weeks.length; i++) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduleDraft.weeks[i].week)) {
+      statusEl.className = 'err';
+      statusEl.textContent = 'Every week needs a valid YYYY-MM-DD date.';
+      return;
+    }
+  }
+  statusEl.className = '';
+  statusEl.textContent = 'Saving...';
+  api('/rotation/schedule', { method: 'POST', body: { activeWeek: scheduleDraft.activeWeek || null, weeks: scheduleDraft.weeks } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) {
+      statusEl.className = 'ok';
+      statusEl.textContent = 'Saved.';
+      reloadAndRender(STATE.week);
+    } else {
+      statusEl.className = 'err';
+      statusEl.textContent = 'Save failed: ' + friendlyError(res);
+    }
+  });
+});
+
+document.getElementById('active-week-save-btn').addEventListener('click', function () {
+  scheduleDraft.activeWeek = document.getElementById('active-week-select').value || null;
+  document.getElementById('sched-save-btn').click();
+});
+
+function skipWeekPrompt(week) {
+  if (!week || !/^\d{4}-\d{2}-\d{2}$/.test(week)) {
+    showToast('Give this row a valid week (YYYY-MM-DD) before skipping it.');
+    return;
+  }
+  var reason = window.prompt('Reason for skipping the week of ' + week + '?');
+  if (reason == null) return;
+  reason = reason.trim();
+  api('/rotation/skip', { method: 'POST', body: { week: week, note: reason } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) { showToast('Week skipped'); reloadAndRender(STATE.week); }
+    else showToast('Skip failed: ' + friendlyError(res));
+  });
+}
+
+// ── CHANGELOG TAB ────────────────────────────────────────────────────────
+function renderChangelogList() {
+  var list = document.getElementById('changelog-list');
+  list.textContent = '';
+  var entries = STATE.changelog || [];
+  if (!entries.length) { list.textContent = 'No changelog entries yet.'; return; }
+
+  entries.forEach(function (e) {
+    var row = document.createElement('div');
+    row.className = 'log-row';
+
+    var main = document.createElement('div');
+    var actionSpan = document.createElement('b');
+    // e.action is a fixed short verb set server-side, but still rendered as
+    // text only, same as every other field here.
+    actionSpan.textContent = e.action || 'action';
+    main.appendChild(actionSpan);
+    if (e.week) main.appendChild(document.createTextNode(' · week ' + e.week));
+    if (e.detail) main.appendChild(document.createTextNode(': ' + e.detail));
+    row.appendChild(main);
+
+    var meta = document.createElement('div');
+    meta.className = 'log-meta';
+    var when = e.at ? new Date(e.at).toLocaleString() : 'unknown time';
+    meta.appendChild(document.createTextNode(when + ' · '));
+    var actorSpan = document.createElement('span');
+    // e.actor is editor-supplied text from a shared password — render as
+    // TEXT only, never markup. This is the field a leaked password could
+    // most plausibly be used to poison.
+    actorSpan.textContent = e.actor || 'Admin';
+    meta.appendChild(actorSpan);
+    row.appendChild(meta);
+
+    list.appendChild(row);
+  });
+}
+
+// ── INIT ─────────────────────────────────────────────────────────────────
+function init() {
+  ensureEditorName();
+  Promise.all([loadRoster(), loadAdmin()]).then(function () { renderAll(); });
+}
+
+// A stored password (from a previous visit) loads straight in; a 401 later
+// will clear it and re-show the gate. No stored password -> show the gate.
+if (editPw) { hideGate(); init(); }
+else { showGate(); }
+
+})();
+</script>
+</body>
+</html>
