@@ -378,11 +378,17 @@ document.addEventListener('click', function (e) {
   }
   function selectLanguage(code) {
     if (code === 'en') { restoreEnglish(); return; }
+    // Persist the pick site-wide so the browser-locale auto-detect doesn't
+    // override an explicit choice on the next page load.
+    try { localStorage.setItem('langOverride', code); localStorage.setItem('translate-dismissed', '1'); } catch(e) {}
     try { sessionStorage.setItem('pendingLang', code); } catch(e) {}
     applyLangToCombo(code, 200, closeLangModal);
   }
   function restoreEnglish() {
     try { sessionStorage.removeItem('pendingLang'); } catch(e) {}
+    // English is an explicit choice too — record it so the browser-locale
+    // auto-detect on the next load doesn't translate the page straight back.
+    try { localStorage.setItem('translate-dismissed', '1'); localStorage.setItem('langOverride', 'en'); } catch(e) {}
     document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax; Secure';
     document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.2864tw.com; SameSite=Lax; Secure';
     closeLangModal(); location.reload();
