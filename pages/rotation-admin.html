@@ -145,6 +145,20 @@
   .addp-row, .excl-row{display:flex; gap:.5rem; flex-wrap:wrap; align-items:center}
   .addp-row select, .excl-row select{min-width:180px}
 
+  /* Player picker: type-to-filter search box + dropdown result list, used
+     everywhere a single roster player needs to be chosen (a plain <select>
+     with 300+ entries is materially worse than filtering by name). */
+  .player-picker{position:relative; min-width:220px}
+  .player-picker-input{width:100%; min-width:220px}
+  .player-picker-results{
+    position:absolute; top:100%; left:0; right:0; margin-top:.25rem; z-index:60;
+    background:var(--surface); border:1px solid var(--border2); border-radius:9px;
+    max-height:220px; overflow-y:auto; box-shadow:0 8px 24px rgba(0,0,0,.4);
+  }
+  .player-picker-row{padding:.4rem .6rem; font-size:.82rem; cursor:pointer}
+  .player-picker-row:hover{background:var(--card2); color:var(--accent)}
+  .player-picker-empty{padding:.4rem .6rem; font-size:.8rem; color:var(--faint)}
+
   /* Coverage */
   .cov-note{color:var(--muted); font-size:.85rem; max-width:760px; margin-bottom:.4rem}
   .cov-started{color:var(--accent); font-size:.8rem; margin-bottom:.9rem; font-weight:700}
@@ -247,7 +261,11 @@
     <div class="addp-bar card">
       <div class="addp-title">Add specific player</div>
       <div class="addp-row">
-        <select id="addp-player"><option value="">Choose a player...</option></select>
+        <div class="player-picker" id="addp-player-wrap">
+          <input type="text" id="addp-player-search" class="input player-picker-input" placeholder="Search player by name..." autocomplete="off">
+          <input type="hidden" id="addp-player-value">
+          <div class="player-picker-results" id="addp-player-results" style="display:none"></div>
+        </div>
         <select id="addp-flow"></select>
         <select id="addp-role">
           <option value="member">Member</option>
@@ -285,7 +303,11 @@
     <div class="card">
       <div class="excl-title">Add exclusion</div>
       <div class="excl-row">
-        <select id="excl-player"><option value="">Choose a player...</option></select>
+        <div class="player-picker" id="excl-player-wrap">
+          <input type="text" id="excl-player-search" class="input player-picker-input" placeholder="Search player by name..." autocomplete="off">
+          <input type="hidden" id="excl-player-value">
+          <div class="player-picker-results" id="excl-player-results" style="display:none"></div>
+        </div>
         <select id="excl-reason">
           <option value="player_request">Player requested</option>
           <option value="event_conflict">Event conflict</option>
@@ -320,6 +342,31 @@
       <label for="active-week-select">Active week</label>
       <select id="active-week-select"></select>
       <button type="button" class="btn" id="active-week-save-btn">Set active week</button>
+    </div>
+
+    <div class="card" style="margin-top:1.4rem">
+      <div class="excl-title">Correct a player's home alliance</div>
+      <p class="log-meta" style="margin-bottom:.6rem">
+        A player's home alliance is frozen the first time they are assigned, and every
+        future wave uses that frozen value to decide who is eligible to leave which
+        alliance. Use this only for a genuine transfer, or a visitor who is staying for
+        good. This rewrites the value every future wave will use for them.
+      </p>
+      <div class="excl-row">
+        <div class="player-picker" id="home-player-wrap">
+          <input type="text" id="home-player-search" class="input player-picker-input" placeholder="Search player by name..." autocomplete="off">
+          <input type="hidden" id="home-player-value">
+          <div class="player-picker-results" id="home-player-results" style="display:none"></div>
+        </div>
+        <span class="badge" id="home-current-label">Current home: none selected</span>
+        <select id="home-alliance-select">
+          <option value="DOG">DOG</option>
+          <option value="MSS">MSS</option>
+          <option value="Cat+">Cat+</option>
+        </select>
+        <button type="button" class="btn primary" id="home-save-btn">Set home alliance</button>
+      </div>
+      <div id="home-status" class="log-meta"></div>
     </div>
   </section>
 
@@ -503,16 +550,11 @@ var STATE = {
   changelog: [],
   sizes: {},
   coverage: { startedWeek: null, rows: [] },
+  history: {},
 };
 
 var ROSTER = [];
 var ROSTER_INDEX = {};
-var COVERAGE_INDEX = {};
-
-function reindexCoverage() {
-  COVERAGE_INDEX = {};
-  ((STATE.coverage && STATE.coverage.rows) || []).forEach(function (r) { COVERAGE_INDEX[r.siteKey] = r; });
-}
 
 // Roster (name/alliance/profession/cp/rank/lastShowTime), used for the player
 // pickers (Add player / Exclusions) and to derive "last seen" for wave rows.
@@ -545,7 +587,10 @@ function loadAdmin(week) {
     STATE.changelog = j.changelog || [];
     STATE.sizes = j.sizes || {};
     STATE.coverage = j.coverage || { startedWeek: null, rows: [] };
-    reindexCoverage();
+    // Raw per-player history (visits/lastCompletedWeek/declines), added to the
+    // admin payload after this page's first ship specifically to close the
+    // "decision stats were only approximated from coverage" gap. See statsFor().
+    STATE.history = j.history || {};
     return true;
   });
 }
@@ -576,22 +621,86 @@ document.getElementById('global-refresh-btn').addEventListener('click', function
   Promise.all([loadRoster(), loadAdmin(STATE.week)]).then(function () { showToast('Refreshed'); renderAll(); });
 });
 
-// ── PLAYER PICKERS (shared by Add player + Exclusions) ─────────────────────
-function populatePlayerSelect(sel) {
-  var prevValue = sel.value;
-  sel.textContent = '';
-  var opt0 = document.createElement('option');
-  opt0.value = ''; opt0.textContent = 'Choose a player...';
-  sel.appendChild(opt0);
-  ROSTER.slice().sort(function (a, b) {
-    return String(a.name || '').localeCompare(String(b.name || ''));
-  }).forEach(function (p) {
-    var opt = document.createElement('option');
-    opt.value = p.siteKey;
-    opt.textContent = (p.name || '(no name)') + ' - ' + (p.alliance || 'unknown');
-    sel.appendChild(opt);
+// ── PLAYER PICKERS (shared by Add player / Exclusions / Home correction) ───
+// A type-to-filter search box + dropdown result list, backed by the live
+// ROSTER. Reused everywhere a single roster player needs to be chosen — a
+// plain <select> with 300+ entries is materially worse to use than a search.
+// Elements expected in the DOM: #<prefix>-search (text input),
+// #<prefix>-value (hidden input holding the chosen siteKey),
+// #<prefix>-results (the dropdown container), #<prefix>-wrap (the
+// positioning wrapper, used to detect "click outside to close").
+var MAX_PICKER_RESULTS = 20;
+
+function makePlayerPicker(prefix, onSelect) {
+  var wrap = document.getElementById(prefix + '-wrap');
+  var input = document.getElementById(prefix + '-search');
+  var hidden = document.getElementById(prefix + '-value');
+  var results = document.getElementById(prefix + '-results');
+
+  function hide() { results.style.display = 'none'; results.textContent = ''; }
+
+  function labelFor(p) { return (p && p.name ? p.name : '(no name)') + ' - ' + (p && p.alliance ? p.alliance : 'unknown'); }
+
+  function renderResults(list) {
+    results.textContent = '';
+    if (!list.length) {
+      var none = document.createElement('div');
+      none.className = 'player-picker-empty';
+      none.textContent = 'No players match.';
+      results.appendChild(none);
+    } else {
+      list.forEach(function (p) {
+        var row = document.createElement('div');
+        row.className = 'player-picker-row';
+        row.textContent = labelFor(p);
+        // mousedown (not click) fires before the input's blur handler would
+        // otherwise close the dropdown out from under the click.
+        row.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          hidden.value = p.siteKey;
+          input.value = labelFor(p);
+          hide();
+          if (onSelect) onSelect(p.siteKey, p);
+        });
+        results.appendChild(row);
+      });
+    }
+    results.style.display = '';
+  }
+
+  function runFilter() {
+    var q = input.value.trim().toLowerCase();
+    if (!q) { hide(); return; }
+    var matches = ROSTER.filter(function (p) {
+      return String((p && p.name) || '').toLowerCase().indexOf(q) !== -1;
+    }).sort(function (a, b) {
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    }).slice(0, MAX_PICKER_RESULTS);
+    renderResults(matches);
+  }
+
+  input.addEventListener('input', function () {
+    // Any edit invalidates a prior selection — a stale hidden siteKey behind
+    // freshly typed text would silently act on the WRONG player.
+    hidden.value = '';
+    runFilter();
   });
-  sel.value = prevValue;
+  input.addEventListener('focus', function () { if (input.value.trim()) runFilter(); });
+  input.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(); });
+  document.addEventListener('click', function (e) {
+    if (wrap && !wrap.contains(e.target)) hide();
+  });
+
+  return {
+    reset: function () { input.value = ''; hidden.value = ''; hide(); },
+    getValue: function () { return hidden.value; },
+    setBySiteKey: function (sk) {
+      var p = ROSTER_INDEX[sk];
+      hidden.value = sk || '';
+      input.value = p ? labelFor(p) : '';
+      if (onSelect) onSelect(sk || '', p);
+    },
+  };
 }
 
 // ── WAVE TAB ─────────────────────────────────────────────────────────────
@@ -671,24 +780,25 @@ function updateWaveButtons() {
   pill.className = 'badge status-badge status-' + (wave ? wave.status : 'none');
 }
 
-// Best-effort "decision stats" for a wave row. The admin payload does not
-// carry raw per-week history (only the lifetime coverage.rows summary), so
-// lastRotated/rotations/visited are derived from coverage.rows[siteKey]:
-// visited = alliances other than home that the player has EVER completed a
-// visit to (lifetime, not this-wave-only). lastSeen comes from the live
-// roster's lastShowTime (unix seconds), joined separately, since that field
-// genuinely is available there.
+// "Decision stats" for a wave row, from the admin payload's raw per-player
+// `history`: { visits:[{week,to,outcome}], lastCompletedWeek, declines:[] }.
+// Only `outcome === 'completed'` visits count toward rotations/visited — a
+// declined or no-show entry never becomes a "visit". lastSeen comes from the
+// live roster's lastShowTime (unix seconds), joined separately.
 function statsFor(a) {
-  var cov = COVERAGE_INDEX[a.siteKey];
-  var visited = [];
-  if (cov && cov.covered) {
-    visited = ALLIANCES.filter(function (al) { return al !== cov.alliance && cov.covered[al]; });
-  }
+  var h = (STATE.history && STATE.history[a.siteKey]) || {};
+  var completedVisits = (Array.isArray(h.visits) ? h.visits : []).filter(function (v) {
+    return v && v.outcome === 'completed';
+  });
+  var visitedSet = {};
+  completedVisits.forEach(function (v) { if (v.to) visitedSet[v.to] = true; });
+  var visited = Object.keys(visitedSet);
+
   var rp = ROSTER_INDEX[a.siteKey];
   var lastSeen = (rp && rp.lastShowTime) ? new Date(rp.lastShowTime * 1000).toLocaleDateString() : 'unknown';
   return {
-    lastRotated: visited.length ? 'previously' : 'never',
-    rotations: visited.length,
+    lastRotated: h.lastCompletedWeek || 'never',
+    rotations: completedVisits.length,
     visited: visited,
     lastSeen: lastSeen,
   };
@@ -843,9 +953,9 @@ function makeQuotaHandler(fk, input) {
   };
 }
 
-function renderAddPlayerControls() {
-  populatePlayerSelect(document.getElementById('addp-player'));
+var addpPlayerPicker = makePlayerPicker('addp-player');
 
+function renderAddPlayerControls() {
   var flowSel = document.getElementById('addp-flow');
   flowSel.textContent = '';
   Object.keys((STATE.config && STATE.config.flows) || {}).forEach(function (fk) {
@@ -858,7 +968,7 @@ function renderAddPlayerControls() {
 }
 
 document.getElementById('addp-btn').addEventListener('click', function () {
-  var sk = document.getElementById('addp-player').value;
+  var sk = addpPlayerPicker.getValue();
   var flow = document.getElementById('addp-flow').value;
   var role = document.getElementById('addp-role').value;
   var statusEl = document.getElementById('addp-status');
@@ -870,6 +980,7 @@ document.getElementById('addp-btn').addEventListener('click', function () {
   api('/rotation/assign', { method: 'POST', body: { week: STATE.week, siteKey: sk, flow: flow, role: role } }).then(function (res) {
     if (res.status === 200 && res.json.ok) {
       statusEl.textContent = 'Added.';
+      addpPlayerPicker.reset();
       reloadAndRender(STATE.week);
     } else {
       statusEl.textContent = 'Add failed: ' + friendlyError(res);
@@ -1018,9 +1129,9 @@ function reasonLabel(code) {
   return found ? found[1] : String(code || 'unknown');
 }
 
-function renderExclusions() {
-  populatePlayerSelect(document.getElementById('excl-player'));
+var exclPlayerPicker = makePlayerPicker('excl-player');
 
+function renderExclusions() {
   var list = document.getElementById('excl-list');
   list.textContent = '';
   var ex = STATE.exclusions || {};
@@ -1067,7 +1178,7 @@ function removeExclusion(sk) {
 }
 
 document.getElementById('excl-add-btn').addEventListener('click', function () {
-  var sk = document.getElementById('excl-player').value;
+  var sk = exclPlayerPicker.getValue();
   var reason = document.getElementById('excl-reason').value;
   var untilStr = document.getElementById('excl-until').value;
   var statusEl = document.getElementById('excl-status');
@@ -1080,6 +1191,7 @@ document.getElementById('excl-add-btn').addEventListener('click', function () {
       statusEl.className = 'ok';
       statusEl.textContent = 'Added.';
       document.getElementById('excl-until').value = '';
+      exclPlayerPicker.reset();
       reloadAndRender(STATE.week);
     } else {
       statusEl.className = 'err';
@@ -1103,6 +1215,7 @@ function renderSchedule() {
   resetScheduleDraft();
   renderScheduleTable();
   renderActiveWeekSelect();
+  updateHomeCurrentLabel(homePlayerPicker ? homePlayerPicker.getValue() : '');
 }
 
 function renderScheduleTable() {
@@ -1226,6 +1339,50 @@ function skipWeekPrompt(week) {
     else showToast('Skip failed: ' + friendlyError(res));
   });
 }
+
+// ── HOME ALLIANCE CORRECTION (§4.1 escape hatch) ────────────────────────────
+// A player's home alliance is frozen write-once at their first assignment,
+// and every pool filter (isEligible/effectiveHome) reads that frozen value
+// rather than re-deriving it from the roster. It goes stale in exactly two
+// real situations: a genuine transfer, or a visitor who simply stays. Until
+// this control existed, fixing either meant a raw curl against
+// POST /rotation/home.
+var homePlayerPicker = makePlayerPicker('home-player', function (sk) { updateHomeCurrentLabel(sk); });
+
+function updateHomeCurrentLabel(sk) {
+  var label = document.getElementById('home-current-label');
+  if (!sk) { label.textContent = 'Current home: none selected'; return; }
+  var frozen = STATE.homeMap && STATE.homeMap[sk];
+  var rp = ROSTER_INDEX[sk];
+  if (frozen) {
+    label.textContent = 'Current home: ' + frozen + ' (frozen)';
+  } else if (rp && rp.alliance) {
+    label.textContent = 'Current home: ' + rp.alliance + ' (from the roster, not yet frozen)';
+  } else {
+    label.textContent = 'Current home: unknown';
+  }
+}
+
+document.getElementById('home-save-btn').addEventListener('click', function () {
+  var sk = homePlayerPicker.getValue();
+  var alliance = document.getElementById('home-alliance-select').value;
+  var statusEl = document.getElementById('home-status');
+  statusEl.className = '';
+  if (!sk) { statusEl.textContent = 'Choose a player first.'; return; }
+  if (ALLIANCES.indexOf(alliance) === -1) { statusEl.textContent = 'Choose a valid alliance.'; return; }
+  if (!window.confirm("Set this player's home alliance to " + alliance + "? Every future wave will use this value to decide their eligibility, replacing whatever was frozen before.")) return;
+  statusEl.textContent = 'Saving...';
+  api('/rotation/home', { method: 'POST', body: { siteKey: sk, alliance: alliance } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) {
+      statusEl.className = 'ok';
+      statusEl.textContent = 'Home alliance updated.';
+      reloadAndRender(STATE.week).then(function () { updateHomeCurrentLabel(sk); });
+    } else {
+      statusEl.className = 'err';
+      statusEl.textContent = 'Update failed: ' + friendlyError(res);
+    }
+  });
+});
 
 // ── CHANGELOG TAB ────────────────────────────────────────────────────────
 function renderChangelogList() {
