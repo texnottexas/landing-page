@@ -204,7 +204,20 @@
       statusEl.textContent = 'Rotations are paused this week' + (w.note ? ' (' + w.note + ')' : '') + '.';
       return;
     }
-    statusEl.textContent = 'Invitations for the week of ' + w.week;
+    // A `closed` wave is a finished week, not a live invitation. The manual
+    // week-advance gap means this happens EVERY week: closing week N and
+    // activating week N+1 are separate admin steps, so `/rotation/current`
+    // keeps returning the just-finished wave until someone advances the
+    // schedule. Without this check the lead line and the personal "you're
+    // invited" banner both read as present-tense, telling a player who
+    // already visited (or already went home) that they're being invited
+    // again right now. The roster cards stay visible below — the record of
+    // who visited is still worth showing — only the personally-addressed,
+    // action-implying banner is suppressed.
+    var isClosed = w.status === 'closed';
+    statusEl.textContent = isClosed
+      ? 'Week of ' + w.week + ' (completed)'
+      : 'Invitations for the week of ' + w.week;
 
     var flows = w.flows || {};
     var me = mySiteKey(), mine = null;
@@ -237,7 +250,7 @@
       flowsEl.appendChild(sec);
     });
 
-    if (mine) {
+    if (mine && !isClosed) {
       youEl.style.display = '';
       youEl.appendChild(el('strong', null, "You're invited to visit " + allianceDisplay(mine.to) + ' this week.'));
       youEl.appendChild(el('div', 'rot-you-sub',
