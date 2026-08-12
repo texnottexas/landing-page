@@ -140,7 +140,7 @@
   <div class="card">
     <h1 class="page-title">Alliance Rotations</h1>
     <p class="page-lead">
-      Each week a few players are invited to spend some time visiting another alliance &mdash;
+      Each week a few players are invited to spend some time visiting another alliance,
       a chance to fight alongside new people and see how another camp runs things.
       It's an invitation, not an assignment: if the timing is wrong for you, just tell your
       alliance leadership and it's a no-hard-feelings pass. Players who declined or didn't
@@ -186,7 +186,9 @@
   }
   function fmtCp(n) {
     if (n == null) return '';
-    return n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : String(n);
+    // Millions above 1M; thousands-separated below, so a sub-1M card does not
+    // sit next to "58.82M" showing a bare unpunctuated digit string.
+    return n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : Number(n).toLocaleString('en-US');
   }
   function el(tag, cls, text) {
     var d = document.createElement(tag);
@@ -199,10 +201,10 @@
     var w = j && j.wave;
     if (!w) { statusEl.textContent = 'No rotation is scheduled right now.'; return; }
     if (w.skipped) {
-      statusEl.textContent = 'Rotations are paused this week' + (w.note ? ' — ' + w.note : '') + '.';
+      statusEl.textContent = 'Rotations are paused this week' + (w.note ? ' (' + w.note + ')' : '') + '.';
       return;
     }
-    statusEl.textContent = 'Week of ' + w.week + ' — invitations';
+    statusEl.textContent = 'Invitations for the week of ' + w.week;
 
     var flows = w.flows || {};
     var me = mySiteKey(), mine = null;
@@ -239,7 +241,7 @@
       youEl.style.display = '';
       youEl.appendChild(el('strong', null, "You're invited to visit " + allianceDisplay(mine.to) + ' this week.'));
       youEl.appendChild(el('div', 'rot-you-sub',
-        'Visits last about a week, then you head home. If this week does not work, tell your alliance leadership — declining is completely fine and costs you nothing.'));
+        'Visits last about a week, then you head home. If this week does not work for you, just tell your alliance leadership. Declining is completely fine and costs you nothing.'));
     }
   }).catch(function () {
     statusEl.textContent = 'Could not load the rotation right now. Try again shortly.';
