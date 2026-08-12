@@ -988,6 +988,14 @@
     display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 12px; padding: 0.25rem 1rem 1rem;
   }
+  .advisor-more-toggle {
+    display: block; width: calc(100% - 2rem); margin: 0 1rem 1rem;
+    padding: 0.5rem 0.9rem; background: transparent;
+    border: 1px dashed var(--border); border-radius: 8px;
+    color: var(--muted); font-size: 12px; font-family: inherit; cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .advisor-more-toggle:hover { border-color: var(--accent); color: var(--accent); }
   .advisor-rec-card {
     background: var(--card); border: 1px solid var(--border); border-radius: 10px;
     padding: 14px; display: flex; flex-direction: column; gap: 8px; font-size: 13px;
@@ -16360,9 +16368,13 @@
         g.stats.forEach(function(st) { statLabels[st.id] = st.label; });
       });
 
+      // Collapsed height of each stat section. The summary already advertises
+      // the full candidate count, so anything beyond this sits behind the
+      // "show all" toggle rather than being silently dropped (ADO #260).
+      var ADVISOR_RECS_INITIAL = 5;
+
       statIds.forEach(function(sid, idx) {
         var allRecs = result.byStat[sid] || [];
-        var top5 = allRecs.slice(0, 5);
         var section = _adv_mk('details', { cls: 'advisor-stat-section' });
         if (idx === 0) section.open = true;
         var summary = _adv_mk('summary', null,
@@ -16374,20 +16386,45 @@
           _adv_mk('strong', { text: 'Top recommendations: ' }),
           document.createTextNode('decor that delivers the most ' + (statLabels[sid] || sid).toLowerCase() + ' per Universal Decor Shard you spend.')
         ));
-        if (top5.length === 0) {
+        if (allRecs.length === 0) {
           section.appendChild(_adv_mk('p', {
             cls: 'advisor-empty',
             text: 'No upgrade recommendations for this stat.'
           }));
         } else {
-          // Find max ROI within this stat for bar normalization
+          // Normalise the ROI bars against the whole candidate list rather than
+          // the visible slice, so a bar length means the same thing before and
+          // after the section is expanded.
           var maxRoi = 0;
-          top5.forEach(function(r) { if (r.roi > maxRoi) maxRoi = r.roi; });
+          allRecs.forEach(function(r) { if (r.roi > maxRoi) maxRoi = r.roi; });
           var grid = _adv_mk('div', { cls: 'advisor-grid' });
-          top5.forEach(function(r, rankIdx) {
-            grid.appendChild(_adv_renderRecCard(r, rankIdx + 1, maxRoi));
-          });
+          var expanded = false;
+          var paintRecs = function() {
+            while (grid.firstChild) grid.removeChild(grid.firstChild);
+            var shown = expanded ? allRecs : allRecs.slice(0, ADVISOR_RECS_INITIAL);
+            shown.forEach(function(r, rankIdx) {
+              grid.appendChild(_adv_renderRecCard(r, rankIdx + 1, maxRoi));
+            });
+          };
+          paintRecs();
           section.appendChild(grid);
+          if (allRecs.length > ADVISOR_RECS_INITIAL) {
+            var toggle = _adv_mk('button', { cls: 'advisor-more-toggle' });
+            toggle.type = 'button';
+            var paintToggle = function() {
+              toggle.textContent = expanded
+                ? 'Show top ' + ADVISOR_RECS_INITIAL + ' only'
+                : 'Show all ' + allRecs.length + ' recommendations';
+              toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            };
+            paintToggle();
+            toggle.addEventListener('click', function() {
+              expanded = !expanded;
+              paintRecs();
+              paintToggle();
+            });
+            section.appendChild(toggle);
+          }
         }
         body.appendChild(section);
       });
