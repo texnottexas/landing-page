@@ -719,11 +719,16 @@
           });
         }
       }
+      // The receiver validates totalExp with Number.isInteger and 400s on
+      // anything else. A plain null-check let a float / NaN / string through
+      // on some accounts, which surfaced as "schema: totalExp bad" on an
+      // otherwise-clean import (GH #123), so coerce to a whole number here.
+      var rawExp = Math.round(Number(ud._decorationTotalExp));
       return {
         v: 1, ts: new Date().toISOString(),
         active: active,
         suits: suits,
-        totalExp: ud._decorationTotalExp != null ? ud._decorationTotalExp : 0
+        totalExp: isFinite(rawExp) ? rawExp : 0
       };
     }
 
