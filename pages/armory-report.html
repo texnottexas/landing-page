@@ -25106,6 +25106,13 @@
           .concat(gearSupp.presetOnly || []);
         pieces.forEach(function(p) {
           if (!p || !p.heroId || p.heroId <= 0) return;
+          // Only GOLD gear (quality 5) can socket a Titan Rune. Non-gold
+          // pieces (Purple+ = quality 4 and below) would render as
+          // permanently-empty, un-adviseable slots, so a hero whose only gear
+          // is non-gold would clutter the rune advisor with nothing to act on.
+          // Skip them here. (The battle-report path — source 1 above — is left
+          // intact, so a hero the player actually fielded stays visible.)
+          if (p.quality != null && p.quality < 5) return;
           var slot = p.slot;
           if (!slot || slot < 1 || slot > 6) return;
           var hid = p.heroId;
@@ -26125,11 +26132,11 @@
           if (hid && !heroMarch[hid]) heroMarch[hid] = { name: m.name || ('March ' + (mi + 1)), marchIdx: mi, posInMarch: pi };
         });
       });
-      // Gallery source = any hero with at least one gear slot in the BASE
-      // state (battle-report or gear-supplement). Use baseGear (pre-step)
-      // instead of state.gearByHero (post-step) so recycle / inherit moves
-      // that null out a rune don't make the hero disappear — the gear piece
-      // is still there, just the rune slot is now empty.
+      // Per-hero gold-slot count from the BASE state (pre-step) so recycle /
+      // inherit moves that null out a rune don't make the hero disappear — the
+      // gear piece is still there, just the rune slot is now empty. Membership
+      // (which heroes actually render) is decided below and is deliberately
+      // broader than "has a gold slot" — see galleryIds.
       var heroSlotCount = {};
       Object.keys(baseGear || {}).forEach(function(hid) {
         var slots = baseGear[hid] || {};
@@ -26137,11 +26144,23 @@
         for (var s = 1; s <= 6; s++) {
           if (Object.prototype.hasOwnProperty.call(slots, s)) n++;
         }
-        if (n > 0) heroSlotCount[hid] = n;
+        heroSlotCount[hid] = n;
       });
-      var galleryHeroes = Object.keys(heroSlotCount).map(function(hidStr) {
+      // Gallery membership: a hero shows if it (a) owns a gold-gear slot
+      // (rune-capable), (b) fought in one of the loaded battle reports, or
+      // (c) is in one of the player's saved marches. This surfaces the heroes
+      // the player actually fields — including ones with no gold gear yet, as
+      // empty slots the advisor can Park runes onto — while heroes whose only
+      // gear is non-gold (already filtered out of baseGear above) fall away.
+      var galleryIds = {};
+      Object.keys(heroSlotCount).forEach(function(hid) { if (heroSlotCount[hid] > 0) galleryIds[hid] = true; });
+      (merged && Array.isArray(merged.heroes) ? merged.heroes : []).forEach(function(h) {
+        if (h && h.id != null && !h._supplemental) galleryIds[h.id] = true;
+      });
+      Object.keys(heroMarch).forEach(function(hid) { galleryIds[hid] = true; });
+      var galleryHeroes = Object.keys(galleryIds).map(function(hidStr) {
         var hid = parseInt(hidStr, 10);
-        return { id: hid, _slotCount: heroSlotCount[hidStr] };
+        return { id: hid, _slotCount: heroSlotCount[hidStr] || 0 };
       }).sort(function(a, b) {
         var ma = heroMarch[a.id], mb = heroMarch[b.id];
         var aIdx = ma ? ma.marchIdx : 9999;
