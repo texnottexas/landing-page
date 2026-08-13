@@ -11557,6 +11557,7 @@
     function paint() {
       var palette = {
         'cloud-synced': { dot: '#3fb950', border: 'rgba(63,185,80,0.4)', text: 'var(--text)',  label: 'Cloud Sync: Active' },
+        'cloud-derived':{ dot: '#3fb950', border: 'rgba(63,185,80,0.4)', text: 'var(--text)',  label: 'Cloud Sync: Auto (from Inventory)' },
         'local-only':   { dot: '#d29922', border: 'rgba(210,153,34,0.5)', text: '#d29922',     label: 'Cloud Sync: Local only' },
         'not-uploaded': { dot: 'var(--border)', border: 'var(--border)', text: 'var(--muted)', label: 'Cloud Sync: Not uploaded' },
         'error':        { dot: '#f85149', border: 'rgba(248,81,73,0.5)', text: '#f85149',     label: 'Cloud Sync: Error' },
@@ -11581,7 +11582,7 @@
       }
     }
 
-    var KIND_LABELS = { inv: 'Inventory', bench: 'Bench Beasts', chips: 'HT Chips', gear: 'Titan Gear Pool', heroes: 'Hero Roster', formation: 'Formation' };
+    var KIND_LABELS = { inv: 'Inventory', bench: 'Bench Beasts', chips: 'HT Chips', gear: 'Titan Gear Pool', heroes: 'Hero Roster', formation: 'Formation', runepool: 'Rune Pool' };
 
     function buildTooltipBody() {
       var frag = document.createDocumentFragment();
@@ -11650,6 +11651,10 @@
         } else {
           line('Owner hasn’t uploaded this section yet.');
         }
+      } else if (state.status === 'cloud-derived') {
+        line(kindLabel + ' is derived from your Inventory.', true);
+        line('Your available runes are computed live from your synced Inventory (bag runes) plus runes on unequipped gold pieces — nothing to upload separately.');
+        if (state.isOwner) line('Use “Edit Pool” only if you want to save a manual override snapshot.');
       } else if (state.status === 'error') {
         line('Cloud sync check failed.', true);
         line('Worker may be offline, or your auth token expired.');
@@ -11768,6 +11773,14 @@
             }
           } else {
             state.status = cloudExists ? 'cloud-synced' : 'not-uploaded';
+          }
+          // Rune pool has no dedicated upload — it's derived live from the
+          // (separately cloud-synced) Inventory + Gear. When there's no manual
+          // snapshot, show it's backed by Inventory rather than "missing".
+          if (state.kind === 'runepool' && state.status === 'not-uploaded') {
+            var _invSup = null;
+            try { _invSup = ArmoryIdentity.getSupplement('inv', state.siteKey); } catch (e) {}
+            if (_invSup) state.status = 'cloud-derived';
           }
           paint();
           return state.status;
