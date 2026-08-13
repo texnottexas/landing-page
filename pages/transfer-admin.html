@@ -713,12 +713,16 @@ function renderBoard() {
       empty.textContent = 'No players';
       body.appendChild(empty);
     } else {
-      // Group applications collapse to ONE card per column (group name + leader +
-      // how many members are in this column). Individuals render one card each.
-      // First-seen order preserves the active sort.
+      // Groups collapse to ONE card (group name + leader + X of total) ONLY in the
+      // Pending column, where a cohort first lands. Once members move to any other
+      // bucket (Waitlist / Accepted / a wave / Rejected) they render as individual
+      // cards — each tagged with its group name — so an admin can see and act on
+      // them directly instead of opening the group drawer. First-seen order preserves
+      // the active sort.
+      var collapseGroups = (col.status === 'pending');
       var seenGroup = {};
       colRows.forEach(function (row) {
-        if (row.app.type === 'group') {
+        if (collapseGroups && row.app.type === 'group') {
           if (seenGroup[row.app.id]) return;
           seenGroup[row.app.id] = true;
           var groupPlayers = colRows.filter(function (r) { return r.app.id === row.app.id; }).map(function (r) { return r.player; });
