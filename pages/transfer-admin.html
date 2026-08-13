@@ -269,7 +269,7 @@
         <option value="rejected">Rejected</option>
       </select>
       <select id="sort-select">
-        <option value="">Sort: default</option>
+        <option value="">Sort: group, then A→Z</option>
         <option value="name">Sort: name</option>
         <option value="server">Sort: server</option>
         <option value="cp">Sort: CP</option>
@@ -597,14 +597,35 @@ function matchesFilters(app, player) {
   return true;
 }
 
-function sortPlayers(rows) {
-  if (!STATE.sortBy) return rows;
+// Alpha key that ignores leading emoji/symbols (so "🎀Sasa" sorts under S).
+function nameSortKey(s) { return String(s == null ? '' : s).replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase(); }
+// Grouped players cluster by group name first ('0:<name>'); individuals come after ('1:').
+function groupSortKey(app) { return (app && app.type === 'group' && app.groupName) ? ('0:' + app.groupName.toLowerCase()) : '1:'; }
+// Within a wave: pending transfers before completed.
+var TS_SORT_RANK = { pending: 0, completed: 1, accepted: 2 };
+
+function sortPlayers(rows, col) {
   var key = STATE.sortBy;
+  // Explicit sort choices from the dropdown override the default clustering.
+  if (key === 'cp') return rows.slice().sort(function (a, b) { return (b.player.cp || 0) - (a.player.cp || 0); });
+  if (key === 'name' || key === 'server') {
+    return rows.slice().sort(function (a, b) {
+      var av = String(a.player[key] || '').toLowerCase(), bv = String(b.player[key] || '').toLowerCase();
+      return av < bv ? -1 : av > bv ? 1 : 0;
+    });
+  }
+  // Default: group (if any) → [transfer status, in a wave] → name (A→Z).
+  var isCycle = !!(col && col.status === 'approved' && col.cycleId);
   return rows.slice().sort(function (a, b) {
-    if (key === 'cp') return (b.player.cp || 0) - (a.player.cp || 0);
-    var av = String(a.player[key] || '').toLowerCase();
-    var bv = String(b.player[key] || '').toLowerCase();
-    return av < bv ? -1 : av > bv ? 1 : 0;
+    var ga = groupSortKey(a.app), gb = groupSortKey(b.app);
+    if (ga !== gb) return ga < gb ? -1 : 1;
+    if (isCycle) {
+      var ra = TS_SORT_RANK[transferStatusOf(a.player)]; if (ra == null) ra = 5;
+      var rb = TS_SORT_RANK[transferStatusOf(b.player)]; if (rb == null) rb = 5;
+      if (ra !== rb) return ra - rb;
+    }
+    var na = nameSortKey(a.player.name), nb = nameSortKey(b.player.name);
+    return na < nb ? -1 : na > nb ? 1 : 0;
   });
 }
 
@@ -678,7 +699,7 @@ function renderBoard() {
     var colRows = rows.filter(function (r) {
       return r.player.status === col.status && (col.status !== 'approved' || r.player.cycleId === col.cycleId);
     });
-    colRows = sortPlayers(colRows);
+    colRows = sortPlayers(colRows, col);
 
     // Wave columns use the server's per-cycle count; every other column (incl.
     // Accepted = approved with no cycle) counts the players shown here.
