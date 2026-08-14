@@ -1568,6 +1568,17 @@
       }
       .wheel-item .w-icon { font-size: 1.45rem; }
       .wheel-item .w-icon svg { width: 30px; height: 30px; }
+      /* The 95%/5% (3 o'clock / 9 o'clock) ring positions were tuned
+         against the desktop wheel, where the item's 92px width is a small
+         fraction of a much larger circle. On the mobile circle (as narrow
+         as ~327px at a 375px viewport, per .wheel-wrap above) the same 92px
+         item's outer half reaches past the wheel-wrap's own edge by more
+         than the wheel-wrap's centering margin, pushing the item past the
+         viewport edge and causing horizontal page scroll. Nudging just
+         these two items 3% inward keeps the ring visually intact while
+         keeping the item's edge inside the viewport at common phone widths. */
+      .wheel-item:nth-child(3) { left: 92%; }
+      .wheel-item:nth-child(6) { left: 8%; }
 
       /* List view (toggled via JS) */
       .wheel-wrap.list-view {
@@ -5198,6 +5209,11 @@
           clearLink.textContent = 'Clear identity';
           clearLink.addEventListener('click', function() {
             localStorage.setItem('playerIdentity', 'anonymous');
+            // This bypasses saveIdentity() (a different modal/script block),
+            // so re-sync the Rotations CTA here too — a real player clearing
+            // their identity from prefs is the same downgrade case as
+            // switching to guest from the picker.
+            if (window.syncRotationsCta) window.syncRotationsCta();
             var greet = document.getElementById('identity-greeting');
             if (greet) greet.style.display = 'none';
             renderIdentityTab();
@@ -5711,6 +5727,15 @@
 
       function saveIdentity(val) {
         try { localStorage.setItem(STORAGE_KEY, typeof val === 'string' ? val : JSON.stringify(val)); } catch(e) {}
+        // Re-sync the Rotations CTA (bottom-right of the banner) the instant
+        // identity changes — covers the picker, the guest path, the
+        // skip/anonymous path, and the migration/rescue paths below, in
+        // both directions (gaining eligibility and losing it), without a
+        // page reload. Guarded because this script block runs before the
+        // Rotations CTA script defines the hook, but saveIdentity() itself
+        // only ever runs later, from a user gesture or an async callback,
+        // by which point window.syncRotationsCta is already defined.
+        if (window.syncRotationsCta) window.syncRotationsCta();
       }
 
       function showGreeting(identity) {
@@ -6419,8 +6444,9 @@
     // Wrap .banner in a position:relative container so corner chips sit at
     // the edges of the banner image without being clipped (.banner itself
     // has overflow:hidden so we can't place them inside it). This wrapper
-    // and the version badge are unconditional — built for every visitor,
-    // regardless of identity — only the Rotations CTA below is gated.
+    // and the version badge are unconditional and built exactly once, for
+    // every visitor regardless of identity — only the Rotations CTA below
+    // is gated, and only the CTA is toggled by syncRotationsCta() below.
     var bannerEl = document.querySelector('.banner');
     var bannerWrap = null;
     if (bannerEl && bannerEl.parentNode) {
@@ -6440,11 +6466,21 @@
       bannerWrap.appendChild(vBadge);
     }
 
-    // Rotations CTA — only created and inserted for identified, non-guest
-    // S2864 roster players. Ineligible visitors get NO element in the DOM
-    // at all (not merely CSS-hidden), so there's no link for them to find
-    // via view-source or DOM inspection either.
-    if (isRotationsEligible()) {
+    // Rotations CTA sync — idempotent: creates the element when eligible,
+    // removes it when not, and is a no-op if already in the right state.
+    // Safe to call repeatedly (on load, and again any time identity is
+    // written elsewhere on the page) without ever duplicating the node.
+    // Ineligible visitors get NO element in the DOM at all (not merely
+    // CSS-hidden), so there's no link for them to find via view-source or
+    // DOM inspection either — and a player who becomes ineligible in-session
+    // (e.g. switches to guest) has the element removed, not just hidden.
+    function syncRotationsCta() {
+      var existing = document.getElementById('rotations-cta');
+      if (!isRotationsEligible()) {
+        if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+        return;
+      }
+      if (existing) return;
       var rotationsBtn = document.createElement('a');
       rotationsBtn.id = 'rotations-cta';
       rotationsBtn.href = 'rotation.html';
@@ -6459,6 +6495,12 @@
         document.body.appendChild(rotationsBtn);
       }
     }
+    // Exposed so the identity-writing code below (saveIdentity, further
+    // down the page) can re-sync the CTA the instant identity changes in
+    // session, without a reload.
+    window.syncRotationsCta = syncRotationsCta;
+
+    syncRotationsCta();
   })();
   </script>
 
