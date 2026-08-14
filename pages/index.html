@@ -6416,24 +6416,19 @@
       } catch (e) { return false; }
     }
 
-    var rotationsBtn = document.createElement('a');
-    rotationsBtn.id = 'rotations-cta';
-    rotationsBtn.href = 'rotation.html';
-    rotationsBtn.title = 'Weekly alliance rotation schedule';
-    rotationsBtn.setAttribute('aria-label', 'View the weekly alliance rotation schedule');
-    rotationsBtn.textContent = 'Rotations';
-
-    // Wrap .banner in a position:relative container so the button sits
-    // at the bottom-right corner of the banner image without being clipped
-    // (.banner itself has overflow:hidden so we can't place inside it)
+    // Wrap .banner in a position:relative container so corner chips sit at
+    // the edges of the banner image without being clipped (.banner itself
+    // has overflow:hidden so we can't place them inside it). This wrapper
+    // and the version badge are unconditional — built for every visitor,
+    // regardless of identity — only the Rotations CTA below is gated.
     var bannerEl = document.querySelector('.banner');
+    var bannerWrap = null;
     if (bannerEl && bannerEl.parentNode) {
-      var bannerWrap = document.createElement('div');
+      bannerWrap = document.createElement('div');
       bannerWrap.className = 'banner-wrap-outer';
       bannerWrap.style.cssText = 'position:relative;width:100%;max-width:480px;margin:0 auto;';
       bannerEl.parentNode.insertBefore(bannerWrap, bannerEl);
       bannerWrap.appendChild(bannerEl);
-      bannerWrap.appendChild(rotationsBtn);
 
       // Version badge — bottom-left of banner (opposite of the Rotations CTA)
       var vBadge = document.createElement('button');
@@ -6443,12 +6438,27 @@
       vLabel.textContent = '';
       vBadge.appendChild(vLabel);
       bannerWrap.appendChild(vBadge);
-    } else {
-      rotationsBtn.style.position = 'fixed'; rotationsBtn.style.bottom = '1.25rem'; rotationsBtn.style.right = '1.25rem';
-      document.body.appendChild(rotationsBtn);
     }
 
-    if (isRotationsEligible()) rotationsBtn.style.display = 'flex';
+    // Rotations CTA — only created and inserted for identified, non-guest
+    // S2864 roster players. Ineligible visitors get NO element in the DOM
+    // at all (not merely CSS-hidden), so there's no link for them to find
+    // via view-source or DOM inspection either.
+    if (isRotationsEligible()) {
+      var rotationsBtn = document.createElement('a');
+      rotationsBtn.id = 'rotations-cta';
+      rotationsBtn.href = 'rotation.html';
+      rotationsBtn.title = 'Weekly alliance rotation schedule';
+      rotationsBtn.setAttribute('aria-label', 'View the weekly alliance rotation schedule');
+      rotationsBtn.textContent = 'Rotations';
+      rotationsBtn.style.display = 'flex';
+      if (bannerWrap) {
+        bannerWrap.appendChild(rotationsBtn);
+      } else {
+        rotationsBtn.style.position = 'fixed'; rotationsBtn.style.bottom = '1.25rem'; rotationsBtn.style.right = '1.25rem';
+        document.body.appendChild(rotationsBtn);
+      }
+    }
   })();
   </script>
 
