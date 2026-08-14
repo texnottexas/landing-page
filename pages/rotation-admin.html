@@ -107,13 +107,27 @@
     flex:0 0 320px; width:320px; background:var(--surface); border:1px solid var(--border);
     border-radius:12px; padding:.7rem; display:flex; flex-direction:column; gap:.55rem; min-height:100px;
   }
-  .flow-head{display:flex; align-items:center; justify-content:space-between; gap:.4rem}
+  /* .flow-col is a native <details> element so collapsing is keyboard-accessible
+     for free (Tab to focus the <summary>, Enter/Space to toggle). The header
+     (name + count badge) lives in the <summary> itself, which native <details>
+     always keeps rendered even while closed, so a shortfall badge is never
+     hidden behind a collapsed section. */
+  .flow-head{
+    display:flex; align-items:center; justify-content:space-between; gap:.4rem;
+    list-style:none; /* Firefox marker */
+  }
+  .flow-head::-webkit-details-marker{display:none}
+  .flow-head::marker{content:''}
   .flow-title{font-size:.82rem; font-weight:800; letter-spacing:.02em}
   .flow-count{
     font-family:var(--mono); font-size:.72rem; font-weight:700; color:var(--muted);
     background:var(--card); border:1px solid var(--border2); border-radius:999px; padding:.1rem .5rem;
   }
   .flow-count.short{color:var(--amber); border-color:rgba(210,153,34,.5); background:var(--amber-soft)}
+  .flow-chevron{
+    display:none; color:var(--muted); font-size:.7rem; transition:transform .15s; flex:0 0 auto;
+  }
+  .flow-body{display:flex; flex-direction:column; gap:.55rem}
   .flow-quota-row{display:flex; align-items:center; gap:.5rem}
   .flow-quota-row label{font-size:.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em}
   .flow-quota-input{width:64px; padding:.3rem .4rem; font-size:.78rem}
@@ -137,6 +151,12 @@
     .board-wrap{overflow-x:visible}
     .board{flex-direction:column; align-items:stretch}
     .flow-col{flex:1 1 auto; width:100%; min-width:0}
+    /* Collapsing (and the chevron affordance for it) only exists on mobile,
+       where 6 columns x ~50 total rows makes an always-expanded board
+       unworkable. Desktop keeps today's behaviour untouched. */
+    .flow-head{cursor:pointer}
+    .flow-chevron{display:inline-block}
+    .flow-col:not([open]) .flow-chevron{transform:rotate(-90deg)}
   }
 
   /* Add player control */
@@ -864,6 +884,13 @@ function statRow(a) {
   return tr;
 }
 
+// Columns only collapse on mobile (<=760px); desktop always stays expanded
+// exactly as before there's no scrolling problem there, and changing that
+// would be a regression in the admin's main working environment.
+function flowBoardIsMobile() {
+  return window.matchMedia('(max-width:760px)').matches;
+}
+
 function renderFlowBoard() {
   var board = document.getElementById('flow-board');
   board.textContent = '';
@@ -878,11 +905,16 @@ function renderFlowBoard() {
     var rows = wave ? wave.assignments.filter(function (a) { return a.home === from && a.to === to; }) : [];
     var got = rows.length;
 
-    var col = document.createElement('div');
+    // A native <details>/<summary> pair: keyboard-toggleable (Tab + Enter/Space)
+    // for free, and the <summary> (name + count badge, including the amber
+    // "short" state) always stays in the accessibility tree and visible even
+    // while the details is closed, so a shortfall is never hidden behind a
+    // collapsed column.
+    var col = document.createElement('details');
     col.className = 'flow-col';
     col.dataset.flow = fk;
 
-    var head = document.createElement('div');
+    var head = document.createElement('summary');
     head.className = 'flow-head';
     var title = document.createElement('div');
     title.className = 'flow-title';
@@ -890,9 +922,23 @@ function renderFlowBoard() {
     var countBadge = document.createElement('span');
     countBadge.className = 'flow-count' + (got < quota ? ' short' : '');
     countBadge.textContent = got + '/' + quota;
+    var chevron = document.createElement('span');
+    chevron.className = 'flow-chevron';
+    chevron.setAttribute('aria-hidden', 'true');
+    chevron.textContent = '▾';
     head.appendChild(title);
     head.appendChild(countBadge);
+    head.appendChild(chevron);
+    // On desktop, collapsing is disabled entirely (both mouse and keyboard
+    // activation of a <summary> fire a 'click' before the native toggle
+    // happens, so blocking it here is enough for either input method).
+    head.addEventListener('click', function (e) {
+      if (!flowBoardIsMobile()) e.preventDefault();
+    });
     col.appendChild(head);
+
+    var body = document.createElement('div');
+    body.className = 'flow-body';
 
     var quotaRow = document.createElement('div');
     quotaRow.className = 'flow-quota-row';
@@ -904,18 +950,18 @@ function renderFlowBoard() {
     qInput.addEventListener('change', makeQuotaHandler(fk, qInput));
     quotaRow.appendChild(qLabel);
     quotaRow.appendChild(qInput);
-    col.appendChild(quotaRow);
+    body.appendChild(quotaRow);
 
     if (!wave) {
       var empty = document.createElement('div');
       empty.className = 'empty-col';
       empty.textContent = 'No wave generated for this week yet.';
-      col.appendChild(empty);
+      body.appendChild(empty);
     } else if (!rows.length) {
       var empty2 = document.createElement('div');
       empty2.className = 'empty-col';
       empty2.textContent = 'Nobody assigned on this route.';
-      col.appendChild(empty2);
+      body.appendChild(empty2);
     } else {
       var wrap = document.createElement('div');
       wrap.className = 'flow-table-wrap';
@@ -934,12 +980,36 @@ function renderFlowBoard() {
       rows.forEach(function (a) { tbody.appendChild(statRow(a)); });
       table.appendChild(tbody);
       wrap.appendChild(table);
-      col.appendChild(wrap);
+      body.appendChild(wrap);
     }
 
+    col.appendChild(body);
     board.appendChild(col);
   });
+
+  applyFlowBoardCollapseDefaults();
 }
+
+// Collapsed by default on mobile, always open on desktop. Re-applied after
+// every render (initial load, reload after an action, tab switches back in)
+// so the invariant holds regardless of what triggered the re-render.
+function applyFlowBoardCollapseDefaults() {
+  var mobile = flowBoardIsMobile();
+  document.querySelectorAll('.flow-col').forEach(function (d) {
+    d.open = !mobile;
+  });
+}
+
+// If the viewport crosses back over the breakpoint into desktop width mid
+// session (window resize, not just page load), re-assert the "always
+// expanded, no collapsing" desktop invariant. Shrinking back into mobile
+// deliberately does NOT force a re-collapse, so it never yanks away content
+// an admin already had open.
+window.addEventListener('resize', function () {
+  if (!flowBoardIsMobile()) {
+    document.querySelectorAll('.flow-col').forEach(function (d) { d.open = true; });
+  }
+});
 
 function makeQuotaHandler(fk, input) {
   return function () {
