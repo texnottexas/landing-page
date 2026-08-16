@@ -529,6 +529,7 @@
     <button class="tab-btn" id="viewTabSignups" data-view="signups" onclick="switchView('signups')">Signups</button>
     <button class="tab-btn" id="viewTabDraft" data-view="draft" onclick="switchView('draft')">Draft Board</button>
     <button class="tab-btn" id="viewTabChangelog" data-view="changelog" onclick="switchView('changelog')">Changelog</button>
+    <button class="tab-btn" id="viewTabTraining" data-view="training" onclick="switchView('training')">Training</button>
     <button class="tab-btn" id="viewTabGameSync" data-view="gamesync" onclick="switchView('gamesync')">Game Signup</button>
   </div>
 
@@ -641,6 +642,25 @@
       </div>
     </div>
     <div id="cl-list"></div>
+  </section>
+
+  <section id="titan-training-tab" style="display:none">
+    <div class="card">
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+        <strong style="margin-bottom:0">Basic training</strong>
+        <button id="tr-refresh" class="hdr-btn" type="button">Refresh</button>
+        <span id="tr-status" class="muted"></span>
+      </div>
+      <div class="muted" style="margin-top:.5rem">
+        Everyone must finish the 6-part basic training once before they can register. <b>Send back</b> makes a player redo it (remedial); it also clears their skip grace.
+      </div>
+      <div id="tr-summary" class="muted" style="margin-top:.5rem"></div>
+      <div style="margin-top:.6rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+        <input id="tr-search" type="text" placeholder="Search name…" style="flex:1;min-width:160px;padding:.5rem .7rem;border-radius:8px;border:1px solid var(--border,#30363d);background:var(--card2,#161b22);color:var(--text)">
+        <label class="muted" style="display:flex;gap:.35rem;align-items:center;font-size:.85rem"><input type="checkbox" id="tr-only-untrained"> Untrained only</label>
+      </div>
+    </div>
+    <div id="tr-list"></div>
   </section>
 
   <!-- Game Signup (leader CAB-sync bookmarklet) -->
@@ -1510,12 +1530,14 @@ function switchView(view) {
   var showEditor = view === 'editor';
   var showChangelog = view === 'changelog';
   var showGameSync = view === 'gamesync';
+  var showTraining = view === 'training';
   document.getElementById("editor").style.display = showEditor ? "" : "none";
   document.getElementById("titan-signups-tab").style.display = showSignups ? "" : "none";
   document.getElementById("titan-draft-tab").style.display = showDraft ? "" : "none";
   document.getElementById("titan-squads-tab").style.display = showSquads ? "" : "none";
   document.getElementById("titan-changelog-tab").style.display = showChangelog ? "" : "none";
   document.getElementById("titan-gamesync-tab").style.display = showGameSync ? "" : "none";
+  document.getElementById("titan-training-tab").style.display = showTraining ? "" : "none";
   document.getElementById("saveBtn").style.display = showEditor ? "" : "none";
   document.querySelectorAll("#viewTabs .tab-btn").forEach(function (b) {
     b.classList.toggle("active", b.dataset.view === view);
@@ -1531,7 +1553,81 @@ function switchView(view) {
   }
   if (showGameSync) initCabBookmarkletCard();
   if (showChangelog) loadChangelog();
+  if (showTraining) loadTraining();
 }
+
+// ── BASIC TRAINING (roster completion + remedial reset) ───────────────────────
+var trainingRows = [];   // merged roster + training status
+var trTotal = 6;
+function loadTraining() {
+  var st = document.getElementById('tr-status'); if (st) st.textContent = 'Loading…';
+  var pw = ensureTitanEditPw(); if (!pw) { if (st) st.textContent = ''; return; }
+  Promise.all([
+    fetch('player-data.json').then(function (r){ return r.json(); }).catch(function(){ return []; }),
+    fetch(TITAN_API + '/titan/training/list', { headers: { 'X-Titan-Edit-Password': pw } })
+      .then(function (r){ if (r.status === 401) { clearTitanEditPw(); throw new Error('auth'); } return r.json(); }).catch(function(){ return null; })
+  ]).then(function (res) {
+    var roster = res[0] || [], list = res[1];
+    if (!list || !list.ok) { if (st) st.textContent = 'Could not load (check editor password).'; return; }
+    trTotal = (list.lessons || []).length || 6;
+    var byKey = {}; (list.players || []).forEach(function (p){ byKey[p.siteKey] = p; });
+    var rows = [], seen = {};
+    roster.forEach(function (p) {
+      if (p._test || !/^[a-f0-9]{16}$/.test(p.siteKey || '')) return;
+      seen[p.siteKey] = 1;
+      var rec = byKey[p.siteKey];
+      rows.push({ siteKey: p.siteKey, name: p.name, alliance: p.alliance,
+        completed: rec ? rec.completed : false, done: rec ? rec.lessonsDone : 0, skips: rec ? rec.skips : 0 });
+    });
+    (list.players || []).forEach(function (p) {   // records for players not in the public roster
+      if (!seen[p.siteKey]) rows.push({ siteKey: p.siteKey, name: p.name || '(unknown)', alliance: '', completed: p.completed, done: p.lessonsDone, skips: p.skips });
+    });
+    trainingRows = rows;
+    if (st) st.textContent = '';
+    renderTraining();
+  });
+}
+function renderTraining() {
+  var q = (document.getElementById('tr-search').value || '').toLowerCase().trim();
+  var onlyUn = document.getElementById('tr-only-untrained').checked;
+  var rows = trainingRows.filter(function (r) {
+    if (onlyUn && r.completed) return false;
+    if (q && (r.name || '').toLowerCase().indexOf(q) === -1) return false;
+    return true;
+  });
+  rows.sort(function (a, b) { if (a.completed !== b.completed) return a.completed ? 1 : -1; return (a.name || '').toLowerCase() < (b.name || '').toLowerCase() ? -1 : 1; });
+  var trained = trainingRows.filter(function (r){ return r.completed; }).length;
+  document.getElementById('tr-summary').innerHTML = '<b style="color:var(--text)">' + trained + '</b> of <b style="color:var(--text)">' + trainingRows.length + '</b> trained · <b style="color:var(--text)">' + (trainingRows.length - trained) + '</b> still need it';
+  var html = rows.map(function (r) {
+    var badge = r.completed
+      ? '<span style="color:var(--green,#3fb950);font-weight:700">✓ Trained</span>'
+      : '<span style="color:var(--amber,#d29922);font-weight:700">' + r.done + '/' + trTotal + '</span>';
+    var skipTxt = r.skips ? ' · ' + r.skips + ' skip' + (r.skips === 1 ? '' : 's') : '';
+    return '<div style="display:flex;align-items:center;gap:.6rem;padding:.55rem .7rem;border-top:1px solid var(--border-soft,#262b32)">' +
+      '<div style="flex:1;min-width:0"><div style="font-weight:600" class="notranslate">' + esc(r.name) + '</div>' +
+        '<div class="muted" style="font-size:.78rem">' + esc(r.alliance || '') + skipTxt + '</div></div>' +
+      '<div style="font-size:.85rem;white-space:nowrap">' + badge + '</div>' +
+      '<button class="hdr-btn" type="button" data-reset="' + r.siteKey + '" data-name="' + esc(r.name) + '">Send back</button>' +
+    '</div>';
+  }).join('');
+  document.getElementById('tr-list').innerHTML = '<div class="card" style="padding:.2rem .3rem">' + (html || '<div class="muted" style="padding:.7rem">No players.</div>') + '</div>';
+}
+function resetTraining(siteKey, name) {
+  if (!window.confirm('Send ' + name + ' back to training? They must complete the 6-part basic training again before their next registration.')) return;
+  var pw = ensureTitanEditPw(); if (!pw) return;
+  fetch(TITAN_API + '/titan/training/reset', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Titan-Edit-Password': pw }, body: JSON.stringify({ siteKey: siteKey, name: name }) })
+    .then(function (r){ if (r.status === 401) { clearTitanEditPw(); throw new Error('auth'); } return r.json(); })
+    .then(function (j){ if (j && j.ok) { loadTraining(); } else { alert('Reset failed (' + ((j && j.error) || '?') + ').'); } })
+    .catch(function (){ alert('Could not reset (auth or network).'); });
+}
+(function () {
+  var refresh = document.getElementById('tr-refresh'); if (refresh) refresh.addEventListener('click', loadTraining);
+  var search = document.getElementById('tr-search'); if (search) search.addEventListener('input', renderTraining);
+  var onlyUn = document.getElementById('tr-only-untrained'); if (onlyUn) onlyUn.addEventListener('change', renderTraining);
+  var list = document.getElementById('tr-list'); if (list) list.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-reset]'); if (b) resetTraining(b.getAttribute('data-reset'), b.getAttribute('data-name'));
+  });
+})();
 
 // ── SIGNUPS REVIEW ────────────────────────────────────────────────────────────
 var SQUAD_CAP = 35;                 // max seats per squad (positions + support)
