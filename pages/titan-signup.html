@@ -180,6 +180,8 @@
   .swap-reminder-callout{background:rgba(210,153,34,.12); border:1px solid rgba(210,153,34,.45); border-radius:10px; padding:.7rem .85rem; margin-bottom:.9rem; font-size:.9rem; line-height:1.45; color:var(--text); font-weight:600}
   .success-dash-btn{display:block; width:100%; text-align:center; margin-top:1.15rem; padding:.8rem 1rem; border-radius:10px; background:var(--green); color:#06210f; font-weight:800; text-decoration:none; font-size:.95rem; transition:filter .15s}
   .success-dash-btn:hover{filter:brightness(1.08)}
+  .tw-gate-skip{display:block; width:100%; margin-top:.55rem; padding:.6rem 1rem; border-radius:10px; background:transparent; border:1px solid var(--border,#30363d); color:var(--muted,#8b949e); font-weight:600; font-size:.85rem; cursor:pointer; -webkit-appearance:none; appearance:none;}
+  .tw-gate-skip:hover{color:var(--text,#e6edf3); border-color:var(--muted,#8b949e);}
   .reg-kv{display:grid; grid-template-columns:max-content 1fr; gap:.5rem 1rem; font-size:.88rem}
   .reg-kv dt{color:var(--muted); font-weight:600}
   .reg-kv dd{font-weight:650; color:var(--text); margin:0}
@@ -371,6 +373,19 @@
     <div class="reg-modal-sub">Signup received</div>
     <div id="success-modal-body"></div>
     <a href="titan.html" class="success-dash-btn">Open your Titan Canyon Dashboard</a>
+  </div>
+</div>
+
+<div class="reg-modal-overlay" id="tw-gate" role="dialog" aria-modal="true" aria-labelledby="tw-gate-title">
+  <div class="reg-modal">
+    <div class="reg-modal-header">
+      <span class="reg-modal-title" id="tw-gate-title">Finish basic training first</span>
+      <button type="button" class="reg-modal-close" id="tw-gate-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="reg-modal-sub" id="tw-gate-sub"></div>
+    <div id="tw-gate-body"></div>
+    <a href="#" id="tw-gate-train" class="success-dash-btn">Complete the 6-part training &rarr;</a>
+    <button type="button" id="tw-gate-skip" class="tw-gate-skip">Register anyway</button>
   </div>
 </div>
 
@@ -871,6 +886,11 @@
     // Remember this player's setup for next signup (roster can lag in-game changes).
     savePrefs(name, siteKey, { profession: profession, unitType: unitType, ucFacility: profession === 'MM' ? ucFacility : null });
 
+    gateThenSubmit(payload, name, siteKey);
+  });
+
+  function doSubmit(payload, name) {
+    var statusEl = document.getElementById('status');
     var btn = document.getElementById('submit-btn'); btn.disabled = true;
     statusEl.className = 'status'; statusEl.textContent = 'Submitting…';
     fetch(TITAN_API + '/titan/signup', {
@@ -884,6 +904,9 @@
           showSuccessModal(name);
         } else if (res.status === 429) {
           statusEl.textContent = 'Please wait a moment before submitting again.'; statusEl.className = 'status err';
+        } else if (res.j && res.j.error === 'training_required') {
+          statusEl.textContent = 'Complete the 6-part basic training to register.'; statusEl.className = 'status err';
+          openGate(payload, name, payload.siteKey, { mustComplete: true, canSkip: false, skipsLeft: 0 });
         } else if (res.j && res.j.error === 'signups_closed') {
           statusEl.textContent = 'Signups are closed for this week.'; statusEl.className = 'status err';
         } else if (res.j && res.j.error === 'signups_not_open') {
@@ -894,7 +917,53 @@
       }).catch(function () {
         btn.disabled = false; statusEl.textContent = 'Network error. Try again.'; statusEl.className = 'status err';
       });
-  });
+  }
+
+  // Training gate: everyone must finish the 6-part basic training once. Untrained
+  // players get 2 soft skips; the worker hard-blocks the 3rd (403 training_required).
+  var gatePending = null;
+  function gateThenSubmit(payload, name, siteKey) {
+    var statusEl = document.getElementById('status');
+    if (!/^[a-f0-9]{16}$/.test(siteKey || '')) { doSubmit(payload, name); return; } // name-only can't be tracked
+    statusEl.className = 'status'; statusEl.textContent = 'Checking training…';
+    fetch(TITAN_API + '/titan/training/status?siteKey=' + siteKey)
+      .then(function (r){ return r.json(); })
+      .then(function (res) {
+        var s = res && res.status;
+        if (!s || s.completed) { doSubmit(payload, name); return; }
+        openGate(payload, name, siteKey, s);
+      }).catch(function () { doSubmit(payload, name); }); // network hiccup: let the worker enforce
+  }
+  function openGate(payload, name, siteKey, s) {
+    gatePending = { payload: payload, name: name };
+    var gate = document.getElementById('tw-gate');
+    var sub = document.getElementById('tw-gate-sub');
+    var bodyEl = document.getElementById('tw-gate-body');
+    var skip = document.getElementById('tw-gate-skip');
+    document.getElementById('tw-gate-train').href = 'titan-guide.html?sk=' + siteKey + '&n=' + encodeURIComponent(name || '');
+    var statusEl = document.getElementById('status'); statusEl.textContent = ''; statusEl.className = 'status';
+    if (s.mustComplete) {
+      sub.textContent = 'No skips left';
+      bodyEl.textContent = 'You have skipped basic training twice already. Please complete the 6-part basic training now to register for Titan Canyon.';
+      skip.style.display = 'none';
+    } else {
+      var left = (typeof s.skipsLeft === 'number') ? s.skipsLeft : 2;
+      sub.textContent = left + ' skip' + (left === 1 ? '' : 's') + ' left';
+      bodyEl.textContent = 'You have not finished the 6-part basic training. Everyone completes it once. Finish it now, or skip for this registration - you will be blocked once your skips run out.';
+      skip.style.display = '';
+      skip.textContent = 'Register anyway (' + left + ' skip' + (left === 1 ? '' : 's') + ' left)';
+    }
+    gate.classList.add('active');
+  }
+  function closeGate() { var g = document.getElementById('tw-gate'); if (g) g.classList.remove('active'); }
+  (function () {
+    var close = document.getElementById('tw-gate-close');
+    var gate = document.getElementById('tw-gate');
+    var skip = document.getElementById('tw-gate-skip');
+    if (close) close.addEventListener('click', closeGate);
+    if (gate) gate.addEventListener('click', function (e){ if (e.target === gate) closeGate(); });
+    if (skip) skip.addEventListener('click', function (){ var p = gatePending; closeGate(); if (p) doSubmit(p.payload, p.name); });
+  })();
 
   // Weeks that show the "check if you need to move alliance" reminder in the
   // signup success modal. Shown on EVERY signup for these weeks (no suppression).
