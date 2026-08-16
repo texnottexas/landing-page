@@ -1089,10 +1089,13 @@
   var ME=getIdentity();
   var serverDone={};   // lessonId -> true (from the worker)
   var badged={};       // lessonIdx -> true (badge already shown, don't repeat)
+  var recordQueue=Promise.resolve();   // serialize POSTs so rapid completes don't race the KV read-modify-write
   function recordLesson(idx){
     if(!ME.siteKey) return;
-    try{fetch(TITAN_API+'/titan/training/complete',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({siteKey:ME.siteKey,lesson:LESSON_IDS[idx],name:ME.name||''})}).catch(function(){});}catch(e){}
+    recordQueue=recordQueue.then(function(){
+      return fetch(TITAN_API+'/titan/training/complete',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({siteKey:ME.siteKey,lesson:LESSON_IDS[idx],name:ME.name||''})}).catch(function(){});
+    });
   }
   function firstIncomplete(){for(var i=0;i<TOTAL;i++){if(!serverDone[LESSON_IDS[i]])return i;}return 0;}
   function showBadge(idx){
