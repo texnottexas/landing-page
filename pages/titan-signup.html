@@ -260,10 +260,10 @@
     <div class="brief-week" id="su-week">…</div>
     <div class="cd-wrap" id="cd-wrap" style="display:none">
       <div class="cd-boxes" id="cd-boxes">
-        <div class="cd-seg"><div class="cd-num" id="cd-days">00</div><div class="cd-lbl">Days</div></div>
-        <div class="cd-seg"><div class="cd-num" id="cd-hrs">00</div><div class="cd-lbl">Hrs</div></div>
-        <div class="cd-seg"><div class="cd-num" id="cd-min">00</div><div class="cd-lbl">Min</div></div>
-        <div class="cd-seg"><div class="cd-num" id="cd-sec">00</div><div class="cd-lbl">Sec</div></div>
+        <div class="cd-seg"><div class="cd-num notranslate" id="cd-days" translate="no">00</div><div class="cd-lbl">Days</div></div>
+        <div class="cd-seg"><div class="cd-num notranslate" id="cd-hrs" translate="no">00</div><div class="cd-lbl">Hrs</div></div>
+        <div class="cd-seg"><div class="cd-num notranslate" id="cd-min" translate="no">00</div><div class="cd-lbl">Min</div></div>
+        <div class="cd-seg"><div class="cd-num notranslate" id="cd-sec" translate="no">00</div><div class="cd-lbl">Sec</div></div>
       </div>
       <div class="cd-closed" id="cd-closed" style="display:none">Signups closed for this week</div>
     </div>
@@ -582,10 +582,15 @@
     var mEl = document.getElementById('cd-min');
     var secEl = document.getElementById('cd-sec');
     closeEl.classList.remove('hint');
+    // Only write when the value actually changes: re-setting textContent every
+    // second re-triggers Google Translate on the subtree and makes the timer
+    // flicker. The digit boxes are also marked translate="no" (numbers need no
+    // translation) so the ticking seconds never re-enter the translator.
+    function setTxt(el, v) { if (el && el.textContent !== v) el.textContent = v; }
     function render() {
       var pill = subEl.querySelector('.pill');
       if (!pill) { pill = document.createElement('span'); pill.className = 'pill'; subEl.appendChild(pill); }
-      if (!cfg.closesAt) { closeEl.textContent = 'Open for signups'; pill.className = 'pill open'; pill.textContent = 'Open'; return; }
+      if (!cfg.closesAt) { setTxt(closeEl, 'Open for signups'); pill.className = 'pill open'; setTxt(pill, 'Open'); return; }
       var when = new Date(cfg.closesAt);
       var ms = when.getTime() - Date.now();
       var closed = ms <= 0;
@@ -605,15 +610,15 @@
         var hrs = Math.floor(total / 3600); total -= hrs * 3600;
         var mins = Math.floor(total / 60); total -= mins * 60;
         var secs = total;
-        if (dEl) dEl.textContent = pad2(days);
-        if (hEl) hEl.textContent = pad2(hrs);
-        if (mEl) mEl.textContent = pad2(mins);
-        if (secEl) secEl.textContent = pad2(secs);
+        setTxt(dEl, pad2(days));
+        setTxt(hEl, pad2(hrs));
+        setTxt(mEl, pad2(mins));
+        setTxt(secEl, pad2(secs));
         if (boxes) boxes.classList.toggle('cd-soon', soon);
-        closeEl.textContent = 'Closes ' + localClose + ' your time (' + etClose + ' ET)';
+        setTxt(closeEl, 'Closes ' + localClose + ' your time (' + etClose + ' ET)');
       }
       pill.className = 'pill ' + (closed ? 'closed' : soon ? 'soon' : 'open');
-      pill.textContent = closed ? 'Closed' : soon ? 'Closing soon' : 'Open';
+      setTxt(pill, closed ? 'Closed' : soon ? 'Closing soon' : 'Open');
     }
     render();
     if (countdownTimer) clearInterval(countdownTimer);
