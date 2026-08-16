@@ -379,7 +379,7 @@
 <div class="reg-modal-overlay" id="tw-gate" role="dialog" aria-modal="true" aria-labelledby="tw-gate-title">
   <div class="reg-modal">
     <div class="reg-modal-header">
-      <span class="reg-modal-title" id="tw-gate-title">Finish basic training first</span>
+      <span class="reg-modal-title" id="tw-gate-title">Quick basic training first</span>
       <button type="button" class="reg-modal-close" id="tw-gate-close" aria-label="Close">&#10005;</button>
     </div>
     <div class="reg-modal-sub" id="tw-gate-sub"></div>
@@ -668,12 +668,14 @@
       document.getElementById('player-hint').style.display = (sel.value === '__notlisted__') ? 'block' : 'none';
       var p = selectedPlayer();
       if (p) applyPlayerDefaults(p.name, p.siteKey);
+      if (p && p.siteKey) checkTrainingGate(p.siteKey, p.name); // up-front training heads-up
       refreshViewRegBtn();
     });
 
     // Apply defaults for a pre-selected player (returning visitor).
     var pre = selectedPlayer();
     if (pre) applyPlayerDefaults(pre.name, pre.siteKey);
+    if (pre && pre.siteKey) checkTrainingGate(pre.siteKey, pre.name);
     refreshViewRegBtn();
   }
 
@@ -886,7 +888,7 @@
     // Remember this player's setup for next signup (roster can lag in-game changes).
     savePrefs(name, siteKey, { profession: profession, unitType: unitType, ucFacility: profession === 'MM' ? ucFacility : null });
 
-    gateThenSubmit(payload, name, siteKey);
+    doSubmit(payload, name); // gate is shown up front on name-select; worker enforces the hard block
   });
 
   function doSubmit(payload, name) {
@@ -906,7 +908,7 @@
           statusEl.textContent = 'Please wait a moment before submitting again.'; statusEl.className = 'status err';
         } else if (res.j && res.j.error === 'training_required') {
           statusEl.textContent = 'Complete the 6-part basic training to register.'; statusEl.className = 'status err';
-          openGate(payload, name, payload.siteKey, { mustComplete: true, canSkip: false, skipsLeft: 0 });
+          openGate(payload.siteKey, name, { mustComplete: true, canSkip: false, skipsLeft: 0 });
         } else if (res.j && res.j.error === 'signups_closed') {
           statusEl.textContent = 'Signups are closed for this week.'; statusEl.className = 'status err';
         } else if (res.j && res.j.error === 'signups_not_open') {
@@ -919,39 +921,38 @@
       });
   }
 
-  // Training gate: everyone must finish the 6-part basic training once. Untrained
-  // players get 2 soft skips; the worker hard-blocks the 3rd (403 training_required).
-  var gatePending = null;
-  function gateThenSubmit(payload, name, siteKey) {
-    var statusEl = document.getElementById('status');
-    if (!/^[a-f0-9]{16}$/.test(siteKey || '')) { doSubmit(payload, name); return; } // name-only can't be tracked
-    statusEl.className = 'status'; statusEl.textContent = 'Checking training…';
+  // Training gate, shown UP FRONT when a player picks their name (not after the
+  // form). Everyone completes the 6-part basic training once; untrained players
+  // get 2 soft skips, then the worker hard-blocks the 3rd (403 training_required).
+  var gateShownFor = '';   // only auto-pop once per selected siteKey per page load
+  function checkTrainingGate(siteKey, name) {
+    if (!/^[a-f0-9]{16}$/.test(siteKey || '')) return;
+    if (gateShownFor === siteKey) return;
     fetch(TITAN_API + '/titan/training/status?siteKey=' + siteKey)
       .then(function (r){ return r.json(); })
       .then(function (res) {
         var s = res && res.status;
-        if (!s || s.completed) { doSubmit(payload, name); return; }
-        openGate(payload, name, siteKey, s);
-      }).catch(function () { doSubmit(payload, name); }); // network hiccup: let the worker enforce
+        if (!s || s.completed) return;   // trained -> no gate
+        gateShownFor = siteKey;
+        openGate(siteKey, name, s);
+      }).catch(function () {});
   }
-  function openGate(payload, name, siteKey, s) {
-    gatePending = { payload: payload, name: name };
+  function openGate(siteKey, name, s) {
     var gate = document.getElementById('tw-gate');
     var sub = document.getElementById('tw-gate-sub');
     var bodyEl = document.getElementById('tw-gate-body');
     var skip = document.getElementById('tw-gate-skip');
     document.getElementById('tw-gate-train').href = 'titan-guide.html?sk=' + siteKey + '&n=' + encodeURIComponent(name || '');
-    var statusEl = document.getElementById('status'); statusEl.textContent = ''; statusEl.className = 'status';
     if (s.mustComplete) {
-      sub.textContent = 'No skips left';
-      bodyEl.textContent = 'You have skipped basic training twice already. Please complete the 6-part basic training now to register for Titan Canyon.';
+      sub.textContent = 'About 3 minutes · no skips left';
+      bodyEl.textContent = 'The 6-part basic training takes about 3 minutes and helps improve the Titan Canyon experience for the whole server. You have used both skips, so please complete it now to register.';
       skip.style.display = 'none';
     } else {
       var left = (typeof s.skipsLeft === 'number') ? s.skipsLeft : 2;
-      sub.textContent = left + ' skip' + (left === 1 ? '' : 's') + ' left';
-      bodyEl.textContent = 'You have not finished the 6-part basic training. Everyone completes it once. Finish it now, or skip for this registration - you will be blocked once your skips run out.';
+      sub.textContent = 'About 3 minutes · ' + left + ' skip' + (left === 1 ? '' : 's') + ' left';
+      bodyEl.textContent = 'Before you register: everyone completes a quick 6-part basic training once - about 3 minutes. It helps improve the Titan Canyon experience for the whole server. Finish it now, or skip for this time (you will be blocked once your skips run out).';
       skip.style.display = '';
-      skip.textContent = 'Register anyway (' + left + ' skip' + (left === 1 ? '' : 's') + ' left)';
+      skip.textContent = 'Skip for now (' + left + ' skip' + (left === 1 ? '' : 's') + ' left)';
     }
     gate.classList.add('active');
   }
@@ -962,7 +963,7 @@
     var skip = document.getElementById('tw-gate-skip');
     if (close) close.addEventListener('click', closeGate);
     if (gate) gate.addEventListener('click', function (e){ if (e.target === gate) closeGate(); });
-    if (skip) skip.addEventListener('click', function (){ var p = gatePending; closeGate(); if (p) doSubmit(p.payload, p.name); });
+    if (skip) skip.addEventListener('click', closeGate); // dismiss -> proceed to fill the form
   })();
 
   // Weeks that show the "check if you need to move alliance" reminder in the
