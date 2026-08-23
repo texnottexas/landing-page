@@ -142,6 +142,10 @@
   .status-badge.status-declined{color:var(--amber); border-color:rgba(210,153,34,.5); background:var(--amber-soft)}
   .status-badge.status-noshow{color:var(--red); border-color:rgba(248,81,73,.5); background:var(--red-soft)}
   .status-badge.status-completed{color:var(--green); border-color:rgba(63,185,80,.5); background:var(--green-soft)}
+  /* Solid fill (not just outline like status-completed) — `moved` is an
+     admin's mid-week CONFIRMATION, so it needs to read as more definite than
+     the soft/outlined "this happened by default at close" completed badge. */
+  .status-badge.status-moved{color:#0d1117; background:var(--green); border-color:var(--green); font-weight:800}
   .status-badge.status-voided{color:var(--faint); text-decoration:line-through}
   .status-by{color:var(--faint); font-size:.64rem; margin-top:.15rem}
   .row-actions{display:flex; gap:.25rem; flex-wrap:wrap}
@@ -192,6 +196,7 @@
   .cov-table th[data-sort]:hover{color:var(--text)}
   .cov-table td, .cycles-table td{padding:.4rem .5rem; border-bottom:1px solid var(--border); font-size:.82rem}
   .cov-check{text-align:center; font-weight:700}
+  .cov-offcycle{color:var(--accent); font-size:.6rem; font-weight:800; letter-spacing:.02em; margin-left:.1rem; cursor:help}
 
   /* Exclusions / Changelog rows */
   .log-row{padding:.6rem 0; border-bottom:1px solid var(--border); font-size:.84rem}
@@ -388,6 +393,31 @@
       </div>
       <div id="home-status" class="log-meta"></div>
     </div>
+
+    <div class="card" style="margin-top:1.4rem">
+      <div class="excl-title">Record an off-cycle move</div>
+      <p class="log-meta" style="margin-bottom:.6rem">
+        Use this when a player moved alliances without being assigned this week,
+        so they stop showing on Coverage as never having moved. This freezes
+        their home alliance (if it is not already frozen) and counts toward
+        their normal cooldown, same as an assigned move.
+      </p>
+      <div class="excl-row">
+        <div class="player-picker" id="offcycle-player-wrap">
+          <input type="text" id="offcycle-player-search" class="input player-picker-input" placeholder="Search player by name..." autocomplete="off">
+          <input type="hidden" id="offcycle-player-value">
+          <div class="player-picker-results" id="offcycle-player-results" style="display:none"></div>
+        </div>
+        <span class="badge" id="offcycle-current-label">Current home: none selected</span>
+        <select id="offcycle-alliance-select">
+          <option value="DOG">DOG</option>
+          <option value="MSS">MSS</option>
+          <option value="Cat+">Cat+</option>
+        </select>
+        <button type="button" class="btn primary" id="offcycle-save-btn">Record move</button>
+      </div>
+      <div id="offcycle-status" class="log-meta"></div>
+    </div>
   </section>
 
   <!-- ===================== CHANGELOG VIEW ===================== -->
@@ -442,6 +472,8 @@ var ERROR_MESSAGES = {
   network_error: 'Could not reach the server. Check your connection and try again.',
   header_encoding_error: 'Your editor name could not be sent safely this time. Try again in a moment.',
   roster_unavailable: 'The player roster could not be loaded right now.',
+  already_home: 'That is already their home alliance, or the roster has already caught up, so there is nothing to record.',
+  no_active_week: 'There is no active week set. Set one on this tab first.',
 };
 
 function friendlyError(res) {
@@ -864,7 +896,7 @@ function statRow(a) {
   statusBadge.className = 'status-badge status-' + a.status;
   statusBadge.textContent = a.status;
   statusTd.appendChild(statusBadge);
-  if ((a.status === 'declined' || a.status === 'noshow') && a.statusBy) {
+  if ((a.status === 'declined' || a.status === 'noshow' || a.status === 'moved') && a.statusBy) {
     var by = document.createElement('div');
     by.className = 'status-by';
     // a.statusBy is editor-supplied text from a shared password — render as
@@ -876,6 +908,10 @@ function statRow(a) {
 
   var act = document.createElement('td');
   act.className = 'row-actions';
+  // Positive confirmation ("I checked, this person actually moved") sits
+  // alongside the two negatives — mid-week, there was previously no way to
+  // tell "confirmed moved" apart from "no news yet" other than asking around.
+  act.appendChild(mkBtn('Moved', function () { setStatus(a.siteKey, 'moved'); }));
   act.appendChild(mkBtn('Declined', function () { setStatus(a.siteKey, 'declined'); }));
   act.appendChild(mkBtn("Didn't go", function () { setStatus(a.siteKey, 'noshow'); }));
   act.appendChild(mkBtn('Remove', function () { unassign(a.siteKey); }));
@@ -1170,7 +1206,22 @@ function renderCoverage() {
     ALLIANCES.forEach(function (al) {
       var td = document.createElement('td');
       td.className = 'cov-check';
-      td.textContent = (r.covered && r.covered[al]) ? '✓' : '-';
+      if (r.covered && r.covered[al]) {
+        td.appendChild(document.createTextNode('✓'));
+        // A small marker, not a column: distinguishes "covered because a
+        // confirmed off-cycle move was recorded" from "covered via an
+        // assigned wave that closed normally" (ADO #266), so an admin can
+        // see WHY a cell is checked without opening the changelog.
+        if (r.offCycle && r.offCycle[al]) {
+          var oc = document.createElement('sup');
+          oc.className = 'cov-offcycle';
+          oc.title = 'Recorded as an off-cycle move, outside any assigned wave';
+          oc.textContent = 'OC';
+          td.appendChild(oc);
+        }
+      } else {
+        td.appendChild(document.createTextNode('-'));
+      }
       tr.appendChild(td);
     });
 
@@ -1458,6 +1509,48 @@ document.getElementById('home-save-btn').addEventListener('click', function () {
     } else {
       statusEl.className = 'err';
       statusEl.textContent = 'Update failed: ' + friendlyError(res);
+    }
+  });
+});
+
+// ── OFF-CYCLE MOVE (ADO #266) ───────────────────────────────────────────────
+// Records a move that happened outside any assigned wave, so Coverage stops
+// reporting the player as never having moved. Same player-picker + confirm
+// pattern as the home correction control right above, which is also an
+// out-of-band write outside the normal generate/assign/close flow.
+var offcyclePlayerPicker = makePlayerPicker('offcycle-player', function (sk) { updateOffcycleCurrentLabel(sk); });
+
+function updateOffcycleCurrentLabel(sk) {
+  var label = document.getElementById('offcycle-current-label');
+  if (!sk) { label.textContent = 'Current home: none selected'; return; }
+  var frozen = STATE.homeMap && STATE.homeMap[sk];
+  var rp = ROSTER_INDEX[sk];
+  if (frozen) {
+    label.textContent = 'Current home: ' + frozen + ' (frozen)';
+  } else if (rp && rp.alliance) {
+    label.textContent = 'Current home: ' + rp.alliance + ' (from the roster, not yet frozen)';
+  } else {
+    label.textContent = 'Current home: unknown';
+  }
+}
+
+document.getElementById('offcycle-save-btn').addEventListener('click', function () {
+  var sk = offcyclePlayerPicker.getValue();
+  var to = document.getElementById('offcycle-alliance-select').value;
+  var statusEl = document.getElementById('offcycle-status');
+  statusEl.className = '';
+  if (!sk) { statusEl.textContent = 'Choose a player first.'; return; }
+  if (ALLIANCES.indexOf(to) === -1) { statusEl.textContent = 'Choose a valid alliance.'; return; }
+  if (!window.confirm('Record that this player moved to ' + to + ' outside any assigned wave? This freezes their home alliance if it is not already frozen, and starts their normal cooldown.')) return;
+  statusEl.textContent = 'Saving...';
+  api('/rotation/offcycle', { method: 'POST', body: { siteKey: sk, to: to } }).then(function (res) {
+    if (res.status === 200 && res.json.ok) {
+      statusEl.className = 'ok';
+      statusEl.textContent = 'Off-cycle move recorded.';
+      reloadAndRender(STATE.week).then(function () { updateOffcycleCurrentLabel(sk); });
+    } else {
+      statusEl.className = 'err';
+      statusEl.textContent = 'Record failed: ' + friendlyError(res);
     }
   });
 });
