@@ -410,13 +410,24 @@
           <div class="player-picker-results" id="offcycle-player-results" style="display:none"></div>
         </div>
         <span class="badge" id="offcycle-current-label">Current home: none selected</span>
-        <select id="offcycle-alliance-select">
+        <select id="offcycle-alliance-select" title="Moved to">
+          <option value="DOG">DOG</option>
+          <option value="MSS">MSS</option>
+          <option value="Cat+">Cat+</option>
+        </select>
+        <select id="offcycle-from-select" title="Moved from (only needed if the system can't work it out)">
+          <option value="">Moved from (auto)</option>
           <option value="DOG">DOG</option>
           <option value="MSS">MSS</option>
           <option value="Cat+">Cat+</option>
         </select>
         <button type="button" class="btn primary" id="offcycle-save-btn">Record move</button>
       </div>
+      <p class="log-meta" style="margin-top:.4rem">
+        Leave "Moved from" on auto unless the system cannot work out where this
+        player came from (it will tell you if that happens). Only set it
+        yourself when you know their real origin alliance.
+      </p>
       <div id="offcycle-status" class="log-meta"></div>
     </div>
   </section>
@@ -477,6 +488,8 @@ var ERROR_MESSAGES = {
   already_home: 'That is already their home alliance, or the roster has already caught up, so there is nothing to record.',
   no_active_week: 'There is no active week set. Set one on this tab first.',
   too_many_weeks: 'The schedule cannot hold more than 200 weeks. Remove an old week before adding a new one.',
+  bad_from: 'That "moved from" alliance is not valid, or it is the same as where they moved to.',
+  home_unknown: 'The system could not work out where this player moved from. Set "Moved from" to the correct origin alliance and try again.',
 };
 
 function friendlyError(res) {
@@ -1558,16 +1571,24 @@ function updateOffcycleCurrentLabel(sk) {
 document.getElementById('offcycle-save-btn').addEventListener('click', function () {
   var sk = offcyclePlayerPicker.getValue();
   var to = document.getElementById('offcycle-alliance-select').value;
+  var from = document.getElementById('offcycle-from-select').value;
   var statusEl = document.getElementById('offcycle-status');
   statusEl.className = '';
   if (!sk) { statusEl.textContent = 'Choose a player first.'; return; }
   if (ALLIANCES.indexOf(to) === -1) { statusEl.textContent = 'Choose a valid alliance.'; return; }
+  if (from && from === to) { statusEl.textContent = '"Moved from" cannot be the same as "Moved to".'; return; }
   if (!window.confirm('Record that this player moved to ' + to + ' outside any assigned wave? This freezes their home alliance if it is not already frozen, and starts their normal cooldown.')) return;
   statusEl.textContent = 'Saving...';
-  api('/rotation/offcycle', { method: 'POST', body: { siteKey: sk, to: to } }).then(function (res) {
+  var body = { siteKey: sk, to: to };
+  // Only sent when the admin actually picked one — leaving it on "auto" lets
+  // the server resolve the origin itself (frozen home, or roster history for
+  // the ambiguous case), same as before this control existed.
+  if (from) body.from = from;
+  api('/rotation/offcycle', { method: 'POST', body: body }).then(function (res) {
     if (res.status === 200 && res.json.ok) {
       statusEl.className = 'ok';
       statusEl.textContent = 'Off-cycle move recorded.';
+      document.getElementById('offcycle-from-select').value = '';
       reloadAndRender(STATE.week).then(function () { updateOffcycleCurrentLabel(sk); });
     } else {
       statusEl.className = 'err';
