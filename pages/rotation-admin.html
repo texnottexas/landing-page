@@ -350,6 +350,7 @@
   <!-- ===================== SCHEDULE VIEW ===================== -->
   <section class="view" id="view-schedule">
     <p class="cycles-note">The active week is what players see on the public rotation page. Skipping a week keeps its row but marks it paused, with a reason. Times are read as your browser's local time.</p>
+    <p class="log-meta" style="margin-bottom:.8rem">Status only changes behavior when set to Skipped. The week players actually see is the separate Active week control below, not this column.</p>
     <div class="table-scroll">
       <table class="cycles-table" id="sched-table">
         <thead>
@@ -447,6 +448,7 @@ var ROT_REASONS = [
 // sentence an operator understands. A 409 must never just read "Error 409".
 var ERROR_MESSAGES = {
   unauthorized: 'That password was rejected.',
+  bad_json: 'That request was not formatted correctly. Try again, or refresh the page if this keeps happening.',
   rate_limited: 'Too many failed attempts from this connection. Wait about 15 minutes and try again.',
   bad_state: "That action is not allowed in this wave's current state (for example, it may already be announced or closed).",
   already_closed: 'This week has already been closed and can no longer be changed.',
@@ -1365,10 +1367,28 @@ function renderScheduleTable() {
 
     var statusTd = document.createElement('td');
     var statusSel = document.createElement('select');
-    ['planned', 'skipped', 'active', 'closed'].forEach(function (s) {
+    // Only these two are offered — 'active'/'closed' are accepted by the
+    // server for backward compatibility with already-stored schedules, but
+    // do nothing (the real active week is the separate control below, and a
+    // wave's real closed state is its own wave.status). See the hint above
+    // the table and the ROT_SCHED_STATUSES comment in push-worker/index.js.
+    var SCHED_STATUS_OPTIONS = [['planned', 'Planned'], ['skipped', 'Skipped']];
+    var knownStatuses = SCHED_STATUS_OPTIONS.map(function (o) { return o[0]; });
+    // A row already stored with some OTHER status (legacy 'active'/'closed',
+    // or any future value) must still render AS ITSELF, selected — snapping
+    // it to the first listed option would let an unrelated edit on this same
+    // row (e.g. editing the note) silently rewrite its status on save.
+    if (w.status && knownStatuses.indexOf(w.status) === -1) {
+      var otherOpt = document.createElement('option');
+      otherOpt.value = w.status;
+      otherOpt.textContent = w.status + ' (unchanged)';
+      otherOpt.selected = true;
+      statusSel.appendChild(otherOpt);
+    }
+    SCHED_STATUS_OPTIONS.forEach(function (pair) {
       var opt = document.createElement('option');
-      opt.value = s; opt.textContent = s;
-      if (w.status === s) opt.selected = true;
+      opt.value = pair[0]; opt.textContent = pair[1];
+      if (w.status === pair[0]) opt.selected = true;
       statusSel.appendChild(opt);
     });
     statusSel.addEventListener('change', function () { scheduleDraft.weeks[idx].status = statusSel.value; });
@@ -1575,6 +1595,16 @@ function renderChangelogList() {
     main.appendChild(actionSpan);
     if (e.week) main.appendChild(document.createTextNode(' · week ' + e.week));
     if (e.detail) main.appendChild(document.createTextNode(': ' + e.detail));
+    // targetSiteKey identifies WHICH player an action was about (assign,
+    // unassign, status, exclude, unexclude, set_home, offcycle) — resolved to
+    // a name the same way the Exclusions tab already does, falling back to
+    // the raw siteKey when the player is not in the current roster (e.g. they
+    // transferred out since).
+    if (e.targetSiteKey) {
+      var targetRp = ROSTER_INDEX[e.targetSiteKey];
+      var targetName = (targetRp && targetRp.name) ? targetRp.name : e.targetSiteKey;
+      main.appendChild(document.createTextNode(' - ' + targetName));
+    }
     row.appendChild(main);
 
     var meta = document.createElement('div');
