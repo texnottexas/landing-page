@@ -1442,12 +1442,12 @@ function renderEditor() {
         <label class="showall-toggle" style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;color:var(--muted);margin:-.2rem 0 .6rem;cursor:pointer">
           <input type="checkbox" id="showAllRoles" ${showAllRoles[activeSquad] ? "checked" : ""} onchange="toggleShowAll(this.checked)"> Show all roles (ignore the CE/MM filter)
         </label>
-        ${POS_GROUPS.map(g => `
+        ${formationKey === "standard" ? POS_GROUPS.map(g => `
           <div class="assign-section">
             <div class="assign-header">${esc(g.title)}</div>
             <ul class="assign-list" id="list_pos_${g.prof}"></ul>
           </div>
-        `).join("")}
+        `).join("") : ""}
         ${SECTIONS.map(s => `
           <div class="assign-section">
             <div class="assign-header">${esc(s.title)} <button class="add-btn" onclick="addSlot('${s.key}')">+ Add</button></div>
@@ -1724,6 +1724,10 @@ function highlightPosRow(num) {
 }
 
 function renderPositionSlots(data, sqPlayers, placed) {
+  // Non-standard formations use the fill grid as their position-assignment UI —
+  // the standard 1-8 CE/MM panel doesn't correspond to an alt battle layout, and
+  // renderEditor() doesn't even emit its list_pos_* containers for these squads.
+  if (window.titanFormationKey && window.titanFormationKey(data) !== "standard") return;
   POS_GROUPS.forEach(g => {
     const list = document.getElementById("list_pos_" + g.prof);
     const posInfo = POSITIONS.filter(p => g.nums.includes(p.num));
