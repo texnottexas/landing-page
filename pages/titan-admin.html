@@ -1366,6 +1366,17 @@ function dedupeAssign(data, name, keepKind, keepIdx) {
       if (v && String(v).trim().toLowerCase() === key) data[s.key][i] = "";
     });
   });
+  // Alt-formation base assignments (Task 6 fix round 2): a standard squad never
+  // populates formationFill, so this block is a strict no-op there. For a
+  // non-standard squad, clears the name from any base it's currently seated on
+  // so a support-bucket pick (via updateSlot -> here) can't leave the same
+  // player double-booked on a formation base too.
+  if (data.formationFill) {
+    Object.keys(data.formationFill).forEach(id => {
+      const v = data.formationFill[id];
+      if (v && String(v).trim().toLowerCase() === key) data.formationFill[id] = "";
+    });
+  }
 }
 
 function playerOptHtml(sqPlayers, selected, filterProf, placedLabels) {
@@ -1642,6 +1653,15 @@ function updateFormationFill(baseId, val) {
     Object.keys(data.formationFill).forEach(id => {
       if (id === baseId) return;
       if (data.formationFill[id] && String(data.formationFill[id]).trim().toLowerCase() === key) data.formationFill[id] = "";
+    });
+    // Cross-dedup (Task 6 fix round 2): a formation base and a support bucket
+    // are mutually exclusive, mirroring how dedupeAssign keeps the standard
+    // positions and buckets exclusive. Remove `val` from goon/standby/hover/
+    // crystal so a base pick can't leave the same player double-booked there.
+    SECTIONS.forEach(s => {
+      (data[s.key] || []).forEach((v, i) => {
+        if (v && String(v).trim().toLowerCase() === key) data[s.key][i] = "";
+      });
     });
   }
   data.formationFill[baseId] = val;
