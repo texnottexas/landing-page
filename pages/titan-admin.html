@@ -1185,16 +1185,46 @@ function buildPlanDetails() {
     const cur = planData[sq] || {};
     const prev = old[sq] || {};
     const sqLines = [];
-    // Diff positions
-    POSITIONS.forEach(p => {
-      const was = prev.positions?.[p.num] || "";
-      const now = cur.positions?.[p.num] || "";
-      if (was !== now) {
-        if (was && now) sqLines.push("#" + p.num + ": " + was + " → " + now);
-        else if (now) sqLines.push("#" + p.num + ": + " + now);
-        else sqLines.push("#" + p.num + ": − " + was);
-      }
-    });
+    // Formation switch (Task 7): announce with human labels off the shared
+    // registry, e.g. "Formation: Standard Formation -> Core Tower Ring".
+    const curFKey = window.titanFormationKey ? window.titanFormationKey(cur) : "standard";
+    const prevFKey = window.titanFormationKey ? window.titanFormationKey(prev) : "standard";
+    if (curFKey !== prevFKey) {
+      const byKey = window.TITAN_FORMATION_BY_KEY || {};
+      const prevLabel = (byKey[prevFKey] && byKey[prevFKey].label) || prevFKey;
+      const curLabel = (byKey[curFKey] && byKey[curFKey].label) || curFKey;
+      sqLines.push("Formation: " + prevLabel + " -> " + curLabel);
+    }
+    if (curFKey === "standard") {
+      // Diff positions
+      POSITIONS.forEach(p => {
+        const was = prev.positions?.[p.num] || "";
+        const now = cur.positions?.[p.num] || "";
+        if (was !== now) {
+          if (was && now) sqLines.push("#" + p.num + ": " + was + " → " + now);
+          else if (now) sqLines.push("#" + p.num + ": + " + now);
+          else sqLines.push("#" + p.num + ": − " + was);
+        }
+      });
+    } else {
+      // Diff formationFill bases (Task 7): non-standard squads have no
+      // positions diff (that panel is hidden for them, see Task 6) - the fill
+      // grid IS the position-assignment UI, so diff that instead, keyed off
+      // the CURRENT formation's own base list/ids.
+      const f = (window.TITAN_FORMATION_BY_KEY || {})[curFKey];
+      const wasFill = prev.formationFill || {};
+      const nowFill = cur.formationFill || {};
+      (f && f.bases || []).forEach(b => {
+        const was = wasFill[b.id] || "";
+        const now = nowFill[b.id] || "";
+        if (was !== now) {
+          const label = "Base " + b.id;
+          if (was && now) sqLines.push(label + ": " + was + " → " + now);
+          else if (now) sqLines.push(label + ": + " + now);
+          else sqLines.push(label + ": − " + was);
+        }
+      });
+    }
     // Diff sections
     SECTIONS.forEach(s => {
       const wasSet = new Set((prev[s.key] || []).filter(Boolean));
