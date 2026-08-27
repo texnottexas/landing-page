@@ -542,10 +542,14 @@ function findAssignment(name) {
   return null;
 }
 function squadMembers(data) {
-  var out = [];
-  if (data.positions) for (var pos in data.positions) if (data.positions.hasOwnProperty(pos) && data.positions[pos]) out.push(data.positions[pos]);
-  for (var b = 0; b < SUPPORT_BUCKETS.length; b++) { var arr = data[SUPPORT_BUCKETS[b]] || []; for (var k = 0; k < arr.length; k++) if (arr[k]) out.push(arr[k]); }
-  if (data.formationFill) for (var baseId in data.formationFill) if (data.formationFill.hasOwnProperty(baseId) && data.formationFill[baseId]) out.push(data.formationFill[baseId]);
+  // De-dupe by name: a player can appear in BOTH positions (the auto-built pool)
+  // and formationFill (a base they were assigned to on a non-standard formation);
+  // they are one squad member, so count them once.
+  var out = [], seen = {};
+  function add(n) { if (n && !seen[n]) { seen[n] = 1; out.push(n); } }
+  if (data.positions) for (var pos in data.positions) if (data.positions.hasOwnProperty(pos)) add(data.positions[pos]);
+  for (var b = 0; b < SUPPORT_BUCKETS.length; b++) { var arr = data[SUPPORT_BUCKETS[b]] || []; for (var k = 0; k < arr.length; k++) add(arr[k]); }
+  if (data.formationFill) for (var baseId in data.formationFill) if (data.formationFill.hasOwnProperty(baseId)) add(data.formationFill[baseId]);
   return out;
 }
 // Label for a formation-fill "your spot" (e.g. "MM base &middot; Core Tower Ring"),
