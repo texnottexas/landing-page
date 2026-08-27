@@ -274,6 +274,11 @@
        Kept visually consistent with .zCE/.zUC/.zMM above; standard's map is untouched. */
     .zBase { border: 2px solid var(--accent); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 22%, transparent), inset 0 0 12px color-mix(in srgb, var(--accent) 7%, transparent); }
     .zSmall { border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border)); }
+    /* .dm-zc's 23cqi width is sized against .dm-wrap (the cqi container), calibrated
+       for a 2x2 zone cell. A 1x1 zSmall cell is ~half that linear size, so the shared
+       width would overflow into neighbouring cells — scale it down to fit. */
+    .zSmall .dm-zc { width: 11cqi; }
+    .zSmall .dm-zc .player { font-size: 1.5cqi; padding: 1px 3px; max-width: 10cqi; margin-top: 1px; }
     .formation-header {
       margin-bottom: .8rem; padding: .6rem .85rem; border-radius: 8px;
       background: color-mix(in srgb, var(--accent) 8%, transparent);
@@ -511,6 +516,31 @@ function selectSquad(sq) {
   render();
 }
 
+// Standard's legend documents its 3 tower sub-types (S/W/U). Alt formations
+// (Task 3) collapse all towers to one glyph (🗼) and only ever use CE/MM/plain
+// base roles (never "Urgent Care") — so they get their own, non-misleading legend.
+const STANDARD_LEGEND = `
+    <div class="legend-row">
+      <span class="k"><span class="legend-sw" style="background:var(--ce)"></span> CE positions</span>
+      <span class="k"><span class="legend-sw" style="background:var(--army)"></span> MM + Urgent Care</span>
+      <span class="k"><span class="legend-sw" style="background:var(--mm)"></span> Any MM (4 towers)</span>
+    </div>
+    <div class="legend-row">
+      <span class="k">💪 Strengthening Tower</span>
+      <span class="k">🚨 Weakening Tower</span>
+      <span class="k"><span class="legend-plus">✚</span> Urgent Care</span>
+    </div>`;
+function renderLegend(formation) {
+  if (!formation) return STANDARD_LEGEND;
+  const hasMM = formation.bases.some(b => b.role === "MM");
+  return `
+    <div class="legend-row">
+      <span class="k"><span class="legend-sw" style="background:var(--accent)"></span> Base</span>
+      ${hasMM ? `<span class="k"><span class="legend-sw" style="background:var(--mm)"></span> MM</span>` : ""}
+      <span class="k">🗼 Tower</span>
+    </div>`;
+}
+
 function render() {
   const el = document.getElementById("content");
   const data = planData[activeSquad];
@@ -534,18 +564,7 @@ function render() {
           <div class="formation-short">${esc(formation.short)}</div>
         </div>` : ""}
         <div class="dm-wrap"><div class="dm-grid" id="mapGrid"></div></div>
-        <div class="map-legend">
-          <div class="legend-row">
-            <span class="k"><span class="legend-sw" style="background:var(--ce)"></span> CE positions</span>
-            <span class="k"><span class="legend-sw" style="background:var(--army)"></span> MM + Urgent Care</span>
-            <span class="k"><span class="legend-sw" style="background:var(--mm)"></span> Any MM (4 towers)</span>
-          </div>
-          <div class="legend-row">
-            <span class="k">💪 Strengthening Tower</span>
-            <span class="k">🚨 Weakening Tower</span>
-            <span class="k"><span class="legend-plus">✚</span> Urgent Care</span>
-          </div>
-        </div>
+        <div class="map-legend">${renderLegend(formation)}</div>
         <div class="ref-link-row">
           <button class="ref-link" onclick="document.getElementById('refModal').classList.add('open')">🗺 Compare with in-game reference</button>
         </div>
@@ -704,7 +723,7 @@ function renderFormationPositionSections(data, key) {
   if (!filled.length) return "";
   return `
     <div class="assign-section">
-      <div class="assign-title">${esc(f.label)} Bases <span class="assign-count">${filled.length}/${f.bases.length}</span></div>
+      <div class="assign-title">Bases <span class="assign-count">${filled.length}/${f.bases.length}</span></div>
       <ul class="assign-list">
         ${filled.map(b => {
           const nm = window.titanAssignmentFor(data, key, b.id);
