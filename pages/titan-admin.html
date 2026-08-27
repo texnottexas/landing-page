@@ -1542,7 +1542,17 @@ function toggleFormationDetails(key) {
 
 function selectFormation(key) {
   if (!activeSquad) return;
-  getSquadData(activeSquad).formation = key;
+  const data = getSquadData(activeSquad);
+  const currentKey = window.titanFormationKey ? window.titanFormationKey(data) : "standard";
+  if (key !== currentKey) {
+    // Base ids (b1, b2, ...) aren't namespaced per formation, so a reused id can
+    // carry a stale fill over from the previous formation onto an unrelated
+    // cell (or linger orphaned in the saved blob). Reset the bases whenever the
+    // formation actually changes -- including switching to Standard, which
+    // ignores formationFill anyway. Re-picking the SAME formation is a no-op.
+    data.formationFill = {};
+  }
+  data.formation = key;
   markDirty();
   renderEditor();
   closeFormationModal();
