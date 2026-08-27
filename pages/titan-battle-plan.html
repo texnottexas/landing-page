@@ -269,7 +269,21 @@
     .lang-option.active { border-color: var(--accent); background: var(--tag); }
     .lang-option .lang-flag { font-size: 1.1rem; }
     .lang-option .lang-name { flex: 1; }
+
+    /* Alternate formations (Task 3): neutral base cells + summary header.
+       Kept visually consistent with .zCE/.zUC/.zMM above; standard's map is untouched. */
+    .zBase { border: 2px solid var(--accent); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 22%, transparent), inset 0 0 12px color-mix(in srgb, var(--accent) 7%, transparent); }
+    .zSmall { border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border)); }
+    .formation-header {
+      margin-bottom: .8rem; padding: .6rem .85rem; border-radius: 8px;
+      background: color-mix(in srgb, var(--accent) 8%, transparent);
+      border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+    }
+    .formation-title { font-size: .85rem; font-weight: 700; color: var(--accent); }
+    .formation-meta { font-size: .7rem; color: var(--muted); margin-top: 2px; font-weight: 600; }
+    .formation-short { font-size: .75rem; color: var(--text); margin-top: 4px; line-height: 1.4; }
   </style>
+  <script src="titan-formations.js"></script>
 </head>
 <body>
 
@@ -411,17 +425,38 @@ function findMyAssignment(name) {
         if (normName(currentName(d, arr[k])) === nn) return { squad: sq, position: null, bucket: s.key, slot: k + 1 };
       }
     }
+    // Alternate formations (Task 3): squads on a non-standard formation carry their
+    // assignments in formationFill (keyed by base id) instead of positions.
+    if (d.formationFill) {
+      const fKey = window.titanFormationKey(d);
+      if (fKey !== "standard") {
+        for (const baseId in d.formationFill) {
+          if (d.formationFill.hasOwnProperty(baseId) && d.formationFill[baseId] && normName(currentName(d, d.formationFill[baseId])) === nn) {
+            return { squad: sq, position: null, bucket: null, formation: fKey, baseId: baseId };
+          }
+        }
+      }
+    }
   }
   return null;
+}
+// Label for a formation-fill "your spot" (e.g. "MM base · All Bases"), used by renderMeBanner.
+function formationSpotLabel(key, baseId) {
+  const f = window.TITAN_FORMATION_BY_KEY[key];
+  const base = f && f.bases.find(b => b.id === baseId);
+  if (base && base.role) return `${esc(base.role)} base &middot; ${esc(f.label)}`;
+  return esc(f ? f.label : key);
 }
 function zoneRole(num) { for (const z of ZONE_LAYOUT) if (String(z.num) === String(num)) return z.role; return ""; }
 function sectionTitle(key) { for (const s of SECTIONS) if (s.key === key) return s.title; return key; }
 
 function renderMeBanner() {
   if (!me || !myAssign) return "";
-  const spot = myAssign.position
-    ? `Position ${esc(myAssign.position)} · ${esc(zoneRole(myAssign.position))}`
-    : `${esc(sectionTitle(myAssign.bucket))} #${myAssign.slot}`;
+  const spot = myAssign.formation
+    ? formationSpotLabel(myAssign.formation, myAssign.baseId)
+    : myAssign.position
+      ? `Position ${esc(myAssign.position)} · ${esc(zoneRole(myAssign.position))}`
+      : `${esc(sectionTitle(myAssign.bucket))} #${myAssign.slot}`;
   const initial = esc((normName(me.name).charAt(0) || "?").toUpperCase());
   return `
     <div class="me-banner">
@@ -485,10 +520,19 @@ function render() {
     return;
   }
 
+  const fKey = window.titanFormationKey(data);
+  const formation = fKey !== "standard" ? window.TITAN_FORMATION_BY_KEY[fKey] : null;
+
   el.innerHTML = renderMeBanner() + `
     <div class="plan-layout">
       <div class="panel">
         <h3>Battle Map &middot; ${esc(SQUAD_SHORT[activeSquad])}</h3>
+        ${formation ? `
+        <div class="formation-header">
+          <div class="formation-title">${esc(formation.label)}</div>
+          <div class="formation-meta">${formation.players} players &middot; ${formation.mms} MM</div>
+          <div class="formation-short">${esc(formation.short)}</div>
+        </div>` : ""}
         <div class="dm-wrap"><div class="dm-grid" id="mapGrid"></div></div>
         <div class="map-legend">
           <div class="legend-row">
@@ -509,7 +553,7 @@ function render() {
       <div class="panel">
         <h3>Roster Assignments</h3>
         ${SECTIONS.map(s => renderSection(s, data)).join("")}
-        ${renderPositionSections(data)}
+        ${formation ? renderFormationPositionSections(data, fKey) : renderPositionSections(data)}
       </div>
     </div>
     ${data.notes ? `<div class="notes-card"><h3>Squad Notes</h3><div class="notes-body">${esc(data.notes)}</div></div>` : ""}
@@ -523,6 +567,7 @@ function hasAnyData(d) {
   if (d.notes) return true;
   if (d.positions && Object.values(d.positions).some(v => v)) return true;
   for (const s of SECTIONS) { if (d[s.key] && d[s.key].some(v => v)) return true; }
+  if (d.formationFill && Object.values(d.formationFill).some(v => v)) return true;
   return false;
 }
 
@@ -555,6 +600,8 @@ const TOWER_CELLS = [
 const TOWER_GLYPH = { S: "💪", W: "🚨", U: "✚" };
 
 function renderMap(data) {
+  const key = window.titanFormationKey(data);
+  if (key !== "standard") { return renderFormationMap(data, key); }
   const grid = document.getElementById("mapGrid");
   if (!grid) return;
   let html = "";
@@ -572,6 +619,33 @@ function renderMap(data) {
   html += `<div class="dm-cell dm-hub" style="grid-area:${HUB_AREA}"><div class="dm-zc">DISCARDED<br>REPOSITORY /<br>NEXUS HUB</div></div>`;
   TOWER_CELLS.forEach(c => {
     html += `<div class="dm-cell dm-fac f${c.t}" style="grid-area:${c.area}"><span>${TOWER_GLYPH[c.t]}</span></div>`;
+  });
+  grid.innerHTML = html;
+}
+
+// Alternate formations (Task 3): mirrors renderMap's cell-building above, but reads
+// its layout from the shared registry (titan-formations.js) instead of the hardcoded
+// standard ZONE_LAYOUT/TOWER_CELLS. renderMap branches here for any non-standard key.
+function renderFormationMap(data, key) {
+  const grid = document.getElementById("mapGrid");
+  if (!grid) return;
+  const f = window.TITAN_FORMATION_BY_KEY[key];
+  if (!f) return;
+  let html = "";
+  f.bases.forEach(base => {
+    const rawA = window.titanAssignmentFor(data, key, base.id);
+    const assigned = rawA ? currentName(data, rawA) : "";
+    const mine = assigned && isMe(assigned);
+    const cls = base.role === "CE" ? "zCE" : base.role === "MM" ? "zMM" : (base.size === "big" ? "zBase" : "zSmall");
+    html += `<div class="dm-cell dm-zone ${cls}${assigned ? "" : " empty"}${mine ? " me-zone" : ""}" style="grid-area:${base.area}">` +
+      `<div class="dm-zc">` +
+        (base.role ? `<span class="role">${esc(base.role)}</span>` : "") +
+        (assigned ? `<span class="player notranslate">${esc(assigned)}${mine ? " (you)" : ""}</span>` : "") +
+      `</div></div>`;
+  });
+  html += `<div class="dm-cell dm-hub" style="grid-area:${f.hub}"><div class="dm-zc">DISCARDED<br>REPOSITORY /<br>NEXUS HUB</div></div>`;
+  f.towers.forEach(t => {
+    html += `<div class="dm-cell dm-fac" style="grid-area:${t.area}"><span>${window.TITAN_TOWER_GLYPH[t.glyph] || ""}</span></div>`;
   });
   grid.innerHTML = html;
 }
@@ -618,6 +692,35 @@ function renderPositionSections(data) {
       </div>
     `;
   }).join("");
+}
+
+// Alternate formations (Task 3): the base-by-base fill list, used instead of
+// renderPositionSections' 1-8 CE/MM split when the squad isn't on Standard.
+function renderFormationPositionSections(data, key) {
+  const f = window.TITAN_FORMATION_BY_KEY[key];
+  if (!f || !f.bases.length) return "";
+  const filled = f.bases.filter(b => window.titanAssignmentFor(data, key, b.id));
+  const openCount = f.bases.length - filled.length;
+  if (!filled.length) return "";
+  return `
+    <div class="assign-section">
+      <div class="assign-title">${esc(f.label)} Bases <span class="assign-count">${filled.length}/${f.bases.length}</span></div>
+      <ul class="assign-list">
+        ${filled.map(b => {
+          const nm = window.titanAssignmentFor(data, key, b.id);
+          const disp = currentName(data, nm);
+          const m = memberMeta(data, nm) || {};
+          return `
+          <li class="assign-item${isMe(disp) ? " me" : ""}">
+            <span class="slot-num">${esc(b.id.replace(/^b/, ""))}</span>
+            <span class="slot-player notranslate">${esc(disp)}</span>
+            ${roleTag(m.prof || b.role, m.uc)}${swapPill(data, nm)}
+          </li>`;
+        }).join("")}
+      </ul>
+      ${openCount ? `<div class="assign-note">${openCount} base${openCount === 1 ? "" : "s"} open</div>` : ""}
+    </div>
+  `;
 }
 
 function renderSection(sec, data) {
