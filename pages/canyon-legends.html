@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'self' https://translate.googleapis.com https://translate.google.com https://www.gstatic.com https://translate-pa.googleapis.com; style-src 'unsafe-inline' https://fonts.googleapis.com https://translate.googleapis.com https://www.gstatic.com; font-src https://fonts.gstatic.com https://www.gstatic.com; img-src 'self' data: https://translate.google.com https://translate.googleapis.com https://www.gstatic.com https://fonts.gstatic.com https://www.google.com; connect-src 'self' https://translate.googleapis.com https://translate-pa.googleapis.com https://translate.google.com; frame-src 'self' https://translate.google.com; base-uri 'self'; form-action 'none'; object-src 'none';">
 <title>Fixing Canyon Legends</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -80,6 +80,29 @@
   .ctl:hover { color:var(--accent-ink); border-color:var(--accent); }
   .ctl:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   #zhBtn { font-family:var(--sans); font-weight:600; letter-spacing:.02em; text-transform:none; }
+  #langBtn { display:inline-flex; align-items:center; gap:.35rem; }
+  #langFlag { font-size:.95rem; }
+
+  /* ---- Google Translate language switcher (secondary; hidden Google chrome) ---- */
+  body { top:0 !important; }
+  body > .skiptranslate { display:none !important; }
+  #google_translate_element { position:absolute; left:-9999px; opacity:0; pointer-events:none; }
+  .lang-modal-overlay { display:none; position:fixed; inset:0; z-index:1000; background:rgba(6,10,18,.72);
+    align-items:center; justify-content:center; padding:1rem; }
+  .lang-modal-overlay.active { display:flex; }
+  .lang-modal { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:1.3rem;
+    max-width:420px; width:100%; max-height:80vh; overflow-y:auto; box-shadow:var(--glow); }
+  .lang-modal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem; }
+  .lang-modal-title { font-family:var(--display); font-size:1.05rem; font-weight:600; color:var(--ink); }
+  .lang-modal-close { background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.2rem; line-height:1; padding:.2rem; }
+  .lang-modal-close:hover { color:var(--ink); }
+  .lang-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:.5rem; }
+  .lang-option { display:flex; align-items:center; gap:.5rem; padding:.55rem .6rem; background:var(--surface);
+    border:1px solid var(--line); border-radius:10px; color:var(--ink); font-family:var(--sans); font-size:.9rem;
+    cursor:pointer; text-align:left; }
+  .lang-option:hover { border-color:var(--accent); }
+  .lang-option.active { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, transparent); }
+  .lang-flag { font-size:1.05rem; }
 
   /* ---- Masthead ---- */
   .mast { padding:4.5rem 0 2.6rem; position:relative; }
@@ -208,8 +231,9 @@
 </head>
 <body>
 
-<div class="controls">
+<div class="controls notranslate" translate="no">
   <button class="ctl" id="zhBtn" type="button" aria-pressed="false">&#31616;&#20307;&#20013;&#25991;</button>
+  <button class="ctl" id="langBtn" type="button" aria-label="Change language" aria-haspopup="dialog"><span id="langFlag">&#127482;&#127480;</span><span id="langCode">/en</span></button>
   <button class="ctl" id="ttBtn" type="button" aria-label="Toggle light or dark theme" data-zh="&#20027;&#39064;">&#9680; Theme</button>
 </div>
 
@@ -502,6 +526,18 @@
 
 </div>
 
+<!-- Google Translate language modal (secondary switcher for any language) -->
+<div class="lang-modal-overlay notranslate" id="langModal" role="dialog" aria-modal="true" aria-labelledby="langModalTitle" translate="no">
+  <div class="lang-modal">
+    <div class="lang-modal-header">
+      <span class="lang-modal-title" id="langModalTitle" data-zh="&#36873;&#25321;&#35821;&#35328;">Select Language</span>
+      <button class="lang-modal-close" id="langModalClose" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="lang-grid" id="langGrid"></div>
+  </div>
+</div>
+<div id="google_translate_element"></div>
+
 <script>
   (function(){
     // ---- Curated EN / Simplified-Chinese toggle (hand-written zh in data-zh) ----
@@ -537,5 +573,49 @@
     }
   })();
 </script>
+
+<!-- ===== GOOGLE TRANSLATE + LANGUAGE MODAL ===== -->
+<script>
+  var esc=function(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
+  var LANGUAGES=[
+    {code:'en',flag:'🇺🇸',name:'English'},
+    {code:'ja',flag:'🇯🇵',name:'日本語'},{code:'ko',flag:'🇰🇷',name:'한국어'},
+    {code:'es',flag:'🇪🇸',name:'Español'},{code:'fr',flag:'🇫🇷',name:'Français'},
+    {code:'de',flag:'🇩🇪',name:'Deutsch'},{code:'pt',flag:'🇧🇷',name:'Português'},
+    {code:'it',flag:'🇮🇹',name:'Italiano'},{code:'ru',flag:'🇷🇺',name:'Русский'},
+    {code:'ar',flag:'🇸🇦',name:'العربية'},{code:'tr',flag:'🇹🇷',name:'Türkçe'},
+    {code:'vi',flag:'🇻🇳',name:'Tiếng Việt'},{code:'th',flag:'🇹🇭',name:'ไทย'},
+    {code:'hi',flag:'🇮🇳',name:'हिन्दी'},{code:'pl',flag:'🇵🇱',name:'Polski'},
+    {code:'uk',flag:'🇺🇦',name:'Українська'},{code:'id',flag:'🇮🇩',name:'Indonesia'}
+  ];
+  function getLangData(c){var b=c.split('-')[0];return LANGUAGES.find(function(l){return l.code===c||l.code===b;})||null;}
+  function detectCurrentLang(){var m=document.cookie.match(/googtrans=\/en\/([a-zA-Z-]{2,10})/);return m&&m[1]?m[1]:'en';}
+  function updateLangBtn(code){var d=getLangData(code);var f=document.getElementById('langFlag');var c=document.getElementById('langCode');if(d&&f){f.textContent=d.flag;c.textContent='/'+d.code;}else if(f){f.textContent='🌐';c.textContent='/'+code;}document.querySelectorAll('.lang-option').forEach(function(o){o.classList.toggle('active',o.dataset.lang===code);});}
+  function applyLangToCombo(code,delay){var a=0;var p=setInterval(function(){var c=document.querySelector('.goog-te-combo');if(c){c.value=code;c.dispatchEvent(new Event('change'));clearInterval(p);updateLangBtn(code);}if(++a>30)clearInterval(p);},delay||200);}
+  function selectLanguage(code){if(code==='en'){sessionStorage.removeItem('pendingLang');document.cookie='googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax; Secure';document.cookie='googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.2864tw.com; SameSite=Lax; Secure';closeLangModal();location.reload();return;}sessionStorage.setItem('pendingLang',code);applyLangToCombo(code,200);closeLangModal();}
+  var langModalEl=document.getElementById('langModal');
+  var langOpener=null;
+  function openLangModal(){if(!langModalEl)return;langOpener=document.activeElement;langModalEl.classList.add('active');var c=document.getElementById('langModalClose');if(c)c.focus();}
+  function closeLangModal(){if(!langModalEl)return;langModalEl.classList.remove('active');if(langOpener&&langOpener.focus)langOpener.focus();}
+  window.closeLangModal=closeLangModal;
+  (function(){var g=document.getElementById('langGrid');if(!g)return;var det=detectCurrentLang();LANGUAGES.forEach(function(l){var b=document.createElement('button');b.className='lang-option'+(l.code===det?' active':'');b.dataset.lang=l.code;b.innerHTML='<span class="lang-flag">'+l.flag+'</span><span class="lang-name">'+esc(l.name)+'</span>';b.addEventListener('click',function(){selectLanguage(l.code);});g.appendChild(b);});updateLangBtn(det);})();
+  var lgb=document.getElementById('langBtn');if(lgb)lgb.addEventListener('click',openLangModal);
+  var lmc=document.getElementById('langModalClose');if(lmc)lmc.addEventListener('click',closeLangModal);
+  if(langModalEl){
+    langModalEl.addEventListener('click',function(e){if(e.target===langModalEl)closeLangModal();});
+    langModalEl.addEventListener('keydown',function(e){
+      if(e.key!=='Tab')return;
+      var f=langModalEl.querySelectorAll('button');
+      if(!f.length)return;
+      var first=f[0], last=f[f.length-1];
+      if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+      else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+    });
+  }
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&langModalEl&&langModalEl.classList.contains('active')){closeLangModal();}});
+  setTimeout(function(){if(!window._gtLoaded){var b=document.getElementById('langBtn');if(b){b.style.opacity='0.5';b.title='Translation unavailable';}}},15000);
+  function googleTranslateElementInit(){window._gtLoaded=true;new google.translate.TranslateElement({pageLanguage:'en',autoDisplay:false},'google_translate_element');var p=sessionStorage.getItem('pendingLang');if(p){sessionStorage.removeItem('pendingLang');applyLangToCombo(p,250);}else{var lo=localStorage.getItem('langOverride');if(lo&&lo!=='en')applyLangToCombo(lo,250);var d=detectCurrentLang();if(d!=='en')updateLangBtn(d);}}
+</script>
+<script src="https://translate.googleapis.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
 </body>
 </html>
