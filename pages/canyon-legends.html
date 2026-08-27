@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none';">
+<title>Fixing Canyon Legends</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;450;500;600;700&display=swap">
+<style>
+  /* ---- Tokens: bare :root = light; dark via guarded media + explicit stamp ---- */
+  :root {
+    --ground:#e9ecf1; --surface:#ffffff; --card:#ffffff; --raised:#f3f5f8;
+    --line:#d3d9e2; --line-soft:#e5e9ef;
+    --ink:#161e2b; --muted:#54607a; --faint:#7c889f;
+    --accent:#b0741a; --accent-ink:#8a5a10;
+    --teal:#137d74; --bad:#c14434; --good:#248a56;
+    --glow:0 1px 2px rgba(20,30,50,.06), 0 8px 30px rgba(20,30,50,.06);
+    --contour:rgba(20,30,50,.05);
+    --display:"Chakra Petch", ui-sans-serif, "PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --sans:"IBM Plex Sans", ui-sans-serif, system-ui, "PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, "PingFang SC","Microsoft YaHei",monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#0e1521; --surface:#161f2e; --card:#1a2434; --raised:#212c40;
+      --line:#2b3750; --line-soft:#212c40;
+      --ink:#e8edf5; --muted:#94a2ba; --faint:#66748d;
+      --accent:#e7a34c; --accent-ink:#f0b96f;
+      --teal:#4cc7bd; --bad:#ec6a5a; --good:#5fce8f;
+      --glow:0 1px 0 rgba(255,255,255,.02), 0 18px 44px rgba(0,0,0,.45);
+      --contour:rgba(120,150,190,.06);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#0e1521; --surface:#161f2e; --card:#1a2434; --raised:#212c40;
+    --line:#2b3750; --line-soft:#212c40;
+    --ink:#e8edf5; --muted:#94a2ba; --faint:#66748d;
+    --accent:#e7a34c; --accent-ink:#f0b96f;
+    --teal:#4cc7bd; --bad:#ec6a5a; --good:#5fce8f;
+    --glow:0 1px 0 rgba(255,255,255,.02), 0 18px 44px rgba(0,0,0,.45);
+    --contour:rgba(120,150,190,.06);
+  }
+
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--sans); font-weight:450; line-height:1.6; font-size:17px;
+    -webkit-font-smoothing:antialiased;
+    background-image:
+      repeating-linear-gradient(115deg, var(--contour) 0 1px, transparent 1px 46px),
+      repeating-linear-gradient(115deg, var(--contour) 0 1px, transparent 1px 92px);
+    background-attachment:fixed;
+  }
+  .wrap { max-width:820px; margin:0 auto; padding:0 22px; }
+  .col { max-width:660px; }
+
+  h1,h2,h3 { font-family:var(--display); font-weight:600; line-height:1.08; text-wrap:balance; margin:0; }
+  p { margin:0 0 1rem; }
+  a { color:var(--accent-ink); }
+  strong { font-weight:600; color:var(--ink); }
+  .mono { font-family:var(--mono); }
+  .eyebrow {
+    font-family:var(--mono); font-size:.72rem; font-weight:500;
+    letter-spacing:.22em; text-transform:uppercase; color:var(--teal);
+    display:flex; align-items:center; gap:.6rem;
+  }
+  .eyebrow::before { content:""; width:26px; height:1px; background:var(--teal); opacity:.7; }
+  .tabular { font-variant-numeric:tabular-nums; }
+
+  /* ---- Top controls ---- */
+  .controls { position:fixed; top:12px; right:12px; z-index:9; display:flex; gap:.5rem; }
+  .ctl {
+    font-family:var(--mono); font-size:.66rem; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--muted); background:var(--card); border:1px solid var(--line); border-radius:999px;
+    padding:.42rem .72rem; cursor:pointer;
+  }
+  .ctl:hover { color:var(--accent-ink); border-color:var(--accent); }
+  .ctl:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  #zhBtn { font-family:var(--sans); font-weight:600; letter-spacing:.02em; text-transform:none; }
+
+  /* ---- Masthead ---- */
+  .mast { padding:4.5rem 0 2.6rem; position:relative; }
+  .kicker {
+    font-family:var(--mono); font-size:.72rem; letter-spacing:.24em;
+    text-transform:uppercase; color:var(--muted); margin-bottom:1.5rem;
+    display:flex; flex-wrap:wrap; gap:.4rem 1.1rem; align-items:center;
+  }
+  .kicker b { color:var(--accent-ink); font-weight:500; }
+  .mast h1 { font-size:clamp(2.5rem, 6.5vw, 4.1rem); font-weight:700; letter-spacing:-.01em; }
+  .mast h1 .sub { display:block; color:var(--accent); }
+  .dek { font-size:clamp(1.08rem, 2.4vw, 1.32rem); line-height:1.5; color:var(--muted); margin-top:1.5rem; max-width:38ch; font-weight:450; }
+  .dek b { color:var(--ink); font-weight:600; }
+  .meta { margin-top:2rem; padding-top:1.2rem; border-top:1px solid var(--line); font-family:var(--mono); font-size:.74rem; color:var(--faint); display:flex; flex-wrap:wrap; gap:.35rem 1.4rem; }
+  .meta span { display:inline-flex; gap:.5rem; }
+  .meta span b { color:var(--muted); font-weight:500; }
+
+  /* ---- Sections ---- */
+  section { padding:2.4rem 0; }
+  .h-sec { font-size:clamp(1.6rem,3.6vw,2.15rem); font-weight:600; letter-spacing:-.01em; margin:.9rem 0 0; }
+  .lede { color:var(--muted); margin-top:.85rem; }
+
+  /* TL;DR */
+  .tldr { background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:var(--glow); overflow:hidden; }
+  .tldr .top { padding:1.1rem 1.5rem; border-bottom:1px solid var(--line-soft); display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+  .tldr .top .eyebrow { color:var(--accent); }
+  .tldr .top .eyebrow::before { background:var(--accent); }
+  .tldr ul { list-style:none; margin:0; padding:.4rem 0; }
+  .tldr li { display:grid; grid-template-columns:auto 1fr; gap:1rem; padding:.95rem 1.5rem; border-top:1px solid var(--line-soft); align-items:start; }
+  .tldr li:first-child { border-top:none; }
+  .tldr li .n { font-family:var(--display); font-weight:700; color:var(--accent); font-size:1.05rem; line-height:1.5; }
+  .tldr li p { margin:0; }
+
+  /* Matrix */
+  .scroll { overflow-x:auto; border:1px solid var(--line); border-radius:14px; background:var(--card); box-shadow:var(--glow); }
+  table.matrix { border-collapse:collapse; width:100%; min-width:640px; font-size:.92rem; }
+  .matrix th, .matrix td { text-align:left; padding:.85rem 1.05rem; vertical-align:top; border-top:1px solid var(--line-soft); }
+  .matrix thead th { border-top:none; font-family:var(--display); font-weight:600; font-size:.82rem; letter-spacing:.02em; position:sticky; top:0; background:var(--raised); }
+  .matrix thead th.now { color:var(--bad); }
+  .matrix thead th.peak { color:var(--good); }
+  .matrix tbody th { font-weight:600; color:var(--ink); width:20%; font-family:var(--sans); }
+  .matrix td { color:var(--muted); }
+  .matrix td.now { color:var(--ink); }
+  .matrix .flag { display:inline-block; font-family:var(--mono); font-size:.66rem; letter-spacing:.06em; text-transform:uppercase; padding:.12rem .45rem; border-radius:5px; margin-bottom:.35rem; }
+  .flag.gone { color:var(--bad); background:color-mix(in srgb, var(--bad) 15%, transparent); }
+  .flag.worse { color:var(--accent-ink); background:color-mix(in srgb, var(--accent) 16%, transparent); }
+  .note { font-family:var(--mono); font-size:.72rem; color:var(--faint); margin-top:.9rem; }
+
+  /* Spiral */
+  .spiral { display:flex; flex-direction:column; gap:0; margin-top:.5rem; }
+  .step { position:relative; background:var(--card); border:1px solid var(--line); border-left:3px solid var(--bad); border-radius:12px; padding:1.05rem 1.3rem; box-shadow:var(--glow); }
+  .step .s-n { font-family:var(--mono); font-size:.7rem; letter-spacing:.14em; color:var(--bad); }
+  .step h3 { font-size:1.12rem; margin:.25rem 0 .3rem; }
+  .step p { margin:0; color:var(--muted); font-size:.95rem; }
+  .link-down { height:26px; display:flex; align-items:center; justify-content:center; color:var(--faint); }
+  .link-down svg { width:16px; height:26px; }
+  .loop { margin-top:1rem; border:1px dashed var(--accent); border-radius:12px; padding:1rem 1.3rem; background:color-mix(in srgb,var(--accent) 7%,var(--card)); }
+  .loop .s-n { color:var(--accent-ink); font-family:var(--mono); font-size:.7rem; letter-spacing:.14em; }
+  .loop h3 { color:var(--accent-ink); font-size:1.12rem; margin:.2rem 0 .3rem; }
+  .loop p { margin:0; color:var(--muted); font-size:.95rem; }
+
+  /* Cards */
+  .cards { display:grid; grid-template-columns:1fr; gap:1rem; margin-top:.4rem; }
+  @media (min-width:680px){ .cards.two { grid-template-columns:1fr 1fr; } .cards.three { grid-template-columns:1fr 1fr 1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:1.3rem 1.35rem; box-shadow:var(--glow); }
+  .card .tag { font-family:var(--mono); font-size:.68rem; letter-spacing:.12em; text-transform:uppercase; color:var(--bad); }
+  .card h3 { font-size:1.18rem; margin:.4rem 0 .55rem; }
+  .card p { color:var(--muted); font-size:.95rem; margin:0; }
+
+  /* Roles */
+  .role { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:1.25rem 1.35rem; box-shadow:var(--glow); position:relative; overflow:hidden; }
+  .role::after { content:"RETIRED"; position:absolute; top:14px; right:-30px; transform:rotate(45deg); background:var(--bad); color:#fff; font-family:var(--mono); font-size:.56rem; letter-spacing:.18em; padding:.18rem 2.4rem; opacity:.9; }
+  html[lang="zh-CN"] .role::after { content:"已移除"; letter-spacing:.1em; font-family:var(--sans); font-weight:600; }
+  .role h3 { font-size:1.16rem; }
+  .role .flavor { color:var(--faint); font-style:italic; font-size:.9rem; margin:.4rem 0 .8rem; }
+  .role ul { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:.45rem; }
+  .role li { display:grid; grid-template-columns:auto 1fr; gap:.6rem; font-size:.9rem; color:var(--muted); align-items:start; }
+  .role li .dot { width:6px; height:6px; border-radius:50%; background:var(--teal); margin-top:.5rem; }
+
+  /* Recommendations */
+  .rec { background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:var(--glow); padding:1.4rem 1.5rem; display:grid; grid-template-columns:auto 1fr; gap:1.1rem; align-items:start; }
+  .rec + .rec { margin-top:1rem; }
+  .rec.key { border-color:var(--good); background:color-mix(in srgb,var(--good) 7%,var(--card)); }
+  .rec .rank { font-family:var(--display); font-weight:700; font-size:1.3rem; color:var(--good); line-height:1.2; width:2.4rem; text-align:center; }
+  .rec h3 { font-size:1.16rem; margin:0 0 .4rem; }
+  .rec p { margin:0; color:var(--muted); font-size:.95rem; }
+  .rec .fix { margin-top:.7rem; font-family:var(--mono); font-size:.82rem; color:var(--ink); background:var(--raised); border:1px solid var(--line-soft); border-radius:8px; padding:.55rem .75rem; }
+  .rec .fix b { color:var(--good); }
+  html[lang="zh-CN"] .rec .fix { font-family:var(--sans); }
+
+  .scale { margin-top:1rem; display:flex; flex-direction:column; gap:.5rem; }
+  .scale .srow { display:grid; grid-template-columns:5.5rem 1fr auto; gap:.75rem; align-items:center; font-size:.82rem; }
+  .scale .lbl { font-family:var(--mono); color:var(--muted); }
+  .scale .bar { height:12px; border-radius:999px; background:linear-gradient(90deg, var(--good), var(--accent)); }
+  .scale .mult { font-family:var(--display); font-weight:700; color:var(--accent-ink); }
+
+  hr.div { border:none; border-top:1px solid var(--line); margin:0; }
+  footer { padding:3rem 0 4rem; color:var(--faint); font-size:.86rem; }
+  footer .eyebrow { color:var(--muted); margin-bottom:1rem; }
+  footer .eyebrow::before { background:var(--muted); }
+
+  /* ---- Chinese typography tuning ---- */
+  html[lang="zh-CN"] body { line-height:1.75; }
+  html[lang="zh-CN"] .eyebrow, html[lang="zh-CN"] .kicker, html[lang="zh-CN"] .meta,
+  html[lang="zh-CN"] .card .tag, html[lang="zh-CN"] .flag, html[lang="zh-CN"] .s-n,
+  html[lang="zh-CN"] .loop .s-n, html[lang="zh-CN"] .scale .lbl, html[lang="zh-CN"] .note { letter-spacing:.04em; }
+  html[lang="zh-CN"] h1, html[lang="zh-CN"] .h-sec, html[lang="zh-CN"] h3 { letter-spacing:.01em; line-height:1.25; }
+  html[lang="zh-CN"] .mast h1 { font-size:clamp(2.2rem,6vw,3.5rem); }
+  html[lang="zh-CN"] .dek, html[lang="zh-CN"] .lede, html[lang="zh-CN"] p, html[lang="zh-CN"] .step p, html[lang="zh-CN"] .card p, html[lang="zh-CN"] .rec p { line-height:1.85; }
+  html[lang="zh-CN"] .dek { max-width:32ch; }
+
+  @media (max-width:560px){
+    body { font-size:16px; }
+    .wrap { padding:0 16px; }
+    .rec { grid-template-columns:1fr; gap:.6rem; }
+    .rec .rank { text-align:left; width:auto; }
+    .tldr li { padding:.85rem 1.1rem; }
+    .controls { top:10px; right:10px; }
+  }
+  @media (prefers-reduced-motion:no-preference){
+    .reveal { animation:rise .6s cubic-bezier(.2,.7,.3,1) both; }
+    @keyframes rise { from{ opacity:0; transform:translateY(12px);} to{ opacity:1; transform:none; } }
+  }
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <button class="ctl" id="zhBtn" type="button" aria-pressed="false">&#31616;&#20307;&#20013;&#25991;</button>
+  <button class="ctl" id="ttBtn" type="button" aria-label="Toggle light or dark theme" data-zh="&#20027;&#39064;">&#9680; Theme</button>
+</div>
+
+<div class="wrap">
+
+  <!-- ===================== MASTHEAD ===================== -->
+  <header class="mast reveal">
+    <div class="kicker">
+      <span data-zh="2864 &#26381;&#21153;&#22120;">Server 2864</span><span>&middot;</span>
+      <span data-zh="&#29609;&#23478;&#23454;&#25112;&#21453;&#39304;">Player field report</span><span>&middot;</span>
+      <span data-zh="泰&#22374;&#23777;&#35895; &#183; &#20256;&#22855;"><b>Titan Canyon Legends</b></span>
+    </div>
+    <h1 data-zh="&#23777;&#35895;&#20256;&#22855;<span class=&quot;sub&quot;>&#21313;&#20998;&#38047;&#23601;&#24050;&#23450;&#23616;&#12290;</span>">Canyon Legends<span class="sub">decides itself in ten minutes.</span></h1>
+    <p class="dek" data-zh="&#36825;&#20010;&#27169;&#24335;&#20445;&#30041;&#20102;&#22320;&#22270;&#65292;&#21364;&#25277;&#36208;&#20102;&#33853;&#21518;&#19968;&#26041;&#32763;&#30424;&#25152;&#38656;&#30340;&#25152;&#26377;&#25163;&#27573;&#12290;<b>&#26356;&#24378;&#30340;&#31199;&#20511;&#37096;&#38431;&#35753;&#20320;&#27515;&#24471;&#26356;&#24555;&#65292;&#24674;&#22797;&#31227;&#21160;&#30340;&#36884;&#24452;&#26356;&#23569;&#35753;&#20320;&#36831;&#36831;&#26080;&#27861;&#34892;&#21160;&#65292;&#32780;&#27700;&#26230;&#23454;&#39564;&#23460;&#34987;&#31227;&#38500;&#21518;&#65292;&#20320;&#20960;&#20046;&#26080;&#35745;&#21487;&#26045;&#12290;</b>&#21097;&#19979;&#30340;&#21482;&#26159;&#19968;&#22330;&#38634;&#29699;&#8212;&#8212;&#24320;&#23616;&#20415;&#24050;&#27880;&#23450;&#65292;&#20043;&#21518;&#30340;&#20116;&#21313;&#20998;&#38047;&#21482;&#33021;&#24178;&#30475;&#30528;&#12290;">The mode kept the map but pulled out the levers a losing team needs to fight back. <b>Stronger rental marches kill you faster, fewer ways to recharge moves keep you dead, and with the crystal labs gone there is almost nothing you can do about it.</b> What is left is a snowball &mdash; settled early, then watched for the next fifty minutes.</p>
+    <div class="meta">
+      <span data-zh="<b>&#27169;&#24335;</b> AVA &#32852;&#38431;&#25112; &#183; 4 &#38453;&#33829;"><b>Mode</b> AVA team battle &middot; 4 camps</span>
+      <span data-zh="<b>&#22522;&#30784;&#26426;&#21046;</b> &#23458;&#25143;&#31471;&#25552;&#21462;&#65292;2026-08-08"><b>Baseline mechanics</b> client extraction, 2026-08-08</span>
+      <span data-zh="<b>&#20256;&#22855;&#24046;&#24322;</b> &#26412;&#23626;&#23454;&#25112;"><b>Legends deltas</b> live play, this event</span>
+    </div>
+  </header>
+
+  <!-- ===================== TL;DR ===================== -->
+  <section>
+    <div class="tldr reveal">
+      <div class="top">
+        <span class="eyebrow" data-zh="&#19968;&#21477;&#35805;&#24635;&#32467;">The short version</span>
+        <span class="mono" style="font-size:.72rem;color:var(--faint)" data-zh="&#22235;&#39033;&#21472;&#21152;">4 things stacked</span>
+      </div>
+      <ul>
+        <li><span class="n">01</span><p data-zh="<strong>&#31199;&#20511;&#37096;&#38431;&#21464;&#24471;可怕&#12290;</strong>&#29609;&#23478;&#21487;&#20197;&#31199;&#20511;&#39640;&#36798;&#33258;&#36523;<strong>3 &#20493;&#25112;&#21147;</strong>&#30340;&#37096;&#38431;&#65292;&#38590;&#20197;拦截&#65292;&#32780;&#19988;&#20027;&#20154;&#38453;&#20129;&#21518;&#20173;&#20250;&#32487;&#32493;&#36827;&#25915;&#8212;&#8212;&#20110;&#26159;&#25972;&#20307;阵亡人数不断飙升&#12290;"><strong>Rental marches got scary.</strong> Players can rent a march up to <strong>3&times; their own power</strong>, it is hard to block, and it keeps marching after they die &mdash; so deaths spike across the board.</p></li>
+        <li><span class="n">02</span><p data-zh="<strong>&#31227;&#21160;&#26412;&#26469;&#23601;&#31232;&#32570;&#8212;&#8212;&#29616;&#22312;&#21448;&#27809;&#20160;&#20040;&#33021;&#21152;&#24555;&#20805;&#33021;&#12290;</strong>&#38500;&#38750;&#20320;&#25317;&#26377;&#22320;&#22270;&#20013;&#22830;&#20165;&#26377;&#30340;<strong>&#20004;&#24231;&#20256;&#36865;&#38376;</strong>&#20043;&#19968;&#65292;&#21542;&#21017;&#26681;&#26412;&#27809;&#26377;&#21152;&#36895;&#30340;&#20256;&#36865;&#20805;&#33021;&#12290;"><strong>Moves were already scarce &mdash; now nothing refills them faster.</strong> There is no accelerated teleport recharge unless you hold one of just <strong>two Teleport Gateways</strong> at the center of the map.</p></li>
+        <li><span class="n">03</span><p data-zh="<strong>&#27700;&#26230;簇&#23454;&#39564;&#23460;&#34987;&#31227;&#38500;&#20102;&#12290;</strong>&#29616;&#22312;&#20805;&#21152;&#36895;&#30340;&#21807;&#19968;&#36884;&#24452;&#23601;&#26159;&#21344;&#39046;&#24314;&#31569;&#8212;&#8212;&#32780;&#20256;&#22855;&#27169;&#24335;&#21364;&#22312;&#22320;&#22270;&#19978;&#25918;&#20102;<strong>&#20004;&#20493;&#25968;&#37327;&#30340;&#23567;&#38431;</strong>&#21435;&#20105;&#22842;&#21516;&#26679;&#37027;&#20960;&#24231;&#24314;&#31569;&#12290;"><strong>Crystal Cluster Labs are gone.</strong> The only way left to charge speed-ups is holding buildings &mdash; and Legends puts <strong>twice as many squads</strong> on the map fighting over the same few.</p></li>
+        <li><span class="n">04</span><p data-zh="<strong>&#20110;&#26159;&#38634;&#29699;&#24320;&#22987;&#28378;&#21160;&#12290;</strong>&#39046;&#20808;&#30340;&#19968;&#26041;&#19981;&#26029;&#25918;&#22823;&#20248;&#21183;&#65292;&#32780;&#20854;&#20313;&#38431;&#20237;&#21482;&#33021;&#22260;&#22312;&#23433;&#20840;&#21306;&#21518;&#65292;&#27809;&#26377;&#31227;&#21160;&#27425;&#25968;&#12289;&#27809;&#26377;&#23454;&#39564;&#23460;&#12289;&#20063;&#27809;&#26377;&#21453;&#20987;&#20043;&#36335;&#12290;"><strong>So it snowballs.</strong> The team that pulls ahead compounds its lead while everyone else sits behind the safe zone with no move charges, no labs, and no way back in.</p></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===================== MATRIX ===================== -->
+  <section>
+    <div class="eyebrow" data-zh="&#20493;&#36864;">Regression</div>
+    <h2 class="h-sec" data-zh="&#21516;&#19968;&#22330;&#25112;&#26007;&#65292;&#21364;&#25277;&#25481;&#20102;&#21453;&#21046;&#25163;&#27573;">The same match, with the counter-play removed</h2>
+    <p class="lede col" data-zh="泰&#22374;&#23777;&#35895;&#21450;&#20854;&#20010;&#20154;&#27169;&#24335;姊妹作&#8212;&#8212;<em>&#20256;&#22855;&#20043;&#25112;</em>&#8212;&#8212;&#37117;&#25552;&#20379;&#20102;&#35753;&#33853;&#21518;&#19968;&#26041;&#36861;&#22238;&#30340;&#31995;&#32479;&#65306;&#23454;&#39564;&#23460;&#12289;&#31354;&#25237;&#12289;&#26356;&#24555;&#30340;&#20805;&#33021;&#12290;&#20256;&#22855;&#27169;&#24335;&#32487;&#25215;&#20102;&#22320;&#22270;&#65292;&#21364;&#25172;&#25481;&#20102;&#36825;&#20123;&#32763;&#30424;&#24037;&#20855;&#12290;">Titan Canyon and its individual-mode sibling, <em>Battle of Legends</em>, both shipped systems that let a behind team claw back &mdash; labs, airdrops, faster recharges. Legends inherited the map and dropped the recovery tools.</p>
+    <div class="scroll reveal" style="margin-top:1.4rem">
+      <table class="matrix tabular">
+        <thead>
+          <tr>
+            <th data-zh="&#26426;&#21046;">Mechanic</th>
+            <th data-zh="泰&#22374;&#23777;&#35895;">Titan Canyon</th>
+            <th class="peak" data-zh="&#20256;&#22855;&#20043;&#25112;">Battle of Legends</th>
+            <th class="now" data-zh="&#23777;&#35895;&#20256;&#22855;">Canyon Legends</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th data-zh="&#27700;&#26230;簇&#23454;&#39564;&#23460;">Crystal Cluster Labs</th>
+            <td data-zh="&#25216;&#33021;&#20805;&#33021;&#33410;&#28857;&#65292;&#25353;&#26102;&#21047;&#26032;">Skill-charge nodes, respawn on a timer</td>
+            <td data-zh="&#25968;&#37327;&#20943;&#23569;&#65292;&#22312;&#22320;&#22270;&#19978;&#26356;&#20998;&#25955;">Fewer, spread further around the map</td>
+            <td class="now" data-zh="<span class=&quot;flag gone&quot;>&#24050;&#31227;&#38500;</span>&#23436;&#20840;&#27809;&#26377;&#23454;&#39564;&#23460;&#32463;&#27982;"><span class="flag gone">Removed</span>No lab economy at all</td>
+          </tr>
+          <tr>
+            <th data-zh="&#21152;&#36895;&#26469;&#28304;">Speed-up sources</th>
+            <td data-zh="&#23454;&#39564;&#23460; + &#21344;&#39046;&#30340;&#24314;&#31569;">Labs + held buildings</td>
+            <td data-zh="&#23454;&#39564;&#23460; + &#24314;&#31569; + &#31354;&#25237;&#25112;&#21033;&#21697;">Labs + buildings + airdrop loot</td>
+            <td class="now" data-zh="<span class=&quot;flag worse&quot;>&#34987;&#21387;&#32553;</span>&#21482;&#33021;&#38752;&#21344;&#39046;&#24314;&#31569;"><span class="flag worse">Squeezed</span>Held buildings only</td>
+          </tr>
+          <tr>
+            <th data-zh="&#31227;&#21160; / &#20256;&#36865;&#20805;&#33021;">Move / teleport recharge</th>
+            <td data-zh="&#33258;&#21160;&#24674;&#22797;&#65292;&#21344;&#39046;&#20256;&#36865;&#38376;&#26102;&#20805;&#33021;+35%">Passive, +35% faster while holding a Gateway</td>
+            <td data-zh="&#19978;&#32447;&#21518;&#32553;&#30701;&#20102;&#20919;&#21364;&#26102;&#38388;">Cooldown shortened after launch</td>
+            <td class="now" data-zh="<span class=&quot;flag worse&quot;>&#26410;&#35843;&#25972;</span>&#21482;&#26377;&#33258;&#21160;&#24674;&#22797;&#65307;&#37027;&#20010; &minus;35% &#38656;&#21344;&#39046;&#20004;&#24231;&#20256;&#36865;&#38376;&#20043;&#19968;"><span class="flag worse">Not tuned</span>Passive only; the &minus;35% needs 1 of 2 Gateways</td>
+          </tr>
+          <tr>
+            <th data-zh="&#31354;&#25237;">Airdrops</th>
+            <td data-zh="&#34917;&#32473;&#31665;&#65288;&#20960;&#20010;&#31215;&#20998;&#65289;">Supply crates for points</td>
+            <td data-zh="&#22686;&#30410;&#12289;&#31215;&#20998;&#19982;&#36947;&#20855;&#8212;&#8212;&#30495;&#27491;&#33021;&#25171;&#20986;&#21457;&#25381;">Buffs, points &amp; power-ups &mdash; real plays</td>
+            <td class="now" data-zh="<span class=&quot;flag gone&quot;>已砍掉</span>&#19981;&#22312;&#26426;&#21046;&#20043;&#20013;"><span class="flag gone">Dropped</span>Not part of the loop</td>
+          </tr>
+          <tr>
+            <th data-zh="&#31199;&#20511;&#37096;&#38431;">Rental marches</th>
+            <td data-zh="&#26631;&#20934;">Standard</td>
+            <td data-zh="&#26631;&#20934;">Standard</td>
+            <td class="now" data-zh="<span class=&quot;flag worse&quot;>&#34987;&#21152;&#24378;</span>&#39640;&#36798; 3 &#20493;&#65292;&#38590;&#20197;拦截&#65292;&#38453;&#20129;&#21518;&#20173;&#25345;&#32493;"><span class="flag worse">Buffed</span>Up to 3&times;, hard to block, survives death</td>
+          </tr>
+          <tr>
+            <th data-zh="&#27599;&#22270;&#23567;&#38431;&#25968;">Squads per map</th>
+            <td data-zh="&#22522;&#20934;">Baseline</td>
+            <td data-zh="&#22522;&#20934;">Baseline</td>
+            <td class="now" data-zh="<span class=&quot;flag worse&quot;>&#32763;&#20493;</span>&#23567;&#38431;&#25968;&#32763;&#20493;&#65292;&#20105;&#22842;&#21516;&#26679;&#30340;&#24314;&#31569;"><span class="flag worse">Doubled</span>2&times; squads sharing the same buildings</td>
+          </tr>
+          <tr>
+            <th data-zh="&#24471;&#20998;&#36884;&#24452;">Ways to score</th>
+            <td data-zh="&#21344;&#39046; &#183; &#24748;&#36175; &#183; &#24748;&#28014; &#183; &#23454;&#39564;&#23460; &#183; &#20987;&#26432;">Occupation &middot; Bounty &middot; Hover &middot; Labs &middot; Kills</td>
+            <td data-zh="&#20877;&#21152;&#19978;&#31354;&#25237;&#19982;&#22686;&#30410;&#36947;&#20855;">+ Airdrops &amp; power-ups</td>
+            <td class="now" data-zh="<span class=&quot;flag worse&quot;>&#34987;&#21387;&#25153;</span>&#24748;&#36175; &#183; &#24748;&#28014; &#183; &#21344;&#39046;"><span class="flag worse">Flattened</span>Bounty &middot; Hover &middot; Occupation</td>
+          </tr>
+          <tr>
+            <th data-zh="&#23567;&#38431;&#19987;&#23646;&#32844;&#19994;">Special squad roles</th>
+            <td data-zh="&#23432;&#25252; &#183; &#25506;&#38505; &#183; &#24037;&#31243;">Guardian &middot; Explorer &middot; Engineer</td>
+            <td data-zh="&#23432;&#25252; &#183; &#25506;&#38505; &#183; &#24037;&#31243;">Guardian &middot; Explorer &middot; Engineer</td>
+            <td class="now" data-zh="<span class=&quot;flag gone&quot;>&#24050;&#20572;&#29992;</span>&#26080;"><span class="flag gone">Retired</span>None</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" data-zh="泰&#22374;&#23777;&#35895;&#19982;&#20256;&#22855;&#20043;&#25112;&#20004;&#26639;&#26469;&#33258;&#23458;&#25143;&#31471;&#23454;&#26102;&#25552;&#21462;&#65288;<span class=&quot;mono&quot;>ava_team_*</span> &#25968;&#25454;&#34920;&#65292;2026-08-08&#65289;&#12290;&#23777;&#35895;&#20256;&#22855;&#30340;&#24046;&#24322;&#26469;&#33258;&#26412;&#23626;&#23454;&#25112;&#12290;">Titan Canyon &amp; Battle of Legends columns verified against a live client extraction (<span class="mono">ava_team_*</span> tables, 2026-08-08). Canyon Legends deltas are from playing the current event.</p>
+  </section>
+
+  <!-- ===================== SPIRAL ===================== -->
+  <section>
+    <div class="eyebrow" data-zh="&#24694;&#24615;&#24490;&#29615;">The loop</div>
+    <h2 class="h-sec" data-zh="&#19968;&#39033;&#22686;&#24378;&#65292;&#22914;&#20309;&#25226;&#19968;&#22330;比赛拖垮">How one buff turns into a dead match</h2>
+    <p class="lede col" data-zh="&#36825;&#20123;&#25913;&#21160;&#21333;&#25343;&#20986;&#26469;&#37117;&#19981;&#33268;&#21629;&#12290;&#20294;&#29615;&#29615;&#30456;&#25187;&#21518;&#65292;&#23601;&#24418;&#25104;&#20102;&#33853;&#21518;&#19968;&#26041;&#26080;&#27861;&#36867;&#31163;&#30340;&#24694;&#24615;&#24490;&#29615;&#12290;">None of these changes is fatal alone. Chained together they form a spiral that a behind team cannot exit.</p>
+
+    <div class="spiral reveal" style="margin-top:1.5rem">
+      <div class="step">
+        <div class="s-n">STEP 01</div>
+        <h3 data-zh="&#31199;&#20511;&#37096;&#38431; 3 &#20493;&#36827;&#25915;&#65292;&#19988;&#19981;&#20250;&#20572;&#19979;">Rented marches hit 3&times; and don't stop</h3>
+        <p data-zh="&#19968;&#25903;&#24265;&#20215;&#30340;&#31199;&#20511;&#37096;&#38431;&#23601;&#33021;&#21387;&#21046;&#22823;&#37096;&#20998;&#38450;&#23432;&#26041;&#65292;&#26080;&#35270;&#24120;&#35268;拦截&#65292;&#19988;&#22312;&#20027;&#20154;&#38453;&#20129;&#21518;&#20381;&#28982;&#32487;&#32493;&#36827;&#25915;&#12290;&#20110;&#26159;&#65292;&#38500;&#20102;&#26089;&#24050;&#39046;&#20808;&#30340;&#37027;&#26041;&#65292;&#25152;&#26377;&#20154;&#30340;阵亡都在攀升&#12290;">A cheap rental out-powers most defenders, ignores the usual blocks, and keeps attacking after its owner dies. Deaths climb for everyone who isn't already ahead.</p>
+      </div>
+      <div class="link-down"><svg viewBox="0 0 16 26" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 0v22"/><path d="M2 16l6 6 6-6"/></svg></div>
+      <div class="step">
+        <div class="s-n">STEP 02</div>
+        <h3 data-zh="&#19968;&#26049;&#38453;&#20129;&#65292;&#23601;&#34987;&#22256;&#22312;&#21407;&#22320;">Dead means stranded</h3>
+        <p data-zh="&#20320;&#22312;&#23433;&#20840;&#21306;&#22797;&#27963;&#65292;&#25163;&#37324;&#27809;&#26377;&#31227;&#21160;&#27425;&#25968;&#12290;&#26082;&#27809;&#26377;&#23454;&#39564;&#23460;&#20805;&#33021;&#65292;&#20063;&#27809;&#26377;&#26356;&#24555;&#30340;&#20919;&#21364;&#8212;&#8212;&#38500;&#38750;&#20320;&#25152;&#22312;&#30340;&#38453;&#33829;&#27491;&#25353;&#20303;&#20013;&#22830;&#20004;&#24231;&#20256;&#36865;&#38376;&#20043;&#19968;&#65292;&#32780;&#37027;&#36890;&#24120;&#25484;&#25569;&#22312;&#39046;&#20808;阵营&#25163;&#20013;&#12290;">You respawn in the safe zone with no move charges. There is no lab to recharge at and no faster cooldown unless your alliance is holding one of the two central Gateways &mdash; which the leading team usually is.</p>
+      </div>
+      <div class="link-down"><svg viewBox="0 0 16 26" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 0v22"/><path d="M2 16l6 6 6-6"/></svg></div>
+      <div class="step">
+        <div class="s-n">STEP 03</div>
+        <h3 data-zh="&#38500;&#20102;&#24178;&#30475;&#65292;&#26080;&#20107;&#21487;&#20570;">Nothing to do but watch</h3>
+        <p data-zh="&#34987;&#22256;&#22312;&#23433;&#20840;&#32447;&#21518;&#65292;&#20320;&#21807;&#19968;&#30340;&#24471;&#20998;&#26041;&#24335;&#23601;&#26159;&#25139;&#20960;&#19979;&#22522;&#22320;&#25379;&#28857;&#20010;&#20154;&#31215;&#20998;&#65292;&#25110;&#24448;&#24748;&#28014;&#24179;&#21488;投送兵力&#12290;&#20320;&#26080;&#27861;&#20105;&#22842;&#24314;&#31569;&#65292;&#20063;&#23601;&#26080;&#27861;积攒&#20986;&#37027;&#20123;&#33021;&#35753;&#20320;&#37325;&#26032;&#21160;&#36215;&#26469;&#30340;&#21152;&#36895;&#12290;">Stuck behind the safe line, your only points are poking bases for personal score or throwing units at the Hover Station. You cannot contest buildings, so you cannot build the speed-ups that would let you move again.</p>
+      </div>
+      <div class="link-down"><svg viewBox="0 0 16 26" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 0v22"/><path d="M2 16l6 6 6-6"/></svg></div>
+      <div class="step">
+        <div class="s-n">STEP 04</div>
+        <h3 data-zh="领先优势不断放大">The lead compounds</h3>
+        <p data-zh="&#39046;&#20808;&#30340;&#19968;&#26041;&#25484;&#25511;&#20256;&#36865;&#38376;&#12289;&#20805;&#33021;&#26356;&#24555;&#12289;&#37096;&#38431;&#25345;&#32493;&#26426;&#21160;&#65292;&#21344;&#25454;&#26356;&#22810;&#22320;&#22270;&#12290;&#24046;&#36317;&#27599;&#20998;&#38047;&#37117;&#22312;&#25289;&#22823;&#12290;">The team that got ahead holds the Gateways, recharges faster, keeps its marches moving, and takes even more of the map. The gap widens every minute.</p>
+      </div>
+      <div class="loop">
+        <div class="s-n" data-zh="&#8635; &#22914;&#27492;&#24490;&#29615;">&#8635; AND IT REPEATS</div>
+        <h3 data-zh="&#26102;&#38047;&#26410;&#21040;&#65292;&#32988;&#36127;&#26089;&#24050;&#27880;&#23450;">The match is over long before the clock is</h3>
+        <p data-zh="&#31561;&#20498;&#35745;&#26102;&#32467;&#26463;&#65292;&#32467;&#26524;&#26089;&#22312;&#24320;&#23616;&#20960;&#20998;&#38047;&#23601;&#24050;&#20889;&#23450;&#12290;&#20854;&#20313;&#25152;&#26377;&#20154;&#65292;&#37117;&#22312;&#20986;&#29983;&#21306;&#37324;&#33457;&#20102;&#25972;&#22330;&#27604;&#36187;&#24178;&#30475;&#12290;">By the time the countdown ends, the result was set in the opening minutes. Everyone else spent the match parked in spawn, watching.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== CONSEQUENCES ===================== -->
+  <section>
+    <div class="eyebrow" data-zh="&#36830;&#24102;&#21518;&#26524;">Side effects</div>
+    <h2 class="h-sec" data-zh="&#19968;&#36335;&#19978;&#25630;&#22351;&#30340;&#19977;&#20214;&#20107;">Three things that broke on the way</h2>
+    <div class="cards three reveal" style="margin-top:1.4rem">
+      <div class="card">
+        <div class="tag" data-zh="&#36947;&#20855;&#20215;&#20540;&#25197;&#26354;">Item value warped</div>
+        <h3 data-zh="&#33104;&#34432;&#31896;&#28082;&#25104;&#20102;&#31532;&#19968;&#31070;&#22120;">Corrosive Mucus is king now</h3>
+        <p data-zh="&#23454;&#39564;&#23460;&#28040;&#22833;&#21518;&#65292;&#21152;&#36895;&#21482;&#33021;&#20174;&#24314;&#31569;&#33719;&#24471;&#65292;&#32780;&#21487;&#20105;&#22842;&#30340;&#24314;&#31569;&#21448;&#23569;&#20102;&#24456;&#22810;&#12290;&#19968;&#20010;&#33021;&#32473;&#25932;&#20154;&#34892;&#20891;&#22686;&#21152;&#22823;&#37327;&#26102;&#38388;&#30340;&#25216;&#33021;&#65292;&#31361;&#28982;&#25104;&#20102;&#25112;&#22330;&#19978;&#26368;&#20540;&#38065;&#30340;&#19996;&#35199;&#65292;&#36828;&#36229;&#20854;&#20182;&#20219;&#20309;&#27169;&#24335;&#12290;">With labs gone, speed-ups only come from buildings &mdash; and there are far fewer to go around. A skill that adds minutes to an enemy's marches is suddenly the most valuable thing on the field, well above any other game mode.</p>
+      </div>
+      <div class="card">
+        <div class="tag" data-zh="&#38634;&#29699;&#25928;&#24212;">Snowball unlocked</div>
+        <h3 data-zh="&#34987;&#35745;&#20998;&#26495;&#21387;&#22312;&#20986;&#29983;&#21306;">Spawn-camped by the scoreboard</h3>
+        <p data-zh="&#34987;&#21152;&#24378;&#30340;&#31199;&#20511;&#37096;&#38431;&#12289;&#20004;&#24231;&#20256;&#36865;&#38376;&#65292;&#21152;&#19978;&#27809;&#26377;&#24555;&#36895;&#20805;&#33021;&#65292;&#33853;&#21518;&#19968;&#26041;&#23601;被困在&#23433;&#20840;&#21306;&#12290;&#20248;&#21183;&#33258;&#25105;&#24378;&#21270;&#8212;&#8212;&#36825;&#26159;&#20219;&#20309;&#25805;&#20316;&#37117;&#25937;&#19981;&#22238;&#30340;离谱的&#20248;&#21183;&#12290;">Buffed rentals plus two Gateways plus no fast recharge means a behind team is pinned in the safe area. The lead becomes self-reinforcing &mdash; a ridiculous advantage that no amount of skill undoes.</p>
+      </div>
+      <div class="card">
+        <div class="tag" data-zh="&#26080;&#25928;&#26102;&#38388;">Dead time</div>
+        <h3 data-zh="&#22823;&#37096;&#20998;&#26102;&#38388;&#37117;&#22312;&#24178;&#31561;">Most of the match is waiting</h3>
+        <p data-zh="&#26356;&#38271;&#30340;&#23454;&#38469;&#31227;&#21160;&#20919;&#21364;&#65292;&#21152;&#19978;&#31199;&#20511;&#37096;&#38431;&#24102;&#26469;&#30340;&#39057;&#32321;&#38453;&#20129;&#65292;&#21152;&#22312;&#19968;&#36215;&#65292;&#23601;&#26159;&#22823;&#27573;&#22823;&#27573;&#26681;&#26412;&#26080;&#27861;&#34892;&#21160;&#30340;&#26102;&#38388;&#12290;&#22312;&#20986;&#29983;&#21306;&#37324;&#26080;&#20107;&#21487;&#20570;&#65292;&#21482;&#33021;&#30475;&#30528;&#27604;&#36187;&#36827;&#34892;&#12290;">Longer effective move timers plus rental-driven deaths add up to long stretches where a player simply cannot act. Nothing to do in spawn but watch the rest of the game happen.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SCORING FLATTENED ===================== -->
+  <section>
+    <div class="eyebrow" data-zh="&#32500;&#24230;&#20943;&#23569;">Fewer dimensions</div>
+    <h2 class="h-sec" data-zh="&#25277;&#25481;&#23454;&#39564;&#23460;&#65292;&#20063;&#25277;&#25481;&#20102;博弈&#31354;&#38388;">Taking out the labs took out the thinking</h2>
+    <p class="lede col" data-zh="&#27700;&#26230;簇&#23454;&#39564;&#23460;&#19981;&#20165;&#20165;&#26159;&#20998;&#25968;&#8212;&#8212;&#23427;&#26159;&#19968;&#22871;&#22870;&#21169;&#36208;&#20301;&#19982;&#26102;&#26426;&#30340;&#31532;&#20108;&#32463;&#27982;&#12290;&#31227;&#38500;&#23427;&#65292;&#24471;&#20998;&#23601;&#22238;&#21040;&#20102;&#19977;&#26465;&#36335;&#65292;博弈的发挥空间&#22823;&#22823;&#32553;&#27700;&#12290;">Crystal Cluster Labs weren't just points &mdash; they were a second economy that rewarded positioning and timing. Removing them collapses scoring back onto three lanes and gives strategy far less to work with.</p>
+    <div class="cards two reveal" style="margin-top:1.3rem">
+      <div class="card" style="border-color:color-mix(in srgb,var(--good) 30%,var(--line))">
+        <div class="tag" style="color:var(--good)" data-zh="&#20197;&#21069;&#8212;&#8212;&#33268;&#32988;&#20043;&#36947;">Before &mdash; ways to win</div>
+        <h3 data-zh="&#20116;&#26465;&#36884;&#24452;">Five levers</h3>
+        <p data-zh="<span class=&quot;mono&quot; style=&quot;color:var(--ink)&quot;>&#21344;&#39046; &#183; &#24748;&#36175; &#183; &#24748;&#28014; &#183; &#27700;&#26230;&#23454;&#39564;&#23460; &#183; &#20987;&#26432;</span>&#8212;&#8212;&#20256;&#22855;&#20043;&#25112;&#20013;&#36824;&#26377;&#31354;&#25237;&#12290;&#22810;&#26465;&#36335;&#65292;&#24847;&#21619;&#30528;&#24369;&#38431;&#20063;&#33021;&#38752;&#33041;&#23376;&#25171;&#36133;&#24378;&#38431;&#12290;"><span class="mono" style="color:var(--ink)">Occupation &middot; Bounty &middot; Hover &middot; Crystal Labs &middot; Kills</span> &mdash; plus airdrops in Battle of Legends. Multiple paths meant a team could out-think a stronger one.</p>
+      </div>
+      <div class="card" style="border-color:color-mix(in srgb,var(--bad) 30%,var(--line))">
+        <div class="tag" data-zh="&#29616;&#22312;&#8212;&#8212;&#33268;&#32988;&#20043;&#36947;">Now &mdash; ways to win</div>
+        <h3 data-zh="&#21482;&#21097;&#19977;&#26465;&#65292;&#19988;&#20840;&#20559;&#39046;&#20808;&#26041;">Three, and they all favor the lead</h3>
+        <p data-zh="<span class=&quot;mono&quot; style=&quot;color:var(--ink)&quot;>&#24748;&#36175; &#183; &#24748;&#28014; &#183; &#21344;&#39046;</span>&#12290;&#27599;&#19968;&#26465;&#37117;&#22870;&#21169;&#8220;&#26089;&#24050;&#25484;&#25511;&#22320;&#22270;&#8221;&#65292;&#25152;&#20197;&#33853;&#21518;&#19968;&#26041;&#26681;&#26412;已无牌可打&#12290;"><span class="mono" style="color:var(--ink)">Bounty &middot; Hover &middot; Occupation</span>. Every one of them rewards already holding the map, so the behind team has no lever left to pull.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== IT WAS BETTER (BoL) ===================== -->
+  <section>
+    <div class="eyebrow" data-zh="&#26089;&#26377;&#20808;&#20363;">Prior art</div>
+    <h2 class="h-sec" data-zh="&#20256;&#22855;&#20043;&#25112;&#26089;&#23601;&#35299;&#20915;&#20102;&#22823;&#37096;&#20998;&#38382;&#39064;">Battle of Legends already solved most of this</h2>
+    <p class="lede col" data-zh="&#21069;&#20316;&#22312;&#19978;&#32447;&#21518;&#30340;&#30701;&#30701;&#20960;&#36718;&#20869;&#65292;&#23601;&#20462;&#22909;&#20102;&#36825;&#20123;&#21516;&#26679;&#30340;&#38382;&#39064;&#12290;&#35299;&#27861;&#26089;&#23601;&#23384;&#22312;&#8212;&#8212;&#21482;&#26159;&#27809;&#26377;&#34987;&#24102;&#36827;&#20256;&#22855;&#27169;&#24335;&#32780;&#24050;&#12290;">The predecessor patched these exact problems within a few rounds of launch. The fixes existed &mdash; they just weren't carried into Legends.</p>
+    <div class="cards three reveal" style="margin-top:1.4rem">
+      <div class="card" style="border-left:3px solid var(--good)">
+        <div class="tag" style="color:var(--good)" data-zh="&#26032;&#22686;">Added</div>
+        <h3 data-zh="&#31354;&#25237;">Airdrops</h3>
+        <p data-zh="&#22686;&#30410;&#12289;&#31215;&#20998;&#19982;&#22686;&#24378;&#36947;&#20855;&#31354;&#38477;&#22312;&#22320;&#22270;&#20013;&#37096;&#12290;&#20004;&#20010;&#20840;&#26032;&#30340;博弈&#32500;&#24230;&#65292;&#20063;&#32473;&#20102;&#29609;&#23478;&#20986;&#22330;&#25171;&#19968;&#27874;&#20882;&#38505;&#25112;&#26007;&#30340;&#29702;&#30001;&#12290;">Buffs, points and power-ups dropping mid-map. Two new dimensions of play and a reason to take a risky fight out on the pitch.</p>
+      </div>
+      <div class="card" style="border-left:3px solid var(--good)">
+        <div class="tag" style="color:var(--good)" data-zh="&#20445;&#30041;&#24182;&#20998;&#25955;">Kept, spread out</div>
+        <h3 data-zh="&#20998;&#25955;&#24067;&#32622;&#30340;&#23454;&#39564;&#23460;">Distributed labs</h3>
+        <p data-zh="&#27700;&#26230;&#23454;&#39564;&#23460;&#25968;&#37327;&#26356;&#23569;&#12289;&#22312;&#22320;&#22270;&#19978;&#38388;&#38548;&#26356;&#22823;&#8212;&#8212;&#20381;&#28982;&#26159;&#19968;&#22871;&#25216;&#33021;&#32463;&#27982;&#65292;&#20294;&#20540;&#24471;&#20026;&#20043;&#21608;&#26059;&#36208;&#20301;&#12290;">Fewer crystal labs, spaced further around the map &mdash; still a skill economy, but one worth maneuvering for.</p>
+      </div>
+      <div class="card" style="border-left:3px solid var(--good)">
+        <div class="tag" style="color:var(--good)" data-zh="&#19978;&#32447;&#21518;&#35843;&#20248;">Tuned post-launch</div>
+        <h3 data-zh="&#26356;&#24555;&#30340;&#31227;&#21160;&#20805;&#33021;">Faster move recharge</h3>
+        <p data-zh="&#32553;&#30701;&#20102;&#31227;&#21160;&#20805;&#33021;&#30340;&#20919;&#21364;&#65292;&#35753;&#29609;&#23478;&#33021;&#25345;&#32493;&#25237;&#20837;&#25112;&#26007;&#12289;&#25171;&#20986;&#26356;&#20882;&#38505;&#30340;&#25171;&#27861;&#65292;&#32780;&#19981;&#26159;干耗着&#12290;">Reduced the cooldown to recharge moves so players could stay in the fight and make riskier plays instead of idling.</p>
+      </div>
+    </div>
+    <p class="lede col" style="margin-top:1.4rem" data-zh="&#22312;&#20256;&#22855;&#27169;&#24335;&#20013;<em>&#19981;&#21160;</em>&#31227;&#21160; / &#20256;&#36865;&#20805;&#33021;&#65292;&#24688;&#24688;&#20063;&#26159;&#21464;&#30456;<strong>&#22686;&#24378;&#20102;&#31199;&#20511;&#37096;&#38431;</strong>&#8212;&#8212;&#24403;&#30446;&#26631;&#25972;&#25972;&#20960;&#20998;&#38047;&#26080;&#27861;&#31227;&#21160;&#26102;&#65292;&#21516;&#26679;&#33268;&#21629;&#30340;&#37096;&#38431;&#20250;可怕得多&#12290;">Leaving the move / teleport recharge <em>untouched</em> in Legends is also what quietly <strong>buffed the rental marches</strong> &mdash; the same lethal march is far worse when the target can't reposition for minutes.</p>
+  </section>
+
+  <!-- ===================== RETIRED ROLES ===================== -->
+  <section>
+    <div class="eyebrow" data-zh="&#34987;&#25172;&#24323;&#30340;&#28145;&#24230;">Abandoned depth</div>
+    <h2 class="h-sec" data-zh="&#34987;悄悄&#20572;&#29992;&#30340;&#23567;&#38431;&#32844;&#19994;">The squad roles they quietly retired</h2>
+    <p class="lede col" data-zh="&#26089;&#26399;&#30340;泰&#22374;&#23777;&#35895;&#65292;&#20250;&#20026;&#27599;&#20301;&#29609;&#23478;&#20998;&#37197;&#19977;&#31181;&#25112;&#26007;&#32844;&#19994;&#20043;&#19968;&#8212;&#8212;&#19968;&#31181;&#22870;&#21169;&#19987;&#31934;&#30340;&#30495;&#27491;&#20859;&#25104;&#36873;&#25321;&#12290;&#23427;&#20204;&#20173;&#22312;&#23458;&#25143;&#31471;&#25968;&#25454;&#37324;&#65292;&#21364;&#20174;&#20256;&#22855;&#27169;&#24335;&#20013;&#28040;&#22833;&#20102;&#65292;&#38543;&#20043;&#28040;&#22833;&#30340;&#26159;&#21448;&#19968;&#20010;&#25171;&#20986;&#31934;&#24425;&#25805;&#20316;&#30340;&#32500;&#24230;&#12290;">Older Titan Canyon gave each player one of three in-battle professions &mdash; a real build choice that rewarded specialization. They're in the client data; they're gone from Legends, and with them another dimension of outplay.</p>
+    <div class="cards three reveal" style="margin-top:1.5rem">
+      <div class="role">
+        <h3 data-zh="&#23432;&#25252;&#31934;&#33521;">Guardian Elite</h3>
+        <p class="flavor" data-zh="&#8220;&#25797;&#38271;&#38450;&#23432;&#65292;&#20197;&#25345;&#32493;&#30340;&#38450;&#23432;&#25112;&#26415;&#28040;&#30952;&#25932;&#20154;&#30340;&#24847;&#24535;&#19982;&#36164;&#28304;&#12290;&#8221;">"Excels at depleting the enemy's will and resources through sustained defensive tactics."</p>
+        <ul>
+          <li><span class="dot"></span><span data-zh="&#38450;&#23432;&#33258;&#26041;&#24314;&#31569;&#26102;&#65292;&#38450;&#24481;&#26368;&#39640;<strong>+50%</strong>">Up to <strong>+50% DEF</strong> defending your own buildings</span></li>
+          <li><span class="dot"></span><span data-zh="&#38477;&#20302;&#37325;&#35013;&#26426;&#30002;&#30340;&#37325;&#20260;&#26102;&#38388;">Reduced Heavy-Trooper severe-injury time</span></li>
+        </ul>
+      </div>
+      <div class="role">
+        <h3 data-zh="&#36793;&#30086;&#25506;&#38505;&#23478;">Frontier Explorer</h3>
+        <p class="flavor" data-zh="&#8220;渊博&#30340;&#30693;&#35782;&#19982;&#26080;&#23613;&#30340;&#22909;&#22855;&#24515;&#65292;&#39537;&#20351;&#20182;&#20204;&#28145;&#20837;&#26410;&#30693;&#30340;&#39046;&#22495;&#12290;&#8221;">"Vast knowledge and insatiable curiosity propel them into uncharted territory."</p>
+        <ul>
+          <li><span class="dot"></span><span data-zh="&#22312;&#27700;&#26230;簇&#23454;&#39564;&#23460;&#20010;&#20154;&#24471;&#20998;<strong>+20%</strong>"><strong>+20%</strong> individual score at Crystal Cluster Labs</span></li>
+          <li><span class="dot"></span><span data-zh="&#23454;&#39564;&#23460;&#20105;&#22842;&#25112;&#20013;&#37096;&#38431;&#29983;&#21629;&#20540;<strong>+50%</strong>"><strong>+50%</strong> unit HP in lab fights</span></li>
+        </ul>
+      </div>
+      <div class="role">
+        <h3 data-zh="&#24037;&#31243;&#19987;&#23478;">Engineering Expert</h3>
+        <p class="flavor" data-zh="&#8220;&#31934;&#28251;&#30340;&#24037;&#31243;造诣&#65292;&#24102;&#26469;&#26356;&#24555;&#30340;&#24314;&#36896;&#19982;&#29983;&#20135;&#25928;&#29575;&#12290;&#8221;">"Ongoing mastery in engineering yields accelerated construction and production."</p>
+        <ul>
+          <li><span class="dot"></span><span data-zh="&#24314;&#31569;&#24314;&#36896;&#36895;&#24230;<strong>+30%</strong>"><strong>+30%</strong> facility build speed</span></li>
+          <li><span class="dot"></span><span data-zh="&#27599;&#31186;&#39069;&#22806;&#25216;&#33021;&#33021;&#37327;">Extra skill energy per second</span></li>
+        </ul>
+      </div>
+    </div>
+    <p class="note" data-zh="&#32844;&#19994;&#19982;&#22686;&#30410;&#25968;&#25454;&#22343;&#36880;&#23383;&#25552;&#33258;&#23458;&#25143;&#31471;&#30340; <span class=&quot;mono&quot;>ava_team_ui</span> &#25968;&#25454;&#34920;&#12290;&#20540;&#24471;&#19968;&#25552;&#65306;&#8220;&#36793;&#30086;&#25506;&#38505;&#23478;&#8221;&#20043;&#25152;&#20197;&#26377;&#24847;&#20041;&#65292;&#27491;&#26159;<em>&#22240;&#20026;</em>&#23454;&#39564;&#23460;&#23384;&#22312;&#8212;&#8212;&#31227;&#38500;&#23454;&#39564;&#23460;&#65292;&#36825;&#19977;&#31181;&#32844;&#19994;&#20013;&#26377;&#20004;&#31181;&#20063;&#23601;&#22833;&#21435;&#20102;&#28789;&#39746;&#12290;">Roles &amp; buffs pulled verbatim from the client's <span class="mono">ava_team_ui</span> tables. Note that Frontier Explorer only mattered <em>because</em> labs existed &mdash; retire the labs and two of these three roles lose their identity anyway.</p>
+  </section>
+
+  <!-- ===================== RECOMMENDATIONS ===================== -->
+  <section>
+    <div class="eyebrow" data-zh="&#35785;&#27714;">The ask</div>
+    <h2 class="h-sec" data-zh="&#24314;&#35758;&#25913;&#21160;&#8212;&#8212;&#25353;&#20248;&#20808;&#32423;&#25490;&#24207;">What to change &mdash; in priority order</h2>
+
+    <div class="rec key reveal">
+      <div class="rank">1</div>
+      <div>
+        <h3 data-zh="&#31199;&#20511;&#37096;&#38431;&#25112;&#21147;&#25353; CP &#32553;&#25918;&#8212;&#8212;&#19981;&#35201;&#19968;刀&#20999;&#22312; 3 &#20493;">Scale rental-march power to CP &mdash; don't flat-cap it at 3&times;</h3>
+        <p data-zh="一刀切的 3 倍，对小玩家是救命稻草，对大玩家却是碾压全场的重锤。应当把帮助留给真正需要的人，并随行军战力（CP）升高而递减——让租借抬高下限，而不打破上限。">The flat 3&times; is a lifeline for a small player and a wrecking ball for a big one. Keep the help where it's needed and taper it off as march CP climbs, so rentals lift the floor without breaking the ceiling.</p>
+        <div class="scale" aria-hidden="true">
+          <div class="srow"><span class="lbl" data-zh="30&ndash;50M">30&ndash;50M</span><span class="bar" style="width:100%"></span><span class="mult" data-zh="&#26368;&#39640; 3&times;">up to 3&times;</span></div>
+          <div class="srow"><span class="lbl" data-zh="&#32422; 100M">~100M</span><span class="bar" style="width:66%"></span><span class="mult" data-zh="&#32422; 2&times;">~2&times;</span></div>
+          <div class="srow"><span class="lbl" data-zh="150M+">150M+</span><span class="bar" style="width:42%"></span><span class="mult" data-zh="&#32422; 1.5&times;">~1.5&times;</span></div>
+        </div>
+        <div class="fix" data-zh="小玩家依然能获得实实在在的提升，高端对局也不再由「谁租得更狠」决定。<b>抬高下限，保留上限。</b>">Small players still get a real boost. High-level matches stop being decided by who rented harder. <b>Lift the floor, keep the ceiling.</b></div>
+      </div>
+    </div>
+
+    <div class="rec reveal">
+      <div class="rank" style="color:var(--accent-ink)">2</div>
+      <div>
+        <h3 data-zh="&#37325;&#24314;&#19968;&#22871;&#20805;&#33021;&#32463;&#27982;">Bring back a recharge economy</h3>
+        <p data-zh="&#24674;&#22797;&#20256;&#22855;&#20043;&#25112;&#37027;&#26356;&#30701;&#30340;&#31227;&#21160;&#20919;&#21364;&#65292;&#25110;&#37325;&#26032;&#21152;&#20837;&#20998;&#25955;&#24067;&#32622;&#30340;&#27700;&#26230;簇&#23454;&#39564;&#23460;&#8212;&#8212;&#26368;&#22909;&#20004;&#32773;&#20860;&#22791;&#12290;&#33853;&#21518;&#19968;&#26041;&#33267;&#23569;&#38656;&#35201;&#19968;&#26465;&#38752;&#24471;&#20303;&#12289;&#32780;&#19981;&#26159;&#8220;&#24471;&#20808;&#25484;&#25511;&#20013;&#22830;&#8221;&#30340;&#37325;&#26032;&#21160;&#36215;&#26469;&#30340;&#36884;&#24452;&#12290;">Restore Battle of Legends' shorter move cooldown, or re-add distributed Crystal Cluster Labs &mdash; ideally both. A behind team needs at least one reliable way to get moving again that isn't "already hold the center."</p>
+        <div class="fix" data-zh="&#22312;&#31532;&#20108;&#27493;&#25171;&#26029;&#24490;&#29615;&#8212;&#8212;&#20063;&#23601;&#26159;&#8220;&#38453;&#20129;&#21464;&#25104;&#34987;&#22256;&#8221;&#30340;&#37027;&#19968;&#29615;&#12290;">Breaks the spiral at Step 02 &mdash; the point where dead becomes stranded.</div>
+      </div>
+    </div>
+
+    <div class="rec reveal">
+      <div class="rank" style="color:var(--accent-ink)">3</div>
+      <div>
+        <h3 data-zh="&#37325;&#26032;&#21152;&#20837;&#31354;&#25237;&#21450;&#20854;&#22686;&#24378;&#36947;&#20855;">Re-add airdrops and their power-ups</h3>
+        <p data-zh="&#36825;&#26159;&#19968;&#20010;&#24050;&#32463;&#39564;&#35777;&#12289;&#29616;&#25104;&#30340;&#31532;&#20108;&#24471;&#20998;&#32500;&#24230;&#65292;&#33021;&#25226;&#29609;&#23478;&#25289;&#21040;&#22320;&#22270;&#19978;&#65292;&#22870;&#21169;&#20882;&#38505;&#32780;&#38750;龟缩&#12290;&#20256;&#22855;&#27169;&#24335;&#32763;&#20493;&#20102;&#23567;&#38431;&#65292;&#21364;&#27809;&#26377;&#22686;&#21152;&#20540;&#24471;&#20105;&#22842;&#30340;&#30446;&#26631;&#8212;&#8212;&#31354;&#25237;&#24688;&#22909;&#33021;&#34917;&#19978;&#36825;&#20010;&#27604;&#20363;&#12290;">They're a proven, ready-made second scoring dimension that pulls players out onto the map and rewards risk instead of turtling. Legends doubled the squads but not the things worth fighting over &mdash; airdrops fix the ratio.</p>
+        <div class="fix" data-zh="&#26356;&#22810;&#21521;&#21069;&#25512;&#36827;&#30340;&#29702;&#30001; &#183; &#26356;&#23569;&#29609;&#23478;&#22312;&#20986;&#29983;&#21306;&#24178;&#31561;&#12290;">More reasons to fight forward &middot; fewer players idling in spawn.</div>
+      </div>
+    </div>
+
+    <div class="rec reveal">
+      <div class="rank" style="color:var(--accent-ink)">4</div>
+      <div>
+        <h3 data-zh="&#35753;&#23567;&#38431;&#32844;&#19994;&#37325;&#26032;&#26377;&#23384;&#22312;&#30340;&#24847;&#20041;">Give the squad roles a reason to exist again</h3>
+        <p data-zh="&#23432;&#25252; / &#25506;&#38505; / &#24037;&#31243;&#20026;&#38453;&#23481;&#24102;&#26469;&#20102;&#20859;&#25104;&#29305;&#33394;&#21644;&#25171;&#20986;&#31934;&#24425;&#25805;&#20316;&#30340;&#26426;&#20250;&#12290;&#26080;&#35770;&#26410;&#26469;&#30340;&#35745;&#20998;&#26426;&#21046;&#22914;&#20309;&#65292;&#37117;&#35753;&#32844;&#19994;&#19982;&#20043;&#25346;&#38057;&#65292;&#20351;&#19968;&#25903;&#23567;&#38431;&#20381;&#28982;&#38656;&#35201;&#35748;&#30495;&#20915;&#23450;&#8220;&#35841;&#36127;&#36131;&#20160;&#20040;&#8221;&#12290;">Guardian / Explorer / Engineer added build identity and moments to outplay. Whatever the scoring model becomes, tie the roles to it so a squad still makes a real choice about who does what.</p>
+        <div class="fix" data-zh="&#25214;&#22238;&#37027;&#20221;&#35753;泰&#22374;&#23777;&#35895;&#20540;&#24471;&#21160;&#33041;&#31563;&#30340;&#28145;&#24230;&#12290;">Restores the depth that made Titan Canyon worth thinking about.</div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="div">
+
+  <footer>
+    <div class="eyebrow" data-zh="&#32467;&#35770;">Bottom line</div>
+    <p style="color:var(--muted); font-size:1.02rem; max-width:52ch;" data-zh="&#23777;&#35895;&#20256;&#22855;&#30340;&#38382;&#39064;&#19981;&#22312;&#20110;&#23427;&#24456;&#38590;&#65292;&#32780;&#22312;&#20110;&#23427;&#24456;&#24179;&#8212;&#8212;&#22240;&#20026;&#32763;&#30424;&#30340;&#25163;&#27573;&#34987;&#25277;&#36208;&#65292;&#32780;碾&#21387;&#30340;&#25163;&#27573;&#21364;&#34987;&#21152;&#24378;&#12290;&#20197;&#19978;&#27599;&#19968;&#39033;&#20462;&#22797;&#65292;&#37117;&#26366;&#22312;&#36825;&#20010;&#27169;&#24335;&#26089;&#26399;&#30340;&#29256;&#26412;&#37324;&#19978;&#32447;&#36807;&#12290;把这些手段装回去&#12289;&#25226;&#31199;&#20511;&#38480;&#21046;&#20303;&#65292;&#27604;&#36187;&#23601;&#20250;&#37325;&#26032;&#25104;&#20026;&#19968;&#22330;博弈&#65292;&#32780;&#38750;&#19968;&#22330;&#20498;&#35745;&#26102;&#12290;">Canyon Legends isn't broken because it's hard &mdash; it's flat because the tools for a comeback were removed while the tools for a blowout were buffed. Every fix above already shipped in an earlier version of this very mode. Put the levers back and taper the rentals, and the match becomes a fight again instead of a countdown.</p>
+    <p style="margin-top:1.5rem; font-family:var(--mono); font-size:.72rem; color:var(--faint);" data-zh="&#30001;&#19968;&#21517; 2864 &#26381;&#21153;&#22120;&#29609;&#23478;&#25972;&#29702; &#183; &#26426;&#21046;&#25968;&#25454;&#22343;&#26469;&#33258;&#23458;&#25143;&#31471;&#23454;&#26102;&#25552;&#21462; &#183; &#33268;泰&#22374;&#23777;&#35895;&#24320;&#21457;&#22242;&#38431;&#12290;">Compiled by a Server 2864 player &middot; mechanics grounded in a live client extraction &middot; for the Titan Canyon dev team.</p>
+  </footer>
+
+</div>
+
+<script>
+  (function(){
+    // ---- Curated EN / Simplified-Chinese toggle (hand-written zh in data-zh) ----
+    var TITLE_EN = "Fixing Canyon Legends";
+    var TITLE_ZH = "拯救峡谷传奇"; // 拯救峡谷传奇
+    var zhBtn = document.getElementById('zhBtn');
+    var i18n = [].slice.call(document.querySelectorAll('[data-zh]'));
+    var enHTML = i18n.map(function(n){ return n.innerHTML; });
+    var cur = 'en';
+    function applyLang(lang){
+      var zh = (lang === 'zh');
+      for (var i=0;i<i18n.length;i++){ i18n[i].innerHTML = zh ? i18n[i].getAttribute('data-zh') : enHTML[i]; }
+      document.documentElement.lang = zh ? 'zh-CN' : 'en';
+      document.title = zh ? TITLE_ZH : TITLE_EN;
+      if (zhBtn){ zhBtn.textContent = zh ? 'English' : '简体中文'; zhBtn.setAttribute('aria-pressed', zh ? 'true':'false'); }
+      cur = lang;
+      try { localStorage.setItem('cl_lang', lang); } catch(e){}
+    }
+    if (zhBtn){
+      zhBtn.addEventListener('click', function(){ applyLang(cur === 'zh' ? 'en' : 'zh'); });
+      var saved = null; try { saved = localStorage.getItem('cl_lang'); } catch(e){}
+      if (saved === 'zh') applyLang('zh');
+    }
+    // ---- Light / dark toggle ----
+    var tt = document.getElementById('ttBtn');
+    if (tt){
+      tt.addEventListener('click', function(){
+        var r = document.documentElement;
+        var c = r.getAttribute('data-theme');
+        if (!c){ c = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
+        r.setAttribute('data-theme', c === 'dark' ? 'light' : 'dark');
+      });
+    }
+  })();
+</script>
+</body>
+</html>
