@@ -331,6 +331,23 @@
     .tfp-base.tfp-ce { background: color-mix(in srgb, var(--ce) 65%, transparent); }
     .tfp-base.tfp-mm { background: color-mix(in srgb, var(--mm) 60%, transparent); }
 
+    /* Formation fill grid (Task 6) — the editable version of .tfp-grid: same 8-track
+       CSS-grid layout + cell classes, sized up for the Battle Map panel and with
+       clickable base cells (the tower/hub cells stay display-only, like the preview). */
+    .tfe-grid { max-width: 420px; margin: 0 auto; aspect-ratio: 1; }
+    .tfp-base.tfe-clickable { cursor: pointer; display: flex; align-items: center; justify-content: center; transition: filter .15s, outline-color .15s; outline: 2px solid transparent; outline-offset: -2px; }
+    .tfp-base.tfe-clickable:hover { filter: brightness(1.18); }
+    .tfp-base.tfe-filled { outline-color: var(--accent); }
+    .tfe-base-role { font-size: 4.2cqi; font-weight: 600; color: rgba(0,0,0,.6); line-height: 1.1; }
+    .tfe-base-label { font-size: 5cqi; font-weight: 700; color: #fff; line-height: 1.1; padding: 0 2px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tfe-select-overlay { z-index: 10; display: flex; align-items: center; justify-content: center; padding: 1px; }
+    .tfe-select-overlay select {
+      width: 100%; height: 100%; background: var(--bg2); border: 2px solid var(--accent);
+      border-radius: 4px; color: var(--text); padding: 0 2px; font-size: 5.2cqi;
+      outline: none; cursor: pointer;
+    }
+    .formation-fill-status { font-size: .72rem; color: var(--muted); text-align: center; margin-top: .6rem; }
+
     /* Signups + slot config */
     .card {
       background: var(--card); border: 1px solid var(--border); border-radius: 10px;
@@ -1413,6 +1430,8 @@ function renderEditor() {
           </button>
         </div>
         <div class="diamond-grid" id="mapGrid"></div>
+        <div class="tfp-grid tfe-grid" id="formationFillGrid" style="display:none"></div>
+        <div class="formation-fill-status" id="formationFillStatus"></div>
         <div class="ref-map-wrap">
           <img src="https://i.ibb.co/HTM5MTLn/TC-Reference-Map.png" alt="Formation Reference" loading="lazy" class="ref-map-thumb" onclick="document.getElementById('refModal').classList.add('open')" />
           <div class="ref-map-label" onclick="document.getElementById('refModal').classList.add('open')">Formation Reference (click to expand)</div>
@@ -1520,7 +1539,131 @@ function selectFormation(key) {
 
 function posProf(num) { return num <= 2 ? "CE" : "MM"; }
 
+// Alternate formations (Task 6): name(lowercased) -> short "in Base N" label for
+// anyone already placed elsewhere in THIS formation's fill, mirroring
+// buildPlacedLabels()'s convention for the standard positions/support lists so the
+// dropdown can flag a pick that will MOVE a squadmate rather than add them fresh.
+function buildFormationPlacedLabels(data, f) {
+  const m = {};
+  const fill = (data && data.formationFill) || {};
+  (f.bases || []).forEach(b => {
+    const nm = fill[b.id];
+    if (nm) m[String(nm).trim().toLowerCase()] = "Base " + b.id;
+  });
+  return m;
+}
+
+// "N of M bases filled · K squad members unplaced" under the fill grid, shown
+// only for non-standard formations (cleared by the standard renderMap path below).
+// M = f.bases.length; unplaced = the squad pool (sqPlayers, same source the
+// dropdowns are built from) minus however many of them are already seated.
+function renderFormationFillStatus(data, f, sqPlayers) {
+  const el = document.getElementById("formationFillStatus");
+  if (!el) return;
+  const fill = (data && data.formationFill) || {};
+  const bases = f.bases || [];
+  const filled = bases.filter(b => fill[b.id]).length;
+  const unplaced = Math.max(0, (sqPlayers || []).length - filled);
+  el.textContent = filled + " of " + bases.length + " bases filled · " + unplaced + " squad members unplaced";
+}
+
+// Alternate formations (Task 6): the fill grid for any squad whose formation isn't
+// Standard. Mirrors renderMap's node-building + click-to-floating-select pattern
+// below, but reads its layout (bases/towers/hub) from the shared registry instead
+// of the hardcoded POSITIONS/TOWER_CELLS, and writes picks to data.formationFill
+// (keyed by base id) instead of data.positions. Towers/hub are display-only, like
+// the Task 5 preview. Renders into #formationFillGrid (kept hidden while Standard
+// is active — #mapGrid/POSITIONS stay untouched, see renderMap below).
+function renderFormationEditor(data, key, sqPlayers) {
+  const f = window.TITAN_FORMATION_BY_KEY && window.TITAN_FORMATION_BY_KEY[key];
+  const grid = document.getElementById("formationFillGrid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  if (!f) return;
+  if (!data.formationFill) data.formationFill = {};
+  const placed = buildFormationPlacedLabels(data, f);
+
+  function addCell(area, cls, glyph) {
+    const d = document.createElement("div");
+    d.className = "tfp-cell " + cls;
+    d.style.gridArea = area;
+    if (glyph) d.textContent = glyph;
+    grid.appendChild(d);
+    return d;
+  }
+
+  addCell(f.hub, "tfp-hub");
+  (f.towers || []).forEach(t => addCell(t.area, "tfp-tower", (window.TITAN_TOWER_GLYPH && window.TITAN_TOWER_GLYPH[t.glyph]) || ""));
+
+  (f.bases || []).forEach(base => {
+    const assigned = window.titanAssignmentFor(data, key, base.id);
+    const roleCls = base.role === "CE" ? " tfp-ce" : base.role === "MM" ? " tfp-mm" : "";
+    const sizeCls = base.size === "small" ? " tfp-small" : "";
+    const cell = addCell(base.area, "tfp-base tfe-clickable" + roleCls + sizeCls + (assigned ? " tfe-filled" : ""));
+    cell.dataset.baseId = base.id;
+    cell.innerHTML = assigned
+      ? `<span class="tfe-base-label notranslate">${esc(assigned)}</span>`
+      : (base.role ? `<span class="tfe-base-role">${esc(base.role)}</span>` : "");
+    cell.onclick = (e) => {
+      e.stopPropagation();
+      document.querySelectorAll(".tfe-select-overlay").forEach(el => el.remove());
+      const wrap = document.createElement("div");
+      wrap.className = "tfe-select-overlay";
+      wrap.style.gridArea = base.area;
+      const sel = document.createElement("select");
+      const filterProf = (base.role && !showAllRoles[activeSquad]) ? base.role : null;
+      sel.innerHTML = playerOptHtml(sqPlayers, assigned, filterProf, placed);
+      sel.onchange = () => { updateFormationFill(base.id, sel.value); wrap.remove(); };
+      sel.onblur = () => wrap.remove();
+      wrap.appendChild(sel);
+      grid.appendChild(wrap);
+      sel.focus();
+    };
+  });
+
+  // Close overlay on outside click (same convention as renderMap below)
+  grid.onclick = (e) => {
+    if (e.target === grid) {
+      document.querySelectorAll(".tfe-select-overlay").forEach(el => el.remove());
+    }
+  };
+
+  renderFormationFillStatus(data, f, sqPlayers);
+}
+
+// Assigning a name to a formation base removes them from every OTHER base in
+// data.formationFill, so a pick MOVES a squadmate instead of double-booking them
+// (mirrors dedupeAssign's positions-only dedup, scoped to formationFill instead).
+function updateFormationFill(baseId, val) {
+  const data = getSquadData(activeSquad);
+  if (!data.formationFill) data.formationFill = {};
+  if (val) {
+    const key = String(val).trim().toLowerCase();
+    Object.keys(data.formationFill).forEach(id => {
+      if (id === baseId) return;
+      if (data.formationFill[id] && String(data.formationFill[id]).trim().toLowerCase() === key) data.formationFill[id] = "";
+    });
+  }
+  data.formationFill[baseId] = val;
+  markDirty();
+  rerenderCurrent();
+}
+
 function renderMap(data, sqPlayers) {
+  const key = window.titanFormationKey ? window.titanFormationKey(data) : "standard";
+  const diamond = document.getElementById("mapGrid");
+  const fillGrid = document.getElementById("formationFillGrid");
+  if (key !== "standard") {
+    if (diamond) diamond.style.display = "none";
+    if (fillGrid) fillGrid.style.display = "";
+    renderFormationEditor(data, key, sqPlayers);
+    return;
+  }
+  if (fillGrid) fillGrid.style.display = "none";
+  if (diamond) diamond.style.display = "";
+  const fillStatusEl = document.getElementById("formationFillStatus");
+  if (fillStatusEl) fillStatusEl.textContent = "";
+
   const grid = document.getElementById("mapGrid");
   grid.innerHTML = "";
 
