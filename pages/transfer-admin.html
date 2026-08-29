@@ -440,12 +440,36 @@ function ensureEditorName() {
   if (n) { try { localStorage.setItem('editor_name', n); } catch (e) {} }
 }
 
+// Base64 of the UTF-8 bytes of a string, for the X-Editor-Name-B64 header.
+function utf8ToB64(str) {
+  var bytes;
+  try { bytes = new TextEncoder().encode(str); } catch (e) { return btoa(unescape(encodeURIComponent(str))); }
+  var bin = '';
+  for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+// An HTTP header value can only carry ISO-8859-1, and fetch() THROWS SYNCHRONOUSLY
+// on any code point above U+00FF — an editor named "Livv👑" (or any emoji/accented
+// name) could not send ANY request, which surfaced on Safari as "Load failed: Type
+// error" on the very first load. Always send the UTF-8 name base64'd in
+// X-Editor-Name-B64 (which the worker prefers); only attach the plain header when
+// the name is Latin-1-safe, since the throw happens on the header assignment itself.
+function editorHeaders(headers) {
+  var name = editorName();
+  if (name) {
+    headers['X-Editor-Name-B64'] = utf8ToB64(name);
+    if (/^[\x00-\xff]*$/.test(name)) headers['X-Editor-Name'] = name;
+  }
+  return headers;
+}
+
 // api(path, opts) -> parsed JSON body. Attaches the editor header on every call.
 // On 401, forgets the stored password and re-shows the gate for a fresh entry.
 function api(path, opts) {
   opts = opts || {};
   var method = opts.method || 'GET';
-  var headers = { 'X-Transfer-Edit-Password': editPw, 'X-Editor-Name': editorName() };
+  var headers = editorHeaders({ 'X-Transfer-Edit-Password': editPw });
   var body;
   if (opts.body !== undefined) {
     headers['Content-Type'] = 'application/json';
