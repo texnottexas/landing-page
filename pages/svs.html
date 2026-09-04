@@ -34,6 +34,16 @@
   h1{font-family:var(--disp); font-weight:700; font-size:1.75rem; margin:.5rem 0 .5rem; line-height:1.15;}
   .lede{color:var(--muted); font-size:.98rem; max-width:56ch;}
 
+  /* live submission tally */
+  .tally{margin-top:1.15rem; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:.75rem .9rem; display:flex; flex-direction:column; gap:.6rem;}
+  .tally-total{font-family:var(--disp); font-weight:700; font-size:.95rem; color:var(--text);}
+  .tally-total #tTotal{color:var(--green); font-variant-numeric:tabular-nums;}
+  .tally-groups{display:flex; flex-wrap:wrap; gap:.55rem 1.3rem;}
+  .tgrp{display:flex; align-items:center; flex-wrap:wrap; gap:.35rem;}
+  .tgl{font-family:var(--mono); font-size:.6rem; letter-spacing:.15em; text-transform:uppercase; color:var(--faint); margin-right:.1rem;}
+  .tchip{background:var(--card); border:1px solid var(--border2); border-radius:7px; padding:.16rem .5rem; font-size:.78rem; color:var(--muted); white-space:nowrap;}
+  .tchip b{color:var(--text); font-variant-numeric:tabular-nums; margin-right:.22rem; font-weight:700;}
+
   .card{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:1.15rem 1.15rem 1.25rem; margin-top:1.3rem;}
   .field{margin-top:1.1rem;}
   .field:first-child{margin-top:0;}
@@ -102,6 +112,28 @@
   <div class="kicker">Server vs Server</div>
   <h1>What are your SvS preferences?</h1>
   <p class="lede">Set your Server vs Server preferences once. We use them to build the battle plan. Update anytime; there's no deadline.</p>
+
+  <!-- live submission tally (aggregate only, no names) -->
+  <div class="tally" id="tally" hidden>
+    <div class="tally-total"><span id="tTotal">0</span> preferences submitted so far</div>
+    <div class="tally-groups">
+      <div class="tgrp"><span class="tgl">Alliance</span>
+        <span class="tchip"><b id="tDOG">0</b> <span class="notranslate" translate="no">DOG</span></span>
+        <span class="tchip"><b id="tMSS">0</b> <span class="notranslate" translate="no">MSS</span></span>
+        <span class="tchip"><b id="tDGen">0</b> <span class="notranslate" translate="no">DGen</span></span>
+      </div>
+      <div class="tgrp"><span class="tgl">Role</span>
+        <span class="tchip"><b id="tAttack">0</b> Attack</span>
+        <span class="tchip"><b id="tDefend">0</b> Defend</span>
+        <span class="tchip"><b id="tEither">0</b> Either</span>
+      </div>
+      <div class="tgrp"><span class="tgl">Profession</span>
+        <span class="tchip"><b id="tCE">0</b> <span class="notranslate" translate="no">CE</span></span>
+        <span class="tchip"><b id="tMM">0</b> <span class="notranslate" translate="no">MM</span></span>
+        <span class="tchip"><b id="tSwitch">0</b> <span class="notranslate" translate="no">CE&#8594;MM</span></span>
+      </div>
+    </div>
+  </div>
 
   <div class="card">
     <!-- identity -->
@@ -312,6 +344,23 @@
   function clearStatus(){ var s=$('status'); s.textContent=''; s.className='status'; }
   function setStatus(msg, ok){ var s=$('status'); s.textContent=msg; s.className='status '+(ok?'ok':'err'); }
 
+  // ---- live submission tally (aggregate only) ----
+  function renderStats(s){
+    if(!s) return;
+    var set=function(id,v){ var el=$(id); if(el){ var n=String(v==null?0:v); if(el.textContent!==n) el.textContent=n; } };
+    set('tTotal', s.total);
+    var a=s.alliance||{}, r=s.role||{}, p=s.profession||{};
+    set('tDOG', a.DOG); set('tMSS', a.MSS); set('tDGen', a.DGen);
+    set('tAttack', r.attack); set('tDefend', r.defend); set('tEither', r.either);
+    set('tCE', p.CE); set('tMM', p.MM); set('tSwitch', s.switchable);
+    $('tally').hidden = false;
+  }
+  function loadStats(){
+    fetch(API+'/svs/stats').then(function(r){ return r.json(); })
+      .then(function(d){ if(d && d.ok && d.stats) renderStats(d.stats); }).catch(function(){});
+  }
+  loadStats();
+
   // ---- submit ----
   $('saveBtn').addEventListener('click', function(){
     var id=currentIdentity();
@@ -335,7 +384,7 @@
       .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
       .then(function(res){
         btn.disabled=false;
-        if(res.ok && res.d && res.d.ok){ setStatus('Saved. You can update anytime.', true); $('editingNote').classList.remove('hidden'); }
+        if(res.ok && res.d && res.d.ok){ setStatus('Saved. You can update anytime.', true); $('editingNote').classList.remove('hidden'); loadStats(); }
         else { setStatus((res.d && res.d.message) || ERR_MSG[res.d && res.d.error] || 'Could not save. Please try again.', false); }
       }).catch(function(){ btn.disabled=false; setStatus('Network error. Try again.', false); });
   });
