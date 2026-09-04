@@ -108,7 +108,7 @@
     <div class="field">
       <label class="lab" for="rosterSel">Your name</label>
       <div id="rosterWrap">
-        <select id="rosterSel"><option value="">Loading roster…</option></select>
+        <select id="rosterSel" translate="no" class="notranslate"><option value="">Loading roster…</option></select>
         <div style="margin-top:.5rem"><button type="button" class="link" id="notListedBtn">My name isn't in the list</button></div>
       </div>
       <div id="nameWrap" class="hidden">
@@ -122,7 +122,7 @@
     <!-- alliance -->
     <div class="field">
       <label class="lab">Alliance</label>
-      <div class="seg alli" data-seg="alliance">
+      <div class="seg alli notranslate" data-seg="alliance" translate="no">
         <button type="button" data-val="DOG">DOG</button>
         <button type="button" data-val="MSS">MSS</button>
         <button type="button" data-val="DGen">DGen</button>
@@ -153,7 +153,7 @@
       <label class="lab" for="cpInput">Main march CP <span class="hint">in millions, e.g. 73.5</span></label>
       <div class="cp-wrap">
         <input type="number" id="cpInput" min="0" step="0.1" inputmode="decimal" placeholder="0">
-        <span class="suffix">M</span>
+        <span class="suffix notranslate" translate="no">M</span>
       </div>
     </div>
 
@@ -195,6 +195,13 @@
   var SK_RE = /^[a-f0-9]{16}$/;
   var state = { name:'', siteKey:'', notListed:false, roster:[], byKey:{} };
   var $ = function(id){ return document.getElementById(id); };
+  var ERR_MSG = {
+    bad_cp:'Enter CP in millions, e.g. 73.5.', rate_limited:'Please wait a moment and try again.',
+    no_identity:'Pick your name (or type it) first.', bad_alliance:'Pick your alliance.',
+    bad_profession:'Pick your profession.', bad_role:'Attack, Defend, or Either?',
+    bad_unit:'Pick your main unit type.', bad_switch:'Answer the Mechanical Master question.',
+    bad_json:'Something went wrong. Please try again.'
+  };
 
   // ---- segmented controls ----
   function segEl(name){ return document.querySelector('.seg[data-seg="'+name+'"]'); }
@@ -225,23 +232,35 @@
     if(SK_RE.test(v)){ var p=state.byKey[v]; return { name:p?p.name:'', siteKey:v }; }
     return { name:'', siteKey:'' };
   }
+  var myReqToken = 0;
+  function resetForm(){
+    ['alliance','profession','role','unit','switch'].forEach(function(n){ setSeg(n,''); });
+    $('cpInput').value = '';
+    $('switchField').classList.add('hidden');
+    $('editingNote').classList.add('hidden');
+  }
   function prefillFromRoster(siteKey){
     var p = state.byKey[siteKey]; var note=$('prefillNote');
     if(!p){ note.textContent=''; return; }
-    if(p.alliance && ['DOG','MSS','DGen'].indexOf(p.alliance)>=0) setSeg('alliance', p.alliance);
+    var did=[];
+    if(p.alliance && ['DOG','MSS','DGen'].indexOf(p.alliance)>=0){ setSeg('alliance', p.alliance); did.push('alliance'); }
     var prof = PROF_LONG[p.profession];
-    if(prof) setSeg('profession', prof);
+    if(prof){ setSeg('profession', prof); did.push('profession'); }
     updateSwitchVisibility();
-    note.textContent = 'Alliance and profession pre-filled from the roster — change them if they’re wrong.';
+    note.textContent = did.length
+      ? ('Pre-filled your ' + did.join(' and ') + ' from the roster; confirm or change below.')
+      : 'Confirm your alliance and profession below.';
   }
   function loadMyRecord(){
     var id=currentIdentity();
-    var q = id.siteKey ? ('siteKey='+encodeURIComponent(id.siteKey)) : ('name='+encodeURIComponent(id.name||''));
     if(!id.siteKey && !id.name){ return; }
+    var q = id.siteKey ? ('siteKey='+encodeURIComponent(id.siteKey)) : ('name='+encodeURIComponent(id.name||''));
+    var token = ++myReqToken;
     fetch(API+'/svs/my?'+q).then(function(r){ return r.json(); }).then(function(d){
+      if(token !== myReqToken) return;   // a newer name selection superseded this response
       var rec = d && d.record;
       if(!rec) { $('editingNote').classList.add('hidden'); return; }
-      // overlay saved answers
+      // overlay the player's saved answers on top of the reset form
       if(rec.alliance) setSeg('alliance', rec.alliance);
       if(rec.profession) setSeg('profession', rec.profession);
       if(rec.role) setSeg('role', rec.role);
@@ -254,9 +273,11 @@
   }
   function onPlayerChosen(){
     clearStatus();
+    resetForm();                 // clear stale answers before prefill / overlay
+    myReqToken++;                // invalidate any in-flight /svs/my from a prior pick
     var id=currentIdentity();
     if(id.siteKey){ prefillFromRoster(id.siteKey); }
-    else { $('prefillNote').textContent = id.name ? 'Not on the roster — pick your alliance and profession below.' : ''; }
+    else { $('prefillNote').textContent = id.name ? 'Not on the roster; pick your alliance and profession below.' : ''; }
     loadMyRecord();
   }
 
@@ -273,7 +294,7 @@
   // ---- load roster ----
   fetch('player-data.json').then(function(r){ return r.json(); }).then(function(list){
     state.roster = Array.isArray(list) ? list : [];
-    var sel=$('rosterSel'); var opts=['<option value="">— pick your name —</option>'];
+    var sel=$('rosterSel'); var opts=['<option value="">Pick your name…</option>'];
     state.roster.slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); }).forEach(function(p){
       if(p.siteKey) state.byKey[p.siteKey]=p;
       var val = p.siteKey || '';
@@ -285,7 +306,7 @@
       var pid = JSON.parse(localStorage.getItem('playerIdentity')||'null');
       if(pid && pid.siteKey && SK_RE.test(pid.siteKey) && state.byKey[pid.siteKey]){ sel.value = pid.siteKey; onPlayerChosen(); }
     } catch(e){}
-  }).catch(function(){ $('rosterSel').innerHTML='<option value="">Roster unavailable — use "name isn’t listed"</option>'; });
+  }).catch(function(){ $('rosterSel').innerHTML='<option value="">Roster unavailable; use "name isn’t listed"</option>'; });
 
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function clearStatus(){ var s=$('status'); s.textContent=''; s.className='status'; }
@@ -301,6 +322,7 @@
     if(!profession){ setStatus('Pick your profession.', false); return; }
     if(!role){ setStatus('Attack, Defend, or Either?', false); return; }
     if(!(cp>0)){ setStatus('Enter your main march CP (in millions).', false); return; }
+    if(cp>2000){ setStatus('That looks like raw CP. Enter it in millions, e.g. 73.5.', false); return; }
     if(!unit){ setStatus('Pick your main unit type.', false); return; }
     var body = { name:id.name, siteKey:id.siteKey, alliance:alliance, profession:profession, role:role, cpMillions:cp, unit:unit };
     if(profession==='CE'){
@@ -314,7 +336,7 @@
       .then(function(res){
         btn.disabled=false;
         if(res.ok && res.d && res.d.ok){ setStatus('Saved. You can update anytime.', true); $('editingNote').classList.remove('hidden'); }
-        else { setStatus('Could not save' + (res.d && res.d.error ? ' ('+res.d.error+')' : '') + '.', false); }
+        else { setStatus((res.d && res.d.message) || ERR_MSG[res.d && res.d.error] || 'Could not save. Please try again.', false); }
       }).catch(function(){ btn.disabled=false; setStatus('Network error. Try again.', false); });
   });
 
