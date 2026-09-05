@@ -58,9 +58,21 @@
   .search-wrap input::placeholder{color:var(--muted); font-weight:500}
   @media(prefers-reduced-motion:reduce){ .search-wrap input,.cave{animation:none} }
   .search-wrap svg{position:absolute; left:.8rem; top:50%; transform:translateY(-50%); color:var(--faint)}
-  .results{margin-top:.6rem; display:flex; flex-direction:column; gap:.4rem;}
-  .res{background:var(--surface); border:1px solid var(--border); border-radius:11px; padding:.75rem .85rem; cursor:pointer;}
-  .res:hover{border-color:var(--blue)}
+  .results{margin-top:.6rem; display:flex; flex-direction:column; gap:.35rem;}
+  .res{display:flex; align-items:center; gap:.55rem; width:100%; text-align:left; font-family:inherit;
+    background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:.62rem .7rem; cursor:pointer; color:var(--text);}
+  .res:hover,.res:focus-visible{border-color:var(--blue); outline:none}
+  .res-go{margin-left:auto; color:var(--faint); font-family:var(--mono); font-size:.72rem; flex:0 0 auto;}
+  /* modal */
+  .modal-overlay{position:fixed; inset:0; background:rgba(0,0,0,.74); backdrop-filter:blur(3px);
+    display:none; align-items:center; justify-content:center; padding:1rem; z-index:60;}
+  .modal-overlay.open{display:flex}
+  .modal{position:relative; background:var(--card); border:1px solid var(--border); border-radius:16px;
+    padding:1.15rem 1.1rem 1.2rem; max-width:460px; width:100%; max-height:86vh; overflow-y:auto;
+    box-shadow:0 22px 60px -20px rgba(0,0,0,.9);}
+  .modal-close{position:absolute; top:.5rem; right:.6rem; background:none; border:none; color:var(--muted);
+    font-size:1.15rem; line-height:1; cursor:pointer; padding:.3rem .45rem; border-radius:7px;}
+  .modal-close:hover{color:var(--text); background:var(--surface)}
   .res-top{display:flex; align-items:center; gap:.5rem; flex-wrap:wrap;}
   .res-name{font-weight:700; font-family:var(--disp); font-size:1rem;}
   .pill{font-family:var(--mono); font-size:.63rem; font-weight:600; letter-spacing:.06em; text-transform:uppercase; padding:.16rem .45rem; border-radius:6px; border:1px solid;}
@@ -119,7 +131,8 @@
   .note{font-size:.8rem; color:var(--muted); background:var(--surface); border:1px solid var(--border2); border-left:3px solid var(--yellow); border-radius:8px; padding:.6rem .75rem; margin-top:.8rem;}
   .loading{color:var(--muted); padding:2rem 0; text-align:center;}
   footer{margin-top:2.5rem; text-align:center; color:var(--faint); font-size:.75rem;}
-  @media(max-width:820px){ .sides,.maps,.lanes{grid-template-columns:1fr} .unlocks{grid-template-columns:1fr} .res-stages{grid-template-columns:1fr} h1{font-size:1.45rem} }
+  @media(max-width:820px){ .sides,.maps,.lanes{grid-template-columns:1fr} .unlocks{grid-template-columns:1fr} h1{font-size:1.45rem}
+    .search-row{min-height:0; align-items:center} .cave{width:40px; height:58px} .res-stages{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
@@ -141,7 +154,14 @@
     <div class="search-wrap">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
       <input type="text" id="search" placeholder="TYPE NAME. SEE WHERE YOU GO." autocomplete="off" translate="no" class="notranslate">
-      <div class="results" id="results"></div>
+    </div>
+  </div>
+  <div class="results" id="results"></div>
+
+  <div class="modal-overlay" id="modal" role="dialog" aria-modal="true" aria-label="Your assignment">
+    <div class="modal">
+      <button type="button" class="modal-close" id="modalClose" aria-label="Close">&#10005;</button>
+      <div id="modalBody"></div>
     </div>
   </div>
 
@@ -291,36 +311,67 @@
     root.appendChild(st);
   }
 
-  // ---- search ----
+  // ---- search: list names, open the detail in a modal ----
   function norm(s){return String(s||'').toLowerCase().trim();}
+  var LAST=[];
+
+  function assignmentCard(p){
+    var wrap=document.createElement('div');
+    var top=el('div','res-top');
+    top.appendChild(el('span','res-name notranslate',esc(p.name)));
+    top.appendChild(el('span','pill '+(p.side==='attack'?'p-att':'p-def'),p.side==='attack'?'ATTACK':'DEFEND'));
+    top.appendChild(el('span','pill p-dim notranslate',esc(p.alliance||'')));
+    top.appendChild(el('span','pill p-dim notranslate',esc(p.profession||'')));
+    top.appendChild(el('span','pill p-dim notranslate',esc(p.unit||'')));
+    top.appendChild(el('span','pill p-dim notranslate',fmtCp(p.cpMillions||0)));
+    if(p.squad) top.appendChild(el('span','pill p-sq',esc(p.squad)));
+    wrap.appendChild(top);
+    if(p.reason) wrap.appendChild(el('div','why',esc(p.reason)));
+    var g=el('div','res-stages');
+    (PLAN?PLAN.stages:[]).forEach(function(s){
+      g.appendChild(el('div','rs','<div class="t notranslate">'+s.name+' &middot; '+s.time+'</div><div class="v">'+esc(p.targets[s.id]||'Reserve')+'</div>'));
+    });
+    wrap.appendChild(g);
+    var same = p.targets.s1===p.targets.s2 && p.targets.s2===p.targets.s3;
+    wrap.appendChild(el('div','why', same
+      ? 'You hold this the whole fight. Keep it filled, do not chase other buildings.'
+      : 'Move when the clock says so: L3 at 15:00' + (p.squad==='Capital' ? ', Capital at 30:00.' : '. Hold the L3 when the Capital group leaves.')));
+    return wrap;
+  }
+
+  var lastFocus=null;
+  function openModal(p){
+    var body=$('modalBody'); body.innerHTML='';
+    body.appendChild(assignmentCard(p));
+    lastFocus=document.activeElement;
+    $('modal').classList.add('open');
+    $('modalClose').focus();
+  }
+  function closeModal(){
+    $('modal').classList.remove('open');
+    if(lastFocus&&lastFocus.focus) lastFocus.focus();
+  }
+  $('modalClose').addEventListener('click',closeModal);
+  $('modal').addEventListener('click',function(e){ if(e.target===$('modal')) closeModal(); });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeModal(); });
+
   function doSearch(){
     var q=norm($('search').value), out=$('results'); out.innerHTML='';
-    if(!q||!PLAN) return;
-    var hits=PLAN.players.filter(function(p){return norm(p.name).indexOf(q)>=0;}).slice(0,8);
+    if(!q||!PLAN){ LAST=[]; return; }
+    var hits=PLAN.players.filter(function(p){return norm(p.name).indexOf(q)>=0;}).slice(0,10);
+    LAST=hits;
     if(!hits.length){ out.appendChild(el('div','empty','No player matches that name. Did you submit your preferences on the SvS page?')); return; }
     hits.forEach(function(p){
-      var d=el('div','res');
-      var top=el('div','res-top');
-      top.appendChild(el('span','res-name notranslate',esc(p.name)));
-      top.appendChild(el('span','pill '+(p.side==='attack'?'p-att':'p-def'),p.side==='attack'?'ATTACK':'DEFEND'));
-      top.appendChild(el('span','pill p-dim notranslate',esc(p.alliance||'')));
-      top.appendChild(el('span','pill p-dim notranslate',esc(p.profession||'')));
-      top.appendChild(el('span','pill p-dim notranslate',esc(p.unit||'')));
-      top.appendChild(el('span','pill p-dim notranslate',fmtCp(p.cpMillions||0)));
-      if(p.squad) top.appendChild(el('span','pill p-sq',esc(p.squad)));
-      d.appendChild(top);
-      if(p.reason) d.appendChild(el('div','why',esc(p.reason)));
-      var g=el('div','res-stages');
-      PLAN.stages.forEach(function(s){
-        g.appendChild(el('div','rs','<div class="t notranslate">'+s.name+' &middot; '+s.time+'</div><div class="v">'+esc(p.targets[s.id]||'Reserve')+'</div>'));
-      });
-      d.appendChild(g);
-      var mv = (p.targets.s1===p.targets.s3 && p.targets.s1===p.targets.s2)
-        ? 'You hold this the whole fight. Keep it filled, do not chase other buildings.'
-        : 'Move when the clock says so: L3 at 15:00' + (p.squad==='Capital' ? ', Capital at 30:00.' : '. Hold the L3 when the Capital group leaves.');
-      d.appendChild(el('div','why',mv));
-      out.appendChild(d);
+      var b=document.createElement('button');
+      b.type='button'; b.className='res';
+      b.innerHTML='<span class="res-name notranslate">'+esc(p.name)+'</span>'
+        + '<span class="pill '+(p.side==='attack'?'p-att':'p-def')+'">'+(p.side==='attack'?'ATTACK':'DEFEND')+'</span>'
+        + '<span class="res-go notranslate">tap</span>';
+      b.addEventListener('click',function(){ openModal(p); });
+      out.appendChild(b);
     });
+    // exactly one match: go straight to it
+    if(hits.length===1 && norm(hits[0].name)===q) openModal(hits[0]);
   }
   $('search').addEventListener('input',doSearch);
 
