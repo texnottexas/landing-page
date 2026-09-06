@@ -4470,6 +4470,42 @@
     await _ar_handshake(hash);
   }
 
+  // Kinds the import bookmarklet writes. Deliberately excludes 'runepool':
+  // that snapshot is only ever hand-entered by the player or applied from an
+  // advisor plan, never derived from an import, so a wipe must leave it alone.
+  var _AR_IMPORT_KINDS = ['inv', 'gear', 'heroes', 'enigma', 'decor', 'skin', 'bench', 'chips', 'formation'];
+
+  // Owner-only wipe of every imported supplement, so the armory falls back to
+  // whatever the player's battle reports carry. Deleting server-side is not
+  // enough on its own: the background self-heal re-uploads any local copy that
+  // outlives the delete, so each kind is dropped from localStorage too.
+  async function _ar_clearImportedSupplements(siteKey) {
+    await _ar_ensureSupplementToken(siteKey);
+    if (!_ar_supplementToken) throw new Error('No token. Re-verify your UID.');
+    var cleared = [], failed = [];
+    for (var i = 0; i < _AR_IMPORT_KINDS.length; i++) {
+      var kind = _AR_IMPORT_KINDS[i];
+      var ok = false;
+      try {
+        var r = await fetch(SUPPLEMENT_WORKER + '/supplement/' + kind + '/' + siteKey, {
+          method: 'DELETE',
+          headers: { 'Authorization': 'Bearer ' + _ar_supplementToken }
+        });
+        // 404 means it was already gone, which is the state we wanted anyway.
+        ok = r.ok || r.status === 404;
+      } catch (e) { ok = false; }
+      // Drop the local copy either way. Leaving it behind is what lets the
+      // background self-heal push the data straight back up to the worker.
+      try {
+        ArmoryIdentity.removeSupplement(kind, siteKey);
+        ArmoryIdentity.removeSupplementMeta(kind, siteKey);
+        ArmoryIdentity.removeLastSync(kind, siteKey);
+      } catch (e2) {}
+      (ok ? cleared : failed).push(kind);
+    }
+    return { cleared: cleared, failed: failed };
+  }
+
   // Background re-sync: if the owner has local data newer than what the
   // worker holds (or the worker has nothing), push it up using the cached
   // uidHash. Silent on success — only the owner notices via the toolbar
@@ -8870,6 +8906,58 @@
       desc: 'Auto-runs the Skip and Confirm loop on the Alliance Defense fortress so you can fast-forward to a target wave. Click the defender monster to open its panel, run this, pick your stop wave, and watch it go. Each skip spends the normal in-game skip cost, and you can stop after any wave.',
       url: 'javascript:(function(){var s=document.createElement(\'script\');s.src=\'https://2864tw.com/defense-skip-bookmarklet.js?_=\'+Date.now();s.onerror=function(){alert(\'Bookmarklet load failed. Check internet + try again.\');};document.body.appendChild(s);})();'
     }));
+
+    // -- Section 3: Clear imported game data --
+    // Escape hatch for a stale bookmarklet snapshot when the player has no
+    // time to run a fresh import: wipe it and let the battle reports drive.
+    var clrWrap = makeSection('Clear imported game data');
+    var clrHint = document.createElement('div');
+    clrHint.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;';
+    clrHint.textContent = 'Deletes your bookmarklet import so gear, heroes, decorations, skins, enigma and formation rebuild from your battle reports instead. Use this when your import has gone stale and you do not have time to run a fresh one. A rune pool you entered by hand is kept, but the auto-derived pool goes empty, because battle reports do not include your inventory.';
+    clrWrap.appendChild(clrHint);
+
+    var clrStatus = document.createElement('div');
+    clrStatus.style.cssText = 'font-size:.7rem;line-height:1.4;color:var(--muted);';
+
+    var clrBtn = document.createElement('button');
+    clrBtn.className = 'rh-prefs-btn';
+    clrBtn.type = 'button';
+    clrBtn.textContent = 'Clear imported data';
+    clrBtn.style.cssText = 'align-self:flex-start;border-color:#d29922;color:#d29922;';
+    clrBtn.addEventListener('click', async function () {
+      var ident = (typeof getStoredIdentity === 'function') ? getStoredIdentity() : null;
+      var sk = (wizardState.player && wizardState.player.siteKey) || (ident && ident.siteKey) || null;
+      if (!sk) {
+        clrStatus.style.color = 'var(--red)';
+        clrStatus.textContent = 'No siteKey available. Verify your UID first.';
+        return;
+      }
+      if (!confirm('Clear your imported game data?\n\nRebuilt from your battle reports: gear, heroes, decorations, skins, enigma, formation.\nKept: a rune pool you entered by hand, your battle reports, and your share codes.\n\nThe auto-derived rune pool stays empty until you run the import again.')) return;
+      clrBtn.disabled = true;
+      clrStatus.style.color = 'var(--muted)';
+      clrStatus.textContent = 'Clearing...';
+      var res;
+      try {
+        res = await _ar_clearImportedSupplements(sk);
+      } catch (e) {
+        clrBtn.disabled = false;
+        clrStatus.style.color = 'var(--red)';
+        clrStatus.textContent = 'Could not clear: ' + e.message;
+        return;
+      }
+      if (res.failed.length) {
+        clrBtn.disabled = false;
+        clrStatus.style.color = 'var(--red)';
+        clrStatus.textContent = 'Cleared ' + res.cleared.length + ', but these failed: '
+          + res.failed.join(', ') + '. Try again in a moment.';
+        return;
+      }
+      clrStatus.style.color = 'var(--green)';
+      clrStatus.textContent = 'Cleared. Reloading so your report rebuilds from your battle reports.';
+      setTimeout(function () { location.reload(); }, 900);
+    });
+    clrWrap.appendChild(clrBtn);
+    clrWrap.appendChild(clrStatus);
   }
 
   function closeIdentityPrefs() {
