@@ -39,10 +39,8 @@
     '.tsv-title{font-size:1.05rem;font-weight:700}',
     '.tsv-x{background:none;border:0;color:#8b949e;font-size:1.1rem;cursor:pointer;padding:.2rem .35rem;line-height:1}',
     '.tsv-x:hover{color:#e6edf3}',
-    '.tsv-sub{color:#8b949e;font-size:.8rem;margin-top:.15rem}',
-    '.tsv-why{margin:.85rem 0;padding:.7rem .8rem;border-radius:10px;font-size:.86rem;line-height:1.5;',
+    '.tsv-why{margin:.9rem 0 .95rem;padding:.75rem .85rem;border-radius:10px;font-size:.86rem;line-height:1.5;',
       'background:rgba(121,192,255,.08);border:1px solid rgba(121,192,255,.28)}',
-    '.tsv-why b{color:#79c0ff}',
     '.tsv-opt{display:flex;align-items:flex-start;gap:.65rem;padding:.6rem .7rem;margin-bottom:.45rem;',
       'border:1px solid #30363d;border-radius:11px;background:#1c2128;cursor:pointer}',
     '.tsv-opt:hover{border-color:#8b949e}',
@@ -51,8 +49,6 @@
     '.tsv-when{font-weight:600;font-size:.92rem}',
     '.tsv-when i{font-style:normal;color:#79c0ff}',
     '.tsv-game{display:block;color:#8b949e;font-size:.76rem;margin-top:.15rem;font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace}',
-    '.tsv-note{width:100%;margin-top:.7rem;padding:.55rem .7rem;border-radius:9px;background:#0d1117;',
-      'border:1px solid #30363d;color:#e6edf3;font-size:.86rem;font-family:inherit;-webkit-appearance:none;appearance:none}',
     '.tsv-save{display:block;width:100%;margin-top:.8rem;padding:.7rem 1rem;border-radius:10px;border:0;',
       'background:#3fb950;color:#06140a;font-weight:700;font-size:.92rem;cursor:pointer;font-family:inherit}',
     '.tsv-save:disabled{opacity:.6;cursor:default}',
@@ -163,20 +159,16 @@
 
     ov.innerHTML =
       '<div class="tsv-box">' +
-        '<div class="tsv-head"><span class="tsv-title">One quick question</span>' +
+        '<div class="tsv-head"><span class="tsv-title">Titan Canyon Availability Survey</span>' +
           '<button type="button" class="tsv-x" aria-label="Close">✕</button></div>' +
-        '<div class="tsv-sub">Squad times are being re-cut this week</div>' +
-        '<div class="tsv-why">Last round most of us gave one battle time only, so four of our seven ' +
-          'squads ended up too small to fight. This is not your signup and it will not change it. ' +
-          '<b>Tick every time you would really turn up for</b>, including any that is not the one you ' +
-          'normally pick. Only tick a time you would actually show up to. An honest answer is worth ' +
-          'more to us than a generous one.</div>' +
+        '<div class="tsv-why">This is to help re-balance the Titan Canyon squad times between ' +
+          'alliances, so we can make progress towards improving matchmaking. This is not the signup, ' +
+          'but a one time survey. Check the box for every time you would really be available to ' +
+          'fight (actually).</div>' +
         rows +
         '<label class="tsv-opt"><input type="checkbox" class="tsv-cb tsv-none">' +
           '<span><span class="tsv-when">None of these work for me</span>' +
           '<span class="tsv-game">tell us that too, it counts as an answer</span></span></label>' +
-        '<input type="text" class="tsv-note" maxlength="200" ' +
-          'placeholder="Optional: a time that would work better for you">' +
         '<button type="button" class="tsv-save">Save my real availability</button>' +
         '<button type="button" class="tsv-skip">Not now</button>' +
         '<div class="tsv-status"></div>' +
@@ -230,8 +222,7 @@
           alliance: opts.identity.alliance || '',
           slots: picked,
           none: !picked.length,
-          tz: tz,
-          note: ov.querySelector('.tsv-note').value || ''
+          tz: tz
         })
       }).then(function (r) {
         return r.json().then(function (j) { return { ok: r.ok, j: j }; });
