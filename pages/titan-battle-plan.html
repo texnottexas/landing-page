@@ -345,6 +345,16 @@ var TITAN_API = 'https://push-worker.27tb8s6fct.workers.dev';
 const SQUADS = ["Dog Squad A","Dog Squad B","MSS Squad A","MSS Squad B","PRU Squad A","DGen Squad A","DGen Squad B"];
 const SQUAD_SHORT = {"Dog Squad A":"Dog A (+2)","Dog Squad B":"Dog B (-2)","MSS Squad A":"MSS A (+2)","MSS Squad B":"MSS B (+10)","PRU Squad A":"PRU A (-6)","DGen Squad A":"DGen A (-6)","DGen Squad B":"DGen B (-2)"};
 
+// Squads this week's slot config actually fields. SQUADS is the superset of every
+// label that has ever existed (PRU comes back when PRU has players again), but the
+// plan only carries the squads the live config derived — so iterating SQUADS blind
+// renders a phantom tab for a retired squad, reading "No battle plan yet". Falls
+// back to the full list when the plan is empty (the offline snapshot path).
+function activeSquads() {
+  var live = SQUADS.filter(function (sq) { return Object.prototype.hasOwnProperty.call(planData, sq); });
+  return live.length ? live : SQUADS;
+}
+
 const POS_GROUPS = [
   { title: "CE Positions (Map #1–2)", nums: [1, 2] },
   { title: "MM Positions (Map #3–8)", nums: [3, 4, 5, 6, 7, 8] },
@@ -500,7 +510,7 @@ function squadAllianceClass(sq) {
 
 function buildTabs() {
   const container = document.querySelector(".squad-tabs");
-  SQUADS.forEach(sq => {
+  activeSquads().forEach(sq => {
     const btn = document.createElement("button");
     btn.className = ("tab-btn " + squadAllianceClass(sq)).trim();
     btn.textContent = SQUAD_SHORT[sq];
@@ -784,7 +794,8 @@ async function init() {
   players = Array.isArray(results[1]) ? results[1] : [];
   me = resolveMe();
   myAssign = me ? findMyAssignment(me.name) : null;
-  if (SQUADS.length) selectSquad(myAssign ? myAssign.squad : SQUADS[0]);
+  const act = activeSquads();
+  if (act.length) selectSquad(myAssign ? myAssign.squad : act[0]);
 }
 
 init();

@@ -969,6 +969,38 @@ async function loadRoster() {
 const SQUADS = ["Dog Squad A","Dog Squad B","MSS Squad A","MSS Squad B","PRU Squad A","DGen Squad A","DGen Squad B"];
 const SQUAD_SHORT = {"Dog Squad A":"Dog A (+2)","Dog Squad B":"Dog B (-2)","MSS Squad A":"MSS A (+2)","MSS Squad B":"MSS B (+10)","PRU Squad A":"PRU A (-6)","DGen Squad A":"DGen A (-6)","DGen Squad B":"DGen B (-2)"};
 
+// Squads this week's slot config actually fields. SQUADS is the superset of every
+// label that has ever existed (PRU comes back when PRU has players again), but the
+// plan only carries the squads the live config derived — so iterating SQUADS blind
+// renders a phantom tab for a retired squad, reading "No battle plan yet". Falls
+// back to the full list when the plan is empty (the offline snapshot path).
+function activeSquads() {
+  var live = SQUADS.filter(function (sq) { return Object.prototype.hasOwnProperty.call(planData, sq); });
+  return live.length ? live : SQUADS;
+}
+
+// Repopulate a squad <select> from the live config. The markup lists every squad
+// label that has ever existed, so a retired one (PRU while DGen holds -6) would
+// otherwise stay selectable and come back 400 bad_squad — the worker validates
+// against titanSquadNames(cfg). Non-squad options (the Parking Lot) are kept.
+function sqFillSquadSelect(sel) {
+  if (!sel) return;
+  var keep = [];
+  for (var i = 0; i < sel.options.length; i++) {
+    var o = sel.options[i];
+    if (SQUADS.indexOf(o.value) === -1) keep.push({ value: o.value, text: o.textContent });
+  }
+  sel.innerHTML = '';
+  keep.forEach(function (k) {
+    var o = document.createElement('option');
+    o.value = k.value; o.textContent = k.text; sel.appendChild(o);
+  });
+  activeSquads().forEach(function (sq) {
+    var o = document.createElement('option');
+    o.value = sq; o.textContent = sq; sel.appendChild(o);
+  });
+}
+
 const POSITIONS = [
   { num:1, role:"Bigger CE", color:"#3fb950", x:22, y:22 },
   { num:2, role:"Medium-strong CE", color:"#3fb950", x:78, y:78 },
@@ -1019,7 +1051,7 @@ function toggleTheme() {
   // editor's dropdowns can resolve each squad member's power/profession/unit.
   await Promise.all([loadData(), loadRoster(), loadSquadPlayers()]);
   buildTabs();
-  selectSquad(SQUADS[0]);
+  selectSquad(activeSquads()[0]);
   // Squads is the primary roster-management view; show it first.
   switchView('squads');
 })();
@@ -1447,7 +1479,7 @@ function playerOptHtml(sqPlayers, selected, filterProf, placedLabels) {
 // ── UI ────────────────────────────────────────────────────────────────────────
 function buildTabs() {
   const c = document.getElementById("squadTabs");
-  SQUADS.forEach(sq => {
+  activeSquads().forEach(sq => {
     const btn = document.createElement("button");
     btn.className = "tab-btn";
     btn.textContent = SQUAD_SHORT[sq];
@@ -2979,7 +3011,6 @@ var SQUAD_META = {
   'DGen Squad A': { alliance: 'DGen', slot: '-6'  },
   'DGen Squad B': { alliance: 'DGen', slot: '-2'  }
 };
-var SQ_NAMES = SQUADS;
 var SQ_BUCKETS = SECTIONS.map(s => s.key);
 var SQ_BUCKET_LABEL = { goon: 'Goon Squad', standby: 'Standby', hover: 'Hover Captain', crystal: 'Crystal Lab Captain' };
 var ALL_DISPLAY = { 'DOG': 'Dog', 'MSS': 'MSS', 'PRU': 'PRU', 'DGen': 'DGen', 'Cat+': 'DGen' };
@@ -3179,7 +3210,7 @@ function renderSquads(report) {
   grid.className = 'sq-grid';
   var lookup = buildRosterLookup();
 
-  SQ_NAMES.forEach(function (sq) {
+  activeSquads().forEach(function (sq) {
     var data = sqPlan[sq] || {};
     var meta = SQUAD_META[sq] || {};
     var count = sqCountMembers(data);
@@ -3480,6 +3511,7 @@ function sqOpenMove(name, squad, position, bucket) {
     ? 'Currently parked (in no squad). Pick a squad and spot to place them back, or leave in the Parking Lot.'
     : ('Currently in ' + squad + (position ? ' position #' + position : (bucket ? ' (' + (SQ_BUCKET_LABEL[bucket] || bucket) + ')' : '')) + '. Pick a new squad and spot, or move to the Parking Lot.');
   var squadSel = document.getElementById('sqMoveSquad');
+  sqFillSquadSelect(squadSel);
   squadSel.value = squad;
   var spotSel = document.getElementById('sqMoveSpot');
   sqFillSpotSelect(spotSel, squad, position != null ? ('pos:' + position) : (bucket ? ('bucket:' + bucket) : null));
@@ -3564,6 +3596,7 @@ function sqOpenAdd() {
   document.getElementById('sqAddStatus').textContent = '';
   document.getElementById('sqAddSave').disabled = false;
   var squadSel = document.getElementById('sqAddSquad');
+  sqFillSquadSelect(squadSel);
   var spotSel = document.getElementById('sqAddSpot');
   sqFillSpotSelect(spotSel, squadSel.value, null);
   squadSel.onchange = function () { sqFillSpotSelect(spotSel, squadSel.value, null); };
