@@ -631,6 +631,7 @@
     <button class="tab-btn" id="viewTabDraft" data-view="draft" onclick="switchView('draft')">Draft Board</button>
     <button class="tab-btn" id="viewTabChangelog" data-view="changelog" onclick="switchView('changelog')">Changelog</button>
     <button class="tab-btn" id="viewTabTraining" data-view="training" onclick="switchView('training')">Training</button>
+    <button class="tab-btn" id="viewTabAvail" data-view="avail" onclick="switchView('avail')">Availability</button>
     <button class="tab-btn" id="viewTabGameSync" data-view="gamesync" onclick="switchView('gamesync')">Game Signup</button>
   </div>
 
@@ -745,6 +746,23 @@
     <div id="cl-list"></div>
   </section>
 
+  <section id="titan-avail-tab" style="display:none">
+    <div class="card">
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+        <strong style="margin-bottom:0">Real availability survey</strong>
+        <button id="av-refresh" class="hdr-btn" type="button">Refresh</button>
+        <span id="av-status" class="muted"></span>
+      </div>
+      <div class="muted" style="margin-top:.5rem">
+        One-off survey shown once before signup, asking which battle times each player could
+        <b>actually</b> make. Last round 117 of 138 gave exactly one time, which left four of seven
+        squads too small to fight. <b>Widened</b> below is the number who named a time they had
+        <b>not</b> put on their signup, which is the whole reason for asking.
+      </div>
+      <div id="av-summary" style="margin-top:.7rem"></div>
+      <div id="av-table" style="margin-top:.7rem"></div>
+    </div>
+  </section>
   <section id="titan-training-tab" style="display:none">
     <div class="card">
       <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
@@ -1909,6 +1927,89 @@ function initCabBookmarkletCard() {
 }
 
 var titanSquadsLoaded = false;
+// --- Real availability survey (one-off, 2026-09) ---------------------------
+// Reads GET /titan/availability (editor-authed). The worker serves it from KV
+// metadata in one list() call, so this is cheap to refresh.
+function avEsc(t){ return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+function loadAvailability() {
+  var status = document.getElementById('av-status');
+  status.textContent = 'Loading\u2026';
+  fetch(TITAN_API + '/titan/availability', { headers: { 'X-Titan-Edit-Password': titanEditPw } })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (!j || j.ok !== true) { status.textContent = 'Error: ' + ((j && j.error) || 'failed'); return; }
+      status.textContent = 'Week ' + avEsc(j.week);
+      renderAvailability(j);
+    })
+    .catch(function () { status.textContent = 'Network error.'; });
+}
+
+function renderAvailability(j) {
+  var st = j.stats || {}, slots = j.slots || [], rows = j.responses || [];
+  var order = slots.map(function (s) { return s.id; });
+
+  if (!rows.length) {
+    document.getElementById('av-summary').innerHTML =
+      '<div class="muted">No answers yet. The survey shows on the signup page for the open week.</div>';
+    document.getElementById('av-table').innerHTML = '';
+    return;
+  }
+
+  var tiles = [
+    { n: st.total, l: 'answered' },
+    { n: st.multi, l: 'can do more than one time' },
+    { n: st.widened, l: 'named a time not on their signup' },
+    { n: st.none, l: 'cannot make any of them' }
+  ].map(function (t) {
+    return '<div style="background:#1c2128;border:1px solid #30363d;border-radius:10px;padding:.6rem .75rem;min-width:120px">' +
+      '<div style="font-size:1.4rem;font-weight:700">' + (t.n || 0) + '</div>' +
+      '<div class="muted" style="font-size:.75rem">' + t.l + '</div></div>';
+  }).join('');
+
+  var maxSlot = Math.max(1, Math.max.apply(null, order.map(function (id) { return (st.perSlot || {})[id] || 0; })));
+  var bars = order.map(function (id) {
+    var v = (st.perSlot || {})[id] || 0;
+    return '<div style="display:grid;grid-template-columns:64px 1fr 44px;gap:.5rem;align-items:center;margin-top:.3rem">' +
+      '<span class="muted" style="font-family:monospace">' + avEsc(id) + '</span>' +
+      '<span style="height:9px;background:#222a35;border-radius:5px;overflow:hidden;display:block">' +
+        '<i style="display:block;height:100%;width:' + (v / maxSlot * 100) + '%;background:#3fb950"></i></span>' +
+      '<span style="font-family:monospace;text-align:right">' + v + '</span></div>';
+  }).join('');
+
+  document.getElementById('av-summary').innerHTML =
+    '<div style="display:flex;gap:.5rem;flex-wrap:wrap">' + tiles + '</div>' +
+    '<div style="margin-top:.8rem"><div class="muted" style="font-size:.78rem">How many can make each time</div>' + bars + '</div>';
+
+  // Most useful ordering for acting on this: the people who can do the most times first.
+  var sorted = rows.slice().sort(function (a, b) {
+    return (b.slots || []).length - (a.slots || []).length ||
+           String(a.name || '').localeCompare(String(b.name || ''));
+  });
+  var body = sorted.map(function (r) {
+    var picks = (r.slots || []).length
+      ? (r.slots || []).map(function (x) { return '<code>' + avEsc(x) + '</code>'; }).join(' ')
+      : '<span class="muted">none of them</span>';
+    return '<tr><td>' + avEsc(r.name || '(unnamed)') + '</td>' +
+      '<td>' + picks + '</td>' +
+      '<td class="muted" style="font-size:.75rem">' + avEsc(r.tz || '') + '</td>' +
+      '<td class="muted" style="font-size:.78rem">' + avEsc(r.note || '') + '</td></tr>';
+  }).join('');
+  document.getElementById('av-table').innerHTML =
+    '<table style="width:100%;border-collapse:collapse;font-size:.85rem">' +
+    '<thead><tr><th style="text-align:left;padding:.35rem;border-bottom:1px solid #30363d">Player</th>' +
+    '<th style="text-align:left;padding:.35rem;border-bottom:1px solid #30363d">Can make</th>' +
+    '<th style="text-align:left;padding:.35rem;border-bottom:1px solid #30363d">Time zone</th>' +
+    '<th style="text-align:left;padding:.35rem;border-bottom:1px solid #30363d">Note</th></tr></thead>' +
+    '<tbody>' + body + '</tbody></table>';
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  var b = document.getElementById('av-refresh');
+  if (b) b.addEventListener('click', loadAvailability);
+});
+
 function switchView(view) {
   var showSignups = view === "signups";
   var showDraft = view === "draft";
@@ -1917,6 +2018,7 @@ function switchView(view) {
   var showChangelog = view === 'changelog';
   var showGameSync = view === 'gamesync';
   var showTraining = view === 'training';
+  var showAvail = view === 'avail';
   document.getElementById("editor").style.display = showEditor ? "" : "none";
   document.getElementById("titan-signups-tab").style.display = showSignups ? "" : "none";
   document.getElementById("titan-draft-tab").style.display = showDraft ? "" : "none";
@@ -1924,10 +2026,12 @@ function switchView(view) {
   document.getElementById("titan-changelog-tab").style.display = showChangelog ? "" : "none";
   document.getElementById("titan-gamesync-tab").style.display = showGameSync ? "" : "none";
   document.getElementById("titan-training-tab").style.display = showTraining ? "" : "none";
+  document.getElementById("titan-avail-tab").style.display = showAvail ? "" : "none";
   document.getElementById("saveBtn").style.display = showEditor ? "" : "none";
   document.querySelectorAll("#viewTabs .tab-btn").forEach(function (b) {
     b.classList.toggle("active", b.dataset.view === view);
   });
+  if (showAvail) loadAvailability();
   if (showSignups && !titanSignupsLoaded) {
     titanSignupsLoaded = true;
     loadTitanSignups();

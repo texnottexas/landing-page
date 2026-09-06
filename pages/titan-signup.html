@@ -182,6 +182,13 @@
   .success-dash-btn:hover{filter:brightness(1.08)}
   .tw-gate-skip{display:block; width:100%; margin-top:.55rem; padding:.6rem 1rem; border-radius:10px; background:transparent; border:1px solid var(--border,#30363d); color:var(--muted,#8b949e); font-weight:600; font-size:.85rem; cursor:pointer; -webkit-appearance:none; appearance:none;}
   .tw-gate-skip:hover{color:var(--text,#e6edf3); border-color:var(--muted,#8b949e);}
+  .av-note-box{margin:.1rem 0 .9rem; padding:.7rem .8rem; border-radius:10px; font-size:.86rem; line-height:1.5;
+    background:rgba(121,192,255,.08); border:1px solid rgba(121,192,255,.28); color:var(--text,#e6edf3);}
+  .av-note-box b{color:var(--accent,#79c0ff);}
+  #av-survey .slot-card.av-none{margin-top:.5rem;}
+  .av-note{margin-top:.8rem;}
+  #av-survey-status{margin-top:.6rem;}
+  .av-your-time{color:var(--accent,#79c0ff); font-weight:600;}
   .reg-kv{display:grid; grid-template-columns:max-content 1fr; gap:.5rem 1rem; font-size:.88rem}
   .reg-kv dt{color:var(--muted); font-weight:600}
   .reg-kv dd{font-weight:650; color:var(--text); margin:0}
@@ -389,6 +396,36 @@
   </div>
 </div>
 
+<!-- One-off availability survey (2026-09). Self-disables once the active week
+     moves past SURVEY_WEEK, so it never needs to be torn out by hand. -->
+<div class="reg-modal-overlay" id="av-survey" role="dialog" aria-modal="true" aria-labelledby="av-survey-title">
+  <div class="reg-modal">
+    <div class="reg-modal-head">
+      <span class="reg-modal-title" id="av-survey-title">One quick question first</span>
+      <button type="button" class="reg-modal-close" id="av-survey-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="reg-modal-sub" id="av-survey-sub"></div>
+    <div class="av-note-box">
+      Last round most of us gave one battle time only, so four of our seven squads ended up too small to fight.
+      This is not your signup. It is one question, asked once.
+      <b>Please tick every time you could actually play</b>, even if it is not the one you normally pick.
+      If you can genuinely do more than one, saying so here is the most useful thing you can do this week.
+    </div>
+    <div class="slots" id="av-survey-slots"></div>
+    <label class="slot-card av-none" id="av-none-card">
+      <input type="checkbox" class="slot-cb" id="av-none">
+      <span class="slot-box"></span>
+      <span class="slot-text"><span class="slot-name">None of these work for me</span>
+        <span class="slot-when">Tell us that too. It counts as an answer.</span></span>
+    </label>
+    <input type="text" class="input av-note" id="av-survey-note" maxlength="200"
+           placeholder="Optional: a time that would work better for you">
+    <button type="button" id="av-survey-save" class="success-dash-btn">Save my real availability</button>
+    <button type="button" id="av-survey-skip" class="tw-gate-skip">Skip for now</button>
+    <div class="status" id="av-survey-status"></div>
+  </div>
+</div>
+
 <div class="lang-modal-overlay" id="langModal">
   <div class="lang-modal">
     <div class="lang-modal-header">
@@ -478,7 +515,7 @@
       var k = normName(p && p.name);
       if (k && !playerLookup[k]) playerLookup[k] = { alliance: (p && p.alliance) || '', profession: profFromRecord(p) };
     });
-    renderWeek(); renderPlayers(); renderSlots();
+    renderWeek(); renderPlayers(); renderSlots(); maybeShowSurvey();
   });
 
   // --- "Your setup" fields: auto-fill from roster, remember the player's own
@@ -627,6 +664,171 @@
 
   // Computed display strings for one slot (battle date + ET + the viewer's local
   // time). Shared by the slot cards and the "top pick" pills.
+  // --- One-off availability survey (2026-09) --------------------------------
+  // 117 of 138 players signed up for exactly one battle time last round, which
+  // left four of seven squads too small to fight. Before signup we ask the real
+  // question once: which times could you ACTUALLY make? Answers feed a re-cut of
+  // the squad timings. Shown once per player, for SURVEY_WEEK only, so it
+  // disappears on its own when the active week rolls over.
+  var SURVEY_WEEK = '2026-09-12';
+  var SURVEY_DONE_KEY = 'titanAvailSurveyDone';
+  var surveyShown = false;
+
+  function surveyDoneLocally(idKey) {
+    try {
+      var all = JSON.parse(localStorage.getItem(SURVEY_DONE_KEY) || '{}') || {};
+      return all[SURVEY_WEEK + '|' + idKey] === true;
+    } catch (e) { return false; }
+  }
+  function markSurveyDone(idKey) {
+    try {
+      var all = JSON.parse(localStorage.getItem(SURVEY_DONE_KEY) || '{}') || {};
+      all[SURVEY_WEEK + '|' + idKey] = true;
+      localStorage.setItem(SURVEY_DONE_KEY, JSON.stringify(all));
+    } catch (e) {}
+  }
+
+  // Identity: the stored one first, else whatever name is picked in the form.
+  function surveyIdentity() {
+    try {
+      var id = JSON.parse(localStorage.getItem('playerIdentity') || 'null');
+      if (id && (id.siteKey || id.name)) return { name: id.name || '', siteKey: id.siteKey || '' };
+    } catch (e) {}
+    var sel = document.getElementById('player');
+    if (sel && sel.value && sel.value !== '__notlisted__') {
+      var opt = sel.options[sel.selectedIndex];
+      return {
+        name: (opt && opt.getAttribute('data-name') || '').trim(),
+        siteKey: /^[a-f0-9]{16}$/.test(sel.value) ? sel.value : ''
+      };
+    }
+    return null;
+  }
+
+  function renderSurveySlots() {
+    var box = document.getElementById('av-survey-slots');
+    box.innerHTML = '';
+    // Every configured time, not just this player's alliance: the point is to
+    // learn true availability so the timings themselves can be moved.
+    (cfg.slots || []).forEach(function (sl) {
+      var m = slotMeta(sl);
+      var lab = document.createElement('label'); lab.className = 'slot-card';
+      var cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = sl.id; cb.className = 'slot-cb av-slot-cb';
+      var bx = document.createElement('span'); bx.className = 'slot-box'; bx.innerHTML = CHECK;
+      var txt = document.createElement('span'); txt.className = 'slot-text';
+
+      // Line 1: the player's OWN local day and time, which is the only one they
+      // can actually check against their calendar.
+      var nm = document.createElement('span'); nm.className = 'slot-name';
+      if (m.hasTime) {
+        nm.innerHTML = '<span class="av-your-time notranslate" translate="no">' + m.localDow + ' ' + m.localTime + '</span> your time';
+      } else {
+        nm.textContent = m.dateLabel;
+      }
+      txt.appendChild(nm);
+
+      // Line 2: the same instant in game terms, which is how it is announced.
+      var when = document.createElement('span'); when.className = 'slot-when';
+      var bits = [];
+      bits.push('game time ' + m.id);
+      if (m.hasTime) bits.push(m.etTime + ' ET');
+      if (m.ba) bits.push(m.ba);
+      when.className = 'slot-when notranslate'; when.setAttribute('translate', 'no');
+      when.textContent = bits.join(' \u00b7 ');
+      txt.appendChild(when);
+
+      lab.appendChild(cb); lab.appendChild(bx); lab.appendChild(txt);
+      box.appendChild(lab);
+      cb.addEventListener('change', function () {
+        if (cb.checked) document.getElementById('av-none').checked = false;
+      });
+    });
+  }
+
+  function closeSurvey() { document.getElementById('av-survey').classList.remove('active'); }
+
+  function maybeShowSurvey() {
+    if (surveyShown) return;
+    if (!cfg || cfg.week !== SURVEY_WEEK) return;      // this week only
+    if (!(cfg.slots || []).length) return;
+    var who = surveyIdentity();
+    if (!who || (!who.siteKey && !who.name)) return;   // need to know who is answering
+    var idKey = who.siteKey || ('n:' + normName(who.name));
+    if (surveyDoneLocally(idKey)) return;
+
+    // Also ask the worker, so a player who answered on another device is not
+    // asked twice.
+    var qs = '?week=' + encodeURIComponent(SURVEY_WEEK) +
+             '&siteKey=' + encodeURIComponent(who.siteKey || '') +
+             '&name=' + encodeURIComponent(who.name || '');
+    fetch(TITAN_API + '/titan/my-availability' + qs)
+      .then(function (r) { return r.json(); })
+      .catch(function () { return null; })
+      .then(function (j) {
+        if (j && j.record) { markSurveyDone(idKey); return; }
+        if (surveyShown) return;
+        surveyShown = true;
+        document.getElementById('av-survey-sub').textContent =
+          'Squad times are being re-cut this week';
+        renderSurveySlots();
+        document.getElementById('av-survey').classList.add('active');
+      });
+  }
+
+  (function wireSurvey() {
+    var none = document.getElementById('av-none');
+    none.addEventListener('change', function () {
+      if (none.checked) {
+        document.querySelectorAll('.av-slot-cb').forEach(function (c) { c.checked = false; });
+      }
+    });
+    document.getElementById('av-survey-close').addEventListener('click', closeSurvey);
+    document.getElementById('av-survey-skip').addEventListener('click', closeSurvey);
+    document.getElementById('av-survey').addEventListener('click', function (e) {
+      if (e.target && e.target.id === 'av-survey') closeSurvey();
+    });
+
+    document.getElementById('av-survey-save').addEventListener('click', function () {
+      var btn = this;
+      var status = document.getElementById('av-survey-status');
+      var who = surveyIdentity();
+      if (!who) { status.textContent = 'Pick your name first.'; return; }
+      var picked = [];
+      document.querySelectorAll('.av-slot-cb').forEach(function (c) { if (c.checked) picked.push(c.value); });
+      var none = document.getElementById('av-none').checked;
+      if (!picked.length && !none) {
+        status.textContent = 'Tick at least one time, or tick "None of these work for me".';
+        return;
+      }
+      btn.disabled = true; status.textContent = 'Saving\u2026';
+      var tz = '';
+      try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+      fetch(TITAN_API + '/titan/availability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          week: SURVEY_WEEK, name: who.name || '', siteKey: who.siteKey || '',
+          slots: picked, none: !picked.length, tz: tz,
+          note: document.getElementById('av-survey-note').value || ''
+        })
+      }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+          if (!res.ok || !res.j || res.j.ok !== true) {
+            btn.disabled = false;
+            status.textContent = 'Could not save that (' + ((res.j && res.j.error) || 'error') + '). Please try again.';
+            return;
+          }
+          markSurveyDone(who.siteKey || ('n:' + normName(who.name)));
+          status.textContent = 'Thank you. That is recorded.';
+          setTimeout(closeSurvey, 900);
+        })
+        .catch(function () {
+          btn.disabled = false;
+          status.textContent = 'Network problem. Please try again.';
+        });
+    });
+  })();
+
   function slotMeta(s) {
     var offset = parseInt(s.id, 10);
     var m = { id: s.id, ba: '', alliances: (s.alliances || []).join(' · '), hasTime: false, dateLabel: s.label || s.id, etTime: '', localTime: '', localDow: '' };
@@ -675,6 +877,7 @@
       if (p) applyPlayerDefaults(p.name, p.siteKey);
       if (p && p.siteKey) checkTrainingGate(p.siteKey, p.name); // up-front training heads-up
       refreshViewRegBtn();
+      maybeShowSurvey();
     });
 
     // Apply defaults for a pre-selected player (returning visitor).
