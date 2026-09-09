@@ -348,11 +348,12 @@ const SQUAD_SHORT = {"Dog Squad A":"Dog A (+2)","Dog Squad B":"Dog B (-2)","MSS 
 // Squads this week's slot config actually fields. SQUADS is the superset of every
 // label that has ever existed (PRU comes back when PRU has players again), but the
 // plan only carries the squads the live config derived — so iterating SQUADS blind
-// renders a phantom tab for a retired squad, reading "No battle plan yet". Falls
-// back to the full list when the plan is empty (the offline snapshot path).
+// renders a phantom tab for a retired squad, reading "No battle plan yet".
+// Returns [] when no plan has loaded: there is deliberately NO fall back to the
+// full list, because that showed players a PRU A (-6) tab for a slot PRU has not
+// held since the 2026-09-12 re-cut. Callers must run this AFTER loadData().
 function activeSquads() {
-  var live = SQUADS.filter(function (sq) { return Object.prototype.hasOwnProperty.call(planData, sq); });
-  return live.length ? live : SQUADS;
+  return SQUADS.filter(function (sq) { return Object.prototype.hasOwnProperty.call(planData, sq); });
 }
 
 const POS_GROUPS = [
@@ -510,6 +511,7 @@ function squadAllianceClass(sq) {
 
 function buildTabs() {
   const container = document.querySelector(".squad-tabs");
+  container.querySelectorAll(".tab-btn").forEach(b => b.remove());  // idempotent
   activeSquads().forEach(sq => {
     const btn = document.createElement("button");
     btn.className = ("tab-btn " + squadAllianceClass(sq)).trim();
@@ -786,16 +788,26 @@ async function loadData() {
 }
 
 async function init() {
-  buildTabs();
+  // Load FIRST, then build the tabs. Building them up front painted the row from
+  // an empty planData, so activeSquads() had nothing to filter against and every
+  // historical squad got a tab — players saw a PRU A (-6) pill for a slot DGen
+  // has held since the 2026-09-12 re-cut.
   const results = await Promise.all([
     loadData(),
     fetch("player-data.json").then(r => r.json()).catch(() => [])
   ]);
   players = Array.isArray(results[1]) ? results[1] : [];
+  buildTabs();
   me = resolveMe();
   myAssign = me ? findMyAssignment(me.name) : null;
   const act = activeSquads();
-  if (act.length) selectSquad(myAssign ? myAssign.squad : act[0]);
+  if (act.length) {
+    selectSquad(act.indexOf(myAssign && myAssign.squad) !== -1 ? myAssign.squad : act[0]);
+  } else {
+    document.getElementById("content").innerHTML =
+      '<div class="empty-state"><h3>Battle plan unavailable</h3>' +
+      '<p>Could not load the plan just now. Please refresh in a moment.</p></div>';
+  }
 }
 
 init();
