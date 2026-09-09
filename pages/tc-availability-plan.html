@@ -170,6 +170,37 @@
   .sc .cl{font-family:var(--disp); font-size:1.5rem; font-weight:700; margin:.25rem 0 .05rem}
   .sc .nd{font-family:var(--mono); font-size:.66rem; color:var(--faint)}
 
+  /* --- week switcher --- */
+  .wksw{display:flex; flex-wrap:wrap; gap:.5rem; margin:1.3rem 0 .2rem}
+  .wkb{flex:1 1 210px; text-align:left; background:var(--card); border:1px solid var(--line);
+    border-radius:12px; padding:.6rem .8rem; cursor:pointer; font-family:var(--sans); color:var(--muted)}
+  .wkb:hover{border-color:var(--accent)}
+  .wkb[aria-pressed="true"]{border-color:var(--accent); background:color-mix(in srgb,var(--accent) 9%,var(--card)); color:var(--ink)}
+  .wkb .wkw{font-family:var(--mono); font-size:.86rem; font-weight:600; display:block}
+  .wkb .wkm{font-size:.71rem; color:var(--faint); margin-top:.15rem; display:block}
+  .wkb[aria-pressed="true"] .wkm{color:var(--muted)}
+  .pill{display:inline-block; font-family:var(--mono); font-size:.62rem; letter-spacing:.06em;
+    text-transform:uppercase; padding:.05rem .4rem; border-radius:20px; border:1px solid; margin-left:.35rem}
+  .pill.closed{color:var(--seal); border-color:color-mix(in srgb,var(--seal) 50%,transparent)}
+  .pill.open{color:var(--short); border-color:color-mix(in srgb,var(--short) 50%,transparent)}
+  .openwarn{margin:1rem 0 0; padding:.8rem .95rem; border-radius:11px; font-size:.88rem;
+    background:color-mix(in srgb,var(--short) 9%,transparent);
+    border:1px solid color-mix(in srgb,var(--short) 32%,var(--line)); color:var(--ink)}
+  .openwarn b{color:var(--short)}
+
+  /* --- survey deltas --- */
+  .dgrid{display:grid; grid-template-columns:repeat(4,1fr); gap:.6rem; margin-top:.2rem}
+  @media(max-width:700px){.dgrid{grid-template-columns:repeat(2,1fr)}}
+  .dc{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:.75rem .8rem; text-align:center}
+  .dc .ds{font-family:var(--mono); font-size:.8rem; font-weight:600}
+  .dc .dv{font-family:var(--disp); font-size:1.5rem; font-weight:700; margin:.3rem 0 .1rem}
+  .dc .dd{font-family:var(--mono); font-size:.72rem}
+  .dc .dsub{font-family:var(--mono); font-size:.66rem; color:var(--faint); margin-top:.2rem}
+  .wide{width:100%; border-collapse:collapse; font-size:.82rem; margin-top:.3rem}
+  .wide th{font-family:var(--mono); font-size:.64rem; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--faint); text-align:left; padding:.45rem .5rem; border-bottom:1px solid var(--line)}
+  .wide td{padding:.42rem .5rem; border-bottom:1px solid var(--line-soft)}
+
   /* --- week over week --- */
   .wow{display:grid; grid-template-columns:repeat(4,1fr); gap:.6rem}
   @media(max-width:700px){.wow{grid-template-columns:repeat(2,1fr)}}
@@ -239,6 +270,8 @@
       <span><b>Squad cap</b> <span class="notranslate num" translate="no">35</span></span>
       <span><b>Updated</b> <span class="notranslate" id="mGen" translate="no"></span></span>
     </div>
+    <div class="wksw" id="wksw" role="group" aria-label="Choose a battle week"></div>
+    <div id="openwarn"></div>
     <div class="kpis" id="kpis"></div>
   </header>
 
@@ -299,12 +332,25 @@
     <p class="assume">These fills come from solving for the best placement of every player at once, rather than seating people in the order they signed up. A player can only take a squad at a time they listed, and can only take another alliance's squad if they ticked the swap box. Rearranging by hand will not beat these numbers.</p>
   </section>
 
-  <section id="liveSec">
-    <div class="beat"><span class="no notranslate" translate="no">06</span><div class="eyebrow q">This week so far</div></div>
-    <h2 class="verdict" id="liveVerdict"></h2>
-    <p class="lede" id="liveLede"></p>
-    <div class="wow" id="wow"></div>
-    <p class="foot" id="liveFoot"></p>
+  <section id="surveySec">
+    <div class="beat"><span class="no notranslate" translate="no">06</span><div class="eyebrow">The availability survey</div></div>
+    <h2 class="verdict">What people can actually make, against what they signed up for</h2>
+    <p class="lede" id="svLede"></p>
+    <ul class="pts" id="svPts"></ul>
+    <span class="seeviz">&#9660; per slot, survey answer minus signup</span>
+    <div class="dgrid" id="svDelta" style="margin-top:.7rem"></div>
+    <details id="svWideWrap">
+      <summary>Players whose real availability is wider than their signup (<span class="notranslate num" id="svWideN" translate="no"></span>)</summary>
+      <div class="dbody">
+        <p class="foot" style="margin-top:0">These named a slot they did not put on their signup form, so the plan above is not currently using them there.</p>
+        <div class="tscroll" style="max-height:none">
+          <table class="wide" id="svWideTable">
+            <thead><tr><th>Player</th><th>Alliance</th><th>Signed up for</th><th>Can also make</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </details>
   </section>
 
   <section>
@@ -333,292 +379,362 @@
 </div>
 
 <script>
-var DATA = {"week": "2026-08-29", "generated": "2026-09-09", "closesAt": "2026-09-10T20:00:00.000Z", "cap": 35, "seal": 24, "overflowSlot": "-6", "total": 133, "byAlliance": {"DOG": 65, "MSS": 43, "DGen": 25}, "slots": [{"id": "-6", "label": "Sat -6", "clock": "6:00 AM ET", "sub": "Before reset", "pool": 8, "byAlliance": {"DOG": 2, "MSS": 3, "DGen": 3}, "locked": 2}, {"id": "-2", "label": "Sat -2", "clock": "10:00 AM ET", "sub": "Before reset", "pool": 65, "byAlliance": {"DOG": 42, "MSS": 6, "DGen": 17}, "locked": 48}, {"id": "+2", "label": "Sat +2", "clock": "2:00 PM ET", "sub": "After reset", "pool": 57, "byAlliance": {"DOG": 17, "MSS": 30, "DGen": 10}, "locked": 40}, {"id": "+10", "label": "Sat +10", "clock": "10:00 PM ET", "sub": "After reset", "pool": 28, "byAlliance": {"DOG": 18, "MSS": 8, "DGen": 2}, "locked": 23}], "multiCount": 20, "multiPct": 15, "swapCount": 35, "swapPct": 26, "realSquads": [{"slot": "-2", "alliance": "DGen", "fill": 31, "seals": true}, {"slot": "-2", "alliance": "DOG", "fill": 30, "seals": true}, {"slot": "+2", "alliance": "DOG", "fill": 15, "seals": false}, {"slot": "+2", "alliance": "MSS", "fill": 25, "seals": true}, {"slot": "+10", "alliance": "MSS", "fill": 10, "seals": false}], "realSeated": 111, "realSealing": 3, "overflow": {"slot": "-6", "alliance": "DGen", "fill": 8, "stranded": 2, "seals": false}, "ceiling": 3, "gap": {"slot": "+10", "alliance": "MSS", "fill": 10, "pool": 28, "own": 8, "seatable": 13, "need": 11, "short": 14, "holdouts": [{"name": "Bkwyrm", "alliance": "DGen", "prof": "MM"}, {"name": "AjMaL", "alliance": "DOG", "prof": "CE"}, {"name": "Biggie", "alliance": "DOG", "prof": "CE"}, {"name": "Darkspy", "alliance": "DOG", "prof": "MM"}, {"name": "Donut🍩", "alliance": "DOG", "prof": "CE"}, {"name": "GORilla", "alliance": "DOG", "prof": "CE"}, {"name": "H̷ΣⱠMØ", "alliance": "DOG", "prof": "CE"}, {"name": "MFBluey", "alliance": "DOG", "prof": "CE"}, {"name": "Magicguy", "alliance": "DOG", "prof": "MM"}, {"name": "Maynard", "alliance": "DOG", "prof": "CE"}, {"name": "Mаximum", "alliance": "DOG", "prof": "CE"}, {"name": "Pr🍑ject", "alliance": "DOG", "prof": "CE"}, {"name": "Samson", "alliance": "DOG", "prof": "MM"}, {"name": "SmurfX😼", "alliance": "DOG", "prof": "CE"}, {"name": "Tex", "alliance": "DOG", "prof": "CE"}], "byAlliance": {"DOG": 18, "MSS": 8, "DGen": 2}}, "whatIf": {"squads": [{"slot": "-2", "alliance": "DGen", "fill": 28, "seals": true}, {"slot": "-2", "alliance": "DOG", "fill": 30, "seals": true}, {"slot": "+2", "alliance": "DOG", "fill": 14, "seals": false}, {"slot": "+2", "alliance": "MSS", "fill": 25, "seals": true}, {"slot": "+10", "alliance": "MSS", "fill": 24, "seals": true}], "seated": 121, "flips": 11, "sealing": 4}, "sens": [{"seal": 20, "plan": 3, "gapNeeds": 7}, {"seal": 22, "plan": 3, "gapNeeds": 9}, {"seal": 24, "plan": 3, "gapNeeds": 11}, {"seal": 26, "plan": 2, "gapNeeds": 13}, {"seal": 28, "plan": 2, "gapNeeds": 15}], "pairings": [{"alliance": "DOG", "n": 65, "perSlot": {"-6": 2, "-2": 42, "+2": 17, "+10": 18}, "owns": ["-2", "+2"]}, {"alliance": "MSS", "n": 43, "perSlot": {"-6": 3, "-2": 6, "+2": 30, "+10": 8}, "owns": ["+2", "+10"]}, {"alliance": "DGen", "n": 25, "perSlot": {"-6": 3, "-2": 17, "+2": 10, "+10": 2}, "owns": ["-2"]}], "roster": [{"name": "Aresu", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Bkwyrm", "alliance": "DGen", "prof": "MM", "pref": "+2", "avail": ["+2", "+10"], "canSwap": false, "locked": false}, {"name": "Caleb", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "DevilDog", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Eros⚫️😈", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-6", "-2", "+2"], "canSwap": true, "locked": false}, {"name": "Gui73🦁", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "jopn🐍", "alliance": "DGen", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "klp", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "Lady🐞", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-2", "+2"], "canSwap": false, "locked": false}, {"name": "Livv👑", "alliance": "DGen", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Lorena", "alliance": "DGen", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Marshall", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "MaSquari", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "MONKEY🐒", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "NotBlind", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2", "+10"], "canSwap": true, "locked": false}, {"name": "Obelix🦁", "alliance": "DGen", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Priit🦁", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Sake", "alliance": "DGen", "prof": "MM", "pref": "-6", "avail": ["-6"], "canSwap": true, "locked": true}, {"name": "Sloth", "alliance": "DGen", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Sloth🍍", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Smalls", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Sparkles", "alliance": "DGen", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Wonka", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "小木_Emma", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-6", "-2"], "canSwap": true, "locked": false}, {"name": "🛡️Medo", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "Abdullah", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "AjMaL", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "AlexMat", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Aqdas🔥", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "BAL", "alliance": "DOG", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Bchara⚡️", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Biggie", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Brewdog", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "BruceFFS", "alliance": "DOG", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "BuckShot", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "BURB", "alliance": "DOG", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Bycker", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Calabro", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "ChauSui", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "COYOTE", "alliance": "DOG", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Daddyknc", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Darkspy", "alliance": "DOG", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Donut🍩", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+2", "+10"], "canSwap": false, "locked": false}, {"name": "DragonMC", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Drak🛠️", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Dtp20", "alliance": "DOG", "prof": "CE", "pref": "+2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "Elb🖖", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "ENY🖖", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Faxe🐼", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "GORilla", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Hasilvic", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "HELLFIRE", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "HenAub", "alliance": "DOG", "prof": "CE", "pref": "-6", "avail": ["-6", "-2", "+2"], "canSwap": false, "locked": false}, {"name": "HourPa😈", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "H̷ΣⱠMØ", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Jerky✊🏼", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "J™", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["-2", "+10"], "canSwap": true, "locked": false}, {"name": "kom", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Kraken", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "Magicguy", "alliance": "DOG", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Mando", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2", "+2"], "canSwap": false, "locked": false}, {"name": "Maynard", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Meliodas", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "Mephisto", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": true, "locked": true}, {"name": "MFBluey", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Morvessa", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Motyer", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Mаximum", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Nizer", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "OEL13", "alliance": "DOG", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Otts", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "PAC", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": true, "locked": true}, {"name": "Patrolfc", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "PeeWee", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["-6", "-2", "+2", "+10"], "canSwap": true, "locked": false}, {"name": "Pete", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Pr🍑ject", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Rеx", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Samson", "alliance": "DOG", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "SmurfX😼", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Snatcher", "alliance": "DOG", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Sunny☀️", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Tex", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Thorin", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Thor⚡", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Widdy", "alliance": "DOG", "prof": "MM", "pref": "+2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "₣ⱠɄ₣₣Ɏ", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "♦️GⓂ️♦️", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "🔥Talion", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "🔱DNA🔱", "alliance": "DOG", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "🩸Rᥲqqᥲ᥉", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "20100", "alliance": "MSS", "prof": "MM", "pref": "-6", "avail": ["-6", "+2"], "canSwap": true, "locked": false}, {"name": "ABRRI", "alliance": "MSS", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Agher", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "AlexB", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Ara👹", "alliance": "MSS", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Artur", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Ary💩", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "AzzMnch", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "BEYO", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "bianco", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "BoobMan", "alliance": "MSS", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Bt", "alliance": "MSS", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "DarkSky", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "DeezNutz", "alliance": "MSS", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Fokker", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["-6", "-2", "+2"], "canSwap": true, "locked": false}, {"name": "Heidi🦄꧂", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Ice🧊", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "IMP", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "JackB", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "KingRob", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Kırıkhan", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Lolo", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Maximum", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "MegaBo", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Mousse", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Musashi", "alliance": "MSS", "prof": "CE", "pref": "-6", "avail": ["-6"], "canSwap": false, "locked": true}, {"name": "MustiCC", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Nolan", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "RobertKa", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "RoMa", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Roman", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "SGTOLI", "alliance": "MSS", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": true, "locked": true}, {"name": "Steve", "alliance": "MSS", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "TaazaZ🦋", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Tessi", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Wildcat", "alliance": "MSS", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Willow", "alliance": "MSS", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "Wolf82🐺", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Yᵒᵘᶻᵃ", "alliance": "MSS", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "ÐRüSE🎱", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "ΉΛЯᄂΣY", "alliance": "MSS", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "⚜️SiSss", "alliance": "MSS", "prof": "MM", "pref": "-2", "avail": ["-2", "+2"], "canSwap": false, "locked": false}, {"name": "⭐️Raj⭐️", "alliance": "MSS", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}], "prev": {"total": 82, "byAlliance": {"DOG": 40, "MSS": 30, "DGen": 12}, "slots": [{"id": "-6", "label": "Sat -6", "clock": "6:00 AM ET", "sub": "Before reset", "pool": 5, "byAlliance": {"DOG": 2, "MSS": 3, "DGen": 0}, "locked": 0}, {"id": "-2", "label": "Sat -2", "clock": "10:00 AM ET", "sub": "Before reset", "pool": 45, "byAlliance": {"DOG": 30, "MSS": 7, "DGen": 8}, "locked": 28}, {"id": "+2", "label": "Sat +2", "clock": "2:00 PM ET", "sub": "After reset", "pool": 36, "byAlliance": {"DOG": 14, "MSS": 19, "DGen": 3}, "locked": 21}, {"id": "+10", "label": "Sat +10", "clock": "10:00 PM ET", "sub": "After reset", "pool": 21, "byAlliance": {"DOG": 9, "MSS": 11, "DGen": 1}, "locked": 14}], "swapCount": 30, "multiCount": 19, "week": "2026-09-12", "planSealing": 1, "planSquads": [{"slot": "-2", "alliance": "DGen", "fill": 25, "seals": true}, {"slot": "-2", "alliance": "DOG", "fill": 18, "seals": false}, {"slot": "+2", "alliance": "DOG", "fill": 8, "seals": false}, {"slot": "+2", "alliance": "MSS", "fill": 12, "seals": false}, {"slot": "+10", "alliance": "MSS", "fill": 11, "seals": false}]}};
+var DATA = {"generated": "2026-09-09", "closesAt": "2026-09-10T20:00:00.000Z", "configWeek": "2026-09-12", "cap": 35, "seal": 24, "overflowSlot": "-6", "squadShape": [{"slot": "-2", "alliance": "DGen"}, {"slot": "-2", "alliance": "DOG"}, {"slot": "+2", "alliance": "DOG"}, {"slot": "+2", "alliance": "MSS"}, {"slot": "+10", "alliance": "MSS"}], "weeks": [{"total": 133, "byAlliance": {"DOG": 65, "MSS": 43, "DGen": 25}, "slots": [{"id": "-6", "label": "Sat -6", "clock": "6:00 AM ET", "sub": "Before reset", "pool": 8, "byAlliance": {"DOG": 2, "MSS": 3, "DGen": 3}, "locked": 2}, {"id": "-2", "label": "Sat -2", "clock": "10:00 AM ET", "sub": "Before reset", "pool": 65, "byAlliance": {"DOG": 42, "MSS": 6, "DGen": 17}, "locked": 48}, {"id": "+2", "label": "Sat +2", "clock": "2:00 PM ET", "sub": "After reset", "pool": 57, "byAlliance": {"DOG": 17, "MSS": 30, "DGen": 10}, "locked": 40}, {"id": "+10", "label": "Sat +10", "clock": "10:00 PM ET", "sub": "After reset", "pool": 28, "byAlliance": {"DOG": 18, "MSS": 8, "DGen": 2}, "locked": 23}], "multiCount": 20, "multiPct": 15, "swapCount": 35, "swapPct": 26, "realSquads": [{"slot": "-2", "alliance": "DGen", "fill": 31, "seals": true}, {"slot": "-2", "alliance": "DOG", "fill": 30, "seals": true}, {"slot": "+2", "alliance": "DOG", "fill": 15, "seals": false}, {"slot": "+2", "alliance": "MSS", "fill": 25, "seals": true}, {"slot": "+10", "alliance": "MSS", "fill": 10, "seals": false}], "realSeated": 111, "realSealing": 3, "overflow": {"slot": "-6", "alliance": "DGen", "fill": 8, "stranded": 2, "seals": false}, "ceiling": 3, "gap": {"slot": "+10", "alliance": "MSS", "fill": 10, "pool": 28, "own": 8, "seatable": 13, "need": 11, "short": 14, "holdouts": [{"name": "Bkwyrm", "alliance": "DGen", "prof": "MM"}, {"name": "AjMaL", "alliance": "DOG", "prof": "CE"}, {"name": "Biggie", "alliance": "DOG", "prof": "CE"}, {"name": "Darkspy", "alliance": "DOG", "prof": "MM"}, {"name": "Donut🍩", "alliance": "DOG", "prof": "CE"}, {"name": "GORilla", "alliance": "DOG", "prof": "CE"}, {"name": "H̷ΣⱠMØ", "alliance": "DOG", "prof": "CE"}, {"name": "MFBluey", "alliance": "DOG", "prof": "CE"}, {"name": "Magicguy", "alliance": "DOG", "prof": "MM"}, {"name": "Maynard", "alliance": "DOG", "prof": "CE"}, {"name": "Mаximum", "alliance": "DOG", "prof": "CE"}, {"name": "Pr🍑ject", "alliance": "DOG", "prof": "CE"}, {"name": "Samson", "alliance": "DOG", "prof": "MM"}, {"name": "SmurfX😼", "alliance": "DOG", "prof": "CE"}, {"name": "Tex", "alliance": "DOG", "prof": "CE"}], "byAlliance": {"DOG": 18, "MSS": 8, "DGen": 2}}, "sens": [{"seal": 20, "plan": 3, "gapNeeds": 7}, {"seal": 22, "plan": 3, "gapNeeds": 9}, {"seal": 24, "plan": 3, "gapNeeds": 11}, {"seal": 26, "plan": 2, "gapNeeds": 13}, {"seal": 28, "plan": 2, "gapNeeds": 15}], "pairings": [{"alliance": "DOG", "n": 65, "perSlot": {"-6": 2, "-2": 42, "+2": 17, "+10": 18}, "owns": ["-2", "+2"]}, {"alliance": "MSS", "n": 43, "perSlot": {"-6": 3, "-2": 6, "+2": 30, "+10": 8}, "owns": ["+2", "+10"]}, {"alliance": "DGen", "n": 25, "perSlot": {"-6": 3, "-2": 17, "+2": 10, "+10": 2}, "owns": ["-2"]}], "roster": [{"name": "Aresu", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Bkwyrm", "alliance": "DGen", "prof": "MM", "pref": "+2", "avail": ["+2", "+10"], "canSwap": false, "locked": false}, {"name": "Caleb", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "DevilDog", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Eros⚫️😈", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-6", "-2", "+2"], "canSwap": true, "locked": false}, {"name": "Gui73🦁", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "jopn🐍", "alliance": "DGen", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "klp", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "Lady🐞", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-2", "+2"], "canSwap": false, "locked": false}, {"name": "Livv👑", "alliance": "DGen", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Lorena", "alliance": "DGen", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Marshall", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "MaSquari", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "MONKEY🐒", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "NotBlind", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2", "+10"], "canSwap": true, "locked": false}, {"name": "Obelix🦁", "alliance": "DGen", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Priit🦁", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Sake", "alliance": "DGen", "prof": "MM", "pref": "-6", "avail": ["-6"], "canSwap": true, "locked": true}, {"name": "Sloth", "alliance": "DGen", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Sloth🍍", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Smalls", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Sparkles", "alliance": "DGen", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Wonka", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "小木_Emma", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-6", "-2"], "canSwap": true, "locked": false}, {"name": "🛡️Medo", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "Abdullah", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "AjMaL", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "AlexMat", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Aqdas🔥", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "BAL", "alliance": "DOG", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Bchara⚡️", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Biggie", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Brewdog", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "BruceFFS", "alliance": "DOG", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "BuckShot", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "BURB", "alliance": "DOG", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Bycker", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Calabro", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "ChauSui", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "COYOTE", "alliance": "DOG", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Daddyknc", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Darkspy", "alliance": "DOG", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Donut🍩", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+2", "+10"], "canSwap": false, "locked": false}, {"name": "DragonMC", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Drak🛠️", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Dtp20", "alliance": "DOG", "prof": "CE", "pref": "+2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "Elb🖖", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "ENY🖖", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Faxe🐼", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "GORilla", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Hasilvic", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "HELLFIRE", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "HenAub", "alliance": "DOG", "prof": "CE", "pref": "-6", "avail": ["-6", "-2", "+2"], "canSwap": false, "locked": false}, {"name": "HourPa😈", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "H̷ΣⱠMØ", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Jerky✊🏼", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "J™", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["-2", "+10"], "canSwap": true, "locked": false}, {"name": "kom", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Kraken", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "Magicguy", "alliance": "DOG", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Mando", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2", "+2"], "canSwap": false, "locked": false}, {"name": "Maynard", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Meliodas", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "Mephisto", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": true, "locked": true}, {"name": "MFBluey", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Morvessa", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Motyer", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Mаximum", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Nizer", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "OEL13", "alliance": "DOG", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Otts", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "PAC", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": true, "locked": true}, {"name": "Patrolfc", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "PeeWee", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["-6", "-2", "+2", "+10"], "canSwap": true, "locked": false}, {"name": "Pete", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Pr🍑ject", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Rеx", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Samson", "alliance": "DOG", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "SmurfX😼", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Snatcher", "alliance": "DOG", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Sunny☀️", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Tex", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Thorin", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Thor⚡", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Widdy", "alliance": "DOG", "prof": "MM", "pref": "+2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "₣ⱠɄ₣₣Ɏ", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "♦️GⓂ️♦️", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "🔥Talion", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "🔱DNA🔱", "alliance": "DOG", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "🩸Rᥲqqᥲ᥉", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "20100", "alliance": "MSS", "prof": "MM", "pref": "-6", "avail": ["-6", "+2"], "canSwap": true, "locked": false}, {"name": "ABRRI", "alliance": "MSS", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Agher", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "AlexB", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Ara👹", "alliance": "MSS", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Artur", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Ary💩", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "AzzMnch", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "BEYO", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "bianco", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "BoobMan", "alliance": "MSS", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Bt", "alliance": "MSS", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "DarkSky", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "DeezNutz", "alliance": "MSS", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Fokker", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["-6", "-2", "+2"], "canSwap": true, "locked": false}, {"name": "Heidi🦄꧂", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Ice🧊", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "IMP", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "JackB", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "KingRob", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Kırıkhan", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Lolo", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Maximum", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "MegaBo", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Mousse", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Musashi", "alliance": "MSS", "prof": "CE", "pref": "-6", "avail": ["-6"], "canSwap": false, "locked": true}, {"name": "MustiCC", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Nolan", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "RobertKa", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "RoMa", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Roman", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "SGTOLI", "alliance": "MSS", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": true, "locked": true}, {"name": "Steve", "alliance": "MSS", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "TaazaZ🦋", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Tessi", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Wildcat", "alliance": "MSS", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Willow", "alliance": "MSS", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "Wolf82🐺", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Yᵒᵘᶻᵃ", "alliance": "MSS", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "ÐRüSE🎱", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "ΉΛЯᄂΣY", "alliance": "MSS", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "⚜️SiSss", "alliance": "MSS", "prof": "MM", "pref": "-2", "avail": ["-2", "+2"], "canSwap": false, "locked": false}, {"name": "⭐️Raj⭐️", "alliance": "MSS", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}], "week": "2026-08-29", "status": "closed", "survey": null}, {"total": 84, "byAlliance": {"DOG": 41, "MSS": 30, "DGen": 13}, "slots": [{"id": "-6", "label": "Sat -6", "clock": "6:00 AM ET", "sub": "Before reset", "pool": 5, "byAlliance": {"DOG": 2, "MSS": 3, "DGen": 0}, "locked": 0}, {"id": "-2", "label": "Sat -2", "clock": "10:00 AM ET", "sub": "Before reset", "pool": 47, "byAlliance": {"DOG": 31, "MSS": 7, "DGen": 9}, "locked": 30}, {"id": "+2", "label": "Sat +2", "clock": "2:00 PM ET", "sub": "After reset", "pool": 36, "byAlliance": {"DOG": 14, "MSS": 19, "DGen": 3}, "locked": 21}, {"id": "+10", "label": "Sat +10", "clock": "10:00 PM ET", "sub": "After reset", "pool": 21, "byAlliance": {"DOG": 9, "MSS": 11, "DGen": 1}, "locked": 14}], "multiCount": 19, "multiPct": 23, "swapCount": 31, "swapPct": 37, "realSquads": [{"slot": "-2", "alliance": "DGen", "fill": 26, "seals": true}, {"slot": "-2", "alliance": "DOG", "fill": 19, "seals": false}, {"slot": "+2", "alliance": "DOG", "fill": 8, "seals": false}, {"slot": "+2", "alliance": "MSS", "fill": 12, "seals": false}, {"slot": "+10", "alliance": "MSS", "fill": 11, "seals": false}], "realSeated": 76, "realSealing": 1, "overflow": {"slot": "-6", "alliance": "DGen", "fill": 5, "stranded": 0, "seals": false}, "ceiling": 1, "gap": {"slot": "+2", "alliance": "DOG", "fill": 8, "pool": 36, "own": 14, "seatable": 21, "need": 3, "short": 16, "holdouts": [{"name": "Bkwyrm", "alliance": "DGen", "prof": "MM"}, {"name": "Nembo😈", "alliance": "DGen", "prof": "CE"}, {"name": "🔱DNA🔱", "alliance": "DGen", "prof": "MM"}, {"name": "AlexB", "alliance": "MSS", "prof": "MM"}, {"name": "BEYO", "alliance": "MSS", "prof": "CE"}, {"name": "BMW5", "alliance": "MSS", "prof": "CE"}, {"name": "Ice🧊", "alliance": "MSS", "prof": "CE"}, {"name": "JackB", "alliance": "MSS", "prof": "CE"}, {"name": "Lollo", "alliance": "MSS", "prof": "CE"}, {"name": "Mousse", "alliance": "MSS", "prof": "MM"}, {"name": "ROM😎", "alliance": "MSS", "prof": "CE"}, {"name": "Ray", "alliance": "MSS", "prof": "MM"}, {"name": "RoMa", "alliance": "MSS", "prof": "CE"}, {"name": "Wick", "alliance": "MSS", "prof": "CE"}, {"name": "⭐️Raj⭐️", "alliance": "MSS", "prof": "MM"}], "byAlliance": {"DOG": 14, "MSS": 19, "DGen": 3}}, "sens": [{"seal": 20, "plan": 1, "gapNeeds": 0}, {"seal": 22, "plan": 1, "gapNeeds": 1}, {"seal": 24, "plan": 1, "gapNeeds": 3}, {"seal": 26, "plan": 1, "gapNeeds": 5}, {"seal": 28, "plan": 0, "gapNeeds": 7}], "pairings": [{"alliance": "DOG", "n": 41, "perSlot": {"-6": 2, "-2": 31, "+2": 14, "+10": 9}, "owns": ["-2", "+2"]}, {"alliance": "MSS", "n": 30, "perSlot": {"-6": 3, "-2": 7, "+2": 19, "+10": 11}, "owns": ["+2", "+10"]}, {"alliance": "DGen", "n": 13, "perSlot": {"-6": 0, "-2": 9, "+2": 3, "+10": 1}, "owns": ["-2"]}], "roster": [{"name": "Bkwyrm", "alliance": "DGen", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "DevilDog", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "diemonde", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "Mami_❤️", "alliance": "DGen", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": true, "locked": true}, {"name": "MONKEY🐒", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Nembo😈", "alliance": "DGen", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "NotBlind", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "Priit🦁", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Sloth🍍", "alliance": "DGen", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Wonka", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "小木_Emma", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "🔱DNA🔱", "alliance": "DGen", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "🛡️Medo", "alliance": "DGen", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Arkie", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "BAL", "alliance": "DOG", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Bchara⚡️", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Biggie", "alliance": "DOG", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Brewdog", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "Bycker", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Calabro", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "ChauSui", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Daddyknc", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Drak🛠️", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Dtp20", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2", "+10"], "canSwap": false, "locked": false}, {"name": "Elb🖖", "alliance": "DOG", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "ENY🖖", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "GORilla", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": true, "locked": true}, {"name": "H̷ΣⱠMØ", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Jerky✊🏼", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "J™", "alliance": "DOG", "prof": "CE", "pref": "+2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "klp", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "kom", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Mando", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "Marshall", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "Maynard", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Meliodas", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2", "+2"], "canSwap": false, "locked": false}, {"name": "MFBluey", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "MK9", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2", "+2"], "canSwap": false, "locked": false}, {"name": "PAC", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": true, "locked": true}, {"name": "Patrolfc", "alliance": "DOG", "prof": "CE", "pref": "-6", "avail": ["-6", "-2"], "canSwap": true, "locked": false}, {"name": "PeeWee", "alliance": "DOG", "prof": "CE", "pref": "+2", "avail": ["-6", "-2", "+2", "+10"], "canSwap": true, "locked": false}, {"name": "Pete", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "Rеx", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "SmurfX😼", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Snatcher", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Tex", "alliance": "DOG", "prof": "CE", "pref": "+2", "avail": ["-2", "+2", "+10"], "canSwap": true, "locked": false}, {"name": "Thorin", "alliance": "DOG", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Thor⚡", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "want297z", "alliance": "DOG", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Widdy", "alliance": "DOG", "prof": "MM", "pref": "+2", "avail": ["-2", "+2"], "canSwap": true, "locked": false}, {"name": "ᕼᗩᗯKᏕ🦅", "alliance": "DOG", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "♦️GⓂ️♦️", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "🔥Talion", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "🩸Rᥲqqᥲ᥉", "alliance": "DOG", "prof": "CE", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Agher", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "AlexB", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Ara👹", "alliance": "MSS", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "BEYO", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "BMW5", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "BoobMan", "alliance": "MSS", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Fokker", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["-6", "-2", "+2"], "canSwap": true, "locked": false}, {"name": "Gary", "alliance": "MSS", "prof": "MM", "pref": "+10", "avail": ["-2", "+10"], "canSwap": false, "locked": false}, {"name": "Hotrods", "alliance": "MSS", "prof": "CE", "pref": "-2", "avail": ["-2", "+10"], "canSwap": true, "locked": false}, {"name": "Ice🧊", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "IMP", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["-6", "-2", "+2"], "canSwap": true, "locked": false}, {"name": "JackB", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "KingRob", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "Lollo", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Mousse", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Ray", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "RoMa", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "ROM😎", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "SGTOLI", "alliance": "MSS", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": true, "locked": true}, {"name": "Shaz", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["-6", "-2", "+2"], "canSwap": true, "locked": false}, {"name": "Steve", "alliance": "MSS", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "TaazaZ🦋", "alliance": "MSS", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": false, "locked": true}, {"name": "Uber888", "alliance": "MSS", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "Vik", "alliance": "MSS", "prof": "MM", "pref": "+10", "avail": ["+2", "+10"], "canSwap": true, "locked": false}, {"name": "Wick", "alliance": "MSS", "prof": "CE", "pref": "+2", "avail": ["+2"], "canSwap": false, "locked": true}, {"name": "Wildcat", "alliance": "MSS", "prof": "MM", "pref": "+10", "avail": ["+10"], "canSwap": true, "locked": true}, {"name": "Willow", "alliance": "MSS", "prof": "MM", "pref": "+2", "avail": ["+2"], "canSwap": true, "locked": true}, {"name": "ΉΛЯᄂΣY", "alliance": "MSS", "prof": "CE", "pref": "+10", "avail": ["+10"], "canSwap": false, "locked": true}, {"name": "ⓈⓉⒾⓃⒼⒺⓇ", "alliance": "MSS", "prof": "MM", "pref": "-2", "avail": ["-2"], "canSwap": true, "locked": true}, {"name": "⭐️Raj⭐️", "alliance": "MSS", "prof": "MM", "pref": "+10", "avail": ["+2", "+10"], "canSwap": false, "locked": false}], "week": "2026-09-12", "status": "open", "survey": {"total": 81, "perSlotReal": {"-6": 8, "-2": 53, "+2": 27, "+10": 25}, "perSlotSignup": {"-6": 5, "-2": 43, "+2": 31, "+10": 19}, "delta": {"-6": 3, "-2": 10, "+2": -4, "+10": 6}, "multi": 22, "widened": [{"name": "Nembo😈", "alliance": "DGen", "signup": ["+2"], "extra": ["-2"]}, {"name": "J™", "alliance": "DOG", "signup": ["-2", "+2"], "extra": ["+10"]}, {"name": "H̷ΣⱠMØ", "alliance": "DOG", "signup": ["-2"], "extra": ["+10"]}, {"name": "Willow", "alliance": "MSS", "signup": ["+2"], "extra": ["-6", "-2"]}, {"name": "Biggie", "alliance": "DOG", "signup": ["+2"], "extra": ["+10"]}, {"name": "Ara👹", "alliance": "MSS", "signup": ["+10"], "extra": ["-2"]}, {"name": "ᕼᗩᗯKᏕ🦅", "alliance": "DOG", "signup": ["+2"], "extra": ["-2"]}, {"name": "Widdy", "alliance": "DOG", "signup": ["-2", "+2"], "extra": ["-6"]}, {"name": "Elb🖖", "alliance": "DOG", "signup": ["+2"], "extra": ["-2"]}, {"name": "Rеx", "alliance": "DOG", "signup": ["-2"], "extra": ["+2", "+10"]}, {"name": "Agher", "alliance": "MSS", "signup": ["+2"], "extra": ["-6"]}, {"name": "⭐️Raj⭐️", "alliance": "MSS", "signup": ["+2", "+10"], "extra": ["-2"]}], "squads": [{"slot": "-2", "alliance": "DGen", "fill": 27, "seals": true}, {"slot": "-2", "alliance": "DOG", "fill": 19, "seals": false}, {"slot": "+2", "alliance": "DOG", "fill": 4, "seals": false}, {"slot": "+2", "alliance": "MSS", "fill": 7, "seals": false}, {"slot": "+10", "alliance": "MSS", "fill": 11, "seals": false}], "seated": 68, "sealing": 1}}]};
 
+var OV = DATA.overflowSlot, SEAL = DATA.seal, CAP = DATA.cap;
 var SEALC='var(--seal)', SHORTC='var(--short)', NONEC='var(--none)';
+var CUR = null;   /* the week currently on screen */
+
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function aColor(a){return a==='DOG'?'var(--dog)':a==='MSS'?'var(--mss)':a==='DGen'?'var(--dgen)':'var(--pru)';}
 function n(v){return '<span class="notranslate num" translate="no">'+v+'</span>';}
-function sealColor(f){return f>=DATA.seal?SEALC:(f>=DATA.seal*0.6?SHORTC:NONEC);}
-function slotClock(id){var s=DATA.slots.filter(function(x){return x.id===id;})[0]; return s?s.clock:id;}
-/* Slot ids are hours off the 12PM reset, which is how players sign up and the
-   only form that means the same thing in every timezone. Tables, filters and
-   prose all use it; the clock is kept as a secondary label for reference. */
+function sealColor(f){return f>=SEAL?SEALC:(f>=SEAL*0.6?SHORTC:NONEC);}
+/* Slot ids are hours off the 12PM reset. That is how players sign up and the
+   only form that reads the same in every timezone, so it labels everything;
+   the clock is kept as a secondary reference. */
 function slotName(id){ return id; }
+function slotClock(id){var x=CUR.slots.filter(function(s){return s.id===id;})[0]; return x?x.clock:id;}
+function shortClock(c){ return String(c).replace(/:00\s*/,' ').replace(/\s*ET$/,''); }
+function byId(id){ return document.getElementById(id); }
 
-var OV = DATA.overflowSlot;
-var realSlots = DATA.slots.filter(function(s){return s.id!==OV;});
+/* ---------- week switcher ---------- */
+byId('wksw').innerHTML = DATA.weeks.map(function(w,i){
+  return '<button class="wkb" data-i="'+i+'" aria-pressed="false">' +
+    '<span class="wkw notranslate" translate="no">'+esc(w.week)+
+      '<span class="pill '+w.status+'">'+w.status+'</span></span>' +
+    '<span class="wkm"><span class="notranslate" translate="no">'+w.total+'</span> signups' +
+      (w.survey ? ' &middot; <span class="notranslate" translate="no">'+w.survey.total+'</span> survey answers' : '') +
+    '</span></button>';
+}).join('');
+byId('wksw').addEventListener('click', function(e){
+  var b = e.target.closest('.wkb'); if(!b) return;
+  show(parseInt(b.dataset.i,10));
+});
+
+function show(i){
+  CUR = DATA.weeks[i];
+  [].forEach.call(byId('wksw').querySelectorAll('.wkb'), function(b){
+    b.setAttribute('aria-pressed', String(parseInt(b.dataset.i,10)===i));
+  });
+  render();
+}
 
 /* ---------- masthead ---------- */
-document.getElementById('mWeek').textContent = DATA.week;
-document.getElementById('mTotal').textContent = DATA.total;
-document.getElementById('mGen').textContent = DATA.generated;
+function renderMast(){
+  var W = CUR;
+  byId('mWeek').textContent = W.week;
+  byId('mTotal').textContent = W.total;
+  byId('mGen').textContent = DATA.generated;
 
-document.getElementById('kpis').innerHTML = [
-  {n: DATA.realSquads.length, l:'squads we field', c:''},
-  {n: DATA.realSealing + ' of ' + DATA.realSquads.length, l:'big enough to take buildings', c:'warn'},
-  {n: DATA.ceiling, l:'the most any arrangement reaches', c:''},
-  {n: DATA.gap ? DATA.gap.need : 0, l:'swap consents that would add one more', c:'hero'}
-].map(function(k){
-  return '<div class="kpi '+k.c+'"><div class="n notranslate" translate="no">'+k.n+'</div><div class="l">'+k.l+'</div></div>';
-}).join('');
+  /* An open week is a part-collected roster. Say so plainly rather than
+     letting half the signups read as a collapse in numbers. */
+  var closed = DATA.weeks.filter(function(w){return w.status==='closed';})[0];
+  byId('openwarn').innerHTML = W.status !== 'open' ? '' :
+    '<div class="openwarn"><b>Signups are still open for ' + esc(W.week) + '.</b> ' +
+    'Everything below counts only the ' + n(W.total) + ' in so far' +
+    (closed ? ', against ' + n(closed.total) + ' when ' + esc(closed.week) + ' closed' : '') +
+    ', so the fills understate where this week lands. ' +
+    (DATA.closesAt ? 'They close ' + new Date(DATA.closesAt).toLocaleString(undefined,
+       {weekday:'long', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) + '.' : '') +
+    '</div>';
+
+  byId('kpis').innerHTML = [
+    {n: W.realSquads.length, l:'squads we field', c:''},
+    {n: W.realSealing + ' of ' + W.realSquads.length, l:'big enough to take buildings', c:'warn'},
+    {n: W.ceiling, l:'the most any arrangement reaches', c:''},
+    {n: W.gap ? W.gap.need : 0, l:'swap consents that would add one more', c:'hero'}
+  ].map(function(k){
+    return '<div class="kpi '+k.c+'"><div class="n notranslate" translate="no">'+k.n+'</div><div class="l">'+k.l+'</div></div>';
+  }).join('');
+}
 
 /* ---------- 01 the plan ---------- */
-function byAl(a){ return DATA.realSquads.filter(function(q){return q.alliance===a;}); }
-var dogN = byAl('DOG').length, mssN = byAl('MSS').length, dgenN = byAl('DGen').length;
-var ovf = DATA.overflow;
+function renderPlan(){
+  var W = CUR, ovf = W.overflow;
+  var dogN = W.realSquads.filter(function(q){return q.alliance==='DOG';}).length;
+  var mssN = W.realSquads.filter(function(q){return q.alliance==='MSS';}).length;
+  var realSlots = W.slots.filter(function(s){return s.id!==OV;});
+  var dgen = W.pairings.filter(function(p){return p.alliance==='DGen';})[0];
 
-document.getElementById('planPts').innerHTML = [
-  'DOG and MSS hold <b>' + (dogN+mssN) + ' of the ' + DATA.realSquads.length + '</b>, spread over the three slots that drew real numbers: ' +
-    realSlots.map(function(s){return '<span class="tag">'+esc(slotName(s.id))+'</span>';}).join(', ') + '.',
-  'The fifth is DGen at <b>' + esc(slotName('-2')) + '</b>, which is where <b>' + n(DATA.pairings.filter(function(p){return p.alliance==='DGen';})[0].perSlot['-2']) + ' of its ' + n(DATA.byAlliance.DGen) + '</b> players put themselves.',
-  'That leaves ' + esc(slotName(OV)) + '. Only ' + n(ovf.fill) + ' people listed it, ' + n(ovf.stranded) + ' of whom have no other option, so DGen keeps it open as somewhere to put them rather than leaving them off the board entirely.',
-  'A sixth squad would divide the same players thinner. <b>' + n(DATA.ceiling) + '</b> was the most that any arrangement we tried got over the line, and adding squads past that just makes each one weaker.'
-].map(function(t){return '<li>'+t+'</li>';}).join('');
+  byId('planPts').innerHTML = [
+    'DOG and MSS hold <b>' + (dogN+mssN) + ' of the ' + W.realSquads.length + '</b>, spread over the three slots that drew real numbers: ' +
+      realSlots.map(function(s){return '<span class="tag">'+esc(slotName(s.id))+'</span>';}).join(', ') + '.',
+    'The fifth is DGen at <b>' + esc(slotName('-2')) + '</b>, which is where <b>' + n(dgen.perSlot['-2']) + ' of its ' + n(W.byAlliance.DGen) + '</b> players put themselves.',
+    'That leaves ' + esc(slotName(OV)) + '. Only ' + n(ovf.fill) + ' people listed it, ' + n(ovf.stranded) + ' of whom have no other option, so DGen keeps it open as somewhere to put them rather than leaving them off the board entirely.',
+    'A sixth squad would divide the same players thinner. <b>' + n(W.ceiling) + '</b> was the most that any arrangement we tried got over the line, and adding squads past that just makes each one weaker.'
+  ].map(function(t){return '<li>'+t+'</li>';}).join('');
 
-document.getElementById('squadCards').innerHTML = DATA.realSquads.map(function(q){
-  var col = sealColor(q.fill);
-  return '<div class="sq'+(q.seals?' seals':'')+'">' +
-    '<div class="sqh"><span class="sqn notranslate" translate="no" style="color:'+aColor(q.alliance)+'">' +
-      esc(q.alliance)+' &middot; '+esc(slotName(q.slot))+'</span>' +
-    '<span class="sqv notranslate" translate="no" style="color:'+col+'">'+q.fill+'</span></div>' +
-    '<div class="sqbar"><i style="width:'+Math.min(100,q.fill/35*100)+'%;background:'+col+'"></i>' +
-      '<span class="qs" style="left:'+(DATA.seal/35*100)+'%"></span></div>' +
-    '<div class="sqnote">'+(q.seals
-      ? '<span class="ok">Clears '+DATA.seal+'</span>, so it can take and hold buildings.'
-      : '<span class="no">'+ (DATA.seal-q.fill) +' short</span> of the '+DATA.seal+' we plan around.')+'</div></div>';
-}).join('') +
-  '<div class="sq ovf"><div class="sqh"><span class="sqn notranslate" translate="no" style="color:var(--dgen)">' +
-  esc(ovf.alliance)+' &middot; '+esc(slotName(OV))+'</span>' +
-  '<span class="sqv notranslate" translate="no" style="color:var(--faint)">'+ovf.fill+'</span></div>' +
-  '<div class="sqbar"><i style="width:'+Math.min(100,ovf.fill/35*100)+'%;background:var(--dgen);opacity:.55"></i>' +
-  '<span class="qs" style="left:'+(DATA.seal/35*100)+'%"></span></div>' +
-  '<div class="sqnote">Overflow, so the '+n(ovf.stranded)+' players with no other option still get a seat.</div></div>';
+  byId('squadCards').innerHTML = W.realSquads.map(function(q){
+    var col = sealColor(q.fill);
+    return '<div class="sq'+(q.seals?' seals':'')+'">' +
+      '<div class="sqh"><span class="sqn notranslate" translate="no" style="color:'+aColor(q.alliance)+'">' +
+        esc(q.alliance)+' &middot; '+esc(slotName(q.slot))+'</span>' +
+      '<span class="sqv notranslate" translate="no" style="color:'+col+'">'+q.fill+'</span></div>' +
+      '<div class="sqbar"><i style="width:'+Math.min(100,q.fill/CAP*100)+'%;background:'+col+'"></i>' +
+        '<span class="qs" style="left:'+(SEAL/CAP*100)+'%"></span></div>' +
+      '<div class="sqnote">'+(q.seals
+        ? '<span class="ok">Clears '+SEAL+'</span>, so it can take and hold buildings.'
+        : '<span class="no">'+ (SEAL-q.fill) +' short</span> of the '+SEAL+' we plan around.')+'</div></div>';
+  }).join('') +
+    '<div class="sq ovf"><div class="sqh"><span class="sqn notranslate" translate="no" style="color:var(--dgen)">' +
+    esc(ovf.alliance)+' &middot; '+esc(slotName(OV))+'</span>' +
+    '<span class="sqv notranslate" translate="no" style="color:var(--faint)">'+ovf.fill+'</span></div>' +
+    '<div class="sqbar"><i style="width:'+Math.min(100,ovf.fill/CAP*100)+'%;background:var(--dgen);opacity:.55"></i>' +
+    '<span class="qs" style="left:'+(SEAL/CAP*100)+'%"></span></div>' +
+    '<div class="sqnote">Overflow, so the '+n(ovf.stranded)+' players with no other option still get a seat.</div></div>';
 
-document.getElementById('squadFoot').innerHTML =
-  'Between them the five seat ' + n(DATA.realSeated) + ' of ' + n(DATA.total) + ' signups, and ' +
-  n(DATA.realSealing) + ' of them clear ' + n(DATA.seal) + '.';
+  byId('squadFoot').innerHTML =
+    'Between them the five seat ' + n(W.realSeated) + ' of ' + n(W.total) + ' signups, and ' +
+    n(W.realSealing) + ' of them clear ' + n(SEAL) + '.';
+}
 
 /* ---------- 02 supply ---------- */
 var SCALE = 70, PCT = function(v){return Math.min(100, v/SCALE*100);};
-var seatedBySlot = {};
-DATA.realSquads.forEach(function(q){ seatedBySlot[q.slot] = (seatedBySlot[q.slot]||0) + q.fill; });
-seatedBySlot[OV] = ovf.fill;
+function renderSupply(){
+  var W = CUR, ovf = W.overflow;
+  var seatedBySlot = {};
+  W.realSquads.forEach(function(q){ seatedBySlot[q.slot] = (seatedBySlot[q.slot]||0) + q.fill; });
+  seatedBySlot[OV] = ovf.fill;
+  var sorted = W.slots.slice().sort(function(a,b){return b.pool-a.pool;});
 
-var sorted = DATA.slots.slice().sort(function(a,b){return b.pool-a.pool;});
-document.getElementById('supplyPts').innerHTML = [
-  'Between them, ' + esc(slotName(sorted[0].id)) + ' and ' + esc(slotName(sorted[1].id)) + ' account for <b>' +
-    n(sorted[0].pool + sorted[1].pool) + ' of the ' + n(DATA.total) + '</b> signups. Both carry two squads.',
-  esc(slotName('+10')) + ' drew <b>' + n(DATA.slots.filter(function(s){return s.id==='+10';})[0].pool) +
-    '</b>, which covers one squad.',
-  esc(slotName(OV)) + ' drew <b>' + n(ovf.fill) + '</b>.',
-  '<b>' + n(DATA.total - DATA.multiCount) + '</b> players gave a single slot and nothing else. Since no plan can move them, most of the shape above is settled before we start.'
-].map(function(t){return '<li>'+t+'</li>';}).join('');
+  byId('supplyPts').innerHTML = [
+    'Between them, ' + esc(slotName(sorted[0].id)) + ' and ' + esc(slotName(sorted[1].id)) + ' account for <b>' +
+      n(sorted[0].pool + sorted[1].pool) + ' of the ' + n(W.total) + '</b> signups. Both carry two squads.',
+    esc(slotName('+10')) + ' drew <b>' + n(W.slots.filter(function(s){return s.id==='+10';})[0].pool) + '</b>, which covers one squad.',
+    esc(slotName(OV)) + ' drew <b>' + n(ovf.fill) + '</b>.',
+    '<b>' + n(W.total - W.multiCount) + '</b> players gave a single slot and nothing else. Since no plan can move them, most of the shape above is settled before we start.'
+  ].map(function(t){return '<li>'+t+'</li>';}).join('');
 
-document.getElementById('axis').innerHTML =
-  '<div class="ruleLab" style="left:'+PCT(DATA.seal)+'%;color:var(--seal)">' +
-    '<span class="lw">one squad </span>needs &#8776;'+DATA.seal+'</div>' +
-  '<div class="ruleLab" style="left:'+PCT(35)+'%;color:var(--faint)">35</div>' +
-  '<div class="ruleLab end" style="color:var(--faint)">70</div>';
-document.getElementById('axis').style.marginLeft = 'calc(112px + .85rem)';
-document.getElementById('axis').style.marginRight = 'calc(116px + .85rem)';
-if (window.matchMedia('(max-width:640px)').matches){ document.getElementById('axis').style.margin = '0'; }
+  byId('axis').innerHTML =
+    '<div class="ruleLab" style="left:'+PCT(SEAL)+'%;color:var(--seal)"><span class="lw">one squad </span>needs &#8776;'+SEAL+'</div>' +
+    '<div class="ruleLab" style="left:'+PCT(CAP)+'%;color:var(--faint)">'+CAP+'</div>' +
+    '<div class="ruleLab end" style="color:var(--faint)">'+SCALE+'</div>';
+  byId('axis').style.marginLeft = 'calc(112px + .85rem)';
+  byId('axis').style.marginRight = 'calc(116px + .85rem)';
+  if (window.matchMedia('(max-width:640px)').matches){ byId('axis').style.margin = '0'; }
 
-document.getElementById('supply').innerHTML = DATA.slots.map(function(s){
-  var seated = seatedBySlot[s.id] || 0, acc = 0, segs = '', left = seated;
-  ['DOG','MSS','DGen'].forEach(function(a){
-    var v = s.byAlliance[a] || 0; if(!v) return;
-    var solid = Math.max(0, Math.min(v, left)); left -= solid;
-    if (solid > 0){ segs += '<span class="seg" style="left:'+PCT(acc)+'%;width:'+PCT(solid)+'%;background:'+aColor(a)+'"></span>'; acc += solid; }
-    var rest = v - solid;
-    if (rest > 0){ segs += '<span class="seg un" style="left:'+PCT(acc)+'%;width:'+PCT(rest)+'%;background:'+aColor(a)+'"></span>'; acc += rest; }
-  });
-  var isOv = s.id === OV;
-  var right = isOv
-    ? n(s.pool)+' can play <span class="dead">&#8594; overflow</span>'
-    : n(s.pool)+' can play <b>&#8594; '+n(seated)+' placed</b>';
-  return '<div class="srow">' +
-    '<div class="slab"><div class="t notranslate" translate="no">Sat '+esc(s.id)+'</div>' +
-      '<div class="o notranslate'+(isOv?' ovf':'')+'" translate="no">'+esc(s.clock)+(isOv?' &middot; overflow':'')+'</div></div>' +
-    '<div class="track">'+segs+
-      '<span class="rule seal" style="left:'+PCT(DATA.seal)+'%"></span>' +
-      '<span class="rule cap" style="left:'+PCT(35)+'%"></span></div>' +
-    '<div class="rlab">'+right+'</div></div>';
-}).join('');
+  byId('supply').innerHTML = W.slots.map(function(s){
+    var seated = seatedBySlot[s.id] || 0, acc = 0, segs = '', left = seated;
+    ['DOG','MSS','DGen'].forEach(function(a){
+      var v = s.byAlliance[a] || 0; if(!v) return;
+      var solid = Math.max(0, Math.min(v, left)); left -= solid;
+      if (solid > 0){ segs += '<span class="seg" style="left:'+PCT(acc)+'%;width:'+PCT(solid)+'%;background:'+aColor(a)+'"></span>'; acc += solid; }
+      var rest = v - solid;
+      if (rest > 0){ segs += '<span class="seg un" style="left:'+PCT(acc)+'%;width:'+PCT(rest)+'%;background:'+aColor(a)+'"></span>'; acc += rest; }
+    });
+    var isOv = s.id === OV;
+    var right = isOv ? n(s.pool)+' can play <span class="dead">&#8594; overflow</span>'
+                     : n(s.pool)+' can play <b>&#8594; '+n(seated)+' placed</b>';
+    return '<div class="srow">' +
+      '<div class="slab"><div class="t notranslate" translate="no">Sat '+esc(s.id)+'</div>' +
+        '<div class="o notranslate'+(isOv?' ovf':'')+'" translate="no">'+esc(s.clock)+(isOv?' &middot; overflow':'')+'</div></div>' +
+      '<div class="track">'+segs+
+        '<span class="rule seal" style="left:'+PCT(SEAL)+'%"></span>' +
+        '<span class="rule cap" style="left:'+PCT(CAP)+'%"></span></div>' +
+      '<div class="rlab">'+right+'</div></div>';
+  }).join('');
 
-document.getElementById('keyline').innerHTML =
-  ['DOG','MSS','DGen'].map(function(a){
-    return '<span><i class="sw" style="background:'+aColor(a)+'"></i> <span class="notranslate" translate="no">'+a+'</span></span>';
-  }).join('') +
-  '<span><i class="sw hatch"></i> free then, placed at another time</span>' +
-  '<span><i class="sw" style="background:var(--seal);width:3px;border-radius:1px"></i> what one squad needs</span>';
+  byId('keyline').innerHTML =
+    ['DOG','MSS','DGen'].map(function(a){
+      return '<span><i class="sw" style="background:'+aColor(a)+'"></i> <span class="notranslate" translate="no">'+a+'</span></span>';
+    }).join('') +
+    '<span><i class="sw hatch"></i> free then, placed at another slot</span>' +
+    '<span><i class="sw" style="background:var(--seal);width:3px;border-radius:1px"></i> what one squad needs</span>';
 
-document.getElementById('dblcount').innerHTML =
-  'Players free at more than one time appear in every bar they can make, so the bars total more than ' +
-  n(DATA.total) + '. Only ' + n(DATA.multiCount) + ' players (' + n(DATA.multiPct) + '%) listed more than one.';
+  byId('dblcount').innerHTML =
+    'Players free at more than one slot appear in every bar they can make, so the bars total more than ' +
+    n(W.total) + '. Only ' + n(W.multiCount) + ' players (' + n(W.multiPct) + '%) listed more than one.';
+}
 
 /* ---------- 03 the gap ---------- */
-var g = DATA.gap;
-if (g){
+function renderGap(){
+  var W = CUR, g = W.gap;
+  if (!g){
+    byId('askVerdict').textContent = 'Every squad we field is already over the line';
+    byId('askPts').innerHTML = '<li>Nothing to ask for this week.</li>';
+    byId('askN').textContent = '0'; byId('askH').textContent = '';
+    byId('askP').textContent = ''; byId('gauge').innerHTML = '';
+    byId('gtags').innerHTML = ''; byId('direct').innerHTML = '';
+    return;
+  }
   var others = ['DOG','MSS','DGen'].filter(function(a){return a!==g.alliance;})
     .map(function(a){return n(g.byAlliance[a]||0)+' '+a;}).join(' and ');
-  document.getElementById('askVerdict').innerHTML = 'What a fourth squad would take';
-  document.getElementById('askPts').innerHTML = [
+  byId('askVerdict').innerHTML = 'What a fourth squad would take';
+  byId('askPts').innerHTML = [
     n(g.pool) + ' people signed up for <b>' + esc(slotName(g.slot)) + '</b>, comfortably more than a squad needs.',
     'Of those, only <b>' + n(g.own) + ' are ' + esc(g.alliance) + '</b>. The rest are ' + others + '.',
     esc(g.alliance) + ' can seat <b>' + n(g.seatable) + '</b> of them right now: its own players, plus the ' +
       n(g.seatable - g.own) + ' from other alliances who already ticked the swap box.',
-    'Another <b>' + n(g.need) + '</b> consents would put it at ' + n(DATA.seal) + ', which is the difference between fielding five squads and six.'
+    'Another <b>' + n(g.need) + '</b> consents would put it at ' + n(SEAL) + ', which is the difference between fielding five squads and six.'
   ].map(function(t){return '<li>'+t+'</li>';}).join('');
-  document.getElementById('askN').textContent = g.need;
-  document.getElementById('askH').textContent = 'swap consents at ' + slotName(g.slot);
-  document.getElementById('askP').innerHTML =
+  byId('askN').textContent = g.need;
+  byId('askH').textContent = 'swap consents at ' + slotName(g.slot);
+  byId('askP').innerHTML =
     n(g.holdouts.length) + ' players from outside ' + esc(g.alliance) + ' signed up for ' +
     esc(slotName(g.slot)) + ' without ticking the swap box. Any ' + n(g.need) + ' of them agreeing would close it. ' +
     'Their battle time stays the same and so does their alliance; the squad just fights under one tag for that hour.';
-  document.getElementById('gauge').innerHTML =
-    '<span class="g1" style="width:'+(g.seatable/35*100)+'%"></span>' +
-    '<span class="g2" style="left:'+(g.seatable/35*100)+'%;width:'+((g.pool-g.seatable)/35*100)+'%"></span>' +
-    '<span class="gs" style="left:'+(DATA.seal/35*100)+'%"></span>';
-  document.getElementById('gtags').innerHTML =
+  byId('gauge').innerHTML =
+    '<span class="g1" style="width:'+(g.seatable/CAP*100)+'%"></span>' +
+    '<span class="g2" style="left:'+(g.seatable/CAP*100)+'%;width:'+((g.pool-g.seatable)/CAP*100)+'%"></span>' +
+    '<span class="gs" style="left:'+(SEAL/CAP*100)+'%"></span>';
+  byId('gtags').innerHTML =
     '<span style="left:0">' + n(g.seatable) + ' can join today</span>' +
-    '<span style="left:' + (DATA.seal/35*100) + '%;transform:translateX(-50%);color:var(--seal)">' + n(DATA.seal) + ' needed</span>' +
+    '<span style="left:' + (SEAL/CAP*100) + '%;transform:translateX(-50%);color:var(--seal)">' + n(SEAL) + ' needed</span>' +
     '<span class="gEnd">' + n(g.pool) + ' signed up</span>';
-  document.getElementById('direct').innerHTML =
+  byId('direct').innerHTML =
     '<b>If you signed up for ' + esc(slotName(g.slot)) + ' and left the swap box unticked, this is you.</b> ' +
-    'Ticking it on the signup form is what puts ' + esc(g.alliance) + ' over the line at that hour. You would keep the time you picked and the people you play with.';
-} else {
-  document.getElementById('askVerdict').textContent = 'Every squad we field is already over the line.';
-  document.getElementById('askPts').innerHTML = '<li>Nothing to ask for this week.</li>';
+    'Ticking it on the signup form is what puts ' + esc(g.alliance) + ' over the line at that slot. You would keep the time you picked and the people you play with.';
 }
 
 /* ---------- 04 matrix ---------- */
-function shortClock(c){ return String(c).replace(/:00\s*/,' ').replace(/\s*ET$/,''); }
-var slotIds = DATA.slots.map(function(s){return s.id;});
-var mx = '<thead><tr><th>Alliance</th>' + DATA.slots.map(function(s){
-  return '<th><span class="notranslate" translate="no">Sat '+esc(s.id)+'</span>' +
-    '<span class="note2 notranslate" translate="no">'+esc(shortClock(s.clock))+(s.id===OV?' &middot; overflow':'')+'</span></th>';
-}).join('') + '<th>Signups</th></tr></thead><tbody>';
-mx += DATA.pairings.map(function(p){
-  return '<tr><td><span class="al '+esc(p.alliance)+' notranslate" translate="no">'+esc(p.alliance)+'</span></td>' +
-    slotIds.map(function(id){
-      var v = p.perSlot[id] || 0;
-      var own = p.owns.indexOf(id) >= 0;
-      var isOv = id === OV && p.alliance === ovf.alliance;
-      return '<td><span class="cell'+(own?' own':'')+(isOv?' ovf':'')+'" style="color:'+
-        (v>=DATA.seal?'var(--ink)':(v>=8?'var(--muted)':'var(--faint)'))+'">'+v+'</span></td>';
-    }).join('') +
-    '<td class="notranslate" translate="no" style="color:var(--muted)">'+p.n+'</td></tr>';
-}).join('') + '</tbody>';
-document.getElementById('matrix').innerHTML = mx;
+function renderMatrix(){
+  var W = CUR;
+  var mx = '<thead><tr><th>Alliance</th>' + W.slots.map(function(s){
+    return '<th><span class="notranslate" translate="no">Sat '+esc(s.id)+'</span>' +
+      '<span class="note2 notranslate" translate="no">'+esc(shortClock(s.clock))+(s.id===OV?' &middot; overflow':'')+'</span></th>';
+  }).join('') + '<th>Signups</th></tr></thead><tbody>';
+  mx += W.pairings.map(function(p){
+    return '<tr><td><span class="al '+esc(p.alliance)+' notranslate" translate="no">'+esc(p.alliance)+'</span></td>' +
+      W.slots.map(function(s){
+        var v = p.perSlot[s.id] || 0;
+        var own = p.owns.indexOf(s.id) >= 0;
+        var isOv = s.id === OV && p.alliance === W.overflow.alliance;
+        return '<td><span class="cell'+(own?' own':'')+(isOv?' ovf':'')+'" style="color:'+
+          (v>=SEAL?'var(--ink)':(v>=8?'var(--muted)':'var(--faint)'))+'">'+v+'</span></td>';
+      }).join('') +
+      '<td class="notranslate" translate="no" style="color:var(--muted)">'+p.n+'</td></tr>';
+  }).join('') + '</tbody>';
+  byId('matrix').innerHTML = mx;
 
-var P = {}; DATA.pairings.forEach(function(p){P[p.alliance]=p;});
-document.getElementById('mxPts').innerHTML = [
-  'DOG has <b>' + n(P.DOG.perSlot['-2']) + '</b> players at ' + esc(slotName('-2')) + ', more than any alliance musters at any slot, so that is where its first squad goes.',
-  'MSS has <b>' + n(P.MSS.perSlot['+2']) + '</b> at ' + esc(slotName('+2')) + ' and takes ' + esc(slotName('+10')) + ' as its second.',
-  'DGen splits <b>' + n(P.DGen.perSlot['-2']) + '</b> at ' + esc(slotName('-2')) + ' against <b>' + n(P.DGen.perSlot['+10']) + '</b> at ' + esc(slotName('+10')) + ', which is why its full squad lines up next to DOG before reset instead.',
-  'No alliance can hold ' + esc(slotName(OV)) + ' on its own. The entire server put ' + n(DATA.slots.filter(function(s){return s.id===OV;})[0].pool) + ' names against it.'
-].map(function(t){return '<li>'+t+'</li>';}).join('');
+  var P = {}; W.pairings.forEach(function(p){P[p.alliance]=p;});
+  byId('mxPts').innerHTML = [
+    'DOG has <b>' + n(P.DOG.perSlot['-2']) + '</b> players at ' + esc(slotName('-2')) + ', more than any alliance musters at any slot, so that is where its first squad goes.',
+    'MSS has <b>' + n(P.MSS.perSlot['+2']) + '</b> at ' + esc(slotName('+2')) + ' and takes ' + esc(slotName('+10')) + ' as its second.',
+    'DGen splits <b>' + n(P.DGen.perSlot['-2']) + '</b> at ' + esc(slotName('-2')) + ' against <b>' + n(P.DGen.perSlot['+10']) + '</b> at ' + esc(slotName('+10')) + ', which is why its full squad lines up next to DOG before reset instead.',
+    'No alliance can hold ' + esc(slotName(OV)) + ' on its own. The entire server put ' + n(W.slots.filter(function(s){return s.id===OV;})[0].pool) + ' names against it.'
+  ].map(function(t){return '<li>'+t+'</li>';}).join('');
+}
 
 /* ---------- 05 sensitivity ---------- */
-document.getElementById('sens').innerHTML = DATA.sens.map(function(x){
-  return '<div class="sc'+(x.seal===DATA.seal?' here':'')+'"><div class="th">if <span class="notranslate num" translate="no">'+x.seal+'</span> is enough</div>' +
-    '<div class="cl">'+x.plan+'</div><div class="th" style="font-size:.64rem">of our five clear it</div>' +
-    '<div class="nd"><span class="notranslate num" translate="no">'+x.gapNeeds+'</span> consents for a 4th</div></div>';
-}).join('');
-
-/* ---------- 06 this week so far ---------- */
-(function(){
-  var live = DATA.prev;   /* the open week, carried alongside; last week's numbers stay as they are */
-  if (!live){ document.getElementById('liveSec').style.display='none'; return; }
-  document.getElementById('liveVerdict').textContent =
-    'Signups for ' + live.week + ' are still coming in';
-  document.getElementById('liveLede').innerHTML =
-    'Everything above is measured on <b>' + esc(DATA.week) + '</b>, the last week with a full set of signups (' +
-    n(DATA.total) + '). Below is where <b>' + esc(live.week) + '</b> stands against it so far. Those numbers move until signups close.';
-  var rows = [
-    {t:'Signups in', a:live.total, b:DATA.total},
-    {t:'DOG', a:live.byAlliance.DOG, b:DATA.byAlliance.DOG},
-    {t:'MSS', a:live.byAlliance.MSS, b:DATA.byAlliance.MSS},
-    {t:'DGen', a:live.byAlliance.DGen, b:DATA.byAlliance.DGen}
-  ];
-  /* This week is still open, so a gap against last week is progress-to-date,
-     not a drop. Show it as a share of last week's closing figure and keep it
-     neutral, otherwise a half-collected roster reads as a collapse. */
-  document.getElementById('wow').innerHTML = rows.map(function(r){
-    var pct = r.b ? Math.round(r.a / r.b * 100) : 0;
-    return '<div class="wc"><div class="wt">'+r.t+'</div>' +
-      '<div class="wv notranslate" translate="no">'+r.a+'</div>' +
-      '<div class="wd flat notranslate" translate="no">'+pct+'% of last week: '+r.b+'</div></div>';
+function renderSens(){
+  byId('sens').innerHTML = CUR.sens.map(function(x){
+    return '<div class="sc'+(x.seal===SEAL?' here':'')+'"><div class="th">if <span class="notranslate num" translate="no">'+x.seal+'</span> is enough</div>' +
+      '<div class="cl">'+x.plan+'</div><div class="th" style="font-size:.64rem">of our five clear it</div>' +
+      '<div class="nd"><span class="notranslate num" translate="no">'+x.gapNeeds+'</span> consents for a 4th</div></div>';
   }).join('');
-  var closes = DATA.closesAt ? new Date(DATA.closesAt) : null;
-  document.getElementById('liveFoot').innerHTML =
-    'Signups close ' + (closes
-      ? '<b>' + closes.toLocaleString(undefined, {weekday:'long', month:'short', day:'numeric',
-          hour:'numeric', minute:'2-digit'}) + '</b>'
-      : 'later this week') +
-    '. Judging the plan on a part-collected roster understates it, so the squad fills above stay measured on ' +
-    esc(DATA.week) + '.';
-})();
+}
+
+/* ---------- 06 the survey ---------- */
+function renderSurvey(){
+  var W = CUR, sv = W.survey;
+  if (!sv){ byId('surveySec').style.display = 'none'; return; }
+  byId('surveySec').style.display = '';
+
+  byId('svLede').innerHTML =
+    'The signup form asks which slots you want. The survey asked which you could <b>actually</b> make. ' +
+    n(sv.total) + ' players answered for ' + esc(W.week) + ', and the two do not say the same thing.';
+
+  var d = sv.delta;
+  var over = Object.keys(d).filter(function(k){return d[k] < 0;})
+    .sort(function(a,b){return d[a]-d[b];});
+  var under = Object.keys(d).filter(function(k){return d[k] > 0;})
+    .sort(function(a,b){return d[b]-d[a];});
+
+  var pts = [];
+  if (over.length) pts.push('Signups <b>overstate ' + esc(over[0]) + '</b> by ' + n(Math.abs(d[over[0]])) +
+    '. Fewer people can genuinely make it than put their name down for it, so a squad there is thinner than the signup sheet suggests.');
+  if (under.length) pts.push('Signups <b>understate ' + esc(under[0]) + '</b> by ' + n(d[under[0]]) +
+    (under[1] ? ' and ' + esc(under[1]) + ' by ' + n(d[under[1]]) : '') + '. There is more cover at those slots than we are currently using.');
+  pts.push('<b>' + n(sv.widened.length) + ' players named a slot missing from their signup.</b> They are listed below, and none of them are being counted at that slot in the plan above.');
+  pts.push('<b>' + n(sv.multi) + ' of ' + n(sv.total) + '</b> can make more than one slot, against ' + n(W.multiCount) + ' of ' + n(W.total) + ' on the signup sheet.');
+  byId('svPts').innerHTML = pts.map(function(t){return '<li>'+t+'</li>';}).join('');
+
+  byId('svDelta').innerHTML = ['-6','-2','+2','+10'].map(function(sl){
+    var dv = d[sl] || 0, col = dv>0?'var(--seal)':(dv<0?'var(--short)':'var(--faint)');
+    return '<div class="dc"><div class="ds notranslate" translate="no">Sat '+esc(sl)+'</div>' +
+      '<div class="dv notranslate" translate="no" style="color:'+col+'">'+(dv>0?'+':'')+dv+'</div>' +
+      '<div class="dd notranslate" translate="no" style="color:'+col+'">'+(dv>0?'more':(dv<0?'fewer':'same'))+' than signups</div>' +
+      '<div class="dsub notranslate" translate="no">'+sv.perSlotSignup[sl]+' signed up &#8594; '+sv.perSlotReal[sl]+' able</div></div>';
+  }).join('');
+
+  byId('svWideN').textContent = sv.widened.length;
+  byId('svWideWrap').style.display = sv.widened.length ? '' : 'none';
+  document.querySelector('#svWideTable tbody').innerHTML = sv.widened.map(function(r){
+    return '<tr><td class="notranslate" translate="no">'+esc(r.name)+'</td>' +
+      '<td><span class="al '+esc(r.alliance)+' notranslate" translate="no">'+esc(r.alliance)+'</span></td>' +
+      '<td>'+r.signup.map(function(x){return '<span class="chip notranslate" translate="no">'+esc(x)+'</span>';}).join('')+'</td>' +
+      '<td>'+r.extra.map(function(x){return '<span class="chip pref notranslate" translate="no">'+esc(x)+'</span>';}).join('')+'</td></tr>';
+  }).join('');
+}
 
 /* ---------- 07 roster with filters ---------- */
-(function(){
-  var state = {al:'all', slot:'all', swap:false, q:''};
-  var tbody = document.querySelector('#rosterTable tbody');
-
+var fstate = {al:'all', slot:'all', swap:false, q:''};
+var filtersBound = false;
+function bindFilters(){
+  if (filtersBound) return;
+  filtersBound = true;
   function mkGroup(el, items, key){
     el.innerHTML = items.map(function(it){
-      return '<button class="fbtn '+(it.cls||'')+'" data-v="'+it.v+'" aria-pressed="'+(state[key]===it.v)+'">'+it.t+'</button>';
+      return '<button class="fbtn '+(it.cls||'')+'" data-v="'+it.v+'" aria-pressed="'+(fstate[key]===it.v)+'">'+it.t+'</button>';
     }).join('');
     el.addEventListener('click', function(e){
       var b = e.target.closest('.fbtn'); if(!b) return;
-      state[key] = b.dataset.v;
+      fstate[key] = b.dataset.v;
       [].forEach.call(el.querySelectorAll('.fbtn'), function(x){
-        x.setAttribute('aria-pressed', String(x.dataset.v === state[key]));
+        x.setAttribute('aria-pressed', String(x.dataset.v === fstate[key]));
       });
-      render();
+      renderRoster();
     });
   }
-  mkGroup(document.getElementById('fAll'), [
+  mkGroup(byId('fAll'), [
     {v:'all', t:'All'}, {v:'DOG', t:'DOG', cls:'dog'}, {v:'MSS', t:'MSS', cls:'mss'}, {v:'DGen', t:'DGen', cls:'dgen'}
   ], 'al');
-  mkGroup(document.getElementById('fSlot'),
-    [{v:'all', t:'Any slot'}].concat(DATA.slots.map(function(s){return {v:s.id, t:s.id};})), 'slot');
-
-  var swapEl = document.getElementById('fSwap');
+  mkGroup(byId('fSlot'), [{v:'all', t:'Any slot'}].concat(
+    ['-6','-2','+2','+10'].map(function(id){return {v:id, t:id};})), 'slot');
+  var swapEl = byId('fSwap');
   swapEl.innerHTML = '<button class="fbtn" data-v="swap" aria-pressed="false">Will swap only</button>';
   swapEl.addEventListener('click', function(e){
     var b = e.target.closest('.fbtn'); if(!b) return;
-    state.swap = !state.swap; b.setAttribute('aria-pressed', String(state.swap)); render();
+    fstate.swap = !fstate.swap; b.setAttribute('aria-pressed', String(fstate.swap)); renderRoster();
   });
-  document.getElementById('fSearch').addEventListener('input', function(e){
-    state.q = e.target.value.trim().toLowerCase(); render();
+  byId('fSearch').addEventListener('input', function(e){
+    fstate.q = e.target.value.trim().toLowerCase(); renderRoster();
   });
+}
+function renderRoster(){
+  var R = CUR.roster;
+  var rows = R.filter(function(r){
+    if (fstate.al !== 'all' && r.alliance !== fstate.al) return false;
+    if (fstate.slot !== 'all' && r.avail.indexOf(fstate.slot) < 0) return false;
+    if (fstate.swap && !r.canSwap) return false;
+    if (fstate.q && r.name.toLowerCase().indexOf(fstate.q) < 0) return false;
+    return true;
+  });
+  byId('fCount').textContent = rows.length + ' of ' + R.length;
+  document.querySelector('#rosterTable tbody').innerHTML = rows.map(function(f){
+    var chips = f.avail.map(function(s){
+      return '<span class="chip'+(s===f.pref?' pref':'')+' notranslate" translate="no">'+esc(s)+'</span>';
+    }).join('') + (f.locked ? ' <span class="lockp">locked</span>' : '');
+    return '<tr><td class="notranslate" translate="no">'+esc(f.name)+'</td>' +
+      '<td><span class="al '+esc(f.alliance)+' notranslate" translate="no">'+esc(f.alliance)+'</span></td>' +
+      '<td class="mono notranslate" translate="no" style="color:var(--muted)">'+esc(f.prof)+'</td>' +
+      '<td><span class="chip pref notranslate" translate="no">'+esc(f.pref||'')+'</span></td>' +
+      '<td>'+chips+'</td>' +
+      '<td class="'+(f.canSwap?'yes':'no')+'">'+(f.canSwap?'✓':'✕')+'</td></tr>';
+  }).join('') || '<tr><td colspan="6" style="color:var(--faint)">No players match those filters.</td></tr>';
+}
 
-  function render(){
-    var rows = DATA.roster.filter(function(r){
-      if (state.al !== 'all' && r.alliance !== state.al) return false;
-      if (state.slot !== 'all' && r.avail.indexOf(state.slot) < 0) return false;
-      if (state.swap && !r.canSwap) return false;
-      if (state.q && r.name.toLowerCase().indexOf(state.q) < 0) return false;
-      return true;
-    });
-    document.getElementById('fCount').textContent = rows.length + ' of ' + DATA.roster.length;
-    tbody.innerHTML = rows.map(function(f){
-      var chips = f.avail.map(function(s){
-        return '<span class="chip'+(s===f.pref?' pref':'')+' notranslate" translate="no">'+esc(s)+'</span>';
-      }).join('') + (f.locked ? ' <span class="lockp">locked</span>' : '');
-      return '<tr><td class="notranslate" translate="no">'+esc(f.name)+'</td>' +
-        '<td><span class="al '+esc(f.alliance)+' notranslate" translate="no">'+esc(f.alliance)+'</span></td>' +
-        '<td class="mono notranslate" translate="no" style="color:var(--muted)">'+esc(f.prof)+'</td>' +
-        '<td><span class="chip pref notranslate" translate="no">'+esc(f.pref||'')+'</span></td>' +
-        '<td>'+chips+'</td>' +
-        '<td class="'+(f.canSwap?'yes':'no')+'">'+(f.canSwap?'✓':'✕')+'</td></tr>';
-    }).join('') || '<tr><td colspan="6" style="color:var(--faint)">No players match those filters.</td></tr>';
-  }
-  render();
-})();
+function render(){
+  renderMast(); renderPlan(); renderSupply(); renderGap();
+  renderMatrix(); renderSens(); renderSurvey();
+  bindFilters(); renderRoster();
+}
+
+/* default to the most recent CLOSED week: a full roster is the honest base */
+var startIdx = 0;
+DATA.weeks.forEach(function(w,i){ if (w.status === 'closed') startIdx = i; });
+show(startIdx);
 </script>
 
 <script>
