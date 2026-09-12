@@ -71,6 +71,8 @@
   .brief-kicker{font-family:var(--mono); font-size:.66rem; letter-spacing:.22em; text-transform:uppercase; color:var(--accent); margin-bottom:.35rem}
   .brief-title{font-size:1.3rem; font-weight:800; letter-spacing:-.01em; line-height:1.2}
   .brief-sub{color:var(--muted); font-size:.85rem; margin-top:.5rem}
+  .lead-expired{border:1px solid var(--gold); border-radius:12px; background:var(--gold-soft); color:var(--text); padding:.8rem .95rem; margin-bottom:.9rem; font-size:.85rem; line-height:1.55}
+  .lead-expired[hidden]{display:none}
 
   .field{margin-bottom:1.2rem}
   .field-label{font-size:.74rem; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--text); margin-bottom:.5rem; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap}
@@ -334,6 +336,10 @@
 
   <!-- ===================== REGISTER VIEW ===================== -->
   <section class="view" id="view-register">
+    <div id="lead-expired-note" class="lead-expired" hidden>
+      <strong>That group link has expired.</strong> The transfer group it pointed to was dissolved, and its members
+      were re-registered individually. Nothing is lost, just sign yourself up below.
+    </div>
     <div class="briefing reveal" style="animation-delay:.02s">
       <div class="brief-kicker">Transfer registration</div>
       <div class="brief-title">Get on the list to transfer into Server 2864</div>
@@ -1037,6 +1043,7 @@
   var TAKEN = {};          // siteKeys of already-completed transfers — hidden from the picker
   var rosterFiltered = [];
   var LEAD_PLAYERS = [];
+  var LEAD_DEAD = false;   // link no longer resolves — builder is frozen so nothing is silently lost
   var leadSaveTimer = null;
 
   function cpM(cp) { return (cp == null || cp === '') ? '' : (cp / 1e6).toFixed(2) + 'M'; }
@@ -1263,12 +1270,14 @@
   }
 
   function scheduleLeadSave() {
+    if (LEAD_DEAD) return;
     clearTimeout(leadSaveTimer);
     document.getElementById('lead-status').textContent = 'Saving...';
     leadSaveTimer = setTimeout(saveLeadGroup, 700);
   }
 
   function saveLeadGroup() {
+    if (LEAD_DEAD) return;
     var token = leadToken();
     var players = LEAD_PLAYERS.map(function (p) {
       return { siteKey: p.siteKey, name: p.name, server: p.server, cp: p.cp, profession: p.profession, avatar: p.avatar, reportId: p.reportId };
@@ -1277,13 +1286,37 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lead: token, players: players })
     }).then(function (r) { return r.json(); }).then(function (j) {
-      document.getElementById('lead-status').textContent = (j && j.ok) ? 'Saved' : ('Save failed' + (j && j.error ? (': ' + j.error) : ''));
+      if (j && j.ok) { document.getElementById('lead-status').className = 'status ok'; document.getElementById('lead-status').textContent = 'Saved'; return; }
+      // The group can be dissolved mid-session; say so plainly instead of leaking 'not_found'.
+      if (j && j.error === 'not_found') { markLeadDead(); return; }
+      document.getElementById('lead-status').className = 'status err';
+      document.getElementById('lead-status').textContent = 'Save failed' + (j && j.error ? (': ' + j.error) : '');
     }).catch(function () { document.getElementById('lead-status').textContent = 'Save failed (network)'; });
+  }
+
+  // A group link stops resolving once leadership deletes or dissolves that group.
+  // The token is ALSO cached in localStorage, and initLeaderMode() force-switches
+  // the page into leader mode (tabs hidden) whenever a token exists. So a stale
+  // token hijacked transfer.html into a dead builder for anyone who had ever
+  // opened that link, even when all they wanted was to register: every save died
+  // with a bare 'not_found' and there was no way back to the tabs. Drop the token
+  // and hand the page back to the visitor.
+  function markLeadDead() {
+    LEAD_DEAD = true;
+    clearTimeout(leadSaveTimer);
+    try { localStorage.removeItem(LEAD_KEY); } catch (e) {}
+    var nav = document.querySelector('.tabs'); if (nav) nav.style.display = '';
+    var leadView = document.getElementById('view-leader');
+    if (leadView) leadView.classList.remove('active');
+    var note = document.getElementById('lead-expired-note');
+    if (note) note.hidden = false;
+    showView('register');
+    try { window.scrollTo(0, 0); } catch (e) {}
   }
 
   function loadLeaderGroup(token) {
     fetch(API + '/transfer/my?lead=' + encodeURIComponent(token)).then(function (r) { return r.json(); }).then(function (j) {
-      if (!j || !j.ok) { document.getElementById('lead-status').textContent = 'This link is no longer valid.'; return; }
+      if (!j || !j.ok) { markLeadDead(); return; }
       document.getElementById('lead-title').textContent = j.app.groupName || 'Transfer group';
       LEAD_PLAYERS = (j.app.players || []).map(function (p) {
         var rr = ROSTER_BY_NAME[p.name];
