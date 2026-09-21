@@ -13,7 +13,7 @@
     --border:#30363d; --border2:#262c36;
     --text:#e6edf3; --muted:#8b949e; --faint:#6e7681;
     --blue:#58a6ff; --green:#3fb950; --red:#f85149; --yellow:#d29922; --purple:#bc8cff;
-    --dog:#e3a008; --mss:#58a6ff; --dgen:#db61a2;  /* pink, NOT purple: #bc8cff scored OKLab dE 2.7 vs MSS #58a6ff under deuteranopia and 13.2 with normal vision (below the 15 floor). Every light purple fails against this blue -- validated with the dataviz validate_palette.js sweep, 2026-09-09. Pink scores 14.1 CVD / 24.3 normal. */
+    --dog:#e3a008; --mss:#58a6ff; --cat:#db61a2;  /* pink, NOT purple: #bc8cff scored OKLab dE 2.7 vs MSS #58a6ff under deuteranopia and 13.2 with normal vision (below the 15 floor). Every light purple fails against this blue -- validated with the dataviz validate_palette.js sweep, 2026-09-09. Pink scores 14.1 CVD / 24.3 normal. */
     --disp:"Chakra Petch", ui-sans-serif, system-ui, sans-serif;
     --sans:"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
     --mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;}
@@ -113,7 +113,7 @@ header{display:flex; align-items:center; gap:.7rem; padding:.9rem 1.1rem; border
     border:1px solid var(--border); color:var(--muted); text-transform:uppercase; letter-spacing:.04em}
   .tag.DOG{color:var(--dog); border-color:color-mix(in srgb, var(--dog) 45%, var(--border))}
   .tag.MSS{color:var(--mss); border-color:color-mix(in srgb, var(--mss) 45%, var(--border))}
-  .tag.DGen{color:var(--dgen); border-color:color-mix(in srgb, var(--dgen) 45%, var(--border))}
+  .tag.cat{color:var(--cat); border-color:color-mix(in srgb, var(--cat) 45%, var(--border))}
   .tag.sw{color:var(--yellow); border-color:color-mix(in srgb, var(--yellow) 50%, var(--border))}
 
   @media(max-width:760px){
@@ -202,7 +202,7 @@ header{display:flex; align-items:center; gap:.7rem; padding:.9rem 1.1rem; border
   "use strict";
   var API = 'https://push-worker.27tb8s6fct.workers.dev';
   var SK_RE = /^[a-f0-9]{16}$/;
-  var ALLIANCES = ['DOG', 'MSS', 'DGen'];
+  var ALLIANCES = ['DOG', 'MSS', 'Cat+'];
   var ROLES = [['attack', 'Attack'], ['either', 'Either'], ['defend', 'Defend']];
   var UNITS = ['Army', 'Navy', 'Air Force'];
   var BANDS = [
@@ -216,7 +216,9 @@ header{display:flex; align-items:center; gap:.7rem; padding:.9rem 1.1rem; border
   // neutral midpoint, not three categorical hues. The previous red/blue/green
   // paired green with blue, which reads as one colour to deuteranopes.
   var ROLE_COLOR = { attack: 'var(--red)', either: '#768390', defend: 'var(--blue)' };
-  var ALLY_COLOR = { DOG: 'var(--dog)', MSS: 'var(--mss)', DGen: 'var(--dgen)' };
+  var ALLY_COLOR = { DOG: 'var(--dog)', MSS: 'var(--mss)', 'Cat+': 'var(--cat)' };
+  // 'Cat+' cannot be a CSS class (the +), so tags key off a slug instead.
+  function allyClass(a) { return a === 'Cat+' ? 'cat' : a; }
 
   var rows = [];
   function $(id) { return document.getElementById(id); }
@@ -288,7 +290,7 @@ header{display:flex; align-items:center; gap:.7rem; padding:.9rem 1.1rem; border
     $('dMeta').textContent = list.length + (list.length === 1 ? ' player · ' : ' players · ') + fmtM(sumCp(list));
     $('dList').innerHTML = list.length ? list.map(function (r) {
       var tags = [];
-      if (r.alliance) tags.push('<span class="tag ' + esc(r.alliance) + '">' + esc(r.alliance) + '</span>');
+      if (r.alliance) tags.push('<span class="tag ' + esc(allyClass(r.alliance)) + '">' + esc(r.alliance) + '</span>');
       if (r.profession) tags.push('<span class="tag">' + esc(r.profession) + '</span>');
       if (r.role) tags.push('<span class="tag">' + esc(r.role) + '</span>');
       if (r.unit) tags.push('<span class="tag">' + esc(r.unit) + '</span>');
