@@ -19,6 +19,7 @@
     { label: 'HT Chips',            path: '/ht-chips.html' },
     { label: 'Roadmap',             path: '/roadmap.html' },
     { label: 'Rockfield Optimizer', path: '/rockfield-optimizer.html' },
+    { label: 'SvS',                 path: '/svs.html' },
     { label: 'Theme Vote',          path: '/eternal-themes.html' },
     { label: 'Titan Canyon',        path: '/titan.html' },
   ];
