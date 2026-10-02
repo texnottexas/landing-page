@@ -4272,7 +4272,7 @@
     modal.appendChild(h);
 
     var p = document.createElement('p');
-    p.textContent = 'Enter your in-game UID — the 12 or 13-digit number from your in-game profile. Hashed locally to verify you own this account. UID is never stored or sent anywhere.';
+    p.textContent = 'Enter your in-game UID (the 12 or 13 digit number on your in-game profile). The site checks it to confirm the account is yours, and it is saved only in this browser so you will not be asked again.';
     modal.appendChild(p);
 
     var label = document.createElement('label');
@@ -7768,6 +7768,21 @@
           try { openIdentityPrefs(player || {}); } catch (e) {}
           return;
         }
+        // Verified on an older version of the site: this device holds only the
+        // retired hash credential, which the worker no longer accepts. Ask for
+        // the UID once up front, then continue straight into the import, so the
+        // player doesn't run the bookmarklet and paste only to have every
+        // section rejected.
+        if (!_ar_getStoredUid(sk)) {
+          try { _ar_openUnlockModal(sk, (ident && ident.name) || 'your account', openImport); } catch (e) {}
+          return;
+        }
+        openImport();
+      });
+      function openImport() {
+        var ident = getStoredIdentity();
+        var sk = (ident && ident.siteKey) ? ident.siteKey : null;
+        if (!sk) return;
         _ar_openImportModal(sk, function() {
           // After a successful import, invalidate every supplement-aware tab's
           // render cache and re-trigger the active one so cloud-sync pills,
@@ -7790,7 +7805,7 @@
             }
           } catch (e) { /* ignore */ }
         });
-      });
+      }
       right.appendChild(importBtn);
     }
 
@@ -8069,7 +8084,7 @@
           verifyHint.appendChild(ok);
           verifyHint.appendChild(document.createTextNode(' — inventory, bench, and decor advisor are unlocked on every report whose siteKey matches yours.'));
         } else {
-          verifyHint.textContent = 'Verify your in-game UID to unlock S2864 features (inventory, bench, decor advisor) on all of your reports. UID is hashed locally and never stored.';
+          verifyHint.textContent = 'Verify your in-game UID to unlock S2864 features (inventory, bench, decor advisor) on all of your reports. The site checks your UID to confirm the account is yours, and it is saved only in this browser.';
         }
         verifyRow.appendChild(verifyHint);
 
