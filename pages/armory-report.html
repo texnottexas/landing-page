@@ -3879,7 +3879,14 @@
   //
   // Keys touched:
   //   playerIdentity                    — the logged-in user
-  //   armory_uidHash_<sk>               — re-handshake credential
+  //   armory_uid_<sk>                   — re-handshake credential (the player's
+  //                                       own UID, kept so a renewal doesn't need
+  //                                       to ask again; sent only to the worker's
+  //                                       handshake call). Replaces the legacy
+  //                                       armory_uidHash_<sk> (a sha256 prefix,
+  //                                       which is the player's PUBLIC siteKey and
+  //                                       so can't prove ownership) — removed
+  //                                       wherever this one is written or cleared.
   //   armory_unlocked                   — { sk: true } map of UID-verified keys
   //   armory_<kind>_<sk>                — supplement payloads (kind: inv/bench/chips)
   //   armory_meta_<kind>_<sk>           — supplement metadata (updated, hash, v)
@@ -3917,14 +3924,19 @@
         safeWrite('playerIdentity', JSON.stringify(ident));
       },
 
-      // ── uidHash cache (re-handshake credential) ────────────────────────
-      getUidHash: function(siteKey) {
-        return safeRead('armory_uidHash_' + siteKey);
+      // ── UID cache (re-handshake credential) ─────────────────────────────
+      // Stores the player's own raw UID so a renewal doesn't need to ask
+      // again. Always clears the legacy hash-based key alongside it so a
+      // device never carries both.
+      getUid: function(siteKey) {
+        return safeRead('armory_uid_' + siteKey);
       },
-      setUidHash: function(siteKey, uidHash) {
-        safeWrite('armory_uidHash_' + siteKey, uidHash);
+      setUid: function(siteKey, uid) {
+        safeWrite('armory_uid_' + siteKey, uid);
+        safeRemove('armory_uidHash_' + siteKey);
       },
-      removeUidHash: function(siteKey) {
+      clearUid: function(siteKey) {
+        safeRemove('armory_uid_' + siteKey);
         safeRemove('armory_uidHash_' + siteKey);
       },
 
@@ -4239,9 +4251,9 @@
     var map = ArmoryIdentity.getUnlocked();
     if (on) map[siteKey] = true; else delete map[siteKey];
     ArmoryIdentity.setUnlocked(map);
-    // Drop the cached uidHash on "Forget" so a future re-verify re-prompts
-    // for UID instead of silently re-handshaking under the old identity.
-    if (!on) ArmoryIdentity.removeUidHash(siteKey);
+    // Drop the cached UID on "Forget" so a future re-verify re-prompts
+    // for it instead of silently re-handshaking under the old identity.
+    if (!on) ArmoryIdentity.clearUid(siteKey);
   }
 
   function _ar_listUnlocked() {
@@ -4329,7 +4341,7 @@
           for (var j = 0; j < hashesTried.length && !rosterHeal; j++) {
             var first16 = hashesTried[j].first16;
             for (var k = 0; k < roster.length; k++) {
-              if (roster[k].siteKey === first16) { rosterHeal = { player: roster[k], hash: hashesTried[j].hash }; break; }
+              if (roster[k].siteKey === first16) { rosterHeal = { player: roster[k], uid: hashesTried[j].uid }; break; }
             }
           }
         } catch (e) { /* fail to roster — fall through to error */ }
@@ -4346,8 +4358,8 @@
           ident.siteKey = rosterHeal.player.siteKey;
           ArmoryIdentity.set(ident);
         } catch (e) {}
-        try { await _ar_handshake(rosterHeal.hash); } catch (e) { /* fail-soft */ }
-        _ar_storeUidHash(rosterHeal.player.siteKey, rosterHeal.hash);
+        try { await _ar_handshake(rosterHeal.uid); } catch (e) { /* fail-soft */ }
+        _ar_storeUid(rosterHeal.player.siteKey, rosterHeal.uid);
         _ar_setUnlocked(rosterHeal.player.siteKey, true);
         document.body.removeChild(bg);
         if (typeof onUnlock === 'function') onUnlock();
@@ -4373,15 +4385,15 @@
         submit.disabled = !input.value.trim();
         return;
       }
-      var fullHash = matched.hash;
-      // Hash matched — try to capture a fresh worker token. Fail-soft to local-only mode.
+      var matchedUid = matched.uid;
+      // UID matched — try to capture a fresh worker token. Fail-soft to local-only mode.
       try {
-        await _ar_handshake(fullHash);
+        await _ar_handshake(matchedUid);
       } catch (e) {
         console.warn('Supplement handshake failed:', e);
         err.textContent = 'Worker unreachable (' + e.message + ') — saved local-only.';
       }
-      _ar_storeUidHash(siteKey, fullHash);
+      _ar_storeUid(siteKey, matchedUid);
       _ar_setUnlocked(siteKey, true);
       document.body.removeChild(bg);
       if (typeof onUnlock === 'function') onUnlock();
@@ -4417,11 +4429,15 @@
     return Math.floor(mo / 12) + 'y ago';
   }
 
-  // Send only sha256(uid) to the worker — raw UID never leaves the browser.
-  async function _ar_handshake(uidHash) {
+  // Send the raw UID to the worker so it can verify the caller actually
+  // knows it. A client-supplied hash can't prove that: the first 16 hex
+  // chars of sha256(uid) are the player's PUBLIC siteKey (it's published in
+  // player-data.json), so anyone could send it without knowing the UID.
+  // The UID goes in this one request body only — it is never logged.
+  async function _ar_handshake(uid) {
     var r = await fetch(SUPPLEMENT_WORKER + '/supplement/handshake', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uidHash: uidHash })
+      body: JSON.stringify({ uid: uid })
     });
     if (!r.ok) {
       var msg = await r.text();
@@ -4445,29 +4461,27 @@
     return data;
   }
 
-  // Persist the full sha256(uid) so the next upload can transparently
-  // re-handshake when the worker token expires (90-day TTL). The hash is
-  // already what gets sent to the worker over the wire (we never receive
-  // or store the raw UID), so caching it adds no privacy regression and
-  // saves the user from having to re-enter the UID every time the token
-  // lapses between paste sessions.
-  function _ar_storeUidHash(siteKey, uidHash) {
-    if (!siteKey || !uidHash) return;
-    ArmoryIdentity.setUidHash(siteKey, uidHash);
+  // Persist the player's own UID on this device so the next upload can
+  // transparently re-handshake when the worker token expires (90-day TTL),
+  // without making them re-type it. It is sent only to the handshake call
+  // above and never logged.
+  function _ar_storeUid(siteKey, uid) {
+    if (!siteKey || !uid) return;
+    ArmoryIdentity.setUid(siteKey, uid);
   }
-  function _ar_getStoredUidHash(siteKey) {
+  function _ar_getStoredUid(siteKey) {
     if (!siteKey) return null;
-    return ArmoryIdentity.getUidHash(siteKey);
+    return ArmoryIdentity.getUid(siteKey);
   }
 
-  // Ensure a fresh token is available; auto-handshake from cached uidHash
-  // when possible. Throws when no cached hash exists (caller surfaces a
-  // re-enter UID prompt).
+  // Ensure a fresh token is available; auto-handshake from the UID cached on
+  // this device when possible. Throws when no cached UID exists (caller
+  // surfaces a re-enter UID prompt).
   async function _ar_ensureSupplementToken(siteKey) {
     if (_ar_supplementToken && Date.now() < _ar_supplementTokenExpires - 10000) return;
-    var hash = _ar_getStoredUidHash(siteKey);
-    if (!hash) throw new Error('No upload token. Re-enter UID.');
-    await _ar_handshake(hash);
+    var uid = _ar_getStoredUid(siteKey);
+    if (!uid) throw new Error('No upload token. Re-enter UID.');
+    await _ar_handshake(uid);
   }
 
   // Kinds the import bookmarklet writes. Deliberately excludes 'runepool':
@@ -4507,10 +4521,10 @@
   }
 
   // Background re-sync: if the owner has local data newer than what the
-  // worker holds (or the worker has nothing), push it up using the cached
-  // uidHash. Silent on success — only the owner notices via the toolbar
-  // status pill. Tracks last-synced timestamp in localStorage so repeated
-  // tab opens don't spam the worker.
+  // worker holds (or the worker has nothing), push it up using the UID
+  // cached on this device. Silent on success — only the owner notices via
+  // the toolbar status pill. Tracks last-synced timestamp in localStorage
+  // so repeated tab opens don't spam the worker.
   // Returns: 'synced' | 'no-change' | 'no-hash' | 'error'
   async function _ar_backgroundSyncSupplement(kind, siteKey) {
     if (!siteKey) return 'error';
@@ -4525,8 +4539,8 @@
     if (!localTs) return 'no-change';
     var lastSynced = ArmoryIdentity.getLastSync(kind, siteKey);
     if (lastSynced >= localTs) return 'no-change';
-    var hash = _ar_getStoredUidHash(siteKey);
-    if (!hash) return 'no-hash';
+    var uid = _ar_getStoredUid(siteKey);
+    if (!uid) return 'no-hash';
     try {
       await _ar_supplementUpload(kind, local, siteKey);
       ArmoryIdentity.setLastSync(kind, siteKey, localTs);
@@ -4654,8 +4668,8 @@
 
   async function _ar_selfHealSupplements(siteKey) {
     if (!siteKey) return;
-    var hash = _ar_getStoredUidHash(siteKey);
-    if (!hash) return;
+    var uid = _ar_getStoredUid(siteKey);
+    if (!uid) return;
 
     var priv = {};
     try {
@@ -4706,7 +4720,7 @@
     }
 
     try {
-      await _ar_handshake(hash);
+      await _ar_handshake(uid);
     } catch (e) {
       console.warn('[self-heal] handshake failed', e);
       return;
@@ -7747,10 +7761,10 @@
         }
         // Identity-gate above only checks that a non-guest identity exists.
         // The bookmarklet content + envelope upload both require a verified
-        // UID hash — without one the player would see install steps, run
-        // the bookmarklet, paste, and the worker would reject every section
-        // for missing auth. Force them through Identity Prefs first.
-        if (!_ar_isUnlocked(sk) && !_ar_getStoredUidHash(sk)) {
+        // UID — without one the player would see install steps, run the
+        // bookmarklet, paste, and the worker would reject every section for
+        // missing auth. Force them through Identity Prefs first.
+        if (!_ar_isUnlocked(sk) && !_ar_getStoredUid(sk)) {
           try { openIdentityPrefs(player || {}); } catch (e) {}
           return;
         }
@@ -8122,11 +8136,11 @@
                 for (var i = 0; i < attempts.length; i++) {
                   var c = attempts[i]; if (!c) continue;
                   var h = await _ar_sha256Hex(c);
-                  hashesTried.push({ hash: h, first16: h.slice(0, 16) });
+                  hashesTried.push({ uid: c, hash: h, first16: h.slice(0, 16) });
                   if (h.slice(0, 16) === identity.siteKey) {
                     matched = true;
-                    try { await _ar_handshake(h); } catch (e) {}
-                    _ar_storeUidHash(identity.siteKey, h);
+                    try { await _ar_handshake(c); } catch (e) {}
+                    _ar_storeUid(identity.siteKey, c);
                     break;
                   }
                 }
@@ -8144,8 +8158,8 @@
                           ident.rank = p.rank; ident.profession = p.profession;
                           ident.siteKey = p.siteKey;
                           ArmoryIdentity.set(ident);
-                          try { await _ar_handshake(hashesTried[j].hash); } catch (e) {}
-                          _ar_storeUidHash(p.siteKey, hashesTried[j].hash);
+                          try { await _ar_handshake(hashesTried[j].uid); } catch (e) {}
+                          _ar_storeUid(p.siteKey, hashesTried[j].uid);
                           _ar_setUnlocked(p.siteKey, true);
                           matched = true;
                           // Reload so other gates (Inventory, Bench, Decor Advisor) pick up the new siteKey.
@@ -8265,17 +8279,17 @@
           rebtn.style.cssText = 'padding: 4px 10px; margin-right: 6px; background: var(--card); color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; cursor: pointer; font-size: 12px;';
           rebtn.textContent = 'Refresh token';
           rebtn.onclick = async function() {
-            // Cached uidHash means we can re-handshake silently — no need to
+            // A cached UID means we can re-handshake silently — no need to
             // pop the UID re-entry modal behind the settings sheet (it ends up
             // hidden + the user thinks it didn't do anything). Fall back to
-            // the modal only when no hash is stored.
-            var hash = _ar_getStoredUidHash(siteKey);
-            if (hash) {
+            // the modal only when no UID is stored.
+            var uid = _ar_getStoredUid(siteKey);
+            if (uid) {
               var prevText = rebtn.textContent;
               rebtn.disabled = true;
               rebtn.textContent = 'Refreshing…';
               try {
-                await _ar_handshake(hash);
+                await _ar_handshake(uid);
                 rebtn.textContent = '✓ Refreshed';
                 setTimeout(function() {
                   rebtn.textContent = prevText;
@@ -8521,16 +8535,17 @@
                   try {
                     var headers = { 'Content-Type': 'application/json' };
                     var body = { shortcode: code };
-                    // Mint or refresh the Bearer token from the cached uidHash.
-                    // The ensure-helper short-circuits on a non-expired token,
-                    // so when the in-memory token is stale (page idled, came
-                    // back later) we force a fresh handshake by clearing it
-                    // first. Without this the user had to hit Refresh Token in
-                    // identity prefs before delete would attach the header.
+                    // Mint or refresh the Bearer token from the UID cached on
+                    // this device. The ensure-helper short-circuits on a
+                    // non-expired token, so when the in-memory token is stale
+                    // (page idled, came back later) we force a fresh
+                    // handshake by clearing it first. Without this the user
+                    // had to hit Refresh Token in identity prefs before
+                    // delete would attach the header.
                     if (canBearerDelete) {
-                      var hash = _ar_getStoredUidHash(ownIdentForDel.siteKey);
-                      if (hash) {
-                        try { await _ar_handshake(hash); } catch (e) { console.warn('handshake failed', e); }
+                      var uid = _ar_getStoredUid(ownIdentForDel.siteKey);
+                      if (uid) {
+                        try { await _ar_handshake(uid); } catch (e) { console.warn('handshake failed', e); }
                         if (_ar_supplementToken) {
                           headers['Authorization'] = 'Bearer ' + _ar_supplementToken;
                         }
@@ -8708,8 +8723,8 @@
             resetBtn.textContent = 'Working…';
             try {
               if (identity && identity.siteKey && _ar_isUnlocked(identity.siteKey)) {
-                var hash = _ar_getStoredUidHash(identity.siteKey);
-                if (hash) { try { await _ar_handshake(hash); } catch (e) {} }
+                var uid = _ar_getStoredUid(identity.siteKey);
+                if (uid) { try { await _ar_handshake(uid); } catch (e) {} }
               }
               var headers = { 'Content-Type': 'application/json' };
               if (_ar_supplementToken) headers['Authorization'] = 'Bearer ' + _ar_supplementToken;
@@ -11639,7 +11654,7 @@
     var state = {
       kind: kind, siteKey: siteKey, isOwner: isOwner,
       status: 'checking', updatedAt: null, cloudHash: null, shortcode: null,
-      localTs: 0, lastSyncTs: 0, hasUidHash: false
+      localTs: 0, lastSyncTs: 0, hasUid: false
     };
 
     function paint() {
@@ -11710,7 +11725,7 @@
         line(kindLabel + ' is saved on this device only.', true);
         if (state.updatedAt) line('Updated: ' + new Date(state.updatedAt).toLocaleString());
         if (state.isOwner) {
-          if (!state.hasUidHash) {
+          if (!state.hasUid) {
             line('Verify your in-game UID to enable cloud sync. Other viewers can’t see this snapshot until then.');
             action('Verify UID', function () {
               dismissTooltip();
@@ -11818,7 +11833,7 @@
           state.shortcode = saved.shortcode || null;
         }
       } catch (e) { /* ignore */ }
-      try { state.hasUidHash = !!_ar_getStoredUidHash(siteKey); } catch (e) { state.hasUidHash = false; }
+      try { state.hasUid = !!_ar_getStoredUid(siteKey); } catch (e) { state.hasUid = false; }
 
       var local = null;
       try { local = ArmoryIdentity.getSupplement(state.kind, siteKey); } catch (e) {}
@@ -24205,9 +24220,10 @@
       try { localStorage.setItem(lsKey + siteKey, serialized); }
       catch (e) { err.textContent = 'localStorage write failed: ' + e.message; return; }
       // Best-effort worker upload — passes siteKey so the upload helper can
-      // transparently re-handshake from the cached uidHash when the worker
-      // token has expired or the in-memory token died on reload. Init also
-      // pre-warms a token at boot, so this path is now mostly belt + suspenders.
+      // transparently re-handshake from the UID cached on this device when
+      // the worker token has expired or the in-memory token died on reload.
+      // Init also pre-warms a token at boot, so this path is now mostly
+      // belt + suspenders.
       try {
         await _ar_supplementUpload(kind, raw, siteKey);
         // Mark synced so background sync skips redundant retries on next open.
@@ -33196,17 +33212,18 @@
     })();
 
     // Boot-time supplement-token warmup. The in-memory _ar_supplementToken
-    // dies on every page load, but the cached uidHash survives. Mint a fresh
-    // token in the background so the first action that needs auth (delete,
-    // privacy toggle, background sync) doesn't have to round-trip a handshake
-    // first — and so users no longer have to hit "Refresh token" by hand.
+    // dies on every page load, but the UID cached on this device survives.
+    // Mint a fresh token in the background so the first action that needs
+    // auth (delete, privacy toggle, background sync) doesn't have to
+    // round-trip a handshake first — and so users no longer have to hit
+    // "Refresh token" by hand.
     migrationDone.then(function() {
       try {
         var ident = getStoredIdentity();
         if (!ident || !ident.siteKey) return;
-        var hash = _ar_getStoredUidHash(ident.siteKey);
-        if (!hash) return;
-        _ar_handshake(hash)
+        var uid = _ar_getStoredUid(ident.siteKey);
+        if (!uid) return;
+        _ar_handshake(uid)
           .catch(function(e) { console.warn('Boot handshake failed', e); })
           .then(function() {
             // Self-heal supplements: catch up any local-only data that never

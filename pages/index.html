@@ -5877,7 +5877,7 @@
             var attempts = [raw.trim(), raw.replace(/\D/g, '')];
             var hashesTried = [];
             var matched = false;
-            var matchedHash = null;
+            var matchedUid = null;
             var matchedSiteKey = null;
             for (var i = 0; i < attempts.length; i++) {
               var c = attempts[i];
@@ -5886,7 +5886,7 @@
               hashesTried.push({ uid: c, hash: h, first16: h.slice(0, 16) });
               if (h.slice(0, 16) === identity.siteKey) {
                 matched = true;
-                matchedHash = h;
+                matchedUid = c;
                 matchedSiteKey = identity.siteKey;
                 break;
               }
@@ -5907,7 +5907,7 @@
                       _idSetUnlocked(p.siteKey, true);
                       showGreeting(ident);
                       matched = true;
-                      matchedHash = ht.hash;
+                      matchedUid = ht.uid;
                       matchedSiteKey = p.siteKey;
                       break;
                     }
@@ -5930,21 +5930,25 @@
             if (!_idIsUnlocked(getIdentity().siteKey)) {
               _idSetUnlocked(getIdentity().siteKey, true);
             }
-            // Mint supplement token + cache uidHash so cross-page features
-            // (armory-report inventory upload, decor advisor) skip a second UID
-            // prompt. Worker token has 90-day TTL; uidHash cache lets the
-            // armory-report boot warmup re-handshake silently after expiry.
-            // Without this, users who verified UID on the homepage hit
-            // "No upload token. Re-enter UID." on first inventory upload.
-            if (matchedHash && matchedSiteKey) {
+            // Mint supplement token + cache the UID on this device so
+            // cross-page features (armory-report inventory upload, decor
+            // advisor) skip a second UID prompt. Worker token has 90-day
+            // TTL; the cached UID lets the armory-report boot warmup
+            // re-handshake silently after expiry. Without this, users who
+            // verified UID on the homepage hit "No upload token. Re-enter
+            // UID." on first inventory upload.
+            if (matchedUid && matchedSiteKey) {
               try {
                 await fetch('https://push-worker.27tb8s6fct.workers.dev/supplement/handshake', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ uidHash: matchedHash })
+                  body: JSON.stringify({ uid: matchedUid })
                 });
               } catch (e) { /* fail-soft — armory-report will retry on demand */ }
-              try { localStorage.setItem('armory_uidHash_' + matchedSiteKey, matchedHash); } catch (e) {}
+              try {
+                localStorage.setItem('armory_uid_' + matchedSiteKey, matchedUid);
+                localStorage.removeItem('armory_uidHash_' + matchedSiteKey);
+              } catch (e) {}
             }
             renderExtras();
           } catch (e) {
