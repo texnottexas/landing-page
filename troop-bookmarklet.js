@@ -445,8 +445,15 @@
       note(delBox, 'These can never merge again: ' + Object.keys(by).sort().map(function (k) { return by[k] + ' x ' + k; }).join(', ') + '. Lv1 to Lv9 and Lv100+ are never deleted.', '#e6edf3');
       var delB = btn('Delete ' + cand.length + ' demoted unit(s)'); delB.style.color = '#f85149'; delB.style.borderColor = '#f85149';
       delBox.appendChild(delB); state.controls.push(delB);
-      confirmTap(delB, 'Tap again to permanently delete ' + cand.length + ' unit(s)', function () {
-        var stored = cand.filter(function (u) { return u.wh; }), onBase = cand.filter(function (u) { return !u.wh; }), steps = [];
+      // re-read on the first tap so the confirm names exactly what the second tap deletes
+      var pending = cand;
+      confirmTap(delB, function () {
+        try { refreshSnapshot(); } catch (e) { return 'Open your base first'; }
+        pending = TC.splitDeletable(state.snap.stored.concat(state.snap.units)).singles;
+        return pending.length ? 'Tap again to permanently delete ' + pending.length + ' unit(s)' : 'Nothing to delete any more';
+      }, function () {
+        if (!pending.length) { paintCleanup(); return; }
+        var stored = pending.filter(function (u) { return u.wh; }), onBase = pending.filter(function (u) { return !u.wh; }), steps = [];
         for (var i = 0; i < stored.length; i += 100) steps.push({ kind: 'deleteStored', ids: stored.slice(i, i + 100).map(function (u) { return u.id; }) });
         onBase.forEach(function (u) { steps.push({ kind: 'deleteUnit', id: u.id }); });
         delBox.textContent = '';
@@ -464,6 +471,7 @@
     function paintSkin() {
       s2out.textContent = '';
       var best = TC.bestTrainingSkin(state.snap.skins.owned, state.snap.skins.current);
+      if (!best.change && !best.value) { note(s2out, 'None of your base skins add training speed, so your skin stays as it is.', '#8b949e'); return; }
       if (!best.change) { note(s2out, 'Your current skin already has the best training speed you own (+' + best.value / 100 + '%).', '#3fb950'); return; }
       var name = (state.snap.skins.owned.filter(function (s) { return s.id === best.id; })[0] || {}).name || ('skin ' + best.id);
       var b = btn('Wear ' + name + ' (+' + best.value / 100 + '% training speed, now +' + best.currentValue / 100 + '%)');
@@ -535,6 +543,8 @@
         note(s3out, sites.land.length + ' spare land spot(s) and ' + sites.sea.length + ' spare sea spot(s). Free storage: ' + free.army + ' army, ' + free.air + ' planes, ' + free.navy + ' navy.', '#e6edf3');
         if (!solver) note(s3out, 'The exact solver could not load, so these spots come from the near-optimal plan.', '#d29922');
         if (n < want) note(s3out, 'Your gold covers ' + n + ' of the ' + want + ' buildings that would fit.', '#d29922');
+        var floorOnly = r.landCells.filter(function (c) { return !occ[c] && r.floor[c]; }).length;
+        if (!sites.land.length && floorOnly) note(s3out, floorOnly + ' free land tile(s) are covered by floor tiles. Units can stand there, but the game does not allow buildings on floors.', '#8b949e');
         if (!n) { note(s3out, 'Nothing to build: no spare spots, or no room left for the units more buildings would train.', '#d29922'); return; }
         note(s3out, 'Each building queues 5 units. The count is sized so those units fit in your storage or on the free base space that is left.', '#8b949e');
         var lvl = snap.buildable[1050] || snap.buildable[1040] || snap.buildable[1100];
@@ -604,9 +614,12 @@
             s4say('Round ' + round + ': ' + sum.instant + ' unit(s) arrived instantly. Merging them and training again...', '#e6edf3');
             refill(round + 1, tot); return;
           }
-          var occ = TC.occupiedCells(state.region);
+          var occ = TC.occupiedCells(state.region), open = TC.trainEstimate(state.snap.buildings, state.snap.buildable).total.units;
           var land = state.region.landCells.filter(function (c) { return !occ[c]; }).length, ships = TC.navyFit(state.region).greedy;
-          var room = land || ships ? ' ' + land + ' land tile(s) are still free' + (ships ? ' and ' + ships + ' ship(s) would still fit on the sea' : '') + '. Use Layout below to pack them, then Refill again.' : ' No free spots left on the base.';
+          var room;
+          if (!open) room = ' Every training queue is full. Run Refill again once they finish to keep filling the base.';
+          else if (land || ships) room = ' Nothing more fits right now: ' + land + ' land tile(s) are free' + (ships ? ' and ' + ships + ' ship(s) would fit on the sea' : '') + ', but in pieces. Use Layout below to pack them, then Refill again.';
+          else room = ' No free spots left on the base.';
           s4say((ok ? 'Done after ' + round + ' round(s): ' : '') + text + ' In total ' + tot.ordered + ' ordered (' + tot.instant + ' instantly), ' + tot.merged + ' fewer units from merging.' + room, ok ? '#3fb950' : '#d29922');
         });
       });
@@ -642,8 +655,14 @@
         note(out, 'Extra training buildings: ' + Object.keys(by).map(function (g) { return bld(Number(g), by[g]); }).join(', ') + '. One of each type is kept' + (busy ? ', and buildings still training are kept until they finish' : '') + '.', '#e6edf3');
         var del = btn('Delete ' + extras.length + ' extra training building' + (extras.length === 1 ? '' : 's')); del.style.color = '#f85149'; del.style.borderColor = '#f85149';
         out.appendChild(del); state.controls.push(del);
-        confirmTap(del, 'Tap again to permanently delete ' + extras.length + ' building' + (extras.length === 1 ? '' : 's'), function () {
-          runWithProgress(out, extras.map(function (b) { return { kind: 'deleteBuilding', id: b.id }; }), 'Deleting buildings', function (res) { paint(); note(out, res.ok ? 'Done.' : res.error, res.ok ? '#3fb950' : '#d29922'); });
+        var pendingB = extras;
+        confirmTap(del, function () {
+          try { refreshSnapshot(); } catch (e) { return 'Open your base first'; }
+          pendingB = TC.extraTrainingBuildings(state.snap.buildings.filter(function (b) { return GROUP_ROLE[b.group]; }));
+          return pendingB.length ? 'Tap again to permanently delete ' + pendingB.length + ' building' + (pendingB.length === 1 ? '' : 's') : 'Nothing to delete any more';
+        }, function () {
+          if (!pendingB.length) { paint(); return; }
+          runWithProgress(out, pendingB.map(function (b) { return { kind: 'deleteBuilding', id: b.id }; }), 'Deleting buildings', function (res) { paint(); note(out, res.ok ? 'Done.' : res.error, res.ok ? '#3fb950' : '#d29922'); });
         });
       }
       var prev = null; try { if (state.snap.uid) prev = Number(localStorage.getItem('tp_prevSkin_' + state.snap.uid)); } catch (e) {}
