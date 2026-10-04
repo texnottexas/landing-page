@@ -52,19 +52,25 @@
   // From the world map, press the game's own home button and wait for the base to finish loading.
   var HOME_BUTTON = 'UICanvas/WorldMapUIWrapper/NWorldMapUI/bottomNode/btn_Home';
   function goHome(timeoutMs) {
-    if (isReady()) return Promise.resolve(true);
+    function ready() { try { return isReady(); } catch (e) { return false; } }   // the scene may be mid-swap
+    if (ready()) return Promise.resolve(true);
+    var t0 = Date.now(), limit = timeoutMs || 45000;
+    function wait() {
+      return new Promise(function (resolve) {
+        (function poll() {
+          if (ready()) { resolve(true); return; }
+          if (Date.now() - t0 > limit) { resolve(false); return; }
+          setTimeout(poll, 500);
+        })();
+      });
+    }
+    var inBase = false; try { inBase = !!hm(); } catch (e) {}
+    if (inBase) return wait();                          // already home, still loading: nothing to press
     var node = null, btn = null;
     try { node = window.cc && cc.find(HOME_BUTTON); btn = node && node.getComponent(cc.Button); } catch (e) {}
-    if (!btn || !btn.clickEvents) return Promise.resolve(false);
+    if (!btn || !btn.clickEvents || node.activeInHierarchy === false || btn.interactable === false) return Promise.resolve(false);
     try { btn.clickEvents.forEach(function (e) { e.emit([node]); }); } catch (e) { return Promise.resolve(false); }
-    var t0 = Date.now(), limit = timeoutMs || 45000;
-    return new Promise(function (resolve) {
-      (function poll() {
-        if (isReady()) { resolve(true); return; }
-        if (Date.now() - t0 > limit) { resolve(false); return; }
-        setTimeout(poll, 500);
-      })();
-    });
+    return wait();
   }
 
   function isReady() {

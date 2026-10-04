@@ -87,6 +87,13 @@
       if (!c) return;
       c.disabled = flag; c.style.opacity = flag ? '.5' : '1'; c.style.pointerEvents = flag ? 'none' : '';
     });
+    if (!flag) syncFkLayout();
+  }
+  // fkboats mode: the Layout card's sea option is off and says why
+  function syncFkLayout() {
+    var r = state.navyRow; if (!r) return;
+    r.input.disabled = state.fkboats; r.input.style.opacity = state.fkboats ? '.5' : '1';
+    r.text.textContent = 'Also optimise the sea for navy' + (state.fkboats ? ' (off in fkboats mode)' : '');
   }
 
   // ---------------------------------------------------------------- scan
@@ -138,7 +145,9 @@
     }
     var fill = check('Fill leftover tiles with army', 'fillArmy');
     var keep = check('Keep planes already on the base', 'keepPlanes');
-    check('Also optimise the sea for navy', 'navy');
+    var seaRow = check('Also optimise the sea for navy', 'navy');
+    state.navyRow = { input: seaRow.querySelector('input'), text: seaRow.lastChild };
+    syncFkLayout();
     var go = btn('Plan my base', true);
     go.onclick = function () { plan(); };
     c.appendChild(go); state.controls.push(go);
@@ -439,7 +448,7 @@
     fkBox.onchange = function () {
       state.fkboats = fkBox.checked;
       try { localStorage.setItem('tp_fkboats_v1', state.fkboats ? '1' : '0'); } catch (e) {}
-      paintFk(); paintBuild();
+      paintFk(); paintBuild(); syncFkLayout();
     };
     paintFk();
 
@@ -630,7 +639,7 @@
             refill(round + 1, tot); return;
           }
           var occ = TC.occupiedCells(state.region), open = TC.trainEstimate(state.snap.buildings, state.snap.buildable, { skipNavy: state.fkboats }).total.units;
-          var land = state.region.landCells.filter(function (c) { return !occ[c]; }).length, ships = TC.navyFit(state.region).greedy;
+          var land = state.region.landCells.filter(function (c) { return !occ[c]; }).length, ships = state.fkboats ? 0 : TC.navyFit(state.region).greedy;   // fkboats: no sea talk
           var room;
           if (!open) room = ' Every training queue is full. Run Refill again once they finish to keep filling the base.';
           else if (land || ships) room = ' Nothing more fits right now: ' + land + ' land tile(s) are free' + (ships ? ' and ' + ships + ' ship(s) would fit on the sea' : '') + ', but in pieces. Use Layout below to pack them, then Refill again.';

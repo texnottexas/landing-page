@@ -295,3 +295,34 @@ test('goHome presses the world map home button and waits until the base has load
   assert.equal(await loadFresh(stuck.g.globals).goHome(800), false);
   assert.equal(stuck.pressedCount(), 1);
 });
+
+test('goHome hardening: a throw while the scene changes, a hidden or disabled button, a base still loading', async () => {
+  const HOME = 'UICanvas/WorldMapUIWrapper/NWorldMapUI/bottomNode/btn_Home';
+  // 1. the base check throws for a moment while the scene swaps: treated as not ready yet
+  const g1 = fakeGame(); let pressed1 = 0, swapping = false, home1 = false;
+  const b1 = { clickEvents: [{ emit: () => { pressed1++; swapping = true; setTimeout(() => { swapping = false; home1 = true; }, 600); } }] };
+  g1.globals.cc.find = (p) => {
+    if (p === 'Canvas/HomeMap') { if (swapping) throw new Error('scene swapping'); return home1 ? { getComponent: () => g1.hm } : null; }
+    return p === HOME ? { getComponent: () => b1 } : null;
+  };
+  assert.equal(await loadFresh(g1.globals).goHome(3000), true);
+  assert.equal(pressed1, 1);
+  // 2. a hidden or disabled home button is never pressed
+  for (const state of [{ activeInHierarchy: false }, { interactable: false }]) {
+    const g = fakeGame(); let pressed = 0;
+    const b = Object.assign({ clickEvents: [{ emit: () => { pressed++; } }] }, state.interactable === false ? { interactable: false } : {});
+    const node = Object.assign({ getComponent: () => b }, state.activeInHierarchy === false ? { activeInHierarchy: false } : {});
+    g.globals.cc.find = (p) => (p === HOME ? node : null);
+    assert.equal(await loadFresh(g.globals).goHome(600), false);
+    assert.equal(pressed, 0, JSON.stringify(state));
+  }
+  // 3. already in the base but units still landing: no press, just wait for it to finish
+  const g3 = fakeGame({ armys: [{ _id: 'u1', warehouseId: '0', _data: {} }] }); g3.hm._ArmyComplete = false;
+  let pressed3 = 0;
+  const b3 = { clickEvents: [{ emit: () => { pressed3++; } }] };
+  const find3 = g3.globals.cc.find;
+  g3.globals.cc.find = (p) => (p === HOME ? { getComponent: () => b3 } : find3(p));
+  setTimeout(() => { g3.hm.ArmyItems.u1 = unitItem('u1'); }, 400);
+  assert.equal(await loadFresh(g3.globals).goHome(3000), true);
+  assert.equal(pressed3, 0);
+});
