@@ -122,3 +122,28 @@ test('buildingSites takes explicit counts and still never uses a site twice', ()
   assert.equal(s.navy.length, 3);
   assert.equal(new Set([...s.army, ...s.air]).size, 30);
 });
+
+test('crossLocationStores stores the base half of a pair split between storage and the base', () => {
+  const caps = { army: 102, air: 102, navy: 102 };
+  const stored = [{ id: 's1', armyId: 10050, type: 101, level: 50 }, { id: 's2', armyId: 10102, type: 101, level: 102 }];
+  const units = [
+    { id: 'b1', armyId: 10050, type: 101, level: 50, pos: 12028 },       // partner s1 is in storage
+    { id: 'b2', armyId: 10060, type: 101, level: 60, pos: 14028 },       // no partner anywhere
+    { id: 'b3', armyId: 10102, type: 101, level: 102, pos: 16028 },      // at the cap: never merges
+    { id: 'b4', armyId: 10050, type: 101, level: 50, pos: 18028, state: 2 }  // busy
+  ];
+  assert.deepEqual(TC.crossLocationStores(stored, units, caps, { army: 5, air: 0, navy: 0 }),
+    [{ kind: 'store', id: 'b1', role: 'army', from: [12, 28] }]);
+  assert.deepEqual(TC.crossLocationStores(stored, units, caps, { army: 0, air: 0, navy: 0 }), [], 'full garage: nothing to store');
+});
+
+test('splitDeletable offers only true singles and holds back units that still have a partner', () => {
+  const all = [
+    { id: 's1', armyId: 10050, type: 101, level: 50, wh: 'w1' }, { id: 'b1', armyId: 10050, type: 101, level: 50 },
+    { id: 'b2', armyId: 10060, type: 101, level: 60 }, { id: 'b3', armyId: 10005, type: 101, level: 5 },
+    { id: 'b4', armyId: 30070, type: 301, level: 70 }, { id: 'b5', armyId: 30070, type: 301, level: 70, state: 2 }
+  ];
+  const r = TC.splitDeletable(all);
+  assert.deepEqual(r.singles.map((u) => u.id), ['b2']);
+  assert.deepEqual(r.paired.map((u) => u.id).sort(), ['b1', 'b4', 's1'], 'a busy partner still counts');
+});

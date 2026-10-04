@@ -79,7 +79,7 @@
   }
   function note(parent, text, color) { var n = el('div', 'color:' + (color || '#8b949e') + ';font-size:12px;line-height:1.4;', text); parent.appendChild(n); return n; }
 
-  var state = { snap: null, region: null, mode: 'units', navy: false, fillArmy: false, keepPlanes: true, rows: [], row: null, running: false, busy: false, progress: '', controls: [] };
+  var state = { snap: null, region: null, mode: 'units', navy: false, fillArmy: false, keepPlanes: true, rows: [], row: null, running: false, busy: false, progress: '', controls: [], painters: [] };
   // nothing that changes the plan can be tapped while planning or running
   function setBusy(flag) {
     state.busy = flag;
@@ -384,28 +384,40 @@
         state.progress = label.toLowerCase() + ' ' + (i + 1) + '/' + steps.length; updatePill();
       }
     }).catch(function () { return { ok: false, error: 'Something went wrong. Open your base and try again.' }; }).then(function (res) {
-      state.running = false; state.progress = ''; setBusy(false); updatePill();
-      box.remove();
-      try { refreshSnapshot(); } catch (e) { res = { ok: false, error: 'Your base closed. Open it again and run this again.' }; }
-      done(res, responses);
+      txt.textContent = label + ': updating...';
+      // give the server's updates a moment to land, then re-read once and repaint every card
+      setTimeout(function () {
+        state.running = false; state.progress = ''; setBusy(false); updatePill();
+        box.remove();
+        try { refreshSnapshot(); } catch (e) { res = { ok: false, error: 'Your base closed. Open it again and run this again.' }; done(res, responses); return; }
+        state.painters.forEach(function (p) { try { p(); } catch (e) {} });
+        done(res, responses);
+      }, 1500);
     });
   }
   function totalUnits() { return state.snap.stored.length + state.snap.units.length; }
-  // merge passes until nothing changes (at most 5); the server applies the merge cap
   // Repeats until a round merges nothing (max 5). `start` is the count before round 1, so the
   // report covers every round, not just the last one.
-  function mergePasses(container, done, pass, before, start) {
+  function mergePasses(container, done, pass, before, start, splitDone) {
+    if (!pass) { try { refreshSnapshot(); } catch (e) { done({ ok: false, error: 'Open your base first.' }); return; } }
     pass = pass || 1; before = before == null ? totalUnits() : before; start = start == null ? before : start;
     var steps = [];
     ['army', 'air', 'navy'].forEach(function (r) { steps.push({ kind: 'mergeStorage', role: r, tolerant: true }, { kind: 'mergeBase', role: r, tolerant: true }); });
     runWithProgress(container, steps, 'Merging (round ' + pass + ')', function (res) {
       if (!res.ok) { done(res); return; }
-      setTimeout(function () {
-        try { refreshSnapshot(); } catch (e) { done({ ok: false, error: 'Your base closed.' }); return; }
+      (function () {
         var after = totalUnits();
-        if (after < before && pass < 5) mergePasses(container, done, pass + 1, after, start);
-        else done({ ok: true, merged: start - after });
-      }, 1500);
+        if (after < before && pass < 5) { mergePasses(container, done, pass + 1, after, start, splitDone); return; }
+        // Merge All never pairs a stored unit with one on the base: store the base half once, then merge again
+        var snap = state.snap, free = {};
+        ['army', 'air', 'navy'].forEach(function (k) { free[k] = Math.max(0, snap.storage[k].max - snap.storage[k].used); });
+        var moves = splitDone || pass >= 5 ? [] : window.TroopCore.crossLocationStores(snap.stored, snap.units, snap.mergeCap, free);
+        if (!moves.length) { done({ ok: true, merged: start - after }); return; }
+        runWithProgress(container, moves, 'Moving ' + moves.length + ' unit(s) into storage to pair up', function (r2) {
+          if (!r2.ok) { done(r2); return; }
+          mergePasses(container, done, pass + 1, after, start, true);
+        });
+      })();
     });
   }
 
@@ -418,11 +430,11 @@
     s1.appendChild(mergeB); s1.appendChild(delBox); state.controls.push(mergeB);
     function paintCleanup() {
       var all = state.snap.stored.concat(state.snap.units), caps = state.snap.mergeCap;
-      var pairs = TC.mergeablePairs(all, caps), cand = TC.deleteCandidates(all);
-      s1info.textContent = pairs + ' pair(s) can merge right now (free, up to Lv' + caps.army + '). ' + cand.length + ' demoted unit(s) at Lv10 to Lv99.';
+      var pairs = TC.mergeablePairs(all, caps), split = TC.splitDeletable(all), cand = split.singles;
+      s1info.textContent = pairs + ' pair(s) can merge right now (free, up to Lv' + caps.army + '). ' + (split.singles.length + split.paired.length) + ' demoted unit(s) at Lv10 to Lv99.';
       delBox.textContent = '';
-      if (!cand.length) { note(delBox, 'Nothing to delete: no units at Lv10 to Lv99.', '#3fb950'); return; }
-      if (TC.mergeablePairs(cand, caps) > 0) { note(delBox, 'Merge first. Some of these demoted units can still pair up.', '#d29922'); return; }
+      if (split.paired.length) note(delBox, split.paired.length + ' demoted unit(s) still have a partner at the same level, so they are kept. Merge everything pairs them; if some stay, one of each pair is on the base and that storage is full, so merge those by hand.', '#d29922');
+      if (!cand.length) { if (!split.paired.length) note(delBox, 'Nothing to delete: no units at Lv10 to Lv99.', '#3fb950'); return; }
       var by = {};
       cand.forEach(function (u) { var k = ROLE_NAME[TYPE_ROLE[u.type]] + ' Lv' + u.level; by[k] = (by[k] || 0) + 1; });
       note(delBox, 'These can never merge again: ' + Object.keys(by).sort().map(function (k) { return by[k] + ' x ' + k; }).join(', ') + '. Lv1 to Lv9 and Lv100+ are never deleted.', '#e6edf3');
@@ -438,7 +450,7 @@
     confirmTap(mergeB, 'Tap again to merge everything that can merge', function () {
       mergePasses(s1, function (res) { paintCleanup(); note(s1, res.ok ? (res.merged > 0 ? 'Merging finished: ' + res.merged + ' fewer units, more free storage.' : 'Nothing left to merge.') : res.error, res.ok ? '#3fb950' : '#d29922'); paintBuild(); });
     });
-    paintCleanup();
+    paintCleanup(); state.painters.push(paintCleanup);
 
     // 2. training skin
     var s2 = sub(c, '2. Training skin'), s2out = el('div', 'display:flex;flex-direction:column;gap:6px;'); s2.appendChild(s2out);
@@ -457,12 +469,13 @@
         });
       });
     }
-    paintSkin();
+    paintSkin(); state.painters.push(paintSkin);
 
     // 3. training buildings
     var s3 = sub(c, '3. Training buildings'), findB = btn('Find spare spots'), s3out = el('div', 'display:flex;flex-direction:column;gap:6px;');
     s3.appendChild(findB); s3.appendChild(s3out); state.controls.push(findB);
-    function paintBuild() { s3out.textContent = ''; }
+    function paintBuild() { s3out.textContent = ''; }      // a plan from an older read is stale
+    state.painters.push(paintBuild);
     findB.onclick = async function () {
       if (state.busy || state.running) return;
       setBusy(true); s3out.textContent = '';
@@ -597,7 +610,7 @@
         });
       }
     }
-    paint();
+    paint(); state.painters.push(paint);
   }
 
   // ---------------------------------------------------------------- boot

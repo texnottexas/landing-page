@@ -716,6 +716,46 @@
     return n;
   }
 
+  // Merge All works inside storage or inside the base, never across the two. Once it stops, a
+  // type and level with units in both places is a split pair: storing the base half lets the
+  // next storage merge pair them. Limited by free storage per type; busy and capped units skip.
+  function crossLocationStores(stored, units, caps, free) {
+    var groups = {}, order = [];
+    function add(u, onBase) {
+      if (u.state) return;
+      var role = ROLE_OF_TYPE[u.type], cap = caps[role];
+      if (cap == null || u.level >= cap) return;
+      var g = groups[u.armyId];
+      if (!g) { g = groups[u.armyId] = { role: role, stored: 0, base: [] }; order.push(u.armyId); }
+      if (onBase) g.base.push(u); else g.stored++;
+    }
+    (stored || []).forEach(function (u) { add(u, false); });
+    (units || []).forEach(function (u) { add(u, true); });
+    var room = { army: free.army || 0, air: free.air || 0, navy: free.navy || 0 }, out = [];
+    order.forEach(function (k) {
+      var g = groups[k];
+      if (!g.stored) return;
+      g.base.forEach(function (u) {
+        if (room[g.role] <= 0) return;
+        room[g.role]--;
+        out.push({ kind: 'store', id: u.id, role: g.role, from: fromPosId(u.pos) });
+      });
+    });
+    return out;
+  }
+
+  // Demoted units that can be deleted: Lv10 to Lv99 with no other unit of the same type and
+  // level anywhere (a busy one counts as a partner). The rest still have a pair to merge with.
+  function splitDeletable(units) {
+    var count = {};
+    (units || []).forEach(function (u) { count[u.armyId] = (count[u.armyId] || 0) + 1; });
+    var cand = deleteCandidates(units);
+    return {
+      singles: cand.filter(function (u) { return count[u.armyId] === 1; }),
+      paired: cand.filter(function (u) { return count[u.armyId] > 1; })
+    };
+  }
+
   // Gold a Bulk Training fill would cost: open queue places (5 per building) in each type's
   // highest-level set, which is the set the game trains, priced at the buildable unit cost.
   var QUEUE = 5;
@@ -736,7 +776,8 @@
     CONST: CONST, posId: posId, fromPosId: fromPosId, footprint: footprint, toUV: toUV, unitClass: unitClass, buildRegion: buildRegion, buildLandLP: buildLandLP, buildSeaLP: buildSeaLP, decodeLand: decodeLand, decodeSea: decodeSea, greedyLand: greedyLand, planSteps: planSteps, planStatus: planStatus, planRows: planRows, lockTargets: lockTargets, renderModel: renderModel,
     GROUP: GROUP, deleteCandidates: deleteCandidates, buffValue: buffValue, bestTrainingSkin: bestTrainingSkin, occupiedCells: occupiedCells, freeSites: freeSites,
     buildSeaSlotsLP: buildSeaSlotsLP, decodeSeaSlots: decodeSeaSlots, buildingSites: buildingSites, fitToGold: fitToGold,
-    extraTrainingBuildings: extraTrainingBuildings, mergeablePairs: mergeablePairs, trainEstimate: trainEstimate, buildingCounts: buildingCounts
+    extraTrainingBuildings: extraTrainingBuildings, mergeablePairs: mergeablePairs, trainEstimate: trainEstimate, buildingCounts: buildingCounts,
+    crossLocationStores: crossLocationStores, splitDeletable: splitDeletable
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = TroopCore;
   else root.TroopCore = TroopCore;
