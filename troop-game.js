@@ -41,6 +41,14 @@
 
   // _ArmyComplete only flips when the last unit lands on the map, so a base whose units are all in
   // storage never sets it: count the base as loaded once every on-map unit has its map item.
+  // endTime is -1 for a permanent skin, otherwise its expiry in server seconds (0 = no expiry).
+  function ownedSkinIds(faces, now) {
+    return Object.keys(faces || {}).map(Number).filter(function (id) {
+      var e = (faces[id] || {}).endTime;
+      return id > 0 && !(e > 0 && e < now);
+    }).sort(function (a, b) { return a - b; });
+  }
+
   function isReady() {
     var h = hm();
     if (!(h && h.armyInited && h._BuildingComplete)) return false;
@@ -81,9 +89,7 @@
       units.push({ id: String(a._id), armyId: a._armyId, type: d.type, level: d.level, w: d.width, h: d.height, pt: d.point_type, pos: a._pos, state: a._state || 0 });
     });
     var T = TABLE(), faces = U._MyCastleFace || {}, now = req('DataCenter').DATA.ServerTime, owned = [];
-    Object.keys(faces).forEach(function (k) {
-      var f = faces[k], id = Number(k);
-      if (!id || (f && f.endTime && f.endTime < now)) return;      // skip expired temporary skins
+    ownedSkinIds(faces, now).forEach(function (id) {
       var row = T.getTableDataById('skin', String(id));
       if (row) owned.push({ id: id, equip_buff: row.equip_buff || '', name: text(row.name) });
     });
@@ -396,7 +402,7 @@
   function lockActive() { return !!lock && lock.h === hm(); }
 
   window.TroopGame = {
-    isReady: isReady, accountId: accountId, readSnapshot: readSnapshot, loadHighs: loadHighs, solve: solve,
+    isReady: isReady, accountId: accountId, ownedSkinIds: ownedSkinIds, readSnapshot: readSnapshot, loadHighs: loadHighs, solve: solve,
     runSteps: runSteps, stop: stop, isRunning: isRunning, installLock: installLock, removeLock: removeLock, lockActive: lockActive,
     config: config
   };

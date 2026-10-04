@@ -339,6 +339,7 @@
   // ---------------------------------------------------------------- rebuild after a battle (v2)
   var ROLE_NAME = { army: 'army', air: 'plane', navy: 'navy' }, TYPE_ROLE = { 101: 'army', 201: 'navy', 301: 'air' };
   var GROUP_ROLE = { 1040: 'army', 1050: 'air', 1100: 'navy' };
+  function bld(group, n) { return n + ' ' + ({ 1040: 'Barracks', 1050: n === 1 ? 'Air Base' : 'Air Bases', 1100: n === 1 ? 'Shipyard' : 'Shipyards' })[group]; }
   function refreshSnapshot() { state.snap = window.TroopGame.readSnapshot(); state.region = window.TroopCore.buildRegion(state.snap); }
   function sub(parent, title) {
     var s = el('div', 'display:flex;flex-direction:column;gap:6px;border-top:1px solid #30363d;padding-top:8px;');
@@ -493,7 +494,7 @@
         if (n < want) note(s3out, 'Your gold covers ' + n + ' of the ' + want + ' buildings that would fit.', '#d29922');
         if (!n) { note(s3out, 'Nothing to build: no spare spots, or your storage is already full.', '#d29922'); return; }
         var lvl = snap.buildable[1050] || snap.buildable[1040] || snap.buildable[1100];
-        note(s3out, 'Build ' + plan.army.length + ' Barracks, ' + plan.air.length + ' Air Bases and ' + plan.navy.length + ' Shipyards at Lv' + lvl.level + ' for about ' + fmt(n * per) + ' gold, including one full queue each.', '#e6edf3');
+        note(s3out, 'Build ' + bld(1040, plan.army.length) + ', ' + bld(1050, plan.air.length) + ' and ' + bld(1100, plan.navy.length) + ' at Lv' + lvl.level + ' for about ' + fmt(n * per) + ' gold, including one full queue each.', '#e6edf3');
         var cv = el('canvas', 'width:100%;max-width:520px;background:#0d1117;border:1px solid #30363d;border-radius:4px;'); cv.width = 680; s3out.appendChild(cv);
         var cats = TC.renderModel(snap, r, { slots: [], armyCells: [] }, null).before, outl = [];
         Object.keys(cats).forEach(function (k) { if (cats[k] === 'decoMoving') cats[k] = 'deco'; });
@@ -551,8 +552,8 @@
       var busy = state.snap.buildings.filter(function (b) { return GROUP_ROLE[b.group] && b.busy; }).length;
       if (!extras.length) note(out, 'No extra training buildings. You have at most one of each type' + (busy ? ' (busy ones are kept until they finish)' : '') + '.', '#3fb950');
       else {
-        var by = {}; extras.forEach(function (b) { var k = { 1040: 'Barracks', 1050: 'Air Bases', 1100: 'Shipyards' }[b.group]; by[k] = (by[k] || 0) + 1; });
-        note(out, 'Extra training buildings: ' + Object.keys(by).map(function (k) { return by[k] + ' ' + k; }).join(', ') + '. One of each type is kept' + (busy ? ', and buildings still training are kept until they finish' : '') + '.', '#e6edf3');
+        var by = {}; extras.forEach(function (b) { by[b.group] = (by[b.group] || 0) + 1; });
+        note(out, 'Extra training buildings: ' + Object.keys(by).map(function (g) { return bld(Number(g), by[g]); }).join(', ') + '. One of each type is kept' + (busy ? ', and buildings still training are kept until they finish' : '') + '.', '#e6edf3');
         var del = btn('Delete ' + extras.length + ' extra training buildings'); del.style.color = '#f85149'; del.style.borderColor = '#f85149';
         out.appendChild(del); state.controls.push(del);
         confirmTap(del, 'Tap again to permanently delete ' + extras.length + ' buildings', function () {

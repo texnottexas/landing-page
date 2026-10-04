@@ -207,3 +207,10 @@ test('a base with every unit in storage counts as loaded (the game never marks i
   const g4 = fakeGame(); g4.hm._BuildingComplete = false;
   assert.equal(loadFresh(g4.globals).isReady(), false, 'buildings still loading');
 });
+
+test('permanent skins (endTime -1) count as owned, expired temporary ones do not', () => {
+  const TG = loadFresh(fakeGame().globals);
+  const now = 1791090229;
+  const faces = { 0: { endTime: -1 }, 1853000: { endTime: -1 }, 1795000: { endTime: -1 }, 1710900: { endTime: now - 10 }, 2016000: { endTime: now + 100 }, 1999000: { endTime: 0 } };
+  assert.deepEqual(TG.ownedSkinIds(faces, now), [1795000, 1853000, 1999000, 2016000]);
+});
