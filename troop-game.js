@@ -81,7 +81,7 @@
       var bd = i.BuildingData, d = bd && bd.Data;
       if (!d) return;
       buildings.push({ id: String(bd._id), pos: bd._pos, w: d.width, h: d.height, group: d.group, type: d.type, pt: d.point_type, unmovable: d.unmovable ? 1 : 0,
-        level: d.level, busy: (bd._curProductNum || 0) > 0 ? 1 : 0 });
+        level: d.level, busy: (bd._curProductNum || 0) > 0 ? 1 : 0, queued: bd._curProductNum || 0 });
     });
     var units = [], stored = [];
     U.Armys.forEach(function (a) {

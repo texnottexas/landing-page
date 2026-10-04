@@ -81,3 +81,16 @@ test('mergeablePairs counts the first round of free merges below the cap', () =>
   const units = [u(10100, 101, 100), u(10100, 101, 100), u(10100, 101, 100), u(30102, 301, 102), u(30102, 301, 102), u(20050, 201, 50), u(20050, 201, 50)];
   assert.equal(TC.mergeablePairs(units, { army: 102, air: 102, navy: 102 }), 2);   // 1 army pair + 1 navy pair; Lv102 planes are at the cap
 });
+
+test('trainEstimate counts open queue places in the highest-level set and prices them', () => {
+  const buildings = [
+    { group: 1040, level: 100, queued: 2 }, { group: 1040, level: 100, queued: 0 }, { group: 1040, level: 95, queued: 0 },
+    { group: 1050, level: 100, queued: 5 }, { group: 2, level: 30 }
+  ];
+  const buildable = { 1040: { produce_coin: 10 }, 1050: { produce_coin: 20 }, 1100: { produce_coin: 30 } };
+  const e = TC.trainEstimate(buildings, buildable);
+  assert.deepEqual(e.army, { units: 8, gold: 80 });
+  assert.deepEqual(e.air, { units: 0, gold: 0 });
+  assert.deepEqual(e.navy, { units: 0, gold: 0 });
+  assert.deepEqual(e.total, { units: 8, gold: 80 });
+});

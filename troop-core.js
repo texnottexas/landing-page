@@ -689,11 +689,27 @@
     return n;
   }
 
+  // Gold a Bulk Training fill would cost: open queue places (5 per building) in each type's
+  // highest-level set, which is the set the game trains, priced at the buildable unit cost.
+  var QUEUE = 5;
+  function trainEstimate(buildings, buildable) {
+    var out = { total: { units: 0, gold: 0 } };
+    ['army', 'air', 'navy'].forEach(function (role) {
+      var g = GROUP[role], set = (buildings || []).filter(function (b) { return b.group === g; });
+      var top = set.reduce(function (m, b) { return Math.max(m, b.level || 0); }, 0), units = 0;
+      set.forEach(function (b) { if ((b.level || 0) === top) units += Math.max(0, QUEUE - (b.queued || 0)); });
+      var gold = units * (((buildable || {})[g] || {}).produce_coin || 0);
+      out[role] = { units: units, gold: gold };
+      out.total.units += units; out.total.gold += gold;
+    });
+    return out;
+  }
+
   var TroopCore = {
     CONST: CONST, posId: posId, fromPosId: fromPosId, footprint: footprint, toUV: toUV, unitClass: unitClass, buildRegion: buildRegion, buildLandLP: buildLandLP, buildSeaLP: buildSeaLP, decodeLand: decodeLand, decodeSea: decodeSea, greedyLand: greedyLand, planSteps: planSteps, planStatus: planStatus, planRows: planRows, lockTargets: lockTargets, renderModel: renderModel,
     GROUP: GROUP, deleteCandidates: deleteCandidates, buffValue: buffValue, bestTrainingSkin: bestTrainingSkin, occupiedCells: occupiedCells, freeSites: freeSites,
     buildSeaSlotsLP: buildSeaSlotsLP, decodeSeaSlots: decodeSeaSlots, buildingSites: buildingSites, fitToGold: fitToGold,
-    extraTrainingBuildings: extraTrainingBuildings, mergeablePairs: mergeablePairs
+    extraTrainingBuildings: extraTrainingBuildings, mergeablePairs: mergeablePairs, trainEstimate: trainEstimate
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = TroopCore;
   else root.TroopCore = TroopCore;

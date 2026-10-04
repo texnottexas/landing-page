@@ -355,7 +355,7 @@
     b.onclick = function () {
       if (state.busy || state.running || window.TroopGame.isRunning()) return;
       if (!b._armed) {
-        b._armed = true; b._label = b.textContent; b.textContent = armedText;
+        b._armed = true; b._label = b.textContent; b.textContent = typeof armedText === 'function' ? armedText() : armedText;
         setTimeout(function () { if (b._armed) { b._armed = false; b.textContent = b._label; } }, 4000);
         return;
       }
@@ -540,8 +540,16 @@
         note(s4out, (res.ok ? '' : res.error + ' ') + lines.join('. ') + '.', res.ok ? '#3fb950' : '#d29922');
       });
     }
-    confirmTap(trainB, 'Tap again to start training (costs gold per unit)', train);
-    confirmTap(refillB, 'Tap again to merge everything, then train', function () {
+    // the confirm names the spend, worked out from a fresh read of the queues
+    function trainCost(prefix) {
+      return function () {
+        try { refreshSnapshot(); } catch (e) { return 'Open your base first'; }
+        var e = TC.trainEstimate(state.snap.buildings, state.snap.buildable).total;
+        return e.units ? prefix + 'queue up to ' + e.units + ' units for about ' + fmt(e.gold) + ' gold' : prefix + 'train (every queue looks full)';
+      };
+    }
+    confirmTap(trainB, trainCost('Tap again to '), train);
+    confirmTap(refillB, trainCost('Tap again to merge everything, then '), function () {
       mergePasses(s4out, function (res) { paintCleanup(); if (res.ok) train(); else note(s4out, res.error, '#d29922'); });
     });
   }
