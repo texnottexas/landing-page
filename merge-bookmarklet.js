@@ -141,7 +141,7 @@
 
   function buildOverlay() {
     var bg = el('div', 'position:fixed;inset:0;background:rgba(13,17,23,.92);z-index:2147483647;display:flex;flex-direction:column;align-items:stretch;padding:14px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;');
-    var hdr = el('div', 'color:#79c0ff;font-size:15px;font-weight:600;text-align:center;', 'Hunting Guild — Bulk Merge (Turbo)');
+    var hdr = el('div', 'color:#79c0ff;font-size:15px;font-weight:600;text-align:center;', 'Treasure Guard Merge');
     var sub = el('div', 'color:#8b949e;font-size:12px;margin:4px 0 10px;text-align:center;', 'Loading…');
     var body = el('div', 'flex:1;display:flex;flex-direction:column;min-height:0;');
     bg.appendChild(hdr); bg.appendChild(sub); bg.appendChild(body);
@@ -151,7 +151,7 @@
 
   function showConfig(overlay, count, max, onStart) {
     clearChildren(overlay.body);
-    overlay.setHeader('Hunting Guild — Bulk Merge (Turbo)', '#79c0ff');
+    overlay.setHeader('Treasure Guard Merge', '#79c0ff');
     overlay.setSub('Each merge costs 9 stars · about ' + max + ' merges available', '#8b949e');
     var card = el('div', 'background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:14px;color:#e6edf3;font-size:13px;display:flex;flex-direction:column;gap:14px;');
     var cRow = el('div', 'display:flex;align-items:center;gap:10px;');

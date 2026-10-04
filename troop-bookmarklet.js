@@ -1,4 +1,4 @@
-// 2864tw.com — Troop Placement Optimizer bookmarklet (v1).
+// 2864tw.com — Troop Optimizer bookmarklet (placement + rebuild).
 // Reads your base, works out the best layout for the chosen mode, shows Before / After,
 // runs the moves at a human pace, and can lock new units onto the plan for this session.
 // Loads troop-core.js (logic) and troop-game.js (game adapter) from 2864tw.com.
@@ -44,7 +44,7 @@
   var root = el('div', FULL);
   root.id = 'tp-overlay';
   var head = el('div', 'display:flex;align-items:center;gap:10px;margin-bottom:10px;');
-  head.appendChild(el('div', 'font-size:16px;font-weight:600;flex:1;', 'Troop Placement'));
+  head.appendChild(el('div', 'font-size:16px;font-weight:600;flex:1;', 'Troop Optimizer'));
   var HEAD_BTN = 'background:transparent;color:#8b949e;border:1px solid #30363d;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer;';
   var minBtn = el('button', HEAD_BTN, 'Minimise');
   var closeBtn = el('button', HEAD_BTN, 'Close');
@@ -53,14 +53,14 @@
   var body = el('div', 'flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;max-width:760px;width:100%;margin:0 auto;');
   root.appendChild(body);
   var pill = el('div', 'display:none;align-items:center;gap:10px;background:#161b22;border:1px solid #30363d;border-radius:20px;padding:6px 8px 6px 14px;box-shadow:0 4px 14px rgba(0,0,0,.5);font-size:13px;white-space:nowrap;');
-  var pillText = el('span', '', 'Troop Placement');
+  var pillText = el('span', '', 'Troop Optimizer');
   var openBtn = el('button', 'background:#1f6feb;color:#fff;border:none;border-radius:14px;padding:5px 12px;font-size:12px;cursor:pointer;', 'Open');
   pill.appendChild(pillText); pill.appendChild(openBtn);
   root.appendChild(pill);
   document.body.appendChild(root);
   function updatePill() {
     var TG = window.TroopGame;
-    pillText.textContent = 'Troop Placement: lock ' + (TG && TG.lockActive() ? 'on' : 'off') + (state.progress ? ', ' + state.progress : '');
+    pillText.textContent = 'Troop Optimizer: lock ' + (TG && TG.lockActive() ? 'on' : 'off') + (state.progress ? ', ' + state.progress : '');
   }
   minBtn.onclick = function () { root.style.cssText = MINI; head.style.display = 'none'; body.style.display = 'none'; pill.style.display = 'flex'; updatePill(); };
   openBtn.onclick = function () { root.style.cssText = FULL; head.style.display = 'flex'; body.style.display = 'flex'; pill.style.display = 'none'; };

@@ -1,4 +1,4 @@
-// troop-core.js — DOM-free logic for the 2864tw.com Troop Placement Optimizer.
+// troop-core.js — DOM-free logic for the 2864tw.com Troop Optimizer.
 // Dual CommonJS / browser global (window.TroopCore), same pattern as rockfield-core.js.
 // Coordinates: game map positions (x, y) with x+y even; posId = 1000*x + y.
 // A w x h footprint anchored at (x, y) covers (x - r + s, y + r + s), r < h, s < w.

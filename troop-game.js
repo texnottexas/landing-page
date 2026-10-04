@@ -1,4 +1,4 @@
-// troop-game.js — Top War client adapter for the 2864tw.com Troop Placement Optimizer.
+// troop-game.js — Top War client adapter for the 2864tw.com Troop Optimizer.
 // Browser only; runs inside h5.topwargame.com. Exposes window.TroopGame.
 // Every request goes through the game's own NET layer with the same payloads the
 // client sends when a player drags a unit or building (verified live 2026-10-03).
