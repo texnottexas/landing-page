@@ -61,8 +61,8 @@ test('pickNext: oldest queued map that is due; otherwise how long to wait', () =
 
 test('classifyAnswer and applyAnswer cover every answer the game gives', () => {
   const sent = M.classifyAnswer({ s: 0, d: JSON.stringify({ marchInfo: { marchArrive: 1791134744, marchId: '48' } }) });
-  assert.deepEqual(sent, { kind: 'sent', arriveAt: 1791134744000, marchId: '48' });
-  assert.deepEqual(M.classifyAnswer({ s: 0, d: 'not json' }), { kind: 'sent', arriveAt: 0, marchId: '' });
+  assert.deepEqual(sent, { kind: 'sent', arriveAt: 1791134744000, startAt: 0, marchId: '48' });
+  assert.deepEqual(M.classifyAnswer({ s: 0, d: 'not json' }), { kind: 'sent', arriveAt: 0, startAt: 0, marchId: '' });
   assert.equal(M.classifyAnswer({ s: 3, d: M.TOO_FAST }).kind, 'tooFast');
   assert.deepEqual(M.classifyAnswer({ s: 3, d: M.LOCATION_ERROR }), { kind: 'gone', reason: 'Location error' });
   assert.deepEqual(M.classifyAnswer({ s: 7, d: 'some_key' }), { kind: 'failed', reason: 'some_key' });
@@ -158,7 +158,7 @@ test('buildReport sends changed rows oldest first, capped at 50, and ackReport a
   for (let i = 0; i < 55; i++) { const m = { id: String(i), noticedAt: T0 + i, spawner: 'S', x: 1, y: 2, state: 'queued' }; M.touch(st, m); maps.push(m); }
   const r1 = M.buildReport(maps, st.acked, M.REPORT_MAX);
   assert.equal(r1.rows.length, 50); assert.equal(r1.rows[0].id, '0'); assert.equal(r1.upto, 50);
-  assert.deepEqual(Object.keys(r1.rows[0]).sort(), ['arriveAt', 'collectedAt', 'id', 'noticedAt', 'reason', 'reward', 'rewardItems', 'sentAt', 'spawner', 'state', 'tries', 'x', 'y']);
+  assert.deepEqual(Object.keys(r1.rows[0]).sort(), ['arriveAt', 'collectedAt', 'gems', 'id', 'noticedAt', 'reason', 'reward', 'rewardItems', 'sentAt', 'spawner', 'speedups', 'state', 'tries', 'x', 'y']);
   M.ackReport(st, r1.upto);
   const r2 = M.buildReport(maps, st.acked, M.REPORT_MAX);
   assert.deepEqual(r2.rows.map((r) => r.id), ['50', '51', '52', '53', '54']);
@@ -171,13 +171,13 @@ test('buildReport sends changed rows oldest first, capped at 50, and ackReport a
 test('summarize, healthOf and pillCard', () => {
   const st = (s) => ({ state: s });
   const sum = M.summarize([st('collected'), st('collected'), st('missed'), st('sent'), st('sending'), st('gone'), st('failed'), st('skipped'), st('queued')]);
-  assert.deepEqual(sum, { total: 9, collected: 2, missed: 1, enRoute: 2, notSent: 2, skipped: 1, queued: 1 });
+  assert.deepEqual(sum, { total: 9, collected: 2, missed: 1, enRoute: 2, notSent: 2, skipped: 1, queued: 1, speedups: 0 });
   assert.equal(M.healthOf({ connected: true, visible: true, failing: false }), 'ok');
   assert.equal(M.healthOf({ connected: false, visible: true }), 'disconnected');
   assert.equal(M.healthOf({ connected: true, visible: false }), 'hidden');
   assert.equal(M.healthOf({ connected: true, visible: true, failing: true }), 'failing');
   const ok = M.pillCard(sum, 477, 8, 'ok');
-  assert.deepEqual(ok.rows, [['Collected', 2], ['Missed', 1], ['En route', 2], ['Claims left', 477]]);
+  assert.deepEqual(ok.rows, [['Collected', 2], ['Missed', 1], ['En route', 2], ['Claims left', 477], ['Speed-ups', 'Off']]);
   assert.equal(ok.foot, 'Reported 8 s ago'); assert.equal(ok.tone, 'ok');
   assert.equal(M.pillCard(sum, 477, 75, 'ok').foot, 'Reported 1 min ago');
   assert.equal(M.pillCard(sum, 477, null, 'ok').foot, 'Starting...');
@@ -279,4 +279,69 @@ test('REVIEW #4: rows the worker would reject are dropped from the report but ac
   assert.deepEqual(r.rows.map((x) => x.id), ['g1']);
   assert.equal(r.upto, 4, 'the bad rows are acked with the good one');
   assert.equal(M.REPORT_MAX, 50, 'at most 50 rows per report');
+});
+
+test('speedPlan: 2 over 30 s, 1 over 20 s, 1 over 15 s only from noon to 2 PM ET (DST-safe)', () => {
+  const edtNoon30 = Date.UTC(2026, 9, 4, 16, 30), edtTwo30 = Date.UTC(2026, 9, 4, 18, 30), estNoon30 = Date.UTC(2026, 10, 2, 17, 30), est1130 = Date.UTC(2026, 10, 2, 16, 30);
+  assert.equal(M.speedPlan(31, edtTwo30), 2); assert.equal(M.speedPlan(30, edtTwo30), 1); assert.equal(M.speedPlan(21, edtTwo30), 1);
+  assert.equal(M.speedPlan(20, edtTwo30), 0); assert.equal(M.speedPlan(16, edtTwo30), 0); assert.equal(M.speedPlan(16, edtNoon30), 1);
+  assert.equal(M.speedPlan(15, edtNoon30), 0); assert.equal(M.speedPlan(16, estNoon30), 1); assert.equal(M.speedPlan(16, est1130), 0);
+  assert.equal(M.speedPlan(NaN, edtNoon30), 0); assert.equal(M.speedPlan(-4, edtNoon30), 0);
+  assert.equal(M.inBoostWindow(Date.UTC(2026, 9, 4, 17, 59)), true); assert.equal(M.inBoostWindow(Date.UTC(2026, 9, 4, 18, 0)), false);
+});
+test('gameDay: the noon-ET day a moment belongs to', () => {
+  assert.equal(M.gameDay(Date.UTC(2026, 9, 4, 15, 59)), '2026-10-03');
+  assert.equal(M.gameDay(Date.UTC(2026, 9, 4, 16, 0)), '2026-10-04');
+  assert.equal(M.gameDay(Date.UTC(2026, 9, 5, 3, 0)), '2026-10-04');
+  assert.equal(M.gameDay(Date.UTC(2026, 10, 1, 0, 0)), '2026-10-31');   // month boundary
+});
+test('buyCheck: bag first, then each buy rule with its reason; exact boundaries allowed', () => {
+  const base = { bag: 0, gems: 10037, price: 37, vip: 15, needVip: 2, reserve: 10000, spent: 1463, cap: 1500 };
+  assert.deepEqual(M.buyCheck({ ...base, bag: 2, gems: 0 }), { ok: true, source: 'bag' });
+  assert.deepEqual(M.buyCheck(base), { ok: true, source: 'buy' });                       // gems-price == reserve, spent+price == cap
+  assert.deepEqual(M.buyCheck({ ...base, gems: 10036 }), { ok: false, reason: 'gem reserve reached' });
+  assert.deepEqual(M.buyCheck({ ...base, spent: 1464 }), { ok: false, reason: 'daily gem cap reached' });
+  assert.deepEqual(M.buyCheck({ ...base, vip: 1 }), { ok: false, reason: 'VIP too low to buy' });
+  assert.deepEqual(M.buyCheck({ ...base, price: 0 }), { ok: false, reason: 'no shop price' });
+  assert.deepEqual(M.buyCheck({ ...base, gems: null }), { ok: false, reason: 'gem reserve reached' });
+});
+test('planSpeed, pickSpeed and applySpeed: earliest claimed first, skips under 5 s or past arrival, halves the time left', () => {
+  const now = Date.UTC(2026, 9, 4, 20, 0);
+  const a = { id: 'a', state: 'sent', marchId: 'm1', sentAt: now - 3000, startAt: now - 3000, arriveAt: now + 37000, speedDone: 0 };
+  const b = { id: 'b', state: 'sent', marchId: 'm2', sentAt: now - 4000, startAt: now - 4000, arriveAt: now + 21000, speedDone: 0 };
+  const c = { id: 'c', state: 'sent', marchId: 'm3', sentAt: now - 9000, startAt: now - 30000, arriveAt: now + 4000, speedDone: 0 };
+  assert.equal(M.planSpeed(a, true, now), 2); assert.equal(M.planSpeed(b, true, now), 1); assert.equal(M.planSpeed(c, true, now), 2);
+  assert.equal(M.planSpeed({ ...a }, false, now), 0);
+  const p = M.pickSpeed([a, b, c], now);
+  assert.equal(p.map.id, 'b');                               // b was claimed before a
+  assert.deepEqual(p.skipped.map((m) => m.id), ['c']);       // 4 s left
+  assert.equal(c.speedWant, 0);
+  M.applySpeed(b, now, true, 37);
+  assert.equal(b.speedDone, 1); assert.equal(b.speedBought, 1); assert.equal(b.gems, 37); assert.equal(b.arriveAt, now + 10500);
+  assert.equal(M.pickSpeed([a, b], now).map.id, 'a');        // b has its one
+  M.applySpeed(a, now, false, 37);
+  assert.equal(a.gems || 0, 0); assert.equal(a.arriveAt, now + 18500);
+  const restored = { id: 'r', state: 'sent', marchId: 'm9', sentAt: now - 900000, arriveAt: now - 800000, speedWant: 2, speedDone: 0 };
+  assert.equal(M.pickSpeed([restored], now).map, null);
+});
+test('classifyAnswer keeps the march start; toRow, summarize and pillCard carry speed-ups', () => {
+  const c = M.classifyAnswer({ s: 0, d: JSON.stringify({ marchInfo: { marchId: '4870912922023780420', marchStartTime: 1791154634, marchArrive: 1791154653 } }) });
+  assert.deepEqual(c, { kind: 'sent', arriveAt: 1791154653000, startAt: 1791154634000, marchId: '4870912922023780420' });
+  const m = M.newMap({ id: '1', noticedAt: 1.79e12, spawner: 'A', server: 2864, x: 1, y: 1 }, 'Me', 2864);
+  M.applyAnswer(m, c, 0);
+  assert.equal(m.startAt, 1791154634000);
+  m.speedDone = 2; m.gems = 37;
+  assert.equal(M.toRow(m).speedups, 2); assert.equal(M.toRow(m).gems, 37);
+  const s = M.summarize([m]);
+  assert.equal(s.speedups, 2);
+  assert.deepEqual(M.pillCard(s, 10, 5, 'ok', { on: true }).rows[4], ['Speed-ups', 'On · 2']);
+  assert.deepEqual(M.pillCard(s, 10, 5, 'ok', { on: false }).rows[4], ['Speed-ups', 'Off']);
+});
+test('autoReconnect: 65 minutes after going down, then 65 minutes after each attempt', () => {
+  const t = 1.79e12;
+  assert.deepEqual(M.autoReconnect(0, 0, t), { due: false, at: 0 });
+  assert.deepEqual(M.autoReconnect(t, 0, t + 3899999), { due: false, at: t + 3900000 });
+  assert.deepEqual(M.autoReconnect(t, 0, t + 3900000), { due: true, at: t + 3900000 });
+  assert.deepEqual(M.autoReconnect(t, t + 3900000, t + 3900000 + 60000), { due: false, at: t + 7800000 });
+  assert.deepEqual(M.autoReconnect(t, 0, t + 3000, 3000), { due: true, at: t + 3000 });
 });
