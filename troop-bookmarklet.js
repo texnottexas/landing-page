@@ -392,8 +392,10 @@
   }
   function totalUnits() { return state.snap.stored.length + state.snap.units.length; }
   // merge passes until nothing changes (at most 5); the server applies the merge cap
-  function mergePasses(container, done, pass, before) {
-    pass = pass || 1; before = before == null ? totalUnits() : before;
+  // Repeats until a round merges nothing (max 5). `start` is the count before round 1, so the
+  // report covers every round, not just the last one.
+  function mergePasses(container, done, pass, before, start) {
+    pass = pass || 1; before = before == null ? totalUnits() : before; start = start == null ? before : start;
     var steps = [];
     ['army', 'air', 'navy'].forEach(function (r) { steps.push({ kind: 'mergeStorage', role: r, tolerant: true }, { kind: 'mergeBase', role: r, tolerant: true }); });
     runWithProgress(container, steps, 'Merging (round ' + pass + ')', function (res) {
@@ -401,8 +403,8 @@
       setTimeout(function () {
         try { refreshSnapshot(); } catch (e) { done({ ok: false, error: 'Your base closed.' }); return; }
         var after = totalUnits();
-        if (after < before && pass < 5) mergePasses(container, done, pass + 1, after);
-        else done({ ok: true, merged: before - after });
+        if (after < before && pass < 5) mergePasses(container, done, pass + 1, after, start);
+        else done({ ok: true, merged: start - after });
       }, 1500);
     });
   }
@@ -434,7 +436,7 @@
       });
     }
     confirmTap(mergeB, 'Tap again to merge everything that can merge', function () {
-      mergePasses(s1, function (res) { paintCleanup(); note(s1, res.ok ? 'Merging finished: ' + res.merged + ' fewer units, more free storage.' : res.error, res.ok ? '#3fb950' : '#d29922'); paintBuild(); });
+      mergePasses(s1, function (res) { paintCleanup(); note(s1, res.ok ? (res.merged > 0 ? 'Merging finished: ' + res.merged + ' fewer units, more free storage.' : 'Nothing left to merge.') : res.error, res.ok ? '#3fb950' : '#d29922'); paintBuild(); });
     });
     paintCleanup();
 
