@@ -265,8 +265,137 @@
     return { slots: out, armyCells: region.landCells.filter(function (id) { return !taken2[id]; }), approximate: true };
   }
 
+  // ---------------------------------------------------------------- sequencer
+  // target: { slots, armyCells, navy?, seaBld? }; opts: { mode, storeArmyFirst? }
+  // Returns { steps, blocked, final: {itemId: [x,y]}, stats }
+  function planSteps(snap, region, target, opts) {
+    opts = opts || {};
+    var steps = [], blocked = [];
+    var hasSea = !!target.navy;
+    // 1) park decorations out of the unit area (sea ones only when the navy pass is on)
+    var parks = region.parked.filter(function (p) { return p.item.pt === 1 || hasSea; });
+    parks.forEach(function (p) {
+      steps.push({ kind: 'park', id: p.item.id, w: p.item.w, h: p.item.h, from: [p.item.x, p.item.y], to: p.to });
+    });
+    // targets
+    var targets = [];
+    target.slots.forEach(function (s) { targets.push({ role: s.role, pos: s.pos, w: 2, h: 2 }); });
+    (target.armyCells || []).forEach(function (id) { targets.push({ role: 'army', pos: id, w: 1, h: 1 }); });
+    (target.navy || []).forEach(function (id) { targets.push({ role: 'navy', pos: id, w: 2, h: 3 }); });
+    (target.seaBld || []).forEach(function (id) { targets.push({ role: 'seabld', pos: id, w: 2, h: 2 }); });
+    targets.forEach(function (t) { var xy = fromPosId(t.pos); t.cells = footprint(xy[0], xy[1], t.w, t.h); });
+    // items that take part
+    var items = [];
+    region.units.air.forEach(function (u) { items.push(u); });
+    region.units.army.forEach(function (u) { items.push(u); });
+    region.reqLand.forEach(function (b) { items.push(b); });
+    if (hasSea) { region.units.navy.forEach(function (u) { items.push(u); }); region.reqSea.forEach(function (b) { items.push(b); }); }
+    var pos = {}, occ = {};
+    items.forEach(function (it) { pos[it.id] = [it.x, it.y]; footprint(it.x, it.y, it.w, it.h).forEach(function (c) { occ[c] = it.id; }); });
+    var byId = {}; items.forEach(function (it) { byId[it.id] = it; });
+    var tAt = {}; targets.forEach(function (t) { tAt[t.role + ':' + t.pos] = t; });
+    var armySet = {}; (target.armyCells || []).forEach(function (id) { armySet[id] = true; });
+    function placed(it) {
+      var p = pos[it.id];
+      if (it.role === 'army') return !!armySet[posId(p[0], p[1])];
+      return !!tAt[it.role + ':' + posId(p[0], p[1])];
+    }
+    function vacate(it) { footprint(pos[it.id][0], pos[it.id][1], it.w, it.h).forEach(function (c) { if (occ[c] === it.id) delete occ[c]; }); }
+    function occupy(it, xy) { pos[it.id] = xy; footprint(xy[0], xy[1], it.w, it.h).forEach(function (c) { occ[c] = it.id; }); }
+    // 2) excess units -> storage (misplaced first)
+    var room = { army: 0, air: 0, navy: 0 };
+    ['army', 'air', 'navy'].forEach(function (k) { var s = snap.storage && snap.storage[k]; room[k] = s ? Math.max(0, s.max - s.used) : 0; });
+    ['air', 'army', 'navy'].forEach(function (role) {
+      if (role === 'navy' && !hasSea) return;
+      var mine = items.filter(function (it) { return it.role === role; });
+      var cap = targets.filter(function (t) { return t.role === role; }).length;
+      var mis = mine.filter(function (it) { return !placed(it); });
+      var order = mis.concat(mine.filter(placed));
+      var mustStore = Math.max(0, mine.length - cap);           // more units than target spots
+      var wantStore = role === 'army' && opts.mode === 'planes' ? Math.max(mustStore, mis.length) : mustStore;
+      for (var i = 0; i < order.length && i < wantStore; i++) {
+        var it = order[i];
+        if (room[role] > 0) {
+          room[role]--;
+          steps.push({ kind: 'store', id: it.id, role: role, from: pos[it.id].slice() });
+          vacate(it); it.stored = true;
+        } else if (i < mustStore) {
+          it.stuck = true;                                      // no storage room and no spot: leave in place
+        }
+      }
+      var stuck = order.filter(function (it) { return it.stuck; }).length;
+      if (stuck) blocked.push({ role: role, reason: 'storage_full', remaining: stuck });
+    });
+    items = items.filter(function (it) { return !it.stored; });
+    var movable = items.filter(function (it) { return !it.stuck; });
+    // 3) fill loop
+    var cellTargets = {};
+    targets.forEach(function (t) { t.cells.forEach(function (c) { (cellTargets[c] = cellTargets[c] || []).push(t); }); });
+    function filled(t) {
+      if (t.role === 'army') { var o = occ[t.pos]; return !!o && byId[o].role === 'army'; }
+      var o2 = occ[t.cells[0]];
+      if (!o2) return false;
+      var it = byId[o2], p = pos[o2];
+      return it.role === t.role && posId(p[0], p[1]) === t.pos;
+    }
+    function free(t, ignore) { return t.cells.every(function (c) { return !occ[c] || occ[c] === ignore; }); }
+    var temps = 0;
+    for (var guard = 0; guard < 5000; guard++) {
+      var mis = movable.filter(function (it) { return !placed(it); });
+      if (!mis.length) break;
+      var best = null;
+      var freeTargets = targets.filter(function (t) { return !filled(t) && free(t, null); });
+      var byRole = {};
+      mis.forEach(function (it) { (byRole[it.role] = byRole[it.role] || []).push(it); });
+      freeTargets.forEach(function (t) {
+        (byRole[t.role] || []).forEach(function (it) {
+          var p = pos[it.id], seen = {}, unblock = 0;
+          footprint(p[0], p[1], it.w, it.h).forEach(function (c) {
+            (cellTargets[c] || []).forEach(function (q) {
+              var key = q.role + ':' + q.pos;
+              if (seen[key] || q.role === 'army' || filled(q)) return;
+              seen[key] = true;
+              if (free(q, it.id)) unblock++;
+            });
+          });
+          var tp = fromPosId(t.pos), dist = Math.abs(tp[0] - p[0]) + Math.abs(tp[1] - p[1]);
+          var sc = unblock * 100000 - dist;
+          if (!best || sc > best.sc) best = { sc: sc, it: it, t: t };
+        });
+      });
+      if (!best) {
+        // deadlock: shift the misplaced item that blocks most targets to any free legal non-target spot
+        if (temps >= 50) { blocked.push({ reason: 'deadlock', misplaced: mis.map(function (it) { return it.id; }) }); break; }
+        var cand = null;
+        mis.forEach(function (it) {
+          var p = pos[it.id], n = 0;
+          footprint(p[0], p[1], it.w, it.h).forEach(function (c) { n += (cellTargets[c] || []).filter(function (q) { return !filled(q); }).length; });
+          if (!cand || n > cand.n) cand = { it: it, n: n };
+        });
+        var it2 = cand.it, spot = null;
+        var pool = it2.pt === 1 ? region.landCells : region.seaCells;
+        for (var k = 0; k < pool.length && !spot; k++) {
+          var a = fromPosId(pool[k]), cs = footprint(a[0], a[1], it2.w, it2.h);
+          if (cs.every(function (c) { return region.unitLegal(c, it2.pt) && !region.fixed[c] && !occ[c] && !cellTargets[c]; })) spot = a;
+        }
+        if (!spot) { blocked.push({ reason: 'deadlock', misplaced: mis.map(function (it) { return it.id; }) }); break; }
+        steps.push({ kind: it2.kind === 'unit' ? 'moveUnit' : 'moveBuilding', id: it2.id, role: it2.role, from: pos[it2.id].slice(), to: spot, temp: true });
+        vacate(it2); occupy(it2, spot); temps++;
+        continue;
+      }
+      var tp2 = fromPosId(best.t.pos);
+      steps.push({ kind: best.it.kind === 'unit' ? 'moveUnit' : 'moveBuilding', id: best.it.id, role: best.it.role, from: pos[best.it.id].slice(), to: tp2 });
+      vacate(best.it); occupy(best.it, tp2);
+    }
+    var final = {}; items.forEach(function (it) { final[it.id] = pos[it.id].slice(); });
+    var stats = { parks: 0, stores: 0, moves: 0, temps: 0 };
+    steps.forEach(function (s) { if (s.kind === 'park') stats.parks++; else if (s.kind === 'store') stats.stores++; else { stats.moves++; if (s.temp) stats.temps++; } });
+    stats.emptyAirSlots = target.slots.filter(function (s) { return s.role === 'air' && !occ[s.pos]; }).length;
+    return { steps: steps, blocked: blocked, final: final, stats: stats, parks: parks };
+  }
+
   var TroopCore = {
-    CONST: CONST, posId: posId, fromPosId: fromPosId, footprint: footprint, toUV: toUV, unitClass: unitClass, buildRegion: buildRegion, buildLandLP: buildLandLP, buildSeaLP: buildSeaLP, decodeLand: decodeLand, decodeSea: decodeSea, greedyLand: greedyLand
+    CONST: CONST, posId: posId, fromPosId: fromPosId, footprint: footprint, toUV: toUV, unitClass: unitClass, buildRegion: buildRegion, buildLandLP: buildLandLP, buildSeaLP: buildSeaLP, decodeLand: decodeLand, decodeSea: decodeSea, greedyLand: greedyLand, planSteps: planSteps
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = TroopCore;
   else root.TroopCore = TroopCore;

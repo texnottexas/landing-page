@@ -89,3 +89,83 @@ test('greedyLand fallback gets within 3% of the optimum and seats every building
   assert.ok(g.slots.length >= 173, 'greedy slots ' + g.slots.length);
   assert.equal(g.slots.filter((s) => s.role === 'bld').length, 6);
 });
+
+test('planSteps replays Rex max-planes: 10 parks, 1 army stored, all slots reached, no deadlock', () => {
+  const r = TC.buildRegion(REX);
+  const res = TC.planSteps(REX, r, withArmyCells(r, REX_TARGET.slots), { mode: 'planes' });
+  assert.deepEqual(res.blocked, []);
+  assert.equal(res.stats.parks, 10);
+  assert.equal(res.stats.stores, 1);
+  assert.equal(res.stats.temps, 0);
+  assert.ok(res.stats.moves <= 80, 'moves ' + res.stats.moves);
+  assert.equal(res.stats.emptyAirSlots, 15);
+  // parks come first, then the store, then moves
+  const kinds = res.steps.map((s) => s.kind);
+  assert.equal(kinds.lastIndexOf('park'), 9);
+  assert.equal(kinds.indexOf('store'), 10);
+  // the final layout puts every plane on an air slot and every building on a building slot
+  const slotRole = new Map(REX_TARGET.slots.map((s) => [s.pos, s.role]));
+  r.units.air.forEach((u) => assert.equal(slotRole.get(TC.posId(...res.final[u.id])), 'air'));
+  r.reqLand.forEach((b) => assert.equal(slotRole.get(TC.posId(...res.final[b.id])), 'bld'));
+});
+
+test('planSteps never moves an item onto cells it still occupies, and every move lands on free cells', () => {
+  const r = TC.buildRegion(REX);
+  const res = TC.planSteps(REX, r, withArmyCells(r, REX_TARGET.slots), { mode: 'planes' });
+  const occ = new Map();
+  const sizes = new Map();
+  [...r.units.air, ...r.units.army, ...r.reqLand].forEach((it) => { sizes.set(it.id, [it.w, it.h]); TC.footprint(it.x, it.y, it.w, it.h).forEach((c) => occ.set(c, it.id)); });
+  res.steps.forEach((s) => {
+    if (s.kind === 'park') return;
+    const [w, h] = sizes.get(s.id);
+    TC.footprint(s.from[0], s.from[1], w, h).forEach((c) => { if (occ.get(c) === s.id) occ.delete(c); });
+    if (s.kind === 'store') return;
+    TC.footprint(s.to[0], s.to[1], w, h).forEach((c) => { assert.ok(!occ.has(c), 'step onto occupied cell ' + c); occ.set(c, s.id); });
+  });
+});
+
+test('an already optimal layout plans zero moves (idempotent resume)', () => {
+  const r = TC.buildRegion(REX);
+  const first = TC.planSteps(REX, r, withArmyCells(r, REX_TARGET.slots), { mode: 'planes' });
+  const after = JSON.parse(JSON.stringify(REX));
+  const moved = new Map(Object.entries(first.final));
+  const parkTo = new Map(first.parks.map((p) => [p.item.id, p.to]));
+  const stored = new Set(first.steps.filter((s) => s.kind === 'store').map((s) => s.id));
+  after.units = after.units.filter((u) => !stored.has(u.id)).map((u) => moved.has(u.id) ? { ...u, pos: TC.posId(...moved.get(u.id)) } : u);
+  after.buildings = after.buildings.map((b) => moved.has(b.id) ? { ...b, pos: TC.posId(...moved.get(b.id)) } : (parkTo.has(b.id) ? { ...b, pos: TC.posId(...parkTo.get(b.id)) } : b));
+  after.storage = { ...after.storage, army: { max: 686, used: 31 } };
+  const r2 = TC.buildRegion(after);
+  const again = TC.planSteps(after, r2, withArmyCells(r2, REX_TARGET.slots), { mode: 'planes' });
+  assert.equal(again.steps.length, 0);
+});
+
+test('storage_full is reported when excess units have nowhere to go', () => {
+  const snap = JSON.parse(JSON.stringify(REX));
+  snap.storage.army = { max: 686, used: 686 };
+  const r = TC.buildRegion(snap);
+  const target = withArmyCells(r, REX_TARGET.slots);
+  target.armyCells = [];                         // no leftover cells: the army unit must be stored
+  const res = TC.planSteps(snap, r, target, { mode: 'planes' });
+  assert.deepEqual(res.blocked.map((b) => b.reason), ['storage_full']);
+});
+
+test('greedy fallback plans without deadlock', () => {
+  const r = TC.buildRegion(REX);
+  const res = TC.planSteps(REX, r, TC.greedyLand(r, {}), { mode: 'planes' });
+  assert.equal(res.blocked.filter((b) => b.reason === 'deadlock').length, 0);
+});
+
+test('a partly unlocked base still plans cleanly', () => {
+  const snap = JSON.parse(JSON.stringify(REX));
+  const F = snap.cellFields.split(','), ix = F.indexOf('free'), xi = F.indexOf('x');
+  snap.cells.forEach((c) => { if (c[xi] >= 40) c[ix] = 0; });      // lock the eastern half
+  snap.units = snap.units.filter((u) => Math.floor(u.pos / 1000) < 38);
+  snap.buildings = snap.buildings.filter((b) => Math.floor(b.pos / 1000) < 38);
+  const r = TC.buildRegion(snap);
+  assert.ok(r.landCells.length > 0 && r.landCells.length < 762);
+  const m = TC.buildLandLP(r, { mode: 'planes' });
+  assert.match(m.lp, /\nEnd$/);
+  const g = TC.greedyLand(r, {});
+  const res = TC.planSteps(snap, r, g, { mode: 'planes' });
+  assert.equal(res.blocked.filter((b) => b.reason === 'deadlock').length, 0);
+});
