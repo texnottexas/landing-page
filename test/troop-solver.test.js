@@ -90,3 +90,20 @@ test('solver: a solver failure part-way keeps the rows already planned', { skip:
   assert.equal(out.rows.length, 2);
   assert.equal(out.exact, false);
 });
+
+test('solver: TroopGame.solve survives the base that aborted a shared HiGHS instance', { skip: !highsLoader && 'highs not installed' }, async () => {
+  // load troop-game.js the way the browser does: verified bytes from "the CDN" (here the local npm copy)
+  const build = path.dirname(require.resolve('highs'));
+  const files = { 'highs.js': fs.readFileSync(path.join(build, 'highs.js')), 'highs.wasm': fs.readFileSync(path.join(build, 'highs.wasm')) };
+  Object.assign(globalThis, { window: globalThis, cc: { find: () => null }, __require: () => null, require, __dirname: build, __filename: path.join(build, 'highs.js'),
+    fetch: async (url) => { const b = files[url.split('/').pop()]; return { ok: true, status: 200, arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.length) }; } });
+  const file = path.join(__dirname, '..', 'troop-game.js');
+  delete require.cache[require.resolve(file)];
+  require(file);
+  const TG = globalThis.TroopGame;
+  const snap = messyBase(0, 2), r = TC.buildRegion(snap);
+  const out = await TC.planRows(snap, r, { mode: 'planes' }, (lp) => TG.solve(lp, 60));
+  assert.deepEqual(out.notes, []);
+  assert.equal(out.exact, true);
+  assert.ok(out.rows.length >= 7, 'rows ' + out.rows.length);
+});

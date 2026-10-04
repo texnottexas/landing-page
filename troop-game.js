@@ -9,14 +9,19 @@
   var MPT_ARMY = 20181001, BIT_ARMY = 2;                    // MapPointType.Army, BaseItemType.Army
   var WH_TYPE = { army: 16, navy: 17, air: 18 }, ARMY_TYPE = { army: 101, navy: 201, air: 301 };
   var HIGHS_VER = '1.8.0';
-  var PACE = [2000, 1000];                                   // 2.0 to 3.0 s between actions
+  var config = {
+    paceMs: [2000, 1000],          // 2.0 to 3.0 s between actions
+    responseTimeoutMs: 6000,       // per request
+    storeConfirmMs: 3000,          // wait for the server push that moves a stored unit off the map
+    solverTimeoutMs: 20000         // per solver file download
+  };
 
   function hm() { var n = window.cc && cc.find('Canvas/HomeMap'); return n ? n.getComponent('HomeMap') : null; }
   function UD() { return req('DataCenter').DATA.UserData; }
   function TABLE() { return req('TableManager').TABLE; }
   function NET() { return req('NetMgr').NET; }
   function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-  function jitter() { return PACE[0] + Math.floor(Math.random() * PACE[1]); }
+  function jitter() { return config.paceMs[0] + Math.floor(Math.random() * config.paceMs[1]); }
 
   function isReady() { var h = hm(); return !!(h && h.armyInited && h._ArmyComplete && h._BuildingComplete); }
 
@@ -91,10 +96,15 @@
     });
   }
   function fetchVerified(url, hash) {
-    return fetch(url).then(function (r) {
+    var ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = ctl ? setTimeout(function () { ctl.abort(); }, config.solverTimeoutMs) : null;
+    return fetch(url, ctl ? { signal: ctl.signal } : undefined).then(function (r) {
       if (!r.ok) throw new Error('solver download failed (' + r.status + ')');
       return r.arrayBuffer();
+    }, function (e) {
+      throw (e && e.name === 'AbortError') ? new Error('solver download timed out') : e;
     }).then(function (buf) {
+      if (timer) clearTimeout(timer);
       return sha384b64(buf).then(function (h) {
         if (h !== hash) throw new Error('solver file did not match its pinned checksum');
         return buf;
@@ -112,7 +122,21 @@
         // `var Module`, which must not leak into the game page.
         var module = { exports: {} };
         (new Function('module', 'exports', src))(module, module.exports);
-        return module.exports({ wasmBinary: bufs[1] });
+        var factory = module.exports;
+        // Compile once, but give every solve a fresh instance: an instance that aborts on one
+        // model fails every later solve, so it must never be reused.
+        return WebAssembly.compile(bufs[1]).then(function (wasmModule) {
+          return {
+            solve: function (lp, opts) {
+              return factory({
+                instantiateWasm: function (imports, receive) {
+                  WebAssembly.instantiate(wasmModule, imports).then(function (inst) { receive(inst, wasmModule); });
+                  return {};
+                }
+              }).then(function (hs) { return hs.solve(lp, opts); });
+            }
+          };
+        });
       });
     highsPromise.catch(function () { highsPromise = null; });
     return highsPromise;
@@ -125,7 +149,7 @@
   function send(rid, payload) {
     return new Promise(function (resolve) {
       var done = false;
-      var t = setTimeout(function () { if (!done) { done = true; resolve({ s: -1, d: 'timeout' }); } }, 6000);
+      var t = setTimeout(function () { if (!done) { done = true; resolve({ s: -1, d: 'timeout' }); } }, config.responseTimeoutMs);
       NET().send(rid, payload, hm(), function (e) { if (done) return; done = true; clearTimeout(t); resolve(e || { s: -1 }); });
     });
   }
@@ -146,41 +170,70 @@
     });
     for (var i = 0; i < ids.length; i++) {
       var r = await send(RID.ARMY_STORE_SINGLE, { buildId: String(ids[i]), armyId: String(item.ID) });
-      if (r.s === 0) return r;
+      if (r.s !== 0) continue;
+      if (await storedConfirmed(item.ID)) return r;
+      return { s: -3, msg: 'The game did not confirm the unit went to storage.' };
     }
-    return { s: -2, d: 'no storage building accepted the unit' };
+    return { s: -2, msg: 'No storage building accepted the unit.' };
+  }
+  // the server pushes the unit's new warehouse; until then it still counts as on the base
+  async function storedConfirmed(id) {
+    var t0 = Date.now();
+    while (Date.now() - t0 <= config.storeConfirmMs) {
+      var rec = UD().Armys.filter(function (a) { return String(a._id) === String(id); })[0];
+      if (!rec || String(rec.warehouseId) !== '0') return true;
+      await delay(100);
+    }
+    return false;
   }
 
   // steps from TroopCore.planSteps. hooks: { onStep(i, step, result), shouldStop() }
+  // One run at a time; stop() ends the run in progress after its current step.
+  var running = false, stopRequested = false;
+  function stop() { if (running) stopRequested = true; }
+  function isRunning() { return running; }
   async function runSteps(steps, hooks) {
-    hooks = hooks || {};
+    if (running) return { ok: false, done: 0, error: 'A run is already in progress.' };
+    running = true; stopRequested = false;
+    try { return await runAll(steps, hooks || {}); } finally { running = false; stopRequested = false; }
+  }
+  async function runAll(steps, hooks) {
     for (var i = 0; i < steps.length; i++) {
-      var st = steps[i], h = hm();
+      var st = steps[i], h = hm(), r;
       if (!h || !isReady()) return { ok: false, done: i, error: 'Your base closed. Open it again and resume.' };
-      if (hooks.shouldStop && hooks.shouldStop()) return { ok: false, done: i, error: 'Stopped.' };
-      var r;
-      if (st.kind === 'store') {
-        var u = h.ArmyItems[st.id];
-        if (!u) return { ok: false, done: i, error: 'Unit ' + st.id + ' is no longer on the base.' };
-        r = await storeUnit(u, st.role);
-      } else if (st.kind === 'moveUnit') {
-        var a = h.ArmyItems[st.id];
-        if (!a) return { ok: false, done: i, error: 'Unit ' + st.id + ' is no longer on the base.' };
-        if (!validateUnit(a, st.to[0], st.to[1])) return { ok: false, done: i, error: 'The game would not accept a unit at ' + st.to.join(',') + '. Rescan and plan again.' };
-        r = await send(RID.ARMY_MOVE, { x: st.to[0], y: st.to[1], id: String(st.id) });
-        if (r.s === 0) h.MoveArmyCallBack(r);
-      } else {                                               // park or moveBuilding
-        var b = h.getBuildingItemById(st.id);
-        if (!b) return { ok: false, done: i, error: 'Building ' + st.id + ' was not found.' };
-        if (!validateBuilding(b, st.to[0], st.to[1])) return { ok: false, done: i, error: 'The game would not accept a building at ' + st.to.join(',') + '. Rescan and plan again.' };
-        r = await send(RID.BUILD_MOVE, { x: st.to[0], y: st.to[1], id: String(st.id) });
-        if (r.s === 0) h.MoveBuildingCallBack(r);
+      if (stopRequested || (hooks.shouldStop && hooks.shouldStop())) return { ok: false, done: i, error: 'Stopped.' };
+      try {
+        r = await runOne(st, h);
+      } catch (e) {
+        return { ok: false, done: i, error: 'Something went wrong on step ' + (i + 1) + '. Tap Run to resume.' };
       }
+      if (r && r.error) return { ok: false, done: i, error: r.error };
       if (hooks.onStep) hooks.onStep(i, st, r);
-      if (!r || r.s !== 0) return { ok: false, done: i, error: 'The server declined step ' + (i + 1) + ' (code ' + (r ? r.s : '?') + ').' };
+      if (!r || r.s !== 0) return { ok: false, done: i, error: (r && r.msg ? r.msg + ' ' : '') + 'The server declined step ' + (i + 1) + ' (code ' + (r ? r.s : '?') + ').' };
       if (i < steps.length - 1) await delay(jitter());
     }
     return { ok: true, done: steps.length };
+  }
+  async function runOne(st, h) {
+    if (st.kind === 'store') {
+      var u = h.ArmyItems[st.id];
+      if (!u) return { error: 'A unit in the plan is no longer on the base. Plan again.' };
+      return storeUnit(u, st.role);
+    }
+    if (st.kind === 'moveUnit') {
+      var a = h.ArmyItems[st.id];
+      if (!a) return { error: 'A unit in the plan is no longer on the base. Plan again.' };
+      if (!validateUnit(a, st.to[0], st.to[1])) return { error: 'The game would not accept a unit at ' + st.to.join(',') + '. Plan again.' };
+      var r1 = await send(RID.ARMY_MOVE, { x: st.to[0], y: st.to[1], id: String(st.id) });
+      if (r1.s === 0) h.MoveArmyCallBack(r1);
+      return r1;
+    }
+    var b = h.getBuildingItemById(st.id);                  // park or moveBuilding
+    if (!b) return { error: 'A building in the plan was not found. Plan again.' };
+    if (!validateBuilding(b, st.to[0], st.to[1])) return { error: 'The game would not accept a building at ' + st.to.join(',') + '. Plan again.' };
+    var r2 = await send(RID.BUILD_MOVE, { x: st.to[0], y: st.to[1], id: String(st.id) });
+    if (r2.s === 0) h.MoveBuildingCallBack(r2);
+    return r2;
   }
 
   // ---------------------------------------------------------------- lock
@@ -218,6 +271,7 @@
 
   window.TroopGame = {
     isReady: isReady, readSnapshot: readSnapshot, loadHighs: loadHighs, solve: solve,
-    runSteps: runSteps, installLock: installLock, removeLock: removeLock, lockActive: lockActive
+    runSteps: runSteps, stop: stop, isRunning: isRunning, installLock: installLock, removeLock: removeLock, lockActive: lockActive,
+    config: config
   };
 })();
