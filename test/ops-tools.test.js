@@ -18,8 +18,19 @@ test('every tool in ops-tools.json passes validation', () => {
     'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector'
   ]);
   const mc = list.tools.find((t) => t.id === 'map-collector');
-  assert.deepEqual(mc.owners, ['d847a198622a518d', 'c3c6f3200a4ec1fb'], 'Map Collector is shown only to Tex and Rеx');
+  assert.equal(raw.tools.find((t) => t.id === 'map-collector').owners, undefined, 'Map Collector is gated by its own password, not an owners list');
+  assert.equal(mc.ownerOnly, false, 'every member sees the Map Collector tile');
   assert.equal(mc.overlay, '#mapc-root');
+});
+
+test('the public registry names no player: no siteKey from player-data.json appears in a tool entry', () => {
+  const text = JSON.stringify(raw.tools);   // codeSha256 left out: dev test player Artu's siteKey is deliberately its prefix
+  const roster = JSON.parse(read('player-data.json'));
+  const players = Array.isArray(roster) ? roster : (roster.players || []);
+  const keys = players.map((p) => p.siteKey).filter((k) => /^[0-9a-f]{16}$/.test(k || ''));
+  assert.ok(keys.length > 100, 'read the roster siteKeys');
+  keys.forEach((k) => assert.ok(!text.includes(k), 'siteKey ' + k + ' is not published in a tool entry'));
+  assert.ok(!/"owners"/.test(text), 'no owners list in the public registry');
 });
 
 test('gates match today: Class Talent Reset and Troop Optimizer need the code, the rest are for members', () => {
