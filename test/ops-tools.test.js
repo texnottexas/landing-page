@@ -15,8 +15,11 @@ const cpLine = read('.github/workflows/pages.yml').split('\n').find((l) => l.inc
 test('every tool in ops-tools.json passes validation', () => {
   assert.equal(list.tools.length, raw.tools.length);
   assert.deepEqual(list.tools.map((t) => t.title), [
-    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset', 'TC Squad Sync', 'Troop Optimizer'
+    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector'
   ]);
+  const mc = list.tools.find((t) => t.id === 'map-collector');
+  assert.deepEqual(mc.owners, ['d847a198622a518d', 'c3c6f3200a4ec1fb'], 'Map Collector is shown only to Tex and Rеx');
+  assert.equal(mc.overlay, '#mapc-root');
 });
 
 test('gates match today: Class Talent Reset and Troop Optimizer need the code, the rest are for members', () => {
