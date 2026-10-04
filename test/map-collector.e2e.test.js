@@ -16,7 +16,7 @@ const OWN = ['map-collector.js', 'map-collector-core.js'];
 const OWNER_UID = 'test-owner-uid';
 const OWNER_SK = crypto.createHash('sha256').update(OWNER_UID).digest('hex').slice(0, 16);
 
-let server, base, browser, reports, workerMode;
+let server, base, browser, reports, workerMode, cmdSent;
 test.before(async () => {
   server = http.createServer((req, res) => {
     const name = decodeURIComponent(req.url.split('?')[0].replace(/^\/+/, '')) || 'index.html';
@@ -32,6 +32,7 @@ test.before(async () => {
         else if (body.siteKey !== OWNER_SK) { code = 403; out = { ok: false, error: 'not_registered' }; }
         else if (pw !== 'good pass') { code = 401; out = { ok: false, error: 'unauthorized' }; }
         else if (workerMode === 'superseded') { code = 409; out = { ok: false, error: 'superseded' }; }
+        else if (workerMode === 'reconnectOnce' && body.status.kicked && !cmdSent) { cmdSent = true; out = { ok: true, command: 'reconnect' }; }
         res.writeHead(code, Object.assign({ 'content-type': 'application/json' }, cors));
         res.end(JSON.stringify(out));
       });
@@ -50,7 +51,7 @@ test.before(async () => {
   browser = await chromium.launch({ channel: 'chrome' });
 });
 test.after(async () => { await browser.close(); server.close(); });
-test.beforeEach(() => { reports = []; workerMode = 'ok'; });
+test.beforeEach(() => { reports = []; workerMode = 'ok'; cmdSent = false; });
 
 async function start(opts) {
   const o = Object.assign({ uid: OWNER_UID, pw: 'good pass' }, opts);
@@ -240,5 +241,52 @@ test('rate limit: never more than 12 claims in a minute; the card says it paused
   await page.waitForTimeout(4000);
   assert.equal((await sent(page)).length, 12);
   assert.match(await text(page, '#mapc-foot'), /Paused: too many claims in a minute/);
+  await ctx.close();
+});
+
+const frameFake = (page, fn, arg) => page.evaluate(([f, a]) => { const w = document.getElementById('mapc-frame').contentWindow; return new Function('F', 'a', 'w', f)(w.__fake, a, w); }, [fn, arg]);
+async function goUnattended(page) {
+  await page.waitForSelector('#mapc-unattended');
+  await page.click('#mapc-unattended');
+  await page.click('#mapc-unattended-go');
+  await page.waitForFunction(() => window.__MAPC && window.__MAPC.attached === 'frame', null, { timeout: 15000 });
+}
+
+test('unattended mode: pauses the outer game, frames the same URL and claims through the frame only', async () => {
+  const { ctx, page } = await start();
+  await goUnattended(page);
+  assert.deepEqual(await page.evaluate(() => [__fake.paused, __fake.disposed]), [true, true]);
+  assert.equal(await page.evaluate(() => new URL(document.getElementById('mapc-frame').src).pathname), '/');
+  await frameFake(page, 'F.notice(501, "Frame", 7, 8)');
+  await page.waitForFunction(() => document.getElementById('mapc-frame').contentWindow.__fake.sent.length === 1, null, { timeout: 8000 });
+  assert.equal((await sent(page)).length, 0, 'nothing goes through the paused outer game');
+  assert.ok(await page.evaluate(() => getComputedStyle(document.getElementById('mapc-root')).zIndex > getComputedStyle(document.getElementById('mapc-frame')).zIndex), 'the card stays above the game');
+  await ctx.close();
+});
+
+test('unattended mode: a kicked frame reports it, gets reconnect, reloads and carries on without re-claiming', async () => {
+  workerMode = 'reconnectOnce';
+  const { ctx, page } = await start();
+  await goUnattended(page);
+  await frameFake(page, 'F.notice(601, "Before", 1, 1)');
+  await page.waitForFunction(() => document.getElementById('mapc-frame').contentWindow.__fake.sent.length === 1, null, { timeout: 8000 });
+  await frameFake(page, 'w.__marker = 1; F.socket = 3; F.kickBox = true;');
+  await page.waitForFunction(() => { const w = document.getElementById('mapc-frame').contentWindow; return !!w && !!w.__fake && !w.__marker && window.__MAPC.attached === 'frame'; }, null, { timeout: 40000 });
+  assert.ok(reports.some((r) => r.body.status.kicked === true && r.body.status.connected === false), 'the kick was reported');
+  await frameFake(page, 'F.notice(601, "Before", 1, 1); F.notice(602, "After", 9, 9);');
+  await page.waitForFunction(() => document.getElementById('mapc-frame').contentWindow.__fake.sent.length >= 1, null, { timeout: 8000 });
+  await page.waitForTimeout(3000);
+  assert.deepEqual(await frameFake(page, 'return F.sent.map(function (x) { return x.p.x; });'), [9], 'only the new map is claimed after the reconnect');
+  await ctx.close();
+});
+
+test('outside unattended mode a reconnect command is not acted on, and the card says so', async () => {
+  workerMode = 'reconnectOnce';
+  const { ctx, page } = await start();
+  await page.waitForSelector('#mapc-enroute');
+  await page.evaluate(() => { window.__marker = 1; __fake.socket = 3; __fake.kickBox = true; });
+  await waitText(page, '#mapc-foot', /Reconnect needs Unattended mode/, 15000);
+  assert.equal(await page.evaluate(() => window.__marker), 1, 'the page was not reloaded');
+  assert.equal(await page.$('#mapc-frame'), null);
   await ctx.close();
 });

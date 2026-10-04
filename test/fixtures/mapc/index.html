@@ -16,6 +16,7 @@ window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent:
   var ws = {}; Object.defineProperty(ws, 'readyState', { get: function () { return F.socket; } });
   var NET = {
     _socket: { _webSocket: ws },
+    dispose: function () { F.disposed = true; F.socket = 3; },
     checkRequestIdNoRes: function () { return false; },
     send: function (rid, p, target, cb) {
       F.sent.push({ rid: rid, p: JSON.parse(JSON.stringify(p)), at: Date.now(), target: typeof target });
@@ -39,6 +40,9 @@ window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent:
     if (name === 'LocalManager') return { LOCAL: { getText: function (k) { return k === 'equip_box_16' ? 'Blessing Key' : k; } } };
     return null;
   };
+  // the game's "Multiple active logins" box, shown when another device logs in
+  var kickNode = { activeInHierarchy: true, _components: [{ ownerCaller: { options: { content: 'Multiple active logins detected for this account. Please verify if they are all initiated by you for security purposes.' } } }] };
+  window.cc = { game: { pause: function () { F.paused = true; } }, find: function (path) { return F.kickBox && path === 'New Node/New Node/MsgBoxComponent' ? kickNode : null; } };
   F.notice = function (id, name, x, y) {
     F.chat.push({ _msgId: String(id), _mt: '523', _time: Math.floor(Date.now() / 1000), _msg: '<color=#f77a0b>' + name + "</c>'s Titan Gift Treasure Map appeared at server 2864 (" + x + ', ' + y + ').' });
     ec.emit('newChatPush', {});

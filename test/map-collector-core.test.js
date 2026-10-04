@@ -233,3 +233,13 @@ test('gate: at most 12 claims a minute and 40 per 10 minutes, and 5 failures in 
   assert.deepEqual(M.gate(fails.concat(sends([9000])), 10000), { ok: true }, 'a success resets the streak');
   assert.deepEqual(M.gate(fails, 308001), { ok: true });
 });
+
+test('admit: maps from one batch share one first delay, so they are claimed in notice order', () => {
+  const maps = [];
+  let calls = 0;
+  const delays = () => { calls++; return calls === 1 ? 3400 : 1600; };
+  const n = (id, x) => ({ id, noticedAt: 0, spawner: 'A', server: 2864, x, y: 1 });
+  M.admit(maps, [n('a', 1), n('b', 2), n('c', 3)], 'Tex', 2864, 1000, delays);
+  assert.deepEqual(maps.map((m) => m.retryAt), [4400, 4400, 4400]);
+  assert.equal(M.pickNext(maps, 4400).map.id, 'a');
+});

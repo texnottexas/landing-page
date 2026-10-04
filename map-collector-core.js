@@ -51,12 +51,12 @@
   // suspended; this is the second wall against that.)
   function admit(maps, notices, me, homeServer, now, delayFn) {
     var delay = delayFn || function () { return FIRST_MIN_MS + Math.floor(Math.random() * (FIRST_MAX_MS - FIRST_MIN_MS)); };
-    var added = [];
+    var added = [], first = null;                          // one delay per batch keeps a spawn's maps in notice order
     notices.forEach(function (n) {
       var dup = maps.some(function (m) { return m.id === n.id || (m.x === n.x && m.y === n.y && Math.abs(m.noticedAt - n.noticedAt) < SAME_SPOT_MS); });
       if (dup) return;
       var m = newMap(n, me, homeServer);
-      if (m.state === 'queued') m.retryAt = now + delay();
+      if (m.state === 'queued') { if (first === null) first = now + delay(); m.retryAt = first; }
       maps.push(m); added.push(m);
     });
     return added;
