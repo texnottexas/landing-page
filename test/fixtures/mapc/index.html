@@ -1,0 +1,48 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fake game</title></head>
+<body>
+<script>
+// A fake Top War client: just enough of DataCenter, chat, NET, EventCenter, ActivityController,
+// NWorldMapMarchModel (_myMarch), TableManager and LocalManager for the Map Collector.
+window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent: [], answers: [], chat: [], handlers: {}, myMarch: {}, activity: true };
+(function () {
+  var F = window.__fake;
+  var ec = {
+    on: function (n, f) { (F.handlers[n] = F.handlers[n] || []).push(f); },
+    off: function (n, f) { F.handlers[n] = (F.handlers[n] || []).filter(function (x) { return x !== f; }); },
+    emit: function (n, a) { (F.handlers[n] || []).slice().forEach(function (f) { f(a); }); }
+  };
+  F.emit = ec.emit;
+  var ws = {}; Object.defineProperty(ws, 'readyState', { get: function () { return F.socket; } });
+  var NET = {
+    _socket: { _webSocket: ws },
+    checkRequestIdNoRes: function () { return false; },
+    send: function (rid, p, target, cb) {
+      F.sent.push({ rid: rid, p: JSON.parse(JSON.stringify(p)), at: Date.now(), target: typeof target });
+      var n = F.sent.length;
+      var ans = F.answers.length ? F.answers.shift() : { s: 0, d: JSON.stringify({ marchInfo: { marchArrive: Math.floor(Date.now() / 1000) + 2, marchId: 'm' + n } }) };
+      setTimeout(function () { cb(ans); }, 20);
+      return true;
+    }
+  };
+  var activity = { showUiType: 'ActivityTitanBlessing', id: 1, extra: {} };
+  Object.defineProperty(activity.extra, 'left', { get: function () { return F.left; } });
+  var chatInst = { _allianceRoomId: '102_2_2864_1', _userChatList: { '2102_2_2864_1': F.chat } };
+  window.__require = function (name) {
+    if (name === 'DataCenter') return { DATA: { UserData: { Name: F.name, StrUid: F.uid } } };
+    if (name === 'newChatController') return { newChatController: { _instance: chatInst } };
+    if (name === 'NetMgr') return { NET: NET };
+    if (name === 'EventCenter') return { EventCenter: { getInst: function () { return ec; } } };
+    if (name === 'ActivityController') return { ActivityController: { Instance: { _activityList: F.activity ? [activity] : [] } } };
+    if (name === 'NWorldMapMarchModel') return { default: { instance: { _myMarch: F.myMarch } } };
+    if (name === 'TableManager') return { TABLE: { getTableDataById: function (t, id) { return t === 'item' && id === 79200004 ? { name: 'equip_box_16' } : null; } } };
+    if (name === 'LocalManager') return { LOCAL: { getText: function (k) { return k === 'equip_box_16' ? 'Blessing Key' : k; } } };
+    return null;
+  };
+  F.notice = function (id, name, x, y) {
+    F.chat.push({ _msgId: String(id), _mt: '523', _time: Math.floor(Date.now() / 1000), _msg: '<color=#f77a0b>' + name + "</c>'s Titan Gift Treasure Map appeared at server 2864 (" + x + ', ' + y + ').' });
+    ec.emit('newChatPush', {});
+  };
+})();
+</script>
+</body></html>
