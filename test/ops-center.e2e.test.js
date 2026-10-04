@@ -59,7 +59,7 @@ test('phone menu: member header, 2 columns, live statuses, no first-run badges, 
   const { ctx, page } = await open(PHONE);
   await page.waitForSelector('.ops-tile');
   assert.equal(await page.textContent('.ops-sub'), 'Tester · S2864 ✓');
-  assert.deepEqual(await tileNames(page), ['Alpha Tool', 'Beta Tool', 'Gamma Tool', 'Delta Tool', 'Epsilon Tool', 'Zeta Tool']);
+  assert.deepEqual(await tileNames(page), ['Alpha Tool', 'Beta Tool', 'Gamma Tool', 'Delta Tool', 'Epsilon Tool', 'Zeta Tool', 'Owner Tool']);
   assert.deepEqual(await tileStatus(page, 'Zeta Tool'), ['Not ready'], 'a base the tool does not handle itself is a real Not ready');
   const boxes = await page.$$eval('.ops-tile', (els) => els.slice(0, 2).map((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top)]; }));
   assert.notEqual(boxes[0][0], boxes[1][0]); assert.equal(boxes[0][1], boxes[1][1], 'two tiles side by side');
@@ -263,7 +263,7 @@ test('while a tool is starting: the note says starting, and a hidden pill stays 
 test('a corrupt recent-tools entry does not empty the menu', async () => {
   const { ctx, page } = await open(PHONE, () => { localStorage.setItem('ops_recent_v1', '"alpha"'); localStorage.setItem('ops_seen_v1', '"oops"'); });
   await page.waitForSelector('.ops-tile', { timeout: 5000 });
-  assert.equal((await tileNames(page)).length, 6);
+  assert.equal((await tileNames(page)).length, 7);
   await clickTile(page, 'Alpha Tool');
   await page.click('.ops-btn.primary');
   await page.waitForSelector('#fake-alpha', { timeout: 3000 });
@@ -335,3 +335,20 @@ test('base open means the same as for the Troop Optimizer: units still landing i
   await ctx.close();
 });
 
+
+test('owner-only tile shows for the owner and is hidden for any other account', async () => {
+  const a = await open(DESKTOP);
+  await a.page.waitForSelector('.ops-tile');
+  assert.ok((await tileNames(a.page)).includes('Owner Tool'));
+  await a.ctx.close();
+  // a second roster member who is not an owner
+  const b = await open(DESKTOP, () => { window.__fake.uid = 'other-member'; window.__fake.name = 'Other Member'; });
+  await b.page.waitForSelector('.ops-tile');
+  const names = await tileNames(b.page);
+  assert.ok(names.includes('Alpha Tool'), 'the member still sees the public tools');
+  assert.ok(!names.includes('Owner Tool'));
+  await b.page.fill('input[placeholder="Search tools"]', 'owner');
+  await b.page.waitForTimeout(200);
+  assert.ok(!(await tileNames(b.page)).includes('Owner Tool'), 'search cannot surface it either');
+  await b.ctx.close();
+});

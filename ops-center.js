@@ -10,7 +10,7 @@
   var LS = { recent: 'ops_recent_v1', seen: 'ops_seen_v1', unlock: 'ops_unlock_v1', member: 'ops_member_v1' };
   var MEMBER_TTL = 7 * 24 * 3600 * 1000;
   var S = {
-    list: null, listErr: false, member: null, memberErr: 'wait', unlocked: false, recent: [], seen: {},
+    list: null, listErr: false, member: null, memberErr: 'wait', siteKey: null, unlocked: false, recent: [], seen: {},
     view: null, toolId: null, query: '', root: null, modal: null, sub: null, grid: null, tiles: {},
     timer: null, waitTimer: null, tracker: null, tool: null, observer: null, tick: null, fab: null, fabHidden: false, keyHandler: null
   };
@@ -65,9 +65,10 @@
   }
   function checkMember() {
     var id = uid();
-    if (!id) { S.member = null; S.memberErr = 'wait'; return Promise.resolve(); }
+    if (!id) { S.member = null; S.memberErr = 'wait'; S.siteKey = null; return Promise.resolve(); }
     return sha256Hex(id).then(function (h) {
       var sk = h.slice(0, 16), cached = lsGet(LS.member, null);
+      S.siteKey = sk;                                   // owner-only tiles are matched on this
       var fresh = cached && cached.sk === sk && Date.now() - cached.at < MEMBER_TTL && cached.row;
       var load = fetch(BASE + 'player-data.json?_=' + Date.now(), { cache: 'no-store' })
         .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
@@ -146,7 +147,7 @@
   function renderGrid() {
     if (!S.grid) return;
     S.grid.textContent = ''; S.tiles = {};
-    var tools = C().orderTools(C().filterTools(S.list.tools, S.query), S.recent);
+    var tools = C().orderTools(C().filterTools(C().visibleTools(S.list.tools, S.siteKey), S.query), S.recent);
     if (!tools.length) { S.grid.appendChild(K().el('div', 'ops-empty', 'No tools match "' + S.query.trim() + '".')); S.grid.style.display = 'block'; return; }
     S.grid.style.display = '';
     tools.forEach(function (t) {

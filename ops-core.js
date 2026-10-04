@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
 
-  var ICONS = ['list', 'x', 'clock', 'shield', 'refresh', 'users', 'grid'];
+  var ICONS = ['list', 'x', 'clock', 'shield', 'refresh', 'users', 'grid', 'map'];
   var READY_IDS = ['game', 'base', 'defender', 'r4'];
   var GATES = ['member', 'code'];
   var READY_TEXT = {
@@ -47,11 +47,18 @@
         icon: ICONS.indexOf(t.icon) >= 0 ? t.icon : 'grid',
         keywords: typeof t.keywords === 'string' ? t.keywords : '',
         overlay: /^#[A-Za-z0-9_-]+$/.test(t.overlay || '') ? t.overlay : null,
-        auto: (Array.isArray(t.auto) ? t.auto : []).filter(function (r) { return t.ready.indexOf(r) >= 0; })
+        auto: (Array.isArray(t.auto) ? t.auto : []).filter(function (r) { return t.ready.indexOf(r) >= 0; }),
+        owners: (Array.isArray(t.owners) ? t.owners : []).filter(function (k) { return typeof k === 'string' && /^[0-9a-f]{16}$/.test(k); }),
+        ownerOnly: Array.isArray(t.owners) && t.owners.length > 0
       });
     });
     if (capped) { try { console.warn('Ops Center: the tool list has more than ' + MAX_TOOLS + ' tools; only the first 50 are shown'); } catch (e) {} }
     return out;
+  }
+
+  // Tools listing owners are shown only to those players (a list that held only bad keys hides the tool from everyone).
+  function visibleTools(tools, siteKey) {
+    return tools.filter(function (t) { return !t.ownerOnly || (!!siteKey && t.owners.indexOf(siteKey) >= 0); });
   }
 
   function filterTools(tools, query) {
@@ -144,7 +151,7 @@
 
   var OpsCore = {
     ICONS: ICONS, READY_IDS: READY_IDS, READY_TEXT: READY_TEXT,
-    validateTools: validateTools, filterTools: filterTools, orderTools: orderTools, pushRecent: pushRecent,
+    validateTools: validateTools, visibleTools: visibleTools, filterTools: filterTools, orderTools: orderTools, pushRecent: pushRecent,
     initSeen: initSeen, badgeFor: badgeFor, tileStatus: tileStatus, isToolNode: isToolNode, isAutoFor: isAutoFor, AUTO_TEXT: AUTO_TEXT,
     trackerInit: trackerInit, trackerReduce: trackerReduce, trackerWatching: trackerWatching
   };

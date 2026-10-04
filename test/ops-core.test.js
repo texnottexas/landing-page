@@ -184,3 +184,31 @@ test('validateTools warns about every entry it drops and caps the list at 50', (
     assert.match(warned[0], /only the first 50/);
   } finally { console.warn = orig; }
 });
+
+test('owners: kept when valid 16-hex keys, dropped otherwise; visibleTools hides owner-only tools from others', () => {
+  const r = OC.validateTools({ tools: [
+    tool({ id: 'pub' }),
+    tool({ id: 'mine', owners: ['d847a198622a518d', 'BAD', 42] }),
+    tool({ id: 'empty', owners: [] }),
+    tool({ id: 'junk', owners: 'd847a198622a518d' })
+  ] }).tools;
+  const by = Object.fromEntries(r.map((t) => [t.id, t]));
+  assert.deepEqual(by.pub.owners, []);
+  assert.deepEqual(by.mine.owners, ['d847a198622a518d']);
+  assert.deepEqual(by.empty.owners, []);
+  assert.deepEqual(by.junk.owners, []);
+  assert.deepEqual(OC.visibleTools(r, 'd847a198622a518d').map((t) => t.id), ['pub', 'mine', 'empty', 'junk']);
+  assert.deepEqual(OC.visibleTools(r, '03c2cd3196b2f243').map((t) => t.id), ['pub', 'empty', 'junk']);
+  assert.deepEqual(OC.visibleTools(r, null).map((t) => t.id), ['pub', 'empty', 'junk']);
+});
+
+test('owners: an entry whose owners are all invalid is hidden from everyone, never shown to all', () => {
+  const r = OC.validateTools({ tools: [tool({ id: 'x1', owners: ['nope'] })] }).tools;
+  assert.equal(r.length, 1);
+  assert.equal(r[0].ownerOnly, true);
+  assert.deepEqual(OC.visibleTools(r, 'd847a198622a518d'), []);
+});
+
+test('map is a known icon', () => {
+  assert.equal(OC.validateTools({ tools: [tool({ id: 'm', icon: 'map' })] }).tools[0].icon, 'map');
+});
