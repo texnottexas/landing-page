@@ -39,7 +39,15 @@
   // The game's own player id (StrUid getter, _uid behind it); '' when not logged in.
   function accountId() { var U = UD(); var id = U && (U.StrUid || U._uid); return id ? String(id) : ''; }
 
-  function isReady() { var h = hm(); return !!(h && h.armyInited && h._ArmyComplete && h._BuildingComplete); }
+  // _ArmyComplete only flips when the last unit lands on the map, so a base whose units are all in
+  // storage never sets it: count the base as loaded once every on-map unit has its map item.
+  function isReady() {
+    var h = hm();
+    if (!(h && h.armyInited && h._BuildingComplete)) return false;
+    if (h._ArmyComplete) return true;
+    var onMap = (UD().Armys || []).filter(function (a) { return String(a.warehouseId) === '0'; });
+    return onMap.every(function (a) { return !!(h.ArmyItems || {})[a._id]; });
+  }
 
   // ---------------------------------------------------------------- read
   function readSnapshot() {

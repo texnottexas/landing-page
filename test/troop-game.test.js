@@ -196,3 +196,14 @@ test('the account id comes from the game, so a saved skin never crosses accounts
   assert.equal(loadFresh(g2.globals).accountId(), '7000000000002');
   assert.equal(loadFresh(fakeGame().globals).accountId(), '');
 });
+
+test('a base with every unit in storage counts as loaded (the game never marks its units complete)', () => {
+  const g = fakeGame(); g.hm._ArmyComplete = false;
+  assert.equal(loadFresh(g.globals).isReady(), true);
+  const g2 = fakeGame({ armys: [{ _id: 'u1', warehouseId: '0', _data: {} }] }); g2.hm._ArmyComplete = false;
+  assert.equal(loadFresh(g2.globals).isReady(), false, 'a unit still loading onto the map');
+  const g3 = fakeGame({ armys: [{ _id: 'u1', warehouseId: '0', _data: {} }], armyItems: { u1: unitItem('u1') } }); g3.hm._ArmyComplete = false;
+  assert.equal(loadFresh(g3.globals).isReady(), true);
+  const g4 = fakeGame(); g4.hm._BuildingComplete = false;
+  assert.equal(loadFresh(g4.globals).isReady(), false, 'buildings still loading');
+});
