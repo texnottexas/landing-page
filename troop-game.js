@@ -14,7 +14,7 @@
   var HIGHS_VER = '1.8.0';
   var config = {
     paceMs: [2000, 1000],          // 2.0 to 3.0 s between actions
-    fastPaceMs: [500, 400],        // 0.5 to 0.9 s after each answer for building and deleting (manual tapping is faster)
+    fastPaceMs: [500, 400],        // 0.5 to 0.9 s after each answer when placing buildings (manual tapping is faster)
     responseTimeoutMs: 6000,       // per request
     storeConfirmMs: 3000,          // wait for the server push that moves a stored unit off the map
     skinConfirmMs: 30000,          // the player may have to confirm removing a temporary cosmetic first
@@ -26,7 +26,7 @@
   function TABLE() { return req('TableManager').TABLE; }
   function NET() { return req('NetMgr').NET; }
   function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-  var FAST_KINDS = { build: 1, deleteBuilding: 1, deleteUnit: 1 };
+  var FAST_KINDS = { build: 1 };      // deletes are irreversible, so they keep the normal pace
   function jitter(kind) {
     var p = FAST_KINDS[kind] ? config.fastPaceMs : config.paceMs;
     return p[0] + Math.floor(Math.random() * p[1]);

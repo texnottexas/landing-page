@@ -215,7 +215,7 @@ test('permanent skins (endTime -1) count as owned, expired temporary ones do not
   assert.deepEqual(TG.ownedSkinIds(faces, now), [1795000, 1853000, 1999000, 2016000]);
 });
 
-test('building and deleting use the short pace; merges and moves keep the long one', async () => {
+test('building uses the short pace; merges and moves keep the long one', async () => {
   const fresh = loadFresh(fakeGame().globals).config;
   assert.ok(fresh.fastPaceMs[0] + fresh.fastPaceMs[1] <= 1000, 'default short pace stays under a second');
   const tables = { building: { 105100: { id: 105100, width: 2, height: 2, point_type: 1 } } };
@@ -242,4 +242,13 @@ test('Bulk Training with every queue full sends an empty batch; that counts as n
   const r = await TG.runSteps([{ kind: 'train', role: 'army' }], { onStep: (i, st, resp) => seen.push(resp) });
   assert.equal(r.ok, true);
   assert.equal(seen[0].skipped, true);
+});
+
+test('deleting keeps the long pace (only building was sped up)', async () => {
+  const idle = { BuildingData: { _curProductNum: 0 } };
+  const g = fakeGame({ buildings: { b1: idle, b2: idle }, whBuildings: { b1: { Data: { group: 1040 } }, b2: { Data: { group: 1040 } } } });
+  const TG = loadFresh(g.globals); TG.config.paceMs = [300, 0]; TG.config.fastPaceMs = [0, 0];
+  const t = Date.now();
+  await TG.runSteps([{ kind: 'deleteBuilding', id: 'b1' }, { kind: 'deleteBuilding', id: 'b2' }], {});
+  assert.ok(Date.now() - t >= 280, 'two building deletes took ' + (Date.now() - t) + ' ms');
 });
