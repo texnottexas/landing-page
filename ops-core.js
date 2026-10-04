@@ -49,7 +49,7 @@
         overlay: /^#[A-Za-z0-9_-]+$/.test(t.overlay || '') ? t.overlay : null,
         auto: (Array.isArray(t.auto) ? t.auto : []).filter(function (r) { return t.ready.indexOf(r) >= 0; }),
         owners: (Array.isArray(t.owners) ? t.owners : []).filter(function (k) { return typeof k === 'string' && /^[0-9a-f]{16}$/.test(k); }),
-        ownerOnly: Array.isArray(t.owners) && t.owners.length > 0
+        ownerOnly: t.owners !== undefined          // fail closed: an owners key that isn't a good list hides the tool
       });
     });
     if (capped) { try { console.warn('Ops Center: the tool list has more than ' + MAX_TOOLS + ' tools; only the first 50 are shown'); } catch (e) {} }

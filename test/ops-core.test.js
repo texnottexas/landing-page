@@ -185,7 +185,7 @@ test('validateTools warns about every entry it drops and caps the list at 50', (
   } finally { console.warn = orig; }
 });
 
-test('owners: kept when valid 16-hex keys, dropped otherwise; visibleTools hides owner-only tools from others', () => {
+test('owners: kept when valid 16-hex keys, dropped otherwise; visibleTools shows owner-only tools only to owners', () => {
   const r = OC.validateTools({ tools: [
     tool({ id: 'pub' }),
     tool({ id: 'mine', owners: ['d847a198622a518d', 'BAD', 42] }),
@@ -197,9 +197,10 @@ test('owners: kept when valid 16-hex keys, dropped otherwise; visibleTools hides
   assert.deepEqual(by.mine.owners, ['d847a198622a518d']);
   assert.deepEqual(by.empty.owners, []);
   assert.deepEqual(by.junk.owners, []);
-  assert.deepEqual(OC.visibleTools(r, 'd847a198622a518d').map((t) => t.id), ['pub', 'mine', 'empty', 'junk']);
-  assert.deepEqual(OC.visibleTools(r, '03c2cd3196b2f243').map((t) => t.id), ['pub', 'empty', 'junk']);
-  assert.deepEqual(OC.visibleTools(r, null).map((t) => t.id), ['pub', 'empty', 'junk']);
+  // fail closed (review #2): an owners key that isn't a good list hides the tool from everyone
+  assert.deepEqual(OC.visibleTools(r, 'd847a198622a518d').map((t) => t.id), ['pub', 'mine']);
+  assert.deepEqual(OC.visibleTools(r, '03c2cd3196b2f243').map((t) => t.id), ['pub']);
+  assert.deepEqual(OC.visibleTools(r, null).map((t) => t.id), ['pub']);
 });
 
 test('owners: an entry whose owners are all invalid is hidden from everyone, never shown to all', () => {
@@ -211,4 +212,16 @@ test('owners: an entry whose owners are all invalid is hidden from everyone, nev
 
 test('map is a known icon', () => {
   assert.equal(OC.validateTools({ tools: [tool({ id: 'm', icon: 'map' })] }).tools[0].icon, 'map');
+});
+
+test('REVIEW #2: owners fail closed — present but empty, a string, or all-invalid hides the tool from everyone', () => {
+  const r = OC.validateTools({ tools: [
+    tool({ id: 'pub' }),
+    tool({ id: 'empty', owners: [] }),
+    tool({ id: 'str', owners: 'd847a198622a518d' }),
+    tool({ id: 'bad', owners: ['D847A198622A518D'] }),
+    tool({ id: 'mine', owners: ['d847a198622a518d'] })
+  ] }).tools;
+  assert.deepEqual(OC.visibleTools(r, 'd847a198622a518d').map((t) => t.id), ['pub', 'mine']);
+  assert.deepEqual(OC.visibleTools(r, '03c2cd3196b2f243').map((t) => t.id), ['pub']);
 });

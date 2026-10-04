@@ -27,14 +27,18 @@ test.before(async () => {
         const pw = req.headers['x-map-collector-password'];
         const body = JSON.parse(b);
         reports.push({ pw, body });
-        let code = 200, out = { ok: true };
+        let code = 200, out = { ok: true }, wait = 0;
+        if (workerMode === 'slow') wait = 4000;
         if (workerMode === 'down') { code = 503; out = { ok: false }; }
         else if (body.siteKey !== OWNER_SK) { code = 403; out = { ok: false, error: 'not_registered' }; }
         else if (pw !== 'good pass') { code = 401; out = { ok: false, error: 'unauthorized' }; }
         else if (workerMode === 'superseded') { code = 409; out = { ok: false, error: 'superseded' }; }
         else if (workerMode === 'reconnectOnce' && body.status.kicked && !cmdSent) { cmdSent = true; out = { ok: true, command: 'reconnect' }; }
-        res.writeHead(code, Object.assign({ 'content-type': 'application/json' }, cors));
-        res.end(JSON.stringify(out));
+        else if (workerMode === 'reject1' && body.maps.some((m) => m.id === '81' && m.state === 'gone') && !cmdSent) { cmdSent = true; code = 400; out = { ok: false, error: 'bad_map' }; }
+        setTimeout(() => {
+          res.writeHead(code, Object.assign({ 'content-type': 'application/json' }, cors));
+          res.end(JSON.stringify(out));
+        }, wait);
       });
       return;
     }
@@ -63,7 +67,8 @@ async function start(opts) {
     __fake.uid = a.uid; window.__MAPC_WORKER = a.base.replace(/\/$/, ''); window.__MAPC_REPORT_MS = 1000;
     if (a.pw) localStorage.setItem('mapc_pw_v1', a.pw);
     if (a.left != null) __fake.left = a.left;
-  }, { uid: o.uid, base, pw: o.pw, left: o.left });
+    if (a.goneMs) window.__MAPC_GONE_MS = a.goneMs;
+  }, { uid: o.uid, base, pw: o.pw, left: o.left, goneMs: o.goneMs });
   await page.addScriptTag({ url: base + 'map-collector-core.js' });
   await page.addScriptTag({ url: base + 'map-collector.js' });
   return { ctx, page };
@@ -290,4 +295,79 @@ test('outside unattended mode a reconnect command is not acted on, and the card 
   assert.equal(await page.evaluate(() => window.__marker), 1, 'the page was not reloaded');
   assert.equal(await page.$('#mapc-frame'), null);
   await ctx.close();
+});
+
+test('REVIEW #4: a report the worker rejects is not resent forever; reporting carries on', async () => {
+  workerMode = 'reject1';
+  const { ctx, page } = await start();
+  await page.waitForSelector('#mapc-enroute');
+  await page.evaluate(() => { __fake.answers.push({ s: 3, d: 'world_130511' }); __fake.notice(81, 'A', 3, 3); });
+  const until = Date.now() + 15000;
+  while (Date.now() < until && !cmdSent) await page.waitForTimeout(200);
+  assert.ok(cmdSent, 'the worker rejected the batch holding map 81');
+  const after = reports.length;
+  await page.evaluate(() => __fake.notice(82, 'B', 4, 4));
+  await page.waitForTimeout(6000);
+  const later = reports.slice(after);
+  assert.ok(later.length >= 1, 'reports carry on');
+  assert.ok(later.every((r) => !r.body.maps.some((m) => m.id === '81')), 'the rejected row is not resent');
+  assert.ok(later.some((r) => r.body.maps.some((m) => m.id === '82')), 'new rows still go out');
+  assert.doesNotMatch(await text(page, '#mapc-foot'), /not reachable/);
+  await ctx.close();
+});
+
+test('REVIEW #7: no claims while the game is disconnected; they go out once it is back', async () => {
+  const { ctx, page } = await start();
+  await page.waitForSelector('#mapc-enroute');
+  await page.evaluate(() => { __fake.socket = 3; __fake.notice(91, 'A', 5, 5); });
+  await page.waitForTimeout(5000);
+  assert.equal((await sent(page)).length, 0, 'nothing is sent into a closed connection');
+  await page.evaluate(() => { __fake.socket = 1; });
+  await page.waitForFunction(() => __fake.sent.length === 1, null, { timeout: 8000 });
+  await ctx.close();
+});
+
+test('REVIEW #10: a short gap in the event data does not stop the collector; a long one does', async () => {
+  const { ctx, page } = await start({ goneMs: 6000 });
+  await page.waitForSelector('#mapc-enroute');
+  await page.evaluate(() => { __fake.activity = false; });
+  await page.waitForTimeout(3000);
+  await page.evaluate(() => { __fake.activity = true; });
+  await page.waitForTimeout(3000);
+  assert.ok(await page.$('#mapc-enroute'), 'still running after a 3 s gap');
+  await page.evaluate(() => { __fake.activity = false; });
+  await waitText(page, '#mapc-root', /the event ended/, 15000);
+  await ctx.close();
+});
+
+test('REVIEW #5: a second tap on Start while the password is being checked claims nothing', async () => {
+  workerMode = 'slow';
+  const { ctx, page } = await start({ pw: null });
+  await page.waitForSelector('#mapc-pw', { timeout: 5000 });
+  await page.fill('#mapc-pw', 'bad pass');
+  await page.evaluate(() => { const b = document.getElementById('mapc-pw-go'); b.click(); b.click(); });
+  await page.evaluate(() => __fake.notice(91, 'A', 9, 9));
+  await page.waitForSelector('#mapc-pw', { timeout: 8000 });
+  assert.equal((await sent(page)).length, 0, 'no claim before the password is accepted');
+  assert.equal(reports.length, 1, 'one password check, not two');
+  await ctx.close();
+});
+
+test('REVIEW #5: a typed password is not trusted while the server is down; a saved, accepted one still runs', async () => {
+  workerMode = 'down';
+  const { ctx, page } = await start({ pw: null });
+  await page.waitForSelector('#mapc-pw', { timeout: 5000 });
+  await page.fill('#mapc-pw', 'any guess');
+  await page.click('#mapc-pw-go');
+  await waitText(page, '#mapc-root', /Can't reach the Map Collector server/, 5000);
+  await page.evaluate(() => __fake.notice(92, 'A', 9, 9));
+  await page.waitForTimeout(4000);
+  assert.equal((await sent(page)).length, 0, 'an unchecked password claims nothing');
+  assert.equal(await page.evaluate(() => localStorage.getItem('mapc_pw_v1')), null, 'an unchecked password is not saved');
+  await ctx.close();
+  const again = await start();                                  // saved password from an earlier accepted run
+  await again.page.waitForSelector('#mapc-enroute', { timeout: 5000 });
+  await again.page.evaluate(() => __fake.notice(93, 'A', 9, 9));
+  await again.page.waitForFunction(() => __fake.sent.length === 1, null, { timeout: 6000 });
+  await again.ctx.close();
 });

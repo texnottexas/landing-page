@@ -9,12 +9,12 @@
   var C = window.MapCollectorCore;
   if (!C) { try { alert('Map Collector did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-04.4';
+  var VERSION = '2026-10-04.5';
   var WORKER = window.__MAPC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var DASH = 'https://2864tw.com/map-collector.html';
   var HOME_SERVER = 2864, CLAIM = 902, MARCH_TYPE = 143;   // RequestId.MARCH_WORLD_POINT, MarchType.Titan_Blessing_Gift
   var REPORT_BUSY_MS = window.__MAPC_REPORT_MS || 15000, REPORT_IDLE_MS = 60000, REPORT_DOWN_MS = 20000, RETRY_MS = 60000, TICK_MS = 2000, SCAN_MS = 700;
-  var ATTACH_LIMIT_MS = 90000, KICK_BOX = 'New Node/New Node/MsgBoxComponent';
+  var ATTACH_LIMIT_MS = 90000, KICK_BOX = 'New Node/New Node/MsgBoxComponent', GONE_MS = window.__MAPC_GONE_MS || 60000;
   var LS_PW = 'mapc_pw_v1', LS_STATE = 'mapc_state_v1', SEEN_SAVE = 2000;
   // The game window: this page, or in Unattended mode the game running in a frame under the card, which
   // can be reloaded to log back in while this script keeps running (a full page reload would end it).
@@ -156,6 +156,8 @@
     (async function () {
       while (S.active) {
         if (!S.attached) { await delay(1000); continue; }
+        // never send into a closed connection: a game that buffers would flush them in a burst on reconnect
+        if (!connected()) { await delay(1000); continue; }
         var pick = C.pickNext(S.maps, Date.now());
         if (!pick.map) { if (pick.wait < 0) break; await delay(Math.min(pick.wait, 1000)); continue; }
         var left = claimsLeft(activity());
@@ -193,7 +195,12 @@
       paint(); return;
     }
     var a = activity();
-    if (!a) { if (connected()) { stop('event ended'); return; } }
+    if (!a) {
+      // the event list can be briefly empty while a reloaded game settles: only a minute without it ends the run
+      if (connected()) { if (!S.goneSince) S.goneSince = now0; if (now0 - S.goneSince >= GONE_MS) { stop('event ended'); return; } }
+      paint(); return;
+    }
+    S.goneSince = 0;
     var left = claimsLeft(a);
     if (left != null) S.left = left;
     if (left != null && left <= 0 && !S.maps.some(function (m) { return m.state === 'sending'; })) { stop('out of claims'); return; }
@@ -229,7 +236,8 @@
           if (r.j.command === 'reconnect' && !stopReason) reconnect();
         }
         else if (!stopReason) {
-          if (code === 401) { lsSet(LS_PW, null); halt(); askPassword('That password didn\'t work.'); }
+          if (code === 400 || code === 413) { C.ackReport(S, b.upto); S.failing = false; save(); }   // a rejected batch is dropped, never resent
+          else if (code === 401) { lsSet(LS_PW, null); halt(); askPassword('That password didn\'t work.'); }
           else if (code === 403) stop('not registered');
           else if (code === 409) stop('superseded');
           else S.failing = true;
@@ -241,15 +249,22 @@
 
   // ---------------------------------------------------------------- run
   function begin() {
+    if (S.starting || S.active) return;                    // one password check at a time (a second tap does nothing)
     var a = activity();
     if (!a) { stop('event ended'); return; }
     S.left = claimsLeft(a);
     if (S.left != null && S.left <= 0) { stop('out of claims'); return; }
+    S.starting = true;
     showStats();
-    // check the password and the account before claiming anything; a network failure still lets it collect
+    // check the password and the account before claiming anything. A saved password was accepted before, so a
+    // network failure still lets it collect; a typed one runs only once the server has accepted it.
     report('').then(function (code) {
-      if (S.stopped || (code !== 200 && code !== 0 && code < 500)) return;
-      if (S.active) return;
+      S.starting = false;
+      if (S.stopped || S.active) return;
+      var down = code === 0 || code >= 500;
+      if (code === 200) { if (S.pwTyped) { lsSet(LS_PW, S.pw); S.pwTyped = false; } }
+      else if (!down) return;
+      else if (S.pwTyped) { askPassword('Can\'t reach the Map Collector server. Try again in a minute.'); return; }
       S.active = true;
       S.timers.push(setInterval(scan, SCAN_MS), setInterval(tick, TICK_MS));
       attachNow('page');
@@ -408,7 +423,7 @@
     var input = el('input'); input.id = 'mapc-pw'; input.type = 'password'; input.autocomplete = 'current-password'; input.setAttribute('aria-label', 'Map Collector password');
     body.appendChild(input);
     var btns = el('div', 'mapc-btns');
-    var go = function () { var v = input.value.trim(); if (!v) return; S.pw = v; lsSet(LS_PW, v); begin(); };
+    var go = function () { var v = input.value.trim(); if (!v) return; S.pw = v; S.pwTyped = true; begin(); };
     btns.appendChild(button('mapc-pw-go', 'Start', go));
     btns.appendChild(button('mapc-close', 'Close', function () { window.__MAPC.running = false; S.stopped = true; removeRoot(); }));
     input.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });

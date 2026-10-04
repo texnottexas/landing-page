@@ -151,20 +151,21 @@ test('sweepMissed: 15 s after arrival, or 60 s after sending when the arrival is
   assert.equal(maps[0].state, 'missed');
 });
 
-test('buildReport sends changed rows oldest first, capped, and ackReport advances', () => {
+test('buildReport sends changed rows oldest first, capped at 50, and ackReport advances', () => {
   const st = { rev: 0, acked: 0 };
   const maps = [];
-  for (let i = 0; i < 205; i++) { const m = { id: String(i), noticedAt: i, spawner: 'S', x: 1, y: 2, state: 'queued' }; M.touch(st, m); maps.push(m); }
+  const T0 = 1791134744000;
+  for (let i = 0; i < 55; i++) { const m = { id: String(i), noticedAt: T0 + i, spawner: 'S', x: 1, y: 2, state: 'queued' }; M.touch(st, m); maps.push(m); }
   const r1 = M.buildReport(maps, st.acked, M.REPORT_MAX);
-  assert.equal(r1.rows.length, 200); assert.equal(r1.rows[0].id, '0'); assert.equal(r1.upto, 200);
+  assert.equal(r1.rows.length, 50); assert.equal(r1.rows[0].id, '0'); assert.equal(r1.upto, 50);
   assert.deepEqual(Object.keys(r1.rows[0]).sort(), ['arriveAt', 'collectedAt', 'id', 'noticedAt', 'reason', 'reward', 'rewardItems', 'sentAt', 'spawner', 'state', 'tries', 'x', 'y']);
   M.ackReport(st, r1.upto);
   const r2 = M.buildReport(maps, st.acked, M.REPORT_MAX);
-  assert.deepEqual(r2.rows.map((r) => r.id), ['200', '201', '202', '203', '204']);
+  assert.deepEqual(r2.rows.map((r) => r.id), ['50', '51', '52', '53', '54']);
   M.touch(st, maps[0]);
-  assert.deepEqual(M.buildReport(maps, st.acked, M.REPORT_MAX).rows.map((r) => r.id), ['200', '201', '202', '203', '204', '0']);
+  assert.deepEqual(M.buildReport(maps, st.acked, M.REPORT_MAX).rows.map((r) => r.id), ['50', '51', '52', '53', '54', '0']);
   M.ackReport(st, 3);
-  assert.equal(st.acked, 200, 'an old ack never moves backwards');
+  assert.equal(st.acked, 50, 'an old ack never moves backwards');
 });
 
 test('summarize, healthOf and pillCard', () => {
@@ -259,4 +260,23 @@ test('rewardItemsOf turns the game reward into the compact id list (max 10, bad 
   assert.equal(M.rewardItemsOf([{ itemId: 'x', itemCount: 1 }, { itemId: 5, itemCount: 0 }, null]), '');
   assert.equal(M.rewardItemsOf(Array.from({ length: 12 }, (_, i) => ({ itemId: i + 1, itemCount: 1 }))).split(',').length, 10);
   assert.equal(M.rewardItemsOf(undefined), '');
+});
+
+test('REVIEW #4: a notice without a usable time is never claimed', () => {
+  const r = M.newNotices([{ _msgId: 'x1', _mt: '523', _msg: N('A', 1, 1) }, { _msgId: 'x2', _mt: '523', _time: 'soon', _msg: N('B', 2, 2) }], {}, 0);
+  assert.deepEqual(r.notices, []);
+  assert.deepEqual(r.ids, ['x1', 'x2'], 'both are still marked seen');
+});
+
+test('REVIEW #4: rows the worker would reject are dropped from the report but acked, so they can never block it', () => {
+  const st = { rev: 0, acked: 0 };
+  const good = { id: 'g1', noticedAt: 1791134744000, spawner: 'A', x: 10, y: 20, state: 'collected' };
+  const badX = { id: 'b1', noticedAt: 1791134744000, spawner: 'A', x: 5000, y: 20, state: 'collected' };
+  const badT = { id: 'b2', noticedAt: NaN, spawner: 'A', x: 1, y: 1, state: 'collected' };
+  const badId = { id: '../x', noticedAt: 1791134744000, spawner: 'A', x: 1, y: 1, state: 'collected' };
+  [good, badX, badT, badId].forEach((m) => M.touch(st, m));
+  const r = M.buildReport([good, badX, badT, badId], 0, M.REPORT_MAX);
+  assert.deepEqual(r.rows.map((x) => x.id), ['g1']);
+  assert.equal(r.upto, 4, 'the bad rows are acked with the good one');
+  assert.equal(M.REPORT_MAX, 50, 'at most 50 rows per report');
 });

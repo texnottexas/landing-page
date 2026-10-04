@@ -6,7 +6,7 @@
   var TOO_FAST = 'march_time_control_info001', LOCATION_ERROR = 'world_130511';
   var HOLD_MS = 10000, MAX_TOO_FAST = 3, BLOCK_MS = 1500, MAX_BLOCKED = 3;
   var MATCH_MS = 6000, MISS_AFTER_MS = 15000, NO_ARRIVAL_MISS_MS = 60000, ENDED_MISS_MS = 5000, PRIME_MS = 120000;
-  var REPORT_MAX = 200, KEEP_MS = 24 * 3600e3, KEEP_MAX = 600;
+  var REPORT_MAX = 50, KEEP_MS = 24 * 3600e3, KEEP_MAX = 600;   // 50 rows per report keeps a D1 batch small
   var FIRST_MIN_MS = 1500, FIRST_MAX_MS = 3500, SAME_SPOT_MS = 60000;
   var MAX_PER_MIN = 12, MAX_PER_10MIN = 40, FAIL_STREAK = 5, FAIL_PAUSE_MS = 300000;
   var NOTICE = /^([\s\S]*)'s Titan Gift Treasure Map appeared at server (\d+) \((\d+),\s*(\d+)\)\.?$/;
@@ -31,7 +31,7 @@
       ids.push(id);
       if (String(r._mt) !== '523') return;
       var p = parseNotice(r._msg), at = Number(r._time) * 1000;
-      if (!p || (since && at < since)) return;
+      if (!p || !isFinite(at) || at <= 0 || (since && at < since)) return;   // no usable time: never claimed
       notices.push({ id: id, noticedAt: at, spawner: p.spawner, server: p.server, x: p.x, y: p.y });
     });
     return { notices: notices, ids: ids };
@@ -179,9 +179,16 @@
       tries: (m.tries || 0) + (m.tooFast || 0) };
   }
 
+  // A row the worker would reject (it checks the same limits) is left out but still acked, so one bad row can
+  // never block every report after it.
+  function rowOk(m) {
+    var n = function (v, lo, hi) { return typeof v === 'number' && Math.floor(v) === v && v >= lo && v <= hi; };
+    return /^[A-Za-z0-9_.-]{1,64}$/.test(String(m.id)) && typeof m.noticedAt === 'number' && isFinite(m.noticedAt) && m.noticedAt > 1.6e12 &&
+      n(m.x, 0, 1200) && n(m.y, 0, 1200);
+  }
   function buildReport(maps, acked, max) {
     var changed = maps.filter(function (m) { return m.rev > (acked || 0); }).sort(function (a, b) { return a.rev - b.rev; }).slice(0, max || REPORT_MAX);
-    return { rows: changed.map(toRow), upto: changed.length ? changed[changed.length - 1].rev : (acked || 0) };
+    return { rows: changed.filter(rowOk).map(toRow), upto: changed.length ? changed[changed.length - 1].rev : (acked || 0) };
   }
   function ackReport(state, upto) { if (upto > (state.acked || 0)) state.acked = upto; }
 
