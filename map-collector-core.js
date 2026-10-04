@@ -7,6 +7,8 @@
   var HOLD_MS = 10000, MAX_TOO_FAST = 3, BLOCK_MS = 1500, MAX_BLOCKED = 3;
   var MATCH_MS = 6000, MISS_AFTER_MS = 15000, NO_ARRIVAL_MISS_MS = 60000, ENDED_MISS_MS = 5000, PRIME_MS = 120000;
   var REPORT_MAX = 200, KEEP_MS = 24 * 3600e3, KEEP_MAX = 600;
+  var FIRST_MIN_MS = 1500, FIRST_MAX_MS = 3500, SAME_SPOT_MS = 60000;
+  var MAX_PER_MIN = 12, MAX_PER_10MIN = 40, FAIL_STREAK = 5, FAIL_PAUSE_MS = 300000;
   var NOTICE = /^([\s\S]*)'s Titan Gift Treasure Map appeared at server (\d+) \((\d+),\s*(\d+)\)\.?$/;
 
   function stripTags(s) { return String(s == null ? '' : s).replace(/<[^>]*>/g, ''); }
@@ -41,6 +43,38 @@
     if (homeServer && n.server !== homeServer) { m.state = 'skipped'; m.reason = 'other server'; }
     else if (me && n.spawner === me) { m.state = 'skipped'; m.reason = 'your own map'; }
     return m;
+  }
+
+  // New notices -> new maps. A notice id already held is never queued again, nor a second notice at the
+  // same spot within a minute; the first claim waits 1.5-3.5 s after the notice is seen (a person's pace).
+  // (2026-10-04: a forgetful seen-list re-queued the same maps every few seconds and got the account
+  // suspended; this is the second wall against that.)
+  function admit(maps, notices, me, homeServer, now, delayFn) {
+    var delay = delayFn || function () { return FIRST_MIN_MS + Math.floor(Math.random() * (FIRST_MAX_MS - FIRST_MIN_MS)); };
+    var added = [];
+    notices.forEach(function (n) {
+      var dup = maps.some(function (m) { return m.id === n.id || (m.x === n.x && m.y === n.y && Math.abs(m.noticedAt - n.noticedAt) < SAME_SPOT_MS); });
+      if (dup) return;
+      var m = newMap(n, me, homeServer);
+      if (m.state === 'queued') m.retryAt = now + delay();
+      maps.push(m); added.push(m);
+    });
+    return added;
+  }
+
+  // Hard limits on claims, checked before every send: 12 a minute, 40 per 10 minutes, and five failed
+  // answers in a row pause claiming for 5 minutes. sends = [{t, kind}] where kind is the answer kind.
+  function gate(sends, now) {
+    var inMin = sends.filter(function (x) { return x.t > now - 60000; });
+    if (inMin.length >= MAX_PER_MIN) return { ok: false, until: inMin[0].t + 60000, reason: 'too many claims in a minute' };
+    var inTen = sends.filter(function (x) { return x.t > now - 600000; });
+    if (inTen.length >= MAX_PER_10MIN) return { ok: false, until: inTen[0].t + 600000, reason: 'too many claims in 10 minutes' };
+    var last = sends.slice(-FAIL_STREAK);
+    if (last.length === FAIL_STREAK && last.every(function (x) { return x.kind !== 'sent'; })) {
+      var until = last[last.length - 1].t + FAIL_PAUSE_MS;
+      if (now < until) return { ok: false, until: until, reason: 'five claims in a row failed' };
+    }
+    return { ok: true };
   }
 
   function touch(state, m) { state.rev = (state.rev || 0) + 1; m.rev = state.rev; }
@@ -183,7 +217,7 @@
   var MapCollectorCore = {
     TOO_FAST: TOO_FAST, LOCATION_ERROR: LOCATION_ERROR, HOLD_MS: HOLD_MS, MISS_AFTER_MS: MISS_AFTER_MS, MATCH_MS: MATCH_MS,
     PRIME_MS: PRIME_MS, REPORT_MAX: REPORT_MAX,
-    parseNotice: parseNotice, newNotices: newNotices, newMap: newMap, touch: touch, pickNext: pickNext,
+    parseNotice: parseNotice, newNotices: newNotices, newMap: newMap, admit: admit, gate: gate, touch: touch, pickNext: pickNext,
     classifyAnswer: classifyAnswer, applyAnswer: applyAnswer, matchReward: matchReward, syncMarches: syncMarches,
     sweepMissed: sweepMissed, toRow: toRow, buildReport: buildReport, ackReport: ackReport, summarize: summarize,
     healthOf: healthOf, pillCard: pillCard, prune: prune

@@ -199,3 +199,37 @@ test('prune keeps unacked rows and the last 24 h, at most 600', () => {
   assert.equal(M.prune(many, now, 5).length, 600);
   assert.equal(M.prune(many, now, 5)[0].id, '100');
 });
+
+test('admit: one map per notice id, no repeat of the same coordinates within 60 s, first claim waits 1.5-3.5 s', () => {
+  const maps = [];
+  const n = (id, x, y, at) => ({ id, noticedAt: at, spawner: 'A', server: 2864, x, y });
+  const fixed = () => 2000;
+  let added = M.admit(maps, [n('1', 10, 10, 1000), n('2', 11, 11, 1000)], 'Tex', 2864, 5000, fixed);
+  assert.deepEqual(added.map((m) => m.id), ['1', '2']);
+  assert.equal(maps[0].retryAt, 7000, 'first claim no sooner than 1.5 s after the notice is seen');
+  added = M.admit(maps, [n('1', 10, 10, 1000)], 'Tex', 2864, 6000, fixed);
+  assert.deepEqual(added, [], 'the same notice id is never queued twice');
+  added = M.admit(maps, [n('3', 10, 10, 50000)], 'Tex', 2864, 51000, fixed);
+  assert.deepEqual(added, [], 'a second notice at the same spot within 60 s is a duplicate');
+  added = M.admit(maps, [n('4', 10, 10, 70000)], 'Tex', 2864, 71000, fixed);
+  assert.deepEqual(added.map((m) => m.id), ['4'], 'a new map at the same spot later is real');
+  assert.equal(maps.length, 3);
+  const r = M.admit([], [n('9', 1, 1, 0)], 'Tex', 2864, 0);
+  assert.ok(r[0].retryAt >= 1500 && r[0].retryAt <= 3500, 'default delay is 1.5-3.5 s');
+});
+
+test('gate: at most 12 claims a minute and 40 per 10 minutes, and 5 failures in a row pause claiming', () => {
+  const sends = (times, kind) => times.map((t) => ({ t, kind: kind || 'sent' }));
+  assert.deepEqual(M.gate([], 0), { ok: true });
+  const eleven = sends(Array.from({ length: 11 }, (_, i) => i * 1000));
+  assert.deepEqual(M.gate(eleven, 11000), { ok: true });
+  const twelve = sends(Array.from({ length: 12 }, (_, i) => i * 1000));
+  assert.deepEqual(M.gate(twelve, 12000), { ok: false, until: 60000, reason: 'too many claims in a minute' });
+  assert.deepEqual(M.gate(twelve, 60001), { ok: true });
+  const forty = sends(Array.from({ length: 40 }, (_, i) => i * 6000));
+  assert.deepEqual(M.gate(forty, 240000), { ok: false, until: 600000, reason: 'too many claims in 10 minutes' });
+  const fails = sends([0, 2000, 4000, 6000, 8000], 'gone');
+  assert.deepEqual(M.gate(fails, 9000), { ok: false, until: 308000, reason: 'five claims in a row failed' });
+  assert.deepEqual(M.gate(fails.concat(sends([9000])), 10000), { ok: true }, 'a success resets the streak');
+  assert.deepEqual(M.gate(fails, 308001), { ok: true });
+});

@@ -216,3 +216,29 @@ test('launching again while it runs keeps the same run', async () => {
   assert.ok(reports.every((r) => r.body.runId === run1));
   await ctx.close();
 });
+
+test('REGRESSION 2026-10-04: a chat list longer than the seen memory never re-claims a map', async () => {
+  const { ctx, page } = await start();
+  await page.waitForSelector('#mapc-enroute');
+  // 700 ordinary chat rows (the live alliance list had 658 when the flood happened), then one spawn
+  await page.evaluate(() => {
+    for (let i = 0; i < 700; i++) __fake.chat.push({ _msgId: 'c' + i, _mt: '', _time: Math.floor(Date.now() / 1000), _msg: 'hi' });
+    __fake.notice(900, 'HELLFIRE', 438, 690);
+  });
+  await page.waitForTimeout(12000);
+  const s = await sent(page);
+  assert.equal(s.length, 1, 'exactly one claim for one map, got ' + s.length);
+  assert.equal(await text(page, '#mapc-enroute'), '1');
+  await ctx.close();
+});
+
+test('rate limit: never more than 12 claims in a minute; the card says it paused', async () => {
+  const { ctx, page } = await start();
+  await page.waitForSelector('#mapc-enroute');
+  await page.evaluate(() => { for (let i = 0; i < 13; i++) __fake.notice(1000 + i, 'Burst', 100 + i * 3, 200); });
+  await page.waitForFunction(() => __fake.sent.length >= 12, null, { timeout: 30000 });
+  await page.waitForTimeout(4000);
+  assert.equal((await sent(page)).length, 12);
+  assert.match(await text(page, '#mapc-foot'), /Paused: too many claims in a minute/);
+  await ctx.close();
+});

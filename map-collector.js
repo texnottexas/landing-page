@@ -9,12 +9,12 @@
   var C = window.MapCollectorCore;
   if (!C) { try { alert('Map Collector did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-04';
+  var VERSION = '2026-10-04.2';
   var WORKER = window.__MAPC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var DASH = 'https://2864tw.com/map-collector.html';
   var HOME_SERVER = 2864, CLAIM = 902, MARCH_TYPE = 143;   // RequestId.MARCH_WORLD_POINT, MarchType.Titan_Blessing_Gift
   var REPORT_BUSY_MS = window.__MAPC_REPORT_MS || 15000, REPORT_IDLE_MS = 60000, RETRY_MS = 60000, TICK_MS = 2000, SCAN_MS = 700;
-  var LS_PW = 'mapc_pw_v1', LS_STATE = 'mapc_state_v1', SEEN_KEEP = 500;
+  var LS_PW = 'mapc_pw_v1', LS_STATE = 'mapc_state_v1', SEEN_SAVE = 2000;
   var req = window.__require;
   var TARGET = {};                                         // NET.send wants a target; a plain object is always valid
 
@@ -93,9 +93,13 @@
   var S = {
     runId: 'run_' + rand(12), startedAt: Date.now(), rev: 0, acked: 0, maps: [], seen: {}, seenOrder: [],
     siteKey: '', pw: '', left: null, failing: false, lastReportAt: 0, lastAttemptAt: 0, lastChatAt: 0,
-    active: false, stopped: false, pumping: false, reporting: false, lastHealth: '', timers: [], saveTimer: null
+    active: false, stopped: false, pumping: false, reporting: false, lastHealth: '', timers: [], saveTimer: null,
+    sends: [], paused: null
   };
-  function markSeen(id) { if (S.seen[id] === undefined) { S.seen[id] = 1; S.seenOrder.push(id); if (S.seenOrder.length > SEEN_KEEP) delete S.seen[S.seenOrder.shift()]; } }
+  // Never forget an id during a run: the game's own chat list is the bound. (A 500-id cap here let ids
+  // fall out while still in a 658-row list, so the same maps were re-queued every few seconds and the
+  // account was suspended, 2026-10-04.) Only the last 2000 are saved for a restart.
+  function markSeen(id) { if (S.seen[id] === undefined) { S.seen[id] = 1; S.seenOrder.push(id); } }
   function restore() {
     var raw = lsGet(LS_STATE), saved = null;
     try { saved = JSON.parse(raw); } catch (e) {}
@@ -113,7 +117,7 @@
     S.saveTimer = setTimeout(function () {
       S.saveTimer = null;
       S.maps = C.prune(S.maps, Date.now(), S.acked);
-      lsSet(LS_STATE, JSON.stringify({ siteKey: S.siteKey, maps: S.maps, seen: S.seenOrder }));
+      lsSet(LS_STATE, JSON.stringify({ siteKey: S.siteKey, maps: S.maps, seen: S.seenOrder.slice(-SEEN_SAVE) }));
     }, 1000);
   }
 
@@ -126,14 +130,15 @@
     res.ids.forEach(markSeen);
     if (!res.notices.length) return;
     var me = ''; try { me = String(UD().Name || ''); } catch (e) {}
-    res.notices.forEach(function (n) { var m = C.newMap(n, me, HOME_SERVER); C.touch(S, m); S.maps.push(m); });
+    var added = C.admit(S.maps, res.notices, me, HOME_SERVER, Date.now());
+    if (!added.length) return;
+    added.forEach(function (m) { C.touch(S, m); });
     save(); paint(); pump();
   }
   function pump() {
     if (S.pumping || !S.active) return;
     S.pumping = true;
     (async function () {
-      await delay(300 + Math.floor(Math.random() * 500));
       while (S.active) {
         var pick = C.pickNext(S.maps, Date.now());
         if (!pick.map) { if (pick.wait < 0) break; await delay(Math.min(pick.wait, 1000)); continue; }
@@ -141,10 +146,14 @@
         if (left != null) S.left = left;
         if (left != null && left <= 0) { stop('out of claims'); break; }
         try { if (NET().checkRequestIdNoRes(CLAIM)) { await delay(1000); continue; } } catch (e) {}
+        var g = C.gate(S.sends, Date.now());
+        if (!g.ok) { if (!S.paused || S.paused.until !== g.until) { S.paused = g; paint(); report(''); } await delay(Math.min(5000, Math.max(250, g.until - Date.now()))); continue; }
+        if (S.paused) { S.paused = null; paint(); }
         var m = pick.map;
         m.state = 'sending'; m.sentAt = Date.now(); C.touch(S, m); paint();
-        var ans = await sendClaim(m);
-        C.applyAnswer(m, C.classifyAnswer(ans), Date.now()); C.touch(S, m); save(); paint();
+        var ans = await sendClaim(m), cls = C.classifyAnswer(ans);
+        S.sends.push({ t: m.sentAt, kind: cls.kind }); if (S.sends.length > 100) S.sends.shift();
+        C.applyAnswer(m, cls, Date.now()); C.touch(S, m); save(); paint();
         await delay(1100 + Math.floor(Math.random() * 200));
       }
       S.pumping = false;
@@ -235,7 +244,7 @@
     if (S.stopped) return;
     S.stopped = true; halt();
     if (reason !== 'superseded' && reason !== 'not registered' && S.siteKey) report(reason);
-    lsSet(LS_STATE, JSON.stringify({ siteKey: S.siteKey, maps: C.prune(S.maps, Date.now(), S.acked), seen: S.seenOrder }));
+    lsSet(LS_STATE, JSON.stringify({ siteKey: S.siteKey, maps: C.prune(S.maps, Date.now(), S.acked), seen: S.seenOrder.slice(-SEEN_SAVE) }));
     window.__MAPC.running = false;
     if (reason === 'stopped by you') { removeRoot(); return; }
     showMessage(STOP_TEXT[reason] || 'Map Collector stopped.', true);
@@ -305,6 +314,7 @@
     if (!root || !document.getElementById('mapc-enroute')) return;
     var age = S.lastReportAt ? Math.round((Date.now() - S.lastReportAt) / 1000) : null;
     var c = C.pillCard(C.summarize(S.maps), S.left, age, health());
+    if (S.paused && Date.now() < S.paused.until && c.tone === 'ok') { c.foot = 'Paused: ' + S.paused.reason; c.tone = 'warn'; }
     var ids = ['mapc-collected', 'mapc-missed', 'mapc-enroute', 'mapc-left'];
     c.rows.forEach(function (r, i) { var e = document.getElementById(ids[i]), v = String(r[1]); if (e && e.textContent !== v) e.textContent = v; });
     var f = document.getElementById('mapc-foot'); if (f && f.textContent !== c.foot) f.textContent = c.foot;
