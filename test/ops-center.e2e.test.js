@@ -20,9 +20,10 @@ test.before(async () => {
     let name = decodeURIComponent(req.url.split('?')[0].replace(/^\/+/, '')) || 'index.html';
     if (name.includes('..')) { res.writeHead(400); res.end(); return; }
     // /broken/... has no tool list, /nomember/... has no member list
-    const mode = (name.match(/^(broken|nomember)\//) || [])[1];
+    const mode = (name.match(/^(broken|nomember|badroster)\//) || [])[1];
     if (mode) name = name.slice(mode.length + 1);
     if ((mode === 'broken' && name === 'ops-tools.json') || (mode === 'nomember' && name === 'player-data.json')) { res.writeHead(404); res.end(); return; }
+    if (mode === 'badroster' && name === 'player-data.json') { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"players":"not a list"}'); return; }
     const file = OWN.includes(name) ? path.join(ROOT, name) : path.join(FIX, name);
     fs.readFile(file, (err, buf) => {
       if (err) { res.writeHead(404); res.end('not found'); return; }
@@ -258,3 +259,79 @@ test('while a tool is starting: the note says starting, and a hidden pill stays 
   await page.waitForSelector('.ops-fab:has-text("Alpha Tool running")', { timeout: 3000 });
   await ctx.close();
 });
+
+test('a corrupt recent-tools entry does not empty the menu', async () => {
+  const { ctx, page } = await open(PHONE, () => { localStorage.setItem('ops_recent_v1', '"alpha"'); localStorage.setItem('ops_seen_v1', '"oops"'); });
+  await page.waitForSelector('.ops-tile', { timeout: 5000 });
+  assert.equal((await tileNames(page)).length, 6);
+  await clickTile(page, 'Alpha Tool');
+  await page.click('.ops-btn.primary');
+  await page.waitForSelector('#fake-alpha', { timeout: 3000 });
+  await ctx.close();
+});
+
+test('a member list that is not a list offers Retry instead of saying you are not a member', async () => {
+  const { ctx, page } = await open(PHONE, () => { window.__OPS_BASE = location.origin + '/badroster/'; });
+  await page.waitForSelector('.ops-toast:has-text("Couldn\'t check your membership")');
+  assert.equal(await page.$('.ops-note:has-text("This is for Server 2864 members.")'), null);
+  await ctx.close();
+});
+
+test('Unlock says so when the browser cannot check the code', async () => {
+  const { ctx, page } = await open(PHONE);
+  await page.waitForSelector('.ops-tile');
+  await clickTile(page, 'Beta Tool');
+  await page.evaluate(() => { crypto.subtle.digest = () => Promise.reject(new Error('no crypto')); });
+  await page.fill('input[type=password]', 'open-sesame');
+  await page.click('.ops-btn:text-is("Unlock")');
+  await page.waitForSelector('.ops-note.err:text-is("Unlocking is not available right now.")', { timeout: 3000 });
+  await ctx.close();
+});
+
+test('tapping the bookmarklet twice while it is still loading opens one menu and throws nothing', async () => {
+  const ctx = await browser.newContext({ viewport: PHONE });
+  const page = await ctx.newPage();
+  const errors = []; page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto(base);
+  await page.evaluate((b) => { for (let i = 0; i < 2; i++) { const s = document.createElement('script'); s.src = b + 'ops-center.js'; document.body.appendChild(s); } }, base);
+  await page.waitForSelector('.ops-tile', { timeout: 5000 });
+  await page.waitForTimeout(500);
+  assert.deepEqual(errors, []);
+  assert.equal(await page.$$eval('.ops-card', (e) => e.length), 1);
+  await ctx.close();
+});
+
+test('launching the same tool twice works, and script tags do not pile up', async () => {
+  const { ctx, page } = await open(PHONE);
+  await page.waitForSelector('.ops-tile');
+  for (let i = 0; i < 2; i++) {
+    await clickTile(page, 'Alpha Tool');
+    await page.click('.ops-btn.primary');
+    await page.waitForSelector('#fake-alpha');
+    await page.click('#fake-alpha-close');
+    await page.waitForSelector('.ops-card', { timeout: 3000 });
+  }
+  assert.equal(await page.evaluate(() => window.__alphaRuns), 2);
+  assert.equal(await page.$$eval('script[data-ops]', (e) => e.length), 0, 'loader script tags are removed once loaded');
+  await ctx.close();
+});
+
+test('a cached membership still picks up a new rank from the member list', async () => {
+  const { ctx, page } = await open(PHONE, () => {
+    localStorage.setItem('ops_member_v1', JSON.stringify({ sk: '03c2cd3196b2f243', at: Date.now(), row: { name: 'Tester', rank: 1 } }));
+  });
+  await page.waitForSelector('.ops-tile');
+  await clickTile(page, 'Gamma Tool');
+  await page.waitForFunction(() => document.querySelector('.ops-box').textContent.includes('You are R4 or leader'), null, { timeout: 4000 });
+  await ctx.close();
+});
+
+test('base open means the same as for the Troop Optimizer: units still landing is not open yet', async () => {
+  const { ctx, page } = await open(PHONE, () => { window.__fake.base = true; window.__fake.armyComplete = false; window.__fake.armys = [{ _id: 'u1', warehouseId: '0' }]; });
+  await page.waitForSelector('.ops-tile');
+  assert.deepEqual(await tileStatus(page, 'Zeta Tool'), ['Not ready']);
+  await page.evaluate(() => { window.__fake.armyItems = { u1: {} }; });
+  await page.waitForFunction(() => [...document.querySelectorAll('.ops-tile')].some((t) => t.textContent.includes('Zeta Tool') && t.textContent.includes('Ready') && !t.textContent.includes('Not ready')), null, { timeout: 2500 });
+  await ctx.close();
+});
+

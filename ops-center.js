@@ -22,8 +22,8 @@
     return new Promise(function (resolve, reject) {
       var s = document.createElement('script');
       s.src = src; s.setAttribute('data-ops', '1');
-      s.onload = function () { resolve(); };
-      s.onerror = function () { reject(new Error('load failed: ' + src)); };
+      s.onload = function () { s.remove(); resolve(); };
+      s.onerror = function () { s.remove(); reject(new Error('load failed: ' + src)); };
       (document.head || document.documentElement).appendChild(s);
     });
   }
@@ -43,7 +43,12 @@
   function checks() {
     var out = { game: false, base: false, defender: false, r4: false };
     try { out.game = !!playerName(); } catch (e) {}
-    try { var n = window.cc && cc.find('Canvas/HomeMap'), h = n && n.getComponent('HomeMap'); out.base = !!(h && h.armyInited && h._BuildingComplete); } catch (e) {}
+    try {
+      // the same rule as TroopGame.isReady: buildings loaded and every unit on the map placed
+      var n = window.cc && cc.find('Canvas/HomeMap'), h = n && n.getComponent('HomeMap'), u = UD();
+      out.base = !!(h && h.armyInited && h._BuildingComplete && (h._ArmyComplete ||
+        ((u && u.Armys) || []).every(function (a) { return String(a.warehouseId) !== '0' || !!(h.ArmyItems || {})[a._id]; })));
+    } catch (e) {}
     try { var p = window.cc && cc.find('UICanvas/PopLayer/prefabWorlddefenderMonsterFortress'); out.defender = !!(p && p.activeInHierarchy); } catch (e) {}
     out.r4 = !!(S.member && S.member.rank >= 4);
     return out;
@@ -63,15 +68,27 @@
     if (!id) { S.member = null; S.memberErr = 'wait'; return Promise.resolve(); }
     return sha256Hex(id).then(function (h) {
       var sk = h.slice(0, 16), cached = lsGet(LS.member, null);
-      if (cached && cached.sk === sk && Date.now() - cached.at < MEMBER_TTL && cached.row) { S.member = cached.row; S.memberErr = null; return; }
-      return fetch(BASE + 'player-data.json?_=' + Date.now(), { cache: 'no-store' })
+      var fresh = cached && cached.sk === sk && Date.now() - cached.at < MEMBER_TTL && cached.row;
+      var load = fetch(BASE + 'player-data.json?_=' + Date.now(), { cache: 'no-store' })
         .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
         .then(function (rows) {
-          var row = (Array.isArray(rows) ? rows : []).filter(function (p) { return p && p.siteKey === sk; })[0];
-          if (!row) { S.member = null; S.memberErr = 'not'; return; }
-          S.member = { name: String(row.name || ''), rank: Number(row.rank) || 0 }; S.memberErr = null;
-          lsSet(LS.member, { sk: sk, at: Date.now(), row: S.member });
+          if (!Array.isArray(rows)) throw new Error('member list is not a list');
+          var row = rows.filter(function (p) { return p && p.siteKey === sk; })[0];
+          if (!row) return null;
+          var m = { name: String(row.name || ''), rank: Number(row.rank) || 0 };
+          lsSet(LS.member, { sk: sk, at: Date.now(), row: m });
+          return m;
         });
+      if (fresh) {
+        // answer at once from the cache, then refresh name and rank in the background
+        S.member = cached.row; S.memberErr = null;
+        load.then(function (m) { if (m) S.member = m; }, function () {});
+        return;
+      }
+      return load.then(function (m) {
+        if (!m) { S.member = null; S.memberErr = 'not'; return; }
+        S.member = m; S.memberErr = null;
+      });
     }).catch(function () { S.member = null; S.memberErr = 'net'; });
   }
   function toolById(id) { return S.list ? S.list.tools.filter(function (t) { return t.id === id; })[0] : null; }
@@ -177,7 +194,7 @@
         sha256Hex(code.value.trim()).then(function (h) {
           if (h === S.list.codeSha256) { S.unlocked = true; lsSet(LS.unlock, '1'); openTool(id); }
           else { err.textContent = 'That code is not right.'; code.value = ''; code.focus(); }
-        });
+        }, function () { err.textContent = 'Unlocking is not available right now.'; });
       });
       code.addEventListener('keydown', function (e) { if (e.key === 'Enter') unlock.click(); });
       box.appendChild(unlock);
@@ -311,11 +328,13 @@
     checkMember().then(function () { if (S.view === 'menu') openMenu(); });
   }
   function start() {
+    S.started = true;
     S.listErr = false; S.list = null;
     openMenu();
     loadList().then(checkMember).then(function () { if (S.view === 'menu') openMenu(); });
   }
   function toggle() {
+    if (!S.started) return;                             // still loading: the first tap opens the menu
     if (S.tracker && S.tracker.phase !== 'idle') {
       showNote();
       return;
@@ -324,6 +343,8 @@
   }
 
   S.recent = lsGet(LS.recent, []); S.seen = lsGet(LS.seen, {}); S.unlocked = lsGet(LS.unlock, null) === '1';
+  if (!Array.isArray(S.recent)) S.recent = [];
+  if (!S.seen || typeof S.seen !== 'object' || Array.isArray(S.seen)) S.seen = {};
   window.OpsCenter = { toggle: toggle, close: close, version: '1', _state: S };
   var deps = [];
   if (!window.OpsKit) deps.push(loadScript(BASE + 'ops-kit.js?_=' + Date.now()));
