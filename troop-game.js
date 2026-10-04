@@ -364,7 +364,10 @@
       net.send = function (rid, payload, ctx, cb) {
         if (rid !== RID.BATCH_BUILD_ORDER) return orig.apply(this, arguments);
         sent = true;
-        return orig.call(this, rid, payload, ctx, function (e) { try { if (cb) cb.apply(this, arguments); } catch (x) {} done(e || { s: -1 }); });
+        // With every queue full the game still sends an empty batch, which the server rejects
+        // ("The parameter is incorrect."): that means nothing to queue, not a failure.
+        var noIds = !(payload && payload.ids && payload.ids.length);
+        return orig.call(this, rid, payload, ctx, function (e) { try { if (cb) cb.apply(this, arguments); } catch (x) {} done(noIds ? { s: 0, skipped: true } : (e || { s: -1 })); });
       };
       timer = setTimeout(function () { done(sent ? { s: -1, msg: 'No answer from Bulk Training.' } : { s: 0, skipped: true }); }, config.responseTimeoutMs);
       try { req('MainUiShortcutUtils').MainUiShortcutUtils._instance.batchTraining(row, empty); }

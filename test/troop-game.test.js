@@ -229,3 +229,17 @@ test('building and deleting use the short pace; merges and moves keep the long o
   await TG.runSteps([{ kind: 'mergeBase', role: 'army', tolerant: true }, { kind: 'mergeBase', role: 'air', tolerant: true }], {});
   assert.ok(Date.now() - t >= 280, 'merges kept the long pace');
 });
+
+test('Bulk Training with every queue full sends an empty batch; that counts as nothing to queue', async () => {
+  let net;
+  const shortcut = { MainUiShortcutUtils: { _instance: { batchTraining: () => net.send(180, { ids: [], posList: [] }) } } };
+  const gameTools = { default: { wareHouseDirty() {}, wareHouseSpaceCache: {}, getWareHouseEmptySpace: () => 900 } };
+  const g = fakeGame({ groups: { 1040: [{ BuildingId: 104100 }] }, tables: { building: { 104100: { id: 104100 } } },
+    mods: { MainUiShortcutUtils: shortcut, GameTools: gameTools }, respond: () => ({ s: 3, d: 'common_159995' }) });
+  net = g.globals.__require('NetMgr').NET;
+  const TG = loadFresh(g.globals); TG.config.paceMs = [0, 0];
+  const seen = [];
+  const r = await TG.runSteps([{ kind: 'train', role: 'army' }], { onStep: (i, st, resp) => seen.push(resp) });
+  assert.equal(r.ok, true);
+  assert.equal(seen[0].skipped, true);
+});
