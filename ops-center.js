@@ -12,7 +12,7 @@
   var S = {
     list: null, listErr: false, member: null, memberErr: 'wait', unlocked: false, recent: [], seen: {},
     view: null, toolId: null, query: '', root: null, modal: null, sub: null, grid: null, tiles: {},
-    timer: null, waitTimer: null, tracker: null, tool: null, observer: null, tick: null, fab: null, keyHandler: null
+    timer: null, waitTimer: null, tracker: null, tool: null, observer: null, tick: null, fab: null, fabHidden: false, keyHandler: null
   };
 
   // ---------------------------------------------------------------- small helpers
@@ -89,8 +89,10 @@
   function close() {
     closeCard();
     if (S.waitTimer) { clearTimeout(S.waitTimer); S.waitTimer = null; }
-    if (!trackerBusy()) { stopObserver(); hideFab(); if (S.root) { S.root.remove(); S.root = null; } }
+    if (S.tracker) S.tracker = C().trackerReduce(S.tracker, { type: 'abandon', at: Date.now() });   // no late screens after a close
+    if (!trackerBusy()) { stopObserver(); hideFab(); removeRoot(); }
   }
+  function removeRoot() { if (S.root) { S.root.remove(); S.root = null; } }
   function openCard(title, sub, onBack) {
     closeCard(); ensureRoot();
     S.modal = K().modal(S.root, close);
@@ -187,9 +189,9 @@
     function paint() {
       var ck = checks(), st = statusOf(t, ck);
       rows.forEach(function (r) {
-        var ok = ck[r.id] === true, auto = !ok && C().isAuto(r.id);   // e.g. Troop Optimizer goes to your base itself
+        var ok = ck[r.id] === true, auto = !ok && C().isAutoFor(t, r.id);   // e.g. Troop Optimizer goes to your base itself
         r.dot.className = 'ops-dot ' + (ok ? 'ok' : auto ? 'info' : 'warn'); r.dot.textContent = ok ? '✓' : auto ? '→' : '!';
-        r.txt.textContent = C().READY_TEXT[r.id][ok ? 0 : 1];
+        r.txt.textContent = auto ? C().AUTO_TEXT[r.id] : C().READY_TEXT[r.id][ok ? 0 : 1];
       });
       go.textContent = st.launch || (st.state === 'locked' ? 'Launch' : 'Members only');
       go.disabled = !st.launch;
@@ -205,7 +207,7 @@
     S.recent = C().pushRecent(S.recent, t.id); lsSet(LS.recent, S.recent);
     S.seen[t.id] = t.version; lsSet(LS.seen, S.seen);
     closeCard();
-    S.tool = t;
+    S.tool = t; S.fabHidden = false;
     S.tracker = C().trackerReduce(C().trackerInit(), { type: 'launch', at: Date.now() });
     showFab('Ops · starting ' + t.title);
     startObserver();
@@ -220,7 +222,7 @@
     var phase = S.tracker.phase;
     if (phase === 'running' && prev !== 'running') { closeCard(); showFab('Ops · ' + S.tool.title + ' running'); }
     if (phase === 'idle' && prev !== 'idle') {
-      hideFab();
+      hideFab(); S.fabHidden = false;
       var failed = S.tracker.error, t = S.tool;
       if (!S.list) return;
       openMenu();
@@ -229,7 +231,10 @@
         if (b) K().toast(b, 'Couldn\'t load ' + t.title + '. Check your connection.', 'Retry', function () { launch(t); });
       }
     }
-    if (!C().trackerWatching(S.tracker, Date.now())) stopObserver();
+    if (!C().trackerWatching(S.tracker, Date.now())) {
+      stopObserver();
+      if (!S.modal && !S.fab) removeRoot();             // nothing left on screen: leave nothing behind
+    }
   }
   function isOurs(n) { return !!(n.getAttribute && n.getAttribute('data-ops')); }
   function nodeInfo(n) {
@@ -274,15 +279,21 @@
     if (S.observer) { S.observer.disconnect(); S.observer = null; }
     if (S.tick) { clearInterval(S.tick); S.tick = null; }
   }
+  function runningNote() {
+    var t = S.tool ? S.tool.title : 'The tool';
+    return S.tracker && S.tracker.phase === 'running' ? t + ' is open. Close it from its own screen to come back here.' : 'Starting ' + t + '...';
+  }
   function showFab(text) {
+    if (S.fabHidden) return;                            // the player hid it: stays hidden until the tool closes
     ensureRoot();
     if (S.fab) { S.fab.setText(text); return; }
-    S.fab = K().fab(S.root, text, function () {
-      var t = S.tool ? S.tool.title : 'The tool';
-      var running = S.tracker && S.tracker.phase === 'running';
-      K().bubble(S.root, running ? t + ' is open. Close it from its own screen to come back here.' : 'Starting ' + t + '...',
-        6000, 'Hide this button', hideFab);       // in case it covers one of the tool's own buttons
-    });
+    S.fab = K().fab(S.root, text, showNote);
+  }
+  // the note above the pill, with a way to hide the pill in case it covers one of the tool's own buttons
+  function showNote() {
+    ensureRoot();
+    if (S.fab) K().bubble(S.root, runningNote(), 6000, 'Hide this button', function () { S.fabHidden = true; hideFab(); });
+    else K().bubble(S.root, runningNote());
   }
   function hideFab() { if (S.fab) { S.fab.remove(); S.fab = null; } }
 
@@ -306,8 +317,7 @@
   }
   function toggle() {
     if (S.tracker && S.tracker.phase !== 'idle') {
-      ensureRoot();
-      K().bubble(S.root, (S.tool ? S.tool.title : 'A tool') + ' is open. Close it from its own screen to come back here.');
+      showNote();
       return;
     }
     if (S.view) close(); else openMenu();

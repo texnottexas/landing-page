@@ -68,3 +68,8 @@ test('tools carry the names players know, on their own screens and on rickroll.h
   assert.ok(!/Hunting Guild \u2014 Bulk Merge/.test(read('merge-bookmarklet.js')), 'merge tool header');
   assert.match(read('merge-bookmarklet.js'), /'Treasure Guard Merge'/);
 });
+
+test('only Troop Optimizer handles the base itself', () => {
+  const auto = list.tools.filter((t) => t.auto.length).map((t) => t.id + ':' + t.auto.join(','));
+  assert.deepEqual(auto, ['troop:base']);
+});

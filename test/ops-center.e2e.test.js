@@ -58,7 +58,8 @@ test('phone menu: member header, 2 columns, live statuses, no first-run badges, 
   const { ctx, page } = await open(PHONE);
   await page.waitForSelector('.ops-tile');
   assert.equal(await page.textContent('.ops-sub'), 'Tester · S2864 ✓');
-  assert.deepEqual(await tileNames(page), ['Alpha Tool', 'Beta Tool', 'Gamma Tool', 'Delta Tool']);
+  assert.deepEqual(await tileNames(page), ['Alpha Tool', 'Beta Tool', 'Gamma Tool', 'Delta Tool', 'Epsilon Tool', 'Zeta Tool']);
+  assert.deepEqual(await tileStatus(page, 'Zeta Tool'), ['Not ready'], 'a base the tool does not handle itself is a real Not ready');
   const boxes = await page.$$eval('.ops-tile', (els) => els.slice(0, 2).map((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top)]; }));
   assert.notEqual(boxes[0][0], boxes[1][0]); assert.equal(boxes[0][1], boxes[1][1], 'two tiles side by side');
   assert.deepEqual(await tileStatus(page, 'Alpha Tool'), ['Ready']);
@@ -111,6 +112,7 @@ test('launch: menu becomes a pill above the tool, re-run shows a note, closing t
   await page.waitForSelector('#fake-alpha');
   await page.waitForSelector('.ops-card', { state: 'detached' });
   await page.waitForSelector('.ops-fab:has-text("Alpha Tool running")');
+  assert.ok((await page.$eval('.ops-fab', (e) => e.getBoundingClientRect().height)) >= 44, 'pill is a 44 px tap target');
   const onTop = await page.evaluate(() => {
     const r = document.querySelector('.ops-fab').getBoundingClientRect();
     const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
@@ -158,6 +160,7 @@ test('a script that fails to load shows a retry message', async () => {
   await clickTile(page, 'Delta Tool');
   await page.click('.ops-btn.primary');
   await page.waitForSelector('.ops-toast:has-text("Couldn\'t load Delta Tool")', { timeout: 4000 });
+  assert.ok((await page.$eval('.ops-toast .ops-btn', (e) => e.getBoundingClientRect().height)) >= 44, 'Retry is a 44 px tap target');
   await ctx.close();
 });
 
@@ -217,5 +220,41 @@ test('a readiness item the tool handles itself shows an arrow, not a warning', a
   await clickTile(page, 'Beta Tool');
   const dots = await page.$$eval('.ops-check .ops-dot', (els) => els.map((e) => e.className.replace('ops-dot ', '') + ':' + e.textContent));
   assert.deepEqual(dots, ['ok:✓', 'info:→']);
+  await ctx.close();
+});
+
+test('closing the menu while a silent tool is still watched leaves nothing behind', async () => {
+  const { ctx, page } = await open(PHONE);
+  await page.waitForSelector('.ops-tile');
+  await clickTile(page, 'Gamma Tool');
+  await page.click('.ops-btn.primary');
+  await page.waitForSelector('.ops-card', { timeout: 13000 });
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.ops-root', { state: 'detached', timeout: 2000 });
+  const st = await page.evaluate(() => { const S = window.OpsCenter._state; return { observer: S.observer, tick: S.tick }; });
+  assert.deepEqual(st, { observer: null, tick: null });
+  await page.evaluate(() => { const d = document.createElement('div'); d.style.cssText = 'position:fixed;inset:0;z-index:99999'; document.body.appendChild(d); });
+  await page.waitForTimeout(600);
+  assert.equal(await page.$('.ops-fab'), null, 'a later fixed element does not bring the pill back');
+  await ctx.close();
+});
+
+test('while a tool is starting: the note says starting, and a hidden pill stays hidden once its screen opens', async () => {
+  const { ctx, page } = await open(PHONE);
+  await page.waitForSelector('.ops-tile');
+  await clickTile(page, 'Epsilon Tool');
+  await page.click('.ops-btn.primary');
+  await page.waitForSelector('.ops-fab:has-text("starting Epsilon Tool")');
+  await page.evaluate(() => window.OpsCenter.toggle());
+  await page.waitForSelector('.ops-bubble:has-text("Starting Epsilon Tool")');
+  await page.click('.ops-bubble .ops-btn:text-is("Hide this button")');
+  await page.waitForSelector('#fake-late', { timeout: 4000 });
+  await page.waitForTimeout(400);
+  assert.equal(await page.$('.ops-fab'), null, 'stays hidden after the screen opens');
+  await page.evaluate(() => document.getElementById('fake-late').remove());
+  await page.waitForSelector('.ops-card', { timeout: 3000 });
+  await clickTile(page, 'Alpha Tool');
+  await page.click('.ops-btn.primary');
+  await page.waitForSelector('.ops-fab:has-text("Alpha Tool running")', { timeout: 3000 });
   await ctx.close();
 });

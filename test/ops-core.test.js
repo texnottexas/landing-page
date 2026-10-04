@@ -25,6 +25,9 @@ test('validateTools keeps good tools and drops or defaults bad ones', () => {
   assert.deepEqual(r.tools.map((t) => t.id), ['ok', 'icon']);
   assert.equal(r.tools[1].icon, 'grid', 'unknown icon falls back to grid');
   assert.deepEqual(OC.validateTools(null).tools, []);
+  const auto = OC.validateTools({ tools: [tool({ id: 'a1', ready: ['game', 'base'], auto: ['base', 'moon', 'defender'] }), tool({ id: 'a2' })] }).tools;
+  assert.deepEqual(auto[0].auto, ['base'], 'auto keeps only items the tool also lists as ready');
+  assert.deepEqual(auto[1].auto, []);
   assert.equal(OC.validateTools({ tools: [], codeSha256: 'nope' }).codeSha256, null);
 });
 
@@ -63,12 +66,11 @@ test('badges: none on first use, Updated on a new version, New for a newly liste
 });
 
 test('tileStatus: Locked blocks, unmet checks give Launch anyway, all met gives Launch', () => {
-  const t = tool({ gate: 'code', ready: ['game', 'base'] });
+  const t = tool({ gate: 'code', ready: ['game', 'base'], auto: ['base'] });
   assert.deepEqual(OC.tileStatus(t, { member: true, unlocked: false, checks: { game: true, base: true } }), { state: 'locked', launch: null });
   assert.deepEqual(OC.tileStatus(t, { member: true, unlocked: true, checks: { game: true, base: false } }), { state: 'ready', launch: 'Launch' }, 'the tool takes you to your base itself');
   assert.deepEqual(OC.tileStatus(tool({ ready: ['game', 'defender'] }), { member: true, unlocked: true, checks: { game: true, defender: false } }), { state: 'notready', launch: 'Launch anyway' });
-  assert.equal(OC.isAuto('base'), true);
-  assert.equal(OC.isAuto('defender'), false);
+  assert.deepEqual(OC.tileStatus(tool({ ready: ['game', 'base'] }), { member: true, unlocked: true, checks: { game: true, base: false } }), { state: 'notready', launch: 'Launch anyway' }, 'only a tool that says so handles the base itself');
   assert.deepEqual(OC.tileStatus(t, { member: true, unlocked: true, checks: { game: true, base: true } }), { state: 'ready', launch: 'Launch' });
   assert.deepEqual(OC.tileStatus(tool(), { member: false, unlocked: true, checks: { game: true } }), { state: 'blocked', launch: null });
   assert.deepEqual(OC.tileStatus(tool(), { member: true, unlocked: false, checks: {} }), { state: 'notready', launch: 'Launch anyway' }, 'a check that has not run counts as not met');
@@ -133,4 +135,18 @@ test('tracker: a load error goes straight back to idle', () => {
   s = OC.trackerReduce(s, { type: 'loadError', at: 50 });
   assert.equal(s.phase, 'idle');
   assert.equal(s.error, true);
+});
+
+test('tracker: an explicit close abandons the late-screen watch', () => {
+  let s = OC.trackerReduce(OC.trackerInit(), { type: 'launch', at: 0 });
+  s = OC.trackerReduce(s, { type: 'loaded', at: 0 });
+  s = OC.trackerReduce(s, { type: 'tick', at: 10001 });
+  assert.equal(OC.trackerWatching(s, 20000), true);
+  s = OC.trackerReduce(s, { type: 'abandon', at: 20000 });
+  assert.equal(OC.trackerWatching(s, 20001), false);
+  assert.equal(OC.trackerReduce(s, { type: 'nodeAdded', id: 'x', at: 30000 }).phase, 'idle');
+  let r = OC.trackerReduce(OC.trackerInit(), { type: 'launch', at: 0 });
+  r = OC.trackerReduce(r, { type: 'nodeAdded', id: 1, at: 10 });
+  r = OC.trackerReduce(r, { type: 'loaded', at: 15 });
+  assert.equal(OC.trackerReduce(r, { type: 'abandon', at: 20 }).phase, 'running', 'a tool that is really open is not abandoned');
 });
