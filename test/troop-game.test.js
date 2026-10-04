@@ -186,3 +186,13 @@ test('equipping a skin goes through the game and records it only on success', as
   assert.match(r2.error, /would not switch/);
   assert.equal(g2.UD.UsingCastleFace, undefined);
 });
+
+test('the account id comes from the game, so a saved skin never crosses accounts', () => {
+  const g = fakeGame();
+  Object.defineProperty(g.UD, 'StrUid', { get: () => '7000000000001' });
+  const TG = loadFresh(g.globals);
+  assert.equal(TG.accountId(), '7000000000001');
+  const g2 = fakeGame(); g2.UD._uid = 7000000000002;
+  assert.equal(loadFresh(g2.globals).accountId(), '7000000000002');
+  assert.equal(loadFresh(fakeGame().globals).accountId(), '');
+});

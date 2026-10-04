@@ -449,7 +449,7 @@
       confirmTap(b, 'Tap again to switch your base skin', function () {
         var prev = state.snap.skins.current;
         runWithProgress(s2out, [{ kind: 'equipSkin', id: best.id }], 'Switching skin', function (res) {
-          if (res.ok) { try { localStorage.setItem('tp_prevSkin_' + state.snap.uid, String(prev)); } catch (e) {} }
+          if (res.ok && state.snap.uid) { try { localStorage.setItem('tp_prevSkin_' + state.snap.uid, String(prev)); } catch (e) {} }
           paintSkin(); note(s2out, res.ok ? 'Done. "When your base is full" can put your old skin back.' : res.error, res.ok ? '#3fb950' : '#d29922');
         });
       });
@@ -559,7 +559,7 @@
           runWithProgress(out, extras.map(function (b) { return { kind: 'deleteBuilding', id: b.id }; }), 'Deleting buildings', function (res) { paint(); note(out, res.ok ? 'Done.' : res.error, res.ok ? '#3fb950' : '#d29922'); });
         });
       }
-      var prev = null; try { prev = Number(localStorage.getItem('tp_prevSkin_' + state.snap.uid)); } catch (e) {}
+      var prev = null; try { if (state.snap.uid) prev = Number(localStorage.getItem('tp_prevSkin_' + state.snap.uid)); } catch (e) {}
       var owned = state.snap.skins.owned.filter(function (s) { return s.id === prev; })[0];
       if (prev && owned && prev !== state.snap.skins.current) {
         var rs = btn('Put back ' + (owned.name || 'your previous skin')); out.appendChild(rs); state.controls.push(rs);

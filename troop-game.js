@@ -36,6 +36,9 @@
     });
   }
 
+  // The game's own player id (StrUid getter, _uid behind it); '' when not logged in.
+  function accountId() { var U = UD(); var id = U && (U.StrUid || U._uid); return id ? String(id) : ''; }
+
   function isReady() { var h = hm(); return !!(h && h.armyInited && h._ArmyComplete && h._BuildingComplete); }
 
   // ---------------------------------------------------------------- read
@@ -96,7 +99,7 @@
       cells: cells, buildings: buildings, units: units, storage: storage, mergeCap: mergeCap,
       instantPool: U.getFreeArmyBuildAmt(), slotAdvice: slotAdvice(),
       stored: stored, skins: { owned: owned, current: U._UsingCastleFace }, gold: U.Resource.getResource(1),
-      buildable: buildable, warehouses: warehouses, uid: String(U.Uid || '')
+      buildable: buildable, warehouses: warehouses, uid: accountId()
     };
   }
 
@@ -385,7 +388,7 @@
   function lockActive() { return !!lock && lock.h === hm(); }
 
   window.TroopGame = {
-    isReady: isReady, readSnapshot: readSnapshot, loadHighs: loadHighs, solve: solve,
+    isReady: isReady, accountId: accountId, readSnapshot: readSnapshot, loadHighs: loadHighs, solve: solve,
     runSteps: runSteps, stop: stop, isRunning: isRunning, installLock: installLock, removeLock: removeLock, lockActive: lockActive,
     config: config
   };
