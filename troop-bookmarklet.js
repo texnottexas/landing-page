@@ -36,18 +36,35 @@
 
   // ---------------------------------------------------------------- overlay shell
   var old = document.getElementById('tp-overlay'); if (old) old.remove();
-  if (window.TroopGame) window.TroopGame.removeLock();   // a lock from an earlier panel never outlives it
-  var root = el('div', 'position:fixed;inset:0;background:rgba(13,17,23,.92);z-index:2147483647;display:flex;flex-direction:column;padding:14px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#e6edf3;text-align:left;line-height:1.35;');
+  if (window.TroopGame) { window.TroopGame.stop(); window.TroopGame.removeLock(); }   // an earlier panel's run and lock never outlive it
+  var FONT = 'font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#e6edf3;text-align:left;line-height:1.35;';
+  var FULL = 'position:fixed;inset:0;background:rgba(13,17,23,.92);z-index:2147483647;display:flex;flex-direction:column;padding:14px;' + FONT;
+  // minimised: only a small pill at the top, so the game underneath stays fully usable (train, Kuruzo, bulk add)
+  var MINI = 'position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:2147483647;' + FONT;
+  var root = el('div', FULL);
   root.id = 'tp-overlay';
   var head = el('div', 'display:flex;align-items:center;gap:10px;margin-bottom:10px;');
   head.appendChild(el('div', 'font-size:16px;font-weight:600;flex:1;', 'Troop Placement'));
-  var closeBtn = el('button', 'background:transparent;color:#8b949e;border:1px solid #30363d;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer;', 'Close');
-  head.appendChild(closeBtn);
+  var HEAD_BTN = 'background:transparent;color:#8b949e;border:1px solid #30363d;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer;';
+  var minBtn = el('button', HEAD_BTN, 'Minimise');
+  var closeBtn = el('button', HEAD_BTN, 'Close');
+  head.appendChild(minBtn); head.appendChild(closeBtn);
   root.appendChild(head);
   var body = el('div', 'flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;max-width:760px;width:100%;margin:0 auto;');
   root.appendChild(body);
+  var pill = el('div', 'display:none;align-items:center;gap:10px;background:#161b22;border:1px solid #30363d;border-radius:20px;padding:6px 8px 6px 14px;box-shadow:0 4px 14px rgba(0,0,0,.5);font-size:13px;white-space:nowrap;');
+  var pillText = el('span', '', 'Troop Placement');
+  var openBtn = el('button', 'background:#1f6feb;color:#fff;border:none;border-radius:14px;padding:5px 12px;font-size:12px;cursor:pointer;', 'Open');
+  pill.appendChild(pillText); pill.appendChild(openBtn);
+  root.appendChild(pill);
   document.body.appendChild(root);
-  closeBtn.onclick = function () { if (window.TroopGame) window.TroopGame.removeLock(); state.stop = true; root.remove(); };
+  function updatePill() {
+    var TG = window.TroopGame;
+    pillText.textContent = 'Troop Placement: lock ' + (TG && TG.lockActive() ? 'on' : 'off') + (state.progress ? ', ' + state.progress : '');
+  }
+  minBtn.onclick = function () { root.style.cssText = MINI; head.style.display = 'none'; body.style.display = 'none'; pill.style.display = 'flex'; updatePill(); };
+  openBtn.onclick = function () { root.style.cssText = FULL; head.style.display = 'flex'; body.style.display = 'flex'; pill.style.display = 'none'; };
+  closeBtn.onclick = function () { if (window.TroopGame) { window.TroopGame.stop(); window.TroopGame.removeLock(); } root.remove(); };
 
   function card(title) {
     var c = el('div', 'background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;display:flex;flex-direction:column;gap:8px;font-size:13px;');
@@ -62,7 +79,15 @@
   }
   function note(parent, text, color) { var n = el('div', 'color:' + (color || '#8b949e') + ';font-size:12px;line-height:1.4;', text); parent.appendChild(n); return n; }
 
-  var state = { snap: null, region: null, mode: 'units', navy: false, fillArmy: false, keepPlanes: true, rows: [], row: null, stop: false, running: false };
+  var state = { snap: null, region: null, mode: 'units', navy: false, fillArmy: false, keepPlanes: true, rows: [], row: null, running: false, busy: false, progress: '', controls: [] };
+  // nothing that changes the plan can be tapped while planning or running
+  function setBusy(flag) {
+    state.busy = flag;
+    state.controls.concat(state.rows.map(function (r) { return r.button; })).forEach(function (c) {
+      if (!c) return;
+      c.disabled = flag; c.style.opacity = flag ? '.5' : '1'; c.style.pointerEvents = flag ? 'none' : '';
+    });
+  }
 
   // ---------------------------------------------------------------- scan
   function scanCard() {
@@ -100,7 +125,7 @@
       var b = btn(m.label);
       b.dataset.mode = m.key;
       b.onclick = function () { state.mode = m.key; paint(); };
-      row.appendChild(b);
+      row.appendChild(b); state.controls.push(b);
     });
     c.insertBefore(row, hint);
     function check(label, key) {
@@ -108,6 +133,7 @@
       var i = el('input'); i.type = 'checkbox'; i.checked = state[key];
       i.onchange = function () { state[key] = i.checked; };
       w.appendChild(i); w.appendChild(document.createTextNode(label)); c.appendChild(w);
+      state.controls.push(i);
       return w;
     }
     var fill = check('Fill leftover tiles with army', 'fillArmy');
@@ -115,7 +141,7 @@
     check('Also optimise the sea for navy', 'navy');
     var go = btn('Plan my base', true);
     go.onclick = function () { plan(); };
-    c.appendChild(go);
+    c.appendChild(go); state.controls.push(go);
     function paint() {
       Array.prototype.forEach.call(row.children, function (b) {
         var on = b.dataset.mode === state.mode;
@@ -133,68 +159,28 @@
     lockCard();
   }
 
-  function solveLand(opts) {
-    var TC = window.TroopCore, model = TC.buildLandLP(state.region, opts);
-    return window.TroopGame.solve(model.lp, 20).then(function (sol) {
-      if (!sol || (sol.Status !== 'Optimal' && sol.Status !== 'Time limit reached')) throw new Error('solver: ' + (sol && sol.Status));
-      var t = TC.decodeLand(model, sol, state.region);
-      if (sol.Status !== 'Optimal') t.approximate = true;
-      return t;
-    });
-  }
-
   async function plan() {
-    var TC = window.TroopCore;
-    planOut.textContent = '';
-    var status = note(planOut, 'Loading the solver...', '#e6edf3');
-    state.rows = [];
-    var exact = true;
-    try { await window.TroopGame.loadHighs(); } catch (e) { exact = false; }
-    var sea = null;
+    if (state.busy || state.running) return;
+    setBusy(true);
     try {
-      if (state.navy && exact) {
-        var sm = TC.buildSeaLP(state.region);
-        var ssol = await window.TroopGame.solve(sm.lp, 20);
-        sea = TC.decodeSea(sm, ssol);
-      }
-      var R = state.region.reqLand.length, planesNow = state.region.units.air.length;
-      var ks = [];
-      if (state.mode === 'planes') {
-        status.textContent = 'Finding the most planes your land can hold...';
-        var best = exact ? await solveLand({ mode: 'planes' }) : TC.greedyLand(state.region, {});
-        var kMax = best.slots.length;
-        addRow(best, sea);
-        if (exact) {
-          [1, 2, 3, 5, 8, 12, 17].forEach(function (d) { if (kMax - d - R > planesNow) ks.push(kMax - d); });
-          for (var i = 0; i < ks.length; i++) {
-            status.textContent = 'Checking cheaper options (' + (i + 1) + ' of ' + ks.length + ')...';
-            var last = state.rows[state.rows.length - 1];
-            if (last && last.result.stats.moves === 0) break;
-            addRow(await solveLand({ mode: 'planes', count: ks[i] }), sea);
-          }
-        }
-      } else {
-        status.textContent = 'Working out the layout...';
-        var t = exact ? await solveLand({ mode: state.mode, keepPlanes: state.keepPlanes }) : TC.greedyLand(state.region, { count: state.mode === 'half' ? R + Math.floor((state.region.landCells.length - 4 * R) / 8) : R + (state.keepPlanes ? planesNow : 0) });
-        addRow(t, sea);
-      }
+      planOut.textContent = '';
+      var status = note(planOut, 'Loading the solver...', '#e6edf3');
+      var solver = null;
+      try { await window.TroopGame.loadHighs(); solver = function (lp) { return window.TroopGame.solve(lp, 20); }; } catch (e) { solver = null; }
+      status.textContent = state.mode === 'planes' ? 'Finding the most planes your land can hold, plus cheaper options...' : 'Working out the layout...';
+      var out = await window.TroopCore.planRows(state.snap, state.region, { mode: state.mode, keepPlanes: state.keepPlanes, navy: state.navy }, solver);
+      status.remove();
+      state.rows = out.rows;
+      if (!out.exact) note(planOut, solver ? 'The exact solver hit a problem, so this plan is near-optimal (within about 3%).' : 'The exact solver could not load, so this plan is near-optimal (within about 3%).', '#d29922');
+      if (state.navy && out.notes.indexOf('navy pass skipped') >= 0) note(planOut, 'The sea could not be planned this time, so navy stays where it is.', '#d29922');
+      if (!out.rows.length) { note(planOut, 'There is not enough open land to seat your required buildings off the floor tiles, so this layout cannot be planned.', '#f85149'); return; }
+      renderRows();
     } catch (e) {
-      status.textContent = 'Planning failed: ' + e.message;
-      status.style.color = '#f85149';
-      return;
+      planOut.textContent = '';
+      note(planOut, 'Planning failed. Close this panel and try again.', '#f85149');
+    } finally {
+      setBusy(false);
     }
-    status.remove();
-    if (!exact) note(planOut, 'The exact solver could not load, so this plan is near-optimal (within about 3%).', '#d29922');
-    renderRows();
-  }
-
-  function addRow(target, sea) {
-    var TC = window.TroopCore;
-    if (!target) return;
-    if (sea) { target.navy = sea.navy; target.seaBld = sea.seaBld; }
-    var result = TC.planSteps(state.snap, state.region, target, { mode: state.mode });
-    var planes = target.slots.filter(function (s) { return s.role === 'air'; }).length;
-    state.rows.push({ target: target, result: result, planes: planes });
   }
 
   function renderRows() {
@@ -207,6 +193,7 @@
       var label = state.mode === 'planes'
         ? 'Room for ' + row.planes + ' planes (' + (row.planes - planesNow >= 0 ? '+' : '') + (row.planes - planesNow) + '), ' + row.result.steps.length + ' steps'
         : row.target.armyCells.length + ' army tiles, ' + row.planes + ' plane spots, ' + row.result.steps.length + ' steps';
+      if (row.result.blocked.some(function (x) { return x.reason === 'deadlock'; })) label += ' (cannot fully finish)';
       var b = btn(label);
       b.style.textAlign = 'left';
       b.onclick = function () { choose(i); };
@@ -242,7 +229,7 @@
     var progText = note(progress, '', '#e6edf3');
     var stopBtn = btn('Stop after this step');
     stopBtn.style.color = '#f85149'; stopBtn.style.borderColor = '#f85149';
-    stopBtn.onclick = function () { state.stop = true; stopBtn.textContent = 'Stopping...'; };
+    stopBtn.onclick = function () { window.TroopGame.stop(); stopBtn.textContent = 'Stopping...'; };
     progress.appendChild(stopBtn);
     planOut.appendChild(progress);
 
@@ -257,16 +244,16 @@
       summary.textContent = st.parks + ' decoration move(s), ' + st.stores + ' unit(s) to storage, ' + st.moves + ' move(s). ' +
         (st.emptyAirSlots ? st.emptyAirSlots + ' planned plane spot(s) stay empty for new planes.' : '');
       blocked.textContent = state.row.result.blocked.map(function (b) {
-        return b.reason === 'storage_full' ? b.remaining + ' ' + b.role + ' unit(s) need storage space first, so they stay put.' : 'Some units could not be placed. Try a cheaper option.';
+        return b.reason === 'storage_full' ? b.remaining + ' ' + b.role + ' unit(s) need storage space first, so they stay put.' : 'With this option some units cannot reach their spot, so the run ends early.';
       }).join(' ');
       armed = false;
-      var nSteps = state.row.result.steps.length, isBlocked = state.row.result.blocked.length > 0;
-      run.textContent = nSteps ? 'Run ' + nSteps + ' steps' : (isBlocked ? 'Nothing to run until storage frees up' : 'Already optimal');
-      run.disabled = !state.row.result.steps.length;
+      var nSteps = state.row.result.steps.length, status = TC.planStatus(state.row.result);
+      run.textContent = status === 'done' ? 'Already optimal' : status === 'blocked' ? 'Nothing to run until storage frees up' : 'Run ' + nSteps + ' steps';
+      run.disabled = !nSteps;
       run.style.opacity = run.disabled ? '.5' : '1';
     }
     run.onclick = function () {
-      if (state.running || !state.row) return;
+      if (state.running || state.busy || !state.row || window.TroopGame.isRunning()) return;
       var n = state.row.result.steps.length;
       if (!armed) { armed = true; run.textContent = 'Tap again to start ' + n + ' steps (about ' + Math.ceil(n * 2.5 / 60) + ' min)'; setTimeout(function () { if (armed && !state.running) { armed = false; run.textContent = 'Run ' + n + ' steps'; } }, 4000); return; }
       armed = false;
@@ -276,43 +263,49 @@
   }
 
   async function execute(row, run, progress, bar, progText, stopBtn, repaint) {
-    var TC = window.TroopCore, TG = window.TroopGame;
-    state.running = true; state.stop = false;
+    var TC = window.TroopCore, TG = window.TroopGame, res = { ok: false, error: 'The run did not start.' };
+    state.running = true; setBusy(true);
     run.style.display = 'none'; progress.style.display = 'flex';
     stopBtn.textContent = 'Stop after this step';
     var steps = row.result.steps;
-    var res = await TG.runSteps(steps, {
-      shouldStop: function () { return state.stop; },
-      onStep: function (i) { bar.style.width = Math.round((i + 1) / steps.length * 100) + '%'; progText.textContent = 'Step ' + (i + 1) + ' of ' + steps.length; }
-    });
-    // verify against the server-backed client state and re-plan whatever is left
     try {
+      res = await TG.runSteps(steps, {
+        onStep: function (i) {
+          bar.style.width = Math.round((i + 1) / steps.length * 100) + '%';
+          state.progress = 'step ' + (i + 1) + ' of ' + steps.length;
+          progText.textContent = 'Step ' + (i + 1) + ' of ' + steps.length; updatePill();
+        }
+      });
+      // verify against the server-backed client state and re-plan whatever is left
       state.snap = TG.readSnapshot();
       state.region = TC.buildRegion(state.snap);
       row.result = TC.planSteps(state.snap, state.region, row.target, { mode: state.mode });
     } catch (e) {
-      res = { ok: false, error: e.message };
+      res = { ok: false, error: 'Something went wrong. Open your base and tap Run to resume.' };
+    } finally {
+      state.running = false; state.progress = ''; setBusy(false); updatePill();
+      progress.style.display = 'none'; run.style.display = 'block';
     }
-    state.running = false;
-    progress.style.display = 'none'; run.style.display = 'block';
     repaint();
-    var left = row.result.steps.length;
-    if (res.ok && !left) note(planOut, 'Done and verified. Your base now matches the plan. Reload the game any time to double check.', '#3fb950');
+    var status = TC.planStatus(row.result), left = row.result.steps.length;
+    if (status === 'done') note(planOut, 'Done and verified. Your base now matches the plan. Reload the game any time to double check.', '#3fb950');
+    else if (status === 'blocked') note(planOut, 'Finished everything that can move today. The rest needs storage space first.', '#d29922');
     else note(planOut, (res.error ? res.error + ' ' : '') + left + ' step(s) left. Tap Run to resume.', '#d29922');
   }
 
   function lockCard() {
     var c = card('Lock new units to this plan');
-    note(c, 'While this is on, new units from training, Kuruzo, Bulk Training or bulk add go into the planned spots instead of the nearest gap. It lasts until you close this panel or reload the game.');
+    note(c, 'While this is on, new units from training, Kuruzo, Bulk Training or bulk add go into the planned spots instead of the nearest gap. Minimise this panel to keep playing with the lock on. It ends when you close the panel or reload the game.');
     var b = btn('Turn lock on');
     var st = note(c, 'Lock is off.');
     b.onclick = function () {
       var TG = window.TroopGame;
-      if (TG.lockActive()) { TG.removeLock(); b.textContent = 'Turn lock on'; st.textContent = 'Lock is off.'; return; }
-      if (!state.row) return;
+      if (TG.lockActive()) { TG.removeLock(); b.textContent = 'Turn lock on'; st.textContent = 'Lock is off.'; updatePill(); return; }
+      if (!state.row) { st.textContent = 'Plan your base first, then turn the lock on.'; return; }
       TG.installLock(state.row.target, { mode: state.mode, fillArmy: state.fillArmy });
       b.textContent = 'Turn lock off';
-      st.textContent = 'Lock is on. It only matters once that unit type\'s storage is full.';
+      st.textContent = 'Lock is on. Tap Minimise to use the game while it stays on. It only matters once that unit type\'s storage is full.';
+      updatePill();
     };
     c.appendChild(b);
   }
