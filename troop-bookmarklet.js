@@ -13,7 +13,7 @@
   var COLORS = {
     fixed: '#30363d', land: '#1d3324', sea: '#0c2d4a', blockedLand: '#141a14', blockedSea: '#0b1622',
     air: '#d29922', airEmpty: '#5c4a1a', army: '#3fb950', navy: '#388bfd', bld: '#a371f7', seabld: '#a371f7',
-    deco: '#8b949e', odd: '#6e7681',
+    deco: '#8b949e', odd: '#6e7681', newBld: '#56d4dd',
     airMoving: '#f0883e', armyMoving: '#f0883e', navyMoving: '#f0883e', bldMoving: '#f0883e', decoMoving: '#f0883e'
   };
   var LEGEND = [['air', 'Planes'], ['airEmpty', 'Planned empty plane spot'], ['army', 'Army'], ['navy', 'Navy'], ['bld', 'Required building'], ['deco', 'Decoration'], ['fixed', 'Other buildings'], ['airMoving', 'Will move (Before)']];
@@ -336,6 +336,244 @@
     });
   }
 
+  // ---------------------------------------------------------------- rebuild after a battle (v2)
+  var ROLE_NAME = { army: 'army', air: 'plane', navy: 'navy' }, TYPE_ROLE = { 101: 'army', 201: 'navy', 301: 'air' };
+  var GROUP_ROLE = { 1040: 'army', 1050: 'air', 1100: 'navy' };
+  function refreshSnapshot() { state.snap = window.TroopGame.readSnapshot(); state.region = window.TroopCore.buildRegion(state.snap); }
+  function sub(parent, title) {
+    var s = el('div', 'display:flex;flex-direction:column;gap:6px;border-top:1px solid #30363d;padding-top:8px;');
+    s.appendChild(el('div', 'font-weight:600;', title)); parent.appendChild(s); return s;
+  }
+  function fmt(n) {   // game-style big numbers: K, M, B, T, then aa, bb, cc ...
+    var u = ['', 'K', 'M', 'B', 'T', 'aa', 'bb', 'cc', 'dd', 'ee', 'ff', 'gg', 'hh', 'ii', 'jj'], i = 0;
+    while (Math.abs(n) >= 1000 && i < u.length - 1) { n /= 1000; i++; }
+    return (Math.round(n * 10) / 10) + u[i];
+  }
+  // second tap within 4 s confirms; anything destructive or costly goes through this
+  function confirmTap(b, armedText, onGo) {
+    b.onclick = function () {
+      if (state.busy || state.running || window.TroopGame.isRunning()) return;
+      if (!b._armed) {
+        b._armed = true; var was = b.textContent; b.textContent = armedText;
+        setTimeout(function () { if (b._armed) { b._armed = false; b.textContent = was; } }, 4000);
+        return;
+      }
+      b._armed = false; onGo();
+    };
+  }
+  // runs game steps with a progress bar and Stop; done(result, responses) after a fresh read of the base
+  function runWithProgress(container, steps, label, done) {
+    var TG = window.TroopGame;
+    if (!steps.length) { done({ ok: true, done: 0 }, []); return; }
+    var box = el('div', 'display:flex;flex-direction:column;gap:6px;');
+    var barWrap = el('div', 'height:8px;background:#0d1117;border:1px solid #30363d;border-radius:4px;overflow:hidden;');
+    var bar = el('div', 'height:100%;background:#3fb950;width:0%;transition:width .15s;');
+    barWrap.appendChild(bar); box.appendChild(barWrap);
+    var txt = note(box, label + '...', '#e6edf3');
+    var stopB = btn('Stop after this step'); stopB.style.color = '#f85149'; stopB.style.borderColor = '#f85149';
+    stopB.onclick = function () { TG.stop(); stopB.textContent = 'Stopping...'; };
+    box.appendChild(stopB); container.appendChild(box);
+    state.running = true; setBusy(true);
+    var responses = [];
+    TG.runSteps(steps, {
+      onStep: function (i, st, r) {
+        responses.push(r);
+        bar.style.width = Math.round((i + 1) / steps.length * 100) + '%';
+        txt.textContent = label + ': step ' + (i + 1) + ' of ' + steps.length;
+        state.progress = label.toLowerCase() + ' ' + (i + 1) + '/' + steps.length; updatePill();
+      }
+    }).catch(function () { return { ok: false, error: 'Something went wrong. Open your base and try again.' }; }).then(function (res) {
+      state.running = false; state.progress = ''; setBusy(false); updatePill();
+      box.remove();
+      try { refreshSnapshot(); } catch (e) { res = { ok: false, error: 'Your base closed. Open it again and run this again.' }; }
+      done(res, responses);
+    });
+  }
+  function totalUnits() { return state.snap.stored.length + state.snap.units.length; }
+  // merge passes until nothing changes (at most 5); the server applies the merge cap
+  function mergePasses(container, done, pass, before) {
+    pass = pass || 1; before = before == null ? totalUnits() : before;
+    var steps = [];
+    ['army', 'air', 'navy'].forEach(function (r) { steps.push({ kind: 'mergeStorage', role: r, tolerant: true }, { kind: 'mergeBase', role: r, tolerant: true }); });
+    runWithProgress(container, steps, 'Merging (round ' + pass + ')', function (res) {
+      if (!res.ok) { done(res); return; }
+      setTimeout(function () {
+        try { refreshSnapshot(); } catch (e) { done({ ok: false, error: 'Your base closed.' }); return; }
+        var after = totalUnits();
+        if (after < before && pass < 5) mergePasses(container, done, pass + 1, after);
+        else done({ ok: true, merged: before - after });
+      }, 1500);
+    });
+  }
+
+  function rebuildCard() {
+    var TC = window.TroopCore, c = card('Rebuild after a battle');
+    note(c, 'Merge demoted units, delete the ones that can never merge again, wear your best training skin, fill spare spots with training buildings and fill every training queue. Every step waits for a second tap. No speed-ups or gems are ever used.');
+
+    // 1. merge and clean up
+    var s1 = sub(c, '1. Merge and clean up'), s1info = note(s1, ''), mergeB = btn('Merge everything (free)'), delBox = el('div', 'display:flex;flex-direction:column;gap:6px;');
+    s1.appendChild(mergeB); s1.appendChild(delBox); state.controls.push(mergeB);
+    function paintCleanup() {
+      var all = state.snap.stored.concat(state.snap.units), caps = state.snap.mergeCap;
+      var pairs = TC.mergeablePairs(all, caps), cand = TC.deleteCandidates(all);
+      s1info.textContent = pairs + ' pair(s) can merge right now (free, up to Lv' + caps.army + '). ' + cand.length + ' demoted unit(s) at Lv10 to Lv99.';
+      delBox.textContent = '';
+      if (!cand.length) { note(delBox, 'Nothing to delete: no units at Lv10 to Lv99.', '#3fb950'); return; }
+      if (TC.mergeablePairs(cand, caps) > 0) { note(delBox, 'Merge first. Some of these demoted units can still pair up.', '#d29922'); return; }
+      var by = {};
+      cand.forEach(function (u) { var k = ROLE_NAME[TYPE_ROLE[u.type]] + ' Lv' + u.level; by[k] = (by[k] || 0) + 1; });
+      note(delBox, 'These can never merge again: ' + Object.keys(by).sort().map(function (k) { return by[k] + ' x ' + k; }).join(', ') + '. Lv1 to Lv9 and Lv100+ are never deleted.', '#e6edf3');
+      var delB = btn('Delete ' + cand.length + ' demoted unit(s)'); delB.style.color = '#f85149'; delB.style.borderColor = '#f85149';
+      delBox.appendChild(delB); state.controls.push(delB);
+      confirmTap(delB, 'Tap again to permanently delete ' + cand.length + ' unit(s)', function () {
+        var stored = cand.filter(function (u) { return u.wh; }), onBase = cand.filter(function (u) { return !u.wh; }), steps = [];
+        for (var i = 0; i < stored.length; i += 100) steps.push({ kind: 'deleteStored', ids: stored.slice(i, i + 100).map(function (u) { return u.id; }) });
+        onBase.forEach(function (u) { steps.push({ kind: 'deleteUnit', id: u.id }); });
+        runWithProgress(delBox, steps, 'Deleting', function (res) { paintCleanup(); note(delBox, res.ok ? 'Done.' : res.error, res.ok ? '#3fb950' : '#d29922'); });
+      });
+    }
+    confirmTap(mergeB, 'Tap again to merge everything that can merge', function () {
+      mergePasses(s1, function (res) { paintCleanup(); note(s1, res.ok ? 'Merging finished: ' + res.merged + ' fewer units, more free storage.' : res.error, res.ok ? '#3fb950' : '#d29922'); paintBuild(); });
+    });
+    paintCleanup();
+
+    // 2. training skin
+    var s2 = sub(c, '2. Training skin'), s2out = el('div', 'display:flex;flex-direction:column;gap:6px;'); s2.appendChild(s2out);
+    function paintSkin() {
+      s2out.textContent = '';
+      var best = TC.bestTrainingSkin(state.snap.skins.owned, state.snap.skins.current);
+      if (!best.change) { note(s2out, 'Your current skin already has the best training speed you own (+' + best.value / 100 + '%).', '#3fb950'); return; }
+      var name = (state.snap.skins.owned.filter(function (s) { return s.id === best.id; })[0] || {}).name || ('skin ' + best.id);
+      var b = btn('Wear ' + name + ' (+' + best.value / 100 + '% training speed, now +' + best.currentValue / 100 + '%)');
+      s2out.appendChild(b); state.controls.push(b);
+      confirmTap(b, 'Tap again to switch your base skin', function () {
+        var prev = state.snap.skins.current;
+        runWithProgress(s2out, [{ kind: 'equipSkin', id: best.id }], 'Switching skin', function (res) {
+          if (res.ok) { try { localStorage.setItem('tp_prevSkin_' + state.snap.uid, String(prev)); } catch (e) {} }
+          paintSkin(); note(s2out, res.ok ? 'Done. "When your base is full" can put your old skin back.' : res.error, res.ok ? '#3fb950' : '#d29922');
+        });
+      });
+    }
+    paintSkin();
+
+    // 3. training buildings
+    var s3 = sub(c, '3. Training buildings'), findB = btn('Find spare spots'), s3out = el('div', 'display:flex;flex-direction:column;gap:6px;');
+    s3.appendChild(findB); s3.appendChild(s3out); state.controls.push(findB);
+    function paintBuild() { s3out.textContent = ''; }
+    findB.onclick = async function () {
+      if (state.busy || state.running) return;
+      setBusy(true); s3out.textContent = '';
+      var status = note(s3out, 'Finding spare spots...', '#e6edf3');
+      try {
+        var r = state.region, snap = state.snap, TG = window.TroopGame, solver = true, land, seaSlots = [];
+        try { await TG.loadHighs(); } catch (e) { solver = false; }
+        if (solver) {
+          try {
+            var lm = TC.buildLandLP(r, { mode: 'planes' });
+            land = TC.decodeLand(lm, await TG.solve(lm.lp, 20), r);
+            var sm = TC.buildSeaSlotsLP(r, TC.occupiedCells(r));
+            if (sm.lp) seaSlots = TC.decodeSeaSlots(sm, await TG.solve(sm.lp, 20));
+          } catch (e) { solver = false; }
+        }
+        if (!solver || !land) { land = TC.greedyLand(r, {}) || { slots: [] }; seaSlots = []; }
+        var sites = { land: TC.freeSites(r, land.slots.map(function (s) { return s.pos; }), 1), sea: TC.freeSites(r, seaSlots, 0) };
+        var existing = { army: [], air: [], navy: [] };
+        snap.buildings.forEach(function (b) { var role = GROUP_ROLE[b.group]; if (role) existing[role].push(b.pos); });
+        var free = {};
+        ['army', 'air', 'navy'].forEach(function (k) { free[k] = Math.max(0, snap.storage[k].max - snap.storage[k].used); });
+        var per = 0;
+        [1040, 1050, 1100].forEach(function (g) { var b = snap.buildable[g]; if (b) per = Math.max(per, b.build_coin + 5 * b.produce_coin); });
+        var plan = TC.buildingSites(sites, free, existing), want = plan.army.length + plan.air.length + plan.navy.length;
+        plan = TC.fitToGold(plan, per, snap.gold);
+        ['army', 'air', 'navy'].forEach(function (k) { if (!snap.buildable[{ army: 1040, air: 1050, navy: 1100 }[k]]) plan[k] = []; });
+        var n = plan.army.length + plan.air.length + plan.navy.length;
+        status.remove();
+        note(s3out, sites.land.length + ' spare land spot(s) and ' + sites.sea.length + ' spare sea spot(s). Free storage: ' + free.army + ' army, ' + free.air + ' planes, ' + free.navy + ' navy.', '#e6edf3');
+        if (!solver) note(s3out, 'The exact solver could not load, so these spots come from the near-optimal plan.', '#d29922');
+        if (n < want) note(s3out, 'Your gold covers ' + n + ' of the ' + want + ' buildings that would fit.', '#d29922');
+        if (!n) { note(s3out, 'Nothing to build: no spare spots, or your storage is already full.', '#d29922'); return; }
+        var lvl = snap.buildable[1050] || snap.buildable[1040] || snap.buildable[1100];
+        note(s3out, 'Build ' + plan.army.length + ' Barracks, ' + plan.air.length + ' Air Bases and ' + plan.navy.length + ' Shipyards at Lv' + lvl.level + ' for about ' + fmt(n * per) + ' gold, including one full queue each.', '#e6edf3');
+        var cv = el('canvas', 'width:100%;max-width:520px;background:#0d1117;border:1px solid #30363d;border-radius:4px;'); cv.width = 680; s3out.appendChild(cv);
+        var cats = TC.renderModel(snap, r, { slots: [], armyCells: [] }, null).before, outl = [];
+        Object.keys(cats).forEach(function (k) { if (cats[k] === 'decoMoving') cats[k] = 'deco'; });
+        ['army', 'air', 'navy'].forEach(function (k) { plan[k].forEach(function (p) { var xy = TC.fromPosId(p); TC.footprint(xy[0], xy[1], 2, 2).forEach(function (c2) { cats[c2] = 'newBld'; }); outl.push({ x: xy[0], y: xy[1], w: 2, h: 2 }); }); });
+        drawMap(cv, cats, outl);
+        var go = btn('Build ' + n + ' training buildings', true); s3out.appendChild(go); state.controls.push(go);
+        confirmTap(go, 'Tap again to spend about ' + fmt(n * per) + ' gold', function () {
+          var steps = [];
+          ['army', 'air', 'navy'].forEach(function (k) {
+            var id = snap.buildable[{ army: 1040, air: 1050, navy: 1100 }[k]].id;
+            plan[k].forEach(function (p) { steps.push({ kind: 'build', buildingId: id, to: TC.fromPosId(p) }); });
+          });
+          runWithProgress(s3out, steps, 'Building', function (res) { note(s3out, res.ok ? 'Built ' + steps.length + ' training buildings. Next: fill every training queue.' : res.error, res.ok ? '#3fb950' : '#d29922'); });
+        });
+      } catch (e) {
+        s3out.textContent = ''; note(s3out, 'Could not find spots. Close this panel and try again.', '#f85149');
+      } finally { setBusy(false); }
+    };
+
+    // 4. train and refill
+    var s4 = sub(c, '4. Train');
+    note(s4, 'Fills every training queue (5 per building, one unit at a time) plus any instant trainings. Storage fills first. If your storage is full, plan a layout below and turn the lock on first so new units land in planned spots.');
+    var trainB = btn('Fill every training queue', true), refillB = btn('Refill: merge everything, then fill every queue'), s4out = el('div', 'display:flex;flex-direction:column;gap:6px;');
+    s4.appendChild(trainB); s4.appendChild(refillB); s4.appendChild(s4out); state.controls.push(trainB, refillB);
+    function trainSteps() {
+      var have = {};
+      state.snap.buildings.forEach(function (b) { if (GROUP_ROLE[b.group]) have[GROUP_ROLE[b.group]] = true; });
+      return ['army', 'air', 'navy'].filter(function (k) { return have[k]; }).map(function (k) { return { kind: 'train', role: k, tolerant: true }; });
+    }
+    function train() {
+      var steps = trainSteps();
+      runWithProgress(s4out, steps, 'Training', function (res, resp) {
+        var lines = steps.map(function (st, i) {
+          var r = resp[i] || {}, d = null; try { d = typeof r.d === 'string' ? JSON.parse(r.d) : r.d; } catch (e) {}
+          if (r.skipped) return ROLE_NAME[st.role] + ': nothing to queue (queues full or no space)';
+          return ROLE_NAME[st.role] + ': ' + (d && d.num != null ? d.num + ' ordered, ' + (d.finishNowNum || 0) + ' done instantly' : 'no answer');
+        });
+        note(s4out, (res.ok ? '' : res.error + ' ') + lines.join('. ') + '.', res.ok ? '#3fb950' : '#d29922');
+      });
+    }
+    confirmTap(trainB, 'Tap again to start training (costs gold per unit)', train);
+    confirmTap(refillB, 'Tap again to merge everything, then train', function () {
+      mergePasses(s4out, function (res) { paintCleanup(); if (res.ok) train(); else note(s4out, res.error, '#d29922'); });
+    });
+  }
+
+  // ---------------------------------------------------------------- when the base is full (v2)
+  function fullCard() {
+    var TC = window.TroopCore, c = card('When your base is full');
+    note(c, 'Clear the extra training buildings so planes and army can use those spots, then use Layout below to pack everything.');
+    var out = el('div', 'display:flex;flex-direction:column;gap:6px;'); c.appendChild(out);
+    function paint() {
+      out.textContent = '';
+      var extras = TC.extraTrainingBuildings(state.snap.buildings.filter(function (b) { return GROUP_ROLE[b.group]; }));
+      var busy = state.snap.buildings.filter(function (b) { return GROUP_ROLE[b.group] && b.busy; }).length;
+      if (!extras.length) note(out, 'No extra training buildings. You have at most one of each type' + (busy ? ' (busy ones are kept until they finish)' : '') + '.', '#3fb950');
+      else {
+        var by = {}; extras.forEach(function (b) { var k = { 1040: 'Barracks', 1050: 'Air Bases', 1100: 'Shipyards' }[b.group]; by[k] = (by[k] || 0) + 1; });
+        note(out, 'Extra training buildings: ' + Object.keys(by).map(function (k) { return by[k] + ' ' + k; }).join(', ') + '. One of each type is kept' + (busy ? ', and buildings still training are kept until they finish' : '') + '.', '#e6edf3');
+        var del = btn('Delete ' + extras.length + ' extra training buildings'); del.style.color = '#f85149'; del.style.borderColor = '#f85149';
+        out.appendChild(del); state.controls.push(del);
+        confirmTap(del, 'Tap again to permanently delete ' + extras.length + ' buildings', function () {
+          runWithProgress(out, extras.map(function (b) { return { kind: 'deleteBuilding', id: b.id }; }), 'Deleting buildings', function (res) { paint(); note(out, res.ok ? 'Done.' : res.error, res.ok ? '#3fb950' : '#d29922'); });
+        });
+      }
+      var prev = null; try { prev = Number(localStorage.getItem('tp_prevSkin_' + state.snap.uid)); } catch (e) {}
+      var owned = state.snap.skins.owned.filter(function (s) { return s.id === prev; })[0];
+      if (prev && owned && prev !== state.snap.skins.current) {
+        var rs = btn('Put back ' + (owned.name || 'your previous skin')); out.appendChild(rs); state.controls.push(rs);
+        confirmTap(rs, 'Tap again to switch your base skin back', function () {
+          runWithProgress(out, [{ kind: 'equipSkin', id: prev }], 'Switching skin', function (res) {
+            if (res.ok) { try { localStorage.removeItem('tp_prevSkin_' + state.snap.uid); } catch (e) {} }
+            paint(); note(out, res.ok ? 'Your previous skin is back.' : res.error, res.ok ? '#3fb950' : '#d29922');
+          });
+        });
+      }
+    }
+    paint();
+  }
+
   // ---------------------------------------------------------------- boot
   var boot = card();
   var bootMsg = note(boot, 'Loading...', '#e6edf3');
@@ -345,6 +583,8 @@
     state.region = window.TroopCore.buildRegion(state.snap);
     boot.remove();
     scanCard();
+    rebuildCard();
+    fullCard();
     modeCard();
   }).catch(function (e) {
     bootMsg.textContent = e.message;
