@@ -16,7 +16,11 @@
   // what a tool says when it sorts a readiness item out itself (its list entry has "auto": [ids])
   var AUTO_TEXT = { base: 'Takes you to your base first', defender: 'Opens the defender monster itself', game: 'Waits for the game itself', r4: 'Checks your rank itself' };
   function isAutoFor(tool, id) { return !!(tool.auto && tool.auto.indexOf(id) >= 0); }
-  var WAIT_MS = 10000, GRACE_MS = 1000, WATCH_MS = 120000, RECENT_MAX = 3;
+  var WAIT_MS = 10000, GRACE_MS = 1000, WATCH_MS = 120000, RECENT_MAX = 3, MAX_TOOLS = 50;
+
+  function own(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+  function plainObj(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
+  function warn(why, t) { try { console.warn('Ops Center: skipped a tool' + (t && t.id ? ' (' + String(t.id).slice(0, 40) + ')' : '') + ': ' + why); } catch (e) {} }
 
   function isStr(v) { return typeof v === 'string' && v.length > 0; }
 
@@ -26,14 +30,16 @@
     var out = { codeSha256: null, tools: [] };
     if (!raw || typeof raw !== 'object') return out;
     if (/^[0-9a-f]{64}$/.test(raw.codeSha256 || '')) out.codeSha256 = raw.codeSha256;
-    var seen = {};
-    (Array.isArray(raw.tools) ? raw.tools : []).forEach(function (t) {
-      if (!t || typeof t !== 'object') return;
-      if (!/^[a-z0-9-]+$/.test(t.id || '') || seen[t.id]) return;
-      if (!isStr(t.title) || !isStr(t.desc) || !isStr(t.version)) return;
-      if (GATES.indexOf(t.gate) < 0) return;
-      if (!Array.isArray(t.scripts) || !t.scripts.length || !t.scripts.every(function (s) { return /^[a-z0-9-]+\.js$/.test(s); })) return;
-      if (!Array.isArray(t.ready) || !t.ready.every(function (r) { return READY_IDS.indexOf(r) >= 0; })) return;
+    var seen = Object.create(null), list = Array.isArray(raw.tools) ? raw.tools : [], capped = false;
+    list.forEach(function (t) {
+      if (!t || typeof t !== 'object') return warn('not an object', null);
+      if (!/^[a-z0-9-]+$/.test(t.id || '')) return warn('bad id', t);
+      if (seen[t.id]) return warn('duplicate id', t);
+      if (!isStr(t.title) || !isStr(t.desc) || !isStr(t.version)) return warn('missing title, desc or version', t);
+      if (GATES.indexOf(t.gate) < 0) return warn('unknown gate', t);
+      if (!Array.isArray(t.scripts) || !t.scripts.length || !t.scripts.every(function (s) { return /^[a-z0-9-]+\.js$/.test(s); })) return warn('bad script name', t);
+      if (!Array.isArray(t.ready) || !t.ready.every(function (r) { return READY_IDS.indexOf(r) >= 0; })) return warn('unknown readiness item', t);
+      if (out.tools.length >= MAX_TOOLS) { capped = true; return; }
       seen[t.id] = true;
       out.tools.push({
         id: t.id, title: t.title, desc: t.desc, version: t.version, gate: t.gate,
@@ -44,6 +50,7 @@
         auto: (Array.isArray(t.auto) ? t.auto : []).filter(function (r) { return t.ready.indexOf(r) >= 0; })
       });
     });
+    if (capped) { try { console.warn('Ops Center: the tool list has more than ' + MAX_TOOLS + ' tools; only the first 50 are shown'); } catch (e) {} }
     return out;
   }
 
@@ -54,28 +61,28 @@
   }
 
   function orderTools(tools, recent) {
-    var byId = {}, out = [], used = {};
+    var byId = Object.create(null), out = [], used = Object.create(null);
     tools.forEach(function (t) { byId[t.id] = t; });
-    (recent || []).forEach(function (id) { if (byId[id] && !used[id]) { used[id] = true; out.push(byId[id]); } });
+    (Array.isArray(recent) ? recent : []).forEach(function (id) { if (typeof id === 'string' && byId[id] && !used[id]) { used[id] = true; out.push(byId[id]); } });
     tools.forEach(function (t) { if (!used[t.id]) out.push(t); });
     return out;
   }
 
   function pushRecent(recent, id) {
-    return [id].concat((recent || []).filter(function (x) { return x !== id; })).slice(0, RECENT_MAX);
+    return [id].concat((Array.isArray(recent) ? recent : []).filter(function (x) { return x !== id; })).slice(0, RECENT_MAX);
   }
 
   // First ever open: remember every current version, so nothing shows as Updated.
   function initSeen(seen, tools) {
-    if (seen && Object.keys(seen).length) return seen;
+    if (plainObj(seen) && Object.keys(seen).length) return seen;
     var out = {};
     tools.forEach(function (t) { out[t.id] = t.version; });
     return out;
   }
 
   function badgeFor(tool, seen) {
-    seen = seen || {};
-    if (seen[tool.id] == null) return Object.keys(seen).length ? 'new' : null;
+    if (!plainObj(seen)) return null;
+    if (!own(seen, tool.id)) return Object.keys(seen).length ? 'new' : null;
     return seen[tool.id] !== tool.version ? 'updated' : null;
   }
 

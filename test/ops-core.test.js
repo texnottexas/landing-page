@@ -150,3 +150,37 @@ test('tracker: an explicit close abandons the late-screen watch', () => {
   r = OC.trackerReduce(r, { type: 'loaded', at: 15 });
   assert.equal(OC.trackerReduce(r, { type: 'abandon', at: 20 }).phase, 'running', 'a tool that is really open is not abandoned');
 });
+
+test('saved data of the wrong shape is treated as empty instead of breaking the menu', () => {
+  const list = ['a', 'b'].map((id) => tool({ id }));
+  assert.deepEqual(OC.orderTools(list, 'alpha').map((t) => t.id), ['a', 'b'], 'a string instead of a list');
+  assert.deepEqual(OC.orderTools(list, { 0: 'b' }).map((t) => t.id), ['a', 'b']);
+  assert.deepEqual(OC.pushRecent('alpha', 'b'), ['b']);
+  assert.deepEqual(OC.initSeen('oops', list), OC.initSeen({}, list));
+  assert.deepEqual(OC.initSeen(['x'], list), OC.initSeen({}, list));
+  assert.equal(OC.badgeFor(list[0], 'oops'), null);
+});
+
+test('tool ids that match built-in object keys behave like any other id', () => {
+  const r = OC.validateTools({ tools: [tool({ id: 'constructor' }), tool({ id: 'tostring' }), tool({ id: 'constructor' })] });
+  assert.deepEqual(r.tools.map((t) => t.id), ['constructor', 'tostring'], 'kept once, duplicate dropped');
+  assert.equal(OC.badgeFor(tool({ id: 'constructor', version: '1' }), { other: '1' }), 'new');
+  assert.equal(OC.badgeFor(tool({ id: 'constructor', version: '1' }), {}), null);
+  assert.deepEqual(OC.orderTools(r.tools, ['constructor']).map((t) => t.id), ['constructor', 'tostring']);
+});
+
+test('validateTools warns about every entry it drops and caps the list at 50', () => {
+  const warned = [];
+  const orig = console.warn; console.warn = (...a) => warned.push(a.join(' '));
+  try {
+    OC.validateTools({ tools: [tool({ id: 'ok' }), tool({ id: 'bad', gate: 'admin' }), { id: 'bare' }, null] });
+    assert.equal(warned.length, 3);
+    assert.ok(warned.every((w) => /Ops Center: skipped a tool/.test(w)));
+    warned.length = 0;
+    const many = Array.from({ length: 60 }, (_, i) => tool({ id: 't' + i }));
+    const r = OC.validateTools({ tools: many });
+    assert.equal(r.tools.length, 50);
+    assert.equal(warned.length, 1);
+    assert.match(warned[0], /only the first 50/);
+  } finally { console.warn = orig; }
+});
