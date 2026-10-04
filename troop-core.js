@@ -800,6 +800,28 @@
     return { lp: lp, greedy: greedy, vars: vars };
   }
 
+  // One Bulk Training round, per type: { num, instant } when the game ordered units, { skipped }
+  // when there was nothing to queue, { error: code } when the server declined.
+  function summariseTraining(results) {
+    var out = { ordered: 0, instant: 0, roles: {} };
+    (results || []).forEach(function (x) {
+      var r = x.r || {}, d = null;
+      if (r.skipped) { out.roles[x.role] = { skipped: true }; return; }
+      try { d = typeof r.d === 'string' ? JSON.parse(r.d) : r.d; } catch (e) {}
+      if (r.s !== 0 || !d || d.num == null) { out.roles[x.role] = { error: r.s == null ? -1 : r.s }; return; }
+      var inst = d.finishNowNum || 0;
+      out.roles[x.role] = { num: d.num, instant: inst };
+      out.ordered += d.num; out.instant += inst;
+    });
+    return out;
+  }
+
+  // Refill goes round again (merge, then train) only while units arrive instantly from the free
+  // instant-training pool: merging them can free room for more. Ordinary queues take hours.
+  function refillAgain(summary, round, maxRounds) {
+    return !!summary && summary.instant > 0 && round < maxRounds;
+  }
+
   // Gold a Bulk Training fill would cost: open queue places (5 per building) in each type's
   // highest-level set, which is the set the game trains, priced at the buildable unit cost.
   var QUEUE = 5;
@@ -821,7 +843,8 @@
     GROUP: GROUP, deleteCandidates: deleteCandidates, buffValue: buffValue, bestTrainingSkin: bestTrainingSkin, occupiedCells: occupiedCells, freeSites: freeSites,
     buildSeaSlotsLP: buildSeaSlotsLP, decodeSeaSlots: decodeSeaSlots, buildingSites: buildingSites, fitToGold: fitToGold,
     extraTrainingBuildings: extraTrainingBuildings, mergeablePairs: mergeablePairs, trainEstimate: trainEstimate, buildingCounts: buildingCounts,
-    crossLocationStores: crossLocationStores, splitDeletable: splitDeletable, navyFit: navyFit, holeSites: holeSites
+    crossLocationStores: crossLocationStores, splitDeletable: splitDeletable, navyFit: navyFit, holeSites: holeSites,
+    summariseTraining: summariseTraining, refillAgain: refillAgain
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = TroopCore;
   else root.TroopCore = TroopCore;

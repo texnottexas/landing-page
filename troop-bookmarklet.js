@@ -564,8 +564,8 @@
 
     // 4. train and refill
     var s4 = sub(c, '4. Train');
-    note(s4, 'Fills every training queue (5 per building, one unit at a time) plus any instant trainings. Storage fills first. If your storage is full, plan a layout below and turn the lock on first so new units land in planned spots.');
-    var trainB = btn('Fill every training queue', true), refillB = btn('Refill: merge everything, then fill every queue'), s4out = el('div', 'display:flex;flex-direction:column;gap:6px;');
+    note(s4, 'Fills every training queue (5 per building, one unit at a time). The game also spends your free instant trainings, and those units arrive at once. Refill merges them and trains again, round after round, until no room is left. Storage fills first; if it is full, plan a layout below and turn the lock on first so new units land in planned spots.');
+    var trainB = btn('Fill every training queue', true), refillB = btn('Refill: merge, train, repeat until full'), s4out = el('div', 'display:flex;flex-direction:column;gap:6px;');
     var s4say = statusLine(s4out);
     s4.appendChild(trainB); s4.appendChild(refillB); s4.appendChild(s4out); state.controls.push(trainB, refillB);
     function trainSteps() {
@@ -573,16 +573,43 @@
       state.snap.buildings.forEach(function (b) { if (GROUP_ROLE[b.group]) have[GROUP_ROLE[b.group]] = true; });
       return ['army', 'air', 'navy'].filter(function (k) { return have[k]; }).map(function (k) { return { kind: 'train', role: k, tolerant: true }; });
     }
-    function train() {
+    // one Bulk Training round; done(ok, summary, text)
+    function trainOnce(label, done) {
       var steps = trainSteps();
-      s4say('');
-      runWithProgress(s4out, steps, 'Training', function (res, resp) {
-        var lines = steps.map(function (st, i) {
-          var r = resp[i] || {}, d = null; try { d = typeof r.d === 'string' ? JSON.parse(r.d) : r.d; } catch (e) {}
-          if (r.skipped) return ROLE_NAME[st.role] + ': nothing to queue (queues full or no space)';
-          return ROLE_NAME[st.role] + ': ' + (d && d.num != null ? d.num + ' ordered, ' + (d.finishNowNum || 0) + ' done instantly' : 'no answer');
+      if (!steps.length) { done(true, { ordered: 0, instant: 0, roles: {} }, 'No training buildings yet.'); return; }
+      runWithProgress(s4out, steps, label, function (res, resp) {
+        var sum = TC.summariseTraining(steps.map(function (st, i) { return { role: st.role, r: resp[i] }; }));
+        var lines = steps.filter(function (st) { return sum.roles[st.role]; }).map(function (st) {
+          var x = sum.roles[st.role], name = ROLE_NAME[st.role] + ': ';
+          if (x.skipped) return name + 'nothing to queue (queues full or no space)';
+          if (x.error != null) return name + 'declined by the game (code ' + x.error + ')';
+          return name + x.num + ' ordered, ' + x.instant + ' done instantly';
         });
-        s4say((res.ok ? '' : res.error + ' ') + lines.join('. ') + '.', res.ok ? '#3fb950' : '#d29922');
+        done(res.ok, sum, (res.ok ? '' : res.error + ' ') + lines.join('. ') + '.');
+      });
+    }
+    function train() {
+      s4say('');
+      trainOnce('Training', function (ok, sum, text) { s4say(text, ok ? '#3fb950' : '#d29922'); });
+    }
+    // Refill: merge, train, and go round again while units arrive instantly, so no room is left empty
+    var MAX_ROUNDS = 8;
+    function refill(round, tot) {
+      mergePasses(s4out, function (res) {
+        paintCleanup();
+        if (!res.ok) { s4say(res.error, '#d29922'); return; }
+        tot.merged += res.merged || 0;
+        trainOnce('Training (round ' + round + ')', function (ok, sum, text) {
+          tot.ordered += sum.ordered; tot.instant += sum.instant;
+          if (ok && TC.refillAgain(sum, round, MAX_ROUNDS)) {
+            s4say('Round ' + round + ': ' + sum.instant + ' unit(s) arrived instantly. Merging them and training again...', '#e6edf3');
+            refill(round + 1, tot); return;
+          }
+          var occ = TC.occupiedCells(state.region);
+          var land = state.region.landCells.filter(function (c) { return !occ[c]; }).length, ships = TC.navyFit(state.region).greedy;
+          var room = land || ships ? ' ' + land + ' land tile(s) are still free' + (ships ? ' and ' + ships + ' ship(s) would still fit on the sea' : '') + '. Use Layout below to pack them, then Refill again.' : ' No free spots left on the base.';
+          s4say((ok ? 'Done after ' + round + ' round(s): ' : '') + text + ' In total ' + tot.ordered + ' ordered (' + tot.instant + ' instantly), ' + tot.merged + ' fewer units from merging.' + room, ok ? '#3fb950' : '#d29922');
+        });
       });
     }
     // the confirm names the spend, worked out from a fresh read of the queues
@@ -594,9 +621,8 @@
       };
     }
     confirmTap(trainB, trainCost('Tap again to '), train);
-    confirmTap(refillB, trainCost('Tap again to merge everything, then '), function () {
-      s4say('');
-      mergePasses(s4out, function (res) { paintCleanup(); if (res.ok) train(); else s4say(res.error, '#d29922'); });
+    confirmTap(refillB, trainCost('Tap again to merge, repeat while units arrive instantly, and '), function () {
+      s4say(''); refill(1, { ordered: 0, instant: 0, merged: 0 });
     });
   }
 

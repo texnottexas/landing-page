@@ -192,3 +192,22 @@ test('holeSites finds free 2x2 holes anywhere on the land, not just on the ideal
   const avoid = {}; holes.forEach((id) => { const [x, y] = TC.fromPosId(id); TC.footprint(x, y, 2, 2).forEach((c) => { avoid[c] = true; }); });
   assert.equal(TC.holeSites(r, 1, avoid).length, 0, 'cells to avoid are never used');
 });
+
+test('summariseTraining reads Bulk Training answers per type', () => {
+  const sum = TC.summariseTraining([
+    { role: 'army', r: { s: 0, d: '{"num":9,"finishNowNum":9,"trainingNum":0}' } },
+    { role: 'navy', r: { s: 0, skipped: true } },
+    { role: 'air', r: { s: 3, d: 'common_1' } }
+  ]);
+  assert.deepEqual(sum, {
+    ordered: 9, instant: 9,
+    roles: { army: { num: 9, instant: 9 }, navy: { skipped: true }, air: { error: 3 } }
+  });
+});
+
+test('refillAgain repeats only while units keep arriving instantly, and never past the round limit', () => {
+  assert.equal(TC.refillAgain({ ordered: 9, instant: 9 }, 1, 8), true);
+  assert.equal(TC.refillAgain({ ordered: 20, instant: 0 }, 1, 8), false, 'normal queues take hours: stop');
+  assert.equal(TC.refillAgain({ ordered: 0, instant: 0 }, 1, 8), false, 'no room: stop');
+  assert.equal(TC.refillAgain({ ordered: 5, instant: 5 }, 8, 8), false, 'round limit');
+});
