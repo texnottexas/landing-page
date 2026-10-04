@@ -555,7 +555,9 @@
       out.textContent = '';
       var extras = TC.extraTrainingBuildings(state.snap.buildings.filter(function (b) { return GROUP_ROLE[b.group]; }));
       var busy = state.snap.buildings.filter(function (b) { return GROUP_ROLE[b.group] && b.busy; }).length;
-      if (!extras.length) note(out, 'No extra training buildings. You have at most one of each type' + (busy ? ' (busy ones are kept until they finish)' : '') + '.', '#3fb950');
+      var total = state.snap.buildings.filter(function (b) { return GROUP_ROLE[b.group]; }).length;
+      if (!extras.length && busy && total > 3) note(out, busy + ' of your ' + total + ' training buildings are still training. Buildings that are training are never deleted, so come back once their queues finish.', '#d29922');
+      else if (!extras.length) note(out, 'No extra training buildings. You have at most one of each type.', '#3fb950');
       else {
         var by = {}; extras.forEach(function (b) { by[b.group] = (by[b.group] || 0) + 1; });
         note(out, 'Extra training buildings: ' + Object.keys(by).map(function (g) { return bld(Number(g), by[g]); }).join(', ') + '. One of each type is kept' + (busy ? ', and buildings still training are kept until they finish' : '') + '.', '#e6edf3');
