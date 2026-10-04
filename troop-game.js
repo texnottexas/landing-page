@@ -337,6 +337,7 @@
       var settled = false, timer = null;
       function done(r) { if (settled) return; settled = true; clearTimeout(timer); resolve(r); }
       function go() {
+        if (settled) return;        // confirmed after we already reported a failure: change nothing
         send(RID.USE_CASTLE_FACE, { skinId: id, special: 0 }).then(function (r) {
           var d = parseD(r);
           if (r.s === 0 && d && d.ret === 0) { UD().UsingCastleFace = id; done({ s: 0 }); }

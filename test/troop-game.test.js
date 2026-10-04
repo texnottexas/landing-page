@@ -265,3 +265,16 @@ test('Bulk Training trains from the highest-level set when building levels are m
   assert.equal((await TG.runSteps([{ kind: 'train', role: 'army' }], {})).ok, true);
   assert.equal(usedRow, 104100);
 });
+
+test('a skin confirmation that arrives after the timeout does not switch the skin', async () => {
+  let later;
+  const ac = { ActivityController: { Instance: { tryOffCastleCos: (cb) => { later = cb; } } } };
+  const g = fakeGame({ mods: { ActivityController: ac }, respond: () => ({ s: 0, d: '{"ret":0}' }) });
+  const TG = loadFresh(g.globals); TG.config.paceMs = [0, 0]; TG.config.skinConfirmMs = 30;
+  const r = await TG.runSteps([{ kind: 'equipSkin', id: 1795000 }], {});
+  assert.equal(r.ok, false);
+  later();                                   // the player confirms the game's dialog too late
+  await new Promise((res) => setTimeout(res, 20));
+  assert.deepEqual(g.sent, []);
+  assert.equal(g.UD.UsingCastleFace, undefined);
+});
