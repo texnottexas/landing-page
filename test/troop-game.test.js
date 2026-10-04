@@ -252,3 +252,16 @@ test('deleting keeps the long pace (only building was sped up)', async () => {
   await TG.runSteps([{ kind: 'deleteBuilding', id: 'b1' }, { kind: 'deleteBuilding', id: 'b2' }], {});
   assert.ok(Date.now() - t >= 280, 'two building deletes took ' + (Date.now() - t) + ' ms');
 });
+
+test('Bulk Training trains from the highest-level set when building levels are mixed', async () => {
+  let net, usedRow = null;
+  const shortcut = { MainUiShortcutUtils: { _instance: { batchTraining: (row) => { usedRow = row.id; net.send(180, { ids: ['a1'], posList: [] }); } } } };
+  const gameTools = { default: { wareHouseDirty() {}, wareHouseSpaceCache: {}, getWareHouseEmptySpace: () => 50 } };
+  const g = fakeGame({ groups: { 1040: [{ BuildingId: 104095 }, { BuildingId: 104100 }, { BuildingId: 104098 }] },
+    tables: { building: { 104095: { id: 104095, level: 95 }, 104100: { id: 104100, level: 100 }, 104098: { id: 104098, level: 98 } } },
+    mods: { MainUiShortcutUtils: shortcut, GameTools: gameTools }, respond: () => ({ s: 0, d: '{"num":5}' }) });
+  net = g.globals.__require('NetMgr').NET;
+  const TG = loadFresh(g.globals); TG.config.paceMs = [0, 0];
+  assert.equal((await TG.runSteps([{ kind: 'train', role: 'army' }], {})).ok, true);
+  assert.equal(usedRow, 104100);
+});

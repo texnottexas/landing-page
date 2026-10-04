@@ -356,7 +356,14 @@
     GT.wareHouseDirty();
     if (GT.wareHouseSpaceCache) delete GT.wareHouseSpaceCache[ARMY_TYPE[role]];
     var empty = GT.getWareHouseEmptySpace(ARMY_TYPE[role]) || 0;
-    var row = TABLE().getTableDataById('building', String(blds[0].BuildingId));
+    // The game's Bulk Training fills only the buildings at the level of the row it is given, so
+    // hand it the highest level: older, lower-level buildings would train lower-level units.
+    var T = TABLE(), row = null;
+    blds.forEach(function (b) {
+      var r = T.getTableDataById('building', String(b.BuildingId));
+      if (r && (!row || (r.level || 0) > (row.level || 0))) row = r;
+    });
+    if (!row) return Promise.resolve({ s: -5, msg: 'Bulk Training could not start.' });
     var net = NET(), orig = net.send, sent = false;
     return new Promise(function (resolve) {
       var settled = false, timer = null;
