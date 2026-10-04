@@ -189,3 +189,16 @@ test('rewards show their item icons: from the item ids, or by name for older row
   assert.ok(at('A') >= 0);
   await ctx.close();
 });
+
+test('older rows: the three catalysts show their icons by name (Mid, Advanced, Top tier)', async () => {
+  state.maps = [
+    { id: 'c3', noticed_at: NOW - 7000, spawner: 'C', x: 3, y: 3, state: 'collected', reward: 'Top-tier Catalyst ×1', reward_items: '', reason: '', arrive_at: 0 },
+    { id: 'c2', noticed_at: NOW - 8000, spawner: 'B', x: 2, y: 2, state: 'collected', reward: 'Advanced-tier Catalyst ×1', reward_items: '', reason: '', arrive_at: 0 },
+    { id: 'c1', noticed_at: NOW - 9000, spawner: 'A', x: 1, y: 1, state: 'collected', reward: 'Mid-tier Catalyst ×1', reward_items: '', reason: '', arrive_at: 0 }
+  ];
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('li.map');
+  const icons = await page.$$eval('li.map', (lis) => lis.map((li) => Array.from(li.querySelectorAll('img.ri')).map((i) => i.getAttribute('src').split('/').pop())));
+  assert.deepEqual(icons, [['image__item__item_820017.png'], ['image__item__item_820016.png'], ['image__item__item_820015.png']]);
+  await ctx.close();
+});
