@@ -51,6 +51,11 @@
   #dash-players button { min-height: 40px; padding: 0 16px; border-radius: 10px; border: 0; background: transparent; color: var(--muted); font: 600 17px/1 var(--display); letter-spacing: .02em; }
   #dash-players button[aria-pressed="true"] { background: var(--panel-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
 
+  /* period switch */
+  #dash-period { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
+  #dash-period button { min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 13px; }
+  #dash-period button[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); font-weight: 600; }
+
   .grid { display: grid; gap: 16px; }
   @media (min-width: 880px) { .grid { grid-template-columns: minmax(320px, 400px) 1fr; align-items: start; } .side { position: sticky; top: 16px; } }
   .side { display: grid; gap: 16px; }
@@ -78,6 +83,28 @@
   #dash-reconnect-msg { margin: 8px 0 0; color: var(--text); }
   .note { margin-top: 10px; font-size: 13px; color: var(--amber); }
   .note:empty { display: none; }
+
+  /* speed-ups */
+  .speed-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+  .speed-head .label { margin: 0; }
+  #dash-speed { width: 60px; height: 44px; padding: 7px 4px; border: 0; background: transparent; flex: none; }
+  #dash-speed span { display: block; position: relative; width: 52px; height: 30px; border-radius: 999px; background: var(--line); transition: background .2s; }
+  #dash-speed span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.5); transition: transform .2s; }
+  #dash-speed[aria-checked="true"] span { background: var(--green); }
+  #dash-speed[aria-checked="true"] span::after { transform: translateX(22px); background: #04130a; }
+  #dash-speed:disabled { opacity: .6; cursor: default; }
+  .speed-rule { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
+  #dash-speed-today { margin: 0 0 12px; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .speed-fields { display: grid; gap: 8px; }
+  .speed-fields label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
+  .speed-fields input { width: 110px; min-height: 40px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-variant-numeric: tabular-nums; }
+  .speed-fields input:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+  #dash-speed-save { min-height: 44px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); font: 600 16px/1 var(--display); letter-spacing: .04em; text-transform: uppercase; }
+  #dash-speed-save:hover { border-color: var(--blue); }
+  #dash-speed-msg { margin: 8px 0 0; font-size: 13px; color: var(--muted); min-height: 1em; }
+  .spd { display: inline-flex; align-items: center; gap: 4px; color: var(--amber); }
+  .spd svg { flex: none; }
+  .sub .spd { margin-left: 2px; }
 
   /* radar */
   .radar-box { position: relative; aspect-ratio: 1 / 1; border-radius: 50%; background: radial-gradient(circle at 50% 50%, #0f1c17 0%, #0b1310 60%, #0a0f0d 100%); border: 1px solid #1d3326; overflow: hidden; }
@@ -163,11 +190,12 @@
 
   <main id="dash-main" hidden>
     <nav id="dash-players" aria-label="Account"></nav>
+    <nav id="dash-period" aria-label="Period"></nav>
     <div class="grid">
       <div class="side">
         <section class="panel status" id="dash-status-panel" aria-live="polite">
           <div class="status-row"><span class="beacon" aria-hidden="true"></span><span id="dash-status" translate="no"></span></div>
-          <div class="meta"><span id="dash-last" translate="no"></span><span id="dash-left" translate="no"></span></div>
+          <div class="meta"><span id="dash-last" translate="no"></span><span id="dash-left" translate="no"></span><span id="dash-auto" translate="no" hidden></span></div>
           <p id="dash-totals" translate="no"></p>
           <div class="note" id="dash-note"></div>
           <div class="reconnect" id="dash-reconnect-box" hidden>
@@ -175,6 +203,18 @@
             <button id="dash-reconnect" type="button">Reconnect home game</button>
             <p id="dash-reconnect-msg" role="status"></p>
           </div>
+        </section>
+        <section class="panel" id="dash-speed-panel">
+          <div class="speed-head"><h2 class="label">Speed-ups</h2><button id="dash-speed" type="button" role="switch" aria-checked="false" aria-label="Speed-ups"><span></span></button></div>
+          <p class="speed-rule">Uses an Advanced March Speed-up on maps more than 20 s away, two when over 30 s. From noon to 2 PM Eastern (<span id="dash-boost">your time</span>) it also uses one over 15 s. From the bag first, then bought at the shop price.</p>
+          <p id="dash-speed-today" translate="no"></p>
+          <div class="speed-fields">
+            <label>Keep at least <input id="dash-reserve" inputmode="numeric" autocomplete="off" aria-label="Gem reserve"> gems</label>
+            <label>Spend at most <input id="dash-cap" inputmode="numeric" autocomplete="off" aria-label="Daily gem cap"> gems a day</label>
+            <button id="dash-speed-save" type="button">Save</button>
+          </div>
+          <p id="dash-speed-msg" role="status"></p>
+          <p class="note" id="dash-speed-note"></p>
         </section>
         <section class="panel">
           <h2 class="label">Drop map, last 24 hours</h2>
@@ -197,7 +237,8 @@
 (function () {
   'use strict';
   var WORKER = window.__MAPC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
-  var LS_PW = 'mapc_dash_pw_v1', LS_PLAYER = 'mapc_dash_player_v1', REFRESH_MS = 30000, QUIET_MS = 180000;
+  var LS_PW = 'mapc_dash_pw_v1', LS_PLAYER = 'mapc_dash_player_v1', LS_HOURS = 'mapc_dash_hours_v1', REFRESH_MS = 30000, QUIET_MS = 180000;
+  var PERIODS = [[24, '24 h', 'Last 24 hours'], [72, '3 days', 'Last 3 days'], [168, '7 days', 'Last 7 days'], [336, '14 days', 'Last 14 days']];
   var STATE_LABEL = { collected: 'Collected', missed: 'Missed', sent: 'En route', sending: 'En route', gone: 'Not sent', failed: 'Failed', skipped: 'Skipped', queued: 'Queued' };
   var STATE_CLASS = { collected: 'collected', missed: 'missed', sent: 'enroute', sending: 'enroute', gone: 'notsent', failed: 'failed', skipped: 'skipped', queued: 'queued' };
   var DOT = { collected: '#3fb950', missed: '#d29922', sent: '#58a6ff', sending: '#58a6ff', gone: '#f85149', failed: '#f85149', skipped: '#5b6878', queued: '#5b6878' };
@@ -209,7 +250,7 @@
   var REWARD_IDS = { 'Blessing Key': 79200004, 'Blessing Chest': 79200003, 'Titan Gear Random Material Chest': 62908, 'Titan Gear Material Choice Chest': 62910,
     'Mid-tier Catalyst': 820015, 'Advanced-tier Catalyst': 820016, 'Top-tier Catalyst': 820017 };
   var $ = function (id) { return document.getElementById(id); };
-  var data = null, filter = 'all', timer = null, busy = false, skew = 0, reconnectAt = 0;
+  var data = null, filter = 'all', timer = null, busy = false, again = false, skew = 0, reconnectAt = 0, speedBusy = false, fieldsEdited = false;
 
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
@@ -224,16 +265,27 @@
   }
   function inFor(ms) { var s = Math.max(0, Math.round(ms / 1000)); return Math.floor(s / 60) + 'm ' + (s % 60) + 's'; }
   function clock(ms) { return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+  function num(x) { return Number(x || 0).toLocaleString('en-US'); }
+  function hours() { var h = Number(lsGet(LS_HOURS)); return PERIODS.some(function (p) { return p[0] === h; }) ? h : 24; }
+  function periodLabel() { var h = hours(); return PERIODS.filter(function (p) { return p[0] === h; })[0][2]; }
+  // The game day starts at 12:00 Eastern; the same arithmetic as the worker's gameDayStart.
+  var ET_CLOCK = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  function etClock(ms) { var o = {}; ET_CLOCK.formatToParts(new Date(ms)).forEach(function (p) { o[p.type] = Number(p.value); }); return { h: o.hour % 24, mi: o.minute, s: o.second }; }
+  function lastNoonET(ms) {
+    var c = etClock(ms), t = ms - ((((c.h - 12 + 24) % 24) * 60 + c.mi) * 60 + c.s) * 1000 - (ms % 1000), h = etClock(t).h;
+    if (h === 11) t += 3600e3; else if (h === 13) t -= 3600e3;
+    return t;
+  }
 
   // ---------------------------------------------------------------- data
   function load(manual) {
     var pw = lsGet(LS_PW);
     if (!pw) { showGate(''); return; }
-    if (busy) return;
+    if (busy) { again = true; return; }
     busy = true;
     if (manual) { var b = $('dash-refresh'); b.classList.remove('spin'); void b.offsetWidth; b.classList.add('spin'); }
     var player = lsGet(LS_PLAYER);
-    fetch(WORKER + '/mapcollector/state?hours=24' + (player ? '&player=' + encodeURIComponent(player) : ''), { headers: { 'X-Map-Collector-Password': pw }, cache: 'no-store' })
+    fetch(WORKER + '/mapcollector/state?hours=' + hours() + (player ? '&player=' + encodeURIComponent(player) : ''), { headers: { 'X-Map-Collector-Password': pw }, cache: 'no-store' })
       .then(function (r) {
         if (r.status === 401) { lsSet(LS_PW, null); showGate('That password didn\'t work.'); return null; }
         if (r.status === 429) throw new Error('Too many tries. Wait 15 minutes and try again.');
@@ -247,7 +299,7 @@
         setText($('dash-note'), '');
         showMain(); render();
       }, function (e) { setText($('dash-note'), e && e.message && !/fetch|network/i.test(e.message) ? e.message : 'Can\'t reach the server right now. Retrying.'); })
-      .then(function () { busy = false; });
+      .then(function () { busy = false; if (again) { again = false; load(false); } });
   }
   function schedule() { clearInterval(timer); timer = setInterval(function () { if (document.visibilityState === 'visible') load(false); }, REFRESH_MS); }
 
@@ -269,7 +321,7 @@
   }
   function render() {
     if (!data) return;
-    renderPlayers(); renderStatus(); renderRadar(); renderSpawners(); renderFilters(); renderMaps();
+    renderPlayers(); renderPeriod(); renderStatus(); renderSpeed(); renderRadar(); renderSpawners(); renderFilters(); renderMaps();
   }
   function renderPlayers() {
     var box = $('dash-players'), ps = data.players || [];
@@ -282,6 +334,17 @@
       box.appendChild(b);
     });
   }
+  function renderPeriod() {
+    var box = $('dash-period'), h = hours();
+    if (!box.children.length) {
+      PERIODS.forEach(function (p) {
+        var b = el('button', null, p[1]); b.type = 'button'; b.setAttribute('data-h', String(p[0]));
+        b.addEventListener('click', function () { if (hours() === p[0]) return; lsSet(LS_HOURS, String(p[0])); renderPeriod(); load(true); });
+        box.appendChild(b);
+      });
+    }
+    Array.prototype.forEach.call(box.children, function (b) { b.setAttribute('aria-pressed', String(Number(b.getAttribute('data-h')) === h)); });
+  }
   function renderStatus() {
     var s = data.status, st = statusOf(s), panel = $('dash-status-panel');
     panel.style.setProperty('--tone', st[1]);
@@ -289,6 +352,9 @@
     setText($('dash-status'), st[0]);
     setText($('dash-last'), s ? 'Last report ' + ago(now() - s.last_report) : 'The collector hasn\'t reported yet');
     setText($('dash-left'), s && s.claims_left != null ? s.claims_left + ' claims left' : '');
+    var auto = $('dash-auto'), autoOn = !!(s && s.state === 'running' && s.connected === 0 && s.auto_reconnect_at > now());
+    auto.hidden = !autoOn;
+    setText(auto, autoOn ? 'Reconnects by itself at ' + clock(s.auto_reconnect_at) : '');
     var kicked = !!(s && s.state === 'running' && s.connected === 0 && s.kicked);
     $('dash-reconnect-box').hidden = !kicked;
     if (kicked) {
@@ -299,17 +365,47 @@
     var t = data.totals || {}, p = $('dash-totals');
     p.textContent = '';
     var spawners = (data.bySpawner || []).length;
-    var parts = [['Last 24 hours: ', null], [t.maps || 0, ''], [' maps from ' + spawners + (spawners === 1 ? ' spawner. ' : ' spawners. '), null],
+    var parts = [[periodLabel() + ': ', null], [t.maps || 0, ''], [' maps from ' + spawners + (spawners === 1 ? ' spawner. ' : ' spawners. '), null],
       [t.collected || 0, 'g'], [' collected, ', null], [t.missed || 0, 'a'], [' missed, ', null], [t.enRoute || 0, 'b'], [' en route, ', null], [t.notSent || 0, 'r'], [' not sent.', null]];
     parts.forEach(function (x) { p.appendChild(x[1] === null ? document.createTextNode(x[0]) : el('b', x[1], String(x[0]))); });
   }
+  function renderSpeed() {
+    var st = data.settings || { speedOn: false, gemReserve: 10000, gemCap: 1500 }, today = data.today || { speedups: 0, gems: 0 }, s = data.status;
+    var sw = $('dash-speed');
+    if (!speedBusy) sw.setAttribute('aria-checked', String(!!st.speedOn));
+    setText($('dash-speed-today'), 'Today: ' + today.speedups + (today.speedups === 1 ? ' speed-up, ' : ' speed-ups, ') + num(today.gems) + ' of ' + num(st.gemCap) + ' gems');
+    // a value being typed (or typed and not saved yet) is never overwritten by a refresh
+    if (!fieldsEdited) [['dash-reserve', st.gemReserve], ['dash-cap', st.gemCap]].forEach(function (f) { $(f[0]).value = String(f[1]); });
+    var n = s && s.speed_note ? String(s.speed_note) : '';
+    setText($('dash-speed-note'), !n ? '' : /^Speed-ups off/.test(n) ? n : 'Last skipped speed-up: ' + n);
+    var start = lastNoonET(now());
+    if (now() > start + 2 * 3600e3) start = lastNoonET(start + 25 * 3600e3);
+    setText($('dash-boost'), clock(start) + ' to ' + clock(start + 2 * 3600e3) + ' your time');
+  }
+  function postSettings(patch) {
+    var pw = lsGet(LS_PW);
+    return fetch(WORKER + '/mapcollector/settings', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Map-Collector-Password': pw || '' },
+      body: JSON.stringify(Object.assign({ player: data.player }, patch)) })
+      .then(function (r) { if (!r.ok) throw new Error('bad'); return r.json(); })
+      .then(function (j) { if (j && j.settings) data.settings = j.settings; });
+  }
   function renderRadar() {
-    var box = $('dash-radar'), maps = (data.maps || []).filter(function (m) { return m.state !== 'skipped'; });
+    var since = now() - 864e5;                            // the radar always shows the last 24 hours, whatever the period
+    var box = $('dash-radar'), maps = (data.maps || []).filter(function (m) { return m.state !== 'skipped' && m.noticed_at >= since; });
     box.classList.toggle('idle', !statusOf(data.status)[2]);
     box.textContent = '';
     var NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg');
     svg.setAttribute('viewBox', '0 0 200 200'); svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', 'Where recent maps dropped');
     function add(tag, attrs, parent) { var n = document.createElementNS(NS, tag); for (var k in attrs) n.setAttribute(k, attrs[k]); (parent || svg).appendChild(n); return n; }
+    // depth: a lit gradient per colour, a darker rim, a halo in the radar's own colour and a soft shadow
+    var defs = add('defs', {}), made = {};
+    var shadow = add('filter', { id: 'rdShadow', x: '-60%', y: '-60%', width: '220%', height: '220%' }, defs);
+    add('feDropShadow', { dx: 0, dy: 0.6, stdDeviation: 0.6, 'flood-color': '#000', 'flood-opacity': 0.7 }, shadow);
+    function grad(hex) {
+      var id = 'rg' + hex.slice(1);
+      if (!made[id]) { made[id] = 1; var g = add('radialGradient', { id: id, cx: '35%', cy: '35%', r: '70%' }, defs); add('stop', { offset: '0%', 'stop-color': mix(hex, '#ffffff', 0.45) }, g); add('stop', { offset: '100%', 'stop-color': hex }, g); }
+      return 'url(#' + id + ')';
+    }
     [30, 60, 90].forEach(function (r) { add('circle', { cx: 100, cy: 100, r: r, fill: 'none', stroke: '#1f3a2a', 'stroke-width': .8 }); });
     add('path', { d: 'M100 6V194M6 100H194', stroke: '#1a3024', 'stroke-width': .8 });
     var sweep = add('g', { 'class': 'sweep' });
@@ -323,11 +419,29 @@
     maps.slice().reverse().forEach(function (m) {
       var px = 100 + (m.x - cx) * k, py = 100 + (m.y - cy) * k;
       if (Math.hypot(px - 100, py - 100) > 92) return;
-      var g = add('g', {});
-      var dot = add('circle', { cx: px.toFixed(1), cy: py.toFixed(1), r: m.state === 'collected' ? 3.6 : 3, fill: DOT[m.state] || '#5b6878', 'fill-opacity': m.state === 'sent' ? .35 : .9, stroke: m.state === 'sent' ? DOT.sent : 'none', 'stroke-width': 1.2 }, g);
+      var g = add('g', {}), col = DOT[m.state] || '#5b6878', r = m.state === 'collected' ? 4.2 : 3.6, dx = px.toFixed(1), dy = py.toFixed(1);
+      add('circle', { cx: dx, cy: dy, r: r + 1.2, fill: '#0a0f0d' }, g);
+      var dot = add('circle', m.state === 'sent' || m.state === 'sending'
+        ? { 'class': 'dot', cx: dx, cy: dy, r: r, fill: 'rgba(88,166,255,.18)', stroke: DOT.sent, 'stroke-width': 1.3, filter: 'url(#rdShadow)' }
+        : { 'class': 'dot', cx: dx, cy: dy, r: r, fill: grad(col), stroke: mix(col, '#000000', 0.4), 'stroke-width': 0.9, filter: 'url(#rdShadow)' }, g);
       var tt = document.createElementNS(NS, 'title'); tt.textContent = m.spawner + ' (' + m.x + ', ' + m.y + '): ' + (STATE_LABEL[m.state] || m.state); dot.appendChild(tt);
     });
     box.appendChild(svg);
+  }
+  function mix(hex, toward, p) {
+    var a = parseInt(hex.slice(1), 16), b = parseInt(toward.slice(1), 16);
+    var ch = function (sh) { return Math.round(((a >> sh) & 255) * (1 - p) + ((b >> sh) & 255) * p); };
+    return '#' + ((1 << 24) + (ch(16) << 16) + (ch(8) << 8) + ch(0)).toString(16).slice(1);
+  }
+  // "2 speed-ups · 37 gems" with a small bolt, for maps that used some
+  function speedNode(m) {
+    var n = Number(m.speedups) || 0;
+    if (!n) return null;
+    var w = el('span', 'spd'), NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'), path = document.createElementNS(NS, 'path');
+    svg.setAttribute('width', '13'); svg.setAttribute('height', '13'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+    path.setAttribute('d', 'M13 2 3 14h7l-1 8 10-12h-7z'); path.setAttribute('fill', '#d29922'); svg.appendChild(path); w.appendChild(svg);
+    w.appendChild(document.createTextNode(n + (n === 1 ? ' speed-up' : ' speed-ups') + (m.gems ? ' · ' + num(m.gems) + ' gems' : '')));
+    return w;
   }
   function renderSpawners() {
     var tb = $('dash-spawners'); tb.textContent = '';
@@ -384,22 +498,27 @@
   function renderMaps() {
     var ul = $('dash-maps'), maps = data.maps || [], t = now();
     ul.textContent = '';
-    if (!maps.length) { ul.appendChild(el('li', 'empty', 'No maps in the last 24 hours. New spawns show up here within about 15 seconds.')); return; }
+    if (!maps.length) { ul.appendChild(el('li', 'empty', 'No maps in the ' + periodLabel().toLowerCase() + '. New spawns show up here within about 15 seconds.')); return; }
+    var today = new Date(t).toDateString();
     maps.forEach(function (m) {
       var li = el('li', 'map'); li.setAttribute('data-b', bucket(m));
       var time = el('div', 't', clock(m.noticed_at)); li.appendChild(time);
+      if (new Date(m.noticed_at).toDateString() !== today) time.appendChild(el('small', null, new Date(m.noticed_at).toLocaleDateString([], { weekday: 'short' })));
       var mid = el('div'); mid.style.minWidth = '0';
       mid.appendChild(el('div', 'sp', m.spawner || '(no name)'));
       mid.appendChild(el('div', 'xy', 'X ' + m.x + ' · Y ' + m.y));
       li.appendChild(mid);
       li.appendChild(el('span', 'chip ' + (STATE_CLASS[m.state] || 'queued'), STATE_LABEL[m.state] || m.state));
       var sub = '';
-      if (m.state === 'collected') { li.appendChild(rewardNode(m)); ul.appendChild(li); return; }
+      var spd = speedNode(m);
+      if (m.state === 'collected') { var rb = rewardNode(m); if (spd) rb.appendChild(spd); li.appendChild(rb); ul.appendChild(li); return; }
       if ((m.state === 'sent' || m.state === 'sending') && m.arrive_at) sub = m.arrive_at > t ? 'arrives in ' + inFor(m.arrive_at - t) : 'arriving now';
       else if (m.reason) sub = m.reason;
-      li.appendChild(el('div', 'sub', sub));
+      var subEl = el('div', 'sub', sub); if (spd) { if (sub) subEl.appendChild(document.createTextNode(' ')); subEl.appendChild(spd); }
+      li.appendChild(subEl);
       ul.appendChild(li);
     });
+    if (data.truncated) { var tl = el('li', 'empty', 'Showing the newest 1,000 maps.'); tl.id = 'dash-trunc'; ul.appendChild(tl); }
     applyFilter();
   }
   function applyFilter() {
@@ -427,6 +546,25 @@
         setTimeout(function () { load(false); }, 25000);
       })
       .catch(function (e) { reconnectAt = 0; btn.disabled = false; setText($('dash-reconnect-msg'), e && e.message && !/fetch/i.test(e.message) ? e.message : 'Could not reach the server. Try again.'); });
+  });
+  $('dash-speed').addEventListener('click', function () {
+    if (!data || speedBusy) return;
+    var sw = $('dash-speed'), on = sw.getAttribute('aria-checked') === 'true';
+    speedBusy = true; sw.disabled = true; sw.setAttribute('aria-checked', String(!on)); setText($('dash-speed-msg'), '');
+    postSettings({ speedOn: !on })
+      .then(function () { setText($('dash-speed-msg'), !on ? 'Speed-ups on. The collector follows within a report or two.' : 'Speed-ups off.'); },
+        function () { sw.setAttribute('aria-checked', String(on)); setText($('dash-speed-msg'), 'Could not save. Try again.'); })
+      .then(function () { speedBusy = false; sw.disabled = false; renderSpeed(); });
+  });
+  ['dash-reserve', 'dash-cap'].forEach(function (id) { $(id).addEventListener('input', function () { fieldsEdited = true; }); });
+  $('dash-speed-save').addEventListener('click', function () {
+    if (!data) return;
+    var r = $('dash-reserve').value.trim(), c = $('dash-cap').value.trim();
+    if (!/^\d{1,8}$/.test(r) || !/^\d{1,7}$/.test(c) || Number(r) > 10000000 || Number(c) > 1000000) { setText($('dash-speed-msg'), 'Use whole numbers of gems.'); return; }
+    setText($('dash-speed-msg'), 'Saving...');
+    postSettings({ gemReserve: Number(r), gemCap: Number(c) })
+      .then(function () { fieldsEdited = false; renderSpeed(); setText($('dash-speed-msg'), 'Saved.'); },
+        function () { setText($('dash-speed-msg'), 'Could not save. Try again.'); });
   });
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') load(false); });
   setInterval(function () { if (data && !$('dash-main').hidden) { renderStatus(); } }, 1000);

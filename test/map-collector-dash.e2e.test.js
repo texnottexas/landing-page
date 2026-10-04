@@ -10,7 +10,7 @@ const { chromium } = require('playwright');
 
 const PAGE = path.join(__dirname, '..', 'pages', 'map-collector.html');
 const TEX = 'd847a198622a518d', REX = 'c3c6f3200a4ec1fb';
-let server, base, browser, state, asked, commands;
+let server, base, browser, state, asked, commands, posted, seenHours;
 const NOW = Date.now();
 const S = () => ({ ok: true, now: NOW, window: { hours: 24, since: NOW - 864e5 },
   players: [{ siteKey: TEX, name: 'Tex' }, { siteKey: REX, name: 'Rеx' }], player: TEX,
@@ -22,7 +22,8 @@ const S = () => ({ ok: true, now: NOW, window: { hours: 24, since: NOW - 864e5 }
     { id: '2', noticed_at: NOW - 50000, spawner: 'Rеx', x: 1, y: 2, state: 'sent', reward: '', reason: '', arrive_at: NOW + 95000 },
     { id: '3', noticed_at: NOW - 40000, spawner: 'A', x: 3, y: 4, state: 'missed', reward: '', reason: '', arrive_at: 0 },
     { id: '4', noticed_at: NOW - 30000, spawner: 'B', x: 5, y: 6, state: 'gone', reward: '', reason: 'Location error', arrive_at: 0 }
-  ] });
+  ],
+  settings: { speedOn: false, gemReserve: 10000, gemCap: 1500, updatedAt: 0 }, today: { speedups: 3, gems: 37 }, speedTotals: { speedups: 3, gems: 37 }, truncated: false });
 
 test.before(async () => {
   server = http.createServer((req, res) => {
@@ -35,8 +36,18 @@ test.before(async () => {
       });
       return;
     }
+    if (req.url.startsWith('/mapcollector/settings') && req.method === 'POST') {
+      let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
+        const body = JSON.parse(b); posted.push(body);
+        const { player: _p, ...patch } = body;
+        state.settings = Object.assign({}, state.settings, patch);
+        res.writeHead(200, Object.assign({ 'content-type': 'application/json' }, cors)); res.end(JSON.stringify({ ok: true, settings: state.settings }));
+      });
+      return;
+    }
     if (req.url.startsWith('/mapcollector/state')) {
       const pw = req.headers['x-map-collector-password'];
+      seenHours.push(new URL(req.url, 'http://x').searchParams.get('hours'));
       asked.push(new URL(req.url, 'http://x').searchParams.get('player'));
       const ok = pw === 'good pass';
       let out = state;
@@ -53,7 +64,7 @@ test.before(async () => {
   browser = await chromium.launch({ channel: 'chrome' });
 });
 test.after(async () => { await browser.close(); server.close(); });
-test.beforeEach(() => { state = S(); asked = []; commands = []; });
+test.beforeEach(() => { state = S(); asked = []; commands = []; posted = []; seenHours = []; });
 
 async function open(pw, extra) {
   const ctx = await browser.newContext({ viewport: { width: 375, height: 740 } });
@@ -200,5 +211,56 @@ test('older rows: the three catalysts show their icons by name (Mid, Advanced, T
   await page.waitForSelector('li.map');
   const icons = await page.$$eval('li.map', (lis) => lis.map((li) => Array.from(li.querySelectorAll('img.ri')).map((i) => i.getAttribute('src').split('/').pop())));
   assert.deepEqual(icons, [['image__item__item_820017.png'], ['image__item__item_820016.png'], ['image__item__item_820015.png']]);
+  await ctx.close();
+});
+
+test('speed-up panel: switch and gem fields post settings; today line shows use and spend', async () => {
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('#dash-speed');
+  assert.match(await page.textContent('#dash-speed-today'), /3 speed-ups.*37 of 1,500 gems/);
+  assert.equal(await page.$eval('#dash-speed', (b) => b.getAttribute('aria-checked')), 'false');
+  await page.click('#dash-speed');
+  await page.waitForFunction(() => document.querySelector('#dash-speed').getAttribute('aria-checked') === 'true');
+  assert.deepEqual(posted.at(-1), { player: TEX, speedOn: true });
+  await page.fill('#dash-reserve', '5000'); await page.fill('#dash-cap', '740'); await page.click('#dash-speed-save');
+  await page.waitForFunction(() => /Saved/.test(document.querySelector('#dash-speed-msg').textContent));
+  assert.deepEqual(posted.at(-1), { player: TEX, gemReserve: 5000, gemCap: 740 });
+  await page.fill('#dash-cap', '-4'); await page.click('#dash-speed-save');
+  assert.match(await page.textContent('#dash-speed-msg'), /whole numbers/);
+  assert.equal(posted.length, 2, 'a bad value is not sent');
+  assert.match(await page.textContent('#dash-boost'), /your time/);
+  await ctx.close();
+});
+test('rows show speed-ups; period switch asks for 7 days; radar keeps 24 h; truncated note', async () => {
+  state.maps = [
+    { id: 'n', noticed_at: NOW - 3600e3, spawner: 'A', x: 1, y: 1, state: 'collected', reward: 'Blessing Key ×1', reward_items: '79200004x1', speedups: 2, gems: 37, reason: '', arrive_at: 0 },
+    { id: 'o', noticed_at: NOW - 3 * 864e5, spawner: 'B', x: 9, y: 9, state: 'missed', reward: '', reward_items: '', speedups: 0, gems: 0, reason: '', arrive_at: 0 }];
+  state.truncated = true;
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('li.map');
+  assert.match(await page.textContent('li.map .spd'), /2 speed-ups · 37 gems/);
+  assert.equal(await page.$$eval('li.map .spd', (l) => l.length), 1, 'only the map that used some');
+  assert.equal(await page.$$eval('#dash-radar circle.dot', (c) => c.length), 1, 'only the last 24 h on the radar');
+  assert.equal(seenHours.at(-1), '24');
+  await page.click('#dash-period button[data-h="168"]');
+  await page.waitForFunction(() => document.querySelector('#dash-period button[data-h="168"]').getAttribute('aria-pressed') === 'true');
+  assert.equal(seenHours.at(-1), '168');
+  await page.waitForFunction(() => /Last 7 days/.test(document.querySelector('#dash-totals').textContent));
+  assert.ok(await page.isVisible('#dash-trunc'));
+  assert.ok(await page.$eval('li.map:nth-child(2) .t small', (e) => e.textContent.length > 0), 'an older day shows its weekday');
+  await page.reload();
+  await page.waitForSelector('li.map');
+  assert.equal(seenHours.at(-1), '168', 'the period is remembered');
+  await ctx.close();
+});
+test('auto-reconnect time shows while disconnected; radar dots have gradient fill and rim', async () => {
+  state.status = Object.assign({}, state.status, { connected: 0, kicked: 1, auto_reconnect_at: NOW + 1800e3 });
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('#dash-auto:not([hidden])');
+  assert.match(await page.textContent('#dash-auto'), /Reconnects by itself at/);
+  const dot = await page.$eval('#dash-radar circle.dot', (c) => ({ fill: c.getAttribute('fill'), stroke: c.getAttribute('stroke') }));
+  assert.match(dot.fill, /^url\(#rg/); assert.ok(dot.stroke && dot.stroke !== 'none');
+  const pos = await page.$$eval('#dash-radar circle.dot', (c) => c.map((x) => [Number(x.getAttribute('cx')), Number(x.getAttribute('cy'))]));
+  assert.ok(pos.length > 0 && pos.every((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]) && Math.hypot(p[0] - 100, p[1] - 100) <= 92), 'every dot sits inside the radar: ' + JSON.stringify(pos));
   await ctx.close();
 });
