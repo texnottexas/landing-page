@@ -172,13 +172,15 @@
   function fetchVerified(url, hash) {
     var ctl = typeof AbortController === 'function' ? new AbortController() : null;
     var timer = ctl ? setTimeout(function () { ctl.abort(); }, config.solverTimeoutMs) : null;
+    function stop() { if (timer) { clearTimeout(timer); timer = null; } }      // on every outcome, not just success
     return fetch(url, ctl ? { signal: ctl.signal } : undefined).then(function (r) {
-      if (!r.ok) throw new Error('solver download failed (' + r.status + ')');
+      if (!r.ok) { stop(); throw new Error('solver download failed (' + r.status + ')'); }
       return r.arrayBuffer();
     }, function (e) {
+      stop();
       throw (e && e.name === 'AbortError') ? new Error('solver download timed out') : e;
     }).then(function (buf) {
-      if (timer) clearTimeout(timer);
+      stop();
       return sha384b64(buf).then(function (h) {
         if (h !== hash) throw new Error('solver file did not match its pinned checksum');
         return buf;
@@ -309,7 +311,7 @@
     if (st.kind === 'mergeBase') return send(RID.ARMY_OUT_WAREHOUSE_BATCH_MERGE, { type: ARMY_TYPE[st.role] });
     if (st.kind === 'deleteStored' || st.kind === 'deleteUnit') {
       var ids = st.kind === 'deleteStored' ? st.ids : [st.id];
-      if (!safeToDelete(ids)) return { error: 'Refused to delete: a unit is outside Lv10 to Lv99, busy, or gone. Plan again.' };
+      if (!safeToDelete(ids, st.kind === 'deleteStored' ? 'stored' : 'base')) return { error: 'Refused to delete: a unit is outside Lv10 to Lv99, busy, moved or gone. Plan again.' };
       return st.kind === 'deleteStored' ? send(RID.WAREHOUSE_DELETE_ARMYS, { ids: ids.map(String) }) : send(RID.DELETE_ARMY, { id: String(st.id) });
     }
     if (st.kind === 'equipSkin') return equipSkin(st.id);
@@ -325,6 +327,9 @@
       var bi = h.getBuildingItemById(st.id);
       if (!bi || !bi.BuildingData) return { error: 'A building in the plan was not found. Plan again.' };
       if ((bi.BuildingData._curProductNum || 0) > 0) return { error: 'A training building is still training, so it was kept. Plan again.' };
+      var rec = UD().getBuildingById(st.id), grp = rec && rec.Data && rec.Data.group;
+      if (grp !== GROUP.army && grp !== GROUP.air && grp !== GROUP.navy) return { error: 'Refused to delete: that is not a training building.' };
+      if ((UD().getBuildingArrayByBuildingGroup(grp) || []).length <= 1) return { error: 'Refused to delete: it is your last one of its kind.' };
       var r3 = await send(RID.DELETE_BUILDING, { id: String(st.id) });
       if (r3.s === 0) {
         var d3 = parseD(r3);
@@ -342,16 +347,29 @@
   }
 
   // Defence in depth: whatever the plan says, only demoted Lv10-99 units that are idle can be deleted.
-  function safeToDelete(ids) {
+  // where: 'stored' (must be in storage) or 'base' (must be on the map)
+  function safeToDelete(ids, where) {
     var byId = {};
     UD().Armys.forEach(function (a) { byId[String(a._id)] = a; });
     return ids.length > 0 && ids.every(function (id) {
       var a = byId[String(id)];
-      return !!a && !!a._data && a._data.level >= 10 && a._data.level <= 99 && !a._state;
+      if (!a || !a._data || a._data.level < 10 || a._data.level > 99 || a._state) return false;
+      var onBase = String(a.warehouseId) === '0';
+      return where === 'base' ? onBase : !onBase;
     });
   }
 
+  // The game's own skin panel first checks the 4 world tiles around the base are free (tip skin_013).
+  // That needs the world tiles around the base loaded; when they are not, the server decides.
+  function skinTerrainOk() {
+    try {
+      var m = req('WorldMapController'), c = UD().WorldCoord;
+      if (!m || !m.model || typeof m.model.checkIsPlainTile4 !== 'function' || !c) return null;
+      return !!m.model.checkIsPlainTile4(c.x, c.y, true);
+    } catch (e) { return null; }
+  }
   function equipSkin(id) {
+    if (skinTerrainOk() === false) return Promise.resolve({ error: text('skin_013') });
     return new Promise(function (resolve) {
       var settled = false, timer = null;
       function done(r) { if (settled) return; settled = true; clearTimeout(timer); resolve(r); }
@@ -360,7 +378,7 @@
         send(RID.USE_CASTLE_FACE, { skinId: id, special: 0 }).then(function (r) {
           var d = parseD(r);
           if (r.s === 0 && d && d.ret === 0) { UD().UsingCastleFace = id; done({ s: 0 }); }
-          else done({ s: r.s || -4, msg: 'The game would not switch to that skin here.' });
+          else done({ s: r.s || -4, msg: 'The game would not switch to that skin (code ' + (d && d.ret != null ? d.ret : r.s) + '). ' + text('skin_013') });
         });
       }
       timer = setTimeout(function () { done({ s: -1, msg: 'The skin change was not confirmed.' }); }, config.skinConfirmMs);
@@ -384,11 +402,15 @@
       if (r && (!row || (r.level || 0) > (row.level || 0))) row = r;
     });
     if (!row) return Promise.resolve({ s: -5, msg: 'Bulk Training could not start.' });
-    var net = NET(), orig = net.send, sent = false;
+    var net = NET(), orig = net.send, hadOwn = Object.prototype.hasOwnProperty.call(net, 'send'), sent = false, wrapper = null;
+    function restore() {
+      if (net.send !== wrapper) return;                 // someone wrapped it after us: leave theirs in place
+      if (hadOwn) net.send = orig; else delete net.send;  // an inherited send goes back to being inherited
+    }
     return new Promise(function (resolve) {
       var settled = false, timer = null;
-      function done(r) { if (settled) return; settled = true; clearTimeout(timer); net.send = orig; resolve(r); }
-      net.send = function (rid, payload, ctx, cb) {
+      function done(r) { if (settled) return; settled = true; clearTimeout(timer); restore(); resolve(r); }
+      net.send = wrapper = function (rid, payload, ctx, cb) {
         if (rid !== RID.BATCH_BUILD_ORDER) return orig.apply(this, arguments);
         sent = true;
         // With every queue full the game still sends an empty batch, which the server rejects

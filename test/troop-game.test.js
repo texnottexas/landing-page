@@ -148,7 +148,8 @@ test('a training building is placed only where the game accepts it', async () =>
 
 test('deleting a training building updates the client, and a busy one is kept', async () => {
   const idle = { BuildingData: { _curProductNum: 0 } }, busy = { BuildingData: { _curProductNum: 2 } };
-  const g = fakeGame({ buildings: { b9: idle, b8: busy }, respond: () => ({ s: 0, d: JSON.stringify({ building: { id: 'b9' } }) }) });
+  const bk = { Data: { group: 1040 } };
+  const g = fakeGame({ buildings: { b9: idle, b8: busy }, whBuildings: { b9: bk, b8: bk }, groups: { 1040: [{}, {}, {}] }, respond: () => ({ s: 0, d: JSON.stringify({ building: { id: 'b9' } }) }) });
   const TG = loadFresh(g.globals); TG.config.paceMs = [0, 0];
   assert.equal((await TG.runSteps([{ kind: 'deleteBuilding', id: 'b9' }], {})).ok, true);
   assert.deepEqual(g.UD.deleted, [{ id: 'b9' }]);
@@ -261,7 +262,7 @@ test('one pace for every action: under a second apart, never several in the same
   assert.ok(fresh.paceMs[0] + fresh.paceMs[1] <= 1000, 'at most 1 s between actions');
   assert.equal(fresh.fastPaceMs, undefined, 'no separate fast pace any more');
   const idle = { BuildingData: { _curProductNum: 0 } };
-  const g = fakeGame({ buildings: { b1: idle, b2: idle } });
+  const g = fakeGame({ buildings: { b1: idle, b2: idle }, whBuildings: { b1: { Data: { group: 1040 } }, b2: { Data: { group: 1040 } } }, groups: { 1040: [{}, {}, {}] } });
   const TG = loadFresh(g.globals); TG.config.paceMs = [250, 0];
   const t = Date.now();
   await TG.runSteps([{ kind: 'deleteBuilding', id: 'b1' }, { kind: 'mergeBase', role: 'army', tolerant: true }, { kind: 'deleteBuilding', id: 'b2' }], {});
@@ -326,3 +327,94 @@ test('goHome hardening: a throw while the scene changes, a hidden or disabled bu
   assert.equal(await loadFresh(g3.globals).goHome(3000), true);
   assert.equal(pressed3, 0);
 });
+
+test('deleting checks each unit is still where the step expects it', async () => {
+  const g = fakeGame({ armys: [army('s1', 50), army('b1', 50, 0, '0')] });
+  const TG = loadFresh(g.globals); TG.config.paceMs = [0, 0];
+  let r = await TG.runSteps([{ kind: 'deleteStored', ids: ['b1'] }], {});          // b1 is on the base, not in storage
+  assert.equal(r.ok, false); assert.match(r.error, /Refused/);
+  r = await TG.runSteps([{ kind: 'deleteUnit', id: 's1' }], {});                  // s1 is in storage, not on the base
+  assert.equal(r.ok, false); assert.match(r.error, /Refused/);
+  assert.deepEqual(g.sent, []);
+});
+
+test('deleting a building refuses anything but a spare training building', async () => {
+  const idle = { BuildingData: { _curProductNum: 0 } };
+  const g = fakeGame({ buildings: { h: idle, last: idle }, whBuildings: { h: { Data: { group: 2700 } }, last: { Data: { group: 1100 } } }, groups: { 1100: [{}] } });
+  const TG = loadFresh(g.globals); TG.config.paceMs = [0, 0];
+  let r = await TG.runSteps([{ kind: 'deleteBuilding', id: 'h' }], {});
+  assert.equal(r.ok, false); assert.match(r.error, /not a training building/);
+  r = await TG.runSteps([{ kind: 'deleteBuilding', id: 'last' }], {});
+  assert.equal(r.ok, false); assert.match(r.error, /last one/);
+  assert.deepEqual(g.sent, []);
+});
+
+test("Bulk Training puts the game's send back exactly as it found it", async () => {
+  const gameTools = { default: { wareHouseDirty() {}, wareHouseSpaceCache: {}, getWareHouseEmptySpace: () => 5 } };
+  const groups = { 1040: [{ BuildingId: 104100 }] }, tables = { building: { 104100: { id: 104100, level: 100 } } };
+  function setup(batch) {
+    const proto = { send(rid, payload, ctx, cb) { setTimeout(() => cb && cb({ s: 0, d: '{"num":1}' }), 0); } };
+    const net = Object.create(proto);
+    const g = fakeGame({ groups, tables, mods: { NetMgr: { NET: net }, GameTools: gameTools, MainUiShortcutUtils: { MainUiShortcutUtils: { _instance: { batchTraining: () => batch(net) } } } } });
+    const TG = loadFresh(g.globals); TG.config.paceMs = [0, 0]; TG.config.responseTimeoutMs = 200;
+    return { TG, net, proto };
+  }
+  const own = (o) => Object.prototype.hasOwnProperty.call(o, 'send');
+  // answered: the inherited send is back, not copied onto the object
+  let x = setup((net) => net.send(180, { ids: ['a'], posList: [] }, null, null));
+  await x.TG.runSteps([{ kind: 'train', role: 'army' }], {});
+  assert.equal(own(x.net), false); assert.equal(x.net.send, x.proto.send);
+  // nothing to train (no request sent): restored too
+  x = setup(() => {});
+  await x.TG.runSteps([{ kind: 'train', role: 'army' }], {});
+  assert.equal(own(x.net), false);
+  // the game throws: restored
+  x = setup(() => { throw new Error('boom'); });
+  await x.TG.runSteps([{ kind: 'train', role: 'army', tolerant: true }], {});
+  assert.equal(own(x.net), false);
+  // another wrapper installed meanwhile is left in place
+  let other = null;
+  x = setup((net) => { const ours = net.send; other = function () { return ours.apply(this, arguments); }; net.send = other; net.send(180, { ids: ['a'], posList: [] }, null, null); });
+  await x.TG.runSteps([{ kind: 'train', role: 'army' }], {});
+  assert.equal(x.net.send, other);
+});
+
+test('a failed solver download clears its timeout timer', async () => {
+  const cleared = [], made = [];
+  const realSet = globalThis.setTimeout, realClear = globalThis.clearTimeout;
+  try {
+    globalThis.setTimeout = (fn, ms) => { const id = realSet(fn, ms); if (ms === 20000) made.push(id); return id; };
+    globalThis.clearTimeout = (id) => { cleared.push(id); return realClear(id); };
+    for (const fetchImpl of [async () => { throw new Error('offline'); }, async () => ({ ok: false, status: 503 })]) {
+      made.length = 0; cleared.length = 0;
+      const TG = loadFresh({ cc: { find: () => null }, __require: () => null, fetch: fetchImpl, AbortController: globalThis.AbortController,
+        setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout });
+      TG.config.solverTimeoutMs = 20000;
+      await assert.rejects(TG.loadHighs());
+      assert.ok(made.length >= 1, 'a download timer was set');
+      made.forEach((id) => assert.ok(cleared.includes(id), 'timer cleared after the failure'));
+    }
+  } finally { globalThis.setTimeout = realSet; globalThis.clearTimeout = realClear; }
+});
+
+test("a skin switch the game would refuse is stopped with the game's own tip", async () => {
+  const ac = { ActivityController: { Instance: { tryOffCastleCos: (cb) => cb() } } };
+  const local = { LocalManager: { LOCAL: { getText: (k) => (k === 'skin_013' ? 'Skin takes up 4 grids. Please move the city to an empty location first.' : k) } } };
+  const world = (plain) => ({ WorldMapController: { model: { checkIsPlainTile4: () => { if (plain === 'throw') throw new Error('tiles not loaded'); return plain; } } } });
+  const base = (extra) => fakeGame({ mods: Object.assign({ ActivityController: ac }, local, extra), respond: () => ({ s: 0, d: '{"ret":0}' }) });
+  // the pre-check says no: nothing is sent, the game's tip is shown
+  let g = base(world(false)); g.UD.WorldCoord = { x: 10, y: 20 };
+  let TG = loadFresh(g.globals); TG.config.paceMs = [0, 0];
+  let r = await TG.runSteps([{ kind: 'equipSkin', id: 1795000 }], {});
+  assert.equal(r.ok, false); assert.match(r.error, /move the city to an empty location/); assert.deepEqual(g.sent, []);
+  // the pre-check cannot run (world tiles not loaded): the server decides
+  g = base(world('throw')); g.UD.WorldCoord = { x: 10, y: 20 };
+  TG = loadFresh(g.globals); TG.config.paceMs = [0, 0];
+  assert.equal((await TG.runSteps([{ kind: 'equipSkin', id: 1795000 }], {})).ok, true);
+  // the server refuses: the code and the likely reason are shown
+  const g3 = fakeGame({ mods: Object.assign({ ActivityController: ac }, local), respond: () => ({ s: 0, d: '{"ret":12}' }) });
+  TG = loadFresh(g3.globals); TG.config.paceMs = [0, 0];
+  r = await TG.runSteps([{ kind: 'equipSkin', id: 1795000 }], {});
+  assert.equal(r.ok, false); assert.match(r.error, /code 12/); assert.match(r.error, /empty location/);
+});
+
