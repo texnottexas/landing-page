@@ -345,6 +345,11 @@
     var s = el('div', 'display:flex;flex-direction:column;gap:6px;border-top:1px solid #30363d;padding-top:8px;');
     s.appendChild(el('div', 'font-weight:600;', title)); parent.appendChild(s); return s;
   }
+  // a status line that replaces its previous message instead of piling up
+  function statusLine(parent) {
+    var cur = null;
+    return function (text, color) { if (cur) cur.remove(); cur = text ? note(parent, text, color) : null; };
+  }
   function fmt(n) {   // game-style big numbers: K, M, B, T, then aa, bb, cc ...
     var u = ['', 'K', 'M', 'B', 'T', 'aa', 'bb', 'cc', 'dd', 'ee', 'ff', 'gg', 'hh', 'ii', 'jj'], i = 0;
     while (Math.abs(n) >= 1000 && i < u.length - 1) { n /= 1000; i++; }
@@ -427,6 +432,7 @@
 
     // 1. merge and clean up
     var s1 = sub(c, '1. Merge and clean up'), s1info = note(s1, ''), mergeB = btn('Merge everything (free)'), delBox = el('div', 'display:flex;flex-direction:column;gap:6px;');
+    var s1say = statusLine(s1);
     s1.appendChild(mergeB); s1.appendChild(delBox); state.controls.push(mergeB);
     function paintCleanup() {
       var all = state.snap.stored.concat(state.snap.units), caps = state.snap.mergeCap;
@@ -444,11 +450,13 @@
         var stored = cand.filter(function (u) { return u.wh; }), onBase = cand.filter(function (u) { return !u.wh; }), steps = [];
         for (var i = 0; i < stored.length; i += 100) steps.push({ kind: 'deleteStored', ids: stored.slice(i, i + 100).map(function (u) { return u.id; }) });
         onBase.forEach(function (u) { steps.push({ kind: 'deleteUnit', id: u.id }); });
+        delBox.textContent = '';
         runWithProgress(delBox, steps, 'Deleting', function (res) { paintCleanup(); note(delBox, res.ok ? 'Done.' : res.error, res.ok ? '#3fb950' : '#d29922'); });
       });
     }
     confirmTap(mergeB, 'Tap again to merge everything that can merge', function () {
-      mergePasses(s1, function (res) { paintCleanup(); note(s1, res.ok ? (res.merged > 0 ? 'Merging finished: ' + res.merged + ' fewer units, more free storage.' : 'Nothing left to merge.') : res.error, res.ok ? '#3fb950' : '#d29922'); paintBuild(); });
+      s1say('');
+      mergePasses(s1, function (res) { paintCleanup(); s1say(res.ok ? (res.merged > 0 ? 'Merging finished: ' + res.merged + ' fewer units, more free storage.' : 'Nothing left to merge.') : res.error, res.ok ? '#3fb950' : '#d29922'); paintBuild(); });
     });
     paintCleanup(); state.painters.push(paintCleanup);
 
@@ -462,9 +470,9 @@
       var b = btn('Wear ' + name + ' (+' + best.value / 100 + '% training speed, now +' + best.currentValue / 100 + '%)');
       s2out.appendChild(b); state.controls.push(b);
       confirmTap(b, 'Tap again to switch your base skin', function () {
-        var prev = state.snap.skins.current;
+        // remember the skin worn before the first switch; saved first so every card can offer it at once
+        if (state.snap.uid) { try { var key = 'tp_prevSkin_' + state.snap.uid; if (!localStorage.getItem(key)) localStorage.setItem(key, String(state.snap.skins.current)); } catch (e) {} }
         runWithProgress(s2out, [{ kind: 'equipSkin', id: best.id }], 'Switching skin', function (res) {
-          if (res.ok && state.snap.uid) { try { localStorage.setItem('tp_prevSkin_' + state.snap.uid, String(prev)); } catch (e) {} }
           paintSkin(); note(s2out, res.ok ? 'Done. "When your base is full" can put your old skin back.' : res.error, res.ok ? '#3fb950' : '#d29922');
         });
       });
@@ -494,6 +502,10 @@
         }
         if (!solver || !land) { land = TC.greedyLand(r, {}) || { slots: [] }; seaSlots = []; }
         var sites = { land: TC.freeSites(r, land.slots.map(function (s) { return s.pos; }), 1), sea: TC.freeSites(r, seaSlots, 0) };
+        // plus free holes off the ideal grid (a full base's gaps rarely line up with it)
+        var gridCells = {};
+        sites.land.forEach(function (p) { var xy = TC.fromPosId(p); TC.footprint(xy[0], xy[1], 2, 2).forEach(function (c2) { gridCells[c2] = true; }); });
+        sites.land = sites.land.concat(TC.holeSites(r, 1, gridCells));
         var existing = { army: [], air: [], navy: [] };
         snap.buildings.forEach(function (b) { var role = GROUP_ROLE[b.group]; if (role) existing[role].push(b.pos); });
         var free = {};
@@ -533,7 +545,7 @@
         Object.keys(cats).forEach(function (k) { if (cats[k] === 'decoMoving') cats[k] = 'deco'; });
         ['army', 'air', 'navy'].forEach(function (k) { plan[k].forEach(function (p) { var xy = TC.fromPosId(p); TC.footprint(xy[0], xy[1], 2, 2).forEach(function (c2) { cats[c2] = 'newBld'; }); outl.push({ x: xy[0], y: xy[1], w: 2, h: 2 }); }); });
         drawMap(cv, cats, outl);
-        var go = btn('Build ' + n + ' training buildings', true); s3out.appendChild(go); state.controls.push(go);
+        var go = btn('Build ' + n + ' training building' + (n === 1 ? '' : 's'), true); s3out.appendChild(go); state.controls.push(go);
         confirmTap(go, 'Tap again to spend about ' + fmt(n * per) + ' gold', function () {
           var steps = [];
           ['army', 'air', 'navy'].forEach(function (k) {
@@ -542,7 +554,7 @@
           });
           runWithProgress(s3out, steps, 'Building', function (res) {
             go.remove();      // the plan is spent (or partly built): Find spare spots makes a fresh one
-            note(s3out, res.ok ? 'Built ' + steps.length + ' training buildings. Next: fill every training queue.' : res.error + ' Tap Find spare spots for a fresh plan.', res.ok ? '#3fb950' : '#d29922');
+            note(s3out, res.ok ? 'Built ' + steps.length + ' training building' + (steps.length === 1 ? '' : 's') + '. Next: fill every training queue.' : res.error + ' Tap Find spare spots for a fresh plan.', res.ok ? '#3fb950' : '#d29922');
           });
         });
       } catch (e) {
@@ -554,6 +566,7 @@
     var s4 = sub(c, '4. Train');
     note(s4, 'Fills every training queue (5 per building, one unit at a time) plus any instant trainings. Storage fills first. If your storage is full, plan a layout below and turn the lock on first so new units land in planned spots.');
     var trainB = btn('Fill every training queue', true), refillB = btn('Refill: merge everything, then fill every queue'), s4out = el('div', 'display:flex;flex-direction:column;gap:6px;');
+    var s4say = statusLine(s4out);
     s4.appendChild(trainB); s4.appendChild(refillB); s4.appendChild(s4out); state.controls.push(trainB, refillB);
     function trainSteps() {
       var have = {};
@@ -562,13 +575,14 @@
     }
     function train() {
       var steps = trainSteps();
+      s4say('');
       runWithProgress(s4out, steps, 'Training', function (res, resp) {
         var lines = steps.map(function (st, i) {
           var r = resp[i] || {}, d = null; try { d = typeof r.d === 'string' ? JSON.parse(r.d) : r.d; } catch (e) {}
           if (r.skipped) return ROLE_NAME[st.role] + ': nothing to queue (queues full or no space)';
           return ROLE_NAME[st.role] + ': ' + (d && d.num != null ? d.num + ' ordered, ' + (d.finishNowNum || 0) + ' done instantly' : 'no answer');
         });
-        note(s4out, (res.ok ? '' : res.error + ' ') + lines.join('. ') + '.', res.ok ? '#3fb950' : '#d29922');
+        s4say((res.ok ? '' : res.error + ' ') + lines.join('. ') + '.', res.ok ? '#3fb950' : '#d29922');
       });
     }
     // the confirm names the spend, worked out from a fresh read of the queues
@@ -581,7 +595,8 @@
     }
     confirmTap(trainB, trainCost('Tap again to '), train);
     confirmTap(refillB, trainCost('Tap again to merge everything, then '), function () {
-      mergePasses(s4out, function (res) { paintCleanup(); if (res.ok) train(); else note(s4out, res.error, '#d29922'); });
+      s4say('');
+      mergePasses(s4out, function (res) { paintCleanup(); if (res.ok) train(); else s4say(res.error, '#d29922'); });
     });
   }
 
@@ -600,9 +615,9 @@
       else {
         var by = {}; extras.forEach(function (b) { by[b.group] = (by[b.group] || 0) + 1; });
         note(out, 'Extra training buildings: ' + Object.keys(by).map(function (g) { return bld(Number(g), by[g]); }).join(', ') + '. One of each type is kept' + (busy ? ', and buildings still training are kept until they finish' : '') + '.', '#e6edf3');
-        var del = btn('Delete ' + extras.length + ' extra training buildings'); del.style.color = '#f85149'; del.style.borderColor = '#f85149';
+        var del = btn('Delete ' + extras.length + ' extra training building' + (extras.length === 1 ? '' : 's')); del.style.color = '#f85149'; del.style.borderColor = '#f85149';
         out.appendChild(del); state.controls.push(del);
-        confirmTap(del, 'Tap again to permanently delete ' + extras.length + ' buildings', function () {
+        confirmTap(del, 'Tap again to permanently delete ' + extras.length + ' building' + (extras.length === 1 ? '' : 's'), function () {
           runWithProgress(out, extras.map(function (b) { return { kind: 'deleteBuilding', id: b.id }; }), 'Deleting buildings', function (res) { paint(); note(out, res.ok ? 'Done.' : res.error, res.ok ? '#3fb950' : '#d29922'); });
         });
       }
