@@ -157,7 +157,7 @@ test('buildReport sends changed rows oldest first, capped, and ackReport advance
   for (let i = 0; i < 205; i++) { const m = { id: String(i), noticedAt: i, spawner: 'S', x: 1, y: 2, state: 'queued' }; M.touch(st, m); maps.push(m); }
   const r1 = M.buildReport(maps, st.acked, M.REPORT_MAX);
   assert.equal(r1.rows.length, 200); assert.equal(r1.rows[0].id, '0'); assert.equal(r1.upto, 200);
-  assert.deepEqual(Object.keys(r1.rows[0]).sort(), ['arriveAt', 'collectedAt', 'id', 'noticedAt', 'reason', 'reward', 'sentAt', 'spawner', 'state', 'tries', 'x', 'y']);
+  assert.deepEqual(Object.keys(r1.rows[0]).sort(), ['arriveAt', 'collectedAt', 'id', 'noticedAt', 'reason', 'reward', 'rewardItems', 'sentAt', 'spawner', 'state', 'tries', 'x', 'y']);
   M.ackReport(st, r1.upto);
   const r2 = M.buildReport(maps, st.acked, M.REPORT_MAX);
   assert.deepEqual(r2.rows.map((r) => r.id), ['200', '201', '202', '203', '204']);
@@ -242,4 +242,21 @@ test('admit: maps from one batch share one first delay, so they are claimed in n
   M.admit(maps, [n('a', 1), n('b', 2), n('c', 3)], 'Tex', 2864, 1000, delays);
   assert.deepEqual(maps.map((m) => m.retryAt), [4400, 4400, 4400]);
   assert.equal(M.pickNext(maps, 4400).map.id, 'a');
+});
+
+test('matchReward keeps the reward item ids for the dashboard icons', () => {
+  const maps = [{ id: 'a', state: 'sent', sentAt: 1, arriveAt: 10000 }];
+  M.matchReward(maps, 10000, 'Blessing Key ×1, Titan Gear Random Material Chest ×2', '79200004x1,62908x2');
+  assert.equal(maps[0].rewardItems, '79200004x1,62908x2');
+  assert.equal(M.toRow(maps[0]).rewardItems, '79200004x1,62908x2');
+  const b = [{ id: 'b', state: 'sent', sentAt: 1, arriveAt: 10000 }];
+  M.matchReward(b, 10000, 'x');
+  assert.equal(M.toRow(b[0]).rewardItems, '');
+});
+
+test('rewardItemsOf turns the game reward into the compact id list (max 10, bad entries skipped)', () => {
+  assert.equal(M.rewardItemsOf([{ itemId: 79200004, itemCount: 1 }, { itemId: 62908, itemCount: 2 }]), '79200004x1,62908x2');
+  assert.equal(M.rewardItemsOf([{ itemId: 'x', itemCount: 1 }, { itemId: 5, itemCount: 0 }, null]), '');
+  assert.equal(M.rewardItemsOf(Array.from({ length: 12 }, (_, i) => ({ itemId: i + 1, itemCount: 1 }))).split(',').length, 10);
+  assert.equal(M.rewardItemsOf(undefined), '');
 });

@@ -123,7 +123,7 @@
   // A reward names the map only by its game id; match it to the march whose arrival is closest
   // (ties: the earlier send). A reward well before every arrival means the player sped a march up:
   // give it to the earliest-scheduled march still en route.
-  function matchReward(maps, at, label) {
+  function matchReward(maps, at, label, items) {
     var best = null, bestD = Infinity, early = null;
     maps.forEach(function (m) {
       if ((m.state !== 'sent' && m.state !== 'missed') || !m.arriveAt) return;
@@ -133,7 +133,7 @@
     });
     var hit = best || early;
     if (!hit) return null;
-    hit.state = 'collected'; hit.collectedAt = at; hit.reward = label || '';
+    hit.state = 'collected'; hit.collectedAt = at; hit.reward = label || ''; hit.rewardItems = items || '';
     return hit;
   }
 
@@ -157,6 +157,13 @@
     return changed;
   }
 
+  // The game's reward items -> "79200004x1,62908x2" (item id x count, at most 10) for the dashboard's icons.
+  function rewardItemsOf(items) {
+    return (Array.isArray(items) ? items : []).filter(function (it) {
+      return it && /^\d{1,10}$/.test(String(it.itemId)) && /^\d{1,6}$/.test(String(it.itemCount)) && Number(it.itemCount) > 0;
+    }).slice(0, 10).map(function (it) { return it.itemId + 'x' + it.itemCount; }).join(',');
+  }
+
   function sweepMissed(maps, now) {
     return maps.filter(function (m) {
       if (m.state !== 'sent') return false;
@@ -168,7 +175,8 @@
 
   function toRow(m) {
     return { id: m.id, noticedAt: m.noticedAt, spawner: m.spawner, x: m.x, y: m.y, state: m.state, reason: m.reason || '',
-      sentAt: m.sentAt || 0, arriveAt: m.arriveAt || 0, collectedAt: m.collectedAt || 0, reward: m.reward || '', tries: (m.tries || 0) + (m.tooFast || 0) };
+      sentAt: m.sentAt || 0, arriveAt: m.arriveAt || 0, collectedAt: m.collectedAt || 0, reward: m.reward || '', rewardItems: m.rewardItems || '',
+      tries: (m.tries || 0) + (m.tooFast || 0) };
   }
 
   function buildReport(maps, acked, max) {
@@ -218,7 +226,7 @@
     TOO_FAST: TOO_FAST, LOCATION_ERROR: LOCATION_ERROR, HOLD_MS: HOLD_MS, MISS_AFTER_MS: MISS_AFTER_MS, MATCH_MS: MATCH_MS,
     PRIME_MS: PRIME_MS, REPORT_MAX: REPORT_MAX,
     parseNotice: parseNotice, newNotices: newNotices, newMap: newMap, admit: admit, gate: gate, touch: touch, pickNext: pickNext,
-    classifyAnswer: classifyAnswer, applyAnswer: applyAnswer, matchReward: matchReward, syncMarches: syncMarches,
+    classifyAnswer: classifyAnswer, applyAnswer: applyAnswer, matchReward: matchReward, rewardItemsOf: rewardItemsOf, syncMarches: syncMarches,
     sweepMissed: sweepMissed, toRow: toRow, buildReport: buildReport, ackReport: ackReport, summarize: summarize,
     healthOf: healthOf, pillCard: pillCard, prune: prune
   };

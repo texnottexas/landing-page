@@ -166,3 +166,26 @@ test('no reconnect button while the collector is connected', async () => {
   assert.equal(await page.isVisible('#dash-reconnect'), false);
   await ctx.close();
 });
+
+test('rewards show their item icons: from the item ids, or by name for older rows; unknown items stay text', async () => {
+  state.maps = [
+    { id: 'i3', noticed_at: NOW - 7000, spawner: 'C', x: 3, y: 3, state: 'collected', reward: 'Mystery Box ×3', reward_items: '', reason: '', arrive_at: 0 },
+    { id: 'i2', noticed_at: NOW - 8000, spawner: 'B', x: 2, y: 2, state: 'collected', reward: 'Blessing Chest ×1', reward_items: '', reason: '', arrive_at: 0 },
+    { id: 'i1', noticed_at: NOW - 9000, spawner: 'A', x: 1, y: 1, state: 'collected', reward: 'Blessing Key ×1, Titan Gear Random Material Chest ×2', reward_items: '79200004x1,62908x2', reason: '', arrive_at: 0 }
+  ];
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('li.map');
+  const icons = await page.$$eval('li.map', (lis) => lis.map((li) => Array.from(li.querySelectorAll('img.ri')).map((i) => i.getAttribute('src').split('/').pop())));
+  const byText = await page.$$eval('li.map', (lis) => lis.map((li) => li.querySelector('.sub').textContent));
+  const at = (sp) => state.maps.findIndex((m) => m.spawner === sp);
+  // the worker returns newest first: C, B, A
+  assert.deepEqual(icons[0], []);
+  assert.match(byText[0], /Mystery Box ×3/);
+  assert.deepEqual(icons[1], ['image__item__item_79200003.png']);
+  assert.match(byText[1], /Blessing Chest ×1/);
+  assert.deepEqual(icons[2], ['image__item__item_79200004.png', 'image__item__item_62908.png']);
+  assert.match(byText[2], /Blessing Key ×1.*Titan Gear Random Material Chest ×2/);
+  assert.ok(await page.$eval('img.ri', (i) => i.src.startsWith('https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/inventory-icons/')));
+  assert.ok(at('A') >= 0);
+  await ctx.close();
+});

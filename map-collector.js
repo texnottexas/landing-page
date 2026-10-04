@@ -9,7 +9,7 @@
   var C = window.MapCollectorCore;
   if (!C) { try { alert('Map Collector did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-04.3';
+  var VERSION = '2026-10-04.4';
   var WORKER = window.__MAPC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var DASH = 'https://2864tw.com/map-collector.html';
   var HOME_SERVER = 2864, CLAIM = 902, MARCH_TYPE = 143;   // RequestId.MARCH_WORLD_POINT, MarchType.Titan_Blessing_Gift
@@ -179,7 +179,8 @@
   function onReward(e) {
     if (!S.active || !S.attached) return;
     try {
-      var m = C.matchReward(S.maps, Date.now(), itemLabel(e && e.reward && e.reward.items));
+      var items = e && e.reward && e.reward.items;
+      var m = C.matchReward(S.maps, Date.now(), itemLabel(items), C.rewardItemsOf(items));
       if (m) { C.touch(S, m); save(); paint(); }
     } catch (x) {}
   }

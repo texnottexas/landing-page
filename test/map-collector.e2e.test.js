@@ -136,6 +136,7 @@ test('a reward marks the map collected with its item name and reports it', async
   }
   assert.equal(row.state, 'collected');
   assert.equal(row.reward, 'Blessing Key ×1');
+  assert.equal(row.rewardItems, '79200004x1');
   await ctx.close();
 });
 
