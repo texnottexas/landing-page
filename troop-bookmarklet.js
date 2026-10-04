@@ -79,7 +79,7 @@
   }
   function note(parent, text, color) { var n = el('div', 'color:' + (color || '#8b949e') + ';font-size:12px;line-height:1.4;', text); parent.appendChild(n); return n; }
 
-  var state = { snap: null, region: null, mode: 'units', navy: false, fillArmy: false, keepPlanes: true, rows: [], row: null, running: false, busy: false, progress: '', controls: [], painters: [] };
+  var state = { snap: null, region: null, mode: 'units', navy: false, fkboats: (function () { try { return localStorage.getItem('tp_fkboats_v1') === '1'; } catch (e) { return false; } })(), fillArmy: false, keepPlanes: true, rows: [], row: null, running: false, busy: false, progress: '', controls: [], painters: [] };
   // nothing that changes the plan can be tapped while planning or running
   function setBusy(flag) {
     state.busy = flag;
@@ -168,7 +168,7 @@
       var solver = null;
       try { await window.TroopGame.loadHighs(); solver = function (lp) { return window.TroopGame.solve(lp, 20); }; } catch (e) { solver = null; }
       status.textContent = state.mode === 'planes' ? 'Finding the most planes your land can hold, plus cheaper options...' : 'Working out the layout...';
-      var out = await window.TroopCore.planRows(state.snap, state.region, { mode: state.mode, keepPlanes: state.keepPlanes, navy: state.navy }, solver);
+      var out = await window.TroopCore.planRows(state.snap, state.region, { mode: state.mode, keepPlanes: state.keepPlanes, navy: state.navy && !state.fkboats }, solver);
       status.remove();
       state.rows = out.rows;
       if (!out.exact) note(planOut, solver ? 'The exact solver hit a problem, so this plan is near-optimal (within about 3%).' : 'The exact solver could not load, so this plan is near-optimal (within about 3%).', '#d29922');
@@ -429,6 +429,20 @@
     var TC = window.TroopCore, c = card('Rebuild after a battle');
     note(c, 'Merge demoted units, delete the ones that can never merge again, wear your best training skin, fill spare spots with training buildings and fill every training queue. Every step waits for a second tap. No speed-ups or gems are ever used.');
 
+    // fkboats mode: leave navy out of everything (no Shipyards, no navy training, no sea planning)
+    var fkRow = el('label', 'display:flex;gap:8px;align-items:center;font-size:13px;cursor:pointer;');
+    var fkBox = el('input'); fkBox.type = 'checkbox'; fkBox.checked = state.fkboats;
+    fkRow.appendChild(fkBox); fkRow.appendChild(document.createTextNode('fkboats mode: skip navy'));
+    c.appendChild(fkRow); state.controls.push(fkBox);
+    var fkNote = note(c, '', '#8b949e');
+    function paintFk() { fkNote.textContent = state.fkboats ? 'No Shipyards, no navy training and no sea planning. Your navy stays in the Dock.' : ''; fkNote.style.display = state.fkboats ? '' : 'none'; }
+    fkBox.onchange = function () {
+      state.fkboats = fkBox.checked;
+      try { localStorage.setItem('tp_fkboats_v1', state.fkboats ? '1' : '0'); } catch (e) {}
+      paintFk(); paintBuild();
+    };
+    paintFk();
+
     // 1. merge and clean up
     var s1 = sub(c, '1. Merge and clean up'), s1info = note(s1, ''), mergeB = btn('Merge everything (free)'), delBox = el('div', 'display:flex;flex-direction:column;gap:6px;');
     var s1say = statusLine(s1);
@@ -520,7 +534,7 @@
         var per = 0;
         [1040, 1050, 1100].forEach(function (g) { var b = snap.buildable[g]; if (b) per = Math.max(per, b.build_coin + 5 * b.produce_coin); });
         // size by storage plus the free base space the new units can land on
-        var occ = TC.occupiedCells(r), openQ = TC.trainEstimate(snap.buildings, snap.buildable);
+        var occ = TC.occupiedCells(r), openQ = TC.trainEstimate(snap.buildings, snap.buildable, { skipNavy: state.fkboats });
         var fit = TC.navyFit(r), seaUnits = fit.greedy;          // how many navy really fit on the sea now
         if (solver && fit.lp) {
           try {
@@ -529,7 +543,7 @@
           } catch (e) {}
         }
         var counts = TC.buildingCounts({
-          seaUnits: seaUnits,
+          seaUnits: seaUnits, skipNavy: state.fkboats,
           landSites: sites.land.length, seaSites: sites.sea.length,
           landCells: r.landCells.filter(function (c) { return !occ[c]; }).length,
           seaCells: r.seaCells.filter(function (c) { return !occ[c]; }).length,
@@ -541,6 +555,7 @@
         var n = plan.army.length + plan.air.length + plan.navy.length;
         status.remove();
         note(s3out, sites.land.length + ' spare land spot(s) and ' + sites.sea.length + ' spare sea spot(s). Free storage: ' + free.army + ' army, ' + free.air + ' planes, ' + free.navy + ' navy.', '#e6edf3');
+        if (state.fkboats) note(s3out, 'fkboats mode is on, so no Shipyards are planned.', '#8b949e');
         if (!solver) note(s3out, 'The exact solver could not load, so these spots come from the near-optimal plan.', '#d29922');
         if (n < want) note(s3out, 'Your gold covers ' + n + ' of the ' + want + ' buildings that would fit.', '#d29922');
         var floorOnly = r.landCells.filter(function (c) { return !occ[c] && r.floor[c]; }).length;
@@ -580,7 +595,7 @@
     function trainSteps() {
       var have = {};
       state.snap.buildings.forEach(function (b) { if (GROUP_ROLE[b.group]) have[GROUP_ROLE[b.group]] = true; });
-      return ['army', 'air', 'navy'].filter(function (k) { return have[k]; }).map(function (k) { return { kind: 'train', role: k, tolerant: true }; });
+      return ['army', 'air', 'navy'].filter(function (k) { return have[k] && !(k === 'navy' && state.fkboats); }).map(function (k) { return { kind: 'train', role: k, tolerant: true }; });
     }
     // one Bulk Training round; done(ok, summary, text)
     function trainOnce(label, done) {
@@ -614,7 +629,7 @@
             s4say('Round ' + round + ': ' + sum.instant + ' unit(s) arrived instantly. Merging them and training again...', '#e6edf3');
             refill(round + 1, tot); return;
           }
-          var occ = TC.occupiedCells(state.region), open = TC.trainEstimate(state.snap.buildings, state.snap.buildable).total.units;
+          var occ = TC.occupiedCells(state.region), open = TC.trainEstimate(state.snap.buildings, state.snap.buildable, { skipNavy: state.fkboats }).total.units;
           var land = state.region.landCells.filter(function (c) { return !occ[c]; }).length, ships = TC.navyFit(state.region).greedy;
           var room;
           if (!open) room = ' Every training queue is full. Run Refill again once they finish to keep filling the base.';
@@ -628,7 +643,7 @@
     function trainCost(prefix) {
       return function () {
         try { refreshSnapshot(); } catch (e) { return 'Open your base first'; }
-        var e = TC.trainEstimate(state.snap.buildings, state.snap.buildable).total;
+        var e = TC.trainEstimate(state.snap.buildings, state.snap.buildable, { skipNavy: state.fkboats }).total;
         return e.units ? prefix + 'queue up to ' + e.units + ' units for about ' + fmt(e.gold) + ' gold' : prefix + 'train (every queue looks full)';
       };
     }

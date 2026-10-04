@@ -654,7 +654,7 @@
       if (o.seaUnits != null) return Math.max(0, o.seaUnits - k.navy);
       return Math.floor(Math.max(0, o.seaCells - 4 * k.navy) * PACK_SEA / 6);
     }
-    while (k.navy < o.seaSites && q('navy') < f('navy') + seaRoom()) k.navy++;
+    while (!o.skipNavy && k.navy < o.seaSites && q('navy') < f('navy') + seaRoom()) k.navy++;   // fkboats: no Shipyards
     function landUse() { return Math.max(0, q('army') - f('army')) + 4 * Math.max(0, q('air') - f('air')); }
     function fits(t) {
       if (q(t) < f(t)) return true;                                          // storage still has room
@@ -845,10 +845,10 @@
   // Gold a Bulk Training fill would cost: open queue places (5 per building) in each type's
   // highest-level set, which is the set the game trains, priced at the buildable unit cost.
   var QUEUE = 5;
-  function trainEstimate(buildings, buildable) {
-    var out = { total: { units: 0, gold: 0 } };
+  function trainEstimate(buildings, buildable, opts) {
+    var out = { total: { units: 0, gold: 0 } }, skipNavy = !!(opts && opts.skipNavy);
     ['army', 'air', 'navy'].forEach(function (role) {
-      var g = GROUP[role], set = (buildings || []).filter(function (b) { return b.group === g; });
+      var g = GROUP[role], set = (skipNavy && role === 'navy') ? [] : (buildings || []).filter(function (b) { return b.group === g; });
       var top = set.reduce(function (m, b) { return Math.max(m, b.level || 0); }, 0), units = 0;
       set.forEach(function (b) { if ((b.level || 0) === top) units += Math.max(0, QUEUE - (b.queued || 0)); });
       var gold = units * (((buildable || {})[g] || {}).produce_coin || 0);

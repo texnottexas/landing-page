@@ -229,3 +229,17 @@ test('mergeSteps asks only where a pair can actually merge', () => {
   ]);
   assert.deepEqual(TC.mergeSteps([], [], caps), []);
 });
+
+test('fkboats: skipNavy plans no Shipyards and prices no navy training', () => {
+  const zero = { army: 0, air: 0, navy: 0 };
+  const plain = TC.buildingCounts({ landSites: 0, seaSites: 50, landCells: 0, seaCells: 0, seaUnits: 40, free: { army: 0, air: 0, navy: 100 }, open: zero });
+  assert.ok(plain.navy > 0);
+  const fk = TC.buildingCounts({ landSites: 0, seaSites: 50, landCells: 0, seaCells: 0, seaUnits: 40, free: { army: 0, air: 0, navy: 100 }, open: zero, skipNavy: true });
+  assert.equal(fk.navy, 0);
+  const buildings = [{ group: 1040, level: 100, queued: 0 }, { group: 1100, level: 100, queued: 0 }];
+  const buildable = { 1040: { produce_coin: 10 }, 1100: { produce_coin: 30 } };
+  assert.deepEqual(TC.trainEstimate(buildings, buildable).total, { units: 10, gold: 200 });
+  const e = TC.trainEstimate(buildings, buildable, { skipNavy: true });
+  assert.deepEqual(e.navy, { units: 0, gold: 0 });
+  assert.deepEqual(e.total, { units: 5, gold: 50 });
+});
