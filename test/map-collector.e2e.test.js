@@ -72,7 +72,8 @@ async function start(opts) {
     if (a.pw) localStorage.setItem('mapc_pw_v1', a.pw);
     if (a.left != null) __fake.left = a.left;
     if (a.goneMs) window.__MAPC_GONE_MS = a.goneMs;
-  }, { uid: o.uid, base, pw: o.pw, left: o.left, goneMs: o.goneMs });
+    if (a.autoMs) window.__MAPC_AUTO_MS = a.autoMs;
+  }, { uid: o.uid, base, pw: o.pw, left: o.left, goneMs: o.goneMs, autoMs: o.autoMs });
   await page.addScriptTag({ url: base + 'map-collector-core.js' });
   await page.addScriptTag({ url: base + 'map-collector.js' });
   return { ctx, page };
@@ -468,5 +469,24 @@ test('speed-ups: two quick toggles end on the last choice at the worker', async 
   while (Date.now() < until && settings.speedOn !== true) await page.waitForTimeout(200);
   assert.equal(settings.speedOn, true);
   assert.equal(await page.$eval('#mapc-speed-toggle', (b) => b.getAttribute('aria-pressed')), 'true');
+  await ctx.close();
+});
+
+test('auto-reconnect: in Unattended mode a kicked frame reloads by itself after the wait, and the time is reported', async () => {
+  const { ctx, page } = await start({ autoMs: 3000 });
+  await goUnattended(page);
+  await frameFake(page, 'w.__marker = 1; F.socket = 3; F.kickBox = true;');
+  await page.waitForFunction(() => { const w = document.getElementById('mapc-frame').contentWindow; return !!w && !!w.__fake && !w.__marker && window.__MAPC.attached === 'frame'; }, null, { timeout: 30000 });
+  assert.ok(reports.some((r) => r.body.status.connected === false && r.body.status.autoReconnectAt > 0), 'the auto-reconnect time was reported while down');
+  assert.equal(cmdSent, false, 'no dashboard command was involved');
+  await ctx.close();
+});
+test('auto-reconnect: outside Unattended mode nothing reloads and no time is reported', async () => {
+  const { ctx, page } = await start({ autoMs: 1000 });
+  await page.waitForSelector('#mapc-enroute');
+  await page.evaluate(() => { window.__marker = 1; __fake.socket = 3; });
+  await page.waitForTimeout(5000);
+  assert.equal(await page.evaluate(() => window.__marker), 1, 'the page was not reloaded');
+  assert.ok(reports.length > 0 && reports.every((r) => !r.body.status.autoReconnectAt));
   await ctx.close();
 });

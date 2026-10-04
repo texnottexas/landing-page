@@ -17,6 +17,7 @@
   var BUY = 818, USE = 920;                                 // VIP shop purchase, use an item on a march (captured live 2026-10-04)
   var REPORT_BUSY_MS = window.__MAPC_REPORT_MS || 15000, REPORT_IDLE_MS = 60000, REPORT_DOWN_MS = 20000, RETRY_MS = 60000, TICK_MS = 2000, SCAN_MS = 700;
   var ATTACH_LIMIT_MS = 90000, KICK_BOX = 'New Node/New Node/MsgBoxComponent', GONE_MS = window.__MAPC_GONE_MS || 60000;
+  var AUTO_MS = window.__MAPC_AUTO_MS || C.AUTO_RECONNECT_MS;   // Unattended mode reconnects by itself 65 min after going down
   var LS_PW = 'mapc_pw_v1', LS_STATE = 'mapc_state_v1', LS_SPEND = 'mapc_spend_v1', SEEN_SAVE = 2000;
   // The game window: this page, or in Unattended mode the game running in a frame under the card, which
   // can be reloaded to log back in while this script keeps running (a full page reload would end it).
@@ -266,6 +267,16 @@
   function tick() {
     if (!S.active) return;
     var now0 = Date.now();
+    // Unattended mode: 65 minutes after the game went down (another login, a lost connection, a failed
+    // reconnect), reload the frame by itself, exactly as the dashboard's Reconnect does; again 65 min later.
+    if (frame) {
+      if (!S.attached || !connected()) {
+        if (!S.downSince) S.downSince = now0;
+        var ar = C.autoReconnect(S.downSince, S.autoTryAt, now0, AUTO_MS);
+        S.autoAt = ar.at;
+        if (ar.due && !S.reconnecting) { S.autoTryAt = now0; reconnect(); }
+      } else { S.downSince = 0; S.autoTryAt = 0; S.autoAt = 0; }
+    }
     if (!S.attached) {                                     // reconnecting: keep reporting so the dashboard sees it
       if (now0 - S.lastAttemptAt >= REPORT_DOWN_MS) report('');
       paint(); return;
@@ -521,7 +532,10 @@
     var age = S.lastReportAt ? Math.round((Date.now() - S.lastReportAt) / 1000) : null;
     var c = C.pillCard(C.summarize(S.maps), S.left, age, health(), { on: S.speed.on });
     if (S.paused && Date.now() < S.paused.until && c.tone === 'ok') { c.foot = 'Paused: ' + S.paused.reason; c.tone = 'warn'; }
-    if (S.note && Date.now() < S.noteUntil) { c.foot = S.note; if (c.tone === 'ok' && !/^(Reconnected|Unattended mode:)/.test(S.note)) c.tone = 'warn'; }
+    if (frame && S.autoAt && !(S.attached && connected()) && !S.reconnecting) {
+      c.foot = 'Reconnects by itself at ' + new Date(S.autoAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); c.tone = 'bad';
+    }
+    else if (S.note && Date.now() < S.noteUntil) { c.foot = S.note; if (c.tone === 'ok' && !/^(Reconnected|Unattended mode:)/.test(S.note)) c.tone = 'warn'; }
     var ids = ['mapc-collected', 'mapc-missed', 'mapc-enroute', 'mapc-left', 'mapc-speed'];
     c.rows.forEach(function (r, i) { var e = document.getElementById(ids[i]), v = String(r[1]); if (e && e.textContent !== v) e.textContent = v; });
     var f = document.getElementById('mapc-foot'); if (f && f.textContent !== c.foot) f.textContent = c.foot;
