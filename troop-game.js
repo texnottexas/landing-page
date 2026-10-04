@@ -13,8 +13,7 @@
   var WH_TYPE = { army: 16, navy: 17, air: 18 }, ARMY_TYPE = { army: 101, navy: 201, air: 301 };
   var HIGHS_VER = '1.8.0';
   var config = {
-    paceMs: [2000, 1000],          // 2.0 to 3.0 s between actions
-    fastPaceMs: [500, 400],        // 0.5 to 0.9 s after each answer when placing buildings (manual tapping is faster)
+    paceMs: [500, 400],            // 0.5 to 0.9 s after each server answer: quick, but never several a second
     responseTimeoutMs: 6000,       // per request
     storeConfirmMs: 3000,          // wait for the server push that moves a stored unit off the map
     skinConfirmMs: 30000,          // the player may have to confirm removing a temporary cosmetic first
@@ -26,11 +25,7 @@
   function TABLE() { return req('TableManager').TABLE; }
   function NET() { return req('NetMgr').NET; }
   function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-  var FAST_KINDS = { build: 1 };      // deletes are irreversible, so they keep the normal pace
-  function jitter(kind) {
-    var p = FAST_KINDS[kind] ? config.fastPaceMs : config.paceMs;
-    return p[0] + Math.floor(Math.random() * p[1]);
-  }
+  function jitter() { return config.paceMs[0] + Math.floor(Math.random() * config.paceMs[1]); }
 
   function parseD(r) { try { return typeof r.d === 'string' ? JSON.parse(r.d) : r.d; } catch (e) { return null; } }
   function text(key) { try { var L = req('LocalManager'); return (L.LOCAL || L.default).getText(key); } catch (e) { return key; } }
@@ -265,7 +260,7 @@
       if (r && r.error) return { ok: false, done: i, error: r.error };
       if (hooks.onStep) hooks.onStep(i, st, r);
       if ((!r || r.s !== 0) && !st.tolerant) return { ok: false, done: i, error: (r && r.msg ? r.msg + ' ' : '') + 'The server declined step ' + (i + 1) + ' (code ' + (r ? r.s : '?') + ').' };
-      if (i < steps.length - 1) await delay(jitter(steps[i + 1].kind));
+      if (i < steps.length - 1) await delay(jitter());
     }
     return { ok: true, done: steps.length };
   }

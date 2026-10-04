@@ -211,3 +211,21 @@ test('refillAgain repeats only while units keep arriving instantly, and never pa
   assert.equal(TC.refillAgain({ ordered: 0, instant: 0 }, 1, 8), false, 'no room: stop');
   assert.equal(TC.refillAgain({ ordered: 5, instant: 5 }, 8, 8), false, 'round limit');
 });
+
+test('mergeSteps asks only where a pair can actually merge', () => {
+  const caps = { army: 101, air: 101, navy: 101 };
+  const stored = [
+    { id: 's1', armyId: 10100, type: 101, level: 100 }, { id: 's2', armyId: 10100, type: 101, level: 100 },   // army pair in storage
+    { id: 's3', armyId: 30101, type: 301, level: 101 }, { id: 's4', armyId: 30101, type: 301, level: 101 },   // at the cap: no
+    { id: 's5', armyId: 20050, type: 201, level: 50 }
+  ];
+  const units = [
+    { id: 'b1', armyId: 20050, type: 201, level: 50 }, { id: 'b2', armyId: 20050, type: 201, level: 50 },      // navy pair on the base
+    { id: 'b3', armyId: 30100, type: 301, level: 100 }, { id: 'b4', armyId: 30100, type: 301, level: 100, state: 2 } // busy partner
+  ];
+  assert.deepEqual(TC.mergeSteps(stored, units, caps), [
+    { kind: 'mergeStorage', role: 'army', tolerant: true },
+    { kind: 'mergeBase', role: 'navy', tolerant: true }
+  ]);
+  assert.deepEqual(TC.mergeSteps([], [], caps), []);
+});

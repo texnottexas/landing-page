@@ -406,8 +406,7 @@
   function mergePasses(container, done, pass, before, start, splitDone) {
     if (!pass) { try { refreshSnapshot(); } catch (e) { done({ ok: false, error: 'Open your base first.' }); return; } }
     pass = pass || 1; before = before == null ? totalUnits() : before; start = start == null ? before : start;
-    var steps = [];
-    ['army', 'air', 'navy'].forEach(function (r) { steps.push({ kind: 'mergeStorage', role: r, tolerant: true }, { kind: 'mergeBase', role: r, tolerant: true }); });
+    var steps = window.TroopCore.mergeSteps(state.snap.stored, state.snap.units, state.snap.mergeCap);   // only where a pair sits
     runWithProgress(container, steps, 'Merging (round ' + pass + ')', function (res) {
       if (!res.ok) { done(res); return; }
       (function () {

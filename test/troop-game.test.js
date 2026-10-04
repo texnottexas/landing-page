@@ -215,21 +215,6 @@ test('permanent skins (endTime -1) count as owned, expired temporary ones do not
   assert.deepEqual(TG.ownedSkinIds(faces, now), [1795000, 1853000, 1999000, 2016000]);
 });
 
-test('building uses the short pace; merges and moves keep the long one', async () => {
-  const fresh = loadFresh(fakeGame().globals).config;
-  assert.ok(fresh.fastPaceMs[0] + fresh.fastPaceMs[1] <= 1000, 'default short pace stays under a second');
-  const tables = { building: { 105100: { id: 105100, width: 2, height: 2, point_type: 1 } } };
-  const g = fakeGame({ tables });
-  const TG = loadFresh(g.globals); TG.config.paceMs = [300, 0]; TG.config.fastPaceMs = [0, 0];
-  let t = Date.now();
-  const r = await TG.runSteps([8, 10, 12].map((x) => ({ kind: 'build', buildingId: 105100, to: [x, 28] })), {});
-  assert.equal(r.ok, true);
-  assert.ok(Date.now() - t < 200, 'three builds took ' + (Date.now() - t) + ' ms');
-  t = Date.now();
-  await TG.runSteps([{ kind: 'mergeBase', role: 'army', tolerant: true }, { kind: 'mergeBase', role: 'air', tolerant: true }], {});
-  assert.ok(Date.now() - t >= 280, 'merges kept the long pace');
-});
-
 test('Bulk Training with every queue full sends an empty batch; that counts as nothing to queue', async () => {
   let net;
   const shortcut = { MainUiShortcutUtils: { _instance: { batchTraining: () => net.send(180, { ids: [], posList: [] }) } } };
@@ -242,15 +227,6 @@ test('Bulk Training with every queue full sends an empty batch; that counts as n
   const r = await TG.runSteps([{ kind: 'train', role: 'army' }], { onStep: (i, st, resp) => seen.push(resp) });
   assert.equal(r.ok, true);
   assert.equal(seen[0].skipped, true);
-});
-
-test('deleting keeps the long pace (only building was sped up)', async () => {
-  const idle = { BuildingData: { _curProductNum: 0 } };
-  const g = fakeGame({ buildings: { b1: idle, b2: idle }, whBuildings: { b1: { Data: { group: 1040 } }, b2: { Data: { group: 1040 } } } });
-  const TG = loadFresh(g.globals); TG.config.paceMs = [300, 0]; TG.config.fastPaceMs = [0, 0];
-  const t = Date.now();
-  await TG.runSteps([{ kind: 'deleteBuilding', id: 'b1' }, { kind: 'deleteBuilding', id: 'b2' }], {});
-  assert.ok(Date.now() - t >= 280, 'two building deletes took ' + (Date.now() - t) + ' ms');
 });
 
 test('Bulk Training trains from the highest-level set when building levels are mixed', async () => {
@@ -277,4 +253,18 @@ test('a skin confirmation that arrives after the timeout does not switch the ski
   await new Promise((res) => setTimeout(res, 20));
   assert.deepEqual(g.sent, []);
   assert.equal(g.UD.UsingCastleFace, undefined);
+});
+
+test('one pace for every action: under a second apart, never several in the same second', async () => {
+  const fresh = loadFresh(fakeGame().globals).config;
+  assert.ok(fresh.paceMs[0] >= 400, 'at least 0.4 s between actions');
+  assert.ok(fresh.paceMs[0] + fresh.paceMs[1] <= 1000, 'at most 1 s between actions');
+  assert.equal(fresh.fastPaceMs, undefined, 'no separate fast pace any more');
+  const idle = { BuildingData: { _curProductNum: 0 } };
+  const g = fakeGame({ buildings: { b1: idle, b2: idle } });
+  const TG = loadFresh(g.globals); TG.config.paceMs = [250, 0];
+  const t = Date.now();
+  await TG.runSteps([{ kind: 'deleteBuilding', id: 'b1' }, { kind: 'mergeBase', role: 'army', tolerant: true }, { kind: 'deleteBuilding', id: 'b2' }], {});
+  const ms = Date.now() - t;
+  assert.ok(ms >= 480 && ms < 900, 'three steps of any kind wait the same 250 ms between them, took ' + ms + ' ms');
 });

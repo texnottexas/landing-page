@@ -800,6 +800,26 @@
     return { lp: lp, greedy: greedy, vars: vars };
   }
 
+  // The Merge All requests worth sending: per type, storage and base separately, only where two
+  // idle units of the same type and level below the cap sit in that same place.
+  function mergeSteps(stored, units, caps) {
+    function pairsIn(list) {
+      var seen = {}, roles = {};
+      (list || []).forEach(function (u) {
+        var role = ROLE_OF_TYPE[u.type], cap = caps[role];
+        if (u.state || cap == null || u.level >= cap) return;
+        if (seen[u.armyId]) roles[role] = true; else seen[u.armyId] = true;
+      });
+      return roles;
+    }
+    var st = pairsIn(stored), base = pairsIn(units), out = [];
+    ['army', 'air', 'navy'].forEach(function (r) {
+      if (st[r]) out.push({ kind: 'mergeStorage', role: r, tolerant: true });
+      if (base[r]) out.push({ kind: 'mergeBase', role: r, tolerant: true });
+    });
+    return out;
+  }
+
   // One Bulk Training round, per type: { num, instant } when the game ordered units, { skipped }
   // when there was nothing to queue, { error: code } when the server declined.
   function summariseTraining(results) {
@@ -844,7 +864,7 @@
     buildSeaSlotsLP: buildSeaSlotsLP, decodeSeaSlots: decodeSeaSlots, buildingSites: buildingSites, fitToGold: fitToGold,
     extraTrainingBuildings: extraTrainingBuildings, mergeablePairs: mergeablePairs, trainEstimate: trainEstimate, buildingCounts: buildingCounts,
     crossLocationStores: crossLocationStores, splitDeletable: splitDeletable, navyFit: navyFit, holeSites: holeSites,
-    summariseTraining: summariseTraining, refillAgain: refillAgain
+    summariseTraining: summariseTraining, refillAgain: refillAgain, mergeSteps: mergeSteps
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = TroopCore;
   else root.TroopCore = TroopCore;
