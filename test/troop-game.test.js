@@ -214,3 +214,18 @@ test('permanent skins (endTime -1) count as owned, expired temporary ones do not
   const faces = { 0: { endTime: -1 }, 1853000: { endTime: -1 }, 1795000: { endTime: -1 }, 1710900: { endTime: now - 10 }, 2016000: { endTime: now + 100 }, 1999000: { endTime: 0 } };
   assert.deepEqual(TG.ownedSkinIds(faces, now), [1795000, 1853000, 1999000, 2016000]);
 });
+
+test('building and deleting use the short pace; merges and moves keep the long one', async () => {
+  const fresh = loadFresh(fakeGame().globals).config;
+  assert.ok(fresh.fastPaceMs[0] + fresh.fastPaceMs[1] <= 1000, 'default short pace stays under a second');
+  const tables = { building: { 105100: { id: 105100, width: 2, height: 2, point_type: 1 } } };
+  const g = fakeGame({ tables });
+  const TG = loadFresh(g.globals); TG.config.paceMs = [300, 0]; TG.config.fastPaceMs = [0, 0];
+  let t = Date.now();
+  const r = await TG.runSteps([8, 10, 12].map((x) => ({ kind: 'build', buildingId: 105100, to: [x, 28] })), {});
+  assert.equal(r.ok, true);
+  assert.ok(Date.now() - t < 200, 'three builds took ' + (Date.now() - t) + ' ms');
+  t = Date.now();
+  await TG.runSteps([{ kind: 'mergeBase', role: 'army', tolerant: true }, { kind: 'mergeBase', role: 'air', tolerant: true }], {});
+  assert.ok(Date.now() - t >= 280, 'merges kept the long pace');
+});

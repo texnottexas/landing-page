@@ -355,11 +355,11 @@
     b.onclick = function () {
       if (state.busy || state.running || window.TroopGame.isRunning()) return;
       if (!b._armed) {
-        b._armed = true; var was = b.textContent; b.textContent = armedText;
-        setTimeout(function () { if (b._armed) { b._armed = false; b.textContent = was; } }, 4000);
+        b._armed = true; b._label = b.textContent; b.textContent = armedText;
+        setTimeout(function () { if (b._armed) { b._armed = false; b.textContent = b._label; } }, 4000);
         return;
       }
-      b._armed = false; onGo();
+      b._armed = false; b.textContent = b._label; onGo();
     };
   }
   // runs game steps with a progress bar and Stop; done(result, responses) after a fresh read of the base
@@ -509,7 +509,10 @@
             var id = snap.buildable[{ army: 1040, air: 1050, navy: 1100 }[k]].id;
             plan[k].forEach(function (p) { steps.push({ kind: 'build', buildingId: id, to: TC.fromPosId(p) }); });
           });
-          runWithProgress(s3out, steps, 'Building', function (res) { note(s3out, res.ok ? 'Built ' + steps.length + ' training buildings. Next: fill every training queue.' : res.error, res.ok ? '#3fb950' : '#d29922'); });
+          runWithProgress(s3out, steps, 'Building', function (res) {
+            go.remove();      // the plan is spent (or partly built): Find spare spots makes a fresh one
+            note(s3out, res.ok ? 'Built ' + steps.length + ' training buildings. Next: fill every training queue.' : res.error + ' Tap Find spare spots for a fresh plan.', res.ok ? '#3fb950' : '#d29922');
+          });
         });
       } catch (e) {
         s3out.textContent = ''; note(s3out, 'Could not find spots. Close this panel and try again.', '#f85149');
