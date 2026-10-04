@@ -684,7 +684,11 @@
   var boot = card();
   var bootMsg = note(boot, 'Loading...', '#e6edf3');
   ensureDeps().then(function () {
-    if (!window.TroopGame.isReady()) throw new Error('Open your base and wait for it to finish loading, then tap the bookmark again.');
+    if (window.TroopGame.isReady()) return true;
+    bootMsg.textContent = 'Taking you to your base...';          // from the world map, go home first
+    return window.TroopGame.goHome ? window.TroopGame.goHome(45000) : false;
+  }).then(function (atHome) {
+    if (!atHome) throw new Error('Open your base and wait for it to finish loading, then tap the bookmark again.');
     state.snap = window.TroopGame.readSnapshot();
     state.region = window.TroopCore.buildRegion(state.snap);
     boot.remove();

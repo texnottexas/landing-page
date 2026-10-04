@@ -187,8 +187,8 @@
     function paint() {
       var ck = checks(), st = statusOf(t, ck);
       rows.forEach(function (r) {
-        var ok = ck[r.id] === true;
-        r.dot.className = 'ops-dot ' + (ok ? 'ok' : 'warn'); r.dot.textContent = ok ? '✓' : '!';
+        var ok = ck[r.id] === true, auto = !ok && C().isAuto(r.id);   // e.g. Troop Optimizer goes to your base itself
+        r.dot.className = 'ops-dot ' + (ok ? 'ok' : auto ? 'info' : 'warn'); r.dot.textContent = ok ? '✓' : auto ? '→' : '!';
         r.txt.textContent = C().READY_TEXT[r.id][ok ? 0 : 1];
       });
       go.textContent = st.launch || (st.state === 'locked' ? 'Launch' : 'Members only');

@@ -9,10 +9,13 @@
   var GATES = ['member', 'code'];
   var READY_TEXT = {
     game: ['Game loaded', 'Wait for the game to finish loading'],
-    base: ['Your base is open', 'Open your base'],
+    base: ['Your base is open', 'Takes you to your base first'],
     defender: ['The defender monster\'s panel is open', 'Tap the defender monster (you can also do this after launching)'],
     r4: ['You are R4 or leader', 'You need to be R4 or leader in your alliance']
   };
+  // readiness items the tool sorts out by itself (Troop Optimizer goes to your base): never a blocker
+  var AUTO = { base: true };
+  function isAuto(id) { return AUTO[id] === true; }
   var WAIT_MS = 10000, GRACE_MS = 1000, WATCH_MS = 120000, RECENT_MAX = 3;
 
   function isStr(v) { return typeof v === 'string' && v.length > 0; }
@@ -79,7 +82,7 @@
   function tileStatus(tool, ctx) {
     if (!ctx.member) return { state: 'blocked', launch: null };
     if (tool.gate === 'code' && !ctx.unlocked) return { state: 'locked', launch: null };
-    var ok = tool.ready.every(function (r) { return ctx.checks && ctx.checks[r] === true; });
+    var ok = tool.ready.every(function (r) { return isAuto(r) || (ctx.checks && ctx.checks[r] === true); });
     return ok ? { state: 'ready', launch: 'Launch' } : { state: 'notready', launch: 'Launch anyway' };
   }
 
@@ -131,7 +134,7 @@
   var OpsCore = {
     ICONS: ICONS, READY_IDS: READY_IDS, READY_TEXT: READY_TEXT,
     validateTools: validateTools, filterTools: filterTools, orderTools: orderTools, pushRecent: pushRecent,
-    initSeen: initSeen, badgeFor: badgeFor, tileStatus: tileStatus, isToolNode: isToolNode,
+    initSeen: initSeen, badgeFor: badgeFor, tileStatus: tileStatus, isToolNode: isToolNode, isAuto: isAuto,
     trackerInit: trackerInit, trackerReduce: trackerReduce, trackerWatching: trackerWatching
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = OpsCore;

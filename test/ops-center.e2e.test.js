@@ -81,7 +81,7 @@ test('desktop menu: 4 tiles per row', async () => {
   await ctx.close();
 });
 
-test('tool page: unlock with the code, readiness turns green live, Launch anyway until then', async () => {
+test('tool page: unlock with the code, readiness turns green live, a base the tool can reach still says Launch', async () => {
   const { ctx, page } = await open(PHONE);
   await page.waitForSelector('.ops-tile');
   await clickTile(page, 'Beta Tool');
@@ -93,11 +93,10 @@ test('tool page: unlock with the code, readiness turns green live, Launch anyway
   await page.fill('input[type=password]', 'open-sesame');
   await page.click('.ops-btn:text-is("Unlock")');
   await page.waitForSelector('input[type=password]', { state: 'detached' });
-  assert.equal(await page.textContent('.ops-btn.primary'), 'Launch anyway');
-  assert.ok((await page.textContent('.ops-box')).includes('Open your base'));
+  assert.equal(await page.textContent('.ops-btn.primary'), 'Launch', 'the tool takes you to your base itself');
+  assert.ok((await page.textContent('.ops-box')).includes('Takes you to your base first'));
   await page.evaluate(() => { window.__fake.base = true; });
-  await page.waitForSelector('.ops-btn.primary:text-is("Launch")', { timeout: 2500 });
-  assert.ok((await page.textContent('.ops-box')).includes('Your base is open'));
+  await page.waitForFunction(() => document.querySelector('.ops-box').textContent.includes('Your base is open'), null, { timeout: 2500 });
   await page.click('.ops-icon-btn[aria-label=Back]');
   assert.deepEqual(await tileStatus(page, 'Beta Tool'), ['Ready']);
   assert.equal(await page.evaluate(() => localStorage.getItem('ops_unlock_v1')), '"1"');
@@ -208,5 +207,15 @@ test('the member list fails to load: a plain message with Retry, no tiles', asyn
   const { ctx, page } = await open(PHONE, () => { window.__OPS_BASE = location.origin + '/nomember/'; });
   await page.waitForSelector('.ops-toast:has-text("Couldn\'t check your membership")');
   assert.equal(await page.$('.ops-tile'), null);
+  await ctx.close();
+});
+
+test('a readiness item the tool handles itself shows an arrow, not a warning', async () => {
+  const { ctx, page } = await open(PHONE, () => { localStorage.setItem('ops_unlock_v1', '"1"'); });
+  await page.waitForSelector('.ops-tile');
+  assert.deepEqual(await tileStatus(page, 'Beta Tool'), ['Ready']);
+  await clickTile(page, 'Beta Tool');
+  const dots = await page.$$eval('.ops-check .ops-dot', (els) => els.map((e) => e.className.replace('ops-dot ', '') + ':' + e.textContent));
+  assert.deepEqual(dots, ['ok:✓', 'info:→']);
   await ctx.close();
 });

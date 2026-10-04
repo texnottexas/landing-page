@@ -49,6 +49,24 @@
     }).sort(function (a, b) { return a - b; });
   }
 
+  // From the world map, press the game's own home button and wait for the base to finish loading.
+  var HOME_BUTTON = 'UICanvas/WorldMapUIWrapper/NWorldMapUI/bottomNode/btn_Home';
+  function goHome(timeoutMs) {
+    if (isReady()) return Promise.resolve(true);
+    var node = null, btn = null;
+    try { node = window.cc && cc.find(HOME_BUTTON); btn = node && node.getComponent(cc.Button); } catch (e) {}
+    if (!btn || !btn.clickEvents) return Promise.resolve(false);
+    try { btn.clickEvents.forEach(function (e) { e.emit([node]); }); } catch (e) { return Promise.resolve(false); }
+    var t0 = Date.now(), limit = timeoutMs || 45000;
+    return new Promise(function (resolve) {
+      (function poll() {
+        if (isReady()) { resolve(true); return; }
+        if (Date.now() - t0 > limit) { resolve(false); return; }
+        setTimeout(poll, 500);
+      })();
+    });
+  }
+
   function isReady() {
     var h = hm();
     if (!(h && h.armyInited && h._BuildingComplete)) return false;
@@ -413,7 +431,7 @@
   function lockActive() { return !!lock && lock.h === hm(); }
 
   window.TroopGame = {
-    isReady: isReady, accountId: accountId, ownedSkinIds: ownedSkinIds, readSnapshot: readSnapshot, loadHighs: loadHighs, solve: solve,
+    isReady: isReady, goHome: goHome, accountId: accountId, ownedSkinIds: ownedSkinIds, readSnapshot: readSnapshot, loadHighs: loadHighs, solve: solve,
     runSteps: runSteps, stop: stop, isRunning: isRunning, installLock: installLock, removeLock: removeLock, lockActive: lockActive,
     config: config
   };

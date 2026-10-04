@@ -268,3 +268,30 @@ test('one pace for every action: under a second apart, never several in the same
   const ms = Date.now() - t;
   assert.ok(ms >= 480 && ms < 900, 'three steps of any kind wait the same 250 ms between them, took ' + ms + ' ms');
 });
+
+test('goHome presses the world map home button and waits until the base has loaded', async () => {
+  const HOME = 'UICanvas/WorldMapUIWrapper/NWorldMapUI/bottomNode/btn_Home';
+  function world(loadsAfterMs) {
+    const g = fakeGame(); let atHome = false, pressed = 0;
+    const button = { clickEvents: [{ emit: () => { pressed++; if (loadsAfterMs != null) setTimeout(() => { atHome = true; }, loadsAfterMs); } }] };
+    g.globals.cc.find = (p) => {
+      if (p === 'Canvas/HomeMap') return atHome ? { getComponent: () => g.hm } : null;
+      if (p === HOME) return { getComponent: () => button };
+      return null;
+    };
+    return { g, pressedCount: () => pressed };
+  }
+  const w = world(50);
+  assert.equal(await loadFresh(w.g.globals).goHome(3000), true);
+  assert.equal(w.pressedCount(), 1);
+
+  const home = fakeGame();                                     // already in the base: nothing to press
+  assert.equal(await loadFresh(home.globals).goHome(3000), true);
+
+  const elsewhere = fakeGame(); elsewhere.globals.cc.find = () => null;   // no home button on screen
+  assert.equal(await loadFresh(elsewhere.globals).goHome(3000), false);
+
+  const stuck = world(null);                                   // pressed, but the base never loads
+  assert.equal(await loadFresh(stuck.g.globals).goHome(800), false);
+  assert.equal(stuck.pressedCount(), 1);
+});

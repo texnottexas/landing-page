@@ -48,6 +48,7 @@
     '.ops-dot{width:20px;height:20px;border-radius:50%;flex:0 0 20px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}',
     '.ops-dot.ok{background:rgba(63,185,80,.18);color:' + T.green + '}',
     '.ops-dot.warn{background:rgba(210,153,34,.18);color:' + T.amber + '}',
+    '.ops-dot.info{background:rgba(121,192,255,.16);color:' + T.accent + '}',
     '.ops-btn{display:block;width:100%;min-height:46px;border-radius:10px;font:inherit;font-size:15px;font-weight:600;cursor:pointer;border:1px solid ' + T.border + ';background:#21262d;color:' + T.text + ';padding:0 16px}',
     '.ops-btn.primary{background:' + T.primary + ';border-color:' + T.primaryBorder + ';color:#fff}',
     '.ops-btn:disabled{opacity:.5;cursor:not-allowed}',
