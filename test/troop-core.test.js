@@ -169,3 +169,24 @@ test('a partly unlocked base still plans cleanly', () => {
   const res = TC.planSteps(snap, r, g, { mode: 'planes' });
   assert.equal(res.blocked.filter((b) => b.reason === 'deadlock').length, 0);
 });
+
+test('lockTargets: planes get air slots, army only when allowed, navy only when planned', () => {
+  const t = { slots: [{ pos: 8050, role: 'air' }, { pos: 2018, role: 'bld' }], armyCells: [11019, 12020] };
+  assert.deepEqual(TC.lockTargets(t, 2, 2, 1, {}), [8050]);
+  assert.deepEqual(TC.lockTargets(t, 1, 1, 1, { mode: 'planes' }), []);
+  assert.deepEqual(TC.lockTargets(t, 1, 1, 1, { mode: 'planes', fillArmy: true }), [11019, 12020]);
+  assert.deepEqual(TC.lockTargets(t, 1, 1, 1, { mode: 'units' }), [11019, 12020]);
+  assert.equal(TC.lockTargets(t, 2, 3, 0, {}), null);
+  assert.deepEqual(TC.lockTargets({ ...t, navy: [35037] }, 2, 3, 0, {}), [35037]);
+});
+
+test('renderModel marks movers in Before and empty planned slots in After', () => {
+  const r = TC.buildRegion(REX);
+  const target = withArmyCells(r, REX_TARGET.slots);
+  const res = TC.planSteps(REX, r, target, { mode: 'planes' });
+  const m = TC.renderModel(REX, r, target, res);
+  const count = (map, cat) => Object.values(map).filter((c) => c === cat).length;
+  assert.equal(count(m.after, 'airEmpty'), 15 * 4);
+  assert.ok(count(m.before, 'airMoving') > 0);
+  assert.equal(count(m.after, 'deco'), count(m.before, 'decoMoving'));
+});

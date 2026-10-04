@@ -394,8 +394,43 @@
     return { steps: steps, blocked: blocked, final: final, stats: stats, parks: parks };
   }
 
+  // ---------------------------------------------------------------- lock + render
+  // Ordered target anchors the lock hands out for a unit footprint, or null if the plan does not cover it.
+  function lockTargets(target, w, h, pt, opts) {
+    opts = opts || {};
+    if (w === 2 && h === 2 && pt === 1) return target.slots.filter(function (s) { return s.role === 'air'; }).map(function (s) { return s.pos; });
+    if (w === 1 && h === 1 && pt === 1) return opts.mode === 'planes' && !opts.fillArmy ? [] : (target.armyCells || []).slice();
+    if (w === 2 && h === 3 && pt === 0) return target.navy ? target.navy.slice() : null;
+    return null;
+  }
+
+  // Cell categories for the Before / After mini-map.
+  function renderModel(snap, region, target, result) {
+    function paint(map, it, xy, cat) { footprint(xy[0], xy[1], it.w, it.h).forEach(function (c) { map[c] = cat; }); }
+    var before = {}, after = {};
+    Object.keys(region.cells).forEach(function (k) {
+      var id = Number(k), c = region.cells[id];
+      var cat = region.fixed[id] ? 'fixed' : (region.unitLegal(id, 1) ? 'land' : (region.unitLegal(id, 0) ? 'sea' : (c.ok ? (c.ground ? 'blockedLand' : 'blockedSea') : 'off')));
+      before[id] = cat; after[id] = cat;
+    });
+    var parks = result ? result.parks : region.parked.filter(function (p) { return p.item.pt === 1; });
+    parks.forEach(function (p) { paint(before, p.item, [p.item.x, p.item.y], 'decoMoving'); paint(after, p.item, p.to, 'deco'); });
+    target.slots.forEach(function (s) { if (s.role === 'air') paint(after, { w: 2, h: 2 }, fromPosId(s.pos), 'airEmpty'); });
+    var moved = {};
+    (result ? result.steps : []).forEach(function (s) { moved[s.id] = s.kind; });
+    var all = [].concat(region.units.air, region.units.army, region.units.navy, region.reqLand, region.reqSea);
+    all.forEach(function (it) {
+      var cat = it.kind === 'building' ? 'bld' : it.role;
+      paint(before, it, [it.x, it.y], moved[it.id] ? cat + 'Moving' : cat);
+      if (result && moved[it.id] === 'store') return;
+      var xy = result && result.final[it.id] ? result.final[it.id] : [it.x, it.y];
+      paint(after, it, xy, cat);
+    });
+    return { before: before, after: after };
+  }
+
   var TroopCore = {
-    CONST: CONST, posId: posId, fromPosId: fromPosId, footprint: footprint, toUV: toUV, unitClass: unitClass, buildRegion: buildRegion, buildLandLP: buildLandLP, buildSeaLP: buildSeaLP, decodeLand: decodeLand, decodeSea: decodeSea, greedyLand: greedyLand, planSteps: planSteps
+    CONST: CONST, posId: posId, fromPosId: fromPosId, footprint: footprint, toUV: toUV, unitClass: unitClass, buildRegion: buildRegion, buildLandLP: buildLandLP, buildSeaLP: buildSeaLP, decodeLand: decodeLand, decodeSea: decodeSea, greedyLand: greedyLand, planSteps: planSteps, lockTargets: lockTargets, renderModel: renderModel
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = TroopCore;
   else root.TroopCore = TroopCore;
