@@ -243,3 +243,38 @@ test('fkboats: skipNavy plans no Shipyards and prices no navy training', () => {
   assert.deepEqual(e.navy, { units: 0, gold: 0 });
   assert.deepEqual(e.total, { units: 5, gold: 50 });
 });
+
+test('buildSummary names only the types being built, each at its own level', () => {
+  const buildable = { 1040: { level: 100 }, 1050: { level: 99 }, 1100: { level: 100 } };
+  assert.equal(TC.buildSummary({ army: [], air: [], navy: [1, 2, 3] }, buildable), 'Build 3 Shipyards at Lv100');
+  assert.equal(TC.buildSummary({ army: [1], air: [1, 2], navy: [] }, buildable), 'Build 1 Barracks at Lv100 and 2 Air Bases at Lv99');
+  assert.equal(TC.buildSummary({ army: [1, 2], air: [1], navy: [1] }, buildable), 'Build 2 Barracks at Lv100, 1 Air Base at Lv99 and 1 Shipyard at Lv100');
+  assert.equal(TC.buildSummary({ army: [], air: [], navy: [] }, buildable), '');
+});
+
+test('on a level tie, the building kept is one outside the unit area, so a delete frees unit space', () => {
+  const A = { id: 'a', group: 1050, level: 100, pos: 2018, busy: 0 }, B = { id: 'b', group: 1050, level: 100, pos: 40050, busy: 0 };
+  assert.deepEqual(TC.extraTrainingBuildings([A, B]).map((x) => x.id), ['b'], 'no area info: lowest position kept, as before');
+  assert.deepEqual(TC.extraTrainingBuildings([A, B], { inUnitArea: (x) => x.id === 'a' }).map((x) => x.id), ['a']);
+  const C = { id: 'c', group: 1050, level: 101, pos: 2020, busy: 0 };
+  assert.deepEqual(TC.extraTrainingBuildings([A, B, C], { inUnitArea: (x) => x.id !== 'b' }).map((x) => x.id).sort(), ['a', 'b'], 'a higher level still wins');
+});
+
+test('extra training buildings are only offered once their storage is full (fkboats: spare Shipyards can always go)', () => {
+  const b = (id, group) => ({ id, group, level: 100, pos: 1000 + id, busy: 0 });
+  const buildings = [b(1, 1040), b(2, 1040), b(3, 1050), b(4, 1050), b(5, 1100), b(6, 1100)];
+  const storage = { army: { max: 100, used: 90 }, air: { max: 100, used: 100 }, navy: { max: 50, used: 10 } };
+  const r = TC.extrasToClear(buildings, storage, {});
+  assert.deepEqual(r.extras.map((x) => x.id), [4]);
+  assert.deepEqual(r.waiting, { army: 10, navy: 40 });
+  const fk = TC.extrasToClear(buildings, storage, { skipNavy: true });
+  assert.deepEqual(fk.extras.map((x) => x.id).sort(), [4, 6]);
+  assert.deepEqual(fk.waiting, { army: 10 });
+});
+
+test('holeSites also finds free 2x2 sea spots (Shipyards when the solver is unavailable)', () => {
+  const t = TC.buildRegion(TEX);
+  const sea = TC.holeSites(t, 0, {});
+  assert.ok(sea.length > 50, 'sea spots ' + sea.length);
+  sea.forEach((id) => { const [x, y] = TC.fromPosId(id); TC.footprint(x, y, 2, 2).forEach((c) => assert.ok(t.unitLegal(c, 0))); });
+});

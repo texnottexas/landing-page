@@ -98,7 +98,9 @@
 
   // ---------------------------------------------------------------- scan
   function scanCard() {
-    var c = card('Your base');
+    var c = card('Your base'), body = el('div', 'display:flex;flex-direction:column;gap:8px;'); c.appendChild(body);
+    function paintScan() {
+    body.textContent = '';
     var s = state.snap, r = state.region;
     var tbl = el('div', 'display:grid;grid-template-columns:auto auto auto auto;gap:4px 14px;font-size:12px;');
     ['Storage', 'Used', 'Max', 'Free'].forEach(function (h) { tbl.appendChild(el('div', 'color:#8b949e;', h)); });
@@ -106,20 +108,22 @@
       var st = s.storage[k[0]];
       [k[1], st.used, st.max, Math.max(0, st.max - st.used)].forEach(function (v) { tbl.appendChild(el('div', '', String(v))); });
     });
-    c.appendChild(tbl);
+    body.appendChild(tbl);
     var onMap = r.units.air.length + ' planes, ' + r.units.army.length + ' army, ' + r.units.navy.length + ' navy on the base';
-    note(c, onMap + '. Usable land: ' + r.landCells.length + ' tiles. Usable sea: ' + r.seaCells.length + ' tiles.', '#e6edf3');
-    if (r.landCells.length < 762) note(c, 'Some areas are still locked, so the plan covers the land you have open today.');
-    if (r.units.odd.length) note(c, r.units.odd.length + ' unit(s) are busy or have an unusual size. They stay where they are.');
-    if (r.unparked.length) note(c, r.unparked.length + ' decoration(s) have no free spot in the no-units zone, so they stay put.');
-    note(c, 'Storage fills first. Units only land on the base once that storage is full.');
+    note(body, onMap + '. Usable land: ' + r.landCells.length + ' tiles. Usable sea: ' + r.seaCells.length + ' tiles.', '#e6edf3');
+    if (r.landCells.length < 762) note(body, 'Some areas are still locked, so the plan covers the land you have open today.');
+    if (r.units.odd.length) note(body, r.units.odd.length + ' unit(s) are busy or have an unusual size. They stay where they are.');
+    if (r.unparked.length) note(body, r.unparked.length + ' decoration(s) have no free spot in the no-units zone, so they stay put.');
+    note(body, 'Storage fills first. Units only land on the base once that storage is full.');
     var adv = s.slotAdvice, lines = [];
     Object.keys(adv.byType).forEach(function (k) {
       var name = k === 'army' ? 'Garage' : k === 'navy' ? 'Dock' : 'Hangar';
       var next = adv.byType[k].map(function (w) { return w.nextPrice; }).filter(function (p) { return p != null; });
       if (next.length) lines.push(name + ' next slot: ' + Math.min.apply(null, next) + ' slot items');
     });
-    note(c, 'Advisory: you hold ' + adv.held + ' storage slot items. ' + (lines.length ? lines.join('. ') + '.' : 'Every storage building is at its slot limit.'));
+    note(body, 'Advisory: you hold ' + adv.held + ' storage slot items. ' + (lines.length ? lines.join('. ') + '.' : 'Every storage building is at its slot limit.'));
+      }
+    paintScan(); state.painters.push(paintScan);     // storage counts change with every run
   }
 
   // ---------------------------------------------------------------- mode + plan
@@ -536,6 +540,7 @@
         var gridCells = {};
         sites.land.forEach(function (p) { var xy = TC.fromPosId(p); TC.footprint(xy[0], xy[1], 2, 2).forEach(function (c2) { gridCells[c2] = true; }); });
         sites.land = sites.land.concat(TC.holeSites(r, 1, gridCells));
+        if (!solver) sites.sea = TC.holeSites(r, 0, {});      // no solver: free 2x2 sea spots, so Shipyards still get places
         var existing = { army: [], air: [], navy: [] };
         snap.buildings.forEach(function (b) { var role = GROUP_ROLE[b.group]; if (role) existing[role].push(b.pos); });
         var free = {};
@@ -558,9 +563,10 @@
           seaCells: r.seaCells.filter(function (c) { return !occ[c]; }).length,
           free: free, open: { army: openQ.army.units, air: openQ.air.units, navy: openQ.navy.units }
         });
-        var plan = TC.buildingSites(sites, free, existing, counts), want = plan.army.length + plan.air.length + plan.navy.length;
-        plan = TC.fitToGold(plan, per, snap.gold);
+        var plan = TC.buildingSites(sites, free, existing, counts);
         ['army', 'air', 'navy'].forEach(function (k) { if (!snap.buildable[{ army: 1040, air: 1050, navy: 1100 }[k]]) plan[k] = []; });
+        var want = plan.army.length + plan.air.length + plan.navy.length;
+        plan = TC.fitToGold(plan, per, snap.gold);
         var n = plan.army.length + plan.air.length + plan.navy.length;
         status.remove();
         note(s3out, sites.land.length + ' spare land spot(s) and ' + sites.sea.length + ' spare sea spot(s). Free storage: ' + free.army + ' army, ' + free.air + ' planes, ' + free.navy + ' navy.', '#e6edf3');
@@ -571,8 +577,7 @@
         if (!sites.land.length && floorOnly) note(s3out, floorOnly + ' free land tile(s) are covered by floor tiles. Units can stand there, but the game does not allow buildings on floors.', '#8b949e');
         if (!n) { note(s3out, 'Nothing to build: no spare spots, or no room left for the units more buildings would train.', '#d29922'); return; }
         note(s3out, 'Each building queues 5 units. The count is sized so those units fit in your storage or on the free base space that is left.', '#8b949e');
-        var lvl = snap.buildable[1050] || snap.buildable[1040] || snap.buildable[1100];
-        note(s3out, 'Build ' + bld(1040, plan.army.length) + ', ' + bld(1050, plan.air.length) + ' and ' + bld(1100, plan.navy.length) + ' at Lv' + lvl.level + ' for about ' + fmt(n * per) + ' gold, including one full queue each.', '#e6edf3');
+        note(s3out, TC.buildSummary(plan, snap.buildable) + ' for about ' + fmt(n * per) + ' gold, including one full queue each.', '#e6edf3');
         var cv = el('canvas', 'width:100%;max-width:520px;background:#0d1117;border:1px solid #30363d;border-radius:4px;'); cv.width = 680; s3out.appendChild(cv);
         var cats = TC.renderModel(snap, r, { slots: [], armyCells: [] }, null).before, outl = [];
         Object.keys(cats).forEach(function (k) { if (cats[k] === 'decoMoving') cats[k] = 'deco'; });
@@ -621,9 +626,19 @@
         done(res.ok, sum, (res.ok ? '' : res.error + ' ') + lines.join('. ') + '.');
       });
     }
+    // storage full and the lock off: new units land on the game's nearest free tiles, not planned spots
+    function lockHint(sum) {
+      if (window.TroopGame.lockActive && window.TroopGame.lockActive()) return '';
+      var STORE = { army: 'Garage', air: 'Hangar', navy: 'Dock' }, full = [];
+      Object.keys(sum.roles || {}).forEach(function (k) {
+        var x = sum.roles[k], st = state.snap.storage[k];
+        if (x && x.num > 0 && st && st.used >= st.max) full.push(STORE[k]);
+      });
+      return full.length ? ' Your ' + full.join(' and ') + (full.length > 1 ? ' are' : ' is') + ' full, so new units land on the nearest free tiles. To place them neatly, plan a layout below and turn the lock on before training.' : '';
+    }
     function train() {
       s4say('');
-      trainOnce('Training', function (ok, sum, text) { s4say(text, ok ? '#3fb950' : '#d29922'); });
+      trainOnce('Training', function (ok, sum, text) { s4say(text + lockHint(sum), ok ? '#3fb950' : '#d29922'); });
     }
     // Refill: merge, train, and go round again while units arrive instantly, so no room is left empty
     var MAX_ROUNDS = 8;
@@ -644,7 +659,7 @@
           if (!open) room = ' Every training queue is full. Run Refill again once they finish to keep filling the base.';
           else if (land || ships) room = ' Nothing more fits right now: ' + land + ' land tile(s) are free' + (ships ? ' and ' + ships + ' ship(s) would fit on the sea' : '') + ', but in pieces. Use Layout below to pack them, then Refill again.';
           else room = ' No free spots left on the base.';
-          s4say((ok ? 'Done after ' + round + ' round(s): ' : '') + text + ' In total ' + tot.ordered + ' ordered (' + tot.instant + ' instantly), ' + tot.merged + ' fewer units from merging.' + room, ok ? '#3fb950' : '#d29922');
+          s4say((ok ? 'Done after ' + round + ' round(s): ' : '') + text + ' In total ' + tot.ordered + ' ordered (' + tot.instant + ' instantly), ' + tot.merged + ' fewer units from merging.' + room + lockHint(sum), ok ? '#3fb950' : '#d29922');
         });
       });
     }
@@ -667,13 +682,24 @@
     var TC = window.TroopCore, c = card('When your base is full');
     note(c, 'Clear the extra training buildings so planes and army can use those spots, then use Layout below to pack everything.');
     var out = el('div', 'display:flex;flex-direction:column;gap:6px;'); c.appendChild(out);
+    // a building whose footprint touches unit tiles: deleting it frees space, so on a tie keep another one
+    function inUnitArea(b) {
+      var r = state.region, cells = {}; r.landCells.concat(r.seaCells).forEach(function (c2) { cells[c2] = true; });
+      var xy = TC.fromPosId(b.pos);
+      return TC.footprint(xy[0], xy[1], b.w || 2, b.h || 2).some(function (c2) { return cells[c2]; });
+    }
+    function extrasNow() {
+      return TC.extrasToClear(state.snap.buildings.filter(function (b) { return GROUP_ROLE[b.group]; }), state.snap.storage, { skipNavy: state.fkboats, inUnitArea: inUnitArea });
+    }
     function paint() {
       out.textContent = '';
-      var extras = TC.extraTrainingBuildings(state.snap.buildings.filter(function (b) { return GROUP_ROLE[b.group]; }));
+      var now = extrasNow(), extras = now.extras;
+      var STORE = { army: 'Garage', air: 'Hangar', navy: 'Dock' }, waiting = Object.keys(now.waiting);
+      if (waiting.length) note(out, 'Kept for now while storage has room: ' + waiting.map(function (k) { return STORE[k] + ' ' + now.waiting[k] + ' free'; }).join(', ') + '. Those buildings keep training until it fills.', '#8b949e');
       var busy = state.snap.buildings.filter(function (b) { return GROUP_ROLE[b.group] && b.busy; }).length;
       var total = state.snap.buildings.filter(function (b) { return GROUP_ROLE[b.group]; }).length;
       if (!extras.length && busy && total > 3) note(out, busy + ' of your ' + total + ' training buildings are still training. Buildings that are training are never deleted, so come back once their queues finish.', '#d29922');
-      else if (!extras.length) note(out, 'No extra training buildings. You have at most one of each type.', '#3fb950');
+      else if (!extras.length && !waiting.length) note(out, 'No extra training buildings. You have at most one of each type.', '#3fb950');
       else {
         var by = {}; extras.forEach(function (b) { by[b.group] = (by[b.group] || 0) + 1; });
         note(out, 'Extra training buildings: ' + Object.keys(by).map(function (g) { return bld(Number(g), by[g]); }).join(', ') + '. One of each type is kept' + (busy ? ', and buildings still training are kept until they finish' : '') + '.', '#e6edf3');
@@ -682,7 +708,7 @@
         var pendingB = extras;
         confirmTap(del, function () {
           try { refreshSnapshot(); } catch (e) { return 'Open your base first'; }
-          pendingB = TC.extraTrainingBuildings(state.snap.buildings.filter(function (b) { return GROUP_ROLE[b.group]; }));
+          pendingB = extrasNow().extras;
           return pendingB.length ? 'Tap again to permanently delete ' + pendingB.length + ' building' + (pendingB.length === 1 ? '' : 's') : 'Nothing to delete any more';
         }, function () {
           if (!pendingB.length) { paint(); return; }

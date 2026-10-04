@@ -39,8 +39,6 @@
   // The game's own player id (StrUid getter, _uid behind it); '' when not logged in.
   function accountId() { var U = UD(); var id = U && (U.StrUid || U._uid); return id ? String(id) : ''; }
 
-  // _ArmyComplete only flips when the last unit lands on the map, so a base whose units are all in
-  // storage never sets it: count the base as loaded once every on-map unit has its map item.
   // endTime is -1 for a permanent skin, otherwise its expiry in server seconds (0 = no expiry).
   function ownedSkinIds(faces, now) {
     return Object.keys(faces || {}).map(Number).filter(function (id) {
@@ -73,6 +71,8 @@
     return wait();
   }
 
+  // _ArmyComplete only flips when the last unit lands on the map, so a base whose units are all in
+  // storage never sets it: count the base as loaded once every on-map unit has its map item.
   function isReady() {
     var h = hm();
     if (!(h && h.armyInited && h._BuildingComplete)) return false;

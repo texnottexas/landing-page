@@ -715,14 +715,51 @@
 
   // Training buildings to delete when the base is full: keep one per type (highest level, lowest posId),
   // never one that is still training. buildings: [{ id, group, level, pos, busy }]
-  function extraTrainingBuildings(buildings) {
-    var keep = {};
+  // opts.inUnitArea(b): on a level tie keep one outside the unit area, so deleting the others frees unit space
+  function extraTrainingBuildings(buildings, opts) {
+    var keep = {}, inArea = (opts && opts.inUnitArea) || function () { return false; };
+    function better(b, k) {
+      if (b.level !== k.level) return b.level > k.level;
+      var bi = !!inArea(b), ki = !!inArea(k);
+      if (bi !== ki) return !bi;
+      return b.pos < k.pos;
+    }
     buildings.forEach(function (b) {
       if (!ROLE_OF_GROUP[b.group]) return;
       var k = keep[b.group];
-      if (!k || b.level > k.level || (b.level === k.level && b.pos < k.pos)) keep[b.group] = b;
+      if (!k || better(b, k)) keep[b.group] = b;
     });
     return buildings.filter(function (b) { return ROLE_OF_GROUP[b.group] && keep[b.group] !== b && !b.busy; });
+  }
+
+  // Extras worth clearing now: only for a type whose storage is full, since spare buildings still
+  // help fill storage that has room. In fkboats mode (skipNavy) navy is never trained, so spare
+  // Shipyards can always go. waiting = free storage per type whose extras are kept for now.
+  function extrasToClear(buildings, storage, opts) {
+    opts = opts || {};
+    var all = extraTrainingBuildings(buildings, opts), waiting = {};
+    var extras = all.filter(function (b) {
+      var role = ROLE_OF_GROUP[b.group], st = (storage || {})[role];
+      if (role === 'navy' && opts.skipNavy) return true;
+      var free = st ? Math.max(0, st.max - st.used) : 0;
+      if (free > 0) { waiting[role] = free; return false; }
+      return true;
+    });
+    return { extras: extras, waiting: waiting };
+  }
+
+  var BLD_NAME = { 1040: ['Barracks', 'Barracks'], 1050: ['Air Base', 'Air Bases'], 1100: ['Shipyard', 'Shipyards'] };
+  // 'Build 2 Barracks at Lv100 and 1 Shipyard at Lv100': only the types being built, each at its own level
+  function buildSummary(plan, buildable) {
+    var parts = [];
+    [['army', 1040], ['air', 1050], ['navy', 1100]].forEach(function (x) {
+      var n = (plan[x[0]] || []).length; if (!n) return;
+      var lv = buildable && buildable[x[1]] ? ' at Lv' + buildable[x[1]].level : '';
+      parts.push(n + ' ' + BLD_NAME[x[1]][n === 1 ? 0 : 1] + lv);
+    });
+    if (!parts.length) return '';
+    var last = parts.pop();
+    return 'Build ' + (parts.length ? parts.join(', ') + ' and ' + last : last);
   }
 
   // First round of free merges available below the cap (pairs of the same unit id), for the preview.
@@ -864,7 +901,7 @@
     buildSeaSlotsLP: buildSeaSlotsLP, decodeSeaSlots: decodeSeaSlots, buildingSites: buildingSites, fitToGold: fitToGold,
     extraTrainingBuildings: extraTrainingBuildings, mergeablePairs: mergeablePairs, trainEstimate: trainEstimate, buildingCounts: buildingCounts,
     crossLocationStores: crossLocationStores, splitDeletable: splitDeletable, navyFit: navyFit, holeSites: holeSites,
-    summariseTraining: summariseTraining, refillAgain: refillAgain, mergeSteps: mergeSteps
+    summariseTraining: summariseTraining, extrasToClear: extrasToClear, buildSummary: buildSummary, refillAgain: refillAgain, mergeSteps: mergeSteps
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = TroopCore;
   else root.TroopCore = TroopCore;
