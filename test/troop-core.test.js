@@ -68,3 +68,24 @@ test('units that are still producing are left where they are', () => {
   const [x, y] = TC.fromPosId(snap.units[0].pos);
   TC.footprint(x, y, 2, 2).forEach((c) => assert.ok(r.fixed[c]));
 });
+
+test('buildLandLP emits a well-formed CPLEX LP with the building and count rows', () => {
+  const m = TC.buildLandLP(TC.buildRegion(REX), { mode: 'planes' });
+  assert.match(m.lp, /^Maximize\n obj: /);
+  assert.match(m.lp, /\n nb: [\s\S]*? = 6\n/);
+  assert.match(m.lp, /\nBinary\n/);
+  assert.match(m.lp, /\nEnd$/);
+  assert.equal(m.count, undefined);
+  const h = TC.buildLandLP(TC.buildRegion(REX), { mode: 'half' });
+  assert.equal(h.count, 6 + Math.floor((762 - 24) / 8));
+  const u = TC.buildLandLP(TC.buildRegion(REX), { mode: 'units', keepPlanes: true });
+  assert.equal(u.count, 6 + 157);
+});
+
+test('greedyLand fallback gets within 3% of the optimum and seats every building', () => {
+  const r = TC.buildRegion(REX);
+  const g = TC.greedyLand(r, {});
+  assert.ok(g.approximate);
+  assert.ok(g.slots.length >= 173, 'greedy slots ' + g.slots.length);
+  assert.equal(g.slots.filter((s) => s.role === 'bld').length, 6);
+});
