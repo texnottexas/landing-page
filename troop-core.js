@@ -632,7 +632,13 @@
     var free = o.free || {}, open = o.open || {}, k = { army: 0, air: 0, navy: 0 };
     function f(t) { return free[t] || 0; }
     function q(t) { return (open[t] || 0) + 5 * k[t]; }                       // units these buildings will train
-    while (k.navy < o.seaSites && q('navy') < f('navy') + Math.floor(Math.max(0, o.seaCells - 4 * k.navy) * PACK_SEA / 6)) k.navy++;
+    // a measured fit (how many navy really fit now) beats the cell estimate: leftover water is
+    // often in pieces a 2x3 ship cannot use. Each new Shipyard then costs about one navy spot.
+    function seaRoom() {
+      if (o.seaUnits != null) return Math.max(0, o.seaUnits - k.navy);
+      return Math.floor(Math.max(0, o.seaCells - 4 * k.navy) * PACK_SEA / 6);
+    }
+    while (k.navy < o.seaSites && q('navy') < f('navy') + seaRoom()) k.navy++;
     function landUse() { return Math.max(0, q('army') - f('army')) + 4 * Math.max(0, q('air') - f('air')); }
     function fits(t) {
       if (q(t) < f(t)) return true;                                          // storage still has room
@@ -756,6 +762,28 @@
     };
   }
 
+  // How many 2x3 navy fit in the free sea right now: a greedy count, plus a set-packing LP over
+  // the same spots for the exact answer when the solver is available (lp is null with no spots).
+  function navyFit(region) {
+    var occ = occupiedCells(region), free = {};
+    region.seaCells.forEach(function (c) { if (!occ[c]) free[c] = true; });
+    var spots = Object.keys(free).map(Number).sort(function (a, b) { return a - b; }).map(function (id) {
+      var xy = fromPosId(id); return footprint(xy[0], xy[1], 2, 3);
+    }).filter(function (fp) { return fp.every(function (c) { return free[c]; }); });
+    var used = {}, greedy = 0;
+    spots.forEach(function (fp) {
+      if (fp.some(function (c) { return used[c]; })) return;
+      fp.forEach(function (c) { used[c] = true; }); greedy++;
+    });
+    if (!spots.length) return { lp: null, greedy: 0, vars: [] };
+    var vars = spots.map(function (_, i) { return 'n' + i; }), rows = {};
+    spots.forEach(function (fp, i) { fp.forEach(function (c) { (rows[c] = rows[c] || []).push(vars[i]); }); });
+    var lp = 'Maximize\n obj: ' + vars.join(' + ') + '\nSubject To\n';
+    Object.keys(rows).forEach(function (c) { lp += ' c' + c + ': ' + rows[c].join(' + ') + ' <= 1\n'; });
+    lp += 'Binary\n ' + vars.join(' ') + '\nEnd';
+    return { lp: lp, greedy: greedy, vars: vars };
+  }
+
   // Gold a Bulk Training fill would cost: open queue places (5 per building) in each type's
   // highest-level set, which is the set the game trains, priced at the buildable unit cost.
   var QUEUE = 5;
@@ -777,7 +805,7 @@
     GROUP: GROUP, deleteCandidates: deleteCandidates, buffValue: buffValue, bestTrainingSkin: bestTrainingSkin, occupiedCells: occupiedCells, freeSites: freeSites,
     buildSeaSlotsLP: buildSeaSlotsLP, decodeSeaSlots: decodeSeaSlots, buildingSites: buildingSites, fitToGold: fitToGold,
     extraTrainingBuildings: extraTrainingBuildings, mergeablePairs: mergeablePairs, trainEstimate: trainEstimate, buildingCounts: buildingCounts,
-    crossLocationStores: crossLocationStores, splitDeletable: splitDeletable
+    crossLocationStores: crossLocationStores, splitDeletable: splitDeletable, navyFit: navyFit
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = TroopCore;
   else root.TroopCore = TroopCore;

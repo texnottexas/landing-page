@@ -147,3 +147,25 @@ test('splitDeletable offers only true singles and holds back units that still ha
   assert.deepEqual(r.singles.map((u) => u.id), ['b2']);
   assert.deepEqual(r.paired.map((u) => u.id).sort(), ['b1', 'b4', 's1'], 'a busy partner still counts');
 });
+
+test('navyFit counts how many 2x3 navy really fit in the free sea, not just free cells', () => {
+  const blank = { units: { army: [], air: [], navy: [], odd: [] }, reqLand: [], reqSea: [], parked: [], floor: {} };
+  const one = TC.footprint(20, 40, 2, 3);
+  const r1 = Object.assign({}, blank, { seaCells: one });
+  const f1 = TC.navyFit(r1);
+  assert.equal(f1.greedy, 1);
+  assert.match(f1.lp, /^Maximize/);
+  const frag = Object.assign({}, blank, { seaCells: one.slice(0, 5).concat(TC.footprint(40, 40, 2, 3).slice(1)) });
+  const f2 = TC.navyFit(frag);
+  assert.equal(f2.greedy, 0, '11 free cells in two broken pieces hold no navy');
+  assert.equal(f2.lp, null);
+  const busy = Object.assign({}, r1, { units: { army: [], air: [], navy: [{ cells: [one[0]] }], odd: [] } });
+  assert.equal(TC.navyFit(busy).greedy, 0, 'occupied cells are not free');
+});
+
+test('buildingCounts uses a measured navy fit when it has one (each Shipyard costs about one navy spot)', () => {
+  const zero = { army: 0, air: 0, navy: 0 };
+  assert.equal(TC.buildingCounts({ landSites: 0, seaSites: 9, landCells: 0, seaCells: 90, seaUnits: 0, free: zero, open: { army: 0, air: 0, navy: 9 } }).navy, 0,
+    'fragmented sea: the cell count says room, the measured fit says none');
+  assert.equal(TC.buildingCounts({ landSites: 0, seaSites: 108, landCells: 0, seaCells: 507, seaUnits: 63, free: zero, open: zero }).navy, 11);
+});

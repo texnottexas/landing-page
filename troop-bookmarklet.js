@@ -502,7 +502,15 @@
         [1040, 1050, 1100].forEach(function (g) { var b = snap.buildable[g]; if (b) per = Math.max(per, b.build_coin + 5 * b.produce_coin); });
         // size by storage plus the free base space the new units can land on
         var occ = TC.occupiedCells(r), openQ = TC.trainEstimate(snap.buildings, snap.buildable);
+        var fit = TC.navyFit(r), seaUnits = fit.greedy;          // how many navy really fit on the sea now
+        if (solver && fit.lp) {
+          try {
+            var fs = await TG.solve(fit.lp, 20), cols = (fs && fs.Columns) || {};
+            seaUnits = Math.max(seaUnits, fit.vars.filter(function (v) { return cols[v] && cols[v].Primal > 0.5; }).length);
+          } catch (e) {}
+        }
         var counts = TC.buildingCounts({
+          seaUnits: seaUnits,
           landSites: sites.land.length, seaSites: sites.sea.length,
           landCells: r.landCells.filter(function (c) { return !occ[c]; }).length,
           seaCells: r.seaCells.filter(function (c) { return !occ[c]; }).length,
