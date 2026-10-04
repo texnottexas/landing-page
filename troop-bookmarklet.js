@@ -16,7 +16,7 @@
     deco: '#8b949e', odd: '#6e7681',
     airMoving: '#f0883e', armyMoving: '#f0883e', navyMoving: '#f0883e', bldMoving: '#f0883e', decoMoving: '#f0883e'
   };
-  var LEGEND = [['air', 'Planes'], ['airEmpty', 'Planned empty plane spot'], ['army', 'Army'], ['navy', 'Navy'], ['bld', 'Required building'], ['deco', 'Decoration'], ['airMoving', 'Will move (Before)']];
+  var LEGEND = [['air', 'Planes'], ['airEmpty', 'Planned empty plane spot'], ['army', 'Army'], ['navy', 'Navy'], ['bld', 'Required building'], ['deco', 'Decoration'], ['fixed', 'Other buildings'], ['airMoving', 'Will move (Before)']];
 
   function el(tag, css, text) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e; }
   function loadScript(url) {
@@ -37,7 +37,7 @@
   // ---------------------------------------------------------------- overlay shell
   var old = document.getElementById('tp-overlay'); if (old) old.remove();
   if (window.TroopGame) window.TroopGame.removeLock();   // a lock from an earlier panel never outlives it
-  var root = el('div', 'position:fixed;inset:0;background:rgba(13,17,23,.92);z-index:2147483647;display:flex;flex-direction:column;padding:14px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#e6edf3;');
+  var root = el('div', 'position:fixed;inset:0;background:rgba(13,17,23,.92);z-index:2147483647;display:flex;flex-direction:column;padding:14px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#e6edf3;text-align:left;line-height:1.35;');
   root.id = 'tp-overlay';
   var head = el('div', 'display:flex;align-items:center;gap:10px;margin-bottom:10px;');
   head.appendChild(el('div', 'font-size:16px;font-weight:600;flex:1;', 'Troop Placement'));
@@ -252,7 +252,7 @@
       state.rows.forEach(function (r, j) { r.button.style.borderColor = j === i ? '#1f6feb' : '#30363d'; r.button.style.background = j === i ? 'rgba(31,111,235,.15)' : 'transparent'; });
       if (window.TroopGame.lockActive()) window.TroopGame.installLock(state.row.target, { mode: state.mode, fillArmy: state.fillArmy });
       var m = TC.renderModel(state.snap, state.region, state.row.target, state.row.result);
-      drawMap(cv.Before, m.before); drawMap(cv.After, m.after);
+      drawMap(cv.Before, m.before, m.outlines.before); drawMap(cv.After, m.after, m.outlines.after);
       var st = state.row.result.stats;
       summary.textContent = st.parks + ' decoration move(s), ' + st.stores + ' unit(s) to storage, ' + st.moves + ' move(s). ' +
         (st.emptyAirSlots ? st.emptyAirSlots + ' planned plane spot(s) stay empty for new planes.' : '');
@@ -260,7 +260,8 @@
         return b.reason === 'storage_full' ? b.remaining + ' ' + b.role + ' unit(s) need storage space first, so they stay put.' : 'Some units could not be placed. Try a cheaper option.';
       }).join(' ');
       armed = false;
-      run.textContent = state.row.result.steps.length ? 'Run ' + state.row.result.steps.length + ' steps' : 'Already optimal';
+      var nSteps = state.row.result.steps.length, isBlocked = state.row.result.blocked.length > 0;
+      run.textContent = nSteps ? 'Run ' + nSteps + ' steps' : (isBlocked ? 'Nothing to run until storage frees up' : 'Already optimal');
       run.disabled = !state.row.result.steps.length;
       run.style.opacity = run.disabled ? '.5' : '1';
     }
@@ -317,7 +318,7 @@
   }
 
   // ---------------------------------------------------------------- mini-map
-  function drawMap(canvas, cats) {
+  function drawMap(canvas, cats, outlines) {
     var TC = window.TroopCore, W = TC.CONST.W, H = TC.CONST.H;
     var cw = 2 * canvas.width / (W + 1), ch = cw * 98 / 136;
     canvas.height = Math.ceil(ch * (H + 1) / 2);
@@ -330,6 +331,15 @@
       g.beginPath();
       g.moveTo(cx, cy - ch / 2); g.lineTo(cx + cw / 2, cy); g.lineTo(cx, cy + ch / 2); g.lineTo(cx - cw / 2, cy);
       g.closePath(); g.fill();
+    });
+    // one outline per unit / building so each 2x2 plane reads as its own diamond
+    var C = function (x, y) { return [cw / 2 + x * cw / 2, ch / 2 + y * ch / 2]; };
+    g.strokeStyle = '#0d1117'; g.lineWidth = Math.max(1, cw / 8);
+    (outlines || []).forEach(function (o) {
+      var t = C(o.x, o.y), r = C(o.x + o.w - 1, o.y + o.w - 1), b = C(o.x - o.h + o.w, o.y + o.h + o.w - 2), l = C(o.x - o.h + 1, o.y + o.h - 1);
+      g.beginPath();
+      g.moveTo(t[0], t[1] - ch / 2); g.lineTo(r[0] + cw / 2, r[1]); g.lineTo(b[0], b[1] + ch / 2); g.lineTo(l[0] - cw / 2, l[1]);
+      g.closePath(); g.stroke();
     });
   }
 

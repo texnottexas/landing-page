@@ -190,3 +190,14 @@ test('renderModel marks movers in Before and empty planned slots in After', () =
   assert.ok(count(m.before, 'airMoving') > 0);
   assert.equal(count(m.after, 'deco'), count(m.before, 'decoMoving'));
 });
+
+test('renderModel outlines each unit, building and parked decoration once per map', () => {
+  const r = TC.buildRegion(REX);
+  const target = withArmyCells(r, REX_TARGET.slots);
+  const res = TC.planSteps(REX, r, target, { mode: 'planes' });
+  const m = TC.renderModel(REX, r, target, res);
+  assert.equal(m.outlines.before.length, r.units.air.length + r.units.army.length + r.reqLand.length + r.reqSea.length + res.parks.length);
+  assert.equal(m.outlines.after.length, r.units.air.length + r.reqLand.length + r.reqSea.length + res.parks.length);   // the stored army unit leaves the map
+  const o = m.outlines.after.find((q) => q.w === 2 && q.h === 2);
+  assert.deepEqual(Object.keys(o).sort(), ['cat', 'h', 'w', 'x', 'y']);
+});

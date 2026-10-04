@@ -407,26 +407,31 @@
   // Cell categories for the Before / After mini-map.
   function renderModel(snap, region, target, result) {
     function paint(map, it, xy, cat) { footprint(xy[0], xy[1], it.w, it.h).forEach(function (c) { map[c] = cat; }); }
-    var before = {}, after = {};
+    var before = {}, after = {}, outlines = { before: [], after: [] };
+    function outline(list, it, xy, cat) { list.push({ x: xy[0], y: xy[1], w: it.w, h: it.h, cat: cat }); }
     Object.keys(region.cells).forEach(function (k) {
       var id = Number(k), c = region.cells[id];
       var cat = region.fixed[id] ? 'fixed' : (region.unitLegal(id, 1) ? 'land' : (region.unitLegal(id, 0) ? 'sea' : (c.ok ? (c.ground ? 'blockedLand' : 'blockedSea') : 'off')));
       before[id] = cat; after[id] = cat;
     });
     var parks = result ? result.parks : region.parked.filter(function (p) { return p.item.pt === 1; });
-    parks.forEach(function (p) { paint(before, p.item, [p.item.x, p.item.y], 'decoMoving'); paint(after, p.item, p.to, 'deco'); });
+    parks.forEach(function (p) {
+      paint(before, p.item, [p.item.x, p.item.y], 'decoMoving'); outline(outlines.before, p.item, [p.item.x, p.item.y], 'decoMoving');
+      paint(after, p.item, p.to, 'deco'); outline(outlines.after, p.item, p.to, 'deco');
+    });
     target.slots.forEach(function (s) { if (s.role === 'air') paint(after, { w: 2, h: 2 }, fromPosId(s.pos), 'airEmpty'); });
     var moved = {};
     (result ? result.steps : []).forEach(function (s) { moved[s.id] = s.kind; });
     var all = [].concat(region.units.air, region.units.army, region.units.navy, region.reqLand, region.reqSea);
     all.forEach(function (it) {
       var cat = it.kind === 'building' ? 'bld' : it.role;
-      paint(before, it, [it.x, it.y], moved[it.id] ? cat + 'Moving' : cat);
+      var bcat = moved[it.id] ? cat + 'Moving' : cat;
+      paint(before, it, [it.x, it.y], bcat); outline(outlines.before, it, [it.x, it.y], bcat);
       if (result && moved[it.id] === 'store') return;
       var xy = result && result.final[it.id] ? result.final[it.id] : [it.x, it.y];
-      paint(after, it, xy, cat);
+      paint(after, it, xy, cat); outline(outlines.after, it, xy, cat);
     });
-    return { before: before, after: after };
+    return { before: before, after: after, outlines: outlines };
   }
 
   var TroopCore = {
