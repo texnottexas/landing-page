@@ -71,6 +71,11 @@
   #dash-totals { margin: 14px 0 0; padding-top: 14px; border-top: 1px dashed var(--line); color: var(--muted); font-size: 15px; }
   #dash-totals b { font: 600 18px/1 var(--display); color: var(--text); letter-spacing: .01em; }
   #dash-totals .g { color: var(--green); } #dash-totals .a { color: var(--amber); } #dash-totals .b { color: var(--blue); } #dash-totals .r { color: var(--red); }
+  .reconnect { margin-top: 14px; padding: 12px; border-radius: 12px; background: rgba(248,81,73,.07); border: 1px solid rgba(248,81,73,.3); }
+  .reconnect p { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
+  #dash-reconnect { width: 100%; min-height: 46px; border: 0; border-radius: 10px; background: var(--red); color: #1a0606; font: 700 17px/1 var(--display); letter-spacing: .04em; text-transform: uppercase; }
+  #dash-reconnect:disabled { opacity: .45; cursor: default; }
+  #dash-reconnect-msg { margin: 8px 0 0; color: var(--text); }
   .note { margin-top: 10px; font-size: 13px; color: var(--amber); }
   .note:empty { display: none; }
 
@@ -163,6 +168,11 @@
           <div class="meta"><span id="dash-last" translate="no"></span><span id="dash-left" translate="no"></span></div>
           <p id="dash-totals" translate="no"></p>
           <div class="note" id="dash-note"></div>
+          <div class="reconnect" id="dash-reconnect-box" hidden>
+            <p>Another login took over this account, so the home game stopped. Reconnecting presses the game's own Connect button at home, which logs your other device out.</p>
+            <button id="dash-reconnect" type="button">Reconnect home game</button>
+            <p id="dash-reconnect-msg" role="status"></p>
+          </div>
         </section>
         <section class="panel">
           <h2 class="label">Drop map, last 24 hours</h2>
@@ -191,7 +201,7 @@
   var DOT = { collected: '#3fb950', missed: '#d29922', sent: '#58a6ff', sending: '#58a6ff', gone: '#f85149', failed: '#f85149', skipped: '#5b6878', queued: '#5b6878' };
   var FILTERS = [['all', 'All'], ['collected', 'Collected'], ['missed', 'Missed'], ['notsent', 'Not sent']];
   var $ = function (id) { return document.getElementById(id); };
-  var data = null, filter = 'all', timer = null, busy = false, skew = 0;
+  var data = null, filter = 'all', timer = null, busy = false, skew = 0, reconnectAt = 0;
 
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
@@ -245,7 +255,7 @@
     if (!s) return ['Not started yet', 'var(--faint)', false];
     if (s.state === 'stopped') return ['Stopped: ' + (s.stop_reason || 'stopped'), 'var(--muted)', false];
     if (now() - s.last_report >= QUIET_MS) return ['Quiet', 'var(--amber)', false];
-    if (s.connected === 0) return ['Disconnected', 'var(--red)', false];
+    if (s.connected === 0) return [s.kicked ? 'Logged out by another login' : 'Disconnected', 'var(--red)', false];
     if (s.visible === 0) return ['Tab hidden', 'var(--amber)', true];
     return ['Running', 'var(--green)', true];
   }
@@ -271,6 +281,13 @@
     setText($('dash-status'), st[0]);
     setText($('dash-last'), s ? 'Last report ' + ago(now() - s.last_report) : 'The collector hasn\'t reported yet');
     setText($('dash-left'), s && s.claims_left != null ? s.claims_left + ' claims left' : '');
+    var kicked = !!(s && s.state === 'running' && s.connected === 0 && s.kicked);
+    $('dash-reconnect-box').hidden = !kicked;
+    if (kicked) {
+      var pending = s.command === 'reconnect' || now() - reconnectAt < 60000;
+      $('dash-reconnect').disabled = pending;
+      if (pending && !$('dash-reconnect-msg').textContent) setText($('dash-reconnect-msg'), 'Reconnect sent. Waiting for the home game to pick it up.');
+    } else { reconnectAt = 0; setText($('dash-reconnect-msg'), ''); }
     var t = data.totals || {}, p = $('dash-totals');
     p.textContent = '';
     var spawners = (data.bySpawner || []).length;
@@ -362,6 +379,19 @@
     load(true);
   });
   $('dash-refresh').addEventListener('click', function () { load(true); });
+  $('dash-reconnect').addEventListener('click', function () {
+    var pw = lsGet(LS_PW), btn = $('dash-reconnect');
+    if (!pw || !data) return;
+    btn.disabled = true; reconnectAt = now();
+    setText($('dash-reconnect-msg'), 'Sending...');
+    fetch(WORKER + '/mapcollector/command', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Map-Collector-Password': pw }, body: JSON.stringify({ player: data.player, cmd: 'reconnect' }) })
+      .then(function (r) {
+        if (!r.ok) throw new Error(r.status === 409 ? 'The collector has never reported, so there is nothing to reconnect.' : 'Could not send. Try again.');
+        setText($('dash-reconnect-msg'), 'Reconnect sent. The home game picks it up within about 20 seconds.');
+        setTimeout(function () { load(false); }, 25000);
+      })
+      .catch(function (e) { reconnectAt = 0; btn.disabled = false; setText($('dash-reconnect-msg'), e && e.message && !/fetch/i.test(e.message) ? e.message : 'Could not reach the server. Try again.'); });
+  });
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') load(false); });
   setInterval(function () { if (data && !$('dash-main').hidden) { renderStatus(); } }, 1000);
   schedule();

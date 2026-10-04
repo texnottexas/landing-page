@@ -10,7 +10,7 @@ const { chromium } = require('playwright');
 
 const PAGE = path.join(__dirname, '..', 'pages', 'map-collector.html');
 const TEX = 'd847a198622a518d', REX = 'c3c6f3200a4ec1fb';
-let server, base, browser, state, asked;
+let server, base, browser, state, asked, commands;
 const NOW = Date.now();
 const S = () => ({ ok: true, now: NOW, window: { hours: 24, since: NOW - 864e5 },
   players: [{ siteKey: TEX, name: 'Tex' }, { siteKey: REX, name: 'Rеx' }], player: TEX,
@@ -28,6 +28,13 @@ test.before(async () => {
   server = http.createServer((req, res) => {
     const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' };
     if (req.method === 'OPTIONS') { res.writeHead(204, cors); res.end(); return; }
+    if (req.url.startsWith('/mapcollector/command') && req.method === 'POST') {
+      let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
+        commands.push({ pw: req.headers['x-map-collector-password'], body: JSON.parse(b) });
+        res.writeHead(200, Object.assign({ 'content-type': 'application/json' }, cors)); res.end('{"ok":true}');
+      });
+      return;
+    }
     if (req.url.startsWith('/mapcollector/state')) {
       const pw = req.headers['x-map-collector-password'];
       asked.push(new URL(req.url, 'http://x').searchParams.get('player'));
@@ -46,7 +53,7 @@ test.before(async () => {
   browser = await chromium.launch({ channel: 'chrome' });
 });
 test.after(async () => { await browser.close(); server.close(); });
-test.beforeEach(() => { state = S(); asked = []; });
+test.beforeEach(() => { state = S(); asked = []; commands = []; });
 
 async function open(pw, extra) {
   const ctx = await browser.newContext({ viewport: { width: 375, height: 740 } });
@@ -137,5 +144,25 @@ test('a single-player password shows no switcher', async () => {
   const { ctx, page } = await open('good pass');
   await page.waitForSelector('li.map');
   assert.equal(await page.$$eval('#dash-players button', (b) => b.length), 0);
+  await ctx.close();
+});
+
+test('a collector logged out by another login offers a reconnect, which queues the command', async () => {
+  state.status = Object.assign({}, state.status, { connected: 0, kicked: 1 });
+  const { ctx, page } = await open('good pass');
+  await page.waitForFunction(() => document.querySelector('#dash-status').textContent === 'Logged out by another login');
+  assert.equal(await page.isVisible('#dash-reconnect'), true);
+  await page.click('#dash-reconnect');
+  await page.waitForFunction(() => /Reconnect sent/.test(document.querySelector('#dash-reconnect-msg').textContent));
+  assert.deepEqual(commands.map((c) => c.body), [{ player: TEX, cmd: 'reconnect' }]);
+  assert.equal(commands[0].pw, 'good pass');
+  assert.equal(await page.isDisabled('#dash-reconnect'), true, 'one tap is enough; the button rests');
+  await ctx.close();
+});
+
+test('no reconnect button while the collector is connected', async () => {
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('li.map');
+  assert.equal(await page.isVisible('#dash-reconnect'), false);
   await ctx.close();
 });
