@@ -622,11 +622,38 @@
   // existing: { army: posId[], air: posId[], navy: posId[] } current training buildings.
   // Land is split Barracks : Air Bases by free Garage : Hangar space (largest remainder); no type gets
   // more new buildings than its free storage can keep busy: ceil(free / 5) minus what already exists.
-  function buildingSites(sites, free, existing) {
+  // How many training buildings of each type are worth placing. Each queues 5 units, and those
+  // units need somewhere to go: free storage first, then free base space. A building is added
+  // while its type still has room for the units it will train, counting the space the new
+  // buildings themselves take (4 cells each). Base space is discounted for packing: planes are
+  // 2x2 and navy 2x3, so not every free cell can be used. Land splits army:air by free storage.
+  var PACK_LAND = 0.9, PACK_SEA = 0.74;      // sea: measured, 507 free cells on Tex hold at most 63 navy (exact solve)
+  function buildingCounts(o) {
+    var free = o.free || {}, open = o.open || {}, k = { army: 0, air: 0, navy: 0 };
+    function f(t) { return free[t] || 0; }
+    function q(t) { return (open[t] || 0) + 5 * k[t]; }                       // units these buildings will train
+    while (k.navy < o.seaSites && q('navy') < f('navy') + Math.floor(Math.max(0, o.seaCells - 4 * k.navy) * PACK_SEA / 6)) k.navy++;
+    function landUse() { return Math.max(0, q('army') - f('army')) + 4 * Math.max(0, q('air') - f('air')); }
+    function fits(t) {
+      if (q(t) < f(t)) return true;                                          // storage still has room
+      return landUse() < Math.max(0, o.landCells - 4 * (k.army + k.air + 1)) * PACK_LAND;
+    }
+    while (k.army + k.air < o.landSites) {
+      var ok = ['army', 'air'].filter(fits);
+      if (!ok.length) break;
+      ok.sort(function (a, b) { return q(a) / Math.max(1, f(a)) - q(b) / Math.max(1, f(b)); });
+      k[ok[0]]++;
+    }
+    return k;
+  }
+
+  function buildingSites(sites, free, existing, counts) {
     var cap = {};
     ['army', 'air', 'navy'].forEach(function (t) { cap[t] = Math.max(0, Math.ceil((free[t] || 0) / 5) - (existing[t] || []).length); });
     var L = sites.land.length, fa = cap.army > 0 ? (free.army || 0) : 0, fr = cap.air > 0 ? (free.air || 0) : 0, nA = 0, nR = 0;
-    if (fa + fr > 0 && L > 0) {
+    if (counts) {
+      nA = Math.min(counts.army || 0, L); nR = Math.min(counts.air || 0, L - nA); cap.navy = counts.navy || 0;
+    } else if (fa + fr > 0 && L > 0) {
       var exA = L * fa / (fa + fr), exR = L - exA;
       nA = Math.floor(exA); nR = Math.floor(exR);
       if (nA + nR < L) { if (exA - nA >= exR - nR) nA++; else nR++; }
@@ -709,7 +736,7 @@
     CONST: CONST, posId: posId, fromPosId: fromPosId, footprint: footprint, toUV: toUV, unitClass: unitClass, buildRegion: buildRegion, buildLandLP: buildLandLP, buildSeaLP: buildSeaLP, decodeLand: decodeLand, decodeSea: decodeSea, greedyLand: greedyLand, planSteps: planSteps, planStatus: planStatus, planRows: planRows, lockTargets: lockTargets, renderModel: renderModel,
     GROUP: GROUP, deleteCandidates: deleteCandidates, buffValue: buffValue, bestTrainingSkin: bestTrainingSkin, occupiedCells: occupiedCells, freeSites: freeSites,
     buildSeaSlotsLP: buildSeaSlotsLP, decodeSeaSlots: decodeSeaSlots, buildingSites: buildingSites, fitToGold: fitToGold,
-    extraTrainingBuildings: extraTrainingBuildings, mergeablePairs: mergeablePairs, trainEstimate: trainEstimate
+    extraTrainingBuildings: extraTrainingBuildings, mergeablePairs: mergeablePairs, trainEstimate: trainEstimate, buildingCounts: buildingCounts
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = TroopCore;
   else root.TroopCore = TroopCore;

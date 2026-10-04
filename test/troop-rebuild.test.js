@@ -94,3 +94,31 @@ test('trainEstimate counts open queue places in the highest-level set and prices
   assert.deepEqual(e.navy, { units: 0, gold: 0 });
   assert.deepEqual(e.total, { units: 8, gold: 80 });
 });
+
+test('buildingCounts sizes buildings by storage and the base space their units can land on', () => {
+  const zero = { army: 0, air: 0, navy: 0 };
+  // storage only: matches the old rule (1 idle Shipyard already queues 5, 181 free -> 36 more)
+  assert.equal(TC.buildingCounts({ landSites: 0, seaSites: 144, landCells: 0, seaCells: 0, free: { army: 0, air: 0, navy: 181 }, open: { army: 0, air: 0, navy: 5 } }).navy, 36);
+  // Dock full, open sea: keep adding Shipyards while their navy still fits on the sea that is left
+  const sea = TC.buildingCounts({ landSites: 0, seaSites: 108, landCells: 0, seaCells: 519, free: zero, open: zero });
+  assert.equal(sea.navy, 12);                       // 0.74 packing: measured on Tex (507 free sea cells hold at most 63 navy)
+  assert.equal(TC.buildingCounts({ landSites: 0, seaSites: 5, landCells: 0, seaCells: 519, free: zero, open: zero }).navy, 5, 'never more than the sites');
+  // land with storage room splits by free storage, as before
+  const land = TC.buildingCounts({ landSites: 30, seaSites: 0, landCells: 0, seaCells: 0, free: { army: 100, air: 200, navy: 0 }, open: zero });
+  assert.deepEqual([land.army, land.air], [10, 20]);
+  // storage full: land buildings stop while their units still have room on the land
+  const map = TC.buildingCounts({ landSites: 30, seaSites: 0, landCells: 100, seaCells: 0, free: zero, open: zero });
+  assert.deepEqual([map.army, map.air], [3, 3]);
+  // nothing to train into: no buildings
+  assert.deepEqual(TC.buildingCounts({ landSites: 30, seaSites: 30, landCells: 0, seaCells: 0, free: zero, open: zero }), { army: 0, air: 0, navy: 0 });
+});
+
+test('buildingSites takes explicit counts and still never uses a site twice', () => {
+  const land = Array.from({ length: 30 }, (_, i) => 1000 * (2 * i) + 10);
+  const sea = [40050, 42050, 44050, 46050];
+  const s = TC.buildingSites({ land, sea }, { army: 0, air: 0, navy: 0 }, { army: [], air: [], navy: [] }, { army: 4, air: 40, navy: 3 });
+  assert.equal(s.army.length, 4);
+  assert.equal(s.air.length, 26);
+  assert.equal(s.navy.length, 3);
+  assert.equal(new Set([...s.army, ...s.air]).size, 30);
+});

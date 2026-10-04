@@ -468,6 +468,7 @@
       setBusy(true); s3out.textContent = '';
       var status = note(s3out, 'Finding spare spots...', '#e6edf3');
       try {
+        refreshSnapshot();                    // the panel may have been open for hours
         var r = state.region, snap = state.snap, TG = window.TroopGame, solver = true, land, seaSlots = [];
         try { await TG.loadHighs(); } catch (e) { solver = false; }
         if (solver) {
@@ -486,7 +487,15 @@
         ['army', 'air', 'navy'].forEach(function (k) { free[k] = Math.max(0, snap.storage[k].max - snap.storage[k].used); });
         var per = 0;
         [1040, 1050, 1100].forEach(function (g) { var b = snap.buildable[g]; if (b) per = Math.max(per, b.build_coin + 5 * b.produce_coin); });
-        var plan = TC.buildingSites(sites, free, existing), want = plan.army.length + plan.air.length + plan.navy.length;
+        // size by storage plus the free base space the new units can land on
+        var occ = TC.occupiedCells(r), openQ = TC.trainEstimate(snap.buildings, snap.buildable);
+        var counts = TC.buildingCounts({
+          landSites: sites.land.length, seaSites: sites.sea.length,
+          landCells: r.landCells.filter(function (c) { return !occ[c]; }).length,
+          seaCells: r.seaCells.filter(function (c) { return !occ[c]; }).length,
+          free: free, open: { army: openQ.army.units, air: openQ.air.units, navy: openQ.navy.units }
+        });
+        var plan = TC.buildingSites(sites, free, existing, counts), want = plan.army.length + plan.air.length + plan.navy.length;
         plan = TC.fitToGold(plan, per, snap.gold);
         ['army', 'air', 'navy'].forEach(function (k) { if (!snap.buildable[{ army: 1040, air: 1050, navy: 1100 }[k]]) plan[k] = []; });
         var n = plan.army.length + plan.air.length + plan.navy.length;
@@ -494,7 +503,8 @@
         note(s3out, sites.land.length + ' spare land spot(s) and ' + sites.sea.length + ' spare sea spot(s). Free storage: ' + free.army + ' army, ' + free.air + ' planes, ' + free.navy + ' navy.', '#e6edf3');
         if (!solver) note(s3out, 'The exact solver could not load, so these spots come from the near-optimal plan.', '#d29922');
         if (n < want) note(s3out, 'Your gold covers ' + n + ' of the ' + want + ' buildings that would fit.', '#d29922');
-        if (!n) { note(s3out, 'Nothing to build: no spare spots, or your storage is already full.', '#d29922'); return; }
+        if (!n) { note(s3out, 'Nothing to build: no spare spots, or no room left for the units more buildings would train.', '#d29922'); return; }
+        note(s3out, 'Each building queues 5 units. The count is sized so those units fit in your storage or on the free base space that is left.', '#8b949e');
         var lvl = snap.buildable[1050] || snap.buildable[1040] || snap.buildable[1100];
         note(s3out, 'Build ' + bld(1040, plan.army.length) + ', ' + bld(1050, plan.air.length) + ' and ' + bld(1100, plan.navy.length) + ' at Lv' + lvl.level + ' for about ' + fmt(n * per) + ' gold, including one full queue each.', '#e6edf3');
         var cv = el('canvas', 'width:100%;max-width:520px;background:#0d1117;border:1px solid #30363d;border-radius:4px;'); cv.width = 680; s3out.appendChild(cv);
