@@ -60,3 +60,33 @@ test('solver: Rex and Tex max-planes, sea, units and half modes', { skip: !highs
   console.log('pareto', JSON.stringify(rows));
   assert.ok(rows[0].moves >= rows[1].moves && rows[1].moves >= rows[2].moves);
 });
+
+// Dense, messy full bases: Rex's optimal plane layout shifted, then the gaps filled nearest-first
+// (the generator the final review used to find the deadlocks and the solver abort).
+function messyBase(dx, dy) {
+  const REX = fx('troop-rex-before.json'), TGT = fx('troop-rex-target-178.json');
+  const base = TC.buildRegion(REX), land = new Set(base.landCells), bcells = new Set(), occ = new Set(), units = [];
+  REX.buildings.forEach((b) => { if (b.type === 5) return; const [x, y] = TC.fromPosId(b.pos); TC.footprint(x, y, b.w, b.h).forEach((c) => bcells.add(c)); });
+  const add = (nx, ny) => { const cs = TC.footprint(nx, ny, 2, 2); if (!cs.every((c) => land.has(c) && !bcells.has(c) && !occ.has(c))) return; cs.forEach((c) => occ.add(c)); units.push({ id: 'p' + units.length, armyId: 30100, type: 301, level: 100, w: 2, h: 2, pt: 1, pos: TC.posId(nx, ny), state: 0 }); };
+  TGT.slots.filter((s) => s.role === 'air').forEach((s) => { const [x, y] = TC.fromPosId(s.pos); add(x + dx, y + dy); });
+  base.landCells.forEach((id) => { const [x, y] = TC.fromPosId(id); add(x, y); });
+  const snap = JSON.parse(JSON.stringify(REX)); snap.units = units; snap.storage.air = { max: 1000, used: 1000 };
+  return snap;
+}
+
+test('solver: messy full bases plan every Max planes row without a deadlock', { skip: !highsLoader && 'highs not installed' }, async () => {
+  for (const [dx, dy] of [[-1, 1], [1, 3], [0, 4]]) {
+    const snap = messyBase(dx, dy), r = TC.buildRegion(snap);
+    const out = await TC.planRows(snap, r, { mode: 'planes' }, async (lp) => (await highsLoader()).solve(lp, OPTS));
+    assert.ok(out.exact, 'shift ' + dx + ',' + dy);
+    out.rows.forEach((row) => assert.deepEqual(row.result.blocked.filter((b) => b.reason === 'deadlock'), [], 'deadlock at shift ' + dx + ',' + dy + ' row ' + row.planes));
+  }
+});
+
+test('solver: a solver failure part-way keeps the rows already planned', { skip: !highsLoader && 'highs not installed' }, async () => {
+  const snap = messyBase(1, 1), r = TC.buildRegion(snap);
+  let calls = 0;
+  const out = await TC.planRows(snap, r, { mode: 'planes' }, async (lp) => { if (++calls === 3) throw new Error('RuntimeError: Aborted()'); return (await highsLoader()).solve(lp, OPTS); });
+  assert.equal(out.rows.length, 2);
+  assert.equal(out.exact, false);
+});

@@ -243,9 +243,16 @@
       function (a, b) { var p = toUV.apply(null, fromPosId(a)), q = toUV.apply(null, fromPosId(b)); return p[1] - q[1] || p[0] - q[0]; },
       function (a, b) { var p = toUV.apply(null, fromPosId(a)), q = toUV.apply(null, fromPosId(b)); return p[0] - q[0] || p[1] - q[1]; }
     ];
+    // opts.keep: keep the 2x2 items that already sit on legal anchors (buildings first) and fill
+    // around them, so the fallback never shuffles a tidy base; without it, pack for the most slots
+    var seed = [], seeded = {};
+    (opts.keep ? region.reqLand.concat(region.units.air) : []).forEach(function (it) {
+      var cs = footprint(it.x, it.y, 2, 2);
+      if (cs.every(function (c) { return set[c] && !seeded[c]; })) { cs.forEach(function (c) { seeded[c] = true; }); seed.push(posId(it.x, it.y)); }
+    });
     var best = null;
     orders.forEach(function (cmp) {
-      var taken = {}, slots = [];
+      var taken = Object.assign({}, seeded), slots = seed.slice();
       region.landCells.slice().sort(cmp).forEach(function (id) {
         var xy = fromPosId(id), cs = footprint(xy[0], xy[1], 2, 2);
         if (cs.every(function (c) { return set[c] && !taken[c]; })) { cs.forEach(function (c) { taken[c] = true; }); slots.push(id); }
@@ -372,11 +379,32 @@
           footprint(p[0], p[1], it.w, it.h).forEach(function (c) { n += (cellTargets[c] || []).filter(function (q) { return !filled(q); }).length; });
           if (!cand || n > cand.n) cand = { it: it, n: n };
         });
-        var it2 = cand.it, spot = null;
+        var it2 = cand.it, spot = null, anySpot = null;
         var pool = it2.pt === 1 ? region.landCells : region.seaCells;
         for (var k = 0; k < pool.length && !spot; k++) {
           var a = fromPosId(pool[k]), cs = footprint(a[0], a[1], it2.w, it2.h);
-          if (cs.every(function (c) { return region.unitLegal(c, it2.pt) && !region.fixed[c] && !occ[c] && !cellTargets[c]; })) spot = a;
+          if (!cs.every(function (c) { return region.unitLegal(c, it2.pt) && !region.fixed[c] && !occ[c] && (it2.kind === 'unit' || !region.floor[c]); })) continue;
+          if (cs.every(function (c) { return !(cellTargets[c] || []).some(function (q) { return !filled(q); }); })) spot = a;
+          else if (!anySpot) anySpot = a;
+        }
+        spot = spot || anySpot;
+        if (!spot && it2.kind === 'building') {
+          // make room: a building cannot sit on floors, so move a plane off a floor-free 2x2
+          // into any free spot (planes may sit on floors) and use the spot it leaves
+          var planes = movable.filter(function (q) { return q.role === 'air' && q.w === it2.w && q.h === it2.h; });
+          for (var pi = 0; pi < planes.length && !spot; pi++) {
+            var pl = planes[pi], pp = pos[pl.id];
+            if (footprint(pp[0], pp[1], pl.w, pl.h).some(function (c) { return region.floor[c]; })) continue;
+            for (var k2 = 0; k2 < pool.length; k2++) {
+              var a2 = fromPosId(pool[k2]), cs2 = footprint(a2[0], a2[1], pl.w, pl.h);
+              if (!cs2.every(function (c) { return region.unitLegal(c, pl.pt) && !region.fixed[c] && !occ[c]; })) continue;
+              var onTarget = !!tAt['air:' + pool[k2]];
+              steps.push({ kind: 'moveUnit', id: pl.id, role: pl.role, from: pp.slice(), to: a2, temp: !onTarget });
+              vacate(pl); occupy(pl, a2); if (!onTarget) temps++;
+              spot = pp.slice();
+              break;
+            }
+          }
         }
         if (!spot) { blocked.push({ reason: 'deadlock', misplaced: mis.map(function (it) { return it.id; }) }); break; }
         steps.push({ kind: it2.kind === 'unit' ? 'moveUnit' : 'moveBuilding', id: it2.id, role: it2.role, from: pos[it2.id].slice(), to: spot, temp: true });
@@ -392,6 +420,88 @@
     steps.forEach(function (s) { if (s.kind === 'park') stats.parks++; else if (s.kind === 'store') stats.stores++; else { stats.moves++; if (s.temp) stats.temps++; } });
     stats.emptyAirSlots = target.slots.filter(function (s) { return s.role === 'air' && !occ[s.pos]; }).length;
     return { steps: steps, blocked: blocked, final: final, stats: stats, parks: parks };
+  }
+
+  // 'ready': steps to run; 'partial': steps to run but something can never be placed;
+  // 'done': the base matches the plan; 'blocked': nothing runnable and something is stuck.
+  function planStatus(result) {
+    if (result.steps.length) return result.blocked.length ? 'partial' : 'ready';
+    return result.blocked.length ? 'blocked' : 'done';
+  }
+
+  // ---------------------------------------------------------------- plan rows
+  // The options the UI offers. solve(lp) -> Promise<HiGHS solution>, or null when the solver is
+  // unavailable. Any solver failure or unusable answer falls back to greedyLand (approximate) and
+  // keeps the rows already planned. opts: { mode, keepPlanes, navy }.
+  // Returns Promise<{ rows: [{ target, result, planes }], exact: bool, notes: [string] }>.
+  function planRows(snap, region, opts, solve) {
+    opts = opts || {};
+    var R = region.reqLand.length, planesNow = region.units.air.length;
+    var out = { rows: [], exact: !!solve, notes: [] }, sea = null;
+    function attempt(fn) {
+      if (!solve) return Promise.resolve(null);
+      return Promise.resolve().then(fn).catch(function (e) { out.exact = false; out.notes.push(String((e && e.message) || e)); return null; });
+    }
+    function solveLand(o) {
+      var m = buildLandLP(region, o);
+      return solve(m.lp).then(function (sol) {
+        var ok = sol && (sol.Status === 'Optimal' || sol.Status === 'Time limit reached');
+        var t = ok ? decodeLand(m, sol, region) : null;
+        var nb = t ? t.slots.filter(function (x) { return x.role === 'bld'; }).length : -1;
+        if (!t || nb !== m.R || (m.count != null && t.slots.length !== m.count)) throw new Error('no usable solution (' + (sol && sol.Status) + ')');
+        if (sol.Status !== 'Optimal') t.approximate = true;
+        return t;
+      });
+    }
+    function addRow(t) {
+      if (!t) return;
+      if (sea) { t.navy = sea.navy; t.seaBld = sea.seaBld; }
+      out.rows.push({ target: t, result: planSteps(snap, region, t, { mode: opts.mode }), planes: t.slots.filter(function (x) { return x.role === 'air'; }).length });
+    }
+    var p = Promise.resolve();
+    if (opts.navy) {
+      p = p.then(function () {
+        return attempt(function () {
+          var m = buildSeaLP(region);
+          return solve(m.lp).then(function (sol) {
+            var s2 = sol && sol.Status === 'Optimal' ? decodeSea(m, sol) : null;
+            if (!s2 || s2.seaBld.length !== m.R) throw new Error('sea: no usable solution');
+            sea = s2;
+          });
+        });
+      });
+    }
+    if (opts.mode === 'planes') {
+      p = p.then(function () { return attempt(function () { return solveLand({ mode: 'planes' }); }); }).then(function (best) {
+        if (!best) {
+          // no solver: offer the most-planes greedy plan, plus a keep-what-is-there plan when it is cheaper
+          var most = greedyLand(region, {}), kept = greedyLand(region, { keep: true });
+          addRow(most);
+          if (kept && (!most || kept.slots.length >= most.slots.length || planSteps(snap, region, kept, { mode: opts.mode }).stats.moves < out.rows[0].result.stats.moves)) {
+            if (most && kept.slots.length >= most.slots.length) out.rows.pop();
+            addRow(kept);
+          }
+          return null;
+        }
+        addRow(best);
+        var kMax = best.slots.length, ks = [];
+        [1, 2, 3, 5, 8, 12, 17].forEach(function (d) { if (kMax - d - R > planesNow) ks.push(kMax - d); });
+        return ks.reduce(function (chain, k) {
+          return chain.then(function (stop) {
+            if (stop || out.rows[out.rows.length - 1].result.stats.moves === 0) return true;
+            return attempt(function () { return solveLand({ mode: 'planes', count: k }); }).then(function (t) { if (!t) return true; addRow(t); return false; });
+          });
+        }, Promise.resolve(false));
+      });
+    } else {
+      var count = opts.mode === 'half' ? R + Math.floor((region.landCells.length - 4 * R) / 8) : R + (opts.keepPlanes === false ? 0 : planesNow);
+      p = p.then(function () { return attempt(function () { return solveLand({ mode: opts.mode, keepPlanes: opts.keepPlanes }); }); })
+        .then(function (t) { addRow(t || greedyLand(region, { count: count, keep: true })); });
+    }
+    return p.then(function () {
+      if (opts.navy && !sea) out.notes.push('navy pass skipped');
+      return out;
+    });
   }
 
   // ---------------------------------------------------------------- lock + render
@@ -435,7 +545,7 @@
   }
 
   var TroopCore = {
-    CONST: CONST, posId: posId, fromPosId: fromPosId, footprint: footprint, toUV: toUV, unitClass: unitClass, buildRegion: buildRegion, buildLandLP: buildLandLP, buildSeaLP: buildSeaLP, decodeLand: decodeLand, decodeSea: decodeSea, greedyLand: greedyLand, planSteps: planSteps, lockTargets: lockTargets, renderModel: renderModel
+    CONST: CONST, posId: posId, fromPosId: fromPosId, footprint: footprint, toUV: toUV, unitClass: unitClass, buildRegion: buildRegion, buildLandLP: buildLandLP, buildSeaLP: buildSeaLP, decodeLand: decodeLand, decodeSea: decodeSea, greedyLand: greedyLand, planSteps: planSteps, planStatus: planStatus, planRows: planRows, lockTargets: lockTargets, renderModel: renderModel
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = TroopCore;
   else root.TroopCore = TroopCore;

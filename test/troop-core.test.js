@@ -201,3 +201,73 @@ test('renderModel outlines each unit, building and parked decoration once per ma
   const o = m.outlines.after.find((q) => q.w === 2 && q.h === 2);
   assert.deepEqual(Object.keys(o).sort(), ['cat', 'h', 'w', 'x', 'y']);
 });
+
+// ---------------------------------------------------------------- final-review fixes
+function rexAfterRepack() {
+  const r = TC.buildRegion(REX);
+  const first = TC.planSteps(REX, r, withArmyCells(r, REX_TARGET.slots), { mode: 'planes' });
+  const after = JSON.parse(JSON.stringify(REX));
+  const moved = new Map(Object.entries(first.final));
+  const parkTo = new Map(first.parks.map((p) => [p.item.id, p.to]));
+  const stored = new Set(first.steps.filter((s) => s.kind === 'store').map((s) => s.id));
+  after.units = after.units.filter((u) => !stored.has(u.id)).map((u) => moved.has(u.id) ? { ...u, pos: TC.posId(...moved.get(u.id)) } : u);
+  after.buildings = after.buildings.map((b) => moved.has(b.id) ? { ...b, pos: TC.posId(...moved.get(b.id)) } : (parkTo.has(b.id) ? { ...b, pos: TC.posId(...parkTo.get(b.id)) } : b));
+  after.storage = { ...after.storage, army: { max: 686, used: 31 } };
+  return after;
+}
+
+test('planStatus says done only when nothing is left to run and nothing is blocked', () => {
+  assert.equal(TC.planStatus({ steps: [{}], blocked: [] }), 'ready');
+  assert.equal(TC.planStatus({ steps: [], blocked: [] }), 'done');
+  assert.equal(TC.planStatus({ steps: [], blocked: [{ reason: 'storage_full' }] }), 'blocked');
+  assert.equal(TC.planStatus({ steps: [{}], blocked: [{ reason: 'deadlock' }] }), 'partial');
+});
+
+test('greedy fallback keeps a tidy base in place and never offers fewer plane spots than today', () => {
+  const after = rexAfterRepack();
+  const r = TC.buildRegion(after);
+  const g = TC.greedyLand(r, { keep: true });
+  const res = TC.planSteps(after, r, g, { mode: 'planes' });
+  assert.equal(res.stats.moves, 0, 'moves ' + res.stats.moves);
+  assert.ok(g.slots.filter((s) => s.role === 'air').length >= r.units.air.length);
+  const u = TC.greedyLand(r, { count: r.reqLand.length + r.units.air.length, keep: true });
+  assert.equal(TC.planSteps(after, r, u, { mode: 'units' }).stats.moves, 0);
+});
+
+test('planRows falls back to the labelled greedy plan when there is no solver', async () => {
+  const r = TC.buildRegion(REX);
+  const out = await TC.planRows(REX, r, { mode: 'planes' }, null);
+  assert.equal(out.exact, false);
+  assert.ok(out.rows.length >= 1 && out.rows.length <= 2);       // most planes, plus a cheaper keep-in-place option
+  out.rows.forEach((row) => assert.ok(row.target.approximate));
+  assert.ok(out.rows[0].target.slots.length >= 173);
+});
+
+test('planRows treats a solve without a usable solution as a failure, not an empty layout', async () => {
+  const r = TC.buildRegion(REX);
+  const out = await TC.planRows(REX, r, { mode: 'planes' }, () => Promise.resolve({ Status: 'Infeasible', Columns: {} }));
+  assert.equal(out.exact, false);
+  assert.ok(out.rows.length >= 1);
+  assert.ok(out.rows[0].target.slots.length >= 173);
+  const thrown = await TC.planRows(REX, r, { mode: 'units', keepPlanes: true }, () => Promise.reject(new Error('Aborted()')));
+  assert.equal(thrown.rows.length, 1);
+  assert.ok(thrown.rows[0].target.approximate);
+});
+
+test('planRows returns no rows (and no crash) when the buildings cannot all be seated', async () => {
+  // floor tiles on every land tile: required buildings can never stand on floors
+  const snap = JSON.parse(JSON.stringify(REX));
+  const r0 = TC.buildRegion(snap);
+  r0.landCells.forEach((id, i) => snap.buildings.push({ id: 'f' + i, pos: id, w: 1, h: 1, group: 4050, type: 5, pt: 1, unmovable: 0 }));
+  const r = TC.buildRegion(snap);
+  const out = await TC.planRows(snap, r, { mode: 'planes' }, null);
+  assert.equal(out.rows.length, 0);
+});
+
+test('without a solver, a tidy base is offered a zero-move plan and never fewer plane spots than today', async () => {
+  const after = rexAfterRepack();
+  const r = TC.buildRegion(after);
+  const out = await TC.planRows(after, r, { mode: 'planes' }, null);
+  assert.ok(out.rows.some((row) => row.result.stats.moves === 0));
+  out.rows.forEach((row) => assert.ok(row.planes >= r.units.air.length, 'row offers ' + row.planes));
+});
