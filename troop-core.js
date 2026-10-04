@@ -597,6 +597,22 @@
     });
   }
 
+  // Free 2x2 holes anywhere (legal, off floors, empty), picked greedily so they never overlap each
+  // other or the `avoid` cells. On a full base the holes left by merges and deletes rarely sit on
+  // the ideal layout's grid, so this complements freeSites.
+  function holeSites(region, pt, avoid) {
+    var legal = {}, occ = occupiedCells(region), used = {}, out = [];
+    (pt === 1 ? region.landCells : region.seaCells).forEach(function (id) {
+      if (!occ[id] && !region.floor[id] && !(avoid && avoid[id])) legal[id] = true;
+    });
+    anchorsIn(legal, 2, 2, false, region.floor).forEach(function (id) {
+      var xy = fromPosId(id), cs = footprint(xy[0], xy[1], 2, 2);
+      if (cs.some(function (c) { return used[c]; })) return;
+      cs.forEach(function (c) { used[c] = true; }); out.push(id);
+    });
+    return out;
+  }
+
   // 2x2 packing of the sea (for Shipyards). exclude: optional { posId: true } of cells to leave out.
   function buildSeaSlotsLP(region, exclude) {
     var set = {};
@@ -805,7 +821,7 @@
     GROUP: GROUP, deleteCandidates: deleteCandidates, buffValue: buffValue, bestTrainingSkin: bestTrainingSkin, occupiedCells: occupiedCells, freeSites: freeSites,
     buildSeaSlotsLP: buildSeaSlotsLP, decodeSeaSlots: decodeSeaSlots, buildingSites: buildingSites, fitToGold: fitToGold,
     extraTrainingBuildings: extraTrainingBuildings, mergeablePairs: mergeablePairs, trainEstimate: trainEstimate, buildingCounts: buildingCounts,
-    crossLocationStores: crossLocationStores, splitDeletable: splitDeletable, navyFit: navyFit
+    crossLocationStores: crossLocationStores, splitDeletable: splitDeletable, navyFit: navyFit, holeSites: holeSites
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = TroopCore;
   else root.TroopCore = TroopCore;

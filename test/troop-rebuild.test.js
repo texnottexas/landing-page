@@ -169,3 +169,26 @@ test('buildingCounts uses a measured navy fit when it has one (each Shipyard cos
     'fragmented sea: the cell count says room, the measured fit says none');
   assert.equal(TC.buildingCounts({ landSites: 0, seaSites: 108, landCells: 0, seaCells: 507, seaUnits: 63, free: zero, open: zero }).navy, 11);
 });
+
+test('holeSites finds free 2x2 holes anywhere on the land, not just on the ideal grid', () => {
+  const r0 = TC.buildRegion(REX);
+  const before = TC.holeSites(r0, 1, {});
+  const cellsOf = (u) => { const [x, y] = TC.fromPosId(u.pos); return TC.footprint(x, y, 2, 2); };
+  const gone = REX.units.filter((u) => u.w === 2 && u.h === 2 && cellsOf(u).every((c) => !r0.floor[c])).slice(0, 2);
+  assert.equal(gone.length, 2);
+  const snap = JSON.parse(JSON.stringify(REX));
+  snap.units = snap.units.filter((u) => !gone.some((g) => g.id === u.id));
+  const r = TC.buildRegion(snap), occ = TC.occupiedCells(r);
+  const holes = TC.holeSites(r, 1, {});
+  assert.ok(holes.length >= before.length + 2, 'two freed plane spots become building spots');
+  const seen = new Set();
+  holes.forEach((id) => {
+    const [x, y] = TC.fromPosId(id);
+    TC.footprint(x, y, 2, 2).forEach((c) => {
+      assert.ok(r.unitLegal(c, 1) && !r.floor[c] && !occ[c], 'cell ' + c + ' must be free, legal land, off floors');
+      assert.ok(!seen.has(c), 'holes never overlap'); seen.add(c);
+    });
+  });
+  const avoid = {}; holes.forEach((id) => { const [x, y] = TC.fromPosId(id); TC.footprint(x, y, 2, 2).forEach((c) => { avoid[c] = true; }); });
+  assert.equal(TC.holeSites(r, 1, avoid).length, 0, 'cells to avoid are never used');
+});
