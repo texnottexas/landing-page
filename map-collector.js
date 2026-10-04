@@ -2,20 +2,22 @@
 // moment its notice appears in alliance chat, follows each march, and reports to your dashboard
 // (2864tw.com/map-collector.html). Launched from the Ops Center, where only listed accounts see it.
 // Rules live in map-collector-core.js (window.MapCollectorCore); this file talks to the game and the page.
-// It only ever sends the game's own Claim request, one at a time, 1.1-1.3 s apart (verified live 2026-10-04).
+// It only ever sends the game's own Claim request, one at a time, 1.1-1.3 s apart (verified live 2026-10-04), and,
+// when speed-ups are switched on, the game's own speed-up use (920) and VIP-shop purchase (818) at the same pace.
 (function () {
   'use strict';
   if (window.__MAPC && window.__MAPC.running) { window.__MAPC.flash(); return; }
   var C = window.MapCollectorCore;
   if (!C) { try { alert('Map Collector did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-04.5';
+  var VERSION = '2026-10-04.6';
   var WORKER = window.__MAPC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var DASH = 'https://2864tw.com/map-collector.html';
   var HOME_SERVER = 2864, CLAIM = 902, MARCH_TYPE = 143;   // RequestId.MARCH_WORLD_POINT, MarchType.Titan_Blessing_Gift
+  var BUY = 818, USE = 920;                                 // VIP shop purchase, use an item on a march (captured live 2026-10-04)
   var REPORT_BUSY_MS = window.__MAPC_REPORT_MS || 15000, REPORT_IDLE_MS = 60000, REPORT_DOWN_MS = 20000, RETRY_MS = 60000, TICK_MS = 2000, SCAN_MS = 700;
   var ATTACH_LIMIT_MS = 90000, KICK_BOX = 'New Node/New Node/MsgBoxComponent', GONE_MS = window.__MAPC_GONE_MS || 60000;
-  var LS_PW = 'mapc_pw_v1', LS_STATE = 'mapc_state_v1', SEEN_SAVE = 2000;
+  var LS_PW = 'mapc_pw_v1', LS_STATE = 'mapc_state_v1', LS_SPEND = 'mapc_spend_v1', SEEN_SAVE = 2000;
   // The game window: this page, or in Unattended mode the game running in a frame under the card, which
   // can be reloaded to log back in while this script keeps running (a full page reload would end it).
   var GW = window, frame = null;
@@ -72,6 +74,12 @@
       return out;
     } catch (e) { return null; }
   }
+  // Speed-ups: gems, the bag's Advanced March Speed-ups, VIP level and the VIP shop row (price, VIP needed).
+  function gems() { try { var g = Number(UD()._resourceData._gold); return isFinite(g) ? g : null; } catch (e) { return null; } }
+  function bagCount() { try { var n = Number(UD().getItemAmount(C.SPEED_ITEM)); return isFinite(n) ? n : 0; } catch (e) { return 0; } }
+  function vipLevel() { try { var v = Number(UD().VipLevel); return isFinite(v) ? v : 0; } catch (e) { return 0; } }
+  function shopRow() { try { return req('TableManager').TABLE.getTableDataById('vip_shop', C.SPEED_SHOP) || null; } catch (e) { return null; } }
+  function netBusy() { try { var n = NET(); return !!(n.checkRequestIdNoRes(CLAIM) || n.checkRequestIdNoRes(BUY) || n.checkRequestIdNoRes(USE)); } catch (e) { return false; } }
   function itemLabel(items) {
     return (Array.isArray(items) ? items : []).map(function (it) {
       var name = '';
@@ -82,17 +90,17 @@
       return (name && name !== (it && it.itemId) ? name : 'item ' + it.itemId) + ' ×' + it.itemCount;
     }).join(', ');
   }
-  function sendClaim(m) {
+  function sendReq(rid, params) {
     return new Promise(function (resolve) {
       var done = false, ok;
       var t = setTimeout(function () { if (!done) { done = true; resolve({ s: 'timeout' }); } }, 8000);
       try {
-        ok = NET().send(CLAIM, { marchType: MARCH_TYPE, x: m.x, y: m.y, armyList: [], armyListNew: [], heroList: [], trapList: [], ext: {} }, TARGET,
-          function (r) { if (done) return; done = true; clearTimeout(t); resolve(r || { s: -1 }); });
+        ok = NET().send(rid, params, TARGET, function (r) { if (done) return; done = true; clearTimeout(t); resolve(r || { s: -1 }); });
       } catch (e) { ok = false; }
       if (ok === false && !done) { done = true; clearTimeout(t); resolve({ s: 'blocked' }); }
     });
   }
+  function sendClaim(m) { return sendReq(CLAIM, { marchType: MARCH_TYPE, x: m.x, y: m.y, armyList: [], armyListNew: [], heroList: [], trapList: [], ext: {} }); }
   function sha256Hex(text) {
     return crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)).then(function (b) {
       return Array.prototype.map.call(new Uint8Array(b), function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
@@ -109,13 +117,17 @@
     runId: 'run_' + rand(12), startedAt: Date.now(), rev: 0, acked: 0, maps: [], seen: {}, seenOrder: [],
     siteKey: '', pw: '', left: null, failing: false, lastReportAt: 0, lastAttemptAt: 0, lastChatAt: 0,
     active: false, stopped: false, pumping: false, reporting: false, lastHealth: '', timers: [], saveTimer: null,
-    sends: [], paused: null, attached: false, attachAt: 0, ec: null, note: '', noteUntil: 0, reconnecting: 0
+    sends: [], paused: null, attached: false, attachAt: 0, ec: null, note: '', noteUntil: 0, reconnecting: 0,
+    // speed-ups: the stored settings (off until a report answer brings them), a card change not yet sent, and this run's state
+    speed: { on: false, reserve: 10000, cap: 1500, known: false }, speedDirty: null, speedFails: 0, speedOff: '', speedNote: '',
+    spend: { day: '', gems: 0 }, spentServer: { day: '', gems: 0 }, reportSoon: false
   };
   // Never forget an id during a run: the game's own chat list is the bound. (A 500-id cap here let ids
   // fall out while still in a 658-row list, so the same maps were re-queued every few seconds and the
   // account was suspended, 2026-10-04.) Only the last 2000 are saved for a restart.
   function markSeen(id) { if (S.seen[id] === undefined) { S.seen[id] = 1; S.seenOrder.push(id); } }
   function restore() {
+    try { var sp = JSON.parse(lsGet(LS_SPEND)); if (sp && sp.siteKey === S.siteKey && typeof sp.day === 'string' && typeof sp.gems === 'number') S.spend = { day: sp.day, gems: sp.gems }; } catch (e) {}
     var raw = lsGet(LS_STATE), saved = null;
     try { saved = JSON.parse(raw); } catch (e) {}
     if (!saved || saved.siteKey !== S.siteKey || !Array.isArray(saved.maps)) return;
@@ -134,6 +146,59 @@
       S.maps = C.prune(S.maps, Date.now(), S.acked);
       lsSet(LS_STATE, JSON.stringify({ siteKey: S.siteKey, maps: S.maps, seen: S.seenOrder.slice(-SEEN_SAVE) }));
     }, 1000);
+  }
+
+  function saveSpend() { lsSet(LS_SPEND, JSON.stringify({ siteKey: S.siteKey, day: S.spend.day, gems: S.spend.gems })); }
+
+  // ---------------------------------------------------------------- speed-ups
+  function speedReady() { return S.speed.on && S.speed.known && !S.speedOff; }
+  function speedPending() { return S.maps.some(function (m) { return m.state === 'sent' && (m.speedWant || 0) > (m.speedDone || 0); }); }
+  // Gems spent today (game day from noon ET): this collector's own count or the worker's, whichever is higher.
+  function spentToday() {
+    var day = C.gameDay(Date.now());
+    if (S.spend.day !== day) S.spend = { day: day, gems: 0 };
+    return Math.max(S.spend.gems, S.spentServer.day === day ? S.spentServer.gems : 0);
+  }
+  function until(fn, ms) {
+    var t0 = Date.now();
+    return new Promise(function (r) { (function poll() { if (fn()) return r(true); if (Date.now() - t0 >= ms) return r(false); setTimeout(poll, 100); })(); });
+  }
+  function speedOff(why) { S.speedOff = why; S.speedNote = 'Speed-ups off: ' + why; note(S.speedNote, 3600000); report(''); }
+  function speedFail() { S.speedFails++; if (S.speedFails >= 3) speedOff('3 speed-ups in a row failed'); }
+  // One Advanced March Speed-up on this march: from the bag, or bought at the VIP shop's price within the
+  // gem reserve and daily cap. A purchase must add exactly one and cost exactly the price, or speed-ups stop.
+  async function speedUp(m) {
+    var row = shopRow(), price = row ? Number(row.price_shop) || 0 : 0;
+    var chk = C.buyCheck({ bag: bagCount(), gems: gems(), price: price, vip: vipLevel(), needVip: row ? Number(row.need_vip_level) || 0 : 0,
+      reserve: S.speed.reserve, spent: spentToday(), cap: S.speed.cap });
+    if (!chk.ok) { m.speedWant = m.speedDone || 0; m.speedNote = chk.reason; S.speedNote = chk.reason; C.touch(S, m); save(); paint(); return; }
+    var bought = false;
+    if (chk.source === 'buy') {
+      var bag0 = bagCount(), gems0 = gems();
+      var b = await sendReq(BUY, { shopId: C.SPEED_SHOP, amount: 1, isVip: 1 });
+      if (!b || b.s !== 0) { speedFail(); return; }
+      if (!(await until(function () { return bagCount() === bag0 + 1 && gems() === gems0 - price; }, 3000))) { speedOff('a purchase did not add up'); return; }
+      S.spend.gems += price; saveSpend(); bought = true;
+      await delay(1100 + Math.floor(Math.random() * 200));
+      if (!S.active || !connected()) return;                 // the speed-up stays in the bag for the next pick
+    }
+    var u = await sendReq(USE, { marchId: m.marchId, itemId: C.SPEED_ITEM });
+    if (!u || u.s !== 0) { speedFail(); return; }
+    S.speedFails = 0;
+    C.applySpeed(m, Date.now(), bought, price); C.touch(S, m); save(); paint();
+  }
+  // A report answer brings the stored settings. A card change made while that report was out is kept and sent next.
+  function applySettings(st, sentDirty) {
+    var r = Number(st.gemReserve), c = Number(st.gemCap);
+    if (isFinite(r)) S.speed.reserve = r;
+    if (isFinite(c)) S.speed.cap = c;
+    S.speed.known = true;
+    if (S.speedDirty === null || S.speedDirty === sentDirty) { S.speed.on = !!st.speedOn; if (S.speedDirty === sentDirty) S.speedDirty = null; }
+    paint();
+  }
+  function toggleSpeed() {
+    S.speedDirty = !S.speed.on; S.speed.on = S.speedDirty; paint();
+    if (S.reporting) S.reportSoon = true; else report('');
   }
 
   // ---------------------------------------------------------------- watch, claim, follow
@@ -159,11 +224,22 @@
         // never send into a closed connection: a game that buffers would flush them in a burst on reconnect
         if (!connected()) { await delay(1000); continue; }
         var pick = C.pickNext(S.maps, Date.now());
-        if (!pick.map) { if (pick.wait < 0) break; await delay(Math.min(pick.wait, 1000)); continue; }
+        if (!pick.map) {
+          // claims first: speed-ups only go out while no claim is due
+          var sp = speedReady() ? C.pickSpeed(S.maps, Date.now()) : { map: null, skipped: [] };
+          if (sp.map) {
+            if (netBusy()) { await delay(1000); continue; }
+            await speedUp(sp.map);
+            await delay(1100 + Math.floor(Math.random() * 200));
+            continue;
+          }
+          if (pick.wait < 0 && !(speedReady() && speedPending())) break;
+          await delay(pick.wait < 0 ? 1000 : Math.min(pick.wait, 1000)); continue;
+        }
         var left = claimsLeft(activity());
         if (left != null) S.left = left;
         if (left != null && left <= 0) { stop('out of claims'); break; }
-        try { if (NET().checkRequestIdNoRes(CLAIM)) { await delay(1000); continue; } } catch (e) {}
+        if (netBusy()) { await delay(1000); continue; }
         var g = C.gate(S.sends, Date.now());
         if (!g.ok) { if (!S.paused || S.paused.until !== g.until) { S.paused = g; paint(); report(''); } await delay(Math.min(5000, Math.max(250, g.until - Date.now()))); continue; }
         if (S.paused) { S.paused = null; paint(); }
@@ -171,11 +247,11 @@
         m.state = 'sending'; m.sentAt = Date.now(); C.touch(S, m); paint();
         var ans = await sendClaim(m), cls = C.classifyAnswer(ans);
         S.sends.push({ t: m.sentAt, kind: cls.kind }); if (S.sends.length > 100) S.sends.shift();
-        C.applyAnswer(m, cls, Date.now()); C.touch(S, m); save(); paint();
+        C.applyAnswer(m, cls, Date.now()); C.planSpeed(m, speedReady(), Date.now()); C.touch(S, m); save(); paint();
         await delay(1100 + Math.floor(Math.random() * 200));
       }
       S.pumping = false;
-      if (S.active && C.pickNext(S.maps, Date.now()).map) pump();   // a notice that landed as the loop ended
+      if (S.active && (C.pickNext(S.maps, Date.now()).map || (speedReady() && speedPending()))) pump();   // work that landed as the loop ended
     })();
   }
   function onReward(e) {
@@ -206,7 +282,7 @@
     if (left != null && left <= 0 && !S.maps.some(function (m) { return m.state === 'sending'; })) { stop('out of claims'); return; }
     var now = Date.now();
     C.syncMarches(S.maps, liveMarches(), now).concat(C.sweepMissed(S.maps, now)).forEach(function (m) { C.touch(S, m); });
-    if (C.pickNext(S.maps, now).map) pump();
+    if (C.pickNext(S.maps, now).map || (speedReady() && speedPending())) pump();
     var h = health();
     var due = h !== S.lastHealth || now - S.lastAttemptAt >= (S.failing ? RETRY_MS : !connected() ? REPORT_DOWN_MS : C.buildReport(S.maps, S.acked).rows.length ? REPORT_BUSY_MS : REPORT_IDLE_MS);
     S.lastHealth = h;
@@ -219,11 +295,13 @@
   function report(stopReason) {
     if (S.reporting && !stopReason) return Promise.resolve(0);
     S.reporting = true; S.lastAttemptAt = Date.now();
-    var b = C.buildReport(S.maps, S.acked);
+    var b = C.buildReport(S.maps, S.acked), sentDirty = S.speedDirty;
     var body = { runId: S.runId, siteKey: S.siteKey, version: VERSION, startedAt: S.startedAt,
       status: { state: stopReason ? 'stopped' : 'running', stopReason: stopReason || '', left: S.left, connected: S.attached && connected(), visible: visible(),
-        kicked: !connected() && kickedNow(), lastChatAt: Math.round(S.lastChatAt) },
+        kicked: !connected() && kickedNow(), lastChatAt: Math.round(S.lastChatAt),
+        speedOn: !!S.speed.on, speedNote: S.speedNote || '', autoReconnectAt: S.autoAt || 0 },
       maps: b.rows };
+    if (sentDirty !== null) body.settings = { speedOn: sentDirty };
     return fetch(WORKER + '/mapcollector/report', { method: 'POST', keepalive: !!stopReason,
       headers: { 'Content-Type': 'application/json', 'X-Map-Collector-Password': S.pw }, body: JSON.stringify(body) })
       .then(function (res) { return res.json().then(function (j) { return { code: res.status, j: j || {} }; }, function () { return { code: res.status, j: {} }; }); },
@@ -233,6 +311,8 @@
         S.reporting = false;
         if (code === 200) {
           C.ackReport(S, b.upto); S.failing = false; S.lastReportAt = Date.now(); save();
+          if (r.j.settings && typeof r.j.settings === 'object') applySettings(r.j.settings, sentDirty);
+          if (typeof r.j.spentToday === 'number') S.spentServer = { day: C.gameDay(Date.now()), gems: r.j.spentToday };
           if (r.j.command === 'reconnect' && !stopReason) reconnect();
         }
         else if (!stopReason) {
@@ -243,6 +323,7 @@
           else S.failing = true;
         }
         paint();
+        if (S.reportSoon && !stopReason) { S.reportSoon = false; setTimeout(function () { report(''); }, 0); }
         return code;
       });
   }
@@ -369,6 +450,7 @@
     '#mapc-root .mapc-foot{color:#8b949e;font-size:12px;margin-top:6px;min-height:16px}#mapc-root .mapc-msg{margin:4px 0 2px}',
     '#mapc-root .mapc-btns{display:flex;gap:6px;margin-top:8px}',
     '#mapc-root button{flex:1;min-height:44px;border:1px solid #30363d;border-radius:8px;background:#1c2128;color:#e6edf3;font:inherit;cursor:pointer}',
+    '#mapc-root button[aria-pressed="true"]{border-color:#3fb950;color:#3fb950}',
     '#mapc-root button:hover{border-color:#79c0ff}#mapc-root input{width:100%;box-sizing:border-box;min-height:44px;margin:6px 0 0;padding:0 10px;border:1px solid #30363d;border-radius:8px;background:#0d1117;color:#e6edf3;font:inherit}'
   ].join('\n');
   var root = null, card = null, body = null;
@@ -387,7 +469,7 @@
   function button(id, label, fn) { var b = el('button', null, label); b.id = id; b.type = 'button'; b.addEventListener('click', fn); return b; }
   function showStats() {
     ensureRoot(); body.textContent = '';
-    [['Collected', 'mapc-collected'], ['Missed', 'mapc-missed'], ['En route', 'mapc-enroute'], ['Claims left', 'mapc-left']].forEach(function (r) {
+    [['Collected', 'mapc-collected'], ['Missed', 'mapc-missed'], ['En route', 'mapc-enroute'], ['Claims left', 'mapc-left'], ['Speed-ups', 'mapc-speed']].forEach(function (r) {
       var row = el('div', 'mapc-row'); row.appendChild(el('span', 'mapc-k', r[0])); var v = el('span', 'mapc-v', '0'); v.id = r[1]; row.appendChild(v); body.appendChild(row);
     });
     var foot = el('div', 'mapc-foot', 'Starting...'); foot.id = 'mapc-foot'; body.appendChild(foot);
@@ -395,6 +477,9 @@
     btns.appendChild(button('mapc-dash', 'Dashboard', function () { window.open(DASH, '_blank', 'noopener'); }));
     btns.appendChild(button('mapc-stop', 'Stop', function () { stop('stopped by you'); }));
     body.appendChild(btns);
+    var sb = el('div', 'mapc-btns');
+    sb.appendChild(button('mapc-speed-toggle', 'Speed-ups off', toggleSpeed));
+    body.appendChild(sb);
     if (!frame) {
       var ub = el('div', 'mapc-btns');
       ub.appendChild(button('mapc-unattended', 'Unattended mode', confirmUnattended));
@@ -434,12 +519,14 @@
   function paint() {
     if (!root || !document.getElementById('mapc-enroute')) return;
     var age = S.lastReportAt ? Math.round((Date.now() - S.lastReportAt) / 1000) : null;
-    var c = C.pillCard(C.summarize(S.maps), S.left, age, health());
+    var c = C.pillCard(C.summarize(S.maps), S.left, age, health(), { on: S.speed.on });
     if (S.paused && Date.now() < S.paused.until && c.tone === 'ok') { c.foot = 'Paused: ' + S.paused.reason; c.tone = 'warn'; }
     if (S.note && Date.now() < S.noteUntil) { c.foot = S.note; if (c.tone === 'ok' && !/^(Reconnected|Unattended mode:)/.test(S.note)) c.tone = 'warn'; }
-    var ids = ['mapc-collected', 'mapc-missed', 'mapc-enroute', 'mapc-left'];
+    var ids = ['mapc-collected', 'mapc-missed', 'mapc-enroute', 'mapc-left', 'mapc-speed'];
     c.rows.forEach(function (r, i) { var e = document.getElementById(ids[i]), v = String(r[1]); if (e && e.textContent !== v) e.textContent = v; });
     var f = document.getElementById('mapc-foot'); if (f && f.textContent !== c.foot) f.textContent = c.foot;
+    var tg = document.getElementById('mapc-speed-toggle');
+    if (tg) { var on = String(!!S.speed.on), label = S.speed.on ? 'Speed-ups on' : 'Speed-ups off'; if (tg.getAttribute('aria-pressed') !== on) tg.setAttribute('aria-pressed', on); if (tg.textContent !== label) tg.textContent = label; }
     card.className = 'mapc-card' + (c.tone === 'ok' ? '' : ' ' + c.tone);
   }
 
@@ -447,7 +534,8 @@
   window.__MAPC = {
     running: true, attached: '',
     stop: function (reason) { stop(reason || 'stopped by you'); },
-    flash: function () { if (!card) return; card.classList.add('flash'); setTimeout(function () { if (card) card.classList.remove('flash'); }, 600); }
+    flash: function () { if (!card) return; card.classList.add('flash'); setTimeout(function () { if (card) card.classList.remove('flash'); }, 600); },
+    speed: function () { return { on: S.speed.on, known: S.speed.known, off: S.speedOff, note: S.speedNote }; }
   };
   ensureRoot();
   showMessage('Starting...');

@@ -16,7 +16,7 @@ const OWN = ['map-collector.js', 'map-collector-core.js'];
 const OWNER_UID = 'test-owner-uid';
 const OWNER_SK = crypto.createHash('sha256').update(OWNER_UID).digest('hex').slice(0, 16);
 
-let server, base, browser, reports, workerMode, cmdSent;
+let server, base, browser, reports, workerMode, cmdSent, settings;
 test.before(async () => {
   server = http.createServer((req, res) => {
     const name = decodeURIComponent(req.url.split('?')[0].replace(/^\/+/, '')) || 'index.html';
@@ -35,6 +35,10 @@ test.before(async () => {
         else if (workerMode === 'superseded') { code = 409; out = { ok: false, error: 'superseded' }; }
         else if (workerMode === 'reconnectOnce' && body.status.kicked && !cmdSent) { cmdSent = true; out = { ok: true, command: 'reconnect' }; }
         else if (workerMode === 'reject1' && body.maps.some((m) => m.id === '81' && m.state === 'gone') && !cmdSent) { cmdSent = true; code = 400; out = { ok: false, error: 'bad_map' }; }
+        if (code === 200 && out.ok) {                     // like the worker: a card change is stored, every answer echoes the settings
+          if (body.settings && typeof body.settings.speedOn === 'boolean') settings.speedOn = body.settings.speedOn;
+          out.settings = Object.assign({}, settings); out.spentToday = 0;
+        }
         setTimeout(() => {
           res.writeHead(code, Object.assign({ 'content-type': 'application/json' }, cors));
           res.end(JSON.stringify(out));
@@ -55,7 +59,7 @@ test.before(async () => {
   browser = await chromium.launch({ channel: 'chrome' });
 });
 test.after(async () => { await browser.close(); server.close(); });
-test.beforeEach(() => { reports = []; workerMode = 'ok'; cmdSent = false; });
+test.beforeEach(() => { reports = []; workerMode = 'ok'; cmdSent = false; settings = { speedOn: false, gemReserve: 100, gemCap: 1000 }; });
 
 async function start(opts) {
   const o = Object.assign({ uid: OWNER_UID, pw: 'good pass' }, opts);
@@ -370,4 +374,99 @@ test('REVIEW #5: a typed password is not trusted while the server is down; a sav
   await again.page.evaluate(() => __fake.notice(93, 'A', 9, 9));
   await again.page.waitForFunction(() => __fake.sent.length === 1, null, { timeout: 6000 });
   await again.ctx.close();
+});
+
+const rids = async (page) => (await sent(page)).map((x) => x.rid);
+async function waitReport(page, pred, ms) { const until = Date.now() + (ms || 10000); while (Date.now() < until && !reports.some(pred)) await page.waitForTimeout(200); return reports.some(pred); }
+
+test('speed-ups: a 40 s march gets two from the bag after all claims, at the claim pace', async () => {
+  settings.speedOn = true;
+  const { ctx, page } = await start();
+  await page.evaluate(() => { __fake.bag = 5; __fake.marchSecs = 40; });
+  await page.waitForFunction(() => window.__MAPC.speed().on, null, { timeout: 8000 });
+  await page.evaluate(() => { __fake.notice(201, 'A', 5, 5); __fake.notice(202, 'B', 6, 6); });
+  await page.waitForFunction(() => __fake.used.length === 4, null, { timeout: 20000 });
+  const s = await sent(page), kinds = s.map((x) => x.rid);
+  assert.deepEqual(kinds.slice(0, 2), [902, 902], 'both claims first');
+  assert.ok(kinds.every((r) => r !== 818), 'no purchase while the bag has some');
+  for (let i = 1; i < s.length; i++) assert.ok(s[i].at - s[i - 1].at >= 1100, 'every request 1.1 s apart');
+  await waitText(page, '#mapc-speed', /^On · 4$/);
+  await ctx.close();
+});
+test('speed-ups: an empty bag buys then uses, gems drop by the price, and the gems reach the report', async () => {
+  settings.speedOn = true;
+  const { ctx, page } = await start();
+  await page.evaluate(() => { __fake.bag = 0; __fake.gems = 1000; __fake.marchSecs = 25; });
+  await page.waitForFunction(() => window.__MAPC.speed().on, null, { timeout: 8000 });
+  await page.evaluate(() => __fake.notice(211, 'A', 5, 5));
+  await page.waitForFunction(() => __fake.used.length === 1, null, { timeout: 15000 });
+  assert.deepEqual(await rids(page), [902, 818, 920]);
+  assert.equal(await page.evaluate(() => __fake.gems), 963);
+  assert.ok(await waitReport(page, (r) => r.body.maps.some((m) => m.id === '211' && m.speedups === 1 && m.gems === 37), 8000));
+  await ctx.close();
+});
+test('speed-ups: the reserve and the daily cap each stop buying, with the reason reported', async () => {
+  settings.speedOn = true; settings.gemReserve = 990;
+  const { ctx, page } = await start();
+  await page.evaluate(() => { __fake.bag = 0; __fake.gems = 1000; __fake.marchSecs = 25; });
+  await page.waitForFunction(() => window.__MAPC.speed().on, null, { timeout: 8000 });
+  await page.evaluate(() => __fake.notice(221, 'A', 5, 5));
+  assert.ok(await waitReport(page, (r) => r.body.status.speedNote === 'gem reserve reached'));
+  assert.deepEqual(await rids(page), [902]);
+  await ctx.close();
+  settings.gemReserve = 0; settings.gemCap = 30;
+  const two = await start();
+  await two.page.evaluate(() => { __fake.bag = 0; __fake.marchSecs = 25; });
+  await two.page.waitForFunction(() => window.__MAPC.speed().on, null, { timeout: 8000 });
+  await two.page.evaluate(() => __fake.notice(222, 'A', 7, 7));
+  assert.ok(await waitReport(two.page, (r) => r.body.status.speedNote === 'daily gem cap reached'));
+  assert.deepEqual(await rids(two.page), [902]);
+  await two.ctx.close();
+});
+test('speed-ups: a purchase that does not add up turns speed-ups off for the run', async () => {
+  settings.speedOn = true;
+  const { ctx, page } = await start();
+  await page.evaluate(() => { __fake.bag = 0; __fake.marchSecs = 40; __fake.drift = 10; });
+  await page.waitForFunction(() => window.__MAPC.speed().on, null, { timeout: 8000 });
+  await page.evaluate(() => __fake.notice(231, 'A', 5, 5));
+  await page.waitForFunction(() => window.__MAPC.speed().off !== '', null, { timeout: 12000 });
+  await page.waitForTimeout(3000);
+  assert.deepEqual(await rids(page), [902, 818], 'no use, no second purchase');
+  await waitText(page, '#mapc-foot', /Speed-ups off: a purchase did not add up/);
+  await ctx.close();
+});
+test('speed-ups: a purchase whose bag update lands late still counts', async () => {
+  settings.speedOn = true;
+  const { ctx, page } = await start();
+  await page.evaluate(() => { __fake.bag = 0; __fake.marchSecs = 25; __fake.bagLagMs = 1200; });
+  await page.waitForFunction(() => window.__MAPC.speed().on, null, { timeout: 8000 });
+  await page.evaluate(() => __fake.notice(241, 'A', 5, 5));
+  await page.waitForFunction(() => __fake.used.length === 1, null, { timeout: 15000 });
+  assert.equal(await page.evaluate(() => window.__MAPC.speed().off), '');
+  await ctx.close();
+});
+test('speed-ups: worker down means settings never arrive and nothing but claims is sent', async () => {
+  workerMode = 'down'; settings.speedOn = true;
+  const { ctx, page } = await start();
+  await page.evaluate(() => { __fake.bag = 5; __fake.marchSecs = 40; });
+  await page.waitForSelector('#mapc-enroute');
+  await page.evaluate(() => __fake.notice(251, 'A', 5, 5));
+  await page.waitForTimeout(6000);
+  assert.deepEqual(await rids(page), [902]);
+  await ctx.close();
+});
+test('speed-ups: two quick toggles end on the last choice at the worker', async () => {
+  const { ctx, page } = await start();
+  await page.waitForSelector('#mapc-speed-toggle');
+  await page.waitForFunction(() => window.__MAPC.speed().known, null, { timeout: 8000 });
+  await page.click('#mapc-speed-toggle'); await page.click('#mapc-speed-toggle');
+  await page.waitForTimeout(3000);
+  assert.equal(settings.speedOn, false);
+  assert.equal(await page.$eval('#mapc-speed-toggle', (b) => b.getAttribute('aria-pressed')), 'false');
+  await page.click('#mapc-speed-toggle');
+  const until = Date.now() + 5000;
+  while (Date.now() < until && settings.speedOn !== true) await page.waitForTimeout(200);
+  assert.equal(settings.speedOn, true);
+  assert.equal(await page.$eval('#mapc-speed-toggle', (b) => b.getAttribute('aria-pressed')), 'true');
+  await ctx.close();
 });

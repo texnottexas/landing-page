@@ -3,8 +3,10 @@
 <body>
 <script>
 // A fake Top War client: just enough of DataCenter, chat, NET, EventCenter, ActivityController,
-// NWorldMapMarchModel (_myMarch), TableManager and LocalManager for the Map Collector.
-window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent: [], answers: [], chat: [], handlers: {}, myMarch: {}, activity: true };
+// NWorldMapMarchModel (_myMarch), TableManager and LocalManager for the Map Collector, plus the bag, gems, VIP
+// level and the VIP shop's Advanced March Speed-up for speed-ups (buy 818, use 920).
+window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent: [], answers: [], chat: [], handlers: {}, myMarch: {}, activity: true,
+  gems: 1000, bag: 0, vip: 15, marchSecs: 2, buyMode: 'ok', bagLagMs: 0, drift: 0, used: [] };
 (function () {
   var F = window.__fake;
   var ec = {
@@ -20,8 +22,21 @@ window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent:
     checkRequestIdNoRes: function () { return false; },
     send: function (rid, p, target, cb) {
       F.sent.push({ rid: rid, p: JSON.parse(JSON.stringify(p)), at: Date.now(), target: typeof target });
-      var n = F.sent.length;
-      var ans = F.answers.length ? F.answers.shift() : { s: 0, d: JSON.stringify({ marchInfo: { marchArrive: Math.floor(Date.now() / 1000) + 2, marchId: 'm' + n } }) };
+      var n = F.sent.length, ans;
+      if (rid === 818) {                                   // buy one Advanced March Speed-up from the VIP shop
+        if (F.buyMode === 'fail') ans = { s: 3, d: 'shop_error' };
+        else {
+          var add = function () { F.bag += 1; F.gems -= 37 + F.drift; };
+          if (F.bagLagMs) setTimeout(add, F.bagLagMs); else add();
+          ans = { s: 0, d: JSON.stringify({ reward: { items: [{ itemId: 520002, itemCount: 1 }] } }) };
+        }
+      } else if (rid === 920) {                            // use one on a march
+        if (F.bag > 0) { F.bag -= 1; F.used.push(p.marchId); ans = { s: 0, d: '{}' }; }
+        else ans = { s: 3, d: 'item_not_enough' };
+      } else {
+        var nowSec = Math.floor(Date.now() / 1000);
+        ans = F.answers.length ? F.answers.shift() : { s: 0, d: JSON.stringify({ marchInfo: { marchStartTime: nowSec, marchArrive: nowSec + F.marchSecs, marchId: 'm' + n } }) };
+      }
       setTimeout(function () { cb(ans); }, 20);
       return true;
     }
@@ -30,13 +45,16 @@ window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent:
   Object.defineProperty(activity.extra, 'left', { get: function () { return F.left; } });
   var chatInst = { _allianceRoomId: '102_2_2864_1', _userChatList: { '2102_2_2864_1': F.chat } };
   window.__require = function (name) {
-    if (name === 'DataCenter') return { DATA: { UserData: { Name: F.name, StrUid: F.uid } } };
+    if (name === 'DataCenter') return { DATA: { UserData: { Name: F.name, StrUid: F.uid, _resourceData: { get _gold() { return F.gems; } },
+      getItemAmount: function (id) { return id === 520002 ? F.bag : 0; }, get VipLevel() { return F.vip; } } } };
     if (name === 'newChatController') return { newChatController: { _instance: chatInst } };
     if (name === 'NetMgr') return { NET: NET };
     if (name === 'EventCenter') return { EventCenter: { getInst: function () { return ec; } } };
     if (name === 'ActivityController') return { ActivityController: { Instance: { _activityList: F.activity ? [activity] : [] } } };
     if (name === 'NWorldMapMarchModel') return { default: { instance: { _myMarch: F.myMarch } } };
-    if (name === 'TableManager') return { TABLE: { getTableDataById: function (t, id) { return t === 'item' && id === 79200004 ? { name: 'equip_box_16' } : null; } } };
+    if (name === 'TableManager') return { TABLE: { getTableDataById: function (t, id) {
+      if (t === 'vip_shop' && id === 70202) return { id: 70202, item_id: 520002, need_vip_level: 2, price_shop: 37 };
+      return t === 'item' && id === 79200004 ? { name: 'equip_box_16' } : null; } } };
     if (name === 'LocalManager') return { LOCAL: { getText: function (k) { return k === 'equip_box_16' ? 'Blessing Key' : k; } } };
     return null;
   };
