@@ -544,8 +544,156 @@
     return { before: before, after: after, outlines: outlines };
   }
 
+  // ---------------------------------------------------------------- rebuild (v2)
+  var GROUP = { army: 1040, air: 1050, navy: 1100 };          // Barracks, Air Base, Shipyard
+  var ROLE_OF_GROUP = { 1040: 'army', 1050: 'air', 1100: 'navy' };
+  var ROLE_OF_TYPE = { 101: 'army', 201: 'navy', 301: 'air' };
+  var TRAIN_SPEED_BUFF = 920800;                               // "Training speed bonus (all forces)", value / 10000
+
+  // Demoted leftovers the cleanup may delete: Lv10-99 only, never a unit that is busy.
+  function deleteCandidates(units) {
+    return (units || []).filter(function (u) { return u.level >= 10 && u.level <= 99 && !u.state; });
+  }
+
+  // "buffId,value|buffId,value" -> value of buffId (0 when absent)
+  function buffValue(spec, buffId) {
+    var parts = String(spec || '').split('|');
+    for (var i = 0; i < parts.length; i++) {
+      var kv = parts[i].split(',');
+      if (Number(kv[0]) === buffId) return Number(kv[1]) || 0;
+    }
+    return 0;
+  }
+
+  // skins: [{ id, equip_buff }] owned by the player. Ties keep the skin being worn.
+  function bestTrainingSkin(skins, currentId) {
+    var cur = 0, best = null;
+    (skins || []).forEach(function (s) {
+      var v = buffValue(s.equip_buff, TRAIN_SPEED_BUFF);
+      if (s.id === currentId) cur = v;
+      if (!best || v > best.value) best = { id: s.id, value: v };
+    });
+    if (!best || best.value <= cur) return { id: currentId, value: cur, currentValue: cur, change: false };
+    return { id: best.id, value: best.value, currentValue: cur, change: true };
+  }
+
+  // Cells something stands on right now (units, required buildings, decorations still in the unit area).
+  function occupiedCells(region) {
+    var occ = {};
+    function mark(cells) { cells.forEach(function (c) { occ[c] = true; }); }
+    ['army', 'air', 'navy', 'odd'].forEach(function (k) { region.units[k].forEach(function (u) { mark(u.cells); }); });
+    region.reqLand.concat(region.reqSea).forEach(function (b) { mark(b.cells); });
+    region.parked.forEach(function (p) { mark(p.item.cells); });
+    return occ;
+  }
+
+  // Anchors (posIds) where a 2x2 training building fits right now: legal for the terrain, off floors, empty.
+  function freeSites(region, anchors, pt) {
+    var legal = {}; (pt === 1 ? region.landCells : region.seaCells).forEach(function (id) { legal[id] = true; });
+    var occ = occupiedCells(region);
+    return anchors.filter(function (id) {
+      var xy = fromPosId(id);
+      return footprint(xy[0], xy[1], 2, 2).every(function (c) { return legal[c] && !region.floor[c] && !occ[c]; });
+    });
+  }
+
+  // 2x2 packing of the sea (for Shipyards). exclude: optional { posId: true } of cells to leave out.
+  function buildSeaSlotsLP(region, exclude) {
+    var set = {};
+    region.seaCells.forEach(function (id) { if (!exclude || !exclude[id]) set[id] = true; });
+    var slots = anchorsIn(set, 2, 2, true, region.floor);
+    if (!slots.length) return { kind: 'seaSlots', slots: [], lp: null };
+    var cover = {}, obj = [], rows = [], bins = [];
+    slots.forEach(function (id, i) {
+      var xy = fromPosId(id);
+      footprint(xy[0], xy[1], 2, 2).forEach(function (c) { (cover[c] = cover[c] || []).push('q' + i); });
+      obj.push([1, 'q' + i]); bins.push('q' + i);
+    });
+    Object.keys(cover).forEach(function (c) { if (cover[c].length > 1) rows.push({ name: 'c' + c, terms: cover[c].map(function (n) { return [1, n]; }), op: '<=', rhs: 1 }); });
+    if (!rows.length) rows.push({ name: 'z', terms: [[1, bins[0]]], op: '<=', rhs: 1 });
+    return { kind: 'seaSlots', slots: slots, lp: lpText(obj, rows, bins) };
+  }
+  function decodeSeaSlots(model, sol) {
+    if (!model.lp) return [];
+    return model.slots.filter(function (id, i) { return on(sol, 'q' + i); });
+  }
+
+  // sites: { land: posId[], sea: posId[] }; free: storage free slots per role;
+  // existing: { army: posId[], air: posId[], navy: posId[] } current training buildings.
+  // Land is split Barracks : Air Bases by free Garage : Hangar space (largest remainder); no type gets
+  // more new buildings than its free storage can keep busy: ceil(free / 5) minus what already exists.
+  function buildingSites(sites, free, existing) {
+    var cap = {};
+    ['army', 'air', 'navy'].forEach(function (t) { cap[t] = Math.max(0, Math.ceil((free[t] || 0) / 5) - (existing[t] || []).length); });
+    var L = sites.land.length, fa = cap.army > 0 ? (free.army || 0) : 0, fr = cap.air > 0 ? (free.air || 0) : 0, nA = 0, nR = 0;
+    if (fa + fr > 0 && L > 0) {
+      var exA = L * fa / (fa + fr), exR = L - exA;
+      nA = Math.floor(exA); nR = Math.floor(exR);
+      if (nA + nR < L) { if (exA - nA >= exR - nR) nA++; else nR++; }
+      if (nA > cap.army) { nR = Math.min(cap.air, nR + nA - cap.army); nA = cap.army; }
+      if (nR > cap.air) { nA = Math.min(cap.army, nA + nR - cap.air); nR = cap.air; }
+    }
+    function nearest(list, to) {
+      return list.slice().sort(function (a, b) {
+        function d(p) {
+          if (!to.length) return p;
+          var xy = fromPosId(p);
+          return Math.min.apply(null, to.map(function (q) { var t = fromPosId(q); return Math.abs(t[0] - xy[0]) + Math.abs(t[1] - xy[1]); }));
+        }
+        return d(a) - d(b) || a - b;
+      });
+    }
+    var army = nearest(sites.land, existing.army || []).slice(0, nA);
+    var taken = {}; army.forEach(function (p) { taken[p] = true; });
+    var air = nearest(sites.land.filter(function (p) { return !taken[p]; }), existing.air || []).slice(0, nR);
+    var navy = nearest(sites.sea, existing.navy || []).slice(0, Math.min(sites.sea.length, cap.navy));
+    return { army: army, air: air, navy: navy };
+  }
+
+  // Trim a building plan to what the gold covers (perBuilding = build cost + one full queue), keeping proportions.
+  function fitToGold(plan, perBuilding, gold) {
+    var keys = ['army', 'air', 'navy'], total = 0;
+    keys.forEach(function (k) { total += plan[k].length; });
+    var maxN = perBuilding > 0 ? Math.floor(gold / perBuilding) : total;
+    if (total <= maxN) return plan;
+    var take = {}, rem = [], used = 0;
+    keys.forEach(function (k) { var ex = plan[k].length * maxN / total; take[k] = Math.floor(ex); used += take[k]; rem.push([ex - take[k], k]); });
+    rem.sort(function (a, b) { return b[0] - a[0]; });
+    for (var i = 0; used < maxN && i < rem.length; i++) { take[rem[i][1]]++; used++; }
+    var out = {}; keys.forEach(function (k) { out[k] = plan[k].slice(0, take[k]); });
+    return out;
+  }
+
+  // Training buildings to delete when the base is full: keep one per type (highest level, lowest posId),
+  // never one that is still training. buildings: [{ id, group, level, pos, busy }]
+  function extraTrainingBuildings(buildings) {
+    var keep = {};
+    buildings.forEach(function (b) {
+      if (!ROLE_OF_GROUP[b.group]) return;
+      var k = keep[b.group];
+      if (!k || b.level > k.level || (b.level === k.level && b.pos < k.pos)) keep[b.group] = b;
+    });
+    return buildings.filter(function (b) { return ROLE_OF_GROUP[b.group] && keep[b.group] !== b && !b.busy; });
+  }
+
+  // First round of free merges available below the cap (pairs of the same unit id), for the preview.
+  function mergeablePairs(units, caps) {
+    var groups = {};
+    (units || []).forEach(function (u) {
+      if (u.state) return;
+      var cap = caps[ROLE_OF_TYPE[u.type]];
+      if (cap == null || u.level >= cap) return;
+      groups[u.armyId] = (groups[u.armyId] || 0) + 1;
+    });
+    var n = 0; Object.keys(groups).forEach(function (k) { n += Math.floor(groups[k] / 2); });
+    return n;
+  }
+
   var TroopCore = {
-    CONST: CONST, posId: posId, fromPosId: fromPosId, footprint: footprint, toUV: toUV, unitClass: unitClass, buildRegion: buildRegion, buildLandLP: buildLandLP, buildSeaLP: buildSeaLP, decodeLand: decodeLand, decodeSea: decodeSea, greedyLand: greedyLand, planSteps: planSteps, planStatus: planStatus, planRows: planRows, lockTargets: lockTargets, renderModel: renderModel
+    CONST: CONST, posId: posId, fromPosId: fromPosId, footprint: footprint, toUV: toUV, unitClass: unitClass, buildRegion: buildRegion, buildLandLP: buildLandLP, buildSeaLP: buildSeaLP, decodeLand: decodeLand, decodeSea: decodeSea, greedyLand: greedyLand, planSteps: planSteps, planStatus: planStatus, planRows: planRows, lockTargets: lockTargets, renderModel: renderModel,
+    GROUP: GROUP, deleteCandidates: deleteCandidates, buffValue: buffValue, bestTrainingSkin: bestTrainingSkin, occupiedCells: occupiedCells, freeSites: freeSites,
+    buildSeaSlotsLP: buildSeaSlotsLP, decodeSeaSlots: decodeSeaSlots, buildingSites: buildingSites, fitToGold: fitToGold,
+    extraTrainingBuildings: extraTrainingBuildings, mergeablePairs: mergeablePairs
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = TroopCore;
   else root.TroopCore = TroopCore;
