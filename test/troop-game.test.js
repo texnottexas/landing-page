@@ -42,11 +42,13 @@ function fakeGame(o = {}) {
   const hm = {
     armyInited: true, _ArmyComplete: true, _BuildingComplete: true,
     ArmyItems: o.armyItems || {}, getBuildingItemById: (id) => (o.buildings || {})[id] || null,
-    checkNearByPos: () => 1, MoveArmyCallBack: o.moveCb || (() => {}), MoveBuildingCallBack: () => {}
+    checkNearByPos: () => 1, MoveArmyCallBack: o.moveCb || (() => {}), MoveBuildingCallBack: () => {},
+    removed: [], removeBuildingFromMap(id) { this.removed.push(id); }
   };
-  const UD = { Armys: o.armys || [], _wareHouseList: o.whList || [], getBuildingById: (id) => (o.whBuildings || {})[id] || null };
+  const UD = { Armys: o.armys || [], _wareHouseList: o.whList || [], getBuildingById: (id) => (o.whBuildings || {})[id] || null,
+    deleted: [], DeleteBuilding(b) { this.deleted.push(b); }, getBuildingArrayByBuildingGroup: (g) => (o.groups || {})[g] || [] };
   const NET = { send: (rid, payload, ctx, cb) => { sent.push([rid, payload]); const r = o.respond ? o.respond(rid, payload) : { s: 0, d: '{}' }; if (r !== 'never') setTimeout(() => cb(r), o.netDelay || 0); } };
-  const mods = { DataCenter: { DATA: { UserData: UD } }, NetMgr: { NET }, TableManager: { TABLE: { getTableDataById: () => null } } };
+  const mods = Object.assign({ DataCenter: { DATA: { UserData: UD } }, NetMgr: { NET }, TableManager: { TABLE: { getTableDataById: (t, id) => ((o.tables || {})[t] || {})[id] || null } } }, o.mods || {});
   return { globals: { cc: { find: () => ({ getComponent: () => hm }), v2: (x, y) => ({ x, y }) }, __require: (n) => mods[n] }, sent, hm, UD };
 }
 const unitItem = (id) => ({ ID: id, ArmyData: { Data: { id: 30100, width: 2, height: 2, point_type: 1 } } });
@@ -95,4 +97,92 @@ test('the solver download gives up after the timeout', async () => {
     fetch: (url, init) => new Promise((resolve, reject) => { init.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))); }) });
   TG.config.solverTimeoutMs = 30;
   await assert.rejects(TG.loadHighs(), /timed out/);
+});
+
+// ---------------------------------------------------------------- v2 rebuild executors
+const army = (id, level, state = 0, wh = 'w1') => ({ _id: id, _data: { level }, _state: state, warehouseId: wh });
+
+test('deleting refuses anything outside Lv10-99, busy, or unknown, and sends nothing', async () => {
+  for (const a of [army('x', 100), army('x', 9), army('x', 50, 2)]) {
+    const g = fakeGame({ armys: [a] });
+    const TG = loadFresh(g.globals); TG.config.paceMs = [0, 0];
+    const r = await TG.runSteps([{ kind: 'deleteStored', ids: ['x'] }], {});
+    assert.equal(r.ok, false);
+    assert.match(r.error, /Refused/);
+    assert.deepEqual(g.sent, []);
+  }
+  const g2 = fakeGame({ armys: [] });
+  const TG2 = loadFresh(g2.globals); TG2.config.paceMs = [0, 0];
+  assert.equal((await TG2.runSteps([{ kind: 'deleteUnit', id: 'ghost' }], {})).ok, false);
+});
+
+test('demoted units in storage go out in one batch request, base units one by one', async () => {
+  const g = fakeGame({ armys: [army('a', 50), army('b', 77), army('m', 20, 0, '0')] });
+  const TG = loadFresh(g.globals); TG.config.paceMs = [0, 0];
+  const r = await TG.runSteps([{ kind: 'deleteStored', ids: ['a', 'b'] }, { kind: 'deleteUnit', id: 'm' }], {});
+  assert.equal(r.ok, true);
+  assert.deepEqual(g.sent, [[139, { ids: ['a', 'b'] }], [112, { id: 'm' }]]);
+});
+
+test('merge steps marked tolerant carry on when the game has nothing to merge', async () => {
+  const g = fakeGame({ whList: [{ id: 'h1' }, { id: 'h2' }, { id: 'g1' }], whBuildings: { h1: { Data: { type: 18 } }, h2: { Data: { type: 18 } }, g1: { Data: { type: 16 } } },
+    respond: () => ({ s: 3, d: 'nothing to merge' }) });
+  const TG = loadFresh(g.globals); TG.config.paceMs = [0, 0];
+  const r = await TG.runSteps([{ kind: 'mergeStorage', role: 'air', tolerant: true }, { kind: 'mergeBase', role: 'air', tolerant: true }], {});
+  assert.equal(r.ok, true);
+  assert.deepEqual(g.sent, [[219, { buildId: 'h1,h2' }], [224, { type: 301 }]]);
+});
+
+test('a training building is placed only where the game accepts it', async () => {
+  const tables = { building: { 105100: { id: 105100, width: 2, height: 2, point_type: 1 } } };
+  const g = fakeGame({ tables });
+  const TG = loadFresh(g.globals); TG.config.paceMs = [0, 0];
+  assert.equal((await TG.runSteps([{ kind: 'build', buildingId: 105100, to: [8, 28] }], {})).ok, true);
+  assert.deepEqual(g.sent, [[100, { x: 8, y: 28, buildingId: 105100 }]]);
+  const g2 = fakeGame({ tables }); g2.hm.checkNearByPos = () => -1;
+  const TG2 = loadFresh(g2.globals); TG2.config.paceMs = [0, 0];
+  const r2 = await TG2.runSteps([{ kind: 'build', buildingId: 105100, to: [8, 28] }], {});
+  assert.equal(r2.ok, false);
+  assert.deepEqual(g2.sent, []);
+});
+
+test('deleting a training building updates the client, and a busy one is kept', async () => {
+  const idle = { BuildingData: { _curProductNum: 0 } }, busy = { BuildingData: { _curProductNum: 2 } };
+  const g = fakeGame({ buildings: { b9: idle, b8: busy }, respond: () => ({ s: 0, d: JSON.stringify({ building: { id: 'b9' } }) }) });
+  const TG = loadFresh(g.globals); TG.config.paceMs = [0, 0];
+  assert.equal((await TG.runSteps([{ kind: 'deleteBuilding', id: 'b9' }], {})).ok, true);
+  assert.deepEqual(g.UD.deleted, [{ id: 'b9' }]);
+  assert.deepEqual(g.hm.removed, ['b9']);
+  const r = await TG.runSteps([{ kind: 'deleteBuilding', id: 'b8' }], {});
+  assert.equal(r.ok, false);
+  assert.match(r.error, /still training/);
+});
+
+test('Bulk Training runs through the game and its answer is reported', async () => {
+  let net;
+  const shortcut = { MainUiShortcutUtils: { _instance: { batchTraining: (row, empty) => net.send(180, { ids: ['a1'], posList: [], row: row.id, empty }) } } };
+  const gameTools = { default: { wareHouseDirty() {}, wareHouseSpaceCache: {}, getWareHouseEmptySpace: () => 7 } };
+  const g = fakeGame({ groups: { 1050: [{ BuildingId: 105100 }] }, tables: { building: { 105100: { id: 105100 } } },
+    mods: { MainUiShortcutUtils: shortcut, GameTools: gameTools }, respond: () => ({ s: 0, d: '{"finishNowNum":3,"num":5,"trainingNum":2}' }) });
+  net = g.globals.__require('NetMgr').NET;
+  const TG = loadFresh(g.globals); TG.config.paceMs = [0, 0];
+  const seen = [];
+  const r = await TG.runSteps([{ kind: 'train', role: 'air' }], { onStep: (i, st, resp) => seen.push(resp) });
+  assert.equal(r.ok, true);
+  assert.deepEqual(g.sent, [[180, { ids: ['a1'], posList: [], row: 105100, empty: 7 }]]);
+  assert.equal(JSON.parse(seen[0].d).num, 5);
+});
+
+test('equipping a skin goes through the game and records it only on success', async () => {
+  const ac = { ActivityController: { Instance: { tryOffCastleCos: (cb) => cb() } } };
+  const g = fakeGame({ mods: { ActivityController: ac }, respond: () => ({ s: 0, d: '{"ret":0}' }) });
+  const TG = loadFresh(g.globals); TG.config.paceMs = [0, 0];
+  assert.equal((await TG.runSteps([{ kind: 'equipSkin', id: 1795000 }], {})).ok, true);
+  assert.equal(g.UD.UsingCastleFace, 1795000);
+  const g2 = fakeGame({ mods: { ActivityController: ac }, respond: () => ({ s: 0, d: '{"ret":7}' }) });
+  const TG2 = loadFresh(g2.globals); TG2.config.paceMs = [0, 0];
+  const r2 = await TG2.runSteps([{ kind: 'equipSkin', id: 1795000 }], {});
+  assert.equal(r2.ok, false);
+  assert.match(r2.error, /would not switch/);
+  assert.equal(g2.UD.UsingCastleFace, undefined);
 });

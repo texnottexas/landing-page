@@ -5,7 +5,10 @@
 (function () {
   'use strict';
   var req = window.__require;
-  var RID = { BUILD_MOVE: 104, ARMY_MOVE: 110, ARMY_STORE_SINGLE: 226, GET_WAREHOUSE_INFO: 137 };
+  var RID = { BUILD_MOVE: 104, ARMY_MOVE: 110, ARMY_STORE_SINGLE: 226, GET_WAREHOUSE_INFO: 137,
+    BUILD_BUILDING: 100, DELETE_BUILDING: 111, DELETE_ARMY: 112, WAREHOUSE_DELETE_ARMYS: 139, BATCH_BUILD_ORDER: 180,
+    ARMY_WAREHOUSE_BATCH_MERGE: 219, ARMY_OUT_WAREHOUSE_BATCH_MERGE: 224, USE_CASTLE_FACE: 855 };
+  var GROUP = { army: 1040, air: 1050, navy: 1100 };          // Barracks, Air Base, Shipyard
   var MPT_ARMY = 20181001, BIT_ARMY = 2;                    // MapPointType.Army, BaseItemType.Army
   var WH_TYPE = { army: 16, navy: 17, air: 18 }, ARMY_TYPE = { army: 101, navy: 201, air: 301 };
   var HIGHS_VER = '1.8.0';
@@ -13,6 +16,7 @@
     paceMs: [2000, 1000],          // 2.0 to 3.0 s between actions
     responseTimeoutMs: 6000,       // per request
     storeConfirmMs: 3000,          // wait for the server push that moves a stored unit off the map
+    skinConfirmMs: 30000,          // the player may have to confirm removing a temporary cosmetic first
     solverTimeoutMs: 20000         // per solver file download
   };
 
@@ -22,6 +26,15 @@
   function NET() { return req('NetMgr').NET; }
   function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   function jitter() { return config.paceMs[0] + Math.floor(Math.random() * config.paceMs[1]); }
+
+  function parseD(r) { try { return typeof r.d === 'string' ? JSON.parse(r.d) : r.d; } catch (e) { return null; } }
+  function text(key) { try { var L = req('LocalManager'); return (L.LOCAL || L.default).getText(key); } catch (e) { return key; } }
+  function warehouseIds(role) {
+    var U = UD();
+    return (U._wareHouseList || []).map(function (w) { return w.id; }).filter(function (id) {
+      var b = U.getBuildingById(id); return b && b.Data && b.Data.type === WH_TYPE[role];
+    });
+  }
 
   function isReady() { var h = hm(); return !!(h && h.armyInited && h._ArmyComplete && h._BuildingComplete); }
 
@@ -43,14 +56,32 @@
     h.BuildingItems.forEach(function (i) {
       var bd = i.BuildingData, d = bd && bd.Data;
       if (!d) return;
-      buildings.push({ id: String(bd._id), pos: bd._pos, w: d.width, h: d.height, group: d.group, type: d.type, pt: d.point_type, unmovable: d.unmovable ? 1 : 0 });
+      buildings.push({ id: String(bd._id), pos: bd._pos, w: d.width, h: d.height, group: d.group, type: d.type, pt: d.point_type, unmovable: d.unmovable ? 1 : 0,
+        level: d.level, busy: (bd._curProductNum || 0) > 0 ? 1 : 0 });
     });
-    var units = [];
+    var units = [], stored = [];
     U.Armys.forEach(function (a) {
-      if (String(a.warehouseId) !== '0' || !a._data) return;
+      if (!a._data) return;
       var d = a._data;
+      if (String(a.warehouseId) !== '0') {
+        stored.push({ id: String(a._id), armyId: a._armyId, type: d.type, level: d.level, w: d.width, h: d.height, pt: d.point_type, state: a._state || 0, wh: String(a.warehouseId) });
+        return;
+      }
       units.push({ id: String(a._id), armyId: a._armyId, type: d.type, level: d.level, w: d.width, h: d.height, pt: d.point_type, pos: a._pos, state: a._state || 0 });
     });
+    var T = TABLE(), faces = U._MyCastleFace || {}, now = req('DataCenter').DATA.ServerTime, owned = [];
+    Object.keys(faces).forEach(function (k) {
+      var f = faces[k], id = Number(k);
+      if (!id || (f && f.endTime && f.endTime < now)) return;      // skip expired temporary skins
+      var row = T.getTableDataById('skin', String(id));
+      if (row) owned.push({ id: id, equip_buff: row.equip_buff || '', name: text(row.name) });
+    });
+    var buildable = {};
+    [GROUP.army, GROUP.air, GROUP.navy].forEach(function (g) {
+      var b = U.getBuildBuildingWithScience(g);
+      if (b) buildable[g] = { id: b.id, level: b.level, build_coin: Number(b.build_coin) || 0, produce_coin: Number(b.produce_coin) || 0, pt: b.point_type };
+    });
+    var warehouses = {}; Object.keys(ARMY_TYPE).forEach(function (k) { warehouses[k] = warehouseIds(k); });
     GT.wareHouseDirty();
     var storage = {};
     Object.keys(ARMY_TYPE).forEach(function (k) {
@@ -63,7 +94,9 @@
     return {
       v: 1, W: W, H: H, cellFields: 'x,y,terrain,tmxBlocked,free,itemType,floor,block,obstacle',
       cells: cells, buildings: buildings, units: units, storage: storage, mergeCap: mergeCap,
-      instantPool: U.getFreeArmyBuildAmt(), slotAdvice: slotAdvice()
+      instantPool: U.getFreeArmyBuildAmt(), slotAdvice: slotAdvice(),
+      stored: stored, skins: { owned: owned, current: U._UsingCastleFace }, gold: U.Resource.getResource(1),
+      buildable: buildable, warehouses: warehouses, uid: String(U.Uid || '')
     };
   }
 
@@ -209,7 +242,7 @@
       }
       if (r && r.error) return { ok: false, done: i, error: r.error };
       if (hooks.onStep) hooks.onStep(i, st, r);
-      if (!r || r.s !== 0) return { ok: false, done: i, error: (r && r.msg ? r.msg + ' ' : '') + 'The server declined step ' + (i + 1) + ' (code ' + (r ? r.s : '?') + ').' };
+      if ((!r || r.s !== 0) && !st.tolerant) return { ok: false, done: i, error: (r && r.msg ? r.msg + ' ' : '') + 'The server declined step ' + (i + 1) + ' (code ' + (r ? r.s : '?') + ').' };
       if (i < steps.length - 1) await delay(jitter());
     }
     return { ok: true, done: steps.length };
@@ -228,12 +261,94 @@
       if (r1.s === 0) h.MoveArmyCallBack(r1);
       return r1;
     }
+    if (st.kind === 'mergeStorage') {
+      var wids = warehouseIds(st.role);
+      return wids.length ? send(RID.ARMY_WAREHOUSE_BATCH_MERGE, { buildId: wids.join(',') }) : { s: 0 };
+    }
+    if (st.kind === 'mergeBase') return send(RID.ARMY_OUT_WAREHOUSE_BATCH_MERGE, { type: ARMY_TYPE[st.role] });
+    if (st.kind === 'deleteStored' || st.kind === 'deleteUnit') {
+      var ids = st.kind === 'deleteStored' ? st.ids : [st.id];
+      if (!safeToDelete(ids)) return { error: 'Refused to delete: a unit is outside Lv10 to Lv99, busy, or gone. Plan again.' };
+      return st.kind === 'deleteStored' ? send(RID.WAREHOUSE_DELETE_ARMYS, { ids: ids.map(String) }) : send(RID.DELETE_ARMY, { id: String(st.id) });
+    }
+    if (st.kind === 'equipSkin') return equipSkin(st.id);
+    if (st.kind === 'build') {
+      var row = TABLE().getTableDataById('building', String(st.buildingId));
+      if (!row || h.checkNearByPos(cc.v2(st.to[0], st.to[1]), 0, 0, -1, row.width, row.height, row.point_type, 1, 1, row.id, -1, []) === -1) {
+        return { error: 'The game would not accept a building at ' + st.to.join(',') + '. Plan again.' };
+      }
+      return send(RID.BUILD_BUILDING, { x: st.to[0], y: st.to[1], buildingId: row.id });
+    }
+    if (st.kind === 'train') return bulkTrain(st.role);
+    if (st.kind === 'deleteBuilding') {
+      var bi = h.getBuildingItemById(st.id);
+      if (!bi || !bi.BuildingData) return { error: 'A building in the plan was not found. Plan again.' };
+      if ((bi.BuildingData._curProductNum || 0) > 0) return { error: 'A training building is still training, so it was kept. Plan again.' };
+      var r3 = await send(RID.DELETE_BUILDING, { id: String(st.id) });
+      if (r3.s === 0) {
+        var d3 = parseD(r3);
+        if (d3 && d3.building) UD().DeleteBuilding(d3.building);
+        h.removeBuildingFromMap(String(st.id));
+      }
+      return r3;
+    }
     var b = h.getBuildingItemById(st.id);                  // park or moveBuilding
     if (!b) return { error: 'A building in the plan was not found. Plan again.' };
     if (!validateBuilding(b, st.to[0], st.to[1])) return { error: 'The game would not accept a building at ' + st.to.join(',') + '. Plan again.' };
     var r2 = await send(RID.BUILD_MOVE, { x: st.to[0], y: st.to[1], id: String(st.id) });
     if (r2.s === 0) h.MoveBuildingCallBack(r2);
     return r2;
+  }
+
+  // Defence in depth: whatever the plan says, only demoted Lv10-99 units that are idle can be deleted.
+  function safeToDelete(ids) {
+    var byId = {};
+    UD().Armys.forEach(function (a) { byId[String(a._id)] = a; });
+    return ids.length > 0 && ids.every(function (id) {
+      var a = byId[String(id)];
+      return !!a && !!a._data && a._data.level >= 10 && a._data.level <= 99 && !a._state;
+    });
+  }
+
+  function equipSkin(id) {
+    return new Promise(function (resolve) {
+      var settled = false, timer = null;
+      function done(r) { if (settled) return; settled = true; clearTimeout(timer); resolve(r); }
+      function go() {
+        send(RID.USE_CASTLE_FACE, { skinId: id, special: 0 }).then(function (r) {
+          var d = parseD(r);
+          if (r.s === 0 && d && d.ret === 0) { UD().UsingCastleFace = id; done({ s: 0 }); }
+          else done({ s: r.s || -4, msg: 'The game would not switch to that skin here.' });
+        });
+      }
+      timer = setTimeout(function () { done({ s: -1, msg: 'The skin change was not confirmed.' }); }, config.skinConfirmMs);
+      try { req('ActivityController').ActivityController.Instance.tryOffCastleCos(go); } catch (e) { go(); }
+    });
+  }
+
+  // The game's own Bulk Training for one type; its request carries no callback, so tap NET.send for the answer.
+  function bulkTrain(role) {
+    var U = UD(), blds = U.getBuildingArrayByBuildingGroup(GROUP[role]) || [];
+    if (!blds.length) return Promise.resolve({ s: 0, skipped: true });
+    var GT = req('GameTools').default;
+    GT.wareHouseDirty();
+    if (GT.wareHouseSpaceCache) delete GT.wareHouseSpaceCache[ARMY_TYPE[role]];
+    var empty = GT.getWareHouseEmptySpace(ARMY_TYPE[role]) || 0;
+    var row = TABLE().getTableDataById('building', String(blds[0].BuildingId));
+    var net = NET(), orig = net.send, sent = false;
+    return new Promise(function (resolve) {
+      var settled = false, timer = null;
+      function done(r) { if (settled) return; settled = true; clearTimeout(timer); net.send = orig; resolve(r); }
+      net.send = function (rid, payload, ctx, cb) {
+        if (rid !== RID.BATCH_BUILD_ORDER) return orig.apply(this, arguments);
+        sent = true;
+        return orig.call(this, rid, payload, ctx, function (e) { try { if (cb) cb.apply(this, arguments); } catch (x) {} done(e || { s: -1 }); });
+      };
+      timer = setTimeout(function () { done(sent ? { s: -1, msg: 'No answer from Bulk Training.' } : { s: 0, skipped: true }); }, config.responseTimeoutMs);
+      try { req('MainUiShortcutUtils').MainUiShortcutUtils._instance.batchTraining(row, empty); }
+      catch (e) { done({ s: -5, msg: 'Bulk Training could not start.' }); }
+      if (!sent && !settled) { clearTimeout(timer); done({ s: 0, skipped: true }); }     // nothing to train: queues full or no space
+    });
   }
 
   // ---------------------------------------------------------------- lock
