@@ -8,7 +8,7 @@
 // cities on any server in the 901 world view (a box hangs off its owner's city as cityReward) and the 2503 collect.
 window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent: [], answers: [], chat: [], handlers: {}, myMarch: {}, activity: true,
   gems: 1000, bag: 0, vip: 15, marchSecs: 2, buyMode: 'ok', useMode: 'ok', bagLagMs: 0, drift: 0, used: [], pending: [],
-  cities: {}, claimed: {}, collects: 0, limitAfter: 0 };
+  cities: {}, claimed: {}, collects: 0, limitAfter: 0, viewError: '', lose901: 0, emptyReward: false, nullItem: false };
 // a test can keep this game logged out across reloads (a reconnect that does not work)
 try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.__fake.kickBox = true; } } catch (e) {}
 (function () {
@@ -39,6 +39,8 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
         if (F.bag > 0) { F.bag -= 1; F.used.push(p.marchId); if (F.useMode === 'lost') return true; ans = { s: 0, d: '{}' }; }
         else ans = { s: 3, d: 'item_not_enough' };
       } else if (rid === 901) {                            // world view: like the live answer, {c, o, d} with no s
+        if (F.lose901 > 0) { F.lose901--; return true; }      // sent, never answered
+        if (F.viewError) { setTimeout(function () { cb({ c: 901, s: 3, d: F.viewError }); }, 20); return true; }
         var pts = [];
         Object.keys(F.cities).forEach(function (key) {      // key 'server:x:y'
           var a = key.split(':').map(Number), c = F.cities[key], pp = { pid: c.pid };
@@ -62,9 +64,11 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       if (rid !== 2503) ans = { c: rid, s: 3, pbAckV2: { header: { s: 3, d: 'unknown_request' } } };
       else if (F.limitAfter && F.collects >= F.limitAfter) ans = { c: 2503, s: 3, pbAckV2: { header: { s: 3, d: 'mask_limit_1' } } };
       else if (!city || !city.itemId || F.claimed[city.instanceId]) ans = { c: 2503, s: 3, pbAckV2: { header: { s: 3, d: 'pubilc911' } } };
+      else if (F.emptyReward) ans = { c: 2503, s: 0, pbAckV2: { header: { s: 0 }, data: {} } };
       else {
         F.claimed[city.instanceId] = 1; F.collects++;
-        ans = { c: 2503, s: 0, pbAckV2: { header: { s: 0 }, data: { rewardResult: { items: [{ itemId: city.itemId - 260617001 + 260604016, itemCount: 1 }] } } } };
+        var item = { itemId: city.itemId - 260617001 + 260604016, itemCount: 1 };
+        ans = { c: 2503, s: 0, pbAckV2: { header: { s: 0 }, data: { rewardResult: { items: F.nullItem ? [null, item] : [item] } } } };
       }
       setTimeout(function () { cb(ans); }, 20);
       return true;
@@ -86,7 +90,7 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       if (t === 'item' && id >= 260604017 && id <= 260604019) return { name: 'mask_reward_' + (id - 260604016) };
       return t === 'item' && id === 79200004 ? { name: 'equip_box_16' } : null; } } };
     var TEXT = { equip_box_16: 'Blessing Key', mask_reward_1: 'Mask Treasure', mask_reward_2: 'Mask HT', mask_reward_3: 'Mask RSS',
-      pubilc911: 'Reward claimed', mask_limit_1: 'Daily limit reached' };
+      pubilc911: 'Reward claimed', mask_limit_1: 'Daily limit reached', view_too_fast: 'Too frequent' };
     if (name === 'LocalManager') return { LOCAL: { getText: function (k) { return TEXT[k] || k; } } };
     return null;
   };

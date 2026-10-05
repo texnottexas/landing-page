@@ -61,7 +61,7 @@ async function open(setup, arg) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => { throw e; });
   await page.goto(base);
-  await page.evaluate((b) => { window.__MBX_WORKER = b.replace(/\/$/, ''); window.__MBX_FAST = true; window.__MBX_FEED_MS = 1000; }, base);
+  await page.evaluate((b) => { window.__MBX_WORKER = b.replace(/\/$/, ''); window.__MBX_FAST = true; window.__MBX_FEED_MS = 1000; window.__MBX_TIMEOUT_MS = 1000; window.__MBX_LATE_MS = 5000; }, base);
   await page.addScriptTag({ url: base + 'mask-boxes-core.js' });
   if (setup) await page.evaluate(setup, arg);
   return { ctx, page };
@@ -92,6 +92,7 @@ test('two reported boxes: soonest-ending first, the exact view and collect reque
   assert.match(await text(page, '#mbx-t2'), /HT\s*1\/20/);
   assert.match(await text(page, '#mbx-t3'), /RSS\s*0\/20/);
   await waitText(page, '#mbx-last', /Mask Treasure ×1 from S619 \(404, 612\)/);
+  assert.equal(await page.getAttribute('#mbx-t1', 'aria-label'), 'Treasure 1/20 since reset');
   const store = await page.evaluate((k) => JSON.parse(localStorage.getItem('mbx_count_v1_' + k)), SK);
   assert.deepEqual(store.counts, { 1: 1, 2: 1, 3: 0 });
   await page.waitForTimeout(1500);
@@ -269,5 +270,100 @@ test('a relaunch after a stop message replaces the old card instead of stacking 
   await launch(page);
   await page.waitForSelector('#mbx-t1');
   assert.equal(await page.$$eval('#mbx-root', (e) => e.length), 1);
+  await ctx.close();
+});
+
+// ---------------------------------------------------------------- final review fixes
+const rids = async (page) => (await sent(page)).map((x) => x.rid);
+
+test('REVIEW #1: the socket closing while a collect waits on the shared clock means the collect is never sent', async () => {
+  feed = [box({ server: 1 })];
+  const { ctx, page } = await open((t) => {
+    __fake.cities['1:404:612'] = { pid: '1', itemId: t + 1, instanceId: 's1' };
+    const N = __require('NetMgr').NET, orig = N.send;
+    N.send = function (rid) {                            // another Ops tool holds the clock; the game drops 1 s later
+      const r = orig.apply(this, arguments);
+      if (rid === 901) { window.__opsPace = { at: Date.now() + 2500 }; setTimeout(() => { __fake.socket = 3; }, 1000); }
+      return r;
+    };
+  }, T);
+  await launch(page);
+  await waitSent(page, 1);
+  await page.waitForTimeout(6000);
+  assert.deepEqual(await rids(page), [901]);
+  await ctx.close();
+});
+
+test('REVIEW #3: a game error on the view stops the run with the game\'s own text', async () => {
+  feed = [box({ server: 1, endMs: Date.now() + 100000 }), box({ server: 2, endMs: Date.now() + 200000 })];
+  const { ctx, page } = await open((t) => {
+    [1, 2].forEach((k) => { __fake.cities[k + ':404:612'] = { pid: String(k), itemId: t + 1, instanceId: 'v' + k }; });
+    __fake.viewError = 'view_too_fast';
+  }, T);
+  await launch(page);
+  await waitText(page, '#mbx-root', /Mask Mystery Boxes stopped: Too frequent/);
+  await page.waitForTimeout(2000);
+  assert.deepEqual(await rids(page), [901]);
+  await ctx.close();
+});
+
+test('REVIEW #3: a collect that answers success with no reward stops the run', async () => {
+  feed = [box({ server: 1, endMs: Date.now() + 100000 }), box({ server: 2, endMs: Date.now() + 200000 })];
+  const { ctx, page } = await open((t) => {
+    [1, 2].forEach((k) => { __fake.cities[k + ':404:612'] = { pid: String(k), itemId: t + 1, instanceId: 'e' + k }; });
+    __fake.emptyReward = true;
+  }, T);
+  await launch(page);
+  await waitText(page, '#mbx-root', /Mask Mystery Boxes stopped: a collect came back without a reward/);
+  await page.waitForTimeout(2000);
+  assert.deepEqual(await rids(page), [901, 2503]);
+  await ctx.close();
+});
+
+test('REVIEW #4: a city reward that is not a Mask Mystery box is never collected', async () => {
+  feed = [box({ server: 1 })];
+  const { ctx, page } = await open(() => { __fake.cities['1:404:612'] = { pid: '1', itemId: 999, instanceId: 'x1' }; });
+  await launch(page);
+  await waitSent(page, 1);
+  await page.waitForTimeout(2500);
+  assert.deepEqual(await rids(page), [901]);
+  await ctx.close();
+});
+
+test('REVIEW #6: an unanswered request holds the next one until its answer comes or 5 s (test value) pass', async () => {
+  feed = [box({ server: 1, endMs: Date.now() + 100000 }), box({ server: 2, endMs: Date.now() + 200000 })];
+  const { ctx, page } = await open((t) => {
+    [1, 2].forEach((k) => { __fake.cities[k + ':404:612'] = { pid: String(k), itemId: t + 1, instanceId: 'h' + k }; });
+    __fake.lose901 = 1;
+  }, T);
+  await launch(page);
+  await waitSent(page, 2, 12000);
+  const s = await sent(page);
+  assert.deepEqual(s.slice(0, 2).map((x) => x.p.k), [1, 2]);
+  assert.ok(s[1].at - s[0].at >= 5000, 'second view ' + (s[1].at - s[0].at) + ' ms after the unanswered one');
+  await ctx.close();
+});
+
+test('REVIEW #7: a reward list with an empty entry is still counted and the run carries on', async () => {
+  feed = [box({ server: 1, endMs: Date.now() + 100000 }), box({ server: 2, endMs: Date.now() + 200000 })];
+  const { ctx, page } = await open((t) => {
+    [1, 2].forEach((k) => { __fake.cities[k + ':404:612'] = { pid: String(k), itemId: t + 1, instanceId: 'n' + k }; });
+    __fake.nullItem = true;
+  }, T);
+  await launch(page);
+  await waitSent(page, 4);
+  await waitText(page, '#mbx-t1', /2\/20/);
+  assert.equal(await page.evaluate(() => __MBX.running), true);
+  await ctx.close();
+});
+
+test('REVIEW #7: an unexpected error stops the run with a message instead of a frozen card', async () => {
+  const { ctx, page } = await open();
+  await launch(page);
+  await page.waitForSelector('#mbx-t1');
+  await page.evaluate(() => { MaskBoxesCore.candidates = () => { throw new Error('boom'); }; });
+  feed = [box({ server: 1 })];
+  await waitText(page, '#mbx-root', /Mask Mystery Boxes stopped: something went wrong \(boom\)/, 8000);
+  assert.equal(await page.evaluate(() => __MBX.running), false);
   await ctx.close();
 });

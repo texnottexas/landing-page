@@ -22,7 +22,7 @@ test('findBox: the city at exactly x,y,k with a cityReward; type from its item, 
   assert.deepEqual(M.findBox(ans, 404, 612, 619), { state: 'box', pid: '217160163552', instanceId: '4871', type: 2 });
   assert.deepEqual(M.findBox({ s: 0, d: JSON.stringify({ pointList: [{ x: 404, y: 612, k: 619, p: { pid: 5 } }] }) }, 404, 612, 619), { state: 'gone' });
   assert.deepEqual(M.findBox({ s: 0, d: JSON.stringify({ pointList: [] }) }, 404, 612, 619), { state: 'gone' });
-  assert.deepEqual(M.findBox({ s: 3, d: 'x' }, 404, 612, 619), { state: 'error' });
+  assert.deepEqual(M.findBox({ s: 3, d: 'x' }, 404, 612, 619), { state: 'stop', key: 'x' });   // a game error: stop
   assert.deepEqual(M.findBox({ s: 'timeout' }, 404, 612, 619), { state: 'error' });
 });
 
@@ -32,7 +32,6 @@ test('classifyCollect: items, Reward claimed, a stop key, or failed', () => {
   assert.deepEqual(M.classifyCollect({ s: 3, pbAckV2: { header: { s: 3, d: 'pubilc911' } } }), { kind: 'claimed' });
   assert.deepEqual(M.classifyCollect({ s: 3, pbAckV2: { header: { s: 3, d: 'mask_limit_1' } } }), { kind: 'stop', key: 'mask_limit_1' });
   assert.deepEqual(M.classifyCollect({ s: 'timeout' }), { kind: 'failed' });
-  assert.deepEqual(M.classifyCollect({ s: 0, pbAckV2: { header: { s: 0 }, data: {} } }), { kind: 'failed' });
 });
 
 test('gate: 10 boxes a minute, 50 per 10 minutes, 3 failures in a row pause 5 minutes', () => {
@@ -64,4 +63,14 @@ test('findBox: a view answer without s (as the game sends 901 live: {c, o, d}) s
   assert.deepEqual(M.findBox(ans, 404, 612, 619), { state: 'box', pid: '217160163552', instanceId: '77', type: 1 });
   assert.deepEqual(M.findBox({ c: 901, d: 'not json' }, 404, 612, 619), { state: 'error' });
   assert.deepEqual(M.findBox({ c: 901 }, 404, 612, 619), { state: 'error' });
+});
+
+test('REVIEW #3: classifyCollect stops on a success without a reward; timeouts and blocked sends are failures', () => {
+  assert.deepEqual(M.classifyCollect({ s: 0, pbAckV2: { header: { s: 0 }, data: {} } }), { kind: 'stop', key: '' });
+  assert.deepEqual(M.classifyCollect({ s: 'timeout' }), { kind: 'failed' });
+  assert.deepEqual(M.classifyCollect({ s: 'blocked' }), { kind: 'failed' });
+  assert.deepEqual(M.findBox({ s: 'timeout' }, 1, 1, 1), { state: 'error' });
+  assert.deepEqual(M.findBox({ s: 'blocked' }, 1, 1, 1), { state: 'error' });
+  assert.deepEqual(M.findBox({ s: 7 }, 1, 1, 1), { state: 'stop', key: '' });
+  assert.deepEqual(M.classifyCollect({ s: 3 }), { kind: 'stop', key: '' });
 });

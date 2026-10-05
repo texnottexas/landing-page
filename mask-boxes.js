@@ -11,7 +11,8 @@
 
   var VERSION = '2026-10-05';
   var WORKER = window.__MBX_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
-  var FAST = !!window.__MBX_FAST, FEED_MS = window.__MBX_FEED_MS || 60000;
+  var FAST = !!window.__MBX_FAST, FEED_MS = window.__MBX_FEED_MS || 60000, TIMEOUT_MS = window.__MBX_TIMEOUT_MS || 8000;
+  var LATE_MS = window.__MBX_LATE_MS || 30000;            // an unanswered request counts as in flight this long
   var VIEW = 901, COLLECT = 2503;                          // RequestId world view, Mask Mystery box collect (PB v2)
   var LS_TYPES = 'mbx_types_v1', LS_COUNT = 'mbx_count_v1_', LS_DONE = 'mbx_done_v1_', LS_MIN = 'mbx_min_v1';
   var TARGET = {};                                         // NET.send wants a target; a plain object is always valid
@@ -26,24 +27,34 @@
   function NET() { return req('NetMgr').NET; }
   function UD() { return req('DataCenter').DATA.UserData; }
   function connected() { try { var s = NET()._socket; return !!(s && s._webSocket && s._webSocket.readyState === 1); } catch (e) { return false; } }
+  // connected and logged in (a reloading frame can have an open socket before the player is in)
+  function ready() { try { var U = UD(); return !!(U && U.Name) && connected(); } catch (e) { return false; } }
   function gameText(key) { try { var L = req('LocalManager'), t = (L.LOCAL || L.default).getText(key); return t && t !== key ? String(t) : ''; } catch (e) { return ''; } }
   function itemLabel(items) {
-    return (Array.isArray(items) ? items : []).map(function (it) {
+    return (Array.isArray(items) ? items : []).filter(function (it) { return it && typeof it === 'object'; }).map(function (it) {
       var name = '';
       try {
         var row = req('TableManager').TABLE.getTableDataById('item', it.itemId), L = req('LocalManager');
         if (row && row.name) name = (L.LOCAL || L.default).getText(row.name);
       } catch (e) {}
-      return (name && name !== row.name ? name : 'item ' + it.itemId) + ' ×' + it.itemCount;
+      return (name && name !== row.name ? name : 'item ' + it.itemId) + ' ×' + (it.itemCount || 1);
     }).join(', ');
   }
+  // Never two requests in flight: one that timed out still counts until its answer arrives or LATE_MS pass.
+  var flight = null, flightSeq = 0;
   function call(send) {
     return new Promise(function (resolve) {
-      var done = false, ok;
-      var t = setTimeout(function () { if (!done) { done = true; resolve({ s: 'timeout' }); } }, 8000);
-      try { ok = send(function (r) { if (done) return; done = true; clearTimeout(t); resolve(r || { s: -1 }); }); } catch (e) { ok = false; }
-      if (ok === false && !done) { done = true; clearTimeout(t); resolve({ s: 'blocked' }); }
+      var done = false, ok, mine = { seq: ++flightSeq, at: Date.now() };
+      flight = mine;
+      var land = function () { if (flight === mine) flight = null; };
+      var t = setTimeout(function () { if (!done) { done = true; resolve({ s: 'timeout' }); } }, TIMEOUT_MS);
+      try { ok = send(function (r) { land(); if (done) return; done = true; clearTimeout(t); resolve(r || { s: -1 }); }); } catch (e) { ok = false; }
+      if (ok === false && !done) { land(); done = true; clearTimeout(t); resolve({ s: 'blocked' }); }
     });
+  }
+  async function idle() {
+    while (S.running && flight && Date.now() - flight.at < LATE_MS) { setFoot('Waiting for the game to answer...', 'warn'); await delay(250); }
+    flight = null;
   }
   function sendView(b) {
     return call(function (cb) { return NET().send(VIEW, { x: b.x, y: b.y, k: b.server, rid: 0, width: 25, height: 30, marchInfo: true, viewLevel: 0 }, TARGET, cb); });
@@ -106,11 +117,15 @@
     }
   }
   async function loop() {
+    try { await run(); }
+    catch (e) { stop('something went wrong (' + String((e && e.message) || e).slice(0, 60) + ')'); }
+  }
+  async function run() {
     while (S.running) {
       if (Date.now() >= S.nextFetch) await fetchFeed();
       if (!S.running) break;
       if (!S.feedOk) { await untilNextFetch('Box list unavailable', 'warn'); continue; }
-      if (!connected()) { setFoot('Game disconnected. Waiting...', 'bad'); await delay(1000); continue; }
+      if (!ready()) { setFoot('Game disconnected. Waiting...', 'bad'); await delay(1000); continue; }
       var list = C.candidates(S.boxes, { now: Date.now(), types: S.types, tried: S.tried, counts: counts() });
       if (!list.length) { await untilNextFetch('Waiting for new boxes', 'ok'); continue; }
       var g = C.gate(S.log, Date.now());
@@ -121,26 +136,28 @@
   }
   function note(kind) { S.log.push({ t: Date.now(), kind: kind }); if (S.log.length > 200) S.log.shift(); }
   // One box: look at the owner's city, and if the box is still there and new to us, collect it.
+  function stopText(key, fallback) { return key ? gameText(key) || 'The game answered ' + key + '.' : fallback; }
+  // Wait for the shared clock, then check again: the wait can be long, and the game can drop meanwhile.
+  async function turn() { await idle(); await pace(); return S.running && ready() && !flight; }
   async function tryBox(b) {
-    S.tried[C.boxKey(b)] = 1;
     var where = 'S' + b.server + ' (' + b.x + ', ' + b.y + ')';
     setFoot('Checking ' + C.TYPES[b.type] + ' at ' + where, 'ok');
-    await pace();
-    if (!S.running || !connected()) return;
+    if (!(await turn())) return;                            // nothing sent: the box stays untried
+    S.tried[C.boxKey(b)] = 1;
     var found = C.findBox(await sendView(b), b.x, b.y, b.server);
+    if (found.state === 'stop') { note('failed'); stop(stopText(found.key, 'the game refused to show that city.')); return; }
     if (found.state !== 'box') { note(found.state === 'gone' ? 'gone' : 'failed'); return; }
     if (doneIds().indexOf(found.instanceId) >= 0) { note('claimed'); return; }
-    var type = found.type || b.type;
-    if (!S.types[type] || counts()[type] >= C.DAILY_CAP) { note('gone'); return; }   // another type than reported, off or full
+    var type = found.type;                                  // from the box's own item; 0 = not a Mask Mystery box
+    if (!type || !S.types[type] || counts()[type] >= C.DAILY_CAP) { note('gone'); return; }   // unknown, off or full
     await delay(FAST ? 0 : 1500 + rand(1500));             // a person's pause between looking and tapping
-    if (!S.running || !connected()) return;
-    await pace();
     if (!S.running) return;
+    if (!(await turn())) { note('aborted'); return; }       // the view went out, the collect never did
     var c = C.classifyCollect(await sendCollect(found.pid));
     note(c.kind === 'ok' || c.kind === 'claimed' ? c.kind : 'failed');
     if (c.kind === 'ok') { bump(type); markDone(found.instanceId); S.last = itemLabel(c.items) + ' from ' + where; }
     else if (c.kind === 'claimed') markDone(found.instanceId);
-    else if (c.kind === 'stop') { stop(gameText(c.key) || 'The game answered ' + c.key + '.'); return; }
+    else if (c.kind === 'stop') { stop(stopText(c.key, 'a collect came back without a reward.')); return; }
     paint();
   }
 
@@ -236,7 +253,7 @@
       var b = document.getElementById('mbx-t' + (i + 1)); if (!b) return;
       var on = String(r[2]); if (b.getAttribute('aria-pressed') !== on) b.setAttribute('aria-pressed', on);
       var n = b.querySelector('b'); if (n && n.textContent !== r[1]) n.textContent = r[1];
-      var al = r[0] + ' ' + r[1] + ' today'; if (b.getAttribute('aria-label') !== al) b.setAttribute('aria-label', al);
+      var al = r[0] + ' ' + r[1] + ' since reset'; if (b.getAttribute('aria-label') !== al) b.setAttribute('aria-label', al);
     });
     var f = document.getElementById('mbx-foot'); if (f && f.textContent !== S.foot) f.textContent = S.foot;
     var l = document.getElementById('mbx-last'); if (l && l.textContent !== (S.last ? 'Last: ' + S.last : '')) l.textContent = S.last ? 'Last: ' + S.last : '';

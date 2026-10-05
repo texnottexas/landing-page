@@ -38,8 +38,11 @@
   // The box hangs off its owner's city in the 901 world view: the city point at exactly (x, y) on server k with a
   // cityReward. Its type comes from the box's own item, not the report.
   // The live 901 answer is {c, o, d} with no s; a timeout, a blocked send or a game error carries one.
+  // A numeric s other than 0 is the game refusing: stop on it (its message key is in d). A timeout or a blocked
+  // send ('timeout' / 'blocked') is an error toward the breaker.
   function findBox(answer, x, y, k) {
-    if (!answer || (answer.s != null && answer.s !== 0)) return { state: 'error' };
+    if (!answer) return { state: 'error' };
+    if (answer.s != null && answer.s !== 0) return typeof answer.s === 'number' ? { state: 'stop', key: typeof answer.d === 'string' ? answer.d.slice(0, 80) : '' } : { state: 'error' };
     var d;
     try { d = typeof answer.d === 'string' ? JSON.parse(answer.d) : answer.d; } catch (e) { return { state: 'error' }; }
     if (!d || !Array.isArray(d.pointList)) return { state: 'error' };
@@ -55,15 +58,17 @@
     return { state: 'gone' };
   }
 
+  // Items: collected. "Reward claimed": recorded. Anything else the game answers (a refusal, or a success without
+  // a reward) is an answer we have never seen: stop. Only a timeout or a blocked send is a plain failure.
   function classifyCollect(a) {
     if (!a || typeof a.s !== 'number') return { kind: 'failed' };
     var h = (a.pbAckV2 && a.pbAckV2.header) || {};
     if (a.s === 0) {
       var items = a.pbAckV2 && a.pbAckV2.data && a.pbAckV2.data.rewardResult && a.pbAckV2.data.rewardResult.items;
-      return Array.isArray(items) && items.length ? { kind: 'ok', items: items } : { kind: 'failed' };
+      return Array.isArray(items) && items.length ? { kind: 'ok', items: items } : { kind: 'stop', key: '' };
     }
     if (h.d === CLAIMED) return { kind: 'claimed' };
-    return h.d ? { kind: 'stop', key: String(h.d) } : { kind: 'failed' };   // an answer we have never seen: stop
+    return { kind: 'stop', key: h.d ? String(h.d).slice(0, 80) : '' };
   }
 
   // Hard limits, checked before every box: 10 a minute, 50 per 10 minutes, and three failed tries in a row pause
