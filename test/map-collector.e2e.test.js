@@ -644,3 +644,26 @@ test('shared request clock: a claim waits until 1.1 s after another Ops tool\'s 
   assert.ok(await page.evaluate(() => window.__opsPace.at) >= claimAt - 5, 'and the clock now holds the claim');
   await ctx.close();
 });
+
+test('REVIEW-MBX #2: Stop while a purchase waits on the shared request clock sends no purchase', async () => {
+  settings.speedOn = true;
+  const { ctx, page } = await start();
+  await page.evaluate(() => {
+    __fake.bag = 0; __fake.gems = 1000; __fake.marchSecs = 25;
+    const N = __require('NetMgr').NET, orig = N.send;
+    N.send = function (rid) {                            // another Ops tool holds the clock 3 s after the claim
+      const r = orig.apply(this, arguments);
+      if (rid === 902) window.__opsPace = { at: Date.now() + 3000 };
+      return r;
+    };
+  });
+  await page.waitForFunction(() => window.__MAPC.speed().on, null, { timeout: 8000 });
+  await page.evaluate(() => __fake.notice(221, 'A', 5, 5));
+  await page.waitForFunction(() => __fake.sent.length === 1, null, { timeout: 8000 });
+  await page.waitForTimeout(2500);                       // the speed-up is now waiting on the held clock
+  await page.evaluate(() => __MAPC.stop());
+  await page.waitForTimeout(6000);
+  assert.deepEqual((await sent(page)).map((x) => x.rid), [902]);
+  assert.equal(await page.evaluate(() => __fake.gems), 1000, 'no gems spent after Stop');
+  await ctx.close();
+});

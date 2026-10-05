@@ -184,17 +184,23 @@
   // gems that left for a speed-up are counted on the map and in today's total at once, whatever happens next
   function spend(m, g) { spentToday(); S.spend.gems += g; saveSpend(); m.gems = (m.gems || 0) + g; m.speedBought = (m.speedBought || 0) + 1; C.touch(S, m); save(); }
   function dropSpeed(m) { m.speedWant = m.speedDone || 0; C.touch(S, m); save(); paint(); }
+  function speedStillWanted(m) {
+    return speedReady() && S.active && S.attached && connected() && m.state === 'sent' && m.arriveAt - Date.now() > C.SPEED_MIN_LEFT_MS;
+  }
   function speedFail() { S.speedFails++; if (S.speedFails >= 3) speedOff('3 speed-ups in a row failed'); }
   // One Advanced March Speed-up on this march: from the bag, or bought at the VIP shop's price within the
   // gem reserve and daily cap. A purchase must add exactly one and cost exactly the price, or speed-ups stop.
   async function speedUp(m) {
+    // the shared clock first (another Ops tool can hold it a while), then everything is read fresh: still running,
+    // attached, connected, on, and the march still on its way with time to gain
+    await pace();
+    if (!speedStillWanted(m)) return;
     var row = shopRow(), price = row ? Number(row.price_shop) || 0 : 0;
     var chk = C.buyCheck({ bag: bagCount(), gems: gems(), price: price, item: row ? Number(row.item_id) : 0, vip: vipLevel(), needVip: row ? Number(row.need_vip_level) || 0 : 0,
       reserve: S.speed.reserve, spent: spentToday(), cap: S.speed.cap });
     if (!chk.ok) { m.speedWant = m.speedDone || 0; m.speedNote = chk.reason; S.speedNote = chk.reason; C.touch(S, m); save(); paint(); return; }
     if (chk.source === 'buy') {
       var bag0 = bagCount(), gems0 = gems();
-      await pace();
       var b = await sendReq(BUY, { shopId: C.SPEED_SHOP, amount: 1, isVip: 1 }), sold = !!b && b.s === 0;
       // it must add exactly one speed-up for exactly the price. A lost answer can still have bought one: the bag says.
       if (!(await until(function () { return bagCount() === bag0 + 1 && gems() === gems0 - price; }, sold ? 3000 : 1000))) {
@@ -205,9 +211,10 @@
       spend(m, price);
       await delay(1100 + Math.floor(Math.random() * 200));
       // still wanted, still on, still attached, still en route with time to gain? Otherwise it stays in the bag.
-      if (!speedReady() || !S.active || !S.attached || !connected() || m.state !== 'sent' || !(m.arriveAt - Date.now() > C.SPEED_MIN_LEFT_MS)) return;
+      if (!speedStillWanted(m)) return;
+      await pace();
+      if (!speedStillWanted(m)) return;
     }
-    await pace();
     var bagBefore = bagCount();
     var u = await sendReq(USE, { marchId: m.marchId, itemId: C.SPEED_ITEM });
     if (!u || u.s !== 0) {
