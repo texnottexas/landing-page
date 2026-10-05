@@ -75,6 +75,8 @@
   #dash-left { color: var(--text); font-weight: 600; }
   #dash-totals { margin: 14px 0 0; padding-top: 14px; border-top: 1px dashed var(--line); color: var(--muted); font-size: 15px; }
   #dash-totals b { font: 600 18px/1 var(--display); color: var(--text); letter-spacing: .01em; }
+  #dash-spend { margin: 10px 0 0; display: flex; align-items: center; gap: 7px; font-size: 14px; color: var(--amber); }
+  #dash-spend svg { flex: none; }
   #dash-totals .g { color: var(--green); } #dash-totals .a { color: var(--amber); } #dash-totals .b { color: var(--blue); } #dash-totals .r { color: var(--red); }
   .reconnect { margin-top: 14px; padding: 12px; border-radius: 12px; background: rgba(248,81,73,.07); border: 1px solid rgba(248,81,73,.3); }
   .reconnect p { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
@@ -197,6 +199,7 @@
           <div class="status-row"><span class="beacon" aria-hidden="true"></span><span id="dash-status" translate="no"></span></div>
           <div class="meta"><span id="dash-last" translate="no"></span><span id="dash-left" translate="no"></span><span id="dash-auto" translate="no" hidden></span></div>
           <p id="dash-totals" translate="no"></p>
+          <p id="dash-spend" translate="no" hidden></p>
           <div class="note" id="dash-note"></div>
           <div class="reconnect" id="dash-reconnect-box" hidden>
             <p>Another login took over this account, so the home game stopped. Reconnecting presses the game's own Connect button at home, which logs your other device out.</p>
@@ -368,6 +371,17 @@
     var parts = [[periodLabel() + ': ', null], [t.maps || 0, ''], [' maps from ' + spawners + (spawners === 1 ? ' spawner. ' : ' spawners. '), null],
       [t.collected || 0, 'g'], [' collected, ', null], [t.missed || 0, 'a'], [' missed, ', null], [t.enRoute || 0, 'b'], [' en route, ', null], [t.notSent || 0, 'r'], [' not sent.', null]];
     parts.forEach(function (x) { p.appendChild(x[1] === null ? document.createTextNode(x[0]) : el('b', x[1], String(x[0]))); });
+    // what speed-ups cost, in plain sight whenever they are switched on or spent anything in this period
+    var spt = data.speedTotals || { speedups: 0, gems: 0 }, sOn = !!(data.settings && data.settings.speedOn), sp = $('dash-spend');
+    sp.hidden = !(sOn || spt.gems > 0);
+    var spText = periodLabel() + ': ' + num(spt.gems) + ' gems spent on ' + spt.speedups + (spt.speedups === 1 ? ' speed-up.' : ' speed-ups.');
+    if (!sp.hidden && sp.getAttribute('data-t') !== spText) {
+      sp.textContent = ''; sp.setAttribute('data-t', spText);
+      var NS = 'http://www.w3.org/2000/svg', ic = document.createElementNS(NS, 'svg'), pa = document.createElementNS(NS, 'path');
+      ic.setAttribute('width', '14'); ic.setAttribute('height', '14'); ic.setAttribute('viewBox', '0 0 24 24'); ic.setAttribute('aria-hidden', 'true');
+      pa.setAttribute('d', 'M6 3h12l4 6-10 12L2 9z'); pa.setAttribute('fill', 'none'); pa.setAttribute('stroke', 'currentColor'); pa.setAttribute('stroke-width', '2'); pa.setAttribute('stroke-linejoin', 'round');
+      ic.appendChild(pa); sp.appendChild(ic); sp.appendChild(document.createTextNode(spText));
+    }
   }
   function renderSpeed() {
     var st = data.settings || { speedOn: false, gemReserve: 10000, gemCap: 1500 }, today = data.today || { speedups: 0, gems: 0 }, s = data.status;

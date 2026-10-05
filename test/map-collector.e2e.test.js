@@ -490,3 +490,70 @@ test('auto-reconnect: outside Unattended mode nothing reloads and no time is rep
   assert.ok(reports.length > 0 && reports.every((r) => !r.body.status.autoReconnectAt));
   await ctx.close();
 });
+
+test('FIX #2: a speed-up whose answer is lost is counted from the bag, not bought again', async () => {
+  settings.speedOn = true;
+  const { ctx, page } = await start();
+  await page.evaluate(() => { __fake.bag = 0; __fake.marchSecs = 25; __fake.useMode = 'lost'; });
+  await page.waitForFunction(() => window.__MAPC.speed().on, null, { timeout: 8000 });
+  await page.evaluate(() => __fake.notice(301, 'A', 5, 5));
+  await page.waitForTimeout(15000);
+  assert.deepEqual(await rids(page), [902, 818, 920], 'one purchase, one use');
+  assert.ok(await waitReport(page, (r) => r.body.maps.some((m) => m.id === '301' && m.speedups === 1 && m.gems === 37), 8000));
+  await ctx.close();
+});
+test('FIX #2: a failed purchase drops that march instead of buying again', async () => {
+  settings.speedOn = true;
+  const { ctx, page } = await start();
+  await page.evaluate(() => { __fake.bag = 0; __fake.marchSecs = 40; __fake.buyMode = 'fail'; });
+  await page.waitForFunction(() => window.__MAPC.speed().on, null, { timeout: 8000 });
+  await page.evaluate(() => __fake.notice(311, 'A', 5, 5));
+  await page.waitForTimeout(7000);
+  assert.deepEqual(await rids(page), [902, 818]);
+  await ctx.close();
+});
+test('FIX #1/#3: a purchase that does not add up is still counted, and the card says speed-ups stopped', async () => {
+  settings.speedOn = true;
+  const { ctx, page } = await start();
+  await page.evaluate(() => { __fake.bag = 0; __fake.marchSecs = 40; __fake.drift = 10; });
+  await page.waitForFunction(() => window.__MAPC.speed().on, null, { timeout: 8000 });
+  await page.evaluate(() => __fake.notice(321, 'A', 5, 5));
+  await page.waitForFunction(() => window.__MAPC.speed().off !== '', null, { timeout: 12000 });
+  assert.ok(await waitReport(page, (r) => r.body.maps.some((m) => m.id === '321' && m.gems === 47), 8000), 'the 47 gems that left are on the map');
+  assert.ok(await waitReport(page, (r) => r.body.status.speedOn === false && /^Speed-ups off/.test(r.body.status.speedNote), 8000));
+  await waitText(page, '#mapc-speed', /^Stopped$/);
+  assert.equal(await page.$eval('#mapc-speed-toggle', (b) => b.disabled), true);
+  const ledger = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.indexOf('mapc_spend_v1') === 0).map((k) => [k, JSON.parse(localStorage.getItem(k)).gems]));
+  assert.equal(ledger.length, 1); assert.match(ledger[0][0], /^mapc_spend_v1_[0-9a-f]{16}$/); assert.equal(ledger[0][1], 47);
+  await ctx.close();
+});
+test('FIX #4: switching speed-ups off during a purchase keeps the item instead of using it', async () => {
+  settings.speedOn = true;
+  const { ctx, page } = await start();
+  await page.evaluate(() => { __fake.bag = 0; __fake.marchSecs = 40; __fake.bagLagMs = 1500; });
+  await page.waitForFunction(() => window.__MAPC.speed().on, null, { timeout: 8000 });
+  await page.evaluate(() => __fake.notice(331, 'A', 5, 5));
+  await page.waitForFunction(() => __fake.sent.some((x) => x.rid === 818), null, { timeout: 10000 });
+  await page.click('#mapc-speed-toggle');
+  await page.waitForTimeout(5000);
+  assert.deepEqual(await rids(page), [902, 818]);
+  assert.equal(await page.evaluate(() => __fake.bag), 1, 'the bought speed-up stays in the bag');
+  await ctx.close();
+});
+test('FIX #5: Stop right after a card change sends no report after the stopped one', async () => {
+  const { ctx, page } = await start();
+  await page.waitForFunction(() => window.__MAPC.speed().known, null, { timeout: 8000 });
+  workerMode = 'slow';
+  await page.click('#mapc-speed-toggle'); await page.click('#mapc-speed-toggle');
+  await page.click('#mapc-stop');
+  await page.waitForTimeout(6000);
+  assert.equal(reports[reports.length - 1].body.status.state, 'stopped');
+  await ctx.close();
+});
+test('FIX #11: a pending speed-up request does not hold up claims', async () => {
+  const { ctx, page } = await start();
+  await page.waitForSelector('#mapc-enroute');
+  await page.evaluate(() => { __fake.pending = [920]; __fake.notice(341, 'A', 5, 5); });
+  await page.waitForFunction(() => __fake.sent.some((x) => x.rid === 902), null, { timeout: 8000 });
+  await ctx.close();
+});

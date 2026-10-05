@@ -81,6 +81,8 @@
   function vipLevel() { try { var v = Number(UD().VipLevel); return isFinite(v) ? v : 0; } catch (e) { return 0; } }
   function shopRow() { try { return req('TableManager').TABLE.getTableDataById('vip_shop', C.SPEED_SHOP) || null; } catch (e) { return null; } }
   function netBusy() { try { var n = NET(); return !!(n.checkRequestIdNoRes(CLAIM) || n.checkRequestIdNoRes(BUY) || n.checkRequestIdNoRes(USE)); } catch (e) { return false; } }
+  // a claim waits only for an unanswered claim: a speed-up request the game never answers must not stall every claim after it
+  function claimBusy() { try { return !!NET().checkRequestIdNoRes(CLAIM); } catch (e) { return false; } }
   function itemLabel(items) {
     return (Array.isArray(items) ? items : []).map(function (it) {
       var name = '';
@@ -128,7 +130,7 @@
   // account was suspended, 2026-10-04.) Only the last 2000 are saved for a restart.
   function markSeen(id) { if (S.seen[id] === undefined) { S.seen[id] = 1; S.seenOrder.push(id); } }
   function restore() {
-    try { var sp = JSON.parse(lsGet(LS_SPEND)); if (sp && sp.siteKey === S.siteKey && typeof sp.day === 'string' && typeof sp.gems === 'number') S.spend = { day: sp.day, gems: sp.gems }; } catch (e) {}
+    try { var sp = JSON.parse(lsGet(spendKey())); if (sp && typeof sp.day === 'string' && typeof sp.gems === 'number') S.spend = { day: sp.day, gems: sp.gems }; } catch (e) {}
     var raw = lsGet(LS_STATE), saved = null;
     try { saved = JSON.parse(raw); } catch (e) {}
     if (!saved || saved.siteKey !== S.siteKey || !Array.isArray(saved.maps)) return;
@@ -149,7 +151,9 @@
     }, 1000);
   }
 
-  function saveSpend() { lsSet(LS_SPEND, JSON.stringify({ siteKey: S.siteKey, day: S.spend.day, gems: S.spend.gems })); }
+  // gems spent today, per account (two accounts in one browser keep separate counts)
+  function spendKey() { return LS_SPEND + '_' + S.siteKey; }
+  function saveSpend() { lsSet(spendKey(), JSON.stringify({ day: S.spend.day, gems: S.spend.gems })); }
 
   // ---------------------------------------------------------------- speed-ups
   function speedReady() { return S.speed.on && S.speed.known && !S.speedOff; }
@@ -164,7 +168,10 @@
     var t0 = Date.now();
     return new Promise(function (r) { (function poll() { if (fn()) return r(true); if (Date.now() - t0 >= ms) return r(false); setTimeout(poll, 100); })(); });
   }
-  function speedOff(why) { S.speedOff = why; S.speedNote = 'Speed-ups off: ' + why; note(S.speedNote, 3600000); report(''); }
+  function speedOff(why) { S.speedOff = why; S.speedNote = 'Speed-ups off: ' + why + '. Relaunch to resume.'; paint(); report(''); }
+  // gems that left for a speed-up are counted on the map and in today's total at once, whatever happens next
+  function spend(m, g) { spentToday(); S.spend.gems += g; saveSpend(); m.gems = (m.gems || 0) + g; m.speedBought = (m.speedBought || 0) + 1; C.touch(S, m); save(); }
+  function dropSpeed(m) { m.speedWant = m.speedDone || 0; C.touch(S, m); save(); paint(); }
   function speedFail() { S.speedFails++; if (S.speedFails >= 3) speedOff('3 speed-ups in a row failed'); }
   // One Advanced March Speed-up on this march: from the bag, or bought at the VIP shop's price within the
   // gem reserve and daily cap. A purchase must add exactly one and cost exactly the price, or speed-ups stop.
@@ -173,20 +180,28 @@
     var chk = C.buyCheck({ bag: bagCount(), gems: gems(), price: price, vip: vipLevel(), needVip: row ? Number(row.need_vip_level) || 0 : 0,
       reserve: S.speed.reserve, spent: spentToday(), cap: S.speed.cap });
     if (!chk.ok) { m.speedWant = m.speedDone || 0; m.speedNote = chk.reason; S.speedNote = chk.reason; C.touch(S, m); save(); paint(); return; }
-    var bought = false;
     if (chk.source === 'buy') {
       var bag0 = bagCount(), gems0 = gems();
-      var b = await sendReq(BUY, { shopId: C.SPEED_SHOP, amount: 1, isVip: 1 });
-      if (!b || b.s !== 0) { speedFail(); return; }
-      if (!(await until(function () { return bagCount() === bag0 + 1 && gems() === gems0 - price; }, 3000))) { speedOff('a purchase did not add up'); return; }
-      S.spend.gems += price; saveSpend(); bought = true;
+      var b = await sendReq(BUY, { shopId: C.SPEED_SHOP, amount: 1, isVip: 1 }), sold = !!b && b.s === 0;
+      // it must add exactly one speed-up for exactly the price. A lost answer can still have bought one: the bag says.
+      if (!(await until(function () { return bagCount() === bag0 + 1 && gems() === gems0 - price; }, sold ? 3000 : 1000))) {
+        var now = gems(), gone = gems0 != null && now != null ? gems0 - now : 0;
+        if (gone > 0 || sold) { spend(m, Math.max(gone, sold ? price : 0)); speedOff('a purchase did not add up'); return; }
+        dropSpeed(m); speedFail(); return;                  // nothing bought: this march gets no more tries
+      }
+      spend(m, price);
       await delay(1100 + Math.floor(Math.random() * 200));
-      if (!S.active || !connected()) return;                 // the speed-up stays in the bag for the next pick
+      // still wanted, still on, still attached, still en route with time to gain? Otherwise it stays in the bag.
+      if (!speedReady() || !S.active || !S.attached || !connected() || m.state !== 'sent' || !(m.arriveAt - Date.now() > C.SPEED_MIN_LEFT_MS)) return;
     }
+    var bagBefore = bagCount();
     var u = await sendReq(USE, { marchId: m.marchId, itemId: C.SPEED_ITEM });
-    if (!u || u.s !== 0) { speedFail(); return; }
+    if (!u || u.s !== 0) {
+      // a lost answer can still have used it: one fewer in the bag means it worked
+      if (!(await until(function () { return bagCount() === bagBefore - 1; }, 1000))) { dropSpeed(m); speedFail(); return; }
+    }
     S.speedFails = 0;
-    C.applySpeed(m, Date.now(), bought, price); C.touch(S, m); save(); paint();
+    C.applySpeed(m, Date.now(), false, 0); C.touch(S, m); save(); paint();
   }
   // A report answer brings the stored settings. A card change made while that report was out is kept and sent next.
   function applySettings(st, sentDirty) {
@@ -240,7 +255,7 @@
         var left = claimsLeft(activity());
         if (left != null) S.left = left;
         if (left != null && left <= 0) { stop('out of claims'); break; }
-        if (netBusy()) { await delay(1000); continue; }
+        if (claimBusy()) { await delay(1000); continue; }
         var g = C.gate(S.sends, Date.now());
         if (!g.ok) { if (!S.paused || S.paused.until !== g.until) { S.paused = g; paint(); report(''); } await delay(Math.min(5000, Math.max(250, g.until - Date.now()))); continue; }
         if (S.paused) { S.paused = null; paint(); }
@@ -310,7 +325,7 @@
     var body = { runId: S.runId, siteKey: S.siteKey, version: VERSION, startedAt: S.startedAt,
       status: { state: stopReason ? 'stopped' : 'running', stopReason: stopReason || '', left: S.left, connected: S.attached && connected(), visible: visible(),
         kicked: !connected() && kickedNow(), lastChatAt: Math.round(S.lastChatAt),
-        speedOn: !!S.speed.on, speedNote: S.speedNote || '', autoReconnectAt: S.autoAt || 0 },
+        speedOn: speedReady(), speedNote: S.speedNote || '', autoReconnectAt: S.autoAt || 0 },
       maps: b.rows };
     if (sentDirty !== null) body.settings = { speedOn: sentDirty };
     return fetch(WORKER + '/mapcollector/report', { method: 'POST', keepalive: !!stopReason,
@@ -334,7 +349,7 @@
           else S.failing = true;
         }
         paint();
-        if (S.reportSoon && !stopReason) { S.reportSoon = false; setTimeout(function () { report(''); }, 0); }
+        if (S.reportSoon && !stopReason && S.active && !S.stopped) { S.reportSoon = false; setTimeout(function () { report(''); }, 0); }
         return code;
       });
   }
@@ -461,7 +476,7 @@
     '#mapc-root .mapc-foot{color:#8b949e;font-size:12px;margin-top:6px;min-height:16px}#mapc-root .mapc-msg{margin:4px 0 2px}',
     '#mapc-root .mapc-btns{display:flex;gap:6px;margin-top:8px}',
     '#mapc-root button{flex:1;min-height:44px;border:1px solid #30363d;border-radius:8px;background:#1c2128;color:#e6edf3;font:inherit;cursor:pointer}',
-    '#mapc-root button[aria-pressed="true"]{border-color:#3fb950;color:#3fb950}',
+    '#mapc-root button[aria-pressed="true"]{border-color:#3fb950;color:#3fb950}#mapc-root button:disabled{opacity:.55;cursor:default}',
     '#mapc-root button:hover{border-color:#79c0ff}#mapc-root input{width:100%;box-sizing:border-box;min-height:44px;margin:6px 0 0;padding:0 10px;border:1px solid #30363d;border-radius:8px;background:#0d1117;color:#e6edf3;font:inherit}'
   ].join('\n');
   var root = null, card = null, body = null;
@@ -530,17 +545,23 @@
   function paint() {
     if (!root || !document.getElementById('mapc-enroute')) return;
     var age = S.lastReportAt ? Math.round((Date.now() - S.lastReportAt) / 1000) : null;
-    var c = C.pillCard(C.summarize(S.maps), S.left, age, health(), { on: S.speed.on });
+    var c = C.pillCard(C.summarize(S.maps), S.left, age, health(), { on: S.speed.on, off: !!S.speedOff });
     if (S.paused && Date.now() < S.paused.until && c.tone === 'ok') { c.foot = 'Paused: ' + S.paused.reason; c.tone = 'warn'; }
     if (frame && S.autoAt && !(S.attached && connected()) && !S.reconnecting) {
       c.foot = 'Reconnects by itself at ' + new Date(S.autoAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); c.tone = 'bad';
     }
     else if (S.note && Date.now() < S.noteUntil) { c.foot = S.note; if (c.tone === 'ok' && !/^(Reconnected|Unattended mode:)/.test(S.note)) c.tone = 'warn'; }
+    else if (S.speedOff) { c.foot = S.speedNote; if (c.tone === 'ok') c.tone = 'warn'; }
     var ids = ['mapc-collected', 'mapc-missed', 'mapc-enroute', 'mapc-left', 'mapc-speed'];
     c.rows.forEach(function (r, i) { var e = document.getElementById(ids[i]), v = String(r[1]); if (e && e.textContent !== v) e.textContent = v; });
     var f = document.getElementById('mapc-foot'); if (f && f.textContent !== c.foot) f.textContent = c.foot;
     var tg = document.getElementById('mapc-speed-toggle');
-    if (tg) { var on = String(!!S.speed.on), label = S.speed.on ? 'Speed-ups on' : 'Speed-ups off'; if (tg.getAttribute('aria-pressed') !== on) tg.setAttribute('aria-pressed', on); if (tg.textContent !== label) tg.textContent = label; }
+    if (tg) {
+      var on = String(!!S.speed.on && !S.speedOff), label = S.speedOff ? 'Speed-ups stopped' : S.speed.on ? 'Speed-ups on' : 'Speed-ups off';
+      if (tg.getAttribute('aria-pressed') !== on) tg.setAttribute('aria-pressed', on);
+      if (tg.textContent !== label) tg.textContent = label;
+      tg.disabled = !!S.speedOff;                          // shut off for this run: a relaunch brings them back
+    }
     card.className = 'mapc-card' + (c.tone === 'ok' ? '' : ' ' + c.tone);
   }
 

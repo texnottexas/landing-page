@@ -345,3 +345,8 @@ test('autoReconnect: 65 minutes after going down, then 65 minutes after each att
   assert.deepEqual(M.autoReconnect(t, t + 3900000, t + 3900000 + 60000), { due: false, at: t + 7800000 });
   assert.deepEqual(M.autoReconnect(t, 0, t + 3000, 3000), { due: true, at: t + 3000 });
 });
+
+test('FIX #3: pillCard says Stopped when speed-ups shut off for the run', () => {
+  const s = M.summarize([]);
+  assert.deepEqual(M.pillCard(s, 1, 1, 'ok', { on: true, off: true }).rows[4], ['Speed-ups', 'Stopped']);
+});

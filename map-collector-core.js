@@ -224,7 +224,7 @@
     else foot = ageS < 60 ? 'Reported ' + ageS + ' s ago' : 'Reported ' + Math.floor(ageS / 60) + ' min ago';
     return {
       rows: [['Collected', s.collected], ['Missed', s.missed], ['En route', s.enRoute], ['Claims left', left == null ? '?' : left],
-        ['Speed-ups', speed && speed.on ? 'On · ' + (s.speedups || 0) : 'Off']],
+        ['Speed-ups', speed && speed.off ? 'Stopped' : speed && speed.on ? 'On · ' + (s.speedups || 0) : 'Off']],
       foot: foot, tone: f ? f[1] : 'ok'
     };
   }

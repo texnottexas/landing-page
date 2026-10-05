@@ -264,3 +264,16 @@ test('auto-reconnect time shows while disconnected; radar dots have gradient fil
   assert.ok(pos.length > 0 && pos.every((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]) && Math.hypot(p[0] - 100, p[1] - 100) <= 92), 'every dot sits inside the radar: ' + JSON.stringify(pos));
   await ctx.close();
 });
+
+test('gems spent on speed-ups show in the status panel while speed-ups are on or gems were spent', async () => {
+  state.settings.speedOn = true; state.speedTotals = { speedups: 7, gems: 111 };
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('#dash-spend:not([hidden])');
+  assert.match(await page.textContent('#dash-spend'), /111 gems spent on 7 speed-ups/);
+  await ctx.close();
+  state = S(); state.speedTotals = { speedups: 0, gems: 0 };
+  const two = await open('good pass');
+  await two.page.waitForSelector('li.map');
+  assert.equal(await two.page.isVisible('#dash-spend'), false, 'nothing to show while off and nothing spent');
+  await two.ctx.close();
+});
