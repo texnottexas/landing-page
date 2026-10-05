@@ -4,9 +4,11 @@
 <script>
 // A fake Top War client: just enough of DataCenter, chat, NET, EventCenter, ActivityController,
 // NWorldMapMarchModel (_myMarch), TableManager and LocalManager for the Map Collector, plus the bag, gems, VIP
-// level and the VIP shop's Advanced March Speed-up for speed-ups (buy 818, use 920).
+// level and the VIP shop's Advanced March Speed-up for speed-ups (buy 818, use 920). For Mask Mystery Boxes:
+// cities on any server in the 901 world view (a box hangs off its owner's city as cityReward) and the 2503 collect.
 window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent: [], answers: [], chat: [], handlers: {}, myMarch: {}, activity: true,
-  gems: 1000, bag: 0, vip: 15, marchSecs: 2, buyMode: 'ok', useMode: 'ok', bagLagMs: 0, drift: 0, used: [], pending: [] };
+  gems: 1000, bag: 0, vip: 15, marchSecs: 2, buyMode: 'ok', useMode: 'ok', bagLagMs: 0, drift: 0, used: [], pending: [],
+  cities: {}, claimed: {}, collects: 0, limitAfter: 0 };
 // a test can keep this game logged out across reloads (a reconnect that does not work)
 try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.__fake.kickBox = true; } } catch (e) {}
 (function () {
@@ -36,9 +38,33 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       } else if (rid === 920) {                            // use one on a march
         if (F.bag > 0) { F.bag -= 1; F.used.push(p.marchId); if (F.useMode === 'lost') return true; ans = { s: 0, d: '{}' }; }
         else ans = { s: 3, d: 'item_not_enough' };
+      } else if (rid === 901) {                            // world view: like the live answer, {c, o, d} with no s
+        var pts = [];
+        Object.keys(F.cities).forEach(function (key) {      // key 'server:x:y'
+          var a = key.split(':').map(Number), c = F.cities[key], pp = { pid: c.pid };
+          if (a[0] !== p.k) return;
+          if (c.itemId) pp.cityReward = { itemId: c.itemId, instanceId: c.instanceId, players: [], num: 5 };
+          pts.push({ v: 1, x: a[1], y: a[2], k: a[0], pointType: 1, p: pp });
+        });
+        setTimeout(function () { cb({ c: 901, o: String(n), d: JSON.stringify({ rtype: 2, pointList: pts }) }); }, 20);
+        return true;
       } else {
         var nowSec = Math.floor(Date.now() / 1000);
         ans = F.answers.length ? F.answers.shift() : { s: 0, d: JSON.stringify({ marchInfo: { marchStartTime: nowSec, marchArrive: nowSec + F.marchSecs, marchId: 'm' + n } }) };
+      }
+      setTimeout(function () { cb(ans); }, 20);
+      return true;
+    },
+    sendPBV2: function (rid, p, target, cb) {
+      F.sent.push({ rid: rid, p: JSON.parse(JSON.stringify(p)), at: Date.now(), target: typeof target });
+      var city = null, ans;
+      Object.keys(F.cities).forEach(function (k) { if (String(F.cities[k].pid) === String(p.targetUidStr)) city = F.cities[k]; });
+      if (rid !== 2503) ans = { c: rid, s: 3, pbAckV2: { header: { s: 3, d: 'unknown_request' } } };
+      else if (F.limitAfter && F.collects >= F.limitAfter) ans = { c: 2503, s: 3, pbAckV2: { header: { s: 3, d: 'mask_limit_1' } } };
+      else if (!city || !city.itemId || F.claimed[city.instanceId]) ans = { c: 2503, s: 3, pbAckV2: { header: { s: 3, d: 'pubilc911' } } };
+      else {
+        F.claimed[city.instanceId] = 1; F.collects++;
+        ans = { c: 2503, s: 0, pbAckV2: { header: { s: 0 }, data: { rewardResult: { items: [{ itemId: city.itemId - 260617001 + 260604016, itemCount: 1 }] } } } };
       }
       setTimeout(function () { cb(ans); }, 20);
       return true;
@@ -57,8 +83,11 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
     if (name === 'NWorldMapMarchModel') return { default: { instance: { _myMarch: F.myMarch } } };
     if (name === 'TableManager') return { TABLE: { getTableDataById: function (t, id) {
       if (t === 'vip_shop' && id === 70202) return { id: 70202, item_id: 520002, need_vip_level: 2, price_shop: 37 };
+      if (t === 'item' && id >= 260604017 && id <= 260604019) return { name: 'mask_reward_' + (id - 260604016) };
       return t === 'item' && id === 79200004 ? { name: 'equip_box_16' } : null; } } };
-    if (name === 'LocalManager') return { LOCAL: { getText: function (k) { return k === 'equip_box_16' ? 'Blessing Key' : k; } } };
+    var TEXT = { equip_box_16: 'Blessing Key', mask_reward_1: 'Mask Treasure', mask_reward_2: 'Mask HT', mask_reward_3: 'Mask RSS',
+      pubilc911: 'Reward claimed', mask_limit_1: 'Daily limit reached' };
+    if (name === 'LocalManager') return { LOCAL: { getText: function (k) { return TEXT[k] || k; } } };
     return null;
   };
   // the game's "Multiple active logins" box, shown when another device logs in

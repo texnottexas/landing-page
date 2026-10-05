@@ -551,12 +551,43 @@
     var sb = el('div', 'mapc-btns');
     sb.appendChild(button('mapc-speed-toggle', 'Speed-ups off', toggleSpeed));
     body.appendChild(sb);
+    var xb = el('div', 'mapc-btns');
+    xb.appendChild(button('mapc-mbx', 'Mask Boxes off', toggleMaskBoxes));
+    body.appendChild(xb);
     if (!frame) {
       var ub = el('div', 'mapc-btns');
       ub.appendChild(button('mapc-unattended', 'Unattended mode', confirmUnattended));
       body.appendChild(ub);
     }
     paint();
+  }
+  // Mask Mystery Boxes in this same tab, for players running both: it gets its own card (top left) and the
+  // shared request clock keeps every request from the two tools 1.1 s or more apart. Loaded the way the Ops
+  // Center loads it, at the version the registry names.
+  var mbxLoading = false;
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = src; s.setAttribute('data-ops', '1');
+      s.onload = function () { s.remove(); resolve(); };
+      s.onerror = function () { s.remove(); reject(new Error('load failed')); };
+      (document.head || document.documentElement).appendChild(s);
+    });
+  }
+  function maskBoxesOn() { return !!(window.__MBX && window.__MBX.running); }
+  function toggleMaskBoxes() {
+    if (maskBoxesOn()) { window.__MBX.stop(); paint(); return; }
+    if (mbxLoading) return;
+    mbxLoading = true; paint();
+    var base = window.__OPS_BASE || 'https://2864tw.com/';
+    fetch(base + 'ops-tools.json?_=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(function (reg) {
+        var t = (reg && Array.isArray(reg.tools) ? reg.tools : []).filter(function (x) { return x && x.id === 'mask-boxes'; })[0];
+        if (!t || !Array.isArray(t.scripts)) throw new Error('not listed');
+        return t.scripts.reduce(function (p, f) { return p.then(function () { return loadScript(base + f + '?v=' + encodeURIComponent(t.version)); }); }, Promise.resolve());
+      })
+      .then(function () { mbxLoading = false; paint(); }, function () { mbxLoading = false; note('Mask Boxes did not load. Try again.', 10000); });
   }
   function confirmUnattended() {
     ensureRoot(); body.textContent = ''; setView('confirm');
@@ -606,6 +637,13 @@
       if (tg.getAttribute('aria-pressed') !== on) tg.setAttribute('aria-pressed', on);
       if (tg.textContent !== label) tg.textContent = label;
       tg.disabled = !!S.speedOff;                          // shut off for this run: a relaunch brings them back
+    }
+    var mx = document.getElementById('mapc-mbx');
+    if (mx) {
+      var mon = maskBoxesOn(), ml = mbxLoading ? 'Mask Boxes...' : mon ? 'Mask Boxes on' : 'Mask Boxes off';
+      if (mx.getAttribute('aria-pressed') !== String(mon)) mx.setAttribute('aria-pressed', String(mon));
+      if (mx.textContent !== ml) mx.textContent = ml;
+      mx.disabled = mbxLoading;
     }
     card.className = 'mapc-card' + (c.tone === 'ok' ? '' : ' ' + c.tone) + (S.min && S.view === 'stats' ? ' min' : '');
     var mini = document.getElementById('mapc-mini'), got = String(c.rows[0][1]);
