@@ -16,7 +16,7 @@ const OWN = ['map-collector.js', 'map-collector-core.js'];
 const OWNER_UID = 'test-owner-uid';
 const OWNER_SK = crypto.createHash('sha256').update(OWNER_UID).digest('hex').slice(0, 16);
 
-let server, base, browser, reports, workerMode, cmdSent, settings;
+let server, base, browser, reports, workerMode, cmdSent, settings, kickedAt;
 test.before(async () => {
   server = http.createServer((req, res) => {
     const name = decodeURIComponent(req.url.split('?')[0].replace(/^\/+/, '')) || 'index.html';
@@ -34,10 +34,11 @@ test.before(async () => {
         else if (pw !== 'good pass') { code = 401; out = { ok: false, error: 'unauthorized' }; }
         else if (workerMode === 'superseded') { code = 409; out = { ok: false, error: 'superseded' }; }
         else if (workerMode === 'reconnectOnce' && body.status.kicked && !cmdSent) { cmdSent = true; out = { ok: true, command: 'reconnect' }; }
+        else if (workerMode === 'reconnectLate' && body.status.kicked && !cmdSent && (kickedAt = kickedAt || Date.now()) && Date.now() - kickedAt >= 6000) { cmdSent = true; out = { ok: true, command: 'reconnect' }; }
         else if (workerMode === 'reject1' && body.maps.some((m) => m.id === '81' && m.state === 'gone') && !cmdSent) { cmdSent = true; code = 400; out = { ok: false, error: 'bad_map' }; }
         if (code === 200 && out.ok) {                     // like the worker: a card change is stored, every answer echoes the settings
           if (body.settings && typeof body.settings.speedOn === 'boolean') settings.speedOn = body.settings.speedOn;
-          out.settings = Object.assign({}, settings); out.spentToday = 0;
+          out.settings = Object.assign({}, settings); out.spentToday = 0; out.now = Date.now();
         }
         setTimeout(() => {
           res.writeHead(code, Object.assign({ 'content-type': 'application/json' }, cors));
@@ -59,7 +60,7 @@ test.before(async () => {
   browser = await chromium.launch({ channel: 'chrome' });
 });
 test.after(async () => { await browser.close(); server.close(); });
-test.beforeEach(() => { reports = []; workerMode = 'ok'; cmdSent = false; settings = { speedOn: false, gemReserve: 100, gemCap: 1000 }; });
+test.beforeEach(() => { reports = []; workerMode = 'ok'; cmdSent = false; kickedAt = 0; settings = { speedOn: false, gemReserve: 100, gemCap: 1000 }; });
 
 async function start(opts) {
   const o = Object.assign({ uid: OWNER_UID, pw: 'good pass' }, opts);
@@ -73,7 +74,10 @@ async function start(opts) {
     if (a.left != null) __fake.left = a.left;
     if (a.goneMs) window.__MAPC_GONE_MS = a.goneMs;
     if (a.autoMs) window.__MAPC_AUTO_MS = a.autoMs;
-  }, { uid: o.uid, base, pw: o.pw, left: o.left, goneMs: o.goneMs, autoMs: o.autoMs });
+    if (a.downReportMs) window.__MAPC_DOWN_REPORT_MS = a.downReportMs;
+    if (a.attachMs) window.__MAPC_ATTACH_MS = a.attachMs;
+    if (a.min) localStorage.setItem('mapc_min_v1', '1');
+  }, { uid: o.uid, base, pw: o.pw, left: o.left, goneMs: o.goneMs, autoMs: o.autoMs, downReportMs: o.downReportMs, attachMs: o.attachMs, min: o.min });
   await page.addScriptTag({ url: base + 'map-collector-core.js' });
   await page.addScriptTag({ url: base + 'map-collector.js' });
   return { ctx, page };
@@ -555,5 +559,64 @@ test('FIX #11: a pending speed-up request does not hold up claims', async () => 
   await page.waitForSelector('#mapc-enroute');
   await page.evaluate(() => { __fake.pending = [920]; __fake.notice(341, 'A', 5, 5); });
   await page.waitForFunction(() => __fake.sent.some((x) => x.rid === 902), null, { timeout: 8000 });
+  await ctx.close();
+});
+
+test('REVIEW #7: a card switch carries when it was made, in the worker clock', async () => {
+  const { ctx, page } = await start();
+  await page.waitForFunction(() => window.__MAPC.speed().known, null, { timeout: 8000 });
+  await page.click('#mapc-speed-toggle');
+  assert.ok(await waitReport(page, (r) => r.body.settings && typeof r.body.settings.at === 'number' && Math.abs(r.body.settings.at - Date.now()) < 5000, 6000));
+  await ctx.close();
+});
+test('REVIEW #8: a dashboard reconnect restarts the auto-reconnect clock', async () => {
+  workerMode = 'reconnectLate';
+  const { ctx, page } = await start({ autoMs: 8000, downReportMs: 1000, attachMs: 1000 });
+  await goUnattended(page);
+  await page.evaluate(() => { window.__loads = []; document.getElementById('mapc-frame').addEventListener('load', () => window.__loads.push(Date.now())); localStorage.setItem('fake_down', '1'); });
+  await frameFake(page, 'F.socket = 3; F.kickBox = true;');
+  await page.waitForFunction(() => window.__loads.length >= 2, null, { timeout: 40000 });
+  const gap = await page.evaluate(() => window.__loads[1] - window.__loads[0]);
+  assert.ok(cmdSent, 'the first reload came from the dashboard');
+  assert.ok(gap >= 6500, 'the automatic one waited a full period after it, not ' + gap + ' ms');
+  await page.evaluate(() => localStorage.removeItem('fake_down'));
+  await ctx.close();
+});
+test('REVIEW #12: a purchase waits for a claim that is about to come due', async () => {
+  settings.speedOn = true;
+  const { ctx, page } = await start();
+  await page.evaluate(() => { __fake.bag = 0; __fake.marchSecs = 40; });
+  await page.waitForFunction(() => window.__MAPC.speed().on, null, { timeout: 8000 });
+  await page.evaluate(() => __fake.notice(401, 'A', 5, 5));
+  await page.waitForFunction(() => __fake.sent.some((x) => x.rid === 902), null, { timeout: 8000 });
+  await page.evaluate(() => __fake.notice(402, 'B', 9, 9));
+  await page.waitForFunction(() => __fake.sent.length >= 3, null, { timeout: 12000 });
+  assert.deepEqual((await rids(page)).slice(0, 3), [902, 902, 818]);
+  await ctx.close();
+});
+test('minimize: the card folds to one bar and back, keeps the warning colour, and is remembered', async () => {
+  const { ctx, page } = await start();
+  await page.waitForSelector('#mapc-min');
+  await page.click('#mapc-min');
+  await page.waitForFunction(() => document.querySelector('#mapc-root .mapc-card').classList.contains('min'));
+  const box = await page.$eval('#mapc-root .mapc-card', (e) => { const r = e.getBoundingClientRect(); return { w: r.width, h: r.height }; });
+  assert.ok(box.h <= 50, 'one bar, not ' + box.h + ' px');
+  assert.equal(await page.isVisible('#mapc-collected'), false);
+  assert.equal(await page.evaluate(() => localStorage.getItem('mapc_min_v1')), '1');
+  await page.evaluate(() => { __fake.socket = 3; });
+  await page.waitForFunction(() => document.querySelector('#mapc-root .mapc-card').classList.contains('bad'), null, { timeout: 8000 });
+  await page.evaluate(() => { __fake.socket = 1; });
+  await page.click('#mapc-min');
+  await page.waitForSelector('#mapc-collected', { state: 'visible' });
+  assert.equal(await page.evaluate(() => localStorage.getItem('mapc_min_v1')), null);
+  await ctx.close();
+  const two = await start({ min: true });
+  await two.page.waitForFunction(() => { const c = document.querySelector('#mapc-root .mapc-card'); return c && c.classList.contains('min'); }, null, { timeout: 8000 });
+  await two.ctx.close();
+});
+test('minimize: a password prompt always shows in full', async () => {
+  const { ctx, page } = await start({ pw: 'bad pass', min: true });
+  await page.waitForSelector('#mapc-pw', { state: 'visible', timeout: 8000 });
+  assert.equal(await page.$eval('#mapc-root .mapc-card', (e) => e.classList.contains('min')), false);
   await ctx.close();
 });

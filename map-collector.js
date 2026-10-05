@@ -10,15 +10,15 @@
   var C = window.MapCollectorCore;
   if (!C) { try { alert('Map Collector did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-04.6';
+  var VERSION = '2026-10-04.7';
   var WORKER = window.__MAPC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var DASH = 'https://2864tw.com/map-collector.html';
   var HOME_SERVER = 2864, CLAIM = 902, MARCH_TYPE = 143;   // RequestId.MARCH_WORLD_POINT, MarchType.Titan_Blessing_Gift
   var BUY = 818, USE = 920;                                 // VIP shop purchase, use an item on a march (captured live 2026-10-04)
-  var REPORT_BUSY_MS = window.__MAPC_REPORT_MS || 15000, REPORT_IDLE_MS = 60000, REPORT_DOWN_MS = 20000, RETRY_MS = 60000, TICK_MS = 2000, SCAN_MS = 700;
-  var ATTACH_LIMIT_MS = 90000, KICK_BOX = 'New Node/New Node/MsgBoxComponent', GONE_MS = window.__MAPC_GONE_MS || 60000;
+  var REPORT_BUSY_MS = window.__MAPC_REPORT_MS || 15000, REPORT_IDLE_MS = 60000, REPORT_DOWN_MS = window.__MAPC_DOWN_REPORT_MS || 20000, RETRY_MS = 60000, TICK_MS = 2000, SCAN_MS = 700;
+  var ATTACH_LIMIT_MS = window.__MAPC_ATTACH_MS || 90000, KICK_BOX = 'New Node/New Node/MsgBoxComponent', GONE_MS = window.__MAPC_GONE_MS || 60000;
   var AUTO_MS = window.__MAPC_AUTO_MS || C.AUTO_RECONNECT_MS;   // Unattended mode reconnects by itself 65 min after going down
-  var LS_PW = 'mapc_pw_v1', LS_STATE = 'mapc_state_v1', LS_SPEND = 'mapc_spend_v1', SEEN_SAVE = 2000;
+  var LS_PW = 'mapc_pw_v1', LS_STATE = 'mapc_state_v1', LS_SPEND = 'mapc_spend_v1', LS_MIN = 'mapc_min_v1', SEEN_SAVE = 2000;
   // The game window: this page, or in Unattended mode the game running in a frame under the card, which
   // can be reloaded to log back in while this script keeps running (a full page reload would end it).
   var GW = window, frame = null;
@@ -122,8 +122,9 @@
     active: false, stopped: false, pumping: false, reporting: false, lastHealth: '', timers: [], saveTimer: null,
     sends: [], paused: null, attached: false, attachAt: 0, ec: null, note: '', noteUntil: 0, reconnecting: 0,
     // speed-ups: the stored settings (off until a report answer brings them), a card change not yet sent, and this run's state
+    min: lsGet(LS_MIN) === '1', view: '',
     speed: { on: false, reserve: 10000, cap: 1500, known: false }, speedDirty: null, speedFails: 0, speedOff: '', speedNote: '',
-    spend: { day: '', gems: 0 }, spentServer: { day: '', gems: 0 }, reportSoon: false
+    spend: { day: '', gems: 0 }, spentServer: { day: '', gems: 0 }, reportSoon: false, speedDirtyAt: 0, skew: null
   };
   // Never forget an id during a run: the game's own chat list is the bound. (A 500-id cap here let ids
   // fall out while still in a 658-row list, so the same maps were re-queued every few seconds and the
@@ -177,7 +178,7 @@
   // gem reserve and daily cap. A purchase must add exactly one and cost exactly the price, or speed-ups stop.
   async function speedUp(m) {
     var row = shopRow(), price = row ? Number(row.price_shop) || 0 : 0;
-    var chk = C.buyCheck({ bag: bagCount(), gems: gems(), price: price, vip: vipLevel(), needVip: row ? Number(row.need_vip_level) || 0 : 0,
+    var chk = C.buyCheck({ bag: bagCount(), gems: gems(), price: price, item: row ? Number(row.item_id) : 0, vip: vipLevel(), needVip: row ? Number(row.need_vip_level) || 0 : 0,
       reserve: S.speed.reserve, spent: spentToday(), cap: S.speed.cap });
     if (!chk.ok) { m.speedWant = m.speedDone || 0; m.speedNote = chk.reason; S.speedNote = chk.reason; C.touch(S, m); save(); paint(); return; }
     if (chk.source === 'buy') {
@@ -213,7 +214,7 @@
     paint();
   }
   function toggleSpeed() {
-    S.speedDirty = !S.speed.on; S.speed.on = S.speedDirty; paint();
+    S.speedDirty = !S.speed.on; S.speed.on = S.speedDirty; S.speedDirtyAt = Date.now(); paint();
     if (S.reporting) S.reportSoon = true; else report('');
   }
 
@@ -245,6 +246,8 @@
           var sp = speedReady() ? C.pickSpeed(S.maps, Date.now()) : { map: null, skipped: [] };
           if (sp.map) {
             if (netBusy()) { await delay(1000); continue; }
+            // a purchase takes a few seconds: never start one with a claim about to come due
+            if (pick.wait >= 0 && pick.wait < 4000 && bagCount() === 0) { await delay(Math.max(100, Math.min(pick.wait, 1000))); continue; }
             await speedUp(sp.map);
             await delay(1100 + Math.floor(Math.random() * 200));
             continue;
@@ -327,7 +330,8 @@
         kicked: !connected() && kickedNow(), lastChatAt: Math.round(S.lastChatAt),
         speedOn: speedReady(), speedNote: S.speedNote || '', autoReconnectAt: S.autoAt || 0 },
       maps: b.rows };
-    if (sentDirty !== null) body.settings = { speedOn: sentDirty };
+    // when the switch was flipped, in the worker's clock: an older flip never beats a newer dashboard change
+    if (sentDirty !== null) body.settings = S.skew === null ? { speedOn: sentDirty } : { speedOn: sentDirty, at: Math.round(S.speedDirtyAt + S.skew) };
     return fetch(WORKER + '/mapcollector/report', { method: 'POST', keepalive: !!stopReason,
       headers: { 'Content-Type': 'application/json', 'X-Map-Collector-Password': S.pw }, body: JSON.stringify(body) })
       .then(function (res) { return res.json().then(function (j) { return { code: res.status, j: j || {} }; }, function () { return { code: res.status, j: {} }; }); },
@@ -337,6 +341,7 @@
         S.reporting = false;
         if (code === 200) {
           C.ackReport(S, b.upto); S.failing = false; S.lastReportAt = Date.now(); save();
+          if (typeof r.j.now === 'number') S.skew = r.j.now - Date.now();
           if (r.j.settings && typeof r.j.settings === 'object') applySettings(r.j.settings, sentDirty);
           if (typeof r.j.spentToday === 'number') S.spentServer = { day: C.gameDay(Date.now()), gems: r.j.spentToday };
           if (r.j.command === 'reconnect' && !stopReason) reconnect();
@@ -432,6 +437,7 @@
     if (!frame) { note('Reconnect needs Unattended mode', 120000); return; }
     if (S.reconnecting) return;
     S.reconnecting = Date.now(); S.attached = false; window.__MAPC.attached = ''; unsubscribe();
+    S.autoTryAt = S.reconnecting;                          // any reconnect restarts the 65-minute auto-reconnect clock
     note('Reconnecting...', ATTACH_LIMIT_MS);
     try { frame.contentWindow.location.reload(); } catch (e) {}
     setTimeout(function () {
@@ -470,7 +476,12 @@
     '#mapc-root{position:fixed;left:calc(8px + env(safe-area-inset-left));bottom:calc(8px + env(safe-area-inset-bottom));z-index:2147483000;font:13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#e6edf3}',
     '#mapc-root .mapc-card{width:190px;box-sizing:border-box;background:#161b22;border:1px solid #3fb950;border-radius:10px;padding:10px 12px;box-shadow:0 6px 20px rgba(0,0,0,.45);transition:transform .2s}',
     '#mapc-root .mapc-card.warn{border-color:#d29922}#mapc-root .mapc-card.bad{border-color:#f85149}#mapc-root .mapc-card.flash{transform:scale(1.04)}',
-    '#mapc-root .mapc-head{display:flex;justify-content:space-between;align-items:center;font-weight:600;margin-bottom:6px}',
+    '#mapc-root .mapc-head{display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:6px}#mapc-root .mapc-title{flex:1;white-space:nowrap}',
+    '#mapc-root .mapc-mini{display:none;font-variant-numeric:tabular-nums;color:#3fb950}#mapc-root .min .mapc-mini{display:inline}',
+    '#mapc-root button#mapc-min{flex:none;width:36px;min-height:36px;height:36px;padding:0;border:0;border-radius:8px;background:transparent;color:#8b949e;display:grid;place-items:center}',
+    '#mapc-root button#mapc-min:hover{color:#e6edf3;background:#1c2128}#mapc-root #mapc-min svg{transition:transform .2s}#mapc-root .min #mapc-min svg{transform:rotate(180deg)}',
+    // folded: one 44 px bar (dot, title, collected count, unfold), the warning colour still on its border
+    '#mapc-root .mapc-card.min{width:auto;padding:0 4px 0 12px}#mapc-root .min .mapc-body{display:none}#mapc-root .min .mapc-head{margin:0;height:44px;cursor:pointer}',
     '#mapc-root .mapc-dot{width:8px;height:8px;border-radius:50%;background:#3fb950}#mapc-root .warn .mapc-dot{background:#d29922}#mapc-root .bad .mapc-dot{background:#f85149}',
     '#mapc-root .mapc-row{display:flex;justify-content:space-between;padding:2px 0}#mapc-root .mapc-k{color:#8b949e}#mapc-root .mapc-v{font-variant-numeric:tabular-nums;font-weight:600}',
     '#mapc-root .mapc-foot{color:#8b949e;font-size:12px;margin-top:6px;min-height:16px}#mapc-root .mapc-msg{margin:4px 0 2px}',
@@ -486,15 +497,31 @@
     if (!document.getElementById('mapc-style')) { var st = el('style'); st.id = 'mapc-style'; st.textContent = CSS; document.head.appendChild(st); }
     root = el('div'); root.id = 'mapc-root';
     card = el('div', 'mapc-card');
-    var head = el('div', 'mapc-head'); head.appendChild(el('span', 'mapc-title', 'Map Collector')); head.appendChild(el('span', 'mapc-dot'));
+    var head = el('div', 'mapc-head'); head.appendChild(el('span', 'mapc-title', 'Map Collector'));
+    var mini = el('span', 'mapc-mini'); mini.id = 'mapc-mini'; mini.title = 'Collected'; head.appendChild(mini);
+    head.appendChild(el('span', 'mapc-dot'));
+    var mb = button('mapc-min', '', function (e) { e.stopPropagation(); toggleMin(); });
+    var NS = 'http://www.w3.org/2000/svg', ic = document.createElementNS(NS, 'svg'), pa = document.createElementNS(NS, 'path');
+    ic.setAttribute('width', '18'); ic.setAttribute('height', '18'); ic.setAttribute('viewBox', '0 0 24 24'); ic.setAttribute('aria-hidden', 'true');
+    pa.setAttribute('d', 'M6 9l6 6 6-6'); pa.setAttribute('fill', 'none'); pa.setAttribute('stroke', 'currentColor'); pa.setAttribute('stroke-width', '2.2'); pa.setAttribute('stroke-linecap', 'round'); pa.setAttribute('stroke-linejoin', 'round');
+    ic.appendChild(pa); mb.appendChild(ic); head.appendChild(mb);
+    head.addEventListener('click', function () { if (card.classList.contains('min')) toggleMin(); });   // the whole bar unfolds
     body = el('div', 'mapc-body');
     card.appendChild(head); card.appendChild(body); root.appendChild(card);
     document.body.appendChild(root);
   }
   function removeRoot() { if (root && root.parentNode) root.parentNode.removeChild(root); root = null; }
+  // Fold the stats card to one bar (so it does not cover the game) and back; remembered on this browser.
+  // Only the stats view folds: password prompts and messages always show in full.
+  function setView(v) {
+    S.view = v;
+    var mb = document.getElementById('mapc-min');
+    if (mb) { mb.hidden = v !== 'stats'; mb.setAttribute('aria-label', S.min ? 'Show Map Collector' : 'Minimize Map Collector'); mb.setAttribute('aria-expanded', String(!S.min)); }
+  }
+  function toggleMin() { S.min = !S.min; lsSet(LS_MIN, S.min ? '1' : null); setView(S.view); paint(); }
   function button(id, label, fn) { var b = el('button', null, label); b.id = id; b.type = 'button'; b.addEventListener('click', fn); return b; }
   function showStats() {
-    ensureRoot(); body.textContent = '';
+    ensureRoot(); body.textContent = ''; setView('stats');
     [['Collected', 'mapc-collected'], ['Missed', 'mapc-missed'], ['En route', 'mapc-enroute'], ['Claims left', 'mapc-left'], ['Speed-ups', 'mapc-speed']].forEach(function (r) {
       var row = el('div', 'mapc-row'); row.appendChild(el('span', 'mapc-k', r[0])); var v = el('span', 'mapc-v', '0'); v.id = r[1]; row.appendChild(v); body.appendChild(row);
     });
@@ -514,7 +541,7 @@
     paint();
   }
   function confirmUnattended() {
-    ensureRoot(); body.textContent = '';
+    ensureRoot(); body.textContent = ''; setView('confirm');
     body.appendChild(el('div', 'mapc-msg', 'Unattended mode restarts the game inside this tab so the dashboard can reconnect it after another login. Leave this tab open.'));
     var btns = el('div', 'mapc-btns');
     btns.appendChild(button('mapc-unattended-go', 'Start', goUnattended));
@@ -523,13 +550,13 @@
     card.className = 'mapc-card';
   }
   function showMessage(text, withClose) {
-    ensureRoot(); body.textContent = '';
+    ensureRoot(); body.textContent = ''; setView('message');
     body.appendChild(el('div', 'mapc-msg', text));
     if (withClose) { var btns = el('div', 'mapc-btns'); btns.appendChild(button('mapc-close', 'Close', removeRoot)); body.appendChild(btns); }
     card.className = 'mapc-card';
   }
   function askPassword(note) {
-    ensureRoot(); body.textContent = '';
+    ensureRoot(); body.textContent = ''; setView('password');
     body.appendChild(el('div', 'mapc-msg', note || 'Enter your Map Collector password.'));
     var input = el('input'); input.id = 'mapc-pw'; input.type = 'password'; input.autocomplete = 'current-password'; input.setAttribute('aria-label', 'Map Collector password');
     body.appendChild(input);
@@ -562,7 +589,9 @@
       if (tg.textContent !== label) tg.textContent = label;
       tg.disabled = !!S.speedOff;                          // shut off for this run: a relaunch brings them back
     }
-    card.className = 'mapc-card' + (c.tone === 'ok' ? '' : ' ' + c.tone);
+    card.className = 'mapc-card' + (c.tone === 'ok' ? '' : ' ' + c.tone) + (S.min && S.view === 'stats' ? ' min' : '');
+    var mini = document.getElementById('mapc-mini'), got = String(c.rows[0][1]);
+    if (mini && mini.textContent !== got) mini.textContent = got;
   }
 
   // ---------------------------------------------------------------- start

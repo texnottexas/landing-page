@@ -296,7 +296,7 @@ test('gameDay: the noon-ET day a moment belongs to', () => {
   assert.equal(M.gameDay(Date.UTC(2026, 10, 1, 0, 0)), '2026-10-31');   // month boundary
 });
 test('buyCheck: bag first, then each buy rule with its reason; exact boundaries allowed', () => {
-  const base = { bag: 0, gems: 10037, price: 37, vip: 15, needVip: 2, reserve: 10000, spent: 1463, cap: 1500 };
+  const base = { bag: 0, gems: 10037, price: 37, vip: 15, needVip: 2, reserve: 10000, spent: 1463, cap: 1500, item: 520002 };
   assert.deepEqual(M.buyCheck({ ...base, bag: 2, gems: 0 }), { ok: true, source: 'bag' });
   assert.deepEqual(M.buyCheck(base), { ok: true, source: 'buy' });                       // gems-price == reserve, spent+price == cap
   assert.deepEqual(M.buyCheck({ ...base, gems: 10036 }), { ok: false, reason: 'gem reserve reached' });
@@ -349,4 +349,24 @@ test('autoReconnect: 65 minutes after going down, then 65 minutes after each att
 test('FIX #3: pillCard says Stopped when speed-ups shut off for the run', () => {
   const s = M.summarize([]);
   assert.deepEqual(M.pillCard(s, 1, 1, 'ok', { on: true, off: true }).rows[4], ['Speed-ups', 'Stopped']);
+});
+
+test('REVIEW #9: buyCheck refuses when the shop row sells something else', () => {
+  const base = { bag: 0, gems: 20000, price: 37, vip: 15, needVip: 2, reserve: 10000, spent: 0, cap: 1500, item: 520002 };
+  assert.deepEqual(M.buyCheck(base), { ok: true, source: 'buy' });
+  assert.deepEqual(M.buyCheck({ ...base, item: 520001 }), { ok: false, reason: 'shop item changed' });
+  assert.deepEqual(M.buyCheck({ ...base, item: undefined }), { ok: false, reason: 'shop item changed' });
+  assert.deepEqual(M.buyCheck({ ...base, bag: 1, item: 0 }), { ok: true, source: 'bag' });
+});
+test('REVIEW #10: the 5 s rule counts from the answer on this device, not the server arrival', () => {
+  const serverNow = Date.UTC(2026, 9, 4, 20, 0), localNow = serverNow - 10000;     // this device runs 10 s behind
+  const m = M.newMap({ id: '1', noticedAt: localNow - 3000, spawner: 'A', server: 2864, x: 1, y: 1 }, 'Me', 2864);
+  M.applyAnswer(m, { kind: 'sent', startAt: serverNow, arriveAt: serverNow + 30000, marchId: 'm' }, localNow);
+  assert.equal(M.planSpeed(m, true, localNow), 1);
+  assert.equal(M.pickSpeed([m], localNow + 20000).map, m, '10 s to go');
+  assert.equal(M.pickSpeed([m], localNow + 31000).map, null, 'arrived, though the server time still looks 9 s away here');
+  const k = M.newMap({ id: '2', noticedAt: localNow, spawner: 'A', server: 2864, x: 1, y: 1 }, 'Me', 2864);
+  M.applyAnswer(k, { kind: 'sent', startAt: serverNow, arriveAt: serverNow + 40000, marchId: 'k' }, localNow);
+  M.applySpeed(k, localNow + 4000, false, 0);
+  assert.equal(k.arriveLocal, localNow + 4000 + 18000); assert.equal(k.arriveAt, serverNow + 40000 - 18000);
 });

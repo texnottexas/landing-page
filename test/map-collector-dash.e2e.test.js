@@ -277,3 +277,13 @@ test('gems spent on speed-ups show in the status panel while speed-ups are on or
   assert.equal(await two.page.isVisible('#dash-spend'), false, 'nothing to show while off and nothing spent');
   await two.ctx.close();
 });
+
+test('REVIEW #14: switching player drops gem values typed for the other one', async () => {
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('#dash-reserve');
+  await page.fill('#dash-reserve', '5000');
+  await page.click('#dash-players button[data-sk="' + REX + '"]');
+  await page.waitForFunction(() => document.querySelector('#dash-players button[aria-pressed="true"]').getAttribute('data-sk') === 'c3c6f3200a4ec1fb');
+  await page.waitForFunction(() => document.getElementById('dash-reserve').value === '10000', null, { timeout: 5000 });
+  await ctx.close();
+});

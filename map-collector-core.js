@@ -107,7 +107,12 @@
   }
 
   function applyAnswer(m, c, now) {
-    if (c.kind === 'sent') { m.state = 'sent'; m.arriveAt = c.arriveAt || 0; m.startAt = c.startAt || 0; m.marchId = c.marchId || ''; return; }
+    if (c.kind === 'sent') {
+      m.state = 'sent'; m.arriveAt = c.arriveAt || 0; m.startAt = c.startAt || 0; m.marchId = c.marchId || '';
+      // the same arrival on this device's clock (it may not match the game server's): march length from the answer
+      m.arriveLocal = c.startAt && c.arriveAt > c.startAt ? now + (c.arriveAt - c.startAt) : 0;
+      return;
+    }
     if (c.kind === 'tooFast') {
       m.tooFast = (m.tooFast || 0) + 1;
       if (m.tooFast > MAX_TOO_FAST) { m.state = 'failed'; m.reason = 'Too fast, gave up after ' + MAX_TOO_FAST + ' tries'; }
@@ -257,6 +262,7 @@
   // Where the next speed-up comes from: the bag, a purchase, or nowhere (with the reason shown to the player).
   function buyCheck(o) {
     if (o.bag > 0) return { ok: true, source: 'bag' };
+    if (o.item !== SPEED_ITEM) return { ok: false, reason: 'shop item changed' };
     if (!(o.price > 0)) return { ok: false, reason: 'no shop price' };
     if (!(o.vip >= o.needVip)) return { ok: false, reason: 'VIP too low to buy' };
     if (!(typeof o.gems === 'number' && o.gems - o.price >= o.reserve)) return { ok: false, reason: 'gem reserve reached' };
@@ -269,7 +275,8 @@
     var pick = null, skipped = [];
     maps.forEach(function (m) {
       if (m.state !== 'sent' || !m.marchId || !((m.speedWant || 0) > (m.speedDone || 0))) return;
-      if (!m.arriveAt || m.arriveAt - now <= SPEED_MIN_LEFT_MS) { m.speedWant = m.speedDone || 0; skipped.push(m); return; }
+      var at = m.arriveLocal || m.arriveAt;
+      if (!at || at - now <= SPEED_MIN_LEFT_MS) { m.speedWant = m.speedDone || 0; skipped.push(m); return; }
       if (!pick || m.sentAt < pick.sentAt) pick = m;
     });
     return { map: pick, skipped: skipped };
@@ -278,7 +285,8 @@
   function applySpeed(m, now, bought, price) {
     m.speedDone = (m.speedDone || 0) + 1;
     if (bought) { m.speedBought = (m.speedBought || 0) + 1; m.gems = (m.gems || 0) + price; }
-    if (m.arriveAt > now) m.arriveAt = now + Math.round((m.arriveAt - now) / 2);
+    var left = (m.arriveLocal || m.arriveAt) - now;
+    if (left > 0) { var cut = Math.round(left / 2); if (m.arriveLocal) m.arriveLocal -= cut; if (m.arriveAt) m.arriveAt -= cut; }
   }
   // Unattended mode: 65 minutes after the game went down, and 65 minutes after each attempt since, reconnect by itself.
   function autoReconnect(downSince, lastTryAt, now, waitMs) {
