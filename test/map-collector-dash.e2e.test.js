@@ -230,6 +230,7 @@ test('speed-up panel: switch and gem fields post settings; today line shows use 
   assert.match(await page.textContent('#dash-speed-msg'), /whole numbers/);
   assert.equal(posted.length, 2, 'a bad value is not sent');
   assert.match(await page.textContent('#dash-boost'), /your time/);
+  assert.match(await page.textContent('.speed-rule'), /From reset \+0 to \+2 \(/, 'the window is named in game terms');
   await ctx.close();
 });
 test('rows show speed-ups; period switch asks for 7 days; radar keeps 24 h; truncated note', async () => {
