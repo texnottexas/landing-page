@@ -15,8 +15,12 @@ const cpLine = read('.github/workflows/pages.yml').split('\n').find((l) => l.inc
 test('every tool in ops-tools.json passes validation', () => {
   assert.equal(list.tools.length, raw.tools.length);
   assert.deepEqual(list.tools.map((t) => t.title), [
-    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector'
+    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes'
   ]);
+  const mbx = list.tools.find((t) => t.id === 'mask-boxes');
+  assert.equal(mbx.gate, 'member', 'any member can launch Mask Mystery Boxes');
+  assert.equal(mbx.overlay, '#mbx-root');
+  assert.equal(mbx.icon, 'gift');
   const mc = list.tools.find((t) => t.id === 'map-collector');
   assert.equal(raw.tools.find((t) => t.id === 'map-collector').owners, undefined, 'Map Collector is gated by its own password, not an owners list');
   assert.equal(mc.ownerOnly, false, 'every member sees the Map Collector tile');

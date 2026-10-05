@@ -225,3 +225,7 @@ test('REVIEW #2: owners fail closed — present but empty, a string, or all-inva
   assert.deepEqual(OC.visibleTools(r, 'd847a198622a518d').map((t) => t.id), ['pub', 'mine']);
   assert.deepEqual(OC.visibleTools(r, '03c2cd3196b2f243').map((t) => t.id), ['pub']);
 });
+
+test('gift is a known icon', () => {
+  assert.equal(OC.validateTools({ tools: [tool({ id: 'g', icon: 'gift' })] }).tools[0].icon, 'gift');
+});
