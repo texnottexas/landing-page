@@ -87,8 +87,15 @@
   .note:empty { display: none; }
 
   /* speed-ups */
-  .speed-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
-  .speed-head .label { margin: 0; }
+  .speed-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  #dash-speed-more { flex: 1; min-width: 0; min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 0; border: 0; background: transparent; color: var(--muted); text-align: left; }
+  #dash-speed-more .label { margin: 0; }
+  #dash-speed-sum { font-size: 13px; color: var(--amber); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #dash-speed-more svg { flex: none; margin-left: auto; transition: transform .2s; }
+  #dash-speed-more[aria-expanded="true"] svg { transform: rotate(180deg); }
+  #dash-speed-body { padding-top: 8px; }
+  #dash-speed-panel { padding-top: 10px; padding-bottom: 10px; }
+  #dash-speed-msg:empty, #dash-speed-note:empty { display: none; }
   #dash-speed { width: 60px; height: 44px; padding: 7px 4px; border: 0; background: transparent; flex: none; }
   #dash-speed span { display: block; position: relative; width: 52px; height: 30px; border-radius: 999px; background: var(--line); transition: background .2s; }
   #dash-speed span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.5); transition: transform .2s; }
@@ -208,13 +215,18 @@
           </div>
         </section>
         <section class="panel" id="dash-speed-panel">
-          <div class="speed-head"><h2 class="label">Speed-ups</h2><button id="dash-speed" type="button" role="switch" aria-checked="false" aria-label="Speed-ups"><span></span></button></div>
+          <div class="speed-head">
+            <button id="dash-speed-more" type="button" aria-expanded="false" aria-controls="dash-speed-body"><span class="label">Speed-ups</span><span id="dash-speed-sum" translate="no"></span><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button id="dash-speed" type="button" role="switch" aria-checked="false" aria-label="Speed-ups"><span></span></button>
+          </div>
+          <div id="dash-speed-body" hidden>
           <p class="speed-rule">Uses an Advanced March Speed-up on maps more than 20 s away, two when over 30 s. From noon to 2 PM Eastern (<span id="dash-boost">your time</span>) it also uses one over 15 s. From the bag first, then bought at the shop price.</p>
           <p id="dash-speed-today" translate="no"></p>
           <div class="speed-fields">
             <label>Keep at least <input id="dash-reserve" inputmode="numeric" autocomplete="off" aria-label="Gem reserve"> gems</label>
             <label>Spend at most <input id="dash-cap" inputmode="numeric" autocomplete="off" aria-label="Daily gem cap"> gems a day</label>
             <button id="dash-speed-save" type="button">Save</button>
+          </div>
           </div>
           <p id="dash-speed-msg" role="status"></p>
           <p class="note" id="dash-speed-note"></p>
@@ -240,7 +252,7 @@
 (function () {
   'use strict';
   var WORKER = window.__MAPC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
-  var LS_PW = 'mapc_dash_pw_v1', LS_PLAYER = 'mapc_dash_player_v1', LS_HOURS = 'mapc_dash_hours_v1', REFRESH_MS = 30000, QUIET_MS = 180000;
+  var LS_PW = 'mapc_dash_pw_v1', LS_PLAYER = 'mapc_dash_player_v1', LS_HOURS = 'mapc_dash_hours_v1', LS_SPEED_OPEN = 'mapc_dash_speed_open_v1', REFRESH_MS = 30000, QUIET_MS = 180000;
   var PERIODS = [[24, '24 h', 'Last 24 hours'], [72, '3 days', 'Last 3 days'], [168, '7 days', 'Last 7 days'], [336, '14 days', 'Last 14 days']];
   var STATE_LABEL = { collected: 'Collected', missed: 'Missed', sent: 'En route', sending: 'En route', gone: 'Not sent', failed: 'Failed', skipped: 'Skipped', queued: 'Queued' };
   var STATE_CLASS = { collected: 'collected', missed: 'missed', sent: 'enroute', sending: 'enroute', gone: 'notsent', failed: 'failed', skipped: 'skipped', queued: 'queued' };
@@ -387,6 +399,9 @@
     var st = data.settings || { speedOn: false, gemReserve: 10000, gemCap: 1500 }, today = data.today || { speedups: 0, gems: 0 }, s = data.status;
     var sw = $('dash-speed');
     if (!speedBusy) sw.setAttribute('aria-checked', String(!!st.speedOn));
+    setText($('dash-speed-sum'), num(today.gems) + ' gems today');
+    var open = lsGet(LS_SPEED_OPEN) === '1';               // folded unless the viewer opened it
+    $('dash-speed-body').hidden = !open; $('dash-speed-more').setAttribute('aria-expanded', String(open));
     setText($('dash-speed-today'), 'Today: ' + today.speedups + (today.speedups === 1 ? ' speed-up, ' : ' speed-ups, ') + num(today.gems) + ' of ' + num(st.gemCap) + ' gems');
     // a value being typed (or typed and not saved yet) is never overwritten by a refresh
     if (!fieldsEdited) [['dash-reserve', st.gemReserve], ['dash-cap', st.gemCap]].forEach(function (f) { $(f[0]).value = String(f[1]); });
@@ -426,19 +441,25 @@
     add('path', { d: 'M100 100 L100 8 A92 92 0 0 1 165 35 Z', fill: 'rgba(63,185,80,.08)' }, sweep);
     add('path', { d: 'M100 100 L100 8', stroke: 'rgba(63,185,80,.55)', 'stroke-width': 1.2 }, sweep);
     if (!maps.length) { box.appendChild(svg); box.appendChild(el('div', 'radar-empty', 'No maps in the last 24 hours')); return; }
-    var xs = maps.map(function (m) { return m.x; }), ys = maps.map(function (m) { return m.y; });
-    var cx = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2, cy = (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2;
-    var span = Math.max(8, Math.max.apply(null, xs) - Math.min.apply(null, xs), Math.max.apply(null, ys) - Math.min.apply(null, ys));
-    var k = 150 / span;
+    // Centred on where maps usually land (the median, so a few spawns across the world cannot drag it) and
+    // scaled to the farthest map that is not an outlier (more than 4x the typical distance); outliers sit on
+    // the rim in their true direction.
+    var med = function (a) { var q = a.slice().sort(function (p, r) { return p - r; }); return q[Math.floor((q.length - 1) / 2)]; };
+    var cx = med(maps.map(function (m) { return m.x; })), cy = med(maps.map(function (m) { return m.y; }));
+    var ds = maps.map(function (m) { return Math.hypot(m.x - cx, m.y - cy); }).sort(function (p, r) { return p - r; });
+    var typical = Math.max(4, ds[Math.floor((ds.length - 1) / 2)]);
+    var inside = ds.filter(function (d) { return d <= typical * 4; });
+    var reach = Math.max(6, inside[inside.length - 1] || 6);
+    var k = 84 / reach, RIM = 88;
     maps.slice().reverse().forEach(function (m) {
-      var px = 100 + (m.x - cx) * k, py = 100 + (m.y - cy) * k;
-      if (Math.hypot(px - 100, py - 100) > 92) return;
-      var g = add('g', {}), col = DOT[m.state] || '#5b6878', r = m.state === 'collected' ? 4.2 : 3.6, dx = px.toFixed(1), dy = py.toFixed(1);
+      var px = 100 + (m.x - cx) * k, py = 100 + (m.y - cy) * k, off = Math.hypot(px - 100, py - 100), far = off > RIM;
+      if (far) { px = 100 + (px - 100) * RIM / off; py = 100 + (py - 100) * RIM / off; }
+      var g = add('g', {}), col = DOT[m.state] || '#5b6878', r = far ? 2.8 : m.state === 'collected' ? 4.2 : 3.6, dx = px.toFixed(1), dy = py.toFixed(1);
       add('circle', { cx: dx, cy: dy, r: r + 1.2, fill: '#0a0f0d' }, g);
       var dot = add('circle', m.state === 'sent' || m.state === 'sending'
-        ? { 'class': 'dot', cx: dx, cy: dy, r: r, fill: 'rgba(88,166,255,.18)', stroke: DOT.sent, 'stroke-width': 1.3, filter: 'url(#rdShadow)' }
-        : { 'class': 'dot', cx: dx, cy: dy, r: r, fill: grad(col), stroke: mix(col, '#000000', 0.4), 'stroke-width': 0.9, filter: 'url(#rdShadow)' }, g);
-      var tt = document.createElementNS(NS, 'title'); tt.textContent = m.spawner + ' (' + m.x + ', ' + m.y + '): ' + (STATE_LABEL[m.state] || m.state); dot.appendChild(tt);
+        ? { 'class': far ? 'dot far' : 'dot', cx: dx, cy: dy, r: r, fill: 'rgba(88,166,255,.18)', stroke: DOT.sent, 'stroke-width': 1.3, filter: 'url(#rdShadow)' }
+        : { 'class': far ? 'dot far' : 'dot', cx: dx, cy: dy, r: r, fill: grad(col), stroke: mix(col, '#000000', 0.4), 'stroke-width': 0.9, filter: 'url(#rdShadow)' }, g);
+      var tt = document.createElementNS(NS, 'title'); tt.textContent = m.spawner + ' (' + m.x + ', ' + m.y + '): ' + (STATE_LABEL[m.state] || m.state) + (far ? ', far away' : ''); dot.appendChild(tt);
     });
     box.appendChild(svg);
   }
@@ -560,6 +581,10 @@
         setTimeout(function () { load(false); }, 25000);
       })
       .catch(function (e) { reconnectAt = 0; btn.disabled = false; setText($('dash-reconnect-msg'), e && e.message && !/fetch/i.test(e.message) ? e.message : 'Could not reach the server. Try again.'); });
+  });
+  $('dash-speed-more').addEventListener('click', function () {
+    lsSet(LS_SPEED_OPEN, lsGet(LS_SPEED_OPEN) === '1' ? null : '1');
+    if (data) renderSpeed();
   });
   $('dash-speed').addEventListener('click', function () {
     if (!data || speedBusy) return;

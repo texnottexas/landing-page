@@ -222,6 +222,7 @@ test('speed-up panel: switch and gem fields post settings; today line shows use 
   await page.click('#dash-speed');
   await page.waitForFunction(() => document.querySelector('#dash-speed').getAttribute('aria-checked') === 'true');
   assert.deepEqual(posted.at(-1), { player: TEX, speedOn: true });
+  await page.click('#dash-speed-more');
   await page.fill('#dash-reserve', '5000'); await page.fill('#dash-cap', '740'); await page.click('#dash-speed-save');
   await page.waitForFunction(() => /Saved/.test(document.querySelector('#dash-speed-msg').textContent));
   assert.deepEqual(posted.at(-1), { player: TEX, gemReserve: 5000, gemCap: 740 });
@@ -280,10 +281,47 @@ test('gems spent on speed-ups show in the status panel while speed-ups are on or
 
 test('REVIEW #14: switching player drops gem values typed for the other one', async () => {
   const { ctx, page } = await open('good pass');
-  await page.waitForSelector('#dash-reserve');
+  await page.waitForSelector('#dash-speed-more');
+  await page.click('#dash-speed-more');
   await page.fill('#dash-reserve', '5000');
   await page.click('#dash-players button[data-sk="' + REX + '"]');
   await page.waitForFunction(() => document.querySelector('#dash-players button[aria-pressed="true"]').getAttribute('data-sk') === 'c3c6f3200a4ec1fb');
   await page.waitForFunction(() => document.getElementById('dash-reserve').value === '10000', null, { timeout: 5000 });
+  await ctx.close();
+});
+
+test('radar: centred where the maps land, spread across it; a few maps far across the world sit on the rim', async () => {
+  const near = [];
+  for (let i = 0; i < 40; i++) near.push({ id: 'n' + i, noticed_at: NOW - 60000 * (i + 1), spawner: 'A', x: 420 + (i * 7) % 40, y: 645 + (i * 11) % 50, state: 'collected', reward: '', reward_items: '', reason: '', arrive_at: 0 });
+  const far = [6, 7, 5].map((x, i) => ({ id: 'f' + i, noticed_at: NOW - 30000 * (i + 1), spawner: 'Wonka', x, y: 121 + i * 8, state: 'collected', reward: '', reward_items: '', reason: '', arrive_at: 0 }));
+  state.maps = near.concat(far);
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('#dash-radar circle.dot');
+  const dots = await page.$$eval('#dash-radar circle.dot', (c) => c.map((x) => ({ x: Number(x.getAttribute('cx')), y: Number(x.getAttribute('cy')), far: x.classList.contains('far'), t: x.querySelector('title') ? x.querySelector('title').textContent : '' })));
+  assert.equal(dots.length, 43, 'every map is drawn');
+  const inner = dots.filter((d) => !d.far), rim = dots.filter((d) => d.far);
+  const mx = inner.reduce((a, d) => a + d.x, 0) / inner.length, my = inner.reduce((a, d) => a + d.y, 0) / inner.length;
+  assert.ok(Math.hypot(mx - 100, my - 100) < 15, 'the cluster sits in the middle, not a corner: ' + mx.toFixed(1) + ',' + my.toFixed(1));
+  const spread = Math.max.apply(null, inner.map((d) => Math.hypot(d.x - 100, d.y - 100)));
+  assert.ok(spread > 50, 'the cluster spreads across the radar: ' + spread.toFixed(1));
+  assert.equal(rim.length, 3, 'the three far maps are pinned to the rim');
+  rim.forEach((d) => { const r = Math.hypot(d.x - 100, d.y - 100); assert.ok(r > 84 && r <= 92, 'on the rim: ' + r.toFixed(1)); assert.match(d.t, /\(\d+, \d+\)/); });
+  await ctx.close();
+});
+test('speed-ups panel: collapsed by default with the switch and today\'s spend in its header; opening it is remembered', async () => {
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('#dash-speed');
+  assert.equal(await page.isVisible('#dash-speed'), true, 'the switch stays in the header');
+  assert.equal(await page.isVisible('#dash-reserve'), false, 'the fields start folded away');
+  assert.equal(await page.$eval('#dash-speed-more', (b) => b.getAttribute('aria-expanded')), 'false');
+  assert.match(await page.textContent('#dash-speed-sum'), /37 gems today/);
+  const tall = await page.$eval('#dash-speed-panel', (e) => e.getBoundingClientRect().height);
+  assert.ok(tall < 90, 'a slim panel when folded: ' + tall);
+  await page.click('#dash-speed-more');
+  await page.waitForSelector('#dash-reserve', { state: 'visible' });
+  await page.reload();
+  await page.waitForSelector('#dash-reserve', { state: 'visible' });
+  await page.click('#dash-speed-more');
+  await page.waitForSelector('#dash-reserve', { state: 'hidden' });
   await ctx.close();
 });
