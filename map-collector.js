@@ -10,7 +10,7 @@
   var C = window.MapCollectorCore;
   if (!C) { try { alert('Map Collector did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-04.8';
+  var VERSION = '2026-10-04.9';
   var WORKER = window.__MAPC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var DASH = 'https://2864tw.com/map-collector.html';
   var HOME_SERVER = 2864, CLAIM = 902, MARCH_TYPE = 143;   // RequestId.MARCH_WORLD_POINT, MarchType.Titan_Blessing_Gift
@@ -103,6 +103,17 @@
       if (ok === false && !done) { done = true; clearTimeout(t); resolve({ s: 'blocked' }); }
     });
   }
+  // One request clock for every Ops tool in this tab (Mask Mystery Boxes too): never two game requests, from any
+  // of them, under 1.1-1.3 s apart.
+  function pace() {
+    var P = window.__opsPace || (window.__opsPace = { at: 0 });
+    return new Promise(function (resolve) {
+      (function check() {
+        var wait = P.at + 1100 + Math.floor(Math.random() * 200) - Date.now();
+        if (wait <= 0) { P.at = Date.now(); resolve(); } else setTimeout(check, Math.min(wait, 1000));
+      })();
+    });
+  }
   function sendClaim(m) { return sendReq(CLAIM, { marchType: MARCH_TYPE, x: m.x, y: m.y, armyList: [], armyListNew: [], heroList: [], trapList: [], ext: {} }); }
   function sha256Hex(text) {
     return crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)).then(function (b) {
@@ -183,6 +194,7 @@
     if (!chk.ok) { m.speedWant = m.speedDone || 0; m.speedNote = chk.reason; S.speedNote = chk.reason; C.touch(S, m); save(); paint(); return; }
     if (chk.source === 'buy') {
       var bag0 = bagCount(), gems0 = gems();
+      await pace();
       var b = await sendReq(BUY, { shopId: C.SPEED_SHOP, amount: 1, isVip: 1 }), sold = !!b && b.s === 0;
       // it must add exactly one speed-up for exactly the price. A lost answer can still have bought one: the bag says.
       if (!(await until(function () { return bagCount() === bag0 + 1 && gems() === gems0 - price; }, sold ? 3000 : 1000))) {
@@ -195,6 +207,7 @@
       // still wanted, still on, still attached, still en route with time to gain? Otherwise it stays in the bag.
       if (!speedReady() || !S.active || !S.attached || !connected() || m.state !== 'sent' || !(m.arriveAt - Date.now() > C.SPEED_MIN_LEFT_MS)) return;
     }
+    await pace();
     var bagBefore = bagCount();
     var u = await sendReq(USE, { marchId: m.marchId, itemId: C.SPEED_ITEM });
     if (!u || u.s !== 0) {
@@ -263,6 +276,8 @@
         if (!g.ok) { if (!S.paused || S.paused.until !== g.until) { S.paused = g; paint(); report(''); } await delay(Math.min(5000, Math.max(250, g.until - Date.now()))); continue; }
         if (S.paused) { S.paused = null; paint(); }
         var m = pick.map;
+        await pace();
+        if (!S.active || !connected() || m.state !== 'queued') continue;
         m.state = 'sending'; m.sentAt = Date.now(); C.touch(S, m); paint();
         var ans = await sendClaim(m), cls = C.classifyAnswer(ans);
         S.sends.push({ t: m.sentAt, kind: cls.kind }); if (S.sends.length > 100) S.sends.shift();

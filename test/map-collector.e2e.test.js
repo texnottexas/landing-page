@@ -633,3 +633,14 @@ test('an upgrade launched in the same tab replaces the old card styles', async (
   assert.ok(h <= 50, 'it folds: ' + h + ' px');
   await ctx.close();
 });
+
+test('shared request clock: a claim waits until 1.1 s after another Ops tool\'s last request', async () => {
+  const { ctx, page } = await start();
+  await page.waitForSelector('#mapc-enroute');
+  const at = await page.evaluate(() => { window.__opsPace = { at: Date.now() + 5000 }; __fake.notice(501, 'A', 5, 5); return window.__opsPace.at; });
+  await page.waitForFunction(() => __fake.sent.some((x) => x.rid === 902), null, { timeout: 15000 });
+  const claimAt = (await sent(page)).find((x) => x.rid === 902).at;
+  assert.ok(claimAt >= at + 1100, 'the claim went out ' + (claimAt - at) + ' ms after the other tool');
+  assert.ok(await page.evaluate(() => window.__opsPace.at) >= claimAt - 5, 'and the clock now holds the claim');
+  await ctx.close();
+});
