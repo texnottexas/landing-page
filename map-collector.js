@@ -10,7 +10,7 @@
   var C = window.MapCollectorCore;
   if (!C) { try { alert('Map Collector did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-04.7';
+  var VERSION = '2026-10-04.8';
   var WORKER = window.__MAPC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var DASH = 'https://2864tw.com/map-collector.html';
   var HOME_SERVER = 2864, CLAIM = 902, MARCH_TYPE = 143;   // RequestId.MARCH_WORLD_POINT, MarchType.Titan_Blessing_Gift
@@ -494,7 +494,10 @@
   function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
   function ensureRoot() {
     if (root && root.isConnected) return;
-    if (!document.getElementById('mapc-style')) { var st = el('style'); st.id = 'mapc-style'; st.textContent = CSS; document.head.appendChild(st); }
+    // always this version's styles: an update launched in the same tab must not keep the old ones
+    var st = document.getElementById('mapc-style');
+    if (!st) { st = el('style'); st.id = 'mapc-style'; document.head.appendChild(st); }
+    if (st.textContent !== CSS) st.textContent = CSS;
     root = el('div'); root.id = 'mapc-root';
     card = el('div', 'mapc-card');
     var head = el('div', 'mapc-head'); head.appendChild(el('span', 'mapc-title', 'Map Collector'));

@@ -620,3 +620,16 @@ test('minimize: a password prompt always shows in full', async () => {
   assert.equal(await page.$eval('#mapc-root .mapc-card', (e) => e.classList.contains('min')), false);
   await ctx.close();
 });
+
+test('an upgrade launched in the same tab replaces the old card styles', async () => {
+  const { ctx, page } = await start();
+  await page.waitForSelector('#mapc-min');
+  await page.evaluate(() => { window.__MAPC.stop(); const st = document.getElementById('mapc-style'); st.textContent = '#mapc-root .mapc-card{width:190px}'; });   // an older version's styles left behind
+  await page.evaluate(() => { const s = document.createElement('script'); s.src = 'map-collector.js?again=1'; document.head.appendChild(s); });
+  await page.waitForSelector('#mapc-enroute');
+  assert.equal(await page.isVisible('#mapc-mini'), false, 'the folded count stays hidden on the full card');
+  await page.click('#mapc-min');
+  const h = await page.$eval('#mapc-root .mapc-card', (e) => e.getBoundingClientRect().height);
+  assert.ok(h <= 50, 'it folds: ' + h + ' px');
+  await ctx.close();
+});
