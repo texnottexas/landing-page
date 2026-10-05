@@ -37,11 +37,13 @@
 
   // The box hangs off its owner's city in the 901 world view: the city point at exactly (x, y) on server k with a
   // cityReward. Its type comes from the box's own item, not the report.
+  // The live 901 answer is {c, o, d} with no s; a timeout, a blocked send or a game error carries one.
   function findBox(answer, x, y, k) {
-    if (!answer || answer.s !== 0) return { state: 'error' };
+    if (!answer || (answer.s != null && answer.s !== 0)) return { state: 'error' };
     var d;
     try { d = typeof answer.d === 'string' ? JSON.parse(answer.d) : answer.d; } catch (e) { return { state: 'error' }; }
-    var pts = d && Array.isArray(d.pointList) ? d.pointList : [];
+    if (!d || !Array.isArray(d.pointList)) return { state: 'error' };
+    var pts = d.pointList;
     for (var i = 0; i < pts.length; i++) {
       var p = pts[i];
       if (!p || !p.p || p.x !== x || p.y !== y || p.k !== k) continue;

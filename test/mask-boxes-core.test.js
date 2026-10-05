@@ -57,3 +57,11 @@ test('countsFor and gameDay: counts belong to the game day that starts at reset 
 test('cardRows', () => {
   assert.deepEqual(M.cardRows({ 1: 3, 2: 0, 3: 20 }, { 1: true, 2: false, 3: true }), [['Treasure', '3/20', true], ['HT', '0/20', false], ['RSS', '20/20', true]]);
 });
+
+test('findBox: a view answer without s (as the game sends 901 live: {c, o, d}) still finds the box', () => {
+  const ans = { c: 901, o: '148', d: JSON.stringify({ rtype: 2, pointList: [
+    { v: 9, x: 404, y: 612, k: 619, pointType: 1, p: { pid: '217160163552', cityReward: { itemId: 260617002, instanceId: 77 } } }] }) };
+  assert.deepEqual(M.findBox(ans, 404, 612, 619), { state: 'box', pid: '217160163552', instanceId: '77', type: 1 });
+  assert.deepEqual(M.findBox({ c: 901, d: 'not json' }, 404, 612, 619), { state: 'error' });
+  assert.deepEqual(M.findBox({ c: 901 }, 404, 612, 619), { state: 'error' });
+});
