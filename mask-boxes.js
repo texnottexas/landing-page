@@ -89,7 +89,11 @@
     min: lsGet(LS_MIN) === '1', view: ''
   };
   function today() { return C.gameDay(Date.now()); }
-  function counts() { return C.countsFor(S.count, today()); }
+  // ours, raised to the game's own count (UserData.itemCityRewardReceivedNum) when the game has sent one today
+  var server = null;
+  function readServer() { try { server = C.trackServer(server, UD().itemCityRewardReceivedNum, today()); } catch (e) {} }
+  function serverIds() { try { var a = UD().itemCityRewardReceivedInstIds; return Array.isArray(a) ? a.map(String) : []; } catch (e) { return []; } }
+  function counts() { return C.countsWith(C.countsFor(S.count, today()), server, today()); }
   function bump(type) {
     var c = counts(); c[type] = (c[type] || 0) + 1;
     S.count = { day: today(), counts: c }; lsSet(LS_COUNT + S.siteKey, JSON.stringify(S.count));
@@ -126,6 +130,7 @@
       if (!S.running) break;
       if (!S.feedOk) { await untilNextFetch('Box list unavailable', 'warn'); continue; }
       if (!ready()) { setFoot('Game disconnected. Waiting...', 'bad'); await delay(1000); continue; }
+      readServer();
       var list = C.candidates(S.boxes, { now: Date.now(), types: S.types, tried: S.tried, counts: counts() });
       if (!list.length) { await untilNextFetch('Waiting for new boxes', 'ok'); continue; }
       var g = C.gate(S.log, Date.now());
@@ -144,10 +149,11 @@
     setFoot('Checking ' + C.TYPES[b.type] + ' at ' + where, 'ok');
     if (!(await turn())) return;                            // nothing sent: the box stays untried
     S.tried[C.boxKey(b)] = 1;
-    var found = C.findBox(await sendView(b), b.x, b.y, b.server);
+    var found = C.findBox(await sendView(b), b.x, b.y, b.server, b.endMs);
     if (found.state === 'stop') { note('failed'); stop(stopText(found.key, 'the game refused to show that city.')); return; }
     if (found.state !== 'box') { note(found.state === 'gone' ? 'gone' : 'failed'); return; }
-    if (doneIds().indexOf(found.instanceId) >= 0) { note('claimed'); return; }
+    readServer();
+    if (doneIds().indexOf(found.instanceId) >= 0 || serverIds().indexOf(found.instanceId) >= 0) { note('claimed'); return; }
     var type = found.type;                                  // from the box's own item; 0 = not a Mask Mystery box
     if (!type || !S.types[type] || counts()[type] >= C.DAILY_CAP) { note('gone'); return; }   // unknown, off or full
     await delay(FAST ? 0 : 1500 + rand(1500));             // a person's pause between looking and tapping
@@ -248,6 +254,7 @@
   }
   function paint() {
     if (!root || S.view !== 'run') return;
+    readServer();
     var c = counts(), rows = C.cardRows(c, S.types), total = c[1] + c[2] + c[3];
     rows.forEach(function (r, i) {
       var b = document.getElementById('mbx-t' + (i + 1)); if (!b) return;

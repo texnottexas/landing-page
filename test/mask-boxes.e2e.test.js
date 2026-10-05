@@ -367,3 +367,20 @@ test('REVIEW #7: an unexpected error stops the run with a message instead of a f
   assert.equal(await page.evaluate(() => __MBX.running), false);
   await ctx.close();
 });
+
+test('LIVE: the game\'s own count shows on the card and a type the game says is at 20 is skipped; its collected boxes are never collected', async () => {
+  feed = [box({ server: 1, type: 1, endMs: Date.now() + 100000 }), box({ server: 2, type: 3, endMs: Date.now() + 200000 }), box({ server: 3, type: 3, endMs: Date.now() + 300000 })];
+  const { ctx, page } = await open((t) => {
+    __fake.cities['1:404:612'] = { pid: '1', itemId: t + 1, instanceId: 'w1' };
+    __fake.cities['2:404:612'] = { pid: '2', itemId: t + 3, instanceId: 'w2' };
+    __fake.cities['3:404:612'] = { pid: '3', itemId: t + 3, instanceId: 'w3' };
+    __fake.serverNum = { 260617002: 20, 260617004: 4 }; __fake.serverIds = ['w2'];
+  }, T);
+  await launch(page);
+  await waitText(page, '#mbx-t1', /20\/20/);
+  await waitSent(page, 3);
+  await page.waitForTimeout(2000);
+  assert.deepEqual((await sent(page)).map((x) => x.rid + ':' + (x.p.k || x.p.targetUidStr)), ['901:2', '901:3', '2503:3']);
+  await waitText(page, '#mbx-t3', /5\/20/);
+  await ctx.close();
+});

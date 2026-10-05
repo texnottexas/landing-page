@@ -35,27 +35,34 @@
     return out.sort(function (a, c) { return a.endMs - c.endMs; });
   }
 
-  // The box hangs off its owner's city in the 901 world view: the city point at exactly (x, y) on server k with a
-  // cityReward. Its type comes from the box's own item, not the report.
-  // The live 901 answer is {c, o, d} with no s; a timeout, a blocked send or a game error carries one.
+  // The box hangs off its owner's city in the 901 world view: a city point on server k with a cityReward. Its type
+  // comes from the box's own item, not the report. A reported spot can be any tile of the city rather than its
+  // anchor (live: reported 785,535, city at 783,535), so: the box whose end time is the reported one, anywhere in
+  // the view; else the city at exactly (x, y); else the one nearest box within 3 tiles (two equally near: leave it).
+  var NEAR = 3;
+  function boxOf(p) {
+    var r = p.p.cityReward, t = Number(r.itemId) - ITEM_BASE;
+    return { state: 'box', pid: String(p.p.pid), instanceId: String(r.instanceId), type: TYPES[t] ? t : 0 };
+  }
+  function hasBox(p) { return !!(p.p.cityReward && p.p.cityReward.itemId != null); }
   // A numeric s other than 0 is the game refusing: stop on it (its message key is in d). A timeout or a blocked
   // send ('timeout' / 'blocked') is an error toward the breaker.
-  function findBox(answer, x, y, k) {
+  function findBox(answer, x, y, k, endMs) {
     if (!answer) return { state: 'error' };
     if (answer.s != null && answer.s !== 0) return typeof answer.s === 'number' ? { state: 'stop', key: typeof answer.d === 'string' ? answer.d.slice(0, 80) : '' } : { state: 'error' };
     var d;
     try { d = typeof answer.d === 'string' ? JSON.parse(answer.d) : answer.d; } catch (e) { return { state: 'error' }; }
     if (!d || !Array.isArray(d.pointList)) return { state: 'error' };
-    var pts = d.pointList;
-    for (var i = 0; i < pts.length; i++) {
-      var p = pts[i];
-      if (!p || !p.p || p.x !== x || p.y !== y || p.k !== k) continue;
-      var r = p.p.cityReward;
-      if (!r || r.itemId == null) return { state: 'gone' };
-      var t = Number(r.itemId) - ITEM_BASE;
-      return { state: 'box', pid: String(p.p.pid), instanceId: String(r.instanceId), type: TYPES[t] ? t : 0 };
-    }
-    return { state: 'gone' };
+    var pts = d.pointList.filter(function (p) { return p && p.p && p.k === k; }), i, p;
+    if (endMs != null) for (i = 0; i < pts.length; i++) { p = pts[i]; if (hasBox(p) && Number(p.p.cityReward.endTimeMilli) === endMs) return boxOf(p); }
+    for (i = 0; i < pts.length; i++) { p = pts[i]; if (p.x === x && p.y === y) return hasBox(p) ? boxOf(p) : { state: 'gone' }; }
+    var best = null, bestD = NEAR + 1, tie = false;
+    pts.forEach(function (q) {
+      if (!hasBox(q)) return;
+      var dist = Math.max(Math.abs(q.x - x), Math.abs(q.y - y));
+      if (dist < bestD) { best = q; bestD = dist; tie = false; } else if (dist === bestD) tie = true;
+    });
+    return best && !tie ? boxOf(best) : { state: 'gone' };
   }
 
   // Items: collected. "Reward claimed": recorded. Anything else the game answers (a refusal, or a success without
@@ -91,6 +98,24 @@
     return { 1: c[1] || 0, 2: c[2] || 0, 3: c[3] || 0 };
   }
 
+  // The game's own count of boxes collected today, per box item (UserData.itemCityRewardReceivedNum, pushed after
+  // login and after every collect). It is trusted for the game day the tool saw it arrive or change in, so a count
+  // from before reset never blocks the new day. tracker = {day, key, num}.
+  function trackServer(prev, num, day) {
+    var clean = null;
+    if (num && typeof num === 'object' && !Array.isArray(num)) {
+      [1, 2, 3].forEach(function (t) { var n = Number(num[ITEM_BASE + t]); if (isFinite(n) && n > 0) (clean = clean || {})[t] = Math.floor(n); });
+    }
+    if (!clean) return prev && prev.num ? prev : { day: '', key: '', num: null };
+    var key = JSON.stringify(clean);
+    return prev && prev.key === key ? prev : { day: day, key: key, num: clean };
+  }
+  function countsWith(local, tracker, day) {
+    var c = { 1: local[1] || 0, 2: local[2] || 0, 3: local[3] || 0 };
+    if (tracker && tracker.num && tracker.day === day) [1, 2, 3].forEach(function (t) { if ((tracker.num[t] || 0) > c[t]) c[t] = tracker.num[t]; });
+    return c;
+  }
+
   function cardRows(counts, types) {
     return [1, 2, 3].map(function (t) { return [TYPES[t], (counts[t] || 0) + '/' + DAILY_CAP, !!types[t]]; });
   }
@@ -98,7 +123,7 @@
   var MaskBoxesCore = {
     TYPES: TYPES, DAILY_CAP: DAILY_CAP, MIN_LEFT_MS: MIN_LEFT_MS, CLAIMED: CLAIMED, ITEM_BASE: ITEM_BASE,
     gameDay: gameDay, boxKey: boxKey, candidates: candidates, findBox: findBox, classifyCollect: classifyCollect,
-    gate: gate, countsFor: countsFor, cardRows: cardRows
+    gate: gate, countsFor: countsFor, cardRows: cardRows, trackServer: trackServer, countsWith: countsWith
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = MaskBoxesCore;
   else root.MaskBoxesCore = MaskBoxesCore;

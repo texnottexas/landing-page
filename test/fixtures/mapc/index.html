@@ -8,7 +8,8 @@
 // cities on any server in the 901 world view (a box hangs off its owner's city as cityReward) and the 2503 collect.
 window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent: [], answers: [], chat: [], handlers: {}, myMarch: {}, activity: true,
   gems: 1000, bag: 0, vip: 15, marchSecs: 2, buyMode: 'ok', useMode: 'ok', bagLagMs: 0, drift: 0, used: [], pending: [],
-  cities: {}, claimed: {}, collects: 0, limitAfter: 0, viewError: '', lose901: 0, emptyReward: false, nullItem: false };
+  cities: {}, claimed: {}, collects: 0, limitAfter: 0, viewError: '', lose901: 0, emptyReward: false, nullItem: false,
+  serverNum: {}, serverIds: [] };
 // a test can keep this game logged out across reloads (a reconnect that does not work)
 try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.__fake.kickBox = true; } } catch (e) {}
 (function () {
@@ -67,6 +68,8 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       else if (F.emptyReward) ans = { c: 2503, s: 0, pbAckV2: { header: { s: 0 }, data: {} } };
       else {
         F.claimed[city.instanceId] = 1; F.collects++;
+        var nn = Object.assign({}, F.serverNum); nn[city.itemId] = (nn[city.itemId] || 0) + 1;   // like the 10053 push
+        setTimeout(function () { F.serverNum = nn; F.serverIds = F.serverIds.concat([String(city.instanceId)]); }, 30);
         var item = { itemId: city.itemId - 260617001 + 260604016, itemCount: 1 };
         ans = { c: 2503, s: 0, pbAckV2: { header: { s: 0 }, data: { rewardResult: { items: F.nullItem ? [null, item] : [item] } } } };
       }
@@ -79,7 +82,8 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
   var chatInst = { _allianceRoomId: '102_2_2864_1', _userChatList: { '2102_2_2864_1': F.chat } };
   window.__require = function (name) {
     if (name === 'DataCenter') return { DATA: { UserData: { Name: F.name, StrUid: F.uid, _resourceData: { get _gold() { return F.gems; } },
-      getItemAmount: function (id) { return id === 520002 ? F.bag : 0; }, get VipLevel() { return F.vip; } } } };
+      getItemAmount: function (id) { return id === 520002 ? F.bag : 0; }, get VipLevel() { return F.vip; },
+      get itemCityRewardReceivedNum() { return F.serverNum; }, get itemCityRewardReceivedInstIds() { return F.serverIds; } } } };
     if (name === 'newChatController') return { newChatController: { _instance: chatInst } };
     if (name === 'NetMgr') return { NET: NET };
     if (name === 'EventCenter') return { EventCenter: { getInst: function () { return ec; } } };

@@ -74,3 +74,41 @@ test('REVIEW #3: classifyCollect stops on a success without a reward; timeouts a
   assert.deepEqual(M.findBox({ s: 7 }, 1, 1, 1), { state: 'stop', key: '' });
   assert.deepEqual(M.classifyCollect({ s: 3 }), { kind: 'stop', key: '' });
 });
+
+test('LIVE: a reported spot can be a tile of the city, not its anchor: match by end time, else the one nearest box within 3 tiles', () => {
+  const pt = (x, y, o) => ({ x, y, k: 2864, pointType: 1, p: Object.assign({ pid: 'p' + x + '_' + y }, o) });
+  const box = (end, item) => ({ cityReward: { itemId: item || 260617003, instanceId: 'i' + end, endTimeMilli: end } });
+  const view = (pts) => ({ s: 0, d: JSON.stringify({ pointList: pts }) });
+  // live 2026-10-05: reported 785,535; the city (and its box) sits at 783,535
+  const live = view([pt(783, 535, box(1791224240106)), pt(790, 540, {})]);
+  assert.deepEqual(M.findBox(live, 785, 535, 2864, 1791224240106), { state: 'box', pid: 'p783_535', instanceId: 'i1791224240106', type: 2 });
+  assert.equal(M.findBox(live, 785, 535, 2864, 1).state, 'box', 'no end-time match: the one box within 3 tiles');
+  assert.equal(M.findBox(live, 785, 535, 2864).state, 'box');
+  // the end time wins anywhere in the view
+  assert.equal(M.findBox(view([pt(770, 520, box(5)), pt(785, 535, box(6))]), 785, 535, 2864, 5).pid, 'p770_520');
+  // two boxes equally near and no end-time match: ambiguous, leave it
+  assert.deepEqual(M.findBox(view([pt(783, 535, box(7)), pt(787, 535, box(8))]), 785, 535, 2864, 1), { state: 'gone' });
+  // nothing within 3 tiles: gone
+  assert.deepEqual(M.findBox(view([pt(780, 535, box(9))]), 785, 535, 2864, 1), { state: 'gone' });
+  // the exact city without a box: gone, even with a box next door
+  assert.deepEqual(M.findBox(view([pt(785, 535, {}), pt(784, 535, box(10))]), 785, 535, 2864, 1), { state: 'gone' });
+  // another server's points never match
+  assert.deepEqual(M.findBox(view([Object.assign(pt(785, 535, box(11)), { k: 1 })]), 785, 535, 2864, 11), { state: 'gone' });
+});
+
+test('LIVE: the game\'s own count (UserData.itemCityRewardReceivedNum) raises the card and the cap, for the game day it was seen in', () => {
+  const NUM = { 260617002: 6, 260617003: 8, 260617004: 1 };   // Rеx, 2026-10-05 13:58 ET
+  let tr = M.trackServer(null, {}, '2026-10-05');               // empty at login, before the push
+  assert.equal(tr.num, null);
+  tr = M.trackServer(tr, NUM, '2026-10-05');
+  assert.deepEqual(M.countsWith({ 1: 1, 2: 1, 3: 0 }, tr, '2026-10-05'), { 1: 6, 2: 8, 3: 1 });
+  assert.deepEqual(M.countsWith({ 1: 7, 2: 0, 3: 0 }, tr, '2026-10-05'), { 1: 7, 2: 8, 3: 1 }, 'the higher of ours and the game\'s');
+  // reset passes and the game has not pushed since: yesterday's count must not block today
+  assert.deepEqual(M.countsWith({ 1: 0, 2: 0, 3: 0 }, M.trackServer(tr, NUM, '2026-10-06'), '2026-10-06'), { 1: 0, 2: 0, 3: 0 });
+  // a new push after reset counts again
+  tr = M.trackServer(M.trackServer(tr, NUM, '2026-10-06'), { 260617002: 1 }, '2026-10-06');
+  assert.deepEqual(M.countsWith({ 1: 0, 2: 0, 3: 0 }, tr, '2026-10-06'), { 1: 1, 2: 0, 3: 0 });
+  // junk never counts
+  assert.deepEqual(M.countsWith({ 1: 2, 2: 0, 3: 0 }, M.trackServer(null, { 260617002: 'x', 260617003: -4 }, 'd'), 'd'), { 1: 2, 2: 0, 3: 0 });
+  assert.equal(M.trackServer(null, 'nope', 'd').num, null);
+});
