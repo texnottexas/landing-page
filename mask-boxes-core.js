@@ -27,6 +27,7 @@
       var k = boxKey(b);
       if (seen[k] || (o.tried && o.tried[k])) return;
       seen[k] = 1;
+      if (o.spots && spotBlocked(o.spots, cityKey(b), o.now)) return;
       if (!o.types[b.type]) return;
       if ((o.counts[b.type] || 0) >= DAILY_CAP) return;
       if (!(b.endMs - o.now >= MIN_LEFT_MS)) return;
@@ -120,10 +121,83 @@
     return [1, 2, 3].map(function (t) { return [TYPES[t], (counts[t] || 0) + '/' + DAILY_CAP, !!types[t]]; });
   }
 
+  // ---------------------------------------------------------------- chat (spiked on Rеx 2026-10-07)
+  var CARD_T = 48, POSITION_T = 0, PLAYER_ST = 4, BASE_MAX_AGE_MS = 600000, BASE_PER_10MIN = 3, SPOT_NO_BOX_MS = 1800000;
+  function whole(v, lo, hi) { return typeof v === 'number' && Math.floor(v) === v && v >= lo && v <= hi; }
+  function cardType(d) {
+    var t = Number(d.actt) - 62;
+    if (TYPES[t]) return t;
+    var m = /^JMR_bs_00([123])$/.exec(String(d.s || ''));
+    return m ? Number(m[1]) : 0;
+  }
+  function ownerText(v) { return Array.from(String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]/g, '')).slice(0, 40).join(''); }
+  function cityKey(b) { return b.server + ':' + b.x + ':' + b.y; }
+  // The game's box cards ("X's Base has transformed into a Treasure Map!"), from any chat room.
+  function chatBoxes(rows, now) {
+    var out = [];
+    (rows || []).forEach(function (m) {
+      var d = m && m._chatShareLinkData;
+      if (!d || d.t !== CARD_T || !d.p || !d.extra) return;
+      var type = cardType(d), x = d.p.x, y = d.p.y, server = Number(d.extra.jumpServerId), endMs = Math.round(Number(d.extra.expireTime) * 1000);
+      if (!type || !whole(x, 0, 1200) || !whole(y, 0, 1200) || !whole(server, 1, 99999) || !(endMs > now && endMs <= now + 864e5)) return;
+      out.push({ server: server, x: x, y: y, type: type, endMs: endMs, owner: ownerText((d.extra.contentParams || [])[0]), src: 'chat' });
+    });
+    return out;
+  }
+  // Plain base shares (t:0 st:4): a spot that may have a box. Only fresh ones; p.z is the server.
+  function baseShares(rows, now) {
+    var out = [];
+    (rows || []).forEach(function (m) {
+      var d = m && m._chatShareLinkData;
+      if (!d || d.t !== POSITION_T || d.st !== PLAYER_ST || !d.p) return;
+      var at = Number(m._time) * 1000;
+      if (!(at > now - BASE_MAX_AGE_MS && at <= now + 60000)) return;
+      var server = Number(d.p.z);
+      if (!whole(server, 1, 99999)) server = Number(m._worldId);
+      if (!whole(server, 1, 99999) || !whole(d.p.x, 0, 1200) || !whole(d.p.y, 0, 1200)) return;
+      out.push({ server: server, x: d.p.x, y: d.p.y, at: at, src: 'base' });
+    });
+    return out;
+  }
+  function mergeBoxes(lists) {
+    var best = {}, order = [];
+    (lists || []).forEach(function (list) {
+      (list || []).forEach(function (b) { var k = cityKey(b); if (!best[k]) order.push(k); if (!best[k] || b.endMs > best[k].endMs) best[k] = b; });
+    });
+    return order.map(function (k) { return best[k]; });
+  }
+  // Spot memory: {'server:x:y': until}. A spot is never viewed again before its time, whoever re-reports it.
+  function spotBlocked(spots, key, now) { return !!(spots && Number(spots[key]) > now); }
+  function rememberSpot(spots, key, until) { var o = {}, k; for (k in spots) o[k] = spots[k]; if (!(Number(o[key]) >= until)) o[key] = until; return o; }
+  function pruneSpots(spots, now) { var o = {}; Object.keys(spots || {}).forEach(function (k) { var u = Number(spots[k]); if (u > now) o[k] = u; }); return o; }
+  // A base share is a maybe: newest untried, unremembered one, at most 3 views per 10 minutes.
+  function baseCandidate(shares, o) {
+    var recent = (o.baseLog || []).filter(function (t) { return t > o.now - 600000; });
+    if (recent.length >= BASE_PER_10MIN) return null;
+    var list = (shares || []).filter(function (s) { var k = cityKey(s); return !(o.tried && o.tried[k]) && !spotBlocked(o.spots, k, o.now); });
+    list.sort(function (a, c) { return c.at - a.at; });
+    return list[0] || null;
+  }
+  // The city holding the box we found: its anchor, server (p.w), end, item and player info (for the share card).
+  function boxPoint(answer, pid) {
+    var d;
+    try { d = typeof answer.d === 'string' ? JSON.parse(answer.d) : answer.d; } catch (e) { return null; }
+    var pts = d && Array.isArray(d.pointList) ? d.pointList : [];
+    for (var i = 0; i < pts.length; i++) {
+      var p = pts[i];
+      if (p && p.p && p.p.cityReward && String(p.p.pid) === String(pid)) {
+        return { x: p.x, y: p.y, w: Number(p.p.w) || Number(p.k) || 0, endMs: Number(p.p.cityReward.endTimeMilli) || 0, itemId: Number(p.p.cityReward.itemId) || 0, info: p.p.playerInfo || '' };
+      }
+    }
+    return null;
+  }
+
   var MaskBoxesCore = {
     TYPES: TYPES, DAILY_CAP: DAILY_CAP, MIN_LEFT_MS: MIN_LEFT_MS, CLAIMED: CLAIMED, ITEM_BASE: ITEM_BASE,
     gameDay: gameDay, boxKey: boxKey, candidates: candidates, findBox: findBox, classifyCollect: classifyCollect,
-    gate: gate, countsFor: countsFor, cardRows: cardRows, trackServer: trackServer, countsWith: countsWith
+    gate: gate, countsFor: countsFor, cardRows: cardRows, trackServer: trackServer, countsWith: countsWith,
+    SPOT_NO_BOX_MS: SPOT_NO_BOX_MS, BASE_MAX_AGE_MS: BASE_MAX_AGE_MS, cityKey: cityKey, chatBoxes: chatBoxes, baseShares: baseShares,
+    mergeBoxes: mergeBoxes, spotBlocked: spotBlocked, rememberSpot: rememberSpot, pruneSpots: pruneSpots, baseCandidate: baseCandidate, boxPoint: boxPoint
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = MaskBoxesCore;
   else root.MaskBoxesCore = MaskBoxesCore;
