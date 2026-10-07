@@ -192,12 +192,35 @@
     return null;
   }
 
+  // ---------------------------------------------------------------- sharing (proven live on Rеx 2026-10-07)
+  var SHARE_GAP_MS = 10000, SHARE_MIN_LEFT_MS = 300000;
+  var PARTY = { 1: { banner: 'shareIcon2', key: 'JMR_bs_001', msgType: 63 }, 2: { banner: 'shareIcon3', key: 'JMR_bs_002', msgType: 64 }, 3: { banner: 'shareIcon4', key: 'JMR_bs_003', msgType: 65 } };
+  function shareCheck(o) {
+    if (!o.on) return { ok: false, reason: 'off' };
+    if (!o.typeOn) return { ok: false, reason: 'type off' };
+    if (!(o.endMs - o.now >= SHARE_MIN_LEFT_MS)) return { ok: false, reason: 'ending' };
+    if ((o.sharedIds || []).indexOf(o.instanceId) >= 0) return { ok: false, reason: 'shared' };
+    var dup = (o.worldCards || []).some(function (c) { return c.server === o.server && c.x === o.x && c.y === o.y && (!c.endMs || !o.endMs || c.endMs === o.endMs); });
+    if (dup) return { ok: false, reason: 'in world chat' };
+    if (o.lastShareAt && o.now - o.lastShareAt < SHARE_GAP_MS) return { ok: false, reason: 'wait', at: o.lastShareAt + SHARE_GAP_MS };
+    return { ok: true };
+  }
+  // The game's own card (UserItemCityReward panel → sendChatLinkActCommon2), key order kept.
+  function shareLink(type, pt, host, row) {
+    var cfg = row && row.msg_banner && row.share_msg_key && row.msg_type ? { banner: row.msg_banner, key: row.share_msg_key, msgType: Number(row.msg_type) } : PARTY[type];
+    if (!cfg || !pt) return null;
+    return { t: CARD_T, icon: 'm/UserItemCityReward/images/' + cfg.banner, s: cfg.key, p: { x: pt.x, y: pt.y },
+      extra: { btnKey: '102385', aid: 0, shareBgPath: 'image/NChat/chat_v3_share_bg11', shareIconPath: 'image/NChat/chat_v3_share_icon_pos5', shareTitleColor: '#5674d2',
+        expireTime: pt.endMs / 1000, contentParams: [String(host || '')], jumpServerId: pt.w }, actt: cfg.msgType };
+  }
+
   var MaskBoxesCore = {
     TYPES: TYPES, DAILY_CAP: DAILY_CAP, MIN_LEFT_MS: MIN_LEFT_MS, CLAIMED: CLAIMED, ITEM_BASE: ITEM_BASE,
     gameDay: gameDay, boxKey: boxKey, candidates: candidates, findBox: findBox, classifyCollect: classifyCollect,
     gate: gate, countsFor: countsFor, cardRows: cardRows, trackServer: trackServer, countsWith: countsWith,
     SPOT_NO_BOX_MS: SPOT_NO_BOX_MS, BASE_MAX_AGE_MS: BASE_MAX_AGE_MS, cityKey: cityKey, chatBoxes: chatBoxes, baseShares: baseShares,
-    mergeBoxes: mergeBoxes, spotBlocked: spotBlocked, rememberSpot: rememberSpot, pruneSpots: pruneSpots, baseCandidate: baseCandidate, boxPoint: boxPoint
+    mergeBoxes: mergeBoxes, spotBlocked: spotBlocked, rememberSpot: rememberSpot, pruneSpots: pruneSpots, baseCandidate: baseCandidate, boxPoint: boxPoint,
+    SHARE_GAP_MS: SHARE_GAP_MS, SHARE_MIN_LEFT_MS: SHARE_MIN_LEFT_MS, shareCheck: shareCheck, shareLink: shareLink
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = MaskBoxesCore;
   else root.MaskBoxesCore = MaskBoxesCore;

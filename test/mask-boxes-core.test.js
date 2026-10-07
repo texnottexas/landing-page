@@ -171,3 +171,28 @@ test('boxPoint: the city with that owner in the view: anchor, server, end, item 
   assert.equal(M.boxPoint(ans, '8'), null);
   assert.equal(M.boxPoint({ s: 0, d: 'junk' }, '9'), null);
 });
+
+test('shareCheck: off, type off, under 5 minutes, already ours, already in world chat, 10 s gap', () => {
+  const o = { on: true, typeOn: true, endMs: NOW2 + 600000, now: NOW2, sharedIds: [], instanceId: 'i1', worldCards: [], server: 864, x: 405, y: 429, lastShareAt: 0 };
+  assert.deepEqual(M.shareCheck(o), { ok: true });
+  assert.equal(M.shareCheck(Object.assign({}, o, { on: false })).reason, 'off');
+  assert.equal(M.shareCheck(Object.assign({}, o, { typeOn: false })).reason, 'type off');
+  assert.equal(M.shareCheck(Object.assign({}, o, { endMs: NOW2 + 299000 })).reason, 'ending');
+  assert.equal(M.shareCheck(Object.assign({}, o, { sharedIds: ['i1'] })).reason, 'shared');
+  assert.equal(M.shareCheck(Object.assign({}, o, { worldCards: [{ server: 864, x: 405, y: 429, endMs: NOW2 + 600000 }] })).reason, 'in world chat');
+  assert.deepEqual(M.shareCheck(Object.assign({}, o, { worldCards: [{ server: 864, x: 405, y: 429, endMs: NOW2 + 1 }] })), { ok: true }, 'an older ball at that city is a different box');
+  assert.deepEqual(M.shareCheck(Object.assign({}, o, { lastShareAt: NOW2 - 4000 })), { ok: false, reason: 'wait', at: NOW2 + 6000 });
+});
+
+test('shareLink: exactly the game\'s card, from the party row or the built-in values', () => {
+  const pt = { x: 405, y: 429, w: 864, endMs: 1791391866846 };
+  const want = { t: 48, icon: 'm/UserItemCityReward/images/shareIcon2', s: 'JMR_bs_001', p: { x: 405, y: 429 },
+    extra: { btnKey: '102385', aid: 0, shareBgPath: 'image/NChat/chat_v3_share_bg11', shareIconPath: 'image/NChat/chat_v3_share_icon_pos5', shareTitleColor: '#5674d2', expireTime: 1791391866.846, contentParams: ['Super🐝'], jumpServerId: 864 }, actt: 63 };
+  assert.deepEqual(M.shareLink(1, pt, 'Super🐝', null), want);
+  assert.deepEqual(M.shareLink(1, pt, 'Super🐝', { msg_banner: 'shareIcon2', share_msg_key: 'JMR_bs_001', msg_type: 63 }), want);
+  assert.equal(M.shareLink(2, pt, 'H', null).s, 'JMR_bs_002');
+  assert.equal(M.shareLink(3, pt, 'H', null).actt, 65);
+  assert.equal(JSON.stringify(Object.keys(M.shareLink(1, pt, 'H', null).extra)), JSON.stringify(['btnKey', 'aid', 'shareBgPath', 'shareIconPath', 'shareTitleColor', 'expireTime', 'contentParams', 'jumpServerId']));
+  assert.equal(M.shareLink(0, pt, 'H', null), null);
+  assert.equal(M.shareLink(1, null, 'H', null), null);
+});
