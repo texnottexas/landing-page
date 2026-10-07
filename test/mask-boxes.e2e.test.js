@@ -560,3 +560,97 @@ test('SHARE-5: our own card coming back in world chat does not cause another vie
   assert.deepEqual(await ks(page), ['901:26', '2503:26']);
   await ctx.close();
 });
+
+// ---------------------------------------------------------------- final review fixes (2026-10-07)
+test('REVIEW #1: with every type switched off, or every type at 20, base shares are never viewed', async () => {
+  const { ctx, page } = await open(() => { localStorage.setItem('mbx_types_v1', JSON.stringify({ 1: false, 2: false, 3: false })); __fake.cities['31:450:610'] = { pid: '31' }; __fake.base('w', 31, 450, 610, 20); });
+  await launch(page);
+  await page.waitForSelector('#mbx-t1');
+  await page.waitForTimeout(3000);
+  assert.deepEqual(await ks(page), [], 'all types off');
+  await page.evaluate(() => { __MBX.stop(); localStorage.removeItem('mbx_types_v1'); __fake.serverNum = { 260617002: 20, 260617003: 20, 260617004: 20 }; });
+  await launch(page);
+  await page.waitForSelector('#mbx-t1');
+  await page.waitForTimeout(3000);
+  assert.deepEqual(await ks(page), [], 'all types at 20');
+  await ctx.close();
+});
+
+test('REVIEW #2: switching Share off while a share waits on the request clock posts nothing', async () => {
+  const end = Date.now() + 600000;
+  feed = [box({ server: 32, endMs: end })];
+  const { ctx, page } = await open(([t, e]) => {
+    localStorage.setItem('mbx_share_v1', '1');
+    __fake.cities['32:404:612'] = { pid: '32', itemId: t + 1, instanceId: 's32', endMs: e };
+    const N = __require('NetMgr').NET, orig = N.sendPBV2;
+    N.sendPBV2 = function (rid) { const r = orig.apply(this, arguments); if (rid === 2503) window.__opsPace = { at: Date.now() + 3000 }; return r; };
+  }, [T, end]);
+  await launch(page);
+  await waitSent(page, 2);
+  await page.waitForTimeout(1200);
+  await page.click('#mbx-share');
+  await page.waitForSelector('#mbx-share[aria-pressed="false"]');
+  await page.waitForTimeout(5000);
+  assert.equal((await shares(page)).length, 0);
+  await ctx.close();
+});
+
+test('REVIEW #3: when world chat cannot be read, nothing is shared', async () => {
+  const end = Date.now() + 600000;
+  feed = [box({ server: 33, endMs: end })];
+  const { ctx, page } = await open(([t, e]) => {
+    localStorage.setItem('mbx_share_v1', '1');
+    __fake.cities['33:404:612'] = { pid: '33', itemId: t + 1, instanceId: 's33', endMs: e };
+    delete __require('newChatController').newChatController._instance._userChatList['0102_1_2864g123'];
+  }, [T, end]);
+  await launch(page);
+  await waitSent(page, 2);
+  await page.waitForTimeout(3500);
+  assert.equal((await shares(page)).length, 0);
+  await ctx.close();
+});
+
+test('REVIEW #4: a share the game refuses with an error stops sharing for the run, and says so', async () => {
+  const end = Date.now() + 600000;
+  feed = [box({ server: 34, endMs: end - 1000 }), box({ server: 35, endMs: end })];
+  const { ctx, page } = await open(([t, e]) => {
+    localStorage.setItem('mbx_share_v1', '1'); __fake.shareThrows = true;
+    __fake.cities['34:404:612'] = { pid: '34', itemId: t + 1, instanceId: 's34', endMs: e - 1000 };
+    __fake.cities['35:404:612'] = { pid: '35', itemId: t + 1, instanceId: 's35', endMs: e };
+  }, [T, end]);
+  await launch(page);
+  await waitText(page, '#mbx-shared', /Sharing stopped/, 10000);
+  await page.evaluate(() => { __fake.shareThrows = false; });
+  await waitSent(page, 4, 15000);
+  await page.waitForTimeout(13000);
+  assert.equal((await shares(page)).length, 0, 'no share after the refusal, even once the game would accept');
+  await ctx.close();
+});
+
+test('REVIEW #5: base-share rationing and the share gap hold across a relaunch', async () => {
+  const end = Date.now() + 600000;
+  const { ctx, page } = await open(() => { [41, 42, 43].forEach((k, i) => { __fake.cities[k + ':450:610'] = { pid: String(k) }; __fake.base('w', k, 450, 610, 10 + i); }); });
+  await launch(page);
+  await waitSent(page, 3, 10000);
+  await page.evaluate(() => { __MBX.stop(); __fake.sent = []; [44, 45].forEach((k) => { __fake.cities[k + ':450:610'] = { pid: String(k) }; __fake.base('w', k, 450, 610, 1); }); });
+  await launch(page);
+  await page.waitForSelector('#mbx-t1');
+  await page.waitForTimeout(3500);
+  assert.deepEqual(await ks(page), [], 'still 3 base views in these 10 minutes');
+  // the share gap: one share, a relaunch, another box at once: the second share waits for the 10 s
+  await page.evaluate(([t, e]) => {
+    __MBX.stop(); __fake.sent = []; localStorage.setItem('mbx_share_v1', '1');
+    __fake.cities['46:404:612'] = { pid: '46', itemId: t + 1, instanceId: 's46', endMs: e };
+    __fake.cities['47:404:612'] = { pid: '47', itemId: t + 1, instanceId: 's47', endMs: e };
+  }, [T, end]);
+  feed = [box({ server: 46, endMs: end })];
+  await launch(page);
+  await page.waitForFunction(() => __fake.shares.length === 1, null, { timeout: 15000 });
+  await page.evaluate(() => __MBX.stop());
+  feed = [box({ server: 47, endMs: end })];
+  await launch(page);
+  await page.waitForFunction(() => __fake.shares.length === 2, null, { timeout: 25000 });
+  const s = await shares(page);
+  assert.ok(s[1].at - s[0].at >= 10000, 'gap ' + (s[1].at - s[0].at) + ' ms across the relaunch');
+  await ctx.close();
+});

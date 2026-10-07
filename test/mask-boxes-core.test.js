@@ -196,3 +196,9 @@ test('shareLink: exactly the game\'s card, from the party row or the built-in va
   assert.equal(M.shareLink(0, pt, 'H', null), null);
   assert.equal(M.shareLink(1, null, 'H', null), null);
 });
+
+test('REVIEW #3: shareCheck fails closed when world chat could not be read', () => {
+  const o = { on: true, typeOn: true, endMs: NOW2 + 600000, now: NOW2, sharedIds: [], instanceId: 'i1', worldCards: [], worldOk: false, server: 864, x: 405, y: 429, lastShareAt: 0 };
+  assert.deepEqual(M.shareCheck(o), { ok: false, reason: 'no world chat' });
+  assert.deepEqual(M.shareCheck(Object.assign({}, o, { worldOk: true })), { ok: true });
+});

@@ -200,6 +200,7 @@
     if (!o.typeOn) return { ok: false, reason: 'type off' };
     if (!(o.endMs - o.now >= SHARE_MIN_LEFT_MS)) return { ok: false, reason: 'ending' };
     if ((o.sharedIds || []).indexOf(o.instanceId) >= 0) return { ok: false, reason: 'shared' };
+    if (o.worldOk === false) return { ok: false, reason: 'no world chat' };   // can't check it: fail closed
     var dup = (o.worldCards || []).some(function (c) { return c.server === o.server && c.x === o.x && c.y === o.y && (!c.endMs || !o.endMs || c.endMs === o.endMs); });
     if (dup) return { ok: false, reason: 'in world chat' };
     if (o.lastShareAt && o.now - o.lastShareAt < SHARE_GAP_MS) return { ok: false, reason: 'wait', at: o.lastShareAt + SHARE_GAP_MS };
