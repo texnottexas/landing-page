@@ -484,3 +484,79 @@ test('CHAT-6: base shares are rationed: five fresh ones, three views', async () 
   await waitText(page, '#mbx-src', /Bases 5/);
   await ctx.close();
 });
+
+// ---------------------------------------------------------------- sharing mode (2026-10-07)
+const shares = (page) => page.evaluate(() => __fake.shares);
+
+test('SHARE-1: sharing is off by default and a collect posts nothing; the switch turns it on and is remembered', async () => {
+  const end = Date.now() + 600000;
+  feed = [box({ server: 21, endMs: end })];
+  const { ctx, page } = await open(([t, e]) => { __fake.cities['21:404:612'] = { pid: '21', itemId: t + 1, instanceId: 's21', endMs: e, host: 'Hosty' }; }, [T, end]);
+  await launch(page);
+  await waitSent(page, 2);
+  await page.waitForTimeout(3000);
+  assert.equal((await shares(page)).length, 0);
+  assert.equal(await page.getAttribute('#mbx-share', 'aria-pressed'), 'false');
+  await page.click('#mbx-share');
+  await page.waitForSelector('#mbx-share[aria-pressed="true"]');
+  assert.equal(await page.evaluate(() => localStorage.getItem('mbx_share_v1')), '1');
+  await ctx.close();
+});
+
+test('SHARE-2: sharing on: after a collect the game\'s exact card is posted to world chat once', async () => {
+  const end = Date.now() + 600000;
+  feed = [box({ server: 864, x: 405, y: 429, endMs: end })];
+  const { ctx, page } = await open(([t, e]) => { localStorage.setItem('mbx_share_v1', '1'); __fake.cities['864:405:429'] = { pid: '22', itemId: t + 1, instanceId: 's22', endMs: e, host: 'Super🐝' }; }, [T, end]);
+  await launch(page);
+  await page.waitForFunction(() => __fake.shares.length === 1, null, { timeout: 10000 });
+  await page.waitForTimeout(2000);
+  const s = await shares(page);
+  assert.equal(s.length, 1);
+  assert.deepEqual(s[0].link, { t: 48, icon: 'm/UserItemCityReward/images/shareIcon2', s: 'JMR_bs_001', p: { x: 405, y: 429 },
+    extra: { btnKey: '102385', aid: 0, shareBgPath: 'image/NChat/chat_v3_share_bg11', shareIconPath: 'image/NChat/chat_v3_share_icon_pos5', shareTitleColor: '#5674d2', expireTime: end / 1000, contentParams: ['Super🐝'], jumpServerId: 864 },
+    actt: 63, uts: 1 });
+  await waitText(page, '#mbx-shared', /Shared 1/);
+  await ctx.close();
+});
+
+test('SHARE-3: a box world chat already has a card for is collected but not shared', async () => {
+  const end = Date.now() + 600000;
+  const { ctx, page } = await open(([t, e]) => {
+    localStorage.setItem('mbx_share_v1', '1');
+    __fake.cities['23:404:612'] = { pid: '23', itemId: t + 1, instanceId: 's23', endMs: e };
+    __fake.card('w', 23, 404, 612, 1, e);
+  }, [T, end]);
+  await launch(page);
+  await waitSent(page, 2);
+  await page.waitForTimeout(3500);
+  assert.deepEqual(await ks(page), ['901:23', '2503:23']);
+  assert.equal((await shares(page)).length, 0);
+  await ctx.close();
+});
+
+test('SHARE-4: two collects close together are both shared, the second at least 10 s after the first', async () => {
+  const end = Date.now() + 600000;
+  feed = [box({ server: 24, endMs: end - 1000 }), box({ server: 25, endMs: end })];
+  const { ctx, page } = await open(([t, e]) => {
+    localStorage.setItem('mbx_share_v1', '1');
+    __fake.cities['24:404:612'] = { pid: '24', itemId: t + 1, instanceId: 's24', endMs: e - 1000 };
+    __fake.cities['25:404:612'] = { pid: '25', itemId: t + 2, instanceId: 's25', endMs: e };
+  }, [T, end]);
+  await launch(page);
+  await page.waitForFunction(() => __fake.shares.length === 2, null, { timeout: 25000 });
+  const s = await shares(page);
+  assert.deepEqual(s.map((x) => x.link.extra.jumpServerId), [24, 25]);
+  assert.ok(s[1].at - s[0].at >= 10000, 'gap ' + (s[1].at - s[0].at) + ' ms');
+  await ctx.close();
+});
+
+test('SHARE-5: our own card coming back in world chat does not cause another view of that box', async () => {
+  const end = Date.now() + 600000;
+  feed = [box({ server: 26, endMs: end })];
+  const { ctx, page } = await open(([t, e]) => { localStorage.setItem('mbx_share_v1', '1'); __fake.cities['26:404:612'] = { pid: '26', itemId: t + 1, instanceId: 's26', endMs: e }; }, [T, end]);
+  await launch(page);
+  await page.waitForFunction(() => __fake.shares.length === 1, null, { timeout: 10000 });
+  await page.waitForTimeout(4000);
+  assert.deepEqual(await ks(page), ['901:26', '2503:26']);
+  await ctx.close();
+});

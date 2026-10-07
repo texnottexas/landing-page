@@ -3,6 +3,8 @@
 // cards and base shares in chat, on any server, with the game's own world view and collect requests: look at the
 // owner's city (901), then collect its box (2503). No march, no camera move. Launched from the Ops Center.
 // A checked spot is remembered until its box ends (30 min when there was none), whoever shares it again.
+// Sharing mode (off by default): after a collect, the game's own box card goes to world chat unless world chat
+// already has it, at least 10 s after the last share, through the chat controller's sendToWorldChannel.
 // Rules live in mask-boxes-core.js (window.MaskBoxesCore); this file talks to the game, the worker and the page.
 // Every request waits for the shared Ops request clock, so no two requests from any Ops tool go under 1.1 s apart.
 (function () {
@@ -17,6 +19,7 @@
   var LATE_MS = window.__MBX_LATE_MS || 30000;            // an unanswered request counts as in flight this long
   var VIEW = 901, COLLECT = 2503;                          // RequestId world view, Mask Mystery box collect (PB v2)
   var LS_TYPES = 'mbx_types_v1', LS_COUNT = 'mbx_count_v1_', LS_DONE = 'mbx_done_v1_', LS_MIN = 'mbx_min_v1', LS_SPOTS = 'mbx_spots_v1_';
+  var LS_SHARE = 'mbx_share_v1', LS_SHARED = 'mbx_shared_v1_';
   var TARGET = {};                                         // NET.send wants a target; a plain object is always valid
 
   // ---------------------------------------------------------------- game
@@ -99,6 +102,7 @@
   var S = {
     running: false, stopped: false, siteKey: '', boxes: [], feedOk: true, nextFetch: 0, tried: {}, log: [],
     chat: [], bases: [], worldCards: [], spots: {}, baseLog: [], wake: false, nextIn: 0,
+    share: lsGet(LS_SHARE) === '1', shareQ: [], lastShareAt: 0, shared: null, lastShare: '',
     types: { 1: true, 2: true, 3: true }, count: null, done: null, last: '', foot: 'Starting...', tone: 'ok',
     min: lsGet(LS_MIN) === '1', view: ''
   };
@@ -131,6 +135,44 @@
     if (keys.length > 3000) keys.sort(function (a, c) { return s[a] - s[c]; }).slice(0, keys.length - 3000).forEach(function (k) { delete s[k]; });
     S.spots = s; lsSet(LS_SPOTS + S.siteKey, JSON.stringify(s));
   }
+  // ---------------------------------------------------------------- sharing
+  function sharedIds() { return S.shared && S.shared.day === today() && Array.isArray(S.shared.ids) ? S.shared.ids : []; }
+  function markShared(id) {
+    var ids = sharedIds().slice(-400); ids.push(id);
+    S.shared = { day: today(), ids: ids }; lsSet(LS_SHARED + S.siteKey, JSON.stringify(S.shared));
+  }
+  // The host's name as the game shows it (PlayerInfo.getDisplayName), else the raw username.
+  function hostName(info) {
+    try { var P = req('PlayerInfo'), pi = new (P.default || P)(); pi.update(info); var n = pi.getDisplayName(); if (n) return String(n); } catch (e) {}
+    try { return String(JSON.parse(info).username || ''); } catch (e) { return ''; }
+  }
+  function partyRow(itemId) {
+    try { var T = req('TableManager').TABLE; for (var i = 1; i <= 8; i++) { var r = T.getTableDataById('mask_mystery_party', i); if (r && Number(r.item_id) === Number(itemId)) return r; } } catch (e) {}
+    return null;
+  }
+  // Shares wait in a short queue: until the game lists the box as collected (15 s at most), then until 10 s after
+  // the last share; each is checked again (world chat, 5 minutes left) just before it goes out.
+  async function sharePending() {
+    while (S.running && S.shareQ.length) {
+      var q = S.shareQ[0], now = Date.now();
+      if (serverIds().indexOf(q.instanceId) < 0) { if (now - q.at > 15000) { S.shareQ.shift(); continue; } return; }
+      readChat();
+      var chk = C.shareCheck({ on: S.share, typeOn: !!S.types[q.type], endMs: q.pt.endMs, now: now, sharedIds: sharedIds(), instanceId: q.instanceId,
+        worldCards: S.worldCards, server: q.pt.w, x: q.pt.x, y: q.pt.y, lastShareAt: S.lastShareAt });
+      if (!chk.ok && chk.reason === 'wait') return;
+      S.shareQ.shift();
+      if (!chk.ok) continue;
+      var link = C.shareLink(q.type, q.pt, q.host, partyRow(q.pt.itemId));
+      if (!link) continue;
+      if (!(await turn())) { S.shareQ.unshift(q); return; }   // the shared clock, and still connected
+      try { var g = GW(); if (g.cc && typeof g.cc.v2 === 'function') link.p = g.cc.v2(q.pt.x, q.pt.y); } catch (e) {}
+      try { chatCtl().sendToWorldChannel(link); } catch (e) { continue; }
+      S.lastShareAt = Date.now(); markShared(q.instanceId);
+      S.lastShare = C.TYPES[q.type] + ' S' + q.pt.w + ' (' + q.pt.x + ', ' + q.pt.y + ')';
+      paint();
+    }
+  }
+  function toggleShare() { S.share = !S.share; lsSet(LS_SHARE, S.share ? '1' : null); if (!S.share) S.shareQ = []; paint(); }
   // The new-chat event only wakes the loop early; the lists themselves are read every turn.
   var ecSub = null;
   function onChat() { S.wake = true; }
@@ -153,6 +195,7 @@
       setFoot(text, tone);
       await delay(FAST ? 250 : 1000);
       S.wake = false;
+      if (S.shareQ.length && ready()) await sharePending();
       readChat();
       if (nextWork()) return;
     }
@@ -179,6 +222,8 @@
       if (!S.feedOk && !S.chat.length && !S.bases.length) { await untilNextFetch('Box list unavailable', 'warn'); continue; }
       if (!ready()) { setFoot('Game disconnected. Waiting...', 'bad'); await delay(1000); continue; }
       readServer();
+      if (S.shareQ.length) await sharePending();
+      if (!S.running) break;
       var next = nextWork();
       if (!next) { await untilNextFetch(waitingText(), S.feedOk ? 'ok' : 'warn'); continue; }
       var g = C.gate(S.log, Date.now());
@@ -214,7 +259,10 @@
     if (!(await turn())) { note('aborted'); return; }       // the view went out, the collect never did
     var c = C.classifyCollect(await sendCollect(found.pid));
     note(c.kind === 'ok' || c.kind === 'claimed' ? c.kind : 'failed');
-    if (c.kind === 'ok') { bump(type); markDone(found.instanceId); S.last = itemLabel(c.items) + ' from ' + where; }
+    if (c.kind === 'ok') {
+      bump(type); markDone(found.instanceId); S.last = itemLabel(c.items) + ' from ' + where;
+      if (S.share && found.pt) S.shareQ.push({ instanceId: found.instanceId, type: type, pt: found.pt, host: hostName(found.pt.info), at: Date.now() });
+    }
     else if (c.kind === 'claimed') markDone(found.instanceId);
     else if (c.kind === 'stop') { stop(stopText(c.key, 'a collect came back without a reward.')); return; }
     paint();
@@ -248,7 +296,9 @@
     '#mbx-root .mbx-type[aria-pressed="true"]{border-color:#3fb950}#mbx-root .mbx-type[aria-pressed="false"]{color:#8b949e;background:transparent}',
     '#mbx-root .mbx-type b{font-variant-numeric:tabular-nums}',
     '#mbx-root .mbx-src{color:#8b949e;font-size:11px;margin-top:2px;font-variant-numeric:tabular-nums}',
-    '#mbx-root .mbx-foot,#mbx-root .mbx-src,#mbx-root .mbx-last{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '#mbx-root .mbx-foot,#mbx-root .mbx-src,#mbx-root .mbx-last,#mbx-root .mbx-shared{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '#mbx-root .mbx-shared{color:#79c0ff;font-size:12px;margin-top:2px}#mbx-root .mbx-shared:empty{display:none}',
+    '#mbx-root .mbx-btns button#mbx-share[aria-pressed="true"]{border-color:#3fb950;color:#3fb950}',
     '#mbx-root .mbx-foot{color:#8b949e;font-size:12px;margin-top:6px;min-height:16px}#mbx-root .mbx-last{color:#3fb950;font-size:12px;margin-top:2px}#mbx-root .mbx-last:empty{display:none}',
     '#mbx-root .mbx-msg{margin:4px 0 2px}#mbx-root .mbx-btns{display:flex;gap:6px;margin-top:8px}',
     '#mbx-root .mbx-btns button{flex:1;min-height:44px;border:1px solid #30363d;border-radius:8px;background:#1c2128}#mbx-root .mbx-btns button:hover{border-color:#79c0ff}'
@@ -300,7 +350,11 @@
     var foot = el('div', 'mbx-foot'); foot.id = 'mbx-foot'; body.appendChild(foot);
     var src = el('div', 'mbx-src'); src.id = 'mbx-src'; body.appendChild(src);
     var last = el('div', 'mbx-last'); last.id = 'mbx-last'; body.appendChild(last);
-    var btns = el('div', 'mbx-btns'); btns.appendChild(button('mbx-stop', 'Stop', function () { stop('stopped by you'); })); body.appendChild(btns);
+    var sh = el('div', 'mbx-shared'); sh.id = 'mbx-shared'; body.appendChild(sh);
+    var btns = el('div', 'mbx-btns');
+    btns.appendChild(button('mbx-share', 'Share: off', toggleShare));
+    btns.appendChild(button('mbx-stop', 'Stop', function () { stop('stopped by you'); }));
+    body.appendChild(btns);
     paint();
   }
   function showMessage(text, withClose) {
@@ -326,6 +380,10 @@
     var lt = S.last ? 'Last: ' + S.last : '';
     var l = document.getElementById('mbx-last'); if (l && l.textContent !== lt) { l.textContent = lt; l.title = lt; }
     var m = document.getElementById('mbx-mini'); if (m && m.textContent !== String(total)) m.textContent = String(total);
+    var n = sharedIds().length, shText = n || S.share ? 'Shared ' + n + (S.lastShare ? ' · last ' + S.lastShare : '') : '';
+    var shl = document.getElementById('mbx-shared'); if (shl && shl.textContent !== shText) { shl.textContent = shText; shl.title = shText; }
+    var sb = document.getElementById('mbx-share');
+    if (sb) { var on = String(!!S.share); if (sb.getAttribute('aria-pressed') !== on) sb.setAttribute('aria-pressed', on); var st = S.share ? 'Share: on' : 'Share: off'; if (sb.textContent !== st) sb.textContent = st; sb.title = 'Share collected boxes to world chat'; }
     card.className = 'mbx-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (S.min ? ' min' : '');
   }
 
@@ -334,7 +392,7 @@
     running: true, version: VERSION,
     stop: function (reason) { stop(reason || 'stopped by you'); },
     flash: function () { if (!card) return; card.classList.add('flash'); setTimeout(function () { if (card) card.classList.remove('flash'); }, 600); },
-    state: function () { return { counts: counts(), tried: Object.keys(S.tried).length, last: S.last, foot: S.foot, types: S.types, chat: S.chat.length, bases: S.bases.length, spots: Object.keys(S.spots).length }; }
+    state: function () { return { counts: counts(), tried: Object.keys(S.tried).length, last: S.last, foot: S.foot, types: S.types, chat: S.chat.length, bases: S.bases.length, spots: Object.keys(S.spots).length, share: S.share, shared: sharedIds().length, queued: S.shareQ.length }; }
   };
   ensureRoot();
   showMessage('Starting...');
@@ -345,6 +403,7 @@
     var t = lsJSON(LS_TYPES); if (t && typeof t === 'object') [1, 2, 3].forEach(function (k) { if (typeof t[k] === 'boolean') S.types[k] = t[k]; });
     S.count = lsJSON(LS_COUNT + S.siteKey); S.done = lsJSON(LS_DONE + S.siteKey);
     var sp = lsJSON(LS_SPOTS + S.siteKey); S.spots = C.pruneSpots(sp && typeof sp === 'object' ? sp : {}, Date.now());
+    S.shared = lsJSON(LS_SHARED + S.siteKey);
     if (S.stopped) return;
     S.running = true;
     subscribe();
