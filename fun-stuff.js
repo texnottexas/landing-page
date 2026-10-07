@@ -29,6 +29,9 @@
   function level() { try { return Number(UD().Level) || 0; } catch (e) { return 0; } }
   function gifFloor() { try { return Number(req('GameTools').default.getDataConfigData(GIF_FLOOR_CFG)) || C.GIF_LEVEL; } catch (e) { return C.GIF_LEVEL; } }
   function openChat() { var ctl = chatCtl(); return C.target(ctl ? ctl.NowChoiceKey : null, myUid()); }
+  function gameKnows(e) {
+    try { return !!req('TableManager').TABLE.getTableDataById(e.kind === 'gif' ? 'emoji_gif' : 'emotion_new', String(e.id)); } catch (x) { return false; }
+  }
   // One request clock for every Ops tool in this tab (Map Collector and Mask Boxes too).
   function pace() {
     var P = window.__opsPace || (window.__opsPace = { at: 0 });
@@ -55,22 +58,28 @@
     if (S.busy) return;
     var cd = C.cooldown(S.lastAt, Date.now());
     if (!cd.ok) { status('Wait ' + Math.ceil(cd.waitMs / 1000) + ' s'); return; }
+    var tapped = openChat();                               // the chat open at the tap, not when the picker opened
+    var prevAt = S.lastAt, sent = false;                   // a tap that sends nothing doesn't use up the gap
     S.busy = true; S.lastAt = Date.now();
     status('Sending ' + (e.name || 'emoji') + '...');
     try {
       await pace();
+      if (!root || !root.isConnected) return;               // closed while waiting on the clock
       if (!ready()) { status('The game is not connected. Nothing was sent.'); return; }
       var ctl = chatCtl(), fn = e.kind === 'gif' ? 'sendGIFGroup' : 'sendEmotionGroup';
       if (!ctl || typeof ctl[fn] !== 'function') throw new Error('the game chat is not ready');
-      var t = C.target(ctl.NowChoiceKey, myUid());        // the chat open right now, not when the picker opened
+      var t = C.target(ctl.NowChoiceKey, myUid());
+      if (t.channel !== tapped.channel || t.uid !== tapped.uid) { status('The chat changed. Nothing was sent.'); return; }
+      // The game ignores (GIF) or only toasts (emoji) an id its tables don't hold, so look first.
+      if (!gameKnows(e)) { status((e.name || 'That emoji') + ' is not in the game anymore. Nothing was sent.'); return; }
       ctl[fn](t.channel, e.id, t.uid, t.name);
-      S.lastAt = Date.now();
+      sent = true; S.lastAt = Date.now();
       S.recent = C.recent(S.recent, C.emojiKey(e)); lsSet(LS_RECENT, S.recent);
       status('Sent ' + (e.name || 'emoji') + ' to ' + t.label);
     } catch (err) {
       S.stopped = String((err && err.message) || err || 'unknown error').slice(0, 80);
       status('Sending stopped: ' + S.stopped);
-    } finally { S.busy = false; }
+    } finally { S.busy = false; if (!sent && !S.stopped) S.lastAt = prevAt; }
   }
 
   function loadCatalog() {

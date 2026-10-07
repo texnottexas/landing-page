@@ -20,6 +20,7 @@ const CATALOG = {
     { id: 192, kind: 'static', pack: 23, name: 'Tywin: Cheer up', file: 'static/192.png' },
     { id: 193, kind: 'static', pack: 23, name: 'Hero two', file: 'static/193.png' },
     { id: 303, kind: 'static', pack: 32, name: 'Above the Stars', file: 'static/303.png' },
+    { id: 999, kind: 'static', pack: 32, name: 'Retired', file: 'static/999.png' },
     { id: 10005, kind: 'gif', pack: 'gif', name: 'Sara: Cyber Thumbs-Up', file: 'gif/10005.gif', thumb: 'gif-thumb/10005.png' }
   ]
 };
@@ -217,5 +218,40 @@ test('Recent fills newest first and opens first on the next launch; Close remove
   await picker(page);
   assert.equal(await page.$eval('#fun-tabs button[aria-selected="true"]', (b) => b.dataset.tab), 'recent');
   assert.deepEqual(await page.$$eval('#fun-grid button[data-key]', (b) => b.map((x) => x.dataset.key)), ['static:303', 'static:192']);
+  await ctx.close();
+});
+
+test('closing the card while the send waits on the Ops clock sends nothing', async () => {
+  const { ctx, page } = await open();
+  await picker(page);
+  await page.evaluate(() => { window.__opsPace = { at: Date.now() + 1500 }; });   // another tool holds the clock
+  await tap(page, 'static:192');
+  await page.click('#fun-close');
+  await page.waitForTimeout(3500);
+  assert.equal((await sends(page)).length, 0);
+  await ctx.close();
+});
+
+test('the chat changing while the send waits on the Ops clock sends nothing', async () => {
+  const { ctx, page } = await open(() => { __fake.choice = { _channel: 2, _id: '102_2_2864_1', _name: 'Alliance' }; });
+  await picker(page);
+  await page.evaluate(() => { window.__opsPace = { at: Date.now() + 1500 }; });
+  await tap(page, 'static:192');
+  await page.evaluate(() => { __fake.choice = null; });                            // chat panel closed during the wait
+  await waitText(page, '#fun-status', /chat changed/, 6000);
+  assert.equal((await sends(page)).length, 0);
+  await ctx.close();
+});
+
+test('an emoji the game no longer knows is refused before the send, and others still go out', async () => {
+  const { ctx, page } = await open();
+  await picker(page);
+  await tab(page, '32');
+  await tap(page, 'static:999');
+  await waitText(page, '#fun-status', /not in the game/);
+  assert.deepEqual(await page.evaluate(() => __fake.toasts), []);
+  await tap(page, 'static:303');
+  await waitSends(page, 1);
+  assert.deepEqual((await sends(page)).map((x) => x.id), [303]);
   await ctx.close();
 });

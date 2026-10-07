@@ -13,7 +13,8 @@ window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent:
   gems: 1000, bag: 0, vip: 15, marchSecs: 2, buyMode: 'ok', useMode: 'ok', bagLagMs: 0, drift: 0, used: [], pending: [],
   cities: {}, claimed: {}, collects: 0, limitAfter: 0, viewError: '', lose901: 0, emptyReward: false, nullItem: false,
   serverNum: {}, serverIds: [], shares: [], msgSeq: 0,
-  choice: null, level: 100, gifLevel: '20', emoji: [], emojiThrows: false,
+  choice: null, level: 100, gifLevel: '20', emoji: [], emojiThrows: false, toasts: [],
+  known: { emotion_new: [192, 193, 303], emoji_gif: [10005] },   // ids the game's tables hold
   // like the real client after login: world chat already holds history
   world: [{ _msgId: 'w0', _time: Math.floor(Date.now() / 1000) - 30, _worldId: '2864', _msgType: 0, _msg: 'hello world', _chatShareLinkData: null }] };
 // a test can keep this game logged out across reloads (a reconnect that does not work)
@@ -99,6 +100,8 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
     sendGIFGroup: function (ch, id, uid, name) { emojiSend('gif', ch, id, uid, name); } };
   function emojiSend(fn, ch, id, uid, name) {
     if (F.emojiThrows) throw new Error('chat panel not ready');
+    // like the game: an id its table doesn't hold shows a toast (emotions) or does nothing (GIFs), and returns
+    if (F.known[fn === 'gif' ? 'emoji_gif' : 'emotion_new'].indexOf(Number(id)) < 0) { if (fn !== 'gif') F.toasts.push('config error emotion id = ' + id); return; }
     F.emoji.push({ fn: fn, ch: ch, id: id, uid: uid, name: name, at: Date.now() });
   }
   Object.defineProperty(chatInst, 'NowChoiceKey', { get: function () { return F.choice; } });   // null: chat panel closed
@@ -116,6 +119,7 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
     if (name === 'PlayerInfo') return { default: function () { var u = ''; this.update = function (s) { try { u = JSON.parse(s).username; } catch (e) { u = ''; } }; this.getDisplayName = function () { return u; }; } };
     if (name === 'TableManager') return { TABLE: { getTableDataById: function (t, id) {
       if (t === 'vip_shop' && id === 70202) return { id: 70202, item_id: 520002, need_vip_level: 2, price_shop: 37 };
+      if ((t === 'emotion_new' || t === 'emoji_gif') && F.known[t].indexOf(Number(id)) >= 0) return { id: Number(id) };
       if (t === 'mask_mystery_party' && PARTY[id]) { var ty = PARTY[id]; return { id: id, type: ty, item_id: 260617001 + ty, msg_banner: 'shareIcon' + (ty + 1), share_msg_key: 'JMR_bs_00' + ty, msg_type: 62 + ty, daily_limit: 20 }; }
       if (t === 'item' && id >= 260604017 && id <= 260604019) return { name: 'mask_reward_' + (id - 260604016) };
       return t === 'item' && id === 79200004 ? { name: 'equip_box_16' } : null; } } };
