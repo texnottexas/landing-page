@@ -5,11 +5,12 @@
 // A fake Top War client: just enough of DataCenter, chat, NET, EventCenter, ActivityController,
 // NWorldMapMarchModel (_myMarch), TableManager and LocalManager for the Map Collector, plus the bag, gems, VIP
 // level and the VIP shop's Advanced March Speed-up for speed-ups (buy 818, use 920). For Mask Mystery Boxes:
-// cities on any server in the 901 world view (a box hangs off its owner's city as cityReward) and the 2503 collect.
+// cities on any server in the 901 world view (a box hangs off its owner's city as cityReward) and the 2503 collect;
+// world and alliance chat with the game's box cards (t:48) and base shares (t:0 st:4), and sendToWorldChannel.
 window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent: [], answers: [], chat: [], handlers: {}, myMarch: {}, activity: true,
   gems: 1000, bag: 0, vip: 15, marchSecs: 2, buyMode: 'ok', useMode: 'ok', bagLagMs: 0, drift: 0, used: [], pending: [],
   cities: {}, claimed: {}, collects: 0, limitAfter: 0, viewError: '', lose901: 0, emptyReward: false, nullItem: false,
-  serverNum: {}, serverIds: [] };
+  serverNum: {}, serverIds: [], world: [], shares: [], msgSeq: 0 };
 // a test can keep this game logged out across reloads (a reconnect that does not work)
 try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.__fake.kickBox = true; } } catch (e) {}
 (function () {
@@ -44,9 +45,9 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
         if (F.viewError) { setTimeout(function () { cb({ c: 901, s: 3, d: F.viewError }); }, 20); return true; }
         var pts = [];
         Object.keys(F.cities).forEach(function (key) {      // key 'server:x:y'
-          var a = key.split(':').map(Number), c = F.cities[key], pp = { pid: c.pid };
+          var a = key.split(':').map(Number), c = F.cities[key], pp = { pid: c.pid, w: a[0], playerInfo: JSON.stringify({ username: c.host || 'Host' }) };
           if (a[0] !== p.k) return;
-          if (c.itemId) pp.cityReward = { itemId: c.itemId, instanceId: c.instanceId, players: [], num: 5 };
+          if (c.itemId) pp.cityReward = { itemId: c.itemId, instanceId: c.instanceId, players: [], num: 5, endTimeMilli: c.endMs || 0 };
           pts.push({ v: 1, x: a[1], y: a[2], k: a[0], pointType: 1, p: pp });
         });
         setTimeout(function () { cb({ c: 901, o: String(n), d: JSON.stringify({ rtype: 2, pointList: pts }) }); }, 20);
@@ -79,7 +80,16 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
   };
   var activity = { showUiType: 'ActivityTitanBlessing', id: 1, extra: {} };
   Object.defineProperty(activity.extra, 'left', { get: function () { return F.left; } });
-  var chatInst = { _allianceRoomId: '102_2_2864_1', _userChatList: { '2102_2_2864_1': F.chat } };
+  var chatInst = { _allianceRoomId: '102_2_2864_1', _userChatList: { '2102_2_2864_1': F.chat, '0102_1_2864g123': F.world },
+    // like the game: the post goes to world chat and comes back as a message there
+    sendToWorldChannel: function (link) {
+      link.uts = 1;
+      var copy = JSON.parse(JSON.stringify(link));
+      F.shares.push({ at: Date.now(), link: copy });
+      F.world.push({ _msgId: 'mine' + (++F.msgSeq), _time: Math.floor(Date.now() / 1000), _worldId: '2864', _msgType: 1, _msg: 'link', custom: { fUid: F.uid }, _chatShareLinkData: copy });
+      ec.emit('newChatPush', {});
+    } };
+  var PARTY = { 2: 1, 3: 2, 4: 3 };
   window.__require = function (name) {
     if (name === 'DataCenter') return { DATA: { UserData: { Name: F.name, StrUid: F.uid, _resourceData: { get _gold() { return F.gems; } },
       getItemAmount: function (id) { return id === 520002 ? F.bag : 0; }, get VipLevel() { return F.vip; },
@@ -89,8 +99,10 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
     if (name === 'EventCenter') return { EventCenter: { getInst: function () { return ec; } } };
     if (name === 'ActivityController') return { ActivityController: { Instance: { _activityList: F.activity ? [activity] : [] } } };
     if (name === 'NWorldMapMarchModel') return { default: { instance: { _myMarch: F.myMarch } } };
+    if (name === 'PlayerInfo') return { default: function () { var u = ''; this.update = function (s) { try { u = JSON.parse(s).username; } catch (e) { u = ''; } }; this.getDisplayName = function () { return u; }; } };
     if (name === 'TableManager') return { TABLE: { getTableDataById: function (t, id) {
       if (t === 'vip_shop' && id === 70202) return { id: 70202, item_id: 520002, need_vip_level: 2, price_shop: 37 };
+      if (t === 'mask_mystery_party' && PARTY[id]) { var ty = PARTY[id]; return { id: id, type: ty, item_id: 260617001 + ty, msg_banner: 'shareIcon' + (ty + 1), share_msg_key: 'JMR_bs_00' + ty, msg_type: 62 + ty, daily_limit: 20 }; }
       if (t === 'item' && id >= 260604017 && id <= 260604019) return { name: 'mask_reward_' + (id - 260604016) };
       return t === 'item' && id === 79200004 ? { name: 'equip_box_16' } : null; } } };
     var TEXT = { equip_box_16: 'Blessing Key', mask_reward_1: 'Mask Treasure', mask_reward_2: 'Mask HT', mask_reward_3: 'Mask RSS',
@@ -101,6 +113,19 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
   // the game's "Multiple active logins" box, shown when another device logs in
   var kickNode = { activeInHierarchy: true, _components: [{ ownerCaller: { options: { content: 'Multiple active logins detected for this account. Please verify if they are all initiated by you for security purposes.' } } }] };
   window.cc = { game: { pause: function () { F.paused = true; } }, find: function (path) { return F.kickBox && path === 'New Node/New Node/MsgBoxComponent' ? kickNode : null; } };
+  // the game's box card ("X's Base has transformed into a Treasure Map!") in world ('w') or alliance ('a') chat
+  F.card = function (room, server, x, y, type, endMs, host) {
+    (room === 'a' ? F.chat : F.world).push({ _msgId: 'c' + (++F.msgSeq), _time: Math.floor(Date.now() / 1000), _worldId: '2864', _msgType: 1, _msg: 'link',
+      _chatShareLinkData: { p: { x: x, y: y, z: 0 }, s: 'JMR_bs_00' + type, t: 48, uts: 1, icon: 'm/UserItemCityReward/images/shareIcon' + (type + 1), actt: 62 + type,
+        extra: { shareIconPath: 'image/NChat/chat_v3_share_icon_pos5', btnKey: '102385', expireTime: endMs / 1000, shareBgPath: 'image/NChat/chat_v3_share_bg11', jumpServerId: server, aid: 0, shareTitleColor: '#5674d2', contentParams: [host || 'Host'] } } });
+    ec.emit('newChatPush', {});
+  };
+  // a plain base share (t:0 st:4), ageSec seconds old
+  F.base = function (room, server, x, y, ageSec) {
+    (room === 'a' ? F.chat : F.world).push({ _msgId: 'b' + (++F.msgSeq), _time: Math.floor(Date.now() / 1000) - (ageSec || 0), _worldId: '2864', _msgType: 1, _msg: 'link',
+      _chatShareLinkData: { t: 0, st: 4, p: { x: x, y: y, z: server }, s: 'Lv.30[DOG]Someone', icon: '', pid: '1' } });
+    ec.emit('newChatPush', {});
+  };
   F.notice = function (id, name, x, y) {
     F.chat.push({ _msgId: String(id), _mt: '523', _time: Math.floor(Date.now() / 1000), _msg: '<color=#f77a0b>' + name + "</c>'s Titan Gift Treasure Map appeared at server 2864 (" + x + ', ' + y + ').' });
     ec.emit('newChatPush', {});

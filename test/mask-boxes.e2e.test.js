@@ -115,7 +115,7 @@ test('a box that is gone (no cityReward, or no city) gets no collect; the next b
   await ctx.close();
 });
 
-test('"Reward claimed" records the box: no count, and a relaunch views it but never collects it again', async () => {
+test('"Reward claimed" records the box: no count; a relaunch skips the remembered spot, and without spot memory views it but never collects it', async () => {
   feed = [box({ server: 5 })];
   const { ctx, page } = await open((t) => { __fake.cities['5:404:612'] = { pid: '5', itemId: t + 1, instanceId: 'c5' }; __fake.claimed.c5 = 1; }, T);
   await launch(page);
@@ -125,9 +125,15 @@ test('"Reward claimed" records the box: no count, and a relaunch views it but ne
   await page.evaluate(() => { __MBX.stop(); __fake.sent = []; });
   await page.waitForFunction(() => !document.getElementById('mbx-root'));
   await launch(page);
+  await page.waitForSelector('#mbx-t1');
+  await page.waitForTimeout(2500);
+  assert.deepEqual((await sent(page)).map((x) => x.rid), [], 'the spot is remembered: not viewed again');
+  await page.evaluate((k) => { __MBX.stop(); localStorage.removeItem('mbx_spots_v1_' + k); }, SK);
+  await page.waitForFunction(() => !document.getElementById('mbx-root'));
+  await launch(page);
   await waitSent(page, 1);
   await page.waitForTimeout(2500);
-  assert.deepEqual((await sent(page)).map((x) => x.rid), [901], 'viewed, not collected');
+  assert.deepEqual((await sent(page)).map((x) => x.rid), [901], 'without spot memory: viewed, not collected');
   await ctx.close();
 });
 
@@ -382,5 +388,99 @@ test('LIVE: the game\'s own count shows on the card and a type the game says is 
   await page.waitForTimeout(2000);
   assert.deepEqual((await sent(page)).map((x) => x.rid + ':' + (x.p.k || x.p.targetUidStr)), ['901:2', '901:3', '2503:3']);
   await waitText(page, '#mbx-t3', /5\/20/);
+  await ctx.close();
+});
+
+// ---------------------------------------------------------------- chat sources and spot memory (2026-10-07)
+const ks = async (page) => (await sent(page)).map((x) => x.rid + ':' + (x.p.k || x.p.targetUidStr));
+
+test('CHAT-1: feed down: box cards in world chat are viewed and collected, soonest-ending first; the card says it is using chat', async () => {
+  feedMode = 'down';
+  const { ctx, page } = await open((t) => {
+    const now = Date.now();
+    [[1, 300000], [2, 100000], [3, 200000]].forEach(([k, left]) => {
+      __fake.cities[k + ':404:612'] = { pid: String(k), itemId: t + 1, instanceId: 'w' + k, endMs: now + left };
+      __fake.card('w', k, 404, 612, 1, now + left);
+    });
+  }, T);
+  await launch(page);
+  await waitSent(page, 6, 15000);
+  assert.deepEqual(await ks(page), ['901:2', '2503:2', '901:3', '2503:3', '901:1', '2503:1']);
+  await waitText(page, '#mbx-foot', /Box list unavailable · using chat/);
+  await waitText(page, '#mbx-t1', /3\/20/);
+  await ctx.close();
+});
+
+test('CHAT-2: a box card in alliance chat is collected too', async () => {
+  const { ctx, page } = await open((t) => {
+    const end = Date.now() + 300000;
+    __fake.cities['5:404:612'] = { pid: '5', itemId: t + 2, instanceId: 'a5', endMs: end };
+    __fake.card('a', 5, 404, 612, 2, end);
+  }, T);
+  await launch(page);
+  await waitSent(page, 2);
+  await page.waitForTimeout(1500);
+  assert.deepEqual(await ks(page), ['901:5', '2503:5']);
+  await ctx.close();
+});
+
+test('CHAT-3: the same box shared three times and listed by the feed is viewed once; after a relaunch its spot is not viewed again', async () => {
+  const end = Date.now() + 600000;
+  feed = [box({ server: 6, endMs: end })];
+  const { ctx, page } = await open(([t, e]) => {
+    __fake.cities['6:404:612'] = { pid: '6', itemId: t + 1, instanceId: 'r6', endMs: e };
+    __fake.card('w', 6, 404, 612, 1, e); __fake.card('w', 6, 404, 612, 1, e); __fake.card('a', 6, 404, 612, 1, e);
+  }, [T, end]);
+  await launch(page);
+  await waitSent(page, 2);
+  await page.waitForTimeout(2500);
+  assert.deepEqual(await ks(page), ['901:6', '2503:6']);
+  await page.evaluate(() => { __MBX.stop(); __fake.sent = []; });
+  await launch(page);
+  await page.waitForSelector('#mbx-t1');
+  await page.evaluate((e) => __fake.card('w', 6, 404, 612, 1, e), end);
+  await page.waitForTimeout(3500);
+  assert.deepEqual(await ks(page), [], 'the remembered spot is not viewed again');
+  await ctx.close();
+});
+
+test('CHAT-4: a fresh base share in world chat is viewed once and its box collected; an 11-minute-old one and an alliance one are not', async () => {
+  const { ctx, page } = await open((t) => {
+    const end = Date.now() + 600000;
+    __fake.cities['7:450:610'] = { pid: '7', itemId: t + 3, instanceId: 'b7', endMs: end };
+    __fake.cities['8:450:610'] = { pid: '8', itemId: t + 1, instanceId: 'b8', endMs: end };
+    __fake.cities['9:450:610'] = { pid: '9', itemId: t + 1, instanceId: 'b9', endMs: end };
+    __fake.base('w', 7, 450, 610, 30); __fake.base('w', 8, 450, 610, 660); __fake.base('a', 9, 450, 610, 30);
+  }, T);
+  await launch(page);
+  await waitSent(page, 2);
+  await page.waitForTimeout(3000);
+  assert.deepEqual(await ks(page), ['901:7', '2503:7']);
+  await waitText(page, '#mbx-t3', /1\/20/);
+  await ctx.close();
+});
+
+test('CHAT-5: a base share with no box is viewed once; shared again after a relaunch it is not viewed again', async () => {
+  const { ctx, page } = await open(() => { __fake.cities['10:450:610'] = { pid: '10' }; __fake.base('w', 10, 450, 610, 30); });
+  await launch(page);
+  await waitSent(page, 1);
+  await page.waitForTimeout(2000);
+  assert.deepEqual(await ks(page), ['901:10']);
+  await page.evaluate(() => { __MBX.stop(); __fake.sent = []; });
+  await launch(page);
+  await page.waitForSelector('#mbx-t1');
+  await page.evaluate(() => __fake.base('w', 10, 450, 610, 0));
+  await page.waitForTimeout(3500);
+  assert.deepEqual(await ks(page), []);
+  await ctx.close();
+});
+
+test('CHAT-6: base shares are rationed: five fresh ones, three views', async () => {
+  const { ctx, page } = await open(() => { [11, 12, 13, 14, 15].forEach((k, i) => { __fake.cities[k + ':450:610'] = { pid: String(k) }; __fake.base('w', k, 450, 610, 10 + i * 10); }); });
+  await launch(page);
+  await waitSent(page, 3, 10000);
+  await page.waitForTimeout(4000);
+  assert.deepEqual((await sent(page)).map((x) => x.rid), [901, 901, 901]);
+  await waitText(page, '#mbx-src', /Bases 5/);
   await ctx.close();
 });

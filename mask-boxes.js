@@ -1,6 +1,8 @@
 // mask-boxes.js — Mask Mystery Boxes: collects the boxes players report on the FunCC intel list
-// (game.funcc.xyz/mask-intel) on any server, with the game's own world view and collect requests: look at the
+// (game.funcc.xyz/mask-intel, merged with the Top War Fandom Reward Finder by the worker) and the game's own box
+// cards and base shares in chat, on any server, with the game's own world view and collect requests: look at the
 // owner's city (901), then collect its box (2503). No march, no camera move. Launched from the Ops Center.
+// A checked spot is remembered until its box ends (30 min when there was none), whoever shares it again.
 // Rules live in mask-boxes-core.js (window.MaskBoxesCore); this file talks to the game, the worker and the page.
 // Every request waits for the shared Ops request clock, so no two requests from any Ops tool go under 1.1 s apart.
 (function () {
@@ -9,12 +11,12 @@
   var C = window.MaskBoxesCore;
   if (!C) { try { alert('Mask Mystery Boxes did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-05';
+  var VERSION = '2026-10-07';
   var WORKER = window.__MBX_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__MBX_FAST, FEED_MS = window.__MBX_FEED_MS || 60000, TIMEOUT_MS = window.__MBX_TIMEOUT_MS || 8000;
   var LATE_MS = window.__MBX_LATE_MS || 30000;            // an unanswered request counts as in flight this long
   var VIEW = 901, COLLECT = 2503;                          // RequestId world view, Mask Mystery box collect (PB v2)
-  var LS_TYPES = 'mbx_types_v1', LS_COUNT = 'mbx_count_v1_', LS_DONE = 'mbx_done_v1_', LS_MIN = 'mbx_min_v1';
+  var LS_TYPES = 'mbx_types_v1', LS_COUNT = 'mbx_count_v1_', LS_DONE = 'mbx_done_v1_', LS_MIN = 'mbx_min_v1', LS_SPOTS = 'mbx_spots_v1_';
   var TARGET = {};                                         // NET.send wants a target; a plain object is always valid
 
   // ---------------------------------------------------------------- game
@@ -29,6 +31,17 @@
   function connected() { try { var s = NET()._socket; return !!(s && s._webSocket && s._webSocket.readyState === 1); } catch (e) { return false; } }
   // connected and logged in (a reloading frame can have an open socket before the player is in)
   function ready() { try { var U = UD(); return !!(U && U.Name) && connected(); } catch (e) { return false; } }
+  // Chat the game already holds: every room's messages, and world chat (room keys starting with 0) on its own.
+  // Read through GW() each time, so a reconnect or an Unattended frame reload never leaves us on stale lists.
+  function chatCtl() { return req('newChatController').newChatController._instance; }
+  function chatLists() {
+    var out = { all: [], world: [] };
+    try {
+      var L = chatCtl()._userChatList || {};
+      Object.keys(L).forEach(function (k) { var l = L[k]; if (!Array.isArray(l) || !l.length) return; out.all = out.all.concat(l); if (k.charAt(0) === '0') out.world = out.world.concat(l); });
+    } catch (e) {}
+    return out;
+  }
   function gameText(key) { try { var L = req('LocalManager'), t = (L.LOCAL || L.default).getText(key); return t && t !== key ? String(t) : ''; } catch (e) { return ''; } }
   function itemLabel(items) {
     return (Array.isArray(items) ? items : []).filter(function (it) { return it && typeof it === 'object'; }).map(function (it) {
@@ -85,6 +98,7 @@
 
   var S = {
     running: false, stopped: false, siteKey: '', boxes: [], feedOk: true, nextFetch: 0, tried: {}, log: [],
+    chat: [], bases: [], worldCards: [], spots: {}, baseLog: [], wake: false, nextIn: 0,
     types: { 1: true, 2: true, 3: true }, count: null, done: null, last: '', foot: 'Starting...', tone: 'ok',
     min: lsGet(LS_MIN) === '1', view: ''
   };
@@ -104,6 +118,24 @@
     S.done = { day: today(), ids: ids }; lsSet(LS_DONE + S.siteKey, JSON.stringify(S.done));
   }
   function setFoot(text, tone) { S.foot = text; S.tone = tone || 'ok'; paint(); }
+  function readChat() {
+    var now = Date.now(), L = chatLists();
+    S.chat = C.chatBoxes(L.all, now); S.bases = C.baseShares(L.world, now); S.worldCards = C.chatBoxes(L.world, now);
+  }
+  // A checked spot is remembered until its box ends (30 min with no box), at the reported spot and the city anchor.
+  function remember(b, pt) {
+    var now = Date.now(), until = pt && pt.endMs > now ? pt.endMs : now + C.SPOT_NO_BOX_MS;
+    S.spots = C.rememberSpot(S.spots, C.cityKey(b), until);
+    if (pt && pt.w) S.spots = C.rememberSpot(S.spots, pt.w + ':' + pt.x + ':' + pt.y, until);
+    var s = C.pruneSpots(S.spots, now), keys = Object.keys(s);
+    if (keys.length > 3000) keys.sort(function (a, c) { return s[a] - s[c]; }).slice(0, keys.length - 3000).forEach(function (k) { delete s[k]; });
+    S.spots = s; lsSet(LS_SPOTS + S.siteKey, JSON.stringify(s));
+  }
+  // The new-chat event only wakes the loop early; the lists themselves are read every turn.
+  var ecSub = null;
+  function onChat() { S.wake = true; }
+  function subscribe() { try { ecSub = req('EventCenter').EventCenter.getInst(); ecSub.on('newChatPush', onChat, TARGET); } catch (e) { ecSub = null; } }
+  function unsubscribe() { try { if (ecSub) ecSub.off('newChatPush', onChat, TARGET); } catch (e) {} ecSub = null; }
 
   // ---------------------------------------------------------------- the loop
   async function fetchFeed() {
@@ -114,12 +146,27 @@
       S.boxes = j.boxes; S.feedOk = true;
     } catch (e) { S.feedOk = false; }
   }
+  // Wait for the next feed check, leaving early when chat brings something to try.
   async function untilNextFetch(text, tone) {
     while (S.running && Date.now() < S.nextFetch) {
-      setFoot(text + ' · next check in ' + Math.max(1, Math.ceil((S.nextFetch - Date.now()) / 1000)) + ' s', tone);
-      await delay(1000);
+      S.nextIn = Math.max(1, Math.ceil((S.nextFetch - Date.now()) / 1000));
+      setFoot(text, tone);
+      await delay(FAST ? 250 : 1000);
+      S.wake = false;
+      readChat();
+      if (nextWork()) return;
     }
   }
+  function allBoxes() { return C.mergeBoxes([S.feedOk ? S.boxes : [], S.chat]); }
+  // Known boxes (feed and cards) first, soonest-ending; a base share only when none is due.
+  function nextWork() {
+    var o = { now: Date.now(), types: S.types, tried: S.tried, counts: counts(), spots: S.spots };
+    var list = C.candidates(allBoxes(), o);
+    if (list.length) return list[0];
+    o.baseLog = S.baseLog;
+    return C.baseCandidate(S.bases, o);
+  }
+  function waitingText() { return S.feedOk ? 'Waiting for new boxes' : S.chat.length || S.bases.length ? 'Box list unavailable · using chat (' + S.chat.length + ')' : 'Box list unavailable'; }
   async function loop() {
     try { await run(); }
     catch (e) { stop('something went wrong (' + String((e && e.message) || e).slice(0, 60) + ')'); }
@@ -128,14 +175,16 @@
     while (S.running) {
       if (Date.now() >= S.nextFetch) await fetchFeed();
       if (!S.running) break;
-      if (!S.feedOk) { await untilNextFetch('Box list unavailable', 'warn'); continue; }
+      readChat();
+      if (!S.feedOk && !S.chat.length && !S.bases.length) { await untilNextFetch('Box list unavailable', 'warn'); continue; }
       if (!ready()) { setFoot('Game disconnected. Waiting...', 'bad'); await delay(1000); continue; }
       readServer();
-      var list = C.candidates(S.boxes, { now: Date.now(), types: S.types, tried: S.tried, counts: counts() });
-      if (!list.length) { await untilNextFetch('Waiting for new boxes', 'ok'); continue; }
+      var next = nextWork();
+      if (!next) { await untilNextFetch(waitingText(), S.feedOk ? 'ok' : 'warn'); continue; }
       var g = C.gate(S.log, Date.now());
       if (!g.ok) { setFoot('Paused: ' + g.reason, 'warn'); await delay(Math.min(5000, Math.max(250, g.until - Date.now()))); continue; }
-      await tryBox(list[0]);
+      S.nextIn = 0;
+      await tryBox(next);
       if (S.running) await delay(FAST ? 0 : 3000 + rand(2000));
     }
   }
@@ -145,13 +194,17 @@
   // Wait for the shared clock, then check again: the wait can be long, and the game can drop meanwhile.
   async function turn() { await idle(); await pace(); return S.running && ready() && !flight; }
   async function tryBox(b) {
-    var where = 'S' + b.server + ' (' + b.x + ', ' + b.y + ')';
-    setFoot('Checking ' + C.TYPES[b.type] + ' at ' + where, 'ok');
+    var isBase = b.src === 'base', where = 'S' + b.server + ' (' + b.x + ', ' + b.y + ')';
+    setFoot(isBase ? 'Checking a shared base at ' + where : 'Checking ' + C.TYPES[b.type] + ' at ' + where, 'ok');
     if (!(await turn())) return;                            // nothing sent: the box stays untried
-    S.tried[C.boxKey(b)] = 1;
-    var found = C.findBox(await sendView(b), b.x, b.y, b.server, b.endMs);
+    S.tried[isBase ? C.cityKey(b) : C.boxKey(b)] = 1;
+    if (isBase) S.baseLog.push(Date.now());
+    var answer = await sendView(b);
+    var found = C.findBox(answer, b.x, b.y, b.server, isBase ? undefined : b.endMs);
     if (found.state === 'stop') { note('failed'); stop(stopText(found.key, 'the game refused to show that city.')); return; }
-    if (found.state !== 'box') { note(found.state === 'gone' ? 'gone' : 'failed'); return; }
+    if (found.state !== 'box') { if (found.state === 'gone') remember(b, null); note(found.state === 'gone' ? 'gone' : 'failed'); return; }
+    found.pt = C.boxPoint(answer, found.pid);
+    remember(b, found.pt);
     readServer();
     if (doneIds().indexOf(found.instanceId) >= 0 || serverIds().indexOf(found.instanceId) >= 0) { note('claimed'); return; }
     var type = found.type;                                  // from the box's own item; 0 = not a Mask Mystery box
@@ -172,6 +225,7 @@
     if (S.stopped) return;
     S.stopped = true; S.running = false;
     window.__MBX.running = false;
+    unsubscribe();
     if (reason === 'stopped by you') { removeRoot(); return; }
     showMessage('Mask Mystery Boxes stopped: ' + reason, true);
   }
@@ -193,7 +247,9 @@
     '#mbx-root .mbx-type span{font-size:11px}',
     '#mbx-root .mbx-type[aria-pressed="true"]{border-color:#3fb950}#mbx-root .mbx-type[aria-pressed="false"]{color:#8b949e;background:transparent}',
     '#mbx-root .mbx-type b{font-variant-numeric:tabular-nums}',
-    '#mbx-root .mbx-foot{color:#8b949e;font-size:12px;margin-top:6px;min-height:16px}#mbx-root .mbx-last{color:#3fb950;font-size:12px;margin-top:2px;word-break:break-word}#mbx-root .mbx-last:empty{display:none}',
+    '#mbx-root .mbx-src{color:#8b949e;font-size:11px;margin-top:2px;font-variant-numeric:tabular-nums}',
+    '#mbx-root .mbx-foot,#mbx-root .mbx-src,#mbx-root .mbx-last{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '#mbx-root .mbx-foot{color:#8b949e;font-size:12px;margin-top:6px;min-height:16px}#mbx-root .mbx-last{color:#3fb950;font-size:12px;margin-top:2px}#mbx-root .mbx-last:empty{display:none}',
     '#mbx-root .mbx-msg{margin:4px 0 2px}#mbx-root .mbx-btns{display:flex;gap:6px;margin-top:8px}',
     '#mbx-root .mbx-btns button{flex:1;min-height:44px;border:1px solid #30363d;border-radius:8px;background:#1c2128}#mbx-root .mbx-btns button:hover{border-color:#79c0ff}'
   ].join('\n');
@@ -242,6 +298,7 @@
     });
     body.appendChild(row);
     var foot = el('div', 'mbx-foot'); foot.id = 'mbx-foot'; body.appendChild(foot);
+    var src = el('div', 'mbx-src'); src.id = 'mbx-src'; body.appendChild(src);
     var last = el('div', 'mbx-last'); last.id = 'mbx-last'; body.appendChild(last);
     var btns = el('div', 'mbx-btns'); btns.appendChild(button('mbx-stop', 'Stop', function () { stop('stopped by you'); })); body.appendChild(btns);
     paint();
@@ -262,8 +319,12 @@
       var n = b.querySelector('b'); if (n && n.textContent !== r[1]) n.textContent = r[1];
       var al = r[0] + ' ' + r[1] + ' since reset'; if (b.getAttribute('aria-label') !== al) b.setAttribute('aria-label', al);
     });
-    var f = document.getElementById('mbx-foot'); if (f && f.textContent !== S.foot) f.textContent = S.foot;
-    var l = document.getElementById('mbx-last'); if (l && l.textContent !== (S.last ? 'Last: ' + S.last : '')) l.textContent = S.last ? 'Last: ' + S.last : '';
+    var f = document.getElementById('mbx-foot'); if (f && f.textContent !== S.foot) { f.textContent = S.foot; f.title = S.foot; }
+    var srcText = (S.feedOk ? 'List ' + S.boxes.length : 'List down') + ' · Chat ' + S.chat.length + (S.bases.length ? ' · Bases ' + S.bases.length : '') +
+      (S.nextIn ? ' · next ' + S.nextIn + ' s' : '');
+    var sl = document.getElementById('mbx-src'); if (sl && sl.textContent !== srcText) { sl.textContent = srcText; sl.title = srcText; }
+    var lt = S.last ? 'Last: ' + S.last : '';
+    var l = document.getElementById('mbx-last'); if (l && l.textContent !== lt) { l.textContent = lt; l.title = lt; }
     var m = document.getElementById('mbx-mini'); if (m && m.textContent !== String(total)) m.textContent = String(total);
     card.className = 'mbx-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (S.min ? ' min' : '');
   }
@@ -273,7 +334,7 @@
     running: true, version: VERSION,
     stop: function (reason) { stop(reason || 'stopped by you'); },
     flash: function () { if (!card) return; card.classList.add('flash'); setTimeout(function () { if (card) card.classList.remove('flash'); }, 600); },
-    state: function () { return { counts: counts(), tried: Object.keys(S.tried).length, last: S.last, foot: S.foot, types: S.types }; }
+    state: function () { return { counts: counts(), tried: Object.keys(S.tried).length, last: S.last, foot: S.foot, types: S.types, chat: S.chat.length, bases: S.bases.length, spots: Object.keys(S.spots).length }; }
   };
   ensureRoot();
   showMessage('Starting...');
@@ -283,8 +344,10 @@
     S.siteKey = h.slice(0, 16);
     var t = lsJSON(LS_TYPES); if (t && typeof t === 'object') [1, 2, 3].forEach(function (k) { if (typeof t[k] === 'boolean') S.types[k] = t[k]; });
     S.count = lsJSON(LS_COUNT + S.siteKey); S.done = lsJSON(LS_DONE + S.siteKey);
+    var sp = lsJSON(LS_SPOTS + S.siteKey); S.spots = C.pruneSpots(sp && typeof sp === 'object' ? sp : {}, Date.now());
     if (S.stopped) return;
     S.running = true;
+    subscribe();
     showRun();
     loop();
   });
