@@ -7,10 +7,13 @@
 // level and the VIP shop's Advanced March Speed-up for speed-ups (buy 818, use 920). For Mask Mystery Boxes:
 // cities on any server in the 901 world view (a box hangs off its owner's city as cityReward) and the 2503 collect;
 // world and alliance chat with the game's box cards (t:48) and base shares (t:0 st:4), and sendToWorldChannel.
+// For Fun Stuff: the open chat (NowChoiceKey), the emoji sends (sendEmotionGroup / sendGIFGroup), the player's level
+// and the animated-emoji level floor (GameTools config 630051).
 window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent: [], answers: [], chat: [], handlers: {}, myMarch: {}, activity: true,
   gems: 1000, bag: 0, vip: 15, marchSecs: 2, buyMode: 'ok', useMode: 'ok', bagLagMs: 0, drift: 0, used: [], pending: [],
   cities: {}, claimed: {}, collects: 0, limitAfter: 0, viewError: '', lose901: 0, emptyReward: false, nullItem: false,
   serverNum: {}, serverIds: [], shares: [], msgSeq: 0,
+  choice: null, level: 100, gifLevel: '20', emoji: [], emojiThrows: false,
   // like the real client after login: world chat already holds history
   world: [{ _msgId: 'w0', _time: Math.floor(Date.now() / 1000) - 30, _worldId: '2864', _msgType: 0, _msg: 'hello world', _chatShareLinkData: null }] };
 // a test can keep this game logged out across reloads (a reconnect that does not work)
@@ -91,14 +94,22 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       F.shares.push({ at: Date.now(), link: copy });
       F.world.push({ _msgId: 'mine' + (++F.msgSeq), _time: Math.floor(Date.now() / 1000), _worldId: '2864', _msgType: 1, _msg: 'link', custom: { fUid: F.uid }, _chatShareLinkData: copy });
       ec.emit('newChatPush', {});
-    } };
+    },
+    sendEmotionGroup: function (ch, id, uid, name) { emojiSend('emotion', ch, id, uid, name); },
+    sendGIFGroup: function (ch, id, uid, name) { emojiSend('gif', ch, id, uid, name); } };
+  function emojiSend(fn, ch, id, uid, name) {
+    if (F.emojiThrows) throw new Error('chat panel not ready');
+    F.emoji.push({ fn: fn, ch: ch, id: id, uid: uid, name: name, at: Date.now() });
+  }
+  Object.defineProperty(chatInst, 'NowChoiceKey', { get: function () { return F.choice; } });   // null: chat panel closed
   var PARTY = { 2: 1, 3: 2, 4: 3 };
   window.__require = function (name) {
     if (name === 'DataCenter') return { DATA: { UserData: { Name: F.name, StrUid: F.uid, _resourceData: { get _gold() { return F.gems; } },
-      getItemAmount: function (id) { return id === 520002 ? F.bag : 0; }, get VipLevel() { return F.vip; },
+      getItemAmount: function (id) { return id === 520002 ? F.bag : 0; }, get VipLevel() { return F.vip; }, get Level() { return F.level; },
       get itemCityRewardReceivedNum() { return F.serverNum; }, get itemCityRewardReceivedInstIds() { return F.serverIds; } } } };
     if (name === 'newChatController') return { newChatController: { _instance: chatInst } };
     if (name === 'NetMgr') return { NET: NET };
+    if (name === 'GameTools') return { default: { getDataConfigData: function (id) { return id === 630051 ? F.gifLevel : null; } } };
     if (name === 'EventCenter') return { EventCenter: { getInst: function () { return ec; } } };
     if (name === 'ActivityController') return { ActivityController: { Instance: { _activityList: F.activity ? [activity] : [] } } };
     if (name === 'NWorldMapMarchModel') return { default: { instance: { _myMarch: F.myMarch } } };
