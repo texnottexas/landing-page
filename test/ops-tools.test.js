@@ -15,8 +15,13 @@ const cpLine = read('.github/workflows/pages.yml').split('\n').find((l) => l.inc
 test('every tool in ops-tools.json passes validation', () => {
   assert.equal(list.tools.length, raw.tools.length);
   assert.deepEqual(list.tools.map((t) => t.title), [
-    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes'
+    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Fun Stuff'
   ]);
+  const fun = list.tools.find((t) => t.id === 'fun-stuff');
+  assert.equal(fun.gate, 'member', 'any member can launch Fun Stuff');
+  assert.equal(fun.overlay, '#fun-root');
+  assert.equal(fun.icon, 'smile');
+  assert.deepEqual(fun.scripts, ['fun-stuff-core.js', 'fun-stuff.js']);
   const mbx = list.tools.find((t) => t.id === 'mask-boxes');
   assert.equal(mbx.gate, 'member', 'any member can launch Mask Mystery Boxes');
   assert.equal(mbx.overlay, '#mbx-root');

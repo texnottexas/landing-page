@@ -229,3 +229,7 @@ test('REVIEW #2: owners fail closed — present but empty, a string, or all-inva
 test('gift is a known icon', () => {
   assert.equal(OC.validateTools({ tools: [tool({ id: 'g', icon: 'gift' })] }).tools[0].icon, 'gift');
 });
+
+test('smile is a known icon', () => {
+  assert.equal(OC.validateTools({ tools: [tool({ id: 's', icon: 'smile' })] }).tools[0].icon, 'smile');
+});
