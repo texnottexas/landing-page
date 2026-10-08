@@ -13,13 +13,16 @@
   var C = window.MaskBoxesCore;
   if (!C) { try { alert('Mask Mystery Boxes did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-07';
+  var VERSION = '2026-10-08';
   var WORKER = window.__MBX_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__MBX_FAST, FEED_MS = window.__MBX_FEED_MS || 60000, TIMEOUT_MS = window.__MBX_TIMEOUT_MS || 8000;
   var LATE_MS = window.__MBX_LATE_MS || 30000;            // an unanswered request counts as in flight this long
   var VIEW = 901, COLLECT = 2503;                          // RequestId world view, Mask Mystery box collect (PB v2)
   var LS_TYPES = 'mbx_types_v1', LS_COUNT = 'mbx_count_v1_', LS_DONE = 'mbx_done_v1_', LS_MIN = 'mbx_min_v1', LS_SPOTS = 'mbx_spots_v1_';
   var LS_SHARE = 'mbx_share_v1', LS_SHARED = 'mbx_shared_v1_', LS_RATE = 'mbx_rate_v1_';
+  // Share mode is one player per home server, held through the worker; renewals every 60 s, and we let go after
+  // 2.5 min without a good one (the worker frees a hold after 3), so two players never both think they hold it.
+  var SHARE_BEAT_MS = window.__MBX_SHARE_BEAT_MS || 60000, SHARE_LOST_MS = window.__MBX_SHARE_LOST_MS || 150000;
   var TARGET = {};                                         // NET.send wants a target; a plain object is always valid
 
   // ---------------------------------------------------------------- game
@@ -106,7 +109,8 @@
   var S = {
     running: false, stopped: false, siteKey: '', boxes: [], feedOk: true, nextFetch: 0, tried: {}, log: [],
     chat: [], bases: [], worldCards: [], spots: {}, baseLog: [], wake: false, nextIn: 0,
-    share: lsGet(LS_SHARE) === '1', shareQ: [], lastShareAt: 0, shared: null, lastShare: '', worldOk: false, shareStopped: '',
+    share: false, shareWant: lsGet(LS_SHARE) === '1', shareMsg: '', shareBusy: false, shareOkAt: 0, beat: null,
+    shareQ: [], lastShareAt: 0, shared: null, lastShare: '', worldOk: false, shareStopped: '',
     types: { 1: true, 2: true, 3: true }, count: null, done: null, last: '', foot: 'Starting...', tone: 'ok',
     min: lsGet(LS_MIN) === '1', view: ''
   };
@@ -157,7 +161,7 @@
   // The share gap and the base-share ration hold across a relaunch, like the daily counts and spot memory.
   function saveRate() { lsSet(LS_RATE + S.siteKey, JSON.stringify({ lastShareAt: S.lastShareAt, baseLog: S.baseLog.filter(function (t) { return t > Date.now() - 600000; }) })); }
   function shareCheckFor(q) {
-    return C.shareCheck({ on: S.share && !S.shareStopped, typeOn: !!S.types[q.type], endMs: q.pt.endMs, now: Date.now(), sharedIds: sharedIds(), instanceId: q.instanceId,
+    return C.shareCheck({ on: shareFresh() && !S.shareStopped, typeOn: !!S.types[q.type], endMs: q.pt.endMs, now: Date.now(), sharedIds: sharedIds(), instanceId: q.instanceId,
       worldCards: S.worldCards, worldOk: S.worldOk, server: q.pt.w, x: q.pt.x, y: q.pt.y, lastShareAt: S.lastShareAt });
   }
   // Shares wait in a short queue: until the game lists the box as collected (15 s at most), then until 10 s after
@@ -186,7 +190,48 @@
       paint();
     }
   }
-  function toggleShare() { S.share = !S.share; lsSet(LS_SHARE, S.share ? '1' : null); if (!S.share) S.shareQ = []; paint(); }
+  // ---- share mode: one sharer per home server (POST /maskshare/claim | release on the worker)
+  function homeServer() { try { var u = UD(); return Number(u.OriginServerId || u.ServerId) || 0; } catch (e) { return 0; } }
+  function shareBody() { var n = ''; try { n = String(UD().Name || ''); } catch (e) {} return JSON.stringify({ siteKey: S.siteKey, name: n.slice(0, 40), server: homeServer() }); }
+  async function shareCall(path) {                          // text/plain keeps it a simple request: no preflight
+    try {
+      var r = await fetch(WORKER + '/maskshare/' + path, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: shareBody(), cache: 'no-store', keepalive: true });
+      var j = null; try { j = await r.json(); } catch (e) {}
+      if (r.ok && j && j.ok) return { ok: true };
+      if (r.status === 409 && j) return { ok: false, holder: String(j.holder || 'Another player').slice(0, 40) };
+      return { ok: false };
+    } catch (e) { return { ok: false }; }
+  }
+  function takenText(holder) { return holder + ' already has share mode on.'; }
+  function shareFresh() { return S.share && Date.now() - S.shareOkAt <= SHARE_LOST_MS; }
+  // Off by choice or because the hold is gone: forget the choice; release only what we still hold.
+  function shareOff(msg, stillHeld) {
+    S.share = false; S.shareQ = []; S.shareMsg = msg || ''; lsSet(LS_SHARE, null);
+    if (stillHeld) shareCall('release');
+    paint();
+  }
+  async function shareOn() {
+    if (S.shareBusy || S.share) return;
+    S.shareBusy = true; S.shareMsg = 'Checking who is sharing...'; paint();
+    var r = await shareCall('claim');
+    S.shareBusy = false;
+    if (S.stopped) { if (r.ok) shareCall('release'); return; }
+    if (r.ok) { S.share = true; S.shareOkAt = Date.now(); S.shareMsg = ''; lsSet(LS_SHARE, '1'); paint(); return; }
+    shareOff(r.holder ? takenText(r.holder) : "Couldn't check who's sharing. Share stays off.", false);
+  }
+  async function shareBeat() {
+    if (!S.running || !S.share || S.shareBusy) return;
+    var r = await shareCall('claim');
+    if (!S.share) return;                                   // switched off meanwhile
+    if (r.ok) { S.shareOkAt = Date.now(); return; }
+    if (r.holder) { shareOff(takenText(r.holder), false); return; }
+    if (Date.now() - S.shareOkAt > SHARE_LOST_MS) shareOff('Lost contact with the share check, so Share turned off.', true);
+  }
+  function onPageHide() {                                   // the tab closing: free share mode for the next player
+    if (!S.share) return;
+    try { navigator.sendBeacon(WORKER + '/maskshare/release', new Blob([shareBody()], { type: 'text/plain' })); } catch (e) {}
+  }
+  function toggleShare() { if (S.shareBusy) return; if (S.share) shareOff('', true); else shareOn(); }
   // The new-chat event only wakes the loop early; the lists themselves are read every turn.
   var ecSub = null;
   function onChat() { S.wake = true; }
@@ -291,6 +336,9 @@
     S.stopped = true; S.running = false;
     window.__MBX.running = false;
     unsubscribe();
+    if (S.beat) { clearInterval(S.beat); S.beat = null; }
+    window.removeEventListener('pagehide', onPageHide);
+    if (S.share) { S.share = false; shareCall('release'); }   // the choice stays remembered for the next launch
     if (reason === 'stopped by you') { removeRoot(); return; }
     showMessage('Mask Mystery Boxes stopped: ' + reason, true);
   }
@@ -397,10 +445,10 @@
     var lt = S.last ? 'Last: ' + S.last : '';
     var l = document.getElementById('mbx-last'); if (l && l.textContent !== lt) { l.textContent = lt; l.title = lt; }
     var m = document.getElementById('mbx-mini'); if (m && m.textContent !== String(total)) m.textContent = String(total);
-    var n = sharedIds().length, shText = S.shareStopped ? 'Sharing stopped: ' + S.shareStopped : n || S.share ? 'Shared ' + n + (S.lastShare ? ' · last ' + S.lastShare : '') : '';
+    var n = sharedIds().length, shText = S.shareMsg ? S.shareMsg : S.shareStopped ? 'Sharing stopped: ' + S.shareStopped : n || S.share ? 'Shared ' + n + (S.lastShare ? ' · last ' + S.lastShare : '') : '';
     var shl = document.getElementById('mbx-shared'); if (shl && shl.textContent !== shText) { shl.textContent = shText; shl.title = shText; }
     var sb = document.getElementById('mbx-share');
-    if (sb) { var on = String(!!S.share); if (sb.getAttribute('aria-pressed') !== on) sb.setAttribute('aria-pressed', on); var st = S.share ? 'Share: on' : 'Share: off'; if (sb.textContent !== st) sb.textContent = st; sb.title = 'Share collected boxes to world chat'; }
+    if (sb) { var on = String(!!S.share); if (sb.getAttribute('aria-pressed') !== on) sb.setAttribute('aria-pressed', on); var st = S.shareBusy ? 'Share: ...' : S.share ? 'Share: on' : 'Share: off'; if (sb.textContent !== st) sb.textContent = st; sb.title = 'Share collected boxes to world chat'; }
     card.className = 'mbx-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (S.min ? ' min' : '');
   }
 
@@ -430,6 +478,9 @@
     S.running = true;
     subscribe();
     showRun();
+    S.beat = setInterval(shareBeat, SHARE_BEAT_MS);
+    window.addEventListener('pagehide', onPageHide);
+    if (S.shareWant) shareOn();                             // remembered on: claim share mode before any share
     loop();
   });
 })();

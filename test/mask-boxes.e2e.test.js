@@ -17,7 +17,7 @@ const UID = 'test-owner-uid';
 const SK = crypto.createHash('sha256').update(UID).digest('hex').slice(0, 16);
 const T = 260617001;                                     // a box's item is T + its type
 
-let server, base, browser, feed, feedMode, feedHits;
+let server, base, browser, feed, feedMode, feedHits, lease, shareMode, shareLog;
 test.before(async () => {
   server = http.createServer((req, res) => {
     const name = decodeURIComponent(req.url.split('?')[0].replace(/^\/+/, '')) || 'index.html';
@@ -27,6 +27,25 @@ test.before(async () => {
       if (feedMode === 'down') { res.writeHead(502, Object.assign({ 'content-type': 'application/json' }, cors)); res.end('{"ok":false,"error":"upstream"}'); return; }
       res.writeHead(200, Object.assign({ 'content-type': 'application/json' }, cors));
       res.end(JSON.stringify({ ok: true, fetchedAt: Date.now(), boxes: feed }));
+      return;
+    }
+    if (name === 'maskshare/claim' || name === 'maskshare/release') {   // the worker's share-mode hold, in memory
+      let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
+        let j = null; try { j = JSON.parse(b); } catch (e) {}
+        shareLog.push({ path: name, body: j, type: req.headers['content-type'], at: Date.now() });
+        const h = Object.assign({ 'content-type': 'application/json' }, cors);
+        if (shareMode === 'down') { res.writeHead(503, h); res.end('{"ok":false}'); return; }
+        const cur = j && lease[j.server];
+        if (name === 'maskshare/claim') {
+          if (!cur || cur.siteKey === j.siteKey || Date.now() - cur.at > 180000) {
+            lease[j.server] = { siteKey: j.siteKey, name: j.name, at: Date.now() };
+            res.writeHead(200, h); res.end(JSON.stringify({ ok: true, holder: j.name, ttlMs: 180000 }));
+          } else { res.writeHead(409, h); res.end(JSON.stringify({ ok: false, error: 'taken', holder: cur.name })); }
+        } else {
+          const rel = !!(cur && cur.siteKey === j.siteKey); if (rel) delete lease[j.server];
+          res.writeHead(200, h); res.end(JSON.stringify({ ok: true, released: rel }));
+        }
+      });
       return;
     }
     if (name === 'mapcollector/report') {                 // Map Collector's worker, just enough to run
@@ -51,7 +70,7 @@ test.before(async () => {
   browser = await chromium.launch({ channel: 'chrome' });
 });
 test.after(async () => { await browser.close(); server.close(); });
-test.beforeEach(() => { feed = []; feedMode = 'ok'; feedHits = 0; });
+test.beforeEach(() => { feed = []; feedMode = 'ok'; feedHits = 0; lease = {}; shareMode = 'ok'; shareLog = []; });
 
 const box = (o) => Object.assign({ server: 619, x: 404, y: 612, owner: 'A', type: 1, endMs: Date.now() + 600000 }, o);
 
@@ -652,5 +671,99 @@ test('REVIEW #5: base-share rationing and the share gap hold across a relaunch',
   await page.waitForFunction(() => __fake.shares.length === 2, null, { timeout: 25000 });
   const s = await shares(page);
   assert.ok(s[1].at - s[0].at >= 10000, 'gap ' + (s[1].at - s[0].at) + ' ms across the relaunch');
+  await ctx.close();
+});
+
+// ---- share mode: one sharer per home server, held through the worker (Tex, 2026-10-08)
+const SAMSON = { siteKey: 'b3cf33154662e254', name: 'Samson' };
+const claims = () => shareLog.filter((x) => x.path === 'maskshare/claim');
+const releases = () => shareLog.filter((x) => x.path === 'maskshare/release');
+
+test('LEASE-1: someone else holds share mode: turning Share on names them, it stays off, and a collect posts nothing', async () => {
+  lease[2864] = Object.assign({ at: Date.now() }, SAMSON);
+  const end = Date.now() + 600000;
+  feed = [box({ server: 864, x: 405, y: 429, type: 1, endMs: end })];
+  const { ctx, page } = await open(([t, e]) => { __fake.cities['864:405:429'] = { pid: '22', itemId: t + 1, instanceId: 's22', endMs: e }; }, [T, end]);
+  await launch(page);
+  await page.click('#mbx-share');
+  await waitText(page, '#mbx-shared', /Samson already has share mode on/);
+  assert.equal(await page.getAttribute('#mbx-share', 'aria-pressed'), 'false');
+  assert.equal(await page.evaluate(() => localStorage.getItem('mbx_share_v1')), null);
+  await waitSent(page, 2);
+  await page.waitForTimeout(1500);
+  assert.equal((await page.evaluate(() => __fake.shares)).length, 0);
+  await ctx.close();
+});
+
+test('LEASE-2: Share on claims share mode with our siteKey, name and home server as plain text; Share off releases it', async () => {
+  const { ctx, page } = await open();
+  await launch(page);
+  await page.click('#mbx-share');
+  await page.waitForSelector('#mbx-share[aria-pressed="true"]');
+  assert.deepEqual(claims()[0].body, { siteKey: SK, name: 'Tex', server: 2864 });
+  assert.match(claims()[0].type, /^text\/plain/);
+  assert.equal(lease[2864].siteKey, SK);
+  await page.click('#mbx-share');
+  await page.waitForSelector('#mbx-share[aria-pressed="false"]');
+  await page.waitForFunction(() => true);
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal(releases().length, 1);
+  assert.equal(lease[2864], undefined);
+  await ctx.close();
+});
+
+test('LEASE-3: the share check cannot be reached: Share stays off and says so', async () => {
+  shareMode = 'down';
+  const { ctx, page } = await open();
+  await launch(page);
+  await page.click('#mbx-share');
+  await waitText(page, '#mbx-shared', /Couldn't check who's sharing/);
+  assert.equal(await page.getAttribute('#mbx-share', 'aria-pressed'), 'false');
+  await ctx.close();
+});
+
+test('LEASE-4: renewals keep share mode; if another player holds it at a renewal, Share turns off and names them', async () => {
+  const { ctx, page } = await open(() => { window.__MBX_SHARE_BEAT_MS = 300; });
+  await launch(page);
+  await page.click('#mbx-share');
+  await page.waitForSelector('#mbx-share[aria-pressed="true"]');
+  await new Promise((r) => setTimeout(r, 1000));
+  assert.ok(claims().length >= 3, 'renewed: ' + claims().length);
+  lease[2864] = Object.assign({ at: Date.now() }, SAMSON);
+  await waitText(page, '#mbx-shared', /Samson already has share mode on/);
+  assert.equal(await page.getAttribute('#mbx-share', 'aria-pressed'), 'false');
+  await ctx.close();
+});
+
+test('LEASE-5: Share remembered on: the launch claims first and stays off when someone else holds it', async () => {
+  lease[2864] = Object.assign({ at: Date.now() }, SAMSON);
+  const { ctx, page } = await open(() => { localStorage.setItem('mbx_share_v1', '1'); });
+  await launch(page);
+  await waitText(page, '#mbx-shared', /Samson already has share mode on/);
+  assert.equal(await page.getAttribute('#mbx-share', 'aria-pressed'), 'false');
+  assert.equal(await page.evaluate(() => localStorage.getItem('mbx_share_v1')), null);
+  await ctx.close();
+});
+
+test('LEASE-6: Stop releases share mode', async () => {
+  const { ctx, page } = await open();
+  await launch(page);
+  await page.click('#mbx-share');
+  await page.waitForSelector('#mbx-share[aria-pressed="true"]');
+  await page.click('#mbx-stop');
+  await new Promise((r) => setTimeout(r, 800));
+  assert.equal(releases().length, 1);
+  assert.equal(lease[2864], undefined);
+  await ctx.close();
+});
+
+test('LEASE-7: no successful renewal within the limit turns Share off before the hold could lapse', async () => {
+  const { ctx, page } = await open(() => { window.__MBX_SHARE_BEAT_MS = 300; window.__MBX_SHARE_LOST_MS = 1200; });
+  await launch(page);
+  await page.click('#mbx-share');
+  await page.waitForSelector('#mbx-share[aria-pressed="true"]');
+  shareMode = 'down';
+  await waitText(page, '#mbx-shared', /Lost contact with the share check/, 8000);
+  assert.equal(await page.getAttribute('#mbx-share', 'aria-pressed'), 'false');
   await ctx.close();
 });
