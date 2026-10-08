@@ -9,7 +9,77 @@
 // Output envelope: { v: 2, ts, inventory, beasts, chips, gear, heroes, errors }
 // Each section preserves the v=1 shape produced by the existing single-purpose
 // bookmarklets so the wizard's existing handlers can route them unchanged.
+// ─── Armory sync (Tex, 2026-10-08) ───────────────────────────────────────
+// After a snapshot, sign in with the worker using the game's own UID and upload every section the armory's paste
+// import would (same kinds, same clean-up, same 1 MB cap), so the armory updates without copy and paste. The worker
+// checks everything again (roster, schema, UID strip). Plain functions: node tests require this file for them.
+var __snapSync = (function () {
+  var SECTIONS = [
+    { field: 'inventory', kind: 'inv', ts: 'meta', label: 'Inventory' },
+    { field: 'beasts', kind: 'bench', ts: 'top', label: 'Beasts' },
+    { field: 'chips', kind: 'chips', ts: 'top', label: 'Chips' },
+    { field: 'gear', kind: 'gear', ts: 'meta', label: 'Titan gear' },
+    { field: 'heroes', kind: 'heroes', ts: 'top', label: 'Heroes' },
+    { field: 'formation', kind: 'formation', ts: 'top', label: 'Formation' },
+    { field: 'enigmaState', kind: 'enigma', ts: 'top', label: 'Beast fields' },
+    { field: 'decorations', kind: 'decor', ts: 'top', label: 'Decorations' },
+    { field: 'baseSkin', kind: 'skin', ts: 'top', label: 'Base skin' }
+  ];
+  var MAX_BYTES = 1024 * 1024;
+  // A copy of one section, cleaned the way the armory cleans a pasted one (the dump itself stays whole for Copy).
+  function prepare(spec, section, nowIso) {
+    var p = JSON.parse(JSON.stringify(section));
+    if (p && p.meta && p.meta.uid != null) delete p.meta.uid;
+    if (spec.kind === 'inv' && p && p.resources && typeof p.resources === 'object') { delete p.resources._paidgold; delete p.resources._payCNYTotal; }
+    if (spec.ts === 'meta') { if (!p.meta) p.meta = {}; if (!p.meta.ts) p.meta.ts = nowIso; }
+    else if (!p.ts) p.ts = nowIso;
+    return p;
+  }
+  async function readJson(r) { try { return await r.json(); } catch (e) { return null; } }
+  // o = { fetch, worker, uid, now? } → { state: 'done', results:[{kind,label,status,error?}] } | { state: 'not-member'|'error'|'no-uid' }
+  async function sendToArmory(dump, o) {
+    var uid = String(o.uid || '').trim();
+    if (!/^[0-9]{5,20}$/.test(uid)) return { state: 'no-uid' };
+    var nowIso = o.now || new Date().toISOString(), token = null;
+    try {
+      var hs = await o.fetch(o.worker + '/supplement/handshake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uid: uid }) });
+      if (hs.status === 403) return { state: 'not-member' };
+      var hj = hs.ok ? await readJson(hs) : null;
+      token = hj && hj.token;
+    } catch (e) { token = null; }
+    if (!token) return { state: 'error' };
+    var results = [];
+    for (var i = 0; i < SECTIONS.length; i++) {
+      var spec = SECTIONS[i], section = dump && dump[spec.field];
+      if (!section) continue;
+      var res = { kind: spec.kind, label: spec.label };
+      var body = JSON.stringify({ kind: spec.kind, json: prepare(spec, section, nowIso) });
+      if (body.length > MAX_BYTES) { res.status = 'too-large'; results.push(res); continue; }
+      try {
+        var r = await o.fetch(o.worker + '/supplement/upload', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: body });
+        if (r.ok) res.status = 'ok';
+        else { var ej = await readJson(r); res.status = 'failed'; res.error = (ej && ej.error) || ('HTTP ' + r.status); }
+      } catch (e) { res.status = 'failed'; res.error = 'network'; }
+      results.push(res);
+    }
+    return { state: 'done', results: results };
+  }
+  function syncText(r) {
+    if (r.state === 'not-member') return { tone: 'mute', text: "Not sent: this account isn't on the Server 2864 roster. Copy JSON still works." };
+    if (r.state === 'no-uid') return { tone: 'bad', text: "Couldn't read your account ID. Use Copy JSON below instead." };
+    if (r.state !== 'done') return { tone: 'bad', text: "Couldn't reach your armory. Use Copy JSON below instead." };
+    var ok = r.results.filter(function (x) { return x.status === 'ok'; }).map(function (x) { return x.label; });
+    var bad = r.results.filter(function (x) { return x.status !== 'ok'; }).map(function (x) { return x.label; });
+    if (!ok.length && !bad.length) return { tone: 'mute', text: 'Nothing to send to your armory.' };
+    if (!ok.length) return { tone: 'bad', text: 'Armory not updated. Not saved: ' + bad.join(', ') + '.' };
+    return { tone: bad.length ? 'warn' : 'ok', text: 'Armory updated: ' + ok.join(', ') + '.' + (bad.length ? ' Not saved: ' + bad.join(', ') + '.' : '') };
+  }
+  return { SECTIONS: SECTIONS, MAX_BYTES: MAX_BYTES, prepare: prepare, sendToArmory: sendToArmory, syncText: syncText };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = __snapSync;
+
 (function () {
+  if (typeof window === 'undefined') return;           // node tests load this file for __snapSync only
   // Captured during inventory extraction so the dismantle wizard can
   // refresh inventory after a run without re-running every section.
   var sharedExtractInventory = null;
@@ -1634,6 +1704,7 @@
     var status = document.createElement('div');
     status.style.cssText = 'color:#8b949e;font-size:12px;margin-top:10px;text-align:center;min-height:1.4em;';
     status.textContent = 'Tap Copy. Then paste at 2864tw.com → armory-report.';
+    status.id = 'snap-status';
     bg.appendChild(status);
     var row = document.createElement('div');
     row.style.cssText = 'display:flex;gap:8px;margin-top:8px;';
@@ -1804,6 +1875,31 @@
     return diag;
   }
 
+  // Sends the snapshot straight to the player's armory (see __snapSync at the top), shown above the JSON box.
+  var SNAP_WORKER = window.__SNAP_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
+  function gameUid() { try { var u = window.__require('DataCenter').DATA.UserData; return String(u.StrUid || u._uid || ''); } catch (e) { return ''; } }
+  function syncToArmory(overlay, dump) {
+    var box = document.createElement('div');
+    box.id = 'snap-sync';
+    box.style.cssText = 'margin:0 0 10px;padding:10px 12px;border:1px solid #30363d;border-radius:6px;background:#161b22;color:#8b949e;font-size:13px;line-height:1.4;';
+    box.textContent = 'Sending to your armory...';
+    var ta = overlay.root.querySelector('textarea');
+    if (ta) overlay.root.insertBefore(box, ta); else overlay.root.appendChild(box);
+    var uid = (dump.meta && dump.meta.uid) || gameUid();
+    __snapSync.sendToArmory(dump, { fetch: window.fetch.bind(window), worker: SNAP_WORKER, uid: uid }).then(function (r) {
+      var t = __snapSync.syncText(r), color = { ok: '#3fb950', warn: '#d29922', bad: '#f85149', mute: '#8b949e' }[t.tone] || '#8b949e';
+      box.textContent = t.text; box.style.color = color; box.style.borderColor = t.tone === 'mute' ? '#30363d' : color;
+      if (t.tone === 'ok' || t.tone === 'warn') {
+        var a = document.createElement('a');
+        a.textContent = 'Open my armory'; a.href = 'https://2864tw.com/armory-report.html'; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        a.style.cssText = 'display:inline-block;margin-left:8px;color:#79c0ff;font-weight:600;';
+        box.appendChild(a);
+        var st = document.getElementById('snap-status');
+        if (st) st.textContent = 'Your armory is already updated. Copy JSON is only a backup now.';
+      }
+    }, function () { box.textContent = "Couldn't reach your armory. Use Copy JSON below instead."; box.style.color = '#f85149'; });
+  }
+
   // ─── Entry point ────────────────────────────────────────────────────────
   var overlay;
   try {
@@ -1821,6 +1917,7 @@
         overlay.setHeader(dump.errors && dump.errors.length ? 'Partial snapshot' : 'Snapshot ready');
         overlay.setHeaderColor(dump.errors && dump.errors.length ? '#d29922' : '#3fb950');
         attachCopyUI(overlay, dump);
+        syncToArmory(overlay, dump);
       } else {
         var jsonAlt = JSON.stringify(dump);
         try { alert('Snapshot: ' + summarizeDump(dump, jsonAlt.length)); } catch (_) {}

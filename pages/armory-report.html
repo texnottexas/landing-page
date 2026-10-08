@@ -1381,6 +1381,8 @@
   }
   .import-tw-pill:hover { background: rgba(63,185,80,0.2); box-shadow: 0 0 14px rgba(63,185,80,0.25); }
   .import-tw-pill:active { transform: translateY(1px); }
+  .ar-last-snap { color: var(--muted, #8b949e); font-size: .72rem; white-space: nowrap; align-self: center; }
+  .ar-last-snap:empty { display: none; }
   .import-tw-pill svg { flex-shrink: 0; }
 
   /* ── Rune Pool tab (Phase 1 of rune-advisor; read-only derived view) ─── */
@@ -4779,9 +4781,10 @@
     return true;
   }
 
-  async function _ar_fetchSupplement(kind, siteKey) {
+  async function _ar_fetchSupplement(kind, siteKey, fresh) {
     try {
-      var r = await fetch(SUPPLEMENT_WORKER + '/supplement/' + kind + '/' + siteKey, { cache: 'default' });
+      // fresh: skip the browser's 60 s copy, so a snapshot the game just sent shows on this open
+      var r = await fetch(SUPPLEMENT_WORKER + '/supplement/' + kind + '/' + siteKey, { cache: fresh ? 'no-store' : 'default' });
       if (r.status === 404) return null;
       if (r.status === 403) {
         // Mark private and wipe any stale local cache so non-owners can't
@@ -4806,15 +4809,12 @@
     // pulled into localStorage on report load. Without this, the cloud-sync
     // pill could read "Active" while the Bench tab still showed the empty
     // state because the heroes supplement was never adopted locally.
-    var quad = await Promise.all([
-      _ar_fetchSupplement('inv', siteKey),
-      _ar_fetchSupplement('bench', siteKey),
-      _ar_fetchSupplement('gear', siteKey),
-      _ar_fetchSupplement('chips', siteKey),
-      _ar_fetchSupplement('runepool', siteKey),
-      _ar_fetchSupplement('heroes', siteKey)
-    ]);
+    // The Snapshot bookmarklet also sends straight from the game (2026-10-08), so every kind it uploads is pulled
+    // here, including the four the report merge reads (formation, enigma, decor, skin).
+    var kinds = ['inv', 'bench', 'gear', 'chips', 'runepool', 'heroes', 'formation', 'enigma', 'decor', 'skin'];
+    var quad = await Promise.all(kinds.map(function (k) { return _ar_fetchSupplement(k, siteKey, true); }));
     var invRemote = quad[0], benchRemote = quad[1], gearRemote = quad[2], chipsRemote = quad[3], runepoolRemote = quad[4], heroesRemote = quad[5];
+    var changed = [];
     // Helper: shape-aware ts read. heroes follows the same top-level ts shape
     // as bench/chips, so it falls through the same branch.
     function tsOf(kind, obj) {
@@ -4829,6 +4829,7 @@
       var local = ArmoryIdentity.getSupplement(kind, siteKey);
       if (tsOf(kind, remote) > tsOf(kind, local)) {
         ArmoryIdentity.setSupplement(kind, siteKey, remote);
+        changed.push(kind);
       }
     }
     adoptIfNewer('inv', invRemote);
@@ -4837,6 +4838,27 @@
     adoptIfNewer('chips', chipsRemote);
     adoptIfNewer('runepool', runepoolRemote);
     adoptIfNewer('heroes', heroesRemote);
+    for (var i = 6; i < kinds.length; i++) adoptIfNewer(kinds[i], quad[i]);
+    return changed;
+  }
+
+  // The newest snapshot time across this player's supplements on this device (0 when none).
+  var _AR_SNAPSHOT_KINDS = ['inv', 'bench', 'gear', 'chips', 'heroes', 'formation', 'enigma', 'decor', 'skin'];
+  function _ar_lastSnapshotTs(siteKey) {
+    var best = 0;
+    _AR_SNAPSHOT_KINDS.forEach(function (k) {
+      var t = 0;
+      try { t = _ar_supplementLocalTs(k, ArmoryIdentity.getSupplement(k, siteKey)); } catch (e) { t = 0; }
+      if (t > best) best = t;
+    });
+    return best;
+  }
+  function _ar_paintLastSnapshot(siteKey) {
+    var el = document.getElementById('ar-last-snap');
+    if (!el || !siteKey) return;
+    var ts = _ar_lastSnapshotTs(siteKey);
+    el.textContent = ts ? 'Synced ' + _ar_relativeAge(new Date(ts)) : '';
+    el.title = ts ? 'Last game snapshot: ' + new Date(ts).toLocaleString() : '';
   }
 
   // ── Inventory lookup tables ────────────────────────────────────────────
@@ -7746,7 +7768,7 @@
       var importBtn = document.createElement('button');
       importBtn.className = 'import-tw-pill';
       importBtn.type = 'button';
-      importBtn.title = 'Paste your TopWar bookmarklet output to sync all four supplements';
+      importBtn.title = 'Paste a TopWar snapshot (the Snapshot tool in the Ops Center now sends to your armory by itself)';
       importBtn.appendChild(svgIcon({ size: 12, linecap: 'round', linejoin: 'round', children: [['path', { 'd': 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' }], ['polyline', { 'points': '7 10 12 15 17 10' }], ['line', { 'x1': '12', 'y1': '15', 'x2': '12', 'y2': '3' }]] }));
       var impLabel = document.createElement('span');
       impLabel.className = 'import-tw-label';
@@ -7808,6 +7830,12 @@
         });
       }
       right.appendChild(importBtn);
+      // "Synced 3m ago": when this player's newest snapshot was taken (painted again after the cloud pull)
+      var lastSnap = document.createElement('span');
+      lastSnap.id = 'ar-last-snap';
+      lastSnap.className = 'ar-last-snap';
+      right.appendChild(lastSnap);
+      try { var _lsId = getStoredIdentity(); _ar_paintLastSnapshot(_lsId && _lsId.siteKey); } catch (e) {}
     }
 
     // Language button
@@ -8996,6 +9024,7 @@
     if (el) el.classList.remove('active');
   }
 
+  var _ar_hydrateRebuilt = false;   // one rebuild per page load after the cloud pull brings newer merged data
   async function renderFullReport() {
     // Block on roster fetch so the Inventory tab decision is correct on first render.
     // Fetch is CDN-cached (<100ms typical); failure falls back to empty roster (no S2864 tabs).
@@ -9345,7 +9374,16 @@
     // Phase 3: hydrate supplements from worker. Fire-and-forget; re-renders the
     // active tab if it consumes any of the freshly-hydrated supplements.
     if (wizardState.player && wizardState.player.siteKey) {
-      _ar_hydrateSupplementsFromWorker(wizardState.player.siteKey).then(function() {
+      _ar_hydrateSupplementsFromWorker(wizardState.player.siteKey).then(function(changed) {
+        _ar_paintLastSnapshot(wizardState.player.siteKey);
+        // Newer heroes / gear / formation / enigma / decor / skin feed the merged report, which was built from the
+        // older copy: rebuild once so a snapshot sent from the game shows on this open.
+        var MERGED = ['heroes', 'gear', 'formation', 'enigma', 'decor', 'skin'];
+        if (!_ar_hydrateRebuilt && (changed || []).some(function (k) { return MERGED.indexOf(k) >= 0; })) {
+          _ar_hydrateRebuilt = true;
+          renderFullReport();
+          return;
+        }
         var active = document.querySelector('.tab-btn.active');
         if (active) {
           var tab = active.getAttribute('data-tab');
