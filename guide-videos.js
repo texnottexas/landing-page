@@ -122,9 +122,9 @@
         b.style.borderColor = on ? 'var(--accent)' : 'var(--border)';
       });
       var film = FILMS[key];
-      // Portrait films: as tall as fits (70% of the screen) without overflowing the width.
+      // Portrait films: as wide as the card allows, but never taller than 70% of the screen.
       wrap.style.cssText = film.shape === 'portrait'
-        ? 'position:relative;aspect-ratio:9/16;height:min(70vh,calc((100vw - 4rem) * 16 / 9));margin:0 auto;background:#000;border-radius:6px;overflow:hidden;'
+        ? 'position:relative;aspect-ratio:9/16;width:min(100%,calc(70vh * 9 / 16));margin:0 auto;background:#000;border-radius:6px;overflow:hidden;'
         : 'position:relative;aspect-ratio:16/9;width:100%;background:#000;border-radius:6px;overflow:hidden;';
       while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
       var iframe = doc.createElement('iframe');
@@ -139,8 +139,14 @@
       wrap.appendChild(iframe);
     }
 
-    // A collapsed card loads nothing from YouTube until the viewer opens it.
-    if (set.collapsed) card.addEventListener('toggle', function () { if (card.open && !wrap.firstChild) paint(current, 0); });
+    // A collapsed card loads nothing from YouTube until the viewer opens it, and closing
+    // it removes the player so a playing video doesn't keep going out of sight.
+    if (set.collapsed) {
+      card.addEventListener('toggle', function () {
+        if (card.open) { if (!wrap.firstChild) paint(current, 0); }
+        else while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
+      });
+    }
     else paint(current, 0);
     return card;
   }
