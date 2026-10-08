@@ -74,7 +74,67 @@ var __snapSync = (function () {
     if (!ok.length) return { tone: 'bad', text: 'Armory not updated. Not saved: ' + bad.join(', ') + '.' };
     return { tone: bad.length ? 'warn' : 'ok', text: 'Armory updated: ' + ok.join(', ') + '.' + (bad.length ? ' Not saved: ' + bad.join(', ') + '.' : '') };
   }
-  return { SECTIONS: SECTIONS, MAX_BYTES: MAX_BYTES, prepare: prepare, sendToArmory: sendToArmory, syncText: syncText };
+  // ── "Set up my armory report" from the latest Time Clash attacks (Tex, 2026-10-08) ──
+  // Only our attacks count: a defense report can't exist without an attack first. The newest report for each
+  // different march (3-hero set) is kept, up to the chosen number (max 6); at most 20 attacks are read.
+  var SETUP_MAX = 6, SETUP_SCAN = 20, SETUP_DEVICE = 'ops-snapshot';
+  function attackLogs(logs) {
+    return (Array.isArray(logs) ? logs : []).filter(function (l) { return l && l.isAttacker && l.reportId; })
+      .sort(function (a, b) { return (Number(b.time) || 0) - (Number(a.time) || 0); });
+  }
+  function reportUrl(id) { id = String(id); return 'https://fight-report-va.oss-accelerate.aliyuncs.com/prod/' + id.slice(0, 4) + '/' + id + '.json'; }
+  function heroSetOf(report, uid) {
+    var b = report && (report.battle || report), hit = null;
+    ['attacker', 'defender'].forEach(function (side) {
+      ((b && b[side] && b[side].players) || []).forEach(function (p) {
+        if (!hit && p && String(p.uid) === String(uid)) {
+          hit = (p.heroList || []).map(function (h) { return Number(h && (h.heroId || h.id)); }).filter(Boolean).sort(function (x, y) { return x - y; });
+        }
+      });
+    });
+    return hit && hit.length ? hit : null;
+  }
+  // o = { fetchReport(id) → report json, uid, max } → { picked:[{reportId, heroes, time}], attacks, scanned }
+  async function pickReports(logs, o) {
+    var max = Math.max(1, Math.min(SETUP_MAX, Number(o.max) || SETUP_MAX)), list = attackLogs(logs), seen = {}, picked = [], scanned = 0;
+    for (var i = 0; i < list.length && picked.length < max && scanned < SETUP_SCAN; i++) {
+      scanned++;
+      var rep = null;
+      try { rep = await o.fetchReport(String(list[i].reportId)); } catch (e) { rep = null; }
+      var set = heroSetOf(rep, o.uid);
+      if (!set || seen[set.join('-')]) continue;
+      seen[set.join('-')] = 1;
+      picked.push({ reportId: String(list[i].reportId), heroes: set, time: Number(list[i].time) || 0 });
+    }
+    return { picked: picked, attacks: list.length, scanned: scanned };
+  }
+  function parseLogAnswer(e) {
+    if (!e || e.s !== 0) return null;
+    try { var d = typeof e.d === 'string' ? JSON.parse(e.d) : e.d; return d && Array.isArray(d.logs) ? d.logs : null; } catch (x) { return null; }
+  }
+  // Saves the picked reports as this player's armory setup (one per Snapshot device, so reruns update the same code).
+  async function saveReportSetup(picked, o) {
+    var body = { siteKey: o.siteKey, playerName: o.name, deviceId: SETUP_DEVICE, reportIds: picked.map(function (p) { return p.reportId; }).join(','),
+      marchGroups: picked.map(function (p, i) { return { name: 'March ' + (i + 1), heroIds: p.heroes }; }) };
+    try {
+      var r = await o.fetch(o.worker + '/report-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      var j = await readJson(r);
+      return r.ok && j && j.ok && j.shortcode ? { ok: true, code: String(j.shortcode) } : { ok: false, error: (j && j.error) || ('HTTP ' + r.status) };
+    } catch (e) { return { ok: false, error: 'network' }; }
+  }
+  function setupText(r) {
+    if (r.state === 'done') {
+      var n = r.picked.length;
+      return { tone: 'ok', text: n === 1 ? 'Armory report set up with your latest march.' : 'Armory report set up with your latest ' + n + ' different marches.' };
+    }
+    if (r.state === 'no-attacks') return { tone: 'warn', text: 'No Time Clash attacks found. Fight at least one Time Clash battle first.' };
+    if (r.state === 'unreadable') return { tone: 'bad', text: "Couldn't read your Time Clash reports. Try again later." };
+    if (r.state === 'no-log') return { tone: 'bad', text: "Couldn't get your Time Clash reports from the game. Try again." };
+    return { tone: 'bad', text: "Couldn't save the report setup. Try again later." };
+  }
+  return { SECTIONS: SECTIONS, MAX_BYTES: MAX_BYTES, prepare: prepare, sendToArmory: sendToArmory, syncText: syncText,
+    SETUP_MAX: SETUP_MAX, attackLogs: attackLogs, reportUrl: reportUrl, heroSetOf: heroSetOf, pickReports: pickReports,
+    parseLogAnswer: parseLogAnswer, saveReportSetup: saveReportSetup, setupText: setupText };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = __snapSync;
 
@@ -1891,13 +1951,97 @@ if (typeof module !== 'undefined' && module.exports) module.exports = __snapSync
       box.textContent = t.text; box.style.color = color; box.style.borderColor = t.tone === 'mute' ? '#30363d' : color;
       if (t.tone === 'ok' || t.tone === 'warn') {
         var a = document.createElement('a');
-        a.textContent = 'Open my armory'; a.href = 'https://2864tw.com/armory-report.html'; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        a.id = 'snap-open';
+        a.textContent = 'Open my armory'; a.href = armoryLink(savedCode(uid)); a.target = '_blank'; a.rel = 'noopener noreferrer';
         a.style.cssText = 'display:inline-block;margin-left:8px;color:#79c0ff;font-weight:600;';
         box.appendChild(a);
         var st = document.getElementById('snap-status');
         if (st) st.textContent = 'Your armory is already updated. Copy JSON is only a backup now.';
+        addReportSetup(box, uid);
       }
     }, function () { box.textContent = "Couldn't reach your armory. Use Copy JSON below instead."; box.style.color = '#f85149'; });
+  }
+
+  // "Set up my armory report": the newest report for each different march among the player's latest Time Clash
+  // attacks, saved as their armory setup (/report-config). The log is the game's own request (the one its report
+  // list sends), on the shared Ops request clock.
+  function armoryLink(code) { return 'https://2864tw.com/armory-report.html' + (code ? '?code=' + encodeURIComponent(code) : ''); }
+  function savedCode(uid) { try { return localStorage.getItem('snap_report_code_v1_' + uid) || ''; } catch (e) { return ''; } }
+  function opsPace() {
+    var P = window.__opsPace || (window.__opsPace = { at: 0 }), gap = 1100 + Math.floor(Math.random() * 200);
+    return new Promise(function (resolve) {
+      (function check() { var w = P.at + gap - Date.now(); if (w <= 0) { P.at = Date.now(); resolve(); } else setTimeout(check, Math.min(w, 1000)); })();
+    });
+  }
+  function readTimeClashLog() {
+    return new Promise(function (resolve) {
+      var done = false, to = setTimeout(function () { if (!done) { done = true; resolve(null); } }, 8000);
+      try {
+        var R = window.__require('RequestId').RequestId, rid = (R && R.Get_Colosseum_Self_Log) || 6413;
+        window.__require('NetMgr').NET.send(rid, {}, {}, function (e) { if (done) return; done = true; clearTimeout(to); resolve(__snapSync.parseLogAnswer(e)); });
+      } catch (e) { done = true; clearTimeout(to); resolve(null); }
+    });
+  }
+  function siteKeyOf(uid) {
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(uid))).then(function (b) {
+      return Array.prototype.map.call(new Uint8Array(b), function (x) { return ('0' + x.toString(16)).slice(-2); }).join('').slice(0, 16);
+    });
+  }
+  function addReportSetup(after, uid) {
+    var row = document.createElement('div');
+    row.id = 'snap-setup';
+    row.style.cssText = 'margin:0 0 10px;padding:10px 12px;border:1px solid #30363d;border-radius:6px;background:#161b22;color:#e6edf3;font-size:13px;line-height:1.5;';
+    var lead = document.createElement('div');
+    lead.textContent = 'Set up my armory report from my latest Time Clash attacks:';
+    row.appendChild(lead);
+    var line = document.createElement('div');
+    line.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;';
+    var sel = document.createElement('select');
+    sel.id = 'snap-setup-n';
+    sel.setAttribute('aria-label', 'How many different marches');
+    sel.style.cssText = 'min-height:40px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:4px 8px;font-size:14px;';
+    for (var n = 1; n <= __snapSync.SETUP_MAX; n++) { var op = document.createElement('option'); op.value = String(n); op.textContent = n === 1 ? '1 march' : 'up to ' + n + ' marches'; sel.appendChild(op); }
+    sel.value = String(__snapSync.SETUP_MAX);
+    var go = document.createElement('button');
+    go.id = 'snap-setup-go'; go.type = 'button'; go.textContent = 'Set up';
+    go.style.cssText = 'min-height:40px;padding:0 16px;background:#238636;color:#fff;border:none;border-radius:6px;font-weight:600;font-size:14px;';
+    line.appendChild(sel); line.appendChild(go); row.appendChild(line);
+    var msg = document.createElement('div');
+    msg.id = 'snap-setup-msg';
+    msg.style.cssText = 'margin-top:6px;color:#8b949e;font-size:12px;';
+    row.appendChild(msg);
+    after.parentNode.insertBefore(row, after.nextSibling);
+    go.onclick = function () {
+      go.disabled = true; sel.disabled = true; msg.style.color = '#8b949e'; msg.textContent = 'Reading your Time Clash reports...';
+      runReportSetup(uid, Number(sel.value)).then(function (r) {
+        var t = __snapSync.setupText(r), color = { ok: '#3fb950', warn: '#d29922', bad: '#f85149' }[t.tone] || '#8b949e';
+        msg.textContent = t.text; msg.style.color = color;
+        if (r.state === 'done') {
+          var a = document.createElement('a');
+          a.textContent = 'Open my armory'; a.href = armoryLink(r.code); a.target = '_blank'; a.rel = 'noopener noreferrer';
+          a.style.cssText = 'display:inline-block;margin-left:8px;color:#79c0ff;font-weight:600;';
+          msg.appendChild(a);
+          var top = document.getElementById('snap-open'); if (top) top.href = armoryLink(r.code);
+        } else { go.disabled = false; sel.disabled = false; }
+      });
+    };
+  }
+  async function runReportSetup(uid, max) {
+    uid = gameUid() || String(uid);                       // the game's own string UID: what report players carry
+    await opsPace();
+    var logs = await readTimeClashLog();
+    if (!logs) return { state: 'no-log' };
+    if (!__snapSync.attackLogs(logs).length) return { state: 'no-attacks' };
+    var pick = await __snapSync.pickReports(logs, { uid: uid, max: max, fetchReport: function (id) {
+      return fetch(__snapSync.reportUrl(id)).then(function (r) { return r.ok ? r.json() : null; });
+    } });
+    if (!pick.picked.length) return { state: 'unreadable' };
+    var name = ''; try { name = String(window.__require('DataCenter').DATA.UserData.Name || ''); } catch (e) {}
+    var sk = await siteKeyOf(uid);
+    var saved = await __snapSync.saveReportSetup(pick.picked, { fetch: window.fetch.bind(window), worker: SNAP_WORKER, siteKey: sk, name: name });
+    if (!saved.ok) return { state: 'save-failed', error: saved.error };
+    try { localStorage.setItem('snap_report_code_v1_' + uid, saved.code); } catch (e) {}
+    return { state: 'done', picked: pick.picked, code: saved.code };
   }
 
   // ─── Entry point ────────────────────────────────────────────────────────
