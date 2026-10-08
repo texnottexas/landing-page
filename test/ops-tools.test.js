@@ -45,9 +45,11 @@ test('the public registry names no player: no siteKey from player-data.json appe
   assert.ok(!/"owners"/.test(text), 'no owners list in the public registry');
 });
 
-test('gates match today: Class Talent Reset and Troop Optimizer need the code, the rest are for members', () => {
+test('gates match today: only Class Talent Reset needs the code, the rest are for members (Troop Optimizer opened 2026-10-08)', () => {
   const code = list.tools.filter((t) => t.gate === 'code').map((t) => t.id).sort();
-  assert.deepEqual(code, ['class-reset', 'troop']);
+  assert.deepEqual(code, ['class-reset']);
+  assert.equal(list.tools.find((t) => t.id === 'troop').gate, 'member');
+  assert.match(read('pages/rickroll.html'), /Class Talent Reset asks for this page\\'s code once per device\./);
   const page = read('pages/rickroll.html');
   const m = page.match(/PASS_SHA256 = '([0-9a-f]{64})'/);
   assert.ok(m, 'rickroll.html publishes its code hash');
