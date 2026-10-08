@@ -41,15 +41,26 @@ test('parseCatalog: drops rows without an id, a known kind or a safe file path; 
   assert.equal(F.parseCatalog('{"packs":[]}'), null);
 });
 
-test('target: the chat that is open; private needs another player, anything else is world', () => {
+test('target: like the game\'s own picker, the open chat\'s channel and Id with no name, for every kind of chat', () => {
+  // the game opens its picker with init(NowChoiceKey.Channel, NowChoiceKey.Id) and sends (channel, emoji, Id, '')
   assert.deepEqual(F.target(null, '42'), { channel: 0, uid: '', name: '', label: 'World' });
-  assert.deepEqual(F.target({ _channel: 0, _id: '0102_1_2864g123' }, '42'), { channel: 0, uid: '', name: '', label: 'World' });
-  assert.deepEqual(F.target({ _channel: 2, _id: '2500302443' }, '42'), { channel: 2, uid: '', name: '', label: 'Alliance' });
-  assert.deepEqual(F.target({ _channel: 1, _id: 217160163552, _name: 'Tex' }, '42'), { channel: 1, uid: '217160163552', name: 'Tex', label: 'Tex' });
-  assert.deepEqual(F.target({ _channel: 1, _id: '42', _name: 'Me' }, '42'), { channel: 0, uid: '', name: '', label: 'World' });
-  assert.deepEqual(F.target({ _channel: 1, _name: 'Nobody' }, '42'), { channel: 0, uid: '', name: '', label: 'World' });
+  assert.deepEqual(F.target({ _channel: 0, _id: '102_1_2864g123' }, '42'), { channel: 0, uid: '102_1_2864g123', name: '', label: 'World' });
+  assert.deepEqual(F.target({ _channel: 2, _id: '102_2_2864_500273604', _name: 'Alliance' }, '42'), { channel: 2, uid: '102_2_2864_500273604', name: '', label: 'Alliance' });
+  assert.deepEqual(F.target({ _channel: 5, _id: '102_5_994194adfcb944938909c1c8e9f662c9', _name: 'Husky Homies' }, '42'),
+    { channel: 5, uid: '102_5_994194adfcb944938909c1c8e9f662c9', name: '', label: 'Husky Homies' }, 'group chat');
+  assert.deepEqual(F.target({ _channel: 1, _id: 217160163552, _name: 'Tex' }, '42'), { channel: 1, uid: '217160163552', name: '', label: 'Tex' });
+  assert.deepEqual(F.target({ _channel: 202, _id: '7550807444272', _name: 'Tex' }, '42'), { channel: 202, uid: '7550807444272', name: '', label: 'Tex' }, 'temporary private chat');
+  assert.deepEqual(F.target({ _channel: 9, _id: '9102_9_157_en_55', _name: 'English' }, '42'), { channel: 9, uid: '9102_9_157_en_55', name: '', label: 'English' }, 'language chat');
+  assert.deepEqual(F.target({ Channel: 5, Id: 'g1', _channel: 5, _id: 'g1', _name: 'G' }, '42'), { channel: 5, uid: 'g1', name: '', label: 'G' }, 'the game\'s getters');
   assert.deepEqual(F.target({ _channel: 1, _id: '7' }, '42'), { channel: 1, uid: '7', name: '', label: 'Private chat' });
-  assert.deepEqual(F.target({ _channel: 9, _id: '9102_9_157_en_55' }, '42'), { channel: 0, uid: '', name: '', label: 'World' });
+  assert.deepEqual(F.target({ _channel: 5, _id: 'g2' }, '42'), { channel: 5, uid: 'g2', name: '', label: 'This chat' });
+});
+
+test('target: a chat with no Id, or a private chat with yourself, goes to world', () => {
+  assert.deepEqual(F.target({ _channel: 1, _name: 'Nobody' }, '42'), { channel: 0, uid: '', name: '', label: 'World' });
+  assert.deepEqual(F.target({ _channel: 5, _id: '' }, '42'), { channel: 0, uid: '', name: '', label: 'World' });
+  assert.deepEqual(F.target({ _channel: 1, _id: '42', _name: 'Me' }, '42'), { channel: 0, uid: '', name: '', label: 'World' });
+  assert.deepEqual(F.target({ _channel: 202, _id: '42', _name: 'Me' }, '42'), { channel: 0, uid: '', name: '', label: 'World' });
 });
 
 test('cooldown: one send every 3 s', () => {

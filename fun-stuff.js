@@ -10,7 +10,7 @@
   var C = window.FunStuffCore;
   if (!C) { try { alert('Fun Stuff did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-07';
+  var VERSION = '2026-10-08';
   var CDN = window.__FUN_CDN || 'https://cdn.jsdelivr.net/gh/texnottexas/tw-emoji-assets@44aa813c42e1d8d5ebf57453f69c8762642da5de';
   var LS_RECENT = 'fun_recent_v1', GIF_FLOOR_CFG = 630051;  // GameTools config: the level animated emojis need
 

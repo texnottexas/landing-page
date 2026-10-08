@@ -29,16 +29,18 @@
 
   function emojiKey(e) { return e.kind + ':' + e.id; }
 
-  // The open chat (newChatController NowChoiceKey): private with another player, alliance, else world.
+  // The open chat (newChatController NowChoiceKey), addressed the way the game's own picker does it: it opens with
+  // init(NowChoiceKey.Channel, NowChoiceKey.Id) and sends (channel, emoji, Id, '') for every kind of chat (world 0,
+  // private 1, alliance 2, group 5, language 9, temporary private 202, ...). No chat open, or no Id: world.
+  var PRIVATE = [1, 202], LABEL = { 0: 'World', 2: 'Alliance' };
   function target(key, myUid) {
     var world = { channel: 0, uid: '', name: '', label: 'World' };
     if (!key) return world;
-    if (key._channel === 2) return { channel: 2, uid: '', name: '', label: 'Alliance' };
-    if (key._channel === 1 && key._id != null && key._id !== '' && String(key._id) !== String(myUid)) {
-      var name = key._name ? String(key._name) : '';
-      return { channel: 1, uid: String(key._id), name: name, label: name || 'Private chat' };
-    }
-    return world;
+    var ch = Number(key.Channel != null ? key.Channel : key._channel), id = key.Id != null ? key.Id : key._id;
+    if (!isFinite(ch) || id == null || id === '') return world;
+    if (PRIVATE.indexOf(ch) >= 0 && String(id) === String(myUid)) return world;   // a chat with yourself
+    var name = key._name ? String(key._name) : '';
+    return { channel: ch, uid: String(id), name: '', label: LABEL[ch] || name || (PRIVATE.indexOf(ch) >= 0 ? 'Private chat' : 'This chat') };
   }
 
   function cooldown(lastAt, now) {

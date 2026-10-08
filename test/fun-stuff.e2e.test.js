@@ -117,8 +117,25 @@ test('the chat is re-read at each tap: alliance (2), then a private chat (1, uid
   await tap(page, 'static:193');
   await waitSends(page, 2);
   const s = await sends(page);
-  assert.deepEqual(strip(s), [{ fn: 'emotion', ch: 2, id: 192, uid: '', name: '' }, { fn: 'emotion', ch: 1, id: 193, uid: '217160163552', name: 'Rex' }]);
+  assert.deepEqual(strip(s), [{ fn: 'emotion', ch: 2, id: 192, uid: '102_2_2864_1', name: '' }, { fn: 'emotion', ch: 1, id: 193, uid: '217160163552', name: '' }]);
   assert.ok(s[1].at - s[0].at >= 3000, 'gap ' + (s[1].at - s[0].at));
+  await ctx.close();
+});
+
+test('a group chat and a temporary private chat get the emoji, addressed like the game\'s own picker', async () => {
+  const { ctx, page } = await open(() => { __fake.choice = { _channel: 5, _id: '102_5_994194adfcb944938909c1c8e9f662c9', _name: 'Husky Homies' }; });
+  await picker(page);
+  await waitText(page, '#fun-to', /Sending to: Husky Homies/);
+  await tap(page, 'static:192');
+  await waitSends(page, 1);
+  await page.evaluate(() => { __fake.choice = { _channel: 202, _id: '7550807444272', _name: 'Tex' }; });
+  await waitText(page, '#fun-to', /Sending to: Tex/, 3000);
+  await page.waitForTimeout(3100);
+  await tap(page, 'static:193');
+  await waitSends(page, 2);
+  assert.deepEqual(strip(await sends(page)), [
+    { fn: 'emotion', ch: 5, id: 192, uid: '102_5_994194adfcb944938909c1c8e9f662c9', name: '' },
+    { fn: 'emotion', ch: 202, id: 193, uid: '7550807444272', name: '' }]);
   await ctx.close();
 });
 
