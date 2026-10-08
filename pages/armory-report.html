@@ -3367,6 +3367,7 @@
   }
 </style>
 <!-- Microsoft Clarity -->
+<script src="guide-videos.js"></script>
 <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
         c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -23940,12 +23941,13 @@
     }
     if (!plat.isMobile) {
       var bmLabel = opts.bookmarkLabel || 'Inventory';
-      wrap.appendChild(makeDetails('iOS Safari setup', makeOl([
-        'Tap Share → Add Bookmark → Save (any page)',
-        'Use the "Show bookmarklet URL" box below to copy the bookmarklet link',
-        'Open Bookmarks → Edit → tap the new bookmark, clear the URL field, paste, rename to "' + bmLabel + '" and save',
-        'Open Safari and go to https://h5.topwargame.com/h5game/index.html — log in to your S2864 account if not already',
-        'Open the relevant panel inside the game (Bag for inventory, Beast list for bench), then tap the address bar, type "' + bmLabel + '", and tap the suggestion'
+      wrap.appendChild(makeDetails('iPhone (Firefox) setup', makeOl([
+        'Open this page in Firefox. Safari on iOS 27 blocks bookmarks like this one.',
+        'Open the menu and bookmark this page.',
+        'Use the "Show bookmarklet URL" box below to copy the bookmarklet link.',
+        'Open your bookmarks, edit the new one, paste over the address, rename it to "' + bmLabel + '" and save.',
+        'In Firefox, go to https://h5.topwargame.com/h5game/index.html and log in to your S2864 account if needed.',
+        'Open your bookmarks and tap "' + bmLabel + '".'
       ])));
       wrap.appendChild(makeDetails('Android Chrome setup', makeOl([
         'Open this page in Chrome',
@@ -28423,117 +28425,11 @@
   // ── Combined "Import TopWar Data" modal ──────────────────────────────────
   // Single entry point for the consolidated all-bookmarklet (v=2 envelope).
   // Shows per-section progress and refreshes every cloud-sync pill on the page.
-  // Unlisted YouTube walkthroughs Tex recorded 2026-05-19. Two browsers,
-  // since the bookmark-management UX is meaningfully different on each:
-  //   Safari (iOS / macOS) — uoAbjuFlIJ8
-  //   Chrome  (Android / desktop) — zK-jdYCSss4
-  // Returning users who already have an armory set up and a TW session
-  // alive in the browser can skip the intro by jumping to 3:20 (=200s).
-  var _AR_WALKTHROUGH_VIDEOS = {
-    safari: { id: 'uoAbjuFlIJ8', label: 'Safari (iOS / macOS)' },
-    chrome: { id: 'zK-jdYCSss4', label: 'Chrome (Android / desktop)' }
-  };
-  var _AR_WALKTHROUGH_SKIP_SECONDS = 200; // 3:20 — past the basic armory setup
-
-  // Embeds the bookmarklet walkthrough at the top of the Import modal.
-  // Detects the player's browser to pick a sensible default (Safari for
-  // iOS, Chrome for everything else) and offers a one-tap toggle to the
-  // other version. The "Skip to 3:20" link reloads the same iframe with
-  // a ?start= query so returning users don't have to scrub. Privacy-mode
-  // embed (youtube-nocookie.com) is on the CSP allowlist, so the iframe
-  // loads without tracking cookies set against this origin.
+  // Guide films (unlisted YouTube, built in texnottexas/tw-guide-films): the
+  // Armory walkthrough for Firefox and for Chrome on Android, plus a link to the
+  // desktop setup film. guide-videos.js owns the IDs, device default and embed.
   function _ar_buildWalkthroughVideoCard() {
-    var plat = _ar_detectPlatform();
-    var current = plat.isIOS ? 'safari' : 'chrome';
-
-    var card = document.createElement('div');
-    card.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.7rem .85rem;margin:0 0 .9rem;';
-
-    var head = document.createElement('div');
-    head.style.cssText = 'display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:.5rem;margin-bottom:.5rem;';
-    var title = document.createElement('div');
-    title.style.cssText = 'font-size:.85rem;font-weight:600;color:var(--text);';
-    title.textContent = 'Watch the walkthrough';
-    head.appendChild(title);
-    var sub = document.createElement('div');
-    sub.style.cssText = 'font-size:.7rem;color:var(--muted);';
-    sub.textContent = 'Full setup, paste, and save — about 6 minutes.';
-    head.appendChild(sub);
-    card.appendChild(head);
-
-    // Toggle row: pick which version of the video. Defaults match the
-    // detected browser; players who land on the "wrong" video flip it
-    // with one tap.
-    var toggleRow = document.createElement('div');
-    toggleRow.style.cssText = 'display:flex;gap:.4rem;margin-bottom:.55rem;flex-wrap:wrap;';
-    function makeToggle(key) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.dataset.video = key;
-      btn.style.cssText = 'padding:.3rem .65rem;font-size:.72rem;border-radius:6px;cursor:pointer;border:1px solid var(--border);font-family:inherit;';
-      btn.textContent = _AR_WALKTHROUGH_VIDEOS[key].label;
-      btn.onclick = function() { paint(key, 0); };
-      return btn;
-    }
-    var btnSafari = makeToggle('safari');
-    var btnChrome = makeToggle('chrome');
-    toggleRow.appendChild(btnSafari);
-    toggleRow.appendChild(btnChrome);
-    card.appendChild(toggleRow);
-
-    // Skip hint — shown above the player so first-time viewers see what
-    // the "Skip to 3:20" button does without having to discover it.
-    var hint = document.createElement('div');
-    hint.style.cssText = 'font-size:.72rem;color:var(--muted);margin-bottom:.55rem;line-height:1.45;';
-    var hintTxt = document.createElement('span');
-    hintTxt.textContent = 'Already set up your armory and signed into Top War in this browser? ';
-    hint.appendChild(hintTxt);
-    var skipBtn = document.createElement('button');
-    skipBtn.type = 'button';
-    skipBtn.style.cssText = 'background:none;border:none;padding:0;color:var(--accent);text-decoration:underline;cursor:pointer;font-size:inherit;font-family:inherit;';
-    skipBtn.textContent = 'Skip to 3:20 →';
-    skipBtn.onclick = function() { paint(current, _AR_WALKTHROUGH_SKIP_SECONDS); };
-    hint.appendChild(skipBtn);
-    card.appendChild(hint);
-
-    // 16:9 responsive frame. The iframe gets recreated on each paint so
-    // ?start= changes don't get cached by the embed player.
-    var frameWrap = document.createElement('div');
-    frameWrap.style.cssText = 'position:relative;width:100%;padding-bottom:56.25%;background:#000;border-radius:6px;overflow:hidden;';
-    card.appendChild(frameWrap);
-
-    function paint(which, startSec) {
-      current = which;
-      // Style the active toggle.
-      [btnSafari, btnChrome].forEach(function(b) {
-        var on = b.dataset.video === which;
-        b.style.background = on ? 'var(--accent)' : 'var(--card)';
-        b.style.color = on ? '#0d1117' : 'var(--text)';
-        b.style.fontWeight = on ? '700' : '500';
-        b.style.borderColor = on ? 'var(--accent)' : 'var(--border)';
-      });
-      // Replace iframe so the embed reloads cleanly with the new src.
-      while (frameWrap.firstChild) frameWrap.removeChild(frameWrap.firstChild);
-      var iframe = document.createElement('iframe');
-      var src = 'https://www.youtube-nocookie.com/embed/' + _AR_WALKTHROUGH_VIDEOS[which].id + '?rel=0';
-      if (startSec > 0) src += '&start=' + startSec;
-      iframe.src = src;
-      iframe.title = _AR_WALKTHROUGH_VIDEOS[which].label + ' walkthrough';
-      iframe.allow = 'accelerometer; encrypted-media; picture-in-picture';
-      iframe.allowFullscreen = true;
-      // The 2864tw.com response sets Referrer-Policy: same-origin (a
-      // Cloudflare Managed Transform); without an override, the iframe
-      // sends no Referer header on this cross-origin request and YouTube
-      // bails with "Video player configuration error" (error 153) because
-      // it can't verify the embed-origin allowlist. Overriding to
-      // strict-origin-when-cross-origin sends just the origin (no path,
-      // no query) — enough for YouTube's check, nothing leaked.
-      iframe.referrerPolicy = 'strict-origin-when-cross-origin';
-      iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;';
-      frameWrap.appendChild(iframe);
-    }
-    paint(current, 0);
-    return card;
+    return window.GuideVideos ? GuideVideos.buildCard('armory') : document.createElement('div');
   }
 
   function _ar_openImportModal(siteKey, onSaved) {
@@ -28553,17 +28449,25 @@
     p.textContent = 'One tap on h5.topwargame.com snapshots every supplement; paste the JSON below to upload them.';
     modal.appendChild(p);
 
-    // Bookmarklet walkthrough videos (Safari / Chrome). Sits at the top of
-    // the modal so first-time players see it before the paste box; the
-    // detected browser's version loads by default with a one-tap toggle
-    // to the other.
+    // Guide film for this browser, above the paste box.
     modal.appendChild(_ar_buildWalkthroughVideoCard());
+
+    // Easiest route: the Ops Center bookmark already includes Snapshot.
+    var opsTip = document.createElement('p');
+    opsTip.style.cssText = 'font-size:.8rem;margin:0 0 .6rem;';
+    opsTip.appendChild(document.createTextNode('Have the Ops Center bookmark? Run it in the game and tap Snapshot. '));
+    var opsLink = document.createElement('a');
+    opsLink.href = 'rickroll.html';
+    opsLink.style.color = 'var(--accent)';
+    opsLink.textContent = 'Get the Ops Center bookmark';
+    opsTip.appendChild(opsLink);
+    modal.appendChild(opsTip);
 
     modal.appendChild(_ar_buildBookmarkletPanel({
       fileName: 'all-bookmarklet.txt',
       dragLabel: 'TopWar Snapshot',
       bookmarkLabel: 'TopWar Snapshot',
-      panelLead: 'Drag to your bookmarks bar (desktop) or long-press to Add Bookmark (mobile). Tap it on the Top War game tab and the combined JSON copies to your clipboard in about 2.5 seconds.',
+      panelLead: 'Or use the TopWar Snapshot bookmark: drag it to your bookmarks bar (computer) or save it as a bookmark (phone). Run it on the Top War game tab, tap Copy combined JSON, then paste below.',
       usageSteps: [
         'Open https://h5.topwargame.com/h5game/index.html and let the game load.',
         'Tap the saved bookmark. The overlay snapshots inventory, beasts, chips, gear, heroes, and formation.',
