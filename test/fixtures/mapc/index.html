@@ -9,12 +9,15 @@
 // world and alliance chat with the game's box cards (t:48) and base shares (t:0 st:4), and sendToWorldChannel.
 // For Fun Stuff: the open chat (NowChoiceKey), the emoji sends (sendEmotionGroup / sendGIFGroup), the player's level
 // and the animated-emoji level floor (GameTools config 630051).
+// For the Alliance Defense Skipper: the siege state (activity type 26, alMonsterSiege), server time, alliance rank and
+// the skip request (sendPB 3700): a window opens, a skip marches the boss, the wave resolves battleMs later.
 window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent: [], answers: [], chat: [], handlers: {}, myMarch: {}, activity: true,
   gems: 1000, bag: 0, vip: 15, marchSecs: 2, buyMode: 'ok', useMode: 'ok', bagLagMs: 0, drift: 0, used: [], pending: [],
   cities: {}, claimed: {}, collects: 0, limitAfter: 0, viewError: '', lose901: 0, emptyReward: false, nullItem: false,
   serverNum: {}, serverIds: [], shares: [], msgSeq: 0,
   choice: null, level: 100, gifLevel: '20', emoji: [], emojiThrows: false, toasts: [],
   known: { emotion_new: [192, 193, 303], emoji_gif: [10005] },   // ids the game's tables hold
+  siege: null, rank: 5, battleMs: 500, waitSec: 60, loseAt: 0, refuseSkip: false, opens: {},
   // like the real client after login: world chat already holds history
   world: [{ _msgId: 'w0', _time: Math.floor(Date.now() / 1000) - 30, _worldId: '2864', _msgType: 0, _msg: 'hello world', _chatShareLinkData: null }] };
 // a test can keep this game logged out across reloads (a reconnect that does not work)
@@ -84,6 +87,30 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       return true;
     }
   };
+  // ---- Alliance Defense siege: open a wave's window, march, resolve
+  var MARCHING = 2147483647;
+  function nowSec() { return Math.floor(Date.now() / 1000); }
+  F.openWindow = function () { if (!F.siege) return; F.siege.nextTime = nowSec() + F.waitSec; F.opens[F.siege.round] = Date.now(); ec.emit('ACTIVITY_STATE_UPDATE', {}); };
+  F.march = function () {
+    if (!F.siege || F.siege.nextTime === MARCHING) return;
+    F.siege.nextTime = MARCHING; ec.emit('ACTIVITY_STATE_UPDATE', {});
+    var r = F.siege.round;
+    setTimeout(function () {
+      if (!F.siege || F.siege.round !== r) return;
+      if (F.loseAt === r) F.siege.loseTimes++; else F.siege.winTimes++;
+      F.siege.round = r + 1;
+      if (F.siege.round > F.siege.maxRound) { F.siege.isEnd = 1; ec.emit('ACTIVITY_STATE_UPDATE', {}); return; }
+      F.openWindow();
+    }, F.battleMs);
+  };
+  setInterval(function () { if (F.siege && F.siege.nextTime < MARCHING && nowSec() >= F.siege.nextTime) F.march(); }, 100);   // the timer runs out
+  NET.sendPB = function (rid, p, target, cb) {
+    F.sent.push({ rid: rid, p: JSON.parse(JSON.stringify(p)), at: Date.now(), target: typeof target });
+    var ok = rid === 3700 && !F.refuseSkip && F.siege && F.siege.nextTime !== MARCHING && nowSec() < F.siege.nextTime;
+    if (ok) { F.siege.nextTime = nowSec(); setTimeout(F.march, 100); }
+    setTimeout(function () { cb({ pbAck: { header: ok ? { s: 0 } : { s: 3, d: 'defend_quick_07' } } }); }, 20);
+    return true;
+  };
   var activity = { showUiType: 'ActivityTitanBlessing', id: 1, extra: {} };
   Object.defineProperty(activity.extra, 'left', { get: function () { return F.left; } });
   var chatInst = { _allianceRoomId: '102_2_2864_1', _userChatList: { '2102_2_2864_1': F.chat, '0102_1_2864g123': F.world },
@@ -107,14 +134,15 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
   Object.defineProperty(chatInst, 'NowChoiceKey', { get: function () { return F.choice; } });   // null: chat panel closed
   var PARTY = { 2: 1, 3: 2, 4: 3 };
   window.__require = function (name) {
-    if (name === 'DataCenter') return { DATA: { UserData: { Name: F.name, StrUid: F.uid, _resourceData: { get _gold() { return F.gems; } },
-      getItemAmount: function (id) { return id === 520002 ? F.bag : 0; }, get VipLevel() { return F.vip; }, get Level() { return F.level; },
+    if (name === 'DataCenter') return { DATA: { get ServerTime() { return nowSec(); }, UserData: { Name: F.name, StrUid: F.uid, _resourceData: { get _gold() { return F.gems; } },
+      getItemAmount: function (id) { return id === 520002 ? F.bag : 0; }, get VipLevel() { return F.vip; }, get Level() { return F.level; }, get Alliance() { return { Rank: F.rank }; },
       get itemCityRewardReceivedNum() { return F.serverNum; }, get itemCityRewardReceivedInstIds() { return F.serverIds; } } } };
     if (name === 'newChatController') return { newChatController: { _instance: chatInst } };
     if (name === 'NetMgr') return { NET: NET };
     if (name === 'GameTools') return { default: { getDataConfigData: function (id) { return id === 630051 ? F.gifLevel : null; } } };
     if (name === 'EventCenter') return { EventCenter: { getInst: function () { return ec; } } };
-    if (name === 'ActivityController') return { ActivityController: { Instance: { _activityList: F.activity ? [activity] : [] } } };
+    if (name === 'ActivityController') return { ActivityController: { Instance: { _activityList: F.activity ? [activity] : [],
+      getActivityByActivitytype: function (t) { return t === 26 && F.siege ? { id: 153, alMonsterSiege: F.siege } : null; } } } };
     if (name === 'NWorldMapMarchModel') return { default: { instance: { _myMarch: F.myMarch } } };
     if (name === 'PlayerInfo') return { default: function () { var u = ''; this.update = function (s) { try { u = JSON.parse(s).username; } catch (e) { u = ''; } }; this.getDisplayName = function () { return u; }; } };
     if (name === 'TableManager') return { TABLE: { getTableDataById: function (t, id) {
