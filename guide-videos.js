@@ -5,24 +5,24 @@
   'use strict';
 
   var FILMS = {
-    armoryFirefox: { id: '_Rg_DS0y4rU', label: 'Firefox', shape: 'portrait' },
-    armoryChrome: { id: '6pOc1vAZ2d4', label: 'Chrome (Android)', shape: 'portrait' },
-    opsFirefox: { id: 'FAlCY0fbm3o', label: 'Firefox', shape: 'portrait' },
-    opsChrome: { id: 'B85TFeNg0RA', label: 'Chrome (Android)', shape: 'portrait' },
+    armoryFirefox: { id: 'oJzwzk23Wy0', label: 'Firefox', shape: 'portrait' },
+    armoryChrome: { id: 'AeJQdsfFOlQ', label: 'Chrome (Android)', shape: 'portrait' },
+    opsFirefox: { id: 'kFM_6rfewek', label: 'Firefox', shape: 'portrait' },
+    opsChrome: { id: 'rpVzcwY9kbw', label: 'Chrome (Android)', shape: 'portrait' },
     opsDesktop: { id: '7u_bMEbqXpk', label: 'Desktop', shape: 'landscape' }
   };
 
   var SETS = {
     armory: {
       title: 'Watch the walkthrough',
-      sub: 'Report, snapshot and save. About 2 minutes.',
+      sub: 'Battles, one bookmark, Snapshot. About 2 minutes.',
       films: ['armoryFirefox', 'armoryChrome'],
       pick: { ios: 'armoryFirefox', android: 'armoryChrome', desktop: 'armoryFirefox' },
       skip: {
-        hint: 'Already have your report? ',
-        label: 'Skip to the Snapshot step →',
-        // Seconds from tw-guide-films out/youtube/skip.json (start of the Ops bookmark scene).
-        at: { armoryFirefox: 73, armoryChrome: 73 }
+        hint: 'Already have the Ops Center bookmark? ',
+        label: 'Skip to Snapshot →',
+        // Seconds from tw-guide-films out/youtube/skip.json (start of the Snapshot chapter).
+        at: { armoryFirefox: 66, armoryChrome: 75 }
       },
       link: { film: 'opsDesktop', text: 'On a computer? Desktop setup video' },
       collapsed: false
