@@ -17,7 +17,7 @@ const UID = 'test-owner-uid';
 const SK = crypto.createHash('sha256').update(UID).digest('hex').slice(0, 16);
 const T = 260617001;                                     // a box's item is T + its type
 
-let server, base, browser, feed, feedMode, feedHits, lease, shareMode, shareLog;
+let server, base, browser, feed, feedMode, feedHits, lease, shareMode, shareLog, usageLog, usageMode;
 test.before(async () => {
   server = http.createServer((req, res) => {
     const name = decodeURIComponent(req.url.split('?')[0].replace(/^\/+/, '')) || 'index.html';
@@ -48,6 +48,15 @@ test.before(async () => {
       });
       return;
     }
+    if (name === 'ops/usage') {                           // tool usage reports (Tex, 2026-10-08)
+      let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
+        let j = null; try { j = JSON.parse(b); } catch (e) {}
+        usageLog.push({ body: j, raw: b, type: req.headers['content-type'], at: Date.now() });
+        if (usageMode === 'down') { res.writeHead(503, Object.assign({ 'content-type': 'application/json' }, cors)); res.end('{"ok":false}'); return; }
+        res.writeHead(200, Object.assign({ 'content-type': 'application/json' }, cors)); res.end('{"ok":true}');
+      });
+      return;
+    }
     if (name === 'mapcollector/report') {                 // Map Collector's worker, just enough to run
       if (req.method === 'OPTIONS') { res.writeHead(204, cors); res.end(); return; }
       let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
@@ -70,7 +79,7 @@ test.before(async () => {
   browser = await chromium.launch({ channel: 'chrome' });
 });
 test.after(async () => { await browser.close(); server.close(); });
-test.beforeEach(() => { feed = []; feedMode = 'ok'; feedHits = 0; lease = {}; shareMode = 'ok'; shareLog = []; });
+test.beforeEach(() => { feed = []; feedMode = 'ok'; feedHits = 0; lease = {}; shareMode = 'ok'; shareLog = []; usageLog = []; usageMode = 'ok'; });
 
 const box = (o) => Object.assign({ server: 619, x: 404, y: 612, owner: 'A', type: 1, endMs: Date.now() + 600000 }, o);
 
@@ -765,5 +774,35 @@ test('LEASE-7: no successful renewal within the limit turns Share off before the
   shareMode = 'down';
   await waitText(page, '#mbx-shared', /Lost contact with the share check/, 8000);
   assert.equal(await page.getAttribute('#mbx-share', 'aria-pressed'), 'false');
+  await ctx.close();
+});
+
+// ---- tool usage: how many boxes this player has collected today, for push-admin's Tool usage tab (Tex, 2026-10-08)
+const waitUsage = async (n) => { for (let i = 0; i < 100 && usageLog.length < n; i++) await new Promise((r) => setTimeout(r, 100)); };
+
+test('USAGE-1: it reports today\'s box count at launch and after each collect: siteKey, name, tool, version, count, game day; no UID', async () => {
+  feed = [box({ server: 619, x: 404, y: 612, type: 1, endMs: Date.now() + 600000 }), box({ server: 4002, x: 400, y: 596, type: 2, endMs: Date.now() + 300000 })];
+  const { ctx, page } = await open((t) => {
+    __fake.cities['4002:400:596'] = { pid: '111', itemId: t + 2, instanceId: 'i1' };
+    __fake.cities['619:404:612'] = { pid: '222', itemId: t + 1, instanceId: 'i2' };
+  }, T);
+  await launch(page);
+  await waitSent(page, 4);
+  await waitUsage(3);
+  const day = await page.evaluate(() => MaskBoxesCore.gameDay(Date.now()));
+  assert.deepEqual(usageLog.map((u) => u.body), [0, 1, 2].map((n) => ({ siteKey: SK, name: 'Tex', tool: 'mask-boxes', version: '2026-10-08.2', count: n, day })));
+  usageLog.forEach((u) => { assert.match(u.type, /^text\/plain/); assert.ok(!u.raw.includes(UID), 'no UID'); });
+  await ctx.close();
+});
+
+test('USAGE-2: a usage report that fails changes nothing: boxes are still collected and counted', async () => {
+  usageMode = 'down';
+  feed = [box({ server: 619, x: 404, y: 612, type: 1, endMs: Date.now() + 600000 })];
+  const { ctx, page } = await open((t) => { __fake.cities['619:404:612'] = { pid: '222', itemId: t + 1, instanceId: 'i2' }; }, T);
+  await launch(page);
+  await waitSent(page, 2);
+  await waitText(page, '#mbx-t1', /1\/20/);
+  await waitUsage(2);
+  assert.deepEqual(usageLog.map((u) => u.body.count), [0, 1], 'one try each, no retry');
   await ctx.close();
 });

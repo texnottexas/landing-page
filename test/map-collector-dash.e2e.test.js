@@ -10,7 +10,7 @@ const { chromium } = require('playwright');
 
 const PAGE = path.join(__dirname, '..', 'pages', 'map-collector.html');
 const TEX = 'd847a198622a518d', REX = 'c3c6f3200a4ec1fb';
-let server, base, browser, state, asked, commands, posted, seenHours;
+let server, base, browser, state, asked, commands, posted, seenHours, usageAsked;
 const NOW = Date.now();
 const S = () => ({ ok: true, now: NOW, window: { hours: 24, since: NOW - 864e5 },
   players: [{ siteKey: TEX, name: 'Tex' }, { siteKey: REX, name: 'Rеx' }], player: TEX,
@@ -24,6 +24,16 @@ const S = () => ({ ok: true, now: NOW, window: { hours: 24, since: NOW - 864e5 }
     { id: '4', noticed_at: NOW - 30000, spawner: 'B', x: 5, y: 6, state: 'gone', reward: '', reason: 'Location error', arrive_at: 0 }
   ],
   settings: { speedOn: false, gemReserve: 10000, gemCap: 1500, updatedAt: 0 }, today: { speedups: 3, gems: 37 }, speedTotals: { speedups: 3, gems: 37 }, truncated: false });
+
+const USAGE_TODAY = '2026-10-08';
+const USAGE_ROWS = [
+  { day: USAGE_TODAY, siteKey: 'b3cf33154662e254', name: 'Samson', tool: 'mask-boxes', version: 'v', opens: 1, count: 12, firstAt: NOW - 7200e3, lastAt: NOW - 60e3 },
+  { day: USAGE_TODAY, siteKey: 'b3cf33154662e254', name: 'Samson', tool: 'snapshot', version: 'v', opens: 2, count: null, firstAt: NOW - 9000e3, lastAt: NOW - 600e3 },
+  { day: USAGE_TODAY, siteKey: 'aaaaaaaaaaaaaaaa', name: '<img src=x onerror=window.__pwned=1>', tool: 'fun-stuff', version: 'v', opens: 3, count: null, firstAt: NOW - 3600e3, lastAt: NOW - 1800e3 },
+  { day: USAGE_TODAY, siteKey: 'cccccccccccccccc', name: 'Willow', tool: 'mask-boxes', version: 'v', opens: 1, count: 0, firstAt: NOW - 5000e3, lastAt: NOW - 4000e3 },
+  { day: '2026-10-07', siteKey: 'cccccccccccccccc', name: 'Willow', tool: 'mask-boxes', version: 'v', opens: 2, count: 5, firstAt: NOW - 90000e3, lastAt: NOW - 86000e3 },
+  { day: USAGE_TODAY, siteKey: 'dddddddddddddddd', name: 'Newbie', tool: 'brand-new-tool', version: 'v', opens: 1, count: null, firstAt: NOW - 100e3, lastAt: NOW - 100e3 }
+];
 
 test.before(async () => {
   server = http.createServer((req, res) => {
@@ -45,6 +55,18 @@ test.before(async () => {
       });
       return;
     }
+    if (req.url.startsWith('/mapcollector/usage')) {      // tool usage, Tex's password only (Tex, 2026-10-08)
+      const u = new URL(req.url, 'http://x'), days = Number(u.searchParams.get('days')) || 1;
+      usageAsked.push({ days: u.searchParams.get('days'), pw: req.headers['x-map-collector-password'] });
+      const since = days === 1 ? USAGE_TODAY : '2026-10-02';
+      res.writeHead(state.usage ? 200 : 403, Object.assign({ 'content-type': 'application/json' }, cors));
+      res.end(JSON.stringify(state.usage ? { ok: true, today: USAGE_TODAY, since, days, rows: USAGE_ROWS.filter((x) => x.day >= since) } : { ok: false, error: 'not_allowed' }));
+      return;
+    }
+    if (req.url.startsWith('/ops-tools.json')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(fs.readFileSync(path.join(__dirname, '..', 'ops-tools.json'))); return;
+    }
     if (req.url.startsWith('/mapcollector/state')) {
       const pw = req.headers['x-map-collector-password'];
       seenHours.push(new URL(req.url, 'http://x').searchParams.get('hours'));
@@ -64,7 +86,7 @@ test.before(async () => {
   browser = await chromium.launch({ channel: 'chrome' });
 });
 test.after(async () => { await browser.close(); server.close(); });
-test.beforeEach(() => { state = S(); asked = []; commands = []; posted = []; seenHours = []; });
+test.beforeEach(() => { state = S(); asked = []; commands = []; posted = []; seenHours = []; usageAsked = []; });
 
 async function open(pw, extra) {
   const ctx = await browser.newContext({ viewport: { width: 375, height: 740 } });
@@ -325,4 +347,56 @@ test('speed-ups panel: collapsed by default with the switch and today\'s spend i
   await page.click('#dash-speed-more');
   await page.waitForSelector('#dash-reserve', { state: 'hidden' });
   await ctx.close();
+});
+
+// ---- tool usage: who used which Ops Center tool, for Tex's password only (Tex, 2026-10-08)
+const usagePlayers = (page) => page.$$eval('#dash-usage-list .usage-player', (els) => els.map((e) => ({
+  name: e.querySelector('.usage-name').textContent,
+  tools: [...e.querySelectorAll('.usage-tool')].map((t) => t.textContent)
+})));
+
+test('USAGE-1: a password the worker allows sees who used which tool since reset, newest first, by tool title; names are text', async () => {
+  state.usage = true;
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('#dash-usage-list .usage-player');
+  assert.ok(await page.isVisible('#dash-usage'));
+  assert.deepEqual(usageAsked.map((u) => [u.days, u.pw]), [['1', 'good pass']]);
+  assert.deepEqual(await usagePlayers(page), [
+    { name: 'Samson', tools: ['Mask Mystery Boxes · 12 boxes', 'Snapshot ×2'] },
+    { name: 'Newbie', tools: ['brand-new-tool'] },
+    { name: '<img src=x onerror=window.__pwned=1>', tools: ['Fun Stuff ×3'] },
+    { name: 'Willow', tools: ['Mask Mystery Boxes · 0 boxes'] }
+  ]);
+  assert.match(await page.textContent('#dash-usage-sum'), /4 players since reset/);
+  assert.match(await page.textContent('#dash-usage-tools'), /Mask Mystery Boxes: 2 players, 12 boxes/);
+  assert.equal(await page.evaluate(() => window.__pwned), undefined);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= 375), 'no sideways scroll');
+  assert.ok(!/\u2014/.test(await page.textContent('#dash-usage')), 'no em dash');
+  await page.screenshot({ path: path.join(process.env.SNAP_SHOT_DIR || require('node:os').tmpdir(), 'mapc-usage.png'), fullPage: true });
+  await ctx.close();
+});
+
+test('USAGE-2: any other password: no tool usage panel, and usage is never asked for', async () => {
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('li.map');
+  await page.waitForTimeout(500);
+  assert.equal(await page.isVisible('#dash-usage'), false);
+  assert.deepEqual(usageAsked, []);
+  await ctx.close();
+});
+
+test('USAGE-3: the period switch sets the usage days too and adds each player up across days', async () => {
+  state.usage = true;
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('#dash-usage-list .usage-player');
+  await page.click('#dash-period button[data-h="168"]');
+  await page.waitForFunction(() => /in the last 7 days/.test(document.getElementById('dash-usage-sum').textContent));
+  assert.equal(usageAsked.at(-1).days, '7');
+  assert.deepEqual((await usagePlayers(page)).find((p) => p.name === 'Willow').tools, ['Mask Mystery Boxes ×3 · 5 boxes']);
+  await ctx.close();
+});
+
+test('USAGE-4: the real page lets itself read ops-tools.json (connect-src has self) for the tool titles', () => {
+  const csp = fs.readFileSync(PAGE, 'utf8').match(/connect-src ([^;"]*)/)[1];
+  assert.match(csp, /'self'/);
 });

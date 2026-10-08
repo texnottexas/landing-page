@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
 <meta name="theme-color" content="#0a0e13">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://push-worker.27tb8s6fct.workers.dev; img-src 'self' data: https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev; img-src 'self' data: https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
 <title>Map Collector</title>
 <link rel="icon" href="favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -139,6 +139,21 @@
   /* feed */
   .feed-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
   .feed-head .label { margin: 0; }
+
+  /* tool usage (Tex's password only) */
+  #dash-usage { margin-top: 16px; }
+  .usage-sum { font: 500 12px/1.2 var(--mono); color: var(--faint); }
+  #dash-usage-tools { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 14px; font-size: 13px; color: var(--muted); }
+  #dash-usage-tools b { color: var(--text); font-weight: 600; }
+  #dash-usage-tools:empty { display: none; }
+  #dash-usage-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0 24px; }
+  @media (min-width: 880px) { #dash-usage-list { grid-template-columns: 1fr 1fr; } }
+  .usage-player { padding: 10px 0; border-top: 1px solid var(--line-soft); min-width: 0; }
+  .usage-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .usage-name { font-weight: 600; overflow-wrap: anywhere; }
+  .usage-when { font: 500 12px/1 var(--mono); color: var(--faint); white-space: nowrap; }
+  .usage-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .usage-tool { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); }
   #dash-filter { display: flex; gap: 6px; flex-wrap: wrap; }
   #dash-filter button { min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 13px; }
   #dash-filter button[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); font-weight: 600; }
@@ -246,6 +261,12 @@
         <ul id="dash-maps"></ul>
       </section>
     </div>
+    <section class="panel" id="dash-usage" hidden>
+      <div class="feed-head"><h2 class="label">Tool usage</h2><span class="usage-sum" id="dash-usage-sum" translate="no"></span></div>
+      <div id="dash-usage-tools"></div>
+      <ul id="dash-usage-list"></ul>
+      <p class="note" id="dash-usage-note"></p>
+    </section>
   </main>
 </div>
 <script>
@@ -313,8 +334,76 @@
         if (j.player) lsSet(LS_PLAYER, j.player);
         setText($('dash-note'), '');
         showMain(); render();
+        if (j.usage === true) loadUsage(pw); else $('dash-usage').hidden = true;
       }, function (e) { setText($('dash-note'), e && e.message && !/fetch|network/i.test(e.message) ? e.message : 'Can\'t reach the server right now. Retrying.'); })
       .then(function () { busy = false; if (again) { again = false; load(false); } });
+  }
+  // Who used which Ops Center tool (Tex, 2026-10-08): only when the state answer says this password may see it.
+  // The period switch picks the game days: 24 h is today since reset (12:00 PM ET), then 3, 7 or 14 days.
+  var toolTitles = null, usageSeq = 0, COUNT_UNIT = { 'mask-boxes': ['box', 'boxes'] };
+  function loadToolTitles() {
+    if (toolTitles) return Promise.resolve(toolTitles);
+    return fetch('ops-tools.json', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var t = {};
+        (j && Array.isArray(j.tools) ? j.tools : []).forEach(function (x) { if (x && typeof x.id === 'string') t[x.id] = String(x.title || x.id); });
+        toolTitles = t; return t;
+      }, function () { return {}; });
+  }
+  function loadUsage(pw) {
+    var seq = ++usageSeq, days = Math.round(hours() / 24);
+    var ask = fetch(WORKER + '/mapcollector/usage?days=' + days, { headers: { 'X-Map-Collector-Password': pw }, cache: 'no-store' })
+      .then(function (r) { if (r.status === 403) return null; if (!r.ok) throw new Error('http ' + r.status); return r.json(); });
+    Promise.all([loadToolTitles(), ask]).then(function (res) {
+      if (seq !== usageSeq) return;
+      var j = res[1];
+      if (!j || !Array.isArray(j.rows)) { $('dash-usage').hidden = true; return; }
+      setText($('dash-usage-note'), '');
+      renderUsage(j, res[0]);
+      $('dash-usage').hidden = false;
+    }, function () { if (seq === usageSeq) setText($('dash-usage-note'), 'Can\'t load tool usage right now. Retrying.'); });
+  }
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+  function renderUsage(j, titles) {
+    var byPlayer = {}, byTool = {};
+    j.rows.forEach(function (x) {
+      if (!x || typeof x.siteKey !== 'string' || typeof x.tool !== 'string') return;
+      var p = byPlayer[x.siteKey] || (byPlayer[x.siteKey] = { name: '', lastAt: 0, tools: {} });
+      if (x.lastAt >= p.lastAt) { p.lastAt = x.lastAt; p.name = String(x.name || ''); }
+      var t = p.tools[x.tool] || (p.tools[x.tool] = { id: x.tool, opens: 0, count: null, lastAt: 0 });
+      t.opens += Number(x.opens) || 0;
+      if (x.count != null) t.count = (t.count || 0) + (Number(x.count) || 0);
+      t.lastAt = Math.max(t.lastAt, Number(x.lastAt) || 0);
+      var s = byTool[x.tool] || (byTool[x.tool] = { id: x.tool, players: {}, count: null });
+      s.players[x.siteKey] = 1;
+      if (x.count != null) s.count = (s.count || 0) + (Number(x.count) || 0);
+    });
+    function title(id) { return titles[id] || id; }
+    function unit(id, n) { var u = COUNT_UNIT[id]; return u ? plural(n, u[0], u[1]) : String(n); }
+    function when(ms) { var d = new Date(ms); return d.toDateString() === new Date(now()).toDateString() ? clock(ms) : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' + clock(ms); }
+    var players = Object.keys(byPlayer).map(function (k) { return byPlayer[k]; }).sort(function (a, b) { return b.lastAt - a.lastAt; });
+    var span = j.days === 1 ? 'since reset' : 'in the last ' + j.days + ' days';
+    setText($('dash-usage-sum'), players.length ? plural(players.length, 'player', 'players') + ' ' + span : 'Nobody ' + span);
+    var sum = $('dash-usage-tools'); sum.textContent = '';
+    Object.keys(byTool).map(function (k) { return byTool[k]; })
+      .sort(function (a, b) { return Object.keys(b.players).length - Object.keys(a.players).length || title(a.id).localeCompare(title(b.id)); })
+      .forEach(function (s) {
+        var row = el('span');
+        row.appendChild(el('b', null, title(s.id)));
+        row.appendChild(document.createTextNode(': ' + plural(Object.keys(s.players).length, 'player', 'players') + (s.count != null ? ', ' + unit(s.id, s.count) : '')));
+        sum.appendChild(row);
+      });
+    var list = $('dash-usage-list'); list.textContent = '';
+    players.forEach(function (p) {
+      var li = el('li', 'usage-player'), head = el('div', 'usage-head'), chips = el('div', 'usage-chips');
+      head.appendChild(el('span', 'usage-name', p.name));
+      head.appendChild(el('span', 'usage-when', when(p.lastAt)));
+      Object.keys(p.tools).map(function (k) { return p.tools[k]; }).sort(function (a, b) { return b.lastAt - a.lastAt; }).forEach(function (t) {
+        chips.appendChild(el('span', 'usage-tool', title(t.id) + (t.opens > 1 ? ' ×' + t.opens : '') + (t.count != null ? ' · ' + unit(t.id, t.count) : '')));
+      });
+      li.appendChild(head); li.appendChild(chips); list.appendChild(li);
+    });
   }
   function schedule() { clearInterval(timer); timer = setInterval(function () { if (document.visibilityState === 'visible') load(false); }, REFRESH_MS); }
 

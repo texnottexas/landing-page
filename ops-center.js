@@ -7,6 +7,7 @@
   if (window.OpsCenter && window.OpsCenter.toggle) { window.OpsCenter.toggle(); return; }
 
   var BASE = window.__OPS_BASE || 'https://2864tw.com/';
+  var WORKER = 'https://push-worker.27tb8s6fct.workers.dev';
   var LS = { recent: 'ops_recent_v1', seen: 'ops_seen_v1', unlock: 'ops_unlock_v1', member: 'ops_member_v1' };
   var HOME_SERVER = 2864;
   var MEMBER_TTL = 7 * 24 * 3600 * 1000;
@@ -96,6 +97,16 @@
         S.member = m; S.memberErr = null;
       });
     }).catch(function () { S.member = null; S.memberErr = 'net'; });
+  }
+  // Tool usage (Tex, 2026-10-08): who opened which tool, for the Map Collector dashboard's Tool usage panel (Tex only). siteKey and in-game name only,
+  // never the UID; plain text, so no preflight; fire and forget, so a failed report never touches the tool.
+  function reportUse(t) {
+    if (!S.siteKey) return;
+    var name = String(playerName() || (S.member && S.member.name) || '').slice(0, 40);
+    try {
+      fetch(WORKER + '/ops/usage', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, cache: 'no-store', keepalive: true,
+        body: JSON.stringify({ siteKey: S.siteKey, name: name, tool: t.id, version: String(t.version), open: true }) }).catch(function () {});
+    } catch (e) {}
   }
   function toolById(id) { return S.list ? S.list.tools.filter(function (t) { return t.id === id; })[0] : null; }
   function statusOf(tool, ck) { return C().tileStatus(tool, { member: !!S.member, unlocked: S.unlocked, checks: ck }); }
@@ -241,6 +252,7 @@
   function launch(t) {
     S.recent = C().pushRecent(S.recent, t.id); lsSet(LS.recent, S.recent);
     S.seen[t.id] = t.version; lsSet(LS.seen, S.seen);
+    reportUse(t);
     closeCard();
     S.tool = t; S.fabHidden = false;
     S.tracker = C().trackerReduce(C().trackerInit(), { type: 'launch', at: Date.now() });

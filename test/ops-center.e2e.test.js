@@ -37,15 +37,24 @@ test.before(async () => {
 });
 test.after(async () => { await browser.close(); server.close(); });
 
-async function open(viewport, before) {
+const WORKER = 'https://push-worker.27tb8s6fct.workers.dev';
+async function open(viewport, before, o) {
   const ctx = await browser.newContext({ viewport });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => { throw e; });
+  // the worker is never reached from a test: usage reports are recorded here (or refused, to show they can fail)
+  const usage = [];
+  await ctx.route(WORKER + '/**', (rt) => {
+    const r = rt.request();
+    usage.push({ url: r.url(), method: r.method(), type: r.headers()['content-type'], body: r.postData() });
+    if (o && o.workerDown) return rt.abort();
+    rt.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"ok":true}' });
+  });
   await page.goto(base);
   if (before) await page.evaluate(before);
   await page.addScriptTag({ url: base + 'ops-center.js' });          // what the bookmarklet does
   await page.waitForSelector('.ops-card');
-  return { ctx, page };
+  return { ctx, page, usage };
 }
 const PHONE = { width: 375, height: 740 }, DESKTOP = { width: 1280, height: 800 };
 const tileNames = (page) => page.$$eval('.ops-tile .ops-tname', (els) => els.map((e) => e.textContent));
@@ -368,4 +377,35 @@ test('owner-only tile shows for the owner and is hidden for any other account', 
   await b.page.waitForTimeout(200);
   assert.ok(!(await tileNames(b.page)).includes('Owner Tool'), 'search cannot surface it either');
   await b.ctx.close();
+});
+
+// Tool usage (Tex, 2026-10-08): each launch tells the worker who opened which tool: siteKey, in-game name, tool id
+// and version. Plain text, so no preflight. Never the UID, and a failed report never stops the tool.
+test('launching a tool reports one open: siteKey, name, tool and version, no UID', async () => {
+  const { ctx, page, usage } = await open(PHONE);
+  await page.waitForSelector('.ops-tile');
+  await clickTile(page, 'Alpha Tool');
+  assert.equal(usage.length, 0, 'opening the menu or a tool page reports nothing');
+  await page.click('.ops-btn.primary');
+  await page.waitForSelector('#fake-alpha');
+  for (let i = 0; i < 20 && !usage.length; i++) await page.waitForTimeout(100);
+  assert.equal(usage.length, 1);
+  assert.equal(usage[0].url, WORKER + '/ops/usage');
+  assert.equal(usage[0].method, 'POST');
+  assert.match(usage[0].type, /^text\/plain/);
+  assert.deepEqual(JSON.parse(usage[0].body), { siteKey: '03c2cd3196b2f243', name: 'Tester', tool: 'alpha', version: '1', open: true });
+  assert.ok(!usage[0].body.includes('1000000000001'), 'no UID');
+  await ctx.close();
+});
+
+test('a usage report that fails changes nothing: the tool still opens and closes back to the menu', async () => {
+  const { ctx, page, usage } = await open(PHONE, null, { workerDown: true });
+  await page.waitForSelector('.ops-tile');
+  await clickTile(page, 'Alpha Tool');
+  await page.click('.ops-btn.primary');
+  await page.waitForSelector('#fake-alpha');
+  await page.click('#fake-alpha-close');
+  await page.waitForSelector('.ops-card', { timeout: 3000 });
+  assert.equal(usage.length, 1, 'tried once, no retry');
+  await ctx.close();
 });

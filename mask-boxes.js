@@ -13,7 +13,7 @@
   var C = window.MaskBoxesCore;
   if (!C) { try { alert('Mask Mystery Boxes did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-08';
+  var VERSION = '2026-10-08.2';
   var WORKER = window.__MBX_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__MBX_FAST, FEED_MS = window.__MBX_FEED_MS || 60000, TIMEOUT_MS = window.__MBX_TIMEOUT_MS || 8000;
   var LATE_MS = window.__MBX_LATE_MS || 30000;            // an unanswered request counts as in flight this long
@@ -123,6 +123,17 @@
   function bump(type) {
     var c = counts(); c[type] = (c[type] || 0) + 1;
     S.count = { day: today(), counts: c }; lsSet(LS_COUNT + S.siteKey, JSON.stringify(S.count));
+    reportUsage();
+  }
+  // Tool usage (Tex, 2026-10-08): today's box count for the Map Collector dashboard's Tool usage panel (Tex only). siteKey and in-game name only,
+  // never the UID; plain text, so no preflight; fire and forget, so a failed report never touches the run.
+  function reportUsage() {
+    var c = counts(), name = '';
+    try { name = String(UD().Name || '').slice(0, 40); } catch (e) {}
+    try {
+      fetch(WORKER + '/ops/usage', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, cache: 'no-store', keepalive: true,
+        body: JSON.stringify({ siteKey: S.siteKey, name: name, tool: 'mask-boxes', version: VERSION, count: (c[1] || 0) + (c[2] || 0) + (c[3] || 0), day: today() }) }).catch(function () {});
+    } catch (e) {}
   }
   function doneIds() { return S.done && S.done.day === today() && Array.isArray(S.done.ids) ? S.done.ids : []; }
   function markDone(id) {
@@ -481,6 +492,7 @@
     S.beat = setInterval(shareBeat, SHARE_BEAT_MS);
     window.addEventListener('pagehide', onPageHide);
     if (S.shareWant) shareOn();                             // remembered on: claim share mode before any share
+    reportUsage();
     loop();
   });
 })();
