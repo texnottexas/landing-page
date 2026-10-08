@@ -167,6 +167,12 @@ test('saveReportSetup: one config per Snapshot device, report ids in order, each
 test('setupText for the card', () => {
   assert.equal(S.setupText({ state: 'done', picked: [1, 2, 3] }).text, 'Armory report set up with your latest 3 different marches.');
   assert.equal(S.setupText({ state: 'done', picked: [1] }).text, 'Armory report set up with your latest march.');
+  // fewer different marches than asked: still set up, and says so
+  assert.equal(S.setupText({ state: 'done', picked: [1, 2, 3], asked: 6 }).text,
+    'Armory report set up with your latest 3 different marches. You asked for 6, but your recent Time Clash attacks only had 3 different marches.');
+  assert.equal(S.setupText({ state: 'done', picked: [1], asked: 4 }).text,
+    'Armory report set up with your latest march. You asked for 4, but your recent Time Clash attacks only had 1 march.');
+  assert.equal(S.setupText({ state: 'done', picked: [1, 2], asked: 2 }).text, 'Armory report set up with your latest 2 different marches.');
   assert.match(S.setupText({ state: 'no-attacks' }).text, /Fight at least one Time Clash battle first/);
   assert.match(S.setupText({ state: 'unreadable' }).text, /Couldn't read your Time Clash reports/);
   assert.match(S.setupText({ state: 'save-failed' }).text, /Couldn't save/);

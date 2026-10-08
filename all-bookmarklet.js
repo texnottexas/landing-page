@@ -125,7 +125,9 @@ var __snapSync = (function () {
   function setupText(r) {
     if (r.state === 'done') {
       var n = r.picked.length;
-      return { tone: 'ok', text: n === 1 ? 'Armory report set up with your latest march.' : 'Armory report set up with your latest ' + n + ' different marches.' };
+      var text = n === 1 ? 'Armory report set up with your latest march.' : 'Armory report set up with your latest ' + n + ' different marches.';
+      if (r.asked > n) text += ' You asked for ' + r.asked + ', but your recent Time Clash attacks only had ' + n + (n === 1 ? ' march.' : ' different marches.');
+      return { tone: 'ok', text: text };
     }
     if (r.state === 'no-attacks') return { tone: 'warn', text: 'No Time Clash attacks found. Fight at least one Time Clash battle first.' };
     if (r.state === 'unreadable') return { tone: 'bad', text: "Couldn't read your Time Clash reports. Try again later." };
@@ -2041,7 +2043,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = __snapSync
     var saved = await __snapSync.saveReportSetup(pick.picked, { fetch: window.fetch.bind(window), worker: SNAP_WORKER, siteKey: sk, name: name });
     if (!saved.ok) return { state: 'save-failed', error: saved.error };
     try { localStorage.setItem('snap_report_code_v1_' + uid, saved.code); } catch (e) {}
-    return { state: 'done', picked: pick.picked, code: saved.code };
+    return { state: 'done', picked: pick.picked, code: saved.code, asked: max };
   }
 
   // ─── Entry point ────────────────────────────────────────────────────────
