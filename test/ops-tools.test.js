@@ -99,3 +99,16 @@ test('only Troop Optimizer handles the base itself', () => {
   const auto = list.tools.filter((t) => t.auto.length).map((t) => t.id + ':' + t.auto.join(','));
   assert.deepEqual(auto, ['troop:base']);
 });
+
+test('rickroll.html shows only the Ops Center; the other tools are kept but hidden (Tex, 2026-10-08)', () => {
+  const page = read('pages/rickroll.html');
+  const list = page.slice(page.indexOf('var TOOLS = ['), page.indexOf('];', page.indexOf('var TOOLS = [')));
+  const entries = list.split(/\n\s*\{ title: /).slice(1);
+  assert.ok(entries.length >= 6, 'read the tool entries');
+  entries.forEach((e) => {
+    const isOps = /file: 'ops-center'/.test(e);
+    assert.equal(/hidden: true/.test(e), !isOps, (isOps ? 'Ops Center shows: ' : 'hidden: ') + e.slice(0, 40));
+  });
+  assert.match(page, /TOOLS\.filter\(function\s*\(t\)\s*\{\s*return !t\.hidden;\s*\}\)\.forEach/, 'the page skips hidden tools');
+  assert.match(page, /Copy the Ops Center link below/);
+});
