@@ -8,6 +8,7 @@
 
   var BASE = window.__OPS_BASE || 'https://2864tw.com/';
   var LS = { recent: 'ops_recent_v1', seen: 'ops_seen_v1', unlock: 'ops_unlock_v1', member: 'ops_member_v1' };
+  var HOME_SERVER = 2864;
   var MEMBER_TTL = 7 * 24 * 3600 * 1000;
   var S = {
     list: null, listErr: false, member: null, memberErr: 'wait', siteKey: null, unlocked: false, recent: [], seen: {},
@@ -63,9 +64,13 @@
         S.seen = C().initSeen(S.seen, S.list.tools); lsSet(LS.seen, S.seen);
       }, function () { S.listErr = true; });
   }
+  // Home server from the game (OriginServerId stays the home server during cross-server events); 0 when unknown.
+  function homeServer() { try { var u = UD(); return Number(u && (u.OriginServerId || u.ServerId)) || 0; } catch (e) { return 0; } }
   function checkMember() {
     var id = uid();
     if (!id) { S.member = null; S.memberErr = 'wait'; S.siteKey = null; return Promise.resolve(); }
+    var home = homeServer();
+    if (home && home !== HOME_SERVER) { S.member = null; S.memberErr = 'not'; S.siteKey = null; return Promise.resolve(); }   // not on 2864, roster or not
     return sha256Hex(id).then(function (h) {
       var sk = h.slice(0, 16), cached = lsGet(LS.member, null);
       S.siteKey = sk;                                   // owner-only tiles are matched on this
@@ -120,6 +125,18 @@
     document.addEventListener('keydown', S.keyHandler, true);
     return K().body(S.modal.card);
   }
+  // Tex, 2026-10-08: the Ops Center is for Server 2864 only; everyone else gets this and the ways to transfer in.
+  function restrictedNote(b) {
+    var n = K().note(b, 'Due to an influx of demand, this tool has been restricted to fellow server members of the developer (Server 2864). You can apply to transfer at ');
+    function link(text, href) {
+      var a = document.createElement('a'); a.textContent = text; a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      a.style.color = '#79c0ff'; return a;
+    }
+    n.appendChild(link('discord.gg/go-2864', 'https://discord.gg/go-2864'));
+    n.appendChild(document.createTextNode(' or at '));
+    n.appendChild(link('2864tw.com/transfer', 'https://2864tw.com/transfer.html'));
+    n.appendChild(document.createTextNode('.'));
+  }
   function subText() {
     if (S.member) return (playerName() || S.member.name) + ' · S2864 ✓';
     if (S.memberErr === 'wait') return 'Waiting for the game...';
@@ -134,7 +151,7 @@
     if (S.listErr) { K().toast(b, 'Couldn\'t load the tool list. Check your connection.', 'Retry', function () { start(); }); return; }
     if (!S.list) { K().note(b, 'Loading tools...'); return; }
     if (S.memberErr === 'net') { K().toast(b, 'Couldn\'t check your membership right now.', 'Retry', function () { refreshMember(); }); return; }
-    if (S.memberErr === 'not') { K().note(b, 'This is for Server 2864 members.'); return; }
+    if (S.memberErr === 'not') { restrictedNote(b); return; }
     if (S.memberErr === 'wait') { K().note(b, 'Waiting for the game to finish loading...'); waitForGame(); return; }
     var search = K().input({ placeholder: 'Search tools', label: 'Search tools' });
     search.value = S.query;

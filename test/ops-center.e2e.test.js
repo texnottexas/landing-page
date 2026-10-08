@@ -165,10 +165,27 @@ test('a script that fails to load shows a retry message', async () => {
   await ctx.close();
 });
 
-test('not an S2864 member: no tiles, a plain message', async () => {
-  const { ctx, page } = await open(PHONE, () => { window.__fake.uid = '1000000000002'; });
-  await page.waitForSelector('.ops-note:has-text("This is for Server 2864 members.")');
+const RESTRICTED = 'this tool has been restricted to fellow server members of the developer';
+async function assertRestricted(page) {
+  await page.waitForSelector('.ops-note:has-text("' + RESTRICTED + '")');
   assert.equal(await page.$('.ops-tile'), null);
+  const text = await page.$eval('.ops-note', (e) => e.textContent);
+  assert.match(text, /^Due to an influx of demand, this tool has been restricted to fellow server members of the developer \(Server 2864\)\. You can apply to transfer at discord\.gg\/go-2864 or at 2864tw\.com\/transfer\.$/);
+  assert.ok(!/\u2014/.test(text), 'no em dash');
+  const links = await page.$$eval('.ops-note a', (a) => a.map((x) => [x.textContent, x.href, x.target, x.rel]));
+  assert.deepEqual(links, [['discord.gg/go-2864', 'https://discord.gg/go-2864', '_blank', 'noopener noreferrer'],
+    ['2864tw.com/transfer', 'https://2864tw.com/transfer.html', '_blank', 'noopener noreferrer']]);
+}
+
+test('not an S2864 member: no tiles, the restriction message with the transfer links', async () => {
+  const { ctx, page } = await open(PHONE, () => { window.__fake.uid = '1000000000002'; });
+  await assertRestricted(page);
+  await ctx.close();
+});
+
+test('on the member list but home server is not 2864: refused the same way', async () => {
+  const { ctx, page } = await open(PHONE, () => { window.__fake.server = 619; });
+  await assertRestricted(page);
   await ctx.close();
 });
 
@@ -273,7 +290,7 @@ test('a corrupt recent-tools entry does not empty the menu', async () => {
 test('a member list that is not a list offers Retry instead of saying you are not a member', async () => {
   const { ctx, page } = await open(PHONE, () => { window.__OPS_BASE = location.origin + '/badroster/'; });
   await page.waitForSelector('.ops-toast:has-text("Couldn\'t check your membership")');
-  assert.equal(await page.$('.ops-note:has-text("This is for Server 2864 members.")'), null);
+  assert.equal(await page.$('.ops-note:has-text("' + RESTRICTED + '")'), null);
   await ctx.close();
 });
 
