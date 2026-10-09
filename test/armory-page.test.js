@@ -1,0 +1,77 @@
+'use strict';
+// Armory v2 page (pages/armory.html) static guards that run with no browser: the CSP is the classic page's, every script it loads
+// exists, parses and is deployed by pages.yml, the beta switch and the ?advise= / ?plan= hand-off behave, the classic page shows
+// its "Try the new Armory" link only behind the flag, and the new files carry no emoji, em dash or personal name.
+// The browser behaviour (tabs, sheets, share, 12 px floor, tap targets) is covered by docs/armory-review-2026-10/harness/tour-v2.js
+// and the in-page acceptance script (armory.html?check=1).
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const ROOT = path.join(__dirname, '..');
+const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+const V2 = read('pages/armory.html'), V1 = read('pages/armory-report.html'), YML = read('.github/workflows/pages.yml');
+// the owner's personal name (never allowed in this public repo), kept base64-encoded so the test file itself does not contain it
+const NAMES = new RegExp(['U2hpdmE=', 'QmV6d2FkYQ=='].map((b) => Buffer.from(b, 'base64').toString()).join('|'));
+const csp = (h) => (/http-equiv="Content-Security-Policy" content="([^"]*)"/.exec(h) || [])[1];
+
+test('the new page carries the classic page CSP byte for byte', () => {
+  assert.ok(csp(V1), 'classic CSP found');
+  assert.equal(csp(V2), csp(V1));
+});
+
+test('every local script the page loads exists, parses, and is copied by pages.yml', () => {
+  const srcs = [...V2.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]).filter((s) => !/^https?:/.test(s));
+  assert.ok(srcs.includes('armory-app.js') && srcs.includes('armory-vm.js'));
+  const cp = YML.split('\n').find((l) => /cp pages\/index\.html/.test(l));
+  for (const s of srcs) {
+    const f = s === 'feedback-widget.js' ? s : 'pages/' + s;
+    assert.ok(fs.existsSync(path.join(ROOT, f)), f + ' exists');
+    new vm.Script(read(f), { filename: f });
+    if (s !== 'feedback-widget.js') assert.ok(cp.includes(f), f + ' is in the pages.yml cp line');
+  }
+  for (const lazy of ['pages/armory.html', 'pages/armory-more.js', 'pages/armory-check.js']) assert.ok(cp.includes(lazy), lazy + ' is in the pages.yml cp line');
+  for (const m of V2.matchAll(/<script>([\s\S]*?)<\/script>/g)) new vm.Script(m[1], { filename: 'inline' });
+});
+
+test('no emoji, em dash or personal name in the new files', () => {
+  for (const f of ['pages/armory.html', 'pages/armory-app.js', 'pages/armory-more.js', 'pages/armory-check.js']) {
+    const t = read(f);
+    assert.ok(!/\p{Extended_Pictographic}/u.test(t.replace(/[©®™]/g, '')), f + ' has an emoji');
+    assert.ok(!/—/.test(t), f + ' has an em dash');
+    assert.ok(!NAMES.test(t), f + ' has a personal name');
+  }
+});
+
+function headScript() { return /<script>\s*\/\* Beta switch[\s\S]*?<\/script>/.exec(V2)[0].replace(/^<script>|<\/script>$/g, ''); }
+function runHead(search, hash) {
+  const store = {}, calls = { replace: [] };
+  const ctx = { location: { search, hash: hash || '', replace: (u) => calls.replace.push(u) }, localStorage: { setItem: (k, v) => { store[k] = v; } } };
+  vm.runInNewContext(headScript(), ctx);
+  return { store, replace: calls.replace };
+}
+test('?beta=1 turns the switch on; ?advise= and ?plan= open the classic page with the same query', () => {
+  assert.deepEqual(runHead('?beta=1').store, { armory_v2_beta: '1' });
+  assert.deepEqual(runHead('').store, {}); assert.deepEqual(runHead('?code=ABCD').replace, []);
+  assert.deepEqual(runHead('?advise=ABC123').replace, ['armory-report.html?advise=ABC123']);
+  assert.deepEqual(runHead('?plan=ABC123&beta=1', '#x').replace, ['armory-report.html?plan=ABC123#x']);
+  assert.deepEqual(runHead('?beta=1&advise=ABC123').replace, ['armory-report.html?advise=ABC123']);
+});
+
+function v1Snippet() { return /<script>\s*\/\* Armory v2 beta: one small link[\s\S]*?<\/script>/.exec(V1)[0].replace(/^<script>|<\/script>$/g, ''); }
+function runV1(flag, search, hash) {
+  const made = [];
+  const doc = { createElement: () => { const el = { style: {}, set href(v) { this._h = v; }, get href() { return this._h; } }; made.push(el); return el; }, body: { appendChild: () => {} } };
+  vm.runInNewContext(v1Snippet(), { document: doc, location: { search, hash: hash || '' }, localStorage: { getItem: (k) => (k === 'armory_v2_beta' ? flag : null) } });
+  return made;
+}
+test('the classic page shows "Try the new Armory" only behind the flag, and the only edit is that snippet', () => {
+  assert.equal(runV1(null, '').length, 0);
+  assert.equal(runV1('0', '').length, 0);
+  const a = runV1('1', '?code=abcd', '#tab=heroes');
+  assert.equal(a.length, 1); assert.equal(a[0].href, 'armory.html?code=abcd#tab=heroes'); assert.equal(a[0].id, 'try-new-armory');
+  assert.equal(runV1('1', '?advise=ABC123')[0].href, 'armory.html', 'advise and plan links are not carried over');
+  assert.equal(V1.split('armory_v2_beta').length - 1, 1, 'one mention in the classic page');
+});

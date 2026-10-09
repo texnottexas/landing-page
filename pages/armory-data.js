@@ -929,6 +929,8 @@
     return stage.then(function(go) {
       if (!go) { out.identity = identityOf(null); return out; }
       ids = ids.filter(_ar_validReportId);
+      // a siteKey goes into request URLs and storage keys: only the 16-hex form is ever used (anything else, e.g. a guest key, is no key)
+      if (player.siteKey && !/^[0-9a-f]{16}$/.test(String(player.siteKey))) player.siteKey = null;
       out.player = player;
       var cache = {};
       if (useCache) { try { cache = JSON.parse(localStorage.getItem('playerReportData')) || {}; } catch (e) { cache = {}; } }

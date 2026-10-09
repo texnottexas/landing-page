@@ -377,3 +377,15 @@ test('data only: no report, own siteKey, game data from the worker; no data or n
   assert.equal((await make().d.loadArmory({ dataOnly: true })).state, 'none', 'no identity');
   assert.equal((await make(withInv, ident('zzzz')).d.loadArmory({ dataOnly: true })).state, 'none', 'a malformed siteKey is never used');
 });
+
+test('a siteKey that is not 16 hex (from a share code or storage) is never used in a request', async () => {
+  const bad = '../../x?y=1';
+  const a = make((u) => (u.includes('/report-config?code=') ? { status: 200, body: { ok: true, playerName: W.NAME, siteKey: bad, reportIds: W.REPORT_ID } } : undefined));
+  const r = await a.d.loadArmory({ code: 'ABCD' });
+  assert.equal(r.state, 'ready'); assert.equal(r.player.siteKey, W.SK, 'dropped, then the roster fills in the real key by name');
+  assert.ok(!a.fetch.calls.some((c) => c.url.includes(encodeURIComponent(bad)) || /x\?y|\.\.\//.test(c.url)), 'the bad key is in no request URL');
+  const b = make(null, { playerReport: JSON.stringify({ player: { name: W.NAME, siteKey: 'guest_1234' }, reportIds: [W.REPORT_ID] }) });
+  assert.equal((await b.d.loadArmory({ saved: true })).player.siteKey, W.SK);
+  const c = make((u) => (u === 'player-data.json' ? { status: 200, body: [] } : undefined), { playerReport: JSON.stringify({ player: { name: W.NAME, siteKey: 'guest_1234' }, reportIds: [W.REPORT_ID] }) });
+  assert.equal((await c.d.loadArmory({ saved: true })).player.siteKey, null, 'not in the roster: no key at all');
+});
