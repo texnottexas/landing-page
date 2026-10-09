@@ -6007,7 +6007,7 @@
     // load (that was issue #106 on the Welcome Back step). Show messages when
     // it exists; otherwise still proceed.
     var errDiv = document.getElementById('wizard-error');
-    function setErr(m) { if (errDiv) errDiv.textContent = m; }
+    function setErr(m, info) { if (errDiv) { errDiv.textContent = m; errDiv.style.color = info ? 'var(--muted)' : ''; } }
 
     var code = (input.value || '').trim().toUpperCase();
     if (!/^[0-9A-Z]{4}$/.test(code)) {
@@ -6015,7 +6015,7 @@
       return;
     }
 
-    setErr('Loading...');
+    setErr('Loading…', true);
     fetch(PUSH_WORKER + '/report-config?code=' + code)
       .then(function(r) { return r.json(); })
       .then(function(result) {
@@ -6064,7 +6064,7 @@
         applyShortcodeConfig(result.playerName, ids, isSamePlayer, result.siteKey);
       })
       .catch(function() {
-        setErr('Failed to load config.');
+        setErr('We could not load that code. Check it and try again.');
       });
   }
 
@@ -6565,7 +6565,7 @@
     var startFreshBtn = document.createElement('button');
     startFreshBtn.className = 'btn-secondary';
     startFreshBtn.style.cssText = 'width:100%;margin-bottom:.5rem;';
-    startFreshBtn.textContent = 'Start Fresh';
+    startFreshBtn.textContent = 'Start New';
     startFreshBtn.addEventListener('click', function() {
       wizardState.step = 'input';
       renderWizardStep();
@@ -6765,8 +6765,8 @@
           var bmBtn = document.createElement('button');
           bmBtn.className = 'btn-secondary';
           bmBtn.style.cssText = 'width:100%;margin-top:.25rem;';
-          bmBtn.textContent = 'Use bookmarklet snapshot';
-          bmBtn.title = 'Paste a bookmarklet snapshot to set up your armory report without any battle reports. Available to verified S2864 players only.';
+          bmBtn.textContent = 'Use Snapshot data';
+          bmBtn.title = 'Use Snapshot data to set up your armory report without any battle reports. For verified S2864 players only.';
           bmBtn.addEventListener('click', function() { _ar_openWizardBookmarkletEntry(bmIdent); });
           container.appendChild(bmBtn);
 
@@ -11999,13 +11999,18 @@
       } else if (state.status === 'not-uploaded') {
         line('No ' + kindLabel + ' data yet.', true);
         if (state.isOwner) {
-          line('Run the bookmarklet on the Top War game tab to populate this section.');
+          line('Run Snapshot in the game to fill this section.');
         } else {
           line('Owner hasn’t uploaded this section yet.');
         }
       } else if (state.status === 'cloud-derived') {
-        line(kindLabel + ' is derived from your Inventory.', true);
-        line('Your available runes are computed live from your synced Inventory (bag runes) plus runes on unequipped gold pieces — nothing to upload separately.');
+        if (state.isOwner) {
+          line(kindLabel + ' is worked out from your Inventory.', true);
+          line('Your available runes are your bag runes plus runes on unequipped gold pieces. There is nothing to upload separately.');
+        } else {
+          line(kindLabel + ' is worked out from this player’s Inventory.', true);
+          line('The available runes are their bag runes plus runes on unequipped gold pieces.');
+        }
         if (state.isOwner) line('Use “Edit Pool” only if you want to save a manual override snapshot.');
       } else if (state.status === 'error') {
         line('Cloud sync check failed.', true);
@@ -22224,7 +22229,7 @@
     toolbar.appendChild(title);
     var sub = document.createElement('div');
     sub.style.cssText = 'font-size:.75rem;color:var(--muted);';
-    sub.textContent = 'Available runes — your bag plus runes on unequipped gold pieces.';
+    sub.textContent = 'Available runes: the bag plus runes on unequipped gold pieces.';
     toolbar.appendChild(sub);
 
     // On-behalf (impersonation): the advisor edits the TARGET's rune pool using
@@ -27814,7 +27819,7 @@
     var blurb = document.createElement('div');
     blurb.style.cssText = 'font-size:.78rem;color:var(--muted);line-height:1.5;';
     blurb.textContent = _roViewer
-      ? 'This is the rune plan your advisor built for you. Expand it to see every step, then make the changes in-game. To tick steps off and roll them into your saved rune pool here, open this on your own device after verifying your in-game UID.'
+      ? 'This is the rune plan your advisor built for you. Expand it to see every step, then make the changes in-game. To tick steps off and add them to your saved rune pool, open this link on your own device after you verify your in-game UID (Settings, then Identity).'
       : 'Plans your advisors have saved for you. Expand a plan to walk through the steps in-game, mark each as accepted or skipped, then Apply Accepted Steps to update your rune pool.';
     header.appendChild(blurb);
     container.appendChild(header);
@@ -27840,7 +27845,16 @@
       if (!idx || !idx.entries || idx.entries.length === 0) {
         var emp = document.createElement('div');
         emp.className = 'adv-plan-empty';
-        emp.textContent = 'No advisor requests yet. Open the Rune Pool tab and click Request Rune Advice to invite a coach.';
+        var empMsg = document.createElement('div');
+        empMsg.textContent = 'No advice requests yet. Open the Rune Pool tab and tap Request Rune Advice to ask an advisor for help.';
+        emp.appendChild(empMsg);
+        var empBtn = document.createElement('button');
+        empBtn.type = 'button';
+        empBtn.className = 'btn-secondary';
+        empBtn.style.cssText = 'margin-top:.6rem;';
+        empBtn.textContent = 'Go to Rune Pool';
+        empBtn.addEventListener('click', function() { navigateToTab('runepool'); });
+        emp.appendChild(empBtn);
         listHost.appendChild(emp);
         return;
       }
