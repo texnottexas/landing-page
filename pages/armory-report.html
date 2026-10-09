@@ -4684,7 +4684,7 @@
   //       templateId format).
   // Equipped pieces are excluded by design (those runes are in active use):
   // anything in equippedNonGold / presetOnly, and gold pieces with heroId>0.
-  // Caller must pass `lookups` from `_ar_loadInvLookups()` so bag IDs resolve.
+  // Caller must pass `lookups` from `_ar_loadItemTable()` (or `_ar_loadInvLookups()`) so bag IDs resolve.
   //
   // Returns { pool, bagCounts, gearCounts }:
   //   pool[name][star] = total count by star tier (canonical, advisor-friendly)
@@ -4956,6 +4956,18 @@
 
   // ── Inventory lookup tables ────────────────────────────────────────────
   var _ar_invLookups = null;
+  // Rune Pool / Advisor callers only need the item table (_ar_extractRunePool
+  // reads lookups.item and nothing else), so they skip the other four files.
+  var _ar_itemTablePromise = null;
+  function _ar_loadItemTable() {
+    if (_ar_invLookups) return Promise.resolve(_ar_invLookups);
+    if (!_ar_itemTablePromise) {
+      _ar_itemTablePromise = fetch('data/item-table.json').then(function(r) { return r.json(); })
+        .then(function(t) { return { item: t }; })
+        .catch(function(e) { _ar_itemTablePromise = null; throw e; });
+    }
+    return _ar_itemTablePromise;
+  }
   async function _ar_loadInvLookups() {
     if (_ar_invLookups) return _ar_invLookups;
     var data = await Promise.all([
@@ -22310,7 +22322,7 @@
       obEdit.onclick = function() {
         obEdit.disabled = true;
         Promise.all([
-          _ar_loadInvLookups().catch(function() { return null; }),
+          _ar_loadItemTable().catch(function() { return null; }),
           _ar_loadRuneTypes().catch(function() { return null; })
         ]).then(function(arr) {
           obEdit.disabled = false;
@@ -22349,7 +22361,7 @@
       editBtn.onclick = function() {
         editBtn.disabled = true;
         Promise.all([
-          _ar_loadInvLookups().catch(function() { return null; }),
+          _ar_loadItemTable().catch(function() { return null; }),
           _ar_loadRuneTypes().catch(function() { return null; })
         ]).then(function(arr) {
           editBtn.disabled = false;
@@ -22480,7 +22492,7 @@
     // Source resolution: prefer explicit runepool supplement; fall back to
     // a derived view from inv + gear when the player hasn't saved one yet.
     // Bag rune resolution requires data/item-table.json (cfg.t===153 lookup),
-    // so we await `_ar_loadInvLookups()` before deriving.
+    // so we await `_ar_loadItemTable()` before deriving.
     var stored = siteKey ? ArmoryIdentity.getSupplement('runepool', siteKey) : null;
     var inv = siteKey ? ArmoryIdentity.getSupplement('inv', siteKey) : null;
     var gear = siteKey ? ArmoryIdentity.getSupplement('gear', siteKey) : null;
@@ -22586,7 +22598,7 @@
     showEmpty('Loading rune pool…');
 
     Promise.all([
-      derived ? _ar_loadInvLookups().catch(function() { return null; }) : Promise.resolve(null),
+      derived ? _ar_loadItemTable().catch(function() { return null; }) : Promise.resolve(null),
       _ar_loadRuneTypes().catch(function() { return null; })
     ]).then(function(arr) {
       var lookups = arr[0];
@@ -25966,7 +25978,7 @@
     var myAdvisorId = _ar_getAdvisorId();
     Promise.all([
       _ar_loadRuneTypes().catch(function() { return null; }),
-      _ar_loadInvLookups().catch(function() { return null; }),
+      _ar_loadItemTable().catch(function() { return null; }),
       // Try to fetch THIS advisor's own previous save (filtered by advisorId)
       // so multiple advisors editing the same code don't clobber each other.
       fetch(SUPPLEMENT_WORKER + '/advisor/plan/' + code + '?advisorId=' + encodeURIComponent(myAdvisorId)).then(function(r) {
@@ -27900,7 +27912,7 @@
     Promise.all([
       _ar_refreshAdvisorIndex(siteKey),
       _ar_loadRuneTypes().catch(function() { return null; }),
-      _ar_loadInvLookups().catch(function() { return null; })
+      _ar_loadItemTable().catch(function() { return null; })
     ]).then(function(arr) {
       var idx = arr[0];
       var catalog = arr[1];
