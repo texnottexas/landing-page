@@ -90,3 +90,31 @@ test('talent buffs 9301201-3 weigh as ATK (game effect type 323)', () => {
   for (const id of [9301201, 9301202, 9301203]) assert.equal(C[id].statKey, 'atk');
   assert.equal(C[1000023].statKey, 'dmgInc');
 });
+
+// ---- Heroes ----
+test('the seven newest heroes have a branch in HERO_TYPE_MAP (game hero table)', () => {
+  const m = ARMORY.match(/var HERO_TYPE_MAP\s*=\s*(\{.*?\});/);
+  const M = JSON.parse(JSON.stringify(vm.runInNewContext('(' + m[1] + ')')));
+  const want = { 172: 1, 173: 1, 174: 1, 239: 2, 240: 2, 241: 2, 338: 3 };
+  for (const [id, t] of Object.entries(want)) assert.equal(M[id], t, 'hero ' + id);
+  assert.equal(M[101], 1);
+});
+
+test('heroBranch falls back to the supplement hero_type for a hero the map lacks', () => {
+  const m = ARMORY.match(/var HERO_TYPE_MAP\s*=\s*(\{.*?\});/);
+  const heroBranch = fn(ARMORY, 'heroBranch', {
+    HERO_TYPE_MAP: vm.runInNewContext('(' + m[1] + ')'),
+    HERO_TYPE_NAMES: { 1: 'Army', 2: 'Navy', 3: 'Air Force' },
+    HERO_TYPE_CACHE: null
+  });
+  assert.equal(heroBranch(239), 'Navy');
+  assert.equal(heroBranch(99999, 2), 'Air Force');
+  assert.equal(heroBranch(99999), 'Unknown');
+});
+
+test('hero 1209 native skill is 10209 (and 209 is 11209), every other hero is 10000 + id', () => {
+  const f = fn(ARMORY, '_heroNativeSkillId', {});
+  assert.equal(f(1209), 10209);
+  assert.equal(f(209), 11209);
+  assert.equal(f(101), 10101);
+});
