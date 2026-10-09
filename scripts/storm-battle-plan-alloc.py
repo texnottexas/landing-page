@@ -17,7 +17,7 @@ Re-run after a fresh roster refresh (player-data.json drives it).
 """
 import json, time, os
 
-ROOT = '/Users/shivabezwada/tw-projects/landing-page'
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PD   = os.path.join(ROOT, 'player-data.json')
 OUT  = os.path.join(ROOT, 'data', 'storm-battle-plan.json')
 

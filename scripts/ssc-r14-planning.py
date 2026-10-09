@@ -36,9 +36,9 @@ import re
 from pathlib import Path
 from collections import defaultdict
 
-DATA = Path('/Users/shivabezwada/tw-projects/landing-page/data/ssc-map.json')
+DATA = Path(__file__).resolve().parent.parent / 'data' / 'ssc-map.json'
 RANKS = Path('/tmp/sector110_ranks.json')
-MERIT = Path('/Users/shivabezwada/tw-projects/landing-page/data/ssc-merit-leaderboard.json')
+MERIT = Path(__file__).resolve().parent.parent / 'data' / 'ssc-merit-leaderboard.json'
 OWN_SID = 2864
 ROUND_KEY = '14'
 # Captured from CQ25MainProgressComp during the R14 extraction (7-day window).

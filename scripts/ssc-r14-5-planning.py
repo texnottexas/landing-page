@@ -24,7 +24,7 @@ import re
 from pathlib import Path
 from collections import defaultdict
 
-DATA = Path('/Users/shivabezwada/tw-projects/landing-page/data/ssc-map.json')
+DATA = Path(__file__).resolve().parent.parent / 'data' / 'ssc-map.json'
 OWN_SID = 2864
 ROUND_KEY = '14.5'
 INHERIT_KEY = '14'   # sectorPower / sectorServerCards source
