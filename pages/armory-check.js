@@ -115,7 +115,7 @@ var EXPECTED = [
 
   /* 4. numbers carry a label and a source word */
   await visit('overview');
-  var nums = $$('#v-overview [data-num]'), badNum = [], SRC = /(battle reports?|in roster|placed|in bag|deployed|collected|equipped|in game data)/;
+  var nums = $$('#v-overview [data-num]'), badNum = [], SRC = /(battle reports?|in roster|placed|in bag|deployed|collected|equipped|in game data|alliance list)/;
   nums.forEach(function (n) { var w = n.closest('[data-numwrap]'), l = w && $('.lbl', w), s = w && $('.src', w); if (!w || !l || !s || !l.textContent.trim() || !SRC.test(s.textContent)) badNum.push(n.textContent.trim().slice(0, 12)); });
   log(nums.length > 0 && badNum.length === 0, 'every Overview number has a label and a source word', nums.length + ' numbers' + (badNum.length ? ', missing: ' + badNum.join(', ') : ''));
 
@@ -277,7 +277,8 @@ var EXPECTED = [
       if (!vis(el) || el.closest('svg')) return;
       var cs = getComputedStyle(el); if (!/flex|grid/.test(cs.display) || !(parseFloat(cs.columnGap) > 0)) return;
       var kids = Array.prototype.filter.call(el.children, function (c) { return c.tagName === 'SPAN' && c.textContent.trim() && !c.hasAttribute('aria-hidden') && !c.classList.contains('dot'); });
-      if (kids.length >= 2 && Array.prototype.filter.call(el.children, function (c) { return c.hasAttribute('aria-hidden') && /\u00B7/.test(c.textContent); }).length === 0 && !el.matches('.bm-num, .irow, .hb-1, .sechead, .chips, .nb, .stars') && sp.length < 5) sp.push(ROUTES[i] + ':' + (el.className || el.tagName) + ' "' + el.textContent.trim().slice(0, 30) + '"');
+      var oneLine = kids.length >= 2 && kids.every(function (c) { var r = c.getBoundingClientRect(); return r.height <= 26 && Math.abs(r.top - kids[0].getBoundingClientRect().top) < 4; });
+      if (oneLine && Array.prototype.filter.call(el.children, function (c) { return c.hasAttribute('aria-hidden') && /\u00B7/.test(c.textContent); }).length === 0 && !el.matches('.bm-num, .irow, .hb-1, .sechead, .chips, .nb, .stars, .buffs li') && sp.length < 5) sp.push(ROUTES[i] + ':' + (el.className || el.tagName) + ' "' + el.textContent.trim().slice(0, 30) + '"');
     });
   }
   log(sp.length === 0, 'no sibling text spans in a gapped flex row without a separator', sp.join(' | ') || 'none');

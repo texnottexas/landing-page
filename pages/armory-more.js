@@ -134,7 +134,7 @@ function renderGear() {
   el.innerHTML = '<div class="segs2" role="group" aria-label="Gear view"><button type="button" data-gview="gear" aria-pressed="' + (S.gview === 'gear') + '">Pieces</button><button type="button" data-gview="runes" aria-pressed="' + (S.gview === 'runes') + '">Runes</button></div>';
   gearBody();
 }
-function classicLink(tab, text) { return '<div class="lnkrow" style="margin-top:12px"><a class="tb link" href="' + esc(classicUrl(tab)) + '">' + ic('ext', 'sm') + esc(text) + '</a></div>'; }
+function classicLink(tab, text) { return '<div class="lnkrow" style="margin-top:12px"><a class="tb link" href="' + esc(classicUrl(tab)) + '">' + ic('ext', 'sm') + '<span>' + nd(text) + '</span></a></div>'; }
 function needData(what) { return '<div class="empty">' + esc(what) + (readOnly() ? '' : ' <button class="tb link" type="button" data-open="status">Send game data</button>') + '</div>'; }
 function renderBase() {
   var D = S.vm.decor, T = D.totals;
