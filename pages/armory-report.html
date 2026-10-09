@@ -4500,10 +4500,74 @@
   // advisor plan, never derived from an import, so a wipe must leave it alone.
   var _AR_IMPORT_KINDS = ['inv', 'gear', 'heroes', 'enigma', 'decor', 'skin', 'bench', 'chips', 'formation'];
 
+  // Clear-data tombstones (the worker remembers a deliberate clear). Pure helpers,
+  // kept free of page state so test/clear-data.test.js can run them by name.
+  // Timestamp of a supplement payload in ms (0 when missing or unreadable). The
+  // timestamp sits at meta.ts for inv/gear/runepool and at top-level ts for the rest.
+  function _ar_supTsMs(kind, obj) {
+    if (!obj || typeof obj !== 'object') return 0;
+    var iso = (kind === 'inv' || kind === 'gear' || kind === 'runepool')
+      ? (obj.meta && obj.meta.ts) : obj.ts;
+    var t = iso ? Date.parse(iso) : 0;
+    return isFinite(t) && t > 0 ? t : 0;
+  }
+  // The cleared time (epoch ms) a worker answer carries, or 0 when it says nothing about a clear.
+  // Accepts the X-Supplement-Cleared header value and/or the 404 / 409 JSON body.
+  function _ar_clearedTsFrom(headerVal, body) {
+    var h = parseInt(headerVal, 10);
+    if (isFinite(h) && h > 0) return h;
+    var b = body && typeof body === 'object' ? (body.cleared != null ? body.cleared : body.clearedTs) : 0;
+    b = Number(b);
+    return isFinite(b) && b > 0 ? b : 0;
+  }
+  // Drop the local copy only when it is not newer than the clear. Equal times drop
+  // (the clear was of this very payload), a missing local time drops (it can never
+  // be proven newer), and newer local data always stays.
+  function _ar_shouldDropForClear(localTsMs, clearedTsMs) {
+    if (!(clearedTsMs > 0)) return false;
+    return !(localTsMs > clearedTsMs);
+  }
+  // Player-facing names for the tabs each kind feeds (never kind ids).
+  var _AR_KIND_LABELS = {
+    inv: 'Inventory', gear: 'Titan Gear', heroes: 'Heroes', enigma: 'Enigma Beasts',
+    decor: 'Decorations', skin: 'Base Skins', bench: 'Bench Beasts', chips: 'HT Chips',
+    formation: 'Formation'
+  };
+  function _ar_kindLabels(kinds) {
+    return (kinds || []).map(function (k) { return _AR_KIND_LABELS[k] || 'Other data'; }).join(', ');
+  }
+  function _ar_dropLocalSupplement(kind, siteKey) {
+    try {
+      ArmoryIdentity.removeSupplement(kind, siteKey);
+      ArmoryIdentity.removeSupplementMeta(kind, siteKey);
+      ArmoryIdentity.removeLastSync(kind, siteKey);
+      // The old Titan Gear Pool key is a read fallback for gear: a copy left there would bring cleared gear back.
+      if (kind === 'gear') localStorage.removeItem('gearPool_' + siteKey);
+    } catch (e) {}
+  }
+  // Applies a clear marker to this device. Returns true when the local copy was dropped.
+  function _ar_applyClearedMarker(kind, siteKey, clearedTs) {
+    var local = ArmoryIdentity.getSupplement(kind, siteKey);
+    if (!local) return false;
+    if (!_ar_shouldDropForClear(_ar_supTsMs(kind, local), clearedTs)) return false;
+    _ar_dropLocalSupplement(kind, siteKey);
+    return true;
+  }
+  // Set by a clear on this device: the next reads revalidate instead of trusting the 60 s browser copy.
+  function _ar_markJustCleared(siteKey) {
+    try { localStorage.setItem('armory_justCleared_' + siteKey, String(Date.now())); } catch (e) {}
+  }
+  function _ar_recentlyCleared(siteKey) {
+    try {
+      var t = parseInt(localStorage.getItem('armory_justCleared_' + siteKey) || '0', 10);
+      return t > 0 && (Date.now() - t) < 600000;
+    } catch (e) { return false; }
+  }
+
   // Owner-only wipe of every imported supplement, so the armory falls back to
-  // whatever the player's battle reports carry. Deleting server-side is not
-  // enough on its own: the background self-heal re-uploads any local copy that
-  // outlives the delete, so each kind is dropped from localStorage too.
+  // whatever the player's battle reports carry. The worker keeps a tombstone for
+  // each deleted kind, so other devices that still hold a copy cannot upload it
+  // again; each kind is also dropped from localStorage here.
   async function _ar_clearImportedSupplements(siteKey) {
     await _ar_ensureSupplementToken(siteKey);
     if (!_ar_supplementToken) throw new Error('No token. Re-verify your UID.');
@@ -4519,15 +4583,13 @@
         // 404 means it was already gone, which is the state we wanted anyway.
         ok = r.ok || r.status === 404;
       } catch (e) { ok = false; }
-      // Drop the local copy either way. Leaving it behind is what lets the
-      // background self-heal push the data straight back up to the worker.
-      try {
-        ArmoryIdentity.removeSupplement(kind, siteKey);
-        ArmoryIdentity.removeSupplementMeta(kind, siteKey);
-        ArmoryIdentity.removeLastSync(kind, siteKey);
-      } catch (e2) {}
+      // Drop the local copy either way, so this device never offers it again.
+      _ar_dropLocalSupplement(kind, siteKey);
       (ok ? cleared : failed).push(kind);
     }
+    // The old Titan Gear Pool key is read as a fallback for gear; leave nothing behind.
+    try { localStorage.removeItem('gearPool_' + siteKey); } catch (e3) {}
+    _ar_markJustCleared(siteKey);
     return { cleared: cleared, failed: failed };
   }
 
@@ -4541,12 +4603,7 @@
     if (!siteKey) return 'error';
     var local = ArmoryIdentity.getSupplement(kind, siteKey);
     if (!local) return 'no-change';
-    var localTs = 0;
-    if (kind === 'inv' || kind === 'gear' || kind === 'runepool') {
-      localTs = (local.meta && local.meta.ts) ? new Date(local.meta.ts).getTime() : 0;
-    } else {
-      localTs = local.ts ? new Date(local.ts).getTime() : 0;
-    }
+    var localTs = _ar_supTsMs(kind, local);
     if (!localTs) return 'no-change';
     var lastSynced = ArmoryIdentity.getLastSync(kind, siteKey);
     if (lastSynced >= localTs) return 'no-change';
@@ -4557,6 +4614,11 @@
       ArmoryIdentity.setLastSync(kind, siteKey, localTs);
       return 'synced';
     } catch (e) {
+      if (e && e.clearedTs) {
+        // The worker says this was cleared on purpose: drop an older local copy, never re-send it.
+        _ar_applyClearedMarker(kind, siteKey, e.clearedTs);
+        return 'cleared';
+      }
       console.warn('Background sync failed (' + kind + ')', e);
       return 'error';
     }
@@ -4583,7 +4645,12 @@
     });
     if (!r.ok) {
       var msg = await r.text();
-      throw new Error('Upload failed: ' + r.status + ' ' + msg);
+      var upErr = new Error('Upload failed: ' + r.status + ' ' + msg);
+      if (r.status === 409) {
+        var cj = null; try { cj = JSON.parse(msg); } catch (e) {}
+        if (cj && cj.error === 'cleared') upErr.clearedTs = _ar_clearedTsFrom(null, cj) || Date.now();
+      }
+      throw upErr;
     }
     return await r.json();
   }
@@ -4698,6 +4765,7 @@
       if (!lTs) continue;
 
       var rTs = 0;
+      var healCleared = 0;
       if (priv[kind]) {
         var ls = ArmoryIdentity.getLastSync(kind, siteKey);
         if (ls >= lTs) continue;
@@ -4707,9 +4775,14 @@
           if (rr.ok) {
             var rj = await rr.json();
             rTs = _ar_supplementLocalTs(kind, rj);
+          } else if (rr.status === 404) {
+            var rj404 = null; try { rj404 = await rr.json(); } catch (e) {}
+            healCleared = _ar_clearedTsFrom(rr.headers.get('X-Supplement-Cleared'), rj404);
           }
         } catch (e) {}
       }
+      // Cleared on purpose: an older local copy is dropped, not pushed back up.
+      if (healCleared && _ar_applyClearedMarker(kind, siteKey, healCleared)) continue;
       if (lTs > rTs) needs.push(kind);
     }
 
@@ -4747,6 +4820,7 @@
         ArmoryIdentity.setLastSync(k, siteKey, ts);
         console.log('[self-heal] uploaded', k);
       } catch (e) {
+        if (e && e.clearedTs) { _ar_applyClearedMarker(k, siteKey, e.clearedTs); continue; }
         console.warn('[self-heal] upload failed (' + k + ')', e);
       }
     }
@@ -4792,8 +4866,17 @@
   async function _ar_fetchSupplement(kind, siteKey, fresh) {
     try {
       // fresh: skip the browser's 60 s copy, so a snapshot the game just sent shows on this open
-      var r = await fetch(SUPPLEMENT_WORKER + '/supplement/' + kind + '/' + siteKey, { cache: fresh ? 'no-store' : 'default' });
-      if (r.status === 404) return null;
+      // Right after a clear on this device, revalidate: the browser's 60 s copy may still hold the deleted data.
+      var cacheMode = fresh ? 'no-store' : (_ar_recentlyCleared(siteKey) ? 'no-cache' : 'default');
+      var r = await fetch(SUPPLEMENT_WORKER + '/supplement/' + kind + '/' + siteKey, { cache: cacheMode });
+      if (r.status === 404) {
+        // A clear is told apart from "never uploaded" by the header (and body).
+        var cb = null;
+        var ch = r.headers.get('X-Supplement-Cleared');
+        if (!ch) { try { cb = await r.json(); } catch (e) {} }
+        var cts = _ar_clearedTsFrom(ch, cb);
+        return cts ? { __cleared: cts } : null;
+      }
       if (r.status === 403) {
         // Mark private and wipe any stale local cache so non-owners can't
         // bypass privacy via leftover localStorage from a previous session.
@@ -4825,18 +4908,20 @@
     var changed = [];
     // Helper: shape-aware ts read. heroes follows the same top-level ts shape
     // as bench/chips, so it falls through the same branch.
-    function tsOf(kind, obj) {
-      if (!obj) return 0;
-      if (kind === 'inv' || kind === 'gear' || kind === 'runepool') {
-        return (obj.meta && obj.meta.ts) ? new Date(obj.meta.ts).getTime() : 0;
-      }
-      return obj.ts ? new Date(obj.ts).getTime() : 0;
-    }
+    function tsOf(kind, obj) { return _ar_supTsMs(kind, obj); }
     function adoptIfNewer(kind, remote) {
       if (!remote || remote.__private) return;
+      if (remote.__cleared) {
+        // Cleared on purpose (maybe from another device): drop an older local copy.
+        if (_ar_applyClearedMarker(kind, siteKey, remote.__cleared)) changed.push(kind);
+        return;
+      }
       var local = ArmoryIdentity.getSupplement(kind, siteKey);
       if (tsOf(kind, remote) > tsOf(kind, local)) {
         ArmoryIdentity.setSupplement(kind, siteKey, remote);
+        // The worker already holds this copy: record it, so it never looks like unsynced local work.
+        var rts = tsOf(kind, remote);
+        if (rts) ArmoryIdentity.setLastSync(kind, siteKey, rts);
         changed.push(kind);
       }
     }
@@ -8991,10 +9076,16 @@
     // -- Section 3: Clear imported game data --
     // Escape hatch for a stale bookmarklet snapshot when the player has no
     // time to run a fresh import: wipe it and let the battle reports drive.
+    // Only the verified owner, on their own report, outside advisor and
+    // view-only views: anyone else would be deleting data that is not theirs.
+    var clrIdent = (typeof getStoredIdentity === 'function') ? getStoredIdentity() : null;
+    var clrSk = (clrIdent && clrIdent.siteKey) || null;
+    var clrReportSk = wizardState.player && wizardState.player.siteKey;
+    if (!(clrSk && !_imp() && !_marchNonOwner() && _ar_isOwnReport(clrReportSk || clrSk) && _ar_isUnlocked(clrSk))) return;
     var clrWrap = makeSection('Clear imported game data');
     var clrHint = document.createElement('div');
     clrHint.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;';
-    clrHint.textContent = 'Deletes your bookmarklet import so gear, heroes, decorations, skins, enigma and formation rebuild from your battle reports instead. Use this when your import has gone stale and you do not have time to run a fresh one. A rune pool you entered by hand is kept, but the auto-derived pool goes empty, because battle reports do not include your inventory.';
+    clrHint.textContent = 'Deletes your bookmarklet import from this device and from the cloud, on all your devices, so gear, heroes, decorations, skins, enigma and formation rebuild from your battle reports instead. Use this when your import has gone stale and you do not have time to run a fresh one. Inventory, Bench Beasts and HT Chips stay empty until your next import. A rune pool you entered by hand is kept, but the auto-derived pool goes empty, because battle reports do not include your inventory.';
     clrWrap.appendChild(clrHint);
 
     var clrStatus = document.createElement('div');
@@ -9006,14 +9097,8 @@
     clrBtn.textContent = 'Clear imported data';
     clrBtn.style.cssText = 'align-self:flex-start;border-color:#d29922;color:#d29922;';
     clrBtn.addEventListener('click', async function () {
-      var ident = (typeof getStoredIdentity === 'function') ? getStoredIdentity() : null;
-      var sk = (wizardState.player && wizardState.player.siteKey) || (ident && ident.siteKey) || null;
-      if (!sk) {
-        clrStatus.style.color = 'var(--red)';
-        clrStatus.textContent = 'No siteKey available. Verify your UID first.';
-        return;
-      }
-      if (!confirm('Clear your imported game data?\n\nRebuilt from your battle reports: gear, heroes, decorations, skins, enigma, formation.\nKept: a rune pool you entered by hand, your battle reports, and your share codes.\n\nThe auto-derived rune pool stays empty until you run the import again.')) return;
+      var sk = clrSk;
+      if (!confirm('Clear your imported game data?\n\nRebuilt from your battle reports: gear, heroes, decorations, skins, enigma, formation.\nEmpty until your next import: Inventory, Bench Beasts, HT Chips.\nKept: a rune pool you entered by hand, your battle reports, and your share codes.\n\nThe auto-derived rune pool stays empty until you run the import again. This also clears the copy on your other devices.')) return;
       clrBtn.disabled = true;
       clrStatus.style.color = 'var(--muted)';
       clrStatus.textContent = 'Clearing...';
@@ -9023,19 +9108,19 @@
       } catch (e) {
         clrBtn.disabled = false;
         clrStatus.style.color = 'var(--red)';
-        clrStatus.textContent = 'Could not clear: ' + e.message;
+        clrStatus.textContent = 'Could not clear. Check your connection and try again.';
         return;
       }
       if (res.failed.length) {
         clrBtn.disabled = false;
         clrStatus.style.color = 'var(--red)';
-        clrStatus.textContent = 'Cleared ' + res.cleared.length + ', but these failed: '
-          + res.failed.join(', ') + '. Try again in a moment.';
+        clrStatus.textContent = 'Cleared ' + res.cleared.length + ' of ' + (res.cleared.length + res.failed.length)
+          + ', but these could not be cleared: ' + _ar_kindLabels(res.failed) + '. Try again in a moment.';
         return;
       }
       clrStatus.style.color = 'var(--green)';
-      clrStatus.textContent = 'Cleared. Reloading so your report rebuilds from your battle reports.';
-      setTimeout(function () { location.reload(); }, 900);
+      clrStatus.textContent = 'Cleared. Reloading so your report rebuilds from your battle reports. Inventory, Bench Beasts and HT Chips stay empty until your next import.';
+      setTimeout(function () { location.reload(); }, 1800);
     });
     clrWrap.appendChild(clrBtn);
     clrWrap.appendChild(clrStatus);
@@ -12576,6 +12661,7 @@
     // has march-size data; fall back to whichever is non-null.
     function pickFreshest(kind, local, remote) {
       if (remote && remote.__private) return local; // private — use local if any
+      if (remote && remote.__cleared) return _ar_shouldDropForClear(_ar_supTsMs(kind, local), remote.__cleared) ? null : local;
       if (!local && !remote) return null;
       if (!local) return remote;
       if (!remote) return local;
@@ -29915,7 +30001,7 @@
       hasLocal = !!ArmoryIdentity.getSupplement('inv', msSiteKey);
       if (!hasLocal) {
         _ar_fetchSupplement('inv', msSiteKey).then(function(invRaw) {
-          if (!invRaw) return;
+          if (!invRaw || invRaw.__cleared || invRaw.__private) return;
           _ar_updateMothershipPiecesFromInv(contentDiv, invRaw);
         }).catch(function() {});
       }
@@ -30194,7 +30280,7 @@
         hasLocal = !!ArmoryIdentity.getSupplement('inv', msSiteKey);
         if (!hasLocal) {
           _ar_fetchSupplement('inv', msSiteKey).then(function(invRaw) {
-            if (!invRaw) return;
+            if (!invRaw || invRaw.__cleared || invRaw.__private) return;
             _ar_updateMothershipPiecesFromInv(section, invRaw);
           }).catch(function() {});
         }
@@ -30353,7 +30439,7 @@
       var parsed = ArmoryIdentity.getSupplement('chips', siteKey);
       if (parsed && Array.isArray(parsed.chips)) return Promise.resolve(parsed);
     }
-    return _ar_fetchSupplement('chips', siteKey);
+    return _ar_fetchSupplement('chips', siteKey).then(function (j) { return (j && j.__cleared) ? null : j; });
   }
 
   // Render chip pool with multi-faceted filters + sort. Reuses existing CL +
