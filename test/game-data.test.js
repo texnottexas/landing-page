@@ -159,3 +159,70 @@ test('advisor placed level uses the game id -> level map (Travel Trunk stride 10
 test('city skill for skin 1844000 is named Kaiju Slayer', () => {
   assert.match(ARMORY, /"1844000":\["Kaiju Slayer"/);
 });
+
+// ---- Decor advisor ranking ----
+const advisorFns = () => {
+  const ctx = vm.createContext({
+    ADVISOR_STAT_BUFFS: { march_size: ['960012'], attack: ['930100'] },
+  });
+  vm.runInContext(['_adv_statView', '_adv_rankRecs'].map((n) => {
+    const i = ARMORY.indexOf('function ' + n + '(');
+    assert.ok(i >= 0, n);
+    const b = ARMORY.slice(i);
+    return b.slice(0, b.search(/\n  \}\n/) + 4);
+  }).join('\n') + '\nthis.view = _adv_statView; this.rank = _adv_rankRecs;', ctx);
+  return ctx;
+};
+const rec = (name, group, cost, rows) => ({ name, group, shardCost: cost, rawShardCost: cost, buffRows: rows });
+const row = (id, scalar) => ({ id: String(id), scalar, label: 'b' + id, displayDelta: '+' + scalar });
+
+test('advisor ranks on the selected stat only and lists the other buffs as "also gives"', () => {
+  const { view } = advisorFns();
+  // Pretty Chill gives a big non-march buff plus a small march buff; Plain gives more march per shard.
+  const pretty = view(rec('Pretty Chill 2022', 1, 100, [row(930100, 5000), row(960012, 10)]), 'march_size');
+  const plain = view(rec('Plain Decor', 2, 100, [row(960012, 40)]), 'march_size');
+  assert.equal(pretty.roi, 0.1);
+  assert.equal(plain.roi, 0.4);
+  const J = (x) => JSON.parse(JSON.stringify(x));
+  assert.deepEqual(J(pretty.buffRows.map((r) => r.id)), ['960012']);
+  assert.deepEqual(J(pretty.alsoRows.map((r) => r.id)), ['930100']);
+  const { rank } = advisorFns();
+  assert.deepEqual(J(rank([pretty, plain]).map((r) => r.name)), ['Plain Decor', 'Pretty Chill 2022']);
+});
+
+test('advisor ties go to the cheaper upgrade, then the name', () => {
+  const { rank } = advisorFns();
+  const a = { name: 'Zed', shardCost: 50, roi: 1 }, b = { name: 'Amy', shardCost: 100, roi: 1 },
+        c = { name: 'Bob', shardCost: 50, roi: 1 }, d = { name: 'Top', shardCost: 500, roi: 2 };
+  assert.deepEqual(JSON.parse(JSON.stringify(rank([a, b, c, d]).map((r) => r.name))), ['Top', 'Bob', 'Zed', 'Amy']);
+  assert.deepEqual(JSON.parse(JSON.stringify(rank([d, c, b, a]).map((r) => r.name))), ['Top', 'Bob', 'Zed', 'Amy']);
+});
+
+test('advisor lists each decor group once even if the index repeats it', () => {
+  assert.match(ARMORY, /seenGroups\[String\(entry\.group\)\]/);
+});
+
+// ---- Beast optimizer ----
+test('the optimizer no longer fetches the missing enigma-tg-refinement-link.json', () => {
+  assert.ok(!ARMORY.includes('enigma-tg-refinement-link'));
+  assert.ok(!ARMORY.includes('boTgLinkData'));
+  assert.ok(!fs.existsSync(path.join(ROOT, 'data/enigma-tg-refinement-link.json')));
+});
+
+test('refinement-driven slots (fields 4-5, slots 7-9) score 0 without the player\'s own gear', () => {
+  const ctx = vm.createContext({
+    BO_TG_DYNAMIC_OVERRIDES: null,
+    BO_RARITY_BUFF_TABLE: literal(ARMORY.slice(ARMORY.indexOf('var BO_RARITY_BUFF_TABLE')).replace('var BO_RARITY_BUFF_TABLE =', 'var BO_RARITY_BUFF_TABLE ='), 'BO_RARITY_BUFF_TABLE'),
+    BO_RARITY_DEFAULT_WEIGHTS: [{ statKey: 'atk', targetUnit: 0, weightRatio: 0.15 }],
+  });
+  const src = ['boIsRefinementDrivenSlot', 'boResolveSlotWeights'].map((n) => {
+    const i = ARMORY.indexOf('function ' + n + '(');
+    const b = ARMORY.slice(i);
+    return b.slice(0, b.search(/\n  \}\n/) + 4);
+  }).join('\n') + '\nthis.w = boResolveSlotWeights;';
+  vm.runInContext(src, ctx);
+  for (const o of [7, 8, 9]) for (const f of [4, 5]) assert.equal(ctx.w({ fieldType: f, order: o }).length, 0);
+  assert.ok(ctx.w({ fieldType: 4, order: 6 }).length > 0);
+  ctx.BO_TG_DYNAMIC_OVERRIDES = { '4:7': [{ statKey: 'def', targetUnit: 1, weightRatio: 0.2 }] };
+  assert.equal(ctx.w({ fieldType: 4, order: 7 }).length, 1);
+});

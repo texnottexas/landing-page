@@ -1045,6 +1045,7 @@
   .advisor-rec-buff-rate {
     font-size: 11px; color: var(--muted); line-height: 1.3;
   }
+  .advisor-rec-also { font-size: 11px; color: var(--muted); line-height: 1.3; }
   .advisor-rec-cost-row {
     display: flex; justify-content: space-between; gap: 8px; font-size: 12px;
   }
@@ -16353,6 +16354,7 @@
         valueType: meta.valueType,
         rawDelta: raw,
         displayDelta: displayDelta,
+        scalar: normalizedScalar,
         perShard: perShard,
         perShardLabel: meta.valueType === 10000
           ? (fmtShards(shardsPerUnit) + ' shards per +1%')
@@ -16387,6 +16389,32 @@
     };
   }
 
+  // Per-stat view of a recommendation: ROI counts only the buffs that belong to the
+  // selected stat; the decor's other buffs are kept as `alsoRows` ("also gives").
+  function _adv_statView(rec, statId) {
+    var allow = ADVISOR_STAT_BUFFS[statId] || [];
+    var mine = [], other = [], sum = 0;
+    (rec.buffRows || []).forEach(function(row) {
+      if (allow.indexOf(String(row.id)) >= 0) { mine.push(row); sum += row.scalar || 0; }
+      else other.push(row);
+    });
+    var v = {};
+    Object.keys(rec).forEach(function(k) { v[k] = rec[k]; });
+    v.buffRows = mine;
+    v.alsoRows = other;
+    v.roi = sum / Math.max(rec.rawShardCost, 1);
+    return v;
+  }
+
+  // Highest ROI first; ties go to the cheaper upgrade, then the name, so the order never depends on load order.
+  function _adv_rankRecs(list) {
+    return list.slice().sort(function(a, b) {
+      if (b.roi !== a.roi) return b.roi - a.roi;
+      if (a.shardCost !== b.shardCost) return a.shardCost - b.shardCost;
+      return String(a.name).localeCompare(String(b.name));
+    });
+  }
+
   function _adv_computeRecommendations(statIds, inventory, merged) {
     return Promise.all([_adv_loadLevels(), _adv_loadIndex(), _adv_loadMutex()]).then(function(arr) {
       var levelsData = arr[0], idx = arr[1], mutex = arr[2];
@@ -16395,7 +16423,11 @@
       statIds.forEach(function(s) { byStat[s] = []; });
       var groupNames = {};
       idx.forEach(function(e) { groupNames[String(e.group)] = e.name; });
+      var seenGroups = {};
       idx.forEach(function(entry) {
+        // The index can list a group more than once; one card per group.
+        if (seenGroups[String(entry.group)]) return;
+        seenGroups[String(entry.group)] = true;
         var placed = _adv_getPlacedLevel(entry.group, merged);
         var groupOnly = _adv_calcGroupSpecificShards(entry.group, inventory, levelsData);
         var totalShards = groupOnly + shardSummary.universal;
@@ -16406,11 +16438,11 @@
           return groupNames[String(g)] || ('Group ' + g);
         });
         statIds.forEach(function(s) {
-          if (_adv_statMatchesEntry(s, entry)) byStat[s].push(rec);
+          if (_adv_statMatchesEntry(s, entry)) byStat[s].push(_adv_statView(rec, s));
         });
       });
       Object.keys(byStat).forEach(function(s) {
-        byStat[s].sort(function(a, b) { return b.roi - a.roi; });
+        byStat[s] = _adv_rankRecs(byStat[s]);
       });
       return { byStat: byStat, shardSummary: shardSummary };
     });
@@ -16465,6 +16497,12 @@
         }));
       });
       card.appendChild(buffsBlock);
+    }
+    if (r.alsoRows && r.alsoRows.length > 0) {
+      card.appendChild(_adv_mk('div', {
+        cls: 'advisor-rec-also',
+        text: 'Also gives: ' + r.alsoRows.map(function(row) { return row.label + ' ' + row.displayDelta; }).join(', ')
+      }));
     }
 
     var costRow = _adv_mk('div', { cls: 'advisor-rec-cost-row' });
@@ -18571,19 +18609,6 @@
       }
     }
 
-    if (slot && slot.isTgLinked && slot.tgActive) {
-      var tg = boTgRefinementBuff(slot);
-      if (tg && tg.buffId) {
-        var tcls = boClassifyBuff(tg.buffId, true);
-        if (tcls && tcls.statKey !== 'elemental') {
-          total += tg.buffValue
-            * BO_STAT_WEIGHTS[tcls.statKey]
-            * BO_SCOPE_MULT[tcls.scope]
-            * boPlaystyleMult(tcls.targetUnit, playstyle);
-        }
-      }
-    }
-
     return total;
   }
 
@@ -18614,9 +18639,8 @@
   //  ATK + HP.) Field 3 Navy entries (slots 3, 5) were inferred from sibling
   // Army / Air patterns because Tex has not unlocked Navy equip - the slot
   // structure is identical, only targetUnit changes. Fields 4-5 slots 7-9 are
-  // TG-refinement-driven and capture Tex's actual gear refinement values
-  // (player-specific; the optimizer scores Tex's armory so this is correct
-  // for him).
+  // TG-refinement-driven and player-specific: their weights come only from the
+  // player's own gear (BO_TG_DYNAMIC_OVERRIDES), never from one player's values.
   var BO_RARITY_BUFF_TABLE = {
     1: {
       1: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 0.30 }, { statKey: 'hp',  targetUnit: 0, weightRatio: 0.30 }],
@@ -18648,10 +18672,8 @@
       3: [{ statKey: 'atk',    targetUnit: 3, weightRatio: 0.60 }, { statKey: 'hp',  targetUnit: 3, weightRatio: 1.50 }],
       4: [{ statKey: 'hp',     targetUnit: 0, weightRatio: 0.60 }],
       5: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 0.15 }, { statKey: 'hp',  targetUnit: 0, weightRatio: 0.45 }],
-      6: [{ statKey: 'hp',     targetUnit: 0, weightRatio: 0.90 }],
-      7: [{ statKey: 'dmgDec', targetUnit: 1, weightRatio: 0.4518 }, { statKey: 'dmgDec', targetUnit: 3, weightRatio: 0.3852 }],
-      8: [{ statKey: 'dmgDec', targetUnit: 1, weightRatio: 0.3528 }, { statKey: 'dmgDec', targetUnit: 3, weightRatio: 0.2364 }],
-      9: [{ statKey: 'def',    targetUnit: 1, weightRatio: 0.1470 }, { statKey: 'def',    targetUnit: 3, weightRatio: 0.1248 }]
+      6: [{ statKey: 'hp',     targetUnit: 0, weightRatio: 0.90 }]
+      // Slots 7-9 depend on the player's own Titan Gear refinement; see boResolveSlotWeights.
     },
     5: {
       1: [{ statKey: 'atk',    targetUnit: 3, weightRatio: 1.00 }, { statKey: 'hp',  targetUnit: 3, weightRatio: 0.90 }],
@@ -18659,10 +18681,8 @@
       3: [{ statKey: 'atk',    targetUnit: 1, weightRatio: 1.00 }, { statKey: 'hp',  targetUnit: 1, weightRatio: 0.90 }],
       4: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 0.45 }, { statKey: 'hp',  targetUnit: 0, weightRatio: 0.15 }],
       5: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 0.60 }],
-      6: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 0.90 }],
-      7: [{ statKey: 'dmgInc', targetUnit: 1, weightRatio: 0.2778 }, { statKey: 'dmgInc', targetUnit: 3, weightRatio: 0.2460 }],
-      8: [{ statKey: 'dmgInc', targetUnit: 1, weightRatio: 0.2214 }, { statKey: 'dmgInc', targetUnit: 3, weightRatio: 0.3096 }],
-      9: [{ statKey: 'dmgInc', targetUnit: 1, weightRatio: 0.3756 }, { statKey: 'dmgInc', targetUnit: 3, weightRatio: 0.3252 }]
+      6: [{ statKey: 'atk',    targetUnit: 0, weightRatio: 0.90 }]
+      // Slots 7-9 depend on the player's own Titan Gear refinement; see boResolveSlotWeights.
     }
   };
 
@@ -18712,10 +18732,17 @@
   // (computed live from player gear) take priority over the BO_RARITY_BUFF_TABLE
   // fallback. Used by both boComputeRarityBonus and boRarityBonusBreakdown so
   // both score and per-stat split stay in sync.
+  function boIsRefinementDrivenSlot(fieldType, order) {
+    return (fieldType === 4 || fieldType === 5) && order >= 7 && order <= 9;
+  }
+
   function boResolveSlotWeights(slot) {
     var key = slot.fieldType + ':' + slot.order;
     var dyn = BO_TG_DYNAMIC_OVERRIDES && BO_TG_DYNAMIC_OVERRIDES[key];
     if (dyn) return dyn;
+    // Refinement-driven slots (fields 4-5, slots 7-9) have no meaningful default:
+    // with no refined gear on this player they contribute nothing.
+    if (boIsRefinementDrivenSlot(slot.fieldType, slot.order)) return [];
     return (BO_RARITY_BUFF_TABLE[slot.fieldType] && BO_RARITY_BUFF_TABLE[slot.fieldType][slot.order])
            || BO_RARITY_DEFAULT_WEIGHTS;
   }
@@ -18815,7 +18842,6 @@
   // boEnhData is re-keyed by enhanceRowId (source JSON is keyed by holeId).
   var boEnhData = null;
   var boFieldConditions = null;
-  var boTgLinkData = null;
   var boPlatforms = null;
   var boHoleIndex = null;
 
@@ -18837,11 +18863,6 @@
     return rows[rows.length - 1].level;
   }
 
-  function boTgRefinementBuff(slot) {
-    if (!boTgLinkData || !slot) return null;
-    return boTgLinkData[String(slot.holeId)] || boTgLinkData[slot.holeId] || null;
-  }
-
   function boLoadOptimizerData() {
     if (boEnhData && boFieldConditions && boPlatforms) return Promise.resolve();
     // Source JSON is keyed by holeId; re-index by enhanceRowId for boEnhanceAt lookups.
@@ -18860,14 +18881,10 @@
     var p2 = fetch('data/enigma-field-conditions.json')
       .then(function(r) { return r.json(); })
       .then(function(j) { boFieldConditions = j.conditions || j; });
-    var p3 = fetch('data/enigma-tg-refinement-link.json')
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(j) { boTgLinkData = j || {}; })
-      .catch(function() { boTgLinkData = {}; });
     var p4 = fetch('data/enigma-platforms.json')
       .then(function(r) { return r.json(); })
       .then(function(j) { boPlatforms = j; });
-    return Promise.all([p1, p2, p3, p4]);
+    return Promise.all([p1, p2, p4]);
   }
 
   // ── Beast Optimizer: data-prep helpers ────────────────────────────────────
@@ -19112,7 +19129,6 @@
       qualityCap: qualityCap,
       enhanceRowId: enhanceRowId,
       enhanceLevel: enhanceLevel || 0,
-      isTgLinked: hole ? !!(boTgLinkData && boTgLinkData[String(hole.id)]) : false,
       tgActive: !!tgActive
     };
   }
@@ -20670,7 +20686,7 @@
           var hasFieldWeights = !!(BO_RARITY_BUFF_TABLE[slot.fieldType] && BO_RARITY_BUFF_TABLE[slot.fieldType][slot.order]);
           rMeta.textContent = isDynamic
             ? 'Beast potential boosts the slot (weights computed live from your TG refinement)'
-            : (hasFieldWeights ? 'Beast potential boosts the slot (verified from in-game tipsData)' : 'Beast potential boosts the slot (fallback weights)');
+            : (boIsRefinementDrivenSlot(slot.fieldType, slot.order) ? 'No qualifying Titan Gear refinement found, so this slot is scored as 0' : hasFieldWeights ? 'Beast potential boosts the slot (verified from in-game tipsData)' : 'Beast potential boosts the slot (fallback weights)');
           rLeft.appendChild(rMeta);
           rarityRow.appendChild(rLeft);
           var rVal = document.createElement('div');
@@ -20720,7 +20736,7 @@
           // saying "no gear loaded" while a sibling type-11 said "no
           // qualifying refines" even though the root state was identical).
           tgWarn.style.color = '#d29922';
-          tgWarn.textContent = 'no gear loaded';
+          tgWarn.textContent = 'no gear loaded, scored as 0';
         } else if (tgLink.type === 11) {
           // Gear data exists, just nothing refined ≥70% on this TG slot.
           tgWarn.style.color = '#d29922';
