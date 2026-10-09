@@ -26903,21 +26903,45 @@
           ? advisorIdent.name
           : 'An advisor';
         var myAdvisorId = _ar_getAdvisorId();
+        // Signed-in advisors send their token so the plan is recorded under
+        // them; anyone else gets a private edit key on the first save and
+        // sends it back on later saves (kept on this device, never shown).
+        var planHeaders = { 'Content-Type': 'application/json' };
+        if (advisorIdent && advisorIdent.siteKey && !advisorIdent.guest && !_imp()) {
+          try { await _ar_ensureSupplementToken(advisorIdent.siteKey); } catch (e) {}
+        }
+        var planAuth = _imp_authHeader();
+        if (planAuth.Authorization) planHeaders.Authorization = planAuth.Authorization;
+        var editKeyName = 'advisor_editkey_' + code;
+        var savedEditKey = '';
+        try { savedEditKey = localStorage.getItem(editKeyName) || ''; } catch (e) {}
+        var planBody = {
+          advisorId: myAdvisorId,
+          advisorName: advisorName,
+          planNote: (window._advisorPlanNote || '').slice(0, 1000),
+          steps: window._advisorPlanSteps || [],
+          wantEditKey: true
+        };
+        if (savedEditKey) planBody.editKey = savedEditKey;
         var r = await fetch(SUPPLEMENT_WORKER + '/advisor/plan/' + code, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            advisorId: myAdvisorId,
-            advisorName: advisorName,
-            planNote: (window._advisorPlanNote || '').slice(0, 1000),
-            steps: window._advisorPlanSteps || []
-          })
+          headers: planHeaders,
+          body: JSON.stringify(planBody)
         });
         if (!r.ok) {
           var errTxt = await r.text();
+          if (r.status === 403 && /token_required/.test(errTxt)) {
+            throw new Error('Verify your in-game UID, then save the plan again.');
+          }
+          if (r.status === 403) {
+            throw new Error('This plan was saved by someone else, or from another device, so it cannot be changed from here.');
+          }
           throw new Error(_ar_plainError(r.status, errTxt, 'save plan'));
         }
         var resp = await r.json();
+        if (resp && typeof resp.editKey === 'string' && /^[0-9a-f]{32}$/.test(resp.editKey)) {
+          try { localStorage.setItem(editKeyName, resp.editKey); } catch (e) {}
+        }
         window._advisorPlanSavedTs = resp.ts || Date.now();
         saveStatus.classList.add('ok');
         saveStatus.textContent = 'Saved · ' + new Date(window._advisorPlanSavedTs).toLocaleTimeString();
