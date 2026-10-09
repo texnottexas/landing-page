@@ -32,12 +32,28 @@
   function round1(x) { return Math.round(x * 10) / 10; }
 
   // ---- gear -------------------------------------------------------------------------------------------------------
-  // One equipped piece in the shape nextMoves reads. gold: only gold gear is refined or socketed. Supplement pieces
-  // carry their quality; a battle-report piece does not, and is kept (like the page's advisor, which only drops a piece
-  // whose quality is known to be below gold).
+  // Slot: the supplement's own slot, else the digit in the equipId (100104 -> slot 1), else the array position.
+  function equipSlot(eq, idx) {
+    if (eq._slot) return eq._slot;
+    var d = Math.floor((Number(eq.equipId) % 10000) / 100);
+    return d >= 1 && d <= 6 ? d : idx + 1;
+  }
+  // Quality (5 = gold): the piece's own quality (supplement), else the equipId suffix (100104 -> tier 04 -> 5) when the
+  // id is in the base-buff table, else the tier of its random-stat template ids (GEAR_TEMPLATE: 1-261 and 1072-1179
+  // are gold rolls, 271-1071 are lower qualities). No usable signal = null, which counts as NOT gold.
+  function equipQuality(eq) {
+    if (eq.quality != null) return eq.quality;
+    if (eq.equipId != null && G.EQUIP_BASE_BUFF[eq.equipId]) return (Number(eq.equipId) % 100) + 1;
+    var ids = (eq.infos || []).filter(function (i) { return i.type === 1 && i.templateId != null; }).map(function (i) { return Number(i.templateId); });
+    if (!ids.length) return null;
+    if (ids.some(function (t) { return t >= 271 && t <= 1071; })) return 4;
+    if (ids.every(function (t) { return (t >= 1 && t <= 261) || (t >= 1072 && t <= 1179); })) return 5;
+    return null;
+  }
+  // One equipped piece in the shape nextMoves reads. gold: only gold gear is refined or socketed.
   function pieceOf(eq, idx) {
     if (!eq) return null;
-    var slot = eq._slot || (idx + 1);
+    var slot = equipSlot(eq, idx);
     if (slot < 1 || slot > 6) return null;
     var stats = [], rd = null;
     (eq.infos || []).forEach(function (info) {
@@ -48,9 +64,10 @@
         rd = G.resolveRune(info.templateId);
       }
     });
+    var q = equipQuality(eq);
     return {
       slot: slot, slotName: G.GEAR_SLOT_NAMES[slot], level: eq.level == null ? null : eq.level,
-      q: eq.quality == null ? null : eq.quality, gold: eq.quality == null ? true : eq.quality >= 5,
+      q: q, gold: q === 5,
       rune: rd ? { name: rd.n, s: rd.s, sm: rd.sm, icon: G.RUNE_ICON[rd.n] || slug(rd.n) } : null,
       stats: stats
     };
@@ -280,7 +297,7 @@
     };
   }
 
-  var api = { buildViewModel: buildViewModel, fromLoad: fromLoad, TOTAL_IDS: TOTAL_IDS };
+  var api = { buildViewModel: buildViewModel, fromLoad: fromLoad, equipSlot: equipSlot, equipQuality: equipQuality, TOTAL_IDS: TOTAL_IDS };
   window.ArmoryVM = api;
   if (isNode) module.exports = api;
 })(typeof window !== 'undefined' ? window : {});

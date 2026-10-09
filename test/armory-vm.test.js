@@ -98,7 +98,7 @@ test('hero score is the page\'s heroGearScore; the strength band counts them wit
   assert.equal(synth.summaries.heroes.source, 'roster');
 });
 
-test('refine considers gold pieces only: a piece known to be below gold never reaches nextMoves, an unknown quality counts (report pieces)', () => {
+test('refine considers gold pieces only: a piece known to be below gold never reaches nextMoves, quality comes from the id or the roll templates', () => {
   const eq = (id, slot, quality) => ({ id, _slot: slot, quality, infos: [{ type: 1, templateId: 8, buffValue: 10 }, { type: 1, templateId: 20, buffValue: 10 }, { type: 2, templateId: 10201 }] });
   const hero = { id: 101, level: 100, star: 5, heroEquips: [eq(1, 2, 4), eq(2, 3, 5), eq(3, 4, undefined), eq(4, 5, null), eq(5, 6, 2)] };
   const vm = build({ heroes: [hero], decorations: null, mechas: [] });
@@ -292,13 +292,14 @@ test('60-character rule on the longest real names: hero, decoration and chip nam
   const upgrade = all.pool.find((c) => c.sig === 'd');
   assert.equal(upgrade.text, 'Upgrade ' + longestName + ' to Lv.2');
   const merge = all.pool.find((c) => c.sig === 'b');
-  assert.ok(merge.full.length > 60, 'the untruncated merge text is over the limit: ' + merge.full);
+  assert.equal(merge.text, merge.full, 'a merge on the longest hero name does not truncate: the star count is on the meta line');
+  assert.match(merge.meta, /^To \d stars?, \d+ in bag, uses \d+$/);
   for (const c of all.pool) {
     assert.ok(c.text.length <= 60, c.text.length + ' > 60: ' + c.text);
     assert.ok(/^[A-Z][a-z]+ /.test(c.text), 'verb first: ' + c.text);
     assert.ok(c.meta.length > 0 || c.sig === 'd', 'meta line: ' + c.text);
   }
-  assert.match(merge.text, /^Merge Stealth Hologram on Shikinami Asu.*… slot 4 to \d stars?$/);
+  assert.match(merge.text, /^Merge Stealth Hologram on Shikinami Asuka Langley slot 4$/);
   vm.moves.picks.forEach((p) => assert.ok(p.text.length <= 60));
   // the card carries the untruncated text for a title attribute
   assert.ok(vm.moves.picks.every((p) => typeof p.full === 'string' && p.full.length >= p.text.length));
@@ -339,4 +340,85 @@ test('no DOM, no network, no storage: the module source touches none of them', (
   const src = require('node:fs').readFileSync(require('node:path').join(P.ROOT, 'pages/armory-vm.js'), 'utf8');
   const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\/\/ .*$/gm, '');
   assert.ok(!/\bdocument\b|\blocalStorage\b|\bsessionStorage\b|\bfetch\s*\(|XMLHttpRequest|\bnavigator\b|addEventListener/.test(code));
+});
+
+test('equip quality and slot: own quality wins, then the equipId suffix, then the roll template tier; no signal = not gold', () => {
+  const st = (t) => ({ type: 1, templateId: t, buffValue: 1 });
+  const q = (eq) => VM.equipQuality(eq);
+  assert.equal(q({ quality: 3, equipId: 100104, infos: [st(8)] }), 3, 'explicit quality first');
+  assert.equal(q({ equipId: 100104, infos: [st(300)] }), 5, 'suffix 04 -> gold even when the templates say otherwise');
+  assert.equal(q({ equipId: 100103, infos: [st(8)] }), 4, 'suffix 03 -> 4');
+  assert.equal(q({ equipId: 100101, infos: [] }), 2);
+  assert.equal(q({ equipId: 999999, infos: [st(8)] }), 5, 'an id outside the base-buff table falls through to the templates');
+  assert.equal(q({ infos: [st(1), st(261), st(1072), st(1179)] }), 5, 'ranges 1-261 and 1072-1179 are gold');
+  assert.equal(q({ infos: [st(271), st(1071)] }), 4, '271-1071 are lower qualities');
+  assert.equal(q({ infos: [st(8), st(300)] }), 4, 'any lower roll makes the piece not gold');
+  assert.equal(q({ infos: [] }), null, 'no stats: unknown');
+  assert.equal(q({ infos: [{ type: 2, templateId: 10201 }] }), null, 'a rune alone says nothing');
+  assert.equal(q({ infos: [st(262)] }), null, 'a template in neither range: unknown');
+  const tids = Object.keys(G.GEAR_TEMPLATE).map(Number);
+  assert.equal(tids.length, 540);
+  assert.ok(tids.every((t) => (t >= 1 && t <= 261) || (t >= 271 && t <= 1071) || (t >= 1072 && t <= 1179)), 'the three ranges cover all 540 GEAR_TEMPLATE ids');
+  // unknown is not gold: no refine move for it
+  const vm = build({ heroes: [{ id: 101, level: 1, star: 1, heroEquips: [{ id: 1, infos: [{ type: 1, templateId: 8, buffValue: 10 }] }, { id: 2, infos: [] }] }], decorations: null, mechas: [] });
+  assert.deepStrictEqual(vm.heroes.list[0].pieces.map((p) => [p.slot, p.q, p.gold]), [[1, 5, true], [2, null, false]]);
+  // slot: _slot, then the equipId digit, then the position
+  assert.equal(VM.equipSlot({ _slot: 4, equipId: 100204 }, 0), 4);
+  assert.equal(VM.equipSlot({ equipId: 100504 }, 0), 5);
+  assert.equal(VM.equipSlot({ equipId: 100004 }, 2), 3, 'digit 0 is not a slot');
+  assert.equal(VM.equipSlot({ equipId: 100704 }, 1), 2, 'digit 7 is not a slot');
+  assert.equal(VM.equipSlot({}, 5), 6);
+});
+
+test('real battle reports (public fixtures): slot = the equipId digit, and the suffix tier and the roll-template tier agree on every piece', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const dir = path.join(P.ROOT, 'test/fixtures');
+  let n = 0, gold = 0, notGold = 0;
+  for (const f of fs.readdirSync(dir).filter((x) => /^\d+\.json$/.test(x))) {
+    const r = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+    for (const side of [r.battle.attacker, r.battle.defender]) for (const pl of side.players || []) for (const h of pl.heroList || []) {
+      (h.heroEquips || []).forEach((eq, idx) => {
+        if (!eq || eq.equipId == null) return;
+        n++;
+        const slot = VM.equipSlot(eq, idx);
+        assert.equal(slot, Math.floor((eq.equipId % 10000) / 100), f + ' slot');
+        const bySuffix = VM.equipQuality(eq);
+        const byRolls = VM.equipQuality({ infos: eq.infos });
+        assert.equal(bySuffix, (eq.equipId % 100) + 1);
+        assert.ok(byRolls === null || (byRolls === 5) === (bySuffix === 5), f + ' ' + eq.equipId + ' suffix ' + bySuffix + ' vs rolls ' + byRolls);
+        if (bySuffix === 5) gold++; else notGold++;
+      });
+    }
+  }
+  assert.ok(n >= 150, 'pieces checked: ' + n);
+  assert.ok(gold > 0 && notGold > 0, 'both gold and non-gold pieces are in the fixtures');
+});
+
+test('real reports through the model: a non-gold piece never gets a refine move and a piece keeps its true slot', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const r = JSON.parse(fs.readFileSync(path.join(P.ROOT, 'test/fixtures/4724810303346728960.json'), 'utf8'));
+  const heroes = [];
+  for (const side of [r.battle.attacker, r.battle.defender]) for (const pl of side.players || []) for (const h of pl.heroList || []) if (h.heroEquips && h.heroEquips.length) heroes.push({ id: h.id, heroEquips: h.heroEquips, level: h.level, star: h.star });
+  const vm = build({ heroes, decorations: null, mechas: [] });
+  const all = vm.heroes.list.reduce((a, h) => a.concat(h.pieces), []);
+  assert.ok(all.some((p) => !p.gold), 'the report has non-gold pieces');
+  const goldSlots = vm.movesInput.heroes.reduce((a, h) => a + h.gear.length, 0);
+  assert.equal(goldSlots, all.filter((p) => p.gold).length);
+});
+
+test('two players: loading B\'s enigma decode hints does not change A\'s beast numbers (hints are merged, not replaced)', () => {
+  const core = newCore();
+  const fx = P.fixture('beasts.json');
+  const mk = () => Object.assign(baseMerged(), { enigmas: fx.enigmas });
+  G.setSuppDecode(null);
+  G.setSuppDecode(fx.suppDecode); // A
+  const a1 = build(mk(), null, core).beasts;
+  assert.ok(a1.avgPotential > 0);
+  G.setSuppDecode({ 9999: { type: 1, faction: 1, quality: 5 } }); // B: other configs only
+  const a2 = build(mk(), null, core).beasts;
+  assert.deepStrictEqual(a2, a1, 'A is unchanged after B');
+  assert.deepStrictEqual(G.ebDecodeCfg(7), fx.suppDecode['7'], 'A\'s hint for cfg 7 survives');
+  assert.deepStrictEqual(G.ebDecodeCfg(9999), { type: 1, faction: 1, quality: 5 }, 'and B\'s is there too');
+  G.setSuppDecode(null);
+  assert.notDeepStrictEqual(G.ebDecodeCfg(7), fx.suppDecode['7'], 'null clears them');
 });

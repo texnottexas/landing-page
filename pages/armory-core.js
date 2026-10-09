@@ -1952,9 +1952,8 @@
         if (have >= cost) {
           cand.push({
             sig: 'b', cls: 2, gain: (1 / r.sm) * W[h.name], weight: W[h.name], key: 'b' + h.name + p.slot,
-            parts: [{ s: 'Merge ' }, { s: r.name, n: 1 }, { s: ' on ' }, { s: h.name, n: 1 }, { s: ' slot ' }, { s: String(p.slot), n: 1 },
-              { s: ' to ' }, { s: String(r.s + 1), n: 1 }, { s: (r.s + 1 === 1 ? ' star' : ' stars') }],
-            meta: have + ' in bag, uses ' + cost, ico: { u: 'rune-icons/' + r.icon + '.png', q: 'q5', fb: r.name.charAt(0) },
+            parts: [{ s: 'Merge ' }, { s: r.name, n: 1 }, { s: ' on ' }, { s: h.name, n: 1 }, { s: ' slot ' }, { s: String(p.slot), n: 1 }],
+            meta: 'To ' + (r.s + 1) + (r.s + 1 === 1 ? ' star, ' : ' stars, ') + have + ' in bag, uses ' + cost, ico: { u: 'rune-icons/' + r.icon + '.png', q: 'q5', fb: r.name.charAt(0) },
             route: 'heroes/battle?hero=' + encodeURIComponent(h.name) + '&slot=' + p.slot
           });
         }

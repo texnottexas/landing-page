@@ -572,7 +572,13 @@
 
   /* NOT copied from the page: ebDecodeCfg reads the sidecar window._enigmaSuppDecode (set by the page's supplement
    * synthesis). In a browser this writes the real window; in node, a stub. */
-  function setSuppDecode(map) { window._enigmaSuppDecode = map || null; }
+  function setSuppDecode(map) {
+    // null clears; a map is MERGED into the existing one, so a second player's decode hints never clobber the first's
+    if (!map) { window._enigmaSuppDecode = null; return; }
+    var cur = window._enigmaSuppDecode || {};
+    Object.keys(map).forEach(function (k) { cur[k] = map[k]; });
+    window._enigmaSuppDecode = cur;
+  }
 
   var api = {
     EB_TYPES: EB_TYPES,

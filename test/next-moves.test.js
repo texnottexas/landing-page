@@ -40,13 +40,13 @@ const texts = (d, opts) => C.nextMoves(d, opts).picks.map((p) => p.pill + ': ' +
 test('base data: one move per class, in class order', () => {
   assert.deepStrictEqual(texts(fresh()), [
     'Free: Place Impact on Alpha slot 1',
-    'Uses what you have: Merge Debilitate on Alpha slot 2 to 2 stars',
+    'Uses what you have: Merge Debilitate on Alpha slot 2',
     'Costs resources: Refine Raysor Headset on Bravo',
   ]);
   const r = C.nextMoves(fresh());
   assert.deepStrictEqual(r.weights, { Alpha: 1, Bravo: 0.9, Charlie: 0.8 });
   assert.deepStrictEqual(r.picks.map((p) => p.cls), [1, 2, 3]);
-  assert.equal(r.picks[1].meta, '2 in bag, uses 2');
+  assert.equal(r.picks[1].meta, 'To 2 stars, 2 in bag, uses 2');
   assert.equal(r.picks[0].meta, '2 in bag');
   assert.equal(r.picks[2].meta, '3 stats under 70% (30-50%)', 'the numbers live on the meta line');
   assert.ok(r.picks.every((p) => p.text.length <= 60), 'at most 60 characters');
