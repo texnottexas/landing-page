@@ -128,8 +128,12 @@ test('HT chips: only the HT the player fights with, from its chip table row', ()
   assert.deepStrictEqual(chip(d), ['Raise slot 2 chip on Doom Sawblade D-4 from Lv.6 to Lv.25'], 'the other HT only when the report shows it');
   d.ht.reportMechas = [1006, 1005];
   assert.deepStrictEqual(chip(d), ['Raise slot 4 chip on Luminary Knight LP-4 from Lv.6 to Lv.25', 'Raise slot 2 chip on Doom Sawblade D-4 from Lv.6 to Lv.25'], 'nothing else is left, so the signal may take its second slot (cap 2)');
+  d.ht.reportMechas = null;
+  assert.equal(chip(d)[0], 'Raise slot 4 chip on Luminary Knight LP-4 from Lv.6 to Lv.25', 'no battle report (null): the whole HT list, best chip first');
+  delete d.ht.reportMechas;
+  assert.equal(chip(d).length, 2, 'undefined is also no report');
   d.ht.reportMechas = [];
-  assert.equal(chip(d)[0], 'Raise slot 4 chip on Luminary Knight LP-4 from Lv.6 to Lv.25', 'no battle report: the whole HT list, best chip first');
+  assert.deepStrictEqual(chip(d), [], 'a report where no HT fought: no chip move');
   d.ht.reportMechas = [4242];
   assert.deepStrictEqual(chip(d), [], 'a mecha that matches no chip gives no chip move');
   // empty or core chips and Lv25 chips are never offered
@@ -202,4 +206,34 @@ test('no DOM, no network, no storage: the module source touches none of them', (
     const code = s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\/\/ .*$/gm, '');
     assert.ok(!/\bdocument\b|\blocalStorage\b|\bsessionStorage\b|\bfetch\s*\(|XMLHttpRequest|\bnavigator\b|\bsetTimeout\b|addEventListener/.test(code), name + ' must stay pure');
   }
+});
+
+test('hardening: missing sections and unknown merge costs do not throw', () => {
+  assert.deepStrictEqual(C.nextMoves({ heroes: fresh().heroes }).picks.map((p) => p.sig), ['c', 'c']);
+  assert.deepStrictEqual(C.nextMoves({}).picks, []);
+  assert.deepStrictEqual(C.nextMoves(null).picks, []);
+  const d = fresh();
+  d.runeCost = {};
+  assert.ok(!C.nextMoves(d).pool.some((c) => c.sig === 'b'), 'no cost row: no merge move');
+  d.runeCost = { '2': [1] };
+  assert.ok(!C.nextMoves(d).pool.some((c) => c.sig === 'b'), 'cost for this star missing: no merge move');
+  delete d.decor; delete d.ht; delete d.runeBag; delete d.runeSlots;
+  assert.doesNotThrow(() => C.nextMoves(d));
+});
+
+test('instances: per-player state (TG overrides, identity, lookups) does not bleed between create() instances', () => {
+  const s = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/armory-core/gear-supp.json'), 'utf8'));
+  const id = { getSupplement: (k, sk) => (k === 'gear' && sk === s.siteKey ? s.gearSupp : null) };
+  const slot = { fieldType: 4, order: 8 };
+  const A = C.create(), B = C.create();
+  assert.notEqual(A, B);
+  assert.deepStrictEqual(B.boResolveSlotWeights(slot), []);
+  A.setIdentity(id);
+  assert.ok(Object.keys(A.boReadTgRefinement(s.tgMerged, s.siteKey)).length > 0);
+  assert.ok(A.boResolveSlotWeights(slot).length > 0, 'A sees its own overrides');
+  assert.deepStrictEqual(B.boResolveSlotWeights(slot), [], 'B does not');
+  assert.deepStrictEqual(C.create().boResolveSlotWeights(slot), []);
+  A.setHeroCache({ 101: 'Alpha' }, null);
+  assert.equal(B.heroName(101), 'Hero #101');
+  assert.equal(typeof C.nextMoves, 'function', 'the default instance still exports the API');
 });

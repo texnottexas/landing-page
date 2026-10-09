@@ -39,6 +39,9 @@
       ebMaxPotential = G.ebMaxPotential,
       resolveRune = G.resolveRune;
 
+  /* One instance per player view: every piece of state below (decor/platform lookups, hero cache, TG overrides,
+     identity) lives in this closure, so two players rendered in one session cannot share it. */
+  function create() {
   /* ---- copied verbatim from pages/armory-report.html (c8e695d) ---- */
   function _ar_extractRunePool(inv, gear, lookups) {
     var pool = {};
@@ -1889,6 +1892,14 @@
 
   function nextMoves(D, opts) {
     var MAX = (opts && opts.max) || 3;
+    /* Missing sections count as empty (a heroes-only input must not throw). */
+    D = D || {};
+    D = {
+      heroes: D.heroes || [], runeBag: D.runeBag || {}, runeSlots: D.runeSlots || {}, runeCost: D.runeCost || {},
+      decor: { shards: (D.decor && D.decor.shards) || 0, placed: (D.decor && D.decor.placed) || [] },
+      ht: { chips: (D.ht && D.ht.chips) || [], reportMechas: D.ht ? D.ht.reportMechas : null },
+      beastMoves: D.beastMoves || []
+    };
     var cand = [];
     var W = heroWeights(D.heroes);
 
@@ -1915,7 +1926,9 @@
       h.gear.forEach(function (p) {
         var r = p.rune;
         if (!r || r.s >= r.sm) return;
-        var cost = D.runeCost[String(r.sm)][r.s];
+        var costRow = D.runeCost[String(r.sm)];
+        var cost = costRow ? costRow[r.s] : null;
+        if (cost == null) return; // unknown merge cost: no move
         var have = D.runeBag[r.name] || 0;
         if (have >= cost) {
           cand.push({
@@ -1994,10 +2007,10 @@
     /* f: HT chips. Only the HT the player fights with (from the battle reports) is considered;
        with no battle report the whole HT list is used. A chip is raised only below Lv25 and needs its
        chip table row. Chip EXP is not in the data, so the move is never "uses what you have". */
-    var fighting = D.ht.reportMechas || [];
+    var fighting = D.ht.reportMechas; // null/undefined = no report (all HTs); [] = a report where no HT fought (none)
     D.ht.chips.forEach(function (c) {
       if (c.core || c.empty || c.lv >= 25 || !c.c) return;
-      if (fighting.length && fighting.indexOf(c.mecha) < 0) return;
+      if (fighting && fighting.indexOf(c.mecha) < 0) return;
       var col = Math.floor(c.c / 100) % 10, tab = CHIP_COLOUR[col], stat = CHIP_STAT[c.slot];
       if (!tab || !stat) return;
       var now = (tab[0] + tab[1] * c.lv) / 100, max = (tab[0] + tab[1] * 25) / 100;
@@ -2128,6 +2141,10 @@
     nextMoves: moves.nextMoves
   };
 
+  return api;
+  }
+  var api = create();
+  api.create = create;
   window.ArmoryCore = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : {});
