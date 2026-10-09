@@ -48,8 +48,8 @@ function overflow() {
   });
   return bad;
 }
-var ROUTES = ['overview', 'heroes/battle', 'heroes/roster', 'heroes/gear', 'heroes/gear?view=runes', 'base', 'beasts', 'ht'];
-function visit(r) { A.go(r); A.applyRoute(false); return sleep(70); }
+var ROUTES = ['overview', 'heroes/battle', 'heroes/roster', 'heroes/gear', 'heroes/gear?view=runes', 'heroes/advice', 'base', 'beasts', 'ht'];
+function visit(r) { A.go(r); A.applyRoute(false); return sleep(/advice/.test(r) ? 700 : 70); }
 function cyrb53(str) {
   var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (var i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
@@ -230,14 +230,53 @@ var EXPECTED = [
   log(rm, 'prefers-reduced-motion turns transitions off', rm ? 'rule present' : 'missing');
   var imgs = $$('img'), imgBad = imgs.filter(function (m) { return !/^https:\/\/(raw\.githubusercontent\.com|h5\.topwargame\.com|knight-cdn\.akamaized\.net)\//.test(m.src); });
   log(imgBad.length === 0, 'images only from origins the live CSP allows', imgs.length + ' images' + (imgBad.length ? ', bad: ' + imgBad[0].src : ''));
-  var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-check|feedback-widget)\.js$|^https:\/\/translate\.googleapis\.com\//.test(s); });
+  var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-advice|armory-check|feedback-widget)\.js$|^https:\/\/translate\.googleapis\.com\//.test(s); });
   log(badSrc.length === 0, 'scripts only from this site and Google Translate', scripts.length + ' script tags' + (badSrc.length ? ', unexpected: ' + badSrc.join(', ') : ''));
   S.all.gear = false; S.all.roster = false;
   A.applyRoute(false);
 
+  /* 9. Advice (phase 4): the Advice segment expanded (a plan checklist, or the advisor composer with a step and the builder), and its sheets */
+  var advSmall = [], advTgt = [], advN = 0, advStrict = [];
+  function advMeasure(label) {
+    small().forEach(function (x) { advSmall.push(label + ': ' + x); });
+    var t = targets(); advN += t.n; t.bad.forEach(function (b) { advTgt.push(label + ': ' + b); });
+    var ov = overflow(); if (ov.length) advTgt.push(label + ' overflow ' + ov.join('; '));
+    $$('#adviceBody button, #adviceBody summary, #adviceBody a[href], #sheetB button').forEach(function (el) {
+      if (!vis(el)) return; var r = el.getBoundingClientRect();
+      if (r.width < 43.5 || r.height < 43.5) advStrict.push(label + ': ' + (el.className || el.tagName) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height));
+    });
+  }
+  await visit('heroes/advice'); await sleep(400);
+  var advMode = '';
+  if (S.advise) {
+    advMode = 'advisor composer';
+    $$('#adviceBody .hrow').forEach(function (b) { b.click(); }); await sleep(300); advMeasure('composer');
+    var tile = $('#adviceBody [data-a="slot"]');
+    if (tile) {
+      A.openSheet('advice-builder', { h: +tile.dataset.ah, s: +tile.dataset.as }); await sleep(250);
+      var vb = $('#sheetB [data-a="verb"]'); if (vb) { vb.click(); await sleep(150); }
+      advMeasure('step builder');
+      var pk = $('#sheetB [data-a="pick"]'); if (pk) { pk.click(); await sleep(250); }
+      if (S.sheet) A.closeSheet(true);
+      advMeasure('composer with a step');
+    }
+    $('#adviceBody [data-a="save"]') && advMeasure('composer end');
+  } else {
+    advMode = 'plan checklist';
+    var pb = $('#adviceBody .adv-pb'); if (pb) { pb.click(); await sleep(700); }
+    advMeasure('plan expanded');
+    if ($('#adviceBody [data-a="ask"]')) { A.openSheet('advice-ask'); await sleep(220); advMeasure('ask sheet'); A.closeSheet(true); }
+  }
+  log(advSmall.length === 0, 'Advice (' + advMode + '): no text under 12 px', advSmall.length ? advSmall.slice(0, 4).join(' | ') : 'checked at ' + window.innerWidth + ' px');
+  log(advTgt.length === 0, 'Advice (' + advMode + '): interactive targets >= 40x40, no horizontal overflow', advTgt.length ? advTgt.slice(0, 5).join(' | ') : advN + ' elements measured');
+  log(advStrict.length === 0, 'Advice (' + advMode + '): every button, summary and link is >= 44x44 (step arrows, ticks, verbs)', advStrict.length ? advStrict.slice(0, 5).join(' | ') : 'ok');
+  var advRows = $$('#adviceBody .step').length;
+  log(advRows > 0 || !!$('#adviceBody .hero'), 'Advice (' + advMode + '): rows rendered', advRows + ' step rows');
+  await visit('overview'); window.scrollTo(0, 0);
+
   /* layout and polish */
   await visit('overview'); window.scrollTo(0, 0); await sleep(250);
-  function Rc(id) { return document.getElementById(id).getBoundingClientRect(); }
+  function Rc(id) { var e = document.getElementById(id); return e ? e.getBoundingClientRect() : { top: 0, bottom: 0, left: 0, right: 0, height: 0, width: 0 }; }
   var hc = Rc('hdrCard'), mc = Rc('movesCard'), ac = Rc('areasCard'), sc2 = Rc('shareCard'), bandEl = $('#bandCard'), hasBand = bandEl && !bandEl.hidden;
   var wide = window.innerWidth >= 1024, bc = hasBand ? Rc('bandCard') : null;
   var gapOk = !hasBand ? true : wide ? (bc.left >= hc.right - 0.5 && Math.abs(bc.top - hc.top) < 2 && hc.bottom + 8 <= mc.top + 0.5 && bc.bottom + 8 <= ac.top + 0.5)

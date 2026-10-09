@@ -32,12 +32,12 @@ test('every local script the page loads exists, parses, and is copied by pages.y
     new vm.Script(read(f), { filename: f });
     if (s !== 'feedback-widget.js') assert.ok(cp.includes(f), f + ' is in the pages.yml cp line');
   }
-  for (const lazy of ['pages/armory.html', 'pages/armory-more.js', 'pages/armory-check.js']) assert.ok(cp.includes(lazy), lazy + ' is in the pages.yml cp line');
+  for (const lazy of ['pages/armory.html', 'pages/armory-more.js', 'pages/armory-advice.js', 'pages/armory-check.js']) assert.ok(cp.includes(lazy), lazy + ' is in the pages.yml cp line');
   for (const m of V2.matchAll(/<script>([\s\S]*?)<\/script>/g)) new vm.Script(m[1], { filename: 'inline' });
 });
 
 test('no emoji, em dash or personal name in the new files', () => {
-  for (const f of ['pages/armory.html', 'pages/armory-app.js', 'pages/armory-more.js', 'pages/armory-check.js']) {
+  for (const f of ['pages/armory.html', 'pages/armory-app.js', 'pages/armory-more.js', 'pages/armory-advice.js', 'pages/armory-check.js']) {
     const t = read(f);
     assert.ok(!/\p{Extended_Pictographic}/u.test(t.replace(/[©®™]/g, '')), f + ' has an emoji');
     assert.ok(!/—/.test(t), f + ' has an em dash');
@@ -52,27 +52,46 @@ function runHead(search, hash) {
   vm.runInNewContext(headScript(), ctx);
   return { store, replace: calls.replace };
 }
-test('?beta=1 turns the switch on; ?advise= and ?plan= open the classic page with the same query', () => {
+test('?beta=1 turns the switch on; ?advise= and ?plan= stay on the new page (they no longer hand off to classic)', () => {
   assert.deepEqual(runHead('?beta=1').store, { armory_v2_beta: '1' });
   assert.deepEqual(runHead('').store, {}); assert.deepEqual(runHead('?code=ABCD').replace, []);
-  assert.deepEqual(runHead('?advise=ABC123').replace, ['armory-report.html?advise=ABC123']);
-  assert.deepEqual(runHead('?plan=ABC123&beta=1', '#x').replace, ['armory-report.html?plan=ABC123#x']);
-  assert.deepEqual(runHead('?beta=1&advise=ABC123').replace, ['armory-report.html?advise=ABC123']);
+  assert.deepEqual(runHead('?advise=ABC123').replace, []);
+  assert.deepEqual(runHead('?plan=ABC123&beta=1', '#x').replace, []);
+  assert.deepEqual(runHead('?beta=1&advise=ABC123').replace, []);
+  assert.deepEqual(runHead('?beta=1&advise=ABC123').store, { armory_v2_beta: '1' });
+});
+
+test('Advice: the advisor tabs map to #heroes/advice (no classic redirect), boot reads ?advise= and ?plan= from the worker, the module loads lazily', () => {
+  const app = read('pages/armory-app.js');
+  const legacy = /var LEGACY = \{([^}]*)\}/.exec(app)[1];
+  assert.match(legacy, /myadvisorplans: 'heroes\/advice'/); assert.match(legacy, /advisorplan: 'heroes\/advice'/);
+  assert.ok(!/classic/.test(legacy), 'no classic hand-off left in LEGACY');
+  assert.ok(!/location\.replace\('armory-report\.html/.test(app), 'the shim no longer redirects');
+  assert.match(app, /\/advisor\/request\//); assert.match(app, /\/advisor\/index\//);
+  assert.match(app, /\['advice', 'Advice'\]/);
+  assert.match(app, /sc\.src = 'armory-advice\.js'/, 'loaded on first use');
+  assert.ok(!/armory-advice\.js/.test(V2), 'not a first-paint script');
+  assert.ok(!/advise|plan|replace\(/.test(headScript()), 'the head script has no advise/plan redirect');
 });
 
 function v1Snippet() { return /<script>\s*\/\* Armory v2 beta: one small link[\s\S]*?<\/script>/.exec(V1)[0].replace(/^<script>|<\/script>$/g, ''); }
 function runV1(flag, search, hash) {
   const made = [];
   const doc = { createElement: () => { const el = { style: {}, set href(v) { this._h = v; }, get href() { return this._h; } }; made.push(el); return el; }, body: { appendChild: () => {}, style: {} } };
-  vm.runInNewContext(v1Snippet(), { window: { innerWidth: 390 }, document: doc, location: { search, hash: hash || '' }, localStorage: { getItem: (k) => (k === 'armory_v2_beta' ? flag : null) } });
+  vm.runInNewContext(v1Snippet(), { window: { innerWidth: 390 }, document: doc, location: { search, hash: hash || '' }, localStorage: { getItem: (k) => (k === 'armory_v2_beta' ? flag : null) }, RegExp });
   return made;
 }
-test('the classic page shows "Try the new Armory" only behind the flag, and the only edit is that snippet', () => {
+test('the classic page shows "Try the new Armory" only behind the flag, carries code, advise and plan over, and the only edit is that snippet', () => {
   assert.equal(runV1(null, '').length, 0);
   assert.equal(runV1('0', '').length, 0);
   const a = runV1('1', '?code=abcd', '#tab=heroes');
   assert.equal(a.length, 1); assert.equal(a[0].href, 'armory.html?code=abcd#tab=heroes'); assert.equal(a[0].id, 'try-new-armory');
-  assert.equal(runV1('1', '?advise=ABC123')[0].href, 'armory.html', 'advise and plan links are not carried over');
+  assert.equal(runV1('1', '?advise=ABC123')[0].href, 'armory.html?advise=ABC123');
+  assert.equal(runV1('1', '?plan=abc123&beta=1')[0].href, 'armory.html?plan=abc123', 'beta is stripped');
+  assert.equal(runV1('1', '?beta=1&code=ABCD&plan=zzz999', '#x')[0].href, 'armory.html?code=ABCD&plan=zzz999#x');
+  assert.equal(runV1('1', '?beta=1')[0].href, 'armory.html', 'no dangling ?');
+  assert.equal(runV1('1', '')[0].href, 'armory.html');
+  assert.equal(runV1('1', '?advise=abc<b>&plan=a%20b&check=1&code=toolong')[0].href, 'armory.html', 'only well-formed code, advise and plan values are carried');
   assert.ok(/z-index:\d{7,}/.test(v1Snippet()), 'above the Welcome Back dialog (z-index 1000)');
   assert.ok(/paddingBottom/.test(v1Snippet()), 'phones keep the end of the page reachable');
   assert.equal(V1.split('armory_v2_beta').length - 1, 1, 'one mention in the classic page');

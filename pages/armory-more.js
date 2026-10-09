@@ -17,7 +17,9 @@ function renderStart(kind, extra) {
   $$('.view').forEach(function (s) { s.hidden = s.id !== 'v-start'; });
   var beta = ls('armory_v2_beta') === '1' ? '?beta=1' : '';
   var h;
-  if (kind === 'expired') {
+  if (kind === 'expired' && (S.advise || (extra && extra.advice))) {
+    h = '<h1 class="disp" style="font-size:var(--fs-24)">This advice link has expired</h1><p class="muted">This advice link has expired or was mistyped. Ask the player for a new one.</p><div><a class="btn" href="armory.html' + beta + '">Open my own armory</a></div>';
+  } else if (kind === 'expired') {
     h = '<h1 class="disp" style="font-size:var(--fs-24)">This share link has expired</h1><p class="muted">Ask the person who shared it for a new link, or build your own.</p><div><a class="btn" href="armory.html' + beta + '">Build my own</a></div>';
   } else if (kind === 'error') {
     h = '<h1 class="disp" style="font-size:var(--fs-24)">Could not reach the server</h1><p class="muted">Check your connection and try again.</p><div><button class="btn" type="button" data-reload>Try again</button></div>';
@@ -32,7 +34,7 @@ function renderStart(kind, extra) {
         '<details class="help" open><summary>Where do I find a Battle Report ID?</summary><ol><li>In the game, open a battle report from a fight against another player (Time Clash Arena works).</li><li>Tap the VS icon.</li><li>Tap the copy icon next to Report No., then paste it in the box above.</li></ol><p>On Server 2864, Snapshot can do this for you: run it in the game and tap Set up.</p></details>' +
         mineBtn() + '<h2 class="disp" style="font-size:var(--fs-20)">Or open a share link</h2><div class="irow"><input class="fld" id="scode" type="text" maxlength="4" autocomplete="off" placeholder="4-letter code" aria-label="Share code"><button class="btn" type="button" data-code>Open</button></div>';
     }
-    h = '<h1 class="disp" style="font-size:var(--fs-24)">Build your armory</h1><p class="muted">' + (extra && extra.pending ? 'Pick your player card to build your armory.' : 'Enter a Battle Report ID to build your armory.') + '</p>' + pick;
+    h = '<h1 class="disp" style="font-size:var(--fs-24)">Build your armory</h1>' + (extra && extra.note ? '<p>' + esc(extra.note) + '</p>' : '') + '<p class="muted">' + (extra && extra.pending ? 'Pick your player card to build your armory.' : 'Enter a Battle Report ID to build your armory.') + '</p>' + pick;
   }
   $('#v-start').hidden = false;
   $('#v-start').innerHTML = '<div class="vb"><div class="start">' + h + '</div></div>';
@@ -358,5 +360,5 @@ function click(t) {
 }
 function enter(id) { if (id === 'rid') loadReportId(); else if (id === 'uidIn') verify(); else if (id === 'repIn') addReport(); }
 
-return { renderBase: renderBase, renderStart: renderStart, renderSections: renderSections, rosterList: rosterList, gearBody: gearBody, renderGear: renderGear, renderHTChips: renderHTChips, sheet: sheet, share: share, owns: owns, click: click, enter: enter };
+return { renderBase: renderBase, renderStart: renderStart, renderSections: renderSections, rosterList: rosterList, gearBody: gearBody, renderGear: renderGear, renderHTChips: renderHTChips, sheet: sheet, share: share, owns: owns, click: click, enter: enter, saveConfig: saveConfig };
 };

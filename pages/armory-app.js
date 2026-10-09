@@ -11,10 +11,10 @@ var BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/asse
 var SK_RE = /^[0-9a-f]{16}$/;
 var G = window.TWGameData;
 var d = ArmoryData.create(), core = d.core;
-var S = { res: null, vm: null, code: null, cur: null, open: {}, f: { q: '', br: {}, sort: 'score' }, gview: 'gear', gslot: 0, all: {}, sheet: null, lastFocus: null, saved: false, confirm: '' };
+var S = { res: null, vm: null, code: null, cur: null, open: {}, f: { q: '', br: {}, sort: 'score' }, gview: 'gear', gslot: 0, all: {}, sheet: null, lastFocus: null, saved: false, confirm: '', advise: null, planCode: null, advDot: false, idxP: null, idxKey: null };
 var VIEWS = {
   overview: { label: 'Overview', icon: 'overview' },
-  heroes: { label: 'Heroes', icon: 'heroes', segs: [['battle', 'Battle'], ['roster', 'Roster'], ['gear', 'Gear']] },
+  heroes: { label: 'Heroes', icon: 'heroes', segs: [['battle', 'Battle'], ['roster', 'Roster'], ['gear', 'Gear'], ['advice', 'Advice']] },
   base: { label: 'Base', icon: 'base' }, beasts: { label: 'Beasts', icon: 'beasts' }, ht: { label: 'HT', icon: 'ht' }
 };
 var TABS = ['overview', 'heroes', 'base', 'beasts', 'ht'];
@@ -43,7 +43,7 @@ function lbl(label, num, src, cls) { return '<div class="nb" data-numwrap><div c
 function stateName() { return S.res && S.res.player && S.res.player.name || ''; }
 function sk() { var k = S.res && S.res.player && S.res.player.siteKey; return SK_RE.test(String(k || '')) ? k : null; }
 function readOnly() { return !S.res || !!S.res.readOnly; }
-function classicUrl(tab) { return 'armory-report.html' + (S.code ? '?code=' + encodeURIComponent(S.code) : '') + (tab ? '#tab=' + tab : ''); }
+function classicUrl(tab) { if (S.advise) return 'armory-report.html?advise=' + S.advise.code; return 'armory-report.html' + (S.code ? '?code=' + encodeURIComponent(S.code) : '') + (tab ? '#tab=' + tab : ''); }
 function savedReport() { var s = null; try { s = JSON.parse(ls('playerReport')); } catch (e) {} return s && s.player && Array.isArray(s.reportIds) ? s : null; }
 function deviceId() {
   var id = ls('reportDeviceId');
@@ -56,7 +56,7 @@ var toastT;
 function toast(msg) { var t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('show'); }, 3000); }
 
 /* ---------- the lazy half ---------- */
-var M = null, moreQ = null, H = null;
+var M = null, moreQ = null, H = null, Av = null, advQ = null;
 function more(cb) {
   if (M) return cb(M);
   if (moreQ) { moreQ.push(cb); return; }
@@ -67,16 +67,25 @@ function more(cb) {
   sc.onerror = function () { moreQ = null; $('#v-start').hidden = false; $('#v-start').innerHTML = '<div class="vb"><div class="start"><h1 class="disp" style="font-size:var(--fs-24)">Could not load this part</h1><p class="muted">Check your connection and reload the page.</p></div></div>'; };
   document.body.appendChild(sc);
 }
+function advice(cb) {
+  if (Av) return cb(Av);
+  if (advQ) { advQ.push(cb); return; }
+  advQ = [cb];
+  var sc = document.createElement('script');
+  sc.src = 'armory-advice.js';
+  sc.onload = function () { Av = window.ArmoryAdvice.mount(H); var q = advQ; advQ = null; q.forEach(function (f) { f(Av); }); };
+  sc.onerror = function () { advQ = null; var b = $('#adviceBody'); if (b) b.innerHTML = '<div class="empty">Could not load this part. Check your connection and reload the page.</div>'; };
+  document.body.appendChild(sc);
+}
 function renderStart(kind, extra) { more(function (m) { m.renderStart(kind, extra); }); }
 function share() { more(function (m) { m.share(); }); }
 
 /* ---------- routing ---------- */
-var LEGACY = { overview: 'overview', heroes: 'heroes/battle', decorations: 'base', bases: 'base', enigma: 'beasts', chips: 'ht', formation: 'base', inventory: 'bag', runepool: 'heroes/gear?view=runes', myadvisorplans: 'classic', advisorplan: 'classic' };
+var LEGACY = { overview: 'overview', heroes: 'heroes/battle', decorations: 'base', bases: 'base', enigma: 'beasts', chips: 'ht', formation: 'base', inventory: 'bag', runepool: 'heroes/gear?view=runes', myadvisorplans: 'heroes/advice', advisorplan: 'heroes/advice' };
 function shim() {
   var m = /^#tab=([a-z0-9_-]+)/i.exec(location.hash || '');
   if (!m) return false;
   var to = LEGACY[m[1].toLowerCase()] || 'overview';
-  if (to === 'classic') { location.replace('armory-report.html' + location.search.replace(/([?&])beta=1&?/, '$1').replace(/[?&]$/, '') + location.hash); return true; }
   history.replaceState(null, '', location.pathname + location.search + '#' + to);
   return false;
 }
@@ -94,7 +103,7 @@ function go(p) { location.hash = '#' + p; }
 function applyRoute(first, soft) {
   if (!S.vm) return;
   var r = parseHash(), changed = !S.cur || S.cur.view !== r.view;
-  if (!M && (r.bag || r.q.item || ['base', 'beasts', 'ht'].indexOf(r.view) >= 0 || (r.view === 'heroes' && r.seg !== 'battle'))) { more(function () { applyRoute(first, soft); }); return; }
+  if (!M && (r.bag || r.q.item || ['base', 'beasts', 'ht'].indexOf(r.view) >= 0 || (r.view === 'heroes' && r.seg !== 'battle' && r.seg !== 'advice'))) { more(function () { applyRoute(first, soft); }); return; }
   if (!soft) closeSheet(true);
   S.cur = r;
   $$('.view').forEach(function (s) {
@@ -108,6 +117,7 @@ function applyRoute(first, soft) {
   $$('[data-pane]', view).forEach(function (p) { p.hidden = p.dataset.pane !== r.seg; });
   document.title = 'Armory | ' + VIEWS[r.view].label;
   if (!soft && (!first || (location.hash && location.hash !== '#overview'))) window.scrollTo(0, 0);
+  if (r.view === 'heroes' && r.seg === 'advice') advice(function (a) { a.render(r.q, soft); });
   if (soft) return;
   if (r.view === 'heroes' && r.seg === 'battle' && r.q.hero) {
     var h = S.vm.heroes.list.filter(function (x) { return x.name === r.q.hero; })[0];
@@ -138,6 +148,7 @@ function setReady(res) {
   renderAll();
   applyRoute(!again, again);
   if (again) refreshSheet();
+  if (!S.advise && sk() && res.identity && res.identity.isOwn && !res.readOnly) advIndex();
 }
 function run(arg, then) {
   return d.loadArmory(arg).then(function (res) {
@@ -150,10 +161,36 @@ function startKind(res) {
   if (res.state === 'empty' && (res.errors || []).some(function (e) { return e.kind === 'report' && (!e.status || e.status >= 500); })) return 'error';
   return res.state;
 }
+function normCode(x) { x = String(x == null ? '' : x).trim().toLowerCase(); return /^[a-z0-9]{6}$/.test(x) ? x : ''; }
+function toStart() { renderStart('start', S.planCode ? { note: 'Open your armory first to see your advice.' } : null); }
+/* the advise link: the request names the player's report; the player's armory opens read-only under THEIR keys */
+function bootAdvise(raw) {
+  var ac = normCode(raw);
+  if (!ac) { renderStart('expired', { advice: true }); return; }
+  showSkeleton();
+  fetch(WORKER + '/advisor/request/' + ac, { cache: 'no-store' }).then(function (r) {
+    if (r.status === 404 || r.status === 400) return null;
+    if (!r.ok) throw new Error('net');
+    return r.json();
+  }).then(function (req) {
+    var sc = req && String(req.reportShortcode || '').toUpperCase();
+    if (!sc || !/^[0-9A-Z]{4}$/.test(sc)) { renderStart('expired', { advice: true }); return; }
+    S.advise = { code: ac, req: req }; S.code = sc;
+    history.replaceState(null, '', location.pathname + '?advise=' + ac + '#heroes/advice');
+    return run({ code: sc }).then(function (res) { if (res.state !== 'ready') renderStart(startKind(res)); });
+  }).catch(function () { renderStart('error'); });
+}
 function boot() {
   if (shim()) return;
+  var qs = new URLSearchParams(location.search), adv = qs.get('advise'), plan = normCode(qs.get('plan'));
+  if (adv != null) { S.advise = null; renderChrome(); bootAdvise(adv); return; }
+  if (qs.get('plan') != null) {
+    if (!plan) { renderChrome(); renderStart('expired', { advice: true }); return; }
+    S.planCode = plan;
+    if (!/^#heroes\/advice/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search + '#heroes/advice?plan=' + plan);
+  }
   renderChrome();
-  var code = (new URLSearchParams(location.search).get('code') || '').trim().toUpperCase();
+  var code = (qs.get('code') || '').trim().toUpperCase();
   showSkeleton();
   if (code) {
     S.code = /^[0-9A-Z]{4}$/.test(code) ? code : null;
@@ -163,11 +200,11 @@ function boot() {
   /* first paint from what this device already holds, then the worker's newer game data */
   run({ saved: true, noHydrate: true }).then(function (res) {
     if (res.state === 'ready') { S.saved = true; run({ saved: true }); return; }
-    if (res.state === 'none' && ls('armory_v2_switched') === '1') { renderStart('start'); return; }
+    if (res.state === 'none' && ls('armory_v2_switched') === '1') { toStart(); return; }
     if (res.state === 'none') {
       run({ dataOnly: true, noHydrate: true }).then(function (r2) {
         if (r2.state === 'ready') { run({ dataOnly: true }); return; }
-        run({ dataOnly: true }).then(function (r3) { if (r3.state !== 'ready') renderStart('start'); });
+        run({ dataOnly: true }).then(function (r3) { if (r3.state !== 'ready') toStart(); });
       });
       return;
     }
@@ -179,6 +216,7 @@ function boot() {
 function chipState() {
   var r = S.res;
   if (!r) return ['', 'Armory'];
+  if (S.advise) return ['', 'Advising'];
   if (r.readOnly) return ['', 'Read-only'];
   if (sk() && !(r.identity && r.identity.unlocked)) return ['bad', 'Verify'];
   var h = S.vm.header;
@@ -187,6 +225,7 @@ function chipState() {
 }
 function renderChrome() {
   $('#whoN').textContent = stateName() || 'Armory';
+  $$('[data-share]', $('#hdr')).forEach(function (b) { b.hidden = !!S.advise; });
   var c = chipState();
   $('#chipTxt').innerHTML = nd(c[1]);
   $('#chipDot').className = 'dot ' + c[0];
@@ -264,6 +303,7 @@ function renderOverview() {
   $('#v-overview').innerHTML = '<div class="vb"><div class="ov"><div class="ov-col">' + header + moves + shareRow() + '</div><div class="ov-col">' + band + areas + '</div></div></div>';
 }
 function shareRow() {
+  if (S.advise) return '';
   var code = currentCode();
   return '<section class="sharerow" id="shareCard" aria-label="Share"><div><div class="t15" style="font-weight:600">Share this report</div><div class="t13 muted">Anyone with the link sees this page read-only.</div></div>' +
     '<div class="irow" style="align-items:center">' + (code ? '<span class="code muted" translate="no" id="shareCode">' + esc(code) + '</span>' : '') + '<button class="btn" type="button" data-share>' + ic('copy', 'sm') + (code ? 'Copy link' : 'Create link') + '</button></div></section>';
@@ -279,7 +319,7 @@ function watchName() {
 
 /* ---------- Heroes ---------- */
 function segs(v) {
-  return '<div class="segs"><div class="segs-in" role="tablist">' + VIEWS[v].segs.map(function (s) { return '<button type="button" role="tab" data-seg="' + s[0] + '" aria-selected="false" data-go="' + v + '/' + s[0] + '">' + esc(s[1]) + '</button>'; }).join('') + '</div></div>';
+  return '<div class="segs"><div class="segs-in" role="tablist">' + VIEWS[v].segs.map(function (s) { return '<button type="button" role="tab" data-seg="' + s[0] + '"' + (s[0] === 'advice' && S.advDot ? ' class="has-new"' : '') + ' aria-selected="false" data-go="' + v + '/' + s[0] + '">' + esc(s[1]) + '</button>'; }).join('') + '</div></div>';
 }
 function branchPill(b) { var c = b === 'Army' ? 'army' : b === 'Navy' ? 'navy' : 'air'; return '<span class="pill p-' + c + '">' + esc(b) + '</span>'; }
 function ctrls(cls) {
@@ -341,17 +381,40 @@ function renderHeroes() {
   $('#v-heroes').innerHTML = segs('heroes') +
     '<div class="vb" data-pane="battle"><div class="sechead"><h2 class="title">Heroes in battle reports</h2></div><div class="fbar"><div class="grow t13 muted" id="heroCount">' + nd(n + ' heroes') + '</div><button class="btn fbtn" type="button" data-open="filter">' + ic('sliders', 'sm') + 'Filter \u00B7 Sort</button>' + ctrls('inl') + '</div><div id="heroList"></div></div>' +
     '<div class="vb" data-pane="roster" hidden><div class="fbar"><div class="grow t13 muted" id="rosterCount"></div><button class="btn fbtn" type="button" data-open="filter">' + ic('sliders', 'sm') + 'Filter \u00B7 Sort</button>' + ctrls('inl') + '</div><div id="rosterList"></div></div>' +
-    '<div class="vb" data-pane="gear" hidden><div id="gearTop"></div><div id="gearBody"></div></div>';
+    '<div class="vb" data-pane="gear" hidden><div id="gearTop"></div><div id="gearBody"></div></div>' +
+    '<div class="vb" data-pane="advice" hidden><div id="adviceBody"></div></div>';
   battleList();
 }
 
 /* ---------- Base, Beasts, HT ---------- */
 
+/* ---------- the advice index: one GET per load, shared by the segment dot and the Advice screen ---------- */
+function paintDot() { var b = $('#v-heroes .segs button[data-seg="advice"]'); if (b) b.classList.toggle('has-new', !!S.advDot); }
+function advIndex(fresh) {
+  var key = sk();
+  if (!key) return Promise.resolve(null);
+  if (!fresh && S.idxP && S.idxKey === key) return S.idxP;
+  S.idxKey = key;
+  S.idxP = fetch(WORKER + '/advisor/index/' + key, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }).then(function (j) {
+    var e = j && Array.isArray(j.entries) ? j.entries : [];
+    if (S.res && S.res.identity && S.res.identity.isOwn && !S.res.readOnly && !S.advise) {
+      S.advDot = e.some(function (x) { return Array.isArray(x.plans) && x.plans.length ? x.plans.some(function (p) { return !p.applied; }) : x.status === 'planned'; });
+      paintDot();
+    }
+    return { entries: e, ok: !!j };
+  });
+  return S.idxP;
+}
+
 /* ---------- sheets ---------- */
 function openSheet(kind, arg) {
   var title = '', body = '', isName = false;
   if (kind === 'filter') { title = 'Filter and sort'; body = ctrls('') + '<button class="btn" type="button" data-close style="width:100%">Done</button>'; }
-  else {
+  else if (/^advice/.test(kind)) {
+    if (!Av) { advice(function () { openSheet(kind, arg); }); return; }
+    var ra = Av.sheet(kind, arg); if (!ra) return;
+    title = ra[0]; body = ra[1]; isName = !!ra[2];
+  } else {
     if (!M) { more(function () { openSheet(kind, arg); }); return; }
     var r = M.sheet(kind, arg); if (!r) return;
     title = r[0]; body = r[1]; isName = !!r[2];
@@ -442,7 +505,7 @@ document.addEventListener('keydown', function (e) {
 });
 window.addEventListener('hashchange', function () { if (!shim()) applyRoute(false); });
 
-H = { S: S, d: d, core: core, G: G, BASE: BASE, statLabel: statLabel, WORKER: WORKER, SK_RE: SK_RE, $: $, $$: $$, esc: esc, nd: nd, nm: nm, ic: ic, fmtK: fmtK, fmtInt: fmtInt, ramp: ramp, qCls: qCls, slug: slug, ls: ls, stars: stars, art: art, lbl: lbl, stateName: stateName, sk: sk, readOnly: readOnly, classicUrl: classicUrl, savedReport: savedReport, deviceId: deviceId, toast: toast, go: go, run: run, showSkeleton: showSkeleton, refreshSheet: refreshSheet, currentCode: currentCode, gearCard: gearCard, branchPill: branchPill, filt: filt, sortBy: sortBy };
+H = { S: S, d: d, core: core, G: G, BASE: BASE, statLabel: statLabel, WORKER: WORKER, SK_RE: SK_RE, $: $, $$: $$, esc: esc, nd: nd, nm: nm, ic: ic, fmtK: fmtK, fmtInt: fmtInt, ramp: ramp, qCls: qCls, slug: slug, ls: ls, stars: stars, art: art, lbl: lbl, stateName: stateName, sk: sk, readOnly: readOnly, classicUrl: classicUrl, savedReport: savedReport, deviceId: deviceId, toast: toast, go: go, run: run, showSkeleton: showSkeleton, refreshSheet: refreshSheet, currentCode: currentCode, gearCard: gearCard, branchPill: branchPill, filt: filt, sortBy: sortBy, openSheet: openSheet, closeSheet: closeSheet, advice: advice, more: more, advIndex: advIndex, paintDot: paintDot };
 window.__arm = { S: S, d: d, core: core, go: go, openSheet: openSheet, closeSheet: closeSheet, applyRoute: applyRoute, parseHash: parseHash, VIEWS: VIEWS, ready: false };
 boot();
 if (/[?&]check=1/.test(location.search)) { var cs = document.createElement('script'); cs.src = 'armory-check.js'; document.body.appendChild(cs); }
