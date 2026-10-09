@@ -3488,6 +3488,26 @@
       .catch(function () { cb(false, ''); });
   }
 
+  // Inline status line for advisor actions (replaces alert() pop-ups). Sits at
+  // the top of the page and clears itself.
+  var _imp_sayTimer = null;
+  function _imp_say(text) {
+    var el = document.getElementById('imp-status');
+    if (!el) {
+      el = document.createElement('div'); el.id = 'imp-status';
+      el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
+      el.style.cssText = 'position:fixed;top:.6rem;left:50%;transform:translateX(-50%);z-index:1100;max-width:min(480px,92vw);background:var(--card,#1c2128);color:var(--text,#e6edf3);border:1px solid var(--border,#30363d);border-left:3px solid var(--red,#f85149);border-radius:6px;padding:.5rem .8rem;font-size:.8rem;';
+      document.body.appendChild(el);
+    }
+    if (el.textContent !== text) el.textContent = text;
+    el.style.display = '';
+    clearTimeout(_imp_sayTimer);
+    _imp_sayTimer = setTimeout(function () { el.style.display = 'none'; }, 9000);
+  }
+  function _imp_delegateProblem(res, verb) {
+    try { console.warn('[armory] ' + verb + ' failed:', res && res.status, res && res.j && res.j.error); } catch (_) {}
+    return _ar_plainError(res && res.status, res && res.j && res.j.error, verb);
+  }
   // Roster-search modal → pick a target → start the impersonation session.
   function openImpersonationPicker(advisorName) {
     _ar_getRosterMap();
@@ -3525,7 +3545,7 @@
 
   // Call /advisor/delegate, then enter the in-memory session.
   function _imp_start(targetSiteKey, targetName, advisorName) {
-    if (!_ar_supplementToken) { alert('Your own identity must be verified first.'); return; }
+    if (!_ar_supplementToken) { _imp_say('Verify your own UID first, then try again.'); return; }
     fetch(PUSH_WORKER + '/advisor/delegate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
@@ -3533,7 +3553,7 @@
     }).then(function (r) { return r.json().then(function (j) { return { status: r.status, j: j }; }); })
       .then(function (res) {
         if (res.status !== 200 || !res.j || !res.j.token) {
-          alert('Could not start advise session: ' + ((res.j && res.j.error) || ('HTTP ' + res.status)));
+          _imp_say('We could not start. ' + _imp_delegateProblem(res, 'start advising'));
           return;
         }
         var j = res.j;
@@ -3554,7 +3574,7 @@
         document.getElementById('wizard').classList.add('open');
         renderWizardStep();
       })
-      .catch(function () { alert('Could not start advise session (network error).'); });
+      .catch(function () { _imp_say('We could not start. Check your connection and try again.'); });
   }
 
   function _imp_renderBanner() {
@@ -3606,7 +3626,7 @@
     var m = document.createElement('div');
     m.style.cssText = 'background:var(--card,#1c2128);border:1px solid var(--border,#30363d);border-radius:8px;padding:1rem;width:min(480px,94vw);display:flex;flex-direction:column;gap:.6rem;max-height:85vh;overflow:auto;';
     var h = document.createElement('h2'); h.style.cssText = 'margin:0;font-size:1rem;color:var(--text,#e6edf3);'; h.textContent = 'Hand off to ' + i.targetName; m.appendChild(h);
-    var note = document.createElement('div'); note.style.cssText = 'font-size:.72rem;color:var(--muted,#8b949e);'; note.textContent = 'Everything here is saved under ' + i.targetName + "'s account. They log in, verify their UID, and load their shortcode to receive it."; m.appendChild(note);
+    var note = document.createElement('div'); note.style.cssText = 'font-size:.72rem;color:var(--muted,#8b949e);'; note.textContent = 'Everything here is saved under ' + i.targetName + "'s account. When you are done, send them the Player view link."; m.appendChild(note);
     var status = document.createElement('div'); status.style.cssText = 'font-size:.75rem;color:var(--muted,#8b949e);min-height:1em;';
     function setStatus(t, err) { status.textContent = t; status.style.color = err ? 'var(--red,#f85149)' : 'var(--muted,#8b949e)'; }
 
@@ -3639,8 +3659,8 @@
       // saveConfig resolves to the shortcode STRING (not an object).
       saveConfig(false).then(function (code) {
         if (code) { state.shortcode = code; resultRow('Shortcode:', code); setStatus('Shortcode saved.'); recordHistory(); }
-        else { setStatus('Shortcode save failed.', true); b1.disabled = false; }
-      }).catch(function (e) { setStatus('Shortcode save failed: ' + (e && e.message ? e.message : e), true); b1.disabled = false; });
+        else { setStatus('We could not save the shortcode. Try again.', true); b1.disabled = false; }
+      }).catch(function (e) { console.warn('[armory] shortcode save failed', e); setStatus('We could not save the shortcode. Try again.', true); b1.disabled = false; });
     });
     m.appendChild(b1);
 
@@ -3661,10 +3681,10 @@
             state.adviseCode = res.j.code;
             resultRow('Advise link (you build here):', res.j.url || ('https://2864tw.com/armory-report.html?advise=' + res.j.code));
             resultRow('Player view (send to ' + i.targetName + '):', 'https://2864tw.com/armory-report.html?code=' + state.shortcode + '&plan=' + res.j.code);
-            setStatus('Open the advise link yourself to build the plan steps. Then send the Player view link to ' + i.targetName + ' — it opens their report straight to the plan, no login or typing needed.');
+            setStatus('Open the advise link to build the plan steps. Then send the Player view link to ' + i.targetName + '. It opens their report with the plan.');
             recordHistory();
-          } else { setStatus('Advise link failed: ' + ((res.j && res.j.error) || ('HTTP ' + res.status)), true); b2.disabled = false; }
-        }).catch(function (e) { setStatus('Advise link failed (network).', true); b2.disabled = false; });
+          } else { setStatus('We could not make the advise link. ' + _imp_delegateProblem(res, 'advise link'), true); b2.disabled = false; }
+        }).catch(function (e) { setStatus('We could not make the advise link. Check your connection and try again.', true); b2.disabled = false; });
     });
     m.appendChild(b2);
 
@@ -3675,8 +3695,8 @@
       b3.disabled = true; setStatus('Sending notification…');
       fetch(PUSH_WORKER + '/advisor/notify', { method: 'POST', headers: _imp_authHeader() })
         .then(function (r) { return r.json(); })
-        .then(function (j) { setStatus(j && j.ok ? ('Notification sent (' + (j.sent || 0) + ' device' + ((j.sent === 1) ? '' : 's') + ').') : 'Notify failed.', !(j && j.ok)); if (!(j && j.ok)) b3.disabled = false; })
-        .catch(function () { setStatus('Notify failed (network).', true); b3.disabled = false; });
+        .then(function (j) { setStatus(j && j.ok ? ('Notification sent (' + (j.sent || 0) + ' device' + ((j.sent === 1) ? '' : 's') + ').') : 'We could not send the notification.', !(j && j.ok)); if (!(j && j.ok)) b3.disabled = false; })
+        .catch(function () { setStatus('We could not send the notification. Check your connection and try again.', true); b3.disabled = false; });
     });
     m.appendChild(b3);
 
@@ -3691,7 +3711,7 @@
   // Default view = last 14 days, not dismissed; toggles reveal older + dismissed.
   function _imp_openHistory() {
     var id = getStoredIdentity();
-    if (!id || !id.siteKey || !_ar_supplementToken) { alert('Verify your identity first.'); return; }
+    if (!id || !id.siteKey || !_ar_supplementToken) { _imp_say('Verify your own UID first, then try again.'); return; }
     var DAY = 86400000, showOlder = false, showDismissed = false;
     var overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1001;display:flex;align-items:center;justify-content:center;';
@@ -3800,7 +3820,7 @@
   // entry has no shortcode yet (pool-only auto-record before any report load).
   function _imp_resume(entry) {
     if (!entry || !entry.targetSiteKey) return;
-    if (!_ar_supplementToken) { alert('Verify your own identity first.'); return; }
+    if (!_ar_supplementToken) { _imp_say('Verify your own UID first, then try again.'); return; }
     fetch(PUSH_WORKER + '/advisor/delegate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
@@ -3808,7 +3828,7 @@
     }).then(function (r) { return r.json().then(function (j) { return { status: r.status, j: j }; }); })
       .then(function (res) {
         if (res.status !== 200 || !res.j || !res.j.token) {
-          alert('Could not resume advise session: ' + ((res.j && res.j.error) || ('HTTP ' + res.status)));
+          _imp_say('We could not reopen it. ' + _imp_delegateProblem(res, 'resume advising'));
           return;
         }
         var j = res.j;
@@ -3840,7 +3860,7 @@
           _imp_openInputWizard();
         }
       })
-      .catch(function () { alert('Could not resume advise session (network error).'); });
+      .catch(function () { _imp_say('We could not reopen it. Check your connection and try again.'); });
   }
 
   // Open the report-ID input wizard for the active on-behalf session.
@@ -4108,7 +4128,7 @@
     h2.textContent = 'What’s new';
     hero.appendChild(h2);
     var sub = document.createElement('p');
-    sub.textContent = 'Verify your in-game UID on the Inventory tab to unlock these. Then click Import TopWar Data (top right) to keep all four supplements in sync with one paste.';
+    sub.textContent = 'Verify your in-game UID on the Inventory tab to unlock these. Then tap Import TopWar Data (top right) to keep all four in sync.';
     hero.appendChild(sub);
     modal.appendChild(hero);
 
@@ -4411,7 +4431,7 @@
         await _ar_handshake(matchedUid);
       } catch (e) {
         console.warn('Supplement handshake failed:', e);
-        err.textContent = 'Worker unreachable (' + e.message + ') — saved local-only.';
+        err.textContent = 'We could not reach the server. Your UID is saved on this device only.';
       }
       _ar_storeUid(siteKey, matchedUid);
       _ar_setUnlocked(siteKey, true);
@@ -4461,7 +4481,7 @@
     });
     if (!r.ok) {
       var msg = await r.text();
-      throw new Error('Handshake failed: ' + r.status + ' ' + msg);
+      throw new Error(_ar_plainError(r.status, msg, 'sign-in'));
     }
     var data = await r.json();
     _ar_supplementToken = data.token;
@@ -4500,7 +4520,7 @@
   async function _ar_ensureSupplementToken(siteKey) {
     if (_ar_supplementToken && Date.now() < _ar_supplementTokenExpires - 10000) return;
     var uid = _ar_getStoredUid(siteKey);
-    if (!uid) throw new Error('No upload token. Re-enter UID.');
+    if (!uid) throw new Error('Verify your in-game UID first.');
     await _ar_handshake(uid);
   }
 
@@ -4542,6 +4562,30 @@
     decor: 'Decorations', skin: 'Base Skins', bench: 'Bench Beasts', chips: 'HT Chips',
     formation: 'Formation'
   };
+  // Plain-English text for a failed server call. The raw status and body go to
+  // the console only; players never see codes or JSON.
+  function _ar_plainError(status, body, what) {
+    try { console.warn('[armory] ' + (what || 'request') + ' failed:', status, String(body == null ? '' : body).slice(0, 300)); } catch (_) {}
+    var s = Number(status) || 0;
+    if (s === 401 || s === 403) return 'Your sign-in has expired. Open Identity settings and verify your UID again.';
+    if (s === 404) return 'We could not find it on the server. Reload the page and try again.';
+    if (s === 409) return 'This was changed on another device. Reload the page and try again.';
+    if (s === 413) return 'That is too much data to send at once.';
+    if (s === 429) return 'Too many tries. Wait a minute, then try again.';
+    if (s >= 500) return 'The server had a problem. Try again in a few minutes.';
+    return 'Something went wrong. Try again in a few minutes.';
+  }
+  // One line per failed section from the combined import, using tab names.
+  function _ar_envProblem(r) {
+    var label = _AR_KIND_LABELS[r.kind] || 'Other data';
+    var why;
+    if (r.status === 'too-large') why = 'too much data';
+    else if (r.status === 'storage') why = 'this browser could not save it';
+    else if (r.status === 'upload-failed') why = r.error || 'the upload did not work';
+    else why = 'it did not work';
+    if (r.error) { try { console.warn('[armory] import problem', r.kind, r.status, r.error); } catch (_) {} }
+    return label + ' (' + why + ')';
+  }
   function _ar_kindLabels(kinds) {
     return (kinds || []).map(function (k) { return _AR_KIND_LABELS[k] || 'Other data'; }).join(', ');
   }
@@ -4579,7 +4623,7 @@
   // again; each kind is also dropped from localStorage here.
   async function _ar_clearImportedSupplements(siteKey) {
     await _ar_ensureSupplementToken(siteKey);
-    if (!_ar_supplementToken) throw new Error('No token. Re-verify your UID.');
+    if (!_ar_supplementToken) throw new Error('Verify your in-game UID first.');
     var cleared = [], failed = [];
     for (var i = 0; i < _AR_IMPORT_KINDS.length; i++) {
       var kind = _AR_IMPORT_KINDS[i];
@@ -4654,7 +4698,7 @@
     });
     if (!r.ok) {
       var msg = await r.text();
-      var upErr = new Error('Upload failed: ' + r.status + ' ' + msg);
+      var upErr = new Error(_ar_plainError(r.status, msg, 'upload'));
       if (r.status === 409) {
         var cj = null; try { cj = JSON.parse(msg); } catch (e) {}
         if (cj && cj.error === 'cleared') upErr.clearedTs = _ar_clearedTsFrom(null, cj) || 0;
@@ -4856,7 +4900,7 @@
 
   async function _ar_setSupplementPrivacy(siteKey, kind, isPrivate) {
     await _ar_ensureSupplementToken(siteKey);
-    if (!_ar_supplementToken) throw new Error('No upload token. Re-enter UID.');
+    if (!_ar_supplementToken) throw new Error('Verify your in-game UID first.');
     var r = await fetch(SUPPLEMENT_WORKER + '/supplement/privacy', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
@@ -4864,7 +4908,7 @@
     });
     if (!r.ok) {
       var msg = await r.text();
-      throw new Error('Privacy update failed: ' + r.status + ' ' + msg);
+      throw new Error(_ar_plainError(r.status, msg, 'privacy update'));
     }
     if (!_ar_supplementPrivacy[siteKey]) _ar_supplementPrivacy[siteKey] = {};
     _ar_supplementPrivacy[siteKey][kind] = !!isPrivate;
@@ -5792,7 +5836,7 @@
     // Force UID verification first (rosterHeal rewrites identity.siteKey to
     // the player's real 16-hex key) so the saved code is usable.
     if (String(siteKey).indexOf('guest_') === 0) {
-      return Promise.reject(new Error('Verify your in-game UID before saving a share code. Guest share codes can’t carry inventory, beasts, or HT chips — viewers see no data.'));
+      return Promise.reject(new Error('Verify your in-game UID before you save a share code. A guest share code cannot carry inventory, beasts, or HT chips, so viewers would see none.'));
     }
 
     return getPushEndpoint().then(function(endpoint) {
@@ -5866,7 +5910,7 @@
       saveConfig(false).then(function(code) {
         copyShareLink(code);
       }).catch(function(e) {
-        alert('Share failed: ' + e.message);
+        alert('We could not save your share code. ' + e.message);
       });
     }
   }
@@ -6819,7 +6863,8 @@
           if (msg.indexOf('HTTP 404') !== -1) {
             errDiv2.textContent = 'Report not found. Check the ID and try again.';
           } else if (msg.indexOf('HTTP') !== -1) {
-            errDiv2.textContent = 'Could not fetch report (' + msg + ').';
+            console.warn('[armory] report fetch failed', msg);
+            errDiv2.textContent = 'Could not get the report. Check your connection and try again.';
           } else {
             errDiv2.textContent = 'Failed to load report. Please try again.';
           }
@@ -8240,7 +8285,7 @@
           ok.style.cssText = 'color:#3fb950;font-weight:600;';
           ok.textContent = '✓ Identity verified';
           verifyHint.appendChild(ok);
-          verifyHint.appendChild(document.createTextNode(' — inventory, bench, and decor advisor are unlocked on every report whose siteKey matches yours.'));
+          verifyHint.appendChild(document.createTextNode('. Inventory, bench, and decor advisor then unlock on every report that is yours.'));
         } else {
           verifyHint.textContent = 'Verify your in-game UID to unlock S2864 features (inventory, bench, decor advisor) on all of your reports. The site checks your UID to confirm the account is yours, and it is saved only in this browser.';
         }
@@ -8380,7 +8425,7 @@
       refreshRow.style.cssText = 'margin-top:.75rem;display:flex;flex-direction:column;gap:.4rem;';
       var refreshHint = document.createElement('div');
       refreshHint.style.cssText = 'font-size:.7rem;color:var(--muted);line-height:1.4;';
-      refreshHint.textContent = 'Stuck on an old version? This clears the page cache and reloads — useful when the PWA caches an older build.';
+      refreshHint.textContent = 'Stuck on an old version? This clears saved page files and reloads the page.';
       refreshRow.appendChild(refreshHint);
       var refreshBtn = document.createElement('button');
       refreshBtn.className = 'rh-prefs-btn';
@@ -8444,13 +8489,13 @@
           btn.style.cssText = 'padding:4px 10px;background:transparent;color:#f85149;border:1px solid #f85149;border-radius:4px;cursor:pointer;font-size:12px;';
           btn.textContent = 'Forget';
           btn.addEventListener('click', function() {
-            if (!confirm('Re-lock supplements for ' + name + '?')) return;
+            if (!confirm('Lock your imported data again for ' + name + '?')) return;
             _ar_setUnlocked(siteKey, false);
             row.remove();
           });
           var rebtn = document.createElement('button');
           rebtn.style.cssText = 'padding: 4px 10px; margin-right: 6px; background: var(--card); color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; cursor: pointer; font-size: 12px;';
-          rebtn.textContent = 'Refresh token';
+          rebtn.textContent = 'Refresh sign-in';
           rebtn.onclick = async function() {
             // A cached UID means we can re-handshake silently — no need to
             // pop the UID re-entry modal behind the settings sheet (it ends up
@@ -8551,9 +8596,9 @@
           c.appendChild(t);
           return c;
         }
-        legendChips.appendChild(legendChip('#3fb950', 'rgba(63,185,80,0.4)', 'var(--text)', 'loaded — visible to viewers'));
-        legendChips.appendChild(legendChip('#d29922', 'rgba(210,153,34,0.5)', '#d29922', 'private — viewers see lock'));
-        legendChips.appendChild(legendChip('var(--border)', 'var(--border)', 'var(--muted)', 'missing — not uploaded'));
+        legendChips.appendChild(legendChip('#3fb950', 'rgba(63,185,80,0.4)', 'var(--text)', 'loaded: visible to viewers'));
+        legendChips.appendChild(legendChip('#d29922', 'rgba(210,153,34,0.5)', '#d29922', 'private: viewers see a lock'));
+        legendChips.appendChild(legendChip('var(--border)', 'var(--border)', 'var(--muted)', 'missing: not uploaded'));
         legend.appendChild(legendChips);
         reportPanel.appendChild(legend);
 
@@ -8733,8 +8778,7 @@
                     });
                     var jr = await r.json().catch(function() { return null; });
                     if (!r.ok || !jr || !jr.ok) {
-                      var why = (jr && jr.error) || ('HTTP ' + r.status);
-                      if (jr && jr.reason) why += ' (' + jr.reason + ')';
+                      var why = _ar_plainError(r.status, JSON.stringify(jr), 'delete share code');
                       throw new Error(why);
                     }
                     cfgCard.style.opacity = '0.5';
@@ -8746,7 +8790,7 @@
                       }
                     }, 200);
                   } catch (e) {
-                    alert('Delete failed: ' + (e && e.message ? e.message : e));
+                    alert('We could not delete it. ' + (e && e.message ? e.message : ''));
                     delBtn.textContent = 'Delete';
                     delBtn.disabled = false;
                   }
@@ -8763,7 +8807,7 @@
             supRow.style.cssText = 'display:flex;gap:.4rem;flex-wrap:wrap;font-size:.65rem;';
             var supLoading = document.createElement('span');
             supLoading.style.cssText = 'color:var(--muted);';
-            supLoading.textContent = 'Checking supplements\u2026';
+            supLoading.textContent = 'Checking your data\u2026';
             supRow.appendChild(supLoading);
             cfgCard.appendChild(supRow);
 
@@ -8836,7 +8880,7 @@
         syncNowBtn.addEventListener('click', async function() {
           var syncSiteKey = (wizardState.player && wizardState.player.siteKey)
                           || (identity && identity.siteKey) || null;
-          if (!syncSiteKey) { alert('No siteKey available — verify your UID first.'); return; }
+          if (!syncSiteKey) { alert('Verify your in-game UID first.'); return; }
           syncNowBtn.disabled = true;
           var origLabel = syncNowBtn.textContent;
           syncNowBtn.textContent = 'Syncing…';
@@ -8852,12 +8896,13 @@
           }
           syncNowBtn.textContent = origLabel;
           syncNowBtn.disabled = false;
-          var summary = kinds.map(function(k) { return k + ': ' + results[k]; }).join('\n');
+          var SYNC_WORDS = { synced: 'sent', 'no-change': 'already up to date', cleared: 'cleared on another device', 'no-hash': 'verify your UID first', error: 'did not work' };
+          var summary = kinds.map(function(k) { return (_AR_KIND_LABELS[k] || k) + ': ' + (SYNC_WORDS[results[k]] || results[k]); }).join('\n');
           var note = '';
           if (String(syncSiteKey).indexOf('guest_') === 0) {
-            note = '\n\nWarning: this player is on a guest siteKey. Uploads land under your verified UID instead, so viewers of a guest-keyed share code still won’t see anything. Verify UID and Save a new share code.';
+            note = '\n\nThis report is saved as a guest. Your uploads go under your verified UID instead, so people who open a guest share code will not see them. Verify your UID, then save a new share code.';
           }
-          alert('Sync result:\n' + summary + note);
+          alert('Sync result\n' + summary + note);
         });
         saveRow.appendChild(syncNowBtn);
 
@@ -8868,7 +8913,7 @@
         saveBtn.addEventListener('click', function() {
           closeIdentityPrefs();
           saveConfig(true).catch(function(e) {
-            alert(e && e.message ? e.message : 'Save failed');
+            alert(e && e.message ? e.message : 'We could not save. Try again.');
           });
         });
         saveRow.appendChild(saveBtn);
@@ -8888,8 +8933,8 @@
           resetBtn.addEventListener('click', async function() {
             if (!confirm(
               'Forget share code ' + primaryCodeForReset + ' on this device?\n\n' +
-              '• The worker shortcode entry is best-effort deleted (left to expire in 90 days if delete fails).\n' +
-              '• Your inventory / beasts / HT chips data stays on this device — only the share-code link is dropped.\n' +
+              '• We try to delete the share code from the server. If that does not work, it expires on its own after 90 days.\n' +
+              '• Your inventory, beasts, and HT chips data stay on this device. Only the share-code link is removed.\n' +
               '• Use this when Save is blocked or the existing code points to the wrong identity.'
             )) return;
             resetBtn.disabled = true;
@@ -9269,7 +9314,7 @@
       saveBtn2.appendChild(svgIcon({ children: [['path', { d: 'M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2zM17 21v-8H7v8M7 3v5h8' }]] }));
       saveBtn2.appendChild(document.createTextNode('Save'));
       saveBtn2.addEventListener('click', function() {
-        saveConfig(true).catch(function(e) { alert(e && e.message ? e.message : 'Save failed'); });
+        saveConfig(true).catch(function(e) { alert(e && e.message ? e.message : 'We could not save. Try again.'); });
       });
       actions.appendChild(saveBtn2);
 
@@ -11650,11 +11695,11 @@
       var heroesPill = _ar_buildCloudSyncPill('heroes', siteKey, { isOwner: !!ownerForPills });
       heroesPill.style.marginLeft = 'auto';
       heroesPill.style.marginBottom = '6px';
-      heroesPill.title = 'Hero Roster supplement (uploaded via the consolidated bookmarklet)';
+      heroesPill.title = 'Hero Roster data (sent by Snapshot)';
       bar.appendChild(heroesPill);
       var gearPill = _ar_buildCloudSyncPill('gear', siteKey, { isOwner: !!ownerForPills });
       gearPill.style.marginBottom = '6px';
-      gearPill.title = 'Titan Gear Pool supplement';
+      gearPill.title = 'Titan Gear Pool data';
       bar.appendChild(gearPill);
     }
     container.appendChild(bar);
@@ -11940,7 +11985,7 @@
         if (state.isOwner) line('Use “Edit Pool” only if you want to save a manual override snapshot.');
       } else if (state.status === 'error') {
         line('Cloud sync check failed.', true);
-        line('Worker may be offline, or your auth token expired.');
+        line('The server may be offline, or your sign-in may have expired. Try verifying your UID again.');
         if (state.isOwner) {
           action('Retry', function (btn) {
             btn.disabled = true; btn.textContent = 'Retrying…';
@@ -12563,12 +12608,12 @@
       if (inv && inv !== invLocal) ArmoryIdentity.setSupplement('inv', siteKey, inv);
 
       if (!heroes || !Array.isArray(heroes.list) || heroes.list.length === 0) {
-        state.loadError = 'Heroes supplement not found. Run the consolidated bookmarklet on h5.topwargame.com, then come back.';
+        state.loadError = 'No Heroes data found. Run Snapshot in the game, then come back.';
         repaint();
         return;
       }
       if (!inv) {
-        state.loadError = 'Inventory supplement not found. Run the consolidated bookmarklet on h5.topwargame.com, then come back.';
+        state.loadError = 'No Inventory data found. Run Snapshot in the game, then come back.';
         repaint();
         return;
       }
@@ -13317,7 +13362,7 @@
       var hasInv = !!ArmoryIdentity.getSupplement('inv', siteKey);
       if (!hasInv) {
         msBtn.disabled = true;
-        msBtn.title = 'Needs Heroes + Inventory supplements. Run the bookmarklet first.';
+        msBtn.title = 'Needs Heroes and Inventory data. Run Snapshot in the game first.';
       }
       msBtn.addEventListener('click', function () { msOpenChecker(siteKey); });
       topRow.appendChild(msBtn);
@@ -22300,7 +22345,7 @@
           await _ar_setSupplementPrivacy(siteKey, 'runepool', nextVal);
           paintPriv();
         } catch (e) {
-          alert('Could not update privacy: ' + (e && e.message ? e.message : e));
+          alert('We could not change the privacy setting. ' + (e && e.message ? e.message : ''));
           privLabel.textContent = prev;
         } finally {
           privBtn.disabled = false;
@@ -22594,7 +22639,7 @@
           await _ar_setSupplementPrivacy(siteKey, 'inv', next);
           paintPrivacy();
         } catch (e) {
-          alert('Could not update privacy: ' + (e && e.message ? e.message : e));
+          alert('We could not change the privacy setting. ' + (e && e.message ? e.message : ''));
           privacyLabel.textContent = prevLabel;
         } finally {
           privacyBtn.disabled = false;
@@ -24211,24 +24256,24 @@
       err.textContent = '';
       var raw;
       try { raw = JSON.parse(ta.value.trim()); }
-      catch (e) { err.textContent = 'Invalid JSON: ' + e.message; return; }
+      catch (e) { console.warn('[armory] paste parse failed', e); err.textContent = 'We could not read that. Run Snapshot again and paste the whole result.'; return; }
 
       // Player pasted the consolidated v=2 envelope into a single-kind modal.
       // Fan out instead of erroring on schema mismatch; saves them having to
       // know which paste box matches which bookmarklet.
       if (_ar_isEnvelope(raw)) {
-        if (!siteKey) { err.textContent = 'Verify your in-game UID first. Combined imports need a siteKey.'; return; }
+        if (!siteKey) { err.textContent = 'Verify your in-game UID first, then try again.'; return; }
         save.disabled = true; cancel.disabled = true;
         err.style.color = 'var(--muted)';
         err.textContent = 'Detected combined snapshot. Uploading all sections…';
         try {
           var results = await _ar_handleEnvelope(raw, siteKey, function(ev) {
-            if (ev.phase === 'start') err.textContent = 'Uploading ' + ev.kind + '… (' + (ev.index + 1) + '/' + ev.total + ')';
+            if (ev.phase === 'start') err.textContent = 'Uploading ' + (_AR_KIND_LABELS[ev.kind] || 'data') + '… (' + (ev.index + 1) + ' of ' + ev.total + ')';
           });
           var failed = results.filter(function(r) { return r.status !== 'ok'; });
           if (failed.length) {
             err.style.color = 'var(--red)';
-            err.textContent = 'Combined import partial: ' + failed.map(function(r) { return r.kind + ' ' + r.status; }).join(', ');
+            err.textContent = 'Some sections did not save: ' + failed.map(_ar_envProblem).join(', ') + '.';
             save.disabled = false; cancel.disabled = false;
             return;
           }
@@ -24241,7 +24286,7 @@
           if (typeof onSaved === 'function') onSaved();
         } catch (e) {
           err.style.color = 'var(--red)';
-          err.textContent = 'Combined import failed: ' + e.message;
+          console.warn('[armory] combined import failed', e); err.textContent = 'The import did not finish. ' + e.message;
           save.disabled = false; cancel.disabled = false;
         }
         return;
@@ -24263,11 +24308,11 @@
 
       var serialized = JSON.stringify(raw);
       if (serialized.length > _AR_SUP_MAX_BYTES) {
-        err.textContent = 'Payload too large (' + Math.round(serialized.length / 1024) + ' KB, max 1024 KB).';
+        err.textContent = 'That is too much data (' + Math.round(serialized.length / 1024) + ' KB, the limit is 1024 KB).';
         return;
       }
       try { localStorage.setItem(lsKey + siteKey, serialized); }
-      catch (e) { err.textContent = 'localStorage write failed: ' + e.message; return; }
+      catch (e) { console.warn('[armory] local save failed', e); err.textContent = 'This browser could not save the data on this device. Free some space or try another browser.'; return; }
       // Best-effort worker upload — passes siteKey so the upload helper can
       // transparently re-handshake from the UID cached on this device when
       // the worker token has expired or the in-memory token died on reload.
@@ -24282,7 +24327,7 @@
         } catch (e) {}
       } catch (e) {
         console.warn('Worker upload failed', e);
-        err.textContent = 'Saved locally. Worker upload failed (' + e.message + '). Open Identity settings to re-verify UID.';
+        err.textContent = 'Saved on this device, but the upload did not work. ' + e.message;
         return;
       }
       // Auto-mint shortcode/refresh config so players don't have to click
@@ -24429,18 +24474,18 @@
         err.textContent = 'Clearing…';
         try {
           await _ar_ensureSupplementToken(siteKey);
-          if (!_ar_supplementToken) throw new Error('No token. Re-verify UID.');
+          if (!_ar_supplementToken) throw new Error('Verify your in-game UID first.');
           var r = await fetch(SUPPLEMENT_WORKER + '/supplement/runepool/' + siteKey, {
             method: 'DELETE',
             headers: { 'Authorization': 'Bearer ' + _ar_supplementToken }
           });
           if (!r.ok) {
             var msg = await r.text();
-            throw new Error(r.status + ' ' + msg);
+            throw new Error(_ar_plainError(r.status, msg, 'clear rune pool'));
           }
         } catch (e) {
           err.style.color = 'var(--red)';
-          err.textContent = 'Worker delete failed (' + e.message + '). Local state untouched.';
+          err.textContent = 'We could not clear your pool on the server. ' + e.message + ' Nothing was changed here.';
           resetBtn.disabled = false; cancel.disabled = false; save.disabled = false;
           return;
         }
@@ -24508,7 +24553,7 @@
         try { ArmoryIdentity.setLastSync('runepool', siteKey, new Date(nowIso).getTime()); } catch (_) {}
       } catch (e) {
         err.style.color = 'var(--red)';
-        err.textContent = 'Saved locally. Worker upload failed (' + e.message + ').';
+        err.textContent = 'Saved on this device, but the upload did not work. ' + e.message;
         save.disabled = false; cancel.disabled = false;
         return;
       }
@@ -24614,7 +24659,7 @@
 
       try {
         await _ar_ensureSupplementToken(siteKey);
-        if (!_ar_supplementToken) throw new Error('No upload token. Re-verify UID.');
+        if (!_ar_supplementToken) throw new Error('Verify your in-game UID first.');
         var r = await fetch(SUPPLEMENT_WORKER + '/advisor/request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
@@ -24622,11 +24667,11 @@
         });
         if (!r.ok) {
           var msg = await r.text();
-          throw new Error(r.status + ' ' + msg);
+          throw new Error(_ar_plainError(r.status, msg, 'advice request'));
         }
         var resp = await r.json();
         var url = resp && resp.url;
-        if (!url) throw new Error('Server returned no url');
+        if (!url) throw new Error('The server did not send a link. Try again.');
 
         err.textContent = '';
         resultBox.style.display = 'block';
@@ -24717,7 +24762,7 @@
       return;
     }
     if (!reqResp.ok) {
-      showAdvisorError('Advisor request failed', 'Server returned ' + reqResp.status + '. Try again later.');
+      showAdvisorError('Advisor request failed', _ar_plainError(reqResp.status, '', 'advisor request'));
       return;
     }
     var reqObj;
@@ -25177,7 +25222,7 @@
           if (!rr.ok) throw new Error('http ' + rr.status);
           if (typeof onChange === 'function') onChange();
         } catch (e) {
-          alert('Delete failed: ' + (e && e.message || 'unknown error'));
+          alert('We could not delete it. Try again in a few minutes.');
           del.disabled = false; del.textContent = 'Delete';
         }
       });
@@ -26828,7 +26873,7 @@
         });
         if (!r.ok) {
           var errTxt = await r.text();
-          throw new Error(r.status + ' ' + errTxt);
+          throw new Error(_ar_plainError(r.status, errTxt, 'save plan'));
         }
         var resp = await r.json();
         window._advisorPlanSavedTs = resp.ts || Date.now();
@@ -26836,7 +26881,7 @@
         saveStatus.textContent = 'Saved · ' + new Date(window._advisorPlanSavedTs).toLocaleTimeString();
       } catch (e) {
         saveStatus.classList.add('err');
-        saveStatus.textContent = 'Save failed: ' + e.message;
+        saveStatus.textContent = 'Could not save. ' + e.message;
       } finally {
         saveBtn.disabled = false; addBtn.disabled = false;
       }
@@ -27873,7 +27918,7 @@
             await _ar_refreshAdvisorIndex(siteKey);
             renderMyAdvisorPlansTab(siteKey, merged);
           } catch (e) {
-            alert('Delete failed: ' + (e && e.message || 'unknown error'));
+            alert('We could not delete it. Try again in a few minutes.');
             delBtn.disabled = false;
             delBtn.textContent = prevTxt;
           }
@@ -28403,7 +28448,7 @@
           renderMyAdvisorPlansTab(siteKey, merged);
         } catch (e) {
           rmBtn.disabled = false; rmBtn.textContent = 'Remove from list';
-          alert('Remove failed: ' + (e && e.message || 'unknown'));
+          alert('We could not remove it. Try again in a few minutes.');
         }
       };
       applyRow.appendChild(rmBtn);
@@ -28506,7 +28551,7 @@
 
     // POST /advisor/plan/<code>/apply — flips status + records acceptedCount
     await _ar_ensureSupplementToken(siteKey);
-    if (!_ar_supplementToken) throw new Error('No upload token. Re-verify UID.');
+    if (!_ar_supplementToken) throw new Error('Verify your in-game UID first.');
     var r = await fetch(SUPPLEMENT_WORKER + '/advisor/plan/' + code + '/apply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _ar_supplementToken },
@@ -28519,7 +28564,7 @@
     });
     if (!r.ok) {
       var msg = await r.text();
-      throw new Error(r.status + ' ' + msg);
+      throw new Error(_ar_plainError(r.status, msg, 'apply plan'));
     }
     return { acceptedCount: acceptedSteps.length };
   }
@@ -28548,7 +28593,7 @@
     modal.appendChild(h);
 
     var p = document.createElement('p');
-    p.textContent = 'One tap on h5.topwargame.com snapshots every supplement; paste the JSON below to upload them.';
+    p.textContent = 'Run Snapshot in the game to send your data here. If that does not work, copy the result and paste it below.';
     modal.appendChild(p);
 
     // Guide film for this browser, above the paste box.
@@ -28569,12 +28614,12 @@
       fileName: 'all-bookmarklet.txt',
       dragLabel: 'TopWar Snapshot',
       bookmarkLabel: 'TopWar Snapshot',
-      panelLead: 'Or use the TopWar Snapshot bookmark: drag it to your bookmarks bar (computer) or save it as a bookmark (phone). Run it on the Top War game tab, tap Copy combined JSON, then paste below.',
+      panelLead: 'Backup: use the TopWar Snapshot bookmark. Drag it to your bookmarks bar (computer) or save it as a bookmark (phone). Run it on the Top War game tab, tap Copy combined JSON, then paste the result below.',
       usageSteps: [
-        'Open https://h5.topwargame.com/h5game/index.html and let the game load.',
+        'Open https://h5.topwargame.com/h5game/index.html and wait for the game to load.',
         'Tap the saved bookmark. The overlay snapshots inventory, beasts, chips, gear, heroes, and formation.',
         'Tap Copy combined JSON when the header turns green.',
-        'Paste below and click Save. Each section uploads one by one.'
+        'Paste below and tap Save. Each section uploads one at a time.'
       ]
     }));
 
@@ -28633,8 +28678,8 @@
           var label = 'v' + j.v + ' envelope';
           return (bits.length ? (label + ' · ' + bits.join(' + ')) : (label + ' (empty?)'));
         }
-        return 'Parsed (' + (j && typeof j === 'object' ? Object.keys(j).length : 0) + ' keys) but not a bookmarklet envelope';
-      } catch (e) { return 'Not JSON yet — ' + (e.message || e); }
+        return 'This is not copied Snapshot data.';
+      } catch (e) { return 'This is not copied Snapshot data yet.'; }
     }
     function markLoaded(src, txt) {
       pasted = txt;
@@ -28650,7 +28695,7 @@
       pasteBtn.textContent = 'Reading…';
       try {
         if (!navigator.clipboard || !navigator.clipboard.readText) {
-          throw new Error('Clipboard API not available in this browser');
+          throw new Error('This browser does not allow reading the clipboard');
         }
         var txt = await navigator.clipboard.readText();
         if (!txt) throw new Error('Clipboard is empty');
@@ -28730,14 +28775,14 @@
       err.style.color = '';
       var parsed;
       try { parsed = JSON.parse(ta.value.trim()); }
-      catch (e) { err.textContent = 'Invalid JSON: ' + e.message; return; }
+      catch (e) { console.warn('[armory] paste parse failed', e); err.textContent = 'We could not read that. Run Snapshot again and paste the whole result.'; return; }
 
       if (!_ar_isEnvelope(parsed)) {
-        err.textContent = 'This isn’t a combined snapshot. Run the consolidated bookmarklet (single tap, all sections) and paste its JSON here.';
+        err.textContent = 'That is not a full Snapshot. Run Snapshot in the game and paste the whole result here.';
         return;
       }
       if (!siteKey) {
-        err.textContent = 'Verify your in-game UID first. Combined imports need a siteKey.';
+        err.textContent = 'Verify your in-game UID first, then try again.';
         return;
       }
 
@@ -28762,7 +28807,7 @@
               chip._dot.style.background = '#f85149';
               chip.style.color = '#f85149';
               chip.style.borderColor = 'rgba(248,81,73,0.5)';
-              chip.title = ev.result ? (ev.result.status + (ev.result.error ? ': ' + ev.result.error : '')) : 'failed';
+              chip.title = ev.result ? _ar_envProblem(ev.result) : 'Did not save';
             }
           }
         });
@@ -28770,9 +28815,7 @@
         var failed = results.filter(function(r) { return r.status !== 'ok'; });
         if (failed.length) {
           err.style.color = 'var(--red)';
-          err.textContent = 'Partial import: ' + failed.map(function(r) {
-            return r.kind + ' (' + r.status + (r.error ? ': ' + r.error : '') + ')';
-          }).join(', ');
+          err.textContent = 'Some sections did not save: ' + failed.map(_ar_envProblem).join(', ') + '.';
           save.disabled = false; cancel.disabled = false;
           return;
         }
@@ -28792,7 +28835,7 @@
         }, 600);
       } catch (e) {
         err.style.color = 'var(--red)';
-        err.textContent = 'Import failed: ' + e.message;
+        console.warn('[armory] import failed', e); err.textContent = 'The import did not finish. ' + e.message;
         save.disabled = false; cancel.disabled = false;
       }
     };
@@ -29919,7 +29962,7 @@
         if (msEqAnchor.parentNode) msEqAnchor.parentNode.removeChild(msEqAnchor);
         var fail = document.createElement('div');
         fail.style.cssText = 'padding:.8rem 1rem;color:var(--muted);font-size:.78rem;margin-top:1rem;';
-        fail.textContent = 'Failed to load chips supplement: ' + (e && e.message || 'unknown');
+        console.warn('[armory] chips load failed', e); fail.textContent = 'Could not load your HT Chips. Reload the page and try again.';
         contentDiv.appendChild(fail);
       });
     }
@@ -31016,7 +31059,7 @@
     if (siteKey) {
       var ownerForPill = _ar_isOwnReport(siteKey) || _ar_isUnlocked(siteKey);
       var fPill = _ar_buildCloudSyncPill('formation', siteKey, { isOwner: !!ownerForPill });
-      fPill.title = 'Formation supplement (talent tree + per-formation state)';
+      fPill.title = 'Formation data (talent tree and each formation)';
       hdrRow.appendChild(fPill);
     }
 
