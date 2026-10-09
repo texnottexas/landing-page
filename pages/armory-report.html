@@ -2945,6 +2945,8 @@
 
   /* Toast message */
   .toast-message { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--green); color: #000; padding: .5rem 1.25rem; border-radius: 8px; font-size: .8rem; font-weight: 600; opacity: 0; transition: all .3s ease; z-index: 9999; pointer-events: none; }
+  .ar-undo-bar { position: fixed; bottom: 1.25rem; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: .9rem; max-width: calc(100vw - 32px); background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: .55rem .9rem; font-size: .85rem; z-index: 10000; box-shadow: 0 6px 24px rgba(0,0,0,.45); }
+  .ar-undo-bar button { background: none; border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: .25rem .7rem; font: inherit; font-weight: 600; cursor: pointer; }
   .toast-message.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
   /* Load from code in wizard */
@@ -11114,6 +11116,36 @@
     if (nameInput) { try { nameInput.focus(); nameInput.scrollIntoView({ block: 'nearest' }); } catch (e) {} }
   }
 
+  // After a march is deleted, show a short Undo bar. Undo puts the march back
+  // where it was. Same for owners and for advisors acting for a player.
+  var _arUndoTimer = null;
+  function _ar_offerUndoMarch(march, idx, restore) {
+    var old = document.getElementById('ar-undo-bar');
+    if (old) old.remove();
+    if (_arUndoTimer) { clearTimeout(_arUndoTimer); _arUndoTimer = null; }
+    var bar = document.createElement('div');
+    bar.id = 'ar-undo-bar';
+    bar.className = 'ar-undo-bar';
+    bar.setAttribute('role', 'status');
+    var msg = document.createElement('span');
+    msg.textContent = 'Deleted march ' + (march.name || '') + '.';
+    var undo = document.createElement('button');
+    undo.type = 'button';
+    undo.id = 'ar-undo-btn';
+    undo.textContent = 'Undo';
+    function gone() { if (_arUndoTimer) { clearTimeout(_arUndoTimer); _arUndoTimer = null; } if (bar.parentNode) bar.parentNode.removeChild(bar); }
+    undo.addEventListener('click', function() {
+      gone();
+      var cur = loadMarches().slice();
+      cur.splice(Math.min(idx, cur.length), 0, march);
+      restore(cur);
+    });
+    bar.appendChild(msg);
+    bar.appendChild(undo);
+    document.body.appendChild(bar);
+    _arUndoTimer = setTimeout(gone, 6000);
+  }
+
   function renderMarchList(heroes) {
     var container = document.getElementById('march-list');
     if (!container) return;
@@ -11170,7 +11202,10 @@
         });
         editBtn.addEventListener('click', function() { _beginEditMarch(idx, heroes); });
         delBtn.addEventListener('click', function() {
-          var cur = loadMarches(); cur.splice(idx, 1); commit(cur);
+          var cur = loadMarches();
+          var gone = cur.splice(idx, 1)[0];
+          commit(cur);
+          if (gone) _ar_offerUndoMarch(gone, idx, function(restored) { commit(restored); });
         });
       })(i);
       actions.appendChild(upBtn); actions.appendChild(downBtn); actions.appendChild(editBtn); actions.appendChild(delBtn);
