@@ -496,10 +496,16 @@ if (typeof module !== 'undefined' && module.exports) module.exports = __snapSync
         return e && e.string ? getText(e.string) : 'buff_id:' + buff_id;
       }
       function getMax(rd) {
-        if (!rd || !rd.buff_value_green1) return null;
-        var parts = String(rd.buff_value_green1).split('|');
-        var v = +parts[parts.length - 1].split(',')[1];
-        return isFinite(v) ? v : null;
+        // buff_value_rd is the roll range "min,max" the game rolls within (gold 600/3000/300,
+        // lower tiers 0.6/0.4/0.2x). The last segment of buff_value_green1 is half of that.
+        if (!rd) return null;
+        var src = rd.buff_value_rd != null ? String(rd.buff_value_rd) : null;
+        if (src) {
+          var rp = src.split('|');
+          var rv = +rp[rp.length - 1].split(',')[1];
+          if (isFinite(rv) && rv > 0) return rv;
+        }
+        return null; // the report then falls back to its own per-template maximum
       }
       var SLOT = { 1: 'Weapon', 2: 'Armor', 3: 'Accessory', 4: 'Helmet', 5: 'Device', 6: 'Boots' };
       var QUAL = { 2: 'Blue', 3: 'Purple', 4: 'Purple+', 5: 'Gold' };
@@ -522,7 +528,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = __snapSync
           // Sibling-group iteration relies on the loaded cache. After
           // getTableGroup the skillRdTable has 404 entries which covers
           // every rune family, so this works on cold sessions.
-          if (sk && sk.group != null) {
+          // The table carries the real star and star_max on each row; `group` is the 36-entry
+          // slot catalogue, so counting siblings in it gives nonsense (stars 0..11 of 8..17).
+          if (sk && isFinite(+sk.star_max) && sk.star != null && isFinite(+sk.star)) {
+            star = +sk.star; starMax = +sk.star_max;
+          } else if (sk && sk.group != null) {
             var g = [];
             for (var skKey in skillRdTable) {
               var entry = skillRdTable[skKey];

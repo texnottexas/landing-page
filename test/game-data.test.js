@@ -226,3 +226,16 @@ test('refinement-driven slots (fields 4-5, slots 7-9) score 0 without the player
   ctx.BO_TG_DYNAMIC_OVERRIDES = { '4:7': [{ statKey: 'def', targetUnit: 1, weightRatio: 0.2 }] };
   assert.equal(ctx.w({ fieldType: 4, order: 7 }).length, 1);
 });
+
+// ---- Snapshot bookmarklet (gear supplement) ----
+test('the snapshot reads rune stars from the table row and roll maxima from buff_value_rd', () => {
+  const src = read('all-bookmarklet.js');
+  assert.match(src, /sk\.star_max/);
+  assert.match(src, /buff_value_rd/);
+  const i = src.indexOf('function getMax(rd)');
+  const body = src.slice(i, src.indexOf('\n      }\n', i) + 9);
+  const getMax = vm.runInNewContext('(' + body + ')');
+  assert.equal(getMax({ buff_value_rd: '0,600', buff_value_green1: '2,0|3,90|4,180|5,300' }), 600);
+  assert.equal(getMax({ buff_value_rd: '0,1800' }), 1800);
+  assert.equal(getMax({ buff_value_green1: '5,300' }), null);
+});
