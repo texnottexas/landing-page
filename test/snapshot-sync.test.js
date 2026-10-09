@@ -181,3 +181,68 @@ test('setupText for the card', () => {
   assert.match(S.setupText({ state: 'save-failed' }).text, /Couldn't save/);
   assert.match(S.setupText({ state: 'no-log' }).text, /Couldn't get your Time Clash reports/);
 });
+
+// ── Does the player already have an armory report? (Tex, 2026-10-09) ──
+// A new player's snapshot is saved, but the armory only shows it once a report exists, so the card leads with
+// Set up for them; a player with a report gets "Open my armory" to their newest report and a smaller Refresh.
+function listFetch(answer) {
+  const calls = [];
+  const f = async (url, init) => {
+    calls.push({ url, init, body: init && init.body ? JSON.parse(init.body) : null });
+    if (answer === 'down') throw new Error('network');
+    return { ok: answer.status === 200, status: answer.status, json: async () => answer.body };
+  };
+  f.calls = calls;
+  return f;
+}
+
+test('listReports: asks the worker for this player\'s reports by siteKey, as the Snapshot device', async () => {
+  const f = listFetch({ status: 200, body: { ok: true, configs: [{ shortcode: 'AB12', updatedAt: '2026-10-01T00:00:00Z' }] } });
+  const r = await S.listReports('d847a198622a518d', { fetch: f, worker: W });
+  assert.deepEqual(r, { ok: true, configs: [{ shortcode: 'AB12', updatedAt: '2026-10-01T00:00:00Z' }] });
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0].url, W + '/report-configs');
+  assert.equal(f.calls[0].init.method, 'POST');
+  assert.deepEqual(f.calls[0].body, { siteKey: 'd847a198622a518d', deviceId: 'ops-snapshot' });
+});
+
+test('listReports: a refusal, a malformed answer or no network is "unknown", never "no report"', async () => {
+  for (const ans of [{ status: 500, body: { ok: false } }, { status: 200, body: { ok: true } }, { status: 200, body: null }, 'down']) {
+    assert.deepEqual(await S.listReports('d847a198622a518d', { fetch: listFetch(ans), worker: W }), { ok: false });
+  }
+  assert.deepEqual(await S.listReports('', { fetch: listFetch({ status: 200, body: { ok: true, configs: [] } }), worker: W }), { ok: false });
+});
+
+test('cardMode: existing with a report, new with none, unknown when the list could not be read', () => {
+  assert.equal(S.cardMode({ ok: true, configs: [{ shortcode: 'AB12' }] }), 'existing');
+  assert.equal(S.cardMode({ ok: true, configs: [] }), 'new');
+  assert.equal(S.cardMode({ ok: false }), 'unknown');
+});
+
+test('latestCode: the most recently updated report (saved time when there is no update time)', () => {
+  assert.equal(S.latestCode([]), '');
+  assert.equal(S.latestCode([
+    { shortcode: 'OLD1', date: '2026-09-01T00:00:00Z', updatedAt: '2026-09-02T00:00:00Z' },
+    { shortcode: 'NEW1', date: '2026-09-03T00:00:00Z' },
+    { shortcode: 'MID1', date: '2026-08-01T00:00:00Z', updatedAt: '2026-09-02T12:00:00Z' }
+  ]), 'NEW1');
+});
+
+test('newPlayerText: the snapshot is saved and shows once the report is set up; failures still named', () => {
+  const ok = (kind, label) => ({ kind, label, status: 'ok' });
+  assert.deepEqual(S.newPlayerText({ state: 'done', results: [ok('inv', 'Inventory'), ok('bench', 'Beasts')] }),
+    { tone: 'ok', text: 'Snapshot saved (Inventory, Beasts). Set up your armory report below to see it.' });
+  assert.deepEqual(S.newPlayerText({ state: 'done', results: [ok('inv', 'Inventory'), { kind: 'chips', label: 'Chips', status: 'failed' }] }),
+    { tone: 'warn', text: 'Snapshot saved (Inventory). Not saved: Chips. Set up your armory report below to see it.' });
+  for (const r of [{ state: 'done', results: [ok('inv', 'Inventory')] }, { state: 'done', results: [ok('inv', 'Inventory'), { kind: 'chips', label: 'Chips', status: 'failed' }] }]) {
+    assert.ok(!/—/.test(S.newPlayerText(r).text), 'no em dash');
+  }
+});
+
+test('setupText after Refresh says refreshed; the rest of the wording is unchanged', () => {
+  const picked = [{ reportId: 'a', heroes: [1, 2, 3] }, { reportId: 'b', heroes: [4, 5, 6] }];
+  assert.deepEqual(S.setupText({ state: 'done', picked, asked: 2 }, true), { tone: 'ok', text: 'Armory report refreshed with your latest 2 different marches.' });
+  assert.deepEqual(S.setupText({ state: 'done', picked: picked.slice(0, 1), asked: 3 }, true),
+    { tone: 'ok', text: 'Armory report refreshed with your latest march. You asked for 3, but your recent Time Clash attacks only had 1 march.' });
+  assert.deepEqual(S.setupText({ state: 'done', picked, asked: 2 }), { tone: 'ok', text: 'Armory report set up with your latest 2 different marches.' });
+});

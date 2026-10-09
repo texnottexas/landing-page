@@ -130,10 +130,36 @@ var __snapSync = (function () {
       return r.ok && j && j.ok && j.shortcode ? { ok: true, code: String(j.shortcode) } : { ok: false, error: (j && j.error) || ('HTTP ' + r.status) };
     } catch (e) { return { ok: false, error: 'network' }; }
   }
-  function setupText(r) {
+  // Does this player already have an armory report? (Tex, 2026-10-09) The armory only shows synced data once a
+  // report exists, so a new player is led to Set up first. → { ok:true, configs:[...] } | { ok:false }: a look-up
+  // that fails is "unknown", never "no report".
+  async function listReports(siteKey, o) {
+    if (!/^[0-9a-f]{16}$/.test(String(siteKey || ''))) return { ok: false };
+    try {
+      var r = await o.fetch(o.worker + '/report-configs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ siteKey: siteKey, deviceId: SETUP_DEVICE }) });
+      var j = r.ok ? await readJson(r) : null;
+      return j && j.ok && Array.isArray(j.configs) ? { ok: true, configs: j.configs } : { ok: false };
+    } catch (e) { return { ok: false }; }
+  }
+  function cardMode(lookup) { return !lookup || !lookup.ok ? 'unknown' : lookup.configs.length ? 'existing' : 'new'; }
+  function latestCode(configs) {
+    var best = '', bestT = -1;
+    (configs || []).forEach(function (c) {
+      var t = Date.parse((c && (c.updatedAt || c.date)) || '') || 0;
+      if (c && c.shortcode && t > bestT) { bestT = t; best = String(c.shortcode); }
+    });
+    return best;
+  }
+  function newPlayerText(r) {
+    var ok = r.results.filter(function (x) { return x.status === 'ok'; }).map(function (x) { return x.label; });
+    var bad = r.results.filter(function (x) { return x.status !== 'ok'; }).map(function (x) { return x.label; });
+    if (!ok.length) return syncText(r);
+    return { tone: bad.length ? 'warn' : 'ok', text: 'Snapshot saved (' + ok.join(', ') + ').' + (bad.length ? ' Not saved: ' + bad.join(', ') + '.' : '') + ' Set up your armory report below to see it.' };
+  }
+  function setupText(r, refresh) {
     if (r.state === 'done') {
-      var n = r.picked.length;
-      var text = n === 1 ? 'Armory report set up with your latest march.' : 'Armory report set up with your latest ' + n + ' different marches.';
+      var n = r.picked.length, verb = refresh ? 'refreshed' : 'set up';
+      var text = n === 1 ? 'Armory report ' + verb + ' with your latest march.' : 'Armory report ' + verb + ' with your latest ' + n + ' different marches.';
       if (r.asked > n) text += ' You asked for ' + r.asked + ', but your recent Time Clash attacks only had ' + n + (n === 1 ? ' march.' : ' different marches.');
       return { tone: 'ok', text: text };
     }
@@ -144,7 +170,8 @@ var __snapSync = (function () {
   }
   return { SECTIONS: SECTIONS, MAX_BYTES: MAX_BYTES, prepare: prepare, sendToArmory: sendToArmory, syncText: syncText,
     SETUP_MAX: SETUP_MAX, attackLogs: attackLogs, reportUrl: reportUrl, heroSetOf: heroSetOf, pickReports: pickReports,
-    parseLogAnswer: parseLogAnswer, saveReportSetup: saveReportSetup, getToken: getToken, setupText: setupText };
+    parseLogAnswer: parseLogAnswer, saveReportSetup: saveReportSetup, getToken: getToken, setupText: setupText,
+    listReports: listReports, cardMode: cardMode, latestCode: latestCode, newPlayerText: newPlayerText };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = __snapSync;
 
@@ -1296,17 +1323,29 @@ if (typeof module !== 'undefined' && module.exports) module.exports = __snapSync
     var slot = document.getElementById('snap-slot');
     if (slot) slot.appendChild(box); else overlay.root.appendChild(box);
     var uid = (dump.meta && dump.meta.uid) || gameUid();
-    __snapSync.sendToArmory(dump, { fetch: window.fetch.bind(window), worker: SNAP_WORKER, uid: uid }).then(function (r) {
-      var t = __snapSync.syncText(r), color = { ok: '#3fb950', warn: '#d29922', bad: '#f85149', mute: '#8b949e' }[t.tone] || '#8b949e';
+    function paint(t) {
+      var color = { ok: '#3fb950', warn: '#d29922', bad: '#f85149', mute: '#8b949e' }[t.tone] || '#8b949e';
       box.textContent = t.text; box.style.color = color; box.style.borderColor = t.tone === 'mute' ? '#30363d' : color;
-      if (t.tone === 'ok' || t.tone === 'warn') {
-        var a = document.createElement('a');
-        a.id = 'snap-open';
-        a.textContent = 'Open my armory'; a.href = armoryLink(savedCode(uid)); a.target = '_blank'; a.rel = 'noopener noreferrer';
-        a.style.cssText = 'display:inline-block;margin-left:8px;color:#79c0ff;font-weight:600;';
-        box.appendChild(a);
-        addReportSetup(box, uid);
-      }
+    }
+    __snapSync.sendToArmory(dump, { fetch: window.fetch.bind(window), worker: SNAP_WORKER, uid: uid }).then(function (r) {
+      var t = __snapSync.syncText(r);
+      if (t.tone !== 'ok' && t.tone !== 'warn') { paint(t); return; }
+      // Does the player have an armory report yet? A new player is led to Set up: the armory shows the snapshot
+      // only once a report exists (Tex, 2026-10-09). If the list can't be read, the card stays as it was.
+      return siteKeyOf(uid).then(function (sk) { return __snapSync.listReports(sk, { fetch: window.fetch.bind(window), worker: SNAP_WORKER }); })
+        .catch(function () { return { ok: false }; })
+        .then(function (lookup) {
+          var mode = __snapSync.cardMode(lookup);
+          if (mode === 'new') { paint(__snapSync.newPlayerText(r)); addReportSetup(box, uid, 'setup'); return; }
+          paint(t);
+          var a = document.createElement('a');
+          a.id = 'snap-open';
+          a.textContent = 'Open my armory'; a.href = armoryLink(mode === 'existing' ? __snapSync.latestCode(lookup.configs) : savedCode(uid));
+          a.target = '_blank'; a.rel = 'noopener noreferrer';
+          a.style.cssText = 'display:inline-block;margin-left:8px;color:#79c0ff;font-weight:600;';
+          box.appendChild(a);
+          addReportSetup(box, uid, mode === 'existing' ? 'refresh' : 'setup');
+        });
     }, function () { box.textContent = "Couldn't reach your armory. Use Copy JSON below instead."; box.style.color = '#f85149'; });
   }
 
@@ -1335,12 +1374,14 @@ if (typeof module !== 'undefined' && module.exports) module.exports = __snapSync
       return Array.prototype.map.call(new Uint8Array(b), function (x) { return ('0' + x.toString(16)).slice(-2); }).join('').slice(0, 16);
     });
   }
-  function addReportSetup(after, uid) {
+  // mode 'setup': the main step (green); 'refresh': the player has a report, so a smaller outlined option.
+  function addReportSetup(after, uid, mode) {
+    var refresh = mode === 'refresh';
     var row = document.createElement('div');
     row.id = 'snap-setup';
     row.style.cssText = 'margin:0 0 10px;padding:10px 12px;border:1px solid #30363d;border-radius:6px;background:#161b22;color:#e6edf3;font-size:13px;line-height:1.5;';
     var lead = document.createElement('div');
-    lead.textContent = 'Set up my armory report from my latest Time Clash attacks:';
+    lead.textContent = (refresh ? 'Refresh' : 'Set up') + ' my armory report from my latest Time Clash attacks:';
     row.appendChild(lead);
     var line = document.createElement('div');
     line.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;';
@@ -1351,8 +1392,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = __snapSync
     for (var n = 1; n <= __snapSync.SETUP_MAX; n++) { var op = document.createElement('option'); op.value = String(n); op.textContent = n === 1 ? '1 march' : 'up to ' + n + ' marches'; sel.appendChild(op); }
     sel.value = String(__snapSync.SETUP_MAX);
     var go = document.createElement('button');
-    go.id = 'snap-setup-go'; go.type = 'button'; go.textContent = 'Set up';
-    go.style.cssText = 'min-height:40px;padding:0 16px;background:#238636;color:#fff;border:none;border-radius:6px;font-weight:600;font-size:14px;';
+    go.id = 'snap-setup-go'; go.type = 'button'; go.textContent = refresh ? 'Refresh' : 'Set up';
+    go.style.cssText = refresh
+      ? 'min-height:40px;padding:0 16px;background:transparent;color:#79c0ff;border:1px solid #30363d;border-radius:6px;font-weight:600;font-size:14px;'
+      : 'min-height:40px;padding:0 16px;background:#238636;color:#fff;border:none;border-radius:6px;font-weight:600;font-size:14px;';
     line.appendChild(sel); line.appendChild(go); row.appendChild(line);
     var msg = document.createElement('div');
     msg.id = 'snap-setup-msg';
@@ -1362,7 +1405,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = __snapSync
     go.onclick = function () {
       go.disabled = true; sel.disabled = true; msg.style.color = '#8b949e'; msg.textContent = 'Reading your Time Clash reports...';
       runReportSetup(uid, Number(sel.value)).then(function (r) {
-        var t = __snapSync.setupText(r), color = { ok: '#3fb950', warn: '#d29922', bad: '#f85149' }[t.tone] || '#8b949e';
+        var t = __snapSync.setupText(r, refresh), color = { ok: '#3fb950', warn: '#d29922', bad: '#f85149' }[t.tone] || '#8b949e';
         msg.textContent = t.text; msg.style.color = color;
         if (r.state === 'done') {
           var a = document.createElement('a');

@@ -31,14 +31,18 @@ test.before(async () => {
 });
 test.after(async () => { await browser.close(); server.close(); });
 
+let lookups = [];
 async function open(opts) {
+  lookups = [];
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await ctx.newPage();
   const errs = []; page.on('pageerror', (e) => errs.push(String(e)));
   // the fake worker: handshake + uploads succeed
   await page.route('https://worker.test/**', (rt) => {
     const u = rt.request().url();
-    const body = u.endsWith('/supplement/handshake') ? { token: 't', siteKey: 'abcd' } : { ok: true };
+    if (u.endsWith('/report-configs')) lookups.push(JSON.parse(rt.request().postData() || '{}'));
+    const body = u.endsWith('/supplement/handshake') ? { token: 't', siteKey: 'abcd' }
+      : u.endsWith('/report-configs') && opts && opts.configs ? { ok: true, configs: opts.configs } : { ok: true };
     rt.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
   });
   await page.goto(base);
@@ -95,5 +99,51 @@ test('fits a phone: the card stays inside the screen width', async () => {
   const r = await page.$eval('#snap-card', (c) => c.getBoundingClientRect().toJSON());
   assert.ok(r.left >= 0 && r.right <= 390, JSON.stringify(r));
   await page.screenshot({ path: path.join(process.env.SNAP_SHOT_DIR || require('node:os').tmpdir(), 'snap-card.png') });
+  await ctx.close();
+});
+
+// ── New player vs existing armory report (Tex, 2026-10-09) ──
+const SK = require('node:crypto').createHash('sha256').update('1234567890').digest('hex').slice(0, 16);
+const cardInfo = (page) => page.evaluate(() => {
+  const go = document.getElementById('snap-setup-go'), open = document.getElementById('snap-open');
+  return { sync: document.getElementById('snap-sync').childNodes[0].textContent, open: open ? open.getAttribute('href') : null,
+    lead: document.querySelector('#snap-setup > div').textContent, go: go.textContent, goBg: getComputedStyle(go).backgroundColor };
+});
+
+test('a new player (no armory report yet): the snapshot is saved, Set up leads, no "Open my armory" until it exists', async () => {
+  const { ctx, page, errs } = await open({ configs: [] });
+  await page.waitForFunction(() => /Set up your armory report below/.test(document.getElementById('snap-sync').textContent));
+  const c = await cardInfo(page);
+  assert.equal(c.sync, 'Snapshot saved (Inventory, Beasts, Chips). Set up your armory report below to see it.');
+  assert.equal(c.open, null, 'nothing to open yet');
+  assert.equal(c.lead, 'Set up my armory report from my latest Time Clash attacks:');
+  assert.equal(c.go, 'Set up');
+  assert.equal(c.goBg, 'rgb(35, 134, 54)', 'the main green button');
+  assert.deepEqual(lookups, [{ siteKey: SK, deviceId: 'ops-snapshot' }], 'one look-up, by siteKey, never the UID');
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
+test('a player with an armory report: "Open my armory" goes to their newest report, and Refresh is the smaller option', async () => {
+  const { ctx, page } = await open({ configs: [
+    { shortcode: 'OLD1', date: '2026-09-01T00:00:00Z', updatedAt: '2026-09-05T00:00:00Z' },
+    { shortcode: 'NEW1', date: '2026-09-02T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' }] });
+  await page.waitForSelector('#snap-open');
+  const c = await cardInfo(page);
+  assert.equal(c.sync, 'Armory updated: Inventory, Beasts, Chips.');
+  assert.equal(c.open, 'https://2864tw.com/armory-report.html?code=NEW1');
+  assert.equal(c.lead, 'Refresh my armory report from my latest Time Clash attacks:');
+  assert.equal(c.go, 'Refresh');
+  assert.notEqual(c.goBg, 'rgb(35, 134, 54)', 'not the main green button');
+  await ctx.close();
+});
+
+test('the report list cannot be read: the card stays as before (Open my armory and Set up)', async () => {
+  const { ctx, page } = await open();
+  await page.waitForSelector('#snap-open');
+  const c = await cardInfo(page);
+  assert.equal(c.sync, 'Armory updated: Inventory, Beasts, Chips.');
+  assert.equal(c.open, 'https://2864tw.com/armory-report.html');
+  assert.equal(c.go, 'Set up');
   await ctx.close();
 });
