@@ -63,8 +63,8 @@ test('?beta=1 turns the switch on; ?advise= and ?plan= open the classic page wit
 function v1Snippet() { return /<script>\s*\/\* Armory v2 beta: one small link[\s\S]*?<\/script>/.exec(V1)[0].replace(/^<script>|<\/script>$/g, ''); }
 function runV1(flag, search, hash) {
   const made = [];
-  const doc = { createElement: () => { const el = { style: {}, set href(v) { this._h = v; }, get href() { return this._h; } }; made.push(el); return el; }, body: { appendChild: () => {} } };
-  vm.runInNewContext(v1Snippet(), { document: doc, location: { search, hash: hash || '' }, localStorage: { getItem: (k) => (k === 'armory_v2_beta' ? flag : null) } });
+  const doc = { createElement: () => { const el = { style: {}, set href(v) { this._h = v; }, get href() { return this._h; } }; made.push(el); return el; }, body: { appendChild: () => {}, style: {} } };
+  vm.runInNewContext(v1Snippet(), { window: { innerWidth: 390 }, document: doc, location: { search, hash: hash || '' }, localStorage: { getItem: (k) => (k === 'armory_v2_beta' ? flag : null) } });
   return made;
 }
 test('the classic page shows "Try the new Armory" only behind the flag, and the only edit is that snippet', () => {
@@ -73,5 +73,7 @@ test('the classic page shows "Try the new Armory" only behind the flag, and the 
   const a = runV1('1', '?code=abcd', '#tab=heroes');
   assert.equal(a.length, 1); assert.equal(a[0].href, 'armory.html?code=abcd#tab=heroes'); assert.equal(a[0].id, 'try-new-armory');
   assert.equal(runV1('1', '?advise=ABC123')[0].href, 'armory.html', 'advise and plan links are not carried over');
+  assert.ok(/z-index:\d{7,}/.test(v1Snippet()), 'above the Welcome Back dialog (z-index 1000)');
+  assert.ok(/paddingBottom/.test(v1Snippet()), 'phones keep the end of the page reachable');
   assert.equal(V1.split('armory_v2_beta').length - 1, 1, 'one mention in the classic page');
 });

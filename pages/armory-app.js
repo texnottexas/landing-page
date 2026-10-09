@@ -27,7 +27,7 @@ function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').repla
 function nd(s) { return esc(s).replace(/(\d[\d,.]*)/g, '<span translate="no">$1</span>'); }
 function nm(s, cls) { return '<span translate="no"' + (cls ? ' class="' + cls + '"' : '') + '>' + esc(s) + '</span>'; }
 function ic(id, cls) { return '<svg class="i ' + (cls || '') + '" aria-hidden="true"><use href="#i-' + id + '"/></svg>'; }
-function fmtK(n) { return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K' : String(n); }
+function fmtK(n) { n = +n || 0; return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K' : String(n); }
 function fmtInt(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 function ramp(p) { return p >= 70 ? 'max' : p >= 50 ? 'hi' : p >= 25 ? 'mid' : 'lo'; }
 function qCls(q) { return q >= 6 ? 'q6' : q === 5 ? 'q5' : q === 4 ? 'q4' : q === 3 ? 'q3' : ''; }
@@ -125,7 +125,8 @@ function applyRoute(first, soft) {
 function showSkeleton() {
   document.body.classList.add('st-start');
   $$('.view').forEach(function (s) { s.hidden = s.id !== 'v-start'; });
-  $('#v-start').innerHTML = '<div class="vb"><div class="start" aria-busy="true" aria-label="Loading"><div class="card"><div class="skel" style="width:60%"></div><div class="skel" style="width:40%;margin-top:12px"></div><div class="skel" style="width:75%;margin-top:12px"></div></div></div></div>';
+  var bar = function (w) { return '<div class="skel" style="width:' + w + '%;margin-top:12px"></div>'; };
+  $('#v-start').innerHTML = '<div class="vb" aria-busy="true" aria-label="Loading"><div class="ov"><div class="card">' + bar(55) + bar(35) + bar(70) + '</div><div class="card">' + bar(30) + bar(90) + bar(60) + '</div><div class="card">' + bar(40) + bar(80) + bar(75) + bar(65) + '</div></div></div>';
 }
 function setReady(res) {
   S.res = res;
@@ -142,6 +143,11 @@ function run(arg, then) {
     return res;
   });
 }
+/* "empty" caused only by network errors is a connection problem (try again), not a broken report */
+function startKind(res) {
+  if (res.state === 'empty' && (res.errors || []).some(function (e) { return e.kind === 'report' && (!e.status || e.status >= 500); })) return 'error';
+  return res.state;
+}
 function boot() {
   if (shim()) return;
   renderChrome();
@@ -149,7 +155,7 @@ function boot() {
   showSkeleton();
   if (code) {
     S.code = /^[0-9A-Z]{4}$/.test(code) ? code : null;
-    run({ code: code }).then(function (res) { if (res.state !== 'ready') renderStart(res.state); }, function () { renderStart('error'); });
+    run({ code: code }).then(function (res) { if (res.state !== 'ready') renderStart(startKind(res)); }, function () { renderStart('error'); });
     return;
   }
   /* first paint from what this device already holds, then the worker's newer game data */
@@ -163,7 +169,7 @@ function boot() {
       });
       return;
     }
-    renderStart(res.state);
+    renderStart(startKind(res));
   }, function () { renderStart('error'); });
 }
 
@@ -185,7 +191,7 @@ function renderChrome() {
   $('#tabsIn').innerHTML = TABS.map(function (v) { return '<a class="tab" href="#' + v + '" data-v="' + v + '">' + ic(VIEWS[v].icon, 'sm') + VIEWS[v].label + '</a>'; }).join('');
   $('#bar').innerHTML = TABS.map(function (v) { return '<a href="#' + v + '" data-v="' + v + '">' + ic(VIEWS[v].icon) + '<span>' + VIEWS[v].label + '</span></a>'; }).join('');
   $('#pagesPop').innerHTML = '<div class="pop-h">All pages</div>' + PAGES.map(function (p) { return '<a class="pop-a" role="menuitem" href="' + p[0] + '">' + esc(p[1]) + '</a>'; }).join('');
-  $('#footNote').innerHTML = '<span>This is the new Armory.</span><a href="' + esc(classicUrl('')) + '">Back to classic</a>';
+  $('#footNote').innerHTML = '<span>This is the new Armory.</span><a href="' + esc(classicUrl('')) + '">Back to classic</a><button class="tb link" type="button" data-fb>Send feedback</button>';
 }
 function renderAll() {
   renderChrome(); renderOverview(); renderHeroes();
@@ -196,7 +202,7 @@ function renderAll() {
 /* ---------- Start, expired, error ---------- */
 
 /* ---------- Overview ---------- */
-function ageSpan(l) { return '<span class="' + (l.warn ? 'c-warn' : '') + '">(' + nm(l.age) + ')</span>'; }
+function ageSpan(l) { return '<span class="' + (l.warn ? 'c-warn' : '') + '">(' + (l.ageDays < 1 ? 'today' : nm(l.age) + ' old') + ')</span>'; }
 function meterBlock(o) {
   return '<div class="bm" data-numwrap><div class="bm-top"><span class="l lbl">' + esc(o.label) + '</span><button class="info" type="button" data-explain="' + o.key + '" aria-label="How ' + esc(o.label.toLowerCase()) + ' is worked out">' + ic('info', 'sm') + '</button></div>' +
     '<div class="bm-num"><span class="n disp" data-num translate="no">' + esc(o.num) + '</span>' + (o.of ? '<span class="t13 muted" translate="no">' + esc(o.of) + '</span>' : '') + '</div>' +
@@ -220,10 +226,10 @@ function renderOverview() {
   var dat = h.data ? '<span>Game data ' + nm(h.data.date) + (h.data.ageDays >= 1 ? ' ' + ageSpan(h.data) : '') + '</span>' : '<span>No game data imported</span>';
   var act = ro ? '' : '<button class="tb link" type="button" data-open="status">' + (h.data ? 'Update' : 'Import') + '</button>';
   fresh = (rep ? rep + '<span class="sep" aria-hidden="true">&middot;</span>' : '') + '<span class="fl">' + dat + act + '</span>';
-  var power = h.powerText ? '<div class="nb" data-numwrap><span class="n disp" data-num translate="no">' + esc(h.powerText) + '</span><span class="l lbl">Power</span><span class="s src">in roster</span></div>' : '';
+  var power = h.powerText ? '<div class="nb" data-numwrap><span class="n disp" data-num translate="no">' + esc(h.powerText) + '</span><span class="l lbl">Power</span><span class="s src">alliance list</span></div>' : '';
   var header = '<section class="card hcard" id="hdrCard" aria-label="Player"><div class="hc-top">' +
     (h.avatar ? art(h.avatar, 'ava', (h.name || '?').charAt(0), '') : '<span class="ava fb" translate="no">' + esc((h.name || '?').charAt(0)) + '</span>') +
-    '<div style="min-width:0"><div class="hc-name" translate="no">' + esc(h.name || 'Armory') + (shared ? '’s armory' : '') + '</div><div class="hc-pills">' + alliancePill(h.alliance) + (shared ? '<span class="pill">Shared with you</span><span class="pill">Read-only</span>' : '') + '</div></div></div>' +
+    '<div style="min-width:0"><div class="hc-name"><span translate="no">' + esc(h.name || 'Armory') + '</span>' + (shared ? '’s armory' : '') + '</div><div class="hc-pills">' + alliancePill(h.alliance) + (shared ? '<span class="pill">Shared with you</span><span class="pill">Read-only</span>' : '') + '</div></div></div>' +
     '<div class="hc-meta"><div class="hc-por">' + por + '</div>' + power + '</div><div class="fresh">' + fresh + '</div></section>';
 
   var m = vm.moves, rows = m.picks.map(function (p, i) {
@@ -232,11 +238,11 @@ function renderOverview() {
       '<div class="move-b"><span class="pill p-eff">' + esc(p.pill) + '</span><span class="move-t">' + seg + '</span>' + (p.meta ? '<span class="move-m">' + nd(p.meta) + '</span>' : '') + '</div>' + ic('chev') + '</a>';
   }).join('');
   var mfoot = m.cta === 'import' && !ro ? '<button class="tb link" type="button" data-open="status">' + nd(m.footer) + '</button>' : m.footer ? nd(m.footer) : '';
-  var moves = '<section class="card" id="movesCard" aria-labelledby="mvT"><div class="sechead"><h2 class="title" id="mvT" translate="no">' + esc(m.title) + '</h2><button class="info" type="button" data-explain="moves" aria-label="How next moves are chosen">' + ic('info', 'sm') + '</button></div>' +
+  var moves = '<section class="card" id="movesCard" aria-labelledby="mvT"><div class="sechead"><h2 class="title" id="mvT">' + (shared ? nm(h.name || 'Player') + '’s next moves' : 'Next moves') + '</h2><button class="info" type="button" data-explain="moves" aria-label="How next moves are chosen">' + ic('info', 'sm') + '</button></div>' +
     (rows ? '<div class="moves" role="list">' + rows + '</div>' : '<p class="muted" style="margin-top:8px">No moves right now.</p>') + (mfoot ? '<div class="foot cardfoot">' + mfoot + '</div>' : '') + '</section>';
 
   var B = vm.band, bl = '';
-  if (B.gear.heroes) bl += meterBlock({ label: 'Gear score', key: 'gear', num: fmtK(B.gear.score), of: 'of ' + fmtK(B.gear.max), pct: Math.round(B.gear.score / B.gear.max * 100), showPct: true, src: nm(String(B.gear.heroes)) + ' heroes ' + esc(B.gear.source) });
+  if (B.gear.heroes) bl += meterBlock({ label: 'Gear score', key: 'gear', num: fmtK(B.gear.score), of: 'of ' + fmtK(B.gear.max), pct: Math.round(B.gear.score / B.gear.max * 100), showPct: true, src: nm(String(B.gear.heroes)) + (B.gear.source === 'in battle reports' ? ' heroes in battle reports' : ' heroes with gear in game data') });
   if (B.gear.heroes) bl += meterBlock({ label: 'Rune stars', key: 'rune', num: B.runes.pct + '%', of: 'of max', pct: B.runes.pct, showPct: false, src: nm(String(B.runes.equipped)) + ' runes equipped' });
   if (B.beasts && B.beasts.pct != null) bl += meterBlock({ label: 'Beast potential', key: 'beast', num: B.beasts.pct + '%', of: 'average', pct: B.beasts.pct, showPct: false, src: nm(String(B.beasts.deployed)) + ' beasts deployed' });
   var band = bl ? '<section class="card" id="bandCard" aria-labelledby="stT"><h2 class="hd" id="stT">Strength</h2><div class="band">' + bl + '</div></section>' : '<span id="bandCard" hidden></span>';
@@ -246,9 +252,9 @@ function renderOverview() {
     return '<a class="area" href="' + href + '"' + (dataOpen ? ' data-open="' + dataOpen + '"' : '') + ' data-numwrap><span class="area-n" data-num translate="no">' + esc(n) + '</span><div class="area-b"><div class="l lbl">' + esc(label) + '</div><div class="s src">' + src + '</div></div>' + ic('chev') + '</a>';
   }
   var areas = '<section id="areasCard" aria-label="Areas"><div class="alist">' +
-    area('#heroes/battle', String(Z.heroes.battle), 'Heroes', (Z.heroes.source === 'reports' ? 'in battle reports' : 'in roster') + (Z.heroes.roster != null && Z.heroes.source === 'reports' ? ' &middot; ' + nm(String(Z.heroes.roster)) + ' in roster' : '')) +
+    area('#heroes/battle', String(Z.heroes.battle), 'Heroes', (Z.heroes.source === 'reports' ? 'in battle reports' : 'with gear in game data') + (Z.heroes.roster != null ? ' &middot; ' + nm(String(Z.heroes.roster)) + ' in roster' : '')) +
     area('#base', String(Z.base.placedKinds), 'Decorations', Z.base.placedKinds ? 'kinds placed (' + nm(String(Z.base.placedPieces)) + ' pieces) &middot; March Size ' + nm('+' + Z.base.march) : 'placed &middot; not in game data yet') +
-    area('#beasts', Z.beasts ? String(Z.beasts.deployed) : '0', 'Beasts', Z.beasts ? 'deployed in ' + nm(String(Z.beasts.fields)) + ' fields &middot; ' + nm(String(Z.beasts.collected)) + ' collected' : 'deployed &middot; not in game data yet') +
+    area('#beasts', Z.beasts ? String(Z.beasts.deployed) : '0', 'Beasts', Z.beasts ? 'deployed in ' + nm(String(Z.beasts.fields)) + ' fields' + (Z.beasts.collected != null ? ' &middot; ' + nm(String(Z.beasts.collected)) + ' collected' : '') : 'deployed &middot; not in game data yet') +
     area('#ht', String(vm.ht.reportMechas ? vm.ht.reportMechas.length : Z.ht.count), 'Heavy Troopers (HT)', vm.ht.reportMechas ? 'in battle reports &middot; ' + nm(String(Z.ht.count)) + ' in game data &middot; ' + nm(Z.ht.chipsFilled + ' of ' + Z.ht.chipsMax) + ' chips equipped' : 'in game data &middot; ' + nm(Z.ht.chipsFilled + ' of ' + Z.ht.chipsMax) + ' chips equipped') +
     '<a class="area bagrow" href="#bag" data-open="bag" data-numwrap><span class="area-n" data-num translate="no">' + fmtInt(vm.decor.shards) + '</span><div class="area-b"><div class="l lbl">Bag</div><div class="s src">decor shards in bag</div></div>' + ic('chev') + '</a>' +
     '</div></section>';
@@ -258,7 +264,7 @@ function renderOverview() {
 function shareRow() {
   var code = currentCode();
   return '<section class="sharerow" id="shareCard" aria-label="Share"><div><div class="t15" style="font-weight:600">Share this report</div><div class="t13 muted">Anyone with the link sees this page read-only.</div></div>' +
-    '<div class="irow" style="align-items:center">' + (code ? '<span class="code muted" translate="no" id="shareCode">' + esc(code) + '</span>' : '<span class="t13 muted" id="shareCode">No link yet</span>') + '<button class="btn" type="button" data-share>' + ic('copy', 'sm') + 'Copy link</button></div></section>';
+    '<div class="irow" style="align-items:center">' + (code ? '<span class="code muted" translate="no" id="shareCode">' + esc(code) + '</span>' : '') + '<button class="btn" type="button" data-share>' + ic('copy', 'sm') + (code ? 'Copy link' : 'Create link') + '</button></div></section>';
 }
 var nameIO = null;
 function watchName() {
@@ -280,23 +286,29 @@ function ctrls(cls) {
     '<div><span class="lab" style="margin-bottom:4px">Branch</span><div class="chips">' + ['Army', 'Navy', 'Air Force'].map(function (b) { return '<button class="chipbtn" type="button" data-br="' + b + '" aria-pressed="' + !!f.br[b] + '">' + b + '</button>'; }).join('') + '</div></div>' +
     '<div><span class="lab" style="margin-bottom:4px">Sort by</span><div class="chips">' + [['score', 'Strength'], ['lv', 'Level'], ['name', 'Name']].map(function (s) { return '<button class="chipbtn" type="button" data-sort="' + s[0] + '" aria-pressed="' + (f.sort === s[0]) + '">' + s[1] + '</button>'; }).join('') + '</div></div></div>';
 }
+/* the game table's short stat names, written out: "AF DMG+" reads "Air Force DMG increase" */
+function statLabel(n) {
+  var x = /^(Army|Navy|AF) (DMG\+|DMG-|ATK|HP|DEF)$/.exec(n);
+  if (!x) return n;
+  return (x[1] === 'AF' ? 'Air Force' : x[1]) + ' ' + { 'DMG+': 'DMG increase', 'DMG-': 'Decreased DMG Taken', ATK: 'Attack', HP: 'HP', DEF: 'Defense' }[x[2]];
+}
 function gearCard(h, p, showHero) {
   var r = p.rune;
   var rune = r ? '<div class="g-rune">' + art(BASE + 'rune-icons/' + r.icon + '.png', 'ico q5', r.name.charAt(0), '') + '<div><div class="rn">' + nm(r.name) + '</div>' + stars(r.s, r.sm) + '</div></div>' : '<div class="g-rune muted t13">No rune</div>';
   var stats = p.stats.map(function (s) {
     var pct = Math.round(core.moves.rollPct(s.v, s.m)), val = (s.v / 100).toFixed(2).replace(/\.?0+$/, '') + '%';
-    return '<div class="st"><div class="st-1">' + esc(s.label) + '</div><div class="st-2"><div class="meter r-' + ramp(pct) + '"><i style="width:' + pct + '%"></i></div><span class="sv" translate="no">' + val + '</span><span class="pc c-' + ramp(pct) + '" translate="no">' + pct + '%</span></div></div>';
+    return '<div class="st"><div class="st-1">' + esc(statLabel(s.label)) + '</div><div class="st-2"><div class="meter r-' + ramp(pct) + '"><i style="width:' + pct + '%"></i></div><span class="sv" translate="no">' + val + '</span><span class="pc c-' + ramp(pct) + '" translate="no">' + pct + '%</span></div></div>';
   }).join('');
   var q = qCls(p.q);
-  return '<div class="gcard ' + q + '" id="g-' + h.id + '-' + p.slot + '">' + (showHero ? '<div class="g-hero" translate="no">' + esc(h.name) + '</div>' : '') + '<div class="g-top">' + art(BASE + 'titan-slot-icons/gear_' + p.slot + '.png', 'ico g-ico ' + q, String(p.slot), '') +
+  return '<div class="gcard ' + q + '" id="g-' + esc(h.id) + '-' + esc(p.slot) + '">' + (showHero ? '<div class="g-hero" translate="no">' + esc(h.name) + '</div>' : '') + '<div class="g-top">' + art(BASE + 'titan-slot-icons/gear_' + esc(p.slot) + '.png', 'ico g-ico ' + q, String(p.slot), '') +
     '<div><div class="g-n" translate="no">' + esc(p.slotName).replace(/([^\s]+-[^\s]+)/g, function (m) { return m.replace(/-/g, '‑'); }) + '</div>' + (p.level != null ? '<div class="g-s">Level ' + nm(String(p.level)) + '</div>' : '') + '</div></div>' + rune + stats + '</div>';
 }
 function heroRow(h) {
   var open = !!S.open[h.id];
-  return '<article class="hero' + (open ? ' open' : '') + '" id="h-' + h.id + '"><button class="hrow" type="button" aria-expanded="' + open + '" aria-controls="hp-' + h.id + '" data-hero="' + h.id + '">' + art(h.icon, 'por', h.name.charAt(0), '') +
+  return '<article class="hero' + (open ? ' open' : '') + '" id="h-' + esc(h.id) + '"><button class="hrow" type="button" aria-expanded="' + open + '" aria-controls="hp-' + esc(h.id) + '" data-hero="' + esc(h.id) + '">' + art(h.icon, 'por', h.name.charAt(0), '') +
     '<span class="hb"><span class="hb-1"><span class="hb-n" translate="no">' + esc(h.name) + '</span>' + branchPill(h.branch) + '</span><span class="hb-2" style="display:block">Level ' + nm(String(h.lv)) + ' &middot; ' + nm(String(h.pieces.length)) + ' of ' + nm('6') + ' gear equipped</span></span>' +
     '<span class="hr-score"><span class="n disp" style="display:block" translate="no">' + fmtK(h.score) + '</span><span class="l" style="display:block">gear score</span></span>' + ic('down', 'chev') + '</button>' +
-    '<div class="panel" id="hp-' + h.id + '"><div><div class="gears">' + h.pieces.map(function (p) { return gearCard(h, p); }).join('') + '</div></div></div></article>';
+    '<div class="panel" id="hp-' + esc(h.id) + '"><div><div class="gears">' + h.pieces.map(function (p) { return gearCard(h, p); }).join('') + '</div></div></div></article>';
 }
 function setHeroOpen(id, on) {
   var a = document.getElementById('h-' + id); if (!a) return;
@@ -317,15 +329,17 @@ function sortBy(list, get) {
 function battleList() {
   var l = sortBy(filt(S.vm.heroes.list, function (x) { return x; }), function (x) { return x; });
   var el = $('#heroList'); if (!el) return;
-  el.innerHTML = l.length ? l.map(heroRow).join('') : '<div class="empty">' + (S.vm.heroes.list.length ? 'No heroes match.' : 'No heroes with gear in these battle reports.') + '</div>';
+  el.innerHTML = l.length ? l.map(heroRow).join('') : '<div class="empty">' + (S.vm.heroes.list.length ? 'No heroes match. <button class="tb link" type="button" data-clearf>Clear filters</button>' : 'No heroes with gear in these battle reports.') + '</div>';
+  var nf = (S.f.q.trim() ? 1 : 0) + Object.keys(S.f.br).filter(function (k) { return S.f.br[k]; }).length;
+  $$('.fbtn').forEach(function (b) { b.lastChild.textContent = 'Filter \u00B7 Sort' + (nf ? ' (' + nf + ')' : ''); });
   var c = $('#heroCount'); if (c) c.innerHTML = nd(l.length + ' heroes');
 }
 function renderHeroes() {
   var n = S.vm.heroes.list.length;
   $('#v-heroes').innerHTML = segs('heroes') +
-    '<div class="vb" data-pane="battle"><div class="sechead"><h2 class="title">Heroes in battle reports</h2></div><div class="fbar"><div class="grow t13 muted" id="heroCount">' + nd(n + ' heroes') + '</div><button class="btn fbtn" type="button" data-open="filter">' + ic('sliders', 'sm') + 'Filter &middot; Sort</button>' + ctrls('inl') + '</div><div id="heroList"></div></div>' +
-    '<div class="vb" data-pane="roster" hidden><div class="sechead"><h2 class="title">Roster</h2></div><div class="fbar"><div class="grow t13 muted" id="rosterCount"></div><button class="btn fbtn" type="button" data-open="filter">' + ic('sliders', 'sm') + 'Filter &middot; Sort</button>' + ctrls('inl') + '</div><div id="rosterList"></div></div>' +
-    '<div class="vb" data-pane="gear" hidden><div class="sechead"><h2 class="title">Gear</h2></div><div id="gearTop"></div><div id="gearBody"></div></div>';
+    '<div class="vb" data-pane="battle"><div class="sechead"><h2 class="title">Heroes in battle reports</h2></div><div class="fbar"><div class="grow t13 muted" id="heroCount">' + nd(n + ' heroes') + '</div><button class="btn fbtn" type="button" data-open="filter">' + ic('sliders', 'sm') + 'Filter \u00B7 Sort</button>' + ctrls('inl') + '</div><div id="heroList"></div></div>' +
+    '<div class="vb" data-pane="roster" hidden><div class="fbar"><div class="grow t13 muted" id="rosterCount"></div><button class="btn fbtn" type="button" data-open="filter">' + ic('sliders', 'sm') + 'Filter \u00B7 Sort</button>' + ctrls('inl') + '</div><div id="rosterList"></div></div>' +
+    '<div class="vb" data-pane="gear" hidden><div id="gearTop"></div><div id="gearBody"></div></div>';
   battleList();
 }
 
@@ -393,9 +407,10 @@ document.addEventListener('click', function (e) {
   if (ds.explain) { openSheet('explain', ds.explain); return; }
   if (ds.go) { go(ds.go); return; }
   if (ds.hero) { var id = +ds.hero, on = !S.open[id]; S.open[id] = on; setHeroOpen(id, on); return; }
-  if (ds.showall) { S.all[ds.showall] = true; if (M) { if (ds.showall === 'roster') M.rosterList(); else M.gearBody(); } return; }
+  if (ds.showall) { S.all[ds.showall] = true; if (M) { if (ds.showall === 'roster') M.rosterList(); else if (ds.showall === 'decor') M.renderBase(); else M.gearBody(); } return; }
   if (ds.br !== undefined) { S.f.br[ds.br] = !S.f.br[ds.br]; $$('[data-br="' + ds.br + '"]').forEach(function (b) { b.setAttribute('aria-pressed', S.f.br[ds.br] ? 'true' : 'false'); }); battleList(); if (M) M.rosterList(); return; }
   if (ds.sort) { S.f.sort = ds.sort; $$('[data-sort]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.sort === ds.sort ? 'true' : 'false'); }); battleList(); if (M) M.rosterList(); return; }
+  if ('clearf' in ds) { S.f = { q: '', br: {}, sort: S.f.sort }; renderHeroes(); if (M) M.rosterList(); return; }
   if (ds.gview) { S.gview = ds.gview; if (M) M.renderGear(); return; }
   if (ds.gslot !== undefined) { S.gslot = +ds.gslot; if (M) M.renderGear(); return; }
   if (M ? M.owns(t) : ['load', 'pick', 'code', 'verify', 'addrep', 'rm', 'rmno', 'rmyes', 'sw', 'swno', 'swyes', 'mine', 'reload'].some(function (k) { return k in ds; })) { more(function (m) { m.click(t); }); return; }
@@ -406,6 +421,7 @@ document.addEventListener('input', function (e) {
   if (t.hasAttribute && t.hasAttribute('data-q')) { S.f.q = t.value; $$('[data-q]').forEach(function (x) { if (x !== t) x.value = t.value; }); battleList(); if (M) M.rosterList(); }
 });
 document.addEventListener('change', function (e) {
+  if (e.target.hasAttribute && e.target.hasAttribute('data-gslotsel')) { S.gslot = +e.target.value || 0; if (M) M.gearBody(); return; }
   if (e.target.id === 'langSel') { var c = e.target.value; ls('langOverride', c); if (window.applyLangToCombo) window.applyLangToCombo(c, 200); }
 });
 document.addEventListener('keydown', function (e) {
@@ -424,7 +440,7 @@ document.addEventListener('keydown', function (e) {
 });
 window.addEventListener('hashchange', function () { if (!shim()) applyRoute(false); });
 
-H = { S: S, d: d, core: core, G: G, BASE: BASE, WORKER: WORKER, SK_RE: SK_RE, $: $, $$: $$, esc: esc, nd: nd, nm: nm, ic: ic, fmtK: fmtK, fmtInt: fmtInt, ramp: ramp, qCls: qCls, slug: slug, ls: ls, stars: stars, art: art, lbl: lbl, stateName: stateName, sk: sk, readOnly: readOnly, classicUrl: classicUrl, savedReport: savedReport, deviceId: deviceId, toast: toast, go: go, run: run, showSkeleton: showSkeleton, refreshSheet: refreshSheet, currentCode: currentCode, gearCard: gearCard, branchPill: branchPill, filt: filt, sortBy: sortBy };
+H = { S: S, d: d, core: core, G: G, BASE: BASE, statLabel: statLabel, WORKER: WORKER, SK_RE: SK_RE, $: $, $$: $$, esc: esc, nd: nd, nm: nm, ic: ic, fmtK: fmtK, fmtInt: fmtInt, ramp: ramp, qCls: qCls, slug: slug, ls: ls, stars: stars, art: art, lbl: lbl, stateName: stateName, sk: sk, readOnly: readOnly, classicUrl: classicUrl, savedReport: savedReport, deviceId: deviceId, toast: toast, go: go, run: run, showSkeleton: showSkeleton, refreshSheet: refreshSheet, currentCode: currentCode, gearCard: gearCard, branchPill: branchPill, filt: filt, sortBy: sortBy };
 window.__arm = { S: S, d: d, core: core, go: go, openSheet: openSheet, closeSheet: closeSheet, applyRoute: applyRoute, parseHash: parseHash, VIEWS: VIEWS, ready: false };
 boot();
 if (/[?&]check=1/.test(location.search)) { var cs = document.createElement('script'); cs.src = 'armory-check.js'; document.body.appendChild(cs); }

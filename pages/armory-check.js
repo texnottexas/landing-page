@@ -63,7 +63,7 @@ function cyrb53(str) {
    HT: Rex fights with Luminary Knight LP-4 (all chips Lv.25), so Doom Sawblade D-4 gives no chip move. */
 var REX = 'c3c6f3200a4ec1fb';
 var EXPECTED = [
-  ['Uses what you have', 'Upgrade Coastal Defence to Lv.3', '+1.5% All units Attack'],
+  ['Uses what you have', 'Upgrade Coastal Defence to Lv.3: +1.5% All units Attack', '60 shards'],
   ['Costs resources', 'Refine Optical Add-on on Hiccup', '3 stats under 70% (62-68%)'],
   ['Costs resources', 'Refine Raysor Headset on Jett', '3 stats under 70% (58-69%)']
 ];
@@ -82,7 +82,7 @@ var EXPECTED = [
   var tops = [], badTop = [];
   for (i = 0; i < ROUTES.length; i++) {
     await visit(ROUTES[i]); window.scrollTo(0, 0);
-    var first = $('.view:not([hidden]) .vb > *'), top = first ? Math.round(first.getBoundingClientRect().top + window.scrollY) : -1;
+    var first = $('.view:not([hidden]) .vb:not([hidden]) > *'), top = first ? Math.round(first.getBoundingClientRect().top + window.scrollY) : -1;
     tops.push(ROUTES[i] + '=' + top); if (top > 120 || top < 0) badTop.push(ROUTES[i]);
   }
   if (mobile) log(badTop.length === 0, 'content starts <= 120 px on every mobile view', tops.join(' ')); else log(null, 'content start (desktop, not part of the criterion)', tops.join(' '));
@@ -263,6 +263,24 @@ var EXPECTED = [
   for (i = 0; i < ROUTES.length; i++) { await visit(ROUTES[i]); scanLoose($('.view:not([hidden])'), ROUTES[i]); }
   A.openSheet('status'); await sleep(220); scanLoose($('#sheet'), 'status'); A.closeSheet(true);
   log(loose.length === 0, 'no loose text next to a sibling inside a gapped flex row (the double-space bug)', loose.join(' | ') || 'none found in ' + ROUTES.length + ' views and the status sheet');
+  /* vocabulary: no internal stat abbreviations, no impossible "x of y stars", no two spans side by side without a separator */
+  var vtext = [];
+  for (i = 0; i < ROUTES.length; i++) { await visit(ROUTES[i]); vtext.push($('.view:not([hidden])').innerText); }
+  var allText = vtext.join('\n');
+  log(!/\bAF\b|DMG[+-]/.test(allText), 'no internal stat abbreviations (AF, DMG+, DMG-) in visible text', (allText.match(/\bAF\b|DMG[+-]/) || [''])[0]);
+  var badStars = (allText.match(/(\d+) of (\d+) stars/g) || []).filter(function (t) { var m = /(\d+) of (\d+)/.exec(t); return +m[1] > +m[2]; });
+  log(badStars.length === 0, 'no "x of y stars" with x above y', badStars.slice(0, 3).join(' | '));
+  var sp = [];
+  for (i = 0; i < ROUTES.length; i++) {
+    await visit(ROUTES[i]);
+    $$('.view:not([hidden]) *').forEach(function (el) {
+      if (!vis(el) || el.closest('svg')) return;
+      var cs = getComputedStyle(el); if (!/flex|grid/.test(cs.display) || !(parseFloat(cs.columnGap) > 0)) return;
+      var kids = Array.prototype.filter.call(el.children, function (c) { return c.tagName === 'SPAN' && c.textContent.trim() && !c.hasAttribute('aria-hidden') && !c.classList.contains('dot'); });
+      if (kids.length >= 2 && Array.prototype.filter.call(el.children, function (c) { return c.hasAttribute('aria-hidden') && /\u00B7/.test(c.textContent); }).length === 0 && !el.matches('.bm-num, .irow, .hb-1, .sechead, .chips, .nb, .stars') && sp.length < 5) sp.push(ROUTES[i] + ':' + (el.className || el.tagName) + ' "' + el.textContent.trim().slice(0, 30) + '"');
+    });
+  }
+  log(sp.length === 0, 'no sibling text spans in a gapped flex row without a separator', sp.join(' | ') || 'none');
   /* routes: the legacy #tab= ids resolve to a view */
   await visit('overview'); window.scrollTo(0, 0);
   var fails = RES.filter(function (r) { return r.ok === false; }).length, passes = RES.filter(function (r) { return r.ok === true; }).length;

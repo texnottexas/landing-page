@@ -28,11 +28,11 @@ function renderStart(kind, extra) {
         return '<button class="pick" type="button" data-pick="' + i + '">' + (p.avatar ? art(p.avatar, 'ava', (p.name || '?').charAt(0), '') : '<span class="ava fb" translate="no">' + esc((p.name || '?').charAt(0)) + '</span>') + '<span translate="no" style="font-weight:600">' + esc(p.name) + '</span><span class="t13 muted">' + esc(p.side) + '</span></button>';
       }).join('') + '</div><div class="err" id="stErr" role="alert"></div>';
     } else {
-      pick = '<div class="irow"><input class="fld" id="rid" type="text" inputmode="numeric" autocomplete="off" placeholder="Battle Report ID" aria-label="Battle Report ID"><button class="btn" type="button" data-load>Load</button></div><div class="err" id="stErr" role="alert">' + esc(extra && extra.err || '') + '</div>' +
+      pick = '<div class="irow"><input class="fld" id="rid" type="text" inputmode="numeric" autocomplete="off" placeholder="Battle report ID" aria-label="Battle report ID"><button class="btn" type="button" data-load>Load</button></div><div class="err" id="stErr" role="alert">' + esc(extra && extra.err || '') + '</div>' +
         '<details class="help" open><summary>Where do I find a Battle Report ID?</summary><ol><li>In the game, open a battle report from a fight against another player (Time Clash Arena works).</li><li>Tap the VS icon.</li><li>Tap the copy icon next to Report No., then paste it in the box above.</li></ol><p>On Server 2864, Snapshot can do this for you: run it in the game and tap Set up.</p></details>' +
-        mineBtn() + '<h2 class="disp" style="font-size:var(--fs-20)">Or open a share link</h2><div class="irow"><input class="fld" id="scode" type="text" maxlength="4" autocomplete="off" placeholder="Code" aria-label="Share code"><button class="btn" type="button" data-code>Open</button></div>';
+        mineBtn() + '<h2 class="disp" style="font-size:var(--fs-20)">Or open a share link</h2><div class="irow"><input class="fld" id="scode" type="text" maxlength="4" autocomplete="off" placeholder="4-letter code" aria-label="Share code"><button class="btn" type="button" data-code>Open</button></div>';
     }
-    h = '<h1 class="disp" style="font-size:var(--fs-24)">Armory</h1><p class="muted">' + (extra && extra.pending ? 'Pick your player card to build your armory.' : 'Enter a Battle Report ID to build your armory.') + '</p>' + pick;
+    h = '<h1 class="disp" style="font-size:var(--fs-24)">Build your armory</h1><p class="muted">' + (extra && extra.pending ? 'Pick your player card to build your armory.' : 'Enter a Battle Report ID to build your armory.') + '</p>' + pick;
   }
   $('#v-start').hidden = false;
   $('#v-start').innerHTML = '<div class="vb"><div class="start">' + h + '</div></div>';
@@ -79,7 +79,10 @@ function pickPlayer(i) {
     /* v1 "Generate report": the player's own saved report, so the next visit opens straight to it */
     var cache = {}; res.reports.forEach(function (r) { cache[r.id] = r.extracted; });
     var pl = JSON.parse(JSON.stringify(res.player)); if (!pl.avatar && p.avatar) pl.avatar = p.avatar;
-    ls('playerReport', JSON.stringify({ player: pl, reportIds: [id], marchGroups: [] }));
+    var prev = savedReport(), same = prev && prev.player && prev.player.name === pl.name;   /* v1 saveAndRenderReport: marches and the share code survive a rebuild */
+    var keep = { player: pl, reportIds: [id], marchGroups: same && Array.isArray(prev.marchGroups) ? prev.marchGroups : [] };
+    if (same && prev.shortcode) keep.shortcode = prev.shortcode;
+    ls('playerReport', JSON.stringify(keep));
     ls('playerReportData', JSON.stringify(cache));
     ls('armory_v2_switched', null); S.saved = true; S.pending = null; go('overview');
   }).then(function (res) {
@@ -88,16 +91,16 @@ function pickPlayer(i) {
 }
 function rosterItems() {
   var s = S.res.supp && S.res.supp.heroes, list = s && s.list || [];
-  return list.map(function (x) { return { id: x.id, name: core.heroName(x.id), branch: core.heroBranch(x.id, x.t), lv: x.lv || 0, star: x.star || 0, score: x.pw || 0 }; });
+  return list.filter(function (x) { return x && isFinite(+x.id); }).map(function (x) { var id = +x.id; return { id: id, name: core.heroName(id), branch: core.heroBranch(id, x.t), lv: +x.lv || 0, star: +x.star || 0, score: +x.pw || 0 }; });
 }
 function rosterList() {
   var el = $('#rosterList'); if (!el) return;
   var all = rosterItems();
   if (S.res.privacy && S.res.privacy.heroes) { el.innerHTML = '<div class="empty">The roster is private.</div>'; return; }
-  if (!all.length) { el.innerHTML = '<div class="empty">' + (readOnly() ? 'No roster in the shared game data.' : 'No roster yet. Send your game data from the status sheet.') + '</div>'; return; }
+  if (!all.length) { el.innerHTML = '<div class="empty">' + 'No roster yet.' + (readOnly() ? '' : ' <button class="tb link" type="button" data-open="status">Send game data</button>') + '</div>'; return; }
   var l = sortBy(filt(all, function (x) { return x; }), function (x) { return x; }), shown = S.all.roster ? l : l.slice(0, 12);
   el.innerHTML = shown.map(function (x) {
-    return '<article class="hero"><div class="hrow" style="cursor:default">' + art('https://h5.topwargame.com/DynRes/images/headpic/hero_icon' + x.id + '_global.png', 'por', x.name.charAt(0), '') +
+    return '<article class="hero"><div class="hrow" style="cursor:default">' + art(ArmoryVM.heroIcon(x.id), 'por', x.name.charAt(0), '') +
       '<span class="hb"><span class="hb-1"><span class="hb-n" translate="no">' + esc(x.name) + '</span>' + branchPill(x.branch) + '</span><span class="hb-2" style="display:block">Level ' + nm(String(x.lv)) + ' &middot; ' + nm(String(x.star)) + ' stars</span></span>' +
       '<span class="hr-score"><span class="n disp" style="display:block" translate="no">' + fmtK(x.score) + '</span><span class="l" style="display:block">power</span></span></div></article>';
   }).join('') + (l.length > 12 && !S.all.roster ? '<button class="btn more" type="button" data-showall="roster"><span>Show all <span translate="no">' + l.length + '</span></span></button>' : '');
@@ -107,12 +110,12 @@ function gearBody() {
   var vm = S.vm, el = $('#gearBody'); if (!el) return;
   if (S.gview === 'runes') {
     var eq = {};
-    vm.heroes.list.forEach(function (h) { h.pieces.forEach(function (p) { if (p.rune) { var e = eq[p.rune.name] || (eq[p.rune.name] = { n: 0, s: 0, sm: p.rune.sm, icon: p.rune.icon }); e.n++; e.s += p.rune.s; } }); });
+    vm.heroes.list.forEach(function (h) { h.pieces.forEach(function (p) { if (p.rune) { var e = eq[p.rune.name] || (eq[p.rune.name] = { n: 0, s: 0, sm: 0, icon: p.rune.icon }); e.n++; e.s += p.rune.s; e.sm += p.rune.sm; } }); });
     var bag = vm.runes.runeBag || {}, names = {};
     Object.keys(eq).forEach(function (k) { names[k] = 1; }); Object.keys(bag).forEach(function (k) { if (bag[k] > 0) names[k] = 1; });
     var rows = Object.keys(names).sort().map(function (n) {
-      var e = eq[n], inbag = bag[n] || 0, icon = e ? e.icon : (G.RUNE_ICON[n] || slug(n));
-      return '<div class="rt">' + art(BASE + 'rune-icons/' + icon + '.png', 'ico q5', n.charAt(0), '') + '<div class="rb"><div class="ra" translate="no">' + esc(n) + '</div><div class="rs">' + nd((e ? e.n + ' equipped' : '0 equipped')) + (e ? ' &middot; ' + nd('average ' + (e.s / e.n).toFixed(1) + ' of ' + e.sm + ' stars') : '') + '</div></div><div class="rn" translate="no">' + inbag + '<div class="rs" style="font-family:var(--sans);font-weight:400">in bag</div></div></div>';
+      var e = eq[n], inbag = +bag[n] || 0, icon = e ? e.icon : (G.RUNE_ICON[n] || slug(n));
+      return '<div class="rt">' + art(BASE + 'rune-icons/' + icon + '.png', 'ico q5', n.charAt(0), '') + '<div class="rb"><div class="ra" translate="no">' + esc(n) + '</div><div class="rs">' + nd((e ? e.n + ' equipped' : '0 equipped')) + (e ? ' &middot; ' + nd(e.s + ' of ' + e.sm + ' stars') : '') + '</div></div><div class="rn" translate="no">' + inbag + '<div class="rs" style="font-family:var(--sans);font-weight:400">in bag</div></div></div>';
     }).join('');
     el.innerHTML = '<section class="card">' + (rows || '<p class="muted">No runes found in battle reports or the bag.</p>') + (vm.runes.known ? '' : '<p class="foot" style="margin-top:12px">The bag is not in your game data, so runes in bag read 0.</p>') + '</section>';
     return;
@@ -122,31 +125,42 @@ function gearBody() {
   var cards = [];
   vm.heroes.list.forEach(function (h) { h.pieces.forEach(function (p) { if (!S.gslot || S.gslot === p.slot) cards.push([h, p]); }); });
   var shown = S.all.gear ? cards : cards.slice(0, 12);
-  el.innerHTML = '<div class="chips" style="margin-bottom:12px"><button class="chipbtn" type="button" data-gslot="0" aria-pressed="' + !S.gslot + '">All</button>' + Object.keys(slots).sort().map(function (k) { return '<button class="chipbtn" type="button" data-gslot="' + k + '" aria-pressed="' + (S.gslot === +k) + '" translate="no">' + esc(slots[k]) + '</button>'; }).join('') + '</div>' +
+  el.innerHTML = '<select class="sel" data-gslotsel aria-label="Gear slot" style="margin-bottom:12px"><option value="0">All slots</option>' + Object.keys(slots).sort().map(function (k) { return '<option value="' + esc(k) + '"' + (S.gslot === +k ? ' selected' : '') + ' translate="no">' + esc(slots[k]) + '</option>'; }).join('') + '</select>' +
     (shown.length ? '<div class="gears" style="padding:0">' + shown.map(function (c) { return gearCard(c[0], c[1], true); }).join('') + '</div>' : '<div class="empty">No gear in these battle reports.</div>') +
     (cards.length > 12 && !S.all.gear ? '<button class="btn more" type="button" data-showall="gear"><span>Show all <span translate="no">' + cards.length + '</span></span></button>' : '');
 }
 function renderGear() {
   var el = $('#gearTop'); if (!el) return;
-  el.innerHTML = '<div class="chips"><button class="chipbtn" type="button" data-gview="gear" aria-pressed="' + (S.gview === 'gear') + '">Gear</button><button class="chipbtn" type="button" data-gview="runes" aria-pressed="' + (S.gview === 'runes') + '">Runes</button></div>';
+  el.innerHTML = '<div class="segs2" role="group" aria-label="Gear view"><button type="button" data-gview="gear" aria-pressed="' + (S.gview === 'gear') + '">Pieces</button><button type="button" data-gview="runes" aria-pressed="' + (S.gview === 'runes') + '">Runes</button></div>';
   gearBody();
 }
-function classicLink(tab, text) { return '<div class="lnkrow" style="margin-top:12px"><a class="tb link" href="' + esc(classicUrl(tab)) + '">' + ic('ext', 'sm') + esc(text || 'Open in classic') + '</a><span class="t12 muted">Full detail for this section is still on the classic page.</span></div>'; }
+function classicLink(tab, text) { return '<div class="lnkrow" style="margin-top:12px"><a class="tb link" href="' + esc(classicUrl(tab)) + '">' + ic('ext', 'sm') + esc(text) + '</a></div>'; }
+function needData(what) { return '<div class="empty">' + esc(what) + (readOnly() ? '' : ' <button class="tb link" type="button" data-open="status">Send game data</button>') + '</div>'; }
 function renderBase() {
   var D = S.vm.decor, T = D.totals;
-  var pc = function (v) { return (v / 100 * 100 / 100).toFixed(1) + '%'; };
-  function nb(n, l) { return '<div class="nb" data-numwrap><div class="n" data-num translate="no">' + n + '</div><div class="l lbl">' + l + '</div></div>'; }
-  var body = D.placedKinds ? '<section class="card" aria-label="Decoration buff totals"><h2 class="hd">Buff totals</h2><div class="strip">' +
-    nb('+' + T.march, 'March Size') + nb('+' + T.atk + '%', 'All units Attack') + nb('+' + T.hp + '%', 'All units HP') + nb('+' + T.dmgTaken + '%', 'All units Decreased DMG Taken') + nb('+' + T.dmgInc + '%', 'All units DMG increase') +
-    '</div><p class="foot" style="margin-top:12px">' + nd('Source: ' + D.placedKinds + ' kinds placed (' + D.placedPieces + ' pieces). Each decoration adds only its own buffs, once per piece.') + '</p></section>' :
-    '<div class="empty">No decoration data yet. ' + (readOnly() ? '' : 'Send your game data from the status sheet.') + '</div>';
-  $('#v-base').innerHTML = '<div class="vb"><div class="sechead"><h2 class="title">Base</h2></div>' + body + classicLink('decorations') + '</div>';
+  function row(l, v) { return '<li><span>' + esc(l) + '</span><span translate="no">' + esc(v) + '</span></li>'; }
+  var body = '';
+  if (D.placedKinds) {
+    var list = D.placed.slice().sort(function (a, b) { return (b.q - a.q) || (b.lv - a.lv) || (a.n < b.n ? -1 : 1); });
+    var shown = S.all.decor ? list : list.slice(0, 12);
+    body = '<section class="card" aria-label="Decoration buff totals"><ul class="buffs">' + row('March Size', '+' + T.march) + row('All units Attack', '+' + T.atk + '%') + row('All units HP', '+' + T.hp + '%') + row('All units Decreased DMG Taken', '+' + T.dmgTaken + '%') + row('All units DMG increase', '+' + T.dmgInc + '%') +
+      '</ul><p class="foot" style="margin-top:12px">' + nd('Source: ' + D.placedKinds + ' kinds placed (' + D.placedPieces + ' pieces). Each decoration adds only its own buffs, once per piece.') + '</p></section>' +
+      '<h2 class="sub">Decorations placed</h2><div class="dgrid">' + shown.map(function (x) {
+        return '<a class="dcard" href="#base/decor?item=' + esc(encodeURIComponent(x.n).replace(/%20/g, '+')) + '">' + art(BASE + 'decor-icons/' + x.ic, 'ico dico ' + qCls(x.q), x.n.charAt(0), '') + '<span class="pill p-lv" translate="no">Lv.' + esc(x.lv) + '</span><span class="dn" translate="no">' + esc(x.n) + '</span><span class="ds">' + nd(x.count + (x.count === 1 ? ' piece' : ' pieces') + ' placed') + '</span></a>';
+      }).join('') + '</div>' + (list.length > 12 && !S.all.decor ? '<button class="btn more" type="button" data-showall="decor"><span>Show all <span translate="no">' + list.length + '</span></span></button>' : '');
+  } else body = needData('No decoration data yet.');
+  $('#v-base').innerHTML = '<div class="vb">' + body + classicLink('decorations', D.placedKinds ? 'See all ' + D.placedKinds + ' decorations on the classic page' : 'See decorations on the classic page') + '</div>';
 }
 function renderBeasts() {
-  var B = S.vm.beasts;
-  var body = B ? '<section class="card"><div class="strip">' + lbl('Beasts', B.deployed, 'deployed in ' + nm(String(B.fields)) + ' fields') + lbl('Beasts', B.collected, 'collected') + (B.avgPotential != null ? lbl('Average potential', B.avgPotential + '%', 'of beasts deployed') : '') + '</div>' +
-    (B.avgPotential != null ? '<div class="meter lg r-' + ramp(B.avgPotential) + '" style="margin-top:12px"><i style="width:' + B.avgPotential + '%"></i></div>' : '') + '</section>' : '<div class="empty">No beast data yet. ' + (readOnly() ? '' : 'Send your game data from the status sheet.') + '</div>';
-  $('#v-beasts').innerHTML = '<div class="vb"><div class="sechead"><h2 class="title">Beasts</h2></div>' + body + classicLink('enigma') + '</div>';
+  var B = S.vm.beasts, body;
+  if (B) {
+    body = '<p class="t13 muted">' + nd(B.deployed + ' beasts deployed in ' + B.fields + ' fields' + (B.collected != null ? ' \u00B7 ' + B.collected + ' collected' : '')) + '</p>' +
+      (B.avgPotential != null ? '<section class="card"><div class="bm-top"><span class="l lbl">Average potential</span></div><div class="bm-num"><span class="n disp" translate="no">' + B.avgPotential + '%</span><span class="t13 muted">of beasts deployed</span></div><div class="meter lg r-' + ramp(B.avgPotential) + '" style="margin-top:8px"><i style="width:' + Math.max(2, B.avgPotential) + '%"></i></div></section>' : '') +
+      B.fieldList.filter(function (f) { return f.beasts.length; }).map(function (f) {
+        return '<section class="card"><h3 class="sub" translate="no">' + esc(f.name) + '</h3><div class="t13 muted">' + nd(f.deployed + ' deployed') + '</div><div class="bicons">' + f.beasts.map(function (b) { return art(BASE + 'beast-icons/' + b.icon, 'ico bico', b.name.charAt(0), b.name); }).join('') + '</div></section>';
+      }).join('');
+  } else body = needData('No beast data yet.');
+  $('#v-beasts').innerHTML = '<div class="vb">' + body + classicLink('enigma', 'See fields and the optimizer on the classic page') + '</div>';
 }
 function htRows() {
   var H = S.vm.ht, by = {}, order = [];
@@ -156,20 +170,23 @@ function htRows() {
 function renderHT() {
   var H = S.vm.ht, rows = htRows();
   var list = rows.map(function (e) {
-    return '<li class="srow"><a class="rt" style="flex:1;border:0;color:inherit;text-decoration:none" href="#ht?mecha=' + e.id + '">' + art(BASE + 'mecha-icons/mecha_' + e.id + '.png', 'ico q5', e.name.charAt(0), '') + '<div class="rb"><div class="ra" translate="no">' + esc(e.name) + '</div><div class="rs"><span>' + nd(e.filled + ' of 7 chips') + '</span>' + (e.low ? ' <span class="c-warn">' + nd(e.low + ' below Lv.25') + '</span>' : '') + '</div></div>' + ic('chev') + '</a></li>';
+    var icons = S.vm.ht.chips.filter(function (c) { return c.mecha === e.id && !c.core && c.ic; }).map(function (c) { var inf = core.moves.chipInfo(c); return art(BASE + 'ht-chip-icons/' + c.ic + '.png', 'ico cico q' + (inf ? inf.col : 4), String(c.slot), ''); }).join('');
+    return '<li class="srow"><a class="rt" style="flex:1;border:0;color:inherit;text-decoration:none;align-items:flex-start" href="#ht?mecha=' + esc(e.id) + '">' + art(BASE + 'mecha-icons/mecha_' + esc(e.id) + '.png', 'ico q5 hico', e.name.charAt(0), '') + '<div class="rb"><div class="ra" translate="no">' + esc(e.name) + '</div><div class="rs"><span>' + nd(e.filled + ' of 7 chips equipped') + '</span>' + (e.low ? '<span aria-hidden="true"> \u00B7 </span><span class="c-warn">' + nd(e.low + ' below Lv.25') + '</span>' : '') + '</div><div class="cicons">' + icons + '</div></div>' + ic('chev') + '</a></li>';
   }).join('');
-  var top = rows.length ? '<section class="card">' + lbl('Heavy Troopers', H.reportMechas ? H.reportMechas.length : H.count, H.reportMechas ? 'in battle reports &middot; ' + nm(String(H.count)) + ' in game data' : 'in game data') + '</section><section class="card"><ul>' + list + '</ul></section><div id="htChips"></div>' : '<div class="empty">No chip data yet. ' + (readOnly() ? '' : 'Send your game data from the status sheet.') + '</div>';
-  $('#v-ht').innerHTML = '<div class="vb"><div class="sechead"><h2 class="title">Heavy Troopers (HT)</h2></div>' + top + classicLink('chips') + '</div>';
+  var top = rows.length ? '<p class="t13 muted">' + nd(H.reportMechas ? H.reportMechas.length + ' in battle reports \u00B7 ' + H.count + ' in game data' : H.count + ' in game data') + '</p><section class="card"><ul>' + list + '</ul></section><div id="htChips"></div>' : needData('No chip data yet.');
+  $('#v-ht').innerHTML = '<div class="vb">' + top + classicLink('chips', 'See chip layouts on the classic page') + '</div>';
 }
 function renderHTChips(mecha, slot) {
   var box = $('#htChips'); if (!box) return;
   if (!mecha) { box.innerHTML = ''; return; }
   var ch = S.vm.ht.chips.filter(function (c) { return c.mecha === mecha && !c.core; }).sort(function (a, b) { return a.slot - b.slot; });
   if (!ch.length) { box.innerHTML = ''; return; }
+  var tr = function (x) { return String(x).replace(/\.0$/, ''); };
   box.innerHTML = '<section class="card" style="margin-top:16px" aria-label="Chips"><h2 class="hd" translate="no">' + esc(ch[0].ht) + '</h2><ul>' + ch.map(function (c) {
     var inf = !c.empty && core.moves.chipInfo(c), q = 'q' + (inf ? inf.col : 4);
     var img = c.ic ? art(BASE + 'ht-chip-icons/' + c.ic + '.png', 'ico mico ' + q, String(c.slot), '') : '<span class="ico mico fb ' + q + '" translate="no">' + c.slot + '</span>';
-    return '<li class="srow"' + (slot === c.slot ? ' style="background:var(--card-hi)"' : '') + '>' + img + '<div class="sb"><div class="a">' + nd('Slot ' + c.slot) + '</div><div class="b">' + (c.empty ? '<span>Empty</span>' : '<span>' + nd('Lv.' + c.lv + ' of 25') + '</span>' + (inf ? '<span>' + nd(inf.stat + ' ' + inf.now.toFixed(1) + '%, ' + inf.max.toFixed(1) + '% at Lv.25') + '</span>' : '')) + '</div></div></li>';
+    var stat = inf ? (c.lv >= 25 ? inf.stat + ' ' + tr(inf.now.toFixed(1)) + '%' : inf.stat + ' ' + inf.now.toFixed(1) + '%, ' + inf.max.toFixed(1) + '% at Lv.25') : '';
+    return '<li class="srow"' + (slot === c.slot ? ' style="background:var(--card-hi)"' : '') + '>' + img + '<div class="sb"><div class="a">' + nd('Slot ' + c.slot) + '</div><div class="b">' + (c.empty ? '<span>Empty</span>' : '<span>' + nd('Lv.' + c.lv + ' of 25') + '</span>' + (stat ? '<span aria-hidden="true">\u00B7</span><span>' + nd(stat) + '</span>' : '')) + '</div></div></li>';
   }).join('') + '</ul></section>';
 }
 function decorBody(x) {
@@ -188,7 +205,7 @@ function bagBody() {
   var D = S.vm.decor, R = S.vm.runes;
   if (!D.known) return '<p class="muted">The bag is not available. It comes from the owner’s game data, and the owner can keep it private.</p>' + classicLink('inventory', 'Open the bag in classic');
   var runes = Object.keys(R.runeBag).filter(function (n) { return R.runeBag[n] > 0; }).sort().map(function (n) {
-    return '<li style="display:flex;flex-direction:column;align-items:center;gap:4px;width:72px">' + art(BASE + 'rune-icons/' + (G.RUNE_ICON[n] || slug(n)) + '.png', 'ico q5', n.charAt(0), '').replace('class="ico q5"', 'class="ico q5" style="width:40px;height:40px"') + '<span class="t12" translate="no" style="text-align:center;line-height:1.25">' + esc(n) + ' ' + R.runeBag[n] + '</span></li>';
+    return '<li style="display:flex;flex-direction:column;align-items:center;gap:4px;width:72px">' + art(BASE + 'rune-icons/' + (G.RUNE_ICON[n] || slug(n)) + '.png', 'ico q5', n.charAt(0), '').replace('class="ico q5"', 'class="ico q5" style="width:40px;height:40px"') + '<span class="t12" translate="no" style="text-align:center;line-height:1.25">' + esc(n).replace(/-/g, '\u2011') + '</span><span class="t12 muted" translate="no">' + esc(R.runeBag[n]) + ' in bag</span></li>';
   }).join('');
   return '<section class="card"><div class="strip">' + lbl('Universal Decor Shards', fmtInt(D.shards), 'in bag') + lbl('Decoration kinds', D.bag.kinds, 'in bag') + '</div></section>' +
     '<section class="card"><h3 class="disp" style="font-size:var(--fs-17)">Runes in bag</h3>' + (runes ? '<ul style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px">' + runes + '</ul>' : '<p class="muted" style="margin-top:8px">No runes in the bag.</p>') + '</section>' + classicLink('inventory', 'Open the full bag in classic');
@@ -204,21 +221,21 @@ function statusBody() {
   if (!ro && key) {
     o += '<div class="step"><span class="step-n" translate="no">2</span><div class="step-b"><h3>Send your game data</h3>' + (unlocked ? '<ol><li>Open the game.</li><li>Run Snapshot from the Ops Center. It sends your game data here.</li></ol>' : '<p>Verify your UID first.</p>') +
       '<p class="t13 muted" style="margin-top:8px">' + (h.data ? 'Last sync ' + nm(h.data.date) : 'No game data yet') + '</p>' +
-      '<div class="lnkrow"><a class="tb link" href="' + esc(classicUrl('')) + '">Or paste game data in the classic page</a></div></div></div>';
+      '<div class="lnkrow"><a class="tb link" href="' + esc(classicUrl('')) + '">Or paste game data on the classic page</a></div></div></div>';
   }
   o += '<div><h3 class="disp" style="font-size:var(--fs-20)">Sources</h3><div style="margin-top:8px">' +
-    '<div class="srow"><div class="sb"><div class="a">Reports</div><div class="b">' + (h.reports ? '<span class="dot ' + (h.reports.warn ? 'warn' : 'ok') + '"></span><span>' + nm(h.reports.date) + ' &middot; ' + nd(h.reports.age + (h.reports.ageDays >= 1 ? ' old' : '')) + '</span>' : '<span>None</span>') + '</div></div></div>' +
+    '<div class="srow"><div class="sb"><div class="a">Battle reports</div><div class="b">' + (h.reports ? '<span class="dot ' + (h.reports.warn ? 'warn' : 'ok') + '"></span><span>' + nm(h.reports.date) + ' &middot; ' + nd(h.reports.age + (h.reports.ageDays >= 1 ? ' old' : '')) + '</span>' : '<span>None</span>') + '</div></div></div>' +
     '<div class="srow"><div class="sb"><div class="a">Game data</div><div class="b">' + (h.data ? '<span class="dot ' + (h.data.warn ? 'warn' : 'ok') + '"></span><span>' + nm(h.data.date) + ' &middot; ' + nd(h.data.age + (h.data.ageDays >= 1 ? ' old' : '')) + '</span>' : '<span>None yet</span>') + '</div></div></div>' +
     '<div class="srow"><div class="sb"><div class="a">Bag</div><div class="b">' + priv('inv') + '</div></div></div>' +
     '<div class="srow"><div class="sb"><div class="a">Rune pool</div><div class="b">' + priv('runepool') + '</div></div></div>' +
-    (ro ? '' : '<div class="t13 muted" style="padding-top:8px">Change who can see the bag and rune pool in the classic page.</div>') + '</div></div>';
+    (ro ? '' : '<div class="t13 muted" style="padding-top:8px">Change who can see the bag and rune pool on the classic page.</div>') + '</div></div>';
   var sv = !ro && S.saved ? savedReport() : null, ids = sv ? sv.reportIds : (res.reports || []).map(function (r) { return r.id; });
-  o += '<div><h3 class="disp" style="font-size:var(--fs-20)">Reports</h3><div style="margin-top:8px">' + (ids.length ? ids.map(function (id) {
+  o += '<div><h3 class="disp" style="font-size:var(--fs-20)">Battle reports</h3><div style="margin-top:8px">' + (ids.length ? ids.map(function (id) {
     var conf = S.confirm === id;
     return '<div class="srow"><div class="sb"><div class="a code" translate="no" style="font-family:var(--mono);font-size:var(--fs-14)">' + esc(repLabel(id)) + '</div>' + (conf ? '<div class="b">' + (ids.length === 1 ? 'This is your only report. Removing it opens the start screen.' : 'Remove this report?') + '</div>' : '') + '</div>' +
       (sv ? (conf ? '<button class="btn" type="button" data-rmno>Keep</button><button class="btn" type="button" data-rmyes="' + esc(id) + '">Remove</button>' : '<button class="btn" type="button" data-rm="' + esc(id) + '">Remove</button>') : '') + '</div>';
   }).join('') : '<p class="muted">No battle reports. The armory is built from game data only.</p>') +
-    (sv ? '<div class="irow" style="margin-top:8px"><input class="fld" id="repIn" type="text" inputmode="numeric" autocomplete="off" aria-label="Report ID" placeholder="Add a report ID"><button class="btn" type="button" data-addrep>Add</button></div><div class="err" id="repErr" role="alert"></div>' : '') + '</div></div>';
+    (sv ? '<div class="irow" style="margin-top:8px"><input class="fld" id="repIn" type="text" inputmode="numeric" autocomplete="off" aria-label="Battle report ID" placeholder="Add a battle report ID"><button class="btn" type="button" data-addrep>Add</button></div><div class="err" id="repErr" role="alert"></div>' : '') + '</div></div>';
   return o;
 }
 function settingsBody() {
@@ -305,7 +322,7 @@ function removeReport(id) {
 var LANGS = [['en', 'English'], ['es', 'Español'], ['fr', 'Français'], ['de', 'Deutsch'], ['pt', 'Português'], ['it', 'Italiano'], ['ru', 'Русский'], ['ja', '日本語'], ['ko', '한국어'], ['zh-CN', '中文'], ['ar', 'العربية'], ['tr', 'Türkçe'], ['vi', 'Tiếng Việt'], ['th', 'ไทย'], ['hi', 'हिन्दी'], ['pl', 'Polski'], ['uk', 'Українська'], ['id', 'Indonesia']];
 var EXPLAIN = {
   gear: ['How gear score works', 'Each gear piece scores up to 1,000. Up to 400 comes from its random stats: the average roll of its stats. Up to 600 comes from its rune: stars divided by the most stars that slot allows. A hero has 6 pieces, so the most is 6,000 per hero. The maximum shown is 6,000 times the heroes counted.'],
-  rune: ['How rune stars work', 'A placed rune scores its stars plus 1, divided by its most stars plus 1. An empty slot scores 0 of 7. The number is the total score divided by the best possible score across every gear slot counted.'],
+  rune: ['How rune stars work', 'A placed rune scores its stars plus 1, divided by its most stars plus 1. An empty slot scores 0. The number is the total score divided by the best possible score across every gear slot counted.'],
   beast: ['How beast potential works', 'Each deployed beast has a potential value. It is divided by the top value for its rarity. The number is the average of the beasts deployed on a field.'],
   moves: ['How next moves are chosen', 'Each move uses only data in this report. Free moves come first, then moves that use what you already have, then moves that cost resources. Inside one kind of move, the biggest gain comes first, then the hero with the best gear score. A decor move names the stat it raises and shows only when your shards cover the cost. A refine move picks the piece with the most stats under 70%. HT moves count the HT in your battle reports first.']
 };
@@ -341,5 +358,5 @@ function click(t) {
 }
 function enter(id) { if (id === 'rid') loadReportId(); else if (id === 'uidIn') verify(); else if (id === 'repIn') addReport(); }
 
-return { renderStart: renderStart, renderSections: renderSections, rosterList: rosterList, gearBody: gearBody, renderGear: renderGear, renderHTChips: renderHTChips, sheet: sheet, share: share, owns: owns, click: click, enter: enter };
+return { renderBase: renderBase, renderStart: renderStart, renderSections: renderSections, rosterList: rosterList, gearBody: gearBody, renderGear: renderGear, renderHTChips: renderHTChips, sheet: sheet, share: share, owns: owns, click: click, enter: enter };
 };

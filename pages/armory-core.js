@@ -1952,8 +1952,8 @@
         if (have >= cost) {
           cand.push({
             sig: 'b', cls: 2, gain: (1 / r.sm) * W[h.name], weight: W[h.name], key: 'b' + h.name + p.slot,
-            parts: [{ s: 'Merge ' }, { s: r.name, n: 1 }, { s: ' on ' }, { s: h.name, n: 1 }, { s: ' slot ' }, { s: String(p.slot), n: 1 }],
-            meta: 'To ' + (r.s + 1) + (r.s + 1 === 1 ? ' star, ' : ' stars, ') + have + ' in bag, uses ' + cost, ico: { u: 'rune-icons/' + r.icon + '.png', q: 'q5', fb: r.name.charAt(0) },
+            parts: [{ s: 'Merge ' }, { s: r.name, n: 1 }, { s: ' on ' }, { s: h.name, n: 1 }, { s: ' slot ' }, { s: String(p.slot), n: 1 }, { s: ' to ' }, { s: String(r.s + 1), n: 1 }, { s: r.s + 1 === 1 ? ' star' : ' stars' }],
+            meta: 'Uses ' + cost + ' \u00B7 ' + have + ' in bag', ico: { u: 'rune-icons/' + r.icon + '.png', q: 'q5', fb: r.name.charAt(0) },
             route: 'heroes/battle?hero=' + encodeURIComponent(h.name) + '&slot=' + p.slot
           });
         }
@@ -2004,8 +2004,8 @@
       var vtxt = r.stat[2] ? '+' + r.delta : '+' + (r.delta / 100) + '%';
       cand.push({
         sig: 'd', cls: 2, gain: r.roi / dChosen.best, weight: 0, key: 'd' + r.d.n,
-        parts: [{ s: 'Upgrade ' }, { s: r.d.n, n: 1 }, { s: ' to ' }, { s: 'Lv.' + r.d.nx.to, n: 1 }],
-        meta: vtxt + ' ' + r.stat[1] + ', ' + r.net + ' shards, ' + have + ' in bag',
+        parts: [{ s: 'Upgrade ' }, { s: r.d.n, n: 1 }, { s: ' to ' }, { s: 'Lv.' + r.d.nx.to, n: 1 }, { s: ': ' }, { s: vtxt, n: 1 }, { s: ' ' + r.stat[1] }],
+        meta: r.net + ' shards \u00B7 ' + have + ' in bag',
         ico: { u: 'decor-icons/' + r.d.ic, q: r.d.q >= 6 ? 'q6' : r.d.q === 5 ? 'q5' : r.d.q === 4 ? 'q4' : r.d.q === 3 ? 'q3' : '', fb: r.d.n.charAt(0) },
         route: 'base/decor?item=' + encodeURIComponent(r.d.n).replace(/%20/g, '+')
       });

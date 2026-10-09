@@ -40,13 +40,13 @@ const texts = (d, opts) => C.nextMoves(d, opts).picks.map((p) => p.pill + ': ' +
 test('base data: one move per class, in class order', () => {
   assert.deepStrictEqual(texts(fresh()), [
     'Free: Place Impact on Alpha slot 1',
-    'Uses what you have: Merge Debilitate on Alpha slot 2',
+    'Uses what you have: Merge Debilitate on Alpha slot 2 to 2 stars',
     'Costs resources: Refine Raysor Headset on Bravo',
   ]);
   const r = C.nextMoves(fresh());
   assert.deepStrictEqual(r.weights, { Alpha: 1, Bravo: 0.9, Charlie: 0.8 });
   assert.deepStrictEqual(r.picks.map((p) => p.cls), [1, 2, 3]);
-  assert.equal(r.picks[1].meta, 'To 2 stars, 2 in bag, uses 2');
+  assert.equal(r.picks[1].meta, 'Uses 2 \u00B7 2 in bag');
   assert.equal(r.picks[0].meta, '2 in bag');
   assert.equal(r.picks[2].meta, '3 stats under 70% (30-50%)', 'the numbers live on the meta line');
   assert.ok(r.picks.every((p) => p.text.length <= 60), 'at most 60 characters');
@@ -58,25 +58,25 @@ test('decor is tried across all stats and picks the best affordable row (not Mar
   const d = fresh();
   d.runeBag = { Impact: 0, Debilitate: 0, Searing: 0 };
   assert.deepStrictEqual(texts(d), [
-    'Uses what you have: Upgrade Coastal Defence to Lv.3',
+    'Uses what you have: Upgrade Coastal Defence to Lv.3: +1.5% All units Attack',
     'Costs resources: Refine Raysor Headset on Bravo',
     'Costs resources: Raise slot 4 chip on Luminary Knight LP-4',
   ]);
   const move = C.nextMoves(d).picks[0];
-  assert.equal(move.meta, '+1.5% All units Attack, 60 shards, 100 in bag');
+  assert.equal(move.meta, '60 shards \u00B7 100 in bag');
   assert.equal(move.route, 'base/decor?item=Coastal+Defence');
   assert.ok(move.gain > 0.83 && move.gain < 0.84, 'gain is relative to the best ROI: 0.833 / 1.0');
   // 300 shards: Big Gun (ROI 1.0, net 300) becomes affordable and wins
   d.decor.shards = 300;
-  assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Big Gun to Lv.3');
-  assert.equal(C.nextMoves(d).picks[0].meta, '+3% All units Attack, 300 shards, 300 in bag');
+  assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Big Gun to Lv.3: +3% All units Attack');
+  assert.equal(C.nextMoves(d).picks[0].meta, '300 shards \u00B7 300 in bag');
   // an equal ROI goes to the cheaper net cost (Coastal 150/180 and Firework 200/240 tie): hide Big Gun, give 300 shards
   d.decor.placed = d.decor.placed.filter((x) => x.n !== 'Big Gun');
-  assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Coastal Defence to Lv.3', 'tie -> cheaper (60 against 200)');
+  assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Coastal Defence to Lv.3: +1.5% All units Attack', 'tie -> cheaper (60 against 200)');
   // March Size, when affordable, comes first (it is tried first)
   d.decor.shards = 400;
-  assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Aircraft Carrier to Lv.4');
-  assert.equal(C.nextMoves(d).picks[0].meta, '+1 March Size, 400 shards, 400 in bag');
+  assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Aircraft Carrier to Lv.4: +1 March Size');
+  assert.equal(C.nextMoves(d).picks[0].meta, '400 shards \u00B7 400 in bag');
   // no shards at all: nothing affordable, the decor move disappears
   d.decor.shards = 0;
   assert.ok(!texts(d).some((t) => /Upgrade/.test(t)));
@@ -259,9 +259,9 @@ test('wording: every move reads in at most 60 characters, long names are cut wit
     assert.ok(c.full.length >= c.text.length);
   }
   const up = all.pool.find((c) => c.sig === 'd');
-  assert.match(up.text, /^Upgrade Statue: 9th Angel.*\u2026 to Lv\.4$/, up.text);
-  assert.equal(up.full, 'Upgrade ' + LONG + ' to Lv.4');
-  assert.ok(up.text.length <= 60 && up.text.endsWith('Lv.4'), 'the level is never cut');
+  assert.match(up.text, /^Upgrade Statue: 9th Angel.*\u2026 to Lv\.4: \+\d+ March Size$/, up.text);
+  assert.ok(up.full.startsWith('Upgrade ' + LONG + ' to Lv.4: +'));
+  assert.ok(up.text.length <= 60 && /Lv\.4: /.test(up.text), 'the level and the gain are never cut');
   const refine = all.pool.find((c) => c.sig === 'c' && c.key.startsWith('cBradley'));
   assert.match(refine.text, /Bradley/);
   // nothing short is touched

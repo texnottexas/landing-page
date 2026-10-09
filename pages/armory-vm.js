@@ -20,6 +20,8 @@
   // Buff ids the decor totals are made of, in the game's own words (ids not listed are never totalled).
   var TOTAL_IDS = { '960012': 'march', '930100': 'atk', '930000': 'hp', '980204': 'dmgTaken', '1001001': 'dmgInc' };
 
+  // one portrait URL rule for every hero (v1 heroBaseIconUrl): a few starter heroes use another icon id
+  function heroIcon(id) { return 'https://h5.topwargame.com/DynRes/images/headpic/hero_icon' + (G.HERO_ICON_OVERRIDE[id] || id) + '_global.png?t=22.jpg'; }
   function slug(n) { return String(n).toLowerCase().replace(/ /g, '-'); }
   function dateText(ts) { var d = new Date(ts); return d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear(); }
   function shortDate(ts) { var d = new Date(ts); return d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()]; }
@@ -34,7 +36,8 @@
   // ---- gear -------------------------------------------------------------------------------------------------------
   // Slot: the supplement's own slot, else the digit in the equipId (100104 -> slot 1), else the array position.
   function equipSlot(eq, idx) {
-    if (eq._slot) return eq._slot;
+    var s0 = +eq._slot;
+    if (s0 >= 1 && s0 <= 6) return s0 | 0;
     var d = Math.floor((Number(eq.equipId) % 10000) / 100);
     return d >= 1 && d <= 6 ? d : idx + 1;
   }
@@ -42,7 +45,7 @@
   // id is in the base-buff table, else the tier of its random-stat template ids (GEAR_TEMPLATE: 1-261 and 1072-1179
   // are gold rolls, 271-1071 are lower qualities). No usable signal = null, which counts as NOT gold.
   function equipQuality(eq) {
-    if (eq.quality != null) return eq.quality;
+    if (eq.quality != null) return +eq.quality || null;
     if (eq.equipId != null && G.EQUIP_BASE_BUFF[eq.equipId]) return (Number(eq.equipId) % 100) + 1;
     var ids = (eq.infos || []).filter(function (i) { return i.type === 1 && i.templateId != null; }).map(function (i) { return Number(i.templateId); });
     if (!ids.length) return null;
@@ -59,14 +62,14 @@
     (eq.infos || []).forEach(function (info) {
       if (info.type === 1) {
         var t = G.GEAR_TEMPLATE[info.templateId];
-        if (t && t.m) stats.push({ label: t.n, v: info.buffValue || 0, m: t.m });
+        if (t && t.m) stats.push({ label: t.n, v: +info.buffValue || 0, m: t.m });
       } else if (info.type === 2 && info.templateId) {
         rd = G.resolveRune(info.templateId);
       }
     });
     var q = equipQuality(eq);
     return {
-      slot: slot, slotName: G.GEAR_SLOT_NAMES[slot], level: eq.level == null ? null : eq.level,
+      slot: slot, slotName: G.GEAR_SLOT_NAMES[slot], level: eq.level == null ? null : (+eq.level || 0),
       q: q, gold: q === 5,
       rune: rd ? { name: rd.n, s: rd.s, sm: rd.sm, icon: G.RUNE_ICON[rd.n] || slug(rd.n) } : null,
       stats: stats
@@ -78,15 +81,15 @@
     ((suppHeroes && suppHeroes.list) || []).forEach(function (h) { if (h && h.id != null) byId[h.id] = h; });
     var all = (merged && merged.heroes) || [];
     var fromReports = all.length > 0 && !all.every(function (h) { return h._supplemental; });
-    var list = all.filter(function (h) { return (h.heroEquips || []).length > 0; }).map(function (h) {
+    var list = all.filter(function (h) { return (h.heroEquips || []).length > 0 && isFinite(+h.id); }).map(function (h) {
       var pieces = [];
       (h.heroEquips || []).forEach(function (eq, i) { var p = pieceOf(eq, i); if (p) pieces.push(p); });
       pieces.sort(function (a, b) { return a.slot - b.slot; });
       var s = byId[h.id];
       return {
-        id: h.id, name: core.heroName(h.id), branch: core.heroBranch(h.id, s && s.t),
-        lv: h.level || h._level || 0, star: h.star || h._star || 0, awaken: h.awakenLevel || 0,
-        icon: 'https://h5.topwargame.com/DynRes/images/headpic/hero_icon' + h.id + '_global.png',
+        id: +h.id, name: core.heroName(+h.id), branch: core.heroBranch(+h.id, s && s.t),
+        lv: +(h.level || h._level) || 0, star: +(h.star || h._star) || 0, awaken: +h.awakenLevel || 0,
+        icon: heroIcon(+h.id),
         score: core.heroGearScore(h), pieces: pieces,
         gear: pieces.filter(function (p) { return p.gold; }).map(function (p) {
           return { slot: p.slot, slotName: p.slotName, rune: p.rune, stats: p.stats };
@@ -105,7 +108,7 @@
       var sched = (cat.mechanics && cat.mechanics.merge_cost_per_star) || {};
       Object.keys(sched).forEach(function (k) { if (/^\d+$/.test(k) && Array.isArray(sched[k])) out.runeCost[k] = sched[k].slice(); });
     }
-    if (inv && statics.itemTable) out.runeBag = core._ar_extractRunePool(inv, null, { item: statics.itemTable }).bagCounts;
+    if (inv && statics.itemTable) { var bc = core._ar_extractRunePool(inv, null, { item: statics.itemTable }).bagCounts; Object.keys(bc).forEach(function (k) { out.runeBag[k] = +bc[k] || 0; }); }
     return out;
   }
 
@@ -170,7 +173,7 @@
   }
 
   // ---- beasts -----------------------------------------------------------------------------------------------------
-  function buildBeasts(merged, core) {
+  function buildBeasts(merged, core, suppEnigma) {
     if (!merged || !merged.enigmas) return null;
     var r = core.ebResolveBeasts(merged.enigmas);
     var deployed = 0, fields = 0, pot = 0, potMax = 0;
@@ -178,7 +181,18 @@
       if (f.deployedCount > 0) fields++;
       f.slots.forEach(function (s) { if (s.beast) { deployed++; pot += s.beast.potential || 0; potMax += s.beast.maxPotential || 0; } });
     });
-    return { deployed: deployed, fields: fields, collected: r.beasts.length, avgPotential: potMax ? Math.round((pot / potMax) * 100) : null };
+    // owned (bench included) is only known from the game data: a battle report carries the deployed beasts alone
+  var collected = suppEnigma && Array.isArray(suppEnigma.beasts) ? suppEnigma.beasts.length : null;
+  var fieldList = r.fields.map(function (f) {
+    return {
+      name: String(f.name).replace(/[<>"'&]/g, ''), deployed: +f.deployedCount || 0,
+      beasts: f.slots.filter(function (s) { return s.beast; }).map(function (s) {
+        var b = s.beast, base = String(G.EB_ICON_NAMES[b.type] || G.EB_TYPES[b.type] || 'Unknown');
+        return { name: String(b.name).replace(/[<>"'&]/g, ''), icon: (base + '_' + String(b.element) + '_' + (+b.star >= 5 ? 'evolved' : 'base') + '.png').replace(/[^A-Za-z0-9_. -]/g, ''), lv: +b.level || 0 };
+      })
+    };
+  });
+  return { deployed: deployed, fields: fields, collected: collected, fieldList: fieldList, avgPotential: potMax ? Math.round((pot / potMax) * 100) : null };
   }
 
   // ---- HT chips ---------------------------------------------------------------------------------------------------
@@ -190,18 +204,18 @@
       .filter(function (m) { return m && m.mechaId !== 1008 && m.chips && m.chips.length; });
     var chips = [], filled = 0;
     mechas.forEach(function (m) {
-      var name = G.MECHA_NAMES[m.mechaId] || ('HT ' + m.mechaId), seen = {};
+      var mid = +m.mechaId || 0, name = G.MECHA_NAMES[mid] || ('HT ' + mid), seen = {};
       m.chips.forEach(function (c) {
         var row = G.CL[c.chipId];
         if (!row) return;
         var core_ = !!row[6], slot = core_ ? 0 : row[1];
         seen[core_ ? 'core' : slot] = 1; filled++;
-        var o = { ht: name, mecha: m.mechaId, slot: slot, core: core_, lv: c.level || 0, empty: false, c: c.chipId };
+        var o = { ht: name, mecha: mid, slot: slot, core: core_, lv: +c.level || 0, empty: false, c: +c.chipId };
         var icon = G.SET_ICONS[row[0]];
         if (icon) o.ic = icon.replace(/\.png$/, '');
         chips.push(o);
       });
-      for (var s = 1; s <= 6; s++) if (!seen[s]) chips.push({ ht: name, mecha: m.mechaId, slot: s, core: false, lv: 0, empty: true });
+      for (var s = 1; s <= 6; s++) if (!seen[s]) chips.push({ ht: name, mecha: mid, slot: s, core: false, lv: 0, empty: true });
     });
     return {
       count: mechas.length, chipsFilled: filled, chipsMax: mechas.length * 7, chips: chips,
@@ -247,7 +261,7 @@
     var heroes = buildHeroes(merged, core, supp.heroes);
     var runes = buildRunes(inv, supp.gear, statics, core);
     var decor = buildDecor(merged, inv, statics, core);
-    var beasts = buildBeasts(merged, core);
+    var beasts = buildBeasts(merged, core, priv.enigma ? null : supp.enigma);
     var ht = buildHt(merged, supp, opts.reports, opts.reportMechaIds, core);
     var header = buildHeader(opts, sources, now);
 
@@ -297,7 +311,7 @@
     };
   }
 
-  var api = { buildViewModel: buildViewModel, fromLoad: fromLoad, equipSlot: equipSlot, equipQuality: equipQuality, TOTAL_IDS: TOTAL_IDS };
+  var api = { heroIcon: heroIcon, buildViewModel: buildViewModel, fromLoad: fromLoad, equipSlot: equipSlot, equipQuality: equipQuality, TOTAL_IDS: TOTAL_IDS };
   window.ArmoryVM = api;
   if (isNode) module.exports = api;
 })(typeof window !== 'undefined' ? window : {});

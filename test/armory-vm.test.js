@@ -71,7 +71,7 @@ test('gear: stats and runes come from the report equips; rune icon names, slot n
   assert.deepStrictEqual(p1.stats, raw[0].infos.filter((i) => i.type === 1).map((i) => ({ label: G.GEAR_TEMPLATE[i.templateId].n, v: i.buffValue, m: G.GEAR_TEMPLATE[i.templateId].m })));
   assert.deepStrictEqual(p1.rune, { name: 'Artillery Storm', s: 6, sm: 6, icon: G.RUNE_ICON['Artillery Storm'] });
   assert.equal(p1.gold, true);
-  assert.ok(alpha.icon.endsWith('hero_icon101_global.png'));
+  assert.ok(alpha.icon.endsWith('hero_icon001_global.png?t=22.jpg'), 'starter heroes use the override icon id, like v1 heroBaseIconUrl');
 });
 
 test('hero score is the page\'s heroGearScore; the strength band counts them with the 6,000-per-hero denominator and a source word', () => {
@@ -216,7 +216,12 @@ test('beasts: deployed, fields used, collected and average potential from the re
   let dep = 0, pot = 0, max = 0, fields = 0;
   r.fields.forEach((f) => { let n = 0; f.slots.forEach((s) => { if (s.beast) { n++; dep++; pot += s.beast.potential; max += s.beast.maxPotential; } }); if (n) fields++; });
   assert.ok(dep > 0 && max > 0);
-  assert.deepStrictEqual(vm.beasts, { deployed: dep, fields, collected: fx.enigmas.beastDatas.length, avgPotential: Math.round((pot / max) * 100) });
+  assert.equal(vm.beasts.deployed, dep); assert.equal(vm.beasts.fields, fields); assert.equal(vm.beasts.avgPotential, Math.round((pot / max) * 100));
+  assert.equal(vm.beasts.collected, null, 'a report carries the deployed beasts only: owned is unknown without game data');
+  assert.equal(vm.beasts.fieldList.reduce((n, f) => n + f.beasts.length, 0), dep);
+  assert.ok(vm.beasts.fieldList.every((f) => f.beasts.every((b) => /^[A-Za-z0-9_. -]+\.png$/.test(b.icon))));
+  const vm2 = build(merged, { supp: { enigma: { beasts: new Array(265).fill({}) } } }, core);
+  assert.equal(vm2.beasts.collected, 265, 'collected = every beast in the game data, bench included');
   assert.equal(vm.band.beasts.deployed, dep);
   assert.equal(vm.band.beasts.pct, vm.beasts.avgPotential);
   assert.deepStrictEqual(vm.moves.picks.filter((p) => p.sig === 'e'), [], 'no Optimizer move until phase 3 extracts it');
@@ -290,16 +295,17 @@ test('60-character rule on the longest real names: hero, decoration and chip nam
   assert.ok(all.pool.some((c) => c.sig === 'd'), 'a decor move exists');
   assert.ok(all.pool.some((c) => c.sig === 'f'), 'a chip move exists');
   const upgrade = all.pool.find((c) => c.sig === 'd');
-  assert.equal(upgrade.text, 'Upgrade ' + longestName + ' to Lv.2');
+  assert.ok(upgrade.full.startsWith('Upgrade ' + longestName + ' to Lv.2: +'), upgrade.full);
+  assert.ok(upgrade.text.length <= 60);
   const merge = all.pool.find((c) => c.sig === 'b');
-  assert.equal(merge.text, merge.full, 'a merge on the longest hero name does not truncate: the star count is on the meta line');
-  assert.match(merge.meta, /^To \d stars?, \d+ in bag, uses \d+$/);
+  assert.ok(merge.text.length <= 60 && merge.full.endsWith(' to 2 stars'), 'the long hero name is cut with an ellipsis, the target star count is kept');
+  assert.match(merge.meta, /^Uses \d+ \u00B7 \d+ in bag$/);
   for (const c of all.pool) {
     assert.ok(c.text.length <= 60, c.text.length + ' > 60: ' + c.text);
     assert.ok(/^[A-Z][a-z]+ /.test(c.text), 'verb first: ' + c.text);
     assert.ok(c.meta.length > 0 || c.sig === 'd', 'meta line: ' + c.text);
   }
-  assert.match(merge.text, /^Merge Stealth Hologram on Shikinami Asuka Langley slot 4$/);
+  assert.match(merge.text, /^Merge Stealth Hologram on Shikinami Asuka\u2026 slot 4 to 2 stars$/);
   vm.moves.picks.forEach((p) => assert.ok(p.text.length <= 60));
   // the card carries the untruncated text for a title attribute
   assert.ok(vm.moves.picks.every((p) => typeof p.full === 'string' && p.full.length >= p.text.length));
