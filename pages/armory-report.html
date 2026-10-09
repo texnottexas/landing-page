@@ -5702,19 +5702,43 @@
     });
   }
 
-  // Share: copy link to clipboard (save first if no shortcode)
+  // Remember what the last successful save held (reports + marches), so Share
+  // can tell when the saved link would be out of date.
+  var _AR_SAVED_SIG_KEY = 'ar_saved_sig_v1';
+  function _ar_currentSig() {
+    try {
+      return (wizardState.reportData || []).map(function(r) { return r.id; }).join(',') +
+        '|' + JSON.stringify(loadMarches());
+    } catch (e) { return ''; }
+  }
+  (function wrapSaveConfigToRememberSig() {
+    var core = saveConfig;
+    saveConfig = function(showToast) {
+      var sig = _ar_currentSig();
+      return core(showToast).then(function(code) {
+        try { localStorage.setItem(_AR_SAVED_SIG_KEY, sig); } catch (e) {}
+        return code;
+      });
+    };
+  })();
+
+  // Share: copy link to clipboard. Saves first when there is no share code yet,
+  // or when the reports or marches changed since the last save, so the copied
+  // link is never out of date.
   function shareConfig() {
     var shortcode = null;
     try { shortcode = JSON.parse(localStorage.getItem('playerReport') || '{}').shortcode; } catch(e) {}
+    var savedSig = null;
+    try { savedSig = localStorage.getItem(_AR_SAVED_SIG_KEY); } catch(e) {}
 
-    if (shortcode) {
+    if (shortcode && savedSig === _ar_currentSig()) {
       copyShareLink(shortcode);
     } else {
-      // No shortcode yet, save first
       saveConfig(false).then(function(code) {
         copyShareLink(code);
       }).catch(function(e) {
-        alert('We could not save your share code. ' + e.message);
+        console.warn('Share save failed', e);
+        alert('We could not save your latest changes, so the link was not copied. Try again in a minute.');
       });
     }
   }
