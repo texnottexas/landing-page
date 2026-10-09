@@ -206,7 +206,7 @@ test('verifyUid: the right UID unlocks (also with a pasted prefix), a wrong one 
   const b = make();
   r = await b.d.verifyUid(W.SK, '999999999999');
   assert.deepStrictEqual(r, { ok: false, reason: 'mismatch' });
-  assert.equal(b.fetch.calls.length, 0);
+  assert.deepStrictEqual(b.fetch.calls.map((c) => c.url), ['player-data.json'], 'only the roster is read (the roster-heal check); the UID is never sent');
   assert.equal(b.d.isUnlocked(W.SK), false);
   // the server being down still unlocks locally (fail-soft), and says so
   const c = make((u) => { if (u.includes('/handshake')) throw new Error('offline'); });
@@ -332,4 +332,48 @@ test('no DOM and no global network or storage: the module reads only the fetch a
   // `fetch` and `localStorage` are factory variables (so a stub replaces them); the only global reads are the defaults for a browser
   assert.match(code, /var fetch = env\.fetch/);
   assert.match(code, /var localStorage = env\.storage/);
+});
+
+test('verifyUid: a UID that is a roster player (not this report) heals playerIdentity and unlocks that player (v1 Unlock modal)', async () => {
+  const a = make(null, ident('aaaaaaaaaaaaaaaa', 'Stale'));
+  const r = await a.d.verifyUid('aaaaaaaaaaaaaaaa', W.UID_RAW);
+  assert.equal(r.ok, true); assert.equal(r.healed, true); assert.equal(r.siteKey, W.SK);
+  const id = JSON.parse(a.storage.getItem('playerIdentity'));
+  assert.equal(id.siteKey, W.SK); assert.equal(id.name, W.NAME); assert.equal(id.alliance, 'DOG');
+  assert.equal(a.d.isUnlocked(W.SK), true);
+  assert.deepStrictEqual(a.fetch.calls.find((c) => c.url.includes('/handshake')).body, { uid: W.UID_RAW });
+});
+
+test('saved report: a stale _viewOnly and a missing siteKey are healed for the signed-in player (v1 initFromSaved)', async () => {
+  const saved = { _viewOnly: true, player: { name: W.NAME }, reportIds: [W.REPORT_ID] };
+  const a = make(null, Object.assign(ident(), { playerReport: JSON.stringify(saved) }));
+  const r = await a.d.loadArmory({ saved: true });
+  assert.equal(r.readOnly, false);
+  assert.equal(r.player.siteKey, W.SK);
+  const kept = JSON.parse(a.storage.getItem('playerReport'));
+  assert.equal(kept._viewOnly, false); assert.equal(kept.player.siteKey, W.SK);
+  // a different siteKey is NOT healed to the signed-in one (bug 107: siteKey decides)
+  const other = { _viewOnly: true, player: { name: W.NAME, siteKey: 'bbbbbbbbbbbbbbbb' }, reportIds: [W.REPORT_ID] };
+  const b = make(null, Object.assign(ident(), { playerReport: JSON.stringify(other) }));
+  assert.equal((await b.d.loadArmory({ saved: true })).readOnly, true);
+  assert.equal(JSON.parse(b.storage.getItem('playerReport')).player.siteKey, 'bbbbbbbbbbbbbbbb');
+});
+
+test('noHydrate: the first paint reads local supplements only (no /supplement request)', async () => {
+  const a = make(null, Object.assign(ident(), { playerReport: JSON.stringify({ player: { name: W.NAME, siteKey: W.SK }, reportIds: [W.REPORT_ID] }) }));
+  const r = await a.d.loadArmory({ saved: true, noHydrate: true });
+  assert.equal(r.state, 'ready');
+  assert.ok(!a.fetch.calls.some((c) => c.url.includes('/supplement/')), 'nothing asked of the supplement endpoints');
+});
+
+test('data only: no report, own siteKey, game data from the worker; no data or no siteKey is "none"', async () => {
+  const withInv = (u) => (u === suppUrl('inv') ? { status: 200, body: invSupp(new Date().toISOString()) } : undefined);
+  const a = make(withInv, ident());
+  const r = await a.d.loadArmory({ dataOnly: true });
+  assert.equal(r.state, 'ready'); assert.equal(r.readOnly, false); assert.deepStrictEqual(r.reports, []);
+  assert.ok(r.sources.kinds.indexOf('inv') >= 0 && r.sources.dataTs > 0);
+  assert.ok(r.merged && Array.isArray(r.merged.heroes));
+  assert.equal((await make(null, ident()).d.loadArmory({ dataOnly: true })).state, 'none', 'identity but no game data');
+  assert.equal((await make().d.loadArmory({ dataOnly: true })).state, 'none', 'no identity');
+  assert.equal((await make(withInv, ident('zzzz')).d.loadArmory({ dataOnly: true })).state, 'none', 'a malformed siteKey is never used');
 });

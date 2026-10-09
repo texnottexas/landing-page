@@ -1892,7 +1892,7 @@
       if (keep >= ll) break;
       texts[li] = texts[li].slice(0, keep - 1).replace(/\s+$/, '') + '\u2026';
     }
-    return { text: texts.join(''), full: full };
+    return { text: texts.join(''), full: full, parts: parts.map(function (x, i) { return { s: texts[i], n: x.n ? 1 : 0 }; }) };
   }
 
   /* Decor stats a player can raise, in the order they are tried. Each is ranked on its own gain per shard. */
@@ -2041,7 +2041,7 @@
     /* Selection, per spec 3.3: the best candidate inside each signal comes first (cmp never compares raw gains
        across signals). Pass 1: one pick per class, one per signal. Pass 2: fill with other signals.
        Pass 3: a signal gets a second slot only when no other signal has a candidate left. */
-    cand.forEach(function (c) { var f = fitText(c.parts); c.text = f.text; c.full = f.full; });
+    cand.forEach(function (c) { var f = fitText(c.parts); c.text = f.text; c.full = f.full; c.fparts = f.parts; });
     cand.sort(cmp);
     var picks = [];
     var perSig = {};
@@ -2071,7 +2071,7 @@
     var classNames = { 1: 'Free', 2: 'Uses what you have', 3: 'Costs resources' };
     picks.forEach(function (p) {
       var f = fitText(p.parts);
-      p.text = f.text; p.full = f.full;
+      p.text = f.text; p.full = f.full; p.fparts = f.parts;
       p.pill = classNames[p.cls];
     });
     return { picks: picks, pool: cand, weights: W };

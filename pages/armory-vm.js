@@ -262,7 +262,7 @@
     var stale = sources.dataTs && (now - sources.dataTs) / DAY > STALE_DAYS ? { ts: sources.dataTs, since: shortDate(sources.dataTs) } : null;
     var moves = {
       title: header.shared ? (header.name || 'Player') + "'s next moves" : 'Next moves',
-      picks: mv.picks.map(function (p) { return { text: p.text, full: p.full, meta: p.meta, pill: p.pill, cls: p.cls, sig: p.sig, route: p.route, ico: p.ico || null }; }),
+      picks: mv.picks.map(function (p) { return { text: p.text, full: p.full, parts: p.fparts, meta: p.meta, pill: p.pill, cls: p.cls, sig: p.sig, route: p.route, ico: p.ico || null }; }),
       stale: stale, cta: !sources.dataTs ? 'import' : null,
       footer: stale ? 'Based on game data from ' + stale.since : (!sources.dataTs ? 'Import game data to see rune, decor and beast moves' : null)
     };

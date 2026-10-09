@@ -815,6 +815,29 @@
 
   // UID check for the Status sheet's step 1 (page: the Unlock modal's submit handler, same attempts and same order).
   // The raw UID goes to the handshake request body only. Resolves {ok, handshake, reason?}.
+  // v1 Unlock modal: a hash that is not this report's player but IS a roster player means the stored identity is stale;
+  // rewrite playerIdentity to that roster player and unlock under the real siteKey.
+  function healFromRoster(attempts) {
+    return _ar_getRosterMap().then(function(map) {
+      return attempts.filter(Boolean).reduce(function(p, cand) {
+        return p.then(function(found) {
+          if (found) return found;
+          return _ar_sha256Hex(cand).then(function(h) { var rp = map[h.slice(0, 16)]; return rp ? { uid: cand, p: rp } : null; });
+        });
+      }, Promise.resolve(null));
+    }).then(function(f) {
+      if (!f) return { ok: false, reason: 'mismatch' };
+      try {
+        var ident = ArmoryIdentity.get() || {};
+        ident.name = f.p.name; ident.alliance = f.p.alliance; ident.rank = f.p.rank; ident.profession = f.p.profession; ident.siteKey = f.p.siteKey;
+        ArmoryIdentity.set(ident);
+      } catch (e) {}
+      return _ar_handshake(f.uid).then(function() { return true; }, function() { return false; }).then(function(hs) {
+        _ar_storeUid(f.p.siteKey, f.uid); _ar_setUnlocked(f.p.siteKey, true);
+        return { ok: true, handshake: hs, healed: true, siteKey: f.p.siteKey, name: f.p.name };
+      });
+    }, function() { return { ok: false, reason: 'mismatch' }; });
+  }
   function verifyUid(siteKey, raw) {
     var attempts = [String(raw || '').trim(), String(raw || '').replace(/\D/g, '')];
     var matched = null;
@@ -824,7 +847,7 @@
         return _ar_sha256Hex(candidate).then(function(h) { if (h.slice(0, 16) === siteKey) matched = candidate; });
       });
     }, Promise.resolve()).then(function() {
-      if (!matched) return { ok: false, reason: 'mismatch' };
+      if (!matched) return healFromRoster(attempts);
       return _ar_handshake(matched).then(function() { return true; }, function() { return false; }).then(function(hs) {
         _ar_storeUid(siteKey, matched);
         _ar_setUnlocked(siteKey, true);
@@ -866,6 +889,15 @@
         out.setupBy = res.createdByAdvisor || null;
         return true;
       });
+    } else if (arg.dataOnly) {
+      // A player with game data and no battle report: only the own siteKey is trusted here (identity or roster).
+      var own0 = getStoredIdentity();
+      var k0 = (arg.player && arg.player.siteKey) || (own0 && own0.siteKey) || null;
+      if (!/^[0-9a-f]{16}$/.test(String(k0 || ''))) { out.state = 'none'; return Promise.resolve(out); }
+      ids = [];
+      player = { name: (arg.player && arg.player.name) || (own0 && own0.name) || null, siteKey: k0 };
+      out.readOnly = !(own0 && own0.siteKey === k0);
+      stage = Promise.resolve(true);
     } else if (arg.reportIds) {
       ids = arg.reportIds.slice();
       player = { name: arg.player && arg.player.name, siteKey: (arg.player && arg.player.siteKey) || null };
@@ -876,6 +908,20 @@
       ids = saved.reportIds.slice();
       player = { name: saved.player.name, siteKey: saved.player.siteKey || null, avatar: saved.player.avatar || null };
       out.readOnly = !!saved._viewOnly;
+      // v1 initFromSaved: when the saved player is the signed-in one, drop a stale _viewOnly and take the identity's
+      // siteKey (siteKey decides when both sides have one, else a trimmed name compare), then keep the corrected record.
+      var oid = getStoredIdentity();
+      if (oid && saved.player) {
+        var nrm = function(x) { return String(x || '').trim().toLowerCase(); };
+        var mine = oid.siteKey && saved.player.siteKey ? oid.siteKey === saved.player.siteKey
+          : !!(oid.name && saved.player.name && nrm(oid.name) === nrm(saved.player.name));
+        if (mine) {
+          var healed = false;
+          if (saved._viewOnly) { saved._viewOnly = false; out.readOnly = false; healed = true; }
+          if (oid.siteKey && saved.player.siteKey !== oid.siteKey) { saved.player.siteKey = oid.siteKey; player.siteKey = oid.siteKey; healed = true; }
+          if (healed) { try { localStorage.setItem('playerReport', JSON.stringify(saved)); } catch (e) {} }
+        }
+      }
       out.marchGroups = Array.isArray(saved.marchGroups) ? saved.marchGroups : null;
       useCache = true;
       stage = Promise.resolve(true);
@@ -893,15 +939,15 @@
       ]).then(function(parts) {
         var results = parts[2].filter(Boolean);
         out.reports = results;
-        if (!results.length) { out.state = 'empty'; out.identity = identityOf(player); return out; }
+        if (!results.length && !arg.dataOnly) { out.state = 'empty'; out.identity = identityOf(player); return out; }
         if (!player.siteKey && player.name) {
           var rm = _ar_rosterByName && _ar_rosterByName[String(player.name).toLowerCase()];
           if (rm && rm.siteKey) player.siteKey = rm.siteKey;
         }
-        if (!player.avatar) player.avatar = getAvatar(results[0].extracted.playerInfo || {});
+        if (!player.avatar && results.length) player.avatar = getAvatar(results[0].extracted.playerInfo || {});
         var rosterEntry = player.siteKey && _ar_rosterMap ? _ar_rosterMap[player.siteKey] || null : null;
         out.rosterEntry = rosterEntry;
-        var hydrate = player.siteKey ? _ar_hydrateSupplementsFromWorker(player.siteKey).catch(function() { return []; }) : Promise.resolve([]);
+        var hydrate = player.siteKey && !arg.noHydrate ? _ar_hydrateSupplementsFromWorker(player.siteKey).catch(function() { return []; }) : Promise.resolve([]);
         return hydrate.then(function(changed) {
           out.changedKinds = changed;
           var merged = mergeReportData(results);
@@ -921,6 +967,7 @@
             out.sources.kinds.forEach(function(k) { out.supp[k] = ArmoryIdentity.getSupplement(k, player.siteKey); });
           }
           out.identity = identityOf(player);
+          if (arg.dataOnly && !out.sources.kinds.length) out.state = 'none';
           if (useCache && !out.readOnly) {
             var nc = {}; results.forEach(function(r) { nc[r.id] = r.extracted; });
             try { localStorage.setItem('playerReportData', JSON.stringify(nc)); } catch (e) {}
