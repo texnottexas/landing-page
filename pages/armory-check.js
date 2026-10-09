@@ -230,7 +230,7 @@ var EXPECTED = [
   log(rm, 'prefers-reduced-motion turns transitions off', rm ? 'rule present' : 'missing');
   var imgs = $$('img'), imgBad = imgs.filter(function (m) { return !/^https:\/\/(raw\.githubusercontent\.com|h5\.topwargame\.com|knight-cdn\.akamaized\.net)\//.test(m.src); });
   log(imgBad.length === 0, 'images only from origins the live CSP allows', imgs.length + ' images' + (imgBad.length ? ', bad: ' + imgBad[0].src : ''));
-  var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-advice|armory-check|feedback-widget)\.js$|^https:\/\/translate\.googleapis\.com\//.test(s); });
+  var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-advice|armory-advice-flows|armory-check|feedback-widget)\.js$|^https:\/\/translate\.googleapis\.com\//.test(s); });
   log(badSrc.length === 0, 'scripts only from this site and Google Translate', scripts.length + ' script tags' + (badSrc.length ? ', unexpected: ' + badSrc.join(', ') : ''));
   S.all.gear = false; S.all.roster = false;
   A.applyRoute(false);

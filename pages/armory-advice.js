@@ -13,7 +13,6 @@ function clone(o) { return JSON.parse(JSON.stringify(o == null ? {} : o)); }
 function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
 function ensure(pool, n) { return pool[n] || (pool[n] = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }); }
 
-/* ---------- plain reasons ---------- */
 function plainReason(msg) {
   msg = String(msg == null ? '' : msg);
   var m;
@@ -29,7 +28,6 @@ function plainReason(msg) {
   return msg.replace(/s:(\d+)/g, '$1-star').replace(/star_max/g, 'star limit');
 }
 
-/* ---------- does the import already show the step's result? ---------- */
 function looksDone(step, baseGear, pre) {
   if (!step || typeof step !== 'object') return false;
   function at(g, h, s) { return g && g[h] && g[h][s] || null; }
@@ -79,7 +77,6 @@ function stepNote(step, ctx) {
   return '';
 }
 
-/* ---------- walk every step in order from the base pool and base gear (ticks are ignored) ---------- */
 function walk(base, baseGear, steps, catalog, runeIdx, core, mark) {
   base = base || {};
   var st = { pool: clone(base.pool), gearByHero: clone(baseGear) }, un = clone(base.unequipped), rows = [];
@@ -114,7 +111,6 @@ function walk(base, baseGear, steps, catalog, runeIdx, core, mark) {
   return { rows: rows, end: { pool: st.pool, unequipped: un, gearByHero: st.gearByHero } };
 }
 
-/* ---------- ticks (per device) ---------- */
 function ticks(storage, code, advisorId) {
   var key = 'armory_advice_ticks_' + code + '_' + advisorId;
   function clean(a) { var seen = {}; return (Array.isArray(a) ? a : []).filter(function (n) { return Number.isInteger(n) && n >= 0 && n < 1000 && !seen[n] && (seen[n] = 1); }).sort(function (x, y) { return x - y; }); }
@@ -125,7 +121,6 @@ function ticks(storage, code, advisorId) {
   };
 }
 
-/* ---------- pre-flight line for "Ask for rune help" ---------- */
 function ago(ts, now) {
   if (!ts) return '';
   var d = Math.max(0, Math.floor(((now || Date.now()) - ts) / 864e5));
@@ -144,7 +139,6 @@ function preflight(o) {
   };
 }
 
-/* ---------- links and codes ---------- */
 function links(code, shortcode) {
   var c = String(code || '').toLowerCase().replace(/[^a-z0-9]/g, ''), s = String(shortcode || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
   return { advise: 'https://2864tw.com/armory-report.html?advise=' + c, player: 'https://2864tw.com/armory-report.html?code=' + s + '&plan=' + c };
@@ -152,15 +146,14 @@ function links(code, shortcode) {
 function normCode(s) { s = String(s == null ? '' : s).trim().toLowerCase(); return /^[a-z0-9]{6}$/.test(s) ? s : ''; }
 function isCode(s) { return !!normCode(s); }
 
-/* ========== the screens ========== */
 function mount(H) {
 var S = H.S, d = H.d, core = H.core, G2 = H.G, BASE = H.BASE, WORKER = H.WORKER, SK_RE = H.SK_RE;
 var $ = H.$, $$ = H.$$, esc = H.esc, nm = H.nm, nd = H.nd, ic = H.ic, stars = H.stars, art = H.art, ls = H.ls, toast = H.toast, slug = H.slug;
-var A = { steps: [], note: '', savedTs: 0, seeded: null, heroOpen: {}, bld: null, entries: null, rec: {}, open: {}, zero: {}, del: {}, busy: {}, allowed: null, allowedP: null, showAll: false, seenLive: null, ask: null, pick: null, msg: {}, scrolled: false };
+var A = { steps: [], note: '', savedTs: 0, seeded: null, heroOpen: {}, bld: null, entries: null, rec: {}, open: {}, zero: {}, del: {}, busy: {}, allowed: null, allowedP: null, msg: {}, scrolled: false };
+var Fl = null, flQ = null;
 var RUNE_ID = /^[A-Za-z0-9:_-]{8,128}$/;
 var ST = { open: ['Waiting for an advisor', ''], planned: ['Plan ready', 'pl-go'], applied: ['Done', 'pl-ok'] };
 
-/* ---------- small helpers ---------- */
 function rich(text) { /* escaped text; \u0001..\u0002 mark names, numbers get translate="no" */
   return esc(text).replace(/\u0001/g, '<span translate="no">').replace(/\u0002/g, '</span>').replace(/(\d[\d,.]*)/g, '<span translate="no">$1</span>');
 }
@@ -203,7 +196,6 @@ function seenSave(o) { ls('advisorSeen', JSON.stringify(o)); }
 function seenAdd(e) { var o = seenLoad(); o.entries = o.entries.filter(function (x) { return x.code !== e.code; }); o.entries.unshift(e); if (o.entries.length > 50) o.entries = o.entries.slice(0, 50); seenSave(o); }
 function seenDrop(code) { var o = seenLoad(); o.entries = o.entries.filter(function (x) { return x.code !== code; }); seenSave(o); }
 
-/* ---------- data the screens read ---------- */
 var CT = null;
 function ctx() {
   var st = S.res.statics || {}, cat = st.runeTypes;
@@ -243,7 +235,6 @@ function returnStep(name) {
   return { type: 'recycle', srcHero: 0, srcSlot: pick.slot, srcRuneName: name, srcGearName: pick.gear };
 }
 
-/* ---------- one step row ---------- */
 function pillHtml(r, i, ticked) {
   if (r.ok || ticked) return '';
   return '<details class="why"><summary><span class="pill">' + (r.looksDone ? 'Looks done' : 'Check') + '</span></summary><p class="t13 muted">' + r.reasons.map(function (x) { return rich(x); }).join('<br>') + '</p></details>';
@@ -339,35 +330,6 @@ function askCardHtml() {
     : owner() ? '<button class="ab pri" type="button" data-a="ask">Ask for rune help</button>' : '<button class="ab" type="button" data-a="verify">Verify your UID to ask for help</button>';
   return '<section class="card"><h2 class="hd">Rune advice</h2><p class="t13 muted">' + rich(pf.line) + '</p>' + (pf.stale ? '<p class="t13 muted">Your saved rune pool is older than your last import, so it is ignored.</p>' : '') + (pf.warn ? '<p class="t13 c-warn">' + esc(pf.warn) + '</p>' : '') + '<div class="adv-row">' + btn + '</div></section>';
 }
-function advisorSectionHtml() {
-  var seen = seenLoad().entries;
-  if (!A.allowed && !seen.length) return '';
-  var h = '<section class="card"><h2 class="hd">Advise a player</h2>';
-  if (A.allowed) h += '<p class="t13 muted">Build a rune plan for another player from their report and game data.</p><div class="adv-row"><button class="ab pri" type="button" data-a="advise">Advise a player</button></div>';
-  h += '<div id="advSeen"></div></section>';
-  return h;
-}
-function paintSeen() {
-  var el = $('#advSeen'); if (!el) return;
-  var seen = seenLoad().entries;
-  if (!seen.length) { el.innerHTML = ''; return; }
-  var list = A.showAll ? seen : seen.slice(0, 10);
-  var rows = list.map(function (s) {
-    var code = normCode(s.code), live = A.seenLive && A.seenLive[code]; if (!code) return '';
-    var st = live ? ST[live.status] || ST.open : null;
-    return '<a class="adv-seen" href="armory.html?advise=' + code + '"><span class="grow"><span translate="no">' + esc(String(s.playerName || (live && live.playerName) || 'A player').slice(0, 64)) + '</span><span class="t13 muted"> ' + esc(ageOf(s.openedTs)) + '</span></span>' + (st ? '<span class="pill ' + st[1] + '">' + (live.status === 'planned' ? 'Plan saved' : live.status === 'applied' ? 'Applied' : 'No plan yet') + '</span>' : '') + ic('chev', 'sm') + '</a>';
-  }).join('');
-  el.innerHTML = '<h3 class="sub" style="margin-top:16px">Requests I’ve opened</h3><div>' + rows + '</div>' + (seen.length > 10 && !A.showAll ? '<button class="ab wide" type="button" data-a="showall">Show all <span translate="no">' + seen.length + '</span></button>' : '');
-}
-function loadSeen() {
-  var seen = seenLoad().entries.slice(0, A.showAll ? 50 : 10);
-  A.seenLive = A.seenLive || {};
-  paintSeen();
-  Promise.all(seen.map(function (s) {
-    var code = normCode(s.code); if (!code) return null;
-    return api('/advisor/request/' + code).then(function (r) { if (r.status === 404) { seenDrop(code); delete A.seenLive[code]; } else if (r.ok && r.j) A.seenLive[code] = { status: String(r.j.status || 'open'), playerName: r.j.playerName }; });
-  })).then(paintSeen);
-}
 function checkAllowed() {
   if (A.allowed !== null || A.allowedP) return A.allowedP || Promise.resolve();
   var m = me();
@@ -382,7 +344,7 @@ function renderPlayer(root, q) {
   root.innerHTML = '<div class="ov"><div class="ov-col">' + left + '<h2 class="sub">' + (ro ? 'Requests' : 'My requests') + '</h2><div id="advReqs"><div class="skel" style="width:60%"></div></div></div><div class="ov-col">' + (ro ? '' : '<div id="advSec"></div>') + '</div></div>';
   if (A.entries) paintReqs();
   loadEntries(!!A.entries);
-  if (!ro) checkAllowed().then(function () { var el = $('#advSec'); if (el) { el.innerHTML = advisorSectionHtml(); if (el.innerHTML) loadSeen(); } });
+  if (!ro) checkAllowed().then(function () { if (A.allowed || seenLoad().entries.length) flows(function (F) { F.section(); }); });
 }
 
 /* =================================================================== advisor side */
@@ -465,7 +427,6 @@ function renderAdvise(root, soft) {
   if (!soft || !$('#advNote')) seed().then(repaintAdvise); else repaintAdvise();
 }
 
-/* ---------- the step builder sheet ---------- */
 function gearEnd() { return walkSteps(A.steps).end.gearByHero; }
 function builderBody() {
   var b = A.bld, g = gearEnd(), cur = g[b.h] && g[b.h][b.s] || null, n = cur && cur.runeName, star = cur ? +cur.star || 0 : 0, mx = n ? starMaxFor(n, b.s) : 0;
@@ -505,9 +466,7 @@ function sheet(kind, arg) {
     A.bld = { h: h, s: s, verb: '' };
     return [hname(h) + '’s ' + sname(s), builderBody(), true];
   }
-  if (kind === 'advice-pick') { A.pick = { q: '', busy: false, err: '', step: 'pick' }; return ['Advise a player', pickBody()]; }
-  if (kind === 'advice-ask') { A.ask = A.ask && A.ask.code ? A.ask : { note: '', busy: false, err: '' }; return ['Ask for rune help', askBody()]; }
-  return null;
+  return Fl ? Fl.sheet(kind) : null;
 }
 function pickVerb(v) {
   var b = A.bld, g = gearEnd(), cur = g[b.h] && g[b.h][b.s] || null, n = cur && cur.runeName;
@@ -523,87 +482,6 @@ function pickOpt(t) {
   else if (b.verb === 'swapin' && ds.ao) addStep({ type: 'inherit', srcHero: +ds.ao, srcSlot: b.s, dstHero: b.h, dstSlot: b.s });
 }
 
-/* ---------- Advise a player ---------- */
-function pickBody() {
-  var p = A.pick;
-  if (p.step === 'report') return '<p>' + nm(p.name) + ' has no saved report yet. Enter a Battle Report ID that includes ' + nm(p.name) + '.</p><div class="irow"><input class="fld" id="advRid" type="text" inputmode="numeric" autocomplete="off" placeholder="Battle Report ID" aria-label="Battle Report ID"><button class="ab pri" type="button" data-a="pickrid">Use report</button></div><div class="err" role="alert">' + esc(p.err) + '</div>';
-  if (p.busy) return '<p class="muted" role="status">' + esc(p.status || 'Working') + '</p>';
-  var q = p.q.trim().toLowerCase(), me2 = me(), rows = '';
-  if (q.length >= 2 && !p.roster) rows = '<p class="t13 muted">Loading the roster</p>';
-  if (q.length >= 2 && p.roster) {
-    var n = 0;
-    Object.keys(p.roster).forEach(function (k) { var r = p.roster[k]; if (n >= 30 || !SK_RE.test(k) || (me2 && k === me2.sk) || !r || String(r.name || '').toLowerCase().indexOf(q) < 0) return; n++; rows += '<button class="ab vrow" type="button" data-a="target" data-sk="' + k + '"><span class="grow" translate="no">' + esc(String(r.name || '')) + '</span><span class="t13 muted" translate="no">' + esc(String(r.alliance || '')) + '</span></button>'; });
-    if (!rows) rows = '<p class="t13 muted">No player matches that name.</p>';
-  }
-  return '<label class="lab" for="advQ">Search the roster</label><input class="fld" id="advQ" type="search" autocomplete="off" placeholder="Type 2 or more letters" aria-label="Search the roster" value="' + esc(p.q) + '"><div class="vlist" id="advRows">' + (q.length >= 2 ? rows : '<p class="t13 muted">Type at least 2 letters.</p>') + '</div>' + (p.err ? '<div class="err" role="alert">' + esc(p.err) + '</div><button class="ab" type="button" data-a="again">Start again</button>' : '');
-}
-function setPick(upd) { Object.keys(upd).forEach(function (k) { A.pick[k] = upd[k]; }); var el = $('#sheetB'); if (el && S.sheet === 'advice-pick') el.innerHTML = pickBody(); }
-function startAdvise(targetSk) {
-  var m = me(), p = A.pick; if (!m || p.busy) return;
-  setPick({ busy: true, status: 'Opening the player’s armory', err: '' });
-  ownAuth(m.sk).then(function (au) { if (!au) throw { msg: 'Verify your UID, then try again.' }; return api('/advisor/delegate', { method: 'POST', body: { targetSiteKey: targetSk }, auth: au }); }).then(function (r) {
-    if (!r.ok || !r.j || typeof r.j.token !== 'string') throw { msg: fail(r, 'start advising') };
-    p.d1 = r.j.token; p.target = targetSk; p.name = String(r.j.targetName || (p.roster[targetSk] && p.roster[targetSk].name) || 'this player').slice(0, 64);
-    return api('/report-configs', { method: 'POST', body: { siteKey: targetSk } });
-  }).then(function (r) {
-    var cf = r.ok && r.j && Array.isArray(r.j.configs) ? r.j.configs.filter(function (c) { return c && /^[0-9A-Za-z]{4}$/.test(String(c.shortcode || '')); }) : [];
-    cf.sort(function (a, b) { return new Date(b.updatedAt || b.date || 0).getTime() - new Date(a.updatedAt || a.date || 0).getTime(); });
-    if (cf.length) return String(cf[0].shortcode).toUpperCase();
-    setPick({ busy: false, step: 'report', err: '' }); return null;
-  }).then(function (sc) { if (sc) return finishAdvise(sc); }, function (e) { setPick({ busy: false, step: 'pick', err: e && e.msg ? e.msg : 'Could not start. Check your connection and try again.' }); });
-}
-function finishAdvise(sc) {
-  var p = A.pick, m = me();
-  setPick({ busy: true, status: 'Creating the advice link', err: '' });
-  return api('/advisor/request', { method: 'POST', body: { reportShortcode: sc, note: 'Set up by ' + (m && m.name ? m.name : 'an advisor') }, auth: 'Bearer ' + p.d1 }).then(function (r) {
-    if (!r.ok || !r.j || !normCode(r.j.code)) throw { msg: fail(r, 'advice request') };
-    p.d1 = null;
-    location.href = 'armory.html?advise=' + normCode(r.j.code);
-  }, function () { throw { msg: 'Could not reach the server. Check your connection and try again.' }; }).catch(function (e) { setPick({ busy: false, step: 'pick', err: e && e.msg ? e.msg : 'Could not start.' }); });
-}
-function useReport() {
-  var p = A.pick, id = (($('#advRid') || {}).value || '').trim();
-  if (!/^\d{10,25}$/.test(id)) { setPick({ err: 'Enter a valid numeric report ID (10 to 25 digits).' }); return; }
-  setPick({ busy: true, status: 'Checking the report', err: '' });
-  d.fetchReportResponse(id).then(function (r) { if (!r || !r.ok) throw { msg: 'Report not found. Check the ID and try again.' }; return r.json(); }).then(function (data) {
-    var ex = data && data.battle && d.extractPlayerData(data, p.name);
-    if (!ex) throw { msg: 'That report does not include ' + p.name + '.' };
-    return api('/report-config', { method: 'POST', auth: 'Bearer ' + p.d1, body: { siteKey: p.target, playerName: p.name, deviceId: H.deviceId(), reportIds: id, marchGroups: [] } });
-  }).then(function (r) {
-    if (!r.ok || !r.j || !/^[0-9A-Za-z]{4}$/.test(String(r.j.shortcode || ''))) throw { msg: fail(r, 'save report') };
-    return finishAdvise(String(r.j.shortcode).toUpperCase());
-  }).catch(function (e) { setPick({ busy: false, step: 'report', err: e && e.msg ? e.msg : 'Could not read that report. Check your connection and try again.' }); });
-}
-
-/* ---------- Ask for rune help ---------- */
-function askBody() {
-  var a = A.ask, c = ctx(), g = S.res.supp || {}, pf = preflight({ pool: c.base, privacy: S.res.privacy, supTs: { inv: core.advice.tsOf(g.inv), gear: core.advice.tsOf(g.gear) } });
-  if (a.code) {
-    var l = links(a.code, a.shortcode);
-    return '<p>Your request is ready. Send this link to your advisor:</p><div class="adv-link"><span class="code" translate="no">' + esc(l.advise) + '</span><button class="ab" type="button" data-a="copy" data-av="' + esc(l.advise) + '">' + ic('copy', 'sm') + 'Copy link</button></div><button class="ab wide" type="button" data-close>Done</button>';
-  }
-  return '<p class="t13 muted">' + rich(pf.line) + '</p>' + (pf.warn ? '<p class="t13 c-warn">' + esc(pf.warn) + '</p>' : '') + '<label class="lab" for="advAskNote">What do you want help with? (optional)</label><textarea class="fld" id="advAskNote" data-a="asknote" maxlength="500" rows="3" style="font-family:var(--sans);font-size:var(--fs-14)">' + esc(a.note) + '</textarea>' +
-    '<button class="ab pri wide" type="button" data-a="askgo"' + (a.busy ? ' disabled' : '') + '>' + (a.busy ? 'Sending' : 'Send request') + '</button>' + (a.err ? '<div class="err" role="alert">' + esc(a.err) + '</div>' : '');
-}
-function setAsk(upd) { Object.keys(upd).forEach(function (k) { A.ask[k] = upd[k]; }); var el = $('#sheetB'); if (el && S.sheet === 'advice-ask') el.innerHTML = askBody(); }
-function askGo() {
-  var a = A.ask, key = sk(); if (a.busy || !key) return;
-  var note = (($('#advAskNote') || {}).value || a.note || '').slice(0, 500);
-  setAsk({ busy: true, err: '', note: note });
-  var shortcode = H.currentCode();
-  var need = shortcode ? Promise.resolve(shortcode) : new Promise(function (res, rej) {
-    if (!H.savedReport()) { rej({ msg: 'Build your armory from a battle report first, so your advisor has a report to open.' }); return; }
-    H.more(function (mm) { mm.saveConfig().then(res, function (e) { rej({ msg: e && e.message ? e.message : 'Could not save your report link.' }); }); });
-  });
-  need.then(function (sc) { shortcode = sc; return ownAuth(key); }).then(function (au) {
-    if (!au) throw { msg: 'Verify your UID, then try again.' };
-    return api('/advisor/request', { method: 'POST', body: { reportShortcode: shortcode, note: note }, auth: au });
-  }).then(function (r) {
-    if (!r.ok || !r.j || !normCode(r.j.code)) throw { msg: fail(r, 'advice request') };
-    setAsk({ busy: false, code: normCode(r.j.code), shortcode: shortcode });
-    loadEntries(true);
-  }).catch(function (e) { setAsk({ busy: false, err: e && e.msg ? e.msg : 'Could not send the request. Check your connection and try again.' }); });
-}
 function markDone(code, aid, force) {
   var key = code + '|' + aid, done = ticks(localStorage, code, aid).get();
   if (A.busy[key]) return;
@@ -622,7 +500,18 @@ function delReq(code) {
   }).catch(function (e) { A.del[code] = false; A.msg[code] = e && e.msg ? e.msg : 'Could not delete it.'; paintReqs(); });
 }
 
-/* ---------- events ---------- */
+/* the Ask and Advise-a-player sheets live in armory-advice-flows.js, loaded when one of their buttons is tapped */
+function flows(cb) {
+  if (Fl) return cb(Fl);
+  if (flQ) { flQ.push(cb); return; }
+  flQ = [cb];
+  var sc = document.createElement('script');
+  sc.src = 'armory-advice-flows.js';
+  sc.onload = function () { Fl = window.ArmoryAdviceFlows({ S: S, d: d, H: H, core: core, SK_RE: SK_RE, $: $, esc: esc, nm: nm, rich: rich, api: api, fail: fail, ownAuth: ownAuth, me: me, ctx: ctx, sk: sk, links: links, preflight: preflight, normCode: normCode, loadEntries: loadEntries, seenLoad: seenLoad, seenDrop: seenDrop, ageOf: ageOf, ST: ST, ic: ic, allowed: function () { return A.allowed; } }); var q = flQ; flQ = null; q.forEach(function (f) { f(Fl); }); };
+  sc.onerror = function () { flQ = null; toast('Could not load this part. Check your connection and try again.'); };
+  document.body.appendChild(sc);
+}
+
 function onClick(e) {
   var t = e.target.closest('[data-a]'); if (!t) return;
   var a = t.dataset.a, ds = t.dataset;
@@ -630,14 +519,12 @@ function onClick(e) {
   if (a === 'plan') { var c2 = normCode(ds.rc), k = c2 + '|' + ds.ap; A.open[k] = !A.open[k]; if (A.open[k]) loadRec(c2); paintReqs(); return; }
   if (a === 'copy') { copy(ds.av); return; }
   if (a === 'verify') { H.openSheet('status'); return; }
-  if (a === 'ask') { A.ask = { note: '', busy: false, err: '' }; H.openSheet('advice-ask'); return; }
+  if (a === 'ask' || a === 'advise') { flows(function (F) { F.open(a === 'ask' ? 'advice-ask' : 'advice-pick'); }); return; }
   if (a === 'done') { markDone(normCode(ds.rc), ds.ap, !!ds.az); return; }
   if (a === 'zerono') { A.zero[normCode(ds.rc) + '|' + ds.ap] = false; paintReqs(); return; }
   if (a === 'del') { A.del[normCode(ds.rc)] = true; paintReqs(); return; }
   if (a === 'delno') { A.del[normCode(ds.rc)] = false; paintReqs(); return; }
   if (a === 'delyes') { delReq(normCode(ds.rc)); return; }
-  if (a === 'advise') { H.openSheet('advice-pick'); d.getRosterMap().then(function (m) { if (A.pick) { setPick({ roster: m }); var q = $('#advQ'); if (q) q.focus(); } }, function () { setPick({ err: 'Could not load the roster. Try again.' }); }); return; }
-  if (a === 'showall') { A.showAll = true; loadSeen(); return; }
   if (a === 'hero') { var h = +ds.ah; A.heroOpen[h] = !A.heroOpen[h]; var art2 = t.closest('.hero'); art2.classList.toggle('open', !!A.heroOpen[h]); t.setAttribute('aria-expanded', A.heroOpen[h] ? 'true' : 'false'); return; }
   if (a === 'slot') { H.openSheet('advice-builder', { h: +ds.ah, s: +ds.as }); return; }
   if (a === 'ret') { var n = ds.an; if (ctx().idx[n]) { A.steps.push(returnStep(n)); A.savedTs = 0; repaintAdvise(); toast('Step added'); } return; }
@@ -651,20 +538,15 @@ function onClick(e) {
   if (a === 'save') { save(); return; }
   if (a === 'verb') { pickVerb(ds.av); return; }
   if (a === 'pick') { pickOpt(t); return; }
-  if (a === 'target') { if (SK_RE.test(ds.sk || '')) startAdvise(ds.sk); return; }
-  if (a === 'again') { setPick({ err: '', busy: false, step: 'pick' }); return; }
-  if (a === 'pickrid') { useReport(); return; }
-  if (a === 'askgo') { askGo(); return; }
+  if (Fl) Fl.click(a, t);
 }
 function onInput(e) {
   var t = e.target;
   if (t.id === 'advNote') A.note = t.value.slice(0, 1000);
-  else if (t.id === 'advAskNote' && A.ask) A.ask.note = t.value.slice(0, 500);
-  else if (t.id === 'advQ' && A.pick) { A.pick.q = t.value; var rows = $('#advRows'); if (rows) { var div = document.createElement('div'); div.innerHTML = pickBody(); var nr = div.querySelector('#advRows'); if (nr) rows.innerHTML = nr.innerHTML; } }
+  else if (Fl) Fl.input(t);
 }
-function onKey(e) { if (e.key === 'Enter' && e.target.id === 'advRid') { e.preventDefault(); useReport(); } }
+function onKey(e) { if (Fl) Fl.key(e); }
 
-/* ---------- entry ---------- */
 function injectStyle() {
   if ($('#advice-style')) return;
   var st = document.createElement('style'); st.id = 'advice-style';
