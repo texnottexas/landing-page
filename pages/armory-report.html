@@ -3444,6 +3444,22 @@
   }
   var ASSET_BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/';
   var PUSH_WORKER = 'https://push-worker.27tb8s6fct.workers.dev';
+  // One promise cache for the static data/*.json files (fetched once per
+  // session; a failure is not cached so a later call retries). Resolves the
+  // parsed JSON and rejects on a non-2xx answer. Callers share the parsed
+  // object and must not mutate it. Worker calls and anything personal never
+  // go through here.
+  var _ar_jsonCache = {};
+  function fetchJson(url) {
+    if (!_ar_jsonCache[url]) {
+      _ar_jsonCache[url] = fetch(url).then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + url);
+        return r.json();
+      }).catch(function(e) { delete _ar_jsonCache[url]; throw e; });
+    }
+    return _ar_jsonCache[url];
+  }
+
 
   // ── Advisor "on-behalf" impersonation session (in-memory only; never persisted) ──
   // When active, the advisor acts as `targetSiteKey` using a short-lived delegated
@@ -4738,8 +4754,7 @@
   var _ar_runeTypes = null;
   function _ar_loadRuneTypes() {
     if (_ar_runeTypes) return Promise.resolve(_ar_runeTypes);
-    return fetch('data/rune-types.json', { cache: 'default' })
-      .then(function(r) { return r.ok ? r.json() : null; })
+    return fetchJson('data/rune-types.json').catch(function() { return null; })
       .then(function(j) { _ar_runeTypes = j; return j; })
       .catch(function() { return null; });
   }
@@ -4958,24 +4973,18 @@
   var _ar_invLookups = null;
   // Rune Pool / Advisor callers only need the item table (_ar_extractRunePool
   // reads lookups.item and nothing else), so they skip the other four files.
-  var _ar_itemTablePromise = null;
   function _ar_loadItemTable() {
     if (_ar_invLookups) return Promise.resolve(_ar_invLookups);
-    if (!_ar_itemTablePromise) {
-      _ar_itemTablePromise = fetch('data/item-table.json').then(function(r) { return r.json(); })
-        .then(function(t) { return { item: t }; })
-        .catch(function(e) { _ar_itemTablePromise = null; throw e; });
-    }
-    return _ar_itemTablePromise;
+    return fetchJson('data/item-table.json').then(function(t) { return { item: t }; });
   }
   async function _ar_loadInvLookups() {
     if (_ar_invLookups) return _ar_invLookups;
     var data = await Promise.all([
-      fetch('data/item-table.json').then(function(r) { return r.json(); }),
-      fetch('data/building-table.json').then(function(r) { return r.json(); }),
-      fetch('data/army-icon-map.json').then(function(r) { return r.json(); }),
-      fetch('data/all-heroes.json').then(function(r) { return r.json(); }),
-      fetch('data/decor-category-map.json').then(function(r) { return r.json(); }).catch(function() { return {}; })
+      fetchJson('data/item-table.json'),
+      fetchJson('data/building-table.json'),
+      fetchJson('data/army-icon-map.json'),
+      fetchJson('data/all-heroes.json'),
+      fetchJson('data/decor-category-map.json').catch(function() { return {}; })
     ]);
     var heroes = data[3];
     var heroById = {};
@@ -6123,8 +6132,7 @@
     return _ar_decorPromise;
   }
   function _ar_decorFetch() {
-    return fetch('data/decor-lookups.json', { cache: 'default' })
-      .then(function(r) { return r.ok ? r.json() : null; })
+    return fetchJson('data/decor-lookups.json').catch(function() { return null; })
       .then(function(j) {
         if (!j) throw new Error('decor-lookups.json not available');
         // Mutate in place so closures that captured the original objects keep working.
@@ -6269,8 +6277,7 @@
   function ebLoadPlatformReqs(cb) {
     if (EB_PLATFORM_REQS) { cb && cb(); return; }
     if (_ebPlatformsPromise) { _ebPlatformsPromise.then(cb); return; }
-    _ebPlatformsPromise = fetch('data/enigma-platforms.json')
-      .then(function(r) { return r.ok ? r.json() : null; })
+    _ebPlatformsPromise = fetchJson('data/enigma-platforms.json').catch(function() { return null; })
       .then(function(j) {
         if (!j || !Array.isArray(j.holes)) return;
         var idx = {};
@@ -7119,8 +7126,7 @@
   function loadHeroData(cb) {
     if (HERO_CACHE && HERO_TYPE_CACHE) return cb();
     if (!_heroDataPromise) {
-      _heroDataPromise = fetch('data/all-heroes.json')
-        .then(function(r) { return r.json(); })
+      _heroDataPromise = fetchJson('data/all-heroes.json')
         .then(function(data) {
           HERO_CACHE = {};
           HERO_TYPE_CACHE = {};
@@ -13754,31 +13760,31 @@
     }
     if (!window._heroSkillsData) {
       _benchPending++;
-      fetch('data/hero-skills.json').then(function(r) { return r.ok ? r.json() : null; })
+      fetchJson('data/hero-skills.json').catch(function() { return null; })
         .then(function(j) { if (j) window._heroSkillsData = j; _benchAfterLoad(); })
         .catch(function() { _benchAfterLoad(); });
     }
     if (!window._heroAwakeningData) {
       _benchPending++;
-      fetch('data/hero-awakening-skills.json').then(function(r) { return r.ok ? r.json() : null; })
+      fetchJson('data/hero-awakening-skills.json').catch(function() { return null; })
         .then(function(j) { if (j) window._heroAwakeningData = j; _benchAfterLoad(); })
         .catch(function() { _benchAfterLoad(); });
     }
     if (!window._supportiveSkillsData) {
       _benchPending++;
-      fetch('data/supportive-skills.json').then(function(r) { return r.ok ? r.json() : null; })
+      fetchJson('data/supportive-skills.json').catch(function() { return null; })
         .then(function(j) { if (j) window._supportiveSkillsData = j; _benchAfterLoad(); })
         .catch(function() { _benchAfterLoad(); });
     }
     if (!window._heroTalentsData) {
       _benchPending++;
-      fetch('data/hero-talents.json').then(function(r) { return r.ok ? r.json() : null; })
+      fetchJson('data/hero-talents.json').catch(function() { return null; })
         .then(function(j) { if (j) window._heroTalentsData = j; _benchAfterLoad(); })
         .catch(function() { _benchAfterLoad(); });
     }
     if (!window._allHeroesData) {
       _benchPending++;
-      fetch('data/all-heroes.json').then(function(r) { return r.ok ? r.json() : null; })
+      fetchJson('data/all-heroes.json').catch(function() { return null; })
         .then(function(j) {
           if (Array.isArray(j)) {
             var byId = {};
@@ -14412,8 +14418,7 @@
   function _ensureHeroAwakeningData(cb) {
     if (window._heroAwakeningData) { cb(); return; }
     if (!_heroAwakeningDataPromise) {
-      _heroAwakeningDataPromise = fetch('data/hero-awakening-skills.json')
-        .then(function(r) { return r.ok ? r.json() : null; })
+      _heroAwakeningDataPromise = fetchJson('data/hero-awakening-skills.json').catch(function() { return null; })
         .then(function(j) { if (j) window._heroAwakeningData = j; })
         .catch(function() {});
     }
@@ -16382,21 +16387,21 @@
 
   function _adv_loadLevels() {
     if (_advisorLevelsCache) return Promise.resolve(_advisorLevelsCache);
-    return fetch('../data/decoration-levels.json').then(function(r) { return r.json(); }).then(function(d) {
+    return fetchJson('../data/decoration-levels.json').then(function(d) {
       _advisorLevelsCache = d; return d;
     });
   }
 
   function _adv_loadIndex() {
     if (_advisorIndexCache) return Promise.resolve(_advisorIndexCache);
-    return fetch('../data/decoration-index.json').then(function(r) { return r.json(); }).then(function(d) {
+    return fetchJson('../data/decoration-index.json').then(function(d) {
       _advisorIndexCache = d; return d;
     });
   }
 
   function _adv_loadMutex() {
     if (_advisorMutexCache) return Promise.resolve(_advisorMutexCache);
-    return fetch('../data/decoration-mutual-exclusive.json').then(function(r) { return r.json(); }).then(function(data) {
+    return fetchJson('../data/decoration-mutual-exclusive.json').then(function(data) {
       // Mutex JSON is { clusterKey: [{g, me:[partnerGroupIds], ...}, ...] }.
       // Build groupId -> [partnerGroupIds] lookup using each member's `me` array.
       var groupToPartners = {};
@@ -18984,8 +18989,7 @@
   function boLoadOptimizerData() {
     if (boEnhData && boFieldConditions && boPlatforms) return Promise.resolve();
     // Source JSON is keyed by holeId; re-index by enhanceRowId for boEnhanceAt lookups.
-    var p1 = fetch('data/enigma-platform-enhance.json')
-      .then(function(r) { return r.json(); })
+    var p1 = fetchJson('data/enigma-platform-enhance.json')
       .then(function(j) {
         var byHole = j.platforms || j.enhance || j;
         boEnhData = {};
@@ -18996,11 +19000,9 @@
           }
         });
       });
-    var p2 = fetch('data/enigma-field-conditions.json')
-      .then(function(r) { return r.json(); })
+    var p2 = fetchJson('data/enigma-field-conditions.json')
       .then(function(j) { boFieldConditions = j.conditions || j; });
-    var p4 = fetch('data/enigma-platforms.json')
-      .then(function(r) { return r.json(); })
+    var p4 = fetchJson('data/enigma-platforms.json')
       .then(function(j) { boPlatforms = j; });
     return Promise.all([p1, p2, p4]);
   }
@@ -31106,8 +31108,7 @@
   function loadFormationRef() {
     if (_formationRef) return Promise.resolve(_formationRef);
     if (_formationRefPromise) return _formationRefPromise;
-    _formationRefPromise = fetch('data/formation-v2.json')
-      .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    _formationRefPromise = fetchJson('data/formation-v2.json')
       .then(function(j) { _formationRef = j; return j; })
       .catch(function(e) { _formationRefPromise = null; throw e; }); // don't cache a rejected promise — allow retry
     return _formationRefPromise;
