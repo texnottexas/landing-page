@@ -1654,6 +1654,7 @@
     display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .5rem;
   }
   .adv-plan-actions .ap-spacer { flex: 1; }
+  .adv-invalid-note { font-size: .72rem; color: #f85149; }
   .adv-add-btn {
     background: rgba(121, 192, 255, 0.15); border: 1px solid var(--accent); color: var(--accent);
     border-radius: 6px; padding: 6px 14px; font-size: .8rem; font-weight: 600; cursor: pointer;
@@ -9796,6 +9797,7 @@
         var gearSlots = [null, null, null, null, null, null]; // index 0-5 = slot 1-6
         var starSum = 0, maxSum = 0;
         (h.heroEquips || []).forEach(function(eq, idx) {
+          idx = eq._slot ? eq._slot - 1 : idx;
           var infos = eq.infos || [];
           var type2 = null;
           infos.forEach(function(info) { if (info.type === 2) type2 = info; });
@@ -10747,6 +10749,7 @@
       gearGrid.className = 'gear-grid';
 
       equips.forEach(function(equip, idx) {
+        if (equip._slot) idx = equip._slot - 1;
         var gc = document.createElement('div');
         gc.className = 'gear-card';
 
@@ -10923,7 +10926,7 @@
     // show the same skill panel the Bench detail uses. The reference data may
     // still be in-flight, so build the section once it resolves and append it
     // below the gear grid inside the (collapsible) expand panel.
-    if ((hero.awakenLevel || 0) > 0) {
+    if ((hero.awakenLevel || 0) > 0 && hero.aws && Object.keys(hero.aws).length > 0) {
       _ensureHeroAwakeningData(function() {
         var awPanel = renderHeroAwakening(id, hero.awakenLevel, !!hero.fullAwaken,
           hero.aws || {}, window._heroAwakeningData, ASSET_BASE + 'assets/hero-awake-skills/');
@@ -12171,10 +12174,13 @@
   // msEnumerateBenchSkills: walks every owned hero's equipped skill slots and
   // returns an array of { heroId, presetIdx, slotKind, slotIdx, rarity, level }
   // for every march-size skill equipped. We scan BOTH the buff slot b[0] AND
-  // the supportive slots x[1..3] — the game allows type-4 buff skills (like
+  // the supportive slots x[0..3] — the game allows type-4 buff skills (like
   // March Size) to be equipped in either kind of slot, and most players use
   // the supportive slots to stack extra march-size on the same hero.
-  // x[0] is skipped (reserved for the hero's exclusive skill, type 3).
+  // x[0] is only the exclusive slot when it actually holds the exclusive, and
+  // msResolveMarchSize only matches march-size ids, so scanning it is safe: a
+  // march-size card equipped in x[0] (older heroes with no exclusive unlocked)
+  // used to be skipped and so never counted.
   function msEnumerateBenchSkills(heroesSupp) {
     if (!heroesSupp || !Array.isArray(heroesSupp.list)) return [];
     var out = [];
@@ -12197,9 +12203,9 @@
             rarity: r.rarity, level: r.level,
           });
         }
-        // Supportive slots x[1..3] (skip x[0] = exclusive)
+        // Supportive slots x[0..3]
         if (Array.isArray(p.x)) {
-          for (var xi = 1; xi < p.x.length; xi++) {
+          for (var xi = 0; xi < p.x.length; xi++) {
             var rx = msResolveMarchSize(p.x[xi]);
             if (rx) out.push({
               heroId: h.id, presetIdx: presets[k].idx,
@@ -13089,7 +13095,7 @@
       hwrap.appendChild(hname);
       var meta = document.createElement('div'); meta.className = 'ms-target-meta';
       var presetLabel = t.presets.length === 2 ? 'Preset 1 + 2' : ('Preset ' + t.presets[0]);
-      var slotLabel = t.slotKind === 'b' ? 'Buff slot' : ('Supportive slot ' + t.slotIdx);
+      var slotLabel = t.slotKind === 'b' ? 'Buff slot' : (t.slotIdx === 0 ? 'Top supportive slot' : 'Supportive slot ' + t.slotIdx);
       meta.textContent = presetLabel + ' · ' + slotLabel + (c.maxedOut ? ' · Already at max level' : (' · Goal: Lv ' + c.goalLevel));
       hwrap.appendChild(meta);
       head.appendChild(hwrap);
@@ -21227,7 +21233,7 @@
       var equips = h.heroEquips || [];
       if (equips.length > 0) BO_TG_HAS_GEAR_DATA = true;
       equips.forEach(function(equip, idx) {
-        var tgSlot = idx + 1;
+        var tgSlot = equip._slot || (idx + 1);
 
         // Type 11: random attrs refined to 70%+. The 70% gate is on the
         // random attribute's roll quality (info.buffValue / cls.max), but
@@ -22155,7 +22161,7 @@
       ['line', { 'x1': '12', 'y1': '17', 'x2': '12.01', 'y2': '17' }]
     ] }));
     var txt = document.createElement('div');
-    var ageStr = _ar_relativeAge(info.importRaw);
+    var ageStr = _ar_relativeAge(new Date(info.importRaw));
     txt.textContent = 'This saved pool is older than the imported inventory data'
       + (ageStr ? ' (imported ' + ageStr + ')' : '')
       + ', so it is hiding any runes picked up since it was saved. '
@@ -25336,7 +25342,13 @@
         gearByHero[h.id] = gearByHero[h.id] || {};
         var equips = h.heroEquips || [];
         equips.forEach(function(eq, idx) {
-          var slot = idx + 1; // heroEquips array index 0-5 → slot 1-6
+          if (!eq) return;
+          // Only gold (quality 5) can socket a rune; supplement-synthesized
+          // equips know their quality, battle-report ones do not.
+          if (eq._slot && eq.quality != null && eq.quality < 5) return;
+          // Battle-report equips are in slot order; supplement-synthesized
+          // ones carry their real slot in _slot (a hero may own only slots 2+4).
+          var slot = eq._slot || (idx + 1); // heroEquips array index 0-5 → slot 1-6
           if (slot > 6) return;
           var rd = null;
           (eq.infos || []).forEach(function(info) {
@@ -25446,7 +25458,13 @@
         var slotEntry = (meta.slots || []).filter(function(s) { return s.slot === step.dstSlot; })[0];
         if (!slotEntry) errors.push(step.runeName + ' cannot go in slot ' + step.dstSlot);
         if (poolHas(step.runeName, 0) < 1) errors.push('No ' + step.runeName + ' s:0 in pool');
-        var dstCurr = gear[step.dstHero] && gear[step.dstHero][step.dstSlot];
+        // The destination must be a gear piece the hero owns (an empty slot
+        // is recorded as null; a missing key means no piece there at all).
+        var dstGear = gear[step.dstHero];
+        if (!dstGear || !Object.prototype.hasOwnProperty.call(dstGear, step.dstSlot)) {
+          errors.push('Destination hero has no gear piece in that slot');
+        }
+        var dstCurr = dstGear && dstGear[step.dstSlot];
         if (dstCurr && dstCurr.runeName) errors.push('Slot already has a rune (recycle or inherit first)');
         break;
       }
@@ -25587,6 +25605,41 @@
         break;
       }
     }
+  }
+
+  // Walks the steps in order, validating each against the state left by the
+  // steps before it (so a merge that depends on an earlier place stays valid,
+  // and a reorder or removal that breaks a dependency is flagged). An invalid
+  // step still advances the simulated state, so later steps report their own
+  // problems instead of cascading. Returns [{ ok, errors }] per step.
+  function _ar_validateStepSequence(basePool, baseGear, steps, catalog, runeIdx) {
+    var st = {
+      pool: JSON.parse(JSON.stringify(basePool || {})),
+      gearByHero: JSON.parse(JSON.stringify(baseGear || {}))
+    };
+    return (steps || []).map(function(step) {
+      var errors = _ar_validateAdvisorStep(step, { pool: st.pool, gearByHero: st.gearByHero, runeIdx: runeIdx, catalog: catalog }) || [];
+      try { _ar_applyAdvisorStep(st, step, catalog, runeIdx); } catch (e) {}
+      return { ok: errors.length === 0, errors: errors };
+    });
+  }
+
+  // A rune the Recover verb can queue: sitting in a slot at exactly 0 stars.
+  // "Recover all" and the validator share this, so it never queues a step the
+  // validator then rejects (a null/unknown star used to slip through).
+  function _ar_isRecoverableRune(r) {
+    return !!(r && r.runeName && r.star === 0);
+  }
+
+  // The base rune pool a player (or a ?plan= viewer) judges a plan against:
+  // derived from the inventory + gear supplements, the same base Apply uses.
+  // known=false when neither supplement is available, so the caller can skip
+  // validation instead of calling every step stale against an empty pool.
+  function _ar_planViewBase(inv, gear, lookups) {
+    if (!inv && !gear) return { pool: {}, known: false };
+    var pool = {};
+    try { pool = _ar_extractRunePool(inv, gear, lookups || {}).pool || {}; } catch (e) {}
+    return { pool: pool, known: true };
   }
 
   function _ar_recomputeAdvisorState(basePool, baseGear, steps, catalog, runeIdx) {
@@ -26320,7 +26373,7 @@
         var slots = liveState.gearByHero[hidStr] || {};
         for (var s = 1; s <= 6; s++) {
           var r = slots[s];
-          if (r && r.runeName && (r.star === 0 || r.star == null)) {
+          if (_ar_isRecoverableRune(r)) {
             // Stamp srcRuneName + srcGearName so the recover step renders
             // with full context in both the advisor + player views.
             toAdd.push({
@@ -26352,6 +26405,12 @@
     saveStatus.className = 'adv-save-status';
     saveStatus.textContent = window._advisorPlanSavedTs ? 'Loaded saved plan' : 'Unsaved';
     actions.appendChild(saveStatus);
+    // Non-blocking: Save stays enabled, this only says some steps would not
+    // work in the order they are listed (see the red pills on the rows).
+    var invalidNote = document.createElement('span');
+    invalidNote.className = 'adv-invalid-note';
+    invalidNote.style.display = 'none';
+    actions.appendChild(invalidNote);
     var saveBtn = document.createElement('button');
     saveBtn.className = 'adv-save-btn';
     saveBtn.type = 'button';
@@ -26442,7 +26501,7 @@
       if (galleryHeroes.length === 0) {
         var noHeroes = document.createElement('div');
         noHeroes.className = 'adv-plan-empty';
-        noHeroes.textContent = 'No heroes with gear loaded. The player needs to upload a battle report or paste a Titan Gear Pool snapshot first.';
+        noHeroes.textContent = 'No heroes with gear loaded. The player needs to run the Snapshot (Ops Center bookmark) or load a battle report that includes their gear first.';
         galleryGrid.appendChild(noHeroes);
       } else {
         galleryHeroes.forEach(function(h) {
@@ -26651,6 +26710,12 @@
       // Step list
       stepCount.textContent = steps.length ? '(' + steps.length + ')' : '';
       stepList.replaceChildren();
+      var seqCheck = _ar_validateStepSequence(basePool, baseGear, steps, catalog, runeIdx);
+      var invalidCount = seqCheck.filter(function(v) { return !v.ok; }).length;
+      invalidNote.style.display = invalidCount ? '' : 'none';
+      invalidNote.textContent = invalidCount
+        ? (invalidCount + ' step' + (invalidCount === 1 ? '' : 's') + ' will not work in this order. You can still save.')
+        : '';
       if (!steps.length) {
         var noSteps = document.createElement('li');
         noSteps.className = 'adv-plan-empty';
@@ -26676,6 +26741,16 @@
           txt.className = 'as-text';
           txt.textContent = _ar_advisorStepEnglish(step);
           li.appendChild(txt);
+          // Live validity: the step is checked against the steps above it, so
+          // a reorder or removal that breaks a dependency shows up here.
+          if (seqCheck[i] && !seqCheck[i].ok) {
+            li.classList.add('adv-step-stale');
+            var invPill = document.createElement('span');
+            invPill.className = 'as-stale-pill';
+            invPill.textContent = 'invalid';
+            invPill.title = seqCheck[i].errors.join('. ');
+            li.appendChild(invPill);
+          }
           // Up/Down arrows — mobile + a11y fallback for drag-and-drop.
           var up = document.createElement('button');
           up.type = 'button';
@@ -26765,7 +26840,7 @@
         var slots = state.gearByHero[hidStr] || {};
         for (var s = 1; s <= 6; s++) {
           var r = slots[s];
-          if (r && r.runeName && (r.star === 0 || r.star == null)) recoverableCount++;
+          if (_ar_isRecoverableRune(r)) recoverableCount++;
         }
       });
       recoverBtn.disabled = recoverableCount === 0;
@@ -27973,12 +28048,17 @@
           host.appendChild(err);
           return;
         }
+        if (plan.applied == null && planMeta && planMeta.applied != null) plan.applied = planMeta.applied;
         _ar_renderPlanStepList(host, entry, plan, siteKey, merged, catalog, lookups);
       });
   }
 
   function _ar_renderPlanStepList(host, entry, plan, siteKey, merged, catalog, lookups) {
-    var alreadyApplied = entry.status === 'applied';
+    // Applied is tracked per plan (the worker stores it on each advisor's
+    // plan); the request-level status flips when ANY plan is applied, which
+    // used to lock every other advisor's plan too. Legacy v1 records carry no
+    // per-plan flag, so only those fall back to the request status.
+    var alreadyApplied = (plan && plan.applied != null) ? !!plan.applied : entry.status === 'applied';
     // Read-only when the viewer isn't the verified owner (e.g. a ?plan= link
     // viewer): show the steps to follow in-game, but no Accept/Apply controls.
     var _roViewer = !(_ar_isOwnReport(siteKey) && _ar_isUnlocked(siteKey));
@@ -27989,30 +28069,22 @@
     // them — the apply pipeline already clamps to non-negative pool counts,
     // but skipping here avoids confusing post-apply diffs.
     var runeIdx = (typeof _ar_advisorRuneTypeIndex === 'function') ? _ar_advisorRuneTypeIndex(catalog) : {};
-    var basePool = (function() {
-      try { return _ar_extractRunePool(merged.inv || {}, merged.gear || {}, lookups || {}).pool || {}; }
-      catch (e) { return {}; }
-    })();
+    // Same base Apply uses (inv + gear supplements). `merged` never carries
+    // inv/gear, so reading them from it validated every step against an empty
+    // pool and flagged valid plans stale.
+    var _invS = null, _gearS = null;
+    try { _invS = ArmoryIdentity.getSupplement('inv', siteKey); } catch (e) {}
+    try { _gearS = ArmoryIdentity.getSupplement('gear', siteKey); } catch (e) {}
+    var planBase = _ar_planViewBase(_invS, _gearS, lookups);
+    var basePool = planBase.pool;
     var baseGear = (typeof _ar_advisorBuildBaseGear === 'function') ? _ar_advisorBuildBaseGear(merged, siteKey) : {};
     // Walk steps in order, validating each against the running state so a
     // valid merge that depends on an earlier valid place still shows green.
-    var validateState = {
-      pool: JSON.parse(JSON.stringify(basePool)),
-      gearByHero: JSON.parse(JSON.stringify(baseGear))
-    };
-    var stepValidations = (plan.steps || []).map(function(step) {
-      var errors = (typeof _ar_validateAdvisorStep === 'function')
-        ? _ar_validateAdvisorStep(step, { pool: validateState.pool, gearByHero: validateState.gearByHero, runeIdx: runeIdx, catalog: catalog })
-        : [];
-      var ok = !errors || errors.length === 0;
-      // Even when invalid, advance the simulated state with the step so
-      // downstream steps can still surface "depends on this earlier step"
-      // failures rather than cascading the same complaint.
-      if (typeof _ar_applyAdvisorStep === 'function') {
-        try { _ar_applyAdvisorStep(validateState, step, catalog, runeIdx); } catch (e) {}
-      }
-      return { ok: ok, errors: errors || [] };
-    });
+    // With no inventory/gear data there is nothing to check against, so the
+    // steps are shown unflagged rather than all marked stale.
+    var stepValidations = planBase.known
+      ? _ar_validateStepSequence(basePool, baseGear, plan.steps, catalog, runeIdx)
+      : (plan.steps || []).map(function() { return { ok: true, errors: [] }; });
 
     var accepted = (plan.steps || []).map(function(_, i) {
       if (alreadyApplied) return false;
@@ -32629,6 +32701,32 @@
   // _star, _quality, _power, heroEquips) at minimum; we mirror that so the
   // overview, Heroes tab, and Gear tab all read the same fields whether
   // the source was a battle report or a live bookmarklet snapshot.
+  // One gear-supplement piece -> the battle-report equip shape that the gear
+  // score, hero cards, rune summaries and the advisor read: { id, _slot,
+  // infos:[{type:1 stat | type:2 rune}], enhanceValue }. The supplement's
+  // rawValue/rawEnhance are the game's own buffValue/enhanceValue, so the
+  // numbers carry over unchanged.
+  function _ar_gearPieceToEquip(p) {
+    var infos = [];
+    (p.buffs || []).forEach(function(b) {
+      if (!b || b.templateId == null) return;
+      if (b.type === 'rune') {
+        infos.push({ type: 2, templateId: +b.templateId });
+      } else if (b.type === 'stat') {
+        infos.push({ type: 1, templateId: b.templateId, buffValue: b.rawValue || 0,
+                     enhanceValue: b.rawEnhance || 0, enhanceShow: b.enhanceShow });
+      }
+    });
+    var enh = {};
+    var em = p.enhance || {};
+    Object.keys(em).forEach(function(k) {
+      var e = em[k];
+      var v = (e && typeof e === 'object') ? Number(e.rawValue) || 0 : Number(e) || 0;
+      if (v) enh[k] = v;
+    });
+    return { id: p.uid || null, equipId: p.equipId, level: p.level, _slot: p.slot || null, quality: p.quality, infos: infos, enhanceValue: enh };
+  }
+
   function _ar_synthHeroesFromSupp(supp, gearSupp) {
     if (!supp || !Array.isArray(supp.list)) return null;
     var gearByHero = {};
@@ -32644,7 +32742,16 @@
       });
     }
     return supp.list.map(function(h) {
-      var equips = gearByHero[h.id] || [];
+      // Slot order (1..6), one piece per slot, in the battle-report shape. The
+      // supplement lists gold, equipped non-gold and preset pieces in that
+      // order, not by slot, so a first piece per slot wins and the rest sort
+      // by slot number; each equip carries _slot for consumers that need it.
+      var seenSlot = {};
+      var equips = (gearByHero[h.id] || []).filter(function(pc) {
+        if (!pc || !pc.slot || pc.slot < 1 || pc.slot > 6 || seenSlot[pc.slot]) return false;
+        seenSlot[pc.slot] = true;
+        return true;
+      }).sort(function(a, b) { return a.slot - b.slot; }).map(_ar_gearPieceToEquip);
       return {
         id: h.id,
         _id: h.id,
