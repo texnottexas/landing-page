@@ -191,7 +191,7 @@ function renderChrome() {
   $('#tabsIn').innerHTML = TABS.map(function (v) { return '<a class="tab" href="#' + v + '" data-v="' + v + '">' + ic(VIEWS[v].icon, 'sm') + VIEWS[v].label + '</a>'; }).join('');
   $('#bar').innerHTML = TABS.map(function (v) { return '<a href="#' + v + '" data-v="' + v + '">' + ic(VIEWS[v].icon) + '<span>' + VIEWS[v].label + '</span></a>'; }).join('');
   $('#pagesPop').innerHTML = '<div class="pop-h">All pages</div>' + PAGES.map(function (p) { return '<a class="pop-a" role="menuitem" href="' + p[0] + '">' + esc(p[1]) + '</a>'; }).join('');
-  $('#footNote').innerHTML = '<span>This is the new Armory.</span><a href="' + esc(classicUrl('')) + '">Back to classic</a><button class="tb link" type="button" data-fb>Send feedback</button>';
+  $('#footNote').innerHTML = '<span>This is the new Armory.</span><a class="tb link" href="' + esc(classicUrl('')) + '">Back to classic</a><button class="tb link" type="button" data-fb>Send feedback</button>';
 }
 function renderAll() {
   renderChrome(); renderOverview(); renderHeroes();
@@ -205,7 +205,7 @@ function renderAll() {
 function ageSpan(l) { return '<span class="' + (l.warn ? 'c-warn' : '') + '">(' + (l.ageDays < 1 ? 'today' : nm(l.age) + ' old') + ')</span>'; }
 function meterBlock(o) {
   return '<div class="bm" data-numwrap><div class="bm-top"><span class="l lbl">' + esc(o.label) + '</span><button class="info" type="button" data-explain="' + o.key + '" aria-label="How ' + esc(o.label.toLowerCase()) + ' is worked out">' + ic('info', 'sm') + '</button></div>' +
-    '<div class="bm-num"><span class="n disp" data-num translate="no">' + esc(o.num) + '</span>' + (o.of ? '<span class="t13 muted" translate="no">' + esc(o.of) + '</span>' : '') + '</div>' +
+    '<div class="bm-num"><span class="n disp" data-num translate="no">' + esc(o.num) + '</span>' + (o.of ? '<span class="t13 muted">' + nd(o.of) + '</span>' : '') + '</div>' +
     '<div class="bm-row"><div class="meter lg r-' + ramp(o.pct) + '" role="img" aria-label="' + esc(o.label) + ' ' + o.pct + ' percent of the maximum"><i style="width:' + Math.max(2, o.pct) + '%"></i></div>' + (o.showPct ? '<span class="bm-pct c-' + ramp(o.pct) + '" translate="no">' + o.pct + '%</span>' : '') + '</div>' +
     '<div class="s src t12 muted">' + o.src + '</div></div>';
 }

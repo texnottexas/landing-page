@@ -28,7 +28,7 @@ function renderStart(kind, extra) {
         return '<button class="pick" type="button" data-pick="' + i + '">' + (p.avatar ? art(p.avatar, 'ava', (p.name || '?').charAt(0), '') : '<span class="ava fb" translate="no">' + esc((p.name || '?').charAt(0)) + '</span>') + '<span translate="no" style="font-weight:600">' + esc(p.name) + '</span><span class="t13 muted">' + esc(p.side) + '</span></button>';
       }).join('') + '</div><div class="err" id="stErr" role="alert"></div>';
     } else {
-      pick = '<div class="irow"><input class="fld" id="rid" type="text" inputmode="numeric" autocomplete="off" placeholder="Battle report ID" aria-label="Battle report ID"><button class="btn" type="button" data-load>Load</button></div><div class="err" id="stErr" role="alert">' + esc(extra && extra.err || '') + '</div>' +
+      pick = '<div class="irow"><input class="fld" id="rid" type="text" inputmode="numeric" autocomplete="off" placeholder="Battle Report ID" aria-label="Battle Report ID"><button class="btn" type="button" data-load>Load</button></div><div class="err" id="stErr" role="alert">' + esc(extra && extra.err || '') + '</div>' +
         '<details class="help" open><summary>Where do I find a Battle Report ID?</summary><ol><li>In the game, open a battle report from a fight against another player (Time Clash Arena works).</li><li>Tap the VS icon.</li><li>Tap the copy icon next to Report No., then paste it in the box above.</li></ol><p>On Server 2864, Snapshot can do this for you: run it in the game and tap Set up.</p></details>' +
         mineBtn() + '<h2 class="disp" style="font-size:var(--fs-20)">Or open a share link</h2><div class="irow"><input class="fld" id="scode" type="text" maxlength="4" autocomplete="off" placeholder="4-letter code" aria-label="Share code"><button class="btn" type="button" data-code>Open</button></div>';
     }
@@ -115,7 +115,7 @@ function gearBody() {
     Object.keys(eq).forEach(function (k) { names[k] = 1; }); Object.keys(bag).forEach(function (k) { if (bag[k] > 0) names[k] = 1; });
     var rows = Object.keys(names).sort().map(function (n) {
       var e = eq[n], inbag = +bag[n] || 0, icon = e ? e.icon : (G.RUNE_ICON[n] || slug(n));
-      return '<div class="rt">' + art(BASE + 'rune-icons/' + icon + '.png', 'ico q5', n.charAt(0), '') + '<div class="rb"><div class="ra" translate="no">' + esc(n) + '</div><div class="rs">' + nd((e ? e.n + ' equipped' : '0 equipped')) + (e ? ' &middot; ' + nd(e.s + ' of ' + e.sm + ' stars') : '') + '</div></div><div class="rn" translate="no">' + inbag + '<div class="rs" style="font-family:var(--sans);font-weight:400">in bag</div></div></div>';
+      return '<div class="rt">' + art(BASE + 'rune-icons/' + icon + '.png', 'ico q5', n.charAt(0), '') + '<div class="rb"><div class="ra" translate="no">' + esc(n) + '</div><div class="rs">' + nd((e ? e.n + ' equipped' : '0 equipped')) + (e ? ' &middot; ' + nd(e.s + ' of ' + e.sm + ' stars') : '') + '</div></div><div class="rn"><span translate="no">' + inbag + '</span><div class="rs" style="font-family:var(--sans);font-weight:400">in bag</div></div></div>';
     }).join('');
     el.innerHTML = '<section class="card">' + (rows || '<p class="muted">No runes found in battle reports or the bag.</p>') + (vm.runes.known ? '' : '<p class="foot" style="margin-top:12px">The bag is not in your game data, so runes in bag read 0.</p>') + '</section>';
     return;
@@ -149,13 +149,13 @@ function renderBase() {
         return '<a class="dcard" href="#base/decor?item=' + esc(encodeURIComponent(x.n).replace(/%20/g, '+')) + '">' + art(BASE + 'decor-icons/' + x.ic, 'ico dico ' + qCls(x.q), x.n.charAt(0), '') + '<span class="pill p-lv" translate="no">Lv.' + esc(x.lv) + '</span><span class="dn" translate="no">' + esc(x.n) + '</span><span class="ds">' + nd(x.count + (x.count === 1 ? ' piece' : ' pieces') + ' placed') + '</span></a>';
       }).join('') + '</div>' + (list.length > 12 && !S.all.decor ? '<button class="btn more" type="button" data-showall="decor"><span>Show all <span translate="no">' + list.length + '</span></span></button>' : '');
   } else body = needData('No decoration data yet.');
-  $('#v-base').innerHTML = '<div class="vb">' + body + classicLink('decorations', D.placedKinds ? 'See all ' + D.placedKinds + ' decorations on the classic page' : 'See decorations on the classic page') + '</div>';
+  $('#v-base').innerHTML = '<div class="vb">' + body + classicLink('decorations', 'See all decorations on the classic page') + '</div>';
 }
 function renderBeasts() {
   var B = S.vm.beasts, body;
   if (B) {
     body = '<p class="t13 muted">' + nd(B.deployed + ' beasts deployed in ' + B.fields + ' fields' + (B.collected != null ? ' \u00B7 ' + B.collected + ' collected' : '')) + '</p>' +
-      (B.avgPotential != null ? '<section class="card"><div class="bm-top"><span class="l lbl">Average potential</span></div><div class="bm-num"><span class="n disp" translate="no">' + B.avgPotential + '%</span><span class="t13 muted">of beasts deployed</span></div><div class="meter lg r-' + ramp(B.avgPotential) + '" style="margin-top:8px"><i style="width:' + Math.max(2, B.avgPotential) + '%"></i></div></section>' : '') +
+      (B.avgPotential != null ? '<section class="card bm"><div class="bm-top"><span class="l lbl">Average potential</span></div><div class="bm-num"><span class="n disp" translate="no">' + B.avgPotential + '%</span><span class="t13 muted">of beasts deployed</span></div><div class="meter lg r-' + ramp(B.avgPotential) + '" style="margin-top:8px"><i style="width:' + Math.max(2, B.avgPotential) + '%"></i></div></section>' : '') +
       B.fieldList.filter(function (f) { return f.beasts.length; }).map(function (f) {
         return '<section class="card"><h3 class="sub" translate="no">' + esc(f.name) + '</h3><div class="t13 muted">' + nd(f.deployed + ' deployed') + '</div><div class="bicons">' + f.beasts.map(function (b) { return art(BASE + 'beast-icons/' + b.icon, 'ico bico', b.name.charAt(0), b.name); }).join('') + '</div></section>';
       }).join('');
@@ -205,7 +205,7 @@ function bagBody() {
   var D = S.vm.decor, R = S.vm.runes;
   if (!D.known) return '<p class="muted">The bag is not available. It comes from the owner’s game data, and the owner can keep it private.</p>' + classicLink('inventory', 'Open the bag in classic');
   var runes = Object.keys(R.runeBag).filter(function (n) { return R.runeBag[n] > 0; }).sort().map(function (n) {
-    return '<li style="display:flex;flex-direction:column;align-items:center;gap:4px;width:72px">' + art(BASE + 'rune-icons/' + (G.RUNE_ICON[n] || slug(n)) + '.png', 'ico q5', n.charAt(0), '').replace('class="ico q5"', 'class="ico q5" style="width:40px;height:40px"') + '<span class="t12" translate="no" style="text-align:center;line-height:1.25">' + esc(n).replace(/-/g, '\u2011') + '</span><span class="t12 muted" translate="no">' + esc(R.runeBag[n]) + ' in bag</span></li>';
+    return '<li style="display:flex;flex-direction:column;align-items:center;gap:4px;width:72px">' + art(BASE + 'rune-icons/' + (G.RUNE_ICON[n] || slug(n)) + '.png', 'ico q5', n.charAt(0), '').replace('class="ico q5"', 'class="ico q5" style="width:40px;height:40px"') + '<span class="t12" translate="no" style="text-align:center;line-height:1.25">' + esc(n).replace(/-/g, '\u2011') + '</span><span class="t12 muted">' + nd(R.runeBag[n] + ' in bag') + '</span></li>';
   }).join('');
   return '<section class="card"><div class="strip">' + lbl('Universal Decor Shards', fmtInt(D.shards), 'in bag') + lbl('Decoration kinds', D.bag.kinds, 'in bag') + '</div></section>' +
     '<section class="card"><h3 class="disp" style="font-size:var(--fs-17)">Runes in bag</h3>' + (runes ? '<ul style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px">' + runes + '</ul>' : '<p class="muted" style="margin-top:8px">No runes in the bag.</p>') + '</section>' + classicLink('inventory', 'Open the full bag in classic');
@@ -235,7 +235,7 @@ function statusBody() {
     return '<div class="srow"><div class="sb"><div class="a code" translate="no" style="font-family:var(--mono);font-size:var(--fs-14)">' + esc(repLabel(id)) + '</div>' + (conf ? '<div class="b">' + (ids.length === 1 ? 'This is your only report. Removing it opens the start screen.' : 'Remove this report?') + '</div>' : '') + '</div>' +
       (sv ? (conf ? '<button class="btn" type="button" data-rmno>Keep</button><button class="btn" type="button" data-rmyes="' + esc(id) + '">Remove</button>' : '<button class="btn" type="button" data-rm="' + esc(id) + '">Remove</button>') : '') + '</div>';
   }).join('') : '<p class="muted">No battle reports. The armory is built from game data only.</p>') +
-    (sv ? '<div class="irow" style="margin-top:8px"><input class="fld" id="repIn" type="text" inputmode="numeric" autocomplete="off" aria-label="Battle report ID" placeholder="Add a battle report ID"><button class="btn" type="button" data-addrep>Add</button></div><div class="err" id="repErr" role="alert"></div>' : '') + '</div></div>';
+    (sv ? '<div class="irow" style="margin-top:8px"><input class="fld" id="repIn" type="text" inputmode="numeric" autocomplete="off" aria-label="Battle Report ID" placeholder="Add a battle report ID"><button class="btn" type="button" data-addrep>Add</button></div><div class="err" id="repErr" role="alert"></div>' : '') + '</div></div>';
   return o;
 }
 function settingsBody() {
