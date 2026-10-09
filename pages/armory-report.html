@@ -30579,7 +30579,52 @@
     container.appendChild(btnRow);
   }
 
+  // Removing the only report wipes the saved report, marches and share code
+  // from this device, so ask first. Plain in-page window, not confirm().
+  function _ar_confirmRemoveLastReport(report, onYes) {
+    var m = openModal({ zIndex: '1100', modalClass: 'modal', maxWidth: '420px', esc: true, backdropClose: true });
+    m.bg.id = 'ar-remove-last-confirm';
+    var modal = m.modal;
+    var h = document.createElement('h2');
+    h.textContent = 'Remove your last report?';
+    modal.appendChild(h);
+    var p = document.createElement('p');
+    var shortId = report && report.id ? String(report.id).substring(0, 8) + '...' : '';
+    p.textContent = 'This removes ' + (shortId ? 'report ' + shortId : 'your report') +
+      ', your saved marches and your share code from this device, and takes you back to the start screen. ' +
+      'Data you imported with Snapshot is not removed.';
+    modal.appendChild(p);
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:.6rem;justify-content:flex-end;flex-wrap:wrap;margin-top:1rem;';
+    var keep = document.createElement('button');
+    keep.type = 'button';
+    keep.className = 'btn-secondary';
+    keep.id = 'ar-remove-last-keep';
+    keep.textContent = 'Keep my report';
+    keep.addEventListener('click', m.close);
+    var go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'btn-secondary';
+    go.id = 'ar-remove-last-go';
+    go.style.cssText = 'border-color:var(--red,#f85149);color:var(--red,#f85149);';
+    go.textContent = 'Remove it';
+    go.addEventListener('click', function() { m.close(); onYes(); });
+    row.appendChild(keep);
+    row.appendChild(go);
+    modal.appendChild(row);
+    document.body.appendChild(m.bg);
+    setTimeout(function() { try { keep.focus(); } catch (e) {} }, 30);
+  }
+
   function removeReport(idx) {
+    if (wizardState.reportData.length === 1) {
+      _ar_confirmRemoveLastReport(wizardState.reportData[0], function() { _removeReportNow(idx); });
+      return;
+    }
+    _removeReportNow(idx);
+  }
+
+  function _removeReportNow(idx) {
     wizardState.reportData.splice(idx, 1);
 
     if (wizardState.reportData.length === 0) {
