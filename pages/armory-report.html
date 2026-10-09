@@ -3900,9 +3900,7 @@
 
   // ── Identity / supplement-cache facade ────────────────────────────────────
   // Single chokepoint for every identity-adjacent localStorage key on this
-  // page. Centralising these reads/writes lets bulk operations (clearSupplements
-  // for guest-out / 403 cache wipe / migration) reach every relevant key in
-  // one call instead of spreading the list across the file.
+  // page. Centralising these reads/writes keeps the key list in one place.
   //
   // Keys touched:
   //   playerIdentity                    — the logged-in user
@@ -4005,20 +4003,6 @@
       },
       removeLastSync: function(kind, siteKey) {
         safeRemove('armory_lastSync_' + kind + '_' + siteKey);
-      },
-
-      // ── Bulk wipe (the headline feature) ───────────────────────────────
-      // Wipes payload + meta + lastSync for every supplement kind under a
-      // siteKey. Use after a 403-sentinel response, on guest-out, or when
-      // migrating a stale local identity. Single call → no chance of a
-      // half-cleared cache leaking stale data across privacy toggles.
-      clearSupplements: function(siteKey) {
-        for (var i = 0; i < SUP_KINDS.length; i++) {
-          var k = SUP_KINDS[i];
-          this.removeSupplement(k, siteKey);
-          this.removeSupplementMeta(k, siteKey);
-          this.removeLastSync(k, siteKey);
-        }
       },
 
       // Internal — exposed so tests / callers can iterate the same kind list
@@ -4257,11 +4241,6 @@
         .catch(function(e) { _ar_rosterPromise = null; throw e; });
     }
     return _ar_rosterPromise;
-  }
-  // Roster siteKeys are sha256(uid) truncated to 16 hex chars.
-  async function _ar_siteKeyFromUid(uid) {
-    var full = await _ar_sha256Hex(uid);
-    return full.slice(0, 16);
   }
 
   // Decide whether the loaded report belongs to the viewer. Strict siteKey
@@ -7627,7 +7606,6 @@
   function renderStepBuilding(container) {
     while (container.firstChild) container.removeChild(container.firstChild);
 
-    var svgNS = SVG_NS;
 
     // Green circle with checkmark (72px)
     var iconWrap = document.createElement('div');
@@ -7726,7 +7704,6 @@
 
   // ── Sticky report header ─────────────────────────────────────────────────
   function buildReportHeader(app, player) {
-    var svgNS = SVG_NS;
 
     var hdr = document.createElement('header');
     hdr.className = 'report-header';
@@ -9218,7 +9195,6 @@
 
     var player = wizardState.player || {};
     var reportCount = wizardState.reportData.length;
-    var svgNS = SVG_NS;
 
     // ── Sticky header ──
     buildReportHeader(app, player);
@@ -9406,11 +9382,10 @@
     var siteKey = (wizardState.player && wizardState.player.siteKey) || (window._reportSiteKey) || null;
     var inS2864 = false;
     if (siteKey && _ar_rosterMap && _ar_rosterMap[siteKey]) inS2864 = true;
-    // Resolve identity + own-report before building tabDefs — the Advisor
+    // Resolve own-report before building tabDefs — the Advisor
     // Plans tab gate at the bottom of this block reads isOwnReport and was
     // silently dropping the tab (var hoisting → undefined) until both
     // declarations moved above the tab list.
-    var ownIdentityForTabs = getStoredIdentity();
     var isOwnReport = _ar_isOwnReport(siteKey);
     // Player-view deep link (?plan=<code>): an advisor hands this to the player
     // so their report opens straight onto the Advisor Plans tab. Surface that
@@ -9648,11 +9623,8 @@
 
     // ── Summary chip row (compact stats) ──
     var totalGearScore = 0;
-    var topHero = null, topHeroScore = 0;
     merged.heroes.forEach(function(h) {
-      var gs = heroGearScore(h);
-      totalGearScore += gs;
-      if (gs > topHeroScore) { topHeroScore = gs; topHero = h; }
+      totalGearScore += heroGearScore(h);
     });
     var avgGearScore = merged.heroes.length > 0 ? Math.round(totalGearScore / merged.heroes.length) : 0;
 
@@ -10737,7 +10709,6 @@
 
   // ── buildHeroCard ─────────────────────────────────────────────────────────
   function buildHeroCard(hero) {
-    var svgNS = SVG_NS;
     var id = hero.id;
     var name = heroName(id);
     var branch = heroBranch(id);
@@ -10746,7 +10717,6 @@
     var level = hero.level || 0;
     var star = hero.star || 0;
     var nonActive = hero.nonActiveSkills || [];
-    var hasExcl = nonActive.length > 0;
     var gearScore = heroGearScore(hero);
     var awakened = (hero.awakenLevel || 0) > 0;
 
@@ -11725,7 +11695,7 @@
 
     gearPoolEl.setAttribute('data-rendered', '1');
     try {
-      renderTitanGearPoolSubTab(gearPoolEl, null);
+      renderTitanGearPoolSubTab(gearPoolEl);
     } catch (e) {
       var errEl = _gp_el('div', { cls: 'gp-empty', text: 'Could not render gear pool: ' + (e && e.message ? e.message : e) });
       gearPoolEl.appendChild(errEl);
@@ -12104,50 +12074,16 @@
     return pill;
   }
 
-  // Inline SVG helper — returns an <svg> element using the icon set we use across the gear-pool UI.
-  // Sized 1em so the icon scales with surrounding text. Stroke-based glyphs look crisp on dark theme.
-  function _gp_svgIcon(name, opts) {
-    opts = opts || {};
-    var size = opts.size || 14;
-    var stroke = opts.stroke || 'currentColor';
-    var fill = opts.fill || 'none';
-    var svg = document.createElementNS(SVG_NS, 'svg');
-    svg.setAttribute('width', size);
-    svg.setAttribute('height', size);
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('fill', fill);
-    svg.setAttribute('stroke', stroke);
-    svg.setAttribute('stroke-width', opts.strokeWidth || 2);
-    svg.setAttribute('stroke-linecap', 'round');
-    svg.setAttribute('stroke-linejoin', 'round');
+  // Padlock glyph for the gear-pool lock badges (the shared svgIcon builder).
+  function _gp_lockIcon(size) {
+    var svg = svgIcon({
+      size: size, linecap: 'round', linejoin: 'round', style: { flexShrink: '0' },
+      children: [
+        ['rect', { x: 3, y: 11, width: 18, height: 11, rx: 2 }],
+        ['path', { d: 'M7 11V7a5 5 0 0 1 10 0v4' }]
+      ]
+    });
     svg.setAttribute('aria-hidden', 'true');
-    svg.style.flexShrink = '0';
-    if (opts.cls) svg.setAttribute('class', opts.cls);
-    if (opts.style) svg.setAttribute('style', opts.style);
-
-    function path(d) { var p = document.createElementNS(SVG_NS, 'path'); p.setAttribute('d', d); return p; }
-    function rect(x, y, w, h, rx) { var r = document.createElementNS(SVG_NS, 'rect'); r.setAttribute('x', x); r.setAttribute('y', y); r.setAttribute('width', w); r.setAttribute('height', h); if (rx) r.setAttribute('rx', rx); return r; }
-    function circ(cx, cy, r) { var c = document.createElementNS(SVG_NS, 'circle'); c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', r); return c; }
-
-    if (name === 'lock') {
-      svg.appendChild(rect(3, 11, 18, 11, 2));
-      svg.appendChild(path('M7 11V7a5 5 0 0 1 10 0v4'));
-    } else if (name === 'check') {
-      svg.appendChild(path('M20 6L9 17l-5-5'));
-    } else if (name === 'x' || name === 'cross') {
-      svg.appendChild(path('M18 6L6 18'));
-      svg.appendChild(path('M6 6l12 12'));
-    } else if (name === 'cog') {
-      svg.appendChild(circ(12, 12, 3));
-      svg.appendChild(path('M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'));
-    } else if (name === 'wrench') {
-      svg.appendChild(path('M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z'));
-    } else if (name === 'cloud') {
-      svg.appendChild(path('M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z'));
-    } else if (name === 'cloud-off') {
-      svg.appendChild(path('M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 15h9a5 5 0 0 0 1.7-.3'));
-      svg.appendChild(path('M1 1l22 22'));
-    }
     return svg;
   }
 
@@ -14652,7 +14588,7 @@
     return row;
   }
 
-  function renderTitanGearPoolSubTab(container, data) {
+  function renderTitanGearPoolSubTab(container) {
     while (container.firstChild) container.removeChild(container.firstChild);
     // Prefer locally-stored real extraction over the bundled mock. Gear lives
     // alongside inv/bench/chips under `armory_gear_<siteKey>` (managed by
@@ -14669,18 +14605,17 @@
         } catch (e) { /* ignore */ }
       }
     }
-    var src = stored || data;
+    var data = stored;
 
     // Cloud-sync pill is hosted on the parent sub-tab bar (Heroes / Titan Gear
     // Pool) so it sits flush with the other tab indicators — no separate
     // toolbar needed. See renderHeroesTab where the pill is appended with
     // marginLeft:auto to right-align inside the sub-tab bar.
 
-    if (!src || !src.goldGear) {
+    if (!data || !data.goldGear) {
       container.appendChild(_gp_el('p', { cls: 'gp-empty', text: 'No Titan Gear Pool data loaded yet. Use the "Import TopWar Data" button in the header to upload your own extraction.' }));
       return;
     }
-    data = src;
 
     // Pool view shows: every gold piece + every equipped non-gold + every
     // non-gold piece that's been slotted into at least one preset (swap-in
@@ -14723,7 +14658,6 @@
       return copy;
     });
     var summary = data.summary || {};
-    var schemes = data.schemes || [];
 
     // ── Filter / sort bar ────────────────────────────────────────────────
     // Single flat pool grid (no per-hero rows). Default sort groups same-hero
@@ -14843,7 +14777,7 @@
     mkDropdown('Sort', sortOpts, 'sort');
 
     var lockedBtn = _gp_el('button', { cls: 'gp-pill', style: 'display:inline-flex;align-items:center;gap:5px;' });
-    lockedBtn.appendChild(_gp_svgIcon('lock', { size: 12 }));
+    lockedBtn.appendChild(_gp_lockIcon(12));
     lockedBtn.appendChild(document.createTextNode('Locked only'));
     lockedBtn.addEventListener('click', function () {
       state.lockedOnly = !state.lockedOnly;
@@ -14989,7 +14923,7 @@
       var leftGroup = _gp_el('div', { style: 'display:flex;align-items:center;gap:3px;' });
       if (p.locked) {
         var lockBadge = _gp_el('div', { cls: 'lock-badge', title: 'Locked' });
-        lockBadge.appendChild(_gp_svgIcon('lock', { size: 11 }));
+        lockBadge.appendChild(_gp_lockIcon(11));
         leftGroup.appendChild(lockBadge);
       }
       leftGroup.appendChild(_gp_el('div', { cls: 'level-badge' + (p.level === 0 ? ' lv0' : ''), text: p.level > 0 ? ('Lv.' + p.level) : 'Lv.0' }));
@@ -15113,7 +15047,7 @@
       var lockChip = _gp_el('span', {
         style: 'display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 8px;background:rgba(210,153,34,0.2);color:var(--yellow);border-radius:4px;font-weight:700;'
       });
-      lockChip.appendChild(_gp_svgIcon('lock', { size: 11 }));
+      lockChip.appendChild(_gp_lockIcon(11));
       lockChip.appendChild(document.createTextNode('LOCKED'));
       hTop.appendChild(lockChip);
     }
@@ -17484,7 +17418,6 @@
     var header = document.createElement('div');
     header.className = 'skin-header';
 
-    var activeName = (activeSd && activeSd[0]) ? activeSd[0] : (activeId ? 'Skin #' + activeId : 'None');
     var summaryEl = document.createElement('div');
     summaryEl.className = 'skin-summary';
     var countSpan = document.createElement('span'); countSpan.className = 'skin-summary-count'; countSpan.textContent = effectIds.length + ' owned';
@@ -17570,7 +17503,6 @@
       var equipBuffs = sd ? sd[2] : [];
       var ownBuffs = sd ? sd[3] : [];
       var skillName = sd ? sd[4] : '';
-      var isActive = sid === activeId;
 
       var card = document.createElement('div');
       card.className = 'skin-card' + (NEW_SKIN_IDS[sid] ? ' is-new' : '');
@@ -17682,7 +17614,6 @@
       var altMembers = SKIN_ALT_LOOKUP[String(sid)];
       var members = altMembers || levelMembers || [parseInt(sid, 10)];
       var chainLabel = altMembers ? 'Alternate Forms' : 'Level Progression';
-      var chainSubLabel = altMembers ? 'Alt' : 'Lv.';
       var isNew = !!NEW_SKIN_IDS[String(sid)];
 
       var overlay = document.createElement('div');
@@ -18154,7 +18085,6 @@
         var ph = document.createElement('div');
         ph.className = 'basedecor-icon-ph';
         // SVG placeholder icon
-        var svgNS = SVG_NS;
         ph.appendChild(svgIcon({ size: 20, stroke: 'var(--muted)', strokeWidth: '1.5', children: [['path', { 'd': 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5' }]] }));
         card.appendChild(ph);
       }
@@ -18332,7 +18262,6 @@
         var ph = document.createElement('div');
         ph.className = 'halo-icon-ph';
         // SVG halo placeholder
-        var svgNS = SVG_NS;
         ph.appendChild(svgIcon({ size: 28, stroke: 'var(--muted)', strokeWidth: '1.5', children: [['circle', { 'cx': '12', 'cy': '12', 'r': '10' }], ['path', { 'd': 'M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z' }]] }));
         card.appendChild(ph);
       }
@@ -21731,7 +21660,6 @@
   var EB_ELEM_COLORS = { Fire: '#f85149', Wind: '#3fb950', Water: '#79c0ff', Ground: '#d29922' };
 
   function ebBuildBeastCard(b) {
-    var svgNS = SVG_NS;
     var card = document.createElement('div');
     card.className = 'enigma-beast-card' + (b.quality === 4 ? ' eb-purple' : ' eb-gold');
 
@@ -28924,7 +28852,6 @@
       return;
     }
 
-    var svgNS = SVG_NS;
 
     // Local state
     var ebView = 'fields';
@@ -29866,7 +29793,6 @@
     var tabEntries = mechasWithChips.concat([MOTHERSHIP_ENTRY]);
 
     // Mecha tab bar — always shown now (mothership = always at least one extra entry)
-    var activeMechaIdx = 0;
     var tabBar = document.createElement('div');
     tabBar.className = 'chip-tab-bar';
     tabEntries.forEach(function(m, i) {
@@ -29884,7 +29810,6 @@
       nameDiv.textContent = MECHA_NAMES[m.mechaId] || ('HT #' + m.mechaId);
       btn.appendChild(nameDiv);
       btn.addEventListener('click', function() {
-        activeMechaIdx = i;
         tabBar.querySelectorAll('.chip-tab-btn').forEach(function(b) { b.classList.remove('active'); });
         btn.classList.add('active');
         if (m._isMothership) {
@@ -30376,8 +30301,6 @@
   // SET_NAMES + SET_ICONS + RARITY_LABELS + SLOT_LABELS lookups.
   function _ar_buildChipPoolGrid(parent, chips) {
     var SLOT_NAMES = (typeof SLOT_LABELS !== 'undefined' && SLOT_LABELS) || ['Core','Slot 1','Slot 2','Slot 3','Slot 4','Slot 5','Slot 6'];
-    var COLORS = { 1:'#8b949e', 2:'#3fb950', 3:'#79c0ff', 4:'#a371f7', 5:'#d29922' };
-    var DEFAULT_ICON = ASSET_BASE + 'assets/ht-chip-icons/Hoplon.png';
 
     // Pre-resolve cfg-derived fields per chip via CL lookup.
     var enriched = chips.map(function(c) {
@@ -30778,7 +30701,6 @@
         removeBtn.className = 'remove-btn';
         removeBtn.title = 'Remove report';
 
-        var svgNS = SVG_NS;
         removeBtn.appendChild(svgIcon({ size: 16, strokeWidth: '2.5', linecap: 'round', children: [['line', { 'x1': '18', 'y1': '6', 'x2': '6', 'y2': '18' }], ['line', { 'x1': '6', 'y1': '6', 'x2': '18', 'y2': '18' }]] }));
 
         removeBtn.addEventListener('click', function() { removeReport(capturedIdx); });
