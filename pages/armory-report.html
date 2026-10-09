@@ -6799,8 +6799,8 @@
   }
 
   // Phase 4: bookmarklet-only wizard entry for verified S2864 players. The
-  // paste modal lives at z-index 850 and the wizard overlay sits above it
-  // at z-index 1000, so we close the wizard FIRST and then open the paste
+  // import modal lives at z-index 850 and the wizard overlay sits above it
+  // at z-index 1000, so we close the wizard FIRST and then open the import
   // modal — otherwise the paste UI mounts behind the wizard and the user
   // can't interact with it. On a successful paste we hydrate
   // wizardState.player from the verified identity and jump straight to the
@@ -6827,14 +6827,7 @@
     // paste, before renderFullReport runs.
     try { closeWizard(); } catch (_e) {}
 
-    _ar_openPasteModal({
-      kind: 'bench',
-      siteKey: identity.siteKey,
-      validate: _ar_validateBenchJson,
-      lsKey: 'armory_bench_',
-      tsPath: 'ts',
-      staleLabel: 'bench snapshot'
-    }, function() {
+    _ar_openImportModal(identity.siteKey, function() {
       wizardState.player = pseudoPlayer;
       wizardState.step = 'building';
       try { saveState(); } catch (_e) {}
@@ -24167,8 +24160,8 @@
               obj.formation || obj.enigmaState || obj.decorations || obj.baseSkin);
   }
 
-  // Drives one section through the same validate → sanitize → store → upload
-  // → setLastSync sequence as _ar_openPasteModal. Returns the per-kind status
+  // Drives one section through the validate → sanitize → store → upload
+  // → setLastSync sequence. Returns the per-kind status
   // string used by the import progress UI: 'ok' | 'invalid' | 'too-large' |
   // 'storage' | 'upload-failed' | 'no-data'.
   async function _ar_processEnvelopeSection(spec, payload, siteKey) {
@@ -24232,161 +24225,6 @@
       }
     }
     return results;
-  }
-
-  // Shared paste modal — kind: 'inv' | 'bench' | 'chips' | 'gear'. Also detects
-  // a v=2 envelope and fans out to all four uploaders so a player can paste the
-  // consolidated bookmarklet output into any per-kind modal.
-  function _ar_openPasteModal(opts, onSaved) {
-    var kind = opts.kind, siteKey = opts.siteKey;
-    var validate = opts.validate, lsKey = opts.lsKey;
-    var tsPath = opts.tsPath;          // 'meta.ts' (inv) or 'ts' (bench)
-    var staleLabel = opts.staleLabel;  // 'snapshot' or 'bench snapshot'
-
-    var bg = document.createElement('div');
-    bg.className = 'modal-bg show';
-    bg.style.zIndex = '850';
-    var modal = document.createElement('div');
-    modal.className = 'modal sup-unlock-modal';
-    modal.style.maxWidth = '640px';
-    bg.appendChild(modal);
-
-    var h = document.createElement('h2');
-    h.textContent = opts.title;
-    modal.appendChild(h);
-
-    var p = document.createElement('p');
-    p.textContent = opts.desc;
-    modal.appendChild(p);
-
-    if (opts.bookmarkletPanel) {
-      modal.appendChild(_ar_buildBookmarkletPanel(opts.bookmarkletPanel));
-    }
-
-    var ta = document.createElement('textarea');
-    ta.style.cssText = 'width: 100%; min-height: 120px; max-height: 240px; background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 8px; border-radius: 6px; font-family: monospace; font-size: 11px; resize: vertical;';
-    ta.placeholder = opts.placeholder;
-    modal.appendChild(ta);
-
-    var err = document.createElement('div');
-    err.className = 'err';
-    modal.appendChild(err);
-
-    var actions = document.createElement('div');
-    actions.className = 'actions';
-    var cancel = document.createElement('button');
-    cancel.className = 'secondary';
-    cancel.textContent = 'Cancel';
-    cancel.onclick = function() { document.body.removeChild(bg); };
-    var save = document.createElement('button');
-    save.className = 'primary';
-    save.textContent = 'Save';
-    actions.appendChild(cancel);
-    actions.appendChild(save);
-    modal.appendChild(actions);
-
-    function readTs(obj) {
-      if (!obj) return 0;
-      var v = (tsPath === 'meta.ts') ? (obj.meta && obj.meta.ts) : obj.ts;
-      return v ? new Date(v).getTime() : 0;
-    }
-    function writeTs(obj, iso) {
-      if (tsPath === 'meta.ts') { if (!obj.meta) obj.meta = {}; if (!obj.meta.ts) obj.meta.ts = iso; }
-      else { if (!obj.ts) obj.ts = iso; }
-    }
-
-    save.onclick = async function() {
-      err.textContent = '';
-      var raw;
-      try { raw = JSON.parse(ta.value.trim()); }
-      catch (e) { console.warn('[armory] paste parse failed', e); err.textContent = 'We could not read that. Run Snapshot again and paste the whole result.'; return; }
-
-      // Player pasted the consolidated v=2 envelope into a single-kind modal.
-      // Fan out instead of erroring on schema mismatch; saves them having to
-      // know which paste box matches which bookmarklet.
-      if (_ar_isEnvelope(raw)) {
-        if (!siteKey) { err.textContent = 'Verify your in-game UID first, then try again.'; return; }
-        save.disabled = true; cancel.disabled = true;
-        err.style.color = 'var(--muted)';
-        err.textContent = 'Detected combined snapshot. Uploading all sections…';
-        try {
-          var results = await _ar_handleEnvelope(raw, siteKey, function(ev) {
-            if (ev.phase === 'start') err.textContent = 'Uploading ' + (_AR_KIND_LABELS[ev.kind] || 'data') + '… (' + (ev.index + 1) + ' of ' + ev.total + ')';
-          });
-          var failed = results.filter(function(r) { return r.status !== 'ok'; });
-          if (failed.length) {
-            err.style.color = 'var(--red)';
-            err.textContent = 'Some sections did not save: ' + failed.map(_ar_envProblem).join(', ') + '.';
-            save.disabled = false; cancel.disabled = false;
-            return;
-          }
-          try {
-            if (wizardState && wizardState.reportData && wizardState.reportData.length > 0) {
-              saveConfig(false).catch(function(e) { console.warn('Auto-save config failed', e); });
-            }
-          } catch (_) {}
-          document.body.removeChild(bg);
-          if (typeof onSaved === 'function') onSaved();
-        } catch (e) {
-          err.style.color = 'var(--red)';
-          console.warn('[armory] combined import failed', e); err.textContent = 'The import did not finish. ' + e.message;
-          save.disabled = false; cancel.disabled = false;
-        }
-        return;
-      }
-
-      var validationErr = validate(raw);
-      if (validationErr) { err.textContent = validationErr; return; }
-
-      // Privacy scrub before either localStorage or upload sees the payload.
-      _ar_sanitizeSupplement(kind, raw);
-
-      var existing;
-      try { existing = JSON.parse(localStorage.getItem(lsKey + siteKey) || 'null'); } catch (e) { existing = null; }
-      var existingTs = readTs(existing);
-      if (existingTs && (Date.now() - existingTs) < 3600 * 1000) {
-        if (!confirm('Existing ' + staleLabel + ' is less than 1 hour old. Overwrite?')) return;
-      }
-      writeTs(raw, new Date().toISOString());
-
-      var serialized = JSON.stringify(raw);
-      if (serialized.length > _AR_SUP_MAX_BYTES) {
-        err.textContent = 'That is too much data (' + Math.round(serialized.length / 1024) + ' KB, the limit is 1024 KB).';
-        return;
-      }
-      try { localStorage.setItem(lsKey + siteKey, serialized); }
-      catch (e) { console.warn('[armory] local save failed', e); err.textContent = 'This browser could not save the data on this device. Free some space or try another browser.'; return; }
-      // Best-effort worker upload — passes siteKey so the upload helper can
-      // transparently re-handshake from the UID cached on this device when
-      // the worker token has expired or the in-memory token died on reload.
-      // Init also pre-warms a token at boot, so this path is now mostly
-      // belt + suspenders.
-      try {
-        await _ar_supplementUpload(kind, raw, siteKey);
-        // Mark synced so background sync skips redundant retries on next open.
-        try {
-          var ts = readTs(raw);
-          if (ts) ArmoryIdentity.setLastSync(kind, siteKey, ts);
-        } catch (e) {}
-      } catch (e) {
-        console.warn('Worker upload failed', e);
-        err.textContent = 'Saved on this device, but the upload did not work. ' + e.message;
-        return;
-      }
-      // Auto-mint shortcode/refresh config so players don't have to click
-      // Save manually after pasting a supplement. Skips when no reports are
-      // loaded yet (supplement-only state can't form a shareable config).
-      try {
-        if (wizardState && wizardState.reportData && wizardState.reportData.length > 0) {
-          saveConfig(false).catch(function(e) { console.warn('Auto-save config failed', e); });
-        }
-      } catch (e) {}
-      document.body.removeChild(bg);
-      if (typeof onSaved === 'function') onSaved();
-    };
-
-    document.body.appendChild(bg);
-    setTimeout(function() { ta.focus(); }, 50);
   }
 
   // ── Rune Pool manual editor modal (Phase 1.4) ────────────────────────────
