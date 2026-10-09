@@ -83,7 +83,9 @@ function shim() {
 function parseHash() {
   var h = (location.hash || '').replace(/^#/, ''), q = {}, path = h, i = h.indexOf('?');
   if (i >= 0) { path = h.slice(0, i); h.slice(i + 1).split('&').forEach(function (kv) { var p = kv.split('='); if (p[0]) { try { q[decodeURIComponent(p[0])] = decodeURIComponent((p[1] || '').replace(/\+/g, ' ')); } catch (e) {} } }); }
-  var parts = path.split('/'), bag = parts[0] === 'bag', v = VIEWS[parts[0]] ? parts[0] : 'overview';
+  var parts = path.split('/');
+  if (parts[0] === 'heroes' && parts[1] === 'runes') { parts[1] = 'gear'; q.view = 'runes'; } /* #heroes/runes is the Runes view of the Gear pane */
+  var bag = parts[0] === 'bag', v = VIEWS[parts[0]] ? parts[0] : 'overview';
   var seg = parts[1] || (VIEWS[v].segs ? VIEWS[v].segs[0][0] : '');
   if (VIEWS[v].segs && !VIEWS[v].segs.some(function (s) { return s[0] === seg; })) seg = VIEWS[v].segs[0][0];
   return { view: v, seg: seg, q: q, bag: bag };

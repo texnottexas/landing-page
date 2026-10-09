@@ -8,6 +8,9 @@ function $(s, r) { return (r || document).querySelector(s); }
 function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
 function log(ok, name, detail) { RES.push({ ok: ok, name: name, detail: detail || '' }); console.log('[check] ' + (ok === null ? 'INFO' : ok ? 'PASS' : 'FAIL') + ' ' + name + (detail ? ' :: ' + detail : '')); }
 function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+/* Google Translate's widget is third-party markup (.goog-te-*, .skiptranslate, iframe.goog-te-*): its text and controls are not ours to size, so the size and target checks skip them. Our own CSS still sizes its select (checked on its own below). */
+var THIRD = '.goog-te-gadget, .goog-te-combo, [class*="goog-te-"], .skiptranslate, iframe.goog-te-banner-frame, #google_translate_element';
+function third(el) { return !!(el && el.closest && el.closest(THIRD)); }
 function vis(el) {
   if (!el.getClientRects().length) return false;
   for (var e = el; e && e.nodeType === 1; e = e.parentElement) { var cs = getComputedStyle(e); if (cs.visibility === 'hidden' || cs.display === 'none') return false; }
@@ -15,20 +18,20 @@ function vis(el) {
 }
 function textNodes() {
   var out = [], w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
-  for (var n; (n = w.nextNode());) { var p = n.parentElement; if (!p || /^(SCRIPT|STYLE)$/.test(p.tagName) || !n.nodeValue.trim() || p.closest('#fw-overlay, #fw-hdr-btn')) continue; out.push(n); }
+  for (var n; (n = w.nextNode());) { var p = n.parentElement; if (!p || /^(SCRIPT|STYLE)$/.test(p.tagName) || !n.nodeValue.trim() || p.closest('#fw-overlay, #fw-hdr-btn') || third(p)) continue; out.push(n); }
   return out;
 }
 function small() {
   var bad = [];
   textNodes().forEach(function (n) { var fs = parseFloat(getComputedStyle(n.parentElement).fontSize); if (fs < 12) bad.push(fs + 'px "' + n.nodeValue.trim().slice(0, 24) + '"'); });
-  $$('input, textarea, select').forEach(function (el) { var fs = parseFloat(getComputedStyle(el).fontSize); if (vis(el) && fs < 12) bad.push(fs + 'px <' + el.tagName + '>'); });
+  $$('input, textarea, select').forEach(function (el) { var fs = parseFloat(getComputedStyle(el).fontSize); if (vis(el) && !third(el) && fs < 12) bad.push(fs + 'px <' + el.tagName + '>'); });
   return bad;
 }
 var TARGETS = 'a[href], button, input, select, textarea, summary, [role="button"], [tabindex]:not([tabindex="-1"])';
 function targets() {
   var bad = [], n = 0;
   $$(TARGETS).forEach(function (el) {
-    if (el.classList.contains('skip') || !vis(el)) return;
+    if (el.classList.contains('skip') || third(el) || !vis(el)) return;
     n++;
     var r = el.getBoundingClientRect(), min = el.matches('.move, .area, .hrow, .bar a, .segs button, .tab, .pick, summary') ? 44 : 40;
     if (r.width < min - 0.5 || r.height < min - 0.5) bad.push((el.className || el.tagName) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' "' + (el.textContent || el.getAttribute('aria-label') || '').trim().slice(0, 18) + '"');
@@ -110,6 +113,8 @@ var EXPECTED = [
   await visit('overview'); $('#pagesBtn').click(); await sleep(60);
   var tp = targets(); tgtN += tp.n; tp.bad.forEach(function (b) { tgtBad.push('pages: ' + b); }); smallAll = smallAll.concat(small()); $('#pagesBtn').click();
   log(smallAll.length === 0, 'no text under 12 px (all views and ' + sheets + ' sheets)', smallAll.length ? smallAll.slice(0, 4).join(' | ') : 'checked at ' + window.innerWidth + ' px');
+  var combo = $('select.goog-te-combo');
+  if (combo) { var cr = combo.getBoundingClientRect(), cf = parseFloat(getComputedStyle(combo).fontSize); log(cr.height >= 40 && cf >= 14, 'translate widget select is >= 40 px tall with 14 px+ text', Math.round(cr.width) + 'x' + Math.round(cr.height) + ', ' + cf + 'px'); }
   log(tgtBad.length === 0, 'interactive targets >= 40x40 (44 for bottom bar, tabs, segments and rows)', tgtBad.length ? tgtBad.slice(0, 5).join(' | ') : tgtN + ' elements measured');
   S.all.gear = false; S.all.roster = false;
 
@@ -150,8 +155,9 @@ var EXPECTED = [
   var em = [], re = /\p{Extended_Pictographic}/u;
   textNodes().forEach(function (n) { if (re.test(n.nodeValue)) em.push(n.nodeValue.trim().slice(0, 20)); });
   log(em.length === 0, 'no emoji code points in text nodes', em.slice(0, 3).join(' | '));
-  var ext = $$('link[rel~="stylesheet"], link[rel~="preload"], link[rel~="preconnect"]').length, ff = 0, imp = 0, nonInline = 0;
-  Array.prototype.forEach.call(document.styleSheets, function (ss) { if (!ss.ownerNode || ss.ownerNode.tagName !== 'STYLE') nonInline++; Array.prototype.forEach.call(ss.cssRules, function (r) { if (r.type === 5) ff++; if (r.type === 3) imp++; }); });
+  var GOOG = /^https:\/\/[^/]*(google|gstatic|googleapis)\./;
+  var ext = $$('link[rel~="stylesheet"], link[rel~="preload"], link[rel~="preconnect"]').filter(function (l) { return !GOOG.test(l.href); }).length, ff = 0, imp = 0, nonInline = 0;
+  Array.prototype.forEach.call(document.styleSheets, function (ss) { if (ss.href && GOOG.test(ss.href)) return; if (!ss.ownerNode || ss.ownerNode.tagName !== 'STYLE') nonInline++; var rules; try { rules = ss.cssRules; } catch (e) { return; } /* cross-origin sheet (the translate widget's): skipped */ Array.prototype.forEach.call(rules, function (r) { if (r.type === 5) ff++; if (r.type === 3) imp++; }); });
   log(ext === 0 && ff === 0 && imp === 0 && nonInline === 0, 'no external stylesheet or font', 'link tags ' + ext + ', @font-face ' + ff + ', @import ' + imp + ', non-inline sheets ' + nonInline);
   var mine = document.querySelector('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
   try {
@@ -203,7 +209,7 @@ var EXPECTED = [
   /* visual rules */
   var radBad = {}, shBad = 0, gradBad = [], loopBad = 0, upBad = [];
   $$('body *').forEach(function (el) {
-    if ((el.closest('svg') && el.tagName !== 'svg') || el.closest('#fw-overlay, #fw-hdr-btn')) return;
+    if ((el.closest('svg') && el.tagName !== 'svg') || el.closest('#fw-overlay, #fw-hdr-btn') || third(el)) return;
     var cs = getComputedStyle(el), r = el.getBoundingClientRect();
     ['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius'].forEach(function (p) {
       var v = cs[p]; if (v === '0px' || v === '4px' || v === '6px' || v === '12px' || v === '50%') return;
@@ -220,7 +226,7 @@ var EXPECTED = [
   log(gradBad.length === 0, 'no gradients except the gold gear tint', gradBad.slice(0, 3).join(' | '));
   log(loopBad === 0, 'nothing loops, glows or cycles', loopBad + ' infinite animations');
   log(upBad.length === 0, 'all caps and tracking only on display section titles', upBad.slice(0, 3).join(' | '));
-  var rm = false; Array.prototype.forEach.call(document.styleSheets, function (ss) { Array.prototype.forEach.call(ss.cssRules, function (r) { if (r.type === 4 && /prefers-reduced-motion/.test(r.conditionText || r.media.mediaText)) rm = true; }); });
+  var rm = false; Array.prototype.forEach.call(document.styleSheets, function (ss) { var rules; try { rules = ss.cssRules; } catch (e) { return; } Array.prototype.forEach.call(rules, function (r) { if (r.type === 4 && /prefers-reduced-motion/.test(r.conditionText || r.media.mediaText)) rm = true; }); });
   log(rm, 'prefers-reduced-motion turns transitions off', rm ? 'rule present' : 'missing');
   var imgs = $$('img'), imgBad = imgs.filter(function (m) { return !/^https:\/\/(raw\.githubusercontent\.com|h5\.topwargame\.com|knight-cdn\.akamaized\.net)\//.test(m.src); });
   log(imgBad.length === 0, 'images only from origins the live CSP allows', imgs.length + ' images' + (imgBad.length ? ', bad: ' + imgBad[0].src : ''));
