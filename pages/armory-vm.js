@@ -101,14 +101,17 @@
   }
 
   // ---- runes ------------------------------------------------------------------------------------------------------
-  function buildRunes(inv, gear, statics, core) {
-    var cat = statics.runeTypes, out = { runeBag: {}, runeSlots: {}, runeCost: {}, known: !!inv };
+  // The bag comes from the ONE base-pool rule (core.advice.basePool): a hand-entered pool newer than the import feeds it.
+  function buildRunes(inv, gear, runepool, statics, core) {
+    var cat = statics.runeTypes, out = { runeBag: {}, runeSlots: {}, runeCost: {}, known: false, pool: null };
     if (cat && Array.isArray(cat.runes)) {
       cat.runes.forEach(function (r) { out.runeSlots[r.name] = (r.slots || []).map(function (s) { return s.slot; }); });
       var sched = (cat.mechanics && cat.mechanics.merge_cost_per_star) || {};
       Object.keys(sched).forEach(function (k) { if (/^\d+$/.test(k) && Array.isArray(sched[k])) out.runeCost[k] = sched[k].slice(); });
     }
-    if (inv && statics.itemTable) { var bc = core._ar_extractRunePool(inv, null, { item: statics.itemTable }).bagCounts; Object.keys(bc).forEach(function (k) { out.runeBag[k] = +bc[k] || 0; }); }
+    var bp = core.advice.basePool({ inv: inv, gear: gear, runepool: runepool, lookups: { item: statics.itemTable } });
+    Object.keys(bp.bag).forEach(function (k) { out.runeBag[k] = +bp.bag[k] || 0; });
+    out.known = bp.known; out.pool = bp;
     return out;
   }
 
@@ -259,7 +262,7 @@
     var inv = priv.inv ? null : (supp.inv || null);
 
     var heroes = buildHeroes(merged, core, supp.heroes);
-    var runes = buildRunes(inv, supp.gear, statics, core);
+    var runes = buildRunes(inv, priv.gear ? null : supp.gear, priv.runepool ? null : supp.runepool, statics, core);
     var decor = buildDecor(merged, inv, statics, core);
     var beasts = buildBeasts(merged, core, priv.enigma ? null : supp.enigma);
     var ht = buildHt(merged, supp, opts.reports, opts.reportMechaIds, core);

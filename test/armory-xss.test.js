@@ -32,7 +32,9 @@ function world() {
     supp: {
       heroes: { list: fx.map((h, i) => ({ id: h.id, lv: 100, star: 5, pw: 12345 + i, t: 1 })) },
       inv: { tabs: { item: [{ id: Number(Object.keys(STATICS.itemTable)[0]), a: 5 }], decor: [{ id: groups[0], a: 2 }] } },
-      enigma: { beasts: [{ id: 1 }, { id: 2 }] }
+      enigma: { beasts: [{ id: 1 }, { id: 2 }] },
+      gear: { meta: { ts: '2026-10-01T00:00:00Z' }, goldGear: [{ heroId: 0, buffs: [{ type: 'rune', name: 'Impact', star: 0 }] }, { heroId: 0, buffs: [{ type: 'rune', name: 'Searing', star: 2 }] }] },
+      runepool: { meta: { ts: '2026-10-08T00:00:00Z' }, source: 'manual', pool: { Impact: { 0: 4, 1: 2, 2: 1, 3: 0, 4: 0, 5: 0, 6: 0 }, Wildfire: { 0: 1, 1: 0, 2: 0, 3: 3, 4: 0, 5: 0, 6: 0 } } }
     }
   };
 }
@@ -89,4 +91,25 @@ test('every payload in a NUMBER position becomes a finite number or is dropped',
   assert.deepEqual(dirty(vm), []);
   vm.heroes.list.forEach((h) => { assert.ok(Number.isFinite(h.id)); assert.ok(Number.isFinite(h.lv) && Number.isFinite(h.star)); h.pieces.forEach((p) => { assert.ok(p.slot >= 1 && p.slot <= 6 && Number.isInteger(p.slot)); }); });
   assert.ok(vm.ht.chips.every((c) => Number.isFinite(c.mecha) && Number.isFinite(c.lv)));
+});
+
+test('the Advice pool (vm.runes.pool): a stored pool with a payload in any value, count or name is coerced or kept only as a key', () => {
+  const w = world();
+  assert.deepEqual(dirty(build(w)), [], 'the unmodified pool carries no markup');
+  const pv = build(w).runes.pool; assert.equal(pv.source, 'stored'); assert.equal(pv.storedSource, 'manual');
+  const leakPaths = {};
+  const rp = w.supp.runepool, paths = leaves(rp, ['runepool'], []);
+  for (const path of paths) {
+    const x = JSON.parse(JSON.stringify(w)); setAt(x, ['supp'].concat(path), PAY);
+    const vm = build(x);
+    dirty(vm).forEach((p) => { (leakPaths[p] = leakPaths[p] || []).push(path.join('.')); });
+    const pool = vm.runes.pool;
+    ['bag', 'unequipped'].forEach((k) => Object.keys(pool[k]).forEach((n) => assert.ok(Number.isFinite(pool[k][n]), k + ' count is a number')));
+    Object.keys(pool.upgraded).forEach((n) => Object.keys(pool.upgraded[n]).forEach((s) => assert.ok(Number.isFinite(pool.upgraded[n][s]))));
+  }
+  assert.deepEqual(leakPaths, {});
+  const hostile = JSON.parse(JSON.stringify(w)); hostile.supp.runepool.pool[PAY] = { 0: PAY, 1: PAY };
+  const vm = build(hostile);
+  assert.deepEqual(dirty(vm), [], 'a payload rune NAME is only a key; the page escapes names (xss-v2 checks the render)');
+  assert.equal(vm.runes.runeBag[PAY], undefined, 'a payload count is dropped');
 });

@@ -400,6 +400,27 @@ test('real battle reports (public fixtures): slot = the equipId digit, and the s
   assert.ok(gold > 0 && notGold > 0, 'both gold and non-gold pieces are in the fixtures');
 });
 
+test('runes follow the base-pool rule: a hand-entered pool newer than the import feeds the bag, an older one does not', () => {
+  const core = newCore();
+  const st = Object.assign({}, STATICS, { itemTable: { 900001: { n: 'Impact Rune', t: 153 } } });
+  const inv = { meta: { ts: '2026-10-01T00:00:00Z' }, tabs: { item: [{ id: 900001, a: 4 }] } };
+  const rp = (ts) => ({ meta: { ts }, source: 'manual', pool: { Impact: { 0: 11, 1: 3 }, Wildfire: { 0: 2 } } });
+  const imp = build(baseMerged(), { supp: { inv }, statics: st }, core);
+  assert.deepStrictEqual(imp.runes.runeBag, core.advice.basePool({ inv, lookups: { item: st.itemTable } }).bag);
+  assert.deepStrictEqual(imp.runes.runeBag, { Impact: 4 });
+  assert.equal(imp.runes.pool.source, 'import'); assert.equal(imp.runes.pool.known, true); assert.equal(imp.runes.pool.stale, false);
+  const newer = build(baseMerged(), { supp: { inv, runepool: rp('2026-10-05T00:00:00Z') }, statics: st }, core);
+  assert.deepStrictEqual(newer.runes.runeBag, { Impact: 11, Wildfire: 2 }, 'a newer hand-entered pool is the bag');
+  assert.equal(newer.runes.pool.source, 'stored'); assert.equal(newer.runes.pool.unequipped.Impact, 3);
+  assert.deepStrictEqual(newer.movesInput.runeBag, { Impact: 11, Wildfire: 2 }, 'Next moves read the same number');
+  const older = build(baseMerged(), { supp: { inv, runepool: rp('2026-09-01T00:00:00Z') }, statics: st }, core);
+  assert.deepStrictEqual(older.runes.runeBag, { Impact: 4 }); assert.equal(older.runes.pool.stale, true);
+  const priv = build(baseMerged(), { supp: { inv, runepool: rp('2026-10-05T00:00:00Z') }, privacy: { runepool: true }, statics: st }, core);
+  assert.deepStrictEqual(priv.runes.runeBag, { Impact: 4 }, 'a private rune pool is never read');
+  const stOnly = build(baseMerged(), { supp: { runepool: rp('2026-10-05T00:00:00Z') }, statics: st }, core);
+  assert.equal(stOnly.runes.known, true, 'a stored pool alone makes the bag known');
+});
+
 test('real reports through the model: a non-gold piece never gets a refine move and a piece keeps its true slot', () => {
   const fs = require('node:fs'), path = require('node:path');
   const r = JSON.parse(fs.readFileSync(path.join(P.ROOT, 'test/fixtures/4724810303346728960.json'), 'utf8'));

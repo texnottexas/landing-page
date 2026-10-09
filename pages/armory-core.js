@@ -2080,6 +2080,48 @@
     return { gearScore: gearScore, heroWeights: heroWeights, runeStats: runeStats, nextMoves: nextMoves, computeMoves: nextMoves, rollPct: rollPct, chipInfo: chipInfo, CHIP_COLOUR: CHIP_COLOUR, CHIP_TOP: CHIP_TOP, CHIP_STAT: CHIP_STAT, fitText: fitText, DECOR_STATS: DECOR_STATS };
   })();
 
+  /* ---- new in v2 (not copied from the page): the one rune base-pool rule (Advice phase 4, decision 2) ---- */
+  function advTsOf(o) {
+    if (!o || typeof o !== 'object') return 0;
+    var v = (o.meta && o.meta.ts) || o.ts, t = v ? new Date(v).getTime() : 0;
+    return isFinite(t) && t > 0 ? t : 0;
+  }
+  function advBasePool(input) {
+    input = input || {};
+    var inv = input.inv || null, gear = input.gear || null, rp = input.runepool || null, lk = input.lookups || {};
+    var importTs = Math.max(advTsOf(inv), advTsOf(gear)), poolTs = advTsOf(rp);
+    var stored = !!(rp && rp.pool && typeof rp.pool === 'object');
+    var useStored = stored && (importTs === 0 || poolTs > importTs);
+    var out = { known: !!inv || useStored, source: 'none', storedSource: null, poolTs: poolTs, importTs: importTs, stale: stored && !useStored, bag: {}, unequipped: {}, upgraded: {}, pool: {} };
+    function ok(n) { return typeof n === 'string' && n.length > 0 && n.length <= 64 && n !== '__proto__'; }
+    function num(v) { v = +v; return isFinite(v) && v > 0 ? Math.min(Math.floor(v), 1e9) : 0; }
+    function up(name, star, n) { if (!n) return; (out.upgraded[name] = out.upgraded[name] || {})[star] = n; }
+    if (useStored) {
+      out.source = 'stored';
+      out.storedSource = rp.source === 'advisor-onbehalf' || rp.source === 'advisor-applied' ? rp.source : 'manual';
+      Object.keys(rp.pool).forEach(function(name) {
+        var t = rp.pool[name];
+        if (!ok(name) || !t || typeof t !== 'object') return;
+        var b = num(t[0]), u = num(t[1]);
+        if (b) out.bag[name] = b;
+        if (u) out.unequipped[name] = u;
+        for (var s = 2; s <= 6; s++) up(name, s, num(t[s]));
+      });
+    } else {
+      out.source = inv || gear ? 'import' : 'none';
+      var ext = _ar_extractRunePool(inv, gear, lk);
+      Object.keys(ext.pool).forEach(function(name) {
+        if (!ok(name)) return;
+        var t = ext.pool[name], b = num(ext.bagCounts[name]), u = num(t[0]) - b;
+        if (b) out.bag[name] = b;
+        if (u > 0) out.unequipped[name] = u;
+        for (var s = 1; s <= 6; s++) up(name, s, num(t[s]));
+      });
+    }
+    Object.keys(out.bag).forEach(function(name) { out.pool[name] = { 0: out.bag[name], 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }; });
+    return out;
+  }
+
   var api = {
     heroName: heroName,
     heroBranch: heroBranch,
@@ -2155,6 +2197,7 @@
     setFieldConditions: setFieldConditions,
     computeDecorRecs: computeDecorRecs,
     moves: moves,
+    advice: { basePool: advBasePool, tsOf: advTsOf },
     nextMoves: moves.nextMoves
   };
 
