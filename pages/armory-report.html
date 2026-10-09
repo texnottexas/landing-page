@@ -6120,14 +6120,22 @@
     980101:'Army DMG Increase',980102:'Navy DMG Increase',980103:'Air Force DMG Increase',
     990203:'Army DEF Increase',990204:'Navy DEF Increase',990205:'Air Force DEF Increase',
     1101015:'Army Decreased DMG Taken',1101016:'Navy Decreased DMG Taken',1101017:'Air Force Decreased DMG Taken',
-    1000021:'Formation Bonus',1000022:'Formation Bonus',
-    990202:'Combat Bonus'
+    // Names read from the game's effect_buff table 2026-10-02.
+    1000021:'Unit HP',1000022:'Unit ATK',1000023:'DMG Increase',1000024:'Decreased DMG Taken',
+    1001001:'All Units DMG Increase',1101040:'All Units Decreased DMG Taken',
+    9301201:'Navy - Army DMG Bonus',9301202:'Air Force - Navy DMG Bonus',9301203:'Army - Air DMG Bonus',
+    990202:'All Units DEF Increase',990208:'DEF Increase When Attacking Buildings',990209:'DEF Increase When Defending Buildings',
+    930000:'All Units HP',930001:'Army HP Boost',930002:'Navy HP Boost',930003:'Air Force HP Boost',
+    930100:'All Units Attack',930101:'Army ATK',930102:'Navy ATK',930103:'Air Force ATK'
   };
+  // Max potential per quality (q1..q5), from enigma_beast.potential "lo|hi" in the game's table.
+  var EB_MAX_POTENTIAL = {1:3200,2:4800,3:6400,4:8000,5:16000};
+  function ebMaxPotential(q) { return EB_MAX_POTENTIAL[q] || 16000; }
 
   var EB_FIELD_CONDITIONS = {
     1: ['Fill All Slots', 'Deploy 1 Legendary', 'Deploy 2 Legendary', 'Deploy 3 Legendary', 'Deploy 4 Legendary'],
     2: ['Fill All Slots', 'Deploy 2 Legendary', 'Deploy 3 Legendary', 'Deploy 4 Legendary', 'Deploy 5 at 2+ stars', 'Deploy 6 at 2+ stars', 'Deploy 7 at 2+ stars'],
-    3: ['Fill All Slots', 'Deploy 1 Legendary', 'Deploy 2 Legendary', 'Deploy 5 at 2+ stars', 'Deploy 5 at 2+ stars', 'Deploy 5 at 2+ stars', 'Deploy 7 at 3+ stars', 'Deploy 8 at 3+ stars', 'Deploy 9 at 3+ stars'],
+    3: ['Fill All Slots', 'Deploy 1 Legendary', 'Deploy 2 Legendary', 'Deploy 5 at 2+ stars', 'Deploy 5 at 2+ stars', 'Deploy 5 at 2+ stars'],
     4: ['Fill All Slots', 'Deploy 1 Legendary', 'Deploy 2 Legendary', 'Deploy 4 at 2+ stars', 'Deploy 5 at 2+ stars', 'Deploy 6 at 2+ stars', 'Deploy 7 at 3+ stars', 'Deploy 8 at 3+ stars', 'Deploy 9 at 3+ stars'],
     5: ['Fill All Slots', 'Deploy 1 Legendary', 'Deploy 2 Legendary', 'Deploy 4 at 2+ stars', 'Deploy 5 at 2+ stars', 'Deploy 6 at 2+ stars', 'Deploy 7 at 3+ stars', 'Deploy 8 at 3+ stars', 'Deploy 9 at 3+ stars']
   };
@@ -6203,6 +6211,10 @@
       var hit = window._enigmaSuppDecode[cfg];
       if (hit) return hit;
     }
+    // Lynx (type 5) beasts live at cfg 81-84 (gold, faction 1-4), read from the game's
+    // enigma_beast table 2026-10-02. Must run before the loop: cfg 84 would otherwise
+    // decode as a quality-4 faction-1 beast.
+    if (cfg >= 81 && cfg <= 84) return { type: 5, faction: cfg - 80, quality: 5 };
     for (var t = 1; t <= 9; t++) {
       for (var f = 1; f <= 4; f++) {
         var q5 = (t - 1) * 20 + f * 5;
@@ -6238,7 +6250,7 @@
         id: b.id, cfg: b.cfg, type: info.type, faction: info.faction,
         quality: info.quality, element: EB_ELEMENTS[info.faction] || 'Unknown',
         name: ebBeastName(info.type, b.star), star: b.star, level: b.level,
-        potential: b.potential, maxPotential: info.quality === 4 ? 8000 : 16000,
+        potential: b.potential, maxPotential: ebMaxPotential(info.quality),
         power: b.power, mainBuff: b.mainBuff, mainBuffName: ebBuffName(b.mainBuff),
         baseBuff: (b.baseBuff || []).map(function(id) { return { id: id, name: ebBuffName(id) }; }),
         fieldCfg: null, fieldName: null, slotId: null, fieldSlotNum: null, slotLevel: null, slotBuffs: []
@@ -19782,12 +19794,13 @@
     9301171: { statKey: 'hp',  scope: 'always', targetUnit: 1 },
     9301172: { statKey: 'hp',  scope: 'always', targetUnit: 2 },
     9301173: { statKey: 'hp',  scope: 'always', targetUnit: 3 },
-    // Cross-faction DMG bonuses route to the defending side per Tex's stat
-    // equivalencies, but they're conditional offensive bonuses so we drop
-    // them to half (offensive scope) like the other narrowly-scoped buffs.
-    9301201: { statKey: 'dmgInc', scope: 'offensive', targetUnit: 2 }, // Navy vs Army → primary Navy
-    9301202: { statKey: 'dmgInc', scope: 'offensive', targetUnit: 3 }, // Air  vs Navy → primary Air
-    9301203: { statKey: 'dmgInc', scope: 'offensive', targetUnit: 1 }, // Army vs Air  → primary Army
+    // Cross-faction bonuses. The game files them under the ATK effect type (323,
+    // buff group 930107-109), so they weigh as ATK, not DMG Increase. They are
+    // conditional offensive bonuses, so we drop them to half (offensive scope)
+    // like the other narrowly-scoped buffs.
+    9301201: { statKey: 'atk', scope: 'offensive', targetUnit: 2 }, // Navy vs Army → primary Navy
+    9301202: { statKey: 'atk', scope: 'offensive', targetUnit: 3 }, // Air  vs Navy → primary Air
+    9301203: { statKey: 'atk', scope: 'offensive', targetUnit: 1 }, // Army vs Air  → primary Army
     // DEF family — 990202 is the canonical all-units DEF; 990208/9 are
     // narrowly-scoped (attacking / defending buildings) and weighted lower.
     990202: { statKey: 'def', scope: 'always',    targetUnit: 0 },
@@ -28830,7 +28843,7 @@
           id: sb.id, cfg: sb.cfgId, type: sb.type, faction: sb.fac,
           quality: sb.q, element: EB_ELEMENTS[sb.fac] || 'Unknown',
           name: ebBeastName(sb.type, sb.st), star: sb.st, level: sb.lv,
-          potential: sb.pot, maxPotential: sb.q === 4 ? 8000 : 16000,
+          potential: sb.pot, maxPotential: ebMaxPotential(sb.q),
           power: 0, mainBuff: sb.mb, mainBuffName: ebBuffName(sb.mb),
           baseBuff: (sb.bb || []).map(function(id) { return { id: id, name: ebBuffName(id) }; }),
           fieldCfg: null, fieldName: null, slotId: null, fieldSlotNum: null, slotLevel: null, slotBuffs: [],
