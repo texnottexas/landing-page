@@ -6103,9 +6103,9 @@
   var LV_BY_ID = {};
 
 
-  // DECOR_BASE_TO_GROUP (baseId → group) — populated by _ar_decorLoad after
+  // DECOR_BASE_TO_GROUP (baseId → group) — populated by _ar_decorFetch after
   // data/decor-lookups.json arrives. Empty until then; render paths await
-  // _ar_decorReady before consuming any decoration map.
+  // _ar_decorEnsure (via finishInit) before consuming any decoration map.
   var DECOR_BASE_TO_GROUP = {};
 
   // Lazy loader for decoration lookup tables. Lifting the maps out of the
@@ -6113,7 +6113,16 @@
   // decoration groups only need a JSON refresh, not an HTML edit. Inlined
   // maps were last regenerated before group 5992 (Take a Break) shipped, so
   // owned ids fell through decorIdToGroup() and never rendered.
-  var _ar_decorReady = (function() {
+  // Started on demand (_ar_decorEnsure), not at page load: a first visit with
+  // no saved report never needs the 250 KB file. Every path that builds a
+  // report goes through finishInit, which waits on it.
+  var _ar_decorPromise = null;
+  var _ar_decorDone = false;
+  function _ar_decorEnsure() {
+    if (!_ar_decorPromise) _ar_decorPromise = _ar_decorFetch();
+    return _ar_decorPromise;
+  }
+  function _ar_decorFetch() {
     return fetch('data/decor-lookups.json', { cache: 'default' })
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(j) {
@@ -6142,9 +6151,10 @@
         for (var _gbk in DECOR_GROUP_BASE) {
           DECOR_BASE_TO_GROUP[DECOR_GROUP_BASE[_gbk]] = parseInt(_gbk);
         }
+        _ar_decorDone = true;
         return true;
       });
-  })();
+  }
 
   function decorIdToGroup(id) {
     var direct = DECOR_ID_TO_GROUP[String(id)];
@@ -9147,7 +9157,11 @@
   async function renderFullReport() {
     // Block on roster fetch so the Inventory tab decision is correct on first render.
     // Fetch is CDN-cached (<100ms typical); failure falls back to empty roster (no S2864 tabs).
+    // The decoration lookups load on demand (a wizard Generate reaches here
+    // without passing finishInit), so start them alongside the roster.
+    var decorWait = _ar_decorDone ? null : _ar_decorEnsure().catch(function() { return null; });
     try { if (!_ar_rosterMap) { await _ar_getRosterMap(); } } catch (e) { _ar_rosterMap = _ar_rosterMap || {}; _ar_rosterByName = _ar_rosterByName || {}; }
+    if (decorWait) await decorWait;
     // On-behalf (impersonation): the target siteKey from /advisor/delegate is
     // authoritative. selectPlayer() rebuilds wizardState.player from the battle
     // report with no siteKey, and the roster-name fallback below misses whenever
@@ -33329,11 +33343,7 @@
     wizardState.reportData = valid;
     // Defensive: never render before decor lookups are in. Safe even when
     // already resolved — the .then runs micro-task synchronously.
-    if (typeof _ar_decorReady !== 'undefined') {
-      _ar_decorReady.catch(function() { return null; }).then(function() { _finishInitContinue(valid, saved); });
-      return;
-    }
-    _finishInitContinue(valid, saved);
+    _ar_decorEnsure().catch(function() { return null; }).then(function() { _finishInitContinue(valid, saved); });
   }
 
   function _finishInitContinue(valid, saved) {
@@ -33374,6 +33384,7 @@
     var saved = null;
     try { saved = JSON.parse(localStorage.getItem('playerReport')); } catch(e) {}
     if (saved && saved.player && saved.reportIds && saved.reportIds.length) {
+      _ar_decorEnsure().catch(function() {});
       // Show wizard choose step instead of auto-loading - let user decide
       wizardState.step = 'choose';
       document.getElementById('wizard').classList.add('open');
@@ -33449,7 +33460,7 @@
     var params = new URLSearchParams(window.location.search);
     var adviseCode = (params.get('advise') || '').toLowerCase();
     if (adviseCode && /^[a-z0-9]{6}$/.test(adviseCode)) {
-      Promise.all([migrationDone, _ar_decorReady.catch(function() { return null; })]).finally(function() {
+      Promise.all([migrationDone, _ar_decorEnsure().catch(function() { return null; })]).finally(function() {
         _ar_initAdvisorMode(adviseCode);
       });
       return;
@@ -33464,7 +33475,7 @@
       Promise.all([
         migrationDone,
         fetch(PUSH_WORKER + '/report-config?code=' + code.toUpperCase()).then(function(r) { return r.json(); }),
-        _ar_decorReady.catch(function() { return null; })
+        _ar_decorEnsure().catch(function() { return null; })
       ]).then(function(arr) {
         var result = arr[1];
         (function (result) {
@@ -33527,7 +33538,7 @@
 
     // No shortcode — but still wait for migration before initFromSaved so
     // the saved.player.siteKey harmonization picks up the migrated identity.
-    Promise.all([migrationDone, _ar_decorReady.catch(function() { return null; })]).finally(function() { normalInit(); });
+    migrationDone.finally(function() { normalInit(); });
   })();
 
   function applyLangToCombo(code,delay){var a=0;var p=setInterval(function(){var c=document.querySelector('.goog-te-combo');if(c){c.value=code;c.dispatchEvent(new Event('change'));clearInterval(p);}if(++a>30)clearInterval(p);},delay||200);}
