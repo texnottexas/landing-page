@@ -118,3 +118,44 @@ test('hero 1209 native skill is 10209 (and 209 is 11209), every other hero is 10
   assert.equal(f(209), 11209);
   assert.equal(f(101), 10101);
 });
+
+// ---- Decorations ----
+const LEVELS = JSON.parse(read('data/decoration-levels.json'));
+const LOOKUPS = JSON.parse(read('data/decor-lookups.json'));
+
+test('Crimson Warrior Statue (6044) shard costs follow the game: 180, 540, 1620 ... in both data files', () => {
+  const fu = [0, 180, 540, 1620, 4860, 14580, 43740, 131220, 393660, 1180980, 3542940, 10628820, 31886460, 95659380, 286978140];
+  assert.deepEqual(LEVELS['6044'].levels.map((l) => l.fu), fu);
+  assert.deepEqual(LOOKUPS.PL['6044'].sc, fu);
+});
+
+test('Valkyrie Warrior, Signal Tower and Crimson Warrior Statue take Universal Decor Shards (fi 20213232, 15 levels)', () => {
+  for (const g of ['6033', '6036', '6044']) {
+    assert.equal(LEVELS[g].fi, 20213232, g);
+    assert.equal(LEVELS[g].ml, 15, g);
+  }
+});
+
+test('advisor buff strings split on commas as well as spaces (group 5556 keeps both buffs)', () => {
+  const parse = fn(ARMORY, '_adv_parseBuffMap', {});
+  assert.deepEqual(JSON.parse(JSON.stringify(parse('980204|200,930100|200'))), { 980204: 200, 930100: 200 });
+  assert.deepEqual(JSON.parse(JSON.stringify(parse('980204|200 930100|200'))), { 980204: 200, 930100: 200 });
+  assert.deepEqual(JSON.parse(JSON.stringify(parse('1001001|250'))), { 1001001: 250 });
+  assert.equal(LEVELS['5556'].levels[0].be, '980204|200,930100|200');
+});
+
+test('advisor placed level uses the game id -> level map (Travel Trunk stride 10)', () => {
+  const ctx = {
+    DECOR_GROUP_BASE: LOOKUPS.DECOR_GROUP_BASE, LV_BY_ID: LOOKUPS.LV_BY_ID,
+    decorIdToGroup: (id) => LOOKUPS.DECOR_ID_TO_GROUP[String(id)],
+  };
+  ctx.decorLevel = fn(ARMORY, 'decorLevel', ctx);
+  const placed = fn(ARMORY, '_adv_getPlacedLevel', ctx);
+  assert.equal(placed('6003', { decorations: { ids: [54708, 54718] } }), 2);
+  assert.equal(placed('6003', { decorations: { ids: [54708] } }), 1);
+  assert.equal(placed('6003', { decorations: { ids: [] } }), 0);
+});
+
+test('city skill for skin 1844000 is named Kaiju Slayer', () => {
+  assert.match(ARMORY, /"1844000":\["Kaiju Slayer"/);
+});
