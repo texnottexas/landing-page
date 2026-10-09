@@ -25633,10 +25633,12 @@
 
   // The base rune pool a player (or a ?plan= viewer) judges a plan against:
   // derived from the inventory + gear supplements, the same base Apply uses.
-  // known=false when neither supplement is available, so the caller can skip
+  // known=false without the inventory supplement, so the caller can skip
   // validation instead of calling every step stale against an empty pool.
   function _ar_planViewBase(inv, gear, lookups) {
-    if (!inv && !gear) return { pool: {}, known: false };
+    // Loose bag runes only come from the inventory, so without it (missing, or
+    // private and wiped by the 403) the pool can't be judged.
+    if (!inv) return { pool: {}, known: false };
     var pool = {};
     try { pool = _ar_extractRunePool(inv, gear, lookups || {}).pool || {}; } catch (e) {}
     return { pool: pool, known: true };
@@ -28424,7 +28426,9 @@
     if (alreadyApplied) {
       var done = document.createElement('span');
       done.className = 'adv-save-status ok';
-      done.textContent = 'Already applied · ' + (entry.acceptedCount || 0) + ' step' + (entry.acceptedCount === 1 ? '' : 's') + ' accepted';
+      // Per-plan count: the request-level total sums every applied plan.
+      var accepted = (plan && plan.acceptedCount != null) ? plan.acceptedCount : (entry.acceptedCount || 0);
+      done.textContent = 'Already applied · ' + accepted + ' step' + (accepted === 1 ? '' : 's') + ' accepted';
       applyRow.appendChild(done);
       // Remove finished plans: cascades request + plan + index entry through
       // the same DELETE endpoint the settings modal uses. Keeps the player's
