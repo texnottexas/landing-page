@@ -4228,21 +4228,35 @@
 
   var _ar_rosterMap = null;
   var _ar_rosterByName = null;
-  async function _ar_getRosterMap() {
-    if (_ar_rosterMap) return _ar_rosterMap;
-    var r = await fetch('player-data.json');
-    var data = await r.json();
-    var arr = data.players || data;
-    _ar_rosterMap = {};
-    _ar_rosterByName = {};
-    for (var i = 0; i < arr.length; i++) {
-      var p = arr[i];
-      if (p && p.siteKey) {
-        _ar_rosterMap[p.siteKey] = p;
-        if (p.name) _ar_rosterByName[String(p.name).toLowerCase()] = p;
-      }
+  var _ar_rosterList = null;
+  var _ar_rosterPromise = null;
+  // One player-data.json fetch per page load, shared by the roster map, the
+  // name index and the boot-time identity migration (revalidated, so a
+  // roster publish shows up without a hard reload).
+  function _ar_getRosterMap() {
+    if (_ar_rosterMap) return Promise.resolve(_ar_rosterMap);
+    if (!_ar_rosterPromise) {
+      _ar_rosterPromise = fetch('player-data.json', { cache: 'no-cache' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var arr = data.players || data;
+          _ar_rosterList = arr;
+          var byKey = {};
+          var byName = {};
+          for (var i = 0; i < arr.length; i++) {
+            var p = arr[i];
+            if (p && p.siteKey) {
+              byKey[p.siteKey] = p;
+              if (p.name) byName[String(p.name).toLowerCase()] = p;
+            }
+          }
+          _ar_rosterByName = byName;
+          _ar_rosterMap = byKey;
+          return byKey;
+        })
+        .catch(function(e) { _ar_rosterPromise = null; throw e; });
     }
-    return _ar_rosterMap;
+    return _ar_rosterPromise;
   }
   // Roster siteKeys are sha256(uid) truncated to 16 hex chars.
   async function _ar_siteKeyFromUid(uid) {
@@ -33418,7 +33432,8 @@
       try {
         var stored = ArmoryIdentity.get();
         if (!stored || !stored.name || stored.guest) return;
-        var data = await fetch('player-data.json', { cache: 'no-cache' }).then(function(r) { return r.json(); });
+        await _ar_getRosterMap();
+        var data = _ar_rosterList;
         var keyMatch = stored.siteKey ? data.find(function(p) { return p.siteKey === stored.siteKey; }) : null;
         if (keyMatch) return;
         var nameMatch = data.find(function(p) { return p.name === stored.name && p.alliance === stored.alliance; });
