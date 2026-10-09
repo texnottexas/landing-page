@@ -280,7 +280,7 @@ var EXPECTED = [
   var hc = Rc('hdrCard'), mc = Rc('movesCard'), ac = Rc('areasCard'), sc2 = Rc('shareCard'), bandEl = $('#bandCard'), hasBand = bandEl && !bandEl.hidden;
   var wide = window.innerWidth >= 1024, bc = hasBand ? Rc('bandCard') : null;
   var gapOk = !hasBand ? true : wide ? (bc.left >= hc.right - 0.5 && Math.abs(bc.top - hc.top) < 2 && hc.bottom + 8 <= mc.top + 0.5 && bc.bottom + 8 <= ac.top + 0.5)
-    : (hc.bottom + 8 <= bc.top + 0.5 && bc.bottom + 8 <= mc.top + 0.5 && mc.bottom + 8 <= ac.top + 0.5 && ac.bottom + 8 <= sc2.top + 0.5);
+    : (hc.bottom + 8 <= bc.top + 0.5 && bc.bottom + 8 <= mc.top + 0.5 && mc.bottom + 8 <= ac.top + 0.5 && (!document.getElementById('shareCard') || ac.bottom + 8 <= sc2.top + 0.5));
   log(gapOk, 'strength band sits beside (>=1024) or between (below) the header card and Next moves, 8 px+ apart', 'header ' + Math.round(hc.top) + '-' + Math.round(hc.bottom) + ', moves ' + Math.round(mc.top) + '-' + Math.round(mc.bottom) + ', areas ' + Math.round(ac.top) + '-' + Math.round(ac.bottom));
   if (window.innerWidth < 480) log(hc.height <= 190, 'header card height on a phone', Math.round(hc.height) + ' px (limit 190)');
   var sepEl = $('#hdrCard .sep'), sepHidden = sepEl && getComputedStyle(sepEl).display === 'none';

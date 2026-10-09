@@ -295,7 +295,7 @@ function checklistHtml(code, pl, ro) {
 function reqCard(e, ro) {
   var code = normCode(e.code); if (!code) return '';
   var st = ST[e.status] || ST.open, plans = entryPlans(e), l = links(code, H.currentCode());
-  var h = '<section class="card adv-card" data-rc="' + code + '"><div class="adv-h"><span class="pill ' + st[1] + '">' + st[0] + '</span><span class="t12 muted" translate="no">' + esc(ageOf(e.createdTs)) + '</span></div>';
+  var h = '<section class="card adv-card" data-rc="' + code + '"><div class="adv-h"><span class="pill ' + st[1] + '">' + st[0] + '</span><div class="t12 muted" translate="no">' + esc(ageOf(e.createdTs)) + '</div></div>';
   if (e.onBehalfBy) h += '<div class="t13 muted">Set up by ' + nm(String(e.onBehalfBy).slice(0, 64)) + '</div>';
   if (e.note) h += '<p class="adv-note">' + esc(String(e.note).slice(0, 500)) + '</p>';
   if (!ro) {
@@ -393,7 +393,7 @@ function repaintAdvise() {
   var pf = S.res.privacy && S.res.privacy.inv, known = c.base.known;
   /* pool card */
   var bagChips = Object.keys(end.pool).filter(function (n) { return end.pool[n][0] > 0; }).sort().map(function (n) { return '<span class="pchip">' + runeIcon(n) + '<span translate="no">' + esc(n) + '</span><b translate="no">' + (+end.pool[n][0]) + '</b></span>'; }).join('');
-  var uneq = Object.keys(end.unequipped).filter(function (n) { return end.unequipped[n] > 0; }).sort().map(function (n) { return '<button class="ab pchip" type="button" data-a="ret" data-an="' + esc(n) + '">' + runeIcon(n) + '<span translate="no">' + esc(n) + '</span><b translate="no">' + (+end.unequipped[n]) + '</b><span class="t12 muted">Return to bag</span></button>'; }).join('');
+  var uneq = Object.keys(end.unequipped).filter(function (n) { return end.unequipped[n] > 0; }).sort().map(function (n) { return '<button class="ab pchip" type="button" data-a="ret" data-an="' + esc(n) + '">' + runeIcon(n) + '<span class="pcol"><span><span translate="no">' + esc(n) + '</span> <b translate="no">' + (+end.unequipped[n]) + '</b></span><span class="t12 muted">Return to bag</span></span></button>'; }).join('');
   var upg = []; Object.keys(c.base.upgraded).sort().forEach(function (n) { Object.keys(c.base.upgraded[n]).forEach(function (s) { upg.push('<span class="pchip muted">' + runeIcon(n) + '<span translate="no">' + esc(n) + '</span><span translate="no">' + (+s) + '-star x ' + (+c.base.upgraded[n][s]) + '</span></span>'); }); });
   var warn = !known ? '<p class="t13 c-warn">' + (pf ? nm(name) + '’s bag is private, so place and merge steps cannot be checked.' : nm(name) + ' has not sent a bag yet, so place and merge steps cannot be checked.') + '</p>' : '';
   var pool = '<section class="card" style="order:1"><h2 class="hd">Rune pool</h2>' + warn + '<div class="lab">In the bag</div><div class="pchips">' + (bagChips || '<span class="t13 muted">Nothing in the bag</span>') + '</div><div class="lab" style="margin-top:12px">On unequipped gear</div><div class="pchips">' + (uneq || '<span class="t13 muted">None you can return</span>') + '</div>' + (upg.length ? '<div class="lab" style="margin-top:12px">Upgraded, cannot be returned</div><div class="pchips">' + upg.join('') + '</div>' : '') + '</section>';
@@ -705,7 +705,7 @@ var STYLE = [
 '.step-ctl{display:flex;gap:8px;margin-top:4px}',
 '.rot{transform:rotate(180deg)}',
 '.pchips{display:flex;flex-wrap:wrap;gap:8px}.pchip{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 10px;border:1px solid var(--border);border-radius:var(--r-chip);background:var(--surface);font-size:var(--fs-13)}',
-'button.pchip{min-height:44px;background:var(--card)}.pchip .ricon{width:24px;height:24px}.pchip.muted{color:var(--muted)}',
+'button.pchip{min-height:44px;background:var(--card)}.pchip .ricon{width:24px;height:24px}.pcol{display:flex;flex-direction:column;align-items:flex-start;text-align:left}.pchip.muted{color:var(--muted)}',
 '.slot-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:12px;border-top:1px solid var(--rule)}',
 '@media (min-width:600px){.slot-tiles{grid-template-columns:repeat(3,minmax(0,1fr))}}',
 '.tile{display:flex;align-items:center;gap:8px;min-height:64px;padding:8px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--card-hi);text-align:left;min-width:0}',
