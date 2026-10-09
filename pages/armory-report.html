@@ -3651,7 +3651,7 @@
       b3.disabled = true; setStatus('Sending notification…');
       fetch(PUSH_WORKER + '/advisor/notify', { method: 'POST', headers: _imp_authHeader() })
         .then(function (r) { return r.json(); })
-        .then(function (j) { setStatus(j && j.ok ? ('Notification sent (' + (j.sent || 0) + ' device' + ((j.sent === 1) ? '' : 's') + ').') : 'Notify failed.', !(j && j.ok)); })
+        .then(function (j) { setStatus(j && j.ok ? ('Notification sent (' + (j.sent || 0) + ' device' + ((j.sent === 1) ? '' : 's') + ').') : 'Notify failed.', !(j && j.ok)); if (!(j && j.ok)) b3.disabled = false; })
         .catch(function () { setStatus('Notify failed (network).', true); b3.disabled = false; });
     });
     m.appendChild(b3);
@@ -9057,6 +9057,7 @@
       if (_supSiteKey) _ar_applySupplementsToMerged(merged, _supSiteKey);
     } catch (_e) {}
     window._mergedData = merged;
+    window._awakenedHeroIds = {};
     _ar_markAwakened(merged.heroes);
 
     var app = document.getElementById('app');
@@ -9212,7 +9213,7 @@
       btn.className = 'tab-scroll-indicator ' + dir;
       btn.type = 'button';
       btn.setAttribute('aria-label', dir === 'left' ? 'Scroll tabs left' : 'Scroll tabs right');
-      btn.appendChild(svgIcon({ strokeWidth: '2.5', linecap: 'round', linejoin: 'round', children: [['path', {  }]] }));
+      btn.appendChild(svgIcon({ strokeWidth: '2.5', linecap: 'round', linejoin: 'round', children: [['path', { d: dir === 'left' ? 'M15 18l-6-6 6-6' : 'M9 18l6-6-6-6' }]] }));
       btn.addEventListener('click', function() {
         var dx = Math.max(120, Math.floor(tabBar.clientWidth * 0.6));
         tabBar.scrollBy({ left: dir === 'left' ? -dx : dx, behavior: 'smooth' });
@@ -11636,9 +11637,6 @@
   function _gp_slotIconUrl(slot) {
     return ASSET_BASE + 'assets/titan-slot-icons/gear_' + slot + '.png';
   }
-  function _gp_heroAvatarUrl(heroId) {
-    return 'https://h5.topwargame.com/DynRes/images/headpic/hero_icon' + heroId + '_global.png?t=22.jpg';
-  }
 
   // Builds one stat row matching the heroes-tab layout: name | base | +enh
   // | =total | roll bar (if max known). Used by both the gear-pool card
@@ -12553,8 +12551,8 @@
       if (!local) return remote;
       if (!remote) return local;
       // Compare timestamps when both present
-      var lts = local.ts ? new Date(local.ts).getTime() : 0;
-      var rts = remote.ts ? new Date(remote.ts).getTime() : 0;
+      var lts = _ar_supplementLocalTs(kind, local);
+      var rts = _ar_supplementLocalTs(kind, remote);
       return rts > lts ? remote : local;
     }
 
@@ -14836,7 +14834,7 @@
       { v: summary.goldCount || 0, l: 'Gold pieces', cls: 'gold' },
       { v: (summary.goldEquipped || 0) + (summary.equippedNonGoldCount || 0), l: 'Equipped' },
       { v: summary.goldUnequipped || 0, l: 'Available' },
-      { v: summary.distinctHeroes || 0, l: 'Heroes' },
+      { v: summary.distinctHeroes || Object.keys(heroCounts).filter(function (k) { return Number(k) > 0; }).length, l: 'Heroes' },
       { v: summary.lockedCount || 0, l: 'Locked', cls: 'locked' },
       { v: presetsUsed + ' / ' + presetsTotal, l: 'Presets used' }
     ];
@@ -14951,7 +14949,7 @@
 
       var heroPill = _gp_el('div', { cls: 'hero-pill', title: equipped ? ('Equipped on ' + (p.heroName || ('Hero ' + p.heroId))) : 'Unassigned' });
       var avatar = _gp_el('div', { cls: 'avatar' });
-      if (equipped) avatar.style.backgroundImage = "url('" + _gp_heroAvatarUrl(p.heroId) + "')";
+      if (equipped) avatar.style.backgroundImage = "url('" + heroIconUrl(p.heroId) + "')";
       else avatar.textContent = '?';
       heroPill.appendChild(avatar);
       heroPill.appendChild(_gp_el('span', { cls: 'name', text: equipped ? (p.heroName || ('Hero ' + p.heroId)) : 'Unassigned' }));
@@ -15079,7 +15077,7 @@
     }));
     if (p.heroName) {
       var hHero = _gp_el('div', { style: 'font-size:12px;color:var(--accent);margin-top:2px;display:flex;align-items:center;gap:6px;' });
-      var miniAvatar = _gp_el('div', { style: 'width:18px;height:18px;border-radius:50%;background:url(\'' + _gp_heroAvatarUrl(p.heroId) + '\') center/cover;' });
+      var miniAvatar = _gp_el('div', { style: 'width:18px;height:18px;border-radius:50%;background:url(\'' + heroIconUrl(p.heroId) + '\') center/cover;' });
       hHero.appendChild(miniAvatar);
       hHero.appendChild(_gp_el('span', { text: 'Equipped on ' + p.heroName }));
       hMain.appendChild(hHero);
@@ -22513,6 +22511,7 @@
     if (isPrivate && !isOwner) {
       var lockWrap = document.createElement('div');
       lockWrap.style.cssText = 'padding: 48px 24px; text-align: center; color: var(--muted); display:flex;flex-direction:column;align-items:center;gap:.6rem;';
+      var lockIcon = document.createElement('div');
       lockIcon.appendChild(svgIcon({ size: 40, strokeWidth: '1.6', linecap: 'round', linejoin: 'round', children: [['rect', { 'x': '3', 'y': '11', 'width': '18', 'height': '11', 'rx': '2' }], ['path', { 'd': 'M7 11V7a5 5 0 0 1 10 0v4' }]] }));
       var lockTitle = document.createElement('div');
       lockTitle.style.cssText = 'font-size: 15px; color: var(--text); font-weight: 600;';
@@ -29912,7 +29911,7 @@
       var header = document.createElement('div');
       header.className = 'chip-card-header';
       var hIcon = document.createElement('img');
-      hIcon.src = ASSET_BASE + 'assets/mecha-icons/' + mecha.mechaId + '.png';
+      hIcon.src = ASSET_BASE + 'assets/mecha-icons/mecha_' + mecha.mechaId + '.png';
       hIcon.alt = ''; hIcon.onerror = function() { this.style.display = 'none'; };
       header.appendChild(hIcon);
       var hInfo = document.createElement('div');
