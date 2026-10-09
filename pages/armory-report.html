@@ -5856,18 +5856,27 @@
         reportIds: reportIds,
         marchGroups: loadMarches()
       };
-      // On-behalf: stamp who set it up; do NOT attach the advisor's own push
-      // endpoint (it would fail the worker's identity check against the target).
-      if (_imp()) body.createdByAdvisor = _imp().advisorName;
-      else if (_foreignPlayerKey) body.createdByAdvisor = (identity && identity.name) || 'An advisor';
+      // On-behalf saves carry the delegated token; the server records which
+      // advisor set the report up from that token, so nothing is sent here.
       // Never attach the advisor's own push endpoint when saving for another
       // player — the worker's identity check would 403 it.
       if (endpoint && !_imp() && !_foreignPlayerKey) body.endpoint = endpoint;
 
-      return fetch(PUSH_WORKER + '/report-config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+      // Saving under your own roster identity sends your verified token so the
+      // code is listed with your other reports. Without one the code still
+      // works but belongs to this device only.
+      var tokenReady = (_imp() || _foreignPlayerKey || !/^[a-f0-9]{16}$/.test(String(siteKey)))
+        ? Promise.resolve()
+        : _ar_ensureSupplementToken(siteKey).catch(function() {});
+      return tokenReady.then(function() {
+        var headers = { 'Content-Type': 'application/json' };
+        var auth = _imp_authHeader();
+        if (auth.Authorization) headers.Authorization = auth.Authorization;
+        return fetch(PUSH_WORKER + '/report-config', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify(body)
+        });
       }).then(function(r) { return r.json(); });
     }).then(function(result) {
       if (result && result.ok) {
