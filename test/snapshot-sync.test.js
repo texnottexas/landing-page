@@ -153,10 +153,13 @@ test('parseLogAnswer: the game answer {s:0, d:"{logs}"} → logs; anything else 
 
 test('saveReportSetup: one config per Snapshot device, report ids in order, each picked march named', async () => {
   const calls = [];
-  const f = async (url, init) => { calls.push({ url, body: JSON.parse(init.body), origin: init.headers }); return { ok: true, status: 201, json: async () => ({ ok: true, shortcode: 'AB12' }) }; };
+  const f = async (url, init) => { calls.push({ url, body: JSON.parse(init.body), headers: init.headers }); return { ok: true, status: 201, json: async () => ({ ok: true, shortcode: 'AB12' }) }; };
   const picked = [{ reportId: '4876001', heroes: [165, 172, 173] }, { reportId: '4875002', heroes: [332, 334, 338] }];
-  const r = await S.saveReportSetup(picked, { fetch: f, worker: W, siteKey: 'abcdabcdabcdabcd', name: 'Tex' });
+  const r = await S.saveReportSetup(picked, { fetch: f, worker: W, siteKey: 'abcdabcdabcdabcd', name: 'Tex', token: 'tok123' });
   assert.deepEqual(r, { ok: true, code: 'AB12' });
+  assert.equal(calls[0].headers.Authorization, 'Bearer tok123');
+  await S.saveReportSetup(picked, { fetch: f, worker: W, siteKey: 'abcdabcdabcdabcd', name: 'Tex' });
+  assert.equal(calls[1].headers.Authorization, undefined);
   assert.equal(calls[0].url, W + '/report-config');
   assert.deepEqual(calls[0].body, { siteKey: 'abcdabcdabcdabcd', playerName: 'Tex', deviceId: 'ops-snapshot', reportIds: '4876001,4875002',
     marchGroups: [{ name: 'March 1', heroIds: [165, 172, 173] }, { name: 'March 2', heroIds: [332, 334, 338] }] });

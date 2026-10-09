@@ -36,17 +36,23 @@ var __snapSync = (function () {
     return p;
   }
   async function readJson(r) { try { return await r.json(); } catch (e) { return null; } }
+  // Signs in with the game's UID; → { token } | { notMember:true } | { token:null }
+  async function getToken(uid, o) {
+    try {
+      var hs = await o.fetch(o.worker + '/supplement/handshake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uid: uid }) });
+      if (hs.status === 403) return { notMember: true, token: null };
+      var hj = hs.ok ? await readJson(hs) : null;
+      return { token: (hj && hj.token) || null };
+    } catch (e) { return { token: null }; }
+  }
   // o = { fetch, worker, uid, now? } → { state: 'done', results:[{kind,label,status,error?}] } | { state: 'not-member'|'error'|'no-uid' }
   async function sendToArmory(dump, o) {
     var uid = String(o.uid || '').trim();
     if (!/^[0-9]{5,20}$/.test(uid)) return { state: 'no-uid' };
     var nowIso = o.now || new Date().toISOString(), token = null;
-    try {
-      var hs = await o.fetch(o.worker + '/supplement/handshake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uid: uid }) });
-      if (hs.status === 403) return { state: 'not-member' };
-      var hj = hs.ok ? await readJson(hs) : null;
-      token = hj && hj.token;
-    } catch (e) { token = null; }
+    var hsr = await getToken(uid, o);
+    if (hsr.notMember) return { state: 'not-member' };
+    token = hsr.token;
     if (!token) return { state: 'error' };
     var results = [];
     for (var i = 0; i < SECTIONS.length; i++) {
@@ -116,8 +122,10 @@ var __snapSync = (function () {
   async function saveReportSetup(picked, o) {
     var body = { siteKey: o.siteKey, playerName: o.name, deviceId: SETUP_DEVICE, reportIds: picked.map(function (p) { return p.reportId; }).join(','),
       marchGroups: picked.map(function (p, i) { return { name: 'March ' + (i + 1), heroIds: p.heroes }; }) };
+    var headers = { 'Content-Type': 'application/json' };
+    if (o.token) headers.Authorization = 'Bearer ' + o.token;   // owner save: listed with the player's other reports
     try {
-      var r = await o.fetch(o.worker + '/report-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      var r = await o.fetch(o.worker + '/report-config', { method: 'POST', headers: headers, body: JSON.stringify(body) });
       var j = await readJson(r);
       return r.ok && j && j.ok && j.shortcode ? { ok: true, code: String(j.shortcode) } : { ok: false, error: (j && j.error) || ('HTTP ' + r.status) };
     } catch (e) { return { ok: false, error: 'network' }; }
@@ -136,7 +144,7 @@ var __snapSync = (function () {
   }
   return { SECTIONS: SECTIONS, MAX_BYTES: MAX_BYTES, prepare: prepare, sendToArmory: sendToArmory, syncText: syncText,
     SETUP_MAX: SETUP_MAX, attackLogs: attackLogs, reportUrl: reportUrl, heroSetOf: heroSetOf, pickReports: pickReports,
-    parseLogAnswer: parseLogAnswer, saveReportSetup: saveReportSetup, setupText: setupText };
+    parseLogAnswer: parseLogAnswer, saveReportSetup: saveReportSetup, getToken: getToken, setupText: setupText };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = __snapSync;
 
@@ -1378,7 +1386,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = __snapSync
     if (!pick.picked.length) return { state: 'unreadable' };
     var name = ''; try { name = String(window.__require('DataCenter').DATA.UserData.Name || ''); } catch (e) {}
     var sk = await siteKeyOf(uid);
-    var saved = await __snapSync.saveReportSetup(pick.picked, { fetch: window.fetch.bind(window), worker: SNAP_WORKER, siteKey: sk, name: name });
+    var tk = await __snapSync.getToken(uid, { fetch: window.fetch.bind(window), worker: SNAP_WORKER });
+    var saved = await __snapSync.saveReportSetup(pick.picked, { fetch: window.fetch.bind(window), worker: SNAP_WORKER, siteKey: sk, name: name, token: tk.token });
     if (!saved.ok) return { state: 'save-failed', error: saved.error };
     try { localStorage.setItem('snap_report_code_v1_' + uid, saved.code); } catch (e) {}
     return { state: 'done', picked: pick.picked, code: saved.code, asked: max };
