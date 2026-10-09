@@ -1876,11 +1876,30 @@
   }
   function fmtInt(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
   function slug(n) { return String(n).toLowerCase().replace(/ /g, '-'); }
+  /* A move reads in at most 60 characters: numbers live on the meta line, and when a long name still pushes the
+     text past 60, the longest name part (n:1, over 8 characters) is cut and ends with an ellipsis. The untruncated
+     text is kept as `full` (for a title / aria-label). */
+  var MAX_TEXT = 60;
+  function fitText(parts) {
+    var texts = parts.map(function (x) { return x.s; });
+    var full = texts.join('');
+    for (var guard = 0; guard < 50 && texts.join('').length > MAX_TEXT; guard++) {
+      var li = -1, ll = 8;
+      parts.forEach(function (x, i) { if (x.n && texts[i].length > ll) { ll = texts[i].length; li = i; } });
+      if (li < 0) break;
+      var over = texts.join('').length - MAX_TEXT;
+      var keep = Math.max(8, ll - over);
+      if (keep >= ll) break;
+      texts[li] = texts[li].slice(0, keep - 1).replace(/\s+$/, '') + '\u2026';
+    }
+    return { text: texts.join(''), full: full };
+  }
 
   /* Decor stats a player can raise, in the order they are tried. Each is ranked on its own gain per shard. */
   var DECOR_STATS = [['960012', 'March Size', true], ['930100', 'All units Attack', false], ['930000', 'All units HP', false], ['1001001', 'All units DMG increase', false]];
   /* HT chip tables (Mecha_chip, same numbers as the live HT Chips page): value = base + per * level. */
   var CHIP_COLOUR = { 1: [100, 40], 2: [150, 60], 3: [200, 80], 4: [300, 120], 5: [500, 200] };
+  var CHIP_TOP = 200; // the biggest per-level value in CHIP_COLOUR: a chip's gain is its remaining value over 25 levels of the best colour
   var CHIP_STAT = { 1: ['932001', 'Heavy Trooper Attack'], 2: ['932002', 'Heavy Trooper HP'], 3: ['932002', 'Heavy Trooper HP'], 4: ['930100', 'All units Attack'], 5: ['930000', 'All units HP'], 6: ['930000', 'All units HP'] };
 
   function chipInfo(c) {
@@ -1913,7 +1932,7 @@
             cand.push({
               sig: 'a', cls: 1, gain: 1, weight: W[h.name], key: 'a' + h.name + p.slot,
               parts: [{ s: 'Place ' }, { s: avail[0], n: 1 }, { s: ' on ' }, { s: h.name, n: 1 }, { s: ' slot ' }, { s: String(p.slot), n: 1 }],
-              meta: '', ico: { u: 'rune-icons/' + slug(avail[0]) + '.png', q: 'q5', fb: avail[0].charAt(0) },
+              meta: D.runeBag[avail[0]] + ' in bag', ico: { u: 'rune-icons/' + slug(avail[0]) + '.png', q: 'q5', fb: avail[0].charAt(0) },
               route: 'heroes/battle?hero=' + encodeURIComponent(h.name) + '&slot=' + p.slot
             });
           }
@@ -1952,10 +1971,8 @@
         var lo = Math.round(Math.min.apply(null, low)), hi = Math.round(Math.max.apply(null, low));
         cand.push({
           sig: 'c', cls: 3, gain: (low.length / p.stats.length) * W[h.name], tie: Math.min.apply(null, low), weight: W[h.name], key: 'c' + h.name + p.slot,
-          parts: [{ s: 'Refine ' }, { s: p.slotName, n: 1 }, { s: ' on ' }, { s: h.name, n: 1 }, { s: ': ' },
-            { s: String(low.length), n: 1 }, { s: low.length === 1 ? ' stat under ' : ' stats under ' }, { s: '70%', n: 1 },
-            { s: ' (' }, { s: lo === hi ? lo + '%' : lo + '-' + hi + '%', n: 1 }, { s: ')' }],
-          meta: 'Each stat that reaches 70% turns on its bonus',
+          parts: [{ s: 'Refine ' }, { s: p.slotName, n: 1 }, { s: ' on ' }, { s: h.name, n: 1 }],
+          meta: low.length + (low.length === 1 ? ' stat under 70% (' : ' stats under 70% (') + (lo === hi ? lo + '%' : lo + '-' + hi + '%') + ')',
           ico: { u: 'titan-slot-icons/gear_' + p.slot + '.png', q: 'q5', fb: String(p.slot) },
           route: 'heroes/battle?hero=' + encodeURIComponent(h.name) + '&slot=' + p.slot
         });
@@ -1988,9 +2005,8 @@
       var vtxt = r.stat[2] ? '+' + r.delta : '+' + (r.delta / 100) + '%';
       cand.push({
         sig: 'd', cls: 2, gain: r.roi / dChosen.best, weight: 0, key: 'd' + r.d.n,
-        parts: [{ s: 'Upgrade ' }, { s: r.d.n, n: 1 }, { s: ' to ' }, { s: 'Lv.' + r.d.nx.to, n: 1 }, { s: ': ' },
-          { s: vtxt, n: 1 }, { s: ' ' + r.stat[1] }],
-        meta: r.net + ' shards, ' + have + ' in bag',
+        parts: [{ s: 'Upgrade ' }, { s: r.d.n, n: 1 }, { s: ' to ' }, { s: 'Lv.' + r.d.nx.to, n: 1 }],
+        meta: vtxt + ' ' + r.stat[1] + ', ' + r.net + ' shards, ' + have + ' in bag',
         ico: { u: 'decor-icons/' + r.d.ic, q: r.d.q >= 6 ? 'q6' : r.d.q === 5 ? 'q5' : r.d.q === 4 ? 'q4' : r.d.q === 3 ? 'q3' : '', fb: r.d.n.charAt(0) },
         route: 'base/decor?item=' + encodeURIComponent(r.d.n).replace(/%20/g, '+')
       });
@@ -2015,9 +2031,9 @@
       if (!tab || !stat) return;
       var now = (tab[0] + tab[1] * c.lv) / 100, max = (tab[0] + tab[1] * 25) / 100;
       cand.push({
-        sig: 'f', cls: 3, gain: ((25 - c.lv) / 25) * (c.slot >= 4 ? 1 : 0.5), weight: 0, key: 'f' + c.ht + c.slot,
-        parts: [{ s: 'Raise slot ' }, { s: String(c.slot), n: 1 }, { s: ' chip on ' }, { s: c.ht, n: 1 }, { s: ' from ' }, { s: 'Lv.' + c.lv, n: 1 }, { s: ' to ' }, { s: 'Lv.25', n: 1 }],
-        meta: stat[1] + ' ' + now.toFixed(1) + '% now, ' + max.toFixed(1) + '% at Lv.25',
+        sig: 'f', cls: 3, gain: (((25 - c.lv) * tab[1]) / (25 * CHIP_TOP)) * (c.slot >= 4 ? 1 : 0.5), weight: 0, key: 'f' + c.ht + c.slot,
+        parts: [{ s: 'Raise slot ' }, { s: String(c.slot), n: 1 }, { s: ' chip on ' }, { s: c.ht, n: 1 }],
+        meta: 'Lv.' + c.lv + ' to Lv.25, ' + stat[1] + ' ' + now.toFixed(1) + '% now, ' + max.toFixed(1) + '% at Lv.25',
         ico: { u: c.ic ? 'ht-chip-icons/' + c.ic + '.png' : '', q: 'q' + col, fb: String(c.slot) },
         route: 'ht/loadouts?mecha=' + c.mecha + '&slot=' + c.slot
       });
@@ -2026,6 +2042,7 @@
     /* Selection, per spec 3.3: the best candidate inside each signal comes first (cmp never compares raw gains
        across signals). Pass 1: one pick per class, one per signal. Pass 2: fill with other signals.
        Pass 3: a signal gets a second slot only when no other signal has a candidate left. */
+    cand.forEach(function (c) { var f = fitText(c.parts); c.text = f.text; c.full = f.full; });
     cand.sort(cmp);
     var picks = [];
     var perSig = {};
@@ -2046,21 +2063,22 @@
         sig: 'd', cls: 3, gain: 0, weight: 0, key: 'dsave',
         parts: dShort.ties > 1
           ? [{ s: 'Save ' }, { s: fmtInt(s.net), n: 1 }, { s: ' shards for ' }, { s: '+' + s.delta, n: 1 }, { s: ' March Size (' }, { s: String(dShort.ties), n: 1 }, { s: ' choices)' }]
-          : [{ s: 'Save for ' }, { s: s.d.n, n: 1 }, { s: ' Lv.' + s.d.nx.to + ': ' }, { s: fmtInt(have) + ' / ' + fmtInt(s.net), n: 1 }, { s: ' shards' }],
-        meta: '', ico: { u: 'decor-icons/' + s.d.ic, q: '', fb: s.d.n.charAt(0) },
+          : [{ s: 'Save for ' }, { s: s.d.n, n: 1 }, { s: ' Lv.' + s.d.nx.to, n: 1 }],
+        meta: dShort.ties > 1 ? '' : fmtInt(have) + ' / ' + fmtInt(s.net) + ' shards', ico: { u: 'decor-icons/' + s.d.ic, q: '', fb: s.d.n.charAt(0) },
         route: 'base/decor?item=' + encodeURIComponent(s.d.n).replace(/%20/g, '+')
       });
     }
     picks.sort(cmp);
     var classNames = { 1: 'Free', 2: 'Uses what you have', 3: 'Costs resources' };
     picks.forEach(function (p) {
-      p.text = p.parts.map(function (x) { return x.s; }).join('');
+      var f = fitText(p.parts);
+      p.text = f.text; p.full = f.full;
       p.pill = classNames[p.cls];
     });
     return { picks: picks, pool: cand, weights: W };
   }
 
-    return { gearScore: gearScore, heroWeights: heroWeights, runeStats: runeStats, nextMoves: nextMoves, computeMoves: nextMoves, rollPct: rollPct, chipInfo: chipInfo, CHIP_COLOUR: CHIP_COLOUR, CHIP_STAT: CHIP_STAT, DECOR_STATS: DECOR_STATS };
+    return { gearScore: gearScore, heroWeights: heroWeights, runeStats: runeStats, nextMoves: nextMoves, computeMoves: nextMoves, rollPct: rollPct, chipInfo: chipInfo, CHIP_COLOUR: CHIP_COLOUR, CHIP_TOP: CHIP_TOP, CHIP_STAT: CHIP_STAT, fitText: fitText, DECOR_STATS: DECOR_STATS };
   })();
 
   var api = {

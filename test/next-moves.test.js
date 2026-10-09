@@ -41,12 +41,14 @@ test('base data: one move per class, in class order', () => {
   assert.deepStrictEqual(texts(fresh()), [
     'Free: Place Impact on Alpha slot 1',
     'Uses what you have: Merge Debilitate on Alpha slot 2 to 2 stars',
-    'Costs resources: Refine Raysor Headset on Bravo: 3 stats under 70% (30-50%)',
+    'Costs resources: Refine Raysor Headset on Bravo',
   ]);
   const r = C.nextMoves(fresh());
   assert.deepStrictEqual(r.weights, { Alpha: 1, Bravo: 0.9, Charlie: 0.8 });
   assert.deepStrictEqual(r.picks.map((p) => p.cls), [1, 2, 3]);
   assert.equal(r.picks[1].meta, '2 in bag, uses 2');
+  assert.equal(r.picks[0].meta, '2 in bag');
+  assert.equal(r.picks[2].meta, '3 stats under 70% (30-50%)', 'the numbers live on the meta line');
   assert.ok(r.picks.every((p) => p.text.length <= 60), 'at most 60 characters');
   assert.ok(r.picks.every((p) => /^[A-Z]/.test(p.text)), 'verb first');
   assert.ok(r.pool.length >= 8, 'the pool lists every candidate');
@@ -56,23 +58,25 @@ test('decor is tried across all stats and picks the best affordable row (not Mar
   const d = fresh();
   d.runeBag = { Impact: 0, Debilitate: 0, Searing: 0 };
   assert.deepStrictEqual(texts(d), [
-    'Uses what you have: Upgrade Coastal Defence to Lv.3: +1.5% All units Attack',
-    'Costs resources: Refine Raysor Headset on Bravo: 3 stats under 70% (30-50%)',
-    'Costs resources: Raise slot 4 chip on Luminary Knight LP-4 from Lv.6 to Lv.25',
+    'Uses what you have: Upgrade Coastal Defence to Lv.3',
+    'Costs resources: Refine Raysor Headset on Bravo',
+    'Costs resources: Raise slot 4 chip on Luminary Knight LP-4',
   ]);
   const move = C.nextMoves(d).picks[0];
-  assert.equal(move.meta, '60 shards, 100 in bag');
+  assert.equal(move.meta, '+1.5% All units Attack, 60 shards, 100 in bag');
   assert.equal(move.route, 'base/decor?item=Coastal+Defence');
   assert.ok(move.gain > 0.83 && move.gain < 0.84, 'gain is relative to the best ROI: 0.833 / 1.0');
   // 300 shards: Big Gun (ROI 1.0, net 300) becomes affordable and wins
   d.decor.shards = 300;
-  assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Big Gun to Lv.3: +3% All units Attack');
+  assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Big Gun to Lv.3');
+  assert.equal(C.nextMoves(d).picks[0].meta, '+3% All units Attack, 300 shards, 300 in bag');
   // an equal ROI goes to the cheaper net cost (Coastal 150/180 and Firework 200/240 tie): hide Big Gun, give 300 shards
   d.decor.placed = d.decor.placed.filter((x) => x.n !== 'Big Gun');
-  assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Coastal Defence to Lv.3: +1.5% All units Attack', 'tie -> cheaper (60 against 200)');
+  assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Coastal Defence to Lv.3', 'tie -> cheaper (60 against 200)');
   // March Size, when affordable, comes first (it is tried first)
   d.decor.shards = 400;
-  assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Aircraft Carrier to Lv.4: +1 March Size');
+  assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Aircraft Carrier to Lv.4');
+  assert.equal(C.nextMoves(d).picks[0].meta, '+1 March Size, 400 shards, 400 in bag');
   // no shards at all: nothing affordable, the decor move disappears
   d.decor.shards = 0;
   assert.ok(!texts(d).some((t) => /Upgrade/.test(t)));
@@ -84,7 +88,8 @@ test('"Save for": only when no decor move is affordable and there is room', () =
   d.heroes.forEach((h) => h.gear.forEach((p) => { p.stats.forEach((s) => { s.v = s.m; }); if (p.rune) p.rune.s = p.rune.sm; else p.rune = { name: 'Impact', s: 2, sm: 2, icon: 'impact' }; }));
   d.ht.chips.forEach((c) => { c.lv = 25; });
   d.decor.placed = d.decor.placed.filter((x) => x.n === 'Aircraft Carrier');
-  assert.deepStrictEqual(texts(d), ['Costs resources: Save for Aircraft Carrier Lv.4: 100 / 400 shards']);
+  assert.deepStrictEqual(texts(d), ['Costs resources: Save for Aircraft Carrier Lv.4']);
+  assert.equal(C.nextMoves(d).picks[0].meta, '100 / 400 shards');
   d.decor.placed.push(JSON.parse(JSON.stringify(d.decor.placed[0])));
   d.decor.placed[1].g = 5757;
   d.decor.placed[1].n = 'Aircraft Carrier II';
@@ -98,7 +103,8 @@ test('refine: each stat against 70% on its own; most stats under 70% first; clos
   d.ht.chips = [];
   // exactly 70% is not under 70% (Charlie's 420/600): his piece shows 1 stat, not 2
   const all = C.nextMoves(d).pool.filter((c) => c.sig === 'c').map((c) => c.text || c.parts.map((x) => x.s).join(''));
-  assert.ok(all.includes('Refine Assault Pistol on Charlie: 1 stat under 70% (50%)'), all.join(' | '));
+  assert.ok(all.includes('Refine Assault Pistol on Charlie'), all.join(' | '));
+  assert.ok(C.nextMoves(d).pool.some((c) => c.key === 'cCharlie1' && c.meta === '1 stat under 70% (50%)'), 'one stat, exactly 70% is not under');
   // one hero, two pieces with the same count: (40,50) and (60,65) -> the one closer to 70% first
   const solo = {
     heroes: [{ name: 'Solo', gear: [
@@ -107,8 +113,8 @@ test('refine: each stat against 70% on its own; most stats under 70% first; clos
     runeBag: {}, runeSlots: {}, runeCost: {}, decor: { shards: 0, placed: [] }, ht: { chips: [] }, beastMoves: [],
   };
   assert.deepStrictEqual(texts(solo), [
-    'Costs resources: Refine Raysor Headset on Solo: 2 stats under 70% (60-65%)',
-    'Costs resources: Refine Assault Pistol on Solo: 2 stats under 70% (40-50%)',
+    'Costs resources: Refine Raysor Headset on Solo',
+    'Costs resources: Refine Assault Pistol on Solo',
   ]);
   // a piece whose stats are all 70%+ is never offered
   solo.heroes[0].gear.forEach((p) => p.stats.forEach((s) => { s.v = s.m * 0.7; }));
@@ -121,15 +127,15 @@ test('HT chips: only the HT the player fights with, from its chip table row', ()
   d.decor.placed = [];
   d.heroes.forEach((h) => h.gear.forEach((p) => p.stats.forEach((s) => { s.v = s.m; })));
   const chip = (dd) => C.nextMoves(dd).picks.map((p) => p.text);
-  assert.deepStrictEqual(chip(d), ['Raise slot 4 chip on Luminary Knight LP-4 from Lv.6 to Lv.25']);
-  assert.equal(C.nextMoves(d).picks[0].meta, 'All units Attack 10.2% now, 33.0% at Lv.25');
+  assert.deepStrictEqual(chip(d), ['Raise slot 4 chip on Luminary Knight LP-4']);
+  assert.equal(C.nextMoves(d).picks[0].meta, 'Lv.6 to Lv.25, All units Attack 10.2% now, 33.0% at Lv.25');
   assert.equal(C.nextMoves(d).picks[0].route, 'ht/loadouts?mecha=1006&slot=4');
   d.ht.reportMechas = [1005];
-  assert.deepStrictEqual(chip(d), ['Raise slot 2 chip on Doom Sawblade D-4 from Lv.6 to Lv.25'], 'the other HT only when the report shows it');
+  assert.deepStrictEqual(chip(d), ['Raise slot 2 chip on Doom Sawblade D-4'], 'the other HT only when the report shows it');
   d.ht.reportMechas = [1006, 1005];
-  assert.deepStrictEqual(chip(d), ['Raise slot 4 chip on Luminary Knight LP-4 from Lv.6 to Lv.25', 'Raise slot 2 chip on Doom Sawblade D-4 from Lv.6 to Lv.25'], 'nothing else is left, so the signal may take its second slot (cap 2)');
+  assert.deepStrictEqual(chip(d), ['Raise slot 4 chip on Luminary Knight LP-4', 'Raise slot 2 chip on Doom Sawblade D-4'], 'nothing else is left, so the signal may take its second slot (cap 2)');
   d.ht.reportMechas = null;
-  assert.equal(chip(d)[0], 'Raise slot 4 chip on Luminary Knight LP-4 from Lv.6 to Lv.25', 'no battle report (null): the whole HT list, best chip first');
+  assert.equal(chip(d)[0], 'Raise slot 4 chip on Luminary Knight LP-4', 'no battle report (null): the whole HT list, best chip first');
   delete d.ht.reportMechas;
   assert.equal(chip(d).length, 2, 'undefined is also no report');
   d.ht.reportMechas = [];
@@ -149,8 +155,8 @@ test('selection: a second move from one signal only when no other signal has a c
   d.ht.chips = [];
   // only refine candidates exist: a signal never takes more than two slots (caps 1 / 1 / 2), best first (0.9, then 0.667)
   assert.deepStrictEqual(texts(d).map((t) => t.replace(/^Costs resources: /, '')), [
-    'Refine Raysor Headset on Bravo: 3 stats under 70% (30-50%)',
-    'Refine Assault Pistol on Alpha: 2 stats under 70% (50-60%)',
+    'Refine Raysor Headset on Bravo',
+    'Refine Assault Pistol on Alpha',
   ]);
   // with other signals available they go first (base data): free, uses, costs - never three refines
   const base = C.nextMoves(fresh()).picks;
@@ -236,4 +242,46 @@ test('instances: per-player state (TG overrides, identity, lookups) does not ble
   A.setHeroCache({ 101: 'Alpha' }, null);
   assert.equal(B.heroName(101), 'Hero #101');
   assert.equal(typeof C.nextMoves, 'function', 'the default instance still exports the API');
+});
+
+test('wording: every move reads in at most 60 characters, long names are cut with an ellipsis, numbers go to the meta line', () => {
+  const LONG = 'Statue: 9th Angel - the Corrupted Mecha (Supreme Edition)';
+  const d = fresh();
+  d.runeBag = { Impact: 0, Debilitate: 0, Searing: 0 };
+  d.decor.shards = 400;
+  d.decor.placed[0].n = LONG; // Aircraft Carrier -> the longest real decoration name (March Size, 400 raw)
+  d.ht.chips.forEach((c) => { c.ht = 'Heavy Mothership HC-9999 Prototype'; });
+  d.heroes[1].name = 'Bradley the Unbelievably Long Named';
+  const all = C.nextMoves(d, { max: 12 });
+  assert.ok(all.pool.length >= 6);
+  for (const c of all.pool.concat(all.picks)) {
+    assert.ok(c.text.length <= 60, c.text.length + ': ' + c.text);
+    assert.ok(c.full.length >= c.text.length);
+  }
+  const up = all.pool.find((c) => c.sig === 'd');
+  assert.match(up.text, /^Upgrade Statue: 9th Angel.*\u2026 to Lv\.4$/, up.text);
+  assert.equal(up.full, 'Upgrade ' + LONG + ' to Lv.4');
+  assert.ok(up.text.length <= 60 && up.text.endsWith('Lv.4'), 'the level is never cut');
+  const refine = all.pool.find((c) => c.sig === 'c' && c.key.startsWith('cBradley'));
+  assert.match(refine.text, /Bradley/);
+  // nothing short is touched
+  assert.equal(C.moves.fitText([{ s: 'Place ' }, { s: 'Impact', n: 1 }]).text, 'Place Impact');
+});
+
+test('chip gain follows the colour: more remaining value first, so a high-colour chip at the same level ranks above a low one', () => {
+  const d = fresh();
+  d.runeBag = { Impact: 0, Debilitate: 0, Searing: 0 };
+  d.decor.placed = [];
+  d.heroes.forEach((h) => h.gear.forEach((p) => p.stats.forEach((s) => { s.v = s.m; })));
+  d.ht.reportMechas = null;
+  const chip = (ht, slot, c, lv) => ({ ht, mecha: 1, slot, core: false, lv, empty: false, c });
+  d.ht.chips = [chip('Low', 4, 9101, 10), chip('High', 4, 9501, 10), chip('Mid', 4, 9301, 10)];
+  const f = C.nextMoves(d, { max: 3 }).pool.filter((c) => c.sig === 'f').sort((a, b) => b.gain - a.gain).map((c) => c.key);
+  assert.deepStrictEqual(f, ['fHigh4', 'fMid4', 'fLow4']);
+  // gain = remaining levels x the colour's per-level value, over 25 x the best colour's (200); slots 1-3 count half
+  const g = (c) => C.nextMoves(Object.assign(fresh(), { ht: { reportMechas: null, chips: [c] }, runeBag: {}, decor: { shards: 0, placed: [] } })).pool.find((x) => x.sig === 'f').gain;
+  assert.equal(g(chip('H', 4, 9501, 5)), (20 * 200) / 5000);
+  assert.equal(g(chip('H', 4, 9101, 5)), (20 * 40) / 5000);
+  assert.equal(g(chip('H', 2, 9501, 5)), ((20 * 200) / 5000) * 0.5);
+  assert.equal(C.moves.CHIP_TOP, Math.max(...Object.values(C.moves.CHIP_COLOUR).map((x) => x[1])));
 });
