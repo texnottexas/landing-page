@@ -39,7 +39,7 @@ function stars(s, sm) {
   return '<span class="stars" role="img" aria-label="' + s + ' of ' + sm + ' stars">' + o + '</span>';
 }
 function art(url, cls, fb, alt) { return '<img class="' + cls + '" src="' + esc(url) + '" alt="' + esc(alt || '') + '" data-fb="' + esc(fb) + '" decoding="async">'; }
-function lbl(label, num, src, cls) { return '<div class="nb" data-numwrap><span class="n disp ' + (cls || '') + '" data-num translate="no">' + esc(num) + '</span><span class="l lbl">' + esc(label) + '</span><span class="s src">' + src + '</span></div>'; }
+function lbl(label, num, src, cls) { return '<div class="nb" data-numwrap><div class="n disp ' + (cls || '') + '" data-num translate="no">' + esc(num) + '</div><div class="l lbl">' + esc(label) + '</div><div class="s src">' + src + '</div></div>'; }
 function stateName() { return S.res && S.res.player && S.res.player.name || ''; }
 function sk() { var k = S.res && S.res.player && S.res.player.siteKey; return SK_RE.test(String(k || '')) ? k : null; }
 function readOnly() { return !S.res || !!S.res.readOnly; }
@@ -148,7 +148,7 @@ function boot() {
   var code = (new URLSearchParams(location.search).get('code') || '').trim().toUpperCase();
   showSkeleton();
   if (code) {
-    S.code = code;
+    S.code = /^[0-9A-Z]{4}$/.test(code) ? code : null;
     run({ code: code }).then(function (res) { if (res.state !== 'ready') renderStart(res.state); }, function () { renderStart('error'); });
     return;
   }
