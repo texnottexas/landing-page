@@ -33031,6 +33031,34 @@
     renderFullReport();
   }
 
+  // A shared ?code= link that does not exist (typo, or it was replaced).
+  function _ar_showBadLinkNotice() {
+    var m = openModal({ zIndex: '1100', modalClass: 'modal', maxWidth: '420px', esc: true, backdropClose: true });
+    m.bg.id = 'ar-bad-link-notice';
+    var h = document.createElement('h2');
+    h.textContent = 'Link not found';
+    m.modal.appendChild(h);
+    var p = document.createElement('p');
+    p.textContent = 'This shared report link has expired or is wrong. Ask for a new link.';
+    m.modal.appendChild(p);
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:flex-end;margin-top:1rem;';
+    var go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'btn-primary';
+    go.id = 'ar-bad-link-start';
+    go.textContent = 'Start my own report';
+    go.addEventListener('click', function() {
+      m.close();
+      var w = document.getElementById('wizard');
+      if (!(w && w.classList.contains('open'))) openWizard();
+    });
+    row.appendChild(go);
+    m.modal.appendChild(row);
+    document.body.appendChild(m.bg);
+    setTimeout(function() { try { go.focus(); } catch (e) {} }, 30);
+  }
+
   function normalInit() {
     var saved = null;
     try { saved = JSON.parse(localStorage.getItem('playerReport')); } catch(e) {}
@@ -33151,6 +33179,9 @@
             applyShortcodeConfig(result.playerName, ids, isSamePlayer, result.siteKey);
           } else {
             normalInit();
+            // The worker answered and has no such code: say so instead of
+            // quietly showing the start page. Other failures stay quiet.
+            if (result && result.ok === false && result.error === 'not_found') _ar_showBadLinkNotice();
           }
         })(result);
       }).catch(function() { normalInit(); });
