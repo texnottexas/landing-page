@@ -50,14 +50,29 @@
   play.id = 'rr-play'; play.type = 'button';
   var stopBtn = el('button', BTN + 'background:transparent;color:' + T.text + ';border:1px solid ' + T.border, 'Stop');
   stopBtn.id = 'rr-stop'; stopBtn.type = 'button';
-  row.appendChild(ico); row.appendChild(words); row.appendChild(play); row.appendChild(stopBtn);
+  function svg(paths, size) {
+    var n = document.createElementNS(NS, 'svg');
+    n.setAttribute('viewBox', '0 0 24 24'); n.setAttribute('width', String(size)); n.setAttribute('height', String(size)); n.setAttribute('aria-hidden', 'true');
+    n.setAttribute('fill', 'none'); n.setAttribute('stroke', 'currentColor'); n.setAttribute('stroke-width', '2'); n.setAttribute('stroke-linecap', 'round'); n.setAttribute('stroke-linejoin', 'round');
+    paths.forEach(function (d) { var x = document.createElementNS(NS, 'path'); x.setAttribute('d', d); n.appendChild(x); });
+    return n;
+  }
+  // Minimize: the card shrinks to a small pill so players can keep the song on while they play (Tex).
+  var minBtn = el('button', 'width:44px;height:44px;flex:none;display:grid;place-items:center;border-radius:8px;cursor:pointer;background:transparent;color:' + T.muted + ';border:1px solid ' + T.border);
+  minBtn.id = 'rr-min'; minBtn.type = 'button'; minBtn.setAttribute('aria-label', 'Minimize'); minBtn.title = 'Minimize';
+  minBtn.appendChild(svg(['M6 15l6-6 6 6'], 18));
+  row.appendChild(ico); row.appendChild(words); row.appendChild(play); row.appendChild(minBtn); row.appendChild(stopBtn);
+  var pill = el('button', 'display:none;min-height:44px;padding:0 14px;align-items:center;gap:8px;border-radius:22px;cursor:pointer;background:transparent;border:none;color:' + T.text + ';font:600 13px/1 system-ui,sans-serif');
+  pill.id = 'rr-pill'; pill.type = 'button'; pill.setAttribute('aria-label', 'Show the player');
+  var pillIco = svg(['M9 18V5l12-2v13', 'M6 15a3 3 0 1 0 0 6a3 3 0 1 0 0-6', 'M18 13a3 3 0 1 0 0 6a3 3 0 1 0 0-6'], 18); pillIco.style.color = T.accent;
+  pill.appendChild(pillIco); pill.appendChild(el('span', null, 'Now playing')); pill.appendChild(svg(['M6 9l6 6 6-6'], 16));
   // The clip itself, folded away until Video: the same element plays the song either way.
   var media = el('div', 'height:0;overflow:hidden;border-radius:8px;background:#000');
   media.id = 'rr-media';
   var videoBtn = el('button', 'align-self:flex-end;min-height:36px;padding:0 12px;border-radius:8px;font:600 13px/1 system-ui,sans-serif;cursor:pointer;' +
     'background:transparent;color:' + T.accent + ';border:1px solid ' + T.border, 'Video');
   videoBtn.id = 'rr-video'; videoBtn.type = 'button';
-  root.appendChild(row); root.appendChild(media); root.appendChild(videoBtn);
+  root.appendChild(row); root.appendChild(media); root.appendChild(videoBtn); root.appendChild(pill);
   document.body.appendChild(root);
   S.root = root;
 
@@ -98,11 +113,21 @@
   S.audio.src = SRC;
   play.onclick = function () { play.style.display = 'none'; sub.textContent = 'Loading...'; start(); };
   stopBtn.onclick = stop;
-  videoBtn.onclick = function () {
-    var open = media.style.height === '0px' || media.style.height === '0';
+  function showVideo(open) {
     media.style.height = open ? 'auto' : '0'; media.style.aspectRatio = open ? '16 / 9' : '';
     root.style.width = open ? WIDE : SMALL; videoBtn.textContent = open ? 'Hide video' : 'Video';
-  };
+  }
+  videoBtn.onclick = function () { showVideo(media.style.height === '0px' || media.style.height === '0'); };
+  function minimize(min) {
+    if (min) showVideo(false);
+    row.style.display = min ? 'none' : 'flex'; videoBtn.style.display = min ? 'none' : '';
+    pill.style.display = min ? 'inline-flex' : 'none';
+    root.style.width = min ? 'auto' : SMALL; root.style.padding = min ? '0' : '12px 14px'; root.style.borderRadius = min ? '22px' : '12px';
+    // the folded video stays in the page (some browsers pause a hidden video) but takes no room
+    media.style.width = min ? '0' : ''; root.style.gap = min ? '0' : '10px';
+  }
+  minBtn.onclick = function () { minimize(true); };
+  pill.onclick = function () { minimize(false); };
   window.addEventListener('pagehide', stop);
 
   window.__RR = {

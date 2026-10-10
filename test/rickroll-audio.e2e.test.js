@@ -157,3 +157,31 @@ test('Video opens the clip in the card without restarting the song; Hide video f
   assert.equal(await page.evaluate(() => window.__RR.state().playing), true);
   await ctx.close();
 });
+
+test('minimize: the card shrinks to a small pill and the song keeps going (video folded away); the pill brings it back', async () => {
+  const { ctx, page } = await open();
+  await launch(page);
+  await page.waitForFunction(() => window.__RR && window.__RR.state().playing);
+  await page.click('#rr-video');
+  await page.waitForFunction(() => document.getElementById('rr-media').getBoundingClientRect().height > 100);
+  const big = await page.$eval('#rr-root', (e) => e.getBoundingClientRect().width);
+  assert.ok((await page.$eval('#rr-min', (e) => e.getBoundingClientRect().height)) >= 44, 'Minimize is a 44 px tap target');
+  await page.click('#rr-min');
+  const small = await page.evaluate(() => {
+    const r = document.getElementById('rr-root').getBoundingClientRect(), pill = document.getElementById('rr-pill');
+    return { w: r.width, h: r.height, pill: !!pill && pill.offsetParent !== null, pillH: pill.getBoundingClientRect().height, text: document.getElementById('rr-root').innerText,
+      stopShown: document.getElementById('rr-stop').offsetParent !== null, media: document.getElementById('rr-media').getBoundingClientRect().height, playing: window.__RR.state().playing };
+  });
+  assert.ok(small.pill && small.pillH >= 44, 'a 44 px pill');
+  assert.ok(small.w < big / 2 && small.h <= 60, 'much smaller than the card: ' + JSON.stringify(small));
+  assert.match(small.text, /Now playing/);
+  assert.equal(small.stopShown, false);
+  assert.ok(small.media <= 1, 'the video folded away');
+  assert.equal(small.playing, true, 'the song keeps going');
+  await page.click('#rr-pill');
+  const back = await page.evaluate(() => ({ stop: document.getElementById('rr-stop').offsetParent !== null, pill: document.getElementById('rr-pill').offsetParent !== null, playing: window.__RR.state().playing }));
+  assert.deepEqual(back, { stop: true, pill: false, playing: true });
+  await page.click('#rr-stop');
+  assert.equal(await page.$('#rr-root'), null);
+  await ctx.close();
+});
