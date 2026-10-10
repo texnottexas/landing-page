@@ -188,3 +188,26 @@ test('REX_DIR: a real player\'s enigma + bench supplements agree with the page (
   }
   console.log('REX parity: ' + owned.length + ' beasts, ' + recs + ' recommendations over ' + PLAYSTYLES.length + ' playstyles, identical');
 });
+
+// Engine fix (both pages): the upgrade threshold scores the projected beast with the SAME slot condition map as the "today" score. Before, it scored
+// it ungated, so a beast whose slot bonus is off could be told to reach a star/level it already had.
+test('an upgrade threshold is never a requirement the beast already meets (the threshold uses the slot condition map)', async () => {
+  let thresholds = 0, bad = [];
+  for (const seed of [1, 5, 7, 11, 23, 42, 99, 123, 7777]) {
+    const s = synth(seed, 70), pg = await pageSide(true, s.suppDecode), m = moduleSide(true, s.suppDecode);
+    for (const ps of PLAYSTYLES) {
+      const merged = { enigmas: s.enigmas };
+      for (const r of m.opt.plan(merged, s.bench, ps, 'x').result.recommendations) {
+        if (!r.threshold) continue;
+        thresholds++;
+        if (r.threshold.star <= (r.to.st || 0) && r.threshold.level <= (r.to.lv || 0)) bad.push(seed + ':' + r.to.id + ' needs ' + r.threshold.star + '/' + r.threshold.level + ' has ' + r.to.st + '/' + r.to.lv);
+      }
+      // and the page copy answers the same
+      const owned = pg.boBuildOwnedBeasts(merged, s.bench, pg.ebResolveBeasts(merged.enigmas)), plan = pg.boBuildCurrentPlan(pg.ebResolveBeasts(merged.enigmas));
+      const want = pg.boOptimize(owned, plan, pg.boComputeActiveConditions(plan, owned), ps, pg.boReadPlayerEnhance(merged, 'x'), pg.boReadTgRefinement(merged, 'x'));
+      assert.deepStrictEqual(P.j(m.opt.plan(merged, s.bench, ps, 'x').result), P.j(want));
+    }
+  }
+  assert.ok(thresholds > 20, 'thresholds checked: ' + thresholds);
+  assert.deepStrictEqual(bad, []);
+});

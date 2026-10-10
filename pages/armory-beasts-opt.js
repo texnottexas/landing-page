@@ -539,7 +539,7 @@ function create(core) {
       // up to the current beast's exact specs with 1★ same-type, same-rarity
       // beasts, so the slot's stat ceiling never regresses during the swap.
       if (scoreNowNew <= scoreNowCur && !isInterchangeableSwap(origId, newId)) {
-        threshold = boUpgradeThreshold(newBeast, scoreNowCur, s.desc, playstyle);
+        threshold = boUpgradeThreshold(newBeast, scoreNowCur, s.desc, playstyle, newMet);
       }
       // Bench-fodder feasibility for the recommended star upgrade. Per Tex's
       // 2026-05-18 clarification: a beast can only be star-upgraded by sacrificing
@@ -649,7 +649,7 @@ function create(core) {
     };
   }
 
-  function boUpgradeThreshold(newBeast, targetScore, slotDesc, playstyle) {
+  function boUpgradeThreshold(newBeast, targetScore, slotDesc, playstyle, conditionMet) {
     var maxStar = boMaxStarFor(newBeast);
     var maxLv = boMaxLevelFor(newBeast);
     var curStar = newBeast.st || 0;
@@ -658,7 +658,7 @@ function create(core) {
       var lvStart = s === curStar ? curLv : 0;
       for (var l = lvStart; l <= maxLv; l++) {
         var projected = Object.assign({}, newBeast, { st: s, lv: l });
-        var sc = boBeastScore(projected, 'current', slotDesc, playstyle);
+        var sc = boBeastScore(projected, 'current', slotDesc, playstyle, conditionMet);
         if (sc > targetScore) {
           return {
             star: s,
