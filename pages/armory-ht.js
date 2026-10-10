@@ -233,7 +233,7 @@ var CSS =
   '.ht-pc{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:8px;display:flex;flex-direction:column;gap:6px;min-width:0}' +
   '.ht-pc.ht-q1{border-color:var(--dim)}.ht-pc.ht-q2{border-color:var(--ok)}.ht-pc.ht-q3{border-color:var(--q3)}.ht-pc.ht-q4{border-color:var(--q4)}.ht-pc.ht-q5{border-color:var(--q5)}' +
   '.ht-ph{display:flex;align-items:center;gap:8px}.ht-ph .ico,.ht-ph .fb{width:40px;height:40px}.ht-pt{flex:1;min-width:0}.ht-pn{font-size:var(--fs-14);font-weight:600;line-height:1.25}.ht-ps{font-size:var(--fs-12);color:var(--muted)}' +
-  '.ht-lock{width:16px;height:16px;color:var(--muted);flex:none}.ht-pc .ht-ln.ht-main{font-size:var(--fs-13)}.ht-pc .ht-ln{max-width:none}' +
+  '.ht-lock{color:var(--muted)}.ht-pc .ht-ln.ht-main{font-size:var(--fs-13)}.ht-pc .ht-ln{max-width:none}' +
   '.ht-pf{font-size:var(--fs-12);color:var(--muted);border-top:1px solid var(--rule);padding-top:6px}.ht-tally{font-size:var(--fs-13);color:var(--muted)}' +
   '@media (min-width:768px){.ht-hd .ico,.ht-hd .fb{width:96px;height:96px}.ht-card.is-open > .ht-hd{position:static}.ht-fbtn{display:none}.ht-fs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 12px}.ht-grid{grid-template-columns:repeat(3,minmax(0,1fr))}' +
   '.ht-card.is-open .ht-slots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.ht-slot.ht-sel{margin:0 -16px;padding:8px 16px}}' +
@@ -321,7 +321,7 @@ function ensurePool() {
   if (!raw) { rows = null; rowsFor = null; return; }
   if (rowsFor !== raw) { rows = Logic.poolRows(G, raw); opts = Logic.poolOptions(G, rows); rowsFor = raw; P = Object.assign({}, DEF); }
 }
-function lockIcon() { return '<svg class="i ht-lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span class="sr">Locked</span>'; }
+function lockIcon() { return '<svg class="i sm ht-lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span class="sr">Locked</span>'; }
 function poolCard(e) {
   var bits = [e.rar, e.slot == null ? 'Slot ?' : SLOT_LABEL[e.slot]];
   if (e.lv > 0) bits.push('Lv.' + e.lv);

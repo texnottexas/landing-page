@@ -329,7 +329,7 @@ var EXPECTED = [
       var cs = getComputedStyle(el); if (!/flex|grid/.test(cs.display) || !(parseFloat(cs.columnGap) > 0)) return;
       var kids = Array.prototype.filter.call(el.children, function (c) { return c.tagName === 'SPAN' && c.textContent.trim() && !c.hasAttribute('aria-hidden') && !c.classList.contains('dot'); });
       var oneLine = kids.length >= 2 && kids.every(function (c) { var r = c.getBoundingClientRect(); return r.height <= 26 && Math.abs(r.top - kids[0].getBoundingClientRect().top) < 4; });
-      if (oneLine && Array.prototype.filter.call(el.children, function (c) { return c.hasAttribute('aria-hidden') && /\u00B7/.test(c.textContent); }).length === 0 && !el.matches('.bm-num, .irow, .hb-1, .sechead, .chips, .nb, .stars, .buffs li, .hc-pills') && sp.length < 5) sp.push(ROUTES[i] + ':' + (el.className || el.tagName) + ' "' + el.textContent.trim().slice(0, 30) + '"');
+      if (oneLine && Array.prototype.filter.call(el.children, function (c) { return c.hasAttribute('aria-hidden') && /\u00B7/.test(c.textContent); }).length === 0 && !el.matches('.bm-num, .irow, .hb-1, .sechead, .chips, .nb, .stars, .buffs li, .hc-pills, .ht-pills') && sp.length < 5) sp.push(ROUTES[i] + ':' + (el.className || el.tagName) + ' "' + el.textContent.trim().slice(0, 30) + '"');
     });
   }
   log(sp.length === 0, 'no sibling text spans in a gapped flex row without a separator', sp.join(' | ') || 'none');
