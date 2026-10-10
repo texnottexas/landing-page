@@ -62,7 +62,7 @@ function beastView(G, b) {
     main: buffLine(G, b.mainBuff, star, lv, pot, true),
     base: (b.baseBuff || []).map(function (x) { return buffLine(G, x && x.id, star, lv, pot, false); }),
     fieldCfg: b.fieldCfg ? num(b.fieldCfg) : 0, fieldName: b.fieldName ? clean(b.fieldName) : '', slot: num(b.fieldSlotNum), platformLv: num(b.slotLevel),
-    slotBuffs: (b.slotBuffs || []).map(function (sb) { return { name: label(sb.name), txt: sb.val ? '+' + (num(sb.val) / 100).toFixed(1) + '%' : '' }; })
+    slotBuffs: (b.slotBuffs || []).map(function (sb) { return { name: label(sb.name), txt: sb.val ? '+' + (num(sb.val) / 100).toFixed(2) + '%' : '' }; })
   };
 }
 
@@ -340,7 +340,7 @@ var CSS =
   '.bst-ib{position:relative;flex:none;width:48px;height:48px}.bst-ib .ico,.bst-ib .fb{width:48px;height:48px}.bst-ib .bst-el{position:absolute;top:-3px;right:-3px;width:18px;height:18px;border:0;background:none}' +
   '.bst-bt{flex:1;min-width:0}.bst-bn{font-weight:700;font-size:var(--fs-15)}.bst-bm{font-size:var(--fs-13);color:var(--muted);display:flex;flex-wrap:wrap;align-items:center;gap:0 8px}' +
   '.bst-gap{width:48px;height:48px;border:1.5px dashed var(--border);border-radius:var(--r-chip);flex:none}' +
-  '.bst-ln{display:flex;justify-content:space-between;gap:12px;font-size:var(--fs-13);color:var(--muted)}.bst-ln > span:last-child{white-space:nowrap;color:var(--text);font-weight:600}.bst-ln.bst-main{font-size:var(--fs-14);color:var(--text)}' +
+  '.bst-ln{display:flex;justify-content:space-between;font-size:var(--fs-13);color:var(--muted)}.bst-ln > span:last-child{margin-left:12px;white-space:nowrap;color:var(--text);font-weight:600}.bst-ln.bst-main{font-size:var(--fs-14);color:var(--text)}' +
   '.bst-pot{display:flex;align-items:center;gap:8px;font-size:var(--fs-13);color:var(--muted)}.bst-pot .meter{flex:1}.bst-pot .v{min-width:44px;text-align:right;color:var(--text);font-weight:600}' +
   '.bst-cond{font-size:var(--fs-12);color:var(--muted);border-top:1px solid var(--rule);padding-top:6px}' +
   '.bst-fb{display:flex;flex-direction:column;gap:12px}.bst-fbtn{}.bst-fs2{display:none}' +
@@ -349,7 +349,7 @@ var CSS =
   '.bst-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}' +
   '.bst-c{display:flex;flex-direction:column;gap:6px;width:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:12px;min-width:0}' +
   '.bst-c.q4{border-color:var(--q4)}.bst-c.q5{border-color:var(--q5)}' +
-  '.bst-cf{font-size:var(--fs-12);color:var(--muted);border-top:1px solid var(--rule);padding-top:6px;display:flex;justify-content:space-between;gap:8px}' +
+  '.bst-cf{font-size:var(--fs-12);color:var(--muted);border-top:1px solid var(--rule);padding-top:6px;display:flex;justify-content:space-between}.bst-cf > span:last-child{margin-left:8px}' +
   '.bst-tally{font-size:var(--fs-13);color:var(--muted)}.bst-sh{display:flex;flex-direction:column;gap:12px}.bst-sh h4{font:700 var(--fs-13)/1.3 var(--sans);color:var(--muted);margin:0 0 4px}' +
   '.bst-wiz{display:flex;flex-direction:column;gap:12px}.bst-opt{display:flex;flex-direction:column;gap:4px;width:100%;min-height:var(--row);padding:12px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--card);text-align:left;color:inherit}' +
   '.bst-opt b{font-size:var(--fs-15)}.bst-opt span{font-size:var(--fs-13);color:var(--muted)}.bst-wr{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:var(--tap)}' +
@@ -435,6 +435,7 @@ function srcLine() {
 function fieldPane() {
   if (!M) return needData('No beast data yet.');
   if (platOk === false) return '<div class="empty">Could not load the beast platform data. Check your connection and reload the page.</div>';
+  if (!M.fields.length) return '<div class="sechead"><h2 class="title">Beast fields</h2></div>' + summary() + '<div class="empty">No field data in these reports or game data yet. The collection has your beasts.</div>' + classicLink();
   var top = '<p class="t13 muted">' + nd(M.summary.beasts + ' beasts deployed in ' + M.fields.filter(function (f) { return f.deployed > 0; }).length + ' fields') + '</p>';
   var most = 0; M.fields.forEach(function (f, i) { if (f.deployed > M.fields[most].deployed) most = i; });
   var wantCfg = +cur.q.field || 0, html = '';
@@ -506,8 +507,8 @@ function beastSheet(id) {
 /* ---- Optimizer ---- */
 function prefsKey() { var k = H.sk(); return k ? PREFS_KEY + k : null; }
 function savedPrefs() { var k = prefsKey(); return k ? Logic.readPrefs(H.ls(k)) : null; }
-var curPrefs = null;
-function activePrefs() { if (curPrefs) return curPrefs; var p = editing ? null : savedPrefs(); return p; }
+var curPrefs = null; /* {sk, p}: this session's choice for ONE player (never reused for another) */
+function activePrefs() { if (curPrefs && curPrefs.sk === H.sk()) return curPrefs.p; return editing ? null : savedPrefs(); }
 function wizPane() {
   var UN = [[1, 'Army'], [2, 'Navy'], [3, 'Air Force']], cap = W.mode === 'mono' ? 1 : W.mode === 'dual' ? 2 : 3;
   if (W.step === 1) {
@@ -610,7 +611,7 @@ function wizClick(v) {
     if (W.units.length !== cp) { var er = $('#bstWerr'); if (er) er.hidden = false; return; }
     var p = Logic.validPrefs({ mode: W.mode, units: W.units.slice(), balance: W.mode === 'dual' && W.weights[0] !== W.weights[1] ? 'primarySecondary' : 'even', weights: W.mode === 'mono' ? null : W.weights.slice() });
     if (!p) return;
-    curPrefs = p; editing = false;
+    curPrefs = { sk: H.sk(), p: p }; editing = false;
     if (!readOnly() && prefsKey()) H.ls(prefsKey(), JSON.stringify(Object.assign({}, p, { savedAt: new Date().toISOString() })));
     H.beastMove();
     renderOptimizer(); return;

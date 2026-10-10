@@ -152,7 +152,9 @@ var EXPECTED = [
     log(!mt2.some(function (x) { return /Raysor Headset on Vivian/.test(x); }) && mt2.join('|') !== base.join('|'), 'mutation 2: a fully rolled Raysor Headset on Vivian is no longer refined', mt2.join(' | '));
     var m3 = JSON.parse(JSON.stringify(S.vm.movesInput)); m3.ht.reportMechas = [1005];
     var mt3 = core.nextMoves(m3, { max: 3 }).picks.map(function (x) { return x.text; });
-    log(mt3.some(function (x) { return /Doom Sawblade D-4/.test(x); }), 'mutation 3: when the report shows Doom Sawblade, its chip move appears', mt3.join(' | '));
+    var m3has = S.vm.movesInput.ht.chips.some(function (c) { return c.mecha === 1005 && !c.core && !c.empty && c.lv < 25; }); /* the move needs a Doom Sawblade chip below Lv.25 in the data */
+    if (m3has) log(mt3.some(function (x) { return /Doom Sawblade D-4/.test(x); }), 'mutation 3: when the report shows Doom Sawblade, its chip move appears', mt3.join(' | '));
+    else log(null, 'mutation 3 skipped: this data has no Doom Sawblade chip below Lv.25 to raise', mt3.join(' | '));
   }
 
   /* 6. no emoji, no external stylesheet or font, CSP identical to the classic page */
@@ -342,7 +344,7 @@ var EXPECTED = [
   if (hTog) { hTog.click(); await sleep(60); }
   var hNow = hTog ? $$('#v-ht [data-hto]')[1].getAttribute('aria-expanded') : null;
   log(!hTog || hNow !== hWas, 'HT Loadouts: a card opens and closes from its header', hTog ? hWas + ' -> ' + hNow : 'one HT only');
-  var hLv = $$('#v-ht [data-pane="loadouts"] .ht-slot:not(.ht-sel) .ht-sb').length, hMax = /at Lv\.25|of 25/.test($('#v-ht [data-pane="loadouts"]').textContent);
+  var hLv = $$('#v-ht [data-pane="loadouts"] .ht-slot:not(.ht-sel) .ht-sb').length, hMax = /Lv\.\d+/.test($('#v-ht [data-pane="loadouts"]').textContent); /* chips at Lv.25 (battle reports) print "Lv.25" alone; under 25 they add "of 25" and "at Lv.25" */
   log(hNoData || (hLv > 0 && hMax), 'HT Loadouts: each chip shows its level and the stat it gives', hNoData ? 'no chip data' : hLv + ' chip rows');
   var hEmoji = /\p{Extended_Pictographic}/u.test($('#v-ht').textContent.replace(/[\u00A9\u00AE\u2122]/g, ''));
   log(!hEmoji, 'HT: no emoji in the section', hEmoji ? 'found one' : 'none');
@@ -402,7 +404,7 @@ var EXPECTED = [
   log(bLost.length === 0, 'Beasts: no text node with an edge space directly inside a flex or grid parent', bLost.slice(0, 3).join(' | ') || 'none');
   log(bAb.length === 0, 'Beasts: stats and buffs are written out (no ATK, DEF, RES, (off), (def), AF, "Slot1", "Lv30")', bAb.join(' ') || 'none');
   log(!/\p{Extended_Pictographic}/u.test($('#v-beasts').textContent.replace(/[\u00A9\u00AE\u2122]/g, '')), 'Beasts: no emoji in the section', 'none');
-  log(!!$('#v-beasts a[href*="armory-report.html"][href$="#tab=enigma"]'), 'Beasts: a small "Open in classic" link in the section footer', $('#v-beasts a[href*="armory-report.html"]') ? $('#v-beasts a[href*="armory-report.html"]').getAttribute('href') : 'missing');
+  log(!!$('#v-beasts a[href*="armory-report.html"][href$="#tab=enigma"]') || (!!S.advise && !!$('#v-beasts a[href*="armory-report.html?advise="]')), 'Beasts: a small "Open in classic" link in the section footer (the advisor view links its own classic page)', $('#v-beasts a[href*="armory-report.html"]') ? $('#v-beasts a[href*="armory-report.html"]').getAttribute('href') : 'missing');
   await visit('beasts/field');
   /* routes: the legacy #tab= ids resolve to a view */
   await visit('overview'); window.scrollTo(0, 0);

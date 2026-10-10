@@ -47,6 +47,8 @@ test('model: summary, fields and slots of the fixture roster (hand-computed)', (
   assert.equal(m.byId['1'].main.txt, '+1', 'March Size is a flat count');
   assert.equal(m.byId['9'].main.txt, '+2');
   assert.equal(m.byId['78'].potPct, 0);
+  // the beast sheet's slot buffs are the classic detail modal's: basis points / 100, two decimals (the fixture slot 1 buff is 100)
+  assert.deepEqual(m.byId['1'].slotBuffs, [{ name: 'March Size', txt: '+1.00%' }]);
   assert.equal(m.byId['1'].fieldName, 'CPNT Mastery'); assert.ok(m.byId['8'].fieldCfg === 0 && m.byId['8'].slot === 0);
   assert.equal(m.byId['5'].icon, 'Fluffynx_Fire_evolved.png', 'the icon file name rule (EB_ICON_NAMES) differs from the display name for type 5'); assert.equal(m.byId['1'].icon, 'Dreadray_Fire_base.png');
   // the bench supplement is deduped by id: a bench beast that is already deployed is not listed twice
@@ -117,7 +119,7 @@ test('preferences: only a well-formed {mode, units, weights} is accepted (localS
   assert.deepEqual(L.validPrefs({ mode: 'dual', units: [1, 3], balance: 'primarySecondary', weights: [1, 0.5] }), { mode: 'dual', units: [1, 3], balance: 'primarySecondary', weights: [1, 0.5] });
   assert.deepEqual(L.validPrefs({ mode: 'mono', units: [2], weights: [5] }), { mode: 'mono', units: [2], balance: 'even', weights: null });
   assert.equal(L.validPrefs({ mode: 'triple', units: [1, 2, 3] }).weights, null);
-  for (const bad of [null, 'x', {}, { mode: 'quad', units: [1] }, { mode: 'mono', units: [] }, { mode: 'mono', units: [1, 2] }, { mode: 'dual', units: [1, 1] }, { mode: 'dual', units: [1, 4] },
+  for (const bad of [null, 'x', {}, { mode: 'quad', units: [1] }, { mode: 'quad', units: [1, 2, 3] }, { mode: '__proto__', units: [1, 2, 3] }, { mode: 'mono', units: [] }, { mode: 'mono', units: [1, 2] }, { mode: 'dual', units: [1, 1] }, { mode: 'dual', units: [1, 4] },
     { mode: 'dual', units: [1, 2], weights: [1, 0] }, { mode: 'dual', units: [1, 2], weights: [1, 99] }, { mode: 'triple', units: [1, 2, 3, 3] }, { mode: 'mono', units: ['<x>'] }]) assert.equal(L.validPrefs(bad), null, JSON.stringify(bad));
   assert.equal(L.readPrefs('not json'), null); assert.equal(L.readPrefs(null), null);
   assert.deepEqual(L.readPrefs(JSON.stringify({ mode: 'mono', units: [1], savedAt: 'x', extra: 1 })), { mode: 'mono', units: [1], balance: 'even', weights: null });
