@@ -64,7 +64,7 @@ function more(cb) {
   var sc = document.createElement('script');
   sc.src = 'armory-more.js';
   sc.onload = function () { M = window.ArmoryMore(H); var q = moreQ; moreQ = null; if (S.vm) M.renderSections(); q.forEach(function (f) { f(M); }); };
-  sc.onerror = function () { moreQ = null; $('#v-start').hidden = false; $('#v-start').innerHTML = '<div class="vb"><div class="start"><h1 class="disp" style="font-size:var(--fs-24)">Could not load this part</h1><p class="muted">Check your connection and reload the page.</p></div></div>'; };
+  sc.onerror = function () { moreQ = null; fkDrop(); $('#v-start').hidden = false; $('#v-start').innerHTML = '<div class="vb"><div class="start"><h1 class="disp" style="font-size:var(--fs-24)">Could not load this part</h1><p class="muted">Check your connection and reload the page.</p></div></div>'; };
   document.body.appendChild(sc);
 }
 function advice(cb) {
@@ -77,7 +77,7 @@ function advice(cb) {
   sc.onerror = function () { advQ = null; var b = $('#adviceBody'); if (b) b.innerHTML = '<div class="empty">Could not load this part. Check your connection and reload the page.</div>'; };
   document.body.appendChild(sc);
 }
-function renderStart(kind, extra) { fkSettle(function () { more(function (m) { m.renderStart(kind, extra); }); }, true); }
+function renderStart(kind, extra) { fkSettle(function () { more(function (m) { fkDrop(); m.renderStart(kind, extra); }); }, true, true); }
 function share() { more(function (m) { m.share(); }); }
 
 /* ---------- routing ---------- */
@@ -140,8 +140,8 @@ var FK_DELAY = 120, FK_FORM = 1050, FK_SETTLE = 350;
 function fkReduced() { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); }
 function fkMarkup(role) {
   var o = ''; for (var i = 0; i < 8; i++) o += '<span class="o"><i></i></span>';
-  return '<div class="fkl' + (role ? '' : ' hero') + '"' + (role ? ' role="status"' : ' aria-hidden="true"') + '>' + (role ? '<span class="sr">Loading your armory\u2026</span>' : '') +
-    '<div class="fkl-st">' + o + '<p class="fk" translate="no">fk<br>boats</p>' +
+  return '<div class="fkl' + (role ? '' : ' intro') + '"' + (role ? '' : ' aria-hidden="true"') + '>' +
+    '<div class="fkl-st" aria-hidden="true">' + o + '<p class="fk" translate="no">fk<br> boats</p>' +
     '<svg class="sh" viewBox="0 0 100 100" fill="currentColor" aria-hidden="true"><path d="' + FK_OUTER + '"/><path d="' + FK_INNER + '"/></svg></div>' + (role ? '<p class="fkl-cap">Building your armory</p>' : '') + '</div>';
 }
 /* a loader stays up while a load is pending; a load under 120 ms never shows it (no flash) */
@@ -150,21 +150,24 @@ function fkShow(host) {
   host.innerHTML = '<div class="vb fkl-vb">' + fkMarkup(true) + '</div>';
   var el = host.querySelector('.fkl'); el.setAttribute('data-run', '');
   $('#main').setAttribute('aria-busy', 'true');
+  $('#fkLive').textContent = 'Loading your armory\u2026';   /* announced from outside #main, which is aria-busy */
   S.fk = { el: el, t: setTimeout(function () { el.classList.add('on'); S.fk.on = true; }, FK_DELAY), on: false };
 }
-function fkDrop() { if (S.fk) { clearTimeout(S.fk.t); var p = S.fk.el.parentNode; if (p) p.removeChild(S.fk.el); S.fk = null; } $('#main').removeAttribute('aria-busy'); }
+function fkBusyOff() { $('#main').removeAttribute('aria-busy'); $('#fkLive').textContent = ''; }
+function fkDrop() { if (S.fk) { clearTimeout(S.fk.t); var p = S.fk.el.parentNode; if (p) p.removeChild(S.fk.el); S.fk = null; } fkBusyOff(); }
 /* fn(shown) runs when the loader is done: after one formation + shield reveal (1050 ms: the shield stays up 300 ms), at once if it never showed or motion is reduced,
    after a short settle on a failed load. */
-function fkSettle(fn, failed) {
-  var f = S.fk;
-  if (!f || !f.on || fkReduced()) { fkDrop(); fn(false); return; }
-  f.t = setTimeout(function () { if (S.fk === f) fkDrop(); fn(true); }, failed ? FK_SETTLE : FK_FORM);
+function fkSettle(fn, failed, keep) {
+  var f = S.fk, end = function () { if (keep) fkBusyOff(); else if (S.fk === f) fkDrop(); };   /* keep: the caller drops the loader once its screen is ready */
+  if (!f || !f.on || fkReduced()) { if (keep) fkBusyOff(); else fkDrop(); fn(false); return; }
+  f.t = setTimeout(function () { end(); fn(true); }, failed ? FK_SETTLE : FK_FORM);
   f.el.classList.add(failed ? 'settle' : 'form');
 }
 /* Start-screen hero: plays the formation once, nothing loops */
 function fkHero(host) {
   host.insertAdjacentHTML('afterbegin', fkMarkup(false));
   var el = host.querySelector('.fkl'); el.setAttribute('data-run', '');
+  if (fkReduced()) { el.removeAttribute('data-run'); return; }
   requestAnimationFrame(function () { requestAnimationFrame(function () { el.classList.add('form'); }); });
   setTimeout(function () { el.removeAttribute('data-run'); }, FK_FORM + 200);
 }
