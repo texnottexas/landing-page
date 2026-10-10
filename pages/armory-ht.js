@@ -297,8 +297,9 @@ function loadoutsPane() {
   if (!ls.length && !ms) return needData('No chip data yet.');
   var want = +cur.q.mecha || 0, html = '';
   var top = '<p class="t13 muted">' + nd(ls.length + (ls.length === 1 ? ' HT' : ' HTs') + ' with chips · ' + vm.chipsFilled + ' of ' + vm.chipsMax + ' chips equipped' + (vm.reportMechas ? ' · ' + vm.reportMechas.length + ' in battle reports' : '')) + '</p>';
-  ls.forEach(function (l) {
-    var k = String(l.mecha), isOpen = open[k] != null ? open[k] : (ls.length === 1 || (l.fights && !!vm.reportMechas));
+  var anyFights = ls.some(function (x) { return x.fights; });
+  ls.forEach(function (l, i) {
+    var k = String(l.mecha), isOpen = open[k] != null ? open[k] : (ls.length === 1 || l.fights || (!anyFights && i === 0));
     html += card(l, k, isOpen);
   });
   if (ms) {
