@@ -325,7 +325,26 @@ function swapView(G, core, opt, rec, prefs) {
   };
 }
 
-/* The whole plan: totals, swaps grouped by field, notes. `opt` is the ArmoryBeastsOpt instance of this player. */
+/* FREE NOW (gain today above 0, no upgrade first) and AFTER LEVELLING (the rest). A linked move stays together, in the section of its best leg
+   (the one with the largest fully levelled gain); sections list the biggest gain first (today for Free now, fully levelled for After levelling). */
+function sectionsOf(swaps, byChain) {
+  var units = [], seen = {};
+  swaps.forEach(function (s) {
+    if (!s.chain) { units.push({ legs: [s], best: s }); return; }
+    if (seen[s.chain.id]) return;
+    seen[s.chain.id] = 1;
+    var legs = byChain[s.chain.id].slice().sort(function (a, b) { return a.chain.step - b.chain.step; });
+    units.push({ legs: legs, best: legs.reduce(function (m, x) { return x.gainMax > m.gainMax ? x : m; }, legs[0]) });
+  });
+  var mk = function (key, title, hint, free) {
+    var u = units.filter(function (x) { return !!x.best.free === free; }).sort(function (a, b) { return free ? b.best.gainToday - a.best.gainToday : b.best.gainMax - a.best.gainMax; });
+    var out = []; u.forEach(function (x) { x.legs.forEach(function (l) { out.push(l); }); });
+    return { key: key, title: title, hint: hint, swaps: out };
+  };
+  return [mk('now', 'Free now', 'Better today, no levelling needed', true), mk('later', 'After levelling', 'Level the new beast first, biggest gain first', false)].filter(function (x) { return x.swaps.length; });
+}
+
+/* The whole plan: totals, swaps in two sections, notes. `opt` is the ArmoryBeastsOpt instance of this player. */
 function planModel(G, core, opt, merged, bench, prefs, siteKey) {
   var p = opt.plan(merged, bench, prefs, siteKey), r = p.result;
   var swaps = r.recommendations.map(function (rec) { return swapView(G, core, opt, rec, prefs); });
@@ -336,9 +355,7 @@ function planModel(G, core, opt, merged, bench, prefs, siteKey) {
     var legs = byChain[id].sort(function (a, b) { return key(a) - key(b); });
     legs.forEach(function (s, i) { s.chain.step = i + 1; s.chain.partners = legs.filter(function (o) { return o !== s; }).map(function (o) { return { id: o.id, label: slotName(G, o.cfg, o.order) }; }); });
   });
-  var groups = [1, 2, 3, 4, 5].map(function (cfg) {
-    return { cfg: cfg, name: fieldName(G, cfg), swaps: swaps.filter(function (s) { return s.cfg === cfg; }).sort(function (a, b) { return a.order - b.order; }) };
-  }).filter(function (g) { return g.swaps.length; });
+  var sections = sectionsOf(swaps, byChain);
   var notes = [];
   if (bench && bench.ts) { var days = (Date.now() - new Date(bench.ts).getTime()) / 86400000; if (days > 7) notes.push({ t: 'Your bench data is ' + ageOld(bench.ts) + '.', update: true }); }
   if (bench && typeof bench.skippedDeployed === 'number') {
@@ -346,7 +363,7 @@ function planModel(G, core, opt, merged, bench, prefs, siteKey) {
     if (bench.skippedDeployed > dep) notes.push({ t: 'Your reports and game data cover only ' + dep + ' of ' + bench.skippedDeployed + ' deployed beasts, so the plan may be incomplete.', update: false });
   }
   return {
-    swaps: swaps, groups: groups, totalToday: Math.round(r.totalGainToday), totalMax: Math.round(r.totalGainAtMax), warnings: r.conditionWarnings.length,
+    swaps: swaps, sections: sections, totalToday: Math.round(r.totalGainToday), totalMax: Math.round(r.totalGainAtMax), warnings: r.conditionWarnings.length,
     nowN: swaps.filter(function (s) { return s.gainToday > 0; }).length,
     units: unitsPlain(core, prefs), label: playstyleLabel(core, prefs), notes: notes, owned: p.owned.length, raw: r
   };
@@ -373,7 +390,7 @@ function bestMove(G, core, opt, merged, bench, prefs, siteKey) {
 /* the swap list the Copy button puts on the clipboard */
 function checklist(plan) {
   var order = [];
-  plan.groups.forEach(function (g) { g.swaps.forEach(function (s) { order.push(s); }); });
+  plan.sections.forEach(function (g) { g.swaps.forEach(function (s) { order.push(s); }); });
   var step = {}; order.forEach(function (s, i) { step[s.id] = i + 1; });
   var d = function (b) { return b.name + ' (' + b.rarity + ', ' + starsTxt(b.star) + ', Lv.' + b.lv + ')'; };
   var out = ['Beast swaps for ' + plan.units + ' (2864tw.com)'];
@@ -437,7 +454,8 @@ var CSS =
   '.bst-sw{display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:12px}.bst-sw.is-sel{box-shadow:inset 2px 0 0 var(--accent)}' +
   '.bst-swh{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px 8px;font-size:var(--fs-13);color:var(--muted)}.bst-swh b{color:var(--text);font-size:var(--fs-15)}' +
   '.bst-sl{font:600 var(--fs-15)/1.3 var(--sans);margin:0}' +
-  '.bst-ft{display:flex;flex-direction:column;gap:8px}.bst-arrow{display:flex;justify-content:center;color:var(--muted)}.bst-arrow svg{transform:rotate(90deg)}.bst-gain{font-size:var(--fs-14)}' +
+  '.bst-io{display:flex;flex-direction:column;gap:4px}.bst-row{display:flex;align-items:flex-start;gap:12px;width:100%;min-height:var(--tap);padding:4px 0;text-align:left;color:inherit}.bst-row .bst-ib,.bst-row .ico,.bst-row .fb{width:40px;height:40px}.bst-rl{flex:none;width:32px;font-size:var(--fs-12);font-weight:500;color:var(--muted);padding-top:10px}.bst-row .bst-gap{width:40px;height:40px}.bst-gain{font-size:var(--fs-14)}'+
+  '.bst-more summary{display:flex;align-items:center;min-height:44px;font-size:var(--fs-14);font-weight:600;cursor:pointer}.bst-more[open] summary{margin-bottom:4px}' +
   '.bst-tb{width:100%;border-collapse:collapse;font-size:var(--fs-13)}.bst-tb caption{caption-side:top;text-align:left;padding:0 0 4px;font-size:var(--fs-12);color:var(--muted)}.bst-tb th{text-align:right;color:var(--muted);font-weight:500;padding:4px 6px;border-bottom:1px solid var(--rule)}.bst-tb th:first-child,.bst-tb td:first-child{text-align:left}' +
   '.bst-tb td{padding:4px 6px;text-align:right}.bst-tb td.chg{font-weight:700}' +
   '.bst-call{font-size:var(--fs-13);padding:8px 12px;border-left:3px solid var(--border);background:var(--surface);border-radius:0 var(--r-chip) var(--r-chip) 0}.bst-call.warn{border-left-color:var(--warn)}.bst-call.bad{border-left-color:var(--bad)}' +
@@ -445,7 +463,7 @@ var CSS =
   '@media (max-width:599px){.bst-c .bst-ln:not(.bst-main):not(.hit){display:none}}' +
   '@media (min-width:600px){.bst-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.bst-slots{grid-template-columns:repeat(2,minmax(0,1fr))}}' +
   '@media (min-width:768px){.bst-fbtn{display:none}.bst-fs2{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 12px}.bst-card.is-open > .bst-hd{position:static}.bst-grid{grid-template-columns:repeat(3,minmax(0,1fr))}' +
-  '.bst-ft{flex-direction:row;align-items:stretch}.bst-ft > .bst-sb{flex:1;min-width:0}.bst-arrow{align-items:center}.bst-arrow svg{transform:none}}' +
+  '}' +
   '@media (min-width:1024px){.bst-fs2{grid-template-columns:repeat(5,1fr)}.bst-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.bst-slots{grid-template-columns:repeat(3,minmax(0,1fr))}' +
   '#v-beasts .bst-fs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}#v-beasts .bst-card.is-open{grid-column:1/-1}.bst-strip .ico,.bst-strip .fb{width:40px;height:40px}' +
   '#v-beasts [data-pane="optimizer"] .bst-opts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}}';
@@ -616,22 +634,22 @@ function wizPane() {
     '<p class="t13" role="alert" id="bstWerr" hidden>' + nd('Pick ' + cap + ' unit' + (cap > 1 ? 's' : '') + ' first.') + '</p>' +
     '<div class="bst-acts"><button class="btn" type="button" data-bsw="back">Back</button><button class="btn" type="button" data-bsw="go">Optimize</button></div></div>';
 }
-function beastChip(b, label, note) {
-  if (!b) return '<div class="bst-sb card" style="padding:12px"><div class="t12 muted">' + esc(label) + '</div><div class="bst-beast" style="cursor:default"><span class="bst-gap" aria-hidden="true"></span><span class="bst-bt"><span class="bst-bn muted">Empty slot</span></span></div></div>';
-  return '<button class="bst-sb card" type="button" data-bst="' + esc(b.id) + '" style="padding:12px;text-align:left;color:inherit;display:block" aria-label="' + esc(label + ': ' + b.name) + '"><span class="t12 muted" style="display:block;margin-bottom:4px">' + esc(label) + '</span><span class="bst-beast" style="min-height:0">' + icoBeast(b) + '<span class="bst-bt"><span class="bst-bn" translate="no" style="display:block">' + esc(b.name) + '</span><span class="bst-bm">' +
-    stars5(b.star) + sp('Lv.' + b.lv) + '</span><span class="bst-bm">' + sp('Potential ' + fmtInt(b.pot) + ' / ' + fmtInt(b.maxPot)) + DOT + '<span translate="no">' + esc(b.element) + '</span>' + (b.rarity ? '<span class="pill"><span>' + esc(b.rarity) + '</span></span>' : '') + '</span></span></span>' +
-    (note ? '<span class="t12 muted" style="display:block;margin-top:4px">' + nd(note) + '</span>' : '') + '</button>';
-}
 function gainTxt(n) { return Logic.signed(n); }
 function swapLinks(c) { return c.partners.map(function (p) { return '<a class="tb link" href="#beasts/optimizer?swap=' + esc(p.id) + '">' + nd(p.label) + '</a>'; }).join(' and '); }
+/* one compact row: Out / In, icon, name, stars, level, potential with its cap */
+function beastRow(b, label, note) {
+  if (!b) return '<div class="bst-row"><b class="bst-rl">' + esc(label) + '</b><span class="bst-gap" aria-hidden="true"></span><span class="bst-bt"><span class="bst-bn muted">Empty slot</span></span></div>';
+  return '<button class="bst-row" type="button" data-bst="' + esc(b.id) + '" aria-label="' + esc(label + ': ' + b.name) + '"><b class="bst-rl">' + esc(label) + '</b>' + icoBeast(b) + '<span class="bst-bt"><span class="bst-bn" translate="no">' + esc(b.name) + '</span><span class="bst-bm">' + stars5(b.star) + sp('Lv.' + b.lv) + DOT + '<span translate="no">' + esc(b.element) + '</span>' +
+    (b.rarity ? '<span class="pill"><span>' + esc(b.rarity) + '</span></span>' : '') + '</span><span class="bst-bm">' + sp('Potential ' + fmtInt(b.pot) + ' / ' + fmtInt(b.maxPot)) + '</span>' + (note ? '<span class="bst-bm">' + sp(note) + '</span>' : '') + '</span></button>';
+}
 function swapCard(s) {
   var c = s.chain, chain = '';
   if (c) {
     chain = '<div class="bst-call">' + nd('Step ' + c.step + ' of ' + c.size + '. ') + (c.backfill && s.from && s.movesTo ? nd('This step keeps ' + s.fieldName + ' slot ' + s.order + ' filled after its ' + s.from.name + ' moves to ' + s.movesTo + '. ') : '') +
       'Do it together with ' + swapLinks(c) + nd(' (' + Logic.signed(c.netMax) + ' fully levelled when all are done).') + '</div>';
   }
-  var table = s.stats.length ? '<table class="bst-tb"><caption>Both beasts fully levelled. Today in brackets.</caption><thead><tr><th scope="col">Stat</th><th scope="col">Out</th><th scope="col">In</th><th scope="col">Change</th></tr></thead><tbody>' +
-    s.stats.map(function (r) { return '<tr><td>' + esc(r.label) + '</td><td translate="no">' + esc(r.from) + '</td><td translate="no">' + esc(r.to) + '</td><td class="chg" translate="no">' + esc(r.net) + '</td></tr>'; }).join('') + '</tbody></table>' : '';
+  var table = s.stats.length ? '<details class="bst-more"><summary>Stat by stat</summary><table class="bst-tb"><caption>Both beasts fully levelled. Today in brackets.</caption><thead><tr><th scope="col">Stat</th><th scope="col">Out</th><th scope="col">In</th><th scope="col">Change</th></tr></thead><tbody>' +
+    s.stats.map(function (r) { return '<tr><td>' + esc(r.label) + '</td><td translate="no">' + esc(r.from) + '</td><td translate="no">' + esc(r.to) + '</td><td class="chg" translate="no">' + esc(r.net) + '</td></tr>'; }).join('') + '</tbody></table></details>' : '';
   var th = '';
   if (s.threshold) {
     var t = s.threshold;
@@ -639,11 +657,11 @@ function swapCard(s) {
   }
   var broke = s.broke.length ? '<div class="bst-call bad"><b>' + nd('Turns off the slot bonus on ' + s.broke.map(function (x) { return x.label; }).join(', ') + '.') + '</b>' + s.broke.filter(function (x) { return x.req; }).map(function (x) { return '<div class="t12">' + nd(x.label + ' needs: ' + x.req) + '</div>'; }).join('') +
     '<div class="t12">The beast in that slot stays put; only the slot bonus drops until you meet its condition again.</div></div>' : '';
-  return '<article class="bst-sw" id="bsw-' + esc(s.id) + '"><div class="bst-swh"><span><span class="pill p-eff">' + (s.free ? 'Free' : 'Costs resources') + '</span></span><b>' + nd(s.fieldName + ' slot ' + s.order) + '</b><span>' + nd('From ' + s.source) + '</span></div>' +
+  return '<article class="bst-sw" id="bsw-' + esc(s.id) + '"><div class="bst-swh"><b>' + nd(s.fieldName + ' slot ' + s.order) + '</b><span>' + nd('From ' + s.source) + '</span></div>' +
     '<p class="bst-sl">' + nd(s.headline) + '</p>' + (s.reason ? '<p class="t13 muted">' + nd(s.reason) + '</p>' : '') +
-    '<div class="bst-ft">' + beastChip(s.from, 'Out', s.from ? (s.movesTo ? 'Moves to ' + s.movesTo : 'Goes to the bench') : '') + '<div class="bst-arrow" aria-hidden="true">' + ic('chev') + '</div>' + beastChip(s.to, 'In') + '</div>' +
+    '<div class="bst-io">' + beastRow(s.from, 'Out', s.from ? (s.movesTo ? 'Moves to ' + s.movesTo : 'Goes to the bench') : '') + beastRow(s.to, 'In') + '</div>' +
     '<p class="bst-gain">' + nd('Buff score: ' + Logic.signed(s.gainToday) + ' today, ' + Logic.signed(s.gainMax) + ' fully levelled' + (s.top ? '. Right now: ' + s.top.txt + ' ' + s.top.label : '')) + '</p>' +
-    chain + table + th + broke + (s.why ? '<p class="bst-why">' + esc(s.why) + '</p>' : '') + '</article>';
+    chain + th + broke + table + (s.why ? '<p class="bst-why">' + esc(s.why) + '</p>' : '') + '</article>';
 }
 function copyBtn() { return '<button class="btn" type="button" data-bsa="copy">' + ic('copy', 'sm') + '<span>Copy swap list</span></button>'; }
 function planPane() {
@@ -654,8 +672,8 @@ function planPane() {
     (P.swaps.length ? '<div class="bst-acts">' + copyBtn() + '</div>' : '') + '</div>';
   var notes = P.notes.map(function (n) { return '<div class="bst-note">' + nd(n.t) + (n.update && !readOnly() ? ' <button class="tb link" type="button" data-open="status">Update</button>' : '') + '</div>'; }).join('');
   var body = !P.swaps.length ? '<div class="card"><p>' + nd('Your current placements are already the best for ' + P.units + '. Change the units to compare.') + '</p></div>' :
-    P.groups.map(function (g) {
-      return '<section class="bst-grp" aria-label="' + esc(g.name) + '"><div class="bst-gh"><b translate="no">' + esc(g.name) + '</b><span class="t13 muted">' + nd(g.swaps.length + (g.swaps.length === 1 ? ' change' : ' changes')) + '</span></div><div class="bst-opts">' + g.swaps.map(swapCard).join('') + '</div></section>';
+    P.sections.map(function (g) {
+      return '<section class="bst-grp" aria-label="' + esc(g.title) + '"><div class="bst-gh"><h3 class="bst-q">' + esc(g.title) + '</h3><span class="t13 muted">' + nd(g.swaps.length + (g.swaps.length === 1 ? ' swap' : ' swaps') + ' \u00B7 ' + g.hint) + '</span></div><div class="bst-opts">' + g.swaps.map(swapCard).join('') + '</div></section>';
     }).join('') + '<div class="bst-acts">' + copyBtn() + '</div>';
   return '<div class="sechead"><h2 class="title">Beast optimizer</h2></div>' + top + notes + body + classicLink('Breeding priorities are on the classic page');
 }

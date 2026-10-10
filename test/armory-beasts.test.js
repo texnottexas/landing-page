@@ -161,7 +161,7 @@ test('plan model: totals, groups by field, swap records, notes; the bench beast 
   const core = mkCore(), opt = Opt.create(core);
   const merged = { enigmas: field1(WEAK) };
   const pm = L.planModel(G, core, opt, merged, bench1(), MONO, 'x');
-  assert.equal(pm.swaps.length, 1); assert.equal(pm.groups.length, 1); assert.equal(pm.groups[0].name, 'Component Mastery');
+  assert.equal(pm.swaps.length, 1); assert.deepEqual(pm.sections.map((x) => x.key), ['now']); assert.equal(pm.sections[0].swaps[0].fieldName, 'Component Mastery');
   const s = pm.swaps[0], raw = pm.raw.recommendations[0];
   assert.equal(s.order, 1); assert.equal(s.source, 'bench'); assert.equal(s.from.name, 'Dreadray'); assert.equal(s.to.id, '2'); assert.equal(s.to.rarity, 'Legendary');
   assert.equal(s.gainToday, Math.round(raw.gainToday)); assert.equal(s.gainMax, Math.round(raw.gainAtMax));
@@ -176,7 +176,7 @@ test('plan model: totals, groups by field, swap records, notes; the bench beast 
   assert.equal(old.notes.length, 2); assert.equal(old.notes[0].t, 'Your bench data is 20 days old.'); assert.equal(old.notes[0].update, true); assert.match(old.notes[1].t, /only 1 of 5 deployed beasts/);
   // nothing to improve: the bench beast is the same as the deployed one
   const same = L.planModel(G, core, opt, { enigmas: field1(Object.assign({}, WEAK, { potential: 16000 })) }, bench1(), MONO, 'x');
-  assert.equal(same.swaps.length, 0); assert.deepEqual(same.groups, []);
+  assert.equal(same.swaps.length, 0); assert.deepEqual(same.sections, []);
 });
 
 test('best move for Next moves: a bench swap that gains today, needs no upgrade and is not part of a chain', () => {
@@ -238,7 +238,7 @@ test('swap record: chain note, upgrade threshold with fodder counts, broken-cond
   if (brk) brk.broke.forEach((b) => assert.match(b.label, /^[A-Za-z ]+ slot \d+$/));
   sw.forEach((x) => { assert.ok(Number.isInteger(x.gainToday) && Number.isInteger(x.gainMax)); x.stats.forEach((r) => assert.ok(!/\bATK\b|\bDEF\b/.test(r.label))); });
   const be = (name, rarity, star, lv) => ({ name, rarity, star, lv });
-  const plan = { units: 'Army and Air Force, equal weight', groups: [{ swaps: [
+  const plan = { units: 'Army and Air Force, equal weight', sections: [{ swaps: [
     { id: '2-2', fieldName: 'Formation', order: 2, from: be('Gleamdeer', 'Epic', 5, 80), to: be('Gleamdeer', 'Epic', 1, 1), threshold: null, chain: { partners: [{ id: '4-2' }] } },
     { id: '4-2', fieldName: 'Defense', order: 2, from: null, to: be('Skynx', 'Legendary', 3, 40), threshold: { star: 4, level: 1 }, chain: { partners: [{ id: '2-2' }] } },
     { id: '5-3', fieldName: 'Offense', order: 3, from: be('Rageroo', 'Epic', 1, 1), to: be('Skynx', 'Legendary', 5, 80), threshold: { star: 5, level: 40 }, chain: null }] }] };
@@ -310,4 +310,26 @@ test('slot bonus state: the view copy of the condition test agrees with the engi
   }
   assert.ok(on > 0 && off > 0, 'both states seen: ' + on + '/' + off);
   assert.equal(L.model(mkCore(false), G, { enigmas: P.clone(FX.enigmas) }, null).fields[0].slots[0].on, null, 'unknown without the condition tables');
+});
+
+test('sections: Free now and After levelling; a linked move stays together in the section of its best leg; biggest gain first', () => {
+  const core = mkCore(), opt = Opt.create(core);
+  let chains = 0, split = 0;
+  for (const seed of [1, 5, 7, 11, 23, 42]) for (const ps of [MONO, { mode: 'triple', units: [1, 2, 3] }, { mode: 'dual', units: [1, 3] }]) {
+    const s = synth(seed, 70), pm = L.planModel(G, core, opt, { enigmas: s.enigmas }, s.bench, ps, 'x');
+    const all = pm.sections.reduce((a, x) => a.concat(x.swaps), []);
+    assert.equal(all.length, pm.swaps.length, 'every swap is in exactly one section'); assert.equal(new Set(all.map((x) => x.id)).size, all.length);
+    const now = (pm.sections.find((x) => x.key === 'now') || { swaps: [] }).swaps, later = (pm.sections.find((x) => x.key === 'later') || { swaps: [] }).swaps;
+    now.filter((x) => !x.chain).forEach((x) => assert.ok(x.free && x.gainToday > 0)); later.filter((x) => !x.chain).forEach((x) => assert.ok(!x.free));
+    const ids = {}; pm.sections.forEach((sec) => sec.swaps.forEach((x, i) => { if (x.chain) (ids[x.chain.id] = ids[x.chain.id] || []).push([sec.key, i]); }));
+    Object.keys(ids).forEach((k) => { chains++; const l = ids[k]; assert.ok(l.every((p) => p[0] === l[0][0]), 'one section'); assert.ok(l.every((p, i) => i === 0 || p[1] === l[i - 1][1] + 1), 'adjacent, in step order'); });
+    // the section of a chain is the section of its best leg
+    const byChain = {}; pm.swaps.filter((x) => x.chain).forEach((x) => { (byChain[x.chain.id] = byChain[x.chain.id] || []).push(x); });
+    Object.keys(byChain).forEach((k) => { const best = byChain[k].reduce((m, x) => (x.gainMax > m.gainMax ? x : m)); const sec = pm.sections.find((sc) => sc.swaps.some((x) => x.id === best.id)); assert.equal(sec.key, best.free ? 'now' : 'later'); });
+    for (let i = 1; i < later.length; i++) if (!later[i].chain && !later[i - 1].chain) assert.ok(later[i - 1].gainMax >= later[i].gainMax, 'biggest fully levelled gain first');
+    for (let i = 1; i < now.length; i++) if (!now[i].chain && !now[i - 1].chain) assert.ok(now[i - 1].gainToday >= now[i].gainToday, 'biggest gain today first');
+    if (now.length && later.length) split++;
+  }
+  assert.ok(chains > 0 && split > 0, chains + ' chains, ' + split + ' plans with both sections');
+  assert.deepEqual(L.planModel(G, core, opt, { enigmas: field1(Object.assign({}, WEAK, { potential: 16000 })) }, bench1(), MONO, 'x').sections, []);
 });
