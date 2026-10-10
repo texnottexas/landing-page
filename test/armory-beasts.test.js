@@ -21,13 +21,21 @@ function mkCore(load) {
 const FX = P.fixture('beasts.json');
 const MONO = { mode: 'mono', units: [1] };
 
-test('label: the game\'s short buff names are written out (render only)', () => {
-  assert.equal(L.label('All ATK (off)'), 'All Attack (offense)');
+test('label: the game\'s short buff names are written out like HT and Heroes write them (render only)', () => {
+  assert.equal(L.label('All ATK (off)'), 'All units Attack (offense)');
   assert.equal(L.label('Army ATK (def)'), 'Army Attack (defense)');
   assert.equal(L.label('Navy DEF vs Army'), 'Navy Defense vs Army');
-  assert.equal(L.label('All Elemental RES'), 'All Elemental Resistance');
+  assert.equal(L.label('All Elemental RES'), 'All units Elemental Resistance');
+  assert.equal(L.label('All DMG Increase'), 'All units DMG increase');
+  assert.equal(L.label('All Units DMG Increase'), 'All units DMG increase');
+  assert.equal(L.label('Air DMG Increase'), 'Air Force DMG increase');
+  assert.equal(L.label('Air Force HP Boost'), 'Air Force HP');
+  assert.equal(L.label('Army HP Boost'), 'Army HP');
+  assert.equal(L.label('All Defense Increase'.replace('Defense', 'DEF')), 'All units Defense increase');
+  assert.equal(L.label('All Forces Suppression DEF Bonus'), 'All Forces Suppression Defense Bonus');
   assert.equal(L.label('March Size'), 'March Size');
   assert.equal(L.label('<b>x</b>'), 'bx/b', 'markup characters are dropped');
+  assert.equal(L.fname('CPNT Mastery'), 'Component Mastery'); assert.equal(L.fname('Offense'), 'Offense');
 });
 
 test('model: summary, fields and slots of the fixture roster (hand-computed)', () => {
@@ -35,21 +43,21 @@ test('model: summary, fields and slots of the fixture roster (hand-computed)', (
   const m = L.model(core, G, { enigmas: P.clone(FX.enigmas) }, P.clone(FX.bench));
   // 9 beasts on 2 fields (7 deployed: beasts 8 and 9 are in the data but on no slot), 2 bench beasts from the bench supplement
   assert.equal(m.placed, 7); assert.equal(m.bench, 4); assert.equal(m.all.length, 11);
-  assert.deepEqual(m.summary, { beasts: 7, fiveStar: 1, active: '2/2', avgPot: 48, power: 35000, bench: 4 });
+  assert.deepEqual(m.summary, { beasts: 7, fiveStar: 1, active: '2/2', inFields: 2, avgPot: 48, power: 35000, bench: 4 });
   // potential: deployed (1500 + 3200 + 4900 + 6600 + 8300 + 10000 + 11700) = 46200 of (5 x 16000 + 2 x 8000 ... by quality) -> classic rounding
-  assert.deepEqual(m.fields.map((f) => [f.cfg, f.name, f.active, f.expected, f.deployed, f.slots.length]), [[1, 'CPNT Mastery', true, 5, 4, 5], [5, 'Offense', true, 9, 3, 4]]);
+  assert.deepEqual(m.fields.map((f) => [f.cfg, f.name, f.active, f.expected, f.deployed, f.slots.length]), [[1, 'Component Mastery', true, 5, 4, 5], [5, 'Offense', true, 9, 3, 4]]);
   const b2 = m.byId['2'];
   assert.equal(b2.name, 'Dreadray'); assert.equal(b2.q, 4); assert.equal(b2.maxPot, 8000); assert.equal(b2.potPct, 40);
   // main 520010 at star 2: mainStarMax 400 -> 4.00 x (3200 / 16000) = 0.8
-  assert.equal(b2.main.txt, '+0.800%'); assert.equal(b2.main.name, 'All DMG Increase');
+  assert.equal(b2.main.txt, '+0.80%'); assert.equal(b2.main.txt3, '+0.800%'); assert.equal(b2.main.name, 'All units DMG increase');
   // base 520011 at star 2, level 19: (19 x 2 / 100 + 75 / 100) x 0.2 = 0.226
-  assert.equal(b2.base[0].txt, '+0.226%');
+  assert.equal(b2.base[0].txt, '+0.23%'); assert.equal(b2.base[0].txt3, '+0.226%');
   assert.equal(m.byId['1'].main.txt, '+1', 'March Size is a flat count');
   assert.equal(m.byId['9'].main.txt, '+2');
   assert.equal(m.byId['78'].potPct, 0);
   // the beast sheet's slot buffs are the classic detail modal's: basis points / 100, two decimals (the fixture slot 1 buff is 100)
   assert.deepEqual(m.byId['1'].slotBuffs, [{ name: 'March Size', txt: '+1.00%' }]);
-  assert.equal(m.byId['1'].fieldName, 'CPNT Mastery'); assert.ok(m.byId['8'].fieldCfg === 0 && m.byId['8'].slot === 0);
+  assert.equal(m.byId['1'].fieldName, 'Component Mastery'); assert.ok(m.byId['8'].fieldCfg === 0 && m.byId['8'].slot === 0);
   assert.equal(m.byId['5'].icon, 'Fluffynx_Fire_evolved.png', 'the icon file name rule (EB_ICON_NAMES) differs from the display name for type 5'); assert.equal(m.byId['1'].icon, 'Dreadray_Fire_base.png');
   // the bench supplement is deduped by id: a bench beast that is already deployed is not listed twice
   const dup = L.model(core, G, { enigmas: P.clone(FX.enigmas) }, { beasts: [{ id: '1', cfgId: 25, type: 2, fac: 1, q: 5, lv: 10, st: 1, pot: 1500, mb: 520000, bb: [] }] });
@@ -111,7 +119,7 @@ test('collection filter and sort (the classic ebFilterBeasts / ebSortBeasts) and
   assert.deepEqual(L.collFilter(m.all, st({ elems: ['Nope'] })), []);
   assert.equal(L.collFilter(m.all, st({ sort: 'name' }))[0].name, 'Dreadray');
   const o = L.collOptions(G, m);
-  assert.deepEqual(o.where.map((x) => x[0]), ['', '1', '5', 'bench']); assert.equal(o.where[3][1], 'Bench (4)');
+  assert.deepEqual(o.where.map((x) => x[0]), ['', '1', '5', 'bench']); assert.equal(o.where[1][1], 'Component Mastery'); assert.equal(o.where[3][1], 'Bench (4)');
   assert.ok(o.primary.length > 2 && o.primary[0][1] === 'Any');
   assert.ok(o.primary.every((x) => !/\bATK\b|\(off\)/.test(x[1])), 'option names are written out');
   assert.equal(o.sort.length, 5);
@@ -139,7 +147,7 @@ test('labels and number formats equal the page\'s (boPlaystyleLabel, boFmtStat, 
   for (const k of ['atk', 'march', 'def']) for (const v of [0, 0.004, 0.5, 12.3456, 100]) { assert.equal(L.fmtStat(k, v), ctx.boFmtStat(k, v)); for (const d of [v, -v]) assert.equal(L.fmtDelta(k, d), ctx.boFmtStatDelta(k, d)); }
   const rec = { to: { mb: 520000, pot: 16000, q: 5, bb: [520010, 520111, 520130] } };
   for (const ps of [MONO, { mode: 'dual', units: [1, 3] }]) {
-    const want = ctx.boReasoning(rec, ps).replace(/^Top contributions: /, 'Biggest gains: ').replace(/ \+ /g, ' and ').replace('DMG Increase', 'DMG increase').replace('DMG Decrease', 'Decreased DMG taken').replace('ATK', 'Attack').replace('DEF', 'Defense');
+    const want = ctx.boReasoning(rec, ps).replace(/^Top contributions: /, 'Biggest gains: ').replace(/ \+ /g, ' and ').replace('DMG Increase', 'DMG increase').replace('DMG Decrease', 'Decreased DMG Taken').replace('ATK', 'Attack').replace('DEF', 'Defense');
     assert.equal(L.reasoning(G, core, rec, ps), want);
   }
   assert.equal(L.reasoning(G, core, { to: null }, MONO), '');
@@ -153,7 +161,7 @@ test('plan model: totals, groups by field, swap records, notes; the bench beast 
   const core = mkCore(), opt = Opt.create(core);
   const merged = { enigmas: field1(WEAK) };
   const pm = L.planModel(G, core, opt, merged, bench1(), MONO, 'x');
-  assert.equal(pm.swaps.length, 1); assert.equal(pm.groups.length, 1); assert.equal(pm.groups[0].name, 'CPNT Mastery');
+  assert.equal(pm.swaps.length, 1); assert.equal(pm.groups.length, 1); assert.equal(pm.groups[0].name, 'Component Mastery');
   const s = pm.swaps[0], raw = pm.raw.recommendations[0];
   assert.equal(s.order, 1); assert.equal(s.source, 'bench'); assert.equal(s.from.name, 'Dreadray'); assert.equal(s.to.id, '2'); assert.equal(s.to.rarity, 'Legendary');
   assert.equal(s.gainToday, Math.round(raw.gainToday)); assert.equal(s.gainMax, Math.round(raw.gainAtMax));
@@ -162,10 +170,10 @@ test('plan model: totals, groups by field, swap records, notes; the bench beast 
   const atk = s.stats.find((r) => r.key === 'atk');
   assert.ok(atk && atk.dir === 1 && /^\+/.test(atk.net) && /%$/.test(atk.net)); assert.equal(atk.label, 'Attack');
   assert.ok(s.chain === null && s.threshold === null && s.broke.length === 0);
-  assert.equal(pm.label, 'Mono Army'); assert.deepEqual(pm.notes, []);
+  assert.equal(pm.label, 'Mono Army'); assert.equal(pm.units, 'Army only'); assert.deepEqual(pm.notes, []);
   // notes: an old bench snapshot, and reports covering fewer deployed beasts than the game says
   const old = L.planModel(G, core, opt, merged, Object.assign(bench1(), { ts: new Date(Date.now() - 20 * 864e5).toISOString(), skippedDeployed: 5 }), MONO, 'x');
-  assert.equal(old.notes.length, 2); assert.match(old.notes[0], /^Your bench snapshot is 20 days old/); assert.match(old.notes[1], /only 1 of 5 deployed beasts/);
+  assert.equal(old.notes.length, 2); assert.equal(old.notes[0].t, 'Your bench data is 20 days old.'); assert.equal(old.notes[0].update, true); assert.match(old.notes[1].t, /only 1 of 5 deployed beasts/);
   // nothing to improve: the bench beast is the same as the deployed one
   const same = L.planModel(G, core, opt, { enigmas: field1(Object.assign({}, WEAK, { potential: 16000 })) }, bench1(), MONO, 'x');
   assert.equal(same.swaps.length, 0); assert.deepEqual(same.groups, []);
@@ -175,19 +183,19 @@ test('best move for Next moves: a bench swap that gains today, needs no upgrade 
   const core = mkCore(), opt = Opt.create(core);
   const mv = L.bestMove(G, core, opt, { enigmas: field1(WEAK) }, bench1(), MONO, 'x');
   assert.ok(mv.gain > 0);
-  assert.deepEqual(mv.parts.slice(0, 6).map((p) => p.s), ['Swap ', 'Dreadray', ' into ', 'CPNT Mastery', ' slot ', '1']);
+  assert.deepEqual(mv.parts.slice(0, 6).map((p) => p.s), ['Swap ', 'Dreadray Lv.50', ' into ', 'Component Mastery', ' slot ', '1']);
   assert.deepEqual(mv.parts.slice(0, 6).map((p) => !!p.n), [false, true, false, true, false, true]);
   assert.equal(mv.parts[6].s, ': '); assert.match(mv.parts[7].s, /^\+\d+(\.\d+)?%$/); assert.equal(mv.parts[8].s, ' Attack');
   // the gain is the optimizer's own score difference today
   const raw = opt.plan({ enigmas: field1(WEAK) }, bench1(), MONO, 'x').result.recommendations[0];
   assert.equal(mv.gain, raw.gainToday);
   assert.deepEqual(mv.ico, { u: 'beast-icons/Dreadray_Fire_base.png', q: 'q5', fb: 'D' });
-  assert.match(mv.meta, /^From bench · \d+ power score points today$/);
-  // the Overview text reads "Swap Dreadray into CPNT Mastery slot 1: +14.17% Attack" and stays within the 60 character rule
+  assert.equal(mv.meta, 'Replaces your Dreadray Lv.50 \u00B7 from bench \u00B7 no levelling needed'); assert.equal(mv.route, 'beasts/optimizer?swap=1-1');
+  // the Overview text reads "Swap Dreadray Lv.50 into Component Mastery slot 1: +14.17% Attack" and stays within the 60 character rule
   const n = Core.nextMoves({ heroes: [], beastMoves: [mv] });
   const pick = n.picks.find((p) => p.sig === 'e');
-  assert.ok(pick, 'signal e is picked'); assert.ok(pick.full.length <= 60 || pick.text.length <= 60); assert.equal(pick.route, 'beasts/optimizer'); assert.equal(pick.pill, 'Free');
-  assert.deepEqual(pick.ico, mv.ico); assert.equal(pick.meta, mv.meta); assert.match(pick.full, /^Swap Dreadray into CPNT Mastery slot 1: \+[\d.]+% Attack$/);
+  assert.ok(pick, 'signal e is picked'); assert.ok(pick.full.length <= 60 || pick.text.length <= 60); assert.equal(pick.route, 'beasts/optimizer?swap=1-1'); assert.equal(pick.pill, 'Free');
+  assert.deepEqual(pick.ico, mv.ico); assert.equal(pick.meta, mv.meta); assert.match(pick.full, /^Swap Dreadray Lv\.50 into Component Mastery slot 1: \+[\d.]+% Attack$/);
   // nothing to do: null
   assert.equal(L.bestMove(G, core, opt, { enigmas: field1(Object.assign({}, WEAK, { potential: 16000 })) }, bench1(), MONO, 'x'), null);
   assert.equal(L.bestMove(G, core, opt, { enigmas: field1(WEAK) }, { beasts: [] }, MONO, 'x'), null);
@@ -220,16 +228,24 @@ test('swap record: chain note, upgrade threshold with fodder counts, broken-cond
   for (const seed of [1, 7, 23, 5, 11]) {
     const s = synth(seed, 70), pm = L.planModel(G, core, opt, { enigmas: s.enigmas }, s.bench, { mode: 'triple', units: [1, 2, 3] }, 'x');
     pm.swaps.forEach((x) => { sw.push(x); if (x.chain && !chain) chain = x; if (x.threshold && !thr) thr = x; if (x.broke.length && !brk) brk = x; });
-    if (seed === 1) assert.ok(L.checklist(G, pm.groups).split('\n').length === pm.swaps.length);
+    if (seed === 1) assert.equal(L.checklist(pm).split('\n').length, pm.swaps.length + 1);
   }
   assert.ok(sw.length > 10);
   assert.ok(chain && chain.chain.size > 1 && typeof chain.chain.netMax === 'number');
+  assert.ok(chain.chain.step >= 1 && chain.chain.partners.length === chain.chain.size - 1 && /^\d+-\d+$/.test(chain.chain.partners[0].id), 'a linked move names its partners');
   assert.ok(thr && thr.threshold.star >= 1 && thr.threshold.maxStar >= thr.threshold.star && /^(Epic|Legendary)$/.test(thr.threshold.rarity));
   assert.ok(thr.threshold.fodderNeeded == null || thr.threshold.fodderHave >= 0);
   if (brk) brk.broke.forEach((b) => assert.match(b.label, /^[A-Za-z ]+ slot \d+$/));
   sw.forEach((x) => { assert.ok(Number.isInteger(x.gainToday) && Number.isInteger(x.gainMax)); x.stats.forEach((r) => assert.ok(!/\bATK\b|\bDEF\b/.test(r.label))); });
-  const line = L.checklist(G, [{ name: 'Offense', swaps: [{ order: 3, from: null, to: { name: 'Skynx', rarity: 'Legendary', star: 5, lv: 80 }, threshold: { star: 4, level: 20 }, chain: { id: 2, backfill: true, netMax: 9 } }] }]);
-  assert.equal(line, '1. Offense slot 3: empty -> Skynx (Legendary, 5 stars, Lv 80) [raise to 4 stars, Lv 20 first] [backfill, move 2]');
+  const be = (name, rarity, star, lv) => ({ name, rarity, star, lv });
+  const plan = { units: 'Army and Air Force, equal weight', groups: [{ swaps: [
+    { id: '2-2', fieldName: 'Formation', order: 2, from: be('Gleamdeer', 'Epic', 5, 80), to: be('Gleamdeer', 'Epic', 1, 1), threshold: null, chain: { partners: [{ id: '4-2' }] } },
+    { id: '4-2', fieldName: 'Defense', order: 2, from: null, to: be('Skynx', 'Legendary', 3, 40), threshold: { star: 4, level: 1 }, chain: { partners: [{ id: '2-2' }] } },
+    { id: '5-3', fieldName: 'Offense', order: 3, from: be('Rageroo', 'Epic', 1, 1), to: be('Skynx', 'Legendary', 5, 80), threshold: { star: 5, level: 40 }, chain: null }] }] };
+  assert.equal(L.checklist(plan), ['Beast swaps for Army and Air Force, equal weight (2864tw.com)',
+    '1. Formation slot 2: put in Gleamdeer (Epic, 1 star, Lv.1), take out Gleamdeer (Epic, 5 stars, Lv.80). Do with step 2.',
+    '2. Defense slot 2: put in Skynx (Legendary, 3 stars, Lv.40). Level it to 4 stars first. Do with step 1.',
+    '3. Offense slot 3: put in Skynx (Legendary, 5 stars, Lv.80), take out Rageroo (Epic, 1 star, Lv.1). Level it to 5 stars and Lv.40 first.'].join('\n'));
 });
 
 test('the logic never touches the DOM, storage or the network (pure, node-testable)', () => {
@@ -243,4 +259,55 @@ test('first-load view model keeps the Next moves signal empty until the optimize
   assert.deepEqual(mv, [{ text: 't', full: 'f', parts: [{ s: 'f' }], meta: 'm', pill: 'Free', cls: 1, sig: 'e', route: 'beasts/optimizer', ico: { u: 'x', q: '', fb: 'x' } }]);
   const src = require('node:fs').readFileSync(require.resolve('../pages/armory-vm.js'), 'utf8');
   assert.ok(!/armory-beasts/.test(src), 'the view model does not load the beasts modules');
+});
+
+test('swap view: headline names what differs, the status pill follows the displayed threshold, an already-met threshold is not shown, potential carries its cap', () => {
+  const core = mkCore(), opt = Opt.create(core), seen = { free: 0, costs: 0, same: 0, diff: 0 };
+  const B = (o) => Object.assign({ id: 'a', type: 2, fac: 1, q: 5, st: 3, lv: 50, pot: 4000 }, o);
+  const lite = (b) => L.liteBeast(G, b);
+  assert.equal(L.headline(lite(B()), lite(B({ id: 'b', q: 4, lv: 1 }))), 'Swap in Dreadray (Epic, Lv.1) for Dreadray (Legendary, Lv.50)');
+  assert.equal(L.headline(lite(B()), lite(B({ id: 'b', type: 3 }))), 'Swap in Tornadeagle for Dreadray');
+  assert.equal(L.headline(null, lite(B())), 'Put Dreadray in the empty slot');
+  assert.equal(L.reasonLine(lite(B()), lite(B({ id: 'b', q: 4 }))), 'Epic instead of Legendary');
+  assert.equal(L.reasonLine(lite(B()), lite(B({ id: 'b', pot: 14514 }))), 'Same beast, higher potential: 14,514 vs 4,000 of 16,000');
+  assert.equal(L.reasonLine(lite(B()), lite(B({ id: 'b', type: 3 }))), '');
+  assert.equal(lite(B({ q: 4 })).maxPot, 8000);
+  for (const seed of [1, 7, 23]) {
+    const s = synth(seed, 70), pm = L.planModel(G, core, opt, { enigmas: s.enigmas }, s.bench, { mode: 'triple', units: [1, 2, 3] }, 'x');
+    pm.swaps.forEach((x) => {
+      assert.equal(x.free, x.gainToday > 0 && !x.threshold); x.free ? seen.free++ : seen.costs++;
+      if (x.threshold) assert.ok(!(x.threshold.star <= x.to.star && x.threshold.level <= x.to.lv), 'no requirement the beast already meets');
+      if (x.top) assert.match(x.top.txt, /^\+[\d.]+%?$/); if (!x.free) assert.equal(x.top, null);
+      assert.ok(x.to.maxPot >= x.to.pot || x.to.pot > 0);
+      x.from && x.from.name === x.to.name ? seen.same++ : seen.diff++;
+    });
+    // a swap whose outgoing beast is another swap's incoming beast says where it goes
+    pm.swaps.filter((x) => x.from).forEach((x) => { const o = pm.swaps.find((y) => y !== x && y.to.id === x.from.id); assert.equal(x.movesTo, o ? o.fieldName + ' slot ' + o.order : null); });
+  }
+  assert.ok(seen.free > 0 && seen.costs > 0 && seen.same > 0, JSON.stringify(seen));
+});
+
+test('units in plain words and level text', () => {
+  const core = mkCore();
+  assert.equal(L.unitsPlain(core, { mode: 'mono', units: [1] }), 'Army only');
+  assert.equal(L.unitsPlain(core, { mode: 'dual', units: [1, 3] }), 'Army and Air Force, equal weight');
+  assert.equal(L.unitsPlain(core, { mode: 'dual', units: [1, 3], weights: [1, 0.75] }), 'Army (main) and Air Force (0.75)');
+  assert.equal(L.unitsPlain(core, { mode: 'triple', units: [1, 2, 3] }), 'Army, Navy and Air Force, equal weight');
+  assert.equal(L.unitsPlain(core, { mode: 'triple', units: [2, 1, 3], weights: [1, 0.5, 0.25] }), 'Navy (main), Army (0.5) and Air Force (0.25)');
+  assert.equal(L.levelText({ star: 3, level: 0 }), 'Level it to 3 stars first'); assert.equal(L.levelText({ star: 1, level: 1 }), 'Level it to 1 star first'); assert.equal(L.levelText({ star: 4, level: 40 }), 'Level it to 4 stars and Lv.40 first');
+  assert.equal(L.signed(-53), '\u221253'); assert.equal(L.signed(1234), '+1,234'); assert.equal(L.signed(0), '+0');
+});
+
+test('slot bonus state: the view copy of the condition test agrees with the engine on every slot (fixture and seeded rosters)', () => {
+  const core = mkCore(), opt = Opt.create(core);
+  let on = 0, off = 0;
+  for (const [merged, bench] of [[{ enigmas: P.clone(FX.enigmas) }, FX.bench], ...[1, 7, 23].map((sd) => { const s = synth(sd, 70); return [{ enigmas: s.enigmas }, s.bench]; })]) {
+    core.setSuppDecode(FX.suppDecode);
+    const m = L.model(core, G, merged, bench), p = opt.plan(merged, bench, MONO, 'x');
+    const want = opt.boBuildConditionMetMap(p.currentPlan, p.owned);
+    m.fields.forEach((f) => f.slots.forEach((s) => { const w = want[f.cfg + ':' + s.num]; assert.equal(s.on, w, f.cfg + ':' + s.num); w ? on++ : off++; }));
+    m.fields.forEach((f) => { assert.equal(f.bonusOn, f.slots.filter((s) => s.on).length); assert.ok(f.bonusKnown); });
+  }
+  assert.ok(on > 0 && off > 0, 'both states seen: ' + on + '/' + off);
+  assert.equal(L.model(mkCore(false), G, { enigmas: P.clone(FX.enigmas) }, null).fields[0].slots[0].on, null, 'unknown without the condition tables');
 });

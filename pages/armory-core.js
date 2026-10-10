@@ -2049,7 +2049,7 @@
       if (!m || !Array.isArray(m.parts) || !isFinite(m.gain)) return;
       cand.push({
         sig: 'e', cls: 1, gain: m.gain, weight: 0, key: 'e' + i,
-        parts: m.parts, meta: m.meta || '', ico: m.ico || null, route: 'beasts/optimizer'
+        parts: m.parts, meta: m.meta || '', ico: m.ico || null, route: m.route || 'beasts/optimizer'
       });
     });
 

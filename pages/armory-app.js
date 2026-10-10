@@ -480,7 +480,7 @@ function openSheet(kind, arg) {
     if (!HT.m) { ht(function () { openSheet(kind, arg); }); return; }
     var rh = HT.m.sheet(); if (!rh) return;
     title = rh[0]; body = rh[1];
-  } else if (kind === 'bstfilter' || kind === 'beast') {
+  } else if (kind === 'bstfilter' || kind === 'beast' || kind === 'bstscore') {
     if (!BT.m) { bst(function () { openSheet(kind, arg); }); return; }
     var rb = BT.m.sheet(kind, arg); if (!rb) return;
     title = rb[0]; body = rb[1]; isName = !!rb[2];
@@ -553,7 +553,7 @@ document.addEventListener('click', function (e) {
   if (ds.gview) { S.gview = ds.gview; if (M) M.renderGear(); return; }
   if (ds.gslot !== undefined) { S.gslot = +ds.gslot; if (M) M.renderGear(); return; }
   if (M ? M.owns(t) : ['load', 'pick', 'code', 'verify', 'addrep', 'rm', 'rmno', 'rmyes', 'sw', 'swno', 'swyes', 'mine', 'reload'].some(function (k) { return k in ds; })) { more(function (m) { m.click(t); }); return; }
-  if (t.classList.contains('chipbtn') && !ds.br && !ds.sort) { t.setAttribute('aria-pressed', t.getAttribute('aria-pressed') === 'true' ? 'false' : 'true'); }
+  if (t.classList.contains('chipbtn') && !ds.br && !ds.sort && !ds.bsc && !ds.bse && !ds.bsw) { t.setAttribute('aria-pressed', t.getAttribute('aria-pressed') === 'true' ? 'false' : 'true'); }
 });
 document.addEventListener('input', function (e) {
   var t = e.target;
