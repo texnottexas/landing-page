@@ -956,6 +956,7 @@
           out.reportMechaIds = (merged.mechas || []).map(function(m) { return m.mechaId; });
           if (player.siteKey) {
             core.setIdentity(ArmoryIdentity);
+            window._enigmaSuppDecode = null; core.setSuppDecode(null); /* decode hints belong to the player being loaded */
             try { _ar_applySupplementsToMerged(merged, player.siteKey); } catch (e) { out.errors.push({ kind: 'merge' }); }
             if (window._enigmaSuppDecode) core.setSuppDecode(window._enigmaSuppDecode);
           }

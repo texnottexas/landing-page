@@ -211,3 +211,20 @@ test('an upgrade threshold is never a requirement the beast already meets (the t
   assert.ok(thresholds > 20, 'thresholds checked: ' + thresholds);
   assert.deepStrictEqual(bad, []);
 });
+
+// The Titan Gear refinement links feed the optimizer too: the SAME gear input goes to both sides here, and the result must contain linked slots
+test('plan() with Titan Gear links (same gear supplement and heroes on both sides) equals the page composition, and the links change the answer', async () => {
+  const g = P.fixture('gear-supp.json'), identity = { getSupplement: (kind, sk) => (kind === 'gear' && sk === g.siteKey ? g.gearSupp : null) };
+  const s = synth(1, 70), merged = Object.assign({}, P.clone(g.tgMerged), { enigmas: s.enigmas });
+  const pg = await pageSide(true, s.suppDecode), m = moduleSide(true, s.suppDecode);
+  pg.ArmoryIdentity = identity; m.core.setIdentity(identity);
+  const tg = pg.boReadTgRefinement(merged, g.siteKey);
+  assert.ok(Object.keys(tg).length > 0, 'the page finds active refinement links for this gear');
+  for (const ps of PLAYSTYLES) {
+    const owned = pg.boBuildOwnedBeasts(merged, s.bench, pg.ebResolveBeasts(merged.enigmas)), plan = pg.boBuildCurrentPlan(pg.ebResolveBeasts(merged.enigmas));
+    const want = pg.boOptimize(owned, plan, pg.boComputeActiveConditions(plan, owned), ps, pg.boReadPlayerEnhance(merged, g.siteKey), pg.boReadTgRefinement(merged, g.siteKey));
+    assert.deepStrictEqual(P.j(m.opt.plan(merged, s.bench, ps, g.siteKey).result), P.j(want), 'with links, ' + ps.mode);
+  }
+  const without = P.j(m.opt.plan({ enigmas: s.enigmas }, s.bench, PLAYSTYLES[3], g.siteKey).result), withLinks = P.j(m.opt.plan(merged, s.bench, PLAYSTYLES[3], g.siteKey).result);
+  assert.notDeepStrictEqual(withLinks, without, 'the links are really used');
+});

@@ -389,3 +389,18 @@ test('a siteKey that is not 16 hex (from a share code or storage) is never used 
   const c = make((u) => (u === 'player-data.json' ? { status: 200, body: [] } : undefined), { playerReport: JSON.stringify({ player: { name: W.NAME, siteKey: 'guest_1234' }, reportIds: [W.REPORT_ID] }) });
   assert.equal((await c.d.loadArmory({ saved: true })).player.siteKey, null, 'not in the roster: no key at all');
 });
+
+test('enigma decode hints belong to the player being loaded: a second load on the same instance does not keep the first one\'s hints', async () => {
+  const hint = { v: 1, ts: '2026-10-01T00:00:00Z', fields: [], beasts: [{ id: '1', cfgId: 9999, type: 3, fac: 2, q: 4, st: 1, lv: 1, pot: 1, mb: 520000, bb: [] }] };
+  const none = { v: 1, ts: '2026-10-02T00:00:00Z', fields: [], beasts: [{ id: '2', cfgId: 25, st: 1, lv: 1, pot: 1, mb: 520000, bb: [] }] };
+  const { d, storage } = make(undefined, Object.assign(ident(), { ['armory_enigma_' + W.SK]: JSON.stringify(hint) }));
+  const probe = () => { const r = d.core.ebResolveBeasts({ beastDatas: [{ id: 'p', cfg: 9999, star: 1, level: 1, potential: 1, power: 1, mainBuff: 520000, baseBuff: [] }], fields: [] }).beasts[0]; return [r.type, r.faction, r.quality]; };
+  await d.loadArmory({ saved: true, noHydrate: true, code: null }).catch(() => {});
+  const r1 = await d.loadArmory({ code: 'ABCD', noHydrate: true });
+  assert.equal(r1.state, 'ready');
+  assert.deepStrictEqual(probe(), [3, 2, 4], 'the first player\'s hint is applied');
+  storage.setItem('armory_enigma_' + W.SK, JSON.stringify(none));
+  const r2 = await d.loadArmory({ code: 'ABCD', noHydrate: true });
+  assert.equal(r2.state, 'ready');
+  assert.notDeepStrictEqual(probe(), [3, 2, 4], 'nothing of the first load is left');
+});

@@ -9,7 +9,6 @@
 'use strict';
 
 /* ---------- logic (no DOM) ---------- */
-var has = Object.prototype.hasOwnProperty;
 var RARITY = { 1: 'Common', 2: 'Uncommon', 3: 'Rare', 4: 'Epic', 5: 'Legendary' };
 var ELEMENTS = ['Fire', 'Wind', 'Water', 'Ground'];
 var UNITS = { 1: 'Army', 2: 'Navy', 3: 'Air Force' };
@@ -69,7 +68,7 @@ function beastView(G, b) {
 /* Deployed beasts from the report/enigma supplement plus the bench supplement's beasts (deduped by id), as the classic tab merges them. */
 function resolveAll(core, G, merged, bench) {
   var res = core.ebResolveBeasts((merged && merged.enigmas) || {});
-  var seen = {};
+  var seen = Object.create(null);
   res.beasts.forEach(function (b) { if (b.id) seen[String(b.id)] = true; });
   if (bench && Array.isArray(bench.beasts)) {
     bench.beasts.forEach(function (sb) {
@@ -575,11 +574,11 @@ function optHost() { return $('#v-beasts [data-pane="optimizer"]'); }
 function optShow(html) { var h = optHost(); if (h) h.innerHTML = html; }
 function loadOpt(cb, bad) {
   if (opt) return cb(opt);
-  if (optQ) { optQ.push(cb); return; }
-  optQ = [cb];
+  if (optQ) { optQ.push([cb, bad]); return; }
+  optQ = [[cb, bad]];
   var sc = document.createElement('script'); sc.src = 'armory-beasts-opt.js';
-  sc.onload = function () { opt = window.ArmoryBeastsOpt.create(core); var q = optQ; optQ = null; q.forEach(function (f) { f(opt); }); };
-  sc.onerror = function () { optQ = null; bad(); };
+  sc.onload = function () { opt = window.ArmoryBeastsOpt.create(core); var q = optQ; optQ = null; q.forEach(function (p) { p[0](opt); }); };
+  sc.onerror = function () { var q = optQ; optQ = null; q.forEach(function (p) { p[1](); }); }; /* every waiter hears about the failure */
   document.body.appendChild(sc);
 }
 function optFail() { optShow('<div class="empty">Could not load the optimizer. Check your connection and reload the page.</div>'); }
