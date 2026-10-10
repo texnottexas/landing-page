@@ -185,7 +185,7 @@ function collOptions(G, m) {
   m.all.forEach(function (b) { if (G.EB_TYPES[b.type]) types[b.type] = (types[b.type] || 0) + 1; });
   return {
     type: [['', 'Any beast']].concat(Object.keys(types).map(function (k) { return [k, clean(G.EB_TYPES[k]) + ' (' + fmtInt(types[k]) + ')']; }).sort(function (a, b) { return a[1].localeCompare(b[1]); })),
-    where: [['', 'All fields and bench']].concat(m.fields.map(function (f) { return [String(f.cfg), f.name]; }), [['bench', 'Bench (' + fmtInt(m.bench) + ')']]),
+    where: [['', 'Fields and bench']].concat(m.fields.map(function (f) { return [String(f.cfg), f.name]; }), [['bench', 'Bench (' + fmtInt(m.bench) + ')']]),
     primary: [['', 'Any']].concat(byId(prim)), secondary: [['', 'Any']].concat(byId(sec)), sort: SORTS
   };
 }
