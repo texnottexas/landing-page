@@ -62,8 +62,11 @@ function cyrb53(str) {
 /* Hand-derived for Rex's fixture data (siteKey c3c6f3200a4ec1fb), not read back from nextMoves().
    decor: March Size needs 1,440 shards (the bag has 683), so the next stat is All units Attack; Coastal Defence Lv.2 to 3 is +150 (1.5%)
           for 180 raw, 120 credited from spare pieces, 60 net; it ties Celebratory Firework on ROI and wins on cost.
-   refine: only three gold pieces have all 3 stats under 70%: Hiccup's Optical Add-on (66/62/68, hero weight 0.9) and two on Jett (0.8):
-          Raysor Headset (66/58/69) and Assault Pistol (53/56/68). Hiccup first; the Jett pair tie, and the lowest stat closest to 70% (58 over 53) puts the Headset first.
+   refine: the fixture has three heroes with gold gear, in power order Vivian 956,210, Hiccup 927,210, Jett 927,210. Vivian is the strongest and has
+          pieces under 70%, so every refine pick is hers (hero rank is strict: a weaker hero's piece never beats hers, whatever its share of low stats).
+          Her lowest under-70 stat per piece: Raysor Headset 56 (of 56/93/74), Assault Pistol 54 (72/54/91), Portable GPS 54 (75/89/54),
+          Optical Add-on 52, Power Boots 51, Tactical Backarmor 50. Closest to 70% first: the Headset (56) is first; the Pistol and the GPS tie at 54
+          and the key (slot 1 before slot 5) puts the Pistol second. A signal holds at most 2 picks, so the GPS is not shown.
    HT: Rex fights with Luminary Knight LP-4 (all chips Lv.25), so Doom Sawblade D-4 gives no chip move. */
 var REX = 'c3c6f3200a4ec1fb';
 var EXPECTED = [
@@ -144,9 +147,9 @@ var EXPECTED = [
     var mt = core.nextMoves(mut, { max: 3 }).picks.map(function (m) { return m.text; });
     log(mt.length > 0 && !mt.some(function (x) { return /Coastal Defence/.test(x); }) && mt.join('|') !== base.join('|'), 'mutation 1: with 0 shards the Coastal Defence move goes away', mt.join(' | '));
     var m2 = JSON.parse(JSON.stringify(S.vm.movesInput));
-    m2.heroes.forEach(function (h) { if (h.name === 'Hiccup') h.gear.forEach(function (g) { if (g.slot === 3) g.stats.forEach(function (x) { x.v = x.m; }); }); });
+    m2.heroes.forEach(function (h) { if (h.name === 'Vivian') h.gear.forEach(function (g) { if (g.slot === 4) g.stats.forEach(function (x) { x.v = x.m; }); }); });
     var mt2 = core.nextMoves(m2, { max: 3 }).picks.map(function (x) { return x.text; });
-    log(!mt2.some(function (x) { return /Optical Add-on on Hiccup/.test(x); }), 'mutation 2: a fully rolled Optical Add-on is no longer refined', mt2.join(' | '));
+    log(!mt2.some(function (x) { return /Raysor Headset on Vivian/.test(x); }) && mt2.join('|') !== base.join('|'), 'mutation 2: a fully rolled Raysor Headset on Vivian is no longer refined', mt2.join(' | '));
     var m3 = JSON.parse(JSON.stringify(S.vm.movesInput)); m3.ht.reportMechas = [1005];
     var mt3 = core.nextMoves(m3, { max: 3 }).picks.map(function (x) { return x.text; });
     log(mt3.some(function (x) { return /Doom Sawblade D-4/.test(x); }), 'mutation 3: when the report shows Doom Sawblade, its chip move appears', mt3.join(' | '));
