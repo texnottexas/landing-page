@@ -285,3 +285,53 @@ test('chip gain follows the colour: more remaining value first, so a high-colour
   assert.equal(g(chip('H', 2, 9501, 5)), ((20 * 200) / 5000) * 0.5);
   assert.equal(C.moves.CHIP_TOP, Math.max(...Object.values(C.moves.CHIP_COLOUR).map((x) => x[1])));
 });
+
+/* ---- Refine ranked by hero power (Snapshot players): strongest hero first, then closest to 70% ---- */
+const gp = (slot, vals, name) => ({ slot, slotName: name || 'Piece' + slot, rune: null, stats: vals.map((v) => ({ label: 'stat', v: v * 6, m: 600 })) });
+const only = (heroes) => ({ heroes, runeBag: {}, runeSlots: {}, runeCost: {}, decor: { shards: 0, placed: [] }, ht: { chips: [], reportMechas: null }, beastMoves: [] });
+const hero = (name, power, gear) => ({ name, power, gear });
+const refineOrder = (d) => C.nextMoves(d, { max: 20 }).pool.filter((x) => x.sig === 'c').sort((a, b) => (b.gain - a.gain) || ((b.tie || 0) - (a.tie || 0)) || (a.key < b.key ? -1 : 1)).map((x) => x.key);
+
+test('power: a stronger hero\'s piece with 1 of 4 under 70% beats a weaker hero\'s 4 of 4', () => {
+  const d = only([hero('Weak', 100, [gp(1, [10, 20, 30, 40])]), hero('Strong', 900, [gp(1, [65, 90, 90, 90])])]);
+  assert.deepStrictEqual(refineOrder(d), ['cStrong1', 'cWeak1']);
+  assert.ok(C.nextMoves(d).pool.some((x) => x.sig === 'c' && /Weak/.test(x.text)));
+});
+
+test('power: inside one hero the piece whose lowest under-70 stat is closest to 70% comes first', () => {
+  const d = only([hero('Solo', 500, [gp(1, [20, 30, 30, 90], 'Far'), gp(2, [68, 90, 90, 90], 'Near')])]);
+  const keys = refineOrder(d);
+  // Far has more stats under 70% but Near's lowest (68) is closer to 70: Near first
+  assert.deepStrictEqual(keys, ['cSolo2', 'cSolo1']);
+});
+
+test('power: the 7th and 8th heroes no longer tie (no 0.5 floor), power decides', () => {
+  const hs = [];
+  for (let i = 0; i < 8; i++) hs.push(hero('H' + i, 1000 - i, [gp(1, [50, 90, 90])]));
+  const keys = refineOrder(only(hs));
+  assert.deepStrictEqual(keys, hs.map((h) => 'c' + h.name + '1'));
+  // reverse the power of the last two: the order follows
+  hs[6].power = 1;
+  assert.deepStrictEqual(refineOrder(only(hs)).slice(-2), ['cH7' + '1', 'cH6' + '1']);
+});
+
+test('power: place and merge follow the power order', () => {
+  const mk = (name, power, gearScoreBoost) => hero(name, power, [{ slot: 1, slotName: 'P', rune: null, stats: [{ label: 'stat', v: gearScoreBoost, m: 600 }] }]);
+  // Low has the better gear score but less power
+  const d = only([mk('Low', 10, 600), mk('High', 99, 100)]);
+  d.runeBag = { Impact: 2 }; d.runeSlots = { Impact: [1] };
+  assert.deepStrictEqual(C.nextMoves(d, { max: 5 }).pool.filter((x) => x.sig === 'a').sort((a, b) => b.weight - a.weight).map((x) => x.key), ['aHigh1', 'aLow1']);
+  assert.deepStrictEqual(C.moves.heroWeights(d.heroes), { High: 1, Low: 0.9 });
+  assert.deepStrictEqual(C.moves.heroRank(d.heroes).rank, { High: 0, Low: 1 });
+});
+
+test('power missing on any hero: the old order (gear score, share of stats under 70%) is unchanged', () => {
+  const d = fresh();
+  d.heroes.forEach((h, i) => { h.power = i === 0 ? undefined : 1000 - i; });
+  assert.deepStrictEqual(texts(d), texts(fresh()));
+  d.heroes.forEach((h) => { h.power = 5; });
+  d.heroes[1].power = 0;
+  assert.deepStrictEqual(texts(d), texts(fresh()));
+  assert.deepStrictEqual(C.nextMoves(d).weights, { Alpha: 1, Bravo: 0.9, Charlie: 0.8 });
+  assert.equal(C.moves.heroRank(d.heroes).byPower, false);
+});

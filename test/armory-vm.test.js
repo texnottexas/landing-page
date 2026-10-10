@@ -48,7 +48,7 @@ test('the model carries exactly the nextMoves input (see fixtures/armory-core/mo
   const mi = vm.movesInput;
   assert.deepStrictEqual(Object.keys(mi).sort(), Object.keys(base).sort());
   const h = mi.heroes[0], bh = base.heroes[0];
-  assert.deepStrictEqual(Object.keys(h).sort(), Object.keys(bh).sort());
+  assert.deepStrictEqual(Object.keys(h).sort(), Object.keys(bh).concat('power').sort(), 'the model adds only power (null without a Snapshot)');
   assert.deepStrictEqual(Object.keys(h.gear[0]).sort(), Object.keys(bh.gear[0]).sort());
   assert.deepStrictEqual(Object.keys(h.gear[0].stats[0]).sort(), Object.keys(bh.gear[0].stats[0]).sort());
   const withRune = h.gear.find((p) => p.rune);
@@ -448,4 +448,18 @@ test('two players: loading B\'s enigma decode hints does not change A\'s beast n
   assert.deepStrictEqual(G.ebDecodeCfg(9999), { type: 1, faction: 1, quality: 5 }, 'and B\'s is there too');
   G.setSuppDecode(null);
   assert.notDeepStrictEqual(G.ebDecodeCfg(7), fx.suppDecode['7'], 'null clears them');
+});
+
+test('hero power: the model carries the supplement pw, null when missing, 0, NaN or not a number', () => {
+  const ids = heroes3().map((h) => h.id);
+  const pwOf = (list) => build(baseMerged(), { supp: { heroes: { list } } }).movesInput.heroes.map((h) => h.power);
+  const vm = build(baseMerged(), { supp: { heroes: { list: [{ id: ids[0], pw: 123456 }, { id: ids[1], pw: 0 }, { id: ids[2], pw: 'big' }] } } });
+  const byName = {};
+  vm.heroes.list.forEach((h) => { byName[h.id] = h.power; });
+  assert.equal(byName[ids[0]], 123456);
+  assert.equal(byName[ids[1]], null);
+  assert.equal(byName[ids[2]], null);
+  assert.deepStrictEqual(vm.movesInput.heroes.map((h) => h.power).sort(), [123456, null, null]);
+  assert.ok(pwOf([{ id: ids[0], pw: NaN }, { id: ids[1], pw: -5 }]).every((x) => x === null));
+  assert.ok(pwOf([]).every((x) => x === null), 'no supplement: null');
 });

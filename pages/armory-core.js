@@ -1846,12 +1846,31 @@
     return { refine: Math.round(refine), rune: Math.round(rune), total: Math.round(refine + rune) };
   }
 
-  /* Weight by gear score rank: 1.0, 0.9, 0.8 ... never below 0.5. */
+  /* Hero order: by hero power when EVERY hero carries a finite power above 0 (a Snapshot player), ties by gear score
+     then name; otherwise by gear score exactly as before. Returns the ordered heroes and whether power decided. */
+  function heroOrder(heroes) {
+    var byPower = heroes.length > 0 && heroes.every(function (h) { return isFinite(h.power) && h.power > 0; });
+    var order = heroes.slice().sort(function (a, b) {
+      if (byPower && b.power !== a.power) return b.power - a.power;
+      var g = gearScore(b).total - gearScore(a).total;
+      if (g || !byPower) return g;
+      return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+    });
+    return { order: order, byPower: byPower };
+  }
+
+  /* Weight by hero rank: 1.0, 0.9, 0.8 ... never below 0.5. */
   function heroWeights(heroes) {
-    var order = heroes.slice().sort(function (a, b) { return gearScore(b).total - gearScore(a).total; });
     var w = {};
-    order.forEach(function (h, i) { w[h.name] = Math.max(0.5, 1 - 0.1 * i); });
+    heroOrder(heroes).order.forEach(function (h, i) { w[h.name] = Math.max(0.5, 1 - 0.1 * i); });
     return w;
+  }
+
+  /* name -> 0-based index in the same order (no floor), plus whether hero power decided it. */
+  function heroRank(heroes) {
+    var o = heroOrder(heroes), r = {};
+    o.order.forEach(function (h, i) { r[h.name] = i; });
+    return { rank: r, byPower: o.byPower };
   }
 
   /* Same formula as the current page: a placed rune scores (star + 1) / (star max + 1), an empty slot scores 0 of 7. */
@@ -1921,6 +1940,7 @@
     };
     var cand = [];
     var W = heroWeights(D.heroes);
+    var HR = heroRank(D.heroes);
 
     /* a: place a bag rune into an empty rune slot (equipped gold gear). Free. */
     D.heroes.forEach(function (h) {
@@ -1961,15 +1981,15 @@
     });
 
     /* c: refine an equipped gold piece with random stats under 70 percent. Costs resources.
-       Each stat is judged against 70% on its own: the piece with the most stats under 70% comes first,
-       and among equals the one whose lowest stat is closest to 70%. No averaging. */
+       With hero power for every hero: strongest hero first (strict rank), then the piece whose lowest stat under 70%
+       is closest to 70%. Without power: the old rule (largest share of stats under 70%, weighted by gear-score rank). */
     D.heroes.forEach(function (h) {
       h.gear.forEach(function (p) {
         var low = p.stats.map(function (s) { return rollPct(s.v, s.m); }).filter(function (x) { return x < 70; });
         if (!low.length) return;
         var lo = Math.round(Math.min.apply(null, low)), hi = Math.round(Math.max.apply(null, low));
         cand.push({
-          sig: 'c', cls: 3, gain: (low.length / p.stats.length) * W[h.name], tie: Math.min.apply(null, low), weight: W[h.name], key: 'c' + h.name + p.slot,
+          sig: 'c', cls: 3, gain: HR.byPower ? D.heroes.length - HR.rank[h.name] : (low.length / p.stats.length) * W[h.name], tie: Math.min.apply(null, low), weight: W[h.name], key: 'c' + h.name + p.slot,
           parts: [{ s: 'Refine ' }, { s: p.slotName, n: 1 }, { s: ' on ' }, { s: h.name, n: 1 }],
           meta: low.length + (low.length === 1 ? ' stat under 70% (' : ' stats under 70% (') + (lo === hi ? lo + '%' : lo + '-' + hi + '%') + ')',
           ico: { u: 'titan-slot-icons/gear_' + p.slot + '.png', q: 'q5', fb: String(p.slot) },
@@ -2077,7 +2097,7 @@
     return { picks: picks, pool: cand, weights: W };
   }
 
-    return { gearScore: gearScore, heroWeights: heroWeights, runeStats: runeStats, nextMoves: nextMoves, computeMoves: nextMoves, rollPct: rollPct, chipInfo: chipInfo, CHIP_COLOUR: CHIP_COLOUR, CHIP_TOP: CHIP_TOP, CHIP_STAT: CHIP_STAT, fitText: fitText, DECOR_STATS: DECOR_STATS };
+    return { gearScore: gearScore, heroWeights: heroWeights, heroRank: heroRank, runeStats: runeStats, nextMoves: nextMoves, computeMoves: nextMoves, rollPct: rollPct, chipInfo: chipInfo, CHIP_COLOUR: CHIP_COLOUR, CHIP_TOP: CHIP_TOP, CHIP_STAT: CHIP_STAT, fitText: fitText, DECOR_STATS: DECOR_STATS };
   })();
 
   /* ---- new in v2 (not copied from the page): the one rune base-pool rule (Advice phase 4, decision 2) ---- */

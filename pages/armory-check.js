@@ -68,8 +68,8 @@ function cyrb53(str) {
 var REX = 'c3c6f3200a4ec1fb';
 var EXPECTED = [
   ['Uses what you have', 'Upgrade Coastal Defence to Lv.3: +1.5% All units Attack', '60 shards'],
-  ['Costs resources', 'Refine Optical Add-on on Hiccup', '3 stats under 70% (62-68%)'],
-  ['Costs resources', 'Refine Raysor Headset on Jett', '3 stats under 70% (58-69%)']
+  ['Costs resources', 'Refine Raysor Headset on Vivian', '1 stat under 70% (56%)'],
+  ['Costs resources', 'Refine Assault Pistol on Vivian', '1 stat under 70% (54%)']
 ];
 
 (async function () {

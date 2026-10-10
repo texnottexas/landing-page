@@ -90,7 +90,7 @@
         id: +h.id, name: core.heroName(+h.id), branch: core.heroBranch(+h.id, s && s.t),
         lv: +(h.level || h._level) || 0, star: +(h.star || h._star) || 0, awaken: +h.awakenLevel || 0,
         icon: heroIcon(+h.id),
-        score: core.heroGearScore(h), pieces: pieces,
+        score: core.heroGearScore(h), power: (s && isFinite(s.pw) && typeof s.pw === 'number' && s.pw > 0) ? s.pw : null, pieces: pieces,
         gear: pieces.filter(function (p) { return p.gold; }).map(function (p) {
           return { slot: p.slot, slotName: p.slotName, rune: p.rune, stats: p.stats };
         })
@@ -270,7 +270,7 @@
 
     var movesInput = {
       asOf: dateText(now),
-      heroes: heroes.list.map(function (h) { return { name: h.name, gear: h.gear }; }),
+      heroes: heroes.list.map(function (h) { return { name: h.name, gear: h.gear, power: h.power }; }),
       runeBag: runes.runeBag, runeSlots: runes.runeSlots, runeCost: runes.runeCost,
       decor: { shards: decor.shards, placed: decor.placed }, ht: { chips: ht.chips, reportMechas: ht.reportMechas },
       beastMoves: [] // the Optimizer (boOptimize) is a phase 3 module; its first move joins here once it is extracted
