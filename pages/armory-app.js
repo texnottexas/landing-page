@@ -159,7 +159,7 @@ function fkDrop() { if (S.fk) { clearTimeout(S.fk.t); var p = S.fk.el.parentNode
    after a short settle on a failed load. */
 function fkSettle(fn, failed, keep) {
   var f = S.fk, end = function () { if (keep) fkBusyOff(); else if (S.fk === f) fkDrop(); };   /* keep: the caller drops the loader once its screen is ready */
-  if (!f || !f.on || fkReduced()) { if (keep) fkBusyOff(); else fkDrop(); fn(false); return; }
+  if (!f || !f.on || fkReduced()) { if (f) clearTimeout(f.t); if (keep) fkBusyOff(); else fkDrop(); fn(false); return; }   /* a load done inside 120 ms never fades the loader in */
   f.t = setTimeout(function () { end(); fn(true); }, failed ? FK_SETTLE : FK_FORM);
   f.el.classList.add(failed ? 'settle' : 'form');
 }
