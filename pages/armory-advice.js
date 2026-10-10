@@ -116,7 +116,7 @@ function walk(base, baseGear, steps, catalog, runeIdx, core, mark, who) {
         if (ur) r = 'Your last import shows no spare 0-star ' + ur[1] + ' on unequipped gear. If you already did this step, tick it.';
         else if (mm) r += '. Update your game data if you have more now.';
         else if (nb) r += '. If you have one now, update your game data.';
-      }
+      } else if (who === 'viewer' && ur) r = 'This player\u2019s last import shows no spare 0-star ' + ur[1] + ' on unequipped gear.';
       if (mark) [step && step.runeName, step && step.srcRuneName, ctx.srcRune, ctx.dstRune].filter(function (x, i, arr) { return typeof x === 'string' && x && arr.indexOf(x) === i; }).sort(function (x, y) { return y.length - x.length; }).forEach(function (nme) { r = r.split(nme).join(mark(nme)); });
       return r;
     });
@@ -140,7 +140,7 @@ function ago(ts, now) {
   var d = Math.max(0, Math.floor(((now || Date.now()) - ts) / 864e5));
   return d < 1 ? 'today' : d === 1 ? '1 day ago' : d + ' days ago';
 }
-function dayWord(ts) { var x = new Date(ts); return x.getUTCDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][x.getUTCMonth()]; }
+function dayWord(ts) { var x = new Date(ts); return x.getDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][x.getMonth()]; }
 function preflight(o) {
   o = o || {};
   var pool = o.pool || {}, priv = o.privacy || {}, ts = o.supTs || {}, now = o.now || Date.now(), inv = +ts.inv || 0, gear = +ts.gear || 0;
@@ -178,7 +178,7 @@ function rich(text) { /* escaped text; \u0001..\u0002 mark names, numbers get tr
 }
 function mark(x) { return '\u0001' + String(x).replace(/[\u0001\u0002]/g, '') + '\u0002'; }
 function ageOf(ts) { ts = +ts; return ts > 0 ? ago(ts) : ''; }
-function dayOf(ts) { ts = +ts; if (!(ts > 0)) return ''; var x = new Date(ts); return x.getUTCDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][x.getUTCMonth()] + ' ' + x.getUTCFullYear(); }
+function dayOf(ts) { ts = +ts; if (!(ts > 0)) return ''; var x = new Date(ts); return x.getDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][x.getMonth()] + ' ' + x.getFullYear(); }
 function api(path, o) {
   o = o || {};
   var init = { cache: 'no-store', method: o.method || 'GET', headers: {} };
@@ -257,7 +257,7 @@ function returnStep(name) {
 
 function pillHtml(r, who, ticked) {
   if (r.ok || ticked) return '';
-  var label = who === 'player' ? (r.looksDone ? 'Looks done' : 'Doesn\u2019t match your bag') : 'Can\u2019t be done as written';
+  var label = who !== 'advisor' ? (r.looksDone ? 'Looks done' : who === 'viewer' ? 'Doesn\u2019t match the bag' : 'Doesn\u2019t match your bag') : 'Can\u2019t be done as written';
   return '<div class="adv-warn"><span class="pill">' + label + '</span><p class="t13 ' + (r.looksDone ? 'muted' : 'c-warn') + '">' + r.reasons.map(function (x) { return rich(x); }).join('<br>') + '</p></div>';
 }
 function rowArt(r) {
@@ -299,12 +299,12 @@ function checklistHtml(code, pl, ro) {
   var rp = planOf(code, pl.advisorId), c = A.rec[code];
   if (!c || c.state === 'loading') return '<p class="t13 muted">Loading the steps</p>';
   if (!rp) return '<p class="t13 muted">Could not load this plan. Try again in a moment.</p>';
-  var steps = Array.isArray(rp.steps) ? rp.steps.slice(0, 100) : [], w = walkSteps(steps, 'player'), known = ctx().base.known, lock = !!rp.applied;
+  var steps = Array.isArray(rp.steps) ? rp.steps.slice(0, 100) : [], w = walkSteps(steps, ro ? 'viewer' : 'player'), known = ctx().base.known, lock = !!rp.applied;
   var tk = ticks(localStorage, code, pl.advisorId), done = tk.get().filter(function (i) { return i < steps.length; }), key = code + '|' + pl.advisorId, pa = esc(pl.advisorId);
   var rows = w.rows.map(function (r, i) {
     var on = done.indexOf(i) >= 0;
     return '<li class="adv-step"><button class="ab tick" type="button" role="checkbox" aria-checked="' + on + '" aria-label="Step ' + (i + 1) + ' done" data-a="tick" data-rc="' + code + '" data-ap="' + pa + '" data-ai="' + i + '"' + (lock ? ' disabled' : '') + '><span class="box">' + (on ? checkSvg() : '') + '</span></button>' + rowArt(r) +
-      '<div class="adv-step-b"><div class="adv-t' + (on ? ' dn' : '') + '">' + rich(r.text) + '</div>' + rowSub(r) + noteHtml(r) + (known && !lock ? pillHtml(r, 'player', on) : '') + '</div></li>';
+      '<div class="adv-step-b"><div class="adv-t' + (on ? ' dn' : '') + '">' + rich(r.text) + '</div>' + rowSub(r) + noteHtml(r) + (known && !lock ? pillHtml(r, ro ? 'viewer' : 'player', on) : '') + '</div></li>';
   }).join('');
   var foot = '';
   if (lock) foot = '<p class="t13 muted">Done on ' + nm(dayOf(rp.appliedTs)) + ' (' + nm(String(+rp.acceptedCount || 0)) + ' of ' + nm(String(steps.length)) + ' steps)</p>';
@@ -360,7 +360,7 @@ function askCardHtml() {
   var btn = !key ? '<p class="t13 muted">Rune advice needs your account. Verify your UID in Status.</p><button class="ab" type="button" data-a="verify">Open Status</button>'
     : !pf.canAsk ? '<p class="t13">Import your game data first, so an advisor can check your bag.</p><button class="ab" type="button" data-a="verify">Open Status</button>'
     : owner() ? '<button class="ab pri" type="button" data-a="ask">Ask for rune help</button>' : '<button class="ab" type="button" data-a="verify">Verify your UID to ask for help</button>';
-  return '<section class="card"><h2 class="hd">Rune advice</h2><p class="t13 muted">' + rich(pf.line) + '</p>' + (pf.stale ? '<p class="t13 muted">Your saved rune pool is older than your last import, so it is ignored.</p>' : '') + privWarn(pf) + '<div class="adv-row">' + btn + '</div></section>';
+  return '<section class="card"><h2 class="hd">Your game data</h2><p class="t13 muted">' + rich(pf.line) + '</p>' + (pf.stale ? '<p class="t13 muted">Your saved rune pool is older than your last import, so it is ignored.</p>' : '') + privWarn(pf) + '<div class="adv-row">' + btn + '</div></section>';
 }
 function checkAllowed() {
   if (A.allowed !== null || A.allowedP) return A.allowedP || Promise.resolve();
@@ -380,7 +380,6 @@ function renderPlayer(root, q) {
 }
 
 /* =================================================================== advisor side */
-function advBase() { return ctx().base; }
 function repaintAdvise() {
   var root = $('#adviceBody'); if (!root || !S.advise) return;
   var c = ctx(), w = walkSteps(A.steps), end = w.end, bad = w.rows.filter(function (r) { return !r.ok; }).length, req = S.advise.req || {}, name = H.stateName() || 'this player';
@@ -395,13 +394,13 @@ function repaintAdvise() {
       '<div class="step-ctl"><button class="ab" type="button" data-a="up" data-ai="' + i + '" aria-label="Move step ' + (i + 1) + ' up"' + (i === 0 ? ' disabled' : '') + '>' + ic('down', 'sm rot') + '</button><button class="ab" type="button" data-a="dn" data-ai="' + i + '" aria-label="Move step ' + (i + 1) + ' down"' + (i === w.rows.length - 1 ? ' disabled' : '') + '>' + ic('down', 'sm') + '</button><button class="ab" type="button" data-a="rm" data-ai="' + i + '" aria-label="Remove step ' + (i + 1) + '">' + ic('x', 'sm') + '</button></div></div></li>';
   }).join('');
   var link = links(S.advise.code, S.code), savedBox = A.savedTs ? '<div class="adv-saved"><div class="t13" role="status">Saved <span translate="no">' + esc(new Date(A.savedTs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) + '</span>. ' + nm(name) + ' gets a notification. You can also send this link:</div><div class="adv-link"><span class="code" translate="no">' + esc(link.player) + '</span><button class="ab" type="button" data-a="copy" data-av="' + esc(link.player) + '">' + ic('copy', 'sm') + 'Copy link</button></div></div>' : '';
-  var steps = '<section class="card adv-o3" id="advSteps"><h2 class="hd">Plan steps</h2>' + (rows ? '<ol class="steps">' + rows + '</ol>' : '<p class="t13 muted">No steps yet. Tap a piece in the list to add the first one.</p>') + '</section>';
-  var note = '<section class="card adv-o4"><label class="lab" for="advNote">Note for ' + nm(name) + ' (optional)</label><textarea class="fld" id="advNote" data-a="note" maxlength="1000" rows="3" style="font-family:var(--sans);font-size:var(--fs-14)">' + esc(A.note) + '</textarea>' +
+  var steps = '<section class="card adv-o3" id="advSteps"><h2 class="hd">Plan steps</h2>' + (rows ? '<ol class="steps">' + rows + '</ol>' : '<p class="t13 muted">No steps yet. Tap a piece in the list to add the first one.</p>') +
+    '<label class="lab" for="advNote" style="margin-top:12px">Note for ' + nm(name) + ' (optional)</label><textarea class="fld" id="advNote" data-a="note" maxlength="1000" rows="3" style="font-family:var(--sans);font-size:var(--fs-14)">' + esc(A.note) + '</textarea>' +
     (bad ? '<p class="t13 c-warn" style="margin-top:8px">' + nm(String(bad)) + (bad === 1 ? ' step cannot be done as written.' : ' steps cannot be done as written.') + ' You can still save.</p>' : '') +
     '<div class="adv-row" style="margin-top:12px"><button class="ab pri wide" type="button" data-a="save"' + (A.busy.save ? ' disabled' : '') + '>Save plan</button></div>' + (A.msg.save ? '<div class="err" role="alert">' + esc(A.msg.save) + '</div>' : '') + savedBox + '</section>';
   var head = '<section class="card"><h2 class="hd">Advising <span translate="no">' + esc(name) + '</span></h2>' + (req.note ? '<p class="adv-note">' + esc(String(req.note).slice(0, 500)) + '</p>' : '') + '<p class="t13 muted">Asked ' + (ageOf(req.createdTs) ? rich(ageOf(req.createdTs)) : 'recently') + '</p></section>';
   var sc = $('#adviceBody') ? window.scrollY : 0;
-  root.innerHTML = '<div class="ov"><div class="ov-col">' + head + pool + steps + note + '</div><div class="ov-col">' + galleryHtml(end) + '</div></div>';
+  root.innerHTML = '<div class="ov"><div class="ov-col">' + head + pool + steps + '</div><div class="ov-col">' + galleryHtml(end) + '</div></div>';
   window.scrollTo(0, sc);
 }
 function slotTile(h, s, cur, base) {
@@ -557,8 +556,8 @@ var STYLE = [
 '.steps{list-style:none;margin:0;padding:0}.steps li.adv-step{display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--rule);align-items:flex-start}.steps li.adv-step:first-child{border-top:0}',
 '.adv-step-b{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}.adv-n{width:24px;height:24px;border:1px solid var(--border);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:var(--fs-12);flex:none;margin-top:2px}.adv-ico{width:40px;flex:none;display:flex;flex-direction:column;align-items:center;gap:4px}.adv-ico .ricon40{width:40px;height:40px}.adv-sub{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.por20{width:20px;height:20px}.adv-warn{display:flex;flex-direction:column;align-items:flex-start;gap:4px}.adv-t{font-size:var(--fs-15);overflow-wrap:anywhere}.adv-t.dn{color:var(--muted)}',
 '.tick{flex:none;padding:0;border:0;background:none;color:var(--ok)}.tick .box{width:24px;height:24px;border:1.5px solid var(--border);border-radius:var(--r-chip);display:inline-flex;align-items:center;justify-content:center}.tick[aria-checked="true"] .box{border-color:var(--ok);background:rgba(63,185,80,.12)}.tick[disabled]{opacity:.7}',
-'.adv-o1{order:1}.adv-o2{order:2}.adv-o3{order:3}.adv-o4{order:4}',
-'@media (max-width:767px){.adv-o2{order:3}.adv-o3{order:2}.adv-o4{order:4}}',
+'.adv-o1{order:1}.adv-o2{order:2}.adv-o3{order:3}',
+'@media (max-width:767px){.adv-o2{order:3}.adv-o3{order:2}}',
 '.step-ctl{display:flex;gap:8px;margin-top:4px}',
 '.rot{transform:rotate(180deg)}',
 '.pchips{display:flex;flex-wrap:wrap;gap:8px}.pchip{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 10px;border:1px solid var(--border);border-radius:var(--r-chip);background:var(--surface);font-size:var(--fs-13)}',
