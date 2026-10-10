@@ -132,6 +132,7 @@ function collFilter(list, st) {
     if (st.elems.length && st.elems.indexOf(b.element) < 0) return false;
     if (st.where === 'bench' && b.fieldCfg) return false;
     if (st.where !== '' && st.where !== 'bench' && String(b.fieldCfg) !== st.where) return false;
+    if (st.type && String(b.type) !== st.type) return false;
     if (st.primary && String(b.main.id) !== st.primary) return false;
     if (st.secondary && !b.base.some(function (x) { return String(x.id) === st.secondary; })) return false;
     return true;
@@ -152,7 +153,10 @@ function collOptions(G, m) {
     b.base.forEach(function (x) { if (G.EB_BUFF_NAMES[x.id]) sec[x.id] = label(G.EB_BUFF_NAMES[x.id]); });
   });
   var byId = function (o) { return Object.keys(o).map(function (k) { return [k, o[k]]; }).sort(function (a, b) { return a[0] - b[0]; }); };
+  var types = {};
+  m.all.forEach(function (b) { if (G.EB_TYPES[b.type]) types[b.type] = (types[b.type] || 0) + 1; });
   return {
+    type: [['', 'Any beast']].concat(Object.keys(types).map(function (k) { return [k, clean(G.EB_TYPES[k]) + ' (' + fmtInt(types[k]) + ')']; }).sort(function (a, b) { return a[1].localeCompare(b[1]); })),
     where: [['', 'All fields and bench']].concat(m.fields.map(function (f) { return [String(f.cfg), f.name]; }), [['bench', 'Bench (' + fmtInt(m.bench) + ')']]),
     primary: [['', 'Any']].concat(byId(prim)), secondary: [['', 'Any']].concat(byId(sec)), sort: SORTS
   };
@@ -318,7 +322,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = Logic;
 /* ---------- view ---------- */
 root.ArmoryBeasts = function (H) {
 var S = H.S, G = H.G, core = H.core, BASE = H.BASE, $ = H.$, $$ = H.$$, esc = H.esc, nd = H.nd, nm = H.nm, ic = H.ic, art = H.art, classicUrl = H.classicUrl, readOnly = H.readOnly;
-var DEF = { elems: [], where: '', primary: '', secondary: '', sort: 'star', n: 24 }, F = Object.assign({}, DEF), PAGE = 24, STEP = 48;
+var DEF = { elems: [], where: '', type: '', primary: '', secondary: '', sort: 'star', n: 24 }, F = Object.assign({}, DEF), PAGE = 24, STEP = 48;
 var cur = { seg: 'field', q: {} }, M = null, mFor = null, opts = null, open = {}, wired = false, platOk = null;
 var opt = null, optQ = null, plan = null, W = { step: 1, mode: '', units: [], weights: [] }, editing = false;
 
@@ -366,9 +370,9 @@ var CSS =
   '.bst-q4{border-color:var(--q4)}.bst-q5{border-color:var(--q5)}' +
   '.bst-ban{height:40px;border-radius:var(--r-card);background:var(--card);border:1px solid var(--border)}' +
   '@media (min-width:600px){.bst-sum{grid-template-columns:repeat(6,minmax(0,1fr))}.bst-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.bst-slots{grid-template-columns:repeat(2,minmax(0,1fr))}}' +
-  '@media (min-width:768px){.bst-fbtn{display:none}.bst-fs2{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 12px}.bst-card.is-open > .bst-hd{position:static}.bst-grid{grid-template-columns:repeat(3,minmax(0,1fr))}' +
+  '@media (min-width:768px){.bst-fbtn{display:none}.bst-fs2{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 12px}.bst-card.is-open > .bst-hd{position:static}.bst-grid{grid-template-columns:repeat(3,minmax(0,1fr))}' +
   '.bst-ft{flex-direction:row;align-items:stretch}.bst-ft > .bst-sb{flex:1;min-width:0}.bst-arrow{align-items:center}}' +
-  '@media (min-width:1024px){.bst-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.bst-slots{grid-template-columns:repeat(3,minmax(0,1fr))}.bst-tabs{}' +
+  '@media (min-width:1024px){.bst-fs2{grid-template-columns:repeat(5,1fr)}.bst-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.bst-slots{grid-template-columns:repeat(3,minmax(0,1fr))}.bst-tabs{}' +
   '#v-beasts [data-pane="optimizer"] .bst-opts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}}';
 
 function injectCss() {
@@ -447,7 +451,7 @@ function fieldPane() {
 }
 
 /* ---- Collection ---- */
-function dirty() { return F.elems.length + (F.where ? 1 : 0) + (F.primary ? 1 : 0) + (F.secondary ? 1 : 0); }
+function dirty() { return F.elems.length + (F.where ? 1 : 0) + (F.type ? 1 : 0) + (F.primary ? 1 : 0) + (F.secondary ? 1 : 0); }
 function collCard(b) {
   return '<div class="bst-c' + qb(b.q) + '"><button class="bst-beast" type="button" data-bst="' + esc(b.id) + '" aria-label="' + esc(b.name) + ' details">' + icoBeast(b) + '<span class="bst-bt"><span class="bst-bn" translate="no">' + esc(b.name) + '</span><span class="bst-bm">' + stars5(b.star) +
     sp('Lv.' + b.lv) + DOT + '<span translate="no">' + esc(b.element) + '</span></span></span></button>' + buffRows(b) + potBar(b) + '<div class="bst-cf"><span>' + wherePart(b) + '</span><span>' + nd('Power ' + fmtInt(b.power)) + '</span></div></div>';
@@ -455,7 +459,7 @@ function collCard(b) {
 function collList() {
   var f = Logic.collFilter(M.all, F), shown = f.slice(0, F.n), total = fmtInt(M.all.length);
   var tally = !f.length ? '' : '<p class="bst-tally" role="status">' + nd('Showing ' + fmtInt(shown.length) + ' of ' + fmtInt(f.length) + (f.length === M.all.length ? '' : ' · ' + total + ' owned')) + '</p>';
-  return (shown.length ? '<div class="bst-grid">' + shown.map(collCard).join('') + '</div>' : '<div class="empty">' + (F.where === 'bench' && !F.elems.length && !F.primary && !F.secondary ? 'No beasts on the bench.' : 'No beasts match these filters.') + ' <button class="tb link" type="button" data-bstclear>Clear filters</button></div>') + tally +
+  return (shown.length ? '<div class="bst-grid">' + shown.map(collCard).join('') + '</div>' : '<div class="empty">' + (F.where === 'bench' && !F.elems.length && !F.type && !F.primary && !F.secondary ? 'No beasts on the bench.' : 'No beasts match these filters.') + ' <button class="tb link" type="button" data-bstclear>Clear filters</button></div>') + tally +
     (f.length > shown.length ? '<button class="btn more" type="button" data-bstmore><span>Show ' + nd(fmtInt(Math.min(STEP, f.length - shown.length))) + ' more</span></button>' : '');
 }
 function selectHtml(k, lab) {
@@ -470,7 +474,7 @@ function collPane() {
   var age = Logic.ageOld(M.benchTs);
   return '<div class="sechead"><h2 class="title">Beast collection</h2></div><div class="fbar"><div class="grow t13 muted">' + nd(fmtInt(M.all.length) + ' beasts' + (M.bench ? ' · ' + fmtInt(M.bench) + ' on the bench' : '') + (age ? ' · bench snapshot ' + age : '')) + '</div>' +
     '<button class="btn bst-fbtn" type="button" data-open="bstfilter">' + ic('sliders', 'sm') + btnText() + '</button></div>' +
-    '<div class="bst-fs2"><div class="bst-f" style="grid-column:1/-1"><span>Element</span><div class="chips">' + elemChips() + '</div></div>' + selectHtml('where', 'Where') + selectHtml('primary', 'Main buff') + selectHtml('secondary', 'Base buff') + selectHtml('sort', 'Sort') + '</div>' +
+    '<div class="bst-fs2"><div class="bst-f" style="grid-column:1/-1"><span>Element</span><div class="chips">' + elemChips() + '</div></div>' + selectHtml('where', 'Where') + selectHtml('type', 'Beast') + selectHtml('primary', 'Main buff') + selectHtml('secondary', 'Base buff') + selectHtml('sort', 'Sort') + '</div>' +
     '<div id="bstList" style="display:flex;flex-direction:column;gap:12px">' + collList() + '</div>' + classicLink();
 }
 function chipGroup(k, lab, list) {
@@ -479,7 +483,7 @@ function chipGroup(k, lab, list) {
 function filterSheet() {
   if (!M) return null;
   var body = '<div class="ctrls bst-sh">' + chipGroup('sort', 'Sort by', opts.sort) + '<div><h4>Element</h4><div class="chips">' + elemChips() + '</div></div>' +
-    selectHtml('where', 'Where') + selectHtml('primary', 'Main buff') + selectHtml('secondary', 'Base buff') + '</div><button class="btn" type="button" data-close style="width:100%;margin-top:12px">Done</button>';
+    selectHtml('where', 'Where') + selectHtml('type', 'Beast') + selectHtml('primary', 'Main buff') + selectHtml('secondary', 'Base buff') + '</div><button class="btn" type="button" data-close style="width:100%;margin-top:12px">Done</button>';
   return ['Filter and sort', body];
 }
 function collRefresh() {

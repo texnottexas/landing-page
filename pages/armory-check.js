@@ -389,8 +389,8 @@ var EXPECTED = [
   if (bHas && mobile) {
     A.openSheet('bstfilter'); await sleep(250);
     var bCh = $$('#sheetB [data-bsc], #sheetB [data-bse]'), bSe = $$('#sheetB select');
-    log(bCh.length >= 9 && bSe.length === 3 && bCh.concat(bSe).every(function (x) { return x.getBoundingClientRect().height >= 39.5; }), 'Beasts Collection: the Filter and sort sheet on a phone (chips for sort and element, selects for where and buffs) at 40 px+', bCh.length + ' chips + ' + bSe.length + ' selects'); A.closeSheet(true);
-  } else if (bHas) { var bS = $$('#v-beasts select[data-bsf]'); log(bS.length === 4 && bS.every(function (x) { return x.getBoundingClientRect().height >= 39.5; }), 'Beasts Collection: inline filters at 40 px+ on desktop', bS.length + ' selects'); }
+    log(bCh.length >= 9 && bSe.length === 4 && bCh.concat(bSe).every(function (x) { return x.getBoundingClientRect().height >= 39.5; }), 'Beasts Collection: the Filter and sort sheet on a phone (chips for sort and element, selects for where, beast and buffs) at 40 px+', bCh.length + ' chips + ' + bSe.length + ' selects'); A.closeSheet(true);
+  } else if (bHas) { var bS = $$('#v-beasts select[data-bsf]'); log(bS.length === 5 && bS.every(function (x) { return x.getBoundingClientRect().height >= 39.5; }), 'Beasts Collection: inline filters at 40 px+ on desktop', bS.length + ' selects'); }
   if (bHas && bC) { $('#v-beasts [data-pane="collection"] [data-bst]').click(); await sleep(250); var bSh = ($('#sheetB') || { textContent: '' }).textContent; log(/Main buff/.test(bSh) && /Potential/.test(bSh), 'Beasts: tapping a beast opens its sheet (main buff, base buffs, potential)', bSh.slice(0, 40)); A.closeSheet(true); }
   await visit('beasts/optimizer'); await sleep(900);
   var bO = $('#v-beasts [data-pane="optimizer"]'), bWiz = bO.querySelectorAll('[data-bsw^="mode:"]').length, bPlan = bO.querySelectorAll('.bst-sw').length, bTot = /Total power score gain/.test(bO.textContent), bOk = /already the best/.test(bO.textContent);

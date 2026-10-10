@@ -104,6 +104,8 @@ test('collection filter and sort (the classic ebFilterBeasts / ebSortBeasts) and
   assert.deepEqual(ids(L.collFilter(m.all, st({ where: '5' }))).sort(), ['5', '6', '7'], 'Offense field');
   assert.deepEqual(ids(L.collFilter(m.all, st({ elems: ['Ground'] }))).sort(), ['6', '78', '8'].sort());
   assert.deepEqual(ids(L.collFilter(m.all, st({ elems: ['Ground', 'Fire'], where: 'bench' }))).sort(), ['77', '78', '8', '9'].sort(), 'elements OR together, then AND with where');
+  assert.deepEqual(ids(L.collFilter(m.all, st({ type: '2' }))).sort(), ['1', '2', '77'], 'beast type 2 (Dreadray)');
+  assert.deepEqual(ids(L.collFilter(m.all, st({ type: '2', where: 'bench' }))), ['77'], 'type AND where');
   assert.deepEqual(ids(L.collFilter(m.all, st({ primary: '520000' }))).sort(), ['1', '78', '9']);
   assert.deepEqual(ids(L.collFilter(m.all, st({ secondary: '520012' }))).sort(), ['2', '3', '78']);
   assert.deepEqual(L.collFilter(m.all, st({ elems: ['Nope'] })), []);
@@ -113,6 +115,7 @@ test('collection filter and sort (the classic ebFilterBeasts / ebSortBeasts) and
   assert.ok(o.primary.length > 2 && o.primary[0][1] === 'Any');
   assert.ok(o.primary.every((x) => !/\bATK\b|\(off\)/.test(x[1])), 'option names are written out');
   assert.equal(o.sort.length, 5);
+  assert.deepEqual(o.type.map((x) => x[1]), ['Any beast', 'Dreadray (3)', 'Gleamdeer (1)', 'Grizzroar (1)', 'Skynx (3)', 'Tornadeagle (3)'], 'types present, named and counted, A to Z');
 });
 
 test('preferences: only a well-formed {mode, units, weights} is accepted (localStorage is not trusted)', () => {
