@@ -32,12 +32,12 @@ test('every local script the page loads exists, parses, and is copied by pages.y
     new vm.Script(read(f), { filename: f });
     if (s !== 'feedback-widget.js') assert.ok(cp.includes(f), f + ' is in the pages.yml cp line');
   }
-  for (const lazy of ['pages/armory.html', 'pages/armory-more.js', 'pages/armory-advice.js', 'pages/armory-advice-flows.js', 'pages/armory-check.js']) assert.ok(cp.includes(lazy), lazy + ' is in the pages.yml cp line');
+  for (const lazy of ['pages/armory.html', 'pages/armory-more.js', 'pages/armory-ht.js', 'pages/armory-advice.js', 'pages/armory-advice-flows.js', 'pages/armory-check.js']) assert.ok(cp.includes(lazy), lazy + ' is in the pages.yml cp line');
   for (const m of V2.matchAll(/<script>([\s\S]*?)<\/script>/g)) new vm.Script(m[1], { filename: 'inline' });
 });
 
 test('no emoji, em dash or personal name in the new files', () => {
-  for (const f of ['pages/armory.html', 'pages/armory-app.js', 'pages/armory-more.js', 'pages/armory-advice.js', 'pages/armory-advice-flows.js', 'pages/armory-check.js']) {
+  for (const f of ['pages/armory.html', 'pages/armory-app.js', 'pages/armory-more.js', 'pages/armory-ht.js', 'pages/armory-advice.js', 'pages/armory-advice-flows.js', 'pages/armory-check.js']) {
     const t = read(f);
     assert.ok(!/\p{Extended_Pictographic}/u.test(t.replace(/[©®™]/g, '')), f + ' has an emoji');
     assert.ok(!/—/.test(t), f + ' has an em dash');

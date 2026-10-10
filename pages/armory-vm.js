@@ -199,8 +199,16 @@
   }
 
   // ---- HT chips ---------------------------------------------------------------------------------------------------
+  // a bound-HT field that is not a whole number would throw inside the overlay and drop the whole page to its error screen: leave that chip out
+  function cleanChips(cs) {
+    if (!cs || !Array.isArray(cs.chips)) return cs;
+    var o = {}, k;
+    for (k in cs) o[k] = cs[k];
+    o.chips = cs.chips.filter(function (c) { return c && typeof c === 'object' && (!c.m || /^\d+$/.test(String(c.m))); });
+    return o;
+  }
   function buildHt(merged, supp, reports, reportMechaIds, core) {
-    var chipsSupp = supp.chips || null;
+    var chipsSupp = cleanChips(supp.chips || null);
     var chipsTs = chipsSupp && chipsSupp.ts ? new Date(chipsSupp.ts).getTime() : 0;
     var perMecha = core._ar_perEntityReportTs(reports || [], 'mechas', 'mechaId');
     var mechas = core._ar_overlayMechasWithChips((merged && merged.mechas) || [], perMecha, chipsSupp, chipsTs)
@@ -314,7 +322,7 @@
     };
   }
 
-  var api = { heroIcon: heroIcon, buildViewModel: buildViewModel, fromLoad: fromLoad, equipSlot: equipSlot, equipQuality: equipQuality, TOTAL_IDS: TOTAL_IDS };
+  var api = { cleanChips: cleanChips, heroIcon: heroIcon, buildViewModel: buildViewModel, fromLoad: fromLoad, equipSlot: equipSlot, equipQuality: equipQuality, TOTAL_IDS: TOTAL_IDS };
   window.ArmoryVM = api;
   if (isNode) module.exports = api;
 })(typeof window !== 'undefined' ? window : {});
