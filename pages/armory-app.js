@@ -136,24 +136,24 @@ function applyRoute(first, soft) {
 /* ---------- loading ---------- */
 /* ---------- fk boats loader (styles: .fkl in armory.html) ---------- */
 var FK_OUTER = 'M91.06,19.11a1.36,1.36,0,0,0-1-1.48Q70.47,9,50.9.22a2.12,2.12,0,0,0-1.9,0Q29.49,8.92,9.95,17.57a1.52,1.52,0,0,0-1,1.66q0,7.21,0,14.42V45.19a57.47,57.47,0,0,0,12.5,36A52.12,52.12,0,0,0,48.11,99.7a6.23,6.23,0,0,0,3.82,0c11.51-3.46,20.58-10.31,27.68-19.87A57.3,57.3,0,0,0,90.3,54.54,59,59,0,0,0,91,45.83C91.1,36.93,91,28,91.06,19.11Zm-6.92,27.4a48.62,48.62,0,0,1-.59,7.23,47.62,47.62,0,0,1-8.88,21,43.87,43.87,0,0,1-23,16.5,5.2,5.2,0,0,1-3.17,0A43.36,43.36,0,0,1,26.38,75.88,47.61,47.61,0,0,1,15.89,46V36.4c0-4,0-8,0-11.95H16a1.25,1.25,0,0,1,.86-1.38Q33.05,15.89,49.25,8.65a1.74,1.74,0,0,1,1.57,0Q67.07,15.9,83.33,23.1a1.13,1.13,0,0,1,.81,1.23V46.51Z', FK_INNER = 'M78.14,50c-0.08,1-.18,2.09-0.37,3.13a39.5,39.5,0,0,1-7.38,17.45,36.49,36.49,0,0,1-19.1,13.71,4.32,4.32,0,0,1-2.66,0,36.49,36.49,0,0,1-19.1-13.71,39.5,39.5,0,0,1-7.38-17.45C22,52.07,21.87,51,21.79,50h0c-0.09-1.09-.13-2.19-0.14-3.3v-18a1,1,0,0,1,.71-1.07l27-12a1.26,1.26,0,0,1,.39-0.12,0.5,0.5,0,0,1,.28,0,1.26,1.26,0,0,1,.39.12l27,12a1,1,0,0,1,.71,1.07v18c0,1.11-.05,2.21-0.14,3.3h0.17Z';
-var FK_DELAY = 120, FK_FORM = 900, FK_SETTLE = 350;
+var FK_DELAY = 120, FK_FORM = 1050, FK_SETTLE = 350;
 function fkReduced() { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); }
 function fkMarkup(role) {
   var o = ''; for (var i = 0; i < 8; i++) o += '<span class="o"><i></i></span>';
   return '<div class="fkl' + (role ? '' : ' hero') + '"' + (role ? ' role="status"' : ' aria-hidden="true"') + '>' + (role ? '<span class="sr">Loading your armory\u2026</span>' : '') +
     '<div class="fkl-st">' + o + '<p class="fk" translate="no">fk<br>boats</p>' +
-    '<svg class="sh" viewBox="0 0 100 100" fill="currentColor" aria-hidden="true"><path d="' + FK_OUTER + '"/><path d="' + FK_INNER + '"/></svg></div></div>';
+    '<svg class="sh" viewBox="0 0 100 100" fill="currentColor" aria-hidden="true"><path d="' + FK_OUTER + '"/><path d="' + FK_INNER + '"/></svg></div>' + (role ? '<p class="fkl-cap">Building your armory</p>' : '') + '</div>';
 }
 /* a loader stays up while a load is pending; a load under 120 ms never shows it (no flash) */
 function fkShow(host) {
   fkDrop();
-  host.innerHTML = '<div class="vb">' + fkMarkup(true) + '</div>';
+  host.innerHTML = '<div class="vb fkl-vb">' + fkMarkup(true) + '</div>';
   var el = host.querySelector('.fkl'); el.setAttribute('data-run', '');
   $('#main').setAttribute('aria-busy', 'true');
   S.fk = { el: el, t: setTimeout(function () { el.classList.add('on'); S.fk.on = true; }, FK_DELAY), on: false };
 }
 function fkDrop() { if (S.fk) { clearTimeout(S.fk.t); var p = S.fk.el.parentNode; if (p) p.removeChild(S.fk.el); S.fk = null; } $('#main').removeAttribute('aria-busy'); }
-/* fn(shown) runs when the loader is done: after one formation + shield reveal (<= 900 ms), at once if it never showed or motion is reduced,
+/* fn(shown) runs when the loader is done: after one formation + shield reveal (1050 ms: the shield stays up 300 ms), at once if it never showed or motion is reduced,
    after a short settle on a failed load. */
 function fkSettle(fn, failed) {
   var f = S.fk;
