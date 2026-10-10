@@ -335,8 +335,8 @@ var EXPECTED = [
   log(sp.length === 0, 'no sibling text spans in a gapped flex row without a separator', sp.join(' | ') || 'none');
   /* 10. HT (phase 3): Loadouts and Chip pool */
   await visit('ht/loadouts'); await sleep(300);
-  var hCards = $$('#v-ht [data-pane="loadouts"] .ht-card'), hFirst = hCards[0], hSlots = hFirst ? hFirst.querySelectorAll('.ht-slot').length : 0;
-  log(hCards.length > 0 && hSlots === 7, 'HT Loadouts: a card per HT, the first open with its 7 chip slots', hCards.length + ' cards, ' + hSlots + ' slot rows in the first');
+  var hCards = $$('#v-ht [data-pane="loadouts"] .ht-card'), hFirst = $('#v-ht .ht-card.is-open') || hCards[0], hSlots = hFirst ? hFirst.querySelectorAll('.ht-slot').length : 0;
+  log(hCards.length > 0 && hSlots === 7, 'HT Loadouts: a card per HT, the one in battle reports (or the only one) open with its 7 chip slots', hCards.length + ' cards, ' + hSlots + ' slot rows in the first');
   var hTog = $$('#v-ht [data-hto]')[1], hWas = hTog ? hTog.getAttribute('aria-expanded') : null;
   if (hTog) { hTog.click(); await sleep(60); }
   var hNow = hTog ? $$('#v-ht [data-hto]')[1].getAttribute('aria-expanded') : null;
@@ -347,8 +347,24 @@ var EXPECTED = [
   log(!hEmoji, 'HT: no emoji in the section', hEmoji ? 'found one' : 'none');
   log(/^Source: (game data|battle reports)/.test((hFirst && hFirst.querySelector('.foot') || { textContent: '' }).textContent.trim()), 'HT Loadouts: the card footer names its source', hFirst && hFirst.querySelector('.foot') ? hFirst.querySelector('.foot').textContent.trim() : 'no footer');
   await visit('ht/pool'); await sleep(200);
-  var hHasPool = !!(S.res.supp.chips && S.res.supp.chips.chips && S.res.supp.chips.chips.length), hSels = $$('#v-ht select[data-htf]'), hPc = $$('#v-ht .ht-pc').length;
-  log(hHasPool ? (hSels.length === 7 && hPc > 0 && hPc <= 24 && hSels.every(function (x) { return x.getBoundingClientRect().height >= 40; })) : !!$('#v-ht [data-pane="pool"] .empty'), 'HT Chip pool: 7 filters (40 px+) and a first page of chips, or the empty state without an import', hHasPool ? hSels.length + ' filters, ' + hPc + ' cards' : 'empty state');
+  var hHasPool = !!(S.res.supp.chips && S.res.supp.chips.chips && S.res.supp.chips.chips.length), hPc = $$('#v-ht .ht-pc').length, hOk, hWhat;
+  if (!hHasPool) { hOk = !!$('#v-ht [data-pane="pool"] .empty'); hWhat = 'empty state'; }
+  else if (mobile) {
+    A.openSheet('htfilter'); await sleep(250);
+    var hCh = $$('#sheetB [data-htc]'), hSel = $$('#sheetB select');
+    hOk = hCh.length >= 14 && hSel.length === 3 && hPc > 0 && hPc <= 24 && hCh.concat(hSel).every(function (x) { return x.getBoundingClientRect().height >= 39.5; });
+    hWhat = hCh.length + ' chips + ' + hSel.length + ' selects in the Filter sheet, ' + hPc + ' cards'; A.closeSheet(true);
+  } else { var hS = $$('#v-ht select[data-htf]'); hOk = hS.length === 7 && hPc > 0 && hPc <= 24 && hS.every(function (x) { return x.getBoundingClientRect().height >= 39.5; }); hWhat = hS.length + ' inline filters, ' + hPc + ' cards'; }
+  log(hOk, 'HT Chip pool: filters in the Filter sheet on a phone (inline on desktop) at 40 px+, and a first page of chips, or the empty state without an import', hWhat);
+  /* a flex parent trims the edge spaces of a bare text node: "Slot " + <span>1</span> reads "Slot1". Flag any such node in the HT screens. */
+  var lostSp = [];
+  for (var hr = 0; hr < 2; hr++) {
+    await visit(hr ? 'ht/pool' : 'ht/loadouts'); await sleep(150);
+    $$('#v-ht *').forEach(function (el) { if (!/flex|grid/.test(getComputedStyle(el).display) || !el.children.length) return; Array.prototype.forEach.call(el.childNodes, function (n) { if (n.nodeType === 3 && /\S/.test(n.nodeValue) && (/^\s/.test(n.nodeValue) || /\s$/.test(n.nodeValue))) lostSp.push((el.className || el.tagName) + ' "' + n.nodeValue.trim().slice(0, 16) + '"'); }); });
+  }
+  log(lostSp.length === 0, 'HT: no text node with an edge space directly inside a flex or grid parent (the "Slot1" bug)', lostSp.slice(0, 3).join(' | ') || 'none');
+  var hStat = $$('#v-ht').map(function (e) { return e.textContent; }).join(' ');
+  log(!/DMG Taken-|\bATK\b|\bINV\b|\bInc\b|\bEnh\b|\bAF\b/.test(hStat), 'HT: chip stats are written out (no DMG Taken-, ATK, INV, Inc, Enh, AF)', (hStat.match(/DMG Taken-|\bATK\b|\bINV\b|\bInc\b|\bEnh\b|\bAF\b/) || [''])[0]);
   await visit('ht/loadouts');
   /* routes: the legacy #tab= ids resolve to a view */
   await visit('overview'); window.scrollTo(0, 0);
