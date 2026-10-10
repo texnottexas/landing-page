@@ -290,7 +290,7 @@ function renderChrome() {
 function renderAll() {
   renderChrome(); renderOverview(); renderHeroes();
   if (M) M.renderSections();
-  if (Ht) Ht.render(S.cur);
+  if (Ht) { try { Ht.render(S.cur); } catch (e) { console.error(e); } }
   watchName();
 }
 
@@ -464,7 +464,11 @@ function advIndex(fresh) {
 function openSheet(kind, arg) {
   var title = '', body = '', isName = false;
   if (kind === 'filter') { title = 'Filter and sort'; body = ctrls('') + '<button class="btn" type="button" data-close style="width:100%">Done</button>'; }
-  else if (/^advice/.test(kind)) {
+  else if (kind === 'htfilter') {
+    if (!Ht) { ht(function () { openSheet(kind, arg); }); return; }
+    var rh = Ht.sheet(); if (!rh) return;
+    title = rh[0]; body = rh[1];
+  } else if (/^advice/.test(kind)) {
     if (!Av) { advice(function () { openSheet(kind, arg); }); return; }
     var ra = Av.sheet(kind, arg); if (!ra) return;
     title = ra[0]; body = ra[1]; isName = !!ra[2];

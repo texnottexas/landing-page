@@ -30,11 +30,11 @@ test('loadout: seven positions, values = base + per x level, max at Lv.25, set b
   assert.equal(s4.now, 300 + 120 * 6); assert.equal(s4.max, 300 + 120 * 25); assert.equal(s4.stat, 'All units Attack');
   assert.equal(l.slots[5].now, 300 + 120 * 25, 'Lv.25 is its own max');
   assert.equal(l.slots[1].lv, 0); assert.equal(l.slots[1].now, 300, 'no level reads as Lv.0');
-  assert.equal(l.slots[0].now, null, 'the core has no base stat'); assert.equal(l.slots[0].coreSkill, 'Cosmos Ring: HT ATK + DMG');
+  assert.equal(l.slots[0].now, null, 'the core has no base stat'); assert.equal(l.slots[0].coreSkill, 'Cosmos Ring: HT Attack + DMG');
   assert.equal(l.coreSetName, 'Ring of Cosmos'); assert.equal(l.rarity, 'Epic'); assert.equal(l.match, 3);
   // 3 matching chips: the 2pc tier is on (HT ATK +36%), 4pc and 6pc are not
   assert.deepEqual(l.bonuses.map((b) => [b.count, b.on, b.base]), [[2, true, 3600], [4, false, 3600], [6, false, 1800]]);
-  assert.deepEqual(l.cumul, [{ desc: 'HT ATK', val: 3600 }]);
+  assert.deepEqual(l.cumul, [{ desc: 'HT Attack', val: 3600 }]);
   assert.equal(l.mixed, null);
   assert.deepEqual(s4.rnd, [{ buff: 932001, name: 'HT Attack', val: 1000 }].map((r) => Object.assign({}, r, { buff: G.RND_GLO[0], name: G.BUFF_NAMES_CHIP[G.RND_GLO[0]] })));
 });
@@ -112,7 +112,7 @@ test('pool options count what is there, and the filters narrow it like classic: 
   assert.deepEqual(o.set[0], ['', 'All sets']); assert.ok(o.set.some((x) => x[0] === '110' && /Ring of Cosmos \(4\)/.test(x[1])));
   assert.deepEqual(o.slot.map((x) => x[0]), ['', '0', '1', '2', '3', '4']);
   assert.deepEqual(o.rar.map((x) => x[1]), ['All rarities', 'Legendary (2)', 'Epic (3)', 'Common (1)']);
-  assert.ok(o.mecha.some((x) => x[0] === '0' && /^Universal \(3\)$/.test(x[1])));
+  assert.ok(o.mecha.some((x) => x[0] === '0' && /^Not equipped \(3\)$/.test(x[1])));
   const base = { set: '', slot: '', rar: '', mecha: '', stat: '', sort: 'rarity', lock: 'all' };
   const f = (st) => L.poolFilter(rows, Object.assign({}, base, st)).map((r) => r.chipId);
   assert.deepEqual(f({ set: '109' }), [8500]);
@@ -140,8 +140,9 @@ test('pool sort: rarity (then level, slot), level, set, slot, refines', () => {
 
 test('a chips supplement whose bound-HT field is not a number is skipped, not fatal (the whole page used to fall to its error screen)', () => {
   const VM = require('../pages/armory-vm.js');
-  const supp = { chips: { ts: new Date(NOW).toISOString(), chips: [{ m: '<img src=x onerror=alert(1)>', c: 9401, lv: 2 }, { m: 'NaN', c: 9402 }, { m: 1006, c: 9401, lv: 3 }] } };
+  const supp = { chips: { ts: new Date(NOW).toISOString(), chips: [{ m: '<img src=x onerror=alert(1)>', c: 9401, lv: 2 }, { m: 'NaN', c: 9402 }, { m: 'constructor', c: 9401 }, { m: '__proto__', c: 9402 }, { m: 1006, c: 9401, lv: 3 }] } };
   const mg = { heroes: [], decorations: { ids: [], suit: [] }, enigmas: null, mechas: [] };
+  assert.throws(() => core._ar_overlayMechasWithChips([], {}, supp.chips, NOW), TypeError, 'the raw supplement really does crash the core overlay (constructor and __proto__ are truthy on a plain object)');
   assert.doesNotThrow(() => L.loadouts(core, G, mg, supp, [], null));
   assert.deepEqual(L.loadouts(core, G, mg, supp, [], null).map((l) => l.mecha), [1006]);
   const vm = VM.buildViewModel(mg, { reportsTs: 0, dataTs: NOW, kinds: ['chips'] }, { core, supp, statics: {}, reports: [], reportMechaIds: null });
@@ -155,12 +156,19 @@ test('cleanChips keeps whole-number bound-HT fields only (numbers and digit stri
   assert.equal(VM.cleanChips(null), null); assert.deepEqual(VM.cleanChips({ ts: 1 }), { ts: 1 });
 });
 
-test('relAge is the classic one: just now, minutes, hours, days, months, years; empty for nothing, the future or garbage', () => {
+test('ageOld says "4 months old" like the header chip: minutes, hours, days, months, years (singular at 1); empty for nothing, the future or garbage', () => {
   const n = 1e12, M = 60000;
-  assert.equal(L.relAge(n - 5000, n), 'just now'); assert.equal(L.relAge(n - 5 * M, n), '5m ago'); assert.equal(L.relAge(n - 3 * 60 * M, n), '3h ago');
-  assert.equal(L.relAge(n - 2 * 86400000, n), '2d ago'); assert.equal(L.relAge(n - 125 * 86400000, n), '4mo ago'); assert.equal(L.relAge(n - 800 * 86400000, n), '2y ago');
-  assert.equal(L.relAge('', n), ''); assert.equal(L.relAge(n + M, n), ''); assert.equal(L.relAge('not a date', n), '');
-  assert.equal(L.relAge(new Date(n - 5 * M).toISOString(), n), '5m ago');
+  assert.equal(L.ageOld(n - 5000, n), 'just now'); assert.equal(L.ageOld(n - 5 * M, n), '5 minutes old'); assert.equal(L.ageOld(n - 60 * M, n), '1 hour old'); assert.equal(L.ageOld(n - 3 * 60 * M, n), '3 hours old');
+  assert.equal(L.ageOld(n - 2 * 86400000, n), '2 days old'); assert.equal(L.ageOld(n - 125 * 86400000, n), '4 months old'); assert.equal(L.ageOld(n - 800 * 86400000, n), '2 years old');
+  assert.equal(L.ageOld('', n), ''); assert.equal(L.ageOld(n + M, n), ''); assert.equal(L.ageOld('not a date', n), '');
+  assert.equal(L.ageOld(new Date(n - 5 * M).toISOString(), n), '5 minutes old');
+});
+
+test('statName writes the game short names out the way Heroes does, and no chip stat keeps DMG Taken-, ATK, DEF-first, INV or Enh', () => {
+  const t = { 'HT DMG Taken-': 'HT Decreased DMG Taken', 'HT DMG Inc': 'HT DMG increase', 'HT ATK SPD': 'HT Attack Speed', 'All units ATK': 'All units Attack', 'DEF all units': 'All units Defense', 'DEF AF': 'Air Force Defense', 'HT DEF': 'HT Defense', 'HT INV': 'HT Invulnerability', 'AF Elemental Enh': 'Air Force Elemental Enhance', 'All DMG Taken-': 'All Decreased DMG Taken' };
+  Object.keys(t).forEach((k) => assert.equal(L.statName(k), t[k], k));
+  Object.keys(G.BUFF_NAMES_CHIP).forEach((b) => assert.ok(!/DMG Taken-|\bATK\b|\bINV\b|\bInc\b|\bEnh\b|\bAF\b|^DEF /.test(L.statName(G.BUFF_NAMES_CHIP[b])), b + ' ' + L.statName(G.BUFF_NAMES_CHIP[b])));
+  L.loadout(G, 1006, [{ chipId: 9400 }]).bonuses.forEach((b) => assert.ok(!/\bATK\b|\bInc\b/.test(b.desc), b.desc));
 });
 
 test('the page never shows the AF abbreviation: rolled stats, the stat filter and set bonuses say Air Force', () => {
@@ -171,4 +179,11 @@ test('the page never shows the AF abbreviation: rolled stats, the stat filter an
   assert.equal(r.buff, G.RND_GLO[idx], 'the filter value is still the buff id');
   const rows = L.poolRows(G, [{ c: 9404, lv: 1, r: idx + ';500' }]);
   assert.ok(L.poolOptions(G, rows).stat.every((o) => !/\bAF\b/.test(o[1])));
+});
+
+test('every Sort option value is a sort the filter knows (the Refines option once fell back to rarity)', () => {
+  const rows = L.poolRows(G, [{ c: 9404, lv: 1, rt: 0 }, { c: 9404, lv: 1, rt: 3 }]), o = L.poolOptions(G, rows);
+  const base = { set: '', slot: '', rar: '', mecha: '', stat: '', lock: 'all' };
+  o.sort.forEach(([v]) => assert.equal(L.poolFilter(rows, Object.assign({ sort: v }, base)).length, 2));
+  assert.deepEqual(L.poolFilter(rows, Object.assign({ sort: o.sort.find((x) => /Refine/.test(x[1]))[0] }, base)).map((r) => r.refine), [3, 0]);
 });
