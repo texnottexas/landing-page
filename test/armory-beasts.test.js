@@ -391,3 +391,18 @@ test('a swap that turns off a slot bonus names the short condition text the Fiel
   }
   assert.ok(seen > 0, 'broken-condition notes compared: ' + seen);
 });
+
+test('a linked move carries the chain\'s real combined totals (today and fully levelled)', () => {
+  const core = mkCore(), opt = Opt.create(core);
+  let n = 0;
+  for (const seed of [1, 7, 23]) {
+    const s = synth(seed, 70), p = opt.plan({ enigmas: s.enigmas }, s.bench, { mode: 'triple', units: [1, 2, 3] }, 'x'), pm = L.planModel(G, core, opt, { enigmas: s.enigmas }, s.bench, { mode: 'triple', units: [1, 2, 3] }, 'x');
+    pm.swaps.filter((x) => x.chain).forEach((x) => {
+      const legs = pm.swaps.filter((y) => y.chain && y.chain.id === x.chain.id);
+      assert.equal(x.chain.netToday, Math.round(p.result.recommendations.find((r) => r.chainId === x.chain.id).chainNetToday));
+      assert.ok(Math.abs(x.chain.netToday - legs.reduce((a, l) => a + l.gainToday, 0)) <= legs.length, 'the total is the sum of the legs');
+      n++;
+    });
+  }
+  assert.ok(n > 0);
+});

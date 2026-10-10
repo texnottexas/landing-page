@@ -317,7 +317,7 @@ function swapView(G, core, opt, rec, prefs) {
     headline: headline(from, to), reason: reasonLine(from, to),
     source: to && to.where ? slotName(G, to.where.cfg, to.where.slot) : 'bench',
     gainToday: Math.round(rec.gainToday), gainMax: Math.round(rec.gainAtMax), movesTo: null,
-    chain: rec.chainSize > 1 ? { id: num(rec.chainId), size: num(rec.chainSize), netMax: Math.round(rec.chainNetMax), backfill: !!rec.isBackfill, step: 0, partners: [] } : null,
+    chain: rec.chainSize > 1 ? { id: num(rec.chainId), size: num(rec.chainSize), netMax: Math.round(rec.chainNetMax), netToday: Math.round(rec.chainNetToday), backfill: !!rec.isBackfill, step: 0, partners: [] } : null,
     stats: statRows(G, opt, rec, prefs),
     threshold: th ? {
       star: num(th.star), level: num(th.level), maxStar: G.boMaxStarFor(rec.to), maxLv: G.boMaxLevelFor(rec.to), rarity: RARITY[num(rec.to.q)] || '', typeName: to.name,
@@ -649,8 +649,7 @@ function beastRow(b, label, note) {
 function swapCard(s) {
   var c = s.chain, chain = '';
   if (c) {
-    chain = '<div class="bst-call">' + nd('Step ' + c.step + ' of ' + c.size + '. ') + (c.backfill && s.from && s.movesTo ? nd('This step keeps ' + s.fieldName + ' slot ' + s.order + ' filled after its ' + s.from.name + ' moves to ' + s.movesTo + '. ') : '') +
-      'Do it together with ' + swapLinks(c) + nd(' (' + Logic.signed(c.netMax) + ' fully levelled when all are done).') + '</div>';
+    chain = '<div class="bst-call">' + nd('Step ' + c.step + ' of ' + c.size + '. Do it together with ') + swapLinks(c) + nd(': together ' + Logic.signed(c.netToday) + ' today, ' + Logic.signed(c.netMax) + ' fully levelled.') + '</div>';
   }
   var table = s.stats.length ? '<details class="bst-more"><summary>Stat by stat</summary><table class="bst-tb"><caption>Both beasts fully levelled. Today in brackets.</caption><thead><tr><th scope="col">Stat</th><th scope="col">Out</th><th scope="col">In</th><th scope="col">Change</th></tr></thead><tbody>' +
     s.stats.map(function (r) { return '<tr><td>' + esc(r.label) + '</td><td translate="no">' + esc(r.from) + '</td><td translate="no">' + esc(r.to) + '</td><td class="chg" translate="no">' + esc(r.net) + '</td></tr>'; }).join('') + '</tbody></table></details>' : '';
