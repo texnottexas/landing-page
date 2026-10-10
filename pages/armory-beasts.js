@@ -636,7 +636,7 @@ function wizPane() {
     '<div class="chips">' + chips + '</div>' + wRows + '<p class="t13" role="alert" id="bstWerr" hidden>Pick at least one unit first.</p>' +
     '<div class="bst-acts"><button class="btn bst-go" type="button" data-bsw="go">Optimize</button>' + (savedPrefs() ? '<button class="tb link" type="button" data-bsw="cancel">Keep my choice</button>' : '') + '</div></div>';
 }
-function swapLinks(c) { return c.partners.map(function (p) { return '<a class="tb link" href="#beasts/optimizer?swap=' + esc(p.id) + '">' + nd(p.label) + '</a>'; }).join(' and '); }
+function swapLinks(c) { return c.partners.map(function (p) { return '<a href="#beasts/optimizer?swap=' + esc(p.id) + '" translate="no">' + esc(p.label) + '</a>'; }).join(' and '); }
 /* one compact row: Out / In, icon, name, stars, level, potential with its cap */
 function beastRow(b, label, note) {
   if (!b) return '<div class="bst-row"><b class="bst-rl">' + esc(label) + '</b><span class="bst-gap" aria-hidden="true"></span><span class="bst-bt"><span class="bst-bn muted">Empty slot</span></span></div>';
