@@ -218,8 +218,8 @@ var EXPECTED = [
     if (cs.boxShadow !== 'none' || cs.textShadow !== 'none') shBad++;
     if (cs.backgroundImage.indexOf('gradient') >= 0 && !el.classList.contains('gcard')) gradBad.push(el.className);
     if (cs.animationIterationCount === 'infinite') loopBad++;
-    if (cs.textTransform === 'uppercase' && !el.classList.contains('title')) upBad.push(el.className || el.tagName);
-    if (cs.letterSpacing !== 'normal' && cs.letterSpacing !== '0px' && !el.classList.contains('title')) upBad.push('tracking ' + (el.className || el.tagName));
+    if (cs.textTransform === 'uppercase' && !el.closest('.title')) upBad.push(el.className || el.tagName);
+    if (cs.letterSpacing !== 'normal' && cs.letterSpacing !== '0px' && !el.closest('.title')) upBad.push('tracking ' + (el.className || el.tagName));
   });
   log(Object.keys(radBad).length === 0, 'radii only 0 / 4 / 6 / 12 / circle', Object.keys(radBad).slice(0, 4).join(' | '));
   log(shBad === 0, 'no shadows', shBad + ' elements');
@@ -263,15 +263,15 @@ var EXPECTED = [
     $('#adviceBody [data-a="save"]') && advMeasure('composer end');
   } else {
     advMode = 'plan checklist';
-    var pb = $('#adviceBody .adv-pb'); if (pb) { pb.click(); await sleep(700); }
+    var pb = $('#adviceBody .adv-pb'); if (pb && pb.getAttribute('aria-expanded') !== 'true') pb.click(); await sleep(700);
     advMeasure('plan expanded');
     if ($('#adviceBody [data-a="ask"]')) { A.openSheet('advice-ask'); await sleep(220); advMeasure('ask sheet'); A.closeSheet(true); }
   }
   log(advSmall.length === 0, 'Advice (' + advMode + '): no text under 12 px', advSmall.length ? advSmall.slice(0, 4).join(' | ') : 'checked at ' + window.innerWidth + ' px');
   log(advTgt.length === 0, 'Advice (' + advMode + '): interactive targets >= 40x40, no horizontal overflow', advTgt.length ? advTgt.slice(0, 5).join(' | ') : advN + ' elements measured');
   log(advStrict.length === 0, 'Advice (' + advMode + '): every button, summary and link is >= 44x44 (step arrows, ticks, verbs)', advStrict.length ? advStrict.slice(0, 5).join(' | ') : 'ok');
-  var advRows = $$('#adviceBody .step').length;
-  log(advRows > 0 || !!$('#adviceBody .hero'), 'Advice (' + advMode + '): rows rendered', advRows + ' step rows');
+  var advRows = $$('#adviceBody .adv-step').length;
+  log(advRows > 0 || !!$('#adviceBody .hero') || !!$('#adviceBody .empty'), 'Advice (' + advMode + '): rows rendered', advRows + ' step rows');
   await visit('overview'); window.scrollTo(0, 0);
 
   /* layout and polish */
@@ -323,7 +323,7 @@ var EXPECTED = [
       var cs = getComputedStyle(el); if (!/flex|grid/.test(cs.display) || !(parseFloat(cs.columnGap) > 0)) return;
       var kids = Array.prototype.filter.call(el.children, function (c) { return c.tagName === 'SPAN' && c.textContent.trim() && !c.hasAttribute('aria-hidden') && !c.classList.contains('dot'); });
       var oneLine = kids.length >= 2 && kids.every(function (c) { var r = c.getBoundingClientRect(); return r.height <= 26 && Math.abs(r.top - kids[0].getBoundingClientRect().top) < 4; });
-      if (oneLine && Array.prototype.filter.call(el.children, function (c) { return c.hasAttribute('aria-hidden') && /\u00B7/.test(c.textContent); }).length === 0 && !el.matches('.bm-num, .irow, .hb-1, .sechead, .chips, .nb, .stars, .buffs li') && sp.length < 5) sp.push(ROUTES[i] + ':' + (el.className || el.tagName) + ' "' + el.textContent.trim().slice(0, 30) + '"');
+      if (oneLine && Array.prototype.filter.call(el.children, function (c) { return c.hasAttribute('aria-hidden') && /\u00B7/.test(c.textContent); }).length === 0 && !el.matches('.bm-num, .irow, .hb-1, .sechead, .chips, .nb, .stars, .buffs li, .hc-pills') && sp.length < 5) sp.push(ROUTES[i] + ':' + (el.className || el.tagName) + ' "' + el.textContent.trim().slice(0, 30) + '"');
     });
   }
   log(sp.length === 0, 'no sibling text spans in a gapped flex row without a separator', sp.join(' | ') || 'none');

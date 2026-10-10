@@ -229,8 +229,8 @@ function renderChrome() {
   var c = chipState();
   $('#chipTxt').innerHTML = nd(c[1]);
   $('#chipDot').className = 'dot ' + c[0];
-  $('#tabsIn').innerHTML = TABS.map(function (v) { return '<a class="tab" href="#' + v + '" data-v="' + v + '">' + ic(VIEWS[v].icon, 'sm') + VIEWS[v].label + '</a>'; }).join('');
-  $('#bar').innerHTML = TABS.map(function (v) { return '<a href="#' + v + '" data-v="' + v + '">' + ic(VIEWS[v].icon) + '<span>' + VIEWS[v].label + '</span></a>'; }).join('');
+  $('#tabsIn').innerHTML = TABS.map(function (v) { return '<a class="tab' + (v === 'heroes' && S.advDot ? ' has-new' : '') + '" href="#' + v + '" data-v="' + v + '">' + ic(VIEWS[v].icon, 'sm') + VIEWS[v].label + '</a>'; }).join('');
+  $('#bar').innerHTML = TABS.map(function (v) { return '<a' + (v === 'heroes' && S.advDot ? ' class="has-new"' : '') + ' href="#' + v + '" data-v="' + v + '">' + ic(VIEWS[v].icon) + '<span>' + VIEWS[v].label + '</span></a>'; }).join('');
   $('#pagesPop').innerHTML = '<div class="pop-h">All pages</div>' + PAGES.map(function (p) { return '<a class="pop-a" role="menuitem" href="' + p[0] + '">' + esc(p[1]) + '</a>'; }).join('');
   $('#footNote').innerHTML = '<span>This is the new Armory.</span><a class="tb link" href="' + esc(classicUrl('')) + '">Back to classic</a><button class="tb link" type="button" data-fb>Send feedback</button>';
 }
@@ -389,7 +389,7 @@ function renderHeroes() {
 /* ---------- Base, Beasts, HT ---------- */
 
 /* ---------- the advice index: one GET per load, shared by the segment dot and the Advice screen ---------- */
-function paintDot() { var b = $('#v-heroes .segs button[data-seg="advice"]'); if (b) b.classList.toggle('has-new', !!S.advDot); }
+function paintDot() { $$('#v-heroes .segs button[data-seg="advice"], #bar a[data-v="heroes"], #tabsIn a[data-v="heroes"]').forEach(function (b) { b.classList.toggle('has-new', !!S.advDot); }); }
 function advIndex(fresh) {
   var key = sk();
   if (!key) return Promise.resolve(null);

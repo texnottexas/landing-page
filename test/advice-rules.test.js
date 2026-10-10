@@ -202,19 +202,38 @@ test('ticks: round trip per code and advisor, sorted unique integers, bad JSON r
 test('preflight, links, codes', () => {
   const NOW = Date.parse('2026-10-09T12:00:00Z'), D = (n) => NOW - n * 864e5;
   let p = A.preflight({ pool: { known: true, source: 'import' }, privacy: {}, supTs: { inv: D(2), gear: D(2) }, now: NOW });
-  assert.equal(p.line, 'Inventory imported 2 days ago, gear imported 2 days ago, rune pool: from your import');
-  assert.equal(p.warn, ''); assert.equal(p.canAsk, true);
+  assert.equal(p.line, 'Your game data is from 7 Oct (2 days ago).');
+  assert.equal(p.warn, ''); assert.equal(p.canAsk, true); assert.equal(p.old, false);
   p = A.preflight({ pool: { known: true, source: 'stored', storedSource: 'manual', poolTs: D(1) }, privacy: { inv: true }, supTs: { inv: D(0), gear: 0 }, now: NOW });
-  assert.equal(p.line, 'Inventory imported today, no gear imported, rune pool: hand-entered 1 day ago');
-  assert.match(p.warn, /^Your bag is private: an advisor cannot check it\. Change that in Status\.$/);
+  assert.equal(p.line, 'Your inventory is from 9 Oct (today). You entered your rune pool by hand 1 day ago.');
+  assert.equal(p.warn, 'Your bag is private, so an advisor cannot check it.');
+  p = A.preflight({ pool: { known: true, source: 'import' }, supTs: { inv: D(143), gear: D(140) }, now: NOW });
+  assert.equal(p.line, 'Your inventory is from 19 May (143 days ago) and your gear is from 22 May (140 days ago).'); assert.equal(p.old, true);
   p = A.preflight({ pool: { known: false, source: 'none' }, privacy: {}, supTs: {}, now: NOW });
-  assert.equal(p.canAsk, false); assert.equal(p.line, 'No inventory imported, no gear imported, rune pool: none');
+  assert.equal(p.canAsk, false); assert.equal(p.line, 'No game data imported yet.'); assert.equal(p.old, false);
   assert.equal(A.preflight({ pool: { known: true, source: 'import', stale: true } }).stale, true);
   assert.equal(A.preflight().canAsk, false);
   assert.deepStrictEqual(A.links('abc123', 'rexc'), { advise: 'https://2864tw.com/armory-report.html?advise=abc123', player: 'https://2864tw.com/armory-report.html?code=REXC&plan=abc123' });
   assert.deepStrictEqual(A.links('a<b>c"1', 'R&X'), { advise: 'https://2864tw.com/armory-report.html?advise=abc1', player: 'https://2864tw.com/armory-report.html?code=RX&plan=abc1' }, 'links never carry markup');
   for (const [s, ok] of [['abc123', true], ['ABC123', true], [' abc123 ', true], ['abc12', false], ['abc1234', false], ['abc 12', false], ['<b>123', false], ['', false], [null, false], [undefined, false]]) assert.equal(A.isCode(s), ok, String(s));
   assert.equal(A.normCode('ABC123'), 'abc123'); assert.equal(A.normCode('zz'), '');
+});
+
+test('player wording: reasons tell the player what to do; swap text names both runes; rows carry art info', () => {
+  const rune = 'Impact', slot = 1, cost = Core._ar_advisorMergeCost(CAT, IDX, rune, slot, 0, 1).cost;
+  const gear = { 101: { [slot]: { runeName: rune, star: 0 } }, 102: { [slot]: { runeName: 'Searing', star: 1 } } };
+  const b = { pool: { [rune]: { 0: cost - 1 } }, unequipped: {} };
+  const ret = { type: 'recycle', srcHero: 0, srcSlot: slot, srcRuneName: rune };
+  const merge = { type: 'merge', runeName: rune, dstHero: 101, dstSlot: slot, fromStar: 0, toStar: 1 };
+  const sw = { type: 'inherit', srcHero: 101, srcSlot: slot, dstHero: 102, dstSlot: slot };
+  const w = A.walk(b, gear, [ret, merge, sw], CAT, IDX, core, null, 'player');
+  assert.equal(w.rows[0].reasons[0], 'Your last import shows no spare 0-star Impact on unequipped gear. If you already did this step, tick it.');
+  assert.match(w.rows[1].reasons[0], /^Needs \d+ Impact in your bag, you have \d+\. Update your game data if you have more now\.$/);
+  assert.equal(w.rows[2].text, "Swap runes: Alpha's Assault Pistol (Impact) and Bravo's Assault Pistol (Searing)".replace('Alpha', core.heroName(101)).replace('Bravo', core.heroName(102)));
+  assert.deepStrictEqual(w.rows[2].info, { rune: 'Impact', rune2: 'Searing', hero: 101, slot });
+  assert.deepStrictEqual(w.rows[1].info, { rune, hero: 101, slot, star: 1 }); assert.deepStrictEqual(w.rows[0].info, { rune, hero: 0, slot });
+  const adv = A.walk(b, gear, [ret], CAT, IDX, core);
+  assert.equal(adv.rows[0].reasons[0], 'No unequipped 0-star Impact left to return', 'the advisor keeps the short form');
 });
 
 // ---- cross-compat with the CLASSIC page's own functions ---------------------------------------------------------------
@@ -257,4 +276,20 @@ test('cross-compat (b): a classic-shaped plan (dstEquipId, dstIsJunk, srcRuneSta
   const cidx = classic._ar_advisorRuneTypeIndex(P.clone(CAT));
   const c = classic._ar_validateStepSequence(P.j(F.pool), P.j(F.gearByHero), P.clone(steps), P.clone(CAT), cidx);
   assert.deepStrictEqual(w.rows.map((r) => r.ok), c.map((r) => r.ok));
+});
+
+test('prototype pollution: steps with __proto__, constructor, prototype, toString or non-numeric hero/slot are "Unknown rune" and never applied', () => {
+  const keysBefore = Object.getOwnPropertyNames(Object.prototype).sort().join();
+  const bad = ['__proto__', 'constructor', 'prototype', 'toString', '__x', 'hasOwnProperty'];
+  const steps = [];
+  for (const n of bad) {
+    steps.push({ type: 'recycle', srcHero: 0, srcSlot: 1, srcRuneName: n }, { type: 'place', runeName: n, dstHero: 101, dstSlot: 1 }, { type: 'merge', runeName: n, dstHero: 101, dstSlot: 1, fromStar: 0, toStar: 1 }, { type: 'recycle', srcHero: 101, srcSlot: 1, srcRuneName: n });
+  }
+  steps.push({ type: 'place', runeName: 'Impact', dstHero: '__proto__', dstSlot: 1 }, { type: 'inherit', srcHero: 'constructor', srcSlot: 1, dstHero: 101, dstSlot: 1 }, { type: 'place', runeName: 'Impact', dstHero: 101, dstSlot: '__proto__' });
+  const w = A.walk({ pool: {}, unequipped: JSON.parse('{"__proto__": 3, "x": 1}') }, P.clone(F.gearByHero), steps, CAT, IDX, core);
+  assert.equal(w.rows.length, steps.length);
+  assert.ok(w.rows.every((r) => !r.ok && r.reasons[0] === 'Unknown rune'), 'every one is refused');
+  assert.equal(Object.getOwnPropertyNames(Object.prototype).sort().join(), keysBefore);
+  assert.equal(({}).polluted, undefined); assert.equal(({})[0], undefined); assert.equal(({})[1], undefined);
+  assert.equal(Object.keys(w.end.pool).length, 0);
 });

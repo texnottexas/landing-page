@@ -18,7 +18,7 @@ function renderStart(kind, extra) {
   var beta = ls('armory_v2_beta') === '1' ? '?beta=1' : '';
   var h;
   if (kind === 'expired' && (S.advise || (extra && extra.advice))) {
-    h = '<h1 class="disp" style="font-size:var(--fs-24)">This advice link has expired</h1><p class="muted">This advice link has expired or was mistyped. Ask the player for a new one.</p><div><a class="btn" href="armory.html' + beta + '">Open my own armory</a></div>';
+    h = '<h1 class="disp" style="font-size:var(--fs-24)">Advice link not found</h1><p class="muted">It may have expired or been mistyped. Ask the player for a new one.</p><div><a class="btn" href="armory.html' + beta + '">Open my own armory</a></div>';
   } else if (kind === 'expired') {
     h = '<h1 class="disp" style="font-size:var(--fs-24)">This share link has expired</h1><p class="muted">Ask the person who shared it for a new link, or build your own.</p><div><a class="btn" href="armory.html' + beta + '">Build my own</a></div>';
   } else if (kind === 'error') {

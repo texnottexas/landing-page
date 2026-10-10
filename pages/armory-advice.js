@@ -1,9 +1,5 @@
-/* armory-advice.js: Heroes > Advice on the Armory v2 page (phase 4). Loaded on first use (never on the first paint).
- * Top half: pure rules (no DOM, no fetch), shared with node tests: the step walk, plain reasons, step text, ticks, links.
- * Bottom half: ArmoryAdvice.mount(H), the screens (player checklist, advisor composer, Advise a player).
- * A plan is the classic page's plan: same five step shapes, same worker records. The A5 "return to bag" step is a
- * `recycle` with srcHero 0, which classic already reads. Nothing here writes the player's rune pool.
- */
+/* armory-advice.js: Heroes > Advice on the Armory v2 page. Lazy; pure rules on top (node tests), screens in mount(H).
+ * A plan is the classic page's plan (A5 return-to-bag = recycle with srcHero 0). Nothing here writes the rune pool. */
 (function (root) {
 'use strict';
 var isNode = typeof module === 'object' && module.exports;
@@ -11,6 +7,14 @@ var G = isNode ? require('./tw-game-data.js') : root.TWGameData;
 
 function clone(o) { return JSON.parse(JSON.stringify(o == null ? {} : o)); }
 function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
+/* refuse steps whose names or hero/slot fields could act as object keys (__proto__ etc.) */
+function unsafeStep(st) {
+  var bad = function (v) { return typeof v !== 'string' || v in Object.prototype || v === 'prototype' || v.slice(0, 2) === '__'; };
+  var k, names = ['runeName', 'srcRuneName'], nums = ['dstHero', 'srcHero', 'dstSlot', 'srcSlot'];
+  for (k = 0; k < names.length; k++) if (st[names[k]] != null && bad(st[names[k]])) return true;
+  for (k = 0; k < nums.length; k++) if (st[nums[k]] != null && typeof st[nums[k]] !== 'number') return true;
+  return false;
+}
 function ensure(pool, n) { return pool[n] || (pool[n] = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }); }
 
 function plainReason(msg) {
@@ -58,7 +62,7 @@ function stepText(step, ctx) {
     case 'merge': return 'Merge ' + rune + ' on ' + hn(step.dstHero) + "'s " + sn(step.dstSlot) + ' to ' + plural(+step.toStar || 0, 'star') + (ctx.mergeCost != null ? ' (uses ' + ctx.mergeCost + ' from your bag)' : '');
     case 'inherit':
       return ctx.dstEmpty ? 'Move ' + rune + ' from ' + hn(step.srcHero) + "'s " + sn(step.srcSlot) + ' to ' + hn(step.dstHero) + "'s empty " + sn(step.dstSlot)
-        : 'Swap runes: ' + hn(step.srcHero) + "'s " + sn(step.srcSlot) + ' and ' + hn(step.dstHero) + "'s " + sn(step.dstSlot);
+        : 'Swap runes: ' + hn(step.srcHero) + "'s " + sn(step.srcSlot) + (ctx.srcRune ? ' (' + m(ctx.srcRune) + ')' : '') + ' and ' + hn(step.dstHero) + "'s " + sn(step.dstSlot) + (ctx.dstRune ? ' (' + m(ctx.dstRune) + ')' : '');
     case 'park': return 'Move ' + rune + ' off ' + hn(step.srcHero) + "'s " + sn(step.srcSlot) + ' onto a spare ' + sn(step.srcSlot);
     case 'recycle':
       return step.srcHero > 0 ? 'Return ' + rune + ' to your bag from ' + hn(step.srcHero) + "'s " + (step.srcGearName ? m(step.srcGearName) : sn(step.srcSlot))
@@ -77,36 +81,46 @@ function stepNote(step, ctx) {
   return '';
 }
 
-function walk(base, baseGear, steps, catalog, runeIdx, core, mark) {
+function walk(base, baseGear, steps, catalog, runeIdx, core, mark, who) {
   base = base || {};
   var st = { pool: clone(base.pool), gearByHero: clone(baseGear) }, un = clone(base.unequipped), rows = [];
   var slotName = function (s) { s = +s || 0; return G && G.GEAR_SLOT_NAMES && G.GEAR_SLOT_NAMES[s] || 'slot ' + s; };
   var heroName = function (id) { id = +id || 0; return String(core && core.heroName ? core.heroName(id) : 'Hero ' + id); };
   function at(h, s) { return st.gearByHero[h] && st.gearByHero[h][s] || null; }
   (steps || []).forEach(function (step) {
-    var raw, cost = null, ctx = { heroName: heroName, slotName: slotName, mergeCost: null, dstEmpty: false, srcRune: null, mark: mark }, done = false;
+    var raw, cost = null, ctx = { heroName: heroName, slotName: slotName, mergeCost: null, dstEmpty: false, srcRune: null, dstRune: null, mark: mark }, done = false, info = null;
     var isStep = step && typeof step === 'object';
-    if (isStep && step.type === 'recycle' && step.srcHero === 0) {
-      var n = step.srcRuneName;
+    if (isStep && unsafeStep(step)) {
+      raw = ['Unknown rune']; info = null;
+    } else if (isStep && step.type === 'recycle' && step.srcHero === 0) {
+      var n = step.srcRuneName; info = { rune: n, hero: 0, slot: step.srcSlot };
       raw = !n ? ['Pick a rune'] : (un[n] || 0) < 1 ? ['No unequipped 0-star ' + n + ' left to return'] : [];
       if (!raw.length) { un[n]--; ensure(st.pool, n)[0]++; }
     } else {
       if (isStep && step.type === 'merge') { var ci = core._ar_advisorMergeCost(catalog, runeIdx, step.runeName, step.dstSlot, step.fromStar, step.toStar); cost = ci ? ci.cost : null; ctx.mergeCost = cost; }
-      if (isStep && step.type === 'inherit') { var s0 = at(step.srcHero, step.srcSlot), d0 = at(step.dstHero, step.dstSlot); ctx.srcRune = s0 && s0.runeName || null; ctx.dstEmpty = !(d0 && d0.runeName); }
-      if (isStep && (step.type === 'park' || step.type === 'recycle')) { var p0 = at(step.srcHero, step.srcSlot); ctx.srcRune = p0 && p0.runeName || null; }
+      if (isStep && step.type === 'inherit') { var s0 = at(step.srcHero, step.srcSlot), d0 = at(step.dstHero, step.dstSlot); ctx.srcRune = s0 && s0.runeName || null; ctx.dstRune = d0 && d0.runeName || null; ctx.dstEmpty = !(d0 && d0.runeName); info = { rune: ctx.srcRune, rune2: ctx.dstRune, hero: step.srcHero, slot: step.srcSlot }; }
+      if (isStep && (step.type === 'park' || step.type === 'recycle')) { var p0 = at(step.srcHero, step.srcSlot); ctx.srcRune = p0 && p0.runeName || null; info = { rune: ctx.srcRune || step.srcRuneName || null, hero: step.srcHero, slot: step.srcSlot }; }
+      if (isStep && step.type === 'place') info = { rune: step.runeName, hero: step.dstHero, slot: step.dstSlot, star: 0 };
+      if (isStep && step.type === 'merge') info = { rune: step.runeName, hero: step.dstHero, slot: step.dstSlot, star: +step.toStar || 0 };
       raw = core._ar_validateAdvisorStep(step, { pool: st.pool, gearByHero: st.gearByHero, runeIdx: runeIdx, catalog: catalog }) || [];
       done = looksDone(step, baseGear, st.gearByHero);
       try { core._ar_applyAdvisorStep(st, step, catalog, runeIdx); } catch (e) {}
     }
     var reasons = raw.map(function (m) {
-      var r = plainReason(m), mm = /^Need (\d+) (.+) s:0 in pool, have (\d+)$/.exec(m);
+      var r = plainReason(m), mm = /^Need (\d+) (.+) s:0 in pool, have (\d+)$/.exec(m), ur = /^No unequipped 0-star (.+) left to return$/.exec(m), nb = /^No (.+) s:0 in pool$/.exec(m);
       if (mm && (un[mm[2]] || 0) > 0) {
         var more = Math.min(un[mm[2]], +mm[1] - +mm[3]);
         r += more === 1 ? ' (1 more is on an unequipped piece)' : ' (' + more + ' more are on unequipped pieces)';
       }
+      if (who === 'player') {
+        if (ur) r = 'Your last import shows no spare 0-star ' + ur[1] + ' on unequipped gear. If you already did this step, tick it.';
+        else if (mm) r += '. Update your game data if you have more now.';
+        else if (nb) r += '. If you have one now, update your game data.';
+      }
+      if (mark) [step && step.runeName, step && step.srcRuneName, ctx.srcRune, ctx.dstRune].filter(function (x, i, arr) { return typeof x === 'string' && x && arr.indexOf(x) === i; }).sort(function (x, y) { return y.length - x.length; }).forEach(function (nme) { r = r.split(nme).join(mark(nme)); });
       return r;
     });
-    rows.push({ ok: raw.length === 0, reasons: reasons, raw: raw, looksDone: raw.length > 0 && done, text: stepText(step, ctx), note: stepNote(step, ctx), cost: cost });
+    rows.push({ ok: raw.length === 0, reasons: reasons, raw: raw, looksDone: raw.length > 0 && done, text: stepText(step, ctx), note: stepNote(step, ctx), cost: cost, info: info });
   });
   return { rows: rows, end: { pool: st.pool, unequipped: un, gearByHero: st.gearByHero } };
 }
@@ -126,14 +140,19 @@ function ago(ts, now) {
   var d = Math.max(0, Math.floor(((now || Date.now()) - ts) / 864e5));
   return d < 1 ? 'today' : d === 1 ? '1 day ago' : d + ' days ago';
 }
+function dayWord(ts) { var x = new Date(ts); return x.getUTCDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][x.getUTCMonth()]; }
 function preflight(o) {
   o = o || {};
-  var pool = o.pool || {}, priv = o.privacy || {}, ts = o.supTs || {}, now = o.now;
-  var parts = [ts.inv ? 'Inventory imported ' + ago(ts.inv, now) : 'No inventory imported', ts.gear ? 'gear imported ' + ago(ts.gear, now) : 'no gear imported'];
-  parts.push(pool.source === 'stored' ? (pool.storedSource === 'manual' ? 'rune pool: hand-entered ' : 'rune pool: saved ') + ago(pool.poolTs, now) : pool.source === 'import' ? 'rune pool: from your import' : 'rune pool: none');
+  var pool = o.pool || {}, priv = o.privacy || {}, ts = o.supTs || {}, now = o.now || Date.now(), inv = +ts.inv || 0, gear = +ts.gear || 0;
+  function from(t) { return dayWord(t) + ' (' + ago(t, now) + ')'; }
+  var line = !inv && !gear ? 'No game data imported yet.' : inv && gear && dayWord(inv) === dayWord(gear) ? 'Your game data is from ' + from(inv) + '.'
+    : (inv ? 'Your inventory is from ' + from(inv) + (gear ? ' and your gear is from ' + from(gear) : '') : 'Your gear is from ' + from(gear)) + '.';
+  if (pool.source === 'stored' && pool.poolTs) line += pool.storedSource === 'manual' ? ' You entered your rune pool by hand ' + ago(pool.poolTs, now) + '.' : ' Your rune pool was saved ' + ago(pool.poolTs, now) + '.';
+  var newest = Math.max(inv, gear);
   return {
-    line: parts.join(', '),
-    warn: priv.inv ? 'Your bag is private: an advisor cannot check it. Change that in Status.' : '',
+    line: line,
+    warn: priv.inv ? 'Your bag is private, so an advisor cannot check it.' : '',
+    old: !!newest && (now - newest) / 864e5 > 7,
     stale: !!pool.stale,
     canAsk: !!pool.known
   };
@@ -158,7 +177,7 @@ function rich(text) { /* escaped text; \u0001..\u0002 mark names, numbers get tr
   return esc(text).replace(/\u0001/g, '<span translate="no">').replace(/\u0002/g, '</span>').replace(/(\d[\d,.]*)/g, '<span translate="no">$1</span>');
 }
 function mark(x) { return '\u0001' + String(x).replace(/[\u0001\u0002]/g, '') + '\u0002'; }
-function ageOf(ts) { ts = +ts; return ts > 0 ? core._ar_advisorRelativeAge(ts) : ''; }
+function ageOf(ts) { ts = +ts; return ts > 0 ? ago(ts) : ''; }
 function dayOf(ts) { ts = +ts; if (!(ts > 0)) return ''; var x = new Date(ts); return x.getUTCDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][x.getUTCMonth()] + ' ' + x.getUTCFullYear(); }
 function api(path, o) {
   o = o || {};
@@ -173,6 +192,7 @@ function fail(r, what) {
   if (e === 'not_allowlisted') return 'You are not on the advisor list.';
   if (e === 'target_not_in_roster') return 'That player is not in the roster.';
   if (e === 'token_required') return 'Verify your UID, then save again.';
+  if ((r.status === 401 || r.status === 403) && e !== 'not_allowlisted') return 'Open Status and verify your UID again.';
   if (e === 'rate_limited' || r.status === 429) return 'Too many tries. Wait a minute, then try again.';
   return d.plainError(r.status, JSON.stringify(r.j || ''), what);
 }
@@ -208,7 +228,7 @@ function ctx() {
 function sk() { return H.sk(); }
 function hname(id) { return String(core.heroName(+id || 0)); }
 function sname(s) { return G2.GEAR_SLOT_NAMES[+s] || 'slot ' + s; }
-function walkSteps(steps) { var c = ctx(); return walk(c.base, c.gear, steps, c.cat, c.idx, core, mark); }
+function walkSteps(steps, who) { var c = ctx(); return walk(c.base, c.gear, steps, c.cat, c.idx, core, mark, who); }
 function runeIcon(n, cls) { return art(BASE + 'rune-icons/' + (G2.RUNE_ICON[n] || slug(n)) + '.png', cls || 'ico q5 ricon', String(n).charAt(0), ''); }
 function starMaxFor(name, slot) { var m = ctx().idx[name], se = m && (m.slots || []).filter(function (x) { return x.slot === slot; })[0]; return se ? se.star_max : 0; }
 /* unequipped 0-star pieces from the gear supplement: which slot a "return to bag" step points at */
@@ -235,9 +255,19 @@ function returnStep(name) {
   return { type: 'recycle', srcHero: 0, srcSlot: pick.slot, srcRuneName: name, srcGearName: pick.gear };
 }
 
-function pillHtml(r, i, ticked) {
+function pillHtml(r, who, ticked) {
   if (r.ok || ticked) return '';
-  return '<details class="why"><summary><span class="pill">' + (r.looksDone ? 'Looks done' : 'Check') + '</span></summary><p class="t13 muted">' + r.reasons.map(function (x) { return rich(x); }).join('<br>') + '</p></details>';
+  var label = who === 'player' ? (r.looksDone ? 'Looks done' : 'Doesn\u2019t match your bag') : 'Can\u2019t be done as written';
+  return '<div class="adv-warn"><span class="pill">' + label + '</span><p class="t13 ' + (r.looksDone ? 'muted' : 'c-warn') + '">' + r.reasons.map(function (x) { return rich(x); }).join('<br>') + '</p></div>';
+}
+function rowArt(r) {
+  var f = r.info; if (!f || !f.rune) return '<div class="adv-ico"></div>';
+  var mx = f.star ? starMaxFor(f.rune, f.slot) : 0;
+  return '<div class="adv-ico">' + runeIcon(f.rune, 'ico q5 ricon40') + (f.rune2 ? runeIcon(f.rune2, 'ico q5 ricon40') : '') + (mx ? stars(f.star, mx) : '') + '</div>';
+}
+function rowSub(r) {
+  var f = r.info; if (!f || !(f.slot >= 1)) return '';
+  return '<div class="adv-sub t13 muted">' + (f.hero > 0 ? art(ArmoryVM.heroIcon(f.hero), 'por por20', hname(f.hero).charAt(0), '') + '<span translate="no">' + esc(hname(f.hero)) + '</span><span aria-hidden="true">\u00B7</span>' : '<span>Unequipped</span><span aria-hidden="true">\u00B7</span>') + '<span translate="no">' + esc(sname(f.slot)) + '</span></div>';
 }
 function noteHtml(r) { return r.note ? '<div class="t13 muted">' + rich(r.note) + '</div>' : ''; }
 function checkSvg() { return ic('check', 'sm'); }
@@ -269,34 +299,34 @@ function checklistHtml(code, pl, ro) {
   var rp = planOf(code, pl.advisorId), c = A.rec[code];
   if (!c || c.state === 'loading') return '<p class="t13 muted">Loading the steps</p>';
   if (!rp) return '<p class="t13 muted">Could not load this plan. Try again in a moment.</p>';
-  var steps = Array.isArray(rp.steps) ? rp.steps.slice(0, 100) : [], w = walkSteps(steps), known = ctx().base.known;
-  var tk = ticks(localStorage, code, pl.advisorId), done = tk.get().filter(function (i) { return i < steps.length; }), key = code + '|' + pl.advisorId;
+  var steps = Array.isArray(rp.steps) ? rp.steps.slice(0, 100) : [], w = walkSteps(steps, 'player'), known = ctx().base.known, lock = !!rp.applied;
+  var tk = ticks(localStorage, code, pl.advisorId), done = tk.get().filter(function (i) { return i < steps.length; }), key = code + '|' + pl.advisorId, pa = esc(pl.advisorId);
   var rows = w.rows.map(function (r, i) {
     var on = done.indexOf(i) >= 0;
-    return '<li class="step"><button class="ab tick" type="button" role="checkbox" aria-checked="' + on + '" aria-label="Step ' + (i + 1) + ' done" data-a="tick" data-rc="' + code + '" data-ap="' + esc(pl.advisorId) + '" data-ai="' + i + '">' + (on ? checkSvg() : '') + '</button>' +
-      '<div class="step-b"><div class="adv-t' + (on ? ' dn' : '') + '">' + rich(r.text) + '</div>' + noteHtml(r) + (known ? pillHtml(r, i, on) : '') + '</div></li>';
+    return '<li class="adv-step"><button class="ab tick" type="button" role="checkbox" aria-checked="' + on + '" aria-label="Step ' + (i + 1) + ' done" data-a="tick" data-rc="' + code + '" data-ap="' + pa + '" data-ai="' + i + '"' + (lock ? ' disabled' : '') + '><span class="box">' + (on ? checkSvg() : '') + '</span></button>' + rowArt(r) +
+      '<div class="adv-step-b"><div class="adv-t' + (on ? ' dn' : '') + '">' + rich(r.text) + '</div>' + rowSub(r) + noteHtml(r) + (known && !lock ? pillHtml(r, 'player', on) : '') + '</div></li>';
   }).join('');
   var foot = '';
-  if (rp.applied) foot = '<p class="t13 muted">Done on ' + nm(dayOf(rp.appliedTs)) + ' (' + nm(String(+rp.acceptedCount || 0)) + ' of ' + nm(String(steps.length)) + ' steps)</p>';
-  else if (!ro && owner()) foot = A.zero[key] ? '<p class="t13">You have not ticked any steps. Mark it done anyway?</p><div class="adv-row"><button class="ab" type="button" data-a="zerono" data-rc="' + code + '" data-ap="' + esc(pl.advisorId) + '">Keep checking</button><button class="ab pri" type="button" data-a="done" data-rc="' + code + '" data-ap="' + esc(pl.advisorId) + '" data-az="1">Mark it done</button></div>'
-    : '<button class="ab pri wide" type="button" data-a="done" data-rc="' + code + '" data-ap="' + esc(pl.advisorId) + '"' + (A.busy[key] ? ' disabled' : '') + '>Mark plan done</button>' + (A.msg[key] ? '<div class="err" role="alert">' + esc(A.msg[key]) + '</div>' : '');
+  if (lock) foot = '<p class="t13 muted">Done on ' + nm(dayOf(rp.appliedTs)) + ' (' + nm(String(+rp.acceptedCount || 0)) + ' of ' + nm(String(steps.length)) + ' steps)</p>';
+  else if (!ro && owner()) foot = A.zero[key] ? '<p class="t13">' + (done.length ? 'You ticked ' + nd(done.length + ' of ' + steps.length) + ' steps. Mark the plan done anyway?' : 'You have not ticked any steps. Mark it done anyway?') + '</p><div class="adv-row"><button class="ab" type="button" data-a="zerono" data-rc="' + code + '" data-ap="' + pa + '">Keep going</button><button class="ab pri" type="button" data-a="done" data-rc="' + code + '" data-ap="' + pa + '" data-az="1">Mark it done</button></div>'
+    : '<button class="ab pri wide" type="button" data-a="done" data-rc="' + code + '" data-ap="' + pa + '"' + (A.busy[key] ? ' disabled' : '') + '>Mark plan done</button><p class="t13 muted">Tells ' + nm(pl.advisorName) + ' you finished. This can\u2019t be undone. Your rune pool updates the next time you import your game data.</p>' + (A.msg[key] ? '<div class="err" role="alert">' + esc(A.msg[key]) + '</div>' : '');
   else if (!ro) foot = '<button class="ab wide" type="button" data-a="verify">Verify your UID to mark this plan done</button>';
-  return (rp.planNote ? '<p class="adv-pnote">' + esc(String(rp.planNote).slice(0, 1000)) + '</p>' : '') + (known ? '' : '<p class="t13 muted">Import your game data, or enter your rune pool, to check these steps against your bag.</p>') + '<ol class="steps">' + (rows || '<li class="muted">This plan has no steps.</li>') + '</ol>' + foot;
+  return (rp.planNote ? '<p class="adv-pnote">' + esc(String(rp.planNote).slice(0, 1000)) + '</p>' : '') + (known ? '' : '<p class="t13 muted">Import your game data to check these steps against your bag.</p>') + '<ol class="steps">' + (rows || '<li class="muted">This plan has no steps.</li>') + '</ol>' + foot;
 }
 function reqCard(e, ro) {
   var code = normCode(e.code); if (!code) return '';
   var st = ST[e.status] || ST.open, plans = entryPlans(e), l = links(code, H.currentCode());
-  var h = '<section class="card adv-card" data-rc="' + code + '"><div class="adv-h"><span class="pill ' + st[1] + '">' + st[0] + '</span><div class="t12 muted" translate="no">' + esc(ageOf(e.createdTs)) + '</div></div>';
+  var h = '<section class="card adv-card" data-rc="' + code + '"><div class="adv-h"><span class="pill ' + st[1] + '">' + st[0] + '</span><div class="t12 muted">' + rich(ageOf(e.createdTs)) + '</div></div>';
   if (e.onBehalfBy) h += '<div class="t13 muted">Set up by ' + nm(String(e.onBehalfBy).slice(0, 64)) + '</div>';
   if (e.note) h += '<p class="adv-note">' + esc(String(e.note).slice(0, 500)) + '</p>';
-  if (!ro) {
-    h += '<div class="adv-link"><span class="code" translate="no">' + esc(l.advise) + '</span><button class="ab" type="button" data-a="copy" data-av="' + esc(l.advise) + '">' + ic('copy', 'sm') + 'Copy link</button></div>';
-  }
+  if (!ro && e.status === 'open') h += '<div class="adv-row"><button class="ab" type="button" data-a="copy" data-av="' + esc(l.advise) + '">' + ic('copy', 'sm') + 'Copy advisor link</button></div>';
   h += plans.map(function (pl) {
     var key = code + '|' + pl.advisorId, on = !!A.open[key];
-    return '<div class="adv-plan"><button class="ab adv-pb" type="button" aria-expanded="' + on + '" data-a="plan" data-rc="' + code + '" data-ap="' + esc(pl.advisorId) + '"><span class="grow"><span translate="no">' + esc(pl.advisorName) + '</span><span class="t13 muted"> ' + nd(plural(pl.stepCount, 'step')) + (pl.applied ? ', done' : '') + '</span></span>' + ic('down', 'sm chev') + '</button>' + (on ? '<div class="adv-open">' + checklistHtml(code, pl, ro) + '</div>' : '') + '</div>';
+    return '<div class="adv-plan"><button class="ab adv-pb" type="button" aria-expanded="' + on + '" data-a="plan" data-rc="' + code + '" data-ap="' + esc(pl.advisorId) + '"><span class="grow"><span translate="no">' + esc(pl.advisorName) + '</span>\u2019s plan<span class="t13 muted"> \u00B7 ' + nd(plural(pl.stepCount, 'step')) + (pl.applied ? ', done' : '') + '</span></span>' + ic('down', 'sm chev') + '</button>' + (on ? '<div class="adv-open">' + checklistHtml(code, pl, ro) + '</div>' : '') + '</div>';
   }).join('');
-  if (!ro) {
+  if (ro && plans.length) h += '<p class="t13 muted">You can tick steps on this device. Only ' + nm(H.stateName() || 'the player') + ' can mark the plan done.</p>';
+  if (!ro && !owner()) h += '<div class="adv-row"><button class="ab" type="button" data-a="verify">Verify your UID to manage this request</button></div>';
+  else if (!ro) {
     h += A.del[code] ? '<div class="adv-row"><span class="t13 grow">Delete this request and its plans?</span><button class="ab" type="button" data-a="delno" data-rc="' + code + '">Keep</button><button class="ab" type="button" data-a="delyes" data-rc="' + code + '">Delete</button></div>'
       : '<div class="adv-row"><button class="ab" type="button" data-a="del" data-rc="' + code + '">Delete request</button>' + (A.msg[code] ? '<span class="err t13" role="alert">' + esc(A.msg[code]) + '</span>' : '') + '</div>';
   }
@@ -319,16 +349,18 @@ function loadEntries(fresh) {
       if (want && code === want) { entryPlans(e).forEach(function (pl) { A.open[code + '|' + pl.advisorId] = true; }); if (!entryPlans(e).length) loadRec(code); }
       entryPlans(e).forEach(function (pl) { if (A.open[code + '|' + pl.advisorId]) loadRec(code); });
     });
+    if (!want) { var nw = A.entries.slice().sort(function (x, y) { return (+y.createdTs || 0) - (+x.createdTs || 0); }).filter(function (e) { return entryPlans(e).some(function (pl) { return !pl.applied; }); })[0]; if (nw && !A.autoOpened) { A.autoOpened = true; var c0 = normCode(nw.code); entryPlans(nw).forEach(function (pl) { if (!pl.applied) { A.open[c0 + '|' + pl.advisorId] = true; loadRec(c0); } }); paintReqs(); } }
     if (want) { paintReqs(); var c = $('.adv-card[data-rc="' + want + '"]'); if (c && c.scrollIntoView && !A.scrolled) { A.scrolled = true; setTimeout(function () { c.scrollIntoView({ block: 'start' }); }, 60); } }
   });
 }
+function privWarn(pf) { return pf.warn ? '<p class="t13 c-warn">' + esc(pf.warn) + ' <a class="tb link" href="' + esc(H.classicUrl('runepool')) + '">Make it visible on the classic page</a></p>' : ''; }
 function askCardHtml() {
   var key = sk(), c = ctx(), g = S.res.supp || {};
   var pf = preflight({ pool: c.base, privacy: S.res.privacy, supTs: { inv: core.advice.tsOf(g.inv), gear: core.advice.tsOf(g.gear) } });
   var btn = !key ? '<p class="t13 muted">Rune advice needs your account. Verify your UID in Status.</p><button class="ab" type="button" data-a="verify">Open Status</button>'
     : !pf.canAsk ? '<p class="t13">Import your game data first, so an advisor can check your bag.</p><button class="ab" type="button" data-a="verify">Open Status</button>'
     : owner() ? '<button class="ab pri" type="button" data-a="ask">Ask for rune help</button>' : '<button class="ab" type="button" data-a="verify">Verify your UID to ask for help</button>';
-  return '<section class="card"><h2 class="hd">Rune advice</h2><p class="t13 muted">' + rich(pf.line) + '</p>' + (pf.stale ? '<p class="t13 muted">Your saved rune pool is older than your last import, so it is ignored.</p>' : '') + (pf.warn ? '<p class="t13 c-warn">' + esc(pf.warn) + '</p>' : '') + '<div class="adv-row">' + btn + '</div></section>';
+  return '<section class="card"><h2 class="hd">Rune advice</h2><p class="t13 muted">' + rich(pf.line) + '</p>' + (pf.stale ? '<p class="t13 muted">Your saved rune pool is older than your last import, so it is ignored.</p>' : '') + privWarn(pf) + '<div class="adv-row">' + btn + '</div></section>';
 }
 function checkAllowed() {
   if (A.allowed !== null || A.allowedP) return A.allowedP || Promise.resolve();
@@ -341,7 +373,7 @@ function renderPlayer(root, q) {
   var ro = !!S.res.readOnly || !(S.res.identity && S.res.identity.isOwn), key = sk();
   if (!key) { root.innerHTML = '<div class="vb-in"><section class="card"><h2 class="hd">Rune advice</h2>' + (ro ? '<p class="muted">Advice is not available for this player.</p>' : '<p class="muted">Rune advice needs a verified account. Open Status to verify your UID.</p><div class="adv-row"><button class="ab" type="button" data-a="verify">Open Status</button></div>') + '</section></div>'; return; }
   var left = ro ? '<section class="card"><h2 class="hd"><span translate="no">' + esc(H.stateName()) + '</span>’s rune advice</h2><p class="t13 muted">Read-only. Steps are checked against this player’s bag.</p></section>' : askCardHtml();
-  root.innerHTML = '<div class="ov"><div class="ov-col">' + left + '<h2 class="sub">' + (ro ? 'Requests' : 'My requests') + '</h2><div id="advReqs"><div class="skel" style="width:60%"></div></div></div><div class="ov-col">' + (ro ? '' : '<div id="advSec"></div>') + '</div></div>';
+  root.innerHTML = '<h2 class="title" style="margin-bottom:12px">Rune advice</h2><div class="ov"><div class="ov-col">' + left + '<h2 class="sub">' + (ro ? 'Requests' : 'My requests') + '</h2><div id="advReqs"><div class="skel" style="width:60%"></div></div></div><div class="ov-col">' + (ro ? '' : '<div id="advSec"></div>') + '</div></div>';
   if (A.entries) paintReqs();
   loadEntries(!!A.entries);
   if (!ro) checkAllowed().then(function () { if (A.allowed || seenLoad().entries.length) flows(function (F) { F.section(); }); });
@@ -353,23 +385,21 @@ function repaintAdvise() {
   var root = $('#adviceBody'); if (!root || !S.advise) return;
   var c = ctx(), w = walkSteps(A.steps), end = w.end, bad = w.rows.filter(function (r) { return !r.ok; }).length, req = S.advise.req || {}, name = H.stateName() || 'this player';
   var pf = S.res.privacy && S.res.privacy.inv, known = c.base.known;
-  /* pool card */
   var bagChips = Object.keys(end.pool).filter(function (n) { return end.pool[n][0] > 0; }).sort().map(function (n) { return '<span class="pchip">' + runeIcon(n) + '<span translate="no">' + esc(n) + '</span><b translate="no">' + (+end.pool[n][0]) + '</b></span>'; }).join('');
   var uneq = Object.keys(end.unequipped).filter(function (n) { return end.unequipped[n] > 0; }).sort().map(function (n) { return '<button class="ab pchip" type="button" data-a="ret" data-an="' + esc(n) + '">' + runeIcon(n) + '<span class="pcol"><span><span translate="no">' + esc(n) + '</span> <b translate="no">' + (+end.unequipped[n]) + '</b></span><span class="t12 muted">Return to bag</span></span></button>'; }).join('');
-  var upg = []; Object.keys(c.base.upgraded).sort().forEach(function (n) { Object.keys(c.base.upgraded[n]).forEach(function (s) { upg.push('<span class="pchip muted">' + runeIcon(n) + '<span translate="no">' + esc(n) + '</span><span translate="no">' + (+s) + '-star x ' + (+c.base.upgraded[n][s]) + '</span></span>'); }); });
+  var upg = []; Object.keys(c.base.upgraded).sort().forEach(function (n) { Object.keys(c.base.upgraded[n]).forEach(function (s) { upg.push('<span class="pchip muted">' + runeIcon(n) + '<span translate="no">' + esc(n) + '</span><b translate="no">' + (+s) + '-star x ' + (+c.base.upgraded[n][s]) + '</b></span>'); }); });
   var warn = !known ? '<p class="t13 c-warn">' + (pf ? nm(name) + '’s bag is private, so place and merge steps cannot be checked.' : nm(name) + ' has not sent a bag yet, so place and merge steps cannot be checked.') + '</p>' : '';
-  var pool = '<section class="card" style="order:1"><h2 class="hd">Rune pool</h2>' + warn + '<div class="lab">In the bag</div><div class="pchips">' + (bagChips || '<span class="t13 muted">Nothing in the bag</span>') + '</div><div class="lab" style="margin-top:12px">On unequipped gear</div><div class="pchips">' + (uneq || '<span class="t13 muted">None you can return</span>') + '</div>' + (upg.length ? '<div class="lab" style="margin-top:12px">Upgraded, cannot be returned</div><div class="pchips">' + upg.join('') + '</div>' : '') + '</section>';
-  /* steps */
+  var pool = '<section class="card adv-o1"><h2 class="hd">Rune pool</h2>' + warn + '<div class="lab">In the bag' + (A.steps.length ? ' after these steps' : '') + '</div><div class="pchips">' + (bagChips || '<span class="t13 muted">Nothing in the bag</span>') + '</div><div class="lab" style="margin-top:12px">On unequipped gear</div><div class="pchips">' + (uneq || '<span class="t13 muted">None you can return</span>') + '</div>' + (upg.length ? '<div class="lab" style="margin-top:12px">Upgraded, cannot be returned</div><div class="pchips">' + upg.join('') + '</div>' : '') + '</section>';
   var rows = w.rows.map(function (r, i) {
-    return '<li class="step"><span class="step-n" translate="no">' + (i + 1) + '</span><div class="step-b"><div class="adv-t">' + rich(r.text) + '</div>' + noteHtml(r) + (known ? pillHtml(r, i, false) : '') +
+    return '<li class="adv-step"><span class="adv-n" translate="no">' + (i + 1) + '</span>' + rowArt(r) + '<div class="adv-step-b"><div class="adv-t">' + rich(r.text) + '</div>' + rowSub(r) + noteHtml(r) + (known ? pillHtml(r, 'advisor', false) : '') +
       '<div class="step-ctl"><button class="ab" type="button" data-a="up" data-ai="' + i + '" aria-label="Move step ' + (i + 1) + ' up"' + (i === 0 ? ' disabled' : '') + '>' + ic('down', 'sm rot') + '</button><button class="ab" type="button" data-a="dn" data-ai="' + i + '" aria-label="Move step ' + (i + 1) + ' down"' + (i === w.rows.length - 1 ? ' disabled' : '') + '>' + ic('down', 'sm') + '</button><button class="ab" type="button" data-a="rm" data-ai="' + i + '" aria-label="Remove step ' + (i + 1) + '">' + ic('x', 'sm') + '</button></div></div></li>';
   }).join('');
-  var link = links(S.advise.code, S.code), savedBox = A.savedTs ? '<div class="adv-saved"><div class="t13" role="status">Saved <span translate="no">' + esc(new Date(A.savedTs).toLocaleTimeString()) + '</span></div><div class="t13 muted">Send this link to ' + nm(name) + ':</div><div class="adv-link"><span class="code" translate="no">' + esc(link.player) + '</span><button class="ab" type="button" data-a="copy" data-av="' + esc(link.player) + '">' + ic('copy', 'sm') + 'Copy link</button></div></div>' : '';
-  var steps = '<section class="card" style="order:3"><h2 class="hd">Plan steps</h2>' + (rows ? '<ol class="steps">' + rows + '</ol>' : '<p class="t13 muted">No steps yet. Tap a piece in the list to add the first one.</p>') + '</section>';
-  var note = '<section class="card" style="order:4"><label class="lab" for="advNote">Note for ' + nm(name) + ' (optional)</label><textarea class="fld" id="advNote" data-a="note" maxlength="1000" rows="3" style="font-family:var(--sans);font-size:var(--fs-14)">' + esc(A.note) + '</textarea>' +
+  var link = links(S.advise.code, S.code), savedBox = A.savedTs ? '<div class="adv-saved"><div class="t13" role="status">Saved <span translate="no">' + esc(new Date(A.savedTs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) + '</span>. ' + nm(name) + ' gets a notification. You can also send this link:</div><div class="adv-link"><span class="code" translate="no">' + esc(link.player) + '</span><button class="ab" type="button" data-a="copy" data-av="' + esc(link.player) + '">' + ic('copy', 'sm') + 'Copy link</button></div></div>' : '';
+  var steps = '<section class="card adv-o3" id="advSteps"><h2 class="hd">Plan steps</h2>' + (rows ? '<ol class="steps">' + rows + '</ol>' : '<p class="t13 muted">No steps yet. Tap a piece in the list to add the first one.</p>') + '</section>';
+  var note = '<section class="card adv-o4"><label class="lab" for="advNote">Note for ' + nm(name) + ' (optional)</label><textarea class="fld" id="advNote" data-a="note" maxlength="1000" rows="3" style="font-family:var(--sans);font-size:var(--fs-14)">' + esc(A.note) + '</textarea>' +
     (bad ? '<p class="t13 c-warn" style="margin-top:8px">' + nm(String(bad)) + (bad === 1 ? ' step cannot be done as written.' : ' steps cannot be done as written.') + ' You can still save.</p>' : '') +
     '<div class="adv-row" style="margin-top:12px"><button class="ab pri wide" type="button" data-a="save"' + (A.busy.save ? ' disabled' : '') + '>Save plan</button></div>' + (A.msg.save ? '<div class="err" role="alert">' + esc(A.msg.save) + '</div>' : '') + savedBox + '</section>';
-  var head = '<section class="card"><h2 class="hd">Advising <span translate="no">' + esc(name) + '</span></h2>' + (req.note ? '<p class="adv-note">' + esc(String(req.note).slice(0, 500)) + '</p>' : '') + '<p class="t13 muted">Asked <span translate="no">' + esc(ageOf(req.createdTs) || 'recently') + '</span></p></section>';
+  var head = '<section class="card"><h2 class="hd">Advising <span translate="no">' + esc(name) + '</span></h2>' + (req.note ? '<p class="adv-note">' + esc(String(req.note).slice(0, 500)) + '</p>' : '') + '<p class="t13 muted">Asked ' + (ageOf(req.createdTs) ? rich(ageOf(req.createdTs)) : 'recently') + '</p></section>';
   var sc = $('#adviceBody') ? window.scrollY : 0;
   root.innerHTML = '<div class="ov"><div class="ov-col">' + head + pool + steps + note + '</div><div class="ov-col">' + galleryHtml(end) + '</div></div>';
   window.scrollTo(0, sc);
@@ -397,7 +427,7 @@ function galleryHtml(end) {
   });
   var rest = ids.filter(function (h) { return !used[h]; }).sort(function (a, b) { return hname(a) < hname(b) ? -1 : 1; });
   if (rest.length) out += (out ? '<h3 class="sub">Other heroes</h3>' : '') + rest.map(hero).join('');
-  return '<section style="order:2"><h2 class="hd">Heroes</h2>' + (out || '<div class="empty">No gold gear found for this player.</div>') + '</section>';
+  return '<section class="adv-o2"><h2 class="hd">Heroes</h2>' + (out || '<div class="empty">No gold gear found for this player.</div>') + '</section>';
 }
 function seed() {
   if (A.seeded === S.advise.code) return Promise.resolve();
@@ -409,7 +439,7 @@ function seed() {
     if (p && Array.isArray(p.steps)) { A.steps = p.steps.filter(function (s) { return s && typeof s === 'object' && typeof s.type === 'string'; }).slice(0, 100); A.note = typeof p.planNote === 'string' ? p.planNote.slice(0, 1000) : ''; A.savedTs = +p.ts || 0; }
   });
 }
-function addStep(step) { A.steps.push(step); A.savedTs = 0; A.msg.save = ''; H.closeSheet(); repaintAdvise(); toast('Step added'); }
+function addStep(step) { A.steps.push(step); A.savedTs = 0; A.msg.save = ''; H.closeSheet(); repaintAdvise(); toast('Step ' + A.steps.length + ' added'); }
 function save() {
   if (A.busy.save) return;
   var m = me(), code = S.advise.code;
@@ -427,65 +457,11 @@ function renderAdvise(root, soft) {
   if (!soft || !$('#advNote')) seed().then(repaintAdvise); else repaintAdvise();
 }
 
-function gearEnd() { return walkSteps(A.steps).end.gearByHero; }
-function builderBody() {
-  var b = A.bld, g = gearEnd(), cur = g[b.h] && g[b.h][b.s] || null, n = cur && cur.runeName, star = cur ? +cur.star || 0 : 0, mx = n ? starMaxFor(n, b.s) : 0;
-  var end = walkSteps(A.steps).end, base = ctx().gear;
-  var head = '<p class="t13 muted">' + (n ? 'Holds ' + nm(n) + ', ' + nd(star + (mx ? ' of ' + mx + ' stars' : star === 1 ? ' star' : ' stars')) : 'This piece is empty.') + '</p>';
-  var verbs = n ? [['merge', 'Merge to more stars', star < mx], ['swap', 'Swap with another hero', true], ['park', 'Move to a spare piece', true], ['ret', 'Return to bag', star === 0]] : [['place', 'Place from bag', true], ['swapin', 'Swap in from another hero', true]];
-  var h = head + '<div class="vlist">' + verbs.filter(function (v) { return v[2]; }).map(function (v) {
-    var on = b.verb === v[0];
-    return '<button class="ab vrow" type="button" aria-expanded="' + on + '" data-a="verb" data-av="' + v[0] + '"><span class="grow">' + v[1] + '</span>' + ic('chev', 'sm') + '</button>' + (on ? '<div class="vopts">' + verbOpts(v[0], g, end, cur, base) + '</div>' : '');
-  }).join('') + '</div>';
-  return h;
-}
-function verbOpts(v, g, end, cur, base) {
-  var b = A.bld, c = ctx(), o = '';
-  if (v === 'place') {
-    var list = (c.cat && c.cat.runes || []).filter(function (r) { return (r.slots || []).some(function (x) { return x.slot === b.s; }); });
-    o = list.map(function (r) { var have = end.pool[r.name] ? +end.pool[r.name][0] || 0 : 0; return '<button class="ab vrow" type="button" data-a="pick" data-an="' + esc(r.name) + '">' + runeIcon(r.name, 'ico q5 ricon') + '<span class="grow" translate="no">' + esc(r.name) + '</span><span class="t13 muted" translate="no">' + have + ' in bag</span></button>'; }).join('');
-  } else if (v === 'merge') {
-    var mx = starMaxFor(cur.runeName, b.s), have = end.pool[cur.runeName] ? +end.pool[cur.runeName][0] || 0 : 0;
-    for (var t = (+cur.star || 0) + 1; t <= mx; t++) {
-      var ci = core._ar_advisorMergeCost(c.cat, c.idx, cur.runeName, b.s, +cur.star || 0, t);
-      o += '<button class="ab vrow" type="button" data-a="pick" data-at="' + t + '"><span class="grow">To ' + nd(plural(t, 'star')) + '</span><span class="t13 ' + (ci && have >= ci.cost ? 'muted' : 'c-warn') + '">' + nd('uses ' + (ci ? ci.cost : '?') + ', you have ' + have) + '</span></button>';
-    }
-  } else if (v === 'swap' || v === 'swapin') {
-    Object.keys(base).map(Number).filter(function (x) { return x !== b.h && Object.prototype.hasOwnProperty.call(base[x], b.s); }).sort(function (x, y) { return hname(x) < hname(y) ? -1 : 1; }).forEach(function (x) {
-      var r = g[x] && g[x][b.s];
-      if (v === 'swapin' && !(r && r.runeName)) return;
-      o += '<button class="ab vrow" type="button" data-a="pick" data-ao="' + x + '"><span class="grow" translate="no">' + esc(hname(x)) + '</span><span class="t13 muted" translate="no">' + esc(r && r.runeName ? r.runeName : 'empty') + '</span></button>';
-    });
-  }
-  return o || '<p class="t13 muted">Nothing to pick here.</p>';
-}
-function sheet(kind, arg) {
-  if (kind === 'advice-builder') {
-    arg = arg || {}; var h = +arg.h, s = +arg.s;
-    if (!(h > 0) || !(s >= 1 && s <= 6) || !ctx().gear[h] || !Object.prototype.hasOwnProperty.call(ctx().gear[h], s)) return null;
-    A.bld = { h: h, s: s, verb: '' };
-    return [hname(h) + '’s ' + sname(s), builderBody(), true];
-  }
-  return Fl ? Fl.sheet(kind) : null;
-}
-function pickVerb(v) {
-  var b = A.bld, g = gearEnd(), cur = g[b.h] && g[b.h][b.s] || null, n = cur && cur.runeName;
-  if (v === 'park') { addStep({ type: 'park', srcHero: b.h, srcSlot: b.s, srcRuneName: n, srcRuneStar: +cur.star || 0, srcGearName: sname(b.s) }); return; }
-  if (v === 'ret') { addStep({ type: 'recycle', srcHero: b.h, srcSlot: b.s, srcRuneName: n, srcGearName: sname(b.s) }); return; }
-  b.verb = b.verb === v ? '' : v; $('#sheetB').innerHTML = builderBody();
-}
-function pickOpt(t) {
-  var b = A.bld, g = gearEnd(), cur = g[b.h] && g[b.h][b.s] || null, ds = t.dataset;
-  if (b.verb === 'place' && ds.an && ctx().idx[ds.an]) addStep({ type: 'place', runeName: ds.an, dstHero: b.h, dstSlot: b.s });
-  else if (b.verb === 'merge' && ds.at && cur) addStep({ type: 'merge', runeName: cur.runeName, dstHero: b.h, dstSlot: b.s, fromStar: +cur.star || 0, toStar: +ds.at });
-  else if (b.verb === 'swap' && ds.ao) addStep({ type: 'inherit', srcHero: b.h, srcSlot: b.s, dstHero: +ds.ao, dstSlot: b.s });
-  else if (b.verb === 'swapin' && ds.ao) addStep({ type: 'inherit', srcHero: +ds.ao, srcSlot: b.s, dstHero: b.h, dstSlot: b.s });
-}
 
 function markDone(code, aid, force) {
-  var key = code + '|' + aid, done = ticks(localStorage, code, aid).get();
+  var key = code + '|' + aid, rp0 = planOf(code, aid), cnt = rp0 && Array.isArray(rp0.steps) ? Math.min(rp0.steps.length, 100) : 0, done = ticks(localStorage, code, aid).get().filter(function (i) { return i < cnt; });
   if (A.busy[key]) return;
-  if (!done.length && !force) { A.zero[key] = true; paintReqs(); return; }
+  if (done.length < cnt && !force) { A.zero[key] = true; paintReqs(); return; }
   A.zero[key] = false; A.busy[key] = true; A.msg[key] = ''; paintReqs();
   ownAuth(sk()).then(function (au) { if (!au) throw { msg: 'Verify your UID, then try again.' }; return api('/advisor/plan/' + code + '/apply', { method: 'POST', body: { advisorId: aid, acceptedCount: done.length }, auth: au }); }).then(function (r) {
     if (!r.ok) throw { msg: fail(r, 'apply plan') };
@@ -500,14 +476,14 @@ function delReq(code) {
   }).catch(function (e) { A.del[code] = false; A.msg[code] = e && e.msg ? e.msg : 'Could not delete it.'; paintReqs(); });
 }
 
-/* the Ask and Advise-a-player sheets live in armory-advice-flows.js, loaded when one of their buttons is tapped */
+function sheet(kind, arg) { return Fl ? Fl.sheet(kind, arg) : null; }
 function flows(cb) {
   if (Fl) return cb(Fl);
   if (flQ) { flQ.push(cb); return; }
   flQ = [cb];
   var sc = document.createElement('script');
   sc.src = 'armory-advice-flows.js';
-  sc.onload = function () { Fl = window.ArmoryAdviceFlows({ S: S, d: d, H: H, core: core, SK_RE: SK_RE, $: $, esc: esc, nm: nm, rich: rich, api: api, fail: fail, ownAuth: ownAuth, me: me, ctx: ctx, sk: sk, links: links, preflight: preflight, normCode: normCode, loadEntries: loadEntries, seenLoad: seenLoad, seenDrop: seenDrop, ageOf: ageOf, ST: ST, ic: ic, allowed: function () { return A.allowed; } }); var q = flQ; flQ = null; q.forEach(function (f) { f(Fl); }); };
+  sc.onload = function () { Fl = window.ArmoryAdviceFlows({ S: S, d: d, H: H, core: core, SK_RE: SK_RE, $: $, esc: esc, nm: nm, rich: rich, api: api, fail: fail, ownAuth: ownAuth, me: me, ctx: ctx, sk: sk, links: links, preflight: preflight, normCode: normCode, loadEntries: loadEntries, steps: function () { return A.steps; }, walkSteps: walkSteps, starMaxFor: starMaxFor, runeIcon: runeIcon, hname: hname, sname: sname, addStep: addStep, seenLoad: seenLoad, seenDrop: seenDrop, ageOf: ageOf, ST: ST, ic: ic, allowed: function () { return A.allowed; } }); var q = flQ; flQ = null; q.forEach(function (f) { f(Fl); }); };
   sc.onerror = function () { flQ = null; toast('Could not load this part. Check your connection and try again.'); };
   document.body.appendChild(sc);
 }
@@ -515,7 +491,7 @@ function flows(cb) {
 function onClick(e) {
   var t = e.target.closest('[data-a]'); if (!t) return;
   var a = t.dataset.a, ds = t.dataset;
-  if (a === 'tick') { var code = normCode(ds.rc), tk = ticks(localStorage, code, ds.ap), cur = tk.get(), i = +ds.ai, ix = cur.indexOf(i); if (ix >= 0) cur.splice(ix, 1); else cur.push(i); tk.set(cur); A.zero[code + '|' + ds.ap] = false; paintReqs(); return; }
+  if (a === 'tick') { var pr = planOf(normCode(ds.rc), ds.ap); if (pr && pr.applied) return; var code = normCode(ds.rc), tk = ticks(localStorage, code, ds.ap), cur = tk.get(), i = +ds.ai, ix = cur.indexOf(i); if (ix >= 0) cur.splice(ix, 1); else cur.push(i); tk.set(cur); A.zero[code + '|' + ds.ap] = false; paintReqs(); return; }
   if (a === 'plan') { var c2 = normCode(ds.rc), k = c2 + '|' + ds.ap; A.open[k] = !A.open[k]; if (A.open[k]) loadRec(c2); paintReqs(); return; }
   if (a === 'copy') { copy(ds.av); return; }
   if (a === 'verify') { H.openSheet('status'); return; }
@@ -526,8 +502,8 @@ function onClick(e) {
   if (a === 'delno') { A.del[normCode(ds.rc)] = false; paintReqs(); return; }
   if (a === 'delyes') { delReq(normCode(ds.rc)); return; }
   if (a === 'hero') { var h = +ds.ah; A.heroOpen[h] = !A.heroOpen[h]; var art2 = t.closest('.hero'); art2.classList.toggle('open', !!A.heroOpen[h]); t.setAttribute('aria-expanded', A.heroOpen[h] ? 'true' : 'false'); return; }
-  if (a === 'slot') { H.openSheet('advice-builder', { h: +ds.ah, s: +ds.as }); return; }
-  if (a === 'ret') { var n = ds.an; if (ctx().idx[n]) { A.steps.push(returnStep(n)); A.savedTs = 0; repaintAdvise(); toast('Step added'); } return; }
+  if (a === 'slot') { flows(function () { H.openSheet('advice-builder', { h: +ds.ah, s: +ds.as }); }); return; }
+  if (a === 'ret') { var n = ds.an; if (ctx().idx[n]) { A.steps.push(returnStep(n)); A.savedTs = 0; repaintAdvise(); toast('Step ' + A.steps.length + ' added'); } return; }
   if (a === 'up' || a === 'dn' || a === 'rm') {
     var j = +ds.ai, st = A.steps;
     if (a === 'rm') st.splice(j, 1); else { var k2 = a === 'up' ? j - 1 : j + 1; if (k2 < 0 || k2 >= st.length) return; var x = st[j]; st[j] = st[k2]; st[k2] = x; }
@@ -536,8 +512,6 @@ function onClick(e) {
     return;
   }
   if (a === 'save') { save(); return; }
-  if (a === 'verb') { pickVerb(ds.av); return; }
-  if (a === 'pick') { pickOpt(t); return; }
   if (Fl) Fl.click(a, t);
 }
 function onInput(e) {
@@ -580,10 +554,11 @@ var STYLE = [
 '.adv-plan{border-top:1px solid var(--rule);padding-top:12px}.adv-pb{width:100%;justify-content:flex-start;background:var(--surface)}',
 '.adv-pb .chev{transition:transform var(--t)}.adv-pb[aria-expanded="true"] .chev{transform:rotate(180deg)}',
 '.adv-open{margin-top:12px}.adv-open > * + *{margin-top:12px}',
-'.steps{list-style:none;margin:0;padding:0}.steps li.step{padding:12px 0;border-top:1px solid var(--rule);align-items:flex-start}.steps li.step:first-child{border-top:0}',
-'.steps .step-b{display:flex;flex-direction:column;gap:6px}.adv-t{font-size:var(--fs-15);overflow-wrap:anywhere}.adv-t.dn{color:var(--muted)}',
-'.tick{flex:none;padding:0;color:var(--ok)}.tick[aria-checked="true"]{border-color:var(--ok);background:rgba(63,185,80,.12)}',
-'.why summary{display:flex;align-items:center;min-height:44px;min-width:44px;cursor:pointer;list-style:none}.why summary::-webkit-details-marker{display:none}.why p{padding-bottom:4px}',
+'.steps{list-style:none;margin:0;padding:0}.steps li.adv-step{display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--rule);align-items:flex-start}.steps li.adv-step:first-child{border-top:0}',
+'.adv-step-b{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}.adv-n{width:24px;height:24px;border:1px solid var(--border);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:var(--fs-12);flex:none;margin-top:2px}.adv-ico{width:40px;flex:none;display:flex;flex-direction:column;align-items:center;gap:4px}.adv-ico .ricon40{width:40px;height:40px}.adv-sub{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.por20{width:20px;height:20px}.adv-warn{display:flex;flex-direction:column;align-items:flex-start;gap:4px}.adv-t{font-size:var(--fs-15);overflow-wrap:anywhere}.adv-t.dn{color:var(--muted)}',
+'.tick{flex:none;padding:0;border:0;background:none;color:var(--ok)}.tick .box{width:24px;height:24px;border:1.5px solid var(--border);border-radius:var(--r-chip);display:inline-flex;align-items:center;justify-content:center}.tick[aria-checked="true"] .box{border-color:var(--ok);background:rgba(63,185,80,.12)}.tick[disabled]{opacity:.7}',
+'.adv-o1{order:1}.adv-o2{order:2}.adv-o3{order:3}.adv-o4{order:4}',
+'@media (max-width:767px){.adv-o2{order:3}.adv-o3{order:2}.adv-o4{order:4}}',
 '.step-ctl{display:flex;gap:8px;margin-top:4px}',
 '.rot{transform:rotate(180deg)}',
 '.pchips{display:flex;flex-wrap:wrap;gap:8px}.pchip{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 10px;border:1px solid var(--border);border-radius:var(--r-chip);background:var(--surface);font-size:var(--fs-13)}',

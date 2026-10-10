@@ -7,7 +7,8 @@ window.ArmoryAdviceFlows = function (X) {
 var S = X.S, d = X.d, H = X.H, core = X.core, SK_RE = X.SK_RE, $ = X.$, esc = X.esc, nm = X.nm, rich = X.rich, api = X.api, fail = X.fail, ownAuth = X.ownAuth, me = X.me, ctx = X.ctx, sk = X.sk;
 var links = X.links, preflight = X.preflight, normCode = X.normCode, loadEntries = X.loadEntries;
 var seenLoad = X.seenLoad, seenDrop = X.seenDrop, ageOf = X.ageOf, ST = X.ST, ic = X.ic;
-var A = { pick: null, ask: null, showAll: false, seenLive: null };
+var walkSteps = X.walkSteps, starMaxFor = X.starMaxFor, runeIcon = X.runeIcon, hname = X.hname, sname = X.sname, addStep = X.addStep, nd = H.nd, ic = X.ic, plural = function (n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); };
+var A = { bld: null, pick: null, ask: null, showAll: false, seenLive: null };
 
 /* ---------- Advise a player ---------- */
 function pickBody() {
@@ -68,7 +69,7 @@ function askBody() {
     var l = links(a.code, a.shortcode);
     return '<p>Your request is ready. Send this link to your advisor:</p><div class="adv-link"><span class="code" translate="no">' + esc(l.advise) + '</span><button class="ab" type="button" data-a="copy" data-av="' + esc(l.advise) + '">' + ic('copy', 'sm') + 'Copy link</button></div><button class="ab wide" type="button" data-close>Done</button>';
   }
-  return '<p class="t13 muted">' + rich(pf.line) + '</p>' + (pf.warn ? '<p class="t13 c-warn">' + esc(pf.warn) + '</p>' : '') + '<label class="lab" for="advAskNote">What do you want help with? (optional)</label><textarea class="fld" id="advAskNote" data-a="asknote" maxlength="500" rows="3" style="font-family:var(--sans);font-size:var(--fs-14)">' + esc(a.note) + '</textarea>' +
+  return '<p class="t13 muted">' + rich(pf.line) + '</p>' + (pf.warn ? '<p class="t13 c-warn">' + esc(pf.warn) + ' <a class="tb link" href="' + esc(H.classicUrl('runepool')) + '">Make it visible on the classic page</a></p>' : '') + (pf.old ? '<p class="t13 c-warn">An advisor will plan from this old data. Run Snapshot in the game first, then ask.</p>' : '') + '<label class="lab" for="advAskNote">What do you want help with? (optional)</label><textarea class="fld" id="advAskNote" data-a="asknote" maxlength="500" rows="3" style="font-family:var(--sans);font-size:var(--fs-14)">' + esc(a.note) + '</textarea>' +
     '<button class="ab pri wide" type="button" data-a="askgo"' + (a.busy ? ' disabled' : '') + '>' + (a.busy ? 'Sending' : 'Send request') + '</button>' + (a.err ? '<div class="err" role="alert">' + esc(a.err) + '</div>' : '');
 }
 function setAsk(upd) { Object.keys(upd).forEach(function (k) { A.ask[k] = upd[k]; }); var el = $('#sheetB'); if (el && S.sheet === 'advice-ask') el.innerHTML = askBody(); }
@@ -107,7 +108,7 @@ function paintSeen() {
   var rows = list.map(function (s) {
     var code = normCode(s.code), live = A.seenLive && A.seenLive[code]; if (!code) return '';
     var st = live ? ST[live.status] || ST.open : null;
-    return '<a class="adv-seen" href="armory.html?advise=' + code + '"><span class="grow"><span translate="no">' + esc(String(s.playerName || (live && live.playerName) || 'A player').slice(0, 64)) + '</span><span class="t13 muted"> ' + esc(ageOf(s.openedTs)) + '</span></span>' + (st ? '<span class="pill ' + st[1] + '">' + (live.status === 'planned' ? 'Plan saved' : live.status === 'applied' ? 'Applied' : 'No plan yet') + '</span>' : '') + ic('chev', 'sm') + '</a>';
+    return '<a class="adv-seen" href="armory.html?advise=' + code + '"><span class="grow"><span translate="no">' + esc(String(s.playerName || (live && live.playerName) || 'A player').slice(0, 64)) + '</span><span class="t13 muted"> ' + rich(ageOf(s.openedTs)) + '</span></span>' + (st ? '<span class="pill ' + st[1] + '">' + (live.status === 'planned' ? 'Plan saved' : live.status === 'applied' ? 'Applied' : 'No plan yet') + '</span>' : '') + ic('chev', 'sm') + '</a>';
   }).join('');
   el.innerHTML = '<h3 class="sub" style="margin-top:16px">Requests I’ve opened</h3><div>' + rows + '</div>' + (seen.length > 10 && !A.showAll ? '<button class="ab wide" type="button" data-a="showall">Show all <span translate="no">' + seen.length + '</span></button>' : '');
 }
@@ -125,18 +126,77 @@ function section() {
   el.innerHTML = advisorSectionHtml();
   if (el.innerHTML) loadSeen();
 }
+
+function gearEnd() { return walkSteps(X.steps()).end.gearByHero; }
+function builderBody() {
+  var b = A.bld, g = gearEnd(), cur = g[b.h] && g[b.h][b.s] || null, n = cur && cur.runeName, star = cur ? +cur.star || 0 : 0, mx = n ? starMaxFor(n, b.s) : 0;
+  var end = walkSteps(X.steps()).end, base = ctx().gear;
+  var head = '<p class="t13 muted">' + (n ? 'Holds ' + nm(n) + ', ' + nd(star + (mx ? ' of ' + mx + ' stars' : star === 1 ? ' star' : ' stars')) : 'This piece is empty.') + '</p>';
+  var verbs = n ? [['merge', 'Merge to more stars', star < mx], ['swap', 'Swap with another hero', true], ['park', 'Move to a spare piece', true], ['ret', 'Return to bag', star === 0]] : [['place', 'Place from bag', true], ['swapin', 'Swap in from another hero', true]];
+  var h = head + '<div class="vlist">' + verbs.filter(function (v) { return v[2]; }).map(function (v) {
+    var on = b.verb === v[0];
+    return '<button class="ab vrow" type="button" aria-expanded="' + on + '" data-a="verb" data-av="' + v[0] + '"><span class="grow">' + v[1] + '</span>' + ic('chev', 'sm') + '</button>' + (on ? '<div class="vopts">' + verbOpts(v[0], g, end, cur, base) + '</div>' : '');
+  }).join('') + '</div>';
+  return h;
+}
+function verbOpts(v, g, end, cur, base) {
+  var b = A.bld, c = ctx(), o = '';
+  if (v === 'place') {
+    var list = (c.cat && c.cat.runes || []).filter(function (r) { return (r.slots || []).some(function (x) { return x.slot === b.s; }); });
+    o = list.map(function (r) { var have = end.pool[r.name] ? +end.pool[r.name][0] || 0 : 0; return '<button class="ab vrow" type="button" data-a="pick" data-an="' + esc(r.name) + '">' + runeIcon(r.name, 'ico q5 ricon') + '<span class="grow" translate="no">' + esc(r.name) + '</span><span class="t13 muted" translate="no">' + have + ' in bag</span></button>'; }).join('');
+  } else if (v === 'merge') {
+    var mx = starMaxFor(cur.runeName, b.s), have = end.pool[cur.runeName] ? +end.pool[cur.runeName][0] || 0 : 0;
+    for (var t = (+cur.star || 0) + 1; t <= mx; t++) {
+      var ci = core._ar_advisorMergeCost(c.cat, c.idx, cur.runeName, b.s, +cur.star || 0, t);
+      o += '<button class="ab vrow" type="button" data-a="pick" data-at="' + t + '"><span class="grow">To ' + nd(plural(t, 'star')) + '</span><span class="t13 ' + (ci && have >= ci.cost ? 'muted' : 'c-warn') + '">' + nd('uses ' + (ci ? ci.cost : '?') + ', you have ' + have) + '</span></button>';
+    }
+  } else if (v === 'swap' || v === 'swapin') {
+    Object.keys(base).map(Number).filter(function (x) { return x !== b.h && Object.prototype.hasOwnProperty.call(base[x], b.s); }).sort(function (x, y) { return hname(x) < hname(y) ? -1 : 1; }).forEach(function (x) {
+      var r = g[x] && g[x][b.s];
+      if (v === 'swapin' && !(r && r.runeName)) return;
+      o += '<button class="ab vrow" type="button" data-a="pick" data-ao="' + x + '"><span class="grow" translate="no">' + esc(hname(x)) + '</span><span class="t13 muted" translate="no">' + esc(r && r.runeName ? r.runeName : 'empty') + '</span></button>';
+    });
+  }
+  return o || '<p class="t13 muted">Nothing to pick here.</p>';
+}
+function builderSheet(kind, arg) {
+  if (kind === 'advice-builder') {
+    arg = arg || {}; var h = +arg.h, s = +arg.s;
+    if (!(h > 0) || !(s >= 1 && s <= 6) || !ctx().gear[h] || !Object.prototype.hasOwnProperty.call(ctx().gear[h], s)) return null;
+    A.bld = { h: h, s: s, verb: '' };
+    return [hname(h) + '’s ' + sname(s), builderBody(), true];
+  }
+  return null;
+}
+function pickVerb(v) {
+  var b = A.bld, g = gearEnd(), cur = g[b.h] && g[b.h][b.s] || null, n = cur && cur.runeName;
+  if (v === 'park') { addStep({ type: 'park', srcHero: b.h, srcSlot: b.s, srcRuneName: n, srcRuneStar: +cur.star || 0, srcGearName: sname(b.s) }); return; }
+  if (v === 'ret') { addStep({ type: 'recycle', srcHero: b.h, srcSlot: b.s, srcRuneName: n, srcGearName: sname(b.s) }); return; }
+  b.verb = b.verb === v ? '' : v; $('#sheetB').innerHTML = builderBody();
+}
+function pickOpt(t) {
+  var b = A.bld, g = gearEnd(), cur = g[b.h] && g[b.h][b.s] || null, ds = t.dataset;
+  if (b.verb === 'place' && ds.an && ctx().idx[ds.an]) addStep({ type: 'place', runeName: ds.an, dstHero: b.h, dstSlot: b.s });
+  else if (b.verb === 'merge' && ds.at && cur) addStep({ type: 'merge', runeName: cur.runeName, dstHero: b.h, dstSlot: b.s, fromStar: +cur.star || 0, toStar: +ds.at });
+  else if (b.verb === 'swap' && ds.ao) addStep({ type: 'inherit', srcHero: b.h, srcSlot: b.s, dstHero: +ds.ao, dstSlot: b.s });
+  else if (b.verb === 'swapin' && ds.ao) addStep({ type: 'inherit', srcHero: +ds.ao, srcSlot: b.s, dstHero: b.h, dstSlot: b.s });
+}
+
 function open(kind) {
   if (kind === 'advice-ask') { A.ask = { note: '', busy: false, err: '' }; H.openSheet(kind); return; }
   H.openSheet(kind);
   d.getRosterMap().then(function (m) { if (A.pick) { setPick({ roster: m }); var q = $('#advQ'); if (q) q.focus(); } }, function () { setPick({ err: 'Could not load the roster. Try again.' }); });
 }
-function sheet(kind) {
+function sheet(kind, arg) {
+  if (kind === 'advice-builder') return builderSheet(kind, arg);
   if (kind === 'advice-pick') { A.pick = { q: '', busy: false, err: '', step: 'pick' }; return ['Advise a player', pickBody()]; }
   if (kind === 'advice-ask') { A.ask = A.ask && A.ask.code ? A.ask : { note: '', busy: false, err: '' }; return ['Ask for rune help', askBody()]; }
   return null;
 }
 function click(a, t) {
-  if (a === 'showall') { A.showAll = true; loadSeen(); }
+  if (a === 'verb') pickVerb(t.dataset.av);
+  else if (a === 'pick') { if (A.bld) pickOpt(t); }
+  else if (a === 'showall') { A.showAll = true; loadSeen(); }
   else if (a === 'target') { if (SK_RE.test(t.dataset.sk || '')) startAdvise(t.dataset.sk); }
   else if (a === 'again') setPick({ err: '', busy: false, step: 'pick' });
   else if (a === 'pickrid') useReport();
