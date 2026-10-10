@@ -130,30 +130,33 @@ test('the clip cannot load: the card says so and offers Close; the game\'s sound
   await launch(page);
   await page.waitForFunction(() => /Couldn't load the song/.test((document.getElementById('rr-root') || {}).innerText || ''));
   assert.deepEqual((await st(page)).game, { playing: true, pauses: 0, resumes: 0 });
+  assert.ok((await page.$eval('#rr-media', (e) => e.getBoundingClientRect().height)) <= 1, 'no empty video box');
+  assert.equal(await page.$eval('#rr-video', (e) => e.offsetParent), null, 'no Video button for a clip that will not load');
   await page.click('#rr-stop');
   assert.equal((await st(page)).cards, 0);
   await ctx.close();
 });
 
-test('Video opens the clip in the card without restarting the song; Hide video folds it back', async () => {
+test('the video shows by default (Tex); Hide video folds it away and Video brings it back, the song never restarting', async () => {
   const { ctx, page } = await open();
   await launch(page);
   await page.waitForFunction(() => window.__RR && window.__RR.state().playing);
   const media = await page.$eval('#rr-root video', (v) => ({ inline: v.playsInline, loop: v.loop }));
   assert.deepEqual(media, { inline: true, loop: true }, 'plays inside the card on phones, on repeat');
   const box = () => page.$eval('#rr-media', (e) => { const r = e.getBoundingClientRect(); return { h: r.height, left: r.left, right: r.right }; });
-  assert.ok((await box()).h <= 1, 'the song alone at first: no video on screen');
+  const b = await box();
+  assert.ok(b.h > 100, 'the video is on screen from the start');
+  assert.ok(b.left >= 0 && b.right <= 390, 'fits a phone');
+  assert.equal(await page.textContent('#rr-video'), 'Hide video');
   await page.waitForTimeout(400);
   const t0 = await page.evaluate(() => window.__RR.audio.currentTime);
   await page.click('#rr-video');
-  await page.waitForFunction(() => document.getElementById('rr-media').getBoundingClientRect().height > 100);
-  assert.equal(await page.textContent('#rr-video'), 'Hide video');
-  const b = await box();
-  assert.ok(b.left >= 0 && b.right <= 390, 'fits a phone');
-  assert.ok(await page.evaluate((t) => window.__RR.audio.currentTime >= t && !window.__RR.audio.paused, t0), 'the same song kept playing');
-  await page.click('#rr-video');
   await page.waitForFunction(() => document.getElementById('rr-media').getBoundingClientRect().height <= 1);
   assert.equal(await page.textContent('#rr-video'), 'Video');
+  assert.ok(await page.evaluate((t) => window.__RR.audio.currentTime >= t && !window.__RR.audio.paused, t0), 'the same song kept playing');
+  await page.click('#rr-video');
+  await page.waitForFunction(() => document.getElementById('rr-media').getBoundingClientRect().height > 100);
+  assert.equal(await page.textContent('#rr-video'), 'Hide video');
   assert.equal(await page.evaluate(() => window.__RR.state().playing), true);
   await ctx.close();
 });
@@ -161,9 +164,7 @@ test('Video opens the clip in the card without restarting the song; Hide video f
 test('minimize: the card shrinks to a small pill and the song keeps going (video folded away); the pill brings it back', async () => {
   const { ctx, page } = await open();
   await launch(page);
-  await page.waitForFunction(() => window.__RR && window.__RR.state().playing);
-  await page.click('#rr-video');
-  await page.waitForFunction(() => document.getElementById('rr-media').getBoundingClientRect().height > 100);
+  await page.waitForFunction(() => window.__RR && window.__RR.state().playing && document.getElementById('rr-media').getBoundingClientRect().height > 100);
   const big = await page.$eval('#rr-root', (e) => e.getBoundingClientRect().width);
   assert.ok((await page.$eval('#rr-min', (e) => e.getBoundingClientRect().height)) >= 44, 'Minimize is a 44 px tap target');
   await page.click('#rr-min');
@@ -179,8 +180,9 @@ test('minimize: the card shrinks to a small pill and the song keeps going (video
   assert.ok(small.media <= 1, 'the video folded away');
   assert.equal(small.playing, true, 'the song keeps going');
   await page.click('#rr-pill');
-  const back = await page.evaluate(() => ({ stop: document.getElementById('rr-stop').offsetParent !== null, pill: document.getElementById('rr-pill').offsetParent !== null, playing: window.__RR.state().playing }));
-  assert.deepEqual(back, { stop: true, pill: false, playing: true });
+  const back = await page.evaluate(() => ({ stop: document.getElementById('rr-stop').offsetParent !== null, pill: document.getElementById('rr-pill').offsetParent !== null, playing: window.__RR.state().playing,
+    video: document.getElementById('rr-media').getBoundingClientRect().height > 100 }));
+  assert.deepEqual(back, { stop: true, pill: false, playing: true, video: true }, 'back as it was, video showing');
   await page.click('#rr-stop');
   assert.equal(await page.$('#rr-root'), null);
   await ctx.close();

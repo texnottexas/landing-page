@@ -1,5 +1,6 @@
 // rickroll-audio.js: the Ops Center "Rickroll" tile (Tex, 2026-10-09). Plays the site's rickroll clip as sound in
-// the game tab, on repeat until Stop: no new tab. "Video" folds the clip open in the card (same playback, no restart). The game's own sound is paused while the song plays
+// the game tab, on repeat until Stop: no new tab. The video shows in the card by default; "Hide video" folds it away
+// and the song keeps playing (same playback, no restart). The game's own sound is paused while the song plays
 // and resumed when it stops. The clip is the one passwords.html uses (texnottexas/rickroll@v2 on jsDelivr).
 (function () {
   'use strict';
@@ -99,6 +100,7 @@
   }
   function failed() {
     S.playing = false; resumeGame();
+    showVideo(false); videoBtn.style.display = 'none';                // nothing to show: keep the card small
     sub.textContent = "Couldn't load the song. Check your connection."; sub.style.color = T.red;
     play.style.display = 'none'; stopBtn.textContent = 'Close';
   }
@@ -118,13 +120,15 @@
     root.style.width = open ? WIDE : SMALL; videoBtn.textContent = open ? 'Hide video' : 'Video';
   }
   videoBtn.onclick = function () { showVideo(media.style.height === '0px' || media.style.height === '0'); };
+  var videoBeforeMin = true;
   function minimize(min) {
-    if (min) showVideo(false);
+    if (min) { videoBeforeMin = media.style.height !== '0px' && media.style.height !== '0'; showVideo(false); }
     row.style.display = min ? 'none' : 'flex'; videoBtn.style.display = min ? 'none' : '';
     pill.style.display = min ? 'inline-flex' : 'none';
     root.style.width = min ? 'auto' : SMALL; root.style.padding = min ? '0' : '12px 14px'; root.style.borderRadius = min ? '22px' : '12px';
     // the folded video stays in the page (some browsers pause a hidden video) but takes no room
     media.style.width = min ? '0' : ''; root.style.gap = min ? '0' : '10px';
+    if (!min) showVideo(videoBeforeMin);                             // back as it was
   }
   minBtn.onclick = function () { minimize(true); };
   pill.onclick = function () { minimize(false); };
@@ -136,5 +140,6 @@
     flash: function () { if (!S.root) return; S.root.style.boxShadow = '0 0 0 2px ' + T.accent + ',0 8px 28px rgba(0,0,0,.5)'; setTimeout(function () { if (S.root) S.root.style.boxShadow = '0 8px 28px rgba(0,0,0,.5)'; }, 600); },
     state: function () { return { playing: S.playing, loop: S.audio.loop, src: S.audio.currentSrc || S.audio.src, gamePaused: S.gamePaused }; }
   };
+  showVideo(true);                                                   // the video shows by default (Tex); Hide video is the option
   start();
 })();
