@@ -38,6 +38,7 @@ function renderStart(kind, extra) {
   }
   $('#v-start').hidden = false;
   $('#v-start').innerHTML = '<div class="vb"><div class="start">' + h + '</div></div>';
+  if (kind !== 'expired' && kind !== 'error') H.fkHero($('#v-start .start'));
   document.title = 'Armory | Server 2864';
   $('#whoN').textContent = 'Armory'; $('#chipTxt').textContent = '';
 }
