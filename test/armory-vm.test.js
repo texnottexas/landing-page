@@ -208,7 +208,7 @@ test('beasts: deployed, fields used, collected and average potential from the re
   const core = newCore();
   const fx = P.fixture('beasts.json');
   core.setPlatforms(P.data('enigma-platforms.json'));
-  G.setSuppDecode(fx.suppDecode);
+  core.setSuppDecode(fx.suppDecode);
   const merged = baseMerged();
   merged.enigmas = fx.enigmas;
   const vm = build(merged, null, core);
@@ -433,21 +433,22 @@ test('real reports through the model: a non-gold piece never gets a refine move 
   assert.equal(goldSlots, all.filter((p) => p.gold).length);
 });
 
-test('two players: loading B\'s enigma decode hints does not change A\'s beast numbers (hints are merged, not replaced)', () => {
-  const core = newCore();
+test('two players: each core instance has its own enigma decode hints (B never changes A; hints merge within one instance; null clears)', () => {
   const fx = P.fixture('beasts.json');
-  const mk = () => Object.assign(baseMerged(), { enigmas: fx.enigmas });
-  G.setSuppDecode(null);
-  G.setSuppDecode(fx.suppDecode); // A
-  const a1 = build(mk(), null, core).beasts;
-  assert.ok(a1.avgPotential > 0);
-  G.setSuppDecode({ 9999: { type: 1, faction: 1, quality: 5 } }); // B: other configs only
-  const a2 = build(mk(), null, core).beasts;
-  assert.deepStrictEqual(a2, a1, 'A is unchanged after B');
-  assert.deepStrictEqual(G.ebDecodeCfg(7), fx.suppDecode['7'], 'A\'s hint for cfg 7 survives');
-  assert.deepStrictEqual(G.ebDecodeCfg(9999), { type: 1, faction: 1, quality: 5 }, 'and B\'s is there too');
-  G.setSuppDecode(null);
-  assert.notDeepStrictEqual(G.ebDecodeCfg(7), fx.suppDecode['7'], 'null clears them');
+  const triple = (c, id) => { const x = c.ebResolveBeasts(fx.enigmas).beasts.filter((b) => b.cfg === id)[0]; return [x.type, x.faction, x.quality]; };
+  const A = newCore(), B = newCore();
+  const plain = triple(B, 25);
+  A.setSuppDecode({ 25: { type: 9, faction: 4, quality: 4 } }); // a hint that differs from the table decode
+  assert.deepStrictEqual(triple(A, 25), [9, 4, 4], 'a hint wins over the table decode');
+  assert.deepStrictEqual(triple(B, 25), plain, 'B (another instance) never sees A\'s hint');
+  B.setSuppDecode({ 9999: { type: 1, faction: 1, quality: 5 } });
+  assert.deepStrictEqual(triple(A, 25), [9, 4, 4], 'and B\'s hints do not reach A');
+  assert.deepStrictEqual(triple(B, 25), plain);
+  A.setSuppDecode({ 9999: { type: 1, faction: 1, quality: 5 } });
+  assert.deepStrictEqual(triple(A, 25), [9, 4, 4], 'inside one instance the hints merge');
+  A.setSuppDecode(null);
+  assert.deepStrictEqual(triple(A, 25), plain, 'null clears them');
+  assert.equal(globalThis._enigmaSuppDecode, undefined, 'nothing is written to a global');
 });
 
 test('hero power: the model carries the supplement pw, null when missing, 0, NaN or not a number', () => {

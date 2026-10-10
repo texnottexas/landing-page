@@ -35,7 +35,6 @@
       ebBeastName = G.ebBeastName,
       ebBuffName = G.ebBuffName,
       ebComputeBuffValue = G.ebComputeBuffValue,
-      ebDecodeCfg = G.ebDecodeCfg,
       ebMaxPotential = G.ebMaxPotential,
       resolveRune = G.resolveRune;
 
@@ -111,6 +110,19 @@
   var EB_PLATFORM_REQS = null;
 
   var EB_HOLE_TO_ORDER = null;
+
+  /* The supplement synthesis stamps each owned beast's (type, faction, quality) per config id; the hints live in THIS
+     instance (not on window), so two players rendered in one session cannot share them. A hit wins over the table decode. */
+  var suppDecode = null;
+  function setSuppDecode(map) {
+    if (!map) { suppDecode = null; return; }
+    suppDecode = suppDecode || {};
+    Object.keys(map).forEach(function(k) { suppDecode[k] = map[k]; });
+  }
+  function ebDecodeCfg(cfg) {
+    var hit = suppDecode && cfg != null ? suppDecode[cfg] : null;
+    return hit || G.ebDecodeCfg(cfg);
+  }
 
   function ebPlatformReq(fieldId, slotOrder) {
     if (!EB_PLATFORM_REQS) return null;
@@ -1789,6 +1801,7 @@
 
   // data/enigma-field-conditions.json (page: boLoadOptimizerData)
   function setFieldConditions(j) { boFieldConditions = j.conditions || j; }
+  function getFieldConditions() { return boFieldConditions; }
 
   // Synchronous form of the page's _adv_computeRecommendations: the page awaits three loaders and then runs the
   // loop below, which is copied from it. data = { levels: decoration-levels.json, index: decoration-index.json
@@ -2215,6 +2228,8 @@
     setPlatforms: setPlatforms,
     setEnhance: setEnhance,
     setFieldConditions: setFieldConditions,
+    getFieldConditions: getFieldConditions,
+    setSuppDecode: setSuppDecode,
     computeDecorRecs: computeDecorRecs,
     moves: moves,
     advice: { basePool: advBasePool, tsOf: advTsOf },

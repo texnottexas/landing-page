@@ -957,7 +957,7 @@
           if (player.siteKey) {
             core.setIdentity(ArmoryIdentity);
             try { _ar_applySupplementsToMerged(merged, player.siteKey); } catch (e) { out.errors.push({ kind: 'merge' }); }
-            if (window._enigmaSuppDecode) G.setSuppDecode(window._enigmaSuppDecode);
+            if (window._enigmaSuppDecode) core.setSuppDecode(window._enigmaSuppDecode);
           }
           out.merged = merged;
           results.forEach(function(r) { var t = r.extracted.logtime ? r.extracted.logtime * 1000 : 0; if (t > out.sources.reportsTs) out.sources.reportsTs = t; });

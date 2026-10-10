@@ -19,7 +19,7 @@ const B = require('../pages/tw-game-data-base.js');
 const CORE_FILE = fs.readFileSync(path.join(P.ROOT, 'pages/armory-core.js'), 'utf8');
 
 // Not in the page: seams + the new engine.
-const GLUE = new Set(['setIdentity', 'setHeroCache', 'setDecorLookups', 'setPlatforms', 'setEnhance', 'setFieldConditions',
+const GLUE = new Set(['setIdentity', 'setHeroCache', 'setDecorLookups', 'setPlatforms', 'setEnhance', 'setFieldConditions', 'getFieldConditions', 'setSuppDecode',
   'computeDecorRecs', 'nextMoves', 'moves', 'create']);
 // State the page declares as `var NAME = ...;` and the copied functions read (declared verbatim in the module).
 const STATE = ['DECOR_ID_TO_GROUP', 'DECOR_GROUP_BASE', 'DECOR_EXTRACTED_LVL', 'BUFF_NAMES_DECOR', 'MAX_LEVEL', 'LV_BY_ID',

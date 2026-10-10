@@ -42,7 +42,7 @@ function build(w) {
   const core = Core.create(); core.setDecorLookups(LOOK);
   const names = {}; P.fixture('gear-heroes.json').heroes.forEach((h) => { names[h.id] = h.name; });
   core.setHeroCache(names, null);
-  G.setSuppDecode(P.fixture('beasts.json').suppDecode);
+  core.setSuppDecode(P.fixture('beasts.json').suppDecode);
   core.setPlatforms(P.data('enigma-platforms.json'));
   return VM.buildViewModel(w.merged, { reportsTs: 1e12, dataTs: 1e12, kinds: [] }, { core, statics: STATICS, supp: w.supp, privacy: {}, player: { name: 'Tester', siteKey: 'a'.repeat(16) }, reports: [], reportMechaIds: [1006], now: 1.1e12 });
 }
