@@ -128,5 +128,6 @@ test('Rickroll tile: titled Rickroll, a generic description, for members, its ow
   assert.deepEqual(t.scripts, ['rickroll-audio.js']);
   assert.deepEqual(t.ready, ['game']);
   assert.equal(t.overlay, '#rr-root');
-  assert.equal(t.icon, 'smile');
+  assert.equal(t.icon, 'disco', 'a disco ball, drawn like the other tile icons (Tex, 2026-10-09)');
+  assert.match(read('ops-kit.js'), /\n\s*disco: \[/, 'the Ops kit draws it');
 });

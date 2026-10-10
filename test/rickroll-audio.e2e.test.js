@@ -134,3 +134,26 @@ test('the clip cannot load: the card says so and offers Close; the game\'s sound
   assert.equal((await st(page)).cards, 0);
   await ctx.close();
 });
+
+test('Video opens the clip in the card without restarting the song; Hide video folds it back', async () => {
+  const { ctx, page } = await open();
+  await launch(page);
+  await page.waitForFunction(() => window.__RR && window.__RR.state().playing);
+  const media = await page.$eval('#rr-root video', (v) => ({ inline: v.playsInline, loop: v.loop }));
+  assert.deepEqual(media, { inline: true, loop: true }, 'plays inside the card on phones, on repeat');
+  const box = () => page.$eval('#rr-media', (e) => { const r = e.getBoundingClientRect(); return { h: r.height, left: r.left, right: r.right }; });
+  assert.ok((await box()).h <= 1, 'the song alone at first: no video on screen');
+  await page.waitForTimeout(400);
+  const t0 = await page.evaluate(() => window.__RR.audio.currentTime);
+  await page.click('#rr-video');
+  await page.waitForFunction(() => document.getElementById('rr-media').getBoundingClientRect().height > 100);
+  assert.equal(await page.textContent('#rr-video'), 'Hide video');
+  const b = await box();
+  assert.ok(b.left >= 0 && b.right <= 390, 'fits a phone');
+  assert.ok(await page.evaluate((t) => window.__RR.audio.currentTime >= t && !window.__RR.audio.paused, t0), 'the same song kept playing');
+  await page.click('#rr-video');
+  await page.waitForFunction(() => document.getElementById('rr-media').getBoundingClientRect().height <= 1);
+  assert.equal(await page.textContent('#rr-video'), 'Video');
+  assert.equal(await page.evaluate(() => window.__RR.state().playing), true);
+  await ctx.close();
+});

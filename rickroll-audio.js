@@ -1,5 +1,5 @@
 // rickroll-audio.js: the Ops Center "Rickroll" tile (Tex, 2026-10-09). Plays the site's rickroll clip as sound in
-// the game tab, on repeat until Stop: no new tab, no video. The game's own sound is paused while the song plays
+// the game tab, on repeat until Stop: no new tab. "Video" folds the clip open in the card (same playback, no restart). The game's own sound is paused while the song plays
 // and resumed when it stops. The clip is the one passwords.html uses (texnottexas/rickroll@v2 on jsDelivr).
 (function () {
   'use strict';
@@ -26,9 +26,11 @@
 
   function el(tag, css, text) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e; }
   var BTN = 'min-height:44px;padding:0 16px;border-radius:8px;font:600 14px/1 system-ui,sans-serif;cursor:pointer;';
-  var root = el('div', 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:100000;width:min(340px,calc(100vw - 24px));' +
+  var SMALL = 'min(340px,calc(100vw - 24px))', WIDE = 'min(560px,calc(100vw - 24px))';
+  var root = el('div', 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:100000;width:' + SMALL + ';' +
     'box-sizing:border-box;padding:12px 14px;background:' + T.surface + ';border:1px solid ' + T.border + ';border-radius:12px;' +
-    'box-shadow:0 8px 28px rgba(0,0,0,.5);color:' + T.text + ';font:14px/1.4 system-ui,sans-serif;display:flex;align-items:center;gap:12px;transition:box-shadow .2s');
+    'box-shadow:0 8px 28px rgba(0,0,0,.5);color:' + T.text + ';font:14px/1.4 system-ui,sans-serif;display:flex;flex-direction:column;gap:10px;transition:box-shadow .2s');
+  var row = el('div', 'display:flex;align-items:center;gap:12px');
   root.id = 'rr-root';
   var NS = 'http://www.w3.org/2000/svg', ico = document.createElementNS(NS, 'svg');
   ico.setAttribute('viewBox', '0 0 24 24'); ico.setAttribute('width', '22'); ico.setAttribute('height', '22'); ico.setAttribute('aria-hidden', 'true');
@@ -48,7 +50,14 @@
   play.id = 'rr-play'; play.type = 'button';
   var stopBtn = el('button', BTN + 'background:transparent;color:' + T.text + ';border:1px solid ' + T.border, 'Stop');
   stopBtn.id = 'rr-stop'; stopBtn.type = 'button';
-  root.appendChild(ico); root.appendChild(words); root.appendChild(play); root.appendChild(stopBtn);
+  row.appendChild(ico); row.appendChild(words); row.appendChild(play); row.appendChild(stopBtn);
+  // The clip itself, folded away until Video: the same element plays the song either way.
+  var media = el('div', 'height:0;overflow:hidden;border-radius:8px;background:#000');
+  media.id = 'rr-media';
+  var videoBtn = el('button', 'align-self:flex-end;min-height:36px;padding:0 12px;border-radius:8px;font:600 13px/1 system-ui,sans-serif;cursor:pointer;' +
+    'background:transparent;color:' + T.accent + ';border:1px solid ' + T.border, 'Video');
+  videoBtn.id = 'rr-video'; videoBtn.type = 'button';
+  root.appendChild(row); root.appendChild(media); root.appendChild(videoBtn);
   document.body.appendChild(root);
   S.root = root;
 
@@ -79,13 +88,21 @@
     play.style.display = 'none'; stopBtn.textContent = 'Close';
   }
 
-  S.audio = new Audio();
+  S.audio = document.createElement('video');                // a video element plays the sound the same as an audio one
+  S.audio.playsInline = true; S.audio.setAttribute('playsinline', ''); S.audio.setAttribute('webkit-playsinline', '');
+  S.audio.style.cssText = 'display:block;width:100%;height:100%;object-fit:contain;background:#000';
+  media.appendChild(S.audio);
   S.audio.loop = true;
   S.audio.preload = 'auto';
   S.audio.addEventListener('error', function () { if (S.root) failed(); });
   S.audio.src = SRC;
   play.onclick = function () { play.style.display = 'none'; sub.textContent = 'Loading...'; start(); };
   stopBtn.onclick = stop;
+  videoBtn.onclick = function () {
+    var open = media.style.height === '0px' || media.style.height === '0';
+    media.style.height = open ? 'auto' : '0'; media.style.aspectRatio = open ? '16 / 9' : '';
+    root.style.width = open ? WIDE : SMALL; videoBtn.textContent = open ? 'Hide video' : 'Video';
+  };
   window.addEventListener('pagehide', stop);
 
   window.__RR = {
