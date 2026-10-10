@@ -333,3 +333,36 @@ test('sections: Free now and After levelling; a linked move stays together in th
   assert.ok(chains > 0 && split > 0, chains + ' chains, ' + split + ' plans with both sections');
   assert.deepEqual(L.planModel(G, core, opt, { enigmas: field1(Object.assign({}, WEAK, { potential: 16000 })) }, bench1(), MONO, 'x').sections, []);
 });
+
+test('one-screen chooser: the saved choice is exactly what classic saves, and classic\'s reader logic gives the same label, weights and plan from it', () => {
+  const names = ['boPlaystyleLabel', 'boSavePrefs', 'boResolveWeights', 'boPlaystyleMult', 'boClassifyBuff'].concat(Object.keys(G).filter((k) => k !== 'setSuppDecode'));
+  const store = {};
+  const ctx = P.loadPage(names, { localStorage: { setItem: (k, v) => { store[k] = v; }, getItem: (k) => (k in store ? store[k] : null) } });
+  const core = mkCore();
+  const orders = [[1], [2], [3], [1, 2], [2, 1], [1, 3], [3, 2], [1, 2, 3], [3, 1, 2], [2, 3, 1]];
+  const weightSets = { 1: [[1]], 2: [[1, 1], [1, 0.75], [1, 0.5], [1, 0.25]], 3: [[1, 1, 1], [1, 0.75, 0.75], [1, 0.5, 0.5], [1, 0.75, 0.5], [1, 0.5, 0.25]] };
+  let n = 0;
+  for (const units of orders) for (const w of weightSets[units.length]) {
+    const p = L.prefsFrom(units, w);
+    assert.ok(p, 'valid');
+    // classic's own saver, fed the state classic's wizard builds for the same choice
+    const mode = ['mono', 'dual', 'triple'][units.length - 1];
+    const state = { mode, units: units.slice(), balance: mode === 'dual' && w[0] !== w[1] ? 'primarySecondary' : 'even', weights: mode === 'mono' ? null : w.slice() };
+    ctx.boSavePrefs('c3c6f3200a4ec1fb', state);
+    const classicSaved = JSON.parse(store.beast_optimizer_prefs_c3c6f3200a4ec1fb); delete classicSaved.savedAt;
+    const ours = JSON.parse(JSON.stringify(Object.assign({}, p, { savedAt: 'x' }))); delete ours.savedAt;
+    assert.deepStrictEqual(ours, classicSaved, 'same stored shape for ' + JSON.stringify(state));
+    // classic's reader: truthy mode, then the label, the weights and the unit multipliers
+    const read = JSON.parse(JSON.stringify(Object.assign({}, p, { savedAt: new Date().toISOString() })));
+    assert.ok(read && read.mode);
+    assert.equal(ctx.boPlaystyleLabel(read), L.playstyleLabel(core, read));
+    assert.deepStrictEqual(P.j(ctx.boResolveWeights(read)), P.j(core.boResolveWeights(read)));
+    assert.equal(ctx.boResolveWeights(read).length, units.length);
+    for (const u of [0, 1, 2, 3]) assert.equal(ctx.boPlaystyleMult(u, read), core.boPlaystyleMult(u, read));
+    // and the new reader accepts what classic wrote
+    assert.deepStrictEqual(L.readPrefs(JSON.stringify(classicSaved)), p);
+    n++;
+  }
+  assert.equal(n, 3 + 4 * 4 + 3 * 5, 'every choice compared');
+  assert.equal(L.prefsFrom([], []), null); assert.equal(L.prefsFrom([1, 2, 3, 1], [1, 1, 1, 1]), null); assert.equal(L.prefsFrom([1, 1], [1, 1]), null, 'a unit twice is not a choice');
+});

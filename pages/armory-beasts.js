@@ -204,6 +204,13 @@ function validPrefs(p) {
   }
   return { mode: p.mode, units: units, balance: p.balance === 'primarySecondary' ? 'primarySecondary' : 'even', weights: p.mode === 'mono' ? null : w };
 }
+/* The saved choice from the one-screen chooser, in the shape classic reads and writes: the count of units picked is the mode */
+function prefsFrom(units, weights) {
+  var n = units.length;
+  if (n < 1 || n > 3) return null;
+  var mode = ['mono', 'dual', 'triple'][n - 1], w = n === 1 ? null : weights.slice(0, n);
+  return validPrefs({ mode: mode, units: units.slice(), balance: mode === 'dual' && w[0] !== w[1] ? 'primarySecondary' : 'even', weights: w });
+}
 function readPrefs(raw) { var j = null; try { j = JSON.parse(raw); } catch (e) {} return validPrefs(j); }
 
 /* the classic boPlaystyleLabel */
@@ -405,7 +412,7 @@ function checklist(plan) {
 
 var Logic = {
   label: label, num: num, fmtInt: fmtInt, ageOld: ageOld, iconFile: iconFile, beastView: beastView, resolveAll: resolveAll, model: model, collFilter: collFilter, collOptions: collOptions,
-  validPrefs: validPrefs, readPrefs: readPrefs, playstyleLabel: playstyleLabel, fmtStat: fmtStat, fmtDelta: fmtDelta, reasoning: reasoning, liteBeast: liteBeast,
+  validPrefs: validPrefs, prefsFrom: prefsFrom, readPrefs: readPrefs, playstyleLabel: playstyleLabel, fmtStat: fmtStat, fmtDelta: fmtDelta, reasoning: reasoning, liteBeast: liteBeast,
   statRows: statRows, swapView: swapView, planModel: planModel, bestMove: bestMove, checklist: checklist, unitsPlain: unitsPlain, topStat: topStat, levelText: levelText, signed: signed, fname: fname, condMatches: condMatches, headline: headline, reasonLine: reasonLine, SORTS: SORTS, STAT: STAT, RARITY: RARITY, PREFS_KEY: PREFS_KEY
 };
 root.ArmoryBeastsLogic = Logic;
@@ -416,7 +423,7 @@ root.ArmoryBeasts = function (H) {
 var S = H.S, G = H.G, core = H.core, BASE = H.BASE, $ = H.$, $$ = H.$$, esc = H.esc, nd = H.nd, nm = H.nm, ic = H.ic, art = H.art, classicUrl = H.classicUrl, readOnly = H.readOnly;
 var DEF = { elems: [], where: '', type: '', primary: '', secondary: '', sort: 'star', n: 24 }, F = Object.assign({}, DEF), PAGE = 24, STEP = 48;
 var cur = { seg: 'field', q: {} }, M = null, mFor = null, opts = null, open = {}, wired = false, platOk = null;
-var opt = null, optQ = null, plan = null, W = { step: 1, mode: '', units: [], weights: [] }, editing = false;
+var opt = null, optQ = null, plan = null, W = { units: [], weights: [] }, editing = false;
 
 var CSS =
   '.bst-line{display:flex;flex-wrap:wrap;gap:0 8px}.bst-line > span{white-space:nowrap}' +
@@ -446,8 +453,7 @@ var CSS =
   '.bst-c.bst-q1{border-color:var(--dim)}.bst-c.bst-q2{border-color:var(--ok)}.bst-c.bst-q3{border-color:var(--q3)}.bst-c.bst-q4{border-color:var(--q4)}.bst-c.bst-q5{border-color:var(--q5)}' +
   '.bst-cf{font-size:var(--fs-12);color:var(--muted);border-top:1px solid var(--rule);padding-top:6px;display:flex;justify-content:space-between}.bst-cf > span:last-child{margin-left:8px}' +
   '.bst-tally{font-size:var(--fs-13);color:var(--muted)}.bst-sh{display:flex;flex-direction:column;gap:12px}.bst-sh h4{font:700 var(--fs-13)/1.3 var(--sans);color:var(--muted);margin:0 0 4px}' +
-  '.bst-wiz{display:flex;flex-direction:column;gap:12px;max-width:560px}.bst-opt{display:flex;flex-direction:column;gap:4px;width:100%;min-height:var(--row);padding:12px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--card);text-align:left;color:inherit}' +
-  '.bst-opt b{font-size:var(--fs-15)}.bst-opt span{font-size:var(--fs-13);color:var(--muted)}.bst-wr{display:flex;align-items:center;justify-content:space-between;min-height:var(--tap)}.bst-wr .sel{margin-left:12px}' +
+  '.bst-wiz{display:flex;flex-direction:column;gap:12px;max-width:560px}.bst-wr{display:flex;align-items:center;justify-content:space-between;min-height:var(--tap)}.bst-wr .sel{margin-left:12px}' +
   '.bst-hl{font:600 var(--fs-17)/1.3 var(--sans)}.bst-q{font:700 var(--fs-17)/1.3 var(--sans);margin:0}' +
   '.bst-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.bst-note{border-left:3px solid var(--warn);padding:8px 12px;background:var(--card);border-radius:0 var(--r-chip) var(--r-chip) 0;font-size:var(--fs-14)}' +
   '.bst-grp{display:flex;flex-direction:column;gap:8px}.bst-gh{display:flex;align-items:baseline;gap:8px;padding-bottom:4px;border-bottom:1px solid var(--rule)}.bst-gh b{font-size:var(--fs-15)}.bst-opts{display:flex;flex-direction:column;gap:8px}' +
@@ -614,27 +620,22 @@ function savedPrefs() { var k = prefsKey(); return k ? Logic.readPrefs(H.ls(k)) 
 var curPrefs = null; /* {sk, p}: this session's choice for ONE player (never reused for another) */
 function activePrefs() { if (curPrefs && curPrefs.sk === H.sk()) return curPrefs.p; return editing ? null : savedPrefs(); }
 function wizPane() {
-  var UN = [[1, 'Army'], [2, 'Navy'], [3, 'Air Force']], cap = W.mode === 'mono' ? 1 : W.mode === 'dual' ? 2 : 3;
-  if (W.step === 1) {
-    return '<div class="sechead"><h2 class="title">Beast optimizer</h2></div><p class="muted">How many unit types do you fight with?</p><div class="bst-wiz">' +
-      [['mono', 'One unit', 'I specialise in one branch and always march it.'], ['dual', 'Two units', 'I main two branches.'], ['triple', 'Three units', 'I use all three branches about evenly.']].map(function (o) {
-        return '<button class="bst-opt" type="button" data-bsw="mode:' + o[0] + '"><b>' + esc(o[1]) + '</b><span>' + esc(o[2]) + '</span></button>';
-      }).join('') + '</div>';
-  }
-  var chips = UN.map(function (u) { return '<button class="chipbtn" type="button" data-bsw="unit:' + u[0] + '" aria-pressed="' + (W.units.indexOf(u[0]) >= 0) + '">' + esc(u[1]) + '</button>'; }).join('');
+  var UN = [[1, 'Army'], [2, 'Navy'], [3, 'Air Force']], n = W.units.length;
+  var chips = UN.map(function (u) { var on = W.units.indexOf(u[0]) >= 0; return '<button class="chipbtn" type="button" data-bsw="unit:' + u[0] + '" aria-pressed="' + on + '">' + (on ? ic('check', 'sm') : '') + '<span>' + esc(u[1]) + '</span></button>'; }).join('');
   var wRows = '';
-  if (W.mode !== 'mono' && W.units.length === cap) {
-    wRows = '<div class="card"><p class="t13 muted" style="margin-bottom:8px">How much each unit counts (higher means the optimizer favours buffs for it).</p>' + W.units.map(function (u, i) {
-      return '<div class="bst-wr"><span>' + esc(UNITS[u]) + '</span><select class="sel" data-bsws="' + i + '" aria-label="' + esc(UNITS[u]) + ' weight">' + [1, 0.75, 0.5, 0.25].map(function (w) { return '<option value="' + w + '"' + (Math.abs(w - W.weights[i]) < 1e-6 ? ' selected' : '') + '>' + w.toFixed(2) + 'x</option>'; }).join('') + '</select></div>';
-    }).join('') + '<div class="chips" style="margin-top:8px">' + (W.mode === 'dual' ? [['Even', [1, 1]], ['1.0 and 0.75', [1, 0.75]], ['1.0 and 0.5', [1, 0.5]], ['1.0 and 0.25', [1, 0.25]]] :
-      [['Even', [1, 1, 1]], ['1.0, 0.75, 0.75', [1, 0.75, 0.75]], ['1.0, 0.5, 0.5', [1, 0.5, 0.5]], ['1.0, 0.75, 0.5', [1, 0.75, 0.5]], ['1.0, 0.5, 0.25', [1, 0.5, 0.25]]]).map(function (p) {
-      return '<button class="chipbtn" type="button" data-bsw="preset:' + p[1].join(',') + '">' + nd(p[0]) + '</button>'; }).join('') + '</div></div>';
+  if (n >= 2) {
+    var presets = n === 2 ? [[1, 1], [1, 0.75], [1, 0.5], [1, 0.25]] : [[1, 1, 1], [1, 0.75, 0.75], [1, 0.5, 0.5], [1, 0.75, 0.5], [1, 0.5, 0.25]];
+    wRows = '<div class="card"><p class="t13 muted" style="margin-bottom:8px">How much each unit counts. A higher number means the optimizer favours buffs for that unit. The first one you tapped comes first.</p>' + W.units.map(function (u, i) {
+      return '<div class="bst-wr"><span>' + esc(UNITS[u]) + '</span><select class="sel" data-bsws="' + i + '" aria-label="' + esc(UNITS[u]) + ' weight">' + [1, 0.75, 0.5, 0.25].map(function (w) { return '<option value="' + w + '"' + (Math.abs(w - W.weights[i]) < 1e-6 ? ' selected' : '') + '>' + w + '</option>'; }).join('') + '</select></div>';
+    }).join('') + '<div class="chips" style="margin-top:8px">' + presets.map(function (p) {
+      var on = p.every(function (w, i) { return Math.abs(w - W.weights[i]) < 1e-6; });
+      return '<button class="chipbtn" type="button" data-bsw="preset:' + p.join(',') + '" aria-pressed="' + on + '">' + (on ? ic('check', 'sm') : '') + '<span>' + nd(p.every(function (w) { return w === 1; }) ? 'Equal weight' : p.map(function (w, i) { return UNITS[W.units[i]] + ' ' + w; }).join(' · ')) + '</span></button>';
+    }).join('') + '</div></div>';
   }
-  return '<div class="sechead"><h2 class="title">' + (W.mode === 'mono' ? 'Which unit?' : W.mode === 'dual' ? 'Which two units?' : 'Weigh your units') + '</h2></div><div class="bst-wiz"><div class="chips">' + chips + '</div>' + wRows +
-    '<p class="t13" role="alert" id="bstWerr" hidden>' + nd('Pick ' + cap + ' unit' + (cap > 1 ? 's' : '') + ' first.') + '</p>' +
-    '<div class="bst-acts"><button class="btn" type="button" data-bsw="back">Back</button><button class="btn" type="button" data-bsw="go">Optimize</button></div></div>';
+  return '<div class="sechead"><h2 class="title">Beast optimizer</h2></div><p class="muted">Finds beast swaps from your collection that raise your field buffs for the units you march.</p><div class="bst-wiz"><h3 class="bst-q">Which units do you march with?</h3>' +
+    '<div class="chips">' + chips + '</div>' + wRows + '<p class="t13" role="alert" id="bstWerr" hidden>Pick at least one unit first.</p>' +
+    '<div class="bst-acts"><button class="btn bst-go" type="button" data-bsw="go">Optimize</button>' + (savedPrefs() ? '<button class="tb link" type="button" data-bsw="cancel">Keep my choice</button>' : '') + '</div></div>';
 }
-function gainTxt(n) { return Logic.signed(n); }
 function swapLinks(c) { return c.partners.map(function (p) { return '<a class="tb link" href="#beasts/optimizer?swap=' + esc(p.id) + '">' + nd(p.label) + '</a>'; }).join(' and '); }
 /* one compact row: Out / In, icon, name, stars, level, potential with its cap */
 function beastRow(b, label, note) {
@@ -731,17 +732,14 @@ function copyText(text) {
 }
 function wizClick(v) {
   var kv = v.split(':'), a = kv[0], val = kv.slice(1).join(':');
-  if (a === 'mode') { W = { step: 2, mode: val, units: val === 'triple' ? [1, 2, 3] : [], weights: val === 'triple' ? [1, 1, 1] : [] }; }
-  else if (a === 'unit') {
-    var u = +val, i = W.units.indexOf(u), cap = W.mode === 'mono' ? 1 : W.mode === 'dual' ? 2 : 3;
-    if (i >= 0) { W.units.splice(i, 1); W.weights.splice(i, 1); } else { if (W.units.length >= cap) { W.units.shift(); W.weights.shift(); } W.units.push(u); W.weights.push(1); }
+  if (a === 'unit') {
+    var u = +val, i = W.units.indexOf(u);
+    if (i >= 0) { W.units.splice(i, 1); W.weights.splice(i, 1); } else { W.units.push(u); W.weights.push(1); }
   } else if (a === 'preset') W.weights = val.split(',').map(Number);
-  else if (a === 'back') W.step = 1;
+  else if (a === 'cancel') { editing = false; renderOptimizer(); return; }
   else if (a === 'go') {
-    var cp = W.mode === 'mono' ? 1 : W.mode === 'dual' ? 2 : 3;
-    if (W.units.length !== cp) { var er = $('#bstWerr'); if (er) er.hidden = false; return; }
-    var p = Logic.validPrefs({ mode: W.mode, units: W.units.slice(), balance: W.mode === 'dual' && W.weights[0] !== W.weights[1] ? 'primarySecondary' : 'even', weights: W.mode === 'mono' ? null : W.weights.slice() });
-    if (!p) return;
+    var p = Logic.prefsFrom(W.units, W.weights);
+    if (!p) { var er = $('#bstWerr'); if (er) er.hidden = false; return; }
     curPrefs = { sk: H.sk(), p: p }; editing = false;
     if (!readOnly() && prefsKey()) H.ls(prefsKey(), JSON.stringify(Object.assign({}, p, { savedAt: new Date().toISOString() })));
     H.beastMove();
@@ -778,13 +776,13 @@ function wire() {
     if ('bstmore' in ds) { F.n += STEP; collRefresh(); return; }
     if ('bstclear' in ds) { var so = F.sort; F = Object.assign({}, DEF, { elems: [], sort: so }); collRefresh(); return; }
     if (ds.bsw) { wizClick(ds.bsw); return; }
-    if (ds.bsa === 'edit') { editing = true; curPrefs = null; var sp0 = savedPrefs(); W = sp0 ? { step: 2, mode: sp0.mode, units: sp0.units.slice(), weights: sp0.weights ? sp0.weights.slice() : sp0.units.map(function () { return 1; }) } : { step: 1, mode: '', units: [], weights: [] }; optShow(wizPane()); return; }
+    if (ds.bsa === 'edit') { editing = true; curPrefs = null; var sp0 = savedPrefs(); W = sp0 ? { units: sp0.units.slice(), weights: sp0.weights ? sp0.weights.slice() : sp0.units.map(function () { return 1; }) } : { units: [], weights: [] }; optShow(wizPane()); return; }
     if (ds.bsa === 'copy' && plan) { copyText(Logic.checklist(plan)); }
   });
   v.addEventListener('change', function (e) {
     var t = e.target; if (!t.dataset) return;
     if (t.dataset.bsf) { F[t.dataset.bsf] = t.value; F.n = PAGE; collRefresh(); return; }
-    if (t.dataset.bsws !== undefined) { W.weights[+t.dataset.bsws] = parseFloat(t.value); }
+    if (t.dataset.bsws !== undefined) { var wi = +t.dataset.bsws; W.weights[wi] = parseFloat(t.value); optShow(wizPane()); var again = $('[data-bsws="' + wi + '"]'); if (again) again.focus({ preventScroll: true }); }
   });
   document.addEventListener('change', function (e) {
     var t = e.target; if (!t.closest || !t.closest('#sheetB') || !t.dataset || !t.dataset.bsf) return;
