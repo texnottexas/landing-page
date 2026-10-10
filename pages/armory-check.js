@@ -400,7 +400,7 @@ var EXPECTED = [
   for (var br = 0; br < 3; br++) {
     await visit(['beasts/field', 'beasts/collection', 'beasts/optimizer'][br]); await sleep(br === 2 ? 900 : 200);
     $$('#v-beasts *').forEach(function (el) { if (!/flex|grid/.test(getComputedStyle(el).display) || !el.children.length) return; Array.prototype.forEach.call(el.childNodes, function (n) { if (n.nodeType === 3 && /\S/.test(n.nodeValue) && (/^\s/.test(n.nodeValue) || /\s$/.test(n.nodeValue))) bLost.push((el.className || el.tagName) + ' "' + n.nodeValue.trim().slice(0, 16) + '"'); }); });
-    var bT = $('#v-beasts').innerText, bm = bT.match(/\bATK\b|\bDEF\b|\bRES\b|\((off|def)\)|\bAF\b|DMG[+-]|Slot\d|Lv\d|CPNT|(?<!Fill )\bAll (?!units|Forces|Slots)|\bAir (?!Force)|DMG Increase|HP Boost|\d\.\d{3}%|imported \d|power score/); if (bm) bAb.push(bm[0] + ' in "' + bT.slice(Math.max(0, bm.index - 12), bm.index + 28).replace(/\s+/g, ' ') + '"');
+    var bT = $('#v-beasts').innerText, bm = bT.match(/\bATK\b|\bDEF\b|\bRES\b|\((off|def)\)|\bAF\b|DMG[+-]|Slot\d|Lv\d|CPNT|(?<!Fill )\bAll (?!units|Forces|[Ss]lots)|\bAir (?!Force)|DMG Increase|HP Boost|\d\.\d{3}%|imported \d|power score/); if (bm) bAb.push(bm[0] + ' in "' + bT.slice(Math.max(0, bm.index - 12), bm.index + 28).replace(/\s+/g, ' ') + '"');
   }
   log(bLost.length === 0, 'Beasts: no text node with an edge space directly inside a flex or grid parent', bLost.slice(0, 3).join(' | ') || 'none');
   log(bAb.length === 0, 'Beasts: one vocabulary with HT and Heroes (no ATK, DEF, RES, (off), (def), AF, CPNT, bare "All" or "Air", DMG Increase, HP Boost, 3 decimals, "imported 4 months", "power score", "Slot1", "Lv30")', bAb.join(' ') || 'none');

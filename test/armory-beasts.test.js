@@ -320,12 +320,13 @@ test('sections: Free now and After levelling; a linked move stays together in th
     const all = pm.sections.reduce((a, x) => a.concat(x.swaps), []);
     assert.equal(all.length, pm.swaps.length, 'every swap is in exactly one section'); assert.equal(new Set(all.map((x) => x.id)).size, all.length);
     const now = (pm.sections.find((x) => x.key === 'now') || { swaps: [] }).swaps, later = (pm.sections.find((x) => x.key === 'later') || { swaps: [] }).swaps;
-    now.filter((x) => !x.chain).forEach((x) => assert.ok(x.free && x.gainToday > 0)); later.filter((x) => !x.chain).forEach((x) => assert.ok(!x.free));
+    now.filter((x) => !x.chain).forEach((x) => assert.ok(x.free && x.gainToday > 0)); now.filter((x) => x.chain).forEach((x) => assert.ok(!x.threshold)); later.filter((x) => !x.chain).forEach((x) => assert.ok(!x.free));
     const ids = {}; pm.sections.forEach((sec) => sec.swaps.forEach((x, i) => { if (x.chain) (ids[x.chain.id] = ids[x.chain.id] || []).push([sec.key, i]); }));
     Object.keys(ids).forEach((k) => { chains++; const l = ids[k]; assert.ok(l.every((p) => p[0] === l[0][0]), 'one section'); assert.ok(l.every((p, i) => i === 0 || p[1] === l[i - 1][1] + 1), 'adjacent, in step order'); });
-    // the section of a chain is the section of its best leg
+    // a linked move is free now only when no step needs levelling and the steps together gain today
     const byChain = {}; pm.swaps.filter((x) => x.chain).forEach((x) => { (byChain[x.chain.id] = byChain[x.chain.id] || []).push(x); });
-    Object.keys(byChain).forEach((k) => { const best = byChain[k].reduce((m, x) => (x.gainMax > m.gainMax ? x : m)); const sec = pm.sections.find((sc) => sc.swaps.some((x) => x.id === best.id)); assert.equal(sec.key, best.free ? 'now' : 'later'); });
+    Object.keys(byChain).forEach((k) => { const legs = byChain[k], free = legs.every((l) => !l.threshold) && legs.reduce((n, l) => n + l.gainToday, 0) > 0; const sec = pm.sections.find((sc) => sc.swaps.some((x) => x.id === legs[0].id)); assert.equal(sec.key, free ? 'now' : 'later'); });
+    assert.equal(pm.nowN, now.length, 'the header count is the Free now section');
     for (let i = 1; i < later.length; i++) if (!later[i].chain && !later[i - 1].chain) assert.ok(later[i - 1].gainMax >= later[i].gainMax, 'biggest fully levelled gain first');
     for (let i = 1; i < now.length; i++) if (!now[i].chain && !now[i - 1].chain) assert.ok(now[i - 1].gainToday >= now[i].gainToday, 'biggest gain today first');
     if (now.length && later.length) split++;
@@ -365,4 +366,28 @@ test('one-screen chooser: the saved choice is exactly what classic saves, and cl
   }
   assert.equal(n, 3 + 4 * 4 + 3 * 5, 'every choice compared');
   assert.equal(L.prefsFrom([], []), null); assert.equal(L.prefsFrom([1, 2, 3, 1], [1, 1, 1, 1]), null); assert.equal(L.prefsFrom([1, 1], [1, 1]), null, 'a unit twice is not a choice');
+});
+
+test('a linked move with a free best leg and a levelling backfill leg lands in After levelling; header count = section; nothing lost or duplicated', () => {
+  const sw = (id, o) => Object.assign({ id, free: false, gainToday: 0, gainMax: 0, threshold: null, chain: null }, o);
+  const A = sw('1-1', { free: true, gainToday: 30, gainMax: 60, chain: { id: 1, step: 1 } }), Bf = sw('2-2', { gainToday: -10, gainMax: 5, threshold: { star: 3, level: 1 }, chain: { id: 1, step: 2 } });
+  const C = sw('3-3', { free: true, gainToday: 8, gainMax: 9 }), D = sw('4-4', { gainMax: 20 });
+  const E = sw('5-1', { free: true, gainToday: 20, gainMax: 22, chain: { id: 2, step: 1 } }), F = sw('5-2', { gainToday: -5, gainMax: 1, chain: { id: 2, step: 2 } }); // no levelling, total +15
+  const G2 = sw('1-2', { free: true, gainToday: 5, gainMax: 6, chain: { id: 3, step: 1 } }), H2 = sw('1-3', { gainToday: -9, gainMax: 1, chain: { id: 3, step: 2 } }); // no levelling, total -4
+  const swaps = [A, Bf, C, D, E, F, G2, H2], byChain = { 1: [A, Bf], 2: [E, F], 3: [G2, H2] };
+  const secs = L.sectionsOf(swaps, byChain), now = secs.find((x) => x.key === 'now').swaps.map((x) => x.id), later = secs.find((x) => x.key === 'later').swaps.map((x) => x.id);
+  assert.deepEqual(now, ['5-1', '5-2', '3-3'], 'chain E+F (+15, no levelling) before C (+8)');
+  assert.deepEqual(later.slice().sort(), ['1-1', '1-2', '1-3', '2-2', '4-4']);
+  assert.ok(later.indexOf('1-1') + 1 === later.indexOf('2-2'), 'a chain stays together, in step order');
+  assert.equal(now.length + later.length, swaps.length); assert.equal(new Set(now.concat(later)).size, swaps.length);
+});
+
+test('a swap that turns off a slot bonus names the short condition text the Field pane uses', () => {
+  const core = mkCore(), opt = Opt.create(core);
+  let seen = 0;
+  for (const seed of [1, 2, 3, 5, 7, 11, 23, 42, 99, 123, 7777, 31, 77]) {
+    const s = synth(seed, 70), pm = L.planModel(G, core, opt, { enigmas: s.enigmas }, s.bench, { mode: 'triple', units: [1, 2, 3] }, 'x');
+    pm.swaps.forEach((x) => x.broke.forEach((b) => { seen++; assert.doesNotMatch(b.req, /slots filled/i); assert.ok(!b.req || Object.values(G.EB_FIELD_CONDITIONS).some((l) => l.includes(b.req)), b.req); }));
+  }
+  assert.ok(seen > 0, 'broken-condition notes compared: ' + seen);
 });

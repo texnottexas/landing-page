@@ -325,7 +325,8 @@ function swapView(G, core, opt, rec, prefs) {
     } : null,
     broke: (rec.brokeConditions || []).reduce(function (a, e) {
       var l = typeof e === 'string' ? { fieldId: 0, slotOrder: 0, slotLabel: e, reqText: '' } : e, label = l.fieldId ? slotName(G, l.fieldId, l.slotOrder) : clean(l.slotLabel);
-      if (!a.some(function (x) { return x.label === label; })) a.push({ label: label, req: clean(l.reqText) });
+      var short = l.fieldId && l.slotOrder ? (G.EB_FIELD_CONDITIONS[l.fieldId] || [])[l.slotOrder - 1] : ''; /* the short text the Field pane shows */
+      if (!a.some(function (x) { return x.label === label; })) a.push({ label: label, req: clean(short || l.reqText) });
       return a;
     }, []),
     why: reasoning(G, core, rec, prefs)
@@ -337,14 +338,16 @@ function swapView(G, core, opt, rec, prefs) {
 function sectionsOf(swaps, byChain) {
   var units = [], seen = {};
   swaps.forEach(function (s) {
-    if (!s.chain) { units.push({ legs: [s], best: s }); return; }
+    if (!s.chain) { units.push({ legs: [s], free: !!s.free, today: s.gainToday, max: s.gainMax }); return; }
     if (seen[s.chain.id]) return;
     seen[s.chain.id] = 1;
     var legs = byChain[s.chain.id].slice().sort(function (a, b) { return a.chain.step - b.chain.step; });
-    units.push({ legs: legs, best: legs.reduce(function (m, x) { return x.gainMax > m.gainMax ? x : m; }, legs[0]) });
+    var today = legs.reduce(function (n, l) { return n + l.gainToday; }, 0);
+    /* a linked move is free now only when NO step needs levelling and the steps together gain today */
+    units.push({ legs: legs, free: legs.every(function (l) { return !l.threshold; }) && today > 0, today: today, max: Math.max.apply(null, legs.map(function (l) { return l.gainMax; })) });
   });
   var mk = function (key, title, hint, free) {
-    var u = units.filter(function (x) { return !!x.best.free === free; }).sort(function (a, b) { return free ? b.best.gainToday - a.best.gainToday : b.best.gainMax - a.best.gainMax; });
+    var u = units.filter(function (x) { return x.free === free; }).sort(function (a, b) { return free ? b.today - a.today : b.max - a.max; });
     var out = []; u.forEach(function (x) { x.legs.forEach(function (l) { out.push(l); }); });
     return { key: key, title: title, hint: hint, swaps: out };
   };
@@ -371,7 +374,7 @@ function planModel(G, core, opt, merged, bench, prefs, siteKey) {
   }
   return {
     swaps: swaps, sections: sections, totalToday: Math.round(r.totalGainToday), totalMax: Math.round(r.totalGainAtMax), warnings: r.conditionWarnings.length,
-    nowN: swaps.filter(function (s) { return s.gainToday > 0; }).length,
+    nowN: (sections.filter(function (x) { return x.key === 'now'; })[0] || { swaps: [] }).swaps.length,
     units: unitsPlain(core, prefs), label: playstyleLabel(core, prefs), notes: notes, owned: p.owned.length, raw: r
   };
 }
@@ -413,7 +416,7 @@ function checklist(plan) {
 var Logic = {
   label: label, num: num, fmtInt: fmtInt, ageOld: ageOld, iconFile: iconFile, beastView: beastView, resolveAll: resolveAll, model: model, collFilter: collFilter, collOptions: collOptions,
   validPrefs: validPrefs, prefsFrom: prefsFrom, readPrefs: readPrefs, playstyleLabel: playstyleLabel, fmtStat: fmtStat, fmtDelta: fmtDelta, reasoning: reasoning, liteBeast: liteBeast,
-  statRows: statRows, swapView: swapView, planModel: planModel, bestMove: bestMove, checklist: checklist, unitsPlain: unitsPlain, topStat: topStat, levelText: levelText, signed: signed, fname: fname, condMatches: condMatches, headline: headline, reasonLine: reasonLine, SORTS: SORTS, STAT: STAT, RARITY: RARITY, PREFS_KEY: PREFS_KEY
+  statRows: statRows, swapView: swapView, planModel: planModel, sectionsOf: sectionsOf, bestMove: bestMove, checklist: checklist, unitsPlain: unitsPlain, topStat: topStat, levelText: levelText, signed: signed, fname: fname, condMatches: condMatches, headline: headline, reasonLine: reasonLine, SORTS: SORTS, STAT: STAT, RARITY: RARITY, PREFS_KEY: PREFS_KEY
 };
 root.ArmoryBeastsLogic = Logic;
 if (typeof module !== 'undefined' && module.exports) module.exports = Logic;
@@ -668,7 +671,7 @@ function copyBtn() { return '<button class="btn" type="button" data-bsa="copy">'
 function planPane() {
   var P = plan, laterN = P.swaps.length - P.nowN;
   var top = '<div class="card bst-top" style="display:flex;flex-direction:column;gap:8px"><p class="t13 muted">' + nd('For ' + P.units) + ' · <button class="tb link" type="button" data-bsa="edit">Change</button></p>' +
-    '<p class="bst-hl">' + nd(P.swaps.length + (P.swaps.length === 1 ? ' swap' : ' swaps') + ': ' + P.nowN + ' better today, ' + laterN + ' better once levelled') + '</p>' +
+    '<p class="bst-hl">' + nd(P.swaps.length + (P.swaps.length === 1 ? ' swap' : ' swaps') + ': ' + P.nowN + ' free now, ' + laterN + ' after levelling') + '</p>' +
     '<p class="t13 muted">' + nd('In total: ' + Logic.signed(P.totalToday) + ' buff score today, ' + Logic.signed(P.totalMax) + ' when every new beast is fully levelled.') + ' <button class="info" type="button" data-open="bstscore" aria-label="How the buff score works">' + ic('info', 'sm') + '</button></p>' +
     (P.swaps.length ? '<div class="bst-acts">' + copyBtn() + '</div>' : '') + '</div>';
   var notes = P.notes.map(function (n) { return '<div class="bst-note">' + nd(n.t) + (n.update && !readOnly() ? ' <button class="tb link" type="button" data-open="status">Update</button>' : '') + '</div>'; }).join('');
@@ -690,7 +693,11 @@ function loadOpt(cb, bad) {
   if (optQ) { optQ.push([cb, bad]); return; }
   optQ = [[cb, bad]];
   var sc = document.createElement('script'); sc.src = 'armory-beasts-opt.js';
-  sc.onload = function () { opt = window.ArmoryBeastsOpt.create(core); var q = optQ; optQ = null; q.forEach(function (p) { p[0](opt); }); };
+  sc.onload = function () {
+    var q = optQ; optQ = null;
+    try { opt = window.ArmoryBeastsOpt.create(core); } catch (e) { if (window.console) console.warn(e); q.forEach(function (p) { p[1](); }); return; } /* a script that loads but cannot start is a failed load */
+    q.forEach(function (p) { p[0](opt); });
+  };
   sc.onerror = function () { var q = optQ; optQ = null; q.forEach(function (p) { p[1](); }); }; /* every waiter hears about the failure */
   document.body.appendChild(sc);
 }
