@@ -374,14 +374,15 @@ var EXPECTED = [
   /* 11. Beasts (phase 3): Field, Collection, Optimizer */
   var bHas = !!S.vm.beasts;
   await visit('beasts/field'); await sleep(300);
-  var bF = $$('#v-beasts [data-pane="field"] .bst-card'), bOpen = $$('#v-beasts [data-pane="field"] .bst-card.is-open'), bSl = bOpen[0] ? bOpen[0].querySelectorAll('.bst-slot').length : 0;
+  var bF = $$('#v-beasts [data-pane="field"] .bst-card'), bOpen = $$('#v-beasts [data-pane="field"] .bst-card.is-open'), bSl = 0;
   var bNoF = !bF.length && !!$('#v-beasts [data-pane="field"] .empty');
-  log(bHas ? (bF.length > 0 && bOpen.length === 1 && bSl > 0) : bNoF, 'Beasts Field: a card per field, one open (the one with most beasts) showing its slot cards, or the empty state without game data', bHas ? bF.length + ' fields, ' + bOpen.length + ' open, ' + bSl + ' slots in it' : 'empty state');
+  log(bHas ? (bF.length > 0 && bOpen.length === 0 && !$('#v-beasts .bst-sum') && !!$('#v-beasts .bst-line')) : bNoF, 'Beasts Field: one summary line (no tile row) and a card per field, all collapsed unless ?field= names one, or the empty state without game data', bHas ? bF.length + ' fields, ' + bOpen.length + ' open' : 'empty state');
   var bTg = $$('#v-beasts [data-bsto]')[1], bWas = bTg ? bTg.getAttribute('aria-expanded') : null;
   if (bTg) { bTg.click(); await sleep(60); }
   log(!bTg || $$('#v-beasts [data-bsto]')[1].getAttribute('aria-expanded') !== bWas, 'Beasts Field: a field opens and closes from its header', bTg ? bWas + ' -> ' + $$('#v-beasts [data-bsto]')[1].getAttribute('aria-expanded') : 'no fields');
+  bSl = $$('#v-beasts [data-pane="field"] .bst-card.is-open .bst-slot').length;
   var bTxt = ($('#v-beasts [data-pane="field"]') || { textContent: '' }).textContent;
-  log(!bHas || (/Active|Inactive/.test(bTxt) && /Potential/.test(bTxt) && /\d+%/.test(bTxt)), 'Beasts Field: status, slot count and potential are on screen', bHas ? 'ok' : 'empty state');
+  log(!bHas || !bTg || (bSl > 0 && /\d+ of \d+ slots/.test(bTxt) && /Potential/.test(bTxt) && /\d+%/.test(bTxt) && /Slot bonus needs|No slot buffs|Empty/.test(bTxt)), 'Beasts Field: slot count, potential and the slot bonus rule are on screen once a field is open', bHas ? bSl + ' slot cards' : 'empty state');
   await visit('beasts/collection'); await sleep(200);
   var bC = $$('#v-beasts [data-pane="collection"] .bst-c').length, bAll = bHas ? S.vm.beasts.collected : 0;
   var bTally = ($('#v-beasts .bst-tally') || { textContent: '' }).textContent;
@@ -393,18 +394,21 @@ var EXPECTED = [
   } else if (bHas) { var bS = $$('#v-beasts select[data-bsf]'); log(bS.length === 5 && bS.every(function (x) { return x.getBoundingClientRect().height >= 39.5; }), 'Beasts Collection: inline filters at 40 px+ on desktop', bS.length + ' selects'); }
   if (bHas && bC) { $('#v-beasts [data-pane="collection"] [data-bst]').click(); await sleep(250); var bSh = ($('#sheetB') || { textContent: '' }).textContent; log(/Main buff/.test(bSh) && /Potential/.test(bSh), 'Beasts: tapping a beast opens its sheet (main buff, base buffs, potential)', bSh.slice(0, 40)); A.closeSheet(true); }
   await visit('beasts/optimizer'); await sleep(900);
-  var bO = $('#v-beasts [data-pane="optimizer"]'), bWiz = bO.querySelectorAll('[data-bsw^="mode:"]').length, bPlan = bO.querySelectorAll('.bst-sw').length, bTot = /Total power score gain/.test(bO.textContent), bOk = /already the best/.test(bO.textContent);
-  log(!bHas ? !!bO.querySelector('.empty') : (bWiz === 3 || bTot), 'Beasts Optimizer: the playstyle chooser (3 choices) before preferences are saved, or the plan with its totals', bWiz ? bWiz + ' choices' : bPlan + ' swaps' + (bOk ? ', already best' : ''));
+  var bO = $('#v-beasts [data-pane="optimizer"]'), bWiz = bO.querySelectorAll('[data-bsw^="unit:"]').length, bPlan = bO.querySelectorAll('.bst-sw').length, bTot = !!bO.querySelector('.bst-hl') && /buff score/.test(bO.textContent), bOk = /already the best/.test(bO.textContent);
+  log(!bHas ? !!bO.querySelector('.empty') : (bWiz === 3 || bTot || bOk), 'Beasts Optimizer: the one-screen unit chooser (3 chips) before preferences are saved, or the plan with its header', bWiz ? bWiz + ' choices' : bPlan + ' swaps' + (bOk ? ', already best' : ''));
   var bLost = [], bAb = [];
   for (var br = 0; br < 3; br++) {
     await visit(['beasts/field', 'beasts/collection', 'beasts/optimizer'][br]); await sleep(br === 2 ? 900 : 200);
     $$('#v-beasts *').forEach(function (el) { if (!/flex|grid/.test(getComputedStyle(el).display) || !el.children.length) return; Array.prototype.forEach.call(el.childNodes, function (n) { if (n.nodeType === 3 && /\S/.test(n.nodeValue) && (/^\s/.test(n.nodeValue) || /\s$/.test(n.nodeValue))) bLost.push((el.className || el.tagName) + ' "' + n.nodeValue.trim().slice(0, 16) + '"'); }); });
-    var bT = $('#v-beasts').innerText, bm = bT.match(/\bATK\b|\bDEF\b|\bRES\b|\((off|def)\)|\bAF\b|DMG[+-]|Slot\d|Lv\d/); if (bm) bAb.push(bm[0]);
+    var bT = $('#v-beasts').innerText, bm = bT.match(/\bATK\b|\bDEF\b|\bRES\b|\((off|def)\)|\bAF\b|DMG[+-]|Slot\d|Lv\d|CPNT|\bAll (?!units|Forces)|\bAir (?!Force)|DMG Increase|HP Boost|\d\.\d{3}%|imported \d|power score/); if (bm) bAb.push(bm[0]);
   }
   log(bLost.length === 0, 'Beasts: no text node with an edge space directly inside a flex or grid parent', bLost.slice(0, 3).join(' | ') || 'none');
-  log(bAb.length === 0, 'Beasts: stats and buffs are written out (no ATK, DEF, RES, (off), (def), AF, "Slot1", "Lv30")', bAb.join(' ') || 'none');
+  log(bAb.length === 0, 'Beasts: one vocabulary with HT and Heroes (no ATK, DEF, RES, (off), (def), AF, CPNT, bare "All" or "Air", DMG Increase, HP Boost, 3 decimals, "imported 4 months", "power score", "Slot1", "Lv30")', bAb.join(' ') || 'none');
   log(!/\p{Extended_Pictographic}/u.test($('#v-beasts').textContent.replace(/[\u00A9\u00AE\u2122]/g, '')), 'Beasts: no emoji in the section', 'none');
-  log(!!$('#v-beasts a[href*="armory-report.html"][href$="#tab=enigma"]') || (!!S.advise && !!$('#v-beasts a[href*="armory-report.html?advise="]')), 'Beasts: a small "Open in classic" link in the section footer (the advisor view links its own classic page)', $('#v-beasts a[href*="armory-report.html"]') ? $('#v-beasts a[href*="armory-report.html"]').getAttribute('href') : 'missing');
+  var bLinks = $$('#v-beasts a[href*="armory-report.html"]').length;
+  log(bLinks <= 1 && (!bHas || bLinks === 0 || /Breeding priorities/.test($('#v-beasts a[href*="armory-report.html"]').textContent)), 'Beasts: a classic link only on the plan, and it names what classic has more of (breeding priorities)', $('#v-beasts a[href*="armory-report.html"]') ? $('#v-beasts a[href*="armory-report.html"]').getAttribute('href') : 'missing');
+  var bSw = $('#v-beasts .bst-sw');
+  if (bSw) { var bId = bSw.id.replace('bsw-', ''); await visit('beasts/optimizer?swap=' + bId); await sleep(900); log(!!$('#v-beasts .bst-sw.is-sel'), 'Beasts Optimizer: ?swap= marks that swap card (the Next move deep link)', bId); }
   await visit('beasts/field');
   /* routes: the legacy #tab= ids resolve to a view */
   await visit('overview'); window.scrollTo(0, 0);
