@@ -9,7 +9,8 @@ function $$(s, r) { return Array.prototype.slice.call((r || document).querySelec
 function log(ok, name, detail) { RES.push({ ok: ok, name: name, detail: detail || '' }); console.log('[check] ' + (ok === null ? 'INFO' : ok ? 'PASS' : 'FAIL') + ' ' + name + (detail ? ' :: ' + detail : '')); }
 function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 /* Google Translate's widget is third-party markup (.goog-te-*, .skiptranslate, iframe.goog-te-*): its text and controls are not ours to size, so the size and target checks skip them. Our own CSS still sizes its select (checked on its own below). */
-var THIRD = '.goog-te-gadget, .goog-te-combo, [class*="goog-te-"], .skiptranslate, iframe.goog-te-banner-frame, #google_translate_element';
+var THIRD = '.goog-te-gadget, .goog-te-combo, [class*="goog-te-"], [class*="VIpgJd-"], .skiptranslate, iframe.goog-te-banner-frame, #google_translate_element, #goog-gt-tt';
+/* [class*="VIpgJd-"] is the widget's current spinner / banner markup (its spinner runs an infinite animation after a translate) */
 function third(el) { return !!(el && el.closest && el.closest(THIRD)); }
 function vis(el) {
   if (!el.getClientRects().length) return false;
@@ -207,7 +208,7 @@ var EXPECTED = [
   log(trBad.length === 0, 'numbers, codes and names carry translate="no"', trBad.length + ' text nodes without it' + (trBad.length ? ': ' + trBad.slice(0, 4).join(' | ') : ''));
 
   /* visual rules */
-  var radBad = {}, shBad = 0, gradBad = [], loopBad = 0, upBad = [];
+  var radBad = {}, shBad = 0, gradBad = [], loopBad = 0, loopNames = [], upBad = [];
   $$('body *').forEach(function (el) {
     if ((el.closest('svg') && el.tagName !== 'svg') || el.closest('#fw-overlay, #fw-hdr-btn') || third(el)) return;
     var cs = getComputedStyle(el), r = el.getBoundingClientRect();
@@ -217,18 +218,20 @@ var EXPECTED = [
     });
     if (cs.boxShadow !== 'none' || cs.textShadow !== 'none') shBad++;
     if (cs.backgroundImage.indexOf('gradient') >= 0 && !el.classList.contains('gcard')) gradBad.push(el.className);
-    if (cs.animationIterationCount === 'infinite') loopBad++;
+    /* the fk boats loader orbits only while a load is pending (#main aria-busy); the check is about the ready page */
+    if (cs.animationIterationCount.indexOf('infinite') >= 0 && !el.closest('[aria-busy="true"]')) { loopBad++; loopNames.push(String(el.className && el.className.baseVal != null ? el.className.baseVal : el.className || el.tagName)); }
     if (cs.textTransform === 'uppercase' && !el.closest('.title')) upBad.push(el.className || el.tagName);
     if (cs.letterSpacing !== 'normal' && cs.letterSpacing !== '0px' && !el.closest('.title')) upBad.push('tracking ' + (el.className || el.tagName));
   });
   log(Object.keys(radBad).length === 0, 'radii only 0 / 4 / 6 / 12 / circle', Object.keys(radBad).slice(0, 4).join(' | '));
   log(shBad === 0, 'no shadows', shBad + ' elements');
   log(gradBad.length === 0, 'no gradients except the gold gear tint', gradBad.slice(0, 3).join(' | '));
-  log(loopBad === 0, 'nothing loops, glows or cycles', loopBad + ' infinite animations');
+  log(loopBad === 0, 'nothing loops, glows or cycles', loopBad + ' infinite animations' + (loopNames.length ? ': ' + loopNames.slice(0, 3).join(' | ') : ''));
   log(upBad.length === 0, 'all caps and tracking only on display section titles', upBad.slice(0, 3).join(' | '));
   var rm = false; Array.prototype.forEach.call(document.styleSheets, function (ss) { var rules; try { rules = ss.cssRules; } catch (e) { return; } Array.prototype.forEach.call(rules, function (r) { if (r.type === 4 && /prefers-reduced-motion/.test(r.conditionText || r.media.mediaText)) rm = true; }); });
   log(rm, 'prefers-reduced-motion turns transitions off', rm ? 'rule present' : 'missing');
-  var imgs = $$('img'), imgBad = imgs.filter(function (m) { return !/^https:\/\/(raw\.githubusercontent\.com|h5\.topwargame\.com|knight-cdn\.akamaized\.net)\//.test(m.src); });
+  /* the Google Translate widget's own logo (gstatic) is third-party markup, same exclusion as the size checks; our images stay strict */
+  var imgs = $$('img').filter(function (m) { return !third(m); }), imgBad = imgs.filter(function (m) { return !/^https:\/\/(raw\.githubusercontent\.com|h5\.topwargame\.com|knight-cdn\.akamaized\.net)\//.test(m.src); });
   log(imgBad.length === 0, 'images only from origins the live CSP allows', imgs.length + ' images' + (imgBad.length ? ', bad: ' + imgBad[0].src : ''));
   var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-advice|armory-advice-flows|armory-check|feedback-widget)\.js$|^https:\/\/translate\.googleapis\.com\//.test(s); });
   log(badSrc.length === 0, 'scripts only from this site and Google Translate', scripts.length + ' script tags' + (badSrc.length ? ', unexpected: ' + badSrc.join(', ') : ''));
