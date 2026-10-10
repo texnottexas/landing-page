@@ -49,8 +49,8 @@ function overflow() {
   });
   return bad;
 }
-var ROUTES = ['overview', 'heroes/battle', 'heroes/roster', 'heroes/gear', 'heroes/gear?view=runes', 'heroes/advice', 'base', 'beasts', 'ht'];
-function visit(r) { A.go(r); A.applyRoute(false); return sleep(/advice/.test(r) ? 700 : 70); }
+var ROUTES = ['overview', 'heroes/battle', 'heroes/roster', 'heroes/gear', 'heroes/gear?view=runes', 'heroes/advice', 'base', 'beasts', 'ht/loadouts', 'ht/pool'];
+function visit(r) { A.go(r); A.applyRoute(false); return sleep(/advice/.test(r) ? 700 : /^ht/.test(r) ? 400 : 70); }
 function cyrb53(str) {
   var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (var i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
@@ -236,7 +236,7 @@ var EXPECTED = [
   /* the Google Translate widget's own logo (gstatic) is third-party markup, same exclusion as the size checks; our images stay strict */
   var imgs = $$('img').filter(function (m) { return !third(m); }), imgBad = imgs.filter(function (m) { return !/^https:\/\/(raw\.githubusercontent\.com|h5\.topwargame\.com|knight-cdn\.akamaized\.net)\//.test(m.src); });
   log(imgBad.length === 0, 'images only from origins the live CSP allows', imgs.length + ' images' + (imgBad.length ? ', bad: ' + imgBad[0].src : ''));
-  var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-advice|armory-advice-flows|armory-check|feedback-widget)\.js$|^https:\/\/translate\.googleapis\.com\//.test(s); });
+  var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-ht|armory-advice|armory-advice-flows|armory-check|feedback-widget)\.js$|^https:\/\/translate\.googleapis\.com\//.test(s); });
   log(badSrc.length === 0, 'scripts only from this site and Google Translate', scripts.length + ' script tags' + (badSrc.length ? ', unexpected: ' + badSrc.join(', ') : ''));
   S.all.gear = false; S.all.roster = false;
   A.applyRoute(false);
@@ -333,6 +333,23 @@ var EXPECTED = [
     });
   }
   log(sp.length === 0, 'no sibling text spans in a gapped flex row without a separator', sp.join(' | ') || 'none');
+  /* 10. HT (phase 3): Loadouts and Chip pool */
+  await visit('ht/loadouts'); await sleep(300);
+  var hCards = $$('#v-ht [data-pane="loadouts"] .ht-card'), hFirst = hCards[0], hSlots = hFirst ? hFirst.querySelectorAll('.ht-slot').length : 0;
+  log(hCards.length > 0 && hSlots === 7, 'HT Loadouts: a card per HT, the first open with its 7 chip slots', hCards.length + ' cards, ' + hSlots + ' slot rows in the first');
+  var hTog = $$('#v-ht [data-hto]')[1], hWas = hTog ? hTog.getAttribute('aria-expanded') : null;
+  if (hTog) { hTog.click(); await sleep(60); }
+  var hNow = hTog ? $$('#v-ht [data-hto]')[1].getAttribute('aria-expanded') : null;
+  log(!hTog || hNow !== hWas, 'HT Loadouts: a card opens and closes from its header', hTog ? hWas + ' -> ' + hNow : 'one HT only');
+  var hLv = $$('#v-ht [data-pane="loadouts"] .ht-slot:not(.ht-sel) .ht-sb').length, hMax = /at Lv\.25|of 25/.test($('#v-ht [data-pane="loadouts"]').textContent);
+  log(hLv > 0 && hMax, 'HT Loadouts: each chip shows its level and the stat it gives', hLv + ' chip rows');
+  var hEmoji = /\p{Extended_Pictographic}/u.test($('#v-ht').textContent.replace(/[\u00A9\u00AE\u2122]/g, ''));
+  log(!hEmoji, 'HT: no emoji in the section', hEmoji ? 'found one' : 'none');
+  log(/^Source: (game data|battle reports)/.test((hFirst && hFirst.querySelector('.foot') || { textContent: '' }).textContent.trim()), 'HT Loadouts: the card footer names its source', hFirst && hFirst.querySelector('.foot') ? hFirst.querySelector('.foot').textContent.trim() : 'no footer');
+  await visit('ht/pool'); await sleep(200);
+  var hHasPool = !!(S.res.supp.chips && S.res.supp.chips.chips && S.res.supp.chips.chips.length), hSels = $$('#v-ht select[data-htf]'), hPc = $$('#v-ht .ht-pc').length;
+  log(hHasPool ? (hSels.length === 7 && hPc > 0 && hPc <= 24 && hSels.every(function (x) { return x.getBoundingClientRect().height >= 40; })) : !!$('#v-ht [data-pane="pool"] .empty'), 'HT Chip pool: 7 filters (40 px+) and a first page of chips, or the empty state without an import', hHasPool ? hSels.length + ' filters, ' + hPc + ' cards' : 'empty state');
+  await visit('ht/loadouts');
   /* routes: the legacy #tab= ids resolve to a view */
   await visit('overview'); window.scrollTo(0, 0);
   var fails = RES.filter(function (r) { return r.ok === false; }).length, passes = RES.filter(function (r) { return r.ok === true; }).length;

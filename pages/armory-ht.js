@@ -17,6 +17,21 @@ var has = Object.prototype.hasOwnProperty;
 function num(v) { v = +v; return isFinite(v) ? v : 0; }
 /* basis points -> percent text, the classic HT tab's fmtPct */
 function fmtPct(v) { return (num(v) / 100).toFixed(2).replace(/\.?0+$/, '') + '%'; }
+/* the classic HT tab's "updated 4mo ago" (ts: ISO string or ms) */
+function relAge(ts, now) {
+  if (!ts) return '';
+  var ms = (now == null ? Date.now() : now) - (typeof ts === 'string' ? new Date(ts) : new Date(+ts)).getTime();
+  if (isNaN(ms) || ms < 0) return '';
+  var sec = Math.floor(ms / 1000);
+  if (sec < 60) return 'just now';
+  var m = Math.floor(sec / 60); if (m < 60) return m + 'm ago';
+  var h = Math.floor(m / 60); if (h < 24) return h + 'h ago';
+  var d = Math.floor(h / 24); if (d < 30) return d + 'd ago';
+  var mo = Math.floor(d / 30); if (mo < 12) return mo + 'mo ago';
+  return Math.floor(mo / 12) + 'y ago';
+}
+/* the game's chip stat names with the abbreviation spelled out (the page never shows AF) */
+function statName(n) { return String(n).replace(/\bAF\b/g, 'Air Force'); }
 function lookup(G, id) { var k = String(id); var lk = has.call(G.CL, k) ? G.CL[k] : null; return Array.isArray(lk) ? lk : null; }
 function pool(G, pos) { return pos === 0 ? G.RND_CORE : pos <= 3 ? G.RND_REG : G.RND_GLO; }
 /* "idx;value|idx;value" -> [{name, val}]; an index outside the pool reads as an unknown buff, a broken token is dropped */
@@ -27,7 +42,7 @@ function decodeRnd(G, str, pos) {
     var pts = p.split(';'), idx = parseInt(pts[0], 10), val = parseInt(pts[1], 10);
     if (isNaN(idx) || isNaN(val)) return;
     var bid = idx >= 0 && idx < pl.length ? pl[idx] : 0;
-    out.push({ buff: bid, name: G.BUFF_NAMES_CHIP[bid] || ('Buff #' + bid), val: val });
+    out.push({ buff: bid, name: statName(G.BUFF_NAMES_CHIP[bid] || ('Buff #' + bid)), val: val });
   });
   return out;
 }
@@ -37,7 +52,7 @@ function chipRow(G, lk, c, slot) {
   var base = lk[3] && lk[4] ? lk[4] + lk[5] * lv : null;
   return {
     slot: slot, empty: false, chipId: num(c.chipId != null ? c.chipId : c.c), lv: lv, set: lk[0], setName: G.SET_NAMES[lk[0]] || 'Unknown', icon: G.SET_ICONS[lk[0]] || '',
-    col: lk[2], rar: RARITY[lk[2]] || '', stat: lk[3] ? (G.BUFF_NAMES_CHIP[lk[3]] || ('Buff #' + lk[3])) : '',
+    col: lk[2], rar: RARITY[lk[2]] || '', stat: lk[3] ? statName(G.BUFF_NAMES_CHIP[lk[3]] || ('Buff #' + lk[3])) : '',
     now: base, max: base == null ? null : lk[4] + lk[5] * 25,
     rnd: decodeRnd(G, typeof c.rndAttrs === 'string' ? c.rndAttrs : (typeof c.r === 'string' ? c.r : ''), slot),
     coreSkill: slot === 0 && lk[6] && G.CORE_SKILL_DESCS[lk[6]] ? G.CORE_SKILL_DESCS[lk[6]] : ''
@@ -63,8 +78,8 @@ function loadout(G, mechaId, chips, extra) {
     var cm = {};
     G.getBonuses(coreSet, color).forEach(function (b) {
       var on = match >= b.count;
-      bonuses.push({ count: b.count, desc: b.desc, base: b.base, on: on });
-      if (on && b.base) { if (!(b.desc in cm)) { cm[b.desc] = 0; cumul.push(b.desc); } cm[b.desc] += b.base; }
+      bonuses.push({ count: b.count, desc: statName(b.desc), base: b.base, on: on });
+      if (on && b.base) { var dn = statName(b.desc); if (!(dn in cm)) { cm[dn] = 0; cumul.push(dn); } cm[dn] += b.base; }
     });
     cumul = cumul.map(function (d) { return { desc: d, val: cm[d] }; });
   }
@@ -142,7 +157,7 @@ function poolOptions(G, rows) {
     slot: [['', 'All slots']].concat(SLOTS.filter(function (s) { return slots[s]; }).map(function (s) { return [String(s), SLOT_LABEL[s] + ' (' + slots[s] + ')']; })),
     rar: [['', 'All rarities']].concat([5, 4, 3, 2, 1].filter(function (r) { return rars[r]; }).map(function (r) { return [String(r), RARITY[r] + ' (' + rars[r] + ')']; })),
     mecha: [['', 'All HTs']].concat(byCount(mech).map(function (k) { return [k, (k === '0' ? 'Universal' : (G.MECHA_NAMES[k] || ('HT #' + k))) + ' (' + mech[k] + ')']; })),
-    stat: [['', 'Any stat']].concat(byCount(stats).map(function (k) { return [k, (G.BUFF_NAMES_CHIP[k] || ('Buff #' + k)) + ' (' + stats[k] + ')']; })),
+    stat: [['', 'Any stat']].concat(byCount(stats).map(function (k) { return [k, statName(G.BUFF_NAMES_CHIP[k] || ('Buff #' + k)) + ' (' + stats[k] + ')']; })),
     sort: [['rarity', 'Rarity, high first'], ['level', 'Level, high first'], ['set', 'Set'], ['slot', 'Slot'], ['refine', 'Refines, most first']],
     lock: [['all', 'All'], ['locked', 'Locked only'], ['unlocked', 'Unlocked only']]
   };
@@ -169,7 +184,7 @@ function poolFilter(rows, st) {
   return out.slice().sort(sorts[st.sort] || sorts.rarity);
 }
 
-var Logic = { fmtPct: fmtPct, decodeRnd: decodeRnd, loadout: loadout, loadouts: loadouts, mothership: mothership, poolRows: poolRows, poolOptions: poolOptions, poolFilter: poolFilter, SLOT_LABEL: SLOT_LABEL, RARITY: RARITY };
+var Logic = { relAge: relAge, fmtPct: fmtPct, decodeRnd: decodeRnd, loadout: loadout, loadouts: loadouts, mothership: mothership, poolRows: poolRows, poolOptions: poolOptions, poolFilter: poolFilter, SLOT_LABEL: SLOT_LABEL, RARITY: RARITY };
 root.ArmoryHtLogic = Logic;
 if (typeof module !== 'undefined' && module.exports) module.exports = Logic;
 
@@ -179,7 +194,7 @@ var S = H.S, G = H.G, core = H.core, BASE = H.BASE, $ = H.$, $$ = H.$$, esc = H.
 var P = { set: '', slot: '', rar: '', mecha: '', stat: '', sort: 'rarity', lock: 'all', n: 24 };
 var PAGE = 24, STEP = 48, open = {}, cur = { seg: 'loadouts', q: {} }, rows = null, rowsFor = null, opts = null, wired = false;
 
-var CSS = '.ht-title{padding:16px var(--gutter) 0}.ht-title h1{font:700 var(--fs-24)/1.2 var(--display)}' +
+var CSS = '.ht-title{font:700 var(--fs-24)/1.2 var(--display)}' +
   '.ht-hd{display:flex;align-items:center;gap:12px;width:100%;min-height:var(--row);text-align:left;color:inherit}' +
   '.ht-hd .ico,.ht-hd .fb{width:48px;height:48px}.ht-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}' +
   '.ht-n{font-size:var(--fs-17);font-weight:700}.ht-m{font-size:var(--fs-13);color:var(--muted)}' +
@@ -189,7 +204,7 @@ var CSS = '.ht-title{padding:16px var(--gutter) 0}.ht-title h1{font:700 var(--fs
   '.ht-slots{margin-top:8px}.ht-slot{display:flex;align-items:flex-start;gap:12px;min-height:var(--row);padding:8px 0;border-top:1px solid var(--rule)}' +
   '.ht-slot:first-child{border-top:0}.ht-slot .ico,.ht-slot .fb{width:40px;height:40px}.ht-slot .ht-gap{width:40px;height:40px;border:1.5px dashed var(--border);border-radius:var(--r-chip);flex:none}' +
   '.ht-sb{flex:1;min-width:0}.ht-sa{font-size:var(--fs-15);font-weight:600;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}' +
-  '.ht-sa .ht-lv{font-weight:400;color:var(--muted);font-size:var(--fs-13)}.ht-sl{font-size:var(--fs-13);color:var(--muted);margin-top:2px}.ht-sl.ht-main{color:var(--text)}' +
+  '.ht-dot{color:var(--muted)}.ht-sa .ht-lv{font-weight:400;color:var(--muted);font-size:var(--fs-13)}.ht-sl{font-size:var(--fs-13);color:var(--muted);margin-top:2px}.ht-sl.ht-main{color:var(--text)}' +
   '.ht-rnd{display:flex;flex-direction:column;gap:2px;margin-top:4px;font-size:var(--fs-13);color:var(--muted)}' +
   '.ht-slot.ht-sel{background:var(--card-hi)}' +
   '.ht-q1{border-color:var(--dim)}.ht-q2{border-color:var(--ok)}.ht-q3{border-color:var(--q3)}.ht-q4{border-color:var(--q4)}.ht-q5{border-color:var(--q5)}' +
@@ -197,14 +212,14 @@ var CSS = '.ht-title{padding:16px var(--gutter) 0}.ht-title h1{font:700 var(--fs
   '.ht-bon{margin-top:8px}.ht-bon li{display:flex;align-items:center;gap:8px;min-height:32px;font-size:var(--fs-14);color:var(--muted)}' +
   '.ht-bon li.on{color:var(--text)}.ht-bon .i{width:16px;height:16px;color:var(--ok);flex:none}.ht-bon .ht-nil{width:16px;height:16px;flex:none}' +
   '.ht-tier{font-weight:700;min-width:28px}.ht-cum{margin-top:8px;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-chip)}' +
-  '.ht-cum div{display:flex;justify-content:space-between;gap:12px;font-size:var(--fs-14);padding:2px 0}.ht-cum .ht-ct{font-size:var(--fs-12);color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:700;display:block}' +
+  '.ht-cum div{display:flex;justify-content:space-between;font-size:var(--fs-14);padding:2px 0}.ht-cum .v{margin-left:12px}.ht-cum .ht-ct{font-size:var(--fs-13);color:var(--muted);font-weight:700;display:block}' +
   '.ht-cum .v{color:var(--ok);font-weight:700}.ht-vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}' +
   '.ht-ms{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:var(--fs-14);color:var(--muted);margin-top:4px}' +
   '.ht-fs{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}@media (min-width:768px){.ht-fs{grid-template-columns:repeat(4,1fr)}}' +
   '.ht-f{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-12);color:var(--muted);min-width:0}.ht-f .sel{min-width:0;width:100%}' +
   '.ht-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}' +
   '.ht-pc{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:8px;display:flex;flex-direction:column;gap:4px;min-width:0}' +
-  '.ht-pc.bound{border-width:2px}.ht-ph{display:flex;align-items:center;gap:8px}.ht-ph .ico,.ht-ph .fb{width:32px;height:32px}' +
+  '.ht-pc.bound{border-width:2px}.ht-ph{display:flex;align-items:center}.ht-ph > * + *{margin-left:8px}.ht-ph .ico,.ht-ph .fb{width:32px;height:32px}' +
   '.ht-pn{font-size:var(--fs-13);font-weight:700;line-height:1.25}.ht-pm{font-size:var(--fs-12);color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 8px}' +
   '.ht-pr{font-size:var(--fs-12);color:var(--muted);border-top:1px solid var(--rule);padding-top:4px}.ht-tally{font-size:var(--fs-13);color:var(--muted)}';
 
@@ -222,11 +237,11 @@ function needData(what) { return '<div class="empty">' + esc(what) + (readOnly()
 
 function slotRow(l, s) {
   var id = 'hts-' + l.mecha + '-' + s.slot;
-  if (s.empty) return '<li class="ht-slot" id="' + id + '"><span class="ht-gap" aria-hidden="true"></span><div class="ht-sb"><div class="ht-sa"><span>' + nd(SLOT_LABEL[s.slot]) + '</span><span class="ht-lv">Empty</span></div></div></li>';
+  if (s.empty) return '<li class="ht-slot" id="' + id + '"><span class="ht-gap" aria-hidden="true"></span><div class="ht-sb"><div class="ht-sa"><span>' + nd(SLOT_LABEL[s.slot]) + '</span><span class="ht-dot" aria-hidden="true">\u00B7</span><span class="ht-lv">Empty</span></div></div></li>';
   var stat = s.now == null ? '' : '<div class="ht-sl ht-main">' + nd(s.stat + ' +' + fmtPct(s.now) + (s.lv < 25 ? ', +' + fmtPct(s.max) + ' at Lv.25' : '')) + '</div>';
   var core_ = s.coreSkill ? '<div class="ht-sl ht-main">' + esc(s.coreSkill) + '</div>' : '';
   var rnd = s.rnd.length ? '<div class="ht-rnd">' + s.rnd.map(function (r) { return '<span>' + nd(r.name + ' +' + fmtPct(r.val)) + '</span>'; }).join('') + '</div>' : '';
-  return '<li class="ht-slot" id="' + id + '">' + icon(s.icon, 'ht-q' + s.col, String(s.slot), s.setName) + '<div class="ht-sb"><div class="ht-sa"><span>' + nd(SLOT_LABEL[s.slot]) + '</span><span class="ht-lv">' + nd([s.rar, s.lv > 0 ? 'Lv.' + s.lv + ' of 25' : (s.slot === 0 ? '' : 'Lv.0 of 25')].filter(Boolean).join(' \u00B7 ')) + '</span></div>' +
+  return '<li class="ht-slot" id="' + id + '">' + icon(s.icon, 'ht-q' + s.col, String(s.slot), s.setName) + '<div class="ht-sb"><div class="ht-sa"><span>' + nd(SLOT_LABEL[s.slot]) + '</span><span class="ht-dot" aria-hidden="true">\u00B7</span><span class="ht-lv">' + nd([s.rar, s.lv > 0 ? 'Lv.' + s.lv + ' of 25' : (s.slot === 0 ? '' : 'Lv.0 of 25')].filter(Boolean).join(' \u00B7 ')) + '</span></div>' +
     '<div class="ht-sl">' + nm(s.setName) + '</div>' + stat + core_ + rnd + '</div></li>';
 }
 function setBlock(l) {
@@ -244,7 +259,7 @@ function card(l, key, isOpen, extra) {
   var pills = (l.fights ? '<span class="pill ht-pill">Fights with</span>' : '') + (l.mixed ? '<span class="pill">' + nd('Mixed: ' + l.mixed.map(function (m) { return m.n + ' ' + m.name; }).join(' + ')) + '</span>' : '');
   var strip = !isOpen ? '<div class="ht-strip">' + l.slots.filter(function (s) { return !s.empty; }).map(function (s) { return icon(s.icon, 'ht-q' + s.col, String(s.slot), ''); }).join('') + '</div>' : '';
   var body = isOpen ? '<ul class="ht-slots">' + l.slots.map(function (s) { return slotRow(l, s); }).join('') + '</ul>' + setBlock(l) : '';
-  var src = l.source ? '<p class="foot" style="margin-top:12px">' + nd('Source: ' + l.source + (l.ts ? ', imported ' + core._ar_freshnessAge(l.ts) : '')) + '</p>' : '';
+  var src = l.source ? '<p class="foot" style="margin-top:12px">' + nd('Source: ' + l.source + (l.ts ? ', imported ' + Logic.relAge(l.ts) : '')) + '</p>' : '';
   return '<section class="card ht-card" id="htc-' + key + '"><button class="ht-hd" type="button" data-hto="' + key + '" aria-expanded="' + isOpen + '">' + mIcon(l.mecha) + '<span class="ht-t"><span class="ht-n" translate="no">' + esc(l.name) + '</span><span class="ht-m">' + nd(meta.join(' · ')) + '</span>' + (pills ? '<span class="ht-pills">' + pills + '</span>' : '') + '</span>' + ic('chev', 'ht-chev') + '</button>' + (extra || '') + strip + body + (isOpen ? src : '') + '</section>';
 }
 
@@ -297,16 +312,17 @@ function poolPane() {
   var sels = F.map(function (f) {
     return '<label class="ht-f"><span>' + esc(f[1]) + '</span><select class="sel" data-htf="' + f[0] + '">' + opts[f[0]].map(function (o) { return '<option value="' + esc(o[0]) + '"' + (/\d/.test(o[1]) ? ' translate="no"' : '') + (String(P[f[0]]) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select></label>';
   }).join('');
-  var age = c.ts ? ' · updated ' + core._ar_freshnessAge(new Date(c.ts).getTime()) : '';
+  var age = c.ts ? ' · updated ' + Logic.relAge(c.ts) : '';
   return '<p class="t13 muted">' + nd(rows.length + ' chips' + age) + '</p><div class="ht-fs">' + sels + '</div><div id="htPoolList" style="display:flex;flex-direction:column;gap:12px">' + poolList() + '</div>' +
     '<p class="foot">Chips in your game data. A chip bound to an HT is equipped on it. Source: game data.</p>' + classicLink();
 }
 
+var TITLE = '<h1 class="ht-title">Heavy Troopers (HT)</h1>';
 function paint() {
   var v = $('#v-ht'); if (!v || !S.vm || !S.res) return;
   injectCss();
   var segs = '<div class="segs"><div class="segs-in" role="tablist">' + [['loadouts', 'Loadouts'], ['pool', 'Chip pool']].map(function (s) { return '<button type="button" role="tab" data-seg="' + s[0] + '" aria-selected="false" data-go="ht/' + s[0] + '">' + esc(s[1]) + '</button>'; }).join('') + '</div></div>';
-  v.innerHTML = '<div class="ht-title"><h1>Heavy Troopers (HT)</h1></div>' + segs + '<div class="vb" data-pane="loadouts">' + loadoutsPane() + '</div><div class="vb" data-pane="pool">' + poolPane() + '</div>';
+  v.innerHTML = segs + '<div class="vb" data-pane="loadouts">' + TITLE + loadoutsPane() + '</div><div class="vb" data-pane="pool">' + TITLE + poolPane() + '</div>';
   show();
 }
 function show() {

@@ -154,3 +154,21 @@ test('cleanChips keeps whole-number bound-HT fields only (numbers and digit stri
   assert.equal(VM.cleanChips(cs).ts, 't'); assert.equal(cs.chips.length, 11, 'the input is not changed');
   assert.equal(VM.cleanChips(null), null); assert.deepEqual(VM.cleanChips({ ts: 1 }), { ts: 1 });
 });
+
+test('relAge is the classic one: just now, minutes, hours, days, months, years; empty for nothing, the future or garbage', () => {
+  const n = 1e12, M = 60000;
+  assert.equal(L.relAge(n - 5000, n), 'just now'); assert.equal(L.relAge(n - 5 * M, n), '5m ago'); assert.equal(L.relAge(n - 3 * 60 * M, n), '3h ago');
+  assert.equal(L.relAge(n - 2 * 86400000, n), '2d ago'); assert.equal(L.relAge(n - 125 * 86400000, n), '4mo ago'); assert.equal(L.relAge(n - 800 * 86400000, n), '2y ago');
+  assert.equal(L.relAge('', n), ''); assert.equal(L.relAge(n + M, n), ''); assert.equal(L.relAge('not a date', n), '');
+  assert.equal(L.relAge(new Date(n - 5 * M).toISOString(), n), '5m ago');
+});
+
+test('the page never shows the AF abbreviation: rolled stats, the stat filter and set bonuses say Air Force', () => {
+  const idx = G.RND_GLO.findIndex((b) => /\bAF\b/.test(G.BUFF_NAMES_CHIP[b] || ''));
+  assert.ok(idx >= 0, 'the table has an AF stat in the global pool');
+  const r = L.decodeRnd(G, idx + ';500', 4)[0];
+  assert.ok(!/\bAF\b/.test(r.name) && /Air Force/.test(r.name), r.name);
+  assert.equal(r.buff, G.RND_GLO[idx], 'the filter value is still the buff id');
+  const rows = L.poolRows(G, [{ c: 9404, lv: 1, r: idx + ';500' }]);
+  assert.ok(L.poolOptions(G, rows).stat.every((o) => !/\bAF\b/.test(o[1])));
+});
