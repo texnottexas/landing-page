@@ -1,5 +1,5 @@
-// fun-stuff.js — Fun Stuff: a small menu of fun extras, launched from the Ops Center. Its one option for now is the
-// Emoji sender: any built-in or animated chat emoji (locked packs too) to the chat that's open, through the game's
+// fun-stuff.js — Emoji Sender (the Ops tile was "Fun Stuff" until 2026-10-09), launched from the Ops Center:
+// any built-in or animated chat emoji (locked packs too) to the chat that's open, through the game's
 // own send functions (newChatController sendEmotionGroup / sendGIFGroup). Nothing goes out without a tap; at most
 // one every 3 s, each on the shared Ops request clock. Art and IDs come from texnottexas/tw-emoji-assets on
 // jsDelivr, pinned to a commit. Rules live in fun-stuff-core.js (window.FunStuffCore); this file talks to the game
@@ -8,9 +8,9 @@
   'use strict';
   if (window.__FUN && window.__FUN.open && document.getElementById('fun-root')) { window.__FUN.flash(); return; }
   var C = window.FunStuffCore;
-  if (!C) { try { alert('Fun Stuff did not load fully. Try again.'); } catch (e) {} return; }
+  if (!C) { try { alert('Emoji Sender did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-08';
+  var VERSION = '2026-10-09';
   var CDN = window.__FUN_CDN || 'https://cdn.jsdelivr.net/gh/texnottexas/tw-emoji-assets@44aa813c42e1d8d5ebf57453f69c8762642da5de';
   var LS_RECENT = 'fun_recent_v1', GIF_FLOOR_CFG = 630051;  // GameTools config: the level animated emojis need
 
@@ -47,7 +47,7 @@
 
   // ---------------------------------------------------------------- state
   var recentRaw = lsGet(LS_RECENT);
-  var S = { view: 'menu', cat: null, catErr: '', loading: false, tab: null, lastAt: 0, busy: false, stopped: '',
+  var S = { view: 'emoji', cat: null, catErr: '', loading: false, tab: null, lastAt: 0, busy: false, stopped: '',
     recent: Array.isArray(recentRaw) ? recentRaw.filter(function (k) { return typeof k === 'string'; }).slice(0, C.RECENT_MAX) : [] };
   var byKey = {};
 
@@ -104,8 +104,6 @@
     '#fun-root button{font:inherit;color:#e6edf3;cursor:pointer}',
     '#fun-root .fun-icon{flex:none;width:36px;height:36px;padding:0;border:0;border-radius:8px;background:transparent;color:#8b949e;display:grid;place-items:center}',
     '#fun-root .fun-icon:hover{color:#e6edf3;background:#1c2128}',
-    '#fun-root .fun-opt{display:block;width:100%;min-height:44px;margin-top:4px;border:1px solid #30363d;border-radius:8px;background:#1c2128;text-align:left;padding:8px 12px}',
-    '#fun-root .fun-opt:hover{border-color:#79c0ff}#fun-root .fun-opt small{display:block;color:#8b949e;font-size:12px;font-weight:400}',
     '#fun-root .fun-to{color:#79c0ff;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px}',
     '#fun-root .fun-tabs{display:flex;gap:4px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}#fun-root .fun-tabs::-webkit-scrollbar{display:none}',
     '#fun-root .fun-tab{flex:none;min-width:44px;height:44px;padding:0 8px;border:1px solid #30363d;border-radius:8px;background:transparent;color:#8b949e;display:grid;place-items:center;font-size:12px;font-weight:600}',
@@ -142,26 +140,14 @@
     if (root && root.parentNode) root.parentNode.removeChild(root);
     root = null; window.__FUN.open = false;
   }
-  function head(title, back) {
+  function head(title) {
     card.textContent = '';
     var h = el('div', 'fun-head');
-    if (back) h.appendChild(iconButton('fun-back', 'Back', 'M15 6l-6 6 6 6', showMenu));
     h.appendChild(el('span', 'fun-title', title));
     h.appendChild(iconButton('fun-close', 'Close', 'M6 6l12 12M18 6L6 18', close));
     card.appendChild(h);
   }
   function status(text) { var s = document.getElementById('fun-status'); if (s && s.textContent !== text) { s.textContent = text; s.title = text; } }
-
-  function showMenu() {
-    S.view = 'menu';
-    if (timer) { clearInterval(timer); timer = null; }
-    head('Fun Stuff', false);
-    var b = el('button', 'fun-opt'); b.id = 'fun-emoji'; b.type = 'button';
-    b.appendChild(el('span', null, 'Emoji sender'));
-    b.appendChild(el('small', null, 'Any emoji, locked packs too, to the chat you have open'));
-    b.addEventListener('click', function () { S.view = 'emoji'; loadCatalog(); showEmoji(); });
-    card.appendChild(b);
-  }
 
   function tabs() {
     var out = [{ id: 'recent', label: 'Recent' }];
@@ -177,7 +163,7 @@
     return S.cat.emojis.filter(function (e) { return e.kind === 'static' && String(e.pack) === tab; });
   }
   function showEmoji() {
-    head('Emoji sender', true);
+    head('Emoji Sender');
     var to = el('div', 'fun-to'); to.id = 'fun-to'; to.setAttribute('translate', 'no'); card.appendChild(to);
     var tb = el('div', 'fun-tabs'); tb.id = 'fun-tabs'; tb.setAttribute('role', 'tablist'); card.appendChild(tb);
     var grid = el('div', 'fun-grid'); grid.id = 'fun-grid'; card.appendChild(grid);
@@ -219,5 +205,6 @@
     close: close
   };
   ensureRoot();
-  showMenu();
+  // Renamed from Fun Stuff (Tex, 2026-10-09): the tile opens straight into the picker.
+  S.view = 'emoji'; loadCatalog(); showEmoji();
 })();

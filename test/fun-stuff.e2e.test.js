@@ -70,15 +70,17 @@ const waitSends = (page, n) => page.waitForFunction((k) => __fake.emoji.length >
 const waitText = (page, sel, re, timeout) => page.waitForFunction(([s, r]) => { const e = document.querySelector(s); return !!e && new RegExp(r).test(e.textContent); }, [sel, re.source], { timeout: timeout || 6000 });
 const strip = (s) => s.map((x) => { const o = Object.assign({}, x); delete o.at; return o; });
 async function picker(page) {
-  await page.click('#fun-emoji');
   await page.waitForSelector('#fun-grid button[data-key]');
 }
 const tap = (page, key) => page.click('#fun-grid button[data-key="' + key + '"]');
 const tab = (page, id) => page.click('#fun-tabs button[data-tab="' + id + '"]');
 
-test('the tile opens the Fun Stuff menu (a fixed screen on <body>); Emoji sender opens the picker', async () => {
+test('the tile opens straight into the Emoji Sender picker (a fixed screen on <body>), with no menu or Back', async () => {
   const { ctx, page } = await open();
-  await waitText(page, '#fun-root', /Fun Stuff/);
+  await waitText(page, '#fun-root .fun-title', /^Emoji Sender$/);
+  assert.equal(await page.$('#fun-emoji'), null, 'no one-item menu');
+  assert.equal(await page.$('#fun-back'), null, 'nothing to go back to');
+  assert.ok(!/Fun Stuff/.test(await page.textContent('#fun-root')));
   const pos = await page.$eval('#fun-root', (e) => ({ parent: e.parentNode === document.body, pos: getComputedStyle(e).position, z: Number(getComputedStyle(e).zIndex) }));
   assert.deepEqual([pos.parent, pos.pos], [true, 'fixed']);
   assert.ok(pos.z >= 1000);
@@ -189,7 +191,6 @@ test('rapid taps: only the first goes out inside 3 s, with a countdown', async (
 test('emoji list down: the card says so and nothing can be sent', async () => {
   cdnMode = 'down';
   const { ctx, page } = await open();
-  await page.click('#fun-emoji');
   await waitText(page, '#fun-root', /Emoji list unavailable/);
   assert.equal(await page.$$eval('#fun-grid button[data-key]', (b) => b.length), 0);
   assert.equal((await sends(page)).length, 0);

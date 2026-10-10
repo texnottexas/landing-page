@@ -15,13 +15,15 @@ const cpLine = read('.github/workflows/pages.yml').split('\n').find((l) => l.inc
 test('every tool in ops-tools.json passes validation', () => {
   assert.equal(list.tools.length, raw.tools.length);
   assert.deepEqual(list.tools.map((t) => t.title), [
-    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Fun Stuff'
+    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Rickroll'
   ]);
   const ads = list.tools.find((t) => t.id === 'alliance-defense');
   assert.deepEqual(ads.ready, ['game'], 'no defender panel needed: it reads the event state itself');
   assert.equal(ads.overlay, '#ads-root');
   const fun = list.tools.find((t) => t.id === 'fun-stuff');
-  assert.equal(fun.gate, 'member', 'any member can launch Fun Stuff');
+  assert.equal(fun.gate, 'member', 'any member can launch Emoji Sender');
+  assert.equal(fun.title, 'Emoji Sender', 'renamed from Fun Stuff (Tex, 2026-10-09)');
+  assert.equal(fun.desc, 'Send any chat emoji, locked packs and animated ones too, to the chat you have open.');
   assert.equal(fun.overlay, '#fun-root');
   assert.equal(fun.icon, 'smile');
   assert.deepEqual(fun.scripts, ['fun-stuff-core.js', 'fun-stuff.js']);
@@ -113,4 +115,18 @@ test('rickroll.html shows only the Ops Center; the other tools are kept but hidd
   });
   assert.match(page, /TOOLS\.filter\(function\s*\(t\)\s*\{\s*return !t\.hidden;\s*\}\)\.forEach/, 'the page skips hidden tools');
   assert.match(page, /Copy the Ops Center link below/);
+});
+
+// Rickroll (Tex, 2026-10-09): the tile says "Rickroll" truthfully; the description stays generic.
+test('Rickroll tile: titled Rickroll, a generic description, for members, its own overlay, script deployed', () => {
+  const t = list.tools.find((x) => x.id === 'rickroll');
+  assert.ok(t, 'listed');
+  assert.equal(t.title, 'Rickroll');
+  assert.equal(t.desc, 'A little something for the grind.');
+  assert.ok(!/rick|roll|astley|never gonna|song|music|audio/i.test(t.desc + ' ' + t.keywords), 'the description gives nothing away');
+  assert.equal(t.gate, 'member');
+  assert.deepEqual(t.scripts, ['rickroll-audio.js']);
+  assert.deepEqual(t.ready, ['game']);
+  assert.equal(t.overlay, '#rr-root');
+  assert.equal(t.icon, 'smile');
 });

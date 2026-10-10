@@ -364,7 +364,7 @@ test('USAGE-1: a password the worker allows sees who used which tool since reset
   assert.deepEqual(await usagePlayers(page), [
     { name: 'Samson', tools: ['Mask Mystery Boxes · 12 boxes', 'Snapshot ×2'] },
     { name: 'Newbie', tools: ['brand-new-tool'] },
-    { name: '<img src=x onerror=window.__pwned=1>', tools: ['Fun Stuff ×3'] },
+    { name: '<img src=x onerror=window.__pwned=1>', tools: ['Emoji Sender ×3'] },
     { name: 'Willow', tools: ['Mask Mystery Boxes · 0 boxes'] }
   ]);
   assert.match(await page.textContent('#dash-usage-sum'), /4 players since reset/);
