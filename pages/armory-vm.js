@@ -176,7 +176,17 @@
   }
 
   // ---- beasts -----------------------------------------------------------------------------------------------------
-  function buildBeasts(merged, core, suppEnigma) {
+  // Bench-supplement beasts that are not already a deployed one (deduped by id): the one place "owned" is decided, shared by the
+  // Overview summary (collected) and Beasts > Collection (ArmoryBeastsLogic.resolveAll), as the classic Enigma tab merges them.
+  // The enigma supplement's own beast list is NOT used for this: it holds every beast the game lists, including ones the bench
+  // snapshot deliberately leaves out, so it counted more than the collection shows.
+  function benchExtra(deployedIds, bench) {
+    var seen = Object.create(null), out = [];
+    (deployedIds || []).forEach(function (id) { if (id) seen[String(id)] = true; });
+    if (bench && Array.isArray(bench.beasts)) bench.beasts.forEach(function (sb) { if (sb && typeof sb === 'object' && !seen[String(sb.id)]) out.push(sb); });
+    return out;
+  }
+  function buildBeasts(merged, core, suppBench) {
     if (!merged || !merged.enigmas) return null;
     var r = core.ebResolveBeasts(merged.enigmas);
     var deployed = 0, fields = 0, pot = 0, potMax = 0;
@@ -184,8 +194,8 @@
       if (f.deployedCount > 0) fields++;
       f.slots.forEach(function (s) { if (s.beast) { deployed++; pot += s.beast.potential || 0; potMax += s.beast.maxPotential || 0; } });
     });
-    // owned (bench included) is only known from the game data: a battle report carries the deployed beasts alone
-  var collected = suppEnigma && Array.isArray(suppEnigma.beasts) ? suppEnigma.beasts.length : null;
+    // owned (bench included) is only known from the bench snapshot: a battle report carries the deployed beasts alone
+  var collected = suppBench && Array.isArray(suppBench.beasts) ? r.beasts.length + benchExtra(r.beasts.map(function (b) { return b.id; }), suppBench).length : null;
   var fieldList = r.fields.map(function (f) {
     return {
       name: String(f.name).replace(/[<>"'&]/g, ''), deployed: +f.deployedCount || 0,
@@ -276,7 +286,7 @@
     var heroes = buildHeroes(merged, core, supp.heroes);
     var runes = buildRunes(inv, priv.gear ? null : supp.gear, priv.runepool ? null : supp.runepool, statics, core);
     var decor = buildDecor(merged, inv, statics, core);
-    var beasts = buildBeasts(merged, core, priv.enigma ? null : supp.enigma);
+    var beasts = buildBeasts(merged, core, priv.bench ? null : supp.bench);
     var ht = buildHt(merged, supp, opts.reports, opts.reportMechaIds, core);
     var header = buildHeader(opts, sources, now);
 
@@ -326,7 +336,7 @@
     };
   }
 
-  var api = { movePicks: movePicks, cleanChips: cleanChips, heroIcon: heroIcon, buildViewModel: buildViewModel, fromLoad: fromLoad, equipSlot: equipSlot, equipQuality: equipQuality, TOTAL_IDS: TOTAL_IDS };
+  var api = { benchExtra: benchExtra, movePicks: movePicks, cleanChips: cleanChips, heroIcon: heroIcon, buildViewModel: buildViewModel, fromLoad: fromLoad, equipSlot: equipSlot, equipQuality: equipQuality, TOTAL_IDS: TOTAL_IDS };
   window.ArmoryVM = api;
   if (isNode) module.exports = api;
 })(typeof window !== 'undefined' ? window : {});

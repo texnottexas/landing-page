@@ -135,6 +135,17 @@ test('chips: slot, core and colour from the chip table; empty slots listed; repo
   assert.deepStrictEqual(vm.ht.chips.filter((c) => !c.empty).map((c) => [c.c, c.lv]), [[9503, 2]]);
 });
 
+test('HT summary: count and chips match the Loadouts header; the Heavy Mothership (1008) is its own card, never one of the HTs', () => {
+  const L = require('../pages/armory-ht.js');
+  const supp = { chips: { ts: new Date(NOW - 86400000).toISOString(), chips: [{ m: 1006, c: 9503, lv: 2 }, { m: 1005, c: 8402, lv: 2 }, { m: 1008, c: 9400, lv: 1 }, { m: 1008, c: 9401, lv: 3 }] } };
+  const vm = build(baseMerged(), { supp, sources: { dataTs: NOW - 86400000, kinds: ['chips'] } });
+  const ls = L.loadouts(newCore(), require('../pages/tw-game-data.js'), baseMerged(), supp, [], null);
+  assert.equal(vm.ht.count, ls.length, 'Overview HT count = the HT cards the Loadouts tab lists');
+  assert.equal(vm.ht.chipsFilled, ls.reduce((n, l) => n + l.count, 0), 'chips equipped = the sum over those same cards');
+  assert.equal(vm.ht.chipsMax, ls.length * 7);
+  assert.ok(vm.ht.chips.every((c) => c.mecha !== 1008), 'Mothership chips are not in the HT chip totals');
+});
+
 test('decor totals: each placed piece counts its OWN base buff scaled to its level; sets, halos and the 93011xx family are never added', () => {
   const core = newCore();
   // Christmas tree (group 4200): own buff All units Attack 350 bp at its extracted level 4 -> value / 4 * level
@@ -220,8 +231,14 @@ test('beasts: deployed, fields used, collected and average potential from the re
   assert.equal(vm.beasts.collected, null, 'a report carries the deployed beasts only: owned is unknown without game data');
   assert.equal(vm.beasts.fieldList.reduce((n, f) => n + f.beasts.length, 0), dep);
   assert.ok(vm.beasts.fieldList.every((f) => f.beasts.every((b) => /^[A-Za-z0-9_. -]+\.png$/.test(b.icon))));
-  const vm2 = build(merged, { supp: { enigma: { beasts: new Array(265).fill({}) } } }, core);
-  assert.equal(vm2.beasts.collected, 265, 'collected = every beast in the game data, bench included');
+  const dupId = r.beasts[0].id;
+  const bench = { beasts: [{ id: dupId, cfgId: 1, type: 1, st: 1, lv: 1, pot: '1', q: 1, fac: 1 }].concat([1, 2, 3].map((i) => ({ id: 'b' + i, cfgId: 1, type: 1, st: 1, lv: 1, pot: '1', q: 1, fac: 1 }))) };
+  // the enigma supplement lists EVERY beast the game holds (360 on a real account), more than the bench snapshot keeps: it must not feed "collected"
+  const vm2 = build(merged, { supp: { enigma: { beasts: new Array(360).fill({}) }, bench } }, core);
+  assert.equal(vm2.beasts.collected, r.beasts.length + 3, 'collected = deployed + bench beasts (deduped by id), as Beasts > Collection counts it');
+  const L = require('../pages/armory-beasts.js');
+  assert.equal(vm2.beasts.collected, L.model(core, require('../pages/tw-game-data.js'), merged, bench).all.length, 'the Overview summary and the Collection list share one definition');
+  assert.equal(build(merged, { supp: { enigma: { beasts: new Array(360).fill({}) } } }, core).beasts.collected, null, 'no bench snapshot: owned is unknown, never the enigma list');
   assert.equal(vm.band.beasts.deployed, dep);
   assert.equal(vm.band.beasts.pct, vm.beasts.avgPotential);
   assert.deepStrictEqual(vm.moves.picks.filter((p) => p.sig === 'e'), [], 'no Optimizer move until phase 3 extracts it');

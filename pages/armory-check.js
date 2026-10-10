@@ -393,6 +393,16 @@ var EXPECTED = [
     log(bCh.length >= 9 && bSe.length === 4 && bCh.concat(bSe).every(function (x) { return x.getBoundingClientRect().height >= 39.5; }), 'Beasts Collection: the Filter and sort sheet on a phone (chips for sort and element, selects for where, beast and buffs) at 40 px+', bCh.length + ' chips + ' + bSe.length + ' selects'); A.closeSheet(true);
   } else if (bHas) { var bS = $$('#v-beasts select[data-bsf]'); log(bS.length === 5 && bS.every(function (x) { return x.getBoundingClientRect().height >= 39.5; }), 'Beasts Collection: inline filters at 40 px+ on desktop', bS.length + ' selects'); }
   if (bHas && bC) { $('#v-beasts [data-pane="collection"] [data-bst]').click(); await sleep(250); var bSh = ($('#sheetB') || { textContent: '' }).textContent; log(/Main buff/.test(bSh) && /Potential/.test(bSh), 'Beasts: tapping a beast opens its sheet (main buff, base buffs, potential)', bSh.slice(0, 40)); A.closeSheet(true); }
+  /* Overview summary numbers equal the section headers: one definition of "collected" and of "HTs with chips" */
+  await visit('overview'); await sleep(200);
+  var ovT = ($('#v-overview') || { innerText: '' }).innerText.replace(/(\d),(?=\d)/g, '$1');
+  var ovB = /(\d+) collected/.exec(ovT), ovH = /(\d+) in game data \u00B7 (\d+) of (\d+) chips equipped/.exec(ovT) || /^(\d+)\s*\n?\s*Heavy Troopers[\s\S]*?(\d+) of (\d+) chips equipped/m.exec(ovT);
+  await visit('beasts/collection'); await sleep(200);
+  var scB = /(\d+) collected/.exec(($('#v-beasts [data-pane="collection"]') || { innerText: '' }).innerText.replace(/(\d),(?=\d)/g, '$1'));
+  log(!ovB || !scB || ovB[1] === scB[1], 'Overview Beasts "collected" equals Beasts > Collection "collected"', (ovB ? ovB[1] : 'none') + ' vs ' + (scB ? scB[1] : 'none'));
+  await visit('ht/loadouts'); await sleep(200);
+  var scH = /(\d+) HTs? with chips \u00B7 (\d+) of (\d+) chips equipped/.exec(($('#v-ht') || { innerText: '' }).innerText);
+  log(!ovH || !scH || (ovH[ovH.length - 3] === scH[1] && ovH[ovH.length - 2] === scH[2] && ovH[ovH.length - 1] === scH[3]), 'Overview HT summary (HTs, chips equipped) equals the HT Loadouts header', (ovH ? ovH.slice(-3).join('/') : 'none') + ' vs ' + (scH ? scH.slice(1).join('/') : 'none'));
   await visit('beasts/optimizer'); await sleep(900);
   var bO = $('#v-beasts [data-pane="optimizer"]'), bWiz = bO.querySelectorAll('[data-bsw^="unit:"]').length, bPlan = bO.querySelectorAll('.bst-sw').length, bTot = !!bO.querySelector('.bst-hl') && /buff score/.test(bO.textContent), bOk = /already the best/.test(bO.textContent);
   log(!bHas ? !!bO.querySelector('.empty') : (bWiz === 3 || bTot || bOk), 'Beasts Optimizer: the one-screen unit chooser (3 chips) before preferences are saved, or the plan with its header', bWiz ? bWiz + ' choices' : bPlan + ' swaps' + (bOk ? ', already best' : ''));

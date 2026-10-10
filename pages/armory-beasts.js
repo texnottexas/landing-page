@@ -90,11 +90,9 @@ function beastView(G, b) {
 /* Deployed beasts from the report/enigma supplement plus the bench supplement's beasts (deduped by id), as the classic tab merges them. */
 function resolveAll(core, G, merged, bench) {
   var res = core.ebResolveBeasts((merged && merged.enigmas) || {});
-  var seen = Object.create(null);
-  res.beasts.forEach(function (b) { if (b.id) seen[String(b.id)] = true; });
-  if (bench && Array.isArray(bench.beasts)) {
-    bench.beasts.forEach(function (sb) {
-      if (!sb || typeof sb !== 'object' || seen[String(sb.id)]) return;
+  var VM = root.ArmoryVM || (typeof require === 'function' ? require('./armory-vm.js') : null);
+  if (VM && bench) {
+    VM.benchExtra(res.beasts.map(function (b) { return b.id; }), bench).forEach(function (sb) {
       res.beasts.push({
         id: sb.id, cfg: sb.cfgId, type: sb.type, faction: sb.fac, quality: sb.q, element: G.EB_ELEMENTS[sb.fac] || 'Unknown',
         name: G.ebBeastName(sb.type, sb.st), star: sb.st, level: sb.lv, potential: Number(sb.pot) || 0, maxPotential: G.ebMaxPotential(sb.q), power: 0,
