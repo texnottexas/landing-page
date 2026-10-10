@@ -258,6 +258,10 @@
     };
   }
 
+  function movePicks(mv) {
+    return mv.picks.map(function (p) { return { text: p.text, full: p.full, parts: p.fparts, meta: p.meta, pill: p.pill, cls: p.cls, sig: p.sig, route: p.route, ico: p.ico || null }; });
+  }
+
   // ---- the model --------------------------------------------------------------------------------------------------
   function buildViewModel(merged, sources, opts) {
     opts = opts || {};
@@ -281,13 +285,13 @@
       heroes: heroes.list.map(function (h) { return { name: h.name, gear: h.gear, power: h.power }; }),
       runeBag: runes.runeBag, runeSlots: runes.runeSlots, runeCost: runes.runeCost,
       decor: { shards: decor.shards, placed: decor.placed }, ht: { chips: ht.chips, reportMechas: ht.reportMechas },
-      beastMoves: [] // the Optimizer (boOptimize) is a phase 3 module; its first move joins here once it is extracted
+      beastMoves: [] // the best optimizer swap joins here after first paint, for players with saved preferences (armory-app.js beastMove)
     };
     var mv = core.nextMoves(movesInput, { max: 3 });
     var stale = sources.dataTs && (now - sources.dataTs) / DAY > STALE_DAYS ? { ts: sources.dataTs, since: shortDate(sources.dataTs) } : null;
     var moves = {
       title: header.shared ? (header.name || 'Player') + "'s next moves" : 'Next moves',
-      picks: mv.picks.map(function (p) { return { text: p.text, full: p.full, parts: p.fparts, meta: p.meta, pill: p.pill, cls: p.cls, sig: p.sig, route: p.route, ico: p.ico || null }; }),
+      picks: movePicks(mv),
       stale: stale, cta: !sources.dataTs ? 'import' : null,
       footer: stale ? 'Based on game data from ' + stale.since : (!sources.dataTs ? 'Import game data to see rune, decor and beast moves' : null)
     };
@@ -322,7 +326,7 @@
     };
   }
 
-  var api = { cleanChips: cleanChips, heroIcon: heroIcon, buildViewModel: buildViewModel, fromLoad: fromLoad, equipSlot: equipSlot, equipQuality: equipQuality, TOTAL_IDS: TOTAL_IDS };
+  var api = { movePicks: movePicks, cleanChips: cleanChips, heroIcon: heroIcon, buildViewModel: buildViewModel, fromLoad: fromLoad, equipSlot: equipSlot, equipQuality: equipQuality, TOTAL_IDS: TOTAL_IDS };
   window.ArmoryVM = api;
   if (isNode) module.exports = api;
 })(typeof window !== 'undefined' ? window : {});

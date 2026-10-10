@@ -49,8 +49,8 @@ function overflow() {
   });
   return bad;
 }
-var ROUTES = ['overview', 'heroes/battle', 'heroes/roster', 'heroes/gear', 'heroes/gear?view=runes', 'heroes/advice', 'base', 'beasts', 'ht/loadouts', 'ht/pool'];
-function visit(r) { A.go(r); A.applyRoute(false); return sleep(/advice/.test(r) ? 700 : /^ht/.test(r) ? 400 : 70); }
+var ROUTES = ['overview', 'heroes/battle', 'heroes/roster', 'heroes/gear', 'heroes/gear?view=runes', 'heroes/advice', 'base', 'beasts/field', 'beasts/collection', 'beasts/optimizer', 'ht/loadouts', 'ht/pool'];
+function visit(r) { A.go(r); A.applyRoute(false); return sleep(/advice/.test(r) ? 700 : /^(ht|beasts)/.test(r) ? 500 : 70); }
 function cyrb53(str) {
   var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (var i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
@@ -236,7 +236,7 @@ var EXPECTED = [
   /* the Google Translate widget's own logo (gstatic) is third-party markup, same exclusion as the size checks; our images stay strict */
   var imgs = $$('img').filter(function (m) { return !third(m); }), imgBad = imgs.filter(function (m) { return !/^https:\/\/(raw\.githubusercontent\.com|h5\.topwargame\.com|knight-cdn\.akamaized\.net)\//.test(m.src); });
   log(imgBad.length === 0, 'images only from origins the live CSP allows', imgs.length + ' images' + (imgBad.length ? ', bad: ' + imgBad[0].src : ''));
-  var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-ht|armory-advice|armory-advice-flows|armory-check|feedback-widget)\.js$|^https:\/\/translate\.googleapis\.com\//.test(s); });
+  var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-ht|armory-beasts|armory-beasts-opt|armory-advice|armory-advice-flows|armory-check|feedback-widget)\.js$|^https:\/\/translate\.googleapis\.com\//.test(s); });
   log(badSrc.length === 0, 'scripts only from this site and Google Translate', scripts.length + ' script tags' + (badSrc.length ? ', unexpected: ' + badSrc.join(', ') : ''));
   S.all.gear = false; S.all.roster = false;
   A.applyRoute(false);
@@ -329,31 +329,34 @@ var EXPECTED = [
       var cs = getComputedStyle(el); if (!/flex|grid/.test(cs.display) || !(parseFloat(cs.columnGap) > 0)) return;
       var kids = Array.prototype.filter.call(el.children, function (c) { return c.tagName === 'SPAN' && c.textContent.trim() && !c.hasAttribute('aria-hidden') && !c.classList.contains('dot'); });
       var oneLine = kids.length >= 2 && kids.every(function (c) { var r = c.getBoundingClientRect(); return r.height <= 26 && Math.abs(r.top - kids[0].getBoundingClientRect().top) < 4; });
-      if (oneLine && Array.prototype.filter.call(el.children, function (c) { return c.hasAttribute('aria-hidden') && /\u00B7/.test(c.textContent); }).length === 0 && !el.matches('.bm-num, .irow, .hb-1, .sechead, .chips, .nb, .stars, .buffs li, .hc-pills, .ht-pills') && sp.length < 5) sp.push(ROUTES[i] + ':' + (el.className || el.tagName) + ' "' + el.textContent.trim().slice(0, 30) + '"');
+      if (oneLine && Array.prototype.filter.call(el.children, function (c) { return c.hasAttribute('aria-hidden') && /\u00B7/.test(c.textContent); }).length === 0 && !el.matches('.bm-num, .irow, .hb-1, .sechead, .chips, .nb, .stars, .buffs li, .hc-pills, .ht-pills, .bst-reqs, .bst-pot') && sp.length < 5) sp.push(ROUTES[i] + ':' + (el.className || el.tagName) + ' "' + el.textContent.trim().slice(0, 30) + '"');
     });
   }
   log(sp.length === 0, 'no sibling text spans in a gapped flex row without a separator', sp.join(' | ') || 'none');
   /* 10. HT (phase 3): Loadouts and Chip pool */
   await visit('ht/loadouts'); await sleep(300);
   var hCards = $$('#v-ht [data-pane="loadouts"] .ht-card'), hFirst = $('#v-ht .ht-card.is-open') || hCards[0], hSlots = hFirst ? hFirst.querySelectorAll('.ht-slot').length : 0;
-  log(hCards.length > 0 && hSlots === 7, 'HT Loadouts: a card per HT, the one in battle reports (or the only one) open with its 7 chip slots', hCards.length + ' cards, ' + hSlots + ' slot rows in the first');
+  var hNoData = !hCards.length && !!$('#v-ht [data-pane="loadouts"] .empty'); /* a player with no HT in battle reports and no chip data: the empty state is the right screen */
+  log(hNoData || (hCards.length > 0 && hSlots === 7), 'HT Loadouts: a card per HT, the one in battle reports (or the only one) open with its 7 chip slots (or the empty state when there is no chip data)', hNoData ? 'no chip data: empty state' : hCards.length + ' cards, ' + hSlots + ' slot rows in the first');
   var hTog = $$('#v-ht [data-hto]')[1], hWas = hTog ? hTog.getAttribute('aria-expanded') : null;
   if (hTog) { hTog.click(); await sleep(60); }
   var hNow = hTog ? $$('#v-ht [data-hto]')[1].getAttribute('aria-expanded') : null;
   log(!hTog || hNow !== hWas, 'HT Loadouts: a card opens and closes from its header', hTog ? hWas + ' -> ' + hNow : 'one HT only');
   var hLv = $$('#v-ht [data-pane="loadouts"] .ht-slot:not(.ht-sel) .ht-sb').length, hMax = /at Lv\.25|of 25/.test($('#v-ht [data-pane="loadouts"]').textContent);
-  log(hLv > 0 && hMax, 'HT Loadouts: each chip shows its level and the stat it gives', hLv + ' chip rows');
+  log(hNoData || (hLv > 0 && hMax), 'HT Loadouts: each chip shows its level and the stat it gives', hNoData ? 'no chip data' : hLv + ' chip rows');
   var hEmoji = /\p{Extended_Pictographic}/u.test($('#v-ht').textContent.replace(/[\u00A9\u00AE\u2122]/g, ''));
   log(!hEmoji, 'HT: no emoji in the section', hEmoji ? 'found one' : 'none');
-  log(/^Source: (game data|battle reports)/.test((hFirst && hFirst.querySelector('.foot') || { textContent: '' }).textContent.trim()), 'HT Loadouts: the card footer names its source', hFirst && hFirst.querySelector('.foot') ? hFirst.querySelector('.foot').textContent.trim() : 'no footer');
+  log(hNoData || /^Source: (game data|battle reports)/.test((hFirst && hFirst.querySelector('.foot') || { textContent: '' }).textContent.trim()), 'HT Loadouts: the card footer names its source', hNoData ? 'no chip data' : hFirst && hFirst.querySelector('.foot') ? hFirst.querySelector('.foot').textContent.trim() : 'no footer');
   await visit('ht/pool'); await sleep(200);
   var hHasPool = !!(S.res.supp.chips && S.res.supp.chips.chips && S.res.supp.chips.chips.length), hPc = $$('#v-ht .ht-pc').length, hOk, hWhat;
   if (!hHasPool) { hOk = !!$('#v-ht [data-pane="pool"] .empty'); hWhat = 'empty state'; }
   else if (mobile) {
     A.openSheet('htfilter'); await sleep(250);
     var hCh = $$('#sheetB [data-htc]'), hSel = $$('#sheetB select');
-    hOk = hCh.length >= 14 && hSel.length === 3 && hPc > 0 && hPc <= 24 && hCh.concat(hSel).every(function (x) { return x.getBoundingClientRect().height >= 39.5; });
-    hWhat = hCh.length + ' chips + ' + hSel.length + ' selects in the Filter sheet, ' + hPc + ' cards'; A.closeSheet(true);
+    /* the chip count follows the pool: 5 sorts + the slots, rarities and lock states the pool actually has (a small pool has fewer than 14) */
+    var hL = window.ArmoryHtLogic, hOp = hL ? hL.poolOptions(window.TWGameData, hL.poolRows(window.TWGameData, S.res.supp.chips.chips)) : null, hWant = hOp ? hOp.sort.length + hOp.slot.length - 1 + hOp.rar.length - 1 + hOp.lock.length : 0;
+    hOk = hWant > 0 && hCh.length === hWant && hSel.length === 3 && hPc > 0 && hPc <= 24 && hCh.concat(hSel).every(function (x) { return x.getBoundingClientRect().height >= 39.5; });
+    hWhat = hCh.length + ' chips (want ' + hWant + ') + ' + hSel.length + ' selects in the Filter sheet, ' + hPc + ' cards'; A.closeSheet(true);
   } else { var hS = $$('#v-ht select[data-htf]'); hOk = hS.length === 7 && hPc > 0 && hPc <= 24 && hS.every(function (x) { return x.getBoundingClientRect().height >= 39.5; }); hWhat = hS.length + ' inline filters, ' + hPc + ' cards'; }
   log(hOk, 'HT Chip pool: filters in the Filter sheet on a phone (inline on desktop) at 40 px+, and a first page of chips, or the empty state without an import', hWhat);
   /* a flex parent trims the edge spaces of a bare text node: "Slot " + <span>1</span> reads "Slot1". Flag any such node in the HT screens. */
@@ -366,6 +369,41 @@ var EXPECTED = [
   var hStat = $$('#v-ht').map(function (e) { return e.textContent; }).join(' ');
   log(!/DMG Taken-|\bATK\b|\bINV\b|\bInc\b|\bEnh\b|\bAF\b/.test(hStat), 'HT: chip stats are written out (no DMG Taken-, ATK, INV, Inc, Enh, AF)', (hStat.match(/DMG Taken-|\bATK\b|\bINV\b|\bInc\b|\bEnh\b|\bAF\b/) || [''])[0]);
   await visit('ht/loadouts');
+  /* 11. Beasts (phase 3): Field, Collection, Optimizer */
+  var bHas = !!S.vm.beasts;
+  await visit('beasts/field'); await sleep(300);
+  var bF = $$('#v-beasts [data-pane="field"] .bst-card'), bOpen = $$('#v-beasts [data-pane="field"] .bst-card.is-open'), bSl = bOpen[0] ? bOpen[0].querySelectorAll('.bst-slot').length : 0;
+  var bNoF = !bF.length && !!$('#v-beasts [data-pane="field"] .empty');
+  log(bHas ? (bF.length > 0 && bOpen.length === 1 && bSl > 0) : bNoF, 'Beasts Field: a card per field, one open (the one with most beasts) showing its slot cards, or the empty state without game data', bHas ? bF.length + ' fields, ' + bOpen.length + ' open, ' + bSl + ' slots in it' : 'empty state');
+  var bTg = $$('#v-beasts [data-bsto]')[1], bWas = bTg ? bTg.getAttribute('aria-expanded') : null;
+  if (bTg) { bTg.click(); await sleep(60); }
+  log(!bTg || $$('#v-beasts [data-bsto]')[1].getAttribute('aria-expanded') !== bWas, 'Beasts Field: a field opens and closes from its header', bTg ? bWas + ' -> ' + $$('#v-beasts [data-bsto]')[1].getAttribute('aria-expanded') : 'no fields');
+  var bTxt = ($('#v-beasts [data-pane="field"]') || { textContent: '' }).textContent;
+  log(!bHas || (/Active|Inactive/.test(bTxt) && /Potential/.test(bTxt) && /\d+%/.test(bTxt)), 'Beasts Field: status, slot count and potential are on screen', bHas ? 'ok' : 'empty state');
+  await visit('beasts/collection'); await sleep(200);
+  var bC = $$('#v-beasts [data-pane="collection"] .bst-c').length, bAll = bHas ? S.vm.beasts.collected : 0;
+  var bTally = ($('#v-beasts .bst-tally') || { textContent: '' }).textContent;
+  log(!bHas ? !!$('#v-beasts [data-pane="collection"] .empty') : (bC > 0 && bC <= 24 && /^Showing \d+ of [\d,]+/.test(bTally.trim())), 'Beasts Collection: a first page of at most 24 beasts and a "Showing x of y" line, or the empty state', bHas ? bC + ' cards, "' + bTally.trim() + '"' : 'empty state');
+  if (bHas && mobile) {
+    A.openSheet('bstfilter'); await sleep(250);
+    var bCh = $$('#sheetB [data-bsc], #sheetB [data-bse]'), bSe = $$('#sheetB select');
+    log(bCh.length >= 9 && bSe.length === 3 && bCh.concat(bSe).every(function (x) { return x.getBoundingClientRect().height >= 39.5; }), 'Beasts Collection: the Filter and sort sheet on a phone (chips for sort and element, selects for where and buffs) at 40 px+', bCh.length + ' chips + ' + bSe.length + ' selects'); A.closeSheet(true);
+  } else if (bHas) { var bS = $$('#v-beasts select[data-bsf]'); log(bS.length === 4 && bS.every(function (x) { return x.getBoundingClientRect().height >= 39.5; }), 'Beasts Collection: inline filters at 40 px+ on desktop', bS.length + ' selects'); }
+  if (bHas && bC) { $('#v-beasts [data-pane="collection"] [data-bst]').click(); await sleep(250); var bSh = ($('#sheetB') || { textContent: '' }).textContent; log(/Main buff/.test(bSh) && /Potential/.test(bSh), 'Beasts: tapping a beast opens its sheet (main buff, base buffs, potential)', bSh.slice(0, 40)); A.closeSheet(true); }
+  await visit('beasts/optimizer'); await sleep(900);
+  var bO = $('#v-beasts [data-pane="optimizer"]'), bWiz = bO.querySelectorAll('[data-bsw^="mode:"]').length, bPlan = bO.querySelectorAll('.bst-sw').length, bTot = /Total power score gain/.test(bO.textContent), bOk = /already the best/.test(bO.textContent);
+  log(!bHas ? !!bO.querySelector('.empty') : (bWiz === 3 || bTot), 'Beasts Optimizer: the playstyle chooser (3 choices) before preferences are saved, or the plan with its totals', bWiz ? bWiz + ' choices' : bPlan + ' swaps' + (bOk ? ', already best' : ''));
+  var bLost = [], bAb = [];
+  for (var br = 0; br < 3; br++) {
+    await visit(['beasts/field', 'beasts/collection', 'beasts/optimizer'][br]); await sleep(br === 2 ? 900 : 200);
+    $$('#v-beasts *').forEach(function (el) { if (!/flex|grid/.test(getComputedStyle(el).display) || !el.children.length) return; Array.prototype.forEach.call(el.childNodes, function (n) { if (n.nodeType === 3 && /\S/.test(n.nodeValue) && (/^\s/.test(n.nodeValue) || /\s$/.test(n.nodeValue))) bLost.push((el.className || el.tagName) + ' "' + n.nodeValue.trim().slice(0, 16) + '"'); }); });
+    var bT = $('#v-beasts').innerText, bm = bT.match(/\bATK\b|\bDEF\b|\bRES\b|\((off|def)\)|\bAF\b|DMG[+-]|Slot\d|Lv\d/); if (bm) bAb.push(bm[0]);
+  }
+  log(bLost.length === 0, 'Beasts: no text node with an edge space directly inside a flex or grid parent', bLost.slice(0, 3).join(' | ') || 'none');
+  log(bAb.length === 0, 'Beasts: stats and buffs are written out (no ATK, DEF, RES, (off), (def), AF, "Slot1", "Lv30")', bAb.join(' ') || 'none');
+  log(!/\p{Extended_Pictographic}/u.test($('#v-beasts').textContent.replace(/[\u00A9\u00AE\u2122]/g, '')), 'Beasts: no emoji in the section', 'none');
+  log(!!$('#v-beasts a[href*="armory-report.html"][href$="#tab=enigma"]'), 'Beasts: a small "Open in classic" link in the section footer', $('#v-beasts a[href*="armory-report.html"]') ? $('#v-beasts a[href*="armory-report.html"]').getAttribute('href') : 'missing');
+  await visit('beasts/field');
   /* routes: the legacy #tab= ids resolve to a view */
   await visit('overview'); window.scrollTo(0, 0);
   var fails = RES.filter(function (r) { return r.ok === false; }).length, passes = RES.filter(function (r) { return r.ok === true; }).length;

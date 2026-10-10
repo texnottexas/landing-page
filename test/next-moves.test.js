@@ -177,6 +177,25 @@ test('Optimizer moves (e) come from saved preferences and rank by class then sig
   assert.ok(C.nextMoves(d).pool.some((p) => p.sig === 'e' && p.route === 'beasts/optimizer'));
 });
 
+test('Optimizer move (e): meta and icon pass through, entries without text parts or a finite gain are dropped, the route is the Optimizer segment', () => {
+  const d = fresh();
+  const ico = { u: 'beast-icons/Skynx_Fire_base.png', q: 'q5', fb: 'S' };
+  d.beastMoves = [
+    { gain: 7, parts: [{ s: 'Swap ' }, { s: 'Skynx', n: 1 }, { s: ' into ' }, { s: 'Offense', n: 1 }, { s: ' slot ' }, { s: '3', n: 1 }, { s: ': ' }, { s: '+2.5%', n: 1 }, { s: ' Attack' }], meta: 'From bench \u00B7 7 power score points today', ico },
+    { gain: NaN, parts: [{ s: 'bad' }] }, { gain: 1 }, null, { gain: 1, parts: 'nope' }
+  ];
+  const e = C.nextMoves(d, { max: 8 }).pool.filter((p) => p.sig === 'e');
+  assert.equal(e.length, 1, 'only the well-formed move is a candidate');
+  assert.equal(e[0].full, 'Swap Skynx into Offense slot 3: +2.5% Attack'); assert.equal(e[0].meta, 'From bench \u00B7 7 power score points today');
+  assert.deepStrictEqual(e[0].ico, ico); assert.equal(e[0].route, 'beasts/optimizer'); assert.equal(e[0].pill, 'Free');
+  // it shares the Free class with the rune placement: the rune move ranks first, the swap second (one pick per class, so with 3 picks it waits)
+  const pool = C.nextMoves(d, { max: 4 }).pool.filter((p) => p.cls === 1).map((p) => p.sig); assert.deepStrictEqual(pool.slice(0, 2), ['a', 'e']);
+  assert.deepStrictEqual(C.nextMoves(d, { max: 4 }).picks.map((p) => p.sig), ['a', 'e', 'b', 'c']);
+  // the move is optional: no beast moves leaves the list as before
+  d.beastMoves = []; assert.ok(!C.nextMoves(d).pool.some((p) => p.sig === 'e'));
+  delete d.beastMoves; assert.ok(!C.nextMoves(d).pool.some((p) => p.sig === 'e'));
+});
+
 test('view-model helpers: gear score, hero weights (floor 0.5), rune stats, roll %, chip table', () => {
   const M = C.moves;
   const h = BASE.heroes[0];

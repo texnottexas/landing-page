@@ -32,17 +32,28 @@ test('every local script the page loads exists, parses, and is copied by pages.y
     new vm.Script(read(f), { filename: f });
     if (s !== 'feedback-widget.js') assert.ok(cp.includes(f), f + ' is in the pages.yml cp line');
   }
-  for (const lazy of ['pages/armory.html', 'pages/armory-more.js', 'pages/armory-ht.js', 'pages/armory-advice.js', 'pages/armory-advice-flows.js', 'pages/armory-check.js']) assert.ok(cp.includes(lazy), lazy + ' is in the pages.yml cp line');
+  for (const lazy of ['pages/armory.html', 'pages/armory-more.js', 'pages/armory-ht.js', 'pages/armory-beasts.js', 'pages/armory-beasts-opt.js', 'pages/armory-advice.js', 'pages/armory-advice-flows.js', 'pages/armory-check.js']) assert.ok(cp.includes(lazy), lazy + ' is in the pages.yml cp line');
   for (const m of V2.matchAll(/<script>([\s\S]*?)<\/script>/g)) new vm.Script(m[1], { filename: 'inline' });
 });
 
 test('no emoji, em dash or personal name in the new files', () => {
-  for (const f of ['pages/armory.html', 'pages/armory-app.js', 'pages/armory-more.js', 'pages/armory-ht.js', 'pages/armory-advice.js', 'pages/armory-advice-flows.js', 'pages/armory-check.js']) {
+  for (const f of ['pages/armory.html', 'pages/armory-app.js', 'pages/armory-more.js', 'pages/armory-ht.js', 'pages/armory-beasts.js', 'pages/armory-advice.js', 'pages/armory-advice-flows.js', 'pages/armory-check.js']) {
     const t = read(f);
     assert.ok(!/\p{Extended_Pictographic}/u.test(t.replace(/[©®™]/g, '')), f + ' has an emoji');
     assert.ok(!/—/.test(t), f + ' has an em dash');
     assert.ok(!NAMES.test(t), f + ' has a personal name');
   }
+});
+
+test('the optimizer module (copied from the classic page) has no emoji and no personal name, and the beasts section is a lazy script, not a first-paint one', () => {
+  const t = read('pages/armory-beasts-opt.js').replace(/\/\/.*$/gm, ''); // comments are copied verbatim from the classic page (one holds a star sign); the code is checked
+  assert.ok(!/\p{Extended_Pictographic}/u.test(t.replace(/[©®™]/g, '')), 'emoji in armory-beasts-opt.js');
+  assert.ok(!NAMES.test(t), 'personal name in armory-beasts-opt.js');
+  assert.ok(!/armory-beasts/.test(V2), 'not a first-paint script');
+  const app = read('pages/armory-app.js');
+  assert.match(app, /'armory-beasts\.js'/); assert.ok(!/armory-beasts-opt/.test(app), 'the app never names the optimizer module (the Beasts section loads it)');
+  assert.match(app, /enigma: 'beasts\/field'/);
+  assert.match(app, /\['optimizer', 'Optimizer'\]/);
 });
 
 function headScript() { return /<script>\s*\/\* Beta switch[\s\S]*?<\/script>/.exec(V2)[0].replace(/^<script>|<\/script>$/g, ''); }

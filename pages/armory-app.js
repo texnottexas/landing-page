@@ -15,7 +15,7 @@ var S = { res: null, vm: null, code: null, cur: null, open: {}, f: { q: '', br: 
 var VIEWS = {
   overview: { label: 'Overview', icon: 'overview' },
   heroes: { label: 'Heroes', icon: 'heroes', segs: [['battle', 'Battle'], ['roster', 'Roster'], ['gear', 'Gear'], ['advice', 'Advice']] },
-  base: { label: 'Base', icon: 'base' }, beasts: { label: 'Beasts', icon: 'beasts' }, ht: { label: 'HT', icon: 'ht', segs: [['loadouts', 'Loadouts'], ['pool', 'Chip pool']] }
+  base: { label: 'Base', icon: 'base' }, beasts: { label: 'Beasts', icon: 'beasts', segs: [['field', 'Field'], ['collection', 'Collection'], ['optimizer', 'Optimizer']] }, ht: { label: 'HT', icon: 'ht', segs: [['loadouts', 'Loadouts'], ['pool', 'Chip pool']] }
 };
 var TABS = ['overview', 'heroes', 'base', 'beasts', 'ht'];
 var PAGES = [['armory-report.html', 'Armory Report'], ['bases.html', 'Bases'], ['battle-report.html', 'Battle Reports'], ['chaos-crafting.html', 'Chaos Crafting'], ['decor-index.html', 'Decor Index'], ['enigma-viewer.html', 'Enigma Beasts'], ['eternal-land-calendar.html', 'Eternal Land'], ['heroes.html', 'Heroes'], ['heroes-awakening.html', 'Heroes Awakening'], ['ht-chips.html', 'HT Chips'], ['roadmap.html', 'Roadmap'], ['rockfield-optimizer.html', 'Rockfield Optimizer'], ['titan.html', 'Titan Canyon']];
@@ -56,7 +56,7 @@ var toastT;
 function toast(msg) { var t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('show'); }, 3000); }
 
 /* ---------- the lazy half ---------- */
-var M = null, moreQ = null, H = null, Av = null, advQ = null, Ht = null, htQ = null;
+var M = null, moreQ = null, H = null, Av = null, advQ = null, HT = {}, BT = {};
 function more(cb) {
   if (M) return cb(M);
   if (moreQ) { moreQ.push(cb); return; }
@@ -67,16 +67,19 @@ function more(cb) {
   sc.onerror = function () { moreQ = null; fkDrop(); $('#v-start').hidden = false; $('#v-start').innerHTML = '<div class="vb"><div class="start"><h1 class="disp" style="font-size:var(--fs-24)">Could not load this part</h1><p class="muted">Check your connection and reload the page.</p></div></div>'; };
   document.body.appendChild(sc);
 }
-function ht(cb) {
-  if (Ht) return cb(Ht);
-  if (htQ) { htQ.push(cb); return; }
-  htQ = [cb];
+/* a section module loaded on first use: o = {m: the module, q: waiting callbacks} */
+function lz(o, src, make, view, cb) {
+  if (o.m) return cb(o.m);
+  if (o.q) { o.q.push(cb); return; }
+  o.q = [cb];
   var sc = document.createElement('script');
-  sc.src = 'armory-ht.js';
-  sc.onload = function () { Ht = window.ArmoryHt(H); var q = htQ; htQ = null; q.forEach(function (f) { f(Ht); }); };
-  sc.onerror = function () { htQ = null; var v = $('#v-ht'); if (v) v.innerHTML = '<div class="vb"><div class="empty">Could not load this part. Check your connection and reload the page.</div></div>'; };
+  sc.src = src;
+  sc.onload = function () { o.m = make(); var q = o.q; o.q = null; q.forEach(function (f) { f(o.m); }); };
+  sc.onerror = function () { o.q = null; var v = S.cur && S.cur.view === view && $('#v-' + view); if (v) v.innerHTML = '<div class="vb"><div class="empty">Could not load this part. Check your connection and reload the page.</div></div>'; };
   document.body.appendChild(sc);
 }
+function ht(cb) { lz(HT, 'armory-ht.js', function () { return window.ArmoryHt(H); }, 'ht', cb); }
+function bst(cb) { lz(BT, 'armory-beasts.js', function () { return window.ArmoryBeasts(H); }, 'beasts', cb); }
 function advice(cb) {
   if (Av) return cb(Av);
   if (advQ) { advQ.push(cb); return; }
@@ -91,7 +94,7 @@ function renderStart(kind, extra) { fkSettle(function () { more(function (m) { f
 function share() { more(function (m) { m.share(); }); }
 
 /* ---------- routing ---------- */
-var LEGACY = { overview: 'overview', heroes: 'heroes/battle', decorations: 'base', bases: 'base', enigma: 'beasts', chips: 'ht/loadouts', formation: 'base', inventory: 'bag', runepool: 'heroes/gear?view=runes', myadvisorplans: 'heroes/advice', advisorplan: 'heroes/advice' };
+var LEGACY = { overview: 'overview', heroes: 'heroes/battle', decorations: 'base', bases: 'base', enigma: 'beasts/field', chips: 'ht/loadouts', formation: 'base', inventory: 'bag', runepool: 'heroes/gear?view=runes', myadvisorplans: 'heroes/advice', advisorplan: 'heroes/advice' };
 function shim() {
   var m = /^#tab=([a-z0-9_-]+)/i.exec(location.hash || '');
   if (!m) return false;
@@ -113,7 +116,7 @@ function go(p) { location.hash = '#' + p; }
 function applyRoute(first, soft) {
   if (!S.vm) return;
   var r = parseHash(), changed = !S.cur || S.cur.view !== r.view;
-  if (!M && (r.bag || r.q.item || ['base', 'beasts'].indexOf(r.view) >= 0 || (r.view === 'heroes' && r.seg !== 'battle' && r.seg !== 'advice'))) { more(function () { applyRoute(first, soft); }); return; }
+  if (!M && (r.bag || r.q.item || r.view === 'base' || (r.view === 'heroes' && r.seg !== 'battle' && r.seg !== 'advice'))) { more(function () { applyRoute(first, soft); }); return; }
   if (!soft) closeSheet(true);
   S.cur = r;
   $$('.view').forEach(function (s) {
@@ -129,6 +132,7 @@ function applyRoute(first, soft) {
   if (!soft && (!first || (location.hash && location.hash !== '#overview'))) window.scrollTo(0, 0);
   if (r.view === 'heroes' && r.seg === 'advice') advice(function (a) { a.render(r.q, soft); });
   if (r.view === 'ht' && !soft) ht(function (h) { h.render(r); });
+  if (r.view === 'beasts' && !soft) bst(function (b) { b.render(r); });
   if (soft) return;
   if (r.view === 'heroes' && r.seg === 'battle' && r.q.hero) {
     var h = S.vm.heroes.list.filter(function (x) { return x.name === r.q.hero; })[0];
@@ -186,6 +190,12 @@ function showSkeleton() {
   $$('.view').forEach(function (s) { s.hidden = s.id !== 'v-start'; });
   fkShow($('#v-start'));
 }
+/* Next moves signal e: with saved optimizer preferences the Beasts module adds the best swap after first paint (nothing loads for anyone else) */
+function beastMove() {
+  var k = sk();
+  if (!k || S.advise || S.res.readOnly || !S.vm.beasts || !ls('beast_optimizer_prefs_' + k)) return;
+  (window.requestIdleCallback || setTimeout)(function () { bst(function (b) { b.nextMove(); }); });
+}
 function setReady(res) {
   S.res = res;
   S.vm = ArmoryVM.buildViewModel(res.merged, res.sources, ArmoryVM.fromLoad(res, core));
@@ -194,6 +204,7 @@ function setReady(res) {
   renderAll();
   applyRoute(!again, again);
   if (again) refreshSheet();
+  beastMove();
   if (!S.advise && sk() && res.identity && res.identity.isOwn && !res.readOnly) advIndex();
 }
 function run(arg, then) {
@@ -290,7 +301,8 @@ function renderChrome() {
 function renderAll() {
   renderChrome(); renderOverview(); renderHeroes();
   if (M) M.renderSections();
-  if (Ht) { try { Ht.render(S.cur); } catch (e) { console.error(e); } }
+  if (HT.m) { try { HT.m.render(S.cur); } catch (e) { console.error(e); } }
+  if (BT.m) { try { BT.m.render(S.cur); } catch (e) { console.error(e); } }
   watchName();
 }
 
@@ -465,9 +477,13 @@ function openSheet(kind, arg) {
   var title = '', body = '', isName = false;
   if (kind === 'filter') { title = 'Filter and sort'; body = ctrls('') + '<button class="btn" type="button" data-close style="width:100%">Done</button>'; }
   else if (kind === 'htfilter') {
-    if (!Ht) { ht(function () { openSheet(kind, arg); }); return; }
-    var rh = Ht.sheet(); if (!rh) return;
+    if (!HT.m) { ht(function () { openSheet(kind, arg); }); return; }
+    var rh = HT.m.sheet(); if (!rh) return;
     title = rh[0]; body = rh[1];
+  } else if (kind === 'bstfilter' || kind === 'beast') {
+    if (!BT.m) { bst(function () { openSheet(kind, arg); }); return; }
+    var rb = BT.m.sheet(kind, arg); if (!rb) return;
+    title = rb[0]; body = rb[1]; isName = !!rb[2];
   } else if (/^advice/.test(kind)) {
     if (!Av) { advice(function () { openSheet(kind, arg); }); return; }
     var ra = Av.sheet(kind, arg); if (!ra) return;
@@ -563,7 +579,7 @@ document.addEventListener('keydown', function (e) {
 });
 window.addEventListener('hashchange', function () { if (!shim()) applyRoute(false); });
 
-H = { S: S, d: d, core: core, G: G, BASE: BASE, statLabel: statLabel, WORKER: WORKER, SK_RE: SK_RE, $: $, $$: $$, esc: esc, nd: nd, nm: nm, ic: ic, fmtK: fmtK, fmtInt: fmtInt, ramp: ramp, qCls: qCls, slug: slug, ls: ls, stars: stars, art: art, lbl: lbl, stateName: stateName, sk: sk, readOnly: readOnly, classicUrl: classicUrl, savedReport: savedReport, deviceId: deviceId, toast: toast, go: go, run: run, showSkeleton: showSkeleton, fkHero: fkHero, refreshSheet: refreshSheet, currentCode: currentCode, gearCard: gearCard, branchPill: branchPill, filt: filt, sortBy: sortBy, openSheet: openSheet, closeSheet: closeSheet, advice: advice, more: more, advIndex: advIndex, paintDot: paintDot };
+H = { renderOverview: renderOverview, beastMove: beastMove, S: S, d: d, core: core, G: G, BASE: BASE, statLabel: statLabel, WORKER: WORKER, SK_RE: SK_RE, $: $, $$: $$, esc: esc, nd: nd, nm: nm, ic: ic, fmtK: fmtK, fmtInt: fmtInt, ramp: ramp, qCls: qCls, slug: slug, ls: ls, stars: stars, art: art, lbl: lbl, stateName: stateName, sk: sk, readOnly: readOnly, classicUrl: classicUrl, savedReport: savedReport, deviceId: deviceId, toast: toast, go: go, run: run, showSkeleton: showSkeleton, fkHero: fkHero, refreshSheet: refreshSheet, currentCode: currentCode, gearCard: gearCard, branchPill: branchPill, filt: filt, sortBy: sortBy, openSheet: openSheet, closeSheet: closeSheet, advice: advice, more: more, advIndex: advIndex, paintDot: paintDot };
 window.__arm = { S: S, d: d, core: core, go: go, openSheet: openSheet, closeSheet: closeSheet, applyRoute: applyRoute, parseHash: parseHash, VIEWS: VIEWS, ready: false };
 boot();
 if (/[?&]check=1/.test(location.search)) { var cs = document.createElement('script'); cs.src = 'armory-check.js'; document.body.appendChild(cs); }

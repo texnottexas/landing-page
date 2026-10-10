@@ -154,17 +154,6 @@ function renderBase() {
   } else body = needData('No decoration data yet.');
   $('#v-base').innerHTML = '<div class="vb">' + body + classicLink('decorations', 'See all decorations on the classic page') + '</div>';
 }
-function renderBeasts() {
-  var B = S.vm.beasts, body;
-  if (B) {
-    body = '<p class="t13 muted">' + nd(B.deployed + ' beasts deployed in ' + B.fields + ' fields' + (B.collected != null ? ' \u00B7 ' + B.collected + ' collected' : '')) + '</p>' +
-      (B.avgPotential != null ? '<section class="card bm"><div class="bm-top"><span class="l lbl">Average potential</span></div><div class="bm-num"><span class="n disp" translate="no">' + B.avgPotential + '%</span><span class="t13 muted">of beasts deployed</span></div><div class="meter lg r-' + ramp(B.avgPotential) + '" style="margin-top:8px"><i style="width:' + Math.max(2, B.avgPotential) + '%"></i></div></section>' : '') +
-      B.fieldList.filter(function (f) { return f.beasts.length; }).map(function (f) {
-        return '<section class="card"><h3 class="sub" translate="no">' + esc(f.name) + '</h3><div class="t13 muted">' + nd(f.deployed + ' deployed') + '</div><div class="bicons">' + f.beasts.map(function (b) { return art(BASE + 'beast-icons/' + b.icon, 'ico bico', b.name.charAt(0), b.name); }).join('') + '</div></section>';
-      }).join('');
-  } else body = needData('No beast data yet.');
-  $('#v-beasts').innerHTML = '<div class="vb">' + body + classicLink('enigma', 'See fields and the optimizer on the classic page') + '</div>';
-}
 function decorBody(x) {
   var have = S.vm.decor.shards, nx = x.nx;
   var STATS = { '960012': ['March Size', true], '930100': ['All units Attack', false], '930000': ['All units HP', false], '1001001': ['All units DMG increase', false] };
@@ -303,7 +292,7 @@ var EXPLAIN = {
   moves: ['How next moves are chosen', 'Each move uses only data in this report. Free moves come first, then moves that use what you already have, then moves that cost resources. Inside one kind of move, the biggest gain comes first, then the hero with the best gear score. A decor move names the stat it raises and shows only when your shards cover the cost. A refine move picks the piece with the most stats under 70%. HT moves count the HT in your battle reports first.']
 };
 
-function renderSections() { rosterList(); renderGear(); renderBase(); renderBeasts(); }
+function renderSections() { rosterList(); renderGear(); renderBase(); }
 /* [title, html, titleIsAName] for the sheets that live here */
 function sheet(kind, arg) {
   if (kind === 'explain') return [EXPLAIN[arg][0], '<p>' + nd(EXPLAIN[arg][1]) + '</p>'];
