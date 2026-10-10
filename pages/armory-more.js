@@ -1,6 +1,6 @@
 /* armory-more.js: the parts of the Armory v2 page that load on first use (not on the first paint).
  * Start / expired / error screens, the Status, Settings, Bag and decoration sheets, Share, UID verify and the report list,
- * and the Roster, Gear, Base, Beasts and HT sections. armory-app.js loads it with one script tag the first time a
+ * and the Roster, Gear, Base and Beasts sections. armory-app.js loads it with one script tag the first time a
  * route, sheet or button needs it, then calls ArmoryMore(helpers). Same-origin script: no CSP change.
  */
 window.ArmoryMore = function (H) {
@@ -165,33 +165,6 @@ function renderBeasts() {
   } else body = needData('No beast data yet.');
   $('#v-beasts').innerHTML = '<div class="vb">' + body + classicLink('enigma', 'See fields and the optimizer on the classic page') + '</div>';
 }
-function htRows() {
-  var H = S.vm.ht, by = {}, order = [];
-  H.chips.forEach(function (c) { if (!by[c.mecha]) { by[c.mecha] = { id: c.mecha, name: c.ht, filled: 0, low: 0 }; order.push(c.mecha); } var e = by[c.mecha]; if (!c.empty) { e.filled++; if (!c.core && c.lv < 25) e.low++; } });
-  return order.map(function (k) { return by[k]; });
-}
-function renderHT() {
-  var H = S.vm.ht, rows = htRows();
-  var list = rows.map(function (e) {
-    var icons = S.vm.ht.chips.filter(function (c) { return c.mecha === e.id && !c.core && c.ic; }).map(function (c) { var inf = core.moves.chipInfo(c); return art(BASE + 'ht-chip-icons/' + c.ic + '.png', 'ico cico q' + (inf ? inf.col : 4), String(c.slot), ''); }).join('');
-    return '<li class="srow"><a class="rt" style="flex:1;border:0;color:inherit;text-decoration:none;align-items:flex-start" href="#ht?mecha=' + esc(e.id) + '">' + art(BASE + 'mecha-icons/mecha_' + esc(e.id) + '.png', 'ico q5 hico', e.name.charAt(0), '') + '<div class="rb"><div class="ra" translate="no">' + esc(e.name) + '</div><div class="rs"><span>' + nd(e.filled + ' of 7 chips equipped') + '</span>' + (e.low ? '<span aria-hidden="true"> \u00B7 </span><span class="c-warn">' + nd(e.low + ' below Lv.25') + '</span>' : '') + '</div><div class="cicons">' + icons + '</div></div>' + ic('chev') + '</a></li>';
-  }).join('');
-  var top = rows.length ? '<p class="t13 muted">' + nd(H.reportMechas ? H.reportMechas.length + ' in battle reports \u00B7 ' + H.count + ' in game data' : H.count + ' in game data') + '</p><section class="card"><ul>' + list + '</ul></section><div id="htChips"></div>' : needData('No chip data yet.');
-  $('#v-ht').innerHTML = '<div class="vb">' + top + classicLink('chips', 'See chip layouts on the classic page') + '</div>';
-}
-function renderHTChips(mecha, slot) {
-  var box = $('#htChips'); if (!box) return;
-  if (!mecha) { box.innerHTML = ''; return; }
-  var ch = S.vm.ht.chips.filter(function (c) { return c.mecha === mecha && !c.core; }).sort(function (a, b) { return a.slot - b.slot; });
-  if (!ch.length) { box.innerHTML = ''; return; }
-  var tr = function (x) { return String(x).replace(/\.0$/, ''); };
-  box.innerHTML = '<section class="card" style="margin-top:16px" aria-label="Chips"><h2 class="hd" translate="no">' + esc(ch[0].ht) + '</h2><ul>' + ch.map(function (c) {
-    var inf = !c.empty && core.moves.chipInfo(c), q = 'q' + (inf ? inf.col : 4);
-    var img = c.ic ? art(BASE + 'ht-chip-icons/' + c.ic + '.png', 'ico mico ' + q, String(c.slot), '') : '<span class="ico mico fb ' + q + '" translate="no">' + c.slot + '</span>';
-    var stat = inf ? (c.lv >= 25 ? inf.stat + ' ' + tr(inf.now.toFixed(1)) + '%' : inf.stat + ' ' + inf.now.toFixed(1) + '%, ' + inf.max.toFixed(1) + '% at Lv.25') : '';
-    return '<li class="srow"' + (slot === c.slot ? ' style="background:var(--card-hi)"' : '') + '>' + img + '<div class="sb"><div class="a">' + nd('Slot ' + c.slot) + '</div><div class="b">' + (c.empty ? '<span>Empty</span>' : '<span>' + nd('Lv.' + c.lv + ' of 25') + '</span>' + (stat ? '<span aria-hidden="true">\u00B7</span><span>' + nd(stat) + '</span>' : '')) + '</div></div></li>';
-  }).join('') + '</ul></section>';
-}
 function decorBody(x) {
   var have = S.vm.decor.shards, nx = x.nx;
   var STATS = { '960012': ['March Size', true], '930100': ['All units Attack', false], '930000': ['All units HP', false], '1001001': ['All units DMG increase', false] };
@@ -330,7 +303,7 @@ var EXPLAIN = {
   moves: ['How next moves are chosen', 'Each move uses only data in this report. Free moves come first, then moves that use what you already have, then moves that cost resources. Inside one kind of move, the biggest gain comes first, then the hero with the best gear score. A decor move names the stat it raises and shows only when your shards cover the cost. A refine move picks the piece with the most stats under 70%. HT moves count the HT in your battle reports first.']
 };
 
-function renderSections() { rosterList(); renderGear(); renderBase(); renderBeasts(); renderHT(); }
+function renderSections() { rosterList(); renderGear(); renderBase(); renderBeasts(); }
 /* [title, html, titleIsAName] for the sheets that live here */
 function sheet(kind, arg) {
   if (kind === 'explain') return [EXPLAIN[arg][0], '<p>' + nd(EXPLAIN[arg][1]) + '</p>'];
@@ -361,5 +334,5 @@ function click(t) {
 }
 function enter(id) { if (id === 'rid') loadReportId(); else if (id === 'uidIn') verify(); else if (id === 'repIn') addReport(); }
 
-return { renderBase: renderBase, renderStart: renderStart, renderSections: renderSections, rosterList: rosterList, gearBody: gearBody, renderGear: renderGear, renderHTChips: renderHTChips, sheet: sheet, share: share, owns: owns, click: click, enter: enter, saveConfig: saveConfig };
+return { renderBase: renderBase, renderStart: renderStart, renderSections: renderSections, rosterList: rosterList, gearBody: gearBody, renderGear: renderGear, sheet: sheet, share: share, owns: owns, click: click, enter: enter, saveConfig: saveConfig };
 };
