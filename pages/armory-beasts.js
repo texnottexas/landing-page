@@ -669,7 +669,7 @@ function planPane() {
   var P = plan, laterN = P.swaps.length - P.nowN;
   var top = '<div class="card bst-top" style="display:flex;flex-direction:column;gap:8px"><p class="t13 muted">' + nd('For ' + P.units) + ' · <button class="tb link" type="button" data-bsa="edit">Change</button></p>' +
     '<p class="bst-hl">' + nd(P.swaps.length + (P.swaps.length === 1 ? ' swap' : ' swaps') + ': ' + P.nowN + ' better today, ' + laterN + ' better once levelled') + '</p>' +
-    '<p class="t13 muted">' + nd('All together: ' + Logic.signed(P.totalToday) + ' buff score today, ' + Logic.signed(P.totalMax) + ' when every new beast is fully levelled.') + ' <button class="info" type="button" data-open="bstscore" aria-label="How the buff score works">' + ic('info', 'sm') + '</button></p>' +
+    '<p class="t13 muted">' + nd('In total: ' + Logic.signed(P.totalToday) + ' buff score today, ' + Logic.signed(P.totalMax) + ' when every new beast is fully levelled.') + ' <button class="info" type="button" data-open="bstscore" aria-label="How the buff score works">' + ic('info', 'sm') + '</button></p>' +
     (P.swaps.length ? '<div class="bst-acts">' + copyBtn() + '</div>' : '') + '</div>';
   var notes = P.notes.map(function (n) { return '<div class="bst-note">' + nd(n.t) + (n.update && !readOnly() ? ' <button class="tb link" type="button" data-open="status">Update</button>' : '') + '</div>'; }).join('');
   var body = !P.swaps.length ? '<div class="card"><p>' + nd('Your current placements are already the best for ' + P.units + '. Change the units to compare.') + '</p></div>' :
