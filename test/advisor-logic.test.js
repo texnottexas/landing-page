@@ -221,3 +221,11 @@ test('stale-pool warning: a numeric import timestamp does not throw and shows th
   assert.ok(warn, 'warning built');
   assert.match(warn.children[1].textContent, /imported 1h ago/);
 });
+
+// ---- applied plan step list ------------------------------------------------------------------------------------
+// 32bbd14 declared a second `var accepted` (a number) inside _ar_renderPlanStepList; var hoisting made it overwrite the
+// per-step array, so updateApplySummary threw `accepted.filter is not a function` on every applied plan.
+test('plan step list: `accepted` is declared once, so an applied plan does not overwrite the per-step array', () => {
+  const body = fnSource('_ar_renderPlanStepList');
+  assert.equal((body.match(/\bvar accepted\b/g) || []).length, 1);
+});
