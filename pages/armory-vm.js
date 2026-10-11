@@ -246,8 +246,8 @@
 
 
   // ---- hero awakening ---------------------------------------------------------------------------------------------
-  // First-paint half only (names, effects, costs and the plan live in armory-awaken.js, loaded on demand). Constants: each equals the
-  // game table it came from (test/armory-awaken.test.js checks them against data/).
+  // First-paint half only: level, the Full flag, who can be awakened, stones and cards. Skill levels, names, effects, costs and the plan live in
+  // armory-awaken.js, loaded on demand. Constants: each equals the game table it came from (test/armory-awaken.test.js checks them against data/).
   var AW = {
     CLICK: [15, 15, 30, 30, 45, 45, 60, 80, 130], // stones per click at skill level 1..9; 5 clicks a level
     FIRST: { 172: 10001, 169: 10005, 239: 10009, 234: 10013, 333: 10017, 334: 10021 }, // live heroes -> id of skill 1 (slot = id - first + 1)
@@ -255,37 +255,19 @@
     CARD: { 172: 44300001, 239: 44300002, 334: 44300003, 333: 44300004, 234: 44300005, 169: 44300006 },
     STONE: 44301001
   };
-  // {slot: level} from the supplement's {skillId: level}; only this hero's own four ids count, a missing key is a locked skill
-  function awSkills(id, aws) {
-    var f = AW.FIRST[id], o = null, s, v;
-    if (f && aws && typeof aws === 'object') for (s = 1; s <= 4; s++) { v = Math.floor(+aws[f + s - 1]); if (v >= 1) (o = o || {})[s] = Math.min(v, 10); }
-    return o;
-  }
-  function exLevel(h, id) {
-    var ex = G.EXCL_SKILL_ID[id], lv = 0;
-    ['p1', 'p2'].forEach(function (k) { var x = h[k] && h[k].x && h[k].x[0]; if (x && ex && +x.id === ex) lv = Math.max(lv, Math.floor(+x.lv) || 0); });
-    return lv;
-  }
   // 5 stars, Lv.120 and Exclusive Skill Lv.5 (the game's rule); the card is a separate question
-  function canAwaken(a) { return !!(a && AW.FIRST[a.id] && !a.aw && a.snap && a.star >= 5 && a.lv >= 120 && a.ex >= 5); }
+  function canAwaken(a) { return !!(a && a.live && !a.aw && a.snap && a.star >= 5 && a.lv >= 120 && a.ex >= 5); }
   function buildAwaken(merged, sh, inv, core) {
-    var byId = {}, mh = {}, ids = {}, ra = { n: 0, full: 0, part: [], stones: null, cards: {}, cand: [], unfinished: false, minStep: 0 };
-    ((merged && merged.heroes) || []).forEach(function (h) { if (h && isFinite(+h.id)) { mh[+h.id] = h; if ((+h.awakenLevel || 0) > 0) ids[+h.id] = 1; } });
-    var rec = {};
-    ((sh && sh.list) || []).forEach(function (h) { if (h && isFinite(+h.id)) { rec[+h.id] = h; if (AW.FIRST[+h.id] || (+h.aw || 0) > 0) ids[+h.id] = 1; } });
+    var byId = {}, ids = {}, mh = {}, rec = {}, ra = { n: 0, full: 0, part: [], stones: null, cards: {}, cand: [], byId: byId };
+    ((merged && merged.heroes) || []).forEach(function (h) { if (h && isFinite(+h.id)) { mh[+h.id] = h; if (+h.awakenLevel > 0) ids[+h.id] = 1; } });
+    ((sh && sh.list) || []).forEach(function (h) { if (h && isFinite(+h.id)) { rec[+h.id] = h; if (+h.aw > 0) ids[+h.id] = 1; } });
+    Object.keys(AW.FIRST).forEach(function (k) { ids[k] = 1; });
     Object.keys(ids).forEach(function (k) {
-      var id = +k, s = rec[id] || null, m = mh[id] || null, live = !!AW.FIRST[id], game = !!(s && (+s.aw || 0) > 0);
-      var aw = Math.min(40, Math.floor(game ? +s.aw : m ? +m.awakenLevel || 0 : 0)) || 0;
-      var fa = !!(aw && (game ? s.fa : m && m.fullAwaken)), aws = game && live ? awSkills(id, s.aws) : null;
-      if (game && live && !aws && fa) aws = { 1: 10, 2: 10, 3: 10, 4: 10 };
-      var a = byId[id] = {
-        id: id, name: core.heroName(id), live: live, snap: !!s, aw: aw, fa: fa, aws: aws, pw: s && +s.pw > 0 ? +s.pw : 0,
-        star: s ? +s.star || 0 : 0, lv: s ? +s.lv || 0 : 0, ex: s ? exLevel(s, id) : 0,
-        awp: game && isFinite(+s.awp) && +s.awp > 0 ? +s.awp : null,
-        mode: !aw ? 'none' : !live ? 'level' : aws ? 'full' : game ? 'old' : 'report'
-      };
-      if (aw) { ra.n++; if (fa || aw >= 40) ra.full++; else ra.part.push(a); }
-      if (aws) for (var sl = 1; sl <= 4; sl++) if (aws[sl] < 10) { ra.unfinished = true; ra.minStep = Math.min(ra.minStep || 1e9, 5 * AW.CLICK[aws[sl] - 1]); }
+      var id = +k, s = rec[id], m = mh[id], g = !!(s && +s.aw > 0), ex = 0;
+      var aw = Math.min(40, Math.floor(g ? +s.aw : m ? +m.awakenLevel || 0 : 0)) || 0;
+      ['p1', 'p2'].forEach(function (p) { var x = s && s[p] && s[p].x && s[p].x[0]; if (x && G.EXCL_SKILL_ID[id] && +x.id === G.EXCL_SKILL_ID[id]) ex = Math.max(ex, Math.floor(+x.lv) || 0); });
+      var a = byId[id] = { id: id, name: core.heroName(id), live: !!AW.FIRST[id], game: g, snap: !!s, aw: aw, fa: !!(aw && (g ? s.fa : m && m.fullAwaken)), pw: s && +s.pw > 0 ? +s.pw : 0, star: s ? +s.star || 0 : 0, lv: s ? +s.lv || 0 : 0, ex: ex };
+      if (aw) { ra.n++; if (a.fa || aw >= 40) ra.full++; else ra.part.push(a); }
     });
     if (inv && inv.tabs && Array.isArray(inv.tabs.item)) {
       ra.stones = 0;
@@ -295,14 +277,12 @@
         else for (var h in AW.CARD) if (AW.CARD[h] === id && n > 0) ra.cards[h] = true;
       });
     }
-    Object.keys(AW.CARD).forEach(function (k) {
+    Object.keys(ra.cards).forEach(function (k) {
       var a = byId[k];
-      if (ra.cards[k] && canAwaken(a)) ra.cand.push({ kind: 'awaken', gain: a.pw, parts: [{ s: 'Awaken ' }, { s: a.name, n: 1 }], meta: 'Awakening Card in bag', ico: { u: 'hero-awake-items/item_' + AW.CARD[k] + '.png', q: 'q5', fb: a.name.charAt(0) }, route: 'heroes/roster?hero=' + encodeURIComponent(a.name) + '&awk=1' });
+      if (canAwaken(a)) ra.cand.push({ kind: 'awaken', gain: a.pw, parts: [{ s: 'Awaken ' }, { s: a.name, n: 1 }], meta: 'Awakening Card in bag', ico: { u: 'hero-awake-items/item_' + AW.CARD[k] + '.png', q: 'q5', fb: a.name.charAt(0) }, route: 'heroes/roster?hero=' + encodeURIComponent(a.name) + '&awk=1' });
     });
     ra.part.sort(function (a, b) { return b.aw - a.aw; });
-    ra.byId = byId;
     ra.show = !!(ra.n || Object.keys(byId).some(function (k) { return canAwaken(byId[k]); }));
-    ra.text = ra.n ? ra.full + ' of ' + ra.n + ' fully awakened' + ra.part.slice(0, 2).map(function (a) { return ' · ' + a.name + ' ' + a.aw + '/40'; }).join('') : '';
     return ra;
   }
 
@@ -366,7 +346,7 @@
       beastMoves: [] // the best optimizer swap joins here after first paint, for players with saved preferences (armory-app.js beastMove)
     };
     var mv = core.nextMoves(movesInput, { max: 3 });
-    awaken.eligible = awaken.cand.length > 1 || (awaken.stones != null && awaken.unfinished && (mv.picks.length < 3 || awaken.stones >= awaken.minStep));
+    awaken.eligible = awaken.cand.length > 1 || (awaken.stones != null && awaken.n > awaken.full && (mv.picks.length < 3 || awaken.stones >= 75)); // a step costs at least 75: the module is worth loading when one may be affordable or the card has room for a Save-for row
     var stale = sources.dataTs && (now - sources.dataTs) / DAY > STALE_DAYS ? { ts: sources.dataTs, since: shortDate(sources.dataTs) } : null;
     var moves = {
       title: header.shared ? (header.name || 'Player') + "'s next moves" : 'Next moves',
@@ -405,7 +385,7 @@
     };
   }
 
-  var api = { AW: AW, awSkills: awSkills, canAwaken: canAwaken, buildAwaken: buildAwaken, benchExtra: benchExtra, movePicks: movePicks, cleanChips: cleanChips, heroIcon: heroIcon, buildViewModel: buildViewModel, fromLoad: fromLoad, equipSlot: equipSlot, equipQuality: equipQuality, TOTAL_IDS: TOTAL_IDS };
+  var api = { AW: AW, canAwaken: canAwaken, buildAwaken: buildAwaken, benchExtra: benchExtra, movePicks: movePicks, cleanChips: cleanChips, heroIcon: heroIcon, buildViewModel: buildViewModel, fromLoad: fromLoad, equipSlot: equipSlot, equipQuality: equipQuality, TOTAL_IDS: TOTAL_IDS };
   window.ArmoryVM = api;
   if (isNode) module.exports = api;
 })(typeof window !== 'undefined' ? window : {});

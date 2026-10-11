@@ -25,6 +25,28 @@ function has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
 function fmtInt(n) { return String(Math.round(num(n))).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 function step(lv) { return 5 * AW.CLICK[lv - 1]; } // stones to take a skill from lv to lv + 1 (5 clicks at the level's price)
 function costTo(from, to) { var t = 0; for (var l = from; l < to; l++) t += step(l); return t; }
+/* {slot: level} from the supplement's {skillId: level}; only this hero's own four ids count, a missing id is a locked skill */
+function awSkills(id, aws) {
+  var f = AW.FIRST[id], o = null, s, v;
+  if (f && aws && typeof aws === 'object') for (s = 1; s <= 4; s++) { v = Math.floor(+aws[f + s - 1]); if (v >= 1) (o = o || {})[s] = Math.min(v, 10); }
+  return o;
+}
+/* What the first-paint model leaves out, read from the supplement's hero rows: skill levels, the game's own awakening power, and how much is known
+   (mode: full = the Snapshot has the skills; old = level only; report = a battle report's level; level = a hero whose skills are not live yet; none).
+   fa:1 without aws means all four skills are 10. */
+function enrich(A, list) {
+  if (A.rich) return A;
+  A.rich = true;
+  var rec = {};
+  (list || []).forEach(function (h) { if (h && isFinite(+h.id)) rec[+h.id] = h; });
+  Object.keys(A.byId).forEach(function (k) {
+    var a = A.byId[k], s = rec[k], aws = a.game && a.live ? awSkills(a.id, s.aws) : null;
+    if (a.game && a.live && !aws && a.fa) aws = { 1: 10, 2: 10, 3: 10, 4: 10 };
+    a.aws = aws; a.awp = a.game && isFinite(+s.awp) && +s.awp > 0 ? +s.awp : null;
+    a.mode = !a.aw ? 'none' : !a.live ? 'level' : aws ? 'full' : a.game ? 'old' : 'report';
+  });
+  return A;
+}
 function workable(a) { return !!(a && a.live && (a.aw > 0 || VM.canAwaken(a))); }
 function cleanSet(ids) {
   var out = [];
@@ -37,7 +59,7 @@ function levels(byId, ids) { var t = 0; ids.forEach(function (id) { var a = byId
 /* ctx: { byId (vm.awaken.byId), pw: {id: power}, marches: [{name, ids}], presets: [[ids]], reports: [[ids]], stones: n | null } */
 function pickSets(ctx) {
   var A = ctx.byId, pw = ctx.pw || {};
-  function owned(id) { return A[id] || has(pw, id); }
+  function owned(id) { return has(pw, id) || !!(A[id] && (A[id].snap || A[id].aw > 0)); }
   var srcs = [
     ['march', (ctx.marches || []).map(function (m, i) { return [cleanSet(m && m.ids), safeName(m && m.name, 'March ' + (i + 1))]; })],
     ['preset', (ctx.presets || []).map(function (ids, i) { return [cleanSet(ids), 'Preset ' + (i + 1)]; })],
@@ -162,7 +184,7 @@ function cardLines(vmA, nameOf) {
   });
   return out;
 }
-var Logic = { SLOT_PRI: SLOT_PRI, TRIOS: TRIOS, CLOSE: CLOSE, step: step, costTo: costTo, workable: workable, cleanSet: cleanSet, pickSets: pickSets, skillsOf: skillsOf, nextOf: nextOf, plan: plan, moves: moves, effectText: effectText, needs: needs, cardLines: cardLines, fmtInt: fmtInt };
+var Logic = { awSkills: awSkills, enrich: enrich, SLOT_PRI: SLOT_PRI, TRIOS: TRIOS, CLOSE: CLOSE, step: step, costTo: costTo, workable: workable, cleanSet: cleanSet, pickSets: pickSets, skillsOf: skillsOf, nextOf: nextOf, plan: plan, moves: moves, effectText: effectText, needs: needs, cardLines: cardLines, fmtInt: fmtInt };
 if (isNode) module.exports = { Logic: Logic };
 if (!isNode) root.ArmoryAwakenLogic = Logic;
 
@@ -194,7 +216,7 @@ var CSS =
 function injectCss() { if (document.getElementById('awk-style')) return; var s = document.createElement('style'); s.id = 'awk-style'; s.textContent = CSS; document.head.appendChild(s); }
 
 function sp(t, cls) { return '<span' + (cls ? ' class="' + cls + '"' : '') + '>' + nd(t) + '</span>'; }
-function vmA() { return S.vm && S.vm.awaken; }
+function vmA() { var A = S.vm && S.vm.awaken; return A && enrich(A, S.res && S.res.supp && S.res.supp.heroes && S.res.supp.heroes.list); }
 function heroName(id) { var a = vmA() && vmA().byId[id]; return a ? a.name : core.heroName(+id); }
 function catHero(id) { return cat && cat.heroes && cat.heroes[String(id)] || null; }
 function catSkill(id, slot) { var h = catHero(id), r = null; ((h && h.skills) || []).forEach(function (s) { if (+s.slot === +slot) r = s; }); return r; }

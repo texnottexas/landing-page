@@ -12,6 +12,7 @@ const assert = require('node:assert/strict');
 const VM = require('../pages/armory-vm.js');
 const Core = require('../pages/armory-core.js');
 const G = require('../pages/tw-game-data.js');
+const { Logic: AwL } = require('../pages/armory-awaken.js');
 const P = require('./helpers/armory-page.js');
 
 const PAY = '<img src=x onerror=window.__xss=1>';
@@ -122,6 +123,7 @@ test('awakening: a payload in a number position (level, skills, power, stones, c
   w.supp.inv.tabs.item.forEach((i) => { i.a = PAY; });
   w.merged.heroes.push({ id: 172, awakenLevel: PAY, fullAwaken: PAY });
   const vm = build(w);
+  AwL.enrich(vm.awaken, w.supp.heroes.list);
   assert.deepEqual(dirty(vm), []);
   Object.keys(vm.awaken.byId).forEach((k) => { const a = vm.awaken.byId[k]; ['aw', 'pw', 'lv', 'star', 'ex'].forEach((f) => assert.ok(Number.isFinite(a[f]), k + '.' + f)); assert.ok(a.awp === null || Number.isFinite(a.awp)); if (a.aws) Object.keys(a.aws).forEach((s) => assert.ok(Number.isInteger(a.aws[s]) && a.aws[s] >= 1 && a.aws[s] <= 10)); });
   assert.ok(vm.awaken.stones === null || Number.isFinite(vm.awaken.stones));

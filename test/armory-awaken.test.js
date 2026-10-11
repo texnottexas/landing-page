@@ -27,7 +27,7 @@ const JETT = 334, NOVA = 172, SARA = 169, LOPHY = 239, SHEN = 234, CARNA = 333, 
 function H(id, o) { return Object.assign({ id, star: 5, lv: 120, pw: 1000000, p1: { x: [{ id: G.EXCL_SKILL_ID[id], lv: 7 }], b: [] } }, o); }
 function aws(id, lvs) { const o = {}; lvs.forEach((lv, i) => { if (lv) o[AW.FIRST[id] + i] = lv; }); return o; }
 function awk(id, aw, lvs, o) { return H(id, Object.assign({ aw, aws: aws(id, lvs), awp: 1 }, o || {})); }
-function build(list, inv, merged) { return VM.buildAwaken(merged || { heroes: [] }, { list }, inv === undefined ? { tabs: { item: [{ id: AW.STONE, a: 100 }] } } : inv, core); }
+function build(list, inv, merged) { return L.enrich(VM.buildAwaken(merged || { heroes: [] }, { list }, inv === undefined ? { tabs: { item: [{ id: AW.STONE, a: 100 }] } } : inv, core), list); }
 function ctxOf(A, list, extra) {
   const pw = {}; list.forEach((h) => { pw[h.id] = h.pw; });
   return Object.assign({ byId: A.byId, pw, stones: A.stones, marches: [], presets: [], reports: [] }, extra || {});
@@ -39,7 +39,7 @@ function world(list, stones, extra) {
   return { A, ctx: ctxOf(A, list, Object.assign({ stones }, extra || {})) };
 }
 function fromFixture(f) {
-  const A = VM.buildAwaken({ heroes: [] }, f.heroes, f.inv, core);
+  const A = L.enrich(VM.buildAwaken({ heroes: [] }, f.heroes, f.inv, core), f.heroes.list);
   return { A, ctx: ctxOf(A, f.heroes.list, { marches: (f.marchGroups || []).map((g) => ({ name: g.name, ids: g.heroIds })), presets: f.formation.presets.map((p) => p.heroIds) }) };
 }
 const nameOf = (id, slot) => 'S' + slot, heroName = (id) => NAMES[id];
@@ -85,11 +85,11 @@ test('awakening needs 5 stars, Lv.120 and Exclusive Skill Lv.5, in a live, not y
 
 // ---- the data rules
 test('skill levels: only this hero\'s four ids, whole numbers 1-10; a missing id is a locked skill', () => {
-  assert.deepEqual(VM.awSkills(SARA, { 10005: 3, 10006: 1 }), { 1: 3, 2: 1 });
-  assert.deepEqual(VM.awSkills(SARA, { 10005: 3, 10001: 9, 10009: 4, 10004: 7 }), { 1: 3 }, "ids of other heroes are ignored");
-  assert.deepEqual(VM.awSkills(SARA, { 10005: 99, 10006: 2.9, 10007: -3, 10008: 'x', ' 10005': 1 }), { 1: 10, 2: 2 });
-  assert.equal(VM.awSkills(SARA, {}), null); assert.equal(VM.awSkills(SARA, null), null); assert.equal(VM.awSkills(165, { 10005: 3 }), null, 'a hero that is not live has none');
-  assert.equal(VM.awSkills(SARA, ['<b>']), null);
+  assert.deepEqual(L.awSkills(SARA, { 10005: 3, 10006: 1 }), { 1: 3, 2: 1 });
+  assert.deepEqual(L.awSkills(SARA, { 10005: 3, 10001: 9, 10009: 4, 10004: 7 }), { 1: 3 }, "ids of other heroes are ignored");
+  assert.deepEqual(L.awSkills(SARA, { 10005: 99, 10006: 2.9, 10007: -3, 10008: 'x', ' 10005': 1 }), { 1: 10, 2: 2 });
+  assert.equal(L.awSkills(SARA, {}), null); assert.equal(L.awSkills(SARA, null), null); assert.equal(L.awSkills(165, { 10005: 3 }), null, 'a hero that is not live has none');
+  assert.equal(L.awSkills(SARA, ['<b>']), null);
 });
 test('modes: full game data, an old Snapshot (level only), report only, not live, not awakened', () => {
   const A = build([awk(SARA, 10, [1, 1]), H(JETT, { aw: 35 }), H(NOVA, { aw: 40, fa: 1 }), H(165, { aw: 3 }), H(SHEN)], undefined, { heroes: [{ id: LOPHY, awakenLevel: 7, fullAwaken: false }] });
@@ -136,10 +136,10 @@ test('card lines: who can be awakened and what is missing', () => {
   const n = L.needs(build([H(LOPHY, { star: 4, lv: 100, p1: { x: [{ id: G.EXCL_SKILL_ID[LOPHY], lv: 2 }], b: [] } })]).byId[LOPHY], false);
   assert.deepEqual(n.map((x) => [x.ok, x.text]), [[false, '5 stars (now 4)'], [false, 'Level 120 (now 100)'], [false, 'Exclusive Skill Lv.5 (now 2)'], [false, 'Awakening Card not in bag']]);
 });
-test('summary: how many are fully awakened and who is part way', () => {
+test('summary: how many are fully awakened and who is part way (the page words it from these three)', () => {
   const A = build([awk(JETT, 40, [10, 10, 10, 10], { fa: 1 }), awk(NOVA, 40, [10, 10, 10, 10]), awk(SHEN, 30, [7, 7, 7, 7]), awk(CARNA, 11, [3, 6]), awk(SARA, 10, [1, 1])]);
-  assert.equal(A.n, 5); assert.equal(A.full, 2); assert.equal(A.text, '2 of 5 fully awakened · Shen Suyu 30/40 · Carna 11/40');
-  assert.equal(build([H(SHEN)]).text, '', 'nothing awakened, nothing to summarise');
+  assert.deepEqual([A.n, A.full, A.part.map((a) => a.name + ' ' + a.aw)], [5, 2, ['Shen Suyu 30', 'Carna 11', 'Sara 10']], 'strongest progress first');
+  assert.equal(build([H(SHEN)]).n, 0, 'nothing awakened, nothing to summarise');
 });
 test('the card is shown when there is something to say: an awakened hero, a card, or a hero that can be awakened', () => {
   assert.equal(build([H(SHEN)]).show, true); assert.equal(build([H(SHEN, { star: 4 })]).show, false); assert.equal(build([awk(SARA, 10, [1, 1])]).show, true);
@@ -274,7 +274,7 @@ test('Tex: 46 stones, Shen Suyu 30 with 7/7/7/7 -> no Raise or Awaken move; savi
   assert.deepEqual(A.cand, [], 'no Awaken move: Lophy holds a card but his Exclusive Skill is Lv.1');
   assert.equal(A.byId[LOPHY].ex, 1);
   assert.deepEqual(L.cardLines(A, nameOf), ['Lophy Awakening Card in bag · needs Exclusive Skill Lv.5 (now 1)']);
-  assert.equal(A.text, '4 of 5 fully awakened · Shen Suyu 30/40');
+  assert.deepEqual([A.n, A.full, A.part.map((a) => a.name + ' ' + a.aw)], [5, 4, ['Shen Suyu 30']]);
   const p = L.plan(ctx);
   assert.deepEqual(p.sets.slice(0, 3).map((s) => [s.name, s.power]), [['March 3', 3310430], ['March 2', 2953030], ['March 1', 2921830]]);
   assert.deepEqual(p.sets.slice(0, 3).map((s) => p.close[s.key] || null), [null, 89, 88]);
@@ -298,7 +298,7 @@ test('Rex: main = the Jett set, 2nd = the Carna set (89%); saving 62/150 for Ene
   assert.equal(p.move, null); assert.equal(p.saving, p.m);
   assert.equal(L.moves(p, 62, nameOf, heroName)[0].meta, '62 / 150 Awakening Stones');
   assert.deepEqual(L.cardLines(A, nameOf), ['Shen Suyu can be awakened · needs the Awakening Card']);
-  assert.equal(A.text, '0 of 3 fully awakened · Jett 35/40 · Carna 11/40');
+  assert.deepEqual([A.n, A.full, A.part.map((a) => a.name + ' ' + a.aw)], [3, 0, ['Jett 35', 'Carna 11', 'Sara 10']]);
   const loose = p.sets.find((s) => s.ids.includes(SARA)); assert.ok(loose, 'Sara is planned too'); assert.deepEqual([loose.next.id, loose.next.slot, loose.next.cost], [SARA, 2, 75]);
 });
 test('Rex with 400 stones and Jett at 6/6/6/6: "Raise Superheat on Jett to Lv.7" or "Energize on Carna to Lv.4"', () => {
@@ -328,7 +328,7 @@ test('the model: first paint needs no catalog; it holds the Awaken move in the m
   assert.equal(model(TEX).awaken.eligible, true, 'room on the card and an unfinished skill (Shen Suyu): the module may add a Saving for row');
   assert.equal(model(REX).awaken.eligible, true);
   assert.ok(!('names' in vm.awaken), 'no catalog data in the first-paint model');
-  assert.deepEqual(Object.keys(model(REX).awaken.byId).map(Number).sort((a, b) => a - b), [169, 234, 333, 334]);
+  assert.deepEqual(Object.keys(model(REX).awaken.byId).map(Number).sort((a, b) => a - b), [169, 172, 234, 239, 333, 334]);
 });
 test('privacy: a private bag gives no stones, no cards and no Awaken move; private heroes keep only what a report says', () => {
   const vm = model(TEX, { privacy: { inv: true } });

@@ -433,7 +433,7 @@ var EXPECTED = [
   await visit('beasts/field');
 
   /* 12. Hero Awakening: badges and summary at first paint, the catalog only on demand, the block of an opened hero, the card */
-  var aA = S.vm.awaken, aIds = Object.keys(aA.byId).filter(function (k) { return aA.byId[k].aw > 0; }), aLive = aIds.filter(function (k) { return aA.byId[k].mode === 'full'; });
+  var aA = S.vm.awaken, aIds = Object.keys(aA.byId).filter(function (k) { return aA.byId[k].aw > 0; }), aLive = aIds.filter(function (k) { return aA.byId[k].live; });
   log(!awkCat0 || aA.eligible, 'Awakening: the 168 KB catalog is not fetched on first paint unless a step is affordable or the card has room to say so', awkCat0 ? 'fetched, eligible=' + aA.eligible : 'not fetched');
   await visit('heroes/roster'); await sleep(250);
   var aSum = $$('#v-heroes .awk-sum'), aTop = $$('#v-heroes .awk-top');
@@ -446,8 +446,8 @@ var EXPECTED = [
   if (aPick) aLive = [aPick];
   if (aRow) {
     aRow.click(); var aT0 = Date.now(); while (!$('#rosterList .awk-slot[data-awk="' + aLive[0] + '"] .awk-c') && Date.now() - aT0 < 6000) await sleep(100);
-    var aSl = $('#rosterList .awk-slot[data-awk="' + aLive[0] + '"]'), aH = aA.byId[aLive[0]], aCards = aSl ? $$('.awk-c', aSl) : [];
-    var aLv = aCards.map(function (c) { var x = $('.awk-lv', c); return x ? x.textContent : ''; }), aWant = [1, 2, 3, 4].map(function (s) { return aH.aws[s] ? 'Lv.' + aH.aws[s] + ' of 10' : 'Locked'; });
+    var aSl = $('#rosterList .awk-slot[data-awk="' + aLive[0] + '"]'), aH = aA.byId[aLive[0]], aCards = aSl ? $$('.awk-c', aSl) : [];   /* the module has read the skill levels into aH by now */
+    var aLv = aCards.map(function (c) { var x = $('.awk-lv', c); return x ? x.textContent : ''; }), aWant = aH.mode !== 'full' ? aLv : [1, 2, 3, 4].map(function (s) { return aH.aws[s] ? 'Lv.' + aH.aws[s] + ' of 10' : 'Locked'; });
     log(aCards.length === 4 && aLv.join() === aWant.join() && new RegExp('Lv\\.' + aH.aw + ' of 40').test(($('.awk-bh', aSl) || { textContent: '' }).textContent), 'Awakening: an opened awakened hero shows its level of 40 and four skills at the levels in the game data', aLv.join(' | '));
     log($$('.awk-lv, .awk-bd span, .awk-nx span', aSl).length > 0 && $$('.awk-lv', aSl).every(function (x) { return x.getAttribute('translate') === 'no'; }), 'Awakening: skill levels carry translate="no"', 'ok');
     var aBad = targets().bad.filter(function (b) { return /awk|data-awk/.test(b); });

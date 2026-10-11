@@ -56,7 +56,7 @@ var toastT;
 function toast(msg) { var t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('show'); }, 3000); }
 
 /* ---------- the lazy half ---------- */
-var M = null, moreQ = null, H = null, Av = null, advQ = null, HT = {}, BT = {}, AWK = { m: null, q: null, bad: false };
+var M = null, moreQ = null, H = null, Av = null, advQ = null, HT = {}, BT = {}, AWK = {};
 function more(cb) {
   if (M) return cb(M);
   if (moreQ) { moreQ.push(cb); return; }
@@ -68,34 +68,25 @@ function more(cb) {
   document.body.appendChild(sc);
 }
 /* a section module loaded on first use: o = {m: the module, q: waiting callbacks} */
-function lz(o, src, make, view, cb) {
+function lz(o, src, make, view, cb, soft) {   /* soft: a failed load calls it instead of blanking the view, and is not retried */
   if (o.m) return cb(o.m);
+  if (o.bad) return;
   if (o.q) { o.q.push(cb); return; }
   o.q = [cb];
   var sc = document.createElement('script');
   sc.src = src;
-  sc.onload = function () { o.m = make(); var q = o.q; o.q = null; q.forEach(function (f) { f(o.m); }); };
-  sc.onerror = function () { o.q = null; var v = S.cur && S.cur.view === view && $('#v-' + view); if (v) v.innerHTML = '<div class="vb"><div class="empty">Could not load this part. Check your connection and reload the page.</div></div>'; };
+  sc.onload = function () {
+    try { o.m = make(); } catch (e) { if (!soft) throw e; console.error(e); o.q = null; o.bad = true; soft(); return; }
+    var q = o.q; o.q = null; q.forEach(function (f) { f(o.m); });
+  };
+  sc.onerror = function () { o.q = null; if (soft) { o.bad = true; soft(); return; } var v = S.cur && S.cur.view === view && $('#v-' + view); if (v) v.innerHTML = '<div class="vb"><div class="empty">Could not load this part. Check your connection and reload the page.</div></div>'; };
   document.body.appendChild(sc);
 }
 function ht(cb) { lz(HT, 'armory-ht.js', function () { return window.ArmoryHt(H); }, 'ht', cb); }
 function bst(cb) { lz(BT, 'armory-beasts.js', function () { return window.ArmoryBeasts(H); }, 'beasts', cb); }
 /* the awakening module (skill names, the order, the Raise move): a failed load never blanks a screen, the blocks say so */
-function awk(cb) {
-  if (AWK.m) return cb(AWK.m);
-  if (AWK.bad) return;
-  if (AWK.q) { AWK.q.push(cb); return; }
-  AWK.q = [cb];
-  var sc = document.createElement('script');
-  sc.src = 'armory-awaken.js';
-  sc.onload = function () {
-    try { AWK.m = window.ArmoryAwaken(H); } catch (e) { console.error(e); awkFail(); return; }
-    var q = AWK.q; AWK.q = null; q.forEach(function (f) { f(AWK.m); });
-  };
-  sc.onerror = awkFail;
-  document.body.appendChild(sc);
-}
-function awkFail() { AWK.q = null; AWK.bad = true; $$('.awk-slot').forEach(function (el) { el.classList.add('awk-bk'); el.innerHTML = '<p class="awk-note">Could not load the awakening details. Check your connection and reload the page.</p>'; }); }
+function awk(cb) { lz(AWK, 'armory-awaken.js', function () { return window.ArmoryAwaken(H); }, 'heroes', cb, awkFail); }
+function awkFail() { $$('.awk-slot').forEach(function (el) { el.classList.add('awk-bk'); el.innerHTML = '<p class="awk-note">Could not load the awakening details. Check your connection and reload the page.</p>'; }); }
 function advice(cb) {
   if (Av) return cb(Av);
   if (advQ) { advQ.push(cb); return; }
@@ -129,15 +120,6 @@ function parseHash() {
   return { view: v, seg: seg, q: q, bag: bag };
 }
 function go(p) { location.hash = '#' + p; }
-/* #heroes/roster?hero=Name: open that hero's row (true when done or not asked, false while the roster is not loaded yet) */
-function deepRoster(r) {
-  if (!M || !r || r.view !== 'heroes' || r.seg !== 'roster' || !r.q.hero) return true;
-  var rh = ((S.res && S.res.supp && S.res.supp.heroes && S.res.supp.heroes.list) || []).filter(function (x) { return x && isFinite(+x.id) && core.heroName(+x.id) === r.q.hero; })[0];
-  if (!rh) return false;
-  S.open[+rh.id] = true; M.rosterList(); setHeroOpen(+rh.id, true); awkOpenHero(+rh.id);
-  setTimeout(function () { var el = document.getElementById('rh-' + rh.id); if (el) el.scrollIntoView({ block: 'center' }); }, 30);
-  return true;
-}
 function applyRoute(first, soft) {
   if (!S.vm) return;
   var r = parseHash(), changed = !S.cur || S.cur.view !== r.view;
@@ -158,7 +140,7 @@ function applyRoute(first, soft) {
   if (r.view === 'heroes' && r.seg === 'advice') advice(function (a) { a.render(r.q, soft); });
   if (r.view === 'ht' && !soft) ht(function (h) { h.render(r); });
   if (r.view === 'beasts' && !soft) bst(function (b) { b.render(r); });
-  if (soft) { if (S.deep && deepRoster(S.deep)) S.deep = null; return; } /* a link that names a roster hero waits for the game data that arrives on the second pass */
+  if (soft) { if (S.deep && M.deepRoster(S.deep)) S.deep = null; return; } /* a link that names a roster hero waits for the game data that arrives on the second pass */
   if (r.view === 'heroes' && r.seg === 'battle' && r.q.hero) {
     var h = S.vm.heroes.list.filter(function (x) { return x.name === r.q.hero; })[0];
     if (h) {
@@ -167,7 +149,7 @@ function applyRoute(first, soft) {
       if (g) { $$('.gcard.sel').forEach(function (x) { x.classList.remove('sel'); }); g.classList.add('sel'); setTimeout(function () { g.scrollIntoView({ block: 'center' }); }, 30); }
     }
   }
-  S.deep = null; if (!deepRoster(r)) S.deep = r;
+  S.deep = null; if (M && !M.deepRoster(r)) S.deep = r;
   if (r.view === 'heroes' && (r.seg === 'battle' || r.seg === 'roster') && r.q.awk) awk(function (m) { m.focus(r.q); });
   if (r.view === 'heroes' && r.seg === 'gear' && r.q.view === 'runes' && S.gview !== 'runes') { S.gview = 'runes'; M.renderGear(); }
   if (r.view === 'base' && r.q.item) openSheet('decor', r.q.item);
@@ -229,21 +211,17 @@ function awakenMove() {
   if (!A || !A.eligible) return;
   (window.requestIdleCallback || setTimeout)(function () { awk(function (m) { m.nextMove(); }); });
 }
-/* awakened portrait (live heroes) with the base portrait behind it, and the level badge; anyone else keeps the plain portrait */
-function awUrl(id) { return 'https://h5.topwargame.com/DynRes/images/headpic/hero_awakeicon' + (+id) + '_global.png?t=22.jpg'; }
-function por(id, name, base, a) {
-  if (!a || !a.aw || !ArmoryVM.AW.FIRST[id]) return art(base, 'por', name.charAt(0), '');
-  return awPor(a, base);
+/* a hero's portrait: the awakened art (live heroes) over the base portrait, and the level badge, for an awakened hero (a: its awaken entry) */
+function portrait(id, name, base, a) {
+  if (!a || !a.aw) return art(base, 'por', name.charAt(0), '');
+  return '<span class="awk-pa">' + (a.live ? art('https://h5.topwargame.com/DynRes/images/headpic/hero_awakeicon' + (+id) + '_global.png?t=22.jpg', 'por', name.charAt(0), '', base) : art(base, 'por', name.charAt(0), '')) + '<span class="awk-bd"><span translate="no">' + (+a.aw) + '</span></span></span>';
 }
-function awPor(a, base) {
-  base = base || ArmoryVM.heroIcon(a.id);
-  return '<span class="awk-pa">' + (ArmoryVM.AW.FIRST[a.id] ? art(awUrl(a.id), 'por', a.name.charAt(0), '', base) : art(base, 'por', a.name.charAt(0), '')) + (a.aw ? '<span class="awk-bd"><span translate="no">' + (+a.aw) + '</span></span>' : '') + '</span>';
-}
+function awPor(a) { return portrait(a.id, a.name, ArmoryVM.heroIcon(a.id), a); }
 function awLevel(a) { return a.fa || a.aw >= 40 ? 'Fully awakened' : 'Awakening Lv.' + a.aw + ' of 40'; }
 function awTop() {
   var A = S.vm.awaken; if (!A.show) return '';
   var open = !!S.awkOpen, sub = A.n ? A.n + ' awakened in roster' + (A.stones != null ? ' \u00B7 ' + fmtInt(A.stones) + ' Awakening Stones in bag' : '') : 'Heroes that can be awakened';
-  return '<section class="card awk-top" aria-label="Awakening"><button class="awk-hd" type="button" data-awkcard aria-expanded="' + open + '"><span class="awk-ht"><span class="awk-hn">Awakening</span><span class="awk-hs">' + nd(sub) + '</span></span>' + ic('down', 'awk-chev') + '</button><div class="awk-body"' + (open ? '' : ' hidden') + '></div></section>';
+  return '<section class="card awk-top"><button class="awk-hd" type="button" data-awkcard aria-expanded="' + open + '"><span class="awk-ht"><span class="awk-hn">Awakening</span><span class="awk-hs">' + nd(sub) + '</span></span>' + ic('down', 'awk-chev') + '</button><div class="awk-body"' + (open ? '' : ' hidden') + '></div></section>';
 }
 function awSum() {
   var A = S.vm.awaken;
@@ -387,10 +365,9 @@ function alliancePill(a) {
   var k = { DOG: 'dog', MSS: 'mss', DGEN: 'dgen', 'CAT+': 'dgen', CAT: 'dgen', PRU: 'pru' }[String(a || '').toUpperCase()];
   return k ? '<span class="pill p-' + k + '" translate="no">' + esc(a) + '</span>' : '<span class="pill">No alliance on file</span>';
 }
-function por_(x) { return por(x.id, x.name, x.icon, S.vm.awaken.byId[x.id]); }
 function renderOverview() {
   var vm = S.vm, h = vm.header, ro = readOnly(), shared = h.shared;
-  var por = vm.heroes.list.slice(0, 3).map(function (x) { return '<a class="plink" href="#heroes/battle?hero=' + encodeURIComponent(x.name) + '" aria-label="' + esc(x.name) + ' in battle reports">' + por_(x) + '</a>'; }).join('');
+  var por = vm.heroes.list.slice(0, 3).map(function (x) { return '<a class="plink" href="#heroes/battle?hero=' + encodeURIComponent(x.name) + '" aria-label="' + esc(x.name) + ' in battle reports">' + portrait(x.id, x.name, x.icon, S.vm.awaken.byId[x.id]) + '</a>'; }).join('');
   var fresh = '';
   var rep = h.reports ? '<span>Reports ' + nm(h.reports.date) + ' ' + ageSpan(h.reports) + '</span>' : '';
   var dat = h.data ? '<span>Game data ' + nm(h.data.date) + (h.data.ageDays >= 1 ? ' ' + ageSpan(h.data) : '') + '</span>' : '<span>No game data imported</span>';
@@ -476,7 +453,7 @@ function gearCard(h, p, showHero) {
 }
 function heroRow(h) {
   var open = !!S.open[h.id], a = S.vm.awaken.byId[h.id];
-  return '<article class="hero' + (open ? ' open' : '') + '" id="h-' + esc(h.id) + '"><button class="hrow" type="button" aria-expanded="' + open + '" aria-controls="hp-' + esc(h.id) + '" data-hero="' + esc(h.id) + '">' + por(h.id, h.name, h.icon, a) +
+  return '<article class="hero' + (open ? ' open' : '') + '" id="h-' + esc(h.id) + '"><button class="hrow" type="button" aria-expanded="' + open + '" aria-controls="hp-' + esc(h.id) + '" data-hero="' + esc(h.id) + '">' + portrait(h.id, h.name, h.icon, a) +
     '<span class="hb"><span class="hb-1"><span class="hb-n" translate="no">' + esc(h.name) + '</span>' + branchPill(h.branch) + '</span><span class="hb-2" style="display:block">' + (a && a.aw ? nd(awLevel(a)) : 'Level ' + nm(String(h.lv))) + ' &middot; ' + nm(String(h.pieces.length)) + ' of ' + nm('6') + ' gear equipped</span></span>' +
     '<span class="hr-score"><span class="n disp" style="display:block" translate="no">' + fmtK(h.score) + '</span><span class="l" style="display:block">gear score</span></span>' + ic('down', 'chev') + '</button>' +
     '<div class="panel" id="hp-' + esc(h.id) + '"><div><div class="gears">' + h.pieces.map(function (p) { return gearCard(h, p); }).join('') + '</div>' + (a ? '<div class="awk-slot" data-awk="' + (+h.id) + '"></div>' : '') + '</div></div></article>';
@@ -651,7 +628,7 @@ document.addEventListener('keydown', function (e) {
 });
 window.addEventListener('hashchange', function () { if (!shim()) applyRoute(false); });
 
-H = { awPor: awPor, awLevel: awLevel, awkSync: awkSync, awkOpenHero: awkOpenHero, renderOverview: function () { renderOverview(); watchName(); }, beastMove: beastMove, S: S, d: d, core: core, G: G, BASE: BASE, statLabel: statLabel, WORKER: WORKER, SK_RE: SK_RE, $: $, $$: $$, esc: esc, nd: nd, nm: nm, ic: ic, fmtK: fmtK, fmtInt: fmtInt, ramp: ramp, qCls: qCls, slug: slug, ls: ls, stars: stars, art: art, lbl: lbl, stateName: stateName, sk: sk, readOnly: readOnly, classicUrl: classicUrl, savedReport: savedReport, deviceId: deviceId, toast: toast, go: go, run: run, showSkeleton: showSkeleton, fkHero: fkHero, refreshSheet: refreshSheet, currentCode: currentCode, gearCard: gearCard, branchPill: branchPill, filt: filt, sortBy: sortBy, openSheet: openSheet, closeSheet: closeSheet, advice: advice, more: more, advIndex: advIndex, paintDot: paintDot };
+H = { portrait: portrait, awPor: awPor, awLevel: awLevel, awkSync: awkSync, awkOpenHero: awkOpenHero, setHeroOpen: setHeroOpen, renderOverview: function () { renderOverview(); watchName(); }, beastMove: beastMove, S: S, d: d, core: core, G: G, BASE: BASE, statLabel: statLabel, WORKER: WORKER, SK_RE: SK_RE, $: $, $$: $$, esc: esc, nd: nd, nm: nm, ic: ic, fmtK: fmtK, fmtInt: fmtInt, ramp: ramp, qCls: qCls, slug: slug, ls: ls, stars: stars, art: art, lbl: lbl, stateName: stateName, sk: sk, readOnly: readOnly, classicUrl: classicUrl, savedReport: savedReport, deviceId: deviceId, toast: toast, go: go, run: run, showSkeleton: showSkeleton, fkHero: fkHero, refreshSheet: refreshSheet, currentCode: currentCode, gearCard: gearCard, branchPill: branchPill, filt: filt, sortBy: sortBy, openSheet: openSheet, closeSheet: closeSheet, advice: advice, more: more, advIndex: advIndex, paintDot: paintDot };
 window.__arm = { S: S, d: d, core: core, go: go, openSheet: openSheet, closeSheet: closeSheet, applyRoute: applyRoute, parseHash: parseHash, VIEWS: VIEWS, ready: false };
 boot();
 if (/[?&]check=1/.test(location.search)) { var cs = document.createElement('script'); cs.src = 'armory-check.js'; document.body.appendChild(cs); }

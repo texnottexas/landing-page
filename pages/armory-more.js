@@ -9,7 +9,7 @@ var S = H.S, d = H.d, core = H.core, G = H.G, BASE = H.BASE, WORKER = H.WORKER, 
 var $ = H.$, $$ = H.$$, esc = H.esc, nd = H.nd, nm = H.nm, ic = H.ic, fmtK = H.fmtK, fmtInt = H.fmtInt, ramp = H.ramp, qCls = H.qCls, slug = H.slug;
 var ls = H.ls, stars = H.stars, art = H.art, lbl = H.lbl, stateName = H.stateName, sk = H.sk, readOnly = H.readOnly, classicUrl = H.classicUrl;
 var savedReport = H.savedReport, deviceId = H.deviceId, toast = H.toast, go = H.go, run = H.run, showSkeleton = H.showSkeleton, refreshSheet = H.refreshSheet;
-var awPor = H.awPor, awLevel = H.awLevel, currentCode = H.currentCode, gearCard = H.gearCard, branchPill = H.branchPill, filt = H.filt, sortBy = H.sortBy;
+var portrait = H.portrait, awLevel = H.awLevel, currentCode = H.currentCode, gearCard = H.gearCard, branchPill = H.branchPill, filt = H.filt, sortBy = H.sortBy;
 
 function renderStart(kind, extra) {
   document.body.classList.add('st-start');
@@ -103,7 +103,7 @@ function rosterList() {
   if (!all.length) { el.innerHTML = '<div class="empty">' + 'No roster yet.' + (readOnly() ? '' : ' <button class="tb link" type="button" data-open="status">Send game data</button>') + '</div>'; return; }
   var l = sortBy(filt(all, function (x) { return x; }), function (x) { return x; }), shown = l.filter(function (x, i) { return S.all.roster || i < 12 || S.open[x.id]; }), AWV = S.vm.awaken.byId;
   el.innerHTML = shown.map(function (x) {
-    var a = AWV[x.id], por = a && a.aw ? awPor(a, ArmoryVM.heroIcon(x.id)) : art(ArmoryVM.heroIcon(x.id), 'por', x.name.charAt(0), ''), open = !!S.open[x.id];
+    var a = AWV[x.id], por = portrait(x.id, x.name, ArmoryVM.heroIcon(x.id), a), open = !!S.open[x.id];
     var sub = (a && a.aw ? nd(awLevel(a)) : 'Level ' + nm(String(x.lv))) + ' &middot; ' + nm(String(x.star)) + ' stars';
     var head = '<span class="hb"><span class="hb-1"><span class="hb-n" translate="no">' + esc(x.name) + '</span>' + branchPill(x.branch) + '</span><span class="hb-2" style="display:block">' + sub + '</span></span>' +
       '<span class="hr-score"><span class="n disp" style="display:block" translate="no">' + fmtK(x.score) + '</span><span class="l" style="display:block">power</span></span>';
@@ -114,6 +114,15 @@ function rosterList() {
   }).join('') + (l.length > shown.length ? '<button class="btn more" type="button" data-showall="roster"><span>Show all <span translate="no">' + l.length + '</span></span></button>' : '');
   var c = $('#rosterCount'); if (c) c.innerHTML = nd(l.length + ' heroes in roster');
   H.awkSync();
+}
+/* #heroes/roster?hero=Name: open that hero's row (true when done or not asked, false while the roster is not loaded yet) */
+function deepRoster(r) {
+  if (!r || r.view !== 'heroes' || r.seg !== 'roster' || !r.q.hero) return true;
+  var rh = ((S.res && S.res.supp && S.res.supp.heroes && S.res.supp.heroes.list) || []).filter(function (x) { return x && isFinite(+x.id) && core.heroName(+x.id) === r.q.hero; })[0];
+  if (!rh) return false;
+  S.open[+rh.id] = true; rosterList(); H.setHeroOpen(+rh.id, true); H.awkOpenHero(+rh.id);
+  setTimeout(function () { var el = document.getElementById('rh-' + rh.id); if (el) el.scrollIntoView({ block: 'center' }); }, 30);
+  return true;
 }
 function gearBody() {
   var vm = S.vm, el = $('#gearBody'); if (!el) return;
@@ -329,5 +338,5 @@ function click(t) {
 }
 function enter(id) { if (id === 'rid') loadReportId(); else if (id === 'uidIn') verify(); else if (id === 'repIn') addReport(); }
 
-return { renderBase: renderBase, renderStart: renderStart, renderSections: renderSections, rosterList: rosterList, gearBody: gearBody, renderGear: renderGear, sheet: sheet, share: share, owns: owns, click: click, enter: enter, saveConfig: saveConfig };
+return { deepRoster: deepRoster, renderBase: renderBase, renderStart: renderStart, renderSections: renderSections, rosterList: rosterList, gearBody: gearBody, renderGear: renderGear, sheet: sheet, share: share, owns: owns, click: click, enter: enter, saveConfig: saveConfig };
 };
