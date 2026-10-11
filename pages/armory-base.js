@@ -24,8 +24,25 @@ function statName(n) {
   var t = String(n == null ? '' : n);
   if (/^Increase DEF of all units$/i.test(t)) return 'All units Defense';
   t = t.replace(/\s*\(rcv\)/g, '').replace(/DMG[-−]/g, 'Decreased DMG Taken').replace(/DMG\+/g, 'DMG increase')
-    .replace(/\bDMG Increase\b/g, 'DMG increase').replace(/\bATK\b/g, 'Attack').replace(/\bAF\b/g, 'Air Force').replace(/\bDEF\b/g, 'Defense');
+    .replace(/\b(Damage|DMG) [Ii]ncrease\b/g, 'DMG increase').replace(/\bDecreased Damage Taken\b/g, 'Decreased DMG Taken').replace(/\bATK\b/g, 'Attack').replace(/\bAF\b/g, 'Air Force').replace(/\bDEF\b/g, 'Defense')
+    .replace(/\bHP Boost\b/g, 'HP').replace(/\bAttack Boost\b/g, 'Attack').replace(/\bNaval\b/g, 'Navy').replace(/\bAll Units\b/g, 'All units').replace(/\bCross-warzone\b/gi, 'Cross-Warzone').replace(/\bCrit DMG\b/g, 'Crit. DMG');
+  t = rowsName(t);
+  t = t.replace(/^All (Attack|HP)$/, 'All units $1').replace(/^All (DMG increase|Decreased DMG Taken)$/, 'All units $1').replace(/^Increase marching speed$/, 'March speed')
+    .replace(/^Garage\/Dock\/Hangar Capacity$/, 'Garage, dock and hangar capacity').replace(/^All units dodge rate bonus$/, 'All units Dodge').replace(/^All heroes Defense increase$/, 'All heroes Defense')
+    .replace(/^Attack of all units \(on the offensive\)$/, 'All units Attack (on the offensive)').replace(/^All units Attack \(offense\)$/, 'All units Attack (on the offensive)').replace(/^Navy units Attack \(on the offensive\)$/, 'Navy Attack (on the offensive)');
   return t.replace(/\s{2,}/g, ' ').trim();
+}
+/* "HP for first 2 row units", "Attack of Navy in the 2 back rows", "Mid row Air Force Attack": one shape, "<unit> <stat> (<rows>)", rows from one fixed set */
+function rowsName(t) {
+  var rows = null, rest = t;
+  var RX = [[/\b(?:in the )?(?:front|first)[- ]?(?:2|two) rows?(?: units)?\b/i, 'front 2 rows'], [/\b(?:in the )?(?:2 back|back 2) rows?(?: units)?\b/i, 'back 2 rows'], [/\bMid\/back rows?(?: units)?\b/i, 'mid and back rows'],
+    [/\b(?:in the )?(?:mid|middle) row\b/i, 'mid row'], [/\b(?:in the )?(?:front|first)[- ]row(?: units)?\b/i, 'front row']];
+  for (var i = 0; i < RX.length && !rows; i++) if (RX[i][0].test(rest)) { rows = RX[i][1]; rest = rest.replace(RX[i][0], ' '); }
+  if (!rows) return t;
+  var stat = /Decreased DMG Taken/.test(rest) ? 'Decreased DMG Taken' : /DMG increase/.test(rest) ? 'DMG increase' : /\bHP\b/.test(rest) ? 'HP' : /\bAttack\b/.test(rest) ? 'Attack' : null;
+  if (!stat) return t;
+  var unit = /Air Force/.test(rest) ? 'Air Force' : /\bArmy\b/.test(rest) ? 'Army' : /\bNavy\b/.test(rest) ? 'Navy' : 'All units';
+  return unit + ' ' + stat + ' (' + rows + ')';
 }
 /* a skin table value ("++25.0%", "+4", "+20.0%"): the sign once, no trailing .0 */
 function skinVal(s) { return String(s == null ? '' : s).replace(/\+\+/g, '+').replace(/(\d)\.0%/, '$1%'); }
@@ -169,10 +186,20 @@ function baseDecorTotals(T, st) {
   if (act) arr(act.e).forEach(function (b) { var k = statKey(b && b[0]); if (k) t[k] += k === 'march' ? num(b[1]) : num(b[1]) / 100; });
   return roundTotals(t);
 }
+/* the equipped halo's buffs (the halo table lists its equip and own figures together; Tex's report trace confirms the sum: Cyber Pulse +50% Attack, +20% HP) */
+function haloTotals(T, st) {
+  var t = emptyTotals(), h = st.haloActive ? own(T.BASE_HALO_DATA, String(st.haloActive)) : null;
+  if (h) arr(h.b).forEach(function (b) { var k = statKey(b && b[0]); if (k) t[k] += k === 'march' ? num(b[1]) : num(b[1]) / 100; });
+  return roundTotals(t);
+}
+function addTotals(a, b) { var o = emptyTotals(); Object.keys(o).forEach(function (k) { o[k] = (a ? a[k] : 0) + (b ? b[k] : 0); }); return roundTotals(o); }
+/* one row per key stat: each source's figure, their total, whole numbers with separators; a dash where a source has no data, a plain 0 where it adds nothing */
 function stripRows(decor, skin, bd) {
+  function f(k, v) { return k === 'march' ? '+' + fmtInt(v) : '+' + fmtInt(Math.round(v)) + '%'; }
   return KEY_STATS.map(function (k) {
-    var f = function (t) { return t ? (k[0] === 'march' ? '+' + fmtInt(t[k[0]]) : '+' + pctText(t[k[0]])) : '–'; };
-    return { key: k[0], label: k[1], decor: f(decor), skin: f(skin), bdecor: f(bd) };
+    var one = function (t) { return t ? (num(t[k[0]]) === 0 ? (k[0] === 'march' ? '0' : '0%') : f(k[0], t[k[0]])) : '–'; };
+    var total = (decor ? decor[k[0]] : 0) + (skin ? skin[k[0]] : 0) + (bd ? bd[k[0]] : 0);
+    return { key: k[0], label: k[1], decor: one(decor), skin: one(skin), bdecor: one(bd), total: num(total) === 0 ? (k[0] === 'march' ? '0' : '0%') : f(k[0], total), totalNum: total };
   });
 }
 
@@ -289,10 +316,21 @@ function setsModel(L, merged, placed, om) {
   return { done: done, left: left };
 }
 
+/* every buff the next level changes, as lines: name, now, next, the step, and whether the Overview move counts it for the player's marches */
+function gainLines(L, x, branches, core) {
+  if (!x || !x.nx) return [];
+  var counted = {}; ['960012', '930100', '930000', '1001001'].forEach(function (m) { core.decorScopeIds(m, branches).forEach(function (c) { counted[c[0]] = 1; }); });
+  var names = L.BUFF_NAMES_DECOR || {};
+  return Object.keys(x.nx.dl).map(function (id) {
+    var d = num(x.nx.dl[id]), cur = arr(x.buffs).filter(function (b) { return b.id === id; })[0], pct = !cur || /%$/.test(cur.v) || (id !== '960012' && id !== '1131006');
+    var curN = cur ? skinNum(cur.v) : null, step = pct ? d / 100 : d;
+    return { id: id, n: statName(own(names, id) || 'Other effect'), pct: pct, cur: curN, next: curN == null ? null : curN + step, step: step, counted: !!counted[id] };
+  });
+}
 /* ---- the Spend my shards panel ---- */
 /* the order the Overview's decoration move tries the stats in (armory-core DECOR_STATS), then the rest: the tab that opens is the stat that move picks */
 var PICK_ORDER = ['march_size', 'attack', 'hp', 'damage_boost', 'def', 'damage_red', 'capacity'];
-var STAT_TABS = [['march_size', 'March Size'], ['attack', 'Attack'], ['hp', 'HP'], ['def', 'All units Defense'], ['damage_boost', 'DMG increase'], ['damage_red', 'Decreased DMG Taken'], ['capacity', 'Garage, dock and hangar capacity']];
+var STAT_TABS = [['march_size', 'March Size'], ['attack', 'Attack'], ['hp', 'HP'], ['def', 'Defense'], ['damage_boost', 'DMG increase'], ['damage_red', 'Decreased DMG Taken'], ['capacity', 'Capacity']];
 function statTabLabel(id) { return (STAT_TABS.filter(function (t) { return t[0] === id; })[0] || [id, id])[1]; }
 /* The all-units buff each of the four stats the Overview move tries is built on (armory-core DECOR_STATS); the move also counts the unit types the player marches with. */
 var MAIN_ID = { march_size: '960012', attack: '930100', hp: '930000', damage_boost: '1001001' };
@@ -311,7 +349,7 @@ function spendModel(core, inv, merged, data, statIds, branches) {
       g: r.group, n: String(r.name), ic: iconFile(r.group, r.name), from: r.fromLevel, to: r.toLevel, cost: r.shardCost, raw: r.rawShardCost, credit: r.groupCredit,
       have: r.universalShards, ready: !!r.ready, short: Math.max(0, r.shardCost - r.universalShards), roi: roi, bar: 0,
       gain: gainRows.map(function (b) { return { n: statName(b.label), v: b.displayDelta, rate: String(b.perShardLabel || '') }; }),
-      also: arr(r.buffRows).filter(function (b) { return gainRows.indexOf(b) < 0; }).concat(arr(r.alsoRows)).map(function (b) { return { n: statName(b.label), v: b.displayDelta }; }), mutex: arr(r.mutexPartners).map(String)
+      also: arr(r.buffRows).filter(function (b) { return gainRows.indexOf(b) < 0; }).concat(arr(r.alsoRows)).map(function (b) { return { n: statName(b.label), v: b.displayDelta }; }), mutex: arr(r.mutexPartners).map(function (n) { var m = /^Group (\d+)$/.exec(String(n)); return m ? (data.names && own(data.names, m[1])) || '' : String(n); }).filter(Boolean)
     };
   }
   function bars(list) { var max = 0; list.forEach(function (r) { if (r.roi > max) max = r.roi; }); list.forEach(function (r) { r.bar = max > 0 && r.roi > 0 ? Math.min(100, Math.max(8, Math.round(r.roi / max * 100))) : 0; }); return list; }
@@ -329,6 +367,15 @@ function spendModel(core, inv, merged, data, statIds, branches) {
     if (main) { out.byStatAll[s] = scoped(rows, main, []); out.byStatMine[s] = scoped(rows, main, branches); }
   });
   return out;
+}
+/* rows in rank order against one bag: a row "fits" only if the rows above it have not used the shards; one that fits alone but not after them "needs N more after the rows above" */
+function fitWalk(rows, have) {
+  var left = num(have), fit = 0, spent = 0;
+  var items = rows.map(function (r) {
+    if (r.cost <= left) { left -= r.cost; spent += r.cost; fit++; return { r: r, st: 'fits', over: 0 }; }
+    return { r: r, st: r.cost <= have ? 'after' : 'short', over: r.cost - left };
+  });
+  return { items: items, fit: fit, spent: spent, left: left };
 }
 /* mutual-exclusive file: { cluster: [{g, me:[groups]}] } -> group -> partner groups (the classic _adv_loadMutex) */
 function mutexMap(data) {
@@ -427,10 +474,10 @@ function talentModel(ref, supp) {
 var Logic = {
   num: num, fmtInt: fmtInt, pctText: pctText, statName: statName, skinVal: skinVal, skinNum: skinNum, baseVal: baseVal, statKey: statKey, KEY_STATS: KEY_STATS,
   skinState: skinState, skinRow: skinRow, skinList: skinList, skinSort: skinSort, skinFilter: skinFilter, skinNotOwned: skinNotOwned, skinChain: skinChain, citySkill: citySkill, skinFilterOptions: skinFilterOptions,
-  bdRow: bdRow, bdSort: bdSort, bdNotOwned: bdNotOwned, skinTotals: skinTotals, baseDecorTotals: baseDecorTotals, stripRows: stripRows,
+  bdRow: bdRow, bdSort: bdSort, bdNotOwned: bdNotOwned, skinTotals: skinTotals, haloTotals: haloTotals, addTotals: addTotals, baseDecorTotals: baseDecorTotals, stripRows: stripRows,
   dataFor: dataFor, buffRows: buffRows, placedModel: placedModel, ownedMap: ownedMap, alternates: alternates, notOwnedList: notOwnedList, decorSort: decorSort, decorFilter: decorFilter, sections: sections, setsModel: setsModel, iconFile: iconFile, statGroups: statGroups,
   STAT_TABS: STAT_TABS, PICK_ORDER: PICK_ORDER, MAIN_ID: MAIN_ID, statTabLabel: statTabLabel, spendModel: spendModel, mutexMap: mutexMap,
-  parseBuffGroup: parseBuffGroup, formationsMerged: formationsMerged, formationCard: formationCard, techModel: techModel, armyMastery: armyMastery, talentModel: talentModel, decodeTalent: decodeTalent, fbuffName: fbuffName, fbuffVal: fbuffVal
+  gainLines: gainLines, fitWalk: fitWalk, parseBuffGroup: parseBuffGroup, formationsMerged: formationsMerged, formationCard: formationCard, techModel: techModel, armyMastery: armyMastery, talentModel: talentModel, decodeTalent: decodeTalent, fbuffName: fbuffName, fbuffVal: fbuffVal
 };
 root.ArmoryBaseLogic = Logic;
 if (typeof module !== 'undefined' && module.exports) module.exports = Logic;
@@ -447,9 +494,9 @@ var BF = { q: '', sort: 'name' }, B = Object.assign({}, BF), bdN = PAGE;
 var T = null, TFail = false, TQ = null, MUT = null, REF = null, REFFail = false, spend = { open: false, tab: 'march_size', all: false, units: 'mine', err: false };
 
 var CSS =
-  '.bse-sum{padding:0}@media (min-width:768px){.bse-sum .bse-t{max-width:680px}}.bse-t{margin:0;width:100%;border-collapse:collapse;font-size:var(--fs-14)}.bse-t th{font-weight:400;font-size:var(--fs-13);color:var(--muted);text-align:right;padding:0 0 4px 8px}.bse-t th:first-child,.bse-t td:first-child{text-align:left;padding-left:0}' +
-  '.bse-t td{padding:6px 0 6px 8px;text-align:right;border-top:1px solid var(--rule);font-weight:600}.bse-t td:first-child{font-weight:400;color:var(--text)}.bse-t td.z{color:var(--dim);font-weight:400}' +
-  '.bse-note{margin-top:8px;font-size:var(--fs-12);color:var(--muted)}' +
+  '.bse-sum{padding:0}.bse-dsk{display:none}.bse-mob .bse-hm{white-space:normal}.bse-nw{white-space:nowrap}.bse-nt{padding:0 12px 12px}.bse-nt .bse-note{margin-top:0}.bse-nt .info{display:inline-flex;vertical-align:middle;margin:-6px 0 -6px 0}.bse-tot{margin:0}.bse-tot div{display:grid;grid-template-columns:1fr auto;padding:8px 0;border-top:1px solid var(--rule)}.bse-tot div:first-child{border-top:0}.bse-tot dd{margin:0;font-weight:600}.bse-tot .bse-src{grid-column:1/-1;font-size:var(--fs-12);color:var(--muted);font-weight:400}@media (min-width:768px){.bse-dsk{display:block;padding:16px 16px 0}.bse-mob{display:none}.bse-nt{padding:8px 16px 16px}.bse-sum .bse-t{max-width:760px}.bse-t td.tot{color:var(--text)}}.bse-t{margin:0;width:100%;border-collapse:collapse;font-size:var(--fs-14)}.bse-t th{font-weight:400;font-size:var(--fs-13);color:var(--muted);text-align:right;padding:0 0 4px 8px}.bse-t th:first-child,.bse-t td:first-child{text-align:left;padding-left:0}' +
+  '.bse-t td{padding:6px 0 6px 8px;text-align:right;border-top:1px solid var(--rule);font-weight:400;color:var(--muted)}.bse-t td.tot{font-weight:700}.bse-t td:first-child{color:var(--text)}.bse-t td.z{color:var(--dim);font-weight:400}' +
+  '.bse-secs{display:flex;flex-direction:column;gap:12px}.bse-lead{font:700 var(--fs-17)/1.2 var(--display);white-space:nowrap;align-self:flex-start;margin-left:8px}.bse-c.is-sel{box-shadow:inset 2px 0 0 var(--accent)}.bse-gn{margin:0;padding:0;list-style:none}.bse-gn li{padding:6px 0;border-top:1px solid var(--rule)}.bse-gn li:first-child{border-top:0}.bse-gh{display:flex;justify-content:space-between}.bse-gh > span:last-child{margin-left:12px;font-weight:700;text-align:right}.bse-gn .bse-cnt .bse-gh{color:var(--text)}.bse-note{margin-top:8px;font-size:var(--fs-12);color:var(--muted)}' +
   '.bse-sec{padding:0}.bse-hd{display:flex;align-items:center;gap:12px;width:100%;min-height:var(--row);padding:8px 12px;text-align:left;color:inherit}.bse-hd:active{background:var(--card-hi)}' +
   '@media (min-width:768px){.bse-hd{padding:8px 16px}}.bse-hn{font:700 var(--fs-17)/1.25 var(--display)}.bse-ht{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.bse-hm{font-size:var(--fs-13);color:var(--muted)}' +
   '.bse-chev{transition:transform var(--t);flex:none;color:var(--muted)}.bse-hd[aria-expanded="true"] .bse-chev{transform:rotate(180deg)}' +
@@ -471,7 +518,7 @@ var CSS =
   '.bse-r .bse-ch .ico,.bse-r .bse-ch .fb{width:40px;height:40px}.bse-n{font:700 var(--fs-15)/1 var(--display);color:var(--muted);min-width:24px}' +
   '.bse-gl{display:flex;justify-content:space-between;font-size:var(--fs-14)}.bse-gl > span:last-child{margin-left:12px;font-weight:700;white-space:nowrap}.bse-rate{font-size:var(--fs-12);color:var(--muted)}' +
   '.bse-cost{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;font-size:var(--fs-13);color:var(--muted)}.bse-cost b{color:var(--text)}' +
-  '.bse-dot{color:var(--muted)}.bse-ok{color:var(--ok);font-weight:700}.bse-me{font-size:var(--fs-12);color:var(--muted)}' +
+  '.bse-dot{color:var(--muted)}.bse-ok{color:var(--text);font-weight:600;display:inline-flex;align-items:center;gap:6px}.bse-okd{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}.bse-rh{min-height:40px;width:100%;text-align:left;color:inherit}.bse-me{font-size:var(--fs-12);color:var(--muted)}' +
   '.bse-set{display:flex;flex-direction:column;gap:8px;width:100%;min-height:var(--row);padding:8px 0;border-top:1px solid var(--rule);text-align:left;color:inherit}.bse-set:first-child{border-top:0}' +
   '.bse-sr{display:flex;align-items:center;gap:8px;justify-content:space-between}.bse-sn{font-size:var(--fs-15);font-weight:600}.bse-comp{display:flex;flex-wrap:wrap;gap:4px}.bse-comp .ico,.bse-comp .fb{width:32px;height:32px}.bse-comp .gone{opacity:.35}' +
   '.bse-ft{display:grid;grid-template-columns:1fr;gap:12px}.bse-fc .bse-ch .ico,.bse-fc .bse-ch .fb{width:64px;height:80px}.bse-spec{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:8px}' +
@@ -483,7 +530,7 @@ var CSS =
   '.bse-line{display:flex;flex-wrap:wrap;gap:4px 8px;font-size:var(--fs-14);color:var(--muted)}.bse-line span b{color:var(--text)}' +
   '@media (min-width:768px){.bse-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.bse-fbtn{display:none}.bse-fs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 12px}.bse-ft{grid-template-columns:repeat(3,minmax(0,1fr))}}' +
   '@media (min-width:1024px){.bse-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.bse-rk{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.bse-tl.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px}.bse-tl.two li:nth-child(2){border-top:0}}' +
-  '@media (min-width:1200px){.bse-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}';
+  '@media (min-width:1024px){.bse-secs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start}.bse-secs > .bse-sec.is-open{grid-column:1/-1}}@media (min-width:1200px){.bse-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}';
 
 function injectCss() {
   if (document.getElementById('bse-style')) return;
@@ -520,26 +567,42 @@ function fail(e) {
 function partFail(what) { return '<div class="empty">Could not load ' + esc(what) + '. Check your connection and reload the page.</div>'; }
 
 /* ---- the strip ---- */
+var SHORT = { march: 'March Size', atk: 'Attack', hp: 'HP' };
 function stripHtml() {
   var vm = S.vm, dec = vm.decor && vm.decor.placedKinds ? vm.decor.totals : null;
   if (!T && !TFail && !TQ) return '';
-  var st = Logic.skinState(S.res.merged && S.res.merged.skins), skin = T && st.known ? Logic.skinTotals(T, st) : null, bd = T && st.castle.length ? Logic.baseDecorTotals(T, st) : null;
+  var st = Logic.skinState(S.res.merged && S.res.merged.skins), skin = T && st.known ? Logic.addTotals(Logic.skinTotals(T, st), Logic.haloTotals(T, st)) : null, bd = T && st.castle.length ? Logic.baseDecorTotals(T, st) : null;
   if (!dec && !skin && !bd) return '';
-  var rows = Logic.stripRows(dec, skin, bd);
-  var body = rows.map(function (r) {
-    var c = function (v) { return '<td' + (v === '–' ? ' class="z"' : '') + '>' + (v === '–' ? '<span aria-hidden="true">–</span><span class="sr">none</span>' : '<span translate="no">' + esc(v) + '</span>') + '</td>'; };
-    return '<tr><td>' + esc(r.label) + '</td>' + c(r.decor) + c(r.skin) + c(r.bdecor) + '</tr>';
-  }).join('');
-  return '<section class="card bse-sum" aria-label="What your base adds" style="padding:12px"><h2 class="sub" style="margin-bottom:8px">What your base adds</h2><table class="bse-t"><thead><tr><th scope="col"><span class="sr">Stat</span></th><th scope="col">Decor</th><th scope="col">Skins</th><th scope="col">Base decor</th></tr></thead><tbody>' + body + '</tbody></table>' +
-    '<p class="bse-note">' + esc('Adds up the figures on the cards: placed decorations; the Owned bonus of every owned skin (the highest level of each chain) plus the When equipped buffs of the equipped skin; the same for base decorations. Halos and the other collections are not included, so a battle report that lists them can show more.') + '</p>' + (TFail ? '<p class="bse-note">' + esc('Skin and base decoration figures could not load.') + '</p>' : '') + '</section>';
+  var rows = Logic.stripRows(dec, skin, bd), isOpen = !!open.strip;
+  var cell = function (v, cls) { return '<td' + (v === '–' ? ' class="z"' : cls ? ' class="' + cls + '"' : '') + '>' + (v === '–' ? '<span aria-hidden="true">–</span><span class="sr">none</span>' : '<span translate="no">' + esc(v) + '</span>') + '</td>'; };
+  var table = '<table class="bse-t"><thead><tr><th scope="col"><span class="sr">Stat</span></th><th scope="col">Total</th><th scope="col">Decor</th><th scope="col">Skins and halo</th><th scope="col">Base decor</th></tr></thead><tbody>' + rows.map(function (r) {
+    return '<tr><td>' + esc(r.label) + '</td>' + cell(r.total, 'tot') + cell(r.decor) + cell(r.skin) + cell(r.bdecor) + '</tr>'; }).join('') + '</tbody></table>';
+  var list = '<dl class="bse-tot">' + rows.map(function (r) {
+    var parts = [['Decor', r.decor], ['Skins and halo', r.skin], ['Base decor', r.bdecor]].filter(function (x) { return x[1] !== '–'; }).map(function (x) { return x[0] + ' ' + x[1]; });
+    return '<div><dt>' + esc(r.label) + '</dt><dd translate="no">' + esc(r.total) + '</dd><dd class="bse-src">' + nd(parts.join(' · ')) + '</dd></div>'; }).join('') + '</dl>';
+  var meta = rows.filter(function (r) { return SHORT[r.key]; }).map(function (r) { return '<span class="bse-nw">' + esc(SHORT[r.key]) + ' <span translate="no">' + esc(r.total) + '</span></span>'; });
+  var note = '<p class="bse-note">' + esc('Sum of the figures on the cards. Collections are not included.') + ' <button class="info" type="button" data-open="bsetotals" aria-label="How these totals are added">' + ic('info', 'sm') + '</button></p>' + (TFail ? '<p class="bse-note">' + esc('Skin and base decoration figures could not load.') + '</p>' : '');
+  return '<section class="card bse-sum" aria-label="What your base adds"><div class="bse-dsk"><h2 class="sub" style="margin-bottom:8px">What your base adds</h2>' + table + '</div>' +
+    '<div class="bse-mob"><button class="bse-hd" type="button" data-bseopen="strip" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">What your base adds</span><span class="bse-hm bse-meta">' + meta.join(' · ') + '</span></span>' + ic('down', 'bse-chev') + '</button>' + (isOpen ? '<div class="bse-body">' + list + '</div>' : '') + '</div>' +
+    '<div class="bse-nt">' + note + '</div></section>';
+}
+function totalsSheet() {
+  return ['How these totals are added', '<p>' + esc('Each part adds the figures printed on its cards: placed decorations at their level; the Owned bonus of every owned skin (the highest level of each chain); the When equipped buffs of the equipped skin; the equipped halo; the same two parts for base decorations.') + '</p>' +
+    '<p style="margin-top:12px">' + esc('Buffs add up before the game applies them: +315% Decreased DMG Taken is not 315% less damage.') + '</p>' +
+    '<p class="t13 muted" style="margin-top:12px">' + esc('Collections (exhibitions) are not in the tables, so a battle report that lists them can show a little more. Decorations count the all-units buffs of both buff systems.') + '</p>'];
 }
 
 /* ---- Decor ---- */
 function buffList(b, max) { return b.length ? '<ul class="bse-bf">' + b.slice(0, max || 6).map(function (x) { return '<li><span>' + nd(x.n) + '</span><span translate="no">' + esc(x.v) + '</span></li>'; }).join('') + '</ul>' : ''; }
+/* the buff a section is already named for (March Size, Attack...) moves to the card's header as one right-aligned number instead of repeating its label on every card */
+var LEAD = { 0: 'March Size', 1: 'All units Defense', dmg_inc: 'All units DMG increase', dmg_dec: 'All units Decreased DMG Taken', atk: 'All units Attack', hp: 'All units HP' };
 function decorCard(x, off) {
-  var sub = off ? '' : sp('Lv.' + x.lv + ' · ' + x.count + (x.count === 1 ? ' piece' : ' pieces'));
-  var inner = '<span class="bse-ch">' + icon('decor-icons/' + x.ic, qCls(x.q), x.n.charAt(0)) + '<span class="bse-ct"><span class="bse-cn" translate="no" style="display:block">' + esc(noHy(x.n)) + '</span>' + (sub ? '<span class="bse-cs" style="display:block">' + sub + '</span>' : '') + '</span></span>' + buffList(x.buffs);
-  return '<button class="bse-c ' + qCls(x.q) + (off ? ' off' : '') + '" type="button" data-bseitem="' + (off ? 'g' + x.g : esc(x.n)) + '">' + inner + '</button>';
+  var key = x.cat === 0 || x.cat === 1 ? x.cat : x.sub, lead = null, rest = x.buffs;
+  if (LEAD[key]) { var i = x.buffs.map(function (b) { return b.n; }).indexOf(LEAD[key]); if (i >= 0) { lead = x.buffs[i]; rest = x.buffs.filter(function (b, j) { return j !== i; }); } }
+  var bits = off ? '' : 'Lv.' + x.lv + (x.mx ? ' of ' + x.mx : '') + (x.count > 1 ? ' · ' + x.count + ' pieces' : '');
+  var inner = '<span class="bse-ch">' + icon('decor-icons/' + x.ic, qCls(x.q), x.n.charAt(0)) + '<span class="bse-ct"><span class="bse-cn" translate="no" style="display:block">' + esc(noHy(x.n)) + '</span>' + (bits ? '<span class="bse-cs" style="display:block">' + sp(bits) + '</span>' : '') + '</span>' +
+    (lead ? '<span class="bse-lead" translate="no">' + esc(lead.v) + '<span class="sr"> ' + esc(lead.n) + '</span></span>' : '') + '</span>' + buffList(rest);
+  return '<button class="bse-c ' + qCls(x.q) + (off ? ' off' : '') + (cur.q.item && !off && x.n === cur.q.item ? ' is-sel' : '') + '" type="button" data-bseitem="' + (off ? 'g' + x.g : esc(x.n)) + '" id="bsi-' + x.g + '">' + inner + '</button>';
 }
 function decorModel() {
   var vm = S.vm, L = dl();
@@ -555,7 +618,7 @@ function decorSections() {
   secs.forEach(function (s, i) {
     var k = 'c' + s.cat, isOpen = open[k] != null ? open[k] : (s.items.length <= OPEN_MAX || i === 0);
     if (isOpen) anyOpen = true;
-    var shown = pageN[k] || PAGE, strip = s.items.slice(0, 8).map(function (x) { return icon('decor-icons/' + x.ic, qCls(x.q), x.n.charAt(0)); }).join('');
+    var shown = pageN[k] || PAGE; if (s.items.length - shown <= 12) shown = s.items.length; var strip = s.items.slice(0, 8).map(function (x) { return icon('decor-icons/' + x.ic, qCls(x.q), x.n.charAt(0)); }).join('');
     var body = '';
     if (isOpen) {
       var take = shown, items = s.items, pieces = function (list) { var o = list.slice(0, take); take -= o.length; return o; };
@@ -563,7 +626,7 @@ function decorSections() {
       else body = '<div class="bse-grid">' + pieces(items).map(function (x) { return decorCard(x, false); }).join('') + '</div>';
       body = '<div class="bse-body">' + body + more(Math.min(shown, items.length), items.length, k) + '</div>';
     }
-    html += '<section class="card bse-sec" id="bsec-' + s.cat + '"><button class="bse-hd" type="button" data-bseopen="' + k + '" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">' + esc(s.name) + '</span><span class="bse-hm">' + nd(s.items.length + (s.items.length === 1 ? ' decoration' : ' decorations') + ' placed') + '</span></span>' + ic('down', 'bse-chev') + '</button>' +
+    html += '<section class="card bse-sec' + (isOpen ? ' is-open' : '') + '" id="bsec-' + s.cat + '"><button class="bse-hd" type="button" data-bseopen="' + k + '" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">' + esc(s.name) + '</span><span class="bse-hm">' + nd(s.items.length + ' placed') + '</span></span>' + ic('down', 'bse-chev') + '</button>' +
       (isOpen ? '' : '<div class="bse-strip">' + strip + '</div>') + body + '</section>';
   });
   return { html: html, n: f.length, secs: secs };
@@ -573,7 +636,7 @@ function setsHtml() {
   if (!sm.done.length && !sm.left.length) return '';
   function row(s) {
     var st = s.complete ? sp('Complete · ' + s.placed + ' of ' + s.total + ' placed' + (s.level ? ' · Lv.' + s.level : '')) : sp(s.have + ' of ' + s.total + ' owned');
-    return '<button class="bse-set" type="button" data-bseset="' + esc(s.id) + '"><span class="bse-sr"><span class="bse-sn" translate="no">' + esc(s.name) + '</span>' + ic('chev', 'sm') + '</span><span class="t13 muted">' + st + '</span><span class="bse-comp">' + s.pieces.slice(0, 12).map(function (p) { return icon('decor-icons/' + p.ic, p.st === 'missing' ? 'gone' : p.st === 'owned' ? '' : 'q5', p.n.charAt(0)); }).join('') + '</span></button>';
+    return '<button class="bse-set" type="button" data-bseset="' + esc(s.id) + '"><span class="bse-sr"><span class="bse-sn" translate="no">' + esc(s.name) + '</span>' + ic('chev', 'sm') + '</span><span class="t13 muted">' + st + '</span><span class="bse-comp">' + s.pieces.slice(0, 12).map(function (p) { return icon('decor-icons/' + p.ic, p.st === 'missing' ? 'gone' : '', p.n.charAt(0)); }).join('') + '</span></button>';
   }
   function part(key, title, list) {
     if (!list.length) return '';
@@ -602,13 +665,13 @@ function decorPane() {
   var L = dl(), vm = S.vm;
   if (!vm.decor || !vm.decor.placedKinds) return needData('No decoration data yet.');
   if (!L) return partFail('the decoration list');
-  var ss = decorSections(), tally = '<p class="t13 muted" id="bseTally" role="status">' + nd(vm.decor.placedKinds + ' kinds placed (' + vm.decor.placedPieces + ' pieces)' + (ss.n !== vm.decor.placedKinds ? ' · showing ' + ss.n : '')) + '</p>';
-  return spendHtml() + decorControls() + tally + '<div id="bseSecs" class="bse-secs" style="display:flex;flex-direction:column;gap:12px">' + (ss.html || '<div class="empty">No decorations match. <button class="tb link" type="button" data-bseclear="d">Clear filters</button></div>') + '</div>' + setsHtml() + notOwnedHtml() + classicLink('decorations', 'See the decoration cards on the classic page');
+  var ss = decorSections(), tally = '<p class="t13 muted" id="bseTally" role="status">' + nd(vm.decor.placedKinds + ' decorations placed (' + vm.decor.placedPieces + ' pieces)' + (ss.n !== vm.decor.placedKinds ? ' · showing ' + ss.n : '')) + '</p>';
+  return spendHtml() + decorControls() + tally + '<div id="bseSecs" class="bse-secs">' + (ss.html || '<div class="empty">No decorations match. <button class="tb link" type="button" data-bseclear="d">Clear filters</button></div>') + '</div>' + setsHtml() + notOwnedHtml() + classicLink('decorations', 'See the decoration cards on the classic page');
 }
 function dRefresh() {
   var s = $('#bseSecs'); if (!s) return;
   var ss = decorSections(); s.innerHTML = ss.html || '<div class="empty">No decorations match. <button class="tb link" type="button" data-bseclear="d">Clear filters</button></div>';
-  var t = $('#bseTally'); if (t) t.innerHTML = nd(S.vm.decor.placedKinds + ' kinds placed (' + S.vm.decor.placedPieces + ' pieces)' + (ss.n !== S.vm.decor.placedKinds ? ' · showing ' + ss.n : ''));
+  var t = $('#bseTally'); if (t) t.innerHTML = nd(S.vm.decor.placedKinds + ' decorations placed (' + S.vm.decor.placedPieces + ' pieces)' + (ss.n !== S.vm.decor.placedKinds ? ' · showing ' + ss.n : ''));
   $$('.bse-fbtn span').forEach(function (b) { b.textContent = dBtn(); });
   $$('[data-bsed]').forEach(function (x) { var k = x.dataset.bsed, v = k === 'up' ? (D.up ? '1' : '') : D[k]; if (x.value !== String(v)) x.value = String(v); });
   var q = $('[data-bsedq]'); if (q && q.value !== D.q && document.activeElement !== q) q.value = D.q;
@@ -628,22 +691,27 @@ function spendHtml() {
     else {
       var m = spend.model, main = !!Logic.MAIN_ID[spend.tab], mode = spend.units === 'mine' && !m.branches.length ? 'all' : spend.units, rows = (main ? (mode === 'every' ? m.byStat : mode === 'all' ? m.byStatAll : m.byStatMine) : m.byStat)[spend.tab] || [], shown = spend.all ? rows : rows.slice(0, TOP), s = m.shards;
       var tabs = '<div class="bse-tab" role="group" aria-label="Stat to raise">' + Logic.STAT_TABS.map(function (t) { return '<button class="bse-cb" type="button" data-bsetab="' + t[0] + '" aria-pressed="' + (spend.tab === t[0]) + '">' + esc(t[1]) + '</button>'; }).join('') + '</div>';
-      body = '<div class="bse-body"><p class="bse-line">' + dots([sp(fmtInt(s.universal) + ' shards in bag'), sp(fmtInt(s.directShards) + ' as shards and ' + fmtInt(s.boxShards) + ' from boxes')]) + '</p>' +
-        (s.luckyChests > 0 ? '<p class="bse-note">' + nd(s.luckyChests + ' Lucky Decor Shard Chests in the bag are not counted: each opens for 10 to 1,000 shards.') + '</p>' : '') + tabs +
-        (main && spend.tab !== 'march_size' ? '<div class="bse-tab" role="group" aria-label="Which buffs count">' + (m.branches.length ? [['mine', 'My ' + m.branches.join(' and ') + ' marches'], ['all', 'All units only'], ['every', 'Every unit type']] : [['all', 'All units only'], ['every', 'Every unit type']]).map(function (o) { return '<button class="bse-cb" type="button" data-bseunits="' + o[0] + '" aria-pressed="' + (mode === o[0]) + '">' + esc(o[1]) + '</button>'; }).join('') + '</div>' : '') +
-        '<p class="t13 muted" style="margin-bottom:8px">' + esc('Best first: the most ' + Logic.statTabLabel(spend.tab).toLowerCase() + ' for each shard spent.' + (main && spend.tab !== 'march_size' ? (mode === 'mine' ? ' Counts all-units buffs and the ' + m.branches.join(' and ') + ' buffs, the way the Overview move does.' : mode === 'all' ? ' Only the buff that applies to all units counts.' : ' Army, Navy and Air Force buffs count too.') : '')) + '</p>' +
-        (rows.length ? '<div class="bse-rk">' + shown.map(function (r, i) { return spendRow(r, i + 1); }).join('') + '</div>' + (rows.length > TOP ? '<button class="btn more" type="button" data-bsespendall><span>' + (spend.all ? 'Show the top ' + nd(String(TOP)) + ' only' : 'Show all ' + nd(String(rows.length))) + '</span></button>' : '') : '<div class="empty">No upgrades for this stat right now.</div>') + '</div>';
+      var fw = Logic.fitWalk(shown, s.universal), walk = fw.items, fit = fw.fit, spent = fw.spent, left = fw.left;
+      var cover = !shown.length ? '' : fit === 0 ? 'Your ' + fmtInt(s.universal) + ' shards do not cover any of these yet.' : 'Your ' + fmtInt(s.universal) + ' shards cover ' + (fit === 1 ? 'the first' : 'the first ' + fit) + ' (' + fmtInt(spent) + ' shards), ' + fmtInt(left) + ' left.';
+      var lab = Logic.statTabLabel(spend.tab);
+      body = '<div class="bse-body">' + (s.boxShards > 0 ? '<p class="bse-note" style="margin:0 0 8px">' + nd('Includes ' + fmtInt(s.boxShards) + ' from boxes.') + '</p>' : '') +
+        (s.luckyChests > 0 ? '<p class="bse-note">' + nd(s.luckyChests + ' Lucky Decor Shard Chests in the bag are not counted: each opens for 10 to 1,000 shards.') + '</p>' : '') +
+        '<span class="lab">Stat</span>' + tabs +
+        (main && spend.tab !== 'march_size' ? '<span class="lab">Buffs that count</span><div class="bse-tab" role="group" aria-label="Which buffs count">' + (m.branches.length ? [['mine', 'My ' + m.branches.join(' and ') + ' marches'], ['all', 'All units only'], ['every', 'Every unit type']] : [['all', 'All units only'], ['every', 'Every unit type']]).map(function (o) { return '<button class="bse-cb" type="button" data-bseunits="' + o[0] + '" aria-pressed="' + (mode === o[0]) + '">' + esc(o[1]) + '</button>'; }).join('') + '</div>' : '') +
+        '<p class="t13 muted" style="margin-bottom:8px">' + esc('Best first: most ' + (spend.tab === 'march_size' ? 'March Size' : lab) + ' per shard; ties go to the cheaper one.' + (main && spend.tab !== 'march_size' && mode === 'mine' ? ' An all-units buff counts once for each unit type you march (' + m.branches.join(' and ') + '), the way the Overview move does.' : '')) + '</p>' +
+        (cover ? '<p class="bse-line" style="margin-bottom:8px">' + sp(cover) + '</p>' : '') +
+        (rows.length ? '<div class="bse-rk">' + walk.map(function (w, i) { return spendRow(w.r, i + 1, w.st, w.over); }).join('') + '</div>' + (rows.length > TOP ? '<button class="btn more" type="button" data-bsespendall><span>' + (spend.all ? 'Show the top ' + nd(String(TOP)) + ' only' : 'Show all ' + nd(String(rows.length))) + '</span></button>' : '') : '<div class="empty">No upgrades for this stat right now.</div>') + '</div>';
     }
   }
   return '<section class="card bse-sec" id="bseSpend">' + head + body + '</section>';
 }
-function spendRow(r, rank) {
+function spendRow(r, rank, st, over) {
   var gain = r.gain.map(function (g) { return '<div><div class="bse-gl"><span>' + nd(g.n) + '</span><span translate="no">' + esc(g.v) + '</span></div>' + (g.rate ? '<div class="bse-rate">' + esc(g.rate) + '</div>' : '') + '</div>'; }).join('');
-  var cost = '<div class="bse-cost">' + dots([sp(fmtInt(r.cost) + ' shards'), r.credit > 0 && r.cost < r.raw ? sp('after ' + fmtInt(r.credit) + ' from spare pieces') : '', r.ready ? '<span class="bse-ok">Ready to upgrade</span>' : sp(fmtInt(r.short) + ' more needed')]) + '</div>';
+  var status = st === 'fits' ? '<span class="bse-ok"><span class="bse-okd" aria-hidden="true"></span>Fits your bag</span>' : st === 'after' ? sp('Needs ' + fmtInt(over) + ' more after the rows above') : sp('Needs ' + fmtInt(r.short) + ' more');
+  var cost = '<div class="bse-cost">' + dots([sp(fmtInt(r.cost) + ' shards' + (r.credit > 0 && r.cost < r.raw ? ' (' + fmtInt(r.raw) + ', less ' + fmtInt(r.credit) + ' from copies of it in your bag)' : '')), status]) + '</div>';
   var me = r.mutex.length ? '<p class="bse-me">' + esc('Only one of this and ' + r.mutex.slice(0, 2).join(', ') + (r.mutex.length > 2 ? ' and ' + (r.mutex.length - 2) + ' more' : '') + ' can be placed.') + '</p>' : '';
   var also = r.also.length ? '<p class="bse-me">' + esc('Also gives ' + r.also.map(function (a) { return a.n + ' ' + a.v; }).join(', ')) + '</p>' : '';
-  return '<div class="bse-r"><div class="bse-ch"><span class="bse-n" translate="no">' + rank + '</span>' + icon('decor-icons/' + r.ic, '', r.n.charAt(0)) + '<span class="bse-ct"><button class="bse-cn tb link" type="button" data-bseitem="' + esc(r.n) + '" translate="no" style="justify-content:flex-start;min-height:24px;padding:0;font-size:var(--fs-15)">' + esc(noHy(r.n)) + '</button><span class="bse-cs" style="display:block">' + sp('Lv.' + r.from + ' to Lv.' + r.to) + '</span></span></div>' +
-    (r.bar ? '<div class="meter r-' + H.ramp(r.bar) + '" role="img" aria-label="' + r.bar + ' percent of the best value for this stat"><i style="width:' + r.bar + '%"></i></div>' : '') + gain + also + cost + me + '</div>';
+  return '<div class="bse-r"><button class="bse-ch bse-rh" type="button" data-bseitem="' + esc(r.n) + '"><span class="bse-n" translate="no">' + rank + '</span>' + icon('decor-icons/' + r.ic, '', r.n.charAt(0)) + '<span class="bse-ct"><span class="bse-cn" translate="no" style="display:block">' + esc(noHy(r.n)) + '</span><span class="bse-cs" style="display:block">' + sp('Lv.' + r.from + ' to Lv.' + r.to) + '</span></span></button>' + gain + also + cost + me + '</div>';
 }
 function loadSpend() {
   if (spend.model || spend.loading) return;
@@ -654,7 +722,7 @@ function loadSpend() {
     spend.loading = false;
     try {
       if (!st.decorLevels || !st.decorIndex) throw new Error('decoration tables missing');
-      spend.model = Logic.spendModel(core, inv, S.res.merged, { levels: st.decorLevels, index: st.decorIndex, mutex: mut ? Logic.mutexMap(mut) : {} }, null, S.vm.decor.branches || (S.vm.movesInput && S.vm.movesInput.decor.branches));
+      spend.model = Logic.spendModel(core, inv, S.res.merged, { levels: st.decorLevels, index: st.decorIndex, mutex: mut ? Logic.mutexMap(mut) : {}, names: (dl() || {}).DECOR_GROUPS }, null, S.vm.decor.branches || (S.vm.movesInput && S.vm.movesInput.decor.branches));
       /* the best stat first: the first tab with a row the bag can afford, else the first with any row */
       var ord = Logic.PICK_ORDER, pick = ord.filter(function (s) { return ((Logic.MAIN_ID[s] ? spend.model.byStatMine : spend.model.byStat)[s] || []).some(function (r) { return r.ready; }); })[0] || ord.filter(function (s) { return (spend.model.byStat[s] || []).length; })[0];
       if (!spend.touched && pick) spend.tab = pick;
@@ -675,9 +743,12 @@ function itemSheet(arg) {
   var have = S.vm.decor.shards, nx = x.nx;
   if (!off && nx) {
     var net = Math.max(0, nx.raw - nx.credit), pct = Math.min(100, Math.round(have / Math.max(net, 1) * 100));
-    var STATS = { '960012': ['March Size', true], '930100': ['All units Attack', false], '930000': ['All units HP', false], '1001001': ['All units DMG increase', false] };
-    var gain = Object.keys(nx.dl).filter(function (k) { return STATS[k]; }).map(function (k) { var v = nx.dl[k]; return esc(STATS[k][0]) + ' ' + nm(STATS[k][1] ? '+' + v : '+' + (v / 100) + '%'); });
-    o += '<section class="card"><h3 class="disp" style="font-size:var(--fs-20)">Next level: ' + nm('Lv.' + nx.to) + '</h3>' + (gain.length ? '<p style="margin-top:8px">' + gain.join(', ') + '</p>' : '') +
+    var br = (S.vm.movesInput && S.vm.movesInput.decor.branches) || [], lines = Logic.gainLines(L, x, br, core);
+    var fmt = function (v, pct) { return (v >= 0 ? '+' : '−') + (pct ? pctText(Math.abs(v)) : fmtInt(Math.abs(v))); };
+    var gain = lines.map(function (g) {
+      return '<li' + (g.counted ? ' class="bse-cnt"' : '') + '><span class="bse-gh"><span>' + nd(g.n) + '</span><span translate="no">' + (g.cur != null ? esc(fmt(g.cur, g.pct) + ' → ' + fmt(g.next, g.pct)) + ' (' + esc(fmt(g.step, g.pct)) + ')' : esc(fmt(g.step, g.pct))) + '</span></span>' +
+        (g.counted ? '<span class="t12 muted" style="display:block">' + nd(br.length ? 'Counted for your ' + br.join(' and ') + ' marches' : 'Counted in your next move') + '</span>' : '') + '</li>'; }).join('');
+    o += '<section class="card"><h3 class="disp" style="font-size:var(--fs-20)">Next level: ' + nm('Lv.' + nx.to) + '</h3>' + (gain ? '<ul class="bse-gn" style="margin-top:8px">' + gain + '</ul>' : '') +
       '<div class="nb" style="margin-top:12px" data-numwrap><div class="n" data-num translate="no">' + fmtInt(net) + '</div><div class="l lbl">Shards to upgrade</div><div class="s src"><span translate="no">' + fmtInt(have) + '</span> in bag</div></div>' +
       '<div class="meter lg r-' + H.ramp(pct) + '" style="margin-top:12px" role="img" aria-label="' + pct + ' percent of the shards needed"><i style="width:' + Math.max(2, pct) + '%"></i></div>' +
       '<p class="t13 muted" style="margin-top:8px">' + (have >= net ? 'Your bag covers this upgrade.' : 'You need <span translate="no">' + fmtInt(net - have) + '</span> more shards.') + '</p></section>';
@@ -853,6 +924,7 @@ function sheet(kind, arg) {
   try {
     if (kind === 'decor') return itemSheet(arg);
     if (kind === 'bseset') return setSheet(arg);
+    if (kind === 'bsetotals') return totalsSheet();
     if (kind === 'bsedfilter') return dSheet();
     if (kind === 'bsesfilter') return kSheet();
     if (kind === 'skin') return skinSheet(arg);
@@ -925,7 +997,8 @@ function onChange(t) {
 }
 function reflow(key) {
   var v = $('#v-base'), y = window.scrollY;
-  if (/^c\d$/.test(key) || key === 'notOwned' || /^sets/.test(key)) { paneRefreshAll(); }
+  if (key === 'strip') { var sm = $('#bseSum'); if (sm) sm.innerHTML = stripHtml(); }
+  else if (/^c\d$/.test(key) || key === 'notOwned' || /^sets/.test(key)) { paneRefreshAll(); }
   else if (key === 'skins' || key === 'skinLeft' || key === 'haloLeft') { var p = $('[data-pane="skins"]', v); if (p) p.innerHTML = skinsPane(); }
   else if (key === 'bd' || key === 'bdLeft') { var b = $('[data-pane="base-decor"]', v); if (b) b.innerHTML = bdPane(); }
   else if (/^tal/.test(key)) { var f = $('[data-pane="formation"]', v); if (f) f.innerHTML = formationPane(); }
@@ -938,11 +1011,12 @@ function render(r) {
     cur = { seg: seg, q: (r && r.q) || {} };
     if (!S.vm || !S.res) return;
     if (DMFor !== S.vm) { spend.model = null; spend.loading = false; spend.err = false; DM = null; DMFor = null; } /* the game data arrived (a second pass): rebuild from it */
-    if (cur.q.item && seg === 'decor') { /* a link from Next moves: the section that holds the item opens, the item sheet follows */ var dm = dl() && decorData(), it = dm && dm.placed.filter(function (p) { return p.n === cur.q.item; })[0]; if (it) { open['c' + it.cat] = true; } }
+    if (cur.q.item && seg === 'decor') { /* a link from Next moves: the section that holds the item opens, the item sheet follows */ var dm = dl() && decorData(), it = dm && dm.placed.filter(function (p) { return p.n === cur.q.item; })[0]; if (it) { open['c' + it.cat] = true; var ss0 = Logic.sections(G, Logic.decorSort(Logic.decorFilter(dm.placed, D), D.sort)).filter(function (z) { return z.cat === it.cat; })[0]; if (ss0) { var ix = ss0.items.map(function (z) { return z.g; }).indexOf(it.g); if (ix >= PAGE) pageN['c' + it.cat] = Math.ceil((ix + 1) / PAGE) * PAGE; } } }
     paint(); wire();
     if (seg === 'decor' || !T) tablesFor(seg);
     if (seg === 'formation' && !REF) loadRef(function () { var f = $('#v-base [data-pane="formation"]'); if (f && cur.seg === 'formation') f.innerHTML = formationPane(); });
     if (spend.open && !spend.model && spendOwner()) loadSpend();
+    if (seg === 'decor' && cur.q.item) { setTimeout(function () { var el = $('#v-base .bse-c.is-sel'); if (el) el.scrollIntoView({ block: 'center' }); }, 60); }
     if (seg === 'decor' && cur.q.spend) { spend.open = true; var sec = $('#bseSpend'); if (sec) sec.outerHTML = spendHtml(); loadSpend(); }
   } catch (e) { fail(e); }
 }

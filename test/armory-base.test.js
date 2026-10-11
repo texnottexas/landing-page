@@ -29,13 +29,18 @@ const VOCAB = /\bATK\b|\bAF\b|DMG[+\-−]|\bDEF\b|DMG Increase|\(rcv\)/;
 // ---- vocabulary ----
 test('statName writes the game shorthand out, and every stat name in the five tables reads in full', () => {
   assert.equal(L.statName('Air Force ATK'), 'Air Force Attack');
-  assert.equal(L.statName('All DMG+'), 'All DMG increase');
-  assert.equal(L.statName('Navy DMG− Back 2 Rows'), 'Navy Decreased DMG Taken Back 2 Rows');
+  assert.equal(L.statName('All DMG+'), 'All units DMG increase');
+  assert.equal(L.statName('Navy DMG− Back 2 Rows'), 'Navy Decreased DMG Taken (back 2 rows)');
   assert.equal(L.statName('Navy DMG- (rcv)'), 'Navy Decreased DMG Taken');
   assert.equal(L.statName('All units DMG Increase'), 'All units DMG increase');
   assert.equal(L.statName('Increase DEF of all units'), 'All units Defense');
-  assert.equal(L.statName('AF ATK Bonus (first two rows)'), 'Air Force Attack Bonus (first two rows)');
+  assert.equal(L.statName('AF ATK Bonus (first two rows)'), 'Air Force Attack (front 2 rows)');
   assert.equal(L.statName(null), '');
+  [['All Attack', 'All units Attack'], ['All HP', 'All units HP'], ['All Units ATK', 'All units Attack'], ['HP Boost for first 2 row units', 'All units HP (front 2 rows)'], ['Attack of Navy in the 2 back rows', 'Navy Attack (back 2 rows)'],
+   ['Air Force DMG increase (front-row)', 'Air Force DMG increase (front row)'], ['Mid row Air Force Attack', 'Air Force Attack (mid row)'], ['Units in the first 2 rows Damage Increase', 'All units DMG increase (front 2 rows)'],
+   ['Improve first 2 rows Decreased Damage Taken', 'All units Decreased DMG Taken (front 2 rows)'], ['Mid/back row units Decreased Damage Taken', 'All units Decreased DMG Taken (mid and back rows)'], ['Army HP Boost', 'Army HP'],
+   ['Increase marching speed', 'March speed'], ['Garage/Dock/Hangar Capacity', 'Garage, dock and hangar capacity'], ['Army Decreased Damage Taken in the front row', 'Army Decreased DMG Taken (front row)'], ['Navy Damage increase in first 2 rows', 'Navy DMG increase (front 2 rows)'],
+   ['HP Boost for Naval units (first two rows)', 'Navy HP (front 2 rows)'], ['Front 2 Rows ATK', 'All units Attack (front 2 rows)'], ['Attack Boost against Dark Forces', 'Attack against Dark Forces']].forEach(([a, b]) => assert.equal(L.statName(a), b, a));
   const names = new Set();
   Object.values(T.SKIN_SD).forEach((s) => s[2].concat(s[3]).forEach((b) => names.add(b[0])));
   Object.values(T.BASE_DECOR_DATA).forEach((d) => (d.e || []).concat(d.o || []).forEach((b) => names.add(b[0])));
@@ -45,6 +50,8 @@ test('statName writes the game shorthand out, and every stat name in the five ta
   const raw = [...names].filter((n) => VOCAB.test(n)), shown = [...names].map(L.statName).filter((n) => VOCAB.test(n));
   assert.ok(raw.length > 20, 'the tables really do carry shorthand (so this test can fail): ' + raw.length);
   assert.deepEqual(shown, [], 'no shorthand survives on screen');
+  const tbl = new Set(); Object.values(T.SKIN_SD).forEach((s) => s[2].concat(s[3]).forEach((b) => tbl.add(L.statName(b[0])))); Object.values(T.BASE_DECOR_DATA).forEach((d) => (d.e || []).concat(d.o || []).forEach((b) => tbl.add(L.statName(b[0])))); Object.values(T.BASE_HALO_DATA).forEach((d) => d.b.forEach((b) => tbl.add(L.statName(b[0]))));
+  assert.ok(tbl.size <= 105, 'distinct skin / base decoration / halo labels after the rewrite (112 before): ' + tbl.size);
 });
 test('values: a skin value keeps one sign and drops a trailing .0; a base value is hundredths, March Size a plain count', () => {
   assert.equal(L.skinVal('++25.0%'), '+25%'); assert.equal(L.skinVal('+20.5%'), '+20.5%'); assert.equal(L.skinVal('+4'), '+4');
@@ -146,11 +153,18 @@ test('baseDecorTotals: holding buffs of every owned base decoration plus the equ
   assert.deepEqual(L.baseDecorTotals(t, { castle: [7, 8], castleActive: 7 }), { march: 2, atk: 3, hp: 4, dmgTaken: 0, dmgInc: 0 });
   assert.deepEqual(L.baseDecorTotals(t, { castle: [7], castleActive: 0 }), { march: 2, atk: 0, hp: 2.5, dmgTaken: 0, dmgInc: 0 });
 });
-test('stripRows: one row per key stat, a dash where a source has no figure, March Size as a count', () => {
-  const rows = L.stripRows({ march: 12, atk: 40.5, hp: 10, dmgTaken: 0, dmgInc: 3 }, null, { march: 0, atk: 3, hp: 0, dmgTaken: 0, dmgInc: 0 });
+test('stripRows: one row per key stat with the three sources and their total, whole numbers with separators, a plain 0 where a source adds nothing, a dash where it has no data', () => {
+  const rows = L.stripRows({ march: 12, atk: 40.5, hp: 10, dmgTaken: 0, dmgInc: 3 }, { march: 9, atk: 1083.4, hp: 1026, dmgTaken: 40, dmgInc: 39 }, null);
   assert.deepEqual(rows.map((r) => r.label), ['March Size', 'All units Attack', 'All units HP', 'All units Decreased DMG Taken', 'All units DMG increase']);
-  assert.deepEqual([rows[0].decor, rows[0].skin, rows[0].bdecor], ['+12', '–', '+0']);
-  assert.deepEqual([rows[1].decor, rows[1].bdecor], ['+40.5%', '+3%']);
+  assert.deepEqual([rows[0].decor, rows[0].skin, rows[0].bdecor, rows[0].total], ['+12', '+9', '\u2013', '+21']);
+  assert.deepEqual([rows[1].decor, rows[1].skin, rows[1].total], ['+41%', '+1,083%', '+1,124%'], 'whole numbers, thousands separator');
+  assert.deepEqual([rows[3].decor, rows[3].total], ['0%', '+40%'], 'a zero is not printed as a gain');
+  assert.equal(L.stripRows(null, null, { march: 0, atk: 0, hp: 0, dmgTaken: 0, dmgInc: 0 })[0].bdecor, '0');
+});
+test('haloTotals: the equipped halo counts its listed buffs (Cyber Pulse: +50% Attack, +20% HP), an owned halo that is not equipped adds nothing', () => {
+  assert.deepEqual(L.haloTotals(T, { haloActive: 1 }), { march: 0, atk: 50, hp: 20, dmgTaken: 0, dmgInc: 0 });
+  assert.deepEqual(L.haloTotals(T, { haloActive: 0 }), { march: 0, atk: 0, hp: 0, dmgTaken: 0, dmgInc: 0 });
+  assert.deepEqual(L.addTotals({ march: 1, atk: 2.2, hp: 0, dmgTaken: 0, dmgInc: 0 }, { march: 0, atk: 50, hp: 20, dmgTaken: 0, dmgInc: 0 }).atk, 52.2);
 });
 
 // ---- decorations ----
@@ -292,8 +306,27 @@ test('every-unit-type view is the classic advisor list: it can rank a decoration
   const m = L.spendModel(core, inv, merged, { levels: LEVELS, index: INDEX, mutex: MUTEX });
   assert.equal(m.byStatAll.hp.some((r) => r.ready), false, 'all units only: nothing to buy, as the Overview says');
   const row = m.byStat.hp.find((r) => r.ready);
-  assert.equal(row.n, 'Sandcastle Toolkit'); assert.equal(row.gain[0].n, 'Army HP Boost', 'the row names the buff, so Army HP is never mistaken for All units HP');
+  assert.equal(row.n, 'Sandcastle Toolkit'); assert.equal(row.gain[0].n, 'Army HP', 'the row names the buff, so Army HP is never mistaken for All units HP');
   assert.equal(m.byStat.march_size.length, m.byStatAll.march_size.length, 'March Size has one buff: both views are the same list');
+});
+test('item sheet: one gain line for every buff the next level changes, with now -> next and whether the Overview move counts it', () => {
+  const { core, vm } = placedFor([[5612, 3], [5604, 3], [5426, 2], [4200, 2], [5462, 1]]);
+  const pm = L.placedModel(vm.decor, LOOKUPS, G, core);
+  pm.filter((p) => p.nx).forEach((p) => assert.equal(L.gainLines(LOOKUPS, p, [], core).length, Object.keys(p.nx.dl).length, p.n));
+  const sb = pm.find((p) => p.g === 5612), l = L.gainLines(LOOKUPS, sb, ['Army', 'Air Force'], core);
+  assert.deepEqual(l.map((g) => [g.n, g.cur, g.next, g.step, g.counted, g.pct]), [['Army Attack', 12, 16, 4, true, true]], 'the +4% Army Attack of the Overview move is on its sheet');
+  assert.equal(L.gainLines(LOOKUPS, sb, [], core)[0].counted, false, 'no marches: Army Attack is not counted');
+  const pc = pm.find((p) => p.g === 5462); assert.ok(L.gainLines(LOOKUPS, pc, [], core).length >= 1);
+});
+test('fitWalk: rows are paid in rank order from one bag; 507 shards cover 60 + 80 + 160 + 200, the fifth (240) fits alone but needs 233 more after them', () => {
+  const w = L.fitWalk([60, 80, 160, 200, 240].map((c) => ({ cost: c })), 507);
+  assert.deepEqual(w.items.map((i) => i.st), ['fits', 'fits', 'fits', 'fits', 'after']); assert.deepEqual([w.fit, w.spent, w.left, w.items[4].over], [4, 500, 7, 233]);
+  assert.deepEqual(L.fitWalk([{ cost: 900 }, { cost: 10 }], 507).items.map((i) => [i.st, i.over]), [['short', 393], ['fits', 0]], 'a row too dear for the whole bag is "short" and does not stop a cheaper one');
+  assert.deepEqual(L.fitWalk([], 5), { items: [], fit: 0, spent: 0, left: 5 });
+});
+test('spend rows never carry a raw group id: a partner that cannot be named is dropped', () => {
+  const { core, merged } = placedFor([[5544, 2]]), m = L.spendModel(core, bag(1e6), merged, { levels: LEVELS, index: INDEX, mutex: { 5544: ['9999999', '5606'] }, names: LOOKUPS.DECOR_GROUPS }, null, []);
+  const row = m.byStat.march_size.find((r) => r.g === 5544); assert.ok(row.mutex.every((n) => !/Group \d+/.test(n)), row.mutex.join('|'));
 });
 test('mutexMap: group to the groups it cannot share a base with', () => {
   const k = Object.keys(MUTEX)[0]; assert.ok(Array.isArray(MUTEX[k]) && MUTEX[k].every((x) => typeof x === 'string'));
