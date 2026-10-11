@@ -294,34 +294,39 @@ function setsModel(L, merged, placed, om) {
 var PICK_ORDER = ['march_size', 'attack', 'hp', 'damage_boost', 'def', 'damage_red', 'capacity'];
 var STAT_TABS = [['march_size', 'March Size'], ['attack', 'Attack'], ['hp', 'HP'], ['def', 'All units Defense'], ['damage_boost', 'DMG increase'], ['damage_red', 'Decreased DMG Taken'], ['capacity', 'Garage, dock and hangar capacity']];
 function statTabLabel(id) { return (STAT_TABS.filter(function (t) { return t[0] === id; })[0] || [id, id])[1]; }
-/* The one buff each of the four stats the Overview move tries counts (armory-core DECOR_STATS): the all-units buff only. */
+/* The all-units buff each of the four stats the Overview move tries is built on (armory-core DECOR_STATS); the move also counts the unit types the player marches with. */
 var MAIN_ID = { march_size: '960012', attack: '930100', hp: '930000', damage_boost: '1001001' };
 /* the classic advisor's ranking (core.computeDecorRecs, parity-tested), as plain rows (cost after spare pieces, ready, shortfall, relative bar).
-   Two views of the four main stats: `byStat` counts every buff the advisor lists for the stat (Army, Navy and Air Force attack too),
-   `byStatAll` counts only the all-units buff and ranks it by the Overview move's rule (gain per raw shard, then cost, then name),
-   so the Overview's decoration move is always the top ready row of its stat there. data = { levels, index, mutex } */
-function spendModel(core, inv, merged, data, statIds) {
+   Views of the four main stats, all ranked by the Overview move's rule (gain per raw shard, then cost, then name), so the Overview's decoration
+   move is always the top ready row of its stat in `byStatMine`:
+     byStat      every buff the advisor lists for the stat (the classic list)
+     byStatAll   the all-units buff only
+     byStatMine  the all-units buff plus the unit types of `branches` (the Overview move's scope; equals byStatAll with no marches)
+   data = { levels, index, mutex } */
+function spendModel(core, inv, merged, data, statIds, branches) {
   var ids = statIds || STAT_TABS.map(function (t) { return t[0]; });
-  var res = core.computeDecorRecs(ids, inv, merged, data), out = { shards: res.shardSummary, byStat: {}, byStatAll: {}, order: ids };
-  function plain(r, gainRows, roi, bar) {
+  var res = core.computeDecorRecs(ids, inv, merged, data), out = { shards: res.shardSummary, byStat: {}, byStatAll: {}, byStatMine: {}, order: ids, branches: arr(branches) };
+  function plain(r, gainRows, roi) {
     return {
       g: r.group, n: String(r.name), ic: iconFile(r.group, r.name), from: r.fromLevel, to: r.toLevel, cost: r.shardCost, raw: r.rawShardCost, credit: r.groupCredit,
-      have: r.universalShards, ready: !!r.ready, short: Math.max(0, r.shardCost - r.universalShards), roi: roi, bar: bar,
+      have: r.universalShards, ready: !!r.ready, short: Math.max(0, r.shardCost - r.universalShards), roi: roi, bar: 0,
       gain: gainRows.map(function (b) { return { n: statName(b.label), v: b.displayDelta, rate: String(b.perShardLabel || '') }; }),
       also: arr(r.buffRows).filter(function (b) { return gainRows.indexOf(b) < 0; }).concat(arr(r.alsoRows)).map(function (b) { return { n: statName(b.label), v: b.displayDelta }; }), mutex: arr(r.mutexPartners).map(String)
     };
   }
   function bars(list) { var max = 0; list.forEach(function (r) { if (r.roi > max) max = r.roi; }); list.forEach(function (r) { r.bar = max > 0 && r.roi > 0 ? Math.min(100, Math.max(8, Math.round(r.roi / max * 100))) : 0; }); return list; }
+  function scoped(rows, main, br) {
+    var counted = {}; core.decorScopeIds(main, br).forEach(function (x) { counted[x[0]] = 1; });
+    return bars(rows.map(function (r) {
+      var m = arr(r.buffRows).filter(function (b) { return counted[String(b.id)]; }); if (!m.length) return null;
+      return plain(r, m, m.reduce(function (a, b) { return a + b.rawDelta; }, 0) / Math.max(r.rawShardCost, 1));
+    }).filter(Boolean).sort(function (a, b) { return (b.roi - a.roi) || (a.cost - b.cost) || (a.n < b.n ? -1 : a.n > b.n ? 1 : 0); }));
+  }
   ids.forEach(function (s) {
     var rows = arr(res.byStat[s]);
-    out.byStat[s] = bars(rows.map(function (r) { return plain(r, arr(r.buffRows), r.roi, 0); }));
+    out.byStat[s] = bars(rows.map(function (r) { return plain(r, arr(r.buffRows), r.roi); }));
     var main = MAIN_ID[s];
-    if (main) {
-      out.byStatAll[s] = bars(rows.filter(function (r) { return arr(r.buffRows).some(function (b) { return String(b.id) === main; }); }).map(function (r) {
-        var m = arr(r.buffRows).filter(function (b) { return String(b.id) === main; });
-        return plain(r, m, m[0].rawDelta / Math.max(r.rawShardCost, 1), 0);
-      }).sort(function (a, b) { return (b.roi - a.roi) || (a.cost - b.cost) || (a.n < b.n ? -1 : a.n > b.n ? 1 : 0); }));
-    }
+    if (main) { out.byStatAll[s] = scoped(rows, main, []); out.byStatMine[s] = scoped(rows, main, branches); }
   });
   return out;
 }
@@ -439,7 +444,7 @@ var cur = { seg: 'decor', q: {} }, wired = false;
 var DF = { q: '', stat: '', up: false, sort: 'name' }, D = Object.assign({}, DF), open = {}, pageN = {};
 var SF = { q: '', buff: '', skill: '', sort: 'equipped' }, K = Object.assign({}, SF), skinN = PAGE, notN = {};
 var BF = { q: '', sort: 'name' }, B = Object.assign({}, BF), bdN = PAGE;
-var T = null, TFail = false, TQ = null, MUT = null, REF = null, REFFail = false, spend = { open: false, tab: 'march_size', all: false, units: true, err: false };
+var T = null, TFail = false, TQ = null, MUT = null, REF = null, REFFail = false, spend = { open: false, tab: 'march_size', all: false, units: 'mine', err: false };
 
 var CSS =
   '.bse-sum{padding:0}@media (min-width:768px){.bse-sum .bse-t{max-width:680px}}.bse-t{margin:0;width:100%;border-collapse:collapse;font-size:var(--fs-14)}.bse-t th{font-weight:400;font-size:var(--fs-13);color:var(--muted);text-align:right;padding:0 0 4px 8px}.bse-t th:first-child,.bse-t td:first-child{text-align:left;padding-left:0}' +
@@ -621,12 +626,12 @@ function spendHtml() {
     if (spend.err) body = '<div class="bse-body">' + partFail('the upgrade costs') + '</div>';
     else if (!spend.model) body = '<div class="bse-body"><p class="muted t13">Working out the best upgrades…</p></div>';
     else {
-      var m = spend.model, main = !!Logic.MAIN_ID[spend.tab], rows = (main && spend.units ? m.byStatAll : m.byStat)[spend.tab] || [], shown = spend.all ? rows : rows.slice(0, TOP), s = m.shards;
+      var m = spend.model, main = !!Logic.MAIN_ID[spend.tab], mode = spend.units === 'mine' && !m.branches.length ? 'all' : spend.units, rows = (main ? (mode === 'every' ? m.byStat : mode === 'all' ? m.byStatAll : m.byStatMine) : m.byStat)[spend.tab] || [], shown = spend.all ? rows : rows.slice(0, TOP), s = m.shards;
       var tabs = '<div class="bse-tab" role="group" aria-label="Stat to raise">' + Logic.STAT_TABS.map(function (t) { return '<button class="bse-cb" type="button" data-bsetab="' + t[0] + '" aria-pressed="' + (spend.tab === t[0]) + '">' + esc(t[1]) + '</button>'; }).join('') + '</div>';
       body = '<div class="bse-body"><p class="bse-line">' + dots([sp(fmtInt(s.universal) + ' shards in bag'), sp(fmtInt(s.directShards) + ' as shards and ' + fmtInt(s.boxShards) + ' from boxes')]) + '</p>' +
         (s.luckyChests > 0 ? '<p class="bse-note">' + nd(s.luckyChests + ' Lucky Decor Shard Chests in the bag are not counted: each opens for 10 to 1,000 shards.') + '</p>' : '') + tabs +
-        (main && spend.tab !== 'march_size' ? '<div class="bse-tab" role="group" aria-label="Which buffs count">' + [[true, 'All units only'], [false, 'Every unit type']].map(function (o) { return '<button class="bse-cb" type="button" data-bseunits="' + o[0] + '" aria-pressed="' + (spend.units === o[0]) + '">' + esc(o[1]) + '</button>'; }).join('') + '</div>' : '') +
-        '<p class="t13 muted" style="margin-bottom:8px">' + esc('Best first: the most ' + Logic.statTabLabel(spend.tab).toLowerCase() + ' for each shard spent.' + (main && spend.tab !== 'march_size' ? (spend.units ? ' Only the buff that applies to all units counts, the way the Overview move does.' : ' Army, Navy and Air Force buffs count too.') : '')) + '</p>' +
+        (main && spend.tab !== 'march_size' ? '<div class="bse-tab" role="group" aria-label="Which buffs count">' + (m.branches.length ? [['mine', 'My ' + m.branches.join(' and ') + ' marches'], ['all', 'All units only'], ['every', 'Every unit type']] : [['all', 'All units only'], ['every', 'Every unit type']]).map(function (o) { return '<button class="bse-cb" type="button" data-bseunits="' + o[0] + '" aria-pressed="' + (mode === o[0]) + '">' + esc(o[1]) + '</button>'; }).join('') + '</div>' : '') +
+        '<p class="t13 muted" style="margin-bottom:8px">' + esc('Best first: the most ' + Logic.statTabLabel(spend.tab).toLowerCase() + ' for each shard spent.' + (main && spend.tab !== 'march_size' ? (mode === 'mine' ? ' Counts all-units buffs and the ' + m.branches.join(' and ') + ' buffs, the way the Overview move does.' : mode === 'all' ? ' Only the buff that applies to all units counts.' : ' Army, Navy and Air Force buffs count too.') : '')) + '</p>' +
         (rows.length ? '<div class="bse-rk">' + shown.map(function (r, i) { return spendRow(r, i + 1); }).join('') + '</div>' + (rows.length > TOP ? '<button class="btn more" type="button" data-bsespendall><span>' + (spend.all ? 'Show the top ' + nd(String(TOP)) + ' only' : 'Show all ' + nd(String(rows.length))) + '</span></button>' : '') : '<div class="empty">No upgrades for this stat right now.</div>') + '</div>';
     }
   }
@@ -649,9 +654,9 @@ function loadSpend() {
     spend.loading = false;
     try {
       if (!st.decorLevels || !st.decorIndex) throw new Error('decoration tables missing');
-      spend.model = Logic.spendModel(core, inv, S.res.merged, { levels: st.decorLevels, index: st.decorIndex, mutex: mut ? Logic.mutexMap(mut) : {} });
+      spend.model = Logic.spendModel(core, inv, S.res.merged, { levels: st.decorLevels, index: st.decorIndex, mutex: mut ? Logic.mutexMap(mut) : {} }, null, S.vm.decor.branches || (S.vm.movesInput && S.vm.movesInput.decor.branches));
       /* the best stat first: the first tab with a row the bag can afford, else the first with any row */
-      var ord = Logic.PICK_ORDER, pick = ord.filter(function (s) { return ((Logic.MAIN_ID[s] ? spend.model.byStatAll : spend.model.byStat)[s] || []).some(function (r) { return r.ready; }); })[0] || ord.filter(function (s) { return (spend.model.byStat[s] || []).length; })[0];
+      var ord = Logic.PICK_ORDER, pick = ord.filter(function (s) { return ((Logic.MAIN_ID[s] ? spend.model.byStatMine : spend.model.byStat)[s] || []).some(function (r) { return r.ready; }); })[0] || ord.filter(function (s) { return (spend.model.byStat[s] || []).length; })[0];
       if (!spend.touched && pick) spend.tab = pick;
     } catch (e) { if (window.console) console.error(e); spend.err = true; }
     var sec = $('#bseSpend'); if (sec) sec.outerHTML = spendHtml();
@@ -890,7 +895,7 @@ function wire() {
     if (ds.bseskill) { e.stopPropagation(); H.openSheet('skill', ds.bseskill); return; }
     if ('bsespend' in ds) { spend.open = !spend.open; var sec = $('#bseSpend'); if (sec) sec.outerHTML = spendHtml(); if (spend.open) loadSpend(); return; }
     if (ds.bsetab) { spend.tab = ds.bsetab; spend.touched = true; spend.all = false; var s2 = $('#bseSpend'); if (s2) s2.outerHTML = spendHtml(); var nb = $('[data-bsetab="' + ds.bsetab + '"]', v); if (nb) nb.focus({ preventScroll: true }); return; }
-    if (ds.bseunits) { spend.units = ds.bseunits === 'true'; spend.all = false; var s4 = $('#bseSpend'); if (s4) s4.outerHTML = spendHtml(); var ub = $('[data-bseunits="' + ds.bseunits + '"]', v); if (ub) ub.focus({ preventScroll: true }); return; }
+    if (ds.bseunits) { spend.units = ds.bseunits; spend.all = false; var s4 = $('#bseSpend'); if (s4) s4.outerHTML = spendHtml(); var ub = $('[data-bseunits="' + ds.bseunits + '"]', v); if (ub) ub.focus({ preventScroll: true }); return; }
     if ('bsespendall' in ds) { spend.all = !spend.all; var s3 = $('#bseSpend'); if (s3) s3.outerHTML = spendHtml(); return; }
     if (ds.bseclear) { if (ds.bseclear === 'd') D = Object.assign({}, DF); else if (ds.bseclear === 'k') { K = Object.assign({}, SF); skinN = PAGE; } else { B = Object.assign({}, BF); bdN = PAGE; } paneAll(); show(); }
   });

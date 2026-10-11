@@ -22,7 +22,7 @@ function decorId(core, group, level) {
   for (let id = base; id < base + 30; id++) if (String(core.decorIdToGroup(id)) === String(group) && core.decorLevel(id, group) === level) return id;
   throw new Error('no id for group ' + group + ' level ' + level);
 }
-const vmOf = (core, merged, inv) => VM.buildViewModel(merged, { reportsTs: 0, dataTs: 0, kinds: [] }, { core, statics: STATICS, supp: inv ? { inv } : {}, privacy: {}, player: { name: 'Tester', siteKey: 'aaaaaaaaaaaaaaaa' }, reports: [], reportMechaIds: [], now: Date.now() });
+const vmOf = (core, merged, inv, marchGroups) => VM.buildViewModel(merged, { reportsTs: 0, dataTs: 0, kinds: [] }, { core, statics: STATICS, supp: inv ? { inv } : {}, privacy: {}, player: { name: 'Tester', siteKey: 'aaaaaaaaaaaaaaaa' }, reports: [], reportMechaIds: [], marchGroups, now: Date.now() });
 const bag = (shards) => ({ tabs: { item: [{ id: 20213232, a: shards }], decor: [] } });
 const VOCAB = /\bATK\b|\bAF\b|DMG[+\-−]|\bDEF\b|DMG Increase|\(rcv\)/;
 
@@ -246,6 +246,31 @@ test('the Overview decoration move and the Spend panel agree: on the all-units v
     assert.ok(move.meta.indexOf(String(row.cost)) === 0, 'cost ' + move.meta + ' vs ' + row.cost);
     assert.ok(move.text.indexOf(row.gain[0].v.replace(/\.0%$/, '%')) >= 0, 'gain ' + move.text + ' vs ' + row.gain[0].v);
     assert.deepEqual(row.gain.map((g) => g.n).length, 1, 'the all-units view counts one buff');
+  }
+});
+const dMove = (vm) => vm.moves.picks.find((p) => p.sig === 'd');
+test('the Overview decoration move counts the unit types the marches use: an Army + Air Force player never gets a Navy decoration, a player with no marches gets all-units buffs only', () => {
+  // Hold The Fort 5426 = Army Attack, Beach Umbrella 4320 = Navy Attack, Timer 4360 = Air Force Attack, Christmas tree 4200 = All units Attack
+  const specs = [[5426, 2], [4320, 2], [4360, 2], [4200, 2]], inv = bag(100000);
+  const { core, merged } = placedFor(specs);
+  assert.deepEqual(VM.marchBranches([{ heroIds: [101, 301] }, { heroIds: [102] }], null, core), ['Army', 'Air Force']);
+  assert.deepEqual(VM.marchBranches([], null, core), []); assert.deepEqual(VM.marchBranches(null, null, core), []);
+  assert.deepEqual(VM.marchBranches([{ heroIds: [126] }], { list: [] }, core), ['Navy']);
+  assert.deepEqual(vmOf(core, merged, inv, [{ heroIds: [101, 301] }]).movesInput.decor.branches, ['Army', 'Air Force']);
+  const none = dMove(vmOf(core, merged, inv, []));
+  assert.match(none.text, /^Upgrade Christmas tree to Lv\.3/, 'no marches: all units only'); assert.match(none.text, /All units Attack/);
+  const af = dMove(vmOf(core, merged, inv, [{ heroIds: [101, 301] }]));
+  assert.doesNotMatch(af.text, /Beach Umbrella/, 'never a Navy decoration for an Army + Air Force player');
+  // the Army decoration alone is a move for an Army player and no move for a player with no marches
+  const only = placedFor([[5426, 2]]);
+  assert.equal(dMove(vmOf(only.core, only.merged, inv, [])), undefined, 'no marches: Army Attack does not count');
+  const army = dMove(vmOf(only.core, only.merged, inv, [{ heroIds: [101] }])); assert.match(army.text, /^Upgrade Hold The Fort to Lv\.3/); assert.match(army.text, /Army Attack/);
+  assert.equal(dMove(vmOf(only.core, only.merged, inv, [{ heroIds: [126] }])), undefined, 'a Navy player does not count Army Attack');
+  // the panel opens on the same scope: its top ready row is the move
+  for (const mg of [[], [{ heroIds: [101] }], [{ heroIds: [101, 301] }]]) {
+    const vm = vmOf(core, merged, inv, mg), mv = dMove(vm), m = L.spendModel(core, inv, merged, { levels: LEVELS, index: INDEX, mutex: MUTEX }, null, vm.movesInput.decor.branches);
+    const tab = L.PICK_ORDER.find((s) => (L.MAIN_ID[s] ? m.byStatMine : m.byStat)[s].some((r) => r.ready)), row = m.byStatMine[tab].find((r) => r.ready);
+    assert.ok(mv.text.indexOf(row.n) >= 0 && mv.meta.indexOf(String(row.cost)) === 0, 'marches ' + JSON.stringify(mg) + ': "' + mv.text + '" vs panel ' + tab + ' ' + row.n);
   }
 });
 test('every-unit-type view is the classic advisor list: it can rank a decoration the Overview move does not count', () => {

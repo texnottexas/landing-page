@@ -1929,6 +1929,18 @@
 
   /* Decor stats a player can raise, in the order they are tried. Each is ranked on its own gain per shard. */
   var DECOR_STATS = [['960012', 'March Size', true], ['930100', 'All units Attack', false], ['930000', 'All units HP', false], ['1001001', 'All units DMG increase', false]];
+  /* Unit-type buffs that count toward a stat when the player marches that branch (the advisor's own lists, by branch). The all-units buff is always counted. */
+  var DECOR_UNIT_IDS = {
+    '930100': { 'Army': [['930101', 'Army Attack'], ['9301161', 'Army Attack']], 'Navy': [['930102', 'Navy Attack'], ['9301162', 'Navy Attack']], 'Air Force': [['930103', 'Air Force Attack'], ['9301163', 'Air Force Attack']] },
+    '930000': { 'Army': [['930001', 'Army HP'], ['9301171', 'Army HP']], 'Navy': [['930002', 'Navy HP'], ['9301172', 'Navy HP']], 'Air Force': [['930003', 'Air Force HP'], ['9301173', 'Air Force HP']] },
+    '1001001': { 'Army': [['29801011', 'Army DMG increase']], 'Navy': [['29801021', 'Navy DMG increase']], 'Air Force': [] }
+  };
+  /* the ids a stat counts for the branches the player marches with: [[id, label|null]] (null = the stat's own all-units label). No branches: all units only. */
+  function decorScopeIds(mainId, branches) {
+    var out = [[String(mainId), null]], t = DECOR_UNIT_IDS[String(mainId)];
+    (branches || []).forEach(function (b) { if (t && t[b]) t[b].forEach(function (x) { out.push([x[0], x[1]]); }); });
+    return out;
+  }
   /* HT chip tables (Mecha_chip, same numbers as the live HT Chips page): value = base + per * level. */
   var CHIP_COLOUR = { 1: [100, 40], 2: [150, 60], 3: [200, 80], 4: [300, 120], 5: [500, 200] };
   var CHIP_TOP = 200; // the biggest per-level value in CHIP_COLOUR: a chip's gain is its remaining value over 25 levels of the best colour
@@ -1947,7 +1959,7 @@
     D = D || {};
     D = {
       heroes: D.heroes || [], runeBag: D.runeBag || {}, runeSlots: D.runeSlots || {}, runeCost: D.runeCost || {},
-      decor: { shards: (D.decor && D.decor.shards) || 0, placed: (D.decor && D.decor.placed) || [] },
+      decor: { shards: (D.decor && D.decor.shards) || 0, placed: (D.decor && D.decor.placed) || [], branches: (D.decor && D.decor.branches) || [] },
       ht: { chips: (D.ht && D.ht.chips) || [], reportMechas: D.ht ? D.ht.reportMechas : null },
       beastMoves: D.beastMoves || [], awakenMoves: D.awakenMoves || []
     };
@@ -2019,11 +2031,12 @@
       var rows = [], seen = {};
       D.decor.placed.forEach(function (d) {
         if (!d.nx || seen[d.g]) return;
-        var delta = d.nx.dl[st[0]] || 0;
+        var delta = 0, top = 0, label = null;
+        decorScopeIds(st[0], D.decor.branches).forEach(function (x) { var v = d.nx.dl[x[0]] || 0; delta += v; if (v > top) { top = v; label = x[1]; } });
         if (delta <= 0) return;
         seen[d.g] = 1;
         var net = Math.max(0, d.nx.raw - d.nx.credit);
-        rows.push({ d: d, delta: delta, raw: d.nx.raw, net: net, roi: delta / Math.max(d.nx.raw, 1), stat: st });
+        rows.push({ d: d, delta: delta, raw: d.nx.raw, net: net, roi: delta / Math.max(d.nx.raw, 1), stat: st, label: label || st[1] });
       });
       rows.sort(function (a, b) { return (b.roi - a.roi) || (a.net - b.net) || (a.d.n < b.d.n ? -1 : 1); });
       rows.forEach(function (r) { r.afford = have >= r.net; });
@@ -2037,7 +2050,7 @@
       var vtxt = r.stat[2] ? '+' + r.delta : '+' + (r.delta / 100) + '%';
       cand.push({
         sig: 'd', cls: 2, gain: r.roi / dChosen.best, weight: 0, key: 'd' + r.d.n,
-        parts: [{ s: 'Upgrade ' }, { s: r.d.n, n: 1 }, { s: ' to ' }, { s: 'Lv.' + r.d.nx.to, n: 1 }, { s: ': ' }, { s: vtxt, n: 1 }, { s: ' ' + r.stat[1] }],
+        parts: [{ s: 'Upgrade ' }, { s: r.d.n, n: 1 }, { s: ' to ' }, { s: 'Lv.' + r.d.nx.to, n: 1 }, { s: ': ' }, { s: vtxt, n: 1 }, { s: ' ' + r.label }],
         meta: r.net + ' shards \u00B7 ' + have + ' in bag',
         ico: { u: 'decor-icons/' + r.d.ic, q: r.d.q >= 6 ? 'q6' : r.d.q === 5 ? 'q5' : r.d.q === 4 ? 'q4' : r.d.q === 3 ? 'q3' : '', fb: r.d.n.charAt(0) },
         route: 'base/decor?item=' + encodeURIComponent(r.d.n).replace(/%20/g, '+')
@@ -2124,7 +2137,7 @@
     return { picks: picks, pool: cand, weights: W };
   }
 
-    return { gearScore: gearScore, heroWeights: heroWeights, heroRank: heroRank, runeStats: runeStats, nextMoves: nextMoves, computeMoves: nextMoves, rollPct: rollPct, chipInfo: chipInfo, CHIP_COLOUR: CHIP_COLOUR, CHIP_TOP: CHIP_TOP, CHIP_STAT: CHIP_STAT, fitText: fitText, DECOR_STATS: DECOR_STATS };
+    return { decorScopeIds: decorScopeIds, gearScore: gearScore, heroWeights: heroWeights, heroRank: heroRank, runeStats: runeStats, nextMoves: nextMoves, computeMoves: nextMoves, rollPct: rollPct, chipInfo: chipInfo, CHIP_COLOUR: CHIP_COLOUR, CHIP_TOP: CHIP_TOP, CHIP_STAT: CHIP_STAT, fitText: fitText, DECOR_STATS: DECOR_STATS };
   })();
 
   /* ---- new in v2 (not copied from the page): the one rune base-pool rule (Advice phase 4, decision 2) ---- */
@@ -2245,6 +2258,7 @@
     getFieldConditions: getFieldConditions,
     setSuppDecode: setSuppDecode,
     computeDecorRecs: computeDecorRecs,
+    decorScopeIds: moves.decorScopeIds,
     moves: moves,
     advice: { basePool: advBasePool, tsOf: advTsOf },
     nextMoves: moves.nextMoves

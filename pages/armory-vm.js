@@ -327,6 +327,20 @@
   }
 
   // ---- the model --------------------------------------------------------------------------------------------------
+  // The unit types (Army / Navy / Air Force) of the heroes in the player's marches, sorted; none without marches. The Overview's decoration move counts
+  // these unit-type buffs as well as the all-units ones.
+  function marchBranches(groups, suppHeroes, core) {
+    var byId = {}, seen = {}, out = [];
+    ((suppHeroes && suppHeroes.list) || []).forEach(function (h) { if (h) byId[h.id] = h; });
+    (Array.isArray(groups) ? groups : []).forEach(function (g) {
+      ((g && Array.isArray(g.heroIds) ? g.heroIds : [])).forEach(function (id) {
+        var b = core.heroBranch(+id, byId[id] && byId[id].t);
+        if (b === 'Army' || b === 'Navy' || b === 'Air Force') seen[b] = 1;
+      });
+    });
+    ['Army', 'Navy', 'Air Force'].forEach(function (b) { if (seen[b]) out.push(b); });
+    return out;
+  }
   function buildViewModel(merged, sources, opts) {
     opts = opts || {};
     sources = sources || { reportsTs: 0, dataTs: 0, kinds: [] };
@@ -349,7 +363,7 @@
       asOf: dateText(now),
       heroes: heroes.list.map(function (h) { return { name: h.name, gear: h.gear, power: h.power }; }),
       runeBag: runes.runeBag, runeSlots: runes.runeSlots, runeCost: runes.runeCost,
-      decor: { shards: decor.shards, placed: decor.placed }, ht: { chips: ht.chips, reportMechas: ht.reportMechas },
+      decor: { shards: decor.shards, placed: decor.placed, branches: marchBranches(opts.marchGroups, supp.heroes, core) }, ht: { chips: ht.chips, reportMechas: ht.reportMechas },
       awakenMoves: awaken.cand.slice(), // Awaken {hero}; the Raise / Save-for rows join after first paint (armory-awaken.js)
       beastMoves: [] // the best optimizer swap joins here after first paint, for players with saved preferences (armory-app.js beastMove)
     };
@@ -393,7 +407,7 @@
     };
   }
 
-  var api = { AW: AW, awSkills: awSkills, canAwaken: canAwaken, buildAwaken: buildAwaken, benchExtra: benchExtra, movePicks: movePicks, cleanChips: cleanChips, heroIcon: heroIcon, buildViewModel: buildViewModel, fromLoad: fromLoad, equipSlot: equipSlot, equipQuality: equipQuality, TOTAL_IDS: TOTAL_IDS };
+  var api = { marchBranches: marchBranches, AW: AW, awSkills: awSkills, canAwaken: canAwaken, buildAwaken: buildAwaken, benchExtra: benchExtra, movePicks: movePicks, cleanChips: cleanChips, heroIcon: heroIcon, buildViewModel: buildViewModel, fromLoad: fromLoad, equipSlot: equipSlot, equipQuality: equipQuality, TOTAL_IDS: TOTAL_IDS };
   window.ArmoryVM = api;
   if (isNode) module.exports = api;
 })(typeof window !== 'undefined' ? window : {});
