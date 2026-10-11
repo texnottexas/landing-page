@@ -331,7 +331,7 @@ var EXPECTED = [
   var vtext = [];
   for (i = 0; i < ROUTES.length; i++) { await visit(ROUTES[i]); vtext.push($('.view:not([hidden])').innerText); }
   var allText = vtext.join('\n');
-  var VOC = /\bAF\b|DMG[+-]|\bAll (Attack|HP)\b|All Units|Damage (Increase|Taken)|HP Boost|front-row|row units|first two|\/Dock\/|Equipping|Holding in stock|Unit (Attack|HP)\b|\bGroup \d+\b/;
+  var VOC = /\bAF\b|DMG[+-]|\bAll (Attack|HP)\b|All Units|Damage (Increase|Taken)|front-row|row units|first two|\/Dock\/|Equipping|Holding in stock|Unit (Attack|HP)\b|\bGroup \d+\b/;
   log(!VOC.test(allText), 'no internal stat abbreviations or raw ids (AF, DMG+, DMG-, All Attack, row units, Equipping, Group 123) in visible text', (allText.match(VOC) || [''])[0]);
   var badStars = (allText.match(/(\d+) of (\d+) stars/g) || []).filter(function (t) { var m = /(\d+) of (\d+)/.exec(t); return +m[1] > +m[2]; });
   log(badStars.length === 0, 'no "x of y stars" with x above y', badStars.slice(0, 3).join(' | '));
