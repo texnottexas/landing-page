@@ -974,7 +974,7 @@ function techHtml(techs) {
 }
 /* the tree itself: one row per tier (the root first), up to three talents a row, elbow lines from each talent to the ones it needs.
    Trained talents are solid and show their level; the rest are dashed, greyed art, and say "Not trained". Lines between two trained talents are solid. */
-var TR_TILE = 104, TR_GAP = 20, TR_PITCH = TR_TILE + TR_GAP;
+var TR_TILE = 120, TR_GAP = 20, TR_PITCH = TR_TILE + TR_GAP;
 function treeLines(list, rows) {
   var by = {}, H = rows * TR_PITCH - TR_GAP, out = '';
   list.forEach(function (n) { by[n.id] = n; });
@@ -992,9 +992,9 @@ function treeHtml(list) {
   list.forEach(function (n) { rows = Math.max(rows, n.row + 1); (byRow[n.row] = byRow[n.row] || []).push(n); });
   var body = '';
   for (var r = 0; r < rows; r++) {
-    body += '<div class="bse-trw" role="list">' + (byRow[r] || []).map(function (n) {
+    body += '<div class="bse-trw">' + (byRow[r] || []).map(function (n) {
       var st = n.sw ? (n.lv ? 'Chosen' : 'Not chosen') : n.lv ? 'Lv.' + n.lv + ' of ' + n.max : 'Not trained';
-      return '<button class="bse-tn' + (n.lv > 0 ? '' : ' off') + '" type="button" role="listitem" style="grid-column:' + (n.col + 1) + '" data-bsetal="' + n.id + '">' +
+      return '<button class="bse-tn' + (n.lv > 0 ? '' : ' off') + '" type="button" style="grid-column:' + (n.col + 1) + '" data-bsetal="' + n.id + '">' +
         (n.icon ? icon('formation-icons/image_professionTalent_' + n.icon + '.png', '', n.name.charAt(0), '') : '<span class="ico fb" translate="no">' + esc(n.name.charAt(0)) + '</span>') +
         '<span class="bse-tnn" translate="no">' + esc(n.name) + '</span><span class="bse-tns">' + nd(st) + '</span></button>';
     }).join('') + '</div>';

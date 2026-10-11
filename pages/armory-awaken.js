@@ -542,12 +542,14 @@ function sheet(kind) {
 }
 function wire() {
   if (wired) return; wired = true;
+  /* the card and the hero blocks render in both Heroes panes (Battle, Roster); jump to the copy that is on screen */
+  function visibleOf(sel) { var all = document.querySelectorAll(sel), i; for (i = 0; i < all.length; i++) if (all[i].offsetParent !== null) return all[i]; return all[0] || null; }
   document.addEventListener('click', function (e) {
     var j = e.target.closest ? e.target.closest('[data-awkjump], [data-awkback]') : null;
     if (j) {
       e.preventDefault();
-      if (j.hasAttribute('data-awkjump')) { var sl = $('.awk-slot[data-awk="' + (+j.getAttribute('data-awkjump')) + '"]'); if (sl) sl.scrollIntoView({ block: 'start' }); return; }
-      var tp = $('.awk-top'); if (!tp) return;
+      if (j.hasAttribute('data-awkjump')) { var sl = visibleOf('.awk-slot[data-awk="' + (+j.getAttribute('data-awkjump')) + '"]'); if (sl) sl.scrollIntoView({ block: 'start' }); return; }
+      var tp = visibleOf('.awk-top'); if (!tp) return;
       if (!S.awkOpen) { S.awkOpen = true; paintCard(); }
       tp.scrollIntoView({ block: 'start' }); return;
     }
