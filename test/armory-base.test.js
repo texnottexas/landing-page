@@ -202,27 +202,30 @@ test('spendModel: the classic advisor ranking as plain rows (cost after spare pi
   assert.ok(top.gain[0].rate.indexOf('shards per') >= 0);
   assert.ok(L.spendModel(core, inv, merged, data, ['hp']).byStat.hp.length === 0 || true);
 });
-test('the Overview decoration move and the Spend panel agree: the tab that opens is the stat the move chose, its top ready row is the decoration the move names', () => {
-  // [placed groups, shards in bag]: both are March Size / Attack upgrades the bag can pay for
-  for (const [specs, shards] of [[[[5544, 2], [5606, 2], [4200, 2]], 100000], [[[4200, 3], [5351, 3]], 500]]) {
+test('the Overview decoration move and the Spend panel agree: on the all-units view the tab that opens is the stat the move chose, its top ready row is the decoration the move names', () => {
+  // [placed groups, shards in bag]. Case 3 mirrors a real player: Army / Air Force attack decorations rank higher on the advisor's own list but are not "All units Attack".
+  for (const [specs, shards] of [[[[5544, 2], [5606, 2], [4200, 2]], 100000], [[[4200, 3], [5351, 3]], 500], [[[4200, 2], [4290, 2], [4180, 2], [5544, 5]], 40]]) {
     const { core, merged } = placedFor(specs), inv = bag(shards), vm = vmOf(core, merged, inv);
     const move = vm.moves.picks.find((p) => p.sig === 'd');
     const m = L.spendModel(core, inv, merged, { levels: LEVELS, index: INDEX, mutex: MUTEX });
-    const tab = L.PICK_ORDER.find((s) => m.byStat[s].some((r) => r.ready)), row = m.byStat[tab].find((r) => r.ready);
-    assert.ok(move && !/^Save/.test(move.text), 'an upgrade move: ' + (move && move.text));
+    const rowsOf = (s) => (L.MAIN_ID[s] ? m.byStatAll : m.byStat)[s];
+    const tab = L.PICK_ORDER.find((s) => rowsOf(s).some((r) => r.ready)), row = tab && rowsOf(tab).find((r) => r.ready);
+    if (/^Save/.test(move.text)) { assert.equal(row === undefined || !L.MAIN_ID[tab], true, 'a Save move: no ready row on the four stats the move tries'); continue; }
     assert.ok(move.text.indexOf(row.n) >= 0 && move.text.indexOf('Lv.' + row.to) >= 0, 'move "' + move.text + '" vs panel ' + tab + ' top ready "' + row.n + ' to Lv.' + row.to + '"');
-    // the same numbers: the move prints its stat gain and its cost; the panel row carries the same gain and the same cost
     assert.ok(move.meta.indexOf(String(row.cost)) === 0, 'cost ' + move.meta + ' vs ' + row.cost);
     assert.ok(move.text.indexOf(row.gain[0].v.replace(/\.0%$/, '%')) >= 0, 'gain ' + move.text + ' vs ' + row.gain[0].v);
+    assert.deepEqual(row.gain.map((g) => g.n).length, 1, 'the all-units view counts one buff');
   }
 });
-test('where they differ on purpose: the move counts only the all-units buff of a stat, the panel the whole advisor list (listed in the parity file)', () => {
-  // Sandcastle Toolkit raises Army HP (930001), not All units HP (930000): the panel's HP tab can pay for it, the Overview move does not count it.
+test('every-unit-type view is the classic advisor list: it can rank a decoration the Overview move does not count', () => {
+  // Sandcastle Toolkit raises Army HP (930001), not All units HP (930000)
   const { core, merged } = placedFor([[5544, 5], [4200, 2], [4290, 2]]), inv = bag(40), vm = vmOf(core, merged, inv);
   assert.match(vm.moves.picks.find((p) => p.sig === 'd').text, /^Save for Cutie/);
   const m = L.spendModel(core, inv, merged, { levels: LEVELS, index: INDEX, mutex: MUTEX });
+  assert.equal(m.byStatAll.hp.some((r) => r.ready), false, 'all units only: nothing to buy, as the Overview says');
   const row = m.byStat.hp.find((r) => r.ready);
   assert.equal(row.n, 'Sandcastle Toolkit'); assert.equal(row.gain[0].n, 'Army HP Boost', 'the row names the buff, so Army HP is never mistaken for All units HP');
+  assert.equal(m.byStat.march_size.length, m.byStatAll.march_size.length, 'March Size has one buff: both views are the same list');
 });
 test('mutexMap: group to the groups it cannot share a base with', () => {
   const k = Object.keys(MUTEX)[0]; assert.ok(Array.isArray(MUTEX[k]) && MUTEX[k].every((x) => typeof x === 'string'));
