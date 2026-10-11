@@ -711,7 +711,7 @@ function spendHtml() {
       var m = spend.model, main = !!Logic.MAIN_ID[spend.tab], mode = spend.units === 'mine' && !m.branches.length ? 'all' : spend.units, rows = (main ? (mode === 'every' ? m.byStat : mode === 'all' ? m.byStatAll : m.byStatMine) : m.byStat)[spend.tab] || [], shown = spend.all ? rows : rows.slice(0, TOP), s = m.shards;
       var tabs = '<div class="bse-tab" role="group" aria-label="Stat to raise">' + Logic.STAT_TABS.map(function (t) { return '<button class="bse-cb" type="button" data-bsetab="' + t[0] + '" aria-pressed="' + (spend.tab === t[0]) + '">' + esc(t[1]) + '</button>'; }).join('') + '</div>';
       var fw = Logic.fitWalk(shown, s.universal), walk = fw.items, fit = fw.fit, spent = fw.spent, left = fw.left;
-      var cover = !shown.length ? '' : fit === 0 ? 'Your ' + fmtInt(s.universal) + ' shards do not cover any of these yet.' : 'Your ' + fmtInt(s.universal) + ' shards cover ' + (fit === 1 ? 'the first' : 'the first ' + fit) + ' (' + fmtInt(spent) + ' shards), ' + fmtInt(left) + ' left.';
+      var cover = !shown.length ? '' : fit === 0 ? 'Your ' + fmtInt(s.universal) + ' shards do not cover any of these yet.' : 'Your ' + fmtInt(s.universal) + ' shards cover ' + (fit === 1 ? 'one of these' : fit + ' of these') + ' (' + fmtInt(spent) + ' shards), ' + fmtInt(left) + ' left.';
       var lab = Logic.statTabLabel(spend.tab);
       body = '<div class="bse-body">' + (s.boxShards > 0 ? '<p class="bse-note" style="margin:0 0 8px">' + nd('Includes ' + fmtInt(s.boxShards) + ' from boxes.') + '</p>' : '') +
         (s.luckyChests > 0 ? '<p class="bse-note">' + nd(s.luckyChests + ' Lucky Decor Shard Chests in the bag are not counted: each opens for 10 to 1,000 shards.') + '</p>' : '') +
