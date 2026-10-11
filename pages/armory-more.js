@@ -9,7 +9,7 @@ var S = H.S, d = H.d, core = H.core, G = H.G, BASE = H.BASE, WORKER = H.WORKER, 
 var $ = H.$, $$ = H.$$, esc = H.esc, nd = H.nd, nm = H.nm, ic = H.ic, fmtK = H.fmtK, fmtInt = H.fmtInt, ramp = H.ramp, qCls = H.qCls, slug = H.slug;
 var ls = H.ls, stars = H.stars, art = H.art, lbl = H.lbl, stateName = H.stateName, sk = H.sk, readOnly = H.readOnly, classicUrl = H.classicUrl;
 var savedReport = H.savedReport, deviceId = H.deviceId, toast = H.toast, go = H.go, run = H.run, showSkeleton = H.showSkeleton, refreshSheet = H.refreshSheet;
-var currentCode = H.currentCode, gearCard = H.gearCard, branchPill = H.branchPill, filt = H.filt, sortBy = H.sortBy;
+var awPor = H.awPor, awLevel = H.awLevel, currentCode = H.currentCode, gearCard = H.gearCard, branchPill = H.branchPill, filt = H.filt, sortBy = H.sortBy;
 
 function renderStart(kind, extra) {
   document.body.classList.add('st-start');
@@ -101,13 +101,19 @@ function rosterList() {
   var all = rosterItems();
   if (S.res.privacy && S.res.privacy.heroes) { el.innerHTML = '<div class="empty">The roster is private.</div>'; return; }
   if (!all.length) { el.innerHTML = '<div class="empty">' + 'No roster yet.' + (readOnly() ? '' : ' <button class="tb link" type="button" data-open="status">Send game data</button>') + '</div>'; return; }
-  var l = sortBy(filt(all, function (x) { return x; }), function (x) { return x; }), shown = S.all.roster ? l : l.slice(0, 12);
+  var l = sortBy(filt(all, function (x) { return x; }), function (x) { return x; }), shown = l.filter(function (x, i) { return S.all.roster || i < 12 || S.open[x.id]; }), AWV = S.vm.awaken.byId;
   el.innerHTML = shown.map(function (x) {
-    return '<article class="hero"><div class="hrow" style="cursor:default">' + art(ArmoryVM.heroIcon(x.id), 'por', x.name.charAt(0), '') +
-      '<span class="hb"><span class="hb-1"><span class="hb-n" translate="no">' + esc(x.name) + '</span>' + branchPill(x.branch) + '</span><span class="hb-2" style="display:block">Level ' + nm(String(x.lv)) + ' &middot; ' + nm(String(x.star)) + ' stars</span></span>' +
-      '<span class="hr-score"><span class="n disp" style="display:block" translate="no">' + fmtK(x.score) + '</span><span class="l" style="display:block">power</span></span></div></article>';
-  }).join('') + (l.length > 12 && !S.all.roster ? '<button class="btn more" type="button" data-showall="roster"><span>Show all <span translate="no">' + l.length + '</span></span></button>' : '');
+    var a = AWV[x.id], por = a && a.aw ? awPor(a, ArmoryVM.heroIcon(x.id)) : art(ArmoryVM.heroIcon(x.id), 'por', x.name.charAt(0), ''), open = !!S.open[x.id];
+    var sub = (a && a.aw ? nd(awLevel(a)) : 'Level ' + nm(String(x.lv))) + ' &middot; ' + nm(String(x.star)) + ' stars';
+    var head = '<span class="hb"><span class="hb-1"><span class="hb-n" translate="no">' + esc(x.name) + '</span>' + branchPill(x.branch) + '</span><span class="hb-2" style="display:block">' + sub + '</span></span>' +
+      '<span class="hr-score"><span class="n disp" style="display:block" translate="no">' + fmtK(x.score) + '</span><span class="l" style="display:block">power</span></span>';
+    /* an awakened hero, or one of the six that can be, opens to its Awakening block */
+    if (!a) return '<article class="hero"><div class="hrow" style="cursor:default">' + por + head + '</div></article>';
+    return '<article class="hero' + (open ? ' open' : '') + '" id="rh-' + esc(x.id) + '"><button class="hrow" type="button" aria-expanded="' + open + '" aria-controls="rhp-' + esc(x.id) + '" data-hero="' + esc(x.id) + '">' + por + head + ic('down', 'chev') + '</button>' +
+      '<div class="panel" id="rhp-' + esc(x.id) + '"><div><div class="awk-slot" data-awk="' + (+x.id) + '"></div></div></div></article>';
+  }).join('') + (l.length > shown.length ? '<button class="btn more" type="button" data-showall="roster"><span>Show all <span translate="no">' + l.length + '</span></span></button>' : '');
   var c = $('#rosterCount'); if (c) c.innerHTML = nd(l.length + ' heroes in roster');
+  H.awkSync();
 }
 function gearBody() {
   var vm = S.vm, el = $('#gearBody'); if (!el) return;
@@ -289,7 +295,7 @@ var EXPLAIN = {
   gear: ['How gear score works', 'Each gear piece scores up to 1,000. Up to 400 comes from its random stats: the average roll of its stats. Up to 600 comes from its rune: stars divided by the most stars that slot allows. A hero has 6 pieces, so the most is 6,000 per hero. The maximum shown is 6,000 times the heroes counted.'],
   rune: ['How rune stars work', 'A placed rune scores its stars plus 1, divided by its most stars plus 1. An empty slot scores 0. The number is the total score divided by the best possible score across every gear slot counted.'],
   beast: ['How beast potential works', 'Each deployed beast has a potential value. It is divided by the top value for its rarity. The number is the average of the beasts deployed on a field.'],
-  moves: ['How next moves are chosen', 'Each move uses only data in this report. Free moves come first, then moves that use what you already have, then moves that cost resources. Inside one kind of move, the biggest gain comes first, then the hero with the best gear score. A decor move names the stat it raises and shows only when your shards cover the cost. A refine move picks the piece with the most stats under 70%. HT moves count the HT in your battle reports first.']
+  moves: ['How next moves are chosen', 'Each move uses only data in this report. Free moves come first, then moves that use what you already have, then moves that cost resources. Inside one kind of move, the biggest gain comes first, then the hero with the best gear score. A decor move names the stat it raises and shows only when your shards cover the cost. An awakening move raises one skill and says the most Awakening Stones it can take; it shows only when your stones cover it. A refine move picks the piece with the most stats under 70%. HT moves count the HT in your battle reports first.']
 };
 
 function renderSections() { rosterList(); renderGear(); renderBase(); }

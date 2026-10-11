@@ -181,13 +181,13 @@ var CSS =
   '.awk-next{font-size:var(--fs-15);padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-chip)}.awk-next.awk-hl{border-color:var(--accent)}' +
   '.awk-ln{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:var(--fs-14);color:var(--muted)}' +
   '.awk-bh{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}.awk-bt{font:700 var(--fs-15)/1.3 var(--display)}' +
-  '.awk-pw{font-size:var(--fs-13);color:var(--muted);margin-left:auto}.awk-pill{color:var(--q5)}' +
+  '.awk-pw{font-size:var(--fs-13);color:var(--muted);margin-left:auto}.awk-lab{font-size:var(--fs-13);color:var(--muted)}.awk-pill{color:var(--q5)}' +
   '.awk-sk{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-top:8px}' +
   '.awk-c{display:flex;gap:12px;padding:12px;background:var(--card-hi);border:1px solid var(--border);border-radius:var(--r-card);min-width:0}.awk-c.awk-hl{border-color:var(--accent)}.awk-c.awk-lock{opacity:.8}' +
   '.awk-c .ico,.awk-c .fb{width:40px;height:40px;flex:none}.awk-cb{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}' +
   '.awk-cn{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 8px;font-size:var(--fs-15);font-weight:600}.awk-lv{font-size:var(--fs-13);color:var(--muted);font-weight:400}' +
   '.awk-eff{margin:0;font-size:var(--fs-13);color:var(--muted);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.awk-eff.all{display:block}' +
-  '.awk-more{align-self:flex-start;min-height:32px;padding:0}.awk-nx{font-size:var(--fs-13)}.awk-nx.dim{color:var(--muted)}' +
+  '.awk-more{align-self:flex-start;padding:0}.awk-nx{font-size:var(--fs-13)}.awk-nx.dim{color:var(--muted)}' +
   '.awk-req{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:var(--fs-14)}.awk-req li{display:flex;align-items:center;gap:8px;color:var(--muted)}.awk-req li.ok{color:var(--text)}' +
   '.awk-req .i{width:16px;height:16px;color:var(--ok);flex:none}.awk-req .awk-nil{width:16px;height:16px;flex:none;border:1.5px solid var(--border);border-radius:50%}' +
   '@media (min-width:768px){.awk-sk{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}}';
@@ -248,7 +248,8 @@ function block(id) {
   var A = vmA(), a = A && A.byId[id]; if (!a) return '';
   var h = '<div class="awk-bh"><span class="awk-bt">Awakening</span>';
   if (a.aw > 0) {
-    h += '<span class="pill awk-pill"><span translate="no">Lv.' + a.aw + ' of 40</span></span>' + (a.fa ? '<span class="pill awk-pill">Full</span>' : '');
+    var lab = a.live && catHero(id) && catHero(id).awakenLabel ? String(catHero(id).awakenLabel) : '';
+    h += '<span class="pill awk-pill"><span translate="no">Lv.' + a.aw + ' of 40</span></span>' + (a.fa ? '<span class="pill awk-pill">Full</span>' : '') + (lab ? '<span class="awk-lab" translate="no">' + esc(lab) + '</span>' : '');
     if (a.awp) h += '<span class="awk-pw">' + nd(fmtInt(a.awp)) + ' power · game data</span>';
     h += '</div>';
     if (a.mode === 'level') return h + '<p class="awk-note">Skill details arrive with the next site update.</p>';

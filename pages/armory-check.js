@@ -73,6 +73,9 @@ function cyrb53(str) {
           The piece whose lowest stat is closest to 70% goes first: Portable GPS (slot 5, stats 54/52, lowest 52) and Power Boots (slot 6, one stat 52) tie
           at 52, the Optical Add-on is 30, the Raysor Headset 40, the Pistol 28, the Backarmor 32; the key (slot 5 before slot 6) puts the Portable GPS first.
           "2 stats under 70% (52-54%)".
+   awakening: adds no row for Rex. He holds 62 Awakening Stones; the plan's next step is Carna's Energize 3 -> 4 (150 stones, her skill 2 is already at 6, and the
+          Jett set above hers is all at Lv.10), so there is nothing to Raise, and "Save for" needs a free place on a card that already has three moves.
+          Shen Suyu qualifies (5 stars, Lv.120, Exclusive Skill Lv.5) but there is no Awakening Card in the bag, so no Awaken move.
    HT: Rex fights with Doom Sawblade D-4 (mecha 1005) and none of its chips is below Lv.25, so it gives no chip move (mutation 3 is skipped on this
           data); chip raises would also rank after refine in signal order. */
 var REX = 'c3c6f3200a4ec1fb';
@@ -91,6 +94,7 @@ var EXPECTED = [
   var mobile = window.innerWidth < 768, i;
   log(null, 'viewport', window.innerWidth + 'x' + window.innerHeight + (mobile ? ' (mobile layout)' : ' (desktop layout)') + ' ' + navigator.userAgent.replace(/\s+/g, ' ').slice(0, 90));
   var isRex = S.res.player.siteKey === REX;
+  var awkCat0 = performance.getEntriesByType('resource').some(function (e) { return /hero-awakening-skills\.json/.test(e.name); }); /* before any visit below */
 
   /* 1. content starts within 120 px (mobile) */
   var tops = [], badTop = [];
@@ -208,7 +212,7 @@ var EXPECTED = [
   function noTr(n) { for (var e = n.parentElement; e; e = e.parentElement) { var t = e.getAttribute('translate'); if (t === 'no') return true; if (t === 'yes') return false; } return false; }
   var names = {}, V = S.vm;
   V.heroes.list.forEach(function (h) { names[h.name] = 1; h.pieces.forEach(function (g) { names[g.slotName] = 1; if (g.rune) names[g.rune.name] = 1; }); });
-  V.decor.placed.forEach(function (x) { names[x.n] = 1; }); names[V.header.name] = 1; V.ht.chips.forEach(function (c) { names[c.ht] = 1; });
+  V.decor.placed.forEach(function (x) { names[x.n] = 1; }); names[V.header.name] = 1; Object.keys(V.awaken.byId).forEach(function (k) { names[V.awaken.byId[k].name] = 1; }); V.ht.chips.forEach(function (c) { names[c.ht] = 1; });
   var nameList = Object.keys(names).filter(function (n) { return n && n.length > 3; }), trBad = [];
   $$('.view').forEach(function (v) { v.hidden = false; });
   S.all.gear = true; S.all.roster = true; A.applyRoute(false); $$('.view').forEach(function (v) { v.hidden = false; });
@@ -245,7 +249,7 @@ var EXPECTED = [
   /* the Google Translate widget's own logo (gstatic) is third-party markup, same exclusion as the size checks; our images stay strict */
   var imgs = $$('img').filter(function (m) { return !third(m); }), imgBad = imgs.filter(function (m) { return !/^https:\/\/(raw\.githubusercontent\.com|h5\.topwargame\.com|knight-cdn\.akamaized\.net)\//.test(m.src); });
   log(imgBad.length === 0, 'images only from origins the live CSP allows', imgs.length + ' images' + (imgBad.length ? ', bad: ' + imgBad[0].src : ''));
-  var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-ht|armory-beasts|armory-beasts-opt|armory-advice|armory-advice-flows|armory-check|feedback-widget)\.js$|^https:\/\/translate\.googleapis\.com\//.test(s); });
+  var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-ht|armory-awaken|armory-beasts|armory-beasts-opt|armory-advice|armory-advice-flows|armory-check|feedback-widget)\.js$|^https:\/\/translate\.googleapis\.com\//.test(s); });
   log(badSrc.length === 0, 'scripts only from this site and Google Translate', scripts.length + ' script tags' + (badSrc.length ? ', unexpected: ' + badSrc.join(', ') : ''));
   S.all.gear = false; S.all.roster = false;
   A.applyRoute(false);
@@ -427,6 +431,44 @@ var EXPECTED = [
   var bSw = $('#v-beasts .bst-sw');
   if (bSw) { var bId = bSw.id.replace('bsw-', ''); await visit('beasts/optimizer?swap=' + bId); await sleep(900); log(!!$('#v-beasts .bst-sw.is-sel'), 'Beasts Optimizer: ?swap= marks that swap card (the Next move deep link)', bId); }
   await visit('beasts/field');
+
+  /* 12. Hero Awakening: badges and summary at first paint, the catalog only on demand, the block of an opened hero, the card */
+  var aA = S.vm.awaken, aIds = Object.keys(aA.byId).filter(function (k) { return aA.byId[k].aw > 0; }), aLive = aIds.filter(function (k) { return aA.byId[k].mode === 'full'; });
+  log(!awkCat0 || aA.eligible, 'Awakening: the 168 KB catalog is not fetched on first paint unless a step is affordable or the card has room to say so', awkCat0 ? 'fetched, eligible=' + aA.eligible : 'not fetched');
+  await visit('heroes/roster'); await sleep(250);
+  var aSum = $$('#v-heroes .awk-sum'), aTop = $$('#v-heroes .awk-top');
+  log(aA.n ? (aSum.length === 2 && /\d+ of \d+ fully awakened/.test(aSum[0].textContent)) : !aSum.length, 'Awakening: the Heroes summary line says how many are fully awakened, and only when someone is awakened', aSum.length ? aSum[0].textContent.trim() : 'none');
+  log(aA.show ? aTop.length === 2 : !aTop.length, 'Awakening: the card is on both Heroes panes when there is something to say', aTop.length + ' cards');
+  var aBd = $$('#rosterList .awk-bd').length, aShown = $$('#rosterList .awk-slot').filter(function (el) { var x = aA.byId[el.dataset.awk]; return x && x.aw > 0 && !!ArmoryVM.AW.FIRST[x.id]; }).length;
+  log(aBd === aShown, 'Awakening: a level badge on each awakened live hero shown in the Roster', aBd + ' badges, ' + aShown + ' awakened live rows shown');
+  var aPick = aLive.filter(function (k) { return !!$('#rosterList .hrow[data-hero="' + k + '"]'); })[0];
+  var aRow = aPick ? $('#rosterList .hrow[data-hero="' + aPick + '"]') : null;
+  if (aPick) aLive = [aPick];
+  if (aRow) {
+    aRow.click(); var aT0 = Date.now(); while (!$('#rosterList .awk-slot[data-awk="' + aLive[0] + '"] .awk-c') && Date.now() - aT0 < 6000) await sleep(100);
+    var aSl = $('#rosterList .awk-slot[data-awk="' + aLive[0] + '"]'), aH = aA.byId[aLive[0]], aCards = aSl ? $$('.awk-c', aSl) : [];
+    var aLv = aCards.map(function (c) { var x = $('.awk-lv', c); return x ? x.textContent : ''; }), aWant = [1, 2, 3, 4].map(function (s) { return aH.aws[s] ? 'Lv.' + aH.aws[s] + ' of 10' : 'Locked'; });
+    log(aCards.length === 4 && aLv.join() === aWant.join() && new RegExp('Lv\\.' + aH.aw + ' of 40').test(($('.awk-bh', aSl) || { textContent: '' }).textContent), 'Awakening: an opened awakened hero shows its level of 40 and four skills at the levels in the game data', aLv.join(' | '));
+    log($$('.awk-lv, .awk-bd span, .awk-nx span', aSl).length > 0 && $$('.awk-lv', aSl).every(function (x) { return x.getAttribute('translate') === 'no'; }), 'Awakening: skill levels carry translate="no"', 'ok');
+    var aBad = targets().bad.filter(function (b) { return /awk|data-awk/.test(b); });
+    log(aBad.length === 0, 'Awakening: the block and the card header are 40 px or larger to tap', aBad.join(' | ') || 'none');
+    var aNx = $$('.awk-nx', aSl).map(function (x) { return x.textContent; }), aStones = aA.stones;
+    log(aNx.every(function (t) { return /^(Max level|Unlocks at Awakening Lv\.\d+|Level not in game data yet|Next Lv\.\d+: up to [\d,]+ Awakening Stones( · [\d,]+ in bag)?)$/.test(t); }) && (aStones != null || !aNx.some(function (t) { return /in bag/.test(t); })), 'Awakening: the next-level line is a cost with the bag beside it, or Max level, or why it is locked; no bag number without a bag', aNx.join(' | '));
+    aRow.click();
+  } else log(null, 'Awakening: no awakened live hero with skill data to open', aIds.length + ' awakened');
+  var aHd = $('#v-heroes [data-pane="roster"] .awk-hd');
+  if (aHd) {
+    aHd.click(); var aT1 = Date.now(); while (!$('#v-heroes [data-pane="roster"] .awk-body:not([hidden]) .awk-ord, #v-heroes [data-pane="roster"] .awk-body:not([hidden]) .awk-ln') && Date.now() - aT1 < 6000) await sleep(100);
+    var aBody = $('#v-heroes [data-pane="roster"] .awk-body'), aBt = aBody ? aBody.textContent : '';
+    log(!aA.n || (/Main march/.test(aBt) && /Order/.test(aBt)), 'Awakening: the opened card names the main march and its order', aBt.slice(0, 90));
+    log(!/\p{Extended_Pictographic}/u.test(aBt.replace(/[\u00A9\u00AE\u2122]/g, '')) && !/\u2014/.test(aBt), 'Awakening: no emoji or em dash in the card', 'none');
+    aHd.click();
+  }
+  var aMv = S.vm.moves.picks.filter(function (p) { return p.sig === 'g' || p.sig === 'h'; }), aOrd = S.vm.moves.picks.map(function (p) { return p.sig; });
+  log(aMv.every(function (p) { return p.cls === 2 && p.pill === 'Uses what you have'; }) && aMv.every(function (p) { return aOrd.indexOf(p.sig) < Math.max.apply(null, aOrd.map(function (x, i) { return /^(b|d)$/.test(x) ? i : -1; }).concat([99])); }), 'Awakening: Raise and Awaken are "Uses what you have" and come before rune merges and decor', aOrd.join(''));
+  await visit('overview'); await sleep(150);
+  var aOr = $$('#movesCard .move-or').length, aAlt = S.vm.moves.picks.filter(function (p) { return p.alt; }).length;
+  log(aOr === aAlt, 'Awakening: a Raise row with an "or" shows it as a second line of the same row', aOr + ' second lines, ' + aAlt + ' rows with alt');
   /* routes: the legacy #tab= ids resolve to a view */
   await visit('overview'); window.scrollTo(0, 0);
   var fails = RES.filter(function (r) { return r.ok === false; }).length, passes = RES.filter(function (r) { return r.ok === true; }).length;

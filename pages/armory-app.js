@@ -11,7 +11,7 @@ var BASE = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/asse
 var SK_RE = /^[0-9a-f]{16}$/;
 var G = window.TWGameData;
 var d = ArmoryData.create(), core = d.core;
-var S = { res: null, vm: null, code: null, cur: null, open: {}, f: { q: '', br: {}, sort: 'score' }, gview: 'gear', gslot: 0, all: {}, sheet: null, lastFocus: null, saved: false, confirm: '', advise: null, planCode: null, advDot: false, idxP: null, idxKey: null };
+var S = { res: null, vm: null, code: null, cur: null, open: {}, f: { q: '', br: {}, sort: 'score' }, gview: 'gear', gslot: 0, all: {}, sheet: null, lastFocus: null, saved: false, confirm: '', advise: null, planCode: null, advDot: false, idxP: null, idxKey: null, awkOpen: false, awkHl: false };
 var VIEWS = {
   overview: { label: 'Overview', icon: 'overview' },
   heroes: { label: 'Heroes', icon: 'heroes', segs: [['battle', 'Battle'], ['roster', 'Roster'], ['gear', 'Gear'], ['advice', 'Advice']] },
@@ -38,7 +38,7 @@ function stars(s, sm) {
   for (var i = 0; i < sm; i++) o += '<svg class="star' + (i < s ? '' : ' off') + '" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-star"/></svg>';
   return '<span class="stars" role="img" aria-label="' + s + ' of ' + sm + ' stars">' + o + '</span>';
 }
-function art(url, cls, fb, alt) { return '<img class="' + cls + '" src="' + esc(url) + '" alt="' + esc(alt || '') + '" data-fb="' + esc(fb) + '" decoding="async">'; }
+function art(url, cls, fb, alt, da) { return '<img class="' + cls + '" src="' + esc(url) + '" alt="' + esc(alt || '') + '"' + (da ? ' data-alt="' + esc(da) + '"' : '') + ' data-fb="' + esc(fb) + '" decoding="async">'; }
 function lbl(label, num, src, cls) { return '<div class="nb" data-numwrap><div class="n disp ' + (cls || '') + '" data-num translate="no">' + esc(num) + '</div><div class="l lbl">' + esc(label) + '</div><div class="s src">' + src + '</div></div>'; }
 function stateName() { return S.res && S.res.player && S.res.player.name || ''; }
 function sk() { var k = S.res && S.res.player && S.res.player.siteKey; return SK_RE.test(String(k || '')) ? k : null; }
@@ -56,7 +56,7 @@ var toastT;
 function toast(msg) { var t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('show'); }, 3000); }
 
 /* ---------- the lazy half ---------- */
-var M = null, moreQ = null, H = null, Av = null, advQ = null, HT = {}, BT = {};
+var M = null, moreQ = null, H = null, Av = null, advQ = null, HT = {}, BT = {}, AWK = { m: null, q: null, bad: false };
 function more(cb) {
   if (M) return cb(M);
   if (moreQ) { moreQ.push(cb); return; }
@@ -80,6 +80,22 @@ function lz(o, src, make, view, cb) {
 }
 function ht(cb) { lz(HT, 'armory-ht.js', function () { return window.ArmoryHt(H); }, 'ht', cb); }
 function bst(cb) { lz(BT, 'armory-beasts.js', function () { return window.ArmoryBeasts(H); }, 'beasts', cb); }
+/* the awakening module (skill names, the order, the Raise move): a failed load never blanks a screen, the blocks say so */
+function awk(cb) {
+  if (AWK.m) return cb(AWK.m);
+  if (AWK.bad) return;
+  if (AWK.q) { AWK.q.push(cb); return; }
+  AWK.q = [cb];
+  var sc = document.createElement('script');
+  sc.src = 'armory-awaken.js';
+  sc.onload = function () {
+    try { AWK.m = window.ArmoryAwaken(H); } catch (e) { console.error(e); awkFail(); return; }
+    var q = AWK.q; AWK.q = null; q.forEach(function (f) { f(AWK.m); });
+  };
+  sc.onerror = awkFail;
+  document.body.appendChild(sc);
+}
+function awkFail() { AWK.q = null; AWK.bad = true; $$('.awk-slot').forEach(function (el) { el.classList.add('awk-bk'); el.innerHTML = '<p class="awk-note">Could not load the awakening details. Check your connection and reload the page.</p>'; }); }
 function advice(cb) {
   if (Av) return cb(Av);
   if (advQ) { advQ.push(cb); return; }
@@ -113,6 +129,15 @@ function parseHash() {
   return { view: v, seg: seg, q: q, bag: bag };
 }
 function go(p) { location.hash = '#' + p; }
+/* #heroes/roster?hero=Name: open that hero's row (true when done or not asked, false while the roster is not loaded yet) */
+function deepRoster(r) {
+  if (!M || !r || r.view !== 'heroes' || r.seg !== 'roster' || !r.q.hero) return true;
+  var rh = ((S.res && S.res.supp && S.res.supp.heroes && S.res.supp.heroes.list) || []).filter(function (x) { return x && isFinite(+x.id) && core.heroName(+x.id) === r.q.hero; })[0];
+  if (!rh) return false;
+  S.open[+rh.id] = true; M.rosterList(); setHeroOpen(+rh.id, true); awkOpenHero(+rh.id);
+  setTimeout(function () { var el = document.getElementById('rh-' + rh.id); if (el) el.scrollIntoView({ block: 'center' }); }, 30);
+  return true;
+}
 function applyRoute(first, soft) {
   if (!S.vm) return;
   var r = parseHash(), changed = !S.cur || S.cur.view !== r.view;
@@ -133,15 +158,17 @@ function applyRoute(first, soft) {
   if (r.view === 'heroes' && r.seg === 'advice') advice(function (a) { a.render(r.q, soft); });
   if (r.view === 'ht' && !soft) ht(function (h) { h.render(r); });
   if (r.view === 'beasts' && !soft) bst(function (b) { b.render(r); });
-  if (soft) return;
+  if (soft) { if (S.deep && deepRoster(S.deep)) S.deep = null; return; } /* a link that names a roster hero waits for the game data that arrives on the second pass */
   if (r.view === 'heroes' && r.seg === 'battle' && r.q.hero) {
     var h = S.vm.heroes.list.filter(function (x) { return x.name === r.q.hero; })[0];
     if (h) {
-      S.open[h.id] = true; setHeroOpen(h.id, true);
+      S.open[h.id] = true; setHeroOpen(h.id, true); awkOpenHero(h.id);
       var g = document.getElementById('g-' + h.id + '-' + r.q.slot);
       if (g) { $$('.gcard.sel').forEach(function (x) { x.classList.remove('sel'); }); g.classList.add('sel'); setTimeout(function () { g.scrollIntoView({ block: 'center' }); }, 30); }
     }
   }
+  S.deep = null; if (!deepRoster(r)) S.deep = r;
+  if (r.view === 'heroes' && (r.seg === 'battle' || r.seg === 'roster') && r.q.awk) awk(function (m) { m.focus(r.q); });
   if (r.view === 'heroes' && r.seg === 'gear' && r.q.view === 'runes' && S.gview !== 'runes') { S.gview = 'runes'; M.renderGear(); }
   if (r.view === 'base' && r.q.item) openSheet('decor', r.q.item);
   if (r.bag) openSheet('bag');
@@ -196,6 +223,39 @@ function beastMove() {
   if (!k || S.advise || S.res.readOnly || !S.vm.beasts || !ls('beast_optimizer_prefs_' + k)) return;
   (window.requestIdleCallback || setTimeout)(function () { bst(function (b) { b.nextMove(); }); });
 }
+/* Next moves signal g/h: a player who can afford a step (or holds two cards) gets the awakening module after first paint; nobody else loads it */
+function awakenMove() {
+  var A = S.vm.awaken;
+  if (!A || !A.eligible) return;
+  (window.requestIdleCallback || setTimeout)(function () { awk(function (m) { m.nextMove(); }); });
+}
+/* awakened portrait (live heroes) with the base portrait behind it, and the level badge; anyone else keeps the plain portrait */
+function awUrl(id) { return 'https://h5.topwargame.com/DynRes/images/headpic/hero_awakeicon' + (+id) + '_global.png?t=22.jpg'; }
+function por(id, name, base, a) {
+  if (!a || !a.aw || !ArmoryVM.AW.FIRST[id]) return art(base, 'por', name.charAt(0), '');
+  return awPor(a, base);
+}
+function awPor(a, base) {
+  base = base || ArmoryVM.heroIcon(a.id);
+  return '<span class="awk-pa">' + (ArmoryVM.AW.FIRST[a.id] ? art(awUrl(a.id), 'por', a.name.charAt(0), '', base) : art(base, 'por', a.name.charAt(0), '')) + (a.aw ? '<span class="awk-bd"><span translate="no">' + (+a.aw) + '</span></span>' : '') + '</span>';
+}
+function awLevel(a) { return a.fa || a.aw >= 40 ? 'Fully awakened' : 'Awakening Lv.' + a.aw + ' of 40'; }
+function awTop() {
+  var A = S.vm.awaken; if (!A.show) return '';
+  var open = !!S.awkOpen, sub = A.n ? A.n + ' awakened in roster' + (A.stones != null ? ' \u00B7 ' + fmtInt(A.stones) + ' Awakening Stones in bag' : '') : 'Heroes that can be awakened';
+  return '<section class="card awk-top" aria-label="Awakening"><button class="awk-hd" type="button" data-awkcard aria-expanded="' + open + '"><span class="awk-ht"><span class="awk-hn">Awakening</span><span class="awk-hs">' + nd(sub) + '</span></span>' + ic('down', 'awk-chev') + '</button><div class="awk-body"' + (open ? '' : ' hidden') + '></div></section>';
+}
+function awSum() {
+  var A = S.vm.awaken;
+  return A.n ? '<div class="t13 muted awk-sum">' + nd(A.full + ' of ' + A.n + ' fully awakened') + A.part.slice(0, 2).map(function (a) { return ' &middot; ' + nm(a.name) + ' ' + nd(a.aw + '/40'); }).join('') + '</div>' : '';
+}
+/* a hero's awakening block opens with the hero; the card and the blocks follow a redraw */
+function awkOpenHero(id) { if ($('.awk-slot[data-awk="' + (+id) + '"]')) awk(function (m) { m.fill(id); }); }
+function awkSync() {
+  if (!S.vm) return;
+  if (AWK.m) { try { AWK.m.refresh(); } catch (e) { console.error(e); } return; }
+  if (S.awkOpen || $('.hero.open .awk-slot')) awk(function (m) { m.refresh(); });
+}
 function setReady(res) {
   S.res = res;
   S.vm = ArmoryVM.buildViewModel(res.merged, res.sources, ArmoryVM.fromLoad(res, core));
@@ -205,6 +265,7 @@ function setReady(res) {
   applyRoute(!again, again);
   if (again) refreshSheet();
   beastMove();
+  awakenMove();
   if (!S.advise && sk() && res.identity && res.identity.isOwn && !res.readOnly) advIndex();
 }
 function run(arg, then) {
@@ -303,6 +364,7 @@ function renderAll() {
   if (M) M.renderSections();
   if (HT.m) { try { HT.m.render(S.cur); } catch (e) { console.error(e); } }
   if (BT.m) { try { BT.m.render(S.cur); } catch (e) { console.error(e); } }
+  awkSync();
   watchName();
 }
 
@@ -325,9 +387,10 @@ function alliancePill(a) {
   var k = { DOG: 'dog', MSS: 'mss', DGEN: 'dgen', 'CAT+': 'dgen', CAT: 'dgen', PRU: 'pru' }[String(a || '').toUpperCase()];
   return k ? '<span class="pill p-' + k + '" translate="no">' + esc(a) + '</span>' : '<span class="pill">No alliance on file</span>';
 }
+function por_(x) { return por(x.id, x.name, x.icon, S.vm.awaken.byId[x.id]); }
 function renderOverview() {
   var vm = S.vm, h = vm.header, ro = readOnly(), shared = h.shared;
-  var por = vm.heroes.list.slice(0, 3).map(function (x) { return '<a class="plink" href="#heroes/battle?hero=' + encodeURIComponent(x.name) + '" aria-label="' + esc(x.name) + ' in battle reports">' + art(x.icon, 'por', x.name.charAt(0), '') + '</a>'; }).join('');
+  var por = vm.heroes.list.slice(0, 3).map(function (x) { return '<a class="plink" href="#heroes/battle?hero=' + encodeURIComponent(x.name) + '" aria-label="' + esc(x.name) + ' in battle reports">' + por_(x) + '</a>'; }).join('');
   var fresh = '';
   var rep = h.reports ? '<span>Reports ' + nm(h.reports.date) + ' ' + ageSpan(h.reports) + '</span>' : '';
   var dat = h.data ? '<span>Game data ' + nm(h.data.date) + (h.data.ageDays >= 1 ? ' ' + ageSpan(h.data) : '') + '</span>' : '<span>No game data imported</span>';
@@ -341,8 +404,8 @@ function renderOverview() {
 
   var m = vm.moves, rows = m.picks.map(function (p, i) {
     var seg = (p.parts || [{ s: p.text }]).map(function (x) { return x.n ? nm(x.s) : esc(x.s); }).join('');
-    return '<a class="move" role="listitem" href="#' + esc(p.route.replace(/ /g, '+')) + '" data-move="' + i + '" title="' + esc(p.full) + '" aria-label="' + esc(p.pill + ': ' + p.full + (p.meta ? '. ' + p.meta : '')) + '">' + moveIco(p.ico) +
-      '<div class="move-b"><span class="pill p-eff">' + esc(p.pill) + '</span><span class="move-t">' + seg + '</span>' + (p.meta ? '<span class="move-m">' + nd(p.meta) + '</span>' : '') + '</div>' + ic('chev') + '</a>';
+    return '<a class="move" role="listitem" href="#' + esc(p.route.replace(/ /g, '+')) + '" data-move="' + i + '" title="' + esc(p.full) + '" aria-label="' + esc(p.pill + ': ' + p.full + (p.alt ? ', ' + p.alt.full : '') + (p.meta ? '. ' + p.meta : '')) + '">' + moveIco(p.ico) +
+      '<div class="move-b"><span class="pill p-eff">' + esc(p.pill) + '</span><span class="move-t">' + seg + '</span>' + (p.alt ? '<span class="move-t move-or">' + p.alt.parts.map(function (x) { return x.n ? nm(x.s) : esc(x.s); }).join('') + '</span>' : '') + (p.meta ? '<span class="move-m">' + nd(p.meta) + '</span>' : '') + '</div>' + ic('chev') + '</a>';
   }).join('');
   var mfoot = m.cta === 'import' && !ro ? '<button class="tb link" type="button" data-open="status">' + nd(m.footer) + '</button>' : m.footer ? nd(m.footer) : '';
   var moves = '<section class="card" id="movesCard" aria-labelledby="mvT"><div class="sechead"><h2 class="title" id="mvT">' + (shared ? nm(h.name || 'Player') + '’s next moves' : 'Next moves') + '</h2><button class="info" type="button" data-explain="moves" aria-label="How next moves are chosen">' + ic('info', 'sm') + '</button></div>' +
@@ -359,7 +422,7 @@ function renderOverview() {
     return '<a class="area" href="' + href + '"' + (dataOpen ? ' data-open="' + dataOpen + '"' : '') + ' data-numwrap><span class="area-n" data-num translate="no">' + esc(n) + '</span><div class="area-b"><div class="l lbl">' + esc(label) + '</div><div class="s src">' + src + '</div></div>' + ic('chev') + '</a>';
   }
   var areas = '<section id="areasCard" aria-label="Areas"><div class="alist">' +
-    area('#heroes/battle', String(Z.heroes.battle), 'Heroes', (Z.heroes.source === 'reports' ? 'in battle reports' : 'with gear in game data') + (Z.heroes.roster != null ? ' &middot; ' + nm(String(Z.heroes.roster)) + ' in roster' : '')) +
+    area('#heroes/battle', String(Z.heroes.battle), 'Heroes', (Z.heroes.source === 'reports' ? 'in battle reports' : 'with gear in game data') + (Z.heroes.roster != null ? ' &middot; ' + nm(String(Z.heroes.roster)) + ' in roster' : '') + (vm.awaken.n ? ' &middot; ' + nm(String(vm.awaken.n)) + ' awakened' + (vm.awaken.full ? ' (' + nm(String(vm.awaken.full)) + ' fully)' : '') : '')) +
     area('#base', String(Z.base.placedKinds), 'Decorations', Z.base.placedKinds ? 'kinds placed (' + nm(String(Z.base.placedPieces)) + ' pieces) &middot; March Size ' + nm('+' + Z.base.march) : 'placed &middot; not in game data yet') +
     area('#beasts', Z.beasts ? String(Z.beasts.deployed) : '0', 'Beasts', Z.beasts ? 'deployed in ' + nm(String(Z.beasts.fields)) + ' fields' + (Z.beasts.collected != null ? ' &middot; ' + nm(String(Z.beasts.collected)) + ' collected' : '') : 'deployed &middot; not in game data yet') +
     area('#ht', String(vm.ht.reportMechas ? vm.ht.reportMechas.length : Z.ht.count), 'Heavy Troopers (HT)', vm.ht.reportMechas ? 'in battle reports &middot; ' + nm(String(Z.ht.count)) + ' in game data &middot; ' + nm(Z.ht.chipsFilled + ' of ' + Z.ht.chipsMax) + ' chips equipped' : 'in game data &middot; ' + nm(Z.ht.chipsFilled + ' of ' + Z.ht.chipsMax) + ' chips equipped') +
@@ -412,15 +475,17 @@ function gearCard(h, p, showHero) {
     '<div><div class="g-n" translate="no">' + esc(p.slotName).replace(/([^\s]+-[^\s]+)/g, function (m) { return m.replace(/-/g, '‑'); }) + '</div>' + (p.level != null ? '<div class="g-s">Level ' + nm(String(p.level)) + '</div>' : '') + '</div></div>' + rune + stats + '</div>';
 }
 function heroRow(h) {
-  var open = !!S.open[h.id];
-  return '<article class="hero' + (open ? ' open' : '') + '" id="h-' + esc(h.id) + '"><button class="hrow" type="button" aria-expanded="' + open + '" aria-controls="hp-' + esc(h.id) + '" data-hero="' + esc(h.id) + '">' + art(h.icon, 'por', h.name.charAt(0), '') +
-    '<span class="hb"><span class="hb-1"><span class="hb-n" translate="no">' + esc(h.name) + '</span>' + branchPill(h.branch) + '</span><span class="hb-2" style="display:block">Level ' + nm(String(h.lv)) + ' &middot; ' + nm(String(h.pieces.length)) + ' of ' + nm('6') + ' gear equipped</span></span>' +
+  var open = !!S.open[h.id], a = S.vm.awaken.byId[h.id];
+  return '<article class="hero' + (open ? ' open' : '') + '" id="h-' + esc(h.id) + '"><button class="hrow" type="button" aria-expanded="' + open + '" aria-controls="hp-' + esc(h.id) + '" data-hero="' + esc(h.id) + '">' + por(h.id, h.name, h.icon, a) +
+    '<span class="hb"><span class="hb-1"><span class="hb-n" translate="no">' + esc(h.name) + '</span>' + branchPill(h.branch) + '</span><span class="hb-2" style="display:block">' + (a && a.aw ? nd(awLevel(a)) : 'Level ' + nm(String(h.lv))) + ' &middot; ' + nm(String(h.pieces.length)) + ' of ' + nm('6') + ' gear equipped</span></span>' +
     '<span class="hr-score"><span class="n disp" style="display:block" translate="no">' + fmtK(h.score) + '</span><span class="l" style="display:block">gear score</span></span>' + ic('down', 'chev') + '</button>' +
-    '<div class="panel" id="hp-' + esc(h.id) + '"><div><div class="gears">' + h.pieces.map(function (p) { return gearCard(h, p); }).join('') + '</div></div></div></article>';
+    '<div class="panel" id="hp-' + esc(h.id) + '"><div><div class="gears">' + h.pieces.map(function (p) { return gearCard(h, p); }).join('') + '</div>' + (a ? '<div class="awk-slot" data-awk="' + (+h.id) + '"></div>' : '') + '</div></div></article>';
 }
 function setHeroOpen(id, on) {
-  var a = document.getElementById('h-' + id); if (!a) return;
-  a.classList.toggle('open', on); $('.hrow', a).setAttribute('aria-expanded', on ? 'true' : 'false');
+  ['h-', 'rh-'].forEach(function (pre) {
+    var a = document.getElementById(pre + id); if (!a) return;
+    a.classList.toggle('open', on); $('.hrow', a).setAttribute('aria-expanded', on ? 'true' : 'false');
+  });
 }
 function filt(list, get) {
   var f = S.f, q = f.q.trim().toLowerCase(), any = Object.keys(f.br).some(function (k) { return f.br[k]; });
@@ -441,12 +506,13 @@ function battleList() {
   var nf = (S.f.q.trim() ? 1 : 0) + Object.keys(S.f.br).filter(function (k) { return S.f.br[k]; }).length;
   $$('.fbtn').forEach(function (b) { b.lastChild.textContent = 'Filter \u00B7 Sort' + (nf ? ' (' + nf + ')' : ''); });
   var c = $('#heroCount'); if (c) c.innerHTML = nd(l.length + ' heroes');
+  awkSync();
 }
 function renderHeroes() {
   var n = S.vm.heroes.list.length;
   $('#v-heroes').innerHTML = segs('heroes') +
-    '<div class="vb" data-pane="battle"><div class="sechead"><h2 class="title">Heroes in battle reports</h2></div><div class="fbar"><div class="grow t13 muted" id="heroCount">' + nd(n + ' heroes') + '</div><button class="btn fbtn" type="button" data-open="filter">' + ic('sliders', 'sm') + 'Filter \u00B7 Sort</button>' + ctrls('inl') + '</div><div id="heroList"></div></div>' +
-    '<div class="vb" data-pane="roster" hidden><div class="fbar"><div class="grow t13 muted" id="rosterCount"></div><button class="btn fbtn" type="button" data-open="filter">' + ic('sliders', 'sm') + 'Filter \u00B7 Sort</button>' + ctrls('inl') + '</div><div id="rosterList"></div></div>' +
+    '<div class="vb" data-pane="battle"><div class="sechead"><h2 class="title">Heroes in battle reports</h2></div>' + awSum() + awTop() + '<div class="fbar"><div class="grow t13 muted" id="heroCount">' + nd(n + ' heroes') + '</div><button class="btn fbtn" type="button" data-open="filter">' + ic('sliders', 'sm') + 'Filter \u00B7 Sort</button>' + ctrls('inl') + '</div><div id="heroList"></div></div>' +
+    '<div class="vb" data-pane="roster" hidden>' + awSum() + awTop() + '<div class="fbar"><div class="grow t13 muted" id="rosterCount"></div><button class="btn fbtn" type="button" data-open="filter">' + ic('sliders', 'sm') + 'Filter \u00B7 Sort</button>' + ctrls('inl') + '</div><div id="rosterList"></div></div>' +
     '<div class="vb" data-pane="gear" hidden><div id="gearTop"></div><div id="gearBody"></div></div>' +
     '<div class="vb" data-pane="advice" hidden><div id="adviceBody"></div></div>';
   battleList();
@@ -480,6 +546,10 @@ function openSheet(kind, arg) {
     if (!HT.m) { ht(function () { openSheet(kind, arg); }); return; }
     var rh = HT.m.sheet(); if (!rh) return;
     title = rh[0]; body = rh[1];
+  } else if (kind === 'awkorder') {
+    if (!AWK.m) { awk(function () { openSheet(kind, arg); }); return; }
+    var rk = AWK.m.sheet(kind); if (!rk) return;
+    title = rk[0]; body = rk[1];
   } else if (kind === 'bstfilter' || kind === 'beast' || kind === 'bstscore') {
     if (!BT.m) { bst(function () { openSheet(kind, arg); }); return; }
     var rb = BT.m.sheet(kind, arg); if (!rb) return;
@@ -525,6 +595,7 @@ function currentCode() {
 /* ---------- events ---------- */
 document.addEventListener('error', function (e) {
   var t = e.target;
+  if (t && t.tagName === 'IMG' && t.dataset.alt) { var da = t.dataset.alt; delete t.dataset.alt; t.src = da; return; } /* an awakened portrait that is missing falls back to the base one */
   if (t && t.tagName === 'IMG' && t.dataset.fb != null) {
     var s = document.createElement('span'); s.className = t.className + ' fb'; s.textContent = t.dataset.fb;
     if (t.getAttribute('style')) s.setAttribute('style', t.getAttribute('style'));
@@ -545,7 +616,8 @@ document.addEventListener('click', function (e) {
   if (ds.open) { e.preventDefault(); if (ds.open === 'bag' && t.tagName === 'A') { go('bag'); return; } openSheet(ds.open); return; }
   if (ds.explain) { openSheet('explain', ds.explain); return; }
   if (ds.go) { go(ds.go); return; }
-  if (ds.hero) { var id = +ds.hero, on = !S.open[id]; S.open[id] = on; setHeroOpen(id, on); return; }
+  if (ds.hero) { var id = +ds.hero, on = !S.open[id]; S.open[id] = on; setHeroOpen(id, on); if (on) awkOpenHero(id); return; }
+  if ('awkcard' in ds) { S.awkOpen = !S.awkOpen; S.awkHl = false; $$('.awk-hd').forEach(function (b) { b.setAttribute('aria-expanded', S.awkOpen ? 'true' : 'false'); }); if (S.awkOpen || AWK.m) awk(function (m) { m.paintCard(); }); else $$('.awk-body').forEach(function (b) { b.hidden = true; }); return; }
   if (ds.showall) { S.all[ds.showall] = true; if (M) { if (ds.showall === 'roster') M.rosterList(); else if (ds.showall === 'decor') M.renderBase(); else M.gearBody(); } return; }
   if (ds.br !== undefined) { S.f.br[ds.br] = !S.f.br[ds.br]; $$('[data-br="' + ds.br + '"]').forEach(function (b) { b.setAttribute('aria-pressed', S.f.br[ds.br] ? 'true' : 'false'); }); battleList(); if (M) M.rosterList(); return; }
   if (ds.sort) { S.f.sort = ds.sort; $$('[data-sort]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.sort === ds.sort ? 'true' : 'false'); }); battleList(); if (M) M.rosterList(); return; }
@@ -579,7 +651,7 @@ document.addEventListener('keydown', function (e) {
 });
 window.addEventListener('hashchange', function () { if (!shim()) applyRoute(false); });
 
-H = { renderOverview: function () { renderOverview(); watchName(); }, beastMove: beastMove, S: S, d: d, core: core, G: G, BASE: BASE, statLabel: statLabel, WORKER: WORKER, SK_RE: SK_RE, $: $, $$: $$, esc: esc, nd: nd, nm: nm, ic: ic, fmtK: fmtK, fmtInt: fmtInt, ramp: ramp, qCls: qCls, slug: slug, ls: ls, stars: stars, art: art, lbl: lbl, stateName: stateName, sk: sk, readOnly: readOnly, classicUrl: classicUrl, savedReport: savedReport, deviceId: deviceId, toast: toast, go: go, run: run, showSkeleton: showSkeleton, fkHero: fkHero, refreshSheet: refreshSheet, currentCode: currentCode, gearCard: gearCard, branchPill: branchPill, filt: filt, sortBy: sortBy, openSheet: openSheet, closeSheet: closeSheet, advice: advice, more: more, advIndex: advIndex, paintDot: paintDot };
+H = { awPor: awPor, awLevel: awLevel, awkSync: awkSync, awkOpenHero: awkOpenHero, renderOverview: function () { renderOverview(); watchName(); }, beastMove: beastMove, S: S, d: d, core: core, G: G, BASE: BASE, statLabel: statLabel, WORKER: WORKER, SK_RE: SK_RE, $: $, $$: $$, esc: esc, nd: nd, nm: nm, ic: ic, fmtK: fmtK, fmtInt: fmtInt, ramp: ramp, qCls: qCls, slug: slug, ls: ls, stars: stars, art: art, lbl: lbl, stateName: stateName, sk: sk, readOnly: readOnly, classicUrl: classicUrl, savedReport: savedReport, deviceId: deviceId, toast: toast, go: go, run: run, showSkeleton: showSkeleton, fkHero: fkHero, refreshSheet: refreshSheet, currentCode: currentCode, gearCard: gearCard, branchPill: branchPill, filt: filt, sortBy: sortBy, openSheet: openSheet, closeSheet: closeSheet, advice: advice, more: more, advIndex: advIndex, paintDot: paintDot };
 window.__arm = { S: S, d: d, core: core, go: go, openSheet: openSheet, closeSheet: closeSheet, applyRoute: applyRoute, parseHash: parseHash, VIEWS: VIEWS, ready: false };
 boot();
 if (/[?&]check=1/.test(location.search)) { var cs = document.createElement('script'); cs.src = 'armory-check.js'; document.body.appendChild(cs); }
