@@ -86,11 +86,11 @@ test('Advice: the advisor tabs map to #heroes/advice (no classic redirect), boot
   assert.ok(!/advise|plan|replace\(/.test(headScript()), 'the head script has no advise/plan redirect');
 });
 
-function v1Snippet() { return /<script>\s*\/\* Armory v2 beta: one small link[\s\S]*?<\/script>/.exec(V1)[0].replace(/^<script>|<\/script>$/g, ''); }
-function runV1(flag, search, hash) {
+function v1Snippet() { return /<script>\s*\/\* Armory v2 link[\s\S]*?<\/script>/.exec(V1)[0].replace(/^<script>|<\/script>$/g, ''); }
+function runV1(flag, search, hash, pathname) {
   const made = [];
-  const doc = { createElement: () => { const el = { style: {}, set href(v) { this._h = v; }, get href() { return this._h; } }; made.push(el); return el; }, body: { appendChild: () => {}, style: {} } };
-  vm.runInNewContext(v1Snippet(), { window: { innerWidth: 390 }, document: doc, location: { search, hash: hash || '' }, localStorage: { getItem: (k) => (k === 'armory_v2_beta' ? flag : null) }, RegExp });
+  const doc = { createElement: () => { const el = { style: {}, textContent: '', set href(v) { this._h = v; }, get href() { return this._h; } }; made.push(el); return el; }, body: { appendChild: () => {}, style: {} } };
+  vm.runInNewContext(v1Snippet(), { window: { innerWidth: 390 }, document: doc, location: { search, hash: hash || '', pathname: pathname || '/armory-report.html' }, localStorage: { getItem: (k) => (k === 'armory_v2_beta' ? flag : null) }, RegExp });
   return made;
 }
 test('the classic page shows "Try the new Armory" only behind the flag, carries code, advise and plan over, and the only edit is that snippet', () => {
@@ -107,4 +107,17 @@ test('the classic page shows "Try the new Armory" only behind the flag, carries 
   assert.ok(/z-index:\d{7,}/.test(v1Snippet()), 'above the Welcome Back dialog (z-index 1000)');
   assert.ok(/paddingBottom/.test(v1Snippet()), 'phones keep the end of the page reachable');
   assert.equal(V1.split('armory_v2_beta').length - 1, 1, 'one mention in the classic page');
+});
+test('the classic copy at armory-classic.html shows the new-Armory link with no flag, carrying code, plan and hash; armory-report.html stays flag-only', () => {
+  assert.equal(runV1(null, '', '', '/armory-report.html').length, 0, 'no flag, classic URL: no link');
+  const a = runV1(null, '?code=ABCD&plan=abc123&from=v2', '#tab=heroes', '/armory-classic.html');
+  assert.equal(a.length, 1); assert.equal(a[0].href, 'armory.html?code=ABCD&plan=abc123#tab=heroes'); assert.equal(a[0].textContent, 'Use the new Armory');
+  assert.equal(runV1('1', '', '', '/armory-report.html')[0].textContent, 'Try the new Armory');
+  assert.equal(runV1(null, '?advise=ABC123', '', '/armory-classic.html')[0].href, 'armory.html?advise=ABC123');
+  assert.ok(/location\.pathname \+ '\?code=' \+ code/.test(V1), 'Make Primary stays on whichever page the player is on');
+  assert.ok(!/location\.href = 'armory-report\.html\?code='/.test(V1), 'Make Primary no longer hard-codes armory-report.html');
+});
+test('pages.yml publishes the classic page a second time at armory-classic.html (same file)', () => {
+  assert.ok(/cp pages\/armory-report\.html _site\/armory-classic\.html/.test(YML));
+  assert.ok(/cp pages\/index\.html[^\n]*pages\/armory-report\.html /.test(YML), 'armory-report.html is still published under its own name');
 });
