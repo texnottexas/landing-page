@@ -16,7 +16,16 @@ var isNode = typeof module === 'object' && module.exports;
 var VM = isNode ? require('./armory-vm.js') : root.ArmoryVM;
 var AW = VM.AW;
 var SLOT_PRI = { 2: 0, 3: 0, 4: 1, 1: 2 }; // skill 2 and 3 first, then 4, then 1 (heroes-awakening.html, Strategy)
-var TRIOS = [[169, 174, 170], [172, 173, 165], [234, 241, 240], [239, 232, 237], [333, 336, 337], [334, 338, 332]]; // the game's awakening trios (heroes-awakening.json comboTrio)
+/* The game's 6 core marches (owner's rule, 2026-10-11): heroes expected to exist together. Ids from data/all-heroes.json, equal to heroes-awakening.json coreLineup / comboTrio. */
+var CORE = [
+  { name: 'Army Dynamic Attack', ids: [169, 174, 170] }, /* Sara, Ella, Rohr */
+  { name: 'Army Counter-Attack', ids: [165, 173, 172] }, /* Marvingt, Tannis, Nova */
+  { name: 'Navy Control Tactic', ids: [240, 241, 234] }, /* Sinope, Margaretha, Shen Suyu */
+  { name: 'Navy Defense Tactic', ids: [237, 232, 239] }, /* Alvida, Lilia, Lophy */
+  { name: 'Air Force Regular Attack', ids: [337, 336, 333] }, /* Heid, Joan Mature, Carna */
+  { name: 'Air Force Ignition', ids: [332, 338, 334] } /* Vivian, Franziska, Jett */
+];
+var TRIOS = CORE.map(function (c) { return c.ids.slice(); });
 var CLOSE = 0.85;
 
 /* ---------- logic (no DOM) ---------- */
@@ -58,18 +67,30 @@ function pickSets(ctx) {
   var srcs = [
     ['march', (ctx.marches || []).map(function (m, i) { return [cleanSet(m && m.ids), safeName(m && m.name, 'March ' + (i + 1))]; })],
     ['preset', (ctx.presets || []).map(function (ids, i) { return [cleanSet(ids), 'Preset ' + (i + 1)]; })],
-    ['report', (ctx.reports || []).map(function (ids, i) { return [cleanSet(ids), 'Battle report march ' + (i + 1)]; })],
-    ['trio', TRIOS.filter(function (t) { return t.some(owned); }).map(function (t) { return [t.slice(), 'Awakening trio']; })]
+    ['report', (ctx.reports || []).map(function (ids, i) { return [cleanSet(ids), 'Battle report march ' + (i + 1)]; })]
   ];
-  for (var i = 0; i < srcs.length; i++) {
-    var seen = {}, sets = [];
+  function keyOf(ids) { return ids.slice().sort(function (a, b) { return a - b; }).join('-'); }
+  var sets = [];
+  for (var i = 0; i < srcs.length && !sets.length; i++) {
+    var seen = {}, got = [];
     srcs[i][1].forEach(function (p) {
       if (!p[0]) return;
-      var key = p[0].slice().sort(function (a, b) { return a - b; }).join('-');
-      if (!seen[key]) { seen[key] = 1; sets.push({ key: key, name: p[1], src: srcs[i][0], ids: p[0] }); }
+      var key = keyOf(p[0]);
+      if (!seen[key]) { seen[key] = 1; got.push({ key: key, name: p[1], src: srcs[i][0], ids: p[0] }); }
     });
-    if (sets.some(function (s) { return s.ids.some(function (id) { return workable(A[id]); }); })) return sets;
+    if (got.some(function (s) { return s.ids.some(function (id) { return workable(A[id]); }); })) sets = got;
   }
+  /* Core-march fallback: a hero who matters for awakening (awakened, or can be) and sits in none of the player's marches is assumed to be with
+     their core march (Shen Suyu with Sinope and Margaretha). Never for a hero already in a player march, never a copy of a player march.
+     Awakening planning only: the decor scope (armory-core.js decorScopeIds) reads the player's real marches and never these. */
+  var inMarch = {}, have = {};
+  sets.forEach(function (s) { have[s.key] = 1; s.ids.forEach(function (id) { inMarch[id] = 1; }); });
+  CORE.forEach(function (c) {
+    var key = keyOf(c.ids);
+    if (have[key]) return;
+    if (c.ids.some(function (id) { return !inMarch[id] && workable(A[id]); })) { have[key] = 1; sets.push({ key: key, name: c.name, src: 'core', core: true, ids: c.ids.slice() }); }
+  });
+  if (sets.length) return sets;
   return Object.keys(A).map(Number).filter(function (id) { return A[id].aw > 0; }).map(function (id) { return { key: 'solo' + id, name: A[id].name, src: 'solo', ids: [id] }; });
 }
 
@@ -105,14 +126,15 @@ function plan(ctx) {
   var top = byPower[0] || null, main = top;
   if (top && top.power > 0) byPower.forEach(function (s) { if (s.power * 100 >= top.power * 85 && s.levels > main.levels) main = s; });
   /* a hero in two sets is planned under the main march when it is in it, else under the strongest set that holds it */
-  var home = {};
-  (main ? [main] : []).concat(byPower.filter(function (s) { return s !== main; })).forEach(function (s) { s.ids.forEach(function (id) { if (!has(home, id)) home[id] = s; }); });
+  var home = {}, real = byPower.filter(function (s) { return !s.core; }), assumed = byPower.filter(function (s) { return s.core; });
+  /* heroes of the player's own marches are claimed first, so a core fallback only plans heroes who are in no march */
+  (main && !main.core ? [main] : []).concat(real.filter(function (s) { return s !== main; }), main && main.core ? [main] : [], assumed.filter(function (s) { return s !== main; })).forEach(function (s) { s.ids.forEach(function (id) { if (!has(home, id)) home[id] = s; }); });
   byPower.forEach(function (s) { s.own = s.ids.filter(function (id) { return home[id] === s; }); });
   var loose = Object.keys(A).map(Number).filter(function (id) { return A[id].aw > 0 && A[id].aws && !has(home, id); })
     .sort(function (a, b) { return num(pw[b]) - num(pw[a]); })
     .map(function (id) { return { key: 'loose' + id, name: A[id].name, src: 'loose', ids: [id], own: [id], power: num(pw[id]), levels: levels(A, [id]) }; });
   var seconds = main && main.power > 0 ? byPower.filter(function (s) { return s !== main && s.power * 100 >= main.power * 85; }) : [];
-  var rest = byPower.filter(function (s) { return s !== main && seconds.indexOf(s) < 0; });
+  var rest = byPower.filter(function (s) { return s !== main && seconds.indexOf(s) < 0; }).sort(function (x, y) { return (x.core ? 1 : 0) - (y.core ? 1 : 0); }); /* stable: assumed core marches after the player's own */
   var order = (main ? [main] : []).concat(seconds, rest, loose);
   var P = { sets: order, main: main, top: top, seconds: seconds, loose: loose, m: null, alt: null, move: null, saving: null, close: {} };
   seconds.forEach(function (s) { P.close[s.key] = main.power ? Math.round(s.power / main.power * 100) : 0; });
@@ -212,7 +234,7 @@ function statusLine(byId, ids, nameOf) {
   ids.forEach(function (id) { var t = heroStatus(byId[id]); if (!by[t]) { by[t] = []; order.push(t); } by[t].push(nameOf(id)); });
   return order.map(function (t) { return { names: by[t], text: t }; });
 }
-var Logic = { awSkills: awSkills, enrich: enrich, SLOT_PRI: SLOT_PRI, TRIOS: TRIOS, CLOSE: CLOSE, step: step, costTo: costTo, workable: workable, cleanSet: cleanSet, pickSets: pickSets, skillsOf: skillsOf, nextOf: nextOf, plan: plan, moves: moves, effectText: effectText, splitEffect: splitEffect, clean: clean, needs: needs, verdict: verdict, heroStatus: heroStatus, statusLine: statusLine, cardLines: cardLines, fmtInt: fmtInt };
+var Logic = { awSkills: awSkills, enrich: enrich, SLOT_PRI: SLOT_PRI, TRIOS: TRIOS, CORE: CORE, CLOSE: CLOSE, step: step, costTo: costTo, workable: workable, cleanSet: cleanSet, pickSets: pickSets, skillsOf: skillsOf, nextOf: nextOf, plan: plan, moves: moves, effectText: effectText, splitEffect: splitEffect, clean: clean, needs: needs, verdict: verdict, heroStatus: heroStatus, statusLine: statusLine, cardLines: cardLines, fmtInt: fmtInt };
 if (isNode) module.exports = { Logic: Logic };
 if (!isNode) root.ArmoryAwakenLogic = Logic;
 
@@ -367,7 +389,7 @@ function setHtml(s, role, P) {
   var why = '';
   if (s === P.main && P.top !== P.main) why = '<div class="awk-sm">Main march because it has more awakening skill levels (' + nd(s.levels + ' against ' + P.top.levels) + ') and is within 15% of ' + nm(P.top.name) + '’s power.</div>';
   var pct = P.close[s.key] ? '<div class="awk-sm">' + nd(P.close[s.key] + '% of main march power') + '</div>' : '';
-  return '<div class="awk-set"><div class="awk-sh"><h3 class="awk-role">' + esc(role) + '</h3><span class="awk-sm" translate="no">' + esc(s.name) + '</span></div>' + ptsOf(s.ids) +
+  return '<div class="awk-set"><div class="awk-sh"><h3 class="awk-role">' + esc(role) + '</h3><span class="awk-sm" translate="no">' + esc(s.name) + '</span>' + (s.core ? '<span class="awk-sm"> · core march</span>' : '') + '</div>' + ptsOf(s.ids) +
     '<div class="awk-sm">' + nd(m3(s.power) + ' combined power') + '</div>' + pct + '<div class="awk-sm">' + statusHtml(s.ids) + '</div>' + why + '</div>';
 }
 /* the one step the card recommends, in the Next moves row's anatomy, with its reason */
@@ -382,6 +404,7 @@ function stepHtml(P, A) {
   if (P.move && P.move.second) why = 'Not enough stones for ' + nm(heroName(P.m.id)) + '\u2019s next step (' + nd(fmtInt(P.m.cost) + ', you have ' + fmtInt(A.stones)) + '); this step on the close second march costs ' + nd(fmtInt(m.cost)) + '.';
   else if (P.move && P.move.or) why = nm(heroName(P.m.id)) + '’s skills are all at Lv.6 or higher; ' + (P.alt ? nm(heroName(P.alt.id)) + '’s march' : 'the close second') + ' still has skills under Lv.6.';
   else if (set && set.src === 'loose') why = nm(heroName(m.id)) + ' is in no march; every march is done.';
+  else if (set && set.core) why = 'None of your marches holds ' + nm(heroName(m.id)) + ', so the game\u2019s ' + nm(set.name) + ' core march is assumed.';
   else if (set && set !== P.main) why = 'The main march is done; the ' + (P.seconds.indexOf(set) === 0 ? 'close second' : 'next march') + ' is next.';
   else why = '';
   var q = nameOf(m.id, m.slot);
@@ -397,6 +420,7 @@ function cardBody() {
     var rows = '';
     if (P.main) rows += setHtml(P.main, 'Main march', P);
     P.seconds.forEach(function (s, i) { rows += setHtml(s, i ? 'Also within 15%' : 'Close second', P); });
+    P.sets.forEach(function (s) { if (s.core && s !== P.main && P.seconds.indexOf(s) < 0) rows += setHtml(s, 'Not in a march of yours', P); }); /* assumed core marches too far behind to be a close second */
     if (P.loose.length) rows += '<div class="awk-set"><div class="awk-sh"><h3 class="awk-role">Not in a march</h3></div>' + ptsOf(P.loose.map(function (l) { return l.ids[0]; })) + '<div class="awk-sm">' + statusHtml(P.loose.map(function (l) { return l.ids[0]; })) + '</div></div>';
     o += '<div class="awk-ordh sechead"><h3 class="lab" style="margin:0;flex:1">Raise order</h3><button class="info" type="button" data-open="awkorder" aria-label="How the order is chosen">' + ic('info', 'sm') + '</button></div><div class="awk-sets">' + rows + '</div>' + stepHtml(P, A);
   }
@@ -448,7 +472,7 @@ function sheet(kind) {
   return ['How the order is chosen', '<p>A set is the three heroes of one march. Its power is the sum of those heroes’ power in your game data. The strongest set is the main march, unless another set within 15% of it holds more awakening skill levels in total: then that set is the main march.</p>' +
     '<p>Skills of the main march rise to Lv.6 first, because Lv.6 switches on each skill’s second effect (the Heroes Awakening guide calls it Tier 6). Skills 2 and 3 go first (the lower level of the two), then skill 4, then skill 1. Then every skill of the main march goes to Lv.7, then Lv.8, up to Lv.10, lowest level first.</p>' +
     '<p>When the main march is past Lv.6 and a close second march still has skills under Lv.6, the move shows both: raise the main march’s next skill, or bring the second march up to Lv.6.</p>' +
-    '<p>Costs are the most a step can take: stones already spent on the current level are not in your game data, so the real cost can only be lower. Heroes in no march come after the marches.</p>'];
+    '<p>Costs are the most a step can take: stones already spent on the current level are not in your game data, so the real cost can only be lower. Marches marked core march are assumed, not from your reports: a hero who can be awakened but is in none of your marches is placed with the game’s core march for that hero, and it is ranked the same way. Your own marches come first.</p>'];
 }
 function wire() {
   if (wired) return; wired = true;

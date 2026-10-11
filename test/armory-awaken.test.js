@@ -152,14 +152,16 @@ test('a set is exactly 3 distinct hero ids above 0', () => {
   assert.equal(L.cleanSet([1, 2]), null); assert.equal(L.cleanSet([1, 2, 3, 4]), null);
   assert.deepEqual(L.cleanSet([0, 1, 2, 3]), [1, 2, 3], 'zero is an empty slot'); assert.equal(L.cleanSet('x'), null); assert.equal(L.cleanSet([NaN, 1, 2]), null);
 });
-test('sets: the first source that holds a hero who is awakened or can be awakened; saved marches, then presets, then reports, then the game\'s trios', () => {
+test('sets: the first source that holds a hero who is awakened or can be awakened; saved marches, then presets, then reports; heroes in none of them get their core march', () => {
   const list = [awk(SARA, 10, [1, 1]), H(170), H(174), awk(JETT, 35, [10, 10, 10, 10]), H(VIVIAN), H(FRANZ)];
   const A = build(list), base = ctxOf(A, list);
   const names = (ctx) => L.pickSets(ctx).map((s) => s.src + ':' + s.name + ':' + s.ids.join('-'));
-  assert.deepEqual(names(Object.assign({}, base, { marches: [{ name: 'Mine', ids: [SARA, 170, 174] }, { name: 'x', ids: [1, 2] }], presets: [[JETT, VIVIAN, FRANZ]] })), ['march:Mine:169-170-174'], 'saved marches win; a 2-hero march is not a set');
+  assert.deepEqual(names(Object.assign({}, base, { marches: [{ name: 'Mine', ids: [SARA, 170, 174] }, { name: 'x', ids: [1, 2] }], presets: [[JETT, VIVIAN, FRANZ]] })), ['march:Mine:169-170-174', 'core:Air Force Ignition:332-338-334'], 'saved marches win over presets (Jett is in none, so his core march rides along); a 2-hero march is not a set');
   assert.deepEqual(names(Object.assign({}, base, { marches: [{ name: 'Other', ids: [1, 2, 3] }], presets: [[JETT, VIVIAN, FRANZ], [JETT, FRANZ, VIVIAN], [SARA, 170, 174]] })), ['preset:Preset 1:334-332-338', 'preset:Preset 3:169-170-174'], 'no awakened hero in the marches: the presets; the same three in another order are one set');
-  assert.deepEqual(names(Object.assign({}, base, { reports: [[SARA, 170, 174], null, [1, 2]] })), ['report:Battle report march 1:169-170-174']);
-  const trios = names(base); assert.ok(trios.every((t) => /^trio:Awakening trio:/.test(t)) && trios.length === 2, 'the trios that hold a hero the player owns: ' + trios.join());
+  assert.deepEqual(names(Object.assign({}, base, { reports: [[SARA, 170, 174], null, [1, 2]] })), ['report:Battle report march 1:169-170-174', 'core:Air Force Ignition:332-338-334']);
+  const mine = names(Object.assign({}, base, { marches: [{ name: 'Mine', ids: [SARA, 170, 174] }] }));
+  assert.deepEqual(mine, ['march:Mine:169-170-174', 'core:Air Force Ignition:332-338-334'], 'Jett is in no march: his core march is added next to the player\'s');
+  const trios = names(base); assert.ok(trios.every((t) => /^core:(Army Dynamic Attack|Air Force Ignition):/.test(t)) && trios.length === 2, 'the core marches that hold a hero the player owns: ' + trios.join());
   assert.equal(names(Object.assign({}, base, { byId: { 169: A.byId[169] }, pw: { 169: 1 }, marches: [], presets: [] })).length, 1, 'only Sara\'s trio: a trio is kept when the player owns one of its heroes');
 });
 test('set power is the sum of the three heroes\' power (a missing hero counts 0); main is the strongest', () => {
@@ -189,10 +191,10 @@ test('a hero in two sets counts toward both sets\' power but is planned only und
   const list = [awk(SARA, 10, [1, 1], { pw: 500 }), H(170, { pw: 400 }), H(174, { pw: 300 }), H(VIVIAN, { pw: 10 }), H(FRANZ, { pw: 10 }), awk(SHEN, 30, [7, 7, 7, 7], { pw: 100 }), awk(CARNA, 11, [3, 6], { pw: 800 })];
   const { ctx } = world(list, 1000, { marches: marches([SARA, 170, 174], [SARA, VIVIAN, FRANZ]) });
   const p = L.plan(ctx);
-  assert.deepEqual(p.sets.map((s) => s.name), ['March 1', 'March 2', 'Carna', 'Shen Suyu']);
+  assert.deepEqual(p.sets.map((s) => s.name), ['March 1', 'March 2', 'Air Force Regular Attack', 'Navy Control Tactic'], 'Carna and Shen Suyu are in no march: their core marches');
   assert.equal(p.sets[0].power, 1200); assert.equal(p.sets[1].power, 520, 'Sara counts in both');
   assert.deepEqual(p.sets[0].own, [SARA, 170, 174]); assert.deepEqual(p.sets[1].own, [VIVIAN, FRANZ], 'her skills are planned once, under March 1');
-  assert.deepEqual(p.sets.slice(2).map((s) => s.src), ['loose', 'loose'], 'loose heroes by power: Carna (800) before Shen Suyu (100)');
+  assert.deepEqual(p.sets.slice(2).map((s) => s.src), ['core', 'core'], 'no march holds Carna or Shen Suyu: their core marches, by power (Carna 800 before Shen 100)');
 });
 test('no set holds a hero who can be raised: every awakened hero is its own set, strongest first', () => {
   const A = build([H(165, { aw: 3, pw: 5 }), H(HEID, { aw: 0, pw: 9 })]); // Marvingt is awakened but not live; Heid is not live either
@@ -278,9 +280,9 @@ test('Tex: 46 stones, Shen Suyu 30 with 7/7/7/7 -> no Raise or Awaken move; savi
   const p = L.plan(ctx);
   assert.deepEqual(p.sets.slice(0, 3).map((s) => [s.name, s.power]), [['March 3', 3310430], ['March 2', 2953030], ['March 1', 2921830]]);
   assert.deepEqual(p.sets.slice(0, 3).map((s) => p.close[s.key] || null), [null, 89, 88]);
-  assert.equal(p.main.name, 'March 3', 'Sara, Rohr, Ella; equal skill levels, so the strongest set is main'); assert.deepEqual(p.seconds.map((s) => s.name), ['March 2', 'March 1']);
+  assert.equal(p.main.name, 'March 3', 'Sara, Rohr, Ella; equal skill levels, so the strongest set is main'); assert.deepEqual(p.seconds.map((s) => s.name), ['March 2', 'March 1', 'Air Force Regular Attack'], 'Carna is in no report march: her core march (Heid, Joan Mature, Carna, 88%) is a close second too');
   assert.equal(p.sets[0].next, null, 'Sara is at 10/10/10/10');
-  assert.deepEqual(p.sets.slice(3).map((s) => s.name), ['Carna', 'Shen Suyu']);
+  assert.deepEqual(p.sets.slice(4).map((s) => [s.name, s.core, s.power, s.own]), [['Navy Control Tactic', true, 540677, [240, 241, SHEN]]], 'Shen Suyu is in no march: Navy Control Tactic with Sinope and Margaretha (core march)');
   assert.equal(p.move, null);
   assert.deepEqual([p.saving.id, p.saving.slot, p.saving.lv, p.saving.to, p.saving.cost, p.saving.phase], [SHEN, 2, 7, 8, 300, 'B']);
   const mv = L.moves(p, A.stones, (id, s) => 'Phoenix Blaze', heroName)[0];
@@ -424,4 +426,48 @@ test('when the main march is only out of reach (not done), its next step is stil
   const list = [awk(JETT, 35, [6, 6, 6, 6], { pw: 1000 }), H(VIVIAN, { pw: 1000 }), H(FRANZ, { pw: 1000 }), awk(CARNA, 11, [3, 6], { pw: 900 }), H(HEID, { pw: 1000 }), H(JOAN, { pw: 1000 })];
   const p = L.plan(world(list, 200, { marches: marches([JETT, VIVIAN, FRANZ], [CARNA, HEID, JOAN]) }).ctx);
   assert.equal(p.move.second, true); assert.notEqual(p.main.next, null); assert.equal(p.main.next.cost, 225);
+});
+
+// ---- core-march fallback (owner's rule 2026-10-11)
+const sm = (P) => P.sets.map((s) => s.name + (s.core ? '*' : ''));
+test('core marches: the six sets, by hero id, equal the data files', () => {
+  const idOf = {}; ALL.forEach((h) => { idOf[h.displayName] = h.heroId; });
+  const want = { 'Army Dynamic Attack': ['Sara', 'Ella', 'Rohr'], 'Army Counter-Attack': ['Marvingt', 'Tannis', 'Nova'], 'Navy Control Tactic': ['Sinope', 'Margaretha', 'Shen Suyu'], 'Navy Defense Tactic': ['Alvida', 'Lilia', 'Lophy'], 'Air Force Regular Attack': ['Heid', 'Joan Mature', 'Carna'], 'Air Force Ignition': ['Vivian', 'Franziska', 'Jett'] };
+  assert.deepEqual(L.CORE.map((c) => c.name), Object.keys(want));
+  L.CORE.forEach((c) => assert.deepEqual(c.ids, want[c.name].map((n) => { assert.ok(idOf[n], n); return idOf[n]; }), c.name));
+  const cl = {}; HA.coreLineup.heroes.forEach((h) => { cl[h.name] = h.id; });
+  L.CORE.forEach((c) => c.ids.forEach((id) => assert.equal(NAMES[id] && cl[NAMES[id]], id, 'coreLineup agrees on ' + NAMES[id])));
+});
+test('core marches: Shen Suyu, in no march, lands in Navy Control Tactic with Sinope and Margaretha even though the player has other marches', () => {
+  const list = [awk(SARA, 10, [1, 1], { pw: 500 }), H(170, { pw: 400 }), H(174, { pw: 300 }), awk(SHEN, 30, [7, 7, 7, 7], { pw: 100 }), H(240, { pw: 50 }), H(241, { pw: 50 })];
+  const p = L.plan(world(list, 1000, { marches: marches([SARA, 170, 174]) }).ctx);
+  assert.deepEqual(sm(p), ['March 1', 'Navy Control Tactic*']);
+  const n = p.sets[1]; assert.deepEqual(n.ids.slice().sort(), [SHEN, 240, 241].sort()); assert.equal(n.power, 200); assert.equal(n.src, 'core');
+  assert.equal(p.loose.length, 0, 'not under "Not in a march" any more');
+});
+test('core marches: a hero already in a player march is not pulled into a fallback, and a core march equal to a player march is not duplicated', () => {
+  const list = [awk(SARA, 10, [1, 1], { pw: 500 }), H(170, { pw: 400 }), H(174, { pw: 300 }), awk(SHEN, 30, [7, 7, 7, 7], { pw: 100 }), awk(240, 5, [1], { pw: 50 }), H(241, { pw: 50 })];
+  let p = L.plan(world(list, 1000, { marches: marches([SARA, 170, 174], [SHEN, 240, 241]) }).ctx);
+  assert.deepEqual(sm(p), ['March 1', 'March 2'], 'Shen is in a march: no fallback');
+  p = L.plan(world(list, 1000, { marches: marches([SARA, 170, 174], [241, 240, SHEN]) }).ctx);
+  assert.deepEqual(sm(p), ['March 1', 'March 2'], 'the same three in another order is the same march');
+  p = L.plan(world(list, 1000, { marches: marches([SARA, 170, 174], [SHEN, 240, 999]) }).ctx);
+  assert.deepEqual(sm(p), ['March 1', 'March 2'], 'Shen and Sinope are in a march; Margaretha is not workable: no fallback');
+  const l2 = list.concat([awk(239, 5, [1], { pw: 10 })]), q = L.plan(world(l2, 1000, { marches: marches([SARA, 170, 174], [SHEN, 240, 999]) }).ctx);
+  assert.deepEqual(sm(q), ['March 1', 'March 2', 'Navy Defense Tactic*'], 'Lophy is in no march: only his own core march');
+});
+test('core marches: a fallback only plans heroes who are in no player march', () => {
+  const list = [awk(SARA, 10, [1, 1], { pw: 500 }), H(170, { pw: 400 }), H(174, { pw: 300 }), awk(SHEN, 30, [7, 7, 7, 7], { pw: 100 }), awk(240, 20, [3, 3, 3, 3], { pw: 50 })];
+  const p = L.plan(world(list, 1000, { marches: marches([SARA, 170, 174], [240, 241, 999]) }).ctx);
+  const f = p.sets.filter((s) => s.core)[0];
+  assert.deepEqual(f.own, [SHEN], 'Sinope and Margaretha are in a player march: the core march plans only Shen Suyu');
+});
+test('core marches: fallback sets take part in main / close-second selection by the same 15% rule', () => {
+  const list = [awk(SARA, 10, [1, 1], { pw: 100 }), H(170, { pw: 100 }), H(174, { pw: 100 }), awk(JETT, 35, [10, 10, 10, 10], { pw: 100 }), H(VIVIAN, { pw: 100 }), H(FRANZ, { pw: 90 })];
+  const p = L.plan(world(list, 0, { marches: marches([SARA, 170, 174]) }).ctx);
+  assert.equal(p.main.core, true, 'within 15% (290 vs 300) and more awakening levels: the core march is main');
+  assert.deepEqual(p.seconds.map((s) => s.name), ['March 1']);
+});
+test('core marches: decor scope reads real marches only (decorScopeIds takes no march sets)', () => {
+  assert.ok(!/ArmoryAwaken|CORE/.test(fs.readFileSync(path.join(ROOT, 'pages/armory-core.js'), 'utf8')), 'armory-core.js never reads the awakening fallback');
 });
