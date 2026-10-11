@@ -678,7 +678,7 @@ function storedHtml() {
   var dm = decorData(), f = Logic.decorSort(Logic.decorFilter(dm.stored, D), D.sort);
   if (!f.length) return '';
   var isOpen = !!open.stored, shown = pageN.stored || PAGE;
-  return '<section class="card bse-sec"><button class="bse-hd" type="button" data-bseopen="stored" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">Owned, not placed</span><span class="bse-hm">' + nd(f.length + (f.length === 1 ? ' decoration' : ' decorations') + ' in your bag') + '</span></span>' + ic('down', 'bse-chev') + '</button>' +
+  return '<section class="card bse-sec"><button class="bse-hd" type="button" data-bseopen="stored" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">Owned, not placed</span><span class="bse-hm">' + nd(f.length + (f.length === 1 ? ' decoration' : ' decorations')) + '</span></span>' + ic('down', 'bse-chev') + '</button>' +
     (isOpen ? '<div class="bse-body"><div class="bse-grid">' + f.slice(0, shown).map(function (x) { return decorCard(x, false, 's'); }).join('') + '</div>' + more(Math.min(shown, f.length), f.length, 'stored') + '</div>' : '') + '</section>';
 }
 function dDirty() { return (D.stat ? 1 : 0) + (D.up ? 1 : 0) + (D.sort !== 'name' ? 1 : 0); }
@@ -768,7 +768,7 @@ function itemSheet(arg) {
   else if (off) { var g = +key.slice(1); x = Logic.notOwnedList(L, G, dm.om).filter(function (p) { return p.g === g; })[0] || null; }
   else x = dm.placed.filter(function (p) { return p.n === key; })[0] || null;
   if (!x) return null;
-  var head = '<div class="sh-hero">' + icon('decor-icons/' + x.ic, qCls(x.q), x.n.charAt(0)) + '<div><span class="pill p-lv" translate="no">' + (off ? 'Not owned' : 'Lv.' + x.lv) + '</span><div class="t13 muted" style="margin-top:4px">' + (off ? nd(G.DECO_CAT_NAMES[x.cat]) : nd(G.DECO_CAT_NAMES[x.cat] + ' · ' + x.count + (x.count === 1 ? ' piece' : ' pieces') + (bagged ? ' in your bag, not placed' : ' placed'))) + '</div></div></div>';
+  var head = '<div class="sh-hero">' + icon('decor-icons/' + x.ic, qCls(x.q), x.n.charAt(0)) + '<div><span class="pill p-lv" translate="no">' + (off ? 'Not owned' : 'Lv.' + x.lv) + '</span><div class="t13 muted" style="margin-top:4px">' + (off ? nd(G.DECO_CAT_NAMES[x.cat]) : nd(G.DECO_CAT_NAMES[x.cat] + ' · ' + x.count + (x.count === 1 ? ' piece' : ' pieces') + (bagged ? (x.src === 'bag' ? ' in your bag' : ' seen in your battle reports') : ' placed'))) + '</div></div></div>';
   var o = head + (x.buffs.length ? '<section class="card"><h3 class="disp" style="font-size:var(--fs-17)">' + (off ? 'Buffs at level 1' : nd('Buffs at Lv.' + x.lv)) + '</h3>' + buffList(x.buffs, 12) + '</section>' : '');
   var have = S.vm.decor.shards, nx = x.nx;
   if (!off && nx) {
@@ -782,7 +782,8 @@ function itemSheet(arg) {
       '<div class="nb" style="margin-top:12px" data-numwrap><div class="n" data-num translate="no">' + fmtInt(net) + '</div><div class="l lbl">Shards to upgrade</div><div class="s src"><span translate="no">' + fmtInt(have) + '</span> in bag</div></div>' +
       '<div class="meter lg r-' + H.ramp(pct) + '" style="margin-top:12px" role="img" aria-label="' + pct + ' percent of the shards needed"><i style="width:' + Math.max(2, pct) + '%"></i></div>' +
       '<p class="t13 muted" style="margin-top:8px">' + (have >= net ? 'Your bag covers this upgrade.' : 'You need <span translate="no">' + fmtInt(net - have) + '</span> more shards.') + '</p></section>';
-  } else if (!off) o += '<section class="card"><p class="muted">' + (x.lv >= x.mx ? 'This decoration is at its top level.' : 'This decoration upgrades with its own item, not Universal Decor Shards.') + '</p></section>';
+  } else if (!off && !bagged) o += '<section class="card"><p class="muted">' + (x.lv >= x.mx ? 'This decoration is at its top level.' : 'This decoration upgrades with its own item, not Universal Decor Shards.') + '</p></section>';
+  if (bagged) o += '<section class="card"><p class="muted">' + esc((x.src === 'bag' ? 'In your bag' : 'Seen in your battle reports') + ', not placed in your base: its buffs do not count until it is placed.') + (!x.nx && x.lv >= x.mx ? ' It is at its top level.' : '') + '</p></section>';
   var alt = Logic.alternates(L, x.g, dm.om);
   if (alt.length) o += '<section class="card"><h3 class="disp" style="font-size:var(--fs-17)">Same buffs, other look</h3><p class="t13 muted" style="margin:4px 0 8px">Only one of these can be placed at a time. Owning one counts as owning them all.</p><div class="bse-comp">' + alt.map(function (a) { return icon('decor-icons/' + Logic.iconFile(a.g, a.n), a.owned ? '' : 'gone', a.n.charAt(0), a.n); }).join('') + '</div><ul class="bse-bf" style="margin-top:8px">' + alt.map(function (a) { return '<li><span translate="no">' + esc(noHy(a.n)) + '</span><span>' + (a.owned ? 'Owned' : 'Not owned') + '</span></li>'; }).join('') + '</ul></section>';
   return [x.n, o, true];

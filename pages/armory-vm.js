@@ -170,11 +170,12 @@
     var bag = { kinds: 0, pieces: 0 };
     /* decorations held but not placed: the bag's Decor tab, and the ids the battle reports list (opts.reportDecorIds) when the Snapshot's placed list replaced them (the Snapshot sees only what is on the map) */
     var held = {};
-    function hold(g, lv, n) {
+    function hold(g, lv, n, bagged) {
       if (g == null) return;
-      var h = held[g] || (held[g] = { g: +g, lv: 0, count: 0 });
+      var h = held[g] || (held[g] = { g: +g, lv: 0, count: 0, bag: false });
       if (lv > h.lv) h.lv = lv;
       h.count += n;
+      if (bagged) h.bag = true;
     }
     if (inv && inv.tabs && Array.isArray(inv.tabs.decor)) {
       bag.kinds = inv.tabs.decor.length;
@@ -182,14 +183,20 @@
         var n = core._adv_invAmount(d);
         bag.pieces += n;
         var g = d.g != null && d.g !== 0 ? d.g : core.decorIdToGroup(d.id); /* the tab carries the group; an id the game encodes by level (L2 = L1 x 100 + 2) goes through the lookup */
-        hold(g, d.l > 0 ? d.l : g != null ? core.decorLevel(d.id, g) : 0, n);
+        hold(g, d.l > 0 ? d.l : g != null ? core.decorLevel(d.id, g) : 0, n, true);
       });
     }
     (reportIds || []).forEach(function (id) { var g = core.decorIdToGroup(id); if (g != null) hold(g, core.decorLevel(id, g), 1); });
     var stored = Object.keys(held).filter(function (k) { return !groups[k]; }).map(function (k) {
       var h = held[k], name = names[k] || ('Decoration ' + k), entry = levels && levels[k], mx = 0;
       ((entry && entry.levels) || []).forEach(function (l) { if (l.l > mx) mx = l.l; });
-      return { g: h.g, n: name, q: qByGroup[h.g] || 0, lv: h.lv, mx: mx, count: h.count, ic: h.g + '_' + name.replace(/[^a-zA-Z0-9 ]/g, '').replace(/ /g, '_') + '.png', nx: null };
+      /* the next level costs the same Universal shards as for a placed one (a decoration upgrades from the bag too) */
+      var nx = null;
+      if (entry && entry.fi === G.ADVISOR_UNIVERSAL_SHARD_ID) {
+        var up = core._adv_getNextUpgrade(h.g, h.lv, levels);
+        if (up && up.shardCost > 0) nx = { to: up.toLevel, raw: up.shardCost, credit: inv ? core._adv_calcGroupSpecificShards(h.g, inv, levels) : 0, dl: up.buffDeltas };
+      }
+      return { g: h.g, n: name, q: qByGroup[h.g] || 0, lv: h.lv, mx: mx, count: h.count, src: h.bag ? 'bag' : 'report', ic: h.g + '_' + name.replace(/[^a-zA-Z0-9 ]/g, '').replace(/ /g, '_') + '.png', nx: nx };
     });
     stored.sort(function (a, b) { return a.n < b.n ? -1 : a.n > b.n ? 1 : 0; });
     return {

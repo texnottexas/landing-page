@@ -279,11 +279,14 @@ test('supplements: newer worker data is adopted into the player\'s local copy; h
   const bm = make((u) => { const m = /\/supplement\/([a-z]+)\//.exec(u); return m && worker[m[1]] ? { status: 200, body: worker[m[1]] } : undefined; }, { armory_source_priority: 'bookmarklet' });
   const rbm = await bm.d.loadArmory({ reportIds: [W.REPORT_ID], player: { name: W.NAME } });
   assert.equal(rbm.merged.decorations.ids.length, 2);
+  assert.equal(rbm.reportDecorIds.length, 40, 'the report decor ids are kept for the owned count before the Snapshot replaces them');
+  assert.ok(!rbm.merged.decorations.reportIds, 'merged itself is unchanged (classic parity)');
   assert.deepStrictEqual(rbm.merged.decorations.suit, [1201]);
   // reports-first pin: decor stays the report's
   const b = make((u) => { const m = /\/supplement\/([a-z]+)\//.exec(u); return m && worker[m[1]] ? { status: 200, body: worker[m[1]] } : undefined; }, { armory_source_priority: 'reports' });
   const rb = await b.d.loadArmory({ reportIds: [W.REPORT_ID], player: { name: W.NAME } });
   assert.equal(rb.merged.decorations.ids.length, 40);
+  assert.equal(rb.reportDecorIds.length, 40);
   assert.equal(b.d.sourcePriority(), 'reports');
 });
 

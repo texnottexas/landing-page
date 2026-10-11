@@ -458,3 +458,11 @@ test('owned: a set piece that is only in the bag counts as owned in a set still 
   const left = L.setsModel(LOOKUPS, { decorations: { suit: [] } }, placed, om).left.find((s) => s.id === suit);
   assert.deepEqual([left.have, left.placed], [2, 1]); assert.deepEqual(left.pieces.slice(0, 2).map((p) => p.st), ['placed', 'owned']);
 });
+test('owned, not placed: the source is the bag or the report, and a Universal-shard decoration in the bag carries its next-level cost', () => {
+  const core = newCore(), g = Object.keys(LEVELS).find((k) => LEVELS[k].fi === G.ADVISOR_UNIVERSAL_SHARD_ID && LOOKUPS.DECOR_GROUP_BASE[k] && k !== '4170');
+  const gl = LEVELS[g].levels.map((l) => l.l).sort((a, b) => a - b), lv = gl[0], id = decorId(core, g, lv);
+  const vm = vmOf(core, { decorations: { ids: [], suit: [], suitLevelBuff: {} } }, bagWith([{ id, a: 1, l: lv, g: +g }]), undefined, [decorId(core, 4170, 3)]);
+  const bagged = vm.decor.stored.find((s) => s.g === +g), rep = vm.decor.stored.find((s) => s.g === 4170);
+  assert.equal(bagged.src, 'bag'); assert.equal(rep.src, 'report');
+  assert.ok(bagged.nx && bagged.nx.raw > 0 && bagged.nx.to > lv, 'a bag decoration that upgrades with Universal shards says what the next level costs');
+});
