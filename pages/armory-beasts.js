@@ -105,6 +105,15 @@ function resolveAll(core, G, merged, bench) {
   return res;
 }
 
+/* Beasts the bench snapshot leaves out on purpose (unlevelled 1-star fodder): total - kept - deployed-skipped, 0 when the meta is missing. */
+function leftOut(bench) {
+  if (!bench || typeof bench !== 'object') return 0;
+  var t = bench.total, k = bench.kept, d = bench.skippedDeployed;
+  if (typeof t !== 'number' || typeof k !== 'number' || typeof d !== 'number') return 0;
+  var n = t - k - d;
+  return n > 0 && isFinite(n) ? Math.floor(n) : 0;
+}
+
 /* The five fields with their slots, the summary strip and every owned beast. */
 function model(core, G, merged, bench) {
   var en = merged && merged.enigmas;
@@ -147,7 +156,7 @@ function model(core, G, merged, bench) {
   return {
     fields: fields, all: all, byId: byId, placed: placed.length, bench: benchN,
     summary: { beasts: placed.length, fiveStar: five, active: active + '/' + fields.length, inFields: fields.filter(function (f) { return f.deployed > 0; }).length, avgPot: maxPot > 0 ? Math.round(pot / maxPot * 100) : 0, power: power, bench: benchN },
-    benchTs: bench && bench.ts ? bench.ts : null
+    benchTs: bench && bench.ts ? bench.ts : null, leftOut: leftOut(bench)
   };
 }
 
@@ -412,7 +421,7 @@ function checklist(plan) {
 }
 
 var Logic = {
-  label: label, num: num, fmtInt: fmtInt, ageOld: ageOld, iconFile: iconFile, beastView: beastView, resolveAll: resolveAll, model: model, collFilter: collFilter, collOptions: collOptions,
+  label: label, num: num, fmtInt: fmtInt, ageOld: ageOld, iconFile: iconFile, beastView: beastView, resolveAll: resolveAll, leftOut: leftOut, model: model, collFilter: collFilter, collOptions: collOptions,
   validPrefs: validPrefs, prefsFrom: prefsFrom, readPrefs: readPrefs, playstyleLabel: playstyleLabel, fmtStat: fmtStat, fmtDelta: fmtDelta, reasoning: reasoning, liteBeast: liteBeast,
   statRows: statRows, swapView: swapView, planModel: planModel, sectionsOf: sectionsOf, bestMove: bestMove, checklist: checklist, unitsPlain: unitsPlain, topStat: topStat, levelText: levelText, signed: signed, fname: fname, condMatches: condMatches, headline: headline, reasonLine: reasonLine, SORTS: SORTS, STAT: STAT, RARITY: RARITY, PREFS_KEY: PREFS_KEY
 };
@@ -579,7 +588,7 @@ function btnText() { var n = dirty(); return 'Filter · Sort' + (n ? ' (' + n + 
 function collPane() {
   if (!M) return needData('No beast data yet.');
   var age = Logic.ageOld(M.benchTs);
-  return '<div class="sechead"><h2 class="title">Beast collection</h2></div><div class="fbar"><div class="grow t13 muted">' + nd(fmtInt(M.all.length) + ' collected' + (M.bench ? ' · ' + fmtInt(M.bench) + ' on bench' : '')) + '</div>' +
+  return '<div class="sechead"><h2 class="title">Beast collection</h2></div><div class="fbar"><div class="grow t13 muted">' + nd(fmtInt(M.all.length) + ' collected' + (M.bench ? ' · ' + fmtInt(M.bench) + ' on bench' : '') + (M.leftOut ? ' · ' + fmtInt(M.leftOut) + ' unlevelled 1-star beasts not shown' : '')) + '</div>' +
     '<button class="btn bst-fbtn" type="button" data-open="bstfilter">' + ic('sliders', 'sm') + btnText() + '</button></div>' +
     '<div class="bst-fs2"><div class="bst-f" style="grid-column:1/-1"><span>Element</span><div class="chips">' + elemChips() + '</div></div>' + selectHtml('where', 'Where') + selectHtml('type', 'Beast') + selectHtml('primary', 'Main buff') + selectHtml('secondary', 'Base buff') + selectHtml('sort', 'Sort') + '</div>' +
     '<div id="bstList" style="display:flex;flex-direction:column;gap:12px">' + collList() + '</div>' + (age ? '<p class="foot">' + nd('Source: bench data, ' + age) + '</p>' : '');

@@ -406,3 +406,12 @@ test('a linked move carries the chain\'s real combined totals (today and fully l
   }
   assert.ok(n > 0);
 });
+
+test('leftOut: unlevelled 1-star beasts the bench snapshot skips = total - kept - skippedDeployed; missing or odd meta gives 0', () => {
+  assert.equal(L.leftOut({ total: 360, kept: 239, skippedDeployed: 36 }), 85);
+  assert.equal(L.leftOut({ total: 275, kept: 239, skippedDeployed: 36 }), 0);
+  assert.equal(L.leftOut({ kept: 239, skippedDeployed: 36 }), 0);
+  assert.equal(L.leftOut({ total: 360 }), 0);
+  assert.equal(L.leftOut(null), 0);
+  assert.equal(L.leftOut({ total: 10, kept: 20, skippedDeployed: 0 }), 0);
+});
