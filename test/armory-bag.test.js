@@ -68,44 +68,94 @@ test('icon urls: a bare file name in one of the two known folders, nothing else'
 
 const core = Core.create();
 const L = Bag.create(env);
-const data = L.rehydrate(P.clone(inv), lk);
+const KNOWN = { 44301001: { n: 'Awakening Stone', f: 'item_44301001.png', d: 'x' }, 44300003: { n: 'Hero Awakening Card', f: 'item_44300003.png', d: 'y' } };
+const raw = L.rehydrate(P.clone(inv), lk);
+const data = L.prepare(P.clone(raw), KNOWN);
 
-test('resources: the classic bars\' sums, plus the shards and stones with the shard rule (direct + 10 per box)', () => {
+test('resources: what the player holds first (account + packs), the best case inside choice boxes apart, shards with the shard rule', () => {
   const rows = L.resources(data, inv, core), by = Object.fromEntries(rows.map((r) => [r.key, r]));
-  assert.equal(by.gems.value, 1000 + data.gemTotal + data.boxedGemTotal);
-  assert.equal(by.odinium.value, 5 + data.aggTotals.odinium + data.boxedOdiniumTotal);
+  assert.equal(by.gems.value, 1000 + data.gemTotal, 'the Gems headline does not add box contents');
+  assert.equal(by.odinium.value, 5 + data.aggTotals.odinium);
+  if (data.boxedGemTotal > 0) assert.equal(by.gems_boxes.value, data.boxedGemTotal);
+  if (data.boxedOdiniumTotal > 0) assert.equal(by.odinium_boxes.value, data.boxedOdiniumTotal);
   assert.equal(by.shards.value, 7 + 10 * 2); assert.equal(by.stones.value, 62);
   assert.equal(by.shards.link, 'spend'); assert.equal(by.stones.link, 'stones');
-  const none = L.resources(L.rehydrate({ v: 1, resources: {}, tabs: { item: [] } }, lk), { tabs: { item: [] } }, core);
+  assert.deepEqual(rows.filter((r) => r.main).map((r) => r.key), ['shards', 'stones', 'gems'], 'shards, stones, gems lead');
+  const none = L.resources(L.prepare(L.rehydrate({ v: 1, resources: {}, tabs: { item: [] } }, lk)), { tabs: { item: [] } }, core);
   assert.deepEqual(none, [], 'an empty bag has no rows');
 });
 
-test('view: tabs, categories, search (name and description, not ids), quality, sort, aggregate cells', () => {
-  const all = L.view(data, { tab: 'item', cat: 'all' });
-  assert.ok(all.cells.some((c) => c.agg === 'gem'), 'the gem total cell');
-  assert.ok(!all.cells.some((c) => c.it && (c.it.group === 940001)), 'raw Odinium packs are folded');
-  const bi = (c) => L.bucketOrder.indexOf(c.it ? c.it.bucket : c.agg === 'gem' ? 'gem' : 'resource');
-  const ix = all.cells.map(bi); for (let i = 1; i < ix.length; i++) assert.ok(ix[i] >= ix[i - 1], 'default order follows the bucket priority');
-  const q5 = L.view(data, { tab: 'item', cat: 'all', quality: '5' }).cells.filter((c) => c.it);
-  assert.ok(q5.length && q5.every((c) => c.it.quality === 5));
-  const byAmt = L.view(data, { tab: 'item', cat: 'all', sort: 'amount' }).cells.filter((c) => c.it).map((c) => c.it.amount);
-  assert.deepEqual(byAmt, byAmt.slice().sort((a, b) => b - a));
-  assert.equal(L.view(data, { tab: 'item', cat: 'all', q: String(data.tabs.item[0].id) }).cells.length, 0, 'an id is not a search term');
-  const nm = all.cells.find((c) => c.it && c.it.name).it.name;
-  assert.ok(L.view(data, { tab: 'item', cat: 'all', q: nm.toUpperCase() }).cells.some((c) => c.it && c.it.name === nm));
-  const g = L.view(data, { tab: 'decor', cat: 'other' });
-  assert.ok(g.groups && g.groups.length, 'decor is grouped');
-  assert.equal(L.view(data, { tab: 'nope' }).cells.length > 0, true, 'an unknown tab reads as Items');
-  const cats = L.categories(data, 'item'); assert.equal(cats[0][0], 'all'); assert.equal(cats[0][2], data.tabs.item.length);
-  assert.ok(cats.every((c) => c[0] === 'all' || c[2] > 0), 'empty categories are hidden');
+test('untranslated keys and ids never reach players: names and descriptions', () => {
+  for (const k of ['item_name41104', 'building_name_4190', 'itemName10000031', 'item_name_68000', '#123', 'Decor #5', 'Hero #9', '']) assert.equal(L.displayName({ name: k }, 'item'), 'Unknown item', k);
+  assert.equal(L.displayName({ name: 'Lv 5', type: 201 }, 'unit'), 'Navy unit'); assert.equal(L.displayName({ name: 'Lv 5', type: 301 }, 'unit'), 'Air Force unit'); assert.equal(L.displayName({ name: 'Lv 5' }, 'unit'), 'Unit');
+  assert.equal(L.displayName({ name: 'Magnetize Rune' }, 'item'), 'Magnetize Rune');
+  assert.equal(L.cleanDesc('item_desc41104'), ''); assert.equal(L.cleanDesc('building_desc_4190'), '');
+  const d = L.prepare(L.rehydrate({ v: 1, resources: {}, tabs: { item: [{ id: 41104, a: 2 }], decor: [{ id: 48141, a: 1, l: 1, g: 4827 }, { id: 99999998, a: 1 }] } }, Object.assign({}, lk, { item: Object.assign({}, item, { 41104: { n: 'item_name41104', d: 'item_desc41104', t: 1, q: 1, g: 41104, i: 'image/item/item_41104' } }), building: Object.assign({}, building, { 48141: { n: 'building_name_4190', d: 'building_desc_4190', g: 4827, q: 3, lv: 1, ml: 3 } }) })));
+  assert.equal(d.tabs.item[0].label, 'Unknown item'); assert.equal(d.tabs.item[0].text, ''); assert.ok(d.tabs.item[0].unknown);
+  assert.equal(d.tabs.decor[0].label, 'Unknown item', 'building_name_4190');
+  assert.equal(L.view(d, { tab: 'item', q: 'item_name' }).cells.length, 0, 'search runs on the display name, not the key');
+  assert.equal(L.view(d, { tab: 'item', q: 'unknown' }).cells.length, 3, 'unknown rows are findable as unknown');
 });
 
-test('an unknown id keeps its row with a safe name, and the sheet model finds items by tab and id', () => {
+test('descriptions: no {0} placeholder, no [markup], over the whole item table', () => {
+  assert.equal(L.cleanDesc('Increase the skill effect of Stromoy\'s skill by {0}% (without increasing the number of turns).'), 'Increase the skill effect of Stromoy\'s skill (without increasing the number of turns).');
+  assert.equal(L.cleanDesc('Army DEF against Air Force +{0}%'), 'Army DEF against Air Force');
+  assert.equal(L.cleanDesc('Boost the [Field of Battle Force] skill'), 'Boost the Field of Battle Force skill');
+  let n = 0;
+  for (const k of Object.keys(item)) { const t = L.cleanDesc(item[k].d); n++; assert.ok(!/[{}\[\]]/.test(t) && !/ {2}/.test(t), k + ': ' + t); }
+  assert.ok(n > 10000);
+});
+
+test('the Awakening Stone and Cards, missing from the item table, get the armory\'s own names and art', () => {
+  assert.equal(raw.tabs.item.find((x) => x.id === 44301001).name, '#44301001', 'the table really lacks it');
+  const st = data.tabs.item.find((x) => x.id === 44301001);
+  assert.equal(st.label, 'Awakening Stone'); assert.ok(!st.unknown); assert.equal(st.icon, 'item_44301001.png'); assert.equal(Bag.iconUrl(st), 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/hero-awake-items/item_44301001.png');
+  const dd = L.prepare(L.rehydrate({ v: 1, resources: {}, tabs: { item: [{ id: 44300003, a: 1 }] } }, lk), KNOWN);
+  assert.equal(dd.tabs.item[0].label, 'Hero Awakening Card'); assert.ok(dd.tabs.item[0].text);
+  assert.equal(L.prepare(L.rehydrate({ v: 1, resources: {}, tabs: { item: [{ id: 44301001, a: 1 }] } }, lk), {}).tabs.item[0].label, 'Unknown item', 'without the overlay it stays unknown');
+});
+
+test('view: default sort is by type (headed), "Rarity, high first" really sorts by rarity, search crosses every tab', () => {
+  const all = L.view(data, { tab: 'item', cat: 'all' });
+  assert.ok(all.cells.some((c) => c.agg === 'gem'), 'the gem total cell');
+  assert.ok(all.groups.length > 3 && all.groups.every((g) => g.title), 'headed by type');
+  const bi = (c) => L.bucketOrder.indexOf(c.it ? c.it.bucket : c.agg === 'gem' ? 'gem' : 'resource');
+  const ix = all.cells.map(bi); for (let i = 1; i < ix.length; i++) assert.ok(ix[i] >= ix[i - 1], 'by-type order follows the bucket priority');
+  const rar = L.view(data, { tab: 'item', cat: 'all', sort: 'quality' }).cells.filter((c) => c.it && !c.it.unknown).map((c) => c.it.quality);
+  assert.deepEqual(rar, rar.slice().sort((a, b) => b - a), 'rarity, high first, across All items');
+  assert.ok(new Set(rar).size > 1);
+  const q5 = L.view(data, { tab: 'item', cat: 'all', quality: '5' }).cells;
+  assert.ok(q5.length && q5.every((c) => c.it && c.it.quality === 5), 'a rarity filter leaves out the totals cells');
+  const byAmt = L.view(data, { tab: 'item', cat: 'all', sort: 'amount' }).cells.filter((c) => c.it && !c.it.unknown).map((c) => c.it.amount);
+  assert.deepEqual(byAmt, byAmt.slice().sort((a, b) => b - a));
+  const last = L.view(data, { tab: 'item', cat: 'all', sort: 'name' }).cells.filter((c) => c.it); assert.ok(last[last.length - 1].it.unknown || !last.some((c) => c.it.unknown), 'unknown rows last');
+  assert.equal(L.view(data, { tab: 'item', cat: 'all', q: String(data.tabs.item[0].id) }).cells.length, 0, 'an id is not a search term');
+  const nm = data.tabs.decor.find((x) => !x.unknown).label, s = L.view(data, { tab: 'item', q: nm });
+  assert.ok(s.search && s.cells.some((c) => c.it && c.it.label === nm && c.tab === 'decor'), 'a decor name typed on Items is found, tagged with its tab');
+  assert.ok(s.groups.every((g) => /^t:/.test(g.key)));
+  assert.ok(L.view(data, { tab: 'hero', cat: 'skills', q: 'odinium' }).cells.some((c) => c.agg === 'odinium'), 'Odinium finds its totals cell from any tab and category');
+  assert.ok(L.view(data, { tab: 'item', q: 'gems' }).cells.some((c) => c.agg === 'gem'));
+  const g = L.view(data, { tab: 'decor' });
+  assert.ok(g.groups && g.groups.length && g.cells.length === data.tabs.decor.length, 'decor opens on All, grouped');
+  assert.ok(g.groups.every((x) => !/Uncategorized/.test(x.title)));
+  const h = L.view(data, { tab: 'hero' }); assert.equal(h.cells.length, data.tabs.hero.length, 'heroes open on All'); assert.ok(h.groups.length >= 1);
+  assert.equal(L.view(data, { tab: 'nope' }).cells.length > 0, true, 'an unknown tab reads as Items');
+});
+
+test('categories count what view() shows; rarities are names; units are named by branch', () => {
+  for (const tab of ['item', 'hero', 'decor']) for (const c of L.categories(data, tab)) assert.equal(c[2], L.view(data, { tab, cat: c[0] }).cells.length, tab + ' ' + c[0]);
+  const cats = L.categories(data, 'item'); assert.equal(cats[0][0], 'all'); assert.equal(cats[0][2], L.total(data, 'item'));
+  assert.ok(cats.every((c) => c[0] === 'all' || c[2] > 0), 'empty categories are hidden');
+  const r = L.rarities(data, 'item'); assert.equal(r[0][1], 'All rarities'); assert.ok(r.slice(1).every((x) => /^(Legendary|Epic|Rare|Uncommon|Common|Rarity \d)$/.test(x[1])));
+  assert.ok(data.tabs.unit.every((u) => /^(Army|Navy|Air Force) unit$/.test(u.label)));
+});
+
+test('an unknown id keeps its row, and the sheet model finds items by tab and id', () => {
   const unk = data.tabs.item.find((x) => x.id === 99999999);
-  assert.ok(unk && /^#/.test(unk.name));
+  assert.equal(unk.label, 'Unknown item');
   const f = L.findItem(data, 'item:44301001'); assert.equal(f.it.amount, 62);
   assert.equal(L.findItem(data, 'item:abc'), null); assert.equal(L.findItem(data, '__proto__:1'), null);
-  const agg = L.aggModel('gem', data); assert.equal(agg.total, data.aggTotals.gem + data.boxedGemTotal); assert.equal(L.aggModel('constructor', data), null); assert.equal(L.findItem(data, 'constructor:1'), null);
+  const agg = L.aggModel('gem', data); assert.equal(agg.total, data.aggTotals.gem + data.boxedGemTotal); assert.equal(agg.direct, data.aggTotals.gem); assert.equal(L.aggModel('constructor', data), null); assert.equal(L.findItem(data, 'constructor:1'), null);
 });
 
 test('the stone id matches the view-model\'s', () => {

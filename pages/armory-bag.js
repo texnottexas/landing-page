@@ -634,58 +634,69 @@ function create(env) {
 /* ---- v2 rules (new) ---- */
 var CATS = {
   item: [['all', 'All items'], ['skill_universal', 'Skills'], ['titan', 'Titan Gear'], ['enigma', 'Enigma'], ['gem', 'Gems'], ['formation', 'Formation'], ['units', 'Unit chests'], ['chest', 'Chests'], ['speedup', 'Speed-ups'], ['combat_buff', 'Combat buffs'], ['ht_chip', 'HT items']],
-  hero: [['shards', 'Hero shards'], ['skills', 'Hero skills']],
-  decor: [['other', 'Not in a set'], ['set', 'In a set']]
+  hero: [['all', 'All'], ['shards', 'Hero shards'], ['skills', 'Hero skills']],
+  decor: [['all', 'All'], ['other', 'Not in a set'], ['set', 'In a set']]
 };
+var BUCKET_LABEL = { skill_universal: 'Skills', titan: 'Titan Gear', ht_chip: 'HT items', enigma: 'Enigma', gem: 'Gems', formation: 'Formation', units: 'Unit chests', chest: 'Chests', speedup: 'Speed-ups', combat_buff: 'Combat buffs', resource: 'Resources', other: 'Other' };
+var SUB_LABEL = { shards: 'Hero shards', skills: 'Hero skills' };
 var TITAN = [['all', 'All'], ['rune', 'Runes'], ['material', 'Materials'], ['catalyst', 'Catalysts'], ['blueprint', 'Blueprints'], ['booster', 'Boosters'], ['gearchest', 'Gear chests']];
-var SORTS = [['default', 'Quality, high first'], ['quality_asc', 'Quality, low first'], ['amount', 'Amount, most first'], ['amount_asc', 'Amount, fewest first'], ['name', 'Name, A to Z'], ['name_desc', 'Name, Z to A']];
-var QUALS = [['', 'Any quality'], ['1', 'Quality 1'], ['2', 'Quality 2'], ['3', 'Quality 3'], ['4', 'Quality 4'], ['5', 'Quality 5'], ['6', 'Quality 6']];
-var AGG = { gem: { name: 'Gems', file: 'inventory-icons/image__item__item_1000000.png', q: 5 }, odinium: { name: 'Odinium', file: 'treasury-icons/odinium.png', q: 5 }, food: { name: 'Food', file: 'treasury-icons/food.png', q: 4 }, oil: { name: 'Oil', file: 'treasury-icons/oil.png', q: 4 } };
+var SORTS = [['type', 'By type'], ['quality', 'Rarity, high first'], ['quality_asc', 'Rarity, low first'], ['amount', 'Amount, most first'], ['amount_asc', 'Amount, fewest first'], ['name', 'Name, A to Z'], ['name_desc', 'Name, Z to A']];
+var RARITY = { 1: 'Common', 2: 'Uncommon', 3: 'Rare', 4: 'Epic', 5: 'Legendary' };
+function rarityName(q) { return RARITY[q] || ('Rarity ' + q); }
+var AGG = { gem: { name: 'Gems', file: 'inventory-icons/image__item__item_1000000.png', q: 0 }, odinium: { name: 'Odinium', file: 'treasury-icons/odinium.png', q: 0 }, food: { name: 'Food', file: 'treasury-icons/food.png', q: 0 }, oil: { name: 'Oil', file: 'treasury-icons/oil.png', q: 0 } };
 var DECOR_CAT_ORDER = ['March Size', 'Defense', 'Damage Boost', 'Others', 'Uncategorized'];
 var STONE_ID = 44301001, EXCL_SHARD_ID = 20213231, UNIVERSAL_DECOR_ID = 20213232, DECOR_BOX_ID = 10000196;
+var KEY_NAME = /^[a-z]+(_[a-z]+)*_?\d+$/i; /* the game's untranslated keys: item_name41104, building_name_4190, itemName10000031 */
+var BRANCH = { 1: 'Army', 2: 'Navy', 3: 'Air Force' };
+
+/* what a player reads for a row: a game key or an id never reaches the screen */
+function displayName(it, tab) {
+  if (tab === 'unit') { var b = BRANCH[Math.floor(num(it.type) / 100)]; return b ? b + ' unit' : 'Unit'; }
+  var n = String(it.name == null ? '' : it.name).trim();
+  if (!n || KEY_NAME.test(n) || /^(Decor |Hero |Unit )?#\d+$/.test(n)) return 'Unknown item';
+  return n;
+}
+/* descriptions: template placeholders ({0}), [bracket] markup and untranslated keys are dropped; the value of {0} is not in the table */
+function cleanDesc(s) {
+  var t = String(s == null ? '' : s).trim();
+  if (KEY_NAME.test(t)) return '';
+  return t.replace(/\s*(?:by|of|to)?\s*\+?\{\d+\}\s*%?/g, '').replace(/\[([^\]]+)\]/g, '$1').replace(/[{}\[\]]/g, '')
+    .replace(/\s+([.,;)])/g, '$1').replace(/\(\s*\)/g, '').replace(/\s*[+\-]\s*$/, '').replace(/ {2,}/g, ' ').trim();
+}
+/* the rehydrated bag + the labels a screen shows. known: { itemId: { n, f, d } } for ids the armory knows but the item table does not (Awakening Stone and Cards) */
+function prepare(data, known) {
+  known = known || {};
+  TABS.forEach(function (t) {
+    (data.tabs[t[0]] || []).forEach(function (it) {
+      it.tab = t[0];
+      var k = has.call(known, it.id) && (t[0] === 'item' || t[0] === 'hero') ? known[it.id] : null;
+      if (k && displayName(it, t[0]) === 'Unknown item') { it.name = k.n; it.icon = k.f; it.iconDir = RAW_ICON + 'hero-awake-items'; it.quality = 5; if (!cleanDesc(it.desc)) it.desc = k.d || ''; }
+      it.label = displayName(it, t[0]); it.unknown = it.label === 'Unknown item'; it.text = cleanDesc(it.desc);
+    });
+  });
+  return data;
+}
 
 function catList(tab) { return CATS[tab] || null; }
-/* the category chips of a tab with their counts, the classic sub-tab rule: an empty item category is hidden, "all" never */
-function categories(data, tab) {
-  var l = catList(tab), items = (data.tabs && data.tabs[tab]) || [];
-  if (!l) return [];
-  return l.map(function (c) {
-    var n = tab === 'item' ? (c[0] === 'all' ? items.length : items.filter(function (x) { return x.bucket === c[0]; }).length) : items.filter(function (x) { return x.subtab === c[0]; }).length;
-    return [c[0], c[1], n];
-  }).filter(function (c) { return !(tab === 'item' && c[0] !== 'all' && c[2] === 0); });
-}
-function titanCats(data) {
-  var t = ((data.tabs && data.tabs.item) || []).filter(function (x) { return x.bucket === 'titan'; });
-  return TITAN.map(function (c) { return [c[0], c[1], c[0] === 'all' ? t.length : t.filter(function (x) { return x.titanCat === c[0]; }).length]; }).filter(function (c) { return c[0] === 'all' || c[2] > 0; });
-}
+function catDefault(tab) { var l = catList(tab); return l ? l[0][0] : ''; }
+function bucketIx(b) { return _AR_BUCKET_INDEX[b] != null ? _AR_BUCKET_INDEX[b] : 99; }
+function byQuality(a, b) { return (b.quality || 0) - (a.quality || 0) || (b.level || 0) - (a.level || 0) || (b.amount || 0) - (a.amount || 0); }
+function lvNum(x) { return num(x.armyLevel || x.level); }
+function cmpName(a, b) { return String(a.label).localeCompare(String(b.label)) || lvNum(a) - lvNum(b); }
 function aggKindFor(it) {
   if (it.bucket === 'gem') return 'gem';
   if (it.bucket !== 'resource') return null;
   return it.group === 940001 ? 'odinium' : it.group === 910000 ? 'food' : it.group === 920000 ? 'oil' : null;
 }
+/* held, not best case: what the cell and the sheet header count */
+function aggHeld(kind, data) { return data.aggTotals[kind] || 0; }
 function aggTotal(kind, data) {
   return kind === 'gem' ? data.aggTotals.gem + (data.boxedGemTotal || 0) : kind === 'odinium' ? (data.aggTotals.odinium || 0) + (data.boxedOdiniumTotal || 0) : (data.aggTotals[kind] || 0);
 }
-function bucketIx(b) { return _AR_BUCKET_INDEX[b] != null ? _AR_BUCKET_INDEX[b] : 99; }
-function byQuality(a, b) { return (b.quality || 0) - (a.quality || 0) || (b.level || 0) - (a.level || 0) || (b.amount || 0) - (a.amount || 0); }
-/* The cells of one tab under a state { tab, cat, titan, q, quality, sort }: the classic rerender, as data.
-   Returns { cells: [{ it } | { agg }], groups: null | [{ key, title, sub }] } where each cell of a grouped tab carries .g (the group key). */
-function view(data, st) {
-  var tab = tabKnown(st.tab) ? st.tab : 'item', isItem = tab === 'item', cat = st.cat || (catList(tab) ? catList(tab)[0][0] : ''), q = String(st.q || '').toLowerCase().trim();
-  var list = ((data.tabs && data.tabs[tab]) || []).slice(), sort = st.sort || 'default';
-  if (isItem) {
-    if (cat && cat !== 'all') {
-      if (cat === 'gem') list = list.filter(function (x) { return x.bucket === 'gem' || x.boxedGems > 0; });
-      else list = list.filter(function (x) { return x.bucket === cat; });
-    }
-    list = list.filter(function (x) { return !aggKindFor(x); }); /* raw packs are folded into one cell each */
-    if (cat === 'titan' && st.titan && st.titan !== 'all') list = list.filter(function (x) { return x.titanCat === st.titan; });
-  } else if (catList(tab)) list = list.filter(function (x) { return x.subtab === cat; });
-  if (st.quality) list = list.filter(function (x) { return String(x.quality) === String(st.quality); });
-  if (q) list = list.filter(function (x) { return String(x.name || '').toLowerCase().indexOf(q) >= 0 || String(x.desc || '').toLowerCase().indexOf(q) >= 0; });
-  var bucketSort = isItem && cat === 'all' && sort === 'default' && !q;
-  list.sort(function (a, b) {
-    if (bucketSort) {
+function comparator(sort, typeFirst) {
+  return function (a, b) {
+    if (a.unknown !== b.unknown) return a.unknown ? 1 : -1; /* unknown rows last in every order */
+    if (typeFirst) {
       var c = bucketIx(a.bucket) - bucketIx(b.bucket);
       if (c) return c;
       if (a.bucket === 'other') { c = (a.group || 0) - (b.group || 0); if (c) return c; }
@@ -693,22 +704,84 @@ function view(data, st) {
     }
     if (sort === 'amount') return (b.amount || 0) - (a.amount || 0);
     if (sort === 'amount_asc') return (a.amount || 0) - (b.amount || 0);
-    if (sort === 'name') return String(a.name || '').localeCompare(String(b.name || ''));
-    if (sort === 'name_desc') return String(b.name || '').localeCompare(String(a.name || ''));
+    if (sort === 'name') return cmpName(a, b);
+    if (sort === 'name_desc') return -cmpName(a, b);
     if (sort === 'quality_asc') return -byQuality(a, b);
-    return byQuality(a, b);
+    return byQuality(a, b); /* quality, and "by type" on a tab without categories */
+  };
+}
+function matches(x, q) { return String(x.label).toLowerCase().indexOf(q) >= 0 || String(x.text || '').toLowerCase().indexOf(q) >= 0; }
+function groupBy(cells, keyOf, titleOf, subOf) {
+  var by = {}, order = [];
+  cells.forEach(function (c) { var k = keyOf(c); if (!by[k]) { by[k] = []; order.push(k); } by[k].push(c); });
+  return { order: order, by: by, groups: order.map(function (k) { return { key: k, title: titleOf(k, by[k]), sub: subOf(k, by[k]) }; }) };
+}
+function flat(g) { var out = []; g.order.forEach(function (k) { g.by[k].forEach(function (c) { c.g = k; out.push(c); }); }); return out; }
+function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+/* decor pieces in the bag grouped: sets by suit (largest first, then suit id: the classic order), the rest by buff type */
+function decorGroups(cells, which, suits) {
+  var parts = [], out = [], groups = [];
+  ['other', 'set'].forEach(function (w) {
+    if (which !== 'all' && which !== w) return;
+    var sub = cells.filter(function (c) { return w === 'set' ? !!c.it.suitId : !c.it.suitId; });
+    if (!sub.length) return;
+    var g = groupBy(sub, function (c) { return w === 'set' ? 'set:' + String(c.it.suitId) : 'cat:' + (c.it.category || 'Uncategorized'); },
+      function (k, cs) { var info = w === 'set' && suits ? suits[k.slice(4)] : null; return w === 'set' ? (info && info.n ? String(info.n) : 'Another set') : (k.slice(4) === 'Uncategorized' ? 'Other' : k.slice(4)); },
+      function (k, cs) { var pieces = cs.reduce(function (a, c) { return a + num(c.it.amount); }, 0), info = w === 'set' && suits ? suits[k.slice(4)] : null;
+        return w === 'set' ? cs.length + ' of ' + (info && info.c ? num(info.c) : '?') + ' in bag' : plural(cs.length, 'kind', 'kinds') + ' (' + plural(pieces, 'piece', 'pieces') + ')'; });
+    if (w === 'set') {
+      var idn = function (k) { var x = k.slice(4); return /^\d+$/.test(x) ? +x : Infinity; };
+      g.order.sort(function (a, b) { return idn(a) - idn(b); });
+      g.order.sort(function (a, b) { return g.by[b].length - g.by[a].length; });
+    } else g.order.sort(function (a, b) { var ai = DECOR_CAT_ORDER.indexOf(a.slice(4)), bi = DECOR_CAT_ORDER.indexOf(b.slice(4)); return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi); });
+    var byKey = {}; g.groups.forEach(function (x) { byKey[x.key] = x; });
+    g.order.forEach(function (k) { groups.push(byKey[k]); });
+    out = out.concat(flat(g));
   });
-  var cells = list.map(function (it) { return { it: it }; });
-  if (isItem && (cat === 'all' || cat === 'gem') && !q) {
-    var aggs = [];
-    function okQ(x) { return !st.quality || String(x) === String(st.quality); }
-    if ((data.aggTotals.gem > 0 || data.boxedGemTotal > 0) && okQ(5)) aggs.push({ agg: 'gem', b: 'gem' });
-    if (cat === 'all') {
-      if (data.aggTotals.odinium > 0 && okQ(5)) aggs.push({ agg: 'odinium', b: 'resource' });
-      if (data.aggTotals.food > 0 && okQ(4)) aggs.push({ agg: 'food', b: 'resource' });
-      if (data.aggTotals.oil > 0 && okQ(4)) aggs.push({ agg: 'oil', b: 'resource' });
+  return { cells: out, groups: groups };
+}
+/* every tab at once for a query: the hits grouped by tab */
+function search(data, st, q) {
+  var cells = [], groups = [];
+  TABS.forEach(function (t) {
+    var tab = t[0], list = ((data.tabs && data.tabs[tab]) || []).filter(function (x) { return matches(x, q) && (!st.quality || String(x.quality) === String(st.quality)) && !(tab === 'item' && aggKindFor(x)); });
+    list.sort(comparator(st.sort === 'type' ? 'quality' : st.sort, false));
+    var cs = list.map(function (it) { return { it: it, tab: tab }; });
+    if (tab === 'item' && !st.quality) Object.keys(AGG).forEach(function (k) { if (AGG[k].name.toLowerCase().indexOf(q) >= 0 && aggHeld(k, data) + (k === 'gem' ? data.boxedGemTotal || 0 : k === 'odinium' ? data.boxedOdiniumTotal || 0 : 0) > 0) cs.unshift({ agg: k, tab: 'item' }); });
+    if (!cs.length) return;
+    groups.push({ key: 't:' + tab, title: t[1], sub: plural(cs.length, 'match', 'matches') });
+    cs.forEach(function (c) { c.g = 't:' + tab; cells.push(c); });
+  });
+  return { cells: cells, groups: groups, search: true };
+}
+/* The cells of one tab under a state { tab, cat, titan, q, quality, sort }: the classic rerender, as data. With a query: every tab, every category.
+   Returns { cells: [{ it } | { agg }], groups: null | [{ key, title, sub }] }; each cell of a grouped result carries .g (its group key). */
+function view(data, st) {
+  var q = String(st.q || '').toLowerCase().trim();
+  if (q) return search(data, st, q);
+  var tab = tabKnown(st.tab) ? st.tab : 'item', isItem = tab === 'item', cat = st.cat || catDefault(tab), sort = st.sort || 'type';
+  var list = ((data.tabs && data.tabs[tab]) || []).slice();
+  if (isItem) {
+    if (cat && cat !== 'all') {
+      if (cat === 'gem') list = list.filter(function (x) { return x.bucket === 'gem' || x.boxedGems > 0; });
+      else list = list.filter(function (x) { return x.bucket === cat; });
     }
-    if (cat === 'gem' || !bucketSort) cells = aggs.concat(cells); /* classic: the totals lead in the Gems filter and under a chosen sort */
+    list = list.filter(function (x) { return !aggKindFor(x); }); /* raw packs are folded into one cell each */
+    if (cat === 'titan' && st.titan && st.titan !== 'all') list = list.filter(function (x) { return x.titanCat === st.titan; });
+  } else if (catList(tab) && cat !== 'all') list = list.filter(function (x) { return x.subtab === cat; });
+  if (st.quality) list = list.filter(function (x) { return String(x.quality) === String(st.quality); });
+  var typeSort = sort === 'type', bucketSort = isItem && cat === 'all' && typeSort;
+  list.sort(comparator(sort, bucketSort));
+  var cells = list.map(function (it) { return { it: it, tab: tab }; });
+  if (isItem && (cat === 'all' || cat === 'gem') && !st.quality) {
+    var aggs = [];
+    if (data.aggTotals.gem > 0 || data.boxedGemTotal > 0) aggs.push({ agg: 'gem', b: 'gem', tab: 'item' });
+    if (cat === 'all') {
+      if (data.aggTotals.odinium > 0) aggs.push({ agg: 'odinium', b: 'resource', tab: 'item' });
+      if (data.aggTotals.food > 0) aggs.push({ agg: 'food', b: 'resource', tab: 'item' });
+      if (data.aggTotals.oil > 0) aggs.push({ agg: 'oil', b: 'resource', tab: 'item' });
+    }
+    if (cat === 'gem' || !bucketSort) cells = aggs.concat(cells);
     else {
       var comb = cells.map(function (c) { return { c: c, b: bucketIx(c.it.bucket), n: 1 }; }).concat(aggs.map(function (a) { return { c: a, b: bucketIx(a.b), n: 0 }; }));
       comb.forEach(function (x, i) { x.i = i; });
@@ -716,47 +789,52 @@ function view(data, st) {
       cells = comb.map(function (x) { return x.c; });
     }
   }
-  var groups = null;
   if (tab === 'decor' && cells.length) {
-    var by = {}, order = [];
-    cells.forEach(function (c) {
-      var k = cat === 'set' ? 'set:' + String(c.it.suitId || 'unknown') : 'cat:' + (c.it.category || 'Uncategorized');
-      if (!by[k]) { by[k] = []; order.push(k); }
-      by[k].push(c);
-    });
-    if (cat === 'set') { /* classic keys an object by suit id, so equal sizes come out in ascending id order */
-      var idn = function (k) { var x = k.slice(4); return /^\d+$/.test(x) ? +x : Infinity; };
-      order.sort(function (a, b) { return idn(a) - idn(b); });
-      order.sort(function (a, b) { return by[b].length - by[a].length; });
-    }
-    else order.sort(function (a, b) { var ai = DECOR_CAT_ORDER.indexOf(a.slice(4)), bi = DECOR_CAT_ORDER.indexOf(b.slice(4)); return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi); });
-    groups = []; cells = [];
-    order.forEach(function (k) {
-      var sid = k.slice(4), info = cat === 'set' && DECOR_SUITS ? DECOR_SUITS[sid] : null;
-      groups.push({ key: k, title: cat === 'set' ? (info && info.n ? String(info.n) : 'Another set') : k.slice(4), sub: cat === 'set' ? by[k].length + ' of ' + (info && info.c ? num(info.c) : '?') + ' owned' : by[k].length + (by[k].length === 1 ? ' piece' : ' pieces') });
-      by[k].forEach(function (c) { c.g = k; cells.push(c); });
-    });
+    var dg = decorGroups(cells, cat, DECOR_SUITS);
+    return { cells: dg.cells, groups: dg.groups };
   }
-  return { cells: cells, groups: groups };
+  if (bucketSort && cells.length) {
+    var g = groupBy(cells, function (c) { return 'b:' + (c.it ? c.it.bucket : c.b); }, function (k) { return BUCKET_LABEL[k.slice(2)] || 'Other'; }, function (k, cs) { return plural(cs.length, 'kind', 'kinds'); });
+    return { cells: flat(g), groups: g.groups };
+  }
+  if (tab === 'hero' && cat === 'all' && cells.length) {
+    var h = groupBy(cells, function (c) { return 'h:' + c.it.subtab; }, function (k) { return SUB_LABEL[k.slice(2)] || 'Hero items'; }, function (k, cs) { return plural(cs.length, 'kind', 'kinds'); });
+    return { cells: flat(h), groups: h.groups };
+  }
+  return { cells: cells, groups: null };
 }
-/* the labelled numbers above the grid. Same sums as the classic bars: Gems, Odinium, VIT (account + packs + best case inside boxes). */
+/* the category chips of a tab, each with what view() would show for it: an empty item category is hidden, "all" never */
+function categories(data, tab) {
+  var l = catList(tab);
+  if (!l) return [];
+  return l.map(function (c) { return [c[0], c[1], view(data, { tab: tab, cat: c[0] }).cells.length]; }).filter(function (c) { return !(c[0] !== 'all' && c[2] === 0); });
+}
+function total(data, tab) { return view(data, { tab: tab, cat: catDefault(tab) }).cells.length; }
+function titanCats(data) {
+  var t = ((data.tabs && data.tabs.item) || []).filter(function (x) { return x.bucket === 'titan'; });
+  return TITAN.map(function (c) { return [c[0], c[1], c[0] === 'all' ? t.length : t.filter(function (x) { return x.titanCat === c[0]; }).length]; }).filter(function (c) { return c[0] === 'all' || c[2] > 0; });
+}
+/* the rarity filter of a tab: the tiers present, highest first, with counts */
+function rarities(data, tab) {
+  var n = {}; ((data.tabs && data.tabs[tab]) || []).forEach(function (x) { var q = Math.round(num(x.quality)) || 1; n[q] = (n[q] || 0) + 1; });
+  return [['', 'All rarities']].concat(Object.keys(n).map(Number).sort(function (a, b) { return b - a; }).map(function (q) { return [String(q), rarityName(q), n[q]]; }));
+}
+/* the labelled numbers above the grid: what the player HOLDS first (account + packs), the best case inside choice boxes apart. VIT as classic's bar. */
 function resources(data, inv, core) {
   var r = data.resources || {}, out = [], gold = num(r._gold), thor = num(r._thor);
   function parts(a) { return a.filter(function (x) { return x; }); }
-  if (data.gemTotal > 0 || data.boxedGemTotal > 0 || gold > 0)
-    out.push({ key: 'gems', label: 'Gems', acct: true, value: gold + data.gemTotal + (data.boxedGemTotal || 0), parts: parts([gold > 0 ? fmtBig(gold) + ' in your account' : '', data.gemTotal > 0 ? fmtBig(data.gemTotal) + ' in gem packs' : '', data.boxedGemTotal > 0 ? 'up to ' + fmtBig(data.boxedGemTotal) + ' inside boxes' : '']) });
-  var od = data.aggTotals.odinium || 0;
-  if (od > 0 || data.boxedOdiniumTotal > 0 || thor > 0)
-    out.push({ key: 'odinium', label: 'Odinium', acct: true, value: thor + od + (data.boxedOdiniumTotal || 0), parts: parts([thor > 0 ? fmtBig(thor) + ' in your account' : '', od > 0 ? fmtBig(od) + ' in packs' : '', data.boxedOdiniumTotal > 0 ? 'up to ' + fmtBig(data.boxedOdiniumTotal) + ' inside boxes' : '']) });
-  if (data.vitTotal > 0 || data.boxedVitTotal > 0)
-    out.push({ key: 'vit', label: 'VIT', value: (data.vitTotal || 0) + (data.boxedVitTotal || 0), parts: parts([data.vitTotal > 0 ? fmtBig(data.vitTotal) + ' in the bag' : '', data.boxedVitTotal > 0 ? 'up to ' + fmtBig(data.boxedVitTotal) + ' inside boxes' : '']) });
   var sh = inv && core && core._adv_calcAvailableShards ? core._adv_calcAvailableShards(inv) : null;
-  if (sh && sh.universal > 0)
-    out.push({ key: 'shards', label: 'Universal Decor Shards', value: sh.universal, parts: parts([sh.directShards > 0 ? fmtBig(sh.directShards) + ' as shards' : '', sh.boxShards > 0 ? fmtBig(sh.boxShards) + ' from boxes' : '']), link: 'spend' });
   function amount(id) { var n = 0; ((data.tabs && data.tabs.item) || []).forEach(function (x) { if (x.id === id) n += num(x.amount); }); return n; }
-  var ex = amount(EXCL_SHARD_ID), st = amount(STONE_ID);
+  var ex = amount(EXCL_SHARD_ID), st = amount(STONE_ID), od = data.aggTotals.odinium || 0;
+  if (sh && sh.universal > 0) out.push({ key: 'shards', label: 'Universal Decor Shards', value: sh.universal, parts: parts([sh.directShards > 0 && sh.boxShards > 0 ? fmtBig(sh.directShards) + ' as shards' : '', sh.boxShards > 0 ? fmtBig(sh.boxShards) + ' from boxes' : '']), link: 'spend', main: true });
+  if (st > 0) out.push({ key: 'stones', label: 'Awakening Stones', value: st, parts: [], link: 'stones', main: true });
+  if (data.gemTotal > 0 || gold > 0) out.push({ key: 'gems', label: 'Gems', value: gold + data.gemTotal, parts: parts([gold > 0 ? fmtBig(gold) + ' in your account' : '', data.gemTotal > 0 ? fmtBig(data.gemTotal) + ' in gem packs' : '']), main: true });
   if (ex > 0) out.push({ key: 'excl', label: 'Universal Exclusive Skill Shards', value: ex, parts: [] });
-  if (st > 0) out.push({ key: 'stones', label: 'Awakening Stones', value: st, parts: [], link: 'stones' });
+  if (od > 0 || thor > 0) out.push({ key: 'odinium', label: 'Odinium', value: thor + od, parts: parts([thor > 0 ? fmtBig(thor) + ' in your account' : '', od > 0 ? fmtBig(od) + ' in packs' : '']) });
+  if (data.vitTotal > 0) out.push({ key: 'vit', label: 'VIT', value: data.vitTotal, parts: [] });
+  if (data.boxedGemTotal > 0) out.push({ key: 'gems_boxes', label: 'Gems in choice boxes', value: data.boxedGemTotal, parts: ['best case, one reward per box'] });
+  if (data.boxedOdiniumTotal > 0) out.push({ key: 'odinium_boxes', label: 'Odinium in choice boxes', value: data.boxedOdiniumTotal, parts: ['best case, one reward per box'] });
+  if (data.boxedVitTotal > 0) out.push({ key: 'vit_boxes', label: 'VIT in choice boxes', value: data.boxedVitTotal, parts: ['best case, one reward per box'] });
   return out;
 }
 /* the sheet of a Gems / Odinium / Food / Oil cell: the packs behind the total, as classic's modal */
@@ -764,8 +842,8 @@ function aggModel(kind, data) {
   var m = has.call(AGG, kind) ? AGG[kind] : null; if (!m) return null;
   var det = (data.aggDetails[kind] || []).slice().sort(function (a, b) { return (b.total || 0) - (a.total || 0); });
   var boxed = kind === 'gem' ? data.boxedGemDetails : kind === 'odinium' ? data.boxedOdiniumDetails : [];
-  var direct = data.aggTotals[kind] || 0, bx = kind === 'gem' ? data.boxedGemTotal || 0 : kind === 'odinium' ? data.boxedOdiniumTotal || 0 : 0;
-  return { kind: kind, name: m.name, q: m.q, file: m.file, direct: direct, boxed: bx, total: aggTotal(kind, data), packs: det, boxes: (boxed || []).slice().sort(function (a, b) { return (b.total || 0) - (a.total || 0); }) };
+  var bx = kind === 'gem' ? data.boxedGemTotal || 0 : kind === 'odinium' ? data.boxedOdiniumTotal || 0 : 0;
+  return { kind: kind, name: m.name, file: m.file, direct: aggHeld(kind, data), boxed: bx, total: aggTotal(kind, data), packs: det, boxes: (boxed || []).slice().sort(function (a, b) { return (b.total || 0) - (a.total || 0); }) };
 }
 function findItem(data, key) {
   var m = /^([a-z]+):(\d+)$/.exec(String(key));
@@ -783,10 +861,11 @@ function setOwned(data, it) {
 }
 
 var api = {
-  rehydrate: _ar_rehydrateInv, categories: categories, titanCats: titanCats, view: view, resources: resources, aggModel: aggModel, findItem: findItem, setOwned: setOwned,
+  rehydrate: _ar_rehydrateInv, prepare: prepare, categories: categories, total: total, titanCats: titanCats, rarities: rarities, view: view, resources: resources, aggModel: aggModel, findItem: findItem, setOwned: setOwned,
   classify: _ar_classifyItemBucket, titanGear: _ar_classifyTitanGear, boxedGems: _ar_boxedGemsPerOpen, boxedOdinium: _ar_boxedOdiniumPerOpen, vitYield: _ar_vitYieldFromCfg, boxedVit: _ar_boxedVitPerOpen, gemValue: _ar_gemValueFromCfg,
   resolveIcon: _ar_resolveItemIcon, compactNumber: _ar_compactNumber, packQuantity: _ar_packQuantity, resourceKind: _ar_resourceKind, bucketOrder: _AR_BUCKET_ORDER.slice(),
-  TABS: TABS, CATS: CATS, SORTS: SORTS, QUALS: QUALS, AGG: AGG, STONE_ID: STONE_ID, UNIVERSAL_DECOR_ID: UNIVERSAL_DECOR_ID, DECOR_BOX_ID: DECOR_BOX_ID, EXCL_SHARD_ID: EXCL_SHARD_ID
+  displayName: displayName, cleanDesc: cleanDesc, rarityName: rarityName,
+  TABS: TABS, CATS: CATS, SORTS: SORTS, AGG: AGG, BUCKET_LABEL: BUCKET_LABEL, STONE_ID: STONE_ID, UNIVERSAL_DECOR_ID: UNIVERSAL_DECOR_ID, DECOR_BOX_ID: DECOR_BOX_ID, EXCL_SHARD_ID: EXCL_SHARD_ID
 };
 return api;
 }
@@ -798,29 +877,32 @@ if (typeof module !== 'undefined' && module.exports) module.exports = Logic;
 /* ---------- view ---------- */
 root.ArmoryBag = function (H) {
 var S = H.S, G = H.G, core = H.core, BASE = H.BASE, $ = H.$, $$ = H.$$, esc = H.esc, nd = H.nd, nm = H.nm, ic = H.ic, art = H.art, readOnly = H.readOnly;
-var DEF = { tab: 'item', cat: '', titan: 'all', q: '', quality: '', sort: 'default', n: 48 };
+var DEF = { tab: 'item', cat: '', titan: 'all', q: '', quality: '', sort: 'type', n: 48 };
 var T = Object.assign({}, DEF), PAGE = 48, STEP = 48;
 var D = null, DFor = null, L = null, loading = false, bad = false, wired = false, cur = { q: {} };
 
 var CSS =
-  '.bag-top{display:flex;flex-direction:column;gap:2px}.bag-sub{font-size:var(--fs-13);color:var(--muted)}.bag-pt{font-size:var(--fs-13);color:var(--muted)}' +
-  '.bag-res .area-n{min-width:9ch}.bag-res .area:first-child{border-top:0}.bag-res .hd{margin-bottom:4px}' +
-  '.bag-segs button{font-size:var(--fs-13);padding:0 2px;white-space:nowrap}' +
-  '.bag-bar{display:flex;align-items:center;gap:8px}.bag-bar .fld{flex:1;min-width:0;width:auto}.bag-bar .btn{flex:none}' +
+  '.bag-sub{font-size:var(--fs-13);color:var(--muted)}.bag-pt{font-size:var(--fs-13);color:var(--muted)}' +
+  '.bag-res .area-n{min-width:9ch}.bag-res .area:first-child{border-top:0}.bag-res .hd{margin-bottom:4px}.bag-res div.area:hover,.bag-res div.area:active{background:none}' +
+  '.bag-res .alist{border-top:0}.bag-restbtn{display:flex;align-items:center;width:100%;min-height:var(--tap);color:var(--accent);font-size:var(--fs-14);font-weight:600;border-top:1px solid var(--rule)}' +
+  '.bag-res .bag-pt{display:none}.bag-rest:not([hidden]) .bag-pt{display:block}.bag-src{margin-top:8px}' +
+  '.bag-segs .segs-in button{flex:1 1 auto;font-size:var(--fs-13);padding:0 8px;white-space:nowrap}' +
+  '.bag-ctl{display:flex;flex-direction:column;gap:12px}.bag-bar{display:flex;align-items:center;gap:8px}.bag-bar .fld{flex:1;min-width:0;width:auto}.bag-bar .btn{flex:none}' +
   '.bag-fs{display:none}.bag-f{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-12);color:var(--muted);min-width:0}.bag-f .sel{min-width:0;width:100%}' +
   '.bag-cb{min-height:40px;padding:0 14px;border:1px solid var(--border);border-radius:var(--r-chip);background:var(--surface);font-size:var(--fs-14);font-weight:600;color:var(--muted)}.bag-cb[aria-pressed="true"]{color:var(--text);background:var(--card-hi);border-color:var(--muted)}' +
   '.bag-g{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}' +
   '.bag-gh{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:baseline;gap:0 12px;padding-top:8px;border-top:1px solid var(--rule)}.bag-gh:first-child{border-top:0;padding-top:0}' +
   '.bag-gh h3{font:700 var(--fs-15)/1.3 var(--display)}.bag-gh span{font-size:var(--fs-13);color:var(--muted)}' +
   '.bag-c{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;min-width:0;min-height:var(--row);padding:8px 4px;background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);color:var(--text);text-align:center}' +
-  '.bag-c:active{background:var(--card-hi)}.bag-c .ico,.bag-c .fb{width:48px;height:48px}' +
+  '.bag-c:active{background:var(--card-hi)}.bag-c .ico,.bag-c .fb{width:48px;height:48px}.bag-unk .i{width:24px;height:24px}' +
   '.bag-q1{border-color:var(--dim)}.bag-q2{border-color:var(--ok)}.bag-q3{border-color:var(--q3)}.bag-q4{border-color:var(--q4)}.bag-q5{border-color:var(--q5)}.bag-q6{border-color:var(--q6)}' +
-  '.bag-nm{width:100%;font-size:var(--fs-13);line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}' +
+  '.bag-nm{width:100%;font-size:var(--fs-13);line-height:1.25;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}' +
   '.bag-ft{display:block;max-width:100%;text-align:center}.bag-a{font-size:var(--fs-14);font-weight:700}' +
   '.bag-tally{font-size:var(--fs-13);color:var(--muted)}' +
   '.bag-d{white-space:pre-line;overflow-wrap:anywhere;font-size:var(--fs-15)}.bag-facts{margin-top:4px}.bag-facts .srow .a{font-size:var(--fs-14);font-weight:400;color:var(--muted)}.bag-facts .srow .v{font-weight:700;text-align:right;overflow-wrap:anywhere}' +
+  '.bag-big{display:flex;flex-direction:column}.bag-big .n{font:700 var(--fs-32)/1.1 var(--display)}' +
   '@media (min-width:600px){.bag-g{grid-template-columns:repeat(4,minmax(0,1fr))}}' +
-  '@media (min-width:768px){.bag-fbtn{display:none}.bag-fs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 12px}.bag-g{grid-template-columns:repeat(5,minmax(0,1fr))}.bag-segs .segs-in{max-width:520px}}' +
+  '@media (min-width:768px){.bag-fbtn{display:none}.bag-ctl{display:grid;grid-template-columns:2fr repeat(3,1fr);gap:8px 12px;align-items:end}.bag-fs{display:contents}.bag-g{grid-template-columns:repeat(5,minmax(0,1fr))}.bag-segs .segs-in{max-width:520px}.bag-restbtn{display:none}.bag-res .bag-rest[hidden]{display:contents !important}.bag-res .bag-pt{display:block}.bag-res .alist{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:24px}.bag-res .bag-rest{display:contents}.bag-res .area{border-top:0}}' +
   '@media (min-width:1024px){.bag-g{grid-template-columns:repeat(7,minmax(0,1fr))}}';
 function injectCss() {
   if (document.getElementById('bag-style')) return;
@@ -831,72 +913,84 @@ function priv() { return (S.res && S.res.privacy) || {}; }
 function rawInv() { var s = S.res && S.res.supp || {}; return s.inv && typeof s.inv === 'object' ? s.inv : null; }
 function dl() { return (S.res && S.res.statics && S.res.statics.decorLookups) || {}; }
 function mk() { var d = dl(); return Logic.create({ RUNE_ICON: G.RUNE_ICON, DECOR_SUIT_GROUPS: d.DECOR_SUIT_GROUPS, DECOR_SUITS: d.DECOR_SUITS }); }
+/* ids the armory knows but the item table does not: the Awakening Stone and the six Awakening Cards (art in assets/hero-awake-items) */
+function knownItems() {
+  var AW = (root.ArmoryVM && root.ArmoryVM.AW) || {}, K = {};
+  if (AW.STONE) K[AW.STONE] = { n: 'Awakening Stone', f: 'item_' + AW.STONE + '.png', d: 'Spent to raise a hero’s awakening skills.' };
+  Object.keys(AW.CARD || {}).forEach(function (h) { var nmH = core.heroName(+h); K[AW.CARD[h]] = { n: nmH + ' Awakening Card', f: 'item_' + AW.CARD[h] + '.png', d: 'Needed to awaken ' + nmH + '.' }; });
+  return K;
+}
 function spendOwner() { return !readOnly() && S.res.identity && S.res.identity.unlocked && S.vm && S.vm.decor && S.vm.decor.known; }
 function segOf(id) { return S.vm.heroes.list.some(function (h) { return h.id === id; }) ? 'battle' : 'roster'; }
 function heroOfCard(itemId) { var C = (root.ArmoryVM && root.ArmoryVM.AW && root.ArmoryVM.AW.CARD) || {}; for (var h in C) if (C[h] === itemId) return +h; return 0; }
 function qOf(it) { var q = Math.round(num(it.quality)); return q >= 1 && q <= 6 ? q : 1; }
-function nameOf(it) { var n = it.name && String(it.name) !== '' ? String(it.name) : 'Unknown item'; return /^Lv \d+$/.test(n) || /^Unit #/.test(n) ? 'Unit' : /^(Decor |Hero )?#\d+$/.test(n) ? 'Unknown item' : n; }
 function noHy(t) { return String(t).replace(/-/g, '‑'); }
 function icon(it, cls) {
-  var u = Logic.iconUrl(it), nmx = nameOf(it);
-  return u ? art(u, 'ico ' + (cls || ''), nmx.charAt(0), '') : '<span class="ico fb ' + (cls || '') + '" translate="no">' + esc(nmx.charAt(0)) + '</span>';
+  var u = Logic.iconUrl(it);
+  if (u) return art(u, 'ico ' + (cls || ''), it.label.charAt(0), '');
+  return it.unknown ? '<span class="ico fb bag-unk ' + (cls || '') + '">' + ic('bag') + '</span>' : '<span class="ico fb ' + (cls || '') + '" translate="no">' + esc(it.label.charAt(0)) + '</span>';
 }
-function aggIcon(kind) { var m = L.AGG[kind]; return art(BASE + m.file, 'ico bag-q' + m.q, m.name.charAt(0), ''); }
+function aggIcon(kind) { var m = L.AGG[kind]; return art(BASE + m.file, 'ico', m.name.charAt(0), ''); }
 function fail(e) {
   if (window.console) console.error(e);
   var v = $('#v-bag'); if (v) v.innerHTML = '<div class="vb"><div class="empty">Could not show the bag. Reload the page to try again.</div></div>';
 }
-function lvOf(it) { return it.armyLevel || (it.level && it.level > 1 ? it.level : 0); }
+function lvText(it) {
+  var lv = it.armyLevel || (it.level && it.level > 1 ? it.level : 0); if (!lv) return '';
+  return 'Lv.' + Math.round(num(lv)) + (it.tab === 'decor' && it.maxLevel ? ' of ' + Math.round(num(it.maxLevel)) : '');
+}
 
 /* ---- the parts of the screen ---- */
+function resRow(r) {
+  var link = '', tag = 'div';
+  if (r.link === 'spend' && spendOwner()) { link = ' href="#base/decor?spend=1"'; tag = 'a'; }
+  else if (r.link === 'stones' && S.vm && S.vm.awaken && S.vm.awaken.show) { link = ' href="#heroes/battle?awk=open"'; tag = 'a'; }
+  return '<' + tag + ' class="area"' + link + ' data-numwrap><span class="area-n" data-num translate="no">' + esc(Logic.fmtBig(r.value)) + '</span><div class="area-b"><div class="l lbl">' + nm(r.label) + '</div>' + (r.parts.length ? '<div class="s bag-pt">' + nd(r.parts.join(' · ')) + '</div>' : '') + '</div>' + (tag === 'a' ? ic('chev') : '') + '</' + tag + '>';
+}
 function resHtml(rows) {
   if (!rows.length) return '';
-  return '<section class="card bag-res"><h2 class="hd">Resources</h2><div class="alist">' + rows.map(function (r) {
-    var link = '', tag = 'div';
-    if (r.link === 'spend' && spendOwner()) { link = ' href="#base/decor?spend=1"'; tag = 'a'; }
-    else if (r.link === 'stones' && S.vm && S.vm.awaken && S.vm.awaken.show) { link = ' href="#heroes/battle?awk=open"'; tag = 'a'; }
-    return '<' + tag + ' class="area"' + link + ' data-numwrap><span class="area-n" data-num translate="no">' + esc(Logic.fmtBig(r.value)) + '</span><div class="area-b"><div class="l lbl">' + nm(r.label) + '</div><div class="s src">' + esc(r.acct ? 'in your account and in bag' : 'in bag') + '</div>' + (r.parts.length ? '<div class="bag-pt">' + nd(r.parts.join(' · ')) + '</div>' : '') + '</div>' + (tag === 'a' ? ic('chev') : '') + '</' + tag + '>';
-  }).join('') + '</div></section>';
+  var main = rows.filter(function (r) { return r.main; }), rest = rows.filter(function (r) { return !r.main; }), ts = rawInv() && rawInv().meta && rawInv().meta.ts, age = Logic.ageOld(ts);
+  return '<section class="card bag-res"><h2 class="hd">Resources</h2><div class="alist">' + main.map(resRow).join('') +
+    (rest.length ? '<button class="bag-restbtn" type="button" data-bagrest aria-expanded="false" aria-controls="bagRest">' + nd('All resources (' + rows.length + ')') + '</button><div class="bag-rest" id="bagRest" hidden>' + rest.map(resRow).join('') + '</div>' : '') + '</div>' +
+    '<p class="foot bag-src">' + nd('Source: game data' + (age ? ', ' + age : '')) + '</p></section>';
 }
 function cellHtml(c) {
   if (c.agg) {
-    var m = L.AGG[c.agg], tot = L.AGG[c.agg] && Logic.fmtCell(num(aggTotalOf(c.agg)));
-    return '<button class="bag-c bag-q' + m.q + '" type="button" data-bagagg="' + c.agg + '">' + aggIcon(c.agg) + '<span class="bag-nm" translate="no">' + esc(m.name) + '</span><span class="bag-ft"><span class="bag-a" translate="no">×' + esc(tot) + '</span> <span class="pill p-lv">Total</span></span></button>';
+    var m = L.AGG[c.agg], held = L.aggModel(c.agg, D).direct;
+    return '<button class="bag-c" type="button" data-bagagg="' + c.agg + '">' + aggIcon(c.agg) + '<span class="bag-nm" translate="no">' + esc(m.name) + '</span><span class="bag-ft"><span class="bag-a" translate="no">×' + esc(Logic.fmtCell(held)) + '</span> <span class="pill p-lv">Total</span></span></button>';
   }
-  var it = c.it, lv = lvOf(it), q = qOf(it), key = (it.tab || curTab(it)) + ':' + it.id;
-  return '<button class="bag-c bag-q' + q + '" type="button" data-bagi="' + esc(key) + '">' + icon(it, 'bag-q' + q) + '<span class="bag-nm" translate="no">' + esc(noHy(nameOf(it))) + '</span><span class="bag-ft"><span class="bag-a" translate="no">×' + esc(Logic.fmtCell(it.amount)) + '</span>' + (lv ? ' <span class="pill p-lv" translate="no">Lv.' + esc(Math.round(num(lv))) + '</span>' : '') + '</span></button>';
+  var it = c.it, lv = lvText(it), q = qOf(it), key = (c.tab || T.tab) + ':' + it.id;
+  return '<button class="bag-c bag-q' + q + '" type="button" data-bagi="' + esc(key) + '">' + icon(it, 'bag-q' + q) + '<span class="bag-nm" translate="no">' + esc(noHy(it.label)) + '</span><span class="bag-ft"><span class="bag-a" translate="no">×' + esc(Logic.fmtCell(it.amount)) + '</span>' + (lv ? ' <span class="pill p-lv" translate="no">' + esc(lv) + '</span>' : '') + '</span></button>';
 }
-function curTab() { return T.tab; }
-function aggTotalOf(kind) { var m = L.aggModel(kind, D); return m ? m.total : 0; }
-function dirty() { return (T.quality ? 1 : 0) + (T.sort !== 'default' ? 1 : 0) + (T.cat && T.cat !== catDefault() ? 1 : 0) + (T.titan !== 'all' ? 1 : 0); }
 function catDefault() { var c = L.CATS[T.tab]; return c ? c[0][0] : ''; }
+function dirty() { return (T.quality ? 1 : 0) + (T.sort !== 'type' ? 1 : 0) + (T.cat && T.cat !== catDefault() ? 1 : 0) + (T.titan !== 'all' ? 1 : 0); }
 function btnText() { var n = dirty(); return 'Filter · Sort' + (n ? ' (' + n + ')' : ''); }
 function selectHtml(k, lab, list) {
   var val = k === 'cat' ? (T.cat || catDefault()) : T[k];
-  return '<label class="bag-f"><span>' + esc(lab) + '</span><select class="sel" data-bagf="' + k + '">' + list.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o.length > 2 || /\d/.test(o[1]) ? ' translate="no"' : '') + (String(val) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1] + (o.length > 2 ? ' (' + Logic.fmtCell(o[2]) + ')' : '')) + '</option>'; }).join('') + '</select></label>';
+  return '<label class="bag-f"><span>' + esc(lab) + '</span><select class="sel" data-bagf="' + k + '">' + list.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o.length > 2 || /\d/.test(o[1]) ? ' translate="no"' : '') + (String(val) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1] + (o.length > 2 && o[0] !== '' ? ' (' + Logic.fmtCell(o[2]) + ')' : '')) + '</option>'; }).join('') + '</select></label>';
 }
 function fieldList() {
   var out = [], cats = L.categories(D, T.tab);
   if (cats.length) out.push(['cat', 'Category', cats]);
   if (T.tab === 'item' && (T.cat || catDefault()) === 'titan') { var tc = L.titanCats(D); if (tc.length > 1) out.push(['titan', 'Titan Gear type', tc]); }
-  out.push(['quality', 'Quality', L.QUALS], ['sort', 'Sort', L.SORTS]);
+  out.push(['quality', 'Rarity', L.rarities(D, T.tab)], ['sort', 'Sort', L.SORTS]);
   return out;
 }
 function listHtml() {
-  var st = Object.assign({}, T, { cat: T.cat || catDefault() }), v = L.view(D, st), shown = v.cells.slice(0, T.n), total = v.cells.length;
-  if (!total) return '<div class="empty">' + (D.tabs[T.tab] && D.tabs[T.tab].length ? 'Nothing in the bag matches this. <button class="tb link" type="button" data-bagclear>Clear filters</button>' : 'Nothing in this tab.') + '</div>';
+  var st = Object.assign({}, T, { cat: T.cat || catDefault() }), v = L.view(D, st), shown = v.cells.slice(0, T.n), all = v.cells.length, held = L.total(D, T.tab);
+  if (!all) return '<div class="empty">' + (T.q ? 'Nothing in the bag matches “' + esc(T.q) + '”. <button class="tb link" type="button" data-bagclear>Clear search</button>' : D.tabs[T.tab] && D.tabs[T.tab].length ? 'Nothing in the bag matches this. <button class="tb link" type="button" data-bagclear>Clear filters</button>' : 'Nothing in this tab.') + '</div>';
   var html = '', last = null, g = {};
   (v.groups || []).forEach(function (x) { g[x.key] = x; });
   shown.forEach(function (c) {
     if (v.groups && c.g !== last) { var x = g[c.g]; html += '<div class="bag-gh"><h3 translate="no">' + esc(x.title) + '</h3><span>' + nd(x.sub) + '</span></div>'; last = c.g; }
     html += cellHtml(c);
   });
-  var rest = total - shown.length;
-  return '<div class="bag-g">' + html + '</div><p class="bag-tally" role="status">' + nd('Showing ' + Logic.fmtCell(shown.length) + ' of ' + Logic.fmtCell(total)) + '</p>' +
+  var rest = all - shown.length, filtered = T.q || dirty();
+  return '<div class="bag-g">' + html + '</div><p class="bag-tally" role="status">' + nd('Showing ' + Logic.fmtCell(shown.length) + ' of ' + Logic.fmtCell(all) + (filtered ? ' · ' + (T.q ? 'across the whole bag' : Logic.fmtCell(held) + ' in bag') : '')) + '</p>' +
     (rest > 0 ? '<button class="btn more" type="button" data-bagmore><span>Show ' + nd(Logic.fmtCell(Math.min(STEP, rest))) + ' more</span></button>' : '');
 }
 function emptyBody(kind) {
-  if (kind === 'private') return '<div class="empty">' + (readOnly() ? 'The player keeps this bag private.' : 'Your bag is set to private, so it is hidden here. Change who can see it on the classic page.') + '</div>';
+  if (kind === 'private') return '<div class="empty">' + (readOnly() ? 'The player keeps this bag private.' : 'Your bag is set to private, so it is hidden here. Change who can see it on the classic page.') + '</div>' + (readOnly() ? '' : classicLink());
   return '<div class="empty">' + (readOnly() ? 'No bag data from this player yet.' : 'No bag data yet. ') + (readOnly() ? '' : '<button class="tb link" type="button" data-open="status">Send game data</button>') + '</div>';
 }
 function classicLink() { return '<div class="lnkrow"><a class="tb link" href="' + esc(H.classicUrl('inventory')) + '">' + ic('ext', 'sm') + '<span>Open the bag on the classic page</span></a></div>'; }
@@ -904,21 +998,21 @@ function segsHtml() {
   return '<div class="segs bag-segs"><div class="segs-in" role="tablist">' + Logic.TABS.map(function (t) { return '<button type="button" role="tab" data-go="bag?tab=' + t[0] + '" aria-selected="' + (T.tab === t[0]) + '">' + esc(t[1]) + '</button>'; }).join('') + '</div></div>';
 }
 function topHtml(kind) {
-  var ts = rawInv() && rawInv().meta && rawInv().meta.ts, age = Logic.ageOld(ts);
-  return '<div class="sechead"><h2 class="title">Bag</h2></div>' + (kind === 'ok' && D && age ? '<p class="bag-sub">' + nd('Game data ' + age) + '</p>' : '');
+  return '<div class="sechead"><h2 class="title">Bag</h2></div>' + (kind === 'ok' && D ? '<p class="bag-sub" id="bagCount">' + nd(Logic.fmtCell(L.total(D, T.tab)) + ' items in bag') + '</p>' : '');
 }
 function paint() {
   var v = $('#v-bag'); if (!v || !S.vm || !S.res) return;
   injectCss();
   var kind = priv().inv ? 'private' : (rawInv() ? 'ok' : 'none');
-  if (kind !== 'ok') { v.innerHTML = '<div class="vb">' + topHtml(kind) + emptyBody(kind) + classicLink() + '</div>'; return; }
+  if (kind !== 'ok') { v.innerHTML = '<div class="vb">' + topHtml(kind) + emptyBody(kind) + '</div>'; return; }
   if (bad) { v.innerHTML = '<div class="vb">' + topHtml('none') + '<div class="empty">Could not load the item names. <button class="tb link" type="button" data-bagretry>Try again</button></div></div>'; return; }
   if (!D) { v.innerHTML = '<div class="vb">' + topHtml('none') + '<p class="muted" role="status">Opening your bag…</p></div>'; load(); return; }
-  var rows = L.resources(D, rawInv(), core);
+  var rows = L.resources(D, rawInv(), core), q = $('[data-bagq]', v), had = q && document.activeElement === q;
   v.innerHTML = segsHtml() + '<div class="vb">' + topHtml('ok') + resHtml(rows) +
-    '<div class="bag-bar"><input class="fld" type="search" data-bagq autocomplete="off" spellcheck="false" aria-label="Search the bag" placeholder="Search the bag" value="' + esc(T.q) + '"><button class="btn bag-fbtn" type="button" data-open="bagfilter">' + ic('sliders', 'sm') + btnText() + '</button></div>' +
-    '<div class="bag-fs">' + fieldList().map(function (f) { return selectHtml(f[0], f[1], f[2]); }).join('') + '</div>' +
-    '<div id="bagList" style="display:flex;flex-direction:column;gap:12px">' + listHtml() + '</div>' + classicLink() + '</div>';
+    '<div class="bag-ctl"><div class="bag-bar"><input class="fld" type="search" data-bagq autocomplete="off" spellcheck="false" aria-label="Search the bag" placeholder="Search the bag" value="' + esc(T.q) + '"><button class="btn bag-fbtn" type="button" data-open="bagfilter">' + ic('sliders', 'sm') + btnText() + '</button></div>' +
+    '<div class="bag-fs">' + fieldList().map(function (f) { return selectHtml(f[0], f[1], f[2]); }).join('') + '</div></div>' +
+    '<div id="bagList" style="display:flex;flex-direction:column;gap:12px">' + listHtml() + '</div></div>';
+  if (had) { var q2 = $('[data-bagq]', v); if (q2) { q2.focus({ preventScroll: true }); try { q2.setSelectionRange(q2.value.length, q2.value.length); } catch (e) {} } }
 }
 function refresh() {
   var l = $('#bagList'); if (l) l.innerHTML = listHtml();
@@ -932,7 +1026,7 @@ function load() {
   H.d.loadInvLookups().then(function (lk) {
     loading = false;
     if (rawInv() !== key) { paint(); return; }
-    try { L = mk(); D = L.rehydrate(JSON.parse(JSON.stringify(inv)), lk); DFor = inv; } catch (e) { bad = true; if (window.console) console.error(e); }
+    try { L = mk(); D = L.prepare(L.rehydrate(JSON.parse(JSON.stringify(inv)), lk), knownItems()); DFor = inv; } catch (e) { bad = true; if (window.console) console.error(e); }
     paint();
   }, function () { loading = false; bad = true; paint(); }); /* a network failure is a state the screen explains, not an error */
 }
@@ -946,7 +1040,7 @@ function ensure() {
 function chipGroup(k, lab, list) {
   return '<div><span class="lab" style="margin-bottom:4px">' + esc(lab) + '</span><div class="chips">' + list.map(function (o) {
     var on = k === 'cat' ? String(T.cat || catDefault()) === String(o[0]) : String(T[k]) === String(o[0]);
-    return '<button class="bag-cb" type="button" data-bagc="' + k + ':' + esc(o[0]) + '" aria-pressed="' + on + '">' + nd(o[1] + (o.length > 2 ? ' (' + Logic.fmtCell(o[2]) + ')' : '')) + '</button>';
+    return '<button class="bag-cb" type="button" data-bagc="' + k + ':' + esc(o[0]) + '" aria-pressed="' + on + '">' + nd(o[1] + (o.length > 2 && o[0] !== '' ? ' (' + Logic.fmtCell(o[2]) + ')' : '')) + '</button>';
   }).join('') + '</div></div>';
 }
 function filterSheet() {
@@ -955,35 +1049,48 @@ function filterSheet() {
   return ['Filter and sort', body];
 }
 function fact(a, v) { return '<div class="srow"><div class="sb"><div class="a">' + esc(a) + '</div></div><div class="v">' + v + '</div></div>'; }
+function usedLinks(f) {
+  var it = f.it, out = '', hid = f.tab === 'item' ? heroOfCard(it.id) : 0;
+  function a(href, t) { out += '<a class="tb link" href="' + href + '">' + t + '</a>'; }
+  if (f.tab === 'decor') {
+    var pl = (S.vm.decor.placed || []).filter(function (p) { return p.g === it.group; })[0];
+    if (pl) a('#base/decor?item=' + encodeURIComponent(pl.n), nd('See it in Base · placed at Lv.' + pl.lv));
+  }
+  if (it.id === L.UNIVERSAL_DECOR_ID || it.id === L.DECOR_BOX_ID) { if (spendOwner()) a('#base/decor?spend=1', 'Spend my shards'); }
+  if (it.id === L.STONE_ID && S.vm.awaken && S.vm.awaken.show) a('#heroes/battle?awk=open', 'Open the Awakening card');
+  if (hid && S.vm.awaken && S.vm.awaken.byId && S.vm.awaken.byId[hid]) a('#heroes/' + segOf(hid) + '?hero=' + encodeURIComponent(core.heroName(hid)) + '&awk=hero', nd('See ' + core.heroName(hid) + ' awakening'));
+  if (f.tab === 'item') {
+    if (it.type === 153) a('#heroes/gear?view=runes', 'See your runes');
+    else if (it.bucket === 'titan') a('#heroes/gear', 'See your Titan Gear');
+    else if (it.bucket === 'enigma') a('#beasts/collection', 'See your beasts');
+    else if (it.bucket === 'ht_chip') a('#ht/pool', 'See your chip pool');
+    else if (it.bucket === 'formation') a('#base/formation', 'See your formation');
+  }
+  return out;
+}
 function itemSheet(key) {
   if (!D) return null;
   var f = L.findItem(D, key); if (!f) return null;
-  var it = f.it, lv = lvOf(it), q = qOf(it), facts = '', links = '';
-  var pills = '<span class="pill p-lv" translate="no">×' + esc(Logic.fmtBig(it.amount)) + '</span>' + (lv ? ' <span class="pill p-lv" translate="no">Lv.' + esc(Math.round(num(lv))) + (f.tab === 'decor' && it.maxLevel ? ' of ' + esc(Math.round(num(it.maxLevel))) : '') + '</span>' : '');
-  var head = '<div class="sh-hero">' + icon(it, 'bag-q' + q) + '<div>' + pills + '</div></div>';
-  var desc = it.desc ? '<p class="bag-d">' + esc(it.desc) + '</p>' : '';
+  var it = f.it, lv = lvText(it), q = qOf(it), facts = '';
+  var head = '<div class="sh-hero">' + icon(it, 'bag-q' + q) + '<div class="bag-big"><span class="n" translate="no">' + esc(Logic.fmtBig(it.amount)) + '</span><span class="t12 muted">' + nd('in bag · ' + L.rarityName(q) + (lv ? ' · ' + lv : '')) + '</span></div></div>';
+  var desc = it.text ? '<p class="bag-d">' + esc(it.text) + '</p>' : (it.unknown ? '<p class="bag-d muted">The armory’s item list does not have this one yet. The count is from your game data.</p>' : '');
   if (f.tab === 'decor') {
     var so = L.setOwned(D, it);
-    if (so) facts += fact('Set', nm(so.name) + (so.total ? ' ' + nd('· ' + so.owned + ' of ' + so.total + ' owned') : ''));
-    if (it.category) facts += fact('Buff type', nm(it.category));
-    var pl = (S.vm.decor.placed || []).filter(function (p) { return p.g === it.group; })[0];
-    if (pl) links += '<a class="tb link" href="#base/decor?item=' + encodeURIComponent(pl.n) + '">' + nd('See it in Base · placed at Lv.' + pl.lv) + '</a>';
+    if (so) facts += fact('Set', nm(so.name) + (so.total ? ' ' + nd('· ' + so.owned + ' of ' + so.total + ' in bag') : ''));
+    if (it.category) facts += fact('Buff type', nm(it.category === 'Uncategorized' ? 'Other' : it.category));
   }
   if (f.tab === 'item' && it.boxedGems > 0) facts += fact('Gems inside', nd('up to ' + Logic.fmtBig(it.boxedGems) + ' per box'));
-  if (it.id === L.UNIVERSAL_DECOR_ID || it.id === L.DECOR_BOX_ID) { if (spendOwner()) links += '<a class="tb link" href="#base/decor?spend=1">Spend my shards</a>'; }
-  if (it.id === L.STONE_ID && S.vm.awaken && S.vm.awaken.show) links += '<a class="tb link" href="#heroes/battle?awk=open">Open the Awakening card</a>';
-  var hid = f.tab === 'item' ? heroOfCard(it.id) : 0;
-  if (hid && S.vm.awaken && S.vm.awaken.byId && S.vm.awaken.byId[hid]) links += '<a class="tb link" href="#heroes/' + segOf(hid) + '?hero=' + encodeURIComponent(core.heroName(hid)) + '&awk=hero">' + nd('See ' + core.heroName(hid) + ' awakening') + '</a>';
-  return [noHy(nameOf(it)), head + desc + (facts ? '<div class="bag-facts">' + facts + '</div>' : '') + (links ? '<div class="lnkrow">' + links + '</div>' : ''), true];
+  var links = usedLinks(f);
+  return [noHy(it.label), head + desc + (facts ? '<div class="bag-facts">' + facts + '</div>' : '') + (links ? '<div class="lnkrow">' + links + '</div>' : ''), true];
 }
 function aggSheet(kind) {
   if (!D) return null;
   var m = L.aggModel(kind, D); if (!m) return null;
-  var head = '<div class="sh-hero">' + aggIcon(kind) + '<div><span class="pill p-lv" translate="no">×' + esc(Logic.fmtBig(m.total)) + '</span></div></div>';
-  var sum = '<p class="t13 muted">' + nd(m.boxed > 0 ? 'In packs ' + Logic.fmtBig(m.direct) + ' · inside boxes, best case ' + Logic.fmtBig(m.boxed) + ' · together ' + Logic.fmtBig(m.total) : 'Total ' + Logic.fmtBig(m.direct) + ' across ' + m.packs.length + (m.packs.length === 1 ? ' pack' : ' packs')) + '</p>';
-  function rows(list, per) { return list.map(function (r) { return '<div class="srow"><div class="sb"><div class="a" translate="no" style="font-weight:600;color:var(--text)">' + esc(noHy(r.name)) + '</div><div class="b">' + nd('×' + Logic.fmtBig(r.amount) + ' · ' + Logic.fmtBig(r[per]) + ' each') + '</div></div><div class="v" translate="no" style="font-weight:700">' + esc(Logic.fmtBig(r.total)) + '</div></div>'; }).join(''); }
+  var head = '<div class="sh-hero">' + aggIcon(kind) + '<div class="bag-big"><span class="n" translate="no">' + esc(Logic.fmtBig(m.direct)) + '</span><span class="t12 muted">in bag, in packs</span></div></div>';
+  var sum = m.boxed > 0 ? '<p class="t13 muted">' + nd('Up to ' + Logic.fmtBig(m.boxed) + ' more inside choice boxes, best case: you pick one reward per box.') + '</p>' : '';
+  function rows(list, per) { return list.map(function (r) { return '<div class="srow"><div class="sb"><div class="a" translate="no" style="font-weight:600;color:var(--text)">' + esc(noHy(r.name)) + '</div><div class="b">' + nd('×' + Logic.fmtBig(r.amount) + ' · ' + Logic.fmtBig(r[per]) + ' each') + '</div></div><div class="v" translate="no" style="font-weight:700;overflow-wrap:anywhere">' + esc(Logic.fmtBig(r.total)) + '</div></div>'; }).join(''); }
   var body = head + sum + (m.packs.length ? '<div><h3 class="disp" style="font-size:var(--fs-15)">Packs</h3>' + rows(m.packs, 'perPack') + '</div>' : '') +
-    (m.boxes.length ? '<div><h3 class="disp" style="font-size:var(--fs-15)">Boxes (best case per box)</h3>' + rows(m.boxes, 'perOpen') + '</div>' : '');
+    (m.boxes.length ? '<div><h3 class="disp" style="font-size:var(--fs-15)">Choice boxes (best case per box)</h3>' + rows(m.boxes, 'perOpen') + '</div>' : '');
   return [m.name, body, true];
 }
 function sheet(kind, arg) {
@@ -1003,8 +1110,9 @@ function wire() {
     var t = e.target.closest('button'); if (!t) return;
     if (t.dataset.bagi) { H.openSheet('bagitem', t.dataset.bagi); return; }
     if (t.dataset.bagagg) { H.openSheet('bagagg', t.dataset.bagagg); return; }
+    if (t.hasAttribute('data-bagrest')) { var r = $('#bagRest'), open = r.hidden; r.hidden = !open; t.setAttribute('aria-expanded', open ? 'true' : 'false'); return; }
     if (t.hasAttribute('data-bagmore')) { T.n += STEP; refresh(); return; }
-    if (t.hasAttribute('data-bagclear')) { T.q = ''; T.quality = ''; T.titan = 'all'; T.cat = ''; var inp = $('[data-bagq]', v); if (inp) inp.value = ''; refresh(); return; }
+    if (t.hasAttribute('data-bagclear')) { T.q = ''; T.quality = ''; T.titan = 'all'; T.cat = ''; T.n = PAGE; var inp = $('[data-bagq]', v); if (inp) inp.value = ''; refresh(); return; }
     if (t.hasAttribute('data-bagretry')) { bad = false; D = null; paint(); }
   });
   v.addEventListener('input', function (e) {
@@ -1024,16 +1132,16 @@ function wire() {
 }
 function setField(k, val) {
   if (k === 'cat') { T.cat = val; T.titan = 'all'; }
-  else if (k === 'quality') T.quality = (T.quality === val ? '' : val);
+  else if (k === 'quality') T.quality = val;
   else if (k === 'titan') T.titan = val;
   else if (k === 'sort') T.sort = val;
-  T.n = PAGE; paint();
+  T.n = PAGE; if (k === 'cat') paint(); else refresh();
 }
 function render(r) {
   try {
     cur = { q: (r && r.q) || {} };
     var tab = Logic.tabKnown(cur.q.tab) ? cur.q.tab : T.tab;
-    if (tab !== T.tab) { T = Object.assign({}, DEF, { tab: tab }); }
+    if (tab !== T.tab) { T = Object.assign({}, DEF, { tab: tab, q: T.q, quality: T.quality, sort: T.sort }); }
     if (!S.vm || !S.res) return;
     ensure(); paint(); wire();
     var v = $('#v-bag'); if (v) $$('.segs button', v).forEach(function (b) { b.setAttribute('aria-selected', b.dataset.go === 'bag?tab=' + T.tab ? 'true' : 'false'); });

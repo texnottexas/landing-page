@@ -142,10 +142,14 @@ var EXPECTED = [
   log(nums.length > 0 && badNum.length === 0, 'every Overview number has a label and a source word', nums.length + ' numbers' + (badNum.length ? ', missing: ' + badNum.join(', ') : ''));
 
   await visit('bag');
-  var bn = $$('#v-bag [data-num]'), badB = [], SRCB = /in bag/;
-  bn.forEach(function (n) { var w = n.closest('[data-numwrap]'), l = w && $('.lbl', w), s = w && $('.src', w); if (!w || !l || !s || !l.textContent.trim() || !SRCB.test(s.textContent)) badB.push(n.textContent.trim().slice(0, 12)); });
-  var dev = $$('#v-bag, #sheet').map(function (e) { return e.textContent; }).join(' ').match(/\b(type \d+|group \d+|icon looks wrong|<missing>)/i);
-  log((bn.length > 0 || !S.vm.decor.known) && badB.length === 0 && !dev, 'Bag: every resource number has a label and an "in bag" source; no developer fields', bn.length + ' numbers' + (badB.length ? ', missing: ' + badB.join(', ') : '') + (dev ? ', dev text: ' + dev[0] : ''));
+  var bn = $$('#v-bag [data-num]'), badB = [];
+  bn.forEach(function (n) { var w = n.closest('[data-numwrap]'), l = w && $('.lbl', w); if (!w || !l || !l.textContent.trim()) badB.push(n.textContent.trim().slice(0, 12)); });
+  var btx = ($('#v-bag') || {}).textContent || '', dev = (btx + ' ' + (($('#sheet') || {}).textContent || '')).match(/\b(type \d+|group \d+|icon looks wrong|<missing>)|\{\d\}|item_name|building_name|itemName\d/i);
+  var segBad = $$('#v-bag .segs button').filter(function (b) { return b.scrollWidth > b.clientWidth + 1; }).map(function (b) { return b.textContent; });
+  var stoneUnk = $$('#v-bag .bag-nm').filter(function (n) { return n.textContent === 'Unknown item'; }).length && S.vm.awaken && S.vm.awaken.stones > 0 && !$$('#v-bag .bag-nm').some(function (n) { return n.textContent === 'Awakening Stone'; });
+  var c1 = $('#v-bag .bag-c'), bar0 = $('#bar'), barTop = bar0 && getComputedStyle(bar0).display !== 'none' ? bar0.getBoundingClientRect().top : window.innerHeight, fold = c1 ? c1.getBoundingClientRect().top < barTop - 40 : false;
+  var sortOpt = $('#v-bag select[data-bagf="sort"]') ? $('#v-bag select[data-bagf="sort"]').options[0].textContent : 'By type';
+  log((bn.length > 0 || !S.vm.decor.known) && badB.length === 0 && !dev && !segBad.length && !stoneUnk && (fold || !c1) && /By type/.test(sortOpt) && /Source: game data/.test(btx) && /items in bag/.test(btx), 'Bag: labelled numbers, no keys or {0} or developer fields, segments fit, stones named, first item above the fold, default sort By type, source line', bn.length + ' numbers' + (badB.length ? ', unlabelled: ' + badB.join(', ') : '') + (dev ? ', leak: ' + dev[0] : '') + (segBad.length ? ', clipped: ' + segBad.join(',') : '') + (stoneUnk ? ', stones unnamed' : '') + (fold ? '' : ', first item below the fold') + ', sort ' + sortOpt);
 
   /* 5. Next moves */
   var rows = $$('#v-overview .move'), VERBS = /^(Place|Merge|Refine|Upgrade|Swap|Fill|Raise|Save|Awaken)\b/, mm = [], okMoves = rows.length > 0 && rows.length <= 3;
