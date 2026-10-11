@@ -105,7 +105,7 @@ function rosterList() {
   el.innerHTML = shown.map(function (x) {
     var a = AWV[x.id], por = portrait(x.id, x.name, ArmoryVM.heroIcon(x.id), a), open = !!S.open[x.id];
     var sub = (a && a.aw ? nd(awLevel(a)) : 'Level ' + nm(String(x.lv))) + ' &middot; ' + nm(String(x.star)) + ' stars';
-    var head = '<span class="hb"><span class="hb-1"><span class="hb-n" translate="no">' + esc(x.name) + '</span>' + branchPill(x.branch) + '</span><span class="hb-2" style="display:block">' + sub + '</span>' + (a ? H.awSkLine(a) : '') + '</span>' +
+    var head = '<span class="hb"><span class="hb-1"><span class="hb-n" translate="no">' + esc(x.name) + '</span>' + branchPill(x.branch) + '</span><span class="hb-2" style="display:block">' + sub + '</span>' + (a ? H.awSkLine(a) : '') + (a && !a.aw && S.vm.awaken.cards[x.id] ? '<span class="hb-2" style="display:block">Card in bag' + (ArmoryVM.canAwaken(a) ? ' &middot; <b>Ready to awaken</b>' : '') + '</span>' : '') + '</span>' +
       '<span class="hr-score"><span class="n disp" style="display:block" translate="no">' + fmtK(x.score) + '</span><span class="l" style="display:block">power</span></span>';
     /* an awakened hero, or one of the six that can be, opens to its Awakening block */
     if (!a) return '<article class="hero"><div class="hrow" style="cursor:default">' + por + head + '</div></article>';
