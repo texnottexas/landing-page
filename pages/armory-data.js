@@ -57,6 +57,99 @@
     return _ar_jsonCache[url];
   }
   function _ar_validReportId(id) { return /^\d{10,25}$/.test(String(id)); }
+
+  // Snapshot battle reports (2026-10-11): the owner's newest "Set up my armory report" (a report config the Snapshot tool saved)
+  // replaces the report list this device holds, unless this device's own saved list is newer. The caller shows the notice and Undo.
+  function _ar_snapTime(c) {
+    var v = c && (c.updatedAt || c.date);
+    var n = typeof v === 'number' ? v : Date.parse(v);
+    return isFinite(n) ? n : 0;
+  }
+  function _ar_pickSnapshotUpdate(configs, saved, seenTs) {
+    if (!Array.isArray(configs) || !saved || !Array.isArray(saved.reportIds)) return null;
+    var snap = null;
+    configs.forEach(function(c) {
+      if (c && c.snapshot === true && _ar_snapTime(c) > 0 && (!snap || _ar_snapTime(c) > _ar_snapTime(snap))) snap = c;
+    });
+    if (!snap) return null;
+    var ts = _ar_snapTime(snap);
+    if (ts <= (Number(seenTs) || 0)) return null;
+    if (Number(saved.setAt) >= ts) return null;
+    var own = null;
+    configs.forEach(function(c) { if (c && saved.shortcode && c.shortcode === saved.shortcode) own = c; });
+    if (own && _ar_snapTime(own) >= ts) return null;
+    var ids = String(snap.reportIds || '').split(',').filter(_ar_validReportId);
+    if (!ids.length) return null;
+    var same = ids.slice().sort().join(',') === saved.reportIds.slice().sort().join(',');
+    return { code: snap.shortcode, reportIds: ids, updatedAt: ts, same: same };
+  }
+  function _ar_mergeSnapshotMarches(own, snap) {
+    own = Array.isArray(own) ? own : [];
+    snap = Array.isArray(snap) ? snap : [];
+    if (!own.length) return snap.slice();
+    function key(m) { return ((m && m.heroIds) || []).map(Number).sort(function(a, b) { return a - b; }).join('-'); }
+    var have = {};
+    var out = own.slice();
+    own.forEach(function(m) { have[key(m)] = 1; });
+    snap.forEach(function(m) {
+      var k = key(m);
+      if (k && !have[k] && out.length < 9) { have[k] = 1; out.push(m); }
+    });
+    return out;
+  }
+  // Resolves null (nothing to do) or { count, undo() }. Only a verified owner's own, writable report is ever touched.
+  function _ar_snapshotUpdate() {
+    var saved = null;
+    try { saved = JSON.parse(localStorage.getItem('playerReport')); } catch (e) {}
+    var ident = getStoredIdentity();
+    var sk = saved && saved.player && saved.player.siteKey;
+    if (!saved || saved._viewOnly || !Array.isArray(saved.reportIds) || !saved.reportIds.length) return Promise.resolve(null);
+    if (!ident || !sk || ident.siteKey !== sk || !/^[0-9a-f]{16}$/.test(sk) || !_ar_isUnlocked(sk)) return Promise.resolve(null);
+    var seenKey = 'ar_snap_seen_v1_' + sk;
+    var seen = 0;
+    try { seen = Number(localStorage.getItem(seenKey)) || 0; } catch (e) {}
+    function lim(p) {
+      var t = null;
+      var cut = new Promise(function(res, rej) { t = setTimeout(function() { rej(new Error('timeout')); }, 2500); });
+      return Promise.race([p, cut]).then(function(v) { clearTimeout(t); return v; }, function(e) { clearTimeout(t); throw e; });
+    }
+    return lim(fetch(PUSH_WORKER + '/report-configs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ siteKey: sk }) })
+      .then(function(r) { return r.ok ? r.json() : null; })).then(function(j) {
+      var pick = j && j.ok ? _ar_pickSnapshotUpdate(j.configs, saved, seen) : null;
+      if (!pick) return null;
+      if (pick.same) { try { localStorage.setItem(seenKey, String(pick.updatedAt)); } catch (e) {} return null; }
+      return lim(fetch(PUSH_WORKER + '/report-config?code=' + encodeURIComponent(pick.code)).then(function(r) { return r.ok ? r.json() : null; }))
+        .catch(function() { return null; }).then(function(cfg) {
+          var prevReport = localStorage.getItem('playerReport');
+          var prevData = localStorage.getItem('playerReportData');
+          var now = null;
+          try { now = JSON.parse(prevReport); } catch (e) {}
+          // the list changed while we waited (the player edited it): leave it alone
+          if (!now || now._viewOnly || JSON.stringify(now.reportIds) !== JSON.stringify(saved.reportIds)) return null;
+          now.reportIds = pick.reportIds.slice();
+          now.marchGroups = _ar_mergeSnapshotMarches(now.marchGroups, cfg && cfg.ok ? cfg.marchGroups : null);
+          now.setAt = Date.now();
+          var cache = {};
+          try { cache = JSON.parse(prevData) || {}; } catch (e) { cache = {}; }
+          Object.keys(cache).forEach(function(id) { if (pick.reportIds.indexOf(id) < 0) delete cache[id]; });
+          try {
+            localStorage.setItem('playerReport', JSON.stringify(now));
+            localStorage.setItem('playerReportData', JSON.stringify(cache));
+            localStorage.setItem(seenKey, String(pick.updatedAt));
+          } catch (e) { return null; }
+          return {
+            count: pick.reportIds.length,
+            undo: function() {
+              try {
+                if (prevReport == null) localStorage.removeItem('playerReport'); else localStorage.setItem('playerReport', prevReport);
+                if (prevData == null) localStorage.removeItem('playerReportData'); else localStorage.setItem('playerReportData', prevData);
+                localStorage.setItem(seenKey, String(pick.updatedAt));
+              } catch (e) {}
+            }
+          };
+        });
+    }).catch(function() { return null; });
+  }
   var ArmoryIdentity = (function() {
     var SUP_KINDS = ['inv', 'bench', 'chips', 'gear', 'runepool', 'heroes', 'formation'];
 
@@ -1020,6 +1113,7 @@
     isSupplementPrivate: _ar_isSupplementPrivate, applySupplementsToMerged: _ar_applySupplementsToMerged,
     getRosterMap: _ar_getRosterMap, fetchJson: fetchJson, fetchReportResponse: fetchReportResponse,
     validReportId: _ar_validReportId, extractPlayerData: extractPlayerData,
+    snapshotUpdate: _ar_snapshotUpdate, pickSnapshotUpdate: _ar_pickSnapshotUpdate, mergeSnapshotMarches: _ar_mergeSnapshotMarches,
     loadItemTable: _ar_loadItemTable, loadInvLookups: _ar_loadInvLookups, lastSnapshotTs: _ar_lastSnapshotTs,
     sourcePriority: _ar_getSourcePriority, plainError: _ar_plainError,
     clearedTsFrom: _ar_clearedTsFrom, shouldDropForClear: _ar_shouldDropForClear, supTsMs: _ar_supTsMs,

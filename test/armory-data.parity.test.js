@@ -16,7 +16,7 @@ const AD = require('../pages/armory-data.js');
 const Core = require('../pages/armory-core.js');
 
 const FILE = fs.readFileSync(path.join(P.ROOT, 'pages/armory-data.js'), 'utf8');
-const FNS = ['fetchReportResponse', 'fetchJson', '_ar_validReportId', 'getStoredIdentity', '_ar_plainError', '_ar_handshake', '_ar_storeUid',
+const FNS = ['fetchReportResponse', 'fetchJson', '_ar_validReportId', '_ar_snapTime', '_ar_pickSnapshotUpdate', '_ar_mergeSnapshotMarches', '_ar_snapshotUpdate', 'getStoredIdentity', '_ar_plainError', '_ar_handshake', '_ar_storeUid',
   '_ar_getStoredUid', '_ar_ensureSupplementToken', '_ar_sha256Hex', '_ar_isUnlocked', '_ar_setUnlocked', '_ar_supTsMs', '_ar_clearedTsFrom',
   '_ar_shouldDropForClear', '_ar_dropLocalSupplement', '_ar_applyClearedMarker', '_ar_recentlyCleared', '_ar_fetchSupplementPrivacy',
   '_ar_isSupplementPrivate', '_ar_fetchSupplement', '_ar_hydrateSupplementsFromWorker', '_ar_getRosterMap', '_ar_loadItemTable',
@@ -47,7 +47,7 @@ test('every copied function and var is the exact text of the page (names are not
 function pageSide(handler, storageInit) {
   const fetch = W.makeFetch(handler);
   const localStorage = W.memStorage(storageInit);
-  const ctx = P.loadPage(FNS.concat(VARS, ['_ar_synthDecorationsFromSupp', '_ar_synthSkinsFromSupp']), { fetch, localStorage, crypto: require('node:crypto').webcrypto, TextEncoder, location: { reload() {} } });
+  const ctx = P.loadPage(FNS.concat(VARS, ['_ar_synthDecorationsFromSupp', '_ar_synthSkinsFromSupp']), { fetch, localStorage, crypto: require('node:crypto').webcrypto, TextEncoder, setTimeout, clearTimeout, location: { reload() {} } });
   return { ctx, fetch, localStorage };
 }
 function moduleSide(handler, storageInit) {
@@ -239,4 +239,32 @@ test('item table / inventory lookups: same URLs, one fetch each', async () => {
   const pl = await p.ctx._ar_loadInvLookups(), ml = await m.d.loadInvLookups();
   assert.deepStrictEqual(Object.keys(ml).sort(), Object.keys(pl).sort());
   assert.deepStrictEqual(urls(m.fetch).sort(), urls(p.fetch).sort());
+});
+
+test('Snapshot update: the page\'s text and the module make the same requests, store the same list and give the same pick / merge', async () => {
+  const T = Date.parse('2026-10-11T14:54:01.000Z'), A = '2234567890123456789', B = '3234567890123456789';
+  const cfg = (o) => Object.assign({ shortcode: 'YZFU', updatedAt: new Date(T).toISOString(), reportIds: A + ',' + B, snapshot: true }, o || {});
+  const handler = (u) => {
+    if (u === W.WORKER + '/report-configs') return { status: 200, body: { ok: true, configs: [cfg()] } };
+    if (u.startsWith(W.WORKER + '/report-config?code=')) return { status: 200, body: { ok: true, reportIds: A + ',' + B, marchGroups: [{ name: 'March 1', heroIds: [1, 2, 3] }, { name: 'March 2', heroIds: [4, 5, 6] }] } };
+    return undefined;
+  };
+  const owner = { playerIdentity: JSON.stringify({ name: W.NAME, siteKey: W.SK }), armory_unlocked: JSON.stringify({ [W.SK]: true }),
+    playerReport: JSON.stringify({ player: { name: W.NAME, siteKey: W.SK }, reportIds: [W.REPORT_ID], marchGroups: [{ name: 'Main', heroIds: [3, 2, 1] }] }), playerReportData: '{"1234567890123456789":{}}' };
+  const p = pageSide(handler, owner), m = moduleSide(handler, owner);
+  const ur = await p.ctx._ar_snapshotUpdate(), um = await m.d.snapshotUpdate();
+  assert.equal(um.count, ur.count);
+  assert.deepStrictEqual(urls(m.fetch), urls(p.fetch));
+  const norm = (st) => { const d = st.dump(); const r = JSON.parse(d.playerReport); delete r.setAt; d.playerReport = JSON.stringify(r); return d; };
+  assert.deepStrictEqual(norm(m.storage), norm(p.localStorage));
+  um.undo(); ur.undo();
+  assert.deepStrictEqual(m.storage.dump(), Object.assign({}, p.localStorage.dump()), 'Undo ends in the same storage');
+  const saved = { reportIds: [W.REPORT_ID], shortcode: 'PMMQ' };
+  for (const [c, s, seen] of [[[cfg()], saved, 0], [[cfg()], saved, T], [[cfg(), cfg({ shortcode: 'PMMQ', snapshot: false, updatedAt: new Date(T + 1).toISOString() })], saved, 0],
+    [[cfg({ reportIds: W.REPORT_ID })], saved, 0], [[cfg({ snapshot: false })], saved, 0], [[], null, 0]]) {
+    assert.deepStrictEqual(P.j(m.d.pickSnapshotUpdate(c, s, seen)), P.j(p.ctx._ar_pickSnapshotUpdate(c, s, seen)));
+  }
+  for (const [o, s] of [[[], [{ name: 'a', heroIds: [1] }]], [[{ name: 'Mine', heroIds: [2, 1] }], [{ name: 'x', heroIds: [1, 2] }, { name: 'y', heroIds: [3] }]], [null, null]]) {
+    assert.deepStrictEqual(P.j(m.d.mergeSnapshotMarches(o, s)), P.j(p.ctx._ar_mergeSnapshotMarches(o, s)));
+  }
 });

@@ -1,8 +1,9 @@
 /* armory.html: the Armory v2 screens (phase 2b). First paint: boot, routing, Overview, Heroes > Battle.
  * armory-more.js (loaded on first use): Start, Status, Settings, Share, Roster, Gear. armory-base.js: the Base section. armory-ht.js: the HT section.
  * Data comes from ArmoryData (loaders, identity) and ArmoryVM (view-model); nothing here re-computes game rules.
- * v2 never writes `playerReport` for a ?code= link or on its own initiative; it writes it only when the player builds
- * their own armory on the Start screen, edits their own report list, or mints a share code (all v1 behaviour).
+ * v2 never writes `playerReport` for a ?code= link; it writes it only when the player builds their own armory on the
+ * Start screen, edits their own report list, or mints a share code (all v1 behaviour), plus one case: a verified owner
+ * whose own Snapshot setup is newer than this device's list gets it adopted, with a notice and Undo (ArmoryData.snapshotUpdate).
  */
 (function () {
 'use strict';
@@ -321,7 +322,7 @@ function adoptOwnCode(res) {
   var ids = reps.map(function (r) { return r.id; }), cache = {};
   reps.forEach(function (r) { cache[r.id] = r.extracted; });
   var pl = JSON.parse(JSON.stringify(res.player)); pl.siteKey = k;
-  var marches = Array.isArray(res.marchGroups) && res.marchGroups.length ? res.marchGroups : same && Array.isArray(prev.marchGroups) ? prev.marchGroups : [];
+  var marches = same && Array.isArray(prev.marchGroups) && prev.marchGroups.length ? prev.marchGroups : Array.isArray(res.marchGroups) ? res.marchGroups : [];   /* the player's own march names win over a code's generic ones */
   var keep = { player: pl, reportIds: ids, marchGroups: marches };
   if (same && prev.shortcode) keep.shortcode = prev.shortcode; else { keep.shortcode = S.code; ls('ar_saved_sig_v1', ids.join(',') + '|' + JSON.stringify(marches)); }
   ls('playerReport', JSON.stringify(keep)); ls('playerReportData', JSON.stringify(cache));
@@ -344,6 +345,15 @@ function planFallback() {
       return run({ dataOnly: true, player: { siteKey: k } });   /* nothing is held for this player here, so the worker's data is the first read */
     }).then(function (res) { if (res.state !== 'ready') renderStart('expired'); });
   }).catch(function () { renderStart('error'); });
+}
+/* one line + Undo after a Snapshot setup replaced this device's battle reports; Undo restores the list and reloads the armory from it */
+function snapNotice(u) {
+  var old = document.getElementById('snapNote'); if (old) old.remove();
+  var n = document.createElement('div'); n.id = 'snapNote'; n.className = 'snapnote'; n.setAttribute('role', 'status');
+  var t = document.createElement('span'); t.textContent = 'Updated to your latest battle reports from Snapshot';
+  var b = document.createElement('button'); b.type = 'button'; b.className = 'tb link'; b.textContent = 'Undo';
+  b.addEventListener('click', function () { u.undo(); n.remove(); run({ saved: true }); });
+  n.appendChild(t); n.appendChild(b); document.body.appendChild(n);
 }
 function boot() {
   if (shim()) return;
@@ -368,7 +378,13 @@ function boot() {
   }
   /* first paint from what this device already holds, then the worker's newer game data */
   run({ saved: true, noHydrate: true }).then(function (res) {
-    if (res.state === 'ready') { S.saved = true; run({ saved: true }); return; }
+    if (res.state === 'ready') {
+      S.saved = true;
+      /* a newer Snapshot setup replaces this device's report list (verified owner, own list not newer): adopt, then the one full pass reads it */
+      var snap = res.readOnly || !(res.identity && res.identity.unlocked) ? Promise.resolve(null) : d.snapshotUpdate();
+      snap.then(function (u) { if (u) snapNotice(u); run({ saved: true }); });
+      return;
+    }
     if (res.state === 'none' && ls('armory_v2_switched') === '1') { toStart(); return; }
     if (res.state === 'none') {
       run({ dataOnly: true, noHydrate: true }).then(function (r2) {

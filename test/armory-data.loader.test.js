@@ -407,3 +407,133 @@ test('enigma decode hints belong to the player being loaded: a second load on th
   assert.equal(r2.state, 'ready');
   assert.notDeepStrictEqual(probe(), [3, 2, 4], 'nothing of the first load is left');
 });
+
+// ---- Snapshot battle reports: a verified owner's newer Snapshot setup replaces this device's list (2026-10-11) ------
+const OLD_ID = W.REPORT_ID, NEW_A = '2234567890123456789', NEW_B = '3234567890123456789';
+const T0 = Date.parse('2026-10-11T14:54:01.000Z');
+const iso = (ms) => new Date(ms).toISOString();
+const savedRec = (over) => JSON.stringify(Object.assign({ player: { name: W.NAME, siteKey: W.SK }, reportIds: [OLD_ID], marchGroups: [{ name: 'Main', heroIds: [1, 2, 3] }] }, over || {}));
+const owner = (over) => Object.assign(ident(), { armory_unlocked: JSON.stringify({ [W.SK]: true }), playerReport: savedRec(over) });
+const snapCfg = (over) => Object.assign({ shortcode: 'YZFU', updatedAt: iso(T0), date: iso(T0), reportIds: NEW_A + ',' + NEW_B, snapshot: true }, over || {});
+const snapRoute = (configs, cfg) => (u) => {
+  if (u === W.WORKER + '/report-configs') return { status: 200, body: { ok: true, configs } };
+  if (u.startsWith(W.WORKER + '/report-config?code=')) return { status: 200, body: Object.assign({ ok: true, playerName: W.NAME, siteKey: W.SK, reportIds: NEW_A + ',' + NEW_B,
+    marchGroups: [{ name: 'March 1', heroIds: [1, 2, 3] }, { name: 'March 2', heroIds: [4, 5, 6] }] }, cfg || {}) };
+  return undefined;
+};
+const stored = (st) => JSON.parse(st.getItem('playerReport'));
+
+test('snapshot: a newer Snapshot setup is adopted; own march names kept, shortcode kept, seen marked, notice data returned', async () => {
+  const { d, storage, fetch } = make(snapRoute([snapCfg()]), owner({ shortcode: 'PMMQ' }));
+  const u = await d.snapshotUpdate();
+  assert.equal(u.count, 2);
+  const s = stored(storage);
+  assert.deepStrictEqual(s.reportIds, [NEW_A, NEW_B]);
+  assert.equal(s.shortcode, 'PMMQ');
+  assert.deepStrictEqual(s.marchGroups, [{ name: 'Main', heroIds: [1, 2, 3] }, { name: 'March 2', heroIds: [4, 5, 6] }], 'own name for the matching heroes; the unmatched snapshot march is added');
+  assert.ok(s.setAt > 0);
+  assert.equal(storage.getItem('ar_snap_seen_v1_' + W.SK), String(T0));
+  assert.ok(!fetch.calls.some((c) => c.opts && c.opts.headers && c.opts.headers.Authorization), 'no token is needed or sent');
+  assert.ok(!JSON.stringify(fetch.calls.map((c) => c.body)).includes('deviceId'), 'no device id is sent');
+});
+
+test('snapshot: with no own march groups the snapshot marches are taken', async () => {
+  const { d, storage } = make(snapRoute([snapCfg()]), owner({ marchGroups: [] }));
+  await d.snapshotUpdate();
+  assert.deepStrictEqual(stored(storage).marchGroups.map((m) => m.name), ['March 1', 'March 2']);
+});
+
+test('snapshot: the loader then reads the new ids from the CDN, not the old one', async () => {
+  const { d, fetch } = make((u, o, c) => snapRoute([snapCfg()])(u, o, c), owner());
+  await d.snapshotUpdate();
+  fetch.calls.length = 0;
+  await d.loadArmory({ saved: true, noHydrate: true });
+  const cdn = fetch.calls.map((c) => c.url).filter((u) => u.includes('aliyuncs'));
+  assert.ok(cdn.some((u) => u.includes(NEW_A)) && cdn.some((u) => u.includes(NEW_B)));
+  assert.ok(!cdn.some((u) => u.includes(OLD_ID)));
+});
+
+test('snapshot: this device\'s own saved list newer than the Snapshot setup is left alone (the PMMQ case)', async () => {
+  const own = { shortcode: 'PMMQ', updatedAt: iso(T0 + 270000), date: iso(T0 + 270000), reportIds: OLD_ID, snapshot: false };
+  const a = make(snapRoute([snapCfg(), own]), owner({ shortcode: 'PMMQ' }));
+  assert.equal(await a.d.snapshotUpdate(), null);
+  assert.deepStrictEqual(stored(a.storage).reportIds, [OLD_ID]);
+  const b = make(snapRoute([snapCfg()]), owner({ setAt: T0 + 1000 }));
+  assert.equal(await b.d.snapshotUpdate(), null, 'a local change after the Snapshot setup');
+  assert.deepStrictEqual(stored(b.storage).reportIds, [OLD_ID]);
+});
+
+test('snapshot: a player who never saved a code, and an own code older than the Snapshot, both adopt', async () => {
+  assert.ok(await make(snapRoute([snapCfg()]), owner()).d.snapshotUpdate());
+  const older = { shortcode: 'PMMQ', updatedAt: iso(T0 - 5000), date: iso(T0 - 5000), reportIds: OLD_ID, snapshot: false };
+  assert.ok(await make(snapRoute([snapCfg(), older]), owner({ shortcode: 'PMMQ' })).d.snapshotUpdate());
+});
+
+test('snapshot: same report ids change nothing and are marked seen; seen blocks a repeat', async () => {
+  const a = make(snapRoute([snapCfg({ reportIds: OLD_ID })]), owner());
+  assert.equal(await a.d.snapshotUpdate(), null);
+  assert.equal(a.storage.getItem('ar_snap_seen_v1_' + W.SK), String(T0));
+  const b = make(snapRoute([snapCfg()]), Object.assign(owner(), { ['ar_snap_seen_v1_' + W.SK]: String(T0) }));
+  assert.equal(await b.d.snapshotUpdate(), null);
+  assert.equal(b.fetch.calls.filter((c) => c.url.includes('report-config?code=')).length, 0);
+});
+
+test('snapshot: unverified, view-only, no identity or a different player makes no list call and writes nothing', async () => {
+  const cases = [
+    Object.assign(ident(), { playerReport: savedRec() }),                                                              // not unlocked
+    Object.assign(owner({ _viewOnly: true })),                                                                         // view-only
+    { armory_unlocked: JSON.stringify({ [W.SK]: true }), playerReport: savedRec() },                                  // no identity
+    Object.assign(owner(), ident('ffffffffffffffff', 'Other')),                                                        // identity is someone else
+    {},                                                                                                                // nothing saved
+  ];
+  for (const init of cases) {
+    const { d, fetch, storage } = make(snapRoute([snapCfg()]), init);
+    assert.equal(await d.snapshotUpdate(), null);
+    assert.equal(fetch.calls.filter((c) => c.url.includes('/report-config')).length, 0);
+    assert.equal(storage.getItem('ar_snap_seen_v1_' + W.SK), null);
+  }
+});
+
+test('snapshot: only configs flagged snapshot count (advisor and device codes are ignored); a missing flag degrades to nothing', async () => {
+  const unflagged = [snapCfg({ snapshot: false }), snapCfg({ snapshot: undefined, shortcode: 'ABCD' }), snapCfg({ snapshot: 'true', shortcode: 'EFGH' })];
+  const { d, storage } = make(snapRoute(unflagged), owner());
+  assert.equal(await d.snapshotUpdate(), null);
+  assert.deepStrictEqual(stored(storage).reportIds, [OLD_ID]);
+});
+
+test('snapshot: a list that fails, times out or is malformed loads the old ids; the newest of several Snapshot configs wins', async () => {
+  for (const over of [() => ({ status: 500, body: {} }), () => { throw new Error('net'); }, () => ({ status: 200, body: 'x' })]) {
+    const { d, storage } = make((u) => (u === W.WORKER + '/report-configs' ? over() : undefined), owner());
+    assert.equal(await d.snapshotUpdate(), null);
+    assert.deepStrictEqual(stored(storage).reportIds, [OLD_ID]);
+  }
+  const { d, storage } = make(snapRoute([snapCfg({ shortcode: 'OLD1', updatedAt: iso(T0 - 9e5), reportIds: NEW_B }), snapCfg()]), owner());
+  await d.snapshotUpdate();
+  assert.deepStrictEqual(stored(storage).reportIds, [NEW_A, NEW_B]);
+});
+
+test('snapshot: Undo restores the old list, marches and cache, and the same setup is not offered again', async () => {
+  const before = owner({ shortcode: 'PMMQ' });
+  before.playerReportData = JSON.stringify({ [OLD_ID]: { x: 1 } });
+  const { d, storage } = make(snapRoute([snapCfg()]), before);
+  const u = await d.snapshotUpdate();
+  assert.equal(storage.getItem('playerReportData'), '{}', 'the dropped report leaves the cache');
+  u.undo();
+  assert.equal(storage.getItem('playerReport'), before.playerReport);
+  assert.equal(storage.getItem('playerReportData'), before.playerReportData);
+  assert.equal(await d.snapshotUpdate(), null, 'seen stays set after Undo');
+  assert.deepStrictEqual(stored(storage).reportIds, [OLD_ID]);
+});
+
+test('snapshot: pick and merge, pure', () => {
+  const { d } = make();
+  const saved = { reportIds: [OLD_ID], shortcode: 'PMMQ' };
+  assert.equal(d.pickSnapshotUpdate([], saved, 0), null);
+  assert.equal(d.pickSnapshotUpdate([snapCfg()], null, 0), null);
+  assert.equal(d.pickSnapshotUpdate([snapCfg({ reportIds: 'bad,ids' })], saved, 0), null);
+  assert.equal(d.pickSnapshotUpdate([snapCfg()], saved, T0), null, 'seen at the same time');
+  assert.equal(d.pickSnapshotUpdate([snapCfg()], saved, T0 - 1).code, 'YZFU');
+  assert.deepStrictEqual(d.mergeSnapshotMarches([], [{ name: 'March 1', heroIds: [1] }]), [{ name: 'March 1', heroIds: [1] }]);
+  assert.deepStrictEqual(d.mergeSnapshotMarches([{ name: 'Mine', heroIds: [3, 2, 1] }], [{ name: 'March 1', heroIds: [1, 2, 3] }]), [{ name: 'Mine', heroIds: [3, 2, 1] }]);
+  assert.deepStrictEqual(d.mergeSnapshotMarches(null, null), []);
+});
