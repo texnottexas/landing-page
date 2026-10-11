@@ -277,6 +277,8 @@ var CSS =
   '.awk-req{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:var(--fs-14)}.awk-req li{display:flex;align-items:center;gap:8px;color:var(--muted)}.awk-req li.ok{color:var(--text)}' +
   '.awk-req .i{width:16px;height:16px;color:var(--ok);flex:none}.awk-req .awk-nil{width:16px;height:16px;flex:none;border:1.5px solid var(--border);border-radius:50%}' +
   '.awk-vd{margin:8px 0 0;font-size:var(--fs-14)}.awk-selreq{padding:8px;border:1px solid var(--accent);border-radius:var(--r-card)}' +
+  '.awk-jump{margin:0 0 8px -4px;padding:0 4px}.awk-jump .i{width:16px;height:16px}.awk-back .i{transform:rotate(180deg)}.awk-back{margin-left:auto}' +
+  '@media (min-width:768px){.awk-jump{display:none}}' +
   '@media (max-width:767px){.awk-eff:not(.all){display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}}' +
   '@media (min-width:768px){.awk-sk{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}}' +
   '@media (min-width:1024px){.awk-sets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}.awk-set{border:1px solid var(--rule);border-radius:var(--r-card);padding:12px}.awk-set:first-child{padding-top:12px;border-top:1px solid var(--rule)}.awk-step{max-width:720px}}';
@@ -348,6 +350,7 @@ function block(id) {
     h += '<span class="pill p-lv"><span translate="no">Lv.' + a.aw + ' of 40</span></span>' + (a.full ? '<span class="pill p-lv">Full</span>' : '') + (lab ? '<span class="awk-lab" translate="no">' + esc(lab) + '</span>' : '');
     if (a.awp) h += '<span class="awk-pw">' + nd('Awakening power ' + fmtInt(a.awp)) + '</span><button class="info" type="button" data-open="awkpower" aria-label="What awakening power is">' + ic('info', 'sm') + '</button>';
     if (A.stones != null && a.mode === 'full' && !a.full) h += '<span class="awk-bag">' + nd(fmtInt(A.stones) + ' Awakening Stones in bag') + '</span>';
+    if ($('.awk-top')) h += '<button class="tb link awk-back" type="button" data-awkback>' + ic('down', 'sm') + 'Back to the Awakening card</button>';
     h += '</div>';
     if (a.mode === 'level') return h + '<p class="awk-note">Skill details arrive with the next site update.</p>';
     if (a.mode === 'report') return h + '<p class="awk-note">Skill levels need game data.' + action + '</p>';
@@ -376,6 +379,9 @@ function fill(id) {
     slots.forEach(function (el) {
       try { el.innerHTML = ok || !needsData(id) ? block(id) : '<p class="awk-note">Could not load the awakening details. Reload the page to try again.</p>'; } catch (e) { if (window.console) console.error(e); el.innerHTML = '<p class="awk-note">Could not show the awakening details.</p>'; }
       el.classList.add('awk-bk');
+      /* phones: the block sits under six gear cards, so a row above the gear jumps to it (Battle only: the Roster has no gear) */
+      var pn = el.parentNode, g = pn && pn.querySelector ? pn.querySelector('.gears') : null, ja = vmA().byId[id];
+      if (g && ja && ja.aw > 0 && (ja.mode === 'full' || ja.mode === 'old') && !pn.querySelector('.awk-jump')) g.insertAdjacentHTML('beforebegin', '<button class="tb link awk-jump" type="button" data-awkjump="' + (+id) + '">' + ic('down', 'sm') + 'Awakening skills</button>');
     });
     setTimeout(trim, 300);
     var hl = S.awkScroll && $('.awk-slot[data-awk="' + (+id) + '"] .awk-c.awk-hl'); if (hl) { S.awkScroll = false; setTimeout(function () { hl.scrollIntoView({ block: 'center' }); }, 60); }
@@ -420,7 +426,7 @@ function stepHtml(P, A) {
   else if (set && set !== P.main) why = 'The main march is done; the ' + (P.seconds.indexOf(set) === 0 ? 'close second' : 'next march') + ' is next.';
   else why = '';
   var q = nameOf(m.id, m.slot);
-  return '<div class="awk-step' + (S.awkHl ? ' awk-hl' : '') + '">' + art(BASE + 'hero-awake-skills/hero_awake' + (+m.id) + '_' + (+m.slot) + '.png', 'ico', q.charAt(0), '') + '<div class="awk-stb"><span class="pill p-eff">' + (sv ? 'Save for' : 'Uses what you have') + '</span><div class="awk-stl">' + line + '</div>' + or + '<div class="awk-sm">' + meta + '</div>' + bar + (why ? '<div class="awk-sm">' + why + '</div>' : '') + '</div></div>';
+  return '<div class="awk-step' + (S.awkHl ? ' awk-hl' : '') + '">' + art(BASE + 'hero-awake-skills/hero_awake' + (+m.id) + '_' + (+m.slot) + '.png', 'ico', q.charAt(0), '') + '<div class="awk-stb"><span class="pill p-eff">' + (sv ? 'Save for' : 'Uses what you have') + '</span><div class="awk-stl">' + line + '</div>' + or + '<div class="awk-sm">' + meta + '</div>' + bar + (why ? '<div class="awk-sm">' + why + '</div>' : '') + '<a class="tb link awk-go" href="' + href(m.id, '&awk=1&skill=' + m.slot) + '">Go to <span translate="no">' + esc(heroName(m.id)) + '</span>’s skills' + ic('down', 'sm') + '</a></div></div>';
 }
 /* true when every awakened live hero has skill levels, so a claim about skills at Lv.10 is backed by data */
 function allKnown(A) { return Object.keys(A.byId).every(function (k) { var a = A.byId[k]; return !a.aw || !a.live || !!a.aws; }); }
@@ -489,6 +495,14 @@ function sheet(kind) {
 function wire() {
   if (wired) return; wired = true;
   document.addEventListener('click', function (e) {
+    var j = e.target.closest ? e.target.closest('[data-awkjump], [data-awkback]') : null;
+    if (j) {
+      e.preventDefault();
+      if (j.hasAttribute('data-awkjump')) { var sl = $('.awk-slot[data-awk="' + (+j.getAttribute('data-awkjump')) + '"]'); if (sl) sl.scrollIntoView({ block: 'start' }); return; }
+      var tp = $('.awk-top'); if (!tp) return;
+      if (!S.awkOpen) { S.awkOpen = true; paintCard(); }
+      tp.scrollIntoView({ block: 'start' }); return;
+    }
     var t = e.target.closest ? e.target.closest('[data-awkmore], [data-awkeffects]') : null; if (!t) return;
     if (t.hasAttribute('data-awkeffects')) { var g = t.nextElementSibling, on2 = !g.classList.contains('awk-effopen'); g.classList.toggle('awk-effopen', on2); t.setAttribute('aria-expanded', on2 ? 'true' : 'false'); t.textContent = on2 ? 'Hide effects' : 'Show effects'; return; }
     var p = t.previousElementSibling; if (!p) return;
