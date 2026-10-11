@@ -26,7 +26,7 @@ const VERBATIM = ['boBuildOwnedBeasts', 'boBuildCurrentPlan', 'boConditionIdForS
 const FIX = { platforms: P.data('enigma-platforms.json'), enhance: P.data('enigma-platform-enhance.json'), conditions: P.data('enigma-field-conditions.json') };
 const PAGE_JSON = { 'data/enigma-platforms.json': FIX.platforms, 'data/enigma-platform-enhance.json': FIX.enhance, 'data/enigma-field-conditions.json': FIX.conditions };
 const coreFns = Object.keys(C).filter((k) => typeof C[k] === 'function' && !['setIdentity', 'setHeroCache', 'setDecorLookups', 'setPlatforms', 'setEnhance', 'setFieldConditions',
-  'getFieldConditions', 'setSuppDecode', 'computeDecorRecs', 'nextMoves', 'moves', 'create'].includes(k));
+  'getFieldConditions', 'setSuppDecode', 'computeDecorRecs', 'decorScopeIds', 'nextMoves', 'moves', 'create'].includes(k));
 const STATE = ['EB_PLATFORM_REQS', 'EB_HOLE_TO_ORDER', 'boEnhData', 'boFieldConditions', 'boPlatforms', 'boHoleIndex', 'BO_TG_DYNAMIC_OVERRIDES', 'BO_TG_HAS_GEAR_DATA',
   'HERO_CACHE', 'HERO_TYPE_CACHE'];
 const NAMES = VERBATIM.concat(coreFns, STATE, Object.keys(G).filter((k) => k !== 'setSuppDecode'), Object.keys(B), ['ebLoadPlatformReqs', '_ebPlatformsPromise', 'boLoadOptimizerData', '_ar_synthEnigmasFromSupp']);
