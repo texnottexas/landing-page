@@ -97,13 +97,30 @@ test('untranslated keys and ids never reach players: names and descriptions', ()
   assert.equal(L.view(d, { tab: 'item', q: 'unknown' }).cells.length, 3, 'unknown rows are findable as unknown');
 });
 
-test('descriptions: no {0} placeholder, no [markup], over the whole item table', () => {
-  assert.equal(L.cleanDesc('Increase the skill effect of Stromoy\'s skill by {0}% (without increasing the number of turns).'), 'Increase the skill effect of Stromoy\'s skill (without increasing the number of turns).');
-  assert.equal(L.cleanDesc('Army DEF against Air Force +{0}%'), 'Army DEF against Air Force');
+test('descriptions: placeholders read X, nothing glued, no [markup], over the whole item table', () => {
+  assert.equal(L.cleanDesc('Increases all marching time of this target by {0} minute(s) for {1} minute(s)'), 'Increases all marching time of this target by X minute(s) for X minute(s)');
+  assert.equal(L.cleanDesc('the damage equals to {0}% of the total damage'), 'the damage equals to X% of the total damage');
+  assert.equal(L.cleanDesc('Army DEF against Air Force +{0}%'), 'Army DEF against Air Force +X%');
   assert.equal(L.cleanDesc('Boost the [Field of Battle Force] skill'), 'Boost the Field of Battle Force skill');
+  assert.equal(L.cleanDesc('item_des_Godzilla'), ''); assert.equal(L.cleanDesc('item_name_68000_auto'), '');
+  const words = (t) => new Set(String(t).toLowerCase().replace(/[{}\[\]]|\d+/g, ' ').split(/[^a-z']+/).filter(Boolean));
   let n = 0;
-  for (const k of Object.keys(item)) { const t = L.cleanDesc(item[k].d); n++; assert.ok(!/[{}\[\]]/.test(t) && !/ {2}/.test(t), k + ': ' + t); }
+  for (const k of Object.keys(item)) {
+    const o = String(item[k].d == null ? '' : item[k].d), t = L.cleanDesc(o); n++;
+    assert.ok(!/[{}\[\]]/.test(t) && !/ {2}/.test(t), k + ': ' + t);
+    const ow = words(o); for (const w of words(t)) assert.ok(w === 'x' || ow.has(w), k + ' glued or invented "' + w + '": ' + t); // every word of the output was a word of the input
+    if (/\{\d\}/.test(o)) assert.ok(/X/.test(t) || /^\s*$/.test(t), k);
+  }
   assert.ok(n > 10000);
+});
+
+test('names: any single token with an underscore is a key; {n} is stripped from names; rarity counts match the grid', () => {
+  for (const k of ['item_name_Godzilla_skill', 'item_name_Sins_hero', 'item_des_x', 'item_name_68000_auto', 'item_name_Godzilla_building']) assert.equal(L.displayName({ name: k }, 'item'), 'Unknown item', k);
+  assert.equal(L.displayName({ name: 'Prajna Mask Clue {0}' }, 'item'), 'Prajna Mask Clue');
+  assert.equal(L.displayName({ name: 'Rust_Free Paint' }, 'item'), 'Rust_Free Paint', 'a name with spaces is a name');
+  const r = L.rarities(data, 'item');
+  for (const x of r.slice(1)) assert.equal(x[2], L.view(data, { tab: 'item', quality: x[0] }).cells.length, 'rarity ' + x[0] + ' opens exactly the cells it counts');
+  assert.ok(r.reduce((a, x) => a + (x[0] ? x[2] : 0), 0) < data.tabs.item.length, 'folded packs are not counted');
 });
 
 test('the Awakening Stone and Cards, missing from the item table, get the armory\'s own names and art', () => {

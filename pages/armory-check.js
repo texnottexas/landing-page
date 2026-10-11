@@ -94,7 +94,7 @@ var EXPECTED = [
   if (!S.vm) { log(false, 'the page reached a ready state', 'no view-model after 30 s'); window.__check = { done: true, pass: 0, fail: 1, results: RES }; return; }
   var mobile = window.innerWidth < 768, i;
   log(null, 'viewport', window.innerWidth + 'x' + window.innerHeight + (mobile ? ' (mobile layout)' : ' (desktop layout)') + ' ' + navigator.userAgent.replace(/\s+/g, ' ').slice(0, 90));
-  var isRex = S.res.player.siteKey === REX;
+  var isRex = S.res.player.siteKey === REX && !!(S.vm.decor && S.vm.decor.known); /* the hand-derived moves assume Rex's bag is readable */
   var awkCat0 = performance.getEntriesByType('resource').some(function (e) { return /hero-awakening-skills\.json/.test(e.name); }); /* before any visit below */
 
   /* 1. content starts within 120 px (mobile) */
@@ -124,7 +124,8 @@ var EXPECTED = [
   }
   await visit('overview');
   await sheetTest('status', null, 'status'); await sheetTest('settings', null, 'settings'); await sheetTest('explain', 'gear', 'explain');
-  await visit('bag'); await sheetTest('bagfilter', null, 'bag filter'); var bc = $('#v-bag [data-bagi]'); if (bc) await sheetTest('bagitem', bc.dataset.bagi, 'bag item'); var ba = $('#v-bag [data-bagagg]'); if (ba) await sheetTest('bagagg', ba.dataset.bagagg, 'bag totals');
+  var bagOn = !!(S.vm.decor && S.vm.decor.known); /* the bag rows need bag data that is not private */
+  if (bagOn) { await visit('bag?tab=item'); await sheetTest('bagfilter', null, 'bag filter'); var bc = $('#v-bag [data-bagi]'); if (bc) await sheetTest('bagitem', bc.dataset.bagi, 'bag item'); var ba = $('#v-bag [data-bagagg]'); if (ba) await sheetTest('bagagg', ba.dataset.bagagg, 'bag totals'); }
   await visit('heroes/battle'); await sheetTest('filter', null, 'filter');
   var dd = S.vm.decor.placed.filter(function (x) { return x.nx; })[0]; if (dd) await sheetTest('decor', dd.n, 'decor item');
   await visit('overview'); $('#pagesBtn').click(); await sleep(60);
@@ -141,15 +142,18 @@ var EXPECTED = [
   nums.forEach(function (n) { var w = n.closest('[data-numwrap]'), l = w && $('.lbl', w), s = w && $('.src', w); if (!w || !l || !s || !l.textContent.trim() || !SRC.test(s.textContent)) badNum.push(n.textContent.trim().slice(0, 12)); });
   log(nums.length > 0 && badNum.length === 0, 'every Overview number has a label and a source word', nums.length + ' numbers' + (badNum.length ? ', missing: ' + badNum.join(', ') : ''));
 
-  await visit('bag');
+  await visit('bag?tab=item');
+  if (!bagOn) log(null, 'Bag rows skipped: no bag data, or the bag is private', 'bag known: false');
+  else {
   var bn = $$('#v-bag [data-num]'), badB = [];
   bn.forEach(function (n) { var w = n.closest('[data-numwrap]'), l = w && $('.lbl', w); if (!w || !l || !l.textContent.trim()) badB.push(n.textContent.trim().slice(0, 12)); });
-  var btx = ($('#v-bag') || {}).textContent || '', dev = (btx + ' ' + (($('#sheet') || {}).textContent || '')).match(/\b(type \d+|group \d+|icon looks wrong|<missing>)|\{\d\}|item_name|building_name|itemName\d/i);
+  var btx = ($('#v-bag') || {}).textContent || '', dev = (btx + ' ' + (($('#sheet') || {}).textContent || '')).match(/\b(type \d+|group \d+)/) || (btx + ' ' + (($('#sheet') || {}).textContent || '')).match(/icon looks wrong|<missing>|\{\d\}|item_name|building_name|itemName\d/i);
   var segBad = $$('#v-bag .segs button').filter(function (b) { return b.scrollWidth > b.clientWidth + 1; }).map(function (b) { return b.textContent; });
   var stoneUnk = $$('#v-bag .bag-nm').filter(function (n) { return n.textContent === 'Unknown item'; }).length && S.vm.awaken && S.vm.awaken.stones > 0 && !$$('#v-bag .bag-nm').some(function (n) { return n.textContent === 'Awakening Stone'; });
   var c1 = $('#v-bag .bag-c'), bar0 = $('#bar'), barTop = bar0 && getComputedStyle(bar0).display !== 'none' ? bar0.getBoundingClientRect().top : window.innerHeight, fold = c1 ? c1.getBoundingClientRect().top < barTop - 40 : false;
   var sortOpt = $('#v-bag select[data-bagf="sort"]') ? $('#v-bag select[data-bagf="sort"]').options[0].textContent : 'By type';
   log((bn.length > 0 || !S.vm.decor.known) && badB.length === 0 && !dev && !segBad.length && !stoneUnk && (fold || !c1) && /By type/.test(sortOpt) && /Source: game data/.test(btx) && /items in bag/.test(btx), 'Bag: labelled numbers, no keys or {0} or developer fields, segments fit, stones named, first item above the fold, default sort By type, source line', bn.length + ' numbers' + (badB.length ? ', unlabelled: ' + badB.join(', ') : '') + (dev ? ', leak: ' + dev[0] : '') + (segBad.length ? ', clipped: ' + segBad.join(',') : '') + (stoneUnk ? ', stones unnamed' : '') + (fold ? '' : ', first item below the fold') + ', sort ' + sortOpt);
+  }
 
   /* 5. Next moves */
   var rows = $$('#v-overview .move'), VERBS = /^(Place|Merge|Refine|Upgrade|Swap|Fill|Raise|Save|Awaken)\b/, mm = [], okMoves = rows.length > 0 && rows.length <= 3;

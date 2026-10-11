@@ -353,7 +353,7 @@ function loadEntries(fresh) {
     if (want) { paintReqs(); var c = $('.adv-card[data-rc="' + want + '"]'); if (c && c.scrollIntoView && !A.scrolled) { A.scrolled = true; setTimeout(function () { c.scrollIntoView({ block: 'start' }); }, 60); } }
   });
 }
-function privWarn(pf) { return pf.warn ? '<p class="t13 c-warn">' + esc(pf.warn) + ' <a class="tb link" href="' + esc(H.classicUrl('runepool')) + '">Make it visible on the classic page</a></p>' : ''; }
+function privWarn(pf) { return pf.warn ? '<p class="t13 c-warn">' + esc(pf.warn) + ' <a class="tb link" style="min-height:44px" href="' + esc(H.classicUrl('runepool')) + '">Make it visible on the classic page</a></p>' : ''; }
 function askCardHtml() {
   var key = sk(), c = ctx(), g = S.res.supp || {};
   var pf = preflight({ pool: c.base, privacy: S.res.privacy, supTs: { inv: core.advice.tsOf(g.inv), gear: core.advice.tsOf(g.gear) } });

@@ -646,22 +646,23 @@ function rarityName(q) { return RARITY[q] || ('Rarity ' + q); }
 var AGG = { gem: { name: 'Gems', file: 'inventory-icons/image__item__item_1000000.png', q: 0 }, odinium: { name: 'Odinium', file: 'treasury-icons/odinium.png', q: 0 }, food: { name: 'Food', file: 'treasury-icons/food.png', q: 0 }, oil: { name: 'Oil', file: 'treasury-icons/oil.png', q: 0 } };
 var DECOR_CAT_ORDER = ['March Size', 'Defense', 'Damage Boost', 'Others', 'Uncategorized'];
 var STONE_ID = 44301001, EXCL_SHARD_ID = 20213231, UNIVERSAL_DECOR_ID = 20213232, DECOR_BOX_ID = 10000196;
+function isKey(t) { return KEY_NAME.test(t) || (/^\S+$/.test(t) && t.indexOf('_') >= 0); } /* one token with an underscore is an untranslated key, with or without digits */
 var KEY_NAME = /^[a-z]+(_[a-z]+)*_?\d+$/i; /* the game's untranslated keys: item_name41104, building_name_4190, itemName10000031 */
 var BRANCH = { 1: 'Army', 2: 'Navy', 3: 'Air Force' };
 
 /* what a player reads for a row: a game key or an id never reaches the screen */
 function displayName(it, tab) {
   if (tab === 'unit') { var b = BRANCH[Math.floor(num(it.type) / 100)]; return b ? b + ' unit' : 'Unit'; }
-  var n = String(it.name == null ? '' : it.name).trim();
-  if (!n || KEY_NAME.test(n) || /^(Decor |Hero |Unit )?#\d+$/.test(n)) return 'Unknown item';
+  var n = String(it.name == null ? '' : it.name).replace(/\s*\{\d+\}/g, '').trim();
+  if (!n || isKey(n) || /^(Decor |Hero |Unit )?#\d+$/.test(n)) return 'Unknown item';
   return n;
 }
 /* descriptions: template placeholders ({0}), [bracket] markup and untranslated keys are dropped; the value of {0} is not in the table */
 function cleanDesc(s) {
   var t = String(s == null ? '' : s).trim();
-  if (KEY_NAME.test(t)) return '';
-  return t.replace(/\s*(?:by|of|to)?\s*\+?\{\d+\}\s*%?/g, '').replace(/\[([^\]]+)\]/g, '$1').replace(/[{}\[\]]/g, '')
-    .replace(/\s+([.,;)])/g, '$1').replace(/\(\s*\)/g, '').replace(/\s*[+\-]\s*$/, '').replace(/ {2,}/g, ' ').trim();
+  if (isKey(t)) return '';
+  /* a {n} placeholder reads X (its value is not in the table); no neighbouring word is touched */
+  return t.replace(/([A-Za-z])\{\d+\}/g, '$1 X').replace(/\{\d+\}(?=[A-Za-z])/g, 'X ').replace(/\{\d+\}/g, 'X').replace(/\[([^\]]+)\]/g, '$1').replace(/[{}\[\]]/g, '').replace(/\s+([.,;)])/g, '$1').replace(/ {2,}/g, ' ').trim();
 }
 /* the rehydrated bag + the labels a screen shows. known: { itemId: { n, f, d } } for ids the armory knows but the item table does not (Awakening Stone and Cards) */
 function prepare(data, known) {
@@ -816,7 +817,7 @@ function titanCats(data) {
 }
 /* the rarity filter of a tab: the tiers present, highest first, with counts */
 function rarities(data, tab) {
-  var n = {}; ((data.tabs && data.tabs[tab]) || []).forEach(function (x) { var q = Math.round(num(x.quality)) || 1; n[q] = (n[q] || 0) + 1; });
+  var n = {}; view(data, { tab: tab, cat: catDefault(tab) }).cells.forEach(function (c) { if (!c.it) return; var q = Math.round(num(c.it.quality)) || 1; n[q] = (n[q] || 0) + 1; }); /* what the grid shows: folded packs are not counted */
   return [['', 'All rarities']].concat(Object.keys(n).map(Number).sort(function (a, b) { return b - a; }).map(function (q) { return [String(q), rarityName(q), n[q]]; }));
 }
 /* the labelled numbers above the grid: what the player HOLDS first (account + packs), the best case inside choice boxes apart. VIT as classic's bar. */

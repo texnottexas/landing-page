@@ -135,7 +135,7 @@ function gearBody() {
       var e = eq[n], inbag = +bag[n] || 0, icon = e ? e.icon : (G.RUNE_ICON[n] || slug(n));
       return '<div class="rt">' + art(BASE + 'rune-icons/' + icon + '.png', 'ico q5', n.charAt(0), '') + '<div class="rb"><div class="ra" translate="no">' + esc(n) + '</div><div class="rs">' + nd((e ? e.n + ' equipped' : '0 equipped')) + (e ? ' &middot; ' + nd(e.s + ' of ' + e.sm + ' stars') : '') + '</div></div><div class="rn"><span translate="no">' + inbag + '</span><div class="rs" style="font-family:var(--sans);font-weight:400">in bag</div></div></div>';
     }).join('');
-    el.innerHTML = '<section class="card">' + (rows || '<p class="muted">No runes found in battle reports or the bag.</p>') + (vm.runes.known ? '' : '<p class="foot" style="margin-top:12px">The bag is not in your game data, so runes in bag read 0.</p>') + '</section>';
+    el.innerHTML = '<section class="card">' + (rows || '<p class="muted">No runes found in battle reports or the bag.</p>') + (vm.runes.known ? '' : '<p class="foot" style="margin-top:12px">' + nd('The bag is not in your game data, so runes in bag read 0.') + '</p>') + '</section>';
     return;
   }
   var slots = {};
