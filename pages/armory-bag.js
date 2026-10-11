@@ -724,7 +724,11 @@ function view(data, st) {
       if (!by[k]) { by[k] = []; order.push(k); }
       by[k].push(c);
     });
-    if (cat === 'set') order.sort(function (a, b) { return by[b].length - by[a].length; });
+    if (cat === 'set') { /* classic keys an object by suit id, so equal sizes come out in ascending id order */
+      var idn = function (k) { var x = k.slice(4); return /^\d+$/.test(x) ? +x : Infinity; };
+      order.sort(function (a, b) { return idn(a) - idn(b); });
+      order.sort(function (a, b) { return by[b].length - by[a].length; });
+    }
     else order.sort(function (a, b) { var ai = DECOR_CAT_ORDER.indexOf(a.slice(4)), bi = DECOR_CAT_ORDER.indexOf(b.slice(4)); return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi); });
     groups = []; cells = [];
     order.forEach(function (k) {
@@ -831,7 +835,7 @@ function spendOwner() { return !readOnly() && S.res.identity && S.res.identity.u
 function segOf(id) { return S.vm.heroes.list.some(function (h) { return h.id === id; }) ? 'battle' : 'roster'; }
 function heroOfCard(itemId) { var C = (root.ArmoryVM && root.ArmoryVM.AW && root.ArmoryVM.AW.CARD) || {}; for (var h in C) if (C[h] === itemId) return +h; return 0; }
 function qOf(it) { var q = Math.round(num(it.quality)); return q >= 1 && q <= 6 ? q : 1; }
-function nameOf(it) { var n = it.name && String(it.name) !== '' ? String(it.name) : 'Unknown item'; return /^Lv \d+$/.test(n) || /^Unit #/.test(n) ? 'Unit' : n; }
+function nameOf(it) { var n = it.name && String(it.name) !== '' ? String(it.name) : 'Unknown item'; return /^Lv \d+$/.test(n) || /^Unit #/.test(n) ? 'Unit' : /^(Decor |Hero )?#\d+$/.test(n) ? 'Unknown item' : n; }
 function noHy(t) { return String(t).replace(/-/g, '‑'); }
 function icon(it, cls) {
   var u = Logic.iconUrl(it), nmx = nameOf(it);
