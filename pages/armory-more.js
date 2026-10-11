@@ -30,9 +30,9 @@ function renderStart(kind, extra) {
         return '<button class="pick" type="button" data-pick="' + i + '">' + (p.avatar ? art(p.avatar, 'ava', (p.name || '?').charAt(0), '') : '<span class="ava fb" translate="no">' + esc((p.name || '?').charAt(0)) + '</span>') + '<span translate="no" style="font-weight:600">' + esc(p.name) + '</span><span class="t13 muted">' + esc(p.side) + '</span></button>';
       }).join('') + '</div><div class="err" id="stErr" role="alert"></div>';
     } else {
-      pick = '<div class="irow"><input class="fld" id="rid" type="text" inputmode="numeric" autocomplete="off" placeholder="Battle Report ID" aria-label="Battle Report ID"><button class="btn" type="button" data-load>Load</button></div><div class="err" id="stErr" role="alert">' + esc(extra && extra.err || '') + '</div>' +
+      pick = '<div class="irow"><input class="fld" id="rid" data-clarity-mask="true" type="text" inputmode="numeric" autocomplete="off" placeholder="Battle Report ID" aria-label="Battle Report ID"><button class="btn" type="button" data-load>Load</button></div><div class="err" id="stErr" role="alert">' + esc(extra && extra.err || '') + '</div>' +
         '<details class="help" open><summary>Where do I find a Battle Report ID?</summary><ol><li>In the game, open a battle report from a fight against another player (Time Clash Arena works).</li><li>Tap the VS icon.</li><li>Tap the copy icon next to Report No., then paste it in the box above.</li></ol><p>On Server 2864, Snapshot can do this for you: run it in the game and tap Set up.</p></details>' +
-        mineBtn() + '<h2 class="disp" style="font-size:var(--fs-20)">Or open a share link</h2><div class="irow"><input class="fld" id="scode" type="text" maxlength="4" autocomplete="off" placeholder="4-letter code" aria-label="Share code"><button class="btn" type="button" data-code>Open</button></div>';
+        mineBtn() + '<h2 class="disp" style="font-size:var(--fs-20)">Or open a share link</h2><div class="irow"><input class="fld" id="scode" data-clarity-mask="true" type="text" maxlength="4" autocomplete="off" placeholder="4-letter code" aria-label="Share code"><button class="btn" type="button" data-code>Open</button></div>';
     }
     h = '<h1 class="disp" style="font-size:var(--fs-24)">Build your armory</h1>' + (extra && extra.note ? '<p>' + esc(extra.note) + '</p>' : '') + '<p class="muted">' + (extra && extra.pending ? 'Pick your player card to build your armory.' : 'Enter a Battle Report ID to build your armory.') + '</p>' + pick;
   }
@@ -152,34 +152,60 @@ function renderGear() {
   el.innerHTML = '<div class="segs2" role="group" aria-label="Gear view"><button type="button" data-gview="gear" aria-pressed="' + (S.gview === 'gear') + '">Pieces</button><button type="button" data-gview="runes" aria-pressed="' + (S.gview === 'runes') + '">Runes</button></div>';
   gearBody();
 }
-function classicLink(tab, text) { return '<div class="lnkrow" style="margin-top:12px"><a class="tb link" href="' + esc(classicUrl(tab)) + '">' + ic('ext', 'sm') + '<span>' + nd(text) + '</span></a></div>'; }
+function classicLink(tab, text, from) { return '<div class="lnkrow" style="margin-top:12px"><a class="tb link" href="' + esc(classicUrl(tab, from)) + '">' + ic('ext', 'sm') + '<span>' + nd(text) + '</span></a></div>'; }
 function needData(what) { return '<div class="empty">' + esc(what) + (readOnly() ? '' : ' <button class="tb link" type="button" data-open="status">Send game data</button>') + '</div>'; }
 function priv(k) { return S.res.privacy && S.res.privacy[k] ? 'Private' : 'Visible to people with the link'; }
 function repLabel(id) { return '…' + String(id).slice(-6); }
+/* a report opened by its share link whose player is on the roster: the player can claim it by verifying their UID (the classic page's Verify pill) */
+function claimable() { var r = S.res; return !!(r && r.readOnly && S.code && !S.advise && sk() && r.rosterEntry); }
+function claimIdentity() {
+  var re = S.res.rosterEntry, k = sk(); if (!re || !k) return;
+  var id = d.getStoredIdentity() || {};
+  if (id.siteKey === k) return;
+  id.name = re.name; id.alliance = re.alliance; id.rank = re.rank; id.profession = re.profession; id.siteKey = k;
+  d.identity.set(id);
+}
+function mountGuide() {
+  var det = $('#guideDet'); if (!det || det.dataset.mounted) return;
+  det.dataset.mounted = '1';
+  /* guide-videos.js (the film IDs live there, shared with the classic page) loads the first time the card is opened, so nothing is added to the first paint */
+  det.addEventListener('toggle', function () {
+    var slot = $('#guideSlot'); if (!det.open || !slot || slot.firstChild) return;
+    var put = function () { if (window.GuideVideos && !slot.firstChild) slot.appendChild(window.GuideVideos.buildCard('armory')); };
+    if (window.GuideVideos) { put(); return; }
+    var sc = document.createElement('script'); sc.src = 'guide-videos.js'; sc.onload = put;
+    sc.onerror = function () { slot.innerHTML = '<p class="t13 muted">The film could not load. Check your connection.</p>'; };
+    document.body.appendChild(sc);
+  });
+}
 function statusBody() {
   var res = S.res, vm = S.vm, ro = readOnly(), key = sk(), unlocked = !!(res.identity && res.identity.unlocked), h = vm.header, o = '';
-  if (ro) o += '<div class="step"><span class="step-n" translate="no">1</span><div class="step-b"><h3>This armory is read-only</h3><p>It belongs to ' + nm(h.name || 'another player') + '. You can look, but not change anything.</p></div></div>';
+  if (ro && claimable()) o += '<div class="step"><span class="step-n" translate="no">1</span><div class="step-b"><h3>Is this your armory?</h3><p>It belongs to ' + nm(h.name || 'another player') + '. If that is you, verify your UID and it becomes yours. Your UID only proves this report is yours.</p><div class="irow" style="margin-top:8px"><input class="fld" id="uidIn" data-clarity-mask="true" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="Your UID" placeholder="e.g. 000000000000"><button class="btn" type="button" data-verify>Verify</button></div><div class="err" id="uidErr" role="alert"></div></div></div>';
+  else if (ro) o += '<div class="step"><span class="step-n" translate="no">1</span><div class="step-b"><h3>This armory is read-only</h3><p>It belongs to ' + nm(h.name || 'another player') + '. You can look, but not change anything.</p></div></div>';
   else if (!key) o += '<div class="step"><span class="step-n" translate="no">1</span><div class="step-b"><h3>Verify your UID</h3><p>This player is not in the roster, so game data cannot be linked yet.</p></div></div>';
   else if (unlocked) o += '<div class="step"><span class="step-n" translate="no">1</span><div class="step-b"><h3>Verify your UID</h3><p>Verified on this device.</p><div style="margin-top:8px"><span class="pill" style="color:var(--ok);background:rgba(63,185,80,.12)">Done</span></div></div></div>';
-  else o += '<div class="step"><span class="step-n" translate="no">1</span><div class="step-b"><h3>Verify your UID</h3><p>Your UID is in your in-game profile. It only proves this report is yours.</p><div class="irow" style="margin-top:8px"><input class="fld" id="uidIn" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="Your UID" placeholder="e.g. 000000000000"><button class="btn" type="button" data-verify>Verify</button></div><div class="err" id="uidErr" role="alert"></div></div></div>';
+  else o += '<div class="step"><span class="step-n" translate="no">1</span><div class="step-b"><h3>Verify your UID</h3><p>Your UID is in your in-game profile. It only proves this report is yours.</p><div class="irow" style="margin-top:8px"><input class="fld" id="uidIn" data-clarity-mask="true" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="Your UID" placeholder="e.g. 000000000000"><button class="btn" type="button" data-verify>Verify</button></div><div class="err" id="uidErr" role="alert"></div></div></div>';
   if (!ro && key) {
     o += '<div class="step"><span class="step-n" translate="no">2</span><div class="step-b"><h3>Send your game data</h3>' + (unlocked ? '<ol><li>Open the game.</li><li>Run Snapshot from the Ops Center. It sends your game data here.</li></ol>' : '<p>Verify your UID first.</p>') +
       '<p class="t13 muted" style="margin-top:8px">' + (h.data ? 'Last sync ' + nm(h.data.date) : 'No game data yet') + '</p>' +
-      '<div class="lnkrow"><a class="tb link" href="' + esc(classicUrl('')) + '">Or paste game data on the classic page</a></div></div></div>';
+      (h.data ? '' : '<p class="t13" style="margin-top:8px">No Ops Center yet? <a class="tb link" href="rickroll.html">Set up the Ops Center</a>. Snapshot, the tool that sends your game data, is in it.</p><details class="help" id="guideDet"><summary>Watch the setup film</summary><div id="guideSlot"></div></details>') +
+      '<div class="lnkrow"><a class="tb link" href="' + esc(classicUrl('', 'v2-paste')) + '">Or paste game data on the classic page</a></div></div></div>';
   }
   o += '<div><h3 class="disp" style="font-size:var(--fs-20)">Sources</h3><div style="margin-top:8px">' +
     '<div class="srow"><div class="sb"><div class="a">Battle reports</div><div class="b">' + (h.reports ? '<span class="dot ' + (h.reports.warn ? 'warn' : 'ok') + '"></span><span>' + nm(h.reports.date) + ' &middot; ' + nd(h.reports.age + (h.reports.ageDays >= 1 ? ' old' : '')) + '</span>' : '<span>None</span>') + '</div></div></div>' +
     '<div class="srow"><div class="sb"><div class="a">Game data</div><div class="b">' + (h.data ? '<span class="dot ' + (h.data.warn ? 'warn' : 'ok') + '"></span><span>' + nm(h.data.date) + ' &middot; ' + nd(h.data.age + (h.data.ageDays >= 1 ? ' old' : '')) + '</span>' : '<span>None yet</span>') + '</div></div></div>' +
     '<div class="srow"><div class="sb"><div class="a">Bag</div><div class="b">' + priv('inv') + '</div></div></div>' +
     '<div class="srow"><div class="sb"><div class="a">Rune pool</div><div class="b">' + priv('runepool') + '</div></div></div>' +
-    (ro ? '' : '<div class="t13 muted" style="padding-top:8px">Change who can see the bag and rune pool on the classic page.</div>') + '</div></div>';
+    (ro ? '' : '<div class="t13 muted" style="padding-top:8px">Change who can see the bag and rune pool <a class="tb link" href="' + esc(classicUrl('', 'v2-privacy')) + '">on the classic page</a>.</div>') + '</div></div>';
   var sv = !ro && S.saved ? savedReport() : null, ids = sv ? sv.reportIds : (res.reports || []).map(function (r) { return r.id; });
   o += '<div><h3 class="disp" style="font-size:var(--fs-20)">Battle reports</h3><div style="margin-top:8px">' + (ids.length ? ids.map(function (id) {
     var conf = S.confirm === id;
     return '<div class="srow"><div class="sb"><div class="a code" translate="no" style="font-family:var(--mono);font-size:var(--fs-14)">' + esc(repLabel(id)) + '</div>' + (conf ? '<div class="b">' + (ids.length === 1 ? 'This is your only report. Removing it opens the start screen.' : 'Remove this report?') + '</div>' : '') + '</div>' +
       (sv ? (conf ? '<button class="btn" type="button" data-rmno>Keep</button><button class="btn" type="button" data-rmyes="' + esc(id) + '">Remove</button>' : '<button class="btn" type="button" data-rm="' + esc(id) + '">Remove</button>') : '') + '</div>';
   }).join('') : '<p class="muted">No battle reports. The armory is built from game data only.</p>') +
-    (sv ? '<div class="irow" style="margin-top:8px"><input class="fld" id="repIn" type="text" inputmode="numeric" autocomplete="off" aria-label="Battle Report ID" placeholder="Add a battle report ID"><button class="btn" type="button" data-addrep>Add</button></div><div class="err" id="repErr" role="alert"></div>' : '') + '</div></div>';
+    (sv ? '<div class="irow" style="margin-top:8px"><input class="fld" id="repIn" data-clarity-mask="true" type="text" inputmode="numeric" autocomplete="off" aria-label="Battle Report ID" placeholder="Add a battle report ID"><button class="btn" type="button" data-addrep>Add</button></div><div class="err" id="repErr" role="alert"></div>' : '') + '</div></div>';
+  if (!ro) o += '<div><h3 class="disp" style="font-size:var(--fs-20)">More, on the classic page</h3><p class="t13 muted" style="margin-top:8px">These are not in the new Armory yet. Each link opens the classic page; its settings gear holds them.</p>' +
+    classicLink('', 'Add or edit marches', 'v2-marches') + classicLink('', 'Revoke a share link', 'v2-sharecodes') + classicLink('', 'Clear my imported game data', 'v2-cleardata') + '</div>';
   return o;
 }
 function settingsBody() {
@@ -190,7 +216,7 @@ function settingsBody() {
   else if (S.code) sw = '<a class="btn" href="armory.html' + (ls('armory_v2_beta') === '1' ? '?beta=1' : '') + '">Build my own armory</a>';
   return '<div><label class="lab" for="langSel">Language</label><select class="sel" id="langSel" aria-label="Language">' + LANGS.map(function (l) { return '<option value="' + l[0] + '"' + (l[0] === lo ? ' selected' : '') + ' translate="no">' + esc(l[1]) + '</option>'; }).join('') + '</select></div>' +
     (sw ? '<div>' + sw + '</div>' : '') +
-    '<div class="lnkrow"><button class="tb link" type="button" data-fb>Send feedback</button><a class="tb link" href="' + esc(classicUrl('')) + '">Back to classic</a></div>';
+    '<div class="lnkrow"><button class="tb link" type="button" data-fb>Send feedback</button><a class="tb link" data-back href="' + esc(classicUrl('', 'v2')) + '">Back to classic</a></div>';
 }
 function marches() { var s = savedReport(); return s && Array.isArray(s.marchGroups) ? s.marchGroups : []; }
 function sig() { var s = savedReport(); return (s ? s.reportIds : []).join(',') + '|' + JSON.stringify(marches()); }
@@ -229,7 +255,8 @@ function verify() {
   var raw = ($('#uidIn') || {}).value || '', err = $('#uidErr'); if (!raw.trim()) return;
   var btn = $('[data-verify]'); btn.disabled = true;
   d.verifyUid(sk(), raw).then(function (r) {
-    if (r.ok) { toast(r.healed ? 'Verified. Reloading.' : 'Verified'); setTimeout(function () { location.reload(); }, r.healed ? 400 : 700); return; }
+    if (r.ok && claimable() && r.healed && r.siteKey !== sk()) { err.textContent = 'That UID belongs to ' + r.name + ', not ' + stateName() + '. You are now verified as ' + r.name + '.'; setTimeout(function () { location.reload(); }, 1800); return; }
+    if (r.ok) { if (claimable()) claimIdentity(); toast(r.healed ? 'Verified. Reloading.' : 'Verified'); setTimeout(function () { location.reload(); }, r.healed ? 400 : 700); return; }
     var digits = raw.replace(/\D/g, ''), trimmed = raw.trim(), hint;
     if (!digits) hint = 'A UID is digits only. Copy it from your in-game profile.';
     else if (digits.length < 10 || digits.length > 14) hint = 'That looks too ' + (digits.length < 10 ? 'short' : 'long') + ' (' + digits.length + ' digits). UIDs are 12 or 13 digits.';
@@ -300,5 +327,5 @@ function click(t) {
 }
 function enter(id) { if (id === 'rid') loadReportId(); else if (id === 'uidIn') verify(); else if (id === 'repIn') addReport(); }
 
-return { deepRoster: deepRoster, renderStart: renderStart, renderSections: renderSections, rosterList: rosterList, gearBody: gearBody, renderGear: renderGear, sheet: sheet, share: share, owns: owns, click: click, enter: enter, saveConfig: saveConfig };
+return { deepRoster: deepRoster, renderStart: renderStart, renderSections: renderSections, rosterList: rosterList, gearBody: gearBody, renderGear: renderGear, sheet: sheet, mountGuide: mountGuide, claimable: claimable, share: share, owns: owns, click: click, enter: enter, saveConfig: saveConfig };
 };

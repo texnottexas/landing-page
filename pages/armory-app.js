@@ -44,7 +44,27 @@ function lbl(label, num, src, cls) { return '<div class="nb" data-numwrap><div c
 function stateName() { return S.res && S.res.player && S.res.player.name || ''; }
 function sk() { var k = S.res && S.res.player && S.res.player.siteKey; return SK_RE.test(String(k || '')) ? k : null; }
 function readOnly() { return !S.res || !!S.res.readOnly; }
-function classicUrl(tab) { if (S.advise) return 'armory-report.html?advise=' + S.advise.code; return 'armory-report.html' + (S.code ? '?code=' + encodeURIComponent(S.code) : '') + (tab ? '#tab=' + tab : ''); }
+/* The classic page. armory-classic.html is published beside this page (pages.yml, runbook commit A). A deploy that does not have it yet still has the classic page at armory-report.html,
+   so a 404 on armory-classic.html switches the constant over; a page that IS armory-report.html (after the swap) never links there. Retire the probe with the classic page. */
+var CLASSIC = 'armory-classic.html';
+function probeClassic() {
+  try {
+    fetch(CLASSIC, { method: 'HEAD', cache: 'no-store' }).then(function (r) {
+      if (r.status === 404 && !/\/armory-report\.html$/.test(location.pathname)) { CLASSIC = 'armory-report.html'; renderFoot(); }
+    }, function () {});
+  } catch (e) {}
+}
+/* from= names where the player left from (read in Clarity): "v2" is the Back to classic links, "v2-<tab>" a section that has no native version yet */
+function classicUrl(tab, from) {
+  var q = [], hash = '';
+  if (S.advise) q.push('advise=' + S.advise.code);
+  else { if (S.code) q.push('code=' + encodeURIComponent(S.code)); if (S.planCode) q.push('plan=' + S.planCode); if (tab) hash = '#tab=' + tab; }
+  q.push('from=' + (from || 'v2-' + (tab || 'link')));
+  return CLASSIC + '?' + q.join('&') + hash;
+}
+/* Microsoft Clarity (same project as the classic page). armory_ui tags every session; back_to_classic is the event the exit rate is read from */
+function clarityTag(k, v) { try { if (window.clarity) window.clarity('set', k, v); } catch (e) {} }
+function clarityEvent(n) { try { if (window.clarity) window.clarity('event', n); } catch (e) {} }
 function savedReport() { var s = null; try { s = JSON.parse(ls('playerReport')); } catch (e) {} return s && s.player && Array.isArray(s.reportIds) ? s : null; }
 function deviceId() {
   var id = ls('reportDeviceId');
@@ -291,6 +311,40 @@ function bootAdvise(raw) {
     return run({ code: sc }).then(function (res) { if (res.state !== 'ready') renderStart(startKind(res)); });
   }).catch(function () { renderStart('error'); });
 }
+/* A verified player opening their own share link keeps it as their report (the classic page does the same), so the nav link brings them back to it, with Share working */
+function adoptOwnCode(res) {
+  var k = sk();
+  if (!S.code || S.advise || res.readOnly || !k || !(res.identity && res.identity.unlocked)) return;
+  var reps = res.reports || [];
+  if (!reps.length || (res.errors || []).some(function (e) { return e.kind === 'report'; })) return;   /* a report that failed to load must not drop its id from the saved list */
+  var prev = savedReport(), same = !!(prev && prev.player && (prev.player.siteKey === k || (!prev.player.siteKey && String(prev.player.name || '').toLowerCase() === String(stateName()).toLowerCase())));
+  var ids = reps.map(function (r) { return r.id; }), cache = {};
+  reps.forEach(function (r) { cache[r.id] = r.extracted; });
+  var pl = JSON.parse(JSON.stringify(res.player)); pl.siteKey = k;
+  var marches = Array.isArray(res.marchGroups) && res.marchGroups.length ? res.marchGroups : same && Array.isArray(prev.marchGroups) ? prev.marchGroups : [];
+  var keep = { player: pl, reportIds: ids, marchGroups: marches };
+  if (same && prev.shortcode) keep.shortcode = prev.shortcode; else { keep.shortcode = S.code; ls('ar_saved_sig_v1', ids.join(',') + '|' + JSON.stringify(marches)); }
+  ls('playerReport', JSON.stringify(keep)); ls('playerReportData', JSON.stringify(cache));
+  ls('armory_v2_switched', null); S.saved = true;
+}
+/* ?code= is gone but ?plan= is there: the plan's request names the player. Their own browser opens their data, anyone else gets it read-only, with the plan */
+function planFallback() {
+  S.code = null; showSkeleton();
+  fetch(WORKER + '/advisor/request/' + S.planCode, { cache: 'no-store' }).then(function (r) {
+    if (r.status === 404 || r.status === 400) return null;
+    if (!r.ok) throw new Error('net');
+    return r.json();
+  }).then(function (req) {
+    var k = req && String(req.siteKey || '').toLowerCase();
+    if (!k || !SK_RE.test(k)) { renderStart('expired'); return; }
+    var own = d.getStoredIdentity(), mine = !!(own && own.siteKey === k), sv = savedReport();
+    var first = mine && sv && sv.player && sv.player.siteKey === k ? run({ saved: true, noHydrate: true }) : Promise.resolve({ state: 'none' });
+    return first.then(function (res) {
+      if (res.state === 'ready') { S.saved = true; return run({ saved: true }); }
+      return run({ dataOnly: true, player: { siteKey: k } });   /* nothing is held for this player here, so the worker's data is the first read */
+    }).then(function (res) { if (res.state !== 'ready') renderStart('expired'); });
+  }).catch(function () { renderStart('error'); });
+}
 function boot() {
   if (shim()) return;
   var qs = new URLSearchParams(location.search), adv = qs.get('advise'), plan = normCode(qs.get('plan'));
@@ -300,12 +354,16 @@ function boot() {
     S.planCode = plan;
     if (!/^#heroes\/advice/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search + '#heroes/advice?plan=' + plan);
   }
-  renderChrome();
   var code = (qs.get('code') || '').trim().toUpperCase();
+  if (code) S.code = /^[0-9A-Z]{4}$/.test(code) ? code : null;   /* before the first paint, so the footer's classic link carries it */
+  renderChrome();
   showSkeleton();
   if (code) {
-    S.code = /^[0-9A-Z]{4}$/.test(code) ? code : null;
-    run({ code: code }).then(function (res) { if (res.state !== 'ready') renderStart(startKind(res)); }, function () { renderStart('error'); });
+    run({ code: code }).then(function (res) {
+      if (res.state === 'expired' && S.planCode) { planFallback(); return; }
+      if (res.state !== 'ready') { renderStart(startKind(res)); return; }
+      adoptOwnCode(res);
+    }, function () { renderStart('error'); });
     return;
   }
   /* first paint from what this device already holds, then the worker's newer game data */
@@ -343,7 +401,10 @@ function renderChrome() {
   $('#tabsIn').innerHTML = TABS.map(function (v) { return '<a class="tab' + (v === 'heroes' && S.advDot ? ' has-new' : '') + '" href="#' + v + '" data-v="' + v + '">' + ic(VIEWS[v].icon, 'sm') + VIEWS[v].label + '</a>'; }).join('');
   $('#bar').innerHTML = TABS.map(function (v) { return '<a' + (v === 'heroes' && S.advDot ? ' class="has-new"' : '') + ' href="#' + v + '" data-v="' + v + '">' + ic(VIEWS[v].icon) + '<span>' + VIEWS[v].label + '</span></a>'; }).join('');
   $('#pagesPop').innerHTML = '<div class="pop-h">All pages</div>' + PAGES.map(function (p) { return '<a class="pop-a" role="menuitem" href="' + p[0] + '">' + esc(p[1]) + '</a>'; }).join('');
-  $('#footNote').innerHTML = '<span>This is the new Armory.</span><a class="tb link" href="' + esc(classicUrl('')) + '">Back to classic</a><button class="tb link" type="button" data-fb>Send feedback</button>';
+  renderFoot();
+}
+function renderFoot() {
+  $('#footNote').innerHTML = '<span>This is the new Armory.</span><a class="tb link" data-back href="' + esc(classicUrl('', 'v2')) + '">Back to classic</a><button class="tb link" type="button" data-fb>Send feedback</button>';
 }
 function renderAll() {
   renderChrome(); renderOverview(); renderHeroes();
@@ -381,7 +442,7 @@ function renderOverview() {
   var fresh = '';
   var rep = h.reports ? '<span>Reports ' + nm(h.reports.date) + ' ' + ageSpan(h.reports) + '</span>' : '';
   var dat = h.data ? '<span>Game data ' + nm(h.data.date) + (h.data.ageDays >= 1 ? ' ' + ageSpan(h.data) : '') + '</span>' : '<span>No game data imported</span>';
-  var act = ro ? '' : '<button class="tb link" type="button" data-open="status">' + (h.data ? 'Update' : 'Import') + '</button>';
+  var act = ro ? (shared && S.code && !S.advise && sk() && S.res.rosterEntry ? '<button class="tb link" type="button" data-open="status" data-claim>Is this you? Verify</button>' : '') : '<button class="tb link" type="button" data-open="status">' + (h.data ? 'Update' : 'Import') + '</button>';
   fresh = (rep ? rep + '<span class="sep" aria-hidden="true">&middot;</span>' : '') + '<span class="fl">' + dat + act + '</span>';
   var power = h.powerText ? '<div class="nb" data-numwrap><span class="n disp" data-num translate="no">' + esc(h.powerText) + '</span><span class="l lbl">Power</span><span class="s src">alliance list</span></div>' : '';
   var header = '<section class="card hcard" id="hdrCard" aria-label="Player"><div class="hc-top">' +
@@ -561,6 +622,7 @@ function openSheet(kind, arg) {
   S.lastFocus = document.activeElement;
   $('#sheetT').innerHTML = isName ? nm(title) : esc(title);
   $('#sheetB').innerHTML = body;
+  if (kind === 'status' && M) M.mountGuide();
   var sc = $('#scrim'), sh = $('#sheet');
   sc.hidden = false; sh.hidden = false; S.sheet = kind;
   void sh.offsetWidth;
@@ -577,7 +639,7 @@ function closeSheet(instant) {
   if (instant) fin(); else setTimeout(fin, 170);
   if (S.lastFocus && S.lastFocus.focus) { try { S.lastFocus.focus({ preventScroll: true }); } catch (e) {} }
 }
-function refreshSheet() { if (M && (S.sheet === 'status' || S.sheet === 'settings')) $('#sheetB').innerHTML = M.sheet(S.sheet)[1]; }
+function refreshSheet() { if (M && (S.sheet === 'status' || S.sheet === 'settings')) { $('#sheetB').innerHTML = M.sheet(S.sheet)[1]; if (S.sheet === 'status') M.mountGuide(); } }
 
 /* ---------- Share ---------- */
 function currentCode() {
@@ -605,6 +667,7 @@ document.addEventListener('click', function (e) {
   if (!t) return;
   var ds = t.dataset;
   if (t.id === 'pagesBtn') { pp.hidden = !pp.hidden; t.setAttribute('aria-expanded', pp.hidden ? 'false' : 'true'); return; }
+  if (t.hasAttribute('data-back')) clarityEvent('back_to_classic');   /* the link still navigates */
   if (t.hasAttribute('data-close')) { closeSheet(); return; }
   if (t.hasAttribute('data-share')) { share(); return; }
   if (t.hasAttribute('data-fb')) { var fb = document.getElementById('fw-hdr-btn'); if (fb) { closeSheet(true); fb.click(); } else toast('Feedback is not available right now'); return; }
@@ -646,8 +709,9 @@ document.addEventListener('keydown', function (e) {
 });
 window.addEventListener('hashchange', function () { if (!shim()) applyRoute(false); });
 
-H = { awSkLine: awSkLine, portrait: portrait, awPor: awPor, awLevel: awLevel, awkSync: awkSync, awkOpenHero: awkOpenHero, setHeroOpen: setHeroOpen, renderOverview: function () { renderOverview(); watchName(); }, beastMove: beastMove, S: S, d: d, core: core, G: G, BASE: BASE, statLabel: statLabel, WORKER: WORKER, SK_RE: SK_RE, $: $, $$: $$, esc: esc, nd: nd, nm: nm, ic: ic, fmtK: fmtK, fmtInt: fmtInt, ramp: ramp, qCls: qCls, slug: slug, ls: ls, stars: stars, art: art, lbl: lbl, stateName: stateName, sk: sk, readOnly: readOnly, classicUrl: classicUrl, savedReport: savedReport, deviceId: deviceId, toast: toast, go: go, run: run, showSkeleton: showSkeleton, fkHero: fkHero, refreshSheet: refreshSheet, currentCode: currentCode, gearCard: gearCard, branchPill: branchPill, filt: filt, sortBy: sortBy, openSheet: openSheet, closeSheet: closeSheet, advice: advice, more: more, advIndex: advIndex, paintDot: paintDot };
-window.__arm = { S: S, d: d, core: core, go: go, run: run, openSheet: openSheet, closeSheet: closeSheet, applyRoute: applyRoute, parseHash: parseHash, VIEWS: VIEWS, ready: false };
+H = { awSkLine: awSkLine, portrait: portrait, awPor: awPor, awLevel: awLevel, awkSync: awkSync, awkOpenHero: awkOpenHero, setHeroOpen: setHeroOpen, renderOverview: function () { renderOverview(); watchName(); }, beastMove: beastMove, S: S, d: d, core: core, G: G, BASE: BASE, statLabel: statLabel, WORKER: WORKER, SK_RE: SK_RE, $: $, $$: $$, esc: esc, nd: nd, nm: nm, ic: ic, fmtK: fmtK, fmtInt: fmtInt, ramp: ramp, qCls: qCls, slug: slug, ls: ls, stars: stars, art: art, lbl: lbl, stateName: stateName, sk: sk, readOnly: readOnly, classicUrl: classicUrl, clarityEvent: clarityEvent, savedReport: savedReport, deviceId: deviceId, toast: toast, go: go, run: run, showSkeleton: showSkeleton, fkHero: fkHero, refreshSheet: refreshSheet, currentCode: currentCode, gearCard: gearCard, branchPill: branchPill, filt: filt, sortBy: sortBy, openSheet: openSheet, closeSheet: closeSheet, advice: advice, more: more, advIndex: advIndex, paintDot: paintDot };
+window.__arm = { classicFile: function () { return CLASSIC; }, S: S, d: d, core: core, go: go, run: run, openSheet: openSheet, closeSheet: closeSheet, applyRoute: applyRoute, parseHash: parseHash, VIEWS: VIEWS, ready: false };
+clarityTag('armory_ui', 'v2'); probeClassic();
 boot();
 if (/[?&]check=1/.test(location.search)) { var cs = document.createElement('script'); cs.src = 'armory-check.js'; document.body.appendChild(cs); }
 })();

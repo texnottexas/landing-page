@@ -121,3 +121,42 @@ test('pages.yml publishes the classic page a second time at armory-classic.html 
   assert.ok(/cp pages\/armory-report\.html _site\/armory-classic\.html/.test(YML));
   assert.ok(/cp pages\/index\.html[^\n]*pages\/armory-report\.html /.test(YML), 'armory-report.html is still published under its own name');
 });
+
+// ---- cutover readiness: classic links, Clarity, own link, plan fallback, Status additions, check script
+const APP = read('pages/armory-app.js'), MORE = read('pages/armory-more.js'), CHECK = read('pages/armory-check.js');
+test('every link to classic goes through classicUrl, which names armory-classic.html and falls back only when that copy is missing', () => {
+  assert.match(APP, /var CLASSIC = 'armory-classic\.html'/);
+  const probe = /function probeClassic\(\) \{[\s\S]*?\n\}/.exec(APP)[0];
+  assert.match(probe, /r\.status === 404 && !\/\\\/armory-report\\\.html\$\/\.test\(location\.pathname\)/, 'a page served as armory-report.html never switches to itself');
+  for (const f of ['pages/armory-more.js', 'pages/armory-bag.js', 'pages/armory-beasts.js', 'pages/armory-base.js', 'pages/armory-ht.js', 'pages/armory-advice.js', 'pages/armory-advice-flows.js']) assert.ok(!/['"]armory-report\.html/.test(read(f).replace(/https:\/\/2864tw\.com\/armory-report\.html/g, '')), f + ' hard-codes armory-report.html');
+  // run classicUrl as the page does
+  const mk = (S, path) => { const ctx = { S, location: { pathname: path }, fetch: () => ({ then: () => {} }), renderFoot() {}, window: {} }; vm.runInNewContext(/var CLASSIC =[\s\S]*?\nfunction clarityTag/.exec(APP)[0].replace(/\nfunction clarityTag$/, '') , ctx); return ctx; };
+  const c = mk({ code: 'AB12', planCode: 'abc123', advise: null }, '/armory.html');
+  assert.equal(c.classicUrl('', 'v2'), 'armory-classic.html?code=AB12&plan=abc123&from=v2');
+  assert.equal(c.classicUrl('chips'), 'armory-classic.html?code=AB12&plan=abc123&from=v2-chips#tab=chips');
+  assert.equal(mk({ code: null, planCode: null, advise: { code: 'zzz999' } }, '/armory.html').classicUrl('inventory'), 'armory-classic.html?advise=zzz999&from=v2-inventory');
+  assert.equal(mk({}, '/armory.html').classicUrl('', 'v2'), 'armory-classic.html?from=v2');
+});
+test('Clarity: the classic page\'s project id loads on the new page, sessions are tagged, Back to classic fires an event, UID and code fields are masked', () => {
+  const id = /"clarity", "script", "(\w+)"/.exec(V1)[1];
+  assert.match(V2, new RegExp('"clarity", "script", "' + id + '"'));
+  assert.match(APP, /clarityTag\('armory_ui', 'v2'\)/); assert.match(APP, /clarityEvent\('back_to_classic'\)/);
+  assert.ok(/data-back href="' \+ esc\(classicUrl\('', 'v2'\)\) \+ '">Back to classic/.test(APP) && /data-back href="' \+ esc\(classicUrl\('', 'v2'\)\) \+ '">Back to classic/.test(MORE), 'footer and Settings both carry data-back and from=v2');
+  for (const id of ['rid', 'scode', 'uidIn', 'repIn']) assert.match(MORE, new RegExp('id="' + id + '" data-clarity-mask="true"'));
+});
+test('a verified owner opening their own ?code= keeps it as their report; an expired code with a plan falls back to the plan\'s request; the Verify step claims a roster player', () => {
+  assert.match(APP, /function adoptOwnCode\(res\)/); assert.match(APP, /res\.identity && res\.identity\.unlocked/);
+  assert.match(APP, /function planFallback\(\)[\s\S]*?\/advisor\/request\//);
+  assert.match(APP, /res\.state === 'expired' && S\.planCode\) \{ planFallback\(\)/);
+  assert.match(MORE, /function claimable\(\)/); assert.match(MORE, /function claimIdentity\(\)/); assert.match(MORE, /Is this your armory\?/);
+});
+test('Status: Ops Center link + lazily loaded guide film for a player with no game data; the classic-only tools are labelled links', () => {
+  assert.match(MORE, /href="rickroll\.html">Set up the Ops Center/);
+  assert.match(MORE, /sc\.src = 'guide-videos\.js'/); assert.ok(!/guide-videos/.test(V2), 'not a first-paint script');
+  assert.match(MORE, /GuideVideos\.buildCard\('armory'\)/);
+  for (const f of ['v2-paste', 'v2-privacy', 'v2-marches', 'v2-sharecodes', 'v2-cleardata']) assert.ok(MORE.includes(f), f);
+});
+test('?check=1 tests the real classic page: it reads the app\'s classic file and refuses a copy of the new Armory', () => {
+  assert.match(CHECK, /window\.__arm\.classicFile/); assert.match(CHECK, /armory-app\\\.js/); assert.match(CHECK, /var bSel = '#v-beasts a\[href\*="' \+ CLS/);
+  assert.ok(!/fetch\('armory-report\.html'/.test(CHECK)); assert.match(APP, /classicFile: function \(\) \{ return CLASSIC; \}/);
+});

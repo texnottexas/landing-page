@@ -193,11 +193,13 @@ var EXPECTED = [
   Array.prototype.forEach.call(document.styleSheets, function (ss) { if (ss.href && GOOG.test(ss.href)) return; if (!ss.ownerNode || ss.ownerNode.tagName !== 'STYLE') nonInline++; var rules; try { rules = ss.cssRules; } catch (e) { return; } /* cross-origin sheet (the translate widget's): skipped */ Array.prototype.forEach.call(rules, function (r) { if (r.type === 5) ff++; if (r.type === 3) imp++; }); });
   log(ext === 0 && ff === 0 && imp === 0 && nonInline === 0, 'no external stylesheet or font', 'link tags ' + ext + ', @font-face ' + ff + ', @import ' + imp + ', non-inline sheets ' + nonInline);
   var mine = document.querySelector('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
+  var CLS = (window.__arm && window.__arm.classicFile && window.__arm.classicFile()) || 'armory-classic.html';   /* the page the app links to as classic: armory-classic.html, or armory-report.html on a deploy that has no copy yet */
   try {
-    var v1 = await fetch('armory-report.html', { cache: 'no-store' }).then(function (r) { return r.text(); });
+    var v1 = await fetch(CLS, { cache: 'no-store' }).then(function (r) { return r.text(); });
     var m = /http-equiv="Content-Security-Policy" content="([^"]*)"/.exec(v1);
-    log(!!m && m[1] === mine, 'CSP identical to armory-report.html', 'hash ' + cyrb53(mine) + (m ? ' vs ' + cyrb53(m[1]) : ' (classic page not found)'));
-  } catch (e) { log(false, 'CSP identical to armory-report.html', 'could not read the classic page: ' + e.message); }
+    var isMe = /<script src="armory-app\.js"/.test(v1);   /* a copy of the new Armory is not the classic page: matching it would test nothing */
+    log(!!m && !isMe && m[1] === mine, 'CSP identical to ' + CLS + ' (the classic page)', isMe ? CLS + ' is the new Armory, not the classic page' : 'hash ' + cyrb53(mine) + (m ? ' vs ' + cyrb53(m[1]) : ' (classic page not found)'));
+  } catch (e) { log(false, 'CSP identical to ' + CLS + ' (the classic page)', 'could not read the classic page: ' + e.message); }
 
   /* 7. display face */
   function meas(font, text) { var s = document.createElement('span'); s.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:nowrap;font-size:48px;font-weight:700;font-family:' + font; s.textContent = text; document.body.appendChild(s); var w = s.getBoundingClientRect().width; s.remove(); return w; }
@@ -265,8 +267,8 @@ var EXPECTED = [
   /* the Google Translate widget's own logo (gstatic) is third-party markup, same exclusion as the size checks; our images stay strict */
   var imgs = $$('img').filter(function (m) { return !third(m); }), imgBad = imgs.filter(function (m) { return !/^https:\/\/(raw\.githubusercontent\.com|h5\.topwargame\.com|knight-cdn\.akamaized\.net)\//.test(m.src); });
   log(imgBad.length === 0, 'images only from origins the live CSP allows', imgs.length + ' images' + (imgBad.length ? ', bad: ' + imgBad[0].src : ''));
-  var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|tw-game-data-base|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-ht|armory-awaken|armory-base|armory-bag|armory-beasts|armory-beasts-opt|armory-advice|armory-advice-flows|armory-check|feedback-widget)\.js$|^https:\/\/translate\.googleapis\.com\//.test(s); });
-  log(badSrc.length === 0, 'scripts only from this site and Google Translate', scripts.length + ' script tags' + (badSrc.length ? ', unexpected: ' + badSrc.join(', ') : ''));
+  var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|tw-game-data-base|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-ht|armory-awaken|armory-base|armory-bag|armory-beasts|armory-beasts-opt|armory-advice|armory-advice-flows|armory-check|feedback-widget|guide-videos)\.js$|^https:\/\/translate\.googleapis\.com\/|^https:\/\/www\.clarity\.ms\/tag\/won9zormpi$/.test(s); });
+  log(badSrc.length === 0, 'scripts only from this site, Google Translate and the classic page\u2019s Clarity project', scripts.length + ' script tags' + (badSrc.length ? ', unexpected: ' + badSrc.join(', ') : ''));
   S.all.gear = false; S.all.roster = false;
   A.applyRoute(false);
 
@@ -443,8 +445,8 @@ var EXPECTED = [
   log(bLost.length === 0, 'Beasts: no text node with an edge space directly inside a flex or grid parent', bLost.slice(0, 3).join(' | ') || 'none');
   log(bAb.length === 0, 'Beasts: one vocabulary with HT and Heroes (no ATK, DEF, RES, (off), (def), AF, CPNT, bare "All" or "Air", DMG Increase, HP Boost, 3 decimals, "imported 4 months", "power score", "Slot1", "Lv30")', bAb.join(' ') || 'none');
   log(!/\p{Extended_Pictographic}/u.test($('#v-beasts').textContent.replace(/[\u00A9\u00AE\u2122]/g, '')), 'Beasts: no emoji in the section', 'none');
-  var bLinks = $$('#v-beasts a[href*="armory-report.html"]').length;
-  log(bLinks <= 1 && (!bHas || bLinks === 0 || /Breeding priorities/.test($('#v-beasts a[href*="armory-report.html"]').textContent)), 'Beasts: a classic link only on the plan, and it names what classic has more of (breeding priorities)', $('#v-beasts a[href*="armory-report.html"]') ? $('#v-beasts a[href*="armory-report.html"]').getAttribute('href') : 'missing');
+  var bSel = '#v-beasts a[href*="' + CLS + '"]', bLinks = $$(bSel).length;
+  log(bLinks <= 1 && (!bHas || bLinks === 0 || /Breeding priorities/.test($(bSel).textContent)), 'Beasts: a classic link only on the plan, and it names what classic has more of (breeding priorities)', $(bSel) ? $(bSel).getAttribute('href') : 'missing');
   var bSw = $('#v-beasts .bst-sw');
   if (bSw) { var bId = bSw.id.replace('bsw-', ''); await visit('beasts/optimizer?swap=' + bId); await sleep(900); log(!!$('#v-beasts .bst-sw.is-sel'), 'Beasts Optimizer: ?swap= marks that swap card (the Next move deep link)', bId); }
   await visit('beasts/field');

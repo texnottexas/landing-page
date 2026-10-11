@@ -949,6 +949,7 @@
         if (!player.avatar && results.length) player.avatar = getAvatar(results[0].extracted.playerInfo || {});
         var rosterEntry = player.siteKey && _ar_rosterMap ? _ar_rosterMap[player.siteKey] || null : null;
         out.rosterEntry = rosterEntry;
+        if (!player.name && rosterEntry && rosterEntry.name) player.name = rosterEntry.name;   /* a data-only open from a siteKey alone (the plan fallback) takes the roster's name */
         var hydrate = player.siteKey && !arg.noHydrate ? _ar_hydrateSupplementsFromWorker(player.siteKey).catch(function() { return []; }) : Promise.resolve([]);
         return hydrate.then(function(changed) {
           out.changedKinds = changed;
