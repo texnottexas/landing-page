@@ -148,7 +148,16 @@ function bdNotOwned(table, ownedIds) {
 /* ---- the strip: what the base adds, per source ---- */
 function skinTotals(T, st) {
   var t = emptyTotals();
-  st.owned.forEach(function (id) { var sd = own(T.SKIN_SD, String(id)); if (Array.isArray(sd)) arr(sd[3]).forEach(function (b) { var k = statKey(b && b[0]); if (k) t[k] += skinNum(b[1]); }); });
+  /* A level chain's later skin carries the chain's whole bonus (Lv.2 own = 20%, not 12% + 20%): only the highest owned level counts. One of a set of alternate forms counts (the equipped one, else the first). */
+  var ownedSet = {}, altDone = {};
+  st.owned.forEach(function (id) { ownedSet[id] = 1; });
+  var counted = st.owned.filter(function (id) {
+    var k = String(id), ch = own(T.SKIN_GROUP_LOOKUP, k), alt = own(T.SKIN_ALT_LOOKUP, k);
+    if (ch && ch.some(function (m) { return m > id && ownedSet[m]; })) return false;
+    if (alt) { var ak = alt.join(','); if (altDone[ak] && !(id === st.active)) return false; if (id === st.active || !altDone[ak]) altDone[ak] = id; }
+    return true;
+  }).filter(function (id) { var alt = own(T.SKIN_ALT_LOOKUP, String(id)); return !alt || altDone[alt.join(',')] === id; });
+  counted.forEach(function (id) { var sd = own(T.SKIN_SD, String(id)); if (Array.isArray(sd)) arr(sd[3]).forEach(function (b) { var k = statKey(b && b[0]); if (k) t[k] += skinNum(b[1]); }); });
   var act = st.active ? own(T.SKIN_SD, String(st.active)) : null;
   if (Array.isArray(act)) arr(act[2]).forEach(function (b) { var k = statKey(b && b[0]); if (k) t[k] += skinNum(b[1]); });
   return roundTotals(t);
@@ -517,7 +526,7 @@ function stripHtml() {
     return '<tr><td>' + esc(r.label) + '</td>' + c(r.decor) + c(r.skin) + c(r.bdecor) + '</tr>';
   }).join('');
   return '<section class="card bse-sum" aria-label="What your base adds" style="padding:12px"><h2 class="sub" style="margin-bottom:8px">What your base adds</h2><table class="bse-t"><thead><tr><th scope="col"><span class="sr">Stat</span></th><th scope="col">Decor</th><th scope="col">Skins</th><th scope="col">Base decor</th></tr></thead><tbody>' + body + '</tbody></table>' +
-    '<p class="bse-note">' + esc('Adds up the figures printed on the cards: placed decorations, the equipped skin plus every owned skin, and the equipped base decoration plus every owned one. The game applies its own limits, so a battle report can show a different total.') + '</p>' + (TFail ? '<p class="bse-note">' + esc('Skin and base decoration figures could not load.') + '</p>' : '') + '</section>';
+    '<p class="bse-note">' + esc('Adds up the figures on the cards: placed decorations; the Owned bonus of every owned skin (the highest level of each chain) plus the When equipped buffs of the equipped skin; the same for base decorations. The game applies its own limits, so a battle report can show a different total.') + '</p>' + (TFail ? '<p class="bse-note">' + esc('Skin and base decoration figures could not load.') + '</p>' : '') + '</section>';
 }
 
 /* ---- Decor ---- */
@@ -684,7 +693,7 @@ function setSheet(arg) {
 
 /* ---- Skins ---- */
 function skinCard(s, off) {
-  var eq = s.equip.length ? '<div class="bse-bl">Equip</div>' + buffList(s.equip, 4) : '', ow = s.ownB.length ? '<div class="bse-bl">Own</div>' + buffList(s.ownB, 4) : '';
+  var eq = s.equip.length ? '<div class="bse-bl">When equipped</div>' + buffList(s.equip, 4) : '', ow = s.ownB.length ? '<div class="bse-bl">Owned bonus</div>' + buffList(s.ownB, 4) : '';
   var pills = (s.active ? '<span class="pill p-eff">Equipped</span>' : '') + (s.isNew ? '<span class="pill p-eff">New</span>' : '');
   var skill = s.skill ? '<span class="bse-sk" data-bseskill="' + s.id + '">' + ic('bolt', 'sm') + '<span translate="no">' + esc(s.skill) + '</span></span>' : '';
   return '<div class="bse-c bse-skin' + (s.isNew ? ' q5' : '') + (off ? ' off' : '') + '"><button class="bse-ch" type="button" data-bseskin="' + s.id + '" style="text-align:left;color:inherit;width:100%">' + (s.icon ? icon('base-icons/' + s.icon, s.isNew ? 'q5' : '', s.name.charAt(0), s.name) : '<span class="ico fb" translate="no">' + esc(s.name.charAt(0)) + '</span>') + '<span class="bse-ct"><span class="bse-cn" translate="no" style="display:block">' + esc(noHy(s.name)) + '</span>' + (pills ? '<span class="bse-pills">' + pills + '</span>' : '') + '</span></button>' + eq + ow + skill + '</div>';
@@ -734,9 +743,9 @@ function skinSheet(arg) {
   function block(t, list) { return list.length ? '<section class="card"><h3 class="disp" style="font-size:var(--fs-17)">' + esc(t) + '</h3>' + buffList(list, 12) + '</section>' : ''; }
   if (ch) {
     o += '<section class="card"><h3 class="disp" style="font-size:var(--fs-17)">' + esc(ch.kind === 'alt' ? 'Alternate forms' : 'Level progression') + '</h3>' + (ch.kind === 'alt' ? '<p class="t13 muted" style="margin:4px 0 8px">Only one form is equipped at a time. Transform to switch.</p>' : '') + ch.rows.map(function (r) {
-      return '<div style="padding:8px 0;border-top:1px solid var(--rule)"><div class="bse-ch">' + (r.icon ? icon('base-icons/' + r.icon, '', r.name.charAt(0), r.name) : '') + '<span class="bse-ct"><span class="bse-cn" translate="no">' + esc(noHy(r.name)) + '</span><span class="bse-cs" style="display:block">' + nd(r.label) + '</span></span></div>' + (r.equip.length ? '<div class="bse-bl">Equip</div>' + buffList(r.equip, 8) : '') + (r.ownB.length ? '<div class="bse-bl">Own</div>' + buffList(r.ownB, 8) : '') + '</div>';
+      return '<div style="padding:8px 0;border-top:1px solid var(--rule)"><div class="bse-ch">' + (r.icon ? icon('base-icons/' + r.icon, '', r.name.charAt(0), r.name) : '') + '<span class="bse-ct"><span class="bse-cn" translate="no">' + esc(noHy(r.name)) + '</span><span class="bse-cs" style="display:block">' + nd(r.label) + '</span></span></div>' + (r.equip.length ? '<div class="bse-bl">When equipped</div>' + buffList(r.equip, 8) : '') + (r.ownB.length ? '<div class="bse-bl">Owned bonus</div>' + buffList(r.ownB, 8) : '') + '</div>';
     }).join('') + '</section>';
-  } else o += block('Equip', s.equip) + block('Own', s.ownB);
+  } else o += block('When equipped', s.equip) + block('Owned bonus', s.ownB);
   if (s.skill) o += '<button class="btn" type="button" data-bseskill="' + s.id + '" style="margin-top:12px">' + ic('bolt', 'sm') + '<span translate="no">' + esc(s.skill) + '</span></button>';
   return [s.name, o, true];
 }

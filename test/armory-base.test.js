@@ -110,6 +110,14 @@ test('skinTotals: own buffs of every owned skin plus the equip buffs of the equi
   assert.deepEqual(L.skinTotals(t, { owned: [1, 2], active: 0 }), { march: 4, atk: 35.5, hp: 0, dmgTaken: 0, dmgInc: 3 }, 'no equipped skin: no equip buffs');
   assert.deepEqual(L.skinTotals(t, { owned: [], active: 0 }), { march: 0, atk: 0, hp: 0, dmgTaken: 0, dmgInc: 0 });
 });
+test('skinTotals counts a level chain once (its highest owned level) and one alternate form; the owned bonus applies for every owned skin, When equipped only for the equipped one', () => {
+  const t = { SKIN_SD: { 1: ['L1', '', [['All units Attack', '+10.0%']], [['All units Attack', '+12.0%']], '', 0], 2: ['L2', '', [['All units Attack', '+20.0%']], [['All units Attack', '+20.0%']], '', 0], 3: ['Solo', '', [['All units Attack', '+50.0%']], [['All units Attack', '+5.0%']], '', 0], 4: ['FormA', '', [], [['All units Attack', '+7.0%']], '', 0], 5: ['FormB', '', [], [['All units Attack', '+9.0%']], '', 0] },
+    SKIN_GROUP_LOOKUP: { 1: [1, 2], 2: [1, 2] }, SKIN_ALT_LOOKUP: { 4: [4, 5], 5: [4, 5] } };
+  assert.equal(L.skinTotals(t, { owned: [1, 2, 3, 4, 5], active: 0 }).atk, 20 + 5 + 7, 'chain once, solo, one alternate form: no equipped skin, no equip buffs');
+  assert.equal(L.skinTotals(t, { owned: [1, 2, 3, 4, 5], active: 3 }).atk, 20 + 5 + 7 + 50, 'the equipped skin adds its equip buffs once');
+  assert.equal(L.skinTotals(t, { owned: [2, 3], active: 2 }).atk, 20 + 5 + 20);
+  assert.equal(L.skinTotals(t, { owned: [1], active: 0 }).atk, 12, 'a lone lower level counts when the higher one is not owned');
+});
 test('baseDecorTotals: holding buffs of every owned base decoration plus the equipping buffs of the equipped one', () => {
   const t = { BASE_DECOR_DATA: { 7: { n: 'X', e: [['All units ATK', 300], ['All units HP', 100]], o: [['All units HP', 250], ['March Size', 2]] }, 8: { n: 'Y', e: [['All units HP', 900]], o: [['All units HP', 50]] } } };
   assert.deepEqual(L.baseDecorTotals(t, { castle: [7, 8], castleActive: 7 }), { march: 2, atk: 3, hp: 4, dmgTaken: 0, dmgInc: 0 });
