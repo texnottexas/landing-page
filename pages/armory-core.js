@@ -1927,7 +1927,7 @@
     return { text: texts.join(''), full: full, parts: parts.map(function (x, i) { return { s: texts[i], n: x.n ? 1 : 0 }; }) };
   }
 
-  /* ONE score for every decor stat. Each decoration buff id maps to [stat, unit (0 = all units, 1 Army, 2 Navy, 3 Air Force), scope, label]; its points are
+  /* ONE score for every decor stat. Each decoration buff id maps to [stat, unit (0 = all units, 1 Army, 2 Navy, 3 Air Force), scope, label for the move text (60 characters: all-units Decreased DMG Taken is just that)]; its points are
      (percent points, or raw March Size) x BO_STAT_WEIGHTS[stat] x BO_SCOPE_MULT[scope] x boPlaystyleMult(unit, playstyle): the Beast Optimizer's own numbers and rule,
      not copies. Ids not listed (capacity, fire hydrant) score 0. */
   var DECOR_CLASS = {
@@ -1942,10 +1942,10 @@
     '930003': ['hp', 3, 'always', 'Air Force HP'], '9301173': ['hp', 3, 'always', 'Air Force HP'],
     '990202': ['def', 0, 'always', 'All units Defense'],
     '1001001': ['dmgInc', 0, 'always', 'All units DMG increase'], '29801011': ['dmgInc', 1, 'always', 'Army DMG increase'], '29801021': ['dmgInc', 2, 'always', 'Navy DMG increase'],
-    '980204': ['dmgDec', 0, 'always', 'All units Decreased DMG Taken'], '29901301': ['dmgDec', 0, 'defensive', 'All units Decreased DMG Taken (defense)'],
-    '29902211': ['dmgDec', 0, 'offensive', 'All units Decreased DMG Taken (offense)'], '98020501': ['dmgDec', 0, 'defensive', 'All units Decreased DMG Taken (defense)'],
+    '980204': ['dmgDec', 0, 'always', 'Decreased DMG Taken'], '29901301': ['dmgDec', 0, 'defensive', 'Decreased DMG Taken (def.)'],
+    '29902211': ['dmgDec', 0, 'offensive', 'Decreased DMG Taken (off.)'], '98020501': ['dmgDec', 0, 'defensive', 'Decreased DMG Taken (def.)'],
     '1003020': ['dmgDec', 1, 'always', 'Army Decreased DMG Taken'], '10030201': ['dmgDec', 1, 'always', 'Army Decreased DMG Taken'], '20030201': ['dmgDec', 1, 'always', 'Army Decreased DMG Taken'],
-    '1003021': ['dmgDec', 2, 'always', 'Navy Decreased DMG Taken'], '21010161': ['dmgDec', 2, 'always', 'Navy Decreased DMG Taken'], '1003022': ['dmgDec', 3, 'always', 'Air Force Decreased DMG Taken']
+    '1003021': ['dmgDec', 2, 'always', 'Navy Decreased DMG Taken'], '21010161': ['dmgDec', 2, 'always', 'Navy Decreased DMG Taken'], '1003022': ['dmgDec', 3, 'always', 'Air Decreased DMG Taken']
   };
   /* "Save for" rule: a target the bag cannot buy yet is suggested over the best upgrade it CAN buy only when its points per shard are at least SAVE_K times that
      upgrade's (waiting costs the gain you could have had now, so only a clear step up is worth it) and it is within SAVE_REACH times the bag (at least SAVE_FLOOR shards). */

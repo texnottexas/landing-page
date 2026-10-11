@@ -90,6 +90,9 @@ test('decor: one score for every stat; the best affordable upgrade per shard win
   d.decor.shards = 0;
   assert.ok(!C.nextMoves(d, { max: 6 }).picks.some((p) => p.sig === 'd' && /^Upgrade/.test(p.text)));
 });
+test('decor labels: the longest move line ("Upgrade " + an 8-character cut name + " to Lv.15: +99.5% " + label) stays within 60 characters', () => {
+  Object.keys(C.moves.DECOR_CLASS).forEach((id) => { const l = C.moves.DECOR_CLASS[id][3]; assert.ok(('Upgrade Thanksg\u2026 to Lv.15: +99.5% ' + l).length <= 60, id + ' ' + l); });
+});
 test('decor Save-for reach: a target 3x better per shard but beyond 10 x the bag (at least 500) is not worth saving for', () => {
   const d = fresh(); d.runeBag = { Impact: 0, Debilitate: 0, Searing: 0 };
   d.decor.placed.find((x) => x.n === 'Aircraft Carrier').nx = { to: 4, raw: 6000, credit: 0, dl: { 960012: 20 } }; // +20 March Size: 20 x 30 x 3 / 6000 = 0.3 per shard, 12x Coastal's 0.025
@@ -107,7 +110,7 @@ test('decor: DMG increase, Defense and Decreased DMG Taken are scored too (9, 20
   // 2% each: DMG 2 x 9 x 1.5 = 27, Defense 2 x 20 x 1.5 = 60, Taken 27, Attack 3, Army DMG 2 x 9 x 1 = 18
   assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Defence One to Lv.3: +2% All units Defense');
   d.decor.placed.splice(1, 1);
-  assert.match(C.nextMoves(d).picks[0].text, /^Upgrade (Dmg One|Taken One) to Lv\.3: \+2% All units (DMG increase|Decreased DMG Taken)$/, 'a tie on 27: cheaper then name');
+  assert.match(C.nextMoves(d).picks[0].text, /^Upgrade (Dmg One|Taken One) to Lv\.3: \+2% (All units DMG increase|Decreased DMG Taken)$/, 'a tie on 27: cheaper then name');
   assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Dmg One to Lv.3: +2% All units DMG increase', 'name order');
   d.decor.placed = d.decor.placed.filter((x) => x.n === 'Army Dmg' || x.n === 'Atk One');
   assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Army Dmg to Lv.3: +2% Army DMG increase', 'Army DMG 18 beats All units Attack 3 for an Army player');
