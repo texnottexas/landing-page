@@ -428,12 +428,12 @@ var SEGS = [['decor', 'Decor'], ['skins', 'Skins'], ['base-decor', 'Base decor']
 var PAGE = 24, STEP = 48, TOP = 5, OPEN_MAX = 12;
 var cur = { seg: 'decor', q: {} }, wired = false;
 var DF = { q: '', stat: '', up: false, sort: 'name' }, D = Object.assign({}, DF), open = {}, pageN = {};
-var SF = { q: '', buff: '', skill: '', sort: 'name' }, K = Object.assign({}, SF), skinN = PAGE, notN = {};
+var SF = { q: '', buff: '', skill: '', sort: 'equipped' }, K = Object.assign({}, SF), skinN = PAGE, notN = {};
 var BF = { q: '', sort: 'name' }, B = Object.assign({}, BF), bdN = PAGE;
 var T = null, TFail = false, TQ = null, MUT = null, REF = null, REFFail = false, spend = { open: false, tab: 'march_size', all: false, units: true, err: false };
 
 var CSS =
-  '.bse-sum{padding:0}.bse-t{margin:0;width:100%;border-collapse:collapse;font-size:var(--fs-14)}.bse-t th{font-weight:400;font-size:var(--fs-13);color:var(--muted);text-align:right;padding:0 0 4px 8px}.bse-t th:first-child,.bse-t td:first-child{text-align:left;padding-left:0}' +
+  '.bse-sum{padding:0}@media (min-width:768px){.bse-sum .bse-t{max-width:680px}}.bse-t{margin:0;width:100%;border-collapse:collapse;font-size:var(--fs-14)}.bse-t th{font-weight:400;font-size:var(--fs-13);color:var(--muted);text-align:right;padding:0 0 4px 8px}.bse-t th:first-child,.bse-t td:first-child{text-align:left;padding-left:0}' +
   '.bse-t td{padding:6px 0 6px 8px;text-align:right;border-top:1px solid var(--rule);font-weight:600}.bse-t td:first-child{font-weight:400;color:var(--text)}.bse-t td.z{color:var(--dim);font-weight:400}' +
   '.bse-note{margin-top:8px;font-size:var(--fs-12);color:var(--muted)}' +
   '.bse-sec{padding:0}.bse-hd{display:flex;align-items:center;gap:12px;width:100%;min-height:var(--row);padding:8px 12px;text-align:left;color:inherit}.bse-hd:active{background:var(--card-hi)}' +
@@ -657,7 +657,7 @@ function itemSheet(arg) {
   else x = dm.placed.filter(function (p) { return p.n === key; })[0] || null;
   if (!x) return null;
   var head = '<div class="sh-hero">' + icon('decor-icons/' + x.ic, qCls(x.q), x.n.charAt(0)) + '<div><span class="pill p-lv" translate="no">' + (off ? 'Not owned' : 'Lv.' + x.lv) + '</span><div class="t13 muted" style="margin-top:4px">' + (off ? nd(G.DECO_CAT_NAMES[x.cat]) : nd(G.DECO_CAT_NAMES[x.cat] + ' · ' + x.count + (x.count === 1 ? ' piece' : ' pieces') + ' placed')) + '</div></div></div>';
-  var o = head + (x.buffs.length ? '<section class="card"><h3 class="disp" style="font-size:var(--fs-17)">' + esc(off ? 'Buffs at level 1' : 'Buffs at Lv.' + x.lv) + '</h3>' + buffList(x.buffs, 12) + '</section>' : '');
+  var o = head + (x.buffs.length ? '<section class="card"><h3 class="disp" style="font-size:var(--fs-17)">' + (off ? 'Buffs at level 1' : nd('Buffs at Lv.' + x.lv)) + '</h3>' + buffList(x.buffs, 12) + '</section>' : '');
   var have = S.vm.decor.shards, nx = x.nx;
   if (!off && nx) {
     var net = Math.max(0, nx.raw - nx.credit), pct = Math.min(100, Math.round(have / Math.max(net, 1) * 100));
@@ -689,14 +689,14 @@ function skinCard(s, off) {
   var skill = s.skill ? '<span class="bse-sk" data-bseskill="' + s.id + '">' + ic('bolt', 'sm') + '<span translate="no">' + esc(s.skill) + '</span></span>' : '';
   return '<div class="bse-c bse-skin' + (s.isNew ? ' q5' : '') + (off ? ' off' : '') + '"><button class="bse-ch" type="button" data-bseskin="' + s.id + '" style="text-align:left;color:inherit;width:100%">' + (s.icon ? icon('base-icons/' + s.icon, s.isNew ? 'q5' : '', s.name.charAt(0), s.name) : '<span class="ico fb" translate="no">' + esc(s.name.charAt(0)) + '</span>') + '<span class="bse-ct"><span class="bse-cn" translate="no" style="display:block">' + esc(noHy(s.name)) + '</span>' + (pills ? '<span class="bse-pills">' + pills + '</span>' : '') + '</span></button>' + eq + ow + skill + '</div>';
 }
-var S_SORT = [['name', 'Name A to Z'], ['za', 'Name Z to A'], ['power', 'Power, high to low'], ['equipped', 'Equipped first']];
+var S_SORT = [['equipped', 'Equipped first'], ['name', 'Name A to Z'], ['za', 'Name Z to A'], ['power', 'Power, high to low']];
 function skinsData() {
   var st = Logic.skinState(S.res.merged && S.res.merged.skins);
   return { st: st, list: T && st.known ? Logic.skinList(T, st) : [] };
 }
 function skinControls(opt) {
   var buffs = [['', 'All stats']].concat(opt.buffs.map(function (b) { return [b, b]; })), skills = [['', 'All skills']].concat(opt.skills.map(function (b) { return [b, b]; }));
-  var n = (K.buff ? 1 : 0) + (K.skill ? 1 : 0) + (K.sort !== 'name' ? 1 : 0);
+  var n = (K.buff ? 1 : 0) + (K.skill ? 1 : 0) + (K.sort !== 'equipped' ? 1 : 0);
   return '<div class="fbar"><div class="grow"><input class="fld" type="search" data-bsekq placeholder="Search skins" aria-label="Search skins" value="' + esc(K.q) + '"></div><button class="btn bse-fbtn" type="button" data-open="bsesfilter">' + ic('sliders', 'sm') + '<span>Filter · Sort' + (n ? ' (' + n + ')' : '') + '</span></button></div>' +
     '<div class="bse-fs">' + sel('sort', 'Sort', S_SORT, K.sort, 'data-bsek') + sel('buff', 'Stat', buffs, K.buff, 'data-bsek') + (opt.skills.length ? sel('skill', 'City skill', skills, K.skill, 'data-bsek') : '') + '</div>';
 }
@@ -725,7 +725,7 @@ function skinsPane() {
   var notOwned = left.length ? '<section class="card bse-sec"><button class="bse-hd" type="button" data-bseopen="skinLeft" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">Skins not owned</span><span class="bse-hm">' + nd(String(left.length)) + '</span></span>' + ic('down', 'bse-chev') + '</button>' + (isOpen ? '<div class="bse-body"><div class="bse-grid">' + left.slice(0, sn).map(function (s) { return skinCard(s, true); }).join('') + '</div>' + more(Math.min(sn, left.length), left.length, 'skinLeft') + '</div>' : '') + '</section>' : '';
   return head + (list.length ? skinControls(opt) + '<div id="bseSkins">' + skinGridHtml(list) + '</div>' : '<div class="empty">No skins owned yet.</div>') + haloHtml(st) + notOwned + classicLink('bases', 'See skins and halos on the classic page');
 }
-function skinRefresh() { var g = $('#bseSkins'); if (!g) return; g.innerHTML = skinGridHtml(skinsData().list); var n = (K.buff ? 1 : 0) + (K.skill ? 1 : 0) + (K.sort !== 'name' ? 1 : 0); $$('.bse-fbtn span').forEach(function (b) { if (b.closest('[data-pane="skins"]')) b.textContent = 'Filter · Sort' + (n ? ' (' + n + ')' : ''); }); $$('[data-bsek]').forEach(function (x) { if (x.value !== String(K[x.dataset.bsek])) x.value = String(K[x.dataset.bsek]); }); }
+function skinRefresh() { var g = $('#bseSkins'); if (!g) return; g.innerHTML = skinGridHtml(skinsData().list); var n = (K.buff ? 1 : 0) + (K.skill ? 1 : 0) + (K.sort !== 'equipped' ? 1 : 0); $$('.bse-fbtn span').forEach(function (b) { if (b.closest('[data-pane="skins"]')) b.textContent = 'Filter · Sort' + (n ? ' (' + n + ')' : ''); }); $$('[data-bsek]').forEach(function (x) { if (x.value !== String(K[x.dataset.bsek])) x.value = String(K[x.dataset.bsek]); }); }
 function skinSheet(arg) {
   if (!T) return null;
   var id = +arg, s = Logic.skinRow(T, id, 0); if (!s.known) return null;
@@ -798,10 +798,10 @@ function formationCard(c) {
     (c.seen ? '<span class="bse-cs" style="display:block">' + nd('Level ' + c.lv + (c.lvUp ? ' +1' : '') + ' · Tier ' + c.tier + (c.tierUp ? ' +1' : '') + ' of 10') + '</span>' : '<span class="bse-cs" style="display:block">No battle seen with this formation yet.</span>') + '</span></div>';
   if (!c.seen) return '<section class="card bse-fc">' + head + '</section>';
   var cells = c.slots.map(function (s) { return '<div class="bse-sl s' + (s.eff == null ? 0 : s.eff >= 5 ? 5 : s.eff >= 4 ? 4 : 3) + '"><span>' + nd('Slot ' + s.n) + '</span><b translate="no">' + (s.lv == null ? '–' : s.lv + (s.plus ? '+1' : '')) + '</b>' + (s.lv == null ? '<span class="sr">locked</span>' : '') + '</div>'; }).join('');
-  return '<section class="card bse-fc">' + head + '<p class="t13 muted" style="margin-top:12px">' + nd('Specialization' + (c.skill ? ' (' + c.skill + ')' : '') + ' · ' + c.total + ' of 45' + (c.specUp ? ' · +1 on every open slot' : '')) + '</p><div class="bse-spec">' + cells + '</div></section>';
+  return '<section class="card bse-fc">' + head + '<p class="t13 muted" style="margin-top:12px">' + nd('Specialization' + (c.skill ? ' (' + c.skill + ')' : '') + ' · ' + c.total + ' of 45') + '</p><div class="bse-spec">' + cells + '</div></section>';
 }
 function techHtml(techs) {
-  return '<section class="card"><h2 class="sub">Formation tech</h2><p class="t13 muted" style="margin:4px 0 8px">Shared by all three formations.</p><ul class="bse-tl">' + techs.map(function (t) {
+  return '<section class="card"><h2 class="sub">Formation tech</h2><p class="t13 muted" style="margin:4px 0 8px">Shared by all three formations.</p><ul class="bse-tl two">' + techs.map(function (t) {
     return '<li><span class="bse-tt"><span style="display:block;font-weight:600">' + esc(t.name) + '</span>' + (t.lv === 0 ? '<span class="t13 muted">Not researched yet.</span>' : '<span class="bse-tch">' + t.chips.map(function (c) { return '<span>' + nd(c.v + ' ' + c.n) + '</span>'; }).join('') + '</span>' + (t.front ? '<span class="t12 muted" style="display:block;margin-top:4px">Front row shown.</span>' : '')) + '<span class="meter" style="margin-top:8px" role="img" aria-label="' + t.pct + ' percent researched"><i style="width:' + Math.max(t.lv ? 2 : 0, t.pct) + '%"></i></span></span><span class="bse-tv">' + nd('Lv.' + t.lv + ' of ' + t.max) + '</span></li>';
   }).join('') + '</ul></section>';
 }
