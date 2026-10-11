@@ -204,6 +204,8 @@ function splitEffect(e, lv) {
   if (b) m = b;
   return { now: clean(m ? m[1] : raw), six: m ? clean(m[2]) : '' };
 }
+/* A locked skill (not unlocked yet, or the hero is not awakened) still shows what Lv.1 would give: the same cleaning as an unlocked effect */
+function lockedLv1(cs) { return cs && cs.levels && cs.levels[0] && cs.levels[0].effect ? splitEffect(cs.levels[0].effect, 1) : { now: '', six: '' }; }
 /* What the next skill level adds, in words, from the catalog's two effect strings. Sentences are matched by their wording with the numbers
    taken out; only "X is increased / enhanced / reduced by N%" sentences are read (the bulk of the catalog). Anything else that changes, or a
    number that did not come through ("{1}", "60%,7.5%"), gives '' and the card prints no gain rather than a guess. Below Lv.6 the locked
@@ -291,7 +293,7 @@ function statusLine(byId, ids, nameOf) {
   ids.forEach(function (id) { var t = heroStatus(byId[id]); if (!by[t]) { by[t] = []; order.push(t); } by[t].push(nameOf(id)); });
   return order.map(function (t) { return { names: by[t], text: t }; });
 }
-var Logic = { awSkills: awSkills, enrich: enrich, SLOT_PRI: SLOT_PRI, TRIOS: TRIOS, CORE: CORE, CLOSE: CLOSE, step: step, costTo: costTo, workable: workable, cleanSet: cleanSet, pickSets: pickSets, skillsOf: skillsOf, nextOf: nextOf, plan: plan, moves: moves, effectText: effectText, splitEffect: splitEffect, nextGain: nextGain, clean: clean, needs: needs, verdict: verdict, heroStatus: heroStatus, statusLine: statusLine, cardLines: cardLines, fmtInt: fmtInt };
+var Logic = { awSkills: awSkills, enrich: enrich, SLOT_PRI: SLOT_PRI, TRIOS: TRIOS, CORE: CORE, CLOSE: CLOSE, step: step, costTo: costTo, workable: workable, cleanSet: cleanSet, pickSets: pickSets, skillsOf: skillsOf, nextOf: nextOf, plan: plan, moves: moves, effectText: effectText, splitEffect: splitEffect, lockedLv1: lockedLv1, nextGain: nextGain, clean: clean, needs: needs, verdict: verdict, heroStatus: heroStatus, statusLine: statusLine, cardLines: cardLines, fmtInt: fmtInt };
 if (isNode) module.exports = { Logic: Logic };
 if (!isNode) root.ArmoryAwakenLogic = Logic;
 
@@ -372,8 +374,11 @@ function skillCard(a, id, slot, hl) {
   var icon = art(BASE + 'hero-awake-skills/hero_awake' + (+id) + '_' + (+slot) + '.png', 'ico', name.charAt(0), '');
   /* below Lv.6 the "Unlocks at Lv. 6" clause is its own line: it is what the order is working towards */
   var sp = lv > 0 && cs && cs.levels && cs.levels[lv - 1] ? splitEffect(cs.levels[lv - 1].effect, lv) : { now: '', six: '' }, eff = sp.now, six = sp.six;
-  var nx;
-  if (a.mode !== 'full') nx = '';
+  var nx, l1 = '', l1six = '';
+  /* a locked skill (gated by awakening level, or the hero is not awakened yet) shows what Lv.1 would give, cleaned like an unlocked effect */
+  if (!lv) { var s1 = lockedLv1(cs); l1 = s1.now; l1six = s1.six; }
+  if (a.mode === 'none') nx = 'Unlocks at ' + nd('Awakening Lv.' + gate);
+  else if (a.mode !== 'full') nx = '';
   else if (!lv) nx = a.aw >= gate ? 'Level not in game data yet' : 'Unlocks at ' + nd('Awakening Lv.' + gate + ' (' + (gate - a.aw) + ' levels to go)');
   else if (lv >= 10) nx = '';
   else {
@@ -382,14 +387,16 @@ function skillCard(a, id, slot, hl) {
   }
   var meter = lv ? '<div class="awk-m"><div class="meter ' + (lv >= 10 ? 'r-max' : lv >= 6 ? 'r-hi' : 'r-lo') + '" role="img" aria-label="Skill level ' + lv + ' of 10, Lv.6 switches on the second effect"><i style="width:' + (lv * 10) + '%"></i></div></div>' : '';
   return '<div class="awk-c' + (lv ? '' : ' awk-lock') + (hl ? ' awk-hl' : '') + '" data-awks="' + (+slot) + '">' + icon + '<div class="awk-cb"><div class="awk-cn"><span translate="no">' + esc(name) + '</span>' +
-    (a.mode === 'full' ? '<span class="awk-lv" translate="no">' + (lv ? 'Lv.' + lv + ' of 10' : ic('lock', 'sm') + 'Locked') + '</span>' : '') + '</div>' +
+    (a.mode === 'full' || a.mode === 'none' ? '<span class="awk-lv" translate="no">' + (lv ? 'Lv.' + lv + ' of 10' : ic('lock', 'sm') + 'Locked') + '</span>' : '') + '</div>' +
     (hl ? '<span class="awk-tag">Next step</span>' : '') + meter +
     (eff ? '<p class="awk-eff">' + esc(eff) + '</p>' + (eff.length > 90 ? '<button class="tb link awk-more" type="button" data-awkmore aria-expanded="false">Show all</button>' : '') : '') +
     (six ? '<p class="awk-six">' + ic('lock', 'sm') + '<span><b>At Lv.6:</b> ' + esc(six) + '</span></p>' : '') +
-    (nx ? '<span class="awk-nx' + (lv ? '' : ' dim') + '">' + nx + '</span>' : '') + '</div></div>';
+    (nx ? '<span class="awk-nx' + (lv ? '' : ' dim') + '">' + nx + '</span>' : '') +
+    (l1 ? '<p class="awk-eff awk-l1"><b>At Lv.1:</b> ' + esc(l1) + '</p>' + (l1.length > 80 ? '<button class="tb link awk-more" type="button" data-awkmore aria-expanded="false">Show all</button>' : '') : '') +
+    (l1six ? '<p class="awk-six awk-l1">' + ic('lock', 'sm') + '<span><b>At Lv.6:</b> ' + esc(l1six) + '</span></p>' : '') + '</div></div>';
 }
-function needsData(id) { var a = vmA().byId[id]; return !!(a && a.aw > 0 && (a.mode === 'full' || a.mode === 'old')); }
-function block(id) {
+function needsData(id) { var a = vmA().byId[id]; return !!(a && (a.aw > 0 ? a.mode === 'full' || a.mode === 'old' : a.live && a.snap)); }
+function block(id, keepSel) {
   var A = vmA(), a = A && A.byId[id]; if (!a) return '';
   var action = readOnly() ? '' : ' <button class="tb link" type="button" data-open="status">Send game data</button>';
   var h = '<div class="awk-bh"><span class="awk-bt">Awakening</span>';
@@ -415,9 +422,9 @@ function block(id) {
   if (!a.live) return h + '<p class="awk-note">Skill details arrive with the next site update.</p>';
   if (!a.snap) return h + '<p class="awk-note">Awakening needs game data.' + action + '</p>';
   var card = A.stones == null ? null : !!A.cards[id];
-  return h + '<div' + (S.awkSel === id ? ' class="awk-selreq"' : '') + '><ul class="awk-req">' + needs(a, card).map(function (x) {
+  return h + '<div' + (S.awkSel === id || keepSel ? ' class="awk-selreq"' : '') + '><ul class="awk-req">' + needs(a, card).map(function (x) {
     return '<li class="' + (x.ok ? 'ok' : '') + '">' + (x.ok ? ic('check') : '<span class="awk-nil" aria-hidden="true"></span>') + '<span>' + nd(x.text) + '</span></li>';
-  }).join('') + '</ul><p class="awk-vd">' + nd(verdict(a, card)) + '</p></div>';
+  }).join('') + '</ul><p class="awk-vd">' + nd(verdict(a, card)) + '</p></div>' + (cat ? '<div class="awk-sk">' + [1, 2, 3, 4].map(function (q) { return skillCard(a, id, q, false); }).join('') + '</div>' : '');
 }
 function fill(id) {
   injectCss();
@@ -425,7 +432,8 @@ function fill(id) {
   if (!slots.length) return;
   var paint = function (ok) {
     slots.forEach(function (el) {
-      try { el.innerHTML = ok || !needsData(id) ? block(id) : '<p class="awk-note">Could not load the awakening details. Reload the page to try again.</p>'; } catch (e) { if (window.console) console.error(e); el.innerHTML = '<p class="awk-note">Could not show the awakening details.</p>'; }
+      var keep = !!el.querySelector('.awk-selreq'); /* the catalog arrives after the first paint of a not-awakened hero: the checklist mark stays */
+      try { el.innerHTML = ok || !needsData(id) || !(vmA().byId[id] || {}).aw ? block(id, keep) : '<p class="awk-note">Could not load the awakening details. Reload the page to try again.</p>'; } catch (e) { if (window.console) console.error(e); el.innerHTML = '<p class="awk-note">Could not show the awakening details.</p>'; }
       el.classList.add('awk-bk');
       /* phones: the block sits under six gear cards, so a row above the gear jumps to it (Battle only: the Roster has no gear) */
       var pn = el.parentNode, g = pn && pn.querySelector ? pn.querySelector('.gears') : null, ja = vmA().byId[id];
@@ -435,7 +443,7 @@ function fill(id) {
     var hl = S.awkScroll && $('.awk-slot[data-awk="' + (+id) + '"] .awk-c.awk-hl'); if (hl) { S.awkScroll = false; setTimeout(function () { hl.scrollIntoView({ block: 'center' }); }, 60); }
     var sel = S.awkSel === id && $('.awk-slot[data-awk="' + (+id) + '"] .awk-selreq'); if (sel) { S.awkSel = 0; setTimeout(function () { sel.scrollIntoView({ block: 'center' }); }, 60); } /* once: a later redraw does not jump back */
   };
-  if (needsData(id)) loadCat(paint); else paint(true); /* a hero that is not awakened needs no catalog */
+  if (needsData(id)) { if (!cat && !(vmA().byId[id] || {}).aw) paint(true); loadCat(paint); } else paint(true); /* a not-awakened hero needs the catalog only for its locked Lv.1 effects */
 }
 /* a "Show all" button only where the effect is really cut off (measured once the panel has opened) */
 function trim() {

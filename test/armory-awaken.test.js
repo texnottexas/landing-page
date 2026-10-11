@@ -516,3 +516,19 @@ test('nextGain over every live skill level: no placeholder, markup or negative n
   } }); });
   assert.ok(tot === 216 && got >= 90, got + ' of ' + tot);
 });
+
+test('locked skills show their Lv.1 effect: cleaned, Lv.6 line apart, no placeholders; also for a hero that is not awakened', () => {
+  let n = 0;
+  Object.values(CAT.heroes).filter((h) => h.live).forEach((h) => h.skills.forEach((sk) => {
+    const r = L.lockedLv1(sk);
+    assert.ok(r.now.length > 0, 'hero ' + h.id + ' slot ' + sk.slot + ' has a Lv.1 effect');
+    [r.now, r.six].forEach((t) => assert.ok(!/[{}]|\[|\]|Unlocks at Lv/.test(t), 'clean: ' + t.slice(0, 100)));
+    if (/Unlocks at Lv\. ?6:/.test(sk.levels[0].effect)) assert.ok(r.six.length > 0 || /More effect at Lv\.6/.test(sk.levels[0].effect) === false);
+    n++;
+  }));
+  assert.ok(n >= 20);
+  const sk = CAT.heroes[SARA].skills[0];
+  assert.equal(L.lockedLv1(sk).now, 'HP Boost effect is increased by 1.0%. HP Boost effect is increased by 0.5%.');
+  assert.match(L.lockedLv1(CAT.heroes[SARA].skills[1]).six, /Magnetic Pulse and Ignition/);
+  assert.deepEqual(L.lockedLv1(null), { now: '', six: '' });
+});
