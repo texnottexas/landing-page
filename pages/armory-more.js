@@ -160,10 +160,10 @@ function repLabel(id) { return '…' + String(id).slice(-6); }
 function claimable() { var r = S.res; return !!(r && r.readOnly && S.code && !S.advise && sk() && r.rosterEntry); }
 function claimIdentity() {
   var re = S.res.rosterEntry, k = sk(); if (!re || !k) return;
-  var id = d.getStoredIdentity() || {};
-  if (id.siteKey === k) return;
-  id.name = re.name; id.alliance = re.alliance; id.rank = re.rank; id.profession = re.profession; id.siteKey = k;
-  d.identity.set(id);
+  var prev = d.getStoredIdentity() || {};
+  if (prev.siteKey === k) return;
+  /* a different player's identity: start fresh so none of their fields (guest, avatar, ...) carry over */
+  d.identity.set({ name: re.name, alliance: re.alliance, rank: re.rank, profession: re.profession, siteKey: k });
 }
 function mountGuide() {
   var det = $('#guideDet'); if (!det || det.dataset.mounted) return;
