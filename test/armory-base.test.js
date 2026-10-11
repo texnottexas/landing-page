@@ -297,7 +297,21 @@ test('an all-units buff counts once per marched unit type: for an Army + Air For
   const vm = vmOf(core, merged, inv, [{ heroIds: [101, 301] }]), m = L.spendModel(core, inv, merged, { levels: LEVELS, index: INDEX, mutex: MUTEX }, null, vm.movesInput.decor.branches);
   assert.deepEqual(m.byStatMine.attack.map((r) => r.n).slice(0, 2), ['Mega Bite', 'Swing Bridge'], 'the panel ranks by the same weights');
   assert.equal(m.byStatMine.attack[0].gain[0].v, '+1.0%', 'the printed gain is the buff\'s own, not the weighted one');
-  assert.deepEqual(core.decorScopeIds('930100', ['Army', 'Air Force']).map((x) => x[2]), [2, 1, 1, 1, 1]); assert.deepEqual(core.decorScopeIds('960012', ['Army']), [['960012', null, 1]]);
+  assert.deepEqual(core.decorScopeIds('930100', ['Army', 'Air Force']).map((x) => x[2]), [2, 2, 2, 1, 1, 1, 1], 'the all-units twins 9301160 / 93011601 weigh like 930100'); assert.deepEqual(core.decorScopeIds('960012', ['Army']), [['960012', null, 1]]);
+});
+test('a decoration whose All units Attack comes only through a second-system id (9301160) competes in the move and the panel; players without such ids are unchanged', () => {
+  // Cosmos-style groups: find placed groups whose only attack buff is 9301160 or 9301170
+  const idxs = INDEX.filter((e) => LEVELS[e.group] && LEVELS[e.group].fi === 20213232 && e.buffs.length === 1);
+  const atk = idxs.find((e) => e.buffs[0].id === 9301160), hp = idxs.find((e) => e.buffs[0].id === 9301170);
+  assert.ok(atk && hp, 'the tables carry such decorations');
+  for (const [e, stat, tab, label] of [[atk, 'attack', 'attack', /All units Attack/], [hp, 'hp', 'hp', /All units HP/]]) {
+    const { core, merged } = placedFor([[e.group, 2]]), inv = bag(100000);
+    const mv = dMove(vmOf(core, merged, inv, []));
+    assert.ok(mv && mv.text.indexOf(e.name) >= 0, e.name + ' competes: ' + (mv && mv.text)); assert.match(mv.text, label);
+    const m = L.spendModel(core, inv, merged, { levels: LEVELS, index: INDEX, mutex: MUTEX }, null, []);
+    assert.equal(m.byStatMine[tab][0].n, e.name); assert.ok(m.byStatAll[tab].some((r) => r.n === e.name));
+  }
+  const plain = placedFor([[4200, 2]]); assert.match(dMove(vmOf(plain.core, plain.merged, bag(100000), [])).text, /^Upgrade Christmas tree/, 'a first-system player is unchanged');
 });
 test('every-unit-type view is the classic advisor list: it can rank a decoration the Overview move does not count', () => {
   // Sandcastle Toolkit raises Army HP (930001), not All units HP (930000)

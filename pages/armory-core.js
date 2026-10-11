@@ -1935,12 +1935,15 @@
     '930000': { 'Army': [['930001', 'Army HP'], ['9301171', 'Army HP']], 'Navy': [['930002', 'Navy HP'], ['9301172', 'Navy HP']], 'Air Force': [['930003', 'Air Force HP'], ['9301173', 'Air Force HP']] },
     '1001001': { 'Army': [['29801011', 'Army DMG increase']], 'Navy': [['29801021', 'Navy DMG increase']], 'Air Force': [] }
   };
+  /* All units Attack / HP also come as ids 9301160 / 93011601 and 9301170 / 93011701; the battle report's decoration trace counts them as decoration buffs. */
+  var DECOR_ALL_UNITS_TWIN = { '930100': ['9301160', '93011601'], '930000': ['9301170', '93011701'] };
   /* the ids a stat counts for the branches the player marches with: [[id, label|null, weight]] (label null = the stat's own all-units label).
      An all-units buff helps every unit type the player marches, so it counts once per marched type (weight = the number of types); a unit-type buff
      counts once (weight 1). A stat with no unit-type buffs (March Size) always weighs 1. No marches: the all-units buff alone, weight 1. */
   function decorScopeIds(mainId, branches) {
     var t = DECOR_UNIT_IDS[String(mainId)], br = (branches || []).filter(function (b) { return t && t[b]; });
-    var out = [[String(mainId), null, t && br.length ? br.length : 1]];
+    var w = t && br.length ? br.length : 1, out = [[String(mainId), null, w]];
+    (DECOR_ALL_UNITS_TWIN[String(mainId)] || []).forEach(function (id) { out.push([id, null, w]); }); /* the second buff system's all-units twins weigh the same */
     br.forEach(function (b) { t[b].forEach(function (x) { out.push([x[0], x[1], 1]); }); });
     return out;
   }

@@ -547,6 +547,7 @@ var CSS =
   '.bse-line{display:flex;flex-wrap:wrap;gap:4px 8px;font-size:var(--fs-14);color:var(--muted)}.bse-line span b{color:var(--text)}' +
   '@media (min-width:768px){.bse-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.bse-fbtn{display:none}.bse-fs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 12px}.bse-ft{grid-template-columns:repeat(3,minmax(0,1fr))}}' +
   '@media (min-width:1024px){.bse-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.bse-rk{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.bse-tl.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px}.bse-tl.two > li:nth-child(2){border-top:0}}' +
+  '@media (max-width:767px){.bse-skin .bse-dim{display:none}}' +
   '@media (min-width:1024px){.bse-secs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start}.bse-secs > .bse-sec.is-open{grid-column:1/-1}}@media (min-width:1200px){.bse-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}';
 
 function injectCss() {
