@@ -478,3 +478,13 @@ test('talent tree grid: one row per tier from the root, three lanes, every paren
   assert.equal(tm.sides.left.find((n) => n.id === 1001000).row, 0);
   assert.equal(tm.sides.left.find((n) => n.id === 1007000).col, 1);
 });
+
+test('decorSort: the level orders break ties by the main buff, biggest first, then by name; Decor opens on Level, low first', () => {
+  const mk = (g, n, lv, v) => ({ g, n, lv, q: 3, cat: 0, sub: null, buffs: [{ n: 'March Size', v }] });
+  const l = [mk(1, 'Bravo', 3, '+2'), mk(2, 'Alpha', 3, '+2'), mk(3, 'Charlie', 3, '+10'), mk(4, 'Delta', 1, '+1'), mk(5, 'Echo', 5, '+3')];
+  assert.deepEqual(L.decorSort(l, 'lvlow').map((x) => x.n), ['Delta', 'Charlie', 'Alpha', 'Bravo', 'Echo']);
+  assert.deepEqual(L.decorSort(l, 'lvhigh').map((x) => x.n), ['Echo', 'Charlie', 'Alpha', 'Bravo', 'Delta']);
+  const pc = [{ g: 1, n: 'B', lv: 1, cat: 2, sub: 'atk', buffs: [{ n: 'All units Attack', v: '+1.5%' }] }, { g: 2, n: 'A', lv: 1, cat: 2, sub: 'atk', buffs: [{ n: 'All units Attack', v: '+12.5%' }] }];
+  assert.deepEqual(L.decorSort(pc, 'lvlow').map((x) => x.n), ['A', 'B'], 'a percentage buff compares as a number, not as text');
+  assert.equal(L.decorSort([mk(9, 'Z', 1, '+1,200'), mk(8, 'Y', 1, '+999')], 'lvlow')[0].n, 'Z', 'thousands separators');
+});

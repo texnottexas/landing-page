@@ -281,13 +281,22 @@ function notOwnedList(L, G, om) {
     return { g: +k, n: n, q: 0, lv: 0, ic: iconFile(k, n), cat: b.cat, sub: b.sub, buffs: b.rows, stats: b.stats };
   }).sort(function (a, b) { return a.n < b.n ? -1 : a.n > b.n ? 1 : a.g - b.g; });
 }
+/* the buff a section is already named for (March Size, Attack...) moves to the card's header as one right-aligned number instead of repeating its label on every card */
+var LEAD = { 0: 'March Size', 1: 'All units Defense', dmg_inc: 'All units DMG increase', dmg_dec: 'All units Decreased DMG Taken', atk: 'All units Attack', hp: 'All units HP' };
+/* a decoration's main buff as a number: the one its section is named for (March Size, Attack...), else its first; 0 when it has none */
+function mainBuff(d) {
+  var key = d.cat === 0 || d.cat === 1 ? d.cat : d.sub, bs = arr(d.buffs), b = null;
+  if (LEAD[key]) b = bs.filter(function (x) { return x.n === LEAD[key]; })[0] || null;
+  b = b || bs[0]; var m = b && /-?\d[\d,]*(?:\.\d+)?/.exec(String(b.v));
+  return m ? parseFloat(m[0].replace(/,/g, '')) : 0;
+}
 function decorSort(list, mode) {
   return list.slice().sort(function (a, b) {
-    var nm = a.n < b.n ? -1 : a.n > b.n ? 1 : a.g - b.g;
+    var nm = a.n < b.n ? -1 : a.n > b.n ? 1 : a.g - b.g, bv = mainBuff(b) - mainBuff(a);
     if (mode === 'za') return -nm;
-    if (mode === 'lvhigh') return (b.lv - a.lv) || nm;
-    if (mode === 'lvlow') return (a.lv - b.lv) || nm;
-    if (mode === 'quality') return (b.q - a.q) || (b.lv - a.lv) || nm;
+    if (mode === 'lvhigh') return (b.lv - a.lv) || bv || nm;
+    if (mode === 'lvlow') return (a.lv - b.lv) || bv || nm;
+    if (mode === 'quality') return (b.q - a.q) || (b.lv - a.lv) || bv || nm;
     return nm;
   });
 }
@@ -525,7 +534,7 @@ var S = H.S, G = H.G, core = H.core, BASE = H.BASE, $ = H.$, $$ = H.$$, esc = H.
 var SEGS = [['decor', 'Decor'], ['skins', 'Skins'], ['base-decor', 'Base decor'], ['formation', 'Formation']];
 var PAGE = 24, STEP = 48, TOP = 5, OPEN_MAX = 12;
 var cur = { seg: 'decor', q: {} }, wired = false;
-var DF = { q: '', stat: '', up: false, sort: 'name' }, D = Object.assign({}, DF), open = {}, pageN = {};
+var DF = { q: '', stat: '', up: false, sort: 'lvlow' }, D = Object.assign({}, DF), open = {}, pageN = {};
 var SF = { q: '', buff: '', skill: '', sort: 'equipped' }, K = Object.assign({}, SF), skinN = PAGE, notN = {};
 var BF = { q: '', sort: 'equipped' }, B = Object.assign({}, BF), bdN = PAGE;
 var T = null, TFail = false, TQ = null, MUT = null, REF = null, REFFail = false, spend = { open: false, tab: 'march_size', all: false, units: 'mine', err: false };
@@ -636,8 +645,6 @@ function totalsSheet() {
 
 /* ---- Decor ---- */
 function buffList(b, max) { return b.length ? '<ul class="bse-bf">' + b.slice(0, max || 6).map(function (x) { return '<li><span>' + nd(x.n) + '</span><span translate="no">' + esc(x.v) + '</span></li>'; }).join('') + '</ul>' : ''; }
-/* the buff a section is already named for (March Size, Attack...) moves to the card's header as one right-aligned number instead of repeating its label on every card */
-var LEAD = { 0: 'March Size', 1: 'All units Defense', dmg_inc: 'All units DMG increase', dmg_dec: 'All units Decreased DMG Taken', atk: 'All units Attack', hp: 'All units HP' };
 function decorCard(x, off, kind) {
   var key = x.cat === 0 || x.cat === 1 ? x.cat : x.sub, lead = null, rest = x.buffs;
   if (LEAD[key]) { var i = x.buffs.map(function (b) { return b.n; }).indexOf(LEAD[key]); if (i >= 0) { lead = x.buffs[i]; rest = x.buffs.filter(function (b, j) { return j !== i; }); } }
@@ -701,10 +708,10 @@ function storedHtml() {
   return '<section class="card bse-sec"><button class="bse-hd" type="button" data-bseopen="stored" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">Owned, not placed</span><span class="bse-hm">' + nd(f.length + (f.length === 1 ? ' decoration' : ' decorations')) + '</span></span>' + ic('down', 'bse-chev') + '</button>' +
     (isOpen ? '<div class="bse-body"><div class="bse-grid">' + f.slice(0, shown).map(function (x) { return decorCard(x, false, 's'); }).join('') + '</div>' + more(Math.min(shown, f.length), f.length, 'stored') + '</div>' : '') + '</section>';
 }
-function dDirty() { return (D.stat ? 1 : 0) + (D.up ? 1 : 0) + (D.sort !== 'name' ? 1 : 0); }
+function dDirty() { return (D.stat ? 1 : 0) + (D.up ? 1 : 0) + (D.sort !== DF.sort ? 1 : 0); }
 function dBtn() { var n = dDirty(); return 'Filter · Sort' + (n ? ' (' + n + ')' : ''); }
 var D_STATS = [['', 'All stats']].concat(Logic.STAT_TABS.map(function (t) { return [t[0], t[1]]; }));
-var D_SORT = [['name', 'Name A to Z'], ['za', 'Name Z to A'], ['lvhigh', 'Level, high to low'], ['lvlow', 'Level, low to high'], ['quality', 'Quality']];
+var D_SORT = [['lvlow', 'Level, low first'], ['lvhigh', 'Level, high first'], ['name', 'Name A to Z'], ['za', 'Name Z to A'], ['quality', 'Quality']];
 function sel(id, lab, list, val, attr) { return '<label class="bse-f"><span>' + esc(lab) + '</span><select class="sel" ' + attr + '="' + id + '">' + list.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (/\d/.test(o[1]) ? ' translate="no"' : '') + (String(val) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select></label>'; }
 function decorControls() {
   return '<div class="fbar"><div class="grow"><input class="fld" type="search" data-bsedq placeholder="Search name or stat" aria-label="Search decorations" value="' + esc(D.q) + '"></div><button class="btn bse-fbtn" type="button" data-open="bsedfilter">' + ic('sliders', 'sm') + '<span>' + esc(dBtn()) + '</span></button></div>' +
