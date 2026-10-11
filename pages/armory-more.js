@@ -1,6 +1,6 @@
 /* armory-more.js: the parts of the Armory v2 page that load on first use (not on the first paint).
- * Start / expired / error screens, the Status, Settings, Bag and decoration sheets, Share, UID verify and the report list,
- * and the Roster, Gear, Base and Beasts sections. armory-app.js loads it with one script tag the first time a
+ * Start / expired / error screens, the Status, Settings and Bag sheets, Share, UID verify and the report list,
+ * and the Roster and Gear sections. armory-app.js loads it with one script tag the first time a
  * route, sheet or button needs it, then calls ArmoryMore(helpers). Same-origin script: no CSP change.
  */
 window.ArmoryMore = function (H) {
@@ -154,33 +154,6 @@ function renderGear() {
 }
 function classicLink(tab, text) { return '<div class="lnkrow" style="margin-top:12px"><a class="tb link" href="' + esc(classicUrl(tab)) + '">' + ic('ext', 'sm') + '<span>' + nd(text) + '</span></a></div>'; }
 function needData(what) { return '<div class="empty">' + esc(what) + (readOnly() ? '' : ' <button class="tb link" type="button" data-open="status">Send game data</button>') + '</div>'; }
-function renderBase() {
-  var D = S.vm.decor, T = D.totals;
-  function row(l, v) { return '<li><span>' + esc(l) + '</span><span translate="no">' + esc(v) + '</span></li>'; }
-  var body = '';
-  if (D.placedKinds) {
-    var list = D.placed.slice().sort(function (a, b) { return (b.q - a.q) || (b.lv - a.lv) || (a.n < b.n ? -1 : 1); });
-    var shown = S.all.decor ? list : list.slice(0, 12);
-    body = '<section class="card" aria-label="Decoration buff totals"><ul class="buffs">' + row('March Size', '+' + T.march) + row('All units Attack', '+' + T.atk + '%') + row('All units HP', '+' + T.hp + '%') + row('All units Decreased DMG Taken', '+' + T.dmgTaken + '%') + row('All units DMG increase', '+' + T.dmgInc + '%') +
-      '</ul><p class="foot" style="margin-top:12px">' + nd('Source: ' + D.placedKinds + ' kinds placed (' + D.placedPieces + ' pieces). Each decoration adds only its own buffs, once per piece.') + '</p></section>' +
-      '<h2 class="sub">Decorations placed</h2><div class="dgrid">' + shown.map(function (x) {
-        return '<a class="dcard" href="#base/decor?item=' + esc(encodeURIComponent(x.n).replace(/%20/g, '+')) + '">' + art(BASE + 'decor-icons/' + x.ic, 'ico dico ' + qCls(x.q), x.n.charAt(0), '') + '<span class="pill p-lv" translate="no">Lv.' + esc(x.lv) + '</span><span class="dn" translate="no">' + esc(x.n) + '</span><span class="ds">' + nd(x.count + (x.count === 1 ? ' piece' : ' pieces') + ' placed') + '</span></a>';
-      }).join('') + '</div>' + (list.length > 12 && !S.all.decor ? '<button class="btn more" type="button" data-showall="decor"><span>Show all <span translate="no">' + list.length + '</span></span></button>' : '');
-  } else body = needData('No decoration data yet.');
-  $('#v-base').innerHTML = '<div class="vb">' + body + classicLink('decorations', 'See all decorations on the classic page') + '</div>';
-}
-function decorBody(x) {
-  var have = S.vm.decor.shards, nx = x.nx;
-  var STATS = { '960012': ['March Size', true], '930100': ['All units Attack', false], '930000': ['All units HP', false], '1001001': ['All units DMG increase', false] };
-  var head = '<div class="sh-hero">' + art(BASE + 'decor-icons/' + x.ic, 'ico ' + qCls(x.q), x.n.charAt(0), '') + '<div><span class="pill p-lv" translate="no">Lv.' + x.lv + '</span><div class="t13 muted" style="margin-top:4px"><span translate="no">' + x.count + '</span> ' + (x.count === 1 ? 'piece' : 'pieces') + ' placed</div></div></div>';
-  if (!nx) return head + '<section class="card"><p class="muted">' + (x.lv >= x.mx ? 'This decoration is at its top level.' : 'This decoration upgrades with its own item, not Universal Decor Shards.') + '</p></section>';
-  var net = Math.max(0, nx.raw - nx.credit), pct = Math.min(100, Math.round(have / Math.max(net, 1) * 100));
-  var gain = Object.keys(nx.dl).filter(function (k) { return STATS[k]; }).map(function (k) { var v = nx.dl[k]; return esc(STATS[k][0]) + ' ' + nm(STATS[k][1] ? '+' + v : '+' + (v / 100) + '%'); });
-  return head + '<section class="card"><h3 class="disp" style="font-size:var(--fs-20)">Next level: ' + nm('Lv.' + nx.to) + '</h3>' + (gain.length ? '<p style="margin-top:8px">' + gain.join(', ') + '</p>' : '') +
-    '<div class="nb" style="margin-top:12px" data-numwrap><div class="n" data-num translate="no">' + fmtInt(net) + '</div><div class="l lbl">Shards to upgrade</div><div class="s src"><span translate="no">' + fmtInt(have) + '</span> in bag</div></div>' +
-    '<div class="meter lg r-' + ramp(pct) + '" style="margin-top:12px" role="img" aria-label="' + pct + ' percent of the shards needed"><i style="width:' + Math.max(2, pct) + '%"></i></div>' +
-    '<p class="t13 muted" style="margin-top:8px">' + (have >= net ? 'Your bag covers this upgrade.' : 'You need <span translate="no">' + fmtInt(net - have) + '</span> more shards.') + '</p></section>';
-}
 function bagBody() {
   var D = S.vm.decor, R = S.vm.runes;
   if (!D.known) return '<p class="muted">The bag is not available. It comes from the owner’s game data, and the owner can keep it private.</p>' + classicLink('inventory', 'Open the bag in classic');
@@ -307,14 +280,13 @@ var EXPLAIN = {
   moves: ['How next moves are chosen', 'Each move uses only data in this report. Free moves come first, then moves that use what you already have, then moves that cost resources. Inside one kind of move, the biggest gain comes first, then the hero with the best gear score. A decor move names the stat it raises and shows only when your shards cover the cost. An awakening move raises one skill and says the most Awakening Stones it can take; it shows only when your stones cover it. A refine move picks the piece with the most stats under 70%. HT moves count the HT in your battle reports first.']
 };
 
-function renderSections() { rosterList(); renderGear(); renderBase(); }
+function renderSections() { rosterList(); renderGear(); }
 /* [title, html, titleIsAName] for the sheets that live here */
 function sheet(kind, arg) {
   if (kind === 'explain') return [EXPLAIN[arg][0], '<p>' + nd(EXPLAIN[arg][1]) + '</p>'];
   if (kind === 'status') return ['Status', statusBody()];
   if (kind === 'settings') return ['Settings', settingsBody()];
   if (kind === 'bag') return ['Bag', bagBody()];
-  if (kind === 'decor') { var x = S.vm.decor.placed.filter(function (p) { return p.n === arg; })[0]; return x ? [x.n, decorBody(x), true] : null; }
   return null;
 }
 var KEYS = ['load', 'pick', 'code', 'verify', 'addrep', 'rm', 'rmno', 'rmyes', 'sw', 'swno', 'swyes', 'mine', 'reload'];
@@ -338,5 +310,5 @@ function click(t) {
 }
 function enter(id) { if (id === 'rid') loadReportId(); else if (id === 'uidIn') verify(); else if (id === 'repIn') addReport(); }
 
-return { deepRoster: deepRoster, renderBase: renderBase, renderStart: renderStart, renderSections: renderSections, rosterList: rosterList, gearBody: gearBody, renderGear: renderGear, sheet: sheet, share: share, owns: owns, click: click, enter: enter, saveConfig: saveConfig };
+return { deepRoster: deepRoster, renderStart: renderStart, renderSections: renderSections, rosterList: rosterList, gearBody: gearBody, renderGear: renderGear, sheet: sheet, share: share, owns: owns, click: click, enter: enter, saveConfig: saveConfig };
 };

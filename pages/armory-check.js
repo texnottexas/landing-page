@@ -49,7 +49,7 @@ function overflow() {
   });
   return bad;
 }
-var ROUTES = ['overview', 'heroes/battle', 'heroes/roster', 'heroes/gear', 'heroes/gear?view=runes', 'heroes/advice', 'base', 'beasts/field', 'beasts/collection', 'beasts/optimizer', 'ht/loadouts', 'ht/pool'];
+var ROUTES = ['overview', 'heroes/battle', 'heroes/roster', 'heroes/gear', 'heroes/gear?view=runes', 'heroes/advice', 'base/decor', 'base/skins', 'base/base-decor', 'base/formation', 'beasts/field', 'beasts/collection', 'beasts/optimizer', 'ht/loadouts', 'ht/pool'];
 function visit(r) { A.go(r); A.applyRoute(false); return sleep(/advice/.test(r) ? 700 : /^(ht|beasts)/.test(r) ? 500 : 70); }
 function cyrb53(str) {
   var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
@@ -249,7 +249,7 @@ var EXPECTED = [
   /* the Google Translate widget's own logo (gstatic) is third-party markup, same exclusion as the size checks; our images stay strict */
   var imgs = $$('img').filter(function (m) { return !third(m); }), imgBad = imgs.filter(function (m) { return !/^https:\/\/(raw\.githubusercontent\.com|h5\.topwargame\.com|knight-cdn\.akamaized\.net)\//.test(m.src); });
   log(imgBad.length === 0, 'images only from origins the live CSP allows', imgs.length + ' images' + (imgBad.length ? ', bad: ' + imgBad[0].src : ''));
-  var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-ht|armory-awaken|armory-beasts|armory-beasts-opt|armory-advice|armory-advice-flows|armory-check|feedback-widget)\.js$|^https:\/\/translate\.googleapis\.com\//.test(s); });
+  var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|tw-game-data-base|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-ht|armory-awaken|armory-base|armory-beasts|armory-beasts-opt|armory-advice|armory-advice-flows|armory-check|feedback-widget)\.js$|^https:\/\/translate\.googleapis\.com\//.test(s); });
   log(badSrc.length === 0, 'scripts only from this site and Google Translate', scripts.length + ' script tags' + (badSrc.length ? ', unexpected: ' + badSrc.join(', ') : ''));
   S.all.gear = false; S.all.roster = false;
   A.applyRoute(false);

@@ -1,5 +1,5 @@
 /* armory.html: the Armory v2 screens (phase 2b). First paint: boot, routing, Overview, Heroes > Battle.
- * armory-more.js (loaded on first use): Start, Status, Settings, Share, Roster, Gear, Base, Beasts. armory-ht.js: the HT section.
+ * armory-more.js (loaded on first use): Start, Status, Settings, Share, Roster, Gear. armory-base.js: the Base section. armory-ht.js: the HT section.
  * Data comes from ArmoryData (loaders, identity) and ArmoryVM (view-model); nothing here re-computes game rules.
  * v2 never writes `playerReport` for a ?code= link or on its own initiative; it writes it only when the player builds
  * their own armory on the Start screen, edits their own report list, or mints a share code (all v1 behaviour).
@@ -15,7 +15,7 @@ var S = { res: null, vm: null, code: null, cur: null, open: {}, f: { q: '', br: 
 var VIEWS = {
   overview: { label: 'Overview', icon: 'overview' },
   heroes: { label: 'Heroes', icon: 'heroes', segs: [['battle', 'Battle'], ['roster', 'Roster'], ['gear', 'Gear'], ['advice', 'Advice']] },
-  base: { label: 'Base', icon: 'base' }, beasts: { label: 'Beasts', icon: 'beasts', segs: [['field', 'Field'], ['collection', 'Collection'], ['optimizer', 'Optimizer']] }, ht: { label: 'HT', icon: 'ht', segs: [['loadouts', 'Loadouts'], ['pool', 'Chip pool']] }
+  base: { label: 'Base', icon: 'base', segs: [['decor', 'Decor'], ['skins', 'Skins'], ['base-decor', 'Base decor'], ['formation', 'Formation']] }, beasts: { label: 'Beasts', icon: 'beasts', segs: [['field', 'Field'], ['collection', 'Collection'], ['optimizer', 'Optimizer']] }, ht: { label: 'HT', icon: 'ht', segs: [['loadouts', 'Loadouts'], ['pool', 'Chip pool']] }
 };
 var TABS = ['overview', 'heroes', 'base', 'beasts', 'ht'];
 var PAGES = [['armory-report.html', 'Armory Report'], ['bases.html', 'Bases'], ['battle-report.html', 'Battle Reports'], ['chaos-crafting.html', 'Chaos Crafting'], ['decor-index.html', 'Decor Index'], ['enigma-viewer.html', 'Enigma Beasts'], ['eternal-land-calendar.html', 'Eternal Land'], ['heroes.html', 'Heroes'], ['heroes-awakening.html', 'Heroes Awakening'], ['ht-chips.html', 'HT Chips'], ['roadmap.html', 'Roadmap'], ['rockfield-optimizer.html', 'Rockfield Optimizer'], ['titan.html', 'Titan Canyon']];
@@ -56,7 +56,7 @@ var toastT;
 function toast(msg) { var t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('show'); }, 3000); }
 
 /* ---------- the lazy half ---------- */
-var M = null, moreQ = null, H = null, Av = null, advQ = null, HT = {}, BT = {}, AWK = {};
+var M = null, moreQ = null, H = null, Av = null, advQ = null, HT = {}, BT = {}, AWK = {}, BS = {};
 function more(cb) {
   if (M) return cb(M);
   if (moreQ) { moreQ.push(cb); return; }
@@ -83,6 +83,7 @@ function lz(o, src, make, view, cb, soft) {   /* soft: a failed load calls it in
   document.body.appendChild(sc);
 }
 function ht(cb) { lz(HT, 'armory-ht.js', function () { return window.ArmoryHt(H); }, 'ht', cb); }
+function bse(cb) { lz(BS, 'armory-base.js', function () { return window.ArmoryBase(H); }, 'base', cb); }
 function bst(cb) { lz(BT, 'armory-beasts.js', function () { return window.ArmoryBeasts(H); }, 'beasts', cb); }
 /* the awakening module (skill names, the order, the Raise move): a failed load never blanks a screen, the blocks say so */
 function awk(cb) { lz(AWK, 'armory-awaken.js', function () { return window.ArmoryAwaken(H); }, 'heroes', cb, awkFail); }
@@ -101,7 +102,7 @@ function renderStart(kind, extra) { fkSettle(function () { more(function (m) { f
 function share() { more(function (m) { m.share(); }); }
 
 /* ---------- routing ---------- */
-var LEGACY = { overview: 'overview', heroes: 'heroes/battle', decorations: 'base', bases: 'base', enigma: 'beasts/field', chips: 'ht/loadouts', formation: 'base', inventory: 'bag', runepool: 'heroes/gear?view=runes', myadvisorplans: 'heroes/advice', advisorplan: 'heroes/advice' };
+var LEGACY = { overview: 'overview', heroes: 'heroes/battle', decorations: 'base/decor', bases: 'base/skins', enigma: 'beasts/field', chips: 'ht/loadouts', formation: 'base/formation', inventory: 'bag', runepool: 'heroes/gear?view=runes', myadvisorplans: 'heroes/advice', advisorplan: 'heroes/advice' };
 function shim() {
   var m = /^#tab=([a-z0-9_-]+)/i.exec(location.hash || '');
   if (!m) return false;
@@ -123,7 +124,7 @@ function go(p) { location.hash = '#' + p; }
 function applyRoute(first, soft) {
   if (!S.vm) return;
   var r = parseHash(), changed = !S.cur || S.cur.view !== r.view;
-  if (!M && (r.bag || r.q.item || r.view === 'base' || (r.view === 'heroes' && r.seg !== 'battle' && r.seg !== 'advice'))) { more(function () { applyRoute(first, soft); }); return; }
+  if (!M && (r.bag || (r.view === 'heroes' && r.seg !== 'battle' && r.seg !== 'advice'))) { more(function () { applyRoute(first, soft); }); return; }
   if (!soft) closeSheet(true);
   S.cur = r;
   $$('.view').forEach(function (s) {
@@ -138,6 +139,7 @@ function applyRoute(first, soft) {
   document.title = 'Armory | ' + VIEWS[r.view].label;
   if (!soft && (!first || (location.hash && location.hash !== '#overview'))) window.scrollTo(0, 0);
   if (r.view === 'heroes' && r.seg === 'advice') advice(function (a) { a.render(r.q, soft); });
+  if (r.view === 'base' && !soft) bse(function (b) { b.render(r); });
   if (r.view === 'ht' && !soft) ht(function (h) { h.render(r); });
   if (r.view === 'beasts' && !soft) bst(function (b) { b.render(r); });
   if (soft) { if (S.deep && M.deepRoster(S.deep)) S.deep = null; return; } /* a link that names a roster hero waits for the game data that arrives on the second pass */
@@ -534,6 +536,10 @@ function openSheet(kind, arg) {
     if (!BT.m) { bst(function () { openSheet(kind, arg); }); return; }
     var rb = BT.m.sheet(kind, arg); if (!rb) return;
     title = rb[0]; body = rb[1]; isName = !!rb[2];
+  } else if (kind === 'decor' || kind === 'skin' || kind === 'skill' || kind === 'bseset' || kind === 'bsedfilter' || kind === 'bsesfilter') {
+    if (!BS.m) { bse(function () { openSheet(kind, arg); }); return; }
+    var rs = BS.m.sheet(kind, arg); if (!rs) return;
+    title = rs[0]; body = rs[1]; isName = !!rs[2];
   } else if (/^advice/.test(kind)) {
     if (!Av) { advice(function () { openSheet(kind, arg); }); return; }
     var ra = Av.sheet(kind, arg); if (!ra) return;
@@ -598,7 +604,7 @@ document.addEventListener('click', function (e) {
   if (ds.go) { go(ds.go); return; }
   if (ds.hero) { var id = +ds.hero, on = !S.open[id]; S.open[id] = on; setHeroOpen(id, on); if (on) awkOpenHero(id); return; }
   if ('awkcard' in ds) { S.awkOpen = !S.awkOpen; S.awkHl = false; $$('.awk-hd').forEach(function (b) { b.setAttribute('aria-expanded', S.awkOpen ? 'true' : 'false'); }); if (S.awkOpen || AWK.m) awk(function (m) { m.paintCard(); }); else $$('.awk-body').forEach(function (b) { b.hidden = true; }); return; }
-  if (ds.showall) { S.all[ds.showall] = true; if (M) { if (ds.showall === 'roster') M.rosterList(); else if (ds.showall === 'decor') M.renderBase(); else M.gearBody(); } return; }
+  if (ds.showall) { S.all[ds.showall] = true; if (M) { if (ds.showall === 'roster') M.rosterList(); else M.gearBody(); } return; }
   if (ds.br !== undefined) { S.f.br[ds.br] = !S.f.br[ds.br]; $$('[data-br="' + ds.br + '"]').forEach(function (b) { b.setAttribute('aria-pressed', S.f.br[ds.br] ? 'true' : 'false'); }); battleList(); if (M) M.rosterList(); return; }
   if (ds.sort) { S.f.sort = ds.sort; $$('[data-sort]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.sort === ds.sort ? 'true' : 'false'); }); battleList(); if (M) M.rosterList(); return; }
   if ('clearf' in ds) { S.f = { q: '', br: {}, sort: S.f.sort }; renderHeroes(); if (M) M.rosterList(); return; }
