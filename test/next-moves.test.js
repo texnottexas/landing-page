@@ -354,3 +354,51 @@ test('power missing on any hero: the old order (gear score, share of stats under
   assert.deepStrictEqual(C.nextMoves(d).weights, { Alpha: 1, Bravo: 0.9, Charlie: 0.8 });
   assert.equal(C.moves.heroRank(d.heroes).byPower, false);
 });
+
+/* Awakening (armory-awaken.js / armory-vm.js): g = Raise an awakening skill, h = Awaken a hero. Both are "Uses what you have", ahead of rune
+   merges and decor (SIGRANK a, e, g, h, b, d, c, f); a Raise row may carry an "or" line and still counts once; "Save for" is a class 3 row that only
+   takes a free place. */
+const raise = (alt) => ({ kind: 'raise', gain: 1, parts: [{ s: 'Raise ' }, { s: 'Superheat', n: 1 }, { s: ' on ' }, { s: 'Jett', n: 1 }, { s: ' to ' }, { s: 'Lv.7', n: 1 }], alt: alt ? [{ s: 'or ' }, { s: 'Energize', n: 1 }, { s: ' on ' }, { s: 'Carna', n: 1 }, { s: ' to ' }, { s: 'Lv.4', n: 1 }, { s: ' (2nd march)' }] : null, meta: 'Up to 225 stones · 412 in bag', ico: { u: 'hero-awake-skills/hero_awake334_2.png', q: 'q5', fb: 'S' }, route: 'heroes/roster?awk=1&hero=Jett' });
+const awaken = () => ({ kind: 'awaken', gain: 5, parts: [{ s: 'Awaken ' }, { s: 'Shen Suyu', n: 1 }], meta: 'Awakening Card in bag', ico: null, route: 'heroes/roster?hero=Shen%20Suyu&awk=1' });
+const save = () => ({ kind: 'save', parts: [{ s: 'Save for ' }, { s: 'Phoenix Blaze', n: 1 }, { s: ' on ' }, { s: 'Shen Suyu', n: 1 }, { s: ' Lv.8', n: 1 }], meta: '46 / 300 Awakening Stones', ico: null, route: 'heroes/roster?awk=1&hero=Shen%20Suyu' });
+
+test('awakening: Raise and Awaken are "Uses what you have", first in that class, in the order Raise then Awaken', () => {
+  const d = fresh(); d.awakenMoves = [awaken(), raise(false)];
+  assert.deepStrictEqual(texts(d), ['Free: Place Impact on Alpha slot 1', 'Uses what you have: Raise Superheat on Jett to Lv.7', 'Costs resources: Refine Raysor Headset on Bravo'], 'one pick per class: the Raise row takes the class-2 place from the rune merge');
+  assert.deepStrictEqual(C.nextMoves(d, { max: 4 }).picks.map((p) => p.sig), ['a', 'g', 'h', 'c'], 'pass 1 takes a, g, c (one per class), pass 2 adds h; the class then sorts it before the refine');
+  assert.deepStrictEqual(C.nextMoves(d, { max: 6 }).picks.map((p) => p.sig).slice(0, 5), ['a', 'g', 'h', 'b', 'd']);
+  const p = C.nextMoves(d).picks[1];
+  assert.equal(p.meta, 'Up to 225 stones · 412 in bag'); assert.equal(p.route, 'heroes/roster?awk=1&hero=Jett'); assert.equal(p.pill, 'Uses what you have'); assert.equal(p.ico.u, 'hero-awake-skills/hero_awake334_2.png');
+  d.awakenMoves = [awaken()]; assert.deepStrictEqual(C.nextMoves(d).picks.map((x) => x.sig), ['a', 'h', 'c']);
+  d.awakenMoves = []; assert.deepStrictEqual(C.nextMoves(d).picks.map((x) => x.sig), ['a', 'b', 'c'], 'no awakening moves: the list is as before');
+  delete d.awakenMoves; assert.deepStrictEqual(C.nextMoves(d).picks.map((x) => x.sig), ['a', 'b', 'c']);
+});
+test('awakening: the "or" is a second line of the same row and the row counts once against the caps', () => {
+  const d = fresh(); d.awakenMoves = [raise(true)];
+  const r = C.nextMoves(d, { max: 6 });
+  assert.equal(r.picks.filter((p) => p.sig === 'g').length, 1);
+  const g = r.picks.find((p) => p.sig === 'g');
+  assert.equal(g.text, 'Raise Superheat on Jett to Lv.7'); assert.equal(g.alt.text, 'or Energize on Carna to Lv.4 (2nd march)'); assert.equal(g.alt.full, g.alt.text);
+  assert.deepStrictEqual(g.alt.parts.filter((x) => x.n).map((x) => x.s), ['Energize', 'Carna', 'Lv.4']);
+  assert.equal(C.nextMoves(fresh()).picks.every((p) => !('alt' in p)), true, 'rows without an "or" carry no alt');
+  d.awakenMoves = [Object.assign(raise(true), { alt: [{ s: 'or ' }, { s: 'A very long awakening skill name', n: 1 }, { s: ' on ' }, { s: 'A very long hero name', n: 1 }, { s: ' to ' }, { s: 'Lv.4', n: 1 }, { s: ' (2nd march)' }] })];
+  const a2 = C.nextMoves(d).picks.find((p) => p.sig === 'g').alt; assert.ok(a2.text.length <= 60, a2.text); assert.ok(a2.full.length > 60 && /…/.test(a2.text));
+});
+test('awakening: malformed moves are dropped; a "save" row is not a candidate', () => {
+  const d = fresh(); d.awakenMoves = [null, { kind: 'raise' }, { kind: 'raise', parts: 'x' }, { kind: 'nope', parts: [{ s: 'x' }] }, save()];
+  assert.ok(!C.nextMoves(d, { max: 8 }).pool.some((p) => p.sig === 'g' || p.sig === 'h'));
+});
+test('awakening "Save for": a class 3 row, only when the card has room, after decor\'s own save-for, never displacing a move', () => {
+  const d = fresh(); d.awakenMoves = [save()];
+  assert.ok(!texts(d).some((t) => /Phoenix/.test(t)), 'the card is full: no Save for');
+  d.runeBag = { Impact: 0, Debilitate: 0, Searing: 0 };
+  d.heroes.forEach((h) => h.gear.forEach((p) => { p.stats.forEach((s) => { s.v = s.m; }); if (p.rune) p.rune.s = p.rune.sm; else p.rune = { name: 'Impact', s: 2, sm: 2, icon: 'impact' }; }));
+  d.ht.chips.forEach((c) => { c.lv = 25; });
+  d.decor.placed = d.decor.placed.filter((x) => x.n === 'Aircraft Carrier');
+  assert.deepStrictEqual(texts(d), ['Costs resources: Save for Phoenix Blaze on Shen Suyu Lv.8', 'Costs resources: Save for Aircraft Carrier Lv.4']);
+  assert.equal(C.nextMoves(d).picks[0].meta, '46 / 300 Awakening Stones'); assert.equal(C.nextMoves(d).picks[0].route, 'heroes/roster?awk=1&hero=Shen%20Suyu');
+  d.awakenMoves = []; assert.deepStrictEqual(texts(d), ['Costs resources: Save for Aircraft Carrier Lv.4']);
+  d.decor.placed = []; d.awakenMoves = [save()]; assert.deepStrictEqual(texts(d), ['Costs resources: Save for Phoenix Blaze on Shen Suyu Lv.8']);
+  assert.equal(C.nextMoves(d, { max: 1 }).picks.length, 1);
+  const full = fresh(); full.awakenMoves = [save()]; full.runeBag = {}; assert.equal(C.nextMoves(full).picks.length, 3); assert.ok(!C.nextMoves(full).picks.some((p) => p.key === 'gsave'));
+});

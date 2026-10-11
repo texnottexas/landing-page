@@ -1899,7 +1899,7 @@
 
   /* Inside one signal: bigger gain first, then the stat closest to its goal (tie), then the hero weight, then the key.
      Across signals the raw gains are never compared: the class decides, then a fixed signal order. */
-  var SIGRANK = { a: 0, e: 1, b: 2, d: 3, c: 4, f: 5 };
+  var SIGRANK = { a: 0, e: 1, g: 2, h: 3, b: 4, d: 5, c: 6, f: 7 }; // g = raise an awakening skill, h = awaken a hero (armory-awaken.js)
   function cmpIn(a, b) {
     return (b.gain - a.gain) || ((b.tie || 0) - (a.tie || 0)) || (b.weight - a.weight) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
   }
@@ -1949,7 +1949,7 @@
       heroes: D.heroes || [], runeBag: D.runeBag || {}, runeSlots: D.runeSlots || {}, runeCost: D.runeCost || {},
       decor: { shards: (D.decor && D.decor.shards) || 0, placed: (D.decor && D.decor.placed) || [] },
       ht: { chips: (D.ht && D.ht.chips) || [], reportMechas: D.ht ? D.ht.reportMechas : null },
-      beastMoves: D.beastMoves || []
+      beastMoves: D.beastMoves || [], awakenMoves: D.awakenMoves || []
     };
     var cand = [];
     var W = heroWeights(D.heroes);
@@ -2053,6 +2053,16 @@
       });
     });
 
+    /* g / h: raise an awakening skill (a row may carry a second "or" line), awaken a hero from a card in the bag. Uses what you have. */
+    D.awakenMoves.forEach(function (m, i) {
+      if (!m || !Array.isArray(m.parts) || (m.kind !== 'raise' && m.kind !== 'awaken')) return;
+      var aw = m.kind === 'awaken';
+      cand.push({
+        sig: aw ? 'h' : 'g', cls: 2, gain: isFinite(m.gain) ? m.gain : 1, weight: 0, key: (aw ? 'h' : 'g') + i,
+        parts: m.parts, altParts: Array.isArray(m.alt) ? m.alt : null, meta: m.meta || '', ico: m.ico || null, route: m.route || 'heroes/roster'
+      });
+    });
+
     /* f: HT chips. Only the HT the player fights with (from the battle reports) is considered;
        with no battle report the whole HT list is used. A chip is raised only below Lv25 and needs its
        chip table row. Chip EXP is not in the data, so the move is never "uses what you have". */
@@ -2075,7 +2085,7 @@
     /* Selection, per spec 3.3: the best candidate inside each signal comes first (cmp never compares raw gains
        across signals). Pass 1: one pick per class, one per signal. Pass 2: fill with other signals.
        Pass 3: a signal gets a second slot only when no other signal has a candidate left. */
-    cand.forEach(function (c) { var f = fitText(c.parts); c.text = f.text; c.full = f.full; c.fparts = f.parts; });
+    cand.forEach(function (c) { var f = fitText(c.parts); c.text = f.text; c.full = f.full; c.fparts = f.parts; if (c.altParts) c.alt = fitText(c.altParts); });
     cand.sort(cmp);
     var picks = [];
     var perSig = {};
@@ -2101,6 +2111,9 @@
         route: 'base/decor?item=' + encodeURIComponent(s.d.n).replace(/%20/g, '+')
       });
     }
+    /* "Save for" an awakening skill: the same rule, after decor's, so it never displaces a move */
+    var asv = D.awakenMoves.filter(function (m) { return m && m.kind === 'save' && Array.isArray(m.parts); })[0];
+    if (asv && picks.length < MAX) picks.push({ sig: 'g', cls: 3, gain: 0, weight: 0, key: 'gsave', parts: asv.parts, meta: asv.meta || '', ico: asv.ico || null, route: asv.route || 'heroes/roster' });
     picks.sort(cmp);
     var classNames = { 1: 'Free', 2: 'Uses what you have', 3: 'Costs resources' };
     picks.forEach(function (p) {

@@ -30,8 +30,10 @@ function world() {
       mechas: [{ mechaId: 1006, chips: [{ chipId: 9404, level: 6 }, { chipId: 8501, level: 25 }] }]
     },
     supp: {
-      heroes: { list: fx.map((h, i) => ({ id: h.id, lv: 100, star: 5, pw: 12345 + i, t: 1 })) },
-      inv: { tabs: { item: [{ id: Number(Object.keys(STATICS.itemTable)[0]), a: 5 }], decor: [{ id: groups[0], a: 2 }] } },
+      heroes: { list: fx.map((h, i) => ({ id: h.id, lv: 100, star: 5, pw: 12345 + i, t: 1 })).concat([
+        { id: 169, lv: 120, star: 5, pw: 92810, t: 1, p1: { x: [{ id: 20750, lv: 5 }], b: [] }, aw: 10, aws: { 10005: 1, 10006: 1 }, awp: 26000, fa: 0 },
+        { id: 234, lv: 120, star: 5, pw: 155363, t: 1, p1: { x: [{ id: 20745, lv: 5 }], b: [] } }, { id: 172, lv: 120, star: 5, pw: 1, t: 1, aw: 40, fa: 1, awp: 200200 }]) },
+      inv: { tabs: { item: [{ id: Number(Object.keys(STATICS.itemTable)[0]), a: 5 }, { id: 44301001, a: 62 }, { id: 44300005, a: 1 }], decor: [{ id: groups[0], a: 2 }] } },
       enigma: { beasts: [{ id: 1 }, { id: 2 }] },
       gear: { meta: { ts: '2026-10-01T00:00:00Z' }, goldGear: [{ heroId: 0, buffs: [{ type: 'rune', name: 'Impact', star: 0 }] }, { heroId: 0, buffs: [{ type: 'rune', name: 'Searing', star: 2 }] }] },
       runepool: { meta: { ts: '2026-10-08T00:00:00Z' }, source: 'manual', pool: { Impact: { 0: 4, 1: 2, 2: 1, 3: 0, 4: 0, 5: 0, 6: 0 }, Wildfire: { 0: 1, 1: 0, 2: 0, 3: 3, 4: 0, 5: 0, 6: 0 } } }
@@ -112,4 +114,15 @@ test('the Advice pool (vm.runes.pool): a stored pool with a payload in any value
   const vm = build(hostile);
   assert.deepEqual(dirty(vm), [], 'a payload rune NAME is only a key; the page escapes names (xss-v2 checks the render)');
   assert.equal(vm.runes.runeBag[PAY], undefined, 'a payload count is dropped');
+});
+
+test('awakening: a payload in a number position (level, skills, power, stones, cards) becomes a finite number or is dropped', () => {
+  const w = world(), sara = w.supp.heroes.list.find((h) => h.id === 169), shen = w.supp.heroes.list.find((h) => h.id === 234);
+  sara.aw = PAY; sara.awp = PAY; sara.aws = { 10005: PAY, 10006: PAY, [PAY]: 4 }; sara.pw = PAY; shen.lv = PAY; shen.star = PAY; shen.p1.x[0].lv = PAY; shen.p1.x[0].id = PAY;
+  w.supp.inv.tabs.item.forEach((i) => { i.a = PAY; });
+  w.merged.heroes.push({ id: 172, awakenLevel: PAY, fullAwaken: PAY });
+  const vm = build(w);
+  assert.deepEqual(dirty(vm), []);
+  Object.keys(vm.awaken.byId).forEach((k) => { const a = vm.awaken.byId[k]; ['aw', 'pw', 'lv', 'star', 'ex'].forEach((f) => assert.ok(Number.isFinite(a[f]), k + '.' + f)); assert.ok(a.awp === null || Number.isFinite(a.awp)); if (a.aws) Object.keys(a.aws).forEach((s) => assert.ok(Number.isInteger(a.aws[s]) && a.aws[s] >= 1 && a.aws[s] <= 10)); });
+  assert.ok(vm.awaken.stones === null || Number.isFinite(vm.awaken.stones));
 });
