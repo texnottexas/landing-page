@@ -59,20 +59,27 @@ function cyrb53(str) {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
 }
 
-/* Hand-derived for Rex's fixture data (siteKey c3c6f3200a4ec1fb), not read back from nextMoves().
-   decor: March Size needs 1,440 shards (the bag has 683), so the next stat is All units Attack; Coastal Defence Lv.2 to 3 is +150 (1.5%)
-          for 180 raw, 120 credited from spare pieces, 60 net; it ties Celebratory Firework on ROI and wins on cost.
-   refine: the fixture has three heroes with gold gear, in power order Vivian 956,210, Hiccup 927,210, Jett 927,210. Vivian is the strongest and has
-          pieces under 70%, so every refine pick is hers (hero rank is strict: a weaker hero's piece never beats hers, whatever its share of low stats).
-          Her lowest under-70 stat per piece: Raysor Headset 56 (of 56/93/74), Assault Pistol 54 (72/54/91), Portable GPS 54 (75/89/54),
-          Optical Add-on 52, Power Boots 51, Tactical Backarmor 50. Closest to 70% first: the Headset (56) is first; the Pistol and the GPS tie at 54
-          and the key (slot 1 before slot 5) puts the Pistol second. A signal holds at most 2 picks, so the GPS is not shown.
-   HT: Rex fights with Luminary Knight LP-4 (all chips Lv.25), so Doom Sawblade D-4 gives no chip move. */
+/* Hand-derived for Rex's fixture data (siteKey c3c6f3200a4ec1fb, game data of 2026-10-10), not read back from nextMoves().
+   Inputs: the three heroes in the battle reports with gold gear are Carna 904,010, Joan Mature 852,210, Heid 837,210 (hero power, strongest first, so
+          weights 1.0 / 0.9 / 0.8). Every rune slot is filled, so no "Place" move. The bag holds 507 universal decor shards and 4 Tactical Awareness,
+          1 Stealth Hologram, 5 Magnetic Field, 10 Magnetize.
+   merge: a rune at star 0 of 2 gains 1/2 x weight, one of 0 of 6 only 1/6, so the Carna slot 1 Tactical Awareness (0 of 2, costs 1 piece from the
+          schedule [1,2], bag 4) and the Carna slot 2 Stealth Hologram (0 of 2, costs 1, bag 1) tie at 0.5; the key (slot 1 before slot 2) picks slot 1.
+          Heid's Magnetic Field (0.4) is behind both. "Uses 1 \u00B7 4 in bag".
+   decor: March Size needs at least 1,440 shards on every placed item that can raise it (the bag has 507), so the next stat is All units Attack;
+          Coastal Defence Lv.2 to 3 is +150 (1.5%) for 180 raw, 120 credited from spare pieces, 60 net. It ties Celebratory Firework (+200 for 240 raw) on ROI
+          (150/180 = 200/240) and wins on cost (60 against 80). Decor is class 2, so it follows the merge.
+   refine: Carna is the strongest hero, so every refine pick is hers (a weaker hero's piece never beats hers). All six of her pieces have stats under 70%.
+          The piece whose lowest stat is closest to 70% goes first: Portable GPS (slot 5, stats 54/52, lowest 52) and Power Boots (slot 6, one stat 52) tie
+          at 52, the Optical Add-on is 30, the Raysor Headset 40, the Pistol 28, the Backarmor 32; the key (slot 5 before slot 6) puts the Portable GPS first.
+          "2 stats under 70% (52-54%)".
+   HT: Rex fights with Doom Sawblade D-4 (mecha 1005) and none of its chips is below Lv.25, so it gives no chip move (mutation 3 is skipped on this
+          data); chip raises would also rank after refine in signal order. */
 var REX = 'c3c6f3200a4ec1fb';
 var EXPECTED = [
+  ['Uses what you have', 'Merge Tactical Awareness on Carna slot 1 to 1 star', 'Uses 1 \u00B7 4 in bag'],
   ['Uses what you have', 'Upgrade Coastal Defence to Lv.3: +1.5% All units Attack', '60 shards'],
-  ['Costs resources', 'Refine Raysor Headset on Vivian', '1 stat under 70% (56%)'],
-  ['Costs resources', 'Refine Assault Pistol on Vivian', '1 stat under 70% (54%)']
+  ['Costs resources', 'Refine Portable GPS on Carna', '2 stats under 70% (52-54%)']
 ];
 
 (async function () {
@@ -147,9 +154,9 @@ var EXPECTED = [
     var mt = core.nextMoves(mut, { max: 3 }).picks.map(function (m) { return m.text; });
     log(mt.length > 0 && !mt.some(function (x) { return /Coastal Defence/.test(x); }) && mt.join('|') !== base.join('|'), 'mutation 1: with 0 shards the Coastal Defence move goes away', mt.join(' | '));
     var m2 = JSON.parse(JSON.stringify(S.vm.movesInput));
-    m2.heroes.forEach(function (h) { if (h.name === 'Vivian') h.gear.forEach(function (g) { if (g.slot === 4) g.stats.forEach(function (x) { x.v = x.m; }); }); });
+    m2.heroes.forEach(function (h) { if (h.name === 'Carna') h.gear.forEach(function (g) { if (g.slot === 5) g.stats.forEach(function (x) { x.v = x.m; }); }); });
     var mt2 = core.nextMoves(m2, { max: 3 }).picks.map(function (x) { return x.text; });
-    log(!mt2.some(function (x) { return /Raysor Headset on Vivian/.test(x); }) && mt2.join('|') !== base.join('|'), 'mutation 2: a fully rolled Raysor Headset on Vivian is no longer refined', mt2.join(' | '));
+    log(!mt2.some(function (x) { return /Portable GPS on Carna/.test(x); }) && mt2.some(function (x) { return /Power Boots on Carna/.test(x); }) && mt2.join('|') !== base.join('|'), 'mutation 2: a fully rolled Portable GPS on Carna is no longer refined (the Power Boots take over)', mt2.join(' | '));
     var m3 = JSON.parse(JSON.stringify(S.vm.movesInput)); m3.ht.reportMechas = [1005];
     var mt3 = core.nextMoves(m3, { max: 3 }).picks.map(function (x) { return x.text; });
     var m3has = S.vm.movesInput.ht.chips.some(function (c) { return c.mecha === 1005 && !c.core && !c.empty && c.lv < 25; }); /* the move needs a Doom Sawblade chip below Lv.25 in the data */
@@ -208,7 +215,7 @@ var EXPECTED = [
   textNodes().forEach(function (n) {
     var tx = n.nodeValue; if (noTr(n)) return;
     if (/\d/.test(tx)) trBad.push('digits "' + tx.trim().slice(0, 30) + '"');
-    else for (var k = 0; k < nameList.length; k++) if (tx.indexOf(nameList[k]) >= 0) { trBad.push('name "' + nameList[k] + '"'); break; }
+    else for (var k = 0; k < nameList.length; k++) if (tx.indexOf(nameList[k]) >= 0 && !(nameList[k] === 'Bench' && tx.trim() === 'Bench')) { /* a placed decoration is named Bench in Rex's base; the bare word is also the interface label for the bench beasts */ trBad.push('name "' + nameList[k] + '"'); break; }
   });
   log(trBad.length === 0, 'numbers, codes and names carry translate="no"', trBad.length + ' text nodes without it' + (trBad.length ? ': ' + trBad.slice(0, 4).join(' | ') : ''));
 
