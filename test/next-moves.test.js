@@ -63,6 +63,10 @@ test('decor: one score for every stat; the best affordable upgrade per shard win
   const sv = C.nextMoves(d, { max: 6 }).picks.filter((p) => p.sig === 'd');
   assert.deepStrictEqual(sv.map((p) => p.text), ['Save for Aircraft Carrier Lv.4'], 'the Save-for row only, never the Coastal Defence upgrade');
   assert.equal(sv[0].meta, '100 / 400 shards');
+  // the default 3 moves are full (refine, refine, chip raise): the Save-for has no room, so the affordable upgrade is the decor move, never none
+  const full = C.nextMoves(d);
+  assert.equal(full.picks.length, 3); assert.ok(!full.picks.some((p) => p.key === 'dsave'));
+  assert.ok(full.picks.some((p) => p.sig === 'd' && /^Upgrade Coastal Defence/.test(p.text)), full.picks.map((p) => p.text).join(' | '));
   // without the Carrier: Big Gun is 0.030 but not affordable and only 1.2x Coastal's 0.025, under the 3x rule: buy Coastal
   d.decor.placed = d.decor.placed.filter((x) => x.n !== 'Aircraft Carrier');
   assert.deepStrictEqual(texts(d), [
@@ -89,6 +93,16 @@ test('decor: one score for every stat; the best affordable upgrade per shard win
   // no shards at all: nothing affordable, the decor move disappears (the Save-for takes its place)
   d.decor.shards = 0;
   assert.ok(!C.nextMoves(d, { max: 6 }).picks.some((p) => p.sig === 'd' && /^Upgrade/.test(p.text)));
+});
+test('Save-for tie line: the longest stat label with a long cost stays within 60 characters', () => {
+  const d = fresh(); d.runeBag = { Impact: 0, Debilitate: 0, Searing: 0 }; d.decor.shards = 100000;
+  d.decor.placed = ['Navy Decreased DMG Taken', 'Air Decreased DMG Taken'].map((l, i) => ({ n: 'Twin ' + i, g: 9100 + i, ic: 'x', q: 4, nx: { to: 3, raw: 1200000, credit: 0, dl: { [i ? 1003022 : 1003021]: 250 } } }));
+  d.decor.shards = 1000000; d.decor.placed.forEach((x) => { x.nx.raw = 1200000; });
+  const r = C.nextMoves(d, { max: 6 }), sv = r.picks.find((p) => p.key === 'dsave');
+  if (sv) assert.ok(sv.text.length <= 60, sv.text);
+  const C2 = fresh(); C2.runeBag = d.runeBag; C2.decor.placed = d.decor.placed; C2.decor.branches = ['Navy', 'Air Force']; C2.decor.shards = 10;
+  const t = C.nextMoves(C2, { max: 6 }).picks.find((p) => p.key === 'dsave');
+  assert.ok(t && t.text.length <= 60 && t.meta === '2 choices', t && t.text);
 });
 test('decor labels: the longest move line ("Upgrade " + an 8-character cut name + " to Lv.15: +99.5% " + label) stays within 60 characters', () => {
   Object.keys(C.moves.DECOR_CLASS).forEach((id) => { const l = C.moves.DECOR_CLASS[id][3]; assert.ok(('Upgrade Thanksg\u2026 to Lv.15: +99.5% ' + l).length <= 60, id + ' ' + l); });
@@ -127,7 +141,8 @@ test('"Save for": only when no decor move is affordable and there is room', () =
   d.decor.placed.push(JSON.parse(JSON.stringify(d.decor.placed[0])));
   d.decor.placed[1].g = 5757;
   d.decor.placed[1].n = 'Aircraft Carrier II';
-  assert.deepStrictEqual(texts(d), ['Costs resources: Save 400 shards for +1 March Size (2 choices)']);
+  assert.deepStrictEqual(texts(d), ['Costs resources: Save 400 shards for +1 March Size']);
+  assert.equal(C.nextMoves(d).picks[0].meta, '2 choices');
 });
 
 test('refine: each stat against 70% on its own; most stats under 70% first; closest to 70% breaks a tie', () => {
@@ -400,7 +415,7 @@ test('awakening: Raise and Awaken are "Uses what you have", first in that class,
   const d = fresh(); d.awakenMoves = [awaken(), raise(false)];
   assert.deepStrictEqual(texts(d), ['Free: Place Impact on Alpha slot 1', 'Uses what you have: Raise Superheat on Jett to Lv.7', 'Costs resources: Refine Raysor Headset on Bravo'], 'one pick per class: the Raise row takes the class-2 place from the rune merge');
   assert.deepStrictEqual(C.nextMoves(d, { max: 4 }).picks.map((p) => p.sig), ['a', 'g', 'h', 'c'], 'pass 1 takes a, g, c (one per class), pass 2 adds h; the class then sorts it before the refine');
-  assert.deepStrictEqual(C.nextMoves(d, { max: 6 }).picks.map((p) => p.sig).slice(0, 5), ['a', 'g', 'h', 'b', 'c']);
+  assert.deepStrictEqual(C.nextMoves(d, { max: 6 }).picks.map((p) => p.sig).slice(0, 5), ['a', 'g', 'h', 'b', 'c'].slice(0, 4).concat('d'));
   const p = C.nextMoves(d).picks[1];
   assert.equal(p.meta, 'Up to 225 stones · 412 in bag'); assert.equal(p.route, 'heroes/roster?awk=1&hero=Jett'); assert.equal(p.pill, 'Uses what you have'); assert.equal(p.ico.u, 'hero-awake-skills/hero_awake334_2.png');
   d.awakenMoves = [awaken()]; assert.deepStrictEqual(C.nextMoves(d).picks.map((x) => x.sig), ['a', 'h', 'c']);

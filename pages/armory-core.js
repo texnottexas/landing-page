@@ -2100,17 +2100,19 @@
     });
     drows.sort(function (a, b) { return (b.roi - a.roi) || (a.net - b.net) || (a.d.n < b.d.n ? -1 : 1); });
     var dAff = drows.filter(function (r) { return have >= r.net; })[0], dDear = drows.filter(function (r) { return have < r.net; })[0];
-    if (dAff && !(dDear && dDear.roi >= SAVE_K * dAff.roi && dDear.net <= SAVE_REACH * Math.max(have, SAVE_FLOOR))) dChosen = { r: dAff, best: drows[0].roi };
-    else if (dDear) dShort = { r: dDear, ties: drows.filter(function (x) { return x.roi === dDear.roi && x.net === dDear.net; }).length };
+    var dCand = null;
+    if (dAff) dChosen = { r: dAff, best: drows[0].roi };
+    if (dDear && (!dAff || (dDear.roi >= SAVE_K * dAff.roi && dDear.net <= SAVE_REACH * Math.max(have, SAVE_FLOOR)))) dShort = { r: dDear, ties: drows.filter(function (x) { return x.roi === dDear.roi && x.net === dDear.net; }).length };
     if (dChosen) {
       var r = dChosen.r;
-      cand.push({
+      dCand = {
         sig: 'd', cls: 2, gain: r.roi / dChosen.best, weight: 0, key: 'd' + r.d.n,
         parts: [{ s: 'Upgrade ' }, { s: r.d.n, n: 1 }, { s: ' to ' }, { s: 'Lv.' + r.d.nx.to, n: 1 }, { s: ': ' }, { s: decorValueText(r.top), n: 1 }, { s: ' ' + r.top.label }],
         meta: r.net + ' shards \u00B7 ' + have + ' in bag',
         ico: { u: 'decor-icons/' + r.d.ic, q: r.d.q >= 6 ? 'q6' : r.d.q === 5 ? 'q5' : r.d.q === 4 ? 'q4' : r.d.q === 3 ? 'q3' : '', fb: r.d.n.charAt(0) },
         route: 'base/decor?item=' + encodeURIComponent(r.d.n).replace(/%20/g, '+')
-      });
+      };
+      if (!dShort) cand.push(dCand); /* a Save-for that wins takes the upgrade's place only when it has room (below) */
     }
 
     /* e: first Optimizer move from saved preferences. Needs saved prefs (none in the sample data). */
@@ -2154,19 +2156,24 @@
     /* Selection, per spec 3.3: the best candidate inside each signal comes first (cmp never compares raw gains
        across signals). Pass 1: one pick per class, one per signal. Pass 2: fill with other signals.
        Pass 3: a signal gets a second slot only when no other signal has a candidate left. */
-    cand.forEach(function (c) { var f = fitText(c.parts); c.text = f.text; c.full = f.full; c.fparts = f.parts; if (c.altParts) c.alt = fitText(c.altParts); });
-    cand.sort(cmp);
-    var picks = [];
-    var perSig = {};
+    var picks, perSig;
     function take(c, cap) {
       if (picks.length >= MAX || picks.indexOf(c) >= 0 || (perSig[c.sig] || 0) >= cap) return false;
       picks.push(c); perSig[c.sig] = (perSig[c.sig] || 0) + 1; return true;
     }
-    [1, 2, 3].forEach(function (cl) {
-      for (var i = 0; i < cand.length; i++) { if (cand[i].cls === cl) { if (take(cand[i], 1)) break; } }
-    });
-    for (var i = 0; i < cand.length && picks.length < MAX; i++) take(cand[i], 1);
-    for (i = 0; i < cand.length && picks.length < MAX; i++) take(cand[i], 2);
+    function select() {
+      cand.forEach(function (c) { var f = fitText(c.parts); c.text = f.text; c.full = f.full; c.fparts = f.parts; if (c.altParts) c.alt = fitText(c.altParts); });
+      cand.sort(cmp);
+      picks = []; perSig = {};
+      [1, 2, 3].forEach(function (cl) {
+        for (var i = 0; i < cand.length; i++) { if (cand[i].cls === cl) { if (take(cand[i], 1)) break; } }
+      });
+      for (var i = 0; i < cand.length && picks.length < MAX; i++) take(cand[i], 1);
+      for (i = 0; i < cand.length && picks.length < MAX; i++) take(cand[i], 2);
+    }
+    select();
+    /* the Save-for has no room: the best affordable upgrade is the decor move instead, never none */
+    if (dShort && dCand && picks.length >= MAX) { cand.push(dCand); dShort = null; select(); }
 
     /* "Save for": when no decor move is affordable, or a dearer one is worth SAVE_K times more per shard; only with room. */
     if (dShort && picks.length < MAX) {
@@ -2174,9 +2181,9 @@
       picks.push({
         sig: 'd', cls: 3, gain: 0, weight: 0, key: 'dsave',
         parts: dShort.ties > 1
-          ? [{ s: 'Save ' }, { s: fmtInt(s.net), n: 1 }, { s: ' shards for ' }, { s: decorValueText(s.top), n: 1 }, { s: ' ' + s.top.label + ' (' }, { s: String(dShort.ties), n: 1 }, { s: ' choices)' }]
+          ? [{ s: 'Save ' }, { s: fmtInt(s.net), n: 1 }, { s: ' shards for ' }, { s: decorValueText(s.top), n: 1 }, { s: ' ' }, { s: s.top.label, n: 1 }]
           : [{ s: 'Save for ' }, { s: s.d.n, n: 1 }, { s: ' Lv.' + s.d.nx.to, n: 1 }],
-        meta: dShort.ties > 1 ? '' : fmtInt(have) + ' / ' + fmtInt(s.net) + ' shards', ico: { u: 'decor-icons/' + s.d.ic, q: '', fb: s.d.n.charAt(0) },
+        meta: dShort.ties > 1 ? dShort.ties + ' choices' : fmtInt(have) + ' / ' + fmtInt(s.net) + ' shards', ico: { u: 'decor-icons/' + s.d.ic, q: '', fb: s.d.n.charAt(0) },
         route: 'base/decor?item=' + encodeURIComponent(s.d.n).replace(/%20/g, '+')
       });
     }
