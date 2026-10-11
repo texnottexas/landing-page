@@ -844,6 +844,7 @@ function nextMove() {
       if (S.vm !== vm) return;
       var before = JSON.stringify(vm.moves.picks);
       vm.movesInput.beastMoves = mv ? [mv] : [];
+      vm.movesInput.decor.prefs = ps; /* the decor score follows the units chosen here (the same weights) */
       vm.moves.picks = window.ArmoryVM.movePicks(core.nextMoves(vm.movesInput, { max: 3 }));
       if (JSON.stringify(vm.moves.picks) !== before) H.renderOverview();
     }, function () {});

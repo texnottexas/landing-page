@@ -393,7 +393,7 @@
       asOf: dateText(now),
       heroes: heroes.list.map(function (h) { return { name: h.name, gear: h.gear, power: h.power }; }),
       runeBag: runes.runeBag, runeSlots: runes.runeSlots, runeCost: runes.runeCost,
-      decor: { shards: decor.shards, placed: decor.placed, branches: marchBranches(opts.marchGroups, supp.heroes, core) }, ht: { chips: ht.chips, reportMechas: ht.reportMechas },
+      decor: { shards: decor.shards, placed: decor.placed, branches: marchBranches(opts.marchGroups, supp.heroes, core), prefs: opts.beastPrefs || null }, /* prefs: the player's saved Beast Optimizer choice, if any; whose units the decor score counts */ ht: { chips: ht.chips, reportMechas: ht.reportMechas },
       awakenMoves: awaken.cand.slice(), // Awaken {hero}; the Raise / Save-for rows join after first paint (armory-awaken.js)
       beastMoves: [] // the best optimizer swap joins here after first paint, for players with saved preferences (armory-app.js beastMove)
     };

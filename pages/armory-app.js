@@ -225,6 +225,12 @@ function showSkeleton() {
   $$('.view').forEach(function (s) { s.hidden = s.id !== 'v-start'; });
   fkShow($('#v-start'));
 }
+/* the player's saved Beast Optimizer choice ({mode, units, weights}), read for the decor score; null for anyone without one, a shared view or an advise view */
+function savedBeastPrefs() {
+  var k = sk(); if (!k || S.advise || S.res.readOnly) return null;
+  var raw = ls('beast_optimizer_prefs_' + k); if (!raw) return null;
+  try { var j = JSON.parse(raw); return j && typeof j === 'object' ? { mode: j.mode, units: j.units, balance: j.balance, weights: j.weights } : null; } catch (e) { return null; }
+}
 /* Next moves signal e: with saved optimizer preferences the Beasts module adds the best swap after first paint (nothing loads for anyone else) */
 function beastMove() {
   var k = sk();
@@ -265,7 +271,9 @@ function awkSync() {
 }
 function setReady(res) {
   S.res = res;
-  S.vm = ArmoryVM.buildViewModel(res.merged, res.sources, ArmoryVM.fromLoad(res, core));
+  var vmOpts = ArmoryVM.fromLoad(res, core);
+  vmOpts.beastPrefs = savedBeastPrefs();
+  S.vm = ArmoryVM.buildViewModel(res.merged, res.sources, vmOpts);
   document.body.classList.remove('st-start');
   var again = !!S.cur;
   renderAll();
@@ -627,7 +635,7 @@ function openSheet(kind, arg) {
     if (!BT.m) { bst(function () { openSheet(kind, arg); }); return; }
     var rb = BT.m.sheet(kind, arg); if (!rb) return;
     title = rb[0]; body = rb[1]; isName = !!rb[2];
-  } else if (kind === 'decor' || kind === 'skin' || kind === 'skill' || kind === 'bseset' || kind === 'bsetal' || kind === 'bsetotals' || kind === 'bsedfilter' || kind === 'bsesfilter' || kind === 'bsebfilter') {
+  } else if (kind === 'decor' || kind === 'skin' || kind === 'skill' || kind === 'bseset' || kind === 'bsetal' || kind === 'bsetotals' || kind === 'bsevalue' || kind === 'bsedfilter' || kind === 'bsesfilter' || kind === 'bsebfilter') {
     if (!BS.m) { bse(function () { openSheet(kind, arg); }); return; }
     var rs = BS.m.sheet(kind, arg); if (!rs) return;
     title = rs[0]; body = rs[1]; isName = !!rs[2];

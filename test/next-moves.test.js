@@ -1,7 +1,7 @@
 'use strict';
 // Next moves engine (ArmoryCore.nextMoves) with hand-computed expectations on the synthetic view-model in
 // test/fixtures/armory-core/moves-base.json. The cases mirror sample/critique.md "Fixes applied" (armory redesign):
-//   - decor is tried across March Size, All units Attack, HP and DMG increase, and the move is the best AFFORDABLE row
+//   - decor upgrades are ranked by ONE score (the Beast Optimizer's stat weights) per shard, and the move is the best AFFORDABLE row unless saving is worth 3x more
 //   - refine counts each stat against 70% on its own (70% exactly is fine), most stats under 70% first, closest to 70% on ties
 //   - HT chips only for the HT the player fights with (the battle report's mechas)
 //   - one pick per class, then one per signal, a second pick from one signal only when nothing else is left
@@ -27,15 +27,17 @@ const texts = (d, opts) => C.nextMoves(d, opts).picks.map((p) => p.pill + ': ' +
      a (free)    Impact (bag 2, slots 1,3,5) fits Alpha's empty slot 1.
      b (uses)    Debilitate on Alpha s2 is 1/2 stars, the 1 -> 2 merge costs runeCost["2"][1] = 2, the bag has 2.
                  Searing on Charlie is 0/6 and the bag has none: no move.
-     d (uses)    shards 100. March Size: only Aircraft Carrier (400 raw, nothing credited) -> not affordable, so the next stat.
-                 All units Attack: Big Gun 300/300 = 1.000 (net 300, not affordable), Coastal Defence 150/180 = 0.833
-                 (net 180 - 120 = 60, affordable), Celebratory Firework 200/240 = 0.833 (net 200), Small Gun 40/60 = 0.667.
-                 Best AFFORDABLE row by ROI = Coastal Defence: +1.5% (150 / 100).
+     d (uses)    shards 100, no marches and no saved Optimizer units: every unit type counts (weights 1,1,1), so an all-units buff counts 3 times.
+                 Points = percent points x weight (Attack 1, March Size 30) x 3; per RAW shard.
+                 Aircraft Carrier +1 March Size: 1 x 30 x 3 = 90 / 400 = 0.225. Big Gun +3% Attack: 9 / 300 = 0.030. Coastal Defence +1.5%: 4.5 / 180 = 0.025
+                 (net 180 - 120 = 60, affordable). Celebratory Firework +2%: 6 / 240 = 0.025 (net 200). Small Gun +0.4%: 1.2 / 60 = 0.020.
+                 The best affordable upgrade is Coastal Defence (0.025); the Carrier (net 400, not affordable) is 9x better per shard, over the 3x rule and within
+                 10 x max(100, 500) shards, so the move is "Save for Aircraft Carrier Lv.4" (class 3), which only shows when the list has room (here it has none).
      c (costs)   stats under 70% (70 itself is not under): Bravo Headset (30,45,50) = 3 of 3, weight 0.9 -> gain 0.9;
                  Alpha Pistol (50,60) = 2 of 3 -> 0.667; Bravo Optical (40,50) = 2 of 3 -> 0.6; Charlie Pistol (50) = 1 of 3 -> 0.267.
      f (costs)   Luminary Knight LP-4 (the report's mecha 1006) slot 4 chip 9404 Lv6: colour 4 = 300 + 120 per level,
                  now (300 + 720) / 100 = 10.2%, at Lv25 (300 + 3000) / 100 = 33.0%. Doom Sawblade (not fought) is ignored.
-   Selection: pass 1 takes the best of class 1, 2, 3 -> a, b (b ranks before d), c (c ranks before f). */
+   Selection: pass 1 takes the best of class 1, 2, 3 -> a, b, c (c ranks before f); the Save-for row has no room. */
 
 test('base data: one move per class, in class order', () => {
   assert.deepStrictEqual(texts(fresh()), [
@@ -51,12 +53,18 @@ test('base data: one move per class, in class order', () => {
   assert.equal(r.picks[2].meta, '3 stats under 70% (30-50%)', 'the numbers live on the meta line');
   assert.ok(r.picks.every((p) => p.text.length <= 60), 'at most 60 characters');
   assert.ok(r.picks.every((p) => /^[A-Z]/.test(p.text)), 'verb first');
-  assert.ok(r.pool.length >= 8, 'the pool lists every candidate');
+  assert.ok(r.pool.length >= 7, 'the pool lists every candidate (the Carrier is a Save-for, not a pool candidate)');
 });
 
-test('decor is tried across all stats and picks the best affordable row (not March Size only)', () => {
+test('decor: one score for every stat; the best affordable upgrade per shard wins, a much better one out of reach is a Save-for', () => {
   const d = fresh();
   d.runeBag = { Impact: 0, Debilitate: 0, Searing: 0 };
+  // 100 shards: the Carrier (0.225 per shard) is 9x the best affordable (Coastal 0.025) and within reach: save, do not buy
+  const sv = C.nextMoves(d, { max: 6 }).picks.filter((p) => p.sig === 'd');
+  assert.deepStrictEqual(sv.map((p) => p.text), ['Save for Aircraft Carrier Lv.4'], 'the Save-for row only, never the Coastal Defence upgrade');
+  assert.equal(sv[0].meta, '100 / 400 shards');
+  // without the Carrier: Big Gun is 0.030 but not affordable and only 1.2x Coastal's 0.025, under the 3x rule: buy Coastal
+  d.decor.placed = d.decor.placed.filter((x) => x.n !== 'Aircraft Carrier');
   assert.deepStrictEqual(texts(d), [
     'Uses what you have: Upgrade Coastal Defence to Lv.3: +1.5% All units Attack',
     'Costs resources: Refine Raysor Headset on Bravo',
@@ -65,21 +73,44 @@ test('decor is tried across all stats and picks the best affordable row (not Mar
   const move = C.nextMoves(d).picks[0];
   assert.equal(move.meta, '60 shards \u00B7 100 in bag');
   assert.equal(move.route, 'base/decor?item=Coastal+Defence');
-  assert.ok(move.gain > 0.83 && move.gain < 0.84, 'gain is relative to the best ROI: 0.833 / 1.0');
-  // 300 shards: Big Gun (ROI 1.0, net 300) becomes affordable and wins
+  assert.ok(move.gain > 0.83 && move.gain < 0.84, 'gain is relative to the best score per shard: 0.025 / 0.030');
+  // 300 shards: Big Gun (0.030, net 300) becomes affordable and wins
   d.decor.shards = 300;
   assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Big Gun to Lv.3: +3% All units Attack');
   assert.equal(C.nextMoves(d).picks[0].meta, '300 shards \u00B7 300 in bag');
-  // an equal ROI goes to the cheaper net cost (Coastal 150/180 and Firework 200/240 tie): hide Big Gun, give 300 shards
+  // an equal score goes to the cheaper net cost (Coastal 4.5/180 and Firework 6/240 tie at 0.025): hide Big Gun
   d.decor.placed = d.decor.placed.filter((x) => x.n !== 'Big Gun');
   assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Coastal Defence to Lv.3: +1.5% All units Attack', 'tie -> cheaper (60 against 200)');
-  // March Size, when affordable, comes first (it is tried first)
+  // March Size gets no priority of its own: back in the list and affordable, it wins only because it scores more per shard (0.225)
+  d.decor.placed = JSON.parse(JSON.stringify(BASE.decor.placed)).filter((x) => x.n !== 'Big Gun');
   d.decor.shards = 400;
   assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Aircraft Carrier to Lv.4: +1 March Size');
   assert.equal(C.nextMoves(d).picks[0].meta, '400 shards \u00B7 400 in bag');
-  // no shards at all: nothing affordable, the decor move disappears
+  // no shards at all: nothing affordable, the decor move disappears (the Save-for takes its place)
   d.decor.shards = 0;
-  assert.ok(!texts(d).some((t) => /Upgrade/.test(t)));
+  assert.ok(!C.nextMoves(d, { max: 6 }).picks.some((p) => p.sig === 'd' && /^Upgrade/.test(p.text)));
+});
+test('decor Save-for reach: a target 3x better per shard but beyond 10 x the bag (at least 500) is not worth saving for', () => {
+  const d = fresh(); d.runeBag = { Impact: 0, Debilitate: 0, Searing: 0 };
+  d.decor.placed.find((x) => x.n === 'Aircraft Carrier').nx = { to: 4, raw: 6000, credit: 0, dl: { 960012: 20 } }; // +20 March Size: 20 x 30 x 3 / 6000 = 0.3 per shard, 12x Coastal's 0.025
+  assert.equal(C.nextMoves(d).picks.some((p) => p.key === 'dsave'), false);
+  assert.ok(C.nextMoves(d, { max: 6 }).picks.some((p) => /^Upgrade Coastal Defence/.test(p.text)), 'so the best affordable upgrade is the move');
+  d.decor.shards = 700; // reach is now 10 x 700 = 7000: the Carrier is within reach and 12x better
+  assert.ok(C.nextMoves(d, { max: 6 }).picks.some((p) => p.key === 'dsave'));
+});
+test('decor: DMG increase, Defense and Decreased DMG Taken are scored too (9, 20, 9 per percent point), named correctly', () => {
+  const d = fresh(); d.runeBag = { Impact: 0, Debilitate: 0, Searing: 0 };
+  const mk = (n, g, dl, raw) => ({ n, g, ic: 'x', q: 4, nx: { to: 3, raw, credit: 0, dl } });
+  d.decor.shards = 1000; d.decor.branches = ['Army'];
+  // Army: weights [1]; mono all-units multiplier 1.5, Army-only buffs 1. Raw shard cost 200 each.
+  d.decor.placed = [mk('Dmg One', 9001, { 1001001: 200 }, 200), mk('Defence One', 9002, { 990202: 200 }, 200), mk('Taken One', 9003, { 980204: 200 }, 200), mk('Atk One', 9004, { 930100: 200 }, 200), mk('Army Dmg', 9005, { 29801011: 200 }, 200)];
+  // 2% each: DMG 2 x 9 x 1.5 = 27, Defense 2 x 20 x 1.5 = 60, Taken 27, Attack 3, Army DMG 2 x 9 x 1 = 18
+  assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Defence One to Lv.3: +2% All units Defense');
+  d.decor.placed.splice(1, 1);
+  assert.match(C.nextMoves(d).picks[0].text, /^Upgrade (Dmg One|Taken One) to Lv\.3: \+2% All units (DMG increase|Decreased DMG Taken)$/, 'a tie on 27: cheaper then name');
+  assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Dmg One to Lv.3: +2% All units DMG increase', 'name order');
+  d.decor.placed = d.decor.placed.filter((x) => x.n === 'Army Dmg' || x.n === 'Atk One');
+  assert.equal(C.nextMoves(d).picks[0].text, 'Upgrade Army Dmg to Lv.3: +2% Army DMG increase', 'Army DMG 18 beats All units Attack 3 for an Army player');
 });
 
 test('"Save for": only when no decor move is affordable and there is room', () => {
@@ -366,7 +397,7 @@ test('awakening: Raise and Awaken are "Uses what you have", first in that class,
   const d = fresh(); d.awakenMoves = [awaken(), raise(false)];
   assert.deepStrictEqual(texts(d), ['Free: Place Impact on Alpha slot 1', 'Uses what you have: Raise Superheat on Jett to Lv.7', 'Costs resources: Refine Raysor Headset on Bravo'], 'one pick per class: the Raise row takes the class-2 place from the rune merge');
   assert.deepStrictEqual(C.nextMoves(d, { max: 4 }).picks.map((p) => p.sig), ['a', 'g', 'h', 'c'], 'pass 1 takes a, g, c (one per class), pass 2 adds h; the class then sorts it before the refine');
-  assert.deepStrictEqual(C.nextMoves(d, { max: 6 }).picks.map((p) => p.sig).slice(0, 5), ['a', 'g', 'h', 'b', 'd']);
+  assert.deepStrictEqual(C.nextMoves(d, { max: 6 }).picks.map((p) => p.sig).slice(0, 5), ['a', 'g', 'h', 'b', 'c']);
   const p = C.nextMoves(d).picks[1];
   assert.equal(p.meta, 'Up to 225 stones · 412 in bag'); assert.equal(p.route, 'heroes/roster?awk=1&hero=Jett'); assert.equal(p.pill, 'Uses what you have'); assert.equal(p.ico.u, 'hero-awake-skills/hero_awake334_2.png');
   d.awakenMoves = [awaken()]; assert.deepStrictEqual(C.nextMoves(d).picks.map((x) => x.sig), ['a', 'h', 'c']);

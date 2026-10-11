@@ -22,7 +22,7 @@ function decorId(core, group, level) {
   for (let id = base; id < base + 30; id++) if (String(core.decorIdToGroup(id)) === String(group) && core.decorLevel(id, group) === level) return id;
   throw new Error('no id for group ' + group + ' level ' + level);
 }
-const vmOf = (core, merged, inv, marchGroups, reportDecorIds) => VM.buildViewModel(merged, { reportsTs: 0, dataTs: 0, kinds: [] }, { reportDecorIds, core, statics: STATICS, supp: inv ? { inv } : {}, privacy: {}, player: { name: 'Tester', siteKey: 'aaaaaaaaaaaaaaaa' }, reports: [], reportMechaIds: [], marchGroups, now: Date.now() });
+const vmOf = (core, merged, inv, marchGroups, reportDecorIds, beastPrefs) => VM.buildViewModel(merged, { reportsTs: 0, dataTs: 0, kinds: [] }, { reportDecorIds, beastPrefs, core, statics: STATICS, supp: inv ? { inv } : {}, privacy: {}, player: { name: 'Tester', siteKey: 'aaaaaaaaaaaaaaaa' }, reports: [], reportMechaIds: [], marchGroups, now: Date.now() });
 const bag = (shards) => ({ tabs: { item: [{ id: 20213232, a: shards }], decor: [] } });
 const VOCAB = /\bATK\b|\bAF\b|DMG[+\-−]|\bDEF\b|DMG Increase|\(rcv\)/;
 
@@ -247,23 +247,33 @@ test('spendModel: the classic advisor ranking as plain rows (cost after spare pi
   assert.ok(top.gain[0].rate.indexOf('shards per') >= 0);
   assert.ok(L.spendModel(core, inv, merged, data, ['hp']).byStat.hp.length === 0 || true);
 });
-test('the Overview decoration move and the Spend panel agree: on the all-units view the tab that opens is the stat the move chose, its top ready row is the decoration the move names', () => {
-  // [placed groups, shards in bag]. Case 3 mirrors a real player: Army / Air Force attack decorations rank higher on the advisor's own list but are not "All units Attack".
-  for (const [specs, shards] of [[[[5544, 2], [5606, 2], [4200, 2]], 100000], [[[4200, 3], [5351, 3]], 500], [[[4200, 2], [4290, 2], [4180, 2], [5544, 5]], 40]]) {
-    const { core, merged } = placedFor(specs), inv = bag(shards), vm = vmOf(core, merged, inv);
-    const move = vm.moves.picks.find((p) => p.sig === 'd');
-    const m = L.spendModel(core, inv, merged, { levels: LEVELS, index: INDEX, mutex: MUTEX });
-    const rowsOf = (s) => (L.MAIN_ID[s] ? m.byStatAll : m.byStat)[s];
-    const tab = L.PICK_ORDER.find((s) => rowsOf(s).some((r) => r.ready)), row = tab && rowsOf(tab).find((r) => r.ready);
-    if (/^Save/.test(move.text)) { assert.equal(row === undefined || !L.MAIN_ID[tab], true, 'a Save move: no ready row on the four stats the move tries'); continue; }
-    assert.ok(move.text.indexOf(row.n) >= 0 && move.text.indexOf('Lv.' + row.to) >= 0, 'move "' + move.text + '" vs panel ' + tab + ' top ready "' + row.n + ' to Lv.' + row.to + '"');
-    assert.ok(move.meta.indexOf(String(row.cost)) === 0, 'cost ' + move.meta + ' vs ' + row.cost);
-    assert.ok(move.text.indexOf(row.gain[0].v.replace(/\.0%$/, '%')) >= 0, 'gain ' + move.text + ' vs ' + row.gain[0].v);
-    assert.deepEqual(row.gain.map((g) => g.n).length, 1, 'the all-units view counts one buff');
+const spendOf = (core, inv, merged, vm) => L.spendModel(core, inv, merged, { levels: LEVELS, index: INDEX, mutex: MUTEX }, null, vm.movesInput.decor.branches, core.moves.decorPlaystyle(vm.movesInput.decor.prefs, vm.movesInput.decor.branches));
+/* the Overview move and the Best value panel agree: an Upgrade move is the panel's top row the bag can buy; a Save-for names the panel's top row it cannot */
+function agree(vm, m, label) {
+  const move = vm.moves.picks.find((p) => p.sig === 'd'), rows = m.byValue;
+  if (!move) { assert.ok(!rows.some((r) => r.ready), label + ': no move, no affordable row'); return move; }
+  if (/^Save/.test(move.text)) {
+    const row = rows.find((r) => !r.ready); assert.ok(row && move.text.indexOf(row.n) >= 0, label + ': "' + move.text + '" vs ' + (row && row.n)); return move;
+  }
+  const row = rows.find((r) => r.ready);
+  assert.ok(move.text.indexOf(row.n) >= 0 && move.text.indexOf('Lv.' + row.to) >= 0, label + ': move "' + move.text + '" vs panel ' + row.n + ' to Lv.' + row.to);
+  assert.ok(move.meta.indexOf(String(row.cost)) === 0, label + ': cost ' + move.meta + ' vs ' + row.cost);
+  assert.ok(move.text.indexOf(row.gain[0].v.replace(/\.0%$/, '%')) >= 0, label + ': gain ' + move.text + ' vs ' + row.gain[0].v);
+  return move;
+}
+test('the Overview decoration move and the Best value panel agree, across stats, units and bags (the panel opens on the rank-1 row; the move is the best one the bag can buy)', () => {
+  // [placed groups, shards in bag, marches]. Case 3 mirrors a real player: Army / Air Force attack decorations that are not "All units Attack".
+  const cases = [
+    [[[5544, 2], [5606, 2], [4200, 2]], 100000, []], [[[4200, 3], [5351, 3]], 500, []], [[[4200, 2], [4290, 2], [4180, 2], [5544, 5]], 40, []],
+    [[[5544, 3], [5443, 2], [4330, 1], [5803, 1]], 3000, [{ heroIds: [101, 301] }]], [[[4200, 2], [5345, 1]], 1000, []], [[[5544, 1], [4200, 2]], 100, []],
+  ];
+  for (const [specs, shards, mg] of cases) {
+    const { core, merged } = placedFor(specs), inv = bag(shards), vm = vmOf(core, merged, inv, mg);
+    agree(vm, spendOf(core, inv, merged, vm), JSON.stringify([specs, shards, mg]));
   }
 });
 const dMove = (vm) => vm.moves.picks.find((p) => p.sig === 'd');
-test('the Overview decoration move counts the unit types the marches use: an Army + Air Force player never gets a Navy decoration, a player with no marches gets all-units buffs only', () => {
+test('the Overview decoration move counts the unit types the marches use: an Army + Air Force player never gets a Navy decoration, a player with no marches counts every unit type', () => {
   // Hold The Fort 5426 = Army Attack, Beach Umbrella 4320 = Navy Attack, Timer 4360 = Air Force Attack, Christmas tree 4200 = All units Attack
   const specs = [[5426, 2], [4320, 2], [4360, 2], [4200, 2]], inv = bag(100000);
   const { core, merged } = placedFor(specs);
@@ -271,21 +281,59 @@ test('the Overview decoration move counts the unit types the marches use: an Arm
   assert.deepEqual(VM.marchBranches([], null, core), []); assert.deepEqual(VM.marchBranches(null, null, core), []);
   assert.deepEqual(VM.marchBranches([{ heroIds: [126] }], { list: [] }, core), ['Navy']);
   assert.deepEqual(vmOf(core, merged, inv, [{ heroIds: [101, 301] }]).movesInput.decor.branches, ['Army', 'Air Force']);
+  // Lv.2 -> Lv.3 costs 144 (Hold The Fort, +2% Army), 36 (Umbrella, +0.5%), 36 (Timer, +0.5%), 60 (Christmas, +0.5% all units). Attack weighs 1; an all-units buff counts once per unit type.
+  // No marches (three unit types): Fort 2/144 = 0.0139, Umbrella 0.5/36 = 0.0139, Timer 0.0139, Christmas 0.5 x 3 / 60 = 0.025
   const none = dMove(vmOf(core, merged, inv, []));
-  assert.match(none.text, /^Upgrade Christmas tree to Lv\.3/, 'no marches: all units only'); assert.match(none.text, /All units Attack/);
-  const af = dMove(vmOf(core, merged, inv, [{ heroIds: [101, 301] }]));
-  assert.doesNotMatch(af.text, /Beach Umbrella/, 'never a Navy decoration for an Army + Air Force player');
-  // the Army decoration alone is a move for an Army player and no move for a player with no marches
+  assert.match(none.text, /^Upgrade Christmas tree to Lv\.3/); assert.match(none.text, /All units Attack/);
+  // Army + Air Force (two types): Christmas 0.5 x 2 / 60 = 0.0167 still beats Fort 0.0139 and Timer 0.0139; the Navy Umbrella scores 0
+  const af = vmOf(core, merged, inv, [{ heroIds: [101, 301] }]), afm = spendOf(core, inv, merged, af);
+  assert.match(dMove(af).text, /^Upgrade Christmas tree/); assert.ok(!afm.byValue.some((r) => r.n === 'Beach Umbrella'), 'a Navy decoration is not even listed for an Army + Air Force player');
+  assert.deepEqual(afm.byValue.map((r) => r.n), ['Christmas tree', 'Timer', 'Hold The Fort'], 'Fort 2 / 144 and Timer 0.5 / 36 tie at 0.0139: the cheaper (Timer, 36) first');
+  // the Army decoration alone: a move for a player with no marches (every unit type) and an Army player, never for a Navy player
   const only = placedFor([[5426, 2]]);
-  assert.equal(dMove(vmOf(only.core, only.merged, inv, [])), undefined, 'no marches: Army Attack does not count');
+  const a0 = dMove(vmOf(only.core, only.merged, inv, [])); assert.match(a0.text, /^Upgrade Hold The Fort to Lv\.3: \+2% Army Attack/);
   const army = dMove(vmOf(only.core, only.merged, inv, [{ heroIds: [101] }])); assert.match(army.text, /^Upgrade Hold The Fort to Lv\.3/); assert.match(army.text, /Army Attack/);
   assert.equal(dMove(vmOf(only.core, only.merged, inv, [{ heroIds: [126] }])), undefined, 'a Navy player does not count Army Attack');
-  // the panel opens on the same scope: its top ready row is the move
-  for (const mg of [[], [{ heroIds: [101] }], [{ heroIds: [101, 301] }]]) {
-    const vm = vmOf(core, merged, inv, mg), mv = dMove(vm), m = L.spendModel(core, inv, merged, { levels: LEVELS, index: INDEX, mutex: MUTEX }, null, vm.movesInput.decor.branches);
-    const tab = L.PICK_ORDER.find((s) => (L.MAIN_ID[s] ? m.byStatMine : m.byStat)[s].some((r) => r.ready)), row = m.byStatMine[tab].find((r) => r.ready);
-    assert.ok(mv.text.indexOf(row.n) >= 0 && mv.meta.indexOf(String(row.cost)) === 0, 'marches ' + JSON.stringify(mg) + ': "' + mv.text + '" vs panel ' + tab + ' ' + row.n);
-  }
+  // the panel opens on the same ranking: its top ready row is the move
+  for (const mg of [[], [{ heroIds: [101] }], [{ heroIds: [101, 301] }]]) { const vm = vmOf(core, merged, inv, mg); agree(vm, spendOf(core, inv, merged, vm), JSON.stringify(mg)); }
+});
+test('whose units count: the Beast Optimizer\'s saved choice, else the real marches (equal weight), else every unit type', () => {
+  const br = ['Army', 'Air Force'], P = (o) => Core.create().moves.decorPlaystyle(o, br), N = Core.create().moves.decorPlaystyle(null, []);
+  assert.deepEqual([P(null).source, P(null).units, P(null).weights], ['marches', [1, 3], [1, 1]], 'no prefs: the real march branches, equal weight');
+  assert.deepEqual([N.source, N.units, N.weights], ['none', [1, 2, 3], [1, 1, 1]], 'no prefs, no marches: every unit type');
+  const pr = P({ mode: 'dual', units: [2, 1], balance: 'primarySecondary', weights: null });
+  assert.deepEqual([pr.source, pr.units, pr.weights], ['prefs', [2, 1], [1, 0.75]], 'prefs win over the marches; weights come from boResolveWeights');
+  assert.equal(P({ mode: 'dual', units: [2, 2] }).source, 'marches', 'an invalid saved choice (a duplicate unit) is ignored'); assert.equal(P({ mode: 'dual', units: [1] }).source, 'marches'); assert.equal(P('x').source, 'marches');
+  // the same decorations, three sources: Hold The Fort (+2% Army Attack, 144) vs Beach Umbrella (+0.5% Navy Attack, 36) vs Timer (+0.5% Air Force Attack, 36), Lv.2 -> Lv.3
+  const { core, merged } = placedFor([[5426, 2], [4320, 2], [4360, 2]]), inv = bag(100000), top = (mg, pf) => dMove(vmOf(core, merged, inv, mg, undefined, pf)).text;
+  assert.match(top([{ heroIds: [126] }]), /^Upgrade Beach Umbrella/, 'a Navy march: only the Navy decoration counts');
+  assert.match(top([{ heroIds: [126] }], { mode: 'mono', units: [1] }), /^Upgrade Hold The Fort/, 'prefs say Army: Army counts, Navy does not, whatever the march');
+  assert.match(top([], { mode: 'dual', units: [2, 3], weights: [0.5, 1] }), /^Upgrade Timer/, 'prefs Navy 0.5 + Air Force 1: Timer 0.5 / 36 = 0.0139 against Umbrella 0.5 x 0.5 / 36 and Fort 0 (not a chosen unit)');
+});
+test('an affordable damage-reduction decoration beats saving thousands of shards for March Size (the 8960mr case); the old rule said Save', () => {
+  // Cutie & Fluffy Lv.3 -> Lv.4: +1 March Size for 4,320 shards. 3,000 in the bag. Ammo Box (Army Decreased DMG Taken, Lv.1 -> Lv.2) costs 30 for +0.5%; Royal Parade (all units) 450 for +1.5%.
+  // Army + Air Force: weights 1 + 1 (dual), all-units x2. March 30 x 2 / 4320 = 0.0139 per shard. Ammo Box 0.5 x 9 / 30 = 0.15. Royal Parade 1.5 x 9 x 2 / 450 = 0.06. Ada Wong (Defense) 1 x 20 x 2 / 300 = 0.133.
+  const { core, merged } = placedFor([[5544, 3], [5443, 2], [4330, 1], [5803, 1]]), inv = bag(3000), vm = vmOf(core, merged, inv, [{ heroIds: [101, 301] }]);
+  const mv = dMove(vm); assert.match(mv.text, /^Upgrade Ammo Box to Lv\.2: \+0\.5% Army Decreased DMG Taken$/); assert.equal(mv.meta, '30 shards \u00B7 3000 in bag');
+  const m = spendOf(core, inv, merged, vm);
+  assert.deepEqual(m.byValue.map((r) => r.n), ['Ammo Box', 'Ada Wong Statue', 'Royal Parade', 'Cutie & Fluffy'], 'Best value ranks all stats on one score');
+  assert.equal(m.byValue[0].value, 'High'); assert.equal(m.byValue[3].value, 'Low');
+  assert.equal(m.byValue[0].gain.length, 1, 'the main gain only; the value is a word, never the weights'); assert.ok(!/weight/i.test(JSON.stringify(m.byValue)));
+  agree(vm, m, 'ammo');
+});
+test('a better-scoring DMG increase decoration beats a cheap weak Attack one (the old rule took the first stat with anything affordable)', () => {
+  // Christmas tree Lv.2 -> 3: +0.5% All units Attack for 60 = 0.5 x 3 / 60 = 0.025. New Year Bonfire Lv.1 -> 2: +1% All units DMG increase for 100 = 1 x 9 x 3 / 100 = 0.27.
+  const { core, merged } = placedFor([[4200, 2], [5345, 1]]), inv = bag(1000);
+  assert.match(dMove(vmOf(core, merged, inv, [])).text, /^Upgrade New Year Bonfire to Lv\.2: \+1% All units DMG increase$/);
+});
+test('Save for: only when a dearer upgrade is worth 3 times more per shard than the best affordable one and is within reach', () => {
+  // Cutie & Fluffy Lv.1 -> 2: +1 March Size for 480: 30 x 3 / 480 = 0.1875 per shard. Christmas tree Lv.2 -> 3: 0.025. 7.5x, 480 <= 10 x max(100, 500): save.
+  const { core, merged } = placedFor([[5544, 1], [4200, 2]]), inv = bag(100), mv = dMove(vmOf(core, merged, inv, []));
+  assert.match(mv.text, /^Save for Cutie & Fluffy Lv\.2/); assert.equal(mv.meta, '100 / 480 shards');
+  // enough shards: it is affordable, so it is the move
+  assert.match(dMove(vmOf(core, merged, bag(480), [])).text, /^Upgrade Cutie & Fluffy to Lv\.2: \+1 March Size/);
+  // a March Size that is NOT 3x better is not worth waiting for: Cutie Lv.3 -> 4 is 4320 shards: 30 x 3 / 4320 = 0.0208 against the Bonfire's 0.27
+  const w = placedFor([[5544, 3], [5345, 1]]); assert.match(dMove(vmOf(w.core, w.merged, bag(200), [])).text, /^Upgrade New Year Bonfire/);
 });
 test('an all-units buff counts once per marched unit type: for an Army + Air Force player Mega Bite (+1% All units Attack, 360 shards) beats Swing Bridge (+4% Army Attack, 864)', () => {
   // Mega Bite 5604 and Swing Bridge 5612 at Lv.3 -> Lv.4: 100/360 = 0.28 per shard, 400/864 = 0.46 unweighted; the all-units buff counts twice for two unit types: 200/360 = 0.56
@@ -313,10 +361,10 @@ test('a decoration whose All units Attack comes only through a second-system id 
   }
   const plain = placedFor([[4200, 2]]); assert.match(dMove(vmOf(plain.core, plain.merged, bag(100000), [])).text, /^Upgrade Christmas tree/, 'a first-system player is unchanged');
 });
-test('every-unit-type view is the classic advisor list: it can rank a decoration the Overview move does not count', () => {
+test('the stat tabs keep the classic advisor list: the every-unit-type view can rank a decoration the All-units-only view does not count', () => {
   // Sandcastle Toolkit raises Army HP (930001), not All units HP (930000)
   const { core, merged } = placedFor([[5544, 5], [4200, 2], [4290, 2]]), inv = bag(40), vm = vmOf(core, merged, inv);
-  assert.match(vm.moves.picks.find((p) => p.sig === 'd').text, /^Save for Cutie/);
+  assert.match(vm.moves.picks.find((p) => p.sig === 'd').text, /^Upgrade Sandcastle Toolkit to Lv\.3: \+0\.5% Army HP/, 'no marches: every unit type counts. Sandcastle Lv.2 -> 3: 0.5 x 1.05 / 36 = 0.0146 for 36 shards; Christmas tree (60, not affordable) is only 1.7x better per shard, under the 3x Save-for rule');
   const m = L.spendModel(core, inv, merged, { levels: LEVELS, index: INDEX, mutex: MUTEX });
   assert.equal(m.byStatAll.hp.some((r) => r.ready), false, 'all units only: nothing to buy, as the Overview says');
   const row = m.byStat.hp.find((r) => r.ready);
@@ -326,11 +374,12 @@ test('every-unit-type view is the classic advisor list: it can rank a decoration
 test('item sheet: one gain line for every buff the next level changes, with now -> next and whether the Overview move counts it', () => {
   const { core, vm } = placedFor([[5612, 3], [5604, 3], [5426, 2], [4200, 2], [5462, 1]]);
   const pm = L.placedModel(vm.decor, LOOKUPS, G, core);
-  pm.filter((p) => p.nx).forEach((p) => assert.equal(L.gainLines(LOOKUPS, p, [], core).length, Object.keys(p.nx.dl).length, p.n));
-  const sb = pm.find((p) => p.g === 5612), l = L.gainLines(LOOKUPS, sb, ['Army', 'Air Force'], core);
+  pm.filter((p) => p.nx).forEach((p) => assert.equal(L.gainLines(LOOKUPS, p, core.moves.decorPlaystyle(null, []), core).length, Object.keys(p.nx.dl).length, p.n));
+  const sb = pm.find((p) => p.g === 5612), l = L.gainLines(LOOKUPS, sb, core.moves.decorPlaystyle(null, ['Army', 'Air Force']), core);
   assert.deepEqual(l.map((g) => [g.n, g.cur, g.next, g.step, g.counted, g.pct]), [['Army Attack', 12, 16, 4, true, true]], 'the +4% Army Attack of the Overview move is on its sheet');
-  assert.equal(L.gainLines(LOOKUPS, sb, [], core)[0].counted, false, 'no marches: Army Attack is not counted');
-  const pc = pm.find((p) => p.g === 5462); assert.ok(L.gainLines(LOOKUPS, pc, [], core).length >= 1);
+  assert.equal(L.gainLines(LOOKUPS, sb, core.moves.decorPlaystyle(null, ['Navy']), core)[0].counted, false, 'a Navy march: Army Attack is not counted');
+  assert.equal(L.gainLines(LOOKUPS, sb, core.moves.decorPlaystyle(null, []), core)[0].counted, true, 'no marches: every unit type counts');
+  const pc = pm.find((p) => p.g === 5462); assert.ok(L.gainLines(LOOKUPS, pc, core.moves.decorPlaystyle(null, []), core).length >= 1);
 });
 test('fitWalk: rows are paid in rank order from one bag; 507 shards cover 60 + 80 + 160 + 200, the fifth (240) fits alone but needs 233 more after them', () => {
   const w = L.fitWalk([60, 80, 160, 200, 240].map((c) => ({ cost: c })), 507);

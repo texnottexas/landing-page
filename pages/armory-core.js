@@ -1927,8 +1927,65 @@
     return { text: texts.join(''), full: full, parts: parts.map(function (x, i) { return { s: texts[i], n: x.n ? 1 : 0 }; }) };
   }
 
-  /* Decor stats a player can raise, in the order they are tried. Each is ranked on its own gain per shard. */
-  var DECOR_STATS = [['960012', 'March Size', true], ['930100', 'All units Attack', false], ['930000', 'All units HP', false], ['1001001', 'All units DMG increase', false]];
+  /* ONE score for every decor stat. Each decoration buff id maps to [stat, unit (0 = all units, 1 Army, 2 Navy, 3 Air Force), scope, label]; its points are
+     (percent points, or raw March Size) x BO_STAT_WEIGHTS[stat] x BO_SCOPE_MULT[scope] x boPlaystyleMult(unit, playstyle): the Beast Optimizer's own numbers and rule,
+     not copies. Ids not listed (capacity, fire hydrant) score 0. */
+  var DECOR_CLASS = {
+    '960012': ['march', 0, 'always', 'March Size'],
+    '930100': ['atk', 0, 'always', 'All units Attack'], '9301160': ['atk', 0, 'always', 'All units Attack'], '93011601': ['atk', 0, 'always', 'All units Attack'],
+    '990100': ['atk', 0, 'offensive', 'All units Attack (offense)'], '9301164': ['atk', 0, 'offensive', 'All units Attack (offense)'],
+    '930101': ['atk', 1, 'always', 'Army Attack'], '9301161': ['atk', 1, 'always', 'Army Attack'], '930102': ['atk', 2, 'always', 'Navy Attack'], '9301162': ['atk', 2, 'always', 'Navy Attack'],
+    '930103': ['atk', 3, 'always', 'Air Force Attack'], '9301163': ['atk', 3, 'always', 'Air Force Attack'],
+    '930000': ['hp', 0, 'always', 'All units HP'], '9301170': ['hp', 0, 'always', 'All units HP'], '93011701': ['hp', 0, 'always', 'All units HP'],
+    '9990769': ['hp', 0, 'offensive', 'All units HP (offense)'], '9301174': ['hp', 0, 'defensive', 'All units HP (defense)'],
+    '930001': ['hp', 1, 'always', 'Army HP'], '9301171': ['hp', 1, 'always', 'Army HP'], '930002': ['hp', 2, 'always', 'Navy HP'], '9301172': ['hp', 2, 'always', 'Navy HP'],
+    '930003': ['hp', 3, 'always', 'Air Force HP'], '9301173': ['hp', 3, 'always', 'Air Force HP'],
+    '990202': ['def', 0, 'always', 'All units Defense'],
+    '1001001': ['dmgInc', 0, 'always', 'All units DMG increase'], '29801011': ['dmgInc', 1, 'always', 'Army DMG increase'], '29801021': ['dmgInc', 2, 'always', 'Navy DMG increase'],
+    '980204': ['dmgDec', 0, 'always', 'All units Decreased DMG Taken'], '29901301': ['dmgDec', 0, 'defensive', 'All units Decreased DMG Taken (defense)'],
+    '29902211': ['dmgDec', 0, 'offensive', 'All units Decreased DMG Taken (offense)'], '98020501': ['dmgDec', 0, 'defensive', 'All units Decreased DMG Taken (defense)'],
+    '1003020': ['dmgDec', 1, 'always', 'Army Decreased DMG Taken'], '10030201': ['dmgDec', 1, 'always', 'Army Decreased DMG Taken'], '20030201': ['dmgDec', 1, 'always', 'Army Decreased DMG Taken'],
+    '1003021': ['dmgDec', 2, 'always', 'Navy Decreased DMG Taken'], '21010161': ['dmgDec', 2, 'always', 'Navy Decreased DMG Taken'], '1003022': ['dmgDec', 3, 'always', 'Air Force Decreased DMG Taken']
+  };
+  /* "Save for" rule: a target the bag cannot buy yet is suggested over the best upgrade it CAN buy only when its points per shard are at least SAVE_K times that
+     upgrade's (waiting costs the gain you could have had now, so only a clear step up is worth it) and it is within SAVE_REACH times the bag (at least SAVE_FLOOR shards). */
+  var SAVE_K = 3, SAVE_REACH = 10, SAVE_FLOOR = 500;
+  var BRANCH_UNIT = { 'Army': 1, 'Navy': 2, 'Air Force': 3 };
+  /* Whose units count: the Beast Optimizer's saved choice when there is one (mode, units, weights), else the unit types of the player's real marches (equal weight),
+     else every unit type at equal weight. source says which. A playstyle shaped like the Optimizer's, so boResolveWeights / boPlaystyleMult read it as is. */
+  function decorPlaystyle(prefs, branches) {
+    var cap = prefs && typeof prefs === 'object' ? { mono: 1, dual: 2, triple: 3 }[prefs.mode] : 0;
+    if (cap && Array.isArray(prefs.units) && prefs.units.length === cap) {
+      var u = prefs.units.map(Number);
+      if (u.every(function (x, i) { return x >= 1 && x <= 3 && x === Math.round(x) && u.indexOf(x) === i; })) {
+        var ps = { mode: prefs.mode, units: u, balance: prefs.balance === 'primarySecondary' ? 'primarySecondary' : 'even', weights: Array.isArray(prefs.weights) && prefs.weights.length === cap && prefs.weights.every(function (x) { return x > 0 && x <= 2; }) ? prefs.weights.map(Number) : null, source: 'prefs' };
+        ps.weights = boResolveWeights(ps);
+        return ps;
+      }
+    }
+    var br = []; (branches || []).forEach(function (b) { var n = BRANCH_UNIT[b]; if (n && br.indexOf(n) < 0) br.push(n); });
+    br.sort();
+    if (br.length) return { mode: ['mono', 'dual', 'triple'][br.length - 1], units: br, balance: 'even', weights: br.map(function () { return 1; }), source: 'marches' };
+    return { mode: 'triple', units: [1, 2, 3], balance: 'even', weights: [1, 1, 1], source: 'none' };
+  }
+  /* points of one buff's raw change (basis points, or raw March Size) for a playstyle */
+  function decorPoints(id, raw, ps) {
+    var c = DECOR_CLASS[String(id)];
+    if (!c || !(raw > 0)) return 0;
+    return (c[0] === 'march' ? raw : raw / 100) * (BO_STAT_WEIGHTS[c[0]] || 0) * (BO_SCOPE_MULT[c[2]] || 0) * boPlaystyleMult(c[1], ps);
+  }
+  /* one upgrade's total points ({id: raw change}) and the buff that gives most of them */
+  function decorScore(dl, ps) {
+    var score = 0, top = null;
+    Object.keys(dl || {}).forEach(function (id) {
+      var v = Number(dl[id]), p = decorPoints(id, v, ps);
+      if (p <= 0) return;
+      score += p;
+      if (!top || p > top.pts) top = { id: id, raw: v, pts: p, label: DECOR_CLASS[id][3] };
+    });
+    return { score: score, top: top };
+  }
+  function decorValueText(top) { return top.id === '960012' ? '+' + top.raw : '+' + (top.raw / 100) + '%'; }
   /* Unit-type buffs that count toward a stat when the player marches that branch (the advisor's own lists, by branch). The all-units buff is always counted. */
   var DECOR_UNIT_IDS = {
     '930100': { 'Army': [['930101', 'Army Attack'], ['9301161', 'Army Attack']], 'Navy': [['930102', 'Navy Attack'], ['9301162', 'Navy Attack']], 'Air Force': [['930103', 'Air Force Attack'], ['9301163', 'Air Force Attack']] },
@@ -1965,7 +2022,7 @@
     D = D || {};
     D = {
       heroes: D.heroes || [], runeBag: D.runeBag || {}, runeSlots: D.runeSlots || {}, runeCost: D.runeCost || {},
-      decor: { shards: (D.decor && D.decor.shards) || 0, placed: (D.decor && D.decor.placed) || [], branches: (D.decor && D.decor.branches) || [] },
+      decor: { shards: (D.decor && D.decor.shards) || 0, placed: (D.decor && D.decor.placed) || [], branches: (D.decor && D.decor.branches) || [], prefs: (D.decor && D.decor.prefs) || null },
       ht: { chips: (D.ht && D.ht.chips) || [], reportMechas: D.ht ? D.ht.reportMechas : null },
       beastMoves: D.beastMoves || [], awakenMoves: D.awakenMoves || []
     };
@@ -2029,34 +2086,27 @@
       });
     });
 
-    /* d: upgrade a placed decoration one level. The first stat in DECOR_STATS that has an affordable
-       upgrade wins. Inside that stat: ROI = the stat's own gain per raw shard (D1), one row per group (D2),
-       ties cheapest first, then name (D3). */
-    var have = D.decor.shards, dChosen = null, dShort = null;
-    DECOR_STATS.some(function (st) {
-      var rows = [], seen = {};
-      D.decor.placed.forEach(function (d) {
-        if (!d.nx || seen[d.g]) return;
-        var delta = 0, top = 0, topRaw = 0, label = null;
-        decorScopeIds(st[0], D.decor.branches).forEach(function (x) { var v = d.nx.dl[x[0]] || 0, w = v * x[2]; delta += w; if (w > top) { top = w; topRaw = v; label = x[1]; } });
-        if (delta <= 0) return;
-        seen[d.g] = 1;
-        var net = Math.max(0, d.nx.raw - d.nx.credit);
-        rows.push({ d: d, delta: delta, shown: topRaw, raw: d.nx.raw, net: net, roi: delta / Math.max(d.nx.raw, 1), stat: st, label: label || st[1] });
-      });
-      rows.sort(function (a, b) { return (b.roi - a.roi) || (a.net - b.net) || (a.d.n < b.d.n ? -1 : 1); });
-      rows.forEach(function (r) { r.afford = have >= r.net; });
-      var aff = rows.filter(function (r) { return r.afford; })[0];
-      if (aff) { dChosen = { r: aff, best: rows[0].roi }; return true; }
-      if (st[2] && rows.length) dShort = { r: rows[0], ties: rows.filter(function (x) { return x.roi === rows[0].roi && x.net === rows[0].net; }).length };
-      return false;
+    /* d: upgrade a placed decoration one level. ONE score for every stat (decorScore: the Beast Optimizer's weights for the player's units): the affordable
+       upgrade with the most points per raw shard wins (one row per group, ties cheapest first, then name). "Save for" only when nothing is affordable, or
+       when a dearer upgrade is worth SAVE_K times more per shard and is within reach (SAVE_K / SAVE_REACH above). */
+    var have = D.decor.shards, dChosen = null, dShort = null, ps = decorPlaystyle(D.decor.prefs, D.decor.branches);
+    var drows = [], dseen = {};
+    D.decor.placed.forEach(function (d) {
+      if (!d.nx || dseen[d.g]) return;
+      var sc = decorScore(d.nx.dl, ps);
+      if (!sc.top) return;
+      dseen[d.g] = 1;
+      drows.push({ d: d, top: sc.top, raw: d.nx.raw, net: Math.max(0, d.nx.raw - d.nx.credit), roi: sc.score / Math.max(d.nx.raw, 1) });
     });
+    drows.sort(function (a, b) { return (b.roi - a.roi) || (a.net - b.net) || (a.d.n < b.d.n ? -1 : 1); });
+    var dAff = drows.filter(function (r) { return have >= r.net; })[0], dDear = drows.filter(function (r) { return have < r.net; })[0];
+    if (dAff && !(dDear && dDear.roi >= SAVE_K * dAff.roi && dDear.net <= SAVE_REACH * Math.max(have, SAVE_FLOOR))) dChosen = { r: dAff, best: drows[0].roi };
+    else if (dDear) dShort = { r: dDear, ties: drows.filter(function (x) { return x.roi === dDear.roi && x.net === dDear.net; }).length };
     if (dChosen) {
       var r = dChosen.r;
-      var vtxt = r.stat[2] ? '+' + r.shown : '+' + (r.shown / 100) + '%';
       cand.push({
         sig: 'd', cls: 2, gain: r.roi / dChosen.best, weight: 0, key: 'd' + r.d.n,
-        parts: [{ s: 'Upgrade ' }, { s: r.d.n, n: 1 }, { s: ' to ' }, { s: 'Lv.' + r.d.nx.to, n: 1 }, { s: ': ' }, { s: vtxt, n: 1 }, { s: ' ' + r.label }],
+        parts: [{ s: 'Upgrade ' }, { s: r.d.n, n: 1 }, { s: ' to ' }, { s: 'Lv.' + r.d.nx.to, n: 1 }, { s: ': ' }, { s: decorValueText(r.top), n: 1 }, { s: ' ' + r.top.label }],
         meta: r.net + ' shards \u00B7 ' + have + ' in bag',
         ico: { u: 'decor-icons/' + r.d.ic, q: r.d.q >= 6 ? 'q6' : r.d.q === 5 ? 'q5' : r.d.q === 4 ? 'q4' : r.d.q === 3 ? 'q3' : '', fb: r.d.n.charAt(0) },
         route: 'base/decor?item=' + encodeURIComponent(r.d.n).replace(/%20/g, '+')
@@ -2118,13 +2168,13 @@
     for (var i = 0; i < cand.length && picks.length < MAX; i++) take(cand[i], 1);
     for (i = 0; i < cand.length && picks.length < MAX; i++) take(cand[i], 2);
 
-    /* "Save for": only when no decor move is affordable and there is room. */
-    if (!dChosen && dShort && picks.length < MAX) {
+    /* "Save for": when no decor move is affordable, or a dearer one is worth SAVE_K times more per shard; only with room. */
+    if (dShort && picks.length < MAX) {
       var s = dShort.r;
       picks.push({
         sig: 'd', cls: 3, gain: 0, weight: 0, key: 'dsave',
         parts: dShort.ties > 1
-          ? [{ s: 'Save ' }, { s: fmtInt(s.net), n: 1 }, { s: ' shards for ' }, { s: '+' + s.delta, n: 1 }, { s: ' March Size (' }, { s: String(dShort.ties), n: 1 }, { s: ' choices)' }]
+          ? [{ s: 'Save ' }, { s: fmtInt(s.net), n: 1 }, { s: ' shards for ' }, { s: decorValueText(s.top), n: 1 }, { s: ' ' + s.top.label + ' (' }, { s: String(dShort.ties), n: 1 }, { s: ' choices)' }]
           : [{ s: 'Save for ' }, { s: s.d.n, n: 1 }, { s: ' Lv.' + s.d.nx.to, n: 1 }],
         meta: dShort.ties > 1 ? '' : fmtInt(have) + ' / ' + fmtInt(s.net) + ' shards', ico: { u: 'decor-icons/' + s.d.ic, q: '', fb: s.d.n.charAt(0) },
         route: 'base/decor?item=' + encodeURIComponent(s.d.n).replace(/%20/g, '+')
@@ -2143,7 +2193,7 @@
     return { picks: picks, pool: cand, weights: W };
   }
 
-    return { decorScopeIds: decorScopeIds, gearScore: gearScore, heroWeights: heroWeights, heroRank: heroRank, runeStats: runeStats, nextMoves: nextMoves, computeMoves: nextMoves, rollPct: rollPct, chipInfo: chipInfo, CHIP_COLOUR: CHIP_COLOUR, CHIP_TOP: CHIP_TOP, CHIP_STAT: CHIP_STAT, fitText: fitText, DECOR_STATS: DECOR_STATS };
+    return { decorScopeIds: decorScopeIds, gearScore: gearScore, heroWeights: heroWeights, heroRank: heroRank, runeStats: runeStats, nextMoves: nextMoves, computeMoves: nextMoves, rollPct: rollPct, chipInfo: chipInfo, CHIP_COLOUR: CHIP_COLOUR, CHIP_TOP: CHIP_TOP, CHIP_STAT: CHIP_STAT, fitText: fitText, decorPlaystyle: decorPlaystyle, decorPoints: decorPoints, decorScore: decorScore, decorValueText: decorValueText, DECOR_CLASS: DECOR_CLASS, SAVE_K: SAVE_K, SAVE_REACH: SAVE_REACH, SAVE_FLOOR: SAVE_FLOOR };
   })();
 
   /* ---- new in v2 (not copied from the page): the one rune base-pool rule (Advice phase 4, decision 2) ---- */

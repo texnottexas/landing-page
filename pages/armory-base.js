@@ -343,34 +343,36 @@ function setsModel(L, merged, placed, om) {
   return { done: done, left: left };
 }
 
-/* every buff the next level changes, as lines: name, now, next, the step, and whether the Overview move counts it for the player's marches */
-function gainLines(L, x, branches, core) {
+/* every buff the next level changes, as lines: name, now, next, the step, and whether the decor score counts it for the player's units (ps: core.moves.decorPlaystyle) */
+function gainLines(L, x, ps, core) {
   if (!x || !x.nx) return [];
-  var counted = {}; ['960012', '930100', '930000', '1001001'].forEach(function (m) { core.decorScopeIds(m, branches).forEach(function (c) { counted[c[0]] = 1; }); });
   var names = L.BUFF_NAMES_DECOR || {};
   return Object.keys(x.nx.dl).map(function (id) {
     var d = num(x.nx.dl[id]), cur = arr(x.buffs).filter(function (b) { return b.id === id; })[0], pct = !cur || /%$/.test(cur.v) || (id !== '960012' && id !== '1131006');
     var curN = cur ? skinNum(cur.v) : null, step = pct ? d / 100 : d;
-    return { id: id, n: statName(own(names, id) || 'Other effect'), pct: pct, cur: curN, next: curN == null ? null : curN + step, step: step, counted: !!counted[id] };
+    return { id: id, n: statName(own(names, id) || 'Other effect'), pct: pct, cur: curN, next: curN == null ? null : curN + step, step: step, counted: core.moves.decorPoints(id, num(x.nx.dl[id]), ps) > 0 };
   });
 }
 /* ---- the Spend my shards panel ---- */
-/* the order the Overview's decoration move tries the stats in (armory-core DECOR_STATS), then the rest: the tab that opens is the stat that move picks */
+/* the stat tabs in the order the panel falls back to when "Best value" has no row (no placed decoration the score counts) */
 var PICK_ORDER = ['march_size', 'attack', 'hp', 'damage_boost', 'def', 'damage_red', 'capacity'];
+var TABS_BEST = ['best', 'Best value'];
 var STAT_TABS = [['march_size', 'March Size'], ['attack', 'Attack'], ['hp', 'HP'], ['def', 'Defense'], ['damage_boost', 'DMG increase'], ['damage_red', 'Decreased DMG Taken'], ['capacity', 'Capacity']];
-function statTabLabel(id) { return (STAT_TABS.filter(function (t) { return t[0] === id; })[0] || [id, id])[1]; }
-/* The all-units buff each of the four stats the Overview move tries is built on (armory-core DECOR_STATS); the move also counts the unit types the player marches with. */
+function statTabLabel(id) { return id === 'best' ? TABS_BEST[1] : (STAT_TABS.filter(function (t) { return t[0] === id; })[0] || [id, id])[1]; }
+/* The all-units buff each of the four main stat tabs is built on; the per-stat views add the unit types the player marches with. */
 var MAIN_ID = { march_size: '960012', attack: '930100', hp: '930000', damage_boost: '1001001' };
 /* the classic advisor's ranking (core.computeDecorRecs, parity-tested), as plain rows (cost after spare pieces, ready, shortfall, relative bar).
-   Views of the four main stats, all ranked by the Overview move's rule (gain per raw shard, then cost, then name), so the Overview's decoration
-   move is always the top ready row of its stat in `byStatMine`:
+   byValue     "Best value": EVERY upgrade ranked by one score (armory-core decorScore: the Beast Optimizer's stat weights for the player's units `ps`), points per raw
+               shard, then cost, then name: the Overview's decoration move is always its top row the bag can buy (a Save-for aside). Rows carry `value` (High / Good / Fair / Low).
+   The per-stat views, each ranked on its own stat's gain per raw shard:
      byStat      every buff the advisor lists for the stat (the classic list)
      byStatAll   the all-units buff only
      byStatMine  the all-units buff plus the unit types of `branches` (the Overview move's scope; equals byStatAll with no marches)
    data = { levels, index, mutex } */
-function spendModel(core, inv, merged, data, statIds, branches) {
+function spendModel(core, inv, merged, data, statIds, branches, ps) {
   var ids = statIds || STAT_TABS.map(function (t) { return t[0]; });
-  var res = core.computeDecorRecs(ids, inv, merged, data), out = { shards: res.shardSummary, byStat: {}, byStatAll: {}, byStatMine: {}, order: ids, branches: arr(branches) };
+  var res = core.computeDecorRecs(ids, inv, merged, data), out = { shards: res.shardSummary, byStat: {}, byStatAll: {}, byStatMine: {}, byValue: [], order: ids, branches: arr(branches) };
+  ps = ps || core.moves.decorPlaystyle(null, branches);
   function plain(r, gainRows, roi) {
     return {
       g: r.group, n: String(r.name), ic: iconFile(r.group, r.name), from: r.fromLevel, to: r.toLevel, cost: r.shardCost, raw: r.rawShardCost, credit: r.groupCredit,
@@ -393,6 +395,22 @@ function spendModel(core, inv, merged, data, statIds, branches) {
     var main = MAIN_ID[s];
     if (main) { out.byStatAll[s] = scoped(rows, main, []); out.byStatMine[s] = scoped(rows, main, branches); }
   });
+  /* one row per group: a decoration listed under several stats is scored once, on every buff its next level changes */
+  var seen = {}, vrows = [];
+  ids.forEach(function (s) {
+    arr(res.byStat[s]).forEach(function (r) {
+      if (seen[r.group]) return; seen[r.group] = 1;
+      var all = arr(r.buffRows).concat(arr(r.alsoRows)), dl = {}; all.forEach(function (b) { dl[String(b.id)] = (dl[String(b.id)] || 0) + b.rawDelta; });
+      var sc = core.moves.decorScore(dl, ps);
+      if (!sc.top) return;
+      var main = all.filter(function (b) { return String(b.id) === sc.top.id; })[0], row = plain(Object.assign({}, r, { buffRows: all, alsoRows: [] }), [main], sc.score / Math.max(r.rawShardCost, 1));
+      vrows.push(row);
+    });
+  });
+  vrows.sort(function (a, b) { return (b.roi - a.roi) || (a.cost - b.cost) || (a.n < b.n ? -1 : a.n > b.n ? 1 : 0); });
+  var top = vrows.length ? vrows[0].roi : 0;
+  vrows.forEach(function (r) { var f = top > 0 ? r.roi / top : 0; r.value = f >= 0.66 ? 'High' : f >= 0.33 ? 'Good' : f >= 0.1 ? 'Fair' : 'Low'; });
+  out.byValue = bars(vrows);
   return out;
 }
 /* rows in rank order against one bag: a row "fits" only if the rows above it have not used the shards; one that fits alone but not after them "needs N more after the rows above" */
@@ -522,7 +540,7 @@ var Logic = {
   skinState: skinState, skinRow: skinRow, skinList: skinList, skinSort: skinSort, skinFilter: skinFilter, skinNotOwned: skinNotOwned, skinChain: skinChain, citySkill: citySkill, skinFilterOptions: skinFilterOptions,
   bdRow: bdRow, bdSort: bdSort, bdNotOwned: bdNotOwned, skinTotals: skinTotals, haloTotals: haloTotals, addTotals: addTotals, baseDecorTotals: baseDecorTotals, stripRows: stripRows,
   dataFor: dataFor, buffRows: buffRows, placedModel: placedModel, storedList: storedList, ownedMap: ownedMap, alternates: alternates, notOwnedList: notOwnedList, decorSort: decorSort, decorFilter: decorFilter, sections: sections, setsModel: setsModel, iconFile: iconFile, statGroups: statGroups,
-  STAT_TABS: STAT_TABS, PICK_ORDER: PICK_ORDER, MAIN_ID: MAIN_ID, statTabLabel: statTabLabel, spendModel: spendModel, mutexMap: mutexMap,
+  STAT_TABS: STAT_TABS, TABS_BEST: TABS_BEST, PICK_ORDER: PICK_ORDER, MAIN_ID: MAIN_ID, statTabLabel: statTabLabel, spendModel: spendModel, mutexMap: mutexMap,
   gainLines: gainLines, fitWalk: fitWalk, parseBuffGroup: parseBuffGroup, formationsMerged: formationsMerged, formationCard: formationCard, techModel: techModel, armyMastery: armyMastery, talentModel: talentModel, treeGrid: treeGrid, decodeTalent: decodeTalent, fbuffName: fbuffName, fbuffVal: fbuffVal
 };
 root.ArmoryBaseLogic = Logic;
@@ -537,7 +555,7 @@ var cur = { seg: 'decor', q: {} }, wired = false;
 var DF = { q: '', stat: '', up: false, sort: 'lvlow' }, D = Object.assign({}, DF), open = {}, pageN = {};
 var SF = { q: '', buff: '', skill: '', sort: 'equipped' }, K = Object.assign({}, SF), skinN = PAGE, notN = {};
 var BF = { q: '', sort: 'equipped' }, B = Object.assign({}, BF), bdN = PAGE;
-var T = null, TFail = false, TQ = null, MUT = null, REF = null, REFFail = false, spend = { open: false, tab: 'march_size', all: false, units: 'mine', err: false };
+var T = null, TFail = false, TQ = null, MUT = null, REF = null, REFFail = false, spend = { open: false, tab: 'best', all: false, units: 'mine', err: false };
 
 var CSS =
   '.bse-sum{padding:0}.bse-dsk{display:none}.bse-mob .bse-hm{white-space:normal}.bse-nw{white-space:nowrap}.bse-nt{padding:0 12px 12px}.bse-nt .bse-note{margin-top:0}.bse-nt .info{display:inline-flex;vertical-align:middle;margin:-6px 0 -6px 0}.bse-tot{margin:0}.bse-tot div{display:grid;grid-template-columns:1fr auto;padding:8px 0;border-top:1px solid var(--rule)}.bse-tot div:first-child{border-top:0}.bse-tot dd{margin:0;font-weight:600}.bse-tot .bse-src{grid-column:1/-1;font-size:var(--fs-12);color:var(--muted);font-weight:400}@media (min-width:768px){.bse-dsk{display:block;padding:16px 16px 0}.bse-mob{display:none}.bse-nt{padding:8px 16px 16px}.bse-sum .bse-t{max-width:760px}.bse-t td.tot{color:var(--text)}}.bse-t{margin:0;width:100%;border-collapse:collapse;font-size:var(--fs-14)}.bse-t th{font-weight:400;font-size:var(--fs-13);color:var(--muted);text-align:right;padding:0 0 4px 8px}.bse-t th:first-child,.bse-t td:first-child{text-align:left;padding-left:0}' +
@@ -638,6 +656,13 @@ function stripHtml() {
     '<div class="bse-mob"><button class="bse-hd" type="button" data-bseopen="strip" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">What your base adds</span><span class="bse-hm bse-meta">' + meta.join(' · ') + '</span></span>' + ic('down', 'bse-chev') + '</button>' + (isOpen ? '<div class="bse-body">' + list + '</div>' : '') + '</div>' +
     '<div class="bse-nt">' + note + '</div></section>';
 }
+function valueSheet() {
+  var br = (S.vm.movesInput && S.vm.movesInput.decor.branches) || [], ps = psNow(br);
+  return ['How value per shard is worked out', '<p>' + esc('Every upgrade is scored by what it adds, counted the same way the Beast Optimizer counts it: 1 March Size is worth about 30 Attack points, 1% Defense about 20, 1% DMG increase or Decreased DMG Taken about 9, 1% HP just over 1 and 1% Attack 1. The score is divided by the shards the upgrade costs, and the best value per shard comes first.') + '</p>' +
+    '<p style="margin-top:12px">' + esc('It counts ' + unitsText(ps) + '. A buff for all units counts for each of them; a buff for one unit type counts only if you use that unit type.') + (ps.source === 'prefs' ? ' ' + esc('Change them in the Beast Optimizer and this list follows.') : ps.source === 'marches' ? ' ' + esc('Save your units in the Beast Optimizer to choose them yourself.') : '') + '</p>' +
+    '<p style="margin-top:12px">' + esc('The Overview suggests saving shards only when something you cannot pay for yet is worth at least three times more per shard than the best thing you can pay for now.') + '</p>' +
+    '<p class="t13 muted" style="margin-top:12px">' + esc('"On the offensive" and "defending" buffs count half. The stat tabs below rank one stat on its own.') + '</p>'];
+}
 function totalsSheet() {
   return ['How these totals are added', '<p>' + esc('Each part adds the figures printed on its cards: placed decorations at their level; the Owned bonus of every owned skin (the highest level of each chain); the When equipped buffs of the equipped skin; the equipped halo; the same two parts for base decorations.') + '</p>' +
     '<p style="margin-top:12px">' + esc('Buffs add up before the game applies them: +315% Decreased DMG Taken is not 315% less damage.') + '</p>' +
@@ -736,35 +761,43 @@ function dRefresh() {
 function paneRefreshAll() { var v = $('#v-base [data-pane="decor"]'); if (v) v.innerHTML = decorPane(); }
 
 /* ---- Spend my shards ---- */
+var TABS = [Logic.TABS_BEST].concat(Logic.STAT_TABS);
+/* the units the decor score counts, in words */
+function unitsText(ps) {
+  var n = ps.units.map(function (u) { return { 1: 'Army', 2: 'Navy', 3: 'Air Force' }[u]; }), list = n.length > 1 ? n.slice(0, -1).join(', ') + ' and ' + n[n.length - 1] : n[0];
+  return ps.source === 'prefs' ? 'your Beast Optimizer units (' + list + ')' : ps.source === 'marches' ? 'your ' + list + ' marches' : 'every unit type';
+}
+function psNow(branches) { return core.moves.decorPlaystyle(S.vm.movesInput.decor.prefs, branches); }
 function spendOwner() { return !readOnly() && S.res.identity && S.res.identity.unlocked && S.vm.decor && S.vm.decor.known; }
 function spendHtml() {
   /* the bag arrives with the worker's game data, after the first paint: an owner holds the panel's room until then, so the list does not drop */
   if (!spendOwner()) return !readOnly() && S.pend && S.res.identity && S.res.identity.unlocked && !(S.vm.decor && S.vm.decor.known) ? '<section class="card bse-sec bse-spk" id="bseSpend" aria-hidden="true"><button class="bse-hd" type="button" tabindex="-1" disabled><span class="bse-ht"><span class="bse-hn">Spend my shards</span><span class="bse-hm">0 Universal Decor Shards in bag</span></span>' + ic('down', 'bse-chev') + '</button></section>' : '';
   var sh = S.vm.decor.shards, isOpen = spend.open;
+  if (spend.model && spend.model.psKey !== JSON.stringify(psNow(spend.model.branches))) { spend.model = null; if (isOpen) loadSpend(); } /* the Beast Optimizer units changed: rank again */
   var head = '<button class="bse-hd" type="button" data-bsespend aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">Spend my shards</span><span class="bse-hm">' + nd(fmtInt(sh) + ' Universal Decor Shards in bag') + '</span></span>' + ic('down', 'bse-chev') + '</button>';
   var body = '';
   if (isOpen) {
     if (spend.err) body = '<div class="bse-body">' + partFail('the upgrade costs') + '</div>';
     else if (!spend.model) body = '<div class="bse-body"><p class="muted t13">Working out the best upgrades…</p></div>';
     else {
-      var m = spend.model, main = !!Logic.MAIN_ID[spend.tab], mode = spend.units === 'mine' && !m.branches.length ? 'all' : spend.units, rows = (main ? (mode === 'every' ? m.byStat : mode === 'all' ? m.byStatAll : m.byStatMine) : m.byStat)[spend.tab] || [], shown = spend.all ? rows : rows.slice(0, TOP), s = m.shards;
-      var tabs = '<div class="bse-tab" role="group" aria-label="Stat to raise">' + Logic.STAT_TABS.map(function (t) { return '<button class="bse-cb" type="button" data-bsetab="' + t[0] + '" aria-pressed="' + (spend.tab === t[0]) + '">' + esc(t[1]) + '</button>'; }).join('') + '</div>';
+      var m = spend.model, best = spend.tab === 'best', main = !!Logic.MAIN_ID[spend.tab], mode = spend.units === 'mine' && !m.branches.length ? 'all' : spend.units, rows = best ? m.byValue : (main ? (mode === 'every' ? m.byStat : mode === 'all' ? m.byStatAll : m.byStatMine) : m.byStat)[spend.tab] || [], shown = spend.all ? rows : rows.slice(0, TOP), s = m.shards;
+      var tabs = '<div class="bse-tab" role="group" aria-label="Stat to raise">' + TABS.map(function (t) { return '<button class="bse-cb" type="button" data-bsetab="' + t[0] + '" aria-pressed="' + (spend.tab === t[0]) + '">' + esc(t[1]) + '</button>'; }).join('') + '</div>';
       var fw = Logic.fitWalk(shown, s.universal), walk = fw.items, fit = fw.fit, spent = fw.spent, left = fw.left;
       var cover = !shown.length ? '' : fit === 0 ? 'Your ' + fmtInt(s.universal) + ' shards do not cover any of these yet.' : 'Your ' + fmtInt(s.universal) + ' shards cover ' + (fit === 1 ? 'one of these' : fit + ' of these') + ' (' + fmtInt(spent) + ' shards), ' + fmtInt(left) + ' left.';
-      var lab = Logic.statTabLabel(spend.tab);
+      var lab = Logic.statTabLabel(spend.tab), ps = psNow(m.branches);
       body = '<div class="bse-body">' + (s.boxShards > 0 ? '<p class="bse-note" style="margin:0 0 8px">' + nd('Includes ' + fmtInt(s.boxShards) + ' from boxes.') + '</p>' : '') +
         (s.luckyChests > 0 ? '<p class="bse-note">' + nd(s.luckyChests + ' Lucky Decor Shard Chests in the bag are not counted: each opens for 10 to 1,000 shards.') + '</p>' : '') +
         '<span class="lab">Stat</span>' + tabs +
-        (main && spend.tab !== 'march_size' ? '<span class="lab">Buffs that count</span><div class="bse-tab" role="group" aria-label="Which buffs count">' + (m.branches.length ? [['mine', 'My ' + m.branches.join(' and ') + ' marches'], ['all', 'All units only'], ['every', 'Every unit type']] : [['all', 'All units only'], ['every', 'Every unit type']]).map(function (o) { return '<button class="bse-cb" type="button" data-bseunits="' + o[0] + '" aria-pressed="' + (mode === o[0]) + '">' + esc(o[1]) + '</button>'; }).join('') + '</div>' : '') +
-        '<p class="t13 muted" style="margin-bottom:8px">' + esc('Best first: most ' + (spend.tab === 'march_size' ? 'March Size' : lab) + ' per shard; ties go to the cheaper one.' + (main && spend.tab !== 'march_size' && mode === 'mine' ? ' An all-units buff counts once for each unit type you march (' + m.branches.join(' and ') + '), the way the Overview move does.' : '')) + '</p>' +
+        (!best && main && spend.tab !== 'march_size' ? '<span class="lab">Buffs that count</span><div class="bse-tab" role="group" aria-label="Which buffs count">' + (m.branches.length ? [['mine', 'My ' + m.branches.join(' and ') + ' marches'], ['all', 'All units only'], ['every', 'Every unit type']] : [['all', 'All units only'], ['every', 'Every unit type']]).map(function (o) { return '<button class="bse-cb" type="button" data-bseunits="' + o[0] + '" aria-pressed="' + (mode === o[0]) + '">' + esc(o[1]) + '</button>'; }).join('') + '</div>' : '') +
+        (best ? '<p class="t13 muted" style="margin-bottom:8px">' + esc('Best first: the most value per shard across every stat, for ' + unitsText(ps) + '.') + ' <button class="info" type="button" data-open="bsevalue" aria-label="How value per shard is worked out">' + ic('info', 'sm') + '</button></p>' : '<p class="t13 muted" style="margin-bottom:8px">' + esc('Best first: most ' + (spend.tab === 'march_size' ? 'March Size' : lab) + ' per shard; ties go to the cheaper one.' + (main && spend.tab !== 'march_size' && mode === 'mine' ? ' An all-units buff counts once for each unit type you march (' + m.branches.join(' and ') + '), the way the Overview move does.' : '')) + '</p>') +
         (cover ? '<p class="bse-line" style="margin-bottom:8px">' + sp(cover) + '</p>' : '') +
-        (rows.length ? '<div class="bse-rk">' + walk.map(function (w, i) { return spendRow(w.r, i + 1, w.st, w.over); }).join('') + '</div>' + (rows.length > TOP ? '<button class="btn more" type="button" data-bsespendall><span>' + (spend.all ? 'Show the top ' + nd(String(TOP)) + ' only' : 'Show all ' + nd(String(rows.length))) + '</span></button>' : '') : '<div class="empty">No upgrades for this stat right now.</div>') + '</div>';
+        (rows.length ? '<div class="bse-rk">' + walk.map(function (w, i) { return spendRow(w.r, i + 1, w.st, w.over); }).join('') + '</div>' + (rows.length > TOP ? '<button class="btn more" type="button" data-bsespendall><span>' + (spend.all ? 'Show the top ' + nd(String(TOP)) + ' only' : 'Show all ' + nd(String(rows.length))) + '</span></button>' : '') : '<div class="empty">' + (best ? 'No placed decoration has an upgrade the shards can pay for.' : 'No upgrades for this stat right now.') + '</div>') + '</div>';
     }
   }
   return '<section class="card bse-sec" id="bseSpend">' + head + body + '</section>';
 }
 function spendRow(r, rank, st, over) {
-  var gain = r.gain.map(function (g) { return '<div><div class="bse-gl"><span>' + nd(g.n) + '</span><span translate="no">' + esc(g.v) + '</span></div>' + (g.rate ? '<div class="bse-rate">' + esc(g.rate) + '</div>' : '') + '</div>'; }).join('');
+  var gain = r.gain.map(function (g) { return '<div><div class="bse-gl"><span>' + nd(g.n) + '</span><span translate="no">' + esc(g.v) + '</span></div>' + (g.rate ? '<div class="bse-rate">' + esc(g.rate) + '</div>' : '') + '</div>'; }).join('') + (r.value ? '<div class="bse-rate">' + nd('Value per shard: ' + r.value) + '</div>' : '');
   var status = st === 'fits' ? '<span class="bse-ok"><span class="bse-okd" aria-hidden="true"></span>Fits your bag</span>' : st === 'after' ? sp('Needs ' + fmtInt(over) + ' more after the rows above') : sp('Needs ' + fmtInt(r.short) + ' more');
   var cost = '<div class="bse-cost">' + dots([sp(fmtInt(r.cost) + ' shards' + (r.credit > 0 && r.cost < r.raw ? ' (' + fmtInt(r.raw) + ', less ' + fmtInt(r.credit) + ' from copies of it in your bag)' : '')), status]) + '</div>';
   var me = r.mutex.length ? '<p class="bse-me">' + esc('Only one of this and ' + r.mutex.slice(0, 2).join(', ') + (r.mutex.length > 2 ? ' and ' + (r.mutex.length - 2) + ' more' : '') + ' can be placed.') + '</p>' : '';
@@ -780,9 +813,11 @@ function loadSpend() {
     spend.loading = false;
     try {
       if (!st.decorLevels || !st.decorIndex) throw new Error('decoration tables missing');
-      spend.model = Logic.spendModel(core, inv, S.res.merged, { levels: st.decorLevels, index: st.decorIndex, mutex: mut ? Logic.mutexMap(mut) : {}, names: (dl() || {}).DECOR_GROUPS }, null, S.vm.decor.branches || (S.vm.movesInput && S.vm.movesInput.decor.branches));
-      /* the best stat first: the first tab with a row the bag can afford, else the first with any row */
-      var ord = Logic.PICK_ORDER, pick = ord.filter(function (s) { return ((Logic.MAIN_ID[s] ? spend.model.byStatMine : spend.model.byStat)[s] || []).some(function (r) { return r.ready; }); })[0] || ord.filter(function (s) { return (spend.model.byStat[s] || []).length; })[0];
+      var br = S.vm.decor.branches || (S.vm.movesInput && S.vm.movesInput.decor.branches), ps = psNow(br);
+      spend.model = Logic.spendModel(core, inv, S.res.merged, { levels: st.decorLevels, index: st.decorIndex, mutex: mut ? Logic.mutexMap(mut) : {}, names: (dl() || {}).DECOR_GROUPS }, null, br, ps);
+      spend.model.psKey = JSON.stringify(ps);
+      /* "Best value" opens; with no row there (no placed decoration the score counts) the first stat tab with any row */
+      var ord = Logic.PICK_ORDER, pick = spend.model.byValue.length ? 'best' : ord.filter(function (s) { return (spend.model.byStat[s] || []).length; })[0];
       if (!spend.touched && pick) spend.tab = pick;
     } catch (e) { if (window.console) console.error(e); spend.err = true; }
     var sec = $('#bseSpend'); if (sec) sec.outerHTML = spendHtml();
@@ -802,11 +837,11 @@ function itemSheet(arg) {
   var have = S.vm.decor.shards, nx = x.nx;
   if (!off && nx) {
     var net = Math.max(0, nx.raw - nx.credit), pct = Math.min(100, Math.round(have / Math.max(net, 1) * 100));
-    var br = (S.vm.movesInput && S.vm.movesInput.decor.branches) || [], lines = Logic.gainLines(L, x, br, core);
+    var br = (S.vm.movesInput && S.vm.movesInput.decor.branches) || [], ps = psNow(br), lines = Logic.gainLines(L, x, ps, core);
     var fmt = function (v, pct) { return (v >= 0 ? '+' : '−') + (pct ? pctText(Math.abs(v)) : fmtInt(Math.abs(v))); };
     var gain = lines.map(function (g) {
       return '<li' + (g.counted ? ' class="bse-cnt"' : '') + '><span class="bse-gh"><span>' + nd(g.n) + '</span><span translate="no">' + (g.cur != null ? esc(fmt(g.cur, g.pct) + ' → ' + fmt(g.next, g.pct)) + ' (' + esc(fmt(g.step, g.pct)) + ')' : esc(fmt(g.step, g.pct))) + '</span></span>' +
-        (g.counted ? '<span class="t12 muted" style="display:block">' + nd(br.length ? 'Counted for your ' + br.join(' and ') + ' marches' : 'Counted in your next move') + '</span>' : '') + '</li>'; }).join('');
+        (g.counted ? '<span class="t12 muted" style="display:block">' + nd('Counted for ' + unitsText(ps)) + '</span>' : '') + '</li>'; }).join('');
     o += '<section class="card"><h3 class="disp" style="font-size:var(--fs-20)">Next level: ' + nm('Lv.' + nx.to) + '</h3>' + (gain ? '<ul class="bse-gn" style="margin-top:8px">' + gain + '</ul>' : '') +
       '<div class="nb" style="margin-top:12px" data-numwrap><div class="n" data-num translate="no">' + fmtInt(net) + '</div><div class="l lbl">Shards to upgrade</div><div class="s src"><span translate="no">' + fmtInt(have) + '</span> in bag</div></div>' +
       '<div class="meter lg r-' + H.ramp(pct) + '" style="margin-top:12px" role="img" aria-label="' + pct + ' percent of the shards needed"><i style="width:' + Math.max(2, pct) + '%"></i></div>' +
@@ -1037,6 +1072,7 @@ function sheet(kind, arg) {
     if (kind === 'bseset') return setSheet(arg);
     if (kind === 'bsetal') return talSheet(arg);
     if (kind === 'bsetotals') return totalsSheet();
+    if (kind === 'bsevalue') return valueSheet();
     if (kind === 'bsedfilter') return dSheet();
     if (kind === 'bsesfilter') return kSheet();
     if (kind === 'bsebfilter') return bSheet();
