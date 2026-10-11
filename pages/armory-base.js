@@ -657,7 +657,7 @@ function setsHtml() {
   var dm = decorData(), sm = Logic.setsModel(dm.L, S.res.merged, dm.placed, dm.om);
   if (!sm.done.length && !sm.left.length) return '';
   function row(s) {
-    var st = s.complete ? sp('Complete · ' + s.placed + ' of ' + s.total + ' placed' + (s.level ? ' · Lv.' + s.level : '')) : sp(s.have + ' of ' + s.total + ' owned');
+    var st = s.complete ? sp(s.placed + ' of ' + s.total + ' placed' + (s.level ? ' · Lv.' + s.level : '')) : sp(s.have + ' of ' + s.total + ' owned');
     return '<button class="bse-set" type="button" data-bseset="' + esc(s.id) + '"><span class="bse-sr"><span class="bse-sn" translate="no">' + esc(s.name) + '</span>' + ic('chev', 'sm') + '</span><span class="t13 muted">' + st + '</span><span class="bse-comp">' + s.pieces.slice(0, 12).map(function (p) { return icon('decor-icons/' + p.ic, p.st === 'missing' ? 'gone' : '', p.n.charAt(0)); }).join('') + '</span></button>';
   }
   function part(key, title, list) {
