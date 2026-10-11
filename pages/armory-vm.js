@@ -272,8 +272,9 @@
       var id = +k, s = rec[id], m = mh[id], g = !!(s && +s.aw > 0), ex = 0;
       var aw = Math.min(40, Math.floor(g ? +s.aw : m ? +m.awakenLevel || 0 : 0)) || 0;
       ['p1', 'p2'].forEach(function (p) { var x = s && s[p] && s[p].x && s[p].x[0]; if (x && G.EXCL_SKILL_ID[id] && +x.id === G.EXCL_SKILL_ID[id]) ex = Math.max(ex, Math.floor(+x.lv) || 0); });
+      // full: the skill levels decide when the game sent them; fa only stands in when they are missing
       var sk = g && AW.FIRST[id] ? awSkills(id, s.aws) : null, fa = !!(aw && (g ? s.fa : m && m.fullAwaken));
-      var a = byId[id] = { id: id, name: core.heroName(id), live: !!AW.FIRST[id], game: g, snap: !!s, aw: aw, fa: fa, sk: sk, full: !!(aw && (fa || (aw >= 40 && sk && sk[1] + sk[2] + sk[3] + sk[4] === 40))), pw: s && +s.pw > 0 ? +s.pw : 0, star: s ? +s.star || 0 : 0, lv: s ? +s.lv || 0 : 0, ex: ex };
+      var a = byId[id] = { id: id, name: core.heroName(id), live: !!AW.FIRST[id], game: g, snap: !!s, aw: aw, fa: fa, sk: sk, full: !!(aw && (sk ? aw >= 40 && sk[1] + sk[2] + sk[3] + sk[4] === 40 : fa)), pw: s && +s.pw > 0 ? +s.pw : 0, star: s ? +s.star || 0 : 0, lv: s ? +s.lv || 0 : 0, ex: ex };
       if (aw) { ra.n++; if (a.full) ra.full++; else ra.part.push(a); } // Lv.40 is not fully awakened: a skill can still be under Lv.10
     });
     if (inv && inv.tabs && Array.isArray(inv.tabs.item)) {

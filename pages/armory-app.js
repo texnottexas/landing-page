@@ -221,7 +221,7 @@ function awLevel(a) { return a.full ? 'Fully awakened' : 'Awakening Lv.' + a.aw 
 /* third line of an awakened row: its four skill levels (a locked skill is a dash) */
 function awSkLine(a) {
   if (!a.live || !a.game) return '';
-  if (a.sk ? a.sk[1] + a.sk[2] + a.sk[3] + a.sk[4] === 40 : a.fa) return '<span class="hb-2 awk-skl" style="display:block">' + nd('All 4 skills Lv.10') + '</span>';
+  if (a.sk ? a.sk[1] + a.sk[2] + a.sk[3] + a.sk[4] === 40 : a.fa) return '<span class="hb-2 awk-skl" style="display:block">' + nd('All 4 skills Lv.10' + (a.full ? '' : ' \u00B7 Awakening Lv.' + a.aw + ' of 40')) + '</span>';
   if (!a.sk) return '';
   return '<span class="hb-2 awk-skl" style="display:block">Skills ' + [1, 2, 3, 4].map(function (i) { return a.sk[i] ? '<span translate="no">' + a.sk[i] + '</span>' : '<span aria-hidden="true">\u2013</span><span class="sr">locked</span>'; }).join(' \u00B7 ') + '</span>';
 }

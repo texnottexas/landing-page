@@ -414,3 +414,14 @@ test('Awaken moves: heroes of the main march rank first (the module re-ranks the
   const A = build([H(SHEN, { pw: 100 }), H(LOPHY, { pw: 900 })], inv);
   assert.deepEqual(A.cand.map((c) => c.hero).sort(), [LOPHY, SHEN].sort());
 });
+
+// ---- re-review round
+test('fully awakened is decided from the skill levels when the game sent them; fa only stands in when they are missing', () => {
+  const A = build([awk(JETT, 35, [10, 10, 10, 10]), awk(NOVA, 40, [10, 10, 10, 6], { fa: 1 }), awk(SARA, 40, [10, 10, 10, 10]), H(CARNA, { aw: 40, fa: 1 }), H(SHEN, { aw: 40 })]);
+  assert.deepEqual([JETT, NOVA, SARA, CARNA, SHEN].map((id) => A.byId[id].full), [false, false, true, true, false]);
+});
+test('when the main march is only out of reach (not done), its next step is still there to name', () => {
+  const list = [awk(JETT, 35, [6, 6, 6, 6], { pw: 1000 }), H(VIVIAN, { pw: 1000 }), H(FRANZ, { pw: 1000 }), awk(CARNA, 11, [3, 6], { pw: 900 }), H(HEID, { pw: 1000 }), H(JOAN, { pw: 1000 })];
+  const p = L.plan(world(list, 200, { marches: marches([JETT, VIVIAN, FRANZ], [CARNA, HEID, JOAN]) }).ctx);
+  assert.equal(p.move.second, true); assert.notEqual(p.main.next, null); assert.equal(p.main.next.cost, 225);
+});

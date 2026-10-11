@@ -345,7 +345,7 @@ function fill(id) {
     });
     setTimeout(trim, 300);
     var hl = S.awkScroll && $('.awk-slot[data-awk="' + (+id) + '"] .awk-c.awk-hl'); if (hl) { S.awkScroll = false; setTimeout(function () { hl.scrollIntoView({ block: 'center' }); }, 60); }
-    var sel = S.awkSel === id && $('.awk-slot[data-awk="' + (+id) + '"] .awk-selreq'); if (sel) setTimeout(function () { sel.scrollIntoView({ block: 'center' }); }, 60);
+    var sel = S.awkSel === id && $('.awk-slot[data-awk="' + (+id) + '"] .awk-selreq'); if (sel) { S.awkSel = 0; setTimeout(function () { sel.scrollIntoView({ block: 'center' }); }, 60); } /* once: a later redraw does not jump back */
   };
   if (needsData(id)) loadCat(paint); else paint(true); /* a hero that is not awakened needs no catalog */
 }
@@ -372,29 +372,34 @@ function setHtml(s, role, P) {
 }
 /* the one step the card recommends, in the Next moves row's anatomy, with its reason */
 function stepHtml(P, A) {
-  var m = P.move ? P.move.step : P.saving || P.m; if (!m) return '<p class="awk-sm">Every awakening skill that can be raised is at Lv.10.</p>';
+  var m = P.move ? P.move.step : P.saving || P.m; if (!m) return allKnown(A) ? '<p class="awk-sm">Every awakening skill that can be raised is at Lv.10.</p>' : needData();
   var sv = !P.move && !!P.saving, nmS = nameOf(m.id, m.slot), link = '<a href="' + href(m.id, '&awk=1&skill=' + m.slot) + '">' + esc(nmS) + '</a>';
   var line = (sv ? 'Save for ' : 'Raise ') + link + ' ' + nd('(Lv.' + m.lv + ' → ' + m.to + ')') + ' on <span translate="no">' + esc(heroName(m.id)) + '</span>';
   var or = P.move && P.move.or ? '<div class="awk-stl awk-sm">or raise <span translate="no">' + esc(nameOf(P.move.or.id, P.move.or.slot)) + '</span> ' + nd('(Lv.' + P.move.or.lv + ' → ' + P.move.or.to + ')') + ' on <span translate="no">' + esc(heroName(P.move.or.id)) + '</span></div>' : '';
   var meta = A.stones == null ? 'Up to ' + nd(fmtInt(m.cost) + ' stones') + ' (the bag is not in game data)' : sv ? nd(fmtInt(A.stones) + ' / ' + fmtInt(m.cost) + ' Awakening Stones') : 'Up to ' + nd(fmtInt(m.cost) + ' stones' + (P.move.or ? ' (or ' + fmtInt(P.move.or.cost) + ')' : '') + ' · you have ' + fmtInt(A.stones));
   var bar = sv ? '<div class="meter" style="width:100%" role="img" aria-label="' + Math.round(A.stones / m.cost * 100) + ' percent of the stones needed"><i style="width:' + Math.min(100, Math.round(A.stones / m.cost * 100)) + '%"></i></div>' : '';
   var set = P.sets.filter(function (x) { return x.key === m.set; })[0], why;
-  if (P.move && P.move.or) why = nm(heroName(P.m.id)) + '’s skills are all at Lv.6 or higher; ' + (P.alt ? nm(heroName(P.alt.id)) + '’s march' : 'the close second') + ' still has skills under Lv.6.';
+  if (P.move && P.move.second) why = 'Not enough stones for ' + nm(heroName(P.m.id)) + '\u2019s next step (' + nd(fmtInt(P.m.cost) + ', you have ' + fmtInt(A.stones)) + '); this step on the close second march costs ' + nd(fmtInt(m.cost)) + '.';
+  else if (P.move && P.move.or) why = nm(heroName(P.m.id)) + '’s skills are all at Lv.6 or higher; ' + (P.alt ? nm(heroName(P.alt.id)) + '’s march' : 'the close second') + ' still has skills under Lv.6.';
   else if (set && set.src === 'loose') why = nm(heroName(m.id)) + ' is in no march; every march is done.';
   else if (set && set !== P.main) why = 'The main march is done; the ' + (P.seconds.indexOf(set) === 0 ? 'close second' : 'next march') + ' is next.';
   else why = '';
   var q = nameOf(m.id, m.slot);
   return '<div class="awk-step' + (S.awkHl ? ' awk-hl' : '') + '">' + art(BASE + 'hero-awake-skills/hero_awake' + (+m.id) + '_' + (+m.slot) + '.png', 'ico', q.charAt(0), '') + '<div class="awk-stb"><span class="pill p-eff">' + (sv ? 'Save for' : 'Uses what you have') + '</span><div class="awk-stl">' + line + '</div>' + or + '<div class="awk-sm">' + meta + '</div>' + bar + (why ? '<div class="awk-sm">' + why + '</div>' : '') + '</div></div>';
 }
+/* true when every awakened live hero has skill levels, so a claim about skills at Lv.10 is backed by data */
+function allKnown(A) { return Object.keys(A.byId).every(function (k) { var a = A.byId[k]; return !a.aw || !a.live || !!a.aws; }); }
+function needData() { return '<p class="awk-note">Skill levels need game data.' + (readOnly() ? '' : ' <button class="tb link" type="button" data-open="status">Send game data</button>') + '</p>'; }
 function cardBody() {
   var A = vmA(), P = planNow(), o = '';
-  if (P.sets.length) {
+  if (A.n && !Object.keys(A.byId).some(function (k) { return A.byId[k].aws; })) o += needData();
+  else if (A.n && P.sets.length) {
     var rows = '';
     if (P.main) rows += setHtml(P.main, 'Main march', P);
     P.seconds.forEach(function (s, i) { rows += setHtml(s, i ? 'Also within 15%' : 'Close second', P); });
     if (P.loose.length) rows += '<div class="awk-set"><div class="awk-sh"><h3 class="awk-role">Not in a march</h3></div>' + ptsOf(P.loose.map(function (l) { return l.ids[0]; })) + '<div class="awk-sm">' + statusHtml(P.loose.map(function (l) { return l.ids[0]; })) + '</div></div>';
     o += '<div class="awk-ordh sechead"><h3 class="lab" style="margin:0;flex:1">Raise order</h3><button class="info" type="button" data-open="awkorder" aria-label="How the order is chosen">' + ic('info', 'sm') + '</button></div><div class="awk-sets">' + rows + '</div>' + stepHtml(P, A);
-  } else o += '<p class="awk-sm">No awakened hero has skill data yet.</p>';
+  }
   var cl = cardLines(A, nameOf);
   if (cl.length) o += '<div class="awk-ln">' + cl.map(function (c) { var a = A.byId[c.id]; return '<a href="' + href(c.id, '&awk=hero') + '">' + H.awPor(a) + '<span>' + nd(c.text) + '</span></a>'; }).join('') + '</div>';
   return o;
@@ -402,7 +407,7 @@ function cardBody() {
 /* the collapsed card's one line: what to do next */
 function verdictLine() {
   var P = planNow(), A = vmA(), m = P.move ? P.move.step : P.saving || P.m;
-  if (!m) return 'All awakening skills that can be raised are at Lv.10';
+  if (!m) return allKnown(A) ? 'All awakening skills that can be raised are at Lv.10' : 'Skill levels need game data';
   if (P.saving) return 'Save for ' + nameOf(m.id, m.slot) + ' Lv.' + m.to + ' on ' + heroName(m.id) + ' · ' + fmtInt(A.stones) + ' / ' + fmtInt(m.cost);
   return 'Next: Raise ' + nameOf(m.id, m.slot) + ' on ' + heroName(m.id) + ' to Lv.' + m.to;
 }

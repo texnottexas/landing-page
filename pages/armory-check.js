@@ -444,7 +444,7 @@ var EXPECTED = [
   log(aA.show ? aTop.length === 2 : !aTop.length, 'Awakening: the card is on both Heroes panes when there is something to say', aTop.length + ' cards');
   var aBd = $$('#rosterList .awk-bd').length, aShown = $$('#rosterList .awk-slot').filter(function (el) { var x = aA.byId[el.dataset.awk]; return x && x.aw > 0 && !!ArmoryVM.AW.FIRST[x.id]; }).length;
   log(aBd === aShown, 'Awakening: a level badge on each awakened live hero shown in the Roster', aBd + ' badges, ' + aShown + ' awakened live rows shown');
-  var aPick = aLive.filter(function (k) { return !!$('#rosterList .hrow[data-hero="' + k + '"]'); })[0];
+  var aPick = aLive.filter(function (k) { return aA.byId[k].game && (aA.byId[k].sk || aA.byId[k].fa) && !!$('#rosterList .hrow[data-hero="' + k + '"]'); })[0];
   var aRow = aPick ? $('#rosterList .hrow[data-hero="' + aPick + '"]') : null;
   if (aPick) aLive = [aPick];
   if (aRow) {
@@ -461,9 +461,9 @@ var EXPECTED = [
   } else log(null, 'Awakening: no awakened live hero with skill data to open', aIds.length + ' awakened');
   var aHd = $('#v-heroes [data-pane="roster"] .awk-hd');
   if (aHd) {
-    aHd.click(); var aT1 = Date.now(); while (!$('#v-heroes [data-pane="roster"] .awk-body:not([hidden]) .awk-sets, #v-heroes [data-pane="roster"] .awk-body:not([hidden]) .awk-ln') && Date.now() - aT1 < 6000) await sleep(100);
+    aHd.click(); var aT1 = Date.now(); while (!$('#v-heroes [data-pane="roster"] .awk-body:not([hidden]) .awk-sets, #v-heroes [data-pane="roster"] .awk-body:not([hidden]) .awk-note, #v-heroes [data-pane="roster"] .awk-body:not([hidden]) .awk-ln') && Date.now() - aT1 < 6000) await sleep(100);
     var aBody = $('#v-heroes [data-pane="roster"] .awk-body'), aBt = aBody ? aBody.textContent : '';
-    log(!aA.n || (/Main march/.test(aBt) && /Raise order/.test(aBt) && (aBt.match(/2nd march/g) || []).length === 0), 'Awakening: the opened card names the main march and its order', aBt.slice(0, 90));
+    log(!aA.n || !Object.keys(aA.byId).some(function (k) { return aA.byId[k].aws; }) || (/Main march/.test(aBt) && /Raise order/.test(aBt) && (aBt.match(/2nd march/g) || []).length === 0), 'Awakening: the opened card names the main march and its order', aBt.slice(0, 90));
     log(!/\p{Extended_Pictographic}/u.test(aBt.replace(/[\u00A9\u00AE\u2122]/g, '')) && !/\u2014/.test(aBt), 'Awakening: no emoji or em dash in the card', 'none');
     aHd.click();
   }
