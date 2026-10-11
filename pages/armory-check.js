@@ -70,7 +70,7 @@ function cyrb53(str) {
           shard. No marches and no saved Optimizer units in this fixture, so every unit type counts (weights 1,1,1): an all-units buff counts 3 times. Meowjesty
           Lv.2 to 3 (+3% all-units Attack, 240 shards) scores 3 x 1 x 3 = 9, 0.0375 per shard. Thanksgiving Feast Lv.2 to 3 (+1.5% all-units Decreased DMG Taken, 450
           raw, no credit) scores 1.5 x 9 x 3 = 40.5, 0.09 per shard; Spring Festival Float and the other +2% / 600-shard damage decorations tie at 54 / 600 = 0.09, and the
-          cheaper net cost (450) puts Thanksgiving Feast first. The 507 shards cover it. March Size needs at least 1,440 shards on every placed item (30 x 3 / 1,440 = 0.0625 per shard at best): out
+          cheaper net cost (450) puts Thanksgiving Feast first. The line is 61 characters, one over the 60 limit, so the name loses its last two letters ("Thanksgiving Fea…"). The 507 shards cover it. March Size needs at least 1,440 shards on every placed item (30 x 3 / 1,440 = 0.0625 per shard at best): out
           of reach and not 3 times better, so no Save-for. Decor is class 2, so it follows the merge.
    refine: Carna is the strongest hero, so every refine pick is hers (a weaker hero's piece never beats hers). All six of her pieces have stats under 70%.
           The piece whose lowest stat is closest to 70% goes first: Portable GPS (slot 5, stats 54/52, lowest 52) and Power Boots (slot 6, one stat 52) tie
@@ -84,7 +84,7 @@ function cyrb53(str) {
 var REX = 'c3c6f3200a4ec1fb';
 var EXPECTED = [
   ['Uses what you have', 'Merge Tactical Awareness on Carna slot 1 to 1 star', 'Uses 1 \u00B7 4 in bag'],
-  ['Uses what you have', 'Upgrade Thanksgiving Feast to Lv.3: +1.5% Decreased DMG Taken', '450 shards'],
+  ['Uses what you have', 'Upgrade Thanksgiving Fea\u2026 to Lv.3: +1.5% Decreased DMG Taken', '450 shards'],
   ['Costs resources', 'Refine Portable GPS on Carna', '2 stats under 70% (52-54%)']
 ];
 
