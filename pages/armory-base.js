@@ -250,16 +250,17 @@ function statGroups(G, rows) {
 }
 function iconFile(g, name) { return g + '_' + String(name).replace(/[^a-zA-Z0-9 ]/g, '').replace(/ /g, '_') + '.png'; }
 /* the placed list the view-model already holds (one row per group at its highest level), plus categories, written-out buffs and the alternates */
-function placedModel(vmDecor, L, G, core) {
-  var list = arr(vmDecor && vmDecor.placed).map(function (p) {
+function placedModel(vmDecor, L, G, core, which) {
+  var list = arr(vmDecor && vmDecor[which || 'placed']).map(function (p) {
     var b = buffRows(L, G, core, p.g, p.lv);
     return { g: p.g, n: p.n, q: p.q, lv: p.lv, mx: p.mx, count: p.count, ic: p.ic, nx: p.nx, cat: b.cat, sub: b.sub, buffs: b.rows, stats: b.stats };
   });
   return list;
 }
-/* groups the player holds by equivalence: a placed group makes every mutually exclusive variant owned (feedback: ME expansion) */
-function ownedMap(L, placed) {
+/* groups the player holds by equivalence: a placed group, or one in the bag, makes every mutually exclusive variant owned (feedback: ME expansion) */
+function ownedMap(L, placed, stored) {
   var map = {}, via = {};
+  placed = placed.concat(arr(stored));
   placed.forEach(function (p) { map[String(p.g)] = true; });
   placed.forEach(function (p) {
     var ck = own(L.ME_LOOKUP, String(p.g)), vars = ck != null ? own(L.ME_CLUSTERS, String(ck)) : null;
@@ -267,6 +268,8 @@ function ownedMap(L, placed) {
   });
   return { map: map, via: via };
 }
+/* owned decorations that are not placed (in the bag, or listed by the report), as cards: their own level and buffs at it */
+function storedList(vmDecor, L, G, core) { return placedModel(vmDecor, L, G, core, 'stored'); }
 function alternates(L, g, om) {
   var ck = own(L.ME_LOOKUP, String(g)), vars = ck != null ? own(L.ME_CLUSTERS, String(ck)) : null, names = L.DECOR_GROUPS || {};
   return arr(vars).filter(function (v) { return +v !== +g; }).map(function (v) { return { g: +v, n: own(names, String(v)) || 'Decoration', owned: !!om.map[String(v)] }; });
@@ -494,7 +497,7 @@ var Logic = {
   ageOld: ageOld, num: num, fmtInt: fmtInt, pctText: pctText, statName: statName, skinVal: skinVal, skinNum: skinNum, baseVal: baseVal, statKey: statKey, KEY_STATS: KEY_STATS,
   skinState: skinState, skinRow: skinRow, skinList: skinList, skinSort: skinSort, skinFilter: skinFilter, skinNotOwned: skinNotOwned, skinChain: skinChain, citySkill: citySkill, skinFilterOptions: skinFilterOptions,
   bdRow: bdRow, bdSort: bdSort, bdNotOwned: bdNotOwned, skinTotals: skinTotals, haloTotals: haloTotals, addTotals: addTotals, baseDecorTotals: baseDecorTotals, stripRows: stripRows,
-  dataFor: dataFor, buffRows: buffRows, placedModel: placedModel, ownedMap: ownedMap, alternates: alternates, notOwnedList: notOwnedList, decorSort: decorSort, decorFilter: decorFilter, sections: sections, setsModel: setsModel, iconFile: iconFile, statGroups: statGroups,
+  dataFor: dataFor, buffRows: buffRows, placedModel: placedModel, storedList: storedList, ownedMap: ownedMap, alternates: alternates, notOwnedList: notOwnedList, decorSort: decorSort, decorFilter: decorFilter, sections: sections, setsModel: setsModel, iconFile: iconFile, statGroups: statGroups,
   STAT_TABS: STAT_TABS, PICK_ORDER: PICK_ORDER, MAIN_ID: MAIN_ID, statTabLabel: statTabLabel, spendModel: spendModel, mutexMap: mutexMap,
   gainLines: gainLines, fitWalk: fitWalk, parseBuffGroup: parseBuffGroup, formationsMerged: formationsMerged, formationCard: formationCard, techModel: techModel, armyMastery: armyMastery, talentModel: talentModel, decodeTalent: decodeTalent, fbuffName: fbuffName, fbuffVal: fbuffVal
 };
@@ -615,19 +618,19 @@ function totalsSheet() {
 function buffList(b, max) { return b.length ? '<ul class="bse-bf">' + b.slice(0, max || 6).map(function (x) { return '<li><span>' + nd(x.n) + '</span><span translate="no">' + esc(x.v) + '</span></li>'; }).join('') + '</ul>' : ''; }
 /* the buff a section is already named for (March Size, Attack...) moves to the card's header as one right-aligned number instead of repeating its label on every card */
 var LEAD = { 0: 'March Size', 1: 'All units Defense', dmg_inc: 'All units DMG increase', dmg_dec: 'All units Decreased DMG Taken', atk: 'All units Attack', hp: 'All units HP' };
-function decorCard(x, off) {
+function decorCard(x, off, kind) {
   var key = x.cat === 0 || x.cat === 1 ? x.cat : x.sub, lead = null, rest = x.buffs;
   if (LEAD[key]) { var i = x.buffs.map(function (b) { return b.n; }).indexOf(LEAD[key]); if (i >= 0) { lead = x.buffs[i]; rest = x.buffs.filter(function (b, j) { return j !== i; }); } }
   var bits = off ? '' : 'Lv.' + x.lv + (x.mx ? ' of ' + x.mx : '') + (x.count > 1 ? ' · ' + x.count + ' pieces' : '');
   var inner = '<span class="bse-ch">' + icon('decor-icons/' + x.ic, qCls(x.q), x.n.charAt(0)) + '<span class="bse-ct"><span class="bse-cn" translate="no" style="display:block">' + esc(noHy(x.n)) + '</span>' + (bits ? '<span class="bse-cs" style="display:block">' + sp(bits) + '</span>' : '') + '</span>' +
     (lead ? '<span class="bse-lead" translate="no">' + esc(lead.v) + '<span class="sr"> ' + esc(lead.n) + '</span></span>' : '') + '</span>' + buffList(rest);
-  return '<button class="bse-c ' + qCls(x.q) + (off ? ' off' : '') + (cur.q.item && !off && x.n === cur.q.item ? ' is-sel' : '') + '" type="button" data-bseitem="' + (off ? 'g' + x.g : esc(x.n)) + '" id="bsi-' + x.g + '">' + inner + '</button>';
+  return '<button class="bse-c ' + qCls(x.q) + (off ? ' off' : '') + (cur.q.item && !off && x.n === cur.q.item ? ' is-sel' : '') + '" type="button" data-bseitem="' + (off ? 'g' + x.g : kind === 's' ? 's' + x.g : esc(x.n)) + '" id="bsi-' + x.g + '">' + inner + '</button>';
 }
 function decorModel() {
   var vm = S.vm, L = dl();
   if (!L) return null;
-  var placed = Logic.placedModel(vm.decor, L, G, core), om = Logic.ownedMap(L, placed);
-  return { placed: placed, om: om, L: L };
+  var placed = Logic.placedModel(vm.decor, L, G, core), stored = Logic.storedList(vm.decor, L, G, core), om = Logic.ownedMap(L, placed, stored);
+  return { placed: placed, stored: stored, om: om, L: L };
 }
 var DM = null, DMFor = null;
 function decorData() { var L = dl(); if (!DM || DMFor !== S.vm) { DM = decorModel(); DMFor = S.vm; } return DM; }
@@ -671,6 +674,13 @@ function notOwnedHtml() {
   return '<section class="card bse-sec"><button class="bse-hd" type="button" data-bseopen="notOwned" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">Not owned</span><span class="bse-hm">' + nd(f.length + ' decorations, level 1 buffs') + '</span></span>' + ic('down', 'bse-chev') + '</button>' +
     (isOpen ? '<div class="bse-body"><div class="bse-grid">' + f.slice(0, shown).map(function (x) { return decorCard(x, true); }).join('') + '</div>' + more(Math.min(shown, f.length), f.length, 'notOwned') + '</div>' : '') + '</section>';
 }
+function storedHtml() {
+  var dm = decorData(), f = Logic.decorSort(Logic.decorFilter(dm.stored, D), D.sort);
+  if (!f.length) return '';
+  var isOpen = !!open.stored, shown = pageN.stored || PAGE;
+  return '<section class="card bse-sec"><button class="bse-hd" type="button" data-bseopen="stored" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">Owned, not placed</span><span class="bse-hm">' + nd(f.length + (f.length === 1 ? ' decoration' : ' decorations') + ' in your bag') + '</span></span>' + ic('down', 'bse-chev') + '</button>' +
+    (isOpen ? '<div class="bse-body"><div class="bse-grid">' + f.slice(0, shown).map(function (x) { return decorCard(x, false, 's'); }).join('') + '</div>' + more(Math.min(shown, f.length), f.length, 'stored') + '</div>' : '') + '</section>';
+}
 function dDirty() { return (D.stat ? 1 : 0) + (D.up ? 1 : 0) + (D.sort !== 'name' ? 1 : 0); }
 function dBtn() { var n = dDirty(); return 'Filter · Sort' + (n ? ' (' + n + ')' : ''); }
 var D_STATS = [['', 'All stats']].concat(Logic.STAT_TABS.map(function (t) { return [t[0], t[1]]; }));
@@ -685,7 +695,7 @@ function decorPane() {
   if (!vm.decor || !vm.decor.placedKinds) return needData('No decoration data yet.');
   if (!L) return partFail('the decoration list');
   var ss = decorSections(), tally = '<p class="t13 muted" id="bseTally" role="status">' + nd(vm.decor.placedKinds + ' decorations placed (' + vm.decor.placedPieces + ' pieces)' + (ss.n !== vm.decor.placedKinds ? ' · showing ' + ss.n : '')) + '</p>';
-  return spendHtml() + decorControls() + tally + '<div id="bseSecs" class="bse-secs">' + (ss.html || '<div class="empty">No decorations match. <button class="tb link" type="button" data-bseclear="d">Clear filters</button></div>') + '</div>' + setsHtml() + notOwnedHtml() + classicLink('decorations', 'See the decoration cards on the classic page');
+  return spendHtml() + decorControls() + tally + '<div id="bseSecs" class="bse-secs">' + (ss.html || '<div class="empty">No decorations match. <button class="tb link" type="button" data-bseclear="d">Clear filters</button></div>') + '</div>' + setsHtml() + storedHtml() + notOwnedHtml() + classicLink('decorations', 'See the decoration cards on the classic page');
 }
 function dRefresh() {
   var s = $('#bseSecs'); if (!s) return;
@@ -753,11 +763,12 @@ function loadSpend() {
 /* ---- item and set sheets ---- */
 function itemSheet(arg) {
   var L = dl(); if (!L || !S.vm) return null;
-  var dm = decorData(), key = String(arg), x = null, off = /^g\d+$/.test(key);
-  if (off) { var g = +key.slice(1); x = Logic.notOwnedList(L, G, dm.om).filter(function (p) { return p.g === g; })[0] || null; }
+  var dm = decorData(), key = String(arg), x = null, off = /^g\d+$/.test(key), bagged = /^s\d+$/.test(key);
+  if (bagged) { var sg = +key.slice(1); x = dm.stored.filter(function (p) { return p.g === sg; })[0] || null; }
+  else if (off) { var g = +key.slice(1); x = Logic.notOwnedList(L, G, dm.om).filter(function (p) { return p.g === g; })[0] || null; }
   else x = dm.placed.filter(function (p) { return p.n === key; })[0] || null;
   if (!x) return null;
-  var head = '<div class="sh-hero">' + icon('decor-icons/' + x.ic, qCls(x.q), x.n.charAt(0)) + '<div><span class="pill p-lv" translate="no">' + (off ? 'Not owned' : 'Lv.' + x.lv) + '</span><div class="t13 muted" style="margin-top:4px">' + (off ? nd(G.DECO_CAT_NAMES[x.cat]) : nd(G.DECO_CAT_NAMES[x.cat] + ' · ' + x.count + (x.count === 1 ? ' piece' : ' pieces') + ' placed')) + '</div></div></div>';
+  var head = '<div class="sh-hero">' + icon('decor-icons/' + x.ic, qCls(x.q), x.n.charAt(0)) + '<div><span class="pill p-lv" translate="no">' + (off ? 'Not owned' : 'Lv.' + x.lv) + '</span><div class="t13 muted" style="margin-top:4px">' + (off ? nd(G.DECO_CAT_NAMES[x.cat]) : nd(G.DECO_CAT_NAMES[x.cat] + ' · ' + x.count + (x.count === 1 ? ' piece' : ' pieces') + (bagged ? ' in your bag, not placed' : ' placed'))) + '</div></div></div>';
   var o = head + (x.buffs.length ? '<section class="card"><h3 class="disp" style="font-size:var(--fs-17)">' + (off ? 'Buffs at level 1' : nd('Buffs at Lv.' + x.lv)) + '</h3>' + buffList(x.buffs, 12) + '</section>' : '');
   var have = S.vm.decor.shards, nx = x.nx;
   if (!off && nx) {
@@ -1036,7 +1047,7 @@ function onChange(t) {
 function reflow(key) {
   var v = $('#v-base'), y = window.scrollY;
   if (key === 'strip') { var sm = $('#bseSum'); if (sm) sm.innerHTML = stripHtml(); }
-  else if (/^c\d$/.test(key) || key === 'notOwned' || /^sets/.test(key)) { paneRefreshAll(); }
+  else if (/^c\d$/.test(key) || key === 'notOwned' || key === 'stored' || /^sets/.test(key)) { paneRefreshAll(); }
   else if (key === 'skins' || key === 'skinLeft' || key === 'haloLeft') { var p = $('[data-pane="skins"]', v); if (p) p.innerHTML = skinsPane(); }
   else if (key === 'bd' || key === 'bdLeft') { var b = $('[data-pane="base-decor"]', v); if (b) b.innerHTML = bdPane(); }
   else if (/^tal/.test(key)) { var f = $('[data-pane="formation"]', v); if (f) f.innerHTML = formationPane(); }

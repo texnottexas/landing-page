@@ -119,7 +119,7 @@
   }
 
   // ---- decor ------------------------------------------------------------------------------------------------------
-  function buildDecor(merged, inv, statics, core) {
+  function buildDecor(merged, inv, statics, core, reportIds) {
     var L = statics.decorLookups || {};
     var data = L.DECOR_DATA || {}, meLookup = L.ME_LOOKUP || {}, meClusters = L.ME_CLUSTERS || {}, names = L.DECOR_GROUPS || {};
     var levels = statics.decorLevels || null;
@@ -168,12 +168,32 @@
     });
     placed.sort(function (a, b) { return a.n < b.n ? -1 : a.n > b.n ? 1 : 0; });
     var bag = { kinds: 0, pieces: 0 };
+    /* decorations held but not placed: the bag's Decor tab, and the ids the battle reports list (opts.reportDecorIds) when the Snapshot's placed list replaced them (the Snapshot sees only what is on the map) */
+    var held = {};
+    function hold(g, lv, n) {
+      if (g == null) return;
+      var h = held[g] || (held[g] = { g: +g, lv: 0, count: 0 });
+      if (lv > h.lv) h.lv = lv;
+      h.count += n;
+    }
     if (inv && inv.tabs && Array.isArray(inv.tabs.decor)) {
       bag.kinds = inv.tabs.decor.length;
-      inv.tabs.decor.forEach(function (d) { bag.pieces += core._adv_invAmount(d); });
+      inv.tabs.decor.forEach(function (d) {
+        var n = core._adv_invAmount(d);
+        bag.pieces += n;
+        var g = d.g != null && d.g !== 0 ? d.g : core.decorIdToGroup(d.id); /* the tab carries the group; an id the game encodes by level (L2 = L1 x 100 + 2) goes through the lookup */
+        hold(g, d.l > 0 ? d.l : g != null ? core.decorLevel(d.id, g) : 0, n);
+      });
     }
+    (reportIds || []).forEach(function (id) { var g = core.decorIdToGroup(id); if (g != null) hold(g, core.decorLevel(id, g), 1); });
+    var stored = Object.keys(held).filter(function (k) { return !groups[k]; }).map(function (k) {
+      var h = held[k], name = names[k] || ('Decoration ' + k), entry = levels && levels[k], mx = 0;
+      ((entry && entry.levels) || []).forEach(function (l) { if (l.l > mx) mx = l.l; });
+      return { g: h.g, n: name, q: qByGroup[h.g] || 0, lv: h.lv, mx: mx, count: h.count, ic: h.g + '_' + name.replace(/[^a-zA-Z0-9 ]/g, '').replace(/ /g, '_') + '.png', nx: null };
+    });
+    stored.sort(function (a, b) { return a.n < b.n ? -1 : a.n > b.n ? 1 : 0; });
     return {
-      shards: shards, known: !!inv, placed: placed, totals: totals, placedPieces: pieces, placedKinds: placed.length,
+      shards: shards, known: !!inv, placed: placed, stored: stored, totals: totals, placedPieces: pieces, placedKinds: placed.length,
       bag: bag, sets: ((merged && merged.decorations && merged.decorations.suit) || []).length, unresolved: unknown
     };
   }
@@ -356,7 +376,7 @@
 
     var heroes = buildHeroes(merged, core, supp.heroes);
     var runes = buildRunes(inv, priv.gear ? null : supp.gear, priv.runepool ? null : supp.runepool, statics, core);
-    var decor = buildDecor(merged, inv, statics, core);
+    var decor = buildDecor(merged, inv, statics, core, opts.reportDecorIds);
     var beasts = buildBeasts(merged, core, priv.bench ? null : supp.bench);
     var ht = buildHt(merged, supp, opts.reports, opts.reportMechaIds, core);
     var header = buildHeader(opts, sources, now);
@@ -406,7 +426,7 @@
     return {
       core: core, supp: res.supp, privacy: res.privacy, statics: res.statics, player: res.player, rosterEntry: res.rosterEntry,
       reports: res.reports, reportMechaIds: res.reports && res.reports.length ? res.reportMechaIds : null,
-      readOnly: res.readOnly, identity: res.identity, marchGroups: res.marchGroups
+      readOnly: res.readOnly, identity: res.identity, marchGroups: res.marchGroups, reportDecorIds: res.reportDecorIds
     };
   }
 

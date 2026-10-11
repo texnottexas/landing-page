@@ -955,6 +955,8 @@
           out.changedKinds = changed;
           var merged = mergeReportData(results);
           out.reportMechaIds = (merged.mechas || []).map(function(m) { return m.mechaId; });
+          /* the report's decoration ids, before a Snapshot's placed list replaces them: they also cover decorations owned but not placed */
+          out.reportDecorIds = merged.decorations && Array.isArray(merged.decorations.ids) ? merged.decorations.ids.slice() : [];
           if (player.siteKey) {
             core.setIdentity(ArmoryIdentity);
             window._enigmaSuppDecode = null; core.setSuppDecode(null); /* decode hints belong to the player being loaded */

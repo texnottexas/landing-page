@@ -22,7 +22,7 @@ function decorId(core, group, level) {
   for (let id = base; id < base + 30; id++) if (String(core.decorIdToGroup(id)) === String(group) && core.decorLevel(id, group) === level) return id;
   throw new Error('no id for group ' + group + ' level ' + level);
 }
-const vmOf = (core, merged, inv, marchGroups) => VM.buildViewModel(merged, { reportsTs: 0, dataTs: 0, kinds: [] }, { core, statics: STATICS, supp: inv ? { inv } : {}, privacy: {}, player: { name: 'Tester', siteKey: 'aaaaaaaaaaaaaaaa' }, reports: [], reportMechaIds: [], marchGroups, now: Date.now() });
+const vmOf = (core, merged, inv, marchGroups, reportDecorIds) => VM.buildViewModel(merged, { reportsTs: 0, dataTs: 0, kinds: [] }, { reportDecorIds, core, statics: STATICS, supp: inv ? { inv } : {}, privacy: {}, player: { name: 'Tester', siteKey: 'aaaaaaaaaaaaaaaa' }, reports: [], reportMechaIds: [], marchGroups, now: Date.now() });
 const bag = (shards) => ({ tabs: { item: [{ id: 20213232, a: shards }], decor: [] } });
 const VOCAB = /\bATK\b|\bAF\b|DMG[+\-−]|\bDEF\b|DMG Increase|\(rcv\)/;
 
@@ -416,4 +416,45 @@ test('hostile names reach the model as plain strings only (the view escapes them
   assert.equal(L.bdRow(t, 99, t.BASE_DECOR_DATA).name, 'Unknown');
   assert.equal(L.baseVal('<b>', 'x'), '+0%');
   assert.equal(L.decodeTalent(NaN, {}).level > 0, false);
+});
+
+// ---- owned, not placed (a Snapshot lists only what is on the map; the bag and the report hold the rest) ----
+const bagWith = (decor) => ({ tabs: { item: [{ id: 20213232, a: 0 }], decor } });
+test('owned: a decoration in the bag (Decor tab) is owned and listed as "owned, not placed", with the bag\'s level and piece count', () => {
+  const core = newCore(), merged = { decorations: { ids: [decorId(core, 5544, 3)], suit: [], suitLevelBuff: {} } };
+  const vm = vmOf(core, merged, bagWith([{ id: 4648002, a: 2, l: 2, g: 5280 }, { id: decorId(core, 4200, 4), a: 1, l: 4, g: 4200 }]));
+  assert.deepEqual(vm.decor.stored.map((s) => [s.g, s.lv, s.count]), [[4200, 4, 1], [5280, 2, 2]].sort((a, b) => (vm.decor.stored.find((s) => s.g === a[0]).n < vm.decor.stored.find((s) => s.g === b[0]).n ? -1 : 1)));
+  assert.deepEqual(vm.decor.placed.map((p) => p.g), [5544], 'placed is untouched');
+  const placed = L.placedModel(vm.decor, LOOKUPS, G, core), stored = L.storedList(vm.decor, LOOKUPS, G, core), om = L.ownedMap(LOOKUPS, placed, stored);
+  assert.ok(om.map['5280'] && om.map['4200'] && om.map['5544']);
+  const none = L.notOwnedList(LOOKUPS, G, om).map((x) => x.g);
+  assert.ok(!none.includes(5280) && !none.includes(4200), 'owned in the bag is not "not owned"');
+  assert.equal(none.length, Object.keys(LOOKUPS.DECOR_DATA).length - Object.keys(om.map).filter((k) => LOOKUPS.DECOR_DATA[k]).length);
+  const before = L.notOwnedList(LOOKUPS, G, L.ownedMap(LOOKUPS, placed)).length;
+  assert.equal(before - none.length, 2, 'two catalog entries (the bag ones) leave the list; before the fix they stayed in it');
+});
+test('owned: the bag\'s group is read from a level-encoded id (L2 = L1 x 100 + 2) when the item has no group, and the level from the id', () => {
+  const core = newCore(), vm = vmOf(core, { decorations: { ids: [], suit: [], suitLevelBuff: {} } }, bagWith([{ id: 4648002, a: 1 }]));
+  assert.deepEqual(vm.decor.stored.map((s) => [s.g, s.lv]), [[5280, 2]]);
+});
+test('owned: a mutually exclusive variant of a decoration in the bag is owned too', () => {
+  const g = 4240, mates = LOOKUPS.ME_CLUSTERS[String(LOOKUPS.ME_LOOKUP[String(g)])].filter((m) => m !== g);
+  assert.ok(mates.length >= 1);
+  const core = newCore(), vm = vmOf(core, { decorations: { ids: [], suit: [], suitLevelBuff: {} } }, bagWith([{ id: 1, a: 1, l: 2, g }]));
+  const om = L.ownedMap(LOOKUPS, L.placedModel(vm.decor, LOOKUPS, G, core), L.storedList(vm.decor, LOOKUPS, G, core));
+  mates.forEach((m) => assert.equal(om.map[String(m)], true));
+});
+test('owned: ids the report lists but the Snapshot\'s placed list does not (opts.reportDecorIds, kept by loadArmory) are held, not placed; a group both placed and in the bag is not listed twice', () => {
+  const core = newCore(), id1 = decorId(core, 4170, 3), id2 = decorId(core, 5544, 2);
+  const merged = { decorations: { ids: [id2], suit: [], suitLevelBuff: {} } };
+  const vm = vmOf(core, merged, bagWith([{ id: id2, a: 1, l: 2, g: 5544 }]), undefined, [id1, id2]);
+  assert.deepEqual(vm.decor.stored.map((s) => [s.g, s.lv]), [[4170, 3]]);
+  assert.deepEqual(vm.decor.placed.map((p) => p.g), [5544]);
+});
+test('owned: a set piece that is only in the bag counts as owned in a set still to collect', () => {
+  const suit = '1201', gs = LOOKUPS.DECOR_SUIT_GROUPS[suit], core = newCore();
+  const vm = vmOf(core, { decorations: { ids: [decorId(core, gs[0], 1)], suit: [], suitLevelBuff: {} } }, bagWith([{ id: decorId(core, gs[1], 1), a: 1, l: 1, g: gs[1] }]));
+  const placed = L.placedModel(vm.decor, LOOKUPS, G, core), om = L.ownedMap(LOOKUPS, placed, L.storedList(vm.decor, LOOKUPS, G, core));
+  const left = L.setsModel(LOOKUPS, { decorations: { suit: [] } }, placed, om).left.find((s) => s.id === suit);
+  assert.deepEqual([left.have, left.placed], [2, 1]); assert.deepEqual(left.pieces.slice(0, 2).map((p) => p.st), ['placed', 'owned']);
 });
